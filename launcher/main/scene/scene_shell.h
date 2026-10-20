@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "gfx/target/gfx_target.h"
 #include "scene/scene.h"
 
 /* The picture a frame is composed into. NULL pixels: nothing to upscale into,
@@ -30,11 +31,20 @@ bool scene_has_active_camera(void);
 void scene_render(uint32_t dt_ms, int quarter, int width, int height);
 bool scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target);
 
+/* Rows of the picture into `target`, from the frame scene_render() drew
+ * last: a picture kept nowhere, redrawn whenever its rows are asked for,
+ * paused or not. False when there is no such frame. */
+bool scene_compose_rows(gfx_target_t target);
+
 /* The two above on the panel's pictures and orientation. Compose marks an
  * exact-half picture for expansion, otherwise the full framebuffer dirty;
  * it does nothing without an active camera. */
 void scene_shell_render(uint32_t dt_ms);
 void scene_shell_compose(uint32_t dt_ms);
+
+/* Band mode's compose: rows [row0, row1) of the panel into `target`, or
+ * black with no frame to show. */
+void scene_shell_compose_band(int row0, int row1, gfx_color_t* target);
 
 /* An app has exited: unloads every scene, releases the render context and
  * lifts a pause. */

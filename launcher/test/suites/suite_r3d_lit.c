@@ -1919,6 +1919,62 @@ census_moved(void) {
 /* Culled once at one size and drawn at another, two instances (the second
  * moved, so each keeps its own list): the same picture, depth and survivors
  * as raster_draw() at the drawn size, from eyes that cull different parts. */
+/* A band picture draws the frame a few rows at a time, each band drawn and
+ * upscaled on its own, and composes what one full draw does: for bands
+ * smaller than a pixel's run, ones that split one, and taller ones. */
+static void
+test_band_rows_draw_what_one_full_draw_does(void) {
+    parts_t* const p = parts_buffer(&shared_parts);
+    build_wall_and_stack(p);
+    const int band_heights[] = {2, 6, 16};
+    gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
+    gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
+    raster_t raster = {ONE_MESH(&p->mesh),
+                       .width = W,
+                       .height = H,
+                       .clear = SKY,
+                       .upscaled = true,
+                       .destination_width = 2 * W,
+                       .destination_height = 2 * H,
+                       .band_rows = 16};
+    char* scratch = malloc(raster_scratch_bytes(&raster));
+    void* band_scratch = malloc(raster_band_bytes(&raster));
+    TEST_ASSERT_NOT_NULL(upscaled);
+    TEST_ASSERT_NOT_NULL(want);
+    TEST_ASSERT_NOT_NULL(scratch);
+    TEST_ASSERT_NOT_NULL(band_scratch);
+    raster.scratch = scratch;
+    raster.band_scratch = band_scratch;
+
+    static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
+    for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
+        const fixture_camera_t camera = camera_down_plus_z(eye_heights[e], -400, 1.0f);
+        const r3d_lens_t lens = look_down_plus_z(eye_heights[e], -400, 1.0f);
+        reference_frame(p, &lens, want);
+        const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
+        (void)raster_prepare(&raster, &frame_view);
+        for (size_t b = 0; b < sizeof band_heights / sizeof band_heights[0]; b++) {
+            memset(upscaled, 0xA5, sizeof(gfx_color_t) * 4 * W * H);
+            for (int y0 = 0; y0 < 2 * H; y0 += band_heights[b]) {
+                const int rows = band_heights[b] < 2 * H - y0 ? band_heights[b] : 2 * H - y0;
+                int row0;
+                int row1;
+                raster_upscale_source(&raster, 2 * W, 2 * H, y0, y0 + rows, &row0, &row1);
+                TEST_ASSERT_TRUE(row1 - row0 <= raster.band_rows);
+                raster_draw_rows(&raster, row0, row1);
+                const gfx_target_t band = {upscaled + ((size_t)y0 * 2 * W), y0, rows, 2 * W};
+                raster_upscale_rows(&raster, band, 2 * W, 2 * H);
+            }
+            TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
+                                                  "a frame drawn in bands differs from one full draw");
+        }
+    }
+    free(band_scratch);
+    free(scratch);
+    free(want);
+    free(upscaled);
+}
+
 static void
 test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     parts_t* const p = parts_buffer(&shared_parts);
@@ -2394,8 +2450,8 @@ test_the_draw_split_of_no_work_is_the_middle_row(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t rows[] = {{0, 99, false}};
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100, RASTER_SPLIT_EVEN));
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 0, 100, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 0, 100, RASTER_SPLIT_EVEN));
 }
 
 static void
@@ -2404,15 +2460,15 @@ test_the_draw_split_falls_inside_the_rows_the_work_covers(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t top[] = {{0, 9, false}};
-    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100, RASTER_SPLIT_EVEN);
+    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 0, 100, RASTER_SPLIT_EVEN);
     TEST_ASSERT_TRUE(split >= 1 && split <= 9);
 
     const r3d_pipeline_rows_t beyond[] = {{-50, 500, false}};
-    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100, RASTER_SPLIT_EVEN);
+    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 0, 100, RASTER_SPLIT_EVEN);
     TEST_ASSERT_TRUE(middle >= 48 && middle <= 52);
 
     const r3d_pipeline_rows_t unbounded[] = {{0, 0, true}};
-    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 0, 100, RASTER_SPLIT_EVEN));
 }
 
 static void
@@ -2422,9 +2478,10 @@ test_draw_split_accumulates_bounded_uneven_buckets(void) {
     const uint16_t visible[] = {0, 1};
     const r3d_pipeline_rows_t rows[] = {{0, 9, false}, {40, 49, false}};
     const int height = 640;
-    TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE / 4));
-    TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_EVEN));
-    TEST_ASSERT_EQUAL_INT(46, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE * 3 / 4));
+    TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, 0, height, RASTER_SPLIT_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, 0, height, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(46,
+                          r3d_pipeline_draw_split(&mesh, visible, rows, 2, 0, height, RASTER_SPLIT_PERMILLE * 3 / 4));
 }
 
 static void
@@ -2435,12 +2492,13 @@ test_draw_split_interpolates_the_requested_share_and_clamps_rows(void) {
     const r3d_pipeline_rows_t rows[] = {{0, 0, true}};
     const int height = 640;
     TEST_ASSERT_EQUAL_INT(height / 4,
-                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE / 4));
-    TEST_ASSERT_EQUAL_INT(height / 2, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_EVEN));
+                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, 0, height, RASTER_SPLIT_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(height / 2, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 0, height, RASTER_SPLIT_EVEN));
     TEST_ASSERT_EQUAL_INT(height / 3,
-                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE / 3));
-    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, 0));
-    TEST_ASSERT_EQUAL_INT(height - 1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE));
+                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, 0, height, RASTER_SPLIT_PERMILLE / 3));
+    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 0, height, 0));
+    TEST_ASSERT_EQUAL_INT(height - 1,
+                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, 0, height, RASTER_SPLIT_PERMILLE));
 }
 
 #undef RUN_TEST
@@ -2501,6 +2559,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
     RUN_TEST(test_cull_off_keeps_every_cluster);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
+    RUN_TEST(test_band_rows_draw_what_one_full_draw_does);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);
     RUN_TEST(test_a_fractional_destination_upscales_a_drawn_frame);

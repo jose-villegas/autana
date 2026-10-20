@@ -10,6 +10,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "gfx/target/gfx_color.h"
+
 /* Every system's place in a pass, all in one list, so a new system is
  * placed against the ones already here rather than guessed. Gaps leave room
  * to insert one between two others. */
@@ -25,6 +27,10 @@ typedef struct shell_system {
     /* Into the framebuffer, before the app's frame() draws over it. Runs only
      * on a pass that overlaps the present. */
     void (*compose)(uint32_t dt_ms);
+    /* In GFX_LAYOUT_BANDS, which keeps no framebuffer: rows [row0, row1)
+     * into the band about to be sent, before the app's draw_band() draws
+     * over them. */
+    void (*compose_band)(int row0, int row1, gfx_color_t* target);
     /* The running app has exited: free what was held on its behalf. */
     void (*app_exit)(void);
     /* True when the app's frame must be presented a pass late, so update()
@@ -44,6 +50,7 @@ void shell_system_register(shell_system_t* system);
 
 void shell_systems_update(uint32_t dt_ms);
 void shell_systems_compose(uint32_t dt_ms);
+void shell_systems_compose_band(int row0, int row1, gfx_color_t* target);
 void shell_systems_app_exit(void);
 bool shell_systems_overlap_present(void);
 

@@ -91,12 +91,13 @@ void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
  * their vertices; 0 when there are none. */
 int r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count);
 
-/* A row between 1 and height - 1 assigning top_permille / RASTER_SPLIT_PERMILLE
- * of estimated draw weight to the top slice, interpolated within its bucket.
- * Weight is each visible cluster's triangle count across the buckets it spans.
- * With no weight, returns the middle row. */
+/* A row between row0 + 1 and row1 - 1 assigning top_permille /
+ * RASTER_SPLIT_PERMILLE of the estimated draw weight in rows [row0, row1) to
+ * the top slice, interpolated within its bucket. Weight is each cluster's
+ * triangle count across the buckets it spans; a cluster wholly outside the
+ * rows weighs nothing. With no weight, returns the middle row. */
 int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                            int count, int height, int top_permille);
+                            int count, int row0, int row1, int top_permille);
 
 /* One way of the data cache: addresses this far apart share a cache set. */
 #if defined(ESP_PLATFORM)
@@ -112,14 +113,18 @@ int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters
 /* A raster's scratch block as its parts: the one layout
  * raster_scratch_bytes() sizes. The census list comes first, so it stays put
  * when the render size changes, and takes whole cache ways, so the parts
- * after it fall in the cache sets they would without it. */
+ * after it fall in the cache sets they would without it. Vertices and rows
+ * hold every instance's, one after another, so all of them can be
+ * transformed before any row is drawn. */
 typedef struct {
-    r3d_pipeline_vertex_t* cs;    /* mesh->vertex_count entries */
-    r3d_pipeline_rows_t* rows;    /* mesh->cluster_count entries */
-    gfx_render_target_t picture;  /* raster_picture(), every row */
+    r3d_pipeline_vertex_t* cs;    /* raster_vertex_capacity() entries */
+    r3d_pipeline_rows_t* rows;    /* raster_cluster_capacity() entries */
+    gfx_render_target_t picture;  /* raster_picture(): every row, or band_rows from band_scratch */
+    uint16_t* maps;               /* the upscale maps: columns, rows, then a window's rows */
     r3d_pipeline_work_t* work[2]; /* one block per row slice */
     uint16_t* culled;             /* raster_culled_length() entries */
     void* draw;                   /* raster-owned instance and slice state */
+    r3d_lens_t* lenses;           /* one per instance, as raster_prepare() left them */
 } r3d_pipeline_buffers_t;
 
 /* The census list's share of the scratch block: raster_culled_length()
@@ -134,6 +139,9 @@ r3d_pipeline_culled_bytes(const raster_t* raster) {
  * the size it renders at, for a mesh of `position_scale`. */
 void raster_lens(const raster_t* raster, const render_view_t* view, int position_scale, r3d_lens_t* lens);
 
+/* What raster-owned instance and slice state takes, after the work blocks. */
+size_t raster_draw_state_bytes(const raster_t* raster);
+
 static inline r3d_pipeline_buffers_t
 r3d_pipeline_carve(const raster_t* raster) {
     char* p = raster->scratch;
@@ -145,11 +153,17 @@ r3d_pipeline_carve(const raster_t* raster) {
     b.rows = (r3d_pipeline_rows_t*)p;
     p += sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster);
     b.picture = raster_picture(raster);
-    p = gfx_render_target_carve(&b.picture, p);
-    p += gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1);
+    if (raster->band_rows == 0) {
+        p = gfx_render_target_carve(&b.picture, p);
+    } else {
+        (void)gfx_render_target_carve(&b.picture, raster->band_scratch);
+    }
+    b.maps = (uint16_t*)p;
+    p += gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + (2 * raster->destination_height), 1);
     p = (char*)raster->scratch + mathi_size_ceil((size_t)(p - (char*)raster->scratch), R3D_PIPELINE_WORK_ALIGNMENT);
     b.work[0] = (r3d_pipeline_work_t*)p;
     b.work[1] = (r3d_pipeline_work_t*)(p + r3d_pipeline_work_bytes());
     b.draw = p + 2 * r3d_pipeline_work_bytes();
+    b.lenses = (r3d_lens_t*)((char*)b.draw + raster_draw_state_bytes(raster));
     return b;
 }

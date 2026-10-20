@@ -69,6 +69,7 @@ render_context_main(void) {
 void
 render_context_release(render_context_t* c) {
     memory_free(c->scratch);
+    memory_free(c->band_scratch);
     memory_free(c->debug_view_state);
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
@@ -85,6 +86,12 @@ void
 render_context_set_scale(render_context_t* c, int percent) {
     assert(percent > 0 && percent <= 100);
     c->scale_percent = percent;
+}
+
+void
+render_context_set_band_rows(render_context_t* c, int rows) {
+    assert(rows >= 0);
+    c->band_rows = rows;
 }
 
 void
@@ -148,24 +155,59 @@ current_step(const render_context_t* c) {
     return c->policy == RENDER_STEPPED ? c->control.step : c->predict.step;
 }
 
-/* Dynamic resolution needs the finest step's scratch so a step never allocates. */
-static void
+/* The source rows a band of `rows` destination rows can read at the
+ * raster's size: the nearest-neighbour row map can straddle one more. */
+static int
+band_source_rows(const raster_t* r, int rows) {
+    return rows == 0 ? 0 : (((rows * r->height) + r->destination_height - 1) / r->destination_height) + 1;
+}
+
+/* Grows `*block` to at least `needed` bytes of `kind`; false when it cannot. */
+static bool
+fit_block(void** block, size_t* bytes, size_t needed, memory_kind_t kind) {
+    if (needed > *bytes) {
+        memory_free(*block);
+        *block = memory_alloc(needed, kind);
+        *bytes = *block == NULL ? 0 : needed;
+    }
+    return *block != NULL;
+}
+
+/* Dynamic resolution needs the finest step's scratch so a step never
+ * allocates. A band picture is the one block in internal RAM. */
+static bool
 fit_scratch(render_context_t* c) {
-    const int width = c->raster.width;
-    const int height = c->raster.height;
+    raster_t* r = &c->raster;
+    const int width = r->width;
+    const int height = r->height;
     if (c->policy != RENDER_FIXED) {
-        c->raster.width = c->ladder.steps[0].width;
-        c->raster.height = c->ladder.steps[0].height;
+        r->width = c->ladder.steps[0].width;
+        r->height = c->ladder.steps[0].height;
     }
-    const size_t needed = raster_scratch_bytes(&c->raster);
-    c->raster.width = width;
-    c->raster.height = height;
-    if (needed > c->scratch_bytes) {
-        memory_free(c->scratch);
-        c->scratch = memory_alloc(needed, MEMORY_PSRAM);
-        c->scratch_bytes = c->scratch == NULL ? 0 : needed;
+    r->band_rows = band_source_rows(r, c->band_rows);
+    const size_t needed = raster_scratch_bytes(r);
+    const size_t band_needed = r->band_rows == 0 ? 0 : raster_band_bytes(r);
+    r->width = width;
+    r->height = height;
+    r->band_rows = band_source_rows(r, c->band_rows);
+    const bool fits =
+        fit_block(&c->scratch, &c->scratch_bytes, needed, MEMORY_PSRAM)
+        && (band_needed == 0 || fit_block(&c->band_scratch, &c->band_scratch_bytes, band_needed, MEMORY_INTERNAL));
+    r->scratch = c->scratch;
+    r->band_scratch = c->band_scratch;
+    return fits;
+}
+
+/* Development views paint the picture's colour from their attachment. */
+static void
+show(const raster_t* r) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    if (r->attachment_count != 0) {
+        raster_show(r);
     }
-    c->raster.scratch = c->scratch;
+#else
+    (void)r;
+#endif
 }
 
 bool
@@ -185,39 +227,66 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
     r->destination_height = view->viewport.height;
-    fit_scratch(c);
-    if (c->scratch == NULL) {
+    if (!fit_scratch(c)) {
         return false;
     }
     c->frame.width = r->width;
     c->frame.height = r->height;
-    if (c->policy == RENDER_FIXED) {
-        /* Off: the plain draw, nothing timed or chosen. */
-        c->frame.stats = raster_draw(r, view);
+    const int64_t began_us = timing_now_us();
+    if (c->policy == RENDER_PREDICTED) {
+        /* Culled once: the census prices the frame and the draw reuses its list. */
+        c->frame.stats = raster_census(r, view);
+        const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
+        c->frame.predicted_us = (int32_t)c->predict.chosen_us;
+        r->width = c->ladder.steps[chosen].width;
+        r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
+        r->band_rows = band_source_rows(r, c->band_rows);
+        c->frame.width = r->width;
+        c->frame.height = r->height;
+        raster_prepare_culled(r, view);
     } else {
-        const int64_t began_us = timing_now_us();
-        if (c->policy == RENDER_PREDICTED) {
-            /* Culled once: the census prices the frame and the draw reuses its list. */
-            c->frame.stats = raster_census(r, view);
-            const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
-            c->frame.predicted_us = (int32_t)c->predict.chosen_us;
-            r->width = c->ladder.steps[chosen].width;
-            r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
-            c->frame.width = r->width;
-            c->frame.height = r->height;
-            raster_draw_culled(r, view);
-        } else {
-            c->frame.stats = raster_draw(r, view);
-        }
-        c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+        c->frame.stats = raster_prepare(r, view);
     }
+    if (r->band_rows == 0) {
+        raster_draw_rows(r, 0, r->height);
+        show(r);
+    }
+    /* Fixed: nothing timed or chosen. */
+    c->frame.draw_us = c->policy == RENDER_FIXED ? 0 : (int32_t)(timing_now_us() - began_us);
+    c->frame.upscale_us = 0;
     c->frame.step = current_step(c);
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (r->attachment_count != 0) {
-        raster_show(r);
-    }
-#endif
     return true;
+}
+
+/* Composes rows of a `width` by `height` destination, drawing them first
+ * when the picture holds a band; the last row feeds the frame's cost. */
+static void
+compose_rows(render_context_t* c, gfx_target_t destination, int width, int height) {
+    raster_t* r = &c->raster;
+    const int64_t began_us = timing_now_us();
+    if (r->band_rows != 0) {
+        int row0;
+        int row1;
+        raster_upscale_source(r, width, height, destination.y0, destination.y0 + destination.height, &row0, &row1);
+        raster_draw_rows(r, row0, row1);
+        show(r);
+    }
+    const int64_t drawn_us = timing_now_us();
+    raster_upscale_rows(r, destination, width, height);
+    if (c->policy == RENDER_FIXED) {
+        return;
+    }
+    c->frame.draw_us += (int32_t)(drawn_us - began_us);
+    c->frame.upscale_us += (int32_t)(timing_now_us() - drawn_us);
+    if (destination.y0 + destination.height < height) {
+        return;
+    }
+    const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
+    if (c->policy == RENDER_STEPPED) {
+        (void)resolution_control_update(&c->control, &c->ladder, cost_us);
+    } else if (c->policy == RENDER_PREDICTED) {
+        resolution_predict_measured(&c->predict, &c->ladder, c->frame.stats.triangles, cost_us);
+    }
 }
 
 bool
@@ -227,20 +296,13 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
         half != NULL ? raster_compose_size(r) : (resolution_step_t){r->destination_width, r->destination_height};
     const bool expanded = half != NULL && size.width != r->destination_width;
     destination = expanded ? half : destination;
-    if (c->policy == RENDER_FIXED) {
-        raster_upscale(&c->raster, destination, size.width, size.height);
-        return expanded;
-    }
-    const int64_t began_us = timing_now_us();
-    raster_upscale(&c->raster, destination, size.width, size.height);
-    c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
-    const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
-    if (c->policy == RENDER_STEPPED) {
-        (void)resolution_control_update(&c->control, &c->ladder, cost_us);
-    } else if (c->policy == RENDER_PREDICTED) {
-        resolution_predict_measured(&c->predict, &c->ladder, c->frame.stats.triangles, cost_us);
-    }
+    compose_rows(c, (gfx_target_t){destination, 0, size.height, size.width}, size.width, size.height);
     return expanded;
+}
+
+void
+render_context_compose_rows(render_context_t* c, gfx_target_t destination) {
+    compose_rows(c, destination, c->raster.destination_width, c->raster.destination_height);
 }
 
 render_context_frame_t

@@ -52,6 +52,9 @@ typedef struct {
     raster_t raster; /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
+    int band_rows; /* destination rows per band, or 0 for a picture of every row */
+    void* band_scratch;
+    size_t band_scratch_bytes;
     int scale_percent;
 
     enum { RENDER_FIXED, RENDER_STEPPED, RENDER_PREDICTED } policy;
@@ -96,7 +99,14 @@ int render_context_debug_view_named(const char* name);
 /* Comma-separated names, shaded first, followed by the table order. */
 void render_context_print_debug_views(FILE* out);
 
-/* Draws `count` instances through `view`; false when there is no scratch for it. */
+/* Composes `rows` destination rows at a time, drawing the picture a band at
+ * a time into internal RAM as render_context_compose_rows() asks for it;
+ * 0 draws every row in render_context_draw(). */
+void render_context_set_band_rows(render_context_t* context, int rows);
+
+/* Draws `count` instances through `view`; false when there is no scratch for
+ * it. With band rows it only culls and transforms; rows are drawn as they
+ * are composed. */
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
                          const render_view_t* view, uint16_t clear);
 
@@ -104,5 +114,10 @@ bool render_context_draw(render_context_t* context, const r3d_instance_t* instan
  * returns true; otherwise upscales into `destination` at the view's
  * destination size. Either path feeds its cost to dynamic resolution. */
 bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half);
+
+/* Fills `destination`, rows [y0, y0 + height) of the view's destination,
+ * drawing them first with band rows. The band ending at the destination's
+ * bottom feeds the frame's cost to dynamic resolution. */
+void render_context_compose_rows(render_context_t* context, gfx_target_t destination);
 
 render_context_frame_t render_context_frame(const render_context_t* context);
