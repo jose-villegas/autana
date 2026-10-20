@@ -35,25 +35,19 @@ render_lab_small_fill(void) {
 #define SMALL_FILL_PRESET_ROW(name)  SMALL_FILL_##name,
 #define SMALL_FILL_PRESET_NAME(name) #name,
 static const small_fill_t small_fill_presets[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_ROW)};
+static const char* const small_fill_names[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_NAME)};
 #define SMALL_FILL_PRESET_COUNT ((int)(sizeof small_fill_presets / sizeof small_fill_presets[0]))
-static const char* const small_fill_names[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_NAME) "CUSTOM"};
+static int small_fill_picked;
 
 const char* const*
 render_lab_small_fill_names(int* count) {
-    *count = SMALL_FILL_PRESET_COUNT + (render_lab_small_fill_selected() == SMALL_FILL_PRESET_COUNT ? 1 : 0);
+    *count = SMALL_FILL_PRESET_COUNT;
     return small_fill_names;
 }
 
 int
 render_lab_small_fill_selected(void) {
-    const small_fill_t now = render_lab_small_fill();
-    for (int i = 0; i < SMALL_FILL_PRESET_COUNT; i++) {
-        const small_fill_t fill = small_fill_presets[i];
-        if (fill.ceiling == now.ceiling && fill.gate == now.gate && fill.style == now.style) {
-            return i;
-        }
-    }
-    return SMALL_FILL_PRESET_COUNT;
+    return small_fill_picked;
 }
 
 bool
@@ -61,6 +55,7 @@ render_lab_small_fill_select(int index) {
     if (index < 0 || index >= SMALL_FILL_PRESET_COUNT) {
         return false;
     }
+    small_fill_picked = index;
     const small_fill_t fill = small_fill_presets[index];
     tune_registry_t* registry = tune_shared();
     return tune_set(registry, small_fill_ceiling_tunable.name, fill.ceiling)
