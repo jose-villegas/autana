@@ -114,6 +114,20 @@ framebuffer, and frees the other. Readback also drains before reading the front.
   buffers alias `gfx_present.c`'s strip-bounce slots rather than allocating; a host
   build mallocs them.
 
+### Layout costs
+
+Each picture's frame cost on the board in each layout, from one build. The
+scenes are r3d scenes, drawn in `update()`; the boot animation draws a full
+frame in `frame()`.
+
+<!-- generated: gfx-layout-costs sha256=953c5d12bb86fea7444ae334ea5969d5f2287dced32af4d0304f7765be27f735 -->
+Not captured yet.
+<!-- /generated: gfx-layout-costs -->
+
+Regenerate with
+[`render_doc_images.sh`](../launcher/tools/render/render_doc_images.sh), from
+the captures in [render/data/](render/data/).
+
 ## Expanded frames
 
 An expanded frame holds an exact-half picture in `gfx_half_picture()`;

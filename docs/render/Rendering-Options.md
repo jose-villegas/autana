@@ -137,6 +137,8 @@ framebuffer.
 | an r3d scene | full | the draw already runs in `update()`, overlapped with the send; double drops the half picture, so compose writes four times the pixels |
 | a partial redraw | full | double sends every strip every frame and turns dirty tracking off |
 
+The [layout costs](../Gfx-and-Presentation.md#layout-costs) table measures
+each pick: r3d scenes and the boot animation, in every layout, on one board.
 Confirm the pick on the board in the app that ships it, comparing frame,
 draw, compose and send times in each layout
 ([Flash-and-Captures.md](../tools/Flash-and-Captures.md) runs a suite).

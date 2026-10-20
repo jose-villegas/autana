@@ -36,7 +36,7 @@ static const char* const scene_keys[] = {
 };
 #define SCENE_KEY_COUNT ((int)(sizeof scene_keys / sizeof scene_keys[0]))
 
-static const char* const layout_names[RENDER_LAB_LAYOUT_COUNT] = {"full", "double", "double_clear"};
+static const char* const layout_names[RENDER_LAB_LAYOUT_COUNT] = {"FULL_FB", "DOUBLE_FB", "DOUBLE_FB_CLEAR_ON_SEND"};
 
 typedef enum { STAGE_FRAME, STAGE_WAIT, STAGE_SEND, STAGE_DRAW, STAGE_COMPOSE, STAGE_COUNT } stage_t;
 
