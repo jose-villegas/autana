@@ -573,24 +573,15 @@ raster_band_source_rows(const raster_t* raster, int destination_rows) {
                                  : (((destination_rows * height) + destination_height - 1) / destination_height) + 1;
 }
 
-int32_t
-raster_compose_rows(raster_t* raster, gfx_target_t destination, int width, int height) {
-    assert(destination.buf != NULL && destination.stride == width);
-    upscale_maps(raster, width, height);
+/* Upscales source rows [row0, row1) into `destination`: the window as a
+ * scale of its own, from its first row and the first source row it reads.
+ * Block and scanline runs restart at the window, so it must start on one.
+ * Its own frame, so the upscale's never sits under the draw's. */
+static __attribute__((noinline)) void
+upscale_window(raster_t* raster, gfx_target_t destination, int row0, int row1) {
+    FRAME_COST_BEGIN(upscaled_from);
     const int first = destination.y0;
     const int end = first + destination.height;
-    int row0;
-    int row1;
-    upscale_source(raster, first, end, &row0, &row1);
-    const int64_t began_us = timing_now_us();
-    if (raster->band_rows != 0) {
-        raster_draw_rows(raster, row0, row1);
-    }
-    const int32_t drawn_us = (int32_t)(timing_now_us() - began_us);
-    FRAME_COST_BEGIN(upscaled_from);
-    /* The window as a scale of its own, from its first row and the first
-     * source row it reads. Block and scanline runs restart at the window,
-     * so it must start on one. */
     upscale_t window = raster->upscale;
     assert(window.path != UPSCALE_BLOCKS || first % window.factor == 0);
     assert(window.scanline_run == 0 || first % window.scanline_run == 0);
@@ -617,11 +608,33 @@ raster_compose_rows(raster_t* raster, gfx_target_t destination, int width, int h
     other.count = mid;
     job_run_split(upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
+}
+
+int32_t
+raster_compose_rows(raster_t* raster, gfx_target_t destination, int width, int height) {
+    assert(destination.buf != NULL && destination.stride == width);
+    upscale_maps(raster, width, height);
+    const int first = destination.y0;
+    const int end = first + destination.height;
+    int row0;
+    int row1;
+    upscale_source(raster, first, end, &row0, &row1);
+    const int64_t began_us = timing_now_us();
+    if (raster->band_rows != 0) {
+        raster_draw_rows(raster, row0, row1);
+    }
+    const int32_t drawn_us = (int32_t)(timing_now_us() - began_us);
+    upscale_window(raster, destination, row0, row1);
     return drawn_us;
 }
 
+/* A whole picture is already drawn: only the upscale. */
 void
 raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
-    assert(raster->band_rows == 0);
-    (void)raster_compose_rows(raster, (gfx_target_t){destination, 0, height, width}, width, height);
+    assert(raster->band_rows == 0 && destination != NULL);
+    upscale_maps(raster, width, height);
+    int row0;
+    int row1;
+    upscale_source(raster, 0, height, &row0, &row1);
+    upscale_window(raster, (gfx_target_t){destination, 0, height, width}, row0, row1);
 }
