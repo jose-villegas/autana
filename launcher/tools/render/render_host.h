@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "app/app.h"
+#include "math/geometry/recti.h"
 
 /* What one frame of a scene is handed. `input` is synthesised from the
  * scene's declared touch steps, edges included. */
@@ -19,6 +20,11 @@ typedef struct {
     uint32_t dt_ms;
     uint32_t elapsed_ms;
     input_t input;
+    /* With --crop, the last frame's drawn box: its pixels unlike the colour
+     * most of its border shares, in canvas coordinates (the UI's own, even
+     * under --panel). Empty otherwise, before the first frame and for a
+     * blank one. */
+    recti_t drawn;
 } render_frame_t;
 
 /* A declared touch sample, in PANEL coordinates, where a finger lands, not
@@ -41,6 +47,9 @@ typedef struct {
 
     const render_input_step_t* input;
     int input_count;
+
+    /* What --crop keeps round the last frame's drawn box, in pixels. */
+    int crop_margin;
 
     /* The scene's own options, given every argument render_host.c did not
      * recognise. Return false to reject the command line. */
