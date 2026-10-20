@@ -588,9 +588,9 @@ origin, and later motion stays raw.
 ## Related
 
 - [notes/README.md](notes/README.md): the hardware underneath: memory
-  budget, panel and touch behaviour
-  ([Input-and-Sensors.md](notes/Input-and-Sensors.md)), flashing and
-  recovery.
+  budget, panel behaviour, flashing and recovery.
+- [input/README.md](input/README.md): touch, buttons, motion axes and
+  calibration, tilt and gravity.
 - [render/README.md](render/README.md), `render/`: drawing a baked mesh (cameras,
   the span rasterizer, the two-core frame), making one from a source model, and
   describing a scene of objects.

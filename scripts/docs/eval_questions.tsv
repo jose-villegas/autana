@@ -26,7 +26,7 @@ pinning pixels for a rendered scene against a reference capture	docs/tools/Rende
 what suite naming pattern does SUITE_REGISTER expect	docs/testing/Writing-a-Test.md	Adding a suite
 how do I take a screenshot of the panel from the CLI	docs/tools/Flash-and-Captures.md	Screenshots
 console is not showing up as a normal UART port	docs/notes/Debugging.md	The console is USB-Serial-JTAG, not UART0
-IMU axes seem swapped compared to the screen orientation	docs/notes/Input-and-Sensors.md	The IMU's axes do not match the screen's
+IMU axes seem swapped compared to the screen orientation	docs/input/Motion-Axes.md	Motion axes
 board keeps resetting when flashing at high baud, warm reset issue	docs/notes/Flashing-and-Toolchain.md	Warm resets at 120 MHz
 internal heap budget with framebuffer in PSRAM	docs/notes/Board-and-Memory.md	Memory: the constraint that shapes everything
 partial screen updates only sending changed bands	docs/notes/Display-and-Rendering.md	Dirty-region costs
