@@ -4,7 +4,12 @@
 #include "services/tune.h"
 #include "ui/ui.h"
 
-#define MENU_BTN_W 300
+#define MENU_BTN_W       300
+
+/* Each row's caption, and the dropdown identity under it. */
+#define SCENE_LABEL      "SCENE"
+#define VARIANT_LABEL    "VARIANT"
+#define SMALL_FILL_LABEL "SMALL FILL"
 
 /* The hint is a footer window across the canvas bottom, outside the scrolled
  * rows, so a dropdown list opened over them leaves it showing unless the list
@@ -37,18 +42,18 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     result.variant_picked = -1;
     if (state->family_count > 0) {
         int family = state->family;
-        render_lab_menu_caption(MENU_BTN_W, "SCENE");
+        render_lab_menu_caption(MENU_BTN_W, SCENE_LABEL);
         ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
-        if (ui_dropdown(ui_next(), "SCENE", &family, state->families, state->family_count)) {
+        if (ui_dropdown(ui_next(), SCENE_LABEL, &family, state->families, state->family_count)) {
             result.family_picked = family;
         }
     }
 
     if (state->variant_count > 1) {
         int variant = state->variant;
-        render_lab_menu_caption(MENU_BTN_W, "VARIANT");
+        render_lab_menu_caption(MENU_BTN_W, VARIANT_LABEL);
         ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
-        if (ui_dropdown(ui_next(), "VARIANT", &variant, state->variants, state->variant_count)) {
+        if (ui_dropdown(ui_next(), VARIANT_LABEL, &variant, state->variants, state->variant_count)) {
             result.variant_picked = variant;
         }
     }
@@ -60,9 +65,9 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     int count = 0;
     const char* const* names = render_lab_small_fill_names(&count);
     int fill = render_lab_small_fill_selected();
-    render_lab_menu_caption(MENU_BTN_W, "SMALL FILL");
+    render_lab_menu_caption(MENU_BTN_W, SMALL_FILL_LABEL);
     ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
-    if (ui_dropdown(ui_next(), "SMALL FILL", &fill, names, count)) {
+    if (ui_dropdown(ui_next(), SMALL_FILL_LABEL, &fill, names, count)) {
         (void)render_lab_small_fill_select(fill);
     }
 #endif
