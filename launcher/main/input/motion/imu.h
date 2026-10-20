@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 #include "build/build_variant.h"
-#include "input/imu_sample.h"
+#include "input/motion/imu_sample.h"
 #include "math/scalar/units.h"
 
 /* Must agree with CTRL3's full-scale code in imu.c. */

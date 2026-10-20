@@ -1,4 +1,4 @@
-#include "input/touch_calib.h"
+#include "input/touch/touch_calib.h"
 
 #include <math.h>
 
@@ -40,4 +40,12 @@ touch_calib_apply(const touch_calib_t* calib, int w, int h, int* x, int* y) {
     const int64_t ry = *y;
     *x = mathi_clamp(round_fixed((calib->xx * rx) + (calib->xy * ry) + calib->x0), 0, w - 1);
     *y = mathi_clamp(round_fixed((calib->yx * rx) + (calib->yy * ry) + calib->y0), 0, h - 1);
+}
+
+void
+touch_calib_prepare_point(bool injected, bool have_point, int* x, int* y, bool calibrate, const touch_calib_t* calib,
+                          int w, int h) {
+    if (have_point && !injected && calibrate) {
+        touch_calib_apply(calib, w, h, x, y);
+    }
 }

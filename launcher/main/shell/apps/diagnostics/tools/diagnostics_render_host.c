@@ -12,7 +12,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
-#include "input/imu.h"
+#include "input/motion/imu.h"
 #include "render_host.h"
 #include "selftest/post.h"
 #include "selftest/post_ui.h"

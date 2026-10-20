@@ -5,7 +5,7 @@ layer owns sensor polling, calibration and edge delivery.
 
 ## Touch input
 
-`launcher/main/input/touch.c` handles both board revisions through the BSP.
+`launcher/main/input/touch/touch.c` handles both board revisions through the BSP.
 An idle controller can NACK register reads, logging `i2c transaction failed`
 and `FT5x06 ... I2C read error!`; use these as console search terms. Do not
 poll blindly. GPIO 21 is active-low data-ready, not a finger-down level.
@@ -16,7 +16,7 @@ contact continues to be read even without another pulse.
 The task polls at `TOUCH_POLL_HZ` and latches press/release edges, so a tap
 entirely between rendered frames can still reach the next frame. Release
 requires the quiet interval `TOUCH_RELEASE_QUIET_US` in
-`launcher/main/input/touch_fsm.h`; an INT deassertion is not a release.
+`launcher/main/input/touch/touch_fsm.h`; an INT deassertion is not a release.
 
 microui needs a hover frame before a press can take focus. The UI bridge
 defers DOWN until the hover root is settled; preserve this for all controls,
@@ -25,7 +25,7 @@ not only buttons. See
 
 ### Calibration and targets
 
-`touch.c` holds the panel fit. `launcher/main/input/touch_calib.c` applies its
+`touch.c` holds the panel fit. `launcher/main/input/touch/touch_calib.c` applies its
 inverse before consumers receive coordinates. A development build can bypass
 it with `autana tune touch.calibrate 0` for comparison. Calibration corrects
 systematic distortion, not fingertip scatter; use large touch targets and
@@ -37,7 +37,7 @@ treating a single tap's miss as a coefficient error.
 
 ## The IMU's axes do not match the screen's
 
-`launcher/main/input/imu.c` configures the QMI8658 and reads all six axes in
+`launcher/main/input/motion/imu.c` configures the QMI8658 and reads all six axes in
 one burst. Keep the burst intact: separate reads can straddle sample updates.
 The configured ranges determine the counts-per-g and counts-per-dps scales.
 
@@ -46,7 +46,7 @@ The configured ranges determine the counts-per-g and counts-per-dps scales.
 | down (+y) | `+ax` |
 | right (+x) | `-ay` |
 
-Use `imu_gravity_screen()` in `launcher/main/input/imu_sample.h`, including
+Use `imu_gravity_screen()` in `launcher/main/input/motion/imu_sample.h`, including
 its orientation handling, rather than mapping sensor X directly to screen X.
 The accelerometer measures gravity plus linear acceleration; the gyroscope
 measures angular velocity, not tilt angle.
@@ -144,7 +144,7 @@ For each axis, the positive and negative gravity windows give
 `scale = (up - down) / (2 * INPUT_ACCEL_ONE_G)`, the diagonal six-position
 calibration model described by STMicroelectronics AN4508
 [[67]](../Citations.md#67). This measures offset and sensitivity, not cross-axis
-misalignment. `input/imu_calib.c` owns the offset and sensitivity fit. The gyro
+misalignment. `input/motion/imu_calib.c` owns the offset and sensitivity fit. The gyro
 zero-rate estimate averages samples across all pose windows. `pose` lines contain
 rounded Q12 g and Q6 deg/s means and sample counts; `calib` reports offsets in
 mg, sensitivity in ppm (unity is 1000000), and gyro offsets in mdps.
@@ -222,9 +222,9 @@ PMU behaviour, not a GPIO event. Recovery is in
 
 ## Tilt filtering and acceleration
 
-`launcher/main/input/tilt.c` filters direction with elapsed-time-based
+`launcher/main/input/motion/tilt.c` filters direction with elapsed-time-based
 smoothing. Its time constants and magnitude thresholds live in
-`launcher/main/input/tilt.h`. Use a time constant rather than a fixed fraction
+`launcher/main/input/motion/tilt.h`. Use a time constant rather than a fixed fraction
 per rendered frame, so frame-rate changes do not change the filter's response.
 Gyroscope rotation adapts the response: still readings get more smoothing,
 turning readings less.

@@ -1,12 +1,9 @@
-/*
- * r3d_project_x: fixed-point line projection with a 32-bit per-point divide.
- * Owns the camera-space model matrix, built per frame from render_view_t
- * and a model. Matrix entries and camera points carry R3D_X_UNIT_ONE per
- * meter. Q16.16 model points need no further shift after mat4x_apply().
- * Header-only and ESP-IDF-free.
- */
+/* r3d_project_x: fixed-point line projection with a 32-bit per-point divide.
+ * Per-frame render_view_t and model matrix: R3D_X_UNIT_ONE per meter;
+ * mat4x_apply() maps Q16.16 model points without another shift. ESP-IDF-free. */
 #pragma once
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -66,6 +63,7 @@ typedef struct {
  * the caller checks those inputs, else uses mat4x_apply(). */
 static inline r3d_line_view_x_t
 r3d_line_view_x_make(const render_view_t* view, const transformf_t* model, const float meters_per_unit[3]) {
+    assert(view->lens.fx == view->lens.fy);
     const mat4f_t matrix = r3d_line_matrix(view, model);
     r3d_line_view_x_t out;
     for (int r = 0; r < 4; r++) {
@@ -73,10 +71,10 @@ r3d_line_view_x_make(const render_view_t* view, const transformf_t* model, const
             out.matrix.m[r][c] = mathf_round_i32(matrix.m[r][c] * (float)R3D_X_UNIT_ONE);
         }
     }
-    out.near_z = mathf_round_i32(view->near_z * (float)R3D_X_UNIT_ONE);
-    out.center_x = (int)view->center_x;
-    out.center_y = (int)view->center_y;
-    out.pixels_per_unit = mathf_round_i32(view->pixels_per_unit);
+    out.near_z = mathf_round_i32(view->lens.near_z * (float)R3D_X_UNIT_ONE);
+    out.center_x = (int)view->lens.cx;
+    out.center_y = (int)view->lens.cy;
+    out.pixels_per_unit = mathf_round_i32(view->lens.fx);
     const float scale = (float)R3D_X_UNIT_ONE * (float)(1 << R3D_X_INPUT_SHIFT);
     out.units_ok = true;
     for (int r = 0; r < 3; r++) {

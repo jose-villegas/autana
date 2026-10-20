@@ -132,7 +132,7 @@ work. That produces a shortlist of side pairs per quality and nothing else:
 no time of any kind.
 
 **QEMU.** One perf-scope image
-([`run_qemu_tests.sh`](../Testing-Guide.md#qemu-the-device-image-with-no-board)):
+([`run_qemu_tests.sh`](../testing/QEMU.md)):
 one instance runs all five with `--suite` repeated, or split them across
 instances run at once:
 
@@ -143,7 +143,7 @@ instances run at once:
 It prices the chunking itself, through the one-thread arm. The two-lane arm
 is readable there only for its abort count, because an instruction count
 sums both cores, see
-[`../Testing-Guide.md`](../Testing-Guide.md#qemu-the-device-image-with-no-board)
+[`../testing/QEMU.md`](../testing/QEMU.md)
 for why, and for what several instances at once cost each other.
 
 **The board.** The only stage that says whether the second core wins. Five

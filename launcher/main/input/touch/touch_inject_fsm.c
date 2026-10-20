@@ -1,4 +1,6 @@
-#include "input/touch_inject_fsm.h"
+#include "input/touch/touch_inject_fsm.h"
+
+#include <stddef.h>
 
 void
 touch_inject_init(touch_inject_t* inject, int x0, int y0, int x1, int y1, uint32_t ms) {
@@ -37,4 +39,15 @@ touch_inject_step(touch_inject_t* inject, int64_t now_us, int* x, int* y) {
         inject->endpoint_emitted = true;
     }
     return true;
+}
+
+const char*
+touch_inject_completion_name(touch_inject_completion_t completion) {
+    switch (completion) {
+        case TOUCH_INJECT_TAP: return "TAP";
+        case TOUCH_INJECT_PRESS: return "PRESS";
+        case TOUCH_INJECT_DRAG: return "DRAG";
+        case TOUCH_INJECT_NONE: break;
+    }
+    return NULL;
 }

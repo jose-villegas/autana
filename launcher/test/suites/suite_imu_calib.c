@@ -3,7 +3,7 @@
 
 #include <limits.h>
 
-#include "input/imu_calib.h"
+#include "input/motion/imu_calib.h"
 
 static imu_calib_t
 fixture(void) {

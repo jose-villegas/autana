@@ -5,7 +5,7 @@
  * edge, whose logic the others share; the others prove axis and sign.
  */
 
-#include "input/gesture.h"
+#include "input/touch/gesture.h"
 #include "suites.h"
 #include "unity.h"
 

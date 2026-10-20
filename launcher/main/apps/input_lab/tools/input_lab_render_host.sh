@@ -8,9 +8,9 @@ scene_sources="
 main/services/tune.c
 main/app/app_registry.c
 main/display/display.c
-main/input/tilt.c
-main/input/gravity.c
-main/input/imu_calib.c
+main/input/motion/tilt.c
+main/input/motion/gravity.c
+main/input/motion/imu_calib.c
 main/apps/input_lab/imu_probe.c
 main/apps/input_lab/imu_record.c
 main/apps/input_lab/touch_probe.c

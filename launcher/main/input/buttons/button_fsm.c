@@ -1,4 +1,4 @@
-#include "input/button_fsm.h"
+#include "input/buttons/button_fsm.h"
 
 void
 button_fsm_reset(button_fsm_t* b) {

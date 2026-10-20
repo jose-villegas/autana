@@ -6,8 +6,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "input/imu.h"
 #include "input/input.h"
+#include "input/motion/imu.h"
 #include "math/linear/vec3f.h"
 #include "math/scalar/units.h"
 

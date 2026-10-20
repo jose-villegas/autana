@@ -114,22 +114,25 @@ typedef struct {
 static __attribute__((noinline)) void
 add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
-                                           (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
-    r3d_lens_t lens;
-    r3d_lens_init(&lens, &view, mesh.position_scale);
-    r3d_lens_fit(&lens, raster->width, raster->height);
+    r3d_lens_t draw_lens;
+    /* Scoped to keep this frame under the stack-chain gate. */
+    {
+        const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
+                                               (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
+        r3d_lens_init(&draw_lens, &view, mesh.position_scale);
+    }
+    r3d_lens_fit(&draw_lens, raster->width, raster->height);
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    const int visible = r3d_pipeline_cull(&mesh, &lens, b.culled + 1, b.work[0]);
-    r3d_pipeline_transform(&mesh, &lens, b.culled + 1, visible, b.cs, b.rows);
+    const int visible = r3d_pipeline_cull(&mesh, &draw_lens, b.culled + 1, b.work[0]);
+    r3d_pipeline_transform(&mesh, &draw_lens, b.culled + 1, visible, b.cs, b.rows);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     const int64_t clear_from = timing_now_us();
     memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
     sum->clear += timing_now_us() - clear_from;
-    const int64_t setup = one_core_draw_us(raster, &b, &lens, visible, 1);
-    const int64_t edges = one_core_draw_us(raster, &b, &lens, visible, 2);
-    const int64_t carry = one_core_draw_us(raster, &b, &lens, visible, 3);
-    const int64_t whole = one_core_draw_us(raster, &b, &lens, visible, 0);
+    const int64_t setup = one_core_draw_us(raster, &b, &draw_lens, visible, 1);
+    const int64_t edges = one_core_draw_us(raster, &b, &draw_lens, visible, 2);
+    const int64_t carry = one_core_draw_us(raster, &b, &draw_lens, visible, 3);
+    const int64_t whole = one_core_draw_us(raster, &b, &draw_lens, visible, 0);
     sum->setup += setup;
     sum->edges += edges - setup;
     sum->carry += carry - edges;
