@@ -64,18 +64,17 @@ grid_open(grid_mesh_t* g) {
             }
         }
     }
-    const int16_t lo[3] = {(int16_t)-half, (int16_t)-half, 0};
-    const int16_t hi[3] = {(int16_t)half, (int16_t)half, 0};
+    const box3s_t bounds = {{(int16_t)-half, (int16_t)-half, 0}, {(int16_t)half, (int16_t)half, 0}};
     g->cluster = (r3d_lit_cluster_t){
         .vertex_first = 0,
         .vertex_count = (uint16_t)(side * side),
         .triangle_first = 0,
         .triangle_count = (uint16_t)t,
-        .bounds = {{lo[0], lo[1], 0}, {hi[0], hi[1], 0}},
+        .bounds = bounds,
         .double_sided = false,
     };
     g->node = (r3d_lit_node_t){
-        .bounds = {{lo[0], lo[1], 0}, {hi[0], hi[1], 0}},
+        .bounds = bounds,
         .first = 0,
         .count = 1,
         .leaf = true,

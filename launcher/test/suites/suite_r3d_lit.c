@@ -1446,7 +1446,7 @@ parts_add(parts_t* p, const int16_t corners[][3], int n, const uint8_t rgb[][3],
     for (int i = 0; i < n; i++) {
         memcpy(p->positions[first + i], corners[i], sizeof p->positions[0]);
         memcpy(p->colors[first + i], rgb[i], sizeof p->colors[0]);
-        c->bounds = box3s_extend(c->bounds, (vec3s_t){corners[i][0], corners[i][1], corners[i][2]});
+        c->bounds = box3s_extend(c->bounds, vec3s_from_array(corners[i]));
     }
     for (int t = 0; t < n - 2; t++) {
         uint16_t* tri = p->triangles[m->triangle_count++];

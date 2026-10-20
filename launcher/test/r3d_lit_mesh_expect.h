@@ -29,7 +29,7 @@ r3d_lit_mesh_expect_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t*
     }
     for (int v = c->vertex_first; v < v_end; v++) {
         const int16_t* p = mesh->positions[v];
-        TEST_ASSERT_TRUE_MESSAGE(box3s_contains_point(c->bounds, (vec3s_t){p[0], p[1], p[2]}),
+        TEST_ASSERT_TRUE_MESSAGE(box3s_contains_point(c->bounds, vec3s_from_array(p)),
                                  "a vertex lies outside its cluster's bounds");
     }
 }

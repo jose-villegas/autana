@@ -50,8 +50,40 @@ test_sphere_segment_roots_and_tangency(void) {
                                           (vec3f_t){SPHERE_FAR.x, SPHERE_FAR.x, 0}, &t));
 }
 
+static void
+test_sphere_box_corner_distance(void) {
+    static const spheref_t miss = {{2, 2, 2}, 1};
+    static const spheref_t touch = {{2, 3, 3}, 3};
+    TEST_ASSERT_FALSE(spheref_overlaps_box(miss, SPHERE_BOX));
+    TEST_ASSERT_TRUE(spheref_overlaps_box(touch, SPHERE_BOX));
+}
+
+static void
+test_sphere_segment_closed_surface_and_short_segment(void) {
+    static const vec3f_t short_end = {2, 0, 0};
+    float t = -mathf_one();
+    TEST_ASSERT_FALSE(spheref_segment_hit(SPHERE_UNIT, SPHERE_FAR, short_end, &t));
+    TEST_ASSERT_TRUE(spheref_segment_hit(SPHERE_UNIT, SPHERE_BOUNDARY, SPHERE_FAR, &t));
+    TEST_ASSERT_EQUAL_FLOAT(mathf_zero(), t);
+    t = -mathf_one();
+    TEST_ASSERT_TRUE(spheref_segment_hit(SPHERE_UNIT, SPHERE_BOUNDARY, SPHERE_UNIT.centre, &t));
+    TEST_ASSERT_EQUAL_FLOAT(mathf_zero(), t);
+}
+
+static void
+test_sphere_from_box_unequal_extents(void) {
+    static const box3f_t box = {{-1, -2, -3}, {3, 4, 9}};
+    static const spheref_t want = {{1, 1, 3}, 7};
+    const spheref_t got = spheref_from_box(box);
+    TEST_ASSERT_TRUE(vec3f_equal(want.centre, got.centre));
+    TEST_ASSERT_FLOAT_WITHIN(SPHERE_TOLERANCE, want.radius, got.radius);
+}
+
 void
 suite_sphere(void) {
+    RUN_TEST(test_sphere_box_corner_distance);
+    RUN_TEST(test_sphere_segment_closed_surface_and_short_segment);
+    RUN_TEST(test_sphere_from_box_unequal_extents);
     RUN_TEST(test_sphere_closed_queries);
     RUN_TEST(test_sphere_segment_roots_and_tangency);
 }

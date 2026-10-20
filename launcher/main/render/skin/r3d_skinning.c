@@ -166,14 +166,14 @@ skin_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* pa
            r3d_skin_output_t* out, int influences) {
     for (int c = first; c < first + count; c++) {
         r3d_lit_cluster_t* cluster = &out->clusters[c];
-        cluster->bounds = box3s_empty();
+        box3s_t b = box3s_empty();
         const int end = cluster->vertex_first + cluster->vertex_count;
         for (int v = cluster->vertex_first; v < end; v++) {
             skin_vertex(skin->vertices + ((size_t)v * skin->vertex_stride), influences, palette, bind->positions[v],
                         out->positions[v]);
-            cluster->bounds = box3s_extend(cluster->bounds,
-                                           (vec3s_t){out->positions[v][0], out->positions[v][1], out->positions[v][2]});
+            b = box3s_extend(b, vec3s_from_array(out->positions[v]));
         }
+        cluster->bounds = b;
     }
 }
 
@@ -188,15 +188,16 @@ skin_lit_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t
     int16_t (*posed)[POSITION_AXES] = out->positions;
     for (int c = first; c < first + count; c++) {
         r3d_lit_cluster_t* cluster = &out->clusters[c];
-        cluster->bounds = box3s_empty();
+        box3s_t b = box3s_empty();
         const int end = cluster->vertex_first + cluster->vertex_count;
         for (int v = cluster->vertex_first; v < end; v++) {
             vec3f_t normal;
             skin_lit_vertex(vertices + ((size_t)v * stride), influences, palette, positions[v], posed[v], normals,
                             &normal);
             skin_light_vertex(normal, lights, colors[v], light[v], mode);
-            cluster->bounds = box3s_extend(cluster->bounds, (vec3s_t){posed[v][0], posed[v][1], posed[v][2]});
+            b = box3s_extend(b, vec3s_from_array(posed[v]));
         }
+        cluster->bounds = b;
     }
 }
 

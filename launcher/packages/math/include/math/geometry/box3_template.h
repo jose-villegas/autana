@@ -1,10 +1,12 @@
 /*
  * box3_template: closed axis-aligned boxes for one number type; see
  * docs/math/Conventions.md#templates for macro arguments. LOWEST and HIGHEST
- * bound the scalar type. Real queries take the plane prefix L and require finite, nonempty boxes.
+ * bound the scalar type. Real queries take the plane prefix L and require
+ * finite, nonempty boxes.
  */
 #pragma once
-#include <math.h>
+#include <assert.h>
+#include <limits.h>
 #include <stdbool.h>
 
 #define MATH_DEFINE_BOX3(P, V, T, OPS, LOWEST, HIGHEST)                                                                \
@@ -53,10 +55,10 @@
 #define MATH_DEFINE_BOX3_REAL(P, V, L, T, OPS)                                                                         \
                                                                                                                        \
     /* centre = 0.5 * (lo + hi). */                                                                                    \
-    static inline V##_t P##_centre(P##_t b) { return V##_scale(V##_add(b.lo, b.hi), (T)0.5F); }                        \
+    static inline V##_t P##_centre(P##_t b) { return V##_scale(V##_add(b.lo, b.hi), OPS##_half()); }                   \
                                                                                                                        \
     /* half_extent = 0.5 * (hi - lo). */                                                                               \
-    static inline V##_t P##_half_extent(P##_t b) { return V##_scale(V##_sub(b.hi, b.lo), (T)0.5F); }                   \
+    static inline V##_t P##_half_extent(P##_t b) { return V##_scale(V##_sub(b.hi, b.lo), OPS##_half()); }              \
                                                                                                                        \
     /* Slabs intersect [0,1] with [(lo_k-a_k)/v_k, (hi_k-a_k)/v_k]; inside starts at t = 0. */                         \
     static inline bool P##_segment_hit(P##_t b, V##_t a, V##_t c, T* t) {                                              \
@@ -86,8 +88,9 @@
         return true;                                                                                                   \
     }                                                                                                                  \
                                                                                                                        \
-    /* d = plane(centre), r = sum |n_k|*extent_k; d+r < 0 rejects, d-r >= 0 clears the bit. count <= unsigned bits. */ \
+    /* d = plane(centre), r = sum |n_k|*extent_k; d+r < 0 rejects, d-r >= 0 clears the bit.  */                        \
     static inline bool P##_outside_planes(P##_t b, const L##_t* planes, int count, unsigned* mask) {                   \
+        assert(count >= 0 && (unsigned)count <= sizeof *mask * CHAR_BIT);                                              \
         const V##_t c = P##_centre(b), e = P##_half_extent(b);                                                         \
         for (int p = 0; p < count; p++) {                                                                              \
             if (!(*mask & (1U << p))) {                                                                                \
@@ -95,11 +98,13 @@
             }                                                                                                          \
             const L##_t* plane = &planes[p];                                                                           \
             const T d = L##_distance(*plane, c);                                                                       \
-            const T r = fabsf(plane->normal.x) * e.x + fabsf(plane->normal.y) * e.y + fabsf(plane->normal.z) * e.z;    \
-            if (d + r < OPS##_zero()) {                                                                                \
+            const T r = OPS##_add(                                                                                     \
+                OPS##_add(OPS##_mul(OPS##_abs(plane->normal.x), e.x), OPS##_mul(OPS##_abs(plane->normal.y), e.y)),     \
+                OPS##_mul(OPS##_abs(plane->normal.z), e.z));                                                           \
+            if (OPS##_add(d, r) < OPS##_zero()) {                                                                      \
                 return true;                                                                                           \
             }                                                                                                          \
-            if (d - r >= OPS##_zero()) {                                                                               \
+            if (OPS##_sub(d, r) >= OPS##_zero()) {                                                                     \
                 *mask &= ~(1U << p);                                                                                   \
             }                                                                                                          \
         }                                                                                                              \

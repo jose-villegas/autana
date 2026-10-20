@@ -25,6 +25,16 @@ mathf_one(void) {
 }
 
 static inline float
+mathf_half(void) {
+    return 0.5F;
+}
+
+static inline float
+mathf_abs(float a) {
+    return fabsf(a);
+}
+
+static inline float
 mathf_two(void) {
     return 2.0F;
 }

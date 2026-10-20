@@ -163,8 +163,7 @@ r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
     const vec3f_t mid = box3f_centre(box3f_from_box3s(mesh->nodes[0].bounds, units));
     float furthest = 0.0F;
     for (int i = 0; i < mesh->vertex_count; i++) {
-        const vec3f_t p = {(float)mesh->positions[i][0] * units, (float)mesh->positions[i][1] * units,
-                           (float)mesh->positions[i][2] * units};
+        const vec3f_t p = vec3f_from_vec3s(vec3s_from_array(mesh->positions[i]), units);
         const vec3f_t d = vec3f_sub(p, mid);
         furthest = fmaxf(furthest, vec3f_dot(d, d));
     }

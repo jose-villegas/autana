@@ -43,7 +43,7 @@ static inline void
 r3d_quad_init(r3d_quad_t* q, const int16_t (*positions)[3]) {
     box3s_t bounds = box3s_empty();
     for (int i = 0; i < 4; i++) {
-        bounds = box3s_extend(bounds, (vec3s_t){positions[i][0], positions[i][1], positions[i][2]});
+        bounds = box3s_extend(bounds, vec3s_from_array(positions[i]));
     }
     q->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, bounds, true};
     q->node = (r3d_lit_node_t){bounds, 0, 1, true};

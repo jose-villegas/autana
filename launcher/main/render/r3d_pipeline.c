@@ -93,20 +93,21 @@ static int
 push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
     uint16_t order[8];
-    float depth[8];
+    float depths[8];
+    const float* f = lens->m.m[2];
+    const planef_t depth = {{f[0], f[1], f[2]}, f[3]};
     int n = 0;
     for (int i = 0; i < node->count; i++) {
         const uint16_t child = (uint16_t)(node->first + i);
-        const float* f = lens->m.m[2];
-        const float d = planef_distance((planef_t){{f[0], f[1], f[2]}, f[3]},
-                                        box3f_centre(box3f_from_box3s(mesh->nodes[child].bounds, 1.0F)));
+        /* The lens maps ticks, so the bounds scale is one. */
+        const float d = planef_distance(depth, box3f_centre(box3f_from_box3s(mesh->nodes[child].bounds, 1.0F)));
         int slot = n++;
-        while (slot > 0 && depth[slot - 1] < d) {
-            depth[slot] = depth[slot - 1];
+        while (slot > 0 && depths[slot - 1] < d) {
+            depths[slot] = depths[slot - 1];
             order[slot] = order[slot - 1];
             slot--;
         }
-        depth[slot] = d;
+        depths[slot] = d;
         order[slot] = child;
     }
     assert(top + n <= WALK_STACK_MAX); /* depth times seven, far below this */

@@ -113,6 +113,19 @@ test_skin_ranges_two_and_four_influences_and_refit(void) {
         TEST_ASSERT_EQUAL_INT16(expected, f.out.nodes[0].bounds.lo.x);
         TEST_ASSERT_EQUAL_INT16(expected + POSITION_SCALE, f.out.nodes[0].bounds.hi.x);
         TEST_ASSERT_EQUAL_INT16(POSITION_SCALE, f.out.nodes[0].bounds.hi.y);
+        TEST_ASSERT_EQUAL_INT16(0, f.out.nodes[0].bounds.lo.y);
+        TEST_ASSERT_EQUAL_INT16(0, f.out.nodes[0].bounds.lo.z);
+        for (int c = 0; c < CLUSTERS; c++) {
+            const box3s_t cluster = f.out.clusters[c].bounds;
+            const box3s_t leaf = f.out.nodes[NODE_ROWS[0].first + c].bounds;
+            const int expected_y = c * POSITION_SCALE;
+            TEST_ASSERT_EQUAL_INT16(expected, cluster.lo.x);
+            TEST_ASSERT_EQUAL_INT16(expected_y, cluster.lo.y);
+            TEST_ASSERT_EQUAL_INT16(0, cluster.lo.z);
+            TEST_ASSERT_EQUAL_INT16(expected, leaf.lo.x);
+            TEST_ASSERT_EQUAL_INT16(expected_y, leaf.lo.y);
+            TEST_ASSERT_EQUAL_INT16(0, leaf.lo.z);
+        }
         TEST_ASSERT_EQUAL_PTR(f.out.positions, f.out.mesh.positions);
         release(&f);
     }

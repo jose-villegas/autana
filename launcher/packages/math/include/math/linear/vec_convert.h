@@ -58,6 +58,11 @@ vec2s_from_vec2i(vec2i_t v) {
     return (vec2s_t){maths_saturate(v.x), maths_saturate(v.y)};
 }
 
+static inline vec3s_t
+vec3s_from_array(const int16_t p[3]) {
+    return (vec3s_t){p[0], p[1], p[2]};
+}
+
 static inline vec3f_t
 vec3f_from_vec3i(vec3i_t v) {
     return (vec3f_t){(float)v.x, (float)v.y, (float)v.z};

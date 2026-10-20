@@ -1,6 +1,10 @@
 #include "math/geometry/box3f.h"
+#include "math/geometry/planex.h"
 #include "suites.h"
 #include "unity.h"
+
+MATH_DEFINE_BOX3(box3x, vec3x, int32_t, mathx, INT32_MIN, INT32_MAX)
+MATH_DEFINE_BOX3_REAL(box3x, vec3x, planex, int32_t, mathx)
 
 static const float BOX_TOLERANCE = 0.00001F;
 static const float BOX_SCALE = 0.5F;
@@ -120,8 +124,104 @@ test_box3_planes_preserve_only_crossing_bits(void) {
     TEST_ASSERT_EQUAL_UINT(OUTSIDE_BIT, mask);
 }
 
+static void
+test_box3_segment_direction_and_finite_interval(void) {
+    static const struct {
+        vec3f_t a, c;
+        bool hit;
+    } segments[] = {
+        {{-3, 0, 0}, {-2, 0, 0}, false}, {{2, 0, 0}, {3, 0, 0}, false}, {{-3, 0, 0}, {3, 6, 0}, false},
+        {{0, -2, 0}, {0, 2, 0}, true},   {{0, 0, -2}, {0, 0, 2}, true}, {{-2, 2, -2}, {2, -2, 2}, true},
+    };
+
+    const box3f_t b = box3f_from_box3s(BOX_TICKS, BOX_SCALE);
+    for (unsigned i = 0; i < sizeof segments / sizeof segments[0]; i++) {
+        float t = -mathf_one();
+        TEST_ASSERT_EQUAL(segments[i].hit, box3f_segment_hit(b, segments[i].a, segments[i].c, &t));
+        if (segments[i].hit) {
+            TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, BOX_ENTRY, t);
+        }
+    }
+}
+
+static void
+test_box3_plane_oblique_touch_and_late_rejection(void) {
+    const box3f_t b = box3f_from_box3s(BOX_TICKS, BOX_SCALE);
+    static const planef_t planes[] = {{{-1, -2, -3}, -5}, {{1, 0, 0}, -1}, {{0, -1, 0}, 1}, {{0, 0, -1}, -2}};
+
+    enum { OBLIQUE = 1u, OUTER_TOUCH = 2u, INNER_TOUCH = 4u, REJECT = 8u, COUNT = 4 };
+
+    unsigned mask = OBLIQUE | OUTER_TOUCH | INNER_TOUCH;
+    TEST_ASSERT_FALSE(box3f_outside_planes(b, planes, COUNT, &mask));
+    TEST_ASSERT_EQUAL_UINT(OBLIQUE | OUTER_TOUCH, mask);
+    mask = INNER_TOUCH | REJECT;
+    TEST_ASSERT_TRUE(box3f_outside_planes(b, planes, COUNT, &mask));
+    TEST_ASSERT_EQUAL_UINT(REJECT, mask);
+    mask = REJECT;
+    TEST_ASSERT_FALSE(box3f_outside_planes(b, planes, 0, &mask));
+    TEST_ASSERT_EQUAL_UINT(REJECT, mask);
+}
+
+static void
+test_box3_set_operations_each_axis(void) {
+    static const box3s_t other = {{-4, 0, -1}, {0, 4, 1}};
+    static const box3s_t intersection = {{-2, 0, -1}, {0, 2, 1}};
+    static const box3s_t joined = {{-4, -2, -2}, {2, 4, 2}};
+    static const vec3s_t grow = {-4, 4, 0};
+    static const vec3s_t outside[] = {{-4, 0, 0}, {4, 0, 0}, {0, -4, 0}, {0, 4, 0}, {0, 0, -4}, {0, 0, 4}, {-4, 4, -4}};
+    static const vec3s_t closest[] = {{-2, 0, 0}, {2, 0, 0}, {0, -2, 0}, {0, 2, 0}, {0, 0, -2}, {0, 0, 2}, {-2, 2, -2}};
+    const box3s_t si = box3s_intersect(BOX_TICKS, other);
+    const box3s_t su = box3s_union(BOX_TICKS, other);
+    const box3s_t se = box3s_extend(BOX_TICKS, grow);
+    TEST_ASSERT_TRUE(vec3s_equal(intersection.lo, si.lo) && vec3s_equal(intersection.hi, si.hi));
+    TEST_ASSERT_TRUE(vec3s_equal(joined.lo, su.lo) && vec3s_equal(joined.hi, su.hi));
+    TEST_ASSERT_TRUE(vec3s_equal(joined.lo, se.lo) && vec3s_equal(joined.hi, se.hi));
+    const box3f_t b = box3f_from_box3s(BOX_TICKS, BOX_SCALE);
+    const box3f_t fi = box3f_intersect(b, box3f_from_box3s(other, BOX_SCALE));
+    const box3f_t fu = box3f_union(b, box3f_from_box3s(other, BOX_SCALE));
+    const box3f_t fe = box3f_extend(b, vec3f_from_vec3s(grow, BOX_SCALE));
+    const box3f_t want_i = box3f_from_box3s(intersection, BOX_SCALE);
+    const box3f_t want_u = box3f_from_box3s(joined, BOX_SCALE);
+    TEST_ASSERT_TRUE(vec3f_equal(want_i.lo, fi.lo) && vec3f_equal(want_i.hi, fi.hi));
+    TEST_ASSERT_TRUE(vec3f_equal(want_u.lo, fu.lo) && vec3f_equal(want_u.hi, fu.hi));
+    TEST_ASSERT_TRUE(vec3f_equal(want_u.lo, fe.lo) && vec3f_equal(want_u.hi, fe.hi));
+    for (unsigned i = 0; i < sizeof outside / sizeof outside[0]; i++) {
+        const box3s_t point = box3s_from_point(outside[i]);
+        TEST_ASSERT_FALSE(box3s_contains_point(BOX_TICKS, outside[i]));
+        TEST_ASSERT_FALSE(box3s_contains(BOX_TICKS, point));
+        TEST_ASSERT_FALSE(box3s_overlaps(BOX_TICKS, point));
+        TEST_ASSERT_TRUE(box3s_is_empty(box3s_intersect(BOX_TICKS, point)));
+        TEST_ASSERT_TRUE(vec3s_equal(closest[i], box3s_closest_point(BOX_TICKS, outside[i])));
+        const vec3f_t p = vec3f_from_vec3s(outside[i], BOX_SCALE);
+        const box3f_t fp = box3f_from_point(p);
+        TEST_ASSERT_FALSE(box3f_contains_point(b, p));
+        TEST_ASSERT_FALSE(box3f_contains(b, fp));
+        TEST_ASSERT_FALSE(box3f_overlaps(b, fp));
+        TEST_ASSERT_TRUE(box3f_is_empty(box3f_intersect(b, fp)));
+        TEST_ASSERT_TRUE(vec3f_equal(vec3f_from_vec3s(closest[i], BOX_SCALE), box3f_closest_point(b, p)));
+    }
+}
+
+static void
+test_box3_real_fixed_scalar_ops(void) {
+    const box3x_t b = {vec3x_from_vec3f(BOX_ASYMMETRIC_UNITS.lo), vec3x_from_vec3f(BOX_ASYMMETRIC_UNITS.hi)};
+    TEST_ASSERT_TRUE(vec3x_equal(vec3x_from_vec3f(BOX_ASYMMETRIC_CENTRE), box3x_centre(b)));
+    TEST_ASSERT_TRUE(vec3x_equal(vec3x_from_vec3f(BOX_ASYMMETRIC_HALF_EXTENT), box3x_half_extent(b)));
+    static const planex_t plane = {{-MATHX_ONE, -MATHX_ONE, -MATHX_ONE}, 7 * MATHX_ONE};
+
+    enum { PLANE_BIT = 1u, COUNT = 1 };
+
+    unsigned mask = PLANE_BIT;
+    TEST_ASSERT_FALSE(box3x_outside_planes(b, &plane, COUNT, &mask));
+    TEST_ASSERT_EQUAL_UINT(PLANE_BIT, mask);
+}
+
 void
 suite_box3(void) {
+    RUN_TEST(test_box3_real_fixed_scalar_ops);
+    RUN_TEST(test_box3_segment_direction_and_finite_interval);
+    RUN_TEST(test_box3_plane_oblique_touch_and_late_rejection);
+    RUN_TEST(test_box3_set_operations_each_axis);
     RUN_TEST(test_box3_closed_queries_and_empty_identity);
     RUN_TEST(test_box3_asymmetric_scale_and_extreme_bounds);
     RUN_TEST(test_box3_segment_slabs);

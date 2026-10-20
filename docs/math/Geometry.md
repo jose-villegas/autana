@@ -89,17 +89,25 @@ and union; any crossed axis is empty.
 
 Real queries use finite, nonempty bounds, except that `P_segment_hit`
 rejects empty boxes. Plane bits index the input array; `count` must fit
-an unsigned mask. A false plane result may retain crossing bits.
+an unsigned mask.
 
-![Top-down frustum with green inside boxes, amber crossing boxes, grey outside boxes, a near-only rejection and a loose corner classification](../images/math/box3-frustum.png)
+When `P_outside_planes` returns false, the bits of planes the box crosses
+stay set in the mask; a box in a loose corner is not rejected.
 
-Corner looseness: box 8 crosses each plane separately but contains no point inside the frustum.
+![Top-down frustum box classifications](../images/math/box3-frustum.png)
+
+The near plane alone rejects one box. Box 8 crosses each plane separately
+but contains no point inside the frustum: a known conservative result of
+the per-plane test.
 
 ## sphere (`f`)
 
 `P` is `spheref`. A sphere stores vec3 `centre` and nonnegative `radius`.
-Its boundary is included. Box queries use finite, nonempty bounds;
-closest-point overlap follows Arvo 1990<sup>[[83]](../Citations.md#83)</sup>.
+Its boundary is included. Box queries use finite, nonempty bounds.
+
+`P_overlaps_box` follows Arvo 1990<sup>[[83]](../Citations.md#83)</sup>, but forms the
+closest box point first and compares its squared distance, rather than
+summing per-axis terms.
 
 | Function | Purpose | Formula |
 |---|---|---|
