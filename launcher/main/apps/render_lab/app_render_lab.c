@@ -97,13 +97,17 @@ static uint32_t last_layout_generation;
 
 static void
 enter_layout(void) {
+    const render_lab_layout_t chosen = render_lab_layout();
     const gfx_mode_request_t mode_request = {
-        .layout = GFX_LAYOUT_FULL_FB,
+        .layout = chosen == RENDER_LAB_LAYOUT_FULL ? GFX_LAYOUT_FULL_FB : GFX_LAYOUT_DOUBLE_FB,
 
         .interlace_x = false,
         .interlace_y = false,
     };
     (void)gfx_mode_enter(&mode_request);
+    if (chosen == RENDER_LAB_LAYOUT_DOUBLE_CLEAR) {
+        (void)gfx_set_clear_on_send(true, gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
+    }
 
     gfx_invalidate();
 }
