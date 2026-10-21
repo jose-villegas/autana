@@ -256,12 +256,14 @@ scene without its `[indirect]` table and occlusion.
 
 </details>
 
-![Reference, direct-light bake and indirect bake, with error heatmaps](../images/render/bake-indirect-compare.png)
+The reference beside the scene's standard mesh fitted with direct and with
+indirect light, each with its ΔE heatmap against the reference.
 
-The places the two bakes differ most, the reference above them: a banner's
-colour on the column beside it, and the lit ceiling.
+![Reference, direct-light bake and indirect bake, with error heatmaps](../images/render/gpu/bake-indirect-compare.png)
 
-![Where bounce light changes the picture](../images/render/bake-indirect-crops.png)
+The places the two fits differ most, the reference above them.
+
+![Where bounce light changes the picture](../images/render/gpu/bake-indirect-compare.crops.png)
 
 | Where | Why bounce barely shows |
 |---|---|
@@ -282,8 +284,9 @@ reflectance bounces use. The reference reads it too, so each look is scored
 twice: against the physical reference (look and bake error together) and
 against its own (bake error alone). The sheet shows the physical reference
 above the bakes and each look's own reference below.
+The sheet fits the standard mesh in each look, at the last held-out pose.
 
-![Physical reference and each look's own, with the bakes and their error heatmaps](../images/render/bake-indirect-look.png)
+![Physical reference and each look's own, with the bakes and their error heatmaps](../images/render/gpu/bake-indirect-look.png)
 
 ![Mean error of each look against the physical reference and its own; direct light has no look of its own, so one bar](../images/render/sponza-indirect-look.png)
 
@@ -310,15 +313,18 @@ These images start from the physical look with a brighter ambient light, so
 the occlusion has something to scale. The reference applies it per pixel and
 the bake per vertex.
 
-![Reference, bake without occlusion and bake with it, with error heatmaps](../images/render/bake-ao-compare.png)
+The sheet is the reference and the standard mesh fitted without and with
+occlusion, at two held-out poses, each with its error heatmap.
 
-The places the two bakes differ most, the reference above them.
+![Reference, bake without occlusion and bake with it, with error heatmaps](../images/render/gpu/bake-ao-compare.png)
 
-![Where occlusion changes the picture](../images/render/bake-ao-crops.png)
+The places the two fits differ most, the reference above them.
+
+![Where occlusion changes the picture](../images/render/gpu/bake-ao-compare.crops.png)
 
 The factor alone beside the reference, white where nothing is near: low at
 column bases, under arches and in the creases between walls and floor. A
 curtain stays open on its visible side, since a double-sided surface takes its
 less occluded side.
 
-![The occlusion factor beside the reference](../images/render/bake-ao-map.png)
+![The occlusion factor beside the reference](../images/render/gpu/bake-ao-map.png)

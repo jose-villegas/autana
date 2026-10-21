@@ -139,7 +139,7 @@ Off unless given. A scene that sets it needs something to scale: an
 that a baked renderer uses. `reference_render.py`'s `bake` backend reads the same table;
 its `mitsuba` backend ignores it.
 
-![The reference beside the bake without and with occlusion, each with its error heatmap](../images/render/bake-ao-compare.png)
+![The reference beside the bake without and with occlusion, each with its error heatmap](../images/render/gpu/bake-ao-compare.png)
 
 The reach should follow the mesh: a bake stores one colour per vertex, so a
 reach much larger than the triangles darkens whole faces around a crease, where
@@ -155,7 +155,7 @@ or face colours as direct light. The reference renderer reads the same table,
 so a scene's reference carries its look; `intensity` or `albedo_boost` above 1
 trades fidelity to a physical reference for look.
 
-![The reference beside the direct-light and bounce bakes, each with its error heatmap](../images/render/bake-indirect-compare.png)
+![The reference beside the direct-light and bounce bakes, each with its error heatmap](../images/render/gpu/bake-indirect-compare.png)
 
 #### sky
 

@@ -348,8 +348,7 @@ class DocImageFailureTest(unittest.TestCase):
             script.write_text(
                 'set -e\nW=work\nID=sponza\nFULL=atrium\nMESH=sponza.atrium\nR3D_PYTHON=sh\nmkdir -p work\n'
                 f'DEMO={DEMO_SCENE.parent.relative_to(ROOT).as_posix()}\n'
-                f'cp "$DEMO/{DEMO_SCENE.name}" work/physical.scene.toml\n'
-                + helper + 'bake_and_render() {' + functions + "\nvariant_bake direct none ''\n", encoding="utf-8")
+                + helper + 'bake_and_render() {' + functions + "\nvariant_bake direct direct\n", encoding="utf-8")
             result = subprocess.run(["sh", script.as_posix()], cwd=root, capture_output=True, text=True)
             log = (root / "work/indirect-direct/bake.log").read_text(encoding="utf-8")
             self.assertEqual(result.returncode, 8, result.stderr + log)
@@ -382,6 +381,30 @@ class PhysicalSceneTests(unittest.TestCase):
     def test_an_ao_key_outside_bake_is_left_alone(self):
         text = "[bake]\nray_offset = 0.5\n\n[[objects]]\nname = \"a\"\nao = 1\n"
         self.assertEqual(self.module.physical_scene(text), text)
+
+    def test_each_look_changes_only_its_option(self):
+        text = self.module.physical_scene(DEMO_SCENE.read_text(encoding="utf-8"))
+        physical = tomllib.loads(text)
+        for name, look in self.module.LOOKS.items():
+            with self.subTest(look=name):
+                scene = tomllib.loads(self.module.physical_scene(text, look=look))
+                self.assertEqual(scene["objects"], physical["objects"])
+                self.assertEqual("indirect" not in scene["bake"], look.direct)
+                self.assertEqual("ao" in scene["bake"], bool(look.bake))
+                self.assertEqual("indirect" in scene, bool(look.table))
+                ambient = physical["ambient"]["intensity"] if look.ambient is None else look.ambient
+                self.assertEqual(scene["ambient"]["intensity"], ambient)
+
+    def test_every_gpu_light_sheet_names_a_look(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_stages
+        named = {sheet.reference for sheet in doc_stages.LIGHT_SHEETS}
+        named |= {look for sheet in doc_stages.LIGHT_SHEETS for _label, look in sheet.columns}
+        self.assertLessEqual(named, set(self.module.LOOKS))
+
+    def test_a_look_the_scene_cannot_take_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "ambient"):
+            self.module.physical_scene("[bake]\nindirect = { bounces = 1, rays = 4 }\n", look=self.module.LOOKS["ao-occluded"])
 
     def test_a_copy_in_another_folder_still_reaches_the_camera_animation(self):
         from r3d.import_settings import load_scene
