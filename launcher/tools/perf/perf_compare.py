@@ -396,4 +396,7 @@ def device_inventory(records):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from device import rerun_under_idf_python
+
+    rerun = rerun_under_idf_python(sys.argv[1:], __file__)
+    sys.exit(main() if rerun is None else rerun)
