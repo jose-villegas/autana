@@ -1,8 +1,13 @@
-"""Small triangle meshes for the r3d tests: just enough to build a floor and a wall and ask rays about them."""
+"""Small triangle meshes for the r3d tests and the bake figures: just enough to build a floor and a wall and ask rays
+about them."""
+
+from types import SimpleNamespace
 
 import numpy as np
 
 from r3d import ray_query
+from r3d.geometry import corner_normals
+from r3d.light import LIGHT_GAMMA
 from r3d.ray_query import RayQuery
 
 # Every ray query the tests make, in the bake too, traces one ray at a time: no LLVM needed.
@@ -42,3 +47,49 @@ def concatenate(parts):
 def rays(soup):
     """The ray queries of a mesh built here."""
     return RayQuery(soup.vertices, soup.faces)
+
+
+# The bounce scene: a large floor facing +y at y = 0 and a large wall at x = 0 facing it, lit by a sun on the wall's
+# side. Its bounced light is known in closed form at the wall's foot.
+BIG = 400.0
+SUN = {"type": "directional", "direction": [0.6, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 2.0}
+
+
+def grey(albedo):
+    """The Kd that decodes to `albedo`, as the export reads an untextured material."""
+    return (albedo ** (1 / LIGHT_GAMMA),) * 3
+
+
+def corridor(albedo=0.5, wall_faces_floor=True, wall_kd=None, wall_height=BIG):
+    """The floor (material 0) and the wall (material 1) as a bake source; `wall_kd` colours the wall."""
+    floor = [[0, 0, BIG], [BIG * 2, 0, BIG], [BIG * 2, 0, -BIG], [0, 0, -BIG]]
+    wall = [[0, 0, -BIG], [0, 0, BIG], [0, wall_height, BIG], [0, wall_height, -BIG]]
+    if wall_faces_floor:
+        wall = wall[::-1]
+    corners, tris, tri_m = [], [], []
+    for index, quad in enumerate((floor, wall)):
+        base = 4 * index
+        corners += quad
+        tris += [[base, base + 1, base + 2], [base, base + 2, base + 3]]
+        tri_m += [index] * 2
+    p, tri_v = np.array(corners, dtype=float), np.array(tris)
+    source = SimpleNamespace(colors=None, p=p, uv=np.zeros((8, 2)), tri_v=tri_v, tri_t=tri_v, tri_m=np.array(tri_m),
+                             names=["floor", "wall"],
+                             materials={"floor": {"Kd": grey(albedo)}, "wall": {"Kd": wall_kd or grey(albedo)}},
+                             textures=[None, None])
+    source.corner_normals = corner_normals(p, tri_v)
+    return source
+
+
+def path_light(source=None, double=(), bounces=1, rays=256, boost=1.0, lights=(SUN,)):
+    """The bake's bounced light over `source` (the corridor by default)."""
+    from r3d.path_bake import PathLight
+
+    return PathLight(source or corridor(), list(lights), set(double), SimpleNamespace(bounces=bounces, rays=rays), boost)
+
+
+def floor_points(xs, height=0.0):
+    """Points at x = `xs` and y = `height` (a number or one per point), facing +y as the corridor's floor does."""
+    xs = np.asarray(xs, dtype=float)
+    points = np.stack([xs, np.broadcast_to(height, xs.shape), np.zeros_like(xs)], axis=1)
+    return points, np.tile([0.0, 1.0, 0.0], (len(xs), 1))
