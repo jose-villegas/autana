@@ -29,8 +29,8 @@ class MathBenchTableTests(unittest.TestCase):
         self.assertEqual("0 ulp (sweep)", errors["normalize (vec3)", "f"])
         self.assertEqual("5.94258e-05 relative (proof)", errors["arbitrary label", "x"])
         rows = [("vector_f", "normalize (vec3)", "f", self.batch),
-                ("vector_x", "normalize (vec3)", "x", self.batch)]
-        table = bench.render_table(rows, {}, {}, {"vector_f": "-", "vector_x": "-"}, errors=errors)
+                ("vector_x", "normalize (vec3)", "x", self.batch), ("other_x", "arbitrary label", "x", self.batch)]
+        table = bench.render_table(rows, {}, {}, {"vector_f": "-", "vector_x": "-", "other_x": "-"}, errors=errors)
         lines = table.splitlines()
         self.assertTrue(next(line for line in lines if line.startswith("| normalize (vec3) | f")).endswith("0 ulp (sweep) |"))
         self.assertTrue(next(line for line in lines if line.startswith("| normalize (vec3) | x")).endswith("- |"))
