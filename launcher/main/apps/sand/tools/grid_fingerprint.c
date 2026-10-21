@@ -196,7 +196,7 @@ scene_sealed_lava(sand_t* s) {
      * of which way is down, so the scene proves the conversion actually
      * fires rather than merely COULD fire. */
     for (int k = 0; k < 3; k++) {
-        const int cx = 12 + k * 20;
+        const int cx = 12 + (k * 20);
         const int lava_y = FP_H - 3;
 
         for (int dy = -1; dy <= 1; dy++) {
@@ -605,25 +605,25 @@ typedef struct {
 } fp_scene_t;
 
 static const fp_scene_t SCENES[] = {
-    {"dry_fall", scene_dry_fall, 7u, 0, 1000, 0, 0, 0, 0},
-    {"water_pool", scene_water_pool, 11u, 0, 1000, 0, 0, 0, 0},
-    {"lava_quench", scene_lava_quench, 23u, 0, 1000, 0, 0, 0, 0},
-    {"fire_gas", scene_fire_gas, 31u, 0, 1000, 0, 0, 0, 0},
-    {"sealed_lava", scene_sealed_lava, 41u, 0, 1000, 0, 0, 0, 0},
-    {"wet_earth", scene_wet_earth, 53u, 0, 1000, 0, 0, 0, 0},
+    {"dry_fall", scene_dry_fall, 7U, 0, 1000, 0, 0, 0, 0},
+    {"water_pool", scene_water_pool, 11U, 0, 1000, 0, 0, 0, 0},
+    {"lava_quench", scene_lava_quench, 23U, 0, 1000, 0, 0, 0, 0},
+    {"fire_gas", scene_fire_gas, 31U, 0, 1000, 0, 0, 0, 0},
+    {"sealed_lava", scene_sealed_lava, 41U, 0, 1000, 0, 0, 0, 0},
+    {"wet_earth", scene_wet_earth, 53U, 0, 1000, 0, 0, 0, 0},
 
     /* Same builders, held sideways and cornerwise. */
-    {"gas_land", scene_fire_gas, 31u, 1000, 0, 0, 0, 0, 0},
-    {"water_diag", scene_water_pool, 11u, 1000, 1000, 0, 0, 0, 0},
+    {"gas_land", scene_fire_gas, 31U, 1000, 0, 0, 0, 0, 0},
+    {"water_diag", scene_water_pool, 11U, 1000, 1000, 0, 0, 0, 0},
 
     /* The only row here in which anything grows, see the builder. */
-    {"plant_bed", scene_plant_bed, 11u, 0, 1000, 0, 0, 0, 0},
+    {"plant_bed", scene_plant_bed, 11U, 0, 1000, 0, 0, 0, 0},
 
     /* The only row here that puts acid on the board at all. */
-    {"acid_bath", scene_acid_bath, 67u, 0, 1000, 0, 0, 0, 0},
+    {"acid_bath", scene_acid_bath, 67U, 0, 1000, 0, 0, 0, 0},
 
     /* Likewise snow, ice and deliberately-placed smoke. */
-    {"snow_thaw", scene_snow_thaw, 71u, 0, 1000, 0, 0, 0, 0},
+    {"snow_thaw", scene_snow_thaw, 71U, 0, 1000, 0, 0, 0, 0},
 
     /* SLEEPING ON, which every row above leaves OFF though the app runs with it
      * ON. cell_settled() answers false when block_state is NULL, so no
@@ -633,41 +633,41 @@ static const fp_scene_t SCENES[] = {
      * pair is the point: block sleep claims to change nothing, and two rows
      * differing only in sleeping are what check that. They come back
      * byte-identical to their awake twins, which is that claim measured. */
-    {"snow_asleep", scene_snow_thaw, 71u, 0, 1000, 1, 0, 0, 0},
-    {"pool_asleep", scene_water_pool, 11u, 0, 1000, 1, 0, 0, 0},
+    {"snow_asleep", scene_snow_thaw, 71U, 0, 1000, 1, 0, 0, 0},
+    {"pool_asleep", scene_water_pool, 11U, 0, 1000, 1, 0, 0, 0},
 
     /* The one combination neither half above reaches: held sideways WITH
      * the blocks awake to it. Block shape is asymmetric - 32 across by 64
      * along - so which cells a block calls settled depends on the gravity
      * axis, and every sleeping row here pointed the same way. A change to
      * that shape lands here and nowhere else in this table. */
-    {"pool_land", scene_water_pool, 11u, 1000, 0, 1, 0, 0, 0},
+    {"pool_land", scene_water_pool, 11U, 1000, 0, 1, 0, 0, 0},
 
     /* And the one row where a SETTLED-gated rule actually fires, see the
      * builder for why the rate is forced. */
-    {"snow_crust", scene_snow_crust, 71u, 0, 1000, 1, 0, 0, 0},
+    {"snow_crust", scene_snow_crust, 71U, 0, 1000, 1, 0, 0, 0},
 
     /* The gunpowder row, see the builder for what was invisible without it. */
-    {"powder_keg", scene_powder_keg, 29u, 0, 1000, 0, 0, 0, 0},
+    {"powder_keg", scene_powder_keg, 29U, 0, 1000, 0, 0, 0, 0},
 
     /* Two pairings the rows above never put in contact, see each builder.
      * Sleeping ON for the snow row, since seeding is settled-gated. */
-    {"snow_earth", scene_snow_earth, 71u, 0, 1000, 1, 0, 0, 0},
-    {"plant_ruin", scene_plant_ruin, 67u, 0, 1000, 0, 0, 0, 0},
+    {"snow_earth", scene_snow_earth, 71U, 0, 1000, 1, 0, 0, 0},
+    {"plant_ruin", scene_plant_ruin, 67U, 0, 1000, 0, 0, 0, 0},
 
     /* Five rows a reviewer found this table never reached, see each
      * builder for what it puts in front of the mechanism. */
-    {"gas_no_walk", scene_gas_no_walk, 83u, 0, 1000, 0, 0, 0, 0},
-    {"acid_oil", scene_acid_oil, 89u, 0, 1000, 0, 0, 0, 0},
-    {"glass_shock_snow", scene_glass_shock_snow, 97u, 0, 1000, 0, 0, 0, 0},
+    {"gas_no_walk", scene_gas_no_walk, 83U, 0, 1000, 0, 0, 0, 0},
+    {"acid_oil", scene_acid_oil, 89U, 0, 1000, 0, 0, 0, 0},
+    {"glass_shock_snow", scene_glass_shock_snow, 97U, 0, 1000, 0, 0, 0, 0},
 
     /* gas_land's own scene, tipped to a NEGATIVE gx this time - every gx
      * above is 0 or 1000, so sweep_x_order()'s dx<0 branch has never run. */
-    {"gas_land_inv", scene_fire_gas, 31u, -1000, 0, 0, 0, 0, 0},
+    {"gas_land_inv", scene_fire_gas, 31U, -1000, 0, 0, 0, 0, 0},
 
     /* The two-core split's row, see the builder for why it needs its own
      * board size. */
-    {"two_core_big", scene_two_core_big, 101u, 0, 1000, 0, 256, 192, 1},
+    {"two_core_big", scene_two_core_big, 101U, 0, 1000, 0, 256, 192, 1},
 
     /* Skip coverage, see SKIP COVERAGE above the builders. two_core_big's own
      * board with sleeping on is the only row whose split can skip a resting

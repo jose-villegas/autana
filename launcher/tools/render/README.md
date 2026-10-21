@@ -10,7 +10,7 @@
 | [doc_images_demo.sh](doc_images_demo.sh) | Makes the demo's bake, fidelity, import and small-fill images and measured CPU tables through the scene viewer; `--small-fill-only` selects the small-fill outputs. |
 | [doc_tables.py](doc_tables.py) | Writes CPU tables from comparison logs, tunable listings and sweep captures, with scene and object names supplied as arguments. |
 | [doc_import_examples.py](doc_import_examples.py) | Renders albedo and face-sampling examples from a supplied scene and renderer. |
-| [physical_scene.py](physical_scene.py) | Copies a scene without its indirect look and occlusion settings for isolated bake studies. |
+| [physical_scene.py](physical_scene.py) | Copies a scene without its indirect look and occlusion settings, or in one study look (`--look`), for isolated bake studies. |
 | [render_diff.py](render_diff.py) | Compares rendered and captured images. |
 | [render_diff.sh](render_diff.sh) | Shell entry point for image comparisons. |
 | [render_temporal.py](render_temporal.py) | Adds triangle-scale temporal metrics to video CSVs and composes labelled look-range videos. |
@@ -27,6 +27,8 @@
 | [check_avi.py](check_avi.py) | Validates AVI structure and frame metadata. |
 | [colour_maths.py](colour_maths.py) | CIELAB and RGB565 expansion, shared by the comparison tool and the r3d fit. |
 | [scenes/](scenes/) | Engine render scenes and their pinned baselines. |
+| [ui_examples/](ui_examples/) | One face example per control, and whole screens, drawn by the examples scene and shown whole in `docs/ui/`. |
+| [ui_examples_doc.py](ui_examples_doc.py) | Writes each example file into its page and each control's States table from the scene's renders; `--check` reports a stale example. |
 | [tests/](tests/) | The harness checking its own frame watch against a fixture scene, and code_layout.py's own tests. |
 
 ## Pinned code layout

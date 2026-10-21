@@ -46,6 +46,14 @@ class SharedHelpers(unittest.TestCase):
         names = catalogue(self.root)[0][2].split(", ")
         self.assertEqual({"value_t", "value_fn", "mode", "MODE_A", "MODE_B"}, set(names))
 
+    def test_function_local_enums_are_not_public_names(self):
+        owner = "engine/value.h"
+        write(self.root, owner, "/* Values. */\n"
+              "enum { VALUE_LIMIT = 4 };\n"
+              "static inline int value(void) { enum { LOCAL_SHIFT = 2 }; return LOCAL_SHIFT; }\n")
+        self.include(owner)
+        self.assertEqual({"VALUE_LIMIT", "value"}, set(catalogue(self.root)[0][2].split(", ")))
+
     def test_cpp_classes_and_pasted_template_names(self):
         owner = "engine/value.hpp"
         write(self.root, owner, "/* Values. */\nclass Value {};\n"

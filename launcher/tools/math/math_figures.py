@@ -23,10 +23,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
 from build.packages import include_roots
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, style_axes, figure as new_figure, save, subplots
 from matplotlib.patches import Rectangle
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
@@ -34,16 +31,12 @@ PROBE = ROOT / "launcher/tools/math/math_figures_probe.c"
 PROBE_SOURCES = (PROBE, ROOT / "launcher/main/render/render_view.c")
 DISPLAY = ROOT / "launcher/components/esp32_s3_touch_amoled_1_8/include/bsp/display.h"
 
-INK, MUTED, FAINT = "#0b0b0b", "#52514e", "#c9c7c2"
-SHAPE_FILL, POINT, PIXEL_FILL = "#2a78d6", "#eb6834", "#1baf7a"
+SHAPE_FILL, POINT, PIXEL_FILL = SLOTS[:3]
 TRS_MARGIN = 0  # units of room beyond the farthest corner in the 3D panels
 TRS_PANEL_SIZE = 3.2  # the 3D panels need more room
 PANEL_SIZE = 3.0  # inches per panel, wide and high
 PANEL_TITLE_ROOM = 0.3  # inches above each row for the panel titles
 VIEW_ELEVATION, VIEW_AZIMUTH = 25, -60  # degrees, the same for every panel
-DPI = 110
-TITLE_SIZE = 10
-LABEL_SIZE = 8
 SHAPE_ALPHA = 0.3
 GHOST_WIDTH = 1.0  # the previous panel's dashed outline
 POINT_SIZE = 40
@@ -51,23 +44,24 @@ PIXEL_PANELS = 4  # camera, offset, picture, whole pixel
 PIXEL_WINDOW = 3  # whole pixels shown on each side of the chosen one
 
 
-def probe(cc, width, height):
-    """Build and run the probe; its JSON is every number the figures show."""
-    with tempfile.TemporaryDirectory() as work:
-        binary = pathlib.Path(work) / "math_figures_probe"
-        includes = [flag for root in include_roots() for flag in ("-I", str(root))]
-        subprocess.run([cc, "-std=gnu2x", "-O1", *includes, *map(str, PROBE_SOURCES), "-lm", "-o", str(binary)],
-                       check=True)
-        out = subprocess.run([str(binary), str(width), str(height)], check=True, capture_output=True, text=True)
+def build_probe(cc, sources, directory):
+    """Build a probe against the library into directory; returns the program."""
+    binary = pathlib.Path(directory) / "probe"
+    includes = [flag for root in include_roots() for flag in ("-I", str(root))]
+    subprocess.run([cc, "-std=gnu2x", "-O1", *includes, *map(str, sources), "-lm", "-o", str(binary)], check=True)
+    return binary
+
+
+def probe_json(binary, *arguments):
+    """Run a built probe; its JSON is every number a figure shows."""
+    out = subprocess.run([str(binary), *map(str, arguments)], check=True, capture_output=True, text=True)
     return json.loads(out.stdout)
 
 
-def square_axes(axis, title):
-    axis.set_title(title, fontsize=TITLE_SIZE, color=INK)
-    axis.set_aspect("equal")
-    axis.tick_params(labelsize=LABEL_SIZE, colors=MUTED)
-    for spine in axis.spines.values():
-        spine.set_color(FAINT)
+def run_probe(cc, sources, *arguments):
+    """Build and run a probe once."""
+    with tempfile.TemporaryDirectory() as work:
+        return probe_json(build_probe(cc, sources, work), *arguments)
 
 
 def trs_figure(trs, output):
@@ -81,7 +75,7 @@ def trs_figure(trs, output):
     low = -high
     count = trs["outline_corners"]
     size = (TRS_PANEL_SIZE * len(stages), TRS_PANEL_SIZE + PANEL_TITLE_ROOM)
-    figure = plt.figure(figsize=size, layout="constrained")
+    figure = new_figure(size)
     previous = None
     for index, (name, title) in enumerate(stages):
         axis = figure.add_subplot(1, len(stages), index + 1, projection="3d")
@@ -105,8 +99,7 @@ def trs_figure(trs, output):
         axis.add_collection3d(Poly3DCollection(prism_faces(trs[name], count), facecolor=SHAPE_FILL,
                                                alpha=SHAPE_ALPHA, edgecolor=SHAPE_FILL))
         previous = trs[name]
-    figure.savefig(output, dpi=DPI, metadata={"Software": None})
-    plt.close(figure)
+    save(figure, output)
 
 
 def prism_faces(points, count):
@@ -130,11 +123,11 @@ def pixel_figure(px, output):
     sx, sy = px["screen"]
     pixel_x, pixel_y = px["pixel"]
     size = (PANEL_SIZE * PIXEL_PANELS, PANEL_SIZE + PANEL_TITLE_ROOM)
-    figure, axes = plt.subplots(1, PIXEL_PANELS, figsize=size, layout="constrained")
+    figure, axes = subplots(1, PIXEL_PANELS, size)
 
     # Camera space, seen from above: the point and the ray back to the camera.
     axis = axes[0]
-    square_axes(axis, f"camera ({x:g}, {y:g}, {z:g})")
+    style_axes(axis, f"camera ({x:g}, {y:g}, {z:g})", square=True)
     half_width = z * (width - cx) / px["fx"]
     axis.plot([0, -half_width], [0, z], color=FAINT)
     axis.plot([0, half_width], [0, z], color=FAINT)
@@ -147,7 +140,7 @@ def pixel_figure(px, output):
 
     # projectf_offset: pixels from the optical centre, +y up.
     axis = axes[1]
-    square_axes(axis, f"projectf_offset ({ox:g}, {oy:g})")
+    style_axes(axis, f"projectf_offset ({ox:g}, {oy:g})", square=True)
     axis.add_patch(Rectangle((-cx, -(height - cy)), width, height, fill=False, edgecolor=FAINT))
     axis.axhline(0, color=FAINT, linewidth=0.8)
     axis.axvline(0, color=FAINT, linewidth=0.8)
@@ -160,7 +153,7 @@ def pixel_figure(px, output):
 
     # projectf_screen: the picture, y down from the top-left corner.
     axis = axes[2]
-    square_axes(axis, f"projectf_screen ({sx:g}, {sy:g})")
+    style_axes(axis, f"projectf_screen ({sx:g}, {sy:g})", square=True)
     axis.add_patch(Rectangle((0, 0), width, height, fill=False, edgecolor=MUTED))
     axis.scatter([cx], [cy], s=POINT_SIZE / 2, marker="+", color=MUTED)
     axis.text(cx, cy, f" centre ({cx:g}, {cy:g})", fontsize=LABEL_SIZE, color=MUTED, va="top")
@@ -173,7 +166,7 @@ def pixel_figure(px, output):
 
     # The caller's snap: each offset truncated toward the centre, then the flip.
     axis = axes[3]
-    square_axes(axis, f"whole pixel ({pixel_x}, {pixel_y})")
+    style_axes(axis, f"whole pixel ({pixel_x}, {pixel_y})", square=True)
     left, top = pixel_x - PIXEL_WINDOW, pixel_y - PIXEL_WINDOW
     span = 2 * PIXEL_WINDOW + 1
     for column in range(span):
@@ -186,8 +179,7 @@ def pixel_figure(px, output):
     axis.set_xlabel(f"cx + trunc({ox:g})", fontsize=LABEL_SIZE, color=MUTED)
     axis.set_ylabel(f"cy - trunc({oy:g})", fontsize=LABEL_SIZE, color=MUTED)
 
-    figure.savefig(output, dpi=DPI, metadata={"Software": None})
-    plt.close(figure)
+    save(figure, output)
 
 
 def main():
@@ -198,7 +190,7 @@ def main():
     args = parser.parse_args()
     width = read_define(DISPLAY, "BSP_LCD_H_RES")
     height = read_define(DISPLAY, "BSP_LCD_V_RES")
-    numbers = probe(args.cc, width, height)
+    numbers = run_probe(args.cc, PROBE_SOURCES, width, height)
     trs_figure(numbers["trs"], args.trs)
     pixel_figure(numbers["pixel"], args.pixel)
     return 0

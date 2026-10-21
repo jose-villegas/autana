@@ -26,6 +26,17 @@ does not override this repository's established C: four spaces, attached
 braces, pointer-left declarations, plain names, and declarations near first
 use.
 
+## Low-level topics
+
+These sit beside the guide because each needs call sites and numbers, not only rules.
+
+| Topic | Page |
+|---|---|
+| `IRAM_ATTR`, `noinline`, `always_inline`, constructors | [Function attributes](c-style/Function-Attributes.md) |
+| Tasks, cores, spinlocks, atomics, queues | [Concurrency](c-style/Concurrency.md) |
+| Driver, HAL and register access, wrapping a driver function | [Register access](c-style/Register-Access.md) |
+| Placing code or data with a linker fragment | [Linker fragments](memory/Linker-Fragments.md) |
+
 ## Mechanical rules
 
 These rules are decidable. `.clang-format` is their definition and
@@ -108,7 +119,7 @@ also come from the index. Without ESP-IDF, the citation check reports which
 external names it cannot verify; CI requires the SDK.
 
 Pre-push checks target branch names and runs sanitized host tests when a
-pushed range changes `.c` or `.h`; see [Testing Guide](Testing-Guide.md#running-them).
+pushed range changes `.c` or `.h`; see [Host tests: git hooks](testing/Host-Tests.md#git-hooks).
 The hooks are feedback: `git commit --no-verify` or `git push --no-verify`
 skips them, `.git/hooks`
 is not cloned, and it never sees a merge or a commit made by CI. The workflow
@@ -132,7 +143,11 @@ headroom. Renames map to the base names; line shifts do not change a budget.
 Code moved out of a file the change deletes keeps the fragments it held there,
 and a block of `#include` or `RUN_TEST` lines is not a clone. Literal-only
 object-like `#define`s are blanked on both sides before matching, preserving
-line numbers. Removing another file pair gives no headroom.
+line numbers. A declaration statement is written one declarator per statement,
+and parentheses after no name, `)` or `]` (a grouping or a cast) are blanked,
+so splitting a declaration or adding a grouping is not a new clone; a copy
+holding groupings counts fewer tokens. Removing another file pair gives no
+headroom.
 
 Use `--report` to list every pair with file and line ranges, including both
 sides of each new pair. `--min-tokens N` reports a different threshold without

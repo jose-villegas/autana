@@ -26,12 +26,11 @@ permissions:
   contents: write
 
 env:
-  SCOPED_BOARDS: 20E8 2124
   NIGHTLY_SUITES: |
     run_sand_perf_suite|-|python3 launcher/main/apps/sand/tools/report_performance.py @CAPTURE@ @TABLE@ --source @PROJECT@/launcher/main/apps/sand/tests/suite_sand_perf.c
     run_sponza_perf_suite|-|-
+    run_render_lab_frame_profile_suite|-|-
     run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
-  SELFTEST_BOARD: '2124'
   SELFTEST_AT: ${{ inputs.selftest_at || '01:00' }}
   WINDOW_END: ${{ inputs.window_end || '07:00' }}
   QUEUE_AT: '22:30'
@@ -93,15 +92,15 @@ jobs:
           [ -z "$QUEUE_AT" ] || args+=(--queue-at "$QUEUE_AT")
           [ -z "$FROM_SHA" ] || args+=(--from "$FROM_SHA")
           [ -z "$MAX_STEPS" ] || args+=(--max-steps "$MAX_STEPS")
+          # One lane per board plugged in; the plan sets SCOPED_BOARDS and SELFTEST_BOARD.
           "$PY" launcher/tools/perf/nightly/scoped_chain.py plan \
-            --boards $SCOPED_BOARDS --selftest-board "$SELFTEST_BOARD" --data "$data" --out "$out/plan.json" \
-            "${args[@]}"
+            --data "$data" --out "$out/plan.json" "${args[@]}" >> "$GITHUB_ENV"
 
       - name: Prepare the self-test's console tests
         if: env.SELFTEST_BOARD != ''
         run: bash scripts/ci/board-prepare.sh
 
-      - name: Run each board lane and wait for both
+      - name: Run each board lane and wait for all
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           suites=()

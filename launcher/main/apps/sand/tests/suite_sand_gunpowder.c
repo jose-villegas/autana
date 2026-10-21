@@ -338,7 +338,7 @@ test_lava_beside_dry_gunpowder_lights_it_through_the_heat_path(void) {
 
 static void
 test_heat_conducted_through_stone_lights_gunpowder(void) {
-    wide_open(3u);
+    wide_open(3U);
     sand_set_conduction(&wide, 255);
     sand_set_mobility(&wide, 0);
 
@@ -480,7 +480,7 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
  * the lit code once the blast has actually happened. */
 static void
 test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
-    wide_open(11u);
+    wide_open(11U);
     sand_set_decay(&wide, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&wide, 0); /* hold the 2x2 in place until burn-out -
                                     * see test_gunpowder_without_impulses_
@@ -488,7 +488,8 @@ test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
 
     impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
 
-    const int cx = WIDE_W / 2, cy = WIDE_H / 2;
+    const int cx = WIDE_W / 2;
+    const int cy = WIDE_H / 2;
     sand_set(&wide, cx, cy, GUNPOWDER_LIT_CELL);
     sand_set(&wide, cx + 1, cy, GUNPOWDER_LIT_CELL);
     sand_set(&wide, cx, cy + 1, GUNPOWDER_LIT_CELL);
@@ -553,7 +554,7 @@ square_gone(int x) {
  * linking them; decay 255 forces all eight cells out on the same step. */
 static void
 test_fuse_blasts_are_capped_at_one_per_step(void) {
-    wide_open(5u);
+    wide_open(5U);
     sand_set_decay(&wide, 255);
 
     impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
@@ -602,7 +603,7 @@ test_fuse_blasts_are_capped_at_one_per_step(void) {
  * its burn-out cannot race group A's inside one pass. */
 static void
 test_a_longer_fuse_cooldown_delays_the_next_blast(void) {
-    wide_open(5u);
+    wide_open(5U);
     sand_set_decay(&wide, 255);
     sand_set_fuse_cooldown(&wide, 3);
 
@@ -695,7 +696,8 @@ test_a_buried_lit_gunpowder_cell_is_not_smothered(void) {
      * scatters that way and walks off the scene. The diagonals are here
      * only to pin the grain, so the cardinals are the only thing left
      * that could move it. */
-    const int x = W / 2, y = H / 2;
+    const int x = W / 2;
+    const int y = H / 2;
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
             if (dx == 0 && dy == 0) {
@@ -768,7 +770,7 @@ test_gunpowder_without_impulses_burns_to_fire(void) {
      * leaves is a transient that can decay before the last resolves.
      * Sampling at the step a cell stops being gunpowder keeps the claim
      * indifferent to how long the fuse burns. */
-    uint8_t became[4] = {0xFFu, 0xFFu, 0xFFu, 0xFFu};
+    uint8_t became[4] = {0xFFU, 0xFFU, 0xFFU, 0xFFU};
     const int cx[4] = {3, 4, 3, 4};
     const int cy[4] = {H - 3, H - 3, H - 2, H - 2};
     bool all_resolved = false;
@@ -779,7 +781,7 @@ test_gunpowder_without_impulses_burns_to_fire(void) {
             const cell_t c = sand_at(&s, cx[k], cy[k]);
             if (cell_is_gunpowder(c)) {
                 all_resolved = false;
-            } else if (became[k] == 0xFFu) {
+            } else if (became[k] == 0xFFU) {
                 became[k] = CELL_MATERIAL(c);
             }
         }
@@ -912,7 +914,7 @@ test_heat_dries_wet_gunpowder_one_level_with_steam(void) {
  * independent of that trial's own moisture roll. */
 static void
 ignite_trial_row(sand_t* g, uint8_t* cells, int w, int trials, cell_t gp_byte) {
-    sand_init(g, cells, w, 2, 7u);
+    sand_init(g, cells, w, 2, 7U);
     sand_set_mobility(g, 0);   /* keep fire from rising away before
                                 * reactions gets a turn at it this same
                                 * step, see test_an_open_gas_pocket_
@@ -964,13 +966,14 @@ test_damp_gunpowder_ignites_less_readily_than_dry(void) {
     sand_step(dry_g, 0, 1000, 0);
     sand_step(damp_g, 0, 1000, 0);
 
-    int dry_lit = 0, damp_lit = 0;
+    int dry_lit = 0;
+    int damp_lit = 0;
     for (int i = 0; i < DAMP_TEST_TRIALS; i++) {
-        const cell_t dry_c = sand_at(dry_g, i * 3 + 1, 0);
+        const cell_t dry_c = sand_at(dry_g, (i * 3) + 1, 0);
         if (cell_is_gunpowder(dry_c) && cell_code(dry_c) == GUNPOWDER_LIT) {
             dry_lit++;
         }
-        const cell_t damp_c = sand_at(damp_g, i * 3 + 1, 0);
+        const cell_t damp_c = sand_at(damp_g, (i * 3) + 1, 0);
         if (cell_is_gunpowder(damp_c) && cell_code(damp_c) == GUNPOWDER_LIT) {
             damp_lit++;
         }
@@ -1017,13 +1020,13 @@ test_water_wets_gunpowder_and_it_dries_out_slowly(void) {
      * at 2 in 256, a mean of ~128 steps - long enough that an open
      * diagonal lets the powder slide away and the water spread off,
      * losing the cell under test. */
-    sand_set(&s, 2, H / 2 + 1, STONE);
-    sand_set(&s, 3, H / 2 + 1, STONE);
-    sand_set(&s, 4, H / 2 + 1, STONE);
-    sand_set(&s, 2, H / 2 - 1, STONE);
-    sand_set(&s, 4, H / 2 - 1, STONE);
+    sand_set(&s, 2, (H / 2) + 1, STONE);
+    sand_set(&s, 3, (H / 2) + 1, STONE);
+    sand_set(&s, 4, (H / 2) + 1, STONE);
+    sand_set(&s, 2, (H / 2) - 1, STONE);
+    sand_set(&s, 4, (H / 2) - 1, STONE);
     sand_set(&s, 3, H / 2, GUNPOWDER_CELL(0));
-    sand_set(&s, 3, H / 2 - 1, WATER);
+    sand_set(&s, 3, (H / 2) - 1, WATER);
 
     /* Breaks the moment it wets, so this only has to be generous - and it
      * has to be, because a keg soaks deliberately slowly (reaction_t.soaks
@@ -1047,9 +1050,10 @@ test_water_wets_gunpowder_and_it_dries_out_slowly(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(dirt_grid, "dirt dry-out comparison grid must fit in what the framebuffer "
                                             "leaves");
 
-    sand_t gp, dirt;
-    sand_init(&gp, gp_grid, 3, WET_DRY_TRIALS, 21u);
-    sand_init(&dirt, dirt_grid, 3, WET_DRY_TRIALS, 21u);
+    sand_t gp;
+    sand_t dirt;
+    sand_init(&gp, gp_grid, 3, WET_DRY_TRIALS, 21U);
+    sand_init(&dirt, dirt_grid, 3, WET_DRY_TRIALS, 21U);
 
     for (int y = 0; y < WET_DRY_TRIALS; y++) {
         sand_set(&gp, 0, y, STONE);
@@ -1067,7 +1071,8 @@ test_water_wets_gunpowder_and_it_dries_out_slowly(void) {
         sand_step(&dirt, 0, 1000, 0);
     }
 
-    int gp_wet = 0, dirt_wet = 0;
+    int gp_wet = 0;
+    int dirt_wet = 0;
     for (int y = 0; y < WET_DRY_TRIALS; y++) {
         if (moisture_of(sand_at(&gp, 1, y), gp_r) != 0) {
             gp_wet++;
@@ -1247,7 +1252,8 @@ test_a_wet_neighbour_does_not_put_out_a_lit_fuse(void) {
  * the only thing asserted below is that the cell is never CONVERTED. */
 static void
 test_a_root_does_not_drink_from_or_eat_gunpowder(void) {
-    const int cx = ROOT_X, cy = ROOT_Y;
+    const int cx = ROOT_X;
+    const int cy = ROOT_Y;
     sheltered_root_fixture();
     const reaction_t* gp_r = reaction_of(GUNPOWDER_BASE);
     const uint8_t gp_moisture = 2;
@@ -1275,7 +1281,8 @@ test_plants_do_not_sprout_in_gunpowder(void) {
     sand_clear(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
-    const int cx = W / 2, cy = 3;
+    const int cx = W / 2;
+    const int cy = 3;
     /* Stone from cx - 2 to cx + 1, so the left candidate has ledge past
      * it: a powder blocked straight down still has an open diagonal-down
      * to escape the very cell this test means to watch. */

@@ -2,7 +2,7 @@ name: QEMU Tests
 
 # Every suite in the real Xtensa image, under Espressif's QEMU: the proof the
 # host runner cannot give, that the chip's build behaves as the laptop's does.
-# docs/Testing-Guide.md's QEMU section says what a run is evidence of. Too
+# docs/testing/QEMU.md says what a run is evidence of. Too
 # slow for every pull request, so it runs on main, by hand, and on a pull
 # request that changes the harness itself.
 
@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # A build fetches the bakes launcher/bakes.lock names (bake/bake.py): from the

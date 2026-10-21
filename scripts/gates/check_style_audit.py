@@ -31,7 +31,6 @@ from c_comments import EXCLUDED, blank_comments, scan  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
-from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
@@ -315,6 +314,16 @@ def _fix_include_layer(root, path, text):
     return "".join(lines) if changed else None
 
 
+@c_line_rule("PMU-OWNER")
+def pmu_owner(root, path, text):
+    rel = pathlib.PurePosixPath(relpath(root, path))
+    if rel.parts[:2] != ("launcher", "main") or len(rel.parts) < 3 or rel.parts[2] in ("power", "board"):
+        return
+    for number, line in enumerate(text.splitlines(), 1):
+        if re.search(r"\b(?:BOARD_PMU_I2C_ADDR|AXP2101_[A-Za-z0-9_]*)\b", line):
+            yield number, "PMU registers and address belong to power/"
+
+
 # RULE: a folder may include only a strictly lower tier of
 # docs/Firmware-Architecture.md's "Layers" (LAYER_ROWS below, one string per
 # row, top first, grouped into system, engine and platform bands; folders
@@ -325,7 +334,7 @@ def _fix_include_layer(root, path, text):
 LAYER_BANDS = (
     ("system", ("apps", "shell", "boot selftest console", "app")),
     ("engine", ("ui scene", "render", "draw anim sound", "asset")),
-    ("platform", ("input audio", "display", "gfx", "services", "profile", "core", "board", "build")),
+    ("platform", ("input audio", "power", "display", "gfx", "services", "profile", "core", "board", "build")),
 )
 LAYER_ROWS = tuple(row for _band, rows in LAYER_BANDS for row in rows)
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
@@ -643,7 +652,7 @@ def rule_model_named_tool(root, path, text):
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 KNOWN_MARKERS = re.compile(
     re.escape(DOC_CONSTANTS_ESCAPE) + "|" +
-    re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED|" + GENERATED_BLOCK.pattern)
+    r"(?:BEGIN|END)\s+GENERATED|" + GENERATED_BLOCK.pattern)
 
 
 # RULE: a working copy written with CRLF. .gitattributes normalises it on

@@ -59,7 +59,7 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "input/input.h"
-#include "input/tilt.h"
+#include "input/motion/tilt.h"
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
 #include "palette.h"
@@ -765,7 +765,7 @@ static int
 draw_one_row(gfx_color_t* fb, uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1, int wx0, int wx1,
              bool force_full) {
     const uint8_t* row = &buffers.grid[cy * grid_w];
-    uint8_t* index_row = index_image != NULL ? index_image + cy * grid_w : NULL;
+    uint8_t* index_row = index_image != NULL ? index_image + (cy * grid_w) : NULL;
 
     paint_row(fb, index_row, cy, row, wx0, wx1, force_full);
     return row_runs_find_or_span(row, grid_w, SAND_EMPTY, cur_x0, cur_x1);
@@ -829,7 +829,8 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
                bool healing) {
     int64_t pixels = 0;
     for (int i = 0; i < send_n; i++) {
-        int sx0, sx1;
+        int sx0;
+        int sx1;
         if (!sand_paint_clip_send(send_x0[i], send_x1[i], wx0, wx1, indexed, paint_row_state.row_changed_x0[cy],
                                   paint_row_state.row_changed_x1[cy], &sx0, &sx1)) {
             continue;
@@ -851,19 +852,22 @@ static int64_t
 draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, bool indexed, bool healing) {
     buffers.dirty_rows[cy] = 0;
 
-    int wx0, wx1;
+    int wx0;
+    int wx1;
     row_paint_span(cy, &wx0, &wx1);
     buffers.dirty_x0[cy] = (uint16_t)grid_w;
     buffers.dirty_x1[cy] = 0;
 
-    uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
+    uint16_t cur_x0[ROW_MAX_RUNS];
+    uint16_t cur_x1[ROW_MAX_RUNS];
     const int cur_n = draw_one_row(fb, index_image, cy, cur_x0, cur_x1, wx0, wx1, force_full);
 
     uint16_t* prev_x0 = &buffers.row_run_x0[cy * ROW_MAX_RUNS];
     uint16_t* prev_x1 = &buffers.row_run_x1[cy * ROW_MAX_RUNS];
     const int prev_n = buffers.row_run_n[cy];
 
-    uint16_t send_x0[2 * ROW_MAX_RUNS], send_x1[2 * ROW_MAX_RUNS];
+    uint16_t send_x0[2 * ROW_MAX_RUNS];
+    uint16_t send_x1[2 * ROW_MAX_RUNS];
     const int send_n = row_runs_reconcile(cur_x0, cur_x1, cur_n, prev_x0, prev_x1, prev_n, send_x0, send_x1);
 
     const int64_t pixels = mark_row_sends(cy, wx0, wx1, send_x0, send_x1, send_n, indexed, healing);
@@ -952,17 +956,18 @@ draw_emitter_markers(void) {
     const int count = sand_emitter_count(&sim);
 
     for (int i = 0; i < count; i++) {
-        int ex, ey;
+        int ex;
+        int ey;
         cell_t ecell;
         if (!sand_emitter_at(&sim, i, &ex, &ey, &ecell)) {
             continue; /* not expected, see sand_emitter_count()'s contract */
         }
         (void)ecell; /* the marker's colour is fixed, not the material's */
 
-        const int mid_x = ex * cell + cell / 2;
-        const int mid_y = ey * cell + cell / 2;
-        const int px = mid_x - EMITTER_MARKER_PX / 2;
-        const int py = mid_y - EMITTER_MARKER_PX / 2;
+        const int mid_x = (ex * cell) + (cell / 2);
+        const int mid_y = (ey * cell) + (cell / 2);
+        const int px = mid_x - (EMITTER_MARKER_PX / 2);
+        const int py = mid_y - (EMITTER_MARKER_PX / 2);
         draw_rect(px, py, EMITTER_MARKER_PX, EMITTER_MARKER_PX, marker);
         gfx_mark_dirty(px, py, EMITTER_MARKER_PX, EMITTER_MARKER_PX);
     }
@@ -1171,8 +1176,10 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
  * every frame by design and would be useless to log. */
 static void
 log_direction_change(int gx, int gy, int jostle, const input_motion_t* motion) {
-    static int last_dx = 99, last_dy = 99;
-    int dx, dy;
+    static int last_dx = 99;
+    static int last_dy = 99;
+    int dx;
+    int dy;
     sand_gravity_direction(gx, gy, &dx, &dy);
     if (dx == last_dx && dy == last_dy) {
         return;
@@ -1226,7 +1233,8 @@ count_occupied_in_block(int bx, int by) {
 
 static void
 count_awake(int* out_blocks, int* out_cells) {
-    int blocks = 0, cells = 0;
+    int blocks = 0;
+    int cells = 0;
     for (int by = 0; by < block_rows; by++) {
         for (int bx = 0; bx < block_cols; bx++) {
             if (sand_block_settled(&sim, bx, by)) {
@@ -1380,7 +1388,10 @@ sand_update(uint32_t dt_ms, const input_t* input) {
         return;
     }
 
-    int gx, gy, flow, jostle;
+    int gx;
+    int gy;
+    int flow;
+    int jostle;
     input_motion_t motion = {0};
     read_gravity_input(dt_ms, &motion, &gx, &gy, &flow, &jostle);
 
@@ -1627,8 +1638,8 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 #if CONFIG_LAUNCHER_SELFTEST
 static void
 sand_app_test_tap_menu_rect(recti_t r) {
-    const int x = r.x + r.w / 2;
-    const int y = r.y + r.h / 2;
+    const int x = r.x + (r.w / 2);
+    const int y = r.y + (r.h / 2);
     const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
     const input_t hold = {.down = true, .x = x, .y = y};
     const input_t release = {.released = true, .x = x, .y = y};
@@ -1683,7 +1694,7 @@ sand_app_test_start_button_touch(void) {
     title_screen_layout_t title;
     title_screen_layout(ui_width(), ui_height(), &title);
     const recti_t start_rect = title.buttons[SAND_TITLE_START];
-    const input_t touch = {.x = start_rect.x + start_rect.w / 2, .y = start_rect.y + start_rect.h / 2};
+    const input_t touch = {.x = start_rect.x + (start_rect.w / 2), .y = start_rect.y + (start_rect.h / 2)};
     ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", touch.x, touch.y, start_rect.x,
              start_rect.y, start_rect.w, start_rect.h);
     return touch;

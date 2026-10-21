@@ -33,7 +33,7 @@ any type-specific operations.
 | Template header | Macros | Generates | Instantiated for |
 |---|---|---|---|
 | `vec2_template.h` | `MATH_DEFINE_VEC2` | the vec2 type, arithmetic, dot | `vec2f`, `vec2i`, `vec2s`, `vec2x` |
-| `vec3_template.h` | `MATH_DEFINE_VEC3`, `MATH_DEFINE_VEC3_NORMALIZE` | the vec3 type, arithmetic, dot, cross; normalize | all four; normalize `f x` |
+| `vec3_template.h` | `MATH_DEFINE_VEC3`, `MATH_DEFINE_VEC3_NORMALIZE` | the vec3 type, arithmetic, dot, cross; normalize | all four; normalize `f` only; `vec3x` normalization is hand-written |
 | `vec_ops_template.h` | `MATH_DEFINE_VEC_OPS`, `MATH_DEFINE_VEC_LERP`, `MATH_DEFINE_VEC_LERP_RATIO` | component-wise operations, lerp | every vector; lerp `f x`, ratio lerp `i s` |
 | `vec_swizzle_template.h` | `MATH_DEFINE_VEC_SWIZZLE` | swizzles between vec2 and vec3 | `vec3f`, `vec3i`, `vec3s`, `vec3x` |
 | `quat_template.h` | `MATH_DEFINE_QUAT`, `MATH_DEFINE_QUAT_NORMALIZE` | rotations | `quatf`, `quatx` |
@@ -49,7 +49,8 @@ The macro arguments:
 | Argument | What it is |
 |---|---|
 | `P` | The type being made, e.g. `vec3f` (its functions are `vec3f_add`, ...) |
-| `V`, `V2`, `R`, `Q`, `M` | The vector, optional vec2, rectangle, quaternion and matrix types a family builds on |
+| `V`, `R`, `Q`, `M` | The vector, rectangle, quaternion and matrix types a family builds on |
+| `L` | The projection lens type used by `MATH_DEFINE_PLANE`, e.g. `projectf` |
 | `T` | The scalar (`float`, `int`, `int32_t`, `int16_t`); `recti` keeps plain `int` |
 | `W` | The type a dot product sums in (wider than `T` for an integer) |
 | `OPS` | The scalar operations' prefix (`mathf`, `mathi`, `maths`, `mathx`): the static inline functions `OPS_add`, `OPS_mul`, `OPS_one` and the rest in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`. A family names only the ones it uses, so a type without `OPS_div` or `OPS_sqrt` gets no normalize. |

@@ -64,10 +64,10 @@ tc_collect_core1(void) {
 
 static uint32_t
 tc_hash(const uint8_t* bytes, size_t n) {
-    uint32_t h = 2166136261u;
+    uint32_t h = 2166136261U;
     for (size_t i = 0; i < n; i++) {
         h ^= bytes[i];
-        h *= 16777619u;
+        h *= 16777619U;
     }
     return h;
 }
@@ -77,7 +77,7 @@ tc_scatter(sand_t* s, uint8_t* cells, uint32_t seed, const cell_t* picks, int co
     sand_init(s, cells, TC_W, TC_H, seed);
 
     rng_t r;
-    rng_seed(&r, seed ^ 0xA5A5A5A5u);
+    rng_seed(&r, seed ^ 0xA5A5A5A5U);
 
     for (int y = 0; y < TC_H; y++) {
         for (int x = 0; x < TC_W; x++) {
@@ -116,7 +116,7 @@ tc_build_liquid_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     sand_init(s, cells, TC_W, TC_H, seed);
 
     rng_t r;
-    rng_seed(&r, seed ^ 0x5A5A5A5Au);
+    rng_seed(&r, seed ^ 0x5A5A5A5AU);
 
     for (int y = 0; y < TC_H; y++) {
         for (int x = 0; x < TC_W; x++) {
@@ -174,7 +174,7 @@ tc_run_scene_and_hash(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed,
     tc_assert_split_arm_swept_split(swept_before, two_core);
 
     uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
-    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1u;
+    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1U;
 
     free(scratch);
     free(cells);
@@ -202,7 +202,7 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
     void* scratch = lane_scratch_open(&s);
 
     rng_t r;
-    rng_seed(&r, seed ^ 0xA5A5A5A5u);
+    rng_seed(&r, seed ^ 0xA5A5A5A5U);
     static const cell_t picks[] = {SAND, WATER, OIL, GAS, STONE};
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
@@ -228,7 +228,7 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
     tc_collect_core1();
 
     uint32_t result = tc_hash(cells, (size_t)w * (size_t)h);
-    result ^= tc_hash(blocks, (size_t)block_cols * (size_t)block_rows) * 0x9E3779B1u;
+    result ^= tc_hash(blocks, (size_t)block_cols * (size_t)block_rows) * 0x9E3779B1U;
     free(scratch);
     free(cells);
     free(blocks);
@@ -262,7 +262,7 @@ test_two_core_step_is_deterministic_across_seeds(void) {
      * boundaries happen to land - see
      * test_a_passing_test_may_be_passing_by_arrangement's own reasoning
      * elsewhere in this tree. */
-    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u, 99991u, 0xC0FFEEu};
+    static const uint32_t seeds[] = {1U, 7U, 42U, 12345U, 99991U, 0xC0FFEEU};
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
         tc_assert_seed_is_deterministic(seeds[i], 40);
@@ -283,7 +283,7 @@ static void
 test_the_split_sweep_ignores_how_its_lanes_interleave(void) {
     static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
         SAND_CHUNK_PASS_LANE0_EAGER, SAND_CHUNK_PASS_LANE1_EAGER, SAND_CHUNK_PASS_ALTERNATE};
-    static const uint32_t seeds[] = {1u, 7u, 12345u};
+    static const uint32_t seeds[] = {1U, 7U, 12345U};
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
         sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
@@ -311,7 +311,7 @@ static void
 test_the_split_liquid_pass_ignores_how_its_lanes_interleave(void) {
     static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
         SAND_CHUNK_PASS_LANE0_EAGER, SAND_CHUNK_PASS_LANE1_EAGER, SAND_CHUNK_PASS_ALTERNATE};
-    static const uint32_t seeds[] = {3u, 19u, 65521u};
+    static const uint32_t seeds[] = {3U, 19U, 65521U};
     const split_passes_scope_t crossflow = split_passes_scope_begin(SAND_SPLIT_CROSSFLOW);
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
@@ -349,7 +349,7 @@ tc_no_op_job(void* ctx) {
  * itself. */
 static void
 test_a_core_1_lane_lands_on_the_solo_board(void) {
-    static const uint32_t seeds[] = {1u, 7u, 12345u};
+    static const uint32_t seeds[] = {1U, 7U, 12345U};
     const split_passes_scope_t crossflow = split_passes_scope_begin(SAND_SPLIT_CROSSFLOW);
 
     TEST_ASSERT_TRUE_MESSAGE(job_try_core1(tc_no_op_job, NULL, 0), "no core-1 worker to compare against");
@@ -382,7 +382,7 @@ test_split_gas_walk_uses_hashed_rng(void) {
     TEST_ASSERT_NOT_NULL(cells);
 
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 91u);
+    sand_init(&s, cells, TC_W, TC_H, 91U);
     void* scratch = lane_scratch_open(&s);
     sand_set_decay(&s, 0);
     for (int y = 1; y < TC_H - 1; y += 3) {
@@ -417,7 +417,7 @@ tc_run_gas_and_hash(uint32_t seed, int gx, int gy, int dx, int dy) {
     void* scratch = lane_scratch_open(&s);
     sand_set_decay(&s, 0);
     rng_t placement;
-    rng_seed(&placement, seed ^ 0xA5A5A5A5u);
+    rng_seed(&placement, seed ^ 0xA5A5A5A5U);
     for (int y = 1; y < TC_H - 1; y++) {
         for (int x = 1; x < TC_W - 1; x++) {
             if (rng_below(&placement, 3) == 0) {
@@ -452,7 +452,7 @@ static void
 test_the_split_gas_passes_ignore_how_their_lanes_interleave(void) {
     static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
         SAND_CHUNK_PASS_LANE0_EAGER, SAND_CHUNK_PASS_LANE1_EAGER, SAND_CHUNK_PASS_ALTERNATE};
-    static const uint32_t seeds[] = {1u, 17u, 91u};
+    static const uint32_t seeds[] = {1U, 17U, 91U};
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
         const size_t g = i % (sizeof tc_ring / sizeof tc_ring[0]);
@@ -485,7 +485,7 @@ test_the_split_gas_passes_ignore_how_their_lanes_interleave(void) {
  * samples, and why it also runs with the order reversed. */
 static void
 test_split_gas_spread_never_hops_into_a_chunk_ranked_later(void) {
-    static const uint32_t seeds[] = {1u, 17u, 91u};
+    static const uint32_t seeds[] = {1U, 17U, 91U};
     const unsigned runs_before = sand_gas_equalise_runs;
     unsigned count[2];
 
@@ -518,8 +518,8 @@ test_split_gas_spread_never_hops_into_a_chunk_ranked_later(void) {
  * splitting anything on a board with too few chunk rows. */
 static void
 test_two_core_step_actually_changes_the_draw_stream(void) {
-    const uint32_t serial = tc_run_and_hash(3u, 40, false);
-    const uint32_t two_core = tc_run_and_hash(3u, 40, true);
+    const uint32_t serial = tc_run_and_hash(3U, 40, false);
+    const uint32_t two_core = tc_run_and_hash(3U, 40, true);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(serial, two_core,
                                   "two-core stepping produced the same hash as serial on a "
@@ -531,7 +531,7 @@ test_two_core_step_actually_changes_the_draw_stream(void) {
 /* The smallest grid the shipped step still splits. */
 static void
 test_two_core_step_changes_the_draw_stream_at_the_smallest_split_quality(void) {
-    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u, 99991u, 0xC0FFEEu};
+    static const uint32_t seeds[] = {1U, 7U, 42U, 12345U, 99991U, 0xC0FFEEU};
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
         const uint32_t serial = tc_run_quality_and_hash(92, 112, seeds[i], false);
@@ -552,7 +552,7 @@ test_a_grid_under_the_split_floor_steps_serially_unless_a_side_is_forced(void) {
         int w, h;
     } qualities[] = {{61, 74}, {46, 56}};
 
-    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u};
+    static const uint32_t seeds[] = {1U, 7U, 42U, 12345U};
 
     for (size_t q = 0; q < sizeof qualities / sizeof qualities[0]; q++) {
         const int w = qualities[q].w;
@@ -590,7 +590,7 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
     TEST_ASSERT_NOT_NULL(blocks);
 
     sand_t s;
-    tc_build_scattered_scene(&s, cells, 17u);
+    tc_build_scattered_scene(&s, cells, 17U);
     sand_enable_sleeping(&s, blocks);
     void* scratch = lane_scratch_open(&s);
 
@@ -602,7 +602,7 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
     }
 
     const unsigned swept_before = sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP];
-    const split_passes_scope_t split = split_passes_scope_begin(0u);
+    const split_passes_scope_t split = split_passes_scope_begin(0U);
     sand_set_two_core_step(true);
     run_steps(&s, 60, 0, 1000);
     sand_set_two_core_step(false);
@@ -685,7 +685,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
     uint8_t* cells;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 9u);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 9U);
 
     sand_fill_box(&s, 0, TC_H - 1, TC_W, TC_H, STONE);
     sand_fill_box(&s, 2, 4, TC_W - 2, TC_H / 2, SAND);
@@ -719,7 +719,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
      * pixel-exact one, and the pile's own surface already has real jumps
      * near its edges. The claim is only that a boundary is not a special,
      * repeatable outlier. */
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(interior_worst + TC_W / 10, boundary_worst, why);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(interior_worst + (TC_W / 10), boundary_worst, why);
 }
 
 /* A free-fall step advances the phase without touching a cell, so the next
@@ -753,7 +753,7 @@ tc_board_open(int w, int h, int phase) {
     TEST_ASSERT_NOT_NULL(b->blocks);
     TEST_ASSERT_NOT_NULL(b->stamps);
 
-    sand_init(&b->s, b->cells, w, h, 1u);
+    sand_init(&b->s, b->cells, w, h, 1U);
     sand_enable_sleeping(&b->s, b->blocks);
     sand_enable_step_stamps(&b->s, b->stamps);
     b->scratch = lane_scratch_open(&b->s);
@@ -836,7 +836,8 @@ tc_assert_free_fall_moves_one_cell(int phase, int gx, int gy, int start_x, int s
 static void
 tc_assert_forced_slide_moves_at_most_one_cell(int phase, int gx, int gy, int start_x, int start_y) {
     tc_board_t* b = tc_board_open(TC_W, TC_H, phase);
-    int dx, dy;
+    int dx;
+    int dy;
     sand_gravity_direction(gx, gy, &dx, &dy);
     sand_set(&b->s, start_x + dx, start_y + dy, STONE);
     sand_set(&b->s, start_x, start_y, SAND);
@@ -863,7 +864,7 @@ tc_assert_one_cell_at(int phase, int gx, int gy, int x, int y) {
 static void
 tc_assert_row_seams_move_one_cell(int phase, int side) {
     for (int boundary = side; boundary < TC_H; boundary += side) {
-        const int rows[] = {boundary - 2, boundary - 1, boundary, boundary + 1, boundary - side / 2};
+        const int rows[] = {boundary - 2, boundary - 1, boundary, boundary + 1, boundary - (side / 2)};
         for (size_t r = 0; r < sizeof rows / sizeof rows[0]; r++) {
             for (size_t g = 0; g < sizeof tc_ring / sizeof tc_ring[0]; g++) {
                 if (tc_ring[g][0] == 0 || tc_ring[g][1] == 0) {
@@ -912,8 +913,8 @@ static void
 tc_assert_a_crossing_liquid_marks_where_it_lands(int gx, int gy, int start_x, int start_y, int dest_x, int dest_y) {
     tc_board_t* b = tc_board_open(TC_W, TC_H, 1);
     const int cols = b->s.block_cols;
-    const int started = (start_y / SAND_BLOCK_H) * cols + start_x / SAND_BLOCK_W;
-    const int landed = (dest_y / SAND_BLOCK_H) * cols + dest_x / SAND_BLOCK_W;
+    const int started = ((start_y / SAND_BLOCK_H) * cols) + (start_x / SAND_BLOCK_W);
+    const int landed = ((dest_y / SAND_BLOCK_H) * cols) + (dest_x / SAND_BLOCK_W);
 
     sand_set(&b->s, start_x, start_y, WATER);
     tc_board_step(b, gx, gy, true);
@@ -942,8 +943,8 @@ tc_assert_a_crossing_liquid_marks_where_it_lands(int gx, int gy, int start_x, in
 static void
 test_a_liquid_crossing_a_chunk_border_stays_in_cross_flow_reach(void) {
     const int side = 2 * SAND_BLOCK_H; /* a multiple of both block axes */
-    const int x = (TC_W / 2 / SAND_BLOCK_W) * SAND_BLOCK_W + SAND_BLOCK_W / 2;
-    const int y = (side / 2 / SAND_BLOCK_H) * SAND_BLOCK_H + SAND_BLOCK_H / 2;
+    const int x = ((TC_W / 2 / SAND_BLOCK_W) * SAND_BLOCK_W) + (SAND_BLOCK_W / 2);
+    const int y = ((side / 2 / SAND_BLOCK_H) * SAND_BLOCK_H) + (SAND_BLOCK_H / 2);
 
     TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side, side), "the crossing side must clear the chunk floor");
     tc_assert_a_crossing_liquid_marks_where_it_lands(0, 1000, x, side - 1, x, side);
@@ -973,9 +974,10 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
             TEST_ASSERT_NOT_NULL(serial_blocks);
             TEST_ASSERT_NOT_NULL(two_core_blocks);
 
-            sand_t serial_s, two_core_s;
-            sand_init(&serial_s, serial_cells, TC_W, TC_H, 1u);
-            sand_init(&two_core_s, two_core_cells, TC_W, TC_H, 1u);
+            sand_t serial_s;
+            sand_t two_core_s;
+            sand_init(&serial_s, serial_cells, TC_W, TC_H, 1U);
+            sand_init(&two_core_s, two_core_cells, TC_W, TC_H, 1U);
             sand_enable_sleeping(&serial_s, serial_blocks);
             sand_enable_sleeping(&two_core_s, two_core_blocks);
             void* scratch = lane_scratch_open(&two_core_s);
@@ -1088,8 +1090,8 @@ test_smaller_quality_seams_match_serial(void) {
  * astride one for every step it can travel. */
 static void
 tc_build_solid_body(sand_t* s, int side, cell_t fill, int* out_x0, int* out_y0) {
-    const int x0 = side - TC_BODY_SIDE / 2;
-    const int y0 = side - TC_BODY_SIDE / 2;
+    const int x0 = side - (TC_BODY_SIDE / 2);
+    const int y0 = side - (TC_BODY_SIDE / 2);
 
     sand_fill_box(s, x0, y0, x0 + TC_BODY_SIDE, y0 + TC_BODY_SIDE, fill);
     *out_x0 = x0;
@@ -1142,7 +1144,9 @@ static int
 tc_body_breaks_at(cell_t fill, material_id_t material, int tx, int ty, bool two_core) {
     const int side = tc_force_square_side(TC_W, TC_H);
     tc_board_t* b = tc_board_open(TC_W, TC_H, 1);
-    int x0, y0, broke = -1;
+    int x0;
+    int y0;
+    int broke = -1;
 
     tc_build_solid_body(&b->s, side, fill, &x0, &y0);
     const int steps = tc_body_steps(x0, y0, tx, ty);
@@ -1245,9 +1249,9 @@ static void
 tc_build_gas_shaft(sand_t* s, int side, int dx, int dy) {
     const bool vertical = (dy != 0);
     const int span = vertical ? TC_H : TC_W;
-    const int across = side + side / 2;
+    const int across = side + (side / 2);
     const int rise = -(vertical ? dy : dx);
-    const int lead = (rise < 0) ? 2 * side - 1 : 2 * side;
+    const int lead = (rise < 0) ? (2 * side) - 1 : 2 * side;
     const int from = (rise < 0) ? lead : 0;
     const int to = (rise < 0) ? span - 1 : lead;
 
@@ -1294,7 +1298,7 @@ test_a_split_rising_body_of_gas_opens_no_gap(void) {
 
     /* The run has to cross a border, and its shaft has to clear the walls. */
     TEST_ASSERT_TRUE(2 * side < TC_W);
-    TEST_ASSERT_TRUE(side + side / 2 + 1 < TC_H);
+    TEST_ASSERT_TRUE(side + (side / 2) + 1 < TC_H);
 
     for (size_t i = 0; i < sizeof pulls / sizeof pulls[0]; i++) {
         for (int phase = 0; phase < TC_SHAFT_PHASES; phase++) {
@@ -1329,7 +1333,7 @@ tc_fuse_blast_impulses(bool two_core) {
     TEST_ASSERT_NOT_NULL(buf);
 
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 5u);
+    sand_init(&s, cells, TC_W, TC_H, 5U);
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
     sand_enable_impulses(&s, buf, TC_FUSE_IMPULSE_MAX);
 
@@ -1359,7 +1363,7 @@ tc_lava_burst_impulses(bool two_core) {
     TEST_ASSERT_NOT_NULL(buf);
 
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 9u);
+    sand_init(&s, cells, TC_W, TC_H, 9U);
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
     /* The NATURAL burst chance on purpose: forcing it certain would make
      * every candidate a winner and hide the thing this guards, which is that
@@ -1418,7 +1422,7 @@ test_a_settled_chunk_does_no_row_work(void) {
     uint8_t* cells;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 1u);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 1U);
     void* scratch = lane_scratch_open(&s);
     sand_fill_box(&s, 0, 0, TC_W, TC_H, STONE);
 
@@ -1478,7 +1482,7 @@ tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int 
     uint8_t* cells;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 1u);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 1U);
     void* scratch = lane_scratch_open(&s);
     sand_set_scatter(&s, 0);
     tc_prime_phase(&s, offset);
@@ -1490,7 +1494,7 @@ tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int 
     tc_collect_core1();
 
     uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
-    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1u;
+    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1U;
 
     if (out_n != NULL) {
         int n = 0;
@@ -1532,7 +1536,8 @@ test_two_core_step_conserves_grains_on_a_dense_column_and_pile(void) {
     for (size_t sc = 0; sc < sizeof scenes / sizeof scenes[0]; sc++) {
         for (size_t g = 0; g < sizeof gxs / sizeof gxs[0]; g++) {
             for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
-                int serial_n = 0, two_core_n = 0;
+                int serial_n = 0;
+                int two_core_n = 0;
                 tc_run_zero_rng_and_hash(scenes[sc].build, scenes[sc].steps, gxs[g], gys[g], offsets[o], false,
                                          &serial_n);
                 tc_run_zero_rng_and_hash(scenes[sc].build, scenes[sc].steps, gxs[g], gys[g], offsets[o], true,
@@ -1576,14 +1581,15 @@ test_landscape_water_column_has_no_line_mass_lag(void) {
     TEST_ASSERT_NOT_NULL(serial_blocks);
     TEST_ASSERT_NOT_NULL(split_blocks);
 
-    sand_t serial, split;
-    sand_init(&serial, serial_cells, TC_W, TC_H, 7u);
-    sand_init(&split, split_cells, TC_W, TC_H, 7u);
+    sand_t serial;
+    sand_t split;
+    sand_init(&serial, serial_cells, TC_W, TC_H, 7U);
+    sand_init(&split, split_cells, TC_W, TC_H, 7U);
     sand_enable_sleeping(&serial, serial_blocks);
     sand_enable_sleeping(&split, split_blocks);
     void* scratch = lane_scratch_open(&split);
     for (int y = 0; y < TC_H / 2; y++) {
-        for (int x = TC_W / 2 - 6; x < TC_W / 2 + 6; x++) {
+        for (int x = (TC_W / 2) - 6; x < (TC_W / 2) + 6; x++) {
             sand_set(&serial, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
             sand_set(&split, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
         }
@@ -1657,9 +1663,10 @@ test_split_gas_equalise_keeps_seam_order(void) {
         TEST_ASSERT_NOT_NULL(serial_cells);
         TEST_ASSERT_NOT_NULL(split_cells);
 
-        sand_t serial, split;
-        sand_init(&serial, serial_cells, TC_W, TC_H, 1u);
-        sand_init(&split, split_cells, TC_W, TC_H, 1u);
+        sand_t serial;
+        sand_t split;
+        sand_init(&serial, serial_cells, TC_W, TC_H, 1U);
+        sand_init(&split, split_cells, TC_W, TC_H, 1U);
         void* scratch = lane_scratch_open(&split);
         serial.step_phase = split.step_phase = (uint16_t)phase;
         const int boundary = tc_first_gas_equalise_boundary(&serial);
@@ -1778,7 +1785,7 @@ rc_build_isolated_fire_gas_pairs(sand_t* s, uint8_t* cells, int w, int h, uint32
     sand_init(s, cells, w, h, seed);
 
     rng_t r;
-    rng_seed(&r, seed ^ 0x51ED5EEDu);
+    rng_seed(&r, seed ^ 0x51ED5EEDU);
     for (int y = 3; y < h - 3; y += 4) {
         for (int x = 3; x < w - 3; x += 4) {
             sand_set(s, x, y, FIRE);
@@ -1817,7 +1824,7 @@ test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain(void) {
         int w, h;
     } qualities[] = {{TC_W, TC_H}, {92, 112}, {61, 74}, {46, 56}};
 
-    static const uint32_t seeds[] = {1u, 7u, 42u};
+    static const uint32_t seeds[] = {1U, 7U, 42U};
 
     for (size_t q = 0; q < sizeof qualities / sizeof qualities[0]; q++) {
         for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
@@ -1842,7 +1849,7 @@ rc_build_reaction_heavy_scene(sand_t* s, uint8_t* cells, int w, int h, uint32_t 
     sand_init(s, cells, w, h, seed);
 
     rng_t r;
-    rng_seed(&r, seed ^ 0x51ED5EEDu);
+    rng_seed(&r, seed ^ 0x51ED5EEDU);
     static const cell_t picks[] = {STONE, GLASS, OIL, GAS, WATER, LAVA, ACID};
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
@@ -1893,8 +1900,8 @@ rc_run_reaction_heavy_and_hash(int w, int h, uint32_t seed, int steps, bool two_
     tc_collect_core1();
 
     uint32_t hash = tc_hash(cells, (size_t)w * (size_t)h);
-    hash ^= tc_hash(block_state, blocks) * 0x9E3779B1u;
-    hash ^= tc_hash(rows, (size_t)h) * 0x85EBCA6Bu;
+    hash ^= tc_hash(block_state, blocks) * 0x9E3779B1U;
+    hash ^= tc_hash(rows, (size_t)h) * 0x85EBCA6BU;
     free(scratch);
     free(rows);
     free(block_state);
@@ -1936,7 +1943,7 @@ rc_run_deferred_storm_and_hash(sand_chunk_pass_driver_t driver) {
     TEST_ASSERT_NOT_NULL(cells);
 
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 9u);
+    sand_init(&s, cells, TC_W, TC_H, 9U);
     void* scratch = lane_scratch_open(&s);
     rc_paint_deferred_storm(&s);
 
@@ -1973,9 +1980,9 @@ test_every_deferred_reaction_effect_is_applied_exactly_once(void) {
     TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0, sand_reactions_defer_queued[1], "lane 1 deferred nothing to stress");
     TEST_ASSERT_EQUAL_UINT_MESSAGE(queued, sand_reactions_defer_applied,
                                    "a deferred reaction effect was lost or applied twice");
-    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(128u, sand_reactions_defer_peak_q8,
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(128U, sand_reactions_defer_peak_q8,
                                           "no queue got half full, so this scene is not stressing them");
-    TEST_ASSERT_LESS_THAN_UINT_MESSAGE(256u, sand_reactions_defer_peak_q8,
+    TEST_ASSERT_LESS_THAN_UINT_MESSAGE(256U, sand_reactions_defer_peak_q8,
                                        "a lane's queue filled, so the drop policy - not the drain - decided the board");
 
     static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
@@ -1996,7 +2003,7 @@ test_every_deferred_reaction_effect_is_applied_exactly_once(void) {
 
 static void
 test_reaction_split_is_deterministic_across_seeds(void) {
-    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u, 99991u};
+    static const uint32_t seeds[] = {1U, 7U, 42U, 12345U, 99991U};
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
         const uint32_t first = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
@@ -2014,7 +2021,7 @@ test_reaction_split_is_deterministic_across_seeds(void) {
  * split touches runs with real chance rolls rather than a fixed chain. */
 static void
 test_a_core_1_reaction_lane_lands_on_the_solo_heavy_board(void) {
-    static const uint32_t seeds[] = {1u, 7u, 42u};
+    static const uint32_t seeds[] = {1U, 7U, 42U};
 
     TEST_ASSERT_TRUE_MESSAGE(job_try_core1(tc_no_op_job, NULL, 0), "no core-1 worker to compare against");
     TEST_ASSERT_TRUE(job_wait(100));
@@ -2060,7 +2067,7 @@ static void
 test_the_split_reaction_pass_ignores_how_its_lanes_interleave(void) {
     static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
         SAND_CHUNK_PASS_LANE0_EAGER, SAND_CHUNK_PASS_LANE1_EAGER, SAND_CHUNK_PASS_ALTERNATE};
-    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u, 99991u};
+    static const uint32_t seeds[] = {1U, 7U, 42U, 12345U, 99991U};
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
         sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
@@ -2084,8 +2091,8 @@ test_the_split_reaction_pass_ignores_how_its_lanes_interleave(void) {
 
 static void
 test_reaction_split_actually_changes_the_draw_stream(void) {
-    const uint32_t serial = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
-    const uint32_t split = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, true);
+    const uint32_t serial = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3U, 30, false);
+    const uint32_t split = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3U, 30, true);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(serial, split,
                                   "reaction split produced the same hash as serial on a reaction-heavy "
@@ -2107,7 +2114,7 @@ tc_run_fluids_and_hash(bool two_core, bool with_scratch) {
     TEST_ASSERT_NOT_NULL(scratch);
 
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 5u);
+    sand_init(&s, cells, TC_W, TC_H, 5U);
     sand_enable_sleeping(&s, blocks);
     sand_enable_step_stamps(&s, stamps);
     sand_enable_lane_scratch(&s, with_scratch ? scratch : NULL);
@@ -2116,7 +2123,7 @@ tc_run_fluids_and_hash(bool two_core, bool with_scratch) {
     for (int y = 1; y < TC_H - 1; y++) {
         for (int x = 1; x < TC_W - 1; x++) {
             if ((x * 7 + y * 13) % 5 == 0) {
-                sand_set(&s, x, y, CELL_MAKE(MAT_WATER, 1 + (x + y) % 15));
+                sand_set(&s, x, y, CELL_MAKE(MAT_WATER, 1 + ((x + y) % 15)));
             } else if ((x * 3 + y * 5) % 11 == 0) {
                 sand_set(&s, x, y, GAS);
             }
@@ -2139,7 +2146,7 @@ tc_run_fluids_and_hash(bool two_core, bool with_scratch) {
     sand_set_two_core_step(false);
 
     uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
-    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1u;
+    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1U;
 
     free(scratch);
     free(stamps);
@@ -2169,7 +2176,7 @@ test_a_lane_merge_carries_every_content_flag_back(void) {
     uint8_t* cells;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 3u);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 3U);
     void* scratch = lane_scratch_open(&s);
     clear_content_flags(&s);
     s.may_have_materials = 0;
@@ -2191,7 +2198,7 @@ test_a_lane_merge_carries_every_content_flag_back(void) {
     lane->may_have_heat_holder = true;
     lane->may_have_condenser = true;
     lane->may_have_viscous_liquid = true;
-    lane->may_have_materials = (uint16_t)(1u << MAT_WATER);
+    lane->may_have_materials = (uint16_t)(1U << MAT_WATER);
     lane->faller_may_move = true;
     lanes[0].blocks[0] |= (uint8_t)(BLOCK_HAS_LIQUID | BLOCK_HAS_MOISTURE);
 
@@ -2214,7 +2221,7 @@ test_a_lane_merge_carries_every_content_flag_back(void) {
     TEST_ASSERT_TRUE_MESSAGE(merged.may_have_condenser, "may_have_condenser must survive the merge");
     TEST_ASSERT_TRUE_MESSAGE(merged.may_have_viscous_liquid, "may_have_viscous_liquid must survive the merge");
     TEST_ASSERT_TRUE_MESSAGE(merged.faller_may_move, "faller_may_move must survive the merge");
-    TEST_ASSERT_EQUAL_HEX16_MESSAGE((uint16_t)(1u << MAT_WATER), merged.may_have_materials,
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE((uint16_t)(1U << MAT_WATER), merged.may_have_materials,
                                     "may_have_materials must survive the merge");
     TEST_ASSERT_EQUAL_HEX8_MESSAGE((uint8_t)(BLOCK_HAS_LIQUID | BLOCK_HAS_MOISTURE),
                                    (uint8_t)(block & (BLOCK_HAS_LIQUID | BLOCK_HAS_MOISTURE)),
@@ -2288,7 +2295,7 @@ tc_build_gas_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     sand_init(s, cells, TC_W, TC_H, seed);
 
     rng_t r;
-    rng_seed(&r, seed ^ 0x3C3C3C3Cu);
+    rng_seed(&r, seed ^ 0x3C3C3C3CU);
 
     for (int y = TC_H / 4; y < TC_H; y++) {
         for (int x = 0; x < TC_W; x++) {
@@ -2309,7 +2316,7 @@ tc_chunks_swept_at(int side_x, int side_y) {
     TEST_ASSERT_NOT_NULL(cells);
 
     sand_t s;
-    tc_build_scattered_scene(&s, cells, 5u);
+    tc_build_scattered_scene(&s, cells, 5U);
     void* scratch = lane_scratch_open(&s);
 
     TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side_x, side_y), "a side at or over the minimum must be taken");
@@ -2356,7 +2363,8 @@ test_each_quality_grid_takes_the_cut_its_travel_class_asks_for(void) {
         for (int travel = 0; travel < SAND_CHUNK_TRAVEL_CLASSES; travel++) {
             const int* const expect = (travel == SAND_CHUNK_TRAVEL_X) ? want[i].along_x : want[i].other;
             sand_chunk_plan_t plan;
-            int side_x, side_y;
+            int side_x;
+            int side_y;
             char why[160];
 
             sand_chunk_table_sides(want[i].w, want[i].h, (sand_chunk_travel_t)travel, &side_x, &side_y);
@@ -2388,7 +2396,10 @@ test_only_a_step_travelling_along_x_alone_takes_the_long_cut(void) {
 static void
 tc_assert_forced_sides(const sand_t* probe, int force_x, int force_y, int want_x, int want_y) {
     for (int travel = 0; travel < SAND_CHUNK_TRAVEL_CLASSES; travel++) {
-        int table_x, table_y, side_x, side_y;
+        int table_x;
+        int table_y;
+        int side_x;
+        int side_y;
         char why[160];
 
         sand_chunk_table_sides(probe->w, probe->h, (sand_chunk_travel_t)travel, &table_x, &table_y);
@@ -2411,7 +2422,7 @@ test_a_forced_chunk_side_beats_the_table_on_either_axis(void) {
     sand_t* probe = malloc(sizeof *probe);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(probe);
-    sand_init(probe, cells, TC_W, TC_H, 0u);
+    sand_init(probe, cells, TC_W, TC_H, 0U);
 
     tc_assert_forced_sides(probe, 33, 0, 33, 0);
     tc_assert_forced_sides(probe, 0, 29, 0, 29);
@@ -2432,10 +2443,13 @@ test_a_stamp_is_never_read_under_a_cut_it_was_not_written_under(void) {
     TEST_ASSERT_NOT_NULL(stamps);
     TEST_ASSERT_NOT_NULL(s);
 
-    sand_init(s, cells, TC_W, TC_H, 0u);
+    sand_init(s, cells, TC_W, TC_H, 0U);
     sand_enable_step_stamps(s, stamps);
 
-    int wide_x, wide_y, narrow_x, narrow_y;
+    int wide_x;
+    int wide_y;
+    int narrow_x;
+    int narrow_y;
     sand_chunk_table_sides(TC_W, TC_H, SAND_CHUNK_TRAVEL_X, &wide_x, &wide_y);
     sand_chunk_table_sides(TC_W, TC_H, SAND_CHUNK_TRAVEL_OTHER, &narrow_x, &narrow_y);
     TEST_ASSERT_NOT_EQUAL_MESSAGE(wide_x, narrow_x, "this board must cut its two classes differently to mean anything");
@@ -2474,12 +2488,12 @@ test_a_step_hands_the_next_pass_no_marks_whatever_it_was_cut_by(void) {
     TEST_ASSERT_NOT_NULL(stamps);
     TEST_ASSERT_NOT_NULL(s);
 
-    tc_build_scattered_scene(s, cells, 11u);
+    tc_build_scattered_scene(s, cells, 11U);
     sand_enable_step_stamps(s, stamps);
     void* scratch = lane_scratch_open(s);
 
     const unsigned swept_before = sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP];
-    const split_passes_scope_t split = split_passes_scope_begin(0u);
+    const split_passes_scope_t split = split_passes_scope_begin(0U);
     sand_set_two_core_step(true);
     for (int i = 0; i < 12; i++) {
         const int arm = i % (int)(sizeof gx / sizeof gx[0]);
@@ -2524,11 +2538,11 @@ test_a_chosen_chunk_side_is_the_cut_every_split_pass_runs(void) {
  * reach: one axis cut into a single chunk, and a cut past SAND_CHUNKS_MAX. */
 static void
 test_a_chunk_side_the_grid_cannot_take_falls_back_to_one_lane(void) {
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_chunks_swept_at(TC_W, TC_H / 2), "one column of chunks must stay serial");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_chunks_swept_at(TC_W / 2, TC_H), "one row of chunks must stay serial");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, tc_chunks_swept_at(TC_W, TC_H / 2), "one column of chunks must stay serial");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, tc_chunks_swept_at(TC_W / 2, TC_H), "one row of chunks must stay serial");
     TEST_ASSERT_GREATER_THAN_INT(SAND_CHUNKS_MAX, ((TC_W + SAND_CHUNK_SIDE_MIN - 1) / SAND_CHUNK_SIDE_MIN)
                                                       * ((TC_H + SAND_CHUNK_SIDE_MIN - 1) / SAND_CHUNK_SIDE_MIN));
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_chunks_swept_at(SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, tc_chunks_swept_at(SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN),
                                    "a cut past SAND_CHUNKS_MAX must stay serial");
 }
 
@@ -2542,7 +2556,7 @@ tc_assert_no_sequential_draws(const char* scene) {
              "lanes replay the same numbers - use sand_rng_next_at() with a slot "
              "of its own at the site",
              scene, sand_split_sequential_draws);
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, sand_split_sequential_draws, why);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, sand_split_sequential_draws, why);
 }
 
 /* Neither arm of a one-core-against-two comparison can see this: both run
@@ -2562,14 +2576,14 @@ test_no_split_pass_draws_from_the_sequential_stream(void) {
     for (size_t i = 0; i < sizeof scenes / sizeof scenes[0]; i++) {
         const unsigned swept_before = sand_sweep_chunks_swept;
         sand_split_sequential_draws = 0;
-        (void)tc_run_scene_and_hash(scenes[i].build, 3u, 30, true);
+        (void)tc_run_scene_and_hash(scenes[i].build, 3U, 30, true);
         TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(swept_before, sand_sweep_chunks_swept,
                                               "the scene never took the split path, so zero proves nothing");
         tc_assert_no_sequential_draws(scenes[i].name);
     }
 
     sand_split_sequential_draws = 0;
-    (void)rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, true);
+    (void)rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3U, 30, true);
     tc_assert_no_sequential_draws("reaction-heavy");
 }
 
@@ -2582,10 +2596,10 @@ tc_run_crossflow_and_hash(void) {
     uint8_t* cells;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 5u);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 5U);
     sand_fill_box(&s, 0, TC_H / 3, TC_W, TC_H, CELL_MAKE(MAT_OIL, MASS_MAX));
     for (int x = 0; x < TC_W; x++) {
-        sand_set(&s, x, TC_H / 3 - 1, CELL_MAKE(MAT_OIL, (uint8_t)(1 + (x * 7) % MASS_MAX)));
+        sand_set(&s, x, (TC_H / 3) - 1, CELL_MAKE(MAT_OIL, (uint8_t)(1 + ((x * 7) % MASS_MAX))));
     }
     memset(blocks, BLOCK_HAS_LIQUID, sand_sleep_block_bytes(TC_W, TC_H));
     /* Pinned strictly between 0 and 255, the two values that skip the roll,
@@ -2631,10 +2645,10 @@ test_forced_hashed_draws_move_a_serial_board_and_repeat(void) {
     };
 
     for (size_t i = 0; i < sizeof scenes / sizeof scenes[0]; i++) {
-        const uint32_t plain = tc_run_scene_and_hash(scenes[i].build, 3u, 30, false);
+        const uint32_t plain = tc_run_scene_and_hash(scenes[i].build, 3U, 30, false);
         sand_force_hashed_rng(true);
-        const uint32_t forced = tc_run_scene_and_hash(scenes[i].build, 3u, 30, false);
-        const uint32_t again = tc_run_scene_and_hash(scenes[i].build, 3u, 30, false);
+        const uint32_t forced = tc_run_scene_and_hash(scenes[i].build, 3U, 30, false);
+        const uint32_t again = tc_run_scene_and_hash(scenes[i].build, 3U, 30, false);
         sand_force_hashed_rng(false);
         tc_assert_override_moves_and_repeats(scenes[i].name, plain, forced, again);
     }
@@ -2653,10 +2667,10 @@ test_forced_hashed_draws_move_a_serial_board_and_repeat(void) {
     sand_force_hashed_rng(false);
     tc_assert_override_moves_and_repeats("cross-flow", crossflow, crossflow_forced, crossflow_again);
 
-    const uint32_t reacted = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
+    const uint32_t reacted = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3U, 30, false);
     sand_force_hashed_rng(true);
-    const uint32_t reacted_forced = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
-    const uint32_t reacted_again = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
+    const uint32_t reacted_forced = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3U, 30, false);
+    const uint32_t reacted_again = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3U, 30, false);
     sand_force_hashed_rng(false);
     tc_assert_override_moves_and_repeats("reaction-heavy", reacted, reacted_forced, reacted_again);
 }
@@ -2665,25 +2679,25 @@ test_forced_hashed_draws_move_a_serial_board_and_repeat(void) {
  * on: armed and disarmed, the override leaves nothing behind. */
 static void
 test_the_hashed_draw_override_leaves_nothing_behind(void) {
-    const uint32_t mixed = tc_run_scene_and_hash(tc_build_scattered_scene, 3u, 30, false);
+    const uint32_t mixed = tc_run_scene_and_hash(tc_build_scattered_scene, 3U, 30, false);
     const uint32_t fluids = tc_run_fluids_and_hash(false, true);
     const uint32_t crossflow = tc_run_crossflow_and_hash();
-    const uint32_t reacted = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
+    const uint32_t reacted = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3U, 30, false);
 
     sand_force_hashed_rng(true);
-    (void)tc_run_scene_and_hash(tc_build_scattered_scene, 3u, 30, false);
+    (void)tc_run_scene_and_hash(tc_build_scattered_scene, 3U, 30, false);
     (void)tc_run_fluids_and_hash(false, true);
     (void)tc_run_crossflow_and_hash();
-    (void)rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
+    (void)rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3U, 30, false);
     sand_force_hashed_rng(false);
 
-    TEST_ASSERT_EQUAL_UINT32_MESSAGE(mixed, tc_run_scene_and_hash(tc_build_scattered_scene, 3u, 30, false),
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(mixed, tc_run_scene_and_hash(tc_build_scattered_scene, 3U, 30, false),
                                      "the mixed board changed after the override had been on and off again");
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(fluids, tc_run_fluids_and_hash(false, true),
                                      "the fluid board changed after the override had been on and off again");
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(crossflow, tc_run_crossflow_and_hash(),
                                      "the cross-flow board changed after the override had been on and off again");
-    TEST_ASSERT_EQUAL_UINT32_MESSAGE(reacted, rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false),
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(reacted, rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3U, 30, false),
                                      "the reaction board changed after the override had been on and off again");
 }
 
@@ -2756,34 +2770,34 @@ tc_build_falling_column_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
 
 static void
 test_a_settled_board_keeps_its_passes_on_one_core(void) {
-    const tc_dispatch_t settled = tc_dispatches_for(tc_build_settled_slab_scene, 11u, 8, 0, 1000);
+    const tc_dispatch_t settled = tc_dispatches_for(tc_build_settled_slab_scene, 11U, 8, 0, 1000);
 
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, settled.total, "a board with nothing awake must dispatch no split pass at all");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, settled.total, "a board with nothing awake must dispatch no split pass at all");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, settled.awake_blocks,
                                   "and the board must really have been asleep, or the test proves nothing");
 }
 
 static void
 test_a_single_falling_column_keeps_its_passes_on_one_core(void) {
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_falling_column_scene, 11u, 12, 0, 1000).total,
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, tc_dispatches_for(tc_build_falling_column_scene, 11U, 12, 0, 1000).total,
                                    "awake chunks in one line along travel are a chain, not two lanes");
 }
 
 static void
 test_a_full_board_still_shares_its_passes(void) {
-    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000).total,
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0U, tc_dispatches_for(tc_build_scattered_scene, 3U, 2, 0, 1000).total,
                                           "a board busy everywhere must still reach the split path");
 }
 
 static void
 test_a_busy_board_shares_its_sweep_whichever_way_it_travels(void) {
     TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(
-        0u, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000).per_pass[SAND_SPLIT_SLOT_SWEEP],
+        0U, tc_dispatches_for(tc_build_scattered_scene, 3U, 2, 0, 1000).per_pass[SAND_SPLIT_SLOT_SWEEP],
         "a board busy everywhere must share its sweep along y");
     TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(
-        0u, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 1000, 0).per_pass[SAND_SPLIT_SLOT_SWEEP], "and along x");
+        0U, tc_dispatches_for(tc_build_scattered_scene, 3U, 2, 1000, 0).per_pass[SAND_SPLIT_SLOT_SWEEP], "and along x");
     TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(
-        0u, tc_dispatches_for(tc_build_dry_scattered_scene, 3u, 2, 0, 1000).per_pass[SAND_SPLIT_SLOT_SWEEP],
+        0U, tc_dispatches_for(tc_build_dry_scattered_scene, 3U, 2, 0, 1000).per_pass[SAND_SPLIT_SLOT_SWEEP],
         "and so must one with no liquid on it");
 }
 
@@ -2802,9 +2816,9 @@ static void
 test_the_sharing_decision_is_the_same_whoever_drove_the_lanes(void) {
     static const sand_chunk_pass_driver_t drivers[] = {SAND_CHUNK_PASS_CORE1, SAND_CHUNK_PASS_SOLO,
                                                        SAND_CHUNK_PASS_ALTERNATE, SAND_CHUNK_PASS_LANE1_EAGER};
-    const tc_dispatch_t liquid = tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000);
-    const tc_dispatch_t dry = tc_dispatches_for(tc_build_dry_scattered_scene, 3u, 2, 0, 1000);
-    const tc_dispatch_t settled = tc_dispatches_for(tc_build_settled_slab_scene, 11u, 8, 0, 1000);
+    const tc_dispatch_t liquid = tc_dispatches_for(tc_build_scattered_scene, 3U, 2, 0, 1000);
+    const tc_dispatch_t dry = tc_dispatches_for(tc_build_dry_scattered_scene, 3U, 2, 0, 1000);
+    const tc_dispatch_t settled = tc_dispatches_for(tc_build_settled_slab_scene, 11U, 8, 0, 1000);
 
     for (size_t i = 0; i < sizeof drivers / sizeof drivers[0]; i++) {
         char why[160];
@@ -2812,9 +2826,9 @@ test_the_sharing_decision_is_the_same_whoever_drove_the_lanes(void) {
         sand_chunk_pass_set_driver_for_test(drivers[i]);
         for (int again = 0; again < 2; again++) {
             snprintf(why, sizeof why, "driver %d, run %d shared a different set of split passes", (int)i, again);
-            tc_assert_same_dispatch(liquid, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000), why);
-            tc_assert_same_dispatch(dry, tc_dispatches_for(tc_build_dry_scattered_scene, 3u, 2, 0, 1000), why);
-            tc_assert_same_dispatch(settled, tc_dispatches_for(tc_build_settled_slab_scene, 11u, 8, 0, 1000), why);
+            tc_assert_same_dispatch(liquid, tc_dispatches_for(tc_build_scattered_scene, 3U, 2, 0, 1000), why);
+            tc_assert_same_dispatch(dry, tc_dispatches_for(tc_build_dry_scattered_scene, 3U, 2, 0, 1000), why);
+            tc_assert_same_dispatch(settled, tc_dispatches_for(tc_build_settled_slab_scene, 11U, 8, 0, 1000), why);
         }
     }
     sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);

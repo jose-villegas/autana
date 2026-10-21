@@ -33,9 +33,9 @@ until the plane is normalized.
 | `P_from_normal_point(n, p)` | plane through a point with the given normal | $`(n, -n \cdot p)`$ |
 | `P_from_points(a, b, c)` | winding determines the inside; unnormalized; the points must not be collinear | $`n = (b-a) \times (c-a),\ d = -n \cdot a`$ |
 | `P_distance(p, q)` | signed plane value | $`p_n \cdot q + p_d`$ |
-| `P_normalize(p)` | unit normal; normal must be nonzero; for `x`, `dot(normal, normal)` must be representable, as for `vec3x_normalize` | $`(p_n, p_d)/\lVert p_n\rVert`$ |
+| `P_normalize(p)` | unit normal; normal must be nonzero; `x` range and error as [vec3 `P_normalize_divide`](Linear.md#vec3-f-i-s-x) | $`(p_n, p_d)/\lVert p_n\rVert`$ |
 | `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
-| `P_frustum(&m, near_z, center, screen, out)` | near and screen side planes in affine m's source space | `P_from_rows` of each lens-space plane below |
+| `P_frustum(&m, &lens, screen, out)` | near and screen side planes in affine m's source space | `P_from_rows` of each lens-space plane below |
 
 ![Signed plane-value bands before and after normalizing a non-unit normal, sharing the same zero line](../images/math/plane-distance.png)
 
@@ -44,16 +44,16 @@ until the plane is normalized.
 ![A left plane and sample point in lens space beside the transformed world-space plane and sample, with equal signed values](../images/math/plane-from-rows.png)
 
 `P_frustum` reads rows as in Gribb and Hartmann<sup>[[77]](../Citations.md#77)</sup>,
-with z as the homogeneous w row of a y-down camera with `screen = center + xy / z`.
-Each output is `P_from_rows` of one lens-space plane, in this order:
+with picture coordinates `cx + fx*x/z`, `cy - fy*y/z` and z supplying w.
+Each output is `P_from_rows` of a lens-space plane, in this order:
 
 | Index | Plane | $`(a, b, c, e)`$ |
 |---|---|---|
 | `PLANE_FRUSTUM_NEAR` | `z >= near_z` | $`(0, 0, 1, -\mathit{near\_z})`$ |
-| `PLANE_FRUSTUM_LEFT` | screen x at or right of `left` | $`(1, 0, c_x - \text{left}, 0)`$ |
-| `PLANE_FRUSTUM_RIGHT` | screen x at or left of `right` | $`(-1, 0, \text{right} - c_x, 0)`$ |
-| `PLANE_FRUSTUM_TOP` | screen y at or below `top` | $`(0, 1, c_y - \text{top}, 0)`$ |
-| `PLANE_FRUSTUM_BOTTOM` | screen y at or above `bottom` | $`(0, -1, \text{bottom} - c_y, 0)`$ |
+| `PLANE_FRUSTUM_LEFT` | screen x at or right of `left` | $`(f_x, 0, c_x - \text{left}, 0)`$ |
+| `PLANE_FRUSTUM_RIGHT` | screen x at or left of `right` | $`(-f_x, 0, \text{right} - c_x, 0)`$ |
+| `PLANE_FRUSTUM_TOP` | screen y at or below `top` | $`(0, -f_y, c_y - \text{top}, 0)`$ |
+| `PLANE_FRUSTUM_BOTTOM` | screen y at or above `bottom` | $`(0, f_y, \text{bottom} - c_y, 0)`$ |
 
 `PLANE_FRUSTUM_COUNT` sizes the output. There is no far plane, and the
 planes are not normalized.

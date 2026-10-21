@@ -30,13 +30,15 @@ fill(cell_t* row, cell_t c) {
 
 static void
 test_paint_edge_mask_flags_each_empty_side(void) {
-    cell_t above[ROW_W], row[ROW_W], below[ROW_W];
+    cell_t above[ROW_W];
+    cell_t row[ROW_W];
+    cell_t below[ROW_W];
     fill(above, STONE);
     fill(row, STONE);
     fill(below, STONE);
     row[2] = SAND;
 
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, sand_paint_edge_mask(above, row, below, 2, ROW_W),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, sand_paint_edge_mask(above, row, below, 2, ROW_W),
                                    "a cell with every neighbour occupied has no edge");
 
     row[1] = CELL_EMPTY;
@@ -57,10 +59,10 @@ test_paint_edge_mask_treats_the_grid_border_as_occupied(void) {
     cell_t row[ROW_W];
     fill(row, SAND);
 
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, sand_paint_edge_mask(NULL, row, NULL, 0, ROW_W),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, sand_paint_edge_mask(NULL, row, NULL, 0, ROW_W),
                                    "past the left edge, above the top row and below the bottom row "
                                    "there is no cell, and no cell is not an empty one");
-    TEST_ASSERT_EQUAL_UINT(0u, sand_paint_edge_mask(NULL, row, NULL, ROW_W - 1, ROW_W));
+    TEST_ASSERT_EQUAL_UINT(0U, sand_paint_edge_mask(NULL, row, NULL, ROW_W - 1, ROW_W));
 
     row[1] = CELL_EMPTY;
     TEST_ASSERT_EQUAL_UINT_MESSAGE(MATERIAL_EDGE_RIGHT, sand_paint_edge_mask(NULL, row, NULL, 0, ROW_W),
@@ -69,7 +71,9 @@ test_paint_edge_mask_treats_the_grid_border_as_occupied(void) {
 
 static void
 test_paint_edge_mask_reads_diagonals_only_for_exposed_water(void) {
-    cell_t above[ROW_W], row[ROW_W], below[ROW_W];
+    cell_t above[ROW_W];
+    cell_t row[ROW_W];
+    cell_t below[ROW_W];
     fill(above, STONE);
     fill(row, STONE);
     fill(below, STONE);
@@ -77,7 +81,7 @@ test_paint_edge_mask_reads_diagonals_only_for_exposed_water(void) {
     below[3] = CELL_EMPTY;
     row[2] = WATER;
 
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, sand_paint_edge_mask(above, row, below, 2, ROW_W),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, sand_paint_edge_mask(above, row, below, 2, ROW_W),
                                    "water walled in on all four sides ignores its empty diagonals");
 
     row[1] = CELL_EMPTY;
@@ -95,12 +99,12 @@ test_paint_depth_count_climbs_from_the_same_material_up_to_the_ceiling(void) {
     uint8_t top_row[ROW_W];
     memset(top_row, 255, sizeof top_row);
 
-    TEST_ASSERT_EQUAL_UINT(4u, sand_paint_depth_count(top_row, true, true, false, 3u, 1, 7));
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(4u, sand_paint_depth_count(top_row, false, true, false, 3u, 1, 7),
+    TEST_ASSERT_EQUAL_UINT(4U, sand_paint_depth_count(top_row, true, true, false, 3U, 1, 7));
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(4U, sand_paint_depth_count(top_row, false, true, false, 3U, 1, 7),
                                    "a same-material climb carries the source count in either "
                                    "regime, whether or not the row chain held");
     TEST_ASSERT_EQUAL_UINT(LOCAL_DEPTH_COUNT_CEILING,
-                           sand_paint_depth_count(top_row, true, true, true, LOCAL_DEPTH_COUNT_CEILING - 1u, 1, 7));
+                           sand_paint_depth_count(top_row, true, true, true, LOCAL_DEPTH_COUNT_CEILING - 1U, 1, 7));
     TEST_ASSERT_EQUAL_UINT_MESSAGE(LOCAL_DEPTH_COUNT_CEILING,
                                    sand_paint_depth_count(top_row, true, true, true, LOCAL_DEPTH_COUNT_CEILING, 1, 7),
                                    "the count saturates at the ceiling instead of wrapping");
@@ -111,17 +115,17 @@ test_paint_depth_count_restart_carries_only_while_the_chain_holds(void) {
     uint8_t top_row[ROW_W];
 
     memset(top_row, 255, sizeof top_row);
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(6u, sand_paint_depth_count(top_row, true, false, true, 5u, 2, 9),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(6U, sand_paint_depth_count(top_row, true, false, true, 5U, 2, 9),
                                    "a boundary cell whose row chain held carries the source count");
     memset(top_row, 255, sizeof top_row);
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(1u, sand_paint_depth_count(top_row, true, false, false, 5u, 2, 9),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(1U, sand_paint_depth_count(top_row, true, false, false, 5U, 2, 9),
                                    "a broken row chain restarts the count at one, whatever the "
                                    "stale source says");
 
     memset(top_row, 255, sizeof top_row);
-    TEST_ASSERT_EQUAL_UINT(6u, sand_paint_depth_count(top_row, false, false, true, 5u, 2, 9));
+    TEST_ASSERT_EQUAL_UINT(6U, sand_paint_depth_count(top_row, false, false, true, 5U, 2, 9));
     memset(top_row, 255, sizeof top_row);
-    TEST_ASSERT_EQUAL_UINT(1u, sand_paint_depth_count(top_row, false, false, false, 5u, 2, 9));
+    TEST_ASSERT_EQUAL_UINT(1U, sand_paint_depth_count(top_row, false, false, false, 5U, 2, 9));
 }
 
 static void
@@ -129,27 +133,28 @@ test_paint_depth_count_holds_a_column_that_already_committed(void) {
     uint8_t top_row[ROW_W];
 
     memset(top_row, 255, sizeof top_row);
-    TEST_ASSERT_EQUAL_UINT(6u, sand_paint_depth_count(top_row, true, false, true, 5u, 2, 9));
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(9u, top_row[2], "vertical-dominant commits by recording the row");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, sand_paint_depth_count(top_row, true, false, true, 5u, 2, 9),
+    TEST_ASSERT_EQUAL_UINT(6U, sand_paint_depth_count(top_row, true, false, true, 5U, 2, 9));
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(9U, top_row[2], "vertical-dominant commits by recording the row");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, sand_paint_depth_count(top_row, true, false, true, 5U, 2, 9),
                                    "the same row reaching the same column again reads as committed");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(6u, sand_paint_depth_count(top_row, true, false, true, 5u, 2, 10),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(6U, sand_paint_depth_count(top_row, true, false, true, 5U, 2, 10),
                                    "a different row is not held by another row's commit");
 
     memset(top_row, 255, sizeof top_row);
-    TEST_ASSERT_EQUAL_UINT(6u, sand_paint_depth_count(top_row, false, false, true, 5u, 2, 9));
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, top_row[2], "horizontal-dominant commits by marking the column 0");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, sand_paint_depth_count(top_row, false, false, true, 5u, 2, 10),
+    TEST_ASSERT_EQUAL_UINT(6U, sand_paint_depth_count(top_row, false, false, true, 5U, 2, 9));
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, top_row[2], "horizontal-dominant commits by marking the column 0");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, sand_paint_depth_count(top_row, false, false, true, 5U, 2, 10),
                                    "horizontal-dominant holds the column for any row");
 
-    TEST_ASSERT_EQUAL_UINT(6u, sand_paint_depth_count(top_row, false, true, false, 5u, 2, 10));
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(255u, top_row[2], "a horizontal-dominant same-material climb releases the column");
-    TEST_ASSERT_EQUAL_UINT(6u, sand_paint_depth_count(top_row, false, false, true, 5u, 2, 11));
+    TEST_ASSERT_EQUAL_UINT(6U, sand_paint_depth_count(top_row, false, true, false, 5U, 2, 10));
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(255U, top_row[2], "a horizontal-dominant same-material climb releases the column");
+    TEST_ASSERT_EQUAL_UINT(6U, sand_paint_depth_count(top_row, false, false, true, 5U, 2, 11));
 }
 
 static void
 test_paint_clip_send_keeps_to_the_painted_span(void) {
-    int x0, x1;
+    int x0;
+    int x1;
 
     TEST_ASSERT_TRUE(sand_paint_clip_send(2, 12, 4, 9, false, 0, 0, &x0, &x1));
     TEST_ASSERT_EQUAL_INT(4, x0);
@@ -166,7 +171,8 @@ test_paint_clip_send_keeps_to_the_painted_span(void) {
 
 static void
 test_paint_clip_send_narrows_indexed_sends_to_what_changed(void) {
-    int x0, x1;
+    int x0;
+    int x1;
 
     TEST_ASSERT_TRUE(sand_paint_clip_send(2, 12, 4, 9, true, 5, 7, &x0, &x1));
     TEST_ASSERT_EQUAL_INT(5, x0);

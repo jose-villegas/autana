@@ -5,7 +5,7 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart components docs/memory
 <title>ESP-IDF IRAM by component — release</title>
 <style>text{fill:#737c86;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px}.title{font-size:18px;font-weight:600}.note{font-size:12px}.inside{fill:#1f2328}.overlay-inside{fill:#ffffff}</style>
 <text x="16" y="40" text-anchor="start" class="title">ESP-IDF IRAM by component — release</text>
-<text x="16" y="64" text-anchor="start">Shares of 80,355 B = 78.5 KB ESP-IDF IRAM incl. linker fill; top 8 archives, the rest summed as other</text>
+<text x="16" y="64" text-anchor="start">Shares of 80,404 B = 78.5 KB ESP-IDF IRAM incl. linker fill; top 8 archives, the rest summed as other</text>
 <text x="188" y="113" text-anchor="end">esp_hw_support</text>
 <rect x="200.00" y="96" width="567.70" height="24" fill="#8c959f" data-label="esp_hw_support" data-bytes="13882"><title>esp_hw_support: 13882 B</title></rect>
 <text x="779.70" y="113" text-anchor="start">13882 B, 17.3%</text>
@@ -34,8 +34,8 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart components docs/memory
 <rect x="200.00" y="448" width="640.00" height="24" fill="#8c959f" data-label="other" data-bytes="15650"><title>other: 15650 B</title></rect>
 <text x="852.00" y="465" text-anchor="start">15650 B, 19.5%</text>
 <text x="188" y="509" text-anchor="end">Linker fill</text>
-<rect x="200.00" y="492" width="57.91" height="24" fill="#8c959f" data-label="Linker fill" data-bytes="1416"><title>Linker fill: 1416 B</title></rect>
-<text x="269.91" y="509" text-anchor="start">1416 B, 1.8%</text>
-<text x="16" y="560" text-anchor="start">ESP-IDF IRAM incl. linker fill: release 80,355 B = 78.5 KB; dev 84,368 B = 82.4 KB; diag 84,768 B = 82.8 KB</text>
+<rect x="200.00" y="492" width="59.91" height="24" fill="#8c959f" data-label="Linker fill" data-bytes="1465"><title>Linker fill: 1465 B</title></rect>
+<text x="271.91" y="509" text-anchor="start">1465 B, 1.8%</text>
+<text x="16" y="560" text-anchor="start">ESP-IDF IRAM incl. linker fill: release 80,404 B = 78.5 KB; dev 84,180 B = 82.2 KB; diag 84,836 B = 82.8 KB</text>
 <text x="16" y="584" text-anchor="start">Unattributed linker fill excludes split slack and prefetch pad.</text>
 </svg>

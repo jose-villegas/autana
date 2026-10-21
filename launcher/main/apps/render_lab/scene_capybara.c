@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "apps/render_lab/capybara_content.h"
 
 #include "app/app.h"
 #include "apps/render_lab/render_lab_clips.h"
@@ -19,7 +20,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "input/orbit_motion_touch.h"
+#include "input/mapping/orbit_motion_touch.h"
 #include "math/motion/orbit_motion.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
@@ -36,9 +37,7 @@
 static const char* TAG = "capybara";
 
 /* The scene's id and pack, its camera, and the entity the camera circles. */
-#define CAPYBARA_SCENE          "capybara"
 #define CAPYBARA_CAMERA         "camera"
-#define CAPYBARA_SUBJECT        "capybara"
 #define CAPYBARA_DEFAULT_CLIP   "idle"
 
 /* Where the view starts: three-quarters from the front, a little above. */
@@ -126,7 +125,7 @@ scene_capybara_enter(void) {
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     render_lab_apply_raster_settings();
     if (capybara != NULL) {
-        (void)scene_camera_set_present(capybara, scene_find(capybara, CAPYBARA_CAMERA), render_lab_present());
+        (void)render_lab_apply_camera_settings(capybara, scene_find(capybara, CAPYBARA_CAMERA));
     }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
@@ -149,6 +148,9 @@ scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
     const viewport_t panel = {GFX_WIDTH, GFX_HEIGHT, display_quarter_now()};
     const orbit_motion_input_t steering = orbit_motion_touch_step(&touch, input, dt_ms, panel, shell_home_edge());
     orbit_motion_update(&orbit, &steering, (float)dt_ms / (float)MATH_MS_PER_S);
+    if (render_lab_orbit_ms() > 0) {
+        orbit.at.yaw = fmodf(orbit.at.yaw + (MATH_TAU * (float)dt_ms / (float)render_lab_orbit_ms()), MATH_TAU);
+    }
     place_camera();
 }
 
@@ -160,7 +162,7 @@ scene_capybara_frame(uint32_t dt_ms) {
     (void)dt_ms;
     render_lab_apply_raster_settings();
     if (capybara != NULL) {
-        (void)scene_camera_set_present(capybara, scene_find(capybara, CAPYBARA_CAMERA), render_lab_present());
+        (void)render_lab_apply_camera_settings(capybara, scene_find(capybara, CAPYBARA_CAMERA));
     }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
@@ -194,7 +196,8 @@ scene_capybara_controls(int width) {
 }
 
 const render_lab_scene_t scene_capybara = {.name = "Capybara",
-                                           .key = "capybara",
+                                           .key = CAPYBARA_SCENE,
+                                           .family = "Capybara",
                                            .enter = scene_capybara_enter,
                                            .frame = scene_capybara_frame,
                                            .exit = scene_capybara_exit,

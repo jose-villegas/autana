@@ -74,6 +74,12 @@ class InterpreterTests(unittest.TestCase):
         self.assertEqual(call.call_args.args[0][0], "C:/idf/python.exe")
         self.assertEqual(call.call_args.args[0][-1], "status")
 
+    def test_a_tool_reruns_its_own_script_rather_than_device_py(self):
+        with mock.patch.dict(sys.modules, self.MISSING),                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"),                 mock.patch.object(device.subprocess, "call", return_value=0) as call:
+            device.rerun_under_idf_python(["--plan"], "tools/perf_compare.py")
+        self.assertEqual(call.call_args.args[0][1], str(Path("tools/perf_compare.py").resolve()))
+        self.assertEqual(call.call_args.args[0][2:], ["--plan"])
+
     def test_it_does_not_rerun_when_idf_python_is_this_interpreter(self):
         with mock.patch.dict(sys.modules, self.MISSING), \
                 mock.patch.object(device, "idf_python", return_value=sys.executable), \
@@ -643,7 +649,7 @@ class DeviceTests(unittest.TestCase):
         found, complete = device.replies_to(b"TUNE a=1 min=0 max=2\nTUNE_EN", "TUNE",
                                             ["TUNE_OK", "TUNE_ERR", "TUNE_END"])
         self.assertFalse(complete)
-        self.assertEqual(found, ["TUNE a=1 min=0 max=2", "TUNE_EN"])
+        self.assertEqual(found, ["TUNE a=1 min=0 max=2"])
 
     def send_response(self, chunks, args):
         connection = FakeConnection(chunks)

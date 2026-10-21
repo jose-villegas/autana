@@ -61,14 +61,14 @@ tune_count(const tune_registry_t* registry) {
 static void
 reply_value(tune_reply_fn reply, const tune_entry_t* entry) {
     char line[REPLY_MAX];
-    snprintf(line, sizeof line, "TUNE_OK %s=%ld", entry->name, (long)*entry->value);
+    (void)snprintf(line, sizeof line, "TUNE_OK %s=%ld", entry->name, (long)*entry->value);
     reply(line);
 }
 
 static void
 reply_error(tune_reply_fn reply, const char* reason, const char* about) {
     char line[REPLY_MAX];
-    snprintf(line, sizeof line, "TUNE_ERR %s %s", reason, about);
+    (void)snprintf(line, sizeof line, "TUNE_ERR %s %s", reason, about);
     reply(line);
 }
 
@@ -76,14 +76,14 @@ static void
 list_all(const tune_registry_t* registry, tune_reply_fn reply) {
     char line[REPLY_MAX];
     for (const tune_entry_t* entry = registry->first; entry != NULL; entry = entry->next) {
-        snprintf(line, sizeof line, "TUNE %s=%ld min=%ld max=%ld default=%ld", entry->name, (long)*entry->value,
-                 (long)entry->low, (long)entry->high, (long)entry->initial);
+        (void)snprintf(line, sizeof line, "TUNE %s=%ld min=%ld max=%ld default=%ld", entry->name, (long)*entry->value,
+                       (long)entry->low, (long)entry->high, (long)entry->initial);
         reply(line);
     }
     for (const tune_entry_t* entry = registry->clashed; entry != NULL; entry = entry->next) {
         reply_error(reply, "clash", entry->name);
     }
-    snprintf(line, sizeof line, "TUNE_END count=%d", tune_count(registry));
+    (void)snprintf(line, sizeof line, "TUNE_END count=%d", tune_count(registry));
     reply(line);
 }
 
@@ -136,7 +136,7 @@ set_from(tune_registry_t* registry, const char* rest, tune_reply_fn reply) {
     }
     if (!tune_set(registry, name, value)) {
         char range[TUNE_NAME_MAX + sizeof " takes -2147483648..-2147483648"];
-        snprintf(range, sizeof range, "%s takes %ld..%ld", name, (long)entry->low, (long)entry->high);
+        (void)snprintf(range, sizeof range, "%s takes %ld..%ld", name, (long)entry->low, (long)entry->high);
         reply_error(reply, "range", range);
         return;
     }

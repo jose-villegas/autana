@@ -72,7 +72,8 @@ test_buried_lava_bursts_into_stone_and_fire(void) {
     fixture();
     sand_clear(&s);
     sand_fill_box(&s, 0, 0, W, H, STONE);
-    const int cx = W / 2, cy = H / 2;
+    const int cx = W / 2;
+    const int cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
     impulse_t* buf = impulses_open(&s, W * H);
@@ -235,14 +236,14 @@ static void
 check_cover_combo(int cx, int cy, unsigned combo, int anti, unsigned lid_ring_bits, uint8_t density, int* sealed) {
     for (int i = 0; i < 8; i++) {
         const int* d = ring_dir(i);
-        sand_set(&s, cx + d[0], cy + d[1], (combo & (1u << i)) ? STONE : CELL_EMPTY);
+        sand_set(&s, cx + d[0], cy + d[1], (combo & (1U << i)) ? STONE : CELL_EMPTY);
     }
 
     const unsigned mask = cover_mask(&s, cx, cy, W, H, density);
     unsigned expected = 0;
     for (int i = 0; i < 3; i++) {
-        if (combo & (1u << ((anti - 1 + i) & 7))) {
-            expected |= 1u << i;
+        if (combo & (1U << ((anti - 1 + i) & 7))) {
+            expected |= 1U << i;
         }
     }
     TEST_ASSERT_EQUAL_INT_MESSAGE((int)expected, (int)mask,
@@ -269,7 +270,8 @@ static void
 test_cover_primitive_matches_the_exhaustive_shape_table(void) {
     fixture();
     sand_clear(&s);
-    const int cx = W / 2, cy = H / 2;
+    const int cx = W / 2;
+    const int cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
     const uint8_t density = material_by_id((material_id_t)MAT_LAVA)->density;
 
@@ -278,10 +280,10 @@ test_cover_primitive_matches_the_exhaustive_shape_table(void) {
         s.last_load_dx = grav[0];
         s.last_load_dy = grav[1];
         const int anti = g + 4; /* ring_of(grav) is just g */
-        const unsigned lid_ring_bits = (1u << ((anti + 7) & 7)) | (1u << (anti & 7)) | (1u << ((anti + 1) & 7));
+        const unsigned lid_ring_bits = (1U << ((anti + 7) & 7)) | (1U << (anti & 7)) | (1U << ((anti + 1) & 7));
 
         int sealed = 0;
-        for (unsigned combo = 0; combo < 256u; combo++) {
+        for (unsigned combo = 0; combo < 256U; combo++) {
             check_cover_combo(cx, cy, combo, anti, lid_ring_bits, density, &sealed);
         }
 
@@ -314,7 +316,8 @@ test_a_wide_pool_under_a_crust_bursts(void) {
         }
     }
 
-    const int tx = 3, ty = 2; /* interior: not touching the pool's own
+    const int tx = 3;
+    const int ty = 2; /* interior: not touching the pool's own
                                   * left/right edge, so both diagonal
                                   * neighbours above it are genuine crust */
     ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty, "fixture check: lava at the cell under test");
@@ -365,7 +368,8 @@ test_a_wide_pool_under_a_sideways_crust_bursts(void) {
         }
     }
 
-    const int tx = 2, ty = 3; /* interior: touching the crust directly
+    const int tx = 2;
+    const int ty = 3; /* interior: touching the crust directly
                                   * to its left, but not the pool's own
                                   * top/bottom edge, so both diagonal
                                   * neighbours toward the crust are
@@ -424,7 +428,8 @@ test_buried_lava_still_becomes_stone_with_impulses_off(void) {
     fixture();
     sand_clear(&s);
     sand_fill_box(&s, 0, 0, W, H, STONE);
-    const int cx = W / 2, cy = H / 2;
+    const int cx = W / 2;
+    const int cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
     sand_set_lava_burst(&s, 255);
 

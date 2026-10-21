@@ -63,7 +63,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/mat4x.h](include/math/linear/mat4x.h) | mat4x: a 4x4 matrix of a Q16.16. |
 | [include/math/linear/project_template.h](include/math/linear/project_template.h) | project_template: shared near-plane endpoint selection for pinhole clipping. |
 | [include/math/linear/projectf.h](include/math/linear/projectf.h) | projectf: pinhole projection in pixels with camera +y up and picture y down. |
-| [include/math/linear/projectx.h](include/math/linear/projectx.h) | projectx: near-plane segment clipping in any fixed camera-space scale. |
+| [include/math/linear/projectx.h](include/math/linear/projectx.h) | projectx: Q16.16 pinhole lens and near clipping in any fixed camera-space scale. |
 | [include/math/linear/quat_template.h](include/math/linear/quat_template.h) | quat_template: a rotation as x, y, z, w, unit length, Hamilton product, acting on a vector as q * v * q^-1, for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/quatf.h](include/math/linear/quatf.h) | quatf: a float rotation with host-exact, halved-arc polynomial slerp. |
 | [include/math/linear/quatx.h](include/math/linear/quatx.h) | quatx: a Q16.16 rotation; angles are turns (mathx.h). |
@@ -97,4 +97,5 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/trig.h](include/math/scalar/trig.h) | trig, sine and cosine of a 16-bit phase, in integers: TRIG_TURN is one turn and the result has TRIG_SIN_SHIFT fractional bits, at most TRIG_SIN_MAX. |
 | [include/math/scalar/units.h](include/math/scalar/units.h) | units: integer time conversion scales. |
 | [include/math/signal/goertzel.h](include/math/signal/goertzel.h) | Streaming single-bin detection (Goertzel, 1958). |
+| [include/math/signal/pitch.h](include/math/signal/pitch.h) | pitch: equal-temperament offsets relative to a caller's reference frequency. |
 <!-- /generated: package-headers -->

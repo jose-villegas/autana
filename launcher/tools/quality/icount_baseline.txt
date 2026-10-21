@@ -55,7 +55,7 @@
 43670	span_gouraud
 16007	span_solid
 2106	ui_face_alpha
-3805	ui_face_button
+3824	ui_face_button
 2626	ui_face_caption
 2196	ui_face_color
 2107	ui_face_disabled
@@ -71,7 +71,7 @@
 2172	ui_face_row_centre
 2114	ui_face_scale
 2014	ui_face_screen
-2055	ui_face_scroll_window
+2009	ui_face_scroll_window
 4088	ui_face_slider
 2420	ui_face_swatches
 2626	ui_face_text
@@ -80,7 +80,7 @@
 2626	ui_face_text_right
 2166	ui_face_theme
 3801	ui_face_tile
-3808	ui_face_toggle
+3771	ui_face_toggle
 1989	ui_face_window
 3550	ui_mu_button
 2579	ui_mu_caption
@@ -94,12 +94,11 @@
 2639	ui_mu_panel
 2156	ui_mu_row
 1301	ui_mu_screen
-1410	ui_mu_scroll_window
 3918	ui_mu_slider
 2390	ui_mu_swatches
 2579	ui_mu_text
 2580	ui_mu_text_centre
 2578	ui_mu_text_right
 3543	ui_mu_tile
-3341	ui_mu_toggle
+3304	ui_mu_toggle
 1236	ui_mu_window

@@ -25,18 +25,22 @@ set(app_srcs
     "gfx/present/gfx_debug.c"
     "gfx/present/gfx_mode.c"
     "gfx/present/gfx_present.c"
-    "input/touch.c"
-    "input/imu_calib.c"
-    "input/touch_calib.c"
-    "input/touch_point.c"
-    "input/touch_fsm.c"
-    "input/button_fsm.c"
-    "input/buttons.c"
-    "input/gesture.c"
-    "input/imu.c"
+    "input/touch/touch.c"
+    "input/motion/imu_calib.c"
+    "input/touch/touch_calib.c"
+    "input/touch/touch_fsm.c"
+    "input/buttons/button_fsm.c"
+    "input/buttons/buttons.c"
+    "input/touch/gesture.c"
+    "input/motion/imu.c"
+    "power/power_decode.c"
+    "power/power_cache.c"
+    "power/power_log.c"
+    "power/power_log_device.c"
+    "power/power_device.c"
     "input/input_device.c"
-    "input/tilt.c"
-    "input/gravity.c"
+    "input/motion/tilt.c"
+    "input/motion/gravity.c"
     "ui/ui.c"
     "ui/input/ui_bridge.c"
     "ui/ui_build.c"
@@ -48,7 +52,6 @@ set(app_srcs
     "ui/input/ui_pointer.c"
     "ui/input/ui_snap.c"
     "shell/ui/ui_ridge.c"
-    "ui/layout/ui_scroll.c"
     "ui/controls/ui_widgets.c"
     "anim/anim_track.c"
     "anim/anim_tracks.c"
@@ -69,6 +72,7 @@ set(app_srcs
     "asset/asset_store_flash.c"
     "render/render_view.c"
     "render/raster.c"
+    "render/raster_split.c"
     "render/r3d_lit_mesh.c"
     "render/r3d_pipeline.c"
     "render/upscale.c"
@@ -82,7 +86,7 @@ set(app_srcs
     "scene/scene_asset.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
-    "input/orbit_motion_touch.c"
+    "input/mapping/orbit_motion_touch.c"
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
@@ -130,8 +134,10 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console_verbs.c"
         "console/console.c"
         "console/verbs/console_buildid.c"
+        "console/verbs/console_battery.c"
         "console/verbs/console_heap.c"
         "console/verbs/console_tone.c"
+        "console/verbs/console_melody.c"
         "console/verbs/console_sound.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
@@ -145,6 +151,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     # Acoustic detection belongs to the development console.
     list(APPEND app_srcs
         "audio/audio_loopback.c"
+        "audio/audio_frequency.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
@@ -153,8 +160,7 @@ endif()
 if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
         "console/verbs/console_inject.c"
-        "input/touch_inject_fsm.c"
-        "input/touch_gesture.c"
+        "input/touch/touch_inject_fsm.c"
     )
 endif()
 
@@ -288,6 +294,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites.c"
         "../test/timing.c"
         "../test/test_cleanup.c"
+        "../test/frame_profile.c"
         "../test/ui_probe.c"
         ${suite_srcs}
         ${app_suites}

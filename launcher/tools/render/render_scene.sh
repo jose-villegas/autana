@@ -18,16 +18,22 @@
 #                   relative to launcher/
 #   scene_renders   one render per line: <label>|<arguments>|<width>x<height>
 #                   with optional flags after it: |nopin for a render
-#                   whose pixels are not integer-exact (see scene_pin), and
+#                   whose pixels are not integer-exact (see scene_pin),
 #                   |nopacks for one run with no asset pack, which shows
-#                   what the scene draws when a pack is missing.
+#                   what the scene draws when a pack is missing, and |crop
+#                   for one cut to what the frame drew, plus the scene's
+#                   crop_margin (render_host.h).
 #                   The declared size is checked against what the binary
-#                   says it wrote, so a renderer that has quietly stopped
+#                   says it wrote (a |crop render's must fit inside it), so
+#                   a renderer that has quietly stopped
 #                   working fails the run rather than leaving a picture
 #                   nobody looks at twice. --video (a flag to this script,
 #                   not a declaration) also writes each render's frames to
 #                   <label>.avi beside its .bmp; it never touches the pinned
 #                   hash, which is taken from the .bmp alone.
+#                   What the binary wrote to stderr stays in <label>.log
+#                   beside the .bmp, for a scene that reports a
+#                   measurement with its image.
 #                   --build-only compiles the renderer, prints `built <path>`
 #                   and renders nothing; tools/render/render_compare.sh uses it.
 #                   --deps compiles nothing: it prints `flags` and the compile
@@ -238,10 +244,10 @@ render_scene_build() {
     fi
 
     # -lm LAST, after the sources, because GNU ld resolves left to right and
-    # would otherwise discard libm before seeing who needed it. The scroll
-    # view's momentum reaches expf() and lroundf(); the Windows toolchains
-    # this repo also builds on fold those into libc and link clean without
-    # it, which is how a scene that needs them reached CI unlinked. Harmless
+    # would otherwise discard libm before seeing who needed it. A scene
+    # that reaches expf() or lroundf() links clean on the Windows toolchains
+    # this repo also builds on, which fold those into libc, and fails only on
+    # Linux without it. Harmless
     # where libm is already part of libc; run_tests.sh ends its own link
     # line the same way. The --wrap pairs hand every scene allocation to
     # render_watch.c.
@@ -267,6 +273,7 @@ render_scene_render() {
             _rs_want=${_rs_tail%%|*}
             _rs_pin_this="$scene_pin"
             _rs_no_packs=""
+            _rs_crop=""
             _rs_flags=${_rs_tail#"$_rs_want"}
             while [ -n "$_rs_flags" ]; do
                 _rs_flags=${_rs_flags#|}
@@ -275,6 +282,7 @@ render_scene_render() {
                 case "$_rs_flag" in
                     nopin) _rs_pin_this=0 ;;
                     nopacks) _rs_no_packs="$scene_out_dir/no-packs" && mkdir -p "$_rs_no_packs" ;;
+                    crop) _rs_crop="--crop" ;;
                     *)
                         echo "FAIL $scene_name/$_rs_label: unknown render flag '$_rs_flag'" >&2
                         exit 1
@@ -290,13 +298,18 @@ render_scene_render() {
             # shellcheck disable=SC2086
             if ! (
                 [ -z "$_rs_no_packs" ] || export AUTANA_ASSET_DIR="$_rs_no_packs"
-                exec "$_rs_bin" $_rs_args -o "$_rs_path" $_rs_video_args
+                exec "$_rs_bin" $_rs_args $_rs_crop -o "$_rs_path" $_rs_video_args
             ) 2> "$_rs_log"; then
                 cat "$_rs_log" >&2
                 echo "FAIL $scene_name/$_rs_label: the renderer exited non-zero" >&2
                 exit 1
             fi
+            cp "$_rs_log" "$scene_out_dir/$_rs_label.log"
             _rs_said=$(sed -n 's/^RENDER [^ ]* \([0-9]*x[0-9]*\).*/\1/p' "$_rs_log")
+            if [ -n "$_rs_crop" ] && [ -n "$_rs_said" ] &&
+                [ "${_rs_said%x*}" -le "${_rs_want%x*}" ] && [ "${_rs_said#*x}" -le "${_rs_want#*x}" ]; then
+                _rs_want=$_rs_said
+            fi
             if [ "$_rs_said" != "$_rs_want" ]; then
                 echo "FAIL $scene_name/$_rs_label: wrote ${_rs_said:-nothing}, declared $_rs_want" >&2
                 exit 1

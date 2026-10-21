@@ -79,62 +79,62 @@ the table below:
 Each step of those bakes, with the triangles it took and left and the memory
 it peaked at:
 
-<!-- generated: bake-steps sha256=b4038d5a27401d300390cd08e5c4f7bfd4c3dd32c0c555ee3681b08dfd963472 -->
+<!-- generated: bake-steps sha256=debe9fa09d7a1519ec944c50b89f3668698f5fc7094a0f4e34f9bb5eebef30cc -->
 | Variant | Step | Wall s | Triangles in | Triangles out | Peak RAM MiB | Peak VRAM MiB |
 |---|---|---|---|---|---|---|
-| lite-GI-bake | source load | 9.332 | 0 | 262267 | 1528.9 | not available |
-| lite-GI-bake | alpha mask | 0.206 | 262267 | 245465 | 1515.5 | not available |
-| lite-GI-bake | visibility | 13.764 | 245465 | 211859 | 1921.9 | not available |
-| lite-GI-bake | thin | 0.002 | 211859 | 202188 | 1813.5 | not available |
-| lite-GI-bake | light | 85.251 | 202188 | 681348 | 3288.7 | not available |
-| lite-GI-bake | simplify | 15.743 | 681348 | 8669 | 3427.2 | not available |
-| lite-GI-bake | meshlets | 0.052 | 8669 | 8669 | 3212.7 | not available |
-| lite-GI-bake | write | 0.001 | 8669 | 8669 | 3212.7 | not available |
-| lite-fit-start | source load | 6.753 | 0 | 262267 | 1556.2 | not available |
-| lite-fit-start | alpha mask | 0.247 | 262267 | 245465 | 1499.5 | not available |
-| lite-fit-start | visibility | 11.056 | 245465 | 211859 | 1896.2 | not available |
-| lite-fit-start | thin | 0.002 | 211859 | 202188 | 1820.7 | not available |
-| lite-fit-start | light | 79.525 | 202188 | 681348 | 3311.8 | not available |
-| lite-fit-start | simplify | 41.233 | 681348 | 13494 | 3445.5 | not available |
-| lite-fit-start | meshlets | 0.165 | 13494 | 13494 | 3342.8 | not available |
-| lite-fit-start | write | 0.005 | 13494 | 13494 | 3342.8 | not available |
-| lite-GI-fit | fit | 788.997 | 13494 | 8496 | 2693.6 | 1138.0 |
-| full-GI-bake | source load | 7.557 | 0 | 262267 | 1556.2 | not available |
-| full-GI-bake | alpha mask | 0.182 | 262267 | 245465 | 1498.8 | not available |
-| full-GI-bake | visibility | 13.723 | 245465 | 211859 | 1892.6 | not available |
-| full-GI-bake | thin | 0.010 | 211859 | 202188 | 1818.2 | not available |
-| full-GI-bake | light | 69.390 | 202188 | 681348 | 3307.9 | not available |
-| full-GI-bake | simplify | 15.296 | 681348 | 17367 | 3430.5 | not available |
-| full-GI-bake | meshlets | 0.107 | 17367 | 17367 | 3329.8 | not available |
-| full-GI-bake | write | 0.003 | 17367 | 17367 | 3328.0 | not available |
-| full-fit-start | source load | 5.904 | 0 | 262267 | 1556.1 | not available |
-| full-fit-start | alpha mask | 0.170 | 262267 | 245465 | 1498.6 | not available |
-| full-fit-start | visibility | 9.894 | 245465 | 211859 | 1907.0 | not available |
-| full-fit-start | thin | 0.002 | 211859 | 202188 | 1820.0 | not available |
-| full-fit-start | light | 60.463 | 202188 | 681348 | 3307.7 | not available |
-| full-fit-start | simplify | 13.622 | 681348 | 29995 | 3419.1 | not available |
-| full-fit-start | meshlets | 0.174 | 29995 | 29995 | 3236.0 | not available |
-| full-fit-start | write | 0.005 | 29995 | 29995 | 3234.2 | not available |
-| full-GI-fit | fit | 884.174 | 29995 | 17381 | 2726.8 | 1164.0 |
-| flat-GI-bake | source load | 7.741 | 0 | 262267 | 1525.3 | not available |
-| flat-GI-bake | alpha mask | 0.188 | 262267 | 245465 | 1499.8 | not available |
-| flat-GI-bake | visibility | 13.170 | 245465 | 211859 | 1895.8 | not available |
-| flat-GI-bake | thin | 0.002 | 211859 | 202188 | 1845.8 | not available |
-| flat-GI-bake | light | 58.562 | 202188 | 681348 | 3295.1 | not available |
-| flat-GI-bake | simplify | 9.665 | 681348 | 17367 | 3416.7 | not available |
-| flat-GI-bake | face colours | 10.409 | 17367 | 17367 | 3313.0 | not available |
-| flat-GI-bake | meshlets | 0.162 | 17367 | 17367 | 3311.1 | not available |
-| flat-GI-bake | write | 0.002 | 17367 | 17367 | 3311.1 | not available |
-| flat-fit-start | source load | 9.187 | 0 | 262267 | 1544.7 | not available |
-| flat-fit-start | alpha mask | 0.258 | 262267 | 245465 | 1501.7 | not available |
-| flat-fit-start | visibility | 14.143 | 245465 | 211859 | 1907.4 | not available |
-| flat-fit-start | thin | 0.003 | 211859 | 202188 | 1831.1 | not available |
-| flat-fit-start | light | 66.717 | 202188 | 681348 | 3300.7 | not available |
-| flat-fit-start | simplify | 13.827 | 681348 | 29995 | 3418.7 | not available |
-| flat-fit-start | face colours | 21.290 | 29995 | 29995 | 3317.7 | not available |
-| flat-fit-start | meshlets | 0.342 | 29995 | 29995 | 3317.6 | not available |
-| flat-fit-start | write | 0.013 | 29995 | 29995 | 3317.6 | not available |
-| flat-GI-fit | fit | 720.062 | 29995 | 16977 | 2702.3 | 1198.0 |
+| lite-GI-bake | source load | 11.255 | 0 | 262267 | 1555.1 | not available |
+| lite-GI-bake | alpha mask | 0.313 | 262267 | 245465 | 1509.6 | not available |
+| lite-GI-bake | visibility | 15.696 | 245465 | 211859 | 1906.1 | not available |
+| lite-GI-bake | thin | 0.003 | 211859 | 202188 | 1844.0 | not available |
+| lite-GI-bake | light | 113.732 | 202188 | 681348 | 3294.2 | not available |
+| lite-GI-bake | simplify | 34.405 | 681348 | 8669 | 3435.5 | not available |
+| lite-GI-bake | meshlets | 0.061 | 8669 | 8669 | 3225.9 | not available |
+| lite-GI-bake | write | 0.002 | 8669 | 8669 | 3225.0 | not available |
+| lite-fit-start | source load | 6.324 | 0 | 262267 | 1511.6 | not available |
+| lite-fit-start | alpha mask | 0.179 | 262267 | 245465 | 1497.7 | not available |
+| lite-fit-start | visibility | 11.168 | 245465 | 211859 | 1903.0 | not available |
+| lite-fit-start | thin | 0.002 | 211859 | 202188 | 1833.8 | not available |
+| lite-fit-start | light | 46.680 | 202188 | 681348 | 3302.9 | not available |
+| lite-fit-start | simplify | 17.619 | 681348 | 13494 | 3427.5 | not available |
+| lite-fit-start | meshlets | 0.068 | 13494 | 13494 | 3319.0 | not available |
+| lite-fit-start | write | 0.002 | 13494 | 13494 | 3319.0 | not available |
+| lite-GI-fit | fit | 922.178 | 13494 | 8672 | 2721.3 | 1138.0 |
+| full-GI-bake | source load | 8.393 | 0 | 262267 | 1544.5 | not available |
+| full-GI-bake | alpha mask | 0.216 | 262267 | 245465 | 1508.9 | not available |
+| full-GI-bake | visibility | 14.750 | 245465 | 211859 | 1905.7 | not available |
+| full-GI-bake | thin | 0.005 | 211859 | 202188 | 1823.6 | not available |
+| full-GI-bake | light | 81.568 | 202188 | 681348 | 3303.4 | not available |
+| full-GI-bake | simplify | 15.045 | 681348 | 17367 | 3430.5 | not available |
+| full-GI-bake | meshlets | 0.165 | 17367 | 17367 | 3316.0 | not available |
+| full-GI-bake | write | 0.018 | 17367 | 17367 | 3316.0 | not available |
+| full-fit-start | source load | 6.658 | 0 | 262267 | 1558.2 | not available |
+| full-fit-start | alpha mask | 0.202 | 262267 | 245465 | 1512.7 | not available |
+| full-fit-start | visibility | 11.730 | 245465 | 211859 | 1921.4 | not available |
+| full-fit-start | thin | 0.003 | 211859 | 202188 | 1823.0 | not available |
+| full-fit-start | light | 77.276 | 202188 | 681348 | 3305.2 | not available |
+| full-fit-start | simplify | 34.043 | 681348 | 29995 | 3446.4 | not available |
+| full-fit-start | meshlets | 0.592 | 29995 | 29995 | 3277.5 | not available |
+| full-fit-start | write | 0.013 | 29995 | 29995 | 3277.5 | not available |
+| full-GI-fit | fit | 1051.771 | 29995 | 17381 | 2704.2 | 1164.0 |
+| flat-GI-bake | source load | 7.975 | 0 | 262267 | 1558.9 | not available |
+| flat-GI-bake | alpha mask | 0.341 | 262267 | 245465 | 1501.5 | not available |
+| flat-GI-bake | visibility | 14.769 | 245465 | 211859 | 1936.0 | not available |
+| flat-GI-bake | thin | 0.002 | 211859 | 202188 | 1828.0 | not available |
+| flat-GI-bake | light | 52.463 | 202188 | 681348 | 3293.4 | not available |
+| flat-GI-bake | simplify | 10.523 | 681348 | 17367 | 3414.9 | not available |
+| flat-GI-bake | face colours | 11.829 | 17367 | 17367 | 3215.5 | not available |
+| flat-GI-bake | meshlets | 0.210 | 17367 | 17367 | 3215.6 | not available |
+| flat-GI-bake | write | 0.002 | 17367 | 17367 | 3215.6 | not available |
+| flat-fit-start | source load | 8.514 | 0 | 262267 | 1551.6 | not available |
+| flat-fit-start | alpha mask | 0.204 | 262267 | 245465 | 1511.5 | not available |
+| flat-fit-start | visibility | 15.310 | 245465 | 211859 | 1920.2 | not available |
+| flat-fit-start | thin | 0.003 | 211859 | 202188 | 1837.8 | not available |
+| flat-fit-start | light | 69.413 | 202188 | 681348 | 3304.0 | not available |
+| flat-fit-start | simplify | 13.745 | 681348 | 29995 | 3427.3 | not available |
+| flat-fit-start | face colours | 21.977 | 29995 | 29995 | 3261.8 | not available |
+| flat-fit-start | meshlets | 0.378 | 29995 | 29995 | 3258.1 | not available |
+| flat-fit-start | write | 0.005 | 29995 | 29995 | 3258.1 | not available |
+| flat-GI-fit | fit | 779.912 | 29995 | 17381 | 2703.7 | 1200.0 |
 <!-- /generated: bake-steps -->
 
 ### Geometry
@@ -296,7 +296,7 @@ board, against submitting every cluster:
 | meshlets of 64 | 286 | 0.851 | 10858.9 | 0.48 | 3.18 | 46.27 | 55.89 |
 <!-- /generated: meshlet-sizes -->
 
-Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
+Reference: [Baked-Mesh.md](Baked-Mesh.md#meshlets).
 
 #### Asset pack
 
@@ -363,7 +363,7 @@ view is built is in [Mesh-Rendering.md](Mesh-Rendering.md#what-a-scene-uses).
 
 Cost: part of `frame.rest` in the frame-stages chart.
 
-![The demo scene along its flythrough](../images/render/sponza-full.gif)
+![The demo scene along its flythrough](../images/render/sponza-fitted-full.gif)
 
 Reference: [Scene-Manager.md](Scene-Manager.md#each-frame).
 

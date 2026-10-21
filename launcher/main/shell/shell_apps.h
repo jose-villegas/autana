@@ -7,8 +7,8 @@
 #include <stdint.h>
 
 #include "app/app.h"
-#include "input/gesture.h"
 #include "input/input.h"
+#include "input/touch/gesture.h"
 #include "shell/shell_home_edge.h"
 
 /* Once, before the first pass: the launcher showing, its backdrop level. */

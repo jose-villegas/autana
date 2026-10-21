@@ -105,7 +105,7 @@ requests".
 | `overview/launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
 | `overview/launcher-home.gif` | the same, rocking the board either way |
 | `overview/boot-anim.gif` | the boot animation in landscape orientation |
-| `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
+| `ui/*.png` | each face example in its states, and the States tables of `docs/ui/` (`ui_examples_render_host.sh`, `ui_examples_doc.py`) |
 
 Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
 the dynamic-resolution report write one Markdown table per block name into
@@ -314,12 +314,15 @@ shell does before an app's `frame()`. A scene whose sources include
 active camera; any other scene gets a no-op.
 
 Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`,
-optionally followed by flags: `|nopin`, and `|nopacks`, which runs that
+optionally followed by flags: `|nopin`; `|nopacks`, which runs that
 render with an empty pack folder to show what the scene draws when its packs
-are missing. The declared size is checked against
-what the binary reports it wrote. That
+are missing; and `|crop`, which keeps only what the frame drew plus the
+scene's `crop_margin` (`render_host.h`), telling the background by the colour most of
+the frame's border shares. The declared size is checked against
+what the binary reports it wrote, and a cropped render must fit inside it. That
 is what makes the sweep a check rather than a picture nobody looks at
-twice.
+twice. What a render wrote to stderr is also kept beside its image as `<label>.log`,
+for a scene that reports a measurement, as the UI examples' tap does.
 
 ## Frames, input and orientation
 
@@ -342,7 +345,7 @@ refuses one.
 
 Every `draw()` is also a frame to the frame watch (`render_watch.h`), which
 judges it by the board's rule; see
-[Testing-Guide.md](../Testing-Guide.md#the-frame-watch-as-a-gate). A scene
+[Performance and budgets](../testing/Performance-and-Budgets.md#the-frame-watch-as-a-gate). A scene
 declaring fewer frames than a warm-up and a window goes on drawing past its
 image until it has them, so every scene is judged at rest; its pixels and
 pins do not change. A finding fails the render: a heap site's `FRAME_WATCH`
@@ -365,9 +368,7 @@ passes, so a new scene is not blocked on one.
 
 **A pin only holds where the pixels are integer-exact**, since CI renders on
 a different compiler and C library than anyone's desk. The self-test report
-and the home screen are pinned: `draw.c` does no float maths, and the scroll
-view's momentum, the one part of the UI that reaches the maths library, is
-switched off at a zero time constant, so it is linked but never called.
+and the home screen are pinned: `draw.c` does no float maths.
 The boot animation is pinned as well: its slerp uses host-exact arithmetic
 with floating-point contraction disabled. A render that is not integer-exact
 ends its line with `|nopin` and is checked for its declared size alone (`scene_pin=0` does

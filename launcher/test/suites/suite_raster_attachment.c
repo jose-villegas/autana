@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "math/scalar/mathf_round.h"
 #include "raster_rig.h"
 #include "render_view_fixture.h"
 #include "suites.h"
@@ -88,8 +89,8 @@ rig_open(const raster_attachment_t* const* attachments, int count) {
 
 static void
 draw(raster_rig_t* r) {
-    const render_view_t frame_view = render_view_fixture(&camera, &r->raster, 0);
-    raster_draw(&r->raster, &frame_view);
+    r->view = render_view_fixture(&camera, &r->raster, 0);
+    raster_draw(&r->raster, &r->view);
 }
 
 static void
@@ -196,7 +197,8 @@ test_cluster_values_and_constant_writers(void) {
     const raster_attachment_t* both[] = {&per, &constant};
     raster_rig_t* r = rig_open(both, 2);
     r->raster.instance_count = 1;
-    r3d_lit_cluster_t clusters[2];
+    r3d_lit_cluster_t* clusters = calloc(2, sizeof(*clusters));
+    TEST_ASSERT_NOT_NULL(clusters);
     split_quad(r, clusters);
     raster_rig_attach(r, both, 2);
     draw(r);
@@ -221,8 +223,7 @@ test_cluster_values_and_constant_writers(void) {
         TEST_ASSERT_TRUE(both[k]->writer(both[k], 0, &writers[k]));
         writers[k].attachment = GFX_ATTACHMENT_FURTHER + k;
     }
-    const r3d_span_target_t target = {buffers.picture, writers, 2};
-    r->view = render_view_fixture(&camera, &r->raster, 0);
+    const r3d_span_target_t target = {buffers.picture, writers, 2, &r3d_span_small_fill_default};
     raster_lens(&r->raster, &r->view, 1, &r->lens);
     const uint16_t visible = 1;
     r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows);
@@ -237,6 +238,7 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_TRUE(drawn > 0);
     TEST_ASSERT_EQUAL_UINT32(17, writers[0].value);
     TEST_ASSERT_EQUAL_UINT32(17, writers[1].value);
+    free(clusters);
 }
 
 static void
@@ -480,8 +482,309 @@ test_meshlet_writer_accepts_the_last_uint16_id(void) {
     TEST_ASSERT_EQUAL_UINT32((uint32_t)UINT16_MAX + 1, state.next);
 }
 
+#define SMALL_FILL_CAMERA_DISTANCE 8
+
+static raster_rig_t*
+small_fill_fixture(bool at_gate) {
+    static const int16_t corners[4][3] = {{-1, -1, 0}, {1, -1, 0}, {1, 1, 0}, {-1, 1, 0}};
+    static const int16_t gate_corners[4][3] = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}};
+    const int16_t (*const positions[])[3] = {at_gate ? gate_corners : corners};
+    static const uint8_t colors[4][3] = {{32, 80, 96}, {128, 112, 48}, {224, 160, 144}, {48, 96, 80}};
+    const float tangent = at_gate ? H / (2.0F * SMALL_FILL_CAMERA_DISTANCE * (R3D_SPAN_SMALL_MAX_SIDE + 1)) : 1.0F;
+    const fixture_camera_t close = {{0, 0, -SMALL_FILL_CAMERA_DISTANCE}, {0, 0, 1}, tangent, 1};
+    raster_rig_t* r = raster_rig_open(positions, 1, 0, W, H, W * H * sizeof(uint16_t) * SMALL_FILL_STYLE_COUNT);
+    r->quad[0].mesh.colors = colors;
+    r->view = render_view_fixture(&close, &r->raster, 0);
+    return r;
+}
+
+static __attribute__((noinline)) void
+small_fill_reference(raster_rig_t* r, small_fill_t fill) {
+    uint16_t* color = (uint16_t*)r->own;
+    uint16_t* depth = color + W * H;
+    for (int i = 0; i < W * H; i++) {
+        color[i] = r->raster.clear;
+        depth[i] = R3D_DEPTH_EMPTY;
+    }
+    r3d_span_small_fill_t resolved;
+    r3d_span_small_fill_resolve(&resolved, fill);
+    r3d_span_target_t target = r3d_span_target(color, depth, W, 0, H);
+    target.small_fill = &resolved;
+    r3d_span_vertex_t vertices[4];
+    const float pixels_per_unit = r->view.lens.fx / SMALL_FILL_CAMERA_DISTANCE;
+    for (int k = 0; k < 4; k++) {
+        const int16_t* position = r->quad[0].mesh.positions[k];
+        const uint8_t* rgb = r->quad[0].mesh.colors[k];
+        vertices[k] = (r3d_span_vertex_t){mathf_round_i32((W / 2.0F + position[0] * pixels_per_unit) * R3D_SUBPIXEL),
+                                          mathf_round_i32((H / 2.0F - position[1] * pixels_per_unit) * R3D_SUBPIXEL),
+                                          1.0F / SMALL_FILL_CAMERA_DISTANCE,
+                                          rgb[0],
+                                          rgb[1],
+                                          rgb[2]};
+    }
+    for (int triangle = 0; triangle < 2; triangle++) {
+        const uint16_t* indices = r->quad[0].mesh.triangles[triangle];
+        r3d_span_triangle(&target, vertices + indices[0], vertices + indices[1], vertices + indices[2]);
+    }
+}
+
+static void
+assert_small_fill_sequence(raster_rig_t* r, small_fill_t fill) {
+    render_view_t a = r->view;
+    a.small_fill = fill;
+    small_fill_reference(r, fill);
+    const size_t bytes = W * H * sizeof(uint16_t);
+    uint16_t* expected = (uint16_t*)r->own + 2 * W * H;
+    memcpy(expected, r->own, bytes);
+    raster_draw(&r->raster, &a);
+    TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), bytes);
+    for (int axis = 0; axis < 2; axis++) {
+        render_view_t b = a;
+        if (axis == 0) {
+            b.small_fill.gate = fill.gate == 0 ? UINT8_MAX : 0;
+        } else {
+            b.small_fill.style = (fill.style + 1) % SMALL_FILL_STYLE_COUNT;
+        }
+        small_fill_reference(r, b.small_fill);
+        raster_draw(&r->raster, &b);
+        TEST_ASSERT_EQUAL_MEMORY(r->own, raster_color(&r->raster), bytes);
+        raster_census(&r->raster, &a);
+        raster_draw_culled(&r->raster, &a);
+        TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), bytes);
+        raster_draw(&r->raster, &a);
+        TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), bytes);
+    }
+}
+
+static void
+test_view_small_fill_styles_and_frame_isolation(void) {
+    raster_rig_t* r = small_fill_fixture(false);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, r->view.small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, r->view.small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, r->view.small_fill.style);
+    uint16_t* frames = (uint16_t*)r->own;
+    const size_t bytes = W * H * sizeof(*frames);
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style};
+        raster_draw(&r->raster, &r->view);
+        memcpy(frames + style * W * H, raster_color(&r->raster), bytes);
+        for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
+            TEST_ASSERT_NOT_EQUAL(0, memcmp(frames + previous * W * H, frames + style * W * H, bytes));
+        }
+    }
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style};
+        raster_census(&r->raster, &r->view);
+        raster_draw_culled(&r->raster, &r->view);
+        TEST_ASSERT_EQUAL_MEMORY(frames + style * W * H, raster_color(&r->raster), bytes);
+    }
+}
+
+static void
+test_view_small_fill_frame_transition_limits(void) {
+    raster_rig_t* r = small_fill_fixture(true);
+    static const uint8_t ceilings[] = {0, R3D_SPAN_SMALL_MAX_SIDE, R3D_SPAN_SMALL_MAX_SIDE + 1, UINT8_MAX};
+    static const uint8_t gates[] = {0, SMALL_FILL_GATE_FAST, UINT8_MAX};
+    for (size_t ceiling = 0; ceiling < sizeof ceilings / sizeof ceilings[0]; ceiling++) {
+        for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
+            for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+                assert_small_fill_sequence(r, (small_fill_t){ceilings[ceiling], gates[gate], style});
+            }
+        }
+    }
+}
+
+static void
+test_split_feedback_converges_clamps_and_forgets(void) {
+    const int damped = raster_split_update(RASTER_SPLIT_EVEN, RASTER_SPLIT_EVEN, 3 * RASTER_SPLIT_EVEN);
+    const int balanced_high = RASTER_SPLIT_PERMILLE * 3 / 4;
+    const int balanced_low = RASTER_SPLIT_PERMILLE / 4;
+    TEST_ASSERT_INT_WITHIN(1, (RASTER_SPLIT_EVEN + balanced_high) / 2, damped);
+    TEST_ASSERT_INT_WITHIN(1, (RASTER_SPLIT_EVEN + balanced_low) / 2,
+                           raster_split_update(RASTER_SPLIT_EVEN, 3 * RASTER_SPLIT_EVEN, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(raster_split_update(RASTER_SPLIT_EVEN, 1, 2),
+                          raster_split_update(RASTER_SPLIT_EVEN, INT64_C(3000000000), INT64_C(6000000000)));
+    int above = RASTER_SPLIT_EVEN;
+    for (int i = 0; i < 12; i++) {
+        const int next = raster_split_update(above, 3 * above, RASTER_SPLIT_PERMILLE - above);
+        TEST_ASSERT_TRUE(next <= above && next >= RASTER_SPLIT_PERMILLE / 4);
+        above = next;
+    }
+    TEST_ASSERT_INT_WITHIN(2, RASTER_SPLIT_PERMILLE / 4, above);
+    int share = RASTER_SPLIT_EVEN;
+    const int balanced = RASTER_SPLIT_PERMILLE * 3 / 4;
+    for (int i = 0; i < 12; i++) {
+        const int next = raster_split_update(share, share, 3 * (RASTER_SPLIT_PERMILLE - share));
+        TEST_ASSERT_TRUE(next >= share && next <= balanced);
+        share = next;
+    }
+    TEST_ASSERT_INT_WITHIN(2, balanced, share);
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN, raster_split_update(RASTER_SPLIT_MIN, 1000000, 1));
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MAX, raster_split_update(RASTER_SPLIT_MAX, 1, 1000000));
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_EVEN, raster_split_update(RASTER_SPLIT_EVEN, 1, 1));
+    TEST_ASSERT_EQUAL_INT(share, raster_split_update(share, 0, 1));
+    TEST_ASSERT_EQUAL_INT(share, raster_split_update(share, 1, -1));
+    TEST_ASSERT_EQUAL_INT(share, raster_split_update(share, 1, 0));
+    TEST_ASSERT_EQUAL_INT(share, raster_split_update(share, -1, 1));
+    TEST_ASSERT_EQUAL_INT(share, raster_split_update(share, 0, -1));
+    raster_split_t split;
+    for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
+        split.top_offset[i] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    }
+    raster_split_forget(&split);
+    for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
+        TEST_ASSERT_EQUAL_INT(0, split.top_offset[i]);
+    }
+}
+
+typedef struct {
+    int top, even;
+} split_rows_t;
+
+static void
+split_clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
+    memset(pixels, 0, count);
+    const r3d_pipeline_buffers_t buffers = r3d_pipeline_carve(raster);
+    if (pixels == gfx_render_target_row(&buffers.picture, GFX_ATTACHMENT_FURTHER, 0)) {
+        split_rows_t* rows = self->state;
+        rows->top = (int)count / raster->width;
+        rows->even = r3d_pipeline_draw_split(raster->instances[0].mesh, buffers.culled + 1, buffers.rows,
+                                             buffers.culled[0], raster->height, RASTER_SPLIT_EVEN);
+    }
+}
+
+static void
+test_split_feedback_preserves_pixels_and_null_uses_even_rows(void) {
+    split_rows_t rows = {0};
+    const uint32_t factor = 1;
+    const raster_attachment_t tags = {
+        .bytes_per_pixel = sizeof(uint16_t), .clear = id_clear, .writer = id_writer, .state = (void*)&factor};
+    const raster_attachment_t attachment = {.bytes_per_pixel = 1, .clear = split_clear, .state = &rows};
+    const raster_attachment_t* attached[] = {&attachment, &tags};
+    raster_rig_t* r = rig_open(attached, 2);
+    draw(r);
+    TEST_ASSERT_EQUAL_INT(rows.even, rows.top);
+    const gfx_render_target_t picture = r3d_pipeline_carve(&r->raster).picture;
+    const size_t bytes = gfx_attachment_bytes(sizeof(uint16_t), W, H);
+    void* expected = malloc(2 * bytes);
+    TEST_ASSERT_NOT_NULL(expected);
+    memcpy(expected, picture.attachment[GFX_ATTACHMENT_COLOR].pixels, bytes);
+    memcpy((uint8_t*)expected + bytes, raster_rig_attachment(r, 1), bytes);
+    raster_split_t split = {0};
+    r->raster.split = &split;
+    draw(r);
+    TEST_ASSERT_EQUAL_INT(rows.even, rows.top);
+    for (int share = RASTER_SPLIT_MIN; share <= RASTER_SPLIT_MAX; share += (RASTER_SPLIT_MAX - RASTER_SPLIT_MIN) / 2) {
+        for (int i = 0; i < r->raster.instance_count; i++) {
+            split.top_offset[i] = (int16_t)(share - RASTER_SPLIT_EVEN);
+        }
+        draw(r);
+        TEST_ASSERT_TRUE(share < RASTER_SPLIT_EVEN    ? rows.top < rows.even
+                         : share == RASTER_SPLIT_EVEN ? rows.top == rows.even
+                                                      : rows.top > rows.even);
+        TEST_ASSERT_EQUAL_MEMORY(expected, picture.attachment[GFX_ATTACHMENT_COLOR].pixels, bytes);
+        TEST_ASSERT_EQUAL_MEMORY((uint8_t*)expected + bytes, raster_rig_attachment(r, 1), bytes);
+    }
+    free(expected);
+}
+
+#ifndef DEVICE_BUILD
+static int* observed_top;
+
+static void
+observe_split_span(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int first, int last,
+                   int32_t z, int32_t dz) {
+    if (rows->row0 == 0) {
+        observed_top[writer->value] = rows->row1;
+    }
+}
+
+static bool
+observe_split_writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
+    out->span = observe_split_span;
+    out->value = (uint32_t)instance;
+    return true;
+}
+
+static void
+test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
+    const raster_attachment_t observer = {.bytes_per_pixel = 1, .writer = observe_split_writer};
+    const raster_attachment_t* attached[] = {&observer};
+    raster_rig_t* r = rig_open(attached, 1);
+    r3d_instance_t instances[RASTER_SPLIT_INSTANCES + 1];
+    for (int i = 0; i <= RASTER_SPLIT_INSTANCES; i++) {
+        instances[i] = r->instance[0];
+    }
+
+    struct {
+        raster_split_t split;
+        int16_t sentinel;
+    } state = {.sentinel = RASTER_SPLIT_MIN};
+
+    r->raster.instances = instances;
+    r->raster.instance_count = RASTER_SPLIT_INSTANCES + 1;
+    free(r->raster.scratch);
+    r->raster.scratch = malloc(raster_scratch_bytes(&r->raster));
+    TEST_ASSERT_NOT_NULL(r->raster.scratch);
+    r->raster.split = &state.split;
+    int top_rows[RASTER_SPLIT_INSTANCES + 1] = {0};
+    observed_top = top_rows;
+    for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
+        state.split.top_offset[i] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    }
+    draw(r);
+    const r3d_pipeline_buffers_t buffers = r3d_pipeline_carve(&r->raster);
+    const int even = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0], H,
+                                             RASTER_SPLIT_EVEN);
+    TEST_ASSERT_EQUAL_INT(even, observed_top[RASTER_SPLIT_INSTANCES]);
+    const int retained = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0],
+                                                 H, RASTER_SPLIT_MIN);
+    TEST_ASSERT_EQUAL_INT(retained, observed_top[RASTER_SPLIT_INSTANCES - 1]);
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN, state.sentinel);
+
+    r->raster.instance_count = 2;
+    const raster_split_t before = state.split;
+    memset(top_rows, 0, sizeof top_rows);
+    draw(r);
+    for (int i = 0; i < r->raster.instance_count; i++) {
+        TEST_ASSERT_GREATER_THAN_INT(0, observed_top[i]);
+        TEST_ASSERT_INT_WITHIN((RASTER_SPLIT_MAX - RASTER_SPLIT_MIN) / 2, 0, state.split.top_offset[i]);
+    }
+    for (int i = 2; i < RASTER_SPLIT_INSTANCES; i++) {
+        TEST_ASSERT_EQUAL_INT(0, observed_top[i]);
+        TEST_ASSERT_EQUAL_INT(before.top_offset[i], state.split.top_offset[i]);
+    }
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN, state.sentinel);
+}
+#endif
+
+static void
+test_context_owns_and_forgets_split(void) {
+    raster_rig_t* r = rig_open(NULL, 0);
+    render_context_t context = {.scale_percent = 100};
+    const render_view_t view = render_view_fixture(&camera, &r->raster, 0);
+    TEST_ASSERT_TRUE(render_context_draw(&context, r->instance, 2, &view, 0));
+    TEST_ASSERT_EQUAL_PTR(&context.split, context.raster.split);
+    context.split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_forget(&context);
+    TEST_ASSERT_EQUAL_INT(0, context.split.top_offset[0]);
+    context.split.top_offset[RASTER_SPLIT_INSTANCES - 1] = RASTER_SPLIT_MAX - RASTER_SPLIT_EVEN;
+    render_context_release(&context);
+    for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
+        TEST_ASSERT_EQUAL_INT(0, context.split.top_offset[i]);
+    }
+}
+
 void
 run_raster_attachment_suite(void) {
+    RUN_TEST(test_context_owns_and_forgets_split);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_draw_retains_only_the_drawn_instance_and_bounds_state);
+#endif
+    RUN_TEST(test_split_feedback_converges_clamps_and_forgets);
+    RUN_TEST(test_split_feedback_preserves_pixels_and_null_uses_even_rows);
+    RUN_TEST(test_view_small_fill_styles_and_frame_isolation);
+    RUN_TEST(test_view_small_fill_frame_transition_limits);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_printed_views_match_the_declared_names);
 #endif

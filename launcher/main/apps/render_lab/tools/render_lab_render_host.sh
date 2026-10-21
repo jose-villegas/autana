@@ -29,6 +29,7 @@ main/render/render_view.c
 main/render/raster.c
 main/render/raster_show.c
 main/render/raster_motion.c
+main/render/raster_split.c
 main/render/raster_meshlets.c
 main/render/r3d_pipeline.c
 main/render/upscale.c
@@ -53,8 +54,8 @@ main/scene/scene_asset.c
 main/scene/scene_draw.c
 main/scene/scene_shell.c
 main/render/r3d_lit_mesh.c
-main/input/gesture.c
-main/input/orbit_motion_touch.c
+main/input/touch/gesture.c
+main/input/mapping/orbit_motion_touch.c
 main/apps/render_lab/tools/render_lab_render_host.c
 $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
     find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \
@@ -90,7 +91,10 @@ menu-sponza-landscape|--quarter 1 --menu --scene sponza --frames 4|448x368
 menu-sponza-portrait|--quarter 0 --menu --scene sponza --frames 4|368x448
 menu-capybara-landscape|--quarter 1 --menu --scene capybara --frames 4|448x368
 menu-capybara-portrait|--quarter 0 --menu --scene capybara --frames 4|368x448
-menu-capybara-clips|--quarter 0 --menu --scene capybara --tap 184,166 --frames 6|368x448
+menu-capybara-clips|--quarter 0 --menu --scene capybara --tap 184,172 --frames 6|368x448
+menu-sponza-small-fill|--quarter 0 --menu --scene sponza --tap 184,272 --frames 6|368x448
+menu-sponza-scene|--quarter 0 --menu --scene sponza --tap 184,72 --frames 6|368x448
+menu-sponza-mesh|--quarter 0 --menu --scene sponza --tap 184,172 --frames 6|368x448
 "
 
 # The scenes read their meshes from asset packs of the baked meshes in the tree.

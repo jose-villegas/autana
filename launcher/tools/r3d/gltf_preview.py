@@ -169,11 +169,13 @@ def fill_triangle(pixels, depth, width, height, points, corners):
                     pixels[px, py] = tuple(int(round(w0 * p + w1 * q + w2 * r)) for p, q, r in zip(*corners))
 
 
-def render(asset, camera, positions, size, lit=None):
-    """Flat-shaded by LIGHT, or with `lit`, per-vertex 8-bit RGB, interpolated."""
+def render(asset, camera, positions, size, lit=None, ground=True):
+    """Flat-shaded by LIGHT, or with `lit`, per-vertex 8-bit RGB, interpolated; on the ground and its shadow
+    unless `ground` is false, as for a camera below it."""
     width, height = size
     image = Image.new("RGB", (width * SUPERSAMPLE, height * SUPERSAMPLE), BACKGROUND)
-    draw_ground(image, camera, positions, asset.triangles, 0.8)
+    if ground:
+        draw_ground(image, camera, positions, asset.triangles, 0.8)
     if lit is None:
         corners = flat_shading(positions, asset.colors or [(0.6, 0.6, 0.6)] * len(positions))
     else:

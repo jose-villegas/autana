@@ -1,11 +1,11 @@
 # Gravity
 
-`gravity_t` (`input/gravity.h`) estimates unit down, linear acceleration in g,
+`gravity_t` (`input/motion/gravity.h`) estimates unit down, linear acceleration in g,
 gyro bias in deg/s, tilt strength and free fall. Gyro predicts motion;
 trusted acceleration corrects drift.
 
 Acceleration cannot distinguish gravity from other forces. Axes, scales and
-calibration are described in [Input-and-Sensors.md](../notes/Input-and-Sensors.md#the-imus-axes-do-not-match-the-screens).
+calibration are described in [Motion-Axes.md](Motion-Axes.md) and [Motion-Calibration.md](Motion-Calibration.md).
 
 ## Update
 
@@ -13,7 +13,7 @@ calibration are described in [Input-and-Sensors.md](../notes/Input-and-Sensors.m
 `gravity_update_batch()` predicts and corrects once per sample, using microseconds.
 Gyro prediction is minus angular velocity crossed with down in screen axes.
 
-The nominal ODR and interval are `IMU_ODR_HZ` and `IMU_SAMPLE_US` in `input/imu.h`.
+The nominal ODR and interval are `IMU_ODR_HZ` and `IMU_SAMPLE_US` in `input/motion/imu.h`.
 Matching CTRL2/CTRL3 codes follow QMI8658A Rev A and SensorLib.<sup>[[80]](../Citations.md#80)</sup><sup>[[79]](../Citations.md#79)</sup>
 
 Every delivered and lost sample integrates at `INPUT_MOTION_SAMPLE_US`.
@@ -21,21 +21,18 @@ Every delivered and lost sample integrates at `INPUT_MOTION_SAMPLE_US`.
 batch capacity against `IMU_FIFO_SAMPLES`.
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph Input["Drain and timing"]
-        direction LR
         Drain["Count FIFO<br/>then request read mode"] --> Batch["Batch: oldest first<br/>delivered, lost, gap"]
     end
+    Missing["Advance bounded lost time<br/>holding previous batch's rotation"]
     subgraph Update["For each delivered sample"]
-        direction LR
         Predict["Datasheet interval<br/>predict down from gyro"] --> Judge["Overrange and<br/>acceleration trust"]
         Judge --> Correct["Adopt, pull, learn bias<br/>or hold correction"]
     end
-    Missing["Advance bounded lost time<br/>holding previous batch's rotation"]
     Linear["Unit down and<br/>linear acceleration"]
-    Input --> Missing
-    Missing --> Update
-    Update --> Linear
+    Batch --> Missing --> Predict
+    Correct --> Linear
 ```
 
 Strength is the in-plane share of the unit down vector, clamped to 0..1 and
@@ -101,7 +98,7 @@ the settling target applies to accepted acceleration at full trust.
 
 ## Constants
 
-The constants are owned by `launcher/main/input/gravity.h`:
+The constants are owned by `launcher/main/input/motion/gravity.h`:
 
 | Constant | Value | Source |
 |---|---|---|
@@ -144,6 +141,19 @@ agrees with the datasheet ODR multiplied by time outside FIFO read mode.
 |---|---|---|---|
 | Every frame | 197.8 Hz | 10.8% | 200.0 Hz |
 | Every 500 ms | 210.4 Hz | 6.1% | 210.5 Hz |
+
+A faster SCL shortens read mode, but SCL stays at 400 kHz, the QMI8658A's I2C rating.<sup>[[79]](../Citations.md#79)</sup>
+No other part on the bus states more than 400 kHz, and the ESP32-S3 stops at 800 kbit/s.<sup>[[66]](../Citations.md#66)</sup>
+Board A308, drain every frame, 45 s per speed:
+
+| QMI8658 SCL | Delivered | Lost | Drain per frame | Launcher `frame.rest` |
+|---|---|---|---|---|
+| 400 kHz | 202.6 Hz | 9.1% | 2.36 ms | 1.40 ms |
+| 800 kHz | 212.6 Hz | 5.5% | 1.42 ms | 1.20 ms |
+| 1 MHz | 212.0 Hz | 5.2% | 1.31 ms | - |
+
+800 kHz ran a clean 10 min soak, but that cannot show the slower parts never misread its
+shorter clock, and the QMI8658A has no CRC.
 
 The count precedes `CTRL9_REQ_FIFO` (section 8.8). CTRL9 status uses consecutive I2C
 reads, with no minimum polling delay (section 5.10.1). Every drain attempts to

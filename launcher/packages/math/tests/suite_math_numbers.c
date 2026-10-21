@@ -106,6 +106,132 @@ test_vec2_ops_agree_across_every_number_type(void) {
     TEST_ASSERT_FALSE(vec2s_equal((vec2s_t){1, 2}, (vec2s_t){1, 3}));
 }
 
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
+#ifndef DEVICE_BUILD
+/* Prescaling relative length error <= sqrt(3)*2^-30; root rounding adds <= 2^-30.
+ * Reciprocal rounding adds <= sqrt(3)*2^-31 (or clamp <= 2^-31), totaling < 2^-28.
+ * This gives < 2^-12 component LSB before final 0.5 LSB rounding. */
+#define NORMALIZE_ROUNDING_ERROR          0.5
+#define NORMALIZE_COMPONENT_ERROR         (NORMALIZE_ROUNDING_ERROR + 0x1p-12)
+#define NORMALIZE_QUOTIENT_RELATIVE_ERROR 0x1p-28
+#define NORMALIZE_WORD_BITS               32
+#define NORMALIZE_SWEEP_SAMPLES           2048
+#define NORMALIZE_LCG_MULTIPLIER          UINT32_C(1664525)
+#define NORMALIZE_LCG_INCREMENT           UINT32_C(1013904223)
+
+static void
+assert_normalize_quotient_reference(vec3x_t a, int32_t t) {
+    const double length = sqrt((double)a.x * a.x + (double)a.y * a.y + (double)a.z * a.z);
+    const double exact = (double)t * MATHX_ONE / length;
+    const double expected = fmax(INT32_MIN, fmin(INT32_MAX, exact));
+    int32_t q;
+    vec3x_normalize_divide(a, t, &q);
+    TEST_ASSERT_TRUE(fabs(q - expected)
+                     <= NORMALIZE_ROUNDING_ERROR + fabs(expected) * NORMALIZE_QUOTIENT_RELATIVE_ERROR);
+}
+
+static void
+assert_normalize_reference(vec3x_t a) {
+    const double length = sqrt((double)a.x * a.x + (double)a.y * a.y + (double)a.z * a.z);
+    const vec3x_t out = vec3x_normalize(a);
+    static const int32_t numerators[] = {0, 1, -1, MATHX_ONE, -MATHX_ONE, INT32_MAX, INT32_MIN};
+    for (size_t i = 0; i < sizeof(numerators) / sizeof(numerators[0]); i++) {
+        assert_normalize_quotient_reference(a, numerators[i]);
+    }
+    TEST_ASSERT_TRUE(fabs(out.x - (double)a.x * MATHX_ONE / length) <= NORMALIZE_COMPONENT_ERROR);
+    TEST_ASSERT_TRUE(fabs(out.y - (double)a.y * MATHX_ONE / length) <= NORMALIZE_COMPONENT_ERROR);
+    TEST_ASSERT_TRUE(fabs(out.z - (double)a.z * MATHX_ONE / length) <= NORMALIZE_COMPONENT_ERROR);
+}
+
+#endif
+
+static void
+test_normalize_divide_zero_and_float(void) {
+    static const int32_t numerators[] = {INT32_MIN, -1, 0, 1, INT32_MAX};
+    const vec3x_t zero = {0, 0, 0};
+    for (size_t i = 0; i < sizeof(numerators) / sizeof(numerators[0]); i++) {
+        int32_t q;
+        TEST_ASSERT_TRUE(vec3x_equal(zero, vec3x_normalize_divide(zero, numerators[i], &q)));
+        TEST_ASSERT_EQUAL_INT32(mathx_div(numerators[i], 0), q);
+    }
+    const vec3f_t normalized = vec3f_normalize(A);
+    static const float float_numerators[] = {B.x, -B.x, 0.0F};
+    for (size_t i = 0; i < sizeof(float_numerators) / sizeof(float_numerators[0]); i++) {
+        float q;
+        const vec3f_t divided = vec3f_normalize_divide(A, float_numerators[i], &q);
+        TEST_ASSERT_TRUE(vec3f_equal(normalized, divided));
+        TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, float_numerators[i] / sqrtf(vec3f_dot(A, A)), q);
+    }
+}
+
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
+#ifndef DEVICE_BUILD
+static void
+test_fixed_normalize_saturation_edges(void) {
+    static const struct {
+        vec3x_t a;
+        int32_t t;
+    } oblique_cases[] = {{{-19370, 18651, -10733}, -948719331}, {{-25384, -6545, 25263}, 1192954874}};
+
+    for (size_t i = 0; i < sizeof(oblique_cases) / sizeof(oblique_cases[0]); i++) {
+        assert_normalize_quotient_reference(oblique_cases[i].a, oblique_cases[i].t);
+    }
+
+    enum { EDGE_RADIUS = 2, LENGTH_NUMERATOR = 3, LENGTH_DENOMINATOR = 4 };
+
+    const vec3x_t a = {LENGTH_NUMERATOR * (MATHX_ONE / LENGTH_DENOMINATOR), 0, 0};
+    for (int offset = -EDGE_RADIUS; offset <= EDGE_RADIUS; offset++) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            const int32_t t = sign * LENGTH_NUMERATOR * (INT32_MAX / LENGTH_DENOMINATOR + offset);
+            assert_normalize_quotient_reference(a, t);
+        }
+    }
+}
+
+#endif
+
+static void
+test_fixed_normalize_extreme_magnitudes(void) {
+    static const vec3x_t cases[] = {{200 * MATHX_ONE, 0, 0},           {1, 0, 0},         {1, 1, 0}, {1, 1, 1},
+                                    {INT32_MIN, INT32_MIN, INT32_MIN}, {INT32_MAX, -5, 3}};
+#ifndef DEVICE_BUILD
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        assert_normalize_reference(cases[i]);
+    }
+#endif
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE, vec3x_normalize(cases[0]).x);
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE, vec3x_normalize(cases[1]).x);
+    const vec3x_t negative_axis = {INT32_MIN, 0, 0};
+    int32_t q;
+    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){-MATHX_ONE, 0, 0}, vec3x_normalize_divide(negative_axis, INT32_MIN, &q)));
+    TEST_ASSERT_EQUAL_INT32(-MATHX_ONE, q);
+    vec3x_normalize_divide(cases[1], MATHX_ONE, &q);
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, q);
+    vec3x_normalize_divide(cases[1], -MATHX_ONE, &q);
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, q);
+}
+
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
+#ifndef DEVICE_BUILD
+static void
+test_fixed_normalize_every_magnitude(void) {
+    uint32_t state = 1;
+    for (int shift = 0; shift < NORMALIZE_WORD_BITS; shift++) {
+        for (int sample = 0; sample < NORMALIZE_SWEEP_SAMPLES; sample++) {
+            int32_t components[3];
+            for (size_t i = 0; i < sizeof(components) / sizeof(components[0]); i++) {
+                state = state * NORMALIZE_LCG_MULTIPLIER + NORMALIZE_LCG_INCREMENT;
+                const int component_shift = (shift + (int)(state >> (NORMALIZE_WORD_BITS / 2))) % NORMALIZE_WORD_BITS;
+                const int64_t magnitude = (state >> (NORMALIZE_WORD_BITS - 1 - component_shift)) | 1;
+                components[i] = mathx_saturate((state & 1) ? -magnitude : magnitude);
+            }
+            assert_normalize_reference((vec3x_t){components[0], components[1], components[2]});
+        }
+    }
+}
+
+#endif
+
 static void
 test_fixed_normalize_matches_float_within_its_precision(void) {
     const vec3f_t n = vec3f_normalize(A);
@@ -996,6 +1122,14 @@ suite_math_numbers(void) {
     RUN_TEST(test_looking_keeps_forward_at_large_positions);
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
+    RUN_TEST(test_normalize_divide_zero_and_float);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_fixed_normalize_saturation_edges);
+#endif
+    RUN_TEST(test_fixed_normalize_extreme_magnitudes);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_fixed_normalize_every_magnitude);
+#endif
     RUN_TEST(test_fixed_normalize_matches_float_within_its_precision);
     RUN_TEST(test_fixed_quaternion_rotation_matches_float);
     RUN_TEST(test_fixed_view_from_axes_maps_the_eye_and_frame_axes);

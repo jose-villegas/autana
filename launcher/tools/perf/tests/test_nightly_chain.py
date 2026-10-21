@@ -586,6 +586,30 @@ class NightlyTests(unittest.TestCase):
         planned = json.loads(args.out.read_text())
         self.assertEqual({board: lane["previous"] for board, lane in planned["lanes"].items()}, previous)
 
+    def test_plan_without_boards_takes_every_plugged_board(self):
+        listing = {"boards": [{"board": "44:BD:8D:78:20:E8", "port": "COM3"},
+                              {"board": "44:BD:8D:78:21:24", "port": None},
+                              {"board": "90:70:69:FE:A3:08", "port": "COM5"}]}
+        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
+                               out=self.root / "plan.json", queue_at=None, from_sha=None, max_steps=None,
+                               selftest_board=None)
+        real = chain.subprocess.check_output
+        def devices(command, **kwargs):
+            return json.dumps(listing) if "devices" in command else real(command, **kwargs)
+        with patch.object(chain.subprocess, "check_output", side_effect=devices), \
+                patch.object(chain, "read_last_night", return_value=None), \
+                patch("sys.stdout", new_callable=io.StringIO) as output:
+            chain.plan(args, self.clock)
+        planned = json.loads(args.out.read_text())
+        self.assertEqual({board: lane["lane"] for board, lane in planned["lanes"].items()},
+                         {"20E8": "0/2", "A308": "1/2"})
+        self.assertEqual(output.getvalue().splitlines(), ["SCOPED_BOARDS=20E8 A308", "SELFTEST_BOARD=20E8"])
+        listing["boards"] = [dict(board, port=None) for board in listing["boards"]]
+        args.boards = None
+        with patch.object(chain.subprocess, "check_output", side_effect=devices), \
+                self.assertRaises(SystemExit):
+            chain.plan(args, self.clock)
+
     def test_cleanup_fallback_deletes_tree_and_copies_records(self):
         original_git, original_replay, original_remove = chain.git, Replay.__call__, chain.remove_output
         def records(replay, command, *args, **kwargs):
@@ -698,13 +722,14 @@ bash "$1" board "$2" data out -- --suite suite - "table with spaces"
         for event, requested, expected in (("schedule", "", "22:30"),
                                            ("workflow_dispatch", "", None),
                                            ("workflow_dispatch", "21:15", "21:15")):
-            with self.subTest(event=event, requested=requested):
+            with self.subTest(event=event, requested=requested), tempfile.TemporaryDirectory() as tmp:
+                # The plan's output goes to the job environment, not the log.
+                github_env = Path(tmp) / "github_env"
                 env = dict(os.environ, GITHUB_EVENT_NAME=event, DISPATCH_QUEUE_AT=requested,
-                           QUEUE_AT="22:30", FROM_SHA="", MAX_STEPS="", SCOPED_BOARDS="board",
-                           SELFTEST_BOARD="board")
-                result = subprocess.run(["bash", "-c", command], env=env, capture_output=True,
-                                        text=True, check=True)
-                args = result.stdout.splitlines()
+                           QUEUE_AT="22:30", FROM_SHA="", MAX_STEPS="", GITHUB_ENV=str(github_env))
+                subprocess.run(["bash", "-c", command], env=env, capture_output=True, text=True, check=True)
+                args = github_env.read_text().splitlines()
+                self.assertNotIn("--boards", args)
                 if expected is None:
                     self.assertNotIn("--queue-at", args)
                 else:

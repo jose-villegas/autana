@@ -383,6 +383,11 @@ gfx_set_frame_overlay(gfx_band_overlay_fn overlay) {
     frame_overlay = overlay;
 }
 
+gfx_band_overlay_fn
+gfx_frame_overlay(void) {
+    return frame_overlay;
+}
+
 void
 clear_expanded_frame(bool free_picture) {
     frame_expanded = false;
@@ -611,13 +616,14 @@ static bool
 gfx_band_dirty(void) {
     const int row0 = band_render_row0;
     const int row1 = band_render_row0 + band_render_height;
-    int x0, x1;
+    int x0;
+    int x1;
     bool dirty = band_frame_force_all || dirty_band_extent(row0, row1, &x0, &x1);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     /* A border exists only in the band that was sent, and gfx holds no
      * copy to resend: the one way to take it off the panel is to have the
      * app render the band once more. */
-    if (!dirty && (band_overlay_bordered & (1u << (row0 / band_render_height)))) {
+    if (!dirty && (band_overlay_bordered & (1U << (row0 / band_render_height)))) {
         band_overlay_cleanup_only = true;
         dirty = true;
     }
@@ -700,7 +706,7 @@ gfx_band_submit(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     /* Drawn into the buffer about to be sent. A band submitted only to
      * clean last frame's borders (gfx_band_dirty()) goes out bare. */
-    const uint32_t band_bit = 1u << (band_render_row0 / band_render_height);
+    const uint32_t band_bit = 1U << (band_render_row0 / band_render_height);
     if (overlay_any_on() && !band_overlay_cleanup_only) {
         mark_band_overlay(band_buf[band_current_slot], band_render_row0, band_render_height);
         band_overlay_bordered |= band_bit;
@@ -710,7 +716,7 @@ gfx_band_submit(void) {
 #endif
 
     if (band_snapshot_filling || band_snapshot_complete) {
-        memcpy(band_snapshot + (size_t)band_render_row0 * GFX_WIDTH, band_buf[band_current_slot],
+        memcpy(band_snapshot + ((size_t)band_render_row0 * GFX_WIDTH), band_buf[band_current_slot],
                (size_t)band_render_height * GFX_WIDTH * sizeof(gfx_color_t));
     }
     if (band_snapshot_filling) {
@@ -800,13 +806,13 @@ gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     if (frame_expanded) {
         expand_rows(y, y + 1, out_row);
     } else if (gfx_mode_has_framebuffer(&current_mode)) {
-        memcpy(out_row, present_fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
+        memcpy(out_row, present_fb + ((size_t)y * GFX_WIDTH), GFX_WIDTH * sizeof(gfx_color_t));
     } else if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         const gfx_indexed_frame_t frame = indexed_frame();
         gfx_indexed_expand_panel_row(&frame, y, out_row, GFX_WIDTH);
     } else {
         assert(band_snapshot_complete);
-        memcpy(out_row, band_snapshot + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
+        memcpy(out_row, band_snapshot + ((size_t)y * GFX_WIDTH), GFX_WIDTH * sizeof(gfx_color_t));
     }
 }
 
