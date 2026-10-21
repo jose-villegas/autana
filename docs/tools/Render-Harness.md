@@ -160,16 +160,23 @@ The stage's work folder is named by it, and its saved `source.json` holds it
 and lists every input.
 
 The `doc-images-gpu` workflow runs on every main push, nightly and on manual
-dispatch. The latest unexpired rendered or failed record on main decides
-whether these inputs are current. A dispatch with `force` bypasses both
-record checks but still skips an obsolete run. The hosted lookup defers to
-the GPU gate while another run of this workflow on main is unfinished. The
-gate holds the concurrency group, skips runs whose trigger SHA is no longer
-main's head, then checks only the latest record. Refresh jobs queue instead of replacing each other
-(`queue: max`); an obsolete one skips in seconds, so the head's job still
-runs; the nightly run is the backstop for anything a missed or failed trigger
-leaves stale. A forced dispatch that becomes obsolete must be dispatched
-again on main.
+dispatch.
+
+The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
+failed attempt is a record too, so a newer failed one makes them stale
+and the next run renders again.
+
+A dispatch with `force` bypasses both record checks but still skips an
+obsolete run. The hosted lookup defers to the GPU gate while another run of
+this workflow on main is unfinished.
+
+The gate holds the concurrency group, skips runs whose trigger SHA is no
+longer main's head, then checks only the latest record. Refresh jobs queue
+instead of replacing each other (`queue: max`).
+
+An obsolete job skips in seconds, so the head's job still runs. The nightly
+run covers missed or failed triggers. A forced dispatch that becomes
+obsolete must be dispatched again on main.
 
 The first refresh step, `scripts/ci/gpu_refresh_gate.sh`, is the flowchart's
 GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
@@ -178,14 +185,14 @@ GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
 flowchart TD
     Fingerprint["Hosted input fingerprint"] --> Flight{"Another run in flight?"}
     Flight -->|yes| Refresh
-    Flight -->|no| Latest{"Latest main record matches?"}
+    Flight -->|no| Latest{"Latest main record rendered<br/>and matches?"}
     Latest -->|yes| Skip["Doc images current"]
     Latest -->|no or force| Refresh["gpu_refresh_gate.sh<br/>holds GPU concurrency group"]
     Refresh --> Check{"GPU runner's fingerprint matches hosted?"}
     Check -->|no| Error["Fail with both fingerprints"]
     Check -->|yes| Head{"Trigger SHA is main head?"}
     Head -->|no| Obsolete["Skip obsolete run, record nothing"]
-    Head -->|yes| Again{"Latest main record matches?"}
+    Head -->|yes| Again{"Latest main record rendered<br/>and matches?"}
     Again -->|yes| Skip
     Again -->|no or force| Render["Render"]
     Render -->|success| Publish["Sync or close refresh PR"]
@@ -195,10 +202,12 @@ flowchart TD
 ```
 
 A rendered record means rendered, not merged: closing a refresh PR leaves
-these inputs current until they change or a dispatch uses `force`. Failed
-records also skip until inputs change or force retries. Retention is set in
-`doc-images-gpu.yml`. Runs open or update "docs: refresh GPU-rendered images"
-on `feature/refresh-doc-images-gpu`, and log GPU memory use.
+these inputs current until they change or a dispatch uses `force`.
+
+A failed record leaves inputs not current, so the next push or nightly run
+renders again. Retention is set in `doc-images-gpu.yml`.
+Runs open or update "docs: refresh GPU-rendered images" on
+`feature/refresh-doc-images-gpu`, and log GPU memory use.
 
 Inputs outside the fingerprint include compiler identity/version and system
 headers, the GPU environment (its Python, CUDA, drivers and ffmpeg), the
