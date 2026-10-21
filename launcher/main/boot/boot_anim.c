@@ -103,7 +103,7 @@ boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) 
     const float meters_per_unit[3] = {1.0F / (float)BOOT_ANIM_ONE,
                                       (float)BOOT_ANIM_SPIRAL_Q9 / (256.0F * (float)R3D_X_UNIT_ONE),
                                       1.0F / (float)BOOT_ANIM_ONE};
-    return r3d_line_view_x_make(&view, &st.space, meters_per_unit);
+    return r3d_line_projector_make(&view, &st.space, meters_per_unit);
 }
 
 /* What every node and edge of one frame's mesh shares. */
