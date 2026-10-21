@@ -124,6 +124,12 @@ class HeavyTests(unittest.TestCase):
             for value in ("heavy: held by render-owner", "since", "device.py render", "build-waiter"):
                 self.assertIn(value, text)
 
+    def test_busy_notice_names_the_heavy_holder(self):
+        held = self.store.acquire(locks.HEAVY, "render-owner", "render")
+        notice = locks.busy_text(self.store.status(locks.HEAVY), self.store.now())
+        self.assertEqual(notice, f"heavy held by render-owner for {held['purpose']} since "
+                                f"{locks.local_time(held['acquired_at'])}; `autana status` shows the queue")
+
     def test_windows_and_reachable_wsl_root(self):
         native_path = type(self.root)
         with patch.object(locks, "Path", native_path), patch.dict(os.environ, {"ProgramData": str(self.root)}, clear=True), \

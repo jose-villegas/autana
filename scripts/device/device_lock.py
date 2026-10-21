@@ -984,7 +984,7 @@ def holder_version_text(holder):
 
 
 def busy_text(status, now):
-    """Why a command that would not wait was not given the board."""
+    """Why a command that would not wait was not given the lock."""
     if status.get("human"):
         human = status["human"]
         left = human_left_text(human, now)
@@ -992,7 +992,8 @@ def busy_text(status, now):
                 f"({left + '; ' if left else ''}`autana lock take-back` ends it)")
     lock = status.get("lock")
     if lock:
-        return (f"board held by {lock['owner']} for {lock.get("purpose", "unknown")} since "
+        key = HEAVY if lock.get("board") == HEAVY else "board"
+        return (f"{key} held by {lock['owner']} for {lock.get("purpose", "unknown")} since "
                 f"{local_time(lock['acquired_at'])}; `autana status` shows the queue")
     return "other commands are queued ahead"
 
