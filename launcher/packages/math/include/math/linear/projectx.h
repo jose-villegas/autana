@@ -8,6 +8,7 @@
 #include <stdbool.h>
 
 #include "math/linear/project_template.h"
+#include "math/linear/projectf.h"
 #include "math/linear/vec3x.h"
 #include "math/scalar/mathx.h"
 
@@ -15,6 +16,12 @@
 typedef struct {
     int32_t fx, fy, cx, cy, near_z;
 } projectx_t;
+
+static inline projectx_t
+projectx_from_projectf(const projectf_t* lens) {
+    return (projectx_t){mathf_to_x(lens->fx), mathf_to_x(lens->fy), mathf_to_x(lens->cx), mathf_to_x(lens->cy),
+                        mathf_to_x(lens->near_z)};
+}
 
 static inline void
 _projectx_cross_near(int32_t near_z, vec3x_t* behind, const vec3x_t* front) {

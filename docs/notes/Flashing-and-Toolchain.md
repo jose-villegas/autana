@@ -182,7 +182,7 @@ Check widening inside fixed-point helpers, prove operand bounds before
 narrowing, and inspect disassembly rather than assigning a source-level
 divide a fixed cycle cost. `r3d_project_point_cs_x()` in
 `launcher/main/render/r3d_project_x.h` keeps the per-point divide 32-bit
-and widens only the pixels-per-unit multiply. Near-plane clipping in
+and widens only the focal-length multiply. Near-plane clipping in
 `math/linear/projectx.h` uses a 64-bit divide for its Q16.16 crossing ratio.
 
 `ceilf()` is a libm call, too costly per row; use `(int)x` plus one when it

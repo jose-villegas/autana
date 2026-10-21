@@ -16,6 +16,11 @@
 #define FRAME_PROFILE_LOW          "low"
 #define FRAME_PROFILE_QUARTER      "quarter="
 
+/* A suite timing fixed poses logs one line per pose and one summary per row. */
+#define FRAME_PROFILE_POSE         "%s t=%6ums clusters=%4d tris=%5d | both cores: frame %7lldus"
+
+#define FRAME_PROFILE_ROW          "%s both cores: mean %lldus (%.1f fps before present), worst %lldus, med %lldus, p95 %lldus"
+
 /* Advances by dt_us and returns wall time in us; warm-up receives zero. */
 typedef int64_t (*frame_profile_frame_fn)(void* ctx, int64_t dt_us);
 
