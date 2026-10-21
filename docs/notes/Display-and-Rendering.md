@@ -1,7 +1,7 @@
 # Display and Rendering
 
 Part of the [platform notes](README.md). The frame's send path is documented
-in [Gfx-and-Presentation.md](../Gfx-and-Presentation.md); these are the panel
+in [gfx/README.md](../gfx/README.md); these are the panel
 constraints that path must obey.
 
 The panel refreshes from its own GRAM. A region that is not sent retains its
@@ -47,7 +47,7 @@ The 80 MHz option exceeds the panel's rated clock and can leave stray pixels
 or lines during partial redraws. Even window edges are required at both
 clocks; they do not remove the clock risk. Use 40 MHz for a clean link.
 The shell owns clock selection and partial-redraw healing; see
-[Panel clock and heal](../Gfx-and-Presentation.md#panel-clock-and-heal).
+[Panel clock and heal](../gfx/Present.md#panel-clock-and-heal).
 
 ### Panel-link faults are invisible to screenshots
 
@@ -72,7 +72,7 @@ The device tests in `launcher/test/suites/suite_gfx.c` time full bands,
 narrow changes, short wide changes and separated marks against each other.
 Use those tests for current costs rather than transferring isolated timings
 between clocks or render modes. Geometry and marking ownership are in
-[Dirty tracking](../Gfx-and-Presentation.md#dirty-tracking) and
+[Dirty tracking](../gfx/Dirty-Tracking.md#dirty-tracking) and
 `launcher/main/gfx/present/send/gfx_dirty.h`.
 
 Full-width partial bands are contiguous and need no gather packing. Narrow

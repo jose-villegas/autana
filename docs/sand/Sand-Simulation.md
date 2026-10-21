@@ -1144,7 +1144,7 @@ for cache configuration and memory placement.
 ## Two cores: chunk-parallel passes, and what stays serial
 
 The device's own `gfx_present()` overlaps with `sand_step()` on the other
-core already; see `docs/Firmware-Architecture.md`. Splitting the step
+core already; see `docs/firmware/Frame-Loop.md`. Splitting the step
 itself across cores is harder, for a reason that has nothing to do with
 sweep order: `sand_t.rng` is one `xorshift32`<sup>[[25]](../Citations.md#25)</sup> word, drawn from a
 data-dependent number of times per cell by every pass.

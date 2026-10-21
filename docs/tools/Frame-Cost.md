@@ -1,7 +1,7 @@
 # Frame cost
 
 `profile/frame_cost.h` measures named stages of a frame. For how drawn
-pixels reach the panel, see [`../Gfx-and-Presentation.md`](../Gfx-and-Presentation.md).
+pixels reach the panel, see [`gfx/README.md`](../gfx/README.md).
 
 **Where a frame's time goes.** `profile/frame_cost.h` brackets a stage of
 a frame and charges its microseconds to a name:
@@ -106,5 +106,5 @@ sequenceDiagram
 ## Related
 
 - [`../Build-Variants.md`](../Build-Variants.md): development and release instrumentation
-- [`../Firmware-Architecture.md`](../Firmware-Architecture.md): the shell frame loop
-- [`../Gfx-and-Presentation.md`](../Gfx-and-Presentation.md): gfx send counters and overlays
+- [`firmware/README.md`](../firmware/README.md): the shell frame loop
+- [`gfx/README.md`](../gfx/README.md): gfx send counters and overlays
