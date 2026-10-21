@@ -469,6 +469,34 @@ int nvmlDeviceGetComputeRunningProcesses_v3(void *handle, unsigned int *count, s
                 release.set()
                 anchor_release.set()
 
+    def test_hung_query_gets_full_recovery_window_after_last_worker(self):
+        import multiprocessing
+        import time
+        from r3d import task_executor as budget
+        context = multiprocessing.get_context("spawn")
+        started, release = [context.Event() for _ in range(2)]
+        with budget.TaskExecutor() as executor:
+            try:
+                first = executor.submit(handshake_worker, started, release, "first", estimates=(0,) * 3)
+                self.assertTrue(started.wait(10))
+                self.control.write_text("hang")
+                self.wait_for(self.entered.exists)
+                time.sleep(self.STALE_SECONDS * 2)
+                queued = executor.submit(identity_worker, "queued", estimates=(0,) * 3)
+                time.sleep(self.FAILURE_SECONDS * 2)
+                self.assertIsNone(executor.failure)
+                self.assertFalse(queued.done())
+                release.set()
+                self.assertEqual(first.result(timeout=10)[0], "first")
+                time.sleep(self.STALE_SECONDS)
+                self.assertIsNone(executor.failure)
+                self.assertFalse(queued.done())
+                self.control.write_text("answer")
+                self.assertEqual(queued.result(timeout=10)[0], "queued")
+            finally:
+                self.control.write_text("answer")
+                release.set()
+
     def test_hung_query_without_workers_expires_with_stall_message(self):
         import time
         from r3d import task_executor as budget

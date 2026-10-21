@@ -222,6 +222,7 @@ class TaskExecutor(_ProcessExecutor):
 
     def _schedule(self):
         failures = QueryFailures()
+        admission_failure_since = None
         next_admission = 0
         last_wait_log = None
         while True:
@@ -230,6 +231,8 @@ class TaskExecutor(_ProcessExecutor):
                     raise self.failure
                 self._reap()
                 queued = len(self.priority_queue) + len(self.queue)
+                if self.active or not queued:
+                    admission_failure_since = None
                 if self.closed and not queued and not self.active:
                     return
                 if queued or self.active:
@@ -240,13 +243,17 @@ class TaskExecutor(_ProcessExecutor):
                         raise RuntimeError(str(error)) from error
                     except (OSError, AttributeError) as error:
                         _, warn = failures.failed(now)
-                        if queued and not self.active and now - failures.since >= GPU_QUERY_FAILURE_SECONDS:
-                            raise RuntimeError(f"GPU memory query stalled or failed for {GPU_QUERY_FAILURE_SECONDS} "
-                                               "seconds with no active workers; worker admission unavailable") from error
+                        if queued and not self.active:
+                            if admission_failure_since is None:
+                                admission_failure_since = now
+                            if now - admission_failure_since >= GPU_QUERY_FAILURE_SECONDS:
+                                raise RuntimeError(f"GPU memory query stalled or failed for {GPU_QUERY_FAILURE_SECONDS} "
+                                                   "seconds with no active workers; worker admission unavailable") from error
                         if warn:
                             print(f"memory query failed: {error}; worker admission paused, retrying", flush=True)
                     else:
                         failures.recovered()
+                        admission_failure_since = None
                         if queued and now >= next_admission:
                             host, _, cgroup = available_bytes()
                             free = self._admit((host, device_free, cgroup), gpu)
