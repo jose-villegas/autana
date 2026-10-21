@@ -33,14 +33,16 @@ reset. What a flash proves (esptool's hash check and the build's
 `BUILD_ID`, not the boot) and the whole hand-off under the device lock are
 in [Flash-and-Captures.md](../tools/Flash-and-Captures.md#what-a-flash-proves).
 
-After the RTS reset the new boot drops USB while it tunes PSRAM (below), and
-the port comes back, possibly on a **different COM number**. Nothing depends on the number: after every reset `device.py`
-waits for the board's USB serial number to leave the port list and come
-back, then opens the port it is listed under, so no open gets the dying
-handle. Every open `device.py` makes leaves DTR and RTS low without passing
-through the USB Serial/JTAG reset state (DTR low, RTS high); `open_serial`
-in [device.py](../../scripts/device/device.py) says how on each OS. `selftest` and
-`batch` check the console `BUILD_ID` against the flashed image.
+After the RTS reset the new boot drops USB while it tunes PSRAM (below),
+and the port comes back, possibly on a **different COM number**.
+
+Nothing depends on the number: after every reset `device.py` waits for the
+board's USB serial number to leave the port list and come back, then opens
+the port it is listed under, so no open gets the dying handle. Every open
+`device.py` makes leaves DTR and RTS low without passing through the USB
+Serial/JTAG reset state (DTR low, RTS high); `open_serial` in
+[device.py](../../scripts/device/device.py) says how on each OS. `selftest`
+and `batch` check the console `BUILD_ID` against the flashed image.
 
 If it vanishes from USB entirely (no COM port, no device at vendor ID
 `0x303A`), check
@@ -66,12 +68,13 @@ tuning is not reached through the wrap.
 sequenceDiagram
     participant Host
     participant App
-    Host->>App: warm reset (RTS), or a panic or watchdog on the chip
+    Host->>App: warm reset (RTS)
+    Note over App: a panic or a watchdog resets the chip the same way
     Note over Host,App: D+ pull-up off while the app tunes PSRAM, the port goes away
     App->>Host: first BUILD_ID, before the port is back
     Note over Host,App: USB enumerates again
+    App->>Host: RESET_REASON names the cause
     App->>Host: BUILD_ID again, after shell Ready
-    App->>Host: RESET_REASON names the warm reset
 ```
 
 A warm reset keeps RTC memory, and the app reports its real cause
