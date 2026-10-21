@@ -14,6 +14,9 @@ from r3d.import_settings import load_scene
 from r3d.scene_name import scene_id
 from build.scratch import scratch_tree
 from showcase import showcase
+from meshlet_sizes import ROWS
+
+SIZES = tuple(map(int, ROWS))
 
 DEFAULT_WORK = ROOT / "launcher/tools/results/meshlet-sizes"
 
@@ -61,9 +64,9 @@ def install_row(work, metadata, size):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("prepare", "row"))
-    parser.add_argument("size", type=int, nargs="?", choices=(16, 32, 64))
+    parser.add_argument("size", type=int, nargs="?", choices=SIZES)
     parser.add_argument("--scene", type=pathlib.Path)
-    parser.add_argument("--sizes", type=int, choices=(16, 32, 64), nargs="+", default=[16, 32, 64])
+    parser.add_argument("--sizes", type=int, choices=SIZES, nargs="+", default=list(SIZES))
     parser.add_argument("--work", type=pathlib.Path, default=DEFAULT_WORK)
     parser.add_argument("--suite", help="fixed-pose frame-cost suite")
     parser.add_argument("--size-tune", help="the suite's tunable a row sets to the shipped meshlet size, so its "
@@ -74,16 +77,17 @@ def main(argv=None):
         if not work.is_relative_to(ROOT / "launcher/tools/results"):
             raise ValueError("scratch work must be inside launcher/tools/results")
         if args.command == "prepare":
-            if (args.scene is None or not args.suite or not args.size_tune or 32 not in args.sizes
-                    or len(set(args.sizes)) != len(args.sizes)):
-                raise ValueError("prepare needs --scene, --suite, --size-tune and unique sizes including 32")
+            if args.scene is None or not args.suite or not args.size_tune or len(set(args.sizes)) != len(args.sizes):
+                raise ValueError("prepare needs --scene, --suite, --size-tune and unique sizes")
             scene_path = args.scene.resolve()
             scene = load_scene(scene_path)
+            shipped = next(job.settings.meshlet_triangles for job in scene.renderers if job.object.name == showcase(scene))
+            if shipped not in args.sizes:
+                raise ValueError(f"prepare needs the showcase's shipped meshlet size, {shipped}, among the sizes")
             work.mkdir(parents=True, exist_ok=True)
             metadata = dict(scene=str(scene_path.relative_to(ROOT)), pack=scene_id(scene_path), sizes=args.sizes,
                             suite=args.suite, size_tune=args.size_tune,
-                            shipped=next(job.settings.meshlet_triangles for job in scene.renderers
-                                         if job.object.name == showcase(scene)),
+                            shipped=shipped,
                             meshes=[str(job.asset_path.relative_to(ROOT)) for job in scene.renderers])
             (work / "manifest.json").write_text(json.dumps(metadata, indent=2) + "\n")
             for size in args.sizes:
