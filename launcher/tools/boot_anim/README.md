@@ -87,7 +87,10 @@ to flat at `far_swell_fade_m`. The far lines are sampled where they cross
 the axis lines' sample circles, so the samples thin with distance. The
 generator rejects a fade past the point where those samples are more than
 half the shortest swell wavelength apart. The swell starts only once the
-reach is complete, so the far front stays flat.
+reach is complete, so the far front stays flat. The far lines lose it
+again over `far_swell_out_ms` before `image_start_ms`, so they are flat
+and cheap under the crossfade, where the photograph covers them; the axis
+lines keep theirs.
 
 ![Main (left) and the swell over the far grid (right), 2.55 to 4.2 s](far_swell/main-vs-far-swell.gif)
 

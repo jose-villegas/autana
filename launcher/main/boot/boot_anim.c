@@ -446,8 +446,8 @@ draw_far_front(const mesh_pass_t* pass, const boot_anim_plane_t* plane, bool alo
  * circle so it arrives radially. Its outer BOOT_ANIM_FAR_FRONT_Q8 share fades
  * in over BOOT_ANIM_FAR_FRONT_STEPS rings until the reach is complete. Once
  * the swell starts the reach is whole, and the swell lifts each line out to
- * BOOT_ANIM_FAR_SWELL_FADE_Q12; the rest stays flat and straight. The lines
- * on the axes are drawn on their own. */
+ * BOOT_ANIM_FAR_SWELL_FADE_Q12 until it eases out before the crossfade; the
+ * rest stays flat and straight. The lines on the axes are drawn on their own. */
 static void
 draw_far_grid(const mesh_pass_t* pass) {
     const int32_t reach = pass->floor.far_reach;
@@ -459,15 +459,16 @@ draw_far_grid(const mesh_pass_t* pass) {
     const int32_t solid = reach - front;
     const boot_anim_plane_t plane = boot_anim_plane(0, pass->view);
     const gfx_color_t col = lit(BOOT_ANIM_FLOOR_GREY, level);
-    /* One more than the swell's height, for zeta_to_t's rounding. */
-    const int32_t lift = boot_anim_zeta_to_t_q8(boot_anim_swell_bound(&pass->floor)) + 1;
+    /* One more than the far swell's height, for zeta_to_t's rounding. */
+    const int32_t bound = (boot_anim_swell_bound(&pass->floor) * pass->floor.far_swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+    const int32_t lift = boot_anim_zeta_to_t_q8(bound) + 1;
     /* Four ways per line, along re or im on either side of the axis. */
     for (int way = 0; way < 4 * BOOT_ANIM_FAR_LINES && boot_anim_far_lines[way / 4].c <= reach; way++) {
         const boot_anim_far_line_t* far_line = &boot_anim_far_lines[way / 4];
         const bool along_im = (way & 1) != 0;
         const int side = 1 - (way & 2);
         const int32_t c = side * far_line->c;
-        if (pass->floor.swell != 0 && far_line->count != 0) {
+        if (pass->floor.swell != 0 && pass->floor.far_swell != 0 && far_line->count != 0) {
             draw_far_swell_line(pass, far_line, along_im, side, lift, col);
             draw_far_ring(pass, &plane, along_im, c, BOOT_ANIM_FAR_SWELL_FADE_Q12, reach, col);
         } else {
