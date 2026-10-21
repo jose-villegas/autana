@@ -234,7 +234,7 @@ class PipelineMeasuresTests(unittest.TestCase):
         def row(step, wall_s, triangles_in, triangles_out, ram, vram=None):
             return dict(step=step, wall_s=wall_s, triangles_in=triangles_in, triangles_out=triangles_out,
                         peak_ram_bytes=ram, peak_vram_bytes=vram)
-        gib = 1024 ** 3
+        from render.byte_sizes import GB_BYTES as gib
         variants = [("a-bake", [row("load", 1, 0, 100, gib), row("simplify", 3, 100, 10, 2 * gib)]),
                     ("b-bake", [row("load", 1, 0, 100, gib), row("simplify", 1, 100, 20, gib)]),
                     ("b-fit", [row("fit", 9, 20, 15, gib, gib // 2)])]

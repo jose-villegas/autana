@@ -12,10 +12,10 @@ demo scene in the [demo assets](../../launcher/demo/README.md);
 
 | [Offline, on the host](#offline-on-the-host) | [Every frame, on the board](#every-frame-on-the-board) |
 |---|---|
-| **[Geometry](#geometry)**<br/>↳ [Source model](#source-model) → [Alpha mask](#alpha-mask) → [Visibility](#visibility) → [Thin](#thin) | **[Scene and camera](#scene-and-camera)** |
+| **[Geometry](#geometry)**<br/>â†³ [Source model](#source-model) â†’ [Alpha mask](#alpha-mask) â†’ [Visibility](#visibility) â†’ [Thin](#thin) | **[Scene and camera](#scene-and-camera)** |
 | **[Light](#light)** | **[Render size](#render-size)** |
-| **[Shape](#shape)**<br/>↳ [Simplify](#simplify) → [Fit](#fit) | **[Update](#update)**<br/>↳ [Cull](#cull) → [Transform](#transform) → [Clip](#clip) → [Span fill](#span-fill) → [Resolve](#resolve) → [View modes](#view-modes) |
-| **[Output](#output)**<br/>↳ [Meshlets](#meshlets) → [Asset pack](#asset-pack) | **[After the send](#after-the-send)**<br/>↳ [Compose](#compose) → [Present](#present) |
+| **[Shape](#shape)**<br/>â†³ [Simplify](#simplify) â†’ [Fit](#fit) | **[Update](#update)**<br/>â†³ [Cull](#cull) â†’ [Transform](#transform) â†’ [Clip](#clip) â†’ [Span fill](#span-fill) â†’ [Resolve](#resolve) â†’ [View modes](#view-modes) |
+| **[Output](#output)**<br/>â†³ [Meshlets](#meshlets) â†’ [Asset pack](#asset-pack) | **[After the send](#after-the-send)**<br/>â†³ [Compose](#compose) â†’ [Present](#present) |
 
 ```mermaid
 flowchart TB
@@ -25,7 +25,7 @@ flowchart TB
             direction LR
             Src["Source<br/>model"] --> Mask["Alpha<br/>mask"] --> Vis["Visibility"] --> Thin["Thin"]
         end
-        Light["Light<br/><i>direct · occlusion · bounce</i>"]
+        Light["Light<br/><i>direct Â· occlusion Â· bounce</i>"]
         subgraph Shape["Shape"]
             direction LR
             Simp["Simplify"] --> Fit["Fit<br/><i>smooth or flat, CUDA</i>"]
@@ -84,7 +84,7 @@ loads it whole.
 |---|---|---|
 | OBJ, MTL, textures | triangles with materials and UVs | `[source]` path and credit |
 
-Cost: `source load` in the bake-steps chart.
+Cost: `source load` in the bake-steps rows.
 
 The source lit per pixel is the reference every bake is scored against (left,
 in the [fidelity sheet](Bake-Quality.md#fidelity-against-the-source)):
@@ -101,7 +101,7 @@ Drops alpha-tested triangles that are mostly transparent; the board does not alp
 |---|---|---|
 | triangles, textures | fewer triangles | `geometry.alpha_mask.keep_alpha` |
 
-Cost: `alpha mask` in the bake-steps chart.
+Cost: `alpha mask` in the bake-steps rows.
 
 ![Triangles kept and dropped by the alpha mask](images/import-alpha-mask.png)
 
@@ -116,7 +116,7 @@ along its path, so the triangle budget goes to what is drawn.
 |---|---|---|
 | triangles, the camera's region or path | the seen triangles | the renderer's `visibility` |
 
-Cost: `visibility` in the bake-steps chart.
+Cost: `visibility` in the bake-steps rows.
 
 ![Triangles the camera region sees](images/import-visibility.png)
 
@@ -131,7 +131,7 @@ to draw whole. It runs after visibility so the share is of what is seen.
 |---|---|---|
 | the seen triangles | fewer of that material's triangles | `geometry.thin.material`, `geometry.thin.keep` |
 
-Cost: `thin` in the bake-steps chart.
+Cost: `thin` in the bake-steps rows.
 
 ![A thinned material](images/import-thin.png)
 
@@ -147,7 +147,7 @@ backend).
 |---|---|---|
 | dense triangles, materials, the scene's lights | a colour per vertex | `[bake]` with `ao` and `indirect`, `[indirect]`, sky, ambient, tone map |
 
-Cost: `light`, and `face colours` for flat meshes, in the bake-steps chart.
+Cost: `light`, and `face colours` for flat meshes, in the bake-steps rows.
 
 ![Albedo against baked light](../images/render/import-light.png)
 
@@ -169,7 +169,7 @@ no seam opens.
 |---|---|---|
 | lit triangles | the variant's mesh | `geometry.simplify`: `dense_edge`, `props`, `props_share`, `seal_seams`, `colour_deviation`; each variant's `triangles` |
 
-Cost: `simplify` in the bake-steps chart.
+Cost: `simplify` in the bake-steps rows.
 
 ![A seam left open and sealed](images/import-seal-seams.png)
 
@@ -188,7 +188,7 @@ per face.
 |---|---|---|
 | a variant, reference renders | the fitted mesh | the renderer's `fit`: prune, poses, optimise, hashes |
 
-Cost: `fit` in the bake-steps chart.
+Cost: `fit` in the bake-steps rows.
 
 ![A fitted mesh against the reference](../images/render/appearance-fitted-full-reference.png)
 
@@ -208,7 +208,7 @@ culls and draws.
 |---|---|---|
 | the final mesh | clusters, nodes, the `.mesh` entry | `geometry.meshlet_triangles` |
 
-Cost: `meshlets` and `write` in the bake-steps chart.
+Cost: `meshlets` and `write` in the bake-steps rows.
 
 The meshlets debug view gives each cluster a flat hue, shown here for the
 full, lite and fitted meshes. Each instance owns a disjoint ID range, reset on
@@ -248,7 +248,7 @@ clip) into one pack; `launcher/demo/` content ships only where an app's
 |---|---|---|
 | the scene, its meshes and clip | one pack per root, the partition image | an app's list of demo assets |
 
-Cost: not timed in the bake-steps chart.
+Cost: not timed in the bake-steps rows.
 
 Reference: [the asset packs](../assets/README.md#packs).
 

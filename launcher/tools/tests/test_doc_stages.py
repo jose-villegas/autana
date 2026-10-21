@@ -564,7 +564,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertNotIn("Wall s", table)
             self.assertIn("![Bake steps](../images/render/gpu/bake-steps.png)", table)
             self.assertTrue((out / 'render/gpu/bake-steps.png').is_file())
-            sync.assert_called_once_with(out / 'render/gpu', stages.ROOT / 'docs/images/render/gpu', False)
+            sync.assert_called_once_with(out / 'render/gpu', stages.ROOT / 'docs/images/render/gpu', check=False)
             measured = [function for owner, args, kwargs, function in calls
                         if owner is fitted.fit_point and args[1].name.startswith('fit-')]
             self.assertEqual(len(measured), 3)

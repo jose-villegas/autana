@@ -23,8 +23,6 @@ REST = "rest of frame"  # the frame's time outside STAGES
 CHART_WIDTH = 8  # inches
 CHART_ROW_HEIGHT = 0.45  # inches per bar
 CHART_ROOM = 1.1  # inches for the title, axis and legend
-BAR_HEIGHT = 0.6
-LABEL_ROOM = 0.45  # share of the widest bar left free for its label
 IDENTITY = re.compile(r"\bCAPTURE build_id=([0-9a-f]{12}-diag) pack_crc32=([0-9a-f]{8}) object=(\w+) size=(\d+) cull=([01]) period_ms=(\d+) pose_every_ms=(\d+)")
 BLOCK = re.compile(r"=== (\w+) FRAME COST .*?===.*?(?:\1 both cores: mean [^\n]+)", re.S)
 
@@ -118,25 +116,14 @@ def default_size():
 
 def chart(rows, path):
     """Each row's frame as stacked board stages, its total and submitted triangles at the bar's end."""
-    from docs.plot_style import INK, LABEL_SIZE, MUTED, SLOTS, save, style_axes, subplots
+    from docs.plot_style import LABEL_SIZE, MUTED, SLOTS, save, stacked_barh, style_axes, subplots
     figure, axis = subplots(1, 1, (CHART_WIDTH, CHART_ROW_HEIGHT * len(rows) + CHART_ROOM))
-    labels = [label for label, *_ in rows]
-    for index, (_label, _clusters, _ratio, submitted, *stages, frame) in enumerate(rows):
-        left = 0.0
-        for name, value, colour in zip((*STAGES, REST), (*stages, frame - sum(stages)), SLOTS):
-            axis.barh(index, value, left=left, color=colour, height=BAR_HEIGHT, edgecolor="white",
-                      label=name if index == 0 else None)
-            left += value
-        axis.annotate(f"{frame:.1f} ms, {submitted:,.0f} triangles", (frame, index), xytext=(6, 0),
-                      textcoords="offset points", va="center", fontsize=LABEL_SIZE, color=INK)
-    widest = max(row[-1] for row in rows)
-    axis.set_xlim(0, widest * (1 + LABEL_ROOM))
-    axis.set_yticks(range(len(rows)), labels)
-    axis.invert_yaxis()
+    stacked_barh(axis, [(label, list(zip((*STAGES, REST), (*stages, frame - sum(stages)))))
+                        for label, _clusters, _ratio, _submitted, *stages, frame in rows],
+                 dict(zip((*STAGES, REST), SLOTS)),
+                 [f"{frame:.1f} ms, {submitted:,.0f} triangles" for _, _, _, submitted, *_, frame in rows])
     axis.set_xlabel("board ms per frame", fontsize=LABEL_SIZE, color=MUTED)
     style_axes(axis, "Frame cost by meshlet size")
-    for side in ("top", "right"):
-        axis.spines[side].set_visible(False)
     figure.legend(loc="outside lower center", ncol=len(STAGES) + 1, frameon=False, fontsize=LABEL_SIZE)
     save(figure, path)
 
