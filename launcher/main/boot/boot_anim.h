@@ -186,6 +186,7 @@ typedef struct {
     uint16_t inv_width;
     uint16_t ripple_phase;
     uint16_t swell;
+    uint16_t far_swell; /* how much of it the far lines keep, eased out before the crossfade */
     bool calm;
     uint16_t phase[BOOT_ANIM_SWELL_COUNT];
     int32_t far_reach; /* Q12: how far out the floor reaches */
@@ -208,6 +209,7 @@ boot_anim_floor_state(uint32_t now_ms) {
                                    + mathi_lerp(0, (int16_t)(b->ripple_phase - a->ripple_phase), fraction,
                                                 BOOT_ANIM_FLOOR_TIME_STEP_MS)),
         .swell = mathi_lerp(a->swell, b->swell, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
+        .far_swell = mathi_lerp(a->far_swell, b->far_swell, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
         .far_reach = mathi_lerp(a->far_reach, b->far_reach, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
         .calm = ms > BOOT_ANIM_RIPPLE_IMPACT_MS + BOOT_ANIM_RIPPLE_CALM_AFTER_MS,
     };
@@ -312,7 +314,8 @@ boot_anim_axis_far_height(int n, int dir_re, int dir_im, const boot_anim_floor_s
 
 /* The swell at sample `n` of far line `line`: the line runs along im
  * (along_im) or re, at `side` (+1 or -1) times its distance from the axis,
- * and the sample is on its `half` (+1 or -1) of it. */
+ * and the sample is on its `half` (+1 or -1) of it. The far lines keep
+ * `far_swell` of it, none from the crossfade on. */
 static inline int32_t
 boot_anim_far_line_swell(const boot_anim_far_line_t* line, int n, bool along_im, int side, int half,
                          const boot_anim_floor_state_t* state) {
@@ -323,7 +326,8 @@ boot_anim_far_line_swell(const boot_anim_far_line_t* line, int n, bool along_im,
     for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
         place[k] = (uint16_t)((side * across[k]) + (half * along[k]));
     }
-    return boot_anim_far_swell_at(place, sample->swell_gain, state);
+    const uint16_t gain = (uint16_t)(((uint32_t)sample->swell_gain * state->far_swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT);
+    return boot_anim_far_swell_at(place, gain, state);
 }
 
 static inline int32_t

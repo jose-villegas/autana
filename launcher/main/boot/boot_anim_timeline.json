@@ -78,6 +78,7 @@
     "far_front": 0.35,
     "far_front_steps": 4,
     "far_swell_fade_m": 19,
+    "far_swell_out_ms": 400,
     "floor_grey": 3158064,
     "grid_edge_fade_fraction": 0.75
 }

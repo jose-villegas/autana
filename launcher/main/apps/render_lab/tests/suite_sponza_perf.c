@@ -49,6 +49,11 @@ static const r3d_perf_quarter_t* perf_quarter;
 
 static const char* TAG = "sponza_perf";
 
+/* The shipped meshlet size, set by a capture of other sizes (meshlet_capture.py): a p95 ceiling, pegged on
+ * the shipped bakes, then gates only a mesh of that size and logs the rest. 0 gates every mesh. */
+TUNE_OWNER(sponza_perf);
+TUNE(sponza_perf, shipped_meshlet, 0, 0, UINT16_MAX);
+
 /* The scene, loaded for the suite, its pack, and one mesh for each bake. */
 static scene_t* sponza;
 static const asset_pack_t* pack;
@@ -356,10 +361,34 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
              (long long)stats.p95, perf_quarter->name);
     const size_t q = (size_t)(perf_quarter - r3d_perf_quarters);
     (void)perf_goal(label, stats.avg, budget[q].mean_goal_us);
-    perf_guard(label, stats.p95, budget[q].p95_ceiling_us);
+    if (shipped_meshlet == 0 || size == shipped_meshlet) {
+        perf_guard(label, stats.p95, budget[q].p95_ceiling_us);
+    } else {
+        ESP_LOGI(TAG, "%s: p95 %lldus, ceiling %lldus gates only meshlets of %ld" R3D_PERF_QUARTER_FORMAT, label,
+                 (long long)stats.p95, (long long)budget[q].p95_ceiling_us, (long)shipped_meshlet, perf_quarter->name);
+    }
     memory_free(report);
     bench_close(b);
     memory_free(b);
+}
+
+/* The scene's showcase: the bake of its first renderer. */
+static sponza_bake_t
+showcase_bake(void) {
+    for (int i = 0; i < scene_entity_count(sponza); i++) {
+        const scene_entity_t entity = (scene_entity_t)i;
+        if (scene_entity_mesh_id(sponza, entity) == NULL) {
+            continue;
+        }
+        for (int bake = 0; bake < (int)SPONZA_BAKE_COUNT; bake++) {
+            if (strcmp(scene_entity_name(sponza, entity), sponza_bakes[bake]) == 0) {
+                return (sponza_bake_t)bake;
+            }
+        }
+        TEST_FAIL_MESSAGE(scene_entity_name(sponza, entity));
+    }
+    TEST_FAIL_MESSAGE("the scene has no renderer");
+    return SPONZA_BAKE_COUNT;
 }
 
 static int32_t saved_cull;
@@ -407,8 +436,9 @@ test_sponza_frame_cost_along_the_flythrough(void) {
         report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, NULL, bake_budgets[i]);
     }
     (void)tune_handle_line("SET render.cull 0", cull_reply);
-    const r3d_instance_t full = {&meshes[SPONZA_BAKE_FULL], NULL};
-    report_frame_cost("cull_off", sponza_bakes[SPONZA_BAKE_FULL], &full, NULL, NULL, NULL, cull_off_budget);
+    const sponza_bake_t showcase = showcase_bake();
+    const r3d_instance_t shown = {&meshes[showcase], NULL};
+    report_frame_cost("cull_off", sponza_bakes[showcase], &shown, NULL, NULL, NULL, cull_off_budget);
     TEST_PASS();
 }
 

@@ -2,6 +2,7 @@
 """Update the math benchmark block; --from-elf records wrapper metadata and FPU ops."""
 import argparse
 import hashlib
+import math
 from pathlib import Path
 import re
 import sys
@@ -130,14 +131,39 @@ def read_fpu(path):
     return rows, result
 
 
-def render_table(rows, measured, baseline, fpu, build=None):
+def parse_errors(text):
+    result = {}
+    pattern = re.compile(
+        rf"MATHERROR name=(.+) type=(\w+) max=({NUMBER}(?:[eE][+-]?[0-9]+)?) "
+        r"unit=(ulp|relative) method=(proof|sweep)")
+    for line in text.splitlines():
+        if not line.startswith("MATHERROR"):
+            continue
+        match = pattern.fullmatch(line)
+        if match is None:
+            raise ValueError(f"malformed error measurement: {line}")
+        label, kind, maximum, unit, method = match.groups()
+        if not math.isfinite(float(maximum)):
+            raise ValueError(f"nonfinite error measurement: {line}")
+        key = (label, kind)
+        if key in result:
+            raise ValueError(f"duplicate error measurement: {line}")
+        result[key] = f"{maximum} {unit} ({method})"
+    return result
+
+
+def render_table(rows, measured, baseline, fpu, build=None, errors=None):
     keys = {key for key, *_ in rows}
     missing = {name for name in baseline if name.startswith("math_") and name[5:] not in keys}
     if missing:
         raise ValueError(f"baseline rows missing from table: {sorted(missing)}")
     lines = [f"Board build: `{build}`." if build else "Board capture pending; board columns remain unmeasured.", "",
-             "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls |",
-             "|---|---|---:|---:|---:|---:|---:|---|"]
+             "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |",
+             "|---|---|---:|---:|---:|---:|---:|---|---|"]
+    bounds = errors or {}
+    unmatched = set(bounds) - {(label, kind) for _, label, kind, _ in rows}
+    if unmatched:
+        raise ValueError(f"error measurements match no row: {sorted(unmatched)}")
     for key, label, kind, ops in rows:
         qemu = f"{baseline['math_' + key] / ops:.1f}" if "math_" + key in baseline else "-"
         if set(fpu[key].partition(";")[0].split()) & set(DEVICE_ONLY_FPU_OPS):
@@ -145,7 +171,7 @@ def render_table(rows, measured, baseline, fpu, build=None):
         values = measured.get(key)
         costs = [f"{value:.1f}" for value in values] if values else ["-"] * 3
         ratio = f"{values[0] / values[2]:.1f}" if values else "-"
-        lines.append("| " + " | ".join([label, kind, *costs, qemu, ratio, fpu[key]]) + " |")
+        lines.append("| " + " | ".join([label, kind, *costs, qemu, ratio, fpu[key], bounds.get((label, kind), "-")]) + " |")
     reference = ESP_DSP_DOTPROD_F32_N256_ANSI_O2_CYCLES
     calibration = measured.get("dot_f32_n256_f")
     warm = f"{calibration[0]:.1f}" if calibration else "pending"
@@ -173,6 +199,7 @@ def elf_rows(objdump, elf, located):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--capture", type=Path, default=DATA / "math_bench_capture.txt")
+    parser.add_argument("--error-capture", type=Path, help="math_numbers capture with scalar proofs and component sweeps")
     parser.add_argument("--baseline", type=Path, default=BASELINE)
     parser.add_argument("--fpu", type=Path, default=DATA / "math_bench_fpu_ops.txt")
     parser.add_argument("--from-elf", type=Path)
@@ -200,7 +227,8 @@ def main(argv=None):
         else:
             rows, fpu = read_fpu(args.fpu)
             build, measured = parse_capture(args.capture.read_text(encoding="utf-8"), rows)
-            changed = replace_block(DOCUMENT, BLOCK, render_table(rows, measured, load_baseline(args.baseline), fpu, build),
+            changed = replace_block(DOCUMENT, BLOCK, render_table(rows, measured, load_baseline(args.baseline), fpu, build,
+                                                 parse_errors((args.error_capture or args.capture).read_text(encoding="utf-8"))),
                                     check=args.check, command="python launcher/tools/perf/math_bench_table.py --check")
             return int(args.check and changed)
     except (OSError, ValueError, RuntimeError, LayoutError, subprocess.CalledProcessError) as error:
