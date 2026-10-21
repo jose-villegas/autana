@@ -112,7 +112,9 @@ Real queries use finite, nonempty bounds, except that `P_segment_hit`
 rejects empty boxes. Segment endpoints and box values must be finite.
 Plane bits index the input array; `count` must fit an unsigned mask.
 
-## ball (`f`, `i`)
+## ball: shared circle and sphere queries (`f`, `i`)
+
+A ball is a filled circle (2D) or sphere (3D): every point within `radius` of `centre`.
 
 Circles and spheres store `centre` and nonnegative `radius`, including the boundary. Arithmetic must fit; real values must be finite. Integer squared products are widened.
 
@@ -135,7 +137,7 @@ Zero-length segments hit when the point is inside; tangency counts as a hit.
 
 ## sphere (`f`)
 
-`spheref` has a vec3 centre and the shared [ball queries](#ball-f-i); box bounds must be finite and nonempty.
+`spheref` has a vec3 centre and the shared [ball queries](#ball-shared-circle-and-sphere-queries-f-i); box bounds must be finite and nonempty.
 `spheref_overlaps_box` compares the closest box point's squared distance
 with the squared radius (Arvo 1990<sup>[[83]](../Citations.md#83)</sup>).
 
@@ -154,7 +156,7 @@ Marked segment entries include a start inside the sphere at $`t = 0`$.
 
 ## circle (`f`, `i`)
 
-`circlef` and `circlei` have a vec2 centre and shared [ball queries](#ball-f-i). The circle has no fixed-point variant yet.
+`circlef` and `circlei` have a vec2 centre and shared [ball queries](#ball-shared-circle-and-sphere-queries-f-i). The circle has no fixed-point variant yet.
 Rectangle overlaps use Arvo 1990<sup>[[83]](../Citations.md#83)</sup> in two dimensions; rectangles must be nonempty.
 Integer edges end at `right-1` and `bottom-1`; real queries include the closure at `right` and `bottom`.
 
