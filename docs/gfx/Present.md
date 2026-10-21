@@ -7,7 +7,9 @@ one goes through `send_one_row()`:
 
 ```mermaid
 flowchart TB
-    ROW["dirty strip"] --> RUNS["collect_dirty_runs()<br/>adjacent dirty cells merge into runs"]
+    ROW["dirty strip"] --> CLK{"panel clock 80 MHz?"}
+    CLK -->|yes| FAST["full width over the strip's dirty rows<br/>(partial band, or the whole strip)"]
+    CLK -->|no| RUNS["collect_dirty_runs()<br/>adjacent dirty cells merge into runs"]
     RUNS --> BOX["run_box(): union of the cells' boxes"]
     BOX --> LEAF{"plan_run(): leaves show<br/>a real gap inside?"}
     LEAF -->|yes| SPLIT["gathered send, split in<br/>up to LEAF_REFINE_MAX_RUNS"]
@@ -112,7 +114,8 @@ memory throughput and placement.
 |---|---|---|
 | Full-frame bus time | 16.5 ms | 8.2 ms |
 | Panel rating (50 MHz) | inside | **past it** |
-| Failure mode | none | a stray pixel or line that stays until that region is sent again |
+| Failure mode | none | a partial-width window can land a column off, so only full-width rows are sent |
+| Residual | none | a stray pixel can still stay until its region is sent again |
 | Heal | does nothing | active if the app opted in |
 
 `gfx_set_panel_clock_hz()` takes effect before the next present, never

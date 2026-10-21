@@ -40,6 +40,19 @@ bool gfx_send_audit(void);
 /* Pixels the panel was never sent, counted since the audit was last turned on. */
 int64_t gfx_send_audit_uncovered_px(void);
 
+/* Every window a framebuffer send hands the panel (not band mode's or
+ * compact pictures' strips), in panel coordinates after the even rounding,
+ * recorded into `log` until `capacity` are held; NULL stops. A
+ * device test reads where on the panel each send lands. Rides on the send
+ * audit's capture, so it costs nothing on the send path while off. */
+typedef struct {
+    int16_t x0, y0, x1, y1;
+} gfx_send_window_t;
+
+void gfx_set_send_window_log(gfx_send_window_t* log, int capacity);
+/* Windows recorded since gfx_set_send_window_log(), capped at its capacity. */
+int gfx_send_window_count(void);
+
 /* Per-strip counts of which send path the last stretch of gfx_present()
  * calls actually took (full-band, a gathered send of runs, or a
  * full-width send at less than the whole band's height) for a device
