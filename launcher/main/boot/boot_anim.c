@@ -357,14 +357,18 @@ far_swell_node(const mesh_pass_t* pass, const boot_anim_far_line_t* line, int n,
  * through the camera and the clip's edges. */
 static unsigned
 far_view_outcode(const mesh_pass_t* pass, vec3x_t p) {
-    const r3d_line_view_x_t* v = pass->view;
-    const int64_t x = (int64_t)p.x * v->pixels_per_unit;
-    const int64_t y = (int64_t)p.y * v->pixels_per_unit;
-    unsigned code = p.z <= v->near_z ? MESH_NODE_FRONT : 0U;
-    code |= x < (int64_t)(pass->clip.x - FAR_CULL_MARGIN_PX - v->center_x) * p.z ? GFX_CLIP_OUT_LEFT : 0U;
-    code |= x > (int64_t)(recti_right(pass->clip) + FAR_CULL_MARGIN_PX - v->center_x) * p.z ? GFX_CLIP_OUT_RIGHT : 0U;
-    code |= y > (int64_t)(v->center_y - pass->clip.y + FAR_CULL_MARGIN_PX) * p.z ? GFX_CLIP_OUT_TOP : 0U;
-    code |= y < (int64_t)(v->center_y - recti_bottom(pass->clip) - FAR_CULL_MARGIN_PX) * p.z ? GFX_CLIP_OUT_BOTTOM : 0U;
+    const projectx_t* lens = &pass->view->lens;
+    const int64_t x = (int64_t)p.x * lens->fx;
+    const int64_t y = (int64_t)p.y * lens->fy;
+    const int64_t left = ((int64_t)(pass->clip.x - FAR_CULL_MARGIN_PX) * MATHX_ONE) - lens->cx;
+    const int64_t right = ((int64_t)(recti_right(pass->clip) + FAR_CULL_MARGIN_PX) * MATHX_ONE) - lens->cx;
+    const int64_t top = lens->cy - ((int64_t)(pass->clip.y - FAR_CULL_MARGIN_PX) * MATHX_ONE);
+    const int64_t bottom = lens->cy - ((int64_t)(recti_bottom(pass->clip) + FAR_CULL_MARGIN_PX) * MATHX_ONE);
+    unsigned code = p.z <= r3d_line_near_z(pass->view) ? MESH_NODE_FRONT : 0U;
+    code |= x < left * p.z ? GFX_CLIP_OUT_LEFT : 0U;
+    code |= x > right * p.z ? GFX_CLIP_OUT_RIGHT : 0U;
+    code |= y > top * p.z ? GFX_CLIP_OUT_TOP : 0U;
+    code |= y < bottom * p.z ? GFX_CLIP_OUT_BOTTOM : 0U;
     return code;
 }
 
