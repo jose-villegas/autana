@@ -426,8 +426,13 @@ BATTERY_VOLTAGE_MAX_MV = 0x3fff
 
 
 def battery(args):
-    reject_unknown("battery", args, ("--json",))
-    json_output = read_json_flag(args, "usage: autana battery [--json]")
+    usage = "usage: autana battery [--json] | --log [--json | --clear]"
+    reject_unknown("battery", args, ("--json", "--log", "--clear"))
+    if len(args) != len(set(args)) or ("--clear" in args and ("--log" not in args or "--json" in args)):
+        sys.exit(usage)
+    if "--log" in args:
+        return battery_log(args)
+    json_output = read_json_flag(args, usage)
     code, replies = send("BATTERY", reply="BATTERY")
     if code or not replies:
         return code or 1
@@ -437,6 +442,56 @@ def battery(args):
         print(error, file=sys.stderr)
         return 1
     print(json.dumps(result) if json_output else replies[-1])
+    return 0
+
+
+BATTERY_LOG_SLOTS = 360
+BATTERY_LOG_LIMITS = dict(seq=(1 << 24) - 1, up_min=(1 << 10) - 1,
+                          mv=BATTERY_VOLTAGE_MAX_MV, percent=(1 << 7) - 1)
+
+
+def parse_battery_log(replies):
+    if not replies or not re.fullmatch(r"BATLOG end count=[0-9]+", replies[-1]):
+        raise ValueError("invalid BATLOG terminator")
+    count = int(replies[-1].split("=")[-1])
+    if count != len(replies) - 1 or count > BATTERY_LOG_SLOTS:
+        raise ValueError("invalid BATLOG count")
+    records = []
+    for line in replies[:-1]:
+        match = re.fullmatch(
+            r"BATLOG seq=([0-9]+) up_min=([0-9]+) mv=([0-9]+) percent=([0-9]+) "
+            r"usb=([01]) battery=([01]) charge=(unknown|trickle|pre|cc|cv|done|idle) "
+            r"flow=(unknown|standby|charging|discharging) reason=(periodic|transition|boot|shutdown-warning)", line)
+        if not match:
+            raise ValueError(f"invalid BATLOG reply: {line}")
+        seq, up_min, mv, percent, usb, present, charge, flow, reason = match.groups()
+        record = dict(seq=int(seq), up_min=int(up_min), mv=int(mv), percent=int(percent),
+                      usb=usb == "1", battery=present == "1", charge=charge, flow=flow, reason=reason)
+        if any(record[key] > limit for key, limit in BATTERY_LOG_LIMITS.items()):
+            raise ValueError(f"BATLOG value outside packed range: {line}")
+        records.append(record)
+    return records
+
+
+def battery_log(args):
+    clear = "--clear" in args
+    if clear:
+        code, replies = send("BATTERY LOG CLEAR", reply="BATLOG")
+    else:
+        code, replies = send("BATTERY LOG", reply="BATLOG", until=["BATLOG end", "BATLOG error"])
+    if code or not replies:
+        return code or 1
+    try:
+        if clear:
+            if replies != ["BATLOG cleared"]:
+                raise ValueError("invalid BATLOG clear reply")
+            result = None
+        else:
+            result = parse_battery_log(replies)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(json.dumps(result) if "--json" in args else "\n".join(replies))
     return 0
 
 
@@ -1746,7 +1801,10 @@ COMMAND_GROUPS = (
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
-        one("battery", battery, "battery [--json]", "fresh battery and USB status; development builds"),
+        Command("battery", battery, (
+            ("battery [--json]", "fresh battery and USB status; development builds"),
+            ("battery --log [--json]", "persistent battery history, oldest first"),
+            ("battery --log --clear", "erase the battery history namespace"))),
         one("heap", heap, "heap [--json]", "free internal heap and largest block (development builds)"),
         Command("perf", perf, (
             ("perf", "the frame_cost names seen and the counter events"),

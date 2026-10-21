@@ -161,19 +161,29 @@ skin_light_vertex(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t
     }
 }
 
+/* The bounds of a cluster's posed vertices, in a pass after the skinning loop so
+ * the bounds stay out of that loop's registers. */
+static box3s_t
+cluster_bounds(const int16_t (*posed)[POSITION_AXES], const r3d_lit_cluster_t* cluster) {
+    box3s_t b = box3s_empty();
+    const int end = cluster->vertex_first + cluster->vertex_count;
+    for (int v = cluster->vertex_first; v < end; v++) {
+        b = box3s_extend(b, vec3s_from_array(posed[v]));
+    }
+    return b;
+}
+
 static inline __attribute__((always_inline)) void
 skin_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
            r3d_skin_output_t* out, int influences) {
     for (int c = first; c < first + count; c++) {
         r3d_lit_cluster_t* cluster = &out->clusters[c];
-        box3s_t b = box3s_empty();
         const int end = cluster->vertex_first + cluster->vertex_count;
         for (int v = cluster->vertex_first; v < end; v++) {
             skin_vertex(skin->vertices + ((size_t)v * skin->vertex_stride), influences, palette, bind->positions[v],
                         out->positions[v]);
-            b = box3s_extend(b, vec3s_from_array(out->positions[v]));
         }
-        cluster->bounds = b;
+        cluster->bounds = cluster_bounds(out->positions, cluster);
     }
 }
 
@@ -188,16 +198,14 @@ skin_lit_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t
     int16_t (*posed)[POSITION_AXES] = out->positions;
     for (int c = first; c < first + count; c++) {
         r3d_lit_cluster_t* cluster = &out->clusters[c];
-        box3s_t b = box3s_empty();
         const int end = cluster->vertex_first + cluster->vertex_count;
         for (int v = cluster->vertex_first; v < end; v++) {
             vec3f_t normal;
             skin_lit_vertex(vertices + ((size_t)v * stride), influences, palette, positions[v], posed[v], normals,
                             &normal);
             skin_light_vertex(normal, lights, colors[v], light[v], mode);
-            b = box3s_extend(b, vec3s_from_array(posed[v]));
         }
-        cluster->bounds = b;
+        cluster->bounds = cluster_bounds(posed, cluster);
     }
 }
 
