@@ -15,14 +15,16 @@ frame. A development build watches for that at runtime
 | Counts | `autana framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
 
 A finding shows up in `autana monitor`: live in a terminal, and in a piped or
-scripted run as one of the few lines it echoes, with every heap site decoded
-to a file and line under "frame watch sites decoded" against the matching
-`.elf`. In a saved capture, `grep FRAME_WATCH` finds it. The fix is the
-[Building-an-App.md](../Building-an-App.md#rules) rule: allocate in `enter()`,
-free in `exit()`, and keep what a frame needs from one frame to the next. A
-log line belongs to a change: log when a value changes, not every frame it
-holds.
+scripted run as one of the few lines it echoes, with every heap site decoded to
+a file and line against the matching `.elf`. In a saved capture, `grep
+FRAME_WATCH` finds it.
 
-The gates are in [Performance and budgets](../testing/Performance-and-Budgets.md#the-frame-watch-as-a-gate):
-every host render scene, and every on-device test that presents more than
+The fix is the [Building-an-App.md](../Building-an-App.md#rules) rule:
+
+- allocate in `enter()`, free in `exit()`, and keep what a frame needs from one
+  frame to the next;
+- log when a value changes, not every frame it holds.
+
+The gates ([Performance and budgets](../testing/Performance-and-Budgets.md#the-frame-watch-as-a-gate))
+cover every host render scene and every on-device test that presents more than
 `FRAME_WATCH_WARMUP` times.

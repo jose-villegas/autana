@@ -2,11 +2,10 @@
 
 ## Render targets
 
-`gfx_render_target.h`: a picture drawn off the panel as a set of
-attachments, each a per-pixel map with its own size per pixel. Colour comes
-first, in the panel's own format, then depth, then any further map a
-renderer attaches. Every attachment has the target's width and rows, so one
-row index finds a pixel in all of them.
+`gfx_render_target.h`: a picture drawn off the panel as a set of attachments, each
+a per-pixel map with its own size per pixel. Colour comes first, in the panel's own
+format, then depth, then any further map a renderer attaches. Every attachment has
+the target's width and rows, so one row index finds a pixel in all of them.
 
 | Function | What it does |
 |---|---|
@@ -15,9 +14,9 @@ row index finds a pixel in all of them.
 | `gfx_render_target_window()` | the same picture's rows `[row0, row1)` |
 | `gfx_render_target_row()`, `_color()`, `_depth()` | an attachment's first pixel of a row |
 
-A target can be carved from a renderer's scratch block, or point its colour
-at a band buffer and its depth at a band of its own. What an attachment
-means beyond its size is its renderer's.
+A target can be carved from a renderer's scratch block, or point its colour at a
+band buffer and its depth at a band of its own. What an attachment means beyond its
+size is its renderer's.
 
 ## Modes
 
@@ -36,9 +35,10 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette | a full-redraw renderer |
 | Used by | the launcher, any microui screen | engine self-tests | a frame that is a grid of palette indices | full-frame pixel rendering |
 
-Double mode draws into the back buffer while the front is sent. `gfx_present_begin()`
-drains the preceding send and swaps them; `gfx_present_wait()` returns at once.
-Dirty tracking, interlace, healing and half-picture expansion are disabled.
+Double mode draws into the back buffer while the front is sent.
+`gfx_present_begin()` drains the preceding send and swaps them;
+`gfx_present_wait()` returns at once. Dirty tracking, interlace, healing and
+half-picture expansion are disabled.
 
 Mode exit drains the send, keeps the last presented frame as the single
 framebuffer, and frees the other. Readback also drains before reading the front.
@@ -99,27 +99,24 @@ the captures in [render/data/](../render/data/).
 
 ## Expanded frames
 
-An expanded frame holds an exact-half picture in `gfx_half_picture()`;
-`scene_compose()` copies into it and `scene_shell_compose()` calls
-`gfx_expand_frame()`. A paused or undrawn scene keeps its last expanded
-picture. Presentation doubles it into send strips until
-`gfx_present_wait()` completes. Raw framebuffer drawing is guarded during
-that interval, except in double mode, which has no expanded frames.
+An expanded frame holds an exact-half picture in `gfx_half_picture()`: a buffer in
+gfx's own PSRAM that costs 82 KB while a full-framebuffer app runs.
 
-`ui_end()` bins commands instead of drawing into an expanded frame. The
-shell queues its home hint before the app builds the UI, then its frame
-overlay replays the bin and the development build mark into each strip.
-Readback uses the same expansion and overlay path.
-
-The half picture lives in gfx's own PSRAM buffer and costs 82 KB while a
-full-framebuffer app runs.
+- `scene_compose()` copies into it and `scene_shell_compose()` calls
+  `gfx_expand_frame()`; a paused or undrawn scene keeps its last picture.
+- Presentation doubles it into send strips until `gfx_present_wait()` completes.
+  Raw framebuffer drawing is guarded during that interval, except in double mode,
+  which has no expanded frames.
+- `ui_end()` bins commands instead of drawing into it. The shell queues its home
+  hint before the app builds the UI; its frame overlay then replays the bin and the
+  development build mark into each strip. Readback uses the same path.
 
 ## Indexed mode
 
-The app writes bytes into `gfx_indexed_image()`, row-major,
-`index_grid_w` per row, and marks the matching panel rectangle dirty; cell
-(cx, cy) covers `cell_size` x `cell_size` panel pixels. It then presents with
-the same `gfx_present_begin()` / `gfx_present_wait()` as the default mode.
+The app writes bytes into `gfx_indexed_image()`, row-major, `index_grid_w` per row,
+and marks the matching panel rectangle dirty; cell (cx, cy) covers `cell_size` x
+`cell_size` panel pixels. It presents with the same `gfx_present_begin()` /
+`gfx_present_wait()` as the default mode.
 
 | Call | Installs |
 |---|---|
@@ -128,10 +125,11 @@ the same `gfx_present_begin()` / `gfx_present_wait()` as the default mode.
 | `gfx_indexed_set_dither16()` | which of the two expands; both stay installed |
 | `gfx_indexed_set_dither()` | the spatial dither pattern for 16-colour mode |
 
-All four are safe only between frames. Palettes are a gfx type
-(`draw/draw_palette.h`, entries 0-15 reserved by `DRAW_PALETTE_UI_ENTRIES`);
-curated ones ship in `draw/draw_palette_standard.h`, chosen at runtime by name.
-Building one is the app's work. The two steps every palette then needs,
-the colour -> index map and the dither table, are
-`tools/gen/draw_palette_gen.h`: host-only, in OKLab<sup>[[35]](../Citations.md#35)</sup>, never in the firmware
-image.
+All four are safe only between frames.
+
+Palettes are a gfx type (`draw/draw_palette.h`, entries 0-15 reserved by
+`DRAW_PALETTE_UI_ENTRIES`). Curated ones ship in `draw/draw_palette_standard.h`,
+chosen at runtime by name; building one is the app's work. The two steps every
+palette then needs, the colour -> index map and the dither table, are
+`tools/gen/draw_palette_gen.h`: host-only, in OKLab<sup>[[35]](../Citations.md#35)</sup>,
+never in the firmware image.

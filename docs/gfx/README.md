@@ -14,22 +14,26 @@ A caller includes the header for what it does:
 | [`gfx/present/gfx_debug.h`](../../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
 | [`draw/draw_image.h`](../../launcher/main/draw/draw_image.h) | a picture read in place from its pack entry |
 
-`draw/` owns primitives, images, icons, fonts, palettes and dithering.
-`gfx/target/` holds pixel colour, boxes, draw targets and render-target
-attachments. `gfx/present/` owns the framebuffer and presentation, with
-layout values under `modes/`, send policy under `send/` and emulated panel
-backends under `panel/`. `gfx_internal.h` holds state shared only by
-presentation. Draw reaches presentation only
-through `gfx.h`: `gfx_draw_begin()` hands it the target, clip and whether to
-mark, and the `gfx_mark_*` calls record what it wrote. The panel link itself, QSPI and each revision's init
-sequence, is `board/board_panel.c`. For what an app owes the shell see
-[`Building-an-App.md`](../Building-an-App.md); for the panel constraints these choices obey see
+| Folder | Owns |
+|---|---|
+| `draw/` | primitives, images, icons, fonts, palettes, dithering |
+| `gfx/target/` | pixel colour, boxes, draw targets, render-target attachments |
+| `gfx/present/` | the framebuffer and presentation: layout values under `modes/`, send policy under `send/`, emulated panel backends under `panel/`; `gfx_internal.h` holds state only presentation shares |
+| `board/board_panel.c` | the panel link itself: QSPI and each revision's init sequence |
+
+Draw reaches presentation only through `gfx.h`: `gfx_draw_begin()` hands it the
+target, clip and whether to mark, and the `gfx_mark_*` calls record what it wrote.
+For what an app owes the shell, see [`Building-an-App.md`](../Building-an-App.md);
+for the panel constraints these choices obey,
 [`notes/Display-and-Rendering.md`](../notes/Display-and-Rendering.md).
 
-Two facts drive everything here. Sending is almost the whole cost of a frame
-(16.5 ms of bus for a full frame at 40 MHz, 8.2 at 80), and the panel keeps
-what it was last sent in its own GRAM. So the design is: send only what
-changed.
+Two facts drive everything here:
+
+- Sending is almost the whole cost of a frame: 16.5 ms of bus for a full frame at
+  40 MHz, 8.2 at 80.
+- The panel keeps what it was last sent in its own GRAM.
+
+So the design is: send only what changed.
 
 ## The path
 
@@ -51,15 +55,15 @@ flowchart TB
     BR -->|"QSPI DMA, from shell loop"| PANEL
 ```
 
-A **strip** is one of the tracker's 7 full-width, 64-row bands (not the band
-ring's band). A **gathered run** is a box spanning only some columns of a
-strip, packed row by row into a bounce slot and sent as one transfer. A
-**partial band** is a full-width box shorter than a strip, sent as the
-contiguous framebuffer rows it covers. A **bounce slot** is one of two
-strip-sized buffers in internal DMA RAM that every send is copied through.
+| Term | Meaning |
+|---|---|
+| strip | one of the tracker's 7 full-width, 64-row bands (not the band ring's band) |
+| gathered run | a box spanning only some columns of a strip, packed row by row into a bounce slot and sent as one transfer |
+| partial band | a full-width box shorter than a strip, sent as the contiguous framebuffer rows it covers |
+| bounce slot | one of two strip-sized buffers in internal DMA RAM that every send is copied through |
 
-Entering a band or indexed mode frees the PSRAM framebuffer and
-`gfx_mode_exit()` allocates it again. Double mode adds a second one and frees it on exit.
+Entering a band or indexed mode frees the PSRAM framebuffer, and `gfx_mode_exit()`
+allocates it again. Double mode adds a second one and frees it on exit.
 
 | Read | For |
 |---|---|

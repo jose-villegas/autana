@@ -1,12 +1,13 @@
 # Dirty Tracking
 
-`gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`;
-draw reaches them through `gfx_mark_dirty()` and `gfx_mark_rows_dirty()`. One tracker serves all three modes.
+`gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`; draw
+reaches them through `gfx_mark_dirty()` and `gfx_mark_rows_dirty()`. One tracker
+serves all three modes.
 
-Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
-rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`
-takes rows only and has to claim every column at full width: what
-`draw_pixel()` is left with it; `draw_clear()` marks the whole grid.
+| Way in | Takes | Used by |
+|---|---|---|
+| `dirty_mark()` | a real box; may narrow a cell | the rect and blit primitives, so a glyph dirties the glyph |
+| `mark_band()` | rows only; claims every column at full width | `draw_pixel()`; `draw_clear()` marks the whole grid |
 
 ```
          92 px (COL_WIDTH)

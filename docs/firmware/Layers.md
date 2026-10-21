@@ -1,12 +1,15 @@
 # Layers
 
-Each row may include any lower row, never a higher row or another folder in
-its own row. Project apps under `apps/` and system apps under `shell/apps/`
-share the apps tier; other folders use their first path component.
-`main.c` starts the board and calls `shell_run()`; the shell reaches apps
-through `app/app.h` callbacks. The inventory is `launcher/main/`; the
-include gate's order is `LAYER_ROWS` in `scripts/gates/check_style_audit.py`.
-Folders that touch hardware are marked.
+Each row may include any lower row, never a higher row or another folder in its
+own row.
+
+- Project apps under `apps/` and system apps under `shell/apps/` share the apps
+  tier; other folders use their first path component.
+- `main.c` starts the board and calls `shell_run()`; the shell reaches apps through
+  `app/app.h` callbacks.
+- The inventory is `launcher/main/`; the include gate's order is `LAYER_ROWS` in
+  `scripts/gates/check_style_audit.py`.
+- Folders that touch hardware are marked.
 
 ```mermaid
 flowchart TB
@@ -83,12 +86,11 @@ flowchart TB
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
-Power layer: [the PMU owner](../../launcher/main/power/README.md); `power/` sits
-below `input/` and `audio/`.
-
-Audio layer: [audio docs](../audio/README.md).
-The engine sound layer owns [the mixer, voices and buses](../audio/Sound-Mixer.md)
-as well as stored sounds and sample cursors.
+- Power: [the PMU owner](../../launcher/main/power/README.md); `power/` sits below
+  `input/` and `audio/`.
+- Audio: [audio docs](../audio/README.md). The engine sound layer owns [the mixer,
+  voices and buses](../audio/Sound-Mixer.md) as well as stored sounds and sample
+  cursors.
 
 | Rule | What it means | Enforced by |
 |---|---|---|

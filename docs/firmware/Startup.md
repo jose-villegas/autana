@@ -20,14 +20,13 @@ the order is most of the point:
 | 13 | `console_start()` | development builds only |
 | 14 | `shell_run()` | the frame loop, which never returns |
 
-The health checks come first, so a faulty board says so before it does
-anything decorative. Touch starts after the animation, because until then
-there is nothing for a tap to reach.
+The health checks come first, so a faulty board says so before it does anything
+decorative. Touch starts after the animation, because until then there is
+nothing for a tap to reach.
 
-The launcher is built before the animation because the animation ends *in*
-it: for its last 700 ms each frame starts from the home screen, painted by
-the shell (`shell_paint_home_under_boot()`) through
-`boot_anim_set_ending_backdrop()`, and the photograph
-dithers away over it. `boot/` takes a painter rather than calling the
-launcher because it knows nothing above itself. What the animation draws is
-described in `boot/boot_anim.h`.
+The launcher is built before the animation because the animation ends *in* it.
+For its last 700 ms each frame starts from the home screen, painted by the shell
+(`shell_paint_home_under_boot()`) through `boot_anim_set_ending_backdrop()`, and
+the photograph dithers away over it. `boot/` takes a painter rather than calling
+the launcher because it knows nothing above itself. What the animation draws:
+`boot/boot_anim.h`.
