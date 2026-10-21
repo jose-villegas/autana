@@ -7,13 +7,18 @@
 #include "unity.h"
 
 #include "apps/render_lab/render_lab.h"
+#include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/tests/render_lab_test.h"
+#include "render/context/render_context.h"
 #include "scene/scene_shell.h"
 
 static render_lab_test_t saved;
 
 static void
 release_fixture(void) {
+#if TUNE_ENABLED
+    (void)render_lab_dynres_set_on(false);
+#endif
     render_lab_test_exit(&saved);
 }
 
@@ -50,12 +55,42 @@ test_console_scene_requests_survive_expanded_frames(void) {
     }
 }
 
+#if TUNE_ENABLED
+/* The menu's toggle holds across a switch to a scene of another family: a
+ * frame under it draws at a ladder step, and off returns to the fixed scale. */
+static void
+test_dynamic_resolution_toggle_follows_the_showing_scene(void) {
+    fixture();
+    render_lab_test_frame(false, NULL);
+    TEST_ASSERT_LESS_THAN_INT(0, render_context_frame(render_context_main()).step);
+
+    TEST_ASSERT_TRUE(render_lab_dynres_set_on(true));
+    render_lab_test_frame(false, NULL);
+    render_lab_test_frame(false, NULL);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, render_context_frame(render_context_main()).step);
+
+    TEST_ASSERT_TRUE(app_render_lab.console->handle("scene capybara"));
+    render_lab_test_frame(true, NULL);
+    render_lab_test_frame(false, NULL);
+    TEST_ASSERT_EQUAL_STRING("capybara", render_lab_start_scene_key);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, render_context_frame(render_context_main()).step);
+
+    TEST_ASSERT_TRUE(render_lab_dynres_set_on(false));
+    render_lab_test_frame(false, NULL);
+    render_lab_test_frame(false, NULL);
+    TEST_ASSERT_LESS_THAN_INT(0, render_context_frame(render_context_main()).step);
+}
+#endif
+
 #endif
 
 void
 run_render_lab_scene_switch_suite(void) {
 #ifdef DEVICE_BUILD
     RUN_TEST(test_console_scene_requests_survive_expanded_frames);
+#if TUNE_ENABLED
+    RUN_TEST(test_dynamic_resolution_toggle_follows_the_showing_scene);
+#endif
 #endif
 }
 

@@ -97,13 +97,8 @@ render_lab_budget_ms(void) {
 
 #if TUNE_ENABLED
 bool
-render_lab_dynamic_resolution(void) {
-    return budget != 0;
-}
-
-bool
-render_lab_dynamic_resolution_set(bool on) {
-    return tune_set(tune_shared(), budget_tunable.name, on ? RENDER_LAB_BUDGET_ON_MS : 0);
+render_lab_budget_set_ms(int budget_ms) {
+    return tune_set(tune_shared(), budget_tunable.name, budget_ms);
 }
 #endif
 
