@@ -1,0 +1,25 @@
+[source]
+path = "source/bistro.obj"
+credit = "Amazon Lumberyard Bistro, exterior (Amazon Lumberyard; CC BY 4.0), from NVIDIA's Open Research Content Archive; reduced, see source/copyright.txt."
+
+[output]
+position_scale = 4
+
+[materials]
+double_sided = ["Foliage_Bux_Hedges46.DoubleSided", "Foliage_Flowers.DoubleSided", "Foliage_Ivy_leaf_a.DoubleSided", "Foliage_Leaves.DoubleSided", "Foliage_Linde_Tree_Large_Green_Leaves.DoubleSided", "Foliage_Linde_Tree_Large_Orange_Leaves.DoubleSided"]
+
+[process]
+seed = 1
+
+[geometry]
+alpha_mask = { keep_alpha = 0.5 }
+thin = { material = "Foliage_Paris_Flowers", keep = 0.3 }
+simplify = { dense_edge = 300.0, props = ["Paris_Chair_01", "Paris_Table_Terrace", "Vespa", "Streetlight_Metal", "Paris_StreetSign_01", "Paris_TrafficSign_A", "Bollards", "Trashcan"], props_share = 0.2, seal_seams = false, colour_deviation = 2.0 }
+
+[[variants]]
+name = "bistro"
+triangles = 20000
+
+[[variants]]
+name = "bistro_lite"
+triangles = 10000

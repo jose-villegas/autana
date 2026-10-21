@@ -1,0 +1,8 @@
+# The ground around the street, so no view sees past the model's edge.
+[source]
+path = "ground.obj"
+credit = "A plain square written for this scene."
+
+[output]
+name = "ground"
+position_scale = 1   # ticks per centimetre: the square reaches 300 m from the origin, inside int16
