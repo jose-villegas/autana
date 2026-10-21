@@ -1,7 +1,5 @@
 # Dirty Tracking
 
-## Dirty tracking
-
 `gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`;
 draw reaches them through `gfx_mark_dirty()` and `gfx_mark_rows_dirty()`. One tracker serves all three modes.
 

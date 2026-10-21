@@ -15,7 +15,7 @@ and [transfer payload](../notes/Display-and-Rendering.md#transfer-payload).
 `enter()` for a band ring (a few strips of rows, sent as each fills) or an
 index image (one byte per pixel through a palette), and gfx frees the
 framebuffer while it holds one. See
-[Gfx-and-Presentation.md](../gfx/README.md).
+[Gfx](../gfx/README.md).
 
 The same rule is why the span rasterizer (`render/r3d_span.h`) owns no
 framebuffer: it fills a caller's window of rows, with a depth plane only as

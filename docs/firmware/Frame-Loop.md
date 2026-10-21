@@ -25,7 +25,7 @@ with and without `update()` is
 
 An app that sets `app_t.update` has the previous frame sent on core 1 while
 `update()` runs on core 0; the split present underneath is in
-[Gfx-and-Presentation.md](../gfx/Present.md#present-who-runs-it).
+[Gfx: who runs the present](../gfx/Present.md#present-who-runs-it).
 
 A caller draws a mesh with `raster_draw()` from `update()` this way, on both
 cores: [Mesh-Rendering.md](../render/Mesh-Rendering.md#on-both-cores). An app that
@@ -89,7 +89,7 @@ manager at `SHELL_ORDER_SCENE`.
 ## Full redraw
 
 `gfx_request_full_redraw()` marks everything dirty and latches a pending
-flag ([Gfx-and-Presentation.md](../gfx/Dirty-Tracking.md#repaint-controls)).
+flag ([Repaint controls](../gfx/Dirty-Tracking.md#repaint-controls)).
 gfx has no idea what anyone caches above it, so the shell answers the flag
 at the top of a pass, before anything draws: a running app gets its
 `invalidate()` and the launcher gets `ui_invalidate()`. Clearing the flag

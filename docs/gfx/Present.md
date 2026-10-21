@@ -89,8 +89,7 @@ Single-buffer presentation runs from IRAM (`main/linker.lf`,
 `CONFIG_SPI_MASTER_IN_IRAM`) to avoid instruction-cache misses.
 Double-mode setup and the raw full-frame loop run from flash.
 
-suite_gfx
-`test_narrow_present_counters` measures it warm, with the instruction cache
+`suite_gfx`'s `test_narrow_present_counters` measures the narrow present warm, with the instruction cache
 cold, and sent from the caller's core.
 
 ## Presentation memory policy
@@ -100,7 +99,7 @@ buffers while core 0 updates app state; drawing waits for that read to finish.
 
 | Layout or option | Memory cost |
 |---|---|
-| single-buffer layouts | retain their contents; a catch-up copy between PSRAM framebuffers would cost 6–15 ms per frame |
+| single-buffer layouts | retain their contents; a catch-up copy between PSRAM framebuffers costs 6–15 ms per frame, which these layouts avoid |
 | `GFX_LAYOUT_DOUBLE_FB` | needs a full redraw and makes no catch-up copy; its draw runs slower while the front is sent, as both buffers are in PSRAM |
 | clear on send | moves the full-frame fill from core 0 to core 1: the same bytes, now sharing the bus with the draw |
 | the mesh raster | a measured exception: its colour and depth targets and upscaled framebuffer are written in PSRAM |

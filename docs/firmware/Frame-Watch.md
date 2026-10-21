@@ -1,6 +1,6 @@
 # The Frame Watch
 
-### The frame watch: no allocating or logging in steady state
+## No allocating or logging in steady state
 
 A frame that allocates, frees or logs every time it runs pays for it every
 frame. A development build watches for that at runtime
