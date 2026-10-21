@@ -75,7 +75,7 @@ sequenceDiagram
 ```
 
 A warm reset keeps RTC memory, and the app reports its real cause
-(`RESET_REASON=PANIC`, `TASK_WDT`, `USB_UART_CHIP`; see
+(`RESET_REASON=PANIC`, `TASK_WDT`, `USB` for an RTS reset; see
 [Debugging.md](Debugging.md)).
 
 ---
