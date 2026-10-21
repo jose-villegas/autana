@@ -94,7 +94,6 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/math_const.h](include/math/scalar/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
 | [include/math/scalar/mathf.h](include/math/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (docs/math/Scalar.md). |
 | [include/math/scalar/mathf_round.h](include/math/scalar/mathf_round.h) | mathf_round: scalar rounding to nearest, ties away from zero; finite inputs saturate to the destination type. |
-| [include/math/scalar/mathf_rsqrt.h](include/math/scalar/mathf_rsqrt.h) | mathf_rsqrt: reciprocal square root for positive normal-range inputs; one Newton correction of the FPU seed. |
 | [include/math/scalar/mathi.h](include/math/scalar/mathi.h) | mathi: plain integer scalars. |
 | [include/math/scalar/maths.h](include/math/scalar/maths.h) | maths: int16 scalar operations for the math templates (docs/math/Scalar.md), coordinates kept compact where memory is short. |
 | [include/math/scalar/mathx.h](include/math/scalar/mathx.h) | mathx: Q16.16 fixed-point scalar operations for the math templates (docs/math/Scalar.md). |

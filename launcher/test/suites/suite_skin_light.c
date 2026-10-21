@@ -146,7 +146,8 @@ test_rsqrt_dense_normals_match_exact_light_bytes(void) {
             const vec3f_t exact = vec3f_scale(n, 1.0F / sqrtf(vec3f_dot(n, n)));
             const float squared = vec3f_dot(n, n);
             const float exact_recip = 1.0F / sqrtf(squared);
-            TEST_ASSERT_FLOAT_WITHIN(exact_recip * MATHF_RSQRT_RELATIVE_LIMIT, exact_recip, mathf_rsqrt(squared));
+            TEST_ASSERT_FLOAT_WITHIN(exact_recip * MATHF_RSQRT_APPROX_RELATIVE_LIMIT, exact_recip,
+                                     mathf_rsqrt_approx(squared));
             const vec3f_t fast = light_renormalise(n);
             uint8_t want[3], got[3];
             light_evaluate(exact, &lights, albedo, want);
