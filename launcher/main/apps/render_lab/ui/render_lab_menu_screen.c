@@ -61,7 +61,8 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
         state->controls(MENU_BTN_W);
     }
 #if TUNE_ENABLED
-#define SMALL_FILL_LABEL "SMALL FILL:"
+#define SMALL_FILL_LABEL  "SMALL FILL:"
+#define DYNAMIC_RES_LABEL "DYNAMIC RES"
     int count = 0;
     const char* const* names = render_lab_small_fill_names(&count);
     int fill = render_lab_small_fill_selected();
@@ -69,6 +70,11 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
     if (ui_dropdown(ui_next(), SMALL_FILL_LABEL, &fill, names, count)) {
         (void)render_lab_small_fill_select(fill);
+    }
+    bool dynamic = render_lab_dynamic_resolution();
+    ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
+    if (ui_toggle(ui_next(), DYNAMIC_RES_LABEL, &dynamic)) {
+        (void)render_lab_dynamic_resolution_set(dynamic);
     }
 #endif
 

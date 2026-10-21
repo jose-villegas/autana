@@ -49,8 +49,19 @@ resolution_step_t render_lab_render_size(int width, int height);
 void render_lab_apply_raster_settings(void);
 
 /* The tunable render_lab.budget: 0 draws at render_lab.scale; otherwise
- * the milliseconds dynamic resolution holds a lit-mesh scene's draw to. */
+ * the milliseconds dynamic resolution holds the scene's draw to
+ * (render_lab_dynres.h). */
+#define RENDER_LAB_BUDGET_MAX_MS 200
 int render_lab_budget_ms(void);
+
+/* The menu's DYNAMIC RES toggle over render_lab.budget: on is any budget,
+ * and turning it on sets the tighter one the policies were measured at.
+ * Development builds only, where the tunable can move. */
+#define RENDER_LAB_BUDGET_ON_MS 60
+#if TUNE_ENABLED
+bool render_lab_dynamic_resolution(void);
+bool render_lab_dynamic_resolution_set(bool on);
+#endif
 
 /* The tunable render_lab.orbit_ms: 0 holds an orbiting camera where it is
  * steered; otherwise it also turns once about its subject every orbit_ms. */

@@ -24,6 +24,7 @@
 
 #include "esp_log.h"
 
+#include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
@@ -65,7 +66,7 @@ typedef struct {
 
 static const ladder_t ladders[] = {
     {"width", width_steps, 7, 6, 4},
-    {"height", sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, SPONZA_LADDER_HALF},
+    {"height", render_lab_ladder, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_RECOVERY, RENDER_LAB_LADDER_HALF},
 };
 #define LADDER_COUNT ((int)(sizeof ladders / sizeof ladders[0]))
 

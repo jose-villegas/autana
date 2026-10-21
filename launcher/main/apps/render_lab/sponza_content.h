@@ -7,7 +7,6 @@
 #pragma once
 
 #include "gfx/gfx.h"
-#include "render/resolution/resolution.h"
 
 /* The scene's id, and its pack's name. */
 #define SPONZA_SCENE                "sponza"
@@ -41,13 +40,3 @@ extern const char* const sponza_bakes[SPONZA_BAKE_COUNT];
 
 #define SPONZA_CAMERA_COUNT 2
 extern const char* const sponza_cameras[SPONZA_CAMERA_COUNT];
-
-/* Rows and span setup follow height, so the ladder reduces height before
- * width. Widths use fast upscale paths; the board fit from
- * suite_raster_scale_perf.c includes one upscale per step.
- * The 3x-cost step is recovery-only. */
-#define SPONZA_LADDER_STEPS    7
-#define SPONZA_LADDER_RECOVERY 6
-#define SPONZA_LADDER_HALF     4
-extern const resolution_step_t sponza_ladder[SPONZA_LADDER_STEPS];
-extern const resolution_model_t sponza_ladder_model;
