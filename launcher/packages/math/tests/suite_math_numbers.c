@@ -1113,26 +1113,41 @@ test_integer_square_root_edges(void) {
 }
 
 static void
-test_integer_half_chords(void) {
-    enum { FLOOR_LIMIT = 64, ROUND_LIMIT = 512, RANGE_LIMIT = 32767 };
+test_integer_half_chords_floor(void) {
+    enum { FLOOR_LIMIT = 64 };
+
+    for (int r = 0; r <= FLOOR_LIMIT; r++) {
+        for (int d = -r - 1; d <= r + 1; d++) {
+            const int h = r * r - d * d;
+            const int x = mathi_half_chord(r, d);
+            TEST_ASSERT_EQUAL_INT(x, mathi_half_chord(r, -d));
+            if (h <= 0) {
+                TEST_ASSERT_EQUAL_INT(0, x);
+            } else {
+                TEST_ASSERT_TRUE(x * x <= h);
+                TEST_ASSERT_TRUE((x + 1) * (x + 1) > h);
+            }
+        }
+    }
+}
+
+static void
+test_integer_half_chords_round(void) {
+    enum { ROUND_LIMIT = 512 };
 
     for (int r = 0; r <= ROUND_LIMIT; r++) {
         for (int d = -r - 1; d <= r + 1; d++) {
             const int h = r * r - d * d;
             const int want = h > 0 ? (int)lroundf(sqrtf((float)h)) : 0;
             TEST_ASSERT_EQUAL_INT(want, mathi_half_chord_round(r, d));
-            if (r <= FLOOR_LIMIT) {
-                const int x = mathi_half_chord(r, d);
-                TEST_ASSERT_EQUAL_INT(x, mathi_half_chord(r, -d));
-                if (h <= 0) {
-                    TEST_ASSERT_EQUAL_INT(0, x);
-                } else {
-                    TEST_ASSERT_TRUE(x * x <= h);
-                    TEST_ASSERT_TRUE((x + 1) * (x + 1) > h);
-                }
-            }
         }
     }
+}
+
+static void
+test_integer_half_chords_large_radius(void) {
+    enum { FLOOR_LIMIT = 64, RANGE_LIMIT = 32767 };
+
     TEST_ASSERT_EQUAL_INT(RANGE_LIMIT, mathi_half_chord(RANGE_LIMIT, 0));
     TEST_ASSERT_EQUAL_INT(RANGE_LIMIT, mathi_half_chord_round(RANGE_LIMIT, 0));
     TEST_ASSERT_EQUAL_INT(0, mathi_half_chord(-RANGE_LIMIT, 0));
@@ -1155,7 +1170,9 @@ test_integer_half_chords(void) {
 void
 suite_math_numbers(void) {
     RUN_TEST(test_integer_square_root_edges);
-    RUN_TEST(test_integer_half_chords);
+    RUN_TEST(test_integer_half_chords_floor);
+    RUN_TEST(test_integer_half_chords_round);
+    RUN_TEST(test_integer_half_chords_large_radius);
     RUN_TEST(test_scalar_half_and_absolute_value);
     RUN_TEST(test_mathf_lerp);
     RUN_TEST(test_mathi_lerp);

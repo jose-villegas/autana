@@ -158,29 +158,14 @@ mathi_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
 /* Floor of the square root over the whole uint64_t range. */
 static inline uint32_t
 mathi_isqrt64(uint64_t value) {
-    if (value <= UINT32_MAX) {
-        uint32_t narrow = (uint32_t)value;
-        uint32_t root = 0;
-        uint32_t bit = (UINT32_MAX >> 1) - (UINT32_MAX >> 2);
-        while (bit > narrow) {
-            bit >>= 2;
-        }
-        while (bit != 0) {
-            if (narrow >= root + bit) {
-                narrow -= root + bit;
-                root = (root >> 1) + bit;
-            } else {
-                root >>= 1;
-            }
-            bit >>= 2;
-        }
-        return root;
+    enum { VALUE_BITS = 64, DIGIT_BITS = 2 };
+
+    if (value == 0) {
+        return 0;
     }
     uint64_t root = 0;
-    uint64_t bit = (UINT64_MAX >> 1) - (UINT64_MAX >> 2);
-    while (bit > value) {
-        bit >>= 2;
-    }
+    const int shift = (VALUE_BITS - 1 - __builtin_clzll(value)) / DIGIT_BITS * DIGIT_BITS;
+    uint64_t bit = UINT64_C(1) << shift;
     while (bit != 0) {
         if (value >= root + bit) {
             value -= root + bit;
@@ -188,7 +173,7 @@ mathi_isqrt64(uint64_t value) {
         } else {
             root >>= 1;
         }
-        bit >>= 2;
+        bit >>= DIGIT_BITS;
     }
     return (uint32_t)root;
 }
