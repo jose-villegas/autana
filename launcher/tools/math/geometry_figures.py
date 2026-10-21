@@ -83,7 +83,6 @@ CIRCLE_SEGMENT_OFFSETS = ((0, -12), (0, 12), (0, 12))
 CIRCLE_LEGEND_OFFSET = -0.12
 CIRCLE_CELL_SIZE = POINT_SIZE / 8
 CIRCLE_CENTRE_SIZE = POINT_SIZE / 4
-CIRCLE_GUIDE_LABEL_OFFSET = (4, 4)
 
 
 def panels(projection=None):
@@ -139,14 +138,8 @@ def circle_figure(data, output):
             axis.scatter(cell_x, cell_y, color=SHAPE_FILL, s=CIRCLE_CELL_SIZE)
     axis.add_patch(Rectangle((x, y), last_x - x, last_y - y,
                              facecolor="none", edgecolor=SHAPE_FILL))
-    axis.plot([x + w, x + w], [y, y + h], color=FAINT, linestyle=":")
-    axis.plot([x, x + w], [y + h, y + h], color=FAINT, linestyle=":")
-    for label, anchor in ((f"right = {x + w} (excluded)", (x + w, y)),
-                          (f"bottom = {y + h} (excluded)", (x, y + h))):
-        axis.annotate(label, anchor, xytext=CIRCLE_GUIDE_LABEL_OFFSET,
-                      textcoords="offset points", fontsize=LABEL_SIZE, color=MUTED)
-    axis.set_xlabel(f"covered cells x = {x}..{last_x}, y = {y}..{last_y}\n"
-                    "(half-open: right and bottom excluded)", fontsize=LABEL_SIZE)
+    axis.set_xlabel(f"recti {tuple(data['rect'])} covers x {x}..{last_x}, y {y}..{last_y};\n"
+                    f"right = {x + w} and bottom = {y + h} are not cells", fontsize=LABEL_SIZE)
     for centre, radius, closest, hit, state, cells in data["circles"]:
         color = BOX_COLORS[("overlap", "touch", "miss").index(state)]
         axis.add_patch(Circle(centre, radius, facecolor=color, edgecolor=color, alpha=SHAPE_ALPHA))
