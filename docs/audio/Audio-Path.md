@@ -225,8 +225,11 @@ The ES8311 DAC limiter is controlled by `audio.drc`, `audio.drc_max`,
 `audio.drc_min`, `audio.drc_win`, and `audio.drc_ramp`.
 Level fields are datasheet indices; window and ramp fields are nibbles.
 
-`audio.codec_volume` sets codec output gain. The datasheet describes it as
-the limiter's maximum gain; the capture table shows its measured effect.
+DRC limits engage only below static full-scale DAC output. The window sets
+the detection/release rate; large values are too slow for short sounds.
+Keep the EQ-bypass bit set.
+
+`audio.codec_volume` sets codec output gain.
 Defaults keep DRC off and codec volume at `AUDIO_OUT_CODEC_VOLUME`.
 Release applies constants at open.
 Development builds apply changed tunables on the next PCM write.

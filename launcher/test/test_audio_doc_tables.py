@@ -488,11 +488,38 @@ class DrcSweepTest(unittest.TestCase):
     def test_default_plan(self):
         args = sweep.parser().parse_args(["--board", "TEST"])
         configs = list(sweep.configurations(args))
-        self.assertEqual(len(configs), 7 + 3 * 4 * 2)
-        self.assertEqual(configs[0], dict(codec_volume=30, drc=0, drc_max=0, drc_min=0, drc_win=4, drc_ramp=2))
-        self.assertEqual(list(sweep.tones(args)), [(1000, 10), (1000, 30), (1000, 100), (500, 100), (2000, 100)])
+        self.assertEqual(len(configs), 7 + 2 * 4 * 2 * 2)
+        self.assertEqual(configs[0], dict(codec_volume=30, drc=0, drc_max=0, drc_min=0, drc_win=1, drc_ramp=2))
+        self.assertEqual(list(sweep.tones(args)), [(1000, 10), (1000, 30), (1000, 100)])
+        self.assertEqual(args.codec, (70, 100))
+        self.assertEqual(args.max_levels, (1, 2, 3, 4))
+        self.assertEqual(args.winsize, (1, 4))
+        self.assertEqual(args.ramp, (2,))
         self.assertEqual(args.runs, 3)
         self.assertEqual(configs[-1]["drc_min"], 0)
+
+    def test_window_ramp_product(self):
+        args = sweep.parser().parse_args(["--board", "TEST", "--baseline", "30", "--codec", "70,100",
+            "--max-levels", "1,2", "--winsize", "1,4", "--ramp", "2,3", "--extra-hz", "500,2000"])
+        self.assertEqual(args.winsize, (1, 4))
+        self.assertEqual(args.ramp, (2, 3))
+        configs = list(sweep.configurations(args))
+        expected = {(codec, maximum, minimum, window, ramp)
+                    for codec in (70, 100) for maximum in (1, 2) for minimum in (maximum, 0)
+                    for window in args.winsize for ramp in args.ramp}
+        actual = {(c["codec_volume"], c["drc_max"], c["drc_min"], c["drc_win"], c["drc_ramp"])
+                  for c in configs if c["drc"]}
+        self.assertEqual(actual, expected)
+        self.assertEqual(len(configs), len(expected) + 1)
+        self.assertEqual(list(sweep.tones(args))[-2:], [(500, 100), (2000, 100)])
+
+    def test_invalid_window_ramp_lists(self):
+        for option in ("--winsize", "--ramp"):
+            for value in ("", "1,16", "-1,4"):
+                with self.subTest(option=option, value=value):
+                    args = sweep.parser().parse_args(["--board", "TEST", f"{option}={value}"])
+                    with self.assertRaises(ValueError):
+                        list(sweep.configurations(args))
 
     def test_capture_and_cleanup_after_failure(self):
         for fail in (False, True):
@@ -531,7 +558,7 @@ class DrcSweepTest(unittest.TestCase):
 
     def test_fixture_medians(self):
         body = audio.render_drc(ROOT / "launcher/test/fixtures/audio_drc_capture.txt")
-        self.assertIn("| 30 | off | -40.0 | -30.0 | -20.0 | -45.0 | -0.4 | yes |", body)
+        self.assertIn("| 30 | off | 4 | 2 | -40.0 | -30.0 | -20.0 | -45.0 | -0.4 | yes |", body)
         self.assertIn("max -6.0 / min -30.1", body)
 
     def test_primary_frequency_and_volumes_from_capture(self):

@@ -257,7 +257,7 @@ def render_drc(path):
     volumes = sorted({volume for samples in groups.values() for hz, _, volume, _ in samples if hz == primary_hz})
     rows = []
     for key, samples in groups.items():
-        codec, on, maximum, minimum, _, _ = key
+        codec, on, maximum, minimum, window, ramp = key
         primary = [(volume, reply) for hz, _, volume, reply in samples if hz == primary_hz]
         if len({ms for _, ms, _, _ in samples}) != 1:
             raise ValueError("DRC duration must be constant per configuration")
@@ -271,7 +271,8 @@ def render_drc(path):
                if volume == volumes[-1] and reply["thd_db"] is not None]
         peak = max(reply["peak_dbfs"] for _, _, _, reply in samples)
         label = f"max {DRC_LEVEL_DB[maximum]:.1f} / min {DRC_LEVEL_DB[minimum]:.1f}" if on else "off"
-        rows.append((codec, label, *levels, f"{median(thd):.1f}" if thd else "n/a", f"{peak:.1f}",
+        rows.append((codec, label, window, ramp, *levels,
+                     f"{median(thd):.1f}" if thd else "n/a", f"{peak:.1f}",
                      "yes" if peak >= DRC_CLIPPED_DBFS else "no"))
     if not rows:
         raise ValueError("missing DRC tone records")
@@ -279,7 +280,8 @@ def render_drc(path):
             f"Board **{header[1]}**, build **{next(iter(builds))}** "
             f"([raw replies](data/{path.name})).\n\n"
             f"Levels and THD: {primary_hz} Hz; worst peak includes every frequency.\n\n"
-            + markdown(["Codec (%)", "DRC max/min (dB)", *[f"Level {volume}% (dBFS)" for volume in volumes],
+            + markdown(["Codec (%)", "DRC max/min (dB)", "Window", "Ramp",
+                        *[f"Level {volume}% (dBFS)" for volume in volumes],
                         f"THD {volumes[-1]}% (dB)", "Worst peak (dBFS)", "Mic clipped"], rows))
 
 

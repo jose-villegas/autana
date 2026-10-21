@@ -362,9 +362,9 @@ test_tone_reply_frequency(void) {
         TEST_ASSERT_TRUE(console_tone_reply(line, sizeof line, &args, true, -12, -100, &result, 0));
         TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? "thd 1000.0 dB" : "thd n/a dB"));
         TEST_ASSERT_NOT_NULL(strstr(line, "peak -6.0 dBFS"));
+        puts(line);
         TEST_ASSERT_FALSE(console_tone_reply(line, strlen(line), &args, true, -12, -100, &result, 0));
         TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? expected : "measured n/a"));
-        puts(line);
     }
 }
 
