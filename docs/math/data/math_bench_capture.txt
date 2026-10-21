@@ -50,7 +50,8 @@ MATHBENCH name=atan2f type=f ops=64 warm=336.7 cold=29770.0 insn=195.9
 MATHBENCH name=sqrtf type=f ops=64 warm=61.2 cold=6436.0 insn=45.5
 MATHBENCH name=trig_sin type=i ops=64 warm=30.8 cold=5233.0 insn=24.0
 MATHBENCH name=dot_f32_n256 type=f ops=1 warm=1305.0 cold=2467.0 insn=1315.0
-MATHF_RSQRT max_ulp=1
-MATHF_RSQRT_APPROX max_relative=5.94258e-05
-MATHERROR name=normalize (vec3) type=f max_ulp=1
-MATHERROR name=nlerp type=f max_ulp=2
+MATHERROR name=mathf_rsqrt type=f max=1 unit=ulp method=proof
+MATHERROR name=mathf_rsqrt_approx type=f max=5.94258e-05 unit=relative method=proof
+MATHERROR name=normalize (vec3) type=f max=1 unit=ulp method=sweep
+MATHERROR name=nlerp type=f max=2 unit=ulp method=sweep
+MATHERROR name=mathf_recip type=f max=1 unit=ulp method=sweep

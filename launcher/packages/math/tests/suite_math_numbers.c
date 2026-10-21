@@ -687,6 +687,20 @@ test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type(void) 
     }
 }
 
+static uint32_t
+rsqrt_bits(float value) {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    return bits;
+}
+
+static float
+rsqrt_float(uint32_t bits) {
+    float value;
+    memcpy(&value, &bits, sizeof value);
+    return value;
+}
+
 /* Within an ulp of the quotient, measured on the side the result landed:
  * both signs, a geometric sweep over 2^-20..2^20 and each octave's edges (a
  * power of two, its neighbours, the largest mantissa below it). On the
@@ -697,11 +711,17 @@ test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type(void) 
 
 /* Asserts mathf_recip(x) within an ulp of 1 / x; true when it is exactly. */
 static bool
-reciprocal_is_exact(float x) {
+reciprocal_is_exact(float x, uint32_t* maximum) {
     const float want = 1.0F / x;
     const float got = mathf_recip(x);
     const float ulp = fabsf(nextafterf(want, got) - want);
-    TEST_ASSERT_FLOAT_WITHIN(ulp, want, got);
+    TEST_ASSERT_FLOAT_WITHIN(MATHF_RECIP_ULP_LIMIT * ulp, want, got);
+    const uint32_t a = rsqrt_bits(want);
+    const uint32_t b = rsqrt_bits(got);
+    const uint32_t error = a > b ? a - b : b - a;
+    if (error > *maximum) {
+        *maximum = error;
+    }
     return got == want;
 }
 
@@ -709,9 +729,10 @@ static void
 test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
     int count = 0;
     int exact = 0;
+    uint32_t maximum = 0;
     for (int sign = -1; sign <= 1; sign += 2) {
         for (float a = ldexpf(1.0F, -RECIP_OCTAVES); a < ldexpf(1.0F, RECIP_OCTAVES); a *= RECIP_SWEEP_STEP) {
-            exact += reciprocal_is_exact((float)sign * a);
+            exact += reciprocal_is_exact((float)sign * a, &maximum);
             count++;
         }
     }
@@ -719,12 +740,13 @@ test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
     for (int sign = -1; sign <= 1; sign += 2) {
         for (int e = -RECIP_OCTAVES; e <= RECIP_OCTAVES; e++) {
             const float power = (float)sign * ldexpf(1.0F, e);
-            (void)reciprocal_is_exact(power);
-            (void)reciprocal_is_exact(nextafterf(power, 0.0F));
-            (void)reciprocal_is_exact(nextafterf(power, 2.0F * power));
-            (void)reciprocal_is_exact(nextafterf(2.0F * power, 0.0F));
+            (void)reciprocal_is_exact(power, &maximum);
+            (void)reciprocal_is_exact(nextafterf(power, 0.0F), &maximum);
+            (void)reciprocal_is_exact(nextafterf(power, 2.0F * power), &maximum);
+            (void)reciprocal_is_exact(nextafterf(2.0F * power, 0.0F), &maximum);
         }
     }
+    printf("MATHERROR name=mathf_recip type=f max=%lu unit=ulp method=sweep\n", (unsigned long)maximum);
 }
 
 static void
@@ -1082,49 +1104,70 @@ test_float_ranges_with_decimal_lengths(void) {
     }
 }
 
-static uint32_t
-rsqrt_bits(float value) {
-    uint32_t bits;
-    memcpy(&bits, &value, sizeof bits);
-    return bits;
-}
-
-static float
-rsqrt_float(uint32_t bits) {
-    float value;
-    memcpy(&value, &bits, sizeof value);
-    return value;
-}
-
 static void
 test_rsqrt_tiny_inputs_preserve_exact_bits(void) {
-    static const float inputs[] = {0.0F, FLT_MIN / 2.0F, FLT_TRUE_MIN, FLT_MIN};
+    const float inputs[] = {
+        0.0F, FLT_TRUE_MIN, FLT_MIN / 2.0F, nextafterf(FLT_MIN, 0.0F), FLT_MIN, nextafterf(FLT_MIN, 1.0F)};
     for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
         const float x = rsqrt_float(rsqrt_bits(inputs[i]));
-        TEST_ASSERT_EQUAL_HEX32(rsqrt_bits(1.0F / sqrtf(x)), rsqrt_bits(mathf_rsqrt(x)));
-        const vec3f_t v = {sqrtf(x), 0.0F, 0.0F};
+        const uint32_t expected_bits = rsqrt_bits(1.0F / sqrtf(x));
+        const uint32_t actual_bits = rsqrt_bits(mathf_rsqrt(x));
+        if (x == 0.0F) {
+            TEST_ASSERT_EQUAL_HEX32(rsqrt_bits(INFINITY), actual_bits);
+        }
+        const uint32_t scalar_error =
+            actual_bits > expected_bits ? actual_bits - expected_bits : expected_bits - actual_bits;
+        TEST_ASSERT_LESS_OR_EQUAL_UINT32(x < FLT_MIN ? 0 : MATHF_RSQRT_ULP_LIMIT, scalar_error);
+        vec3f_t v = {sqrtf(x), 0.0F, 0.0F};
+        if (x == nextafterf(FLT_MIN, 0.0F)) {
+            v.x = nextafterf(sqrtf(FLT_MIN), 0.0F);
+        } else if (x == nextafterf(FLT_MIN, 1.0F)) {
+            v.x = sqrtf(FLT_MIN);
+            v.y = sqrtf(FLT_TRUE_MIN);
+        }
         const float d = vec3f_dot(v, v);
+        TEST_ASSERT_EQUAL_HEX32(rsqrt_bits(x), rsqrt_bits(d));
         const float k = 1.0F / sqrtf(d);
         const vec3f_t expected = vec3f_scale(v, k);
         const vec3f_t actual = vec3f_normalize(v);
-        TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
         float quotient;
         const vec3f_t divided = vec3f_normalize_divide(v, 1.0F, &quotient);
-        TEST_ASSERT_EQUAL_MEMORY(&expected, &divided, sizeof divided);
-        TEST_ASSERT_EQUAL_HEX32(rsqrt_bits(k), rsqrt_bits(quotient));
         const quatf_t q = {v.x, v.y, v.z, 0.0F};
         const quatf_t want = {q.x * k, q.y * k, q.z * k, q.w * k};
         const quatf_t got = quatf_normalize(q);
-        TEST_ASSERT_EQUAL_MEMORY(&want, &got, sizeof got);
+        if (d < FLT_MIN) {
+            TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
+            TEST_ASSERT_EQUAL_MEMORY(&expected, &divided, sizeof divided);
+            TEST_ASSERT_EQUAL_HEX32(rsqrt_bits(k), rsqrt_bits(quotient));
+            TEST_ASSERT_EQUAL_MEMORY(&want, &got, sizeof got);
+        } else {
+            const float expected_components[] = {expected.x, expected.y, expected.z, expected.x, expected.y, expected.z,
+                                                 k,          want.x,     want.y,     want.z,     want.w};
+            const float actual_components[] = {actual.x, actual.y, actual.z, divided.x, divided.y, divided.z,
+                                               quotient, got.x,    got.y,    got.z,     got.w};
+            for (size_t c = 0; c < sizeof expected_components / sizeof expected_components[0]; c++) {
+                const uint32_t a = rsqrt_bits(expected_components[c]);
+                const uint32_t b = rsqrt_bits(actual_components[c]);
+                TEST_ASSERT_LESS_OR_EQUAL_UINT32(MATHF_NORMALIZE_ULP_LIMIT, a > b ? a - b : b - a);
+            }
+        }
     }
 }
 
 #define RSQRT_FRACTION_BITS   23
 #define RSQRT_EXPONENT_BIAS   127
-#define RSQRT_EXPONENT_MAX    254
 #define RSQRT_SIGNIFICAND_ONE (UINT32_C(1) << RSQRT_FRACTION_BITS)
 #define RSQRT_FRACTION_MASK   (RSQRT_SIGNIFICAND_ONE - 1)
 #define RSQRT_WORD_BITS       32
+#if !defined(DEVICE_BUILD) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
+#define RSQRT_EXPONENT_MAX    254
+#define RSQRT_MANTISSA_STRIDE 65537
+#endif
+#ifndef DEVICE_BUILD
+#define RSQRT_DENSE_STRIDE      251
+#define RSQRT_SEED_RADIUS       4
+#define RSQRT_DOUBLE_TIE_MARGIN 8
+#endif
 
 /* The 24-by-25-by-25-bit product needs three words; no rounded float reference enters the bracket. */
 static int
@@ -1175,6 +1218,28 @@ test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
         TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(rsqrt_bits(inputs[i]), guess - 1));
         TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(rsqrt_bits(inputs[i]), guess + 1));
     }
+#ifndef DEVICE_BUILD
+    /* A float midpoint has an odd significand greater than one; its square times a binary input cannot be one. */
+    for (int exponent = 1; exponent <= RSQRT_EXPONENT_MAX; exponent++) {
+        const uint32_t stride = exponent == RSQRT_EXPONENT_BIAS || exponent == RSQRT_EXPONENT_BIAS + 1
+                                    ? RSQRT_DENSE_STRIDE
+                                    : RSQRT_MANTISSA_STRIDE;
+        for (uint32_t mantissa = 0; mantissa < RSQRT_SIGNIFICAND_ONE; mantissa += stride) {
+            const uint32_t input = ((uint32_t)exponent << RSQRT_FRACTION_BITS) | mantissa;
+            const double reference = 1.0 / sqrt((double)rsqrt_float(input));
+            const float rounded = (float)reference;
+            const float adjacent = nextafterf(rounded, reference < (double)rounded ? 0.0F : INFINITY);
+            const double midpoint = ((double)rounded + (double)adjacent) * 0.5;
+            if (fabs(reference - midpoint) <= RSQRT_DOUBLE_TIE_MARGIN * DBL_EPSILON * reference) {
+                continue;
+            }
+            const uint32_t expected = rsqrt_bits(rounded);
+            for (int offset = -RSQRT_SEED_RADIUS; offset <= RSQRT_SEED_RADIUS; offset++) {
+                TEST_ASSERT_EQUAL_HEX32(expected, rsqrt_reference_bits(input, expected + offset));
+            }
+        }
+    }
+#endif
 }
 
 #if defined(DEVICE_BUILD) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
@@ -1262,8 +1327,10 @@ test_rsqrt_normalize_and_nlerp_component_sweeps(void) {
             }
         }
     }
-    printf("MATHERROR name=normalize (vec3) type=f max_ulp=%lu\n", (unsigned long)normalize_error);
-    printf("MATHERROR name=nlerp type=f max_ulp=%lu\n", (unsigned long)nlerp_error);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(MATHF_NORMALIZE_ULP_LIMIT, normalize_error);
+    printf("MATHERROR name=normalize (vec3) type=f max=%lu unit=ulp method=sweep\n", (unsigned long)normalize_error);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(MATHF_NLERP_ULP_LIMIT, nlerp_error);
+    printf("MATHERROR name=nlerp type=f max=%lu unit=ulp method=sweep\n", (unsigned long)nlerp_error);
 }
 
 static void
@@ -1296,6 +1363,10 @@ test_rsqrt_device_mantissas_and_normal_exponent_edges(void) {
     }
     for (int exponent = 1; exponent <= RSQRT_EXPONENT_MAX; exponent++) {
         const uint32_t power = (uint32_t)exponent << RSQRT_FRACTION_BITS;
+        for (uint32_t mantissa = 0; mantissa < RSQRT_SIGNIFICAND_ONE; mantissa += RSQRT_MANTISSA_STRIDE) {
+            rsqrt_measure(power | mantissa, &max_ulp, &max_relative);
+        }
+        rsqrt_measure(power | RSQRT_FRACTION_MASK, &max_ulp, &max_relative);
         for (int offset = -1; offset <= 1; offset++) {
             const uint32_t input = power + offset;
             if (input >= RSQRT_SIGNIFICAND_ONE) {
@@ -1303,8 +1374,8 @@ test_rsqrt_device_mantissas_and_normal_exponent_edges(void) {
             }
         }
     }
-    printf("MATHF_RSQRT max_ulp=%lu\n", (unsigned long)max_ulp);
-    printf("MATHF_RSQRT_APPROX max_relative=%g\n", (double)max_relative);
+    printf("MATHERROR name=mathf_rsqrt type=f max=%lu unit=ulp method=proof\n", (unsigned long)max_ulp);
+    printf("MATHERROR name=mathf_rsqrt_approx type=f max=%g unit=relative method=proof\n", (double)max_relative);
     TEST_ASSERT_LESS_OR_EQUAL_UINT32(MATHF_RSQRT_ULP_LIMIT, max_ulp);
     TEST_ASSERT_TRUE(max_relative <= MATHF_RSQRT_APPROX_RELATIVE_LIMIT);
 }

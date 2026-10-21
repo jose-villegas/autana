@@ -69,8 +69,7 @@ static lights_t
 lights_prepare(unsigned count, float dir_scale) {
     lights_t l = {.count = count};
     for (unsigned i = 0; i < count; i++) {
-        l.dir[i] = vec3f_scale(vec3f_scale(LIGHTS[i].dir, mathf_rsqrt_approx(vec3f_dot(LIGHTS[i].dir, LIGHTS[i].dir))),
-                               dir_scale);
+        l.dir[i] = vec3f_scale(vec3f_normalize(LIGHTS[i].dir), dir_scale);
         l.color[i] = vec3f_scale(LIGHTS[i].color, 255.0F);
     }
     l.ambient = vec3f_add(vec3f_scale(AMBIENT, 255.0F), (vec3f_t){0.5F, 0.5F, 0.5F});
@@ -292,7 +291,7 @@ run_frame(const data_t* d, const variant_t* v, unsigned frame, const lights_t* l
             }
             case K_REFERENCE: {
                 const vec3f_t normal = skin(rot, vx, vx->normal);
-                reference_light(vec3f_scale(normal, mathf_rsqrt_approx(vec3f_dot(normal, normal))), lf, out[i]);
+                reference_light(vec3f_normalize(normal), lf, out[i]);
                 break;
             }
             case K_DIRECT: reference_light(skin(rot, vx, vx->normal), lf, out[i]); break;
@@ -503,8 +502,7 @@ write_terms(const data_t* d, const char* dir, uint8_t (*light)[3]) {
             for (unsigned i = 0; i < d->vertices; i++) {
                 const vertex_t* vx = &d->vertex[i];
                 const vec3f_t normal = skin(rot, vx, vx->normal);
-                reference_light(vec3f_scale(normal, mathf_rsqrt_approx(vec3f_dot(normal, normal))), &terms[t],
-                                light[(size_t)k * d->vertices + i]);
+                reference_light(vec3f_normalize(normal), &terms[t], light[(size_t)k * d->vertices + i]);
             }
         }
         write_clip(bin, d, light, t == SHEET_LIGHTS + 1);

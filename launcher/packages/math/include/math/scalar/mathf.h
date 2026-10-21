@@ -82,10 +82,18 @@ mathf_recip(float a) {
 #endif
 }
 
+/* One seed correction trades accuracy for throughput; the suite proves this bound. */
 #define MATHF_RSQRT_APPROX_RELATIVE_LIMIT 0.0001F
+/* Two seed corrections must stay close to the correctly rounded reciprocal root. */
 #define MATHF_RSQRT_ULP_LIMIT             1
+/* The reciprocal sweep guards the two-correction path against division. */
 #define MATHF_RECIP_ULP_LIMIT             1
+/* Vector component sweeps bound the error introduced by reciprocal-length scaling. */
+#define MATHF_NORMALIZE_ULP_LIMIT         1
+/* Quaternion interpolation compounds reciprocal-length scaling and blend rounding. */
+#define MATHF_NLERP_ULP_LIMIT             2
 
+/* One correction serves callers that accept the relative error limit for positive normal inputs. */
 static inline __attribute__((always_inline)) float
 mathf_rsqrt_approx(float value) {
 #if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
@@ -97,7 +105,7 @@ mathf_rsqrt_approx(float value) {
 #endif
 }
 
-/* Subnormal squared lengths retain the exact normalize path. */
+/* Subnormal squared lengths retain the 1 / sqrtf path. On the board +inf gives NaN, outside normalize's domain. */
 static inline __attribute__((always_inline)) float
 mathf_rsqrt(float value) {
 #if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP

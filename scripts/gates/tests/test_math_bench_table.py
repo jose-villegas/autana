@@ -22,29 +22,31 @@ class MathBenchTableTests(unittest.TestCase):
                "MATHBENCH name=dot (vec3) type=f ops=64 warm=12.0 cold=24.0 insn=6.0\n"
                "MATHBENCH name=sinf type=f ops=64 warm=90.0 cold=110.0 insn=30.0\n")
 
-    def test_error_bounds_come_from_scalar_owner(self):
-        bounds = bench.error_bounds()
-        self.assertIn("ulp", bounds["mathf_rsqrt", "f"])
-        self.assertIn("relative", bounds["mathf_rsqrt_approx", "f"])
-        self.assertIn("ulp", bounds["mathf_recip", "f"])
-        self.assertIn("pending", bounds["normalize", "f"])
-        self.assertIn("pending", bounds["nlerp", "f"])
+    def test_error_measurements_join_by_label_and_type(self):
+        text = ("noise\nMATHERROR name=normalize (vec3) type=f max=0 unit=ulp method=sweep\n"
+                "MATHERROR name=arbitrary label type=x max=5.94258e-05 unit=relative method=proof\n")
+        errors = bench.parse_errors(text)
+        self.assertEqual("0 ulp (sweep)", errors["normalize (vec3)", "f"])
+        self.assertEqual("5.94258e-05 relative (proof)", errors["arbitrary label", "x"])
+        rows = [("vector_f", "normalize (vec3)", "f", self.batch),
+                ("vector_x", "normalize (vec3)", "x", self.batch)]
+        table = bench.render_table(rows, {}, {}, {"vector_f": "-", "vector_x": "-"}, errors=errors)
+        lines = table.splitlines()
+        self.assertTrue(next(line for line in lines if line.startswith("| normalize (vec3) | f")).endswith("0 ulp (sweep) |"))
+        self.assertTrue(next(line for line in lines if line.startswith("| normalize (vec3) | x")).endswith("- |"))
+
+    def test_scalar_without_error_capture_has_no_invented_bound(self):
         rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch)]
         table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"})
-        self.assertIn("max error", table)
-        self.assertIn(bounds["mathf_rsqrt", "f"], table)
+        self.assertTrue(next(line for line in table.splitlines() if line.startswith("| mathf_rsqrt |")).endswith("- |"))
 
-    def test_component_sweeps_join_by_name_and_preserve_zero_error(self):
-        text = ("noise\nMATHERROR name=normalize (vec3) type=f max_ulp=0\n"
-                "MATHERROR name=nlerp type=f max_ulp=3\n")
-        errors = bench.parse_errors(text)
-        self.assertEqual("0 ulp (measured, sweep)", errors["normalize (vec3)", "f"])
-        self.assertEqual("3 ulp (measured, sweep)", errors["nlerp", "f"])
-        rows = [("nlerp_f", "nlerp", "f", self.batch)]
-        table = bench.render_table(rows, {}, {}, {"nlerp_f": "-"}, errors=errors)
-        self.assertIn(errors["nlerp", "f"], table)
-        for malformed in (text + text, text.replace("max_ulp=3", "max_ulp=-1"),
-                          text.replace("nlerp", "unknown")):
+    def test_malformed_and_duplicate_error_measurements_raise(self):
+        good = "MATHERROR name=mathf_rsqrt type=f max=1 unit=ulp method=proof\n"
+        for malformed in (good + good, good.replace("max=1", "max=inf"),
+                          good.replace("max=1", "max=nan"), good.replace("max=1", "max=1e+"),
+                          good.replace("max=1", "max=1e999"),
+                          good.replace("max=1", "max=-1"), good.replace(" type=f", ""),
+                          good.replace(" unit=ulp", ""), good.replace(" method=proof", "")):
             with self.subTest(text=malformed), self.assertRaises(ValueError):
                 bench.parse_errors(malformed)
 

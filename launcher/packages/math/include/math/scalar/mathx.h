@@ -127,6 +127,7 @@ mathx_one(void) {
     return MATHX_ONE;
 }
 
+/* Q16.16 1 / sqrt(v); v nonzero. */
 static inline int32_t
 mathx_rsqrt(int32_t v) {
     return mathx_div(mathx_one(), mathx_sqrt(v));

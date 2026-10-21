@@ -79,13 +79,12 @@ The approximate path evaluates its single correction as $`y_0\,(1.5-0.5xy_0^2)`$
 `1.0F / sqrtf(x)`. For `x < FLT_MIN`, including zero and subnormals,
 `mathf_rsqrt` uses that same formula and preserves its bits.
 
-On the board `mathf_rsqrt` is within one ulp of the exact reciprocal root and
-`mathf_rsqrt_approx` within 6e-5 relative error. `suite_math_numbers.c` proves
-both over every float in `[1, 4)` and each power of two with its neighbours.
+The limits in `mathf.h` define the accuracy contract; the
+[benchmark table](Benchmark.md) reports measured maxima and coverage.
 
-Its integer product bracket rounds the exact reciprocal root without
+The suite's integer product bracket rounds the exact reciprocal root without
 using the twice-rounded `1 / sqrtf` as a reference. The suite prints
-`MATHF_RSQRT max_ulp` and `MATHF_RSQRT_APPROX max_relative` and checks both limits.
+`MATHERROR` lines and checks both limits.
 
 ## fixed.h
 

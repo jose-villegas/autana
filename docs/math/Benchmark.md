@@ -8,8 +8,14 @@ The QEMU column marks wrappers containing `recip0.s`/`rsqrt0.s` as
 `1 / sqrtf(a)` instead of the device's seed instructions and Newton corrections.
 
 Max error comes from the `suite_math_numbers` board run, appended to the capture.
-Its `MATHF_RSQRT` lines are exhaustive proofs; its `MATHERROR` lines are
-normalize and nlerp component errors against the exact path, over a sweep.
+Each `MATHERROR` line joins by table label and type; absent measurements show `-`.
+
+`proof` covers every float in `[1, 4)`, each normal exponent's edges, and a
+strided mantissa sample at every normal exponent, using an integer bracket.
+
+`sweep` covers normalize and nlerp component errors against the `1 / sqrtf` path
+across integer directions, magnitudes, quaternion pairs and blend weights.
+For reciprocal it covers both signs over a geometric magnitude sweep and octave edges.
 
 Warm is the median after an untimed call, following Embench-IoT's cache-warming
 method.<sup>[[69]](../Citations.md#69)</sup> Cold is the median per call after
@@ -72,16 +78,16 @@ Board build: `2a01f8108518-diag`.
 | lerp (vec3) | x | 127.4 | 12877.0 | 99.5 | 99.5 | 1.3 | - | - |
 | mat4 mul | f | 738.4 | 49291.0 | 550.5 | 506.4 | 1.3 | madd.s; calls memcpy | - |
 | mat4 mul | x | 2389.4 | 159370.0 | 1655.1 | 1640.4 | 1.4 | calls memcpy | - |
-| mathf_recip | f | 26.3 | 3058.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | 1 ulp |
-| mathf_rsqrt_approx | f | 24.3 | 2947.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | 5.94258e-05 relative (proven, exhaustive) |
-| mathf_rsqrt | f | 38.4 | 4372.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (proven, exhaustive) |
+| mathf_recip | f | 26.3 | 3058.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | 1 ulp (sweep) |
+| mathf_rsqrt_approx | f | 24.3 | 2947.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | 5.94258e-05 relative (proof) |
+| mathf_rsqrt | f | 38.4 | 4372.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (proof) |
 | mul (scalar) | f | 9.3 | 1537.0 | 6.5 | 6.2 | 1.4 | - | - |
 | mul (scalar) | i | 9.3 | 1549.0 | 8.5 | 8.2 | 1.1 | - | - |
 | mul (scalar) | s | 11.3 | 2332.0 | 10.5 | 10.2 | 1.1 | - | - |
 | mul (scalar) | x | 22.3 | 3223.0 | 17.5 | 17.3 | 1.3 | - | - |
-| nlerp | f | 94.8 | 8761.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 ulp (measured, sweep) |
+| nlerp | f | 94.8 | 8761.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 ulp (sweep) |
 | nlerp | x | 1172.8 | 91072.0 | 920.1 | 909.9 | 1.3 | calls __divdi3 | - |
-| normalize (vec3) | f | 57.4 | 5866.0 | 29.9 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (measured, sweep) |
+| normalize (vec3) | f | 57.4 | 5866.0 | 29.9 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (sweep) |
 | normalize (vec3) | x | 1127.1 | 77746.0 | 931.6 | 681.2 | 1.2 | calls __udivdi3 | - |
 | quat mul | f | 30.3 | 3277.0 | 30.5 | 30.2 | 1.0 | madd.s msub.s | - |
 | quat mul | x | 419.1 | 40174.0 | 313.5 | 313.9 | 1.3 | - | - |
