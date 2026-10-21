@@ -36,8 +36,8 @@ class DocStagesTests(unittest.TestCase):
     def test_swapped_pose_rows_keep_their_logged_times(self):
         capture = self.tmp / "capture.txt"
         capture.write_text("CAPTURE pose_every_ms=500\n"
-                           "atrium t=500ms clusters=4 | both cores: frame 52000us\n"
-                           "atrium t=0ms clusters=4 | both cores: frame 51000us\n")
+                           "atrium t=500ms clusters=4 tris=5 | both cores: frame 52000us quarter=portrait\n"
+                           "atrium t=0ms clusters=4 tris=5 | both cores: frame 51000us quarter=portrait\n")
         expected = [("sponza", 0), ("sponza", 500)]
         self.assertEqual(stages.board_frames([capture], expected, "sponza", "atrium", 500),
                          {("sponza", 0): 51.0, ("sponza", 500): 52.0})
@@ -147,8 +147,8 @@ class DocStagesTests(unittest.TestCase):
             "".join(f"{name} both cores: mean {value}us\n" for name, value in
                     (("painting", 51000), ("painting_lite", 42000), ("painting_flat", 43000),
                      ("painting_fitted", 44000), ("painting_fitted_full", 45000), ("painting_flat_fitted", 46000))) +
-            "painting t= 0s clusters=4 | both cores: frame 51000us\n"
-            "painting_lite t= 0s clusters=4 | both cores: frame 42000us\n")
+            "painting t= 0s clusters=4 tris=5 | both cores: frame 51000us quarter=portrait\n"
+            "painting_lite t= 0s clusters=4 tris=5 | both cores: frame 42000us quarter=portrait\n")
         out, work = self.tmp / "out", self.tmp / "work"
         (out / "tables").mkdir(parents=True)
         work.mkdir()
@@ -270,10 +270,10 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
     def test_board_half_second_pose_rows(self):
         capture = self.tmp / "capture.txt"
         capture.write_text('CAPTURE period_ms=1000 pose_every_ms=500\n'
-                           'atrium t=    0s clusters=4 tris=5 | both cores: frame 51000us\n'
-                           'atrium t=  500ms clusters=4 tris=5 | both cores: frame 52000us\n'
-                           'atrium_lite t=    0s clusters=4 tris=5 | both cores: frame 42000us\n'
-                           'atrium_lite t=  500ms clusters=4 tris=5 | both cores: frame 43000us\n')
+                           'atrium t=    0s clusters=4 tris=5 | both cores: frame 51000us quarter=portrait\n'
+                           'atrium t=  500ms clusters=4 tris=5 | both cores: frame 52000us quarter=portrait\n'
+                           'atrium_lite t=    0s clusters=4 tris=5 | both cores: frame 42000us quarter=portrait\n'
+                           'atrium_lite t=  500ms clusters=4 tris=5 | both cores: frame 43000us quarter=portrait\n')
         expected = [(name, time) for name in ('sponza', 'lite') for time in (0, 500)]
         self.assertEqual(stages.board_frames([capture], expected, 'sponza', 'atrium', 500),
                          {('sponza', 0): 51.0, ('sponza', 500): 52.0,
@@ -281,8 +281,8 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
 
     def test_board_pose_rows_require_complete_unique_samples(self):
         capture = self.tmp / "capture.txt"
-        capture.write_text("atrium t=    0s clusters= 4 tris=5 | both cores: frame 51000us\n"
-                           "atrium_lite t=    0s clusters= 4 tris=5 | both cores: frame 42000us\n")
+        capture.write_text("atrium t=    0s clusters= 4 tris=5 | both cores: frame 51000us quarter=portrait\n"
+                           "atrium_lite t=    0s clusters= 4 tris=5 | both cores: frame 42000us quarter=portrait\n")
         expected = [("sponza", 0), ("lite", 0)]
         self.assertEqual(stages.board_frames([capture], expected, "sponza", "atrium", 500), {("sponza", 0): 51.0, ("lite", 0): 42.0})
         with self.assertRaisesRegex(ValueError, "exactly once"):
