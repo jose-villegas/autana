@@ -78,6 +78,7 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `vec3x_from_vec3f(v)`, `vec2x_from_vec2f(v)` | `v * 65536`, rounded, saturated |
 | `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
 | `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
+| `vec3s_from_array(p)` | an `int16_t[3]` position row, exact |
 
 ## quat (`f x`)
 

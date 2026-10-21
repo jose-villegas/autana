@@ -134,6 +134,16 @@ mathx_rsqrt(int32_t v) {
 }
 
 static inline int32_t
+mathx_half(void) {
+    return MATHX_ONE / 2;
+}
+
+static inline int32_t
+mathx_abs(int32_t a) {
+    return a < 0 ? mathx_neg(a) : a;
+}
+
+static inline int32_t
 mathx_two(void) {
     return 2 * MATHX_ONE;
 }

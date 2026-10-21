@@ -125,18 +125,21 @@ small_fill_images
 fi
 
 # One looping flythrough per demo target and view, the same three seconds of
-# it so the GIFs compare, small enough to sit side by side in a table.
+# it so the GIFs compare. Each keeps every rendered frame at the
+# render size, on 128 colours so smooth shading does not band.
+DEMO_GIF_FRAMES=30
+DEMO_GIF_DT=100
 demo_gif() {
     name=$1
     shift
-    run "$HOST" --quarter 1 --frames 30 --dt 100 \
+    run "$HOST" --quarter 1 --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" \
         -o "$W/$name.bmp" --video "$W/$name.avi" "$@" 2> "$W/$name.log"
-    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "${DEMO_GIF_FILTERS:-fps=8,scale=240:-1:flags=lanczos}" \
-        "max_colors=64:stats_mode=diff"
+    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "fps=$((1000 / DEMO_GIF_DT))" \
+        "max_colors=128:stats_mode=diff"
 }
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "$SHOWCASE" --present nearest
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "$SHOWCASE" --present scanline
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-double --scene "$ID" --object "$SHOWCASE" --present double
+demo_gif ${ID}-present-nearest --scene "$ID" --object "$SHOWCASE" --present nearest
+demo_gif ${ID}-present-scanline --scene "$ID" --object "$SHOWCASE" --present scanline
+demo_gif ${ID}-present-double --scene "$ID" --object "$SHOWCASE" --present double
 [ "${5:-}" != --present-only ] || exit 0
 
 demo_gif ${ID}-full --scene "$ID" --object "$FULL"
@@ -155,27 +158,21 @@ demo_gif ${ID}-meshlets --scene "$ID" --object "$SHOWCASE" --view meshlets
 demo_still() {
     run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/still-$1.bmp" --scene "$ID" --object "$2" 2> "$W/still-$1.log"
 }
-demo_still full "$FULL"
-demo_still lite "${FULL}_lite"
-demo_still flat "${FULL}_flat"
-demo_still fitted "${FULL}_fitted"
-demo_still fitted-full "${FULL}_fitted_full"
-demo_still flat-fitted "${FULL}_flat_fitted"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-lite.png" --crops 3 \
-    --label-a full --label-b lite --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
-    --label-a smooth --label-b flat --row "smooth | flat" "$W/still-full.bmp" "$W/still-flat.bmp" > "$W/compare-full-flat.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-lite-fitted.png" --crops 3 \
-    --label-a lite --label-b fitted --row "lite | fitted" "$W/still-lite.bmp" "$W/still-fitted.bmp" > "$W/compare-lite-fitted.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-fitted-full.png" --crops 3 \
-    --label-a full --label-b "fitted full" --row "full | fitted full" "$W/still-full.bmp" "$W/still-fitted-full.bmp" > "$W/compare-full-fitted-full.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-flat-flat-fitted.png" --crops 3 \
-    --label-a flat --label-b "flat fitted" --row "flat | flat fitted" "$W/still-flat.bmp" "$W/still-flat-fitted.bmp" > "$W/compare-flat-flat-fitted.log"
-# render_compare.py writes no crops where the two renders do not differ; fail
-# here rather than leave the pages linking a missing file.
-for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-full-fitted-full compare-flat-flat-fitted; do
-    [ -f "$RENDER/$crops.crops.png" ] || { echo "$0: $crops has no crops, the renders do not differ." >&2; exit 1; }
-done
+# The pairs, and what each variant is, come from doc_tables.py's VARIANT_NOTES:
+# compare-full-lite, compare-full-flat, compare-lite-fitted, compare-full-fitted-full
+# and compare-flat-flat-fitted for the demo scene.
+run "$PYTHON" launcher/tools/render/doc_tables.py --pairs "$SCENE" "$FULL" > "$W/pairs.txt"
+while read -r base object base_slug slug <&3; do
+    [ -f "$W/still-$base_slug.bmp" ] || demo_still "$base_slug" "$base"
+    [ -f "$W/still-$slug.bmp" ] || demo_still "$slug" "$object"
+    pair=compare-$base_slug-$slug
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/$pair.png" --crops 3 \
+        --label-a "$(echo "$base_slug" | tr - ' ')" --label-b "$(echo "$slug" | tr - ' ')" \
+        --row "$(echo "$base_slug | $slug" | tr - ' ')" "$W/still-$base_slug.bmp" "$W/still-$slug.bmp" > "$W/$pair.log"
+    # render_compare.py writes no crops where the two renders do not differ; fail
+    # here rather than leave the pages linking a missing file.
+    [ -f "$RENDER/$pair.crops.png" ] || { echo "$0: $pair has no crops, the renders do not differ." >&2; exit 1; }
+done 3< "$W/pairs.txt"
 
 . scripts/lib/python.sh
 R3D_PYTHON=$(run find_r3d_python "$PWD")
@@ -203,6 +200,14 @@ run "$HOST" --quarter 0 --scene "$ID" --object "$FULL" --frames "$FIDELITY_FRAME
     -o "$W/committed-smooth.bmp" --video "$W/committed-smooth.avi" 2> "$W/committed-smooth.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/committed-smooth-unused.png" \
     --reference-video "$W/committed-smooth.avi" "$REFERENCE" --reference-scale 2 > "$W/committed-smooth-compare.log"
+# Every variant of OBJECT the scene places, scored the same way: the fidelity
+# table, its chart and the flythrough table rank them by these scores.
+for object in $(run "$PYTHON" launcher/tools/render/doc_tables.py --variants "$SCENE" "$FULL"); do
+    run "$HOST" --quarter 0 --scene "$ID" --object "$object" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
+        -o "$W/variant-$object.bmp" --video "$W/variant-$object.avi" 2> "$W/variant-$object.log"
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/variant-$object-unused.png" \
+        --reference-video "$W/variant-$object.avi" "$REFERENCE" --reference-scale 2 > "$W/variant-$object-compare.log"
+done
 # bake_and_render DIR MESH OBJECT: bake the scene file in DIR, which keeps its
 # import beside a link to the mesh source, pack MESH in place of the committed
 # one and render the fidelity poses to DIR.avi.
@@ -331,7 +336,9 @@ sweep_start=$(date +%s)
 sweep_seconds=$(($(date +%s) - sweep_start))
 echo "CPU flat sampling sweep: $sweep_seconds seconds"
 echo "$sweep_seconds" > "$W/sweep-seconds.txt"
-"$R3D_PYTHON" "launcher/tools/render/doc_tables.py" "$W" "$TABLES" "$ID" "$FULL"
+"$R3D_PYTHON" "launcher/tools/render/doc_tables.py" "$W" "$TABLES" "$ID" "$FULL" --scene "$SCENE"
+# The same numbers as charts: ${ID}-fidelity.png, ${ID}-indirect.png, ${ID}-flat-sampling.png, ${ID}-indirect-look.png.
+"$R3D_PYTHON" launcher/tools/render/bake_charts.py "$TABLES" "$RENDER" "$ID"
 tables_seconds=$(($(date +%s) - tables_start))
 echo "CPU table measurements added: $tables_seconds seconds"
 echo "$tables_seconds" > "$W/tables-seconds.txt"

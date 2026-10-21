@@ -1381,8 +1381,24 @@ test_rsqrt_device_mantissas_and_normal_exponent_edges(void) {
 }
 #endif
 
+static void
+test_scalar_half_and_absolute_value(void) {
+    static const float half = 0.5F;
+    TEST_ASSERT_EQUAL_FLOAT(half, mathf_half());
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE / 2, mathx_half());
+    TEST_ASSERT_EQUAL_FLOAT(mathf_one(), mathf_abs(-mathf_one()));
+    TEST_ASSERT_EQUAL_FLOAT(mathf_one(), mathf_abs(mathf_one()));
+    TEST_ASSERT_EQUAL_FLOAT(mathf_zero(), mathf_abs(mathf_zero()));
+    TEST_ASSERT_FALSE(signbit(mathf_abs(-mathf_zero())));
+    TEST_ASSERT_EQUAL_INT32(mathx_one(), mathx_abs(-mathx_one()));
+    TEST_ASSERT_EQUAL_INT32(mathx_one(), mathx_abs(mathx_one()));
+    TEST_ASSERT_EQUAL_INT32(mathx_zero(), mathx_abs(mathx_zero()));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_abs(INT32_MIN));
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_scalar_half_and_absolute_value);
     RUN_TEST(test_rsqrt_tiny_inputs_preserve_exact_bits);
     RUN_TEST(test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints);
 #if defined(DEVICE_BUILD) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
