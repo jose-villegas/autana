@@ -1,5 +1,6 @@
 """Capture-derived audio tables and their regeneration contract."""
 import importlib.util
+import io
 import tempfile
 import argparse
 import json
@@ -420,6 +421,51 @@ import autana_runner as runner
 
 
 class DrcSweepTest(unittest.TestCase):
+    def test_failed_command_retries_and_records_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = Path(directory)
+            stub = tree / "fake.py"
+            log = tree / "commands.jsonl"
+            stub.write_text(
+                'import json,sys\nfrom pathlib import Path\n'
+                f'log=Path({str(log)!r})\n'
+                'calls=log.read_text().splitlines() if log.exists() else []\n'
+                'args=sys.argv[1:]\n'
+                'with log.open("a") as output: output.write(json.dumps(args)+"\\n")\n'
+                'if args[0]=="tone" and not any(json.loads(call)[0]=="tone" for call in calls):\n'
+                '    print("transient failure\\nplease retry",file=sys.stderr); sys.exit(1)\n'
+                'print(json.dumps({"build_id":"fake-dev"}) if args[0]=="buildid" else "{}")\n')
+            args = sweep.parser().parse_args([
+                "--board", "TEST", "--out", str(tree / "capture.txt"),
+                "--autana", f'"{Path(sys.executable).as_posix()}" "{stub.as_posix()}"',
+                "--baseline", "30", "--codec", "50", "--max-levels", "0",
+                "--volumes", "100", "--extra-hz", "", "--runs", "1"])
+            with mock.patch.object(runner.time, "sleep") as sleep, mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                sweep.capture(args)
+            commands = [json.loads(line) for line in log.read_text().splitlines()]
+            records = args.out.read_text().splitlines()
+            tones = [line for line in records if line.startswith("tone ")]
+            self.assertEqual(len(tones), len(list(sweep.configurations(args))))
+            self.assertEqual(sum(command[0] == "tone" for command in commands), len(tones) + 1)
+            self.assertEqual(len(stderr.getvalue().splitlines()), 1)
+            self.assertIn("transient failure please retry", stderr.getvalue())
+            sleep.assert_called_once_with(runner.AUTANA_RUN_RETRY_SECONDS)
+
+    def test_command_failure_exhausts_attempts_with_stderr(self):
+        for attempts in (runner.AUTANA_RUN_ATTEMPTS, runner.AUTANA_RUN_ATTEMPTS + 1):
+            with self.subTest(attempts=attempts):
+                failures = [runner.subprocess.CalledProcessError(1, ["autana"], stderr=f"failure {attempt}")
+                            for attempt in range(attempts)]
+                with mock.patch.object(runner, "AUTANA_RUN_ATTEMPTS", attempts), mock.patch.object(
+                        runner.subprocess, "run", side_effect=failures) as run, mock.patch.object(
+                        runner.time, "sleep") as sleep, mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                    with self.assertRaisesRegex(runner.subprocess.CalledProcessError, f"failure {attempts - 1}") as raised:
+                        runner.autana_run("autana", "tune", "audio.drc_max", 7)
+                self.assertEqual(run.call_count, attempts)
+                self.assertEqual(sleep.call_args_list, [mock.call(runner.AUTANA_RUN_RETRY_SECONDS)] * (attempts - 1))
+                self.assertEqual(len(stderr.getvalue().splitlines()), attempts)
+                self.assertEqual(raised.exception.stderr, failures[-1].stderr)
+
     def test_datasheet_and_tunable_contract(self):
         self.assertAlmostEqual(sweep.DRC_LEVEL_DB[0], -30.1, places=1)
         self.assertAlmostEqual(sweep.DRC_LEVEL_DB[-1], -6.0, places=1)

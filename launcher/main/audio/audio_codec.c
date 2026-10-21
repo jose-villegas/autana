@@ -60,6 +60,22 @@ audio_codec_dac_feedback(bool on) {
 }
 
 bool
+audio_codec_register(uint8_t reg, bool write, uint8_t* value) {
+    if (!codec || !value) {
+        return false;
+    }
+    if (write && !audio_codec_check("register write", codec->set_reg(codec, reg, *value))) {
+        return false;
+    }
+    int readback;
+    if (!audio_codec_check("register read", codec->get_reg(codec, reg, &readback))) {
+        return false;
+    }
+    *value = (uint8_t)readback;
+    return true;
+}
+
+bool
 audio_codec_drc_set(const audio_codec_drc_t* config) {
     if (!codec || !config) {
         return false;
