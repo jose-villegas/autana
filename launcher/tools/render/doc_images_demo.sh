@@ -155,27 +155,21 @@ demo_gif ${ID}-meshlets --scene "$ID" --object "$FULL" --view meshlets
 demo_still() {
     run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/still-$1.bmp" --scene "$ID" --object "$2" 2> "$W/still-$1.log"
 }
-demo_still full "$FULL"
-demo_still lite "${FULL}_lite"
-demo_still flat "${FULL}_flat"
-demo_still fitted "${FULL}_fitted"
-demo_still fitted-full "${FULL}_fitted_full"
-demo_still flat-fitted "${FULL}_flat_fitted"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-lite.png" --crops 3 \
-    --label-a full --label-b lite --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
-    --label-a smooth --label-b flat --row "smooth | flat" "$W/still-full.bmp" "$W/still-flat.bmp" > "$W/compare-full-flat.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-lite-fitted.png" --crops 3 \
-    --label-a lite --label-b fitted --row "lite | fitted" "$W/still-lite.bmp" "$W/still-fitted.bmp" > "$W/compare-lite-fitted.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-fitted-full.png" --crops 3 \
-    --label-a full --label-b "fitted full" --row "full | fitted full" "$W/still-full.bmp" "$W/still-fitted-full.bmp" > "$W/compare-full-fitted-full.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-flat-flat-fitted.png" --crops 3 \
-    --label-a flat --label-b "flat fitted" --row "flat | flat fitted" "$W/still-flat.bmp" "$W/still-flat-fitted.bmp" > "$W/compare-flat-flat-fitted.log"
-# render_compare.py writes no crops where the two renders do not differ; fail
-# here rather than leave the pages linking a missing file.
-for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-full-fitted-full compare-flat-flat-fitted; do
-    [ -f "$RENDER/$crops.crops.png" ] || { echo "$0: $crops has no crops, the renders do not differ." >&2; exit 1; }
-done
+# The pairs, and what each variant is, come from doc_tables.py's VARIANT_NOTES:
+# compare-full-lite, compare-full-flat, compare-lite-fitted, compare-full-fitted-full
+# and compare-flat-flat-fitted for the demo scene.
+run "$PYTHON" launcher/tools/render/doc_tables.py --pairs "$SCENE" "$FULL" > "$W/pairs.txt"
+while read -r base object base_slug slug <&3; do
+    [ -f "$W/still-$base_slug.bmp" ] || demo_still "$base_slug" "$base"
+    [ -f "$W/still-$slug.bmp" ] || demo_still "$slug" "$object"
+    pair=compare-$base_slug-$slug
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/$pair.png" --crops 3 \
+        --label-a "$(echo "$base_slug" | tr - ' ')" --label-b "$(echo "$slug" | tr - ' ')" \
+        --row "$(echo "$base_slug | $slug" | tr - ' ')" "$W/still-$base_slug.bmp" "$W/still-$slug.bmp" > "$W/$pair.log"
+    # render_compare.py writes no crops where the two renders do not differ; fail
+    # here rather than leave the pages linking a missing file.
+    [ -f "$RENDER/$pair.crops.png" ] || { echo "$0: $pair has no crops, the renders do not differ." >&2; exit 1; }
+done 3< "$W/pairs.txt"
 
 . scripts/lib/python.sh
 R3D_PYTHON=$(run find_r3d_python "$PWD")

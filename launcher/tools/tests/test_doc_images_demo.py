@@ -112,7 +112,8 @@ class DocImageFailureTest(unittest.TestCase):
             self.assertIn(mock.call(work / "variant-painting_lite-compare.log"), read.call_args_list)
             self.assertEqual({path.name for path in (work / "tables").iterdir()},
                              {f"gallery-{suffix}.md" for suffix in
-                              ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look", "variants")})
+                              ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look", "variants",
+                               "variant-pairs")})
 
     def test_variants_rank_fitted_first_then_by_mean_error(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
@@ -132,6 +133,19 @@ class DocImageFailureTest(unittest.TestCase):
         full = min(expected, key=len)
         self.assertEqual(dict(doc_tables.variants(DEMO_SCENE, full)), expected)
         self.assertTrue(any(expected.values()) and not all(expected.values()))
+
+    def test_every_demo_variant_has_notes_and_pairs_follow_the_given_order(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        objects = tomllib.loads(DEMO_SCENE.read_text())["objects"]
+        full = min((item["name"] for item in objects if "mesh_renderer" in item), key=len)
+        names = [name for name, _ in doc_tables.variants(DEMO_SCENE, full)]
+        pairs = doc_tables.variant_pairs(list(reversed(names)), full)
+        self.assertEqual([name for _, name in pairs],
+                         [name for name in reversed(names) if doc_tables.variant_note(name, full)[1]])
+        self.assertTrue(all(base in names for base, _ in pairs))
+        with self.assertRaisesRegex(ValueError, "VARIANT_NOTES"):
+            doc_tables.variant_note(full + "_unknown", full)
 
     def test_score_columns_are_the_sampling_tables(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))

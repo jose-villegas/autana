@@ -195,6 +195,42 @@ def variant_label(name, object_name):
     return name[len(object_name) + 1:].replace("_", " ") or "full"
 
 
+def variant_slug(name, object_name):
+    """The variant's part of its image names: "fitted-full"."""
+    return variant_label(name, object_name).replace(" ", "-")
+
+
+# What each variant of a demo object is, keyed by its label, and the variant its pair sheet sets it beside with
+# what changes between them. Every variant the scene places needs an entry here.
+VARIANT_NOTES = {
+    "full": ("Smooth: one colour per vertex, lit and interpolated", None, None),
+    "lite": ("The same bake simplified to a smaller budget", "full",
+             "Fewer triangles: small shapes merge or drop and edges step; surfaces keep their colour"),
+    "flat": ("The full mesh's triangles, one colour per face, no gradients", "full",
+             "One colour per face: a curtain's fold reads as bands"),
+    "fitted": ("Lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference",
+               "lite", "Same budget, moved to what the flythrough draws and fitted: arches, shadow edges and banner "
+               "colours come back"),
+    "fitted full": ("The same recipe at full's budget", "full", "The fitted recipe on full's finer geometry"),
+    "flat fitted": ("Flat's budget, one colour per face, its vertices and face colours fitted together", "flat",
+                    "Face colours and positions fitted: banners, arches and floor take their colours back"),
+}
+
+
+def variant_note(name, object_name):
+    label = variant_label(name, object_name)
+    if label not in VARIANT_NOTES:
+        raise ValueError(f"{name}: no entry in doc_tables.VARIANT_NOTES")
+    return VARIANT_NOTES[label]
+
+
+def variant_pairs(names, object_name):
+    """(base, variant) object names of each pair sheet, in the order of `names`."""
+    by_label = {variant_label(name, object_name): name for name in names}
+    return [(by_label[variant_note(name, object_name)[1]], name) for name in names
+            if variant_note(name, object_name)[1] is not None]
+
+
 def ranked(found, score):
     """`found`'s (object, fitted) pairs best first: fitted before unfitted, then by mean ΔE."""
     return sorted(found, key=lambda item: (not item[1], score(item[0])[0]))
@@ -221,10 +257,19 @@ def write_tables(work, out, scene_id, object_name, found):
     label = lambda name: variant_label(name, object_name)  # noqa: E731
     (out / f"{scene_id}-fidelity.md").write_text(score_table([(label(name), score(name)) for name, _ in order]),
                                                  encoding="utf-8")
-    flythrough = [(f"![{label(name)} flythrough](../images/render/{scene_id}-{label(name).replace(' ', '-')}.gif)",
-                   f"**{label(name)}**", f"`{scene_id}.{name}`", "yes" if fitted else "no") for name, fitted in order]
+    slug = lambda name: variant_slug(name, object_name)  # noqa: E731
+    flythrough = [(f"![{label(name)} flythrough](../images/render/{scene_id}-{slug(name)}.gif)",
+                   f"**{label(name)}**", variant_note(name, object_name)[0], f"`{scene_id}.{name}`",
+                   "yes" if fitted else "no") for name, fitted in order]
     (out / f"{scene_id}-variants.md").write_text(
-        markdown(["Flythrough", "Variant", "Mesh entry", "Fitted"], flythrough), encoding="utf-8")
+        markdown(["Flythrough", "Variant", "What it is", "Mesh entry", "Fitted"], flythrough), encoding="utf-8")
+    pairs = variant_pairs([name for name, _ in order], object_name)
+    sheets = "".join(f"![{label(base)} against {label(name)}](../images/render/compare-{slug(base)}-{slug(name)}.png)\n"
+                     f"![{label(base)} against {label(name)}, the places they differ most]"
+                     f"(../images/render/compare-{slug(base)}-{slug(name)}.crops.png)\n" for base, name in pairs)
+    (out / f"{scene_id}-variant-pairs.md").write_text(markdown(
+        ["Pair", "What changes"], [(f"{label(base)} against {label(name)}", variant_note(name, object_name)[2])
+                                   for base, name in pairs]) + "\n" + sheets, encoding="utf-8")
     smooth_frames = work / "smooth-reference"
     smooth_frames.mkdir(exist_ok=True)
     _, frames = read_video(work / "committed-smooth.avi")
@@ -258,6 +303,12 @@ if __name__ == "__main__":
     if sys.argv[1:2] == ["--variants"]:
         # doc_images_demo.sh renders and scores each of these before the tables.
         print(" ".join(name for name, _ in variants(pathlib.Path(sys.argv[2]), sys.argv[3])))
+        sys.exit(0)
+    if sys.argv[1:2] == ["--pairs"]:
+        # One "base variant base-slug variant-slug" line per pair sheet doc_images_demo.sh draws.
+        names = [name for name, _ in variants(pathlib.Path(sys.argv[2]), sys.argv[3])]
+        for base, name in variant_pairs(names, sys.argv[3]):
+            print(base, name, variant_slug(base, sys.argv[3]), variant_slug(name, sys.argv[3]))
         sys.exit(0)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("work", type=pathlib.Path)

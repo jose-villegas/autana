@@ -12,57 +12,50 @@ Every row plays the same stretch of the flythrough, so the rows compare. The
 rows are ranked best first: fitted variants, then the rest, each by mean ΔE in
 [Fidelity against the source](#fidelity-against-the-source).
 
-<!-- generated: sponza-variants sha256=4bd8db81d1a49a8cdcaabe26582dcb281dba50a82e8424b5662b0630b83ad5f4 -->
-| Flythrough | Variant | Mesh entry | Fitted |
-|---|---|---|---|
-| ![flat fitted flythrough](../images/render/sponza-flat-fitted.gif) | **flat fitted** | `sponza.atrium_flat_fitted` | yes |
-| ![fitted full flythrough](../images/render/sponza-fitted-full.gif) | **fitted full** | `sponza.atrium_fitted_full` | yes |
-| ![fitted flythrough](../images/render/sponza-fitted.gif) | **fitted** | `sponza.atrium_fitted` | yes |
-| ![full flythrough](../images/render/sponza-full.gif) | **full** | `sponza.atrium` | no |
-| ![lite flythrough](../images/render/sponza-lite.gif) | **lite** | `sponza.atrium_lite` | no |
-| ![flat flythrough](../images/render/sponza-flat.gif) | **flat** | `sponza.atrium_flat` | no |
+<!-- generated: sponza-variants sha256=669980d1bda83ef26d35d54c23e76b7949713ea8126bb007936cd9a1323a137b -->
+| Flythrough | Variant | What it is | Mesh entry | Fitted |
+|---|---|---|---|---|
+| ![flat fitted flythrough](../images/render/sponza-flat-fitted.gif) | **flat fitted** | Flat's budget, one colour per face, its vertices and face colours fitted together | `sponza.atrium_flat_fitted` | yes |
+| ![fitted full flythrough](../images/render/sponza-fitted-full.gif) | **fitted full** | The same recipe at full's budget | `sponza.atrium_fitted_full` | yes |
+| ![fitted flythrough](../images/render/sponza-fitted.gif) | **fitted** | Lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference | `sponza.atrium_fitted` | yes |
+| ![full flythrough](../images/render/sponza-full.gif) | **full** | Smooth: one colour per vertex, lit and interpolated | `sponza.atrium` | no |
+| ![lite flythrough](../images/render/sponza-lite.gif) | **lite** | The same bake simplified to a smaller budget | `sponza.atrium_lite` | no |
+| ![flat flythrough](../images/render/sponza-flat.gif) | **flat** | The full mesh's triangles, one colour per face, no gradients | `sponza.atrium_flat` | no |
 <!-- /generated: sponza-variants -->
 
-| Variant | What it is |
-|---|---|
-| Full | Smooth: one colour per vertex, lit and interpolated |
-| Lite | The same bake simplified to a smaller budget |
-| Flat | The full mesh's triangles, one colour per face, no gradients |
-| Fitted | Lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference |
-| Fitted full | The same recipe at full's budget |
-| Flat fitted | Flat's budget, one colour per face, its vertices and face colours fitted together |
+Where the variants differ, at the pose the GIFs end on, in the same order: each
+sheet is the two renders and their amplified difference, and the crops below
+it enlarge the places that differ most.
 
-Where the variants differ, at the pose the GIFs end on: each sheet is the two
-renders and their amplified difference, and the crops below it enlarge the
-places that differ most.
-
+<!-- generated: sponza-variant-pairs sha256=9c5a8e206c2f0942a51e7b83960df029e25bd6d34fda3036e8b73b09cb4b9347 -->
 | Pair | What changes |
 |---|---|
-| Full against lite | Fewer triangles: small shapes merge or drop and edges step; surfaces keep their colour |
-| Smooth against flat | One colour per face: a curtain's fold reads as bands |
-| Lite against fitted | Same budget, moved to what the flythrough draws and fitted: arches, shadow edges and banner colours come back |
-| Full against fitted full | The same recipe at full's budget, on finer geometry |
-| Flat against flat fitted | Face colours and positions fitted: banners, arches and floor take their colours back |
+| flat against flat fitted | Face colours and positions fitted: banners, arches and floor take their colours back |
+| full against fitted full | The fitted recipe on full's finer geometry |
+| lite against fitted | Same budget, moved to what the flythrough draws and fitted: arches, shadow edges and banner colours come back |
+| full against lite | Fewer triangles: small shapes merge or drop and edges step; surfaces keep their colour |
+| full against flat | One colour per face: a curtain's fold reads as bands |
 
-![Full against lite](../images/render/compare-full-lite.png)
-![Full against lite, the places they differ most](../images/render/compare-full-lite.crops.png)
-![Smooth against flat](../images/render/compare-full-flat.png)
-![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
-![Lite against fitted](../images/render/compare-lite-fitted.png)
-![Lite against fitted, the places they differ most](../images/render/compare-lite-fitted.crops.png)
-![Full against fitted full](../images/render/compare-full-fitted-full.png)
-![Full against fitted full, the places they differ most](../images/render/compare-full-fitted-full.crops.png)
-![Flat against flat fitted](../images/render/compare-flat-flat-fitted.png)
-![Flat against flat fitted, the places they differ most](../images/render/compare-flat-flat-fitted.crops.png)
+![flat against flat fitted](../images/render/compare-flat-flat-fitted.png)
+![flat against flat fitted, the places they differ most](../images/render/compare-flat-flat-fitted.crops.png)
+![full against fitted full](../images/render/compare-full-fitted-full.png)
+![full against fitted full, the places they differ most](../images/render/compare-full-fitted-full.crops.png)
+![lite against fitted](../images/render/compare-lite-fitted.png)
+![lite against fitted, the places they differ most](../images/render/compare-lite-fitted.crops.png)
+![full against lite](../images/render/compare-full-lite.png)
+![full against lite, the places they differ most](../images/render/compare-full-lite.crops.png)
+![full against flat](../images/render/compare-full-flat.png)
+![full against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
+<!-- /generated: sponza-variant-pairs -->
 
 ## Fidelity against the source
 
 The committed bakes scored against the source lit per pixel at the camera-path
 poses; the scores are defined in
 [Bake-Method.md](Bake-Method.md#fidelity-against-a-reference). Fewer
-triangles and one colour per face both cost most at edges.
+triangles and one colour per face both cost most at edges; fitting brings both back.
 
-![Colour error and structure of the committed full, lite and flat bakes](../images/render/sponza-fidelity.png)
+![Colour error and structure of every committed variant, best first](../images/render/sponza-fidelity.png)
 
 <details>
 <summary>Fidelity scores</summary>
