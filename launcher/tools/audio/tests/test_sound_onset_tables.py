@@ -69,15 +69,21 @@ class OnsetTablesTest(unittest.TestCase):
             path.write_text("\n".join(records) + "\n")
             self.captures.append(path)
 
-    def test_boards_columns_and_stale_check(self):
+    def test_generic_captures_and_stale_check(self):
         before = self.document.read_bytes()
         self.assertTrue(audio.update_onset(self.directory, self.document, check=True))
         self.assertEqual(before, self.document.read_bytes())
         audio.update_onset(self.directory, self.document)
         text = self.document.read_text()
         for board in ("board-a", "board-b"):
-            self.assertIn(f"Board **{board}**", text)
-        self.assertIn("build **build-b**", text)
+            self.assertNotIn(f"Board **{board}**", text)
+        self.assertNotIn("build-b", text)
+        self.assertNotIn("2026-10-20", text)
+        self.assertIn("Capture 1", text)
+        self.assertIn("Capture 2", text)
+        self.assertEqual(text.count("<picture>"), 1)
+        self.assertEqual(text.count("<details>"), 2)
+        self.assertIn("[raw replies]", text)
         self.assertEqual(text.count("| Event | off | 500us |"), 2)
         self.assertIn("| stop | 2.0 (3.0) | 2.0 (3.0) |", text)
         self.assertNotIn("n=2", text)

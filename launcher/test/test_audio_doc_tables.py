@@ -696,6 +696,35 @@ class DrcSweepTest(unittest.TestCase):
 
 
 class AudioFiguresTest(unittest.TestCase):
+    def test_onset_capture_medians_and_bounds(self):
+        figures = load_tool("sound_onset_figures")
+        settings = {"off": {figures.DECLICK_TUNABLE: 0}, "short": {figures.DECLICK_TUNABLE: 500}}
+        captures = []
+        for samples in ([0, 2], [4], [6, 8, 100]):
+            points = {(arm, event): [(value, 0) for value in samples]
+                      for arm in settings for event in audio.ONSET_EVENTS}
+            captures.append((settings, points, len(samples)))
+        times, curves = figures.figure_data(captures)
+        self.assertEqual(times, [0, 0.5])
+        self.assertEqual([curve[0] for curve in curves], ["start", "stop", "steal", "amp-on", "amp-off"])
+        for event, medians, lows, highs in curves:
+            self.assertEqual(medians, [4, 4])
+            self.assertEqual(lows, [1, 1])
+            self.assertEqual(highs, [8, 8])
+        changed = dict(settings, short={figures.DECLICK_TUNABLE: audio.US_PER_MS})
+        with self.assertRaisesRegex(ValueError, "arms"):
+            figures.figure_data([captures[0], (changed, captures[1][1], 1)])
+
+    def test_onset_themed_images(self):
+        figures = load_tool("sound_onset_figures")
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            figures.render(ROOT / audio.MIX_CAPTURES, output)
+            light = output / "sound-onset.png"
+            dark = output / "sound-onset-dark.png"
+            self.assertTrue(light.is_file())
+            self.assertNotEqual(light.read_bytes(), dark.read_bytes())
+
     def test_extraction_and_plot_selection(self):
         figures = load_tool("audio_drc_figures")
         _, records, _ = audio.read_capture(ROOT / audio.DRC_CAPTURE)
