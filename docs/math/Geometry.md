@@ -25,7 +25,7 @@ The queries use half-open edges; crossed edges produce an empty rectangle.
 ## plane (`f x`)
 
 `planef_t` and `planex_t` hold a vec3 `normal` and a scalar `d`; inside is
-`dot(normal, point) + d >= 0`. Distances are scaled by the normal's length
+$`n \cdot p + d \ge 0`$. Distances are scaled by the normal's length
 until the plane is normalized.
 
 | Function | Purpose | Formula |
@@ -35,21 +35,26 @@ until the plane is normalized.
 | `P_distance(p, q)` | signed plane value | $`p_n \cdot q + p_d`$ |
 | `P_normalize(p)` | unit normal; normal must be nonzero; `x` range and error as [vec3 `P_normalize_divide`](Linear.md#vec3-f-i-s-x) | $`(p_n, p_d)/\lVert p_n\rVert`$ |
 | `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
-| `P_frustum(&m, &lens, screen, out)` | near and screen side planes in affine m's source space | `P_from_rows` of each lens-space plane below |
+| `P_frustum(&m, &lens, screen, out)` | near and screen side planes in affine m's source space | See [frustum](#frustum) |
 
-![Signed plane-value bands before and after normalizing a non-unit normal, sharing the same zero line](../images/math/plane-distance.png)
+![Edge-on plane and signed-distance rulers before and after normalization, with value ticks and signed sample values](../images/math/plane-distance.png)
 
-![Triangle winding in two panels with opposite normals and green shading on opposite inside sides](../images/math/plane-from-points.png)
+Dividing the signed value by $`\lVert n\rVert`$ gives the signed distance.
+Normalization changes the ruler spacing while keeping the same zero plane.
 
-![A left plane and sample point in lens space beside the transformed world-space plane and sample, with equal signed values](../images/math/plane-from-rows.png)
+![3D triangles with opposite winding arrows and opposite normals](../images/math/plane-from-points.png)
+
+![3D lens-space plane and sample beside their world-space transforms, with equal signed values](../images/math/plane-from-rows.png)
+
+## frustum
 
 `P_frustum` reads rows as in Gribb and Hartmann<sup>[[77]](../Citations.md#77)</sup>,
-with picture coordinates `cx + fx*x/z`, `cy - fy*y/z` and z supplying w.
+with picture coordinates $`c_x + f_x x/z`$, $`c_y - f_y y/z`$ and $`z`$ supplying $`w`$.
 Each output is `P_from_rows` of a lens-space plane, in this order:
 
 | Index | Plane | $`(a, b, c, e)`$ |
 |---|---|---|
-| `PLANE_FRUSTUM_NEAR` | `z >= near_z` | $`(0, 0, 1, -\mathit{near\_z})`$ |
+| `PLANE_FRUSTUM_NEAR` | $`z \ge \mathit{near\_z}`$ | $`(0, 0, 1, -\mathit{near\_z})`$ |
 | `PLANE_FRUSTUM_LEFT` | screen x at or right of `left` | $`(f_x, 0, c_x - \text{left}, 0)`$ |
 | `PLANE_FRUSTUM_RIGHT` | screen x at or left of `right` | $`(-f_x, 0, \text{right} - c_x, 0)`$ |
 | `PLANE_FRUSTUM_TOP` | screen y at or below `top` | $`(0, -f_y, c_y - \text{top}, 0)`$ |
@@ -58,9 +63,26 @@ Each output is `P_from_rows` of a lens-space plane, in this order:
 `PLANE_FRUSTUM_COUNT` sizes the output. There is no far plane, and the
 planes are not normalized.
 
-![Camera frustum clipped to its axes box beside a ground-plane slice with named zero lines and arrows pointing inside; grid points passing every plane are green](../images/math/frustum.png)
+![Fixed 3D camera frustum with translucent near and side faces, inward normals, inside and outside samples, and a dashed drawing-depth cap](../images/math/frustum.png)
 
-The shown depth bounds the drawing; the frustum has no far plane, and every plane must accept a point.
+A point is inside when every plane accepts it; the drawn depth only bounds the picture.
+
+`box3f_outside_planes` tests these planes against a box centre $`c`$ and
+half extent $`e`$. For each plane it forms:
+
+```math
+d = n \cdot c + d_{plane}, \qquad r = \sum_k \lvert n_k\rvert e_k
+```
+
+It rejects the box when $`d+r<0`$ and clears the plane's mask bit when
+$`d-r\ge0`$. When it returns false, the bits of planes the box crosses
+stay set; a box in a loose corner is not rejected.
+
+![Fixed observer view of boxes switching between inside, intersecting and outside as a camera moves and turns through the field](../images/math/box3-frustum.gif)
+
+Boxes switch between inside, intersecting and outside as the camera moves.
+A box crossing planes separately can stay intersecting while outside the
+frustum: the loose-corner test is conservative.
 
 ## box3 (`f s`)
 
@@ -83,21 +105,12 @@ and union; any crossed axis is empty.
 | `P_centre(b)` | midpoint (`f`) | $`c = 0.5(lo+hi)`$ |
 | `P_half_extent(b)` | half size (`f`) | $`e = 0.5(hi-lo)`$ |
 | `P_segment_hit(b, a, c, &t)` | slab entry in `[0,1]` (`f`); inside starts at zero | $`v=c-a`$; intersect $`[0,1]`$ with each axis's $`[(lo_k-a_k)/v_k,(hi_k-a_k)/v_k]`$, sorted |
-| `P_outside_planes(b, planes, count, &mask)` | reject outside; clear wholly inside bits (`f`) | $`d=n\cdot c+d_{plane},\ r=\sum_k \lvert n_k\rvert e_k`$<br>outside: $`d+r<0`$; clear bit: $`d-r\ge0`$ |
+| `P_outside_planes(b, planes, count, &mask)` | reject outside; clear wholly inside bits (`f`) | See [frustum](#frustum) |
 | `box3f_from_box3s(b, scale)` | convert position ticks to float units | $`(lo\,scale,hi\,scale)`$ |
 
 Real queries use finite, nonempty bounds, except that `P_segment_hit`
 rejects empty boxes. Segment endpoints and box values must be finite.
 Plane bits index the input array; `count` must fit an unsigned mask.
-
-When `P_outside_planes` returns false, the bits of planes the box crosses
-stay set in the mask; a box in a loose corner is not rejected.
-
-![Top-down frustum box classifications](../images/math/box3-frustum.png)
-
-The near plane alone rejects one box. Box 8 crosses each plane separately
-but contains no point inside the frustum: a known conservative result of
-the per-plane test.
 
 ## sphere (`f`)
 
@@ -124,6 +137,10 @@ cancellation in the hit decision.
 Segment queries write `t` only on a hit. Zero-length segments hit when
 the point is inside. A tangent counts as a hit.
 
-![Box-sphere overlap, touch and miss with closest points beside segment entry points on a box and sphere, an inside start and a miss](../images/math/box3-sphere-queries.png)
+![Fixed view of a sphere moving past and into a box, with miss, touch and overlap states, a closest point and a dashed centre-to-closest line](../images/math/box3-sphere-overlap.gif)
 
-Closest points decide sphere overlap; marked segment entries include a start inside the sphere at t = 0.
+The closest box point decides whether the moving sphere misses, touches or overlaps.
+
+![Fixed views of segment queries against a closed box and sphere, labelled with entries, inside starts and misses](../images/math/box3-sphere-segments.png)
+
+Marked segment entries include a start inside the sphere at $`t = 0`$.

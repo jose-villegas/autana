@@ -8,7 +8,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from math_figures import (DISPLAY, PANEL_SIZE, PANEL_TITLE_ROOM, ROOT, SHAPE_ALPHA,
                           VIEW_AZIMUTH, VIEW_ELEVATION, read_define, run_probe)
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE,
-                             figure, save, save_gif, subplots)
+                             figure, save, save_gif, subplots, wire_sphere, GIF_FRAMES, GIF_FPS,
+                             ORBIT_GIF_COLORS, WIRE_WIDTH, WIRE_SAMPLES)
 import numpy as np
 from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
@@ -16,8 +17,6 @@ from mpl_toolkits.mplot3d import proj3d
 
 PROBE = pathlib.Path(__file__).with_name("motion_figures_probe.c")
 SOURCES = (PROBE, ROOT / "launcher/packages/math/src/motion/orbit_motion.c")
-GIF_FRAMES = 60
-GIF_FPS = 10
 PANELS = 2
 SAMPLE_MARKER_INTERVAL = 5
 FIT_CONE_EXTENSION = 1.1
@@ -44,13 +43,8 @@ ORBIT_MARGIN = 1.3
 FRAME_AXIS_LENGTH = 0.45
 ORBIT_ZOOM = 1.5
 ORBIT_DPI = 70
-ORBIT_GIF_COLORS = 64
 FRAME_AXIS_WIDTH = 2
 ARROW_HEAD_RATIO = 0.3
-WIRE_SAMPLES = 49
-WIRE_STRIDE = 8
-WIRE_ALPHA = 0.45
-WIRE_WIDTH = 0.6
 ORBIT_PANEL_RATIOS = (3, 1)
 PHASE_LABEL_HEIGHT = 1.04
 SPEED_MARGIN = 1.15
@@ -60,16 +54,6 @@ ANIMATION_DPI = 80
 PANEL_LABEL_PADDING = 0.15
 WAVE_COLOR_PERCENTILE = 98
 WAVE_PUSH_TICKS = 5
-
-
-def wire_sphere(axis, center, radius, color=FAINT):
-    yaw = np.linspace(0, 2 * np.pi, WIRE_SAMPLES)
-    pitch = np.linspace(-np.pi / 2, np.pi / 2, WIRE_SAMPLES)
-    x = center[0] + radius * np.outer(np.cos(yaw), np.cos(pitch))
-    y = center[1] + radius * np.outer(np.ones_like(yaw), np.sin(pitch))
-    z = center[2] + radius * np.outer(np.sin(yaw), np.cos(pitch))
-    axis.plot_wireframe(x, y, z, rstride=WIRE_STRIDE, cstride=WIRE_STRIDE,
-                        color=color, alpha=WIRE_ALPHA, linewidth=WIRE_WIDTH)
 
 
 def orbit_animation(data, output):
