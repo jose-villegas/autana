@@ -42,13 +42,11 @@ def parser():
     result.add_argument("--autana", default="autana")
     result.add_argument("--board", required=True)
     result.add_argument("--out", type=Path, default=CAPTURE)
-    result.add_argument("--baseline", type=numbers, default=numbers("30,40,50,60,70,85,100"))
-    result.add_argument("--codec", type=numbers, default=numbers("50,70,100"))
-    result.add_argument("--max-levels", type=numbers, default=numbers("15,10,7,3"))
-    result.add_argument("--winsize", type=int, default=4)
-    result.add_argument("--ramp", type=int, default=2)
+    for option, default in (("baseline", "30,40,50,60,70,85,100"), ("codec", "70,100"),
+                            ("max-levels", "1,2,3,4"), ("winsize", "4"), ("ramp", "2")):
+        result.add_argument("--" + option, type=numbers, default=numbers(default))
     result.add_argument("--hz", type=int, default=PRIMARY_HZ)
-    result.add_argument("--extra-hz", type=numbers, default=numbers("500,2000"))
+    result.add_argument("--extra-hz", type=numbers, default=numbers(""))
     result.add_argument("--volumes", type=numbers, default=numbers("10,30,100"))
     result.add_argument("--ms", type=int, default=500)
     result.add_argument("--runs", type=int, default=3)
@@ -56,16 +54,16 @@ def parser():
 
 
 def configurations(args):
-    if (not args.baseline or not args.codec or not args.max_levels
+    if (not args.baseline or not args.codec or not args.max_levels or not args.winsize or not args.ramp
             or any(not 0 <= value <= VOLUME_MAX for value in (*args.baseline, *args.codec, *args.volumes))
-            or any(not 0 <= value <= DRC_FIELD_MAX for value in (*args.max_levels, args.winsize, args.ramp))):
+            or any(not 0 <= value <= DRC_FIELD_MAX for value in (*args.max_levels, *args.winsize, *args.ramp))):
         raise ValueError("invalid codec volumes or DRC fields")
     for volume in args.baseline:
-        yield dict(codec_volume=volume, drc=0, drc_max=0, drc_min=0, drc_win=args.winsize, drc_ramp=args.ramp)
-    for volume, maximum in itertools.product(args.codec, args.max_levels):
+        yield dict(codec_volume=volume, drc=0, drc_max=0, drc_min=0, drc_win=args.winsize[0], drc_ramp=args.ramp[0])
+    for volume, maximum, window, ramp in itertools.product(args.codec, args.max_levels, args.winsize, args.ramp):
         for minimum in dict.fromkeys((maximum, 0)):
             yield dict(codec_volume=volume, drc=1, drc_max=maximum, drc_min=minimum,
-                       drc_win=args.winsize, drc_ramp=args.ramp)
+                       drc_win=window, drc_ramp=ramp)
 
 
 def tones(args):
