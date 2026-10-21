@@ -102,11 +102,15 @@ log_arm(arm_t arm, const arm_result_t* result) {
 }
 
 static void
-assert_arm(const arm_result_t* result) {
+assert_arm(arm_t arm, const arm_result_t* result) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, result->frames, "no frames captured");
     TEST_ASSERT_TRUE_MESSAGE(result->step_us > 0, "ridge step did no work");
     TEST_ASSERT_TRUE_MESSAGE(result->present_us > 0, "present did no work");
-    TEST_ASSERT_TRUE_MESSAGE(result->bytes > 0, "no panel bytes sent");
+    if (arm == ARM_IDLE) {
+        TEST_ASSERT_TRUE_MESSAGE(result->bytes == 0, "an idle ridge sent panel bytes");
+    } else {
+        TEST_ASSERT_TRUE_MESSAGE(result->bytes > 0, "no panel bytes sent");
+    }
 }
 
 typedef struct {
@@ -250,7 +254,7 @@ test_ridge_performance(void) {
     for (arm_t arm = ARM_IDLE; arm <= ARM_AMBIENT_PORTRAIT; arm++) {
         const arm_result_t result = run_arm(arm);
         log_arm(arm, &result);
-        assert_arm(&result);
+        assert_arm(arm, &result);
     }
     TEST_PASS();
 }
@@ -273,7 +277,7 @@ test_ridge_performance_slow_clock(void) {
     for (int i = 0; i < ARM_COUNT; i++) {
         ESP_LOGI(TAG, "RIDGE PERF clock_mhz=%d", GFX_PANEL_CLOCK_SLOW_HZ / 1000000);
         log_arm(arms[i], &results[i]);
-        assert_arm(&results[i]);
+        assert_arm(arms[i], &results[i]);
     }
 }
 
