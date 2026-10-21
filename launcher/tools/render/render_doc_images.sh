@@ -292,6 +292,11 @@ run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/p
     --views 'docs/render/data/pipeline-view-{view}-board.log' --tables "$OUT/tables" \
     --chart "$OUT/render/pipeline-frame-stages.png" > "$WORK/frame_stages.log"
 
+# Each picture's frame cost in each framebuffer layout, from the scene and
+# boot animation captures beside the render pages.
+run "$PYTHON" launcher/tools/render/layout_costs.py --mesh docs/render/data/layout-mesh-board.log \
+    --boot docs/render/data/layout-boot-board.log --tables "$OUT/tables" \
+    --chart "$OUT/render/gfx-layout-costs.png" > "$WORK/layout_costs.log"
 fi
 
 table_status=0
