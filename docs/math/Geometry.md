@@ -164,3 +164,7 @@ Integer edges end at `right-1` and `bottom-1`; real queries include the closure 
 | `circlef_bounds(c)`, `circlei_bounds(c)` | enclosing rect; integer cells include both extremes | $`(c_x-r,c_y-r,2r+e,2r+e)`$, $`e=1`$ for `i`, $`e=0`$ for real |
 | `circlef_from_rect(rect)` | circumscribed disc (`f`) | $`e=(w,h)/2,\ c=(x,y)+e,\ r=\lVert e\rVert`$ |
 | `circlei_cell_count(r)` | exact integer disc size; negative radius gives zero, result must fit int | $`\sum_{d=-r}^{r}(2\lfloor\sqrt{r^2-d^2}\rfloor+1)`$ |
+
+![Integer circles against a half-open cell rectangle and floating-point segment hits against a circle.](../images/math/circle-rect-queries.png)
+
+The integer touch reaches `right−1`; segment markers show the first hit, including an inside start.
