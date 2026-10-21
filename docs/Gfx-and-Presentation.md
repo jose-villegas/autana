@@ -124,7 +124,7 @@ during the whole draw, so both share PSRAM. Not run: the suite has no such pass.
 The r3d scenes draw in `update()`; the boot animation draws a full frame in
 `frame()`.
 
-<!-- generated: gfx-layout-costs sha256=f619387bc9a0bc0e69a959170dd06c1d8bc39d106c7c60fecb40dd5dc50aa2c1 -->
+<!-- generated: gfx-layout-costs sha256=044d2114596af857921ea58d9838b34025900b54d8ea212bc476c81fd155a4a5 -->
 ![Frame cost by framebuffer layout](images/render/gfx-layout-costs.png)
 
 | Picture | `FULL_FB` | `DOUBLE_FB` | `DOUBLE_FB_CLEAR_ON_SEND` | `DOUBLE_FB_CONTENDED` |
@@ -151,7 +151,7 @@ The r3d scenes draw in `update()`; the boot animation draws a full frame in
 | boot animation, crossfade_late | 44.0 | 36.4 (-17%) | 31.1 (-29%) | 36.1 (-18%) |
 | boot animation, near_end | 22.2 | 14.5 (-35%) | 15.3 (-31%) | 14.4 (-35%) |
 
-Board ms per frame, mean of each suite's samples, build `e0b6b47d8f90-diag`. A change is against the first layout its row reports.
+Board ms per frame, mean of each suite's samples. A change is against the first layout its row reports.
 <!-- /generated: gfx-layout-costs -->
 
 Regenerate with

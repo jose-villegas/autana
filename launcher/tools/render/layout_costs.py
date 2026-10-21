@@ -108,7 +108,7 @@ def chart(rows, path):
     save(figure, path)
 
 
-def table(rows, build, chart_name):
+def table(rows, chart_name):
     """One row per picture, one column per layout; each cell after a row's
     first layout gives its change against that first one."""
     layouts = layouts_of(rows)
@@ -126,7 +126,7 @@ def table(rows, build, chart_name):
             else:
                 cells.append(f"{costs[layout]:.1f} ({change(costs, layout):+.0f}%)")
         lines.append(f"| {row} | " + " | ".join(cells) + " |")
-    note = (f"\nBoard ms per frame, mean of each suite's samples, build `{build}`. A change is against the "
+    note = ("\nBoard ms per frame, mean of each suite's samples. A change is against the "
             "first layout its row reports.")
     return "\n".join(lines) + "\n" + note
 
@@ -139,11 +139,11 @@ def main():
     parser.add_argument("--chart", required=True, type=pathlib.Path)
     args = parser.parse_args()
     require_same_board({str(path): capture_board(path) for path in (args.mesh, args.boot)})
-    build = require_same_build([args.mesh, args.boot])
+    require_same_build([args.mesh, args.boot])
     rows = {**mesh_costs(args.mesh), **boot_costs(args.boot)}
     chart(rows, args.chart)
     args.tables.mkdir(parents=True, exist_ok=True)
-    (args.tables / f"{BLOCK}.md").write_text(table(rows, build, args.chart.name) + "\n", encoding="utf-8")
+    (args.tables / f"{BLOCK}.md").write_text(table(rows, args.chart.name) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

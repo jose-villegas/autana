@@ -37,14 +37,14 @@ class LayoutCostsTests(unittest.TestCase):
         mesh = self.write("mesh.log", MESH)
         rows = {**layout_costs.mesh_costs(mesh), **layout_costs.boot_costs(self.write("boot.log", boot()))}
         self.assertEqual(list(rows), ["room, portrait", "room, landscape", "boot animation, swell"])
-        lines = layout_costs.table(rows, "abc-dev", "chart.png").splitlines()
+        lines = layout_costs.table(rows, "chart.png").splitlines()
         self.assertEqual(lines[0], "![Frame cost by framebuffer layout](images/render/chart.png)")
         lines = lines[2:]
         self.assertEqual(lines[0], "| Picture | `LAYOUT_A` | `LAYOUT_B` | `LAYOUT_C` |")
         self.assertEqual(lines[2], "| room, portrait | 40.0 | 44.0 (+10%) | not run |")
         self.assertEqual(lines[3], "| room, landscape | 20.0 | not run | not run |")
         self.assertEqual(lines[4], "| boot animation, swell | 30.0 | 27.0 (-10%) | 33.0 (+10%) |")
-        self.assertIn("build `abc-dev`", lines[-1])
+        self.assertTrue(lines[-1].startswith("Board ms per frame"))
 
     def test_captures_must_share_one_build(self):
         mesh = self.write("mesh.log", MESH)
