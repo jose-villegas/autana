@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from doc_tables import markdown
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
+from audio.sound_onset_capture import EVENTS as ONSET_EVENTS
 from generated_blocks import replace_block, blocks
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from frame_cost import frame_cost_window, US_PER_MS
@@ -227,7 +228,6 @@ def update(capture, document, check=False, mix_captures=None, mix_document=None)
     return changed
 
 
-ONSET_EVENTS = ("amp-on", "start", "stop", "steal", "amp-off")
 ONSET_REPLY = re.compile(
     r"SOUND onset event=([a-z-]+) hz=(\d+) gain=(\d+) pre_db=(-?\d+\.\d+) "
     r"peak_db=(-?\d+\.\d+) excess_db=(-?\d+\.\d+) at_ms=(\d+)")

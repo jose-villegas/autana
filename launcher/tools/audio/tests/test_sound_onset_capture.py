@@ -13,6 +13,17 @@ SPEC.loader.exec_module(onset)
 
 
 class OnsetCaptureTest(unittest.TestCase):
+    def test_header_string_array(self):
+        with tempfile.TemporaryDirectory() as directory:
+            header = Path(directory) / 'events.h'
+            header.write_text('static const char* const events[] = {"start", "stop",};')
+            self.assertEqual(onset.read_string_array(header, 'events'), ('start', 'stop'))
+            with self.assertRaisesRegex(RuntimeError, 'missing'):
+                onset.read_string_array(header, 'missing')
+            header.write_text('static const int events[] = {1, 2};')
+            with self.assertRaisesRegex(RuntimeError, 'string array'):
+                onset.read_string_array(header, 'events')
+
     def test_explicit_arms(self):
         self.assertEqual(onset.arms(['off:sound.declick_us=0', 'short:sound.declick_us=2000']),
                          {'off': {'sound.declick_us': 0}, 'short': {'sound.declick_us': 2000}})
@@ -87,7 +98,7 @@ class OnsetCaptureTest(unittest.TestCase):
                         self.assertEqual(sum(c[:2] == ['sound', 'onset'] for c in calls), len(onset.EVENTS) * args.runs * 2)
                 self.assertEqual(calls[0], ['status', '--json'])
                 self.assertEqual(calls[-2:], [['status', '--json'], ['buildid', '--json']])
-                self.assertEqual(calls[-3:-2], [['tune', name, str(value)] for name, value in onset.DEFAULTS.items()])
+                self.assertEqual(calls[-3:-2], [['tune', 'reset', 'sound.declick_us']])
 
 
 if __name__ == '__main__':

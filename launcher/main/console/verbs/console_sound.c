@@ -273,11 +273,7 @@ console_verb_sound(const char* args, console_reply_fn reply) {
         if (parsed.voice) {
             sound_stop((sound_voice_t){.id = parsed.voice});
         } else {
-            sound_stats_t stats;
-            sound_get_stats(&stats);
-            for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-                sound_stop(stats.control.voices[i].handle);
-            }
+            stop_all();
         }
         reply("SOUND_END stopped");
         return;

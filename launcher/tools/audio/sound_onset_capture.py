@@ -5,6 +5,7 @@ Pass each arm explicitly: --arm baseline:sound.declick_us=0
 default at the end. The board argument identifies the held board.
 """
 import argparse
+import ast
 from datetime import date
 import json
 import os
@@ -17,16 +18,30 @@ import sys
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 from console_protocol import reply_prefix
-sys.path.insert(0, str(ROOT / "launcher/tools/build"))
-from c_header import read_define
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from frame_cost import US_PER_SECOND
 
 SOUND_PREFIX, SOUND_UNTIL = reply_prefix("sound")
 
-EVENTS = ('amp-on', 'start', 'stop', 'steal', 'amp-off')
-DECLICK_US = read_define(ROOT / "launcher/main/sound/sound_mixer.h", "SOUND_DECLICK_US")
-DEFAULTS = {'sound.declick_us': DECLICK_US}
+
+def read_string_array(header, name):
+    """Read a literal string array, naming its owning header on failure."""
+    header = Path(header)
+    match = re.search(r"\b" + re.escape(name) + r"\s*\[\s*\]\s*=\s*\{([^}]*?)\}\s*;",
+                      header.read_text(encoding="utf-8"), re.DOTALL)
+    if match is None:
+        raise RuntimeError(f"{header} declares no {name}")
+    try:
+        values = ast.literal_eval("[" + match[1] + "]")
+        if not all(isinstance(value, str) for value in values):
+            raise ValueError("non-string element")
+        return tuple(values)
+    except (ValueError, SyntaxError) as error:
+        raise RuntimeError(f"{header}: {name} is not a literal string array") from error
+
+
+EVENTS = read_string_array(ROOT / "launcher/main/console/verbs/console_sound_parse.h", "console_sound_events")
+DECLICK_TUNABLE = 'sound.declick_us'
 ONSET_ATTEMPTS = 2
 
 
@@ -35,7 +50,7 @@ def arms(settings):
     for setting in settings:
         arm, assignment = setting.split(':', 1)
         name, value = assignment.split('=', 1)
-        if not re.fullmatch(r'[A-Za-z0-9_-]+', arm) or arm == 'meta' or arm in result or name not in DEFAULTS:
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', arm) or arm == 'meta' or arm in result or name != DECLICK_TUNABLE:
             raise ValueError(f'unknown setting or invalid/repeated arm: {setting}')
         value = int(value)
         if not 0 <= value <= US_PER_SECOND:
@@ -100,8 +115,7 @@ def capture(args):
                             raise ValueError(f'invalid onset reply: {reply}')
                         record(arm, command, lines[0])
         finally:
-            for name, value in DEFAULTS.items():
-                run('tune', name, value)
+            run('tune', 'reset', DECLICK_TUNABLE)
             record('meta', 'status', json.dumps(json.loads(run('status', '--json').stdout)))
             after = json.loads(run('buildid', '--json').stdout)
             record('meta', 'buildid', json.dumps(after))

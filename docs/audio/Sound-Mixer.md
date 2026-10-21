@@ -274,17 +274,25 @@ See its [capture and detection](Audio-Path.md#development-check) output.
 
 ## Clicks at start, stop and amplifier changes
 
+When a voice stops, is stolen or reaches its end, the mixer decays its last
+sample to zero with time constant `sound.declick_us` instead of cutting it.
+The decay plays only while the amplifier is ON; turning it OFF clears it.
+
+The playback API has no fade control. Seamless loops are the asset's job.
+Decay rounds toward zero by at least one PCM unit per sample.
+Mid-block ends start tails at their exact sample offset.
+
 `autana sound onset <event> [hz] [gain]` streams microphone blocks on the
-console task. It reports second-difference peak levels before and after
-the trigger, their difference (`excess_db`), and the post-trigger peak's `at_ms`.
+console task. It reports second-difference peaks before and after the trigger,
+their difference (`excess_db`), and the post-trigger peak's `at_ms`.
 
 | Event | Pre-trigger state | Trigger and capture |
 |---|---|---|
-| `amp-on` | All voices stopped, amplifier OFF | Start a silent holder; cover startup and margin |
+| `amp-on` | All voices stopped, amplifier OFF | Start a silent holder; capture through amplifier startup plus one margin window |
 | `start` | Silent holder, amplifier ON | Start the probe; short window |
 | `stop` | Steady probe and silent holder, amplifier ON | Stop the probe; short window |
 | `steal` | Oldest probe and silent holders fill the voice table | Add a holder; short window |
-| `amp-off` | All voices stopped, amplifier ON | Observe the idle deadline and margin |
+| `amp-off` | All voices stopped, amplifier ON | Wait out `SOUND_AMP_IDLE_MS` plus one margin window |
 
 Defaults are `CONSOLE_SOUND_ONSET_HZ` and `CONSOLE_SOUND_ONSET_GAIN` in
 `console_sound_parse.h`. The second difference suppresses a steady low tone;
@@ -294,42 +302,26 @@ After capture opens, `AUDIO_LOOPBACK_SETTLE_MS` of microphone input is
 discarded before preparation or the pre-window, including when the amplifier
 is already OFF.
 
-Windows derive from amplifier timing and the mixer block period. `at_ms`
-starts after the pre-window, which counts toward the `amp-off` idle deadline.
-Queue and RX DMA latency remain in the reading.
+Capture windows derive from amplifier timing and the mixer block period.
+`at_ms` starts after the pre-window, which counts toward the `amp-off` idle
+deadline. `at_ms` includes queue and RX DMA latency.
 
-| Hot tunable | Effect |
-|---|---|
-| `sound.declick_us` | Mixer residual decay time in microseconds; zero disables it |
-
-De-click defaults to 1 ms (`SOUND_DECLICK_US` in `sound_mixer.h`), twice the
-shortest length (500 us) that removed stop/steal clicks on all three reference boards.
-The doubled length provides margin.
-
-Live changes require `--hot-tunables`. The application playback API has no fade control.
-
-Codec mute and DAC soft ramp were measured and did not reduce the amplifier transients.
-
-The voice table is 256 bytes on the target; `sound stats` reports its size.
-
-The residual plays while the amplifier is ON; OFF clears it.
-Decay rounds toward zero by at least one PCM unit per sample.
-Mid-block cuts start tails at their exact sample offset.
-
-Build outside the board hold, then run the capture inside it:
+Build outside the board hold, then run the capture inside it.
+Repeat `--arm` for each setting to measure:
 
 ```sh
 autana build dev --hot-tunables
-autana --wait 3600 lock run -- python launcher/tools/audio/sound_onset_capture.py --board ID --runs 5 --out docs/audio/data/sound_onset_capture_ID.txt --arm off:sound.declick_us=0 --arm 500us:sound.declick_us=500 --arm 1ms:sound.declick_us=1000 --arm 2ms:sound.declick_us=2000 --arm 5ms:sound.declick_us=5000
+autana --wait 3600 lock run -- python launcher/tools/audio/sound_onset_capture.py \
+  --board ID --runs 5 --out docs/audio/data/sound_onset_capture_ID.txt \
+  --arm off:sound.declick_us=0 --arm on:sound.declick_us=1000
 ```
 
-The tool records status and matching build IDs at both ends. It measures
-only the named arms, in argument order, then restores the firmware default.
+The tool records status and matching build IDs at both ends, measures the
+named arms in argument order, then resets the tunable to its firmware default.
 Each capture record is `<arm>\t<command>\t<reply>`.
 
-A nonzero onset exit is retried once. Failure records retain stdout, stderr,
-arm and event; successful runs retain stderr when present. Exhausted retries
-leave fewer successful runs in that cell and do not stop the remaining capture.
+A failed onset is retried once; failures retain stdout, stderr, arm and event,
+and exhausted retries leave fewer successful runs without stopping capture.
 
 `audio_doc_tables.py --write` fills the generated tables from every
 sound_onset_capture_*.txt file in docs/audio/data; `--check` rejects stale
@@ -377,24 +369,16 @@ Cells show median (worst) excess dB; run counts appear only when incomplete.
 Boards are compared to themselves, never to each other.
 <!-- /generated: sound-onset -->
 
-The amplifier on/off transient is unchanged by de-click (see the tables).
-
-### Removal
-
-| File | Experiment additions to remove |
+| Hot tunable | Effect |
 |---|---|
-| `sound/sound_mixer.h` | `SOUND_DECLICK_US`; `sound_mix_voice_t.first_render`, `.last_sample`; `sound_mixer_t.declick_frames`, `.residual` |
-| `sound/sound_mixer.c` | `cut_voice`, `add_tail`, `voice_run_limit`, `voice_at_cut`, `mix_voice_run`, `mix_voice`; de-click branches in apply/sync, amp readiness and render; first-render initialization |
-| `sound/sound_mixer_device.c` | `TUNE_OWNER(sound)`, `declick_us`, `tuning_generation`, `apply_tuning`, `update_amp`; tuning application and amplifier transition helper |
-| `console/verbs/console_sound_parse.h` | `CONSOLE_SOUND_ONSET_*`, `console_sound_event_t`, `console_sound_events`, `CONSOLE_SOUND_ONSET`, parsed `hz`/`event`, onset parsing branch |
-| `console/verbs/console_sound.c` | `ONSET_*`, `onset_peak_t`, `onset_window`, `onset_db`, `stop_all`, `onset_wait`, `onset_prepare`, `onset_trigger`, `onset_measure`, `sound_onset`, onset dispatch and added includes |
-| `docs/tools/Autana-CLI.md` | Onset command row |
-| `scripts/autana/autana.py` | `SOUND_ONSET_SECONDS`, onset reply timeout; `SoundOnsetCommandTests` in `scripts/autana/tests/test_autana.py` |
-| `launcher/tools/audio/sound_onset_capture.py` | Entire capture tool, including `SOUND_PREFIX`/`SOUND_UNTIL` from the shared console protocol |
-| `launcher/tools/audio/audio_doc_tables.py` | `ONSET_*`, `render_onset`, `update_onset`, onset capture discovery and dispatch, math/statistics imports |
-| Tests | `test_sound_declick_*`, `TEST_DECLICK_*` in `suite_sound_mixer.c`; onset assertions in `suite_console.c`; `tests/test_sound_onset_tables.py`, `tests/test_sound_onset_capture.py`, `tests/fixtures/onset.txt` |
-| docs/Shared-Helpers.md | Regenerate after removing the experiment declarations |
-| This document | This section, RAM table adjustment; generated `sound-onset` block added with the capture |
+| `sound.declick_us` | Exponential decay time constant in microseconds (tau in frames after sample-rate conversion); zero disables it |
+
+The default (`SOUND_DECLICK_US` in `sound_mixer.h`) is the shortest length
+that removed stop/steal clicks on every measured board, doubled for margin
+(see the tables). Live changes require `--hot-tunables`.
+
+De-click does not remove amplifier on/off transients; the tables show no consistent change.
+Codec mute and DAC soft ramp do not reduce them either.
 
 ## Task and queue
 

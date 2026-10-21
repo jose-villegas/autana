@@ -12,7 +12,8 @@
 #define SOUND_APP_GENERATION_NONE   0u
 #define SOUND_APP_GENERATION_ENGINE 1u
 #define SOUND_APP_GENERATION_FIRST  (SOUND_APP_GENERATION_ENGINE + 1u)
-/* The shortest decay that removed stop/steal clicks on all three reference boards was 500 us; 1 ms doubles it for margin. */
+/* Exponential decay time constant (tau = converted frames), not a fade length.
+ * The shortest decay that removed stop/steal clicks on all three reference boards was 500 us; 1 ms doubles it for margin. */
 #define SOUND_DECLICK_US            1000
 #define SOUND_AMP_IDLE_MS           2000
 #define SOUND_VOICE_GENERATIONS     (UINT32_MAX / SOUND_VOICE_COUNT)

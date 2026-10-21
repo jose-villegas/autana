@@ -401,8 +401,7 @@ read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
         return frames;
     }
     size_t total = 0;
-    const uint32_t end = voice->source.cursor.sound->loop_end ? voice->source.cursor.sound->loop_end
-                                                              : voice->source.cursor.sound->frames;
+    const uint32_t end = sound_end_frame(voice->source.cursor.sound);
     while (total < frames && voice->playing) {
         size_t count = frames - total;
         if (!voice->loop && count > end - voice->source.cursor.position) {
@@ -457,31 +456,15 @@ add_tail(sound_mixer_t* mixer, int32_t* accumulator, size_t begin, size_t frames
     mixer->residual += residual;
 }
 
-static size_t
-voice_run_limit(const sound_mix_voice_t* voice, size_t frames, bool declick) {
-    if (!declick || voice->tone_source) {
-        return frames;
-    }
-    const sound_cursor_t* cursor = &voice->source.cursor;
-    const uint32_t end = cursor->sound->loop_end ? cursor->sound->loop_end : cursor->sound->frames;
-    const uint32_t position = cursor->position == end && voice->loop ? cursor->sound->loop_start : cursor->position;
-    return frames < end - position ? frames : end - position;
-}
-
 static bool
 voice_at_cut(const sound_mix_voice_t* voice) {
-    if (voice->tone_source) {
-        return false;
-    }
-    const sound_cursor_t* cursor = &voice->source.cursor;
-    const uint32_t end = cursor->sound->loop_end ? cursor->sound->loop_end : cursor->sound->frames;
-    return !voice->playing || cursor->position == end || (voice->loop && cursor->position == 0);
+    return !voice->tone_source && !voice->playing;
 }
 
-static size_t
-mix_voice_run(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulator, int16_t* scratch, size_t frames,
-              int32_t factor) {
-    const size_t count = read_voice(voice, scratch, voice_run_limit(voice, frames, mixer->declick_frames != 0));
+static void
+mix_voice(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulator, int16_t* scratch, size_t frames,
+          int32_t factor) {
+    const size_t count = read_voice(voice, scratch, frames);
     if (mixer->declick_frames && count) {
         if (voice->first_render) {
             add_tail(mixer, accumulator, 0, frames, -((scratch[0] * factor) >> SOUND_GAIN_SHIFT));
@@ -497,20 +480,6 @@ mix_voice_run(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulat
         voice->last_sample = 0;
         voice->first_render = true;
     }
-    return count;
-}
-
-static void
-mix_voice(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulator, int16_t* scratch, size_t frames,
-          int32_t factor) {
-    size_t offset = 0;
-    do {
-        const size_t count = mix_voice_run(mixer, voice, accumulator + offset, scratch, frames - offset, factor);
-        offset += count;
-        if (!count || !mixer->declick_frames) {
-            break;
-        }
-    } while (offset < frames && voice->playing);
 }
 
 void

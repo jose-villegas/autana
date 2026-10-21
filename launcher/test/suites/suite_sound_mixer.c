@@ -988,7 +988,7 @@ test_sound_declick_cuts_preserve_continuity(void) {
 }
 
 static void
-test_sound_declick_zero_signal_and_loop_seam(void) {
+test_sound_declick_zero_signal_and_authored_loop_seam(void) {
     fixture_t* f = fixture();
     f->mixer.declick_frames = TEST_DECLICK_FRAMES;
     const sound_play_opts_t opts = {.bus = SOUND_BUS_SFX, .gain_pct = 0, .loop = true};
@@ -1011,7 +1011,9 @@ test_sound_declick_zero_signal_and_loop_seam(void) {
     }
     render(f, TEST_STARTUP_MS, TEST_FRAMES);
     const unsigned seam = f->sound.loop_end;
-    TEST_ASSERT_INT_WITHIN(TEST_SAMPLE / TEST_DECLICK_FRAMES + 1, f->out[seam - 1], f->out[seam]);
+    TEST_ASSERT_EQUAL_INT16(-TEST_SAMPLE, f->out[seam - 1]);
+    TEST_ASSERT_EQUAL_INT16(TEST_SAMPLE, f->out[seam]);
+    TEST_ASSERT_EQUAL_INT32(0, f->mixer.residual);
 }
 
 static void
@@ -1035,7 +1037,7 @@ void
 run_sound_mixer_suite(void) {
     RUN_TEST(test_sound_declick_amp_off_discards_tail);
     RUN_TEST(test_sound_declick_cuts_preserve_continuity);
-    RUN_TEST(test_sound_declick_zero_signal_and_loop_seam);
+    RUN_TEST(test_sound_declick_zero_signal_and_authored_loop_seam);
     RUN_TEST(test_sound_declick_start_stop_and_tail);
     RUN_TEST(test_sound_declick_midblock_end);
     RUN_TEST(test_sound_capture_sequence_wrap_and_results);
