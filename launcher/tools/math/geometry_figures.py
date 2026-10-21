@@ -81,6 +81,9 @@ CIRCLE_STATE_OFFSET = (8, 0)
 CIRCLE_LABEL_ROOM = 3.5
 CIRCLE_SEGMENT_OFFSETS = ((0, -12), (0, 12), (0, 12))
 CIRCLE_LEGEND_OFFSET = -0.12
+CIRCLE_CELL_SIZE = POINT_SIZE / 8
+CIRCLE_CENTRE_SIZE = POINT_SIZE / 4
+CIRCLE_GUIDE_LABEL_OFFSET = (4, 4)
 
 
 def panels(projection=None):
@@ -130,19 +133,29 @@ def circle_figure(data, output):
     fig.set_size_inches(FIGURE_WIDTH, FIGURE_HEIGHT)
     style_axes(axis, "Circle / rect closest point", square=True)
     x, y, w, h = data["rect"]
-    last_x, _ = data["last"]
+    last_x, last_y = data["last"]
     for cell_y in range(y, y + h):
         for cell_x in range(x, x + w):
-            axis.scatter(cell_x, cell_y, color=SHAPE_FILL, s=POINT_SIZE)
-    axis.add_patch(Rectangle((x, y), w, h, facecolor="none", edgecolor=SHAPE_FILL,
-                             linestyle="--"))
-    axis.set_xlabel(f"right−1 = {last_x}; right = {x + w} (excluded)", fontsize=LABEL_SIZE)
-    for centre, radius, closest, hit, state in data["circles"]:
+            axis.scatter(cell_x, cell_y, color=SHAPE_FILL, s=CIRCLE_CELL_SIZE)
+    axis.add_patch(Rectangle((x, y), last_x - x, last_y - y,
+                             facecolor="none", edgecolor=SHAPE_FILL))
+    axis.plot([x + w, x + w], [y, y + h], color=FAINT, linestyle=":")
+    axis.plot([x, x + w], [y + h, y + h], color=FAINT, linestyle=":")
+    for label, anchor in ((f"right = {x + w} (excluded)", (x + w, y)),
+                          (f"bottom = {y + h} (excluded)", (x, y + h))):
+        axis.annotate(label, anchor, xytext=CIRCLE_GUIDE_LABEL_OFFSET,
+                      textcoords="offset points", fontsize=LABEL_SIZE, color=MUTED)
+    axis.set_xlabel(f"covered cells x = {x}..{last_x}, y = {y}..{last_y}\n"
+                    "(half-open: right and bottom excluded)", fontsize=LABEL_SIZE)
+    for centre, radius, closest, hit, state, cells in data["circles"]:
         color = BOX_COLORS[("overlap", "touch", "miss").index(state)]
         axis.add_patch(Circle(centre, radius, facecolor=color, edgecolor=color, alpha=SHAPE_ALPHA))
         axis.plot(*np.array([centre, closest]).T, color=MUTED, linestyle="--")
-        axis.scatter(*centre, color=color, s=POINT_SIZE)
-        axis.scatter(*closest, color=INK, s=POINT_SIZE)
+        axis.scatter(*centre, color=color, s=CIRCLE_CENTRE_SIZE)
+        axis.scatter(*closest, facecolor="none", edgecolor=INK, s=CIRCLE_CENTRE_SIZE)
+        for cell_x, cell_y, inside in cells:
+            if inside:
+                axis.scatter(cell_x, cell_y, color=BOX_COLORS[0], s=CIRCLE_CELL_SIZE)
         axis.annotate(f"{state} ({'true' if hit else 'false'})", (centre[0] + radius, centre[1]),
                       xytext=CIRCLE_STATE_OFFSET, textcoords="offset points",
                       va="center", fontsize=LABEL_SIZE, color=color)

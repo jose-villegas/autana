@@ -94,8 +94,15 @@ print_circle_queries(void) {
         const vec2i_t delta = vec2i_sub(circle.centre, closest);
         const bool hit = circlei_overlaps_rect(circle, CIRCLE_RECT);
         const bool touch = vec2i_dot(delta, delta) == circle.radius * circle.radius;
-        printf("%s[[%d,%d],%d,[%d,%d],%s,\"%s\"]", i ? "," : "", circle.centre.x, circle.centre.y, circle.radius,
+        printf("%s[[%d,%d],%d,[%d,%d],%s,\"%s\",[", i ? "," : "", circle.centre.x, circle.centre.y, circle.radius,
                closest.x, closest.y, hit ? "true" : "false", hit ? (touch ? "touch" : "overlap") : "miss");
+        for (int y = lo.y; y <= hi.y; y++) {
+            for (int x = lo.x; x <= hi.x; x++) {
+                const bool inside = circlei_contains_point(circle, (vec2i_t){x, y});
+                printf("%s[%d,%d,%s]", x == lo.x && y == lo.y ? "" : ",", x, y, inside ? "true" : "false");
+            }
+        }
+        printf("]]");
     }
     printf("],\"segment_circle\":[");
     print_vec2(SEGMENT_CIRCLE.centre);
