@@ -130,14 +130,60 @@ def read_fpu(path):
     return rows, result
 
 
-def render_table(rows, measured, baseline, fpu, build=None):
+def error_bounds():
+    header = (ROOT / "launcher/packages/math/include/math/scalar/mathf.h").read_text(encoding="utf-8")
+    def limit(name):
+        match = re.search(rf"^#define {name}\s+(\S+)", header, re.MULTILINE)
+        if match is None:
+            raise ValueError(f"missing error bound: {name}")
+        return match[1].removesuffix("F")
+    accurate = limit("MATHF_RSQRT_ULP_LIMIT") + " ulp"
+    scale = "pending (measured, sweep)"
+    return {("mathf_rsqrt", "f"): accurate + " limit (proven, exhaustive; pending)",
+            ("mathf_rsqrt_approx", "f"): limit("MATHF_RSQRT_APPROX_RELATIVE_LIMIT") + " relative limit (proven, exhaustive; pending)",
+            ("mathf_recip", "f"): limit("MATHF_RECIP_ULP_LIMIT") + " ulp",
+            ("normalize (vec3)", "f"): scale, ("normalize", "f"): scale,
+            ("nlerp", "f"): scale}
+
+
+def parse_errors(text):
+    result = {}
+    patterns = ((r"MATHF_RSQRT max_ulp=([0-9]+)", "mathf_rsqrt", "ulp"),
+                (rf"MATHF_RSQRT_APPROX max_relative=({NUMBER}(?:e-[0-9]+)?)", "mathf_rsqrt_approx", "relative"))
+    for line in text.splitlines():
+        if line.startswith("MATHERROR"):
+            match = re.fullmatch(r"MATHERROR name=(normalize \(vec3\)|nlerp) type=f max_ulp=([0-9]+)", line)
+            if match is None:
+                raise ValueError(f"malformed error measurement: {line}")
+            key = (match[1], "f")
+            value = match[2] + " ulp (measured, sweep)"
+        else:
+            for pattern, name, unit in patterns:
+                match = re.fullmatch(pattern, line)
+                if match:
+                    key = (name, "f")
+                    value = match[1] + " " + unit + " (proven, exhaustive)"
+                    break
+            else:
+                if line.startswith(("MATHF_RSQRT ", "MATHF_RSQRT_APPROX ")):
+                    raise ValueError(f"malformed error measurement: {line}")
+                continue
+        if key in result:
+            raise ValueError(f"duplicate error measurement: {line}")
+        result[key] = value
+    return result
+
+
+def render_table(rows, measured, baseline, fpu, build=None, errors=None):
     keys = {key for key, *_ in rows}
     missing = {name for name in baseline if name.startswith("math_") and name[5:] not in keys}
     if missing:
         raise ValueError(f"baseline rows missing from table: {sorted(missing)}")
     lines = [f"Board build: `{build}`." if build else "Board capture pending; board columns remain unmeasured.", "",
-             "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls |",
-             "|---|---|---:|---:|---:|---:|---:|---|"]
+             "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |",
+             "|---|---|---:|---:|---:|---:|---:|---|---|"]
+    bounds = error_bounds()
+    bounds.update(errors or {})
     for key, label, kind, ops in rows:
         qemu = f"{baseline['math_' + key] / ops:.1f}" if "math_" + key in baseline else "-"
         if set(fpu[key].partition(";")[0].split()) & set(DEVICE_ONLY_FPU_OPS):
@@ -145,7 +191,7 @@ def render_table(rows, measured, baseline, fpu, build=None):
         values = measured.get(key)
         costs = [f"{value:.1f}" for value in values] if values else ["-"] * 3
         ratio = f"{values[0] / values[2]:.1f}" if values else "-"
-        lines.append("| " + " | ".join([label, kind, *costs, qemu, ratio, fpu[key]]) + " |")
+        lines.append("| " + " | ".join([label, kind, *costs, qemu, ratio, fpu[key], bounds.get((label, kind), "-")]) + " |")
     reference = ESP_DSP_DOTPROD_F32_N256_ANSI_O2_CYCLES
     calibration = measured.get("dot_f32_n256_f")
     warm = f"{calibration[0]:.1f}" if calibration else "pending"
@@ -173,6 +219,7 @@ def elf_rows(objdump, elf, located):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--capture", type=Path, default=DATA / "math_bench_capture.txt")
+    parser.add_argument("--error-capture", type=Path, help="math_numbers capture with scalar proofs and component sweeps")
     parser.add_argument("--baseline", type=Path, default=BASELINE)
     parser.add_argument("--fpu", type=Path, default=DATA / "math_bench_fpu_ops.txt")
     parser.add_argument("--from-elf", type=Path)
@@ -200,7 +247,14 @@ def main(argv=None):
         else:
             rows, fpu = read_fpu(args.fpu)
             build, measured = parse_capture(args.capture.read_text(encoding="utf-8"), rows)
-            changed = replace_block(DOCUMENT, BLOCK, render_table(rows, measured, load_baseline(args.baseline), fpu, build),
+            if not any(label == "mathf_rsqrt_approx" for _, label, _, _ in rows):
+                accurate = next(row for row in rows if row[1] == "mathf_rsqrt")
+                key, _, kind, ops = accurate
+                key = key.replace("mathf_rsqrt", "mathf_rsqrt_approx")
+                rows.insert(rows.index(accurate) + 1, (key, "mathf_rsqrt_approx", kind, ops))
+                fpu[key] = fpu[accurate[0]]
+            changed = replace_block(DOCUMENT, BLOCK, render_table(rows, measured, load_baseline(args.baseline), fpu, build,
+                                                 parse_errors((args.error_capture or args.capture).read_text(encoding="utf-8"))),
                                     check=args.check, command="python launcher/tools/perf/math_bench_table.py --check")
             return int(args.check and changed)
     except (OSError, ValueError, RuntimeError, LayoutError, subprocess.CalledProcessError) as error:

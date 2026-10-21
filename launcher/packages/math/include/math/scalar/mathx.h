@@ -128,6 +128,11 @@ mathx_one(void) {
 }
 
 static inline int32_t
+mathx_rsqrt(int32_t v) {
+    return mathx_div(mathx_one(), mathx_sqrt(v));
+}
+
+static inline int32_t
 mathx_two(void) {
     return 2 * MATHX_ONE;
 }

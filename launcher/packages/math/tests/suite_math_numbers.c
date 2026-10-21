@@ -11,6 +11,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "suites.h"
@@ -1081,8 +1082,242 @@ test_float_ranges_with_decimal_lengths(void) {
     }
 }
 
+static uint32_t
+rsqrt_bits(float value) {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    return bits;
+}
+
+static float
+rsqrt_float(uint32_t bits) {
+    float value;
+    memcpy(&value, &bits, sizeof value);
+    return value;
+}
+
+static void
+test_rsqrt_tiny_inputs_preserve_exact_bits(void) {
+    static const float inputs[] = {0.0F, FLT_MIN / 2.0F, FLT_TRUE_MIN, FLT_MIN};
+    for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
+        const float x = rsqrt_float(rsqrt_bits(inputs[i]));
+        TEST_ASSERT_EQUAL_HEX32(rsqrt_bits(1.0F / sqrtf(x)), rsqrt_bits(mathf_rsqrt(x)));
+        const vec3f_t v = {sqrtf(x), 0.0F, 0.0F};
+        const float d = vec3f_dot(v, v);
+        const float k = 1.0F / sqrtf(d);
+        const vec3f_t expected = vec3f_scale(v, k);
+        const vec3f_t actual = vec3f_normalize(v);
+        TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
+        float quotient;
+        const vec3f_t divided = vec3f_normalize_divide(v, 1.0F, &quotient);
+        TEST_ASSERT_EQUAL_MEMORY(&expected, &divided, sizeof divided);
+        TEST_ASSERT_EQUAL_HEX32(rsqrt_bits(k), rsqrt_bits(quotient));
+        const quatf_t q = {v.x, v.y, v.z, 0.0F};
+        const quatf_t want = {q.x * k, q.y * k, q.z * k, q.w * k};
+        const quatf_t got = quatf_normalize(q);
+        TEST_ASSERT_EQUAL_MEMORY(&want, &got, sizeof got);
+    }
+}
+
+#define RSQRT_FRACTION_BITS   23
+#define RSQRT_EXPONENT_BIAS   127
+#define RSQRT_EXPONENT_MAX    254
+#define RSQRT_SIGNIFICAND_ONE (UINT32_C(1) << RSQRT_FRACTION_BITS)
+#define RSQRT_FRACTION_MASK   (RSQRT_SIGNIFICAND_ONE - 1)
+#define RSQRT_WORD_BITS       32
+
+/* The 24-by-25-by-25-bit product needs three words; no rounded float reference enters the bracket. */
+static int
+rsqrt_product_compare(uint32_t input, uint32_t significand, int exponent) {
+    const uint32_t mantissa = (input & RSQRT_FRACTION_MASK) | RSQRT_SIGNIFICAND_ONE;
+    const uint64_t square = (uint64_t)significand * significand;
+    const uint64_t low = (uint64_t)(uint32_t)square * mantissa;
+    const uint64_t high = (square >> RSQRT_WORD_BITS) * mantissa + (low >> RSQRT_WORD_BITS);
+    const int power =
+        3 * (RSQRT_EXPONENT_BIAS + RSQRT_FRACTION_BITS) - (int)(input >> RSQRT_FRACTION_BITS) - 2 * exponent;
+    const uint64_t target = UINT64_C(1) << (power - RSQRT_WORD_BITS);
+    return high < target ? -1 : (high > target || (uint32_t)low != 0 ? 1 : 0);
+}
+
+static int
+rsqrt_candidate_compare(uint32_t input, uint32_t candidate) {
+    return rsqrt_product_compare(input, (candidate & RSQRT_FRACTION_MASK) | RSQRT_SIGNIFICAND_ONE,
+                                 (int)(candidate >> RSQRT_FRACTION_BITS));
+}
+
+static uint32_t
+rsqrt_reference_bits(uint32_t input, uint32_t candidate) {
+    while (rsqrt_candidate_compare(input, candidate) > 0) {
+        candidate--;
+    }
+    while (rsqrt_candidate_compare(input, candidate + 1) <= 0) {
+        candidate++;
+    }
+    const uint32_t upper = candidate + 1;
+    const int exponent = (int)(candidate >> RSQRT_FRACTION_BITS);
+    const uint32_t lower_mantissa = (candidate & RSQRT_FRACTION_MASK) | RSQRT_SIGNIFICAND_ONE;
+    const uint32_t upper_mantissa = ((upper & RSQRT_FRACTION_MASK) | RSQRT_SIGNIFICAND_ONE)
+                                    << ((upper >> RSQRT_FRACTION_BITS) - (uint32_t)exponent);
+    const int midpoint = rsqrt_product_compare(input, lower_mantissa + upper_mantissa, exponent - 1);
+    return midpoint < 0 || (midpoint == 0 && (candidate & 1)) ? upper : candidate;
+}
+
+static void
+test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
+    static const float inputs[] = {1.0F, 2.0F, 4.0F, FLT_MIN, FLT_MAX};
+    for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
+        const uint32_t guess = rsqrt_bits(1.0F / sqrtf(inputs[i]));
+        const uint32_t result = rsqrt_reference_bits(rsqrt_bits(inputs[i]), guess);
+#ifndef DEVICE_BUILD
+        const float exact = (float)(1.0 / sqrt((double)inputs[i]));
+        TEST_ASSERT_EQUAL_HEX32(rsqrt_bits(exact), result);
+#endif
+        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(rsqrt_bits(inputs[i]), guess - 1));
+        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(rsqrt_bits(inputs[i]), guess + 1));
+    }
+}
+
+#if defined(DEVICE_BUILD) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+#define RSQRT_DIRECTION_RADIUS 4
+#define RSQRT_MAGNITUDE_MIN    -70
+#define RSQRT_MAGNITUDE_MAX    60
+#define RSQRT_MAGNITUDE_STEP   5
+#define RSQRT_QUATERNION_STEPS 32
+
+static uint32_t
+rsqrt_component_error(float expected, float actual) {
+    const uint32_t a = rsqrt_bits(expected);
+    const uint32_t b = rsqrt_bits(actual);
+    if (expected == actual) {
+        return 0;
+    }
+    return a > b ? a - b : b - a;
+}
+
+static quatf_t
+rsqrt_exact_quaternion(quatf_t q) {
+    const float d = ((q.x * q.x + q.y * q.y) + q.z * q.z) + q.w * q.w;
+    const float k = 1.0F / sqrtf(d);
+    return (quatf_t){q.x * k, q.y * k, q.z * k, q.w * k};
+}
+
+static void
+rsqrt_track_component(float expected, float actual, uint32_t* maximum) {
+    const uint32_t error = rsqrt_component_error(expected, actual);
+    if (error > *maximum) {
+        *maximum = error;
+    }
+}
+
+static void
+rsqrt_normalize_direction(vec3f_t direction, uint32_t* maximum) {
+    for (int exponent = RSQRT_MAGNITUDE_MIN; exponent <= RSQRT_MAGNITUDE_MAX; exponent += RSQRT_MAGNITUDE_STEP) {
+        const vec3f_t v = vec3f_scale(direction, ldexpf(1.0F, exponent));
+        const vec3f_t want = vec3f_scale(v, 1.0F / sqrtf(vec3f_dot(v, v)));
+        const vec3f_t got = vec3f_normalize(v);
+        rsqrt_track_component(want.x, got.x, maximum);
+        rsqrt_track_component(want.y, got.y, maximum);
+        rsqrt_track_component(want.z, got.z, maximum);
+    }
+}
+
+static void
+rsqrt_nlerp_direction(vec3f_t direction, uint32_t* maximum) {
+    const quatf_t a = rsqrt_exact_quaternion((quatf_t){direction.x, direction.y, direction.z, 1.0F});
+    for (int pair = 0; pair <= RSQRT_QUATERNION_STEPS; pair++) {
+        const float angle = (float)pair * MATH_TAU / RSQRT_QUATERNION_STEPS;
+        quatf_t b = {sinf(angle), 0.0F, 0.0F, cosf(angle)};
+        const quatf_t input_b = b;
+        const float dot = ((a.x * b.x + a.y * b.y) + a.z * b.z) + a.w * b.w;
+        if (dot < 0.0F) {
+            b = (quatf_t){-b.x, -b.y, -b.z, -b.w};
+        }
+        for (int step = 0; step <= RSQRT_QUATERNION_STEPS; step++) {
+            const float t = (float)step / RSQRT_QUATERNION_STEPS;
+            const float wa = 1.0F - t;
+            const quatf_t want = rsqrt_exact_quaternion(
+                (quatf_t){a.x * wa + b.x * t, a.y * wa + b.y * t, a.z * wa + b.z * t, a.w * wa + b.w * t});
+            const quatf_t got = quatf_nlerp(a, input_b, t);
+            rsqrt_track_component(want.x, got.x, maximum);
+            rsqrt_track_component(want.y, got.y, maximum);
+            rsqrt_track_component(want.z, got.z, maximum);
+            rsqrt_track_component(want.w, got.w, maximum);
+        }
+    }
+}
+
+static void
+test_rsqrt_normalize_and_nlerp_component_sweeps(void) {
+    uint32_t normalize_error = 0;
+    uint32_t nlerp_error = 0;
+    for (int x = -RSQRT_DIRECTION_RADIUS; x <= RSQRT_DIRECTION_RADIUS; x++) {
+        for (int y = -RSQRT_DIRECTION_RADIUS; y <= RSQRT_DIRECTION_RADIUS; y++) {
+            for (int z = -RSQRT_DIRECTION_RADIUS; z <= RSQRT_DIRECTION_RADIUS; z++) {
+                if (x == 0 && y == 0 && z == 0) {
+                    continue;
+                }
+                const vec3f_t direction = {(float)x, (float)y, (float)z};
+                rsqrt_normalize_direction(direction, &normalize_error);
+                rsqrt_nlerp_direction(direction, &nlerp_error);
+            }
+        }
+    }
+    printf("MATHERROR name=normalize (vec3) type=f max_ulp=%lu\n", (unsigned long)normalize_error);
+    printf("MATHERROR name=nlerp type=f max_ulp=%lu\n", (unsigned long)nlerp_error);
+}
+
+static void
+rsqrt_measure(uint32_t input, uint32_t* max_ulp, float* max_relative) {
+    const float value = rsqrt_float(input);
+    const uint32_t got = rsqrt_bits(mathf_rsqrt(value));
+    const uint32_t reference = rsqrt_reference_bits(input, got);
+    const uint32_t error = got > reference ? got - reference : reference - got;
+    if (error > *max_ulp) {
+        *max_ulp = error;
+    }
+    const float approximate = mathf_rsqrt_approx(value);
+    const float lower = rsqrt_float(reference - 1);
+    const float upper = rsqrt_float(reference + 1);
+    const float relative =
+        nextafterf(fmaxf(fabsf(approximate / lower - 1.0F), fabsf(approximate / upper - 1.0F)) + FLT_EPSILON, INFINITY);
+    if (relative > *max_relative) {
+        *max_relative = relative;
+    }
+}
+
+static void
+test_rsqrt_device_mantissas_and_normal_exponent_edges(void) {
+    uint32_t max_ulp = 0;
+    float max_relative = 0.0F;
+    const uint32_t first = RSQRT_EXPONENT_BIAS << RSQRT_FRACTION_BITS;
+    const uint32_t end = (RSQRT_EXPONENT_BIAS + 2) << RSQRT_FRACTION_BITS;
+    for (uint32_t input = first; input < end; input++) {
+        rsqrt_measure(input, &max_ulp, &max_relative);
+    }
+    for (int exponent = 1; exponent <= RSQRT_EXPONENT_MAX; exponent++) {
+        const uint32_t power = (uint32_t)exponent << RSQRT_FRACTION_BITS;
+        for (int offset = -1; offset <= 1; offset++) {
+            const uint32_t input = power + offset;
+            if (input >= RSQRT_SIGNIFICAND_ONE) {
+                rsqrt_measure(input, &max_ulp, &max_relative);
+            }
+        }
+    }
+    printf("MATHF_RSQRT max_ulp=%lu\n", (unsigned long)max_ulp);
+    printf("MATHF_RSQRT_APPROX max_relative=%g\n", (double)max_relative);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(MATHF_RSQRT_ULP_LIMIT, max_ulp);
+    TEST_ASSERT_TRUE(max_relative <= MATHF_RSQRT_APPROX_RELATIVE_LIMIT);
+}
+#endif
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_rsqrt_tiny_inputs_preserve_exact_bits);
+    RUN_TEST(test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints);
+#if defined(DEVICE_BUILD) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+    RUN_TEST(test_rsqrt_device_mantissas_and_normal_exponent_edges);
+    RUN_TEST(test_rsqrt_normalize_and_nlerp_component_sweeps);
+#endif
     RUN_TEST(test_mathf_lerp);
     RUN_TEST(test_mathi_lerp);
     RUN_TEST(test_mathi_lerp_u8);

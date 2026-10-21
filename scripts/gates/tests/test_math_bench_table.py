@@ -22,6 +22,32 @@ class MathBenchTableTests(unittest.TestCase):
                "MATHBENCH name=dot (vec3) type=f ops=64 warm=12.0 cold=24.0 insn=6.0\n"
                "MATHBENCH name=sinf type=f ops=64 warm=90.0 cold=110.0 insn=30.0\n")
 
+    def test_error_bounds_come_from_scalar_owner(self):
+        bounds = bench.error_bounds()
+        self.assertIn("ulp", bounds["mathf_rsqrt", "f"])
+        self.assertIn("relative", bounds["mathf_rsqrt_approx", "f"])
+        self.assertIn("ulp", bounds["mathf_recip", "f"])
+        self.assertIn("pending", bounds["normalize", "f"])
+        self.assertIn("pending", bounds["nlerp", "f"])
+        rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch)]
+        table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"})
+        self.assertIn("max error", table)
+        self.assertIn(bounds["mathf_rsqrt", "f"], table)
+
+    def test_component_sweeps_join_by_name_and_preserve_zero_error(self):
+        text = ("noise\nMATHERROR name=normalize (vec3) type=f max_ulp=0\n"
+                "MATHERROR name=nlerp type=f max_ulp=3\n")
+        errors = bench.parse_errors(text)
+        self.assertEqual("0 ulp (measured, sweep)", errors["normalize (vec3)", "f"])
+        self.assertEqual("3 ulp (measured, sweep)", errors["nlerp", "f"])
+        rows = [("nlerp_f", "nlerp", "f", self.batch)]
+        table = bench.render_table(rows, {}, {}, {"nlerp_f": "-"}, errors=errors)
+        self.assertIn(errors["nlerp", "f"], table)
+        for malformed in (text + text, text.replace("max_ulp=3", "max_ulp=-1"),
+                          text.replace("nlerp", "unknown")):
+            with self.subTest(text=malformed), self.assertRaises(ValueError):
+                bench.parse_errors(malformed)
+
     def test_missing_row_is_an_error(self):
         with self.assertRaisesRegex(ValueError, "missing"):
             bench.parse_capture(self.capture.split("MATHBENCH name=sinf")[0], self.rows)

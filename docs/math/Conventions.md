@@ -53,7 +53,7 @@ The macro arguments:
 | `L` | The projection lens type used by `MATH_DEFINE_PLANE`, e.g. `projectf` |
 | `T` | The scalar (`float`, `int`, `int32_t`, `int16_t`); `recti` keeps plain `int` |
 | `W` | The type a dot product sums in (wider than `T` for an integer) |
-| `OPS` | The scalar operations' prefix (`mathf`, `mathi`, `maths`, `mathx`): the static inline functions `OPS_add`, `OPS_mul`, `OPS_one` and the rest in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`. A family names only the ones it uses, so a type without `OPS_div` or `OPS_sqrt` gets no normalize. |
+| `OPS` | The scalar operations' prefix (`mathf`, `mathi`, `maths`, `mathx`): the static inline functions `OPS_add`, `OPS_mul`, `OPS_one` and the rest in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`. A family names only the ones it uses, so normalization requires `OPS_rsqrt` (reciprocal square root), supplied by `mathf` and `mathx`. |
 | `N` | A vector's component count: the vector's own for component-wise operations (`vec_ops_template.h`), a swizzle source's otherwise |
 | `D`, `S` | A swizzle's result and source vector types (`vec_swizzle_template.h`) |
 | `CROSS` | `MATH_DEFINE_CLIP_NEAR`'s crossing step, `_projectf_cross_near` or `_projectx_cross_near`; it defines `P_clip_near` and no type |

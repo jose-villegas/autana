@@ -64,13 +64,28 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 
 `MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
 
-## mathf_rsqrt.h
+## Reciprocal square root (`mathf.h`)
 
-| Function | Purpose | Formula |
+| Function | Board formula | Bound source |
 |---|---|---|
-| `mathf_rsqrt(x)` | reciprocal square root for positive normal-range inputs; on the board the FPU's `rsqrt0.s` seed plus one Newton step, on host and QEMU the exact `1 / sqrt(x)` | $`y_0 = \mathrm{rsqrt0}(x)`$<br>$`y_1 = y_0\,(3 - x\,y_0^2) / 2`$ |
+| `mathf_rsqrt(x)` | `rsqrt0.s` seed, two Newton steps | `MATHF_RSQRT_ULP_LIMIT` in `mathf.h` |
+| `mathf_rsqrt_approx(x)` | `rsqrt0.s` seed, one Newton step | `MATHF_RSQRT_APPROX_RELATIVE_LIMIT` in `mathf.h` |
 
-The device result is within `MATHF_RSQRT_RELATIVE_LIMIT` relative error of the exact value, which the device sweep checks.
+Newton-Raphson reciprocal square root uses
+$`y_{n+1}=y_n+\tfrac12 y_n\,(1-(xy_n)y_n)`$.<sup>[[83]](../Citations.md#83)</sup>
+The approximate path evaluates its single correction as $`y_0\,(1.5-0.5xy_0^2)`$.
+
+`CONFIG_MATH_FPU_RECIP` enables the board seed. Host and QEMU use
+`1.0F / sqrtf(x)`. For `x < FLT_MIN`, including zero and subnormals,
+`mathf_rsqrt` uses that same formula and preserves its bits.
+
+The normal-input ULP limit is provisional pending board measurement.
+`suite_math_numbers.c` checks every float in `[1, 4)` and powers of two
+with their normal neighbours across the exponent range.
+
+Its integer product bracket rounds the exact reciprocal root without
+using the twice-rounded `1 / sqrtf` as a reference. The suite prints
+`MATHF_RSQRT max_ulp` and `MATHF_RSQRT_APPROX max_relative` and checks both limits.
 
 ## fixed.h
 

@@ -8,6 +8,7 @@
 #pragma once
 
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 
 #ifdef __XTENSA__
@@ -78,6 +79,37 @@ mathf_recip(float a) {
     return y + (y * (1.0F - (a * y)));
 #else
     return 1.0F / a;
+#endif
+}
+
+#define MATHF_RSQRT_APPROX_RELATIVE_LIMIT 0.0001F
+#define MATHF_RSQRT_ULP_LIMIT             2
+#define MATHF_RECIP_ULP_LIMIT             1
+
+static inline __attribute__((always_inline)) float
+mathf_rsqrt_approx(float value) {
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+    float seed;
+    __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
+    return seed * (1.5F - 0.5F * value * seed * seed);
+#else
+    return 1.0F / sqrtf(value);
+#endif
+}
+
+/* Subnormal squared lengths retain the exact normalize path. */
+static inline __attribute__((always_inline)) float
+mathf_rsqrt(float value) {
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+    if (value < FLT_MIN) {
+        return 1.0F / sqrtf(value);
+    }
+    float seed;
+    __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
+    seed += (0.5F * seed) * (1.0F - (value * seed) * seed);
+    return seed + (0.5F * seed) * (1.0F - (value * seed) * seed);
+#else
+    return 1.0F / sqrtf(value);
 #endif
 }
 
