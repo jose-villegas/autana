@@ -306,21 +306,37 @@ class RecordedInputsTests(unittest.TestCase):
         self.assertFalse(records.current([old, newest, *ignored], 'A'))
         self.assertTrue(records.current([newest, old, *ignored], 'B'))
         failure = artifact(failed, 'A', '2026-01-03T00:00:00Z')
-        self.assertTrue(records.current([old, newest, failure, *ignored], 'A'))
+        self.assertFalse(records.current([old, newest, failure, *ignored], 'A'))
         self.assertFalse(records.current([failure], 'A', force=True))
         self.assertFalse(records.current([], 'A'))
 
 
+    def test_failed_record_order_expiry_and_branch(self):
+        failed = dict(name=records.FAILED_PREFIX + 'F', created_at='2026-01-02',
+                      expired=False, workflow_run={'head_branch': 'main'})
+        rendered = dict(failed, name=records.RENDERED_PREFIX + 'F', created_at='2026-01-01')
+        newer_rendered = dict(rendered, created_at='2026-01-03')
+        cases = [([failed], False), ([rendered, failed], False), ([failed, rendered], False),
+                 ([failed, newer_rendered], True), ([newer_rendered, failed], True),
+                 ([rendered, dict(failed, expired=True)], True),
+                 ([rendered, dict(failed, workflow_run={'head_branch': 'feature/test'})], True)]
+        for artifacts, expected in cases:
+            with self.subTest(artifacts=artifacts), mock.patch.dict(os.environ, FORCE=''), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(records.current(artifacts, 'F'), expected)
+                records.main(['F'], request=mock.Mock(return_value={'artifacts': artifacts}))
+            self.assertEqual(output.getvalue(), str(expected).lower() + '\n')
+
     def test_exact_name_and_empty_fingerprint(self):
-        record = dict(name=records.RECORD_PREFIXES[0] + 'longABC', created_at='2026',
+        record = dict(name=records.RENDERED_PREFIX + 'longABC', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
         self.assertFalse(records.current([record], 'ABC'))
         self.assertFalse(records.current([record], ''))
-        record['name'] = records.RECORD_PREFIXES[0]
+        record['name'] = records.RENDERED_PREFIX
         self.assertFalse(records.current([record], ''))
 
     def test_main_force_and_paged_api(self):
-        record = dict(name=records.RECORD_PREFIXES[0] + 'ABC', created_at='2026',
+        record = dict(name=records.RENDERED_PREFIX + 'ABC', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
         for force, expected in [('true', 'false'), ('', 'true'), ('false', 'true')]:
             with self.subTest(force=force), mock.patch.dict(os.environ, FORCE=force), \
@@ -334,7 +350,7 @@ class RecordedInputsTests(unittest.TestCase):
             self.assertEqual(calls, [('GET', '/actions/artifacts?per_page=100&page=1')])
 
     def test_hosted_lookup_defers_to_gate_when_other_run_in_flight(self):
-        record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
+        record = dict(name=records.RENDERED_PREFIX + 'X', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
         for status in ('queued', 'in_progress', 'pending', 'requested', 'waiting', 'completed'):
             for run_id in (10, 11):
@@ -389,7 +405,7 @@ class RecordedInputsTests(unittest.TestCase):
                                                   {'id': 10, 'status': 'pending'}]}
                     # A record read first sees X before the other run finishes and records B.
                     fingerprint = 'X' if matching and len(calls) == 1 else 'B'
-                    return {'artifacts': [dict(name=records.RECORD_PREFIXES[0] + fingerprint,
+                    return {'artifacts': [dict(name=records.RENDERED_PREFIX + fingerprint,
                         created_at='2026', expired=False, workflow_run={'head_branch': 'main'})]}
                 records.main(['X', '--defer-in-flight'], request=request)
             self.assertEqual(output.getvalue(), 'false\n')
@@ -414,7 +430,7 @@ class RecordedInputsTests(unittest.TestCase):
         request.assert_called_once_with('GET', '/git/ref/heads/main')
 
     def test_delayed_push_gate_skips_after_completed_revert(self):
-        record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
+        record = dict(name=records.RENDERED_PREFIX + 'X', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
         with mock.patch.dict(os.environ, FORCE='', GITHUB_SHA='X'), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
@@ -440,7 +456,7 @@ class RecordedInputsTests(unittest.TestCase):
                     tail = [{'id': 1000 + index, 'status': 'completed'} for index in range(3)]
                     if unfinished:
                         (runs if page == 1 else tail)[len(runs) // 2 if page == 1 else 1]['status'] = 'pending'
-                    record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
+                    record = dict(name=records.RENDERED_PREFIX + 'X', created_at='2026',
                                   expired=False, workflow_run={'head_branch': 'main'})
                     def request(method, path, body=None):
                         if '/artifacts?' in path:
