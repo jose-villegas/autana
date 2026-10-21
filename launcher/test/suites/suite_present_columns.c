@@ -42,11 +42,13 @@ partial_windows_at(int hz, int* windows) {
 void
 test_present_fast_clock_sends_full_width_rows(void) {
     const int restore_hz = gfx_panel_clock_hz();
-    int windows = 0;
-    const int fast_partial = partial_windows_at(GFX_PANEL_CLOCK_FAST_HZ, &windows);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, windows, "the change was never sent at the fast clock");
-    const int slow_partial = partial_windows_at(GFX_PANEL_CLOCK_SLOW_HZ, &windows);
+    int fast_windows = 0;
+    int slow_windows = 0;
+    const int fast_partial = partial_windows_at(GFX_PANEL_CLOCK_FAST_HZ, &fast_windows);
+    const int slow_partial = partial_windows_at(GFX_PANEL_CLOCK_SLOW_HZ, &slow_windows);
     gfx_set_panel_clock_hz(restore_hz);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, fast_windows, "the change was never sent at the fast clock");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, slow_windows, "the change was never sent at the slow clock");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, fast_partial, "a partial-width window went out at the fast clock");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, slow_partial, "the slow clock no longer sends a small change narrow");
 }
