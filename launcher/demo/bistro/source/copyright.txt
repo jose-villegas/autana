@@ -12,4 +12,7 @@ pixels and saved as PNG; normal, specular and emissive maps, the interior
 scenes and the environment map are dropped. Made with
 launcher/tools/r3d/source/reduce_source.py:
 
-    python launcher/tools/r3d/source/reduce_source.py BistroExterior.fbx launcher/demo/bistro/source         --name bistro --error 5 --error-for "Foliage_*Leaves*=40" --error-for "Foliage_Bux_Hedges*=40"         --error-for "Foliage_Ivy_leaf*=40" --texture-size 256 --source-up Y
+    python launcher/tools/r3d/source/reduce_source.py BistroExterior.fbx launcher/demo/bistro/source \
+        --name bistro --error 5 --error-for "Foliage_*Leaves*=40" \
+        --error-for "Foliage_Bux_Hedges*=40" --error-for "Foliage_Ivy_leaf*=40" \
+        --texture-size 256 --source-up Y

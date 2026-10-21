@@ -1,7 +1,6 @@
 /*
- * scene_bistro: the Bistro street walked and flown over on a looping camera
- * path, one scene per bake (bistro_bakes), shown through
- * scene_baked.
+ * scene_bistro: the Bistro street walked and flown over on a looping camera path,
+ * one scene per bake (bistro_bakes), shown through scene_baked.
  */
 
 #include "bistro_content.h"

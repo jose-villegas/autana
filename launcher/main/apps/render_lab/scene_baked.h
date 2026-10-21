@@ -13,7 +13,7 @@ typedef struct {
     const char* scene;        /* the scene's id, and its pack's name */
     const char* const* bakes; /* the renderers one scene each shows */
     int bake_count;
-    const char* const* cameras; /* [0] is the camera a start with none named follows */
+    const char* const* cameras; /* [0] is followed when the start names no camera */
 } scene_baked_t;
 
 /* Loads the family's scene and enables bakes[shown] alone. */

@@ -15,7 +15,7 @@ error, in a pass of their own, for a material such as alpha-tested cards that
 the import thins or masks anyway. Writes OUT_DIR/NAME.obj, its .mtl and
 OUT_DIR/textures/, and prints the triangle count before and after.
 
-A source too large to keep in Git LFS, or to trace in a bake, is reduced once
+A source too large to commit, or to trace in a bake, is reduced once
 with this and the result committed beside its import file with the original's
 credit; the import's own `simplify` then brings it to each variant's budget.
 """

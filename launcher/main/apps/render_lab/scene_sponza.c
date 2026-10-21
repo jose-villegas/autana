@@ -1,6 +1,6 @@
 /*
- * scene_sponza: Crytek Sponza flown through on a looping camera path, one scene per bake (sponza_bakes), shown through
- * scene_baked.
+ * scene_sponza: Crytek Sponza flown through on a looping camera path,
+ * one scene per bake (sponza_bakes), shown through scene_baked.
  */
 
 #include "render_lab_scene.h"

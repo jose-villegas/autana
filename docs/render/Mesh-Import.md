@@ -63,9 +63,10 @@ git lfs pull --exclude=""
 
 The empty exclude clears the clone's default exclusion for this pull.
 
-A model too large to keep in LFS or to trace is reduced once to an OBJ by
+A model too large to commit or to trace is first reduced to an OBJ by
 [`source/reduce_source.py`](../../launcher/tools/r3d/source/reduce_source.py),
-which keeps its objects and textures; its `simplify` then works from that.
+which keeps its objects and textures; the import's `simplify` then starts
+from that OBJ.
 
 #### output
 
