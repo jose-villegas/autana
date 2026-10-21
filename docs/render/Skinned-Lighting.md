@@ -69,7 +69,7 @@ That is the difference between the modes:
 | Mode | Normal it lights |
 |---|---|
 | Direct | the blended normal as it is; darker where joints mix |
-| Renormalised | the blended normal scaled back to unit length by `mathf_rsqrt()` |
+| Renormalised | the blended normal scaled back to unit length by `mathf_rsqrt_approx()` |
 | Table | the blended normal's direction only, so length never matters |
 
 ![Light against the angle between normal and light: unit length, a normal blended to 0.8 long, and the 16x16 table, with the table's error below](images/skin-light-angle.png)
@@ -77,9 +77,9 @@ That is the difference between the modes:
 The table follows N.L to within about 0.02 of full light, except near 90°:
 its bilinear blend carries a little light past the edge, where N.L is zero.
 
-`mathf_rsqrt()` is the S3's reciprocal-square-root seed plus one Newton
+`mathf_rsqrt_approx()` is the S3's reciprocal-square-root seed plus one Newton
 step; host and QEMU use an exact square root. The device tests hold it to
-`MATHF_RSQRT_RELATIVE_LIMIT` and the light-byte limit in `suite_skin_light.c`.
+`MATHF_RSQRT_APPROX_RELATIVE_LIMIT` and the light-byte limit in `suite_skin_light.c`.
 
 ## Lighting modes
 
@@ -88,7 +88,7 @@ The import's [`[skin].lighting`](Mesh-Import.md#skin-lighting) picks the mode.
 | Mode | Per vertex | Cost on the board | Pick it when |
 |---|---|---|---|
 | **direct** (default) | N.L per light on the blended normal | cheapest; about 23 cycles more per light | the darkening where joints mix does not show |
-| renormalised | the same after `mathf_rsqrt()` | about 40 cycles above direct | normal length must not change brightness |
+| renormalised | the same after `mathf_rsqrt_approx()` | about 40 cycles above direct | normal length must not change brightness |
 | table | one bilinear lookup in a shared irradiance table | flat, about 860 cycles, plus a rebuild per light change | many lights: it costs more than direct up to the current `R3D_SKIN_LIGHT_MAX`, with the crossover estimated near 10 lights; scenes with many or dynamic lights are not yet measured |
 
 Skinning alone is the first bar; an exact float evaluation costs about
