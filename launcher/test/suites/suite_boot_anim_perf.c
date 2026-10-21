@@ -23,6 +23,7 @@
 
 #ifdef DEVICE_BUILD
 
+#include "perf_layout_labels.h"
 #include "perf_stats.h"
 
 #include <stdint.h>
@@ -368,10 +369,10 @@ test_boot_anim_performance_by_checkpoint(void) {
         bool contend;
         bool clear_on_send; /* gfx_set_clear_on_send(): core 1 clears, the boot's clear is free */
     } passes[] = {
-        {GFX_LAYOUT_FULL_FB, "FULL_FB", false, false},
-        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB", false, false},
-        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB_CLEAR_ON_SEND", false, true},
-        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB_CONTENDED", true, false},
+        {GFX_LAYOUT_FULL_FB, PERF_LAYOUT_FULL_FB, false, false},
+        {GFX_LAYOUT_DOUBLE_FB, PERF_LAYOUT_DOUBLE_FB, false, false},
+        {GFX_LAYOUT_DOUBLE_FB, PERF_LAYOUT_DOUBLE_FB_CLEAR_ON_SEND, false, true},
+        {GFX_LAYOUT_DOUBLE_FB, PERF_LAYOUT_DOUBLE_FB_CONTENDED, true, false},
     };
 
     for (size_t pass = 0; pass < sizeof passes / sizeof passes[0]; pass++) {
