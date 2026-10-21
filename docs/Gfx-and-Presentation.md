@@ -1,7 +1,9 @@
 # Gfx and Presentation
 
 How a draw call becomes pixels on the panel: the three draw targets, the dirty
-tracker, and the present path. A caller includes the header for what it does:
+tracker, and the present path. Which layout and present option to pick, and
+when each pays, is [Rendering Options](render/Rendering-Options.md).
+A caller includes the header for what it does:
 
 | Header | What it declares |
 | --- | --- |
@@ -111,6 +113,50 @@ framebuffer, and frees the other. Readback also drains before reading the front.
   divides `GFX_HEIGHT`. On the device, at every band height, the two band
   buffers alias `gfx_present.c`'s strip-bounce slots rather than allocating; a host
   build mallocs them.
+
+### Layout costs
+
+Each picture's frame cost on the board, from one build, in `FULL_FB`,
+`DOUBLE_FB` and two `DOUBLE_FB` variants. In `_CLEAR_ON_SEND` core 1 clears
+each sent frame, so the draw skips its clear; in `_CONTENDED` a send runs
+during the whole draw, so both share PSRAM. Not run: the suite has no such pass.
+
+The r3d scenes draw in `update()`; the boot animation draws a full frame in
+`frame()`.
+
+<!-- generated: gfx-layout-costs sha256=044d2114596af857921ea58d9838b34025900b54d8ea212bc476c81fd155a4a5 -->
+![Frame cost by framebuffer layout](images/render/gfx-layout-costs.png)
+
+| Picture | `FULL_FB` | `DOUBLE_FB` | `DOUBLE_FB_CLEAR_ON_SEND` | `DOUBLE_FB_CONTENDED` |
+|---|---|---|---|---|
+| sponza-fitted-full, portrait | 43.1 | 48.1 (+12%) | 52.1 (+21%) | not run |
+| sponza-fitted-full, landscape | 40.7 | 45.7 (+12%) | 49.4 (+21%) | not run |
+| sponza, portrait | 42.6 | 47.6 (+12%) | 51.3 (+20%) | not run |
+| sponza, landscape | 41.2 | 46.1 (+12%) | 49.7 (+21%) | not run |
+| sponza-lite, portrait | 35.0 | 39.7 (+13%) | 43.6 (+24%) | not run |
+| sponza-lite, landscape | 34.2 | 38.8 (+14%) | 42.6 (+25%) | not run |
+| sponza-flat, portrait | 35.0 | 39.6 (+13%) | 43.7 (+25%) | not run |
+| sponza-flat, landscape | 34.8 | 39.4 (+13%) | 43.4 (+24%) | not run |
+| sponza-fitted, portrait | 34.0 | 39.0 (+15%) | 42.8 (+26%) | not run |
+| sponza-fitted, landscape | 32.5 | 37.3 (+15%) | 41.1 (+27%) | not run |
+| sponza-flat-fitted, portrait | 34.4 | 39.4 (+15%) | 43.4 (+26%) | not run |
+| sponza-flat-fitted, landscape | 33.4 | 38.4 (+15%) | 42.2 (+26%) | not run |
+| capybara, portrait | 13.7 | 18.4 (+35%) | 22.6 (+65%) | not run |
+| capybara, landscape | 14.4 | 18.9 (+31%) | 23.0 (+60%) | not run |
+| boot animation, curve_climbing_early | 31.6 | 24.2 (-23%) | 20.5 (-35%) | 23.9 (-25%) |
+| boot animation, title_flying_in | 34.4 | 26.9 (-22%) | 22.3 (-35%) | 26.6 (-23%) |
+| boot animation, grid_settled_pre_image | 27.1 | 19.6 (-28%) | 15.5 (-43%) | 19.2 (-29%) |
+| boot animation, crossfade_start | 41.9 | 34.3 (-18%) | 29.2 (-30%) | 33.9 (-19%) |
+| boot animation, crossfade_mid | 43.4 | 35.7 (-18%) | 30.5 (-30%) | 35.4 (-18%) |
+| boot animation, crossfade_late | 44.0 | 36.4 (-17%) | 31.1 (-29%) | 36.1 (-18%) |
+| boot animation, near_end | 22.2 | 14.5 (-35%) | 15.3 (-31%) | 14.4 (-35%) |
+
+Board ms per frame, mean of each suite's samples. A change is against the first layout its row reports.
+<!-- /generated: gfx-layout-costs -->
+
+Regenerate with
+[`render_doc_images.sh`](../launcher/tools/render/render_doc_images.sh), from
+the captures in [render/data/](render/data/).
 
 ## Expanded frames
 
@@ -312,11 +358,11 @@ sequenceDiagram
 - The first frame after `gfx_mode_enter()`, and any frame after
   `gfx_invalidate()`, forces every band.
 - A UI over a band renderer is built once and replayed per dirty band:
-  `ui_end_for_bands()` bins the command list by rows. The shell passes
+  `ui_end()` bins the command list by rows in band mode. The shell passes
   `ui_replay_band()` to `gfx_band_run()` as its overlay, which draws a
   band's share after the app's content. The shell queues its home hint with
   `ui_queue_band_overlay_rect()` before `frame()`, because the app's
-  `ui_end_for_bands()` call inside `frame()` bins it.
+  `ui_end()` call inside `frame()` bins it.
 - Each dirty band goes out whole: `gfx_band_run()` makes one
   `esp_lcd_panel_draw_bitmap()` call per band, straight from the buffer the
   app drew. The transfer takes no source stride, so sending fewer columns

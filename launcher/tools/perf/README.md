@@ -250,6 +250,9 @@ rows. Single-viewport render documentation readers select portrait by default;
 
 ## Nightly scoped chain
 
+The same workflow runs docs-search retrieval evals alongside the board job:
+hybrid on the GPU runner and lexical on hosted Linux, with scores in each job summary.
+
 The workflow assigns first-parent commits on main by position modulo board
 count. Each board repeats its last measured commit as an anchor and plans
 new steps after `last_attempted`. A fresh board starts at its newest commit.

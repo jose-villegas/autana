@@ -425,7 +425,8 @@ ui_end(uint32_t background_rgb) {
     finish_band_stats();
 #endif
     ui_band_fallbacks = 0;
-    if (gfx_frame_expanded()) {
+    /* No framebuffer to paint: the bands replay it as gfx sends them. */
+    if (gfx_frame_expanded() || gfx_mode_current()->layout == GFX_LAYOUT_BANDS) {
         ui_end_for_bands(background_rgb);
         return true;
     }
@@ -463,7 +464,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
     finish_band_stats();
 #endif
     ui_band_fallbacks = 0;
-    assert(!gfx_frame_expanded());
+    assert(gfx_mode_has_framebuffer(gfx_mode_current()) && !gfx_frame_expanded());
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
 #endif

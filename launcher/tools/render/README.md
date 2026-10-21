@@ -10,7 +10,8 @@
 | [doc_images_demo.sh](doc_images_demo.sh) | Makes the demo's bake, fidelity, import and small-fill images and measured CPU tables through the scene viewer; `--small-fill-only` selects the small-fill outputs. |
 | [doc_tables.py](doc_tables.py) | Writes CPU tables from comparison logs, tunable listings and sweep captures, with scene and object names supplied as arguments. |
 | [doc_import_examples.py](doc_import_examples.py) | Renders albedo and face-sampling examples from a supplied scene and renderer. |
-| [physical_scene.py](physical_scene.py) | Copies a scene without its indirect look and occlusion settings for isolated bake studies. |
+| [physical_scene.py](physical_scene.py) | Copies a scene without its indirect look and occlusion settings, or in one study look (`--look`), for isolated bake studies. |
+| [showcase.py](showcase.py) | Prints a scene's showcase, its first renderer: the one pictures of the whole scene draw. |
 | [render_diff.py](render_diff.py) | Compares rendered and captured images. |
 | [render_diff.sh](render_diff.sh) | Shell entry point for image comparisons. |
 | [render_temporal.py](render_temporal.py) | Adds triangle-scale temporal metrics to video CSVs and composes labelled look-range videos. |
@@ -60,22 +61,26 @@ Prepare the committed scene's size bakes and one scratch firmware tree:
 
 ```sh
 python launcher/tools/render/meshlet_capture.py prepare \
-  --scene SCENE.scene.toml --suite SUITE_NAME --sizes 16 32 64
+  --scene SCENE.scene.toml --suite SUITE_NAME --size-tune TUNABLE --sizes 16 32 64
 ```
 
-The scene's tools README supplies its scene path and fixed-pose suite name.
+The scene's tools README supplies its scene path, fixed-pose suite name and the
+suite's tunable that each row sets to the showcase's shipped meshlet size: the
+suite's p95 ceilings, pegged on shipped bakes, then gate only bakes of that size.
 Preparation copies the tracked tree into
-`launcher/tools/results/meshlet-sizes/tree` and re-clusters committed triangles
-through `rebake.py`, without building firmware or accessing the board.
+`launcher/tools/results/meshlet-sizes/tree` and re-clusters the showcase's cached
+bake through `rebake.py`, without building firmware or accessing the board. The
+other bakes keep the shipped size, so the suite's budgets for them hold.
 
-For each size, install its bakes into that tree, then run the single printed
-command before installing the next size:
+Packs read meshes from the bake cache by the lock, so a row puts its size's
+bakes in the cache and points the tree's `bakes.lock` at them. Install a row,
+then run the single printed command before installing the next size:
 
 ```sh
 python launcher/tools/render/meshlet_capture.py row 16
 ```
 
-The printed `autana --wait 3600 --project TREE suite SUITE_NAME --flash --out LOG`
+The printed `autana --wait 3600 --project TREE suite SUITE_NAME --set TUNABLE=SIZE --flash --out LOG`
 command builds incrementally and holds one board lock from flash through capture.
 A capture can take half an hour. The suite measures both culling settings through
 the tune API and restores the previous setting even on assertion failure. Each
@@ -89,9 +94,10 @@ Refresh the [meshlets block](../../../docs/render/Render-Pipeline.md#meshlets):
 sh launcher/tools/render/render_doc_images.sh --stage meshlets
 ```
 
-`doc_stages.py --stage meshlets --scene PATH --object NAME` validates captures,
-regenerates bakes and their packs, and writes the named table. The renderer must
-have an identity placement. Host counts sample the same fixed camera poses and
+`doc_stages.py --stage meshlets --scene PATH` validates captures, regenerates
+bakes and their packs, and writes the table of the scene's showcase, its first
+renderer ([showcase.py](showcase.py)). The suite's culling-off pass draws that
+renderer too, and it must have an identity placement. Host counts sample the same fixed camera poses and
 default render size as the suite. Each row averages its own capture's per-pose
 stage reports and draw plus upscale wall times, without panel transfer. Missing
 PASS or completion verdicts, mismatched poses, build IDs, pack hashes, renderer

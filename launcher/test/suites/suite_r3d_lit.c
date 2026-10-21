@@ -299,7 +299,7 @@ test_a_tiny_triangle_takes_the_average_of_its_corners(void) {
     for (int i = 0; i < W * H; i++) {
         if (depth[i] != 0) {
             TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x555555), color[i]);
-            TEST_ASSERT_UINT16_WITHIN(1, 32767, depth[i]);
+            TEST_ASSERT_UINT16_WITHIN(1, R3D_DEPTH_NEAREST / 2, depth[i]);
         }
     }
 }
@@ -1044,8 +1044,8 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
         m->colors[v][0] = m->colors[v][1] = m->colors[v][2] = 200;
     }
     m->cluster = (r3d_lit_cluster_t){
-        0, (uint16_t)vertices, 0, (uint16_t)triangles, {-32767, -32767, -8}, {32767, 32767, 8}, true};
-    m->node = (r3d_lit_node_t){{-32767, -32767, -8}, {32767, 32767, 8}, 0, 1, true};
+        0, (uint16_t)vertices, 0, (uint16_t)triangles, {{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}}, true};
+    m->node = (r3d_lit_node_t){{{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}}, 0, 1, true};
     return (r3d_lit_mesh_t){.positions = m->positions,
                             .colors = m->colors,
                             .triangles = m->triangles,
@@ -1208,12 +1208,12 @@ static const int16_t quad_positions[][3] = {{-100, -100, 0}, {100, -100, 0}, {10
 static const uint16_t quad_front[][3] = {{0, 1, 2}, {0, 2, 3}};
 static const uint16_t quad_back[][3] = {{0, 2, 1}, {0, 3, 2}};
 
-static const r3d_lit_node_t quad_node = {{-100, -100, 0}, {100, 100, 0}, 0, 1, true};
+static const r3d_lit_node_t quad_node = {{{-100, -100, 0}, {100, 100, 0}}, 0, 1, true};
 
 /* A mesh lit by its vertices, or by `face_colors` alone when given. */
 static r3d_lit_mesh_t
 quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors, r3d_lit_cluster_t* cluster) {
-    *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {-100, -100, 0}, {100, 100, 0}, double_sided};
+    *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{-100, -100, 0}, {100, 100, 0}}, double_sided};
     return r3d_quad_mesh(quad_positions, triangles, face_colors, cluster, &quad_node);
 }
 
@@ -1304,8 +1304,8 @@ static void
 draw_floor(const uint16_t* face_colors) {
     static const int16_t floor_positions[][3] = {
         {-1000, 0, -1000}, {1000, 0, -1000}, {1000, 0, 3000}, {-1000, 0, 3000}};
-    r3d_lit_cluster_t cluster = {0, 4, 0, 2, {-1000, 0, -1000}, {1000, 0, 3000}, false};
-    static const r3d_lit_node_t floor_node = {{-1000, 0, -1000}, {1000, 0, 3000}, 0, 1, true};
+    r3d_lit_cluster_t cluster = {0, 4, 0, 2, {{-1000, 0, -1000}, {1000, 0, 3000}}, false};
+    static const r3d_lit_node_t floor_node = {{{-1000, 0, -1000}, {1000, 0, 3000}}, 0, 1, true};
     const r3d_lit_mesh_t mesh = r3d_quad_mesh(floor_positions, NULL, face_colors, &cluster, &floor_node);
 
     r3d_lens_t lens;
@@ -1434,14 +1434,6 @@ parts_begin(parts_t* p) {
                                .position_scale = 1};
 }
 
-static void
-widen(int16_t lo[3], int16_t hi[3], const int16_t p[3]) {
-    for (int k = 0; k < 3; k++) {
-        lo[k] = p[k] < lo[k] ? p[k] : lo[k];
-        hi[k] = p[k] > hi[k] ? p[k] : hi[k];
-    }
-}
-
 /* A fan of n = 3 or 4 corners in engine coordinates. */
 static void
 parts_add(parts_t* p, const int16_t corners[][3], int n, const uint8_t rgb[][3], bool double_sided) {
@@ -1449,17 +1441,12 @@ parts_add(parts_t* p, const int16_t corners[][3], int n, const uint8_t rgb[][3],
     TEST_ASSERT_TRUE(m->cluster_count < PARTS_MAX && (n == 3 || n == 4));
     const uint16_t first = (uint16_t)m->vertex_count;
     r3d_lit_cluster_t* c = &p->clusters[m->cluster_count++];
-    *c = (r3d_lit_cluster_t){first,
-                             (uint16_t)n,
-                             (uint16_t)m->triangle_count,
-                             (uint16_t)(n - 2),
-                             {INT16_MAX, INT16_MAX, INT16_MAX},
-                             {INT16_MIN, INT16_MIN, INT16_MIN},
-                             double_sided};
+    *c = (r3d_lit_cluster_t){first,         (uint16_t)n, (uint16_t)m->triangle_count, (uint16_t)(n - 2),
+                             box3s_empty(), double_sided};
     for (int i = 0; i < n; i++) {
         memcpy(p->positions[first + i], corners[i], sizeof p->positions[0]);
         memcpy(p->colors[first + i], rgb[i], sizeof p->colors[0]);
-        widen(c->lo, c->hi, p->positions[first + i]);
+        c->bounds = box3s_extend(c->bounds, vec3s_from_array(corners[i]));
     }
     for (int t = 0; t < n - 2; t++) {
         uint16_t* tri = p->triangles[m->triangle_count++];
@@ -1469,11 +1456,9 @@ parts_add(parts_t* p, const int16_t corners[][3], int n, const uint8_t rgb[][3],
     }
     m->vertex_count += n;
 
-    p->node = (r3d_lit_node_t){
-        {INT16_MAX, INT16_MAX, INT16_MAX}, {INT16_MIN, INT16_MIN, INT16_MIN}, 0, (uint8_t)m->cluster_count, true};
+    p->node = (r3d_lit_node_t){box3s_empty(), 0, (uint8_t)m->cluster_count, true};
     for (int i = 0; i < m->cluster_count; i++) {
-        widen(p->node.lo, p->node.hi, p->clusters[i].lo);
-        widen(p->node.lo, p->node.hi, p->clusters[i].hi);
+        p->node.bounds = box3s_union(p->node.bounds, p->clusters[i].bounds);
     }
 }
 

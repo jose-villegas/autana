@@ -24,24 +24,55 @@ store_ready(void) {
     return err == ESP_OK;
 }
 
-bool
-settings_read_i32(const char* space, const char* key, int32_t* out) {
+typedef enum {
+    SETTINGS_READ_I32,
+    SETTINGS_WRITE_I32,
+    SETTINGS_READ_I64,
+    SETTINGS_WRITE_I64,
+    SETTINGS_ERASE
+} settings_operation_t;
+
+static bool
+store_access(const char* space, const char* key, void* value, settings_operation_t operation) {
+    const bool reading = operation == SETTINGS_READ_I32 || operation == SETTINGS_READ_I64;
     nvs_handle_t handle;
-    if (!store_ready() || nvs_open(space, NVS_READONLY, &handle) != ESP_OK) {
+    if (!store_ready() || nvs_open(space, reading ? NVS_READONLY : NVS_READWRITE, &handle) != ESP_OK) {
         return false;
     }
-    const bool found = nvs_get_i32(handle, key, out) == ESP_OK;
+    esp_err_t result;
+    switch (operation) {
+        case SETTINGS_READ_I32: result = nvs_get_i32(handle, key, value); break;
+        case SETTINGS_WRITE_I32: result = nvs_set_i32(handle, key, *(int32_t*)value); break;
+        case SETTINGS_READ_I64: result = nvs_get_i64(handle, key, value); break;
+        case SETTINGS_WRITE_I64: result = nvs_set_i64(handle, key, *(int64_t*)value); break;
+        default: result = nvs_erase_all(handle); break;
+    }
+    const bool ok = result == ESP_OK && (reading || nvs_commit(handle) == ESP_OK);
     nvs_close(handle);
-    return found;
+    return ok;
+}
+
+bool
+settings_read_i32(const char* space, const char* key, int32_t* out) {
+    return store_access(space, key, out, SETTINGS_READ_I32);
 }
 
 bool
 settings_write_i32(const char* space, const char* key, int32_t value) {
-    nvs_handle_t handle;
-    if (!store_ready() || nvs_open(space, NVS_READWRITE, &handle) != ESP_OK) {
-        return false;
-    }
-    const bool saved = nvs_set_i32(handle, key, value) == ESP_OK && nvs_commit(handle) == ESP_OK;
-    nvs_close(handle);
-    return saved;
+    return store_access(space, key, &value, SETTINGS_WRITE_I32);
+}
+
+bool
+settings_read_i64(const char* space, const char* key, int64_t* out) {
+    return store_access(space, key, out, SETTINGS_READ_I64);
+}
+
+bool
+settings_write_i64(const char* space, const char* key, int64_t value) {
+    return store_access(space, key, &value, SETTINGS_WRITE_I64);
+}
+
+bool
+settings_erase_space(const char* space) {
+    return store_access(space, NULL, NULL, SETTINGS_ERASE);
 }

@@ -244,7 +244,7 @@ launcher/tools/r3d/skin_light/report_skin_light.sh "$(python launcher/tools/bake
 
 Use the [meshlet capture recipe](../../../../tools/render/README.md#meshlet-size-captures)
 with `--scene launcher/demo/sponza/sponza.scene.toml` and
-`--suite run_sponza_perf_suite`. Its fixed flythrough samples measure the selected
+`--suite run_sponza_perf_suite --size-tune sponza_perf.shipped_meshlet`. Its fixed flythrough samples measure the selected
 renderer with both culling settings. The generated table belongs to
 [Render Pipeline](../../../../../docs/render/Render-Pipeline.md#meshlets).
 

@@ -287,16 +287,16 @@ third off the frame. Meshlets of 16 and 32 tie; 64 loses, because its coarser
 boxes let through more triangles than its fewer culls save. Each size on the
 board, against submitting every cluster:
 
-<!-- generated: meshlet-sizes sha256=a2394a367bfaeaea5674c00debb910455e0d05d3ab6a5d512b84eae7023763b0 -->
+<!-- generated: meshlet-sizes sha256=c7e540ba268898185d69761faec683daf36b2d7dbdb1dd190417814a1b0d54a8 -->
 | Row | Clusters | Vertices/triangle | Mean submitted triangles | Cull ms | Transform ms | Draw ms | Frame ms |
 |---|---|---|---|---|---|---|---|
-| cull off | 583 | 0.934 | 17376.0 | 0.35 | 5.21 | 63.37 | 74.85 |
-| meshlets of 16 | 1225 | 1.061 | 8661.6 | 0.99 | 3.57 | 42.01 | 52.50 |
-| meshlets of 32 (shipped) | 583 | 0.934 | 9564.1 | 0.66 | 3.21 | 42.98 | 52.80 |
-| meshlets of 64 | 286 | 0.851 | 10858.9 | 0.48 | 3.18 | 46.27 | 55.89 |
+| cull off | 605 | 1.040 | 16929.0 | 0.34 | 5.70 | 48.46 | 57.28 |
+| meshlets of 16 | 1290 | 1.166 | 8082.3 | 0.94 | 3.62 | 32.98 | 40.36 |
+| meshlets of 32 (shipped) | 605 | 1.040 | 8652.7 | 0.60 | 3.24 | 33.89 | 40.57 |
+| meshlets of 64 | 296 | 0.959 | 9529.5 | 0.43 | 3.17 | 35.45 | 41.67 |
 <!-- /generated: meshlet-sizes -->
 
-Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
+Reference: [Baked-Mesh.md](Baked-Mesh.md#meshlets).
 
 #### Asset pack
 
@@ -363,7 +363,7 @@ view is built is in [Mesh-Rendering.md](Mesh-Rendering.md#what-a-scene-uses).
 
 Cost: part of `frame.rest` in the frame-stages chart.
 
-![The demo scene along its flythrough](../images/render/sponza-full.gif)
+![The demo scene along its flythrough](../images/render/sponza-fitted-full.gif)
 
 Reference: [Scene-Manager.md](Scene-Manager.md#each-frame).
 

@@ -82,7 +82,7 @@ test_real_time_frame_profiles(void) {
             frame_profile_log("render_lab_profile", scenario->scene->key, &p, r3d_perf_quarters[q].name);
             TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p.frames, "frame profile failed");
             r3d_perf_budget(scenario->scene->key, &r3d_perf_quarters[q], p.frame_us.avg, p.frame_us.p95,
-                            &scenario->quarters[q]);
+                            &scenario->quarters[q], true);
             release_fixture();
             suite_clear_test_cleanup();
         }

@@ -1,7 +1,7 @@
 name: GPU Doc Images
 
-# The GPU job renders only when the stage's input fingerprint differs from the latest record on main,
-# or when a dispatch sets force.
+# The GPU job renders unless main's newest record is a rendered record of this input
+# fingerprint, or when a dispatch sets force.
 # docs/tools/Render-Harness.md describes the fingerprint and the record.
 on:
   workflow_dispatch:

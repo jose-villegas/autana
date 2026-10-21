@@ -8,6 +8,7 @@
 #pragma once
 
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 
 #ifdef __XTENSA__
@@ -22,6 +23,16 @@ mathf_zero(void) {
 static inline float
 mathf_one(void) {
     return 1.0F;
+}
+
+static inline float
+mathf_half(void) {
+    return 0.5F;
+}
+
+static inline float
+mathf_abs(float a) {
+    return fabsf(a);
 }
 
 static inline float
@@ -78,6 +89,45 @@ mathf_recip(float a) {
     return y + (y * (1.0F - (a * y)));
 #else
     return 1.0F / a;
+#endif
+}
+
+/* One seed correction trades accuracy for throughput; the suite proves this bound. */
+#define MATHF_RSQRT_APPROX_RELATIVE_LIMIT 0.0001F
+/* Two seed corrections must stay close to the correctly rounded reciprocal root. */
+#define MATHF_RSQRT_ULP_LIMIT             1
+/* The reciprocal sweep guards the two-correction path against division. */
+#define MATHF_RECIP_ULP_LIMIT             1
+/* Vector component sweeps bound the error introduced by reciprocal-length scaling. */
+#define MATHF_NORMALIZE_ULP_LIMIT         1
+/* Quaternion interpolation compounds reciprocal-length scaling and blend rounding. */
+#define MATHF_NLERP_ULP_LIMIT             2
+
+/* One correction serves callers that accept the relative error limit for positive normal inputs. */
+static inline __attribute__((always_inline)) float
+mathf_rsqrt_approx(float value) {
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+    float seed;
+    __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
+    return seed * (1.5F - 0.5F * value * seed * seed);
+#else
+    return 1.0F / sqrtf(value);
+#endif
+}
+
+/* Subnormal squared lengths retain the 1 / sqrtf path. On the board +inf gives NaN, outside normalize's domain. */
+static inline __attribute__((always_inline)) float
+mathf_rsqrt(float value) {
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+    if (value < FLT_MIN) {
+        return 1.0F / sqrtf(value);
+    }
+    float seed;
+    __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
+    seed += (0.5F * seed) * (1.0F - (value * seed) * seed);
+    return seed + (0.5F * seed) * (1.0F - (value * seed) * seed);
+#else
+    return 1.0F / sqrtf(value);
 #endif
 }
 

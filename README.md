@@ -25,10 +25,10 @@ Image render commands are in each app's tools README ([sand](launcher/main/apps/
 Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on Linux. You need a C compiler for your computer, plus a POSIX shell; **ESP-IDF and a board are not needed**. The renderer writes BMP files and also PNGs when Python has Pillow installed.
 
 ```sh
-./launcher/main/apps/render_lab/tools/render_lab_render_host.sh
+./launcher/tools/render/scenes/scene_viewer_render_host.sh
 ```
 
-Open `launcher/main/apps/render_lab/tools/results/render/render_lab/sponza-landscape.bmp` to see the atrium. For a result in the terminal, run the portable tests:
+Open `launcher/tools/results/render/scene_viewer/landscape.bmp` to see the atrium. For a result in the terminal, run the portable tests:
 
 ```sh
 ./launcher/test/run_tests.sh
