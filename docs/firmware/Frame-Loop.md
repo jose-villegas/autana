@@ -8,12 +8,17 @@ stateDiagram-v2
     direction LR
     [*] --> Launcher
 
-    Running : Running<br/>one pass per frame
-    Launcher : Launcher<br/>ui_launcher_frame()<br/>draws the app list
+    Launcher : Launcher
+    Running : Running
 
-    Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
-    Running --> Launcher: home swipe or<br/>PWR long-press,<br/>or shell_request_exit()<br/><i>the app's exit(),<br/>then the arena emptied</i>
+    Launcher --> Running: tap an entry
+    Running --> Launcher: home swipe or<br/>PWR long-press or<br/>shell_request_exit()
 ```
+
+| | Launcher | Running |
+|---|---|---|
+| Each pass | `ui_launcher_frame()` draws the app list | one pass of the loop |
+| On entry | the app's `exit()`, then the arena emptied | the app's `enter()` |
 
 An app gets exactly one way home by gesture: the home swipe when it sets
 `app_t.home_gesture`, the power button's long press when it does not. An app that
@@ -48,16 +53,16 @@ sequenceDiagram
     participant Console as console task
     participant Mail as mailbox
     participant Shell as shell pass
-    Console->>Mail: post, latest per kind, a second RUNSUITE refused
+    Console->>Mail: post, latest per kind
+    Note over Console,Mail: a second RUNSUITE is refused
     Shell->>Mail: take everything posted
-    Shell->>Shell: apply FREEZE, RESUME or STEP, answer FRAMEWATCH
-    Shell->>Shell: run a RUNSUITE, then report it done
+    Note over Mail,Shell: apply FREEZE, RESUME or STEP<br/>answer FRAMEWATCH<br/>run a RUNSUITE, then report it done
     Shell->>Mail: done, RUNSUITE accepted again
-    Shell->>Shell: OPEN, HOME or APPS
+    Note over Mail,Shell: OPEN, HOME or APPS
     alt frozen, no STEP credit
-        Shell->>Shell: SCREENSHOT of the held frame
+        Note over Mail,Shell: SCREENSHOT of the held frame
     else running
-        Shell->>Shell: the app's frame, then a SCREENSHOT of it
+        Note over Mail,Shell: the app's frame,<br/>then a SCREENSHOT of it
     end
 ```
 

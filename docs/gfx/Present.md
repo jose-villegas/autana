@@ -48,14 +48,14 @@ sequenceDiagram
     participant Q as QSPI / panel
     C->>P: gfx_present_begin()
     Note over C: free to run app update() and<br/>scene_render() - no gfx_* calls
-    P->>P: panel_clock_apply()
+    Note over P: panel_clock_apply()
     loop each dirty strip
         P->>Q: esp_lcd_panel_draw_bitmap()
     end
     P->>Q: heal strips
     Q-->>P: strip_sent, once per transfer
     P-->>C: present_done_sem
-    C->>C: gfx_present_wait() returns
+    Note over C: gfx_present_wait() returns
 ```
 
 | Call | Does |
@@ -74,14 +74,14 @@ sequenceDiagram
     participant Gfx as gfx_present
     participant Core1 as Core 1 send
     Core0->>Gfx: frame N drawn into back
-    Gfx->>Gfx: wait for send N-1, swap
+    Note over Gfx: wait for send N-1, swap
     Gfx->>Core1: send front, frame N
     Gfx-->>Core0: returns at once
     par overlap
-        Core0->>Core0: draw frame N+1 into back
+        Note over Core0: draw frame N+1 into back
     and
-        Core1->>Core1: copy strips, QSPI to panel
-        Core1->>Core1: clear on send: fill the front
+        Note over Core1: copy strips, QSPI to panel
+        Note over Core1: clear on send: fill the front
     end
 ```
 

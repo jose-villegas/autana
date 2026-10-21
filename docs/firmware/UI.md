@@ -111,12 +111,12 @@ sequenceDiagram
     Note over P,M: press frame
     P->>B: MOVE to the finger
     B->>M: seed hover root from last frame's roots
-    M->>M: build frame, hover the control
+    Note over M: build frame, hover the control
     B->>P: hover_unsettled = seed differs from root found
     Note over P,M: next frame, once settled
     P->>B: DOWN
     B->>M: mouse down over the hovered control
-    M->>M: focus and submit
+    Note over M: focus and submit
 ```
 
 - A screen switch, a list closing or a window's first build leaves the seed
