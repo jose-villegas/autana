@@ -46,6 +46,9 @@ header's opening comment; `--check` verifies it.
 <!-- generated: package-headers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Header | Purpose |
 |---|---|
+| [include/math/geometry/box3_template.h](include/math/geometry/box3_template.h) | box3_template: closed axis-aligned boxes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
+| [include/math/geometry/box3f.h](include/math/geometry/box3f.h) | box3f: a closed axis-aligned box of a float. |
+| [include/math/geometry/box3s.h](include/math/geometry/box3s.h) | box3s: a closed axis-aligned box of int16 position ticks. |
 | [include/math/geometry/plane_template.h](include/math/geometry/plane_template.h) | plane_template: oriented planes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/planef.h](include/math/geometry/planef.h) | planef: an oriented plane of a float. |
 | [include/math/geometry/planex.h](include/math/geometry/planex.h) | planex: an oriented plane of a Q16.16. |
@@ -54,6 +57,8 @@ header's opening comment; `--check` verifies it.
 | [include/math/geometry/recti.h](include/math/geometry/recti.h) | recti: a half-open rectangle of an int. |
 | [include/math/geometry/rects.h](include/math/geometry/rects.h) | rects: a half-open rectangle of an int16. |
 | [include/math/geometry/rectx.h](include/math/geometry/rectx.h) | rectx: a half-open rectangle of a Q16.16. |
+| [include/math/geometry/sphere_template.h](include/math/geometry/sphere_template.h) | sphere_template: closed spheres for a real number type; see docs/math/Conventions.md#templates for macro arguments. |
+| [include/math/geometry/spheref.h](include/math/geometry/spheref.h) | spheref: a closed sphere of a float. |
 | [include/math/linear/affine2_template.h](include/math/linear/affine2_template.h) | affine2_template: a 2D affine map for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/affine2f.h](include/math/linear/affine2f.h) | affine2f: a 2D affine map of a float, with integer-pixel maps. |
 | [include/math/linear/affine2x.h](include/math/linear/affine2x.h) | affine2x: a 2D affine map of a Q16.16, with integer-pixel maps. |
