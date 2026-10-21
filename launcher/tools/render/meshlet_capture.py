@@ -55,7 +55,7 @@ def install_row(work, metadata, size):
     quote = lambda path: shlex.quote(pathlib.Path(path).as_posix())
     capture = ROOT / f"docs/render/data/meshlets-{size}-board.log"
     print(f"autana --wait 3600 --project {quote(work / 'tree')} suite {shlex.quote(metadata['suite'])} "
-          f"--flash --out {quote(capture)}")
+          f"--set {shlex.quote(metadata['size_tune'])}={metadata['shipped']} --flash --out {quote(capture)}")
 
 
 def main(argv=None):
@@ -66,19 +66,24 @@ def main(argv=None):
     parser.add_argument("--sizes", type=int, choices=(16, 32, 64), nargs="+", default=[16, 32, 64])
     parser.add_argument("--work", type=pathlib.Path, default=DEFAULT_WORK)
     parser.add_argument("--suite", help="fixed-pose frame-cost suite")
+    parser.add_argument("--size-tune", help="the suite's tunable a row sets to the shipped meshlet size, so its "
+                                            "ceilings gate only bakes of that size")
     args = parser.parse_args(argv)
     work = args.work.resolve()
     try:
         if not work.is_relative_to(ROOT / "launcher/tools/results"):
             raise ValueError("scratch work must be inside launcher/tools/results")
         if args.command == "prepare":
-            if args.scene is None or not args.suite or 32 not in args.sizes or len(set(args.sizes)) != len(args.sizes):
-                raise ValueError("prepare needs --scene, --suite and unique sizes including 32")
+            if (args.scene is None or not args.suite or not args.size_tune or 32 not in args.sizes
+                    or len(set(args.sizes)) != len(args.sizes)):
+                raise ValueError("prepare needs --scene, --suite, --size-tune and unique sizes including 32")
             scene_path = args.scene.resolve()
             scene = load_scene(scene_path)
             work.mkdir(parents=True, exist_ok=True)
             metadata = dict(scene=str(scene_path.relative_to(ROOT)), pack=scene_id(scene_path), sizes=args.sizes,
-                            suite=args.suite,
+                            suite=args.suite, size_tune=args.size_tune,
+                            shipped=next(job.settings.meshlet_triangles for job in scene.renderers
+                                         if job.object.name == showcase(scene)),
                             meshes=[str(job.asset_path.relative_to(ROOT)) for job in scene.renderers])
             (work / "manifest.json").write_text(json.dumps(metadata, indent=2) + "\n")
             for size in args.sizes:

@@ -315,14 +315,15 @@ int main(void) {
                              dict(output="other.mesh", source="other.scene.toml", key="o", sha256="1" * 64, size=1)], lock)
             output = io.StringIO()
             with contextlib.redirect_stdout(output), mock.patch.dict(os.environ, {bake.CACHE_VARIABLE: str(root / "cache")}):
-                meshlet_capture.install_row(root, dict(sizes=[16,32,64], suite="run_perf", meshes=["assets/mesh.mesh"]), 16)
+                meshlet_capture.install_row(root, dict(sizes=[16,32,64], suite="run_perf", size_tune="perf.shipped", shipped=32,
+                                                       meshes=["assets/mesh.mesh"]), 16)
             rows = bake.read_lock(lock)
             self.assertEqual(rows["k"]["sha256"], bake.file_sha256(root / "bakes/16/mesh.mesh"))
             self.assertEqual(rows["o"]["sha256"], "1" * 64)
             self.assertEqual(bake.cached(rows["k"], bake.MESH_SUFFIX, root / "cache").read_bytes(), b"size16")
             lines = output.getvalue().splitlines()
             self.assertEqual(len(lines), 1)
-            self.assertIn("suite run_perf --flash --out", lines[0])
+            self.assertIn("suite run_perf --set perf.shipped=32 --flash --out", lines[0])
             self.assertTrue(lines[0].endswith("meshlets-16-board.log"))
 
     def test_suite_requires_shared_poses_and_render_size(self):

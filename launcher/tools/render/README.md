@@ -61,10 +61,12 @@ Prepare the committed scene's size bakes and one scratch firmware tree:
 
 ```sh
 python launcher/tools/render/meshlet_capture.py prepare \
-  --scene SCENE.scene.toml --suite SUITE_NAME --sizes 16 32 64
+  --scene SCENE.scene.toml --suite SUITE_NAME --size-tune TUNABLE --sizes 16 32 64
 ```
 
-The scene's tools README supplies its scene path and fixed-pose suite name.
+The scene's tools README supplies its scene path, fixed-pose suite name and the
+suite's tunable that each row sets to the showcase's shipped meshlet size: the
+suite's p95 ceilings, pegged on shipped bakes, then gate only bakes of that size.
 Preparation copies the tracked tree into
 `launcher/tools/results/meshlet-sizes/tree` and re-clusters the showcase's cached
 bake through `rebake.py`, without building firmware or accessing the board. The
@@ -78,7 +80,7 @@ then run the single printed command before installing the next size:
 python launcher/tools/render/meshlet_capture.py row 16
 ```
 
-The printed `autana --wait 3600 --project TREE suite SUITE_NAME --flash --out LOG`
+The printed `autana --wait 3600 --project TREE suite SUITE_NAME --set TUNABLE=SIZE --flash --out LOG`
 command builds incrementally and holds one board lock from flash through capture.
 A capture can take half an hour. The suite measures both culling settings through
 the tune API and restores the previous setting even on assertion failure. Each
