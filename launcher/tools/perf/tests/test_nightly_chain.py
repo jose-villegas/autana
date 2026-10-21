@@ -84,7 +84,7 @@ class Replay(FakeAutana):
             (build / "launcher.bin").write_bytes(app_image((project / "code").read_bytes()))
             (build / "assets.bin").write_bytes(b"assets")
             (build / "build_id.txt").write_text("0-diag")
-            return code, [(0, "heavy wait_seconds=" + str(self.heavy_wait))], 60
+            return code, [(0, "heavy wait_seconds=" + str(self.heavy_wait))] if self.heavy_wait else [], 60
         if "suite" in command:
             capture_wait = next(self.capture_wait)
             self.clock.sleep(capture_wait + 60)
@@ -92,7 +92,8 @@ class Replay(FakeAutana):
                 raise RuntimeError("capture failed")
         code, lines, wall = super().__call__(command, log, timeout)
         if "suite" in command:
-            lines.append((0, "heavy wait_seconds=" + str(capture_wait)))
+            if capture_wait:
+                lines.append((0, "heavy wait_seconds=" + str(capture_wait)))
         return code, lines, wall
 
 

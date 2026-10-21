@@ -7,6 +7,9 @@ import time
 
 GPU_START = "01:00"
 GPU_END = "03:00"
+GPU_NEXT_NIGHT_AFTER = "12:00"
+REFUSED = "GPU stage renders 01:00-03:00 local time; dispatch with override to render now"
+EXIT_REFUSED = 1
 SKIPPED = "skipped: too late, next night renders it"
 EXIT_SKIPPED = 3
 
@@ -37,6 +40,8 @@ def gpu_window(scheduled=False, override=False, clock=None):
         return True
     now = clock.now()
     start = local_time(GPU_START, now)
+    if scheduled and now > local_time(GPU_NEXT_NIGHT_AFTER, now):
+        start = local_time(GPU_START, now, next_occurrence=True)
     if scheduled and now < start:
         clock.sleep((start - now).total_seconds())
         now = clock.now()
@@ -49,18 +54,20 @@ def main():
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     override = os.environ.get("OVERRIDE") == "true"
-    allowed = gpu_window(scheduled=args.mode == "gate" and os.environ.get("GITHUB_EVENT_NAME") == "schedule",
+    scheduled = os.environ.get("GITHUB_EVENT_NAME") == "schedule"
+    allowed = gpu_window(scheduled=args.mode == "gate" and scheduled,
                          override=override)
     if not allowed:
-        print(SKIPPED)
+        message = SKIPPED if scheduled else REFUSED
+        print(message)
         if os.environ.get("GITHUB_STEP_SUMMARY"):
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-                summary.write(SKIPPED + "\n")
+                summary.write(message + "\n")
         if args.mode == "gate":
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                 output.write("render=false\n")
-            return EXIT_SKIPPED
-        return 0
+            return EXIT_SKIPPED if scheduled else EXIT_REFUSED
+        return 0 if scheduled else EXIT_REFUSED
     if args.mode == "gate":
         return 0
     command = args.command[1:] if args.command[:1] == ["--"] else args.command

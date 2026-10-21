@@ -1262,6 +1262,7 @@ def remove_image_directory(image):
 
 
 BUILD_NICE_INCREMENT = 5
+BUILD_WAIT_REPORT_MIN_SECONDS = 1
 
 
 @contextlib.contextmanager
@@ -1281,12 +1282,16 @@ def build_policy(environment):
     try:
         with HeldLock(device_lock.LockStore(), device_lock.HEAVY,
                       environment.get(autana_config.OWNER_ENV) or device_lock.default_owner(), "build", wait):
-            print(autana_config.HEAVY_WAIT_PREFIX + str(time.monotonic() - started), flush=True)
+            elapsed = time.monotonic() - started
+            if elapsed >= BUILD_WAIT_REPORT_MIN_SECONDS:
+                print(autana_config.HEAVY_WAIT_PREFIX + str(elapsed), flush=True)
             if latest is not None and time.time() > latest:
                 raise TimeoutError("build cannot start inside its window")
             yield options
     except LockBusy as error:
-        print(autana_config.HEAVY_WAIT_PREFIX + str(time.monotonic() - started), flush=True)
+        elapsed = time.monotonic() - started
+        if elapsed >= BUILD_WAIT_REPORT_MIN_SECONDS:
+            print(autana_config.HEAVY_WAIT_PREFIX + str(elapsed), flush=True)
         raise TimeoutError(str(error)) from error
 
 

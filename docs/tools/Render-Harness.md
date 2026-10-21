@@ -162,13 +162,15 @@ and lists every input.
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
 Changed images remain pending for the night window; pushes do not render.
 
-The schedule is `0 23 * * *` UTC. On the GPU runner, scheduled work waits
-until local 01:00 and may start before local 03:00. A late run skips
-successfully with `skipped: too late, next night renders it`.
+The schedule is `0 23 * * *` UTC. Scheduled work waits until local 01:00,
+using the next day if triggered before midnight. It may start before 03:00.
+
+A schedule firing from local 03:00 through noon skips successfully with
+`skipped: too late, next night renders it`.
 
 Manual dispatch uses the same start window and refuses an early or late
-start with that message. Set `override` to render at any time; `force`
-controls freshness checks independently.
+start with `GPU stage renders 01:00-03:00 local time; dispatch with override to render now`.
+Set `override` to render at any time; `force` controls freshness independently.
 
 The full stage holds `autana lock run --heavy`, queued only until local
 03:00 unless overridden. It checks the start cap again after acquiring the

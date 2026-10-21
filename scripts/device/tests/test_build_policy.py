@@ -1,6 +1,7 @@
 """Compilation policy is shared by build-only and snapshot callers."""
 import isolation
 import contextlib
+import io
 import os
 from pathlib import Path
 import subprocess
@@ -74,6 +75,26 @@ class BuildPolicyTests(unittest.TestCase):
                 self.assertIs(options["preexec_fn"].func, nice)
                 options["preexec_fn"]()
                 nice.assert_called_once_with(device.BUILD_NICE_INCREMENT)
+
+    def test_queue_timing_is_only_printed_after_a_full_second(self):
+        for elapsed in (0, device.BUILD_WAIT_REPORT_MIN_SECONDS - 0.001,
+                        device.BUILD_WAIT_REPORT_MIN_SECONDS, device.BUILD_WAIT_REPORT_MIN_SECONDS + 1):
+            for busy in (False, True):
+                lock = patch.object(device, "HeldLock", side_effect=device.LockBusy("busy")) if busy else \
+                    patch.object(device, "HeldLock", return_value=contextlib.nullcontext())
+                with self.subTest(elapsed=elapsed, busy=busy), lock, \
+                        patch.object(device.time, "monotonic", side_effect=[10, 10 + elapsed]), \
+                        contextlib.redirect_stdout(io.StringIO()) as output:
+                    if busy:
+                        with self.assertRaises(TimeoutError), device.build_policy({}):
+                            self.fail("busy lock entered compilation")
+                    else:
+                        with device.build_policy({}):
+                            pass
+                    if elapsed >= device.BUILD_WAIT_REPORT_MIN_SECONDS:
+                        self.assertEqual(float(output.getvalue().removeprefix(autana_config.HEAVY_WAIT_PREFIX)), elapsed)
+                    else:
+                        self.assertEqual(output.getvalue(), "")
 
     def test_json_indentation(self):
         with tempfile.TemporaryDirectory() as directory:
