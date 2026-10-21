@@ -232,6 +232,9 @@ run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math"
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
 
+run "$PYTHON" launcher/tools/audio/audio_drc_figures.py --out "$OUT/audio" > "$WORK/audio_drc_figures.log"
+# --orphans scans this runner: drc-level.png, drc-thd.png
+
 # The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
 run mkdir -p "$OUT/render" "$OUT/tables"
 skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2

@@ -3,7 +3,7 @@
 The first tone record's Hz is the primary frequency for the generated table.
 
 Run the entire capture inside one autana lock run:
-autana --wait 3600 lock run -- python launcher/tools/audio/audio_drc_sweep.py --board A308
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_drc_sweep.py --board <id>
 """
 import argparse
 from datetime import date

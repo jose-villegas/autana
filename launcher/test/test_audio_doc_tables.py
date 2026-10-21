@@ -27,8 +27,9 @@ class AudioTablesTest(unittest.TestCase):
         self.assertIn("500 | -32.9", tables["audio-duration"])
         self.assertIn("100 | -22.5", tables["audio-volume"])
         for body in tables.values():
-            self.assertIn("A308", body)
-            self.assertIn("164511c54388-dev", body)
+            self.assertNotIn("A308", body)
+            self.assertNotIn("164511c54388-dev", body)
+            self.assertIn("[raw replies]", body)
 
     def test_acoustic_sweep_can_extend_beyond_internal(self):
         tables = audio.render(ROOT / audio.CAPTURE)
@@ -394,7 +395,7 @@ class SoundMixToolsTest(unittest.TestCase):
                 capture.capture(args, sleep=waits.append)
             header.write_bytes(original)
             body = audio.render_mix(args.out)
-            self.assertIn("fake-dev", body)
+            self.assertNotIn("fake-dev", body)
             args.voices = "3"
             with self.assertRaisesRegex(ValueError, "capacity"):
                 capture.capture(args, sleep=waits.append)
@@ -563,7 +564,10 @@ class DrcSweepTest(unittest.TestCase):
 
     def test_committed_capture_and_static_output(self):
         body = audio.render_drc(ROOT / audio.DRC_CAPTURE)
-        self.assertIn("Board **2124**", body)
+        self.assertNotIn("Board **2124**", body)
+        self.assertIn("![", body)
+        self.assertIn("<details>", body)
+        self.assertIn("| Default | -28.4 | -19.1 | -17.7 | -42.0 |", body)
         self.assertIn("Static full-scale DAC output (dBFS)", body)
         self.assertIn("| 50 | -21.4 | off |", body)
         self.assertIn("| 70 | -11.4 | max -20.6 / min -20.6 | 4 | 2 |", body)
@@ -648,6 +652,44 @@ class DrcSweepTest(unittest.TestCase):
             self.assertEqual(calls[-len(sweep.TUNABLES):],
                              [("tune", "reset", "audio." + name) for name in sweep.TUNABLES])
 
+
+
+class AudioFiguresTest(unittest.TestCase):
+    def test_extraction_and_plot_selection(self):
+        figures = load_tool("audio_drc_figures")
+        _, records, _ = audio.read_capture(ROOT / audio.DRC_CAPTURE)
+        hz, volumes, points = audio.drc_data(records)
+        self.assertEqual(hz, 1000)
+        self.assertEqual(volumes, [10, 30, 100])
+        curves, thd, default = figures.figure_data(volumes, points)
+        self.assertEqual(len(curves), 5)
+        self.assertEqual([round(value, 4) for value in curves[0][1]], [-20.0, -10.4576, 0.0])
+        self.assertEqual(curves[0][2], [-48.0, -38.5, -28.2])
+        self.assertEqual([codec for codec, value in thd], [30, 40, 50, 60, 70, 85, 100])
+        self.assertEqual(default, (70, -42.0))
+        changed = dict(points)
+        changed[audio.DRC_DEFAULT] = dict(points[audio.DRC_DEFAULT], levels=[-60, -40, -20], thd=-55)
+        curves, _, default = figures.figure_data(volumes, changed)
+        self.assertEqual(curves[-2][2], [-60, -40, -20])
+        self.assertEqual(default, (70, -55))
+        del changed[audio.DRC_DEFAULT]
+        with self.assertRaisesRegex(ValueError, "default"):
+            figures.figure_data(volumes, changed)
+
+    def test_path_capture_uses_generator_commands(self):
+        capture = load_tool("audio_path_capture")
+        _, records, _ = audio.read_capture(ROOT / audio.CAPTURE)
+        self.assertEqual([command for command, _ in records], [list(command) for command in audio.CAPTURE_COMMANDS])
+        replies = [json.dumps(reply) for _, reply in records]
+        with tempfile.TemporaryDirectory() as directory:
+            args = capture.parser().parse_args(["--board", "TEST", "--autana", "fake", "--out", str(Path(directory) / "capture.txt")])
+            with mock.patch.object(capture, "autana_run", side_effect=replies) as run:
+                capture.capture(args)
+            self.assertEqual(run.call_args_list, [mock.call("fake", *command, "--json") for command in audio.CAPTURE_COMMANDS])
+            self.assertEqual(audio.render(args.out), audio.render(ROOT / audio.CAPTURE))
+            self.assertIn("on TEST,", args.out.read_text().splitlines()[0])
+            with mock.patch.object(capture, "autana_run", side_effect=OSError("failed")), self.assertRaises(OSError):
+                capture.capture(args)
 
 if __name__ == "__main__":
     unittest.main()
