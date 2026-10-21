@@ -94,6 +94,10 @@ lines keep theirs.
 
 ![Main (left) and the swell over the far grid (right), 2.55 to 4.2 s](far_swell/main-vs-far-swell.gif)
 
+![Before the trim (left) and the far grid flat under the crossfade (right), 3.3 to 4.9 s](far_swell/crossfade-main-vs-trim.gif)
+
+![The two frames that differ most, 4.02 and 4.04 s, under the photograph's dither](far_swell/crossfade-main-vs-trim.crops.png)
+
 The camera-plane walk retains fractional bits until projection. Views
 outside its input bounds use the full transform. The comparison below aligns
 the float reference's camera, photograph timing, swell start and constant grey
