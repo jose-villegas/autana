@@ -19,6 +19,12 @@ from r3d.fitted_variant import poses_text
 
 ROWS = ("16", "32", "64")  # the cluster sizes a capture measures; the scene's shipped size is one of them
 STAGES = ("r3d.cull", "r3d.transform", "r3d.draw")  # magic: the frame-cost stages the table shows, as raster.c names them
+REST = "rest of frame"  # the frame's time outside STAGES
+CHART_WIDTH = 8  # inches
+CHART_ROW_HEIGHT = 0.45  # inches per bar
+CHART_ROOM = 1.1  # inches for the title, axis and legend
+BAR_HEIGHT = 0.6
+LABEL_ROOM = 0.45  # share of the widest bar left free for its label
 IDENTITY = re.compile(r"\bCAPTURE build_id=([0-9a-f]{12}-diag) pack_crc32=([0-9a-f]{8}) object=(\w+) size=(\d+) cull=([01]) period_ms=(\d+) pose_every_ms=(\d+)")
 BLOCK = re.compile(r"=== (\w+) FRAME COST .*?===.*?(?:\1 both cores: mean [^\n]+)", re.S)
 
@@ -110,8 +116,33 @@ def default_size():
     return tuple(define(header, name) * scale // 100 for name in ("GFX_WIDTH", "GFX_HEIGHT"))
 
 
-def table(scene_path, captures, bakes):
-    """The table of the scene's showcase."""
+def chart(rows, path):
+    """Each row's frame as stacked board stages, its total and submitted triangles at the bar's end."""
+    from docs.plot_style import INK, LABEL_SIZE, MUTED, SLOTS, save, style_axes, subplots
+    figure, axis = subplots(1, 1, (CHART_WIDTH, CHART_ROW_HEIGHT * len(rows) + CHART_ROOM))
+    labels = [label for label, *_ in rows]
+    for index, (_label, _clusters, _ratio, submitted, *stages, frame) in enumerate(rows):
+        left = 0.0
+        for name, value, colour in zip((*STAGES, REST), (*stages, frame - sum(stages)), SLOTS):
+            axis.barh(index, value, left=left, color=colour, height=BAR_HEIGHT, edgecolor="white",
+                      label=name if index == 0 else None)
+            left += value
+        axis.annotate(f"{frame:.1f} ms, {submitted:,.0f} triangles", (frame, index), xytext=(6, 0),
+                      textcoords="offset points", va="center", fontsize=LABEL_SIZE, color=INK)
+    widest = max(row[-1] for row in rows)
+    axis.set_xlim(0, widest * (1 + LABEL_ROOM))
+    axis.set_yticks(range(len(rows)), labels)
+    axis.invert_yaxis()
+    axis.set_xlabel("board ms per frame", fontsize=LABEL_SIZE, color=MUTED)
+    style_axes(axis, "Frame cost by meshlet size")
+    for side in ("top", "right"):
+        axis.spines[side].set_visible(False)
+    figure.legend(loc="outside lower center", ncol=len(STAGES) + 1, frameon=False, fontsize=LABEL_SIZE)
+    save(figure, path)
+
+
+def table(scene_path, captures, bakes, chart_path):
+    """The block of the scene's showcase: the chart, written to `chart_path`, then its rows collapsed."""
     from meshlet_capture import rebake_scene
     from showcase import showcase
     scene = load_scene(scene_path)
@@ -150,7 +181,13 @@ def table(scene_path, captures, bakes):
     rows = []
     for row in ("cull-off", *ROWS):
         (triangles, vertices, clusters), submitted = host[row]
-        rows.append(["cull off" if row == "cull-off" else f"meshlets of {row}" + (" (shipped)" if row == shipped else ""),
-                     str(clusters), f"{vertices / triangles:.3f}", f"{submitted:.1f}", *(f"{value:.2f}" for value in means[row])])
-    return markdown(["Row", "Clusters", "Vertices/triangle", "Mean submitted triangles", "Cull ms", "Transform ms",
-                     "Draw ms", "Frame ms"], rows)
+        rows.append(("cull off" if row == "cull-off" else f"meshlets of {row}" + (" (shipped)" if row == shipped else ""),
+                     clusters, vertices / triangles, submitted, *means[row]))
+    chart(rows, chart_path)
+    from render.doc_tables import collapsed
+    body = markdown(["Row", "Clusters", "Vertices/triangle", "Mean submitted triangles", "Cull ms", "Transform ms",
+                     "Draw ms", "Frame ms"],
+                    [(label, clusters, f"{ratio:.3f}", f"{submitted:.1f}", *(f"{value:.2f}" for value in measured))
+                     for label, clusters, ratio, submitted, *measured in rows])
+    return (f"![Frame cost by meshlet size](../images/render/meshlets/{pathlib.Path(chart_path).name})\n\n"
+            + collapsed("Meshlet sizes on the board", body))

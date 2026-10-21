@@ -57,27 +57,15 @@ flowchart TB
 ## Offline, on the host
 
 Every step runs on the CPU except the fit, which needs a CUDA GPU.
-The doc-images GPU stage rebakes the demo scene's meshes on the machine in
-the table below:
+The doc-images GPU stage rebakes the demo scene's meshes. The chart shows
+where each CPU bake spends its time and how many triangles each step leaves;
+its rows hold each step's share, triangle counts and memory peaks. Shares
+roughly carry across machines and seconds do not, so time a scene's bakes on
+your own machine with:
 
-<!-- generated: bake-machine sha256=23d185bd8bd39958b2336baa15b8d3db3c368ebd0344c0b3af20c58dbc9ec351 -->
-| Machine | Value |
-|---|---|
-| CPU | Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz |
-| Cores/threads | 5/10 |
-| RAM | 10.7 GiB |
-| GPU | NVIDIA GeForce RTX 2060 |
-| VRAM | 6144 MiB |
-| Driver | 617.14 |
-| CUDA | 12.8 |
-| OS | Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.39 |
-| Python | 3.12.14 |
-| Mitsuba | 3.9.1 |
-| PyTorch | 2.11.0+cu128 |
-<!-- /generated: bake-machine -->
-
-Each step of those bakes, with the triangles it took and left and the memory
-it peaked at:
+```sh
+python launcher/tools/render/bake_steps.py SCENE.scene.toml [--mesh NAME]
+```
 
 <!-- generated: bake-steps sha256=debe9fa09d7a1519ec944c50b89f3668698f5fc7094a0f4e34f9bb5eebef30cc -->
 | Variant | Step | Wall s | Triangles in | Triangles out | Peak RAM MiB | Peak VRAM MiB |
@@ -150,7 +138,7 @@ loads it whole.
 |---|---|---|
 | OBJ, MTL, textures | triangles with materials and UVs | `[source]` path and credit |
 
-Cost: `source load` in the bake-steps table.
+Cost: `source load` in the bake-steps chart.
 
 The source lit per pixel is the reference every bake is scored against (left,
 in the [fidelity sheet](Bake-Quality.md#fidelity-against-the-source)):
@@ -167,7 +155,7 @@ Drops alpha-tested triangles that are mostly transparent; the board does not alp
 |---|---|---|
 | triangles, textures | fewer triangles | `geometry.alpha_mask.keep_alpha` |
 
-Cost: `alpha mask` in the bake-steps table.
+Cost: `alpha mask` in the bake-steps chart.
 
 ![Triangles kept and dropped by the alpha mask](images/import-alpha-mask.png)
 
@@ -182,7 +170,7 @@ along its path, so the triangle budget goes to what is drawn.
 |---|---|---|
 | triangles, the camera's region or path | the seen triangles | the renderer's `visibility` |
 
-Cost: `visibility` in the bake-steps table.
+Cost: `visibility` in the bake-steps chart.
 
 ![Triangles the camera region sees](images/import-visibility.png)
 
@@ -197,7 +185,7 @@ to draw whole. It runs after visibility so the share is of what is seen.
 |---|---|---|
 | the seen triangles | fewer of that material's triangles | `geometry.thin.material`, `geometry.thin.keep` |
 
-Cost: `thin` in the bake-steps table.
+Cost: `thin` in the bake-steps chart.
 
 ![A thinned material](images/import-thin.png)
 
@@ -213,7 +201,7 @@ backend).
 |---|---|---|
 | dense triangles, materials, the scene's lights | a colour per vertex | `[bake]` with `ao` and `indirect`, `[indirect]`, sky, ambient, tone map |
 
-Cost: `light`, and `face colours` for flat meshes, in the bake-steps table.
+Cost: `light`, and `face colours` for flat meshes, in the bake-steps chart.
 
 ![Albedo against baked light](../images/render/import-light.png)
 
@@ -235,7 +223,7 @@ no seam opens.
 |---|---|---|
 | lit triangles | the variant's mesh | `geometry.simplify`: `dense_edge`, `props`, `props_share`, `seal_seams`, `colour_deviation`; each variant's `triangles` |
 
-Cost: `simplify` in the bake-steps table.
+Cost: `simplify` in the bake-steps chart.
 
 ![A seam left open and sealed](images/import-seal-seams.png)
 
@@ -254,7 +242,7 @@ per face.
 |---|---|---|
 | a variant, reference renders | the fitted mesh | the renderer's `fit`: prune, poses, optimise, hashes |
 
-Cost: `fit` in the bake-steps table.
+Cost: `fit` in the bake-steps chart.
 
 ![A fitted mesh against the reference](../images/render/appearance-fitted-full-reference.png)
 
@@ -274,7 +262,7 @@ culls and draws.
 |---|---|---|
 | the final mesh | clusters, nodes, the `.mesh` entry | `geometry.meshlet_triangles` |
 
-Cost: `meshlets` and `write` in the bake-steps table.
+Cost: `meshlets` and `write` in the bake-steps chart.
 
 The meshlets debug view gives each cluster a flat hue, shown here for the
 full, lite and fitted meshes. Each instance owns a disjoint ID range, reset on
@@ -287,13 +275,19 @@ third off the frame. Meshlets of 16 and 32 tie; 64 loses, because its coarser
 boxes let through more triangles than its fewer culls save. Each size on the
 board, against submitting every cluster:
 
-<!-- generated: meshlet-sizes sha256=c7e540ba268898185d69761faec683daf36b2d7dbdb1dd190417814a1b0d54a8 -->
+<!-- generated: meshlet-sizes sha256=f5bfbd3a6cede8cd64c1dc0d82ff1c92b11f904242e45c5b32c2c7b83444d93a -->
+![Frame cost by meshlet size](../images/render/meshlets/meshlet-sizes.png)
+
+<details><summary>Meshlet sizes on the board</summary>
+
 | Row | Clusters | Vertices/triangle | Mean submitted triangles | Cull ms | Transform ms | Draw ms | Frame ms |
 |---|---|---|---|---|---|---|---|
 | cull off | 605 | 1.040 | 16929.0 | 0.34 | 5.70 | 48.46 | 57.28 |
 | meshlets of 16 | 1290 | 1.166 | 8082.3 | 0.94 | 3.62 | 32.98 | 40.36 |
 | meshlets of 32 (shipped) | 605 | 1.040 | 8652.7 | 0.60 | 3.24 | 33.89 | 40.57 |
 | meshlets of 64 | 296 | 0.959 | 9529.5 | 0.43 | 3.17 | 35.45 | 41.67 |
+
+</details>
 <!-- /generated: meshlet-sizes -->
 
 Reference: [Baked-Mesh.md](Baked-Mesh.md#meshlets).
@@ -308,7 +302,7 @@ clip) into one pack; `launcher/demo/` content ships only where an app's
 |---|---|---|
 | the scene, its meshes and clip | one pack per root, the partition image | an app's list of demo assets |
 
-Cost: not timed in the bake-steps table.
+Cost: not timed in the bake-steps chart.
 
 Reference: [the asset packs](../assets/README.md#packs).
 
@@ -325,7 +319,7 @@ and its share of the shipped total. Segment labels and legends give each
 stage's share of the shipped total, signed for view additions. Dotted lines
 mark the frame-rate budgets when they fall inside the chart.
 
-<!-- generated: pipeline-frame-stages sha256=4ca11d90dd2b848aa4842035ac3193109d3428e9c6ec73ccb768b6904f650410 -->
+<!-- generated: pipeline-frame-stages sha256=a85a933fcbc6eaf52993bd4e7965cf3df806c953a25272f8df8654e12531ec66 -->
 ![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
 
 ![Frame stages with the depth view](../images/render/pipeline-frame-stages.depth.png)
@@ -335,6 +329,8 @@ mark the frame-rate budgets when they fall inside the chart.
 ![Frame stages with the motion view](../images/render/pipeline-frame-stages.motion.png)
 
 ![Frame stages with the meshlets view](../images/render/pipeline-frame-stages.meshlets.png)
+
+<details><summary>Frame stages in milliseconds</summary>
 
 | Stage | As shipped | Share | depth view adds | tiles view adds | motion view adds | meshlets view adds |
 |---|---|---|---|---|---|---|
@@ -349,6 +345,7 @@ mark the frame-rate budgets when they fall inside the chart.
 | total | 51.23 | 100% | +7.47 | +5.04 | +25.70 | +34.40 |
 
 Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped.
+</details>
 <!-- /generated: pipeline-frame-stages -->
 
 ### Scene and camera
@@ -551,8 +548,8 @@ The `meshlet-sizes` table is generated from each size's own suite capture and
 regenerated bake. The [meshlet capture recipe](../../launcher/tools/render/README.md#meshlet-size-captures)
 owns preparation, capture validation and refresh commands.
 
-The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
-rebakes and fits. Refresh them on the GPU runner with:
+The GPU stage writes the `bake-steps` chart and rows from its own rebakes and
+fits. Refresh them on a machine with a CUDA GPU with:
 
 ```sh
 sh launcher/tools/render/render_doc_images.sh --stage gpu
@@ -561,5 +558,5 @@ sh launcher/tools/render/render_doc_images.sh --stage gpu
 RAM peaks are sampled process RSS; GPU steps also read GPU
 resident memory and PyTorch's reserved-memory peak. CPU steps have no VRAM
 measurement. Each fitted input's rebake is labelled `fit-start`, and its fit
-has a separate row. The machine table reads the runner's hardware and
-software versions during that run.
+has a separate row. The stage records the machine's hardware and software
+versions in its `measurements.json`, beside its outputs, not on this page.

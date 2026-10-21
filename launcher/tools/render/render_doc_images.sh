@@ -119,7 +119,7 @@ case "${1:-}" in
         comparing=1
         status=0
         for image in $(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort); do
-            case "$image" in render/gpu/*) continue ;; esac
+            case "$image" in render/gpu/*|render/meshlets/*) continue ;; esac
             stem=$(basename "$image")
             stem=${stem%%.*}
             # A face example's renders are named after its file.
@@ -313,7 +313,7 @@ for name in $made_list; do
     esac
 done
 for name in $kept_list; do
-    case "$name" in render/gpu/*) continue ;; esac
+    case "$name" in render/gpu/*|render/meshlets/*) continue ;; esac
     if [ ! -f "$OUT/$name" ]; then
         orphan "$name"
         status=1
