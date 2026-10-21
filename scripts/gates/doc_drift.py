@@ -31,7 +31,8 @@ def reviews(root):
         fields = line.split("\t", 2)
         if len(fields) < 2:
             raise ValueError(f"{path}:{number}: expected path and YYYY-MM-DD")
-        result[fields[0]] = dt.date.fromisoformat(fields[1])
+        date = dt.date.fromisoformat(fields[1])
+        result[fields[0]] = max(result.get(fields[0], date), date)
     return result
 
 
