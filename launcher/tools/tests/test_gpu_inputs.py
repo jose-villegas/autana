@@ -306,10 +306,21 @@ class RecordedInputsTests(unittest.TestCase):
         self.assertFalse(records.current([old, newest, *ignored], 'A'))
         self.assertTrue(records.current([newest, old, *ignored], 'B'))
         failure = artifact(failed, 'A', '2026-01-03T00:00:00Z')
-        self.assertTrue(records.current([old, newest, failure, *ignored], 'A'))
+        self.assertFalse(records.current([old, newest, failure, *ignored], 'A'))
         self.assertFalse(records.current([failure], 'A', force=True))
         self.assertFalse(records.current([], 'A'))
 
+
+    def test_run_after_failed_record_renders(self):
+        failed = dict(name='doc-images-failed-A', created_at='2026-01-02',
+                      expired=False, workflow_run={'head_branch': 'main'})
+        rendered = dict(failed, name='doc-images-inputs-A', created_at='2026-01-01')
+        for artifacts in ([failed], [rendered, failed], [failed, rendered]):
+            with self.subTest(artifacts=artifacts), mock.patch.dict(os.environ, FORCE=''), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertFalse(records.current(artifacts, 'A'))
+                records.main(['A'], request=mock.Mock(return_value={'artifacts': artifacts}))
+            self.assertEqual(output.getvalue(), 'false\n')
 
     def test_exact_name_and_empty_fingerprint(self):
         record = dict(name=records.RECORD_PREFIXES[0] + 'longABC', created_at='2026',

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.error
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -23,6 +24,53 @@ class GithubApiTests(unittest.TestCase):
         self.assertEqual(request.get_method(), 'POST')
         self.assertEqual(request.get_header('Authorization'), 'Bearer token')
         self.assertEqual(request.data, b'{"title": "text"}')
+
+    def test_get_retries_transient_errors_with_backoff_and_timeout(self):
+        errors = (urllib.error.URLError('connect'), TimeoutError('timeout'),
+                  ConnectionError('connect'), OSError('connect'),
+                  urllib.error.HTTPError('url', 503, 'unavailable', {}, None),
+                  urllib.error.HTTPError('url', 429, 'limited', {}, None))
+        for error in errors:
+            with self.subTest(error=error), mock.patch.dict(
+                    os.environ, GH_TOKEN='token', GITHUB_REPOSITORY='owner/repo'), \
+                    mock.patch('time.sleep') as sleep, \
+                    mock.patch.object(github_api.urllib.request, 'urlopen', side_effect=[
+                        *([error] * (github_api.GET_ATTEMPTS - 1)),
+                        io.BytesIO(b'{"ok": true}')]) as open_url:
+                self.assertEqual(github_api.call('GET', '/actions/artifacts'), {'ok': True})
+                self.assertEqual(open_url.call_count, github_api.GET_ATTEMPTS)
+                self.assertTrue(all(call.kwargs == {'timeout': github_api.REQUEST_TIMEOUT_SECONDS}
+                                    for call in open_url.call_args_list))
+                self.assertEqual(sleep.call_args_list, [
+                    mock.call(github_api.RETRY_BASE_DELAY_SECONDS * 2 ** attempt)
+                    for attempt in range(github_api.GET_ATTEMPTS - 1)])
+
+    def test_nontransient_or_non_get_errors_are_not_retried(self):
+        missing = urllib.error.HTTPError('url', 404, 'missing', {}, None)
+        unavailable = urllib.error.HTTPError('url', 503, 'unavailable', {}, None)
+        for method, error in (('GET', missing), ('POST', unavailable),
+                              ('PATCH', TimeoutError('timeout')), ('DELETE', ConnectionError('connect'))):
+            with self.subTest(method=method, error=error), mock.patch.dict(
+                    os.environ, GH_TOKEN='token', GITHUB_REPOSITORY='owner/repo'), \
+                    mock.patch('time.sleep') as sleep, \
+                    mock.patch.object(github_api.urllib.request, 'urlopen', side_effect=error) as open_url:
+                with self.assertRaises(type(error)) as raised:
+                    github_api.call(method, '/pulls')
+                self.assertIs(raised.exception, error)
+                self.assertEqual(open_url.call_count, 1)
+                sleep.assert_not_called()
+
+    def test_get_exhausts_attempts_and_propagates_last_error(self):
+        errors = [urllib.error.URLError(f'connect {attempt}')
+                  for attempt in range(github_api.GET_ATTEMPTS)]
+        with mock.patch.dict(os.environ, GH_TOKEN='token', GITHUB_REPOSITORY='owner/repo'), \
+                mock.patch('time.sleep') as sleep, \
+                mock.patch.object(github_api.urllib.request, 'urlopen', side_effect=errors) as open_url:
+            with self.assertRaises(urllib.error.URLError) as raised:
+                github_api.call('GET', '/actions/runs')
+            self.assertIs(raised.exception, errors[-1])
+            self.assertEqual(open_url.call_count, github_api.GET_ATTEMPTS)
+            self.assertEqual(sleep.call_count, github_api.GET_ATTEMPTS - 1)
 
     def test_pages_stop_after_short_page_with_existing_query(self):
         first = list(range(github_api.PER_PAGE))

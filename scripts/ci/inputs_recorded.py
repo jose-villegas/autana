@@ -1,8 +1,9 @@
 """Print true when no other run of this workflow on main is unfinished (with
---defer-in-flight), and the newest unexpired main record, rendered or failed,
-names this fingerprint, and FORCE is not "true". The GPU gate holds the
-concurrency group and omits --defer-in-flight. With --skip-obsolete, prints
-an obsolete-run reason instead if GITHUB_SHA differs from main's head."""
+--defer-in-flight), and the newest unexpired main record is rendered,
+names this fingerprint, and FORCE is not "true". Failed records are not
+current. The GPU gate holds the concurrency group and omits --defer-in-flight.
+With --skip-obsolete, prints an obsolete-run reason instead if GITHUB_SHA
+differs from main's head."""
 import argparse
 import os
 
@@ -16,8 +17,8 @@ def current(artifacts, fingerprint, force=False):
                and item["name"].startswith(RECORD_PREFIXES)
                and item.get("workflow_run", {}).get("head_branch") == "main")
     latest = max(records, key=lambda item: item["created_at"], default=None)
-    return bool(fingerprint) and not force and latest is not None and latest["name"] in (
-        prefix + fingerprint for prefix in RECORD_PREFIXES)
+    return bool(fingerprint) and not force and latest is not None and latest["name"] == (
+        RECORD_PREFIXES[0] + fingerprint)
 
 
 def main(argv=None, request=call):
