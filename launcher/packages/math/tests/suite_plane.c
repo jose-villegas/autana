@@ -160,8 +160,7 @@ frustum_fixture(frustum_fixture_t* f, const projectf_t* lens) {
     const mat4x_t fixed_map = fixed_matrix(&PLANE_MAP);
     const rectx_t screen = {mathf_to_x(PLANE_SCREEN.x), mathf_to_x(PLANE_SCREEN.y), mathf_to_x(PLANE_SCREEN.w),
                             mathf_to_x(PLANE_SCREEN.h)};
-    const projectx_t fixed_lens = {mathf_to_x(lens->fx), mathf_to_x(lens->fy), mathf_to_x(lens->cx),
-                                   mathf_to_x(lens->cy), mathf_to_x(lens->near_z)};
+    const projectx_t fixed_lens = projectx_from_projectf(lens);
     planef_frustum(&identity, lens, PLANE_SCREEN, f->planes);
     planef_frustum(&PLANE_MAP, lens, PLANE_SCREEN, f->mapped);
     planex_frustum(&fixed_identity, &fixed_lens, screen, f->fixed);
