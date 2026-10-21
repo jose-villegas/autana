@@ -33,6 +33,7 @@
 #include "core/timing.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
+#include "math/scalar/units.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
@@ -490,7 +491,7 @@ fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* confi
     log_fit(ladder, config, model);
 }
 
-static const int32_t budgets_us[] = {60000, 75000};
+static const int32_t budgets_us[] = {RENDER_LAB_BUDGET_ON_MS * MATH_US_PER_MS, 75000};
 
 void
 test_dynamic_resolution_policies_along_the_path(void) {
