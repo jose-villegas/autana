@@ -9,6 +9,9 @@ import math
 import os
 import re
 import socket
+import signal
+import threading
+import weakref
 import statistics
 import sys
 import tempfile
@@ -38,8 +41,9 @@ GUARD_STALE_SECONDS = 30
 # commands. Readers older than protocol 4 cannot distinguish Windows and WSL
 # pid namespaces and may reclaim a live cross-OS holder or prune its waiters.
 # Update every copy sharing a root.
-LOCK_PROTOCOL = 4
+LOCK_PROTOCOL = 5
 HEAVY = "heavy"
+HELD_HEAVY = weakref.WeakValueDictionary()
 HOLD_MAX_SECONDS = 3600
 WAIT_POLL_SECONDS = 0.2
 FILETIME_EPOCH_OFFSET = 116444736000000000
@@ -57,13 +61,9 @@ WINDOWS_AUTANA_HOST = re.compile(
     r'"?[^"\r\n]*[\\/]scripts[\\/]autana[\\/]autana\.py(?:"|\s|$)'
     r'|(?:"[^"\n]*[\\/]bash(?:\.exe)?"|(?:\S*[\\/])?bash(?:\.exe)?)\s+'
     r'"?[^"\r\n]*[\\/]tools[\\/]autana(?:"|\s|$))', re.IGNORECASE)
-# The fields that decide something: who a record is, whether a lock is live,
-# stale or dead, or a waiter's place in the FIFO, and so must be readable
-# off ANY record, of any age or protocol, without guessing: boards() reads
-# board; reclaim_reason()/is_stale() read pid/host/heartbeat_at; tickets()
-# sorts on sequence and _claim() matches on ticket. Everything else (purpose,
-# acquired_at, since_at, note, kind, ...) is display-only and read with
-# .get() wherever it might come from a record this autana did not just write.
+# Core fields identify holders and FIFO order across protocols. Ticket liveness
+# reads touched_at, falling back to created_at when absent. Optional metadata
+# uses .get() so mixed-protocol records remain readable.
 PROTOCOL_CORE_FIELDS = ("owner", "pid", "host", "heartbeat_at", "ticket", "sequence", "board", "protocol")
 
 
@@ -379,6 +379,15 @@ class LockStore:
     def key_root(self, board):
         return heavy_root() if board == HEAVY and not self.explicit_root else self.root
 
+    def resource_now(self, board):
+        if board != HEAVY:
+            return self.now()
+        root = self.key_root(board)
+        root.mkdir(parents=True, exist_ok=True)
+        # File creation uses the shared filesystem clock even when WSL's clock drifts.
+        with tempfile.NamedTemporaryFile(prefix=".clock-", dir=root) as probe:
+            return os.fstat(probe.fileno()).st_mtime
+
     def stem(self, board):
         return board.replace("/", "_").replace("\\", "_").replace(":", "_")
 
@@ -449,7 +458,7 @@ class LockStore:
                 break
             except (FileExistsError, PermissionError):
                 try:
-                    age = self.now() - path.stat().st_mtime
+                    age = self.resource_now(board) - path.stat().st_mtime
                     if age > GUARD_STALE_SECONDS:
                         path.unlink()
                         continue
@@ -481,17 +490,14 @@ class LockStore:
             "board": board, "owner": lock.get("owner", "unknown"),
             "purpose": lock.get("purpose", "unknown"), "pid": lock.get("pid"),
             "host": lock.get("host"), "token": lock.get("token"),
-            "acquired_at": lock.get("acquired_at"), "ended_at": self.now(),
+            "acquired_at": lock.get("acquired_at"), "ended_at": self.resource_now(board),
             "how": how, "protocol": LOCK_PROTOCOL, "autana_version": __version__})
 
     def check_order(self, board):
         if board == HEAVY:
             return
-        current = self.read_json(self.lock_path(HEAVY))
-        owns_heavy = (current and current.get("host") == host_identity()
-                      and current.get("pid") == os.getpid()
-                      and not self.reclaim_reason(current, DEFAULT_STALE_SECONDS))
-        if owns_heavy or os.environ.get(autana_config.HEAVY_TOKEN_ENV):
+        if (any(held["pid"] == os.getpid() for held in list(HELD_HEAVY.values()))
+                or os.environ.get(autana_config.HEAVY_TOKEN_ENV)):
             raise RuntimeError("holding heavy: cannot acquire a board lock (lock order is board -> heavy)")
 
     def enqueue(self, board, owner, kind, pid=None, purpose=None):
@@ -506,9 +512,11 @@ class LockStore:
                 sequence = 1
             sequence_path.write_text(str(sequence), encoding="ascii")
             ticket = uuid.uuid4().hex
+            now = self.resource_now(board)
             write_json(directory / (ticket + ".json"), {
                 "board": board,
-                "created_at": self.now(),
+                "created_at": now,
+                "touched_at": now,
                 "host": host_identity(),
                 "owner": owner,
                 "pid": os.getpid() if pid is None else pid,
@@ -531,23 +539,27 @@ class LockStore:
         return sorted(result, key=lambda ticket: ticket["sequence"])
 
     def prune_crashed_waiters(self, board):
+        now = self.resource_now(board)
         for ticket in self.tickets(board):
-            if (ticket.get("host") == host_identity() and ticket["pid"] != os.getpid()
-                    and not self.is_alive(ticket["pid"])):
+            dead = (ticket.get("host", host_identity()) == host_identity()
+                    and ticket["pid"] != os.getpid() and not self.is_alive(ticket["pid"]))
+            stale = (now - ticket.get("touched_at", ticket.get("created_at", now))
+                     > DEFAULT_STALE_SECONDS)
+            if dead or stale:
                 try:
                     (self.queue_dir(board) / (ticket["ticket"] + ".json")).unlink()
                 except FileNotFoundError:
                     pass
 
     def is_stale(self, lock, stale_seconds):
-        return self.now() - lock["heartbeat_at"] > stale_seconds
+        return self.resource_now(lock.get("board")) - lock["heartbeat_at"] > stale_seconds
 
     def reclaim_reason(self, lock, stale_seconds):
         """Why `lock` may be taken from its holder, or "" while it holds."""
         if lock.get("kind") in ("hold", "human"):
             expires = lock.get("expires_at")
             if expires is not None:
-                return "hold lapsed" if self.now() >= expires else ""
+                return "hold lapsed" if self.resource_now(lock.get("board")) >= expires else ""
             if not lock.get("until_released"):
                 return ""
             if lock.get("host") != host_identity():
@@ -578,6 +590,11 @@ class LockStore:
 
     def _claim(self, board, ticket, stale_seconds, estimate):
         with self.guard(board):
+            path = self.queue_dir(board) / (ticket + ".json")
+            record = self.read_json(path)
+            if record:
+                record["touched_at"] = self.resource_now(board)
+                write_json(path, record)
             self.prune_crashed_waiters(board)
             pending = self.tickets(board)
             if not pending or pending[0]["ticket"] != ticket:
@@ -600,7 +617,7 @@ class LockStore:
                     owner=current.get("owner", "unknown"), label=current.get("purpose", "unknown"),
                     reason=reason)
                 self.lock_path(board).unlink(missing_ok=True)
-            now = self.now()
+            now = self.resource_now(board)
             held = {
                 "acquired_at": now,
                 "board": board,
@@ -617,37 +634,51 @@ class LockStore:
             if estimate is not None:
                 held["estimated_end"] = now + estimate
             write_json(self.lock_path(board), held)
+            held = Held(held, reclaimed)
+            if board == HEAVY and held["pid"] == os.getpid():
+                if evicted:
+                    HELD_HEAVY.pop(evicted.get("token"), None)
+                HELD_HEAVY[held["token"]] = held
             (self.queue_dir(board) / (ticket + ".json")).unlink(missing_ok=True)
-            return Held(held, reclaimed), evicted, reason
+            return held, evicted, reason
 
     def acquire(self, board, owner, kind, wait=0, stale_seconds=DEFAULT_STALE_SECONDS,
                 on_wait=None, purpose=None, estimate=None):
         ticket = self.enqueue(board, owner, kind, purpose=purpose)
-        deadline = self.now() + wait
+        deadline = self.resource_now(board) + wait
         label = purpose or purpose_of(kind)
         waiting = False
-        while True:
-            held = self.claim(board, ticket, stale_seconds, estimate)
-            if held:
-                return held
-            if not self.read_json(self.queue_dir(board) / (ticket + ".json")):
-                if waiting:
-                    device_hook.emit("gave-up", board, owner, label)
-                return None
-            # A caller that asked to wait hears it is queued even when a slow
-            # first claim has already used up its whole wait.
-            if wait > 0:
-                if not waiting:
-                    device_hook.emit("waiting", board, owner, label)
-                    waiting = True
-                if on_wait:
-                    on_wait(ticket)
-            if self.now() >= deadline:
+        handle_term = (threading.current_thread() is threading.main_thread()
+                       and signal.getsignal(signal.SIGTERM) == signal.SIG_DFL)
+        if handle_term:
+            signal.signal(signal.SIGTERM, signal.default_int_handler)
+        try:
+            while True:
+                held = self.claim(board, ticket, stale_seconds, estimate)
+                if held:
+                    return held
+                if not self.read_json(self.queue_dir(board) / (ticket + ".json")):
+                    if waiting:
+                        device_hook.emit("gave-up", board, owner, label)
+                    return None
+                # Even a first claim that exhausted the wait reports the queue.
+                if wait > 0:
+                    if not waiting:
+                        device_hook.emit("waiting", board, owner, label)
+                        waiting = True
+                    if on_wait:
+                        on_wait(ticket)
+                if self.resource_now(board) >= deadline:
+                    if waiting:
+                        device_hook.emit("gave-up", board, owner, label)
+                    return None
+                time.sleep(min(0.1, max(0, deadline - self.resource_now(board))))
+        finally:
+            try:
                 self.cancel(board, ticket)
-                if waiting:
-                    device_hook.emit("gave-up", board, owner, label)
-                return None
-            time.sleep(min(0.1, max(0, deadline - self.now())))
+            finally:
+                if handle_term:
+                    signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
     def cancel(self, board, ticket):
         with self.guard(board):
@@ -662,7 +693,7 @@ class LockStore:
             lock = self.read_json(self.lock_path(board))
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
-            lock["heartbeat_at"] = self.now()
+            lock["heartbeat_at"] = self.resource_now(board)
             write_json(self.lock_path(board), lock)
             return True
 
@@ -690,6 +721,8 @@ class LockStore:
     def _release(self, board, token):
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
+            if board == HEAVY:
+                HELD_HEAVY.pop(token, None)
             if not lock or lock.get("token") != token:
                 return None
             self.lock_path(board).unlink(missing_ok=True)
@@ -701,7 +734,7 @@ class LockStore:
             lock = self.read_json(self.lock_path(board))
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
-            now = self.now()
+            now = self.resource_now(board)
             lock.update(heartbeat_at=now,
                         pid=0 if seconds is not None else (pid if pid is not None else os.getpid()))
             lock.pop("until_released", None)
@@ -720,8 +753,8 @@ class LockStore:
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
             if lock and lock.get("kind") == "human" and not self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
-                lock.update(owner=owner, purpose=note, heartbeat_at=self.now(),
-                            expires_at=self.now() + HUMAN_RESERVATION_SECONDS)
+                lock.update(owner=owner, purpose=note, heartbeat_at=self.resource_now(board),
+                            expires_at=self.resource_now(board) + HUMAN_RESERVATION_SECONDS)
                 write_json(self.lock_path(board), lock)
                 return lock["token"], True
         held = self.acquire(board, owner, "hand", wait=wait, on_wait=on_wait, purpose=note)
@@ -891,7 +924,7 @@ RESERVATION_EXPIRED = "reservation expired"
 def status_entry(store, board, port=None, now=None, durations=None):
     """One board's state as `status --json` prints it. Times are epoch
     seconds; an estimate with too little history is None."""
-    now = store.now() if now is None else now
+    now = store.resource_now(board) if now is None else now
     durations = duration_history(store.key_root(board), board=board) if durations is None else durations
     status = store.status(board)
     entry = {"board": board, "port": port, "state": "unlocked", "holder": None,
@@ -955,7 +988,7 @@ def previous_holder_text(store, board, scope, now=None):
     if not isinstance(last, dict):
         return ("The board's previous holder is not recorded; a program outside autana "
                 "may have the port open.")
-    now = store.now() if now is None else now
+    now = store.resource_now(board) if now is None else now
     ended = last.get("ended_at")
     when = f" {duration_text(now - ended)} ago" if isinstance(ended, (int, float)) else ""
     how = "was reclaimed" if last.get("how") == "reclaimed" else "ended"

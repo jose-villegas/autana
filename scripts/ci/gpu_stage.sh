@@ -15,7 +15,10 @@ autana lock run --heavy --wait "$wait_seconds" -- \
     python3 scripts/lib/local_schedule.py start -- "$@" || status=$?
 busy=$(python3 -c 'from scripts.lib.autana_config import EXIT_BUSY; print(EXIT_BUSY)')
 if [ "$status" -eq "$busy" ] && [ "${OVERRIDE:-}" != true ]; then
-    python3 -c 'from scripts.lib.local_schedule import SKIPPED; print(SKIPPED)'
-    exit 0
+    if [ "${GITHUB_EVENT_NAME:-}" = schedule ]; then
+        python3 -c 'from scripts.lib.local_schedule import SKIPPED; print(SKIPPED)'
+        exit 0
+    fi
+    python3 -c 'from scripts.lib.local_schedule import REFUSED; print(REFUSED)'
 fi
 exit "$status"

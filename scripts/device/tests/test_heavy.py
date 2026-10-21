@@ -3,6 +3,7 @@ import isolation
 import contextlib
 import io
 import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -25,6 +26,95 @@ class HeavyTests(unittest.TestCase):
         self.addCleanup(self.env.stop)
         self.store = locks.LockStore(self.root, is_alive=lambda pid: pid == os.getpid())
 
+    def test_stale_foreign_and_legacy_dead_waiters_are_pruned(self):
+        for foreign in (True, False):
+            with self.subTest(foreign=foreign):
+                ticket = self.store.enqueue(locks.HEAVY, "dead", "build", pid=12345)
+                path = self.store.queue_dir(locks.HEAVY) / (ticket + ".json")
+                record = self.store.read_json(path)
+                if foreign:
+                    record.update(host="other-os", touched_at=0)
+                else:
+                    record.pop("host")
+                    record["protocol"] = 3
+                locks.write_json(path, record)
+                self.store.prune_crashed_waiters(locks.HEAVY)
+                self.assertEqual(self.store.tickets(locks.HEAVY), [])
+
+    def test_wait_poll_refreshes_ticket_and_interrupt_cancels_it(self):
+        held = self.store.acquire(locks.HEAVY, "holder", "render")
+        touched = []
+        def waiting(ticket):
+            record = self.store.read_json(self.store.queue_dir(locks.HEAVY) / (ticket + ".json"))
+            touched.append(record["touched_at"])
+            if len(touched) == 2:
+                raise KeyboardInterrupt()
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                self.store.acquire(locks.HEAVY, "waiter", "build", wait=10, on_wait=waiting)
+            self.assertGreater(touched[1], touched[0])
+            self.assertEqual(self.store.tickets(locks.HEAVY), [])
+        finally:
+            self.store.release(locks.HEAVY, held["token"])
+
+    @unittest.skipIf(os.name == "nt", "Windows SIGTERM bypasses Python handlers")
+    def test_sigterm_cancels_waiter_ticket(self):
+        held = self.store.acquire(locks.HEAVY, "holder", "render")
+        source = ("import os, signal, sys; sys.path.insert(0, sys.argv[1]); import device_lock; "
+                  "store = device_lock.LockStore(sys.argv[2]); "
+                  "store.acquire('heavy', 'cancelled-ci', 'build', wait=10, "
+                  "on_wait=lambda ticket: os.kill(os.getpid(), signal.SIGTERM))")
+        try:
+            result = subprocess.run([sys.executable, "-c", source, str(Path(locks.__file__).parent), str(self.root)],
+                                    capture_output=True, text=True, timeout=5)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(self.store.tickets(locks.HEAVY), [])
+        finally:
+            self.store.release(locks.HEAVY, held["token"])
+
+    def test_board_lock_and_status_survive_unavailable_heavy_root(self):
+        with patch.object(locks, "heavy_root", side_effect=OSError("missing Windows mount")):
+            store = locks.LockStore()
+            held = store.acquire("BOARD", "owner", "run")
+            store.release("BOARD", held["token"])
+            output = io.StringIO()
+            with patch.object(device, "plugged_boards", return_value=[]), contextlib.redirect_stdout(output):
+                self.assertEqual(device.main(["status"]), 0)
+            self.assertIn("heavy: unavailable", output.getvalue())
+            self.assertIn("missing Windows mount", output.getvalue())
+
+    def test_shared_clock_ignores_wall_clock_skew_for_holder_waiter_and_guard(self):
+        store = locks.LockStore(now=lambda: 0, is_alive=lambda pid: True)
+        before = self.root.stat().st_mtime
+        ticket = store.enqueue(locks.HEAVY, "owner", "build")
+        record = store.tickets(locks.HEAVY)[0]
+        self.assertGreaterEqual(record["created_at"], before)
+        self.assertGreaterEqual(record["touched_at"], before)
+        held = store.claim(locks.HEAVY, ticket)
+        try:
+            self.assertGreaterEqual(held["acquired_at"], before)
+            self.assertGreaterEqual(held["heartbeat_at"], before)
+            for skew in (-86400, 86400):
+                store.now = lambda: held["heartbeat_at"] + skew
+                self.assertEqual(store.reclaim_reason(dict(held, host="other-os"), locks.DEFAULT_STALE_SECONDS), "")
+                self.assertTrue(store.heartbeat(locks.HEAVY, held["token"]))
+                ticket = store.enqueue(locks.HEAVY, "foreign", "build")
+                path = store.queue_dir(locks.HEAVY) / (ticket + ".json")
+                record = store.read_json(path)
+                record["host"] = "other-os"
+                locks.write_json(path, record)
+                store.prune_crashed_waiters(locks.HEAVY)
+                self.assertEqual([item["ticket"] for item in store.tickets(locks.HEAVY)], [ticket])
+                store.cancel(locks.HEAVY, ticket)
+                path = store.guard_path(locks.HEAVY)
+                path.touch()
+                with patch.object(locks.time, "sleep", side_effect=KeyboardInterrupt):
+                    with self.assertRaises(KeyboardInterrupt), store.guard(locks.HEAVY):
+                        self.fail("live guard was removed by wall-clock skew")
+                path.unlink()
+        finally:
+            store.release(locks.HEAVY, held["token"])
+
     def test_foreign_holder_and_waiter_survive_dead_pid_check_and_fifo(self):
         with patch.object(locks, "host_identity", return_value="machine"):
             holder = self.store.acquire(locks.HEAVY, "windows", "run")
@@ -46,7 +136,7 @@ class HeavyTests(unittest.TestCase):
 
     def test_stale_foreign_holder_and_dead_local_holder_reclaimed(self):
         now = [1000]
-        self.store.now = lambda: now[0]
+        self.store.resource_now = lambda board: now[0]
         with patch.object(locks, "host_identity", return_value="machine"):
             held = self.store.acquire(locks.HEAVY, "windows", "build")
         with patch.object(locks, "host_identity", return_value="machine/wsl"):

@@ -18,7 +18,7 @@ import fake_flash
 
 
 class BuildPolicyTests(unittest.TestCase):
-    def test_both_owners_apply_priority_and_release_before_snapshot(self):
+    def test_both_owners_apply_priority_and_hold_through_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             worktree = fake_flash.worktree(root / "engine")
@@ -38,7 +38,7 @@ class BuildPolicyTests(unittest.TestCase):
                     self.assertEqual(options["preexec_fn"].args, (device.BUILD_NICE_INCREMENT,))
 
             def snapshot(*args):
-                self.assertIsNone(store.status(device_lock.HEAVY)["lock"])
+                self.assertIsNotNone(store.status(device_lock.HEAVY)["lock"])
                 return "snapshot"
 
             with patch.dict(os.environ, env), patch.object(device, "run_to_end", side_effect=assert_locked) as run, \
@@ -46,6 +46,19 @@ class BuildPolicyTests(unittest.TestCase):
                 self.assertEqual(device.build_worktree(worktree, "diag"), 0)
                 self.assertEqual(device.build_snapshot(["build"], root / "build", root / "image"), "snapshot")
                 self.assertEqual(run.call_count, 2)
+
+    def test_heavy_is_acquired_before_build_directory(self):
+        @contextlib.contextmanager
+        def directory(*args):
+            self.assertIsNotNone(store.status(device_lock.HEAVY)["lock"])
+            yield None
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = device_lock.LockStore(root)
+            with patch.dict(os.environ, {"_AUTANA_HEAVY_LOCK_ROOT": str(root)}), \
+                    patch.object(device, "build_directory_lock", side_effect=directory), \
+                    patch.object(device, "run_to_end"):
+                device.build_snapshot(["build"], root / "build")
 
     def test_lock_wait_is_bounded_and_budget_rechecked_after_acquisition(self):
         @contextlib.contextmanager

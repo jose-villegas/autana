@@ -1135,6 +1135,7 @@ class LockRecordShapeTests(unittest.TestCase):
     }
 
     GOLDEN_KEYS[4] = dict(GOLDEN_KEYS[3], ticket=GOLDEN_KEYS[3]["ticket"] | {"host"})
+    GOLDEN_KEYS[5] = dict(GOLDEN_KEYS[4], ticket=GOLDEN_KEYS[4]["ticket"] | {"touched_at"})
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

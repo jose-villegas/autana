@@ -143,6 +143,8 @@ lapses or its owner dies. Another caller may take the board immediately.
 Every firmware compile and full GPU stage takes the host's `heavy` key.
 It uses the board lock's FIFO tickets, heartbeat, stale recovery and holds.
 Flash writes and captures do not take heavy.
+Builds and flashes during a GPU stage wait `DEFAULT_LOCK_WAIT_SECONDS`
+(600 s, `scripts/lib/autana_config.py`), then exit busy naming the heavy holder.
 
 ```sh
 autana lock run --heavy --wait 7200 -- sh long-job.sh

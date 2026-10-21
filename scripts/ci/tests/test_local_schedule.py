@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import contextlib
 import io
 import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -28,6 +29,32 @@ class Clock:
 
 
 class LocalScheduleTests(unittest.TestCase):
+    def test_gpu_stage_busy_dispatch_refuses_and_schedule_skips(self):
+        root = Path(__file__).resolve().parents[3]
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            tools = fixture / "tools"
+            tools.mkdir()
+            autana = tools / "autana"
+            autana.write_text("#!/bin/sh\necho 'heavy held by render-owner' >&2\nexit 75\n")
+            autana.chmod(0o755)
+            env = dict(os.environ, PYTHONPATH=str(root), OVERRIDE="false")
+            for event in ("workflow_dispatch", "schedule"):
+                env["GITHUB_EVENT_NAME"] = event
+                result = subprocess.run(["sh", str(root / "scripts/ci/gpu_stage.sh"), "render"],
+                                        cwd=fixture, env=env, capture_output=True, text=True)
+                self.assertIn("render-owner", result.stderr)
+                if event == "schedule":
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn(local_schedule.SKIPPED, result.stdout)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(local_schedule.REFUSED, result.stdout)
+
+    def test_gpu_cron_starts_before_local_window_in_both_seasons(self):
+        workflow = Path(__file__).resolve().parents[3] / ".github/workflows/doc-images-gpu.yml"
+        self.assertIn("cron: '0 22 * * *'", workflow.read_text())
+
     def test_dispatch_window_and_override(self):
         for hour, allowed in ((0, False), (1, True), (2, True), (3, False), (12, False)):
             with self.subTest(hour=hour):

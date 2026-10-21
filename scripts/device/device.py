@@ -584,7 +584,7 @@ WAIT_NOTICE_SECONDS = 30
 
 
 def wait_notice(store, board, state, ticket):
-    now = store.now()
+    now = store.resource_now(board)
     if state.get("last_notice") is not None and now - state["last_notice"] < WAIT_NOTICE_SECONDS:
         return
     state["last_notice"] = now
@@ -639,7 +639,7 @@ class HeldLock:
                                       purpose=command_label(kind), estimate=estimate)
         if not self.held:
             raise LockBusy(f"{'heavy' if board == device_lock.HEAVY else 'device'} lock was not acquired: "
-                           + device_lock.busy_text(store.status(board), store.now()))
+                           + device_lock.busy_text(store.status(board), store.resource_now(board)))
         if self.held.log:
             print(self.held.log, file=sys.stderr)
         self.stop = threading.Event()
@@ -1179,13 +1179,11 @@ def try_lock_file(handle):
 
 
 @contextlib.contextmanager
-def build_directory_lock(build_dir, timeout=None):
+def build_directory_lock(build_dir):
     """Lock one build directory through its snapshot; yield its prepared path,
     or None when the checkout has no --prepared-build support."""
     latest = os.environ.get(autana_config.BUILD_LATEST_START_ENV)
-    if timeout is None and latest:
-        timeout = max(0, float(latest) - time.time())
-    expires = time.monotonic() + timeout if timeout is not None else None
+    expires = time.monotonic() + max(0, float(latest) - time.time()) if latest else None
     build_dir = Path(build_dir)
     prepared = None
     if (build_dir.parent / "tools/build/build_paths.py").is_file():
@@ -1297,13 +1295,13 @@ def build_policy(environment):
 
 def build_snapshot(build, build_dir, image_dir=None, **popen):
     """Compile under the process policy and directory lock; optionally snapshot."""
-    with build_directory_lock(build_dir) as prepared:
-        environment = script_environment(popen.pop("env", None))
-        with build_policy(environment) as priority:
+    environment = script_environment(popen.pop("env", None))
+    with build_policy(environment) as priority:
+        with build_directory_lock(build_dir) as prepared:
             environment[autana_config.HEAVY_TOKEN_ENV] = os.environ[autana_config.HEAVY_TOKEN_ENV]
             run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), ACTIVE_LOCK.held.lost,
                        **dict(popen, env=environment, **priority))
-        return snapshot_image(prepared or build_dir, image_dir) if image_dir else None
+            return snapshot_image(prepared or build_dir, image_dir) if image_dir else None
 
 
 def build_worktree(worktree, variant, build_flags=()):
@@ -2309,13 +2307,18 @@ def main(argv=None):
         store = device_lock.LockStore()
         if args.command in ("status", "devices"):
             entries = board_statuses(store, chosen_board(args.board, store))
+            try:
+                heavy = device_lock.status_entry(store, device_lock.HEAVY)
+            except OSError as error:
+                heavy = {"board": device_lock.HEAVY, "state": "unavailable", "reason": str(error)}
             if args.json:
-                print(json.dumps({"boards": entries, "heavy": device_lock.status_entry(store, device_lock.HEAVY)}))
+                print(json.dumps({"boards": entries, "heavy": heavy}))
             elif args.command == "devices":
                 print_devices(entries)
             else:
                 print_statuses(entries, store.now())
-                lines = device_lock.status_lines(device_lock.status_entry(store, device_lock.HEAVY), store.now())
+                lines = (["unavailable: " + heavy["reason"]] if heavy["state"] == "unavailable" else
+                         device_lock.status_lines(heavy, store.resource_now(device_lock.HEAVY)))
                 print("heavy: " + "\n  ".join(lines))
             result = 0
             return result
@@ -2386,7 +2389,7 @@ def main(argv=None):
             reservation_id, renewed = store.reserve_human(board, args.owner, args.note,
                                                           wait=args.wait, on_wait=lambda ticket: wait_notice(store, board, notice_state, ticket))
             if reservation_id is None:
-                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.now()))
+                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.resource_now(board)))
             if args.until_back is None:
                 lasts = device_lock.duration_text(device_lock.HUMAN_RESERVATION_SECONDS)
                 print(f"human reservation {'renewed' if renewed else 'recorded'}; it expires "
@@ -2409,7 +2412,7 @@ def main(argv=None):
             held = store.acquire(board, args.owner, "take", wait=args.wait,
                                  on_wait=lambda ticket: wait_notice(store, board, notice_state, ticket), purpose=" ".join(args.note))
             if not held:
-                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.now()))
+                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.resource_now(board)))
             pid = args.pid if args.until_released else None
             seconds = None if args.until_released else (args.seconds if args.seconds is not None
                                                        else device_lock.HOLD_MAX_SECONDS)

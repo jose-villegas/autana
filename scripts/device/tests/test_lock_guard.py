@@ -1247,11 +1247,16 @@ class FlashTests(Store):
         seen = []
 
         def build(command, cwd, stdout, **unused_keywords):
-            other = device_lock.LockStore(self.store.root)
-            with mock.patch.dict(os.environ, {device.autana_config.HEAVY_TOKEN_ENV: ""}):
-                taken = other.acquire(BOARD_A, "someone-else", "flash", wait=0)
-            seen.append(bool(taken))
-            other.release(BOARD_A, taken["token"])
+            source = ("import sys; sys.path.insert(0, sys.argv[1]); import device_lock; "
+                      "store = device_lock.LockStore(sys.argv[2]); "
+                      "held = store.acquire(sys.argv[3], 'someone-else', 'flash'); "
+                      "print(bool(held)); store.release(sys.argv[3], held['token'])")
+            environment = dict(os.environ, **{device.autana_config.HEAVY_TOKEN_ENV: ""})
+            result = subprocess.run([sys.executable, "-c", source, str(Path(device_lock.__file__).parent),
+                                     str(self.store.root), BOARD_A], env=environment,
+                                    capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            seen.append(result.stdout.strip() == "True")
             fake_flash.write_image(Path(cwd) / "launcher" / "build.dev", "abc")
 
         self.flash(build=build)
@@ -1421,6 +1426,15 @@ class BuildDirectoryLockTests(Store):
         interval = mock.patch.object(device, "BUILD_LOCK_POLL_SECONDS", 0.01)
         interval.start()
         self.addCleanup(interval.stop)
+        policy = mock.patch.object(device, "build_policy", return_value=contextlib.nullcontext({}))
+        policy.start()
+        self.addCleanup(policy.stop)
+        active = mock.patch.object(device, "ACTIVE_LOCK")
+        active.start()
+        self.addCleanup(active.stop)
+        token = mock.patch.dict(os.environ, {device.autana_config.HEAVY_TOKEN_ENV: "directory-test"})
+        token.start()
+        self.addCleanup(token.stop)
         quiet = contextlib.redirect_stderr(io.StringIO())
         quiet.__enter__()
         self.addCleanup(quiet.__exit__, None, None, None)
