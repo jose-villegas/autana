@@ -118,10 +118,35 @@ framebuffer, and frees the other. Readback also drains before reading the front.
 
 Each picture's frame cost on the board in each layout, from one build. The
 scenes are r3d scenes, drawn in `update()`; the boot animation draws a full
-frame in `frame()`.
+frame in `frame()`. `DOUBLE_FB_CONTENDED` presents once more before each
+frame, so the whole draw shares PSRAM with a send.
 
-<!-- generated: gfx-layout-costs sha256=953c5d12bb86fea7444ae334ea5969d5f2287dced32af4d0304f7765be27f735 -->
-Not captured yet.
+<!-- generated: gfx-layout-costs sha256=3efe0efe0673f39cf61fbe42cf510c117645f04d5adb1821855094ca095daf33 -->
+| Picture | `FULL_FB` | `DOUBLE_FB` | `DOUBLE_FB_CLEAR_ON_SEND` | `DOUBLE_FB_CONTENDED` |
+|---|---|---|---|---|
+| sponza-fitted-full, portrait | 43.1 | 48.1 (+12%) | 52.1 (+21%) | not run |
+| sponza-fitted-full, landscape | 40.7 | 45.7 (+12%) | 49.4 (+21%) | not run |
+| sponza, portrait | 42.6 | 47.6 (+12%) | 51.3 (+20%) | not run |
+| sponza, landscape | 41.2 | 46.1 (+12%) | 49.7 (+21%) | not run |
+| sponza-lite, portrait | 35.0 | 39.7 (+13%) | 43.6 (+24%) | not run |
+| sponza-lite, landscape | 34.2 | 38.8 (+14%) | 42.6 (+25%) | not run |
+| sponza-flat, portrait | 35.0 | 39.6 (+13%) | 43.7 (+25%) | not run |
+| sponza-flat, landscape | 34.8 | 39.4 (+13%) | 43.4 (+24%) | not run |
+| sponza-fitted, portrait | 34.0 | 39.0 (+15%) | 42.8 (+26%) | not run |
+| sponza-fitted, landscape | 32.5 | 37.3 (+15%) | 41.1 (+27%) | not run |
+| sponza-flat-fitted, portrait | 34.4 | 39.4 (+15%) | 43.4 (+26%) | not run |
+| sponza-flat-fitted, landscape | 33.4 | 38.4 (+15%) | 42.2 (+26%) | not run |
+| capybara, portrait | 13.7 | 18.4 (+35%) | 22.6 (+65%) | not run |
+| capybara, landscape | 14.4 | 18.9 (+31%) | 23.0 (+60%) | not run |
+| boot animation, curve_climbing_early | 31.6 | 24.2 (-23%) | 20.5 (-35%) | 23.9 (-25%) |
+| boot animation, title_flying_in | 34.4 | 26.9 (-22%) | 22.3 (-35%) | 26.6 (-23%) |
+| boot animation, grid_settled_pre_image | 27.1 | 19.6 (-28%) | 15.5 (-43%) | 19.2 (-29%) |
+| boot animation, crossfade_start | 41.9 | 34.3 (-18%) | 29.2 (-30%) | 33.9 (-19%) |
+| boot animation, crossfade_mid | 43.4 | 35.7 (-18%) | 30.5 (-30%) | 35.4 (-18%) |
+| boot animation, crossfade_late | 44.0 | 36.4 (-17%) | 31.1 (-29%) | 36.1 (-18%) |
+| boot animation, near_end | 22.2 | 14.5 (-35%) | 15.3 (-31%) | 14.4 (-35%) |
+
+Board ms per frame, mean of each suite's samples, build `e0b6b47d8f90-diag`. A change is against the first layout its row reports.
 <!-- /generated: gfx-layout-costs -->
 
 Regenerate with

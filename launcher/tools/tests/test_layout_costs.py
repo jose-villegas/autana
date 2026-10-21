@@ -52,9 +52,9 @@ class LayoutCostsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "build id"):
             layout_costs.capture_build([self.write("bare.log", MESH.split("\n", 1)[1])])
 
-    def test_repeated_or_missing_rows_are_refused(self):
-        with self.assertRaisesRegex(ValueError, "twice"):
-            layout_costs.mesh_costs(self.write("twice.log", MESH + MESH.split("\n")[1] + "\n"))
+    def test_a_rerun_keeps_the_first_report_and_missing_rows_are_refused(self):
+        rerun = MESH + MESH.split("\n")[1].replace("40000us", "99000us") + "\n"
+        self.assertEqual(layout_costs.mesh_costs(self.write("rerun.log", rerun))["room, portrait"]["FULL_FB"], 40.0)
         with self.assertRaisesRegex(ValueError, "no scene layout rows"):
             layout_costs.mesh_costs(self.write("empty.log", "BUILD_ID=abc-dev\n"))
         with self.assertRaisesRegex(ValueError, "reported twice"):

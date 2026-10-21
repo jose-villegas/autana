@@ -44,10 +44,9 @@ def mesh_costs(path):
             continue
         quarter = quarter_name(line)
         row = f"{match['scene']}, {quarter}" if quarter else match["scene"]
-        layouts = rows.setdefault(row, {})
-        if match["layout"] in layouts:
-            raise ValueError(f"{path}: {row} reports {match['layout']} twice")
-        layouts[match["layout"]] = int(match["mean"]) / US_PER_MS
+        # A test whose first run leaves the heap lower runs again for the
+        # heap check alone (launcher/test/timing.c); the first run is the measurement.
+        rows.setdefault(row, {}).setdefault(match["layout"], int(match["mean"]) / US_PER_MS)
     if not rows:
         raise ValueError(f"{path}: no scene layout rows")
     return rows
