@@ -4,7 +4,7 @@ import os
 import threading
 import time
 
-from r3d.process_budget import (FIT_BYTES, FLOORS, GPU_QUERY_FAILURE_SECONDS, GPU_QUERY_LOG_SECONDS,
+from r3d.process_budget import (FLOORS, GPU_QUERY_FAILURE_SECONDS,
                                 QueryFailures, TaskExecutor as _ProcessExecutor, _task, available_bytes,
                                 cores_available, function_name, projected_available, resident_bytes, worker_capacity)
 
@@ -13,21 +13,21 @@ _ADMISSION_LOG_SECONDS = 10
 GPU_QUERY_SAMPLE_SECONDS = 1
 GPU_QUERY_STALE_SECONDS = 5
 _GPU_QUERY_STOP_SECONDS = 0.1
-NVML_LIBRARY = "libnvidia-ml.so.1"
-NVML_DEVICE_INDEX = 0
-NVML_SUCCESS = 0
-NVML_ERROR_NOT_SUPPORTED = 3
-NVML_ERROR_NO_PERMISSION = 4
-NVML_ERROR_NOT_FOUND = 6
-NVML_ERROR_INSUFFICIENT_SIZE = 7
-NVML_ERROR_DRIVER_NOT_LOADED = 9
-NVML_ERROR_GPU_IS_LOST = 15
-NVML_VALUE_NOT_AVAILABLE = ctypes.c_ulonglong(-1).value
+_NVML_LIBRARY = "libnvidia-ml.so.1"
+_NVML_DEVICE_INDEX = 0
+_NVML_SUCCESS = 0
+_NVML_ERROR_NOT_SUPPORTED = 3
+_NVML_ERROR_NO_PERMISSION = 4
+_NVML_ERROR_NOT_FOUND = 6
+_NVML_ERROR_INSUFFICIENT_SIZE = 7
+_NVML_ERROR_DRIVER_NOT_LOADED = 9
+_NVML_ERROR_GPU_IS_LOST = 15
+_NVML_VALUE_NOT_AVAILABLE = ctypes.c_ulonglong(-1).value
 _NVML_GONE_CODES = {
-    NVML_ERROR_GPU_IS_LOST: "GPU_IS_LOST",
-    NVML_ERROR_DRIVER_NOT_LOADED: "DRIVER_NOT_LOADED",
-    NVML_ERROR_NO_PERMISSION: "NO_PERMISSION",
-    NVML_ERROR_NOT_FOUND: "NOT_FOUND",
+    _NVML_ERROR_GPU_IS_LOST: "GPU_IS_LOST",
+    _NVML_ERROR_DRIVER_NOT_LOADED: "DRIVER_NOT_LOADED",
+    _NVML_ERROR_NO_PERMISSION: "NO_PERMISSION",
+    _NVML_ERROR_NOT_FOUND: "NOT_FOUND",
 }
 _nvml_instance = None
 _nvml_lock = threading.Lock()
@@ -49,7 +49,7 @@ class _NvmlProcess(ctypes.Structure):
 class _Nvml:
     def __init__(self):
         try:
-            self.library = ctypes.CDLL(NVML_LIBRARY)
+            self.library = ctypes.CDLL(_NVML_LIBRARY)
         except OSError as error:
             raise _GpuGone(f"GPU is gone: NVML library unavailable: {error}") from error
         signatures = {
@@ -60,7 +60,10 @@ class _Nvml:
                                                        ctypes.POINTER(_NvmlProcess)],
         }
         for name, arguments in signatures.items():
-            function = getattr(self.library, name)
+            try:
+                function = getattr(self.library, name)
+            except AttributeError as error:
+                raise _GpuGone(f"GPU is gone: NVML symbol missing: {name}") from error
             function.argtypes = arguments
             function.restype = ctypes.c_int
         self.initialized = False
@@ -71,7 +74,7 @@ class _Nvml:
         if result in _NVML_GONE_CODES:
             self.gone = _GpuGone(f"GPU is gone: NVML {_NVML_GONE_CODES[result]}")
             raise self.gone
-        if result != NVML_SUCCESS:
+        if result != _NVML_SUCCESS:
             raise OSError(f"NVML query failed with code {result}")
 
     def device(self):
@@ -83,7 +86,7 @@ class _Nvml:
                 self.initialized = True
             if self.handle is None:
                 handle = ctypes.c_void_p()
-                self._check(self.library.nvmlDeviceGetHandleByIndex_v2(NVML_DEVICE_INDEX, ctypes.byref(handle)))
+                self._check(self.library.nvmlDeviceGetHandleByIndex_v2(_NVML_DEVICE_INDEX, ctypes.byref(handle)))
                 self.handle = handle
         return self.handle
 
@@ -98,25 +101,24 @@ class _Nvml:
         processes = None
         while True:
             result = self.library.nvmlDeviceGetComputeRunningProcesses_v3(device, ctypes.byref(count), processes)
-            if result == NVML_ERROR_NOT_SUPPORTED:
+            if result == _NVML_ERROR_NOT_SUPPORTED:
                 return {}
-            if result != NVML_ERROR_INSUFFICIENT_SIZE:
+            if result != _NVML_ERROR_INSUFFICIENT_SIZE:
                 self._check(result)
                 return {process.pid: process.usedGpuMemory for process in (processes or ())[:count.value]
-                        if process.usedGpuMemory != NVML_VALUE_NOT_AVAILABLE}
+                        if process.usedGpuMemory != _NVML_VALUE_NOT_AVAILABLE}
             processes = (_NvmlProcess * count.value)()
 
 
 def _nvml():
     global _nvml_instance
-    key = (os.getpid(), NVML_LIBRARY)
     with _nvml_lock:
-        if _nvml_instance is None or _nvml_instance[0] != key:
-            _nvml_instance = key, _Nvml()
-        return _nvml_instance[1]
+        if _nvml_instance is None:
+            _nvml_instance = _Nvml()
+        return _nvml_instance
 
 
-def gpu_resident_bytes():
+def _gpu_resident_bytes():
     return _nvml().resident_bytes()
 
 
@@ -132,9 +134,9 @@ class _GpuSampler:
     def _poll(self):
         while not self.stopped.is_set():
             try:
-                sample = (_nvml().free_bytes(), gpu_resident_bytes())
+                sample = (_nvml().free_bytes(), _gpu_resident_bytes())
                 self.latest = (sample, time.monotonic(), None)
-            except (OSError, AttributeError) as error:
+            except OSError as error:
                 self.latest = (None, time.monotonic(), error)
                 if isinstance(error, _GpuGone):
                     return
@@ -241,7 +243,7 @@ class TaskExecutor(_ProcessExecutor):
                         device_free, gpu = self.gpu_sampler.read(now)
                     except _GpuGone as error:
                         raise RuntimeError(str(error)) from error
-                    except (OSError, AttributeError) as error:
+                    except OSError as error:
                         _, warn = failures.failed(now)
                         if queued and not self.active:
                             if admission_failure_since is None:
@@ -249,7 +251,7 @@ class TaskExecutor(_ProcessExecutor):
                             if now - admission_failure_since >= GPU_QUERY_FAILURE_SECONDS:
                                 raise RuntimeError(f"GPU memory query stalled or failed for {GPU_QUERY_FAILURE_SECONDS} "
                                                    "seconds with no active workers; worker admission unavailable") from error
-                        if warn:
+                        if queued and warn:
                             print(f"memory query failed: {error}; worker admission paused, retrying", flush=True)
                     else:
                         failures.recovered()

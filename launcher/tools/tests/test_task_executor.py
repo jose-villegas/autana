@@ -11,7 +11,7 @@ class ProcessTests(unittest.TestCase):
         driver = patch('r3d.task_executor._nvml')
         driver.start().return_value.free_bytes.return_value = 1 << 60
         self.addCleanup(driver.stop)
-        counter = patch('r3d.task_executor.gpu_resident_bytes', return_value={})
+        counter = patch('r3d.task_executor._gpu_resident_bytes', return_value={})
         counter.start()
         self.addCleanup(counter.stop)
 
@@ -136,7 +136,8 @@ class HandshakeSchedulerTests(ProcessTests):
         started, release, second_started = [context.Event() for _ in range(3)]
         queried = threading.Event()
         calls = []
-        free = tuple(a + b for a, b in zip(budget.FIT_BYTES, budget.FLOORS))
+        from r3d.process_budget import FIT_BYTES
+        free = tuple(a + b for a, b in zip(FIT_BYTES, budget.FLOORS))
         def available(gpu=False):
             calls.append(None)
             if len(calls) >= 2:
@@ -170,7 +171,7 @@ class HandshakeSchedulerTests(ProcessTests):
         self.exercise_residency((0,) * 3)
 
     def test_resident_worker_leaves_room_for_second(self):
-        from r3d.task_executor import FIT_BYTES
+        from r3d.process_budget import FIT_BYTES
         self.exercise_residency(FIT_BYTES)
 
     def test_done_callback_can_submit(self):
@@ -185,7 +186,7 @@ from r3d.task_executor import TaskExecutor
 if __name__ == '__main__':
     chained = concurrent.futures.Future()
     with patch('r3d.task_executor.available_bytes', return_value=(1 << 60,) * 3), \
-            patch('r3d.task_executor.gpu_resident_bytes', return_value={}), \
+            patch('r3d.task_executor._gpu_resident_bytes', return_value={}), \
             patch('r3d.task_executor._nvml') as driver:
         driver.return_value.free_bytes.return_value = 1 << 60
         with TaskExecutor() as executor:
@@ -335,7 +336,7 @@ class QueryFailuresTests(unittest.TestCase):
         self.assertTrue(failures.failed(2 * limit - 40)[0])
 
     def test_warnings_are_rate_limited_and_reopen_after_recovery(self):
-        from r3d.task_executor import QueryFailures, GPU_QUERY_LOG_SECONDS as window
+        from r3d.process_budget import QueryFailures, GPU_QUERY_LOG_SECONDS as window
         failures = QueryFailures()
         self.assertTrue(failures.failed(0)[1])
         self.assertFalse(failures.failed(window - 1)[1])
@@ -348,6 +349,7 @@ class NvmlRuntimeTests(unittest.TestCase):
     FAILURE_SECONDS = 0.6
     STALE_SECONDS = 0.15
     SAMPLE_SECONDS = 0.03
+    UNKNOWN_ERROR = 999
 
     def setUp(self):
         import os
@@ -370,12 +372,14 @@ class NvmlRuntimeTests(unittest.TestCase):
 #include <stdlib.h>
 #define NVML_SUCCESS 0
 #define NVML_ERROR_GPU_IS_LOST 15
+#define NVML_ERROR_UNKNOWN UNKNOWN_ERROR_CODE
 #define NVML_ERROR_DRIVER_NOT_LOADED 9
 #define NVML_ERROR_NO_PERMISSION 4
 #define NVML_ERROR_NOT_FOUND 6
 #define NVML_ERROR_INSUFFICIENT_SIZE 7
 #define NVML_ERROR_NOT_SUPPORTED 3
 #define FREE_BYTES (1ULL << 60)
+#define LOW_FREE_BYTES 0
 #define PROCESS_PID 42
 #define PROCESS_BYTES 123
 struct memory { unsigned long long total, free, used; };
@@ -384,6 +388,7 @@ static int state(void) {
     char mode[32] = "answer";
     FILE *file = fopen(getenv("TEST_NVML_CONTROL"), "r");
     if (file) { fscanf(file, "%31s", mode); fclose(file); }
+    if (!strcmp(mode, "unknown")) return NVML_ERROR_UNKNOWN;
     if (!strcmp(mode, "lost")) return NVML_ERROR_GPU_IS_LOST;
     if (!strcmp(mode, "driver")) return NVML_ERROR_DRIVER_NOT_LOADED;
     if (!strcmp(mode, "permission")) return NVML_ERROR_NO_PERMISSION;
@@ -406,19 +411,29 @@ int nvmlDeviceGetHandleByIndex_v2(unsigned int index, void **handle) {
 }
 int nvmlDeviceGetMemoryInfo(void *handle, struct memory *info) {
     int result = state(); if (result) return result;
-    info->total = info->free = FREE_BYTES; info->used = 0; return NVML_SUCCESS;
+    char mode[32] = "answer";
+    FILE *file = fopen(getenv("TEST_NVML_CONTROL"), "r");
+    if (file) { fscanf(file, "%31s", mode); fclose(file); }
+    info->total = FREE_BYTES;
+    info->free = !strcmp(mode, "low") ? LOW_FREE_BYTES : FREE_BYTES;
+    info->used = info->total - info->free; return NVML_SUCCESS;
 }
+#ifndef OMIT_PROCESS_SYMBOL
 int nvmlDeviceGetComputeRunningProcesses_v3(void *handle, unsigned int *count, struct process *info) {
     int result = state(); if (result) return result;
     if (*count < 1) { *count = 1; return NVML_ERROR_INSUFFICIENT_SIZE; }
     *count = 1; info[0].pid = PROCESS_PID; info[0].used = PROCESS_BYTES;
     info[0].gpu = info[0].compute = 0; return NVML_SUCCESS;
 }
-''')
+#endif
+'''.replace("UNKNOWN_ERROR_CODE", str(self.UNKNOWN_ERROR)))
         library = root / "libnvidia-ml.so"
         subprocess.run(["cc", "-shared", "-fPIC", str(source), "-o", str(library)], check=True,
                        capture_output=True)
-        settings = patch.multiple(budget, NVML_LIBRARY=str(library),
+        self.missing_symbol_library = root / "missing-symbol.so"
+        subprocess.run(["cc", "-shared", "-fPIC", "-DOMIT_PROCESS_SYMBOL", str(source),
+                        "-o", str(self.missing_symbol_library)], check=True, capture_output=True)
+        settings = patch.multiple(budget, _NVML_LIBRARY=str(library), _nvml_instance=None,
                                   GPU_QUERY_FAILURE_SECONDS=self.FAILURE_SECONDS,
                                   GPU_QUERY_STALE_SECONDS=self.STALE_SECONDS,
                                   GPU_QUERY_SAMPLE_SECONDS=self.SAMPLE_SECONDS)
@@ -513,6 +528,113 @@ int nvmlDeviceGetComputeRunningProcesses_v3(void *handle, unsigned int *count, s
             executor.gpu_sampler.thread.join(timeout=5)
             self.assertFalse(executor.gpu_sampler.thread.is_alive())
 
+    def test_gpu_lost_kills_active_worker_immediately(self):
+        import multiprocessing
+        from unittest.mock import patch
+        from r3d import task_executor as budget
+        context = multiprocessing.get_context("spawn")
+        started, release, ended = [context.Event() for _ in range(3)]
+        with patch.object(budget, "GPU_QUERY_FAILURE_SECONDS", 60):
+            with self.assertRaisesRegex(RuntimeError, "GPU is gone.*GPU_IS_LOST"):
+                with budget.TaskExecutor() as executor:
+                    first = executor.submit(handshake_worker, started, release, "first", ended,
+                                            estimates=(0,) * 3)
+                    self.assertTrue(started.wait(10))
+                    worker_pid = executor.active[0][0].pid
+                    self.control.write_text("lost")
+                    first.result(timeout=5)
+        self.assertFalse(ended.is_set())
+        self.assertEqual(executor.active, [])
+        self.assertNotIn(worker_pid, [child.pid for child in multiprocessing.active_children()])
+
+    def test_transient_query_error_pauses_and_recovers(self):
+        import multiprocessing
+        import time
+        from r3d import task_executor as budget
+        context = multiprocessing.get_context("spawn")
+        started, release = [context.Event() for _ in range(2)]
+        with budget.TaskExecutor() as executor:
+            try:
+                first = executor.submit(handshake_worker, started, release, "first", estimates=(0,) * 3)
+                self.assertTrue(started.wait(10))
+                self.control.write_text("unknown")
+                self.wait_for(lambda: str(self.UNKNOWN_ERROR) in str(executor.gpu_sampler.latest[2]))
+                queued = executor.submit(identity_worker, "queued", estimates=(0,) * 3)
+                time.sleep(self.FAILURE_SECONDS * 2)
+                self.assertIsNone(executor.failure)
+                self.assertFalse(first.done())
+                self.assertFalse(queued.done())
+                self.control.write_text("answer")
+                self.assertEqual(queued.result(timeout=10)[0], "queued")
+                release.set()
+                self.assertEqual(first.result(timeout=10)[0], "first")
+            finally:
+                self.control.write_text("answer")
+                release.set()
+
+    def test_recovery_admission_uses_new_free_bytes(self):
+        import multiprocessing
+        import time
+        from r3d import task_executor as budget
+        context = multiprocessing.get_context("spawn")
+        started, release = [context.Event() for _ in range(2)]
+        with budget.TaskExecutor() as executor:
+            try:
+                first = executor.submit(handshake_worker, started, release, "first", estimates=(0,) * 3)
+                self.assertTrue(started.wait(10))
+                self.control.write_text("hang")
+                self.wait_for(self.entered.exists)
+                time.sleep(self.STALE_SECONDS * 2)
+                queued = executor.submit(identity_worker, "queued", estimates=(0,) * 3)
+                self.control.write_text("low")
+                self.wait_for(lambda: executor.gpu_sampler.latest[0] is not None
+                              and executor.gpu_sampler.latest[0][0] == 0)
+                time.sleep(self.FAILURE_SECONDS * 2)
+                self.assertIsNone(executor.failure)
+                self.assertFalse(queued.done())
+                self.control.write_text("answer")
+                self.assertEqual(queued.result(timeout=10)[0], "queued")
+                release.set()
+                self.assertEqual(first.result(timeout=10)[0], "first")
+            finally:
+                self.control.write_text("answer")
+                release.set()
+
+    def test_hung_query_without_queued_tasks_does_not_warn_admission_paused(self):
+        import multiprocessing
+        import time
+        from unittest.mock import patch
+        from r3d import task_executor as budget
+        context = multiprocessing.get_context("spawn")
+        started, release = [context.Event() for _ in range(2)]
+        with patch.object(budget, "print", create=True) as output:
+            with budget.TaskExecutor() as executor:
+                try:
+                    first = executor.submit(handshake_worker, started, release, "first", estimates=(0,) * 3)
+                    self.assertTrue(started.wait(10))
+                    output.reset_mock()
+                    self.control.write_text("hang")
+                    self.wait_for(self.entered.exists)
+                    time.sleep(self.FAILURE_SECONDS * 2)
+                    self.assertIsNone(executor.failure)
+                    self.assertFalse(any("worker admission paused" in str(call) for call in output.call_args_list))
+                    self.control.write_text("answer")
+                    release.set()
+                    self.assertEqual(first.result(timeout=10)[0], "first")
+                finally:
+                    self.control.write_text("answer")
+                    release.set()
+
+    def test_missing_symbol_is_fatal_immediately(self):
+        from unittest.mock import patch
+        from r3d import task_executor as budget
+        with patch.multiple(budget, _NVML_LIBRARY=str(self.missing_symbol_library),
+                            GPU_QUERY_FAILURE_SECONDS=60):
+            with self.assertRaisesRegex(RuntimeError, "GPU is gone: NVML symbol missing: "
+                                        "nvmlDeviceGetComputeRunningProcesses_v3"):
+                with budget.TaskExecutor() as executor:
+                    executor.submit(identity_worker, "queued").result(timeout=2)
+
     def test_gpu_lost_is_fatal_immediately(self):
         from unittest.mock import patch
         from r3d import task_executor as budget
@@ -528,7 +650,7 @@ int nvmlDeviceGetComputeRunningProcesses_v3(void *handle, unsigned int *count, s
     def test_missing_library_is_fatal_immediately(self):
         from unittest.mock import patch
         from r3d import task_executor as budget
-        with patch.object(budget, "NVML_LIBRARY", str(self.control.parent / "missing.so")):
+        with patch.object(budget, "_NVML_LIBRARY", str(self.control.parent / "missing.so")):
             with self.assertRaisesRegex(RuntimeError, "GPU is gone.*library"):
                 with budget.TaskExecutor() as executor:
                     executor.submit(identity_worker, "queued").result(timeout=5)
@@ -536,6 +658,6 @@ int nvmlDeviceGetComputeRunningProcesses_v3(void *handle, unsigned int *count, s
     def test_queries_return_bytes_and_unsupported_processes_are_empty(self):
         from r3d import task_executor as budget
         self.assertEqual(budget._nvml().free_bytes(), 1 << 60)
-        self.assertEqual(budget.gpu_resident_bytes(), {42: 123})
+        self.assertEqual(budget._gpu_resident_bytes(), {42: 123})
         self.control.write_text("unsupported")
-        self.assertEqual(budget.gpu_resident_bytes(), {})
+        self.assertEqual(budget._gpu_resident_bytes(), {})
