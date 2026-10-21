@@ -126,9 +126,12 @@ class DocImageFailureTest(unittest.TestCase):
     def test_the_demo_scene_lists_every_variant_and_reads_fitted_from_its_recipes(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import doc_tables
-        found = dict(doc_tables.variants(DEMO_SCENE, "atrium"))
-        self.assertEqual(found, {"atrium": False, "atrium_flat": False, "atrium_lite": False,
-                                 "atrium_fitted": True, "atrium_fitted_full": True, "atrium_flat_fitted": True})
+        # Every mesh renderer of the scene file, fitted where its table has a fit.
+        objects = tomllib.loads(DEMO_SCENE.read_text())["objects"]
+        expected = {item["name"]: "fit" in item["mesh_renderer"] for item in objects if "mesh_renderer" in item}
+        full = min(expected, key=len)
+        self.assertEqual(dict(doc_tables.variants(DEMO_SCENE, full)), expected)
+        self.assertTrue(any(expected.values()) and not all(expected.values()))
 
     def test_score_columns_are_the_sampling_tables(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
