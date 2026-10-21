@@ -66,11 +66,12 @@ python launcher/tools/render/meshlet_capture.py prepare \
 
 The scene's tools README supplies its scene path and fixed-pose suite name.
 Preparation copies the tracked tree into
-`launcher/tools/results/meshlet-sizes/tree` and re-clusters committed triangles
-through `rebake.py`, without building firmware or accessing the board.
+`launcher/tools/results/meshlet-sizes/tree` and re-clusters the cached bakes'
+triangles through `rebake.py`, without building firmware or accessing the board.
 
-For each size, install its bakes into that tree, then run the single printed
-command before installing the next size:
+Packs read meshes from the bake cache by the lock, so a row puts its size's
+bakes in the cache and points the tree's `bakes.lock` at them. Install a row,
+then run the single printed command before installing the next size:
 
 ```sh
 python launcher/tools/render/meshlet_capture.py row 16

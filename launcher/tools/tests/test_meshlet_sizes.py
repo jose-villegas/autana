@@ -1,6 +1,7 @@
 """Meshlet settings, capture identities and geometry-derived report cells."""
 import contextlib
 import io
+import os
 import pathlib
 import shutil
 import subprocess
@@ -302,15 +303,23 @@ int main(void) {
 
     def test_row_installs_one_size_and_prints_one_locked_command(self):
         import meshlet_capture
+        from bake import bake
+        from unittest import mock
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / "bakes/16").mkdir(parents=True)
-            (root / "tree/assets").mkdir(parents=True)
             (root / "bakes/16/mesh.mesh").write_bytes(b"size16")
+            lock = root / "tree" / bake.LOCK.relative_to(bake.REPO)
+            lock.parent.mkdir(parents=True)
+            bake.write_lock([dict(output="mesh.mesh", source="assets/mesh.scene.toml", key="k", sha256="0" * 64, size=6),
+                             dict(output="other.mesh", source="other.scene.toml", key="o", sha256="1" * 64, size=1)], lock)
             output = io.StringIO()
-            with contextlib.redirect_stdout(output):
+            with contextlib.redirect_stdout(output), mock.patch.dict(os.environ, {bake.CACHE_VARIABLE: str(root / "cache")}):
                 meshlet_capture.install_row(root, dict(sizes=[16,32,64], suite="run_perf", meshes=["assets/mesh.mesh"]), 16)
-            self.assertEqual((root / "tree/assets/mesh.mesh").read_bytes(), b"size16")
+            rows = bake.read_lock(lock)
+            self.assertEqual(rows["k"]["sha256"], bake.file_sha256(root / "bakes/16/mesh.mesh"))
+            self.assertEqual(rows["o"]["sha256"], "1" * 64)
+            self.assertEqual(bake.cached(rows["k"], bake.MESH_SUFFIX, root / "cache").read_bytes(), b"size16")
             lines = output.getvalue().splitlines()
             self.assertEqual(len(lines), 1)
             self.assertIn("suite run_perf --flash --out", lines[0])

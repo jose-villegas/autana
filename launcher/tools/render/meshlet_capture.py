@@ -8,6 +8,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
+from bake import bake
 from r3d import rebake
 from r3d.import_settings import load_scene
 from r3d.scene_name import scene_id
@@ -17,26 +18,37 @@ DEFAULT_WORK = ROOT / "launcher/tools/results/meshlet-sizes"
 
 
 def rebake_scene(scene_path, output, size):
+    """The scene's meshes from the bake cache, re-clustered to `size`, in `output` under their entry names."""
     output = pathlib.Path(output)
     output.mkdir(parents=True, exist_ok=True)
+    found = [item for item in bake.bakes([scene_path]) if item.packed]
+    cached = {item.tree.resolve(): path for item, path in
+              bake.fetch_all(found, bake.read_lock(), bake.default_cache()).items()}
     paths = []
     for job in load_scene(scene_path).renderers:
         target = output / job.asset_path.name
-        if size == job.settings.meshlet_triangles:
-            shutil.copyfile(job.asset_path, target)
-        else:
-            rebake.main([str(job.asset_path), "--out-dir", str(output), "--import", str(job.settings.path),
-                         "--meshlet-triangles", str(size)])
+        shutil.copyfile(cached[job.asset_path.resolve()], target)
+        if size != job.settings.meshlet_triangles:
+            rebake.main([str(target), "--import", str(job.settings.path), "--meshlet-triangles", str(size)])
         paths.append(target)
     return paths
 
 
-
 def install_row(work, metadata, size):
+    """Points the scratch tree's lock at the row's bakes and puts them in the bake cache, which packs read."""
     if size not in metadata["sizes"]:
         raise ValueError("row size was not prepared")
-    for name in metadata["meshes"]:
-        shutil.copyfile(work / "bakes" / str(size) / pathlib.Path(name).name, work / "tree" / name)
+    lock = work / "tree" / bake.LOCK.relative_to(ROOT)
+    tables = bake.read_lock_tables(lock)
+    names = {pathlib.Path(name).name for name in metadata["meshes"]}
+    rows = [row for row in tables["bake"].values() if row["output"] in names]
+    if {row["output"] for row in rows} != names:
+        raise ValueError("the scratch lock does not hold every mesh of the scene")
+    for row in rows:
+        path = work / "bakes" / str(size) / row["output"]
+        row.update(sha256=bake.file_sha256(path), size=path.stat().st_size)
+        bake.store(path, row, bake.MESH_SUFFIX, bake.default_cache())
+    bake.write_lock(tables["bake"].values(), lock, tables["poses"].values(), tables["mesh_cpu_vendor"])
     quote = lambda path: shlex.quote(pathlib.Path(path).as_posix())
     capture = ROOT / f"docs/render/data/meshlets-{size}-board.log"
     print(f"autana --wait 3600 --project {quote(work / 'tree')} suite {shlex.quote(metadata['suite'])} "
