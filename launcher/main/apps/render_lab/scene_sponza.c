@@ -1,173 +1,19 @@
 /*
- * scene_sponza: Crytek Sponza flown through on a looping camera path.
- *
- * The scene manager owns the frame: this loads the scene, shows one of its
- * bakes (sponza_bakes) and draws the HUD, while the shell advances the camera
- * and draws it. Light is baked into the mesh, so a frame is only cull,
- * transform, clip and fill on both cores. One scene per bake shares this code.
+ * scene_sponza: Crytek Sponza flown through on a looping camera path, one scene per bake (sponza_bakes), shown through
+ * scene_baked.
  */
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
-
-#include "esp_log.h"
-
-#include "draw/draw.h"
-#include "gfx/present/gfx_present.h"
-#include "render/context/render_context.h"
-#include "render_lab.h"
-#include "render_lab_dynres.h"
 #include "render_lab_scene.h"
-#include "render_lab_view.h"
-#include "scene/scene.h"
-#include "services/tune.h"
+#include "scene_baked.h"
 #include "sponza_content.h"
 
-static const char* TAG = "sponza";
+static const scene_baked_t sponza = {SPONZA_SCENE, sponza_bakes, SPONZA_BAKE_COUNT, sponza_cameras};
 
-static scene_t* sponza;
-
-/* What the panel says in place of the triangle count when the scene could not
- * load; empty when it could. */
-static char failure[RENDER_LAB_STATUS_LEN];
-
-static void
-record_failure(const scene_failure_t* why) {
-    const char* what = why->what;
-    ESP_LOGE(TAG, "scene '%s' did not load (%d, asset %s); it stays blank", what, (int)why->status,
-             asset_status_text(why->asset));
-    const bool missing = why->asset == ASSET_ERR_NOT_FOUND || why->asset == ASSET_ERR_NO_PACK;
-    const char* shown = "bad asset '%s'";
-    switch (why->status) {
-        case SCENE_ERR_MEMORY: shown = "no memory for '%s'"; break;
-        case SCENE_ERR_FULL: shown = "too many scenes for '%s'"; break;
-        case SCENE_ERR_ASSET: shown = missing ? "no asset '%s': flash it" : "bad asset '%s'"; break;
-        case SCENE_ERR_UNKNOWN:
-        case SCENE_OK: shown = "no scene '%s'"; break;
-    }
-    if (snprintf(failure, sizeof failure, shown, what) < 0) {
-        failure[0] = '\0';
-    }
-}
-
-/* Loads the scene and shows sponza_bakes[shown]. */
-static void
-enter_with(sponza_bake_t shown) {
-    draw_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
-    failure[0] = '\0';
-    scene_failure_t why;
-    sponza = scene_load(SPONZA_SCENE, &why);
-    if (sponza == NULL) {
-        record_failure(&why);
-        return;
-    }
-    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
-        const scene_entity_t bake = scene_find(sponza, sponza_bakes[i]);
-        if (bake == SCENE_ENTITY_NONE) {
-            ESP_LOGE(TAG, "the scene has no entity '%s'", sponza_bakes[i]);
-            if (snprintf(failure, sizeof failure, "no bake '%s'", sponza_bakes[i]) < 0) {
-                failure[0] = '\0';
-            }
-            continue;
-        }
-        scene_entity_set_enabled(sponza, bake, i == (int)shown);
-    }
-    (void)scene_activate(sponza, render_lab_start_camera);
-    render_lab_apply_raster_settings();
-    if (sponza != NULL) {
-        (void)render_lab_apply_camera_settings(
-            sponza, scene_find(sponza, render_lab_start_camera == NULL ? sponza_cameras[0] : render_lab_start_camera));
-    }
-#if TUNE_ENABLED
-    render_context_set_debug_view(render_context_main(), render_lab_debug_view());
-#endif
-}
-
-static void
-scene_sponza_enter(void) {
-    enter_with(SPONZA_BAKE_FULL);
-}
-
-static void
-scene_sponza_lite_enter(void) {
-    enter_with(SPONZA_BAKE_LITE);
-}
-
-static void
-scene_sponza_flat_enter(void) {
-    enter_with(SPONZA_BAKE_FLAT);
-}
-
-static void
-scene_sponza_fitted_enter(void) {
-    enter_with(SPONZA_BAKE_FITTED);
-}
-
-static void
-scene_sponza_fitted_full_enter(void) {
-    enter_with(SPONZA_BAKE_FITTED_FULL);
-}
-
-static void
-scene_sponza_flat_fitted_enter(void) {
-    enter_with(SPONZA_BAKE_FLAT_FITTED);
-}
-
-static void
-scene_sponza_exit(void) {
-    scene_unload(sponza);
-    sponza = NULL;
-}
-
-/* The shell has already drawn the scene into the framebuffer. */
-static void
-scene_sponza_frame(uint32_t dt_ms) {
-    (void)dt_ms;
-    render_lab_apply_raster_settings();
-    if (sponza != NULL) {
-        (void)render_lab_apply_camera_settings(
-            sponza, scene_find(sponza, render_lab_start_camera == NULL ? sponza_cameras[0] : render_lab_start_camera));
-    }
-#if TUNE_ENABLED
-    render_context_set_debug_view(render_context_main(), render_lab_debug_view());
-#endif
-}
-
-static const char*
-sponza_status(void) {
-    static char buf[RENDER_LAB_STATUS_LEN];
-    if (failure[0] != '\0') {
-        return failure;
-    }
-    if (snprintf(buf, sizeof buf, "%s%5d tris", render_lab_dynres_size(),
-                 render_context_frame(render_context_main()).stats.triangles)
-        < 0) {
-        buf[0] = '\0';
-    }
-    return buf;
-}
-
-/* A bake's scene: its title, key, variant and enter, with the family's shared hooks. */
-#define SPONZA_BAKE_SCENE(title_, key_, variant_, enter_)                                                              \
-    {.name = (title_),                                                                                                 \
-     .key = (key_),                                                                                                    \
-     .family = "Sponza",                                                                                               \
-     .variant = (variant_),                                                                                            \
-     .enter = (enter_),                                                                                                \
-     .frame = scene_sponza_frame,                                                                                      \
-     .exit = scene_sponza_exit,                                                                                        \
-     .status = sponza_status}
-
-const render_lab_scene_t scene_sponza = SPONZA_BAKE_SCENE("Sponza", "sponza", "Full", scene_sponza_enter);
-const render_lab_scene_t scene_sponza_lite =
-    SPONZA_BAKE_SCENE("Sponza Lite", "sponza-lite", "Lite", scene_sponza_lite_enter);
-const render_lab_scene_t scene_sponza_flat =
-    SPONZA_BAKE_SCENE("Sponza Flat", "sponza-flat", "Flat", scene_sponza_flat_enter);
-const render_lab_scene_t scene_sponza_fitted =
-    SPONZA_BAKE_SCENE("Sponza Fitted", "sponza-fitted", "Fitted", scene_sponza_fitted_enter);
-const render_lab_scene_t scene_sponza_fitted_full =
-    SPONZA_BAKE_SCENE("Sponza Fitted Full", "sponza-fitted-full", "Fitted Full", scene_sponza_fitted_full_enter);
-const render_lab_scene_t scene_sponza_flat_fitted =
-    SPONZA_BAKE_SCENE("Sponza Flat Fitted", "sponza-flat-fitted", "Flat Fitted", scene_sponza_flat_fitted_enter);
+SCENE_BAKED(scene_sponza, sponza, SPONZA_BAKE_FULL, "Sponza", "Sponza", "sponza", "Full");
+SCENE_BAKED(scene_sponza_lite, sponza, SPONZA_BAKE_LITE, "Sponza", "Sponza Lite", "sponza-lite", "Lite");
+SCENE_BAKED(scene_sponza_flat, sponza, SPONZA_BAKE_FLAT, "Sponza", "Sponza Flat", "sponza-flat", "Flat");
+SCENE_BAKED(scene_sponza_fitted, sponza, SPONZA_BAKE_FITTED, "Sponza", "Sponza Fitted", "sponza-fitted", "Fitted");
+SCENE_BAKED(scene_sponza_fitted_full, sponza, SPONZA_BAKE_FITTED_FULL, "Sponza", "Sponza Fitted Full",
+            "sponza-fitted-full", "Fitted Full");
+SCENE_BAKED(scene_sponza_flat_fitted, sponza, SPONZA_BAKE_FLAT_FITTED, "Sponza", "Sponza Flat Fitted",
+            "sponza-flat-fitted", "Flat Fitted");

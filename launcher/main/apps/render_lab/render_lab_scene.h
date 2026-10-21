@@ -45,6 +45,12 @@ extern const render_lab_scene_t scene_sponza_flat;
 extern const render_lab_scene_t scene_sponza_fitted;
 extern const render_lab_scene_t scene_sponza_fitted_full;
 extern const render_lab_scene_t scene_sponza_flat_fitted;
+extern const render_lab_scene_t scene_bistro;
+extern const render_lab_scene_t scene_bistro_lite;
+extern const render_lab_scene_t scene_bistro_flat;
+extern const render_lab_scene_t scene_bistro_fitted;
+extern const render_lab_scene_t scene_bistro_fitted_full;
+extern const render_lab_scene_t scene_bistro_flat_fitted;
 
 /* A scene's `.console`: the hook in a development or host build, NULL otherwise,
  * as APP_CONSOLE_PTR() does, so a release links none of the console; a host

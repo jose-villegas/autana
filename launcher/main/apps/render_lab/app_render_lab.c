@@ -22,8 +22,19 @@
 
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
 static const render_lab_scene_t* const scenes[] = {
-    &scene_sponza_fitted_full, &scene_sponza_fitted,      &scene_sponza,   &scene_sponza_lite,
-    &scene_sponza_flat,        &scene_sponza_flat_fitted, &scene_capybara,
+    &scene_sponza_fitted_full,
+    &scene_sponza_fitted,
+    &scene_sponza,
+    &scene_sponza_lite,
+    &scene_sponza_flat,
+    &scene_sponza_flat_fitted,
+    &scene_capybara,
+    &scene_bistro_fitted_full,
+    &scene_bistro_fitted,
+    &scene_bistro,
+    &scene_bistro_lite,
+    &scene_bistro_flat,
+    &scene_bistro_flat_fitted,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
