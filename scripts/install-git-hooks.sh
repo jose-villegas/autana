@@ -15,7 +15,8 @@
 # if it finds one.
 #
 # The hooks check staged formatting, executable bits and text rules before
-# commits, then branch names and sanitized host tests before C/header pushes.
+# commits. Pre-push checks branch names, requires the remote's main (offline
+# too), then tests C/header changes. Merge main in and push again; --no-verify skips.
 
 set -eu
 
@@ -34,7 +35,8 @@ case "${1:-}" in
                 echo "  (not this repository's $HOOKS_DIR - pre-commit and pre-push hooks are NOT active)"
             else
                 echo "  pre-commit checks staged formatting, exec bits and text rules."
-                echo "  pre-push checks branch names and runs sanitized host tests for C/header changes."
+                echo "  pre-push checks branch names, requires remote main (offline refuses), and tests C/header changes."
+                echo "  Merge main in and push again; git push --no-verify skips the hook."
             fi
         else
             echo "core.hooksPath is unset; git uses .git/hooks, so pre-commit and pre-push hooks are NOT active."
@@ -97,7 +99,7 @@ done
 echo ""
 echo "Pre-commit checks staged formatting, executable bits and CI's file-scoped text rules."
 echo "It needs the clang-format of the esp-clang release launcher/idf-pin.json pins, and Python with scripts/gates/requirements.txt."
-echo "See docs/C-Style-Guide.md. Pre-push checks branch names and runs host tests"
-echo "with --sanitize when a pushed range changes C or headers. See docs/testing/Host-Tests.md."
+echo "See docs/C-Style-Guide.md. Pre-push checks branch names and requires remote main; offline it refuses too."
+echo "Merge main in and push again. C/header changes run sanitized host tests. See docs/testing/Host-Tests.md."
 echo "Skip a hook with git commit --no-verify or git push --no-verify."
 echo "Undo with: scripts/install-git-hooks.sh --remove"

@@ -3,6 +3,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 import yaml
@@ -45,6 +46,12 @@ class LocalHookTests(ShellGateTestCase):
         self.write('launcher/main/apps/example/development_only.cmake', '')
         self.git('add', 'scripts', 'launcher/tools')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'fixture tools')
+        remote_temp = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_temp.cleanup)
+        self.remote = str(Path(remote_temp.name) / 'remote.git')
+        subprocess.run(['git', 'init', '--bare', '-q', self.remote], check=True)
+        self.git('remote', 'add', 'origin', self.remote)
+        self.git('-c', 'core.hooksPath=', 'push', '-q', 'origin', 'HEAD:refs/heads/main')
 
     def save_workflow(self):
         (self.root / '.github/workflows/comment-rules.yml').write_text(yaml.safe_dump(self.workflow))
@@ -58,8 +65,11 @@ class LocalHookTests(ShellGateTestCase):
         target.write_text(text)
         self.git('add', path)
 
-    def gate(self, name, stdin=None):
-        result = subprocess.run([self.shell, (self.root / 'scripts/gates' / name).as_posix()],
+    def gate(self, name, stdin=None, remote="origin"):
+        command = [self.shell, (self.root / 'scripts/gates' / name).as_posix()]
+        if name in ('check-push-has-main.sh', '../git-hooks/pre-push'):
+            command.append(remote)
+        result = subprocess.run(command,
                               cwd=self.root, input=stdin.encode() if stdin else None,
                               capture_output=True, timeout=60)
         result.stdout = result.stdout.decode()
@@ -125,6 +135,87 @@ class LocalHookTests(ShellGateTestCase):
         result = self.gate('check-text-rules-staged.sh')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('current', result.stdout)
+
+    def test_push_behind_main_requires_merge_before_host_tests(self):
+        behind = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-qb', 'feature/test')
+        self.write('main-note.txt', 'main advance\n')
+        self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'main advance')
+        main = self.git('rev-parse', 'HEAD')
+        self.git('-c', 'core.hooksPath=', 'push', '-q', 'origin', 'HEAD:refs/heads/main')
+        self.git('reset', '--hard', behind)
+        self.write('sample.c', 'int sample;\n')
+        self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'branch work')
+        head = self.git('rev-parse', 'HEAD')
+        update = f'refs/heads/feature/test {head} refs/heads/feature/test {behind}\n'
+        runner = self.root / 'launcher/test/run_tests.sh'
+        runner.parent.mkdir(parents=True)
+        runner.write_bytes(b'#!/bin/sh\necho UNEXPECTED_HOST_TESTS\nexit 9\n')
+        for gate in ('check-push-has-main.sh', '../git-hooks/pre-push'):
+            with self.subTest(gate=gate):
+                result = self.gate(gate, update)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('feature/test', result.stderr)
+                self.assertIn(f'origin/main {main[:7]}', result.stderr)
+                self.assertIn('git fetch origin && git merge origin/main', result.stderr)
+                self.assertNotIn('UNEXPECTED_HOST_TESTS', result.stdout)
+        runner.write_bytes(b'#!/bin/sh\necho SANITIZED\n')
+        self.git('-c', 'core.hooksPath=', 'merge', '--no-edit', 'origin/main')
+        head = self.git('rev-parse', 'HEAD')
+        update = f'refs/heads/feature/test {head} refs/heads/feature/test {behind}\n'
+        for gate in ('check-push-has-main.sh', '../git-hooks/pre-push'):
+            result = self.gate(gate, update)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_push_exempt_refs_do_not_read_remote(self):
+        head = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', '--orphan', 'images')
+        self.git('rm', '-rq', '--cached', '.')
+        self.write('image.png', 'png\n')
+        self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'images')
+        orphan = self.git('rev-parse', 'HEAD')
+        zero = '0' * 40
+        self.git('remote', 'set-url', 'origin', self.remote + '/missing')
+        for ref, tip in (('refs/heads/feature/deleted', zero), ('refs/heads/main', head),
+                         ('refs/heads/images', orphan), ('refs/tags/example', head)):
+            with self.subTest(ref=ref):
+                update = f'{ref} {tip} {ref} {zero}\n'
+                result = self.gate('check-push-has-main.sh', update)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stderr, '')
+        self.git('update-ref', '-d', 'refs/remotes/origin/main')
+        result = self.gate('check-push-has-main.sh',
+                           f'refs/heads/images {orphan} refs/heads/images {zero}\n')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('main could not be read from origin', result.stderr)
+
+    def test_push_main_object_missing_locally_refuses_each_branch(self):
+        head = self.git('rev-parse', 'HEAD')
+        tree = self.git('rev-parse', 'HEAD^{tree}')
+        remote_git = ['git', '-C', self.remote]
+        main = subprocess.check_output(remote_git + ['-c', 'user.name=Test',
+            '-c', 'user.email=test@example.invalid', 'commit-tree', tree,
+            '-p', head, '-m', 'remote main'], text=True).strip()
+        subprocess.run(remote_git + ['update-ref', 'refs/heads/main', main], check=True)
+        self.assertNotEqual(subprocess.run(['git', 'cat-file', '-e', main], cwd=self.root,
+                                          capture_output=True).returncode, 0)
+        update = ''.join(f'refs/heads/feature/{name} {head} refs/heads/feature/{name} {head}\n'
+                         for name in ('one', 'two'))
+        result = self.gate('check-push-has-main.sh', update)
+        self.assertNotEqual(result.returncode, 0)
+        for name in ('one', 'two'):
+            self.assertIn(f'refs/heads/feature/{name}', result.stderr)
+        self.assertIn(f'origin/main {main[:7]}', result.stderr)
+
+    def test_push_unreachable_main_refuses(self):
+        head = self.git('rev-parse', 'HEAD')
+        update = f'refs/heads/feature/test {head} refs/heads/feature/test {head}\n'
+        self.git('remote', 'set-url', 'origin', self.remote + '/missing')
+        result = self.gate('check-push-has-main.sh', update)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('main could not be read from origin', result.stderr)
+        self.assertIn('git push --no-verify', result.stderr)
+        self.assertEqual(len(result.stderr.splitlines()), 1)
 
     def test_push_c_range_runs_sanitized_tests_and_refuses_failure(self):
         self.write('note.txt', 'base\n')
