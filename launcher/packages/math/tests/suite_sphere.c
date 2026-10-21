@@ -12,6 +12,24 @@ static const spheref_t SPHERE_FLAT_ENCLOSING = {{1, 1, 2}, 5};
 static const float SPHERE_ENTRY = 1.0F / 3.0F;
 
 static void
+test_sphere_closest_point(void) {
+    static const spheref_t translated = {{1, 1, 3}, 7};
+    static const vec3f_t outside = {5, 7, 15};
+    static const vec3f_t boundary = {3, 4, 9};
+    TEST_ASSERT_TRUE(vec3f_equal(SPHERE_UNIT.centre, spheref_closest_point(SPHERE_UNIT, SPHERE_UNIT.centre)));
+    const vec3f_t inside = vec3f_scale(SPHERE_BOUNDARY, mathf_half());
+    TEST_ASSERT_TRUE(vec3f_equal(inside, spheref_closest_point(SPHERE_UNIT, inside)));
+    TEST_ASSERT_TRUE(vec3f_equal(SPHERE_BOUNDARY, spheref_closest_point(SPHERE_UNIT, SPHERE_BOUNDARY)));
+    TEST_ASSERT_TRUE(vec3f_equal(SPHERE_BOUNDARY, spheref_closest_point(SPHERE_UNIT, SPHERE_FAR)));
+    const vec3f_t closest = spheref_closest_point(translated, outside);
+    TEST_ASSERT_FLOAT_WITHIN(SPHERE_TOLERANCE, boundary.x, closest.x);
+    TEST_ASSERT_FLOAT_WITHIN(SPHERE_TOLERANCE, boundary.y, closest.y);
+    TEST_ASSERT_FLOAT_WITHIN(SPHERE_TOLERANCE, boundary.z, closest.z);
+    TEST_ASSERT_TRUE(
+        vec3f_equal(SPHERE_BOUNDARY, spheref_closest_point((spheref_t){SPHERE_BOUNDARY, mathf_zero()}, SPHERE_FAR)));
+}
+
+static void
 test_sphere_closed_queries(void) {
     const spheref_t enclosing = spheref_from_box(SPHERE_FLAT_BOX);
     TEST_ASSERT_TRUE(vec3f_equal(SPHERE_FLAT_ENCLOSING.centre, enclosing.centre));
@@ -104,6 +122,7 @@ test_sphere_long_segment_entry(void) {
 
 void
 suite_sphere(void) {
+    RUN_TEST(test_sphere_closest_point);
     RUN_TEST(test_sphere_long_segment_misses);
     RUN_TEST(test_sphere_long_segment_entry);
     RUN_TEST(test_sphere_box_corner_distance);

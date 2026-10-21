@@ -14,7 +14,7 @@ from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, SLOTS,
                              GIF_FRAMES, GIF_FPS, ORBIT_GIF_COLORS, wire_sphere,
                              figure as new_figure, save, save_gif, style_axes)
 import numpy as np
-from matplotlib.patches import Patch, Rectangle
+from matplotlib.patches import Circle, Patch, Rectangle
 from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d import proj3d
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -76,6 +76,13 @@ DISTANCE_BRACKET_LABEL_OFFSET = (0, -16)
 DISTANCE_STEP_Y = -1.35
 DISTANCE_MARGIN = 0.8
 SEGMENT_ZOOM = 0.9
+CIRCLE_MARGIN = 1
+CIRCLE_STATE_OFFSET = (8, 0)
+CIRCLE_LABEL_ROOM = 3.5
+CIRCLE_SEGMENT_OFFSETS = ((0, -12), (0, 12), (0, 12))
+CIRCLE_LEGEND_OFFSET = -0.12
+CIRCLE_CELL_SIZE = POINT_SIZE / 8
+CIRCLE_CENTRE_SIZE = POINT_SIZE / 4
 
 
 def panels(projection=None):
@@ -118,6 +125,71 @@ def rect_figure(data, output):
     empty_axis.set_xlabel(f"from_edges = {tuple(data['crossed'])}; empty = {data['empty']}",
                          fontsize=LABEL_SIZE)
     save(figure, output)
+
+
+def circle_figure(data, output):
+    fig, (axis, segment_axis) = panels()
+    fig.set_size_inches(FIGURE_WIDTH, FIGURE_HEIGHT)
+    style_axes(axis, "Circle / rect closest point", square=True)
+    x, y, w, h = data["rect"]
+    last_x, last_y = data["last"]
+    for cell_y in range(y, y + h):
+        for cell_x in range(x, x + w):
+            axis.scatter(cell_x, cell_y, color=SHAPE_FILL, s=CIRCLE_CELL_SIZE)
+    axis.add_patch(Rectangle((x, y), last_x - x, last_y - y,
+                             facecolor="none", edgecolor=SHAPE_FILL))
+    axis.set_xlabel(f"recti {tuple(data['rect'])} covers x {x}..{last_x}, y {y}..{last_y};\n"
+                    f"right = {x + w} and bottom = {y + h} are not cells", fontsize=LABEL_SIZE)
+    for centre, radius, closest, hit, state, cells in data["circles"]:
+        color = BOX_COLORS[("overlap", "touch", "miss").index(state)]
+        axis.add_patch(Circle(centre, radius, facecolor=color, edgecolor=color, alpha=SHAPE_ALPHA))
+        axis.plot(*np.array([centre, closest]).T, color=MUTED, linestyle="--")
+        axis.scatter(*centre, color=color, s=CIRCLE_CENTRE_SIZE)
+        axis.scatter(*closest, facecolor="none", edgecolor=INK, s=CIRCLE_CENTRE_SIZE)
+        for cell_x, cell_y, inside in cells:
+            if inside:
+                axis.scatter(cell_x, cell_y, color=BOX_COLORS[0], s=CIRCLE_CELL_SIZE)
+        axis.annotate(f"{state} ({'true' if hit else 'false'})", (centre[0] + radius, centre[1]),
+                      xytext=CIRCLE_STATE_OFFSET, textcoords="offset points",
+                      va="center", fontsize=LABEL_SIZE, color=color)
+    axis.set_xlim(x - CIRCLE_MARGIN, max(c[0][0] + c[1] for c in data["circles"]) + CIRCLE_LABEL_ROOM)
+    axis.set_ylim(y + h + CIRCLE_MARGIN,
+                  min(y, min(c[0][1] - c[1] for c in data["circles"])) - CIRCLE_MARGIN)
+    axis.set_xticks(range(x, x + w + CIRCLE_MARGIN * 3))
+    axis.set_yticks(range(y, y + h + 1))
+    state_handles = [Line2D([], [], color=color, marker="o", linestyle="", label=state)
+                     for state, color in zip(("overlap", "touch", "miss"), BOX_COLORS)]
+    axis.legend(handles=state_handles + [Line2D([], [], color=INK, marker="o", linestyle="", label="closest covered point"),
+                         Line2D([], [], color=MUTED, linestyle="--", label="centre to closest")],
+                fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=(0.5, CIRCLE_LEGEND_OFFSET),
+                frameon=False, ncol=2)
+    style_axes(segment_axis, "Segment / circle", square=True)
+    centre, radius = data["segment_circle"]
+    segment_axis.add_patch(Circle(centre, radius, facecolor=POINT, edgecolor=POINT, alpha=SHAPE_ALPHA))
+    for (a, b, hit, t, point), offset in zip(data["segments"], CIRCLE_SEGMENT_OFFSETS):
+        color = BOX_COLORS[1 if hit and t == 0 else 0] if hit else MUTED
+        segment_axis.plot(*np.array([a, b]).T, color=color, linestyle="-" if hit else "--")
+        if hit:
+            segment_axis.scatter(*point, color=color, s=POINT_SIZE,
+                                 marker="s" if t == 0 else "o")
+            label = "inside start t = 0" if t == 0 else f"entry t = {t:.3g}"
+        else:
+            label = "miss"
+        anchor = (centre[0], centre[1] + (radius if t == 0 else -radius)) if hit else a
+        segment_axis.annotate(label, anchor, xytext=offset, ha="center" if hit else "left",
+                              va="bottom" if offset[1] > 0 else "top",
+                              textcoords="offset points", color=color, fontsize=LABEL_SIZE)
+    extent = max(np.abs(endpoint).max() for segment in data["segments"] for endpoint in segment[:2])
+    extent = max(extent, np.abs(centre).max() + radius) + CIRCLE_MARGIN
+    segment_axis.set_xlim(-extent, extent)
+    segment_axis.set_ylim(-extent, extent)
+    segment_axis.legend(handles=[
+        Line2D([], [], color=BOX_COLORS[0], marker="o", label="entry point"),
+        Line2D([], [], color=BOX_COLORS[1], marker="s", label="inside start"),
+        Line2D([], [], color=MUTED, linestyle="--", label="miss (dashed)")],
+        fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=(0.5, CIRCLE_LEGEND_OFFSET),
+        frameon=False)
+    save(fig, output)
 
 
 def space_panels(titles):
@@ -445,6 +517,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     data = run_probe(args.cc, [PROBE], GIF_FRAMES)
     rect_figure(data["rect"], args.out / "rect-queries.png")
+    circle_figure(data["circle"], args.out / "circle-rect-queries.png")
     for name, values, plot in (("plane-distance.png", data["distance"], distance_figure),
                               ("plane-from-points.png", data["triangle"], points_figure),
                               ("plane-from-rows.png", data["rows"], rows_figure),

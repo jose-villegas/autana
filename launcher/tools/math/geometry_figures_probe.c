@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "math/geometry/circlef.h"
+#include "math/geometry/circlei.h"
 #include "math/geometry/recti.h"
 #include "math/geometry/spheref.h"
 #include "math/linear/mat4f.h"
@@ -65,6 +67,60 @@ static const vec3f_t QUERY_SEGMENTS[][2] = {
     {{3, 0, 0}, {5, 0, 1}},
     {{-3, 0, 2}, {5, 0, 2}},
 };
+
+static const recti_t CIRCLE_RECT = {1, 1, 4, 9};
+static const circlei_t RECT_CIRCLES[] = {{{5, 2}, 2}, {{5, 5}, 1}, {{6, 8}, 1}};
+static const circlef_t SEGMENT_CIRCLE = {{0, 0}, 2};
+static const vec2f_t CIRCLE_SEGMENTS[][2] = {
+    {{-3, -1}, {3, -1}},
+    {{0, 0}, {3, 1}},
+    {{-3, 3}, {3, 3}},
+};
+
+static void
+print_vec2(vec2f_t p) {
+    printf("[%.7g,%.7g]", (double)p.x, (double)p.y);
+}
+
+static void
+print_circle_queries(void) {
+    const vec2i_t lo = {CIRCLE_RECT.x, CIRCLE_RECT.y};
+    const vec2i_t hi = {recti_right(CIRCLE_RECT) - mathi_one(), recti_bottom(CIRCLE_RECT) - mathi_one()};
+    printf(",\"circle\":{\"rect\":[%d,%d,%d,%d],\"last\":[%d,%d],\"circles\":[", CIRCLE_RECT.x, CIRCLE_RECT.y,
+           CIRCLE_RECT.w, CIRCLE_RECT.h, hi.x, hi.y);
+    for (size_t i = 0; i < sizeof RECT_CIRCLES / sizeof RECT_CIRCLES[0]; i++) {
+        const circlei_t circle = RECT_CIRCLES[i];
+        const vec2i_t closest = vec2i_clamp(circle.centre, lo, hi);
+        const vec2i_t delta = vec2i_sub(circle.centre, closest);
+        const bool hit = circlei_overlaps_rect(circle, CIRCLE_RECT);
+        const bool touch = vec2i_dot(delta, delta) == circle.radius * circle.radius;
+        printf("%s[[%d,%d],%d,[%d,%d],%s,\"%s\",[", i ? "," : "", circle.centre.x, circle.centre.y, circle.radius,
+               closest.x, closest.y, hit ? "true" : "false", hit ? (touch ? "touch" : "overlap") : "miss");
+        for (int y = lo.y; y <= hi.y; y++) {
+            for (int x = lo.x; x <= hi.x; x++) {
+                const bool inside = circlei_contains_point(circle, (vec2i_t){x, y});
+                printf("%s[%d,%d,%s]", x == lo.x && y == lo.y ? "" : ",", x, y, inside ? "true" : "false");
+            }
+        }
+        printf("]]");
+    }
+    printf("],\"segment_circle\":[");
+    print_vec2(SEGMENT_CIRCLE.centre);
+    printf(",%.7g],\"segments\":[", (double)SEGMENT_CIRCLE.radius);
+    for (size_t i = 0; i < sizeof CIRCLE_SEGMENTS / sizeof CIRCLE_SEGMENTS[0]; i++) {
+        const vec2f_t a = CIRCLE_SEGMENTS[i][0], b = CIRCLE_SEGMENTS[i][1];
+        float t = 0.0F;
+        const bool hit = circlef_segment_hit(SEGMENT_CIRCLE, a, b, &t);
+        printf("%s[", i ? "," : "");
+        print_vec2(a);
+        printf(",");
+        print_vec2(b);
+        printf(",%s,%.7g,", hit ? "true" : "false", (double)t);
+        print_vec2(circlef_closest_point(SEGMENT_CIRCLE, vec2f_lerp(a, b, t)));
+        printf("]");
+    }
+    printf("]}");
+}
 
 static void
 print_vec(vec3f_t p) {
@@ -342,6 +398,7 @@ main(int argc, char** argv) {
            (double)planef_distance(world_plane, world_sample));
     print_box_frustum(frames);
     print_queries(frames);
+    print_circle_queries();
     printf("}\n");
     return 0;
 }
