@@ -360,10 +360,10 @@ far_view_outcode(const mesh_pass_t* pass, vec3x_t p) {
     const projectx_t* lens = &pass->view->lens;
     const int64_t x = (int64_t)p.x * lens->fx;
     const int64_t y = (int64_t)p.y * lens->fy;
-    const int64_t left = (int64_t)(pass->clip.x - FAR_CULL_MARGIN_PX) * MATHX_ONE - lens->cx;
-    const int64_t right = (int64_t)(recti_right(pass->clip) + FAR_CULL_MARGIN_PX) * MATHX_ONE - lens->cx;
-    const int64_t top = lens->cy - (int64_t)(pass->clip.y - FAR_CULL_MARGIN_PX) * MATHX_ONE;
-    const int64_t bottom = lens->cy - (int64_t)(recti_bottom(pass->clip) + FAR_CULL_MARGIN_PX) * MATHX_ONE;
+    const int64_t left = ((int64_t)(pass->clip.x - FAR_CULL_MARGIN_PX) * MATHX_ONE) - lens->cx;
+    const int64_t right = ((int64_t)(recti_right(pass->clip) + FAR_CULL_MARGIN_PX) * MATHX_ONE) - lens->cx;
+    const int64_t top = lens->cy - ((int64_t)(pass->clip.y - FAR_CULL_MARGIN_PX) * MATHX_ONE);
+    const int64_t bottom = lens->cy - ((int64_t)(recti_bottom(pass->clip) + FAR_CULL_MARGIN_PX) * MATHX_ONE);
     unsigned code = p.z <= r3d_line_near_z(pass->view) ? MESH_NODE_FRONT : 0U;
     code |= x < left * p.z ? GFX_CLIP_OUT_LEFT : 0U;
     code |= x > right * p.z ? GFX_CLIP_OUT_RIGHT : 0U;
