@@ -42,13 +42,13 @@ class MathBenchTableTests(unittest.TestCase):
 
     def test_malformed_and_duplicate_error_measurements_raise(self):
         good = "MATHERROR name=mathf_rsqrt type=f max=1 unit=ulp method=proof\n"
-        for malformed in (good + good, good.replace("max=1", "max=inf"),
-                          good.replace("max=1", "max=nan"), good.replace("max=1", "max=1e+"),
-                          good.replace("max=1", "max=1e999"),
-                          good.replace("max=1", "max=-1"), good.replace(" type=f", ""),
-                          good.replace(" unit=ulp", ""), good.replace(" method=proof", "")):
-            with self.subTest(text=malformed), self.assertRaises(ValueError):
-                bench.parse_errors(malformed)
+        bad_max = ("inf", "nan", "1e+", "1e999", "-1")
+        missing = ("type", "unit", "method")
+        texts = [good + good, *(good.replace("max=1", "max=" + value) for value in bad_max),
+                 *(" ".join(part for part in good.split(" ") if not part.startswith(key + "=")) for key in missing)]
+        for text in texts:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                bench.parse_errors(text)
 
     def test_missing_row_is_an_error(self):
         with self.assertRaisesRegex(ValueError, "missing"):
