@@ -83,7 +83,7 @@ mathf_recip(float a) {
 }
 
 #define MATHF_RSQRT_APPROX_RELATIVE_LIMIT 0.0001F
-#define MATHF_RSQRT_ULP_LIMIT             2
+#define MATHF_RSQRT_ULP_LIMIT             1
 #define MATHF_RECIP_ULP_LIMIT             1
 
 static inline __attribute__((always_inline)) float

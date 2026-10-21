@@ -79,9 +79,9 @@ The approximate path evaluates its single correction as $`y_0\,(1.5-0.5xy_0^2)`$
 `1.0F / sqrtf(x)`. For `x < FLT_MIN`, including zero and subnormals,
 `mathf_rsqrt` uses that same formula and preserves its bits.
 
-The normal-input ULP limit is provisional pending board measurement.
-`suite_math_numbers.c` checks every float in `[1, 4)` and powers of two
-with their normal neighbours across the exponent range.
+On the board `mathf_rsqrt` is within one ulp of the exact reciprocal root and
+`mathf_rsqrt_approx` within 6e-5 relative error. `suite_math_numbers.c` proves
+both over every float in `[1, 4)` and each power of two with its neighbours.
 
 Its integer product bracket rounds the exact reciprocal root without
 using the twice-rounded `1 / sqrtf` as a reference. The suite prints
