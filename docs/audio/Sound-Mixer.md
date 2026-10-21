@@ -76,8 +76,7 @@ A click costs its pack bytes in flash (2.5 KB for the engine `tap`), no RAM
 beyond its `sound_t`.
 
 The mixer allocates internal heap at boot whether or not anything plays.
-Heap and display measurements on the reference board (A308), with a
-development build:
+Heap and display measurements, with a development build:
 
 | Cost | Value |
 |---|---|
