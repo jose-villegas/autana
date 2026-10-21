@@ -155,57 +155,29 @@ mathi_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-/* isqrt32(v) = floor(sqrt(v)), over the full uint32 range. */
-static inline uint32_t
-mathi_isqrt32(uint32_t value) {
-    uint32_t root = 0;
-    uint32_t bit = UINT32_C(1) << 30;
-    while (bit > value) {
-        bit >>= 2;
-    }
-    while (bit != 0) {
-        if (value >= root + bit) {
-            value -= root + bit;
-            root = (root >> 1) + bit;
-        } else {
-            root >>= 1;
-        }
-        bit >>= 2;
-    }
-    return root;
-}
-
-/* half_chord = floor(sqrt(r^2-d^2)), zero for |d| >= r; |r|, |d| <= 32767. */
-static inline int
-mathi_half_chord(int r, int d) {
-    if (mathi_abs(d) >= r) {
-        return 0;
-    }
-    return (int)mathi_isqrt32((uint32_t)(r * r - d * d));
-}
-
-/* half_chord_round = f + (h-f^2 > f), h=r^2-d^2, f=floor(sqrt(h)); zero for |d| >= r; |r|, |d| <= 32767. */
-static inline int
-mathi_half_chord_round(int r, int d) {
-    if (mathi_abs(d) >= r) {
-        return 0;
-    }
-    const uint32_t h = (uint32_t)(r * r - d * d);
-    const uint32_t f = mathi_isqrt32(h);
-    return (int)(f + (h - f * f > f));
-}
-
-/* in_disc = dx^2 + dy^2 <= r^2; the squared sum must fit int64. */
-static inline bool
-mathi_in_disc(int dx, int dy, int r) {
-    return mathi_wmul(dx, dx) + mathi_wmul(dy, dy) <= mathi_wmul(r, r);
-}
-
 /* Floor of the square root over the whole uint64_t range. */
 static inline uint32_t
 mathi_isqrt64(uint64_t value) {
+    if (value <= UINT32_MAX) {
+        uint32_t narrow = (uint32_t)value;
+        uint32_t root = 0;
+        uint32_t bit = (UINT32_MAX >> 1) - (UINT32_MAX >> 2);
+        while (bit > narrow) {
+            bit >>= 2;
+        }
+        while (bit != 0) {
+            if (narrow >= root + bit) {
+                narrow -= root + bit;
+                root = (root >> 1) + bit;
+            } else {
+                root >>= 1;
+            }
+            bit >>= 2;
+        }
+        return root;
+    }
     uint64_t root = 0;
-    uint64_t bit = (uint64_t)1 << 62;
+    uint64_t bit = (UINT64_MAX >> 1) - (UINT64_MAX >> 2);
     while (bit > value) {
         bit >>= 2;
     }
@@ -219,6 +191,34 @@ mathi_isqrt64(uint64_t value) {
         bit >>= 2;
     }
     return (uint32_t)root;
+}
+
+/* half_chord = floor(sqrt(r^2-d^2)), zero for |d| >= r; |r|, |d| <= 32767. */
+static inline int
+mathi_half_chord(int r, int d) {
+    assert(r <= INT16_MAX);
+    if (mathi_abs(d) >= r) {
+        return 0;
+    }
+    return (int)mathi_isqrt64((uint32_t)(r * r - d * d));
+}
+
+/* half_chord_round = f + (h-f^2 > f), h=r^2-d^2, f=floor(sqrt(h)); zero for |d| >= r; |r|, |d| <= 32767. */
+static inline int
+mathi_half_chord_round(int r, int d) {
+    assert(r <= INT16_MAX);
+    if (mathi_abs(d) >= r) {
+        return 0;
+    }
+    const uint32_t h = (uint32_t)(r * r - d * d);
+    const uint32_t f = mathi_isqrt64(h);
+    return (int)(f + (h - f * f > f));
+}
+
+/* in_disc = dx^2 + dy^2 <= r^2; the squared sum must fit int64. */
+static inline bool
+mathi_in_disc(int dx, int dy, int r) {
+    return mathi_wmul(dx, dx) + mathi_wmul(dy, dy) <= mathi_wmul(r, r);
 }
 
 /* Truncation keeps the fractional step toward a. The step is int64 because a full int32 span overflows,

@@ -1097,16 +1097,18 @@ test_scalar_half_and_absolute_value(void) {
 }
 
 static void
-test_integer_square_root32(void) {
+test_integer_square_root_edges(void) {
     enum { ROOT_LIMIT = 65535 };
 
-    TEST_ASSERT_EQUAL_UINT32(0, mathi_isqrt32(0));
-    TEST_ASSERT_EQUAL_UINT32(ROOT_LIMIT, mathi_isqrt32(UINT32_MAX));
+    TEST_ASSERT_EQUAL_UINT32(0, mathi_isqrt64(0));
+    TEST_ASSERT_EQUAL_UINT32(ROOT_LIMIT, mathi_isqrt64(UINT32_MAX));
+    TEST_ASSERT_EQUAL_UINT32(ROOT_LIMIT + 1, mathi_isqrt64((uint64_t)UINT32_MAX + 1));
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, mathi_isqrt64(UINT64_MAX));
     for (uint32_t n = 1; n <= ROOT_LIMIT; n++) {
         const uint32_t square = n * n;
-        TEST_ASSERT_EQUAL_UINT32(n, mathi_isqrt32(square));
-        TEST_ASSERT_EQUAL_UINT32(n - 1, mathi_isqrt32(square - 1));
-        TEST_ASSERT_EQUAL_UINT32(mathi_isqrt64(square + n), mathi_isqrt32(square + n));
+        TEST_ASSERT_EQUAL_UINT32(n, mathi_isqrt64(square));
+        TEST_ASSERT_EQUAL_UINT32(n - 1, mathi_isqrt64(square - 1));
+        TEST_ASSERT_EQUAL_UINT32(n, mathi_isqrt64(square + n));
     }
 }
 
@@ -1134,11 +1136,25 @@ test_integer_half_chords(void) {
     TEST_ASSERT_EQUAL_INT(RANGE_LIMIT, mathi_half_chord(RANGE_LIMIT, 0));
     TEST_ASSERT_EQUAL_INT(RANGE_LIMIT, mathi_half_chord_round(RANGE_LIMIT, 0));
     TEST_ASSERT_EQUAL_INT(0, mathi_half_chord(-RANGE_LIMIT, 0));
+    for (int d = RANGE_LIMIT - FLOOR_LIMIT; d <= RANGE_LIMIT + 1; d++) {
+        const int h = RANGE_LIMIT * RANGE_LIMIT - d * d;
+        int floor = 0;
+        while ((floor + 1) * (floor + 1) <= h) {
+            floor++;
+        }
+        const int rounded = floor + (h - floor * floor > floor);
+        TEST_ASSERT_EQUAL_INT(floor, mathi_half_chord(RANGE_LIMIT, d));
+        TEST_ASSERT_EQUAL_INT(floor, mathi_half_chord(RANGE_LIMIT, -d));
+        TEST_ASSERT_EQUAL_INT(rounded, mathi_half_chord_round(RANGE_LIMIT, d));
+        TEST_ASSERT_EQUAL_INT(rounded, mathi_half_chord_round(RANGE_LIMIT, -d));
+    }
+    TEST_ASSERT_EQUAL_INT(0, mathi_half_chord(-RANGE_LIMIT, FLOOR_LIMIT));
+    TEST_ASSERT_EQUAL_INT(0, mathi_half_chord_round(-RANGE_LIMIT, FLOOR_LIMIT));
 }
 
 void
 suite_math_numbers(void) {
-    RUN_TEST(test_integer_square_root32);
+    RUN_TEST(test_integer_square_root_edges);
     RUN_TEST(test_integer_half_chords);
     RUN_TEST(test_scalar_half_and_absolute_value);
     RUN_TEST(test_mathf_lerp);

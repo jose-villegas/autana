@@ -33,9 +33,15 @@ enum { DISC_BRUTE_LIMIT = 64 };
         TEST_ASSERT_FALSE(P##_overlaps_rect((P##_t){{C(4) - EDGE, C(0)}, C(1)}, rect));                                \
         TEST_ASSERT_TRUE(P##_overlaps_rect((P##_t){{C(0), C(3) - EDGE}, C(1)}, rect));                                 \
         TEST_ASSERT_FALSE(P##_overlaps_rect((P##_t){{C(0), C(4) - EDGE}, C(1)}, rect));                                \
-        const R##_t bounds = P##_bounds(c);                                                                            \
-        TEST_ASSERT_EQUAL(C(-1), bounds.x);                                                                            \
-        TEST_ASSERT_EQUAL(C(-1), bounds.y);                                                                            \
+        const R##_t wide = {C(2), C(-3), C(8), C(2)}, tall = {C(2), C(-3), C(2), C(8)};                                \
+        const P##_t below = {{C(3), C(6) - EDGE}, C(1)}, right = {{C(11) - EDGE, C(-2)}, C(1)};                        \
+        TEST_ASSERT_FALSE(P##_overlaps_rect(below, wide));                                                             \
+        TEST_ASSERT_TRUE(P##_overlaps_rect(below, tall));                                                              \
+        TEST_ASSERT_TRUE(P##_overlaps_rect(right, wide));                                                              \
+        TEST_ASSERT_FALSE(P##_overlaps_rect(right, tall));                                                             \
+        const R##_t bounds = P##_bounds((P##_t){{C(3), C(-2)}, C(1)});                                                 \
+        TEST_ASSERT_EQUAL(C(2), bounds.x);                                                                             \
+        TEST_ASSERT_EQUAL(C(-3), bounds.y);                                                                            \
         TEST_ASSERT_EQUAL(C(2) + EDGE, bounds.w);                                                                      \
         TEST_ASSERT_EQUAL(C(2) + EDGE, bounds.h);                                                                      \
     }
@@ -78,6 +84,16 @@ DEFINE_CLOSED_TEST(circlei, vec2i, recti, CIRCLE_I, CIRCLE_I(1))
         TEST_ASSERT_FLOAT_WITHIN(CIRCLE_TOLERANCE, entry, TO_FLOAT(t));                                                \
         TEST_ASSERT_TRUE(P##_segment_hit(c, (V##_t){C(-10), C(0)}, (V##_t){C(-5), C(0)}, &t));                         \
         TEST_ASSERT_EQUAL(C(1), t);                                                                                    \
+        const V##_t entries[] = {{C(10), C(0)}, {C(0), C(-10)}, {C(6), C(8)}};                                         \
+        for (size_t k = 0; k < sizeof entries / sizeof entries[0]; k++) {                                              \
+            TEST_ASSERT_TRUE(P##_segment_hit(c, entries[k], V##_scale(entries[k], C(-1)), &t));                        \
+            TEST_ASSERT_FLOAT_WITHIN(CIRCLE_TOLERANCE, CIRCLE_F(0.25), TO_FLOAT(t));                                   \
+        }                                                                                                              \
+        const V##_t boundary = {C(5), C(0)};                                                                           \
+        TEST_ASSERT_TRUE(P##_segment_hit(c, boundary, outside, &t));                                                   \
+        TEST_ASSERT_EQUAL(C(0), t);                                                                                    \
+        TEST_ASSERT_TRUE(P##_segment_hit(c, boundary, boundary, &t));                                                  \
+        TEST_ASSERT_EQUAL(C(0), t);                                                                                    \
         t = C(-1);                                                                                                     \
         TEST_ASSERT_FALSE(P##_segment_hit(c, outside, (V##_t){C(12), C(16)}, &t));                                     \
         TEST_ASSERT_EQUAL(C(-1), t);                                                                                   \
@@ -85,6 +101,26 @@ DEFINE_CLOSED_TEST(circlei, vec2i, recti, CIRCLE_I, CIRCLE_I(1))
 
 DEFINE_REAL_TEST(circlef, vec2f, rectf, float, CIRCLE_F, CIRCLE_F)
 DEFINE_REAL_TEST(circlex, vec2x, rectx, int32_t, CIRCLE_X, mathx_to_f)
+
+static void
+test_wide_disc_boundary(void) {
+    enum { X = 60000, Y = 80000, RADIUS = 100000 };
+
+    TEST_ASSERT_TRUE(mathi_in_disc(X, Y, RADIUS));
+    TEST_ASSERT_TRUE(mathi_in_disc(-X, -Y, RADIUS));
+    TEST_ASSERT_FALSE(mathi_in_disc(X + 1, Y, RADIUS));
+    TEST_ASSERT_FALSE(mathi_in_disc(X, Y + 1, RADIUS));
+    TEST_ASSERT_FALSE(mathi_in_disc(X, Y, RADIUS - 1));
+}
+
+static void
+test_point_segment(void) {
+    const circlef_t point = {{CIRCLE_F(2), CIRCLE_F(-3)}, CIRCLE_F(0)};
+    float t = CIRCLE_F(-1);
+    TEST_ASSERT_TRUE(
+        circlef_segment_hit(point, (vec2f_t){CIRCLE_F(0), CIRCLE_F(-3)}, (vec2f_t){CIRCLE_F(4), CIRCLE_F(-3)}, &t));
+    TEST_ASSERT_EQUAL_FLOAT(CIRCLE_F(0.5), t);
+}
 
 static void
 test_cell_counts(void) {
@@ -100,7 +136,6 @@ test_cell_counts(void) {
         for (int y = -r; y <= r; y++) {
             for (int x = -r; x <= r; x++) {
                 const bool inside = x * x + y * y <= r * r;
-                TEST_ASSERT_EQUAL(inside, mathi_in_disc(x, y, r));
                 count += inside;
             }
         }
@@ -115,6 +150,8 @@ suite_circle(void) {
     RUN_TEST(test_circlei_closed_queries);
     RUN_TEST(test_circlef_real_queries);
     RUN_TEST(test_circlex_real_queries);
+    RUN_TEST(test_wide_disc_boundary);
+    RUN_TEST(test_point_segment);
     RUN_TEST(test_cell_counts);
 }
 

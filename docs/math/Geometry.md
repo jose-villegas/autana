@@ -99,56 +99,53 @@ The near plane alone rejects one box. Box 8 crosses each plane separately
 but contains no point inside the frustum: a known conservative result of
 the per-plane test.
 
-## Ball queries
+## ball (`f`, `x`, `i`)
 
-Circles and spheres store `centre` and nonnegative `radius`, including the
-boundary. Arithmetic must fit the number type; real values and segment
-endpoints must be finite. Integer squared products use widened arithmetic.
+Circles and spheres store `centre` and nonnegative `radius`, including the boundary. Arithmetic must fit; real values must be finite. Integer squared products are widened.
 
 | Function | Purpose | Formula |
 |---|---|---|
 | `P_contains_point(s, p)` | point inside or on the ball | $`\lVert p-c\rVert^2 \le r^2`$ |
 | `P_overlaps(a, b)` | balls share points, including tangency | $`\lVert c_a-c_b\rVert^2 \le (r_a+r_b)^2`$ |
-| `P_closest_point(c, p)` | p inside; nearest boundary point outside (real) | $`p`$ if inside, else $`c_c+(p-c_c)r/\lVert p-c_c\rVert`$ |
+| `P_closest_point(c, p)` | p itself if inside, else the nearest boundary point (real only) | $`p`$ if inside, else $`c_c+(p-c_c)r/\lVert p-c_c\rVert`$ |
 | `P_segment_hit(s, a, c, &t)` | first real segment entry in `[0,1]`; inside starts at zero | $`m=a-s_c,\ v=c-a`$<br>$`A=v\cdot v,\ B=m\cdot v,\ f=m-(B/A)v`$<br>$`D=r^2-f\cdot f,\ t=(-B-\sqrt{AD})/A`$ |
 
-`P_segment_hit` uses the perpendicular-distance discriminant of Haines,
-Günther and Akenine-Möller<sup>[[84]](../Citations.md#84)</sup> to avoid
-cancellation in the hit decision. It writes `t` only on a hit.
+| Prefix | Generated ball functions |
+|---|---|
+| `circlef` | `circlef_contains_point`, `circlef_overlaps`, `circlef_closest_point`, `circlef_segment_hit` |
+| `circlex` | `circlex_contains_point`, `circlex_overlaps`, `circlex_closest_point`, `circlex_segment_hit` |
+| `circlei` | `circlei_contains_point`, `circlei_overlaps` |
+| `spheref` | `spheref_contains_point`, `spheref_overlaps`, `spheref_closest_point`, `spheref_segment_hit` |
+
+`P_segment_hit` uses Haines, Günther and Akenine-Möller's perpendicular-distance discriminant<sup>[[84]](../Citations.md#84)</sup> to avoid cancellation in the hit decision. It writes `t` only on a hit.
 
 Zero-length segments hit when the point is inside; tangency counts as a hit.
-Fixed-point results have Q16.16 rounding and range limits.
+Fixed-point results are rounded to Q16.16; values must stay within its range.
 
 ## sphere (`f`)
 
-`P` is `spheref`, with a vec3 centre and the shared [ball queries](#ball-queries).
-Box queries use finite, nonempty bounds.
-
-`P_overlaps_box` follows Arvo 1990<sup>[[83]](../Citations.md#83)</sup>, but forms the
-closest box point first and compares its squared distance, rather than
-summing per-axis terms.
+`spheref` has a vec3 centre and the shared [ball queries](#ball-f-x-i); box bounds must be finite and nonempty.
+`spheref_overlaps_box` compares the closest box point's squared distance
+with the squared radius (Arvo 1990<sup>[[83]](../Citations.md#83)</sup>).
 
 | Function | Purpose | Formula |
 |---|---|---|
-| `P_from_box(b)` | circumscribed sphere | $`c=\mathrm{centre}(b),\ r=\lVert\mathrm{half\_extent}(b)\rVert`$ |
-| `P_overlaps_box(s, b)` | closest box point inside the sphere | $`q=\mathrm{closest\_point}(b,c)`$<br>$`\lVert q-c\rVert^2\le r^2`$ |
+| `spheref_from_box(b)` | circumscribed sphere | $`c=\mathrm{centre}(b),\ r=\lVert\mathrm{half\_extent}(b)\rVert`$ |
+| `spheref_overlaps_box(s, b)` | closest box point inside the sphere | $`q=\mathrm{closest\_point}(b,c)`$<br>$`\lVert q-c\rVert^2\le r^2`$ |
 
 ![Box-sphere overlap, touch and miss with closest points beside segment entry points on a box and sphere, an inside start and a miss](../images/math/box3-sphere-queries.png)
 
-Closest points decide sphere overlap; marked segment entries include a start inside the sphere at t = 0.
+Closest points decide overlap; segment entries include an inside start at t = 0.
 
 ## circle (`f`, `x`, `i`)
 
-`P` is `circlef`, `circlex` or `circlei`, with a vec2 centre and the shared
-[ball queries](#ball-queries). Real queries are available for `f` and `x` only.
-
-`P_overlaps_rect` uses Arvo 1990<sup>[[83]](../Citations.md#83)</sup> in two
-dimensions. Rectangles must be nonempty. Integer edges end at `right-1`
-and `bottom-1`; real queries include the closure at `right` and `bottom`.
+`circlef`, `circlex` and `circlei` have a vec2 centre and shared [ball queries](#ball-f-x-i). Real queries support `f` and `x`.
+Rectangle overlaps use Arvo 1990<sup>[[83]](../Citations.md#83)</sup> in two dimensions; rectangles must be nonempty.
+Integer edges end at `right-1` and `bottom-1`; real queries include the closure at `right` and `bottom`.
 
 | Function | Meaning | Formula |
 |---|---|---|
-| `P_overlaps_rect(c, rect)` | closest covered coordinate is inside | $`q=\mathrm{clamp}(c_c,lo,hi)`$<br>$`\lVert q-c_c\rVert^2\le r^2`$ |
-| `P_bounds(c)` | enclosing rect; integer cells include both extremes | $`(c_x-r,c_y-r,2r+e,2r+e)`$, $`e=1`$ for `i`, $`e=0`$ for real |
-| `P_from_rect(rect)` | circumscribed disc (`f x`) | $`e=(w,h)/2,\ c=(x,y)+e,\ r=\lVert e\rVert`$ |
+| `circlef_overlaps_rect(c, rect)`, `circlex_overlaps_rect(c, rect)`, `circlei_overlaps_rect(c, rect)` | closest covered coordinate is inside | $`q=\mathrm{clamp}(c_c,lo,hi)`$<br>$`\lVert q-c_c\rVert^2\le r^2`$ |
+| `circlef_bounds(c)`, `circlex_bounds(c)`, `circlei_bounds(c)` | enclosing rect; integer cells include both extremes | $`(c_x-r,c_y-r,2r+e,2r+e)`$, $`e=1`$ for `i`, $`e=0`$ for real |
+| `circlef_from_rect(rect)`, `circlex_from_rect(rect)` | circumscribed disc (`f x`) | $`e=(w,h)/2,\ c=(x,y)+e,\ r=\lVert e\rVert`$ |
 | `circlei_cell_count(r)` | exact integer disc size; negative radius gives zero, result must fit int | $`\sum_{d=-r}^{r}(2\lfloor\sqrt{r^2-d^2}\rfloor+1)`$ |

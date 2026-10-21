@@ -11,10 +11,12 @@
         V##_t centre;                                                                                                  \
         T radius;                                                                                                      \
     } P##_t;                                                                                                           \
+    /* contains_point = |p-c|^2 <= r^2. */                                                                             \
     static inline bool P##_contains_point(P##_t c, V##_t p) {                                                          \
         const V##_t d = V##_sub(p, c.centre);                                                                          \
         return V##_dot(d, d) <= OPS##_wmul(c.radius, c.radius);                                                        \
     }                                                                                                                  \
+    /* overlaps = |ca-cb|^2 <= (ra+rb)^2. */                                                                           \
     static inline bool P##_overlaps(P##_t a, P##_t b) {                                                                \
         const V##_t d = V##_sub(a.centre, b.centre);                                                                   \
         const T r = OPS##_add(a.radius, b.radius);                                                                     \
@@ -22,6 +24,7 @@
     }
 
 #define MATH_DEFINE_BALL_REAL(P, V, T, OPS)                                                                            \
+    /* closest_point = p inside, else c + (p-c)*r/|p-c|. */                                                            \
     static inline V##_t P##_closest_point(P##_t c, V##_t p) {                                                          \
         if (P##_contains_point(c, p)) {                                                                                \
             return p;                                                                                                  \

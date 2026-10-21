@@ -20,7 +20,7 @@ These take and return plain integers, not structs.
 | `mathi_clamp(v, lo, hi)` | inclusive bounds | $`\min(\max(v,lo),hi)`$ |
 | `mathi_lerp(a, b, t, n)` | `t` of `n` steps from `a` to `b`, the step truncated toward `a`; `n > 0`, `0 <= t <= n` | $`a + \mathrm{trunc}((b-a)t/n)`$ |
 | `mathi_lerp_u8(a, b, w)` | `mathi_lerp` with `n = UINT8_MAX` | $`a + \mathrm{trunc}((b-a)w/255)`$ |
-| `mathi_isqrt32(v)` | floor square root over the full uint32 range | $`\lfloor\sqrt v\rfloor`$ |
+| `mathi_isqrt64(v)` | floor square root over the full uint64 range | $`\lfloor\sqrt v\rfloor`$ |
 | `mathi_half_chord(r, d)` | floor half chord; zero when outside; $`\lvert r\rvert,\lvert d\rvert\le32767`$ | $`\lfloor\sqrt{r^2-d^2}\rfloor`$ for $`\lvert d\rvert<r`$ |
 | `mathi_half_chord_round(r, d)` | nearest half chord; same range and outside rule | $`h=r^2-d^2,\ f=\lfloor\sqrt h\rfloor`$<br>$`f+1`$ when $`h-f^2>f`$, else $`f`$ |
 | `mathi_in_disc(dx, dy, r)` | closed disc predicate; squared sum must fit int64 | $`dx^2+dy^2\le r^2`$ |

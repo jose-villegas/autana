@@ -12,10 +12,9 @@ circlei_cell_count(int radius) {
     if (radius < 0) {
         return 0;
     }
-    const int64_t square = mathi_wmul(radius, radius);
     int x = radius, count = 0;
     for (int y = 0; y <= radius; y++) {
-        while (mathi_wmul(x, x) + mathi_wmul(y, y) > square) {
+        while (!mathi_in_disc(x, y, radius)) {
             x--;
         }
         const int row = x + x + 1;
