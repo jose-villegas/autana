@@ -650,7 +650,10 @@ static void
 send_one_row(int row, int* queued) {
     /* At the fast clock the panel can land a partial-width window a column off. */
     if (panel_clock_is_fast()) {
-        int x0, x1, y0, y1;
+        int x0;
+        int x1;
+        int y0;
+        int y1;
         run_box(row, 0, GRID_COLS, &x0, &x1, &y0, &y1);
         send_rows_full_width(row, 0, GFX_WIDTH, y0, y1, queued);
         return;
