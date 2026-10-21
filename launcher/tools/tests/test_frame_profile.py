@@ -20,7 +20,8 @@ class FrameProfileTests(unittest.TestCase):
                + " ".join(f"{token(name)} {sample}us" for name in ("MEAN", "MED", "P95", "WORST", "BEST"))
                + f" | {token('FPS')} {token('MEAN')} 1000.00 {token('LOW')} 1000.00 "
                + f"{token('WORST')} 1000.00 {token('QUARTER')}portrait")
-        self.assertEqual(PROFILE_RE.search(log).groups(), ("probe", str(sample)))
+        self.assertEqual(PROFILE_RE.search(log)["row"], "probe")
+        self.assertEqual(PROFILE_RE.search(log)["mean"], str(sample))
         self.assertEqual(parse_timings(log), {"probe quarter=portrait": sample})
         failure = f"{token('PREFIX')} probe failed"
         self.assertIsNone(PROFILE_RE.search(failure))

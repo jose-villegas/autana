@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "frame_profile.h"
 #include "perf_budget.h"
 #include "perf_stats.h"
 #include "test_cleanup.h"
@@ -343,8 +344,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         const resolution_step_t composed = raster_compose_size(&b->raster);
         raster_upscale(&b->raster, b->panel, composed.width, composed.height);
         const int64_t us = timing_now_us() - start;
-        ESP_LOGI(TAG, "%s t=%6ums clusters=%4d tris=%5d | both cores: frame %7lldus" R3D_PERF_QUARTER_FORMAT, label,
-                 (unsigned)t_ms, stats.clusters, stats.triangles, (long long)us, perf_quarter->name);
+        ESP_LOGI(TAG, FRAME_PROFILE_POSE R3D_PERF_QUARTER_FORMAT, label, (unsigned)t_ms, stats.clusters,
+                 stats.triangles, (long long)us, perf_quarter->name);
         (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
         ESP_LOGI(TAG, "ms/frame avg/worst: %s" R3D_PERF_QUARTER_FORMAT, report, perf_quarter->name);
         frame_sum += us;
@@ -354,16 +355,13 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     }
     const perf_stats_t stats = perf_stats_compute(frame_us, samples);
     memory_free(frame_us);
-    ESP_LOGI(TAG,
-             "%s both cores: mean %lldus (%.1f fps before present), worst %lldus, med %lldus, p95 "
-             "%lldus" R3D_PERF_QUARTER_FORMAT,
-             label, (long long)stats.avg, 1e6 * samples / (double)frame_sum, (long long)stats.max, (long long)stats.med,
-             (long long)stats.p95, perf_quarter->name);
+    ESP_LOGI(TAG, FRAME_PROFILE_ROW R3D_PERF_QUARTER_FORMAT, label, (long long)stats.avg,
+             1e6 * samples / (double)frame_sum, (long long)stats.max, (long long)stats.med, (long long)stats.p95,
+             perf_quarter->name);
     const size_t q = (size_t)(perf_quarter - r3d_perf_quarters);
-    (void)perf_goal(label, stats.avg, budget[q].mean_goal_us);
-    if (shipped_meshlet == 0 || size == shipped_meshlet) {
-        perf_guard(label, stats.p95, budget[q].p95_ceiling_us);
-    } else {
+    const bool ceiling_applies = shipped_meshlet == 0 || size == shipped_meshlet;
+    r3d_perf_budget(label, perf_quarter, stats.avg, stats.p95, &budget[q], ceiling_applies);
+    if (!ceiling_applies) {
         ESP_LOGI(TAG, "%s: p95 %lldus, ceiling %lldus gates only meshlets of %ld" R3D_PERF_QUARTER_FORMAT, label,
                  (long long)stats.p95, (long long)budget[q].p95_ceiling_us, (long)shipped_meshlet, perf_quarter->name);
     }
