@@ -5,12 +5,9 @@ from pathlib import Path
 
 from audio_doc_tables import DRC_CAPTURE, DRC_DEFAULT, DRC_REFERENCE_CODEC, ROOT, drc_data, read_capture
 from audio_drc_sweep import DB_AMPLITUDE_SCALE, VOLUME_MAX
-from docs.plot_style import FAINT, LABEL_SIZE, SLOTS, save, style_axes, subplots
+from docs.plot_style import FIGURE_SIZE, SLOTS, save_themed_plot, subplots
 
 BASELINE_CODECS = (30, DRC_REFERENCE_CODEC, DRC_DEFAULT[0])
-FIGURE_SIZE = (8, 4.5)
-LEGEND_ANCHOR = (0.5, -0.18)
-LEGEND_COLUMNS = 2
 DEFAULT_MARKER_ORDER = 3
 
 
@@ -46,18 +43,12 @@ def render(capture, output):
         axis.plot(inputs, levels, "o-", label=label, color=color)
     axis.set(xlabel="Tone level (dB re full scale)", ylabel="Microphone level (dBFS)",
              xlim=(min(curves[0][1]), 0), ylim=(None, 0))
-    style_axes(axis, f"Output vs input at {hz} Hz")
-    axis.grid(color=FAINT)
-    axis.legend(fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=LEGEND_ANCHOR, ncol=LEGEND_COLUMNS)
-    save(fig, output / "drc-level.png")
+    save_themed_plot(fig, axis, output / "drc-level.png", f"Output vs input at {hz} Hz")
     fig, axis = subplots(1, 1, FIGURE_SIZE)
     axis.plot(*zip(*thd), "o-", color=SLOTS[0], label="DRC off")
     axis.scatter(*default, marker="D", color=SLOTS[1], label=f"Default: codec {default[0]}%", zorder=DEFAULT_MARKER_ORDER)
     axis.set(xlabel="Codec volume (%)", ylabel="THD (dB relative to fundamental)", ylim=(None, 0))
-    style_axes(axis, f"Full-scale distortion at {hz} Hz")
-    axis.grid(color=FAINT)
-    axis.legend(fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=LEGEND_ANCHOR)
-    save(fig, output / "drc-thd.png")
+    save_themed_plot(fig, axis, output / "drc-thd.png", f"Full-scale distortion at {hz} Hz", legend_columns=1)
 
 
 def main():

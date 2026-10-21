@@ -31,6 +31,46 @@ class AudioTablesTest(unittest.TestCase):
             self.assertNotIn("164511c54388-dev", body)
             self.assertIn("[raw replies]", body)
 
+    def test_all_blocks_keep_provenance_in_raw_data(self):
+        gate = load_tool("sound_gate_tables")
+        captures = [ROOT / audio.CAPTURE, ROOT / audio.DRC_CAPTURE,
+                    *sorted((ROOT / audio.MIX_CAPTURES).glob("sound_mix_capture*.txt"))]
+        bodies = list(audio.render(captures[0]).values()) + [audio.render_drc(captures[1])]
+        bodies += [audio.render_mix(path) for path in captures[2:]]
+        data = json.loads(gate.DATA.read_text())
+        bodies += list(gate.render(gate.DATA).values())
+        identifiers = [data["board"], data["board"].replace(":", "")[-4:]]
+        dates = list(data["capture_date"])
+        identifiers += [build for side in data["sides"].values() for build in side["build_ids"]]
+        identifiers.append(str(data["rng_seed"]))
+        for path in captures:
+            header = path.read_text().splitlines()[0].split(" on ", 1)[1]
+            board, date, _ = header.split(", ", 2)
+            identifiers.append(board)
+            dates.append(date)
+        for body in bodies:
+            self.assertRegex(body, r"\[raw (?:capture|replies)\]\(data/")
+            self.assertNotRegex(body, r"\b[0-9a-f]{7,40}-(?:dev|diag|rel)\b")
+            for value in identifiers + dates:
+                self.assertNotIn(value, body)
+        for name in ("audio-frequency", "audio-volume"):
+            self.assertIn("<details>", audio.render(captures[0])[name])
+            self.assertIn("<picture>", audio.render(captures[0])[name])
+        for body in bodies[len(audio.render(captures[0])) + 1:-2]:
+            self.assertIn("<details>", body)
+            self.assertIn("<picture>", body)
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            for module, capture in (("audio_path_figures", captures[0]), ("audio_drc_figures", captures[1]),
+                                    *(("sound_mix_figures", path) for path in captures[2:])):
+                load_tool(module).render(capture, output)
+            images = sorted(output.glob("*.png"))
+            self.assertEqual(len(images), 12)
+            for path in images:
+                if not path.stem.endswith("-dark"):
+                    self.assertNotEqual(path.read_bytes(), path.with_stem(path.stem + "-dark").read_bytes())
+
     def test_acoustic_sweep_can_extend_beyond_internal(self):
         tables = audio.render(ROOT / audio.CAPTURE)
         for hz in (300, 3000):
@@ -54,7 +94,8 @@ class AudioTablesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "capture.txt"
             path.write_text("\n".join([lines[0], *(line for line in lines[1:] if not line.startswith("#"))]))
-            self.assertEqual(audio.render(path), audio.render(capture))
+            self.assertEqual({name: body.replace(path.name, capture.name) for name, body in audio.render(path).items()},
+                             audio.render(capture))
 
     def test_changed_capture_changes_tables(self):
         capture = (ROOT / audio.CAPTURE).read_text()
@@ -565,7 +606,7 @@ class DrcSweepTest(unittest.TestCase):
     def test_committed_capture_and_static_output(self):
         body = audio.render_drc(ROOT / audio.DRC_CAPTURE)
         self.assertNotIn("Board **2124**", body)
-        self.assertIn("![", body)
+        self.assertIn("<picture>", body)
         self.assertIn("<details>", body)
         self.assertIn("| Default | -28.4 | -19.1 | -17.7 | -42.0 |", body)
         self.assertIn("Static full-scale DAC output (dBFS)", body)
@@ -686,7 +727,8 @@ class AudioFiguresTest(unittest.TestCase):
             with mock.patch.object(capture, "autana_run", side_effect=replies) as run:
                 capture.capture(args)
             self.assertEqual(run.call_args_list, [mock.call("fake", *command, "--json") for command in audio.CAPTURE_COMMANDS])
-            self.assertEqual(audio.render(args.out), audio.render(ROOT / audio.CAPTURE))
+            self.assertEqual({name: body.replace(args.out.name, audio.CAPTURE.name)
+                              for name, body in audio.render(args.out).items()}, audio.render(ROOT / audio.CAPTURE))
             self.assertIn("on TEST,", args.out.read_text().splitlines()[0])
             with mock.patch.object(capture, "autana_run", side_effect=OSError("failed")), self.assertRaises(OSError):
                 capture.capture(args)
