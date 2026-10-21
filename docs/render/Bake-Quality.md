@@ -269,17 +269,16 @@ finer than a triangle, which contributes to the remaining error.
 | Flat, direct light | 12.171 | 39.817 | 0.5377 | 22.945 | 10.107 |
 <!-- /generated: sponza-indirect -->
 
-The reference beside the smooth bake with direct and indirect light, each
-bake with its ΔE heatmap against the reference and the reference's edge pixels
+The reference beside the scene's standard mesh fitted with direct and with
+indirect light, each fit with its ΔE heatmap against the reference and the reference's edge pixels
 beside it. The error stays at silhouettes and
 shadow edges; the generated table measures their contribution.
 
-![Reference, direct-light bake and indirect bake, with error heatmaps](../images/render/bake-indirect-compare.png)
+![Reference, direct-light bake and indirect bake, with error heatmaps](../images/render/gpu/bake-indirect-compare.png)
 
-The places the two bakes differ most, the reference above them: a banner's
-colour on the column beside it, and the lit ceiling.
+The places the two fits differ most, the reference above them.
 
-![Where bounce light changes the picture](../images/render/bake-indirect-crops.png)
+![Where bounce light changes the picture](../images/render/gpu/bake-indirect-compare.crops.png)
 
 ### Indirect look
 
@@ -291,15 +290,15 @@ sets its own look in that table; this sheet, like the indirect images above,
 starts from the physical look, the scene without that table and without its
 occlusion. The reference reads the same table, so each
 look has two references: the physical one and one made with the look's own
-settings. The sheet bakes the same import at the raised intensities and albedo boost
-the table below names and shows, at the last pose, the physical reference above the bakes
+settings. The sheet fits the standard mesh at the raised intensities and albedo boost
+the table below names and shows, at the last held-out pose, the physical reference above the bakes
 with their heatmaps against it, then each look's own reference with the
 heatmap against that:
 
-![Physical reference and each look's own, with the bakes and their error heatmaps](../images/render/bake-indirect-look.png)
+![Physical reference and each look's own, with the bakes and their error heatmaps](../images/render/gpu/bake-indirect-look.png)
 
-The generated table scores each look against both references over the
-doc-image poses. The physical-reference columns include the look's difference
+The generated table scores the full bake in each look against both references
+over the doc-image poses. The physical-reference columns include the look's difference
 from physical lighting; the own-reference column isolates bake fidelity.
 
 <!-- generated: sponza-indirect-look sha256=d0430045eef7b16e29beaf626e517018b48fb6ce2f97a6768b7be743d3de8e01 -->
@@ -324,14 +323,14 @@ add `ao` to one of them. The reference applies the
 occlusion at every pixel and the bake at every vertex, so the two heatmaps show
 where the bake's occlusion helps and where it overshoots.
 
-The sheet is the reference, the bake without occlusion and the bake with it at
-the fidelity poses, each with its error heatmap against the reference.
+The sheet is the reference and the standard mesh fitted without and with
+occlusion, at two held-out poses, each with its error heatmap against the reference.
 
-![Reference, bake without occlusion and bake with it, with error heatmaps](../images/render/bake-ao-compare.png)
+![Reference, bake without occlusion and bake with it, with error heatmaps](../images/render/gpu/bake-ao-compare.png)
 
-The places the two bakes differ most, the reference above them.
+The places the two fits differ most, the reference above them.
 
-![Where occlusion changes the picture](../images/render/bake-ao-crops.png)
+![Where occlusion changes the picture](../images/render/gpu/bake-ao-compare.crops.png)
 
 The occlusion factor alone at the same poses, white where nothing is near
 and dark where the surroundings close in, beside the reference frame. It is
@@ -339,4 +338,4 @@ low where stone meets stone: column bases, under arches, the creases between
 walls and floor and around the pots. A curtain stays open on its visible side
 because a double-sided surface takes the less occluded of its two sides.
 
-![The occlusion factor beside the reference](../images/render/bake-ao-map.png)
+![The occlusion factor beside the reference](../images/render/gpu/bake-ao-map.png)

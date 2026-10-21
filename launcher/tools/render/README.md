@@ -10,7 +10,7 @@
 | [doc_images_demo.sh](doc_images_demo.sh) | Makes the demo's bake, fidelity, import and small-fill images and measured CPU tables through the scene viewer; `--small-fill-only` selects the small-fill outputs. |
 | [doc_tables.py](doc_tables.py) | Writes CPU tables from comparison logs, tunable listings and sweep captures, with scene and object names supplied as arguments. |
 | [doc_import_examples.py](doc_import_examples.py) | Renders albedo and face-sampling examples from a supplied scene and renderer. |
-| [physical_scene.py](physical_scene.py) | Copies a scene without its indirect look and occlusion settings for isolated bake studies. |
+| [physical_scene.py](physical_scene.py) | Copies a scene without its indirect look and occlusion settings, or in one study look (`--look`), for isolated bake studies. |
 | [render_diff.py](render_diff.py) | Compares rendered and captured images. |
 | [render_diff.sh](render_diff.sh) | Shell entry point for image comparisons. |
 | [render_temporal.py](render_temporal.py) | Adds triangle-scale temporal metrics to video CSVs and composes labelled look-range videos. |
