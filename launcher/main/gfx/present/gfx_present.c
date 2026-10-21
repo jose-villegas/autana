@@ -644,13 +644,10 @@ send_rows_full_width(int row, int y0, int y1, int* queued) {
 }
 
 /* Cells merge into transactions; gaps remain. Falls back to full row for
- * large parts. At the fast clock the panel sometimes lands a partial-width
- * window a column or so off, leaving a wrong column at its edge until that
- * column is sent again; which columns miss depends on where the window
- * sits, not on what it carries. Full-width windows always land, so there
- * every dirty row goes out full width. */
+ * large parts. */
 static void
 send_one_row(int row, int* queued) {
+    /* At the fast clock the panel can land a partial-width window a column off. */
     if (panel_clock_is_fast()) {
         int x0, x1, y0, y1;
         run_box(row, 0, GRID_COLS, &x0, &x1, &y0, &y1);

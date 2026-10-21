@@ -398,7 +398,8 @@ image.
 |---|---|---|
 | Full-frame bus time | 16.5 ms | 8.2 ms |
 | Panel rating (50 MHz) | inside | **past it** |
-| Failure mode | none | a partial-width window can land a column off, so only full-width rows are sent; a stray pixel can still stay until its region is sent again |
+| Failure mode | none | a partial-width window can land a column off, so only full-width rows are sent |
+| Residual | none | a stray pixel can still stay until its region is sent again |
 | Heal | does nothing | active if the app opted in |
 
 `gfx_set_panel_clock_hz()` takes effect before the next present, never
