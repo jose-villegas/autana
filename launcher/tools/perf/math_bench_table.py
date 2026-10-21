@@ -161,6 +161,9 @@ def render_table(rows, measured, baseline, fpu, build=None, errors=None):
              "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |",
              "|---|---|---:|---:|---:|---:|---:|---|---|"]
     bounds = errors or {}
+    unmatched = set(bounds) - {(label, kind) for _, label, kind, _ in rows}
+    if unmatched:
+        raise ValueError(f"error measurements match no row: {sorted(unmatched)}")
     for key, label, kind, ops in rows:
         qemu = f"{baseline['math_' + key] / ops:.1f}" if "math_" + key in baseline else "-"
         if set(fpu[key].partition(";")[0].split()) & set(DEVICE_ONLY_FPU_OPS):

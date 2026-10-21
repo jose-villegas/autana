@@ -95,7 +95,7 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 
 `quatf_normalize` and `quatf_nlerp` use `mathf_rsqrt` for the reciprocal length.
 A device sweep measures nlerp component error over quaternion pairs and
-interpolation weights against the exact `1 / sqrtf` path.
+interpolation weights against the `1 / sqrtf` path.
 
 ## affine2 (`f x`)
 

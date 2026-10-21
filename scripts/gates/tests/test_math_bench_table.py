@@ -40,6 +40,12 @@ class MathBenchTableTests(unittest.TestCase):
         table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"})
         self.assertTrue(next(line for line in table.splitlines() if line.startswith("| mathf_rsqrt |")).endswith("- |"))
 
+    def test_error_measurement_without_a_row_raises(self):
+        errors = bench.parse_errors("MATHERROR name=normalise (vec3) type=f max=1 unit=ulp method=sweep\n")
+        rows = [("vector_f", "normalize (vec3)", "f", self.batch)]
+        with self.assertRaisesRegex(ValueError, "match no row"):
+            bench.render_table(rows, {}, {}, {"vector_f": "-"}, errors=errors)
+
     def test_malformed_and_duplicate_error_measurements_raise(self):
         good = "MATHERROR name=mathf_rsqrt type=f max=1 unit=ulp method=proof\n"
         bad_max = ("inf", "nan", "1e+", "1e999", "-1")
