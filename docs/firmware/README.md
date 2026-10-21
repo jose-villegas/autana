@@ -31,6 +31,7 @@ and means something different by each:
 
 The top-level folder `launcher/` is the whole firmware, not the home
 screen.
+
 | Read | For |
 |---|---|
 | [Layers.md](Layers.md) | which folder may include which, and the gate behind each rule |
