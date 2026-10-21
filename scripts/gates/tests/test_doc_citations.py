@@ -1,5 +1,6 @@
 """Regression tests for documentation citation tools."""
 import contextlib
+import datetime
 import io
 import json
 import os
@@ -239,7 +240,7 @@ class DocCitationTest(unittest.TestCase):
                     "GIT_COMMITTER_DATE": committed,
                 })
             gate_tree.write(root, "docs/doc_review_ledger.txt", "docs/Guide.md\t2026-09-17\tchecked\n")
-            rows = doc_drift.report(root, today=__import__("datetime").date(2026, 9, 18))
+            rows = doc_drift.report(root, today=datetime.date(2026, 9, 18))
         guide = next(row for row in rows if row["doc"] == "docs/Guide.md")
         self.assertEqual(guide["age"], 1)
 
@@ -250,7 +251,7 @@ class DocCitationTest(unittest.TestCase):
             with self.subTest(ledger=ledger), gate_tree.temporary_tree() as root:
                 gate_tree.write(root, "docs/doc_review_ledger.txt", ledger)
                 self.assertEqual(doc_drift.reviews(root), {
-                    "docs/Guide.md": __import__("datetime").date(2026, 9, 17),
+                    "docs/Guide.md": datetime.date(2026, 9, 17),
                 })
 
     def test_drift_ranks_changed_cited_file(self):
