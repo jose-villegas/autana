@@ -273,7 +273,9 @@ run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/p
 
 # Each picture's frame cost in each framebuffer layout, from the scene and
 # boot animation captures beside the render pages.
-run "$PYTHON" launcher/tools/render/layout_costs.py --mesh docs/render/data/layout-mesh-board.log     --boot docs/render/data/layout-boot-board.log --tables "$OUT/tables" > "$WORK/layout_costs.log"
+run "$PYTHON" launcher/tools/render/layout_costs.py --mesh docs/render/data/layout-mesh-board.log \
+    --boot docs/render/data/layout-boot-board.log --tables "$OUT/tables" \
+    --chart "$OUT/render/gfx-layout-costs.png" > "$WORK/layout_costs.log"
 
 table_status=0
 if [ "$CHECK" = 1 ]; then

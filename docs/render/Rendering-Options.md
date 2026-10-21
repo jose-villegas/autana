@@ -20,6 +20,14 @@ links to: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md) for gfx,
 
 ## Choosing at a glance
 
+Options fall into four groups by what they decide. Pick the layout first; the
+rest tune the send, the draw, or the bake.
+
+### Framebuffer layout
+
+How gfx holds the frame and sends it. An app picks one in `enter()`; the
+chart picks it from what the app draws.
+
 ```mermaid
 flowchart LR
     Start{"Does the app redraw<br/>every pixel every frame?"}
@@ -33,23 +41,47 @@ flowchart LR
     PS -->|"no, or one band<br/>at a time is enough"| BR["GFX_LAYOUT_BANDS"]
 ```
 
-| Option | Layer | Trades | RAM | Default | Turn it on | Reference |
-|---|---|---|---|---|---|---|
-| [Full framebuffer](#framebuffer-layouts) | gfx | nothing: sends only what changed | one frame of PSRAM | on | nothing | [Modes](../Gfx-and-Presentation.md#modes) |
-| [Double framebuffer](#framebuffer-layouts) | gfx | a second frame of PSRAM for drawing during the send | a second frame of PSRAM | off | `gfx_mode_enter()` with `GFX_LAYOUT_DOUBLE_FB` | [Modes](../Gfx-and-Presentation.md#modes) |
-| [Clear on send](#framebuffer-layouts) | gfx | core 1's bus time for core 0's clear | none | off | `gfx_set_clear_on_send()` in `GFX_LAYOUT_DOUBLE_FB` | [Present](../Gfx-and-Presentation.md#present-who-runs-it) |
-| [Band ring](#framebuffer-layouts) | gfx | kept content for a freed framebuffer | 0 extra internal on the device; frees the PSRAM frame | off | `GFX_LAYOUT_BANDS` and a `draw_band` callback | [The band ring](../Gfx-and-Presentation.md#the-band-ring) |
-| [Indexed](#framebuffer-layouts) | gfx | colours for one byte a cell | grid bytes internal; frees the PSRAM frame | off | `GFX_LAYOUT_INDEXED` | [Indexed mode](../Gfx-and-Presentation.md#indexed-mode) |
-| [Interlace](#present-policy) | gfx | half the strips per present for a lagging half in motion | none | off | `gfx_set_interlace()` | [Repaint controls](../Gfx-and-Presentation.md#repaint-controls) |
-| [Panel clock](#present-policy) | gfx | half the bus time for stray pixels that heal repairs | none | 80 MHz, or the saved system setting | `gfx_set_panel_clock_hz()` | [Panel clock and heal](../Gfx-and-Presentation.md#panel-clock-and-heal) |
-| [Render scale](#render-scale-and-the-half-picture) | r3d | pixels drawn for sharpness | scratch at the drawn size | 50% | `render_context_set_scale()` | [Mesh-Rendering.md](Mesh-Rendering.md#the-render-context) |
-| [Dynamic resolution](#dynamic-resolution) | r3d | sharpness for a held frame budget | scratch at the finest step | off | `render_context_set_dynamic_resolution()` | [Dynamic-Resolution.md](Dynamic-Resolution.md) |
-| [Camera presentation](#camera-presentation) | r3d | half the rows drawn for a scanline or doubled look | none | `CAMERA_PRESENT_NEAREST` | `scene_camera_set_present()` | [Camera presentation](Dynamic-Resolution.md#camera-presentation) |
-| [Small fill](#small-fill) | r3d | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | `scene_camera_set_small_fill()` | [Small fill](Mesh-Rendering.md#small-fill) |
-| [Cluster size](#culling-and-clusters) | bake | cull granularity | mesh size in flash | 32 triangles | `geometry.meshlet_triangles` | [Meshlets](Render-Pipeline.md#meshlets) |
-| [Bake variant](#bake-variants) | bake | triangles and smooth colour for draw time | mesh size in flash | per scene | the mesh entry a renderer names | [Bake-Quality.md](Bake-Quality.md) |
-| [Skinned lighting](#skinned-lighting) | bake | per-vertex cycles for shading accuracy | a table per light set | direct | `[skin].lighting` | [Lighting modes](Skinned-Lighting.md#lighting-modes) |
-| [View modes](#view-modes) | r3d | frame time for a diagnostic picture | PSRAM per view | shaded | `render_context_set_debug_view()` | [View modes](Mesh-Rendering.md#view-modes) |
+| Option | Trades | RAM | Default | Turn it on | Reference |
+|---|---|---|---|---|---|
+| [Full framebuffer](#framebuffer-layouts) | nothing: sends only what changed | one frame of PSRAM | on | nothing | [Modes](../Gfx-and-Presentation.md#modes) |
+| [Double framebuffer](#framebuffer-layouts) | a second frame of PSRAM for drawing during the send | a second frame of PSRAM | off | `gfx_mode_enter()` with `GFX_LAYOUT_DOUBLE_FB` | [Modes](../Gfx-and-Presentation.md#modes) |
+| [Clear on send](#framebuffer-layouts) | core 1's bus time for core 0's clear | none | off | `gfx_set_clear_on_send()` in `GFX_LAYOUT_DOUBLE_FB` | [Present](../Gfx-and-Presentation.md#present-who-runs-it) |
+| [Band ring](#framebuffer-layouts) | kept content for a freed framebuffer | 0 extra internal on the device; frees the PSRAM frame | off | `GFX_LAYOUT_BANDS` and a `draw_band` callback | [The band ring](../Gfx-and-Presentation.md#the-band-ring) |
+| [Indexed](#framebuffer-layouts) | colours for one byte a cell | grid bytes internal; frees the PSRAM frame | off | `GFX_LAYOUT_INDEXED` | [Indexed mode](../Gfx-and-Presentation.md#indexed-mode) |
+
+### Present policy
+
+What reaches the panel each frame, in the full-framebuffer and indexed
+layouts. Reach for these when the send, not the draw, is the slow part.
+
+| Option | Trades | RAM | Default | Turn it on | Reference |
+|---|---|---|---|---|---|
+| [Interlace](#present-policy) | half the strips per present for a lagging half in motion | none | off | `gfx_set_interlace()` | [Repaint controls](../Gfx-and-Presentation.md#repaint-controls) |
+| [Panel clock](#present-policy) | half the bus time for stray pixels that heal repairs | none | 80 MHz, or the saved system setting | `gfx_set_panel_clock_hz()` | [Panel clock and heal](../Gfx-and-Presentation.md#panel-clock-and-heal) |
+
+### r3d frame
+
+How many pixels an r3d scene draws and how it shades them, set at runtime.
+Most trade sharpness for draw time; view modes trade it for a diagnostic picture.
+
+| Option | Trades | RAM | Default | Turn it on | Reference |
+|---|---|---|---|---|---|
+| [Render scale](#render-scale-and-the-half-picture) | pixels drawn for sharpness | scratch at the drawn size | 50% | `render_context_set_scale()` | [Mesh-Rendering.md](Mesh-Rendering.md#the-render-context) |
+| [Dynamic resolution](#dynamic-resolution) | sharpness for a held frame budget | scratch at the finest step | off | `render_context_set_dynamic_resolution()` | [Dynamic-Resolution.md](Dynamic-Resolution.md) |
+| [Camera presentation](#camera-presentation) | half the rows drawn for a scanline or doubled look | none | `CAMERA_PRESENT_NEAREST` | `scene_camera_set_present()` | [Camera presentation](Dynamic-Resolution.md#camera-presentation) |
+| [Small fill](#small-fill) | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | `scene_camera_set_small_fill()` | [Small fill](Mesh-Rendering.md#small-fill) |
+| [View modes](#view-modes) | frame time for a diagnostic picture | PSRAM per view | shaded | `render_context_set_debug_view()` | [View modes](Mesh-Rendering.md#view-modes) |
+
+### Bake
+
+What a mesh brings to the board, chosen in its import settings before it is
+baked.
+
+| Option | Trades | RAM | Default | Turn it on | Reference |
+|---|---|---|---|---|---|
+| [Cluster size](#culling-and-clusters) | cull granularity | mesh size in flash | 32 triangles | `geometry.meshlet_triangles` | [Meshlets](Render-Pipeline.md#meshlets) |
+| [Bake variant](#bake-variants) | triangles and smooth colour for draw time | mesh size in flash | per scene | the mesh entry a renderer names | [Bake-Quality.md](Bake-Quality.md) |
+| [Skinned lighting](#skinned-lighting) | per-vertex cycles for shading accuracy | a table per light set | direct | `[skin].lighting` | [Lighting modes](Skinned-Lighting.md#lighting-modes) |
 
 ## Using the API
 
@@ -138,7 +170,7 @@ framebuffer.
 | a partial redraw | full | double sends every strip every frame and turns dirty tracking off |
 
 The [layout costs](../Gfx-and-Presentation.md#layout-costs) table measures
-each pick: r3d scenes and the boot animation, in every layout, on one board.
+r3d scenes and the boot animation in each layout on one board.
 Confirm the pick on the board in the app that ships it, comparing frame,
 draw, compose and send times in each layout
 ([Flash-and-Captures.md](../tools/Flash-and-Captures.md) runs a suite).

@@ -13,6 +13,7 @@
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "perf_layout_labels.h"
 #include "perf_stats.h"
 #include "render/context/render_context.h"
 #include "render/raster_split.h"
@@ -36,7 +37,8 @@ static const char* const scene_keys[] = {
 };
 #define SCENE_KEY_COUNT ((int)(sizeof scene_keys / sizeof scene_keys[0]))
 
-static const char* const layout_names[RENDER_LAB_LAYOUT_COUNT] = {"FULL_FB", "DOUBLE_FB", "DOUBLE_FB_CLEAR_ON_SEND"};
+static const char* const layout_names[RENDER_LAB_LAYOUT_COUNT] = {PERF_LAYOUT_FULL_FB, PERF_LAYOUT_DOUBLE_FB,
+                                                                  PERF_LAYOUT_DOUBLE_FB_CLEAR_ON_SEND};
 
 typedef enum { STAGE_FRAME, STAGE_WAIT, STAGE_SEND, STAGE_DRAW, STAGE_COMPOSE, STAGE_COUNT } stage_t;
 

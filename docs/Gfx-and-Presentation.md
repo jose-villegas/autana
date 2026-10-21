@@ -116,12 +116,17 @@ framebuffer, and frees the other. Readback also drains before reading the front.
 
 ### Layout costs
 
-Each picture's frame cost on the board in each layout, from one build. The
-scenes are r3d scenes, drawn in `update()`; the boot animation draws a full
-frame in `frame()`. `DOUBLE_FB_CONTENDED` presents once more before each
-frame, so the whole draw shares PSRAM with a send.
+Each picture's frame cost on the board, from one build, in `FULL_FB`,
+`DOUBLE_FB` and two `DOUBLE_FB` variants. In `_CLEAR_ON_SEND` core 1 clears
+each sent frame, so the draw skips its clear; in `_CONTENDED` a send runs
+during the whole draw, so both share PSRAM. Not run: the suite has no such pass.
 
-<!-- generated: gfx-layout-costs sha256=3efe0efe0673f39cf61fbe42cf510c117645f04d5adb1821855094ca095daf33 -->
+The r3d scenes draw in `update()`; the boot animation draws a full frame in
+`frame()`.
+
+<!-- generated: gfx-layout-costs sha256=f619387bc9a0bc0e69a959170dd06c1d8bc39d106c7c60fecb40dd5dc50aa2c1 -->
+![Frame cost by framebuffer layout](images/render/gfx-layout-costs.png)
+
 | Picture | `FULL_FB` | `DOUBLE_FB` | `DOUBLE_FB_CLEAR_ON_SEND` | `DOUBLE_FB_CONTENDED` |
 |---|---|---|---|---|
 | sponza-fitted-full, portrait | 43.1 | 48.1 (+12%) | 52.1 (+21%) | not run |
