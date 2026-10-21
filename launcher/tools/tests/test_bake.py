@@ -1536,6 +1536,17 @@ def filled_cache(directory):
     return found, lock
 
 
+def current_lock(path):
+    """Writes the lock the tree's own keys need to `path`, every row with a placeholder digest: what the
+    key tests read instead of the repo's lock, which a re-keying change leaves stale until it is re-locked."""
+    poses = bake.Poses({}, resample=True)
+    starts = {item.key: "0" * 64 for item in bake.bakes([build_pack.DEFAULT_SEARCH], {}, poses) if item.key}
+    found = bake.bakes([build_pack.DEFAULT_SEARCH], starts, poses)
+    made = {item.key: {"output": item.output, "source": bake.relative(item.source), "key": item.key,
+                       "sha256": "0" * 64, "size": 0, "run": 1} for item in found}
+    bake.write_lock(bake.lock_rows(found, {}, made), path, poses=poses.used.values())
+
+
 class StdlibKeysTests(unittest.TestCase):
     def test_list_and_check_need_no_numpy_with_held_or_missing_poses(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1545,8 +1556,10 @@ class StdlibKeysTests(unittest.TestCase):
             (blocker / "__init__.py").write_text('raise ImportError("numpy blocked for key test")\n')
             missing = root / "missing.lock"
             missing.write_text("")
+            current = root / "current.lock"
+            current_lock(current)
             environment = {**os.environ, "PYTHONPATH": str(root)}
-            for lock in (bake.LOCK, missing):
+            for lock in (current, missing):
                 for command in ("list", "check"):
                     with self.subTest(lock=lock.name, command=command):
                         script = (
@@ -1566,18 +1579,25 @@ class StdlibKeysTests(unittest.TestCase):
                             self.assertEqual(result.returncode, 0, output)
                         else:
                             self.assertIn(result.returncode, (0, 1), output)
-                            if lock == bake.LOCK:
+                            if lock == current:
                                 self.assertNotIn("  poses ", output)
                             else:
                                 self.assertIn("  poses ", output)
 
     def test_list_lock_hit_imports_neither_poses_nor_track_host(self):
         script = (
-            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "import pathlib, sys; sys.path.insert(0, sys.argv[1]); "
             "sys.modules['r3d.poses'] = None; sys.modules['anim.track_host'] = None; "
-            "from bake import bake; raise SystemExit(bake.main(['list']))"
+            "from bake import bake; "
+            "bake.LOCK = pathlib.Path(sys.argv[2]); "
+            "bake.read_lock_tables.__defaults__ = (bake.LOCK,); "
+            "raise SystemExit(bake.main(['list']))"
         )
-        result = subprocess.run([sys.executable, "-c", script, str(TOOLS)], capture_output=True, text=True)
+        with tempfile.TemporaryDirectory() as directory:
+            lock = pathlib.Path(directory) / "current.lock"
+            current_lock(lock)
+            result = subprocess.run([sys.executable, "-c", script, str(TOOLS), str(lock)],
+                                    capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
