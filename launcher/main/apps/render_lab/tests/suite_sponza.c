@@ -73,9 +73,9 @@ static bool
 cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
     int beyond[5] = {0};
     for (int i = 0; i < 8; i++) {
-        const float x = (float)(i & 1 ? c->hi[0] : c->lo[0]);
-        const float y = (float)(i & 2 ? c->hi[1] : c->lo[1]);
-        const float z = (float)(i & 4 ? c->hi[2] : c->lo[2]);
+        const float x = (float)(i & 1 ? c->bounds.hi.x : c->bounds.lo.x);
+        const float y = (float)(i & 2 ? c->bounds.hi.y : c->bounds.lo.y);
+        const float z = (float)(i & 4 ? c->bounds.hi.z : c->bounds.lo.z);
         const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){x, y, z});
         beyond[0] += l.z < lens->project.near_z;
         beyond[1] += l.x < -lens->project.cx * l.z;
@@ -194,15 +194,10 @@ vertex(const r3d_lit_mesh_t* mesh, int i) {
 static float
 box_distance(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, v3 p) {
     const float s = 1.0F / (float)mesh->position_scale;
-    const float point[3] = {p.x, p.y, p.z};
-    float sum = 0.0F;
-    for (int k = 0; k < 3; k++) {
-        const float lo = (float)c->lo[k] * s;
-        const float hi = (float)c->hi[k] * s;
-        const float d = point[k] < lo ? lo - point[k] : (point[k] > hi ? point[k] - hi : 0.0F);
-        sum += d * d;
-    }
-    return sqrtf(sum);
+    const vec3f_t point = {p.x, p.y, p.z};
+    const vec3f_t closest = box3f_closest_point(box3f_from_box3s(c->bounds, s), point);
+    const vec3f_t delta = vec3f_sub(closest, point);
+    return sqrtf(vec3f_dot(delta, delta));
 }
 
 static float

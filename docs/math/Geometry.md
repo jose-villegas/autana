@@ -1,6 +1,6 @@
 # Geometry
 
-Half-open rectangles and oriented planes. [Math index](README.md).
+Half-open rectangles, oriented planes, closed boxes and spheres. [Math index](README.md).
 
 ## rect (`f i s x`)
 
@@ -61,3 +61,69 @@ planes are not normalized.
 ![Camera frustum clipped to its axes box beside a ground-plane slice with named zero lines and arrows pointing inside; grid points passing every plane are green](../images/math/frustum.png)
 
 The shown depth bounds the drawing; the frustum has no far plane, and every plane must accept a point.
+
+## box3 (`f s`)
+
+`P` is `box3f` or `box3s`. A box stores vec3 corners `lo, hi` and includes
+both ends on every axis. `P_empty()` supplies the identity for extension
+and union; any crossed axis is empty.
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `P_empty()` | empty identity | $`lo = HIGHEST,\ hi = LOWEST`$ on every axis |
+| `P_is_empty(b)` | detect crossed bounds | $`\exists k: lo_k > hi_k`$ |
+| `P_from_point(p)` | zero-extent closed box | $`(p,p)`$ |
+| `P_extend(b, p)` | include a point | $`(\min(lo,p),\max(hi,p))`$ |
+| `P_union(a, b)` | include both boxes | $`(\min(a_{lo},b_{lo}),\max(a_{hi},b_{hi}))`$ |
+| `P_intersect(a, b)` | shared closed bounds; may be empty | $`(\max(a_{lo},b_{lo}),\min(a_{hi},b_{hi}))`$ |
+| `P_contains_point(b, p)` | point within every closed interval | $`\forall k: lo_k \le p_k \le hi_k`$ |
+| `P_contains(outer, inner)` | inner bounds within outer | $`\forall k: outer_{lo,k} \le inner_{lo,k}`$<br>$`inner_{hi,k} \le outer_{hi,k}`$ |
+| `P_overlaps(a, b)` | shared points, including touching faces | $`\neg\mathrm{is\_empty}(\mathrm{intersect}(a,b))`$ |
+| `P_closest_point(b, p)` | closest point on a nonempty box | $`\mathrm{clamp}(p,lo,hi)`$ |
+| `P_centre(b)` | midpoint (`f`) | $`c = 0.5(lo+hi)`$ |
+| `P_half_extent(b)` | half size (`f`) | $`e = 0.5(hi-lo)`$ |
+| `P_segment_hit(b, a, c, &t)` | slab entry in `[0,1]` (`f`); inside starts at zero | $`v=c-a`$; intersect $`[0,1]`$ with each axis's $`[(lo_k-a_k)/v_k,(hi_k-a_k)/v_k]`$, sorted |
+| `P_outside_planes(b, planes, count, &mask)` | reject outside; clear wholly inside bits (`f`) | $`d=n\cdot c+d_{plane},\ r=\sum_k \lvert n_k\rvert e_k`$<br>outside: $`d+r<0`$; clear bit: $`d-r\ge0`$ |
+| `box3f_from_box3s(b, scale)` | convert position ticks to float units | $`(lo\,scale,hi\,scale)`$ |
+
+Real queries use finite, nonempty bounds, except that `P_segment_hit`
+rejects empty boxes. Segment endpoints and box values must be finite.
+Plane bits index the input array; `count` must fit an unsigned mask.
+
+When `P_outside_planes` returns false, the bits of planes the box crosses
+stay set in the mask; a box in a loose corner is not rejected.
+
+![Top-down frustum box classifications](../images/math/box3-frustum.png)
+
+The near plane alone rejects one box. Box 8 crosses each plane separately
+but contains no point inside the frustum: a known conservative result of
+the per-plane test.
+
+## sphere (`f`)
+
+`P` is `spheref`. A sphere stores vec3 `centre` and nonnegative `radius`.
+Its boundary is included. Box queries use finite, nonempty bounds.
+Segment endpoints and sphere values must be finite.
+
+`P_overlaps_box` follows Arvo 1990<sup>[[83]](../Citations.md#83)</sup>, but forms the
+closest box point first and compares its squared distance, rather than
+summing per-axis terms.
+
+`P_segment_hit` uses the perpendicular-distance discriminant of Haines,
+Günther and Akenine-Möller<sup>[[84]](../Citations.md#84)</sup> to avoid
+cancellation in the hit decision.
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `P_from_box(b)` | circumscribed sphere | $`c=\mathrm{centre}(b),\ r=\lVert\mathrm{half\_extent}(b)\rVert`$ |
+| `P_contains_point(s, p)` | point inside or on the sphere | $`\lVert p-c\rVert^2 \le r^2`$ |
+| `P_overlaps(a, b)` | spheres share points, including tangency | $`\lVert c_a-c_b\rVert^2 \le (r_a+r_b)^2`$ |
+| `P_overlaps_box(s, b)` | closest box point inside the sphere | $`q=\mathrm{closest\_point}(b,c)`$<br>$`\lVert q-c\rVert^2\le r^2`$ |
+| `P_segment_hit(s, a, c, &t)` | first segment entry in `[0,1]`; inside starts at zero | $`m=a-s_c,\ v=c-a`$<br>$`A=v\cdot v,\ B=m\cdot v,\ f=m-(B/A)v`$<br>$`D=r^2-f\cdot f,\ t=(-B-\sqrt{AD})/A`$ |
+
+Segment queries write `t` only on a hit. Zero-length segments hit when
+the point is inside. A tangent counts as a hit.
+
+![Box-sphere overlap, touch and miss with closest points beside segment entry points on a box and sphere, an inside start and a miss](../images/math/box3-sphere-queries.png)
+
+Closest points decide sphere overlap; marked segment entries include a start inside the sphere at t = 0.

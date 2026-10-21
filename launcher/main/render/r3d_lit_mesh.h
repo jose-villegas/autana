@@ -16,19 +16,19 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
-#include "math/linear/vec3f.h"
+#include "math/geometry/spheref.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
     uint16_t triangle_first, triangle_count;
-    int16_t lo[3], hi[3]; /* bounds of its vertices, position ticks */
+    box3s_t bounds; /* bounds of its vertices, position ticks */
     bool double_sided;
 } r3d_lit_cluster_t;
 
 typedef struct {
-    int16_t lo[3], hi[3]; /* bounds of everything below, position ticks */
-    uint16_t first;       /* first child node, or a leaf's first cluster */
-    uint8_t count;        /* children, or a leaf's clusters */
+    box3s_t bounds; /* bounds of everything below, position ticks */
+    uint16_t first; /* first child node, or a leaf's first cluster */
+    uint8_t count;  /* children, or a leaf's clusters */
     bool leaf;
 } r3d_lit_node_t;
 
@@ -56,4 +56,4 @@ asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_l
 
 /* A sphere holding every vertex, in model units: centred on the box of them
  * (the root node's bounds), its radius the furthest vertex from that centre. */
-void r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh, vec3f_t* centre, float* radius);
+spheref_t r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh);

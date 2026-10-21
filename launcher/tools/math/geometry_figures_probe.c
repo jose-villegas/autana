@@ -2,8 +2,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "math/geometry/planef.h"
 #include "math/geometry/recti.h"
+#include "math/geometry/spheref.h"
 #include "math/linear/transformf.h"
 #include "math/linear/vec2i.h"
 
@@ -26,6 +26,28 @@ static const vec3f_t LENS_SAMPLE = {0.0F, 0.0F, 3.0F};
 static const float GRID_MIN = -8.0F, GRID_MAX = 12.0F, GRID_STEP = 1.0F;
 static const float BAND_MIN = -2.0F, BAND_MAX = 3.0F, BAND_STEP = 0.1F;
 
+static const mat4f_t BOX_VIEW = {{{0.8660254F, 0, -0.5F, 0}, {0, 1, 0, 0}, {0.5F, 0, 0.8660254F, 0}, {0, 0, 0, 1}}};
+static const projectf_t BOX_LENS = {1, 1, 0, 0, 2};
+static const rectf_t BOX_SCREEN = {-1, -1, 2, 2};
+static const box3f_t FRUSTUM_BOXES[] = {
+    {{-0.5F, -0.1F, 3.5F}, {0.5F, 0.1F, 4.5F}},  {{-1.5F, -0.1F, 3.5F}, {-0.5F, 0.1F, 4.5F}},
+    {{3.5F, -0.1F, 0.8F}, {4.5F, 0.1F, 1.8F}},   {{4.8F, -0.1F, 0.1F}, {5.3F, 0.1F, 0.5F}},
+    {{-3.5F, -0.1F, 1.8F}, {-2.5F, 0.1F, 2.5F}}, {{-0.1F, -0.1F, 0.8F}, {0.1F, 0.1F, 1.2F}},
+    {{-0.3F, -0.1F, 2.0F}, {0.3F, 0.1F, 2.6F}},  {{2.5F, -0.1F, 0.6F}, {3.0F, 0.1F, 0.72F}},
+};
+static const box3f_t QUERY_BOX = {{-1, -1, -1}, {1, 1, 1}};
+static const spheref_t QUERY_SPHERES[] = {{{1.5F, 0, -1.6F}, 1}, {{2, 0, 0.5F}, 1}, {{2.8F, 0, 2.3F}, 0.7F}};
+static const spheref_t SEGMENT_SPHERE = {{3, 0, 0}, 1};
+
+enum { QUERY_BOX_TARGET, QUERY_SPHERE_TARGET, QUERY_TARGET_COUNT };
+
+static const vec3f_t QUERY_SEGMENTS[][2] = {
+    {{-3, 0, -0.5F}, {1.5F, 0, -0.5F}},
+    {{1.5F, 0, -2}, {4, 0, 2}},
+    {{3, 0, 0}, {5, 0, 1}},
+    {{-3, 0, 2}, {5, 0, 2}},
+};
+
 static void
 print_vec(vec3f_t p) {
     printf("[%.7g,%.7g,%.7g]", (double)p.x, (double)p.y, (double)p.z);
@@ -39,6 +61,78 @@ print_plane(planef_t p) {
 static void
 print_rect(recti_t r) {
     printf("[%d,%d,%d,%d]", r.x, r.y, r.w, r.h);
+}
+
+static void
+print_box(box3f_t b) {
+    printf("[");
+    print_vec(b.lo);
+    printf(",");
+    print_vec(b.hi);
+    printf("]");
+}
+
+static void
+print_sphere(spheref_t sphere) {
+    printf("[");
+    print_vec(sphere.centre);
+    printf(",%.7g]", (double)sphere.radius);
+}
+
+static void
+print_box_frustum(void) {
+    planef_t planes[PLANE_FRUSTUM_COUNT];
+    planef_frustum(&BOX_VIEW, &BOX_LENS, BOX_SCREEN, planes);
+    printf(",\"box_frustum\":{\"planes\":[");
+    for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
+        printf("%s", p ? "," : "");
+        print_plane(planes[p]);
+    }
+    printf("],\"boxes\":[");
+    for (size_t i = 0; i < sizeof FRUSTUM_BOXES / sizeof FRUSTUM_BOXES[0]; i++) {
+        unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
+        const bool outside = box3f_outside_planes(FRUSTUM_BOXES[i], planes, PLANE_FRUSTUM_COUNT, &mask);
+        printf("%s[", i ? "," : "");
+        print_box(FRUSTUM_BOXES[i]);
+        printf(",%s,%u]", outside ? "true" : "false", mask);
+    }
+    printf("]}");
+}
+
+static void
+print_queries(void) {
+    printf(",\"queries\":{\"box\":");
+    print_box(QUERY_BOX);
+    printf(",\"spheres\":[");
+    for (size_t i = 0; i < sizeof QUERY_SPHERES / sizeof QUERY_SPHERES[0]; i++) {
+        const spheref_t sphere = QUERY_SPHERES[i];
+        printf("%s[", i ? "," : "");
+        print_sphere(sphere);
+        printf(",");
+        print_vec(box3f_closest_point(QUERY_BOX, sphere.centre));
+        printf(",%s]", spheref_overlaps_box(sphere, QUERY_BOX) ? "true" : "false");
+    }
+    printf("],\"segment_sphere\":");
+    print_sphere(SEGMENT_SPHERE);
+    printf(",\"segments\":[");
+    for (size_t i = 0; i < sizeof QUERY_SEGMENTS / sizeof QUERY_SEGMENTS[0]; i++) {
+        const vec3f_t a = QUERY_SEGMENTS[i][0], c = QUERY_SEGMENTS[i][1];
+        printf("%s[", i ? "," : "");
+        print_vec(a);
+        printf(",");
+        print_vec(c);
+        printf(",[");
+        for (unsigned target = 0; target < QUERY_TARGET_COUNT; target++) {
+            float t = 0.0F;
+            const bool hit =
+                target ? spheref_segment_hit(SEGMENT_SPHERE, a, c, &t) : box3f_segment_hit(QUERY_BOX, a, c, &t);
+            printf("%s[%s,%.7g,", target ? "," : "", hit ? "true" : "false", (double)t);
+            print_vec(vec3f_lerp(a, c, t));
+            printf("]");
+        }
+        printf("]]");
+    }
+    printf("]}");
 }
 
 int
@@ -158,7 +252,10 @@ main(void) {
     print_vec(LENS_SAMPLE);
     printf(",\"world_sample\":");
     print_vec(world_sample);
-    printf(",\"distances\":[%.7g,%.7g]}}\n", (double)planef_distance(lens_plane, LENS_SAMPLE),
+    printf(",\"distances\":[%.7g,%.7g]}", (double)planef_distance(lens_plane, LENS_SAMPLE),
            (double)planef_distance(world_plane, world_sample));
+    print_box_frustum();
+    print_queries();
+    printf("}\n");
     return 0;
 }
