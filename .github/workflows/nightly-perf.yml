@@ -174,3 +174,46 @@ jobs:
           name: nightly-data-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.PERF_DATA }}/scoped
           if-no-files-found: ignore
+
+  docs-eval:
+    runs-on: [self-hosted, linux, gpu]
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Set up docs retrieval model and server
+        run: python3 scripts/docs/docs_llama.py setup
+
+      - name: Evaluate hybrid docs retrieval
+        run: python3 scripts/docs/docs_search.py --eval
+
+      - name: Report hybrid retrieval scores
+        run: python3 scripts/docs/eval_summary.py hybrid
+
+      - name: Stop docs model server
+        if: always()
+        run: python3 scripts/docs/docs_llama.py stop
+
+  docs-eval-lexical:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Evaluate lexical docs retrieval
+        run: python3 scripts/docs/docs_search.py --eval --lexical
+
+      - name: Report lexical retrieval scores
+        run: python3 scripts/docs/eval_summary.py lexical
