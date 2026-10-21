@@ -41,10 +41,10 @@ typedef struct {
 typedef struct power_registers power_registers_t;
 
 void power_start(void);
-/* Input polling task only, once per tick: takes and clears PWR-key events (0x49)
- * each call and refreshes the battery once per POWER_BATTERY_PERIOD_US.
- * This is the only steady-state PMU traffic on the shared bus; other bus users
- * may count on that budget. A second task would double both. */
+/* Input task only: clears PWR-key events (0x49) each tick, refreshing the battery
+ * every POWER_BATTERY_PERIOD_US. This is the sole steady-state PMU bus traffic;
+ * other users rely on that budget.
+ * The log adds about 1-2 ms of flash write per record on the input task. */
 power_key_events_t power_poll(void);
 /* Any task: a cached copy, with no I2C. */
 power_battery_t power_read_battery(void);

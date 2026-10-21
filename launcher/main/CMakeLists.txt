@@ -35,6 +35,8 @@ set(app_srcs
     "input/motion/imu.c"
     "power/power_decode.c"
     "power/power_cache.c"
+    "power/power_log.c"
+    "power/power_log_device.c"
     "power/power_device.c"
     "input/input_device.c"
     "input/motion/tilt.c"
