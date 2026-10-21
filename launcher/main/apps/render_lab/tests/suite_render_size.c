@@ -1,8 +1,11 @@
 #include <stdio.h>
 #include <string.h>
+#include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 
 #include "gfx/gfx.h"
+#include "math/scalar/units.h"
+#include "render/context/render_context.h"
 #include "services/tune.h"
 #include "suites.h"
 #include "unity.h"
@@ -28,6 +31,7 @@ fixture(void) {
     size_command("RESET render_lab.small_fill_ceiling");
     size_command("RESET render_lab.small_fill_gate");
     size_command("RESET render_lab.small_fill_style");
+    size_command("RESET render_lab.budget");
 }
 
 static void
@@ -91,8 +95,48 @@ test_small_fill_menu_choice_moves_the_tunables(void) {
     fixture();
 }
 
+/* The toggle is the budget: on sets RENDER_LAB_BUDGET_ON_MS, any budget a
+ * console sets reads as on, and apply hands it to the context with the
+ * render_lab ladder, for whichever scene is showing. */
+static void
+test_dynamic_resolution_toggle_moves_the_budget_into_the_context(void) {
+    fixture();
+    render_lab_dynres_stop();
+    const render_context_t* context = render_context_main();
+    TEST_ASSERT_FALSE(render_lab_dynres_on());
+    render_lab_dynres_apply();
+    TEST_ASSERT_EQUAL_INT(RENDER_FIXED, context->policy);
+
+    TEST_ASSERT_TRUE(render_lab_dynres_set_on(true));
+    TEST_ASSERT_TRUE(render_lab_dynres_on());
+    TEST_ASSERT_EQUAL_INT(RENDER_LAB_BUDGET_ON_MS, render_lab_budget_ms());
+    render_lab_dynres_apply();
+    TEST_ASSERT_EQUAL_INT(RENDER_PREDICTED, context->policy);
+    TEST_ASSERT_EQUAL_INT(RENDER_LAB_BUDGET_ON_MS * MATH_US_PER_MS, context->ladder.budget_us);
+    TEST_ASSERT_EQUAL_INT(RENDER_LAB_LADDER_STEPS, context->ladder.step_count);
+    TEST_ASSERT_EQUAL_INT(RENDER_LAB_LADDER_HALF, context->predict.step);
+
+    /* A scene switch stops it; the next scene's apply hands it again. */
+    render_lab_dynres_stop();
+    TEST_ASSERT_EQUAL_INT(RENDER_FIXED, context->policy);
+    render_lab_dynres_apply();
+    TEST_ASSERT_EQUAL_INT(RENDER_PREDICTED, context->policy);
+
+    size_command("SET render_lab.budget 75");
+    TEST_ASSERT_TRUE(render_lab_dynres_on());
+    render_lab_dynres_apply();
+    TEST_ASSERT_EQUAL_INT(75 * MATH_US_PER_MS, context->ladder.budget_us);
+
+    TEST_ASSERT_TRUE(render_lab_dynres_set_on(false));
+    TEST_ASSERT_FALSE(render_lab_dynres_on());
+    render_lab_dynres_apply();
+    TEST_ASSERT_EQUAL_INT(RENDER_FIXED, context->policy);
+    fixture();
+}
+
 void
 run_render_size_suite(void) {
+    RUN_TEST(test_dynamic_resolution_toggle_moves_the_budget_into_the_context);
     RUN_TEST(test_small_fill_menu_choice_moves_the_tunables);
     RUN_TEST(test_small_fill_ceiling_range);
     RUN_TEST(test_render_size_and_percent_follow_and_clamp);

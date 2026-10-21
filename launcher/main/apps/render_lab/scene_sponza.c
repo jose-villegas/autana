@@ -18,6 +18,7 @@
 #include "gfx/present/gfx_present.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
+#include "render_lab_dynres.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
@@ -25,25 +26,6 @@
 #include "sponza_content.h"
 
 static const char* TAG = "sponza";
-
-/* The budget last handed to the scene; -1 for none yet. */
-static int applied_budget_ms = -1;
-
-static void
-apply_budget(void) {
-    const int budget_ms = render_lab_budget_ms();
-    if (budget_ms == applied_budget_ms) {
-        return;
-    }
-    applied_budget_ms = budget_ms;
-    if (budget_ms == 0) {
-        render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
-        return;
-    }
-    const resolution_config_t config =
-        resolution_config(sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, budget_ms * 1000);
-    render_context_set_dynamic_resolution(render_context_main(), &config, &sponza_ladder_model, SPONZA_LADDER_HALF);
-}
 
 static scene_t* sponza;
 
@@ -98,8 +80,6 @@ enter_with(sponza_bake_t shown) {
         (void)render_lab_apply_camera_settings(
             sponza, scene_find(sponza, render_lab_start_camera == NULL ? sponza_cameras[0] : render_lab_start_camera));
     }
-    applied_budget_ms = -1;
-    apply_budget();
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
@@ -137,7 +117,6 @@ scene_sponza_flat_fitted_enter(void) {
 
 static void
 scene_sponza_exit(void) {
-    render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     scene_unload(sponza);
     sponza = NULL;
 }
@@ -151,7 +130,6 @@ scene_sponza_frame(uint32_t dt_ms) {
         (void)render_lab_apply_camera_settings(
             sponza, scene_find(sponza, render_lab_start_camera == NULL ? sponza_cameras[0] : render_lab_start_camera));
     }
-    apply_budget();
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
@@ -163,13 +141,9 @@ sponza_status(void) {
     if (failure[0] != '\0') {
         return failure;
     }
-    /* Under a budget, the size the frame drew at, so a step shows on the panel. */
-    const render_context_frame_t r = render_context_frame(render_context_main());
-    const int wrote =
-        r.step < 0 ? snprintf(buf, sizeof buf, "%5d tris", render_context_frame(render_context_main()).stats.triangles)
-                   : snprintf(buf, sizeof buf, "%dx%d %5d tris", r.width, r.height,
-                              render_context_frame(render_context_main()).stats.triangles);
-    if (wrote < 0) {
+    if (snprintf(buf, sizeof buf, "%s%5d tris", render_lab_dynres_size(),
+                 render_context_frame(render_context_main()).stats.triangles)
+        < 0) {
         buf[0] = '\0';
     }
     return buf;
