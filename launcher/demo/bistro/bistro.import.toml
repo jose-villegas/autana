@@ -23,3 +23,11 @@ triangles = 20000
 [[variants]]
 name = "bistro_lite"
 triangles = 10000
+
+[[variants]]
+name = "bistro_fitted"
+triangles = 15500
+
+[[variants]]
+name = "bistro_fitted_full"
+triangles = 34500
