@@ -4,8 +4,8 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "core/name_hash.h"
-#include "fixtures/name_hash_vectors.h"
+#include "name_hash/name_hash.h"
+#include "name_hash_vectors.h"
 
 static const char* const names[] = NAME_HASH_TEST_NAMES;
 static const name_hash_t hashes[] = NAME_HASH_TEST_HASHES;

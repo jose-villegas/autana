@@ -10,7 +10,7 @@ from build import name_hash
 from build.c_header import read_define
 
 LAUNCHER = Path(__file__).resolve().parents[2]
-VECTORS = LAUNCHER / "test/fixtures/name_hash_vectors.h"
+VECTORS = LAUNCHER / "packages/name_hash/tests/name_hash_vectors.h"
 
 
 class NameHashTests(unittest.TestCase):
@@ -23,12 +23,12 @@ class NameHashTests(unittest.TestCase):
                 actual = name_hash.name_hash(text)
                 self.assertEqual(actual, expected)
                 self.assertNotEqual(actual, name_hash.NONE)
-                self.assertEqual(name_hash.name_hash_bytes(text.encode("utf-8")), expected)
+                self.assertEqual(name_hash.name_hash_n(text.encode("utf-8")), expected)
 
     def test_embedded_nul(self):
         data = read_define(VECTORS, "NAME_HASH_TEST_BYTES").encode("utf-8")
         expected = read_define(VECTORS, "NAME_HASH_TEST_BYTES_HASH")
-        self.assertEqual(name_hash.name_hash_bytes(data), expected)
+        self.assertEqual(name_hash.name_hash_n(data), expected)
         self.assertNotEqual(expected, name_hash.NONE)
 
 
