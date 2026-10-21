@@ -122,7 +122,7 @@ class MeshletReportTests(unittest.TestCase):
             with mock.patch.object(meshlet_sizes, "load_scene", return_value=scene), \
                     mock.patch.object(meshlet_sizes, "default_size", return_value=(184, 224)), \
                     self.assertRaisesRegex(ValueError, "pose interval"):
-                meshlet_sizes.table(pathlib.Path("room.scene.toml"), root, root, "atrium")
+                meshlet_sizes.table(pathlib.Path("room.scene.toml"), root, root)
 
     def test_swapped_pose_times_are_rejected(self):
         import meshlet_sizes
@@ -164,6 +164,7 @@ static const int meshes[SPONZA_BAKE_COUNT];
 static const char* const sponza_bakes[SPONZA_BAKE_COUNT] = {[0 ... SPONZA_BAKE_COUNT - 1] = "renderer"};
 typedef struct { const int* mesh; void* model; } r3d_instance_t;
 static void open_the_meshes(void) {}
+static int showcase_bake(void) { return 0; }
 static void report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, ...) {
     /* An allocation assertion aborts the measured pass after culling is switched off. */
     TEST_ASSERT_NOT_NULL(strcmp(label, "cull_off") ? instance : 0);

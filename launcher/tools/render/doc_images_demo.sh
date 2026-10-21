@@ -37,7 +37,7 @@ W=$2
 run mkdir -p "$W" "$RENDER"
 build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$W")
 HOST=${build#built }
-SHOWCASE=$(run "$PYTHON" -c 'import sys; from pathlib import Path; sys.path.insert(0, "launcher/tools"); from r3d.import_settings import load_scene; print(load_scene(Path(sys.argv[1])).renderers[0].object.name)' "$SCENE")
+SHOWCASE=$(run "$PYTHON" launcher/tools/render/showcase.py "$SCENE")
 
 small_fill_images() {
     cat > "$W/small-fill-looks.tsv" <<EOF

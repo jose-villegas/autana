@@ -109,13 +109,13 @@ def default_size():
     return tuple(define(header, name) * scale // 100 for name in ("GFX_WIDTH", "GFX_HEIGHT"))
 
 
-def table(scene_path, captures, bakes, object_name=None):
+def table(scene_path, captures, bakes):
+    """The table of the scene's showcase."""
     from meshlet_capture import rebake_scene
+    from showcase import showcase
     scene = load_scene(scene_path)
     camera = scene.camera.component
-    jobs = [job for job in scene.renderers if job.object.name == object_name] if object_name else scene.renderers[:1]
-    if not jobs:
-        raise ValueError("scene has no selected mesh renderer")
+    jobs = [job for job in scene.renderers if job.object.name == showcase(scene)]
     if any(not job.object.identity for job in jobs):
         raise ValueError("meshlet table requires unplaced mesh geometry")
     width, height = default_size()

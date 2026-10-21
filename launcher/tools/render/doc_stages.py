@@ -511,13 +511,14 @@ def submit_light_fits(executor, scene_path, work):
     from r3d.fitted_variant import fit_point, placed_variant
     from r3d.import_settings import load_scene
     from r3d.process_budget import FIT_BYTES
+    from showcase import showcase
     looks = dict.fromkeys([sheet.reference for sheet in LIGHT_SHEETS] +
                           [look for sheet in LIGHT_SHEETS for _label, look in sheet.columns])
     studies = []
     for look in looks:
         path = write_look_scene(scene_path, look, work / f"look-{look}")
         scene = load_scene(path)
-        studies.append((look, path, scene, placed_variant(scene, scene.renderers[0].object.name), path.parent / "inputs"))
+        studies.append((look, path, scene, placed_variant(scene, showcase(scene)), path.parent / "inputs"))
     fits = {}
 
     def prepared(index, job):
@@ -801,7 +802,7 @@ def check_gpu(args, out):
 
 def meshlets(args, out, work):
     from meshlet_sizes import table
-    body = table(args.scene, args.captures, args.bakes, args.object)
+    body = table(args.scene, args.captures, args.bakes)
     (out / "tables/meshlet-sizes.md").write_text(body)
     changed = apply_tables(ROOT, out / "tables", args.check)
     return int(args.check and changed)
