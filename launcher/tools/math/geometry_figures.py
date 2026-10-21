@@ -69,8 +69,13 @@ DISTANCE_PLANE_EXTENT = 1.6
 DISTANCE_TICK_HEIGHT = 0.12
 DISTANCE_SAMPLE_OFFSET = (5, 9)
 DISTANCE_VALUE_OFFSET = (0, -16)
+DISTANCE_UPPER_TICK_OFFSET = (0, 10)
+DISTANCE_ZERO_OFFSET = (10, -16)
+DISTANCE_NEGATIVE_SAMPLE_OFFSET = (5, 22)
+DISTANCE_BRACKET_LABEL_OFFSET = (0, -16)
 DISTANCE_STEP_Y = -1.35
 DISTANCE_MARGIN = 0.8
+SEGMENT_ZOOM = 0.9
 
 
 def panels(projection=None):
@@ -169,7 +174,7 @@ def legend(fig, entries, patches=False):
                fontsize=LABEL_SIZE, ncol=PANELS, frameon=False)
 
 
-def orbit(fig, axes, output, labels=(), azimuth=None, elevation=VIEW_ELEVATION):
+def orbit(fig, axes, output, labels=(), azimuth=None, elevation=VIEW_ELEVATION, label_colors=None):
     annotations = []
 
     def draw(frame):
@@ -203,7 +208,8 @@ def orbit(fig, axes, output, labels=(), azimuth=None, elevation=VIEW_ELEVATION):
                         offset[0] = (edge - anchor[0]) * POINTS_PER_INCH / fig.dpi
                         align = "left" if on_right else "right"
                     annotation = axis.annotate(text, point, xytext=tuple(offset),
-                        textcoords="offset points", fontsize=LABEL_SIZE, color=INK,
+                        textcoords="offset points", fontsize=LABEL_SIZE,
+                        color=label_colors.get(text, INK) if label_colors else INK,
                         va="bottom", ha=align, annotation_clip=False,
                         arrowprops=dict(arrowstyle="-", color=MUTED, linewidth=LABEL_LEADER_WIDTH),
                         bbox=dict(facecolor="white", edgecolor="none", alpha=LABEL_ALPHA, pad=LABEL_PADDING))
@@ -242,8 +248,10 @@ def distance_figure(data, output):
                       xytext=DISTANCE_SAMPLE_OFFSET, textcoords="offset points", fontsize=LABEL_SIZE)
         for position, value in [*data["rulers"][column], (0, 0)]:
             axis.plot([position, position], [-DISTANCE_TICK_HEIGHT, DISTANCE_TICK_HEIGHT], color=INK)
+            tick_offset = DISTANCE_UPPER_TICK_OFFSET if column == 0 else DISTANCE_VALUE_OFFSET
             axis.annotate(f"{value:+g}" if value else "0", (position, DISTANCE_RULER_Y),
-                          xytext=DISTANCE_VALUE_OFFSET, textcoords="offset points", ha="center", fontsize=LABEL_SIZE)
+                          xytext=tick_offset if value else DISTANCE_ZERO_OFFSET,
+                          textcoords="offset points", ha="center", fontsize=LABEL_SIZE)
         for _point, raw, distance, height in data["samples"]:
             if distance == 0:
                 continue
@@ -251,7 +259,8 @@ def distance_figure(data, output):
             color = SAMPLE_COLORS[int(np.sign(value)) + 1]
             axis.plot([distance, distance], [DISTANCE_RULER_Y, height], color=color, linestyle="--")
             axis.scatter(distance, height, color=color, s=POINT_SIZE)
-            axis.annotate(f"value = {value:.3g}", (distance, height), xytext=DISTANCE_SAMPLE_OFFSET,
+            axis.annotate(f"value = {value:.3g}", (distance, height),
+                          xytext=DISTANCE_NEGATIVE_SAMPLE_OFFSET if value < 0 else DISTANCE_SAMPLE_OFFSET,
                           textcoords="offset points", fontsize=LABEL_SIZE, color=color)
         low, high = min(sample[2] for sample in data["samples"]), max(sample[2] for sample in data["samples"])
         axis.set_xlim(low - DISTANCE_MARGIN, high + DISTANCE_MARGIN)
@@ -259,9 +268,9 @@ def distance_figure(data, output):
         step = data["rulers"][column][1][0]
         axis.annotate("", (0, DISTANCE_STEP_Y), (step, DISTANCE_STEP_Y),
                       arrowprops=dict(arrowstyle="|-|", color=INK))
-        axis.text(step / 2, DISTANCE_STEP_Y - DISTANCE_TICK_HEIGHT,
-                  f"1 / |n| = {step:.3g} unit" if column == 0 else f"{step:g} unit",
-                  ha="center", va="top", fontsize=LABEL_SIZE)
+        axis.annotate(f"1 / |n| = {step:.3g} unit" if column == 0 else f"{step:g} unit",
+                      (step / 2, DISTANCE_STEP_Y), xytext=DISTANCE_BRACKET_LABEL_OFFSET,
+                      textcoords="offset points", ha="center", va="top", fontsize=LABEL_SIZE)
         axis.set_xlabel("signed distance along the normal", fontsize=LABEL_SIZE)
     fig.suptitle(f"Signed value ÷ |n| = signed distance     (|n| = {length:g})", fontsize=TITLE_SIZE)
     save(fig, output)
@@ -402,6 +411,7 @@ def sphere_overlap_figure(data, output):
 def sphere_segments_figure(data, output):
     fig, axes = space_panels(("Segment / closed box", "Segment / closed sphere"))
     labels = []
+    label_colors = {}
     for target, axis in enumerate(axes):
         bounds = list(data["box"])
         if target:
@@ -410,19 +420,21 @@ def sphere_segments_figure(data, output):
             bounds.extend((np.array(centre) - radius, np.array(centre) + radius))
         else:
             draw_box(axis, data["box"])
-        for (a, c, results), color in zip(data["segments"], SLOTS):
+        for number, ((a, c, results), color) in enumerate(zip(data["segments"], SLOTS), start=1):
             hit, t, point = results[target]
             axis.plot(*np.array([a, c]).T, color=color, linestyle="-" if hit else "--")
             bounds.extend((a, c))
             if hit:
                 axis.scatter(*point, color=color, s=POINT_SIZE, depthshade=False)
-                label = "inside start (t = 0)" if t == 0 else f"entry (t = {t:.3g})"
-                labels.append((axis, [point], [label]))
+                result = "inside start t = 0" if t == 0 else f"entry t = {t:.3g}"
             else:
-                labels.append((axis, [c], ["miss"]))
-        fit_space(axis, bounds)
-    legend(fig, [("entry / inside start", INK, "o", ""), ("miss", MUTED, "", "--")])
-    orbit(fig, axes, output, labels)
+                result = "miss"
+            label = f"{number}: {result}"
+            labels.append((axis, [a], [label]))
+            label_colors[label] = color
+        fit_space(axis, bounds, zoom=SEGMENT_ZOOM)
+    legend(fig, [("entry point", INK, "o", ""), ("miss (dashed)", MUTED, "", "--")])
+    orbit(fig, axes, output, labels, label_colors=label_colors)
 
 
 def main():
