@@ -7,10 +7,12 @@
 #
 # OBJECT is the full renderer; the scene must also place OBJECT_lite,
 # OBJECT_flat, OBJECT_fitted, OBJECT_fitted_full and OBJECT_flat_fitted.
+# The scene's first renderer is its showcase: the images that show the
+# scene rather than compare its variants draw that one.
 #
 # <out-tree> holds images in render/ and measured blocks in tables/.
 # --meshlets-only makes only the meshlet sheet; --present-only makes only the
-# three camera present GIFs (nearest, scanline, double) of OBJECT_fitted_full.
+# three camera present GIFs (nearest, scanline, double) of the showcase.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
@@ -35,13 +37,14 @@ W=$2
 run mkdir -p "$W" "$RENDER"
 build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$W")
 HOST=${build#built }
+SHOWCASE=$(run "$PYTHON" -c 'import sys; from pathlib import Path; sys.path.insert(0, "launcher/tools"); from r3d.import_settings import load_scene; print(load_scene(Path(sys.argv[1])).renderers[0].object.name)' "$SCENE")
 
 small_fill_images() {
     cat > "$W/small-fill-looks.tsv" <<EOF
-smooth|SMOOTH (4/0 FLAT)|${FULL}_fitted_full|--small-fill 4,0,0|${ID}-small-fill-smooth|
-fast|FAST (12/16 FLAT)|${FULL}_fitted_full|--small-fill 12,16,0|${ID}-small-fill-fast|${ID}-small-fill-fast-diff
-grain|12/16 GRAIN|${FULL}_fitted_full|--small-fill 12,16,1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
-dither|12/16 DITHER|${FULL}_fitted_full|--small-fill 12,16,2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
+smooth|SMOOTH (4/0 FLAT)|${SHOWCASE}|--small-fill 4,0,0|${ID}-small-fill-smooth|
+fast|FAST (12/16 FLAT)|${SHOWCASE}|--small-fill 12,16,0|${ID}-small-fill-fast|${ID}-small-fill-fast-diff
+grain|12/16 GRAIN|${SHOWCASE}|--small-fill 12,16,1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
+dither|12/16 DITHER|${SHOWCASE}|--small-fill 12,16,2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
 EOF
     small_fill_first=1
     small_fill_end=56
@@ -131,9 +134,9 @@ demo_gif() {
     gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "${DEMO_GIF_FILTERS:-fps=8,scale=240:-1:flags=lanczos}" \
         "max_colors=64:stats_mode=diff"
 }
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "${FULL}_fitted_full" --present nearest
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "${FULL}_fitted_full" --present scanline
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-double --scene "$ID" --object "${FULL}_fitted_full" --present double
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "$SHOWCASE" --present nearest
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "$SHOWCASE" --present scanline
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-double --scene "$ID" --object "$SHOWCASE" --present double
 [ "${5:-}" != --present-only ] || exit 0
 
 demo_gif ${ID}-full --scene "$ID" --object "$FULL"
@@ -142,10 +145,10 @@ demo_gif ${ID}-flat --scene "$ID" --object "${FULL}_flat"
 demo_gif ${ID}-fitted --scene "$ID" --object "${FULL}_fitted"
 demo_gif ${ID}-fitted-full --scene "$ID" --object "${FULL}_fitted_full"
 demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
-demo_gif ${ID}-depth --scene "$ID" --object "$FULL" --view depth
-demo_gif ${ID}-tiles --scene "$ID" --object "$FULL" --view tiles
-demo_gif ${ID}-motion-vectors --scene "$ID" --object "$FULL" --view motion
-demo_gif ${ID}-meshlets --scene "$ID" --object "$FULL" --view meshlets
+demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
+demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
+demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
+demo_gif ${ID}-meshlets --scene "$ID" --object "$SHOWCASE" --view meshlets
 
 # The targets' differences at the pose the GIFs end on: each pair side by side
 # with the amplified difference, and the places they differ most, enlarged.
@@ -211,43 +214,32 @@ bake_and_render() {
     AUTANA_ASSET_DIR="$dir/assets" run "$HOST" --quarter 0 --scene "$ID" --object "$object" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
         -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
 }
-# The indirect-light and occlusion studies start from the physical look: the
-# committed scene without its occlusion and its [indirect] table, which the
-# scene sets for its own renders. Everything else here uses the committed look.
-run "$R3D_PYTHON" "launcher/tools/render/physical_scene.py" "$DEMO/$ID.scene.toml" "$W/physical.scene.toml"
-# variant_bake NAME BOUNCES SCENE-TABLE [MESH OBJECT]: bounces is `keep`, or `none` to take
-# the scene's `[bake].indirect` out; the table goes before the first object.
+# The indirect-light studies start from the physical look: the committed scene
+# without its occlusion and its [indirect] table (physical_scene.py). Their
+# sheets on the showcase are fitted, so the GPU stage makes them; the scores of
+# the full, lite and flat bakes here fill the indirect tables.
+# variant_bake NAME LOOK [MESH OBJECT]: LOOK names physical_scene.py's LOOKS.
 variant_bake() {
     run mkdir -p "$W/indirect-$1"
     run cp "$DEMO/$ID.import.toml" "$W/indirect-$1/"
-    run awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
-        direct == "none" && /^indirect = \{/ { next } { print }' \
-        "$W/physical.scene.toml" > "$W/indirect-$1/$ID.scene.toml"
-    bake_and_render "$W/indirect-$1" "${4:-$MESH}" "${5:-$FULL}"
+    run "$R3D_PYTHON" launcher/tools/render/physical_scene.py "$DEMO/$ID.scene.toml" "$W/indirect-$1/$ID.scene.toml" --look "$2"
+    bake_and_render "$W/indirect-$1" "${3:-$MESH}" "${4:-$FULL}"
 }
-variant_bake smooth keep ''
-variant_bake direct none ''
-variant_bake intensity-2 keep '[indirect]\nintensity = 2.0'
-variant_bake intensity-3 keep '[indirect]\nintensity = 3.0'
-variant_bake boost-2 keep '[indirect]\nalbedo_boost = 2.0'
+variant_bake smooth smooth
+variant_bake direct direct
+variant_bake intensity-2 intensity-2
+variant_bake intensity-3 intensity-3
+variant_bake boost-2 boost-2
 # The physical reference: the source lit per pixel by the scene without its look.
 PHYSICAL_REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames \
     --reference "$W/indirect-smooth/$ID.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/indirect-smooth/reference.log")
 
-# Reference, direct-only bake and two-bounce bake at two poses, with each
-# bake's dE heatmap against the reference, then the places the two bakes differ
-# most with the reference above them.
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-compare.png" --crops 4 \
+# Each bake scored against the physical reference, and each look against its
+# own reference too: the scene's [indirect] table reaches the reference, so the
+# error against it is the bake's alone.
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-compare.png" \
     --reference-bakes "$PHYSICAL_REFERENCE" --reference-scale 2 --sheet-frames 2,4 \
     --bake "direct light only" "$W/indirect-direct.avi" --bake "two bounces" "$W/indirect-smooth.avi" > "$W/indirect-compare.log"
-[ -f "$W/indirect-compare.crops.png" ] || { echo "$0: indirect light has no crops, the bakes do not differ." >&2; exit 1; }
-run cp "$W/indirect-compare.png" "$RENDER/bake-indirect-compare.png"
-run cp "$W/indirect-compare.crops.png" "$RENDER/bake-indirect-crops.png"
-
-# The look controls: the physical bake, indirect intensity 2 and 3, and an
-# albedo boost of 2, last pose, beside the physical reference and, under it,
-# each look's own reference: the scene's [indirect] table reaches the reference
-# too, so the error against it is the bake's alone.
 look_reference() {
     run sh launcher/tools/render/render_compare.sh --reference-frames \
         --reference "$W/indirect-$1/$ID.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/indirect-$1/reference.log"
@@ -255,49 +247,13 @@ look_reference() {
 INTENSITY_2_REFERENCE=$(look_reference intensity-2)
 INTENSITY_3_REFERENCE=$(look_reference intensity-3)
 BOOST_2_REFERENCE=$(look_reference boost-2)
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indirect-look.png" \
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-look.png" \
     --reference-bakes "$PHYSICAL_REFERENCE" --reference-scale 2 --sheet-frames 4 \
     --bake "intensity 1" "$W/indirect-smooth.avi" --bake "intensity 2" "$W/indirect-intensity-2.avi" \
     --bake "intensity 3" "$W/indirect-intensity-3.avi" --bake "albedo boost 2" "$W/indirect-boost-2.avi" \
     --bake-reference "intensity 1" "$PHYSICAL_REFERENCE" --bake-reference "intensity 2" "$INTENSITY_2_REFERENCE" \
     --bake-reference "intensity 3" "$INTENSITY_3_REFERENCE" --bake-reference "albedo boost 2" "$BOOST_2_REFERENCE" \
     > "$W/indirect-look.log"
-
-# The scene's ambient light is faint, so the occlusion has little to scale; both
-# bakes raise it. ao_bake NAME AO-LINE: the line goes after `[bake].indirect`.
-ao_bake() {
-    run mkdir -p "$W/ao-$1"
-    run cp "$DEMO/$ID.import.toml" "$W/ao-$1/"
-    run awk -v ao="$2" '/^\[/ { ambient = ($0 == "[ambient]") } ambient && /^intensity = / { print "intensity = 0.25"; next }
-        { print } /^indirect = \{/ && ao != "" { print ao }' \
-        "$W/physical.scene.toml" > "$W/ao-$1/$ID.scene.toml"
-    bake_and_render "$W/ao-$1" "$MESH" "$FULL"
-}
-ao_bake flat ''
-ao_bake occluded 'ao = { distance = 80.0, rays = 32 }'
-AO_REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames \
-    --reference "$W/ao-occluded/$ID.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/ao-occluded/reference.log")
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/ao-compare.png" --crops 4 \
-    --reference-bakes "$AO_REFERENCE" --reference-scale 2 --sheet-frames 2,4 \
-    --bake "no occlusion" "$W/ao-flat.avi" --bake "occlusion" "$W/ao-occluded.avi" > "$W/ao-compare.log"
-[ -f "$W/ao-compare.crops.png" ] || { echo "$0: occlusion has no crops, the bakes do not differ." >&2; exit 1; }
-run cp "$W/ao-compare.png" "$RENDER/bake-ao-compare.png"
-run cp "$W/ao-compare.crops.png" "$RENDER/bake-ao-crops.png"
-
-# The occlusion factor beside the reference frame at the sheet's two poses.
-run "$R3D_PYTHON" launcher/tools/r3d/reference_render.py "$W/ao-occluded/$ID.scene.toml" --poses "$W/fidelity-poses.txt" \
-    --skip 1 --samples 4 --occlusion --out "$W/ao-map" > "$W/ao-map.log" 2>&1
-run "$PYTHON" -c 'import sys; from PIL import Image
-rows = []
-for frame in (2, 4):
-    pair = [Image.open(f"{sys.argv[1]}/{frame:04d}{suffix}.png").convert("RGB") for suffix in (".occlusion", "")]
-    rows.append([picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST) for picture in pair])
-width, height = rows[0][0].size
-sheet = Image.new("RGB", (width * 2, height * len(rows)))
-for y, row in enumerate(rows):
-    for x, picture in enumerate(row):
-        sheet.paste(picture, (x * width, y * height))
-sheet.save(sys.argv[2])' "$W/ao-map" "$RENDER/bake-ao-map.png"
 
 # Each fitted target against the same reference: its heatmap sheet at the
 # same two poses, and its last frame beside the reference, enlarged where they
@@ -346,10 +302,10 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/appearance-
 # against the same physical reference as the full mesh above, so one table holds
 # one look.
 tables_start=$(date +%s)
-variant_bake direct-lite none '' "$ID.${FULL}_lite" "${FULL}_lite"
-variant_bake direct-flat none '' "$ID.${FULL}_flat" "${FULL}_flat"
-variant_bake smooth-lite keep '' "$ID.${FULL}_lite" "${FULL}_lite"
-variant_bake smooth-flat keep '' "$ID.${FULL}_flat" "${FULL}_flat"
+variant_bake direct-lite direct "$ID.${FULL}_lite" "${FULL}_lite"
+variant_bake direct-flat direct "$ID.${FULL}_flat" "${FULL}_flat"
+variant_bake smooth-lite smooth "$ID.${FULL}_lite" "${FULL}_lite"
+variant_bake smooth-flat smooth "$ID.${FULL}_flat" "${FULL}_flat"
 for kind in lite flat; do
     for look in direct smooth; do
         "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$look-$kind-unused.png" \
