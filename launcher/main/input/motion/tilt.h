@@ -95,6 +95,10 @@ int tilt_y(const tilt_t* t);
  * freezing mid-frame. Zero in free fall, where nothing drives anything. */
 int tilt_strength(const tilt_t* t);
 
+/* Below this strength (0-256), the board is too flat for an in-plane
+ * direction to mean anything. */
+#define TILT_MIN_DIRECTION_STRENGTH 64
+
 /* How hard the device is being shaken, 0-255, from linear acceleration rather
  * than rotation. Turning the board smoothly reads as nothing at all. */
 int tilt_shake(const tilt_t* t);
