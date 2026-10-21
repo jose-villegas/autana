@@ -243,6 +243,16 @@ class DocCitationTest(unittest.TestCase):
         guide = next(row for row in rows if row["doc"] == "docs/Guide.md")
         self.assertEqual(guide["age"], 1)
 
+    def test_drift_reviews_keep_latest_date_in_either_order(self):
+        newer = "docs/Guide.md\t2026-09-17\tchecked\n"
+        older = "docs/Guide.md\t2026-09-12\tchecked\n"
+        for ledger in (newer + older, older + newer):
+            with self.subTest(ledger=ledger), gate_tree.temporary_tree() as root:
+                gate_tree.write(root, "docs/doc_review_ledger.txt", ledger)
+                self.assertEqual(doc_drift.reviews(root), {
+                    "docs/Guide.md": __import__("datetime").date(2026, 9, 17),
+                })
+
     def test_drift_ranks_changed_cited_file(self):
         with gate_tree.temporary_tree() as root:
             gate_tree.write(root, "docs/Guide.md", "See `launcher/main/example.c`.\n")
