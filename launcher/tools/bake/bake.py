@@ -446,16 +446,24 @@ def requirement_pins(stage):
     return pinned_requirements(stage_files(stage))
 
 
+@functools.cache
+def tracked_requirements():
+    """The requirements*.txt files git tracks under TOOLS: a scratch copy of the tree in an ignored folder
+    holds others, which no key counts."""
+    return [REPO / line for line in git_lines("ls-files", "--", relative(TOOLS))
+            if fnmatch.fnmatch(pathlib.PurePosixPath(line).name, REQUIREMENTS_GLOB)]
+
+
 def pinned_requirements(paths):
     """(file, line) of each line of the requirements.txt beside one of `paths`, and of each line of any
-    requirements*.txt under TOOLS naming a package one of them imports (the fit's GPU packages, for one)."""
+    tracked requirements*.txt under TOOLS naming a package one of them imports (the fit's GPU packages, for one)."""
     imported = {package_name(name.split(".")[0]) for path in paths
                 for name, level in imported_names(module_facts(path)[0]) if level == 0 and name}
     pins = set()
     for near in {path.parent / REQUIREMENTS_NAME for path in paths}:
         if near.is_file():
             pins.update((relative(near), line) for line in requirement_lines(near))
-    for listed in TOOLS.rglob(REQUIREMENTS_GLOB):
+    for listed in tracked_requirements():
         pins.update((relative(listed), line) for line in requirement_lines(listed) if package_name(line) in imported)
     return tuple(sorted(pins))
 

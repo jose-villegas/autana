@@ -42,6 +42,7 @@ bake.read_lock = lambda: ({(root / 'key').read_text(): {'sha256': (root / 'lock'
 bake.bakes = lambda paths: [NS(key=(root / 'key').read_text(), output='mesh')]
 bake.submodules = lambda: {}
 bake.tracked_modules = lambda: set()
+bake.tracked_requirements = lambda: sorted(tools.rglob(bake.REQUIREMENTS_GLOB))
 bake.packages.include_roots = lambda: []
 build_pack.pack_jobs = lambda paths: ({'scene': {'clip': root / 'clip.anim.toml',
     'mesh': root / 'mesh.mesh'}}, {root / 'mesh.mesh': None})

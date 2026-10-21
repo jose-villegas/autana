@@ -1,6 +1,7 @@
 """Meshlet settings, capture identities and geometry-derived report cells."""
 import contextlib
 import io
+import os
 import pathlib
 import shutil
 import subprocess
@@ -10,8 +11,10 @@ import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(TOOLS), str(TOOLS / "render")]
-from r3d.import_settings import load_import_settings
+from r3d.import_settings import MESHLET_TRIANGLES, load_import_settings
 from test_r3d_import import write_import
+
+SHIPPED = str(MESHLET_TRIANGLES)  # the fixture captures' shipped row
 
 class MeshletSettingsTests(unittest.TestCase):
     def test_default_and_explicit_limits(self):
@@ -108,7 +111,7 @@ class MeshletReportTests(unittest.TestCase):
                 path = self.capture_rows(root)
                 path.write_text(path.read_text().replace(old, new))
                 with self.assertRaisesRegex(ValueError, "pose|identity"):
-                    meshlet_sizes.capture_means(root, "atrium")
+                    meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
     def test_table_validates_later_intervals_before_sampling(self):
         import meshlet_sizes
@@ -122,7 +125,7 @@ class MeshletReportTests(unittest.TestCase):
             with mock.patch.object(meshlet_sizes, "load_scene", return_value=scene), \
                     mock.patch.object(meshlet_sizes, "default_size", return_value=(184, 224)), \
                     self.assertRaisesRegex(ValueError, "pose interval"):
-                meshlet_sizes.table(pathlib.Path("room.scene.toml"), root, root, "atrium")
+                meshlet_sizes.table(pathlib.Path("room.scene.toml"), root, root)
 
     def test_swapped_pose_times_are_rejected(self):
         import meshlet_sizes
@@ -132,7 +135,7 @@ class MeshletReportTests(unittest.TestCase):
             path.write_text(path.read_text().replace("t=    0s", "t=temporary")
                             .replace("t=    5s", "t=    0s").replace("t=temporary", "t=    5s"))
             with self.assertRaisesRegex(ValueError, "poses"):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
     @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
     def test_assertion_after_cull_switch_restores_the_prior_setting(self):
@@ -164,6 +167,7 @@ static const int meshes[SPONZA_BAKE_COUNT];
 static const char* const sponza_bakes[SPONZA_BAKE_COUNT] = {[0 ... SPONZA_BAKE_COUNT - 1] = "renderer"};
 typedef struct { const int* mesh; void* model; } r3d_instance_t;
 static void open_the_meshes(void) {}
+static int showcase_bake(void) { return 0; }
 static void report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, ...) {
     /* An allocation assertion aborts the measured pass after culling is switched off. */
     TEST_ASSERT_NOT_NULL(strcmp(label, "cull_off") ? instance : 0);
@@ -201,7 +205,7 @@ int main(void) {
             path = root / "meshlets-64-board.log"
             path.write_text(path.read_text().split(":test_frame_cost:PASS")[0])
             with self.assertRaisesRegex(ValueError, "complete"):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
     def capture(self, root, row, build="abcdef123456", pack="a", suite=True):
         path = root / f"meshlets-{row}-board.log"
@@ -220,7 +224,7 @@ int main(void) {
             path.write_text(f"MESHLET_CAPTURE build_id={build}-dev pack_sha256={pack * 64} size={row} cull=1\n" + stages)
         if suite:
             text = path.read_text()
-            if row == "32":
+            if row == SHIPPED:
                 block = text.split("=== other")[0]
                 text += block.replace("atrium FRAME", "cull_off FRAME").replace("atrium t=", "cull_off t=").replace("atrium both", "cull_off both").replace("cull=1", "cull=0")
             path.write_text(text + ":test_frame_cost:PASS\nRUNSUITE_COMPLETE name=run_perf found=1 selected=1 unmatched=0\n")
@@ -241,11 +245,11 @@ int main(void) {
                                                         "period_ms=1000 pose_every_ms=500")
                                 .replace("t=    5s", "t=  500ms")
                                 .replace("worst 9000us", "worst 9000us, med 9000us, p95 9000us"))
-            self.assertEqual(meshlet_sizes.capture_means(root, "atrium")["32"], [1, 2, 3, 8])
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium", SHIPPED)["32"], [1, 2, 3, 8])
             path = root / "meshlets-64-board.log"
             path.write_text(path.read_text().replace("atrium t=  500ms clusters=1 tris=1 | both cores: frame 9000us\n", ""))
             with self.assertRaisesRegex(ValueError, "poses"):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
     def test_both_quarter_capture_uses_portrait_stage_means(self):
         import meshlet_sizes
@@ -260,7 +264,7 @@ int main(void) {
                     tagged.extend(line.replace("r3d.draw 3/4", f"r3d.draw {draw}") + f" quarter={quarter}"
                                   for line in lines if not line.startswith((":test_", "RUNSUITE_COMPLETE")))
                 path.write_text("\n".join([*tagged, *lines[-2:]]) + "\n")
-            self.assertEqual(meshlet_sizes.capture_means(root, "atrium"),
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium", SHIPPED),
                              {key: [1, 2, 3, 8] for key in ("cull-off", *meshlet_sizes.ROWS)})
 
     def test_monitor_capture_is_rejected_and_suite_accepted(self):
@@ -270,15 +274,15 @@ int main(void) {
             for row, pack in (("16", "a"), ("32", "b"), ("64", "c")):
                 self.capture(root, row, pack=pack, suite=False)
             with self.assertRaisesRegex(ValueError, "pose interval"):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
             self.capture_rows(root)
             path = root / "meshlets-16-board.log"
             complete = path.read_text()
             path.write_text(complete[:complete.index("RUNSUITE_COMPLETE")])
             with self.assertRaisesRegex(ValueError, "complete"):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
             path.write_text(complete)
-            self.assertEqual(meshlet_sizes.capture_means(root, "atrium")["32"], [1, 2, 3, 8])
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium", SHIPPED)["32"], [1, 2, 3, 8])
 
     def test_order_missing_capture_and_identity(self):
         import meshlet_sizes
@@ -286,33 +290,42 @@ int main(void) {
             root = pathlib.Path(directory)
             self.capture_rows(root)
             with self.assertRaisesRegex(ValueError, "pack"):
-                meshlet_sizes.capture_means(root, "atrium", {"16": "d" * 8, "32": "b" * 8, "64": "c" * 8})
-            values = meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED, {"16": "d" * 8, "32": "b" * 8, "64": "c" * 8})
+            values = meshlet_sizes.capture_means(root, "atrium", SHIPPED)
             self.assertEqual(list(values), ["cull-off", "16", "32", "64"])
             self.assertEqual(values["16"], [1, 2, 3, 8])
             path = self.capture(root, "64", build="fedcba123456", pack="c")
-            self.assertEqual(meshlet_sizes.capture_means(root, "atrium")["64"], [1, 2, 3, 8])
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium", SHIPPED)["64"], [1, 2, 3, 8])
             path.write_text(path.read_text() + "BUILD_ID=abcdef123456-diag\n")
             with self.assertRaisesRegex(ValueError, "build"):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
             (root / "meshlets-64-board.log").unlink()
             with self.assertRaises(FileNotFoundError):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
     def test_row_installs_one_size_and_prints_one_locked_command(self):
         import meshlet_capture
+        from bake import bake
+        from unittest import mock
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / "bakes/16").mkdir(parents=True)
-            (root / "tree/assets").mkdir(parents=True)
             (root / "bakes/16/mesh.mesh").write_bytes(b"size16")
+            lock = root / "tree" / bake.LOCK.relative_to(bake.REPO)
+            lock.parent.mkdir(parents=True)
+            bake.write_lock([dict(output="mesh.mesh", source="assets/mesh.scene.toml", key="k", sha256="0" * 64, size=6),
+                             dict(output="other.mesh", source="other.scene.toml", key="o", sha256="1" * 64, size=1)], lock)
             output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                meshlet_capture.install_row(root, dict(sizes=[16,32,64], suite="run_perf", meshes=["assets/mesh.mesh"]), 16)
-            self.assertEqual((root / "tree/assets/mesh.mesh").read_bytes(), b"size16")
+            with contextlib.redirect_stdout(output), mock.patch.dict(os.environ, {bake.CACHE_VARIABLE: str(root / "cache")}):
+                meshlet_capture.install_row(root, dict(sizes=[16,32,64], suite="run_perf", size_tune="perf.shipped", shipped=32,
+                                                       meshes=["assets/mesh.mesh"]), 16)
+            rows = bake.read_lock(lock)
+            self.assertEqual(rows["k"]["sha256"], bake.file_sha256(root / "bakes/16/mesh.mesh"))
+            self.assertEqual(rows["o"]["sha256"], "1" * 64)
+            self.assertEqual(bake.cached(rows["k"], bake.MESH_SUFFIX, root / "cache").read_bytes(), b"size16")
             lines = output.getvalue().splitlines()
             self.assertEqual(len(lines), 1)
-            self.assertIn("suite run_perf --flash --out", lines[0])
+            self.assertIn("suite run_perf --set perf.shipped=32 --flash --out", lines[0])
             self.assertTrue(lines[0].endswith("meshlets-16-board.log"))
 
     def test_suite_requires_shared_poses_and_render_size(self):
@@ -323,10 +336,10 @@ int main(void) {
             path = self.capture_rows(root)
             for capture in root.glob("*.log"):
                 capture_viewport(capture, (184, 224))
-            self.assertEqual(meshlet_sizes.capture_means(root, "atrium", expected_poses=[0, 5000])["32"], [1, 2, 3, 8])
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium", SHIPPED, expected_poses=[0, 5000])["32"], [1, 2, 3, 8])
             path.write_text(path.read_text().replace("t=    5s", "t=    6s"))
             with self.assertRaisesRegex(ValueError, "poses"):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
             path = self.capture(root, "64", pack="c")
             path.write_text(path.read_text().replace("rendered 184x224", "rendered 368x448"))
             with self.assertRaisesRegex(ValueError, "render size"):
@@ -345,7 +358,7 @@ int main(void) {
                 path = self.capture_rows(root)
                 path.write_text(path.read_text().replace(old, new))
                 with self.assertRaisesRegex(ValueError, reason):
-                    meshlet_sizes.capture_means(root, "atrium")
+                    meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
     def test_expected_pose_and_geometry_mismatches(self):
         import meshlet_sizes
@@ -353,13 +366,13 @@ int main(void) {
             root = pathlib.Path(directory)
             self.capture_rows(root)
             with self.assertRaisesRegex(ValueError, "host camera samples"):
-                meshlet_sizes.capture_means(root, "atrium", expected_poses=[0, 10000])
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED, expected_poses=[0, 10000])
             with self.assertRaisesRegex(ValueError, "header geometry"):
-                meshlet_sizes.capture_means(root, "atrium", expected_geometry={row:(2,3,1) for row in meshlet_sizes.ROWS})
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED, expected_geometry={row:(2,3,1) for row in meshlet_sizes.ROWS})
             path = root / "meshlets-32-board.log"
             path.write_text(path.read_text().replace("object=atrium size=32 cull=0", "object=other size=32 cull=0"))
             with self.assertRaisesRegex(ValueError, "another object"):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
     def test_completion_verdict_alone_is_required(self):
         import meshlet_sizes
@@ -368,7 +381,7 @@ int main(void) {
             path = self.capture_rows(root)
             path.write_text(path.read_text().split("RUNSUITE_COMPLETE")[0])
             with self.assertRaisesRegex(ValueError, "complete"):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
     def test_current_identity_and_object_are_required(self):
         import meshlet_sizes
@@ -378,7 +391,7 @@ int main(void) {
                 path = self.capture_rows(root)
                 path.write_text(path.read_text().replace(old, new))
                 with self.assertRaisesRegex(ValueError, "identity"):
-                    meshlet_sizes.capture_means(root, "atrium")
+                    meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
     def test_second_identity_with_another_build_is_rejected(self):
         import meshlet_sizes
@@ -388,7 +401,7 @@ int main(void) {
             identity = next(line for line in path.read_text().splitlines() if line.startswith("CAPTURE "))
             path.write_text(path.read_text() + identity.replace("abcdef123456", "fedcba123456") + "\n")
             with self.assertRaisesRegex(ValueError, "mismatched build"):
-                meshlet_sizes.capture_means(root, "atrium")
+                meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
     def test_capture_preparation_guards(self):
         import meshlet_capture
@@ -407,6 +420,9 @@ int main(void) {
                                  (["prepare", "--work", str(work)], "prepare needs"),
                                  (["prepare", "--work", str(work), "--scene", "scene", "--suite", "suite", "--sizes", "16"], "prepare needs"),
                                  (["prepare", "--work", str(work), "--scene", "scene", "--suite", "suite", "--sizes", "32", "32"], "prepare needs"),
+                                 (["prepare", "--work", str(work), "--scene", str(TOOLS.parents[1] / "launcher/demo/sponza/sponza.scene.toml"),
+                                   "--suite", "suite", "--size-tune", "perf.shipped", "--sizes",
+                                   *(row for row in ("16", "32", "64") if row != SHIPPED)], "shipped meshlet size"),
                                  (["row", "--work", str(work)], "row needs")):
                 with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()) as error:
                     self.assertEqual(meshlet_capture.main(args), 2)

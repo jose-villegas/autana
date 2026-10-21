@@ -1348,6 +1348,15 @@ class RequirementTests(unittest.TestCase):
     def test_the_requirements_beside_a_stage_file_key_it(self):
         self.assertTrue({"numpy", "mitsuba", "pillow"} <= self.pins("mesh"))
 
+    def test_an_untracked_requirements_file_keys_nothing(self):
+        (bake.TOOLS / "results").mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=bake.TOOLS / "results") as directory:
+            copy = pathlib.Path(directory) / "requirements.txt"
+            copy.write_text("numpy==0.0.1\n")
+            pins = bake.pinned_requirements(bake.stage_files("mesh"))
+        self.assertTrue(pins)
+        self.assertNotIn(bake.relative(copy), {path for path, _ in pins})
+
     def test_a_package_that_differs_from_its_pin_refuses_to_bake(self):
         with mock.patch("importlib.metadata.version", return_value="0.0.1"), \
                 self.assertRaisesRegex(produce.EnvironmentMismatch, "numpy: .* pins 2.*has 0.0.1"):

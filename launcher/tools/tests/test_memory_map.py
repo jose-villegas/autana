@@ -365,9 +365,14 @@ print(m.render(builds))
         source = self.root / "source"
         source.mkdir()
         (source / "file.c").write_text("first")
+        for args in (["init", "-q"], ["add", "file.c"],
+                     ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify", "-m", "first"]):
+            subprocess.run(["git", "-C", str(source), *args], check=True)
         work = self.root / "work"
         with patch.object(scratch, "tracked_files", return_value=["file.c"]):
             tree = scratch.scratch_tree(work, source)
+            listed = subprocess.run(["git", "-C", str(tree), "ls-files", "-s"], capture_output=True, text=True, check=True)
+            self.assertIn("	file.c", listed.stdout)
             (tree / "obsolete").write_text("old")
             (source / "file.c").write_text("current")
             with self.assertRaisesRegex(ValueError, "already exists"):
