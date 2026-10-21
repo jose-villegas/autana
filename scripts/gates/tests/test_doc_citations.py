@@ -18,7 +18,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import check_doc_citations  # noqa: E402
 import check_doc_constants  # noqa: E402
 import check_doc_index  # noqa: E402
-import check_doc_vocabulary  # noqa: E402
 import doc_citers  # noqa: E402
 import doc_drift  # noqa: E402
 import idf_vocabulary  # noqa: E402
@@ -256,24 +255,6 @@ class DocCitationTest(unittest.TestCase):
             row = next(row for row in doc_drift.report(root) if row["doc"] == "docs/Guide.md")
         self.assertEqual((len(row["files"]), row["rank"] - row["age"]), (1, 30))
 
-    def test_vocabulary_gate_honours_inline_and_previous_line_escapes(self):
-        with gate_tree.temporary_tree([
-                ("scripts/gates/doc_vocabulary.txt", "C6\twrong board\n"),
-                ("docs/Guide.md", "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
-                            "<!-- doc-vocabulary: ignore -->\n"
-                            "C6 was the prior target.\n"),
-        ]) as root:
-            found = check_doc_vocabulary.check(root)
-        self.assertEqual(found, [])
-
-    def test_vocabulary_gate_reports_unescaped_retired_term(self):
-        with gate_tree.temporary_tree([
-                ("scripts/gates/doc_vocabulary.txt", "C6\twrong board\n"),
-                ("docs/Guide.md", "C6 is not the current board.\n"),
-        ]) as root:
-            found = check_doc_vocabulary.check(root)
-        self.assertEqual([(path, term) for path, _, term, _ in found], [("docs/Guide.md", "C6")])
-
     def test_a_plan_may_cite_what_is_not_built_yet(self):
         with gate_tree.temporary_tree() as root:
             self.fixture(root)
@@ -292,7 +273,7 @@ class DocCitationTest(unittest.TestCase):
 
     def test_another_gates_marker_or_html_comment_does_not_silence_a_citation(self):
         with gate_tree.temporary_tree([
-                ("docs/Guide.md", "`gone_a()` <!-- doc-vocabulary: ignore -->\n"
+                ("docs/Guide.md", "`gone_a()` <!-- doc-other: ignore -->\n"
                             "`gone_b()` <!-- doc-constants: ignore -->\n"
                             "`gone_c()` <!-- gone_c() -->\n"),
         ]) as root:

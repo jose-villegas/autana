@@ -42,18 +42,19 @@ lighting = "direct"
 
 Colours are the material's unlit albedo, per vertex: the scene lights the
 mesh at run time. The source's units, joint rules and model-space checks
-are in [Model space and matching](Skeleton-and-Skin.md#model-space-and-matching).
+are in [Matching and frames](Skeleton-and-Skin.md#matching-and-frames).
 
 ## 2. Skin options
 
 | Option | Where | What it does | Default | Cost |
 |---|---|---|---|---|
-| Influences per vertex | [`build_pack.py --max-influences`](Skeleton-and-Skin.md#pack-step-and-ids) | Keeps the heaviest 2 or 4 joint weights per vertex. | 2 | 4 runs the four-influence kernel; not measured on the board. |
+| Influences per vertex | [`build_pack.py --max-influences`](Skeleton-and-Skin.md#two-or-four-influences) | Keeps the heaviest 2 or 4 joint weights per vertex. | 2 | 4 runs the four-influence kernel; not measured on the board. |
 | [`[skin].lighting`](Mesh-Import.md#skin-lighting) | import file | Selects the runtime lighting kernel: `direct`, `renormalised` or `table`. | `direct` | [Lighting modes](Skinned-Lighting.md#lighting-modes) compares cost and quality. |
 
 Pick `direct` unless the darkening where joints blend shows; `renormalised`
-removes it at a small cost; `table` keeps a flat cost when a scene
-has many lights.
+removes it at a small cost; `table` costs the same at any light count: more
+than `direct` up to the current `R3D_SKIN_LIGHT_MAX`, with the crossover
+estimated near 10 lights, not yet measured.
 
 ## 3. In a scene
 

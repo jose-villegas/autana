@@ -10,6 +10,8 @@ TUNE(render_lab, small_fill_ceiling, SMALL_FILL_CEILING_SMOOTH, 0, SMALL_FILL_CE
 TUNE(render_lab, small_fill_gate, SMALL_FILL_GATE_SMOOTH, 0, UINT8_MAX);
 TUNE(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMALL_FILL_STYLE_COUNT - 1);
 TUNE(render_lab, budget, 0, 0, 200);
+TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
+TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
 
 int
 render_lab_debug_view(void) {
@@ -26,10 +28,48 @@ render_lab_present(void) {
     return (camera_present_t)present;
 }
 
+render_lab_layout_t
+render_lab_layout(void) {
+    return (render_lab_layout_t)layout;
+}
+
 small_fill_t
 render_lab_small_fill(void) {
     return (small_fill_t){(uint8_t)small_fill_ceiling, (uint8_t)small_fill_gate, (small_fill_style_t)small_fill_style};
 }
+
+#if TUNE_ENABLED
+#define SMALL_FILL_PRESET_ROW(name)  SMALL_FILL_##name,
+#define SMALL_FILL_PRESET_NAME(name) #name,
+static const small_fill_t small_fill_presets[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_ROW)};
+static const char* const small_fill_names[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_NAME)};
+#define SMALL_FILL_PRESET_COUNT ((int)(sizeof small_fill_presets / sizeof small_fill_presets[0]))
+static int small_fill_picked;
+
+const char* const*
+render_lab_small_fill_names(int* count) {
+    *count = SMALL_FILL_PRESET_COUNT;
+    return small_fill_names;
+}
+
+int
+render_lab_small_fill_selected(void) {
+    return small_fill_picked;
+}
+
+bool
+render_lab_small_fill_select(int index) {
+    if (index < 0 || index >= SMALL_FILL_PRESET_COUNT) {
+        return false;
+    }
+    small_fill_picked = index;
+    const small_fill_t fill = small_fill_presets[index];
+    tune_registry_t* registry = tune_shared();
+    return tune_set(registry, small_fill_ceiling_tunable.name, fill.ceiling)
+           && tune_set(registry, small_fill_gate_tunable.name, fill.gate)
+           && tune_set(registry, small_fill_style_tunable.name, fill.style);
+}
+#endif
 
 bool
 render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera) {
@@ -53,4 +93,9 @@ render_lab_apply_raster_settings(void) {
 int
 render_lab_budget_ms(void) {
     return budget;
+}
+
+int
+render_lab_orbit_ms(void) {
+    return orbit_ms;
 }

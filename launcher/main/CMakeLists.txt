@@ -35,6 +35,8 @@ set(app_srcs
     "input/motion/imu.c"
     "power/power_decode.c"
     "power/power_cache.c"
+    "power/power_log.c"
+    "power/power_log_device.c"
     "power/power_device.c"
     "input/input_device.c"
     "input/motion/tilt.c"
@@ -135,6 +137,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_battery.c"
         "console/verbs/console_heap.c"
         "console/verbs/console_tone.c"
+        "console/verbs/console_melody.c"
         "console/verbs/console_sound.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
@@ -292,6 +295,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites.c"
         "../test/timing.c"
         "../test/test_cleanup.c"
+        "../test/frame_profile.c"
         "../test/ui_probe.c"
         ${suite_srcs}
         ${app_suites}

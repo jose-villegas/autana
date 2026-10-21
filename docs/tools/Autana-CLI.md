@@ -114,6 +114,7 @@ registered suite, for a full pre-merge pass.
 | `autana suite <name> --send LINE` | Send a console line after tunables, before every capture; `--send` repeats in order. The sequence should be idempotent; an error or incomplete reply stops the batch. |
 | `autana suite list [text] [--json]` | The registered suites; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
+| `autana melody [volume] [--check] [--internal] [--json]` | Development builds: play the phrase, or check every note with `--check`. `--internal` selects silent codec feedback for checks. [Audio path](../audio/Audio-Path.md#melody) documents replies and JSON. |
 | `autana tone <hz> <ms> [volume] [--internal] [--json]` | Development builds only: plays `<hz>` for `<ms>` at `[volume]` % (firmware default 30) and reports the tone level against a silence baseline in dBFS, whether it was heard, and the DMA bytes held while open. `--internal` uses silent codec feedback. Both paths report measured frequency; JSON adds `path`, `measured_hz`, and `hz_error` (Hz, measured minus requested). Fewer than two analysis windows gives `measured n/a` and null JSON frequency fields. |
 
 A run prints report and capture paths, PASS/FAIL counts and failures. A
@@ -158,6 +159,8 @@ Only reads the board, so running a command twice changes nothing.
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default. |
 | `autana screenshot --frames N -o PATH` | `N` frames as `PATH-00` on: the loop is frozen and stepped a frame between captures, then resumed. |
 | `autana battery [--json]` | Fresh battery voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds. |
+| `autana battery --log [--json]` | Persistent battery records oldest first; JSON is an array. Reasons: `periodic`, `transition`, `boot`, `shutdown-warning`. Development builds. |
+| `autana battery --log --clear` | Erase the battery history namespace. |
 | `autana heap [--json]` | Free bytes and largest block in the internal DMA pool (`MEMORY_DMA`). |
 | `autana framewatch` | The frame watch as JSON: allocations, frees and log lines repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
 | `autana perf` | The `frame_cost` names seen so far and the counter events. |
@@ -230,6 +233,7 @@ as aliases and print the canonical spelling once.
 | `autana docs --section <path:line>` | One section whole, or `path#heading words`; `--deep` adds subsections. |
 | `autana docs --outline <path>` | A document's headings with lines and sizes. |
 | `autana docs --ask <question...>` | A short answer from the local chat model, with sources. |
+| `autana docs --usage [--days N]` | What this machine has looked up: counts, repeats, misses, documents refused whole. |
 
 ## JSON fields
 

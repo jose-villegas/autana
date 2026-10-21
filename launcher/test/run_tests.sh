@@ -114,6 +114,7 @@ $TEST_DIR/host_main.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c
+$TEST_DIR/frame_profile.c
 $TEST_DIR/ui_probe.c
 $TEST_DIR/heap_arena.c
 $TEST_DIR/pack_reads.c
@@ -123,6 +124,7 @@ $TEST_DIR/test_fence.c
 $MAIN_DIR/sound/sound_mixer.c
 $MAIN_DIR/power/power_decode.c
 $MAIN_DIR/power/power_cache.c
+$MAIN_DIR/power/power_log.c
 $MAIN_DIR/audio/audio_tone.c
 $MAIN_DIR/audio/audio_frequency.c
 $MAIN_DIR/audio/audio_loopback_detector.c
@@ -189,6 +191,7 @@ $MAIN_DIR/input/mapping/orbit_motion_touch.c
 $MAIN_DIR/services/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/console/verbs/console_tone.c
+$MAIN_DIR/console/verbs/console_melody.c
 $MAIN_DIR/console/console_frame_request.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/shell/ui/ui_launcher.c
@@ -402,6 +405,11 @@ done
 COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -Wl,--wrap=draw_line_ex -pthread -lm"
+
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) LDFLAGS="$LDFLAGS -Wl,--wrap=_timespec64_get" ;;
+    *) LDFLAGS="$LDFLAGS -Wl,--wrap=timespec_get" ;;
+esac
 
 # The source lists, one native path per line. Test code (test/'s own
 # drivers, test/suites/*.c and each app's suite_*.c) also gets the

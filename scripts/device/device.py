@@ -72,11 +72,11 @@ def python_with_pyserial():
     return idf_python()
 
 
-def rerun_under_idf_python(argv):
-    """This command's exit status after running it again under ESP-IDF's
-    Python, or None when this interpreter can already reach the board. pyserial
-    lives in that environment, not in whichever `python` a caller found first,
-    so no caller has to know which one to pick."""
+def rerun_under_idf_python(argv, script=__file__):
+    """The exit status of script (this file unless given) run again with argv
+    under ESP-IDF's Python, or None when this interpreter can already reach the
+    board. pyserial lives in that environment, not in whichever `python` a
+    caller found first, so no caller has to know which one to pick."""
     try:
         import serial  # noqa: F401
         return None
@@ -85,7 +85,7 @@ def rerun_under_idf_python(argv):
     python = idf_python()
     if os.path.normcase(os.path.abspath(python)) == os.path.normcase(os.path.abspath(sys.executable)):
         return None
-    return subprocess.call([python, str(Path(__file__).resolve()), *argv])
+    return subprocess.call([python, str(Path(script).resolve()), *argv])
 
 
 def git_bash():

@@ -40,6 +40,7 @@ your question.
 | Console recipes, scene tour, pytest-embedded | [Device tests: pytest-embedded](testing/Device-Tests.md#console-recipes-and-lifecycle-coverage) |
 | Is the board itself working? | [Device tests: POST](testing/Device-Tests.md#post-is-a-third-thing) |
 | Instruction ratchet, frame watch, perf-test rules | [Performance and budgets](testing/Performance-and-Budgets.md) |
+| Which state does each device test start from? | [Test state reset](testing/Test-State-Reset.md) |
 | How do I make this code testable? | [Writing a test](testing/Writing-a-Test.md#making-things-testable) |
 | I am adding a suite | [Writing a test: adding a suite](testing/Writing-a-Test.md#adding-a-suite) |
 | Which suite covers what I changed? | [Writing a test: finding suites](testing/Writing-a-Test.md#finding-the-suite-for-an-area) |

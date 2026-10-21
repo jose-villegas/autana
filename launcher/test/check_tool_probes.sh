@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Compile-check the math tool probes (tools/math/*.c) on the host.
+# Compile-check the doc-figure probes (tools/**/*_figures_probe.c) on the host.
 #
 # The probes are C programs that doc_images runs to print the figures'
 # numbers. Only the doc-image job built them, so a change to the maths API
@@ -24,13 +24,12 @@ if ! CC_BIN=$(find_cc); then
     exit 1
 fi
 
-# The probes' own standard (see tools/math/geometry_figures.py), not the tests'.
+# The probes' own standard (see run_probe in tools/math/math_figures.py), not the tests'.
 CFLAGS="-std=gnu2x -Wall -Wextra -Werror -fsyntax-only"
 
 status=0
 found=0
-for f in "$LAUNCHER_DIR"/tools/math/*.c; do
-    [ -e "$f" ] || continue
+for f in $(find "$LAUNCHER_DIR/tools" -name "*_figures_probe.c" | LC_ALL=C sort); do
     found=$((found + 1))
     # shellcheck disable=SC2046
     if "$CC_BIN" $CFLAGS -I "$LAUNCHER_DIR/main" $(package_includes "$LAUNCHER_DIR") "$f"; then
@@ -42,7 +41,7 @@ for f in "$LAUNCHER_DIR"/tools/math/*.c; do
 done
 
 if [ "$found" -eq 0 ]; then
-    echo "check_tool_probes: found no tools/math/*.c" >&2
+    echo "check_tool_probes: found no tools/**/*_figures_probe.c" >&2
     exit 1
 fi
 
