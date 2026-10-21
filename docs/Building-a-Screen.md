@@ -47,7 +47,7 @@ settings_frame(const input_t* input, settings_state_t* s) {
 
 | A screen needs | Verbs |
 |---|---|
-| a frame | `ui_begin()`, then `ui_end()`, `ui_end_over()` or `ui_end_for_bands()` |
+| a frame | `ui_begin()`, then `ui_end()` or `ui_end_over()` |
 | a window | `ui_screen()`, `ui_window(r)`, `ui_scroll_window(r)` |
 | rows that flow down the window | `ui_row(h)` or `ui_row_centre(w, h)`, then `ui_next()` for the rect |
 | controls | [`ui_button`](ui/button.md), [`ui_button_icon`](ui/button_icon.md), [`ui_tile`](ui/tile.md), [`ui_tile_icon`](ui/tile_icon.md), [`ui_toggle`](ui/toggle.md), [`ui_slider`](ui/slider.md), [`ui_dropdown`](ui/dropdown.md), [`ui_dropdown_icons`](ui/dropdown_icons.md) |

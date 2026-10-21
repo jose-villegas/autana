@@ -314,11 +314,11 @@ sequenceDiagram
 - The first frame after `gfx_mode_enter()`, and any frame after
   `gfx_invalidate()`, forces every band.
 - A UI over a band renderer is built once and replayed per dirty band:
-  `ui_end_for_bands()` bins the command list by rows. The shell passes
+  `ui_end()` bins the command list by rows in band mode. The shell passes
   `ui_replay_band()` to `gfx_band_run()` as its overlay, which draws a
   band's share after the app's content. The shell queues its home hint with
   `ui_queue_band_overlay_rect()` before `frame()`, because the app's
-  `ui_end_for_bands()` call inside `frame()` bins it.
+  `ui_end()` call inside `frame()` bins it.
 - Each dirty band goes out whole: `gfx_band_run()` makes one
   `esp_lcd_panel_draw_bitmap()` call per band, straight from the buffer the
   app drew. The transfer takes no source stride, so sending fewer columns

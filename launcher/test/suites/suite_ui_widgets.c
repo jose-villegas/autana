@@ -894,6 +894,43 @@ test_dense_bands_match_a_full_repaint(void) {
     gfx_reset_for_test();
 }
 
+/* What an app drew under its UI in band mode: one colour. */
+#define UNDER_UI 0x1234
+
+static void
+draw_under_ui(int row0, int row1, gfx_color_t* target) {
+    for (size_t i = 0; i < (size_t)GFX_WIDTH * (size_t)(row1 - row0); i++) {
+        target[i] = UNDER_UI;
+    }
+}
+
+/* Band mode keeps no framebuffer to paint: plain ui_end() bins the UI, and
+ * each band replays it as gfx sends the band. */
+static void
+test_ui_end_in_band_mode_is_replayed_over_each_band(void) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    const gfx_mode_request_t bands = {.layout = GFX_LAYOUT_BANDS};
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_BANDS, gfx_mode_enter(&bands)->layout);
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_PENDING, gfx_readback_begin());
+    const input_t idle = {0};
+    ui_begin(&idle);
+    if (ui_begin_screen(ui_context(), "Banded", MU_OPT_NOTITLE | MU_OPT_NOFRAME)) {
+        mu_draw_rect(ui_context(), BUTTON, ui_rgb(MENU_INK));
+        mu_end_window(ui_context());
+    }
+    TEST_ASSERT_TRUE(ui_end(UI_NO_BACKGROUND));
+    gfx_band_run(draw_under_ui, ui_replay_band);
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    gfx_color_t row[GFX_WIDTH];
+    gfx_read_panel_row(BUTTON.y + (BUTTON.h / 2), row);
+    gfx_readback_end();
+    gfx_readback_end();
+    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(MENU_INK), row[BUTTON.x + (BUTTON.w / 2)]);
+    TEST_ASSERT_EQUAL_HEX16(UNDER_UI, row[BUTTON.x / 2]);
+    gfx_reset_for_test();
+}
+
 static void
 test_closing_the_list_restores_the_pixels_under_it(void) {
     TEST_ASSERT_TRUE(gfx_init());
@@ -1402,6 +1439,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_options_band_frame_cost);
     RUN_TEST(test_dense_bands_match_a_full_repaint);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
+    RUN_TEST(test_ui_end_in_band_mode_is_replayed_over_each_band);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_partial_frames);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_band_frames);
 #endif
