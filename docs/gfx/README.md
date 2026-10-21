@@ -23,6 +23,7 @@ A caller includes the header for what it does:
 
 Draw reaches presentation only through `gfx.h`: `gfx_draw_begin()` hands it the
 target, clip and whether to mark, and the `gfx_mark_*` calls record what it wrote.
+
 For what an app owes the shell, see [`Building-an-App.md`](../Building-an-App.md);
 for the panel constraints these choices obey,
 [`notes/Display-and-Rendering.md`](../notes/Display-and-Rendering.md).

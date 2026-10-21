@@ -19,6 +19,7 @@ The modes are in [Gfx](../gfx/Targets-and-Modes.md#modes).
 The span rasterizer (`render/r3d_span.h`) follows the same rule and owns no
 framebuffer: it fills a caller's window of rows, with a depth plane only as tall
 as that window, where a full colour+depth pair would want ~1.3 MB here.
+
 `math/linear/` supplies the vector, quaternion, matrix and transform maths that
 `render/` and boot share, and no rasterizer.
 

@@ -29,6 +29,7 @@ uses swipes or a short PWR press for itself keeps them.
 
 While a scene camera is active the shell draws it in the same overlap window and
 upscales it into the framebuffer before `frame()`, with or without an `update()`.
+
 The render context owns one raster scratch block, including the census list before
 the picture attachments. Dynamic resolution reserves the finest step's block, so a
 render size keeps the census without a separate allocation.
@@ -38,6 +39,7 @@ render size keeps the census without a separate allocation.
 In development builds a console verb that needs the frame loop (OPEN, HOME, APPS,
 RUNSUITE, FRAMEWATCH, SCREENSHOT, FREEZE, RESUME, STEP) only posts a request to
 one mailbox (`console/console_frame_request.h`); the console task never draws.
+
 Each pass takes everything posted, once, and applies what an early return would
 skip before anything can return:
 

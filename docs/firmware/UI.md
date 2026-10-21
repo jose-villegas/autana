@@ -7,15 +7,16 @@ This page is how the integration underneath works.
 
 ## Immediate mode versus dirty bands
 
-They fight. Immediate mode clears and repaints every frame, which marks every
+Immediate mode and dirty bands fight. Immediate mode clears and repaints every frame, which marks every
 band dirty and forces a full transfer, discarding what partial updates save.
 
-An immediate-mode UI is **rebuilt** every frame but not necessarily
-**changed**. microui's command list describes the output completely, so two
-frames that hash the same are the same picture. A retained-mode engine knows
-what changed because changing is an explicit act; here the signal is
-recovered from the other end, by comparing output where an engine compares
-intent.
+An immediate-mode UI is **rebuilt** every frame but not necessarily **changed**.
+microui's command list describes the output completely, so two frames that hash
+the same are the same picture.
+
+A retained-mode engine knows what changed because changing is an explicit act.
+Here the signal is recovered from the other end: compare output where an engine
+compares intent.
 
 ## One window is one canvas
 
@@ -70,13 +71,13 @@ services and touch setup.
 
 | Constraint | Why it points to microui |
 |---|---|
-| Internal heap is tight, even with the framebuffer in PSRAM | a widget tree and style system are a standing tax on internal SRAM; microui is one fixed-size context, cut down once in its header ([patched header](#two-things-to-know-before-touching-it)) |
+| Internal heap is tight, even with the framebuffer in PSRAM | a widget tree and style system are a standing tax on internal SRAM; microui is one fixed-size context, cut down once in its header ([patched header](#the-vendored-header-is-patched)) |
 | Apps own their whole frame | an app draws straight to the framebuffer on its own schedule; a retained toolkit wants the display and the refresh cycle, a command list asks for nothing |
 | The pipeline skips unchanged frames, because a full transfer is bus-bound | a command list is the shape that needs ([dirty bands](#immediate-mode-versus-dirty-bands)); LVGL would add a second damage tracker to reconcile |
 
 **The cost:** microui encodes a mouse (point, then click) and a touchscreen
 cannot produce the "point". The shell synthesizes it, at a frame of latency on
-every tap ([hover frame](#two-things-to-know-before-touching-it)). A
+every tap ([hover frame](#touch-needs-one-synthesized-hover-frame)). A
 touch-native toolkit would not pay that.
 
 ## Two things to know before touching it
@@ -84,9 +85,10 @@ touch-native toolkit would not pay that.
 ### The vendored header is patched
 
 Upstream sizes `mu_Context` for a desktop, with a 256 KiB command list alone.
-The sizes are reduced in `components/microui/include/microui.h`, upstream values
-in trailing comments, rather than overridden from our side: they fix the
-struct's layout, and two translation units disagreeing would corrupt it silently.
+
+The sizes are reduced in `components/microui/include/microui.h`, upstream values in
+trailing comments, rather than overridden from our side: they fix the struct's
+layout, and two translation units disagreeing would corrupt it silently.
 
 ### Touch needs one synthesized hover frame
 

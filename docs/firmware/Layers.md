@@ -115,10 +115,13 @@ Every layer above `core/` builds on it:
 | `core/timing.h` | reads time |
 | `build/build_variant.h` | says which build this is |
 
-Below every folder of `main/`, `board/` included, sit the packages: first-party libraries in
-`launcher/packages/<name>/`, each its own ESP-IDF component with an `include/` root, `src/` and `tests/`;
-[math](../../launcher/packages/math/README.md) is one. A package includes nothing outside itself but the
-C library and the build config, so the firmware, the host tests, the tools and the editor all build it.
+Below every folder of `main/`, `board/` included, sit the packages: first-party
+libraries in `launcher/packages/<name>/`, each its own ESP-IDF component with an
+`include/` root, `src/` and `tests/`;
+[math](../../launcher/packages/math/README.md) is one.
+
+A package includes nothing outside itself but the C library and the build config,
+so the firmware, the host tests, the tools and the editor all build it.
 
 | Rule | Checks |
 |---|---|
@@ -146,7 +149,10 @@ The clock, the pause and the heap have one owner each:
 | pause | `timing_sleep_ms()`, `timing_yield()` | `core/timing.h` |
 | memory by kind | `MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`, `MEMORY_PSRAM` | `core/memory.h`, whose header says which heap is beneath it on each platform |
 
-In the firmware, its suites and its tools the gate fails any `esp_timer_*`, `vTaskDelay`, `heap_caps_*`,
-`MALLOC_CAP_*`, `multi_heap_*`, `esp_psram_*` or `esp_get_*heap_size` name outside those two modules,
-`board/` and a driver's `*_device.c`. `launcher/test/` outside `suites/` (the host heap model, the stubs and the
-harness both platforms build) is not checked.
+In the firmware, its suites and its tools the gate fails any `esp_timer_*`,
+`vTaskDelay`, `heap_caps_*`, `MALLOC_CAP_*`, `multi_heap_*`, `esp_psram_*` or
+`esp_get_*heap_size` name outside those two modules, `board/` and a driver's
+`*_device.c`.
+
+`launcher/test/` outside `suites/` (the host heap model, the stubs and the harness
+both platforms build) is not checked.

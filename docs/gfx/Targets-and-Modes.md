@@ -4,8 +4,10 @@
 
 `gfx_render_target.h`: a picture drawn off the panel as a set of attachments, each
 a per-pixel map with its own size per pixel. Colour comes first, in the panel's own
-format, then depth, then any further map a renderer attaches. Every attachment has
-the target's width and rows, so one row index finds a pixel in all of them.
+format, then depth, then any further map a renderer attaches.
+
+Every attachment has the target's width and rows, so one row index finds a pixel in
+all of them.
 
 | Function | What it does |
 |---|---|
@@ -128,8 +130,10 @@ and marks the matching panel rectangle dirty; cell (cx, cy) covers `cell_size` x
 All four are safe only between frames.
 
 Palettes are a gfx type (`draw/draw_palette.h`, entries 0-15 reserved by
-`DRAW_PALETTE_UI_ENTRIES`). Curated ones ship in `draw/draw_palette_standard.h`,
-chosen at runtime by name; building one is the app's work. The two steps every
-palette then needs, the colour -> index map and the dither table, are
-`tools/gen/draw_palette_gen.h`: host-only, in OKLab<sup>[[35]](../Citations.md#35)</sup>,
-never in the firmware image.
+`DRAW_PALETTE_UI_ENTRIES`).
+
+- Curated palettes ship in `draw/draw_palette_standard.h`, chosen at runtime by name.
+- Building one is the app's work.
+- The two steps every palette then needs, the colour -> index map and the dither
+  table, are `tools/gen/draw_palette_gen.h`: host-only, in
+  OKLab<sup>[[35]](../Citations.md#35)</sup>, never in the firmware image.
