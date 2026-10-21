@@ -37,7 +37,10 @@ until the plane is normalized.
 | `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
 | `P_frustum(&m, &lens, screen, out)` | near and screen side planes in affine m's source space | See [frustum](#frustum) |
 
-![3D views of a tilted plane sheet and signed sample points before and after normalization, with the same zero set](../images/math/plane-distance.png)
+![Edge-on plane and signed-distance rulers before and after normalization, with value ticks and signed sample values](../images/math/plane-distance.png)
+
+Dividing the signed value by $`\lVert n\rVert`$ gives the signed distance.
+Normalization changes the ruler spacing while keeping the same zero plane.
 
 ![3D triangles with opposite winding arrows and opposite normals](../images/math/plane-from-points.png)
 
@@ -60,7 +63,7 @@ Each output is `P_from_rows` of a lens-space plane, in this order:
 `PLANE_FRUSTUM_COUNT` sizes the output. There is no far plane, and the
 planes are not normalized.
 
-![Orbiting 3D camera frustum with translucent near and side faces, inward normals, inside and outside samples, and a dashed drawing-depth cap](../images/math/frustum.gif)
+![Fixed 3D camera frustum with translucent near and side faces, inward normals, inside and outside samples, and a dashed drawing-depth cap](../images/math/frustum.png)
 
 A point is inside when every plane accepts it; the drawn depth only bounds the picture.
 
@@ -75,11 +78,11 @@ It rejects the box when $`d+r<0`$ and clears the plane's mask bit when
 $`d-r\ge0`$. When it returns false, the bits of planes the box crosses
 stay set; a box in a loose corner is not rejected.
 
-![Orbiting 3D boxes inside, crossing and outside the camera frustum, with numbered callouts and a loose corner box](../images/math/box3-frustum.gif)
+![Fixed observer view of boxes switching between inside, intersecting and outside as a camera moves and turns through the field](../images/math/box3-frustum.gif)
 
-The near plane alone rejects one box. Box 8 passes each plane test but
-contains no point inside the frustum: a conservative result of testing
-planes separately.
+Boxes switch between inside, intersecting and outside as the camera moves.
+A box crossing planes separately can stay intersecting while outside the
+frustum: the loose-corner test is conservative.
 
 ## box3 (`f s`)
 
@@ -134,6 +137,10 @@ cancellation in the hit decision.
 Segment queries write `t` only on a hit. Zero-length segments hit when
 the point is inside. A tangent counts as a hit.
 
-![Orbiting 3D spheres overlapping, touching and missing a box, with closest points; beside them, segments mark box and sphere entries, an inside start and a miss](../images/math/box3-sphere-queries.gif)
+![Fixed view of a sphere moving past and into a box, with miss, touch and overlap states, a closest point and a dashed centre-to-closest line](../images/math/box3-sphere-overlap.gif)
 
-Closest points decide sphere overlap; marked segment entries include a start inside the sphere at $`t = 0`$.
+The closest box point decides whether the moving sphere misses, touches or overlaps.
+
+![Fixed views of segment queries against a closed box and sphere, labelled with entries, inside starts and misses](../images/math/box3-sphere-segments.png)
+
+Marked segment entries include a start inside the sphere at $`t = 0`$.

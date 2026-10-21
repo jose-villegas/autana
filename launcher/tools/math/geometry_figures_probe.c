@@ -1,6 +1,8 @@
 /* Geometry figure inputs and library results, emitted as JSON for geometry_figures.py. */
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "math/geometry/recti.h"
 #include "math/geometry/spheref.h"
@@ -28,18 +30,31 @@ static const mat4f_t FRUSTUM_VIEW = {{{0.8660254F, 0, -0.5F, 0}, {0, 1, 0, 0}, {
 static const projectf_t FRUSTUM_LENS = {1, 1, 0, 0, 2};
 static const rectf_t FRUSTUM_SCREEN = {-1, -1, 2, 2};
 static const box3f_t FRUSTUM_BOXES[] = {
-    {{-0.5F, -0.4F, 3.5F}, {0.5F, 0.4F, 4.5F}},  {{-1.5F, -0.4F, 3.5F}, {-0.5F, 0.4F, 4.5F}},
-    {{3.5F, -0.4F, 0.8F}, {4.5F, 0.4F, 1.8F}},   {{4.45F, -0.6F, -0.3F}, {5.65F, 0.6F, 0.9F}},
-    {{-3.5F, -0.4F, 1.8F}, {-2.5F, 0.4F, 2.5F}}, {{-0.6F, -0.6F, 0.4F}, {0.6F, 0.6F, 1.6F}},
-    {{-0.5F, -0.5F, 1.8F}, {0.5F, 0.5F, 2.8F}},  {{2.3F, 2.3F, 0.0F}, {3.5F, 3.5F, 0.8F}},
+    {{-6.00F, 1.70F, -2.00F}, {-5.15F, 2.60F, -1.00F}}, {{-3.20F, 0.00F, -1.60F}, {-2.35F, 0.90F, -0.60F}},
+    {{-0.40F, 0.00F, -2.00F}, {0.45F, 0.90F, -1.00F}},  {{2.40F, 0.00F, -1.60F}, {3.25F, 0.90F, -0.60F}},
+    {{-5.50F, 0.00F, 0.60F}, {-4.65F, 0.90F, 1.60F}},   {{-2.70F, 0.00F, 1.00F}, {-1.85F, 0.90F, 2.00F}},
+    {{0.10F, 0.00F, 0.60F}, {0.95F, 0.90F, 1.60F}},     {{2.90F, 1.70F, 1.00F}, {3.75F, 2.60F, 2.00F}},
+    {{5.70F, 0.00F, 0.60F}, {6.55F, 0.90F, 1.60F}},     {{-6.00F, 0.00F, 3.20F}, {-5.15F, 0.90F, 4.20F}},
+    {{-3.20F, 0.00F, 3.60F}, {-2.35F, 0.90F, 4.60F}},   {{-0.40F, 1.70F, 3.20F}, {0.45F, 2.60F, 4.20F}},
+    {{2.40F, 0.00F, 3.60F}, {3.25F, 0.90F, 4.60F}},     {{5.20F, 0.00F, 3.20F}, {6.05F, 0.90F, 4.20F}},
+    {{-5.50F, 0.00F, 5.80F}, {-4.65F, 0.90F, 6.80F}},   {{-2.70F, 1.70F, 6.20F}, {-1.85F, 2.60F, 7.20F}},
+    {{0.10F, 0.00F, 5.80F}, {0.95F, 0.90F, 6.80F}},     {{2.90F, 0.00F, 6.20F}, {3.75F, 0.90F, 7.20F}},
+    {{5.70F, 0.00F, 5.80F}, {6.55F, 0.90F, 6.80F}},     {{-6.00F, 1.70F, 8.40F}, {-5.15F, 2.60F, 9.40F}},
+    {{-3.20F, 0.00F, 8.80F}, {-2.35F, 0.90F, 9.80F}},   {{-0.40F, 0.00F, 8.40F}, {0.45F, 0.90F, 9.40F}},
+    {{2.40F, 0.00F, 8.80F}, {3.25F, 0.90F, 9.80F}},     {{5.20F, 1.70F, 8.40F}, {6.05F, 2.60F, 9.40F}},
+    {{0.30F, 4.30F, -1.00F}, {1.50F, 5.50F, -0.20F}},
 };
 
-enum { FRUSTUM_LOOSE_BOX = 7 };
+static const vec3f_t PATH_ORIGIN = {-2.0F, 2.0F, -1.0F};
+static const vec3f_t PATH_TRAVEL = {3.0F, 0.0F, 2.0F};
+static const float PATH_YAW = 30.0F * MATH_RADIANS_PER_DEGREE;
+static const float PATH_TURN = 65.0F * MATH_RADIANS_PER_DEGREE;
+static const float PATH_DEPTH_FREQUENCY = 2.0F;
+static const float OVERLAP_RADIUS = 1.0F;
+static const float OVERLAP_MID_X = 2.0F;
+static const float OVERLAP_TRAVEL = 1.5F;
 
-_Static_assert(FRUSTUM_LOOSE_BOX < sizeof FRUSTUM_BOXES / sizeof FRUSTUM_BOXES[0], "loose box indexes FRUSTUM_BOXES");
 static const box3f_t QUERY_BOX = {{-1, -1, -1}, {1, 1, 1}};
-static const spheref_t QUERY_SPHERES[] = {{{1.2F, 0, -1.5F}, 1}, {{2, 0, 0.5F}, 1}, {{2.8F, 0, 2.3F}, 0.7F}};
-static const char* const QUERY_SPHERE_NAMES[] = {"overlap", "touch", "miss"};
 static const spheref_t SEGMENT_SPHERE = {{3, 0, 0}, 1};
 
 enum { QUERY_BOX_TARGET, QUERY_SPHERE_TARGET, QUERY_TARGET_COUNT };
@@ -94,30 +109,80 @@ print_sphere(spheref_t sphere) {
 }
 
 static void
-print_box_frustum(const planef_t planes[PLANE_FRUSTUM_COUNT]) {
-    printf(",\"box_frustum\":{\"loose_box\":%d,\"boxes\":[", FRUSTUM_LOOSE_BOX);
-    for (size_t i = 0; i < sizeof FRUSTUM_BOXES / sizeof FRUSTUM_BOXES[0]; i++) {
-        unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
-        const bool outside = box3f_outside_planes(FRUSTUM_BOXES[i], planes, PLANE_FRUSTUM_COUNT, &mask);
-        printf("%s[", i ? "," : "");
-        print_box(FRUSTUM_BOXES[i]);
-        printf(",%s,%u]", outside ? "true" : "false", mask);
+print_frustum(const mat4f_t* view, planef_t planes[PLANE_FRUSTUM_COUNT]) {
+    const mat4f_t lens = mat4f_scale_rows((*view), (vec3f_t){FRUSTUM_LENS.fx, -FRUSTUM_LENS.fy, 1.0F});
+    const mat4f_t inverse = mat4f_invert_affine(lens);
+    planef_frustum(view, &FRUSTUM_LENS, FRUSTUM_SCREEN, planes);
+    printf("\"plane_count\":%d,\"camera\":", PLANE_FRUSTUM_COUNT);
+    print_vec(mat4f_apply(&inverse, (vec3f_t){0}));
+    printf(",\"near\":%.7g,\"shown_depth\":%.7g,\"corners\":[", (double)FRUSTUM_LENS.near_z, (double)SHOWN_DEPTH);
+    const vec2f_t picture[] = {{FRUSTUM_SCREEN.x, FRUSTUM_SCREEN.y},
+                               {rectf_right(FRUSTUM_SCREEN), FRUSTUM_SCREEN.y},
+                               {rectf_right(FRUSTUM_SCREEN), rectf_bottom(FRUSTUM_SCREEN)},
+                               {FRUSTUM_SCREEN.x, rectf_bottom(FRUSTUM_SCREEN)}};
+    const float depths[] = {FRUSTUM_LENS.near_z, SHOWN_DEPTH};
+    bool comma = false;
+    for (size_t k = 0; k < sizeof depths / sizeof depths[0]; k++) {
+        for (size_t i = 0; i < sizeof picture / sizeof picture[0]; i++) {
+            const float depth = depths[k];
+            const vec3f_t p = {(picture[i].x - FRUSTUM_LENS.cx) * depth, (picture[i].y - FRUSTUM_LENS.cy) * depth,
+                               depth};
+            printf("%s", comma ? "," : "");
+            print_vec(mat4f_apply(&inverse, p));
+            comma = true;
+        }
     }
-    printf("]}");
+    printf("],\"planes\":[");
+    for (int i = 0; i < PLANE_FRUSTUM_COUNT; i++) {
+        printf("%s", i ? "," : "");
+        print_plane(planes[i]);
+    }
+    printf("]");
 }
 
 static void
-print_queries(void) {
+print_box_frustum(int frames) {
+    printf(",\"box_frustum\":[");
+    for (int frame = 0; frame < frames; frame++) {
+        const float phase = MATH_TAU * (float)frame / (float)frames;
+        const float yaw = PATH_YAW + PATH_TURN * sinf(phase);
+        const vec3f_t camera = vec3f_add(
+            PATH_ORIGIN, (vec3f_t){PATH_TRAVEL.x * sinf(phase), 0, PATH_TRAVEL.z * sinf(PATH_DEPTH_FREQUENCY * phase)});
+        const mat4f_t view = mat4f_view_from_axes((vec3f_t){cosf(yaw), 0, -sinf(yaw)}, WORLD_UP,
+                                                  (vec3f_t){sinf(yaw), 0, cosf(yaw)}, camera);
+        planef_t planes[PLANE_FRUSTUM_COUNT];
+        printf("%s{\"frustum\":{", frame ? "," : "");
+        print_frustum(&view, planes);
+        printf("},\"boxes\":[");
+        for (size_t i = 0; i < sizeof FRUSTUM_BOXES / sizeof FRUSTUM_BOXES[0]; i++) {
+            unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
+            const bool outside = box3f_outside_planes(FRUSTUM_BOXES[i], planes, PLANE_FRUSTUM_COUNT, &mask);
+            printf("%s[", i ? "," : "");
+            print_box(FRUSTUM_BOXES[i]);
+            printf(",%s,%u]", outside ? "true" : "false", mask);
+        }
+        printf("]}");
+    }
+    printf("]");
+}
+
+static void
+print_queries(int frames) {
     printf(",\"queries\":{\"box\":");
     print_box(QUERY_BOX);
     printf(",\"spheres\":[");
-    for (size_t i = 0; i < sizeof QUERY_SPHERES / sizeof QUERY_SPHERES[0]; i++) {
-        const spheref_t sphere = QUERY_SPHERES[i];
-        printf("%s[", i ? "," : "");
+    for (int frame = 0; frame < frames; frame++) {
+        const float phase = MATH_TAU * (float)frame / (float)frames;
+        const spheref_t sphere = {{OVERLAP_MID_X + OVERLAP_TRAVEL * sinf(phase), 0, 0}, OVERLAP_RADIUS};
+        const vec3f_t closest = box3f_closest_point(QUERY_BOX, sphere.centre);
+        const bool hit = spheref_overlaps_box(sphere, QUERY_BOX);
+        const vec3f_t delta = vec3f_sub(sphere.centre, closest);
+        const bool touch = vec3f_dot(delta, delta) == sphere.radius * sphere.radius;
+        printf("%s[", frame ? "," : "");
         print_sphere(sphere);
         printf(",");
-        print_vec(box3f_closest_point(QUERY_BOX, sphere.centre));
-        printf(",%s,\"%s\"]", spheref_overlaps_box(sphere, QUERY_BOX) ? "true" : "false", QUERY_SPHERE_NAMES[i]);
+        print_vec(closest);
+        printf(",%s,\"%s\"]", hit ? "true" : "false", hit ? (touch ? "touch" : "overlap") : "miss");
     }
     printf("],\"segment_sphere\":");
     print_sphere(SEGMENT_SPHERE);
@@ -143,7 +208,18 @@ print_queries(void) {
 }
 
 int
-main(void) {
+main(int argc, char** argv) {
+    enum { FRAME_COUNT_ARGUMENT = 1, PROBE_ARGUMENT_COUNT = 2 };
+
+    if (argc != PROBE_ARGUMENT_COUNT) {
+        return EXIT_FAILURE;
+    }
+    char* end;
+    const long frame_count = strtol(argv[FRAME_COUNT_ARGUMENT], &end, 10);
+    if (*end || frame_count <= 0 || frame_count > INT_MAX) {
+        return EXIT_FAILURE;
+    }
+    const int frames = (int)frame_count;
     const recti_t overlap = recti_intersect(RECT_A, RECT_B);
     const recti_t combined = recti_union(RECT_A, RECT_B);
     const recti_t crossed =
@@ -173,35 +249,29 @@ main(void) {
     print_plane(raw);
     printf(",");
     print_plane(unit);
-    printf("],\"sheet\":[");
-    const vec3f_t tangent = vec3f_normalize(vec3f_cross(unit.normal, WORLD_UP));
-    const vec3f_t bitangent = vec3f_cross(unit.normal, tangent);
-    print_sheet(DISTANCE_POINT, tangent, bitangent, NULL);
-    printf("],\"levels\":[");
-    for (size_t i = 0; i < sizeof LEVEL_VALUES / sizeof LEVEL_VALUES[0]; i++) {
-        printf("%s%.7g", i ? "," : "", (double)LEVEL_VALUES[i]);
-    }
-    printf("],\"level_sheets\":[");
+    printf("],\"normal_length\":%.7g,\"rulers\":[", (double)sqrtf(vec3f_dot(raw.normal, raw.normal)));
     const planef_t distance_planes[] = {raw, unit};
     for (size_t column = 0; column < sizeof distance_planes / sizeof distance_planes[0]; column++) {
-        const vec3f_t normal = distance_planes[column].normal;
+        const planef_t plane = distance_planes[column];
+        const float normal_length = sqrtf(vec3f_dot(plane.normal, plane.normal));
         printf("%s[", column ? "," : "");
         for (size_t level = 0; level < sizeof LEVEL_VALUES / sizeof LEVEL_VALUES[0]; level++) {
-            const vec3f_t offset = vec3f_scale(normal, LEVEL_VALUES[level] / vec3f_dot(normal, normal));
-            printf("%s[", level ? "," : "");
-            print_sheet(vec3f_add(DISTANCE_POINT, offset), tangent, bitangent, NULL);
-            printf("]");
+            const vec3f_t point =
+                vec3f_add(DISTANCE_POINT, vec3f_scale(unit.normal, LEVEL_VALUES[level] / normal_length));
+            printf("%s[%.7g,%.7g]", level ? "," : "", (double)(LEVEL_VALUES[level] / normal_length),
+                   (double)planef_distance(plane, point));
         }
         printf("]");
     }
-    printf("],\"point\":");
-    print_vec(DISTANCE_POINT);
-    printf(",\"samples\":[");
+    printf("],\"samples\":[");
+    const vec3f_t side_up =
+        vec3f_normalize(vec3f_sub(WORLD_UP, vec3f_scale(unit.normal, vec3f_dot(WORLD_UP, unit.normal))));
     for (size_t i = 0; i < sizeof DISTANCE_SAMPLES / sizeof DISTANCE_SAMPLES[0]; i++) {
+        const vec3f_t point = DISTANCE_SAMPLES[i];
         printf("%s[", i ? "," : "");
-        print_vec(DISTANCE_SAMPLES[i]);
-        printf(",%.7g,%.7g]", (double)planef_distance(raw, DISTANCE_SAMPLES[i]),
-               (double)planef_distance(unit, DISTANCE_SAMPLES[i]));
+        print_vec(point);
+        printf(",%.7g,%.7g,%.7g]", (double)planef_distance(raw, point), (double)planef_distance(unit, point),
+               (double)vec3f_dot(vec3f_sub(point, DISTANCE_POINT), side_up));
     }
     printf("]},\"triangle\":{\"points\":[");
     for (size_t i = 0; i < sizeof TRIANGLE / sizeof TRIANGLE[0]; i++) {
@@ -224,35 +294,11 @@ main(void) {
     }
     printf("]},\"frustum\":{");
 
+    planef_t planes[PLANE_FRUSTUM_COUNT];
+    print_frustum(&FRUSTUM_VIEW, planes);
     const mat4f_t lens = mat4f_scale_rows(FRUSTUM_VIEW, (vec3f_t){FRUSTUM_LENS.fx, -FRUSTUM_LENS.fy, 1.0F});
     const mat4f_t inverse = mat4f_invert_affine(lens);
-    planef_t planes[PLANE_FRUSTUM_COUNT];
-    planef_frustum(&FRUSTUM_VIEW, &FRUSTUM_LENS, FRUSTUM_SCREEN, planes);
-    printf("\"plane_count\":%d,\"camera\":", PLANE_FRUSTUM_COUNT);
-    print_vec(mat4f_apply(&inverse, (vec3f_t){0}));
-    printf(",\"near\":%.7g,\"shown_depth\":%.7g,\"corners\":[", (double)FRUSTUM_LENS.near_z, (double)SHOWN_DEPTH);
-    const vec2f_t picture[] = {{FRUSTUM_SCREEN.x, FRUSTUM_SCREEN.y},
-                               {rectf_right(FRUSTUM_SCREEN), FRUSTUM_SCREEN.y},
-                               {rectf_right(FRUSTUM_SCREEN), rectf_bottom(FRUSTUM_SCREEN)},
-                               {FRUSTUM_SCREEN.x, rectf_bottom(FRUSTUM_SCREEN)}};
-    const float depths[] = {FRUSTUM_LENS.near_z, SHOWN_DEPTH};
-    bool comma = false;
-    for (size_t k = 0; k < sizeof depths / sizeof depths[0]; k++) {
-        for (size_t i = 0; i < sizeof picture / sizeof picture[0]; i++) {
-            const float depth = depths[k];
-            const vec3f_t p = {(picture[i].x - FRUSTUM_LENS.cx) * depth, (picture[i].y - FRUSTUM_LENS.cy) * depth,
-                               depth};
-            printf("%s", comma ? "," : "");
-            print_vec(mat4f_apply(&inverse, p));
-            comma = true;
-        }
-    }
-    printf("],\"planes\":[");
-    for (int i = 0; i < PLANE_FRUSTUM_COUNT; i++) {
-        printf("%s", i ? "," : "");
-        print_plane(planes[i]);
-    }
-    printf("],\"samples\":[");
+    printf(",\"samples\":[");
     for (size_t k = 0; k < sizeof FRUSTUM_SAMPLES / sizeof FRUSTUM_SAMPLES[0]; k++) {
         const vec3f_t point = FRUSTUM_SAMPLES[k];
         unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
@@ -294,8 +340,8 @@ main(void) {
     printf("]");
     printf(",\"distances\":[%.7g,%.7g]}", (double)planef_distance(lens_plane, LENS_SAMPLE),
            (double)planef_distance(world_plane, world_sample));
-    print_box_frustum(planes);
-    print_queries();
+    print_box_frustum(frames);
+    print_queries(frames);
     printf("}\n");
     return 0;
 }
