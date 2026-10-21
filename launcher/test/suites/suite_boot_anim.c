@@ -520,6 +520,15 @@ far_reference_swell(double re, double im, uint32_t ms) {
     return floor_reference_swell(re, im, ms) * u * u * (3 - (2 * u));
 }
 
+/* The far lines also ease out over BOOT_ANIM_FAR_SWELL_OUT_MS, smoothstepped,
+ * to none by the last time step at or before the crossfade. */
+static double
+far_line_reference_swell(double re, double im, uint32_t ms) {
+    const double end = (double)(BOOT_ANIM_IMAGE_START_MS - (BOOT_ANIM_IMAGE_START_MS % BOOT_ANIM_FLOOR_TIME_STEP_MS));
+    const double u = fmin(1, fmax(0, (end - (double)ms) / BOOT_ANIM_FAR_SWELL_OUT_MS));
+    return far_reference_swell(re, im, ms) * u * u * (3 - (2 * u));
+}
+
 static double
 floor_reference_height(int i, int j, uint32_t ms) {
     const double re = (double)(i * BOOT_ANIM_MESH_STEP_Q12) / BOOT_ANIM_ONE;
@@ -567,13 +576,17 @@ test_baked_floor_matches_direct_float(void) {
 }
 
 /* The swell on the far lines and on the axis lines past the mesh, every
- * line, side and half, against the authored waves eased out by the fade. */
+ * line, side and half, against the authored waves eased out by the fade;
+ * the far lines are flat from the crossfade on. */
 static void
 test_baked_far_swell_matches_direct_float(void) {
     const int dirs[4][2] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
     double maximum_error = 0;
     for (uint32_t ms = 0; ms <= BOOT_ANIM_MS; ms += FLOOR_REFERENCE_STEP_MS) {
         const boot_anim_floor_state_t state = boot_anim_floor_state(ms);
+        if (ms >= BOOT_ANIM_IMAGE_START_MS) {
+            TEST_ASSERT_EQUAL_UINT16(0, state.far_swell);
+        }
         for (int n = 0; n < BOOT_ANIM_FAR_LINES; n++) {
             const boot_anim_far_line_t* line = &boot_anim_far_lines[n];
             for (int k = 0; k < line->count; k++) {
@@ -583,7 +596,8 @@ test_baked_far_swell_matches_direct_float(void) {
                     const int half = (way & 4) != 0 ? -1 : 1;
                     const double c = (double)(side * line->c) / BOOT_ANIM_ONE;
                     const double s = (double)(half * boot_anim_far_samples[line->first + k].s) / BOOT_ANIM_ONE;
-                    const double expect = along_im ? far_reference_swell(c, s, ms) : far_reference_swell(s, c, ms);
+                    const double expect =
+                        along_im ? far_line_reference_swell(c, s, ms) : far_line_reference_swell(s, c, ms);
                     const double baked =
                         (double)boot_anim_far_line_swell(line, k, along_im, side, half, &state) / BOOT_ANIM_ONE;
                     maximum_error = fmax(maximum_error, fabs(baked - expect));

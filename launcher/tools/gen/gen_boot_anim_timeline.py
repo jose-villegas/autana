@@ -124,7 +124,7 @@ def validate_floor(cfg):
                "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m",
                "ripple_calm_fraction", "crest_height_m", "crest_colour_stride", "grid_level", "floor_grey",
                "far_m", "far_grow_power", "far_line_cells", "far_line_growth", "far_front",
-               "far_front_steps", "far_swell_fade_m",
+               "far_front_steps", "far_swell_fade_m", "far_swell_out_ms",
                "grid_edge_fade_fraction",
                "ripple_height_m", "swell_height_m", "swell"}
     for key in sorted(set(cfg) - allowed):
@@ -206,6 +206,7 @@ def validate_floor(cfg):
     if far_sample_gap(cfg, fade) * 2 > meters_to_q12(min(s["wavelength_m"] for s in cfg["swell"])):
         fail("far_swell_fade_m must end the swell before the far samples are more than half its shortest "
              "wavelength apart")
+    floor_number(cfg.get("far_swell_out_ms"), "far_swell_out_ms", positive=True, integer=True)
 
 
 def floor_array(w, ctype, name, rows):
@@ -261,7 +262,7 @@ def emit_floor(cfg, w):
         for start in range(0, len(values), 16):
             w("    " + ", ".join(map(str, values[start:start + 16])) + ",\n")
         w("};\n\n")
-    w("typedef struct { int16_t radius, amplitude, calm_start; uint16_t inv_width, ripple_phase, swell; uint16_t phase[BOOT_ANIM_SWELL_COUNT]; int32_t far_reach; } boot_anim_floor_time_t;\n")
+    w("typedef struct { int16_t radius, amplitude, calm_start; uint16_t inv_width, ripple_phase, swell, far_swell; uint16_t phase[BOOT_ANIM_SWELL_COUNT]; int32_t far_reach; } boot_anim_floor_time_t;\n")
     w("static const boot_anim_floor_time_t boot_anim_floor_times[] = {\n")
     for ms in range(0, timing["total_ms"] + FLOOR_TIME_STEP_MS * 2, FLOOR_TIME_STEP_MS):
         tau = max(0, ms - timing["ripple_impact_ms"]) / 1000
@@ -275,7 +276,7 @@ def emit_floor(cfg, w):
         gain = round(FLOOR_GAIN_ONE * min(1, max(0, (ms - timing["title_start_ms"]) / timing["swell_in_ms"])))
         phases = [round(-ms * FLOOR_PHASE_TURN / s["period_ms"]) % FLOOR_PHASE_TURN for s in cfg["swell"]]
         scalars = (round(radius * FLOOR_SHAPE_SCALE), meters_to_q12(amplitude), round(calm_start * FLOOR_SHAPE_SCALE),
-                   round(FLOOR_GAIN_ONE / sigma), ripple_phase, gain)
+                   round(FLOOR_GAIN_ONE / sigma), ripple_phase, gain, far_swell_time_gain(cfg, ms))
         if any(not -(1 << 15) <= v < (1 << 15) for v in scalars[:3]):
             fail("ripple frame scalars must fit signed 16-bit fields")
         w("    {%s, {%s}, %d},\n" % (", ".join(map(str, scalars)), ", ".join(map(str, phases)), far_reach(cfg, ms)))
@@ -387,6 +388,16 @@ def far_swell_gain(cfg, r_q12):
     return round(FLOOR_GAIN_ONE * u * u * (3 - 2 * u))
 
 
+def far_swell_time_gain(cfg, ms):
+    """How much of the swell the far grid keeps at `ms`, in FLOOR_GAIN_ONE:
+    all of it until far_swell_out_ms before the photograph starts crossing
+    in, easing to none by the last time step at or before it, so the
+    crossfade draws the far grid flat."""
+    end = cfg["timing"]["image_start_ms"] // FLOOR_TIME_STEP_MS * FLOOR_TIME_STEP_MS
+    u = min(1.0, max(0.0, (end - ms) / cfg["far_swell_out_ms"]))
+    return round(FLOOR_GAIN_ONE * u * u * (3 - 2 * u))
+
+
 def swell_phases(cfg, d_q12, component):
     """The swell's spatial phases `d_q12` out along +re (cos) or +im (sin)."""
     return [round(d_q12 / BOOT_ANIM_ONE * component(math.radians(sine["direction_deg"])) / sine["wavelength_m"]
@@ -401,6 +412,7 @@ def emit_axis_far(cfg, w):
     radii = axis_far_samples(cfg)
     w("\n#define BOOT_ANIM_FAR_Q12 %d\n" % meters_to_q12(cfg["far_m"]))
     w("#define BOOT_ANIM_FAR_SWELL_FADE_Q12 %d\n" % meters_to_q12(cfg["far_swell_fade_m"]))
+    w("#define BOOT_ANIM_FAR_SWELL_OUT_MS %d\n" % cfg["far_swell_out_ms"])
     w("#define BOOT_ANIM_AXIS_FAR_SAMPLES %d\n\n" % len(radii))
     w("typedef struct { int32_t r; boot_anim_floor_node_t node; uint16_t swell_re[BOOT_ANIM_SWELL_COUNT], "
       "swell_im[BOOT_ANIM_SWELL_COUNT]; uint16_t swell_gain; } boot_anim_axis_far_t;\n")

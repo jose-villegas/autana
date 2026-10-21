@@ -134,7 +134,8 @@ class TimelineGeneratorTests(unittest.TestCase):
                             ("far_line_growth", (0, 1, -2, float("nan"))),
                             ("far_front", (-0.1, 1, float("nan"))),
                             ("far_front_steps", (0, -1, 2.5)),
-                            ("far_swell_fade_m", (0, -1, 12, 25, 500, float("nan")))):
+                            ("far_swell_fade_m", (0, -1, 12, 25, 500, float("nan"))),
+                            ("far_swell_out_ms", (0, -1, 2.5))):
             for value in values:
                 result = self.generate(config_change=lambda c: c.update({key: value}))
                 self.assertNotEqual(result.returncode, 0)
