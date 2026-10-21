@@ -23,7 +23,7 @@ static const vec3f_t LENS_SAMPLE = {0.0F, 0.0F, 3.0F};
 static const float LEVEL_VALUES[] = {-1.0F, 1.0F};
 static const float SHEET_RADIUS = 2.0F;
 static const vec3f_t DISTANCE_SAMPLES[] = {{-1, -1, -1}, {0, 0, 1}, {1, 1, 2}};
-static const vec3f_t FRUSTUM_SAMPLES[] = {{0, 0, 4}, {4, 2, 0}};
+static const vec3f_t FRUSTUM_SAMPLES[] = {{0, 0, 4}, {-3, -1, 1}};
 static const vec2f_t SHEET_SIGNS[] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
 
 static const mat4f_t FRUSTUM_VIEW = {{{0.8660254F, 0, -0.5F, 0}, {0, 1, 0, 0}, {0.5F, 0, 0.8660254F, 0}, {0, 0, 0, 1}}};
