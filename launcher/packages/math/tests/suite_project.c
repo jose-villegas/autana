@@ -29,6 +29,17 @@ fixture(void) {
 }
 
 static void
+test_projectx_from_projectf_preserves_each_field(void) {
+    const projectf_t lens = fixture();
+    const projectx_t fixed = projectx_from_projectf(&lens);
+    TEST_ASSERT_EQUAL_INT32(PROJECT_FX * MATHX_ONE, fixed.fx);
+    TEST_ASSERT_EQUAL_INT32(PROJECT_FY * MATHX_ONE, fixed.fy);
+    TEST_ASSERT_EQUAL_INT32(PROJECT_CX * MATHX_ONE, fixed.cx);
+    TEST_ASSERT_EQUAL_INT32(PROJECT_CY * MATHX_ONE, fixed.cy);
+    TEST_ASSERT_EQUAL_INT32(PROJECT_NEAR * MATHX_ONE, fixed.near_z);
+}
+
+static void
 test_projectf_offset_preserves_camera_sign_and_independent_axes(void) {
     const projectf_t lens = fixture();
     const vec2f_t offset = projectf_offset(&lens, (vec3f_t){PROJECT_X, PROJECT_Y, PROJECT_DEPTH});
@@ -165,6 +176,7 @@ test_at_near_endpoint_is_clipped_in_both_slots(void) {
 
 void
 suite_project(void) {
+    RUN_TEST(test_projectx_from_projectf_preserves_each_field);
     RUN_TEST(test_projectf_offset_preserves_camera_sign_and_independent_axes);
     RUN_TEST(test_projectf_screen_center_and_independent_axes);
     RUN_TEST(test_projectf_clip_near_rejects_and_preserves_endpoints);

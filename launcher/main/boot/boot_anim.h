@@ -106,7 +106,7 @@ boot_anim_timeline_sample(const boot_anim_motion_t* motion, uint32_t now_ms) {
 /* The spiral: one unit of t climbs 132/512 of a meter. */
 #define BOOT_ANIM_SPIRAL_Q9    132
 
-typedef r3d_line_view_x_t boot_anim_view_t;
+typedef r3d_line_projector_t boot_anim_view_t;
 
 boot_anim_view_t boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms);
 
