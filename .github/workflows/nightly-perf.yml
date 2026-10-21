@@ -177,7 +177,7 @@ jobs:
 
   docs-eval:
     runs-on: [self-hosted, linux, gpu]
-    timeout-minutes: 20
+    timeout-minutes: 10
     defaults:
       run:
         shell: bash
@@ -202,7 +202,7 @@ jobs:
 
   docs-eval-lexical:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     defaults:
       run:
         shell: bash
