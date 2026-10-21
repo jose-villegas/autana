@@ -1170,26 +1170,19 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
     }
 }
 
-/* Logs the direction whenever the NEAREST of the eight changes. Quiet when
- * the board is still, and it is what the axis mapping above was verified
- * against. The simulation itself uses the dithered direction, which changes
- * every frame by design and would be useless to log. */
+/* Dithered simulation directions change by design; only meaningful changes
+ * in the nearest octant are useful to log. */
 static void
-log_direction_change(int gx, int gy, int jostle, const input_motion_t* motion) {
-    static int last_dx = 99;
-    static int last_dy = 99;
-    int dx;
-    int dy;
-    sand_gravity_direction(gx, gy, &dx, &dy);
-    if (dx == last_dx && dy == last_dy) {
+log_direction_change(int gx, int gy, int strength, int jostle, const input_motion_t* motion) {
+    static int dx;
+    static int dy;
+    if (!sand_gravity_direction_changed(gx, gy, strength, &dx, &dy)) {
         return;
     }
     ESP_LOGI(TAG,
              "down is (%+d,%+d)  smoothed (%+6d,%+6d)  "
              "raw (%+6d,%+6d)  shake %d",
              dx, dy, gx, gy, motion->acceleration.x, motion->acceleration.y, jostle);
-    last_dx = dx;
-    last_dy = dy;
 }
 
 static void
@@ -1405,7 +1398,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     } else if (!input->down) {
         input_ready = true;
     }
-    log_direction_change(gx, gy, jostle, &motion);
+    log_direction_change(gx, gy, flow, jostle, &motion);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t t0 = timing_now_us();

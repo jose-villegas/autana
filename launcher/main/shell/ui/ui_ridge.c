@@ -17,6 +17,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "input/motion/tilt.h"
 #include "math/motion/spring_line.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
@@ -88,7 +89,6 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define RIDGE_COLUMNS      (RIDGE_CURVE_POINTS + (2 * RIDGE_EXTRA))
 #define RIDGE_LAYER_COUNT  3
 #define RIDGE_MAX_LIP_PX   48
-#define MIN_TILT_STRENGTH  64
 /* Once the board holds still, a pose within 1.5 degrees of its target jumps
  * the rest of the way instead of creeping a half-degree step at a time. */
 #define POSE_ARRIVE_STEP   430
@@ -1206,7 +1206,7 @@ ui_ridge_set_gravity(int gx, int gy, int strength, int shake) {
     if (ridge != NULL) {
         ridge->shake = shake;
         ridge->attitude.level =
-            ridge_pose_level_from_gravity(ridge->attitude.level, gx, gy, strength, MIN_TILT_STRENGTH);
+            ridge_pose_level_from_gravity(ridge->attitude.level, gx, gy, strength, TILT_MIN_DIRECTION_STRENGTH);
     }
 }
 
