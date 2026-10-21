@@ -33,16 +33,15 @@ def capture_text(path):
     return text, build
 
 
-def timing_tables(data_dir, scenes, pose_row, boards, pose_capture, pose_board=None):
+def timing_tables(data_dir, scenes, pose_row, boards, pose_capture):
     captures = ({board: data_dir / f"{PROFILE_PREFIX}{board}{BOARD_SUFFIX}.log" for board in boards}
                 if boards else {path.stem.removeprefix(PROFILE_PREFIX).removesuffix(BOARD_SUFFIX): path
                                 for path in sorted(data_dir.glob(PROFILE_GLOB))})
     if not captures:
         raise ValueError(f"{data_dir}: no {PROFILE_GLOB} captures")
-    builds = {}
     readings = {}
     for board, path in captures.items():
-        text, builds[path] = capture_text(path)
+        text, _ = capture_text(path)
         entries = profiles(text)
         if not entries:
             raise ValueError(f"{path}: no playback profiles")
@@ -53,7 +52,7 @@ def timing_tables(data_dir, scenes, pose_row, boards, pose_capture, pose_board=N
     if scenes is None:
         scenes = list(dict.fromkeys(row for row, quarter in next(iter(readings.values()))))
     lines = ["### Measured frame rate", "",
-             f"Cells list {' / '.join(board.upper() for board in captures)}.",
+             f"Cells list {' / '.join(f'board {number}' for number in range(1, len(captures) + 1))}.",
              "Playback includes update, render, compose and present.", "",
              "| Scene | Quarter | Mean fps | p50 ms | p95 ms | Worst ms |",
              "|---|---|---:|---:|---:|---:|"]
@@ -67,17 +66,16 @@ def timing_tables(data_dir, scenes, pose_row, boards, pose_capture, pose_board=N
                 except KeyError as error:
                     raise ValueError(f"missing profile: {scene} {quarter}") from error
             lines.append("| " + " | ".join(cells) + " |")
-    text, builds[pose_capture] = capture_text(pose_capture)
+    text, _ = capture_text(pose_capture)
     samples = [row for row in poses(text) if row["row"] == pose_row]
     every_ms = capture_pose_every_ms([pose_capture])
-    board = pose_board or pose_capture.stem.removesuffix(BOARD_SUFFIX).rsplit("-", 1)[-1]
     quarters = {quarter: [row for row in samples if row["quarter"] == quarter] for quarter in QUARTERS}
     times = [row["time_ms"] for row in quarters[QUARTERS[0]]]
     if len(times) < 2 or times != sorted(set(times)) or any(
             [row["time_ms"] for row in rows] != times for rows in quarters.values()):
         raise ValueError("pose quarters need matching, increasing sample times")
     lines.extend(("", "### Frame cost along the flythrough", "",
-                  f"`{pose_row}` on {board.upper()}, before presentation, sampled every "
+                  f"`{pose_row}` on one board, before presentation, sampled every "
                   f"{every_ms / MS_PER_SECOND:g} s.",
                   "; ".join(f"{colour} is {quarter}" for quarter, (colour, _) in zip(QUARTERS, PALETTE)) + ".",
                   "", "```mermaid",
@@ -88,7 +86,7 @@ def timing_tables(data_dir, scenes, pose_row, boards, pose_capture, pose_board=N
     for rows in quarters.values():
         lines.append("    line [" + ", ".join(f"{row['frame_us'] / US_PER_MS:.1f}" for row in rows) + "]")
     lines.extend(("```", "", "Sources:", ""))
-    lines.extend(f"- `{path.name}`: build `{builds[path]}`." for path in (*captures.values(), pose_capture))
+    lines.extend(f"- `{path.name}`" for path in (*captures.values(), pose_capture))
     return "\n".join(lines)
 
 
@@ -97,9 +95,9 @@ def main():
     parser.add_argument("--data-dir", type=pathlib.Path, default=ROOT / DATA)
     parser.add_argument("--document", type=pathlib.Path, default=ROOT / DOCUMENT)
     parser.add_argument("--scenes", help="comma-separated row order; defaults to capture order")
-    parser.add_argument("--board", action="append", help="board id; defaults to all playback captures")
+    parser.add_argument("--board", action="append", help="capture label in frame-profile-<label>-board.log; "
+                        "defaults to every playback capture")
     parser.add_argument("--pose-capture", type=pathlib.Path, required=True)
-    parser.add_argument("--pose-board", help="board label; defaults to the pose capture filename")
     parser.add_argument("--pose-row", required=True)
     parser.add_argument("--check", action="store_true")
     argv = sys.argv[1:]
@@ -107,7 +105,7 @@ def main():
     command = shlex.join(["python", SCRIPT, *(arg for arg in argv if arg != "--check"), "--check"])
     try:
         body = timing_tables(args.data_dir, args.scenes.split(",") if args.scenes else None,
-                             args.pose_row, args.board, args.pose_capture, args.pose_board)
+                             args.pose_row, args.board, args.pose_capture)
         changed = replace_block(args.document, BLOCK, body, check=args.check, command=command)
     except (OSError, ValueError) as error:
         parser.error(str(error))

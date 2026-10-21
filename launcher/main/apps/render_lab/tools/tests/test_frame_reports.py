@@ -83,10 +83,10 @@ class FrameReports(unittest.TestCase):
             data = pathlib.Path(tmp)
             document = data / "doc.md"
             document.write_text("<!-- generated: frame-timing-profiles -->\n<!-- /generated: frame-timing-profiles -->\n")
-            for board in ("alpha", "beta"):
+            for board in ("north", "south"):
                 (data / f"frame-profile-{board}-board.log").write_text(
                     f"BUILD_ID={board}-diag\n" + "\n".join(profile("gallery", q) for q in tables.QUARTERS))
-            pose = data / "poses-gamma-board.log"
+            pose = data / "poses-east-board.log"
             pose.write_text("BUILD_ID=pose-diag\npose_every_ms=500\n" + "\n".join(
                 f"gallery t={t}ms clusters=4 tris=5 | both cores: frame 51000us quarter={q}"
                 for q in tables.QUARTERS for t in (0, 1000)))
@@ -96,11 +96,13 @@ class FrameReports(unittest.TestCase):
             result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
             body = document.read_text()
-            self.assertIn("Cells list ALPHA / BETA", body)
-            self.assertIn("on GAMMA", body)
+            self.assertIn("Cells list board 1 / board 2", body)
+            self.assertIn("on one board", body)
             self.assertIn("sampled every 0.5 s", body)
-            for build in ("alpha-diag", "beta-diag", "pose-diag"):
-                self.assertIn(f"build `{build}`", body)
+            prose = body.split("-->", 1)[1].split("Sources:")[0]
+            for private in ("north", "south", "east"):
+                self.assertNotIn(private, prose.lower())
+            self.assertNotIn("-diag", body.split("-->", 1)[1])
             self.assertNotIn("Regenerate with", body)
             marker = next(line for line in body.splitlines() if "check: " in line)
             self.assertIn(shlex.join(["python", tables.SCRIPT, *argv]), marker)
@@ -109,13 +111,12 @@ class FrameReports(unittest.TestCase):
             document.write_text(body.replace("20.7 /", "99.9 /", 1))
             result = subprocess.run([*command, "--check"], cwd=ROOT, capture_output=True)
             self.assertEqual(result.returncode, 1)
-            selected = tables.timing_tables(data, None, "gallery", ["beta"], pose, "custom")
-            self.assertIn("Cells list BETA.", selected)
-            self.assertIn("on CUSTOM", selected)
-            self.assertNotIn("alpha-diag", selected)
-            (data / "frame-profile-beta-board.log").write_text(profile("gallery"))
-            with self.assertRaisesRegex(ValueError, "frame-profile-beta-board.log.*missing build id"):
-                tables.timing_tables(data, None, "gallery", ["beta"], pose)
+            selected = tables.timing_tables(data, None, "gallery", ["south"], pose)
+            self.assertIn("Cells list board 1.", selected)
+            self.assertNotIn("north-diag", selected)
+            (data / "frame-profile-south-board.log").write_text(profile("gallery"))
+            with self.assertRaisesRegex(ValueError, "frame-profile-south-board.log.*missing build id"):
+                tables.timing_tables(data, None, "gallery", ["south"], pose)
 
 
 if __name__ == "__main__":

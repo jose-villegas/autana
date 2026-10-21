@@ -75,7 +75,7 @@ sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o
 /tmp/present/render_lab_render --scene sponza-fitted-full --tune render_lab.present=1 --no-hud -o /tmp/present/scan.bmp
 ```
 
-Seeded `perf_compare` on A308, 2026-10-18, eight seeds per side, ms per frame:
+Seeded `perf_compare` on one board, eight seeds per side, ms per frame:
 
 | Scene | NEAREST | SCANLINE | Δ |
 |---|---:|---:|---:|
@@ -309,52 +309,46 @@ Each suite owns a table of mean goals and p95 ceilings per row and quarter.
 Zero means unpegged: it logs without enforcing a budget. Board ceilings
 are reported without enforcement under QEMU.
 
-<!-- generated: frame-timing-profiles check: python launcher/main/apps/render_lab/tools/frame_profile_tables.py --pose-row atrium_fitted_full --scenes sponza-fitted-full,sponza-fitted,sponza,sponza-lite,sponza-flat,sponza-flat-fitted,capybara --check -->
+<!-- generated: frame-timing-profiles check: python launcher/main/apps/render_lab/tools/frame_profile_tables.py --pose-capture docs/render/data/sponza-perf-board.log --pose-row atrium_fitted_full --scenes sponza-fitted-full,sponza-fitted,sponza,sponza-lite,sponza-flat,sponza-flat-fitted,capybara --check -->
 ### Measured frame rate
 
-Cells list A308 / 20E8 / 2124. Playback includes update, render, compose and present.
+Cells list board 1 / board 2.
+Playback includes update, render, compose and present.
 
 | Scene | Quarter | Mean fps | p50 ms | p95 ms | Worst ms |
 |---|---|---:|---:|---:|---:|
-| sponza-fitted-full | portrait | 20.4 / 20.4 / 20.4 | 50.1 / 50.1 / 50.1 | 61.4 / 61.5 / 61.4 | 62.3 / 62.2 / 62.3 |
-| sponza-fitted-full | landscape | 21.4 / 21.3 / 21.4 | 47.9 / 48.0 / 48.0 | 57.2 / 57.4 / 57.3 | 59.5 / 59.6 / 59.6 |
-| sponza-fitted | portrait | 24.5 / 24.4 / 24.5 | 41.7 / 41.7 / 41.7 | 49.0 / 49.0 / 49.0 | 50.2 / 50.0 / 50.1 |
-| sponza-fitted | landscape | 25.5 / 25.4 / 25.5 | 40.1 / 40.2 / 40.1 | 46.1 / 46.1 / 46.1 | 46.7 / 46.8 / 46.7 |
-| sponza | portrait | 20.7 / 20.7 / 20.7 | 48.9 / 49.0 / 48.8 | 58.5 / 58.6 / 58.6 | 59.8 / 60.0 / 59.9 |
-| sponza | landscape | 21.4 / 21.4 / 21.4 | 46.9 / 46.9 / 46.8 | 55.6 / 55.7 / 55.6 | 57.3 / 57.4 / 57.4 |
-| sponza-lite | portrait | 24.1 / 24.1 / 24.1 | 42.1 / 42.1 / 42.1 | 47.3 / 47.4 / 47.3 | 48.3 / 48.4 / 48.4 |
-| sponza-lite | landscape | 24.9 / 24.8 / 24.8 | 40.6 / 40.6 / 40.7 | 45.6 / 45.6 / 45.6 | 46.3 / 46.3 / 46.3 |
-| sponza-flat | portrait | 24.8 / 24.7 / 24.8 | 40.5 / 40.6 / 40.4 | 49.1 / 49.2 / 49.2 | 50.0 / 49.9 / 50.2 |
-| sponza-flat | landscape | 25.2 / 25.1 / 25.2 | 39.9 / 40.0 / 39.9 | 47.7 / 47.8 / 47.8 | 48.5 / 48.6 / 48.5 |
-| sponza-flat-fitted | portrait | 25.1 / 25.1 / 25.1 | 40.3 / 40.4 / 40.3 | 49.7 / 49.7 / 49.7 | 51.0 / 51.1 / 51.0 |
-| sponza-flat-fitted | landscape | 25.9 / 25.9 / 25.9 | 39.2 / 39.2 / 39.2 | 47.5 / 47.6 / 47.6 | 48.8 / 48.8 / 48.8 |
-| capybara | portrait | 48.4 / 48.3 / 48.4 | 20.6 / 20.7 / 20.6 | 20.9 / 21.0 / 20.9 | 21.7 / 21.7 / 21.6 |
-| capybara | landscape | 47.1 / 47.0 / 47.2 | 21.2 / 21.3 / 21.2 | 21.4 / 21.5 / 21.4 | 21.5 / 21.5 / 21.4 |
+| sponza-fitted-full | portrait | 20.9 / 20.9 | 48.4 / 48.5 | 59.8 / 59.8 | 60.6 / 60.6 |
+| sponza-fitted-full | landscape | 22.1 / 22.1 | 45.8 / 45.8 | 55.3 / 55.2 | 57.4 / 57.3 |
+| sponza-fitted | portrait | 25.2 / 25.2 | 40.2 / 40.2 | 47.0 / 47.0 | 47.9 / 47.9 |
+| sponza-fitted | landscape | 26.4 / 26.4 | 38.3 / 38.3 | 43.9 / 43.8 | 44.4 / 44.6 |
+| sponza | portrait | 20.8 / 20.8 | 48.7 / 48.8 | 58.4 / 58.3 | 59.5 / 59.5 |
+| sponza | landscape | 21.5 / 21.5 | 46.7 / 46.6 | 55.3 / 55.3 | 57.1 / 57.0 |
+| sponza-lite | portrait | 24.1 / 24.1 | 42.2 / 42.2 | 47.4 / 47.4 | 48.4 / 48.4 |
+| sponza-lite | landscape | 24.8 / 24.8 | 40.7 / 40.8 | 45.6 / 45.6 | 46.3 / 46.3 |
+| sponza-flat | portrait | 24.6 / 24.6 | 40.9 / 40.8 | 49.5 / 49.5 | 50.1 / 50.1 |
+| sponza-flat | landscape | 25.0 / 25.0 | 40.3 / 40.2 | 48.0 / 48.0 | 48.8 / 48.8 |
+| sponza-flat-fitted | portrait | 25.5 / 25.5 | 40.0 / 39.9 | 49.4 / 49.3 | 50.5 / 50.5 |
+| sponza-flat-fitted | landscape | 26.4 / 26.4 | 38.4 / 38.5 | 47.0 / 47.0 | 48.4 / 48.3 |
+| capybara | portrait | 48.1 / 48.1 | 20.8 / 20.7 | 21.0 / 21.0 | 21.7 / 21.6 |
+| capybara | landscape | 46.7 / 46.7 | 21.4 / 21.4 | 21.6 / 21.5 | 21.7 / 21.6 |
 
 ### Frame cost along the flythrough
 
-`atrium_fitted_full` on A308, before presentation, sampled every 0.5 s.
-Blue is portrait; orange is landscape.
+`atrium_fitted_full` on one board, before presentation, sampled every 0.5 s.
+Blue is portrait; Orange is landscape.
 
 ```mermaid
 %%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #ea580c"}}}}%%
 xychart-beta
     x-axis "Clip time (s)" 0 --> 36
     y-axis "Frame ms"
-    line [52.3, 53.2, 53.1, 52.7, 52.2, 51.6, 50.2, 48.9, 47.5, 47.1, 45.0, 44.6, 43.0, 42.0, 40.4, 39.9, 40.0, 39.6, 38.2, 36.1, 33.9, 33.8, 32.3, 32.3, 31.4, 30.8, 28.2, 25.5, 26.1, 22.1, 26.3, 29.4, 33.2, 39.3, 44.2, 48.7, 46.8, 45.3, 45.4, 45.6, 45.1, 44.2, 43.0, 42.5, 41.9, 40.3, 38.8, 38.0, 36.8, 35.4, 36.3, 34.3, 33.2, 28.2, 26.2, 36.5, 40.8, 42.1, 43.7, 43.7, 45.2, 46.5, 45.3, 45.6, 45.7, 46.2, 47.2, 49.0, 50.3, 51.0, 53.5, 52.8, 52.4]
-    line [49.4, 48.6, 47.5, 47.1, 47.3, 47.4, 48.1, 47.0, 45.3, 44.4, 45.6, 43.9, 42.8, 42.2, 41.0, 39.4, 37.9, 37.9, 36.7, 35.9, 34.3, 33.2, 33.2, 32.0, 31.9, 30.0, 28.7, 26.5, 25.5, 25.8, 24.2, 24.3, 26.9, 30.3, 35.2, 41.8, 45.1, 44.8, 44.7, 43.8, 43.9, 43.8, 43.2, 41.5, 40.5, 40.8, 39.2, 38.0, 36.8, 35.5, 34.4, 31.6, 29.4, 25.1, 22.7, 30.7, 34.7, 37.8, 38.3, 39.5, 40.4, 40.6, 40.5, 42.1, 42.3, 43.4, 44.2, 45.9, 47.4, 46.2, 47.0, 48.4, 49.3]
+    line [52.6, 52.5, 53.1, 53.8, 51.9, 49.7, 48.6, 48.1, 46.0, 46.2, 45.3, 43.9, 43.0, 41.7, 39.9, 39.5, 39.6, 37.9, 37.3, 35.4, 33.5, 33.8, 32.2, 31.7, 30.9, 30.3, 27.3, 24.8, 25.9, 23.2, 26.5, 29.1, 32.8, 38.3, 43.9, 48.1, 46.8, 45.3, 45.7, 45.3, 44.6, 42.7, 42.0, 40.9, 40.1, 38.9, 38.2, 37.2, 36.5, 35.1, 34.8, 34.0, 33.3, 29.4, 26.1, 35.6, 40.0, 41.7, 42.2, 42.4, 43.2, 44.7, 44.8, 44.0, 45.2, 46.5, 46.9, 48.1, 50.2, 50.7, 53.0, 52.3, 51.9]
+    line [47.5, 47.4, 46.2, 45.7, 46.1, 46.8, 46.7, 45.5, 44.6, 43.3, 43.4, 42.1, 40.9, 40.3, 38.6, 37.3, 35.8, 35.8, 35.0, 34.0, 32.6, 32.0, 31.6, 31.7, 31.3, 29.7, 27.5, 25.4, 24.5, 25.9, 24.0, 24.8, 26.7, 29.7, 34.6, 42.0, 44.5, 44.2, 43.8, 42.7, 42.9, 41.9, 40.3, 40.1, 39.0, 37.5, 37.0, 35.8, 34.4, 33.8, 33.4, 30.7, 29.6, 24.9, 23.9, 30.6, 33.8, 36.7, 36.9, 37.6, 38.2, 38.5, 39.4, 40.0, 40.8, 42.1, 44.1, 44.3, 45.8, 45.2, 45.4, 46.8, 47.6]
 ```
 
-Sources in `docs/render/data/`:
+Sources:
 
-- `frame-profile-a308-board.log`
-- `frame-profile-20e8-board.log`
-- `frame-profile-2124-board.log`
-- `sponza-perf-a308-board.log`
-
-Regenerate with:
-
-```sh
-python launcher/main/apps/render_lab/tools/frame_profile_tables.py --pose-row atrium_fitted_full --scenes sponza-fitted-full,sponza-fitted,sponza,sponza-lite,sponza-flat,sponza-flat-fitted,capybara
-```
+- `frame-profile-1-board.log`
+- `frame-profile-2-board.log`
+- `sponza-perf-board.log`
 <!-- /generated: frame-timing-profiles -->
