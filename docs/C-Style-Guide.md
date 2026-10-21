@@ -118,8 +118,9 @@ generated catalogue or document against its sources, and runs as it is. Header c
 also come from the index. Without ESP-IDF, the citation check reports which
 external names it cannot verify; CI requires the SDK.
 
-Pre-push checks target branch names and runs sanitized host tests when a
-pushed range changes `.c` or `.h`; see [Host tests: git hooks](testing/Host-Tests.md#git-hooks).
+Pre-push checks target branch names and requires the remote's main; merge it
+in and push again. It refuses offline too; `git push --no-verify` skips it.
+It runs sanitized host tests when a pushed range changes `.c` or `.h`; see [Host tests: git hooks](testing/Host-Tests.md#git-hooks).
 The hooks are feedback: `git commit --no-verify` or `git push --no-verify`
 skips them, `.git/hooks`
 is not cloned, and it never sees a merge or a commit made by CI. The workflow
