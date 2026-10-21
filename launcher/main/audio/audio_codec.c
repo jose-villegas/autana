@@ -75,6 +75,8 @@ audio_codec_register(uint8_t reg, bool write, uint8_t* value) {
     return true;
 }
 
+#endif
+
 bool
 audio_codec_drc_set(const audio_codec_drc_t* config) {
     if (!codec || !config) {
@@ -89,8 +91,6 @@ audio_codec_drc_set(const audio_codec_drc_t* config) {
            && audio_codec_check("DRC ramp", codec->set_reg(codec, AUDIO_CODEC_DRC_RAMP_REG,
                                                            (int)audio_codec_drc_ramp_reg((unsigned)old, config)));
 }
-
-#endif
 
 const char*
 audio_codec_failure(void) {
