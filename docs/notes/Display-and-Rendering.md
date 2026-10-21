@@ -43,9 +43,10 @@ panel clock.
 
 ### 80 MHz is outside the panel's rating
 
-The 80 MHz option exceeds the panel's rated clock and can leave stray pixels
-or lines during partial redraws. Even window edges are required at both
-clocks; they do not remove the clock risk. Use 40 MHz for a clean link.
+The 80 MHz option exceeds the panel's rated clock. There the panel can land
+a partial-width window a column off, leaving a wrong column at its edge, so
+gfx sends only full-width rows at 80 MHz. Even window edges are required at
+both clocks. Use 40 MHz for a clean link.
 The shell owns clock selection and partial-redraw healing; see
 [Panel clock and heal](../Gfx-and-Presentation.md#panel-clock-and-heal).
 

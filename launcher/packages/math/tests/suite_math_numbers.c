@@ -1396,8 +1396,83 @@ test_scalar_half_and_absolute_value(void) {
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_abs(INT32_MIN));
 }
 
+static void
+test_integer_square_root_edges(void) {
+    enum { ROOT_LIMIT = 65535 };
+
+    TEST_ASSERT_EQUAL_UINT32(0, mathi_isqrt64(0));
+    TEST_ASSERT_EQUAL_UINT32(ROOT_LIMIT, mathi_isqrt64(UINT32_MAX));
+    TEST_ASSERT_EQUAL_UINT32(ROOT_LIMIT + 1, mathi_isqrt64((uint64_t)UINT32_MAX + 1));
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, mathi_isqrt64(UINT64_MAX));
+    for (uint32_t n = 1; n <= ROOT_LIMIT; n++) {
+        const uint32_t square = n * n;
+        TEST_ASSERT_EQUAL_UINT32(n, mathi_isqrt64(square));
+        TEST_ASSERT_EQUAL_UINT32(n - 1, mathi_isqrt64(square - 1));
+        TEST_ASSERT_EQUAL_UINT32(n, mathi_isqrt64(square + n));
+    }
+}
+
+static void
+test_integer_half_chords_floor(void) {
+    enum { FLOOR_LIMIT = 64 };
+
+    for (int r = 0; r <= FLOOR_LIMIT; r++) {
+        for (int d = -r - 1; d <= r + 1; d++) {
+            const int h = r * r - d * d;
+            const int x = mathi_half_chord(r, d);
+            TEST_ASSERT_EQUAL_INT(x, mathi_half_chord(r, -d));
+            if (h <= 0) {
+                TEST_ASSERT_EQUAL_INT(0, x);
+            } else {
+                TEST_ASSERT_TRUE(x * x <= h);
+                TEST_ASSERT_TRUE((x + 1) * (x + 1) > h);
+            }
+        }
+    }
+}
+
+static void
+test_integer_half_chords_round(void) {
+    enum { ROUND_LIMIT = 512 };
+
+    for (int r = 0; r <= ROUND_LIMIT; r++) {
+        for (int d = -r - 1; d <= r + 1; d++) {
+            const int h = r * r - d * d;
+            const int want = h > 0 ? (int)lroundf(sqrtf((float)h)) : 0;
+            TEST_ASSERT_EQUAL_INT(want, mathi_half_chord_round(r, d));
+        }
+    }
+}
+
+static void
+test_integer_half_chords_large_radius(void) {
+    enum { FLOOR_LIMIT = 64, RANGE_LIMIT = 32767 };
+
+    TEST_ASSERT_EQUAL_INT(RANGE_LIMIT, mathi_half_chord(RANGE_LIMIT, 0));
+    TEST_ASSERT_EQUAL_INT(RANGE_LIMIT, mathi_half_chord_round(RANGE_LIMIT, 0));
+    TEST_ASSERT_EQUAL_INT(0, mathi_half_chord(-RANGE_LIMIT, 0));
+    for (int d = RANGE_LIMIT - FLOOR_LIMIT; d <= RANGE_LIMIT + 1; d++) {
+        const int h = RANGE_LIMIT * RANGE_LIMIT - d * d;
+        int floor = 0;
+        while ((floor + 1) * (floor + 1) <= h) {
+            floor++;
+        }
+        const int rounded = floor + (h - floor * floor > floor);
+        TEST_ASSERT_EQUAL_INT(floor, mathi_half_chord(RANGE_LIMIT, d));
+        TEST_ASSERT_EQUAL_INT(floor, mathi_half_chord(RANGE_LIMIT, -d));
+        TEST_ASSERT_EQUAL_INT(rounded, mathi_half_chord_round(RANGE_LIMIT, d));
+        TEST_ASSERT_EQUAL_INT(rounded, mathi_half_chord_round(RANGE_LIMIT, -d));
+    }
+    TEST_ASSERT_EQUAL_INT(0, mathi_half_chord(-RANGE_LIMIT, FLOOR_LIMIT));
+    TEST_ASSERT_EQUAL_INT(0, mathi_half_chord_round(-RANGE_LIMIT, FLOOR_LIMIT));
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_integer_square_root_edges);
+    RUN_TEST(test_integer_half_chords_floor);
+    RUN_TEST(test_integer_half_chords_round);
+    RUN_TEST(test_integer_half_chords_large_radius);
     RUN_TEST(test_scalar_half_and_absolute_value);
     RUN_TEST(test_rsqrt_tiny_inputs_preserve_exact_bits);
     RUN_TEST(test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints);

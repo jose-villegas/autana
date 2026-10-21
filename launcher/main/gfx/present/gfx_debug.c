@@ -229,10 +229,31 @@ count_differing_px(const gfx_color_t* a, const gfx_color_t* b, int n) {
     return count;
 }
 
+static gfx_send_window_t* send_window_log;
+static int send_window_capacity, send_window_count;
+
+void
+gfx_set_send_window_log(gfx_send_window_t* log, int capacity) {
+    GFX_PRESENT_GUARD();
+    gfx_present_drain();
+    send_window_log = log;
+    send_window_capacity = log == NULL ? 0 : capacity;
+    send_window_count = 0;
+}
+
+int
+gfx_send_window_count(void) {
+    return send_window_count;
+}
+
 /* `buf` is what is about to go to the panel for [x0, x0+w) x [y0, y0+h),
  * already copied out of `present_fb`. */
 void
 send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
+    if (send_window_count < send_window_capacity) {
+        send_window_log[send_window_count++] =
+            (gfx_send_window_t){(int16_t)x0, (int16_t)y0, (int16_t)(x0 + w), (int16_t)(y0 + h)};
+    }
     if (send_shadow == NULL) {
         return;
     }

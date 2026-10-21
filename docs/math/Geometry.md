@@ -1,6 +1,6 @@
 # Geometry
 
-Half-open rectangles, oriented planes, closed boxes and spheres. [Math index](README.md).
+Half-open rectangles, oriented planes, closed boxes, spheres and circles. [Math index](README.md).
 
 ## rect (`f i s x`)
 
@@ -112,30 +112,39 @@ Real queries use finite, nonempty bounds, except that `P_segment_hit`
 rejects empty boxes. Segment endpoints and box values must be finite.
 Plane bits index the input array; `count` must fit an unsigned mask.
 
-## sphere (`f`)
+## ball: shared circle and sphere queries (`f`, `i`)
 
-`P` is `spheref`. A sphere stores vec3 `centre` and nonnegative `radius`.
-Its boundary is included. Box queries use finite, nonempty bounds.
-Segment endpoints and sphere values must be finite.
+A ball is a filled circle (2D) or sphere (3D): every point within `radius` of `centre`.
 
-`P_overlaps_box` follows Arvo 1990<sup>[[83]](../Citations.md#83)</sup>, but forms the
-closest box point first and compares its squared distance, rather than
-summing per-axis terms.
-
-`P_segment_hit` uses the perpendicular-distance discriminant of Haines,
-Günther and Akenine-Möller<sup>[[84]](../Citations.md#84)</sup> to avoid
-cancellation in the hit decision.
+Circles and spheres store `centre` and nonnegative `radius`, including the boundary. Arithmetic must fit; real values must be finite. Integer squared products are widened.
 
 | Function | Purpose | Formula |
 |---|---|---|
-| `P_from_box(b)` | circumscribed sphere | $`c=\mathrm{centre}(b),\ r=\lVert\mathrm{half\_extent}(b)\rVert`$ |
-| `P_contains_point(s, p)` | point inside or on the sphere | $`\lVert p-c\rVert^2 \le r^2`$ |
-| `P_overlaps(a, b)` | spheres share points, including tangency | $`\lVert c_a-c_b\rVert^2 \le (r_a+r_b)^2`$ |
-| `P_overlaps_box(s, b)` | closest box point inside the sphere | $`q=\mathrm{closest\_point}(b,c)`$<br>$`\lVert q-c\rVert^2\le r^2`$ |
-| `P_segment_hit(s, a, c, &t)` | first segment entry in `[0,1]`; inside starts at zero | $`m=a-s_c,\ v=c-a`$<br>$`A=v\cdot v,\ B=m\cdot v,\ f=m-(B/A)v`$<br>$`D=r^2-f\cdot f,\ t=(-B-\sqrt{AD})/A`$ |
+| `P_contains_point(s, p)` | point inside or on the ball | $`\lVert p-c\rVert^2 \le r^2`$ |
+| `P_overlaps(a, b)` | balls share points, including tangency | $`\lVert c_a-c_b\rVert^2 \le (r_a+r_b)^2`$ |
+| `P_closest_point(c, p)` | p itself if inside, else the nearest boundary point (real only) | $`p`$ if inside, else $`c_c+(p-c_c)r/\lVert p-c_c\rVert`$ |
+| `P_segment_hit(s, a, c, &t)` | first real segment entry in `[0,1]`; inside starts at zero | $`m=a-s_c,\ v=c-a`$<br>$`A=v\cdot v,\ B=m\cdot v,\ f=m-(B/A)v`$<br>$`D=r^2-f\cdot f,\ t=(-B-\sqrt{AD})/A`$ |
 
-Segment queries write `t` only on a hit. Zero-length segments hit when
-the point is inside. A tangent counts as a hit.
+| Prefix | Generated ball functions |
+|---|---|
+| `circlef` | `circlef_contains_point`, `circlef_overlaps`, `circlef_closest_point`, `circlef_segment_hit` |
+| `circlei` | `circlei_contains_point`, `circlei_overlaps` |
+| `spheref` | `spheref_contains_point`, `spheref_overlaps`, `spheref_closest_point`, `spheref_segment_hit` |
+
+`P_segment_hit` uses Haines, Günther and Akenine-Möller's perpendicular-distance discriminant<sup>[[84]](../Citations.md#84)</sup> to avoid cancellation in the hit decision. It writes `t` only on a hit.
+
+Zero-length segments hit when the point is inside; tangency counts as a hit.
+
+## sphere (`f`)
+
+`spheref` has a vec3 centre and the shared [ball queries](#ball-shared-circle-and-sphere-queries-f-i); box bounds must be finite and nonempty.
+`spheref_overlaps_box` compares the closest box point's squared distance
+with the squared radius (Arvo 1990<sup>[[83]](../Citations.md#83)</sup>).
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `spheref_from_box(b)` | circumscribed sphere | $`c=\mathrm{centre}(b),\ r=\lVert\mathrm{half\_extent}(b)\rVert`$ |
+| `spheref_overlaps_box(s, b)` | closest box point inside the sphere | $`q=\mathrm{closest\_point}(b,c)`$<br>$`\lVert q-c\rVert^2\le r^2`$ |
 
 ![Fixed view of a sphere moving past and into a box, with miss, touch and overlap states, a closest point and a dashed centre-to-closest line](../images/math/box3-sphere-overlap.gif)
 
@@ -144,3 +153,20 @@ The closest box point decides whether the moving sphere misses, touches or overl
 ![Fixed views of segment queries against a closed box and sphere, labelled with entries, inside starts and misses](../images/math/box3-sphere-segments.png)
 
 Marked segment entries include a start inside the sphere at $`t = 0`$.
+
+## circle (`f`, `i`)
+
+`circlef` and `circlei` have a vec2 centre and shared [ball queries](#ball-shared-circle-and-sphere-queries-f-i). The circle has no fixed-point variant yet.
+Rectangle overlaps use Arvo 1990<sup>[[83]](../Citations.md#83)</sup> in two dimensions; rectangles must be nonempty.
+Integer edges end at `right-1` and `bottom-1`; real queries include the closure at `right` and `bottom`.
+
+| Function | Meaning | Formula |
+|---|---|---|
+| `circlef_overlaps_rect(c, rect)`, `circlei_overlaps_rect(c, rect)` | closest covered coordinate is inside | $`q=\mathrm{clamp}(c_c,lo,hi)`$<br>$`\lVert q-c_c\rVert^2\le r^2`$ |
+| `circlef_bounds(c)`, `circlei_bounds(c)` | enclosing rect; integer cells include both extremes | $`(c_x-r,c_y-r,2r+e,2r+e)`$, $`e=1`$ for `i`, $`e=0`$ for real |
+| `circlef_from_rect(rect)` | circumscribed disc (`f`) | $`e=(w,h)/2,\ c=(x,y)+e,\ r=\lVert e\rVert`$ |
+| `circlei_cell_count(r)` | exact integer disc size; negative radius gives zero, result must fit int | $`\sum_{d=-r}^{r}(2\lfloor\sqrt{r^2-d^2}\rfloor+1)`$ |
+
+![Integer circles against a half-open cell rectangle and floating-point segment hits against a circle.](../images/math/circle-rect-queries.png)
+
+The integer touch reaches `right−1`; segment markers show the first hit, including an inside start.
