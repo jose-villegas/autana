@@ -94,6 +94,7 @@ set(app_srcs
     "shell/shell_frame.c"
     "shell/shell_system.c"
     "core/job.c"
+    "core/name_hash.c"
     "core/memory.c"
     "core/timing_device.c"
     "profile/frame_cost.c"
