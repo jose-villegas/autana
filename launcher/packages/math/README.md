@@ -53,7 +53,6 @@ header's opening comment; `--check` verifies it.
 | [include/math/geometry/circle_template.h](include/math/geometry/circle_template.h) | circle_template: closed discs for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/circlef.h](include/math/geometry/circlef.h) | circlef: a closed disc of a float. |
 | [include/math/geometry/circlei.h](include/math/geometry/circlei.h) | circlei: a closed disc of an int. |
-| [include/math/geometry/circlex.h](include/math/geometry/circlex.h) | circlex: a closed disc of a Q16.16. |
 | [include/math/geometry/plane_template.h](include/math/geometry/plane_template.h) | plane_template: oriented planes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/planef.h](include/math/geometry/planef.h) | planef: an oriented plane of a float. |
 | [include/math/geometry/planex.h](include/math/geometry/planex.h) | planex: an oriented plane of a Q16.16. |

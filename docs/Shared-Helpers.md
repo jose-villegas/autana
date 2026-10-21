@@ -202,7 +202,6 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 | [launcher/packages/math/include/math/linear/transformx.h](../launcher/packages/math/include/math/linear/transformx.h) | transformx: a transform of a Q16.16: position, rotation, scale and the cached model matrix. | `TRANSFORMX_IDENTITY` |
 | [launcher/packages/math/include/math/linear/vec2f.h](../launcher/packages/math/include/math/linear/vec2f.h) | vec2f: a 2-component vector of a float. | `` |
 | [launcher/packages/math/include/math/linear/vec2i.h](../launcher/packages/math/include/math/linear/vec2i.h) | vec2i: a 2-component vector of an int32. | `` |
-| [launcher/packages/math/include/math/linear/vec2x.h](../launcher/packages/math/include/math/linear/vec2x.h) | vec2x: a 2-component vector of a Q16.16. | `` |
 | [launcher/packages/math/include/math/linear/vec3f.h](../launcher/packages/math/include/math/linear/vec3f.h) | vec3f: a 3-component vector of a float. | `vec3f_from_octahedral, vec3f_octahedral` |
 | [launcher/packages/math/include/math/linear/vec3i.h](../launcher/packages/math/include/math/linear/vec3i.h) | vec3i: a 3-component vector of an int32. | `` |
 | [launcher/packages/math/include/math/linear/vec3s.h](../launcher/packages/math/include/math/linear/vec3s.h) | vec3s: a 3-component vector of an int16. | `` |

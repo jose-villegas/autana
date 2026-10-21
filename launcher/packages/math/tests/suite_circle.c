@@ -1,6 +1,5 @@
 #include "math/geometry/circlef.h"
 #include "math/geometry/circlei.h"
-#include "math/geometry/circlex.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -12,7 +11,6 @@ static const float CIRCLE_TOLERANCE = 0.0001F;
 enum { DISC_BRUTE_LIMIT = 64 };
 
 #define CIRCLE_F(v) ((float)(v))
-#define CIRCLE_X(v) ((int32_t)((v) * MATHX_ONE))
 #define CIRCLE_I(v) (v)
 
 #define DEFINE_CLOSED_TEST(P, V, R, C, EDGE)                                                                           \
@@ -47,7 +45,6 @@ enum { DISC_BRUTE_LIMIT = 64 };
     }
 
 DEFINE_CLOSED_TEST(circlef, vec2f, rectf, CIRCLE_F, CIRCLE_F(0))
-DEFINE_CLOSED_TEST(circlex, vec2x, rectx, CIRCLE_X, CIRCLE_X(0))
 DEFINE_CLOSED_TEST(circlei, vec2i, recti, CIRCLE_I, CIRCLE_I(1))
 
 #define DEFINE_REAL_TEST(P, V, R, T, C, TO_FLOAT)                                                                      \
@@ -100,7 +97,6 @@ DEFINE_CLOSED_TEST(circlei, vec2i, recti, CIRCLE_I, CIRCLE_I(1))
     }
 
 DEFINE_REAL_TEST(circlef, vec2f, rectf, float, CIRCLE_F, CIRCLE_F)
-DEFINE_REAL_TEST(circlex, vec2x, rectx, int32_t, CIRCLE_X, mathx_to_f)
 
 static void
 test_wide_disc_boundary(void) {
@@ -146,10 +142,8 @@ test_cell_counts(void) {
 void
 suite_circle(void) {
     RUN_TEST(test_circlef_closed_queries);
-    RUN_TEST(test_circlex_closed_queries);
     RUN_TEST(test_circlei_closed_queries);
     RUN_TEST(test_circlef_real_queries);
-    RUN_TEST(test_circlex_real_queries);
     RUN_TEST(test_wide_disc_boundary);
     RUN_TEST(test_point_segment);
     RUN_TEST(test_cell_counts);
