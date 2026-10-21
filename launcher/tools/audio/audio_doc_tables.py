@@ -21,10 +21,14 @@ sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from frame_cost import frame_cost_window, US_PER_MS
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from audio_drc_sweep import DRC_LEVEL_DB, TUNABLES, VOLUME_MAX
+from audio_drc_sweep import AUDIO, DB_AMPLITUDE_SCALE, DRC_LEVEL_DB, TUNABLES, VOLUME_MAX
 
 DRC_CAPTURE = Path("docs/audio/data/audio_drc_capture.txt")
 DRC_CLIPPED_DBFS = -0.5
+CODEC_VOLUME_MIN_DB = read_define(AUDIO / "audio_out.c", "AUDIO_OUT_CODEC_VOLUME_MIN_DB")
+CODEC_VOLUME_MAX_DB = read_define(AUDIO / "audio_out.c", "AUDIO_OUT_CODEC_VOLUME_MAX_DB")
+CODEC_PA_SUPPLY_VOLTS = read_define(AUDIO / "audio_codec.c", "AUDIO_CODEC_PA_SUPPLY_VOLTS")
+CODEC_DAC_SUPPLY_VOLTS = read_define(AUDIO / "audio_codec.c", "AUDIO_CODEC_DAC_SUPPLY_VOLTS")
 
 CAPTURE = Path("docs/audio/data/audio_capture.txt")
 DOCUMENT = Path("docs/audio/Audio-Path.md")
@@ -271,7 +275,9 @@ def render_drc(path):
                if volume == volumes[-1] and reply["thd_db"] is not None]
         peak = max(reply["peak_dbfs"] for _, _, _, reply in samples)
         label = f"max {DRC_LEVEL_DB[maximum]:.1f} / min {DRC_LEVEL_DB[minimum]:.1f}" if on else "off"
-        rows.append((codec, label, window, ramp, *levels,
+        static_output = (CODEC_VOLUME_MIN_DB + codec / VOLUME_MAX * (CODEC_VOLUME_MAX_DB - CODEC_VOLUME_MIN_DB)
+                         - DB_AMPLITUDE_SCALE * math.log10(CODEC_DAC_SUPPLY_VOLTS / CODEC_PA_SUPPLY_VOLTS))
+        rows.append((codec, f"{static_output:.1f}", label, window, ramp, *levels,
                      f"{median(thd):.1f}" if thd else "n/a", f"{peak:.1f}",
                      "yes" if peak >= DRC_CLIPPED_DBFS else "no"))
     if not rows:
@@ -280,7 +286,7 @@ def render_drc(path):
             f"Board **{header[1]}**, build **{next(iter(builds))}** "
             f"([raw replies](data/{path.name})).\n\n"
             f"Levels and THD: {primary_hz} Hz; worst peak includes every frequency.\n\n"
-            + markdown(["Codec (%)", "DRC max/min (dB)", "Window", "Ramp",
+            + markdown(["Codec (%)", "Static full-scale DAC output (dBFS)", "DRC max/min (dB)", "Window", "Ramp",
                         *[f"Level {volume}% (dBFS)" for volume in volumes],
                         f"THD {volumes[-1]}% (dB)", "Worst peak (dBFS)", "Mic clipped"], rows))
 

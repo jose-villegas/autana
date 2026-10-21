@@ -488,12 +488,12 @@ class DrcSweepTest(unittest.TestCase):
     def test_default_plan(self):
         args = sweep.parser().parse_args(["--board", "TEST"])
         configs = list(sweep.configurations(args))
-        self.assertEqual(len(configs), 7 + 2 * 4 * 2 * 2)
-        self.assertEqual(configs[0], dict(codec_volume=30, drc=0, drc_max=0, drc_min=0, drc_win=1, drc_ramp=2))
+        self.assertEqual(len(configs), 7 + 2 * 4 * 2)
+        self.assertEqual(configs[0], dict(codec_volume=30, drc=0, drc_max=0, drc_min=0, drc_win=4, drc_ramp=2))
         self.assertEqual(list(sweep.tones(args)), [(1000, 10), (1000, 30), (1000, 100)])
         self.assertEqual(args.codec, (70, 100))
         self.assertEqual(args.max_levels, (1, 2, 3, 4))
-        self.assertEqual(args.winsize, (1, 4))
+        self.assertEqual(args.winsize, (4,))
         self.assertEqual(args.ramp, (2,))
         self.assertEqual(args.runs, 3)
         self.assertEqual(configs[-1]["drc_min"], 0)
@@ -558,8 +558,21 @@ class DrcSweepTest(unittest.TestCase):
 
     def test_fixture_medians(self):
         body = audio.render_drc(ROOT / "launcher/test/fixtures/audio_drc_capture.txt")
-        self.assertIn("| 30 | off | 4 | 2 | -40.0 | -30.0 | -20.0 | -45.0 | -0.4 | yes |", body)
+        self.assertIn("| 30 | -31.4 | off | 4 | 2 | -40.0 | -30.0 | -20.0 | -45.0 | -0.4 | yes |", body)
         self.assertIn("max -6.0 / min -30.1", body)
+
+    def test_committed_capture_and_static_output(self):
+        body = audio.render_drc(ROOT / audio.DRC_CAPTURE)
+        self.assertIn("Board **2124**", body)
+        self.assertIn("Static full-scale DAC output (dBFS)", body)
+        self.assertIn("| 50 | -21.4 | off |", body)
+        self.assertIn("| 70 | -11.4 | max -20.6 / min -20.6 | 4 | 2 |", body)
+        self.assertIn("-28.4 | -19.1 | -17.7 | -42.0", body)
+        fixture = ROOT / "launcher/test/fixtures/audio_drc_capture.txt"
+        with mock.patch.object(audio, "CODEC_VOLUME_MIN_DB", -40), \
+             mock.patch.object(audio, "CODEC_VOLUME_MAX_DB", 10), \
+             mock.patch.object(audio, "CODEC_PA_SUPPLY_VOLTS", 3.3):
+            self.assertIn("| 30 | -25.0 | off |", audio.render_drc(fixture))
 
     def test_primary_frequency_and_volumes_from_capture(self):
         with tempfile.TemporaryDirectory() as directory:

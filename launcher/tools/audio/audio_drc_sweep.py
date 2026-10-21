@@ -42,11 +42,9 @@ def parser():
     result.add_argument("--autana", default="autana")
     result.add_argument("--board", required=True)
     result.add_argument("--out", type=Path, default=CAPTURE)
-    result.add_argument("--baseline", type=numbers, default=numbers("30,40,50,60,70,85,100"))
-    result.add_argument("--codec", type=numbers, default=numbers("70,100"))
-    result.add_argument("--max-levels", type=numbers, default=numbers("1,2,3,4"))
-    result.add_argument("--winsize", type=numbers, default=numbers("1,4"))
-    result.add_argument("--ramp", type=numbers, default=numbers("2"))
+    for option, default in (("baseline", "30,40,50,60,70,85,100"), ("codec", "70,100"),
+                            ("max-levels", "1,2,3,4"), ("winsize", "4"), ("ramp", "2")):
+        result.add_argument("--" + option, type=numbers, default=numbers(default))
     result.add_argument("--hz", type=int, default=PRIMARY_HZ)
     result.add_argument("--extra-hz", type=numbers, default=numbers(""))
     result.add_argument("--volumes", type=numbers, default=numbers("10,30,100"))

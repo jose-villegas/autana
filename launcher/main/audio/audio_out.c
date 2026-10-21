@@ -13,14 +13,21 @@
 #include "build/build_variant.h"
 #include "services/tune.h"
 
-#define AUDIO_OUT_CODEC_VOLUME 30
+#define AUDIO_OUT_CODEC_VOLUME        70
+#define AUDIO_OUT_CODEC_VOLUME_MIN_DB (-50.0F)
+#define AUDIO_OUT_CODEC_VOLUME_MAX_DB 0.0F
+#define AUDIO_OUT_DRC_ON              1
+#define AUDIO_OUT_DRC_MAX_LEVEL       2
+#define AUDIO_OUT_DRC_MIN_LEVEL       2
+#define AUDIO_OUT_DRC_WINSIZE         4
+#define AUDIO_OUT_DRC_RAMP            2
 TUNE_OWNER(audio);
 TUNE(audio, codec_volume, AUDIO_OUT_CODEC_VOLUME, 0, AUDIO_OUT_VOLUME_MAX_PCT);
-TUNE(audio, drc, 0, 0, 1);
-TUNE(audio, drc_max, 0, 0, AUDIO_CODEC_DRC_FIELD_MAX);
-TUNE(audio, drc_min, 0, 0, AUDIO_CODEC_DRC_FIELD_MAX);
-TUNE(audio, drc_win, 0, 0, AUDIO_CODEC_DRC_FIELD_MAX);
-TUNE(audio, drc_ramp, 0, 0, AUDIO_CODEC_DRC_FIELD_MAX);
+TUNE(audio, drc, AUDIO_OUT_DRC_ON, 0, 1);
+TUNE(audio, drc_max, AUDIO_OUT_DRC_MAX_LEVEL, 0, AUDIO_CODEC_DRC_FIELD_MAX);
+TUNE(audio, drc_min, AUDIO_OUT_DRC_MIN_LEVEL, 0, AUDIO_CODEC_DRC_FIELD_MAX);
+TUNE(audio, drc_win, AUDIO_OUT_DRC_WINSIZE, 0, AUDIO_CODEC_DRC_FIELD_MAX);
+TUNE(audio, drc_ramp, AUDIO_OUT_DRC_RAMP, 0, AUDIO_CODEC_DRC_FIELD_MAX);
 static esp_codec_dev_handle_t output;
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static uint32_t applied_generation;
@@ -86,7 +93,12 @@ audio_out_open(void) {
     if (!output) {
         return false;
     }
-    if (!apply()) {
+    esp_codec_dev_vol_map_t points[] = {
+        {.vol = 0, .db_value = AUDIO_OUT_CODEC_VOLUME_MIN_DB},
+        {.vol = AUDIO_OUT_VOLUME_MAX_PCT, .db_value = AUDIO_OUT_CODEC_VOLUME_MAX_DB},
+    };
+    esp_codec_dev_vol_curve_t curve = {.vol_map = points, .count = sizeof points / sizeof *points};
+    if (!audio_codec_check("volume curve", esp_codec_dev_set_vol_curve(output, &curve)) || !apply()) {
         audio_out_close();
         return false;
     }
