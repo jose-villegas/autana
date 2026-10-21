@@ -1,4 +1,5 @@
 """GPU stage admission, stalled queries and ordered worker completion."""
+from contextlib import contextmanager
 import pathlib
 import sys
 import unittest
@@ -453,6 +454,21 @@ int nvmlDeviceGetComputeRunningProcesses_v3(void *handle, unsigned int *count, s
                 self.fail("timed out waiting for runtime state")
             time.sleep(0.01)
 
+    @contextmanager
+    def running_worker(self):
+        import multiprocessing
+        from r3d import task_executor as budget
+        context = multiprocessing.get_context("spawn")
+        started, release = [context.Event() for _ in range(2)]
+        with budget.TaskExecutor() as executor:
+            try:
+                first = executor.submit(handshake_worker, started, release, "first", estimates=(0,) * 3)
+                self.assertTrue(started.wait(10))
+                yield executor, first, release
+            finally:
+                self.control.write_text("answer")
+                release.set()
+
     def test_hung_query_preserves_workers_reaps_and_recovers(self):
         import multiprocessing
         import time
@@ -485,32 +501,22 @@ int nvmlDeviceGetComputeRunningProcesses_v3(void *handle, unsigned int *count, s
                 anchor_release.set()
 
     def test_hung_query_gets_full_recovery_window_after_last_worker(self):
-        import multiprocessing
         import time
-        from r3d import task_executor as budget
-        context = multiprocessing.get_context("spawn")
-        started, release = [context.Event() for _ in range(2)]
-        with budget.TaskExecutor() as executor:
-            try:
-                first = executor.submit(handshake_worker, started, release, "first", estimates=(0,) * 3)
-                self.assertTrue(started.wait(10))
-                self.control.write_text("hang")
-                self.wait_for(self.entered.exists)
-                time.sleep(self.STALE_SECONDS * 2)
-                queued = executor.submit(identity_worker, "queued", estimates=(0,) * 3)
-                time.sleep(self.FAILURE_SECONDS * 2)
-                self.assertIsNone(executor.failure)
-                self.assertFalse(queued.done())
-                release.set()
-                self.assertEqual(first.result(timeout=10)[0], "first")
-                time.sleep(self.STALE_SECONDS)
-                self.assertIsNone(executor.failure)
-                self.assertFalse(queued.done())
-                self.control.write_text("answer")
-                self.assertEqual(queued.result(timeout=10)[0], "queued")
-            finally:
-                self.control.write_text("answer")
-                release.set()
+        with self.running_worker() as (executor, first, release):
+            self.control.write_text("hang")
+            self.wait_for(self.entered.exists)
+            time.sleep(self.STALE_SECONDS * 2)
+            queued = executor.submit(identity_worker, "queued", estimates=(0,) * 3)
+            time.sleep(self.FAILURE_SECONDS * 2)
+            self.assertIsNone(executor.failure)
+            self.assertFalse(queued.done())
+            release.set()
+            self.assertEqual(first.result(timeout=10)[0], "first")
+            time.sleep(self.STALE_SECONDS)
+            self.assertIsNone(executor.failure)
+            self.assertFalse(queued.done())
+            self.control.write_text("answer")
+            self.assertEqual(queued.result(timeout=10)[0], "queued")
 
     def test_hung_query_without_workers_expires_with_stall_message(self):
         import time
@@ -548,82 +554,53 @@ int nvmlDeviceGetComputeRunningProcesses_v3(void *handle, unsigned int *count, s
         self.assertNotIn(worker_pid, [child.pid for child in multiprocessing.active_children()])
 
     def test_transient_query_error_pauses_and_recovers(self):
-        import multiprocessing
         import time
-        from r3d import task_executor as budget
-        context = multiprocessing.get_context("spawn")
-        started, release = [context.Event() for _ in range(2)]
-        with budget.TaskExecutor() as executor:
-            try:
-                first = executor.submit(handshake_worker, started, release, "first", estimates=(0,) * 3)
-                self.assertTrue(started.wait(10))
-                self.control.write_text("unknown")
-                self.wait_for(lambda: str(self.UNKNOWN_ERROR) in str(executor.gpu_sampler.latest[2]))
-                queued = executor.submit(identity_worker, "queued", estimates=(0,) * 3)
-                time.sleep(self.FAILURE_SECONDS * 2)
-                self.assertIsNone(executor.failure)
-                self.assertFalse(first.done())
-                self.assertFalse(queued.done())
-                self.control.write_text("answer")
-                self.assertEqual(queued.result(timeout=10)[0], "queued")
-                release.set()
-                self.assertEqual(first.result(timeout=10)[0], "first")
-            finally:
-                self.control.write_text("answer")
-                release.set()
+        with self.running_worker() as (executor, first, release):
+            self.control.write_text("unknown")
+            self.wait_for(lambda: str(self.UNKNOWN_ERROR) in str(executor.gpu_sampler.latest[2]))
+            queued = executor.submit(identity_worker, "queued", estimates=(0,) * 3)
+            time.sleep(self.FAILURE_SECONDS * 2)
+            self.assertIsNone(executor.failure)
+            self.assertFalse(first.done())
+            self.assertFalse(queued.done())
+            self.control.write_text("answer")
+            self.assertEqual(queued.result(timeout=10)[0], "queued")
+            release.set()
+            self.assertEqual(first.result(timeout=10)[0], "first")
 
     def test_recovery_admission_uses_new_free_bytes(self):
-        import multiprocessing
         import time
-        from r3d import task_executor as budget
-        context = multiprocessing.get_context("spawn")
-        started, release = [context.Event() for _ in range(2)]
-        with budget.TaskExecutor() as executor:
-            try:
-                first = executor.submit(handshake_worker, started, release, "first", estimates=(0,) * 3)
-                self.assertTrue(started.wait(10))
-                self.control.write_text("hang")
-                self.wait_for(self.entered.exists)
-                time.sleep(self.STALE_SECONDS * 2)
-                queued = executor.submit(identity_worker, "queued", estimates=(0,) * 3)
-                self.control.write_text("low")
-                self.wait_for(lambda: executor.gpu_sampler.latest[0] is not None
-                              and executor.gpu_sampler.latest[0][0] == 0)
-                time.sleep(self.FAILURE_SECONDS * 2)
-                self.assertIsNone(executor.failure)
-                self.assertFalse(queued.done())
-                self.control.write_text("answer")
-                self.assertEqual(queued.result(timeout=10)[0], "queued")
-                release.set()
-                self.assertEqual(first.result(timeout=10)[0], "first")
-            finally:
-                self.control.write_text("answer")
-                release.set()
+        with self.running_worker() as (executor, first, release):
+            self.control.write_text("hang")
+            self.wait_for(self.entered.exists)
+            time.sleep(self.STALE_SECONDS * 2)
+            queued = executor.submit(identity_worker, "queued", estimates=(0,) * 3)
+            self.control.write_text("low")
+            self.wait_for(lambda: executor.gpu_sampler.latest[0] is not None
+                          and executor.gpu_sampler.latest[0][0] == 0)
+            time.sleep(self.FAILURE_SECONDS * 2)
+            self.assertIsNone(executor.failure)
+            self.assertFalse(queued.done())
+            self.control.write_text("answer")
+            self.assertEqual(queued.result(timeout=10)[0], "queued")
+            release.set()
+            self.assertEqual(first.result(timeout=10)[0], "first")
 
     def test_hung_query_without_queued_tasks_does_not_warn_admission_paused(self):
-        import multiprocessing
         import time
         from unittest.mock import patch
         from r3d import task_executor as budget
-        context = multiprocessing.get_context("spawn")
-        started, release = [context.Event() for _ in range(2)]
         with patch.object(budget, "print", create=True) as output:
-            with budget.TaskExecutor() as executor:
-                try:
-                    first = executor.submit(handshake_worker, started, release, "first", estimates=(0,) * 3)
-                    self.assertTrue(started.wait(10))
-                    output.reset_mock()
-                    self.control.write_text("hang")
-                    self.wait_for(self.entered.exists)
-                    time.sleep(self.FAILURE_SECONDS * 2)
-                    self.assertIsNone(executor.failure)
-                    self.assertFalse(any("worker admission paused" in str(call) for call in output.call_args_list))
-                    self.control.write_text("answer")
-                    release.set()
-                    self.assertEqual(first.result(timeout=10)[0], "first")
-                finally:
-                    self.control.write_text("answer")
-                    release.set()
+            with self.running_worker() as (executor, first, release):
+                output.reset_mock()
+                self.control.write_text("hang")
+                self.wait_for(self.entered.exists)
+                time.sleep(self.FAILURE_SECONDS * 2)
+                self.assertIsNone(executor.failure)
+                self.assertFalse(any("worker admission paused" in str(call) for call in output.call_args_list))
+                self.control.write_text("answer")
+                release.set()
+                self.assertEqual(first.result(timeout=10)[0], "first")
 
     def test_missing_symbol_is_fatal_immediately(self):
         from unittest.mock import patch
