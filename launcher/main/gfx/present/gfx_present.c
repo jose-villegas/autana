@@ -34,7 +34,7 @@ _Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one s
  * places it: the compiler's clones of a function inherit the attribute, and
  * a mapping entry names only the original. Development overlays and send
  * auditing make dev and diag larger.
- * IRAM budget: release 2866 B, dev 3822 B, diag 3822 B */
+ * IRAM budget: release 2850 B, dev 3818 B, diag 3818 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -627,11 +627,12 @@ panel_clock_is_fast(void) {
     return panel_clock_applied_hz == GFX_PANEL_CLOCK_FAST_HZ;
 }
 
-/* Rows [y0, y1) of strip `row` as one full-width send: just those rows when
- * they are fewer than the strip's, else the whole strip. */
+/* Box [x0, x1) x [y0, y1) of strip `row` as one full-width send: just its
+ * rows when the box is full width and shorter than the strip, else the
+ * whole strip. */
 static void
-send_rows_full_width(int row, int y0, int y1, int* queued) {
-    if (y0 < y1 && y1 - y0 < STRIP_HEIGHT && send_partial_band(y0, y1, queued)) {
+send_rows_full_width(int row, int x0, int x1, int y0, int y1, int* queued) {
+    if (x0 == 0 && x1 == GFX_WIDTH && y0 < y1 && y1 - y0 < STRIP_HEIGHT && send_partial_band(y0, y1, queued)) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         dev_strips_sent_partial++;
 #endif
@@ -651,7 +652,7 @@ send_one_row(int row, int* queued) {
     if (panel_clock_is_fast()) {
         int x0, x1, y0, y1;
         run_box(row, 0, GRID_COLS, &x0, &x1, &y0, &y1);
-        send_rows_full_width(row, y0, y1, queued);
+        send_rows_full_width(row, 0, GFX_WIDTH, y0, y1, queued);
         return;
     }
     int run_start[GRID_COLS];
@@ -674,9 +675,7 @@ send_one_row(int row, int* queued) {
             if (area > GATHER_MAX_PIXELS) {
                 /* See send_partial_band(). Full-width box means row's only
                  * run: safe to return. */
-                const bool full_width = box_x0[r] == 0 && box_x1[r] == GFX_WIDTH;
-                send_rows_full_width(row, full_width ? box_y0[r] : row * STRIP_HEIGHT,
-                                     full_width ? box_y1[r] : (row + 1) * STRIP_HEIGHT, queued);
+                send_rows_full_width(row, box_x0[r], box_x1[r], box_y0[r], box_y1[r], queued);
                 return;
             }
         }

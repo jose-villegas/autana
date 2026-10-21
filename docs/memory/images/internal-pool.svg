@@ -10,20 +10,20 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart pool docs/memory/image
 <text x="840" y="113" text-anchor="end" class="title">linked heap 185.9 KB (not measured at runtime)</text>
 <rect x="200.00" y="124" width="111.18" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="80450"><title>ESP-IDF IRAM: 80450 B</title></rect>
 <text x="206.00" y="141" text-anchor="start" class="inside">78.6 KB</text>
-<rect x="311.18" y="124" width="12.94" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="9365"><title>IRAM we place: 9365 B</title></rect>
-<rect x="324.12" y="124" width="0.06" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="41"><title>Split slack incl. pad: 41 B</title></rect>
+<rect x="311.18" y="124" width="12.92" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="9349"><title>IRAM we place: 9349 B</title></rect>
+<rect x="324.10" y="124" width="0.08" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="57"><title>Split slack incl. pad: 57 B</title></rect>
 <rect x="324.17" y="124" width="84.99" height="24" fill="#4c8bf5" data-label="DRAM data + BSS" data-bytes="61504"><title>DRAM data + BSS: 61504 B</title></rect>
 <text x="330.17" y="141" text-anchor="start" class="inside">60.1 KB</text>
 <rect x="409.17" y="124" width="263.12" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="190400"><title>Internal heap: 190400 B</title></rect>
 <text x="415.17" y="141" text-anchor="start" class="inside">Internal heap 185.9 KB</text>
 <text x="200" y="158" text-anchor="start" class="note">not measured at runtime: release has no console, and its boot log is lost in the USB reset gap</text>
-<text x="200" y="182" text-anchor="start" class="note">IRAM left before the next 256 B split step: 25 B; past it, every byte comes from the heap (linked heap 185.9 KB)</text>
+<text x="200" y="182" text-anchor="start" class="note">IRAM left before the next 256 B split step: 41 B; past it, every byte comes from the heap (linked heap 185.9 KB)</text>
 <text x="188" y="225" text-anchor="end">dev</text>
 <text x="840" y="225" text-anchor="end" class="title">free 98.2 KB, largest 64 KB of 283.5 KB internal heap</text>
 <rect x="200.00" y="236" width="116.68" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="84431"><title>ESP-IDF IRAM: 84431 B</title></rect>
 <text x="206.00" y="253" text-anchor="start" class="inside">82.5 KB</text>
-<rect x="316.68" y="236" width="15.19" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="10992"><title>IRAM we place: 10992 B</title></rect>
-<rect x="331.87" y="236" width="0.09" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="65"><title>Split slack incl. pad: 65 B</title></rect>
+<rect x="316.68" y="236" width="15.18" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="10988"><title>IRAM we place: 10988 B</title></rect>
+<rect x="331.86" y="236" width="0.10" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="69"><title>Split slack incl. pad: 69 B</title></rect>
 <rect x="331.96" y="236" width="105.95" height="24" fill="#4c8bf5" data-label="DRAM data + BSS" data-bytes="76672"><title>DRAM data + BSS: 76672 B</title></rect>
 <text x="337.96" y="253" text-anchor="start" class="inside">74.9 KB</text>
 <rect x="437.91" y="236" width="234.37" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="169600"><title>Internal heap: 169600 B</title></rect>
@@ -32,13 +32,13 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart pool docs/memory/image
 <text x="443.91" y="253" text-anchor="start" class="overlay-inside">in use 185.3 KB</text>
 <text x="706.18" y="253" text-anchor="start" class="inside">free 98.2 KB</text>
 <text x="200" y="270" text-anchor="start" class="note">after opening the app that leaves the least; capture from build e63d733d83ee-dev</text>
-<text x="200" y="294" text-anchor="start" class="note">IRAM left before the next 256 B split step: 49 B; past it, every byte comes from the heap (free 98.2 KB)</text>
+<text x="200" y="294" text-anchor="start" class="note">IRAM left before the next 256 B split step: 53 B; past it, every byte comes from the heap (free 98.2 KB)</text>
 <text x="188" y="337" text-anchor="end">diag</text>
 <text x="840" y="337" text-anchor="end" class="title">free 83.1 KB, largest 50 KB of 268.6 KB internal heap</text>
 <rect x="200.00" y="348" width="117.31" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="84887"><title>ESP-IDF IRAM: 84887 B</title></rect>
 <text x="206.00" y="365" text-anchor="start" class="inside">82.9 KB</text>
-<rect x="317.31" y="348" width="15.19" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="10992"><title>IRAM we place: 10992 B</title></rect>
-<rect x="332.50" y="348" width="0.17" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="121"><title>Split slack incl. pad: 121 B</title></rect>
+<rect x="317.31" y="348" width="15.18" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="10988"><title>IRAM we place: 10988 B</title></rect>
+<rect x="332.49" y="348" width="0.17" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="125"><title>Split slack incl. pad: 125 B</title></rect>
 <rect x="332.66" y="348" width="127.29" height="24" fill="#4c8bf5" data-label="DRAM data + BSS" data-bytes="92112"><title>DRAM data + BSS: 92112 B</title></rect>
 <text x="338.66" y="365" text-anchor="start" class="inside">90.0 KB</text>
 <rect x="459.96" y="348" width="212.33" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="153648"><title>Internal heap: 153648 B</title></rect>
@@ -47,7 +47,7 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart pool docs/memory/image
 <text x="465.96" y="365" text-anchor="start" class="overlay-inside">in use 185.5 KB</text>
 <text x="728.44" y="365" text-anchor="start" class="inside">83.1 KB</text>
 <text x="200" y="382" text-anchor="start" class="note">after opening the app that leaves the least; capture from build df73e55eee0a-diag</text>
-<text x="200" y="406" text-anchor="start" class="note">IRAM left before the next 256 B split step: 105 B; past it, every byte comes from the heap (free 83.1 KB)</text>
+<text x="200" y="406" text-anchor="start" class="note">IRAM left before the next 256 B split step: 109 B; past it, every byte comes from the heap (free 83.1 KB)</text>
 <line x1="200" y1="432" x2="840" y2="432" stroke="#8c959f"/>
 <line x1="672.29" y1="432" x2="672.29" y2="435" stroke="#8c959f"/>
 <text x="672.29" y="480" text-anchor="end" class="note">pool end 0x3fcdb700, 333.8 KB</text>
