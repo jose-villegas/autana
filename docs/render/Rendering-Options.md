@@ -20,13 +20,13 @@ links to: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md) for gfx,
 
 ## Choosing at a glance
 
-Options fall into four groups by what they decide. Pick the layout first; the
-rest tune the send, the draw, or the bake.
+The options fall into four groups. Choose a framebuffer layout first; the other
+groups tune the send, the draw and the bake.
 
 ### Framebuffer layout
 
-How gfx holds the frame and sends it. An app picks one in `enter()`; the
-chart picks it from what the app draws.
+A framebuffer layout sets how gfx holds a frame and sends it to the panel. An
+app sets one in `enter()`. The diagram below helps you choose a layout.
 
 ```mermaid
 flowchart LR
@@ -51,8 +51,9 @@ flowchart LR
 
 ### Present policy
 
-What reaches the panel each frame, in the full-framebuffer and indexed
-layouts. Reach for these when the send, not the draw, is the slow part.
+These options change what is sent to the panel each frame, in the
+full-framebuffer and indexed layouts. Use them when sending the frame, not
+drawing it, is the slow part.
 
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
@@ -61,8 +62,9 @@ layouts. Reach for these when the send, not the draw, is the slow part.
 
 ### r3d frame
 
-How many pixels an r3d scene draws and how it shades them, set at runtime.
-Most trade sharpness for draw time; view modes trade it for a diagnostic picture.
+These options change how many pixels an r3d scene draws and how it shades
+them, and an app can change them while it runs. Most give up sharpness to save
+draw time; view modes give up frame time to show a diagnostic picture.
 
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
@@ -74,8 +76,8 @@ Most trade sharpness for draw time; view modes trade it for a diagnostic picture
 
 ### Bake
 
-What a mesh brings to the board, chosen in its import settings before it is
-baked.
+These options change the mesh data itself. They are set in a mesh's import
+settings and take effect when the mesh is baked.
 
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
