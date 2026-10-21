@@ -25,6 +25,8 @@ These take and return plain integers, not structs.
 
 | Function | Purpose | Formula |
 |---|---|---|
+| `mathf_zero()`, `mathf_half()`, `mathf_one()`, `mathf_two()`, `mathf_four()` | scalar constants | $`0, 1/2, 1, 2, 4`$ |
+| `mathf_abs(a)` | absolute value; negative zero becomes positive zero | $`\lvert a\rvert`$ |
 | `mathf_lerp(a, b, t)` | single-precision interpolation | $`a + (b - a)t`$ |
 | `mathf_min(a, b)` | smaller value by comparison | $`\min(a,b)`$ |
 | `mathf_max(a, b)` | larger value by comparison | $`\max(a,b)`$ |
@@ -47,6 +49,8 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 
 | Function | Purpose | Formula |
 |---|---|---|
+| `mathx_zero()`, `mathx_half()`, `mathx_one()`, `mathx_two()`, `mathx_four()` | Q16.16 constants | $`0, 1/2, 1, 2, 4`$ |
+| `mathx_abs(a)` | saturated absolute value; `INT32_MIN` maps to `INT32_MAX` | $`\min(\lvert a\rvert,\mathrm{INT32\_MAX})`$ |
 | `mathx_lerp(a, b, t)` | interpolation by a Q16.16 weight `t` | $`\mathrm{add}(a,\mathrm{mul}(\mathrm{sub}(b,a),t))`$ |
 | `mathx_min(a, b)`, `mathx_max(a, b)`, `mathx_clamp(v, lo, hi)`, `mathx_repeat(v, len)`, `mathx_wrap(v, lo, hi)` | range helpers on the value | as in `mathi.h` |
 | `mathf_to_x(v)` | Q16.16, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
@@ -64,13 +68,27 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 
 `MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
 
-## mathf_rsqrt.h
+## Reciprocal square root (`mathf.h`)
 
-| Function | Purpose | Formula |
+| Function | Board formula | Bound source |
 |---|---|---|
-| `mathf_rsqrt(x)` | reciprocal square root for positive normal-range inputs; on the board the FPU's `rsqrt0.s` seed plus one Newton step, on host and QEMU the exact `1 / sqrt(x)` | $`y_0 = \mathrm{rsqrt0}(x)`$<br>$`y_1 = y_0\,(3 - x\,y_0^2) / 2`$ |
+| `mathf_rsqrt(x)` | `rsqrt0.s` seed, two Newton steps | `MATHF_RSQRT_ULP_LIMIT` in `mathf.h` |
+| `mathf_rsqrt_approx(x)` | `rsqrt0.s` seed, one Newton step | `MATHF_RSQRT_APPROX_RELATIVE_LIMIT` in `mathf.h` |
 
-The device result is within `MATHF_RSQRT_RELATIVE_LIMIT` relative error of the exact value, which the device sweep checks.
+Newton-Raphson reciprocal square root uses
+$`y_{n+1}=y_n+\tfrac12 y_n\,(1-(xy_n)y_n)`$.<sup>[[85]](../Citations.md#85)</sup>
+The approximate path evaluates its single correction as $`y_0\,(1.5-0.5xy_0^2)`$.
+
+`CONFIG_MATH_FPU_RECIP` enables the board seed. Host and QEMU use
+`1.0F / sqrtf(x)`. For `x < FLT_MIN`, including zero and subnormals,
+`mathf_rsqrt` uses that same formula and preserves its bits.
+
+The limits in `mathf.h` define the accuracy contract; the
+[benchmark table](Benchmark.md) reports measured maxima and coverage.
+
+The suite's integer product bracket rounds the exact reciprocal root without
+using the twice-rounded `1 / sqrtf` as a reference. The suite prints
+`MATHERROR` lines and checks both limits.
 
 ## fixed.h
 

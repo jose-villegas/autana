@@ -16,14 +16,6 @@
 #include "unity.h"
 
 static inline void
-r3d_lit_mesh_expect_box_inside(const int16_t lo[3], const int16_t hi[3], const int16_t outer_lo[3],
-                               const int16_t outer_hi[3]) {
-    for (int k = 0; k < 3; k++) {
-        TEST_ASSERT_TRUE_MESSAGE(lo[k] >= outer_lo[k] && hi[k] <= outer_hi[k], "a box sticks out of its parent's");
-    }
-}
-
-static inline void
 r3d_lit_mesh_expect_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c) {
     const int v_end = c->vertex_first + c->vertex_count;
     for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
@@ -36,10 +28,9 @@ r3d_lit_mesh_expect_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t*
                                  "a triangle repeats a vertex");
     }
     for (int v = c->vertex_first; v < v_end; v++) {
-        for (int k = 0; k < 3; k++) {
-            TEST_ASSERT_TRUE_MESSAGE(mesh->positions[v][k] >= c->lo[k] && mesh->positions[v][k] <= c->hi[k],
-                                     "a vertex lies outside its cluster's bounds");
-        }
+        const int16_t* p = mesh->positions[v];
+        TEST_ASSERT_TRUE_MESSAGE(box3s_contains_point(c->bounds, vec3s_from_array(p)),
+                                 "a vertex lies outside its cluster's bounds");
     }
 }
 
@@ -50,14 +41,16 @@ r3d_lit_mesh_expect_subtree(const r3d_lit_mesh_t* mesh, int node, uint8_t* reach
         TEST_ASSERT_TRUE(n->first + n->count <= mesh->cluster_count);
         for (int c = n->first; c < n->first + n->count; c++) {
             reached[c]++;
-            r3d_lit_mesh_expect_box_inside(mesh->clusters[c].lo, mesh->clusters[c].hi, n->lo, n->hi);
+            TEST_ASSERT_TRUE_MESSAGE(box3s_contains(n->bounds, mesh->clusters[c].bounds),
+                                     "a box sticks out of its parent's");
         }
         return;
     }
     TEST_ASSERT_TRUE(n->first + n->count <= mesh->node_count);
     for (int child = n->first; child < n->first + n->count; child++) {
         TEST_ASSERT_TRUE_MESSAGE(child > node, "a child must follow its parent");
-        r3d_lit_mesh_expect_box_inside(mesh->nodes[child].lo, mesh->nodes[child].hi, n->lo, n->hi);
+        TEST_ASSERT_TRUE_MESSAGE(box3s_contains(n->bounds, mesh->nodes[child].bounds),
+                                 "a box sticks out of its parent's");
         r3d_lit_mesh_expect_subtree(mesh, child, reached);
     }
 }

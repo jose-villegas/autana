@@ -39,6 +39,10 @@ main/render/r3d_lit_mesh.c
 tools/render/scene_viewer.c
 "
 scene_assets=demo/sponza
-scene_renders="landscape|--scene sponza --object atrium --quarter 1 --frames 2|448x368|nopin"
+# The render draws the scene's showcase.
+. "$SCRIPT_DIR/../../../../scripts/lib/python.sh"
+. "$SCRIPT_DIR/../../../../scripts/lib/native_path.sh"
+showcase=$("$(find_python)" "$(to_native "$SCRIPT_DIR/../showcase.py")" "$(to_native "$SCRIPT_DIR/../../../$scene_assets/sponza.scene.toml")")
+scene_renders="landscape|--scene sponza --object $showcase --quarter 1 --frames 2|448x368|nopin"
 . "$SCRIPT_DIR/../render_scene.sh"
 render_scene_run "$@"

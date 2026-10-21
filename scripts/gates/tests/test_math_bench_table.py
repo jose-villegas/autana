@@ -22,6 +22,40 @@ class MathBenchTableTests(unittest.TestCase):
                "MATHBENCH name=dot (vec3) type=f ops=64 warm=12.0 cold=24.0 insn=6.0\n"
                "MATHBENCH name=sinf type=f ops=64 warm=90.0 cold=110.0 insn=30.0\n")
 
+    def test_error_measurements_join_by_label_and_type(self):
+        text = ("noise\nMATHERROR name=normalize (vec3) type=f max=0 unit=ulp method=sweep\n"
+                "MATHERROR name=arbitrary label type=x max=5.94258e-05 unit=relative method=proof\n")
+        errors = bench.parse_errors(text)
+        self.assertEqual("0 ulp (sweep)", errors["normalize (vec3)", "f"])
+        self.assertEqual("5.94258e-05 relative (proof)", errors["arbitrary label", "x"])
+        rows = [("vector_f", "normalize (vec3)", "f", self.batch),
+                ("vector_x", "normalize (vec3)", "x", self.batch), ("other_x", "arbitrary label", "x", self.batch)]
+        table = bench.render_table(rows, {}, {}, {"vector_f": "-", "vector_x": "-", "other_x": "-"}, errors=errors)
+        lines = table.splitlines()
+        self.assertTrue(next(line for line in lines if line.startswith("| normalize (vec3) | f")).endswith("0 ulp (sweep) |"))
+        self.assertTrue(next(line for line in lines if line.startswith("| normalize (vec3) | x")).endswith("- |"))
+
+    def test_scalar_without_error_capture_has_no_invented_bound(self):
+        rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch)]
+        table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"})
+        self.assertTrue(next(line for line in table.splitlines() if line.startswith("| mathf_rsqrt |")).endswith("- |"))
+
+    def test_error_measurement_without_a_row_raises(self):
+        errors = bench.parse_errors("MATHERROR name=normalise (vec3) type=f max=1 unit=ulp method=sweep\n")
+        rows = [("vector_f", "normalize (vec3)", "f", self.batch)]
+        with self.assertRaisesRegex(ValueError, "match no row"):
+            bench.render_table(rows, {}, {}, {"vector_f": "-"}, errors=errors)
+
+    def test_malformed_and_duplicate_error_measurements_raise(self):
+        good = "MATHERROR name=mathf_rsqrt type=f max=1 unit=ulp method=proof\n"
+        bad_max = ("inf", "nan", "1e+", "1e999", "-1")
+        missing = ("type", "unit", "method")
+        texts = [good + good, *(good.replace("max=1", "max=" + value) for value in bad_max),
+                 *(" ".join(part for part in good.split(" ") if not part.startswith(key + "=")) for key in missing)]
+        for text in texts:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                bench.parse_errors(text)
+
     def test_missing_row_is_an_error(self):
         with self.assertRaisesRegex(ValueError, "missing"):
             bench.parse_capture(self.capture.split("MATHBENCH name=sinf")[0], self.rows)

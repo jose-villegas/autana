@@ -60,9 +60,9 @@ test_goertzel_reference(void) {
             goertzel_init(&state, frequencies[f], TEST_SAMPLE_RATE_HZ);
             goertzel_feed_s(&state, samples, TEST_SAMPLES);
             double scale = (double)TEST_SAMPLES * TRIG_SIN_MAX / 2;
-            float reference = (float)(10 * log10((re * re + im * im) / (scale * scale)));
+            float reference = math_db_power((float)((re * re + im * im) / (scale * scale)));
             TEST_ASSERT_FLOAT_WITHIN(TEST_DB_TOLERANCE, reference, goertzel_level_db(&state, TRIG_SIN_MAX));
-            TEST_ASSERT_FLOAT_WITHIN(TEST_DB_TOLERANCE, (float)(20 * log10(amplitudes[a])),
+            TEST_ASSERT_FLOAT_WITHIN(TEST_DB_TOLERANCE, math_db_amplitude(amplitudes[a]),
                                      goertzel_level_db(&state, TRIG_SIN_MAX));
         }
     }
@@ -89,7 +89,7 @@ test_goertzel_noninteger_bins(void) {
                 goertzel_init(&state, frequencies[f], TEST_SAMPLE_RATE_HZ);
                 goertzel_feed_s(&state, samples, n);
                 const double scale = (double)n * TRIG_SIN_MAX / 2;
-                const float reference = (float)(10 * log10((re * re + im * im) / (scale * scale)));
+                const float reference = math_db_power((float)((re * re + im * im) / (scale * scale)));
                 TEST_ASSERT_FLOAT_WITHIN(TEST_DB_TOLERANCE, reference, goertzel_level_db(&state, TRIG_SIN_MAX));
             }
         }
@@ -121,7 +121,7 @@ test_goertzel_streaming_silence_rejection(void) {
     goertzel_t state;
     goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
     goertzel_feed_s(&state, samples, TEST_SAMPLES);
-    TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TRIG_SIN_MAX));
+    TEST_ASSERT_EQUAL_FLOAT(MATH_DB_FLOOR, goertzel_level_db(&state, TRIG_SIN_MAX));
     TEST_ASSERT_EQUAL_FLOAT(0, goertzel_power(&state));
     fill_tone(samples, 1);
     goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
@@ -150,7 +150,6 @@ test_goertzel_streaming_silence_rejection(void) {
 #define TEST_LEVEL_TOLERANCE     0.001F
 #define TEST_AMPLITUDE_DIVISOR   2
 #define TEST_AMPLITUDE           (TRIG_SIN_MAX / TEST_AMPLITUDE_DIVISOR)
-#define TEST_AMPLITUDE_DB_SCALE  20.0F
 #define TEST_TINY_FULL_SCALE     1.0e12F
 
 static void
@@ -211,7 +210,7 @@ test_goertzel_reset(void) {
     goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
     goertzel_init(&fresh, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
     TEST_ASSERT_EQUAL_FLOAT(0.0F, goertzel_amplitude(&state));
-    TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TRIG_SIN_MAX));
+    TEST_ASSERT_EQUAL_FLOAT(MATH_DB_FLOOR, goertzel_level_db(&state, TRIG_SIN_MAX));
     goertzel_feed_s(&state, samples, TEST_RESET_SAMPLES);
     TEST_ASSERT_NOT_EQUAL(0.0F, state.previous2);
     goertzel_reset(&state);
@@ -230,11 +229,11 @@ test_goertzel_amplitude_and_scale(void) {
     goertzel_feed_s(&state, samples, TEST_SAMPLES);
     TEST_ASSERT_FLOAT_WITHIN(TEST_AMPLITUDE_TOLERANCE, TEST_AMPLITUDE, goertzel_amplitude(&state));
     const float level = goertzel_level_db(&state, TRIG_SIN_MAX);
-    TEST_ASSERT_FLOAT_WITHIN(TEST_LEVEL_TOLERANCE, level - TEST_AMPLITUDE_DB_SCALE * log10f(TEST_FULL_SCALE_FACTOR),
+    TEST_ASSERT_FLOAT_WITHIN(TEST_LEVEL_TOLERANCE, level - math_db_amplitude(TEST_FULL_SCALE_FACTOR),
                              goertzel_level_db(&state, TRIG_SIN_MAX * TEST_FULL_SCALE_FACTOR));
     /* Non-zero power far below the floor still reads the floor. */
     TEST_ASSERT_TRUE(goertzel_power(&state) > 0.0F);
-    TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TEST_TINY_FULL_SCALE));
+    TEST_ASSERT_EQUAL_FLOAT(MATH_DB_FLOOR, goertzel_level_db(&state, TEST_TINY_FULL_SCALE));
 }
 
 #define TEST_PHASE_SAMPLES        441u

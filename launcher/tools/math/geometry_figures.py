@@ -9,20 +9,73 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from math_figures import (PANEL_SIZE, PANEL_TITLE_ROOM, PIXEL_FILL, POINT, POINT_SIZE, SHAPE_ALPHA, SHAPE_FILL,
-                          run_probe)
-from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, style_axes, figure as new_figure, save
+                          run_probe, VIEW_ELEVATION, prism_faces)
+from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, SLOTS,
+                             GIF_FRAMES, GIF_FPS, ORBIT_GIF_COLORS, wire_sphere,
+                             figure as new_figure, save, save_gif, style_axes)
 import numpy as np
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Patch, Rectangle
+from matplotlib.lines import Line2D
+from mpl_toolkits.mplot3d import proj3d
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 PROBE = pathlib.Path(__file__).with_name("geometry_figures_probe.c")
 PLANE_NAMES = ("near", "left", "right", "top", "bottom")
-PLANE_COLORS = (INK, SHAPE_FILL, POINT, "#8655ad", PIXEL_FILL)
+PLANE_COLORS = (INK, SHAPE_FILL, POINT, SLOTS[6], PIXEL_FILL)
 PANELS = 2
-BAND_COUNT = 9
 NORMAL_ARROW_LENGTH = 0.8
-INSIDE_SHADE_DEPTH = 0.6
 RECT_LABEL_OFFSET = (4, -13)
+ORBIT_AZIMUTH = -85
+ORBIT_TURN = 360
+ANIMATION_DPI = 80
+FIGURE_WIDTH = 10
+FIGURE_HEIGHT = 5.8
+AXIS_MARGIN = 1.08
+FACE_ALPHA = 0.14
+ARROW_RATIO = 0.2
+GRID_WIDTH = 0.4
+GRID_STEPS = 6
+LABEL_OFFSET = (5, 5)
+PLANE_AZIMUTH = -125
+LABEL_CLEARANCE = 10
+POINTS_PER_INCH = 72
+LABEL_LEADER_WIDTH = 0.5
+NORMAL_DEPTH_RATIO = 0.25
+SAMPLE_SCALE = 2
+NORMAL_COLORS = (SLOTS[0], SLOTS[7])
+LABEL_ALPHA = 0.75
+LABEL_PADDING = 0.3
+AXIS_ZOOM = 1.03
+SUBPLOT_RIGHT = 0.98
+SUBPLOT_BOTTOM = 0.12
+SUBPLOT_TOP = 0.9
+SUBPLOT_GAP = 0.08
+BOX_COLORS = (SLOTS[5], SLOTS[3], MUTED)
+SAMPLE_COLORS = (SLOTS[1], MUTED, SLOTS[5])
+BOX_RING = ((0, 0), (1, 0), (1, 1), (0, 1))
+FRUSTUM_FACE_ORDER = (0, 5, 3, 2, 4)
+LEGEND_Y = 0.015
+FIELD_AZIMUTH = -125
+FIELD_ELEVATION = 35
+FRUSTUM_AZIMUTH = -30
+FRUSTUM_ELEVATION = 15
+CAMERA_ZORDER = 10
+GROUND_HEIGHT = 0
+FIELD_FIGURE_SIZE = (8, 6.8)
+FIELD_ZOOM = 1.12
+GROUND_ALPHA = 0.65
+DISTANCE_RULER_Y = 0
+DISTANCE_PLANE_EXTENT = 1.6
+DISTANCE_TICK_HEIGHT = 0.12
+DISTANCE_SAMPLE_OFFSET = (5, 9)
+DISTANCE_VALUE_OFFSET = (0, -16)
+DISTANCE_UPPER_TICK_OFFSET = (0, 10)
+DISTANCE_ZERO_OFFSET = (10, -16)
+DISTANCE_NEGATIVE_SAMPLE_OFFSET = (5, 22)
+DISTANCE_BRACKET_LABEL_OFFSET = (0, -16)
+DISTANCE_STEP_Y = -1.35
+DISTANCE_MARGIN = 0.8
+SEGMENT_ZOOM = 0.9
 
 
 def panels(projection=None):
@@ -67,136 +120,321 @@ def rect_figure(data, output):
     save(figure, output)
 
 
+def space_panels(titles):
+    fig = new_figure((FIGURE_WIDTH if len(titles) > 1 else FIGURE_HEIGHT, FIGURE_HEIGHT))
+    fig.set_dpi(ANIMATION_DPI)
+    axes = [fig.add_subplot(1, len(titles), i + 1, projection="3d")
+            for i in range(len(titles))]
+    for axis, title in zip(axes, titles):
+        axis.set_title(title, fontsize=TITLE_SIZE)
+        axis.set_axis_off()
+        axis.view_init(elev=VIEW_ELEVATION, azim=ORBIT_AZIMUTH, vertical_axis="y")
+    fig.set_layout_engine(None)
+    fig.subplots_adjust(left=0, right=SUBPLOT_RIGHT, bottom=SUBPLOT_BOTTOM,
+                        top=SUBPLOT_TOP, wspace=SUBPLOT_GAP)
+    return fig, axes
+
+
+def fit_space(axis, points, ground=None, zoom=AXIS_ZOOM):
+    points = np.asarray(points)
+    low, high = points.min(axis=0), points.max(axis=0)
+    centre = (low + high) / 2
+    extent = np.maximum(high - low, max(high - low) / GRID_STEPS) * AXIS_MARGIN
+    low, high = centre - extent / 2, centre + extent / 2
+    for setter, lower, upper in zip((axis.set_xlim, axis.set_ylim, axis.set_zlim), low, high):
+        setter(lower, upper)
+    axis.set_box_aspect(extent, zoom=zoom)
+    grid_alpha = FACE_ALPHA if ground is None else GROUND_ALPHA
+    ground = low[1] if ground is None else ground
+    for x in np.linspace(low[0], high[0], GRID_STEPS):
+        axis.plot([x, x], [ground, ground], [low[2], high[2]], color=FAINT,
+                  alpha=grid_alpha, linewidth=GRID_WIDTH)
+    for z in np.linspace(low[2], high[2], GRID_STEPS):
+        axis.plot([low[0], high[0]], [ground, ground], [z, z], color=FAINT,
+                  alpha=grid_alpha, linewidth=GRID_WIDTH)
+
+
+def sheet(axis, vertices, color=SHAPE_FILL):
+    axis.add_collection3d(Poly3DCollection([vertices], facecolor=color, edgecolor=color,
+                                         alpha=FACE_ALPHA))
+
+
+def arrow(axis, origin, normal, color=INK, length=NORMAL_ARROW_LENGTH):
+    normal = np.asarray(normal, dtype=float)
+    normal *= length / np.linalg.norm(normal)
+    axis.quiver(*origin, *normal, color=color, arrow_length_ratio=ARROW_RATIO)
+    return np.asarray(origin) + normal
+
+
+def legend(fig, entries, patches=False):
+    handles = [Patch(facecolor=color, edgecolor=color, alpha=FACE_ALPHA, label=label)
+               if patches else Line2D([], [], color=color, marker=marker, linestyle=style, label=label)
+               for label, color, marker, style in entries]
+    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, LEGEND_Y),
+               fontsize=LABEL_SIZE, ncol=PANELS, frameon=False)
+
+
+def orbit(fig, axes, output, labels=(), azimuth=None, elevation=VIEW_ELEVATION, label_colors=None):
+    annotations = []
+
+    def draw(frame):
+        for annotation in annotations:
+            annotation.remove()
+        annotations.clear()
+        for axis in axes:
+            axis.view_init(elev=elevation,
+                           azim=azimuth if azimuth is not None else (PLANE_AZIMUTH if output.suffix == ".png" else
+                                 ORBIT_AZIMUTH + ORBIT_TURN * frame / GIF_FRAMES),
+                           vertical_axis="y")
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        for axis in axes:
+            placed = []
+            for owner, points, texts, *clearance in labels:
+                if owner is not axis:
+                    continue
+                projected = [proj3d.proj_transform(*point, axis.get_proj())[:2] for point in points]
+                for point, text in zip(projected, texts):
+                    offset = list(LABEL_OFFSET)
+                    align = "left"
+                    if clearance:
+                        outline = np.array([proj3d.proj_transform(*vertex, axis.get_proj())[:2]
+                                            for vertex in clearance[0]])
+                        outline = axis.transData.transform(outline)
+                        low, high = outline.min(axis=0), outline.max(axis=0)
+                        anchor = axis.transData.transform(point)
+                        on_right = anchor[0] >= (low[0] + high[0]) / 2
+                        edge = high[0] + LABEL_CLEARANCE if on_right else low[0] - LABEL_CLEARANCE
+                        offset[0] = (edge - anchor[0]) * POINTS_PER_INCH / fig.dpi
+                        align = "left" if on_right else "right"
+                    annotation = axis.annotate(text, point, xytext=tuple(offset),
+                        textcoords="offset points", fontsize=LABEL_SIZE,
+                        color=label_colors.get(text, INK) if label_colors else INK,
+                        va="bottom", ha=align, annotation_clip=False,
+                        arrowprops=dict(arrowstyle="-", color=MUTED, linewidth=LABEL_LEADER_WIDTH),
+                        bbox=dict(facecolor="white", edgecolor="none", alpha=LABEL_ALPHA, pad=LABEL_PADDING))
+                    for _ in range(len(placed) + 1):
+                        annotation.update_positions(renderer)
+                        annotation.update_bbox_position_size(renderer)
+                        bounds = annotation.get_bbox_patch().get_window_extent(renderer).padded(LABEL_CLEARANCE / 2)
+                        overlaps = [other for other in placed if bounds.overlaps(other)]
+                        if not overlaps:
+                            break
+                        shift = max(other.y1 for other in overlaps) - bounds.y0 + LABEL_CLEARANCE
+                        offset[1] += shift * POINTS_PER_INCH / fig.dpi
+                        annotation.set_position(tuple(offset))
+                    placed.append(bounds)
+                    annotations.append(annotation)
+
+    if output.suffix == ".png":
+        draw(0)
+        save(fig, output, dpi=ANIMATION_DPI)
+        return
+
+    save_gif(fig, draw, GIF_FRAMES, output, GIF_FPS, colors=ORBIT_GIF_COLORS)
+
+
 def distance_figure(data, output):
-    figure, axes = panels()
-    grid = np.array(data["grid"])
-    x, z = np.unique(grid[:, 0]), np.unique(grid[:, 1])
-    values = [grid[:, i].reshape(len(z), len(x)) for i in (2, 3)]
-    span = min(abs(v).max() for v in values)
-    levels = np.linspace(-span, span, BAND_COUNT)
-    for axis, value, title in zip(axes, values, ("Before normalize", "After normalize")):
-        style_axes(axis, title, square=True)
-        bands = axis.contourf(x, z, value, levels=levels, cmap="RdBu", extend="both")
-        axis.contour(x, z, value, levels=[0], colors=INK)
-        axis.set_xlabel("x", fontsize=LABEL_SIZE)
-        axis.set_ylabel("z", fontsize=LABEL_SIZE)
-    figure.colorbar(bands, ax=axes, label="planef_distance", shrink=0.7)
-    figure.suptitle(f"Same zero line; normal length = {data['normal_length']:.3g}", fontsize=TITLE_SIZE)
-    save(figure, output)
-
-
-def space_axes(axis, title):
-    axis.set_title(title, fontsize=TITLE_SIZE)
-    axis.set_xlabel("x", fontsize=LABEL_SIZE, labelpad=0)
-    axis.set_ylabel("z", fontsize=LABEL_SIZE, labelpad=0)
-    axis.set_zlabel("y", fontsize=LABEL_SIZE, labelpad=0)
-    axis.tick_params(labelsize=LABEL_SIZE, pad=0)
-    axis.view_init(elev=24, azim=-60)
+    fig, axes = panels()
+    length = data["normal_length"]
+    for column, axis in enumerate(axes):
+        style_axes(axis, "Before normalize" if column == 0 else "After normalize", square=True)
+        axis.spines[["top", "right", "left", "bottom"]].set_visible(False)
+        axis.set_xticks([])
+        axis.set_yticks([])
+        axis.axhline(DISTANCE_RULER_Y, color=MUTED, linewidth=1)
+        axis.plot([0, 0], [-DISTANCE_PLANE_EXTENT / 2, DISTANCE_PLANE_EXTENT], color=SHAPE_FILL)
+        axis.annotate("plane (edge-on)", (0, DISTANCE_PLANE_EXTENT),
+                      xytext=DISTANCE_SAMPLE_OFFSET, textcoords="offset points", fontsize=LABEL_SIZE)
+        for position, value in [*data["rulers"][column], (0, 0)]:
+            axis.plot([position, position], [-DISTANCE_TICK_HEIGHT, DISTANCE_TICK_HEIGHT], color=INK)
+            tick_offset = DISTANCE_UPPER_TICK_OFFSET if column == 0 else DISTANCE_VALUE_OFFSET
+            axis.annotate(f"{value:+g}" if value else "0", (position, DISTANCE_RULER_Y),
+                          xytext=tick_offset if value else DISTANCE_ZERO_OFFSET,
+                          textcoords="offset points", ha="center", fontsize=LABEL_SIZE)
+        for _point, raw, distance, height in data["samples"]:
+            if distance == 0:
+                continue
+            value = raw if column == 0 else distance
+            color = SAMPLE_COLORS[int(np.sign(value)) + 1]
+            axis.plot([distance, distance], [DISTANCE_RULER_Y, height], color=color, linestyle="--")
+            axis.scatter(distance, height, color=color, s=POINT_SIZE)
+            axis.annotate(f"value = {value:.3g}", (distance, height),
+                          xytext=DISTANCE_NEGATIVE_SAMPLE_OFFSET if value < 0 else DISTANCE_SAMPLE_OFFSET,
+                          textcoords="offset points", fontsize=LABEL_SIZE, color=color)
+        low, high = min(sample[2] for sample in data["samples"]), max(sample[2] for sample in data["samples"])
+        axis.set_xlim(low - DISTANCE_MARGIN, high + DISTANCE_MARGIN)
+        axis.set_ylim(-DISTANCE_PLANE_EXTENT - DISTANCE_MARGIN, DISTANCE_PLANE_EXTENT + DISTANCE_MARGIN)
+        step = data["rulers"][column][1][0]
+        axis.annotate("", (0, DISTANCE_STEP_Y), (step, DISTANCE_STEP_Y),
+                      arrowprops=dict(arrowstyle="|-|", color=INK))
+        axis.annotate(f"1 / |n| = {step:.3g} unit" if column == 0 else f"{step:g} unit",
+                      (step / 2, DISTANCE_STEP_Y), xytext=DISTANCE_BRACKET_LABEL_OFFSET,
+                      textcoords="offset points", ha="center", va="top", fontsize=LABEL_SIZE)
+        axis.set_xlabel("signed distance along the normal", fontsize=LABEL_SIZE)
+    fig.suptitle(f"Signed value ÷ |n| = signed distance     (|n| = {length:g})", fontsize=TITLE_SIZE)
+    save(fig, output)
 
 
 def points_figure(data, output):
-    figure, axes = panels("3d")
-    points = np.array(data["points"])[:, [0, 2, 1]]
-    centroid = np.array(data["centroid"])[[0, 2, 1]]
-    for axis, normal, order, title in zip(axes, data["normals"], ((0, 1, 2), (0, 2, 1)),
-                                          ("from_points(a, b, c)", "from_points(a, c, b)")):
-        normal = np.array(normal, dtype=float)[[0, 2, 1]]
-        space_axes(axis, title + f"\nnormal = ({normal[0]:g}, {normal[2]:g}, {normal[1]:g})")
-        normal /= np.linalg.norm(normal)
-        axis.add_collection3d(Poly3DCollection([points], facecolor=SHAPE_FILL, alpha=SHAPE_ALPHA))
-        inside = points + normal * INSIDE_SHADE_DEPTH
-        axis.add_collection3d(Poly3DCollection([inside], facecolor=PIXEL_FILL, alpha=SHAPE_ALPHA))
-        for i, j in zip(order, (*order[1:], order[0])):
-            start, delta = points[i], (points[j] - points[i])
-            axis.quiver(*start, *delta, color=POINT, arrow_length_ratio=0.15)
-        axis.quiver(*centroid, *normal, color=INK, length=NORMAL_ARROW_LENGTH)
-        axis.text(*inside[0], "inside", fontsize=LABEL_SIZE, color=PIXEL_FILL)
-        for name, point in zip("abc", points):
-            axis.text(*point, name, fontsize=LABEL_SIZE)
-        bound = np.vstack([points, inside, centroid + normal])
-        axis.auto_scale_xyz(bound[:, 0], bound[:, 1], bound[:, 2])
-        axis.set_zlim(-NORMAL_ARROW_LENGTH * 2, NORMAL_ARROW_LENGTH * 2)
-    save(figure, output)
-
-
-def zero_line(axis, plane, fixed_y, color, label=None):
-    a, b, c, d = plane
-    xmin, xmax = axis.get_xlim()
-    zmin, zmax = axis.get_ylim()
-    candidates = []
-    if abs(c) > np.finfo(float).eps:
-        candidates.extend((x, -(a * x + b * fixed_y + d) / c) for x in (xmin, xmax))
-    if abs(a) > np.finfo(float).eps:
-        candidates.extend((-(c * z + b * fixed_y + d) / a, z) for z in (zmin, zmax))
-    points = np.array([(x, z) for x, z in candidates if xmin <= x <= xmax and zmin <= z <= zmax])
-    if len(points) < 2:
-        return
-    axis.plot(points[:, 0], points[:, 1], color=color, label=label)
-    middle = points.mean(axis=0)
-    normal = np.array([a, c], dtype=float)
-    normal *= NORMAL_ARROW_LENGTH / np.linalg.norm(normal)
-    axis.annotate("", middle + normal, middle, arrowprops=dict(arrowstyle="->", color=color))
+    fig, axes = space_panels(["Winding " + " → ".join("abc"[i] for i in order) for order in data["orders"]])
+    points = np.array(data["points"])
+    labels = []
+    for axis, normal, order, color in zip(axes, data["normals"], data["orders"], NORMAL_COLORS):
+        sheet(axis, points)
+        for first, second in zip(order, (*order[1:], order[0])):
+            axis.quiver(*points[first], *(points[second] - points[first]), color=POINT,
+                        arrow_length_ratio=ARROW_RATIO)
+        tip = arrow(axis, data["centroid"], normal, color)
+        fit_space(axis, [*points, tip])
+        labels.append((axis, points, list("abc")))
+    legend(fig, [(f"normal {tuple(normal)}", color, "", "-")
+                 for normal, color in zip(data["normals"], NORMAL_COLORS)])
+    orbit(fig, axes, output, labels)
 
 
 def rows_figure(data, output):
-    figure, axes = panels()
-    for axis, key, title, distance in zip(axes, ("lens", "world"), ("Lens space", "World space"), data["distances"]):
-        point = np.array(data[key + "_sample"])
-        plane = data[key + "_plane"]
-        style_axes(axis, title, square=True)
-        radius = np.linalg.norm(point) + NORMAL_ARROW_LENGTH
-        axis.set_xlim(-radius, radius)
-        axis.set_ylim(-radius, radius)
-        if key == "lens":
-            depth_max = radius
-            side_span = abs(plane[2] / plane[0]) * depth_max
-            axis.set_xlim(-side_span, side_span)
-            axis.set_aspect("auto")
-            axis.set_box_aspect(1)
-        zero_line(axis, plane, point[1], SHAPE_FILL)
-        axis.scatter(point[0], point[2], color=POINT, s=POINT_SIZE)
-        axis.set_xlabel("x, lens units (pixels times depth)" if key == "lens" else "x", fontsize=LABEL_SIZE)
-        axis.set_ylabel("z, depth" if key == "lens" else "z", fontsize=LABEL_SIZE)
-        axis.text(0.03, 0.97, f"left plane\ny = {point[1]:.3g}\ndistance = {distance:g}",
-                  transform=axis.transAxes, va="top", fontsize=LABEL_SIZE, bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"))
-    save(figure, output)
+    titles = [f"{space.title()} space: signed value {distance:g}"
+              for space, distance in zip(("lens", "world"), data["distances"])]
+    fig, axes = space_panels(titles)
+    labels = []
+    for axis, key, vertices, foot, value in zip(axes, ("lens", "world"), data["sheets"],
+                                                data["feet"], data["distances"]):
+        point = data[key + "_sample"]
+        sheet(axis, vertices)
+        arrow(axis, np.mean(vertices, axis=0), data[key + "_plane"][:3])
+        axis.scatter(*point, color=POINT, s=POINT_SIZE, depthshade=False)
+        axis.plot(*np.array([point, foot]).T, color=POINT, linestyle="--")
+        labels.append((axis, [np.mean([point, foot], axis=0)], [f"signed value = {value:g}"]))
+        fit_space(axis, [*vertices, point, foot])
+    legend(fig, [("Translucent sheet: plane; arrow: normal", SHAPE_FILL, "", "-"),
+                 ("Corresponding sample", POINT, "o", "")])
+    orbit(fig, axes, output, labels)
+
+
+def draw_frustum(axis, data, normals=True, labels=None):
+    assert len(FRUSTUM_FACE_ORDER) == data["plane_count"]
+    corners = np.asarray(data["corners"])
+    near, distant = corners[:4], corners[4:]
+    prism = prism_faces(corners, len(near))
+    faces = [np.asarray(prism[index]) for index in FRUSTUM_FACE_ORDER]
+    for face, plane, color in zip(faces, data["planes"], PLANE_COLORS):
+        sheet(axis, face, color)
+        if normals:
+            tip = arrow(axis, face.mean(axis=0), plane[:3], color,
+                        length=data["shown_depth"] * NORMAL_DEPTH_RATIO)
+            if labels is not None:
+                labels.append((axis, [tip], [PLANE_NAMES[len(labels)]]))
+    axis.plot(*np.vstack([distant, distant[0]]).T, color=MUTED, linestyle="--")
+    camera = data["camera"]
+    axis.plot(*np.array([camera]).T, color=INK, marker="^", linestyle="",
+              markersize=np.sqrt(POINT_SIZE), zorder=CAMERA_ZORDER)
+    for point in distant:
+        axis.plot(*np.array([camera, point]).T, color=MUTED, linewidth=1)
+    return [*corners, camera]
 
 
 def frustum_figure(data, output):
-    figure = new_figure((PANEL_SIZE * PANELS * 1.3, PANEL_SIZE * 1.3 + PANEL_TITLE_ROOM))
-    axis = figure.add_subplot(1, PANELS, 1, projection="3d")
-    slice_axis = figure.add_subplot(1, PANELS, 2)
-    space_axes(axis, f"Frustum; shown to depth {data['shown_depth']:g}")
-    corners = np.array(data["corners"])[:, [0, 2, 1]]
-    near, distant = corners[:4], corners[4:]
-    faces = [near]
-    for i in range(len(near)):
-        following = (i + 1) % len(near)
-        faces.append([near[i], near[following], distant[following], distant[i]])
-    axis.add_collection3d(Poly3DCollection(faces, facecolor=SHAPE_FILL, edgecolor=SHAPE_FILL,
-                                         alpha=SHAPE_ALPHA))
-    camera = np.array(data["camera"])[[0, 2, 1]]
-    for corner in near:
-        axis.plot(*np.array([camera, corner]).T, color=MUTED, alpha=SHAPE_ALPHA)
-    axis.scatter(*camera, color=POINT, s=POINT_SIZE)
-    axis.text(*camera, " camera", fontsize=LABEL_SIZE)
-    grid = data["grid"]
-    x, z = np.array([(p[0], p[1]) for p in grid]).T
-    colors = [PIXEL_FILL if p[3] else FAINT for p in grid]
-    axis.scatter(x, z, np.zeros_like(x), c=colors, s=6, depthshade=False)
-    bounds = np.vstack([corners, camera, np.column_stack([x, z, np.zeros_like(x)])])
-    for setter, dim in ((axis.set_xlim, 0), (axis.set_ylim, 1), (axis.set_zlim, 2)):
-        setter(bounds[:, dim].min(), bounds[:, dim].max())
-    style_axes(slice_axis, "slice y = 0 (ground)", square=True)
-    slice_axis.scatter(x, z, c=colors, s=8)
-    slice_axis.set_xlim(x.min(), x.max())
-    slice_axis.set_ylim(z.min(), z.max())
-    for plane, name, color in zip(data["planes"], PLANE_NAMES, PLANE_COLORS):
-        zero_line(slice_axis, plane, 0, color, name)
-    slice_axis.legend(fontsize=LABEL_SIZE, loc="lower right")
-    slice_axis.set_xlabel("x", fontsize=LABEL_SIZE)
-    slice_axis.set_ylabel("z", fontsize=LABEL_SIZE)
-    save(figure, output)
+    fig, (axis,) = space_panels(("Five inward frustum planes",))
+    labels = []
+    bounds = draw_frustum(axis, data, labels=labels)
+    for point, inside in data["samples"]:
+        axis.scatter(*point, color=BOX_COLORS[0 if inside else 2], s=POINT_SIZE * SAMPLE_SCALE, depthshade=False)
+        labels.append((axis, [point], ["inside" if inside else "outside"]))
+        bounds.append(point)
+    fit_space(axis, bounds)
+    legend(fig, [(name, color, "", "-") for name, color in zip(PLANE_NAMES, PLANE_COLORS)] +
+           [("drawn depth (not a plane)", MUTED, "", "--"),
+            ("camera", INK, "^", ""), ("inside / outside samples", BOX_COLORS[0], "o", "")])
+    orbit(fig, [axis], output, labels, azimuth=FRUSTUM_AZIMUTH, elevation=FRUSTUM_ELEVATION)
+
+
+def draw_box(axis, bounds, color=SHAPE_FILL, alpha=FACE_ALPHA):
+    low, high = np.array(bounds)
+    corners = np.array([((low[0], high[0])[x], (low[1], high[1])[y], z)
+                        for z in (low[2], high[2]) for x, y in BOX_RING])
+    axis.add_collection3d(Poly3DCollection(prism_faces(corners, len(BOX_RING)),
+                                         facecolor=color, edgecolor=color, alpha=alpha))
+    return corners
+
+
+def box_frustum_figure(data, output):
+    fig, (axis,) = space_panels(("Boxes against a moving camera frustum",))
+    fig.set_size_inches(*FIELD_FIGURE_SIZE)
+    frames = data["box_frustum"]
+    bounds = [point for frame in frames for point in frame["frustum"]["corners"]]
+    bounds.extend(point for box, _outside, _mask in frames[0]["boxes"] for point in box)
+    legend(fig, [(label, color, "s", "") for label, color in
+                 zip(("inside (mask = 0)", "intersecting", "outside"), BOX_COLORS)] +
+           [("camera", INK, "^", ""), ("drawn depth (not a plane)", MUTED, "", "--")])
+
+    def draw(frame):
+        axis.clear()
+        axis.set_axis_off()
+        axis.set_title("Boxes against a moving camera frustum", fontsize=TITLE_SIZE)
+        axis.view_init(elev=FIELD_ELEVATION, azim=FIELD_AZIMUTH, vertical_axis="y")
+        fit_space(axis, bounds, ground=GROUND_HEIGHT, zoom=FIELD_ZOOM)
+        draw_frustum(axis, frames[frame]["frustum"], normals=False)
+        for box, outside, mask in frames[frame]["boxes"]:
+            draw_box(axis, box, BOX_COLORS[2 if outside else (1 if mask else 0)], alpha=SHAPE_ALPHA)
+
+    save_gif(fig, draw, len(frames), output, GIF_FPS, colors=ORBIT_GIF_COLORS)
+
+
+def sphere_overlap_figure(data, output):
+    fig, (axis,) = space_panels(("Sphere / box closest point",))
+    frames = data["spheres"]
+    bounds = list(data["box"])
+    for (centre, radius), _closest, _hit, _state in frames:
+        bounds.extend((np.array(centre) - radius, np.array(centre) + radius))
+    legend(fig, [(label, color, "o", "") for label, color in zip(("overlap", "touch", "miss"), BOX_COLORS)] +
+           [("closest point", INK, "o", ""), ("centre to closest", MUTED, "", "--")])
+
+    def draw(frame):
+        axis.clear()
+        axis.set_axis_off()
+        sphere, closest, _hit, state = frames[frame]
+        color = BOX_COLORS[("overlap", "touch", "miss").index(state)]
+        axis.set_title(f"Sphere / box: {state}", fontsize=TITLE_SIZE, color=color)
+        axis.view_init(elev=VIEW_ELEVATION, azim=PLANE_AZIMUTH, vertical_axis="y")
+        fit_space(axis, bounds)
+        draw_box(axis, data["box"])
+        centre, radius = sphere
+        wire_sphere(axis, centre, radius, color)
+        axis.plot(*np.array([centre, closest]).T, color=MUTED, linestyle="--")
+        axis.scatter(*closest, color=INK, s=POINT_SIZE, depthshade=False)
+        axis.scatter(*centre, color=color, s=POINT_SIZE, depthshade=False)
+
+    save_gif(fig, draw, len(frames), output, GIF_FPS, colors=ORBIT_GIF_COLORS)
+
+
+def sphere_segments_figure(data, output):
+    fig, axes = space_panels(("Segment / closed box", "Segment / closed sphere"))
+    labels = []
+    label_colors = {}
+    for target, axis in enumerate(axes):
+        bounds = list(data["box"])
+        if target:
+            centre, radius = data["segment_sphere"]
+            wire_sphere(axis, centre, radius, POINT)
+            bounds.extend((np.array(centre) - radius, np.array(centre) + radius))
+        else:
+            draw_box(axis, data["box"])
+        for number, ((a, c, results), color) in enumerate(zip(data["segments"], SLOTS), start=1):
+            hit, t, point = results[target]
+            axis.plot(*np.array([a, c]).T, color=color, linestyle="-" if hit else "--")
+            bounds.extend((a, c))
+            if hit:
+                axis.scatter(*point, color=color, s=POINT_SIZE, depthshade=False)
+                result = "inside start t = 0" if t == 0 else f"entry t = {t:.3g}"
+            else:
+                result = "miss"
+            label = f"{number}: {result}"
+            labels.append((axis, [a], [label]))
+            label_colors[label] = color
+        fit_space(axis, bounds, zoom=SEGMENT_ZOOM)
+    legend(fig, [("entry point", INK, "o", ""), ("miss (dashed)", MUTED, "", "--")])
+    orbit(fig, axes, output, labels, label_colors=label_colors)
 
 
 def main():
@@ -205,13 +443,16 @@ def main():
     parser.add_argument("--out", type=pathlib.Path, required=True)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    data = run_probe(args.cc, [PROBE])
-    for name, key, plot in (("rect-queries", "rect", rect_figure),
-                            ("plane-distance", "distance", distance_figure),
-                            ("plane-from-points", "triangle", points_figure),
-                            ("plane-from-rows", "rows", rows_figure),
-                            ("frustum", "frustum", frustum_figure)):
-        plot(data[key], args.out / (name + ".png"))
+    data = run_probe(args.cc, [PROBE], GIF_FRAMES)
+    rect_figure(data["rect"], args.out / "rect-queries.png")
+    for name, values, plot in (("plane-distance.png", data["distance"], distance_figure),
+                              ("plane-from-points.png", data["triangle"], points_figure),
+                              ("plane-from-rows.png", data["rows"], rows_figure),
+                              ("frustum.png", data["frustum"], frustum_figure),
+                              ("box3-frustum.gif", data, box_frustum_figure),
+                              ("box3-sphere-overlap.gif", data["queries"], sphere_overlap_figure),
+                              ("box3-sphere-segments.png", data["queries"], sphere_segments_figure)):
+        plot(values, args.out / name)
     return 0
 
 

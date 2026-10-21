@@ -138,6 +138,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_heap.c"
         "console/verbs/console_tone.c"
         "console/verbs/console_melody.c"
+        "console/verbs/console_codec.c"
         "console/verbs/console_sound.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
@@ -151,6 +152,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     # Acoustic detection belongs to the development console.
     list(APPEND app_srcs
         "audio/audio_loopback.c"
+        "audio/audio_loopback_detector.c"
         "audio/audio_frequency.c"
     )
 endif()

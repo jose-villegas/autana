@@ -42,6 +42,8 @@ any type-specific operations.
 | `transform_template.h` | `MATH_DEFINE_TRANSFORM` | position, rotation, scale and the cached matrix | `transformf`, `transformx` |
 | `project_template.h` | `MATH_DEFINE_CLIP_NEAR` | near-plane segment clipping, no type | `projectf`, `projectx` |
 | `rect_template.h` | `MATH_DEFINE_RECT` | half-open rectangles | `rectf`, `recti`, `rects`, `rectx` |
+| `box3_template.h` | `MATH_DEFINE_BOX3`, `MATH_DEFINE_BOX3_REAL` | closed boxes; real queries take a plane type | `box3s`, `box3f`; real `f` |
+| `sphere_template.h` | `MATH_DEFINE_SPHERE` | closed spheres and box/segment queries | `spheref` |
 | `plane_template.h` | `MATH_DEFINE_PLANE` | planes, signed distance, frustum planes from a matrix's rows | `planef`, `planex` |
 
 The macro arguments:
@@ -49,11 +51,12 @@ The macro arguments:
 | Argument | What it is |
 |---|---|
 | `P` | The type being made, e.g. `vec3f` (its functions are `vec3f_add`, ...) |
-| `V`, `R`, `Q`, `M` | The vector, rectangle, quaternion and matrix types a family builds on |
-| `L` | The projection lens type used by `MATH_DEFINE_PLANE`, e.g. `projectf` |
+| `V`, `R`, `Q`, `M`, `B` | The vector, rectangle, quaternion, matrix and box types a family builds on |
+| `L` | The projection lens prefix for `MATH_DEFINE_PLANE`, e.g. `projectf`; the plane prefix for `MATH_DEFINE_BOX3_REAL`, e.g. `planef` |
+| `LOWEST`, `HIGHEST` | The box scalar bounds, e.g. `INT16_MIN`, `INT16_MAX` or `-INFINITY`, `INFINITY` |
 | `T` | The scalar (`float`, `int`, `int32_t`, `int16_t`); `recti` keeps plain `int` |
 | `W` | The type a dot product sums in (wider than `T` for an integer) |
-| `OPS` | The scalar operations' prefix (`mathf`, `mathi`, `maths`, `mathx`): the static inline functions `OPS_add`, `OPS_mul`, `OPS_one` and the rest in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`. A family names only the ones it uses, so a type without `OPS_div` or `OPS_sqrt` gets no normalize. |
+| `OPS` | The scalar operations' prefix (`mathf`, `mathi`, `maths`, `mathx`): the static inline functions `OPS_add`, `OPS_mul`, `OPS_one` and the rest in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`. A family names only the ones it uses, so normalization requires `OPS_rsqrt` (reciprocal square root), supplied by `mathf` and `mathx`. |
 | `N` | A vector's component count: the vector's own for component-wise operations (`vec_ops_template.h`), a swizzle source's otherwise |
 | `D`, `S` | A swizzle's result and source vector types (`vec_swizzle_template.h`) |
 | `CROSS` | `MATH_DEFINE_CLIP_NEAR`'s crossing step, `_projectf_cross_near` or `_projectx_cross_near`; it defines `P_clip_near` and no type |

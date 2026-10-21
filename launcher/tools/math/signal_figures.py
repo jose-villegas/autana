@@ -6,13 +6,11 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, ROOT, run_probe
-from docs.plot_style import FAINT, LABEL_SIZE, SLOTS, save, save_gif, subplots
+from docs.plot_style import GIF_FRAMES, GIF_FPS, FAINT, LABEL_SIZE, SLOTS, save, save_gif, subplots
 import numpy as np
 
 PROBE = pathlib.Path(__file__).with_name("signal_figures_probe.c")
 SOURCES = (PROBE, *(ROOT / "launcher/packages/math/src/signal" / name for name in ("goertzel.c", "pitch.c")))
-GIF_FRAMES = 60
-GIF_FPS = 10
 PANELS = 2
 AMPLITUDE_MAX = 1.1
 REFERENCE_ALPHA = 0.6

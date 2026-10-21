@@ -48,6 +48,10 @@ transform state, affine2 inverses and normalization quotients.
 | `vec3f_octahedral(n)` | the point of the square $`[-1, 1]^2`$ a direction maps to<sup>[[21]](../Citations.md#21)</sup>, the $`z < 0`$ half folded over the diagonals; any length but zero; `f` only | $`(u, v) = \frac{(n_x,\ n_y)}{\lvert n_x\rvert + \lvert n_y\rvert + \lvert n_z\rvert}`$<br> folded to $`(\mathrm{sign}(u)\,(1 - \lvert v\rvert),\ \mathrm{sign}(v)\,(1 - \lvert u\rvert))`$ when $`n_z < 0`$ |
 | `vec3f_from_octahedral(p)` | the unit direction of a point of the square, the inverse of `vec3f_octahedral`; `f` only | $`z = 1 - \lvert p_x\rvert - \lvert p_y\rvert`$<br> the point unfolded when $`z < 0`$<br> then normalized |
 
+Float normalization uses `mathf_rsqrt` for the reciprocal length.
+The scalar limit is `MATHF_RSQRT_ULP_LIMIT`; nonzero input remains required.
+The [benchmark](Benchmark.md) reports measured component error against the `1 / sqrtf` path.
+
 `vec3x_normalize` and `vec3x_normalize_divide` accept any nonzero int32 vector.
 Components are within $`0.5 + 2^{-12}`$ LSB (nearest value or neighbour on a near-tie).
 For `x`, a zero vector gives zero and `q = mathx_div(t, 0)`.
@@ -74,6 +78,7 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `vec3x_from_vec3f(v)`, `vec2x_from_vec2f(v)` | `v * 65536`, rounded, saturated |
 | `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
 | `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
+| `vec3s_from_array(p)` | an `int16_t[3]` position row, exact |
 
 ## quat (`f x`)
 
@@ -88,6 +93,10 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead<sup>[[53]](../Citations.md#53)</sup> | $`s = 2\sqrt{1 + r_x + u_y + f_z}`$<br> $`\left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
 | `P_nlerp(a, b, t)` | unit-length shortest arc; negate `b` when the 4D dot is negative | $`\mathrm{normalize}(a(1-t)+bt)`$ |
 | `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#19)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$: nearly parallel inputs take `P_nlerp`, the rest evaluated by Eberly's series in cos - 1, halving the arc past a 120-degree rotation ($`a \cdot b < \frac{1}{2}`$) and summing until its terms fall below float precision, with no last-term correction<sup>[[71]](../Citations.md#71)</sup> |
+
+`quatf_normalize` and `quatf_nlerp` use `mathf_rsqrt` for the reciprocal length.
+A device sweep measures nlerp component error over quaternion pairs and
+interpolation weights against the `1 / sqrtf` path.
 
 ## affine2 (`f x`)
 

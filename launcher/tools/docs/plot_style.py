@@ -49,7 +49,15 @@ def style_axes(axis, title, *, square=False):
 
 
 GIF_COLORS = 32
+GIF_FRAMES = 60
+GIF_FPS = 10
+# Translucent orbit faces need more palette entries than flat charts.
+ORBIT_GIF_COLORS = 64
 GIF_MILLISECONDS_PER_SECOND = 1000
+WIRE_SAMPLES = 49
+WIRE_STRIDE = 8
+WIRE_ALPHA = 0.45
+WIRE_WIDTH = 0.6
 
 
 def save_gif(fig, draw_frame, frames, path, fps, colors=GIF_COLORS):
@@ -74,3 +82,62 @@ def save_gif(fig, draw_frame, frames, path, fps, colors=GIF_COLORS):
                           palette=palette.getpalette()[:colors * 3])
     finally:
         plt.close(fig)
+
+
+DARK_BACKGROUND = "#0d1117"
+DARK_INK = "#e6edf3"
+DARK_MUTED = "#9da7b3"
+DARK_FAINT = "#30363d"
+
+
+def picture(stem, description, directory="../images"):
+    from html import escape
+    source = escape(f"{directory}/{stem}", quote=True)
+    description = escape(description, quote=True)
+    return (f'<picture>\n  <source media="(prefers-color-scheme: dark)" srcset="{source}-dark.png">\n'
+            f'  <source media="(prefers-color-scheme: light)" srcset="{source}.png">\n'
+            f'  <img alt="{description}" src="{source}.png">\n</picture>\n\n')
+
+
+def save_themes(fig, path, dpi=DPI):
+    """Save both page themes; the unsuffixed image is the light fallback."""
+    from matplotlib.text import Text
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=dpi, metadata={"Software": None})
+    fig.set_facecolor(DARK_BACKGROUND)
+    for axis in fig.axes:
+        axis.set_facecolor(DARK_BACKGROUND)
+        axis.tick_params(colors=DARK_MUTED)
+        for spine in axis.spines.values():
+            spine.set_color(DARK_FAINT)
+        for line in (*axis.get_xgridlines(), *axis.get_ygridlines()):
+            line.set_color(DARK_FAINT)
+        legend = axis.get_legend()
+        if legend:
+            legend.get_frame().set(facecolor=DARK_BACKGROUND, edgecolor=DARK_FAINT)
+    for text in fig.findobj(Text):
+        text.set_color(DARK_INK)
+    save(fig, path.with_stem(path.stem + "-dark"), dpi)
+
+
+FIGURE_SIZE = (8, 4.5)
+LEGEND_ANCHOR = (0.5, -0.18)
+LEGEND_COLUMNS = 2
+
+
+def save_themed_plot(fig, axis, path, title, *, legend_columns=LEGEND_COLUMNS):
+    style_axes(axis, title)
+    axis.grid(color=FAINT)
+    axis.legend(fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=LEGEND_ANCHOR, ncol=legend_columns)
+    save_themes(fig, path)
+
+
+def wire_sphere(axis, center, radius, color=FAINT):
+    yaw = np.linspace(0, 2 * np.pi, WIRE_SAMPLES)
+    pitch = np.linspace(-np.pi / 2, np.pi / 2, WIRE_SAMPLES)
+    x = center[0] + radius * np.outer(np.cos(yaw), np.cos(pitch))
+    y = center[1] + radius * np.outer(np.ones_like(yaw), np.sin(pitch))
+    z = center[2] + radius * np.outer(np.sin(yaw), np.cos(pitch))
+    axis.plot_wireframe(x, y, z, rstride=WIRE_STRIDE, cstride=WIRE_STRIDE,
+                        color=color, alpha=WIRE_ALPHA, linewidth=WIRE_WIDTH)
