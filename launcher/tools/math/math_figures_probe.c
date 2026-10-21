@@ -1,6 +1,7 @@
 /*
  * Prints JSON for the TRS animation in docs/math/Conventions.md and the
- * camera-to-pixel panels in Projection.md. math_figures.py draws the library results.
+ * camera-to-pixel panels in Projection.md. Every number in the figures comes
+ * from these library calls; math_figures.py draws their results.
  *
  *     math_figures_probe WIDTH HEIGHT
  *

@@ -4,10 +4,9 @@ through scale, rotate and translate, and one camera point on its way to a pixel.
 launcher/tools/render/render_doc_images.sh runs it; the numbers come from
 math_figures_probe.c, which calls the library.
 
-    python launcher/tools/math/math_figures.py --cc CC --trs GIF --pixel PNG
+    python launcher/tools/math/math_figures.py --cc CC --trs DIR --pixel PNG
 
---trs animates scale, rotate and translate across four 3D panels; --pixel the camera point's way
-to a pixel. The viewport is the panel's, read from the board's display header.
+--trs writes one looping GIF per TRS step; --pixel shows the camera point's way to a pixel. The viewport is the panel's, read from the board's display header.
 """
 
 import argparse
@@ -23,7 +22,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
 from build.packages import include_roots
 
-from docs.plot_style import (FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, ORBIT_GIF_COLORS, SLOTS, TITLE_SIZE,
+from docs.plot_style import (DPI, FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, ORBIT_GIF_COLORS, SLOTS, TITLE_SIZE,
                              style_axes, figure as new_figure, save, save_gif, subplots)
 from matplotlib.patches import Rectangle
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -35,8 +34,7 @@ DISPLAY = ROOT / "launcher/components/esp32_s3_touch_amoled_1_8/include/bsp/disp
 SHAPE_FILL, POINT, PIXEL_FILL = SLOTS[:3]
 TRS_MARGIN = 0  # units of room beyond the farthest corner
 TRS_PANEL_SIZE = 3.2  # inches per 3D panel
-TRS_GIF_DPI = 80
-HOLD_FRAMES = 6
+HOLD_FRAMES = 6  # pause at each step's start and end
 PANEL_SIZE = 3.0  # inches per panel, wide and high
 PANEL_TITLE_ROOM = 0.3  # inches above each row for the panel titles
 VIEW_ELEVATION, VIEW_AZIMUTH = 25, -60  # degrees, the same for every panel
@@ -68,21 +66,20 @@ def run_probe(cc, sources, *arguments):
 
 
 def trs_figure(trs, output):
-    stages = (("local", "local"), ("scaled", "1. scale {sx:g} x {sy:g} x {sz:g}"),
-              ("rotated", "2. rotate {angle:g} deg about ({ax:.2f}, {ay:.2f}, {az:.2f})"),
-              ("placed", "3. translate to ({tx:g}, {ty:g}, {tz:g})"))
+    stages = (("local", "local", "local"), ("scaled", "scale", "1. scale {sx:g} x {sy:g} x {sz:g}"),
+              ("rotated", "rotate", "2. rotate {angle:g} deg about ({ax:.2f}, {ay:.2f}, {az:.2f})"),
+              ("placed", "translate", "3. translate to ({tx:g}, {ty:g}, {tz:g})"))
     values = dict(zip(("sx", "sy", "sz"), trs["scale"]), angle=trs["angle_degrees"],
                   **dict(zip(("ax", "ay", "az"), trs["axis"])), **dict(zip(("tx", "ty", "tz"), trs["position"])))
-    corners = [p for name, _ in stages for p in trs[name]]
+    corners = [p for name, _, _ in stages for p in trs[name]]
     high = math.ceil(max(abs(v) for c in corners for v in c)) + TRS_MARGIN
     low = -high
     count = trs["outline_corners"]
-    size = (TRS_PANEL_SIZE * len(stages), TRS_PANEL_SIZE + PANEL_TITLE_ROOM)
-    figure = new_figure(size, dpi=TRS_GIF_DPI)
-    shapes, titles = [], []
-    for index, (name, title) in enumerate(stages):
-        axis = figure.add_subplot(1, len(stages), index + 1, projection="3d")
-        titles.append(axis.set_title(title.format(**values), fontsize=TITLE_SIZE, color=MUTED))
+    size = (TRS_PANEL_SIZE, TRS_PANEL_SIZE + PANEL_TITLE_ROOM)
+    for step, (_, filename, title) in enumerate(stages[1:], start=1):
+        figure = new_figure(size, dpi=DPI)
+        axis = figure.add_subplot(1, 1, 1, projection="3d")
+        axis.set_title(title.format(**values), fontsize=TITLE_SIZE, color=INK)
         axis.set_xlim(low, high)
         axis.set_ylim(low, high)
         axis.set_zlim(low, high)
@@ -96,37 +93,23 @@ def trs_figure(trs, output):
             end = [high * d for d in direction]
             axis.plot([-end[0], end[0]], [-end[1], end[1]], [-end[2], end[2]], color=MUTED, linewidth=1)
             axis.text(*[(high + 0.2) * d for d in direction], label, fontsize=LABEL_SIZE, color=MUTED)
-        start = trs[stages[max(0, index - 1)][0]]
-        if index:
-            for ring in prism_edges(start, count):
-                axis.plot(*zip(*ring), color=INK, linestyle="--", linewidth=GHOST_WIDTH)
+        start = trs[stages[step - 1][0]]
+        for ring in prism_edges(start, count):
+            axis.plot(*zip(*ring), color=INK, linestyle="--", linewidth=GHOST_WIDTH)
         shape = Poly3DCollection(prism_faces(start, count), facecolor=SHAPE_FILL,
                                  alpha=SHAPE_ALPHA, edgecolor=SHAPE_FILL)
         axis.add_collection3d(shape)
-        shapes.append(shape)
-    frames = [(0, trs["local"])] * HOLD_FRAMES
-    for frame in trs["frames"]:
-        frames.append((frame["step"], frame["shape"]))
-        if frame["t"] == 1:
-            frames.extend([frames[-1]] * HOLD_FRAMES)
+        frames = [start] * HOLD_FRAMES
+        frames.extend(frame["shape"] for frame in trs["frames"] if frame["step"] == step)
+        frames.extend([frames[-1]] * HOLD_FRAMES)
 
-    def draw(index):
-        step, points = frames[index]
-        for panel, ((name, _), shape, title) in enumerate(zip(stages, shapes, titles)):
-            if panel == step:
-                corners = points
-            elif panel < step:
-                corners = trs[name]
-            else:
-                corners = trs[stages[panel - 1][0]]
-            shape.set_verts(prism_faces(corners, count))
-            title.set_color(INK if panel == step else MUTED)
-            title.set_fontweight("bold" if panel == step else "normal")
+        def draw(index):
+            shape.set_verts(prism_faces(frames[index], count))
 
-    draw(0)
-    figure.canvas.draw()
-    figure.set_layout_engine(None)
-    save_gif(figure, draw, len(frames), output, GIF_FPS, colors=ORBIT_GIF_COLORS)
+        draw(0)
+        figure.canvas.draw()
+        figure.set_layout_engine(None)
+        save_gif(figure, draw, len(frames), output / f"trs-{filename}.gif", GIF_FPS, colors=ORBIT_GIF_COLORS)
 
 
 def prism_faces(points, count):
@@ -212,7 +195,7 @@ def pixel_figure(px, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--cc", required=True, help="host C compiler")
-    parser.add_argument("--trs", required=True, type=pathlib.Path, help="GIF for the TRS animation")
+    parser.add_argument("--trs", required=True, type=pathlib.Path, help="output directory for the TRS step GIFs")
     parser.add_argument("--pixel", required=True, type=pathlib.Path, help="PNG for the camera-to-pixel panels")
     args = parser.parse_args()
     width = read_define(DISPLAY, "BSP_LCD_H_RES")

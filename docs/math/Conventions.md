@@ -20,9 +20,9 @@ M = T\,R\,S, \qquad p_{\text{world}} = M\,p_{\text{local}}, \qquad
 V = R^{\mathsf T}\,T(-\text{position})
 ```
 
-![Four animated 3D panels show a block that scales 1.6 x 0.6 x 1.4, turns 50 degrees about (0, 1, 1), and moves to (2, 1, 1)](../images/math/trs-order.gif)
+<img src="../images/math/trs-scale.gif" width="32%" alt="Scale the local block"> <img src="../images/math/trs-rotate.gif" width="32%" alt="Rotate the scaled block"> <img src="../images/math/trs-translate.gif" width="32%" alt="Translate the rotated block">
 
-Each animated panel applies `mat4f_from_trs` with one more part; the dashed block is the stage before.
+Each GIF animates one step of `mat4f_from_trs`; the dashed block is the stage before.
 
 ## Templates
 
