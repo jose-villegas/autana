@@ -385,7 +385,7 @@ class NvmlRuntimeTests(unittest.TestCase):
 #define PROCESS_BYTES 123
 struct memory { unsigned long long total, free, used; };
 struct process { unsigned int pid; unsigned long long used; unsigned int gpu, compute; };
-static int state(void) {
+static int state(int process_query) {
     char mode[32] = "answer";
     FILE *file = fopen(getenv("TEST_NVML_CONTROL"), "r");
     if (file) { fscanf(file, "%31s", mode); fclose(file); }
@@ -395,13 +395,13 @@ static int state(void) {
     if (!strcmp(mode, "permission")) return NVML_ERROR_NO_PERMISSION;
     if (!strcmp(mode, "missing")) return NVML_ERROR_NOT_FOUND;
     if (!strcmp(mode, "unsupported")) return NVML_ERROR_NOT_SUPPORTED;
-    if (!strcmp(mode, "hang")) {
+    if (!strcmp(mode, "hang") || (process_query && !strcmp(mode, "process_hang"))) {
         file = fopen(getenv("TEST_NVML_ENTERED"), "w");
         if (file) fclose(file);
         do { usleep(1000); file = fopen(getenv("TEST_NVML_CONTROL"), "r");
             if (!file) break;
             fscanf(file, "%31s", mode); fclose(file);
-        } while (!strcmp(mode, "hang"));
+        } while (!strcmp(mode, "hang") || !strcmp(mode, "process_hang"));
     }
     return NVML_SUCCESS;
 }
@@ -411,7 +411,7 @@ int nvmlDeviceGetHandleByIndex_v2(unsigned int index, void **handle) {
     *handle = (void *)1; return NVML_SUCCESS;
 }
 int nvmlDeviceGetMemoryInfo(void *handle, struct memory *info) {
-    int result = state(); if (result) return result;
+    int result = state(0); if (result) return result;
     char mode[32] = "answer";
     FILE *file = fopen(getenv("TEST_NVML_CONTROL"), "r");
     if (file) { fscanf(file, "%31s", mode); fclose(file); }
@@ -421,7 +421,7 @@ int nvmlDeviceGetMemoryInfo(void *handle, struct memory *info) {
 }
 #ifndef OMIT_PROCESS_SYMBOL
 int nvmlDeviceGetComputeRunningProcesses_v3(void *handle, unsigned int *count, struct process *info) {
-    int result = state(); if (result) return result;
+    int result = state(1); if (result) return result;
     if (*count < 1) { *count = 1; return NVML_ERROR_INSUFFICIENT_SIZE; }
     *count = 1; info[0].pid = PROCESS_PID; info[0].used = PROCESS_BYTES;
     info[0].gpu = info[0].compute = 0; return NVML_SUCCESS;
@@ -638,3 +638,25 @@ int nvmlDeviceGetComputeRunningProcesses_v3(void *handle, unsigned int *count, s
         self.assertEqual(budget._gpu_resident_bytes(), {42: 123})
         self.control.write_text("unsupported")
         self.assertEqual(budget._gpu_resident_bytes(), {})
+
+    def test_slow_process_query_does_not_refresh_old_memory_sample(self):
+        import time
+        from unittest.mock import patch
+        from r3d import task_executor as budget
+        with self.running_worker() as (executor, _, _):
+            with patch.object(budget, "GPU_QUERY_SAMPLE_SECONDS", self.FAILURE_SECONDS * 2):
+                self.control.write_text("process_hang")
+                self.wait_for(self.entered.exists)
+                time.sleep(self.STALE_SECONDS * 2)
+                queued = executor.submit(identity_worker, "queued", estimates=(0,) * 3)
+                previous = executor.gpu_sampler.latest
+                self.control.write_text("low")
+                self.wait_for(lambda: executor.gpu_sampler.latest is not previous)
+                with executor.condition:
+                    executor.condition.notify_all()
+                time.sleep(self.STALE_SECONDS * 2)
+                with executor.condition:
+                    self.assertTrue(any(item[0] is queued for item in executor.queue))
+                self.assertFalse(queued.done())
+                self.control.write_text("answer")
+                self.assertEqual(queued.result(timeout=10)[0], "queued")

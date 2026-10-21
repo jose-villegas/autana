@@ -133,11 +133,12 @@ class _GpuSampler:
 
     def _poll(self):
         while not self.stopped.is_set():
+            sampled_at = time.monotonic()
             try:
                 sample = (_nvml().free_bytes(), _gpu_resident_bytes())
-                self.latest = (sample, time.monotonic(), None)
+                self.latest = (sample, sampled_at, None)
             except OSError as error:
-                self.latest = (None, time.monotonic(), error)
+                self.latest = (None, sampled_at, error)
                 if isinstance(error, _GpuGone):
                     return
             if self.stopped.wait(GPU_QUERY_SAMPLE_SECONDS):
