@@ -597,7 +597,7 @@ def gpu(args, out, work):
     # The parent never forks or initialises CUDA; disposable workers own heavy state.
     memory_guard()
     require_ray_tracing()
-    from r3d.process_budget import TaskExecutor
+    from r3d.task_executor import TaskExecutor
     with TaskExecutor() as executor:
         return _gpu(args, out, work, executor)
 
