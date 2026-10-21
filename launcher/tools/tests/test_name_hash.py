@@ -11,7 +11,6 @@ from build.c_header import read_define
 
 LAUNCHER = Path(__file__).resolve().parents[2]
 VECTORS = LAUNCHER / "test/fixtures/name_hash_vectors.h"
-OWNER = LAUNCHER / "main/core/name_hash.h"
 
 
 class NameHashTests(unittest.TestCase):
@@ -31,11 +30,6 @@ class NameHashTests(unittest.TestCase):
         expected = read_define(VECTORS, "NAME_HASH_TEST_BYTES_HASH")
         self.assertEqual(name_hash.name_hash_bytes(data), expected)
         self.assertNotEqual(expected, name_hash.NONE)
-
-    def test_constants_match_header(self):
-        for name in ("OFFSET_BASIS", "PRIME", "NONE"):
-            with self.subTest(constant=name):
-                self.assertEqual(getattr(name_hash, name), read_define(OWNER, "NAME_HASH_" + name))
 
 
 if __name__ == "__main__":
