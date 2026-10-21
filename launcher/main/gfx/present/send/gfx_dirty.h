@@ -515,9 +515,9 @@ plan_run(int row, int col_first, int col_last, int y0, int y1, int* sx0, int* sx
     return n;
 }
 
-/* The union box across columns [start,end) of row: every column in a
- * contiguous run is already confirmed dirty, so this only needs to widen,
- * never test. */
+/* The union box across columns [start,end) of row. Only widens, never
+ * tests: a clean cell's box is empty (dirty_row_sent() inverts it), so a
+ * range spanning clean cells still yields the dirty cells' union. */
 static inline void
 run_box(int row, int start, int end, int* x0, int* x1, int* y0, int* y1) {
     *x0 = GFX_WIDTH;

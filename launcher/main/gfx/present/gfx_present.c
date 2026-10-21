@@ -34,7 +34,7 @@ _Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one s
  * places it: the compiler's clones of a function inherit the attribute, and
  * a mapping entry names only the original. Development overlays and send
  * auditing make dev and diag larger.
- * IRAM budget: release 2863 B, dev 3896 B, diag 3896 B */
+ * IRAM budget: release 2850 B, dev 3818 B, diag 3818 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -622,10 +622,42 @@ send_run(int row, int run_start, int run_end, int box_x0, int box_x1, int box_y0
     }
 }
 
+static inline bool
+panel_clock_is_fast(void) {
+    return panel_clock_applied_hz == GFX_PANEL_CLOCK_FAST_HZ;
+}
+
+/* Box [x0, x1) x [y0, y1) of strip `row` as one full-width send: just its
+ * rows when the box is full width and shorter than the strip, else the
+ * whole strip. */
+static void
+send_rows_full_width(int row, int x0, int x1, int y0, int y1, int* queued) {
+    if (x0 == 0 && x1 == GFX_WIDTH && y0 < y1 && y1 - y0 < STRIP_HEIGHT && send_partial_band(y0, y1, queued)) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        dev_strips_sent_partial++;
+#endif
+        return;
+    }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    dev_strips_sent_full++;
+#endif
+    send_full_row(row, queued);
+}
+
 /* Cells merge into transactions; gaps remain. Falls back to full row for
  * large parts. */
 static void
 send_one_row(int row, int* queued) {
+    /* At the fast clock the panel can land a partial-width window a column off. */
+    if (panel_clock_is_fast()) {
+        int x0;
+        int x1;
+        int y0;
+        int y1;
+        run_box(row, 0, GRID_COLS, &x0, &x1, &y0, &y1);
+        send_rows_full_width(row, 0, GFX_WIDTH, y0, y1, queued);
+        return;
+    }
     int run_start[GRID_COLS];
     int run_end[GRID_COLS];
     int box_x0[GRID_COLS];
@@ -646,17 +678,7 @@ send_one_row(int row, int* queued) {
             if (area > GATHER_MAX_PIXELS) {
                 /* See send_partial_band(). Full-width box means row's only
                  * run: safe to return. */
-                if (box_x0[r] == 0 && box_x1[r] == GFX_WIDTH && box_y1[r] - box_y0[r] < STRIP_HEIGHT
-                    && send_partial_band(box_y0[r], box_y1[r], queued)) {
-#if CONFIG_LAUNCHER_DEVELOPMENT
-                    dev_strips_sent_partial++;
-#endif
-                    return;
-                }
-#if CONFIG_LAUNCHER_DEVELOPMENT
-                dev_strips_sent_full++;
-#endif
-                send_full_row(row, queued);
+                send_rows_full_width(row, box_x0[r], box_x1[r], box_y0[r], box_y1[r], queued);
                 return;
             }
         }
@@ -677,7 +699,7 @@ send_one_row(int row, int* queued) {
  * sends so a strip carries whatever they just put on the panel. */
 static void
 send_heal_strips(bool (*send_rows)(int y0, int y1), int* queued) {
-    if (panel_clock_applied_hz != GFX_PANEL_CLOCK_FAST_HZ) {
+    if (!panel_clock_is_fast()) {
         gfx_heal_reset(&heal);
         return;
     }
@@ -1053,6 +1075,7 @@ gfx_present_raw_full_frame_for_test(void) {
     gfx_present_drain();
     gfx_present_guard_end();
 }
+
 #endif /* ESP_PLATFORM */
 #endif
 

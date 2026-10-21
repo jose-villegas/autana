@@ -260,12 +260,35 @@ test_ridge_performance(void) {
     TEST_PASS();
 }
 
+/* The ambient arms at the slow panel clock, where the present still sends
+ * only the changed boxes, against the full-width rows the fast clock needs. */
+void
+test_ridge_performance_slow_clock(void) {
+    const int restore_hz = gfx_panel_clock_hz();
+    gfx_set_panel_clock_hz(GFX_PANEL_CLOCK_SLOW_HZ);
+    static const arm_t arms[] = {ARM_AMBIENT, ARM_AMBIENT_PORTRAIT};
+
+    enum { ARM_COUNT = sizeof arms / sizeof arms[0] };
+
+    arm_result_t results[ARM_COUNT];
+    for (int i = 0; i < ARM_COUNT; i++) {
+        results[i] = run_arm(arms[i]);
+    }
+    gfx_set_panel_clock_hz(restore_hz);
+    for (int i = 0; i < ARM_COUNT; i++) {
+        ESP_LOGI(TAG, "RIDGE PERF clock_mhz=%d", GFX_PANEL_CLOCK_SLOW_HZ / 1000000);
+        log_arm(arms[i], &results[i]);
+        assert_arm(&results[i]);
+    }
+}
+
 void
 run_ridge_perf_suite(void) {
     RUN_TEST(test_ridge_repaint_matches_a_full_paint);
     RUN_TEST(test_ridge_dissolve_matches_a_full_paint);
     RUN_TEST(test_ridge_settles_after_tilting);
     RUN_TEST(test_ridge_performance);
+    RUN_TEST(test_ridge_performance_slow_clock);
 }
 
 #else
