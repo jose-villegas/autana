@@ -247,7 +247,7 @@ def board_for_lock(store, named=None, remembered=False, auto_pick=False, token=N
                        + " - name one with --board / -b / use: " + ", ".join(board_label(serial) for serial in candidates))
 
 
-# A power-cycling reset takes the USB Serial/JTAG port off the bus about
+# A reset's boot takes the USB Serial/JTAG port off the bus about
 # 0.2 s after esptool returns, and lists it again about 1 s after. The
 # reappear bound covers a slow host and still fails fast; a reset that keeps
 # the port up costs only RESET_LEAVE_SECONDS.

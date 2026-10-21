@@ -33,9 +33,8 @@ reset. What a flash proves (esptool's hash check and the build's
 `BUILD_ID`, not the boot) and the whole hand-off under the device lock are
 in [Flash-and-Captures.md](../tools/Flash-and-Captures.md#what-a-flash-proves).
 
-The RTS reset is a warm reset, so the bootloader's PMIC restart (below)
-power-cycles the SoC: USB drops and comes back, possibly on a **different
-COM number**. Nothing depends on the number: after every reset `device.py`
+After the RTS reset the new boot drops USB while it tunes PSRAM (below), and
+the port comes back, possibly on a **different COM number**. Nothing depends on the number: after every reset `device.py`
 waits for the board's USB serial number to leave the port list and come
 back, then opens the port it is listed under, so no open gets the dying
 handle. Every open `device.py` makes leaves DTR and RTS low without passing
@@ -63,39 +62,21 @@ attached over USB-JTAG loses the port for that unplug on every boot.
 `launcher/tools/build/check_psram_tuning_wrap.py` fails a linked image whose
 tuning is not reached through the wrap.
 
-Independently of the wrap, the bootloader component
-`launcher/bootloader_components/pmic_cold_boot/` requests an AXP2101 power
-cycle whenever the reset was not a power-on.
-
 ```mermaid
 sequenceDiagram
     participant Host
-    participant Boot as 2nd-stage bootloader
-    participant PMIC as AXP2101
     participant App
-    Host->>Boot: warm reset
-    Boot->>PMIC: I2C, REG 0x10 bit 1, restart
-    PMIC->>Boot: VCC3V3 off and on, PWROK low on CHIP_PU
-    Note over Host,Boot: USB drops, the port goes away
-    Boot->>App: power-on reset this time, so the app loads
-    Note over Host,App: D+ pull-up off while the app tunes PSRAM
+    Host->>App: warm reset (RTS), or a panic or watchdog on the chip
+    Note over Host,App: D+ pull-up off while the app tunes PSRAM, the port goes away
     App->>Host: first BUILD_ID, before the port is back
     Note over Host,App: USB enumerates again
     App->>Host: BUILD_ID again, after shell Ready
+    App->>Host: RESET_REASON names the warm reset
 ```
 
-The power cycle drops the USB port, and Windows discards serial data the host
-had not read yet, so unread panic output can be lost. Development and
-diagnostics builds set `CONFIG_PMIC_COLD_BOOT_HOST_DRAIN` in their config
-fragments and wait for `HOST_DRAIN_US` before the cycle; release does not.
-The bootloader configuration cannot see `CONFIG_LAUNCHER_DEVELOPMENT`. A
-power-on reset never waits.
-
-After a successful PMIC restart the app reports a power-on reset: after a panic
-or a watchdog the cause shows only in what was logged before it, RTC memory
-does not survive, and a deep-sleep wake would become a full power cycle.
-Do not rely on RTC state surviving that restart. The bootloader logs and
-continues if the PMIC does not acknowledge or the restart does not occur.
+A warm reset keeps RTC memory, and the app reports its real cause
+(`RESET_REASON=PANIC`, `TASK_WDT`, `USB_UART_CHIP`; see
+[Debugging.md](Debugging.md)).
 
 ---
 

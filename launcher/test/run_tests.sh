@@ -325,11 +325,6 @@ if [ "$BUILD_ONLY" != 1 ]; then
     "$TEST_DIR/check_packages_alone.sh"
     "$TEST_DIR/check_tool_probes.sh"
     "$TEST_DIR/check_inline_owners.sh"
-
-    # The bootloader hook lives outside SOURCES too: a separate header world
-    # entirely, so it gets its own standalone binary rather than joining the
-    # suites above.
-    "$TEST_DIR/check_pmic_cold_boot.sh" --build-dir "$BUILD_DIR"
 fi
 
 # --- incremental build ------------------------------------------------------
