@@ -83,9 +83,11 @@ void gfx_set_present_async(bool on);
 bool gfx_present_async_enabled(void);
 
 /* The panel link's clock. The fast rate halves bus time but is past the
- * panel's rated 50 MHz: a region can land with stray pixels that stay until
- * it is sent again. gfx starts at GFX_QSPI_HZ and keeps whatever it was
- * last told; it does not choose or remember a rate itself. */
+ * panel's rated 50 MHz: there the panel sometimes lands a partial-width
+ * window a column off, so gfx sends only full-width rows at it, and a
+ * region can still land with stray pixels that stay until it is sent
+ * again. gfx starts at GFX_QSPI_HZ and keeps whatever it was last told; it
+ * does not choose or remember a rate itself. */
 #define GFX_PANEL_CLOCK_SLOW_HZ (40 * 1000 * 1000)
 #define GFX_PANEL_CLOCK_FAST_HZ (80 * 1000 * 1000)
 
