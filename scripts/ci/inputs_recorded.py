@@ -1,15 +1,18 @@
-"""Print true when no other run of this workflow on main is unfinished (with
---defer-in-flight), and the newest unexpired main record is rendered,
-names this fingerprint, and FORCE is not "true". Failed records are not
-current. The GPU gate holds the concurrency group and omits --defer-in-flight.
-With --skip-obsolete, prints an obsolete-run reason instead if GITHUB_SHA
-differs from main's head."""
+"""Print true when the newest unexpired record from main is a rendered
+record for this fingerprint and FORCE is not "true"; otherwise false. A
+failed-attempt record counts as a record, so a newer one makes the answer
+false. --defer-in-flight prints false while another run of this workflow
+on main is unfinished (hosted lookup; the GPU gate omits it).
+--skip-obsolete prints an obsolete-run reason instead if GITHUB_SHA is not
+main's head."""
 import argparse
 import os
 
 from github_api import call, pages
 
-RECORD_PREFIXES = ("doc-images-inputs-", "doc-images-failed-")
+RENDERED_PREFIX = "doc-images-inputs-"
+FAILED_PREFIX = "doc-images-failed-"
+RECORD_PREFIXES = (RENDERED_PREFIX, FAILED_PREFIX)
 
 
 def current(artifacts, fingerprint, force=False):
@@ -18,7 +21,7 @@ def current(artifacts, fingerprint, force=False):
                and item.get("workflow_run", {}).get("head_branch") == "main")
     latest = max(records, key=lambda item: item["created_at"], default=None)
     return bool(fingerprint) and not force and latest is not None and latest["name"] == (
-        RECORD_PREFIXES[0] + fingerprint)
+        RENDERED_PREFIX + fingerprint)
 
 
 def main(argv=None, request=call):

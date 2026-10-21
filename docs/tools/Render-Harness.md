@@ -160,8 +160,11 @@ The stage's work folder is named by it, and its saved `source.json` holds it
 and lists every input.
 
 The `doc-images-gpu` workflow runs on every main push, nightly and on manual
-dispatch. Only a matching rendered record counts as current, and it must be
-main's latest unexpired record, including failed attempts.
+dispatch.
+
+The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
+failed attempt is a record too, so a newer failed one makes them stale
+and the next run renders again.
 
 A dispatch with `force` bypasses both record checks but still skips an
 obsolete run. The hosted lookup defers to the GPU gate while another run of

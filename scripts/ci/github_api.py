@@ -1,5 +1,6 @@
 """Repository REST requests and complete paged listings for CI jobs, over urllib so
 no runner needs the GitHub CLI. Reads GH_TOKEN and GITHUB_REPOSITORY."""
+import http.client
 import json
 import os
 import time
@@ -8,7 +9,7 @@ import urllib.request
 
 
 PER_PAGE = 100
-GET_ATTEMPTS = 3
+GET_ATTEMPTS = 5
 RETRY_BASE_DELAY_SECONDS = 1
 REQUEST_TIMEOUT_SECONDS = 30
 RETRY_HTTP_STATUSES = (429, *range(500, 600))
@@ -24,7 +25,7 @@ def call(method, path, body=None):
         try:
             with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                 return json.load(response)
-        except (urllib.error.URLError, OSError) as error:
+        except (OSError, http.client.HTTPException) as error:
             if (attempt == attempts - 1 or
                     isinstance(error, urllib.error.HTTPError) and error.code not in RETRY_HTTP_STATUSES):
                 raise

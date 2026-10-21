@@ -1,4 +1,5 @@
 """Repository requests retain their authentication and traverse every API page."""
+import http.client
 import io
 import os
 from pathlib import Path
@@ -29,7 +30,10 @@ class GithubApiTests(unittest.TestCase):
         errors = (urllib.error.URLError('connect'), TimeoutError('timeout'),
                   ConnectionError('connect'), OSError('connect'),
                   urllib.error.HTTPError('url', 503, 'unavailable', {}, None),
-                  urllib.error.HTTPError('url', 429, 'limited', {}, None))
+                  urllib.error.HTTPError('url', 429, 'limited', {}, None),
+                  urllib.error.HTTPError('url', 500, 'server error', {}, None),
+                  urllib.error.HTTPError('url', 599, 'server error', {}, None),
+                  http.client.IncompleteRead(b'partial'))
         for error in errors:
             with self.subTest(error=error), mock.patch.dict(
                     os.environ, GH_TOKEN='token', GITHUB_REPOSITORY='owner/repo'), \
@@ -46,10 +50,11 @@ class GithubApiTests(unittest.TestCase):
                     for attempt in range(github_api.GET_ATTEMPTS - 1)])
 
     def test_nontransient_or_non_get_errors_are_not_retried(self):
-        missing = urllib.error.HTTPError('url', 404, 'missing', {}, None)
+        rejected = [('GET', urllib.error.HTTPError('url', code, 'rejected', {}, None))
+                    for code in (400, 401, 403, 404, 499, 600)]
         unavailable = urllib.error.HTTPError('url', 503, 'unavailable', {}, None)
-        for method, error in (('GET', missing), ('POST', unavailable),
-                              ('PATCH', TimeoutError('timeout')), ('DELETE', ConnectionError('connect'))):
+        for method, error in [*rejected, ('POST', unavailable),
+                              ('PATCH', TimeoutError('timeout')), ('DELETE', ConnectionError('connect'))]:
             with self.subTest(method=method, error=error), mock.patch.dict(
                     os.environ, GH_TOKEN='token', GITHUB_REPOSITORY='owner/repo'), \
                     mock.patch('time.sleep') as sleep, \
