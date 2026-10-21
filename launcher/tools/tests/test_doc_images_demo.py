@@ -1,6 +1,7 @@
 """doc_images.sh's bake copies keep their import file; physical_scene.py
 drops only the scene's indirect table and occlusion."""
 
+import collections
 import pathlib
 import re
 import shutil
@@ -17,6 +18,8 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 DEMO_SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
 DEMO_IMPORT = ROOT / "launcher/demo/sponza/sponza.import.toml"
 APP_SCRIPT = ROOT / "launcher/tools/render/doc_images_demo.sh"
+# The variants a scene places for "painting", as doc_tables.variants lists them.
+VARIANTS = [("painting", False), ("painting_lite", False), ("painting_flat", False), ("painting_fitted", True)]
 
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
@@ -91,7 +94,7 @@ class DocImageFailureTest(unittest.TestCase):
         def scores(path):
             self.assertNotIn("atrium", path.name)
             if path.name.endswith("_lite-compare.log"):
-                self.assertEqual(path.name, "painting_lite-compare.log")
+                self.assertEqual(path.name, "variant-painting_lite-compare.log")
             return {name: values for name in ("frames mean", "two bounces", "direct light only",
                     "intensity 1", "intensity 2", "intensity 3", "albedo boost 2",
                     "intensity 1 (own reference)", "intensity 2 (own reference)",
@@ -105,11 +108,77 @@ class DocImageFailureTest(unittest.TestCase):
             with mock.patch.object(doc_tables, "scores", side_effect=scores) as read, \
                     mock.patch.object(render_compare, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
                     mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
-                doc_tables.write_tables(work, work / "tables", "gallery", "painting")
-            self.assertIn(mock.call(work / "painting_lite-compare.log"), read.call_args_list)
+                doc_tables.write_tables(work, work / "tables", "gallery", "painting", VARIANTS)
+            self.assertIn(mock.call(work / "variant-painting_lite-compare.log"), read.call_args_list)
             self.assertEqual({path.name for path in (work / "tables").iterdir()},
                              {f"gallery-{suffix}.md" for suffix in
-                              ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look")})
+                              ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look", "variants",
+                               "variant-pairs")})
+
+    def test_variants_rank_fitted_first_then_by_mean_error(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        # The unfitted full mesh scores best here, and still follows both fitted ones.
+        means = {"painting": 1.0, "painting_lite": 4.0, "painting_fitted": 3.0, "painting_fitted_full": 2.0}
+        found = [(name, "fitted" in name) for name in means]
+        order = [name for name, _ in doc_tables.ranked(found, lambda name: (means[name],))]
+        self.assertEqual(order, ["painting_fitted_full", "painting_fitted", "painting", "painting_lite"])
+
+    def test_the_demo_scene_lists_every_variant_and_reads_fitted_from_its_recipes(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        # Every mesh renderer of the scene file, fitted where its table has a fit.
+        objects = tomllib.loads(DEMO_SCENE.read_text())["objects"]
+        expected = {item["name"]: "fit" in item["mesh_renderer"] for item in objects if "mesh_renderer" in item}
+        full = min(expected, key=len)
+        self.assertEqual(dict(doc_tables.variants(DEMO_SCENE, full)), expected)
+        self.assertTrue(any(expected.values()) and not all(expected.values()))
+
+    def test_every_demo_variant_has_notes_and_pairs_follow_the_given_order(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        objects = tomllib.loads(DEMO_SCENE.read_text())["objects"]
+        full = min((item["name"] for item in objects if "mesh_renderer" in item), key=len)
+        names = [name for name, _ in doc_tables.variants(DEMO_SCENE, full)]
+        pairs = doc_tables.variant_pairs(list(reversed(names)), full)
+        self.assertEqual([name for _, name in pairs],
+                         [name for name in reversed(names) if doc_tables.variant_note(name, full)[1]])
+        self.assertTrue(all(base in names for base, _ in pairs))
+        with self.assertRaisesRegex(ValueError, "VARIANT_NOTES"):
+            doc_tables.variant_note(full + "_unknown", full)
+
+    def test_score_columns_are_the_sampling_tables(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        from r3d import bake_fidelity
+        self.assertEqual(bake_fidelity.table([]).splitlines()[0], doc_tables.score_table([]).splitlines()[0])
+
+    def test_charts_read_the_tables_as_written_and_refuse_a_renamed_column(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import bake_charts
+        import doc_tables
+        import render_compare
+        import numpy as np
+        from r3d import bake_fidelity
+        values = (1.0, 2.0, 0.5, 3.0, 0.75)
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            (work / "sampling").mkdir()
+            (work / "sampling/table.md").write_text(bake_fidelity.table(
+                [("declared", values), ("fixed4", values), ("sky16", values), ("centroid", values)]) + "\n")
+            pair = SimpleNamespace(mean_delta_e=1, p95_delta_e=2, ssim_luma=0.5, edge_delta_e=3, interior_delta_e=4)
+            # Every comparison log scores the same, whatever row write_tables asks it for.
+            with mock.patch.object(doc_tables, "scores", return_value=collections.defaultdict(lambda: values)), \
+                    mock.patch.object(render_compare, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
+                    mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
+                doc_tables.write_tables(work, work / "tables", "gallery", "painting", VARIANTS)
+            bake_charts.write_charts(work / "tables", work / "render", "gallery")
+            self.assertEqual({path.name for path in (work / "render").iterdir()},
+                             {f"gallery-{name}.png" for name in ("fidelity", "indirect", "flat-sampling", "indirect-look")})
+            fidelity = work / "tables/gallery-fidelity.md"
+            fidelity.write_text(fidelity.read_text().replace("Luma SSIM", "SSIM"))
+            with self.assertRaisesRegex(ValueError, "missing columns: Luma SSIM"):
+                bake_charts.write_charts(work / "tables", work / "render", "gallery")
 
     def test_camera_board_table_reads_flat_and_style_sweeps(self):
         import json

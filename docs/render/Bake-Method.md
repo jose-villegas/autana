@@ -44,7 +44,7 @@ A point farther than $D$ from everything keeps $f = 1$. A double-sided surface
 has no side it is meant to be seen from, so it takes the larger $f$ of its two
 sides. In the demo scene the factor darkens the foot of every wall and column:
 
-![The occlusion factor beside the reference](../images/render/bake-ao-map.png)
+![The occlusion factor beside the reference](../images/render/gpu/bake-ao-map.png)
 
 ## Bounced-light implementation
 
@@ -92,7 +92,7 @@ The light's resolution is the baked mesh's vertex or face spacing: bounce detail
 smaller than a triangle is lost, and a coloured surface tints only the triangles
 it reaches.
 
-![Where bounce light changes the picture](../images/render/bake-indirect-crops.png)
+![Where bounce light changes the picture](../images/render/gpu/bake-indirect-compare.crops.png)
 
 ## Fidelity against a reference
 
