@@ -289,7 +289,11 @@ run_frame(const data_t* d, const variant_t* v, unsigned frame, const lights_t* l
                 acc += n.x + n.y + n.z;
                 break;
             }
-            case K_REFERENCE: reference_light(vec3f_normalize(skin(rot, vx, vx->normal)), lf, out[i]); break;
+            case K_REFERENCE: {
+                const vec3f_t normal = skin(rot, vx, vx->normal);
+                reference_light(vec3f_normalize(normal), lf, out[i]);
+                break;
+            }
             case K_DIRECT: reference_light(skin(rot, vx, vx->normal), lf, out[i]); break;
             case K_DIRECT8:
                 if (l8->count <= R3D_SKIN_LIGHT_MAX) {
@@ -497,8 +501,8 @@ write_terms(const data_t* d, const char* dir, uint8_t (*light)[3]) {
             const rotation_t* rot = &d->rotation[(size_t)k * d->joints];
             for (unsigned i = 0; i < d->vertices; i++) {
                 const vertex_t* vx = &d->vertex[i];
-                reference_light(vec3f_normalize(skin(rot, vx, vx->normal)), &terms[t],
-                                light[(size_t)k * d->vertices + i]);
+                const vec3f_t normal = skin(rot, vx, vx->normal);
+                reference_light(vec3f_normalize(normal), &terms[t], light[(size_t)k * d->vertices + i]);
             }
         }
         write_clip(bin, d, light, t == SHEET_LIGHTS + 1);

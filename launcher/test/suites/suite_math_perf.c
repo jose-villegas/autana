@@ -9,7 +9,7 @@
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/math_const.h"
-#include "math/scalar/mathf_rsqrt.h"
+#include "math/scalar/mathf.h"
 #include "math/scalar/trig.h"
 #include "perf_stats.h"
 #include "profile/frame_cost.h"
@@ -121,6 +121,7 @@ typedef struct {
     X(transform_compute_matrix, "transform compute_matrix", x, false, mx, transformx_compute_matrix(&p->tx))           \
     X(mathf_recip, "mathf_recip", f, false, f, mathf_recip(p->af.x))                                                   \
     X(mathf_rsqrt, "mathf_rsqrt", f, false, f, mathf_rsqrt(p->af.x))                                                   \
+    X(mathf_rsqrt_approx, "mathf_rsqrt_approx", f, false, f, mathf_rsqrt_approx(p->af.x))                              \
     X(div_recip, "div_recip", f, false, f, 1.0F / p->af.x)                                                             \
     X(div_rsqrt, "div_rsqrt", f, false, f, 1.0F / sqrtf(p->af.x))                                                      \
     X(sinf, "sinf", f, false, f, sinf(p->angle))                                                                       \
