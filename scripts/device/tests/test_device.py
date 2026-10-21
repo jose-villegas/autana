@@ -74,6 +74,12 @@ class InterpreterTests(unittest.TestCase):
         self.assertEqual(call.call_args.args[0][0], "C:/idf/python.exe")
         self.assertEqual(call.call_args.args[0][-1], "status")
 
+    def test_a_tool_reruns_its_own_script_rather_than_device_py(self):
+        with mock.patch.dict(sys.modules, self.MISSING),                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"),                 mock.patch.object(device.subprocess, "call", return_value=0) as call:
+            device.rerun_under_idf_python(["--plan"], "tools/perf_compare.py")
+        self.assertEqual(call.call_args.args[0][1], str(Path("tools/perf_compare.py").resolve()))
+        self.assertEqual(call.call_args.args[0][2:], ["--plan"])
+
     def test_it_does_not_rerun_when_idf_python_is_this_interpreter(self):
         with mock.patch.dict(sys.modules, self.MISSING), \
                 mock.patch.object(device, "idf_python", return_value=sys.executable), \

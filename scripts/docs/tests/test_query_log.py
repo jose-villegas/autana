@@ -6,6 +6,7 @@ Every test writes to a throwaway folder in place of the per-user cache.
 """
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -51,6 +52,16 @@ class Logged(unittest.TestCase):
         self.assertFalse(row["weak"])
         self.assertFalse(row["semantic"])
         self.assertIsInstance(row["ms"], int)
+
+    def test_a_lookup_carries_the_session_it_ran_under(self):
+        with mock.patch.dict("os.environ", {query_log.SESSION_VAR: "s1"}):
+            self.run_search("serial", "port")
+        with mock.patch.dict("os.environ"):
+            os.environ.pop(query_log.SESSION_VAR, None)
+            self.run_search("serial", "port")
+        first, second = self.rows()
+        self.assertEqual(first["session"], "s1")
+        self.assertNotIn("session", second)
 
     def test_a_question_nothing_answers_is_logged_weak(self):
         self.run_search("bluetooth", "pairing")
@@ -110,6 +121,16 @@ class Summary(unittest.TestCase):
         missed = text.split("missed")[1]
         self.assertIn("1  docs search: bluetooth pairing", missed)
         self.assertIn("1  read-hook bypass: docs/big.md", missed)
+
+    def test_session_filter_and_count(self):
+        rows = [dict(self.ROWS[0], session="a"), dict(self.ROWS[1], session="b"), self.ROWS[2]]
+        self.assertIn("3 lookups, 2026-10-01 to 2026-10-03, 2 sessions", query_log.summary(rows))
+        folder = Path(tempfile.mkdtemp())
+        (folder / "a.jsonl").write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+        out = io.StringIO()
+        with mock.patch.object(query_log, "log_dir", return_value=folder), mock.patch("sys.stdout", out):
+            query_log.main(["--session", "b"])
+        self.assertIn("1 lookups", out.getvalue())
 
     def test_rows_without_a_tool_are_not_lookups(self):
         folder = Path(tempfile.mkdtemp())
