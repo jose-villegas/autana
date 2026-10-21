@@ -913,7 +913,7 @@ class BoardTests(Store):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")):
             with mock.patch.dict(os.environ, {BOARD_ENV: BOARD_B}):
                 text = self.status()
-        self.assertEqual(text, f"{device.short_id(BOARD_B)} {BOARD_B} COM7\n  unlocked\n")
+        self.assertEqual(text, f"{device.short_id(BOARD_B)} {BOARD_B} COM7\n  unlocked\nheavy: unlocked\n")
 
     def test_status_keeps_a_reclaimable_lock_visible(self):
         device_lock.write_json(self.store.lock_path(BOARD_A), {
@@ -1248,7 +1248,8 @@ class FlashTests(Store):
 
         def build(command, cwd, stdout, **unused_keywords):
             other = device_lock.LockStore(self.store.root)
-            taken = other.acquire(BOARD_A, "someone-else", "flash", wait=0)
+            with mock.patch.dict(os.environ, {device.autana_config.HEAVY_TOKEN_ENV: ""}):
+                taken = other.acquire(BOARD_A, "someone-else", "flash", wait=0)
             seen.append(bool(taken))
             other.release(BOARD_A, taken["token"])
             fake_flash.write_image(Path(cwd) / "launcher" / "build.dev", "abc")

@@ -1,6 +1,7 @@
 """Board-free replays of nightly planning, acquisition and publication."""
 from datetime import datetime, timedelta, timezone
 import io
+from itertools import repeat
 import json
 import os
 from pathlib import Path
@@ -58,11 +59,13 @@ class Clock:
 
 
 class Replay(FakeAutana):
-    def __init__(self, root, clock, builds=(), captures=(), durations=(), selftest_code=0):
+    def __init__(self, root, clock, builds=(), captures=(), durations=(), selftest_code=0, heavy_wait=0, capture_wait=0):
         super().__init__(root)
         self.clock = clock
         self.builds, self.captures, self.durations = iter(builds), iter(captures), iter(durations)
         self.selftest_code = selftest_code
+        self.heavy_wait = heavy_wait
+        self.capture_wait = iter(capture_wait) if isinstance(capture_wait, tuple) else repeat(capture_wait)
         self.boundaries, self.tokens, self.timeouts = [], [], []
 
     def __call__(self, command, log, timeout, **options):
@@ -73,7 +76,7 @@ class Replay(FakeAutana):
             self.clock.sleep(60)
             return self.selftest_code, [(0, "report: first.md"), (60, "report: selftest.md")], 60
         if "build" in command:
-            self.clock.sleep(next(self.durations, 60))
+            self.clock.sleep(self.heavy_wait + next(self.durations, 60))
             code = next(self.builds, 0)
             project = Path(command[command.index("--project") + 1])
             build = project / "launcher/build.diag"
@@ -81,12 +84,16 @@ class Replay(FakeAutana):
             (build / "launcher.bin").write_bytes(app_image((project / "code").read_bytes()))
             (build / "assets.bin").write_bytes(b"assets")
             (build / "build_id.txt").write_text("0-diag")
-            return code, [], 60
+            return code, [(0, "heavy wait_seconds=" + str(self.heavy_wait))], 60
         if "suite" in command:
-            self.clock.sleep(60)
+            capture_wait = next(self.capture_wait)
+            self.clock.sleep(capture_wait + 60)
             if next(self.captures, False):
                 raise RuntimeError("capture failed")
-        return super().__call__(command, log, timeout)
+        code, lines, wall = super().__call__(command, log, timeout)
+        if "suite" in command:
+            lines.append((0, "heavy wait_seconds=" + str(capture_wait)))
+        return code, lines, wall
 
 
 class NightlyTests(unittest.TestCase):
@@ -115,7 +122,7 @@ class NightlyTests(unittest.TestCase):
         self.clock = Clock()
         self.args = SimpleNamespace(repo=self.repo, out=self.root / "out", data=self.root / "data",
                                     board="20E8", lane="0/2", until="07:00", previous=None,
-                                    suite=[("suite", "-", "-")], selftest_at=None, selftest=None)
+                                    suite=[("suite", "-", "-")], selftest=None)
 
     def steps(self, indices=(1, 3, 5), anchor=False):
         return [chain.Step(self.commits[i], 100 + i, "anchor" if anchor and n == 0 else "new", i + 1)
@@ -197,7 +204,7 @@ class NightlyTests(unittest.TestCase):
         command = ["scoped_chain", "run", "--plan", str(plan), "--board", "20E8", "--lane", "0/2",
                    "--until", "07:00", "--repo", str(self.repo), "--data", str(self.args.data),
                    "--out", str(self.args.out), "--suite", "suite", "-", "-",
-                   "--selftest-at", "22:31", "--selftest", "selftest-replay"]
+                    "--selftest", "selftest-replay"]
         original = subprocess.check_output
 
         def fail_remove(command, **options):
@@ -312,6 +319,20 @@ class NightlyTests(unittest.TestCase):
         results, _, _ = self.run_chain(captures=(True, False, True))
         self.assertEqual([r.outcome for r in results], ["capture_failed", "measured", "capture_failed"])
 
+    def test_heavy_wait_is_recorded_without_inflating_build_or_worst_step(self):
+        self.args.until = "02:00"
+        results, _, writes = self.run_chain(heavy_wait=60 * 60)
+        self.assertEqual([r.outcome for r in results], ["measured"] * 3)
+        self.assertEqual([r.build_seconds for r in results], [60] * 3)
+        self.assertEqual([s["wait_seconds"] for s in writes[-1]["steps"]], [60 * 60] * 3)
+
+    def test_flash_rebuild_wait_is_recorded_without_inflating_worst_step(self):
+        self.args.until = "02:00"
+        results, _, writes = self.run_chain(capture_wait=(2 * 60 * 60, 0, 0))
+        self.assertEqual([r.outcome for r in results], ["measured"] * 3)
+        self.assertEqual([r.build_seconds for r in results], [60] * 3)
+        self.assertEqual([s["wait_seconds"] for s in writes[-1]["steps"]], [2 * 60 * 60, 0, 0])
+
     def test_deadline_and_observed_worst_step(self):
         self.args.until = "22:52"
         results, _, _ = self.run_chain()
@@ -320,26 +341,24 @@ class NightlyTests(unittest.TestCase):
         results, _, _ = self.run_chain(durations=(30 * 60, 60))
         self.assertEqual([r.outcome for r in results], ["measured", "measured", "not_run_window"])
 
-    def test_selftest_at_boundary_and_failure_continues_inside_hold(self):
-        self.args.selftest_at = "22:31"
+    def test_selftest_failure_continues_inside_hold(self):
         self.args.selftest = ["selftest-replay"]
         results, replay, writes = self.run_chain(selftest_code=1)
         self.assertEqual([r.outcome for r in results], ["measured"] * 3)
-        self.assertEqual(replay.boundaries, [datetime(2026, 10, 18, 22, 32, tzinfo=timezone.utc)])
+        self.assertEqual(replay.boundaries, [datetime(2026, 10, 18, 22, 30, tzinfo=timezone.utc)])
         self.assertEqual(writes[-1]["selftest"]["outcome"], "failed")
         self.assertEqual(writes[-1]["selftest"]["report"], "selftest.md")
 
-    def test_selftest_waits_after_chain_and_reserves_deadline(self):
-        self.args.selftest_at, self.args.selftest = "01:00", ["selftest-replay"]
+    def test_selftest_runs_first_without_waiting_and_respects_deadline(self):
+        self.args.selftest = ["selftest-replay"]
         results, replay, writes = self.run_chain(self.steps(indices=(1,)))
-        self.assertEqual(replay.boundaries[0].hour, 1)
-        self.assertIn(8880, self.clock.sleeps)
+        self.assertEqual(replay.boundaries, [Clock().now()])
+        self.assertEqual(replay.timeouts[0][0], ["selftest-replay"])
         self.assertEqual(writes[-1]["selftest"]["outcome"], "passed")
+        self.assertEqual(results[0].outcome, "measured")
         self.clock = Clock()
         self.args.until = "00:00"
-        self.args.selftest_at = "23:00"
-        results, replay, writes = self.run_chain()
-        self.assertEqual([r.outcome for r in results], ["not_run_window"] * 3)
+        _, replay, writes = self.run_chain()
         self.assertEqual(replay.boundaries, [])
         self.assertEqual(writes[-1]["selftest"]["outcome"], "not_run")
 
@@ -450,34 +469,17 @@ class NightlyTests(unittest.TestCase):
             self.assertIsNone(writes[-1]["last_attempted"])
             self.assertFalse(any("suite" in cmd for cmd in replay.calls))
 
-    def test_selftest_limits_timeout_saved_metadata_and_reserve_release(self):
+    def test_selftest_limits_timeout_and_saves_metadata(self):
         self.args.selftest = ["selftest-replay"]
         self.args.until = "00:30"
         self.args.started = Clock(22, 0).now().isoformat()
-        for waiting in (False, True):
-            for extra, expected in ((0, "passed"), (1, "not_run")):
-                self.clock = Clock()
-                self.args.selftest_at = "22:30" if waiting else "22:29"
-                if waiting:
-                    self.clock.value -= timedelta(seconds=1)
-                    self.args.selftest_at = "22:30" if extra == 0 else "22:31"
-                else:
-                    self.clock.sleep(extra)
-                _, replay, writes = self.run_chain(steps=[])
-                self.assertEqual(writes[-1]["selftest"]["outcome"], expected)
-                if waiting and expected == "not_run":
-                    self.assertEqual(self.clock.sleeps, [])
-                if expected == "passed":
-                    self.assertEqual(writes[1]["cleanup"], "pending")
-                    saved = writes[1]["selftest"]
-                    self.assertEqual(saved["started"], replay.boundaries[0].isoformat())
-                    self.assertEqual(saved["seconds"], 60)
-                    self.assertEqual(saved["report"], "selftest.md")
-                    self.assertEqual(replay.timeouts[0][1], chain.SELFTEST_ALLOWANCE_SECONDS)
-        self.clock = Clock()
-        self.args.selftest_at = "22:29"
-        results, _, _ = self.run_chain(self.steps(indices=(1,)))
-        self.assertEqual(results[0].outcome, "measured")
+        _, replay, writes = self.run_chain(steps=[])
+        saved = writes[1]["selftest"]
+        self.assertEqual(saved["outcome"], "passed")
+        self.assertEqual(saved["started"], replay.boundaries[0].isoformat())
+        self.assertEqual(saved["seconds"], 60)
+        self.assertEqual(saved["report"], "selftest.md")
+        self.assertEqual(replay.timeouts[0][1], chain.SELFTEST_ALLOWANCE_SECONDS)
 
     def test_capture_identity_rows_start_and_empty_capture(self):
         for previous in (None, dict(machine=MACHINE)):
@@ -499,8 +501,8 @@ class NightlyTests(unittest.TestCase):
         with self.capture_with(suites={}):
             results, _, _ = self.run_chain(self.steps(indices=(1,)))
         self.assertEqual(results[0].outcome, "capture_failed")
-        self.assertTrue(all(timeout == chain.BUILD_TIMEOUT_SECONDS for cmd, timeout in replay.timeouts if "build" in cmd))
-        self.assertTrue(all(timeout == chain.CAPTURE_TIMEOUT_SECONDS for cmd, timeout in replay.timeouts if "suite" in cmd))
+        self.assertTrue(all(timeout > chain.BUILD_TIMEOUT_SECONDS for cmd, timeout in replay.timeouts if "build" in cmd))
+        self.assertTrue(all(timeout > chain.CAPTURE_TIMEOUT_SECONDS for cmd, timeout in replay.timeouts if "suite" in cmd))
         suites = [cmd for cmd, _ in replay.timeouts if "suite" in cmd]
         self.assertTrue(suites)
         self.assertEqual(suites[0][suites[0].index("--runs") + 1], "1")
@@ -675,7 +677,7 @@ class NightlyTests(unittest.TestCase):
 
 
 class LaneSettingsTests(unittest.TestCase):
-    def test_lane_uses_configured_window_and_selftest_boundary(self):
+    def test_lane_uses_configured_window_and_selftest_command(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             library = root / "scripts/lib/python.sh"
@@ -693,7 +695,7 @@ export -f autana
 bash "$1" board "$2" data out -- --suite suite - "table with spaces"
 """
             env = dict(os.environ, TEST_PYTHON=sys.executable, SELFTEST_BOARD="board",
-                       WINDOW_END="05:45", SELFTEST_AT="23:15")
+                       WINDOW_END="05:45")
             result = subprocess.run(["bash", "-c", command, "lane-test", script.as_posix(), plan.as_posix()],
                                     cwd=root, env=env, capture_output=True, text=True, check=True)
             args = result.stdout.splitlines()
@@ -709,7 +711,9 @@ bash "$1" board "$2" data out -- --suite suite - "table with spaces"
             self.assertIn("BOARD_CI_LOG=", other)
             env["SELFTEST_BOARD"] = "board"
 
-            for option, setting in (("--until", "WINDOW_END"), ("--selftest-at", "SELFTEST_AT")):
+            self.assertNotIn("--selftest-at", args)
+            self.assertIn("--selftest", args)
+            for option, setting in (("--until", "WINDOW_END"),):
                 with self.subTest(option=option):
                     self.assertEqual(args[args.index(option) + 1], env[setting])
 

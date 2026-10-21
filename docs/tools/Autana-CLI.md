@@ -66,13 +66,16 @@ guards sessions and CI jobs on one PC, not two PCs plugged into one board.
 | Command | What it does |
 |---|---|
 | `autana devices [--json]` | Short ids, serials, ports and availability. Same JSON as `status --json`. |
-| `autana status [--json]` | Every board: free or held, the holder, estimated free time, and the queue. |
+| `autana status [--json]` | Every board and a `heavy:` line: holder, command, since when, estimated free time, and queue. |
 | `autana lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>` | Hold the board while the command runs; it inherits the token. |
+| `autana lock run --heavy -- <command...>` | Hold the host-wide heavy key; nested builds reuse its token. Acquire a board before heavy when both are needed. |
 | `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] [--estimate <seconds>] <note...>` | Wait for the board and print a token. A timed hold lasts at most an hour. |
 | `autana lock release [<token>]` | Release a hold early. |
 | `autana lock wait` | Wait until the board is free, without taking it. |
 | `autana lock hand [--until-back <seconds>] <note...>` | Reserve the board for a person for an hour; run again to renew. |
 | `autana lock take-back` | Clear that reservation. |
+
+Give `--wait S` to bound the heavy-lock wait in seconds.
 
 Name a board with `--board A308`, the last four hex digits of its serial. With
 several plugged in, jobs that flash pick a free one; others need `--board`. A
@@ -91,9 +94,12 @@ Makes or writes an image, or says which image runs.
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build, then flash under the lock; `dev` when omitted. `--quiet` logs only. `--perf-scope` (diag) builds the perf-scoped image. |
 | `autana buildid [--json]` | The `BUILD_ID` the board runs, to check against what was flashed. |
 
-Private process-tree channels `_AUTANA_BUILD_SERIAL` (mutex directory) and
-`_AUTANA_BUILD_PRIORITY=below_normal` throttle compilation across build and flash paths.
-`_AUTANA_BUILD_LATEST_START` bounds lock waits and build starts by Unix time; captures retain normal priority.
+Every compile holds the host-wide heavy lock; flash writes and captures do not.
+The wait uses `--wait` or the board lock's default, and timeout exits 75.
+
+Private process-tree channel `_AUTANA_BUILD_PRIORITY=below_normal` lowers compile priority.
+`_AUTANA_BUILD_LATEST_START` bounds heavy waits and build starts by Unix time;
+captures retain normal priority.
 
 `BUILD_ID` is the image's ELF hash and proves the write, not the boot
 ([what a flash proves](Flash-and-Captures.md#what-a-flash-proves)). Which

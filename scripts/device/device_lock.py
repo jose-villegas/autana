@@ -1,4 +1,4 @@
-"""Cooperative, FIFO lock state for a shared development board."""
+"""Shared FIFO lock state for boards and heavy host work."""
 
 import contextlib
 import datetime
@@ -35,10 +35,11 @@ GUARD_STALE_SECONDS = 30
 # The mutex is guard() below (an O_CREAT|O_EXCL file), not an OS byte-range
 # lock; the JSON files are the state it protects, not locks themselves. This
 # numbers the state shape. Differences are shown, never refused for running
-# commands. Readers older than protocol 3 take timed and human holds at once,
-# and until-released holds after the stale window. Protocol 3 ignores protocol-2
-# .human.json reservations. Update every copy sharing a board.
-LOCK_PROTOCOL = 3
+# commands. Readers older than protocol 4 cannot distinguish Windows and WSL
+# pid namespaces and may reclaim a live cross-OS holder or prune its waiters.
+# Update every copy sharing a root.
+LOCK_PROTOCOL = 4
+HEAVY = "heavy"
 HOLD_MAX_SECONDS = 3600
 WAIT_POLL_SECONDS = 0.2
 FILETIME_EPOCH_OFFSET = 116444736000000000
@@ -83,6 +84,36 @@ def default_root():
     return Path("/tmp") / f"autana-device-{os.getuid()}"
 
 
+def is_wsl():
+    if os.name == "nt":
+        return False
+    if Path("/proc/sys/fs/binfmt_misc/WSLInterop").exists():
+        return True
+    try:
+        return "microsoft" in Path("/proc/version").read_text().lower()
+    except OSError:
+        return False
+
+
+def host_identity():
+    return socket.gethostname() + ("/wsl" if is_wsl() else "")
+
+
+def heavy_root():
+    """The host-wide root must be visible from both Windows and WSL."""
+    named = os.environ.get("_AUTANA_HEAVY_LOCK_ROOT")
+    if named:
+        return Path(named)
+    if os.name == "nt":
+        return Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "autana" / HEAVY
+    if is_wsl():
+        shared = Path("/mnt/c/ProgramData")
+        if not shared.is_dir():
+            raise OSError("WSL heavy lock root is unreachable: " + str(shared))
+        return shared / "autana" / HEAVY
+    return Path("/tmp/autana-heavy")
+
+
 def default_owner():
     """What a caller that names no owner is called in the lock:
     "<user>@<host>:<pid>". getpass.getuser() can fail with no username in the
@@ -91,7 +122,7 @@ def default_owner():
         user = getpass.getuser()
     except OSError:
         user = "user"
-    return f"{user}@{socket.gethostname()}:{os.getpid()}"
+    return f"{user}@{host_identity()}:{os.getpid()}"
 
 
 def caller_pid(explicit=None):
@@ -337,31 +368,37 @@ class Held(dict):
 
 
 class LockStore:
-    """Every method takes `board`, the board's USB serial number: the one key
-    that survives the COM renumbering a reset can cause."""
+    """A key is a board's USB serial number or the host-wide HEAVY resource."""
 
     def __init__(self, root=None, now=time.time, is_alive=process_alive):
         self.root = Path(root) if root else default_root()
+        self.explicit_root = root is not None
         self.now = now
         self.is_alive = is_alive
+
+    def key_root(self, board):
+        return heavy_root() if board == HEAVY and not self.explicit_root else self.root
 
     def stem(self, board):
         return board.replace("/", "_").replace("\\", "_").replace(":", "_")
 
+    def key_path(self, board, suffix):
+        return self.key_root(board) / (self.stem(board) + suffix)
+
     def lock_path(self, board):
-        return self.root / (self.stem(board) + ".json")
+        return self.key_path(board, ".json")
 
     def queue_dir(self, board):
-        return self.root / (self.stem(board) + ".queue")
+        return self.key_path(board, ".queue")
 
     def guard_path(self, board):
-        return self.root / (self.stem(board) + ".guard")
+        return self.key_path(board, ".guard")
 
     def seen_path(self, board):
-        return self.root / (self.stem(board) + ".seen.json")
+        return self.key_path(board, ".seen.json")
 
     def last_path(self, board):
-        return self.root / (self.stem(board) + ".last.json")
+        return self.key_path(board, ".last.json")
 
     def read_json(self, path):
         # A file mid-replace on Windows refuses to open with PermissionError.
@@ -380,14 +417,16 @@ class LockStore:
                   if not path.name.endswith((".seen.json", ".last.json"))]
                  + list(self.root.glob("*.queue/*.json")))
         return sorted({record["board"] for record in map(self.read_json, paths)
-                       if isinstance(record, dict) and isinstance(record.get("board"), str)})
+                       if isinstance(record, dict) and isinstance(record.get("board"), str)
+                       and record["board"] != HEAVY})
 
     def seen_boards(self):
         """Every board this machine has ever found on USB, kept past its own
         lock, reservation or waiter, only for hand-to-human/take-back to
         recall a board that is now idle and unplugged."""
         return sorted({record["board"] for record in map(self.read_json, self.root.glob("*.seen.json"))
-                       if isinstance(record, dict) and isinstance(record.get("board"), str)})
+                       if isinstance(record, dict) and isinstance(record.get("board"), str)
+                       and record["board"] != HEAVY})
 
     def note_seen(self, board):
         """Records a board found on USB, once; nothing reads this again
@@ -445,7 +484,18 @@ class LockStore:
             "acquired_at": lock.get("acquired_at"), "ended_at": self.now(),
             "how": how, "protocol": LOCK_PROTOCOL, "autana_version": __version__})
 
+    def check_order(self, board):
+        if board == HEAVY:
+            return
+        current = self.read_json(self.lock_path(HEAVY))
+        owns_heavy = (current and current.get("host") == host_identity()
+                      and current.get("pid") == os.getpid()
+                      and not self.reclaim_reason(current, DEFAULT_STALE_SECONDS))
+        if owns_heavy or os.environ.get(autana_config.HEAVY_TOKEN_ENV):
+            raise RuntimeError("holding heavy: cannot acquire a board lock (lock order is board -> heavy)")
+
     def enqueue(self, board, owner, kind, pid=None, purpose=None):
+        self.check_order(board)
         with self.guard(board):
             directory = self.queue_dir(board)
             directory.mkdir(parents=True, exist_ok=True)
@@ -459,6 +509,7 @@ class LockStore:
             write_json(directory / (ticket + ".json"), {
                 "board": board,
                 "created_at": self.now(),
+                "host": host_identity(),
                 "owner": owner,
                 "pid": os.getpid() if pid is None else pid,
                 "kind": kind,
@@ -481,7 +532,8 @@ class LockStore:
 
     def prune_crashed_waiters(self, board):
         for ticket in self.tickets(board):
-            if ticket["pid"] != os.getpid() and not self.is_alive(ticket["pid"]):
+            if (ticket.get("host") == host_identity() and ticket["pid"] != os.getpid()
+                    and not self.is_alive(ticket["pid"])):
                 try:
                     (self.queue_dir(board) / (ticket["ticket"] + ".json")).unlink()
                 except FileNotFoundError:
@@ -498,10 +550,10 @@ class LockStore:
                 return "hold lapsed" if self.now() >= expires else ""
             if not lock.get("until_released"):
                 return ""
-            if lock.get("host") != socket.gethostname():
+            if lock.get("host") != host_identity():
                 return ""
             return "" if self.owner_alive(lock) else "dead process"
-        same_host = lock.get("host") == socket.gethostname()
+        same_host = lock.get("host") == host_identity()
         if same_host and not self.is_alive(lock["pid"]):
             return "dead process"
         if self.is_stale(lock, stale_seconds):
@@ -553,7 +605,7 @@ class LockStore:
                 "acquired_at": now,
                 "board": board,
                 "heartbeat_at": now,
-                "host": socket.gethostname(),
+                "host": host_identity(),
                 "owner": pending[0]["owner"],
                 "pid": pending[0]["pid"],
                 "kind": pending[0]["kind"],
@@ -840,7 +892,7 @@ def status_entry(store, board, port=None, now=None, durations=None):
     """One board's state as `status --json` prints it. Times are epoch
     seconds; an estimate with too little history is None."""
     now = store.now() if now is None else now
-    durations = duration_history(store.root, board=board) if durations is None else durations
+    durations = duration_history(store.key_root(board), board=board) if durations is None else durations
     status = store.status(board)
     entry = {"board": board, "port": port, "state": "unlocked", "holder": None,
              "since": None, "estimated_free": None,
@@ -881,7 +933,7 @@ def previous_holder_alive(store, last, scope):
     """[(pid, name)] of the previous holder's own process, if it still runs,
     and of what `scope` finds besides. The pid is judged here for every OS; a
     pid that started after the lock was taken is another program's, reused."""
-    if last.get("host") != socket.gethostname():
+    if last.get("host") != host_identity():
         return []
     alive = []
     pid = last.get("pid")

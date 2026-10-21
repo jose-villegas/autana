@@ -189,8 +189,8 @@ def device_module():
 # How the global `--wait`, `--owner` and `--board` reach nested steps and child
 # processes; private, so a caller's environment is never a second way to set
 # them. The token is the one a running command's children prove their lock by.
-WAIT_ENV = "_AUTANA_WAIT_S"
-OWNER_ENV = "_AUTANA_OWNER"
+WAIT_ENV = autana_config.WAIT_ENV
+OWNER_ENV = autana_config.OWNER_ENV
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
 PROJECT_ENV = autana_config.PROJECT_ENV
@@ -878,7 +878,7 @@ def lock_wait(args):
 
 def lock_run(args):
     if "--" not in args:
-        sys.exit("usage: autana lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>")
+        sys.exit("usage: autana lock run [--heavy] [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>")
     return call_device(device_command("run", *args))
 
 
@@ -1746,6 +1746,7 @@ def debug(args):
 
 
 LOCK_USAGES = (
+    ("lock run --heavy -- <command...>", "hold the host-wide heavy key; nested builds reuse it"),
     ("lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>", "hold the board while a command runs"),
     ("lock take [--for <seconds> | --until-released [--pid <pid>]] [--estimate <seconds>] <note...>", "hold the board across commands; print its token"),
     ("lock wait", "wait until free without taking the board; --wait caps it"),
