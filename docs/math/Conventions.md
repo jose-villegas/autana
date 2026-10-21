@@ -20,7 +20,7 @@ M = T\,R\,S, \qquad p_{\text{world}} = M\,p_{\text{local}}, \qquad
 V = R^{\mathsf T}\,T(-\text{position})
 ```
 
-<img src="../images/math/trs-scale.gif" width="32%" alt="Scale the local block"> <img src="../images/math/trs-rotate.gif" width="32%" alt="Rotate the scaled block"> <img src="../images/math/trs-translate.gif" width="32%" alt="Translate the rotated block">
+<img src="../images/math/trs-scale.gif" width="32%" alt="The block scaling from its authored size by 1.6 x 0.6 x 1.4"> <img src="../images/math/trs-rotate.gif" width="32%" alt="The scaled block turning 50 degrees about (0, 1, 1)"> <img src="../images/math/trs-translate.gif" width="32%" alt="The turned block moving to (2, 1, 1)">
 
 Each GIF animates one step of `mat4f_from_trs`; the dashed block is the stage before.
 

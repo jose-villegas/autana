@@ -29,6 +29,7 @@ static const vec3f_t OUTLINE[] = {
 static const float SHAPE_DEPTH = 0.9F;
 static const vec3f_t OUTLINE_CENTRE = {0.75F, 1.125F, 0.0F};
 
+/* Interpolated frames per step. */
 #define STEP_FRAMES 16
 
 enum { TRS_SCALE_STEP = 1, TRS_ROTATE_STEP, TRS_TRANSLATE_STEP };
@@ -109,7 +110,7 @@ main(int argc, char** argv) {
                                                                : turn;
             const vec3f_t position = step == TRS_TRANSLATE_STEP ? vec3f_lerp(origin, TRS_POSITION, t) : origin;
             const mat4f_t matrix = mat4f_from_trs(position, rotation, scale);
-            printf("   {\"step\": %d, \"t\": %.6g, \"shape\": ", step, (double)t);
+            printf("   {\"step\": %d, \"shape\": ", step);
             print_corners(&matrix);
             printf("}%s\n", step == TRS_TRANSLATE_STEP && i == STEP_FRAMES - 1 ? "" : ",");
         }
