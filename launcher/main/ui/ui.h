@@ -136,14 +136,12 @@ uint32_t ui_layout_generation(void);
 int ui_width(void);
 int ui_height(void);
 
-/* Close the frame and paint it, but only if it would look any different
- * from what is already on screen. Returns whether it drew. It repaints
- * when any of these is true: the UI itself changed (a hover, a new
- * item, different text); something else has already dirtied the screen,
- * so the UI's pixels are gone (an app drawing underneath an overlay,
- * for instance); or ui_invalidate() was called. `background_rgb` is
- * cleared to first, or UI_NO_BACKGROUND to paint over whatever is
- * already there. */
+/* Close the frame and paint it, only if it would look different from the
+ * screen; returns whether it drew. It repaints when the UI changed,
+ * something else dirtied its pixels, or ui_invalidate() was called.
+ * `background_rgb` is cleared to first, or UI_NO_BACKGROUND paints over
+ * what is there. With no framebuffer to paint (band mode, or an expanded
+ * frame) it bins as ui_end_for_bands() does and returns true. */
 bool ui_end(uint32_t background_rgb);
 
 /* ui_end() over a backdrop that is drawn, not a colour. `paint_backdrop`
@@ -163,12 +161,10 @@ bool ui_end_over(ui_backdrop_fn paint_backdrop);
 void ui_invalidate(void);
 
 /*
- * Band mode (gfx_mode.h) has no retained framebuffer, so ui_end()'s hash-and-skip
- * does not apply. Closes the frame like ui_end() does, but bins commands by
- * row range instead of painting; ui_replay_band() draws a band's share when
- * gfx_band_run() draws that band. Call once per frame from frame(). Pass
- * UI_NO_BACKGROUND if the caller
- * already cleared the band itself.
+ * Closes the frame like ui_end() does, but bins commands by row range
+ * instead of painting, whatever the layout; ui_replay_band() draws a band's
+ * share when gfx_band_run() draws that band. ui_end() does this itself in
+ * band mode. Pass UI_NO_BACKGROUND if the caller already cleared the band.
  */
 void ui_end_for_bands(uint32_t background_rgb);
 
