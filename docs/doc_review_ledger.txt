@@ -65,3 +65,4 @@ docs/render/Baked-Mesh.md	2026-10-20	split out of Mesh-Import.md: moved text, LM
 docs/render/Bake-Method.md	2026-10-20	split out of Mesh-Import.md: moved text
 docs/Animation-Tracks.md	2026-10-20	scene playback pictures first: reviewed against anim_layer.c, anim_playhead.c and scene_animation.c, accurate
 docs/notes/Display-and-Rendering.md	2026-10-21	autana-8sv4: reviewed against the 80 MHz full-width send rule, accurate
+docs/math/Conventions.md	2026-10-22
