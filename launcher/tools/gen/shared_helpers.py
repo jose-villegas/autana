@@ -133,7 +133,9 @@ def update(root, check=False):
     stale = [PAGE.as_posix()] if replace_block(root / PAGE, "shared-helpers", table("Owner", rows, "../"),
                                                check, CHECK) else []
     for readme, headers in package_headers(root).items():
-        if replace_block(root / readme, "package-headers", table("Header", headers, "", names=False), check, CHECK):
+        package = pathlib.PurePosixPath(readme).parent.name.replace("_", "-")
+        if replace_block(root / readme, f"package-{package}-headers",
+                         table("Header", headers, "", names=False), check, CHECK):
             stale.append(readme)
     state = (f"stale: run python3 launcher/tools/gen/shared_helpers.py and git add {' '.join(stale)}"
              if stale and check else "current")
