@@ -1,8 +1,11 @@
 name: QEMU Tests
 
-# Every suite under QEMU runs on main, by hand, and on PRs that change
-# firmware, suites, sdkconfig or the harness. On other PRs the job skips
-# and reports success.
+# Every suite in the real Xtensa image, under Espressif's QEMU: the proof the
+# host runner cannot give, that the chip's build behaves as the laptop's does.
+# docs/testing/QEMU.md says what a run is evidence of. It runs on main, by
+# hand, and on a pull request that changes firmware, suites, sdkconfig or the
+# harness. On other pull requests the job skips and reports success; a
+# failed filter runs it.
 
 on:
   push:
@@ -46,7 +49,7 @@ jobs:
 
   qemu-tests:
     needs: changes
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.qemu == 'true') }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.qemu == 'true') }}
     name: Every suite under QEMU
     runs-on: ubuntu-24.04
     timeout-minutes: 90
