@@ -1,5 +1,7 @@
 #include "apps/render_lab/render_lab_view.h"
 
+#include <string.h>
+
 #include "services/tune.h"
 
 TUNE_OWNER(render_lab);
@@ -39,17 +41,34 @@ render_lab_small_fill(void) {
 }
 
 #if TUNE_ENABLED
-#define SMALL_FILL_PRESET_ROW(name)  SMALL_FILL_##name,
-#define SMALL_FILL_PRESET_NAME(name) #name,
+#define SMALL_FILL_PRESET_ROW(name)   SMALL_FILL_##name,
+#define SMALL_FILL_PRESET_NAME(name)  #name,
+/* A menu label is the preset name with each '_' shown as the separator; its buffer fits a name of only '_'. */
+#define SMALL_FILL_LABEL_SEPARATOR    " - "
+#define SMALL_FILL_PRESET_LABEL(name) char name[sizeof #name * (sizeof SMALL_FILL_LABEL_SEPARATOR - 1)];
 static const small_fill_t small_fill_presets[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_ROW)};
-static const char* const small_fill_names[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_NAME)};
+static const char* const small_fill_preset_names[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_NAME)};
 #define SMALL_FILL_PRESET_COUNT ((int)(sizeof small_fill_presets / sizeof small_fill_presets[0]))
+static char small_fill_labels[SMALL_FILL_PRESET_COUNT][sizeof(union {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_LABEL)})];
+static const char* small_fill_names[SMALL_FILL_PRESET_COUNT];
 static int small_fill_picked;
 
 const char* const*
 render_lab_small_fill_names(int* count) {
+    for (int i = 0; i < SMALL_FILL_PRESET_COUNT && small_fill_names[i] == NULL; i++) {
+        char* label = small_fill_labels[i];
+        for (const char* c = small_fill_preset_names[i]; *c != '\0'; c++) {
+            if (*c == '_') {
+                memcpy(label, SMALL_FILL_LABEL_SEPARATOR, sizeof SMALL_FILL_LABEL_SEPARATOR - 1);
+                label += sizeof SMALL_FILL_LABEL_SEPARATOR - 1;
+            } else {
+                *label++ = *c;
+            }
+        }
+        small_fill_names[i] = small_fill_labels[i];
+    }
     *count = SMALL_FILL_PRESET_COUNT;
-    return small_fill_names;
+    return (const char* const*)small_fill_names;
 }
 
 int
