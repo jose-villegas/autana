@@ -15,7 +15,7 @@ anim_bind_field(const anim_binding_t* binding, const anim_component_ref_t* compo
         }
         for (int f = 0; f < component->field_count; f++) {
             const anim_field_t* field = &component->fields[f];
-            if (strcmp(field->name, binding->field) != 0) {
+            if (name_hash(field->name) != binding->field_hash) {
                 continue;
             }
             if (field->type != binding->type) {
@@ -36,12 +36,9 @@ anim_bind_field(const anim_binding_t* binding, const anim_component_ref_t* compo
 
 /* The target named `name`, or NULL. */
 static const anim_target_t*
-find_target(const anim_target_t* targets, int count, const char* name) {
-    if (count > 0 && strcmp(name, ANIM_TARGET_SELF) == 0) {
-        return &targets[0];
-    }
+find_target(const anim_target_t* targets, int count, name_hash_t name) {
     for (int t = 0; t < count; t++) {
-        if (strcmp(targets[t].name, name) == 0) {
+        if (targets[t].name == name) {
             return &targets[t];
         }
     }
@@ -60,10 +57,13 @@ anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_co
     if (out_count < clip->count) {
         return ANIM_BIND_ERR_SPACE;
     }
+    const name_hash_t self = name_hash(ANIM_TARGET_SELF);
     for (int i = 0; i < clip->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(clip, i, &binding);
-        const anim_target_t* target = find_target(targets, target_count, binding.path);
+        const anim_target_t* target = binding.path_hash == self && target_count > 0
+                                          ? &targets[0]
+                                          : find_target(targets, target_count, binding.path_hash);
         const anim_bind_status_t status = target == NULL
                                               ? ANIM_BIND_ERR_PATH
                                               : anim_bind_field(&binding, target->components, target->component_count,

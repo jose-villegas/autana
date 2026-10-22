@@ -160,6 +160,7 @@ test_skeleton_binding_failure_index_and_sampling(void) {
     row[ANIM_TRACKS_ROW_TYPE] = ANIM_VALUE_QUAT;
     const int strings = ANIM_TRACKS_HEADER_SIZE + BINDINGS * ANIM_TRACKS_ROW_SIZE;
     entry[strings + TEST_TRACK_STRING_SLOT] = 'z';
+    test_pack_put32(row + ANIM_TRACKS_ROW_PATH_HASH, name_hash((const char*)entry + strings + TEST_TRACK_STRING_SLOT));
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_PATH, anim_bind_skeleton(&clip, &SKELETON, bound, BINDINGS, &failed));
     TEST_ASSERT_EQUAL_INT(1, failed);
     free(entry);

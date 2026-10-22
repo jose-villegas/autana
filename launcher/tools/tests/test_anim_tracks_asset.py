@@ -49,8 +49,8 @@ IDENTITY = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
 
 
 class RoundTripTests(unittest.TestCase):
-    def test_version_two_bindings_have_scene_root_and_string_table(self):
-        self.assertEqual(tracks_asset.VERSION, 2)
+    def test_version_three_bindings_have_scene_root_and_string_table(self):
+        self.assertEqual(tracks_asset.VERSION, 3)
         entry = probe_entry()
         version, count, duration, strings, size, root = HEADER.unpack_from(entry)
         self.assertEqual(root, tracks_asset.ROOT_SCENE)
@@ -79,7 +79,7 @@ class RoundTripTests(unittest.TestCase):
         version, count, duration_ms, strings, size, root = HEADER.unpack_from(entry)
         self.assertEqual((version, count, duration_ms), (tracks_asset.VERSION, 8, 3000))
         for index in range(count):
-            _, _, _, times_at, values_at, _, _, _ = ROW.unpack_from(entry, row_at(index))
+            _, _, _, _, _, times_at, values_at, _, _, _ = ROW.unpack_from(entry, row_at(index))
             for offset in (times_at, values_at):
                 self.assertEqual(offset % 4, 0)
                 self.assertGreaterEqual(offset, row_at(count))
@@ -88,6 +88,33 @@ class RoundTripTests(unittest.TestCase):
         tracks, _, _ = probe_tracks()
         held = next(t for t in tracks if t["name"] == "hand:TRNS.position")
         self.assertEqual(held["times"], [0.0])
+
+    def test_colliding_paths_and_fields_are_refused(self):
+        from build.name_hash import name_hash
+        for first, second in (("costarring", "liquid"), ("declinate", "macallums")):
+            self.assertEqual(name_hash(first), name_hash(second))
+            for part in ("path", "field"):
+                tracks, duration, _ = probe_tracks()
+                pair = [dict(tracks[0], **{part: name}) for name in (first, second)]
+                with self.subTest(part=part, first=first):
+                    with self.assertRaisesRegex(TracksError, first + ".*" + second):
+                        tracks_asset.encode(pair, duration)
+
+        tracks, duration, _ = probe_tracks()
+        with mock.patch.object(tracks_asset, "name_hash", return_value=tracks_asset.NONE):
+            with self.assertRaisesRegex(TracksError, "NONE"):
+                tracks_asset.encode(tracks, duration)
+
+    def test_changed_binding_strings_are_refused(self):
+        entry = probe_entry()
+        _, _, _, strings, _, _ = HEADER.unpack_from(entry)
+        path, field, *_ = ROW.unpack_from(entry, row_at(0))
+        for offset in (strings + path, strings + field,
+                       row_at(0) + tracks_asset.ROW_PATH_HASH, row_at(0) + tracks_asset.ROW_FIELD_HASH):
+            changed = bytearray(entry)
+            changed[offset] ^= 1
+            with self.assertRaises(TracksError):
+                tracks_asset.decode(changed)
 
     def test_a_name_holding_a_nul_is_refused(self):
         tracks, duration_ms, root = probe_tracks()
@@ -118,6 +145,7 @@ class RefusalTests(unittest.TestCase):
 
     def test_an_unknown_version_is_refused(self):
         self.assert_refused(edited(probe_entry(), 0, "<H", tracks_asset.VERSION + 1))
+        self.assert_refused(edited(probe_entry(), 0, "<H", tracks_asset.VERSION - 1))
 
     def test_arrays_strings_types_root_component_padding_and_finite_keys(self):
         entry = probe_entry()
@@ -129,19 +157,20 @@ class RefusalTests(unittest.TestCase):
             (row_at(0) + tracks_asset.ROW_INTERP, "<B", len(tracks_asset.INTERPOLATIONS)),
             (row_at(0) + tracks_asset.ROW_COMPONENT, "<I", 0),
             (row_at(0) + tracks_asset.ROW_KEYS, "<H", 0),
+            (row_at(0) + tracks_asset.ROW_PATH_HASH, "<I", tracks_asset.NONE),
+            (row_at(0) + tracks_asset.ROW_FIELD_HASH, "<I", tracks_asset.NONE),
             (row_at(0) + tracks_asset.ROW_PATH, "<H", tracks_asset.STRINGS_MAX),
             (row_at(0) + tracks_asset.ROW_FIELD, "<H", tracks_asset.STRINGS_MAX),
             (tracks_asset.AT_VERSION, "<H", 1),
         ):
             self.assert_refused(edited(entry, offset, fmt, value))
-        for offset in (*range(tracks_asset.AT_PAD, HEADER.size),
-                       *range(row_at(0) + tracks_asset.ROW_PAD, row_at(1))):
+        for offset in range(tracks_asset.AT_PAD, HEADER.size):
             self.assert_refused(edited(entry, offset, "<B", 1))
         _, _, _, strings, size, _ = HEADER.unpack_from(entry)
         unterminated = bytearray(entry)
         unterminated[strings:strings + size] = b"x" * size
         self.assert_refused(bytes(unterminated))
-        _, _, _, times, values, _, _, _ = ROW.unpack_from(entry, row_at(0))
+        _, _, _, _, _, times, values, _, _, _ = ROW.unpack_from(entry, row_at(0))
         for offset in (times, values):
             self.assert_refused(edited(entry, offset, "<f", float("nan")))
         self.assert_refused(edited(entry, times + struct.calcsize("<f"), "<f", 0))

@@ -48,9 +48,9 @@ anim_pose_model(const anim_skeleton_t* skeleton, const anim_pose_t* pose, mat4f_
 }
 
 static int
-find_joint(const anim_skeleton_t* skeleton, const char* path) {
+find_joint(const anim_skeleton_t* skeleton, name_hash_t path) {
     for (int j = 0; j < skeleton->joint_count; j++) {
-        if (strcmp(skeleton->paths + skeleton->joints[j].path, path) == 0) {
+        if (name_hash(skeleton->paths + skeleton->joints[j].path) == path) {
             return j;
         }
     }
@@ -92,7 +92,7 @@ anim_bind_skeleton(const anim_tracks_t* clip, const anim_skeleton_t* skeleton, a
     for (int i = 0; i < clip->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(clip, i, &binding);
-        const anim_bind_status_t status = bind_joint(&binding, find_joint(skeleton, binding.path), &out[i]);
+        const anim_bind_status_t status = bind_joint(&binding, find_joint(skeleton, binding.path_hash), &out[i]);
         if (status != ANIM_BIND_OK) {
             if (failed != NULL) {
                 *failed = i;

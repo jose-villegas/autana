@@ -59,7 +59,7 @@ test_resolution_errors_report_first_index(void) {
     fixture_t f = fixture();
     transform_t transform = {0};
     anim_component_ref_t components[] = {{&TRANSFORM, &transform}};
-    anim_target_t target = {.name = "object", .components = components, .component_count = 1};
+    anim_target_t target = {.name = name_hash("object"), .components = components, .component_count = 1};
     anim_bound_t bound[BINDINGS];
     int failed;
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
@@ -77,9 +77,9 @@ test_resolution_errors_report_first_index(void) {
     f.clip.root = ANIM_ROOT_SCENE;
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_SPACE, anim_bind(&f.clip, &target, 1, bound, BINDINGS - 1, &failed));
     TEST_ASSERT_EQUAL_INT(-1, failed);
-    target.name = "other";
+    target.name = name_hash("other");
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_PATH, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
-    target.name = "object";
+    target.name = name_hash("object");
     target.component_count = 0;
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_COMPONENT, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
     target.component_count = 1;
@@ -104,8 +104,11 @@ test_apply_split_writes_sampled_values_and_marks_dirty(void) {
     transform_t full = {0}, split = {0};
     uint8_t dirty = OTHER_DIRTY_BIT;
     anim_component_ref_t components[] = {{&TRANSFORM, &full}};
-    anim_target_t target = {
-        .name = "object", .components = components, .component_count = 1, .dirty = &dirty, .dirty_bit = DIRTY_BIT};
+    anim_target_t target = {.name = name_hash("object"),
+                            .components = components,
+                            .component_count = 1,
+                            .dirty = &dirty,
+                            .dirty_bit = DIRTY_BIT};
     anim_bound_t bound[BINDINGS];
     int failed;
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
