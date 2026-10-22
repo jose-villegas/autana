@@ -710,12 +710,12 @@ test_the_far_swell_ends_where_the_flat_lines_begin(void) {
         }
         TEST_ASSERT_TRUE(line->count >= 2);
         const boot_anim_far_sample_t* run = &boot_anim_far_samples[line->first];
-        TEST_ASSERT_EQUAL_INT32(boot_anim_far_chord(mathi_max(edge, line->c), line->c), run[0].s);
+        TEST_ASSERT_EQUAL_INT32(mathi_half_chord(mathi_max(edge, line->c), line->c), run[0].s);
         for (int k = 1; k < line->count; k++) {
             TEST_ASSERT_TRUE(run[k].s > run[k - 1].s);
             TEST_ASSERT_TRUE(run[k].swell_gain <= run[k - 1].swell_gain);
         }
-        TEST_ASSERT_EQUAL_INT32(boot_anim_far_chord(BOOT_ANIM_FAR_SWELL_FADE_Q12, line->c), run[line->count - 1].s);
+        TEST_ASSERT_EQUAL_INT32(mathi_half_chord(BOOT_ANIM_FAR_SWELL_FADE_Q12, line->c), run[line->count - 1].s);
         TEST_ASSERT_EQUAL_UINT16(0, run[line->count - 1].swell_gain);
     }
     for (int n = 0; n < BOOT_ANIM_AXIS_FAR_SAMPLES; n++) {
@@ -733,7 +733,7 @@ test_the_far_chord_is_the_floor_of_the_true_half_chord(void) {
         for (int n = 0; n < BOOT_ANIM_FAR_LINES; n++) {
             const int32_t c = boot_anim_far_lines[n].c;
             const int64_t h = ((int64_t)r * r) - ((int64_t)c * c);
-            const int64_t half = boot_anim_far_chord(r, c);
+            const int64_t half = mathi_half_chord(r, c);
             if (h <= 0) {
                 TEST_ASSERT_EQUAL_INT64(0, half);
                 continue;
@@ -1812,8 +1812,45 @@ test_the_crossfade_ends_on_the_shipped_photograph(void) {
 }
 #endif
 
+#ifndef DEVICE_BUILD
+static void
+test_far_chords_match_integer_reference(void) {
+    enum { RADIUS_SAMPLES = 32 };
+
+    const size_t baked_count = sizeof boot_anim_axis_far / sizeof boot_anim_axis_far[0];
+    for (size_t i = 0; i <= baked_count + RADIUS_SAMPLES; i++) {
+        const int r = i < baked_count ? boot_anim_axis_far[i].r
+                                      : (int)(i - baked_count) * BOOT_ANIM_FAR_SWELL_FADE_Q12 / RADIUS_SAMPLES;
+        for (int c = -r - 1; c <= r + 1; c++) {
+            const int64_t h = (int64_t)r * r - (int64_t)c * c;
+            const int want = h > 0 ? (int)mathi_isqrt64((uint64_t)h) : 0;
+            TEST_ASSERT_EQUAL_INT(want, mathi_half_chord(r, c));
+        }
+    }
+}
+
+static void
+test_head_disc_spans_match_row_walk(void) {
+    const int diameters[] = {HEAD_OUTER, HEAD_MID, HEAD_CORE};
+    for (size_t i = 0; i < sizeof diameters / sizeof diameters[0]; i++) {
+        const int r = diameters[i] / 2;
+        for (int dy = -r; dy <= r; dy++) {
+            int dx = r;
+            while (dx > 0 && dx * dx + dy * dy > r * r) {
+                dx--;
+            }
+            TEST_ASSERT_EQUAL_INT(dx, mathi_half_chord(r, dy));
+        }
+    }
+}
+#endif
+
 void
 run_boot_anim_suite(void) {
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_far_chords_match_integer_reference);
+    RUN_TEST(test_head_disc_spans_match_row_walk);
+#endif
     seed = malloc(sizeof *seed);
     if (seed == NULL) {
         RUN_TEST(test_the_seed_is_the_boot_clip_read_from_its_pack);

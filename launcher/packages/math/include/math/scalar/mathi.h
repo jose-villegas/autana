@@ -178,25 +178,24 @@ mathi_isqrt64(uint64_t value) {
     return (uint32_t)root;
 }
 
-/* half_chord = floor(sqrt(r^2-d^2)), zero for |d| >= r; |r|, |d| <= 32767. */
+/* half_chord = floor(sqrt(r^2-d^2)), zero for |d| >= r; |r|, |d| fit int32. */
 static inline int
 mathi_half_chord(int r, int d) {
-    assert(r <= INT16_MAX);
-    if (mathi_abs(d) >= r) {
+    if ((int64_t)d <= -(int64_t)r || d >= r) {
         return 0;
     }
-    return (int)mathi_isqrt64((uint32_t)(r * r - d * d));
+    const int64_t h = mathi_wmul(r, r) - mathi_wmul(d, d);
+    return (int)mathi_isqrt64((uint64_t)h);
 }
 
-/* half_chord_round = f + (h-f^2 > f), h=r^2-d^2, f=floor(sqrt(h)); zero for |d| >= r; |r|, |d| <= 32767. */
+/* half_chord_round = f + (h-f^2 > f), h=r^2-d^2, f=floor(sqrt(h)); zero for |d| >= r; |r|, |d| fit int32. */
 static inline int
 mathi_half_chord_round(int r, int d) {
-    assert(r <= INT16_MAX);
-    if (mathi_abs(d) >= r) {
+    if ((int64_t)d <= -(int64_t)r || d >= r) {
         return 0;
     }
-    const uint32_t h = (uint32_t)(r * r - d * d);
-    const uint32_t f = mathi_isqrt64(h);
+    const int64_t h = mathi_wmul(r, r) - mathi_wmul(d, d);
+    const int64_t f = mathi_isqrt64((uint64_t)h);
     return (int)(f + (h - f * f > f));
 }
 

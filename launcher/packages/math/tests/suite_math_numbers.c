@@ -1467,8 +1467,36 @@ test_integer_half_chords_large_radius(void) {
     TEST_ASSERT_EQUAL_INT(0, mathi_half_chord_round(-RANGE_LIMIT, FLOOR_LIMIT));
 }
 
+static void
+test_integer_half_chords_int32(void) {
+    enum { LARGE_RADIUS = 80000, POWER_RADIUS = 1 << 30 };
+
+    const int radii[] = {LARGE_RADIUS, POWER_RADIUS, INT32_MAX};
+    for (size_t i = 0; i < sizeof radii / sizeof radii[0]; i++) {
+        const int r = radii[i];
+        const int offsets[] = {INT32_MIN, -r, -r + 1, -r / 2, 0, r / 2, r - 1, r, INT32_MAX};
+        for (size_t j = 0; j < sizeof offsets / sizeof offsets[0]; j++) {
+            const int d = offsets[j];
+            const int64_t h = (int64_t)r * r - (int64_t)d * d;
+            int64_t lo = 0, hi = (int64_t)r + 1;
+            while (hi - lo > 1) {
+                const int64_t mid = lo + (hi - lo) / 2;
+                if (mid * mid <= h) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            const int rounded = (int)(lo + (h - lo * lo > lo));
+            TEST_ASSERT_EQUAL_INT((int)lo, mathi_half_chord(r, d));
+            TEST_ASSERT_EQUAL_INT(rounded, mathi_half_chord_round(r, d));
+        }
+    }
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_integer_half_chords_int32);
     RUN_TEST(test_integer_square_root_edges);
     RUN_TEST(test_integer_half_chords_floor);
     RUN_TEST(test_integer_half_chords_round);
