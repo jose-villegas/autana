@@ -78,6 +78,9 @@ test_small_fill_menu_choice_moves_the_tunables(void) {
     const char* const* names = render_lab_small_fill_names(&count);
     TEST_ASSERT_EQUAL_STRING("SMOOTH", names[0]);
     TEST_ASSERT_EQUAL_STRING("FAST", names[1]);
+    TEST_ASSERT_EQUAL_STRING("FAST - DITHER", names[2]);
+    TEST_ASSERT_EQUAL_STRING("FAST - GRAIN", names[3]);
+    TEST_ASSERT_EQUAL_INT(4, count);
     TEST_ASSERT_EQUAL_INT(0, render_lab_small_fill_selected());
 
     TEST_ASSERT_TRUE(render_lab_small_fill_select(1));
@@ -90,8 +93,16 @@ test_small_fill_menu_choice_moves_the_tunables(void) {
     TEST_ASSERT_FALSE(render_lab_small_fill_select(count));
     TEST_ASSERT_EQUAL_INT(1, render_lab_small_fill_selected());
 
+    TEST_ASSERT_TRUE(render_lab_small_fill_select(2));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FAST_DITHER.ceiling, render_lab_small_fill().ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FAST_DITHER.gate, render_lab_small_fill().gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_DITHER, render_lab_small_fill().style);
+    TEST_ASSERT_TRUE(render_lab_small_fill_select(3));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_GRAIN, render_lab_small_fill().style);
+
     TEST_ASSERT_TRUE(render_lab_small_fill_select(0));
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_SMOOTH, render_lab_small_fill().ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, render_lab_small_fill().style);
     fixture();
 }
 
