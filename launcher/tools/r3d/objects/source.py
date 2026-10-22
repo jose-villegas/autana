@@ -1,15 +1,12 @@
-"""Triangle ownership beside the source loaders; moves into them with M2's rebake."""
+"""Triangle ownership (OBJ groups, glTF mesh nodes) aligned with the loaders' triangle order; the alignment check compares counts only."""
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 
 from gltf.gltf_read import ASSET_SUFFIXES, load_asset, read_accessor
 from r3d.gltf_mesh import TRIANGLES
-from r3d.import_settings import BLEND_SUFFIX, SettingsError, lfs_pointer_oid, source_files
 from r3d.mesh_import import load_source
-from r3d.obj import load_obj
 
 
 def obj_ownership(path):
@@ -48,16 +45,9 @@ def gltf_ownership(path):
 
 
 def load_object_source(settings):
-    """The import's source and aligned ownership, loading textures only for alpha masks."""
+    """The import's source and aligned triangle ownership."""
     path = settings.source['path']
-    if path.suffix.lower() in (*ASSET_SUFFIXES, BLEND_SUFFIX) or settings.alpha_keep is not None:
-        src = load_source(settings)
-    else:
-        for source in source_files(settings):
-            if lfs_pointer_oid(source) is not None:
-                raise SettingsError(f'{source}: Git LFS source is not pulled; run git lfs pull --exclude=""')
-        fields = ('p', 'uv', 'tri_v', 'tri_t', 'tri_m', 'names')
-        src = SimpleNamespace(**dict(zip(fields, load_obj(path))))
+    src = load_source(settings)
     reader = gltf_ownership if path.suffix.lower() in ASSET_SUFFIXES else obj_ownership
     src.tri_o, src.object_names = reader(path)
     if len(src.tri_o) != len(src.tri_v):

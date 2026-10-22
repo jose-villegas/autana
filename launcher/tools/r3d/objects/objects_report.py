@@ -6,7 +6,7 @@
 
 Reads source geometry after alpha masking. Writes only to --out, which must
 be outside the repository. The selected variant's budget is shared in
-proportion to source triangles; culling uses bounding spheres, not occlusion.
+proportion to source triangles; culling uses world bounds, not occlusion.
 """
 
 import argparse
@@ -21,17 +21,18 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from docs import plot_style  # noqa: E402
+from r3d.appearance_simplify import projection  # noqa: E402
+from r3d.cost_model import clusters_in_view  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.mesh_import import camera_path_poses  # noqa: E402
 from r3d.light import drop_masked  # noqa: E402
-from r3d.objects.instances import MATCH_TOLERANCE, match_instances, source_objects  # noqa: E402
+from r3d.objects.instances import MATCH_TOLERANCE, bounds_diagonal, match_instances, source_objects  # noqa: E402
 from r3d.objects.source import load_object_source  # noqa: E402
 from r3d.poses import camera_basis  # noqa: E402
 
 LOD_LEVELS = 4
 LOD_TRIANGLE_RATIO = 4
 DEFAULT_EVERY_MS = 1000
-DEFAULT_SIZE = (184, 224)
 TOP_SHAPES = 25
 RESIDUAL_BINS = 32
 # Exact matches need a positive display floor on the logarithmic axis.
@@ -52,27 +53,14 @@ def masked_objects(src, settings):
     return objects
 
 
-def sphere_view(centre, radius, pose, width, height, lens, near):
-    """Conservative sphere/frustum test and pinhole radius estimate in camera_basis conventions."""
-    right, up, forward = camera_basis(pose[3:])
-    offset = centre - pose[:3]
-    x, y, z = (float(offset @ axis) for axis in (right, up, forward))
-    horizontal, vertical = lens * width / min(width, height), lens * height / min(width, height)
-    visible = (z + radius >= near and
-               abs(x) <= z * horizontal + radius * np.hypot(1, horizontal) and
-               abs(y) <= z * vertical + radius * np.hypot(1, vertical))
-    projected = radius * min(width, height) / (2 * lens * max(z, near))
-    return visible, projected
-
-
 def pose_rows(shapes, scene, job, every_ms, size):
-    """Selected variant budget, shared per source triangle, after sphere culling and estimated LOD."""
+    """Selected variant budget, shared per source triangle, after bounds culling and estimated LOD."""
     visibility = SimpleNamespace(size=size, every_ms=every_ms)
     width, height, lens, near, poses = camera_path_poses(scene, visibility, either_way_up=False)
     total = sum(len(shape.triangles) * len(shape.instances) for shape in shapes)
     budget = job.renderer.variant.triangles
     budget = total if budget is None else budget
-    placements = []
+    placements, boxes = [], []
     renderer_matrix = np.asarray(job.object.matrix)
     renderer_position = np.asarray(job.object.position)
     for shape in shapes:
@@ -83,13 +71,21 @@ def pose_rows(shapes, scene, job, every_ms, size):
             # A nonuniform renderer scale needs an enclosing sphere.
             placed_radius = radius * np.linalg.norm(renderer_matrix, ord=2)
             placements.append((centre, placed_radius, share, len(shape.instances) > 1))
+            lo, hi = shape.positions.min(axis=0), shape.positions.max(axis=0)
+            corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
+            placed = (corners @ instance.linear.T + instance.position) @ renderer_matrix.T + renderer_position
+            boxes.append([placed.min(axis=0), placed.max(axis=0)])
     picture_area = width * height
     views = []
     for pose in poses:
         view = []
-        for centre, radius, share, repeated in placements:
-            visible, pixels = sphere_view(centre, radius, pose, width, height, lens, near)
-            if visible:
+        clip = projection(pose[:3], pose[3:], width, height, lens, near)
+        visible = clusters_in_view(np.asarray(boxes).reshape(-1, 2, 3), clip)
+        forward = camera_basis(pose[3:])[2]
+        for shown, (centre, radius, share, repeated) in zip(visible, placements):
+            if shown:
+                z = float((centre - pose[:3]) @ forward)
+                pixels = radius * min(width, height) / (2 * lens * max(z, near))
                 view.append((share, min(picture_area, np.pi * pixels ** 2), repeated))
         views.append(view)
     mean_in_view = np.mean([sum(share for share, _, _ in view) for view in views])
@@ -134,14 +130,15 @@ def write_report(out, objects, shapes, budget, rows, pixels_per_triangle, tolera
                      f'{entry["triangles"] * (entry["instance_count"] - 1)} |')
     lines += ['', '## Path estimate', '',
               f'Calibrated pixels per triangle: {pixels_per_triangle:.6g}.', '',
-              'Calibration divides picture area by the mean in-view budget over the path.',
+              'Pixels per triangle is relative by construction: calibration divides picture area',
+              'by the path’s own mean in-view budget.',
               'Only repeated shapes use LOD; single-instance shapes retain their full share.', '',
               f'Choose the smallest level k with share / {LOD_TRIANGLE_RATIO}^k <= projected area / pixels per',
               f'triangle, capped at LOD_LEVELS - 1 (LOD_LEVELS = {LOD_LEVELS}). Projected area',
               'is pi times the projected sphere radius squared, capped at picture area.', '',
               'Shares use the selected variant budget, proportional to source triangles.',
-              'Bounding spheres include renderer placement; visibility excludes occlusion.', '',
-              'Triangles LOD frees are available to the structure fit. This is an estimate.', '',
+              'World bounds include renderer placement; visibility excludes occlusion.', '',
+              'A sphere’s disk overstates tall thin props’ footprint, so their saving is probably understated.', '',
               '| Draw rule | Mean triangles | Maximum triangles |', '|---|---:|---:|']
     draw_rules = [('Whole budget', 'budget_triangles'), ('In view', 'budget_triangles_in_view'),
                   ('In view with LOD on repeated shapes', 'triangles_with_lod'), ('Triangles LOD frees', 'saved')]
@@ -150,7 +147,7 @@ def write_report(out, objects, shapes, budget, rows, pixels_per_triangle, tolera
         lines.append(f'| {label} | {np.mean(values):.2f} | {max(values):.2f} |')
     lines += ['', '![Accepted relative residuals](residuals.png)', '', '![Path triangle estimate](lod.png)', '']
     (out / 'objects.md').write_text('\n'.join(lines))
-    diagonals = {obj.name: np.linalg.norm(np.ptp(obj.positions, axis=0)) for obj in objects}
+    diagonals = {obj.name: bounds_diagonal(obj.positions) for obj in objects}
     residuals = [i.residual / diagonals[i.object_name] if diagonals[i.object_name] else 0
                  for s in shapes for i in s.instances[1:]]
     fig, ax = plot_style.subplots(1, 1, plot_style.FIGURE_SIZE)
@@ -191,9 +188,10 @@ def main(argv=None):
         parser.error('--object must name a mesh renderer')
     if scene.camera is None or scene.camera.component.path is None:
         parser.error('scene needs a camera path')
-    fitted = next((j.renderer.fit for j in scene.renderers if j.renderer.fit), None)
-    size = args.size or (fitted.size if fitted else DEFAULT_SIZE)
     visibility = job.renderer.visibility
+    size = args.size or (job.renderer.fit.size if job.renderer.fit else None) or (visibility.size if visibility else None)
+    if size is None:
+        parser.error('--size is required when the selected renderer has no fit or visibility size')
     every_ms = args.every_ms or (visibility.every_ms if visibility and visibility.source == 'camera_path' else DEFAULT_EVERY_MS)
     src = load_object_source(job.settings)
     objects = masked_objects(src, job.settings)

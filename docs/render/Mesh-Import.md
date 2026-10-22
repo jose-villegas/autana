@@ -230,16 +230,25 @@ scaled copies remain separate shapes. Reflections are recorded per instance.
 |---|---|
 | Candidate bucket | Equal vertex and triangle counts, and material multiset |
 | Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#86)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
-| Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangles and materials agree as multisets |
+| Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangle winding and materials agree as multisets |
 
 The report writes counts, residuals and a camera-path estimate to an external
-`--out` directory. Density LOD applies only to repeated shapes, calibrated by
-picture area divided by the path's mean in-view budget. Single-instance
-shapes keep their full share; freed triangles are available to the structure fit.
+`--out` directory. Single-instance shapes keep their full share.
+
+Pixels per triangle is relative by construction: picture area divided by
+the path's own mean in-view budget.
+
+A repeated shape drops to a quarter-triangle level while its share exceeds
+what its projected area allows. `LOD_TRIANGLE_RATIO` and `LOD_LEVELS` in
+`objects_report.py` define the levels and cap.
+
+A sphere's disk overstates the footprint of tall thin props, so their
+saving is probably understated. Culling uses placed world bounds;
+the footprint estimate uses the enclosing sphere.
 
 The table, CSV and plot show the whole budget, in-view triangles, in-view
-triangles with repeated-shape LOD, and triangles LOD frees. The bake does
-not use objects or instances yet.
+triangles with repeated-shape LOD, and triangles LOD frees.
+The bake does not use objects or instances.
 
 ## The offline tools
 
