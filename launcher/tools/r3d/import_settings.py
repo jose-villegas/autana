@@ -19,6 +19,7 @@ from r3d.scene_name import scene_id
 from gltf.gltf_read import ASSET_SUFFIXES
 
 MESHLET_TRIANGLES = 32
+DEFAULT_PROPS_SHARE = 0.3
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
@@ -275,7 +276,8 @@ def load_geometry(table, steps):
         if isinstance(simplify, dict):
             for key in ("props", "props_share"):
                 if key in simplify:
-                    raise SettingsError(f"geometry.simplify.{key} was removed: use [objects] overrides with triangles or importance")
+                    home = "[objects].props_share" if key == "props_share" else "[objects] overrides with triangles or importance"
+                    raise SettingsError(f"geometry.simplify.{key} was removed: use {home}")
         check_keys(simplify, ("dense_edge", "seal_seams", "colour_deviation"), "geometry.simplify")
         steps.simplify = SimpleNamespace(
             dense_edge=number(simplify["dense_edge"], "geometry.simplify.dense_edge"),
@@ -287,7 +289,10 @@ def load_geometry(table, steps):
 
 def load_object_overrides(table):
     """Closed glob rules for connected simplifier passes."""
-    check_keys(table, (), "objects", optional=("overrides",))
+    check_keys(table, (), "objects", optional=("overrides", "props_share"))
+    share = table.get("props_share", DEFAULT_PROPS_SHARE)
+    if not 0 <= number(share, "objects.props_share") <= 1:
+        raise SettingsError("objects.props_share must be between 0 and 1")
     rules = table.get("overrides", [])
     if not isinstance(rules, list):
         raise SettingsError("objects.overrides must be an array of tables")
@@ -368,6 +373,7 @@ def load_import_settings(path):
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         overrides=load_object_overrides(values.get("objects", {})),
+        props_share=values.get("objects", {}).get("props_share", DEFAULT_PROPS_SHARE),
         meshlet_triangles=steps.meshlet_triangles,
         variants=variants, skin_lighting=lighting)
 

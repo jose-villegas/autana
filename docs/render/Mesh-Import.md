@@ -160,52 +160,55 @@ budget with meshoptimizer's<sup>[[11]](../Citations.md#11)</sup> quadric error s
 with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#13)</sup>.
 
 `dense_edge` is the longest unsplit edge. Objects sharing a welded vertex
-form one simplifier pass; no pass splits a shared edge. `seal_seams` joins
-touching pieces before grouping (see [seal_seams](#seal_seams)).
+stay in one pass. `seal_seams` joins touching pieces before grouping
+(see [seal_seams](#seal_seams)).
 
-Funkhouser and Séquin<sup>[[87]](../Citations.md#87)</sup> trade benefit against
-cost per object to fit a per-frame cost budget. Here the cost is a fixed
-triangle budget per variant and the benefit is the screen-space error.
-One shared error threshold, found by bisection, replaces their per-frame prediction.
+Props are free-standing weld groups containing one source object, with a
+bounds diagonal below `PROP_DIAGONAL_FRACTION` of the import's source
+bounds diagonal. The constant lives in `simplify.py`.
 
-The upper bracket comes from meshoptimizer's returned error at maximum
-simplification. Log-space bisection stops when the output is at most one
-meshlet below budget, where attainable. Output never exceeds budget;
-the log reports the cut and shortfall.
+The `[objects]` table reserves `props_share` of each variant's triangle
+budget for props. The remaining structure uses one global simplifier pass,
+except for fixed overrides.
+
+Props split their share by projected area: `(scale * diagonal)²`, multiplied
+by importance. A pass is capped at its source triangles; excess goes back
+to the other props in proportion. Integer shares use largest remainders.
 
 Scale uses `SCALE_PERCENTILE` in `simplify.py` over focal pixels divided by
 distance to the nearest densified surface vertex. A cKDTree queries those
-vertices; `dense_edge` bounds their spacing.
+vertices; `dense_edge` bounds their spacing. Without eyes, scale is one.
 
 Path eyes use their pose size and lens. Region eyes are seeded uniform
 draws, with count `REGION_EYE_SAMPLES` in `mesh_import.py`, panel size and
 scene lens. Sampling is independent of visibility culling.
 
-The absolute world error is the cut divided by scale. Without a camera,
-scale is one and the cut is in world units. Each variant remains one mesh.
+Each pass uses its count target with unrestricted simplification error.
+`colour_deviation` prices one panel colour step against surface movement,
+scaled by the square root of that pass's area over its budget.
 
-`colour_deviation`, in source units, prices one panel colour step against
-surface movement. Each pass divides the weight by meshoptimizer's position
-scale, independent of its triangle ceiling. A smaller value preserves
-geometry more strongly than colour; it is a trade, not a limit.
+A smaller `colour_deviation` preserves geometry more strongly than colour;
+it is a trade, not a limit.
 
-The optional `[objects]` table contains `overrides`, an array of closed tables.
-Each rule needs one selector and one allocation value:
+The optional `[objects]` table contains a share and an array of closed
+override tables. Each override needs one selector and one allocation value:
 
 | Key | Value | Effect |
 |---|---|---|
-| `object` | Object-name glob, such as `"statue_*"` | Selects passes holding matching objects. |
-| `material` | Material-name glob, such as `"leaf*"` | Selects passes holding matching materials. |
-| `importance` | Number greater than zero | Multiplies scale once per matching pass; matching rules multiply. |
-| `triangles` | Integer at least one | Fixes a ceiling per matching pass. An object rule must match every object in that pass; a material rule must name one pass. |
+| `props_share` | Number from zero to one; default `DEFAULT_PROPS_SHARE` in `import_settings.py` | Reserves this fraction of the variant budget for props; without props, structure gets the full budget. |
+| `overrides` | Array of tables with the keys below | Applies each matching rule once per weld group. |
+| `object` | Object-name glob, such as `"statue_*"` | Selects groups holding matching objects. |
+| `material` | Material-name glob, such as `"leaf*"` | Selects groups holding matching materials. |
+| `importance` | Number greater than zero | Multiplies a prop's projected-area weight; matching rules multiply. An error on structure, which has nothing to split against. |
+| `triangles` | Integer at least one | Fixes a ceiling per matching group, deducted from its props or structure share. An object rule must match every object in that group; a material rule must name one group. |
 
-Fixed rules must match every object in a selected pass. Unmatched rules
-are errors. Fixed passes leave the bisection, and their ceilings are
-deducted first.
+Fixed rules must match every object in a selected weld group. Unmatched
+rules are errors. Ceilings above source counts are clamped and logged;
+ceilings exceeding their share are errors.
 
-A ceiling above its pass's source count is clamped and logged. Total
-ceilings beyond the variant budget are an error. The simplifier may return
-fewer triangles than a fixed ceiling; the log records the actual count.
+A fixed structural group gets its own pass; other structure stays global.
+The simplifier can return fewer triangles than a target; the log records
+source counts, budgets and actual counts per pass.
 
 #### seal_seams
 

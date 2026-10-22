@@ -45,6 +45,7 @@ from r3d.light import (  # noqa: E402
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, write_lit_mesh  # noqa: E402
 from r3d.process_budget import NULL_RECORDER
 from r3d.path_bake import PathLight  # noqa: E402
+from r3d.objects.instances import bounds_diagonal  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.poses import either_way, focal_px, sample_camera_path  # noqa: E402
 from r3d import ray_query  # noqa: E402
@@ -260,7 +261,8 @@ def bake_geometry(job, scene, recorder=None):
             steps = settings.simplify
             positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles,
                                                    allocation=Allocation(np.concatenate(all_obj), src.object_names, src.names,
-                                                                         settings.overrides, eyes, focal),
+                                                                         settings.overrides, eyes, focal, settings.props_share,
+                                                                         bounds_diagonal(src.p)),
                                                    colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
             rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)

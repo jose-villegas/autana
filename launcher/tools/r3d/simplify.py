@@ -1,4 +1,4 @@
-"""Appearance-preserving simplification with a common screen-space error cut."""
+"""Appearance-preserving simplification with projected-area prop budgets and one structure pass."""
 
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
@@ -8,10 +8,11 @@ import sys
 import numpy as np
 
 from . import log
-from .geometry import weld_keeping
-from .import_settings import MESHLET_TRIANGLES, SettingsError
+from .geometry import triangle_areas, weld_keeping
+from .import_settings import DEFAULT_PROPS_SHARE, SettingsError
 from .lit_mesh import POSITION_SCALE
-from .meshopt import UNLIMITED_ERROR, PERMISSIVE, REGULARIZE, REGULARIZE_LIGHT, simplify_with_update
+from .meshopt import PERMISSIVE, REGULARIZE, REGULARIZE_LIGHT, simplify_with_update
+from .objects.instances import bounds_diagonal
 from .repair import repair
 from .tessellate import split_marked_edges
 
@@ -19,7 +20,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
 import gfx_color  # noqa: E402  (path must be set up first)
 
 SCALE_PERCENTILE = 90
-BISECTION_STEPS = 64
+# At this fraction, small free-standing groups held 79.8k of 234.8k source triangles; the hand list held 77.8k.
+PROP_DIAGONAL_FRACTION = 0.05
 
 # A step and a half of RGB565 is what keeps the meshlets sharing their
 # vertices on the meshes measured: one step leaves the larger of them with
@@ -46,19 +48,22 @@ def densify(p, tris, labels, max_edge, rounds=16):
 
 @dataclass
 class Allocation:
-    """Source ownership and caller-selected screen-error policy."""
+    """Source ownership, reserved prop share and per-pass overrides."""
     tri_o: object = None
     object_names: tuple = ()
     material_names: tuple = ()
     overrides: tuple = ()
     eyes: object = None
     focal_px: float = 1.0
+    props_share: float = DEFAULT_PROPS_SHARE
+    source_diagonal: float | None = None
 
 
-def colour_weight(pos, deviation):
-    """Weight per colour level in meshoptimizer's extent-normalized space."""
-    extent = np.ptp(pos, axis=0).max()
-    return deviation / (extent * max(gfx_color.STEP)) if extent > 0 else 0.0
+def colour_weight(pos, tris, budget, deviation):
+    """Price one panel colour step against surface deviation, using the side of
+    the surface area per budgeted triangle as meshoptimizer's attribute scale."""
+    side = np.sqrt(triangle_areas(pos, tris).sum() / budget)
+    return deviation / (side * max(gfx_color.STEP)) if side > 0 else 0.0
 
 
 def _label_after(tris_in, labels_in, kept, tris_out):
@@ -139,18 +144,60 @@ def pass_overrides(objects, materials, overrides):
     return importance, fixed
 
 
+def prop_groups(pos, tris, tri_o, groups, source_diagonal=None):
+    """Small single-object weld groups reserve detail independently of structure."""
+    diagonal = bounds_diagonal(pos[np.unique(tris)]) if source_diagonal is None else source_diagonal
+    limit = PROP_DIAGONAL_FRACTION * diagonal
+    return {group for group in np.unique(groups)
+            if len(np.unique(tri_o[groups == group])) == 1
+            and bounds_diagonal(pos[np.unique(tris[groups == group])]) < limit}
+
+
+def prop_budgets(weights, capacities, budget):
+    """Capped proportional shares, with deterministic largest-remainder rounding."""
+    weights, capacities = np.asarray(weights, dtype=float), np.asarray(capacities, dtype=int)
+    shares = np.zeros(len(weights))
+    remaining = min(budget, int(capacities.sum()))
+    active = capacities > 0
+    while np.any(active):
+        w = weights[active]
+        w = np.ones(len(w)) if not np.any(w) else w
+        trial = remaining * w / w.sum()
+        capped = trial >= capacities[active]
+        ids = np.flatnonzero(active)
+        if not np.any(capped):
+            shares[ids] = trial
+            break
+        full = ids[capped]
+        shares[full] = capacities[full]
+        remaining -= int(capacities[full].sum())
+        active[full] = False
+    rounded = np.floor(shares).astype(int)
+    extra = min(budget, int(capacities.sum())) - int(rounded.sum())
+    order = np.argsort(-(shares - rounded), kind="stable")
+    rounded[order[:extra]] += 1
+    return rounded
+
+
+def simplify_part(pos, rgb, tris, labels, tri_o, selected, object_names, material_names):
+    """Compact a pass and retain its source names for overrides and allocation logs."""
+    used, local = np.unique(tris[selected], return_inverse=True)
+    material_ids, counts = np.unique(labels[selected], return_counts=True)
+    return dict(pos=pos[used], rgb=rgb[used], tris=local.reshape(-1, 3), labels=labels[selected],
+                objects=[object_names[i] for i in np.unique(tri_o[selected])] if object_names else [],
+                materials=([material_names[i] for i in material_ids[np.argsort(-counts, kind="stable")]]
+                           if material_names else []), selected=selected)
+
+
 def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=False,
              position_scale=POSITION_SCALE, allocation=None):
-    """Allocate a fixed triangle budget with one absolute screen-error cut.
-    Funkhouser and Séquin trade per-object benefit against per-frame cost;
-    here log-space bisection finds a shared cut for a variant's budget.
-    Welded objects share a pass. Colour costs colour_deviation world units
-    per panel step, independent of the triangle ceiling. Stop within one
-    meshlet below budget; retained vertices carry the returned labels."""
+    """Reserve a share for small free-standing props, split by projected area.
+    Welded objects stay in one pass. Fixed overrides reserve their own ceilings;
+    all remaining structure shares one global count-target simplification.
+    Each pass prices colour using its own area and budget."""
     allocation = Allocation() if allocation is None else allocation
     tri_o, object_names = allocation.tri_o, allocation.object_names
     material_names, overrides = allocation.material_names, allocation.overrides
-    eyes, focal_px = allocation.eyes, allocation.focal_px
     options = REGULARIZE | PERMISSIVE
     labels = np.asarray(labels)
     tri_o = np.zeros(len(tris), dtype=np.int64) if tri_o is None else np.asarray(tri_o)
@@ -161,15 +208,12 @@ def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=
     welded, ids = weld_keeping(pos, np.arange(len(pos)))
     pos = welded[ids]
     groups = object_groups(pos, tris, tri_o)
+    props = prop_groups(pos, tris, tri_o, groups, allocation.source_diagonal)
     parts = []
     for group in np.unique(groups):
         sel = groups == group
-        used, local = np.unique(tris[sel], return_inverse=True)
-        local = local.reshape(-1, 3)
-        names = [object_names[i] for i in np.unique(tri_o[sel])] if object_names else []
-        material_ids, material_counts = np.unique(labels[sel], return_counts=True)
-        materials = ([material_names[i] for i in material_ids[np.argsort(-material_counts, kind="stable")]]
-                     if material_names else [])
+        part = simplify_part(pos, rgb, tris, labels, tri_o, sel, object_names, material_names)
+        names, materials = part["objects"], part["materials"]
         for rule in overrides:
             if "material" not in rule or "triangles" not in rule:
                 continue
@@ -184,9 +228,14 @@ def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=
                 raise SettingsError(f"fixed material override {rule['material']!r} also caps welded objects: "
                                     + ", ".join(others))
         importance, fixed = pass_overrides(names, materials, overrides)
-        scale = projected_scale(pos[used], eyes, focal_px) * importance
-        parts.append(dict(pos=pos[used], rgb=rgb[used], tris=local, labels=labels[sel], fixed=fixed,
-                          scale=scale, objects=names, materials=materials, cache={}))
+        is_prop = group in props
+        if not is_prop and any("importance" in rule and any(fnmatchcase(name, rule.get("object", rule.get("material")))
+                               for name in (names if "object" in rule else materials)) for rule in overrides):
+            raise SettingsError(f"importance override on structure {names}: it has nothing to split against")
+        scale = projected_scale(part["pos"], allocation.eyes, allocation.focal_px) if is_prop else 1.0
+        part.update(fixed=fixed, prop=is_prop, scale=scale,
+                    weight=(scale * bounds_diagonal(part["pos"])) ** 2 * importance)
+        parts.append(part)
     for rule in overrides:
         selector = "material" if "material" in rule else "object"
         key = "materials" if selector == "material" else "objects"
@@ -200,59 +249,45 @@ def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=
         if part["fixed"] is not None and part["fixed"] > len(part["tris"]):
             log(f"  fixed override {part['objects']}: clamped {part['fixed']} to {len(part['tris'])} triangles")
             part["fixed"] = len(part["tris"])
-        part["weight"] = colour_weight(part["pos"], colour_deviation)
-    reserved = sum(part["fixed"] or 0 for part in parts)
-    if reserved > triangles:
-        raise SettingsError(f"fixed object overrides ({reserved}) exceed triangle budget {triangles}")
-
-    def evaluate(part, threshold):
-        fixed = part["fixed"]
-        error = (UNLIMITED_ERROR if fixed is not None
-                 else float(np.float32(min(UNLIMITED_ERROR, threshold / part["scale"]))))
-        if error not in part["cache"]:
-            part["cache"][error] = simplify_with_update(
-                part["pos"], part["rgb"], part["tris"], fixed if fixed is not None else 0,
-                part["weight"], options, target_error=error, absolute_error=True)
-        return part["cache"][error]
-
-    def evaluate_cut(threshold):
-        result = [evaluate(part, threshold) for part in parts]
-        return sum(len(item[2]) for item in result), result
-
-    low, high = 0.0, float("inf")
-    count, result = evaluate_cut(low)
-    threshold = low
-    if count > triangles:
-        count, result = evaluate_cut(high)
-        high = max((item[4] * part["scale"] for part, item in zip(parts, result)
-                    if part["fixed"] is None), default=0.0)
-        threshold = high
-        if count > triangles:
-            raise ValueError(f"minimum simplification has {count} triangles, above budget {triangles}")
-        for _ in range(BISECTION_STEPS):
-            if triangles - count <= MESHLET_TRIANGLES:
-                break
-            middle = float(np.sqrt(max(low, np.finfo(np.float32).tiny) * high))
-            trial_count, trial = evaluate_cut(middle)
-            if trial_count > triangles:
-                low = middle
-            else:
-                high = middle
-                if trial_count >= count:
-                    count, result, threshold = trial_count, trial, middle
-
-    count = sum(len(item[2]) for item in result)
-    log(f"  error cut {threshold:.6g}, {count}/{triangles} triangles, shortfall {triangles - count}")
+    prop_share = int(triangles * allocation.props_share) if props else 0
+    for is_prop, budget in ((True, prop_share), (False, triangles - prop_share)):
+        pool = [part for part in parts if part["prop"] == is_prop]
+        reserved = sum(part["fixed"] or 0 for part in pool)
+        if reserved > budget:
+            kind = "props" if is_prop else "structure"
+            raise SettingsError(f"fixed overrides ({reserved}) exceed triangle budget {budget} in {kind} share")
+        free = [part for part in pool if part["fixed"] is None]
+        if is_prop:
+            budgets = prop_budgets([part["weight"] for part in free], [len(part["tris"]) for part in free], budget - reserved)
+            for part, count in zip(free, budgets):
+                part["budget"] = int(count)
+        elif free:
+            selected = np.logical_or.reduce([part["selected"] for part in free])
+            combined = simplify_part(pos, rgb, tris, labels, tri_o, selected, object_names, material_names)
+            combined.update(fixed=None, prop=False, scale=1.0, budget=budget - reserved)
+            parts = [part for part in parts if part["prop"] or part["fixed"] is not None] + [combined]
+        for part in pool:
+            if part["fixed"] is not None:
+                part["budget"] = part["fixed"]
+    log(f"  props share {allocation.props_share:g}, {len(props)} passes, budget {prop_share}/{triangles}")
     out_pos, out_rgb, out_tris, out_labels = [], [], [], []
     base = 0
-    for index, (part, (p, c, t, kept, _)) in enumerate(zip(parts, result)):
+    for index, part in enumerate(parts):
+        budget = part["budget"]
+        if budget == 0:
+            continue
+        weight = colour_weight(part["pos"], part["tris"], budget, colour_deviation)
+        p, c, t, kept = simplify_with_update(part["pos"], part["rgb"], part["tris"], budget, weight, options)
         out_pos.append(p)
         out_rgb.append(c)
         out_tris.append(t + base)
         out_labels.append(_label_after(part["tris"], part["labels"], kept, t))
         base += len(p)
-        log(f"  pass {index} objects={part['objects']} materials={part['materials'][:3]}: "
-            f"{len(part['tris'])} -> {len(t)} triangles, scale {part['scale']:.6g}")
+        kind = "prop" if part["prop"] else "structure"
+        log(f"  pass {index} {kind} objects={part['objects']} materials={part['materials'][:3]}: "
+            f"{len(part['tris'])} -> {len(t)} triangles (budget {budget}, scale {part['scale']:.6g})")
+    if not out_pos:
+        return pos[:0], rgb[:0], tris[:0], labels[:0]
     out_pos, out_rgb = np.concatenate(out_pos), np.concatenate(out_rgb)
     if seal_seams:
         rounded = np.clip(np.rint(out_rgb), 0, 255)
