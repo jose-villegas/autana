@@ -2,12 +2,17 @@
 #include <string.h>
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
+#include "apps/render_lab/ui/render_lab_menu_screen.h"
 
+#include "display/display.h"
 #include "gfx/gfx.h"
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
 #include "services/tune.h"
 #include "suites.h"
+#include "ui/layout/ui_transform.h"
+#include "ui/ui.h"
+#include "ui_probe.h"
 #include "unity.h"
 
 static bool tune_ok;
@@ -145,10 +150,46 @@ test_dynamic_resolution_toggle_moves_the_budget_into_the_context(void) {
     fixture();
 }
 
+#ifndef ESP_PLATFORM
+/* Every preset label, shown as the chosen one, fits the SMALL FILL
+ * dropdown's label room in both orientations. */
+static void
+test_small_fill_labels_fit_their_dropdown(void) {
+    static const int quarters[] = {DISPLAY_PORTRAIT, DISPLAY_LANDSCAPE};
+    int count = 0;
+    const char* const* names = render_lab_small_fill_names(&count);
+    ui_probe_widgets_start();
+    for (size_t q = 0; q < sizeof quarters / sizeof quarters[0]; q++) {
+        ui_init();
+        ui_set_transform(ui_transform_quarter_turn(quarters[q], GFX_WIDTH, GFX_HEIGHT));
+        for (int i = 0; i < count; i++) {
+            TEST_ASSERT_TRUE(render_lab_small_fill_select(i));
+            const input_t input = {0};
+            ui_begin(&input);
+            const render_lab_menu_screen_state_t state = {0};
+            (void)render_lab_menu_screen_draw(&state);
+            ui_probe_end_frame();
+            recti_t dropdown;
+            recti_t drawn;
+            TEST_ASSERT_TRUE(ui_probe_widget(RENDER_LAB_SMALL_FILL_LABEL, &dropdown));
+            TEST_ASSERT_TRUE_MESSAGE(ui_probe_text(names[i], &drawn), names[i]);
+            TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(ui_probe_dropdown_label_width(dropdown.w, false, NULL), drawn.w,
+                                                  names[i]);
+        }
+    }
+    ui_probe_widgets_stop();
+    TEST_ASSERT_TRUE(render_lab_small_fill_select(0));
+    fixture();
+}
+#endif
+
 void
 run_render_size_suite(void) {
     RUN_TEST(test_dynamic_resolution_toggle_moves_the_budget_into_the_context);
     RUN_TEST(test_small_fill_menu_choice_moves_the_tunables);
+#ifndef ESP_PLATFORM
+    RUN_TEST(test_small_fill_labels_fit_their_dropdown);
+#endif
     RUN_TEST(test_small_fill_ceiling_range);
     RUN_TEST(test_render_size_and_percent_follow_and_clamp);
 }
