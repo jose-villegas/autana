@@ -8,11 +8,10 @@ import sys
 import numpy as np
 
 from . import log
-from .geometry import triangle_areas, weld_keeping
-from .import_settings import DEFAULT_PROPS_SHARE, SettingsError
+from .geometry import bounds_diagonal, triangle_areas, weld_keeping
+from .import_settings import SettingsError, pass_overrides
 from .lit_mesh import POSITION_SCALE
 from .meshopt import PERMISSIVE, REGULARIZE, REGULARIZE_LIGHT, simplify_with_update
-from .objects.instances import bounds_diagonal
 from .repair import repair
 from .tessellate import split_marked_edges
 
@@ -20,7 +19,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
 import gfx_color  # noqa: E402  (path must be set up first)
 
 SCALE_PERCENTILE = 90
-# At this fraction, small free-standing groups held 79.8k of 234.8k source triangles; the hand list held 77.8k.
+# Bounds a free-standing single-object group relative to the whole source diagonal.
 PROP_DIAGONAL_FRACTION = 0.05
 
 # A step and a half of RGB565 is what keeps the meshlets sharing their
@@ -55,7 +54,7 @@ class Allocation:
     overrides: tuple = ()
     eyes: object = None
     focal_px: float = 1.0
-    props_share: float = DEFAULT_PROPS_SHARE
+    props_share: float = 0.0
     source_diagonal: float | None = None
 
 
@@ -123,25 +122,6 @@ def projected_scale(pos, eyes, focal_px):
 
     distance = np.maximum(cKDTree(pos).query(eyes)[0], np.finfo(np.float32).eps)
     return float(np.percentile(focal_px / distance, SCALE_PERCENTILE))
-
-
-def pass_overrides(objects, materials, overrides):
-    """Apply each rule once per pass; fixed object selectors must cover it."""
-    importance, fixed = 1.0, None
-    for rule in overrides:
-        names = materials if "material" in rule else objects
-        pattern = rule.get("material", rule.get("object"))
-        matches = [name for name in names if fnmatchcase(name, pattern)]
-        if not matches:
-            continue
-        if "importance" in rule:
-            importance *= rule["importance"]
-        else:
-            others = [name for name in objects if not fnmatchcase(name, pattern)]
-            if "object" in rule and others:
-                raise SettingsError(f"fixed override {pattern!r} also caps welded objects: {', '.join(others)}")
-            fixed = (fixed or 0) + rule["triangles"]
-    return importance, fixed
 
 
 def prop_groups(pos, tris, tri_o, groups, source_diagonal=None):
@@ -214,20 +194,11 @@ def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=
         sel = groups == group
         part = simplify_part(pos, rgb, tris, labels, tri_o, sel, object_names, material_names)
         names, materials = part["objects"], part["materials"]
-        for rule in overrides:
-            if "material" not in rule or "triangles" not in rule:
-                continue
-            if not any(fnmatchcase(name, rule["material"]) for name in materials):
-                continue
-            others = []
-            for obj in np.unique(tri_o[sel]):
-                own_materials = np.unique(labels[sel & (tri_o == obj)])
-                if not any(fnmatchcase(material_names[i], rule["material"]) for i in own_materials):
-                    others.append(object_names[obj])
-            if others:
-                raise SettingsError(f"fixed material override {rule['material']!r} also caps welded objects: "
-                                    + ", ".join(others))
-        importance, fixed = pass_overrides(names, materials, overrides)
+        materials_by_object = {
+            object_names[obj]: [material_names[i] for i in np.unique(labels[sel & (tri_o == obj)])]
+            for obj in np.unique(tri_o[sel])
+        } if object_names and material_names else {name: [] for name in names}
+        importance, fixed = pass_overrides(names, materials_by_object, overrides)
         is_prop = group in props
         if not is_prop and any("importance" in rule and any(fnmatchcase(name, rule.get("object", rule.get("material")))
                                for name in (names if "object" in rule else materials)) for rule in overrides):
@@ -250,7 +221,9 @@ def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=
             log(f"  fixed override {part['objects']}: clamped {part['fixed']} to {len(part['tris'])} triangles")
             part["fixed"] = len(part["tris"])
     prop_share = int(triangles * allocation.props_share) if props else 0
-    for is_prop, budget in ((True, prop_share), (False, triangles - prop_share)):
+    prop_allocated = 0
+    for is_prop in (True, False):
+        budget = prop_share if is_prop else triangles - prop_allocated
         pool = [part for part in parts if part["prop"] == is_prop]
         reserved = sum(part["fixed"] or 0 for part in pool)
         if reserved > budget:
@@ -261,6 +234,7 @@ def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=
             budgets = prop_budgets([part["weight"] for part in free], [len(part["tris"]) for part in free], budget - reserved)
             for part, count in zip(free, budgets):
                 part["budget"] = int(count)
+            prop_allocated = reserved + int(budgets.sum())
         elif free:
             selected = np.logical_or.reduce([part["selected"] for part in free])
             combined = simplify_part(pos, rgb, tris, labels, tri_o, selected, object_names, material_names)

@@ -158,13 +158,13 @@ These stages reduce and fit the lit mesh for the board.
 
 #### Simplify
 
-Allocates each variant's triangle budget with one screen-error cut across
-objects sharing welded vertices. Each pass weighs baked colour; optional
-seam repair joins touching pieces before grouping.
+Reduces each variant to its triangle budget: small free-standing props reserve
+a share split by projected area, the rest is one global pass, and optional
+seam repair joins touching pieces first so no seam opens.
 
 | Reads | Writes | Settings |
 |---|---|---|
-| lit triangles | the variant's mesh | `geometry.simplify`: `dense_edge`, `seal_seams`, `colour_deviation`; `[objects] overrides`; each variant's `triangles` |
+| lit triangles | the variant's mesh | `geometry.simplify`: `dense_edge`, `seal_seams`, `colour_deviation`; `[objects] props_share`, `overrides`; each variant's `triangles` |
 
 Cost: `simplify` in the bake-steps rows.
 

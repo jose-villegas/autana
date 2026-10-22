@@ -312,7 +312,7 @@ class ColourDeviationTests(unittest.TestCase):
 
         with mock.patch.object(simplify_module, "simplify_with_update", side_effect=record):
             simplify(p, np.full((len(p), 3), 100.0), tris, labels, 20, colour_deviation=2.0,
-                     allocation=simplify_module.Allocation(labels, props_share=0.4))
+                     allocation=simplify_module.Allocation(tri_o=labels, props_share=0.4))
         self.assertEqual([budget for budget, _, _, _ in seen], [2, 6, 12])
         np.testing.assert_allclose([area for _, _, _, area in seen], [0.0016, 0.0064, 1600.0])
         for _, weight, expected, _ in seen:

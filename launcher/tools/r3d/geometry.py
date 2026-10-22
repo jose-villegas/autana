@@ -5,6 +5,11 @@ import math
 import numpy as np
 
 
+def bounds_diagonal(positions):
+    """Length of the axis-aligned bounds diagonal, including degenerate objects."""
+    return float(np.linalg.norm(np.ptp(positions, axis=0)))
+
+
 def triangle_areas(p, tris):
     return 0.5 * np.linalg.norm(np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]]), axis=1)
 

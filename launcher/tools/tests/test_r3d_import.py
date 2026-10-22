@@ -35,7 +35,7 @@ SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 OUTPUT = '[output]\nname = "mesh"\n'
 AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
-SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, seal_seams = true, colour_deviation = 1.0 }\n'
+SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, seal_seams = true, colour_deviation = 1.0 }\n[objects]\nprops_share = 0.3\n'
 VARIANT = '[[variants]]\nname = "mesh"\ntriangles = 10\n'
 BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\n'
 HEAD = TONEMAP + AMBIENT + BAKE

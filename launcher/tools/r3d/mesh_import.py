@@ -45,7 +45,7 @@ from r3d.light import (  # noqa: E402
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, write_lit_mesh  # noqa: E402
 from r3d.process_budget import NULL_RECORDER
 from r3d.path_bake import PathLight  # noqa: E402
-from r3d.objects.instances import bounds_diagonal  # noqa: E402
+from r3d.geometry import bounds_diagonal  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.poses import either_way, focal_px, sample_camera_path  # noqa: E402
 from r3d import ray_query  # noqa: E402
@@ -172,6 +172,8 @@ def view_eyes(visibility, scene, rng_seed):
     if visibility and visibility.source == "camera_path":
         width, height, lens, _, poses = camera_path_poses(scene, visibility)
         return np.asarray(poses)[:, :3], focal_px(width, height, lens)
+    if scene.region is None:
+        return None, 1
     from panel_size import PANEL_HEIGHT, PANEL_WIDTH
     lo, hi = np.asarray(scene.region)
     eyes = np.random.default_rng(rng_seed).uniform(lo, hi, (REGION_EYE_SAMPLES, 3))
@@ -205,7 +207,7 @@ def bake_geometry(job, scene, recorder=None):
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
-    eyes, focal = view_eyes(renderer.visibility, scene, settings.seed)
+    eyes, focal = view_eyes(renderer.visibility, scene, settings.seed) if settings.simplify else (None, 1)
     with recorder.step("visibility", len(tri_v)) as step:
         intersector = None
         visibility = renderer.visibility
@@ -260,9 +262,10 @@ def bake_geometry(job, scene, recorder=None):
         if settings.simplify:
             steps = settings.simplify
             positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles,
-                                                   allocation=Allocation(np.concatenate(all_obj), src.object_names, src.names,
-                                                                         settings.overrides, eyes, focal, settings.props_share,
-                                                                         bounds_diagonal(src.p)),
+                                                   allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
+                                                                         material_names=src.names, overrides=settings.overrides,
+                                                                         eyes=eyes, focal_px=focal, props_share=settings.props_share,
+                                                                         source_diagonal=bounds_diagonal(src.p)),
                                                    colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
             rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
