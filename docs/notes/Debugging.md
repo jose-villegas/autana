@@ -137,11 +137,8 @@ which the host misses while USB re-enumerates):
 The `COREDUMP=` lines and the dump itself are in development and diagnostics
 builds only; a release build keeps the partition but writes no dump.
 
-On the board every warm reset becomes a PMIC power cycle
-(`bootloader_components/pmic_cold_boot/`), so after a crash the reason reads
-`POWERON` and USB drops before the panic text reaches the host. The panic
-handler writes the dump to flash before that reset, so it survives. Under
-QEMU the reason is the real one (`PANIC`).
+After a crash the reason names it, on the board as under QEMU (`PANIC`,
+`TASK_WDT`). The panic handler writes the dump to flash before it resets.
 
 A dump stays in flash across every later flash until it is erased, so the
 board's running build says nothing about it; `build=` says which build

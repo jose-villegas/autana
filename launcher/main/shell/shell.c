@@ -387,8 +387,8 @@ shell_run(void) {
         app_count++;
     }
     ESP_LOGI(TAG, "Ready, %d app%s registered", app_count, app_count == 1 ? "" : "s");
-    /* Again, for a host that lost the port: after a PMIC cold restart, USB
-     * Serial/JTAG enumerates only about 0.7 s into the new boot, after
+    /* Again, for a host that lost the port: after the PSRAM tuning's unplug
+     * (board/board_usb.c), USB Serial/JTAG enumerates again only after
      * app_boot_init()'s print. */
     printf("BUILD_ID=%s\n", build_id());
     (void)fflush(stdout);

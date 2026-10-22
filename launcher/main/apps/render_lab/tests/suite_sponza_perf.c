@@ -60,7 +60,7 @@ static scene_t* sponza;
 static const asset_pack_t* pack;
 static const camera_t* flythrough;
 static scene_entity_t camera_entity;
-static r3d_lit_mesh_t meshes[SPONZA_BAKE_COUNT];
+static r3d_lit_mesh_t meshes[SCENE_BAKED_VARIANT_COUNT];
 
 #define PANEL_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
 
@@ -186,7 +186,7 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
 static void
 open_the_meshes(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(sponza, "scene sponza did not load: see the log above");
-    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
+    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
         const scene_entity_t bake = scene_find(sponza, sponza_bakes[i]);
         TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, bake, sponza_bakes[i]);
         const char* mesh = scene_entity_mesh_id(sponza, bake);
@@ -248,12 +248,12 @@ report_stage_split(int bake) {
 void
 test_sponza_draw_stage_breakdown(void) {
     open_the_meshes();
-    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
+    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
         report_stage_split(i);
     }
     bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(b);
-    const r3d_instance_t atrium = {&meshes[SPONZA_BAKE_FULL], NULL};
+    const r3d_instance_t atrium = {&meshes[SCENE_BAKED_FULL], NULL};
     bench_open(b, &atrium, NULL);
     view_at(atrium.mesh, 0, &b->lens);
     const r3d_lens_t* lens = &b->lens;
@@ -371,22 +371,22 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
 }
 
 /* The scene's showcase: the bake of its first renderer. */
-static sponza_bake_t
+static scene_baked_variant_t
 showcase_bake(void) {
     for (int i = 0; i < scene_entity_count(sponza); i++) {
         const scene_entity_t entity = (scene_entity_t)i;
         if (scene_entity_mesh_id(sponza, entity) == NULL) {
             continue;
         }
-        for (int bake = 0; bake < (int)SPONZA_BAKE_COUNT; bake++) {
+        for (int bake = 0; bake < (int)SCENE_BAKED_VARIANT_COUNT; bake++) {
             if (strcmp(scene_entity_name(sponza, entity), sponza_bakes[bake]) == 0) {
-                return (sponza_bake_t)bake;
+                return (scene_baked_variant_t)bake;
             }
         }
         TEST_FAIL_MESSAGE(scene_entity_name(sponza, entity));
     }
     TEST_FAIL_MESSAGE("the scene has no renderer");
-    return SPONZA_BAKE_COUNT;
+    return SCENE_BAKED_VARIANT_COUNT;
 }
 
 static int32_t saved_cull;
@@ -420,21 +420,21 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     (void)tune_handle_line("RESET render.cull", cull_reply);
     /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
      * 2124, + 1%; per quarter, portrait then landscape. */
-    static const perf_budget_t bake_budgets[SPONZA_BAKE_COUNT][R3D_PERF_QUARTER_COUNT] = {
-        [SPONZA_BAKE_FULL] = {{41041, 52072}, {38765, 47432}},
-        [SPONZA_BAKE_FLAT] = {{32168, 40942}, {31418, 38734}},
-        [SPONZA_BAKE_LITE] = {{33499, 39169}, {31676, 36473}},
-        [SPONZA_BAKE_FITTED] = {{32882, 40125}, {30706, 37015}},
-        [SPONZA_BAKE_FITTED_FULL] = {{41877, 53439}, {39437, 49049}},
-        [SPONZA_BAKE_FLAT_FITTED] = {{32106, 42281}, {30639, 38440}},
+    static const perf_budget_t bake_budgets[SCENE_BAKED_VARIANT_COUNT][R3D_PERF_QUARTER_COUNT] = {
+        [SCENE_BAKED_FULL] = {{41041, 52072}, {38765, 47432}},
+        [SCENE_BAKED_FLAT] = {{32168, 40942}, {31418, 38734}},
+        [SCENE_BAKED_LITE] = {{33499, 39169}, {31676, 36473}},
+        [SCENE_BAKED_FITTED] = {{32882, 40125}, {30706, 37015}},
+        [SCENE_BAKED_FITTED_FULL] = {{41877, 53439}, {39437, 49049}},
+        [SCENE_BAKED_FLAT_FITTED] = {{32106, 42281}, {30639, 38440}},
     };
     static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
-    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
+    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
         report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, NULL, bake_budgets[i]);
     }
     (void)tune_handle_line("SET render.cull 0", cull_reply);
-    const sponza_bake_t showcase = showcase_bake();
+    const scene_baked_variant_t showcase = showcase_bake();
     const r3d_instance_t shown = {&meshes[showcase], NULL};
     report_frame_cost("cull_off", sponza_bakes[showcase], &shown, NULL, NULL, NULL, cull_off_budget);
     TEST_PASS();
