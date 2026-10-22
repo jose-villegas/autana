@@ -1,0 +1,353 @@
+# autana --json replies on 2124, 2026-10-21, DRC sweep
+buildid	{"build_id": "c813cc3495c9-dev"}
+tune audio.codec_volume 30	"audio.codec_volume=30"
+tune audio.drc 0	"audio.drc=0"
+tune audio.drc_max 0	"audio.drc_max=0"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -48.0, "silence_db": -115.3, "heard": true, "open_dma_bytes": 1448, "path": "acoustic", "thd_db": -60.7, "peak_dbfs": -46.9, "measured_hz": 999.99, "hz_error": -0.009999999999990905}
+tone 1000 500 10	{"hz": 1000, "tone_db": -48.0, "silence_db": -112.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -58.3, "peak_dbfs": -46.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -48.0, "silence_db": -104.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -61.7, "peak_dbfs": -46.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -38.5, "silence_db": -113.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.1, "peak_dbfs": -38.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -38.5, "silence_db": -116.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.3, "peak_dbfs": -38.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -38.5, "silence_db": -108.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.2, "peak_dbfs": -38.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -28.2, "silence_db": -108.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -34.8, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -28.2, "silence_db": -113.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -34.8, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -28.3, "silence_db": -114.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -34.7, "peak_dbfs": -28.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 40	"audio.codec_volume=40"
+tune audio.drc 0	"audio.drc=0"
+tune audio.drc_max 0	"audio.drc_max=0"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -43.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -50.3, "peak_dbfs": -42.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -43.0, "silence_db": -111.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -49.6, "peak_dbfs": -42.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -43.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -49.2, "peak_dbfs": -42.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -33.6, "silence_db": -112.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.8, "peak_dbfs": -33.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -33.6, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.1, "peak_dbfs": -33.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -33.6, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.4, "peak_dbfs": -33.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -23.3, "silence_db": -116.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.0, "peak_dbfs": -23.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -23.3, "silence_db": -109.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.1, "peak_dbfs": -23.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -23.3, "silence_db": -107.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.0, "peak_dbfs": -23.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 50	"audio.codec_volume=50"
+tune audio.drc 0	"audio.drc=0"
+tune audio.drc_max 0	"audio.drc_max=0"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -38.0, "silence_db": -115.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.4, "peak_dbfs": -37.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -38.0, "silence_db": -114.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.6, "peak_dbfs": -37.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -38.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.6, "peak_dbfs": -37.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -28.6, "silence_db": -118.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -34.5, "peak_dbfs": -28.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -28.6, "silence_db": -114.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -34.6, "peak_dbfs": -28.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -28.6, "silence_db": -115.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -34.6, "peak_dbfs": -28.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -18.5, "silence_db": -112.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.8, "peak_dbfs": -18.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -18.5, "silence_db": -114.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.9, "peak_dbfs": -18.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -18.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.7, "peak_dbfs": -18.4, "measured_hz": 999.99, "hz_error": -0.009999999999990905}
+tune audio.codec_volume 60	"audio.codec_volume=60"
+tune audio.drc 0	"audio.drc=0"
+tune audio.drc_max 0	"audio.drc_max=0"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -33.1, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.7, "peak_dbfs": -32.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -33.1, "silence_db": -119.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.4, "peak_dbfs": -32.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -33.1, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.3, "peak_dbfs": -32.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -23.8, "silence_db": -109.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.1, "peak_dbfs": -23.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -23.8, "silence_db": -110.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.3, "peak_dbfs": -23.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -23.8, "silence_db": -115.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.2, "peak_dbfs": -23.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -115.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.5, "peak_dbfs": -15.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.6, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.6, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 70	"audio.codec_volume=70"
+tune audio.drc 0	"audio.drc=0"
+tune audio.drc_max 0	"audio.drc_max=0"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.2, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -35.8, "peak_dbfs": -28.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.2, "silence_db": -113.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.7, "peak_dbfs": -28.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.2, "silence_db": -114.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -35.1, "peak_dbfs": -28.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -18.9, "silence_db": -117.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.5, "peak_dbfs": -18.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -18.9, "silence_db": -113.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.5, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -18.9, "silence_db": -106.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.4, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.4, "silence_db": -112.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -12.0, "peak_dbfs": -15.4, "measured_hz": 999.99, "hz_error": -0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.4, "silence_db": -113.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -12.1, "peak_dbfs": -15.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.4, "silence_db": -111.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -12.1, "peak_dbfs": -15.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 85	"audio.codec_volume=85"
+tune audio.drc 0	"audio.drc=0"
+tune audio.drc_max 0	"audio.drc_max=0"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -20.9, "silence_db": -117.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.1, "peak_dbfs": -20.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -20.9, "silence_db": -115.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.3, "peak_dbfs": -20.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -20.9, "silence_db": -111.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.4, "peak_dbfs": -20.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.6, "silence_db": -119.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -15.2, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.6, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -15.2, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -119.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -15.3, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.1, "silence_db": -115.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -9.3, "peak_dbfs": -15.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.1, "silence_db": -117.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -9.3, "peak_dbfs": -15.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.1, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -9.3, "peak_dbfs": -15.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 100	"audio.codec_volume=100"
+tune audio.drc 0	"audio.drc=0"
+tune audio.drc_max 0	"audio.drc_max=0"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.1, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -20.0, "peak_dbfs": -15.9, "measured_hz": 999.99, "hz_error": -0.009999999999990905}
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.1, "silence_db": -110.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -20.0, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.1, "silence_db": -110.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -20.0, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.2, "silence_db": -112.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -9.9, "peak_dbfs": -15.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.2, "silence_db": -113.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -9.9, "peak_dbfs": -15.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.2, "silence_db": -116.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -9.9, "peak_dbfs": -15.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.1, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -8.9, "peak_dbfs": -14.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.1, "silence_db": -113.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -8.9, "peak_dbfs": -14.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.1, "silence_db": -119.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -8.9, "peak_dbfs": -14.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 70	"audio.codec_volume=70"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 1	"audio.drc_max=1"
+tune audio.drc_min 1	"audio.drc_min=1"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.7, "silence_db": -115.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -34.2, "peak_dbfs": -28.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.6, "silence_db": -110.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -34.3, "peak_dbfs": -28.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.6, "silence_db": -117.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -34.0, "peak_dbfs": -28.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -35.5, "peak_dbfs": -21.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.4, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -35.9, "peak_dbfs": -21.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.4, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.1, "peak_dbfs": -21.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -21.3, "silence_db": -114.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.8, "peak_dbfs": -20.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -21.3, "silence_db": -117.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.1, "peak_dbfs": -20.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -21.3, "silence_db": -112.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.4, "peak_dbfs": -20.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 70	"audio.codec_volume=70"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 1	"audio.drc_max=1"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.5, "silence_db": -119.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.0, "peak_dbfs": -28.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.5, "silence_db": -111.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.1, "peak_dbfs": -28.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.5, "silence_db": -112.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.8, "peak_dbfs": -28.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.6, "silence_db": -113.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.4, "peak_dbfs": -21.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.6, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.5, "peak_dbfs": -21.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.4, "silence_db": -118.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.6, "peak_dbfs": -21.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -21.2, "silence_db": -112.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.2, "peak_dbfs": -20.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -21.2, "silence_db": -114.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.4, "peak_dbfs": -20.5, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -21.2, "silence_db": -111.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.4, "peak_dbfs": -20.6, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tune audio.codec_volume 70	"audio.codec_volume=70"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 2	"audio.drc_max=2"
+tune audio.drc_min 2	"audio.drc_min=2"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.4, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.3, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.4, "silence_db": -112.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.9, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.4, "silence_db": -116.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.3, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.1, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.4, "peak_dbfs": -19.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.1, "silence_db": -119.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.5, "peak_dbfs": -19.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.1, "silence_db": -113.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.6, "peak_dbfs": -19.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.7, "silence_db": -109.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.0, "peak_dbfs": -17.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.7, "silence_db": -113.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.0, "peak_dbfs": -17.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.7, "silence_db": -109.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.1, "peak_dbfs": -17.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 70	"audio.codec_volume=70"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 2	"audio.drc_max=2"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -116.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.0, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -118.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.3, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -108.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.9, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -117.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.9, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -107.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.0, "peak_dbfs": -19.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -111.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.9, "peak_dbfs": -19.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.7, "silence_db": -115.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.5, "peak_dbfs": -17.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.9, "silence_db": -116.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.3, "peak_dbfs": -17.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.7, "silence_db": -114.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.4, "peak_dbfs": -17.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 70	"audio.codec_volume=70"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 3	"audio.drc_max=3"
+tune audio.drc_min 3	"audio.drc_min=3"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -116.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.4, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -114.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.3, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -106.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.5, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -117.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.0, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -117.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.0, "peak_dbfs": -19.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -111.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.9, "peak_dbfs": -19.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.6, "silence_db": -111.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.4, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.6, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.4, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.6, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.5, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 70	"audio.codec_volume=70"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 3	"audio.drc_max=3"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.5, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -117.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.6, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -115.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.1, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -111.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.6, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -114.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.8, "peak_dbfs": -19.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -109.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.0, "peak_dbfs": -19.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.7, "silence_db": -105.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -32.3, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.7, "silence_db": -117.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -32.5, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.7, "silence_db": -115.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -32.6, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 70	"audio.codec_volume=70"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 4	"audio.drc_max=4"
+tune audio.drc_min 4	"audio.drc_min=4"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -118.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.5, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -117.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.4, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.0, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -111.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.8, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.0, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -115.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.8, "peak_dbfs": -19.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -117.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -18.9, "peak_dbfs": -15.8, "measured_hz": 999.99, "hz_error": -0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -115.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.0, "peak_dbfs": -15.7, "measured_hz": 999.99, "hz_error": -0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -112.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.0, "peak_dbfs": -15.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 70	"audio.codec_volume=70"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 4	"audio.drc_max=4"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -118.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.1, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -117.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.0, "peak_dbfs": -28.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -28.3, "silence_db": -108.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.9, "peak_dbfs": -28.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -115.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.3, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -118.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.3, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -19.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.3, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -116.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.2, "peak_dbfs": -15.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -113.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.2, "peak_dbfs": -15.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -114.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.3, "peak_dbfs": -15.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 100	"audio.codec_volume=100"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 1	"audio.drc_max=1"
+tune audio.drc_min 1	"audio.drc_min=1"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.2, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.7, "peak_dbfs": -20.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.2, "silence_db": -113.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.7, "peak_dbfs": -20.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.2, "silence_db": -115.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.8, "peak_dbfs": -20.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.0, "silence_db": -119.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.2, "peak_dbfs": -16.5, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.0, "silence_db": -112.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.3, "peak_dbfs": -16.0, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.0, "silence_db": -110.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.3, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -21.0, "silence_db": -110.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.4, "peak_dbfs": -20.7, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -21.1, "silence_db": -110.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.5, "peak_dbfs": -20.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -21.1, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.4, "peak_dbfs": -20.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 100	"audio.codec_volume=100"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 1	"audio.drc_max=1"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.3, "silence_db": -116.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.0, "peak_dbfs": -21.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.3, "silence_db": -113.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.1, "peak_dbfs": -21.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.9, "peak_dbfs": -21.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.1, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.6, "peak_dbfs": -16.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -20.9, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.2, "peak_dbfs": -15.8, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -21.1, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.4, "peak_dbfs": -15.9, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -25.5, "silence_db": -116.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.0, "peak_dbfs": -25.3, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -25.5, "silence_db": -115.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.2, "peak_dbfs": -25.3, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -24.4, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.9, "peak_dbfs": -24.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 100	"audio.codec_volume=100"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 2	"audio.drc_max=2"
+tune audio.drc_min 2	"audio.drc_min=2"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -17.7, "silence_db": -112.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.3, "peak_dbfs": -17.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -17.8, "silence_db": -118.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.4, "peak_dbfs": -17.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -17.8, "silence_db": -117.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.3, "peak_dbfs": -17.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -17.8, "silence_db": -113.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.5, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -17.9, "silence_db": -114.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.2, "peak_dbfs": -16.3, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -17.8, "silence_db": -112.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.2, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.7, "silence_db": -109.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.4, "peak_dbfs": -17.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.7, "silence_db": -115.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.4, "peak_dbfs": -17.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.8, "silence_db": -114.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.3, "peak_dbfs": -17.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 100	"audio.codec_volume=100"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 2	"audio.drc_max=2"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -18.1, "silence_db": -115.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.5, "peak_dbfs": -18.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -17.9, "silence_db": -116.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.6, "peak_dbfs": -17.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -17.9, "silence_db": -116.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.7, "peak_dbfs": -17.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -17.9, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.9, "peak_dbfs": -16.1, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -18.1, "silence_db": -117.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.6, "peak_dbfs": -16.0, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -18.1, "silence_db": -114.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.5, "peak_dbfs": -16.0, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -26.7, "silence_db": -118.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.0, "peak_dbfs": -26.6, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -25.0, "silence_db": -110.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.9, "peak_dbfs": -24.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -23.5, "silence_db": -117.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -37.8, "peak_dbfs": -23.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 100	"audio.codec_volume=100"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 3	"audio.drc_max=3"
+tune audio.drc_min 3	"audio.drc_min=3"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.7, "silence_db": -108.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.0, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.7, "silence_db": -108.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.5, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.7, "silence_db": -117.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.5, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.7, "silence_db": -114.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.8, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.7, "silence_db": -115.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.7, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.0, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.7, "silence_db": -115.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.0, "peak_dbfs": -15.9, "measured_hz": 999.99, "hz_error": -0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.6, "silence_db": -116.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.9, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.9, "silence_db": -117.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.4, "peak_dbfs": -14.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune audio.codec_volume 100	"audio.codec_volume=100"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 3	"audio.drc_max=3"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.8, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.0, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.8, "silence_db": -110.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.5, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.7, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -32.1, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.8, "silence_db": -114.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.4, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.8, "silence_db": -116.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.5, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.7, "silence_db": -119.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -32.3, "peak_dbfs": -16.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -26.8, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.3, "peak_dbfs": -26.6, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -26.8, "silence_db": -110.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.1, "peak_dbfs": -26.6, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -26.8, "silence_db": -112.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.1, "peak_dbfs": -26.6, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tune audio.codec_volume 100	"audio.codec_volume=100"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 4	"audio.drc_max=4"
+tune audio.drc_min 4	"audio.drc_min=4"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.6, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.1, "silence_db": -114.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.7, "peak_dbfs": -15.9, "measured_hz": 999.99, "hz_error": -0.009999999999990905}
+tone 1000 500 10	{"hz": 1000, "tone_db": -15.1, "silence_db": -116.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.7, "peak_dbfs": -15.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.0, "silence_db": -117.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -18.9, "peak_dbfs": -15.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.0, "silence_db": -116.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -18.9, "peak_dbfs": -15.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.0, "silence_db": -114.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -18.9, "peak_dbfs": -15.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.2, "silence_db": -118.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.6, "peak_dbfs": -15.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -110.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.3, "peak_dbfs": -15.8, "measured_hz": 999.99, "hz_error": -0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.0, "silence_db": -112.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -19.3, "peak_dbfs": -15.8, "measured_hz": 999.99, "hz_error": -0.009999999999990905}
+tune audio.codec_volume 100	"audio.codec_volume=100"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 4	"audio.drc_max=4"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -48.1, "silence_db": -118.8, "heard": true, "open_dma_bytes": 1448, "path": "acoustic", "thd_db": -55.1, "peak_dbfs": -46.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -48.1, "silence_db": -116.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -55.8, "peak_dbfs": -47.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -48.1, "silence_db": -111.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -53.3, "peak_dbfs": -46.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -38.7, "silence_db": -105.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.2, "peak_dbfs": -38.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -38.7, "silence_db": -112.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.7, "peak_dbfs": -38.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -38.7, "silence_db": -117.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -42.3, "peak_dbfs": -38.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -28.4, "silence_db": -118.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.8, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -28.4, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.6, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -28.4, "silence_db": -119.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -36.7, "peak_dbfs": -28.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tune reset audio.codec_volume	"audio.codec_volume=30"
+tune reset audio.drc	"audio.drc=0"
+tune reset audio.drc_max	"audio.drc_max=0"
+tune reset audio.drc_min	"audio.drc_min=0"
+tune reset audio.drc_win	"audio.drc_win=0"
+tune reset audio.drc_ramp	"audio.drc_ramp=0"

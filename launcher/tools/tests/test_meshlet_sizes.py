@@ -125,7 +125,7 @@ class MeshletReportTests(unittest.TestCase):
             with mock.patch.object(meshlet_sizes, "load_scene", return_value=scene), \
                     mock.patch.object(meshlet_sizes, "default_size", return_value=(184, 224)), \
                     self.assertRaisesRegex(ValueError, "pose interval"):
-                meshlet_sizes.table(pathlib.Path("room.scene.toml"), root, root)
+                meshlet_sizes.table(pathlib.Path("room.scene.toml"), root, root, root / "chart.png")
 
     def test_swapped_pose_times_are_rejected(self):
         import meshlet_sizes

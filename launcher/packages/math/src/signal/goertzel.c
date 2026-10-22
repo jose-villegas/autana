@@ -5,7 +5,6 @@
 
 #include "math/scalar/math_const.h"
 
-#define GOERTZEL_POWER_DB_SCALE  10.0F
 #define GOERTZEL_SINE_COMPONENTS 2.0F
 #define GOERTZEL_ROTATION_BITS   12u
 #define GOERTZEL_ROTATION_RADIX  (1u << GOERTZEL_ROTATION_BITS)
@@ -60,10 +59,10 @@ float
 goertzel_level_db(const goertzel_t* state, float full_scale) {
     const float power = goertzel_power(state);
     if (state->samples == 0 || power <= 0.0F) {
-        return GOERTZEL_LEVEL_FLOOR_DB;
+        return MATH_DB_FLOOR;
     }
     const float scale = (float)state->samples * full_scale / GOERTZEL_SINE_COMPONENTS;
-    return fmaxf(GOERTZEL_LEVEL_FLOOR_DB, GOERTZEL_POWER_DB_SCALE * log10f(power / (scale * scale)));
+    return math_db_power(power / (scale * scale));
 }
 
 float
