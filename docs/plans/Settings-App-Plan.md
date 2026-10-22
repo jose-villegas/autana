@@ -25,13 +25,17 @@ readout; the self-test button and result line additionally require
 
 ## Step 1: remaining milestones
 
-- Decide where the orientation readout belongs.
-- Decide whether developer rows need an unlock gesture.
-- Design backdrop and memory views before adding their controls.
+| Milestone | Adds |
+|---|---|
+| Orientation move | The orientation readout leaves Diagnostics for the input lab's motion page, once that page shows the shell's live quarter. |
+| Backdrop colour | A preset picker; the shell keeps the choice in NVS space `shell`. The boot animation dissolves onto that backdrop, so its pins change with it. |
+| Memory view | The allocation ledger beside display-mode choices: framebuffer, static data, free heap and largest contiguous block, plus each choice's projected change. Waits on half-resolution support in gfx. |
 
-A memory view should show the allocation ledger beside display-mode choices:
-framebuffer, static data, free heap and largest contiguous block, plus each
-choice's projected change. Resolution and colour mode need that context.
+A developer row ships in release only when its off cost is about zero (no
+frame time, no IRAM, a few hundred bytes of flash at most) and it is useful
+without a cable. None passes yet: the overlays add IRAM to the present path.
+The first one that passes brings the release unlock, seven taps on the build
+id, with switches still reset at boot.
 
 ## Step 2: unify SELFTEST/diagnostics naming
 

@@ -1,4 +1,9 @@
-/* A view of display preferences and development graphics instruments. */
+/*
+ * app_settings: the system settings list. It stores nothing: each frame reads
+ * every row from its owner, and a changed row calls that owner's setter,
+ * which persists it if the owner keeps it. Developer rows exist only in a
+ * development build and reset at boot.
+ */
 #include "app/app.h"
 #include "build/build_variant.h"
 #include "display/display.h"
@@ -52,7 +57,7 @@ settings_frame(uint32_t dt_ms, const input_t* input) {
 static void
 settings_exit(void) {}
 
-app_t settings_app = {
+app_t app_settings = {
     .name = "Settings",
     .summary = "System settings",
     .enter = settings_enter,
@@ -62,4 +67,4 @@ app_t settings_app = {
     .home_gesture = true,
 };
 
-APP_REGISTER(settings_app);
+APP_REGISTER(app_settings);

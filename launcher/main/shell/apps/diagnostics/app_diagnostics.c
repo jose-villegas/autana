@@ -1,4 +1,20 @@
-/* POST report, orientation readout and optional self-test runner. */
+/*
+ * app_diagnostics: shows the POST report on demand, plus a second page with
+ * the orientation readout and, in a SELFTEST build, the self-test runner.
+ *
+ * The POST itself is silent when everything passes, which is the right default
+ * for a device that should just boot. This is how you look anyway, without
+ * attaching a serial cable; a board in the field usually has nothing on its
+ * console.
+ *
+ * Entering it RE-RUNS the checks, so the report is live rather than a record of
+ * what boot found. Every check is repeated, including the SD card: the re-run
+ * re-mounts the card on its own SDMMC bus, independent of the display, and the
+ * report prints how long that round trip took.
+ *
+ * BOOT pages between the report and the second page; the report is already a
+ * dense list with no room for controls.
+ */
 #include <stdio.h>
 
 #include "app/app.h"

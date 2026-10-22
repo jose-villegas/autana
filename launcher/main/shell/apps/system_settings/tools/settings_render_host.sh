@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pin the system preferences screen through the shared host renderer.
+# Pin the settings list through the shared host renderer.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=settings

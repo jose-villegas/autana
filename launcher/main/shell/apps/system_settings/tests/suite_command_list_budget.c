@@ -1,4 +1,4 @@
-/* Command budget and touch isolation through the real flowed preference screen. */
+/* Command budget and touch isolation through the real settings list. */
 #include "suites.h"
 #include "ui_probe.h"
 #include "unity.h"
@@ -16,8 +16,8 @@
 /* Landscape (448x368 logical): this project's shipping orientation. */
 #define FIXTURE_QUARTER             1
 
-/* Clock, panel-grid, leaf and part of interlace are reached; audit needs scrolling. */
-#define SETTINGS_ABOVE_FOLD_TOGGLES ((1U << 4) - 1)
+/* Clock, grid and leaf are above the fold; interlace and audit need scrolling. */
+#define SETTINGS_ABOVE_FOLD_TOGGLES ((1U << 3) - 1)
 #define TAP_STEP_PX                 (UI_ROW_HEIGHT / 8)
 
 static void
@@ -34,7 +34,7 @@ test_settings_screen_command_list_fits_budget(void) {
         const input_t input = {0};
         ui_begin(&input);
         settings_screen_draw(&state);
-        ui_probe_budget_assert("system preferences");
+        ui_probe_budget_assert("settings list");
     }
 }
 
