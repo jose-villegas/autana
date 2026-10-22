@@ -24,6 +24,13 @@ def scene():
     return p, t, np.arange(len(t))
 
 
+def budget_recorder(calls):
+    def record(pos, rgb, tris, budget, weight, options):
+        calls.append(budget)
+        return pos, rgb, tris[:budget], np.arange(len(pos))
+    return record
+
+
 class PropTests(unittest.TestCase):
     def test_capped_shares_redistribute_and_round_within_budget(self):
         np.testing.assert_array_equal(owner.prop_budgets([1, 3, 6], [100, 4, 100], 20), [2, 4, 14])
@@ -79,10 +86,7 @@ class PropTests(unittest.TestCase):
                                       (None, [{'object': 'b', 'importance': 4}], [20, 80]),
                                       (np.zeros((1, 3)), [], [99, 1])]:
             calls = []
-            def record(pos, rgb, tris, budget, weight, options):
-                calls.append(budget)
-                return pos, rgb, tris[:budget], np.arange(len(pos))
-            with self.subTest(eyes=eyes, rules=rules), patch.object(owner, 'simplify_with_update', side_effect=record):
+            with self.subTest(eyes=eyes, rules=rules), patch.object(owner, 'simplify_with_update', side_effect=budget_recorder(calls)):
                 owner.simplify(p, np.full_like(p, 100), t, o, 200, colour_deviation=1,
                                allocation=owner.Allocation(tri_o=o, object_names=['a', 'b', 'wall', 'floor'], props_share=0.5,
                                                            eyes=eyes, overrides=rules))
@@ -112,10 +116,7 @@ class PropTests(unittest.TestCase):
         t = np.concatenate([t[:2], np.repeat(t[2:], 10, axis=0)])
         o = np.repeat(np.arange(4), [1, 1, 10, 10])
         calls = []
-        def record(pos, rgb, tris, budget, weight, options):
-            calls.append(budget)
-            return pos, rgb, tris[:budget], np.arange(len(pos))
-        with patch.object(owner, 'simplify_with_update', side_effect=record):
+        with patch.object(owner, 'simplify_with_update', side_effect=budget_recorder(calls)):
             owner.simplify(p, p, t, o, 10, colour_deviation=1,
                            allocation=owner.Allocation(tri_o=o, props_share=0.5))
         self.assertEqual(calls, [1, 1, 8])
@@ -125,10 +126,7 @@ class PropTests(unittest.TestCase):
         t = np.repeat(t, 10, axis=0)
         o = np.repeat(o, 10)
         calls = []
-        def record(pos, rgb, tris, budget, weight, options):
-            calls.append(budget)
-            return pos, rgb, tris[:budget], np.arange(len(pos))
-        with patch.object(owner, 'simplify_with_update', side_effect=record):
+        with patch.object(owner, 'simplify_with_update', side_effect=budget_recorder(calls)):
             owner.simplify(p, p, t, o, 20, colour_deviation=1,
                            allocation=owner.Allocation(tri_o=o, object_names=['a', 'b', 'wall', 'floor'],
                                                        props_share=0.5, overrides=[{'object': 'wall', 'triangles': 3}]))
