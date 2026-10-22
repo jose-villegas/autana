@@ -1,0 +1,32 @@
+# autana --json replies on TEST, 2026-10-20, DRC fixture
+buildid	{"build_id":"test-dev"}
+tune audio.codec_volume 30	"audio.codec_volume=30"
+tune audio.drc 0	"audio.drc=0"
+tune audio.drc_max 15	"audio.drc_max=15"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -42, "thd_db": -47, "peak_dbfs": -2}
+tone 1000 500 10	{"hz": 1000, "tone_db": -40, "thd_db": -45, "peak_dbfs": -2}
+tone 1000 500 10	{"hz": 1000, "tone_db": -38, "thd_db": -43, "peak_dbfs": -0.4}
+tone 1000 500 30	{"hz": 1000, "tone_db": -32, "thd_db": -47, "peak_dbfs": -2}
+tone 1000 500 30	{"hz": 1000, "tone_db": -30, "thd_db": -45, "peak_dbfs": -2}
+tone 1000 500 30	{"hz": 1000, "tone_db": -28, "thd_db": -43, "peak_dbfs": -0.4}
+tone 1000 500 100	{"hz": 1000, "tone_db": -22, "thd_db": -47, "peak_dbfs": -2}
+tone 1000 500 100	{"hz": 1000, "tone_db": -20, "thd_db": -45, "peak_dbfs": -2}
+tone 1000 500 100	{"hz": 1000, "tone_db": -18, "thd_db": -43, "peak_dbfs": -0.4}
+tune audio.codec_volume 30	"audio.codec_volume=30"
+tune audio.drc 1	"audio.drc=1"
+tune audio.drc_max 15	"audio.drc_max=15"
+tune audio.drc_min 0	"audio.drc_min=0"
+tune audio.drc_win 4	"audio.drc_win=4"
+tune audio.drc_ramp 2	"audio.drc_ramp=2"
+tone 1000 500 10	{"hz": 1000, "tone_db": -42, "thd_db": -47, "peak_dbfs": -2}
+tone 1000 500 10	{"hz": 1000, "tone_db": -40, "thd_db": -45, "peak_dbfs": -2}
+tone 1000 500 10	{"hz": 1000, "tone_db": -38, "thd_db": -43, "peak_dbfs": -0.4}
+tone 1000 500 30	{"hz": 1000, "tone_db": -32, "thd_db": -47, "peak_dbfs": -2}
+tone 1000 500 30	{"hz": 1000, "tone_db": -30, "thd_db": -45, "peak_dbfs": -2}
+tone 1000 500 30	{"hz": 1000, "tone_db": -28, "thd_db": -43, "peak_dbfs": -0.4}
+tone 1000 500 100	{"hz": 1000, "tone_db": -22, "thd_db": -47, "peak_dbfs": -2}
+tone 1000 500 100	{"hz": 1000, "tone_db": -20, "thd_db": -45, "peak_dbfs": -2}
+tone 1000 500 100	{"hz": 1000, "tone_db": -18, "thd_db": -43, "peak_dbfs": -0.4}

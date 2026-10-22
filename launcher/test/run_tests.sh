@@ -127,6 +127,7 @@ $MAIN_DIR/power/power_cache.c
 $MAIN_DIR/power/power_log.c
 $MAIN_DIR/audio/audio_tone.c
 $MAIN_DIR/audio/audio_frequency.c
+$MAIN_DIR/audio/audio_loopback_detector.c
 $MAIN_DIR/app/app_arena.c
 $MAIN_DIR/app/app_console.c
 $MAIN_DIR/app/app_registry.c

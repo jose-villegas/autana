@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define GOERTZEL_LEVEL_FLOOR_DB (-120.0F)
+#include "math/scalar/math_db.h"
 
 typedef struct {
     float coefficient;
@@ -27,5 +27,5 @@ float goertzel_power(const goertzel_t* state);
 float goertzel_phase(const goertzel_t* state);
 /* Amplitude of a sine at the bin; 0 before any sample. */
 float goertzel_amplitude(const goertzel_t* state);
-/* A sine of amplitude full_scale reads 0 dB; nothing reads below GOERTZEL_LEVEL_FLOOR_DB. */
+/* A sine of amplitude full_scale reads 0 dB; nothing reads below MATH_DB_FLOOR. */
 float goertzel_level_db(const goertzel_t* state, float full_scale);

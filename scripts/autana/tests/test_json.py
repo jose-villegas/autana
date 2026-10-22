@@ -118,10 +118,10 @@ class JsonReadTests(unittest.TestCase):
     def test_tone_reply(self):
         for heard in (True, False):
             with self.subTest(heard=heard):
-                reply = f"TONE {'heard' if heard else 'not heard'} 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA"
+                reply = f"TONE {'heard' if heard else 'not heard'} 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
                 expected = {"hz": 440, "tone_db": -21.5, "silence_db": -63.0,
                             "heard": heard, "open_dma_bytes": 8192, "path": "acoustic",
-                            "measured_hz": 440.02, "hz_error": 440.02 - 440}
+                            "measured_hz": 440.02, "hz_error": 440.02 - 440, "thd_db": -40.0, "peak_dbfs": -6.0}
                 self.assertEqual(autana.parse_tone(reply), expected)
                 with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
                     self.assertEqual(self.output(autana.COMMANDS["tone"], ["440", "200", "--json"]), expected)
@@ -130,14 +130,27 @@ class JsonReadTests(unittest.TestCase):
                     seconds=autana.TONE_MARGIN_SECONDS + autana.TONE_CAPTURE_COUNT * 200 / autana.TONE_MS_PER_SECOND)
 
     def test_tone_short_capture_has_no_frequency(self):
-        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path internal, measured n/a, open 8192 B DMA"
+        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path internal, measured n/a, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
         with mock.patch.object(autana, "send", return_value=(0, [reply])):
             result = self.output(autana.tone, ["440", "1", "--internal", "--json"])
         self.assertIsNone(result["measured_hz"])
         self.assertIsNone(result["hz_error"])
 
+    def test_main_tone_reply(self):
+        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA"
+        result = autana.parse_tone(reply)
+        self.assertIsNone(result["thd_db"])
+        self.assertIsNone(result["peak_dbfs"])
+        self.assertEqual(result["hz"], 440)
+
+    def test_tone_unavailable_thd(self):
+        reply = "TONE heard 8000 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured n/a, open 8192 B DMA, thd n/a dB, peak -0.1 dBFS"
+        result = autana.parse_tone(reply)
+        self.assertIsNone(result["thd_db"])
+        self.assertEqual(result["peak_dbfs"], -0.1)
+
     def test_tone_internal_flags(self):
-        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path internal, measured 443.70 Hz, open 8192 B DMA"
+        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path internal, measured 443.70 Hz, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
         for numbers in (["440", "200"], ["440", "200", "30"]):
             for flags in (["--internal", "--json"], ["--json", "--internal"]):
                 with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
@@ -149,7 +162,7 @@ class JsonReadTests(unittest.TestCase):
     def test_tone_malformed_and_error(self):
         for reply in ("TONE usage: tone <hz> <ms> [volume]", "TONE error: codec open failed",
                       "TONE heard", "OTHER heard 440 Hz",
-                      "TONE heard 440 Hz: nan dB (silence -63.0 dB), open 8192 B DMA",
+                      "TONE heard 440 Hz: nan dB (silence -63.0 dB), open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS",
                       "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), open 8192 B DMA trailing"):
             with self.subTest(reply=reply), self.assertRaises(ValueError):
                 autana.parse_tone(reply)
@@ -165,7 +178,7 @@ class JsonReadTests(unittest.TestCase):
                 self.assertEqual(autana.COMMANDS["tone"](["440", "200"]), expected)
 
     def test_tone_forwards_decimal_args_and_plain_output(self):
-        reply = "TONE not heard 1 Hz: -63.0 dB (silence -63.0 dB), path acoustic, measured 1.00 Hz, open 8192 B DMA"
+        reply = "TONE not heard 1 Hz: -63.0 dB (silence -63.0 dB), path acoustic, measured 1.00 Hz, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
         for args in (("0", "0"), ("999999", "999999", "999999"), ("00440", "00200", "030")):
             ms = int(args[1])
             stream = io.StringIO()

@@ -15,3 +15,7 @@ Log rows carry `seq`, `up_min`, `mv`, `percent`, `usb`, `battery`, `charge`,
 `flow` and `reason`. Parsing and formatting share `console_battery_reply.h`.
 Reasons are `periodic`, `transition`, `boot` and `shutdown-warning`.
 Storage failures reply `BATLOG error read` or `BATLOG error clear`.
+
+`codec <reg> [value]` reads a codec register, or writes it before reading it
+back. Arguments are decimal or `0x` hexadecimal bytes. The development-only
+verb requires an open codec and replies `CODEC reg=0xNN value=0xNN` on success.

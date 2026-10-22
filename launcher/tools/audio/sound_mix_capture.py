@@ -8,13 +8,14 @@ from datetime import date
 import json
 import re
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import time
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from autana_runner import autana_run, record_line
 sys.path.insert(0, str(ROOT / "launcher/tools/build"))
 from c_header import read_define
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
@@ -47,9 +48,8 @@ def dropped_count(stats):
 
 
 def capture(args, sleep=time.sleep):
-    def run(*command):
-        return subprocess.run([shutil.which(args.autana) or args.autana, *map(str, command)], check=True,
-                              capture_output=True, text=True).stdout
+    def run(*words):
+        return autana_run(args.autana, *words)
 
     sounds = args.sounds.split(",")
     voices = sorted(set(map(int, args.voices.split(","))))
@@ -76,8 +76,7 @@ def capture(args, sleep=time.sleep):
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="\n") as output:
         def record(key, payload):
-            output.write(f"{key}\t{payload}\n")
-            output.flush()
+            record_line(output, key, payload)
 
         output.write(f"# autana sound-mix capture on {args.board}, {date.today()}, "
                      "one record per line: <record>\t<payload>\n")
