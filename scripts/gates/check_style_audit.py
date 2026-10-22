@@ -218,6 +218,32 @@ def rule_living_document(root, path, raw_lines):
             yield number, '"living document" - say what the doc covers, not that it changes'
 
 
+# RULE: UTF-8 read as Windows cp1252 and written back turns "·" into "Â·" and
+# "→" into "â†’". A line that encodes to cp1252 and then decodes as different,
+# valid UTF-8 was mangled that way: a lone accented letter never forms a
+# UTF-8 sequence, so text that is meant to be there does not match.
+
+def _unmangled(line):
+    if line.isascii():
+        return None
+    try:
+        repaired = line.encode("cp1252").decode("utf-8")
+    except UnicodeError:
+        return None
+    return repaired if repaired != line else None
+
+
+def _fix_mojibake(root, path, text):
+    return "".join(_unmangled(line) or line for line in text.splitlines(keepends=True))
+
+
+@text_rule("MOJIBAKE", fixer=_fix_mojibake)
+def rule_mojibake(root, path, text):
+    for number, line in enumerate(text.splitlines(), 1):
+        if _unmangled(line) is not None:
+            yield number, "UTF-8 read as cp1252 and written back - read and write text with encoding=\"utf-8\""
+
+
 # RULE: includes are layer-qualified (docs/C-Style-Guide.md, "Headers and
 # module boundaries"): "gfx/gfx.h", never "../../gfx/gfx.h" or a bare
 # "gfx.h", even between two files in the same folder. launcher/main is a

@@ -26,6 +26,14 @@ class StyleAuditTest(unittest.TestCase):
             gate_tree.commit(root, *sorted({name.split("/")[0] for name in files}))
             return self.rule_hits(root, rule_id, file_filter)
 
+    def test_mojibake(self):
+        files = {"docs/mangled.md": "direct \xc2\xb7 occlusion \xe2\u2020\u2019 bounce\n",
+                 "docs/clean.md": "direct \xb7 occlusion \u2192 bounce, caf\xe9, S\xe3o\n"}
+        hits = self.audit("MOJIBAKE", files)
+        self.assertEqual([(hit.path, hit.line) for hit in hits], [("docs/mangled.md", 1)])
+        self.assertEqual(check_style_audit._fix_mojibake(None, None, files["docs/mangled.md"]),
+                         "direct \xb7 occlusion \u2192 bounce\n")
+
     def test_pmu_owner(self):
         files = {
             "launcher/main/rogue.c": "int x = AXP2101_ROOT;\n",

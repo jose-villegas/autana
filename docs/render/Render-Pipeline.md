@@ -12,10 +12,10 @@ demo scene in the [demo assets](../../launcher/demo/README.md);
 
 | [Offline, on the host](#offline-on-the-host) | [Every frame, on the board](#every-frame-on-the-board) |
 |---|---|
-| **[Geometry](#geometry)**<br/>â†³ [Source model](#source-model) â†’ [Alpha mask](#alpha-mask) â†’ [Visibility](#visibility) â†’ [Thin](#thin) | **[Scene and camera](#scene-and-camera)** |
+| **[Geometry](#geometry)**<br/>↳ [Source model](#source-model) → [Alpha mask](#alpha-mask) → [Visibility](#visibility) → [Thin](#thin) | **[Scene and camera](#scene-and-camera)** |
 | **[Light](#light)** | **[Render size](#render-size)** |
-| **[Shape](#shape)**<br/>â†³ [Simplify](#simplify) â†’ [Fit](#fit) | **[Update](#update)**<br/>â†³ [Cull](#cull) â†’ [Transform](#transform) â†’ [Clip](#clip) â†’ [Span fill](#span-fill) â†’ [Resolve](#resolve) â†’ [View modes](#view-modes) |
-| **[Output](#output)**<br/>â†³ [Meshlets](#meshlets) â†’ [Asset pack](#asset-pack) | **[After the send](#after-the-send)**<br/>â†³ [Compose](#compose) â†’ [Present](#present) |
+| **[Shape](#shape)**<br/>↳ [Simplify](#simplify) → [Fit](#fit) | **[Update](#update)**<br/>↳ [Cull](#cull) → [Transform](#transform) → [Clip](#clip) → [Span fill](#span-fill) → [Resolve](#resolve) → [View modes](#view-modes) |
+| **[Output](#output)**<br/>↳ [Meshlets](#meshlets) → [Asset pack](#asset-pack) | **[After the send](#after-the-send)**<br/>↳ [Compose](#compose) → [Present](#present) |
 
 ```mermaid
 flowchart TB
@@ -25,7 +25,7 @@ flowchart TB
             direction LR
             Src["Source<br/>model"] --> Mask["Alpha<br/>mask"] --> Vis["Visibility"] --> Thin["Thin"]
         end
-        Light["Light<br/><i>direct Â· occlusion Â· bounce</i>"]
+        Light["Light<br/><i>direct · occlusion · bounce</i>"]
         subgraph Shape["Shape"]
             direction LR
             Simp["Simplify"] --> Fit["Fit<br/><i>smooth or flat, CUDA</i>"]
