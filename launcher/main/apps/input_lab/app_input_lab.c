@@ -81,31 +81,28 @@ static const char* TAG = "input_lab";
 #define MOTION_HUD_TEXT_SIZE 96
 #define MOTION_US_PER_MS     1000
 #define MOTION_LOG_PERIOD_MS 100
-#define MOTION_DRAIN_MAX_MS  (MATH_MS_PER_S / 2U)
 
-TUNE_OWNER(input_lab);
-TUNE(input_lab, imu_drain_ms, 0, 0, MOTION_DRAIN_MAX_MS);
-#define MOTION_RING_RADIUS 88
-#define MOTION_DOT_SIDE    7
-#define MOTION_FILTER_SIDE 11
-#define MOTION_MARGIN      16
-#define MOTION_HUD_ROWS    5
-#define MOTION_HUD_SCALE   1
-#define COL_HIT            0x40E060
-#define COL_MISS           0xFFB020
-#define COL_TARGET         0xFF00FF
-#define COL_HUD            0xE0E0E0
-#define COL_MOTION_FILTER  0x40E0FF
-#define COL_MOTION_RING    0x607080
+#define MOTION_RING_RADIUS   88
+#define MOTION_DOT_SIDE      7
+#define MOTION_FILTER_SIDE   11
+#define MOTION_MARGIN        16
+#define MOTION_HUD_ROWS      5
+#define MOTION_HUD_SCALE     1
+#define COL_HIT              0x40E060
+#define COL_MISS             0xFFB020
+#define COL_TARGET           0xFF00FF
+#define COL_HUD              0xE0E0E0
+#define COL_MOTION_FILTER    0x40E0FF
+#define COL_MOTION_RING      0x607080
 
 /* White acknowledges a reading; longer cyan ends the round. Both are readable
  * at arm's length while unplugged. */
-#define IMU_POSE_FLASH_MS  160U
-#define IMU_DONE_FLASH_MS  600U
-#define COL_IMU_POSE_FLASH 0xFFFFFF
-#define COL_IMU_DONE_FLASH 0x00FFFF
+#define IMU_POSE_FLASH_MS    160U
+#define IMU_DONE_FLASH_MS    600U
+#define COL_IMU_POSE_FLASH   0xFFFFFF
+#define COL_IMU_DONE_FLASH   0x00FFFF
 /* Sub-mg resolution keeps small changes visible in the turn trace. */
-#define IMU_GRAVITY_DIGITS 6
+#define IMU_GRAVITY_DIGITS   6
 
 typedef enum { MODE_RANDOM, MODE_GRID, MODE_BEZEL, MODE_MOTION, MODE_COUNT } lab_mode_t;
 
@@ -123,7 +120,6 @@ static input_motion_t motion;
 static input_motion_batch_t* motion_batch;
 static int motion_samples;
 static int motion_lost;
-static uint32_t motion_since_drain_ms;
 static int64_t motion_drain_us;
 /* Bias-corrected gyro rotation since the turn step armed, in degrees: proves the gyro scale on its own. */
 static vec3f_t turn_gyro_deg;
@@ -200,7 +196,6 @@ start_round(void) {
         motion_log_ms = 0;
         motion_samples = 0;
         motion_lost = 0;
-        motion_since_drain_ms = 0;
         motion_drain_us = 0;
         motion_read_us = timing_now_us();
         imu_round = (imu_probe_round_t){0};
@@ -474,9 +469,10 @@ integrate_turn_gyro(const input_motion_batch_t* batch) {
         return;
     }
     const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
-    /* Samples lost to FIFO read mode advance at the last rate, as gravity_update_batch does. */
-    turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(turn_gyro_rate, dt * (float)batch->lost));
     for (int i = 0; i < batch->count; i++) {
+        const uint32_t lost_us = (uint32_t)batch->lost_before[i] * INPUT_MOTION_SAMPLE_US;
+        const uint32_t held_us = lost_us < GRAVITY_MAX_DT_US ? lost_us : GRAVITY_MAX_DT_US;
+        turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(turn_gyro_rate, (float)held_us / MATH_US_PER_S));
         turn_gyro_rate =
             vec3f_sub(vec3f_scale(vec3f_from_vec3i(batch->samples[i].rotation), 1.0F / INPUT_ROTATION_ONE_DPS),
                       gravity_gyro_bias(&gravity));
@@ -488,14 +484,9 @@ static void
 read_motion(uint32_t dt_ms) {
     motion_log_ms += dt_ms;
     const int64_t drain_start_us = timing_now_us();
-    motion_since_drain_ms += dt_ms;
-    const bool due = motion_since_drain_ms >= (uint32_t)imu_drain_ms;
-    const bool read = due && motion_batch != NULL && input_read_motion_batch(motion_batch);
-    if (due) {
-        motion_since_drain_ms = 0;
-        motion_drain_us += timing_now_us() - drain_start_us;
-    }
-    if (due && !read) {
+    const bool read = motion_batch != NULL && input_read_motion_batch(motion_batch);
+    motion_drain_us += timing_now_us() - drain_start_us;
+    if (!read) {
         have_motion = false;
     } else if (read && motion_batch->count > 0) {
         motion = motion_batch->samples[motion_batch->count - 1];
@@ -503,7 +494,9 @@ read_motion(uint32_t dt_ms) {
         motion_samples += motion_batch->count;
     }
     if (read) {
-        motion_lost += motion_batch->lost;
+        for (int i = 0; i < motion_batch->count; i++) {
+            motion_lost += motion_batch->lost_before[i];
+        }
         gravity_update_batch(&gravity, motion_batch);
         integrate_turn_gyro(motion_batch);
     }

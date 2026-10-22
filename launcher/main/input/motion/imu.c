@@ -13,15 +13,45 @@
 
 #include "board/board.h"
 #include "bsp/esp-bsp.h"
+#include "core/memory.h"
 #include "core/timing.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
-#if CONFIG_LAUNCHER_DEVELOPMENT
 #include "freertos/FreeRTOS.h"
-#endif
+#include "freertos/task.h"
+#include "input/motion/imu_queue.h"
+#include "services/tune.h"
 
 static const char* TAG = "imu";
+
+/* Frequent drains leave room within IMU_FIFO_SAMPLES * IMU_SAMPLE_US of retained history. */
+#define IMU_DRAIN_HZ         50
+#define IMU_DRAIN_MS         (MATH_MS_PER_S / IMU_DRAIN_HZ)
+#define IMU_DRAIN_MIN_MS     1
+#define IMU_DRAIN_MAX_MS     (MATH_MS_PER_S / 2)
+/* Above the priority-1 frame task: FIFO history lasts only IMU_FIFO_SAMPLES * IMU_SAMPLE_US. */
+#define IMU_TASK_PRIORITY    5
+/* The FIFO burst and driver calls must fit without using the frame task's stack. */
+#define IMU_TASK_STACK_BYTES (3 * 1024)
+
+TUNE_OWNER(imu);
+TUNE(imu, drain_ms, IMU_DRAIN_MS, IMU_DRAIN_MIN_MS, IMU_DRAIN_MAX_MS);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* Long reporting windows remain available without a counter per frame. */
+#define IMU_LOG_MAX_MS (60 * MATH_MS_PER_S)
+TUNE(imu, log_ms, 0, 0, IMU_LOG_MAX_MS);
+#endif
+
+static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
+static imu_queue_t queue;
+static imu_sample_t newest;
+static bool have_newest;
+static TaskHandle_t task_handle;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static int64_t newest_us;
+static int64_t reader_age_us;
+#endif
 
 /* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
  * rejected: docs/input/Gravity.md, Limits. */
@@ -40,7 +70,6 @@ static const char* TAG = "imu";
 #define REG_FIFO_SMPL_CNT       0x15
 #define REG_FIFO_DATA           0x17
 #define REG_STATUSINT           0x2D
-#define REG_AX_L                0x35 /* 12 contiguous bytes: accel then gyro */
 
 #define WHO_AM_I_VALUE          0x05
 
@@ -73,6 +102,7 @@ static const char* TAG = "imu";
 
 static i2c_master_dev_handle_t dev;
 static bool ready;
+static bool sensor_present;
 static bool fifo_gap;
 static uint32_t loss_remainder_us;
 static int pending_lost;
@@ -116,37 +146,36 @@ write_command(uint8_t command) {
 static bool injected;
 static int64_t injected_drain_us;
 static imu_sample_t injected_sample = {.ax = IMU_COUNTS_PER_G};
-static portMUX_TYPE injected_lock = portMUX_INITIALIZER_UNLOCKED;
 
 void
 imu_inject(const imu_sample_t* sample) {
-    portENTER_CRITICAL(&injected_lock);
+    portENTER_CRITICAL(&lock);
     if (!injected) {
         injected_drain_us = timing_now_us();
     }
     injected_sample = *sample;
     injected = true;
-    portEXIT_CRITICAL(&injected_lock);
+    portEXIT_CRITICAL(&lock);
 }
 
 void
 imu_inject_release(void) {
-    portENTER_CRITICAL(&injected_lock);
+    portENTER_CRITICAL(&lock);
     injected = false;
-    portEXIT_CRITICAL(&injected_lock);
+    portEXIT_CRITICAL(&lock);
 }
 
 static int
 read_injected_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], bool* overflowed) {
-    portENTER_CRITICAL(&injected_lock);
+    portENTER_CRITICAL(&lock);
     if (!injected) {
-        portEXIT_CRITICAL(&injected_lock);
+        portEXIT_CRITICAL(&lock);
         return -1;
     }
     const imu_sample_t sample = injected_sample;
     const int64_t elapsed = (timing_now_us() - injected_drain_us) / IMU_SAMPLE_US;
     injected_drain_us += elapsed * IMU_SAMPLE_US;
-    portEXIT_CRITICAL(&injected_lock);
+    portEXIT_CRITICAL(&lock);
     const int count = elapsed > IMU_FIFO_SAMPLES ? IMU_FIFO_SAMPLES : (int)elapsed;
     *overflowed = elapsed > IMU_FIFO_SAMPLES;
     for (int i = 0; i < count; i++) {
@@ -216,6 +245,7 @@ imu_init(void) {
                                                         : "unknown";
     ESP_LOGI(TAG, "QMI8658 up, revision 0x%02x (%s), +/-8g and +/-512dps", revision, model);
 
+    sensor_present = true;
     ready = true;
     return true;
 }
@@ -225,22 +255,44 @@ imu_ready(void) {
     return ready;
 }
 
-bool
-imu_read(imu_sample_t* out) {
-    if (!ready) {
-        return false;
-    }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    portENTER_CRITICAL(&injected_lock);
-    if (injected) {
-        *out = injected_sample;
-        portEXIT_CRITICAL(&injected_lock);
-        return true;
-    }
-    portEXIT_CRITICAL(&injected_lock);
+static void
+record_reader_age(void) {
+    reader_age_us = have_newest ? timing_now_us() - newest_us : 0;
+}
 #endif
 
-    return read_regs(REG_AX_L, (uint8_t*)out, sizeof *out);
+bool
+imu_read(imu_sample_t* out) {
+    portENTER_CRITICAL(&lock);
+    bool available = ready && have_newest;
+    if (available) {
+        *out = newest;
+    }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    record_reader_age();
+    if (ready && injected) {
+        *out = injected_sample;
+        available = true;
+    }
+#endif
+    portEXIT_CRITICAL(&lock);
+    return available;
+}
+
+int
+imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES], bool* gap) {
+    *gap = false;
+    if (!ready) {
+        return -1;
+    }
+    portENTER_CRITICAL(&lock);
+    const int count = imu_queue_take(&queue, out, lost_before, gap);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    record_reader_age();
+#endif
+    portEXIT_CRITICAL(&lock);
+    return count;
 }
 
 /* Whole samples waiting, before read mode (section 8.8); false on a bus error or a partial sample. */
@@ -257,8 +309,8 @@ read_fifo_count(int* count, bool* overflowed) {
     return *count <= IMU_FIFO_SAMPLES && bytes % sizeof(imu_sample_t) == 0;
 }
 
-int
-imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
+static int
+drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     *overflowed = false;
     *lost = 0;
     if (!ready || out == NULL) {
@@ -273,6 +325,9 @@ imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
         return injected_count;
     }
 #endif
+    if (!sensor_present) {
+        return 0;
+    }
     int count = 0;
     bool ok = read_fifo_count(&count, overflowed);
     const int64_t lock_start_us = timing_now_us();
@@ -294,4 +349,85 @@ imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     /* Read-mode losses follow this burst, so gravity advances them with the next batch. */
     pending_lost = imu_fifo_lost(locked_us, &loss_remainder_us, fifo_gap || *overflowed);
     return fifo_gap ? -1 : count;
+}
+
+static void
+imu_task(void* arg) {
+    (void)arg;
+    imu_sample_t samples[IMU_FIFO_SAMPLES];
+    TickType_t last_wake = xTaskGetTickCount();
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    int64_t last_log_us = timing_now_us();
+    uint64_t total_us = 0;
+    int64_t max_us = 0;
+    unsigned drains = 0;
+    unsigned delivered = 0;
+    unsigned lost_total = 0;
+#endif
+    while (1) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        const int64_t start_us = timing_now_us();
+#endif
+        int lost = 0;
+        bool gap = false;
+        const int count = drain_fifo(samples, &lost, &gap);
+        const int64_t now_us = timing_now_us();
+        portENTER_CRITICAL(&lock);
+        imu_queue_push(&queue, samples, count > 0 ? count : 0, lost, gap || count < 0);
+        if (count > 0) {
+            newest = samples[count - 1];
+            have_newest = true;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+            newest_us = now_us;
+#endif
+        }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        const int64_t age_us = reader_age_us;
+#endif
+        portEXIT_CRITICAL(&lock);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        const int64_t elapsed_us = now_us - start_us;
+        drains++;
+        total_us += (uint64_t)elapsed_us;
+        if (elapsed_us > max_us) {
+            max_us = elapsed_us;
+        }
+        delivered += count > 0 ? (unsigned)count : 0;
+        lost_total += (unsigned)lost;
+        if (log_ms > 0 && now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS) {
+            ESP_LOGI(TAG, "drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u reader_age_us %lld",
+                     drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered, lost_total,
+                     (long long)age_us);
+        }
+        if (log_ms == 0 || now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS) {
+            last_log_us = now_us;
+            drains = delivered = lost_total = 0;
+            total_us = 0;
+            max_us = 0;
+        }
+#else
+        (void)now_us;
+#endif
+        const TickType_t period = pdMS_TO_TICKS(drain_ms);
+        xTaskDelayUntil(&last_wake, period > 0 ? period : 1);
+    }
+}
+
+void
+imu_start(void) {
+#if CONFIG_LAUNCHER_QEMU
+    if (!ready) {
+        ready = true;
+        injected = true;
+        injected_drain_us = timing_now_us();
+    }
+#endif
+    if (!ready || task_handle != NULL) {
+        return;
+    }
+    /* Unpinned, like the button polling task, so either core can drain before the FIFO fills. */
+    if (xTaskCreate(imu_task, "imu", IMU_TASK_STACK_BYTES, NULL, IMU_TASK_PRIORITY, &task_handle) != pdPASS) {
+        ESP_LOGE(TAG, "Could not start the IMU task (largest free block is %u bytes); motion will not work",
+                 (unsigned)memory_largest_block(MEMORY_8BIT));
+    }
 }
