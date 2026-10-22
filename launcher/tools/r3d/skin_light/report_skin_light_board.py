@@ -120,7 +120,8 @@ def lighting_modes(text):
     if names:
         parts = [dict(SHARED)[name].format(constant[name].removesuffix(".000")) for name in names]
         sentence = "In every row " + ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + parts[-1] + ".\n\n"
-    return sentence + "\n".join(table)
+    lead = f"Skinning alone costs {skin:.0f} cycles per vertex.\n\n" if skin is not None else ""
+    return lead + sentence + "\n".join(table)
 
 
 def write_figure(text, output):

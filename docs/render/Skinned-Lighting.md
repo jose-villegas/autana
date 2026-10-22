@@ -99,6 +99,8 @@ Errors are 0-255 steps of a light channel against float lighting of the
 packed normals; the plot shows the mean. Board measurements, from the [capture](#board-measurement):
 
 <!-- generated: skin-light-modes check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
+Skinning alone costs 353 cycles per vertex.
+
 In every row the normal palette costs 5104 cycles to build per frame, the renderer holds 3744 bytes of internal memory and the scene holds 124 bytes of PSRAM.
 
 | Mode | Lights | Worst byte error | Table build cycles / light change | Scene internal bytes |
