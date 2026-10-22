@@ -526,7 +526,7 @@ class InstancesFigureTests(unittest.TestCase):
         segments = np.array([[[10., 20.], [30., 20.]], [[60., 20.], [80., 20.]]])
         colour = (200, 30, 50)
         image = draw_figure(picture, segments, np.array([7, 9]), {7: colour}, [])
-        offset = (image.width - picture.width) // 2
+        offset = 0
         self.assertEqual(image.getpixel((offset + 20, 20)), colour)
         self.assertEqual(image.getpixel((offset + 70, 20)), (255, 255, 255))
 
@@ -540,6 +540,39 @@ class InstancesFigureTests(unittest.TestCase):
         self.assertEqual(rows, [('red', 'bronze, 8 tris', 2), ('blue', 'bronze, 4 tris', 2),
                                 (None, '1 more repeated shapes not drawn', None)])
         self.assertEqual(colours, {1: 'red', 2: 'blue'})
+
+    def test_material_legend_unique_name_has_triangle_count(self):
+        from r3d.objects.instances_figure import legend_rows
+
+        shape = pair_shapes(POINTS + 10)[0]
+        _, rows = legend_rows([shape], {0: 1.}, ['bronze', 'stone'])
+        self.assertEqual(rows, [(rows[0][0], 'bronze, 4 tris', 2)])
+
+    def test_legend_column_follows_rows_and_stays_right_of_picture(self):
+        from PIL import Image, ImageDraw
+        from r3d.objects.instances_figure import PADDING, ROW_HEIGHT, draw_figure
+        from render.render_compare import _font
+
+        picture = Image.new('RGB', (100, 80), 'black')
+        colour = (200, 30, 50)
+        overflow = '1 more repeated shapes not drawn'
+        font = _font()
+        text = ImageDraw.ImageDraw.text
+        for name, count in [('bronze', 1), ('long material name', 6)]:
+            with self.subTest(name=name):
+                label = f'{name}, 4 tris, 2 copies'
+                rows = [(colour, f'{name}, 4 tris', 2)] * count + [(None, overflow, None)]
+                measure = ImageDraw.Draw(picture)
+                width = max(measure.textbbox((0, 0), label, font=font)[2] + ROW_HEIGHT,
+                            measure.textbbox((0, 0), overflow, font=font)[2]) + PADDING * 2
+                with patch.object(ImageDraw.ImageDraw, 'text', autospec=True, side_effect=text) as drawn:
+                    image = draw_figure(picture, [], [], {}, rows)
+                self.assertEqual(image.size, (picture.width + width,
+                                             max(picture.height, len(rows) * ROW_HEIGHT + PADDING * 2)))
+                self.assertEqual(image.crop((0, 0, *picture.size)).tobytes(), picture.tobytes())
+                self.assertEqual(image.getpixel((picture.width + PADDING, PADDING)), colour)
+                self.assertEqual([call.args[2] for call in drawn.call_args_list], [label] * count + [overflow])
+                self.assertTrue(all(call.args[1][0] >= picture.width + PADDING for call in drawn.call_args_list))
 
     def test_generate_with_blank_host_image(self):
         from PIL import Image
@@ -571,7 +604,8 @@ class InstancesFigureTests(unittest.TestCase):
             generate(scene, job, cameras, pathlib.Path('unused'), out, 1000, host_render=blank)
             self.assertTrue(out.exists())
             with Image.open(out) as image:
-                self.assertGreater(image.height, DOC_SIZE[1])
+                self.assertEqual(image.height, DOC_SIZE[1])
+                self.assertGreater(image.width, DOC_SIZE[0])
                 self.assertGreater(len(image.getcolors(image.width * image.height)), 1)
         self.assertEqual(calls[0][1:], ('test', 'mesh', 'near', 1000))
 

@@ -142,11 +142,10 @@ def legend_rows(shapes, lengths, material_names, palette=SLOTS):
     ranked = sorted((i for i in lengths if lengths[i] > 0), key=lambda i: (-lengths[i], i))[:len(palette)]
     repeated = [i for i, shape in enumerate(shapes) if len(shape.instances) > 1]
     names = {i: material_names[int(np.bincount(shapes[i].materials).argmax())] for i in repeated}
-    duplicates = Counter(names.values())
     colours, rows = {}, []
     for slot, index in enumerate(ranked):
         name = names[index]
-        label = f'{name}, {len(shapes[index].triangles)} tris' if duplicates[name] > 1 else name
+        label = f'{name}, {len(shapes[index].triangles)} tris'
         colours[index] = palette[slot]
         rows.append((colours[index], label, len(shapes[index].instances)))
     overflow = len(repeated) - len(ranked)
@@ -173,17 +172,19 @@ def draw_figure(image, segments, owners, colours, rows):
         if owner in colours:
             draw.line([tuple(point) for point in segment], fill=colours[owner], width=LINE_WIDTH)
     font = _font()
-    labels = [f'{label}  {count} copies' if count is not None else label for _, label, count in rows]
-    legend_width = max((draw.textbbox((0, 0), label, font=font)[2] for label in labels), default=0)
-    canvas = Image.new('RGB', (max(image.width, legend_width + ROW_HEIGHT + PADDING * 2),
-                               image.height + len(rows) * ROW_HEIGHT + PADDING * 2), 'white')
-    canvas.paste(image, ((canvas.width - image.width) // 2, 0))
+    labels = [f'{label}, {count} copies' if count is not None else label for _, label, count in rows]
+    legend_width = max((draw.textbbox((0, 0), label, font=font)[2] + (ROW_HEIGHT if colour else 0)
+                        for (colour, _, _), label in zip(rows, labels)), default=0) + PADDING * 2
+    canvas = Image.new('RGB', (image.width + legend_width,
+                               max(image.height, len(rows) * ROW_HEIGHT + PADDING * 2)), 'white')
+    canvas.paste(image, (0, 0))
     draw = ImageDraw.Draw(canvas)
     for index, ((colour, _, _), label) in enumerate(zip(rows, labels)):
-        y = image.height + PADDING + index * ROW_HEIGHT
+        x = image.width + PADDING
+        y = PADDING + index * ROW_HEIGHT
         if colour is not None:
-            draw.rectangle((PADDING, y, PADDING + FONT_SIZE, y + FONT_SIZE), fill=colour)
-        draw.text((PADDING + ROW_HEIGHT if colour else PADDING, y), label, fill=INK, font=font)
+            draw.rectangle((x, y, x + FONT_SIZE, y + FONT_SIZE), fill=colour)
+        draw.text((x + ROW_HEIGHT if colour else x, y), label, fill=INK, font=font)
     return canvas
 
 
@@ -215,9 +216,9 @@ def generate(scene, job, cameras, host, out, every_ms, host_render=render_host):
     picture = draw_figure(image, segments, segment_owners, colours, rows)
     out.parent.mkdir(parents=True, exist_ok=True)
     picture.save(out)
-    print(f'chosen camera: {camera.name}; time: {time_ms} ms; render: {DOC_SIZE[0]}x{DOC_SIZE[1]}')
+    print(f'chosen camera: {camera.name}; time: {time_ms} ms; render: {DOC_SIZE[0]}x{DOC_SIZE[1]}; canvas: {picture.width}x{picture.height}')
     for _, label, count in rows:
-        print(f'{label}' + (f': {count} copies' if count is not None else ''))
+        print(f'{label}' + (f', {count} copies' if count is not None else ''))
     return time_ms
 
 

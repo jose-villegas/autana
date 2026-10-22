@@ -242,23 +242,13 @@ view is the camera-path pose where those boxes show the most visible edge;
 
 ![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
 
-The report writes counts, residuals and a camera-path estimate to an external
-`--out` directory. Single-instance shapes keep their full share.
+| Report output (`--out` directory) | What it shows |
+|---|---|
+| objects.md / objects.json | Shapes, copies, triangles saved, match residuals |
+| poses.csv, lod.png | Per camera-path pose: whole and in-view budgets, repeated-shape LOD budget, and triangles LOD frees |
 
-Pixels per triangle is relative by construction: picture area divided by
-the path's own mean in-view budget.
-
-A repeated shape drops to a quarter-triangle level while its share exceeds
-what its projected area allows. `LOD_TRIANGLE_RATIO` and `LOD_LEVELS` in
-`objects_report.py` define the levels and cap.
-
-A sphere's disk overstates the footprint of tall thin props, so their
-saving is probably understated. Culling uses placed world bounds;
-the footprint estimate uses the enclosing sphere.
-
-The table, CSV and plot show the whole budget, in-view triangles, in-view
-triangles with repeated-shape LOD, and triangles LOD frees.
-The bake does not use objects or instances.
+- Repeated shapes step down while their triangle share exceeds what projected area allows; `LOD_TRIANGLE_RATIO` and `LOD_LEVELS` in `objects_report.py` set the quarter-triangle levels and cap.
+- This is an estimate: pixels per triangle is calibrated from the path; enclosing-sphere footprints overstate tall, thin props.
 
 ## The offline tools
 
