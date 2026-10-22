@@ -519,7 +519,7 @@ read_shake_samples(const input_motion_batch_t* batch) {
         const vec3f_t linear = gravity_linear(&gravity);
         shake_probe_feed(&shake_capture.levels, linear);
         const int64_t elapsed_us =
-            end_us - shake_capture.start_us - (int64_t)(batch->count - i - 1) * INPUT_MOTION_SAMPLE_US;
+            (end_us - shake_capture.start_us) - ((int64_t)((batch->count - i) - 1) * INPUT_MOTION_SAMPLE_US);
         if (shake_capture.round.step == SHAKE_PROBE_IDLE || elapsed_us < 0) {
             continue;
         }
@@ -532,10 +532,11 @@ read_shake_samples(const input_motion_batch_t* batch) {
         }
         const vec3i_t acc = imu_probe_mg(batch->samples[i].acceleration);
         const vec3i_t lin = motion_log_vector(linear, SHAKE_PROBE_MILLI_G);
-        (void)imu_record_appendf(
-            &imu_record, SHAKE_PROBE_SAMPLE_FORMAT, (int)SHAKE_PROBE_STILL + (int)(ms / SHAKE_PROBE_STEP_MS),
-            (unsigned)ms, acc.x, acc.y, acc.z, lin.x, lin.y, lin.z, (int)lroundf(shake_capture.levels.size),
-            (int)lroundf(shake_capture.levels.smooth), (int)lroundf(shake_capture.levels.jerky), tilt_shake(&tilt));
+        (void)imu_record_appendf(&imu_record, SHAKE_PROBE_SAMPLE_FORMAT,
+                                 (int)SHAKE_PROBE_STILL + (int)(ms / SHAKE_PROBE_STEP_MS), (unsigned)ms, (int)acc.x,
+                                 (int)acc.y, (int)acc.z, (int)lin.x, (int)lin.y, (int)lin.z,
+                                 (int)lroundf(shake_capture.levels.size), (int)lroundf(shake_capture.levels.smooth),
+                                 (int)lroundf(shake_capture.levels.jerky), tilt_shake(&tilt));
     }
 }
 
@@ -734,20 +735,20 @@ draw_shake(void) {
         return;
     }
     const vec3i_t lin = motion_log_vector(gravity_linear(&gravity), SHAKE_PROBE_MILLI_G);
-    (void)snprintf(line, sizeof line, "LINEAR %d %d %d MG", lin.x, lin.y, lin.z);
+    (void)snprintf(line, sizeof line, "LINEAR %d %d %d MG", (int)lin.x, (int)lin.y, (int)lin.z);
     hud_line(4, line);
     static const char* const names[] = {"SIZE", "SMOOTH", "JERKY", "OLD"};
     const int values[] = {(int)lroundf(shake_capture.levels.size), (int)lroundf(shake_capture.levels.smooth),
                           (int)lroundf(shake_capture.levels.jerky), tilt_shake(&tilt)};
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
-        const int row = SHAKE_BAR_ROW + (int)i * SHAKE_BAR_ROW_SPACING;
+        const int row = SHAKE_BAR_ROW + ((int)i * SHAKE_BAR_ROW_SPACING);
         const int full = i == (sizeof values / sizeof values[0]) - 1 ? SHAKE_OLD_FULL : SHAKE_PROBE_BAR_MG;
         const int width = screen_w - SHAKE_BAR_X - MOTION_MARGIN;
         const int value = values[i] < full ? values[i] : full;
         (void)snprintf(line, sizeof line, "%s %d%s", names[i], values[i], full == SHAKE_OLD_FULL ? "" : " MG");
-        hud_text((recti_t){MOTION_MARGIN, HUD_TOP + row * HUD_LINE_H, SHAKE_BAR_X - MOTION_MARGIN, HUD_LINE_H}, line,
+        hud_text((recti_t){MOTION_MARGIN, HUD_TOP + (row * HUD_LINE_H), SHAKE_BAR_X - MOTION_MARGIN, HUD_LINE_H}, line,
                  COL_HUD);
-        const recti_t bar = {SHAKE_BAR_X, HUD_TOP + row * HUD_LINE_H, width, SHAKE_BAR_HEIGHT};
+        const recti_t bar = {SHAKE_BAR_X, HUD_TOP + (row * HUD_LINE_H), width, SHAKE_BAR_HEIGHT};
         ui_outline(bar, COL_MOTION_RING);
         ui_fill((recti_t){bar.x, bar.y, width * value / full, bar.h}, COL_MOTION_FILTER);
     }
