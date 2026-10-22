@@ -218,24 +218,11 @@ a `fit` budget may not exceed it.
 
 ## Objects and instances
 
-Coloured bounds show the repeated shapes with the most visible edge length.
-The figure samples every camera path and chooses the pose with the greatest
-sum for the coloured shapes; ties prefer more shapes, more copies, then earlier time.
-
-The host's largest landscape output is 448×368; its canvas is fixed at panel
-size. Bounds use two-pixel lines, and the legend names the coloured shapes.
-Other repeated shapes are counted below the legend and omitted from the picture.
+Each colour below is one repeated shape, boxed at every copy in view. The
+view is the camera-path pose where those boxes show the most visible edge;
+`render_doc_images.sh` regenerates it.
 
 ![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
-
-```sh
-. scripts/lib/python.sh
-R3D_PYTHON=$(find_r3d_python "$PWD")
-build=$(sh launcher/tools/render/scene_viewer.sh launcher/demo/sponza/sponza.scene.toml --build-only -o /tmp/instances-host)
-"$R3D_PYTHON" launcher/tools/r3d/objects/instances_figure.py launcher/demo/sponza/sponza.scene.toml \
-    --object "$("$R3D_PYTHON" launcher/tools/render/showcase.py launcher/demo/sponza/sponza.scene.toml)" \
-    --host "${build#built }" --out docs/images/render/sponza-instances.png
-```
 
 An OBJ object is an `o` or `g` group; an ungrouped file uses its stem.
 A glTF object is a mesh node, placed by its world transform. A nameless
