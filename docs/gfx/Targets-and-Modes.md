@@ -39,7 +39,7 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
 Double mode draws into the back buffer while the front is sent.
 `gfx_present_begin()` drains the preceding send and swaps them;
-`gfx_present_wait()` returns at once. Dirty tracking, interlace, healing and
+`gfx_present_wait()` returns at once. Dirty tracking, interlace and
 half-picture expansion are disabled.
 
 Mode exit drains the send, keeps the last presented frame as the single

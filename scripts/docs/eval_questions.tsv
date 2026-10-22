@@ -43,7 +43,7 @@ Building an App exit heap leak warning log internal memory app arena	docs/Buildi
 minimum python version for tools tests	scripts/lib/python.sh	scripts/lib/python.sh
 perf_compare scoped seeded run --runs --test	launcher/tools/perf/README.md	Performance comparison
 autana unknown verb forwarded to device console app verb	docs/tools/App-Commands.md	App commands
-what is heal in the present path, why resend strips	docs/gfx/Present.md	Panel clock and heal
+why does 80 MHz send only full-width rows	docs/gfx/Present.md	Panel clock
 test suite registration setUp per test reset global state	docs/testing/Writing-a-Test.md	Conventions
 autana touch tap swipe drive the board	docs/tools/Autana-CLI.md	Drive
 which QEMU binary runs the qemu tests and CI caches	docs/testing/QEMU.md	A QEMU with its bugs patched

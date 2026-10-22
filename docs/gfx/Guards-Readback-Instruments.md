@@ -33,6 +33,6 @@ checkboxes toggle them.
 | `gfx_set_send_audit()` | PSRAM shadow of every pixel sent, compared after each present, the tool for panel-link faults a screenshot cannot see |
 | (both overlays) | every present path; a border lasts one present, then its strip is resent clean, in band mode, by `gfx_band_dirty()` asking the app for the band once more |
 | `gfx_get_strip_send_counts()` | full / gathered / partial counts since the last reset |
-| `gfx_get_bytes_sent()`, `gfx_get_heal_bytes_sent()` | bytes queued, and heal's share |
+| `gfx_get_bytes_sent()` | bytes queued |
 
 Frame stage timing is described in [`tools/Frame-Cost.md`](../tools/Frame-Cost.md).

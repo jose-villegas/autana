@@ -22,12 +22,11 @@
 #define BOX_W       20
 #define BOX_H       10
 
-/* Sends one changed box at `hz`, heal off, into `log`; returns how many
+/* Sends one changed box at `hz` into `log`; returns how many
  * windows went out. */
 static int
 send_box_at(int hz, int x, int y, int w, int h, gfx_send_window_t* log) {
     gfx_set_panel_clock_hz(hz);
-    gfx_heal_set_budget(0);
     gfx_mark_all_dirty();
     gfx_present();
     gfx_set_send_window_log(log, WINDOWS_MAX);
@@ -47,12 +46,6 @@ partial_windows(const gfx_send_window_t* log, int windows) {
     return partial;
 }
 
-static void
-restore(int hz) {
-    gfx_set_panel_clock_hz(hz);
-    gfx_heal_restore_defaults();
-}
-
 void
 test_present_fast_clock_sends_full_width_rows(void) {
     const int restore_hz = gfx_panel_clock_hz();
@@ -60,7 +53,7 @@ test_present_fast_clock_sends_full_width_rows(void) {
     gfx_send_window_t slow[WINDOWS_MAX];
     const int fast_windows = send_box_at(GFX_PANEL_CLOCK_FAST_HZ, BOX_X, BOX_Y, BOX_W, BOX_H, fast);
     const int slow_windows = send_box_at(GFX_PANEL_CLOCK_SLOW_HZ, BOX_X, BOX_Y, BOX_W, BOX_H, slow);
-    restore(restore_hz);
+    gfx_set_panel_clock_hz(restore_hz);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, fast_windows, "the change was never sent at the fast clock");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, slow_windows, "the change was never sent at the slow clock");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, partial_windows(fast, fast_windows),
@@ -83,7 +76,7 @@ test_present_fast_clock_sends_only_changed_rows(void) {
     /* Straddling the edge between the first two strips, odd edges again. */
     const int across_y = STRIP_HEIGHT - (BOX_H / 2) - 1;
     const int across_windows = send_box_at(GFX_PANEL_CLOCK_FAST_HZ, BOX_X, across_y, BOX_W, BOX_H, across);
-    restore(restore_hz);
+    gfx_set_panel_clock_hz(restore_hz);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, odd_windows, "a change inside one strip took more than one send");
     TEST_ASSERT_EQUAL_INT_MESSAGE(mathi_even_floor(odd_y), odd[0].y0, "the send starts off the changed rows");

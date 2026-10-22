@@ -52,7 +52,6 @@ sequenceDiagram
     loop each dirty strip
         P->>Q: esp_lcd_panel_draw_bitmap()
     end
-    P->>Q: heal strips
     Q-->>P: strip_sent, once per transfer
     P-->>C: present_done_sem
     Note over C: gfx_present_wait() returns
@@ -107,30 +106,14 @@ buffers while core 0 updates app state; drawing waits for that read to finish.
 See [Board and Memory](../notes/Board-and-Memory.md#psram-throughput) for
 memory throughput and placement.
 
-## Panel clock and heal
+## Panel clock
 
 | | `GFX_PANEL_CLOCK_SLOW_HZ` (40 MHz) | `GFX_PANEL_CLOCK_FAST_HZ` (80 MHz) |
 |---|---|---|
 | Full-frame bus time | 16.5 ms | 8.2 ms |
 | Panel rating (50 MHz) | inside | **past it** |
 | Failure mode | none | a partial-width window can land a column off, so only full-width rows are sent |
-| Residual | none | a stray pixel can still stay until its region is sent again |
-| Heal | does nothing | active if the app opted in |
 
-`gfx_set_panel_clock_hz()` takes effect before the next present, never
-mid-send. gfx keeps whatever it was last told; the shell owns the choice and
-restores it on every app switch.
-
-Heal (`gfx_heal.h`, pure) re-sends marked rows as full-width strips of
-`GFX_HEAL_STRIP_ROWS` (32) whose alignment shifts every present, because the
-same window sent again fails the same way.
-
-| Call | Does |
-|---|---|
-| `gfx_heal_mark()` | queue rows; `x` and `w` are ignored |
-| `gfx_heal_set_budget()` | pixels of heal per present, default `GFX_HEAL_DEFAULT_BUDGET_PIXELS` |
-| `gfx_heal_set_rolling()` | rows per present of a whole-screen sweep, 0 for none |
-| `gfx_heal_restore_defaults()` | empty the queue, reset both; the shell calls it on every app switch |
-
-Band mode heals nothing, the same as the slow clock: a band is gone once
-sent, so gfx holds nothing to resend.
+`gfx_set_panel_clock_hz()` takes effect before the next present, never mid-send.
+gfx keeps whatever it was last told; the shell owns the choice and restores it on
+every app switch.

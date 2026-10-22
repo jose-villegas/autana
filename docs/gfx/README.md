@@ -9,7 +9,7 @@ A caller includes the header for what it does:
 | --- | --- |
 | [`gfx/gfx.h`](../../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()`; draw's surface (`gfx_draw_begin()`, `gfx_set_clip()`) and dirty marking |
 | [`draw/draw.h`](../../launcher/main/draw/draw.h) | primitives, text and clipping |
-| [`gfx/present/gfx_present.h`](../../launcher/main/gfx/present/gfx_present.h) | present, the panel clock, heal |
+| [`gfx/present/gfx_present.h`](../../launcher/main/gfx/present/gfx_present.h) | present and the panel clock |
 | [`gfx/present/gfx_mode.h`](../../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
 | [`gfx/present/gfx_debug.h`](../../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
 | [`draw/draw_image.h`](../../launcher/main/draw/draw_image.h) | a picture read in place from its pack entry |
@@ -70,7 +70,7 @@ allocates it again. Double mode adds a second one and frees it on exit.
 |---|---|
 | [Targets-and-Modes.md](Targets-and-Modes.md) | render targets, the four layouts, their costs, expanded frames, indexed mode |
 | [Dirty-Tracking.md](Dirty-Tracking.md) | the cell grid and leaves, and the repaint controls |
-| [Present.md](Present.md) | what gets sent, who runs it, the memory policy, panel clock and heal |
+| [Present.md](Present.md) | what gets sent, who runs it, the memory policy, the panel clock |
 | [Band-Ring.md](Band-Ring.md) | the band ring: draw a strip, send it, repeat |
 | [Guards-Readback-Instruments.md](Guards-Readback-Instruments.md) | guards, panel readback and the development overlays |
 

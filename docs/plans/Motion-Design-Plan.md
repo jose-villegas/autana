@@ -16,7 +16,7 @@ change as little of the screen as possible per frame.
 |---|---|---|
 | Full-frame present | under the `full-frame present` ceiling in `launcher/test/suites/suite_gfx.c` (80 MHz) | device present tests |
 | Fixed cost per panel transaction | about 118 us | device tests in `launcher/test/suites/suite_gfx.c` |
-| Small moving partial regions at 80 MHz | corrupt pixels; a full-frame send heals them | `docs/notes/Display-and-Rendering.md` |
+| Small moving partial regions at 80 MHz | partial-width windows land a column off; gfx sends full-width rows there | `docs/notes/Display-and-Rendering.md` |
 | PSRAM read / PSRAM-to-PSRAM copy | 33-58 MB/s / about 22 MB/s | [Board and Memory](../notes/Board-and-Memory.md#psram-throughput) |
 | Dirty cells | a 7 x 4 grid of boxes with no preferred axis: a send covers the changed boxes, in either orientation | `docs/gfx/Dirty-Tracking.md` |
 | Launcher frame today | about 24.5 ms, presented synchronously (*est* 14 ms draw + 10 ms send) | measured with injected taps |

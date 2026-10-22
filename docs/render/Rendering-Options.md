@@ -6,7 +6,7 @@ buffer gfx hands it; `draw/` paints 2D into the same target.
 
 The panel is 368 x 448 RGB565, so one frame is 322 KiB, and sending a whole
 frame is the largest single cost of a frame
-([Panel clock and heal](../gfx/Present.md#panel-clock-and-heal)).
+([Panel clock](../gfx/Present.md#panel-clock)).
 Two terms recur:
 
 | Term | Meaning |
@@ -58,7 +58,7 @@ drawing it, is the slow part.
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
 | [Interlace](#present-policy) | half the strips per present for a lagging half in motion | none | off | `gfx_set_interlace()` | [Repaint controls](../gfx/Dirty-Tracking.md#repaint-controls) |
-| [Panel clock](#present-policy) | half the bus time for stray pixels that heal repairs | none | 80 MHz, or the saved system setting | `gfx_set_panel_clock_hz()` | [Panel clock and heal](../gfx/Present.md#panel-clock-and-heal) |
+| [Panel clock](#present-policy) | half the bus time; only full-width rows are sent at it | none | 80 MHz, or the saved system setting | `gfx_set_panel_clock_hz()` | [Panel clock](../gfx/Present.md#panel-clock) |
 
 ### r3d frame
 
@@ -188,12 +188,11 @@ sent.
 | mark only what changed | the `draw_*` calls mark their box; `gfx_mark_dirty()` after raw writes | the send scales with the change | `draw_pixel()` marks whole rows; prefer a rect or a blit for areas |
 | skip static overlays | `gfx_region_dirty()` before drawing one | no draw and no send while the region is clean | none |
 | interlace | `gfx_set_interlace()` | half the strips per present | alternate strips lag a present in motion; RGB565 full framebuffer only |
-| panel clock | `gfx_set_panel_clock_hz()`: `GFX_PANEL_CLOCK_FAST_HZ` (80 MHz, the build default) or `GFX_PANEL_CLOCK_SLOW_HZ` | 80 MHz halves the bus time of a full frame | 80 MHz is past the panel's rating: stray pixels until heal resends them; the shell restores its own choice on every app switch |
-| heal | `gfx_heal_mark()`, `gfx_heal_set_budget()`, `gfx_heal_set_rolling()` | repairs fast-clock faults | heal bytes on every present |
+| panel clock | `gfx_set_panel_clock_hz()`: `GFX_PANEL_CLOCK_FAST_HZ` (80 MHz, the build default) or `GFX_PANEL_CLOCK_SLOW_HZ` | 80 MHz halves the bus time of a full frame | 80 MHz is past the panel's rating: every send is full-width rows, never a narrower window; the shell restores its own choice on every app switch |
 
 `gfx_set_present_async(false)` sends on the caller's core; it exists for A/B
-timing, not for shipping. Double and band layouts ignore dirty tracking,
-interlace and heal.
+timing, not for shipping. Double and band layouts ignore dirty tracking and
+interlace.
 
 ### 2D draw costs
 
