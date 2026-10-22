@@ -14,7 +14,6 @@ import csv
 import json
 import pathlib
 import sys
-from types import SimpleNamespace
 
 import numpy as np
 
@@ -24,11 +23,10 @@ from docs import plot_style  # noqa: E402
 from r3d.appearance_simplify import projection  # noqa: E402
 from r3d.cost_model import clusters_in_view  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
-from r3d.mesh_import import camera_path_poses  # noqa: E402
 from r3d.light import drop_masked  # noqa: E402
-from r3d.objects.instances import MATCH_TOLERANCE, bounds_diagonal, match_instances, source_objects  # noqa: E402
+from r3d.objects.instances import MATCH_TOLERANCE, bounds_diagonal, match_instances, placed_corners, source_objects  # noqa: E402
 from r3d.mesh_import import load_source  # noqa: E402
-from r3d.poses import camera_basis  # noqa: E402
+from r3d.poses import camera_basis, sample_camera_path  # noqa: E402
 
 LOD_LEVELS = 4
 LOD_TRIANGLE_RATIO = 4
@@ -41,22 +39,24 @@ REPO = pathlib.Path(__file__).resolve().parents[4]
 
 
 def masked_objects(src, settings):
-    """Apply the import's alpha predicate separately to each object's triangles."""
+    """Return source objects and merged source-index triangles after alpha masking."""
     if settings.alpha_keep is None:
-        return source_objects(src.p, src.tri_v, src.tri_m, src.tri_o, src.object_names)
-    objects = []
+        return source_objects(src.p, src.tri_v, src.tri_m, src.tri_o, src.object_names), src.tri_v
+    objects, triangles = [], []
     for index, name in enumerate(src.object_names):
         selected = src.tri_o == index
         tv, _, tm = drop_masked(src.p, src.uv, src.tri_v[selected], src.tri_t[selected], src.tri_m[selected],
                                 src.textures, settings.alpha_keep)
+        triangles.append(tv)
         objects.extend(source_objects(src.p, tv, tm, np.zeros(len(tv), dtype=int), [name]))
-    return objects
+    return objects, np.concatenate(triangles) if triangles else np.empty((0, 3), dtype=int)
 
 
 def pose_rows(shapes, scene, job, every_ms, size):
     """Selected variant budget, shared per source triangle, after bounds culling and estimated LOD."""
-    visibility = SimpleNamespace(size=size, every_ms=every_ms)
-    width, height, lens, near, poses = camera_path_poses(scene, visibility, either_way_up=False)
+    camera = scene.camera.component
+    width, height, lens, near, poses = sample_camera_path(
+        camera.path.animation, camera.path.node, every_ms, *size, camera.half_fov_short_tan, camera.near_z)
     total = sum(len(shape.triangles) * len(shape.instances) for shape in shapes)
     budget = job.renderer.variant.triangles
     budget = total if budget is None else budget
@@ -71,9 +71,7 @@ def pose_rows(shapes, scene, job, every_ms, size):
             # A nonuniform renderer scale needs an enclosing sphere.
             placed_radius = radius * np.linalg.norm(renderer_matrix, ord=2)
             placements.append((centre, placed_radius, share, len(shape.instances) > 1))
-            lo, hi = shape.positions.min(axis=0), shape.positions.max(axis=0)
-            corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
-            placed = (corners @ instance.linear.T + instance.position) @ renderer_matrix.T + renderer_position
+            placed = placed_corners(shape, instance, renderer_matrix, renderer_position)
             boxes.append([placed.min(axis=0), placed.max(axis=0)])
     picture_area = width * height
     views = []
@@ -194,7 +192,7 @@ def main(argv=None):
         parser.error('--size is required when the selected renderer has no fit or visibility size')
     every_ms = args.every_ms or (visibility.every_ms if visibility and visibility.source == 'camera_path' else DEFAULT_EVERY_MS)
     src = load_source(job.settings)
-    objects = masked_objects(src, job.settings)
+    objects, _ = masked_objects(src, job.settings)
     shapes = match_instances(objects, args.tolerance)
     budget, rows, pixels_per_triangle = pose_rows(shapes, scene, job, every_ms, size)
     out.mkdir(parents=True, exist_ok=True)
