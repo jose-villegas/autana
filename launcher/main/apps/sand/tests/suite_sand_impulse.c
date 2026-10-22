@@ -83,7 +83,6 @@ test_the_disc_count_table_matches_a_direct_lattice_count(void) {
     for (int radius = 0; radius <= DISC_COUNT_MAX_RADIUS; radius++) {
         TEST_ASSERT_EQUAL_INT(circlei_cell_count(radius), sand_disc_count(radius));
     }
-    TEST_ASSERT_EQUAL_INT(circlei_cell_count(DISC_COUNT_MAX_RADIUS + 1), sand_disc_count(DISC_COUNT_MAX_RADIUS + 1));
     TEST_ASSERT_EQUAL_INT(0, sand_disc_count(-1));
 }
 

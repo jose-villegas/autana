@@ -1360,6 +1360,10 @@ int sand_disc_count(int radius);
  * asking the same question the pass asks. */
 bool faller_can_move(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 
+/* Defined in sand_plants.c: the tree/root/leaf growth stages of
+ * step_one_reacting_row()'s (sand_reactions.c) per-cell dispatch, called
+ * across the file boundary the same way sand_step_reactions() above is
+ * called from sand.c. */
 bool step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 bool step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 bool step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
