@@ -205,36 +205,36 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "53fac0a7111954062670f4564470ef6fb2b56ef7a707e24b485d4335005e0ac8"
-poses = "f86c8186aa59da847e148c7ded562ff85c57f97a6aea4515fe5eefc37acca03a"
-count = 8529
-clip = "launcher/demo/bistro/street.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "73e8f63498196e456c4f34009a13970459ceee86fb0175e9a2e5bf29bdb07bdc"
-poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
-count = 37
-clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "83f91e4c87279a036b8194519271f96adb140b1274cf1d5bf8fdb12fe858cc2d"
+key = "2b91a515e9a939496ce1e93b0edd4c327338c8048290bf0dc765d3bf240db314"
 poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
 count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "a5cb11fa5ca7126795529b3cd55b59f02b2dfd25f2b0d1823bdc7853c2036d46"
+key = "7fa7f3e5145cca8861b1b68ddaa2bce1e3051fa44fccfaec2e36b169bfdcd202"
 poses = "ccc0d923e1b742e7b6c752a4ef777a3dfd5aaf9f0b72382faea9b0866fa5664a"
 count = 171
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "f852c046504601cbd72a5a067f769133c231f33019df3c628c21d02a014efc65"
+key = "c374ae55a1dcf68df5f24ea2b30f18b8a121b3a4e4cb814afed7c3c9112f68ee"
+poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
+count = 37
+clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "f58b051ff3f884be3f073484578dca280221fd6a968389e0936b3bacf771c0ef"
 poses = "0650fa4beddf6e249c6968f50ea55734fc844048b87883db2514a57631627c71"
 count = 342
+clip = "launcher/demo/bistro/street.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "fcb47bdf0a03dc9f7abed73e45df2b75b865be966c6477665dc432d121804fba"
+poses = "f86c8186aa59da847e148c7ded562ff85c57f97a6aea4515fe5eefc37acca03a"
+count = 8529
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
