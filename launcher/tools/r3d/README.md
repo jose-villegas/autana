@@ -37,6 +37,7 @@ mesh. Nothing here runs on the board.
 | [path_bake.py](path_bake.py) | `PathLight`: the bake's bounced light, Mitsuba's path integrator along each point's fixed cosine-weighted rays against the full-detail source; see [Bounced-light implementation](../../../docs/render/Bake-Method.md#bounced-light-implementation). |
 | [ray_query.py](ray_query.py) | First-hit, any-hit and every-hit ray queries against a triangle mesh, traced by Mitsuba; the bake, visibility culling and the reference renderer all use it. |
 | [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
+| [source/reduce_source.py](source/reduce_source.py), [source/blend_export_obj.py](source/blend_export_obj.py) | Reduces a model too large to commit or to trace to an OBJ an import reads: Blender exports its meshes and base-colour textures, then meshoptimizer removes what moves the surface less than an error cap, object by object, each written as its own group. |
 | [isa.py](isa.py) | Pins Mitsuba's CPU backend to one instruction set before Mitsuba loads: Dr.Jit's LLVM kernels for x86-64-v3 at 8 lanes, Embree capped at AVX2 through [embree_cap.c](embree_cap.c), so ray results depend on the CPU's vendor alone. |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
