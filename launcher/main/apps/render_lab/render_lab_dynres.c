@@ -40,8 +40,8 @@ render_lab_dynres_apply(void) {
         render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
         return;
     }
-    const resolution_config_t config = resolution_config(render_lab_ladder, RENDER_LAB_LADDER_STEPS,
-                                                         RENDER_LAB_LADDER_RECOVERY, budget_ms * MATH_US_PER_MS);
+    const resolution_config_t config = resolution_config(
+        render_lab_ladder, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_RECOVERY, budget_ms * (int32_t)MATH_US_PER_MS);
     render_context_set_dynamic_resolution(render_context_main(), &config, &render_lab_ladder_model,
                                           RENDER_LAB_LADDER_HALF);
 }
