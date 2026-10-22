@@ -33,7 +33,8 @@ targets_for(scene_t* scene, scene_entity_t owner) {
     for (int e = 0; e < entities; e++) {
         anim_component_ref_t* fields = out.components + (e * 2);
         fields[0] = (anim_component_ref_t){&ANIM_POSE_TRANSFORM_FIELDS, &scene->locals[e]};
-        out.targets[e] = (anim_target_t){scene->asset.names[e], fields, 1, &scene->flags[e], SCENE_FLAG_CHANGED};
+        out.targets[e] =
+            (anim_target_t){name_hash(scene->asset.names[e]), fields, 1, &scene->flags[e], SCENE_FLAG_CHANGED};
     }
     for (int c = 0; c < scene->asset.camera_count; c++) {
         const int e = scene->cameras[c].entity;

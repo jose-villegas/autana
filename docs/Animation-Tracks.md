@@ -88,11 +88,11 @@ source = "NAME.glb"     # a .glb, .fbx or .keys.toml beside this one
 animation = "walk"      # the animation's name in the glTF
 ```
 
-### TRCK v2
+### TRCK v3
 
 | Format | Version | Writer (Python) | Reader (C) |
 |---|---|---|---|
-| TRCK | 2 | `anim/tracks_asset.py` | `anim/anim_tracks.c` |
+| TRCK | 3 | `anim/tracks_asset.py` | `anim/anim_tracks.c` |
 
 Little-endian; every offset counts from the entry's first byte.
 
@@ -105,7 +105,7 @@ config:
 ---
 packet-beta
 title Header, 20 bytes at 0, one cell a byte
-0-1: "version = 2"
+0-1: "version = 3"
 2-3: "binding_count"
 4-7: "duration_ms"
 8-11: "strings_off"
@@ -118,34 +118,36 @@ title Header, 20 bytes at 0, one cell a byte
 ---
 config:
   packet:
-    bitsPerRow: 12
-    bitWidth: 56
+    bitsPerRow: 16
+    bitWidth: 44
 ---
 packet-beta
-title Binding registry, one 24-byte row a binding from byte 20
+title Binding registry, one 28-byte row a binding from byte 20
 0-1: "path"
 2-3: "field"
 4-7: "component"
-8-11: "times_off"
-12-15: "values_off"
-16-17: "keys"
-18: "type"
-19: "interp"
-20-23: "0"
+8-11: "path_hash"
+12-15: "field_hash"
+16-19: "times_off"
+20-23: "values_off"
+24-25: "keys"
+26: "type"
+27: "interp"
 ```
 
 | Part | At | Size |
 |---|---|---|
 | Header | 0 | 20 bytes |
-| Binding registry | 20 | 24 bytes a binding; `path` and `field` are offsets within the strings |
+| Binding registry | 20 | 28 bytes a binding; `path` and `field` are offsets within the strings |
 | Content: strings | `strings_off` | `strings_size` bytes: deduplicated UTF-8 object paths and field names, each NUL terminated |
 | Content: key arrays | each row's `times_off` and `values_off` | per binding, `keys` times (`f32`), then `keys * width` values (`f32`); a cubic binding holds in-tangent, value and out-tangent per key, so `3 * keys * width` |
 
 | Rule | Detail |
 |---|---|
-| Owners | `ANIM_TRACKS_VERSION`, `_HEADER_SIZE` (20), `_ROW_SIZE` (24), `_ALIGNMENT` (4), `_CUBIC_RUNS` (3), `ANIM_BINDING_STRING_MAX` (255), `ANIM_ROOT_SCENE` (0), `ANIM_ROOT_SKELETON` (1) in `anim_tracks_format.h` |
+| Owners | `ANIM_TRACKS_VERSION`, `_HEADER_SIZE` (20), `_ROW_SIZE` (28), `_ALIGNMENT` (4), `_CUBIC_RUNS` (3), `ANIM_BINDING_STRING_MAX` (255), `ANIM_ROOT_SCENE` (0), `ANIM_ROOT_SKELETON` (1) in `anim_tracks_format.h` |
 | Header | `root` is `ANIM_ROOT_SCENE` or `ANIM_ROOT_SKELETON`; the 3 pad bytes are zero; `binding_count` at most 65535 |
 | Strings | `strings_off` a multiple of 4, at or after the registry's end; a path or field is nonempty, at most `ANIM_BINDING_STRING_MAX` bytes, with no NUL, and ends inside the table, which fits a 16-bit offset |
+| Hashes | FNV-1a 32 of each string's bytes via `name_hash`; stored equals computed and is nonzero, else `ASSET_ERR_FORMAT`. The bake refuses collisions among a clip's paths or among its fields. |
 | Component | `u32` code, nonzero; written as `ASSET_TYPE` tags such as `ANIM_COMPONENT_TRANSFORM` (`TRNS`); the writer allows one binding per path, component and field |
 | Type | an `anim_value_t` code (float, vec2, vec3, quaternion, colour) with width 1, 2, 3, 4 and 3 |
 | Interp | an `anim_interp_t` code: step, linear or cubic |
@@ -162,9 +164,11 @@ anim_tracks_t clip;
 anim_track_t move;
 anim_playhead_t playhead;
 float out[ANIM_WIDTH_MAX];
+const name_hash_t camera = name_hash("camera");
+const name_hash_t position = name_hash("position");
 if (anim_tracks_from_pack(pack, "NAME", &clip) == ASSET_OK
-    && anim_tracks_find(&clip, "camera", ANIM_COMPONENT_TRANSFORM,
-                        "position", &move) == ASSET_OK) {
+    && anim_tracks_find(&clip, camera, ANIM_COMPONENT_TRANSFORM,
+                        position, &move) == ASSET_OK) {
     anim_playhead_init(&playhead, ANIM_LOOP);
 }
 ```
@@ -272,13 +276,15 @@ If glTF can animate the property, map the channel in
 `tracks_asset.channel_binding()`, converting the curve to the field's units in
 the bake. The readers accept any nonzero code, so neither reader changes.
 
-For example, sampling a camera's field of view directly, without binding it:
+For example, resolve a camera's field of view once at load, then sample the
+curve each frame:
 
 ```c
 anim_track_t lens;
 float fov[ANIM_WIDTH_MAX];
-if (anim_tracks_find(&clip, "camera", ANIM_COMPONENT_CAMERA,
-                     "half_fov_short_tan", &lens) == ASSET_OK) {
+const name_hash_t camera = name_hash("camera");
+const name_hash_t field = name_hash("half_fov_short_tan");
+if (anim_tracks_find(&clip, camera, ANIM_COMPONENT_CAMERA, field, &lens) == ASSET_OK) {
     anim_track_sample(&lens, seconds, fov);
 }
 ```
