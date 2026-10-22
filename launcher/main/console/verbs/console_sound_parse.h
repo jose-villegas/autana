@@ -12,13 +12,34 @@
 #include "console/console_verbs.h"
 
 #define CONSOLE_SOUND_WORD_COUNT_MAX 4
+/* 500 Hz remains audible while the second difference rejects its steady tone. */
+#define CONSOLE_SOUND_ONSET_HZ       500u
+#define CONSOLE_SOUND_ONSET_GAIN     (AUDIO_OUT_VOLUME_MAX_PCT / 3u)
 
-typedef enum { CONSOLE_SOUND_PLAY, CONSOLE_SOUND_STOP, CONSOLE_SOUND_STATS } console_sound_action_t;
+typedef enum {
+    CONSOLE_SOUND_AMP_ON,
+    CONSOLE_SOUND_START,
+    CONSOLE_SOUND_STOP_EVENT,
+    CONSOLE_SOUND_STEAL,
+    CONSOLE_SOUND_AMP_OFF,
+    CONSOLE_SOUND_EVENT_COUNT
+} console_sound_event_t;
+
+static const char* const console_sound_events[] = {"amp-on", "start", "stop", "steal", "amp-off"};
+
+typedef enum {
+    CONSOLE_SOUND_PLAY,
+    CONSOLE_SOUND_STOP,
+    CONSOLE_SOUND_STATS,
+    CONSOLE_SOUND_ONSET
+} console_sound_action_t;
 
 typedef struct {
     console_sound_action_t action;
     char name[ASSET_NAME_MAX];
     uint32_t voice;
+    uint16_t hz;
+    console_sound_event_t event;
     uint8_t gain_pct;
     bool loop;
 } console_sound_args_t;
@@ -54,7 +75,23 @@ console_sound_parse(const char* args, console_sound_args_t* out) {
         }
     }
     console_sound_args_t parsed = {.gain_pct = AUDIO_OUT_VOLUME_MAX_PCT};
-    if (strcmp(words[0], "stats") == 0 && count == 1) {
+    if (strcmp(words[0], "onset") == 0 && count >= 2) {
+        parsed.action = CONSOLE_SOUND_ONSET;
+        unsigned event = 0;
+        while (event < CONSOLE_SOUND_EVENT_COUNT && strcmp(words[1], console_sound_events[event]) != 0) {
+            event++;
+        }
+        uint32_t hz = CONSOLE_SOUND_ONSET_HZ;
+        uint32_t gain = CONSOLE_SOUND_ONSET_GAIN;
+        if (event == CONSOLE_SOUND_EVENT_COUNT
+            || (count >= 3 && !console_sound_number(words[2], AUDIO_OUT_NYQUIST_HZ - 1, &hz))
+            || (count >= 4 && !console_sound_number(words[3], AUDIO_OUT_VOLUME_MAX_PCT, &gain)) || !hz) {
+            return false;
+        }
+        parsed.event = (console_sound_event_t)event;
+        parsed.hz = (uint16_t)hz;
+        parsed.gain_pct = (uint8_t)gain;
+    } else if (strcmp(words[0], "stats") == 0 && count == 1) {
         parsed.action = CONSOLE_SOUND_STATS;
     } else if (strcmp(words[0], "stop") == 0 && count <= 2) {
         parsed.action = CONSOLE_SOUND_STOP;
