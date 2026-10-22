@@ -71,6 +71,17 @@ class RoundTripTests(unittest.TestCase):
             self.assertEqual(got["times"], [single(t) for t in want["times"]], want["name"])
             self.assertEqual(got["values"], [tuple(single(x) for x in row) for row in want["values"]], want["name"])
 
+    def test_encoding_reuses_each_rows_name_hashes(self):
+        tracks, duration, root = probe_tracks()
+        with mock.patch.object(tracks_asset, "name_hash", wraps=tracks_asset.name_hash) as hashed:
+            with mock.patch.object(tracks_asset, "decode"):
+                entry = tracks_asset.encode(tracks, duration, root)
+        self.assertEqual(hashed.call_args_list,
+                         [mock.call(track[part]) for track in tracks for part in ("path", "field")])
+        decoded, decoded_duration = tracks_asset.decode(entry)
+        self.assertEqual(decoded_duration, duration)
+        self.assertEqual([track["name"] for track in decoded], [track["name"] for track in tracks])
+
     def test_the_same_clip_bakes_the_same_bytes(self):
         self.assertEqual(probe_entry(), probe_entry())
 

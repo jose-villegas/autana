@@ -3,8 +3,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "anim/anim_tracks_format.h"
-
 anim_bind_status_t
 anim_bind_field(const anim_binding_t* binding, const anim_component_ref_t* components, int component_count,
                 uint8_t* dirty, uint8_t dirty_bit, anim_bound_t* out) {
@@ -15,7 +13,7 @@ anim_bind_field(const anim_binding_t* binding, const anim_component_ref_t* compo
         }
         for (int f = 0; f < component->field_count; f++) {
             const anim_field_t* field = &component->fields[f];
-            if (name_hash(field->name) != binding->field_hash) {
+            if (strcmp(field->name, binding->field) != 0) {
                 continue;
             }
             if (field->type != binding->type) {
@@ -57,11 +55,10 @@ anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_co
     if (out_count < clip->count) {
         return ANIM_BIND_ERR_SPACE;
     }
-    const name_hash_t self = name_hash(ANIM_TARGET_SELF);
     for (int i = 0; i < clip->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(clip, i, &binding);
-        const anim_target_t* target = binding.path_hash == self && target_count > 0
+        const anim_target_t* target = strcmp(binding.path, ANIM_TARGET_SELF) == 0 && target_count > 0
                                           ? &targets[0]
                                           : find_target(targets, target_count, binding.path_hash);
         const anim_bind_status_t status = target == NULL
