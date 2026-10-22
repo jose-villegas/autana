@@ -682,6 +682,45 @@ def _fix_line_endings(path):
     return None
 
 
+# RULE: UTF-8 read as Windows-1252 and written back turns one character such
+# as a middle dot or an arrow into two or three accented ones, which breaks
+# rendered text and Mermaid labels. A run is
+# flagged only when its characters map back to bytes that decode as exactly
+# one UTF-8 character, so ordinary accented text never matches.
+
+CP1252_BYTE = {}
+for _byte in range(0x80, 0x100):
+    try:
+        CP1252_BYTE[bytes([_byte]).decode("cp1252")] = _byte
+    except UnicodeDecodeError:
+        CP1252_BYTE[chr(_byte)] = _byte
+CONTINUATION = "".join(re.escape(c) for c, b in CP1252_BYTE.items() if b < 0xC0)
+MOJIBAKE = re.compile(f"[\u00c2-\u00df][{CONTINUATION}]|[\u00e0-\u00ef][{CONTINUATION}]{{2}}"
+                      f"|[\u00f0-\u00f4][{CONTINUATION}]{{3}}")
+MOJIBAKE_ACTION = "UTF-8 decoded as Windows-1252 - run --fix, and read and write text as UTF-8"
+
+
+def _unmangle(run):
+    try:
+        return bytes(CP1252_BYTE[c] for c in run).decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _fix_mojibake(text):
+    return MOJIBAKE.sub(lambda m: _unmangle(m.group(0)) or m.group(0), text)
+
+
+@text_rule("MOJIBAKE", fixer=lambda root, path, text: _fix_mojibake(text))
+def rule_mojibake(root, path, text):
+    for number, line in enumerate(text.splitlines(), 1):
+        for m in MOJIBAKE.finditer(line):
+            fixed = _unmangle(m.group(0))
+            if fixed is not None:
+                yield number, f"{m.group(0)!r} should be {fixed!r} - {MOJIBAKE_ACTION}"
+                break
+
+
 # RULE: `$?` on the line after a compound statement is that compound's own
 # status, not the command a reader has in mind. An `if` whose condition fails
 # and which has no `else` exits 0, so `if cmd; then return 0; fi` followed by
