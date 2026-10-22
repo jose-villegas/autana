@@ -46,9 +46,13 @@ header's opening comment; `--check` verifies it.
 <!-- generated: package-headers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Header | Purpose |
 |---|---|
+| [include/math/geometry/ball_template.h](include/math/geometry/ball_template.h) | ball_template: closed balls in any dimension for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/box3_template.h](include/math/geometry/box3_template.h) | box3_template: closed axis-aligned boxes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/box3f.h](include/math/geometry/box3f.h) | box3f: a closed axis-aligned box of a float. |
 | [include/math/geometry/box3s.h](include/math/geometry/box3s.h) | box3s: a closed axis-aligned box of int16 position ticks. |
+| [include/math/geometry/circle_template.h](include/math/geometry/circle_template.h) | circle_template: closed discs for one number type; see docs/math/Conventions.md#templates for macro arguments. |
+| [include/math/geometry/circlef.h](include/math/geometry/circlef.h) | circlef: a closed disc of a float. |
+| [include/math/geometry/circlei.h](include/math/geometry/circlei.h) | circlei: a closed disc of an int. |
 | [include/math/geometry/plane_template.h](include/math/geometry/plane_template.h) | plane_template: oriented planes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/planef.h](include/math/geometry/planef.h) | planef: an oriented plane of a float. |
 | [include/math/geometry/planex.h](include/math/geometry/planex.h) | planex: an oriented plane of a Q16.16. |

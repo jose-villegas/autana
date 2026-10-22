@@ -1,7 +1,7 @@
 /*
  * gfx_present: getting the framebuffer (gfx.h) onto the panel. What
  * changed is marked, and only that is sent, over a QSPI link whose clock
- * and healing an app may choose.
+ * an app may choose.
  */
 #pragma once
 
@@ -83,9 +83,10 @@ void gfx_set_present_async(bool on);
 bool gfx_present_async_enabled(void);
 
 /* The panel link's clock. The fast rate halves bus time but is past the
- * panel's rated 50 MHz: a region can land with stray pixels that stay until
- * it is sent again. gfx starts at GFX_QSPI_HZ and keeps whatever it was
- * last told; it does not choose or remember a rate itself. */
+ * panel's rated 50 MHz: there the panel sometimes lands a partial-width
+ * window a column off, so gfx sends only full-width rows at it. gfx starts
+ * at GFX_QSPI_HZ and keeps whatever it was last told; it does not choose
+ * or remember a rate itself. */
 #define GFX_PANEL_CLOCK_SLOW_HZ (40 * 1000 * 1000)
 #define GFX_PANEL_CLOCK_FAST_HZ (80 * 1000 * 1000)
 
@@ -93,29 +94,3 @@ bool gfx_present_async_enabled(void);
  * Returns false, changing nothing, for any other rate. */
 bool gfx_set_panel_clock_hz(int hz);
 int gfx_panel_clock_hz(void);
-
-/*
- * Heal, an opt-in for a screen that sends only what changed: gfx sends a
- * marked region again on a later present, as full-width strips cut
- * differently from any earlier send, to clear what the fast clock left
- * wrong. All of it does nothing while the clock is the slow one.
- */
-
-#define GFX_HEAL_DEFAULT_BUDGET_PIXELS (GFX_WIDTH * 32)
-
-/* Queues rows [y, y + h) for healing; x and w are ignored, strips are full
- * width. Safe wherever gfx_mark_dirty() is. */
-void gfx_heal_mark(int x, int y, int w, int h);
-
-/* How many pixels of heal one present may add. */
-void gfx_heal_set_budget(int pixels_per_present);
-
-/* Rows per present of a sweep over the whole screen, 0 for none, for an app
- * that wants healing without a policy. */
-void gfx_heal_set_rolling(int rows_per_present);
-
-/* Empties the queue and puts the budget and rolling sweep back to their
- * defaults. */
-void gfx_heal_restore_defaults(void);
-
-bool gfx_heal_active(void);

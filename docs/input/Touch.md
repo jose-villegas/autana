@@ -11,7 +11,7 @@ Controller quirks and the interrupt pin are in
 |---|---|
 | The task polls at `TOUCH_POLL_HZ` and latches press and release edges, so a tap that falls entirely between rendered frames still reaches the next frame | `touch.c` |
 | Release needs the quiet interval `TOUCH_RELEASE_QUIET_US`; an INT deassertion is not a release | `input/touch/touch_fsm.h` |
-| The UI bridge defers DOWN until microui's hover root is settled; keep this for every control, not only buttons | [Firmware-Architecture.md](../Firmware-Architecture.md#two-things-to-know-before-touching-it) |
+| The UI bridge defers DOWN until microui's hover root is settled; keep this for every control, not only buttons | [firmware/UI.md](../firmware/UI.md#two-things-to-know-before-touching-it) |
 
 ## Calibration and targets
 

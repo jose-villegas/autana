@@ -5,7 +5,7 @@ them, and how it gets into and out of the launcher list. The contract is
 [`launcher/main/app/app.h`](../launcher/main/app/app.h); the caller is the shell,
 [`launcher/main/shell/`](../launcher/main/shell/). For the UI inside an app see
 [`Building-a-Screen.md`](Building-a-Screen.md); for why the shell is built this
-way see [`Firmware-Architecture.md`](Firmware-Architecture.md).
+way see [`firmware/README.md`](firmware/README.md).
 
 The first result is a new launcher entry. Put one `app_<name>.c` file in
 `launcher/main/apps/<name>/`, give it a display name, and register it with
@@ -107,7 +107,7 @@ an app leaves by leaving the build:
 ## Lifecycle
 
 The shell's state machine (the launcher and a running app) is
-in [Firmware-Architecture.md](Firmware-Architecture.md#the-frame-loop). An
+in [firmware/Frame-Loop.md](firmware/Frame-Loop.md#the-frame-loop). An
 app only ever sees the `Running` state; it leaves by home swipe
 (`home_gesture`), PWR long-press (no `home_gesture`), or its own call to
 `shell_request_exit()`.
@@ -134,7 +134,7 @@ never sees the input that closed it.
 between leaving and stepping, `step_running_app()` picks one of the two shapes
 below and `shell_present_unless_deferred()` presents for the first. The
 engine systems' phases
-([Engine systems](Firmware-Architecture.md#engine-systems)) run at the points
+([Engine systems](firmware/Frame-Loop.md#engine-systems)) run at the points
 marked.
 
 Without `update()`: the shell presents synchronously after `frame()`.
@@ -266,12 +266,8 @@ the internal or 8-bit heap has less free after `exit()` than it had before `ente
 ### What the shell resets for you
 
 On every launch and leave, `display_restore_system_state()`: the panel clock goes back to the system value
-(`display_system_panel_clock_hz()`, the user's 80 or 40 MHz choice, kept in NVS)
-and gfx heal goes back to its defaults. The gfx mode is **not** reset; that is
-`exit()`'s job.
-
-An app that minds a stray pixel at 80 MHz opts into heal: `gfx_heal_mark()`,
-`gfx_heal_set_budget()`, `gfx_heal_set_rolling()`. Resolution logic:
+(`display_system_panel_clock_hz()`, the user's 80 or 40 MHz choice, kept in NVS).
+The gfx mode is **not** reset; that is `exit()`'s job. Resolution logic:
 `display/panel_clock.c`.
 
 ### Full redraw
@@ -326,8 +322,8 @@ An app's `IRAM_ATTR` function needs the comment directly above it to give a reas
 ## Related
 
 - [`Building-a-Screen.md`](Building-a-Screen.md): screens built on the `ui/ui.h` face inside an app
-- [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md): draw targets, dirty tracking, the present path, heal
-- [`Firmware-Architecture.md`](Firmware-Architecture.md): why one framebuffer and one frame loop
+- [`gfx/README.md`](gfx/README.md): draw targets, dirty tracking, the present path, the panel clock
+- [`firmware/README.md`](firmware/README.md): why one framebuffer and one frame loop
 - [`Testing-Guide.md`](Testing-Guide.md): suites and runners
 - [`Build-Variants.md`](Build-Variants.md): what release, dev and
   diagnostics builds carry, and which flag gates what
