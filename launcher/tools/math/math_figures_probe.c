@@ -34,9 +34,9 @@ static const vec3f_t OUTLINE_CENTRE = {0.75F, 1.125F, 0.0F};
 
 enum { TRS_SCALE_STEP = 1, TRS_ROTATE_STEP, TRS_TRANSLATE_STEP };
 
-static const vec3f_t TRS_SCALE = {1.6F, 0.6F, 1.4F};
+static const vec3f_t TRS_SCALE = {2.0F, 0.5F, 1.5F};
 static const vec3f_t TRS_AXIS = {0.0F, 1.0F, 1.0F}; /* normalised below */
-static const float TRS_ANGLE_DEGREES = 50.0F;
+static const float TRS_ANGLE_DEGREES = 110.0F;
 static const vec3f_t TRS_POSITION = {2.0F, 1.0F, 1.0F};
 
 /* The example camera sits at the origin looking down +z, as TRANSFORMF_IDENTITY places it. */
