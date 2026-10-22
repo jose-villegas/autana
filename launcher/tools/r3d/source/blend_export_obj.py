@@ -7,11 +7,11 @@ reduce_source.py runs this; see there. Imports IN (.fbx, .obj, .glb/.gltf or
 .blend), keeps the mesh objects whose names match --objects (all when left
 out), and writes OUT_DIR/NAME.obj, triangulated, with its .mtl and each
 base-colour texture, at most PX on its longer side, as a PNG under
-OUT_DIR/textures/; other textures are dropped, since a bake reads only albedo
-and opacity. Positions are written in the source's units, +Y up and looking
-down -Z, as the importer reads them. Blender's importers turn a source to +Z
-up; one whose file misstates its axes stays +Y up there, and --source-up Y
-writes it unturned. The input is only read.
+OUT_DIR/textures/ named in lower case; other textures are dropped, since a
+bake reads only albedo and opacity. Positions are written in the source's
+units, +Y up and looking down -Z, as the importer reads them. Blender's
+importers turn a source to +Z up; one whose file misstates its axes stays +Y
+up there, and --source-up Y writes it unturned. The input is only read.
 """
 import argparse
 import fnmatch
@@ -89,7 +89,8 @@ def shrink_textures(out_dir, size):
         scale = min(1.0, size / max(width, height))
         if scale < 1.0:
             image.scale(max(1, round(width * scale)), max(1, round(height * scale)))
-        stem = os.path.splitext(bpy.path.basename(image.filepath) or image.name)[0]
+        # Lower case, so the names sort the same on every file system.
+        stem = os.path.splitext(bpy.path.basename(image.filepath) or image.name)[0].lower()
         image.filepath_raw = os.path.join(directory, stem + ".png")
         image.file_format = "PNG"
         image.save()
