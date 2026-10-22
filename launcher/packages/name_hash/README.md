@@ -7,6 +7,8 @@ at initialization or load time, then compare stored keys during lookup.
 including embedded NULs. Both use FNV-1a 32 (Fowler, Noll, Vo). The package
 requires only libc; `NAME_HASH_NONE` is reserved for absent names.
 
+`name_hash64_n(seed, data, size)` folds bytes onto a 64-bit seed; start with `NAME_HASH64_OFFSET_BASIS` or continue a previous fold.
+
 Include `"name_hash/name_hash.h"`. Firmware declares `REQUIRES name_hash`;
 plain CMake builds link the `name_hash` target. Host scripts discover sources
 and suites through `launcher/tools/build/packages.sh`.

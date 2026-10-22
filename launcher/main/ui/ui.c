@@ -34,6 +34,7 @@
 #include <limits.h>
 
 #include "esp_log.h"
+#include "name_hash/name_hash.h"
 
 #include "build/build_variant.h"
 #include "core/memory.h"
@@ -44,6 +45,7 @@
 #include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_target.h"
 #include "math/scalar/mathi.h"
+#include "name_hash/name_hash.h"
 #include "services/tune.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/input/ui_bridge.h"
@@ -273,18 +275,12 @@ paint_canvas(const mu_Container* cnt) {
 #endif
 }
 
-/* FNV-1a (Fowler, Noll, Vo). Cheap, and only ever run over the few
- * hundred bytes a canvas's commands occupy; the buffer is 8 KiB but almost
- * none of it is used. */
 static uint64_t
 hash_canvas(const mu_Container* cnt) {
-    uint64_t h = 1469598103934665603ULL;
+    uint64_t h = NAME_HASH64_OFFSET_BASIS;
     mu_Command* cmd = NULL;
     while (next_canvas_command(cnt, &cmd)) {
-        const unsigned char* p = (const unsigned char*)cmd;
-        for (int i = 0; i < cmd->base.size; i++) {
-            h = (h ^ p[i]) * 1099511628211ULL;
-        }
+        h = name_hash64_n(h, cmd, (size_t)cmd->base.size);
     }
     return h;
 }
@@ -648,18 +644,6 @@ bin_fill_rect(mu_Rect rect, mu_Color color) {
 _Static_assert(UI_BAND_HASH_MAX <= sizeof(uint32_t) * CHAR_BIT, "overflow mask holds every band");
 static uint64_t ui_band_hash[UI_BAND_HASH_MAX];
 
-/* FNV-1a, folded over whatever bytes make up an entry's own content,
- * the same algorithm hash_canvas() already uses for the same reason. */
-static uint64_t
-hash_bytes(uint64_t h, const void* data, size_t len) {
-    const unsigned char* p = (const unsigned char*)data;
-    for (size_t i = 0; i < len; i++) {
-        h ^= p[i];
-        h *= 1099511628211ULL;
-    }
-    return h;
-}
-
 /* Hashes whichever bound entries overlap [row0, row1): a COMMAND entry by
  * its own bytes (cmd->base.size is trustworthy: paint_canvas() already
  * relies on it the same way), a UI_BAND_ENTRY_FILL_RECT by its rect and
@@ -668,19 +652,19 @@ hash_bytes(uint64_t h, const void* data, size_t len) {
  * in this band, mu_Command byte layout and all. */
 static uint64_t
 hash_band_entries(int row0, int row1) {
-    uint64_t h = 1469598103934665603ULL;
+    uint64_t h = NAME_HASH64_OFFSET_BASIS;
 
     for (int i = 0; i < ui_band_bin_count; i++) {
         const ui_band_entry_t* e = &ui_band_bin[i];
         if (!e->always && !(e->y0 < row1 && e->y1 > row0)) {
             continue;
         }
-        h = hash_bytes(h, &e->kind, sizeof e->kind);
+        h = name_hash64_n(h, &e->kind, sizeof e->kind);
         switch (e->kind) {
-            case UI_BAND_ENTRY_COMMAND: h = hash_bytes(h, e->cmd, (size_t)e->cmd->base.size); break;
+            case UI_BAND_ENTRY_COMMAND: h = name_hash64_n(h, e->cmd, (size_t)e->cmd->base.size); break;
             case UI_BAND_ENTRY_FILL_RECT:
-                h = hash_bytes(h, &e->rect, sizeof e->rect);
-                h = hash_bytes(h, &e->color, sizeof e->color);
+                h = name_hash64_n(h, &e->rect, sizeof e->rect);
+                h = name_hash64_n(h, &e->color, sizeof e->color);
                 break;
             case UI_BAND_ENTRY_CLIP_RESET: break;
         }
