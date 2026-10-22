@@ -56,12 +56,9 @@ flowchart TB
 
 ## Offline, on the host
 
-Every step runs on the CPU except the fit, which needs a CUDA GPU.
-The doc-images GPU stage rebakes the demo scene's meshes. The chart shows
-where each CPU bake spends its time and how many triangles each step leaves;
-its rows hold each step's share, triangle counts and memory peaks. Shares
-roughly carry across machines and seconds do not, so time a scene's bakes on
-your own machine with:
+Every step runs on the CPU except the fit, which needs a CUDA GPU. The chart
+gives each step's share of a bake; seconds depend on the machine, so time your
+own with:
 
 ```sh
 python launcher/tools/render/bake_steps.py SCENE.scene.toml [--mesh NAME]
@@ -254,16 +251,8 @@ Reference: [the asset packs](../assets/README.md#packs).
 
 ## Every frame, on the board
 
-Separate charts show the shipped frame and each debug view. The shipped
-chart uses solid segments; each view chart shows hatched additions, with an
-label and elbow leader marking the base frame at the bar's start. A segment
-is drawn only when its share rounds above zero percent. Legends match the
-drawn segments; the table retains every stage in milliseconds. Each axis fits
-its own data, and view ticks show added milliseconds.
-The shipped label gives the total; view labels give the signed net addition
-and its share of the shipped total. Segment labels and legends give each
-stage's share of the shipped total, signed for view additions. Dotted lines
-mark the frame-rate budgets when they fall inside the chart.
+Solid bars are the shipped frame; hatched bars are what each debug view adds.
+The table under the charts has every stage in ms.
 
 <!-- generated: pipeline-frame-stages sha256=a85a933fcbc6eaf52993bd4e7965cf3df806c953a25272f8df8654e12531ec66 -->
 ![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
@@ -490,7 +479,7 @@ view without one is listed as not captured. Check `autana status` and `autana bu
 before and after each capture. A missing capture of the scene as shipped, or a
 capture without report windows, fails the run.
 
-The `meshlet-sizes` table is generated from each size's own suite capture and
+The `meshlet-sizes` chart and rows are generated from each size's own suite capture and
 regenerated bake. The [meshlet capture recipe](../../launcher/tools/render/README.md#meshlet-size-captures)
 owns preparation, capture validation and refresh commands.
 
@@ -501,8 +490,6 @@ fits. Refresh them on a machine with a CUDA GPU with:
 sh launcher/tools/render/render_doc_images.sh --stage gpu
 ```
 
-RAM peaks are sampled process RSS; GPU steps also read GPU
-resident memory and PyTorch's reserved-memory peak. CPU steps have no VRAM
-measurement. Each fitted input's rebake is labelled `fit-start`, and its fit
-has a separate row. The stage records the machine's hardware and software
-versions in its `measurements.json`, beside its outputs, not on this page.
+RAM peaks are sampled process RSS; only GPU steps read VRAM. Each fitted
+input's rebake is `fit-start`, with its fit on its own row. The machine's
+hardware and versions go in the stage's `measurements.json`.
