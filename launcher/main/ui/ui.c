@@ -34,7 +34,6 @@
 #include <limits.h>
 
 #include "esp_log.h"
-#include "name_hash/name_hash.h"
 
 #include "build/build_variant.h"
 #include "core/memory.h"
