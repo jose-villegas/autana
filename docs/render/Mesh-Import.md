@@ -216,6 +216,26 @@ triangle budget. Without variants, `output.name` names the single output.
 `[[variants]].triangles` is the triangle budget `simplify` brings a variant to;
 a `fit` budget may not exceed it.
 
+## Objects and instances
+
+An OBJ object is an `o` or `g` group; an ungrouped file uses its stem.
+A glTF object is a mesh node, placed by its world transform. A nameless
+node uses its index. Only vertices referenced by triangles belong to an object.
+
+[`objects/objects_report.py`](../../launcher/tools/r3d/objects/objects_report.py)
+reports shared shapes after the import's alpha mask. Matching is rigid:
+scaled copies remain separate shapes. Reflections are recorded per instance.
+
+| Test | Requirement |
+|---|---|
+| Candidate bucket | Equal vertex and triangle counts, and material multiset |
+| Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#86)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
+| Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangles and materials agree as multisets |
+
+The report writes counts, residuals and a camera-path estimate to an external
+`--out` directory. Its LOD constants describe an estimate, not a design.
+The bake does not use objects or instances yet.
+
 ## The offline tools
 
 Source assets, scene TOMLs, cached bakes and bake-time tools use the
