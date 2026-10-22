@@ -55,11 +55,11 @@ boot_anim_motion_load(boot_anim_motion_t* out) {
     asset_status_t status = anim_tracks_from_pack(pack, BOOT_CLIP, &tracks);
     if (status == ASSET_OK) {
         node = "camera";
-        status = anim_tracks_find_node(&tracks, node, &out->camera);
+        status = anim_tracks_find_node(&tracks, name_hash(node), &out->camera);
     }
     if (status == ASSET_OK) {
         node = "space";
-        status = anim_tracks_find_node(&tracks, node, &out->space);
+        status = anim_tracks_find_node(&tracks, name_hash(node), &out->space);
     }
     if (status != ASSET_OK) {
         ESP_LOGW(TAG, "clip %s%s%s: %s: camera and space hold the rest pose", BOOT_CLIP, node == NULL ? "" : " node ",
