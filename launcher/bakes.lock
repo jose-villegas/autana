@@ -6,10 +6,10 @@ mesh_cpu_vendor = "AuthenticAMD"
 [[bake]]
 output = "bistro.ground.mesh"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "49963dbc6c976472045945d0fba1e53ad3c59dcfffcfa4d8314d61165f11fef9"
+key = "98f55add5f71e0949087488d5b437c8265f28fdf370217b92a11ed148ebd2d12"
 sha256 = "13115deb99cead2b800fe6bd5397646cd28d272482172dbf4bc85aa99f4828e1"
 size = 132
-run = 39694582060
+run = 39721763895
 host = "Linux x86_64"
 
 [[bake]]
