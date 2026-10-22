@@ -19,7 +19,7 @@ engine creates are:
 
 Pin a task (`...PinnedToCore`) only when it must not share a core with the frame loop. A
 task that only waits on I/O uses plain `xTaskCreate`. An app's `update` never blocks; see
-[Firmware architecture](../Firmware-Architecture.md).
+[Firmware architecture](../firmware/README.md).
 
 ## Pick the primitive
 

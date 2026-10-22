@@ -602,11 +602,6 @@ gfx_band_frame_begin(void) {
         band_snapshot_bands = 0;
         band_snapshot_filling = band_frame_force_all;
     }
-
-    /* Band mode heals nothing: a band is gone once sent, so gfx holds
-     * nothing to resend. The reset stops rows marked or swept in an earlier
-     * full-fb present from carrying into this mode. */
-    gfx_heal_reset(&heal);
 }
 
 /* Band mode's own "does this band need touching" query, on gfx_dirty.h's

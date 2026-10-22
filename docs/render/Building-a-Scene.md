@@ -3,7 +3,7 @@
 Start here to put a 3D model on screen: import a mesh, place it in a scene
 file, light it, add a camera, and draw what the scene says. The rest of this
 folder explains each step in depth; the [index](README.md) lists it. For the
-shell's frame ownership see [Firmware Architecture](../Firmware-Architecture.md).
+shell's frame ownership see [Firmware](../firmware/README.md).
 
 ```mermaid
 flowchart LR

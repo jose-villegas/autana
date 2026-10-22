@@ -536,6 +536,23 @@ class StyleAuditTest(unittest.TestCase):
         })
         self.assertEqual(findings, [])
 
+    def test_utf8_read_as_cp1252_is_flagged(self):
+        mangled = {"middle dot": "\u00b7", "arrow": "\u2192", "e acute": "\u00e9", "check": "\u2713"}
+        text = "".join(f"{name}: {char.encode('utf-8').decode('cp1252', errors='replace')}\n"
+                       for name, char in mangled.items())
+        findings = self.audit("MOJIBAKE", {"docs/page.md": text})
+        self.assertEqual(len(findings), len(mangled))
+
+    def test_real_accents_and_symbols_are_not_flagged(self):
+        findings = self.audit("MOJIBAKE", {
+            "docs/page.md": "caf\u00e9 \u00c0 la carte, \u00a9, 25\u00b0C, \u00b7 \u2192 \u2713, na\u00efve \u00c9cole\n",
+        })
+        self.assertEqual(findings, [])
+
+    def test_mojibake_fix_restores_the_character(self):
+        mangled = "direct \u00c2\u00b7 occlusion \u00e2\u2020\u2019 bounce"
+        self.assertEqual(check_style_audit._fix_mojibake(mangled), "direct \u00b7 occlusion \u2192 bounce")
+
     def test_a_tool_named_after_an_app_model_is_flagged(self):
         findings = self.audit("MODEL-NAMED-TOOL", {
             "launcher/main/apps/lab/assets/Otter.blend": "model",

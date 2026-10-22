@@ -5,10 +5,9 @@ docs/tools/Doc-Drift.md	2026-09-22	whole-repo docs review: reviewed against doc_
 docs/tools/Mermaid-Diagrams.md	2026-09-22	whole-repo docs review: reviewed against check-mermaid.mjs, check-mermaid-staged.sh and mermaid.yml, accurate
 docs/tools/Live-Tuning.md	2026-09-22	whole-repo docs review: reviewed against services/tune.h, console_verbs.h and console_tune.c, accurate
 editor/README.md	2026-09-22	whole-repo docs review: reviewed against editor/CMakeLists.txt and editor/src/layout_document.cpp, accurate
-docs/Gfx-and-Presentation.md	2026-10-21	autana-8sv4: reviewed against the 80 MHz full-width send rule, accurate
+docs/gfx/Present.md	2026-10-21	autana-8sv4: reviewed against the 80 MHz full-width send rule, accurate
 docs/Testing-Guide.md	2026-09-22	PR #340 round 4: reviewed against the span send and the strip-buffer alias, accurate
 docs/Building-an-App.md	2026-09-22	PR #345 round 3: reviewed against app_registry.c and the non-const app_t, accurate
-docs/Firmware-Architecture.md	2026-09-27	rewritten to architecture only: checked against main.c, CMakeLists.txt, check_style_audit.py LAYER_TIER, accurate
 docs/Building-a-Screen.md	2026-09-24
 docs/Building-an-App.md	2026-09-27	PR #442 round 2: reviewed against the development_only.cmake marker and check_release_symbols.sh, accurate
 docs/plans/Settings-App-Plan.md	2026-09-27	PR #442 round 2: reviewed against the development_only.cmake marker and check_release_symbols.sh, accurate
@@ -40,8 +39,6 @@ docs/math/README.md	2026-10-11
 docs/math/README.md	2026-10-12
 docs/Shared-Helpers.md	2026-10-12
 docs/plans/UI-Editor-Plan.md	2026-10-14
-docs/Firmware-Architecture.md	2026-10-14
-docs/Firmware-Architecture.md	2026-10-17
 docs/audio/Audio-Path.md	2026-10-17	checked against audio/, console_tone.c and the committed capture
 docs/audio/Audio-Path.md	2026-10-17	call and signal diagrams, memory constraint and board settings checked against their source owners
 docs/notes/Board-and-Memory.md	2026-10-17	memory section split under subheaders; facts and generated tiers unchanged, autana heap checked against Autana-CLI.md
@@ -68,3 +65,4 @@ docs/render/Baked-Mesh.md	2026-10-20	split out of Mesh-Import.md: moved text, LM
 docs/render/Bake-Method.md	2026-10-20	split out of Mesh-Import.md: moved text
 docs/Animation-Tracks.md	2026-10-20	scene playback pictures first: reviewed against anim_layer.c, anim_playhead.c and scene_animation.c, accurate
 docs/notes/Display-and-Rendering.md	2026-10-21	autana-8sv4: reviewed against the 80 MHz full-width send rule, accurate
+docs/math/Conventions.md	2026-10-22

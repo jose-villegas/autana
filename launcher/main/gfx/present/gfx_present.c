@@ -26,7 +26,6 @@
 
 _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h's panel size must be the board's");
 #endif
-_Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one strip bounce slot");
 
 #ifdef ESP_PLATFORM
 /* The send hot path runs from IRAM so a present after a cold instruction cache
@@ -34,7 +33,7 @@ _Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one s
  * places it: the compiler's clones of a function inherit the attribute, and
  * a mapping entry names only the original. Development overlays and send
  * auditing make dev and diag larger.
- * IRAM budget: release 2850 B, dev 3818 B, diag 3818 B */
+ * IRAM budget: release 2422 B, dev 3243 B, diag 3243 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -99,11 +98,6 @@ gfx_get_present_wait_us(void) {
  * The send side reopens the link at this rate before a present's first send,
  * when nothing is in flight. */
 static volatile int panel_clock_requested_hz = GFX_QSPI_HZ;
-
-/* Filled on the caller's side of a present, drained on the send side. */
-gfx_heal_t heal;
-static int heal_budget_pixels = GFX_HEAL_DEFAULT_BUDGET_PIXELS;
-static int heal_rolling_rows;
 
 static bool
 panel_clock_valid(int hz) {
@@ -534,7 +528,7 @@ send_fb_rows(int y0, int y1) {
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* The strip row send_picture_rows() should border, or -1 for a clean send.
- * A file static rather than a parameter: send_heal_strips() takes
+ * A file static rather than a parameter: run_present_strips() takes
  * send_picture_rows() as a callback with send_fb_rows()'s signature. */
 static int strip_overlay_row = -1;
 #endif
@@ -695,31 +689,10 @@ send_one_row(int row, int* queued) {
     }
 }
 
-/* Queues this present's heal strips through `send_rows`, after its dirty
- * sends so a strip carries whatever they just put on the panel. */
-static void
-send_heal_strips(bool (*send_rows)(int y0, int y1), int* queued) {
-    if (!panel_clock_is_fast()) {
-        gfx_heal_reset(&heal);
-        return;
-    }
-    gfx_heal_queue_rolling(&heal, heal_rolling_rows);
-    gfx_heal_strip_t strips[GFX_HEAL_MAX_STRIPS];
-    const int n = gfx_heal_plan(&heal, heal_budget_pixels, GFX_WIDTH, strips, GFX_HEAL_MAX_STRIPS);
-    for (int i = 0; i < n; i++) {
-        if (!send_rows(strips[i].y0, strips[i].y1)) {
-            continue;
-        }
-        (*queued)++;
-#if CONFIG_LAUNCHER_DEVELOPMENT
-        dev_heal_bytes_sent += (int64_t)(strips[i].y1 - strips[i].y0) * GFX_WIDTH * sizeof(gfx_color_t);
-#endif
-    }
-}
-
 /* Persistent compact pictures send whole dirty strips. Interlace requires
- * a full-resolution framebuffer. */
-static void
+ * a full-resolution framebuffer. Not inlined: it is not the hot path the
+ * IRAM placement is for. */
+static __attribute__((noinline)) void
 run_present_strips(bool (*send_rows)(int y0, int y1)) {
     int queued = 0;
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -751,7 +724,6 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
         dirty_row_sent(row);
     }
     dirty_frame_sent();
-    send_heal_strips(send_rows, &queued);
     for (int i = 0; i < queued; i++) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
@@ -760,8 +732,8 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
     }
 }
 
-/* Interlace leaves skipped rows dirty. Keep run-planning scratch off the stack
- * when heal strips replay overlays. */
+/* Interlace leaves skipped rows dirty. Not inlined, so the run-planning
+ * scratch stays off run_present_normal()'s stack. */
 static __attribute__((noinline)) uint32_t GFX_PRESENT_IRAM_ATTR
 send_dirty_rows(int* queued) {
     uint32_t remaining_cell_dirty = 0;
@@ -813,8 +785,6 @@ run_present_normal(void) {
     if (interlace_on) {
         cell_dirty = remaining_cell_dirty;
     }
-
-    send_heal_strips(send_fb_rows, &queued);
 
     /* Wait for queued full-width sends to drain. */
     for (int i = 0; i < queued; i++) {
@@ -980,41 +950,6 @@ void GFX_PRESENT_IRAM_ATTR
 gfx_present(void) {
     gfx_present_begin();
     gfx_present_wait();
-}
-
-void
-gfx_heal_mark(int x, int y, int w, int h) {
-    GFX_PRESENT_GUARD();
-    (void)x;
-    (void)w;
-    if (gfx_heal_active()) {
-        gfx_heal_queue_rows(&heal, y, y + h);
-    }
-}
-
-void
-gfx_heal_set_budget(int pixels_per_present) {
-    GFX_PRESENT_GUARD();
-    heal_budget_pixels = pixels_per_present < 0 ? 0 : pixels_per_present;
-}
-
-void
-gfx_heal_set_rolling(int rows_per_present) {
-    GFX_PRESENT_GUARD();
-    heal_rolling_rows = rows_per_present < 0 ? 0 : rows_per_present;
-}
-
-void
-gfx_heal_restore_defaults(void) {
-    GFX_PRESENT_GUARD();
-    gfx_heal_reset(&heal);
-    heal_budget_pixels = GFX_HEAL_DEFAULT_BUDGET_PIXELS;
-    heal_rolling_rows = 0;
-}
-
-bool
-gfx_heal_active(void) {
-    return current_mode.layout != GFX_LAYOUT_DOUBLE_FB && panel_clock_requested_hz == GFX_PANEL_CLOCK_FAST_HZ;
 }
 
 bool

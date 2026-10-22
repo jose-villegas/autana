@@ -20,7 +20,7 @@ no radio stack is linked and none of its memory is spent.
 
 The Wi-Fi plus TLS stack takes roughly 50-100 KB of internal heap while
 running (an estimate to measure). That is the same scarce heap that keeps
-LVGL out (`docs/Firmware-Architecture.md`). Some Wi-Fi and lwIP buffers can
+LVGL out (`docs/firmware/UI.md`). Some Wi-Fi and lwIP buffers can
 move to PSRAM with `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`. The BLE cost is
 unmeasured.
 
