@@ -572,6 +572,9 @@ def tone(args):
     return 0
 
 
+SOUND_ONSET_SECONDS = 30
+
+
 _MELODY_HEADER = Path(__file__).resolve().parents[2] / "launcher/main/console/verbs/console_melody.h"
 _PITCH_HEADER = Path(__file__).resolve().parents[2] / "launcher/packages/math/include/math/signal/pitch.h"
 
@@ -638,7 +641,8 @@ def melody(args):
 def sound(args):
     prefix = "SOUND"
     code, replies = send(prefix + " " + " ".join(args), reply=prefix,
-                         until=[prefix + "_END", prefix + "_ERR"])
+                         until=[prefix + "_END", prefix + "_ERR"],
+                         **({"seconds": SOUND_ONSET_SECONDS} if args[:1] == ["onset"] else {}))
     if code or not replies:
         return code or 1
     if replies[-1].startswith("SOUND_ERR"):
@@ -652,14 +656,16 @@ def parse_tone(reply):
     match = re.fullmatch(
         r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
         r"\(silence (-?[0-9]+\.[0-9]+) dB\), path (internal|acoustic), "
-        r"measured (-?[0-9]+\.[0-9]+ Hz|n/a), open ([0-9]+) B DMA", reply)
+        r"measured (-?[0-9]+\.[0-9]+ Hz|n/a), open ([0-9]+) B DMA"
+        r"(?:, thd (-?[0-9]+\.[0-9]+|n/a) dB, peak (-?[0-9]+\.[0-9]+) dBFS)?", reply)
     if not match:
         raise ValueError(f"invalid TONE reply: {reply}")
-    heard, hz, tone_db, silence_db, path, measured_hz, dma = match.groups()
+    heard, hz, tone_db, silence_db, path, measured_hz, dma, thd_db, peak_dbfs = match.groups()
     measured_hz = None if measured_hz == "n/a" else float(measured_hz.removesuffix(" Hz"))
     # hz_error is Hz: measured minus requested.
     return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
             "heard": heard == "heard", "open_dma_bytes": int(dma), "path": path,
+            "thd_db": None if thd_db in (None, "n/a") else float(thd_db), "peak_dbfs": None if peak_dbfs is None else float(peak_dbfs),
             "measured_hz": measured_hz, "hz_error": None if measured_hz is None else measured_hz - int(hz)}
 
 
@@ -1817,7 +1823,8 @@ COMMAND_GROUPS = (
         Command("sound", sound, (
             ("sound play <name> [loop] [gain]", "play an engine-pack sound; development builds"),
             ("sound stop [voice|all]", "stop a voice or all voices; all when omitted"),
-            ("sound stats", "voice states, dropped commands, amplifier state and RAM sizes"))),
+            ("sound stats", "voice states, dropped commands, amplifier state and RAM sizes"),
+            ("sound onset <event> [hz] [gain]", "measure start, stop, steal and amplifier transients"))),
         one("tap", tap, "tap <x> <y>", "tap a point, in pixels of the default screenshot"),
         one("press", press, "press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),
         one("drag", drag, "drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),

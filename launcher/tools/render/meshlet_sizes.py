@@ -17,13 +17,18 @@ from r3d.lit_mesh import read_lit_mesh
 from r3d.poses import sample_camera_path
 from r3d.fitted_variant import poses_text
 
-ROWS = ("16", "32", "64")
+ROWS = ("16", "32", "64")  # the cluster sizes a capture measures; the scene's shipped size is one of them
 STAGES = ("r3d.cull", "r3d.transform", "r3d.draw")  # magic: the frame-cost stages the table shows, as raster.c names them
+REST = "rest of frame"  # the frame's time outside STAGES
+CHART_WIDTH = 8  # inches
+CHART_ROW_HEIGHT = 0.45  # inches per bar
+CHART_ROOM = 1.1  # inches for the title, axis and legend
 IDENTITY = re.compile(r"\bCAPTURE build_id=([0-9a-f]{12}-diag) pack_crc32=([0-9a-f]{8}) object=(\w+) size=(\d+) cull=([01]) period_ms=(\d+) pose_every_ms=(\d+)")
 BLOCK = re.compile(r"=== (\w+) FRAME COST .*?===.*?(?:\1 both cores: mean [^\n]+)", re.S)
 
 
-def capture_means(directory, object_name, expected_packs=None, expected_poses=None, expected_geometry=None):
+def capture_means(directory, object_name, shipped, expected_packs=None, expected_poses=None, expected_geometry=None):
+    """{row: means} of each size's capture; the culling-off row comes from the `shipped` size's."""
     paths = [pathlib.Path(directory) / f"meshlets-{row}-board.log" for row in ROWS]
     require_same_board({str(path): capture_board(path) for path in paths})
     from doc_stages import capture_pose_every_ms
@@ -43,7 +48,7 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
         for match in BLOCK.finditer(measured):
             blocks_by_label.setdefault(match[1], []).append(match[0])
         selected = [(row, object_name)]
-        if row == "32":
+        if row == shipped:
             selected.insert(0, ("cull-off", "cull_off"))  # magic: the suite's label for its culling-off pass
         for key, label in selected:
             blocks = blocks_by_label.get(label, [])
@@ -109,13 +114,27 @@ def default_size():
     return tuple(define(header, name) * scale // 100 for name in ("GFX_WIDTH", "GFX_HEIGHT"))
 
 
-def table(scene_path, captures, bakes, object_name=None):
+def chart(rows, path):
+    """Each row's frame as stacked board stages, its total and submitted triangles at the bar's end."""
+    from docs.plot_style import LABEL_SIZE, MUTED, SLOTS, save, stacked_barh, style_axes, subplots
+    figure, axis = subplots(1, 1, (CHART_WIDTH, CHART_ROW_HEIGHT * len(rows) + CHART_ROOM))
+    stacked_barh(axis, [(label, list(zip((*STAGES, REST), (*stages, frame - sum(stages)))))
+                        for label, _clusters, _ratio, _submitted, *stages, frame in rows],
+                 dict(zip((*STAGES, REST), SLOTS)),
+                 [f"{frame:.1f} ms, {submitted:,.0f} triangles" for _, _, _, submitted, *_, frame in rows])
+    axis.set_xlabel("board ms per frame", fontsize=LABEL_SIZE, color=MUTED)
+    style_axes(axis, "Frame cost by meshlet size")
+    figure.legend(loc="outside lower center", ncol=len(STAGES) + 1, frameon=False, fontsize=LABEL_SIZE)
+    save(figure, path)
+
+
+def table(scene_path, captures, bakes, chart_path):
+    """The block of the scene's showcase: the chart, written to `chart_path`, then its rows collapsed."""
     from meshlet_capture import rebake_scene
+    from showcase import showcase
     scene = load_scene(scene_path)
     camera = scene.camera.component
-    jobs = [job for job in scene.renderers if job.object.name == object_name] if object_name else scene.renderers[:1]
-    if not jobs:
-        raise ValueError("scene has no selected mesh renderer")
+    jobs = [job for job in scene.renderers if job.object.name == showcase(scene)]
     if any(not job.object.identity for job in jobs):
         raise ValueError("meshlet table requires unplaced mesh geometry")
     width, height = default_size()
@@ -134,7 +153,8 @@ def table(scene_path, captures, bakes, object_name=None):
         poses_path = work / "poses.txt"
         poses_path.write_text(poses_text(*poses))
         host, geometry = {}, {}
-        for size in (16, 32, 64):
+        shipped = str(jobs[0].settings.meshlet_triangles)
+        for size in map(int, ROWS):
             paths = rebake_scene(scene_path, bakes / str(size), size)
             replacements = [f"{job.asset_name}={path}" for job, path in zip(scene.renderers, paths)]
             pack = pack_bytes([scene_path], replacements)[scene_id(scene_path)]
@@ -142,13 +162,19 @@ def table(scene_path, captures, bakes, object_name=None):
             paths = [path for path in paths if path.name in {job.asset_path.name for job in jobs}]
             host[str(size)] = host_columns(paths, poses_path)
             geometry[str(size)] = host[str(size)][0]
-            if size == 32:
+            if str(size) == shipped:
                 host["cull-off"] = host_columns(paths, poses_path, cull=False)
-    means = capture_means(captures, jobs[0].object.name, packs, range(0, len(poses[-1]) * every_ms, every_ms), geometry)
+    means = capture_means(captures, jobs[0].object.name, shipped, packs, range(0, len(poses[-1]) * every_ms, every_ms), geometry)
     rows = []
     for row in ("cull-off", *ROWS):
         (triangles, vertices, clusters), submitted = host[row]
-        rows.append(["cull off" if row == "cull-off" else f"meshlets of {row}" + (" (shipped)" if row == "32" else ""),
-                     str(clusters), f"{vertices / triangles:.3f}", f"{submitted:.1f}", *(f"{value:.2f}" for value in means[row])])
-    return markdown(["Row", "Clusters", "Vertices/triangle", "Mean submitted triangles", "Cull ms", "Transform ms",
-                     "Draw ms", "Frame ms"], rows)
+        rows.append(("cull off" if row == "cull-off" else f"meshlets of {row}" + (" (shipped)" if row == shipped else ""),
+                     clusters, vertices / triangles, submitted, *means[row]))
+    chart(rows, chart_path)
+    from render.doc_tables import collapsed
+    body = markdown(["Row", "Clusters", "Vertices/triangle", "Mean submitted triangles", "Cull ms", "Transform ms",
+                     "Draw ms", "Frame ms"],
+                    [(label, clusters, f"{ratio:.3f}", f"{submitted:.1f}", *(f"{value:.2f}" for value in measured))
+                     for label, clusters, ratio, submitted, *measured in rows])
+    return (f"![Frame cost by meshlet size](../images/render/meshlets/{pathlib.Path(chart_path).name})\n\n"
+            + collapsed("Meshlet sizes on the board", body))

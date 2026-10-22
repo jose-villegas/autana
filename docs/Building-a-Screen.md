@@ -4,7 +4,7 @@ Build or change a UI screen here. A screen has three separable parts:
 rectangles and text that fit them, the state changed by input, and the drawing
 calls. The host renderer can show the real drawing code without a board;
 [the render harness](tools/Render-Harness.md) has a sample image and command.
-For the shell's frame ownership see [Firmware Architecture](Firmware-Architecture.md).
+For the shell's frame ownership see [Firmware](firmware/README.md).
 
 To inspect an existing screen first, run
 [`launcher_home_render_host.sh`](../launcher/tools/render/scenes/launcher_home_render_host.sh) from Git Bash on
@@ -47,7 +47,7 @@ settings_frame(const input_t* input, settings_state_t* s) {
 
 | A screen needs | Verbs |
 |---|---|
-| a frame | `ui_begin()`, then `ui_end()`, `ui_end_over()` or `ui_end_for_bands()` |
+| a frame | `ui_begin()`, then `ui_end()` or `ui_end_over()` |
 | a window | `ui_screen()`, `ui_window(r)`, `ui_scroll_window(r)` |
 | rows that flow down the window | `ui_row(h)` or `ui_row_centre(w, h)`, then `ui_next()` for the rect |
 | controls | [`ui_button`](ui/button.md), [`ui_button_icon`](ui/button_icon.md), [`ui_tile`](ui/tile.md), [`ui_tile_icon`](ui/tile_icon.md), [`ui_toggle`](ui/toggle.md), [`ui_slider`](ui/slider.md), [`ui_dropdown`](ui/dropdown.md), [`ui_dropdown_icons`](ui/dropdown_icons.md) |
@@ -223,7 +223,7 @@ indicators, not pictograms.
    blend reads the pixel it writes, so a second pass darkens the first.
    Repaint the backdrop and dim again on a full-redraw request or a turn.
    Why this is a pixel write and not a face call is
-   [the scrim](Firmware-Architecture.md#the-scrim-the-one-thing-drawn-outside-the-command-list).
+   [the scrim](firmware/UI.md#the-scrim-the-one-thing-drawn-outside-the-command-list).
 3. Draw the panel over it.
 
 On close, force a full repaint of the app underneath and reset any
@@ -291,7 +291,7 @@ before adding a texture or a fifth icon.
 - [`Building-an-App.md`](Building-an-App.md): the app a screen lives in
 - [`UI-Toolkit.md`](UI-Toolkit.md): the toolkit behind the face, pictured
 - [`Text-and-Fonts.md`](Text-and-Fonts.md): fonts, scales, text styles
-- [`Firmware-Architecture.md`](Firmware-Architecture.md): the mechanisms
+- [`firmware/README.md`](firmware/README.md): the mechanisms
 - [`Testing-Guide.md`](Testing-Guide.md): suites and runners
 - [`Build-Variants.md`](Build-Variants.md): what release, dev and
   diagnostics builds carry

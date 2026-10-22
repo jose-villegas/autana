@@ -21,6 +21,8 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capture import capture_board, require_same_board
+from frame_profile import poses
+from frame_cost import US_PER_MS
 from build import compile_db
 from generated_blocks import apply_tables, tracked_files
 from doc_tables import markdown
@@ -226,6 +228,7 @@ def run(command, log):
 
 
 
+BAKE_STEPS_CHART = "bake-steps.png"
 MACHINE_FIELDS = ("CPU", "Cores/threads", "RAM", "GPU", "VRAM", "Driver", "CUDA", "OS", "Python", "Mitsuba", "PyTorch")
 
 
@@ -261,15 +264,6 @@ def machine_table(probes=None):
                                      Python=platform.python_version(), Mitsuba=importlib.metadata.version("mitsuba"),
                                      PyTorch=torch.__version__))
     return markdown(["Machine", "Value"], [(key, probes[key]) for key in MACHINE_FIELDS])
-
-
-def bake_steps_table(variants):
-    def mib(value):
-        return "not available" if value is None else f"{value / 1024 ** 2:.1f}"
-    return markdown(["Variant", "Step", "Wall s", "Triangles in", "Triangles out", "Peak RAM MiB", "Peak VRAM MiB"],
-                    [(variant, row["step"], f'{row["wall_s"]:.3f}', row["triangles_in"], row["triangles_out"],
-                      mib(row["peak_ram_bytes"]), mib(row["peak_vram_bytes"]))
-                     for variant, rows in variants for row in rows])
 
 
 def capture_rows(path, commit, id, object_name):
@@ -314,18 +308,19 @@ def capture_pose_every_ms(paths) -> int:
 
 def board_frames(captures, expected, id, object_name, every_ms):
     require_same_board({str(path): capture_board(path) for path in captures})
-    pattern = rf"({re.escape(id)}|lite|{re.escape(object_name)}|{re.escape(object_name + '_lite')}) t=\s*(\d+)(ms|s) .*?both cores: frame\s+(\d+)us"
     values = {}
     for capture in captures:
         from capture import select_quarter
         text = select_quarter(capture.read_text(encoding="utf-8", errors="replace"))
         parsed = []
-        for name, time, unit, value in re.findall(pattern, text):
-            name = {object_name: id, object_name + "_lite": "lite"}.get(name, name)
-            time_ms = int(time) * (1000 if unit == "s" else 1)
+        for row in poses(text):
+            name = {object_name: id, object_name + "_lite": "lite"}.get(row["row"], row["row"])
+            if name not in (id, "lite"):
+                continue
+            time_ms = row["time_ms"]
             if time_ms % every_ms:
                 raise ValueError(f"{capture}: needs each full/lite pose exactly once")
-            parsed.append((name, time_ms, int(value) / 1000))
+            parsed.append((name, time_ms, row["frame_us"] / US_PER_MS))
         keys = [(name, time) for name, time, _ in parsed]
         if len(keys) != len(expected) or set(keys) != set(expected):
             raise ValueError(f"{capture}: needs each full/lite pose exactly once")
@@ -511,13 +506,14 @@ def submit_light_fits(executor, scene_path, work):
     from r3d.fitted_variant import fit_point, placed_variant
     from r3d.import_settings import load_scene
     from r3d.process_budget import FIT_BYTES
+    from showcase import showcase
     looks = dict.fromkeys([sheet.reference for sheet in LIGHT_SHEETS] +
                           [look for sheet in LIGHT_SHEETS for _label, look in sheet.columns])
     studies = []
     for look in looks:
         path = write_look_scene(scene_path, look, work / f"look-{look}")
         scene = load_scene(path)
-        studies.append((look, path, scene, placed_variant(scene, scene.renderers[0].object.name), path.parent / "inputs"))
+        studies.append((look, path, scene, placed_variant(scene, showcase(scene)), path.parent / "inputs"))
     fits = {}
 
     def prepared(index, job):
@@ -754,15 +750,13 @@ def _gpu(args, out, work, executor):
         if (out / "render/gpu/appearance-path-culled.crops.png").exists():
             output.write("\n![Path cull differences](../images/render/gpu/appearance-path-culled.crops.png)\n")
     machine = machine_table()
-    (out / "tables/bake-machine.md").write_text(machine)
-    (out / "tables/bake-steps.md").write_text(bake_steps_table(bake_steps))
+    from bake_steps import block as steps_block, chart as steps_chart
+    steps_chart(bake_steps, out / "render/gpu" / BAKE_STEPS_CHART)
+    (out / "tables/bake-steps.md").write_text(steps_block(bake_steps, f"../images/render/gpu/{BAKE_STEPS_CHART}"))
     (out / "measurements.json").write_text(json.dumps({"source": stamp, "rows": rows, "sweep": sweep,
                                                         "bake_steps": bake_steps, "machine": machine}, indent=2) + "\n")
     apply_tables(ROOT, out / "tables")
-    for image in (out / "render/gpu").glob("*.png"):
-        target = ROOT / "docs/images/render/gpu" / image.name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(image, target)
+    sync_images(out / "render/gpu", ROOT / "docs/images/render/gpu", check=False)
     files = {path.relative_to(out).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
              for path in out.rglob("*") if path.is_file()}
     (out / "source.json").write_text(json.dumps({"source": stamp, "inputs": made_from, "files": files}, indent=2) + "\n")
@@ -779,8 +773,19 @@ def check_gpu(args, out):
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != checksum:
             raise ValueError(f"GPU output missing or altered: {name}; run --stage gpu")
     changed = apply_tables(ROOT, out / "tables", True)
-    for image in sorted((out / "render/gpu").glob("*.png")):
-        target = ROOT / "docs/images/render/gpu" / image.name
+    return int(sync_images(out / "render/gpu", ROOT / "docs/images/render/gpu", check=True) or changed)
+
+
+def sync_images(made, kept, *, check):
+    """Copies a stage's PNGs from `made` into the docs' `kept`, or with `check` reports each one that differs
+    and each kept one the stage no longer makes; returns whether any did."""
+    changed = False
+    for image in sorted(made.glob("*.png")):
+        target = kept / image.name
+        if not check:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(image, target)
+            continue
         if not target.exists():
             print(f"changed {target}: new image")
             changed = True
@@ -791,19 +796,21 @@ def check_gpu(args, out):
             raise ValueError(result.stdout + result.stderr)
         print(f"{'changed' if result.returncode else 'same'} {target.relative_to(ROOT)}")
         changed |= bool(result.returncode)
-    extras = set((ROOT / "docs/images/render/gpu").glob("*.png"))
-    extras -= {ROOT / "docs/images/render/gpu" / image.name for image in (out / "render/gpu").glob("*.png")}
-    for image in sorted(extras):
-        print(f"orphan {image}")
-        changed = True
-    return int(changed)
+    if check:
+        for image in sorted(set(kept.glob("*.png")) - {kept / image.name for image in made.glob("*.png")}):
+            print(f"orphan {image}")
+            changed = True
+    return changed
 
 
 def meshlets(args, out, work):
     from meshlet_sizes import table
-    body = table(args.scene, args.captures, args.bakes, args.object)
+    made = out / "render/meshlets"
+    made.mkdir(parents=True)
+    body = table(args.scene, args.captures, args.bakes, made / "meshlet-sizes.png")
     (out / "tables/meshlet-sizes.md").write_text(body)
     changed = apply_tables(ROOT, out / "tables", args.check)
+    changed |= sync_images(made, ROOT / "docs/images/render/meshlets", check=args.check)
     return int(args.check and changed)
 
 

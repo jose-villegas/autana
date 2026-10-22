@@ -19,7 +19,7 @@ class TableTests(unittest.TestCase):
 
     def test_bad_rows_are_rejected(self):
         for rows in ({}, {"x": []}, {"x" * table_asset.NAME_SIZE: [0]},
-                     {"Ã©" * (table_asset.NAME_SIZE // 2): [0]},
+                     {"é" * (table_asset.NAME_SIZE // 2): [0]},
                      {"x\0y": [0]}, {"a": [0], "b": [0, 1]},
                      {"a": [table_asset.VALUE_MAX + 1]}, {"a": [table_asset.VALUE_MIN - 1]}):
             with self.subTest(rows=rows), self.assertRaises(ValueError):

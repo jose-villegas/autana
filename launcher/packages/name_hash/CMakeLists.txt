@@ -1,0 +1,16 @@
+if(CMAKE_SCRIPT_MODE_FILE)
+    file(GLOB_RECURSE name_hash_srcs "${CMAKE_CURRENT_LIST_DIR}/src/*.c")
+else()
+    file(GLOB_RECURSE name_hash_srcs CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/src/*.c")
+endif()
+
+if(ESP_PLATFORM)
+    idf_component_register(SRCS ${name_hash_srcs} INCLUDE_DIRS "include")
+    if(NOT CMAKE_SCRIPT_MODE_FILE)
+        target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros
+                               -Werror=double-promotion -Werror=float-conversion)
+    endif()
+else()
+    add_library(name_hash STATIC ${name_hash_srcs})
+    target_include_directories(name_hash PUBLIC include)
+endif()

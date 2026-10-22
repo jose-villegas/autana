@@ -75,7 +75,7 @@ sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o
 /tmp/present/render_lab_render --scene sponza-fitted-full --tune render_lab.present=1 --no-hud -o /tmp/present/scan.bmp
 ```
 
-Seeded `perf_compare` on A308, 2026-10-18, eight seeds per side, ms per frame:
+Seeded `perf_compare` on one board, eight seeds per side, ms per frame:
 
 | Scene | NEAREST | SCANLINE | Δ |
 |---|---:|---:|---:|
@@ -244,7 +244,7 @@ launcher/tools/r3d/skin_light/report_skin_light.sh "$(python launcher/tools/bake
 
 Use the [meshlet capture recipe](../../../../tools/render/README.md#meshlet-size-captures)
 with `--scene launcher/demo/sponza/sponza.scene.toml` and
-`--suite run_sponza_perf_suite`. Its fixed flythrough samples measure the selected
+`--suite run_sponza_perf_suite --size-tune sponza_perf.shipped_meshlet`. Its fixed flythrough samples measure the selected
 renderer with both culling settings. The generated table belongs to
 [Render Pipeline](../../../../../docs/render/Render-Pipeline.md#meshlets).
 
@@ -308,3 +308,47 @@ define playback timing and the `frame_profile:` line format.
 Each suite owns a table of mean goals and p95 ceilings per row and quarter.
 Zero means unpegged: it logs without enforcing a budget. Board ceilings
 are reported without enforcement under QEMU.
+
+<!-- generated: frame-timing-profiles check: python launcher/main/apps/render_lab/tools/frame_profile_tables.py --pose-capture docs/render/data/sponza-perf-board.log --pose-row atrium_fitted_full --scenes sponza-fitted-full,sponza-fitted,sponza,sponza-lite,sponza-flat,sponza-flat-fitted,capybara --check -->
+### Measured frame rate
+
+Cells list board 1 / board 2.
+Playback includes update, render, compose and present.
+
+| Scene | Quarter | Mean fps | p50 ms | p95 ms | Worst ms |
+|---|---|---:|---:|---:|---:|
+| sponza-fitted-full | portrait | 20.9 / 20.9 | 48.4 / 48.5 | 59.8 / 59.8 | 60.6 / 60.6 |
+| sponza-fitted-full | landscape | 22.1 / 22.1 | 45.8 / 45.8 | 55.3 / 55.2 | 57.4 / 57.3 |
+| sponza-fitted | portrait | 25.2 / 25.2 | 40.2 / 40.2 | 47.0 / 47.0 | 47.9 / 47.9 |
+| sponza-fitted | landscape | 26.4 / 26.4 | 38.3 / 38.3 | 43.9 / 43.8 | 44.4 / 44.6 |
+| sponza | portrait | 20.8 / 20.8 | 48.7 / 48.8 | 58.4 / 58.3 | 59.5 / 59.5 |
+| sponza | landscape | 21.5 / 21.5 | 46.7 / 46.6 | 55.3 / 55.3 | 57.1 / 57.0 |
+| sponza-lite | portrait | 24.1 / 24.1 | 42.2 / 42.2 | 47.4 / 47.4 | 48.4 / 48.4 |
+| sponza-lite | landscape | 24.8 / 24.8 | 40.7 / 40.8 | 45.6 / 45.6 | 46.3 / 46.3 |
+| sponza-flat | portrait | 24.6 / 24.6 | 40.9 / 40.8 | 49.5 / 49.5 | 50.1 / 50.1 |
+| sponza-flat | landscape | 25.0 / 25.0 | 40.3 / 40.2 | 48.0 / 48.0 | 48.8 / 48.8 |
+| sponza-flat-fitted | portrait | 25.5 / 25.5 | 40.0 / 39.9 | 49.4 / 49.3 | 50.5 / 50.5 |
+| sponza-flat-fitted | landscape | 26.4 / 26.4 | 38.4 / 38.5 | 47.0 / 47.0 | 48.4 / 48.3 |
+| capybara | portrait | 48.1 / 48.1 | 20.8 / 20.7 | 21.0 / 21.0 | 21.7 / 21.6 |
+| capybara | landscape | 46.7 / 46.7 | 21.4 / 21.4 | 21.6 / 21.5 | 21.7 / 21.6 |
+
+### Frame cost along the flythrough
+
+`atrium_fitted_full` on one board, before presentation, sampled every 0.5 s.
+Blue is portrait; Orange is landscape.
+
+```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #ea580c"}}}}%%
+xychart-beta
+    x-axis "Clip time (s)" 0 --> 36
+    y-axis "Frame ms"
+    line [52.6, 52.5, 53.1, 53.8, 51.9, 49.7, 48.6, 48.1, 46.0, 46.2, 45.3, 43.9, 43.0, 41.7, 39.9, 39.5, 39.6, 37.9, 37.3, 35.4, 33.5, 33.8, 32.2, 31.7, 30.9, 30.3, 27.3, 24.8, 25.9, 23.2, 26.5, 29.1, 32.8, 38.3, 43.9, 48.1, 46.8, 45.3, 45.7, 45.3, 44.6, 42.7, 42.0, 40.9, 40.1, 38.9, 38.2, 37.2, 36.5, 35.1, 34.8, 34.0, 33.3, 29.4, 26.1, 35.6, 40.0, 41.7, 42.2, 42.4, 43.2, 44.7, 44.8, 44.0, 45.2, 46.5, 46.9, 48.1, 50.2, 50.7, 53.0, 52.3, 51.9]
+    line [47.5, 47.4, 46.2, 45.7, 46.1, 46.8, 46.7, 45.5, 44.6, 43.3, 43.4, 42.1, 40.9, 40.3, 38.6, 37.3, 35.8, 35.8, 35.0, 34.0, 32.6, 32.0, 31.6, 31.7, 31.3, 29.7, 27.5, 25.4, 24.5, 25.9, 24.0, 24.8, 26.7, 29.7, 34.6, 42.0, 44.5, 44.2, 43.8, 42.7, 42.9, 41.9, 40.3, 40.1, 39.0, 37.5, 37.0, 35.8, 34.4, 33.8, 33.4, 30.7, 29.6, 24.9, 23.9, 30.6, 33.8, 36.7, 36.9, 37.6, 38.2, 38.5, 39.4, 40.0, 40.8, 42.1, 44.1, 44.3, 45.8, 45.2, 45.4, 46.8, 47.6]
+```
+
+Sources:
+
+- `frame-profile-1-board.log`
+- `frame-profile-2-board.log`
+- `sponza-perf-board.log`
+<!-- /generated: frame-timing-profiles -->

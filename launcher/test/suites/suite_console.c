@@ -908,7 +908,22 @@ test_sound_arguments(void) {
     TEST_ASSERT_EQUAL_UINT32(123, args.voice);
     TEST_ASSERT_TRUE(console_sound_parse("stats", &args));
     TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_STATS, args.action);
+    TEST_ASSERT_TRUE(console_sound_parse("onset start", &args));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_ONSET, args.action);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_START, args.event);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_ONSET_HZ, args.hz);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_ONSET_GAIN, args.gain_pct);
+    TEST_ASSERT_TRUE(console_sound_parse("onset amp-off 300 0", &args));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_AMP_OFF, args.event);
+    TEST_ASSERT_EQUAL_INT(0, args.gain_pct);
     static const char* const invalid[] = {"",
+                                          "onset",
+                                          "onset unknown",
+                                          "onset start 0",
+                                          "onset stop 500 101",
+                                          "onset steal 500 33 extra",
+                                          "onset amp-on -1",
+                                          "onset start 500 -1",
                                           "play",
                                           "play tap loop loop",
                                           "play tap 101",

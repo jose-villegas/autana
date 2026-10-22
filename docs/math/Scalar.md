@@ -20,6 +20,10 @@ These take and return plain integers, not structs.
 | `mathi_clamp(v, lo, hi)` | inclusive bounds | $`\min(\max(v,lo),hi)`$ |
 | `mathi_lerp(a, b, t, n)` | `t` of `n` steps from `a` to `b`, the step truncated toward `a`; `n > 0`, `0 <= t <= n` | $`a + \mathrm{trunc}((b-a)t/n)`$ |
 | `mathi_lerp_u8(a, b, w)` | `mathi_lerp` with `n = UINT8_MAX` | $`a + \mathrm{trunc}((b-a)w/255)`$ |
+| `mathi_isqrt64(v)` | floor square root over the full uint64 range | $`\lfloor\sqrt v\rfloor`$ |
+| `mathi_half_chord(r, d)` | floor half chord; zero when outside; $`\lvert r\rvert,\lvert d\rvert\le32767`$ | $`\lfloor\sqrt{r^2-d^2}\rfloor`$ for $`\lvert d\rvert<r`$ |
+| `mathi_half_chord_round(r, d)` | nearest half chord; same range and outside rule | $`h=r^2-d^2,\ f=\lfloor\sqrt h\rfloor`$<br>$`f+1`$ when $`h-f^2>f`$, else $`f`$ |
+| `mathi_in_disc(dx, dy, r)` | closed disc predicate; squared sum must fit int64 | $`dx^2+dy^2\le r^2`$ |
 
 ## mathf.h
 
@@ -68,13 +72,27 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 
 `MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
 
-## mathf_rsqrt.h
+## Reciprocal square root (`mathf.h`)
 
-| Function | Purpose | Formula |
+| Function | Board formula | Bound source |
 |---|---|---|
-| `mathf_rsqrt(x)` | reciprocal square root for positive normal-range inputs; on the board the FPU's `rsqrt0.s` seed plus one Newton step, on host and QEMU the exact `1 / sqrt(x)` | $`y_0 = \mathrm{rsqrt0}(x)`$<br>$`y_1 = y_0\,(3 - x\,y_0^2) / 2`$ |
+| `mathf_rsqrt(x)` | `rsqrt0.s` seed, two Newton steps | `MATHF_RSQRT_ULP_LIMIT` in `mathf.h` |
+| `mathf_rsqrt_approx(x)` | `rsqrt0.s` seed, one Newton step | `MATHF_RSQRT_APPROX_RELATIVE_LIMIT` in `mathf.h` |
 
-The device result is within `MATHF_RSQRT_RELATIVE_LIMIT` relative error of the exact value, which the device sweep checks.
+Newton-Raphson reciprocal square root uses
+$`y_{n+1}=y_n+\tfrac12 y_n\,(1-(xy_n)y_n)`$.<sup>[[85]](../Citations.md#85)</sup>
+The approximate path evaluates its single correction as $`y_0\,(1.5-0.5xy_0^2)`$.
+
+`CONFIG_MATH_FPU_RECIP` enables the board seed. Host and QEMU use
+`1.0F / sqrtf(x)`. For `x < FLT_MIN`, including zero and subnormals,
+`mathf_rsqrt` uses that same formula and preserves its bits.
+
+The limits in `mathf.h` define the accuracy contract; the
+[benchmark table](Benchmark.md) reports measured maxima and coverage.
+
+The suite's integer product bracket rounds the exact reciprocal root without
+using the twice-rounded `1 / sqrtf` as a reference. The suite prints
+`MATHERROR` lines and checks both limits.
 
 ## fixed.h
 

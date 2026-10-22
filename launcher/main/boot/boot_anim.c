@@ -7,7 +7,7 @@
  *
  * THIS LOOP IS NOT THE SHELL'S FRAME LOOP
  *
- * docs/Firmware-Architecture.md says there is exactly one frame loop and it
+ * docs/firmware/Design-Rules.md says there is exactly one frame loop and it
  * belongs to the shell, which is a rule about APPS: an app must not loop,
  * because the shell has to stay able to switch away from it. Nothing can be
  * switched to yet at this point in boot (touch is not even running), so this
@@ -103,7 +103,7 @@ boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) 
     const float meters_per_unit[3] = {1.0F / (float)BOOT_ANIM_ONE,
                                       (float)BOOT_ANIM_SPIRAL_Q9 / (256.0F * (float)R3D_X_UNIT_ONE),
                                       1.0F / (float)BOOT_ANIM_ONE};
-    return r3d_line_view_x_make(&view, &st.space, meters_per_unit);
+    return r3d_line_projector_make(&view, &st.space, meters_per_unit);
 }
 
 /* What every node and edge of one frame's mesh shares. */
@@ -357,14 +357,18 @@ far_swell_node(const mesh_pass_t* pass, const boot_anim_far_line_t* line, int n,
  * through the camera and the clip's edges. */
 static unsigned
 far_view_outcode(const mesh_pass_t* pass, vec3x_t p) {
-    const r3d_line_view_x_t* v = pass->view;
-    const int64_t x = (int64_t)p.x * v->pixels_per_unit;
-    const int64_t y = (int64_t)p.y * v->pixels_per_unit;
-    unsigned code = p.z <= v->near_z ? MESH_NODE_FRONT : 0U;
-    code |= x < (int64_t)(pass->clip.x - FAR_CULL_MARGIN_PX - v->center_x) * p.z ? GFX_CLIP_OUT_LEFT : 0U;
-    code |= x > (int64_t)(recti_right(pass->clip) + FAR_CULL_MARGIN_PX - v->center_x) * p.z ? GFX_CLIP_OUT_RIGHT : 0U;
-    code |= y > (int64_t)(v->center_y - pass->clip.y + FAR_CULL_MARGIN_PX) * p.z ? GFX_CLIP_OUT_TOP : 0U;
-    code |= y < (int64_t)(v->center_y - recti_bottom(pass->clip) - FAR_CULL_MARGIN_PX) * p.z ? GFX_CLIP_OUT_BOTTOM : 0U;
+    const projectx_t* lens = &pass->view->lens;
+    const int64_t x = (int64_t)p.x * lens->fx;
+    const int64_t y = (int64_t)p.y * lens->fy;
+    const int64_t left = ((int64_t)(pass->clip.x - FAR_CULL_MARGIN_PX) * MATHX_ONE) - lens->cx;
+    const int64_t right = ((int64_t)(recti_right(pass->clip) + FAR_CULL_MARGIN_PX) * MATHX_ONE) - lens->cx;
+    const int64_t top = lens->cy - ((int64_t)(pass->clip.y - FAR_CULL_MARGIN_PX) * MATHX_ONE);
+    const int64_t bottom = lens->cy - ((int64_t)(recti_bottom(pass->clip) + FAR_CULL_MARGIN_PX) * MATHX_ONE);
+    unsigned code = p.z <= r3d_line_near_z(pass->view) ? MESH_NODE_FRONT : 0U;
+    code |= x < left * p.z ? GFX_CLIP_OUT_LEFT : 0U;
+    code |= x > right * p.z ? GFX_CLIP_OUT_RIGHT : 0U;
+    code |= y > top * p.z ? GFX_CLIP_OUT_TOP : 0U;
+    code |= y < bottom * p.z ? GFX_CLIP_OUT_BOTTOM : 0U;
     return code;
 }
 
@@ -446,8 +450,8 @@ draw_far_front(const mesh_pass_t* pass, const boot_anim_plane_t* plane, bool alo
  * circle so it arrives radially. Its outer BOOT_ANIM_FAR_FRONT_Q8 share fades
  * in over BOOT_ANIM_FAR_FRONT_STEPS rings until the reach is complete. Once
  * the swell starts the reach is whole, and the swell lifts each line out to
- * BOOT_ANIM_FAR_SWELL_FADE_Q12; the rest stays flat and straight. The lines
- * on the axes are drawn on their own. */
+ * BOOT_ANIM_FAR_SWELL_FADE_Q12 until it eases out before the crossfade; the
+ * rest stays flat and straight. The lines on the axes are drawn on their own. */
 static void
 draw_far_grid(const mesh_pass_t* pass) {
     const int32_t reach = pass->floor.far_reach;
@@ -459,15 +463,16 @@ draw_far_grid(const mesh_pass_t* pass) {
     const int32_t solid = reach - front;
     const boot_anim_plane_t plane = boot_anim_plane(0, pass->view);
     const gfx_color_t col = lit(BOOT_ANIM_FLOOR_GREY, level);
-    /* One more than the swell's height, for zeta_to_t's rounding. */
-    const int32_t lift = boot_anim_zeta_to_t_q8(boot_anim_swell_bound(&pass->floor)) + 1;
+    /* One more than the far swell's height, for zeta_to_t's rounding. */
+    const int32_t bound = (boot_anim_swell_bound(&pass->floor) * pass->floor.far_swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+    const int32_t lift = boot_anim_zeta_to_t_q8(bound) + 1;
     /* Four ways per line, along re or im on either side of the axis. */
     for (int way = 0; way < 4 * BOOT_ANIM_FAR_LINES && boot_anim_far_lines[way / 4].c <= reach; way++) {
         const boot_anim_far_line_t* far_line = &boot_anim_far_lines[way / 4];
         const bool along_im = (way & 1) != 0;
         const int side = 1 - (way & 2);
         const int32_t c = side * far_line->c;
-        if (pass->floor.swell != 0 && far_line->count != 0) {
+        if (pass->floor.swell != 0 && pass->floor.far_swell != 0 && far_line->count != 0) {
             draw_far_swell_line(pass, far_line, along_im, side, lift, col);
             draw_far_ring(pass, &plane, along_im, c, BOOT_ANIM_FAR_SWELL_FADE_Q12, reach, col);
         } else {

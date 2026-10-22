@@ -105,7 +105,7 @@ mechanism and the full field list.
   snapshot does not fit, or the app stops drawing), the device answers `SCREENSHOT_REFUSED:`
   with the reason and the command exits at once.
 - **Blind to the panel link.** It captures the framebuffer, and the shell
-  requests a full redraw right after, which heals a corrupted panel. Stray
+  requests a full redraw right after, which repairs a corrupted panel. Stray
   pixels or lines seen on the glass but not in the capture are a link fault;
   see "Panel-link faults are invisible to screenshots" in
   [`Display-and-Rendering.md`](Display-and-Rendering.md).

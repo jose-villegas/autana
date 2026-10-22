@@ -36,8 +36,8 @@ class DocStagesTests(unittest.TestCase):
     def test_swapped_pose_rows_keep_their_logged_times(self):
         capture = self.tmp / "capture.txt"
         capture.write_text("CAPTURE pose_every_ms=500\n"
-                           "atrium t=500ms clusters=4 | both cores: frame 52000us\n"
-                           "atrium t=0ms clusters=4 | both cores: frame 51000us\n")
+                           "atrium t=500ms clusters=4 tris=5 | both cores: frame 52000us quarter=portrait\n"
+                           "atrium t=0ms clusters=4 tris=5 | both cores: frame 51000us quarter=portrait\n")
         expected = [("sponza", 0), ("sponza", 500)]
         self.assertEqual(stages.board_frames([capture], expected, "sponza", "atrium", 500),
                          {("sponza", 0): 51.0, ("sponza", 500): 52.0})
@@ -147,8 +147,8 @@ class DocStagesTests(unittest.TestCase):
             "".join(f"{name} both cores: mean {value}us\n" for name, value in
                     (("painting", 51000), ("painting_lite", 42000), ("painting_flat", 43000),
                      ("painting_fitted", 44000), ("painting_fitted_full", 45000), ("painting_flat_fitted", 46000))) +
-            "painting t= 0s clusters=4 | both cores: frame 51000us\n"
-            "painting_lite t= 0s clusters=4 | both cores: frame 42000us\n")
+            "painting t= 0s clusters=4 tris=5 | both cores: frame 51000us quarter=portrait\n"
+            "painting_lite t= 0s clusters=4 tris=5 | both cores: frame 42000us quarter=portrait\n")
         out, work = self.tmp / "out", self.tmp / "work"
         (out / "tables").mkdir(parents=True)
         work.mkdir()
@@ -270,10 +270,10 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
     def test_board_half_second_pose_rows(self):
         capture = self.tmp / "capture.txt"
         capture.write_text('CAPTURE period_ms=1000 pose_every_ms=500\n'
-                           'atrium t=    0s clusters=4 tris=5 | both cores: frame 51000us\n'
-                           'atrium t=  500ms clusters=4 tris=5 | both cores: frame 52000us\n'
-                           'atrium_lite t=    0s clusters=4 tris=5 | both cores: frame 42000us\n'
-                           'atrium_lite t=  500ms clusters=4 tris=5 | both cores: frame 43000us\n')
+                           'atrium t=    0s clusters=4 tris=5 | both cores: frame 51000us quarter=portrait\n'
+                           'atrium t=  500ms clusters=4 tris=5 | both cores: frame 52000us quarter=portrait\n'
+                           'atrium_lite t=    0s clusters=4 tris=5 | both cores: frame 42000us quarter=portrait\n'
+                           'atrium_lite t=  500ms clusters=4 tris=5 | both cores: frame 43000us quarter=portrait\n')
         expected = [(name, time) for name in ('sponza', 'lite') for time in (0, 500)]
         self.assertEqual(stages.board_frames([capture], expected, 'sponza', 'atrium', 500),
                          {('sponza', 0): 51.0, ('sponza', 500): 52.0,
@@ -281,8 +281,8 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
 
     def test_board_pose_rows_require_complete_unique_samples(self):
         capture = self.tmp / "capture.txt"
-        capture.write_text("atrium t=    0s clusters= 4 tris=5 | both cores: frame 51000us\n"
-                           "atrium_lite t=    0s clusters= 4 tris=5 | both cores: frame 42000us\n")
+        capture.write_text("atrium t=    0s clusters= 4 tris=5 | both cores: frame 51000us quarter=portrait\n"
+                           "atrium_lite t=    0s clusters= 4 tris=5 | both cores: frame 42000us quarter=portrait\n")
         expected = [("sponza", 0), ("lite", 0)]
         self.assertEqual(stages.board_frames([capture], expected, "sponza", "atrium", 500), {("sponza", 0): 51.0, ("lite", 0): 42.0})
         with self.assertRaisesRegex(ValueError, "exactly once"):
@@ -543,6 +543,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
                     mock.patch.object(stages, 'gpu_inputs', return_value={}), \
                     mock.patch.object(stages, 'run') as run, mock.patch.object(stages, 'apply_tables'), \
+                    mock.patch.object(stages, 'sync_images') as sync, \
                     mock.patch.object(fitted, 'plot_pareto'), mock.patch.object(stages, 'machine_table', return_value='machine fixture'),                     mock.patch.object(stages, 'submit_light_fits', return_value='light fits') as light,                     mock.patch.object(stages, 'light_sheets') as sheets:
                 stages._gpu(NS(smoke=False, scene=Path("other.scene.toml"), object="hall"), out, root / 'work', Executor())
             light.assert_called_once_with(mock.ANY, Path('other.scene.toml'), work)
@@ -554,12 +555,16 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertEqual([args[4] for owner, args, _, _ in calls if owner is stages.bake_worker],
                              ["hall_lite", "hall", "hall_flat"])
             self.assertEqual({path.name for path in (out / "tables").iterdir()},
-                             {"other-normal.md", "other-budget.md", "other-gpu.md", "other-flat-fit.md", "bake-machine.md", "bake-steps.md"})
+                             {"other-normal.md", "other-budget.md", "other-gpu.md", "other-flat-fit.md", "bake-steps.md"})
             table = (out / 'tables/bake-steps.md').read_text()
             for prefix in ('lite', 'full', 'flat'):
-                self.assertIn(f"| {prefix}-GI-bake | bake fixture | 3.000 | 5 | 4 |", table)
-                self.assertIn(f"| {prefix}-fit-start | prepare fixture | 1.000 | 4 | 3 |", table)
-                self.assertIn(f"| {prefix}-GI-fit | fit fixture | 2.000 | 3 | 2 |", table)
+                self.assertIn(f"| {prefix}-GI-bake | bake fixture | 100% | 5 | 4 |", table)
+                self.assertIn(f"| {prefix}-fit-start | prepare fixture | 100% | 4 | 3 |", table)
+                self.assertIn(f"| {prefix}-GI-fit | fit fixture | 100% | 3 | 2 |", table)
+            self.assertNotIn("Wall s", table)
+            self.assertIn("![Bake steps](../images/render/gpu/bake-steps.png)", table)
+            self.assertTrue((out / 'render/gpu/bake-steps.png').is_file())
+            sync.assert_called_once_with(out / 'render/gpu', stages.ROOT / 'docs/images/render/gpu', check=False)
             measured = [function for owner, args, kwargs, function in calls
                         if owner is fitted.fit_point and args[1].name.startswith('fit-')]
             self.assertEqual(len(measured), 3)

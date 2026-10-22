@@ -5,6 +5,7 @@
 #
 #   ./launcher/tools/render/render_doc_images.sh            # rewrite images and tables
 #   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed
+#   ./launcher/tools/render/render_doc_images.sh --audio [--check]
 #   ./launcher/tools/render/render_doc_images.sh --orphans  # only report images no script names
 #   ./launcher/tools/render/render_doc_images.sh --stage gpu [--smoke|--check]
 #   ./launcher/tools/render/render_doc_images.sh --stage gpu --inputs  # print its input fingerprint
@@ -61,6 +62,12 @@ SKIN_BAKE=capybara.glb
 SKIN_CLIP=gallop
 # Three of its clips the playback figures blend: first to second to third, then back to the first.
 PLAYBACK_CLIPS="walk gallop idle"
+
+AUDIO_ONLY=0
+if [ "${1:-}" = --audio ]; then
+    AUDIO_ONLY=1
+    shift
+fi
 
 if [ "${1:-}" = --stage ]; then
     if [ "${2:-}" = gpu ] && [ "${3:-}" != --inputs ]; then
@@ -119,7 +126,7 @@ case "${1:-}" in
         comparing=1
         status=0
         for image in $(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort); do
-            case "$image" in render/gpu/*) continue ;; esac
+            case "$image" in render/gpu/*|render/meshlets/*) continue ;; esac
             stem=$(basename "$image")
             stem=${stem%%.*}
             # A face example's renders are named after its file.
@@ -160,7 +167,7 @@ esac
 . "$(dirname "$0")/../../../scripts/lib/python.sh"
 PYTHON=$(find_python PIL numpy matplotlib) || exit 2
 export PYTHON
-if ! command -v ffmpeg > /dev/null 2>&1; then
+if [ "$AUDIO_ONLY" = 0 ] && ! command -v ffmpeg > /dev/null 2>&1; then
     echo "ffmpeg not found." >&2
     exit 2
 fi
@@ -168,6 +175,7 @@ fi
 run rm -rf "$WORK" "$OUT"
 run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 
+if [ "$AUDIO_ONLY" = 0 ]; then
 # The launcher lists the release build's apps, read from the tree.
 L=$WORK/launcher_home
 run sh launcher/tools/render/scenes/launcher_home_render_host.sh -o "$L" > "$WORK/launcher_home.log"
@@ -222,14 +230,28 @@ run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEM
 . launcher/tools/build/find_cc.sh
 cc=$(find_cc) || exit 2
 run mkdir -p "$OUT/math"
-run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math/trs-order.png" \
+run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
+# --orphans scans this runner: trs-scale.gif, trs-rotate.gif, trs-translate.gif
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
-# --orphans scans this runner: rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
+# --orphans scans this runner: rect-queries.png, circle-rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
 run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/motion_figures.log"
 # --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png, spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
+
+fi
+
+run "$PYTHON" launcher/tools/audio/audio_drc_figures.py --out "$OUT/audio" > "$WORK/audio_drc_figures.log"
+run "$PYTHON" launcher/tools/audio/audio_path_figures.py --out "$OUT/audio" > "$WORK/audio_path_figures.log"
+run "$PYTHON" launcher/tools/audio/sound_mix_figures.py --out "$OUT/audio" > "$WORK/sound_mix_figures.log"
+run "$PYTHON" launcher/tools/audio/sound_onset_figures.py --out "$OUT/audio" > "$WORK/sound_onset_figures.log"
+# --orphans scans this runner: drc-level.png, drc-thd.png, drc-level-dark.png, drc-thd-dark.png,
+# audio-frequency.png, audio-volume.png, audio-frequency-dark.png, audio-volume-dark.png,
+# sound-onset.png, sound-onset-dark.png,
+# sound_mix_capture_v8.png, sound_mix_capture_v32.png, sound_mix_capture_v8-dark.png, sound_mix_capture_v32-dark.png
+
+if [ "$AUDIO_ONLY" = 0 ]; then
 
 # The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
 run mkdir -p "$OUT/render" "$OUT/tables"
@@ -271,12 +293,22 @@ run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/p
     --views 'docs/render/data/pipeline-view-{view}-board.log' --tables "$OUT/tables" \
     --chart "$OUT/render/pipeline-frame-stages.png" > "$WORK/frame_stages.log"
 
+# Each picture's frame cost in each framebuffer layout, from the scene and
+# boot animation captures beside the render pages.
+run "$PYTHON" launcher/tools/render/layout_costs.py --mesh docs/render/data/layout-mesh-board.log \
+    --boot docs/render/data/layout-boot-board.log --tables "$OUT/tables" \
+    --chart "$OUT/render/gfx-layout-costs.png" > "$WORK/layout_costs.log"
+fi
+
 table_status=0
+if [ "$AUDIO_ONLY" = 0 ]; then
 if [ "$CHECK" = 1 ]; then
     "$PYTHON" "$TOOLS_DIR/generated_blocks.py" --tables "$OUT/tables" --check || table_status=$?
     [ "$table_status" -le 1 ] || exit 2
 else
     "$PYTHON" "$TOOLS_DIR/generated_blocks.py" --tables "$OUT/tables"
+fi
+
 fi
 
 if [ "$CHECK" = 0 ]; then
@@ -307,7 +339,10 @@ for name in $made_list; do
     esac
 done
 for name in $kept_list; do
-    case "$name" in render/gpu/*) continue ;; esac
+    if [ "$AUDIO_ONLY" = 1 ]; then
+        case "$name" in audio/*) ;; *) continue ;; esac
+    fi
+    case "$name" in render/gpu/*|render/meshlets/*) continue ;; esac
     if [ ! -f "$OUT/$name" ]; then
         orphan "$name"
         status=1
