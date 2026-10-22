@@ -1,46 +1,78 @@
-/* Fixed text fits its flowed row at both canvas orientations. */
-#include "draw/draw_font_roles.h"
-#include "gfx/gfx.h"
-#include "shell/apps/system_settings/ui/settings_layout.h"
+/* The settings list's window and fixed text fit both canvas orientations. */
 #include "suites.h"
-#include "ui/ui.h"
+#include "test_cleanup.h"
+#include "ui_probe.h"
 #include "unity.h"
 
+#include "display/display.h"
+#include "gfx/gfx.h"
+#include "ui/layout/ui_transform.h"
+#include "ui/ui.h"
+
+#include "shell/apps/system_settings/ui/settings_layout.h"
+#include "shell/apps/system_settings/ui/settings_screen.h"
+
 static void
-assert_text_fits(const char* text, int width, int height) {
-    TEST_ASSERT_LESS_OR_EQUAL_INT(width, draw_font_text_width(draw_font_ui(), text, -1, SETTINGS_TEXT_SCALE));
-    TEST_ASSERT_LESS_OR_EQUAL_INT(height, draw_font_height(draw_font_ui(), SETTINGS_TEXT_SCALE));
+fixture(int quarter) {
+    ui_init();
+    ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
+}
+
+/* Draws the real list, recording where each toggle row landed. */
+static void
+draw_list(void) {
+    const settings_snapshot_t snapshot = {0};
+    const input_t input = {0};
+    ui_begin(&input);
+    (void)settings_screen_draw(&snapshot);
+    ui_probe_end_frame();
 }
 
 static void
-test_settings_geometry_and_strings_fit_both_canvases(void) {
-    const int canvases[][2] = {{GFX_WIDTH, GFX_HEIGHT}, {GFX_HEIGHT, GFX_WIDTH}};
-    for (size_t i = 0; i < sizeof canvases / sizeof canvases[0]; i++) {
-        const int width = canvases[i][0], height = canvases[i][1];
-        const settings_layout_t layout =
-            settings_layout(width, height, draw_font_height(draw_font_ui(), SETTINGS_TEXT_SCALE));
+test_window_and_rows_fit_both_canvases(void) {
+    for (int quarter = DISPLAY_PORTRAIT; quarter <= DISPLAY_LANDSCAPE; quarter++) {
+        fixture(quarter);
+        const settings_layout_t layout = settings_layout(ui_width(), ui_height(), ui_text_height());
         TEST_ASSERT_GREATER_OR_EQUAL_INT(0, layout.window.x);
         TEST_ASSERT_GREATER_OR_EQUAL_INT(0, layout.window.y);
-        TEST_ASSERT_LESS_OR_EQUAL_INT(width, layout.window.x + layout.window.w);
-        TEST_ASSERT_LESS_OR_EQUAL_INT(height, layout.window.y + layout.window.h);
+        TEST_ASSERT_LESS_OR_EQUAL_INT(ui_width(), layout.window.x + layout.window.w);
+        TEST_ASSERT_LESS_OR_EQUAL_INT(ui_height(), layout.window.y + layout.window.h);
         TEST_ASSERT_GREATER_OR_EQUAL_INT(UI_TAP_MIN, layout.toggle_height);
-        TEST_ASSERT_GREATER_OR_EQUAL_INT(UI_TAP_MIN, layout.row_width);
-        const char* const labels[] = {settings_panel_clock_label, settings_overlay_label, settings_leaf_label,
-                                      settings_interlace_label, settings_send_audit_label};
-        for (size_t j = 0; j < sizeof labels / sizeof labels[0]; j++) {
-            assert_text_fits(labels[j], layout.row_width - layout.toggle_height - UI_PADDING, layout.toggle_height);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(ui_text_height(), layout.heading_height);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(ui_text_height(), layout.note_height);
+    }
+}
+
+/* A toggle draws its box as a square of the row's height and its label one
+ * padding past it; text rows span the same window width as the toggles. */
+static void
+test_every_fixed_string_fits_its_row_at_both_canvases(void) {
+    const char* const labels[] = {settings_panel_clock_label, settings_overlay_label, settings_leaf_label,
+                                  settings_interlace_label, settings_send_audit_label};
+    const char* const texts[] = {settings_display_heading,     settings_developer_heading,
+                                 settings_panel_clock_note[0], settings_panel_clock_note[1],
+                                 settings_panel_clock_note[2], settings_panel_clock_note[3],
+                                 settings_panel_clock_note[4]};
+    ui_probe_widgets_start();
+    suite_add_test_cleanup(ui_probe_widgets_stop);
+    for (int quarter = DISPLAY_PORTRAIT; quarter <= DISPLAY_LANDSCAPE; quarter++) {
+        fixture(quarter);
+        draw_list();
+        recti_t row = {0};
+        for (size_t i = 0; i < sizeof labels / sizeof labels[0]; i++) {
+            TEST_ASSERT_TRUE_MESSAGE(ui_probe_widget(labels[i], &row), labels[i]);
+            TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(row.w - row.h - UI_PADDING, ui_measure_text(labels[i]), labels[i]);
         }
-        assert_text_fits(settings_display_heading, layout.row_width, layout.heading_height);
-        assert_text_fits(settings_developer_heading, layout.row_width, layout.heading_height);
-        for (int j = 0; j < SETTINGS_NOTE_LINE_COUNT; j++) {
-            assert_text_fits(settings_panel_clock_note[j], layout.row_width, layout.note_height);
+        for (size_t i = 0; i < sizeof texts / sizeof texts[0]; i++) {
+            TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(row.w, ui_measure_text(texts[i]), texts[i]);
         }
     }
 }
 
 void
 run_settings_layout_suite(void) {
-    RUN_TEST(test_settings_geometry_and_strings_fit_both_canvases);
+    RUN_TEST(test_window_and_rows_fit_both_canvases);
+    RUN_TEST(test_every_fixed_string_fits_its_row_at_both_canvases);
 }
 
 SUITE_REGISTER(run_settings_layout_suite);

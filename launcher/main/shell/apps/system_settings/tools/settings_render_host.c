@@ -1,4 +1,4 @@
-/* Real system preference frames with synthetic owner values and touch input. */
+/* The settings list drawn by the real app, with stand-in owner values and touch. */
 #include <stdlib.h>
 #include <string.h>
 
