@@ -218,6 +218,19 @@ a `fit` budget may not exceed it.
 
 ## Objects and instances
 
+Coloured bounds identify repeated shapes in the camera path's richest view.
+
+![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
+
+```sh
+. scripts/lib/python.sh
+R3D_PYTHON=$(find_r3d_python "$PWD")
+build=$(sh launcher/tools/render/scene_viewer.sh launcher/demo/sponza/sponza.scene.toml --build-only -o /tmp/instances-host)
+"$R3D_PYTHON" launcher/tools/r3d/objects/instances_figure.py launcher/demo/sponza/sponza.scene.toml \
+    --object "$("$R3D_PYTHON" launcher/tools/render/showcase.py launcher/demo/sponza/sponza.scene.toml)" \
+    --host "${build#built }" --out docs/images/render/sponza-instances.png
+```
+
 An OBJ object is an `o` or `g` group; an ungrouped file uses its stem.
 A glTF object is a mesh node, placed by its world transform. A nameless
 node uses its index. Only vertices referenced by triangles belong to an object.
