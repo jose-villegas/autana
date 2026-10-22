@@ -1,7 +1,4 @@
-# Render notes, then encode the source as FLAC.
-# python launcher/tools/audio/synth_wav.py --notes 60,64,67,72,67,64,62,65,69,72,69,65,59,62,67,71,60,64,67,76,72,67,62,65,69,74,72,69,59,62,67,71 --duration-ms 500 --decay 4 --peak 0.24 -o demo.wav
-
-# ffmpeg -y -i demo.wav -c:a flac launcher/main/engine/sounds/demo.flac
+# python launcher/tools/audio/synth_wav.py --notes 60,64,67,72,67,64,62,65,69,72,69,65,59,62,67,71,60,64,67,76,72,67,62,65,69,74,72,69,59,62,67,71 --duration-ms 500 --decay 4 --peak 0.24 -o launcher/main/engine/sounds/demo.flac
 source = "demo.flac"
 format = "adpcm"
 loop = [0, 352800]

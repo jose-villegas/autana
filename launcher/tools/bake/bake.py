@@ -452,10 +452,8 @@ def requirement_pins(stage):
 def tracked_requirements():
     """The requirements*.txt files git tracks under TOOLS: a scratch copy of the tree in an ignored folder
     holds others, which no key counts."""
-    # Audio pins are local to their stage; shared numpy pins must not re-key the rendering stages.
     return [REPO / line for line in git_lines("ls-files", "--", relative(TOOLS))
-            if fnmatch.fnmatch(pathlib.PurePosixPath(line).name, REQUIREMENTS_GLOB)
-            and pathlib.PurePosixPath(line).parent != pathlib.PurePosixPath("launcher/tools/audio")]
+            if fnmatch.fnmatch(pathlib.PurePosixPath(line).name, REQUIREMENTS_GLOB)]
 
 
 def pinned_requirements(paths):
@@ -476,11 +474,11 @@ def pinned_requirements(paths):
 def tool_digest(stage):
     """The code of a stage by content alone: its files' tokens and the C they compile as a sorted list of
     digests, no paths, so a move or rename keys the same; plus the submodules it builds and the
-    requirements it counts. Sound stage files count byte for byte."""
+    requirements it counts."""
     paths = stage_files(stage)
     native = native_inputs(paths)
     pinned = {path: commit for path, commit in native.items() if (REPO / path).resolve() in submodules()}
-    contents = [file_sha256(path) if stage == "sound" else digest(code_tokens(path)) for path in paths]
+    contents = [digest(code_tokens(path)) for path in paths]
     contents += [value for path, value in native.items() if path not in pinned]
     return digest([sorted(contents), pinned, [list(pin) for pin in requirement_pins(stage)]])
 

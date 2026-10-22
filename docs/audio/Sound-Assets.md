@@ -27,9 +27,9 @@ python launcher/tools/bake/bake.py list --kind sound --missing
 python launcher/tools/bake/bake.py bake --kind sound
 ```
 
-A sound key covers the parsed recipe, source bytes (or an LFS pointer's oid),
-encoder and importer code, format constants, and dependency pins. Sound tool
-comments count in the key. The CPU Bakes workflow produces missing sound rows.
+A sound key covers the recipe, source bytes (or LFS oid), tool code,
+format constants and dependency pins. Comments and docstrings do not count.
+The CPU Bakes workflow produces missing sound rows.
 
 `bake.py lock --from-run N` records the CI output. `build_pack.py` consumes
 those locked SOND bytes without decoding audio or importing numpy or soundfile.

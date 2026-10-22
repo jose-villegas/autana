@@ -95,13 +95,48 @@ fixture(void) {
     reply_count = 0;
     last_verb[0] = '\0';
     last_args[0] = '\0';
-    alpha_verb = (console_verb_t){"ALPHA", handle_alpha, NULL};
-    beta_verb = (console_verb_t){"BETA", handle_beta, NULL};
-    set_verb = (console_verb_t){"SET", handle_set, NULL};
-    settle_verb = (console_verb_t){"SETTLE", handle_settle, NULL};
-    tune_verb = (console_verb_t){"TUNE", handle_tune, NULL};
-    tunes_verb = (console_verb_t){"TUNES", handle_tunes, NULL};
-    lower_set_verb = (console_verb_t){"set", handle_alpha, NULL};
+    alpha_verb = (console_verb_t){"ALPHA", handle_alpha, NULL, CONSOLE_LINE_MAX};
+    beta_verb = (console_verb_t){"BETA", handle_beta, NULL, CONSOLE_LINE_MAX};
+    set_verb = (console_verb_t){"SET", handle_set, NULL, CONSOLE_LINE_MAX};
+    settle_verb = (console_verb_t){"SETTLE", handle_settle, NULL, CONSOLE_LINE_MAX};
+    tune_verb = (console_verb_t){"TUNE", handle_tune, NULL, CONSOLE_LINE_MAX};
+    tunes_verb = (console_verb_t){"TUNES", handle_tunes, NULL, CONSOLE_LINE_MAX};
+    lower_set_verb = (console_verb_t){"set", handle_alpha, NULL, CONSOLE_LINE_MAX};
+}
+
+static void
+test_overlong_short_verb_is_dropped(void) {
+    fixture();
+    TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
+    char line[CONSOLE_LINE_MAX + 1];
+    memset(line, 'x', sizeof line - 1);
+    memcpy(line, "ALPHA ", strlen("ALPHA "));
+    line[sizeof line - 1] = '\0';
+    TEST_ASSERT_FALSE(console_registry_handle_line(&registry, line, collect));
+    TEST_ASSERT_EQUAL_STRING("", last_verb);
+}
+
+static void
+test_registered_long_verbs_own_their_bounds(void) {
+    fixture();
+    const char* names[] = {"sound", "runsuite", "OTHER"};
+    TEST_ASSERT_EQUAL_INT(CONSOLE_LINE_MAX, console_registry_line_max(&registry));
+    char line[CONSOLE_SOUND_LINE_MAX + 1];
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+        console_registry_t verbs = {0};
+        console_verb_t verb = {names[i], handle_alpha, NULL, CONSOLE_SOUND_LINE_MAX};
+        TEST_ASSERT_TRUE(console_register(&verbs, &verb));
+        TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_LINE_MAX, console_registry_line_max(&verbs));
+        memset(line, 'x', CONSOLE_SOUND_LINE_MAX);
+        memcpy(line, names[i], strlen(names[i]));
+        line[strlen(names[i])] = ' ';
+        line[CONSOLE_SOUND_LINE_MAX - 1] = '\0';
+        TEST_ASSERT_TRUE(console_registry_handle_line(&verbs, line, collect));
+        line[CONSOLE_SOUND_LINE_MAX - 1] = 'x';
+        line[CONSOLE_SOUND_LINE_MAX] = '\0';
+        TEST_ASSERT_FALSE(console_registry_handle_line(&verbs, line, collect));
+        TEST_ASSERT_FALSE(console_registry_accepts_line(&registry, line));
+    }
 }
 
 static bool
@@ -251,7 +286,7 @@ static void
 test_a_name_declared_twice_stays_with_the_first(void) {
     fixture();
     static console_verb_t usurper;
-    usurper = (console_verb_t){"ALPHA", handle_beta, NULL};
+    usurper = (console_verb_t){"ALPHA", handle_beta, NULL, CONSOLE_LINE_MAX};
     TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
     TEST_ASSERT_FALSE(console_register(&registry, &usurper));
     TEST_ASSERT_EQUAL_INT(1, registry_count(&registry));
@@ -983,6 +1018,8 @@ void
 suite_console(void) {
     RUN_TEST(test_sound_parse_boundaries_and_whitespace);
     RUN_TEST(test_sound_arguments);
+    RUN_TEST(test_overlong_short_verb_is_dropped);
+    RUN_TEST(test_registered_long_verbs_own_their_bounds);
     RUN_TEST(test_exact_name_matches);
     RUN_TEST(test_name_plus_space_carries_args_without_the_verb_or_the_space);
     RUN_TEST(test_a_verb_does_not_swallow_a_longer_word_that_starts_with_its_name);

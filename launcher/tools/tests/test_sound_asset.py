@@ -5,6 +5,7 @@ import re
 import math
 import pathlib
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -235,6 +236,21 @@ class SoundTests(unittest.TestCase):
         high = [12000 * math.sin(2 * math.pi * 16000 * i / source_rate) for i in range(len(samples))]
         filtered = sound_import.resample(high, source_rate)[100:-100]
         self.assertLess(math.sqrt(sum(v*v for v in filtered) / len(filtered)), 100)
+
+    def test_synthesis_flac_matches_stdlib_wav(self):
+        import soundfile
+        with tempfile.TemporaryDirectory() as folder:
+            wav = pathlib.Path(folder) / "note.wav"
+            flac = wav.with_suffix(".flac")
+            args = ["--notes", "60,64,67", "--duration-ms", "200", "--decay", "4", "--peak", "0.2", "-o"]
+            synth_wav.main([*args, str(wav)])
+            synth_wav.main([*args, str(flac)])
+            self.assertEqual(flac.read_bytes()[:4], b"fLaC")
+            self.assertEqual(soundfile.read(wav, dtype="int16")[0].tolist(),
+                             soundfile.read(flac, dtype="int16")[0].tolist())
+            result = subprocess.run([sys.executable, "-S", str(TOOLS / "audio/synth_wav.py"), *args, str(wav)],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_synthesis_and_folder_pack(self):
         with tempfile.TemporaryDirectory() as folder:

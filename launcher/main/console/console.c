@@ -14,12 +14,9 @@
  * render loop runs on the main one would be two tasks driving one panel.
  */
 #include "console/console.h"
-#include "console/verbs/console_sound_parse.h"
-#if CONFIG_LAUNCHER_SELFTEST
-#include "console/verbs/console_runsuite.h"
-#endif
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #if CONFIG_LAUNCHER_QEMU
@@ -131,22 +128,6 @@ console_emit_line(const char* prefix, const char* payload) {
     emit_bytes("\n", 1);
 }
 
-/* Long verbs own their limits; other handlers still receive CONSOLE_LINE_MAX. */
-static bool
-long_line(const char* line) {
-    const char* sound_args;
-    if (console_word_match(line, "sound", &sound_args)) {
-        return strlen(line) < CONSOLE_SOUND_LINE_MAX;
-    }
-#if CONFIG_LAUNCHER_SELFTEST
-    const char* args;
-    return console_word_match(line, "runsuite", &args);
-#else
-    (void)line;
-    return false;
-#endif
-}
-
 static void
 queue_unclaimed_line(const char* line) {
     if (app_line_queue == NULL || xQueueSend(app_line_queue, line, 0) != pdTRUE) {
@@ -154,21 +135,10 @@ queue_unclaimed_line(const char* line) {
     }
 }
 
-/* RUNSUITE patterns and qualified sound names have their own line bounds. */
-#if CONFIG_LAUNCHER_SELFTEST
-#define READER_LINE_MAX RUNSUITE_LINE_MAX
-#else
-#define READER_LINE_MAX CONSOLE_SOUND_LINE_MAX
-#endif
-
 static void
 console_task(void* arg) {
-    (void)arg;
-#if CONFIG_LAUNCHER_SELFTEST
-    static char line[READER_LINE_MAX];
-#else
-    char line[READER_LINE_MAX];
-#endif
+    char* line = arg;
+    const int line_max = console_registry_line_max(&shared);
     int len = 0;
     bool overflowed = false;
 
@@ -182,11 +152,11 @@ console_task(void* arg) {
             continue;
         }
         const bool was_overflowed = overflowed;
-        const bool complete = console_append_char_max(line, READER_LINE_MAX, &len, &overflowed, c);
+        const bool complete = console_append_char_max(line, line_max, &len, &overflowed, c);
         if (overflowed && !was_overflowed) {
-            ESP_LOGW(TAG, "console line too long (max %d) - dropped", (int)READER_LINE_MAX - 1);
+            ESP_LOGW(TAG, "console line too long (max %d) - dropped", (int)line_max - 1);
         }
-        if (complete && strlen(line) >= CONSOLE_LINE_MAX && !long_line(line)) {
+        if (complete && !console_registry_accepts_line(&shared, line)) {
             ESP_LOGW(TAG, "console line too long (max %d) - dropped", CONSOLE_LINE_MAX - 1);
         } else if (complete && !console_registry_handle_line(&shared, line, console_reply_stdio)) {
             queue_unclaimed_line(line);
@@ -235,8 +205,14 @@ console_start(void) {
      * its time blocked waiting on bytes nobody is usually sending; when a
      * line does arrive there is nothing time-critical about noticing it a
      * frame or two later. */
-    const BaseType_t created = xTaskCreate(console_task, "console", 3072, NULL, 4, NULL);
+    char* line = malloc((size_t)console_registry_line_max(&shared));
+    if (line == NULL) {
+        ESP_LOGE(TAG, "line allocation failed - listener not started");
+        return;
+    }
+    const BaseType_t created = xTaskCreate(console_task, "console", 3072, line, 4, NULL);
     if (created != pdPASS) {
+        free(line);
         ESP_LOGE(TAG, "xTaskCreate failed (out of memory?) - listener not started");
         return;
     }

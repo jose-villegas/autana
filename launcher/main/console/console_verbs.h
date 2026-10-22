@@ -95,6 +95,7 @@ typedef struct console_verb {
     const char* name; /* "SCREENSHOT", "SET" */
     console_verb_fn handle;
     struct console_verb* next;
+    int line_max;
 } console_verb_t;
 
 typedef struct {
@@ -105,8 +106,13 @@ typedef struct {
  * A different verb with the same name returns false; re-registering the same object returns true. */
 bool console_register(console_registry_t* registry, console_verb_t* verb);
 
-/* True if `line` matched a registered verb, whatever its handler then did.
- * False, with no handler called, if nothing matched. */
+/* The reader capacity follows the registered verbs, with CONSOLE_LINE_MAX as its floor. */
+int console_registry_line_max(const console_registry_t* registry);
+
+/* Oversized lines need a matching verb whose declared bound holds the whole line. */
+bool console_registry_accepts_line(const console_registry_t* registry, const char* line);
+
+/* True if `line` fits and matched a registered verb, whatever its handler then did. */
 bool console_registry_handle_line(console_registry_t* registry, const char* line, console_reply_fn reply);
 
 typedef enum {
@@ -139,15 +145,9 @@ console_registry_t* console_shared(void);
 #define CONSOLE_VERB_LONG(VERB, longest_args, line_max, function)                                                      \
     _Static_assert(sizeof(#VERB) + 1 + (longest_args) <= (line_max),                                                   \
                    #VERB " plus its longest args cannot fit " #line_max);                                              \
-    static console_verb_t VERB##_console_verb = {#VERB, (function), NULL};                                             \
+    static console_verb_t VERB##_console_verb = {#VERB, (function), NULL, (line_max)};                                 \
     __attribute__((constructor)) static void VERB##_console_verb_register(void) {                                      \
         console_register(console_shared(), &VERB##_console_verb);                                                      \
     }
 
-#define CONSOLE_VERB(VERB, longest_args, function)                                                                     \
-    _Static_assert(sizeof(#VERB) + 1 + (longest_args) <= CONSOLE_LINE_MAX,                                             \
-                   #VERB " plus its longest args cannot fit CONSOLE_LINE_MAX");                                        \
-    static console_verb_t VERB##_console_verb = {#VERB, (function), NULL};                                             \
-    __attribute__((constructor)) static void VERB##_console_verb_register(void) {                                      \
-        console_register(console_shared(), &VERB##_console_verb);                                                      \
-    }
+#define CONSOLE_VERB(VERB, longest_args, function) CONSOLE_VERB_LONG(VERB, longest_args, CONSOLE_LINE_MAX, function)

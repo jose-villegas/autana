@@ -1,4 +1,4 @@
-"""Generate a deterministic mono PCM16 damped sine or note-list WAV."""
+"""Generate a deterministic mono PCM16 damped sine or note-list WAV or FLAC."""
 
 import argparse
 import math
@@ -47,9 +47,16 @@ def main(argv=None):
                      * (math.sin(math.pi * i / frames) ** 2 if notes else 1))
                for frequency in frequencies for i in range(frames)]
     args.o.parent.mkdir(parents=True, exist_ok=True)
-    with wave.open(str(args.o), "wb") as wav:
-        wav.setparams((CHANNELS, PCM_BYTES, SAMPLE_RATE_HZ, 0, "NONE", ""))
-        wav.writeframes(struct.pack(f"<{len(samples)}h", *samples))
+    pcm = struct.pack(f"<{len(samples)}h", *samples)
+    if args.o.suffix.lower() == ".flac":
+        import soundfile
+        with soundfile.SoundFile(args.o, "w", samplerate=SAMPLE_RATE_HZ, channels=CHANNELS,
+                                 format="FLAC", subtype="PCM_16") as flac:
+            flac.buffer_write(pcm, dtype="int16")
+    else:
+        with wave.open(str(args.o), "wb") as wav:
+            wav.setparams((CHANNELS, PCM_BYTES, SAMPLE_RATE_HZ, 0, "NONE", ""))
+            wav.writeframes(pcm)
 
 
 if __name__ == "__main__":

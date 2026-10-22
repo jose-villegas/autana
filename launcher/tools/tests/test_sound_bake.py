@@ -106,19 +106,56 @@ class SoundBakeTests(unittest.TestCase):
             tools["sound"] = "changed"
             self.assertNotEqual(found().key, second.key)
 
-    def test_only_sound_tool_digest_counts_sound_code_comments(self):
+    def test_audio_requirements_are_tracked_and_sound_counts_both_pins(self):
+        self.assertIn(TOOLS / "audio/requirements.txt", bake.tracked_requirements())
+        pins = [line for _, line in bake.requirement_pins("sound")]
+        for owner, package in (("render", "numpy"), ("audio", "soundfile")):
+            expected = next(line for line in bake.requirement_lines(TOOLS / owner / "requirements.txt")
+                            if bake.package_name(line) == package)
+            self.assertIn(expected, pins)
+
+    def test_soundfile_pin_moves_only_sound_key(self):
         before = {stage: bake.tool_digest(stage) for stage in bake.STAGES}
-        original = bake.file_sha256
-        def edited(path):
-            return "changed comment" if path.name == "sound_import.py" else original(path)
+        first = {item.output: item for item in bake.bakes([build_pack.DEFAULT_SEARCH])}
+        original = bake.requirement_lines
+        def bumped(path):
+            return [line + ".post1" if bake.package_name(line) == "soundfile" else line for line in original(path)]
         try:
+            bake.requirement_pins.cache_clear()
             bake.tool_digest.cache_clear()
-            with patch.object(bake, "file_sha256", side_effect=edited):
+            with patch.object(bake, "requirement_lines", side_effect=bumped):
                 after = {stage: bake.tool_digest(stage) for stage in bake.STAGES}
+                second = bake.bakes([build_pack.DEFAULT_SEARCH])
+            for item in second:
+                with self.subTest(output=item.output):
+                    self.assertEqual(item.key == first[item.output].key, item.kind != "sound")
             self.assertNotEqual(before.pop("sound"), after.pop("sound"))
             self.assertEqual(before, after)
         finally:
+            bake.requirement_pins.cache_clear()
             bake.tool_digest.cache_clear()
+
+    def test_all_stages_ignore_code_comments_and_docstrings(self):
+        before = {stage: bake.tool_digest(stage) for stage in bake.STAGES}
+        original = pathlib.Path.open
+        original_bytes = pathlib.Path.read_bytes
+        source = TOOLS / "audio/sound_import.py"
+        changed = b'# changed comment\n"""Changed docstring."""\n' + source.read_bytes()
+        def edited(path, *args, **kwargs):
+            if path.name == "sound_import.py" and args == ("rb",):
+                import io
+                return io.BytesIO(changed)
+            return original(path, *args, **kwargs)
+        try:
+            bake.tool_digest.cache_clear()
+            bake.module_facts.cache_clear()
+            with patch.object(pathlib.Path, "open", edited), patch.object(
+                    pathlib.Path, "read_bytes", lambda path: changed if path == source else original_bytes(path)):
+                after = {stage: bake.tool_digest(stage) for stage in bake.STAGES}
+            self.assertEqual(before, after)
+        finally:
+            bake.tool_digest.cache_clear()
+            bake.module_facts.cache_clear()
 
     def test_pack_keys_need_no_site_packages(self):
         result = subprocess.run([sys.executable, "-S", str(TOOLS / "bake/bake.py"), "list", "--kind", "sound"],

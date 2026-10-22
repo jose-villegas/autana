@@ -1,2 +1,2 @@
-numpy==2.4.6
+-r ../render/requirements.txt
 soundfile==0.14.0

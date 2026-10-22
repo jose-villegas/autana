@@ -6,12 +6,44 @@
 
 bool
 console_register(console_registry_t* registry, console_verb_t* verb) {
+    if (verb->line_max < CONSOLE_LINE_MAX) {
+        verb->line_max = CONSOLE_LINE_MAX;
+    }
     static const registry_rule_t rule = REGISTRY_RULE(console_verb_t, console_name_cmp, NULL);
     return registry_add(&registry->first, &rule, verb) != REGISTRY_CLASH;
 }
 
+int
+console_registry_line_max(const console_registry_t* registry) {
+    int line_max = CONSOLE_LINE_MAX;
+    for (const console_verb_t* entry = registry->first; entry != NULL; entry = entry->next) {
+        if (entry->line_max > line_max) {
+            line_max = entry->line_max;
+        }
+    }
+    return line_max;
+}
+
+bool
+console_registry_accepts_line(const console_registry_t* registry, const char* line) {
+    const size_t length = strlen(line);
+    if (length < CONSOLE_LINE_MAX) {
+        return true;
+    }
+    for (const console_verb_t* entry = registry->first; entry != NULL; entry = entry->next) {
+        const char* args;
+        if (console_word_match(line, entry->name, &args)) {
+            return length < (size_t)entry->line_max;
+        }
+    }
+    return false;
+}
+
 bool
 console_registry_handle_line(console_registry_t* registry, const char* line, console_reply_fn reply) {
+    if (!console_registry_accepts_line(registry, line)) {
+        return false;
+    }
     for (const console_verb_t* entry = registry->first; entry != NULL; entry = entry->next) {
         const char* args;
         if (console_word_match(line, entry->name, &args)) {
