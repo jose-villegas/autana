@@ -73,9 +73,6 @@ int32_t gfx_get_present_send_us(void);
 /* Core-0 blocked time in the last begin (double) or wait (other layouts). */
 int32_t gfx_get_present_wait_us(void);
 
-/* The part of gfx_get_bytes_sent() that heal strips added. */
-int64_t gfx_get_heal_bytes_sent(void);
-
 /* Test-only: every strip of the framebuffer sent as a full band, bypassing
  * every dirty-tracking decision gfx_present() makes, the bus-time side of
  * a full present. */

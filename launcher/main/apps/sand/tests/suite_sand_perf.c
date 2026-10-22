@@ -3551,11 +3551,10 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
 }
 
 /*
- * the panel clock and heal against a real pour
+ * the panel clock against a real pour
  *
  * Drives the real app_sand.c, touch pour and all, and times gfx_present()
- * three ways: 40 MHz, 80 MHz, and 80 MHz with sand's heal policy. The heal
- * is only worth having if the third stays clearly under the first.
+ * at 40 MHz and at 80 MHz.
  */
 
 #include "app/app.h"
@@ -3568,7 +3567,6 @@ extern void sand_app_select_brush_for_test(int brush);
 typedef enum {
     CLOCK_ROW_40,
     CLOCK_ROW_80,
-    CLOCK_ROW_80_HEAL,
     CLOCK_ROW_COUNT,
 } clock_row_t;
 
@@ -3581,7 +3579,6 @@ typedef enum {
 typedef struct {
     int64_t present_us;
     int64_t bytes;
-    int64_t heal_bytes;
 } clock_row_window_t;
 
 static void
@@ -3611,7 +3608,6 @@ clock_row_measure(int frames, bool pouring, int* frame_index) {
     }
     w.present_us /= frames;
     w.bytes = gfx_get_bytes_sent() / frames;
-    w.heal_bytes = gfx_get_heal_bytes_sent() / frames;
     return w;
 }
 
@@ -3622,9 +3618,6 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
     frame_watch_restart();
     const int previous_mode = sand_app_enter_running_for_test();
     sand_app_select_brush_for_test(brush);
-    if (row == CLOCK_ROW_80) {
-        gfx_heal_set_budget(0);
-    }
 
     int frame_index = 0;
     clock_row_measure(CLOCK_ROW_POUR_WARM_FRAMES, true, &frame_index);
@@ -3639,15 +3632,13 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
     app_sand.exit();
     frame_watch_restart();
     sand_app_restore_colour_mode_for_test(previous_mode);
-    gfx_heal_restore_defaults();
 }
 
 static void
-test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
+test_present_cost_at_40_and_80_mhz_on_a_real_pour(void) {
     static const char* const brush_names[] = {"sand", "water"};
-    static const char* const row_names[CLOCK_ROW_COUNT] = {"40", "80", "80+heal"};
+    static const char* const row_names[CLOCK_ROW_COUNT] = {"40", "80"};
     const two_core_scope_t core = two_core_scope_begin(true);
-    bool unhealed_row_sent_heal = false;
 
     for (int brush = 0; brush < 2; brush++) {
         for (int row = 0; row < CLOCK_ROW_COUNT; row++) {
@@ -3655,21 +3646,12 @@ test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
             clock_row_window_t settled;
             clock_row_run(brush, (clock_row_t)row, &pour, &settled);
             ESP_LOGI("device_tests",
-                     "CLOCK_ROW %s pour %s MHz: present %lld us, %lld bytes (heal %lld) | settled: present %lld "
-                     "us, %lld bytes (heal %lld)",
+                     "CLOCK_ROW %s pour %s MHz: present %lld us, %lld bytes | settled: present %lld us, %lld bytes",
                      brush_names[brush], row_names[row], (long long)pour.present_us, (long long)pour.bytes,
-                     (long long)pour.heal_bytes, (long long)settled.present_us, (long long)settled.bytes,
-                     (long long)settled.heal_bytes);
-            if (row != CLOCK_ROW_80_HEAL && pour.heal_bytes + settled.heal_bytes != 0) {
-                unhealed_row_sent_heal = true;
-            }
+                     (long long)settled.present_us, (long long)settled.bytes);
         }
     }
     two_core_scope_end(core);
-
-    /* Asserted only after the two-core scope ends: a failing assert longjmps
-     * out of it. */
-    TEST_ASSERT_FALSE_MESSAGE(unhealed_row_sent_heal, "only the heal row may send heal strips");
 }
 
 #endif /* DEVICE_BUILD */
@@ -3792,7 +3774,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_present_cost_against_the_thermal_shock_scene);
     RUN_TEST(test_present_cost_against_a_landscape_gas_over_sand_pile);
     RUN_TEST(test_present_cost_against_a_landscape_levelling_pool);
-    RUN_TEST(test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour);
+    RUN_TEST(test_present_cost_at_40_and_80_mhz_on_a_real_pour);
 
     const bool two_core_before = sand_two_core_step_enabled();
     sand_set_two_core_step(true);

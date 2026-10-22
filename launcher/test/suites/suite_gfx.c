@@ -52,8 +52,7 @@ static const char* TAG = PERF_BUDGET_TAG;
 
 /* Regression ceilings are worst + max(spread, 2% of worst) across a 5-run
  * S3 portrait board capture (autana suite run_gfx_suite --runs 5), with
- * fixture() pinning the fast panel clock and the selftest runner resetting
- * heal to its defaults around every test. Shipping landscape costs 17-37%
+ * fixture() pinning the fast panel clock. Shipping landscape costs 17-37%
  * more; these pegs do not cover that orientation. */
 
 /* gfx owns global hardware state and is already initialised by the time this

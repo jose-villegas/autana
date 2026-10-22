@@ -1101,11 +1101,10 @@ full `gfx_present()`**; the dirty-tracking path's own overhead is
 1,149 us, 6%, and the frame is **94% bus-bound** (at 40 MHz). 80 MHz
 halves it but is outside the panel's rating.
 
-Sand's partial redraws are exactly what shows it: stray red pixels or
-thin black lines through moving sand that stay until that region is
-re-sent differently. See
+At 80 MHz the panel can land a partial-width window a column off, so gfx
+sends only full-width rows there. See
 [Display-and-Rendering.md](../notes/Display-and-Rendering.md), "80 MHz
-is outside the panel's rating", for the finding and the heal sand uses.
+is outside the panel's rating".
 
 Water, not sand, is the bottleneck whenever a body of it is moving.
 

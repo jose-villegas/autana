@@ -47,13 +47,13 @@ The 80 MHz option exceeds the panel's rated clock. There the panel can land
 a partial-width window a column off, leaving a wrong column at its edge, so
 gfx sends only full-width rows at 80 MHz. Even window edges are required at
 both clocks. Use 40 MHz for a clean link.
-The shell owns clock selection and partial-redraw healing; see
-[Panel clock and heal](../Gfx-and-Presentation.md#panel-clock-and-heal).
+The shell owns clock selection; see
+[Panel clock](../Gfx-and-Presentation.md#panel-clock).
 
 ### Panel-link faults are invisible to screenshots
 
 `autana screenshot` captures source pixels, not panel GRAM. The running frame
-loop requests a full redraw after capture, which can heal corrupted panel
+loop requests a full redraw after capture, which can repair corrupted panel
 pixels; a frozen frame is not redrawn. Judge a suspected link fault on the
 glass. The development-only `gfx_set_send_audit()` checks whether changed
 pixels were sent with the correct bytes; a clean audit does not prove the

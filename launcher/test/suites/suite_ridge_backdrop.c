@@ -81,7 +81,6 @@ release(void) {
     settled = NULL;
     app_registry_reset_for_test();
     ui_ridge_release_for_test();
-    gfx_heal_restore_defaults();
     gfx_reset_for_test();
 }
 

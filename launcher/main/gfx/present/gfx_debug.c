@@ -41,7 +41,6 @@ int dev_strips_sent_partial;
  * distinction at all. Exists for a device test comparing send cost across
  * pixel formats. Not reset by gfx_present(). */
 int64_t dev_bytes_sent;
-int64_t dev_heal_bytes_sent;
 
 void
 gfx_reset_strip_send_counts(void) {
@@ -49,7 +48,6 @@ gfx_reset_strip_send_counts(void) {
     dev_strips_sent_gathered = 0;
     dev_strips_sent_partial = 0;
     dev_bytes_sent = 0;
-    dev_heal_bytes_sent = 0;
 }
 
 void
@@ -63,11 +61,6 @@ gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_bands) {
     if (partial_bands) {
         *partial_bands = dev_strips_sent_partial;
     }
-}
-
-int64_t
-gfx_get_heal_bytes_sent(void) {
-    return dev_heal_bytes_sent;
 }
 
 int64_t

@@ -96,7 +96,7 @@ links against nothing and tests at any resolution, even one no real panel has.
 | **One behaviour per test.** Several assertions are fine for one behaviour. | Unrelated behaviours in one test: the second never runs after the first fails. |
 | **Python tool tests live in a `tests/` subfolder** beside the code, even for one file. | One convention to find them. |
 
-The device runner also resets the panel clock and heals the shell's state
+The device runner also resets the panel clock to the shell's state
 around every test (`display_restore_system_state()` in its `setUp`/`tearDown`);
 a test that times a present pins its clock with `panel_clock_pin()`. The host
 runner has no panel and does neither.

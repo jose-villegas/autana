@@ -9,7 +9,7 @@ A caller includes the header for what it does:
 | --- | --- |
 | [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()`; draw's surface (`gfx_draw_begin()`, `gfx_set_clip()`) and dirty marking |
 | [`draw/draw.h`](../launcher/main/draw/draw.h) | primitives, text and clipping |
-| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | present, the panel clock, heal |
+| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | present and the panel clock |
 | [`gfx/present/gfx_mode.h`](../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
 | [`gfx/present/gfx_debug.h`](../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
 | [`draw/draw_image.h`](../launcher/main/draw/draw_image.h) | a picture read in place from its pack entry |
@@ -99,7 +99,7 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
 Double mode draws into the back buffer while the front is sent. `gfx_present_begin()`
 drains the preceding send and swaps them; `gfx_present_wait()` returns at once.
-Dirty tracking, interlace, healing and half-picture expansion are disabled.
+Dirty tracking, interlace and half-picture expansion are disabled.
 
 Mode exit drains the send, keeps the last presented frame as the single
 framebuffer, and frees the other. Readback also drains before reading the front.
@@ -263,7 +263,6 @@ sequenceDiagram
     loop each dirty strip
         P->>Q: esp_lcd_panel_draw_bitmap()
     end
-    P->>Q: heal strips
     Q-->>P: strip_sent, once per transfer
     P-->>C: present_done_sem
     C->>C: gfx_present_wait() returns
@@ -392,33 +391,17 @@ the colour -> index map and the dither table, are
 `tools/gen/draw_palette_gen.h`: host-only, in OKLab<sup>[[35]](Citations.md#35)</sup>, never in the firmware
 image.
 
-## Panel clock and heal
+## Panel clock
 
 | | `GFX_PANEL_CLOCK_SLOW_HZ` (40 MHz) | `GFX_PANEL_CLOCK_FAST_HZ` (80 MHz) |
 |---|---|---|
 | Full-frame bus time | 16.5 ms | 8.2 ms |
 | Panel rating (50 MHz) | inside | **past it** |
 | Failure mode | none | a partial-width window can land a column off, so only full-width rows are sent |
-| Residual | none | a stray pixel can still stay until its region is sent again |
-| Heal | does nothing | active if the app opted in |
 
 `gfx_set_panel_clock_hz()` takes effect before the next present, never
 mid-send. gfx keeps whatever it was last told; the shell owns the choice and
 restores it on every app switch.
-
-Heal (`gfx_heal.h`, pure) re-sends marked rows as full-width strips of
-`GFX_HEAL_STRIP_ROWS` (32) whose alignment shifts every present, because the
-same window sent again fails the same way.
-
-| Call | Does |
-|---|---|
-| `gfx_heal_mark()` | queue rows; `x` and `w` are ignored |
-| `gfx_heal_set_budget()` | pixels of heal per present, default `GFX_HEAL_DEFAULT_BUDGET_PIXELS` |
-| `gfx_heal_set_rolling()` | rows per present of a whole-screen sweep, 0 for none |
-| `gfx_heal_restore_defaults()` | empty the queue, reset both; the shell calls it on every app switch |
-
-Band mode heals nothing, the same as the slow clock: a band is gone once
-sent, so gfx holds nothing to resend.
 
 ## Repaint controls
 
@@ -462,7 +445,7 @@ checkboxes toggle them.
 | `gfx_set_send_audit()` | PSRAM shadow of every pixel sent, compared after each present, the tool for panel-link faults a screenshot cannot see |
 | (both overlays) | every present path; a border lasts one present, then its strip is resent clean, in band mode, by `gfx_band_dirty()` asking the app for the band once more |
 | `gfx_get_strip_send_counts()` | full / gathered / partial counts since the last reset |
-| `gfx_get_bytes_sent()`, `gfx_get_heal_bytes_sent()` | bytes queued, and heal's share |
+| `gfx_get_bytes_sent()` | bytes queued |
 
 Frame stage timing is described in [`tools/Frame-Cost.md`](tools/Frame-Cost.md).
 

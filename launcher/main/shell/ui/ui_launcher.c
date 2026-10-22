@@ -12,15 +12,12 @@
 
 #include "app/app.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_present.h"
 #include "profile/frame_cost.h"
 #include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
 
 const app_t*
 ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
-    ui_launcher_heal_opt_in();
-
     FRAME_COST_BEGIN(built_from);
     ui_begin(input);
     const app_t* chosen = ui_launcher_draw();

@@ -70,7 +70,6 @@
 #include "sand_colour_state.h"
 #include "sand_controls.h"
 #include "sand_dither_tables.h"
-#include "sand_heal.h"
 #include "sand_limits.h"
 #include "sand_menu.h"
 #include "sand_mode_swatches.h"
@@ -184,11 +183,6 @@ static sand_mode_swatch_t mode_swatches[SAND_COLOUR_MODE_COUNT];
 static bool mode_swatches_ready;
 
 static int cell, grid_w, grid_h, block_cols, block_rows;
-
-/* Two heal strips a present: enough to keep up with a pour's settling
- * bands without costing more than a seventh of a full frame. */
-#define SAND_HEAL_BUDGET_PIXELS (GFX_WIDTH * 64)
-static sand_heal_t heal_policy;
 
 #define APP_IMPULSE_MAX           2048
 
@@ -565,8 +559,6 @@ start_sim(void) {
     sim_accumulator_q8 = 0;
     pour_accumulator_ms = 0;
     sand_paint_row_state_init(&paint_row_state);
-    sand_heal_init(&heal_policy, GFX_HEIGHT);
-    gfx_heal_set_budget(SAND_HEAL_BUDGET_PIXELS);
     ui.brush = 0;
     ui.mode = SAND_MODE_PAINT;
     label_left_ms = 0;
@@ -825,8 +817,7 @@ row_paint_span(int cy, int* out_x0, int* out_x1) {
  * left untouched dithers the same as before, not merely unpainted.
  * Returns the pixels marked. */
 static int64_t
-mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t* send_x1, int send_n, bool indexed,
-               bool healing) {
+mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t* send_x1, int send_n, bool indexed) {
     int64_t pixels = 0;
     for (int i = 0; i < send_n; i++) {
         int sx0;
@@ -836,9 +827,6 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
             continue;
         }
         gfx_mark_dirty(sx0 * cell, cy * cell, (sx1 - sx0) * cell, cell);
-        if (healing) {
-            sand_heal_note_rows(&heal_policy, cy * cell, (cy + 1) * cell);
-        }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         pixels += (int64_t)(sx1 - sx0) * cell * cell;
 #endif
@@ -849,7 +837,7 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
 /* Repaints dirty row `cy` and marks what changed since its last paint;
  * returns the pixels marked. */
 static int64_t
-draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, bool indexed, bool healing) {
+draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, bool indexed) {
     buffers.dirty_rows[cy] = 0;
 
     int wx0;
@@ -870,7 +858,7 @@ draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, b
     uint16_t send_x1[2 * ROW_MAX_RUNS];
     const int send_n = row_runs_reconcile(cur_x0, cur_x1, cur_n, prev_x0, prev_x1, prev_n, send_x0, send_x1);
 
-    const int64_t pixels = mark_row_sends(cy, wx0, wx1, send_x0, send_x1, send_n, indexed, healing);
+    const int64_t pixels = mark_row_sends(cy, wx0, wx1, send_x0, send_x1, send_n, indexed);
 
     for (int i = 0; i < cur_n; i++) {
         prev_x0[i] = cur_x0[i];
@@ -892,7 +880,6 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
      * band_force_all_dirty idiom. */
     const bool force_full = indexed_force_full_repaint;
     indexed_force_full_repaint = false;
-    const bool healing = gfx_heal_active();
 
     memset(wake_hit, 0, (size_t)grid_h * sizeof(*wake_hit));
     mark_wake_hits(shine_moved, SAND_PAINT_ROW_FLAG_SHINE);
@@ -919,7 +906,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
         if (!buffers.dirty_rows[cy]) {
             continue;
         }
-        const int64_t row_pixels = draw_dirty_row(fb, index_image, cy, force_full, indexed, healing);
+        const int64_t row_pixels = draw_dirty_row(fb, index_image, cy, force_full, indexed);
 #if CONFIG_LAUNCHER_DEVELOPMENT
         redrawn++;
         pixels_repainted += row_pixels;
@@ -932,18 +919,6 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
     rows_redrawn_total += redrawn;
     pixels_repainted_total += pixels_repainted;
 #endif
-}
-
-static void
-heal_settled_rows(void) {
-    if (!gfx_heal_active()) {
-        return;
-    }
-    sand_heal_span_t spans[SAND_HEAL_MAX_SPANS];
-    const int n = sand_heal_step(&heal_policy, spans, SAND_HEAL_MAX_SPANS);
-    for (int i = 0; i < n; i++) {
-        gfx_heal_mark(0, spans[i].y0, GFX_WIDTH, spans[i].y1 - spans[i].y0);
-    }
 }
 
 #define EMITTER_MARKER_COLOR 0xFF3EC8
@@ -1562,7 +1537,6 @@ draw_sim_frame(const input_t* input) {
 
     draw_dirty_rows(pending_shine_moved, pending_local_depth_woke, pending_cullet_moved, pending_glass_moved,
                     pending_wood_leaf_moved);
-    heal_settled_rows();
     draw_canvas_overlays();
     FRAME_COST_END(draw_mark, "sand.draw");
 

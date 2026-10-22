@@ -209,7 +209,7 @@ system icons), not code; it keeps its place under L1.
 | colour, boxes, draw targets and render targets | `gfx/target/` |
 | framebuffer and presentation | `gfx/present/` |
 | band and indexed layout values | `gfx/present/modes/band/`, `gfx/present/modes/indexed/`; apps include `gfx_mode.h` |
-| dirty, heal and full-redraw send policy | `gfx/present/send/` |
+| dirty and full-redraw send policy | `gfx/present/send/` |
 | null panel backend | `gfx/present/panel/` |
 | viewport | `display/` |
 | projection | `math/linear/projectf.h`, `projectx.h` (lens, near clip); `render/r3d_project*.h` (snapping, line units) |
