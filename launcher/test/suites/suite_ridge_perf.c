@@ -17,7 +17,6 @@
 #include "gfx/present/gfx_present.h"
 #include "ridge_arms.h"
 #include "services/tune.h"
-#include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
 
 static const char* TAG = "ridge_perf";
@@ -30,14 +29,12 @@ typedef struct {
     int64_t step_us;
     int64_t present_us;
     int64_t bytes;
-    int64_t heal_bytes;
     int frames, full_bands, gathered, partial_bands;
 } arm_result_t;
 
 static void
 prime(void) {
     ui_ridge_reset_for_test();
-    ui_launcher_heal_opt_in();
     ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
     gfx_present();
 }
@@ -73,7 +70,6 @@ run_arm(arm_t arm) {
     }
     result.elapsed_us = timing_now_us() - began;
     result.bytes = gfx_get_bytes_sent();
-    result.heal_bytes = gfx_get_heal_bytes_sent();
     gfx_get_strip_send_counts(&result.full_bands, &result.gathered, &result.partial_bands);
     return result;
 }
@@ -98,19 +94,23 @@ log_arm(arm_t arm, const arm_result_t* result) {
     const double frames = result->frames;
     ESP_LOGI(TAG,
              "RIDGE PERF arm=%s frames=%d total_ms=%.3f step_ms=%.3f present_ms=%.3f fps=%.1f bytes_per_frame=%.0f "
-             "heal_bytes_per_frame=%.0f full_bands=%d gathered=%d partial_bands=%d",
+             "full_bands=%d gathered=%d partial_bands=%d",
              arm_name(arm), result->frames, (double)result->elapsed_us / frames / 1000.0,
              (double)result->step_us / frames / 1000.0, (double)result->present_us / frames / 1000.0,
-             1000000.0 * frames / result->elapsed_us, (double)result->bytes / frames,
-             (double)result->heal_bytes / frames, result->full_bands, result->gathered, result->partial_bands);
+             1000000.0 * frames / result->elapsed_us, (double)result->bytes / frames, result->full_bands,
+             result->gathered, result->partial_bands);
 }
 
 static void
-assert_arm(const arm_result_t* result) {
+assert_arm(arm_t arm, const arm_result_t* result) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, result->frames, "no frames captured");
     TEST_ASSERT_TRUE_MESSAGE(result->step_us > 0, "ridge step did no work");
     TEST_ASSERT_TRUE_MESSAGE(result->present_us > 0, "present did no work");
-    TEST_ASSERT_TRUE_MESSAGE(result->bytes > 0, "no panel bytes sent");
+    if (arm == ARM_IDLE) {
+        TEST_ASSERT_TRUE_MESSAGE(result->bytes == 0, "an idle ridge sent panel bytes");
+    } else {
+        TEST_ASSERT_TRUE_MESSAGE(result->bytes > 0, "no panel bytes sent");
+    }
 }
 
 typedef struct {
@@ -239,8 +239,7 @@ test_ridge_settles_after_tilting(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, unlike, "the held frame is not what a full paint draws");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui_ridge_gradient_lag_for_test(), "the gradient never caught up with the ridge");
     ESP_LOGI(TAG, "RIDGE SETTLE bytes_per_frame=%lld", (long long)per_frame);
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(GFX_WIDTH * LAUNCHER_HEAL_ROWS * 2, (int)per_frame,
-                                          "still repainting after the tilt stopped");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, (int)per_frame, "still repainting after the tilt stopped");
 }
 
 void
@@ -255,7 +254,7 @@ test_ridge_performance(void) {
     for (arm_t arm = ARM_IDLE; arm <= ARM_AMBIENT_PORTRAIT; arm++) {
         const arm_result_t result = run_arm(arm);
         log_arm(arm, &result);
-        assert_arm(&result);
+        assert_arm(arm, &result);
     }
     TEST_PASS();
 }
@@ -278,7 +277,7 @@ test_ridge_performance_slow_clock(void) {
     for (int i = 0; i < ARM_COUNT; i++) {
         ESP_LOGI(TAG, "RIDGE PERF clock_mhz=%d", GFX_PANEL_CLOCK_SLOW_HZ / 1000000);
         log_arm(arms[i], &results[i]);
-        assert_arm(&results[i]);
+        assert_arm(arms[i], &results[i]);
     }
 }
 

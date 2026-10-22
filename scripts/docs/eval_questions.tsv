@@ -1,4 +1,4 @@
-why does my app freeze the frame loop when I call vTaskDelay	docs/Firmware-Architecture.md	There is exactly one frame loop, and it belongs to the shell
+why does my app freeze the frame loop when I call vTaskDelay	docs/firmware/Design-Rules.md	There is exactly one frame loop, and it belongs to the shell
 how do I register a new app with APP_REGISTER	docs/Building-an-App.md	Registration
 what does CONFIG_LAUNCHER_SELFTEST actually gate	docs/Build-Variants.md	Development-only instrumentation is its own flag, not SELFTEST
 flash diagnostics build	docs/tools/Autana-CLI.md	Build and flash
@@ -7,9 +7,9 @@ how do two agents share the same board without stepping on each other	docs/tools
 why is my host test failing but the device suite passes	docs/testing/Host-Tests.md	The host enforces the device's memory limits
 how do I make a tunable I can change live on the device	docs/tools/Live-Tuning.md	Making something tunable
 clang-format version mismatch breaks CI	docs/C-Style-Guide.md	One formatter version
-why is LVGL not used here	docs/Firmware-Architecture.md	Why microui, not LVGL
-touch taps feel laggy in the UI	docs/Firmware-Architecture.md	Two things to know before touching it
-how does dirty-band redraw skip repainting unchanged microui windows	docs/Firmware-Architecture.md	Immediate mode versus dirty bands
+why is LVGL not used here	docs/firmware/UI.md	Why microui, not LVGL
+touch taps feel laggy in the UI	docs/firmware/UI.md	Two things to know before touching it
+how does dirty-band redraw skip repainting unchanged microui windows	docs/firmware/UI.md	Immediate mode versus dirty bands
 one byte per sand grid cell, what fields does it hold	docs/sand/Architecture.md	The grid, in one byte
 adding a new material to the sand sim checklist	docs/sand/Adding-a-Material.md	Adding a Material
 how does water flow and cross-flow pressure work in sand	docs/sand/Sand-Simulation.md	Cross-flow: a cheap stand-in for pressure
@@ -43,7 +43,7 @@ Building an App exit heap leak warning log internal memory app arena	docs/Buildi
 minimum python version for tools tests	scripts/lib/python.sh	scripts/lib/python.sh
 perf_compare scoped seeded run --runs --test	launcher/tools/perf/README.md	Performance comparison
 autana unknown verb forwarded to device console app verb	docs/tools/App-Commands.md	App commands
-what is heal in the present path, why resend strips	docs/Gfx-and-Presentation.md	Panel clock and heal
+why does 80 MHz send only full-width rows	docs/gfx/Present.md	Panel clock
 test suite registration setUp per test reset global state	docs/testing/Writing-a-Test.md	Conventions
 autana touch tap swipe drive the board	docs/tools/Autana-CLI.md	Drive
 which QEMU binary runs the qemu tests and CI caches	docs/testing/QEMU.md	A QEMU with its bugs patched
@@ -52,7 +52,7 @@ How are citation names and Cited by lists validated?	scripts/gates/check_doc_cit
 Where boot logs HEAPMARK Ready and how crashes or board resets are read	docs/notes/Debugging.md	After a crash
 which test suites run on host versus QEMU versus device	docs/Testing-Guide.md	Two runners, one set of suites
 sand block sleep awake rule	docs/sand/Architecture.md	Block and row sleeping
-which layers does main.c own, startup sequence, layers table	docs/Firmware-Architecture.md	Layers
+which layers does main.c own, startup sequence, layers table	docs/firmware/Layers.md	Layers
 function name prefix module	docs/C-Style-Guide.md	Names
 open the sand app from the launcher, send a console verb like PERF	docs/tools/App-Commands.md	App commands
 two-core draw split row	docs/render/Mesh-Rendering.md	On both cores
@@ -69,7 +69,7 @@ port lost chip reset capture through reboot panic backtrace decode	docs/notes/De
 blender animation rig fbx export gait preview	docs/render/Skinned-Meshes.md	Import
 IRAM placement memory map budget linker fragments	docs/memory/Internal-Memory-Map.md	Placement rules and gate
 how do I build the firmware and run host tests	docs/testing/Host-Tests.md	Host Tests
-dirty tracking all dirty framebuffer mode ownership	docs/Gfx-and-Presentation.md	Dirty tracking
+dirty tracking all dirty framebuffer mode ownership	docs/gfx/Dirty-Tracking.md	Dirty tracking
 fixed point line projection Q16.16 near plane rounding	docs/math/Projection.md	Projection
 which functions should be IRAM_ATTR and what does it cost	docs/c-style/Function-Attributes.md	IRAM_ATTR
 when to use noinline or always_inline on a function	docs/c-style/Function-Attributes.md	noinline and always_inline
