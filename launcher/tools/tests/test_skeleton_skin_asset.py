@@ -418,7 +418,7 @@ class PackStep(unittest.TestCase):
     def test_ids_and_duplicate_sources(self):
         from r3d import skin_pack
         rows, sources = [], {}
-        for key in ('x' * 32, 'Ã©' * 16):
+        for key in ('x' * 32, 'é' * 16):
             with self.assertRaisesRegex(ValueError, key):
                 skin_pack.append(rows, [(key, b'SKEL', b'', 'source')], sources)
         skin_pack.append(rows, [('rig', b'SKEL', b'', 'source')], sources)
