@@ -142,7 +142,7 @@ class MeshletReportTests(unittest.TestCase):
         source = (TOOLS.parents[1] / "launcher/main/apps/render_lab/tests/suite_sponza_perf.c").read_text()
         body = source[source.index("static int32_t saved_cull;"):source.index("/* The full bake with motion")]
         content = (TOOLS.parents[1] / "launcher/main/apps/render_lab/scene_baked_variant.h").read_text()
-        bakes = content[content.index("typedef enum {"):content.index("} scene_baked_variant_t;") + len("} scene_baked_variant_t;")]
+        bakes = content.replace("#pragma once", "")
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             probe = work / "probe.c"

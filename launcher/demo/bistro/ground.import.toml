@@ -4,5 +4,5 @@ path = "ground.obj"
 credit = "A plain square written for this scene."
 
 [output]
-name = "ground"
+name = "ground_plane"
 position_scale = 1   # ticks per centimetre: the square reaches 300 m from the origin, inside int16
