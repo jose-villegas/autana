@@ -5,6 +5,7 @@
 #
 #   ./launcher/tools/render/render_doc_images.sh            # rewrite images and tables
 #   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed
+#   ./launcher/tools/render/render_doc_images.sh --audio [--check]
 #   ./launcher/tools/render/render_doc_images.sh --orphans  # only report images no script names
 #   ./launcher/tools/render/render_doc_images.sh --stage gpu [--smoke|--check]
 #   ./launcher/tools/render/render_doc_images.sh --stage gpu --inputs  # print its input fingerprint
@@ -61,6 +62,12 @@ SKIN_BAKE=capybara.glb
 SKIN_CLIP=gallop
 # Three of its clips the playback figures blend: first to second to third, then back to the first.
 PLAYBACK_CLIPS="walk gallop idle"
+
+AUDIO_ONLY=0
+if [ "${1:-}" = --audio ]; then
+    AUDIO_ONLY=1
+    shift
+fi
 
 if [ "${1:-}" = --stage ]; then
     if [ "${2:-}" = gpu ] && [ "${3:-}" != --inputs ]; then
@@ -168,6 +175,7 @@ fi
 run rm -rf "$WORK" "$OUT"
 run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 
+if [ "$AUDIO_ONLY" = 0 ]; then
 # The launcher lists the release build's apps, read from the tree.
 L=$WORK/launcher_home
 run sh launcher/tools/render/scenes/launcher_home_render_host.sh -o "$L" > "$WORK/launcher_home.log"
@@ -232,6 +240,17 @@ run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math"
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
 
+fi
+
+run "$PYTHON" launcher/tools/audio/audio_drc_figures.py --out "$OUT/audio" > "$WORK/audio_drc_figures.log"
+run "$PYTHON" launcher/tools/audio/audio_path_figures.py --out "$OUT/audio" > "$WORK/audio_path_figures.log"
+run "$PYTHON" launcher/tools/audio/sound_mix_figures.py --out "$OUT/audio" > "$WORK/sound_mix_figures.log"
+# --orphans scans this runner: drc-level.png, drc-thd.png, drc-level-dark.png, drc-thd-dark.png,
+# audio-frequency.png, audio-volume.png, audio-frequency-dark.png, audio-volume-dark.png,
+# sound_mix_capture_v8.png, sound_mix_capture_v32.png, sound_mix_capture_v8-dark.png, sound_mix_capture_v32-dark.png
+
+if [ "$AUDIO_ONLY" = 0 ]; then
+
 # The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
 run mkdir -p "$OUT/render" "$OUT/tables"
 skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
@@ -277,13 +296,17 @@ run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/p
 run "$PYTHON" launcher/tools/render/layout_costs.py --mesh docs/render/data/layout-mesh-board.log \
     --boot docs/render/data/layout-boot-board.log --tables "$OUT/tables" \
     --chart "$OUT/render/gfx-layout-costs.png" > "$WORK/layout_costs.log"
+fi
 
 table_status=0
+if [ "$AUDIO_ONLY" = 0 ]; then
 if [ "$CHECK" = 1 ]; then
     "$PYTHON" "$TOOLS_DIR/generated_blocks.py" --tables "$OUT/tables" --check || table_status=$?
     [ "$table_status" -le 1 ] || exit 2
 else
     "$PYTHON" "$TOOLS_DIR/generated_blocks.py" --tables "$OUT/tables"
+fi
+
 fi
 
 if [ "$CHECK" = 0 ]; then
@@ -314,6 +337,9 @@ for name in $made_list; do
     esac
 done
 for name in $kept_list; do
+    if [ "$AUDIO_ONLY" = 1 ]; then
+        case "$name" in audio/*) ;; *) continue ;; esac
+    fi
     case "$name" in render/gpu/*) continue ;; esac
     if [ ! -f "$OUT/$name" ]; then
         orphan "$name"
