@@ -351,19 +351,40 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     return fifo_gap ? -1 : count;
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static void
+log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us, int64_t age_us) {
+    static int64_t last_log_us;
+    static uint64_t total_us;
+    static int64_t max_us;
+    static unsigned drains;
+    static unsigned delivered;
+    static unsigned lost_total;
+    drains++;
+    total_us += (uint64_t)elapsed_us;
+    if (elapsed_us > max_us) {
+        max_us = elapsed_us;
+    }
+    delivered += count > 0 ? (unsigned)count : 0;
+    lost_total += (unsigned)lost;
+    if (log_ms > 0 && now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS) {
+        ESP_LOGI(TAG, "drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u reader_age_us %lld", drains,
+                 (unsigned long long)(total_us / drains), (long long)max_us, delivered, lost_total, (long long)age_us);
+    }
+    if (log_ms == 0 || now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS) {
+        last_log_us = now_us;
+        drains = delivered = lost_total = 0;
+        total_us = 0;
+        max_us = 0;
+    }
+}
+#endif
+
 static void
 imu_task(void* arg) {
     (void)arg;
     imu_sample_t samples[IMU_FIFO_SAMPLES];
     TickType_t last_wake = xTaskGetTickCount();
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    int64_t last_log_us = timing_now_us();
-    uint64_t total_us = 0;
-    int64_t max_us = 0;
-    unsigned drains = 0;
-    unsigned delivered = 0;
-    unsigned lost_total = 0;
-#endif
     while (1) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         const int64_t start_us = timing_now_us();
@@ -386,25 +407,7 @@ imu_task(void* arg) {
 #endif
         portEXIT_CRITICAL(&lock);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        const int64_t elapsed_us = now_us - start_us;
-        drains++;
-        total_us += (uint64_t)elapsed_us;
-        if (elapsed_us > max_us) {
-            max_us = elapsed_us;
-        }
-        delivered += count > 0 ? (unsigned)count : 0;
-        lost_total += (unsigned)lost;
-        if (log_ms > 0 && now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS) {
-            ESP_LOGI(TAG, "drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u reader_age_us %lld",
-                     drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered, lost_total,
-                     (long long)age_us);
-        }
-        if (log_ms == 0 || now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS) {
-            last_log_us = now_us;
-            drains = delivered = lost_total = 0;
-            total_us = 0;
-            max_us = 0;
-        }
+        log_drain_stats(count, lost, now_us - start_us, now_us, age_us);
 #else
         (void)now_us;
 #endif
