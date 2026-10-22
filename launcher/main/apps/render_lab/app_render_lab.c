@@ -13,16 +13,29 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "render_lab.h"
+#include "render_lab_dynres.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
+#include "scene_baked.h"
 #include "services/tune.h"
 #include "ui/ui.h"
 
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
 static const render_lab_scene_t* const scenes[] = {
-    &scene_sponza_fitted_full, &scene_sponza_fitted,      &scene_sponza,   &scene_sponza_lite,
-    &scene_sponza_flat,        &scene_sponza_flat_fitted, &scene_capybara,
+    &scene_sponza[SCENE_BAKED_FITTED_FULL],
+    &scene_sponza[SCENE_BAKED_FITTED],
+    &scene_sponza[SCENE_BAKED_FULL],
+    &scene_sponza[SCENE_BAKED_LITE],
+    &scene_sponza[SCENE_BAKED_FLAT],
+    &scene_sponza[SCENE_BAKED_FLAT_FITTED],
+    &scene_capybara,
+    &scene_bistro[SCENE_BAKED_FITTED_FULL],
+    &scene_bistro[SCENE_BAKED_FITTED],
+    &scene_bistro[SCENE_BAKED_FULL],
+    &scene_bistro[SCENE_BAKED_LITE],
+    &scene_bistro[SCENE_BAKED_FLAT],
+    &scene_bistro[SCENE_BAKED_FLAT_FITTED],
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
@@ -118,7 +131,8 @@ void
 render_lab_enter(void) {
     current_scene_index = scene_index_for_key(render_lab_start_scene_key);
     enter_layout();
-    current_scene()->enter();
+    current_scene()->enter(current_scene());
+    render_lab_dynres_apply();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 
     fps_frame_count = 0;
@@ -136,6 +150,7 @@ render_lab_enter(void) {
 
 static void
 switch_to_scene(int index) {
+    render_lab_dynres_stop();
     current_scene()->exit();
     current_scene_index = index;
     render_lab_start_scene_key = current_scene()->key; /* keeps a later re-entry on this same scene */
@@ -143,7 +158,8 @@ switch_to_scene(int index) {
     gfx_mode_exit();
     enter_layout();
     ui_invalidate();
-    current_scene()->enter();
+    current_scene()->enter(current_scene());
+    render_lab_dynres_apply();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 }
 
@@ -217,13 +233,15 @@ static void
 draw_menu(const input_t* input) {
     ui_begin(input);
 
-    const char* families[SCENE_COUNT];
+    /* Static: the menu draws on the main task alone, whose stack the scene list
+     * would otherwise grow with every scene. */
+    static const char* families[SCENE_COUNT];
     const int family_count = family_names(families);
     int family = 0;
     while (strcmp(families[family], current_scene()->family) != 0) {
         family++;
     }
-    const char* variants[SCENE_COUNT];
+    static const char* variants[SCENE_COUNT];
     int variant = 0;
     const int variant_count = family_variants(families[family], variants, &variant);
     const render_lab_menu_screen_state_t state = {
@@ -305,6 +323,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
 
     update_fps_counter(dt_ms);
     current_scene()->frame(dt_ms);
+    render_lab_dynres_apply();
     if (render_lab_show_hud) {
         draw_fps(input);
     }
@@ -312,6 +331,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
 
 void
 render_lab_exit(void) {
+    render_lab_dynres_stop();
     current_scene()->exit();
     gfx_invalidate();
     gfx_mode_exit();

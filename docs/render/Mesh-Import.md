@@ -63,6 +63,11 @@ git lfs pull --exclude=""
 
 The empty exclude clears the clone's default exclusion for this pull.
 
+A model too large to commit or to trace is first reduced to an OBJ by
+[`source/reduce_source.py`](../../launcher/tools/r3d/source/reduce_source.py),
+which keeps its objects and textures; the import's `simplify` then starts
+from that OBJ.
+
 #### output
 
 `[output]` names the mesh entry. Baked meshes are stored in the bake cache. `position_scale` is the

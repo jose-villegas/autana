@@ -65,7 +65,6 @@ render_lab_test_frame_dt(uint32_t dt_ms, bool switching, const input_t* input) {
     }
     gfx_present_begin();
     app_render_lab.update(dt_ms, input);
-    render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     render_lab_apply_raster_settings();
     const int64_t render_start = timing_now_us();
     scene_shell_render(dt_ms);
