@@ -890,6 +890,9 @@ test_quarter_injection_matches_forward_mapping(void) {
 static void
 test_sound_arguments(void) {
     console_sound_args_t args;
+    TEST_ASSERT_TRUE(console_sound_parse("play engine/tap loop 25", &args));
+    TEST_ASSERT_EQUAL_STRING("tap", args.name);
+    TEST_ASSERT_EQUAL_STRING(ASSET_ENGINE_PACK, args.pack);
     TEST_ASSERT_TRUE(console_sound_parse("play tap loop 25", &args));
     TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_PLAY, args.action);
     TEST_ASSERT_EQUAL_STRING("tap", args.name);
@@ -898,6 +901,9 @@ test_sound_arguments(void) {
     TEST_ASSERT_TRUE(console_sound_parse("play tap", &args));
     TEST_ASSERT_EQUAL_INT(AUDIO_OUT_VOLUME_MAX_PCT, args.gain_pct);
     TEST_ASSERT_FALSE(args.loop);
+    TEST_ASSERT_TRUE(console_sound_parse("play music/theme loop 50", &args));
+    TEST_ASSERT_EQUAL_STRING("music", args.pack);
+    TEST_ASSERT_EQUAL_STRING("theme", args.name);
     TEST_ASSERT_TRUE(console_sound_parse("play tap 0", &args));
     TEST_ASSERT_EQUAL_INT(0, args.gain_pct);
     TEST_ASSERT_TRUE(console_sound_parse("stop", &args));
@@ -924,6 +930,9 @@ test_sound_arguments(void) {
                                           "onset steal 500 33 extra",
                                           "onset amp-on -1",
                                           "onset start 500 -1",
+                                          "play /tap",
+                                          "play engine/",
+                                          "play a/b/c",
                                           "play",
                                           "play tap loop loop",
                                           "play tap 101",
@@ -946,7 +955,7 @@ test_sound_arguments(void) {
 static void
 test_sound_parse_boundaries_and_whitespace(void) {
     console_sound_args_t args;
-    char line[CONSOLE_LINE_MAX];
+    char line[CONSOLE_SOUND_LINE_MAX];
     char name[ASSET_NAME_MAX + 1];
     memset(name, 'x', ASSET_NAME_MAX);
     name[ASSET_NAME_MAX - 1] = '\0';
@@ -958,6 +967,14 @@ test_sound_parse_boundaries_and_whitespace(void) {
     TEST_ASSERT_FALSE(console_sound_parse(line, &args));
     TEST_ASSERT_TRUE(console_sound_parse(" \tplay\ttap \vloop\r100\n", &args));
     TEST_ASSERT_FALSE(console_sound_parse("play tap loop 100 extra", &args));
+    name[ASSET_NAME_MAX - 1] = '\0';
+    (void)snprintf(line, sizeof line, "play %s/%s loop 100", name, name);
+    TEST_ASSERT_TRUE(console_sound_parse(line, &args));
+    TEST_ASSERT_EQUAL_STRING(name, args.pack);
+    TEST_ASSERT_EQUAL_STRING(name, args.name);
+    name[ASSET_NAME_MAX - 1] = 'x';
+    (void)snprintf(line, sizeof line, "play %s/tap", name);
+    TEST_ASSERT_FALSE(console_sound_parse(line, &args));
     TEST_ASSERT_TRUE(console_sound_parse("stop 4294967295", &args));
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, args.voice);
 }

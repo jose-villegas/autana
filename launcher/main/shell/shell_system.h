@@ -13,7 +13,8 @@
 /* Every system's place in a pass, all in one list, so a new system is
  * placed against the ones already here rather than guessed. Gaps leave room
  * to insert one between two others. */
-#define SHELL_ORDER_SCENE 100
+#define SHELL_ORDER_SCENE   100
+#define SHELL_ORDER_CONSOLE 110
 
 typedef struct shell_system {
     const char* name;

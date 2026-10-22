@@ -21,6 +21,7 @@
 
 #include "build/build_variant.h"
 #include "console/console_verbs.h"
+#include "console/verbs/console_sound_parse.h"
 #include "freertos/FreeRTOS.h"
 
 /* RUNSUITE exists where the suites do: a self-test image and the host runner. */
@@ -35,10 +36,11 @@ typedef enum {
     CONSOLE_FRAME_SCREENSHOT = 1u << 2,
     CONSOLE_FRAME_FREEZE = 1u << 3,
     CONSOLE_FRAME_RUNSUITE = 1u << 4,
+    CONSOLE_FRAME_SOUND = 1u << 5,
 } console_frame_kind_t;
 
 /* Taken into the mailbox's busy set until console_frame_done(). */
-#define CONSOLE_FRAME_HELD CONSOLE_FRAME_RUNSUITE
+#define CONSOLE_FRAME_HELD (CONSOLE_FRAME_RUNSUITE | CONSOLE_FRAME_SOUND)
 
 typedef enum {
     CONSOLE_NAVIGATION_APPS,
@@ -50,6 +52,7 @@ typedef enum {
 typedef struct {
     uint32_t kinds;
     console_navigation_t navigation;
+    char sound[CONSOLE_SOUND_LINE_MAX];
     char app[CONSOLE_LINE_MAX]; /* OPEN's name */
     bool frozen;                /* FREEZE and STEP; RESUME clears it */
     int steps;                  /* STEP's frame count */

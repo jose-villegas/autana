@@ -7,11 +7,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "asset/asset_pack.h"
+#include "asset/asset_store.h"
 #include "audio/audio_out.h"
 #include "console/console_verbs.h"
 
 #define CONSOLE_SOUND_WORD_COUNT_MAX 4
+#define CONSOLE_SOUND_LINE_MAX       (sizeof("sound play ") + 2 * (ASSET_NAME_MAX - 1) + sizeof("/ loop 100"))
 /* 500 Hz remains audible while the second difference rejects its steady tone. */
 #define CONSOLE_SOUND_ONSET_HZ       500u
 #define CONSOLE_SOUND_ONSET_GAIN     (AUDIO_OUT_VOLUME_MAX_PCT / 3u)
@@ -37,6 +38,7 @@ typedef enum {
 typedef struct {
     console_sound_action_t action;
     char name[ASSET_NAME_MAX];
+    char pack[ASSET_NAME_MAX];
     uint32_t voice;
     uint16_t hz;
     console_sound_event_t event;
@@ -60,8 +62,8 @@ console_sound_number(const char* text, uint32_t max, uint32_t* out) {
 
 static inline bool
 console_sound_parse(const char* args, console_sound_args_t* out) {
-    char words[CONSOLE_SOUND_WORD_COUNT_MAX][CONSOLE_LINE_MAX];
-    char format[CONSOLE_LINE_MAX];
+    char words[CONSOLE_SOUND_WORD_COUNT_MAX][CONSOLE_SOUND_LINE_MAX];
+    char format[CONSOLE_SOUND_LINE_MAX];
     const size_t width = sizeof words[0] - 1;
     (void)snprintf(format, sizeof format, "%%%zus %%%zus %%%zus %%%zus %%c", width, width, width, width);
     char trailing;
@@ -70,7 +72,7 @@ console_sound_parse(const char* args, console_sound_args_t* out) {
         return false;
     }
     for (int i = 0; i < count; i++) {
-        if (strlen(words[i]) >= ASSET_NAME_MAX) {
+        if (i != 1 && strlen(words[i]) >= ASSET_NAME_MAX) {
             return false;
         }
     }
@@ -105,7 +107,22 @@ console_sound_parse(const char* args, console_sound_args_t* out) {
             != strlen(words[1])) {
             return false;
         }
-        (void)strcpy(parsed.name, words[1]);
+        const char* name = words[1];
+        char* separator = strchr(words[1], '/');
+        if (separator) {
+            *separator = '\0';
+            name = separator + 1;
+            if (!*words[1] || strlen(words[1]) >= sizeof parsed.pack || strchr(name, '/')) {
+                return false;
+            }
+            (void)strcpy(parsed.pack, words[1]);
+        } else {
+            (void)strcpy(parsed.pack, ASSET_ENGINE_PACK);
+        }
+        if (!*name || strlen(name) >= sizeof parsed.name) {
+            return false;
+        }
+        (void)strcpy(parsed.name, name);
         int next = 2;
         if (count > next && strcmp(words[next], "loop") == 0) {
             parsed.loop = true;

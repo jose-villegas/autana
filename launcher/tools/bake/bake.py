@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Cached bakes: the meshes a pack needs, named by a digest of what makes them.
+"""Cached bakes: the content a pack needs, named by a digest of what makes them.
 
-    python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|fit]
+    python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|fit|sound]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
@@ -34,8 +34,8 @@ there, the folder a CI run uploads; `--only` limits it to the named outputs and
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
 without one;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
-way a new bake row is written; it repeats, so the meshes of a Bakes run and the
-fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
+way a new bake row is written. Sound bakes use the CPU Bakes run. It repeats, so the meshes of a Bakes run
+and the fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
 locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
 of the stale row for the same output when there is one, else the tree's file,
 and each new row is marked `seeded`: its bytes
@@ -119,11 +119,13 @@ STAGES = {
     "reference": ("r3d/mesh_import.py", "r3d/reference_render.py", "r3d/fitted_variant.py"),
     "fit": ("r3d/fitted_variant.py", "r3d/appearance_simplify.py"),
     "blend": ("gltf/blend_skin_to_glb.py",),
+    "sound": ("audio/sound_import.py",),
 }
 BLEND_EXPORT = "gltf/blend_skin_to_glb.py"
 GLB_SUFFIX = ".glb"
 # The order kinds are made in: a mesh reads the export of its .blend.
-KINDS = ("blend", "mesh", "fit")
+KINDS = ("blend", "mesh", "fit", "sound")
+SOUND_SUFFIX = ".sond"
 ENTRIES = {(TOOLS / entry).resolve() for entries in STAGES.values() for entry in entries}
 REQUIREMENTS_NAME = "requirements.txt"
 REQUIREMENTS_GLOB = "requirements*.txt"
@@ -150,7 +152,7 @@ class Bake:
     output: str            # the file it makes: "<id>.mesh"
     source: pathlib.Path   # the file that asks for it
     holder: str            # the scene object, or the import variant, it is made for
-    kind: str              # "blend" | "mesh" | "fit"
+    kind: str              # one of KINDS
     key: str               # SHA-256 hex of everything that determines it
     suffix: str
     tree: pathlib.Path     # the path its import or scene names: how build_pack matches it to an entry
@@ -450,8 +452,10 @@ def requirement_pins(stage):
 def tracked_requirements():
     """The requirements*.txt files git tracks under TOOLS: a scratch copy of the tree in an ignored folder
     holds others, which no key counts."""
+    # Audio pins are local to their stage; shared numpy pins must not re-key the rendering stages.
     return [REPO / line for line in git_lines("ls-files", "--", relative(TOOLS))
-            if fnmatch.fnmatch(pathlib.PurePosixPath(line).name, REQUIREMENTS_GLOB)]
+            if fnmatch.fnmatch(pathlib.PurePosixPath(line).name, REQUIREMENTS_GLOB)
+            and pathlib.PurePosixPath(line).parent != pathlib.PurePosixPath("launcher/tools/audio")]
 
 
 def pinned_requirements(paths):
@@ -472,11 +476,11 @@ def pinned_requirements(paths):
 def tool_digest(stage):
     """The code of a stage by content alone: its files' tokens and the C they compile as a sorted list of
     digests, no paths, so a move or rename keys the same; plus the submodules it builds and the
-    requirements it counts."""
+    requirements it counts. Sound stage files count byte for byte."""
     paths = stage_files(stage)
     native = native_inputs(paths)
     pinned = {path: commit for path, commit in native.items() if (REPO / path).resolve() in submodules()}
-    contents = [digest(code_tokens(path)) for path in paths]
+    contents = [file_sha256(path) if stage == "sound" else digest(code_tokens(path)) for path in paths]
     contents += [value for path, value in native.items() if path not in pinned]
     return digest([sorted(contents), pinned, [list(pin) for pin in requirement_pins(stage)]])
 
@@ -650,6 +654,8 @@ def locked_starts(lock, *made):
 def bakes_in(packs, jobs, starts=None, poses=None):
     """The bakes of build_pack.pack_jobs()'s packs. A fit's start is a mesh bake of its own, which no pack
     holds; the fit's key reads the start's bytes from `starts` ({key: sha256}, the lock's when None)."""
+    from audio import sound_asset
+
     if starts is None or poses is None:
         tables = read_lock_tables()
         held, rows = tables["bake"], tables["poses"]
@@ -659,6 +665,16 @@ def bakes_in(packs, jobs, starts=None, poses=None):
     found, exports, fit_starts = [], {}, {}
     for name, entries in sorted(packs.items()):
         for entry, source in sorted(entries.items()):
+            if source.name.endswith(sound_asset.SUFFIX):
+                try:
+                    audio, fmt, loop = sound_asset.load_source(source)
+                except sound_asset.SoundError as error:
+                    raise SettingsError(str(error)) from error
+                key = digest(["sound", {"source": audio.name, "format": fmt, "loop": loop},
+                              content_checksum(audio).decode(), tools["sound"]])
+                found.append(Bake(output=f"{entry}{SOUND_SUFFIX}", source=source, holder=entry,
+                                  kind="sound", key=key, suffix=SOUND_SUFFIX, tree=source))
+                continue
             if source.resolve() not in jobs:
                 continue
             job, scene, asker = jobs[source.resolve()]

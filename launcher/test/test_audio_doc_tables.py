@@ -365,12 +365,13 @@ class SoundMixToolsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "checkout"):
             image.prepare(ROOT, "chime", "pcm16")
 
-    def capture_fake_autana_sequence(self, leftovers=0):
+    def capture_fake_autana_sequence(self, leftovers=0, fill=None):
         capture = load_tool("sound_mix_capture")
         with tempfile.TemporaryDirectory() as directory:
             tree = Path(directory)
             sounds = tree / "launcher/main/engine/sounds"
             sounds.mkdir(parents=True)
+            (sounds.parent / "engine.pack.toml").write_text("")
             for sound, fmt in [("tap", "adpcm"), ("tap_pcm16", "pcm16")]:
                 (sounds / f"{sound}.sound.toml").write_text(f'format = "{fmt}"\n')
             for owner in ["shell/shell.c", "audio/audio_out_device.h", "sound/sound_mixer.h",
@@ -400,7 +401,8 @@ class SoundMixToolsTest(unittest.TestCase):
                                f'#!/bin/sh\nexec "{sys.executable}" "{stub}" "$@"\n')
             wrapper.chmod(0o755)
             args = argparse.Namespace(autana=str(wrapper), tree=tree, out=tree / "capture.txt",
-                                      board="TEST", sounds="tap,tap_pcm16", voices="0,1,2", seconds=1)
+                                      board="TEST", sounds="engine/tap,engine/tap_pcm16" if fill else "tap,tap_pcm16",
+                                      fill_sound=fill, voices="0,1,2", seconds=1)
             block = (capture.read_define(tree / "launcher/main/audio/audio_codec.h", "AUDIO_CODEC_BLOCK_SAMPLES")
                      / capture.read_define(tree / "launcher/main/audio/audio_out.h", "AUDIO_OUT_SAMPLE_RATE_HZ"))
             waits = []
@@ -416,9 +418,10 @@ class SoundMixToolsTest(unittest.TestCase):
             expected = [["sound", "stats"], ["buildid", "--json"]]
             expected += ([["sound", "stop", "all"], ["sound", "stats"]] * (leftovers + 1)
                          + [["sound", "stats"], ["monitor", "1", "--stream"], ["sound", "stats"]])
-            for sound in ["tap", "tap_pcm16"]:
+            for sound in args.sounds.split(","):
                 for count in [1, 2]:
-                    expected += [["sound", "stop", "all"], ["sound", "stats"]] + [["sound", "play", sound, "loop"]] * count
+                    expected += [["sound", "stop", "all"], ["sound", "stats"]]
+                    expected += [["sound", "play", fill if fill and index else sound, "loop"] for index in range(count)]
                     expected += [["sound", "stats"], ["monitor", "1", "--stream"], ["sound", "stats"]]
             expected += [["sound", "stats"], ["sound", "stop", "all"], ["buildid", "--json"]]
             self.assertEqual(commands, expected)
@@ -450,6 +453,9 @@ class SoundMixToolsTest(unittest.TestCase):
 
     def test_capture_fake_autana_sequence(self):
         self.capture_fake_autana_sequence()
+
+    def test_qualified_sounds_and_fill_voice_sequence(self):
+        self.capture_fake_autana_sequence(fill="engine/tap")
 
     def test_leftover_retries_then_succeeds(self):
         self.capture_fake_autana_sequence(leftovers=1)

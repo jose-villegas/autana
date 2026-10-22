@@ -33,7 +33,7 @@ searching, so no list is kept:
 | `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#scne-v2) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
-| `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), baked from the WAV it names |
+| `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), fetched as a locked `sound` bake of its WAV, FLAC, OGG or MP3 source |
 | `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names |
 | `NAME.icons.toml` | `NAME` | an image entry per [icon](../tools/Icon-Baker.md), named by the icon, baked from the set's atlas and SVGs |
 
@@ -397,7 +397,7 @@ entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
 `asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c`, `draw_image.c` and
 `sound.c` are the respective readers.
 
-No mesh is committed: each is a bake product, fetched by its lock row; a clip
+Meshes and sounds are bake products, fetched by their lock rows; a clip
 or image entry is baked from its source when the packs are built. Packs are never
 committed: the firmware build, the host tests and
 the render scripts each write the tree they are in, so there is no second copy

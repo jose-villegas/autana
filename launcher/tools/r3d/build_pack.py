@@ -22,15 +22,15 @@ every root under that folder puts its entries there, and folder packs do
 not nest. A mesh is the entry <id>.mesh that mesh_import.py wrote, and its
 pack id is that id; a scene (r3d/scene_asset.py), a clip
 (anim/tracks_asset.py), a picture (gfx/image_asset.py), a curve
-(gfx/curve_asset.py), a sound (audio/sound_asset.py) and an icon
-(gfx/icons_asset.py) are baked here from their files, each with its stem for
+(gfx/curve_asset.py) and an icon (gfx/icons_asset.py) are baked here from
+their files, each with its stem for
 id but an icon. Every scene, clip and mesh is mirrored into the engine frame
 on the way in (asset/engine_frame.py); a picture, an icon, a curve or a sound
 has no 3D frame. Ids are unique within a pack, whatever their type. A skinned mesh also brings
 its <mesh id>.skin, its rig's skeleton and each clip in its source.clips
 (docs/render/Skeleton-and-Skin.md). Each pack is written to DIR/<name>.apak;
 --image also writes the partition image, the pack directory and every pack.
-Every mesh comes from the bake cache by launcher/bakes.lock (bake/bake.py):
+Every mesh and sound come from the bake cache by launcher/bakes.lock (bake/bake.py):
 the user cache, or --bake-cache DIR, or AUTANA_BAKE_CACHE when a process sets
 it. What the cache lacks is downloaded, so a cold cache needs the network once;
 --offline never downloads, and a bake that is not available fails, naming
@@ -38,7 +38,7 @@ each; --skip-unlocked FILE instead leaves out a pack whose bakes only lack
 their lock rows, writing its name to FILE. The lock is this repository's: a
 mesh of a scene outside it is the file beside it.
 --pack-of prints the pack that holds entry ID. Run from the repository
-root; standard library only, and no mesh is baked. Packs are build
+root; standard library only, and no mesh or sound is baked. Packs are build
 products, never committed.
 """
 
@@ -69,7 +69,7 @@ IMAGE, ICONS = image_asset.SUFFIX, icons_asset.SUFFIX
 SOUND = sound_asset.SUFFIX
 CURVE = curve_asset.SUFFIX
 ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE, SOUND)
-BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE, SOUND)  # entries baked from their file here; the rest are meshes
+BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE)  # entries baked from their file here; meshes and sounds come from the cache
 FOLDER_PACK = ".pack.toml"
 PACK_SUFFIX = ".apak"
 
@@ -204,7 +204,7 @@ def pack_jobs(paths):
 
 def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
                max_influences=skin_asset.DEFAULT_INFLUENCES):
-    """{pack name: its bytes}. Every mesh comes from the bake cache by its locked key (bake/bake.py),
+    """{pack name: its bytes}. Every mesh and sound come from the bake cache by its locked key (bake/bake.py),
     `cache` or the user cache, downloading what it lacks unless `offline`; each --replace NAME=FILE takes
     mesh NAME from FILE instead and is never fetched. The lock is this repository's: a mesh of a scene
     or import outside it (a test's or a scratch scene) is the file beside it. With `unlocked` a list, a
@@ -215,14 +215,14 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
     for item in replace:
         mesh, _, file = item.partition("=")
         holder = next((entries for entries in packs.values() if mesh in entries), None)
-        if holder is None or holder[mesh].name.endswith(BAKED_HERE):
+        if holder is None or holder[mesh].name.endswith((*BAKED_HERE, SOUND)):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
     owner = {source.resolve(): name for name, entries in packs.items() for source in entries.values()}
     wanted = {}
     for found in bake.bakes_in(packs, locked):
-        if found.packed and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced:
+        if found.packed and found.output.removesuffix(found.suffix) not in replaced:
             wanted.setdefault(owner[found.tree.resolve()], []).append(found)
     lock, cache = bake.read_lock(), cache or bake.default_cache()
     fetched, errors = {}, []
@@ -284,12 +284,14 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
 
 def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, offline=False):
     """The pack entry `key`: a scene, clip, picture, icon, sound or curve
-    baked from its file, else a mesh's bytes. A scene, clip or mesh is in the
+    baked from its recipe, or cached mesh or sound bytes. A scene, clip or mesh is in the
     engine frame unless `engine_frame` is false (the skin step matches the
     source-frame mesh)."""
     try:
+        if source.suffix == bake.SOUND_SUFFIX:
+            return key, sound_asset.TYPE, source.read_bytes()
         if source.name.endswith(SOUND):
-            return key, sound_asset.TYPE, sound_asset.bake(source)
+            raise SettingsError("sound needs a cached bake: " + str(source))
         if source.name.endswith(CURVE):
             return key, curve_asset.TYPE, curve_asset.bake(source)
         if source.name.endswith(IMAGE):
