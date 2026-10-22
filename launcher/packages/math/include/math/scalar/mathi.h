@@ -180,7 +180,6 @@ mathi_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
 MATHI_DEFINE_ISQRT(mathi_isqrt32_digits, uint32_t, 32, __builtin_clz, inline)
 /* Keep the wide fallback's register pressure out of callers of the inline narrow path. */
 MATHI_DEFINE_ISQRT(mathi_isqrt64_digits, uint64_t, 64, __builtin_clzll, __attribute__((noinline, unused)))
-#undef MATHI_DEFINE_ISQRT
 
 /* Floor of the square root over the whole uint64_t range. */
 static inline uint32_t
