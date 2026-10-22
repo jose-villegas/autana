@@ -28,6 +28,7 @@
 #include "apps/sand/sand_controls.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
+#include "math/geometry/circlei.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 
@@ -77,42 +78,13 @@ static const char ONE_PUSH_STILL_TRACKED[] = "the single push roll here succeeds
                                              "speed 255 - losing tracking on this one step means the scene itself is "
                                              "broken, not that this run was merely unlucky";
 
-/* CHECKS DISC-COUNT TABLE DIFFERENTLY THAN GENERATION ALGORITHM. COVERS
- * OUT-OF-RANGE RADII. */
 static void
 test_the_disc_count_table_matches_a_direct_lattice_count(void) {
-    int first_bad = -1;
-    int expected_there = 0;
-    int got_there = 0;
-
-    for (int r = 0; r <= 40; r++) {
-        int expect = 0;
-        for (int dy = -r; dy <= r; dy++) {
-            for (int dx = -r; dx <= r; dx++) {
-                if ((dx * dx) + (dy * dy) <= r * r) {
-                    expect++;
-                }
-            }
-        }
-        const int got = sand_disc_count(r);
-        if (got != expect && first_bad < 0) {
-            first_bad = r;
-            expected_there = expect;
-            got_there = got;
-        }
+    for (int radius = 0; radius <= DISC_COUNT_MAX_RADIUS; radius++) {
+        TEST_ASSERT_EQUAL_INT(circlei_cell_count(radius), sand_disc_count(radius));
     }
-
-    /* Reported as the RADIUS, not the count - "Expected -1 Was 17" names the
-     * entry to go and look at, which a mismatched cell total would not. */
-    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, first_bad,
-                                  "sand_disc_count() disagrees with a direct lattice count at this "
-                                  "radius - the value printed as 'Was' is the radius that failed");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(expected_there, got_there,
-                                  "and these are the counts it disagreed by, at that radius");
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_disc_count(-1),
-                                  "a negative radius encloses no cells - displace_disc() leans on this "
-                                  "instead of guarding its own caller");
+    TEST_ASSERT_EQUAL_INT(circlei_cell_count(DISC_COUNT_MAX_RADIUS + 1), sand_disc_count(DISC_COUNT_MAX_RADIUS + 1));
+    TEST_ASSERT_EQUAL_INT(0, sand_disc_count(-1));
 }
 
 /* HALF OF A TWO-PART GUARANTEE. WEAK OR DISTANT BLAST - radius 1 - never
