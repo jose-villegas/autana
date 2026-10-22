@@ -1,6 +1,7 @@
 """Synthetic source objects, rigid placements and offline scene reporting."""
 
 import csv
+import hashlib
 import json
 import pathlib
 import sys
@@ -16,9 +17,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from gltf.gltf_write import build_glb
 from r3d.gltf_mesh import load_gltf_mesh
 from r3d.obj import load_obj
+from r3d.import_settings import SettingsError, load_import_settings
 from r3d.objects.instances import MATCH_TOLERANCE, match_instances, source_objects
 from r3d.objects.objects_report import main
-from r3d.objects.source import obj_ownership, gltf_ownership
+from r3d.objects.source import obj_ownership, gltf_ownership, load_object_source
 from test_r3d_import import camera, renderer, write_import, write_scene
 
 POINTS = np.array([[0., 0., 0.], [3., 0., 0.], [0., 2., 0.], [0., 0., 1.]])
@@ -111,6 +113,15 @@ class ObjectsTests(unittest.TestCase):
         self.assertEqual(src.object_names, ['first', 'node_1', 'node_2'])
         shapes = match_instances(objects)
         self.assertEqual((len(shapes), len(shapes[0].instances)), (1, 3))
+
+    def test_unhydrated_source_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_import(directory)
+            settings = load_import_settings(path)
+            settings.source['path'].write_text('version https://git-lfs.github.com/spec/v1\n'
+                                               + 'oid sha256:' + hashlib.sha256(b'').hexdigest() + '\nsize 1\n')
+            with self.assertRaisesRegex(SettingsError, 'Git LFS'):
+                load_object_source(settings)
 
     def test_report(self):
         with tempfile.TemporaryDirectory() as directory:
