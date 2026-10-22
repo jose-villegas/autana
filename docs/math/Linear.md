@@ -98,6 +98,19 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 A device sweep measures nlerp component error over quaternion pairs and
 interpolation weights against the `1 / sqrtf` path.
 
+`quatx_normalize` accepts every nonzero int32 quaternion; zero gives zero.
+Its component error is at most $`0.5 + 2^{-12}`$ LSB against exact normalization.
+
+`quatx_unit` uses the `quatx_unit_t` alias of `quatx_t`.
+Its `quatx_unit_nlerp` and `quatx_unit_from_basis` implement the public
+`quatx_nlerp` and `quatx_from_basis` entry points.
+
+`quatx_unit_normalize` is the Q16.16 template path for near-unit inputs.
+`quatx_nlerp` uses it for the blend of unit inputs, with `t` in [0, 1].
+
+The unit-input sweep in `suite_math_numbers.c` checks an 8 LSB component
+bound against a double reference, including blend and squared-length rounding.
+
 ## affine2 (`f x`)
 
 `affine2f_t` and `affine2x_t` hold `x_axis`, `y_axis` and `origin` as vec2 values,
