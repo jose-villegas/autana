@@ -48,14 +48,14 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     const size_t dma_open = dma_before - memory_free_bytes(MEMORY_DMA);
     float silence_db = 0;
     float tone_db = 0;
-    float measured_hz = args->hz;
+    audio_loopback_result_t loopback = {0};
     sound_voice_t voice = SOUND_VOICE_NULL;
     bool held = false;
     bool ok = opened && audio_codec_dac_feedback(false)
               && (!args->internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
               && audio_loopback_measure(args->hz, args->ms, &silence_db, NULL)
               && console_tone_start(&voice, args->hz, args->volume_pct)
-              && audio_loopback_measure(args->hz, args->ms, &tone_db, &measured_hz);
+              && audio_loopback_measure(args->hz, args->ms, &tone_db, &loopback);
     ok = console_tone_stop(&voice) && ok;
     if (held) {
         timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
@@ -67,8 +67,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     if (!ok) {
         return opened ? "loopback failed" : "codec open failed";
     }
-    if (!console_tone_reply(result, CONSOLE_TONE_REPLY_BYTES, args, heard, tone_db, silence_db, measured_hz,
-                            dma_open)) {
+    if (!console_tone_reply(result, CONSOLE_TONE_REPLY_BYTES, args, heard, tone_db, silence_db, &loopback, dma_open)) {
         return "frequency formatting failed";
     }
     return NULL;

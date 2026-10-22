@@ -24,6 +24,7 @@ import frame_cost
 from frame_cost import MS_PER_SECOND
 from capture import capture_board, require_same_board
 from docs.plot_style import INK, MUTED, SLOTS, save, subplots
+from render.doc_tables import collapsed
 
 VIEW_TABLE = ROOT / "launcher/main/render/context/render_context.c"
 FRAME_RATES = (30, 60)  # the budgets marked on the chart, frames per second
@@ -103,13 +104,13 @@ def table(order, base, added, names, windows, chart_name):
     for name in names:
         if name in added:
             lines.extend([f"![Frame stages with the {name} view](../images/render/{chart_path(chart_name, name).name})", ""])
-    lines.extend(["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)])
+    rows = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
     for stage in order:
-        lines.append(f"| {stage} | " + " | ".join(
+        rows.append(f"| {stage} | " + " | ".join(
             [f"{base[stage]:.2f}" if stage in base else "not run",
              share_text(shares[stage]) if stage in base else "not run",
              *(f"{delta.get(stage, 0.0):+.2f}" for delta in added.values())]) + " |")
-    lines.append("| total | " + " | ".join(
+    rows.append("| total | " + " | ".join(
         [f"{shipped:.2f}", share_text(sum(shares.values())), *(f"{sum(delta.values()):+.2f}" for delta in added.values())]) + " |")
     missing = [name for name in names if name not in added]
     counts = f"{min(windows)}" if min(windows) == max(windows) else f"{min(windows)} to {max(windows)}"
@@ -117,7 +118,7 @@ def table(order, base, added, names, windows, chart_name):
            "between its capture and the scene as shipped."
     if missing:
         note += " Not captured: " + ", ".join(missing) + "."
-    return "\n".join(lines) + "\n" + note
+    return "\n".join(lines) + "\n" + collapsed("Frame stages in milliseconds", "\n".join(rows) + "\n" + note + "\n").rstrip("\n")
 
 
 def chart(order, base, added, path):

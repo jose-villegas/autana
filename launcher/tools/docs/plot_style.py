@@ -38,6 +38,34 @@ def save(fig, path, dpi=DPI):
     plt.close(fig)
 
 
+BAR_HEIGHT = 0.6  # of each bar's row
+END_LABEL_ROOM = 0.35  # share of the longest bar left free past its end for its label
+END_LABEL_GAP = 4  # points between a bar's end and its label
+
+
+def stacked_barh(axis, rows, colours, end_labels=None, extent=None):
+    """Horizontal stacked bars, the first row on top. `rows` is [(label, [(segment, value)])]; each segment takes
+    colours[segment] and names itself once for a legend. `end_labels` sit past each bar's end. The value axis starts
+    at 0 and spans `extent`, by default the longest bar plus room for its label; the top and right spines are hidden."""
+    named, ends = set(), []
+    for index, (_, segments) in enumerate(rows):
+        left = 0.0
+        for segment, value in segments:
+            axis.barh(index, value, left=left, color=colours[segment], height=BAR_HEIGHT, edgecolor="white",
+                      label=None if segment in named else segment)
+            named.add(segment)
+            left += value
+        ends.append(left)
+    for index, (end, text) in enumerate(zip(ends, end_labels or ())):
+        axis.annotate(text, (end, index), xytext=(END_LABEL_GAP, 0), textcoords="offset points", va="center",
+                      fontsize=LABEL_SIZE, color=INK)
+    axis.set_yticks(range(len(rows)), [label for label, _ in rows])
+    axis.set_xlim(0, max(ends) * (1 + END_LABEL_ROOM) if extent is None else extent)
+    axis.invert_yaxis()
+    for side in ("top", "right"):
+        axis.spines[side].set_visible(False)
+
+
 def style_axes(axis, title, *, square=False):
     """A panel's title, ticks and spines in the palette; square keeps one unit the same length on both axes."""
     axis.set_title(title, fontsize=TITLE_SIZE, color=INK)
@@ -82,6 +110,55 @@ def save_gif(fig, draw_frame, frames, path, fps, colors=GIF_COLORS):
                           palette=palette.getpalette()[:colors * 3])
     finally:
         plt.close(fig)
+
+
+DARK_BACKGROUND = "#0d1117"
+DARK_INK = "#e6edf3"
+DARK_MUTED = "#9da7b3"
+DARK_FAINT = "#30363d"
+
+
+def picture(stem, description, directory="../images"):
+    from html import escape
+    source = escape(f"{directory}/{stem}", quote=True)
+    description = escape(description, quote=True)
+    return (f'<picture>\n  <source media="(prefers-color-scheme: dark)" srcset="{source}-dark.png">\n'
+            f'  <source media="(prefers-color-scheme: light)" srcset="{source}.png">\n'
+            f'  <img alt="{description}" src="{source}.png">\n</picture>\n\n')
+
+
+def save_themes(fig, path, dpi=DPI):
+    """Save both page themes; the unsuffixed image is the light fallback."""
+    from matplotlib.text import Text
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=dpi, metadata={"Software": None})
+    fig.set_facecolor(DARK_BACKGROUND)
+    for axis in fig.axes:
+        axis.set_facecolor(DARK_BACKGROUND)
+        axis.tick_params(colors=DARK_MUTED)
+        for spine in axis.spines.values():
+            spine.set_color(DARK_FAINT)
+        for line in (*axis.get_xgridlines(), *axis.get_ygridlines()):
+            line.set_color(DARK_FAINT)
+        legend = axis.get_legend()
+        if legend:
+            legend.get_frame().set(facecolor=DARK_BACKGROUND, edgecolor=DARK_FAINT)
+    for text in fig.findobj(Text):
+        text.set_color(DARK_INK)
+    save(fig, path.with_stem(path.stem + "-dark"), dpi)
+
+
+FIGURE_SIZE = (8, 4.5)
+LEGEND_ANCHOR = (0.5, -0.18)
+LEGEND_COLUMNS = 2
+
+
+def save_themed_plot(fig, axis, path, title, *, legend_columns=LEGEND_COLUMNS):
+    style_axes(axis, title)
+    axis.grid(color=FAINT)
+    axis.legend(fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=LEGEND_ANCHOR, ncol=legend_columns)
+    save_themes(fig, path)
 
 
 def wire_sphere(axis, center, radius, color=FAINT):

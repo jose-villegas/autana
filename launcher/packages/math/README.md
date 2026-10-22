@@ -43,12 +43,16 @@ Every header and what it is for; the functions each family offers are in
 `python launcher/tools/gen/shared_helpers.py` regenerates this table from each
 header's opening comment; `--check` verifies it.
 
-<!-- generated: package-headers check: python launcher/tools/gen/shared_helpers.py --check -->
+<!-- generated: package-math-headers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Header | Purpose |
 |---|---|
+| [include/math/geometry/ball_template.h](include/math/geometry/ball_template.h) | ball_template: closed balls in any dimension for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/box3_template.h](include/math/geometry/box3_template.h) | box3_template: closed axis-aligned boxes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/box3f.h](include/math/geometry/box3f.h) | box3f: a closed axis-aligned box of a float. |
 | [include/math/geometry/box3s.h](include/math/geometry/box3s.h) | box3s: a closed axis-aligned box of int16 position ticks. |
+| [include/math/geometry/circle_template.h](include/math/geometry/circle_template.h) | circle_template: closed discs for one number type; see docs/math/Conventions.md#templates for macro arguments. |
+| [include/math/geometry/circlef.h](include/math/geometry/circlef.h) | circlef: a closed disc of a float. |
+| [include/math/geometry/circlei.h](include/math/geometry/circlei.h) | circlei: a closed disc of an int. |
 | [include/math/geometry/plane_template.h](include/math/geometry/plane_template.h) | plane_template: oriented planes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/planef.h](include/math/geometry/planef.h) | planef: an oriented plane of a float. |
 | [include/math/geometry/planex.h](include/math/geometry/planex.h) | planex: an oriented plane of a Q16.16. |
@@ -92,6 +96,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/motion/spring_line.h](include/math/motion/spring_line.h) | spring_line, a row of points on springs: each is pulled toward rest and toward its neighbours, so a push travels along the row as a wave and dies away. |
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
 | [include/math/scalar/math_const.h](include/math/scalar/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
+| [include/math/scalar/math_db.h](include/math/scalar/math_db.h) | Floored decibel conversions for nonnegative ratios. |
 | [include/math/scalar/mathf.h](include/math/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (docs/math/Scalar.md). |
 | [include/math/scalar/mathf_round.h](include/math/scalar/mathf_round.h) | mathf_round: scalar rounding to nearest, ties away from zero; finite inputs saturate to the destination type. |
 | [include/math/scalar/mathi.h](include/math/scalar/mathi.h) | mathi: plain integer scalars. |
@@ -102,4 +107,4 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/units.h](include/math/scalar/units.h) | units: integer time conversion scales. |
 | [include/math/signal/goertzel.h](include/math/signal/goertzel.h) | Streaming single-bin detection (Goertzel, 1958). |
 | [include/math/signal/pitch.h](include/math/signal/pitch.h) | pitch: equal-temperament offsets relative to a caller's reference frequency. |
-<!-- /generated: package-headers -->
+<!-- /generated: package-math-headers -->

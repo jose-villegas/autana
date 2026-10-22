@@ -6,7 +6,7 @@ buffer gfx hands it; `draw/` paints 2D into the same target.
 
 The panel is 368 x 448 RGB565, so one frame is 322 KiB, and sending a whole
 frame is the largest single cost of a frame
-([Panel clock and heal](../Gfx-and-Presentation.md#panel-clock-and-heal)).
+([Panel clock](../gfx/Present.md#panel-clock)).
 Two terms recur:
 
 | Term | Meaning |
@@ -15,7 +15,7 @@ Two terms recur:
 | clear on send | in the double layout, core 1 fills each frame with one colour once it is sent, so the next `draw_clear()` of that colour costs core 0 nothing |
 
 This page picks options. How each one works is on the reference page it
-links to: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md) for gfx,
+links to: [gfx/README.md](../gfx/README.md) for gfx,
 [Render-Pipeline.md](Render-Pipeline.md) and the pages it routes to for r3d.
 
 ## Choosing at a glance
@@ -43,11 +43,11 @@ flowchart LR
 
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
-| [Full framebuffer](#framebuffer-layouts) | nothing: sends only what changed | one frame of PSRAM | on | nothing | [Modes](../Gfx-and-Presentation.md#modes) |
-| [Double framebuffer](#framebuffer-layouts) | a second frame of PSRAM for drawing during the send | a second frame of PSRAM | off | `gfx_mode_enter()` with `GFX_LAYOUT_DOUBLE_FB` | [Modes](../Gfx-and-Presentation.md#modes) |
-| [Clear on send](#framebuffer-layouts) | core 1's bus time for core 0's clear | none | off | `gfx_set_clear_on_send()` in `GFX_LAYOUT_DOUBLE_FB` | [Present](../Gfx-and-Presentation.md#present-who-runs-it) |
-| [Band ring](#framebuffer-layouts) | kept content for a freed framebuffer | 0 extra internal on the device; frees the PSRAM frame | off | `GFX_LAYOUT_BANDS` and a `draw_band` callback | [The band ring](../Gfx-and-Presentation.md#the-band-ring) |
-| [Indexed](#framebuffer-layouts) | colours for one byte a cell | grid bytes internal; frees the PSRAM frame | off | `GFX_LAYOUT_INDEXED` | [Indexed mode](../Gfx-and-Presentation.md#indexed-mode) |
+| [Full framebuffer](#framebuffer-layouts) | nothing: sends only what changed | one frame of PSRAM | on | nothing | [Modes](../gfx/Targets-and-Modes.md#modes) |
+| [Double framebuffer](#framebuffer-layouts) | a second frame of PSRAM for drawing during the send | a second frame of PSRAM | off | `gfx_mode_enter()` with `GFX_LAYOUT_DOUBLE_FB` | [Modes](../gfx/Targets-and-Modes.md#modes) |
+| [Clear on send](#framebuffer-layouts) | core 1's bus time for core 0's clear | none | off | `gfx_set_clear_on_send()` in `GFX_LAYOUT_DOUBLE_FB` | [Present](../gfx/Present.md#present-who-runs-it) |
+| [Band ring](#framebuffer-layouts) | kept content for a freed framebuffer | 0 extra internal on the device; frees the PSRAM frame | off | `GFX_LAYOUT_BANDS` and a `draw_band` callback | [The band ring](../gfx/Band-Ring.md#the-band-ring) |
+| [Indexed](#framebuffer-layouts) | colours for one byte a cell | grid bytes internal; frees the PSRAM frame | off | `GFX_LAYOUT_INDEXED` | [Indexed mode](../gfx/Targets-and-Modes.md#indexed-mode) |
 
 ### Present policy
 
@@ -57,8 +57,8 @@ drawing it, is the slow part.
 
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
-| [Interlace](#present-policy) | half the strips per present for a lagging half in motion | none | off | `gfx_set_interlace()` | [Repaint controls](../Gfx-and-Presentation.md#repaint-controls) |
-| [Panel clock](#present-policy) | half the bus time for stray pixels that heal repairs | none | 80 MHz, or the saved system setting | `gfx_set_panel_clock_hz()` | [Panel clock and heal](../Gfx-and-Presentation.md#panel-clock-and-heal) |
+| [Interlace](#present-policy) | half the strips per present for a lagging half in motion | none | off | `gfx_set_interlace()` | [Repaint controls](../gfx/Dirty-Tracking.md#repaint-controls) |
+| [Panel clock](#present-policy) | half the bus time; only full-width rows are sent at it | none | 80 MHz, or the saved system setting | `gfx_set_panel_clock_hz()` | [Panel clock](../gfx/Present.md#panel-clock) |
 
 ### r3d frame
 
@@ -171,7 +171,7 @@ framebuffer.
 | an r3d scene | full | the draw already runs in `update()`, overlapped with the send; double drops the half picture, so compose writes four times the pixels |
 | a partial redraw | full | double sends every strip every frame and turns dirty tracking off |
 
-The [layout costs](../Gfx-and-Presentation.md#layout-costs) table measures
+The [layout costs](../gfx/Targets-and-Modes.md#layout-costs) table measures
 r3d scenes and the boot animation in each layout on one board.
 Confirm the pick on the board in the app that ships it, comparing frame,
 draw, compose and send times in each layout
@@ -188,12 +188,11 @@ sent.
 | mark only what changed | the `draw_*` calls mark their box; `gfx_mark_dirty()` after raw writes | the send scales with the change | `draw_pixel()` marks whole rows; prefer a rect or a blit for areas |
 | skip static overlays | `gfx_region_dirty()` before drawing one | no draw and no send while the region is clean | none |
 | interlace | `gfx_set_interlace()` | half the strips per present | alternate strips lag a present in motion; RGB565 full framebuffer only |
-| panel clock | `gfx_set_panel_clock_hz()`: `GFX_PANEL_CLOCK_FAST_HZ` (80 MHz, the build default) or `GFX_PANEL_CLOCK_SLOW_HZ` | 80 MHz halves the bus time of a full frame | 80 MHz is past the panel's rating: stray pixels until heal resends them; the shell restores its own choice on every app switch |
-| heal | `gfx_heal_mark()`, `gfx_heal_set_budget()`, `gfx_heal_set_rolling()` | repairs fast-clock faults | heal bytes on every present |
+| panel clock | `gfx_set_panel_clock_hz()`: `GFX_PANEL_CLOCK_FAST_HZ` (80 MHz, the build default) or `GFX_PANEL_CLOCK_SLOW_HZ` | 80 MHz halves the bus time of a full frame | 80 MHz is past the panel's rating: every send is full-width rows, never a narrower window; the shell restores its own choice on every app switch |
 
 `gfx_set_present_async(false)` sends on the caller's core; it exists for A/B
-timing, not for shipping. Double and band layouts ignore dirty tracking,
-interlace and heal.
+timing, not for shipping. Double and band layouts ignore dirty tracking and
+interlace.
 
 ### 2D draw costs
 
@@ -317,7 +316,7 @@ how to refresh it.
 
 ## Related
 
-- [Gfx-and-Presentation.md](../Gfx-and-Presentation.md): layouts, dirty tracking and the present path
+- [gfx/README.md](../gfx/README.md): layouts, dirty tracking and the present path
 - [Render-Pipeline.md](Render-Pipeline.md): every r3d stage, its settings and its cost
 - [Building-an-App.md](../Building-an-App.md): the frame loop and app memory
 - [Board-and-Memory.md](../notes/Board-and-Memory.md#psram-throughput): PSRAM against internal RAM

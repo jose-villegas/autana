@@ -15,7 +15,7 @@ from c_comments import EXCLUDED
 from check_doc_generated import run_check
 from check_generated_files import generated_files
 from gate_tree import commit, write
-from generated_blocks import check_commands
+from generated_blocks import block_owners, check_commands
 
 
 class SharedHelpers(unittest.TestCase):
@@ -145,7 +145,7 @@ class SharedHelpers(unittest.TestCase):
         self.assertIsNotNone(run_check(REPO, command))
         self.assertEqual(before, page.read_bytes())
 
-    def package(self, readme="# p\n<!-- generated: package-headers -->\n<!-- /generated: package-headers -->\n"):
+    def package(self, readme="# p\n<!-- generated: package-p-headers -->\n<!-- /generated: package-p-headers -->\n"):
         write(self.root, "launcher/packages/p/README.md", readme)
         write(self.root, "launcher/packages/p/include/p/a/x.h", "/* The x header. */\nint x(void);\n")
         write(self.root, "launcher/packages/p/include/p/y.h", "/* The y header. */\nint y(void);\n")
@@ -164,6 +164,19 @@ class SharedHelpers(unittest.TestCase):
         self.assertIn("[include/p/y.h](include/p/y.h) | The y header.", text)
         self.assertNotIn("helper.h", text)
         self.assertNotIn("z.h", text)
+
+    def test_package_header_blocks_have_unique_names(self):
+        self.package()
+        write(self.root, "launcher/packages/name_hash/README.md",
+              "<!-- generated: package-name-hash-headers -->\n"
+              "<!-- /generated: package-name-hash-headers -->\n")
+        write(self.root, "launcher/packages/name_hash/include/name_hash/name_hash.h",
+              "/* Name keys. */\nint name_hash(void);\n")
+        self.assertEqual(0, update(self.root))
+        owners = block_owners(self.root)
+        self.assertEqual("launcher/packages/p/README.md", owners["package-p-headers"])
+        self.assertEqual("launcher/packages/name_hash/README.md", owners["package-name-hash-headers"])
+        self.assertEqual(0, update(self.root, check=True))
 
     def test_a_stale_package_readme_is_named_and_left_unwritten(self):
         readme = self.package()
