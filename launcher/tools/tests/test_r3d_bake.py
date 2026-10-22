@@ -133,7 +133,7 @@ class RepairTests(unittest.TestCase):
         self.assertTrue(any(on_seam(e) for e in open_edges(p, tris)), "the fixture has no open seam")
         rp, rgb, rt, _ = self.repaired(p, tris)
         self.assertFalse(any(on_seam(e) for e in open_edges(rp, rt)), "the seam is still open")
-        sp, _, st, _, _ = simplify_with_update(rp, rgb, rt, 4, 1 / 255)
+        sp, _, st, _ = simplify_with_update(rp, rgb, rt, 4, 1 / 255)
         self.assertLess(len(st), len(rt))
         self.assertFalse(any(on_seam(e) for e in open_edges(sp, st)), "simplification opened the seam")
 
@@ -289,12 +289,38 @@ def against_plane(pos, rgb, sp, sc, st):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ColourDeviationTests(unittest.TestCase):
-    def test_weight_uses_meshopt_extent(self):
-        p, _ = grid(4)
-        weight = colour_weight(p, 1.0)
-        self.assertAlmostEqual(weight * np.ptp(p, axis=0).max() * 8, 1)
-        self.assertAlmostEqual(colour_weight(p * 10, 10.0), weight)
-        self.assertEqual(colour_weight(np.zeros((3, 3)), 1.0), 0.0)
+    def test_the_weight_follows_the_region_a_vertex_stands_for_in_the_model_s_own_units(self):
+        p, tris = grid(4)
+        weight = colour_weight(p, tris, 8, 1.0)
+        # Sixteen unit cells over eight triangles: a region side of sqrt(2), and an 8-level step priced at 1 unit.
+        self.assertAlmostEqual(weight, 1.0 / (np.sqrt(16 / 8) * 8))
+        self.assertAlmostEqual(colour_weight(p, tris, 32, 1.0), 2 * weight)  # a quarter of the area per triangle
+        self.assertAlmostEqual(colour_weight(p * 10, tris, 8, 10.0), weight)  # the same model in other units
+        self.assertAlmostEqual(colour_weight(p, tris, 8, 3.0), 3 * weight)
+
+    def test_each_part_weighs_colour_by_its_own_area_and_budget(self):
+        base, faces = grid(4)
+        scales = (0.01, 0.02, 10.0)
+        p = np.concatenate([base * scale + [0, 0, index * 10] for index, scale in enumerate(scales)])
+        tris = np.concatenate([faces + index * len(base) for index in range(len(scales))])
+        labels = np.repeat(np.arange(len(scales)), len(faces))
+        seen = []
+
+        def record(pos, rgb, t, budget, weight, options):
+            seen.append((budget, weight, colour_weight(pos, t, budget, 2.0), triangle_areas(pos, t).sum()))
+            return simplify_with_update(pos, rgb, t, budget, weight, options)
+
+        with mock.patch.object(simplify_module, "simplify_with_update", side_effect=record):
+            simplify(p, np.full((len(p), 3), 100.0), tris, labels, 20, colour_deviation=2.0,
+                     allocation=simplify_module.Allocation(labels, props_share=0.4))
+        self.assertEqual([budget for budget, _, _, _ in seen], [2, 6, 12])
+        np.testing.assert_allclose([area for _, _, _, area in seen], [0.0016, 0.0064, 1600.0])
+        for _, weight, expected, _ in seen:
+            self.assertAlmostEqual(weight, expected)
+
+    def test_a_part_with_no_area_weighs_colour_at_nothing(self):
+        line = np.array([[0.0, 0, 0], [1, 0, 0], [2, 0, 0]])
+        self.assertEqual(colour_weight(line, np.array([[0, 1, 2]]), 1, 1.0), 0.0)
 
     def test_colour_keeps_the_bands_of_a_plane_that_geometry_alone_would_lose(self):
         pos, rgb, tris = banded_plane()

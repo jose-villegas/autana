@@ -1,4 +1,4 @@
-"""Synthetic ownership, welded-pass and screen-error allocation contracts."""
+"""Synthetic ownership, welded-pass and projected-area allocation contracts."""
 
 import pathlib
 import sys
@@ -11,7 +11,7 @@ from scipy.spatial import ConvexHull
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import simplify as owner
-from r3d.import_settings import MESHLET_TRIANGLES, SettingsError, load_import_settings
+from r3d.import_settings import SettingsError, load_import_settings
 
 
 def props():
@@ -22,12 +22,13 @@ def props():
     radius = np.sqrt(1 - y * y)
     p = np.column_stack([radius * np.cos(angle), y, radius * np.sin(angle)])
     t = ConvexHull(p).simplices
-    return np.concatenate([p + [0, 0, 5], p + [0, 0, 50]]), np.concatenate([t, t + n]), np.repeat([0, 1], len(t))
+    return np.concatenate([p + [0, 0, 5], p + [0, 0, 100]]), np.concatenate([t, t + n]), np.repeat([0, 1], len(t))
 
 
 class ObjectBudgetTests(unittest.TestCase):
     def allocate(self, budget=400, **kwargs):
         p, t, o = props()
+        kwargs.setdefault("props_share", 1.0)
         return owner.simplify(p, np.full_like(p, 100), t, o, budget,
                               allocation=owner.Allocation(o, ['near', 'far'], ['plain', 'leaf'], **kwargs),
                               colour_deviation=1.0)
@@ -40,39 +41,10 @@ class ObjectBudgetTests(unittest.TestCase):
         self.assertEqual(groups[0], groups[1])
         self.assertNotEqual(groups[0], groups[2])
 
-    def test_common_cut_world_errors(self):
-        from unittest.mock import patch
-        original = owner.simplify_with_update
-        errors = {False: [], True: []}
-        def record(p, *args, **kwargs):
-            error = kwargs['target_error']
-            if 0 < error < owner.UNLIMITED_ERROR:
-                errors[p[:, 2].mean() > 20].append(error)
-            return original(p, *args, **kwargs)
-        with patch.object(owner, 'simplify_with_update', side_effect=record):
-            self.allocate(eyes=np.zeros((1, 3)), focal_px=100)
-        self.assertTrue(errors[False])
-        self.assertTrue(all(far > near for near, far in zip(errors[False], errors[True])))
-
     def test_near_receives_more_and_budget_holds(self):
-        from unittest.mock import patch
-        original = owner.simplify_with_update
-        targets = []
-        def record(p, *args, **kwargs):
-            result = original(p, *args, **kwargs)
-            if p[:, 2].mean() < 20:
-                targets.append((kwargs['target_error'], len(result[2])))
-            return result
-        with patch.object(owner, 'simplify_with_update', side_effect=record):
-            *_, t, labels = self.allocate(eyes=np.array([[0., 0., 0.], [1., 0., 0.]]), focal_px=100)
+        *_, t, labels = self.allocate(eyes=np.array([[0., 0., 0.], [1., 0., 0.]]), focal_px=100)
         self.assertGreater(np.count_nonzero(labels == 0), np.count_nonzero(labels == 1))
         self.assertLessEqual(len(t), 400)
-        if 400 - len(t) > MESHLET_TRIANGLES:
-            low, low_count = max((error, count) for error, count in targets if count > 400)
-            high, high_count = min((error, count) for error, count in targets if count <= 400)
-            self.assertEqual(np.nextafter(np.float32(low), np.float32(np.inf)), high)
-            self.assertGreater(low_count, 400)
-            self.assertEqual(high_count, len(t))
 
     def test_deterministic(self):
         a = self.allocate(eyes=np.zeros((1, 3)), focal_px=100)
@@ -86,7 +58,7 @@ class ObjectBudgetTests(unittest.TestCase):
         order = np.concatenate([np.flatnonzero(o == 1), np.flatnonzero(o == 0)])
         b = owner.simplify(p, np.full_like(p, 100), t[order], o[order], 400, colour_deviation=1,
                           allocation=owner.Allocation(1 - o[order], ['far', 'near'], ['plain', 'leaf'],
-                                                      eyes=np.zeros((1, 3)), focal_px=100))
+                                                      eyes=np.zeros((1, 3)), focal_px=100, props_share=1))
         for label in (0, 1):
             self.assertEqual(np.count_nonzero(a[3] == label), np.count_nonzero(b[3] == label))
         np.testing.assert_array_equal(np.sort(a[0], axis=0), np.sort(b[0], axis=0))
@@ -106,7 +78,7 @@ class ObjectBudgetTests(unittest.TestCase):
         settings = NS(seed=5, position_scale=None, alpha_keep=0.5, double_sided=[],
                       thin=NS(material='leaf', keep=0.7),
                       simplify=NS(dense_edge=0.5, seal_seams=True, colour_deviation=1),
-                      overrides=[{'object': 'far', 'triangles': 100}])
+                      overrides=[{'object': 'far', 'triangles': 100}], props_share=1)
         job = NS(settings=settings, renderer=NS(visibility=NS(source='camera_region'),
                                                 variant=NS(triangles=500)), bake=None)
         stages = []
@@ -163,7 +135,7 @@ class ObjectBudgetTests(unittest.TestCase):
                 path = pathlib.Path(directory) / 'm.import.toml'
                 path.write_text('[source]\npath="m.obj"\ncredit="test"\n[output]\n'
                                 f'[geometry.simplify]\n{key}={value}\n')
-                with self.assertRaisesRegex(SettingsError, r'\[objects\] overrides'):
+                with self.assertRaisesRegex(SettingsError, r'\[objects\]'):
                     load_import_settings(path)
 
     def test_no_new_cracks(self):
@@ -245,7 +217,7 @@ class ObjectBudgetTests(unittest.TestCase):
             return original(p, c, t, target, *args, **kwargs)
         with patch.object(owner, 'log') as logged, patch.object(owner, 'simplify_with_update', side_effect=bounded):
             *_, labels = self.allocate(budget=1000, overrides=[{'object': 'near', 'triangles': 999}])
-        self.assertEqual(np.count_nonzero(labels == 0), len(props()[1]) // 2)
+        self.assertEqual(np.count_nonzero(labels == 0), np.count_nonzero(props()[2] == 0))
         self.assertTrue(any('clamped' in str(call) for call in logged.call_args_list))
 
     def test_inside_room_scale_is_comparable(self):
@@ -282,58 +254,6 @@ class ObjectBudgetTests(unittest.TestCase):
     def test_importance_once_per_pass(self):
         self.assertEqual(owner.pass_overrides(['a', 'b'], [], [{'object': '*', 'importance': 2}]), (2, None))
 
-    def test_colour_cost_per_world_step(self):
-        from unittest.mock import patch
-        recorded = []
-        original = owner.simplify_with_update
-        def record(p, c, t, budget, weight, *args, **kwargs):
-            recorded.append((np.ptp(p, axis=0).max(), weight))
-            return original(p, c, t, budget, weight, *args, **kwargs)
-        p, t, o = props()
-        p[len(p) // 2:] *= 2
-        with patch.object(owner, 'simplify_with_update', side_effect=record):
-            owner.simplify(p, np.full_like(p, 100), t, o, 400, allocation=owner.Allocation(o), colour_deviation=1)
-        costs = [extent * weight * max(owner.gfx_color.STEP) for extent, weight in recorded]
-        np.testing.assert_allclose(costs, np.ones(len(costs)), rtol=1e-6)
-
-    def test_result_error_bracket_and_meshlet_stop(self):
-        from unittest.mock import patch
-        targets = []
-        stopped = False
-        def model(p, c, t, target, weight, options, **kwargs):
-            nonlocal stopped
-            self.assertFalse(stopped, 'evaluated after reaching the meshlet tolerance')
-            error = kwargs['target_error']
-            if error == owner.UNLIMITED_ERROR:
-                return p, c, t[:0], np.arange(len(p)), 1.0
-            targets.append(error)
-            count = int(len(t) / (1 + len(t) * error))
-            if len(targets) % 2 == 0 and 0 <= budget - 2 * count <= MESHLET_TRIANGLES:
-                stopped = True
-            return p, c, t[:count], np.arange(len(p)), min(error, 1.0)
-        budget = 4 * MESHLET_TRIANGLES
-        with patch.object(owner, 'simplify_with_update', side_effect=model):
-            *_, tris, _ = self.allocate(budget=budget)
-        self.assertLessEqual(len(tris), budget)
-        self.assertLessEqual(budget - len(tris), MESHLET_TRIANGLES)
-        self.assertLessEqual(max(targets), 1)
-        self.assertLess(len(targets), 2 * owner.BISECTION_STEPS)
-
-    def test_repeated_error_targets_are_cached(self):
-        from unittest.mock import patch
-        original = owner.simplify_with_update
-        seen = set()
-
-        def record(p, c, t, budget, weight, options, **kwargs):
-            key = (tuple(p[0]), kwargs['target_error'])
-            self.assertNotIn(key, seen)
-            seen.add(key)
-            return original(p, c, t, budget, weight, options, **kwargs)
-
-        with patch.object(owner, 'simplify_with_update', side_effect=record):
-            self.allocate(budget=401, eyes=np.zeros((1, 3)), focal_px=100)
-        self.assertGreater(len(seen), 2)
-        self.assertLess(len(seen), 2 * (owner.BISECTION_STEPS + 2))
 
 
 if __name__ == '__main__':

@@ -16,6 +16,9 @@ alpha_mask = { keep_alpha = 0.5 }
 thin = { material = "leaf", keep = 0.35 }
 simplify = { dense_edge = 45.0, seal_seams = true, colour_deviation = 1.0 }
 
+[objects]
+props_share = 0.3
+
 [[variants]]
 name = "sponza"
 triangles = 17381
