@@ -25,20 +25,22 @@
 
 static const char* TAG = "imu";
 
-/* Frequent drains leave room within IMU_FIFO_SAMPLES * IMU_SAMPLE_US of retained history. */
+/* 50 Hz drains every 20 ms, well inside the FIFO's retained history (IMU_FIFO_SAMPLES * IMU_SAMPLE_US).
+ * Faster drains lose more: each drain's read mode discards ~0.86 ms of arrivals on top of a fixed per-sample floor. */
 #define IMU_DRAIN_HZ         50
 #define IMU_DRAIN_MS         (MATH_MS_PER_S / IMU_DRAIN_HZ)
 #define IMU_DRAIN_MIN_MS     1
 #define IMU_DRAIN_MAX_MS     (MATH_MS_PER_S / 2)
-/* Above the priority-1 frame task: FIFO history lasts only IMU_FIFO_SAMPLES * IMU_SAMPLE_US. */
+/* Above the frame (main) task: FIFO history lasts only IMU_FIFO_SAMPLES * IMU_SAMPLE_US. */
 #define IMU_TASK_PRIORITY    5
-/* The FIFO burst and driver calls must fit without using the frame task's stack. */
+/* Holds I2C driver frames and ESP_LOGI/ESP_LOGE on the bus-error path.
+ * Size from the board's stack high-water mark. */
 #define IMU_TASK_STACK_BYTES (3 * 1024)
 
 TUNE_OWNER(imu);
 TUNE(imu, drain_ms, IMU_DRAIN_MS, IMU_DRAIN_MIN_MS, IMU_DRAIN_MAX_MS);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* Long reporting windows remain available without a counter per frame. */
+/* Upper bound for the reporting window. */
 #define IMU_LOG_MAX_MS (60 * MATH_MS_PER_S)
 TUNE(imu, log_ms, 0, 0, IMU_LOG_MAX_MS);
 #endif
@@ -50,7 +52,9 @@ static bool have_newest;
 static TaskHandle_t task_handle;
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static int64_t newest_us;
-static int64_t reader_age_us;
+static uint64_t reader_age_total_us;
+static int64_t reader_age_max_us;
+static unsigned reader_age_count;
 #endif
 
 /* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
@@ -162,6 +166,7 @@ void
 imu_inject_release(void) {
     portENTER_CRITICAL(&lock);
     injected = false;
+    have_newest = false;
     portEXIT_CRITICAL(&lock);
 }
 
@@ -213,13 +218,6 @@ imu_init(void) {
      * otherwise be handed a stream of writes it never asked for. */
     uint8_t who = 0;
     if (!read_regs(REG_WHO_AM_I, &who, 1)) {
-#if CONFIG_LAUNCHER_QEMU
-        ESP_LOGW(TAG, "No sensor at 0x%02x; samples come from imu_inject()", BOARD_IMU_I2C_ADDR);
-        injected = true;
-        injected_drain_us = timing_now_us();
-        ready = true;
-        return true;
-#endif
         ESP_LOGE(TAG, "No response from 0x%02x", BOARD_IMU_I2C_ADDR);
         return false;
     }
@@ -258,7 +256,14 @@ imu_ready(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static void
 record_reader_age(void) {
-    reader_age_us = have_newest ? timing_now_us() - newest_us : 0;
+    if (have_newest) {
+        const int64_t age_us = timing_now_us() - newest_us;
+        reader_age_total_us += (uint64_t)age_us;
+        reader_age_count++;
+        if (age_us > reader_age_max_us) {
+            reader_age_max_us = age_us;
+        }
+    }
 }
 #endif
 
@@ -270,7 +275,6 @@ imu_read(imu_sample_t* out) {
         *out = newest;
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    record_reader_age();
     if (ready && injected) {
         *out = injected_sample;
         available = true;
@@ -353,7 +357,7 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static void
-log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us, int64_t age_us) {
+log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us) {
     static int64_t last_log_us;
     static uint64_t total_us;
     static int64_t max_us;
@@ -367,11 +371,26 @@ log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us, int64_t
     }
     delivered += count > 0 ? (unsigned)count : 0;
     lost_total += (unsigned)lost;
-    if (log_ms > 0 && now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS) {
-        ESP_LOGI(TAG, "drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u reader_age_us %lld", drains,
-                 (unsigned long long)(total_us / drains), (long long)max_us, delivered, lost_total, (long long)age_us);
+    const bool window_done = log_ms == 0 || now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS;
+    uint64_t age_mean_us = 0;
+    int64_t age_max_us = 0;
+    if (window_done) {
+        portENTER_CRITICAL(&lock);
+        age_mean_us = reader_age_count > 0 ? reader_age_total_us / reader_age_count : 0;
+        age_max_us = reader_age_max_us;
+        reader_age_total_us = 0;
+        reader_age_max_us = 0;
+        reader_age_count = 0;
+        portEXIT_CRITICAL(&lock);
     }
-    if (log_ms == 0 || now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS) {
+    if (log_ms > 0 && window_done) {
+        ESP_LOGI(TAG,
+                 "drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u reader_age_mean_us %llu "
+                 "reader_age_max_us %lld stack_free_bytes %u",
+                 drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered, lost_total,
+                 (unsigned long long)age_mean_us, (long long)age_max_us, (unsigned)uxTaskGetStackHighWaterMark(NULL));
+    }
+    if (window_done) {
         last_log_us = now_us;
         drains = delivered = lost_total = 0;
         total_us = 0;
@@ -383,7 +402,7 @@ log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us, int64_t
 static void
 imu_task(void* arg) {
     (void)arg;
-    imu_sample_t samples[IMU_FIFO_SAMPLES];
+    static imu_sample_t samples[IMU_FIFO_SAMPLES];
     TickType_t last_wake = xTaskGetTickCount();
     while (1) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -394,7 +413,7 @@ imu_task(void* arg) {
         const int count = drain_fifo(samples, &lost, &gap);
         const int64_t now_us = timing_now_us();
         portENTER_CRITICAL(&lock);
-        imu_queue_push(&queue, samples, count > 0 ? count : 0, lost, gap || count < 0);
+        imu_queue_push_drain(&queue, samples, count, lost, gap);
         if (count > 0) {
             newest = samples[count - 1];
             have_newest = true;
@@ -402,12 +421,9 @@ imu_task(void* arg) {
             newest_us = now_us;
 #endif
         }
-#if CONFIG_LAUNCHER_DEVELOPMENT
-        const int64_t age_us = reader_age_us;
-#endif
         portEXIT_CRITICAL(&lock);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        log_drain_stats(count, lost, now_us - start_us, now_us, age_us);
+        log_drain_stats(count, lost, now_us - start_us, now_us);
 #else
         (void)now_us;
 #endif
@@ -420,6 +436,7 @@ void
 imu_start(void) {
 #if CONFIG_LAUNCHER_QEMU
     if (!ready) {
+        ESP_LOGW(TAG, "No sensor at 0x%02x; samples come from imu_inject()", BOARD_IMU_I2C_ADDR);
         ready = true;
         injected = true;
         injected_drain_us = timing_now_us();
@@ -428,7 +445,7 @@ imu_start(void) {
     if (!ready || task_handle != NULL) {
         return;
     }
-    /* Unpinned, like the button polling task, so either core can drain before the FIFO fills. */
+    /* Nothing needs a particular core; the scheduler places this task. */
     if (xTaskCreate(imu_task, "imu", IMU_TASK_STACK_BYTES, NULL, IMU_TASK_PRIORITY, &task_handle) != pdPASS) {
         ESP_LOGE(TAG, "Could not start the IMU task (largest free block is %u bytes); motion will not work",
                  (unsigned)memory_largest_block(MEMORY_8BIT));

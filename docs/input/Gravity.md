@@ -9,7 +9,8 @@ calibration are described in [Motion-Axes.md](Motion-Axes.md) and [Motion-Calibr
 
 ## Update
 
-The IMU task drains the QMI8658 stream FIFO at `IMU_DRAIN_HZ` by default.
+The IMU task drains the QMI8658 stream FIFO at the task period
+(`IMU_DRAIN_HZ` in `input/motion/imu.c`) by default.
 `imu.drain_ms` tunes its period in development builds.
 `input_read_motion_batch()` takes queued samples from memory, oldest first.
 
@@ -143,6 +144,8 @@ Queue overflow drops the oldest sample and marks a gap. Loss exceeding the
 Board A308, QMI8658A, build 7dae68f7c9d0-dev. Delivered rate
 agrees with the datasheet ODR multiplied by time outside FIFO read mode.
 
+These measurements use the drain at the stated fixed period.
+
 | Drain | Delivered | Time in read mode | 224.2 Hz × (1 − share) |
 |---|---|---|---|
 | Every frame | 197.8 Hz | 10.8% | 200.0 Hz |
@@ -152,7 +155,7 @@ A faster SCL shortens read mode, but SCL stays at 400 kHz, the QMI8658A's I2C ra
 No other part on the bus states more than 400 kHz, and the ESP32-S3 stops at 800 kbit/s.<sup>[[66]](../Citations.md#66)</sup>
 Board A308, drain every frame, 45 s per speed:
 
-| QMI8658 SCL | Delivered | Lost | Drain per frame | Launcher `frame.rest` |
+| QMI8658 SCL | Delivered | Lost | Time per drain | Launcher `frame.rest` |
 |---|---|---|---|---|
 | 400 kHz | 202.6 Hz | 9.1% | 2.36 ms | 1.40 ms |
 | 800 kHz | 212.6 Hz | 5.5% | 1.42 ms | 1.20 ms |
