@@ -6,7 +6,7 @@ credit = "Amazon Lumberyard Bistro, exterior (Amazon Lumberyard; CC BY 4.0), fro
 position_scale = 4
 
 [materials]
-double_sided = ["Foliage_Bux_Hedges46.DoubleSided", "Foliage_Flowers.DoubleSided", "Foliage_Ivy_leaf_a.DoubleSided", "Foliage_Leaves.DoubleSided", "Foliage_Linde_Tree_Large_Green_Leaves.DoubleSided", "Foliage_Linde_Tree_Large_Orange_Leaves.DoubleSided"]
+double_sided = ["Foliage_Bux_Hedges46.DoubleSided", "Foliage_Flowers.DoubleSided"]
 
 [process]
 seed = 1
