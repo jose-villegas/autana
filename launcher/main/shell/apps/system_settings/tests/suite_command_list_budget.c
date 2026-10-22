@@ -10,8 +10,8 @@
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
-#include "shell/apps/settings/ui/settings_layout.h"
-#include "shell/apps/settings/ui/settings_screen.h"
+#include "shell/apps/system_settings/ui/settings_layout.h"
+#include "shell/apps/system_settings/ui/settings_screen.h"
 
 /* Landscape (448x368 logical): this project's shipping orientation. */
 #define FIXTURE_QUARTER             1

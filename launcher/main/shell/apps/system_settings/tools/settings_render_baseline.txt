@@ -1,6 +1,6 @@
 # What the settings scene's renders hash to, one per line.
 # Re-pinned deliberately, after looking at the images:
-#     ./launcher/main/shell/apps/settings/tools/settings_render_host.sh --update-baseline
+#     ./launcher/main/shell/apps/system_settings/tools/settings_render_host.sh --update-baseline
 settings 44b87adfc6bf589aa4f6482a51d58eab9a3e5c1501886ac23281f654a6c40f95
 settings-landscape 9265650e0fe3d582473794b3cd36a03ef5b73a0ebc8633022ab9e8c2d2545d57
 settings-tap 2244be9c015f878a930bb51aa8d69532d3c265933ca8973b4e3c2ce13840a564

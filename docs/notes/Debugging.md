@@ -179,7 +179,7 @@ sends, and lets go.
 
 `--dev`/`--diag` builds carry runtime overlays, switched by
 `gfx_set_debug_overlay()` / `gfx_set_leaf_overlay()` (`main/gfx/present/gfx_debug.h`),
-called by the developer rows of the system settings screen in a development build:
+called by the developer rows of the system preferences screen in a development build:
 
 - **Dirty-region overlay**: draws a border around whatever rectangle
   `gfx_present()` is about to send, so a stale patch of screen (something

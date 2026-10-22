@@ -1,4 +1,4 @@
-#include "shell/apps/settings/ui/settings_layout.h"
+#include "shell/apps/system_settings/ui/settings_layout.h"
 
 #include "ui/ui.h"
 
