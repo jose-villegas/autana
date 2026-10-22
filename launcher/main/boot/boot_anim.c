@@ -61,6 +61,10 @@ static boot_anim_backdrop_fn ending_backdrop;
 #define LABEL_SCALE 1 /* 8x8 glyphs: an axis label is small */
 #define LABEL_GAP   5
 
+#define HEAD_OUTER  13
+#define HEAD_MID    8
+#define HEAD_CORE   4
+
 /* A zero of zeta, marked on the t axis where the curve crosses it. */
 #define ZERO_DOT    5
 

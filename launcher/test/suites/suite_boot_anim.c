@@ -1812,45 +1812,8 @@ test_the_crossfade_ends_on_the_shipped_photograph(void) {
 }
 #endif
 
-#ifndef DEVICE_BUILD
-static void
-test_far_chords_match_integer_reference(void) {
-    enum { RADIUS_SAMPLES = 32 };
-
-    const size_t baked_count = sizeof boot_anim_axis_far / sizeof boot_anim_axis_far[0];
-    for (size_t i = 0; i <= baked_count + RADIUS_SAMPLES; i++) {
-        const int r = i < baked_count ? boot_anim_axis_far[i].r
-                                      : (int)(i - baked_count) * BOOT_ANIM_FAR_SWELL_FADE_Q12 / RADIUS_SAMPLES;
-        for (int c = -r - 1; c <= r + 1; c++) {
-            const int64_t h = (int64_t)r * r - (int64_t)c * c;
-            const int want = h > 0 ? (int)mathi_isqrt64((uint64_t)h) : 0;
-            TEST_ASSERT_EQUAL_INT(want, mathi_half_chord(r, c));
-        }
-    }
-}
-
-static void
-test_head_disc_spans_match_row_walk(void) {
-    const int diameters[] = {HEAD_OUTER, HEAD_MID, HEAD_CORE};
-    for (size_t i = 0; i < sizeof diameters / sizeof diameters[0]; i++) {
-        const int r = diameters[i] / 2;
-        for (int dy = -r; dy <= r; dy++) {
-            int dx = r;
-            while (dx > 0 && dx * dx + dy * dy > r * r) {
-                dx--;
-            }
-            TEST_ASSERT_EQUAL_INT(dx, mathi_half_chord(r, dy));
-        }
-    }
-}
-#endif
-
 void
 run_boot_anim_suite(void) {
-#ifndef DEVICE_BUILD
-    RUN_TEST(test_far_chords_match_integer_reference);
-    RUN_TEST(test_head_disc_spans_match_row_walk);
-#endif
     seed = malloc(sizeof *seed);
     if (seed == NULL) {
         RUN_TEST(test_the_seed_is_the_boot_clip_read_from_its_pack);

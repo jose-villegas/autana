@@ -523,10 +523,6 @@ boot_anim_grid_alpha(uint32_t now_ms, int band) {
 /* The title is laid out in the viewer's frame because the board is held one
  * quarter turn from the panel's native orientation. */
 
-#define HEAD_OUTER             13
-#define HEAD_MID               8
-#define HEAD_CORE              4
-
 #define BOOT_ANIM_TITLE        "Autana"
 #define BOOT_ANIM_TITLE_LEN    6
 
