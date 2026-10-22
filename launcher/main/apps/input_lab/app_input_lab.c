@@ -470,8 +470,7 @@ integrate_turn_gyro(const input_motion_batch_t* batch) {
     }
     const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
     for (int i = 0; i < batch->count; i++) {
-        const uint32_t lost_us = (uint32_t)batch->lost_before[i] * INPUT_MOTION_SAMPLE_US;
-        const uint32_t held_us = lost_us < GRAVITY_MAX_DT_US ? lost_us : GRAVITY_MAX_DT_US;
+        const uint32_t held_us = gravity_held_us(batch->lost_before[i]);
         turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(turn_gyro_rate, (float)held_us / MATH_US_PER_S));
         turn_gyro_rate =
             vec3f_sub(vec3f_scale(vec3f_from_vec3i(batch->samples[i].rotation), 1.0F / INPUT_ROTATION_ONE_DPS),

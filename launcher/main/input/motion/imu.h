@@ -1,6 +1,6 @@
 /*
  * imu: QMI8658 stream FIFO drained by a polling task.
- * imu_read() returns the latest single sample. Register values follow the
+ * imu_read() returns the newest drained sample. Register values follow the
  * QST QMI8658A datasheet Rev A (2022).
  */
 #pragma once
@@ -39,7 +39,8 @@ imu_fifo_lost(uint64_t locked_us, uint32_t* remainder_us, bool gap) {
 }
 
 /* One consumer copies queued samples oldest first; loss precedes each sample.
- * Gaps include bus errors and queue overflow. Returns -1 when there is no sensor. */
+ * Gaps (bus error, overflow, loss saturation) are reported through *gap and precede samples[0].
+ * Returns -1 only without a sensor. */
 int imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES], bool* gap);
 
 /* Configures and starts the sensor. Safe to call more than once.

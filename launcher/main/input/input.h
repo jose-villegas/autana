@@ -52,7 +52,7 @@ typedef struct {
 
 typedef struct {
     input_motion_t samples[INPUT_MOTION_SAMPLES]; /* oldest first, INPUT_MOTION_SAMPLE_US apart */
-    uint8_t lost_before[INPUT_MOTION_SAMPLES];    /* loss immediately before each sample */
+    uint8_t lost_before[INPUT_MOTION_SAMPLES];    /* samples lost in FIFO read mode just before this sample */
     int count;                                    /* zero when there is no new sample */
     bool gap;                                     /* overflow or failed drain; correction must restart */
 } input_motion_batch_t;
