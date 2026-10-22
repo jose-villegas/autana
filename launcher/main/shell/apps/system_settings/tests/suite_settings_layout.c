@@ -18,16 +18,6 @@ fixture(int quarter) {
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
 }
 
-/* Draws the real list, recording where each toggle row landed. */
-static void
-draw_list(void) {
-    const settings_snapshot_t snapshot = {0};
-    const input_t input = {0};
-    ui_begin(&input);
-    (void)settings_screen_draw(&snapshot);
-    ui_probe_end_frame();
-}
-
 static void
 test_window_and_rows_fit_both_canvases(void) {
     for (int quarter = DISPLAY_PORTRAIT; quarter <= DISPLAY_LANDSCAPE; quarter++) {
@@ -41,6 +31,18 @@ test_window_and_rows_fit_both_canvases(void) {
         TEST_ASSERT_GREATER_OR_EQUAL_INT(ui_text_height(), layout.heading_height);
         TEST_ASSERT_GREATER_OR_EQUAL_INT(ui_text_height(), layout.note_height);
     }
+}
+
+/* The widget probe records rects on a host only. */
+#ifndef ESP_PLATFORM
+/* Draws the real list, recording where each toggle row landed. */
+static void
+draw_list(void) {
+    const settings_snapshot_t snapshot = {0};
+    const input_t input = {0};
+    ui_begin(&input);
+    (void)settings_screen_draw(&snapshot);
+    ui_probe_end_frame();
 }
 
 /* A toggle draws its box as a square of the row's height and its label one
@@ -68,11 +70,14 @@ test_every_fixed_string_fits_its_row_at_both_canvases(void) {
         }
     }
 }
+#endif
 
 void
 run_settings_layout_suite(void) {
     RUN_TEST(test_window_and_rows_fit_both_canvases);
+#ifndef ESP_PLATFORM
     RUN_TEST(test_every_fixed_string_fits_its_row_at_both_canvases);
+#endif
 }
 
 SUITE_REGISTER(run_settings_layout_suite);
