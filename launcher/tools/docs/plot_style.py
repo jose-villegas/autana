@@ -38,6 +38,34 @@ def save(fig, path, dpi=DPI):
     plt.close(fig)
 
 
+BAR_HEIGHT = 0.6  # of each bar's row
+END_LABEL_ROOM = 0.35  # share of the longest bar left free past its end for its label
+END_LABEL_GAP = 4  # points between a bar's end and its label
+
+
+def stacked_barh(axis, rows, colours, end_labels=None, extent=None):
+    """Horizontal stacked bars, the first row on top. `rows` is [(label, [(segment, value)])]; each segment takes
+    colours[segment] and names itself once for a legend. `end_labels` sit past each bar's end. The value axis starts
+    at 0 and spans `extent`, by default the longest bar plus room for its label; the top and right spines are hidden."""
+    named, ends = set(), []
+    for index, (_, segments) in enumerate(rows):
+        left = 0.0
+        for segment, value in segments:
+            axis.barh(index, value, left=left, color=colours[segment], height=BAR_HEIGHT, edgecolor="white",
+                      label=None if segment in named else segment)
+            named.add(segment)
+            left += value
+        ends.append(left)
+    for index, (end, text) in enumerate(zip(ends, end_labels or ())):
+        axis.annotate(text, (end, index), xytext=(END_LABEL_GAP, 0), textcoords="offset points", va="center",
+                      fontsize=LABEL_SIZE, color=INK)
+    axis.set_yticks(range(len(rows)), [label for label, _ in rows])
+    axis.set_xlim(0, max(ends) * (1 + END_LABEL_ROOM) if extent is None else extent)
+    axis.invert_yaxis()
+    for side in ("top", "right"):
+        axis.spines[side].set_visible(False)
+
+
 def style_axes(axis, title, *, square=False):
     """A panel's title, ticks and spines in the palette; square keeps one unit the same length on both axes."""
     axis.set_title(title, fontsize=TITLE_SIZE, color=INK)
