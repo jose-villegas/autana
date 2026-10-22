@@ -222,12 +222,6 @@ a `fit` budget may not exceed it.
 
 ## Objects and instances
 
-Each colour below is one repeated shape, boxed at every copy in view. The
-view is the camera-path pose where those boxes show the most visible edge;
-`render_doc_images.sh` regenerates it.
-
-![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
-
 An OBJ object is an `o` or `g` group; an ungrouped file uses its stem.
 A glTF object is a mesh node, placed by its world transform. A nameless
 node uses its index. Only vertices referenced by triangles belong to an object.
@@ -241,6 +235,12 @@ scaled copies remain separate shapes. Reflections are recorded per instance.
 | Candidate bucket | Equal vertex and triangle counts, and material multiset |
 | Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#86)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
 | Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangle winding and materials agree as multisets |
+
+Each colour below is one repeated shape, boxed at every copy in view. The
+view is the camera-path pose where those boxes show the most visible edge;
+`render_doc_images.sh` regenerates it.
+
+![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
 
 The report writes counts, residuals and a camera-path estimate to an external
 `--out` directory. Single-instance shapes keep their full share.
