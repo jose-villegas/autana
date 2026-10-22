@@ -525,7 +525,7 @@ class LockTests(ClockStoreTests):
         device_lock.write_json(self.lock.lock_path("COM5"), {
             "acquired_at": 1000, "heartbeat_at": 1000,
             "expected_build_id": "",
-            "host": host or device_lock.socket.gethostname(),
+            "host": host or device_lock.host_identity(),
             "owner": "gone", "pid": pid, "port": "COM5", "purpose": "screenshot",
             "token": "old", "protocol": device_lock.LOCK_PROTOCOL,
         })
@@ -948,7 +948,7 @@ class ProtocolTests(ClockStoreTests):
         holder; pass pid=1 for a live one a claim must leave standing."""
         record = {
             "acquired_at": 1000, "heartbeat_at": 1000, "expected_build_id": "",
-            "host": device_lock.socket.gethostname(), "owner": "other-autana",
+            "host": device_lock.host_identity(), "owner": "other-autana",
             "pid": pid, "purpose": "flash", "token": "old",
         }
         if autana_version is not None:
@@ -1133,6 +1133,9 @@ class LockRecordShapeTests(unittest.TestCase):
             }),
         },
     }
+
+    GOLDEN_KEYS[4] = dict(GOLDEN_KEYS[3], ticket=GOLDEN_KEYS[3]["ticket"] | {"host"})
+    GOLDEN_KEYS[5] = dict(GOLDEN_KEYS[4], ticket=GOLDEN_KEYS[4]["ticket"] | {"touched_at"})
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

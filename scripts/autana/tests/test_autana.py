@@ -96,7 +96,7 @@ def project_directory():
 def user_identity(environ, **user):
     with mock.patch.dict(autana.os.environ, environ, clear=True), \
          mock.patch.object(getpass, "getuser", **user), \
-         mock.patch.object(socket, "gethostname", return_value="devbox"), \
+         mock.patch.object(device_lock, "host_identity", return_value="devbox"), \
          mock.patch.object(autana.os, "getpid", return_value=4242):
         yield
 
@@ -206,7 +206,7 @@ class BoardHolderTests(unittest.TestCase):
             store = device_lock.LockStore(root, is_alive=lambda pid: pid == 1)
             device_lock.write_json(store.lock_path(self.BOARD), {
                 "acquired_at": store.now(), "board": self.BOARD, "heartbeat_at": store.now(),
-                "expected_build_id": "", "host": socket.gethostname(), "kind": "screenshot",
+                "expected_build_id": "", "host": device_lock.host_identity(), "kind": "screenshot",
                 "owner": owner, "pid": holder_pid, "purpose": "autana screenshot",
                 "token": "old",
             })

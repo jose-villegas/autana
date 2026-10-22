@@ -276,8 +276,9 @@ flowchart LR
     Publish --> Artifacts[Raw capture artifacts]
 ```
 
-Builds are serialised across lanes and run at below-normal priority so the
-host stays responsive.
+Builds take the host-wide heavy lock shared with GPU stages and run at
+below-normal priority. Step `wait_seconds` records heavy queue time;
+`build_seconds` and the worst-step window estimate exclude it.
 
 A flash is skipped when the commit's image hash equals the same board's
 previous measured image hash. Hashes are compared only within one board's
@@ -342,9 +343,9 @@ timing lines. The workflow's `NIGHTLY_SUITES` supplies these triplets.
 it per board; `lane-info --plan plan.json --board BOARD_A` prints it and its
 estimated duration in seconds.
 
-`QUEUE_AT`, `WINDOW_END`, and `SELFTEST_AT` set local times. Dispatch inputs
-`queue_at`, `window_end`, and `selftest_at` override them; an empty dispatch
-`queue_at` starts immediately. A dispatch holds boards until its window end or `max_steps`.
+`QUEUE_AT` and `WINDOW_END` set local times. Dispatch inputs `queue_at` and
+`window_end` override them; an empty dispatch `queue_at` starts immediately.
+A dispatch holds boards until its window end or `max_steps`.
 
 A step starts only if it fits before `WINDOW_END`, and a lane stops after
 `CAPTURE_FAILURE_LIMIT` consecutive capture failures (`scoped_chain.py`).
@@ -355,8 +356,9 @@ the runner, so plugging a board in or out changes the lanes. A board's first
 night measures one commit as its baseline.
 
 One board, the first one listed, also runs Board CI's steps
-(`scripts/ci/board-steps.sh`: the self-test, then the console tests) at the first step boundary after `SELFTEST_AT`, or after its chain if that
-ends first, inside the same hold.
+(`scripts/ci/board-steps.sh`: the self-test, then the console tests) first,
+at the start of its lane inside the same board hold. Builds and performance
+captures follow.
 
 Partial manifests are written after every step. Raw captures and result
 directories are uploaded even when a lane fails.

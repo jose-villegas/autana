@@ -38,6 +38,16 @@ jobs:
           done > "$RUNNER_TEMP/shell-scripts.txt"
           cat "$RUNNER_TEMP/shell-scripts.txt"
 
+      - uses: ./.github/actions/host-tools
+
+      - name: Host lock and night scheduling tests
+        run: |
+          python3 -m pip install pyserial
+          python3 -m unittest discover -s scripts/device/tests
+          python3 -m unittest discover -s scripts/autana/tests
+          python3 -m unittest discover -s scripts/ci/tests
+          python3 -m unittest discover -s launcher/tools/perf/tests -p test_nightly_chain.py
+
       - name: Every script with a shebang is stored executable
         run: sh scripts/gates/check-exec-bits.sh
 

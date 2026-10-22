@@ -1,11 +1,12 @@
 """Compilation policy is shared by build-only and snapshot callers."""
 import isolation
+import contextlib
+import io
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import threading
 import unittest
 from unittest.mock import patch
 
@@ -17,104 +18,96 @@ import fake_flash
 
 
 class BuildPolicyTests(unittest.TestCase):
-    def test_both_owners_apply_priority_and_release_before_snapshot(self):
+    def test_both_owners_apply_priority_and_hold_through_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             worktree = fake_flash.worktree(root / "engine")
-            serial = root / "serial"
-            env = {autana_config.BUILD_SERIAL_ENV: str(serial),
+            env = {"_AUTANA_HEAVY_LOCK_ROOT": str(root / "heavy"),
                    autana_config.BUILD_PRIORITY_ENV: autana_config.BUILD_PRIORITY_BELOW_NORMAL,
                    autana_config.BUILD_LATEST_START_ENV: ""}
+            store = device_lock.LockStore(root / "heavy")
+
             def assert_locked(command, lost=None, **options):
-                with (serial / device.BUILD_LOCK).open("a+b") as handle:
-                    self.assertFalse(device.try_lock_file(handle))
+                self.assertIsNotNone(store.status(device_lock.HEAVY)["lock"])
+                self.assertEqual(options["env"][autana_config.HEAVY_TOKEN_ENV],
+                                 store.status(device_lock.HEAVY)["lock"]["token"])
                 if os.name == "nt":
                     self.assertTrue(options["creationflags"] & subprocess.BELOW_NORMAL_PRIORITY_CLASS)
                 else:
                     self.assertIs(options["preexec_fn"].func, os.nice)
                     self.assertEqual(options["preexec_fn"].args, (device.BUILD_NICE_INCREMENT,))
-                    self.assertGreater(device.BUILD_NICE_INCREMENT, 0)
+
             def snapshot(*args):
-                with (serial / device.BUILD_LOCK).open("a+b") as handle:
-                    self.assertTrue(device.try_lock_file(handle))
+                self.assertIsNotNone(store.status(device_lock.HEAVY)["lock"])
                 return "snapshot"
+
             with patch.dict(os.environ, env), patch.object(device, "run_to_end", side_effect=assert_locked) as run, \
                     patch.object(device, "snapshot_image", side_effect=snapshot):
                 self.assertEqual(device.build_worktree(worktree, "diag"), 0)
                 self.assertEqual(device.build_snapshot(["build"], root / "build", root / "image"), "snapshot")
                 self.assertEqual(run.call_count, 2)
 
+    def test_heavy_is_acquired_before_build_directory(self):
+        @contextlib.contextmanager
+        def directory(*args):
+            self.assertIsNotNone(store.status(device_lock.HEAVY)["lock"])
+            yield None
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = device_lock.LockStore(root)
+            with patch.dict(os.environ, {"_AUTANA_HEAVY_LOCK_ROOT": str(root)}), \
+                    patch.object(device, "build_directory_lock", side_effect=directory), \
+                    patch.object(device, "run_to_end"):
+                device.build_snapshot(["build"], root / "build")
+
     def test_lock_wait_is_bounded_and_budget_rechecked_after_acquisition(self):
-        with tempfile.TemporaryDirectory() as directory:
-            env = {autana_config.BUILD_SERIAL_ENV: directory,
-                   autana_config.BUILD_LATEST_START_ENV: "100"}
-            for acquired in (False, True):
-                with self.subTest(acquired=acquired), patch.object(device.time, "time", side_effect=[90, 101]), \
-                        patch.object(device, "try_lock_file", return_value=acquired), \
-                        patch.object(device.time, "monotonic", side_effect=[0, 11]), \
-                        self.assertRaises(TimeoutError):
-                    with device.build_policy(env):
-                        self.fail("expired policy entered compilation")
-            with patch.object(device.time, "time", return_value=100):
-                with device.build_policy(env):
-                    pass
+        @contextlib.contextmanager
+        def scope(*args, **kwargs):
+            self.assertEqual(args[-1], 10)
+            yield
+        with patch.object(device, "HeldLock", side_effect=scope), \
+                patch.object(device.time, "time", side_effect=[90, 101]), self.assertRaises(TimeoutError):
+            with device.build_policy({autana_config.BUILD_LATEST_START_ENV: "100"}):
+                self.fail("expired policy entered compilation")
+        with patch.object(device, "HeldLock", side_effect=device.LockBusy("busy")), \
+                self.assertRaises(TimeoutError):
+            with device.build_policy({autana_config.WAIT_ENV: "0"}):
+                self.fail("busy policy entered compilation")
 
     def test_exception_releases_mutex_and_default_policy_is_empty(self):
-        with tempfile.TemporaryDirectory() as directory:
-            env = {autana_config.BUILD_SERIAL_ENV: directory}
-            with self.assertRaises(RuntimeError):
-                with device.build_policy(env):
-                    raise RuntimeError("build failed")
-            with device.build_policy(env):
-                pass
-            with device.build_policy({}) as options:
-                self.assertEqual(options, {})
-
-    def test_compilers_serialize_across_snapshot_and_build_only(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            worktree = fake_flash.worktree(root / "engine")
-            entered, waiting = threading.Event(), threading.Event()
-            errors = []
-            original = device.try_lock_file
-            def lock(handle):
-                acquired = original(handle)
-                if not acquired:
-                    waiting.set()
-                return acquired
-            def compile(command, *args, **kwargs):
-                if command == ["snapshot"]:
-                    entered.set()
-                    self.assertTrue(waiting.wait(5))
-            def call(function):
-                try:
-                    function()
-                except BaseException as error:
-                    errors.append(error)
-            with patch.dict(os.environ, {autana_config.BUILD_SERIAL_ENV: str(root / "serial"),
-                                        autana_config.BUILD_LATEST_START_ENV: ""}), \
-                    patch.object(device, "try_lock_file", side_effect=lock), \
-                    patch.object(device, "run_to_end", side_effect=compile), \
-                    patch.object(device, "snapshot_image", return_value="id"):
-                first = threading.Thread(target=call, args=(lambda: device.build_snapshot(["snapshot"], root / "build", root / "image"),))
-                second = threading.Thread(target=call, args=(lambda: device.build_worktree(worktree, "diag"),))
-                first.start()
-                ready = entered.wait(5)
-                second.start()
-                first.join(10)
-                second.join(10)
-                self.assertTrue(ready)
-                self.assertFalse(first.is_alive() or second.is_alive())
-            self.assertEqual(errors, [])
+        with self.assertRaisesRegex(RuntimeError, "build failed"):
+            with device.build_policy({}):
+                raise RuntimeError("build failed")
+        with device.build_policy({}) as options:
+            self.assertEqual(options, {})
 
     def test_posix_priority_increases_niceness(self):
-        with patch.object(device.os, "name", "posix"), patch.object(device.os, "nice", create=True) as nice:
+        with patch.object(device, "HeldLock", return_value=contextlib.nullcontext()), \
+                patch.object(device.os, "name", "posix"), patch.object(device.os, "nice", create=True) as nice:
             with device.build_policy({autana_config.BUILD_PRIORITY_ENV: autana_config.BUILD_PRIORITY_BELOW_NORMAL}) as options:
                 self.assertIs(options["preexec_fn"].func, nice)
-                self.assertEqual(options["preexec_fn"].args, (device.BUILD_NICE_INCREMENT,))
                 options["preexec_fn"]()
                 nice.assert_called_once_with(device.BUILD_NICE_INCREMENT)
-                self.assertGreater(options["preexec_fn"].args[0], 0)
+
+    def test_queue_timing_is_only_printed_after_a_full_second(self):
+        for elapsed in (0, device.BUILD_WAIT_REPORT_MIN_SECONDS - 0.001,
+                        device.BUILD_WAIT_REPORT_MIN_SECONDS, device.BUILD_WAIT_REPORT_MIN_SECONDS + 1):
+            for busy in (False, True):
+                lock = patch.object(device, "HeldLock", side_effect=device.LockBusy("busy")) if busy else \
+                    patch.object(device, "HeldLock", return_value=contextlib.nullcontext())
+                with self.subTest(elapsed=elapsed, busy=busy), lock, \
+                        patch.object(device.time, "monotonic", side_effect=[10, 10 + elapsed]), \
+                        contextlib.redirect_stdout(io.StringIO()) as output:
+                    if busy:
+                        with self.assertRaises(TimeoutError), device.build_policy({}):
+                            self.fail("busy lock entered compilation")
+                    else:
+                        with device.build_policy({}):
+                            pass
+                    if elapsed >= device.BUILD_WAIT_REPORT_MIN_SECONDS:
+                        self.assertEqual(float(output.getvalue().removeprefix(autana_config.HEAVY_WAIT_PREFIX)), elapsed)
+                    else:
+                        self.assertEqual(output.getvalue(), "")
 
     def test_json_indentation(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -584,15 +584,19 @@ WAIT_NOTICE_SECONDS = 30
 
 
 def wait_notice(store, board, state, ticket):
-    now = store.now()
+    now = store.resource_now(board)
     if state.get("last_notice") is not None and now - state["last_notice"] < WAIT_NOTICE_SECONDS:
         return
     state["last_notice"] = now
     status = store.status(board)
     if status["lock"]:
         lock = status["lock"]
-        print(f"board held by {lock['owner']} "
-              f"{device_lock.holder_version_text(lock)} - waiting", file=sys.stderr)
+        if board == device_lock.HEAVY:
+            print(f"heavy held by {lock['owner']} for {lock.get('purpose', 'unknown')} "
+                  f"since {device_lock.format_estimate(lock.get('acquired_at'))} - waiting", file=sys.stderr)
+        else:
+            print(f"board held by {lock['owner']} "
+                  f"{device_lock.holder_version_text(lock)} - waiting", file=sys.stderr)
     elif status["human"]:
         human = status["human"]
         left = device_lock.human_left_text(human, now)
@@ -603,13 +607,13 @@ def wait_notice(store, board, state, ticket):
                   if item["ticket"] == ticket), None)
     if place:
         estimate = device_lock.queue_estimates(
-            status, now, device_lock.duration_history(store.root, board=board)).get(ticket)
-        print(f"waiting for board: queue place {place}; estimated start "
+            status, now, device_lock.duration_history(store.key_root(board), board=board)).get(ticket)
+        print(f"waiting for {board if board == device_lock.HEAVY else 'board'}: queue place {place}; estimated start "
               f"{device_lock.format_estimate(estimate)}", file=sys.stderr)
 
 
 class HeldLock:
-    """One board held for one command. The command's duration is recorded
+    """One key held for one command. The command's duration is recorded
     when it ends, with an error when it raised, set `error`, or lost the lock.
     A borrower uses a validated snapshot and reaps only its own descendants."""
 
@@ -620,7 +624,9 @@ class HeldLock:
         self.announce_waiters = announce_waiters
         self.board = board
         self.notice_state = {}
-        token = os.environ.get(TOKEN_ENV)
+        store.check_order(board)
+        self.token_env = autana_config.HEAVY_TOKEN_ENV if board == device_lock.HEAVY else TOKEN_ENV
+        token = os.environ.get(self.token_env)
         self.borrowed = bool(token)
         self.keep_seconds = None
         if token:
@@ -632,8 +638,8 @@ class HeldLock:
             self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
                                       purpose=command_label(kind), estimate=estimate)
         if not self.held:
-            raise LockBusy("device lock was not acquired: "
-                           + device_lock.busy_text(store.status(board), store.now()))
+            raise LockBusy(f"{'heavy' if board == device_lock.HEAVY else 'device'} lock was not acquired: "
+                           + device_lock.busy_text(store.status(board), store.resource_now(board)))
         if self.held.log:
             print(self.held.log, file=sys.stderr)
         self.stop = threading.Event()
@@ -673,10 +679,10 @@ class HeldLock:
     def __enter__(self):
         self.previous_lock = getattr(ACTIVE_LOCK, "held", None)
         ACTIVE_LOCK.held = self
-        self.previous_token = os.environ.get(TOKEN_ENV)
+        self.previous_token = os.environ.get(self.token_env)
         scope_tag = uuid.uuid4().hex if self.borrowed else self.held["token"]
         lock_scope.enter(scope_tag)
-        os.environ[TOKEN_ENV] = self.held["token"]
+        os.environ[self.token_env] = self.held["token"]
         self.members_before = set(lock_scope.members())
         self.thread.start()
         return self
@@ -690,9 +696,9 @@ class HeldLock:
             killed, survivors = lock_scope.reap(self.members_before)
             lock_scope.leave()
             if self.previous_token is None:
-                os.environ.pop(TOKEN_ENV, None)
+                os.environ.pop(self.token_env, None)
             else:
-                os.environ[TOKEN_ENV] = self.previous_token
+                os.environ[self.token_env] = self.previous_token
             if killed:
                 print("stopped process(es) still running under the device lock: "
                       + ", ".join(map(str, killed)), file=sys.stderr)
@@ -712,7 +718,7 @@ class HeldLock:
             error = (str(error_value) if error_type else
                      str(LockLost()) if lost else self.error)
             device_lock.record_duration(self.kind, time.monotonic() - self.started, error,
-                                        self.store.root, board=self.board)
+                                        self.store.key_root(self.board), board=self.board)
         if lost and error_type is None:
             raise LockLost()
 
@@ -1173,13 +1179,11 @@ def try_lock_file(handle):
 
 
 @contextlib.contextmanager
-def build_directory_lock(build_dir, timeout=None):
+def build_directory_lock(build_dir):
     """Lock one build directory through its snapshot; yield its prepared path,
     or None when the checkout has no --prepared-build support."""
     latest = os.environ.get(autana_config.BUILD_LATEST_START_ENV)
-    if timeout is None and latest:
-        timeout = max(0, float(latest) - time.time())
-    expires = time.monotonic() + timeout if timeout is not None else None
+    expires = time.monotonic() + max(0, float(latest) - time.time()) if latest else None
     build_dir = Path(build_dir)
     prepared = None
     if (build_dir.parent / "tools/build/build_paths.py").is_file():
@@ -1256,6 +1260,7 @@ def remove_image_directory(image):
 
 
 BUILD_NICE_INCREMENT = 5
+BUILD_WAIT_REPORT_MIN_SECONDS = 1
 
 
 @contextlib.contextmanager
@@ -1263,27 +1268,40 @@ def build_policy(environment):
     """Private process-tree policy limits compilation, never board captures."""
     latest = environment.get(autana_config.BUILD_LATEST_START_ENV)
     latest = float(latest) if latest else None
-    serial = environment.get(autana_config.BUILD_SERIAL_ENV)
     options = {}
     if environment.get(autana_config.BUILD_PRIORITY_ENV) == autana_config.BUILD_PRIORITY_BELOW_NORMAL:
         if os.name == "nt":
             options["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
         else:
             options["preexec_fn"] = partial(os.nice, BUILD_NICE_INCREMENT)
-    with build_directory_lock(serial, timeout=max(0, latest - time.time()) if latest else None) if serial else contextlib.nullcontext():
-        if latest is not None and time.time() > latest:
-            raise TimeoutError("build cannot start inside its window")
-        yield options
+    wait = max(0, latest - time.time()) if latest is not None else float(
+        environment.get(autana_config.WAIT_ENV, autana_config.DEFAULT_LOCK_WAIT_SECONDS))
+    started = time.monotonic()
+    try:
+        with HeldLock(device_lock.LockStore(), device_lock.HEAVY,
+                      environment.get(autana_config.OWNER_ENV) or device_lock.default_owner(), "build", wait):
+            elapsed = time.monotonic() - started
+            if elapsed >= BUILD_WAIT_REPORT_MIN_SECONDS:
+                print(autana_config.HEAVY_WAIT_PREFIX + str(elapsed), flush=True)
+            if latest is not None and time.time() > latest:
+                raise TimeoutError("build cannot start inside its window")
+            yield options
+    except LockBusy as error:
+        elapsed = time.monotonic() - started
+        if elapsed >= BUILD_WAIT_REPORT_MIN_SECONDS:
+            print(autana_config.HEAVY_WAIT_PREFIX + str(elapsed), flush=True)
+        raise TimeoutError(str(error)) from error
 
 
 def build_snapshot(build, build_dir, image_dir=None, **popen):
     """Compile under the process policy and directory lock; optionally snapshot."""
-    with build_directory_lock(build_dir) as prepared:
-        environment = script_environment(popen.pop("env", None))
-        with build_policy(environment) as priority:
-            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None,
+    environment = script_environment(popen.pop("env", None))
+    with build_policy(environment) as priority:
+        with build_directory_lock(build_dir) as prepared:
+            environment[autana_config.HEAVY_TOKEN_ENV] = os.environ[autana_config.HEAVY_TOKEN_ENV]
+            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), ACTIVE_LOCK.held.lost,
                        **dict(popen, env=environment, **priority))
-        return snapshot_image(prepared or build_dir, image_dir) if image_dir else None
+            return snapshot_image(prepared or build_dir, image_dir) if image_dir else None
 
 
 def build_worktree(worktree, variant, build_flags=()):
@@ -2113,7 +2131,7 @@ def main(argv=None):
                                         "a lock record names; hand-to-human/take-back also try "
                                         "the only board this machine has ever seen)")
     parser.add_argument("--owner", default=device_lock.default_owner())
-    parser.add_argument("--wait", type=float, default=600)
+    parser.add_argument("--wait", type=float, default=autana_config.DEFAULT_LOCK_WAIT_SECONDS)
     parser.set_defaults(auto_pick=False)
     subparsers = parser.add_subparsers(dest="command", required=True)
     status_parser = subparsers.add_parser("status")
@@ -2136,6 +2154,8 @@ def main(argv=None):
     take.add_argument("note", nargs="+")
     run = subparsers.add_parser("run")
     run.set_defaults(auto_pick=True)
+    run.add_argument("--heavy", action="store_true")
+    run.add_argument("--wait", type=float, default=argparse.SUPPRESS)
     run.add_argument("--keep-on-failure", type=hold_seconds)
     run.add_argument("--estimate", type=human_wait_seconds)
     run.add_argument("child", nargs=argparse.REMAINDER)
@@ -2264,6 +2284,7 @@ def main(argv=None):
     report_parser.add_argument("--index", help="override index.jsonl (default: records/device)")
     args = parser.parse_args(argv)
     args.purpose = command_label(args.command)
+    os.environ[autana_config.WAIT_ENV] = str(args.wait)
 
     # report and coredump --core touch no lock and no board; each only reads
     # a file already on disk, so they are handled before board discovery even
@@ -2286,18 +2307,50 @@ def main(argv=None):
         store = device_lock.LockStore()
         if args.command in ("status", "devices"):
             entries = board_statuses(store, chosen_board(args.board, store))
+            try:
+                heavy = device_lock.status_entry(store, device_lock.HEAVY)
+            except OSError as error:
+                heavy = {"board": device_lock.HEAVY, "state": "unavailable", "reason": str(error)}
             if args.json:
-                print(json.dumps({"boards": entries}))
+                print(json.dumps({"boards": entries, "heavy": heavy}))
             elif args.command == "devices":
                 print_devices(entries)
             else:
                 print_statuses(entries, store.now())
+                lines = (["unavailable: " + heavy["reason"]] if heavy["state"] == "unavailable" else
+                         device_lock.status_lines(heavy, store.resource_now(device_lock.HEAVY)))
+                print("heavy: " + "\n  ".join(lines))
             result = 0
             return result
         if args.command == "resolve-port":
             print(find_board(args.board).port)
             result = 0
             return result
+        if args.command == "run":
+            child = args.child[1:] if args.child[:1] == ["--"] else args.child
+            if not child:
+                parser.error("run needs -- <command...>")
+            if args.heavy:
+                board = device_lock.HEAVY
+                if args.keep_on_failure is not None:
+                    parser.error("--heavy does not support --keep-on-failure")
+            else:
+                board, picked_reason = board_for_lock(store, args.board, auto_pick=True)
+                if os.environ.get(TOKEN_ENV) and args.keep_on_failure is not None:
+                    parser.error("--keep-on-failure is unavailable inside another hold")
+            with HeldLock(store, board, args.owner, "run", args.wait, estimate=args.estimate) as held:
+                try:
+                    run_to_end(child, held.lost)
+                    result = 0
+                    return result
+                except subprocess.CalledProcessError as error:
+                    held.error = str(error)
+                    held.keep_seconds = args.keep_on_failure
+                    result = error.returncode
+                    return result
+                except KeyboardInterrupt:
+                    result = EXIT_INTERRUPTED
+                    return result
         board, picked_reason = board_for_lock(
             store, args.board, remembered=args.command in ("hand-to-human", "take-back"),
             auto_pick=args.auto_pick(args) if callable(args.auto_pick) else args.auto_pick,
@@ -2309,8 +2362,6 @@ def main(argv=None):
                 raise TokenRefused("already inside hold " + record["owner"])
             raise TokenRefused("lock token is not live on this board (released, lapsed or wrong); "
                                f"unset {TOKEN_ENV} in this shell or drop --lock-token")
-        if token and args.command == "run" and args.keep_on_failure is not None:
-            parser.error("--keep-on-failure is unavailable inside another hold")
         # Validate a borrowed token before any build starts.
         if token and args.command not in ("release", "check-token", "take", "hand-to-human", "take-back", "wait-free"):
             if not store.check_token(board, token):
@@ -2338,7 +2389,7 @@ def main(argv=None):
             reservation_id, renewed = store.reserve_human(board, args.owner, args.note,
                                                           wait=args.wait, on_wait=lambda ticket: wait_notice(store, board, notice_state, ticket))
             if reservation_id is None:
-                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.now()))
+                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.resource_now(board)))
             if args.until_back is None:
                 lasts = device_lock.duration_text(device_lock.HUMAN_RESERVATION_SECONDS)
                 print(f"human reservation {'renewed' if renewed else 'recorded'}; it expires "
@@ -2361,7 +2412,7 @@ def main(argv=None):
             held = store.acquire(board, args.owner, "take", wait=args.wait,
                                  on_wait=lambda ticket: wait_notice(store, board, notice_state, ticket), purpose=" ".join(args.note))
             if not held:
-                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.now()))
+                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.resource_now(board)))
             pid = args.pid if args.until_released else None
             seconds = None if args.until_released else (args.seconds if args.seconds is not None
                                                        else device_lock.HOLD_MAX_SECONDS)
@@ -2370,23 +2421,6 @@ def main(argv=None):
             print(held["token"])
             result = 0
             return result
-        if args.command == "run":
-            child = args.child[1:] if args.child[:1] == ["--"] else args.child
-            if not child:
-                parser.error("run needs -- <command...>")
-            with HeldLock(store, board, args.owner, "run", args.wait, estimate=args.estimate) as held:
-                try:
-                    run_to_end(child, held.lost)
-                    result = 0
-                    return result
-                except subprocess.CalledProcessError as error:
-                    held.error = str(error)
-                    held.keep_seconds = args.keep_on_failure
-                    result = error.returncode
-                    return result
-                except KeyboardInterrupt:
-                    result = EXIT_INTERRUPTED
-                    return result
         if args.command == "flash":
             extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
             with build_image(args, board, extra_flags) as built, \
@@ -2409,7 +2443,7 @@ def main(argv=None):
             return result
         result = 0
         return result
-    except LockBusy as error:
+    except (LockBusy, TimeoutError) as error:
         print("device: " + str(error), file=sys.stderr)
         result = device_lock.EXIT_BUSY
         return result

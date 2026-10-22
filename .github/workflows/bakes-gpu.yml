@@ -89,12 +89,13 @@ jobs:
           ONLY: ${{ inputs.only }}
           AGAIN: ${{ inputs.again }}
           GH_TOKEN: ${{ github.token }}
+          OVERRIDE: 'true'
         run: |
           export DRJIT_LIBOPTIX_PATH="$HOME/gpu/optix/libnvoptix.so.1" LD_LIBRARY_PATH="$HOME/gpu/optix"
           args=(--kind fit --out "$RUNNER_TEMP/bakes")
           for name in $ONLY; do args+=(--only "$name"); done
           if [ "$AGAIN" = true ]; then args+=(--again); fi
-          sh launcher/tools/r3d/gpu_python.sh launcher/tools/bake/bake.py bake "${args[@]}"
+          sh scripts/ci/gpu_stage.sh sh launcher/tools/r3d/gpu_python.sh launcher/tools/bake/bake.py bake "${args[@]}"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

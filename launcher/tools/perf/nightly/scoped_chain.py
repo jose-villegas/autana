@@ -11,7 +11,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from types import SimpleNamespace
 
 PERF = Path(__file__).resolve().parents[1]
@@ -23,6 +22,7 @@ import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
+from local_schedule import Clock, local_time, wait_seconds
 from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
 
 IMAGE_HEADER_BYTES = 24
@@ -56,6 +56,7 @@ class StepResult:
     outcome: str
     image_hash: str | None = None
     build_id: str | None = None
+    wait_seconds: float = 0
     build_seconds: float = 0
     measure_seconds: float = 0
     report: str | None = None
@@ -137,22 +138,6 @@ def select_steps(repo, tip, previous, lane, lanes, from_sha=None, max_steps=None
     return steps
 
 
-class Clock:
-    def now(self):
-        return datetime.now().astimezone()
-
-    def sleep(self, seconds):
-        time.sleep(seconds)
-
-
-def local_time(value, now, next_occurrence=False):
-    hour, minute = map(int, value.split(":"))
-    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    if next_occurrence and target <= now:
-        target += timedelta(days=1)
-    return target
-
-
 def run_chain(steps, args, runner=None, clock=None):
     runner, clock = runner or run_stamped, clock or Clock()
     started = clock.now()
@@ -170,8 +155,6 @@ def run_chain(steps, args, runner=None, clock=None):
     positions = {step.commit: step.position for step in history_steps(args.repo, "HEAD")}
     results, failures, worst_step, stop_reason = [], 0, FIRST_STEP_SECONDS, None
     selftest = dict(board=board, outcome="not_run", report=None, started=None, seconds=0)
-    selftest_at = (local_time(args.selftest_at, night_started, next_occurrence=True)
-                   if getattr(args, "selftest_at", None) else None)
     manifest = Path(args.data) / "scoped" / board / night_started.strftime("%Y-%m-%d-%H%M") / "night.json"
 
     cleanup = "pending"
@@ -183,14 +166,10 @@ def run_chain(steps, args, runner=None, clock=None):
         value["last_image_hash"] = previous_hash
         write_json(manifest, value)
 
-    def test_if_due(wait=False):
-        if not selftest_at or selftest["outcome"] != "not_run":
+    def run_selftest():
+        if not getattr(args, "selftest", None):
             return
-        if wait and clock.now() < selftest_at:
-            if selftest_at + timedelta(seconds=SELFTEST_ALLOWANCE_SECONDS) > deadline:
-                return
-            clock.sleep((selftest_at - clock.now()).total_seconds())
-        if clock.now() < selftest_at or clock.now() + timedelta(seconds=SELFTEST_ALLOWANCE_SECONDS) > deadline:
+        if clock.now() + timedelta(seconds=SELFTEST_ALLOWANCE_SECONDS) > deadline:
             return
         begin = clock.now()
         os.environ[autana_config.BUILD_LATEST_START_ENV] = str(
@@ -212,16 +191,21 @@ def run_chain(steps, args, runner=None, clock=None):
     directory = tempfile.mkdtemp(prefix="nightly-", dir=output)
     worktree = Path(directory) / "tree"
     try:
+        run_selftest()
         for index, step in enumerate(steps):
-            test_if_due()
-            reserve = (SELFTEST_ALLOWANCE_SECONDS if selftest_at and selftest["outcome"] == "not_run" else 0)
-            if not stop_reason and clock.now() + timedelta(seconds=worst_step + reserve) > deadline:
+            if not stop_reason and clock.now() + timedelta(seconds=worst_step) > deadline:
                 stop_reason = "window"
             result = StepResult(step, "not_run_stopped" if stop_reason == "capture_failures" else "not_run_window")
             results.append(result)
             if stop_reason:
                 save()
                 continue
+            def run_step(command, log, timeout, **options):
+                response = runner(command, log, timeout, **options)
+                result.wait_seconds += sum(float(line.removeprefix(autana_config.HEAVY_WAIT_PREFIX))
+                                           for _, line in response[1] if line.startswith(autana_config.HEAVY_WAIT_PREFIX))
+                return response
+
             begin = clock.now()
             result.outcome = "build_failed"
             code = None
@@ -232,9 +216,9 @@ def run_chain(steps, args, runner=None, clock=None):
                     git(worktree, "checkout", "--detach", step.commit)
                     git(worktree, "submodule", "update", "--init", "--recursive")
                     os.environ[autana_config.BUILD_LATEST_START_ENV] = str(
-                        (deadline - timedelta(seconds=worst_step + reserve)).timestamp())
-                    code, _, _ = runner(autana_command("--project", str(worktree), "build", VARIANT,
-                                                      *BUILD_FLAGS), log, BUILD_TIMEOUT_SECONDS)
+                        (deadline - timedelta(seconds=worst_step)).timestamp())
+                    code, _, _ = run_step(autana_command("--project", str(worktree), "build", VARIANT,
+                                                      *BUILD_FLAGS), log, BUILD_TIMEOUT_SECONDS + max(0, (deadline - clock.now()).total_seconds()))
                     if code:
                         raise RuntimeError(f"build exited {code}")
                     build = latest_build(worktree)
@@ -242,8 +226,8 @@ def run_chain(steps, args, runner=None, clock=None):
                     result.image_hash = image_hash(build)
                 except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
                     log.write(str(error) + "\n")
-            result.build_seconds = (clock.now() - begin).total_seconds()
-            remaining = max(0, worst_step - result.build_seconds) + reserve
+            result.build_seconds = max(0, (clock.now() - begin).total_seconds() - result.wait_seconds)
+            remaining = max(0, worst_step - result.build_seconds)
             if code == autana_config.EXIT_BUSY or clock.now() + timedelta(seconds=remaining) > deadline:
                 stop_reason = "window"
                 result.outcome = "not_run_window"
@@ -260,8 +244,8 @@ def run_chain(steps, args, runner=None, clock=None):
                     try:
                         capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
                                                        suite=args.suite, runs=1, timeout=CAPTURE_TIMEOUT_SECONDS,
-                                                       wait=0)
-                        record = run_flash(capture_args, seed=LAYOUT_SEED, runner=runner)
+                                                       wait=max(0, (deadline - clock.now()).total_seconds()))
+                        record = run_flash(capture_args, seed=LAYOUT_SEED, runner=run_step)
                         actual = require_same_board({"previous": machine, "capture": record["board"]}
                                                     if machine else {"capture": record["board"]})
                         if not actual or normalise_board(args.board) not in (normalise_board(actual), short_id(actual)):
@@ -294,9 +278,8 @@ def run_chain(steps, args, runner=None, clock=None):
             if result.outcome in ("measured", "skipped_same_image", "build_failed"):
                 if step.position >= positions.get(last_attempted, 0):
                     last_attempted = step.commit
-            worst_step = max(worst_step, (clock.now() - begin).total_seconds())
+            worst_step = max(worst_step, (clock.now() - begin).total_seconds() - result.wait_seconds)
             save()
-        test_if_due(wait=True)
     finally:
         errors = []
         try:
@@ -391,7 +374,6 @@ def main():
     running.add_argument("--lane", required=True)
     running.add_argument("--until", required=True)
     running.add_argument("--suite", nargs=3, action="append", default=[])
-    running.add_argument("--selftest-at")
     running.add_argument("--selftest", nargs=argparse.REMAINDER)
     for command in (planning, running):
         command.add_argument("--repo", type=Path, default=REPO)
@@ -400,11 +382,10 @@ def main():
         command.add_argument("--from", dest="from_sha")
         command.add_argument("--max-steps", type=int)
     args = parser.parse_args()
-    os.environ[autana_config.BUILD_SERIAL_ENV] = str(autana_config.user_cache_dir() / autana_config.BUILD_SERIAL_DIRECTORY)
     os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
     if args.command == "wait-seconds":
         now = Clock().now()
-        print(max(0, int((local_time(args.until, now, next_occurrence=True) - now).total_seconds())))
+        print(wait_seconds(args.until, now, next_occurrence=True))
         return 0
     if args.command == "lane-info":
         try:
@@ -416,8 +397,6 @@ def main():
     if args.command == "plan":
         plan(args)
         return 0
-    if bool(args.selftest_at) != bool(args.selftest):
-        parser.error("--selftest-at and --selftest must be supplied together")
     if not args.suite:
         parser.error("run requires at least one --suite")
     if not os.environ.get("_AUTANA_DEVICE_LOCK_TOKEN"):

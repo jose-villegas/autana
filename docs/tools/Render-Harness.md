@@ -159,8 +159,22 @@ A comment or blank-line edit in the Python leaves the fingerprint unchanged.
 The stage's work folder is named by it, and its saved `source.json` holds it
 and lists every input.
 
-The `doc-images-gpu` workflow runs on every main push, nightly and on manual
-dispatch.
+The `doc-images-gpu` workflow fingerprints inputs on every main push.
+Changed images remain pending for the night window; pushes do not render.
+
+The schedule is `0 23 * * *` UTC. Scheduled work waits until local 01:00,
+using the next day if triggered before midnight. It may start before 03:00.
+
+A schedule firing from local 03:00 through noon skips successfully with
+`skipped: too late, next night renders it`.
+
+Manual dispatch uses the same start window and refuses an early or late
+start with `GPU stage renders 01:00-03:00 local time; dispatch with override to render now`.
+Set `override` to render at any time; `force` controls freshness independently.
+
+The full stage holds `autana lock run --heavy`, queued only until local
+03:00 unless overridden. It checks the start cap again after acquiring the
+lock. GPU bakes hold the same key without a night start cap.
 
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
 failed attempt is a record too, so a newer failed one makes them stale
@@ -204,7 +218,7 @@ flowchart TD
 A rendered record means rendered, not merged: closing a refresh PR leaves
 these inputs current until they change or a dispatch uses `force`.
 
-A failed record leaves inputs not current, so the next push or nightly run
+A failed record leaves inputs not current, so the next eligible nightly or dispatched run
 renders again. Retention is set in `doc-images-gpu.yml`.
 Runs open or update "docs: refresh GPU-rendered images" on
 `feature/refresh-doc-images-gpu`, and log GPU memory use.
