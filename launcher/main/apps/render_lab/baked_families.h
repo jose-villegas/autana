@@ -8,7 +8,7 @@
 
 typedef struct {
     const char* scene;        /* the scene's id, and its pack's name */
-    const char* const* bakes; /* SCENE_BAKED_NAMES: the renderer of each variant */
+    const char* const* bakes; /* the renderer of each variant, by scene_baked_variant_t */
     const char* camera;       /* followed when the start names no camera */
 } scene_baked_t;
 

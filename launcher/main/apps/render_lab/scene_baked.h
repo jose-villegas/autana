@@ -32,8 +32,8 @@ const char* scene_baked_status(void);
 #define SCENE_BAKED_FIELD_FAMILY(shown_, family_, name_, key_prefix_) family_
 #define SCENE_BAKED_FIELD_NAME(shown_, family_, name_, key_prefix_)   name_
 #define SCENE_BAKED_FIELD_KEY(shown_, family_, name_, key_prefix_)    key_prefix_
-#define SCENE_BAKED_SHOWN(f_, id_, renderer_, title_, key_, label_)   {SCENE_BAKED_FIELD_FAMILY f_, SCENE_BAKED_##id_},
-#define SCENE_BAKED_SCENE(f_, id_, renderer_, title_, key_, label_)                                                    \
+#define SCENE_BAKED_SHOWN(f_, id_, title_, key_, label_)              {SCENE_BAKED_FIELD_FAMILY f_, SCENE_BAKED_##id_},
+#define SCENE_BAKED_SCENE(f_, id_, title_, key_, label_)                                                               \
     [SCENE_BAKED_##id_] = {.name = SCENE_BAKED_FIELD_NAME f_ title_,                                                   \
                            .key = SCENE_BAKED_FIELD_KEY f_ key_,                                                       \
                            .family = SCENE_BAKED_FIELD_NAME f_,                                                        \

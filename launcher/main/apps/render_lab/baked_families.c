@@ -2,7 +2,14 @@
 
 #include "sponza_content.h"
 
-static const char* const bistro_bakes[SCENE_BAKED_VARIANT_COUNT] = SCENE_BAKED_NAMES("street");
+static const char* const bistro_bakes[SCENE_BAKED_VARIANT_COUNT] = {
+    [SCENE_BAKED_FULL] = "street",
+    [SCENE_BAKED_FLAT] = "street_flat",
+    [SCENE_BAKED_LITE] = "street_lite",
+    [SCENE_BAKED_FITTED] = "street_fitted",
+    [SCENE_BAKED_FITTED_FULL] = "street_fitted_full",
+    [SCENE_BAKED_FLAT_FITTED] = "street_flat_fitted",
+};
 
 const scene_baked_t baked_sponza = {SPONZA_SCENE, sponza_bakes, SPONZA_CAMERA};
 const scene_baked_t baked_bistro = {BISTRO_SCENE, bistro_bakes, "camera"};
