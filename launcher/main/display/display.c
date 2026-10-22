@@ -14,8 +14,9 @@
 #include "display/display_shell.h"
 
 #include <assert.h>
-#include <math.h>
 #include <stdint.h>
+
+#include "math/scalar/mathi.h"
 
 int
 display_panel_corner_inset(int radius, int canvas_height, int row) {
@@ -27,7 +28,7 @@ display_panel_corner_inset(int radius, int canvas_height, int row) {
         return 0;
     }
     const int up = radius - from_nearest_edge;
-    return radius - (int)lroundf(sqrtf((float)((radius * radius) - (up * up))));
+    return radius - mathi_half_chord_round(radius, up);
 }
 
 void
