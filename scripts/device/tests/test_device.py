@@ -41,6 +41,7 @@ BOARD = "90:70:69:FE:A3:08"
 def mock_store(token="token"):
     store = mock.Mock()
     store.root = Path(os.environ["_AUTANA_DEVICE_LOCK_ROOT"])
+    store.key_root.side_effect = lambda board: device_lock.heavy_root() if board == device_lock.HEAVY else store.root
     store.acquire.return_value = device_lock.Held({"token": token, "acquired_at": 1000.0})
     return store
 
@@ -759,7 +760,7 @@ class DeviceTests(unittest.TestCase):
         store.reserve_human.return_value = ("id", False)
         with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
                 mock.patch.object(device_lock.getpass, "getuser", return_value="sam"), \
-                mock.patch.object(device_lock.socket, "gethostname", return_value="devbox"):
+                mock.patch.object(device_lock, "host_identity", return_value="devbox"):
             self.assertEqual(device.main(["--board", BOARD, "hand-to-human",
                                           "--note", "check cable"]), 0)
         store.reserve_human.assert_called_once_with(
@@ -1194,7 +1195,7 @@ class PreparedSnapshotTests(unittest.TestCase):
 
 class BuildWorktreeTests(unittest.TestCase):
     """build_worktree(), behind `autana build`: the build half of a flash,
-    touching no board and no lock."""
+    touching no board and holding heavy only."""
 
     def main(self, variant, flags=(), run=None, build_paths=False):
         with tempfile.TemporaryDirectory() as directory:
@@ -1205,14 +1206,11 @@ class BuildWorktreeTests(unittest.TestCase):
             with mock.patch.object(device, "run_to_end",
                                    side_effect=run or (lambda command, lost=None, **options:
                                                        calls.append((command, lost, options)))), \
-                 mock.patch.object(device, "board_for_lock", side_effect=AssertionError("board")), \
-                 mock.patch.object(device.device_lock, "LockStore",
-                                   side_effect=AssertionError("lock")), \
-                 mock.patch.object(device, "HeldLock", side_effect=AssertionError("held")):
+                 mock.patch.object(device, "board_for_lock", side_effect=AssertionError("board")):
                 code = device.build_worktree(worktree, variant, flags)
         return code, calls
 
-    def test_builds_the_variant_with_no_board_and_no_lock(self):
+    def test_builds_the_variant_with_no_board_and_heavy_lock(self):
         code, calls = self.main("diag", ["--perf-scope"], build_paths=True)
         self.assertEqual(code, 0)
         (command, lost, options), = calls
@@ -1220,7 +1218,8 @@ class BuildWorktreeTests(unittest.TestCase):
                          ["build.sh", "--diag", "--perf-scope"])
         self.assertEqual(command[-2], "--prepared-build")
         self.assertEqual(Path(command[-1]).name, device.BUILD_DIRS["diag"])
-        self.assertIsNone(lost)
+        self.assertIsNotNone(lost)
+        self.assertIn(autana_config.HEAVY_TOKEN_ENV, options["env"])
         self.assertNotIn(autana_config.TOKEN_ENV, options["env"])
 
     def test_an_old_project_gets_no_prepared_build_option(self):

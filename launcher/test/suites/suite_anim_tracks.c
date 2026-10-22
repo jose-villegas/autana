@@ -43,6 +43,8 @@ fixture(void) {
     memcpy(f.entry + STRINGS, "n\0position\0", sizeof "n\0position\0");
     test_pack_put16(f.entry + ROW0 + ANIM_TRACKS_ROW_FIELD, 2);
     test_pack_put32(f.entry + ROW0 + ANIM_TRACKS_ROW_COMPONENT, ANIM_COMPONENT_TRANSFORM);
+    test_pack_put32(f.entry + ROW0 + ANIM_TRACKS_ROW_PATH_HASH, name_hash("n"));
+    test_pack_put32(f.entry + ROW0 + ANIM_TRACKS_ROW_FIELD_HASH, name_hash("position"));
     test_pack_put32(f.entry + ROW0 + ANIM_TRACKS_ROW_TIMES, TIMES);
     test_pack_put32(f.entry + ROW0 + ANIM_TRACKS_ROW_VALUES, VALUES);
     test_pack_put16(f.entry + ROW0 + ANIM_TRACKS_ROW_KEYS, 2);
@@ -85,6 +87,18 @@ test_step_and_single_quaternion_keys_are_unit(void) {
 }
 
 static void
+test_changed_binding_strings_are_refused(void) {
+    const int offsets[] = {STRINGS, STRINGS + 2, ROW0 + ANIM_TRACKS_ROW_PATH_HASH, ROW0 + ANIM_TRACKS_ROW_FIELD_HASH};
+    for (size_t i = 0; i < sizeof offsets / sizeof offsets[0]; i++) {
+        fixture_t f = fixture();
+        f.entry[offsets[i]] ^= 1;
+        anim_tracks_t tracks;
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_fixture(&f, ENTRY_BYTES, &tracks));
+        test_free_aligned(f.raw);
+    }
+}
+
+static void
 test_unknown_nonzero_component_opens(void) {
     fixture_t f = fixture();
     test_pack_put32(f.entry + ROW0 + ANIM_TRACKS_ROW_COMPONENT, ASSET_TYPE('T', 'E', 'S', 'T'));
@@ -111,15 +125,17 @@ test_types_and_interpolations(void) {
             TEST_ASSERT_EQUAL_STRING("n", b.path);
             TEST_ASSERT_EQUAL_STRING("position", b.field);
             anim_track_t curve;
-            TEST_ASSERT_EQUAL_INT(ASSET_OK,
-                                  anim_tracks_find(&tracks, "n", ANIM_COMPONENT_TRANSFORM, "position", &curve));
+            TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find(&tracks, name_hash("n"), ANIM_COMPONENT_TRANSFORM,
+                                                             name_hash("position"), &curve));
             TEST_ASSERT_EQUAL_PTR(f.entry + VALUES, curve.values);
-            TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND,
-                                  anim_tracks_find(&tracks, "n", ANIM_COMPONENT_CAMERA, "position", &curve));
-            TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND,
-                                  anim_tracks_find(&tracks, "m", ANIM_COMPONENT_TRANSFORM, "position", &curve));
-            TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND,
-                                  anim_tracks_find(&tracks, "n", ANIM_COMPONENT_TRANSFORM, "scale", &curve));
+            TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_find(&tracks, name_hash("n"), ANIM_COMPONENT_CAMERA,
+                                                                        name_hash("position"), &curve));
+            TEST_ASSERT_EQUAL_INT(
+                ASSET_ERR_NOT_FOUND,
+                anim_tracks_find(&tracks, name_hash("m"), ANIM_COMPONENT_TRANSFORM, name_hash("position"), &curve));
+            TEST_ASSERT_EQUAL_INT(
+                ASSET_ERR_NOT_FOUND,
+                anim_tracks_find(&tracks, name_hash("n"), ANIM_COMPONENT_TRANSFORM, name_hash("scale"), &curve));
             TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_binding_at(&tracks, -1, &b));
             TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_binding_at(&tracks, tracks.count, &b));
             test_free_aligned(f.raw);
@@ -141,17 +157,16 @@ test_invalid_fields_and_padding(void) {
         {ROW0 + ANIM_TRACKS_ROW_INTERP, ANIM_CUBIC + 1},
         {ROW0 + ANIM_TRACKS_ROW_COMPONENT, 0},
         {ROW0 + ANIM_TRACKS_ROW_KEYS, 0},
-        {ROW0 + ANIM_TRACKS_ROW_PAD, 1},
-        {ROW0 + ANIM_TRACKS_ROW_PAD + 1, 1},
-        {ROW0 + ANIM_TRACKS_ROW_PAD + 2, 1},
-        {ROW0 + ANIM_TRACKS_ROW_PAD + 3, 1},
+        {ROW0 + ANIM_TRACKS_ROW_PATH_HASH, 0},
+        {ROW0 + ANIM_TRACKS_ROW_FIELD_HASH, 0},
     };
 
     for (size_t i = 0; i < sizeof CASES / sizeof CASES[0]; i++) {
         fixture_t f = fixture();
         anim_tracks_t tracks;
-        if (CASES[i].offset == ROW0 + ANIM_TRACKS_ROW_COMPONENT) {
-            test_pack_put32(f.entry + CASES[i].offset, 0);
+        if (CASES[i].offset == ROW0 + ANIM_TRACKS_ROW_COMPONENT || CASES[i].offset == ROW0 + ANIM_TRACKS_ROW_PATH_HASH
+            || CASES[i].offset == ROW0 + ANIM_TRACKS_ROW_FIELD_HASH) {
+            test_pack_put32(f.entry + CASES[i].offset, NAME_HASH_NONE);
         } else {
             f.entry[CASES[i].offset] = CASES[i].value;
         }
@@ -199,7 +214,7 @@ static void
 test_version_and_bounds(void) {
     fixture_t f = fixture();
     anim_tracks_t tracks;
-    test_pack_put16(f.entry, 1);
+    test_pack_put16(f.entry, ANIM_TRACKS_VERSION - 1);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, open_fixture(&f, ENTRY_BYTES, &tracks));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, open_fixture(&f, sizeof(uint16_t), &tracks));
     test_pack_put16(f.entry, ANIM_TRACKS_VERSION);
@@ -286,20 +301,20 @@ test_find_node_required_parts_and_default_scale(void) {
     anim_tracks_t tracks;
     anim_node_tracks_t node;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){entry, BYTES}, &tracks));
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find_node(&tracks, "node", &node));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find_node(&tracks, name_hash("node"), &node));
     float scale[ANIM_WIDTH_MAX];
     anim_track_sample(&node.scale, 0, scale);
     TEST_ASSERT_EQUAL_FLOAT(1, scale[0]);
     TEST_ASSERT_EQUAL_FLOAT(1, scale[1]);
     TEST_ASSERT_EQUAL_FLOAT(1, scale[2]);
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_find_node(&tracks, "missing", &node));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_find_node(&tracks, name_hash("missing"), &node));
     entry[ROW0 + ANIM_TRACKS_ROW_TYPE] = ANIM_VALUE_VEC2;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){entry, BYTES}, &tracks));
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, anim_tracks_find_node(&tracks, "node", &node));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, anim_tracks_find_node(&tracks, name_hash("node"), &node));
     entry[ROW0 + ANIM_TRACKS_ROW_TYPE] = ANIM_VALUE_VEC3;
     entry[ROW0 + ANIM_TRACKS_ROW_SIZE + ANIM_TRACKS_ROW_TYPE] = ANIM_VALUE_COLOUR;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){entry, BYTES}, &tracks));
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, anim_tracks_find_node(&tracks, "node", &node));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, anim_tracks_find_node(&tracks, name_hash("node"), &node));
     free(entry);
 }
 
@@ -318,7 +333,7 @@ open_every_clip(const asset_pack_t* pack) {
             anim_binding_t b;
             anim_track_t curve;
             TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_binding_at(&tracks, j, &b));
-            TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find(&tracks, b.path, b.component, b.field, &curve));
+            TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find(&tracks, b.path_hash, b.component, b.field_hash, &curve));
         }
         clips++;
     }
@@ -412,6 +427,7 @@ test_a_missing_clip_and_an_entry_of_another_type_are_told_apart(void) {
 void
 suite_anim_tracks(void) {
     RUN_TEST(test_step_and_single_quaternion_keys_are_unit);
+    RUN_TEST(test_changed_binding_strings_are_refused);
     RUN_TEST(test_unknown_nonzero_component_opens);
     RUN_TEST(test_types_and_interpolations);
     RUN_TEST(test_large_key_count_and_sized_cubic_values);

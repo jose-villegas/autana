@@ -373,9 +373,15 @@ class RecordedInputsTests(unittest.TestCase):
         steps = workflow['jobs']['refresh']['steps']
         gate = next(index for index, step in enumerate(steps) if step.get('id') == 'gate')
         self.assertEqual(gate, 1)
+        stage = next(index for index, step in enumerate(steps) if step.get('id') == 'gpu')
         names = []
-        for step in steps[gate + 1:]:
-            self.assertIn("steps.gate.outputs.render == 'true'", step.get('if', ''))
+        for index, step in enumerate(steps[gate + 1:], gate + 1):
+            # Past the stage only what it rendered is recorded: it may skip after the lock wait.
+            guard = ("steps.gate.outputs.render == 'true'" if index <= stage
+                     else "steps.gpu.outputs.rendered == 'true'")
+            if index > stage and step.get('if', '').startswith('always()'):
+                guard = "steps.gate.outputs.render == 'true'"
+            self.assertIn(guard, step.get('if', ''))
             if step.get('uses', '').startswith('actions/upload-artifact@'):
                 names.append(step['with']['name'])
         self.assertCountEqual(names, [prefix + '${{ needs.fingerprint.outputs.fingerprint }}'
@@ -387,7 +393,8 @@ class RecordedInputsTests(unittest.TestCase):
         self.assertEqual(workflow['jobs']['fingerprint']['outputs']['current'], '${{ steps.inputs.outputs.current }}')
         refresh = workflow['jobs']['refresh']
         self.assertEqual(refresh['needs'], 'fingerprint')
-        self.assertEqual(refresh['if'], "needs.fingerprint.outputs.current != 'true'")
+        # A push only marks images pending; the render waits for the night window.
+        self.assertEqual(refresh['if'], "github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'")
         self.assertEqual(refresh['concurrency'], {'group': 'doc-images-gpu', 'cancel-in-progress': 'false', 'queue': 'max'})
         self.assertEqual(workflow['env']['FORCE'], '${{ inputs.force }}')
         self.assertNotIn('. launcher/tools/r3d/gpu_env.sh', '\n'.join(step.get('run', '') for step in steps))
