@@ -1,18 +1,17 @@
 """Repository REST requests and complete paged listings for CI jobs, over urllib so
-no runner needs the GitHub CLI. Reads GH_TOKEN and GITHUB_REPOSITORY."""
-import http.client
+no runner needs the GitHub CLI. GETs use http_get retries. Reads GH_TOKEN and GITHUB_REPOSITORY."""
 import json
 import os
-import time
-import urllib.error
+from pathlib import Path
+import sys
 import urllib.request
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import http_get
+
 PER_PAGE = 100
-GET_ATTEMPTS = 5
-RETRY_BASE_DELAY_SECONDS = 1
 REQUEST_TIMEOUT_SECONDS = 30
-RETRY_HTTP_STATUSES = (429, *range(500, 600))
 
 
 def call(method, path, body=None):
@@ -20,16 +19,10 @@ def call(method, path, body=None):
         f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}{path}", method=method,
         data=None if body is None else json.dumps(body).encode(),
         headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"})
-    attempts = GET_ATTEMPTS if method == 'GET' else 1
-    for attempt in range(attempts):
-        try:
-            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-                return json.load(response)
-        except (OSError, http.client.HTTPException) as error:
-            if (attempt == attempts - 1 or
-                    isinstance(error, urllib.error.HTTPError) and error.code not in RETRY_HTTP_STATUSES):
-                raise
-            time.sleep(RETRY_BASE_DELAY_SECONDS * 2 ** attempt)
+    if method == 'GET':
+        return json.loads(http_get.get(request, timeout=REQUEST_TIMEOUT_SECONDS))
+    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        return json.load(response)
 
 
 def pages(path, key, request=call):
