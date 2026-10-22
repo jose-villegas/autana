@@ -254,7 +254,7 @@ Reference: [the asset packs](../assets/README.md#packs).
 Solid bars are the shipped frame; hatched bars are what each debug view adds.
 The table under the charts has every stage in ms.
 
-<!-- generated: pipeline-frame-stages sha256=a85a933fcbc6eaf52993bd4e7965cf3df806c953a25272f8df8654e12531ec66 -->
+<!-- generated: pipeline-frame-stages sha256=db43f7ca3a424c91eee2b61f12c3a434fb93e3b5e739c8d97806d9fc9f5d725f -->
 ![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
 
 ![Frame stages with the depth view](../images/render/pipeline-frame-stages.depth.png)
@@ -280,6 +280,7 @@ The table under the charts has every stage in ms.
 | total | 51.23 | 100% | +7.47 | +5.04 | +25.70 | +34.40 |
 
 Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped.
+
 </details>
 <!-- /generated: pipeline-frame-stages -->
 
