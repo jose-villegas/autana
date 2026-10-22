@@ -325,7 +325,7 @@ def pmu_owner(root, path, text):
 
 
 # RULE: a folder may include only a strictly lower tier of
-# docs/Firmware-Architecture.md's "Layers" (LAYER_ROWS below, one string per
+# docs/firmware/Layers.md (LAYER_ROWS below, one string per
 # row, top first, grouped into system, engine and platform bands; folders
 # in a row share a tier). A system header such
 # as "driver/temperature_sensor.h" never resolves to a layer, and a package
@@ -367,7 +367,7 @@ def _layer_dirs_match(root):
         raise ValueError(
             f"launcher/main has folder(s) {unknown} that LAYER_ROWS (check_style_audit.py) "
             "does not know about - add them to the tier table (and to "
-            "Firmware-Architecture.md's Layers section) before this rule can trust its own order.")
+            "docs/firmware/Layers.md) before this rule can trust its own order.")
 
 
 def _main_include_layers(root, path, text):
