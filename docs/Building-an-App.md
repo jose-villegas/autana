@@ -266,12 +266,8 @@ the internal or 8-bit heap has less free after `exit()` than it had before `ente
 ### What the shell resets for you
 
 On every launch and leave, `display_restore_system_state()`: the panel clock goes back to the system value
-(`display_system_panel_clock_hz()`, the user's 80 or 40 MHz choice, kept in NVS)
-and gfx heal goes back to its defaults. The gfx mode is **not** reset; that is
-`exit()`'s job.
-
-An app that minds a stray pixel at 80 MHz opts into heal: `gfx_heal_mark()`,
-`gfx_heal_set_budget()`, `gfx_heal_set_rolling()`. Resolution logic:
+(`display_system_panel_clock_hz()`, the user's 80 or 40 MHz choice, kept in NVS).
+The gfx mode is **not** reset; that is `exit()`'s job. Resolution logic:
 `display/panel_clock.c`.
 
 ### Full redraw
@@ -326,7 +322,7 @@ An app's `IRAM_ATTR` function needs the comment directly above it to give a reas
 ## Related
 
 - [`Building-a-Screen.md`](Building-a-Screen.md): screens built on the `ui/ui.h` face inside an app
-- [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md): draw targets, dirty tracking, the present path, heal
+- [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md): draw targets, dirty tracking, the present path, the panel clock
 - [`Firmware-Architecture.md`](Firmware-Architecture.md): why one framebuffer and one frame loop
 - [`Testing-Guide.md`](Testing-Guide.md): suites and runners
 - [`Build-Variants.md`](Build-Variants.md): what release, dev and

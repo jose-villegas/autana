@@ -9,9 +9,8 @@ screen before it, left behind.
 | State | Reset to | Set by a test through |
 |---|---|---|
 | Panel clock | the shell's own clock choice | `gfx_set_panel_clock_hz()` |
-| Heal queue and settings | their defaults | the heal controls in `gfx_heal.h` |
 
-Both are restored by `display_restore_system_state()`
+It is restored by `display_restore_system_state()`
 ([`display_device.c:92`](../../launcher/main/display/display_device.c#L92)).
 
 ```mermaid
@@ -32,7 +31,7 @@ fixture with [`panel_clock_pin()`](../../launcher/test/panel_clock_pin.h), which
 and presents once so the link reopen falls outside the timed window. The runner's `tearDown`
 puts the system clock back, so the suite does not undo it.
 
-The gfx suite's budgets are pegged with this pinned clock and the default heal state
+The gfx suite's budgets are pegged with this pinned clock
 ([`suite_gfx.c:52`](../../launcher/test/suites/suite_gfx.c#L52)); see
 [Performance and budgets](Performance-and-Budgets.md) for how a ceiling is set.
 
@@ -44,6 +43,6 @@ The gfx suite's budgets are pegged with this pinned clock and the default heal s
 | | assume the previous test's clock |
 
 The gfx suite's fixture also clears the clip rect, which its tests share, and no test there
-may deinitialise gfx ([`suite_gfx.c:58`](../../launcher/test/suites/suite_gfx.c#L58)).
+may deinitialise gfx ([`suite_gfx.c:57`](../../launcher/test/suites/suite_gfx.c#L57)).
 
 See [Writing a test](Writing-a-Test.md) for the rest.

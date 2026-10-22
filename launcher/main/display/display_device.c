@@ -91,5 +91,4 @@ display_set_system_panel_clock_hz(int hz) {
 void
 display_restore_system_state(void) {
     gfx_set_panel_clock_hz(panel_clock_for_switch(&shell_panel_clock));
-    gfx_heal_restore_defaults();
 }
