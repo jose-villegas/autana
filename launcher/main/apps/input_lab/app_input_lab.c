@@ -799,8 +799,8 @@ draw_motion(void) {
     const motion_ring_t ring = {cx, cy, radius,
                                 (recti_t){MOTION_MARGIN, top, screen_w - (2 * MOTION_MARGIN), bottom - top}};
     for (int row = -radius; row <= radius; row += ARC_STEP) {
-        const int extent = motion_probe_ring_extent(radius, row);
-        const int previous = row > -radius ? motion_probe_ring_extent(radius, row - ARC_STEP) : 0;
+        const int extent = mathi_half_chord_round(radius, row);
+        const int previous = row > -radius ? mathi_half_chord_round(radius, row - ARC_STEP) : 0;
         const int left = extent > previous ? extent : previous;
         const int width = abs(extent - previous) + 1;
         ui_fill((recti_t){cx - left, cy + row, width, ARC_STEP}, COL_MOTION_RING);

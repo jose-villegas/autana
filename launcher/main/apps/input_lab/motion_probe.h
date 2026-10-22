@@ -20,5 +20,4 @@ typedef struct {
  * With no in-plane gravity its bearing is reported as zero. */
 motion_probe_t motion_probe_measure(vec3i_t acceleration);
 vec2i_t motion_probe_bubble(int x, int y, int radius, int quarter);
-int motion_probe_ring_extent(int radius, int row);
 void motion_probe_format_fixed(char* out, size_t len, int value, int digits, bool show_plus);

@@ -520,14 +520,6 @@ boot_anim_grid_alpha(uint32_t now_ms, int band) {
     return (uint8_t)(arrived * mathi_min(left, ramp) / ramp);
 }
 
-/* Half the chord the circle of radius `r` cuts on the line `c` from its
- * centre, rounded down; 0 when the line misses it. */
-static inline int32_t
-boot_anim_far_chord(int32_t r, int32_t c) {
-    const int64_t h = ((int64_t)r * r) - ((int64_t)c * c);
-    return h > 0 ? (int32_t)mathi_isqrt64((uint64_t)h) : 0;
-}
-
 /* The title is laid out in the viewer's frame because the board is held one
  * quarter turn from the panel's native orientation. */
 

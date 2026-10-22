@@ -62,14 +62,6 @@ test_bubble_uses_inverse_quarter_rotation(void) {
 }
 
 static void
-test_ring_extents(void) {
-    TEST_ASSERT_EQUAL_INT(TEST_RING_RADIUS, motion_probe_ring_extent(TEST_RING_RADIUS, 0));
-    TEST_ASSERT_EQUAL_INT(0, motion_probe_ring_extent(TEST_RING_RADIUS, TEST_RING_RADIUS));
-    TEST_ASSERT_EQUAL_INT(motion_probe_ring_extent(TEST_RING_RADIUS, TEST_RING_RADIUS / 2),
-                          motion_probe_ring_extent(TEST_RING_RADIUS, -TEST_RING_RADIUS / 2));
-}
-
-static void
 test_bubble_rounding_and_unclamped_signal(void) {
     const vec2i_t expected[] = {{-27, -27}, {-27, 27}, {27, 27}};
     for (int q = 1; q < 4; q++) {
@@ -80,12 +72,6 @@ test_bubble_rounding_and_unclamped_signal(void) {
     const vec2i_t dot = motion_probe_bubble(2 * INPUT_ACCEL_ONE_G, -2 * INPUT_ACCEL_ONE_G, TEST_RING_RADIUS, 0);
     TEST_ASSERT_EQUAL_INT(2 * TEST_RING_RADIUS, dot.x);
     TEST_ASSERT_EQUAL_INT(-2 * TEST_RING_RADIUS, dot.y);
-}
-
-static void
-test_ring_extent_rounding(void) {
-    TEST_ASSERT_EQUAL_INT(69, motion_probe_ring_extent(TEST_RING_RADIUS, 41));
-    TEST_ASSERT_EQUAL_INT(68, motion_probe_ring_extent(TEST_RING_RADIUS, 42));
 }
 
 static void
@@ -118,7 +104,6 @@ test_fixed_point_formatter(void) {
 void
 run_motion_probe_suite(void) {
     RUN_TEST(test_bubble_rounding_and_unclamped_signal);
-    RUN_TEST(test_ring_extent_rounding);
     RUN_TEST(test_tilt_scale_invariance);
     RUN_TEST(test_bearing_rounds_and_wraps);
     RUN_TEST(test_fixed_point_formatter);
@@ -126,7 +111,6 @@ run_motion_probe_suite(void) {
     RUN_TEST(test_bearing_axes_and_magnitudes);
     RUN_TEST(test_near_flat_preserves_small_plane_signal);
     RUN_TEST(test_bubble_uses_inverse_quarter_rotation);
-    RUN_TEST(test_ring_extents);
 }
 
 SUITE_REGISTER(run_motion_probe_suite);
