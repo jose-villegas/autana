@@ -1,7 +1,7 @@
-#include "shell/apps/settings/ui/settings_screen.h"
+#include "shell/apps/system_settings/ui/settings_screen.h"
 
 #include "build/build_variant.h"
-#include "shell/apps/settings/ui/settings_layout.h"
+#include "shell/apps/system_settings/ui/settings_layout.h"
 #include "ui/ui.h"
 
 static void

@@ -6,9 +6,9 @@
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "gfx/present/gfx_debug.h"
 #endif
-#include "shell/apps/settings/settings_ui.h"
-#include "shell/apps/settings/ui/settings_layout.h"
-#include "shell/apps/settings/ui/settings_screen.h"
+#include "shell/apps/system_settings/settings_ui.h"
+#include "shell/apps/system_settings/ui/settings_layout.h"
+#include "shell/apps/system_settings/ui/settings_screen.h"
 #include "ui/ui.h"
 
 static void

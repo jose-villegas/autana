@@ -1,4 +1,4 @@
-#include "shell/apps/settings/settings_ui.h"
+#include "shell/apps/system_settings/settings_ui.h"
 
 settings_changes_t
 settings_ui_changes(const settings_snapshot_t* snapshot, const settings_result_t* result) {

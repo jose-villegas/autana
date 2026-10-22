@@ -1,7 +1,7 @@
 /* Fixed text fits its flowed row at both canvas orientations. */
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
-#include "shell/apps/settings/ui/settings_layout.h"
+#include "shell/apps/system_settings/ui/settings_layout.h"
 #include "suites.h"
 #include "ui/ui.h"
 #include "unity.h"
