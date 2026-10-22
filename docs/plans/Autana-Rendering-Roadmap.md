@@ -11,8 +11,8 @@ the source tree and those references define the available runtime.
 
 The shell owns the frame loop and app switching. Apps draw and return;
 gfx owns the retained framebuffer, band buffers, dirty tracking and panel
-transfer. See [Firmware Architecture](../Firmware-Architecture.md) and
-[Gfx and Presentation](../Gfx-and-Presentation.md).
+transfer. See [Firmware](../firmware/README.md) and
+[Gfx](../gfx/README.md).
 
 The mesh runtime uses baked lighting, span rasterization, clipping and
 visibility data. The mesh raster and the line path project through one

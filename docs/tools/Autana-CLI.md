@@ -162,7 +162,7 @@ Only reads the board, so running a command twice changes nothing.
 | `autana battery --log [--json]` | Persistent battery records oldest first; JSON is an array. Reasons: `periodic`, `transition`, `boot`, `shutdown-warning`. Development builds. |
 | `autana battery --log --clear` | Erase the battery history namespace. |
 | `autana heap [--json]` | Free bytes and largest block in the internal DMA pool (`MEMORY_DMA`). |
-| `autana framewatch` | The frame watch as JSON: allocations, frees and log lines repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
+| `autana framewatch` | The frame watch as JSON: allocations, frees and log lines repeating frame after frame ([the frame watch](../firmware/Frame-Watch.md#no-allocating-or-logging-in-steady-state)). |
 | `autana perf` | The `frame_cost` names seen so far and the counter events. |
 | `autana perf <name> [event] [seconds]` | Count one event (`insn` when omitted) on one `frame_cost` bracket for `seconds` (10 when omitted) and print cycles avg/min/max, `n` and cycles per event ([Frame-Cost.md](Frame-Cost.md#hardware-counters)). |
 | `autana perf off` | Disarm the counters. |

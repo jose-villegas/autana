@@ -5,7 +5,7 @@ keys, each a time and a value, and one call gives the value at any moment.
 It knows a target only through the field declarations a caller passes to
 `anim_bind()`; a caller may also sample a track and map the numbers itself.
 Its layer is in
-[Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`,
+[firmware/README.md](firmware/README.md); it sits above `asset/`,
 `core/` and `math/`, and allocates nothing.
 
 The format is glTF 2.0's own animation model<sup>[[17]](Citations.md#17)</sup>, so a track authored in Blender

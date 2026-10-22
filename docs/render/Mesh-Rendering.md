@@ -10,7 +10,7 @@ offline. It sits above `gfx/`, whose render targets it draws into, and
 otherwise includes `core/`, `math/` and `asset/` (`r3d_lit_mesh.h` reads its
 mesh from a pack), so boot and apps both call it. It
 draws into buffers its caller hands it, and a framebuffer is only one of
-them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
+them. The layers are in [firmware/README.md](../firmware/README.md).
 
 ## What a scene uses
 
@@ -231,7 +231,7 @@ The depth and depth-tile views along a flythrough:
 ## Attachments
 
 A raster's picture is a render target
-([Gfx-and-Presentation.md](../Gfx-and-Presentation.md#render-targets)):
+([gfx/Targets-and-Modes.md](../gfx/Targets-and-Modes.md#render-targets)):
 colour and depth, then any further attachment the caller lists in
 `raster_t.attachments`. An attachment with pixels is carved from the scratch block at
 the drawn size, so a picture drawn at a new size carves anew, and none keeps
@@ -470,6 +470,6 @@ so it need not consume internal RAM.
 
 ## Related
 
-- [Firmware-Architecture.md](../Firmware-Architecture.md): the layers and the frame loop
-- [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#present-who-runs-it): the split present `update()` overlaps
+- [firmware/README.md](../firmware/README.md): the layers and the frame loop
+- [gfx/Present.md](../gfx/Present.md#present-who-runs-it): the split present `update()` overlaps
 - [Building-an-App.md](../Building-an-App.md#app-memory): the app arena, one place a frame's scratch block can come from

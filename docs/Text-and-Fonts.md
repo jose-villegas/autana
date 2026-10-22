@@ -124,4 +124,4 @@ plus a `draw_font_t` describing it.
 ## Related
 
 - [`Building-a-Screen.md`](Building-a-Screen.md): text that must fit, measured in the layout test
-- [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md): the drawing primitives text is built from
+- [`gfx/README.md`](gfx/README.md): the drawing primitives text is built from

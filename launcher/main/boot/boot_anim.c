@@ -7,7 +7,7 @@
  *
  * THIS LOOP IS NOT THE SHELL'S FRAME LOOP
  *
- * docs/Firmware-Architecture.md says there is exactly one frame loop and it
+ * docs/firmware/Design-Rules.md says there is exactly one frame loop and it
  * belongs to the shell, which is a rule about APPS: an app must not loop,
  * because the shell has to stay able to switch away from it. Nothing can be
  * switched to yet at this point in boot (touch is not even running), so this

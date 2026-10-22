@@ -156,7 +156,7 @@ The shell's half of the API (the two frame halves and the unload on exit) is
 `scene/scene_shell.h`; apps include only `scene/scene.h`.
 The shell does not call it by name: `shell/scene_system.c` registers it as the
 engine system `scene`, at `SHELL_ORDER_SCENE`
-([Firmware-Architecture.md](../Firmware-Architecture.md#engine-systems)).
+([firmware/Frame-Loop.md](../firmware/Frame-Loop.md#engine-systems)).
 
 ## Per-renderer lighting mode
 

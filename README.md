@@ -48,7 +48,7 @@ The test runner prints a verdict and saves its full log. It compiles and runs th
 - **Input Lab:** tap small targets and see how far the touch panel's reading lands from where you aimed; the numbers behind the touch correction, explained in the [touch notes](docs/input/Touch.md).
 - **Diagnostics:** a hardware self-test report and developer controls in development builds. The power-on check runs in every build. [Build variants](docs/Build-Variants.md) explains which tools ship in each image.
 
-Project applications live under `launcher/main/apps/`; system applications live under `launcher/main/shell/apps/`. The shell calls an app once per frame and presents its drawing to the panel. [Building an App](docs/Building-an-App.md) shows the smallest implementation; [Firmware Architecture](docs/Firmware-Architecture.md) explains how the pieces fit.
+Project applications live under `launcher/main/apps/`; system applications live under `launcher/main/shell/apps/`. The shell calls an app once per frame and presents its drawing to the panel. [Building an App](docs/Building-an-App.md) shows the smallest implementation; [Firmware](docs/firmware/README.md) explains how the pieces fit.
 
 ## Run it on the board
 
@@ -68,7 +68,7 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | Change a game or add one | [Building an App](docs/Building-an-App.md), [Building a Screen](docs/Building-a-Screen.md) |
 | Draw 3D, import a mesh or set up a scene | [3D rendering and scenes](docs/render/README.md), [Building a Scene](docs/render/Building-a-Scene.md) |
 | Understand gravity estimation and input features | [Input docs](docs/input/README.md) |
-| Understand the frame loop and drawing path | [Firmware Architecture](docs/Firmware-Architecture.md), [Graphics and Presentation](docs/Gfx-and-Presentation.md) |
+| Understand the frame loop and drawing path | [Firmware](docs/firmware/README.md), [Graphics](docs/gfx/README.md) |
 | Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
 | Run or add tests | [Testing Guide](docs/Testing-Guide.md) |
 | Work with fonts and controls | [Text and Fonts](docs/Text-and-Fonts.md), [UI Toolkit](docs/UI-Toolkit.md) |

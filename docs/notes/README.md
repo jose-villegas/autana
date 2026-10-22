@@ -17,7 +17,7 @@ owners of settings; device tools provide measurements for the running image.
 
 ## Related
 
-- [Firmware-Architecture.md](../Firmware-Architecture.md): shell and input
+- [firmware/README.md](../firmware/README.md): shell and input
   ownership.
 - [Testing-Guide.md](../Testing-Guide.md): host and device verification.
 - [Build-Variants.md](../Build-Variants.md): instrumentation by build variant.

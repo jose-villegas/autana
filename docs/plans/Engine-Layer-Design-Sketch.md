@@ -294,6 +294,6 @@ The `render_view_t` work is independent and may land any time before S2.
 
 ## Related
 
-- [Firmware-Architecture.md](../Firmware-Architecture.md): today's layers
+- [firmware/README.md](../firmware/README.md): today's layers
 - [UI-Editor-Plan.md](UI-Editor-Plan.md): project screen authoring
 - [Animation-System-Design-Sketch.md](Animation-System-Design-Sketch.md): the animator component

@@ -38,7 +38,7 @@ class LayoutCostsTests(unittest.TestCase):
         rows = {**layout_costs.mesh_costs(mesh), **layout_costs.boot_costs(self.write("boot.log", boot()))}
         self.assertEqual(list(rows), ["room, portrait", "room, landscape", "boot animation, swell"])
         lines = layout_costs.table(rows, "chart.png").splitlines()
-        self.assertEqual(lines[0], "![Frame cost by framebuffer layout](images/render/chart.png)")
+        self.assertEqual(lines[0], "![Frame cost by framebuffer layout](../images/render/chart.png)")
         lines = lines[2:]
         self.assertEqual(lines[0], "| Picture | `LAYOUT_A` | `LAYOUT_B` | `LAYOUT_C` |")
         self.assertEqual(lines[2], "| room, portrait | 40.0 | 44.0 (+10%) | not run |")

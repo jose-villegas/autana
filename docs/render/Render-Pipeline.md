@@ -505,7 +505,7 @@ present mode uses this to draw half the rows
 
 Cost: `r3d.upscale` in the frame-stages chart.
 
-Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#expanded-frames).
+Reference: [gfx/Targets-and-Modes.md](../gfx/Targets-and-Modes.md#expanded-frames).
 
 #### Present
 
@@ -519,7 +519,7 @@ what the frame waits for it.
 
 Cost: `present.wait` in the frame-stages chart.
 
-Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#present-what-gets-sent).
+Reference: [gfx/Present.md](../gfx/Present.md#present-what-gets-sent).
 
 ## Refreshing
 

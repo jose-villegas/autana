@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The frame cost of each picture in each framebuffer layout, as a chart and
-the table in Gfx-and-Presentation.md's `gfx-layout-costs` block.
+the table in docs/gfx/Targets-and-Modes.md's `gfx-layout-costs` block.
 launcher/tools/render/render_doc_images.sh runs it on the captures kept in
 docs/render/data/.
 
@@ -112,7 +112,7 @@ def table(rows, chart_name):
     """One row per picture, one column per layout; each cell after a row's
     first layout gives its change against that first one."""
     layouts = layouts_of(rows)
-    lines = [f"![Frame cost by framebuffer layout](images/render/{chart_name})", "",
+    lines = [f"![Frame cost by framebuffer layout](../images/render/{chart_name})", "",
              "| Picture | " + " | ".join(f"`{layout}`" for layout in layouts) + " |",
              "|---|" + "---|" * len(layouts)]
     for row, costs in rows.items():

@@ -184,7 +184,7 @@ Detected in task "main" at 0x4200b2f8
 
 In full-framebuffer mode the framebuffer is in PSRAM; band and indexed modes
 free it. The band ring aliases the internal DMA bounce slots. See
-[Gfx-and-Presentation.md](../Gfx-and-Presentation.md) for presentation.
+[gfx/README.md](../gfx/README.md) for presentation.
 
 #### PSRAM throughput
 
@@ -203,7 +203,7 @@ Writes incur cache-line loads before writeback, so bulk copies are costly
 beside the arithmetic they support.
 
 Prefer internal SRAM for hot working data where it fits, and read PSRAM for
-bulk or cold content. The [presentation memory policy](../Gfx-and-Presentation.md#presentation-memory-policy)
+bulk or cold content. The [presentation memory policy](../gfx/Present.md#presentation-memory-policy)
 explains the catch-up copy that keeps single-buffer presentation retained,
 and why double mode redraws every pixel instead.
 
