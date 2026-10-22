@@ -7,7 +7,7 @@
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "input/input.h"
 
-typedef struct {
+typedef struct render_lab_scene {
     const char* name; /* the HUD title */
     const char* key;
     /* The Scene dropdown's entry; scenes of one family are listed together.
@@ -16,10 +16,13 @@ typedef struct {
      * name, the HUD title, is family and variant spelled out. */
     const char* family;
     const char* variant;
-    void (*enter)(void);
+    /* Receives its own scene, so one enter can serve several scenes through `data`. */
+    void (*enter)(const struct render_lab_scene* self);
     void (*frame)(uint32_t dt_ms);
     void (*exit)(void);
     const char* (*status)(void);
+    /* Optional. What `enter` reads from its scene. */
+    const void* data;
 
     /* Optional. Runs while the previous frame is still being sent to the
      * panel, so it may only touch the scene's own memory; never gfx or the
@@ -38,19 +41,7 @@ typedef struct {
     bool (*console)(const char* args, console_reply_fn reply);
 } render_lab_scene_t;
 
-extern const render_lab_scene_t scene_sponza;
 extern const render_lab_scene_t scene_capybara;
-extern const render_lab_scene_t scene_sponza_lite;
-extern const render_lab_scene_t scene_sponza_flat;
-extern const render_lab_scene_t scene_sponza_fitted;
-extern const render_lab_scene_t scene_sponza_fitted_full;
-extern const render_lab_scene_t scene_sponza_flat_fitted;
-extern const render_lab_scene_t scene_bistro;
-extern const render_lab_scene_t scene_bistro_lite;
-extern const render_lab_scene_t scene_bistro_flat;
-extern const render_lab_scene_t scene_bistro_fitted;
-extern const render_lab_scene_t scene_bistro_fitted_full;
-extern const render_lab_scene_t scene_bistro_flat_fitted;
 
 /* A scene's `.console`: the hook in a development or host build, NULL otherwise,
  * as APP_CONSOLE_PTR() does, so a release links none of the console; a host

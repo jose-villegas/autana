@@ -25,18 +25,12 @@
 /* The frame-cost rows' pose spacing. */
 #define SPONZA_PERF_POSE_EVERY_MS   500
 
-typedef enum {
-    SPONZA_BAKE_FULL,
-    SPONZA_BAKE_FLAT,
-    SPONZA_BAKE_LITE,
-    SPONZA_BAKE_FITTED,
-    SPONZA_BAKE_FITTED_FULL,
-    SPONZA_BAKE_FLAT_FITTED,
-    SPONZA_BAKE_COUNT,
-} sponza_bake_t;
+#include "apps/render_lab/scene_baked_variant.h"
 
 /* The name of the entity that draws each bake, found at load. */
-extern const char* const sponza_bakes[SPONZA_BAKE_COUNT];
+extern const char* const sponza_bakes[SCENE_BAKED_VARIANT_COUNT];
 
+/* The camera a start with none named follows; the tour is the other. */
+#define SPONZA_CAMERA       "camera"
 #define SPONZA_CAMERA_COUNT 2
 extern const char* const sponza_cameras[SPONZA_CAMERA_COUNT];

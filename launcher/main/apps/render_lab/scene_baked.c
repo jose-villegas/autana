@@ -1,8 +1,8 @@
 /*
- * scene_baked: loads a family's scene, shows one of its bakes and keeps
- * the raster and camera settings applied; see scene_baked.h. Light is
- * baked into the mesh, so a frame is only cull, transform, clip and fill on
- * both cores.
+ * scene_baked: loads a family's scene, shows one of its bakes and keeps the
+ * raster and camera settings applied; see scene_baked.h. Light is baked into
+ * the mesh, so a frame is only cull, transform, clip and fill on both cores.
+ * The families' scenes are defined at the end.
  */
 
 #include "scene_baked.h"
@@ -53,7 +53,7 @@ record_failure(const scene_failure_t* why) {
 /* The camera the settings follow: the one the start named, else the family's. */
 static scene_entity_t
 camera_entity(void) {
-    return scene_find(loaded, render_lab_start_camera == NULL ? shown_family->cameras[0] : render_lab_start_camera);
+    return scene_find(loaded, render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera);
 }
 
 static void
@@ -68,7 +68,9 @@ apply_settings(void) {
 }
 
 void
-scene_baked_enter(const scene_baked_t* family, int shown) {
+scene_baked_enter(const render_lab_scene_t* self) {
+    const scene_baked_shown_t* shown = self->data;
+    const scene_baked_t* family = shown->family;
     draw_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
     shown_family = family;
@@ -78,7 +80,7 @@ scene_baked_enter(const scene_baked_t* family, int shown) {
         record_failure(&why);
         return;
     }
-    for (int i = 0; i < family->bake_count; i++) {
+    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
         const scene_entity_t bake = scene_find(loaded, family->bakes[i]);
         if (bake == SCENE_ENTITY_NONE) {
             ESP_LOGE(TAG, "the scene has no entity '%s'", family->bakes[i]);
@@ -87,7 +89,7 @@ scene_baked_enter(const scene_baked_t* family, int shown) {
             }
             continue;
         }
-        scene_entity_set_enabled(loaded, bake, i == shown);
+        scene_entity_set_enabled(loaded, bake, i == (int)shown->variant);
     }
     (void)scene_activate(loaded, render_lab_start_camera);
     apply_settings();
@@ -119,3 +121,6 @@ scene_baked_status(void) {
     }
     return buf;
 }
+
+SCENE_BAKED_FAMILY(scene_sponza, baked_sponza, "Sponza", "sponza");
+SCENE_BAKED_FAMILY(scene_bistro, baked_bistro, "Bistro", "bistro");

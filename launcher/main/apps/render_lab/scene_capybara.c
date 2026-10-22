@@ -102,7 +102,8 @@ frame_subject(void) {
 }
 
 static void
-scene_capybara_enter(void) {
+scene_capybara_enter(const render_lab_scene_t* self) {
+    (void)self;
     draw_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
     scene_failure_t why;

@@ -110,40 +110,51 @@ def write_obj(path, mtllib, positions, uvs, triangles, objects, object_names, ma
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def material_errors(names, error, error_for):
+    """Each material's error: `error`, or the last MATERIALS=E rule whose glob matches it."""
+    errors = np.full(len(names), float(error))
+    for rule in error_for:
+        pattern, _, value = rule.rpartition("=")
+        errors[[i for i, name in enumerate(names) if fnmatch.fnmatchcase(name, pattern)]] = float(value)
+    return errors
+
+
+def reduce(exported, name, out, error, error_for=()):
+    """Simplifies the exported NAME.obj in `exported` object by object into
+    `out`, beside its .mtl and textures; returns the triangle counts before
+    and after."""
+    obj_path = exported / f"{name}.obj"
+    p, uv, tri_v, tri_t, tri_m, names = load_obj(str(obj_path))
+    object_names, tri_o = triangle_objects(obj_path)
+    if len(uv) == 0:
+        uv = np.zeros((1, 2))
+    # One vertex per (position, texture coordinate, material, object) corner:
+    # a change in the first three is a seam the simplifier keeps on both
+    # sides, and no vertex is shared between objects.
+    corners = np.stack([tri_v.reshape(-1), tri_t.reshape(-1), np.repeat(tri_m, 3), np.repeat(tri_o, 3)], axis=1)
+    unique, inverse = np.unique(corners, axis=0, return_inverse=True)
+    triangles = inverse.reshape(-1, 3)
+    errors = material_errors(names, error, error_for)[tri_m]
+    kept = np.concatenate([simplify(p[unique[:, 0]], triangles[(tri_o == obj) & (errors == e)], e)
+                           for obj, e in np.unique(np.stack([tri_o, errors], axis=1), axis=0)])
+    # Each kept triangle's material and object are its corners' own.
+    materials, objects = unique[kept[:, 0], 2], unique[kept[:, 0], 3]
+    out.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(exported / f"{name}.mtl", out / f"{name}.mtl")
+    if (exported / "textures").is_dir():
+        shutil.copytree(exported / "textures", out / "textures", dirs_exist_ok=True)
+    write_obj(out / f"{name}.obj", f"{name}.mtl", p[unique[:, 0]], uv[unique[:, 1]], kept, objects, object_names,
+              materials, names)
+    return len(tri_v), len(kept)
+
+
 def main():
     args = arguments()
-    out = pathlib.Path(args.out_dir)
     with tempfile.TemporaryDirectory() as temporary:
         exported = pathlib.Path(temporary)
         export(args, exported)
-        obj_path = exported / f"{args.name}.obj"
-        p, uv, tri_v, tri_t, tri_m, names = load_obj(str(obj_path))
-        object_names, tri_o = triangle_objects(obj_path)
-        if len(uv) == 0:
-            uv = np.zeros((1, 2))
-        # One vertex per (position, texture coordinate, material, object)
-        # corner: a change in the first three is a seam the simplifier keeps
-        # on both sides, and no vertex is shared between objects.
-        corners = np.stack([tri_v.reshape(-1), tri_t.reshape(-1), np.repeat(tri_m, 3), np.repeat(tri_o, 3)], axis=1)
-        unique, inverse = np.unique(corners, axis=0, return_inverse=True)
-        triangles = inverse.reshape(-1, 3)
-        error = np.full(len(names), args.error)
-        for rule in args.error_for:
-            pattern, _, value = rule.rpartition("=")
-            error[[i for i, name in enumerate(names) if fnmatch.fnmatchcase(name, pattern)]] = float(value)
-        group = np.stack([tri_o, error[tri_m]], axis=1)
-        kept = []
-        for obj, e in np.unique(group, axis=0):
-            kept.append(simplify(p[unique[:, 0]], triangles[(tri_o == obj) & (error[tri_m] == e)], e))
-        kept = np.concatenate(kept)
-        # Each kept triangle's material and object are its corners' own.
-        materials, objects = unique[kept[:, 0], 2], unique[kept[:, 0], 3]
-        out.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(exported / f"{args.name}.mtl", out / f"{args.name}.mtl")
-        shutil.copytree(exported / "textures", out / "textures", dirs_exist_ok=True)
-        write_obj(out / f"{args.name}.obj", f"{args.name}.mtl", p[unique[:, 0]], uv[unique[:, 1]], kept, objects,
-                  object_names, materials, names)
-    print(f"reduce_source: {len(tri_v)} triangles in {len(object_names)} objects to {len(kept)}")
+        before, after = reduce(exported, args.name, pathlib.Path(args.out_dir), args.error, args.error_for)
+    print(f"reduce_source: {before} triangles to {after}")
 
 
 if __name__ == "__main__":
