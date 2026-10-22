@@ -43,7 +43,7 @@ Every header and what it is for; the functions each family offers are in
 `python launcher/tools/gen/shared_helpers.py` regenerates this table from each
 header's opening comment; `--check` verifies it.
 
-<!-- generated: package-headers check: python launcher/tools/gen/shared_helpers.py --check -->
+<!-- generated: package-math-headers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Header | Purpose |
 |---|---|
 | [include/math/geometry/ball_template.h](include/math/geometry/ball_template.h) | ball_template: closed balls in any dimension for one number type; see docs/math/Conventions.md#templates for macro arguments. |
@@ -107,4 +107,4 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/units.h](include/math/scalar/units.h) | units: integer time conversion scales. |
 | [include/math/signal/goertzel.h](include/math/signal/goertzel.h) | Streaming single-bin detection (Goertzel, 1958). |
 | [include/math/signal/pitch.h](include/math/signal/pitch.h) | pitch: equal-temperament offsets relative to a caller's reference frequency. |
-<!-- /generated: package-headers -->
+<!-- /generated: package-math-headers -->
