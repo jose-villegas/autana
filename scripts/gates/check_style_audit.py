@@ -218,32 +218,6 @@ def rule_living_document(root, path, raw_lines):
             yield number, '"living document" - say what the doc covers, not that it changes'
 
 
-# RULE: UTF-8 read as Windows cp1252 and written back turns "·" into "Â·" and
-# "→" into "â†’". A line that encodes to cp1252 and then decodes as different,
-# valid UTF-8 was mangled that way: a lone accented letter never forms a
-# UTF-8 sequence, so text that is meant to be there does not match.
-
-def _unmangled(line):
-    if line.isascii():
-        return None
-    try:
-        repaired = line.encode("cp1252").decode("utf-8")
-    except UnicodeError:
-        return None
-    return repaired if repaired != line else None
-
-
-def _fix_mojibake(root, path, text):
-    return "".join(_unmangled(line) or line for line in text.splitlines(keepends=True))
-
-
-@text_rule("MOJIBAKE", fixer=_fix_mojibake)
-def rule_mojibake(root, path, text):
-    for number, line in enumerate(text.splitlines(), 1):
-        if _unmangled(line) is not None:
-            yield number, "UTF-8 read as cp1252 and written back - read and write text with encoding=\"utf-8\""
-
-
 # RULE: includes are layer-qualified (docs/C-Style-Guide.md, "Headers and
 # module boundaries"): "gfx/gfx.h", never "../../gfx/gfx.h" or a bare
 # "gfx.h", even between two files in the same folder. launcher/main is a
@@ -706,6 +680,45 @@ def _fix_line_endings(path):
     if b"\r\n" in raw:
         path.write_bytes(raw.replace(b"\r\n", b"\n"))
     return None
+
+
+# RULE: UTF-8 read as Windows-1252 and written back turns one character such
+# as a middle dot or an arrow into two or three accented ones, which breaks
+# rendered text and Mermaid labels. A run is
+# flagged only when its characters map back to bytes that decode as exactly
+# one UTF-8 character, so ordinary accented text never matches.
+
+CP1252_BYTE = {}
+for _byte in range(0x80, 0x100):
+    try:
+        CP1252_BYTE[bytes([_byte]).decode("cp1252")] = _byte
+    except UnicodeDecodeError:
+        CP1252_BYTE[chr(_byte)] = _byte
+CONTINUATION = "".join(re.escape(c) for c, b in CP1252_BYTE.items() if b < 0xC0)
+MOJIBAKE = re.compile(f"[\u00c2-\u00df][{CONTINUATION}]|[\u00e0-\u00ef][{CONTINUATION}]{{2}}"
+                      f"|[\u00f0-\u00f4][{CONTINUATION}]{{3}}")
+MOJIBAKE_ACTION = "UTF-8 decoded as Windows-1252 - run --fix, and read and write text as UTF-8"
+
+
+def _unmangle(run):
+    try:
+        return bytes(CP1252_BYTE[c] for c in run).decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _fix_mojibake(text):
+    return MOJIBAKE.sub(lambda m: _unmangle(m.group(0)) or m.group(0), text)
+
+
+@text_rule("MOJIBAKE", fixer=lambda root, path, text: _fix_mojibake(text))
+def rule_mojibake(root, path, text):
+    for number, line in enumerate(text.splitlines(), 1):
+        for m in MOJIBAKE.finditer(line):
+            fixed = _unmangle(m.group(0))
+            if fixed is not None:
+                yield number, f"{m.group(0)!r} should be {fixed!r} - {MOJIBAKE_ACTION}"
+                break
 
 
 # RULE: `$?` on the line after a compound statement is that compound's own
