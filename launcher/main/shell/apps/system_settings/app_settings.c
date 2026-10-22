@@ -28,7 +28,7 @@ settings_frame(uint32_t dt_ms, const input_t* input) {
     };
     ui_begin(input);
     const settings_result_t result = settings_screen_draw(&snapshot);
-    ui_end(SETTINGS_BACKGROUND);
+    ui_end(UI_BACKGROUND);
     const settings_changes_t changes = settings_ui_changes(&snapshot, &result);
     if (changes.panel_clock) {
         display_set_system_panel_clock_hz(result.values.fast_clock ? GFX_PANEL_CLOCK_FAST_HZ : GFX_PANEL_CLOCK_SLOW_HZ);

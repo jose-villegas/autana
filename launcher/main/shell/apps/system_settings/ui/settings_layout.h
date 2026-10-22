@@ -4,7 +4,6 @@
 
 #define SETTINGS_TEXT_SCALE      1
 #define SETTINGS_NOTE_LINE_COUNT 5
-#define SETTINGS_BACKGROUND      0x0A0C14
 
 typedef struct {
     recti_t window;

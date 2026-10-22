@@ -21,6 +21,7 @@
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "services/tune.h"
+#include "ui/ui.h"
 
 static const char* TAG = "scene_baked";
 
@@ -71,7 +72,7 @@ void
 scene_baked_enter(const render_lab_scene_t* self) {
     const scene_baked_shown_t* shown = self->data;
     const scene_baked_t* family = shown->family;
-    draw_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
+    draw_clear(gfx_rgb(UI_BACKGROUND));
     failure[0] = '\0';
     shown_family = family;
     scene_failure_t why;

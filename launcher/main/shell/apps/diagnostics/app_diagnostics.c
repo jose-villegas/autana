@@ -96,7 +96,7 @@ draw_tools_page(const input_t* input) {
     }
 #endif
 
-    ui_end(DIAGNOSTICS_TOOLS_SCREEN_BACKGROUND);
+    ui_end(UI_BACKGROUND);
 }
 
 static void

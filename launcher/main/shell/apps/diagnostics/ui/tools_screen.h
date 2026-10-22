@@ -23,8 +23,5 @@ typedef struct {
     bool selftest_clicked; /* meaningful only in a SELFTEST build */
 } diagnostics_tools_screen_result_t;
 
-/* The colour the caller passes to ui_end() for this page. */
-#define DIAGNOSTICS_TOOLS_SCREEN_BACKGROUND 0x0A0C14
-
 /* Caller brackets drawing with ui_begin()/ui_end(). */
 diagnostics_tools_screen_result_t diagnostics_tools_screen_draw(const diagnostics_tools_screen_state_t* state);
