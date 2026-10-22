@@ -1,9 +1,4 @@
-/*
- * The developer-toggles page, drawn by the real app: app_diagnostics.c's
- * enter and frame, with BOOT pressed on the first frame to page past the
- * POST report. The board's IO is stood in below, so nothing rendered here is
- * a reading from any board.
- */
+/* Real system preference frames with synthetic owner values and touch input. */
 #include <stdlib.h>
 #include <string.h>
 
@@ -12,18 +7,15 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
-#include "input/motion/imu.h"
 #include "render_host.h"
-#include "selftest/post.h"
-#include "selftest/post_ui.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
 #define TAP_FRAME 2
 #define FRAME_MS  16
-/* The second toggle row ("gfx leaf-rect overlay"), in portrait panel space. */
+/* The panel-clock toggle, in portrait panel space. */
 #define TAP_X     60
-#define TAP_Y     150
+#define TAP_Y     65
 
 static bool tap;
 static int shell_quarter;
@@ -77,27 +69,6 @@ gfx_send_audit(void) {
     return send_audit_on;
 }
 
-bool
-imu_ready(void) {
-    return false;
-}
-
-bool
-imu_read(imu_sample_t* out) {
-    (void)out;
-    return false;
-}
-
-/* The report page is never drawn: BOOT leaves it on the first frame. */
-void
-post_rerun(void) {}
-
-void
-post_ui_draw_report(const post_ui_report_t* report) {
-    (void)report;
-    abort();
-}
-
 static bool
 options(int argc, char** argv) {
     if (argc == 1 && strcmp(argv[0], "--tap") == 0) {
@@ -124,12 +95,11 @@ static const render_input_step_t touch[] = {
 static void
 draw(const render_frame_t* frame) {
     input_t in = tap ? frame->input : (input_t){0};
-    in.boot.pressed = frame->index == 0;
     app_list()->frame(frame->dt_ms, &in);
 }
 
 const render_scene_t render_scene = {
-    .name = "diagnostics",
+    .name = "settings",
     .frames = 6,
     .dt_ms = FRAME_MS,
     .input = touch,

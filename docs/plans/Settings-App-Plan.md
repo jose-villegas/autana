@@ -1,133 +1,48 @@
-# Plan: split Diagnostics into a Settings app, then unify SELFTEST/diagnostics naming
+# Plan: Settings and SELFTEST/diagnostics naming
 
-**Status**: Diagnostics is DEVELOPMENT-gated with the self-test runner under
-SELFTEST; open: extract the toggles into Settings, then the
-SELFTEST/diagnostics rename.
+**Status**: Step 1's first milestone is built: Settings shows DISPLAY in every
+build and DEVELOPER in development builds. Orientation and the self-test
+runner remain in Diagnostics. The remaining milestones and step 2 are open.
 
-The Diagnostics app ships whole under `CONFIG_LAUNCHER_DEVELOPMENT`
-(`launcher/main/CMakeLists.txt`'s `shell/apps/diagnostics/` exclusion), so a
-`--dev` build reaches the gfx debug-overlay checkboxes. Only the
-self-test runner (the button, its result line, `selftest_run()`) is
-narrowed further, to `CONFIG_LAUNCHER_SELFTEST`
-(`launcher/main/shell/apps/diagnostics/app_diagnostics.c`'s `#if
-CONFIG_LAUNCHER_SELFTEST` guards).
+## Current ownership
 
-Step 1 (the Settings extraction) is open, and is a UI/
-organisation question, not one of memory or build correctness;
-see "What survives" below. Step 2 (the SELFTEST/diagnostics rename) remains
-open too: "diagnostics" names an app that ships in a build that is not
-itself called diagnostics, which is exactly the kind of naming friction
-step 2 exists to remove.
+Settings is a view of values held by display and gfx. It reads a fresh
+snapshot each frame and calls an owner's setter only when a control changes.
+It has no settings store of its own.
 
----
+| Section | Availability | Owner and lifetime |
+|---|---|---|
+| DISPLAY: panel clock | Every build | Display persists the system value in NVS and restores it on app switches. |
+| DEVELOPER: panel-grid overlay, leaf-rect overlay, interlace, send audit | Development builds | Gfx holds runtime values, reset at boot. |
 
-## The naming mismatch, and why it is not just a typo
+The panel-clock row retains its warning about stray pixels and thin lines.
+The fast clock is outside the panel's rating; see
+[Display-and-Rendering.md](../notes/Display-and-Rendering.md).
 
-Two vocabularies name the same flag today:
+Diagnostics is development-only. It shows the POST report and orientation
+readout; the self-test button and result line additionally require
+`CONFIG_LAUNCHER_SELFTEST`.
 
-- `CONFIG_LAUNCHER_SELFTEST` (Kconfig), `selftest/selftest.c`, `selftest_run()`:
-  the code that actually runs the suites calls this "selftest."
-- `main/shell/apps/diagnostics/`, `app_diagnostics`, `build.diag/`,
-  `build.sh --diag`,
-  `sdkconfig.defaults.diag`, `.github/workflows/build-diagnostics.yml`:
-  the app, the tooling, the CI workflow, and the prose docs all call this
-  "diagnostics."
+## Step 1: remaining milestones
 
-A straight rename (pick one word, sed it everywhere) would paper over a
-real conceptual seam rather than close it. `main/shell/apps/diagnostics/app_diagnostics.c`
-is two different screens' worth of concerns wearing one
-page, gated at two different granularities:
+- Decide where the orientation readout belongs.
+- Decide whether developer rows need an unlock gesture.
+- Design backdrop and memory views before adding their controls.
 
-- **The "run self test suite" button and its result line** on page 1 are
-  genuinely `CONFIG_LAUNCHER_SELFTEST`-shaped: they exist only because the
-  suites are compiled in, and are guarded that way in the source
-  (`#if CONFIG_LAUNCHER_SELFTEST` in `app_diagnostics.c`).
-- **Everything else**: page 0 (the POST report) and the rest of page 1 (the
-  gfx dirty-region overlay checkbox, the gfx leaf-grid overlay checkbox, the
-  interlace-mode checkbox, and the show orientation toggle with its
-  accel/gravity/quarter readout), is `CONFIG_LAUNCHER_DEVELOPMENT`-shaped by
-  the project's own stated rule (Build-Variants.md, "Development-only
-  instrumentation is its own flag, not SELFTEST"): none of it needs the test
-  suites, all of it is exactly "meant for someone AT the device or watching
-  its serial console while working on it", and that is exactly the flag
-  the whole app (not just these rows) is gated on.
+A memory view should show the allocation ledger beside display-mode choices:
+framebuffer, static data, free heap and largest contiguous block, plus each
+choice's projected change. Resolution and colour mode need that context.
 
-"Diagnostics" and "selftest" are not the same concept: only the
-button/result-line pair needs `CONFIG_LAUNCHER_SELFTEST`'s narrower gate,
-and everything else needs only `CONFIG_LAUNCHER_DEVELOPMENT`'s wider one;
-`--dev` is what proves the two flags are independently useful.
+## Step 2: unify SELFTEST/diagnostics naming
 
-## The plan
+`CONFIG_LAUNCHER_SELFTEST`, `selftest/selftest.c` and `selftest_run()` name the
+suite runner. The diagnostics build directory, CLI variant and CI workflow
+use the other word. Development instrumentation has its own wider gate.
 
-**1. Extract the DEVELOPMENT-only rows into a new Settings app.** This step
-does not change what a `--dev` build can reach: the
-whole Diagnostics app, POST report included, already ships there, so it is
-purely an organisation/UI question: should the gfx overlay checkboxes,
-interlace toggle, and orientation readout live on their own screen instead
-of as Diagnostics' second page, and does a `--dev` build want a `Settings`
-entry in its app list distinct from `Diagnostics`. The "run self test
-suite" button and its result line would stay behind in Diagnostics either
-way; they have no meaning without the suites.
+| Decision | Affected surface |
+|---|---|
+| Choose selftest or diagnostics for the suite variant | Kconfig, build directories, CLI flags, workflow and docs |
+| Decide whether autorun follows the same rename | `CONFIG_LAUNCHER_SELFTEST_AUTORUN` |
+| Rename the CI workflow if required | Badge URLs and workflow references |
 
-**2. Once that split lands (or is deliberately skipped), the SELFTEST/
-diagnostics naming mismatch is a clean, low-risk mechanical rename**
-(Kconfig symbol, app folder, build directory, CLI flags, CI workflow file,
-docs). It does not strictly need to wait on step 1:
-`app_diagnostics.c` has only one small SELFTEST-shaped island (the
-button + result line) rather than a whole hybrid page, but doing the
-extraction first still keeps the rename mechanical rather than another
-occasion to relitigate what belongs where.
-
-## Open questions to settle when this is actually picked up
-
-- **What does Settings contain besides the migrated toggles?** Just the
-  four rows verbatim at first, presumably, but "Settings" as a name
-  invites more than debug overlays eventually (this project has no
-  persisted user preferences of any kind yet: display orientation
-  defaults, sound, etc., worth deciding whether this app is scoped to
-  developer toggles only or genuinely user-facing settings from the start).
-- **Which word wins the rename**: "selftest" (already the Kconfig symbol
-  and the suite-runner file name) or "diagnostics" (already the app name,
-  every script, the CI workflow, and most of the prose docs)? Whichever
-  loses has more surface area to touch.
-- **Does `CONFIG_LAUNCHER_SELFTEST_AUTORUN` rename too**, for the same
-  consistency reason.
-- **CI workflow file rename** (`build-diagnostics.yml`) changes the
-  workflow's badge URL: the README badges section needs updating in the
-  same change, not as an afterthought.
-- **A memory-layout view belongs in Settings, and the display-mode toggles
-  hang off it.** Resolution and colour mode are being
-  planned as system settings, and each moves a different line of the RAM
-  ledger: a half-resolution framebuffer returns ~240 KB (the panel has no
-  scaler, so it buys memory, not bus time), RGB444 returns 25% of both.
-  A toggle is only legible if the screen shows the ledger it moves: the
-  framebuffer at its current size, the running app's grid, static
-  `.data`/`.bss`, free heap and its largest contiguous block, and, beside
-  each toggle, the projected delta. The sources all exist
-  (`heap_caps_get_info()`, the linker's `_bss_start`/`_bss_end`, the
-  framebuffer and grid sizes gfx and sand already know). It doubles as
-  the diagnostic this project has needed twice: the round where three
-  device captures measured nothing because fixtures had eaten the heap
-  would have been one glance at this screen.
-- **The system panel clock moves here from Developer Toggles.** 80 MHz
-  (default) halves the bus time of a full frame (8.2 against 16.5 ms) but is
-  outside the panel's 50 MHz rating, so an app that redraws only dirty regions
-  can show stray pixels or thin lines until the region changes; an app
-  redrawing whole frames is safe. `display_set_system_panel_clock_hz()` chooses
-  80 or 40 and the shell keeps it in NVS, so a release build (no Diagnostics)
-  still boots at whatever was last chosen. Every app starts at it; an app may
-  force another rate for itself, and the shell restores the system value on
-  every app switch (Building-an-App.md, "What the shell resets for you"). At 80
-  gfx sends only full-width rows to stay clean. The row keeps the warning; see [Display-and-Rendering.md](../notes/Display-and-Rendering.md),
-  "80 MHz is outside the panel's rating".
-- Should Settings be reachable from the launcher unconditionally (like any
-  other app) or only exist in `--dev`/`--diag` builds the way Diagnostics
-  does today? Development-only content argues for the latter, and an
-  `apps/settings/development_only.cmake` marker would do it, the same way
-  Diagnostics keeps itself out of release.
-
-## Non-goals
-
-Nothing here is being built now. The two-part shape and the open
-questions above are a starting point, not a commitment to any answer
-among them yet.
+The naming work remains separate from UI changes.
