@@ -65,7 +65,7 @@ def triangle_materials(triangles, materials):
 
 
 def rigid_fit(local, target, reflected=False):
-    """Kabsch (docs/Citations.md#86), column-vector convention.
+    """Kabsch 1976 rotation fit, column-vector convention.
 
     Reflections are fitted only when a rotation fails residual or winding acceptance.
     """
