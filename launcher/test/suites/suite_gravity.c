@@ -257,17 +257,22 @@ test_lost_time_uses_previous_rotation_before_delivered_samples(void) {
 }
 
 static void
+init_loss_batch(input_motion_batch_t* batch, vec3f_t acceleration) {
+    const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
+    gravity_update(&g, &initial, 0);
+    batch->count = 2;
+    batch->lost_before[1] = 2;
+    batch->samples[0] = sample(acceleration, (vec3f_t){FAST_TURN_DPS, 0, 0});
+    batch->samples[1] = sample(acceleration, (vec3f_t){0, FAST_TURN_DPS, 0});
+}
+
+static void
 test_loss_mid_batch_holds_the_immediately_previous_rotation(void) {
     fixture();
     input_motion_batch_t* batch = calloc(1, sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
-    const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
-    gravity_update(&g, &initial, 0);
+    init_loss_batch(batch, (vec3f_t){0});
     gravity_t expected = g;
-    batch->count = 2;
-    batch->lost_before[1] = 2;
-    batch->samples[0] = sample((vec3f_t){0}, (vec3f_t){FAST_TURN_DPS, 0, 0});
-    batch->samples[1] = sample((vec3f_t){0}, (vec3f_t){0, FAST_TURN_DPS, 0});
     gravity_update_batch(&g, batch);
     gravity_update(&expected, &batch->samples[0], IMU_SAMPLE_US);
     gravity_update(&expected, &batch->samples[0], IMU_SAMPLE_US);
@@ -282,14 +287,10 @@ test_multiple_losses_match_sequential_holds_with_acceleration(void) {
     fixture();
     input_motion_batch_t* batch = calloc(1, sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
-    const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
-    gravity_update(&g, &initial, 0);
+    init_loss_batch(batch, (vec3f_t){0, 0, -1});
     gravity_t expected = g;
     batch->count = 3;
-    batch->lost_before[1] = 2;
     batch->lost_before[2] = UINT8_MAX;
-    batch->samples[0] = sample((vec3f_t){0, 0, -1}, (vec3f_t){FAST_TURN_DPS, 0, 0});
-    batch->samples[1] = sample((vec3f_t){0, 0, -1}, (vec3f_t){0, FAST_TURN_DPS, 0});
     batch->samples[2] = sample((vec3f_t){0, 0, -1}, (vec3f_t){0, 0, FAST_TURN_DPS});
     for (int i = 0; i < batch->count; i++) {
         const vec3f_t acceleration = vec3f_add(expected.linear, expected.down);
