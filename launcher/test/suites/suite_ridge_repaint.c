@@ -17,7 +17,6 @@
 #include "gfx/present/send/gfx_dirty.h"
 #include "ridge_arms.h"
 #include "services/tune.h"
-#include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
 
 #define FB_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
@@ -46,19 +45,15 @@ static void
 release(void) {
     tune_handle_line("RESET ridge.axis_dissolve_ms", ignore_tune_reply);
     tune_handle_line("RESET ridge.level_tau_ms", ignore_tune_reply);
-    gfx_heal_restore_defaults();
     gfx_reset_for_test();
 }
 
-/* The launcher's own present settings, so the presenter's heal carries
- * over between frames as it does there. */
 static void
 fixture(void) {
     if (gfx_mode_current()->width == 0) {
         TEST_ASSERT_TRUE(gfx_init());
     }
     suite_set_test_cleanup(release);
-    ui_launcher_heal_opt_in();
     ui_ridge_reset_for_test();
 }
 

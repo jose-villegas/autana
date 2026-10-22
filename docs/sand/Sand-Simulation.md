@@ -1101,11 +1101,10 @@ full `gfx_present()`**; the dirty-tracking path's own overhead is
 1,149 us, 6%, and the frame is **94% bus-bound** (at 40 MHz). 80 MHz
 halves it but is outside the panel's rating.
 
-Sand's partial redraws are exactly what shows it: stray red pixels or
-thin black lines through moving sand that stay until that region is
-re-sent differently. See
+At 80 MHz the panel can land a partial-width window a column off, so gfx
+sends only full-width rows there. See
 [Display-and-Rendering.md](../notes/Display-and-Rendering.md), "80 MHz
-is outside the panel's rating", for the finding and the heal sand uses.
+is outside the panel's rating".
 
 Water, not sand, is the bottleneck whenever a body of it is moving.
 
@@ -1144,7 +1143,7 @@ for cache configuration and memory placement.
 ## Two cores: chunk-parallel passes, and what stays serial
 
 The device's own `gfx_present()` overlaps with `sand_step()` on the other
-core already; see `docs/Firmware-Architecture.md`. Splitting the step
+core already; see `docs/firmware/Frame-Loop.md`. Splitting the step
 itself across cores is harder, for a reason that has nothing to do with
 sweep order: `sand_t.rng` is one `xorshift32`<sup>[[25]](../Citations.md#25)</sup> word, drawn from a
 data-dependent number of times per cell by every pass.
