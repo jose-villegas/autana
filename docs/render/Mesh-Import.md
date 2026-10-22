@@ -265,12 +265,6 @@ a `fit` budget may not exceed it.
 
 ## Objects and instances
 
-Each colour below is one repeated shape, boxed at every copy in view. The
-view is the camera-path pose where those boxes show the most visible edge;
-`render_doc_images.sh` regenerates it.
-
-![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
-
 An OBJ object is an `o` or `g` group; an ungrouped file uses its stem.
 A glTF object is a mesh node, placed by its world transform. A nameless
 node uses its index. Only vertices referenced by triangles belong to an object.
@@ -285,23 +279,19 @@ scaled copies remain separate shapes. Reflections are recorded per instance.
 | Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#86)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
 | Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangle winding and materials agree as multisets |
 
-The report writes counts, residuals and a camera-path estimate to an external
-`--out` directory. Single-instance shapes keep their full share.
+Each colour below is one repeated shape, boxed at every copy in view. The
+view is the camera-path pose where those boxes show the most visible edge;
+`render_doc_images.sh` regenerates it.
 
-Pixels per triangle is relative by construction: picture area divided by
-the path's own mean in-view budget.
+![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
 
-A repeated shape drops to a quarter-triangle level while its share exceeds
-what its projected area allows. `LOD_TRIANGLE_RATIO` and `LOD_LEVELS` in
-`objects_report.py` define the levels and cap.
+| Report output (`--out` directory) | What it shows |
+|---|---|
+| objects.md / objects.json | Shapes, copies, triangles saved, match residuals |
+| poses.csv, lod.png | Per camera-path pose: whole and in-view budgets, repeated-shape LOD budget, and triangles LOD frees |
 
-A sphere's disk overstates the footprint of tall thin props, so their
-saving is probably understated. Culling uses placed world bounds;
-the footprint estimate uses the enclosing sphere.
-
-The table, CSV and plot show the whole budget, in-view triangles, in-view
-triangles with repeated-shape LOD, and triangles LOD frees.
-The bake does not use objects or instances.
+- Repeated shapes step down while their triangle share exceeds what projected area allows; `LOD_TRIANGLE_RATIO` and `LOD_LEVELS` in `objects_report.py` set the quarter-triangle levels and cap.
+- This is an estimate: pixels per triangle is calibrated from the path; enclosing-sphere footprints overstate tall, thin props.
 
 ## The offline tools
 
