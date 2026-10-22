@@ -1,24 +1,13 @@
 name: QEMU Tests
 
-# Every suite in the real Xtensa image, under Espressif's QEMU: the proof the
-# host runner cannot give, that the chip's build behaves as the laptop's does.
-# docs/testing/QEMU.md says what a run is evidence of. Too
-# slow for every pull request, so it runs on main, by hand, and on a pull
-# request that changes the harness itself.
+# Every suite under QEMU runs on main, by hand, and on PRs that change
+# firmware, suites, sdkconfig or the harness. On other PRs the job skips
+# and reports success.
 
 on:
   push:
     branches: [main]
   pull_request:
-    paths:
-      - '.github/workflows/qemu-tests.yml'
-      - 'launcher/test/qemu_run.py'
-      - 'launcher/test/qemu/**'
-      - 'launcher/test/run_qemu_tests.sh'
-      - 'launcher/sdkconfig.defaults.qemu'
-      - '.python-version'
-      - 'launcher/idf-pin.json'
-      - '.github/actions/**'
   workflow_dispatch:
 
 concurrency:
@@ -32,7 +21,32 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      qemu: ${{ steps.filter.outputs.qemu }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            qemu:
+              - 'launcher/main/**'
+              - 'launcher/test/**'
+              - 'launcher/sdkconfig*'
+              - '.github/workflows/qemu-tests.yml'
+              - '.python-version'
+              - 'launcher/idf-pin.json'
+              - '.github/actions/**'
+
   qemu-tests:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.qemu == 'true') }}
     name: Every suite under QEMU
     runs-on: ubuntu-24.04
     timeout-minutes: 90
