@@ -11,7 +11,7 @@ from scipy.spatial import ConvexHull
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import simplify as owner
-from r3d.import_settings import SettingsError, load_import_settings
+from r3d.import_settings import SettingsError, load_import_settings, pass_overrides
 
 
 def props():
@@ -30,7 +30,7 @@ class ObjectBudgetTests(unittest.TestCase):
         p, t, o = props()
         kwargs.setdefault("props_share", 1.0)
         return owner.simplify(p, np.full_like(p, 100), t, o, budget,
-                              allocation=owner.Allocation(o, ['near', 'far'], ['plain', 'leaf'], **kwargs),
+                              allocation=owner.Allocation(tri_o=o, object_names=['near', 'far'], material_names=['plain', 'leaf'], **kwargs),
                               colour_deviation=1.0)
 
     def test_shared_edge_and_free_object(self):
@@ -57,7 +57,7 @@ class ObjectBudgetTests(unittest.TestCase):
         a = self.allocate(eyes=np.zeros((1, 3)), focal_px=100)
         order = np.concatenate([np.flatnonzero(o == 1), np.flatnonzero(o == 0)])
         b = owner.simplify(p, np.full_like(p, 100), t[order], o[order], 400, colour_deviation=1,
-                          allocation=owner.Allocation(1 - o[order], ['far', 'near'], ['plain', 'leaf'],
+                          allocation=owner.Allocation(tri_o=1 - o[order], object_names=['far', 'near'], material_names=['plain', 'leaf'],
                                                       eyes=np.zeros((1, 3)), focal_px=100, props_share=1))
         for label in (0, 1):
             self.assertEqual(np.count_nonzero(a[3] == label), np.count_nonzero(b[3] == label))
@@ -153,7 +153,7 @@ class ObjectBudgetTests(unittest.TestCase):
                                                     independent[:, [2, 0]]]), axis=1).reshape(-1, 6)
         _, independent_count = np.unique(independent_edges, axis=0, return_counts=True)
         self.assertTrue(np.any(independent_count == 1))
-        result = owner.simplify(p, np.full_like(p, 100), t, o, 160, allocation=owner.Allocation(o), colour_deviation=1)
+        result = owner.simplify(p, np.full_like(p, 100), t, o, 160, allocation=owner.Allocation(tri_o=o), colour_deviation=1)
         sp, _, st, _ = result
         edges = np.sort(np.concatenate([st[:, [0, 1]], st[:, [1, 2]], st[:, [2, 0]]]), axis=1)
         _, count = np.unique(edges, axis=0, return_counts=True)
@@ -175,7 +175,7 @@ class ObjectBudgetTests(unittest.TestCase):
                 load_object_overrides({'overrides': [rule]})
         rules = [{'object': '*', 'importance': 2}, {'material': 'leaf*', 'importance': 0.5},
                  {'object': '*', 'triangles': 10}]
-        factor, fixed = owner.pass_overrides(['a', 'b'], ['leaf'], rules)
+        factor, fixed = pass_overrides(['a', 'b'], {'a': ['leaf'], 'b': ['leaf']}, rules)
         self.assertEqual((factor, fixed), (1, 10))
 
     def test_view_eyes(self):
@@ -197,6 +197,8 @@ class ObjectBudgetTests(unittest.TestCase):
         np.testing.assert_array_equal(eyes, poses[:, :3])
         self.assertEqual(focal, focal_px(400, 200, 0.25))
         self.assertEqual(view_eyes(region, NS(camera=None), 5), (None, 1))
+        for visibility in (None, region):
+            self.assertEqual(view_eyes(visibility, NS(camera=camera, region=None), 5), (None, 1))
 
     def test_projected_scale_edges(self):
         p = np.array([[0., 0., 0.]])
@@ -240,7 +242,7 @@ class ObjectBudgetTests(unittest.TestCase):
 
     def test_welded_fixed_rejects_other_objects(self):
         with self.assertRaisesRegex(SettingsError, 'other'):
-            owner.pass_overrides(['chosen', 'other'], ['plain'], [{'object': 'chosen', 'triangles': 10}])
+            pass_overrides(['chosen', 'other'], {'chosen': ['plain'], 'other': ['plain']}, [{'object': 'chosen', 'triangles': 10}])
 
     def test_material_fixed_rejects_welded_other_objects(self):
         p = np.array([[0., 0, 0], [1., 0, 0], [0., 1, 0], [1., 1, 0]])
@@ -248,11 +250,11 @@ class ObjectBudgetTests(unittest.TestCase):
         o = np.arange(2)
         with self.assertRaisesRegex(SettingsError, 'other'):
             owner.simplify(p, np.full_like(p, 100), t, o, 2, colour_deviation=1,
-                           allocation=owner.Allocation(o, ['chosen', 'other'], ['plain', 'leaf'],
-                                                       [{'material': 'plain', 'triangles': 1}]))
+                           allocation=owner.Allocation(tri_o=o, object_names=['chosen', 'other'], material_names=['plain', 'leaf'],
+                                                       overrides=[{'material': 'plain', 'triangles': 1}]))
 
     def test_importance_once_per_pass(self):
-        self.assertEqual(owner.pass_overrides(['a', 'b'], [], [{'object': '*', 'importance': 2}]), (2, None))
+        self.assertEqual(pass_overrides(['a', 'b'], {'a': [], 'b': []}, [{'object': '*', 'importance': 2}]), (2, None))
 
 
 

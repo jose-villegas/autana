@@ -135,7 +135,7 @@ Every Geometry table opts its step in; without it the step does not run.
 |---|---|---|---|---|---|
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
-| `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; reserves `props` and can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
+| `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 
 #### alpha_mask
 
@@ -168,8 +168,8 @@ bounds diagonal below `PROP_DIAGONAL_FRACTION` of the import's source
 bounds diagonal. The constant lives in `simplify.py`.
 
 The `[objects]` table reserves `props_share` of each variant's triangle
-budget for props. The remaining structure uses one global simplifier pass,
-except for fixed overrides.
+budget for props. Unused prop capacity returns to structure, which uses
+one global simplifier pass except for fixed overrides.
 
 Props split their share by projected area: `(scale * diagonal)²`, multiplied
 by importance. A pass is capped at its source triangles; excess goes back
@@ -190,21 +190,25 @@ scaled by the square root of that pass's area over its budget.
 A smaller `colour_deviation` preserves geometry more strongly than colour;
 it is a trade, not a limit.
 
-The optional `[objects]` table contains a share and an array of closed
-override tables. Each override needs one selector and one allocation value:
+With `geometry.simplify`, `[objects]` requires an explicit share and accepts
+an array of closed override tables:
 
 | Key | Value | Effect |
 |---|---|---|
-| `props_share` | Number from zero to one; default `DEFAULT_PROPS_SHARE` in `import_settings.py` | Reserves this fraction of the variant budget for props; without props, structure gets the full budget. |
+| `props_share` | Required number from zero to one | Reserves this fraction of the variant budget for props; without props, structure gets the full budget. |
 | `overrides` | Array of tables with the keys below | Applies each matching rule once per weld group. |
+
+Each override needs one selector and one allocation value:
+
+| Key | Value | Effect |
+|---|---|---|
 | `object` | Object-name glob, such as `"statue_*"` | Selects groups holding matching objects. |
 | `material` | Material-name glob, such as `"leaf*"` | Selects groups holding matching materials. |
 | `importance` | Number greater than zero | Multiplies a prop's projected-area weight; matching rules multiply. An error on structure, which has nothing to split against. |
 | `triangles` | Integer at least one | Fixes a ceiling per matching group, deducted from its props or structure share. An object rule must match every object in that group; a material rule must name one group. |
 
-Fixed rules must match every object in a selected weld group. Unmatched
-rules are errors. Ceilings above source counts are clamped and logged;
-ceilings exceeding their share are errors.
+Unmatched rules are errors. Ceilings above source counts are clamped and
+logged; ceilings exceeding the available pool budget are errors.
 
 A fixed structural group gets its own pass; other structure stays global.
 The simplifier can return fewer triangles than a target; the log records

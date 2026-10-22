@@ -2,6 +2,8 @@
 
 import pathlib
 import sys
+import tempfile
+from types import SimpleNamespace as NS
 import unittest
 from unittest.mock import patch
 
@@ -10,7 +12,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import simplify as owner
-from r3d.import_settings import SettingsError, load_object_overrides
+from r3d.import_settings import SettingsError, load_import_settings, load_object_overrides
 
 
 def scene():
@@ -39,7 +41,7 @@ class PropTests(unittest.TestCase):
             return pos, rgb, tris[:budget], np.arange(len(pos))
         with patch.object(owner, 'simplify_with_update', side_effect=record):
             owner.simplify(p, np.full_like(p, 100), t, o, 4, colour_deviation=1,
-                           allocation=owner.Allocation(o, ['a', 'b', 'wall', 'floor'],
+                           allocation=owner.Allocation(tri_o=o, object_names=['a', 'b', 'wall', 'floor'],
                                                        props_share=0.5))
         self.assertEqual(calls, [(1, 1), (1, 1), (2, 2)])
 
@@ -56,15 +58,17 @@ class PropTests(unittest.TestCase):
         p, t, o = scene()
         with self.assertRaisesRegex(SettingsError, 'structure.*nothing to split'):
             owner.simplify(p, np.full_like(p, 100), t, o, 4, colour_deviation=1,
-                           allocation=owner.Allocation(o, ['a', 'b', 'wall', 'floor'],
+                           allocation=owner.Allocation(tri_o=o, object_names=['a', 'b', 'wall', 'floor'],
                                                        overrides=[{'object': 'wall', 'importance': 2}]))
 
     def test_fixed_overrides_cannot_borrow_from_the_other_share(self):
         p, t, o = scene()
+        t = np.concatenate([np.repeat(t[:2], 10, axis=0), t[2:]])
+        o = np.repeat(np.arange(4), [10, 10, 1, 1])
         for name, share in [('a', 0), ('wall', 1)]:
             with self.subTest(name=name), self.assertRaisesRegex(SettingsError, 'share'):
                 owner.simplify(p, np.full_like(p, 100), t, o, 4, colour_deviation=1,
-                               allocation=owner.Allocation(o, ['a', 'b', 'wall', 'floor'], props_share=share,
+                               allocation=owner.Allocation(tri_o=o, object_names=['a', 'b', 'wall', 'floor'], props_share=share,
                                                            overrides=[{'object': name, 'triangles': 1}]))
 
     def test_projected_area_and_importance_multiply_the_prop_weight(self):
@@ -80,7 +84,7 @@ class PropTests(unittest.TestCase):
                 return pos, rgb, tris[:budget], np.arange(len(pos))
             with self.subTest(eyes=eyes, rules=rules), patch.object(owner, 'simplify_with_update', side_effect=record):
                 owner.simplify(p, np.full_like(p, 100), t, o, 200, colour_deviation=1,
-                               allocation=owner.Allocation(o, ['a', 'b', 'wall', 'floor'], props_share=0.5,
+                               allocation=owner.Allocation(tri_o=o, object_names=['a', 'b', 'wall', 'floor'], props_share=0.5,
                                                            eyes=eyes, overrides=rules))
             self.assertEqual(calls[:2], expected)
             self.assertEqual(calls[2:], [100])
@@ -99,9 +103,70 @@ class PropTests(unittest.TestCase):
         p, t, o = scene()
         with patch.object(owner, 'simplify_with_update') as simplify_pass:
             result = owner.simplify(p[:3], p[:3], t[:1], o[:1], 4, colour_deviation=1,
-                                    allocation=owner.Allocation(o[:1], props_share=0, source_diagonal=100))
+                                    allocation=owner.Allocation(tri_o=o[:1], props_share=0, source_diagonal=100))
         self.assertTrue(all(len(array) == 0 for array in result))
         simplify_pass.assert_not_called()
+
+    def test_unused_prop_capacity_returns_to_structure(self):
+        p, t, o = scene()
+        t = np.concatenate([t[:2], np.repeat(t[2:], 10, axis=0)])
+        o = np.repeat(np.arange(4), [1, 1, 10, 10])
+        calls = []
+        def record(pos, rgb, tris, budget, weight, options):
+            calls.append(budget)
+            return pos, rgb, tris[:budget], np.arange(len(pos))
+        with patch.object(owner, 'simplify_with_update', side_effect=record):
+            owner.simplify(p, p, t, o, 10, colour_deviation=1,
+                           allocation=owner.Allocation(tri_o=o, props_share=0.5))
+        self.assertEqual(calls, [1, 1, 8])
+
+    def test_fixed_structure_debits_combined_pass(self):
+        p, t, o = scene()
+        t = np.repeat(t, 10, axis=0)
+        o = np.repeat(o, 10)
+        calls = []
+        def record(pos, rgb, tris, budget, weight, options):
+            calls.append(budget)
+            return pos, rgb, tris[:budget], np.arange(len(pos))
+        with patch.object(owner, 'simplify_with_update', side_effect=record):
+            owner.simplify(p, p, t, o, 20, colour_deviation=1,
+                           allocation=owner.Allocation(tri_o=o, object_names=['a', 'b', 'wall', 'floor'],
+                                                       props_share=0.5, overrides=[{'object': 'wall', 'triangles': 3}]))
+        self.assertEqual(calls, [5, 5, 3, 7])
+
+    def test_import_share_and_source_bounds_reach_geometry(self):
+        from r3d import mesh_import as importer
+        p, t, o = scene()
+        t = np.repeat(t, 100, axis=0)
+        o = np.repeat(o, 100)
+        body = ('[source]\npath="m.obj"\ncredit="test"\n[output]\n'
+                '[geometry.simplify]\ndense_edge=1000\nseal_seams=false\ncolour_deviation=1\n'
+                '[[variants]]\nname="test"\ntriangles=100\n')
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / 'm.import.toml'
+            path.write_text(body)
+            with self.assertRaisesRegex(SettingsError, r'add.*props_share.*\[objects\]'):
+                load_import_settings(path)
+            outputs = []
+            for share in (0.2, 0.6):
+                path.write_text(body + f'[objects]\nprops_share={share}\n')
+                settings = load_import_settings(path)
+                src = NS(p=p, tri_v=t, tri_t=t, tri_m=o, tri_o=o.copy(), uv=None,
+                         object_names=['a', 'b', 'wall', 'floor'], names=['a', 'b', 'wall', 'floor'], textures=[None]*4)
+                job = NS(settings=settings, renderer=NS(visibility=NS(source='region'),
+                                                       variant=settings.variants[0]), bake=None)
+                def visible(*args):
+                    return o < 2
+                def counted(pos, rgb, tris, budget, weight, options):
+                    return pos, rgb, tris[:budget], np.arange(len(pos))
+                with patch.object(owner, 'simplify_with_update', side_effect=counted), \
+                        patch.object(importer, 'load_source', return_value=src), patch.object(importer, 'RayQuery'), \
+                        patch.object(importer, 'path_light_for', return_value=None), \
+                        patch.object(importer, 'visible_triangles', side_effect=visible), \
+                        patch.object(importer, 'shade_unlit', side_effect=lambda src, mat, p, t: (p, np.full_like(p, 100), t)):
+                    geometry = importer.bake_geometry(job, None)
+                outputs.append(len(geometry.tris))
+            self.assertEqual(outputs, [20, 60])
 
     def test_share_schema(self):
         for share in (-0.1, 1.1, True, '0.3'):

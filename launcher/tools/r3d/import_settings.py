@@ -7,6 +7,7 @@ reads is an error.
 """
 
 import math
+from fnmatch import fnmatchcase
 import pathlib
 import re
 import tomllib
@@ -19,7 +20,6 @@ from r3d.scene_name import scene_id
 from gltf.gltf_read import ASSET_SUFFIXES
 
 MESHLET_TRIANGLES = 32
-DEFAULT_PROPS_SHARE = 0.3
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
@@ -287,11 +287,34 @@ def load_geometry(table, steps):
             raise SettingsError("geometry.simplify.colour_deviation must be above 0")
 
 
+def pass_overrides(objects, materials_by_object, overrides):
+    """Apply rules once per pass; fixed selectors must cover every welded object."""
+    importance, fixed = 1.0, None
+    for rule in overrides:
+        material_rule = "material" in rule
+        pattern = rule.get("material", rule.get("object"))
+        if material_rule:
+            matched = [name for name in objects
+                       if any(fnmatchcase(material, pattern) for material in materials_by_object[name])]
+        else:
+            matched = [name for name in objects if fnmatchcase(name, pattern)]
+        if not matched:
+            continue
+        if "importance" in rule:
+            importance *= rule["importance"]
+        else:
+            others = [name for name in objects if name not in matched]
+            if others:
+                kind = "material " if material_rule else ""
+                raise SettingsError(f"fixed {kind}override {pattern!r} also caps welded objects: {', '.join(others)}")
+            fixed = (fixed or 0) + rule["triangles"]
+    return importance, fixed
+
+
 def load_object_overrides(table):
     """Closed glob rules for connected simplifier passes."""
     check_keys(table, (), "objects", optional=("overrides", "props_share"))
-    share = table.get("props_share", DEFAULT_PROPS_SHARE)
-    if not 0 <= number(share, "objects.props_share") <= 1:
+    if "props_share" in table and not 0 <= number(table["props_share"], "objects.props_share") <= 1:
         raise SettingsError("objects.props_share must be between 0 and 1")
     rules = table.get("overrides", [])
     if not isinstance(rules, list):
@@ -367,13 +390,15 @@ def load_import_settings(path):
         if steps.simplify:
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
         variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None)]
+    if steps.simplify and "props_share" not in values.get("objects", {}):
+        raise SettingsError("geometry.simplify needs a prop share: add props_share = 0.3 to [objects]")
     return SimpleNamespace(
         path=path, source=source, mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         overrides=load_object_overrides(values.get("objects", {})),
-        props_share=values.get("objects", {}).get("props_share", DEFAULT_PROPS_SHARE),
+        props_share=values.get("objects", {}).get("props_share"),
         meshlet_triangles=steps.meshlet_triangles,
         variants=variants, skin_lighting=lighting)
 
