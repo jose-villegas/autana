@@ -81,7 +81,7 @@ reads.
 
 ## The frame watch as a gate
 
-The frame watch ([Firmware-Architecture.md](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state))
+The frame watch ([firmware/Frame-Watch.md](../firmware/Frame-Watch.md#no-allocating-or-logging-in-steady-state))
 warns on the board. Two places turn it into a failure, both by the rule in
 `profile/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
 `FRAME_WATCH_WINDOW` frames, after `FRAME_WATCH_WARMUP`). Either also fails
