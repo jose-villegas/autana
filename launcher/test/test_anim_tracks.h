@@ -45,6 +45,8 @@ test_track_row(uint8_t* entry, int index, const test_track_t* track) {
     test_pack_put16(row + ANIM_TRACKS_ROW_PATH, path);
     test_pack_put16(row + ANIM_TRACKS_ROW_FIELD, field);
     test_pack_put32(row + ANIM_TRACKS_ROW_COMPONENT, track->component);
+    test_pack_put32(row + ANIM_TRACKS_ROW_PATH_HASH, name_hash(track->path));
+    test_pack_put32(row + ANIM_TRACKS_ROW_FIELD_HASH, name_hash(track->field));
     test_pack_put32(row + ANIM_TRACKS_ROW_TIMES, track->times);
     test_pack_put32(row + ANIM_TRACKS_ROW_VALUES, track->values);
     test_pack_put16(row + ANIM_TRACKS_ROW_KEYS, track->keys);

@@ -25,6 +25,6 @@ if [ "$board" = "$SELFTEST_BOARD" ]; then
         shell=$(cygpath -w "$shell")
         BOARD_CI_LOG=$(cygpath -u "$BOARD_CI_LOG")
     fi
-    args+=(--selftest-at "$SELFTEST_AT" --selftest "$shell" "$repo/scripts/ci/board-steps.sh")
+    args+=(--selftest "$shell" "$repo/scripts/ci/board-steps.sh")
 fi
 autana --board "$board" --wait "$wait_seconds" lock run --estimate "$estimate" -- "$PY" "$driver" "${args[@]}"

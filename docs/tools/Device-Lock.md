@@ -138,6 +138,37 @@ lapses or its owner dies. Another caller may take the board immediately.
 `autana lock wait --wait <seconds>` exits 75 if that cap runs out; without
 `--wait`, it waits without a cap. Inside a hold it fails at once with exit 1.
 
+## Heavy host work
+
+Every firmware compile and full GPU stage takes the host's `heavy` key.
+It uses the board lock's FIFO tickets, heartbeat, stale recovery and holds.
+Flash writes and captures do not take heavy.
+Builds and flashes during a GPU stage wait `DEFAULT_LOCK_WAIT_SECONDS`
+(600 s, `scripts/lib/autana_config.py`), then exit busy naming the heavy holder.
+
+```sh
+autana lock run --heavy --wait 7200 -- sh long-job.sh
+autana status
+```
+
+The `heavy:` status line shows its holder, command, acquisition time and
+waiters. The command inherits a separate heavy token; nested autana builds
+reuse that hold. A process holding heavy cannot acquire a board lock.
+Board holders may take heavy for builds.
+
+| Platform | Shared heavy root |
+|---|---|
+| Windows | `%ProgramData%\autana\heavy` |
+| WSL | `/mnt/c/ProgramData/autana/heavy` |
+| Other Linux | `/tmp/autana-heavy` |
+
+The WSL root must be reachable; an unavailable Windows mount is an error.
+`_AUTANA_HEAVY_LOCK_ROOT` is a test override, never a per-checkout setting.
+
+Records use the hostname, with `/wsl` appended inside WSL. A pid is checked
+only within that host identity. Foreign waiters are never pruned by pid;
+foreign running holders are reclaimed only on heartbeat expiry.
+
 ## Board busy?
 
 "Busy" means queued. Seeing `waiting` is the queue working, not an error: your
@@ -276,16 +307,13 @@ session:
 
 There is no setting for another folder: the lock is one per machine, and a
 folder chosen per checkout or per shell would split it. Linux ignores `TMPDIR`
-so two jobs with different temp folders still exclude each other; an install older
-than this rule used `$TMPDIR/autana-device` there, and until every copy on the
-machine is updated the two do not exclude each other (the lock protocol number
-cannot help: an older install never looks in the new folder). Per board, with
-`:` in the serial number written as `_`:
+so two jobs with different temp folders still exclude each other.
+Per board, `:` in the serial number is written as `_`:
 
 | File | What it is |
 |---|---|
 | `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `pid`, `host`, `token`, `protocol`, `autana_version`; a timed hold or person's reservation has `expires_at` and `pid: 0`, and an until-released hold has `until_released: true` and the owner process id. `heartbeat_at` is when a hold was written. `purpose` is what `status` shows. Optional `estimated_end` supplies the informational end time without changing liveness. The `token` names this lock; `lock take` prints it, and a holder's child processes inherit it for `lock release` without an argument. `status` never prints it. |
-| `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
+| `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded only within the same host identity. |
 | `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
 | `<serial>.seen.json` | Names a board once found on USB, so `lock hand` and `lock take-back` can still reach it when it has since dropped off. Delete it to make this machine forget the board. |
 | `durations.jsonl` | How long each kind of command held the board, for estimates ([Flash-and-Captures.md](Flash-and-Captures.md#wait-estimates)). |
@@ -318,11 +346,11 @@ alone fall back once more to the only board this machine has ever seen.
 |---|---|
 | `0` | Success. For `lock hand --until-back`: the reservation was taken back or lapsed. |
 | `1` | Any other failure, including `device lock was lost` or a dead token (released, lapsed or wrong). |
-| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. `lock wait` uses it when its cap runs out. `lock hand --until-back` uses it when its wait runs out (the reservation stands) or the reservation is replaced. |
+| `75` | The board or heavy key was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. `lock wait` uses it when its cap runs out. `lock hand --until-back` uses it when its wait runs out (the reservation stands) or the reservation is replaced. |
 | `130` | Ctrl+C: the second one on `monitor`, or the first on `lock hand --until-back`, which leaves the reservation in place. |
 | `2` | `device.py` itself, for a bad command line. |
 
-`autana status --json` prints `{"boards": [...]}`, one object per board.
+`autana status --json` prints `{"boards": [...], "heavy": {...}}`, with the same state fields for boards and heavy.
 Times are epoch seconds; an age or a time left is the difference from now. An estimate without enough history is `null`.
 
 | Field | |
@@ -375,12 +403,11 @@ current directory (`autana help build`). A report script calls `autana
 selftest`, `autana suite` or `autana flash`.
 
 Every record carries its `protocol` number and `autana_version`; for running
-commands a difference is shown, never refused. Protocol 3 keeps holds and
-running commands in one record.
-An install older than protocol 3 takes the board from a timed hold or a
-person's reservation at once, and from an until-released hold after the
-stale window. Protocol 3 does not see protocol-2 `.human.json` reservations.
-Update every install that shares a board.
+commands a difference is shown, never refused. Protocol 4 records host identity
+on both holders and tickets, distinguishing Windows and WSL pid namespaces.
+
+Readers older than protocol 4 can reclaim a live cross-OS holder or prune
+its waiters by testing a foreign pid. Update every install sharing a root.
 
 ### Forcing a stuck lock clear
 

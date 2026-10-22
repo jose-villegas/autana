@@ -11,9 +11,6 @@ on:
       max_steps:
         description: Maximum new candidates per board
         required: false
-      selftest_at:
-        description: Local self-test time (HH:MM; defaults to SELFTEST_AT)
-        required: false
       window_end:
         description: Local window end (HH:MM; defaults to WINDOW_END)
         required: false
@@ -31,7 +28,6 @@ env:
     run_sponza_perf_suite|-|-
     run_render_lab_frame_profile_suite|-|-
     run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
-  SELFTEST_AT: ${{ inputs.selftest_at || '01:00' }}
   WINDOW_END: ${{ inputs.window_end || '07:00' }}
   QUEUE_AT: '22:30'
   GH_TOKEN: ${{ github.token }}
