@@ -87,18 +87,20 @@ def match_object(shape, obj, tolerance):
     limit = tolerance * bounds_diagonal(obj.positions)
     target_faces = triangle_materials(obj.triangles, obj.materials)
 
-    def fitted(mapping):
-        for reflected in (False, True):
-            linear, position, residual = rigid_fit(shape.positions, obj.positions[mapping], reflected)
-            faces = mapping[shape.triangles]
-            if reflected:
-                faces = faces[:, ::-1]
-            if residual <= limit and triangle_materials(faces, shape.materials) == target_faces:
-                return Instance(obj.name, linear, position, reflected, residual)
+    def fitted(mapping, reflected):
+        linear, position, residual = rigid_fit(shape.positions, obj.positions[mapping], reflected)
+        faces = mapping[shape.triangles]
+        if reflected:
+            faces = faces[:, ::-1]
+        if residual <= limit and triangle_materials(faces, shape.materials) == target_faces:
+            return Instance(obj.name, linear, position, reflected, residual)
         return None
 
+    mappings = []
     if np.array_equal(shape.triangles, obj.triangles):
-        instance = fitted(np.arange(len(shape.positions)))
+        mapping = np.arange(len(shape.positions))
+        mappings.append(mapping)
+        instance = fitted(mapping, False)
         if instance is not None:
             return instance
     local = shape.positions - shape.positions.mean(axis=0)
@@ -110,9 +112,14 @@ def match_object(shape, obj, tolerance):
         placed = local @ axes_local @ np.diag(signs) @ axes_target.T
         _, mapping = tree.query(placed)
         if len(np.unique(mapping)) == len(target):
-            instance = fitted(mapping)
+            mappings.append(mapping)
+            instance = fitted(mapping, False)
             if instance is not None:
                 return instance
+    for mapping in mappings:
+        instance = fitted(mapping, True)
+        if instance is not None:
+            return instance
     return None
 
 

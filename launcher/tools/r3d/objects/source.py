@@ -1,4 +1,4 @@
-"""Triangle ownership (OBJ groups, glTF mesh nodes) aligned with the loaders' triangle order; the alignment check compares counts only."""
+"""Triangle ownership (OBJ groups, glTF mesh nodes) aligned with the loaders' triangle order."""
 
 from pathlib import Path
 

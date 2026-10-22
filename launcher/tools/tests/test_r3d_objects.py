@@ -77,6 +77,24 @@ class ObjectsTests(unittest.TestCase):
         self.assertEqual(len(shapes), 1)
         self.assertTrue(shapes[0].instances[1].mirrored)
 
+    def test_symmetric_reflection_matches_as_rotation(self):
+        points = np.array([[-2., 0., 0.], [2., 0., 0.], [0., 3., 0.], [0., 0., 1.]])
+        for seed in range(4):
+            rotation = Rotation.random(random_state=seed).as_matrix()
+            placed = (points * [-1, 1, 1]) @ rotation.T + [7, 4, 9]
+            for permutation, same_topology in ((np.arange(len(points)), False),
+                                               (np.array([2, 0, 3, 1]), False),
+                                               (np.arange(len(points)), True)):
+                with self.subTest(seed=seed, permutation=permutation, same_topology=same_topology):
+                    triangles = np.concatenate([TRIANGLES, TRIANGLES[:, ::-1]]) if same_topology else TRIANGLES
+                    materials = np.zeros(len(triangles), dtype=int)
+                    original = SourceObject('wedge', points, triangles, materials)
+                    faces = triangles if same_topology else np.argsort(permutation)[triangles[:, ::-1]]
+                    copy = SourceObject('copy', placed[permutation], faces, materials)
+                    shapes = match_instances([original, copy])
+                    self.assertEqual(len(shapes), 1)
+                    self.assertFalse(shapes[0].instances[1].mirrored)
+
     def test_obj_scaled_copy_is_separate(self):
         self.assertEqual(len(pair_shapes(POINTS * 2)), 2)
 
