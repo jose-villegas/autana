@@ -137,7 +137,8 @@ app_boot_init(void) {
 #endif
     heap_mark("shell ready");
     /* Last, not first: the host's port is still re-enumerating after the
-     * PMIC power cycle while the first second of boot is printed. */
+     * PSRAM tuning's unplug (board/board_usb.c) while the first second of
+     * boot is printed. */
     boot_report_last_reset();
 }
 

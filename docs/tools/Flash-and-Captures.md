@@ -122,8 +122,8 @@ disappears mid-capture ends it as `port lost` with what was read kept, so a
 multi-suite run carries on with its next suite. It fails if the build has no
 suites, does not contain the requested suite, or reports any failed test.
 
-A reset that power-cycles the board takes its port off USB and back,
-possibly under another name. The command waits for the board's serial
+A reset takes the board's port off USB and back while the new boot tunes
+PSRAM, possibly under another name. The command waits for the board's serial
 number to leave the port list and come back, then opens it; opening sooner
 gets the dying handle. A reset that keeps USB up costs only the bounded
 leave wait in [device.py](../../scripts/device/device.py). Captures that
