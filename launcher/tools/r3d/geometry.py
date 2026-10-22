@@ -14,11 +14,16 @@ def compact(p, tris):
     return p[used], inverse.reshape(-1, 3)
 
 
+def distinct_corners(tris):
+    """Which triangles retain three distinct vertex indices after welding."""
+    return (tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2])
+
+
 def weld(p, tris, tolerance=1e-3):
     key = np.round(p / tolerance).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     tris = inverse.reshape(-1)[tris]
-    good = (tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2])
+    good = distinct_corners(tris)
     return p[first], tris[good]
 
 

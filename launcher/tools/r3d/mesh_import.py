@@ -75,11 +75,11 @@ def load_source(settings, texture_dtype=np.float64):
         return load_glb_source(settings)
     obj_path = settings.source["path"]
     materials = load_mtl(obj_path.with_suffix(".mtl"))
-    p, uv, tri_v, tri_t, tri_m, names = load_obj(obj_path)
+    p, uv, tri_v, tri_t, tri_m, names, tri_o, object_names = load_obj(obj_path)
     log(f"loaded {len(p)} vertices, {len(tri_v)} triangles, {len(names)} materials")
     textures = load_textures(obj_path.parent, materials, names, texture_dtype)
     return SimpleNamespace(p=p, uv=uv, tri_v=tri_v, tri_t=tri_t, tri_m=tri_m, names=names, materials=materials,
-                           textures=textures, colors=None)
+                           textures=textures, colors=None, tri_o=tri_o, object_names=object_names)
 
 
 def load_glb_source(settings):
@@ -90,6 +90,7 @@ def load_glb_source(settings):
     return SimpleNamespace(p=np.array(mesh.positions, dtype=np.float64), uv=np.zeros((0, 2)), tri_v=tri_v,
                            tri_t=tri_v.copy(), tri_m=np.array(mesh.tri_m, dtype=np.int64), names=mesh.names,
                            materials={}, textures=[None] * len(mesh.names),
+                           tri_o=np.asarray(mesh.tri_o, dtype=np.int64), object_names=mesh.object_names,
                            colors=np.array(mesh.colors, dtype=np.float64))
 
 
@@ -118,7 +119,7 @@ def path_light_for(src, job, scene, variant=None):
     return PATH_LIGHTS[key]
 
 
-def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce):
+def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels=None):
     """Vertices split along creases and lit on their own normals, near colours merged."""
     normals = corner_normals(mp, mt)
     corner_pos, corner_n = mp[mt].reshape(-1, 3), normals.reshape(-1, 3)
@@ -131,7 +132,7 @@ def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce):
     radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, job.bake.ray_offset, bounce,
                      bounce_groups=welded, ao=job.bake.ao, bounce_intensity=scene.indirect.intensity)
     vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
-    return merge_matching_colours(vpos, vrgb, vtris, grid, job.bake.colour_merge_step)
+    return merge_matching_colours(vpos, vrgb, vtris, grid, job.bake.colour_merge_step, labels=labels)
 
 
 def shade_unlit(src, material, mp, mt):
@@ -162,13 +163,20 @@ def fidelity_poses(scene, object_name, frames, dt):
                             number_format=".9g")
 
 
-def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng):
+def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng, *, sampling=None):
     """Which source triangles the camera can see, by `visibility`'s source."""
     if visibility.source == "camera_path":
         width, height, lens, near, poses = camera_path_poses(scene, visibility)
+        if sampling is not None:
+            sampling.eyes.append(np.asarray(poses)[:, :3])
+            sampling.focal_px = min(width, height) / (2 * lens)
         return visible_from_path(p, tri_v, double, intersector, poses, width, height, lens, near, visibility.samples,
                                  visibility.margin)
-    return visible_from_region(p, tri_v, double, intersector, visibility.rounds, rng, *scene.region)
+    if sampling is not None:
+        from panel_size import PANEL_HEIGHT, PANEL_WIDTH
+        sampling.focal_px = min(PANEL_WIDTH, PANEL_HEIGHT) / (2 * scene.camera.component.half_fov_short_tan)
+    return visible_from_region(p, tri_v, double, intersector, visibility.rounds, rng, *scene.region,
+                               eyes=sampling.eyes if sampling is not None else None)
 
 
 def bake_geometry(job, scene, recorder=None):
@@ -185,9 +193,12 @@ def bake_geometry(job, scene, recorder=None):
     tri_v, tri_t, tri_m = src.tri_v, src.tri_t, src.tri_m
     with recorder.step("alpha mask", len(tri_v)) as step:
         if settings.alpha_keep is not None:
-            tri_v, tri_t, tri_m = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep)
+            tri_v, tri_t, tri_m, keep = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep,
+                                                       return_mask=True)
+            src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
+    eyes, focal_px = None, 1.0
     with recorder.step("visibility", len(tri_v)) as step:
         intersector = None
         visibility = renderer.visibility
@@ -197,30 +208,38 @@ def bake_geometry(job, scene, recorder=None):
         seen = np.ones(len(tri_v), dtype=bool)
         if visibility:
             double = np.array([src.names[material] in double_names for material in tri_m])
-            seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng)
+            sampling = SimpleNamespace(eyes=[], focal_px=1.0) if scene is not None and scene.camera is not None else None
+            kwargs = {"sampling": sampling} if sampling is not None else {}
+            seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng, **kwargs)
+            if sampling is not None and sampling.eyes:
+                eyes, focal_px = np.concatenate(sampling.eyes), sampling.focal_px
         step["triangles_out"] = int(seen.sum())
     with recorder.step("thin", int(seen.sum())) as step:
         if settings.thin:
             thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
             seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
         step["triangles_out"] = int(seen.sum())
-    shown_v, shown_m = tri_v[seen], tri_m[seen]
+    shown_v, shown_m, shown_o = tri_v[seen], tri_m[seen], src.tri_o[seen]
     with recorder.step("light", len(shown_v)) as step:
         bounce = path_light_for(src, job, scene)
         if settings.simplify:
             log("splitting evenly")
             wp, wt = weld_keeping(src.p, shown_v)
-            dp, dt, dm = densify(wp, wt, shown_m, settings.simplify.dense_edge)
-            parts = [(material, *compact(dp, dt[dm == material])) for material in range(len(src.names)) if np.any(dm == material)]
+            dp, dt, ownership = densify(wp, wt, np.column_stack([shown_m, shown_o]), settings.simplify.dense_edge)
+            dm, do = ownership.T
+            parts = [(material, do[dm == material], *compact(dp, dt[dm == material]))
+                     for material in range(len(src.names)) if np.any(dm == material)]
         else:
-            parts = [(material, *compact(src.p, shown_v[shown_m == material])) for material in range(len(src.names))
+            parts = [(material, shown_o[shown_m == material], *compact(src.p, shown_v[shown_m == material]))
+                     for material in range(len(src.names))
                      if np.any(shown_m == material)]
-        all_pos, all_rgb, all_tris, all_double, all_mat = [], [], [], [], []
+        all_pos, all_rgb, all_tris, all_double, all_mat, all_obj = [], [], [], [], [], []
         base = 0
-        for material, mp, mt in parts:
+        for material, owners, mp, mt in parts:
             double = src.names[material] in double_names
             if job.bake:
-                vpos, vrgb, vtris = shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce)
+                vpos, vrgb, vtris, owners = shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce,
+                                                         labels=owners)
             else:
                 vpos, vrgb, vtris = shade_unlit(src, material, mp, mt)
             all_pos.append(vpos)
@@ -228,6 +247,7 @@ def bake_geometry(job, scene, recorder=None):
             all_tris.append(vtris + base)
             all_double.append(np.full(len(vtris), int(double)))
             all_mat.append(np.full(len(vtris), material))
+            all_obj.append(owners)
             base += len(vpos)
             log(f"  {src.names[material]}: {len(vpos)} vertices")
         positions, rgb, tris = np.concatenate(all_pos), np.concatenate(all_rgb), np.concatenate(all_tris)
@@ -236,9 +256,11 @@ def bake_geometry(job, scene, recorder=None):
     with recorder.step("simplify", len(tris)) as step:
         if settings.simplify:
             steps = settings.simplify
-            props = [(frozenset(index for index, name in enumerate(src.names) if name in steps.props), steps.props_share)]
-            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles, props,
-                                                     colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
+            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles,
+                                                   tri_o=np.concatenate(all_obj), object_names=src.object_names,
+                                                   material_names=src.names, overrides=settings.overrides,
+                                                   eyes=eyes, focal_px=focal_px,
+                                                   colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
             rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
         step["triangles_out"] = len(tris)

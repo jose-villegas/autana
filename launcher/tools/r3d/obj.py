@@ -1,6 +1,7 @@
 """Wavefront OBJ and MTL loading, and the textures an MTL names, as linear-light mip chains."""
 
 import os
+import pathlib
 
 TEXTURE_KEYS = ("map_Kd", "map_d")
 
@@ -27,13 +28,17 @@ def load_obj(path):
     import numpy as np
 
     positions, uvs = [], []
-    tri_v, tri_t, tri_m = [], [], []
+    tri_v, tri_t, tri_m, tri_o = [], [], [], []
+    object_names, owner = [], None
     material_names = []
     material_index = {}
     current = -1
     with open(path, encoding="latin-1") as f:
         for line in f:
-            if line.startswith("v "):
+            if line.startswith(("o ", "g ")):
+                object_names.append(line[2:].strip() or pathlib.Path(path).stem)
+                owner = len(object_names) - 1
+            elif line.startswith("v "):
                 positions.append([float(v) for v in line.split()[1:4]])
             elif line.startswith("vt "):
                 uvs.append([float(v) for v in line.split()[1:3]])
@@ -44,6 +49,9 @@ def load_obj(path):
                     material_names.append(name)
                 current = material_index[name]
             elif line.startswith("f "):
+                if owner is None:
+                    object_names.append(pathlib.Path(path).stem)
+                    owner = len(object_names) - 1
                 corners = []
                 for c in line.split()[1:]:
                     fields = c.split("/")
@@ -53,6 +61,7 @@ def load_obj(path):
                     tri_v.append([c[0] for c in tri])
                     tri_t.append([c[1] for c in tri])
                     tri_m.append(current)
+                    tri_o.append(owner)
     return (
         np.array(positions, dtype=np.float64),
         np.array(uvs, dtype=np.float64),
@@ -60,6 +69,8 @@ def load_obj(path):
         np.array(tri_t, dtype=np.int64),
         np.array(tri_m, dtype=np.int64),
         material_names,
+        np.array(tri_o, dtype=np.int64),
+        object_names,
     )
 
 

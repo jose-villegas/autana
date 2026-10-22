@@ -15,6 +15,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 SOURCE = HERE.parents[2] / "third_party" / "upstream" / "meshoptimizer" / "src"
 CACHE = HERE / ".cache"
 
+ERROR_ABSOLUTE = 1 << 2
+UNLIMITED_ERROR = 1e9
+
 REGULARIZE = 1 << 4
 PERMISSIVE = 1 << 5
 REGULARIZE_LIGHT = 1 << 6
@@ -34,7 +37,8 @@ def _library():
     return _lib
 
 
-def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, options=REGULARIZE | PERMISSIVE):
+def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, options=REGULARIZE | PERMISSIVE, *,
+                         target_error=UNLIMITED_ERROR, absolute_error=False):
     """Simplifies to about target_triangles, keeping colour (0..255 per
     channel, `colour_weight` per level) as an attribute and moving the
     surviving vertices and colours to where they best preserve the appearance.
@@ -51,7 +55,7 @@ def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, option
     c = ctypes.c_void_p
     n = fn(i.ctypes.data_as(c), ctypes.c_size_t(len(i)), p.ctypes.data_as(c), ctypes.c_size_t(len(p)),
            ctypes.c_size_t(12), a.ctypes.data_as(c), ctypes.c_size_t(12), w.ctypes.data_as(c), ctypes.c_size_t(3),
-           None, ctypes.c_size_t(3 * target_triangles), ctypes.c_float(1e9), ctypes.c_uint(options), ctypes.byref(err))
+           None, ctypes.c_size_t(3 * target_triangles), ctypes.c_float(target_error), ctypes.c_uint(options | (ERROR_ABSOLUTE if absolute_error else 0)), ctypes.byref(err))
     out = i[:n].reshape(-1, 3).astype(np.int64)
     kept, local = np.unique(out, return_inverse=True)
     return (p[kept].astype(np.float64), np.clip(a[kept] * 255.0, 0.0, 255.0), local.reshape(-1, 3), kept)
