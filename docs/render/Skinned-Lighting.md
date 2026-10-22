@@ -93,8 +93,7 @@ The import's [`[skin].lighting`](Mesh-Import.md#skin-lighting) picks the mode.
 
 ![Mean byte error against cycles per vertex for each lighting mode, the one, two and four light points joined](images/skin-light-board.png)
 
-Skinning alone costs the dashed line's cycles per vertex; an exact float
-evaluation costs about 5,700 ([every kernel](#board-measurement)).
+An exact float evaluation costs about 5,700 cycles per vertex ([every kernel](#board-measurement)).
 
 Errors are 0-255 steps of a light channel against float lighting of the
 packed normals; the plot shows the mean. Board measurements, from the [capture](#board-measurement):

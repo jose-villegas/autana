@@ -17,6 +17,8 @@ SHARED = (("Normal-palette build cycles / frame", "the normal palette costs {} c
           ("Scene PSRAM bytes", "the scene holds {} bytes of PSRAM"))
 # Point-label offsets in points from the point, tried in order until one clears the labels already placed.
 LABEL_OFFSETS = ((5, 4), (5, -10), (-12, 4), (-12, -10), (5, 12), (5, -18), (-12, 12), (-12, -18))
+PLOT_SIZE = (7.0, 3.2)  # inches
+PLOT_MARGIN = 0.08  # of the cost range, either side
 FIGURE = pathlib.Path(__file__).resolve().parents[4] / "docs/render/images/skin-light-board.png"
 
 
@@ -104,7 +106,7 @@ def mode_points(text):
 def lighting_modes(text):
     """The slim table of the modes, preceded by one sentence for each column that holds a single value in every row;
     a column whose rows differ stays in the table."""
-    points, _, shared, _ = mode_points(text)
+    points, skin, shared, _ = mode_points(text)
     constant = {name: set(values).pop() for name, values in shared.items() if len(set(values)) == 1}
     names = [name for name, _ in SHARED if name in constant]
     columns = ["Mode", "Lights", "Worst byte error", "Table build cycles / light change", "Scene internal bytes"]
@@ -125,8 +127,8 @@ def write_figure(text, output):
     """Mean byte error against cycles per vertex, one colour per mode, the light counts joined and labelled."""
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
     from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, save, subplots
-    points, skin, _, _ = mode_points(text)
-    plot, axis = subplots(1, 1, (7.0, 4.0))
+    points, _, _, _ = mode_points(text)
+    plot, axis = subplots(1, 1, PLOT_SIZE)
     placed = []
     for colour, mode in zip(SLOTS, MODES):
         own = [p for p in points if p[0] == mode]
@@ -143,10 +145,8 @@ def write_figure(text, output):
                     placed.append(box)
                     break
                 label.remove()
-    if skin is not None:
-        axis.axvline(skin, color=FAINT, linestyle="--", linewidth=1)
-        axis.annotate("skinning alone", (skin, 0), xytext=(4, 4), textcoords="offset points", fontsize=LABEL_SIZE, color=MUTED)
-    axis.set_ylim(bottom=0)
+    axis.set_ylim(0, 1.1 * max(p[3] for p in points))
+    axis.margins(x=PLOT_MARGIN)
     axis.set_title("Lighting modes: error against cost, labelled by light count", fontsize=TITLE_SIZE, color=INK)
     axis.set_xlabel("cycles per vertex", fontsize=LABEL_SIZE, color=MUTED)
     axis.set_ylabel("mean byte error", fontsize=LABEL_SIZE, color=MUTED)
