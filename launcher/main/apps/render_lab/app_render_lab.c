@@ -233,13 +233,15 @@ static void
 draw_menu(const input_t* input) {
     ui_begin(input);
 
-    const char* families[SCENE_COUNT];
+    /* Static: the menu draws on the main task alone, whose stack the scene list
+     * would otherwise grow with every scene. */
+    static const char* families[SCENE_COUNT];
     const int family_count = family_names(families);
     int family = 0;
     while (strcmp(families[family], current_scene()->family) != 0) {
         family++;
     }
-    const char* variants[SCENE_COUNT];
+    static const char* variants[SCENE_COUNT];
     int variant = 0;
     const int variant_count = family_variants(families[family], variants, &variant);
     const render_lab_menu_screen_state_t state = {
