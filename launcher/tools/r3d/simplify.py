@@ -1,5 +1,6 @@
 """Appearance-preserving simplification with a common screen-space error cut."""
 
+from dataclasses import dataclass
 from fnmatch import fnmatchcase
 import pathlib
 import sys
@@ -7,7 +8,8 @@ import sys
 import numpy as np
 
 from . import log
-from .geometry import triangle_areas, weld_keeping
+from .geometry import weld_keeping
+from .import_settings import MESHLET_TRIANGLES, SettingsError
 from .lit_mesh import POSITION_SCALE
 from .meshopt import UNLIMITED_ERROR, PERMISSIVE, REGULARIZE, REGULARIZE_LIGHT, simplify_with_update
 from .repair import repair
@@ -42,17 +44,21 @@ def densify(p, tris, labels, max_edge, rounds=16):
     return p, tris, labels
 
 
-def colour_weight(pos, tris, budget, deviation):
-    """The colour weight, per 8-bit level, at which one panel colour step
-    (the coarsest channel's) costs the simplifier as much as moving the
-    surface `deviation` units. meshoptimizer weighs a vertex's colour error
-    by the area it stands for, so the trade scales with the side of that
-    area, the square root of the part's area over its budget; dividing by it
-    makes the trade the same for every part and budget, and steeper shading
-    costs more colour steps, not more deviation for each. A part with no
-    area has no surface to move, and its colour weighs nothing."""
-    side = np.sqrt(triangle_areas(pos, tris).sum() / budget)
-    return deviation / (side * max(gfx_color.STEP)) if side > 0 else 0.0
+@dataclass
+class Allocation:
+    """Source ownership and caller-selected screen-error policy."""
+    tri_o: object = None
+    object_names: tuple = ()
+    material_names: tuple = ()
+    overrides: tuple = ()
+    eyes: object = None
+    focal_px: float = 1.0
+
+
+def colour_weight(pos, deviation):
+    """Weight per colour level in meshoptimizer's extent-normalized space."""
+    extent = np.ptp(pos, axis=0).max()
+    return deviation / (extent * max(gfx_color.STEP)) if extent > 0 else 0.0
 
 
 def _label_after(tris_in, labels_in, kept, tris_out):
@@ -105,39 +111,46 @@ def object_groups(pos, tris, tri_o):
 
 
 def projected_scale(pos, eyes, focal_px):
-    """Pixels per world unit at the nearest bounds point, across visibility eyes."""
+    """Pixels per world unit at the nearest densified surface vertex."""
     if eyes is None or len(eyes) == 0:
         return 1.0
-    nearest = np.clip(eyes, pos.min(axis=0), pos.max(axis=0))
-    distance = np.maximum(np.linalg.norm(eyes - nearest, axis=1), np.finfo(np.float32).eps)
+    from scipy.spatial import cKDTree
+
+    distance = np.maximum(cKDTree(pos).query(eyes)[0], np.finfo(np.float32).eps)
     return float(np.percentile(focal_px / distance, SCALE_PERCENTILE))
 
 
 def pass_overrides(objects, materials, overrides):
-    """Each matching object's importance multiplies; its fixed counts add within a pass."""
+    """Apply each rule once per pass; fixed object selectors must cover it."""
     importance, fixed = 1.0, None
     for rule in overrides:
         names = materials if "material" in rule else objects
         pattern = rule.get("material", rule.get("object"))
-        matches = sum(fnmatchcase(name, pattern) for name in names)
+        matches = [name for name in names if fnmatchcase(name, pattern)]
         if not matches:
             continue
         if "importance" in rule:
-            importance *= rule["importance"] ** matches
+            importance *= rule["importance"]
         else:
-            fixed = (fixed or 0) + rule["triangles"] * matches
+            others = [name for name in objects if not fnmatchcase(name, pattern)]
+            if "object" in rule and others:
+                raise SettingsError(f"fixed override {pattern!r} also caps welded objects: {', '.join(others)}")
+            fixed = (fixed or 0) + rule["triangles"]
     return importance, fixed
 
 
 def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=False,
-             position_scale=POSITION_SCALE, tri_o=None, object_names=(), material_names=(), overrides=(),
-             eyes=None, focal_px=1.0):
-    """One absolute screen-error cut allocates triangles (Funkhouser and Séquin 1993).
-    Objects sharing a welded vertex form one pass: no pass splits a shared edge,
-    so independent passes cannot open a crack. Seam repair precedes grouping.
-    Fixed overrides cap their pass and leave the common cut. Colour uses each
-    pass's area and budget ceiling, held fixed across bisection. Returned
-    labels follow retained vertices."""
+             position_scale=POSITION_SCALE, allocation=None):
+    """Allocate a fixed triangle budget with one absolute screen-error cut.
+    Funkhouser and Séquin trade per-object benefit against per-frame cost;
+    here log-space bisection finds a shared cut for a variant's budget.
+    Welded objects share a pass. Colour costs colour_deviation world units
+    per panel step, independent of the triangle ceiling. Stop within one
+    meshlet below budget; retained vertices carry the returned labels."""
+    allocation = Allocation() if allocation is None else allocation
+    tri_o, object_names = allocation.tri_o, allocation.object_names
+    material_names, overrides = allocation.material_names, allocation.overrides
+    eyes, focal_px = allocation.eyes, allocation.focal_px
     options = REGULARIZE | PERMISSIVE
     labels = np.asarray(labels)
     tri_o = np.zeros(len(tris), dtype=np.int64) if tri_o is None else np.asarray(tri_o)
@@ -154,22 +167,48 @@ def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=
         used, local = np.unique(tris[sel], return_inverse=True)
         local = local.reshape(-1, 3)
         names = [object_names[i] for i in np.unique(tri_o[sel])] if object_names else []
-        materials = [material_names[i] for i in np.unique(labels[sel])] if material_names else []
+        material_ids, material_counts = np.unique(labels[sel], return_counts=True)
+        materials = ([material_names[i] for i in material_ids[np.argsort(-material_counts, kind="stable")]]
+                     if material_names else [])
+        for rule in overrides:
+            if "material" not in rule or "triangles" not in rule:
+                continue
+            if not any(fnmatchcase(name, rule["material"]) for name in materials):
+                continue
+            others = []
+            for obj in np.unique(tri_o[sel]):
+                own_materials = np.unique(labels[sel & (tri_o == obj)])
+                if not any(fnmatchcase(material_names[i], rule["material"]) for i in own_materials):
+                    others.append(object_names[obj])
+            if others:
+                raise SettingsError(f"fixed material override {rule['material']!r} also caps welded objects: "
+                                    + ", ".join(others))
         importance, fixed = pass_overrides(names, materials, overrides)
         scale = projected_scale(pos[used], eyes, focal_px) * importance
         parts.append(dict(pos=pos[used], rgb=rgb[used], tris=local, labels=labels[sel], fixed=fixed,
-                          scale=scale, cache={}))
+                          scale=scale, objects=names, materials=materials, cache={}))
+    for rule in overrides:
+        selector = "material" if "material" in rule else "object"
+        key = "materials" if selector == "material" else "objects"
+        matched = [part for part in parts if any(fnmatchcase(name, rule[selector]) for name in part[key])]
+        if not matched:
+            raise SettingsError(f"override {rule[selector]!r} matches no {selector}")
+        if selector == "material" and "triangles" in rule and len(matched) != 1:
+            raise SettingsError(f"fixed material override {rule[selector]!r} matches several passes: "
+                                + "; ".join(", ".join(part["objects"]) for part in matched))
+    for part in parts:
+        if part["fixed"] is not None and part["fixed"] > len(part["tris"]):
+            log(f"  fixed override {part['objects']}: clamped {part['fixed']} to {len(part['tris'])} triangles")
+            part["fixed"] = len(part["tris"])
+        part["weight"] = colour_weight(part["pos"], colour_deviation)
     reserved = sum(part["fixed"] or 0 for part in parts)
     if reserved > triangles:
-        raise ValueError(f"fixed object overrides ({reserved}) exceed triangle budget {triangles}")
-    budget = triangles - reserved
-    for part in parts:
-        ceiling = part["fixed"] if part["fixed"] is not None else max(1, budget)
-        part["weight"] = colour_weight(part["pos"], part["tris"], min(len(part["tris"]), ceiling), colour_deviation)
+        raise SettingsError(f"fixed object overrides ({reserved}) exceed triangle budget {triangles}")
 
     def evaluate(part, threshold):
         fixed = part["fixed"]
-        error = UNLIMITED_ERROR if fixed is not None else float(np.float32(threshold / part["scale"]))
+        error = (UNLIMITED_ERROR if fixed is not None
+                 else float(np.float32(min(UNLIMITED_ERROR, threshold / part["scale"]))))
         if error not in part["cache"]:
             part["cache"][error] = simplify_with_update(
                 part["pos"], part["rgb"], part["tris"], fixed if fixed is not None else 0,
@@ -178,18 +217,22 @@ def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=
 
     def evaluate_cut(threshold):
         result = [evaluate(part, threshold) for part in parts]
-        return reserved + sum(len(item[2]) for part, item in zip(parts, result) if part["fixed"] is None), result
+        return sum(len(item[2]) for item in result), result
 
-    low, high = 0.0, max((UNLIMITED_ERROR * part["scale"] for part in parts), default=1.0)
+    low, high = 0.0, float("inf")
     count, result = evaluate_cut(low)
     threshold = low
     if count > triangles:
         count, result = evaluate_cut(high)
+        high = max((item[4] * part["scale"] for part, item in zip(parts, result)
+                    if part["fixed"] is None), default=0.0)
         threshold = high
         if count > triangles:
             raise ValueError(f"minimum simplification has {count} triangles, above budget {triangles}")
         for _ in range(BISECTION_STEPS):
-            middle = (low + high) / 2.0
+            if triangles - count <= MESHLET_TRIANGLES:
+                break
+            middle = float(np.sqrt(max(low, np.finfo(np.float32).tiny) * high))
             trial_count, trial = evaluate_cut(middle)
             if trial_count > triangles:
                 low = middle
@@ -197,19 +240,19 @@ def simplify(pos, rgb, tris, labels, triangles, *, colour_deviation, seal_seams=
                 high = middle
                 if trial_count >= count:
                     count, result, threshold = trial_count, trial, middle
-            if count == triangles:
-                break
+
     count = sum(len(item[2]) for item in result)
     log(f"  error cut {threshold:.6g}, {count}/{triangles} triangles, shortfall {triangles - count}")
     out_pos, out_rgb, out_tris, out_labels = [], [], [], []
     base = 0
-    for index, (part, (p, c, t, kept)) in enumerate(zip(parts, result)):
+    for index, (part, (p, c, t, kept, _)) in enumerate(zip(parts, result)):
         out_pos.append(p)
         out_rgb.append(c)
         out_tris.append(t + base)
         out_labels.append(_label_after(part["tris"], part["labels"], kept, t))
         base += len(p)
-        log(f"  pass {index}: {len(part['tris'])} -> {len(t)} triangles, scale {part['scale']:.6g}")
+        log(f"  pass {index} objects={part['objects']} materials={part['materials'][:3]}: "
+            f"{len(part['tris'])} -> {len(t)} triangles, scale {part['scale']:.6g}")
     out_pos, out_rgb = np.concatenate(out_pos), np.concatenate(out_rgb)
     if seal_seams:
         rounded = np.clip(np.rint(out_rgb), 0, 255)

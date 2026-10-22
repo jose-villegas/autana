@@ -17,7 +17,7 @@ from .geometry import closest_point_on_triangles, distinct_corners, triangle_are
 from .import_settings import LIGHT_FIELDS
 
 
-def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5, *, return_mask=False):
+def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
     """Alpha-tested cards (leaves, chains) keep only triangles mostly opaque."""
     keep = np.ones(len(tri_v), dtype=bool)
     bary = np.array([[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]])
@@ -33,10 +33,10 @@ def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5, *, return_
     keep &= triangle_areas(p, tri_v) > 1e-6
     log(f"masked/degenerate triangles dropped: {np.count_nonzero(~keep)}")
     result = (tri_v[keep], tri_t[keep], tri_m[keep])
-    return (*result, keep) if return_mask else result
+    return (*result, keep)
 
 
-def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi, *, eyes=None):
+def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
     """A triangle is kept if, in any of `rounds` tries, a random point on it
     sees a random point of the box lo..hi from its front side. A try tests
     one point plus one for each whole multiple of the mean triangle area, so a
@@ -63,8 +63,6 @@ def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi, *, e
         on += r1 * (1 - r2) * gathered_b
         on += r1 * r2 * gathered_c
         eye = lo + rng.random((len(todo), 3)) * (hi - lo)
-        if eyes is not None:
-            eyes.append(eye)
         d = eye - on
         dist = np.linalg.norm(d, axis=1)
         d /= dist[:, None]
@@ -417,7 +415,7 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
     return out
 
 
-def merge_matching_colours(pos, rgb, tris, weld_grid, step=6, *, labels=None):
+def merge_matching_colours(pos, rgb, tris, weld_grid, step=6, *, labels):
     """A crease splits a vertex so each side can be lit on its own normal;
     where both sides came out the same colour, one vertex is enough. Positions
     are one where they round alike on a grid of `weld_grid` per unit."""
@@ -426,4 +424,4 @@ def merge_matching_colours(pos, rgb, tris, weld_grid, step=6, *, labels=None):
     tris = inverse.reshape(-1)[tris]
     keep = distinct_corners(tris)
     result = (pos[first], rgb[first], tris[keep])
-    return (*result, np.asarray(labels)[keep]) if labels is not None else result
+    return (*result, np.asarray(labels)[keep])

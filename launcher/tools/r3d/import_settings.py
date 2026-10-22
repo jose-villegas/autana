@@ -275,7 +275,7 @@ def load_geometry(table, steps):
         if isinstance(simplify, dict):
             for key in ("props", "props_share"):
                 if key in simplify:
-                    raise SettingsError(f"geometry.simplify.{key} moved to [objects] overrides")
+                    raise SettingsError(f"geometry.simplify.{key} was removed: use [objects] overrides with triangles or importance")
         check_keys(simplify, ("dense_edge", "seal_seams", "colour_deviation"), "geometry.simplify")
         steps.simplify = SimpleNamespace(
             dense_edge=number(simplify["dense_edge"], "geometry.simplify.dense_edge"),

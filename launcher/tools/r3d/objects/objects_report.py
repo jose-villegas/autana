@@ -26,7 +26,7 @@ from r3d.import_settings import load_scene  # noqa: E402
 from r3d.light import drop_masked  # noqa: E402
 from r3d.objects.instances import MATCH_TOLERANCE, bounds_diagonal, match_instances, placed_corners, source_objects  # noqa: E402
 from r3d.mesh_import import load_source  # noqa: E402
-from r3d.poses import camera_basis, sample_camera_path  # noqa: E402
+from r3d.poses import camera_basis, focal_px, sample_camera_path  # noqa: E402
 
 LOD_LEVELS = 4
 LOD_TRIANGLE_RATIO = 4
@@ -45,7 +45,7 @@ def masked_objects(src, settings):
     objects, triangles = [], []
     for index, name in enumerate(src.object_names):
         selected = src.tri_o == index
-        tv, _, tm = drop_masked(src.p, src.uv, src.tri_v[selected], src.tri_t[selected], src.tri_m[selected],
+        tv, _, tm, _ = drop_masked(src.p, src.uv, src.tri_v[selected], src.tri_t[selected], src.tri_m[selected],
                                 src.textures, settings.alpha_keep)
         triangles.append(tv)
         objects.extend(source_objects(src.p, tv, tm, np.zeros(len(tv), dtype=int), [name]))
@@ -83,7 +83,7 @@ def pose_rows(shapes, scene, job, every_ms, size):
         for shown, (centre, radius, share, repeated) in zip(visible, placements):
             if shown:
                 z = float((centre - pose[:3]) @ forward)
-                pixels = radius * min(width, height) / (2 * lens * max(z, near))
+                pixels = radius * focal_px(width, height, lens) / max(z, near)
                 view.append((share, min(picture_area, np.pi * pixels ** 2), repeated))
         views.append(view)
     mean_in_view = np.mean([sum(share for share, _, _ in view) for view in views])
