@@ -7,8 +7,8 @@ from itertools import product
 import numpy as np
 from scipy.spatial import cKDTree
 
-# Bounds the largest placed-vertex error as a fraction of the object's bounds diagonal.
-MATCH_TOLERANCE = 1e-5
+# Text sources round coordinates; matching plateaus between 1e-3 and 1e-2 of the bounds diagonal.
+MATCH_TOLERANCE = 1e-3
 
 
 @dataclass(frozen=True)

@@ -233,8 +233,13 @@ scaled copies remain separate shapes. Reflections are recorded per instance.
 | Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangles and materials agree as multisets |
 
 The report writes counts, residuals and a camera-path estimate to an external
-`--out` directory. Its LOD constants describe an estimate, not a design.
-The bake does not use objects or instances yet.
+`--out` directory. Density LOD applies only to repeated shapes, calibrated by
+picture area divided by the path's mean in-view budget. Single-instance
+shapes keep their full share; freed triangles are available to the structure fit.
+
+The table, CSV and plot show the whole budget, in-view triangles, in-view
+triangles with repeated-shape LOD, and triangles LOD frees. The bake does
+not use objects or instances yet.
 
 ## The offline tools
 

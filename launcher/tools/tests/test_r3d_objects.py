@@ -7,6 +7,8 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -19,7 +21,7 @@ from r3d.gltf_mesh import load_gltf_mesh
 from r3d.obj import load_obj
 from r3d.import_settings import SettingsError, load_import_settings
 from r3d.objects.instances import MATCH_TOLERANCE, match_instances, source_objects
-from r3d.objects.objects_report import main
+from r3d.objects.objects_report import LOD_LEVELS, LOD_TRIANGLE_RATIO, main, pose_rows
 from r3d.objects.source import obj_ownership, gltf_ownership, load_object_source
 from test_r3d_import import camera, renderer, write_import, write_scene
 
@@ -89,6 +91,44 @@ class ObjectsTests(unittest.TestCase):
                 np.testing.assert_array_equal(ia.linear, ib.linear)
                 np.testing.assert_array_equal(ia.position, ib.position)
 
+    def test_six_significant_digit_copy_matches_default(self):
+        rotation = Rotation.from_rotvec(np.array([1., 2., 3.]) * 0.37).as_matrix()
+        placed = POINTS @ rotation.T + [712, 942, 1092]
+        rounded = np.array([[float(f'{value:.6g}') for value in point] for point in placed])
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / 'rounded.obj'
+            path.write_text(obj_text([('original', POINTS, TRIANGLES), ('rounded', rounded, TRIANGLES)]))
+            p, _, tv, _, tm, _ = load_obj(path)
+            to, names = obj_ownership(path)
+        shapes = match_instances(source_objects(p, tv, tm, to, names))
+        self.assertEqual([len(shape.instances) for shape in shapes], [2])
+
+    def test_density_lod_only_trims_repeated_shapes(self):
+        points = np.concatenate([POINTS + [0, 0, -100], POINTS + [1, 0, -100],
+                                 POINTS * [1.1, 1, 1] + [-1, 0, -100]])
+        triangles = np.concatenate([TRIANGLES + i * len(POINTS) for i in range(3)])
+        shapes = match_instances(source_objects(points, triangles, np.tile(MATERIALS, 3),
+                                                np.repeat(np.arange(3), len(TRIANGLES)),
+                                                ['first', 'copy', 'single']))
+        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(triangles=None)),
+                              object=SimpleNamespace(matrix=np.eye(3), position=np.zeros(3)))
+        poses = np.array([[0., 0., 0., 0., 0., -1.], [0., 0., -95., 0., 0., -1.],
+                          [0., 0., -99., 0., 0., -1.]])
+        width, height = 184, 224
+        with patch('r3d.objects.objects_report.camera_path_poses',
+                   return_value=(width, height, 1., 0.1, poses)):
+            result = pose_rows(shapes, None, job, 1000, (width, height))
+        budget, rows = result[:2]
+        self.assertEqual(budget, len(triangles))
+        self.assertEqual(rows[0]['budget_triangles_in_view'], budget)
+        self.assertAlmostEqual(rows[0]['triangles_with_lod'], len(TRIANGLES) * (1 + 2 / LOD_TRIANGLE_RATIO ** (LOD_LEVELS - 1)))
+        self.assertEqual(rows[1]['triangles_with_lod'], len(TRIANGLES) * (1 + 2 / LOD_TRIANGLE_RATIO))
+        self.assertEqual(rows[2]['triangles_with_lod'], budget)
+        self.assertAlmostEqual(result[2], width * height / budget)
+        for row in rows:
+            self.assertEqual(row['budget_triangles'], budget)
+            self.assertAlmostEqual(row['saved'], row['budget_triangles_in_view'] - row['triangles_with_lod'])
+
     def test_obj_groups_and_default(self):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / 'plain.obj'
@@ -145,7 +185,14 @@ class ObjectsTests(unittest.TestCase):
             self.assertTrue(rows)
             self.assertEqual(int(rows[0]['instances_in_view']), 1)
             self.assertEqual(float(rows[0]['budget_triangles_in_view']), 4)
-            self.assertEqual(float(rows[0]['triangles_with_lod']), 1)
+            self.assertGreaterEqual(float(rows[0]['triangles_with_lod']), 4 / LOD_TRIANGLE_RATIO ** (LOD_LEVELS - 1))
+            self.assertLessEqual(float(rows[0]['triangles_with_lod']), 4)
+            self.assertEqual(float(rows[0]['budget_triangles']), 8)
+            self.assertEqual(float(rows[0]['saved']), 4 - float(rows[0]['triangles_with_lod']))
+            summary = (out / 'objects.md').read_text()
+            self.assertIn('Calibrated pixels per triangle:', summary)
+            self.assertIn('| Triangles LOD frees |', summary)
+            self.assertNotIn('LOD_FULL_RADIUS_PX', summary)
 
 
 if __name__ == '__main__':

@@ -28,8 +28,8 @@ from r3d.objects.instances import MATCH_TOLERANCE, match_instances, source_objec
 from r3d.objects.source import load_object_source  # noqa: E402
 from r3d.poses import camera_basis  # noqa: E402
 
-LOD_FULL_RADIUS_PX = 64.0
 LOD_LEVELS = 4
+LOD_TRIANGLE_RATIO = 4
 DEFAULT_EVERY_MS = 1000
 DEFAULT_SIZE = (184, 224)
 TOP_SHAPES = 25
@@ -82,26 +82,34 @@ def pose_rows(shapes, scene, job, every_ms, size):
             centre = renderer_matrix @ instance.position + renderer_position
             # A nonuniform renderer scale needs an enclosing sphere.
             placed_radius = radius * np.linalg.norm(renderer_matrix, ord=2)
-            placements.append((centre, placed_radius, share))
-    rows = []
-    for index, pose in enumerate(poses):
-        count, in_view, drawn = 0, 0.0, 0.0
-        for centre, radius, share in placements:
+            placements.append((centre, placed_radius, share, len(shape.instances) > 1))
+    picture_area = width * height
+    views = []
+    for pose in poses:
+        view = []
+        for centre, radius, share, repeated in placements:
             visible, pixels = sphere_view(centre, radius, pose, width, height, lens, near)
-            if not visible:
-                continue
+            if visible:
+                view.append((share, min(picture_area, np.pi * pixels ** 2), repeated))
+        views.append(view)
+    mean_in_view = np.mean([sum(share for share, _, _ in view) for view in views])
+    pixels_per_triangle = picture_area / mean_in_view if mean_in_view else float('inf')
+    rows = []
+    for index, view in enumerate(views):
+        in_view, drawn = 0.0, 0.0
+        for share, area, repeated in view:
             level = 0
-            while level < LOD_LEVELS - 1 and pixels < LOD_FULL_RADIUS_PX / 2 ** (level + 1):
-                level += 1
-            count += 1
+            if repeated:
+                while level < LOD_LEVELS - 1 and share / LOD_TRIANGLE_RATIO ** level > area / pixels_per_triangle:
+                    level += 1
             in_view += share
-            drawn += share / 4 ** level
-        rows.append(dict(time_ms=index * every_ms, instances_in_view=count,
+            drawn += share / LOD_TRIANGLE_RATIO ** level
+        rows.append(dict(time_ms=index * every_ms, instances_in_view=len(view), budget_triangles=budget,
                          budget_triangles_in_view=in_view, triangles_with_lod=drawn, saved=in_view - drawn))
-    return budget, rows
+    return budget, rows, pixels_per_triangle
 
 
-def write_report(out, objects, shapes, budget, rows, tolerance):
+def write_report(out, objects, shapes, budget, rows, pixels_per_triangle, tolerance):
     """Write machine-readable counts, the human summary and the two diagnostic figures."""
     totals = dict(objects=len(objects), shapes=len(shapes), repeated_shapes=sum(len(s.instances) > 1 for s in shapes),
                   source_triangles=sum(len(o.triangles) for o in objects),
@@ -125,15 +133,19 @@ def write_report(out, objects, shapes, budget, rows, tolerance):
         lines.append(f'| {name} | {entry["triangles"]} | {entry["instance_count"]} | '
                      f'{entry["triangles"] * (entry["instance_count"] - 1)} |')
     lines += ['', '## Path estimate', '',
-              f'LOD_FULL_RADIUS_PX = {LOD_FULL_RADIUS_PX:g}; LOD_LEVELS = {LOD_LEVELS}.', '',
-              'Projected-radius halving is an estimate, not a design. Choose the largest',
-              'level k whose sphere radius is below LOD_FULL_RADIUS_PX / 2^k, or 0',
-              'for larger spheres. Cap k at LOD_LEVELS - 1; retain 1 / 4^k of its share.', '',
+              f'Calibrated pixels per triangle: {pixels_per_triangle:.6g}.', '',
+              'Calibration divides picture area by the mean in-view budget over the path.',
+              'Only repeated shapes use LOD; single-instance shapes retain their full share.', '',
+              f'Choose the smallest level k with share / {LOD_TRIANGLE_RATIO}^k <= projected area / pixels per',
+              f'triangle, capped at LOD_LEVELS - 1 (LOD_LEVELS = {LOD_LEVELS}). Projected area',
+              'is pi times the projected sphere radius squared, capped at picture area.', '',
               'Shares use the selected variant budget, proportional to source triangles.',
               'Bounding spheres include renderer placement; visibility excludes occlusion.', '',
-              '| Draw rule | Mean triangles | Worst-pose triangles |', '|---|---:|---:|',
-              f'| Whole budget | {budget:.2f} | {budget:.2f} |']
-    for label, key in [('In view', 'budget_triangles_in_view'), ('In view with LOD', 'triangles_with_lod')]:
+              'Triangles LOD frees are available to the structure fit. This is an estimate.', '',
+              '| Draw rule | Mean triangles | Maximum triangles |', '|---|---:|---:|']
+    draw_rules = [('Whole budget', 'budget_triangles'), ('In view', 'budget_triangles_in_view'),
+                  ('In view with LOD on repeated shapes', 'triangles_with_lod'), ('Triangles LOD frees', 'saved')]
+    for label, key in draw_rules:
         values = [row[key] for row in rows]
         lines.append(f'| {label} | {np.mean(values):.2f} | {max(values):.2f} |')
     lines += ['', '![Accepted relative residuals](residuals.png)', '', '![Path triangle estimate](lod.png)', '']
@@ -151,7 +163,7 @@ def write_report(out, objects, shapes, budget, rows, tolerance):
     plot_style.style_axes(ax, 'Rigid matching residuals')
     plot_style.save(fig, out / 'residuals.png')
     fig, ax = plot_style.subplots(1, 1, plot_style.FIGURE_SIZE)
-    for key, label in [('budget_triangles_in_view', 'In view'), ('triangles_with_lod', 'With estimated LOD')]:
+    for label, key in draw_rules:
         ax.plot([r['time_ms'] for r in rows], [r[key] for r in rows], marker='o', label=label)
     ax.set(xlabel='Path time (ms)', ylabel='Budget triangles', ylim=(0, None))
     ax.legend()
@@ -186,9 +198,9 @@ def main(argv=None):
     src = load_object_source(job.settings)
     objects = masked_objects(src, job.settings)
     shapes = match_instances(objects, args.tolerance)
-    budget, rows = pose_rows(shapes, scene, job, every_ms, size)
+    budget, rows, pixels_per_triangle = pose_rows(shapes, scene, job, every_ms, size)
     out.mkdir(parents=True, exist_ok=True)
-    write_report(out, objects, shapes, budget, rows, args.tolerance)
+    write_report(out, objects, shapes, budget, rows, pixels_per_triangle, args.tolerance)
     return 0
 
 
