@@ -272,15 +272,37 @@ def load_geometry(table, steps):
                                      keep=number(thin["keep"], "geometry.thin.keep"))
     if "simplify" in table:
         simplify = table["simplify"]
-        check_keys(simplify, ("dense_edge", "props", "props_share", "seal_seams", "colour_deviation"), "geometry.simplify")
+        if isinstance(simplify, dict):
+            for key in ("props", "props_share"):
+                if key in simplify:
+                    raise SettingsError(f"geometry.simplify.{key} moved to [objects] overrides")
+        check_keys(simplify, ("dense_edge", "seal_seams", "colour_deviation"), "geometry.simplify")
         steps.simplify = SimpleNamespace(
             dense_edge=number(simplify["dense_edge"], "geometry.simplify.dense_edge"),
-            props=set(strings(simplify["props"], "geometry.simplify.props")),
-            props_share=number(simplify["props_share"], "geometry.simplify.props_share"),
             seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"),
             colour_deviation=number(simplify["colour_deviation"], "geometry.simplify.colour_deviation"))
         if steps.simplify.colour_deviation <= 0:
             raise SettingsError("geometry.simplify.colour_deviation must be above 0")
+
+
+def load_object_overrides(table):
+    """Closed glob rules for connected simplifier passes."""
+    check_keys(table, (), "objects", optional=("overrides",))
+    rules = table.get("overrides", [])
+    if not isinstance(rules, list):
+        raise SettingsError("objects.overrides must be an array of tables")
+    for index, rule in enumerate(rules):
+        where = f"objects.overrides[{index}]"
+        check_keys(rule, (), where, optional=("material", "object", "importance", "triangles"))
+        if ("material" in rule) == ("object" in rule) or ("importance" in rule) == ("triangles" in rule):
+            raise SettingsError(f"{where} needs exactly one of material/object and importance/triangles")
+        selector = "material" if "material" in rule else "object"
+        text(rule[selector], f"{where}.{selector}")
+        if "triangles" in rule:
+            count(rule["triangles"], f"{where}.triangles")
+        elif number(rule["importance"], f"{where}.importance") <= 0:
+            raise SettingsError(f"{where}.importance must be above 0")
+    return rules
 
 
 def load_import_settings(path):
@@ -292,7 +314,7 @@ def load_import_settings(path):
     for name, home in (("visibility", "objects.mesh_renderer.visibility"), ("lighting", "scene [bake]")):
         if name in values:
             raise SettingsError(f"[{name}] moved to {home}")
-    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "variants", "skin"))
+    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "variants", "skin", "objects"))
     skin = values.get("skin", {})
     check_keys(skin, (), f"{path}: skin", optional=("lighting",))
     lighting = skin.get("lighting", "direct")
@@ -345,6 +367,7 @@ def load_import_settings(path):
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
+        overrides=load_object_overrides(values.get("objects", {})),
         meshlet_triangles=steps.meshlet_triangles,
         variants=variants, skin_lighting=lighting)
 

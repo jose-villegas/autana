@@ -27,7 +27,7 @@ from r3d.import_settings import load_scene  # noqa: E402
 from r3d.mesh_import import camera_path_poses  # noqa: E402
 from r3d.light import drop_masked  # noqa: E402
 from r3d.objects.instances import MATCH_TOLERANCE, bounds_diagonal, match_instances, source_objects  # noqa: E402
-from r3d.objects.source import load_object_source  # noqa: E402
+from r3d.mesh_import import load_source  # noqa: E402
 from r3d.poses import camera_basis  # noqa: E402
 
 LOD_LEVELS = 4
@@ -193,7 +193,7 @@ def main(argv=None):
     if size is None:
         parser.error('--size is required when the selected renderer has no fit or visibility size')
     every_ms = args.every_ms or (visibility.every_ms if visibility and visibility.source == 'camera_path' else DEFAULT_EVERY_MS)
-    src = load_object_source(job.settings)
+    src = load_source(job.settings)
     objects = masked_objects(src, job.settings)
     shapes = match_instances(objects, args.tolerance)
     budget, rows, pixels_per_triangle = pose_rows(shapes, scene, job, every_ms, size)
