@@ -140,6 +140,7 @@ $MAIN_DIR/input/touch/touch_calib.c
 $MAIN_DIR/input/touch/touch_inject_fsm.c
 $MAIN_DIR/input/touch/gesture.c
 $MAIN_DIR/input/motion/tilt.c
+$MAIN_DIR/input/motion/imu_queue.c
 $MAIN_DIR/input/motion/gravity.c
 $MAIN_DIR/input/buttons/button_fsm.c
 $MAIN_DIR/display/display.c

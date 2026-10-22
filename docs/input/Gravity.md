@@ -9,7 +9,10 @@ calibration are described in [Motion-Axes.md](Motion-Axes.md) and [Motion-Calibr
 
 ## Update
 
-`input_read_motion_batch()` drains the polled QMI8658 stream FIFO oldest first.
+The IMU task drains the QMI8658 stream FIFO at `IMU_DRAIN_HZ` by default.
+`imu.drain_ms` tunes its period in development builds.
+`input_read_motion_batch()` takes queued samples from memory, oldest first.
+
 `gravity_update_batch()` predicts and corrects once per sample, using microseconds.
 Gyro prediction is minus angular velocity crossed with down in screen axes.
 
@@ -22,17 +25,16 @@ batch capacity against `IMU_FIFO_SAMPLES`.
 
 ```mermaid
 flowchart LR
-    subgraph Input["Drain and timing"]
-        Drain["Count FIFO<br/>then request read mode"] --> Batch["Batch: oldest first<br/>delivered, lost, gap"]
+    subgraph Input["IMU task and queue"]
+        Drain["Periodic FIFO drain<br/>count then request read mode"] --> Batch["Ring: oldest first<br/>loss before each sample, gap"]
     end
-    Missing["Advance bounded lost time<br/>holding previous batch's rotation"]
-    subgraph Update["For each delivered sample"]
-        Predict["Datasheet interval<br/>predict down from gyro"] --> Judge["Overrange and<br/>acceleration trust"]
+    subgraph Update["Frame: for each queued sample"]
+        Missing["Advance bounded lost time<br/>holding previous rotation"] --> Predict["Datasheet interval<br/>predict down from gyro"]
+        Predict --> Judge["Overrange and<br/>acceleration trust"]
         Judge --> Correct["Adopt, pull, learn bias<br/>or hold correction"]
     end
     Linear["Unit down and<br/>linear acceleration"]
-    Batch --> Missing --> Predict
-    Correct --> Linear
+    Input --> Update --> Linear
 ```
 
 Strength is the in-plane share of the unit down vector, clamped to 0..1 and
@@ -123,7 +125,7 @@ The constants are owned by `launcher/main/input/motion/gravity.h`:
 
 ## Limits
 
-FIFO capacity bounds the retained history. Overflow or a failed drain marks a gap;
+FIFO and queue capacity bound the retained history. Overflow or a failed drain marks a gap;
 the next batch soft-restarts correction at full TAU gain, preserving down and bias.
 
 Sampling cannot resolve motion above the sensor bandwidth. FIFO read mode
@@ -131,8 +133,12 @@ discards arrivals (section 8.7). Loss is the read-mode duration divided by
 `IMU_SAMPLE_US`, carrying fractional microseconds across drains.<sup>[[79]](../Citations.md#79)</sup>
 
 `esp_timer` measures from just before `CTRL9_REQ_FIFO` through the `REG_FIFO_CTRL` rewrite.
-The next batch reports this loss and first predicts with the preceding batch's
-last rotation, bounded by `GRAVITY_MAX_DT_US`. Gaps clear pending loss and remainder.
+The queue carries loss across empty drains to the next sample.
+Prediction holds the previous rotation at each loss boundary, bounded by
+`GRAVITY_MAX_DT_US`. Gaps clear pending loss and remainder.
+
+Queue overflow drops the oldest sample and marks a gap. Loss exceeding the
+`uint8_t` per-sample field also marks a gap instead of wrapping.
 
 Board A308, QMI8658A, build 7dae68f7c9d0-dev. Delivered rate
 agrees with the datasheet ODR multiplied by time outside FIFO read mode.
