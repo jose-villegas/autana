@@ -155,8 +155,8 @@ mathi_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-#define MATHI_DEFINE_ISQRT(name, type, bits, clz)                                                                      \
-    static inline uint32_t name(type value) {                                                                          \
+#define MATHI_DEFINE_ISQRT(name, type, bits, clz, attributes)                                                          \
+    static attributes uint32_t name(type value) {                                                                      \
         enum { VALUE_BITS = bits, DIGIT_BITS = 2 };                                                                    \
                                                                                                                        \
         if (value == 0) {                                                                                              \
@@ -177,8 +177,9 @@ mathi_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
         return (uint32_t)root;                                                                                         \
     }
 
-MATHI_DEFINE_ISQRT(mathi_isqrt32_digits, uint32_t, 32, __builtin_clz)
-MATHI_DEFINE_ISQRT(mathi_isqrt64_digits, uint64_t, 64, __builtin_clzll)
+MATHI_DEFINE_ISQRT(mathi_isqrt32_digits, uint32_t, 32, __builtin_clz, inline)
+/* Keep the wide fallback's register pressure out of callers of the inline narrow path. */
+MATHI_DEFINE_ISQRT(mathi_isqrt64_digits, uint64_t, 64, __builtin_clzll, __attribute__((noinline, unused)))
 #undef MATHI_DEFINE_ISQRT
 
 /* Floor of the square root over the whole uint64_t range. */
