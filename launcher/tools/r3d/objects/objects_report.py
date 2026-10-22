@@ -91,7 +91,7 @@ def pose_rows(shapes, scene, job, every_ms, size):
             if not visible:
                 continue
             level = 0
-            while level < LOD_LEVELS - 1 and pixels < LOD_FULL_RADIUS_PX / 2 ** level:
+            while level < LOD_LEVELS - 1 and pixels < LOD_FULL_RADIUS_PX / 2 ** (level + 1):
                 level += 1
             count += 1
             in_view += share
@@ -126,9 +126,9 @@ def write_report(out, objects, shapes, budget, rows, tolerance):
                      f'{entry["triangles"] * (entry["instance_count"] - 1)} |')
     lines += ['', '## Path estimate', '',
               f'LOD_FULL_RADIUS_PX = {LOD_FULL_RADIUS_PX:g}; LOD_LEVELS = {LOD_LEVELS}.', '',
-              'Projected-radius halving is an estimate, not a design. From level 0, advance while the',
-              'projected sphere radius is below LOD_FULL_RADIUS_PX / 2^k, stopping at',
-              'LOD_LEVELS - 1. Level k retains 1 / 4^k of its triangle share.', '',
+              'Projected-radius halving is an estimate, not a design. Choose the largest',
+              'level k whose sphere radius is below LOD_FULL_RADIUS_PX / 2^k, or 0',
+              'for larger spheres. Cap k at LOD_LEVELS - 1; retain 1 / 4^k of its share.', '',
               'Shares use the selected variant budget, proportional to source triangles.',
               'Bounding spheres include renderer placement; visibility excludes occlusion.', '',
               '| Draw rule | Mean triangles | Worst-pose triangles |', '|---|---:|---:|',

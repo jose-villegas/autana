@@ -145,7 +145,7 @@ class ObjectsTests(unittest.TestCase):
             self.assertTrue(rows)
             self.assertEqual(int(rows[0]['instances_in_view']), 1)
             self.assertEqual(float(rows[0]['budget_triangles_in_view']), 4)
-            self.assertLess(float(rows[0]['triangles_with_lod']), 4)
+            self.assertEqual(float(rows[0]['triangles_with_lod']), 1)
 
 
 if __name__ == '__main__':

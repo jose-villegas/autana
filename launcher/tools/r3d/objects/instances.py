@@ -36,7 +36,7 @@ class Shape:
     instances: tuple[Instance, ...]
 
 
-def source_objects(positions, tri_v, tri_m, tri_o, object_names):
+def source_objects(positions, tri_v, tri_m, tri_o, object_names) -> list[SourceObject]:
     """Split triangles by source ownership, retaining vertices in first-use order."""
     positions, tri_v, tri_m, tri_o = map(np.asarray, (positions, tri_v, tri_m, tri_o))
     objects = []
@@ -99,7 +99,7 @@ def match_object(shape, obj, tolerance):
     return None
 
 
-def match_instances(objects, tolerance=MATCH_TOLERANCE):
+def match_instances(objects, tolerance=MATCH_TOLERANCE) -> list[Shape]:
     """Deterministic rigid matches in source order. Scaled copies remain separate shapes."""
     if not np.isfinite(tolerance) or tolerance < 0:
         raise ValueError('tolerance must be finite and nonnegative')
