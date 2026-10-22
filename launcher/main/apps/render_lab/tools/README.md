@@ -41,6 +41,8 @@ On a development build the BOOT menu has a SMALL FILL dropdown with every
 
 ![The Sponza menu closed, then the SCENE, VARIANT and SMALL FILL lists open](images/scene-menu/scene-menu.png)
 
+![The SMALL FILL list open in landscape](images/scene-menu/small-fill-landscape.png)
+
 The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
 come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
 The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)
