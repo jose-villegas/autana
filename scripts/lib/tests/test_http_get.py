@@ -3,10 +3,12 @@ import contextlib
 import http.server
 from pathlib import Path
 import sys
+import tempfile
 import threading
 import traceback
 import unittest
 import urllib.error
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'scripts/lib'))
@@ -16,6 +18,7 @@ from bake import bake
 
 TIMEOUT_SECONDS = 0.2
 SILENCE_SECONDS = TIMEOUT_SECONDS * 4
+RUN = 9
 BODY = b'artifact bytes'
 
 
@@ -67,6 +70,8 @@ class HttpGetTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as raised:
                 http_get.get(url, timeout=TIMEOUT_SECONDS, retry_base_delay=0)
             raised.exception.close()
+            self.assertIn('after 1 attempt', raised.exception.__notes__[0])
+            self.assertNotIn('after 1 attempts', raised.exception.__notes__[0])
             self.assertEqual(raised.exception.code, 404)
             self.assertEqual(len(requests), 1)
 
@@ -78,6 +83,21 @@ class HttpGetTests(unittest.TestCase):
             self.assertEqual(len(requests), http_get.GET_ATTEMPTS)
             self.assertIn(f'after {http_get.GET_ATTEMPTS} attempts',
                           ''.join(traceback.format_exception_only(raised.exception)))
+
+    def test_from_run_reason_reports_attempt_count(self):
+        for status, attempts, noun in ((404, 1, 'attempt'), (503, http_get.GET_ATTEMPTS, 'attempts')):
+            with self.subTest(status=status), server([status]) as (url, requests), \
+                    tempfile.TemporaryDirectory() as folder, \
+                    mock.patch.object(bake, 'API_URL', url), \
+                    mock.patch.object(bake, 'github_token', return_value='secret'), \
+                    mock.patch.object(http_get.time, 'sleep'):
+                path, reason = bake.from_run({'run': RUN}, bake.MESH_SUFFIX, Path(folder))
+                self.assertIsNone(path)
+                self.assertEqual(len(requests), attempts)
+                self.assertIn('HTTPError: HTTP Error', reason)
+                self.assertIn(f'HTTP GET failed after {attempts} {noun}', reason)
+                if attempts == 1:
+                    self.assertNotIn('1 attempts', reason)
 
     def test_artifact_redirect_drops_authorization(self):
         with server([200]) as (storage, storage_requests), \

@@ -18,7 +18,8 @@ def get(request, *, timeout, opener=None, retry_base_delay=RETRY_BASE_DELAY_SECO
         except (OSError, http.client.HTTPException) as error:
             permanent = isinstance(error, urllib.error.HTTPError) and error.code not in RETRY_HTTP_STATUSES
             if permanent or attempt == GET_ATTEMPTS - 1:
-                error.add_note(f"HTTP GET failed after {attempt + 1} attempts")
+                noun = "attempt" if attempt == 0 else "attempts"
+                error.add_note(f"HTTP GET failed after {attempt + 1} {noun}")
                 raise
             if isinstance(error, urllib.error.HTTPError):
                 error.close()

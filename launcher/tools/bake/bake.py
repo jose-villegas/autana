@@ -921,7 +921,8 @@ def from_run(row, suffix, cache):
         with tempfile.TemporaryDirectory() as folder:
             produce.import_run(run_files(row["run"], pathlib.Path(folder)), row["run"], cache)
     except (OSError, urllib.error.URLError, subprocess.CalledProcessError, BakeMissing, zipfile.BadZipFile) as error:
-        return None, f"{type(error).__name__}: {error}"
+        reason = "; ".join([f"{type(error).__name__}: {error}", *getattr(error, "__notes__", ())])
+        return None, reason
     path = cached(row, suffix, cache)
     if not path.is_file():
         return None, "its uploads hold no file for this key"
