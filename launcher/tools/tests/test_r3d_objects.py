@@ -411,20 +411,23 @@ class ObjectsTests(unittest.TestCase):
 
 
 class InstancesFigureTests(unittest.TestCase):
-    def test_view_shape_count_then_copies_then_earliest(self):
+    def test_view_visible_length_then_shapes_copies_earliest(self):
         from r3d.objects.instances_figure import choose_view
 
         boxes = np.array([np.array(list(product((-1., 1.), repeat=3))) + [0, 0, -10]] * 4)
         owners = np.array([0, 0, 1, 1])
         poses = [np.array([index, 0., 0., 0., 0., -1.]) for index in range(4)]
-        masks = [[True, True, False, False], [True, False, True, False],
-                 [True, True, True, False], [True, True, True, False]]
-        with patch('r3d.objects.instances_figure.clusters_in_view', side_effect=map(np.array, masks)):
-            index, shown = choose_view(boxes, owners, poses, (100, 80), 0.6, 1.)
+        segments = np.array([[[0., 0.], [10., 0.]], [[0., 0.], [2., 0.]]])
+        samples = [(segments / 2, owners[:2]), (segments, owners[:2]),
+                   (segments, owners[1:3]), (segments, owners[1:3])]
+        with patch('r3d.objects.instances_figure.visible_segments', side_effect=samples), \
+                patch('r3d.objects.instances_figure.clusters_in_view', side_effect=map(np.array,
+                      [[True, True, True, True], [True, True, False, False],
+                       [True, True, True, False], [True, True, True, False]])):
+            index, _, _, _, _ = choose_view(boxes, owners, poses, (100, 80), 0.6, 1., None)
         self.assertEqual(index, 2)
-        self.assertEqual(shown.tolist(), masks[2])
-        with patch('r3d.objects.instances_figure.clusters_in_view', side_effect=map(np.array, masks[:2])):
-            self.assertEqual(choose_view(boxes, owners, poses[:2], (100, 80), 0.6, 1.)[0], 1)
+        with patch('r3d.objects.instances_figure.visible_segments', side_effect=samples[:2]):
+            self.assertEqual(choose_view(boxes, owners, poses[:2], (100, 80), 0.6, 1., None)[0], 1)
 
     def test_projected_corner_matches_camera_ray(self):
         from r3d.objects.instances_figure import project_points
@@ -449,19 +452,16 @@ class InstancesFigureTests(unittest.TestCase):
             _, visible = edge_visibility(query, np.zeros(3), np.array([-1., 0., z]), np.array([1., 0., z]), 0.001)
             self.assertTrue((visible == expected).all())
 
-    def test_material_legend_suffixes_and_overflow(self):
-        from r3d.objects.instances_figure import legend_rows, MUTED, OTHER_LABEL
+    def test_material_legend_top_lengths_suffixes_and_overflow(self):
+        from r3d.objects.instances_figure import legend_rows
 
-        shapes = pair_shapes(POINTS + 10)
-        shape = shapes[0]
-        shapes = [shape, shape, shape]
-        colours, rows = legend_rows(shapes, np.array([0, 1, 2]), ['bronze', 'stone'], palette=('red', 'blue'))
-        self.assertEqual(rows, [('red', 'bronze (1)', 2), ('blue', 'bronze (2)', 2), (MUTED, OTHER_LABEL, 2)])
-        self.assertEqual(colours[2], MUTED)
-        shapes[1] = replace(shape, triangles=np.tile(shape.triangles, (2, 1)),
-                                                    materials=np.ones(len(shape.materials) * 2, dtype=int))
-        _, rows = legend_rows(shapes, np.array([0, 1]), ['bronze', 'stone'])
-        self.assertEqual(rows[0][1], 'stone')
+        shape = pair_shapes(POINTS + 10)[0]
+        shapes = [shape, replace(shape, triangles=np.tile(shape.triangles, (2, 1))), shape]
+        colours, rows = legend_rows(shapes, {0: 2., 1: 8., 2: 4.}, ['bronze', 'stone'],
+                                    palette=('red', 'blue'))
+        self.assertEqual(rows, [('red', 'bronze, 8 tris', 2), ('blue', 'bronze, 4 tris', 2),
+                                (None, '1 more repeated shapes not drawn', None)])
+        self.assertEqual(colours, {1: 'red', 2: 'blue'})
 
     def test_generate_with_blank_host_image(self):
         from PIL import Image
@@ -474,7 +474,7 @@ class InstancesFigureTests(unittest.TestCase):
         job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None),
                               object=SimpleNamespace(matrix=np.eye(3), position=np.zeros(3), name='mesh'))
         scene = SimpleNamespace(path=pathlib.Path('test.scene.toml'))
-        camera_obj = SimpleNamespace(name='camera')
+        cameras = [SimpleNamespace(name=name) for name in ('far', 'near')]
         pose = np.array([2., 3., 20., 0., 0., -1.])
         calls = []
 
@@ -484,14 +484,16 @@ class InstancesFigureTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, \
                 patch('r3d.objects.instances_figure.load_object_source', return_value=src), \
-                patch('r3d.objects.instances_figure.camera_path_poses', return_value=(*DOC_SIZE, 0.6, 1., [pose])):
+                patch('r3d.objects.instances_figure.camera_path_poses', side_effect=[
+                    (*DOC_SIZE, 0.6, 1., [pose + [0, 0, 20, 0, 0, 0]]),
+                    (*DOC_SIZE, 0.6, 1., [pose + [0, 0, 20, 0, 0, 0], pose])]):
             out = pathlib.Path(directory) / 'figure.png'
-            generate(scene, job, camera_obj, pathlib.Path('unused'), out, 1000, host_render=blank)
+            generate(scene, job, cameras, pathlib.Path('unused'), out, 1000, host_render=blank)
             self.assertTrue(out.exists())
             with Image.open(out) as image:
                 self.assertGreater(image.height, DOC_SIZE[1])
                 self.assertGreater(len(image.getcolors(image.width * image.height)), 1)
-        self.assertEqual(calls[0][1:], ('test', 'mesh', 'camera', 0))
+        self.assertEqual(calls[0][1:], ('test', 'mesh', 'near', 1000))
 
 
 if __name__ == '__main__':

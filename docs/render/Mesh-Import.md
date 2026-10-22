@@ -218,7 +218,13 @@ a `fit` budget may not exceed it.
 
 ## Objects and instances
 
-Coloured bounds identify repeated shapes in the camera path's richest view.
+Coloured bounds show the repeated shapes with the most visible edge length.
+The figure samples every camera path and chooses the pose with the greatest
+sum for the coloured shapes; ties prefer more shapes, more copies, then earlier time.
+
+The host's largest landscape output is 448×368; its canvas is fixed at panel
+size. Bounds use two-pixel lines, and the legend names the coloured shapes.
+Other repeated shapes are counted below the legend and omitted from the picture.
 
 ![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
 
