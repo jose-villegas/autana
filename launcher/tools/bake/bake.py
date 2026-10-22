@@ -834,7 +834,8 @@ def fetch_all(found, lock, cache, offline=False):
             except (urllib.error.URLError, TimeoutError) as error:
                 path, where = None, f"the release could not be reached ({error}); a cold cache needs the network"
             if path is None and "run" in row:
-                path, where = from_run(row, bake.suffix, cache), f"not on the release, and run {row['run']}'s uploads could not be read (gh signed in?)"
+                path, why = from_run(row, bake.suffix, cache)
+                where = f"not on the release, and run {row['run']}'s uploads could not supply it ({why})"
         if path is None:
             missing.append(describe(bake, f"locked as {row['sha256']}, not in {cache} and {where}",
                                     "run bake.py fetch online, or wait for main to publish it"))
@@ -913,16 +914,20 @@ def seed(found, cache, lock=None, made=None):
 
 
 def from_run(row, suffix, cache):
-    """The locked file from the CI run that made it, before main publishes it; None when that fails."""
+    """(the locked file from the CI run that made it, before main publishes it, or None; why not)."""
     from bake import produce
 
     try:
         with tempfile.TemporaryDirectory() as folder:
             produce.import_run(run_files(row["run"], pathlib.Path(folder)), row["run"], cache)
-    except (OSError, urllib.error.URLError, subprocess.CalledProcessError, BakeMissing, zipfile.BadZipFile):
-        return None
+    except (OSError, urllib.error.URLError, subprocess.CalledProcessError, BakeMissing, zipfile.BadZipFile) as error:
+        return None, f"{type(error).__name__}: {error}"
     path = cached(row, suffix, cache)
-    return path if path.is_file() and file_sha256(path) == row["sha256"] else None
+    if not path.is_file():
+        return None, "its uploads hold no file for this key"
+    if file_sha256(path) != row["sha256"]:
+        return None, "its file for this key has other bytes than the lock's"
+    return path, None
 
 
 def github_token():

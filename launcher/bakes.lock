@@ -4,6 +4,96 @@
 mesh_cpu_vendor = "AuthenticAMD"
 
 [[bake]]
+output = "bistro.ground.mesh"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "98f55add5f71e0949087488d5b437c8265f28fdf370217b92a11ed148ebd2d12"
+sha256 = "13115deb99cead2b800fe6bd5397646cd28d272482172dbf4bc85aa99f4828e1"
+size = 132
+run = 39721763895
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street.mesh"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "5a3e46309a77dc29919978908ea75372cb6549567c3d6e634fee542c8bec4ae8"
+sha256 = "8f6166ed44e8aa3e8aa6c69c922aa6b64d0c47a825fbeeb29aec68b327c4f396"
+size = 381960
+run = 39741302724
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_fitted.mesh"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "e2f536066739f739f5af0ee0f7c3c0573a9ed5b744c543bbf4b99fe50285bd84"
+sha256 = "91f9131ed5b745a5f703d4e91c2ffee561fca8e3d6e37f5d7687788a5876196b"
+size = 206204
+run = 39760322119
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_fitted.start.mesh"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "7dd90f3454faea691f41b06931107ffbe5b1ea692c89079fdada7ae8bca65ba7"
+sha256 = "e093cf680bca08ef07de2d282a804c708477e7e5511f6ea670a5a8f9334b6f35"
+size = 298884
+run = 39741302724
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_fitted_full.mesh"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "c62906c078676416b4d1480265cab3875c32278f1bbd9aaabb2720b0d1cdebea"
+sha256 = "2a029e03d9688408b2ef9ec5040176d36795a6435f4f784e12a5689232a96b87"
+size = 415060
+run = 39760322119
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_fitted_full.start.mesh"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "2664216a3f3704839451467a63d8cdaca2eba4a0b22701c95216a921cc588ee9"
+sha256 = "67f9d4b2237f55821d84dbdf9b52c2cb68ee74d844e982a28eb5d0f0f4ba156d"
+size = 652768
+run = 39741302724
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_flat.mesh"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "3eb02d9453d273ced92930b93b068eba91080bdc654b2e844c4c25959af04fab"
+sha256 = "49de05173999cec4790a4343c341bb48268b7b6f2d8b9d7aa2b9fce5a177d4cd"
+size = 302872
+run = 39741302724
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_flat_fitted.mesh"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "0ea8207f5947df6909f570df6e2d9c7ce177f221df5e7cb9af6d426f127b1816"
+sha256 = "bb1761d508d862ac8792eacfcadc5413203b50e0dbdfa0f779eeb6f101329f8b"
+size = 326856
+run = 39760322119
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_flat_fitted.start.mesh"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "7d227962cd0536dc6df4a3ff6b29503aafc943c3ce76d44fbbabef19039f8a65"
+sha256 = "763e78773bad5a87a5ae68b570440f999f84116ddc794cccda9891f04dd18c58"
+size = 514004
+run = 39741302724
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_lite.mesh"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "1ff2b25a266b4f07302855c43e618dea6ae1ee2452e4996ae7e01c449db39102"
+sha256 = "a4e7115358f2edd7e2ca3c8ef031545a3fa3a93e7b14f9aabc8e3511c31f9cbb"
+size = 193320
+run = 39741302724
+host = "Linux x86_64"
+
+[[bake]]
 output = "capybara.capybara.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
 key = "9abb21ab3ab4de9e565e780766036f3beaadc18e855fe7251488c8b972d284d6"
@@ -115,15 +205,36 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "ae76828753793e194ec11863adfc0e1a86d506cf60248066a3423b512df3d533"
-poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
-count = 37
-clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
 key = "7ebae16ee8edd35180a276105af80b75d8416288a31fda523d658028b8a43a94"
 poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
 count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Windows AMD64"
+host = "Linux x86_64"
+
+[[poses]]
+key = "98ec5077c10c62a97c49076ea7c11aab78f36130d800e40a87f3a157807bed36"
+poses = "ccc0d923e1b742e7b6c752a4ef777a3dfd5aaf9f0b72382faea9b0866fa5664a"
+count = 171
+clip = "launcher/demo/bistro/street.anim.toml"
+host = "Linux x86_64"
+
+[[poses]]
+key = "9f2c588a7f787716749571ffbd3314cce403c8c56252c7859acda59156f6facf"
+poses = "0650fa4beddf6e249c6968f50ea55734fc844048b87883db2514a57631627c71"
+count = 342
+clip = "launcher/demo/bistro/street.anim.toml"
+host = "Linux x86_64"
+
+[[poses]]
+key = "ae76828753793e194ec11863adfc0e1a86d506cf60248066a3423b512df3d533"
+poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
+count = 37
+clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Linux x86_64"
+
+[[poses]]
+key = "de0dac3c7b343c8277d1762d6c290839a3b2df1c9ddf3476061608770f64c0e3"
+poses = "f86c8186aa59da847e148c7ded562ff85c57f97a6aea4515fe5eefc37acca03a"
+count = 8529
+clip = "launcher/demo/bistro/street.anim.toml"
+host = "Linux x86_64"

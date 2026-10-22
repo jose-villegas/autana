@@ -24,6 +24,7 @@
 
 #include "esp_log.h"
 
+#include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
@@ -32,6 +33,7 @@
 #include "core/timing.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
+#include "math/scalar/units.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
@@ -65,7 +67,7 @@ typedef struct {
 
 static const ladder_t ladders[] = {
     {"width", width_steps, 7, 6, 4},
-    {"height", sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, SPONZA_LADDER_HALF},
+    {"height", render_lab_ladder, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_RECOVERY, RENDER_LAB_LADDER_HALF},
 };
 #define LADDER_COUNT ((int)(sizeof ladders / sizeof ladders[0]))
 
@@ -422,8 +424,8 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     const resolution_model_t* model, uint16_t* picture, frame_record_t* records) {
     scene_t* flown = scene_load(SPONZA_SCENE, NULL);
     TEST_ASSERT_NOT_NULL(flown);
-    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
-        scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SPONZA_BAKE_FULL);
+    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
+        scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SCENE_BAKED_FULL);
     }
     TEST_ASSERT_TRUE(scene_activate(flown, camera));
     TEST_ASSERT_TRUE(render_lab_apply_camera_settings(flown, scene_find(flown, camera)));
@@ -489,7 +491,7 @@ fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* confi
     log_fit(ladder, config, model);
 }
 
-static const int32_t budgets_us[] = {60000, 75000};
+static const int32_t budgets_us[] = {RENDER_LAB_BUDGET_ON_MS * MATH_US_PER_MS, 75000};
 
 void
 test_dynamic_resolution_policies_along_the_path(void) {
@@ -565,7 +567,7 @@ run_raster_scale_perf_suite(void) {
     camera_entity = scene == NULL ? SCENE_ENTITY_NONE : scene_find(scene, sponza_cameras[0]);
     (void)render_lab_apply_camera_settings(scene, camera_entity);
     if (scene != NULL) {
-        const scene_entity_t full = scene_find(scene, sponza_bakes[SPONZA_BAKE_FULL]);
+        const scene_entity_t full = scene_find(scene, sponza_bakes[SCENE_BAKED_FULL]);
         const char* id = full == SCENE_ENTITY_NONE ? NULL : scene_entity_mesh_id(scene, full);
         if (id == NULL || r3d_lit_mesh_open(pack, id, &mesh) != ASSET_OK) {
             ESP_LOGE(TAG, "the scene's full bake did not open");

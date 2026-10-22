@@ -9,7 +9,7 @@ TUNE(render_lab, present, CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_NEAREST, CAMERA
 TUNE(render_lab, small_fill_ceiling, SMALL_FILL_CEILING_SMOOTH, 0, SMALL_FILL_CEILING_MAX);
 TUNE(render_lab, small_fill_gate, SMALL_FILL_GATE_SMOOTH, 0, UINT8_MAX);
 TUNE(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMALL_FILL_STYLE_COUNT - 1);
-TUNE(render_lab, budget, 0, 0, 200);
+TUNE(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
 TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
 TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
 
@@ -94,6 +94,13 @@ int
 render_lab_budget_ms(void) {
     return budget;
 }
+
+#if TUNE_ENABLED
+bool
+render_lab_budget_set_ms(int budget_ms) {
+    return tune_set(tune_shared(), budget_tunable.name, budget_ms);
+}
+#endif
 
 int
 render_lab_orbit_ms(void) {
