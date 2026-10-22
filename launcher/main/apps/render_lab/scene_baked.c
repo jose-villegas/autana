@@ -122,5 +122,5 @@ scene_baked_status(void) {
     return buf;
 }
 
-SCENE_BAKED_FAMILY(scene_sponza, baked_sponza, "Sponza", "sponza");
-SCENE_BAKED_FAMILY(scene_bistro, baked_bistro, "Bistro", "bistro");
+SCENE_BAKED_FAMILY(scene_sponza, sponza_shown, &baked_sponza, "Sponza", "sponza");
+SCENE_BAKED_FAMILY(scene_bistro, bistro_shown, &baked_bistro, "Bistro", "bistro");

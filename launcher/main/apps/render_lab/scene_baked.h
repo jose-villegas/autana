@@ -26,36 +26,32 @@ void scene_baked_exit(void);
 /* The size drawn at and the triangle count, or why the scene did not load. */
 const char* scene_baked_status(void);
 
-/* The scene that shows variant `variant_` of family `id_`, titled and keyed after it. */
-#define SCENE_BAKED_SCENE(id_, variant_, name_, key_, title_suffix_, key_suffix_, label_)                              \
-    [variant_] = {.name = name_ title_suffix_,                                                                         \
-                  .key = key_ key_suffix_,                                                                             \
-                  .family = name_,                                                                                     \
-                  .variant = label_,                                                                                   \
-                  .data = &id_##_shown[variant_],                                                                      \
-                  .enter = scene_baked_enter,                                                                          \
-                  .frame = scene_baked_frame,                                                                          \
-                  .exit = scene_baked_exit,                                                                            \
-                  .status = scene_baked_status}
+/* One variant's rows of SCENE_BAKED_FAMILY, with its family's fields as `f_`:
+ * (shown table, family, name, key prefix). */
+#define SCENE_BAKED_FIELD_SHOWN(shown_, family_, name_, key_prefix_)  shown_
+#define SCENE_BAKED_FIELD_FAMILY(shown_, family_, name_, key_prefix_) family_
+#define SCENE_BAKED_FIELD_NAME(shown_, family_, name_, key_prefix_)   name_
+#define SCENE_BAKED_FIELD_KEY(shown_, family_, name_, key_prefix_)    key_prefix_
+#define SCENE_BAKED_SHOWN(f_, id_, renderer_, title_, key_, label_)   {SCENE_BAKED_FIELD_FAMILY f_, SCENE_BAKED_##id_},
+#define SCENE_BAKED_SCENE(f_, id_, renderer_, title_, key_, label_)                                                    \
+    [SCENE_BAKED_##id_] = {.name = SCENE_BAKED_FIELD_NAME f_ title_,                                                   \
+                           .key = SCENE_BAKED_FIELD_KEY f_ key_,                                                       \
+                           .family = SCENE_BAKED_FIELD_NAME f_,                                                        \
+                           .variant = label_,                                                                          \
+                           .data = &SCENE_BAKED_FIELD_SHOWN f_[SCENE_BAKED_##id_],                                     \
+                           .enter = scene_baked_enter,                                                                 \
+                           .frame = scene_baked_frame,                                                                 \
+                           .exit = scene_baked_exit,                                                                   \
+                           .status = scene_baked_status},
 
-/* Defines `id_`, the family's scenes indexed by variant: the menu family
- * `name_` with a variant row each, titled `name_` and the variant, keyed `key_`
- * and the variant. */
-#define SCENE_BAKED_FAMILY(id_, family_, name_, key_)                                                                  \
-    static const scene_baked_shown_t id_##_shown[SCENE_BAKED_VARIANT_COUNT] =                                          \
-        {                                                                                                              \
-            {&(family_), SCENE_BAKED_FULL},        {&(family_), SCENE_BAKED_FLAT},                                     \
-            {&(family_), SCENE_BAKED_LITE},        {&(family_), SCENE_BAKED_FITTED},                                   \
-            {&(family_), SCENE_BAKED_FITTED_FULL}, {&(family_), SCENE_BAKED_FLAT_FITTED},                              \
-    };                                                                                                                 \
-    const render_lab_scene_t id_[SCENE_BAKED_VARIANT_COUNT] = {                                                        \
-        SCENE_BAKED_SCENE(id_, SCENE_BAKED_FULL, name_, key_, "", "", "Full"),                                         \
-        SCENE_BAKED_SCENE(id_, SCENE_BAKED_FLAT, name_, key_, " Flat", "-flat", "Flat"),                               \
-        SCENE_BAKED_SCENE(id_, SCENE_BAKED_LITE, name_, key_, " Lite", "-lite", "Lite"),                               \
-        SCENE_BAKED_SCENE(id_, SCENE_BAKED_FITTED, name_, key_, " Fitted", "-fitted", "Fitted"),                       \
-        SCENE_BAKED_SCENE(id_, SCENE_BAKED_FITTED_FULL, name_, key_, " Fitted Full", "-fitted-full", "Fitted Full"),   \
-        SCENE_BAKED_SCENE(id_, SCENE_BAKED_FLAT_FITTED, name_, key_, " Flat Fitted", "-flat-fitted", "Flat Fitted"),   \
-    }
+/* Defines `id`, family `family_`'s scenes indexed by variant: the menu family
+ * `name_`, each titled `name_` and its variant and keyed `key_prefix_` and its
+ * variant; `shown_` names the table of what each shows. */
+#define SCENE_BAKED_FAMILY(id, shown_, family_, name_, key_prefix_)                                                    \
+    static const scene_baked_shown_t shown_[SCENE_BAKED_VARIANT_COUNT] = {                                             \
+        SCENE_BAKED_VARIANTS(SCENE_BAKED_SHOWN, (shown_, family_, name_, key_prefix_))};                               \
+    const render_lab_scene_t id[SCENE_BAKED_VARIANT_COUNT] = {                                                         \
+        SCENE_BAKED_VARIANTS(SCENE_BAKED_SCENE, (shown_, family_, name_, key_prefix_))}
 
 /* The families render_lab shows, each a scene per variant. */
 extern const render_lab_scene_t scene_sponza[SCENE_BAKED_VARIANT_COUNT];
