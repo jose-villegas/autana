@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "apps/input_lab/imu_probe.h"
+#include "apps/input_lab/shake_probe.h"
 
 #define IMU_RECORD_COMMAND     "labdump"
 #define IMU_RECORD_PREFIX      "LABDUMP"
@@ -17,6 +18,12 @@
 /* Start + fit, pose + gravity per position, and the decimated turn trace. */
 #define IMU_RECORD_CAPACITY                                                                                            \
     (((2 + (2 * IMU_PROBE_POSE_COUNT) + IMU_PROBE_TURN_SAMPLES) * IMU_RECORD_LINE_SIZE) + sizeof IMU_RECORD_TRUNCATED)
+
+#define IMU_RECORD_SHAKE_LINE_SIZE (SHAKE_PROBE_SAMPLE_SIZE + sizeof(IMU_RECORD_PREFIX " ") + IMU_RECORD_LINE_MARGIN)
+#define IMU_RECORD_SHAKE_CAPACITY                                                                                      \
+    ((SHAKE_PROBE_RECORD_LINES * IMU_RECORD_SHAKE_LINE_SIZE) + sizeof IMU_RECORD_TRUNCATED)
+
+_Static_assert(IMU_RECORD_SHAKE_LINE_SIZE <= IMU_RECORD_LINE_SIZE, "shake payload must fit the shared formatter");
 
 typedef struct {
     char* text;
