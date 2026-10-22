@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <float.h>
 #include <math.h>
+#include <stdint.h>
 
 #ifdef __XTENSA__
 #include "sdkconfig.h"
@@ -183,9 +184,40 @@ mathf_max(float a, float b) {
     return a < b ? b : a;
 }
 
+/* The reciprocal bound keeps the estimated floor within one integer. */
+#define MATHF_REPEAT_FAST_QUOTIENT 0x1p22F
+
 static inline float
 mathf_repeat(float v, float len) {
     assert(len > 0.0F);
+    if (v >= 0.0F && v < len) {
+        return v;
+    }
+    const float reciprocal = mathf_recip(len);
+    const float quotient = v * reciprocal;
+    if (fabsf(quotient) < MATHF_REPEAT_FAST_QUOTIENT) {
+        float q = (float)(int32_t)quotient;
+        if (q > quotient) {
+            q -= 1.0F;
+        }
+        /* For the correct floor, fmaf rounds v - q*len once: the exact fmodf
+         * remainder for v >= 0, or the same rounding as len - |fmodf| for v < 0. */
+        float rem = fmaf(-q, len, v);
+        if (rem < 0.0F) {
+            rem = fmaf(-(q - 1.0F), len, v);
+        } else if (rem >= len) {
+            rem = fmaf(-(q + 1.0F), len, v);
+            /* A negative correction means the remainder rounded onto the excluded endpoint. */
+            if (rem < 0.0F) {
+                return 0.0F;
+            }
+        }
+        /* fmodf preserves the dividend's sign on exact multiples. */
+        if (rem == 0.0F) {
+            return copysignf(0.0F, v);
+        }
+        return rem < len ? rem : 0.0F;
+    }
     float r = fmodf(v, len);
     if (r < 0.0F) {
         r += len;
