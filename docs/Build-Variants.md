@@ -275,3 +275,5 @@ that refuses to.
   compile-time log-severity ceiling per variant, complementing this split.
 - [`plans/Settings-App-Plan.md`](plans/Settings-App-Plan.md): the remaining
   DEVELOPMENT/SELFTEST seam inside a development-only app.
+
+Path filter probe line.
