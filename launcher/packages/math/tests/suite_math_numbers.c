@@ -107,11 +107,11 @@ test_vec2_ops_agree_across_every_number_type(void) {
     TEST_ASSERT_FALSE(vec2s_equal((vec2s_t){1, 2}, (vec2s_t){1, 3}));
 }
 
-#define NORMALIZE_ROUNDING_ERROR  0.5
-#define NORMALIZE_COMPONENT_ERROR (NORMALIZE_ROUNDING_ERROR + 0x1p-12)
-
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
 #ifndef DEVICE_BUILD
+#define NORMALIZE_ROUNDING_ERROR          0.5
+#define NORMALIZE_COMPONENT_ERROR         (NORMALIZE_ROUNDING_ERROR + 0x1p-12)
+
 /* Budget in 2^-30 units: prescale <= sqrt(n), sum truncation <= 0.5,
  * root <= 0.5, reciprocal rounding <= 0.5; n <= 4 gives total < 4 = 2^-28.
  * This gives < 2^-12 component LSB before final 0.5 LSB rounding. */
@@ -1502,9 +1502,22 @@ test_integer_half_chords_int32(void) {
     }
 }
 
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
+#ifndef DEVICE_BUILD
 #define FIXED_RSQRT_SWEEP_STRIDE    (UINT32_C(1) << 20)
 #define FIXED_NLERP_COMPONENT_ERROR 8.0
 #define FIXED_NLERP_STEPS           32
+
+static void
+test_fixed_rsqrt_seed_provenance(void) {
+    const double segments = 1 << MATHX_RSQRT_SEED_BITS;
+    const double first = MATHX_RSQRT_MIN / ldexp(1.0, MATHX_RSQRT_WORD_BITS - MATHX_RSQRT_SEED_BITS);
+    for (size_t i = 0; i < sizeof mathx_rsqrt_seeds / sizeof mathx_rsqrt_seeds[0]; i++) {
+        const double midpoint = (first + i + 0.5) / segments;
+        const uint32_t seed = (uint32_t)llround(ldexp(1.0, MATHX_RSQRT_SHIFT) / sqrt(midpoint));
+        TEST_ASSERT_EQUAL_UINT32(seed, mathx_rsqrt_seeds[i]);
+    }
+}
 
 static void
 assert_fixed_rsqrt_reference(uint32_t m) {
@@ -1531,9 +1544,6 @@ test_fixed_rsqrt_seed_boundaries_and_stride(void) {
 
 static void
 test_fixed_scalar_rsqrt_bound(void) {
-    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_rsqrt(0));
-    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_rsqrt(-1));
-    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_rsqrt(INT32_MIN));
     for (int bit = 0; bit < MATHX_RSQRT_WORD_BITS - 1; bit++) {
         const int32_t base = (int32_t)(UINT32_C(1) << bit);
         for (int delta = -2; delta <= 2; delta++) {
@@ -1557,7 +1567,7 @@ test_fixed_scalar_rsqrt_bound(void) {
 }
 
 static void
-test_fixed_quaternion_normalize_extremes_and_unit_path(void) {
+test_fixed_quaternion_normalize_extremes(void) {
     const quatx_t cases[] = {{200 * MATHX_ONE, 0, 0, 0},
                              {1, 0, 0, 0},
                              {INT32_MIN, INT32_MIN, INT32_MIN, INT32_MIN},
@@ -1576,15 +1586,27 @@ test_fixed_quaternion_normalize_extremes_and_unit_path(void) {
             TEST_ASSERT_TRUE(fabs(output[c] - input[c] * (double)MATHX_ONE / sqrt(sum)) <= NORMALIZE_COMPONENT_ERROR);
         }
     }
-    const quatx_t zero = quatx_normalize((quatx_t){0, 0, 0, 0});
-    TEST_ASSERT_TRUE(zero.x == 0 && zero.y == 0 && zero.z == 0 && zero.w == 0);
-    const quatx_t near_unit = cases[sizeof cases / sizeof cases[0] - 1];
-    const quatx_t unit = quatx_unit_normalize(near_unit);
-    const quatx_t safe = quatx_normalize(near_unit);
-    TEST_ASSERT_TRUE(fabs((double)unit.x - safe.x) <= NORMALIZE_COMPONENT_ERROR);
-    TEST_ASSERT_TRUE(fabs((double)unit.y - safe.y) <= NORMALIZE_COMPONENT_ERROR);
-    TEST_ASSERT_EQUAL_INT32(safe.z, unit.z);
-    TEST_ASSERT_EQUAL_INT32(safe.w, unit.w);
+}
+
+static void
+assert_fixed_nlerp_sample(quatx_t a, quatx_t b, int32_t t) {
+    const int32_t av[] = {a.x, a.y, a.z, a.w};
+    const int32_t bv[] = {b.x, b.y, b.z, b.w};
+    double dot = 0;
+    for (size_t c = 0; c < sizeof av / sizeof av[0]; c++) {
+        dot += (double)av[c] * bv[c];
+    }
+    double blend[sizeof av / sizeof av[0]];
+    double sum = 0;
+    for (size_t c = 0; c < sizeof av / sizeof av[0]; c++) {
+        blend[c] = (av[c] * (double)(MATHX_ONE - t) + (dot < 0 ? -1 : 1) * bv[c] * (double)t) / MATHX_ONE;
+        sum += blend[c] * blend[c];
+    }
+    const quatx_t got = quatx_nlerp(a, b, t);
+    const int32_t output[] = {got.x, got.y, got.z, got.w};
+    for (size_t c = 0; c < sizeof av / sizeof av[0]; c++) {
+        TEST_ASSERT_TRUE(fabs(output[c] - blend[c] * MATHX_ONE / sqrt(sum)) <= FIXED_NLERP_COMPONENT_ERROR);
+    }
 }
 
 static void
@@ -1599,37 +1621,48 @@ test_fixed_nlerp_unit_sweep(void) {
                               {-4 * MATHX_ONE / 5, 0, 0, 3 * MATHX_ONE / 5}};
     for (size_t a = 0; a < sizeof inputs / sizeof inputs[0]; a++) {
         for (size_t b = 0; b < sizeof inputs / sizeof inputs[0]; b++) {
-            const int32_t av[] = {inputs[a].x, inputs[a].y, inputs[a].z, inputs[a].w};
-            const int32_t bv[] = {inputs[b].x, inputs[b].y, inputs[b].z, inputs[b].w};
-            double dot = 0;
-            for (size_t c = 0; c < sizeof av / sizeof av[0]; c++) {
-                dot += (double)av[c] * bv[c];
-            }
             for (int step = 0; step <= FIXED_NLERP_STEPS; step++) {
                 const int32_t t =
                     step * (MATHX_ONE / FIXED_NLERP_STEPS) + (step > 0 && step < FIXED_NLERP_STEPS ? 1 : 0);
-                double blend[sizeof av / sizeof av[0]];
-                double sum = 0;
-                for (size_t c = 0; c < sizeof av / sizeof av[0]; c++) {
-                    blend[c] = (av[c] * (double)(MATHX_ONE - t) + (dot < 0 ? -1 : 1) * bv[c] * (double)t) / MATHX_ONE;
-                    sum += blend[c] * blend[c];
-                }
-                const quatx_t got = quatx_nlerp(inputs[a], inputs[b], t);
-                const int32_t output[] = {got.x, got.y, got.z, got.w};
-                for (size_t c = 0; c < sizeof av / sizeof av[0]; c++) {
-                    TEST_ASSERT_TRUE(fabs(output[c] - blend[c] * MATHX_ONE / sqrt(sum)) <= FIXED_NLERP_COMPONENT_ERROR);
-                }
+                assert_fixed_nlerp_sample(inputs[a], inputs[b], t);
             }
         }
     }
 }
 
+#endif
+
+static void
+test_fixed_scalar_rsqrt_nonpositive(void) {
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_rsqrt(0));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_rsqrt(-1));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_rsqrt(INT32_MIN));
+}
+
+static void
+test_fixed_quaternion_normalize_zero_and_unit_path(void) {
+    const quatx_t zero = quatx_normalize((quatx_t){0, 0, 0, 0});
+    TEST_ASSERT_TRUE(zero.x == 0 && zero.y == 0 && zero.z == 0 && zero.w == 0);
+    const quatx_t near_unit = {MATHX_ONE / 2, MATHX_ONE / 2, 0, 0};
+    const quatx_t unit = quatx_unit_normalize(near_unit);
+    const quatx_t safe = quatx_normalize(near_unit);
+    TEST_ASSERT_EQUAL_INT32(safe.x, unit.x);
+    TEST_ASSERT_EQUAL_INT32(safe.y, unit.y);
+    TEST_ASSERT_EQUAL_INT32(safe.z, unit.z);
+    TEST_ASSERT_EQUAL_INT32(safe.w, unit.w);
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_fixed_scalar_rsqrt_nonpositive);
+    RUN_TEST(test_fixed_quaternion_normalize_zero_and_unit_path);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_fixed_rsqrt_seed_provenance);
     RUN_TEST(test_fixed_rsqrt_seed_boundaries_and_stride);
     RUN_TEST(test_fixed_scalar_rsqrt_bound);
-    RUN_TEST(test_fixed_quaternion_normalize_extremes_and_unit_path);
+    RUN_TEST(test_fixed_quaternion_normalize_extremes);
     RUN_TEST(test_fixed_nlerp_unit_sweep);
+#endif
     RUN_TEST(test_integer_half_chords_int32);
     RUN_TEST(test_integer_square_root_edges);
     RUN_TEST(test_integer_half_chords_floor);

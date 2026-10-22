@@ -153,28 +153,31 @@ mathx_rsqrt_midpoint(uint32_t m, uint32_t y) {
     return high < target || (high == target && (uint32_t)low == 0);
 }
 
+/* Entry i = round(2^30 / sqrt((16 + i + 0.5) / 64)), the midpoint of mantissa segment 16 + i. */
+static const uint32_t mathx_rsqrt_seeds[] = {
+    [0] = 2114695713u,  [1] = 2053387115u,  [2] = 1997119227u,  [3] = 1945237133u,  [4] = 1897199172u,
+    [5] = 1852552937u,  [6] = 1810917218u,  [7] = 1771968208u,  [8] = 1735428857u,  [9] = 1701060526u,
+    [10] = 1668656406u, [11] = 1638036256u, [12] = 1609042172u, [13] = 1581535151u, [14] = 1555392273u,
+    [15] = 1530504391u, [16] = 1506774204u, [17] = 1484114654u, [18] = 1462447584u, [19] = 1441702596u,
+    [20] = 1421816090u, [21] = 1402730445u, [22] = 1384393311u, [23] = 1366757007u, [24] = 1349778000u,
+    [25] = 1333416450u, [26] = 1317635818u, [27] = 1302402522u, [28] = 1287685637u, [29] = 1273456629u,
+    [30] = 1259689126u, [31] = 1246358707u, [32] = 1233442724u, [33] = 1220920139u, [34] = 1208771378u,
+    [35] = 1196978204u, [36] = 1185523604u, [37] = 1174391680u, [38] = 1163567563u, [39] = 1153037323u,
+    [40] = 1142787899u, [41] = 1132807028u, [42] = 1123083182u, [43] = 1113605518u, [44] = 1104363818u,
+    [45] = 1095348453u, [46] = 1086550331u, [47] = 1077960865u,
+};
+
 /* m in [2^30, 2^32): nearest 2^30 / sqrt(m / 2^32).
  * A midpoint bracket bounds rounding by 0.5; the result exceeds 2^30,
  * so relative error <= 0.5 / 2^30 = 2^-31. */
 static inline uint32_t
 mathx_rsqrt_q30(uint32_t m) {
     assert(m >= MATHX_RSQRT_MIN);
-    static const uint32_t seeds[] = {
-        [0] = 2114695713u,  [1] = 2053387115u,  [2] = 1997119227u,  [3] = 1945237133u,  [4] = 1897199172u,
-        [5] = 1852552937u,  [6] = 1810917218u,  [7] = 1771968208u,  [8] = 1735428857u,  [9] = 1701060526u,
-        [10] = 1668656406u, [11] = 1638036256u, [12] = 1609042172u, [13] = 1581535151u, [14] = 1555392273u,
-        [15] = 1530504391u, [16] = 1506774204u, [17] = 1484114654u, [18] = 1462447584u, [19] = 1441702596u,
-        [20] = 1421816090u, [21] = 1402730445u, [22] = 1384393311u, [23] = 1366757007u, [24] = 1349778000u,
-        [25] = 1333416450u, [26] = 1317635818u, [27] = 1302402522u, [28] = 1287685637u, [29] = 1273456629u,
-        [30] = 1259689126u, [31] = 1246358707u, [32] = 1233442724u, [33] = 1220920139u, [34] = 1208771378u,
-        [35] = 1196978204u, [36] = 1185523604u, [37] = 1174391680u, [38] = 1163567563u, [39] = 1153037323u,
-        [40] = 1142787899u, [41] = 1132807028u, [42] = 1123083182u, [43] = 1113605518u, [44] = 1104363818u,
-        [45] = 1095348453u, [46] = 1086550331u, [47] = 1077960865u,
-    };
-    _Static_assert(sizeof seeds / sizeof seeds[0] == (1 << MATHX_RSQRT_SEED_BITS) - (1 << (MATHX_RSQRT_SEED_BITS - 2)),
+    _Static_assert(sizeof mathx_rsqrt_seeds / sizeof mathx_rsqrt_seeds[0]
+                       == (1 << MATHX_RSQRT_SEED_BITS) - (1 << (MATHX_RSQRT_SEED_BITS - 2)),
                    "Every mantissa segment has a reciprocal seed");
     const unsigned index = (m >> (MATHX_RSQRT_WORD_BITS - MATHX_RSQRT_SEED_BITS)) - (1 << (MATHX_RSQRT_SEED_BITS - 2));
-    uint32_t y = seeds[index];
+    uint32_t y = mathx_rsqrt_seeds[index];
     for (int step = 0; step < MATHX_RSQRT_NEWTON_STEPS; step++) {
         const uint64_t product = mathx_rsqrt_product(m, (uint64_t)y * y);
         const int64_t residual = (INT64_C(1) << MATHX_RSQRT_WORD_BITS)
