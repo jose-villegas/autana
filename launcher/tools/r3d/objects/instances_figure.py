@@ -12,25 +12,26 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from types import SimpleNamespace
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "render"))
 
 from docs.plot_style import INK, SLOTS  # noqa: E402
 from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
 from r3d.appearance_simplify import projection  # noqa: E402
 from r3d.cost_model import clusters_in_view  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
-from r3d.mesh_import import camera_path_poses  # noqa: E402
-from r3d.objects.instances import bounds_diagonal, match_instances  # noqa: E402
+from r3d.objects.instances import bounds_diagonal, match_instances, placed_corners  # noqa: E402
 from r3d.objects.objects_report import DEFAULT_EVERY_MS, masked_objects  # noqa: E402
 from r3d.mesh_import import load_source  # noqa: E402
+from r3d.poses import sample_camera_path  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import scene_id  # noqa: E402
+from render.render_compare import _font  # noqa: E402
 
 DOC_SIZE = (PANEL_HEIGHT, PANEL_WIDTH)
 EDGE_SAMPLES = 128
@@ -51,9 +52,8 @@ def placed_boxes(shapes, job):
     for index, shape in enumerate(shapes):
         if len(shape.instances) < 2:
             continue
-        corners = np.where(CORNER_BITS, shape.positions.max(axis=0), shape.positions.min(axis=0))
         for instance in shape.instances:
-            boxes.append((corners @ instance.linear.T + instance.position) @ matrix.T + position)
+            boxes.append(placed_corners(shape, instance, matrix, position))
             owners.append(index)
     return np.asarray(boxes).reshape(-1, len(CORNER_BITS), 3), np.asarray(owners, dtype=int)
 
@@ -63,12 +63,12 @@ def choose_view(boxes, owners, poses, size, lens, near, query):
     best, chosen = (-1, -1, -1), None
     bounds = np.stack((boxes.min(axis=1), boxes.max(axis=1)), axis=1)
     for index, pose in enumerate(poses):
-        segments, segment_owners = visible_segments(boxes, owners, pose, size, lens, near, query)
+        shown = clusters_in_view(bounds, projection(pose[:3], pose[3:], *size, lens, near))
+        segments, segment_owners = visible_segments(boxes, owners, pose, size, lens, near, query, shown=shown)
         lengths = Counter()
         for owner, length in zip(segment_owners, np.linalg.norm(segments[:, 1] - segments[:, 0], axis=1)):
             lengths[int(owner)] += float(length)
         coloured_length = sum(sorted(lengths.values(), reverse=True)[:len(SLOTS)])
-        shown = clusters_in_view(bounds, projection(pose[:3], pose[3:], *size, lens, near))
         score = (coloured_length, len(set(owners[shown])), int(shown.sum()))
         if score > best:
             best, chosen = score, (index, segments, segment_owners, lengths, score)
@@ -98,10 +98,11 @@ def edge_visibility(query, eye, start, end, tolerance):
     return points, (~(hit & (first < distances - tolerance))).reshape(midpoints.shape[:-1])
 
 
-def visible_segments(boxes, owners, pose, size, lens, near, query):
+def visible_segments(boxes, owners, pose, size, lens, near, query, shown=None):
     """Source-visible box segments clipped to the picture, shared by scoring and drawing."""
-    bounds = np.stack((boxes.min(axis=1), boxes.max(axis=1)), axis=1)
-    shown = clusters_in_view(bounds, projection(pose[:3], pose[3:], *size, lens, near))
+    if shown is None:
+        bounds = np.stack((boxes.min(axis=1), boxes.max(axis=1)), axis=1)
+        shown = clusters_in_view(bounds, projection(pose[:3], pose[3:], *size, lens, near))
     edges = boxes[shown][:, BOX_EDGES].reshape(-1, 2, 3)
     edge_owners = np.repeat(owners[shown], len(BOX_EDGES))
     _, depth = project_points(edges.reshape(-1, 3), pose, size, lens, near)
@@ -171,7 +172,7 @@ def draw_figure(image, segments, owners, colours, rows):
     for segment, owner in zip(segments, owners):
         if owner in colours:
             draw.line([tuple(point) for point in segment], fill=colours[owner], width=LINE_WIDTH)
-    font = ImageFont.load_default(size=FONT_SIZE)
+    font = _font()
     labels = [f'{label}  {count} copies' if count is not None else label for _, label, count in rows]
     legend_width = max((draw.textbbox((0, 0), label, font=font)[2] for label in labels), default=0)
     canvas = Image.new('RGB', (max(image.width, legend_width + ROW_HEIGHT + PADDING * 2),
@@ -188,18 +189,17 @@ def draw_figure(image, segments, owners, colours, rows):
 
 def generate(scene, job, cameras, host, out, every_ms, host_render=render_host):
     src = load_source(job.settings)
-    objects = masked_objects(src, job.settings)
+    objects, triangles = masked_objects(src, job.settings)
     shapes = match_instances(objects)
     boxes, owners = placed_boxes(shapes, job)
-    visibility = SimpleNamespace(size=DOC_SIZE, every_ms=every_ms)
-    positions = np.concatenate([obj.positions for obj in objects])
-    offsets = np.cumsum([0] + [len(obj.positions) for obj in objects[:-1]])
-    triangles = np.concatenate([obj.triangles + offset for obj, offset in zip(objects, offsets)])
-    positions = positions @ np.asarray(job.object.matrix).T + job.object.position
+    positions = src.p @ np.asarray(job.object.matrix).T + job.object.position
     query = RayQuery(positions, triangles)
     best, chosen = (-1, -1, -1, -1), None
     for camera in cameras:
-        _, _, lens, near, poses = camera_path_poses(SimpleNamespace(camera=camera), visibility, either_way_up=False)
+        component = camera.component
+        _, _, lens, near, poses = sample_camera_path(
+            component.path.animation, component.path.node, every_ms, *DOC_SIZE,
+            component.half_fov_short_tan, component.near_z)
         index, segments, segment_owners, lengths, score = choose_view(boxes, owners, poses, DOC_SIZE, lens, near, query)
         colours, rows = legend_rows(shapes, lengths, src.names)
         score = (*score, -index)
