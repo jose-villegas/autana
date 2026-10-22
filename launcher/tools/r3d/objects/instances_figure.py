@@ -20,7 +20,7 @@ from PIL import Image, ImageDraw, ImageFont
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device"))
 
-from docs.plot_style import INK, MUTED, SLOTS  # noqa: E402
+from docs.plot_style import INK, SLOTS  # noqa: E402
 from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
 from r3d.appearance_simplify import projection  # noqa: E402
 from r3d.cost_model import clusters_in_view  # noqa: E402
@@ -39,7 +39,6 @@ ROW_HEIGHT = 24
 PADDING = 12
 FONT_SIZE = 14
 LINE_WIDTH = 2
-OTHER_LABEL = 'other repeated shapes'
 CORNER_BITS = np.array(list(product((0, 1), repeat=3)))
 BOX_EDGES = tuple((a, b) for a in range(len(CORNER_BITS)) for b in range(a + 1, len(CORNER_BITS))
                   if np.count_nonzero(CORNER_BITS[a] != CORNER_BITS[b]) == 1)
@@ -59,15 +58,20 @@ def placed_boxes(shapes, job):
     return np.asarray(boxes).reshape(-1, len(CORNER_BITS), 3), np.asarray(owners, dtype=int)
 
 
-def choose_view(boxes, owners, poses, size, lens, near):
-    """Prefer distinct repeated shapes, then visible copies, then the earliest sample."""
+def choose_view(boxes, owners, poses, size, lens, near, query):
+    """Prefer coloured visible length, then distinct shapes, copies, and earliest sample."""
+    best, chosen = (-1, -1, -1), None
     bounds = np.stack((boxes.min(axis=1), boxes.max(axis=1)), axis=1)
-    best, chosen = (-1, -1), None
     for index, pose in enumerate(poses):
+        segments, segment_owners = visible_segments(boxes, owners, pose, size, lens, near, query)
+        lengths = Counter()
+        for owner, length in zip(segment_owners, np.linalg.norm(segments[:, 1] - segments[:, 0], axis=1)):
+            lengths[int(owner)] += float(length)
+        coloured_length = sum(sorted(lengths.values(), reverse=True)[:len(SLOTS)])
         shown = clusters_in_view(bounds, projection(pose[:3], pose[3:], *size, lens, near))
-        score = (len(set(owners[shown])), int(shown.sum()))
+        score = (coloured_length, len(set(owners[shown])), int(shown.sum()))
         if score > best:
-            best, chosen = score, (index, shown)
+            best, chosen = score, (index, segments, segment_owners, lengths, score)
     if chosen is None:
         raise ValueError('camera path has no poses')
     return chosen
@@ -84,30 +88,69 @@ def project_points(points, pose, size, lens, near):
 
 def edge_visibility(query, eye, start, end, tolerance):
     """Sample edge midpoints; a nearer source surface hides the corresponding segment."""
-    points = np.linspace(start, end, EDGE_SAMPLES + 1)
-    midpoints = (points[:-1] + points[1:]) / 2
-    directions = midpoints - eye
+    points = np.linspace(start, end, EDGE_SAMPLES + 1, axis=-2)
+    midpoints = (points[..., :-1, :] + points[..., 1:, :]) / 2
+    directions = (midpoints - eye).reshape(-1, 3)
     distances = np.linalg.norm(directions, axis=1)
     directions /= np.maximum(distances[:, None], np.finfo(float).eps)
     origins = np.broadcast_to(eye, directions.shape)
     hit, first, _ = query.first_hits(origins, directions)
-    return points, ~(hit & (first < distances - tolerance))
+    return points, (~(hit & (first < distances - tolerance))).reshape(midpoints.shape[:-1])
 
 
-def legend_rows(shapes, owners, material_names, palette=SLOTS):
-    """Dominant source materials label ranked shapes; overflow shares one neutral row."""
-    ranked = sorted(set(owners), key=lambda i: (-len(shapes[i].triangles) * (len(shapes[i].instances) - 1), i))
-    names = [material_names[int(np.bincount(shapes[i].materials).argmax())] for i in ranked]
-    duplicates, used = Counter(names), Counter()
+def visible_segments(boxes, owners, pose, size, lens, near, query):
+    """Source-visible box segments clipped to the picture, shared by scoring and drawing."""
+    bounds = np.stack((boxes.min(axis=1), boxes.max(axis=1)), axis=1)
+    shown = clusters_in_view(bounds, projection(pose[:3], pose[3:], *size, lens, near))
+    edges = boxes[shown][:, BOX_EDGES].reshape(-1, 2, 3)
+    edge_owners = np.repeat(owners[shown], len(BOX_EDGES))
+    _, depth = project_points(edges.reshape(-1, 3), pose, size, lens, near)
+    depth = depth.reshape(-1, 2)
+    keep = depth.max(axis=1) >= near
+    edges, depth, edge_owners = edges[keep], depth[keep], edge_owners[keep]
+    for endpoint in (0, 1):
+        clipped = depth[:, endpoint] < near
+        fraction = (near - depth[clipped, endpoint]) / (depth[clipped, 1 - endpoint] - depth[clipped, endpoint])
+        edges[clipped, endpoint] += fraction[:, None] * (edges[clipped, 1 - endpoint] - edges[clipped, endpoint])
+    if not len(edges):
+        return np.empty((0, 2, 2)), np.empty(0, dtype=int)
+    tolerance = max((bounds_diagonal(box) for box in boxes), default=0) * OCCLUSION_TOLERANCE
+    points, visible = edge_visibility(query, pose[:3], edges[:, 0], edges[:, 1], tolerance)
+    pixels, _ = project_points(points.reshape(-1, 3), pose, size, lens, near)
+    pixels = pixels.reshape(len(edges), EDGE_SAMPLES + 1, 2)
+    segments = np.stack((pixels[:, :-1], pixels[:, 1:]), axis=2)[visible]
+    segment_owners = np.broadcast_to(edge_owners[:, None], visible.shape)[visible]
+    start, delta = segments[:, 0], segments[:, 1] - segments[:, 0]
+    lower, upper = np.zeros(len(start)), np.ones(len(start))
+    for axis, limit in enumerate(size):
+        moving = delta[:, axis] != 0
+        first = np.full(len(start), -np.inf)
+        last = np.full(len(start), np.inf)
+        first[moving] = -start[moving, axis] / delta[moving, axis]
+        last[moving] = (limit - start[moving, axis]) / delta[moving, axis]
+        lower = np.maximum(lower, np.minimum(first, last))
+        upper = np.minimum(upper, np.maximum(first, last))
+        upper[~moving & ((start[:, axis] < 0) | (start[:, axis] > limit))] = -1
+    keep = upper > lower
+    clipped = start[keep, None] + np.stack((lower[keep], upper[keep]), axis=1)[..., None] * delta[keep, None]
+    return clipped, segment_owners[keep]
+
+
+def legend_rows(shapes, lengths, material_names, palette=SLOTS):
+    """Rank by visible length; material names and triangle counts distinguish shapes."""
+    ranked = sorted((i for i in lengths if lengths[i] > 0), key=lambda i: (-lengths[i], i))[:len(palette)]
+    repeated = [i for i, shape in enumerate(shapes) if len(shape.instances) > 1]
+    names = {i: material_names[int(np.bincount(shapes[i].materials).argmax())] for i in repeated}
+    duplicates = Counter(names.values())
     colours, rows = {}, []
-    for slot, (index, name) in enumerate(zip(ranked, names)):
-        used[name] += 1
-        label = f'{name} ({used[name]})' if duplicates[name] > 1 else name
-        colours[index] = palette[slot] if slot < len(palette) else MUTED
-        if slot < len(palette):
-            rows.append((colours[index], label, len(shapes[index].instances)))
-    if len(ranked) > len(palette):
-        rows.append((MUTED, OTHER_LABEL, sum(len(shapes[i].instances) for i in ranked[len(palette):])))
+    for slot, index in enumerate(ranked):
+        name = names[index]
+        label = f'{name}, {len(shapes[index].triangles)} tris' if duplicates[name] > 1 else name
+        colours[index] = palette[slot]
+        rows.append((colours[index], label, len(shapes[index].instances)))
+    overflow = len(repeated) - len(ranked)
+    if overflow:
+        rows.append((None, f'{overflow} more repeated shapes not drawn', None))
     return colours, rows
 
 
@@ -121,52 +164,60 @@ def render_host(host, scene, object_name, camera_name, time_ms):
             return image.convert('RGB')
 
 
-def draw_figure(image, shapes, boxes, owners, shown, pose, lens, near, query, material_names):
-    """Skip source-occluded segments and append material swatches below the host image."""
+def draw_figure(image, segments, owners, colours, rows):
+    """Draw only selected shapes and append their material legend."""
     image = image.copy()
-    colours, rows = legend_rows(shapes, owners[shown], material_names)
     draw = ImageDraw.Draw(image)
-    tolerance = max((bounds_diagonal(box) for box in boxes), default=0) * OCCLUSION_TOLERANCE
-    for box, owner in zip(boxes[shown], owners[shown]):
-        for a, b in BOX_EDGES:
-            points, visible = edge_visibility(query, pose[:3], box[a], box[b], tolerance)
-            pixels, depth = project_points(points, pose, image.size, lens, near)
-            for index in np.flatnonzero(visible & (depth[:-1] >= near) & (depth[1:] >= near)):
-                draw.line([tuple(pixels[index]), tuple(pixels[index + 1])], fill=colours[owner], width=LINE_WIDTH)
+    for segment, owner in zip(segments, owners):
+        if owner in colours:
+            draw.line([tuple(point) for point in segment], fill=colours[owner], width=LINE_WIDTH)
     font = ImageFont.load_default(size=FONT_SIZE)
-    legend_width = max((draw.textbbox((0, 0), f'{label}  {count} copies', font=font)[2]
-                        for _, label, count in rows), default=0) + ROW_HEIGHT + PADDING * 2
-    canvas = Image.new('RGB', (max(image.width, legend_width), image.height + len(rows) * ROW_HEIGHT + PADDING * 2), 'white')
+    labels = [f'{label}  {count} copies' if count is not None else label for _, label, count in rows]
+    legend_width = max((draw.textbbox((0, 0), label, font=font)[2] for label in labels), default=0)
+    canvas = Image.new('RGB', (max(image.width, legend_width + ROW_HEIGHT + PADDING * 2),
+                               image.height + len(rows) * ROW_HEIGHT + PADDING * 2), 'white')
     canvas.paste(image, ((canvas.width - image.width) // 2, 0))
     draw = ImageDraw.Draw(canvas)
-    for index, (colour, label, count) in enumerate(rows):
+    for index, ((colour, _, _), label) in enumerate(zip(rows, labels)):
         y = image.height + PADDING + index * ROW_HEIGHT
-        draw.rectangle((PADDING, y, PADDING + FONT_SIZE, y + FONT_SIZE), fill=colour)
-        draw.text((PADDING + ROW_HEIGHT, y), f'{label}  {count} copies', fill=INK, font=font)
+        if colour is not None:
+            draw.rectangle((PADDING, y, PADDING + FONT_SIZE, y + FONT_SIZE), fill=colour)
+        draw.text((PADDING + ROW_HEIGHT if colour else PADDING, y), label, fill=INK, font=font)
     return canvas
 
 
-def generate(scene, job, camera, host, out, every_ms, host_render=render_host):
+def generate(scene, job, cameras, host, out, every_ms, host_render=render_host):
     src = load_object_source(job.settings)
     objects = masked_objects(src, job.settings)
     shapes = match_instances(objects)
     boxes, owners = placed_boxes(shapes, job)
     visibility = SimpleNamespace(size=DOC_SIZE, every_ms=every_ms)
-    _, _, lens, near, poses = camera_path_poses(SimpleNamespace(camera=camera), visibility, either_way_up=False)
-    index, shown = choose_view(boxes, owners, poses, DOC_SIZE, lens, near)
-    time_ms = index * every_ms
-    image = host_render(host, scene_id(scene.path), job.object.name, camera.name, time_ms)
-    if image.size != DOC_SIZE:
-        raise ValueError(f'host image must be {DOC_SIZE}, got {image.size}')
     positions = np.concatenate([obj.positions for obj in objects])
     offsets = np.cumsum([0] + [len(obj.positions) for obj in objects[:-1]])
     triangles = np.concatenate([obj.triangles + offset for obj, offset in zip(objects, offsets)])
     positions = positions @ np.asarray(job.object.matrix).T + job.object.position
     query = RayQuery(positions, triangles)
-    picture = draw_figure(image, shapes, boxes, owners, shown, poses[index], lens, near, query, src.names)
+    best, chosen = (-1, -1, -1, -1), None
+    for camera in cameras:
+        _, _, lens, near, poses = camera_path_poses(SimpleNamespace(camera=camera), visibility, either_way_up=False)
+        index, segments, segment_owners, lengths, score = choose_view(boxes, owners, poses, DOC_SIZE, lens, near, query)
+        colours, rows = legend_rows(shapes, lengths, src.names)
+        score = (*score, -index)
+        if score > best:
+            best = score
+            chosen = camera, index * every_ms, segments, segment_owners, colours, rows
+    if chosen is None:
+        raise ValueError('no camera paths')
+    camera, time_ms, segments, segment_owners, colours, rows = chosen
+    image = host_render(host, scene_id(scene.path), job.object.name, camera.name, time_ms)
+    if image.size != DOC_SIZE:
+        raise ValueError(f'host image must be {DOC_SIZE}, got {image.size}')
+    picture = draw_figure(image, segments, segment_owners, colours, rows)
     out.parent.mkdir(parents=True, exist_ok=True)
     picture.save(out)
-    print(f'chosen time: {time_ms} ms; repeated shapes in view: {len(set(owners[shown]))}')
+    print(f'chosen camera: {camera.name}; time: {time_ms} ms; render: {DOC_SIZE[0]}x{DOC_SIZE[1]}')
+    for _, label, count in rows:
+        print(f'{label}' + (f': {count} copies' if count is not None else ''))
     return time_ms
 
 
@@ -181,15 +232,15 @@ def main(argv=None):
     args = parser.parse_args(argv)
     scene = load_scene(args.scene)
     job = next((job for job in scene.renderers if job.object.name == args.object), None)
-    camera = next((obj for obj in scene.objects if obj.kind == 'camera' and
-                   (obj.name == args.camera if args.camera else obj.component.path is not None)), None)
+    cameras = [obj for obj in scene.objects if obj.kind == 'camera' and obj.component.path is not None
+               and (args.camera is None or obj.name == args.camera)]
     if job is None or job.object.kind != 'mesh_renderer':
         parser.error('--object must name a mesh renderer')
-    if camera is None or camera.component.path is None:
+    if not cameras:
         parser.error('camera must have a path')
     if args.every_ms <= 0:
         parser.error('--every-ms must be positive')
-    generate(scene, job, camera, args.host, args.out, args.every_ms)
+    generate(scene, job, cameras, args.host, args.out, args.every_ms)
     return 0
 
 
