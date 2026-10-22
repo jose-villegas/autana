@@ -1,8 +1,10 @@
 /* Tone command accepts complete decimal arguments within audio limits. */
 #include <stdio.h>
+#include <string.h>
 #include "console/verbs/console_melody.h"
 #include "console/verbs/console_tone_parse.h"
 #include "console/verbs/console_tone_reply.h"
+#include "math/scalar/math_db.h"
 #include "suites.h"
 #include "unity.h"
 #define TEST_TARGET_HZ   1000u
@@ -12,6 +14,19 @@ static console_tone_args_t
 fixture(void) {
     return (console_tone_args_t){
         .hz = TEST_TARGET_HZ, .ms = TEST_DURATION_MS, .volume_pct = CONSOLE_TONE_DEFAULT_VOLUME_PCT};
+}
+
+static void
+test_tone_reply_capacity(void) {
+    console_tone_args_t args = fixture();
+    args.hz = AUDIO_OUT_NYQUIST_HZ - 1;
+    args.internal = false;
+    const audio_loopback_result_t result = {
+        .measured_hz = AUDIO_OUT_NYQUIST_HZ, .thd_db = MATH_DB_FLOOR, .peak_dbfs = MATH_DB_FLOOR};
+    char line[CONSOLE_TONE_REPLY_BYTES];
+    TEST_ASSERT_TRUE(
+        console_tone_reply(line, sizeof line, &args, false, MATH_DB_FLOOR, MATH_DB_FLOOR, &result, SIZE_MAX));
+    TEST_ASSERT_LESS_THAN_UINT(CONSOLE_TONE_REPLY_BYTES, strlen(line) + 1);
 }
 
 static void
@@ -306,7 +321,7 @@ sound_stop(sound_voice_t voice) {
 }
 
 bool
-audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, float* measured_hz) {
+audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_result_t* result) {
     TEST_ASSERT_EQUAL_UINT16(device.melody.enabled ? melody_note_hz(melody_notes[device.measures / 2]) : TEST_TARGET_HZ,
                              hz);
     TEST_ASSERT_EQUAL_UINT16(device.melody.enabled ? CONSOLE_MELODY_CHECK_MS : TEST_DURATION_MS, ms);
@@ -316,8 +331,10 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, float* measured_hz) 
     }
     device.measures++;
     *db = device.measures % 2 ? -100.0F : -12.0F;
-    if (measured_hz) {
-        *measured_hz = hz;
+    if (result) {
+        result->measured_hz = hz;
+        result->thd_db = -40.0F;
+        result->peak_dbfs = -6.0F;
     }
     return device.measures != device.melody.fail_measure
            && !((device.measures == 1 && device.failure == TEST_TONE_BASELINE_FAIL)
@@ -513,9 +530,13 @@ test_tone_reply_frequency(void) {
     char expected[CONSOLE_TONE_MEASURED_BYTES];
     snprintf(expected, sizeof expected, "measured %.2f Hz", (double)TEST_TARGET_HZ);
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
-        TEST_ASSERT_TRUE(console_tone_reply(line, sizeof line, &args, true, -12, -100, values[i], 0));
-        TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? expected : "measured n/a"));
+        const audio_loopback_result_t result = {.measured_hz = values[i], .thd_db = values[i], .peak_dbfs = -6};
+        TEST_ASSERT_TRUE(console_tone_reply(line, sizeof line, &args, true, -12, -100, &result, 0));
+        TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? "thd 1000.0 dB" : "thd n/a dB"));
+        TEST_ASSERT_NOT_NULL(strstr(line, "peak -6.0 dBFS"));
         puts(line);
+        TEST_ASSERT_FALSE(console_tone_reply(line, strlen(line), &args, true, -12, -100, &result, 0));
+        TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? expected : "measured n/a"));
     }
 }
 
@@ -530,6 +551,7 @@ run_console_tone_suite(void) {
     RUN_TEST(test_tone_acoustic_has_no_feedback);
 #endif
     RUN_TEST(test_tone_reply_frequency);
+    RUN_TEST(test_tone_reply_capacity);
     RUN_TEST(test_tone_parse_valid);
     RUN_TEST(test_tone_parse_invalid);
 }

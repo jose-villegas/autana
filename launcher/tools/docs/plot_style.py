@@ -84,6 +84,55 @@ def save_gif(fig, draw_frame, frames, path, fps, colors=GIF_COLORS):
         plt.close(fig)
 
 
+DARK_BACKGROUND = "#0d1117"
+DARK_INK = "#e6edf3"
+DARK_MUTED = "#9da7b3"
+DARK_FAINT = "#30363d"
+
+
+def picture(stem, description, directory="../images"):
+    from html import escape
+    source = escape(f"{directory}/{stem}", quote=True)
+    description = escape(description, quote=True)
+    return (f'<picture>\n  <source media="(prefers-color-scheme: dark)" srcset="{source}-dark.png">\n'
+            f'  <source media="(prefers-color-scheme: light)" srcset="{source}.png">\n'
+            f'  <img alt="{description}" src="{source}.png">\n</picture>\n\n')
+
+
+def save_themes(fig, path, dpi=DPI):
+    """Save both page themes; the unsuffixed image is the light fallback."""
+    from matplotlib.text import Text
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=dpi, metadata={"Software": None})
+    fig.set_facecolor(DARK_BACKGROUND)
+    for axis in fig.axes:
+        axis.set_facecolor(DARK_BACKGROUND)
+        axis.tick_params(colors=DARK_MUTED)
+        for spine in axis.spines.values():
+            spine.set_color(DARK_FAINT)
+        for line in (*axis.get_xgridlines(), *axis.get_ygridlines()):
+            line.set_color(DARK_FAINT)
+        legend = axis.get_legend()
+        if legend:
+            legend.get_frame().set(facecolor=DARK_BACKGROUND, edgecolor=DARK_FAINT)
+    for text in fig.findobj(Text):
+        text.set_color(DARK_INK)
+    save(fig, path.with_stem(path.stem + "-dark"), dpi)
+
+
+FIGURE_SIZE = (8, 4.5)
+LEGEND_ANCHOR = (0.5, -0.18)
+LEGEND_COLUMNS = 2
+
+
+def save_themed_plot(fig, axis, path, title, *, legend_columns=LEGEND_COLUMNS):
+    style_axes(axis, title)
+    axis.grid(color=FAINT)
+    axis.legend(fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=LEGEND_ANCHOR, ncol=legend_columns)
+    save_themes(fig, path)
+
+
 def wire_sphere(axis, center, radius, color=FAINT):
     yaw = np.linspace(0, 2 * np.pi, WIRE_SAMPLES)
     pitch = np.linspace(-np.pi / 2, np.pi / 2, WIRE_SAMPLES)
