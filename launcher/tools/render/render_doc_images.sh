@@ -167,7 +167,7 @@ esac
 . "$(dirname "$0")/../../../scripts/lib/python.sh"
 PYTHON=$(find_python PIL numpy matplotlib) || exit 2
 export PYTHON
-if ! command -v ffmpeg > /dev/null 2>&1; then
+if [ "$AUDIO_ONLY" = 0 ] && ! command -v ffmpeg > /dev/null 2>&1; then
     echo "ffmpeg not found." >&2
     exit 2
 fi
@@ -245,8 +245,10 @@ fi
 run "$PYTHON" launcher/tools/audio/audio_drc_figures.py --out "$OUT/audio" > "$WORK/audio_drc_figures.log"
 run "$PYTHON" launcher/tools/audio/audio_path_figures.py --out "$OUT/audio" > "$WORK/audio_path_figures.log"
 run "$PYTHON" launcher/tools/audio/sound_mix_figures.py --out "$OUT/audio" > "$WORK/sound_mix_figures.log"
+run "$PYTHON" launcher/tools/audio/sound_onset_figures.py --out "$OUT/audio" > "$WORK/sound_onset_figures.log"
 # --orphans scans this runner: drc-level.png, drc-thd.png, drc-level-dark.png, drc-thd-dark.png,
 # audio-frequency.png, audio-volume.png, audio-frequency-dark.png, audio-volume-dark.png,
+# sound-onset.png, sound-onset-dark.png,
 # sound_mix_capture_v8.png, sound_mix_capture_v32.png, sound_mix_capture_v8-dark.png, sound_mix_capture_v32-dark.png
 
 if [ "$AUDIO_ONLY" = 0 ]; then

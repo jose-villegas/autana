@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from doc_tables import markdown
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
+from audio.sound_onset_capture import EVENTS as ONSET_EVENTS
 from generated_blocks import replace_block, blocks
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from frame_cost import frame_cost_window, US_PER_MS
@@ -382,6 +383,91 @@ def update(capture, document, check=False, mix_captures=None, mix_document=None,
     return changed
 
 
+ONSET_REPLY = re.compile(
+    r"SOUND onset event=([a-z-]+) hz=(\d+) gain=(\d+) pre_db=(-?\d+\.\d+) "
+    r"peak_db=(-?\d+\.\d+) excess_db=(-?\d+\.\d+) at_ms=(\d+)")
+
+
+def onset_data(path, arm_settings=None):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = re.fullmatch(r"# autana sound-onset capture on ([\w:-]+), ([\d-]+),.*", lines[0])
+    if not header:
+        raise ValueError("missing onset board and date")
+    records = [line.split("\t", 2) for line in lines[1:] if line and not line.startswith("#")]
+    if any(len(record) != 3 for record in records):
+        raise ValueError("onset records need arm, command and reply")
+    builds = [json.loads(reply)["build_id"] for arm, command, reply in records if (arm, command) == ("meta", "buildid")]
+    statuses = [json.loads(reply) for arm, command, reply in records if (arm, command) == ("meta", "status")]
+    if len(builds) != 2 or len(set(builds)) != 1 or len(statuses) != 2:
+        raise ValueError("onset capture needs status and two matching build ids")
+    run_records = [int(reply) for arm, command, reply in records if (arm, command) == ("meta", "runs")]
+    if len(run_records) != 1 or run_records[0] <= 0:
+        raise ValueError("onset capture needs a positive run count")
+    settings = {arm: json.loads(reply) for arm, command, reply in records if command == "settings"}
+    if not settings:
+        raise ValueError("onset capture needs arm settings")
+    if arm_settings is not None:
+        if arm_settings and list(settings.items()) != list(arm_settings.items()):
+            raise ValueError("onset capture arms differ")
+        arm_settings.update(settings)
+    points = {}
+    probe = set()
+    failures = set()
+    for arm, command, reply in records:
+        if command.startswith("failure sound onset "):
+            event = command.removeprefix("failure sound onset ")
+            if arm not in settings or event not in ONSET_EVENTS:
+                raise ValueError("invalid onset failure arm or event")
+            failures.add((arm, event))
+            continue
+        if not command.startswith("sound onset "):
+            continue
+        match = ONSET_REPLY.fullmatch(reply)
+        if match is None or arm not in settings or match[1] not in ONSET_EVENTS or command != f"sound onset {match[1]}":
+            raise ValueError("invalid onset reply or command")
+        event, hz, gain, pre, peak, excess, at = match.groups()
+        if not math.isclose(float(peak) - float(pre), float(excess), abs_tol=0.11):
+            raise ValueError("inconsistent excess level")
+        probe.add((hz, gain))
+        points.setdefault((arm, event), []).append((float(excess), int(at)))
+    expected = {(arm, event) for arm in settings for event in ONSET_EVENTS}
+    if (points.keys() | failures != expected
+            or any(len(points.get(key, [])) > run_records[0]
+                   or (len(points.get(key, [])) < run_records[0] and key not in failures) for key in expected)
+            or len(probe) > 1):
+        raise ValueError("missing onset runs or inconsistent probe")
+    return settings, points, run_records[0]
+
+
+def render_onset(path, arm_settings=None):
+    settings, points, runs = onset_data(path, arm_settings)
+    columns = ["Event", *settings]
+    rows = []
+    for event in ONSET_EVENTS:
+        row = [event]
+        for arm in settings:
+            values = points.get((arm, event), [])
+            row.append(f"{median(v[0] for v in values):.1f} ({max(v[0] for v in values):.1f})"
+                       + (f"; n={len(values)}" if len(values) < runs else "")
+                       if values else "unavailable; n=0")
+        rows.append(row)
+    return (caption(path, REGENERATE, kind="replies")
+            + details(markdown(columns, rows)))
+
+
+def update_onset(captures, document, check=False):
+    paths = sorted(Path(captures).glob("sound_onset_capture_*.txt"))
+    if not paths:
+        raise ValueError("no sound-onset capture files")
+    arm_settings = {}
+    body = picture("audio/sound-onset", "Median onset excess by de-click time constant")
+    body += ("Lines show the median of capture medians; bands span their minimum to maximum.\n\n"
+             "Numeric cells show median (worst) excess dB; run counts appear only when incomplete.\n\n")
+    body += "\n".join(f"Capture {index}\n\n" + render_onset(path, arm_settings)
+                      for index, path in enumerate(paths, 1))
+    return replace_block(document, "sound-onset", body, check=check)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -395,6 +481,7 @@ def main():
     args = parser.parse_args()
     try:
         changed = update(args.capture, args.document, args.check, args.mix_captures, args.mix_document, args.drc_capture)
+        changed |= update_onset(args.mix_captures, args.mix_document, args.check)
     except (ValueError, KeyError, OSError, RuntimeError) as error:
         parser.exit(2, f"{error}\n")
     print(f"audio tables: {'stale' if changed and args.check else 'updated' if changed else 'current'}")
