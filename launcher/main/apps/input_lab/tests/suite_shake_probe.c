@@ -35,7 +35,8 @@ test_constant_offset(void) {
 
 static void
 test_sine_axes(void) {
-    shake_probe_levels_t across = fixture(), along = fixture();
+    shake_probe_levels_t across = fixture();
+    shake_probe_levels_t along = fixture();
     for (uint32_t us = 0; us < TEST_SETTLE_MS * MATH_US_PER_MS; us += INPUT_MOTION_SAMPLE_US) {
         const float value = TEST_OFFSET_G * sinf(2.0F * MATH_PI * TEST_SINE_HZ * (float)us / MATH_US_PER_S);
         shake_probe_feed(&across, (vec3f_t){value, 0, 0});
