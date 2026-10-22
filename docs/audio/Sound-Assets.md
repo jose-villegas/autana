@@ -35,9 +35,9 @@ The CPU Bakes workflow produces missing sound rows.
 those locked SOND bytes without decoding audio or importing numpy or soundfile.
 The firmware streams samples from the mapped pack through its cursor.
 
-The engine pack carries `demo`, a looping ADPCM tune sourced from FLAC.
-Its recipe records the note-list synthesis and FLAC encoding commands;
-`autana play engine/demo loop` plays it.
+The engine pack's `carreno_waltz` loops the whole stereo 44.1 kHz FLAC excerpt.
+Its recipe records the public-domain source and cut command.
+`autana play engine/carreno_waltz loop` plays it; the baked SOND uses 237,600 flash bytes.
 
 ## Flash per minute
 

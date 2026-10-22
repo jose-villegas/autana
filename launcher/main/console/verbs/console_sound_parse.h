@@ -12,7 +12,7 @@
 #include "console/console_verbs.h"
 
 #define CONSOLE_SOUND_WORD_COUNT_MAX 4
-#define CONSOLE_SOUND_LINE_MAX       (sizeof("sound play ") + 2 * (ASSET_NAME_MAX - 1) + sizeof("/ loop 100"))
+#define CONSOLE_SOUND_LINE_MAX       (sizeof("sound play ") + (2 * (ASSET_NAME_MAX - 1)) + sizeof("/ loop 100"))
 /* 500 Hz remains audible while the second difference rejects its steady tone. */
 #define CONSOLE_SOUND_ONSET_HZ       500u
 #define CONSOLE_SOUND_ONSET_GAIN     (AUDIO_OUT_VOLUME_MAX_PCT / 3u)

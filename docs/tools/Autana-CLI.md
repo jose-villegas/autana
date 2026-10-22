@@ -192,7 +192,7 @@ Changes state the way a person holding the board could.
 | `autana open <name>` | Enter an app; case-insensitive unambiguous prefix. |
 | `autana home` | Back to the launcher. |
 | `autana sound play <pack>/<name> [loop] [gain]` | Play from any asset pack; a bare name selects `engine`. Gain is a percent, full gain when omitted. The reply includes `voice` and `open_us` (zero for a cached view). |
-| `autana play <pack>/<name> [loop] [gain]` | Alias for `autana sound play`, with the same arguments and reply. |
+| `autana play <pack>/<name> [loop] [gain]` | Alias for `autana sound play`, with the same arguments and reply; for example, `autana play engine/carreno_waltz loop 50`. |
 | `autana sound stop [voice\|all]` | Stop a voice or all voices; all when omitted. |
 | `autana sound stats` | Voice states, dropped commands, amplifier state and mixer RAM sizes. |
 | `autana sound onset <event> [hz] [gain]` | Measure amplifier, start, stop and steal transients; see [Sound mixer](../audio/Sound-Mixer.md#clicks-at-start-stop-and-amplifier-changes). |

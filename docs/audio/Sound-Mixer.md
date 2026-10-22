@@ -293,7 +293,7 @@ Development builds can play pack sounds from a terminal with
 |---|---|
 | `autana sound play tap` | play the engine pack's tap sound once |
 | `autana sound play <pack>/<name> [loop] [gain]` | play from any mounted asset pack; a bare name selects `engine` |
-| `autana play engine/demo loop 50` | the flat alias for `sound play`, at 50 % gain |
+| `autana play engine/carreno_waltz loop 50` | the flat alias for `sound play`, at 50 % gain |
 | `autana sound stop <voice>` | stop the voice the play returned |
 | `autana sound stop all` | stop every voice, SYSTEM included |
 | `autana sound stats` | ready state, drops, amplifier state, voices and RAM sizes |
@@ -307,7 +307,7 @@ in PSRAM. App-owned views and pack references are released after the app-exit
 mixer fence. Launcher-owned views stay alive across app exits.
 
 For a long voice alone and with seven taps, capture with
-`--sounds engine/demo --voices 1,8 --fill-sound engine/tap` on
+`--sounds engine/carreno_waltz --voices 1,8 --fill-sound engine/tap` on
 `sound_mix_capture.py`. Voice counts include the long voice.
 
 The `tone` verb plays an engine tone on the SYSTEM bus through the mixer.
