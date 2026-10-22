@@ -155,27 +155,39 @@ mathi_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
+#define MATHI_DEFINE_ISQRT(name, type, bits, clz)                                                                      \
+    static inline uint32_t name(type value) {                                                                          \
+        enum { VALUE_BITS = bits, DIGIT_BITS = 2 };                                                                    \
+                                                                                                                       \
+        if (value == 0) {                                                                                              \
+            return 0;                                                                                                  \
+        }                                                                                                              \
+        type root = 0;                                                                                                 \
+        const int shift = (VALUE_BITS - 1 - clz(value)) / DIGIT_BITS * DIGIT_BITS;                                     \
+        type bit = (type)1 << shift;                                                                                   \
+        while (bit != 0) {                                                                                             \
+            if (value >= root + bit) {                                                                                 \
+                value -= root + bit;                                                                                   \
+                root = (root >> 1) + bit;                                                                              \
+            } else {                                                                                                   \
+                root >>= 1;                                                                                            \
+            }                                                                                                          \
+            bit >>= DIGIT_BITS;                                                                                        \
+        }                                                                                                              \
+        return (uint32_t)root;                                                                                         \
+    }
+
+MATHI_DEFINE_ISQRT(mathi_isqrt32_digits, uint32_t, 32, __builtin_clz)
+MATHI_DEFINE_ISQRT(mathi_isqrt64_digits, uint64_t, 64, __builtin_clzll)
+#undef MATHI_DEFINE_ISQRT
+
 /* Floor of the square root over the whole uint64_t range. */
 static inline uint32_t
 mathi_isqrt64(uint64_t value) {
-    enum { VALUE_BITS = 64, DIGIT_BITS = 2 };
-
-    if (value == 0) {
-        return 0;
+    if (value <= UINT32_MAX) {
+        return mathi_isqrt32_digits((uint32_t)value);
     }
-    uint64_t root = 0;
-    const int shift = (VALUE_BITS - 1 - __builtin_clzll(value)) / DIGIT_BITS * DIGIT_BITS;
-    uint64_t bit = UINT64_C(1) << shift;
-    while (bit != 0) {
-        if (value >= root + bit) {
-            value -= root + bit;
-            root = (root >> 1) + bit;
-        } else {
-            root >>= 1;
-        }
-        bit >>= DIGIT_BITS;
-    }
-    return (uint32_t)root;
+    return mathi_isqrt64_digits(value);
 }
 
 /* half_chord = floor(sqrt(r^2-d^2)), zero for |d| >= r; |r|, |d| fit int32. */
