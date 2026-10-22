@@ -543,6 +543,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
                     mock.patch.object(stages, 'gpu_inputs', return_value={}), \
                     mock.patch.object(stages, 'run') as run, mock.patch.object(stages, 'apply_tables'), \
+                    mock.patch.object(stages, 'sync_images') as sync, \
                     mock.patch.object(fitted, 'plot_pareto'), mock.patch.object(stages, 'machine_table', return_value='machine fixture'),                     mock.patch.object(stages, 'submit_light_fits', return_value='light fits') as light,                     mock.patch.object(stages, 'light_sheets') as sheets:
                 stages._gpu(NS(smoke=False, scene=Path("other.scene.toml"), object="hall"), out, root / 'work', Executor())
             light.assert_called_once_with(mock.ANY, Path('other.scene.toml'), work)
@@ -554,12 +555,16 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertEqual([args[4] for owner, args, _, _ in calls if owner is stages.bake_worker],
                              ["hall_lite", "hall", "hall_flat"])
             self.assertEqual({path.name for path in (out / "tables").iterdir()},
-                             {"other-normal.md", "other-budget.md", "other-gpu.md", "other-flat-fit.md", "bake-machine.md", "bake-steps.md"})
+                             {"other-normal.md", "other-budget.md", "other-gpu.md", "other-flat-fit.md", "bake-steps.md"})
             table = (out / 'tables/bake-steps.md').read_text()
             for prefix in ('lite', 'full', 'flat'):
-                self.assertIn(f"| {prefix}-GI-bake | bake fixture | 3.000 | 5 | 4 |", table)
-                self.assertIn(f"| {prefix}-fit-start | prepare fixture | 1.000 | 4 | 3 |", table)
-                self.assertIn(f"| {prefix}-GI-fit | fit fixture | 2.000 | 3 | 2 |", table)
+                self.assertIn(f"| {prefix}-GI-bake | bake fixture | 100% | 5 | 4 |", table)
+                self.assertIn(f"| {prefix}-fit-start | prepare fixture | 100% | 4 | 3 |", table)
+                self.assertIn(f"| {prefix}-GI-fit | fit fixture | 100% | 3 | 2 |", table)
+            self.assertNotIn("Wall s", table)
+            self.assertIn("![Bake steps](../images/render/gpu/bake-steps.png)", table)
+            self.assertTrue((out / 'render/gpu/bake-steps.png').is_file())
+            sync.assert_called_once_with(out / 'render/gpu', stages.ROOT / 'docs/images/render/gpu', check=False)
             measured = [function for owner, args, kwargs, function in calls
                         if owner is fitted.fit_point and args[1].name.startswith('fit-')]
             self.assertEqual(len(measured), 3)
