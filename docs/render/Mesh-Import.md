@@ -135,7 +135,7 @@ Every Geometry table opts its step in; without it the step does not run.
 |---|---|---|---|---|---|
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
-| `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and allocates each variant’s budget across welded object groups with one screen-error cut; colour steers the collapses. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
+| `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; reserves `props` and can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 
 #### alpha_mask
 
@@ -158,26 +158,36 @@ share is random, so `process.seed` makes it repeatable.
 `geometry.simplify` splits long edges and simplifies each variant to its
 budget with meshoptimizer's<sup>[[11]](../Citations.md#11)</sup> quadric error simplifier<sup>[[12]](../Citations.md#12)</sup>,
 with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#13)</sup>.
+
 `dense_edge` is the longest unsplit edge. Objects sharing a welded vertex
 form one simplifier pass; no pass splits a shared edge. `seal_seams` joins
 touching pieces before grouping (see [seal_seams](#seal_seams)).
 
-One screen-space error cut allocates the budget across passes, following the
-cost/benefit principle of Funkhouser and Séquin<sup>[[87]](../Citations.md#87)</sup>.
-Bisection selects a cut within one meshlet of the budget where attainable;
-the output never exceeds the budget, and the log reports any shortfall.
+Funkhouser and Séquin<sup>[[87]](../Citations.md#87)</sup> trade benefit against
+cost per object to fit a per-frame cost budget. Here the cost is a fixed
+triangle budget per variant and the benefit is the screen-space error.
+One shared error threshold, found by bisection, replaces their per-frame prediction.
 
-Scale is the 90th percentile of focal pixels / distance to the nearest
-bounds point. Path eyes use their pose size and lens; region eyes use
-visibility’s samples, panel size and scene lens.
+The upper bracket comes from meshoptimizer's returned error at maximum
+simplification. Log-space bisection stops when the output is at most one
+meshlet below budget, where attainable. Output never exceeds budget;
+the log reports the cut and shortfall.
 
-The absolute world error is the cut divided by that scale. Without visibility
-or a camera, scale is one and the cut is in world units. The output remains
-one merged mesh per variant.
+Scale uses `SCALE_PERCENTILE` in `simplify.py` over focal pixels divided by
+distance to the nearest densified surface vertex. A cKDTree queries those
+vertices; `dense_edge` bounds their spacing.
+
+Path eyes use their pose size and lens. Region eyes are seeded uniform
+draws, with count `REGION_EYE_SAMPLES` in `mesh_import.py`, panel size and
+scene lens. Sampling is independent of visibility culling.
+
+The absolute world error is the cut divided by scale. Without a camera,
+scale is one and the cut is in world units. Each variant remains one mesh.
 
 `colour_deviation`, in source units, prices one panel colour step against
-surface movement. Each pass uses its area and budget ceiling. A smaller
-value preserves geometry more strongly than colour; it is a trade, not a limit.
+surface movement. Each pass divides the weight by meshoptimizer's position
+scale, independent of its triangle ceiling. A smaller value preserves
+geometry more strongly than colour; it is a trade, not a limit.
 
 The optional `[objects]` table contains `overrides`, an array of closed tables.
 Each rule needs one selector and one allocation value:
@@ -186,11 +196,15 @@ Each rule needs one selector and one allocation value:
 |---|---|---|
 | `object` | Object-name glob, such as `"statue_*"` | Selects passes holding matching objects. |
 | `material` | Material-name glob, such as `"leaf*"` | Selects passes holding matching materials. |
-| `importance` | Number greater than zero | Multiplies scale per matching object or material; matching factors multiply. |
-| `triangles` | Integer at least one | Fixes a ceiling per matching object or material; ceilings in one pass add. |
+| `importance` | Number greater than zero | Multiplies scale once per matching pass; matching rules multiply. |
+| `triangles` | Integer at least one | Fixes a ceiling per matching pass. An object rule must match every object in that pass; a material rule must name one pass. |
 
-Fixed passes leave the bisection, and their ceilings are deducted first.
-Ceilings beyond the variant budget are an error. The simplifier may return
+Fixed rules must match every object in a selected pass. Unmatched rules
+are errors. Fixed passes leave the bisection, and their ceilings are
+deducted first.
+
+A ceiling above its pass's source count is clamped and logged. Total
+ceilings beyond the variant budget are an error. The simplifier may return
 fewer triangles than a fixed ceiling; the log records the actual count.
 
 #### seal_seams

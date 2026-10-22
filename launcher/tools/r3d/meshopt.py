@@ -42,8 +42,8 @@ def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, option
     """Simplifies to about target_triangles, keeping colour (0..255 per
     channel, `colour_weight` per level) as an attribute and moving the
     surviving vertices and colours to where they best preserve the appearance.
-    Returns (pos, rgb, tris, kept): kept[i] is the input vertex output vertex
-    i came from."""
+    Returns (pos, rgb, tris, kept, result_error): kept[i] is the input vertex output vertex
+    i came from. result_error uses target_error's units."""
     lib = _library()
     fn = lib.meshopt_simplifyWithUpdate
     fn.restype = ctypes.c_size_t
@@ -58,7 +58,7 @@ def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, option
            None, ctypes.c_size_t(3 * target_triangles), ctypes.c_float(target_error), ctypes.c_uint(options | (ERROR_ABSOLUTE if absolute_error else 0)), ctypes.byref(err))
     out = i[:n].reshape(-1, 3).astype(np.int64)
     kept, local = np.unique(out, return_inverse=True)
-    return (p[kept].astype(np.float64), np.clip(a[kept] * 255.0, 0.0, 255.0), local.reshape(-1, 3), kept)
+    return (p[kept].astype(np.float64), np.clip(a[kept] * 255.0, 0.0, 255.0), local.reshape(-1, 3), kept, float(err.value))
 
 
 class _Meshlet(ctypes.Structure):

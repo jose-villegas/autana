@@ -188,7 +188,7 @@ class ImportWiringTests(unittest.TestCase):
         sampled.assert_called_once_with(pathlib.Path("out") / "fly.anim.toml", "camera", 100, 184, 224, 0.62, 6.0)
         # A square view as wide as the long side covers the panel either way up.
         by_path.assert_called_once_with("p", "t", "d", "i", ["pose"], 224, 224, 0.62 * 224 / 184, 6.0, 3, 8)
-        by_region.assert_called_once_with("p", "t", "d", "i", 4, "rng", [0, 0, 0], [1, 1, 1], eyes=None)
+        by_region.assert_called_once_with("p", "t", "d", "i", 4, "rng", [0, 0, 0], [1, 1, 1])
 
     @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
     def test_the_camera_path_is_the_scene_clip_sampled_at_the_step_s_size_and_lens(self):

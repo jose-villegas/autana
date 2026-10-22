@@ -158,7 +158,7 @@ These stages reduce and fit the lit mesh for the board.
 
 #### Simplify
 
-Allocates each variant’s triangle budget with one screen-error cut across
+Allocates each variant's triangle budget with one screen-error cut across
 objects sharing welded vertices. Each pass weighs baked colour; optional
 seam repair joins touching pieces before grouping.
 

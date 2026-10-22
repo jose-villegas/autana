@@ -25,6 +25,7 @@ def load_mtl(path):
 
 
 def load_obj(path):
+    """Return mesh arrays, tri_o and object_names; both o and g start an object."""
     import numpy as np
 
     positions, uvs = [], []
