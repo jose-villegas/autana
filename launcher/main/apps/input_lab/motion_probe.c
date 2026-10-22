@@ -29,11 +29,6 @@ motion_probe_bubble(int x, int y, int radius, int quarter) {
                                                   (int)lroundf((float)y * (float)radius / INPUT_ACCEL_ONE_G)});
 }
 
-int
-motion_probe_ring_extent(int radius, int row) {
-    return (int)lroundf(sqrtf(((float)radius * (float)radius) - ((float)row * (float)row)));
-}
-
 void
 motion_probe_format_fixed(char* out, size_t len, int value, int digits, bool show_plus) {
     const unsigned magnitude = value < 0 ? 0U - (unsigned)value : (unsigned)value;
