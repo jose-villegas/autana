@@ -587,7 +587,10 @@ class LockStore:
         if lock.get("kind") in ("hold", "human"):
             expires = lock.get("expires_at")
             if expires is not None:
-                return "hold lapsed" if self.resource_now(lock.get("board")) >= expires else ""
+                board = lock.get("board")
+                now = (self.resource_now(board, foreign=True) if board != HEAVY and lock.get("host") != host_identity()
+                       else self.resource_now(board))
+                return "hold lapsed" if now >= expires else ""
             if not lock.get("until_released"):
                 return ""
             if lock.get("host") != host_identity():

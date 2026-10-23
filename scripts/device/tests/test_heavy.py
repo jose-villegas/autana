@@ -121,6 +121,17 @@ class HeavyTests(unittest.TestCase):
             self.assertIn("heavy: unavailable", output.getvalue())
             self.assertIn("missing Windows mount", output.getvalue())
 
+    def test_foreign_hold_expiry_uses_filesystem_clock(self):
+        filesystem_now = self.root.stat().st_mtime
+        for kind in ("hold", "human"):
+            for skew in (-86400, 86400):
+                store = locks.LockStore(self.root, now=lambda: filesystem_now + skew)
+                for offset, reason in ((600, ""), (-600, "hold lapsed")):
+                    with self.subTest(kind=kind, skew=skew, offset=offset):
+                        held = dict(board="BOARD", kind=kind, host="foreign-host",
+                                    expires_at=filesystem_now + offset)
+                        self.assertEqual(store.reclaim_reason(held, locks.DEFAULT_STALE_SECONDS), reason)
+
     def test_shared_clock_ignores_wall_clock_skew_for_holder_waiter_and_guard(self):
         store = locks.LockStore(now=lambda: 0, is_alive=lambda pid: True)
         before = self.root.stat().st_mtime
