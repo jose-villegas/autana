@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "collections/sort.h"
 #include "draw/draw_palette.h"
 #include "draw_palette_gen.h"
 #include "gfx/present/gfx_mode.h"
@@ -1087,18 +1088,20 @@ greedy_grow_palette(int budget) {
 }
 
 static int
+by_lightness(const void* a, const void* b) {
+    const double l_a = key_lab[*(const uint16_t*)a].l;
+    const double l_b = key_lab[*(const uint16_t*)b].l;
+    return (l_a > l_b) - (l_a < l_b);
+}
+
+static int
 group_centers_sorted_by_lightness(group_t g, uint16_t* sorted) {
     const gq_t* q = &quant[g];
     int n = 0;
     for (int j = 0; j < q->k && n < PALETTE_SIZE; j++) {
-        const uint16_t key = lab_to_key(q->c[j]);
-        int at = n++;
-        while (at > 0 && key_lab[sorted[at - 1]].l > key_lab[key].l) {
-            sorted[at] = sorted[at - 1];
-            at--;
-        }
-        sorted[at] = key;
+        sorted[n++] = lab_to_key(q->c[j]);
     }
+    sort_insertion(sorted, (size_t)n, sizeof sorted[0], by_lightness);
     return n;
 }
 
