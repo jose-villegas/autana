@@ -35,11 +35,14 @@
 #include "apps/sand/sand_palette256.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
+#include "input/motion/gravity.h"
+#include "input/motion/shake.h"
 #include "input/motion/tilt.h"
 #include "math/scalar/fixed.h"
 
 /* The scale JS sends gravity in: one g, matching the IMU's own counts. */
-#define WEB_COUNTS_PER_G  4096
+#define WEB_COUNTS_PER_G 4096
+_Static_assert(WEB_COUNTS_PER_G == INPUT_ACCEL_ONE_G, "gravity_update() reads input_motion_t counts");
 
 /* sand_ui.h's PAINT/ERASE/DETONATE as plain ints, the form that crosses the wasm boundary. */
 #define WEB_MODE_PAINT    0
@@ -62,6 +65,8 @@ static uint8_t pixels[GFX_WIDTH * GFX_HEIGHT * 4];
 
 static sand_t sim;
 static tilt_t tilt;
+static gravity_t shake_gravity;
+static shake_t shake;
 static sand_paint_row_state_t paint_state;
 static sand_paint_frame_t paint_frame = SAND_PAINT_FRAME_INIT;
 static sand_paint_clock_t paint_clock = SAND_PAINT_CLOCK_INIT;
@@ -119,6 +124,8 @@ web_init(int cell_px_in, int landscape_in) {
     sand_enable_impulses(&sim, impulses, grid_w * grid_h);
     sand_paint_row_state_init(&paint_state);
     tilt_reset(&tilt, WEB_COUNTS_PER_G);
+    gravity_reset(&shake_gravity);
+    shake_reset(&shake);
 
     ready = true;
     return 1;
@@ -216,13 +223,18 @@ web_step(uint32_t dt_ms, int ax, int ay, int az) {
     if (!ready) {
         return;
     }
-    tilt_update(&tilt, (vec3i_t){landscape ? -ay : ax, landscape ? ax : ay, az}, 0, dt_ms);
+    const vec3i_t screen = {landscape ? -ay : ax, landscape ? ax : ay, az};
+    tilt_update(&tilt, screen, 0, dt_ms);
     const int gx = tilt_x(&tilt);
     const int gy = tilt_y(&tilt);
     gravity_x = gx;
     gravity_y = gy;
-    const int shake = tilt_shake(&tilt);
-    const int jostle = shake > SAND_SHAKE_DEADZONE ? shake : 0;
+    /* No gyroscope on the page: gravity follows the accelerometer alone. */
+    const input_motion_t motion = {.acceleration = screen};
+    const uint32_t dt_us = dt_ms * MATH_US_PER_MS;
+    gravity_update(&shake_gravity, &motion, dt_us);
+    shake_update(&shake, gravity_linear(&shake_gravity), dt_us);
+    const int jostle = sand_controls_jostle(shake_level(&shake));
 
     material_frame_set_gravity(&paint_frame.material, gx, gy);
     material_shine_direction(gx, gy, &paint_frame.shine_ux_q8, &paint_frame.shine_uy_q8);
