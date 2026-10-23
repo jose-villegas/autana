@@ -41,7 +41,15 @@ class HeavyTests(unittest.TestCase):
         locks.write_json(self.store.lock_path("BOARD"), dict(held, host="windows", heartbeat_at=0))
         self.assertFalse(self.store.any_board_held())
         locks.write_json(self.store.lock_path("BOARD"), dict(held, kind="human", expires_at=self.store.now() + 60))
-        self.assertTrue(self.store.any_board_held())
+        self.assertFalse(self.store.any_board_held())
+
+    def test_foreign_board_heartbeat_uses_filesystem_clock(self):
+        held = self.store.acquire("BOARD", "night", "run")
+        locks.write_json(self.store.lock_path("BOARD"), dict(held, host="windows"))
+        with patch.object(self.store, "now", return_value=held["heartbeat_at"] + locks.DEFAULT_STALE_SECONDS * 2):
+            self.assertTrue(self.store.any_board_held())
+        locks.write_json(self.store.lock_path("BOARD"), dict(held, host="windows", heartbeat_at=0))
+        self.assertFalse(self.store.any_board_held())
 
     def test_wsl_board_observer_reads_windows_temp_store(self):
         with patch.dict(os.environ, {"_AUTANA_DEVICE_LOCK_ROOT": ""}), \

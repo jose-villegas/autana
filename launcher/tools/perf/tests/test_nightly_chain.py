@@ -14,6 +14,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+import yaml
 from unittest.mock import Mock, patch
 
 PERF = Path(__file__).resolve().parents[1]
@@ -22,6 +23,7 @@ sys.path.insert(0, str(PERF.parents[2] / "scripts/device/tests"))
 sys.path.insert(0, str(PERF.parents[2] / "scripts/ci/tests"))
 import port_guard
 from test_local_schedule import Clock as ScheduleClock
+from scripts.lib.local_schedule import QUEUE_POLL_SECONDS
 from nightly import scoped_chain as chain, lnt
 from test_perf_compare import FakeAutana
 from layout_measure import make_table, parse_report, parse_timings
@@ -509,7 +511,7 @@ class NightlyTests(unittest.TestCase):
         plan = json.loads(args.out.read_text())
         self.assertEqual(plan["tip"], self.commits[-1])
         self.assertEqual((plan["from_sha"], plan["max_steps"]), (args.from_sha, args.max_steps))
-        self.assertEqual(self.clock.sleeps, [])
+        self.assertEqual(self.clock.sleeps, [QUEUE_POLL_SECONDS])
         for board, lane in plan["lanes"].items():
             reserve = chain.SELFTEST_ALLOWANCE_SECONDS if board == args.selftest_board else 0
             self.assertEqual(lane["estimate"], len(lane["steps"]) * chain.FIRST_STEP_SECONDS + reserve)
@@ -523,7 +525,7 @@ class NightlyTests(unittest.TestCase):
         args.queue_at = None
         self.clock.sleeps.clear()
         chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
-        self.assertEqual(self.clock.sleeps, [])
+        self.assertEqual(self.clock.sleeps, [QUEUE_POLL_SECONDS])
         self.assertEqual(json.loads(args.out.read_text())["deadline"], late["deadline"])
         previous = {"last_measured": self.commits[0]}
         limited = chain.select_steps(self.repo, "HEAD", previous, 0, 2, self.commits[1], 1)
@@ -730,7 +732,7 @@ class NightlyTests(unittest.TestCase):
                 planned = json.loads(args.out.read_text())
                 self.assertEqual(bool(planned["lanes"]), allowed)
                 self.assertEqual(planned["deadline"], datetime(2026, 10, 22, 7).isoformat())
-                expected = released if allowed else datetime(2026, 10, 22, 7) - timedelta(seconds=chain.FIRST_STEP_SECONDS)
+                expected = released + timedelta(seconds=QUEUE_POLL_SECONDS) if allowed else datetime(2026, 10, 22, 7) - timedelta(seconds=chain.FIRST_STEP_SECONDS)
                 self.assertEqual(planned["started"], expected.isoformat())
 
     def test_plan_delegates_window_and_writes_skip_summary(self):
@@ -941,11 +943,11 @@ class NightlyTests(unittest.TestCase):
 
 class LaneSettingsTests(unittest.TestCase):
     def test_lanes_run_after_prepare_failure_and_wait_for_failed_lane(self):
-        workflow = (PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text()
-        section = workflow.split("      - name: Run each board lane and wait for all\n", 1)[1].split("      - name:", 1)[0]
-        self.assertIn("if: ${{ !cancelled() && env.SCOPED_BOARDS != '' }}", section)
-        script = section.split("        run: |\n", 1)[1]
-        script = "\n".join(line[10:] for line in script.splitlines())
+        workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text())
+        steps = {step.get("name"): step for step in workflow["jobs"]["nightly"]["steps"]}
+        lane_step = steps["Run each board lane and wait for all"]
+        self.assertEqual(lane_step["if"], "${{ !cancelled() && env.SCOPED_BOARDS != '' }}")
+        script = lane_step["run"]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             tools = root / "tools"
@@ -982,13 +984,13 @@ class LaneSettingsTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stderr)
             self.assertEqual([(root / board).read_text() for board in plan["lanes"]], ["finished"] * 2)
         for step in ("Summarize board outcomes", "Publish night manifests and LNT reports"):
-            self.assertIn("if: always()", workflow.split("- name: " + step, 1)[1].split("run:", 1)[0])
+            self.assertEqual(steps[step]["if"], "always() && env.PERF_DATA != ''")
 
     def test_workflow_queue_input_can_start_immediately(self):
-        workflow = (PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text()
-        start = workflow.index("          args=()")
-        end = workflow.index("\n      - name:", start)
-        script = "\n".join(line[10:] for line in workflow[start:end].splitlines())
+        workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text())
+        step = next(step for step in workflow["jobs"]["nightly"]["steps"]
+                    if step.get("name") == "Prepare the data branch and shared plan")
+        script = "args=()" + step["run"].split("args=()", 1)[1]
         command = 'driver() { printf "%s\\n" "$@"; }; PY=driver; ' + script
         for event, requested, expected in (("schedule", "", "22:30"),
                                            ("workflow_dispatch", "", None),
