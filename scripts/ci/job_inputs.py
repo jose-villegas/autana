@@ -97,9 +97,12 @@ def record(root, temporary, workflow, job):
     return result
 
 
-def matching_paths(changes, manifest):
+def matching_paths(changes, manifest, base_files=()):
     files = set(manifest['files'])
     directories = set(manifest['directories'])
+    base_files = set(base_files)
+    base_directories = {parent for name in base_files for parent in PurePosixPath(name).parents}
+    read_paths = [PurePosixPath(name) for name in (files & base_files) - RECORDER_FILES - {CANARY}]
     matches = set()
     for change in changes:
         names = [change['filename']]
@@ -109,6 +112,13 @@ def matching_paths(changes, manifest):
             if name in files or (change['status'] in {'added', 'removed', 'renamed'}
                     and any(str(parent) in directories for parent in PurePosixPath(name).parents)):
                 matches.add(name)
+        if change['status'] in {'added', 'renamed'}:
+            path = PurePosixPath(change['filename'])
+            ancestor = next((parent for parent in path.parents if parent in base_directories),
+                            PurePosixPath('.'))
+            # The job read files like this one in that part of the tree.
+            if any(read.suffix == path.suffix and read.is_relative_to(ancestor) for read in read_paths):
+                matches.add(str(path))
     return sorted(matches)
 
 
@@ -123,6 +133,11 @@ def report(job, decision, reason):
 def affected(workflow, jobs, pull, base_ref, request=call):
     changes = list(itertools.islice(pages(f'/pulls/{pull}/files', None, request), PR_FILES_LIMIT))
     capped = len(changes) >= PR_FILES_LIMIT
+    base_files, _ = tracked_paths(Path('.'))
+    base_files.difference_update(change['filename'] for change in changes
+                                 if change['status'] in {'added', 'renamed'})
+    base_files.update(change['filename'] for change in changes if change['status'] == 'removed')
+    base_files.update(change['previous_filename'] for change in changes if 'previous_filename' in change)
     decisions = {}
     for job in jobs:
         name = f'{ARTIFACT_PREFIX}{workflow}-{job}'
@@ -137,7 +152,7 @@ def affected(workflow, jobs, pull, base_ref, request=call):
             data = request('GET', f"/actions/artifacts/{artifact['id']}/zip", raw=True)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 manifest = json.loads(archive.read(MANIFEST_NAME))
-            matches = matching_paths(changes, manifest)
+            matches = matching_paths(changes, manifest, base_files)
             decision = str(bool(matches)).lower()
             reason = 'matches: ' + json.dumps(matches, ensure_ascii=False) if matches else 'no changed input'
         decisions[job] = decision

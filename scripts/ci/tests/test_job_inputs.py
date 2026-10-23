@@ -16,6 +16,45 @@ import inputs_recorded
 
 
 class JobInputsTests(unittest.TestCase):
+    def test_added_c_under_launcher_runs_firmware(self):
+        manifest = {'files': ['launcher/main/core.c'], 'directories': []}
+        for status in ('added', 'renamed'):
+            with self.subTest(status=status):
+                change = {'filename': 'launcher/new/deep/source.c', 'status': status}
+                self.assertEqual(job_inputs.matching_paths([change], manifest,
+                    {'launcher/main/core.c'}), [change['filename']])
+        change = {'filename': 'launcher/main/new.c', 'status': 'removed'}
+        self.assertEqual(job_inputs.matching_paths([change], manifest,
+            {'launcher/main/core.c', change['filename']}), [])
+
+    def test_added_docs_gif_skips_firmware(self):
+        manifest = {'files': ['launcher/main/core.c', 'docs/README.md'], 'directories': []}
+        change = {'filename': 'docs/new/images/x.gif', 'status': 'added'}
+        self.assertEqual(job_inputs.matching_paths([change], manifest,
+            set(manifest['files'])), [])
+
+    def test_added_tool_shell_script_runs_only_shell_lint(self):
+        source = 'launcher/main/apps/render_lab/scene.c'
+        script = 'launcher/main/apps/render_lab/tools/existing.sh'
+        change = {'filename': 'launcher/main/apps/render_lab/tools/y.sh', 'status': 'added'}
+        for reads, expected in [([source], []), ([source, script], [change['filename']])]:
+            with self.subTest(reads=reads):
+                self.assertEqual(job_inputs.matching_paths([change],
+                    {'files': reads, 'directories': []}, {source, script}), expected)
+
+    def test_added_root_markdown_runs_only_math_mermaid(self):
+        source = 'launcher/main/core.c'
+        markdown = 'docs/math/README.md'
+        change = {'filename': 'NEW.md', 'status': 'added'}
+        for reads, expected in [([source], []), ([markdown], [change['filename']])]:
+            with self.subTest(reads=reads):
+                self.assertEqual(job_inputs.matching_paths([change],
+                    {'files': reads + [job_inputs.CANARY], 'directories': []},
+                    {source, markdown, job_inputs.CANARY}), expected)
+        change = {'filename': 'NOTICE', 'status': 'added'}
+        self.assertEqual(job_inputs.matching_paths([change],
+            {'files': ['docs/LICENSE'], 'directories': []}, {'docs/LICENSE'}), ['NOTICE'])
+
     def test_path_matching(self):
         manifest = {'files': ['src/read.c', 'old/file.c'], 'directories': ['src/new']}
         cases = [({'filename': 'src/read.c', 'status': 'modified'}, ['src/read.c']),
@@ -62,10 +101,12 @@ class JobInputsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict(
                 os.environ, GITHUB_STEP_SUMMARY=str(Path(directory) / 'summary')), \
                 mock.patch.object(job_inputs, 'pages', side_effect=[
-                    iter([{'filename': 'src/read.c', 'status': 'modified'}]), iter([]), iter([])]), \
+                    iter([{'filename': 'src/new/file.c', 'status': 'added'}]), iter([])]), \
+                mock.patch.object(job_inputs, 'tracked_paths', return_value=(
+                    {'src/read.c', 'src/new/file.c'}, {'src', 'src/new'})), \
                 mock.patch.object(job_inputs, 'latest_job_artifact', return_value={'id': 5}):
             self.assertEqual(job_inputs.affected('ci', ['build'], 7, 'main', request), {'build': 'true'})
-            self.assertIn('src/read.c', (Path(directory) / 'summary').read_text())
+            self.assertIn('src/new/file.c', (Path(directory) / 'summary').read_text())
             request.assert_called_once_with('GET', '/actions/artifacts/5/zip', raw=True)
 
     def test_affected_nonmatching_manifest_reports_false(self):
