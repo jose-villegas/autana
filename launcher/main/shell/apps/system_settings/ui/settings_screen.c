@@ -1,37 +1,29 @@
 #include "shell/apps/system_settings/ui/settings_screen.h"
 
-#include "build/build_variant.h"
-#include "shell/apps/system_settings/ui/settings_layout.h"
 #include "ui/ui.h"
 
 static void
-draw_text_row(int height, const char* text) {
-    ui_row(height);
-    ui_text(ui_next(), text);
-}
-
-static void
-draw_toggle_row(int height, const char* label, bool* value) {
-    ui_row(height);
-    ui_toggle(ui_next(), label, value);
-}
-
-settings_result_t
-settings_screen_draw(const settings_snapshot_t* snapshot) {
-    settings_result_t result = {.values = *snapshot};
-    const settings_layout_t layout = settings_layout(ui_width(), ui_height(), ui_text_height());
-    ui_scroll_window(layout.window);
-    draw_text_row(layout.heading_height, settings_display_heading);
-    draw_toggle_row(layout.toggle_height, settings_panel_clock_label, &result.values.fast_clock);
-    for (int i = 0; i < SETTINGS_NOTE_LINE_COUNT; i++) {
-        draw_text_row(layout.note_height, settings_panel_clock_note[i]);
+draw_toggle(const settings_toggle_t* row) {
+    bool on = row->get();
+    ui_row(UI_ROW_HEIGHT);
+    if (ui_toggle(ui_next(), row->label, &on)) {
+        row->set(on);
     }
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    draw_text_row(layout.heading_height, settings_developer_heading);
-    draw_toggle_row(layout.toggle_height, settings_overlay_label, &result.values.overlay_on);
-    draw_toggle_row(layout.toggle_height, settings_leaf_label, &result.values.leaf_on);
-    draw_toggle_row(layout.toggle_height, settings_interlace_label, &result.values.interlace_on);
-    draw_toggle_row(layout.toggle_height, settings_send_audit_label, &result.values.send_audit_on);
-#endif
-    return result;
+    /* A paragraph's lines sit one text height apart, with no padding. */
+    for (int i = 0; i < row->note_lines; i++) {
+        ui_row(ui_text_height());
+        ui_text(ui_next(), row->note[i]);
+    }
+}
+
+void
+settings_screen_draw(const settings_section_t* sections, int section_count) {
+    ui_scroll_window((recti_t){0, 0, ui_width(), ui_height()});
+    for (int s = 0; s < section_count; s++) {
+        ui_row(UI_TITLE_HEIGHT);
+        ui_header(ui_next(), sections[s].heading);
+        for (int r = 0; r < sections[s].row_count; r++) {
+            draw_toggle(&sections[s].rows[r]);
+        }
+    }
 }
