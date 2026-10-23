@@ -144,10 +144,10 @@ test_every_attachment_is_carved_at_the_drawn_size(void) {
     raster_t plain = r->raster;
     plain.attachment_count = 0;
     TEST_ASSERT_EQUAL_size_t(raster_scratch_bytes(&plain) + (4U * W * H), raster_scratch_bytes(&r->raster));
-    const gfx_render_target_t small = r3d_pipeline_carve(&r->raster).picture;
+    const gfx_render_target_t small = raster_carve(&r->raster).picture;
     r->raster.width = 2 * W;
     r->raster.height = 2 * H;
-    const gfx_render_target_t large = r3d_pipeline_carve(&r->raster).picture;
+    const gfx_render_target_t large = raster_carve(&r->raster).picture;
     TEST_ASSERT_EQUAL_INT(2 * W, large.width);
     TEST_ASSERT_EQUAL_INT(2 * H, large.row1);
     TEST_ASSERT_EQUAL_PTR((char*)small.attachment[1].pixels + (2U * W * H), small.attachment[2].pixels);
@@ -213,7 +213,7 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_TRUE(seen[0] > 0 && seen[1] > 0);
     TEST_ASSERT_EQUAL_UINT32(17, base);
 
-    const r3d_pipeline_buffers_t buffers = r3d_pipeline_carve(&r->raster);
+    const raster_buffers_t buffers = raster_carve(&r->raster);
     memset(raster_depth(&r->raster), 0, sizeof(uint16_t) * W * H);
     for (int k = 0; k < 2; k++) {
         id_clear(both[k], &r->raster, buffers.picture.attachment[GFX_ATTACHMENT_FURTHER + k].pixels, W * H);
@@ -644,7 +644,7 @@ typedef struct {
 static void
 split_clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
     memset(pixels, 0, count);
-    const r3d_pipeline_buffers_t buffers = r3d_pipeline_carve(raster);
+    const raster_buffers_t buffers = raster_carve(raster);
     if (pixels == gfx_render_target_row(&buffers.picture, GFX_ATTACHMENT_FURTHER, 0)) {
         split_rows_t* rows = self->state;
         rows->top = (int)count / raster->width;
@@ -664,7 +664,7 @@ test_split_feedback_preserves_pixels_and_null_uses_even_rows(void) {
     raster_rig_t* r = rig_open(attached, 2);
     draw(r);
     TEST_ASSERT_EQUAL_INT(rows.even, rows.top);
-    const gfx_render_target_t picture = r3d_pipeline_carve(&r->raster).picture;
+    const gfx_render_target_t picture = raster_carve(&r->raster).picture;
     const size_t bytes = gfx_attachment_bytes(sizeof(uint16_t), W, H);
     void* expected = malloc(2 * bytes);
     TEST_ASSERT_NOT_NULL(expected);
@@ -733,7 +733,7 @@ test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
         state.split.top_offset[i] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
     }
     draw(r);
-    const r3d_pipeline_buffers_t buffers = r3d_pipeline_carve(&r->raster);
+    const raster_buffers_t buffers = raster_carve(&r->raster);
     const int even = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0], H,
                                              RASTER_SPLIT_EVEN);
     TEST_ASSERT_EQUAL_INT(even, observed_top[RASTER_SPLIT_INSTANCES]);

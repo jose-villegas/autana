@@ -375,14 +375,15 @@ scene_glass(sand_t* s) {
     steps(s, 40);
 }
 
+/* Canopy radius in grid cells. */
+#define PLANT_CANOPY_RADIUS 24
+
 static void
 plant_canopy(sand_t* s, int cx, int top, int ground) {
     rect_v(s, cx - 2, top, cx + 2, ground, CELL_MAKE(MAT_WOOD, 0));
-    for (int dy = -24; dy <= 24; dy++) {
-        for (int dx = -26; dx <= 26; dx++) {
-            if ((dx * dx) + (dy * dy) > 24 * 24) {
-                continue;
-            }
+    for (int dy = -PLANT_CANOPY_RADIUS; dy <= PLANT_CANOPY_RADIUS; dy++) {
+        const int half = mathi_half_chord(PLANT_CANOPY_RADIUS, dy);
+        for (int dx = -half; dx <= half; dx++) {
             const bool branch = ((dx + dy) & 3) == 0 && mathi_abs(dx) < 16;
             set_v(s, cx + dx, top + dy, branch ? CELL_MAKE(MAT_WOOD, 0) : MATX(MATX_LEAF));
         }
