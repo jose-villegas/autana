@@ -29,6 +29,16 @@ class Clock:
 
 
 class LocalScheduleTests(unittest.TestCase):
+    def test_missing_gpu_workflow_refuses_before_running(self):
+        env = dict(os.environ, OVERRIDE="true")
+        env.pop("GPU_WORKFLOW", None)
+        with patch.dict(os.environ, env, clear=True), \
+                patch.object(sys, "argv", ["local_schedule", "start", "--", "render"]), \
+                patch.object(local_schedule.subprocess, "call") as run:
+            with self.assertRaisesRegex(KeyError, "GPU_WORKFLOW"):
+                local_schedule.main()
+            run.assert_not_called()
+
     def test_gpu_stage_busy_dispatch_refuses_and_schedule_skips(self):
         root = Path(__file__).resolve().parents[3]
         with tempfile.TemporaryDirectory() as temporary:
@@ -46,6 +56,7 @@ class LocalScheduleTests(unittest.TestCase):
             python.chmod(0o755)
             autana.write_text(autana.read_text().replace("echo 'heavy", "echo heavy >> order\necho 'heavy"))
             env = dict(os.environ, PYTHONPATH=str(root), OVERRIDE="false",
+                       GPU_WORKFLOW=local_schedule.DOC_IMAGES_WORKFLOW,
                        PATH=str(fixture) + os.pathsep + os.environ["PATH"])
             for event in ("workflow_dispatch", "schedule", "workflow_run"):
                 env["GITHUB_EVENT_NAME"] = event
@@ -103,7 +114,7 @@ class LocalScheduleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "output"
             summary = Path(directory) / "summary"
-            env = dict(GITHUB_OUTPUT=str(output), GITHUB_STEP_SUMMARY=str(summary), OVERRIDE="false")
+            env = dict(GPU_WORKFLOW=local_schedule.DOC_IMAGES_WORKFLOW, GITHUB_OUTPUT=str(output), GITHUB_STEP_SUMMARY=str(summary), OVERRIDE="false")
             refusal = local_schedule.REFUSED
             for event, hour in (("schedule", 7), ("workflow_dispatch", 18),
                                 ("workflow_dispatch", 7), ("workflow_dispatch", 15)):
