@@ -97,25 +97,8 @@ Unknown values fail naming the import file and allowed modes.
 - `renormalised`: normalises the blended normal before direct shading.
 - `table`: samples bilinear irradiance from the scene's normal-direction table.
 
-[Lighting modes](Skinned-Lighting.md#lighting-modes) includes the comparison
-sheet. This quality/cost table is generated from the committed board capture;
-cycles per vertex are grouped by light count, errors are 8-bit channel steps.
-
-<!-- generated: skin-light-import check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
-Build `8d0d33ecbdb9-diag`.
-
-| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| direct | 1 | 640.495 | 8 | 0.246612 | — | 5104.000 | 3744 | 1024 | 124 |
-| direct | 2 | 663.714 | 9 | 0.264905 | — | 5104.000 | 3744 | 1024 | 124 |
-| direct | 4 | 708.679 | 13 | 0.353997 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 1 | 680.045 | 1 | 0.184282 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 2 | 702.716 | 1 | 0.185637 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 4 | 748.143 | 2 | 0.180217 | — | 5104.000 | 3744 | 1024 | 124 |
-| table | 1 | 865.099 | 7 | 0.455623 | 32224.000 | 5104.000 | 3744 | 2048 | 124 |
-| table | 2 | 861.271 | 4 | 0.360095 | 44202.000 | 5104.000 | 3744 | 2048 | 124 |
-| table | 4 | 861.167 | 4 | 0.380420 | 67278.000 | 5104.000 | 3744 | 2048 | 124 |
-<!-- /generated: skin-light-import -->
+[Lighting modes](Skinned-Lighting.md#lighting-modes) has the comparison sheet and the
+cost and error of each mode on the board.
 
 ### Process options
 
@@ -158,14 +141,18 @@ share is random, so `process.seed` makes it repeatable.
 `geometry.simplify` splits long edges and simplifies each variant to its
 budget with meshoptimizer's<sup>[[11]](../Citations.md#11)</sup> quadric error simplifier<sup>[[12]](../Citations.md#12)</sup>,
 with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#13)</sup>.
-`dense_edge` is the longest unsplit edge, `props` names materials that
-reserve the `props_share` part of the budget, and `seal_seams` is described
-under [seal_seams](#seal_seams). The baked colour steers which edges collapse:
-`colour_deviation`, in source units, prices one panel colour step: losing it
-costs the simplifier as much as moving a surface that far, the same for the
-reserved `props` as for the rest, and at every budget. A smaller value keeps
-surfaces nearer their source planes and keeps less colour detail. It is a
-trade, not a limit.
+
+| Key | Meaning |
+|---|---|
+| `dense_edge` | The longest unsplit edge. |
+| `props`, `props_share` | Materials that reserve the `props_share` part of the budget. |
+| `seal_seams` | See [seal_seams](#seal_seams). |
+| `colour_deviation` | Source units that price one panel colour step. |
+
+The baked colour steers which edges collapse: losing one colour step costs as
+much as moving a surface `colour_deviation` away, for `props` and the rest
+alike, at every budget. A smaller value keeps surfaces nearer their source
+planes and less colour detail: a trade, not a limit.
 
 #### seal_seams
 
@@ -216,51 +203,115 @@ triangle budget. Without variants, `output.name` names the single output.
 `[[variants]].triangles` is the triangle budget `simplify` brings a variant to;
 a `fit` budget may not exceed it.
 
+## Objects and instances
+
+An OBJ object is an `o` or `g` group; an ungrouped file uses its stem.
+A glTF object is a mesh node, placed by its world transform. A nameless
+node uses its index. Only vertices referenced by triangles belong to an object.
+
+[`objects/objects_report.py`](../../launcher/tools/r3d/objects/objects_report.py)
+reports shared shapes after the import's alpha mask. Matching is rigid:
+scaled copies remain separate shapes. Reflections are recorded per instance.
+
+| Test | Requirement |
+|---|---|
+| Candidate bucket | Equal vertex and triangle counts, and material multiset |
+| Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#86)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
+| Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangle winding and materials agree as multisets |
+
+Each colour below is one repeated shape, boxed at every copy in view. The
+view is the camera-path pose where those boxes show the most visible edge;
+`render_doc_images.sh` regenerates it.
+
+![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
+
+| Report output (`--out` directory) | What it shows |
+|---|---|
+| objects.md / objects.json | Shapes, copies, triangles saved, match residuals |
+| poses.csv, lod.png | Per camera-path pose: whole and in-view budgets, repeated-shape LOD budget, and triangles LOD frees |
+
+- Repeated shapes step down while their triangle share exceeds what projected area allows; `LOD_TRIANGLE_RATIO` and `LOD_LEVELS` in `objects_report.py` set the quarter-triangle levels and cap.
+- This is an estimate: pixels per triangle is calibrated from the path; enclosing-sphere footprints overstate tall, thin props.
+
 ## The offline tools
 
-Source assets, scene TOMLs, cached bakes and bake-time tools use the
-right-handed source frame: +x right, +y up, a camera looking down -z.
-`build_pack.py` mirrors entries once into the
-[engine frame](../math/Conventions.md#conventions), through
-[`asset/engine_frame.py`](../../launcher/tools/asset/engine_frame.py).
-The mirror negates position z; a placement's matrix `M` becomes `S M S`,
-where `S = diag(1, 1, -1)`, and quaternions `(x, y, z, w)` become
-`(-x, -y, z, w)`. Clips' translation and rotation tracks, including cubic
-tangents, are mirrored; other tracks, key times and interpolation stay as
-authored. Bounds swap their mirrored z endpoints; triangle order and baked
-colours stay intact. A z coordinate equal to the int16 minimum is rejected
-because its negation cannot fit. Cached meshes carry no normals: shading is
-already baked.
+Two kinds of file drive the mesh tools in
+[`launcher/tools/r3d/`](../../launcher/tools/r3d/README.md). An **import
+file** beside a source asset describes that one mesh. A **scene file** places
+meshes and owns lights, camera region and tone map
+([Scene-Files.md](Scene-Files.md)).
 
-A poses file is in the source frame.
-[`track_host.py`](../../launcher/tools/anim/track_host.py) writes one with
-`--poses` from a `.anim.toml`, baked into an unmirrored scratch pack;
+```mermaid
+flowchart LR
+    subgraph Inputs["Inputs, source frame"]
+    direction TB
+    Asset["Source asset"]
+    ImportF["Import file<br/><i>one mesh</i>"]
+    SceneF["Scene file<br/><i>renderers, lights, camera<br/>region, tone map</i>"]
+    Asset ~~~ ImportF ~~~ SceneF
+    end
+    subgraph Bake["mesh_import.py"]
+    direction TB
+    Albedo["Albedo mesh<br/><i>import file, or<br/>albedo renderer</i>"]
+    Lit["Lit mesh<br/><i>bake = true: traced against<br/>its source with the scene</i>"]
+    Albedo ~~~ Lit
+    end
+    subgraph Cache["Bake cache, bake.py"]
+    direction TB
+    Mesh["name.mesh"]
+    Rebake["rebake.py, optional<br/><i>rewrites its clusters</i>"]
+    Mesh -.-> Rebake
+    end
+    subgraph Build["build_pack.py -o DIR"]
+    direction TB
+    Mirror["Mirror into<br/>the engine frame"]
+    Pack["One pack per root<br/><i>plus each scene's entry</i>"]
+    Mirror --> Pack
+    end
+    Inputs --> Bake --> Cache --> Build
+```
+
+[`import_settings.py`](../../launcher/tools/r3d/import_settings.py) reads and
+checks both files with the standard library alone. Every table is closed: an
+unknown key is an error.
+
+| Command, from the repository root | What it writes |
+|---|---|
+| `python launcher/tools/r3d/mesh_import.py IMPORT` | The import's authored albedo mesh into the bake cache. |
+| `python launcher/tools/r3d/mesh_import.py SCENE` | Each renderer's mesh: a `bake = true` renderer traced with the scene's lights, camera visibility and tone map; an albedo renderer its import's shared mesh. |
+| `python launcher/tools/r3d/mesh_import.py PATH --mesh NAME` | That one mesh only. |
+| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../assets/README.md#packs) per root from the `.mesh` entries it names, baking each scene's [entry](Scene-Files.md#scne-v2) on the way. |
+| `python launcher/tools/r3d/rebake.py MESH.mesh` | That cached `.mesh` in place, its clusters and octree only; rerun `build_pack.py` to pack it. |
+
+A cached `<name>.mesh` is an entry of the [asset pack](../assets/README.md),
+held in the bake cache
+([`launcher/tools/bake/bake.py`](../../launcher/tools/bake/bake.py)). It
+carries no normals: shading is already baked.
+
+### Frames
+
+| Frame | Axes | Used by |
+|---|---|---|
+| Source | Right-handed: +x right, +y up, camera looking down -z. | Source assets, scene TOMLs, cached bakes, bake-time tools, poses files. |
+| [Engine](../math/Conventions.md#conventions) | Source with z negated. | Built packs. |
+
+`build_pack.py` mirrors each entry once, through
+[`asset/engine_frame.py`](../../launcher/tools/asset/engine_frame.py):
+
+| Mirrored | Kept as authored |
+|---|---|
+| Position z is negated. | Triangle order. |
+| A placement's matrix `M` becomes `S M S`, `S = diag(1, 1, -1)`. | Baked colours. |
+| Quaternion `(x, y, z, w)` becomes `(-x, -y, z, w)`. | Key times and interpolation. |
+| Clips' translation and rotation tracks, cubic tangents included. | Every other track. |
+| Bounds swap their mirrored z endpoints. | |
+
+A z equal to the int16 minimum is rejected: its negation cannot fit.
+
+[`track_host.py`](../../launcher/tools/anim/track_host.py) `--poses` writes a
+poses file from a `.anim.toml`, baked into an unmirrored scratch pack, and
 `triangle_sizes` mirrors each pose as it reads it. A built pack's clips are
-in the engine frame, so `--poses` on a `--pack` gives wrong poses.
-
-A cached `<name>.mesh` bake supplies an entry of the
-[asset pack](../assets/README.md). It is made into the bake cache
-([`launcher/tools/bake/bake.py`](../../launcher/tools/bake/bake.py)) by
-[`launcher/tools/r3d/mesh_import.py`](../../launcher/tools/r3d/mesh_import.py)
-using the offline tools in
-[`launcher/tools/r3d/`](../../launcher/tools/r3d/README.md). Two kinds of file
-drive it: an **import file** beside a source asset describes that one
-mesh asset, and a **scene file** describes a scenario that
-places meshes ([Scene-Files.md](Scene-Files.md)). Anything specific to one mesh is in its import file; anything
-about the scenario (lights, camera region, tone map) is in the scene file.
-[`launcher/tools/r3d/import_settings.py`](../../launcher/tools/r3d/import_settings.py)
-reads and checks both with the standard library alone, and every table is
-closed: an unknown key is an error.
-
-Run `python launcher/tools/r3d/mesh_import.py PATH` from the repository root,
-with `--mesh NAME` for one mesh. `PATH` is either kind of file. An import file
-writes the authored albedo mesh. A scene file writes each renderer's mesh: a
-renderer with `bake = true` is traced against its own source with that scene's
-lights, camera visibility and tone map; an albedo renderer writes its import's
-shared mesh. `build_pack.py -o DIR` then writes one
-[pack](../assets/README.md#packs) per root from the `.mesh` entries it
-names, baking each scene's [entry](Scene-Files.md#scne-v2) on the way,
-and `rebake.py` rewrites one `.mesh`'s clusters only.
+already mirrored, so `--poses` on a `--pack` gives wrong poses.
 
 ### Import file
 
@@ -268,14 +319,17 @@ and `rebake.py` rewrites one `.mesh`'s clusters only.
 present turns its step on.** Visibility and lighting belong to the renderer in
 its scene ([Scene-Files.md](Scene-Files.md)).
 
-With only `[source]` and `[output]` the importer keeps the source's triangles,
-cuts nothing, simplifies nothing and lights nothing. Its vertex colour is the
-material's albedo (the `Kd` colour times the texture), encoded to 8 bits with a
-1/2.2 gamma, not the piecewise sRGB curve, and with no tone map; the source's
-own vertex colours are not read.
+With only `[source]` and `[output]`:
 
-Two variants of one import differ in what `simplify` keeps: the same pose
-at the full budget and at about half of it, the full render above the lite.
+| Aspect | Result |
+|---|---|
+| Triangles | The source's, kept: nothing cut, simplified or lit. |
+| Vertex colour | Material albedo: the `Kd` colour times the texture. |
+| Encoding | 8 bits with a 1/2.2 gamma, not the piecewise sRGB curve; no tone map. |
+| Source vertex colours | Not read. |
+
+Two variants of one import differ in what `simplify` keeps. Below, one
+pose at the full budget (top) and at about half of it, the lite (bottom).
 
 ![Full against lite](../images/render/compare-full-lite.png)
 ![Full against lite, the places they differ most](../images/render/compare-full-lite.crops.png)

@@ -160,14 +160,41 @@ test_skeleton_binding_failure_index_and_sampling(void) {
     row[ANIM_TRACKS_ROW_TYPE] = ANIM_VALUE_QUAT;
     const int strings = ANIM_TRACKS_HEADER_SIZE + BINDINGS * ANIM_TRACKS_ROW_SIZE;
     entry[strings + TEST_TRACK_STRING_SLOT] = 'z';
+    test_pack_put32(row + ANIM_TRACKS_ROW_PATH_HASH, name_hash((const char*)entry + strings + TEST_TRACK_STRING_SLOT));
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_PATH, anim_bind_skeleton(&clip, &SKELETON, bound, BINDINGS, &failed));
     TEST_ASSERT_EQUAL_INT(1, failed);
     free(entry);
     release(&f);
 }
 
+static void
+test_joint_binding_distinguishes_hash_collisions(void) {
+    uint8_t* entry = calloc(1, ENTRY_BYTES);
+    TEST_ASSERT_NOT_NULL(entry);
+    const char* first = "costarring";
+    const char* second = "liquid";
+    TEST_ASSERT_EQUAL_UINT32(name_hash(first), name_hash(second));
+    const anim_skeleton_joint_t joints[] = {{0, ANIM_SKELETON_ROOT, 0}, {sizeof "costarring", ANIM_SKELETON_ROOT, 0}};
+    const anim_skeleton_t skeleton = {2, joints, REST, "costarring\0liquid"};
+    test_tracks_header(entry, 1, 1000);
+    entry[ANIM_TRACKS_AT_ROOT] = ANIM_ROOT_SKELETON;
+    test_track_row(
+        entry, 0,
+        &(test_track_t){second, "position", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, VALUES, 1, ANIM_STEP});
+    anim_tracks_t clip;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){entry, ENTRY_BYTES}, &clip));
+    anim_joint_bound_t bound;
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind_skeleton(&clip, &skeleton, &bound, 1, NULL));
+    TEST_ASSERT_EQUAL_INT(1, bound.joint);
+    anim_skeleton_t missing = skeleton;
+    missing.joint_count = 1;
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_PATH, anim_bind_skeleton(&clip, &missing, &bound, 1, NULL));
+    free(entry);
+}
+
 void
 suite_anim_pose(void) {
+    RUN_TEST(test_joint_binding_distinguishes_hash_collisions);
     RUN_TEST(test_rotation_blend_matches_clamped_nlerp);
     RUN_TEST(test_rest_and_multiple_roots);
     RUN_TEST(test_transition_blend_endpoints_midpoint_and_hemisphere);

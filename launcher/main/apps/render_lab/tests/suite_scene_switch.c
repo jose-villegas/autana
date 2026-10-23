@@ -69,8 +69,11 @@ test_dynamic_resolution_toggle_follows_the_showing_scene(void) {
     render_lab_test_frame(false, NULL);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, render_context_frame(render_context_main()).step);
 
+    /* The step the budget picks decides whether this frame is a half
+     * picture, so the switch need not meet an expanded one; the suite's
+     * fixed-scale test holds that path. */
     TEST_ASSERT_TRUE(app_render_lab.console->handle("scene capybara"));
-    render_lab_test_frame(true, NULL);
+    render_lab_test_frame(false, NULL);
     render_lab_test_frame(false, NULL);
     TEST_ASSERT_EQUAL_STRING("capybara", render_lab_start_scene_key);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, render_context_frame(render_context_main()).step);
