@@ -29,7 +29,7 @@ class FastPathTests(unittest.TestCase):
         perf.parent.mkdir(parents=True)
         perf.write_text('')
         self.annotations = paths.annotations(self.root)
-        self.rows = [('fast_f', 'example', 'f', 64), ('plain_f', 'plain', 'f', 64)]
+        self.rows = [('fast_f', 'example', 'f', 64, 'scalar'), ('plain_f', 'plain', 'f', 64, 'scalar')]
         self.capture = ('MATHERROR name=example type=f max=1 unit=ulp method=sweep\n'
                         'MATHERRORBIN name=example type=f x=2 max=1 unit=ulp\n')
 
@@ -144,14 +144,22 @@ class FastPathTests(unittest.TestCase):
         with patch('code_layout.run', return_value=nm):
             located = symbols('nm', 'elf', records=True)
         self.assertEqual(len(located), 3)
-        rows = [('fast_f', 'example', 'f', 1)]
-        # This fixture has no table references.
-        with patch.object(paths, 'tables_for', return_value=[]):
-            output = paths.elf_sizes(rows, {'fast_f': 'calls __divsf3'}, located,
-                                     [('.iram0.text', 0x1000, 0x100)], self.root)
-        sizes = paths.parse_sizes(output)['fast_f']
-        self.assertIn(('math_bench_fast_f', 12, 'IRAM'), sizes)
-        self.assertIn(('__divsf3', None, 'ROM'), sizes)
+        from dataclasses import replace
+        rows = self.rows
+        second = replace(self.annotations[0], fast='plain_f')
+        nm += "3000 c T math_bench_plain_f\n4000 10 D seeds\n"
+        with patch('code_layout.run', return_value=nm):
+            located = symbols('nm', 'elf', records=True)
+        with patch.object(paths, 'annotations', return_value=[*self.annotations, second]), \
+             patch.object(paths, 'tables_for', return_value=['seeds']):
+            output = paths.elf_sizes(rows, {'fast_f': 'calls __divsf3', 'plain_f': '-'}, located,
+                                     [('.iram0.text', 0x1000, 0x3000), ('.flash.rodata', 0x4000, 0x100),
+                                      ('.ext_ram.dummy', 0x4000, 0x100)], self.root)
+        sizes = paths.parse_sizes(output)
+        self.assertIn(('math_bench_fast_f', 12, 'IRAM'), sizes['fast_f'])
+        self.assertIn(('__divsf3', None, 'ROM'), sizes['fast_f'])
+        for key in ('fast_f', 'plain_f'):
+            self.assertIn(('seeds', 16, 'rodata'), sizes[key])
 
     def test_size_records_are_strict(self):
         text = 'fast_f\tmath_bench_fast_f\t12\tflash\nfast_f\t__divsf3\t32\tIRAM\n'
