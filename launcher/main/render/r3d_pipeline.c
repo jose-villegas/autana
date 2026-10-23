@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "collections/sort.h"
 #include "core/job.h"
 #include "display/viewport.h"
 #include "math/geometry/planef.h"
@@ -88,32 +89,36 @@ r3d_pipeline_work_bytes(void) {
     return mathi_size_ceil(sizeof(r3d_pipeline_work_t), R3D_PIPELINE_WORK_ALIGNMENT);
 }
 
+typedef struct {
+    float depth;
+    uint32_t node;
+} child_depth_t;
+
+static inline bool
+farther(child_depth_t a, child_depth_t b) {
+    return a.depth > b.depth;
+}
+
+SORT_DEFINE_INSERTION(children, child_depth_t, farther)
+
 /* Children go on the stack farthest first, so the nearest pops first and
  * the walk visits leaves roughly front to back. */
 static int
 push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
-    uint16_t order[8];
-    float depths[8];
+    child_depth_t order[8];
     const float* f = lens->m.m[2];
     const planef_t depth = {{f[0], f[1], f[2]}, f[3]};
-    int n = 0;
-    for (int i = 0; i < node->count; i++) {
+    const int n = node->count;
+    for (int i = 0; i < n; i++) {
         const uint16_t child = (uint16_t)(node->first + i);
         /* The lens maps ticks, so the bounds scale is one. */
         const float d = planef_distance(depth, box3f_centre(box3f_from_box3s(mesh->nodes[child].bounds, 1.0F)));
-        int slot = n++;
-        while (slot > 0 && depths[slot - 1] < d) {
-            depths[slot] = depths[slot - 1];
-            order[slot] = order[slot - 1];
-            slot--;
-        }
-        depths[slot] = d;
-        order[slot] = child;
+        children_insert(order, (size_t)i, (child_depth_t){d, child});
     }
     assert(top + n <= WALK_STACK_MAX); /* depth times seven, far below this */
     for (int i = 0; i < n; i++) {
-        stack[top++] = (walk_entry_t){order[i], (uint8_t)mask};
+        stack[top++] = (walk_entry_t){(uint16_t)order[i].node, (uint8_t)mask};
     }
     return top;
 }

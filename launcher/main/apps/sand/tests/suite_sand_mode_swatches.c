@@ -132,7 +132,7 @@ test_sixteen_sorts_by_luma_not_by_a_single_channel(void) {
 }
 
 /* Fewer than sixteen distinct colours must still fill all sixteen slots, by
- * repeating the last (brightest) one - the loop after sort_by_luma() in
+ * repeating the last (brightest) one - the loop after the luma sort in
  * build_sixteen(). */
 static void
 test_sixteen_pads_by_repeating_the_last_colour_when_the_lut_has_fewer(void) {

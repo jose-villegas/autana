@@ -62,7 +62,6 @@ static const char* TAG = "input_lab";
 #define HUD_LINE_H           20
 #define HUD_SCALE            2
 #define MARK_SIDE            4
-#define COL_BACKGROUND       0x0A0C14
 #define BEZEL_MAX            80
 #define BEZEL_DRAG_PX        4
 #define ARC_STEP             2
@@ -874,7 +873,7 @@ input_lab_frame(uint32_t dt_ms, const input_t* input) {
     ui_screen();
     draw_page();
     draw_imu_flash();
-    ui_end(COL_BACKGROUND);
+    ui_end(UI_BACKGROUND);
     if (mode == MODE_MOTION) {
         ui_set_transform(shell_transform());
     }

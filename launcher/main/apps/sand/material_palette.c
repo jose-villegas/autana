@@ -19,6 +19,7 @@
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "sand_palette256.h" /* see material_palette256_index() below */
+#include "ui/ui.h"
 
 /* `sh` of the way from `lo` to `hi`, out of 15. */
 #define LERP_RGB(lo, hi, sh) GFX_LERP_RGB888(lo, hi, sh, 15)
@@ -203,7 +204,7 @@ static const gfx_color_t cullet_cycle[CULLET_CYCLE_LEN] = {
 
 /* THE source of colour. One place to change. Rows in material_id_t order. */
 static const gfx_color_t palette[256] = {
-    [MAT_EMPTY * MATERIAL_VARIANTS] = SHADES(0x0A0C14, 0x0A0C14), /* empty - the background */
+    [MAT_EMPTY * MATERIAL_VARIANTS] = SHADES(UI_BACKGROUND, UI_BACKGROUND), /* empty - the background */
     [MAT_SAND * MATERIAL_VARIANTS] =
         /* Cullet leaves ramp for cool cast. Phase-0 uses rest look. Live
          * frames use MAT_SAND. Same anchors. */
