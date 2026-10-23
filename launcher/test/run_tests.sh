@@ -141,6 +141,7 @@ $MAIN_DIR/input/touch/touch_inject_fsm.c
 $MAIN_DIR/input/touch/gesture.c
 $MAIN_DIR/input/motion/tilt.c
 $MAIN_DIR/input/motion/gravity.c
+$MAIN_DIR/input/motion/shake.c
 $MAIN_DIR/input/buttons/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim.c

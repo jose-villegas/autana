@@ -1,4 +1,5 @@
 """Shake transcript statistics and plot contract."""
+import gzip
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,6 +29,30 @@ class ShakeFitTest(unittest.TestCase):
             shake_fit.parse(["LABDUMP_TRUNCATED"])
         with self.assertRaises(ValueError):
             shake_fit.suggest(shake_fit.summarize([]), "size")
+
+    def test_gzip_and_legacy_field(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "shake.log.gz"
+            with gzip.open(capture, "wt") as stream:
+                stream.write(FIXTURE.read_text())
+            self.assertEqual(shake_fit.parse(FIXTURE.read_text().splitlines()), shake_fit.read_capture(capture))
+        row = "shake 1 0 acc 0,0,-1000 lin 10,0,0 size 10 smooth 10 jerky 999 old 0"
+        self.assertEqual(shake_fit.parse([row.replace(" jerky 999", "")]), shake_fit.parse([row]))
+        self.assertNotIn("jerky", shake_fit.parse([row])[0])
+
+    def test_generate_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            doc = root / "README.md"
+            doc.write_bytes(b"before\r\n<!-- generated: shake-fixture -->\r\n<!-- /generated: shake-fixture -->\r\nafter\r\n")
+            captures = {"fixture": FIXTURE}
+            shake_fit.generate_results(doc, root / "images", captures)
+            content = doc.read_bytes()
+            self.assertIn(b"| STILL | SIZE | 15.0 | 19.5 | 19.9 | 20.0 |", content)
+            self.assertTrue(content.startswith(b"before\r\n"))
+            self.assertTrue(content.endswith(b"after\r\n"))
+            self.assertEqual(b"\x89PNG\r\n\x1a\n", (root / "images/shake-fixture.png").read_bytes()[:8])
+            self.assertFalse(shake_fit.generate_results(doc, root / "images", captures, check=True))
 
     def test_plot(self):
         samples = shake_fit.parse(FIXTURE.read_text().splitlines())

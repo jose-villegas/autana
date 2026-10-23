@@ -42,13 +42,6 @@ shake_probe_prompt(shake_probe_step_t step) {
 
 void
 shake_probe_feed(shake_probe_levels_t* levels, vec3f_t linear_g) {
-    const float dt_ms = (float)INPUT_MOTION_SAMPLE_US / MATH_US_PER_MS;
-    const float smooth = dt_ms / (SHAKE_PROBE_SMOOTH_MS + dt_ms);
-    const float slow = dt_ms / (SHAKE_PROBE_SLOW_MS + dt_ms);
     levels->size = sqrtf(vec3f_dot(linear_g, linear_g)) * SHAKE_PROBE_MILLI_G;
-    levels->smooth += smooth * (levels->size - levels->smooth);
-    levels->average = vec3f_add(levels->average, vec3f_scale(vec3f_sub(linear_g, levels->average), slow));
-    const vec3f_t high = vec3f_sub(linear_g, levels->average);
-    const float size = sqrtf(vec3f_dot(high, high)) * SHAKE_PROBE_MILLI_G;
-    levels->jerky += smooth * (size - levels->jerky);
+    shake_update(&levels->shake, linear_g, INPUT_MOTION_SAMPLE_US);
 }
