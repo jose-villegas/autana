@@ -39,6 +39,8 @@ static const char* TAG = "imu";
 
 TUNE_OWNER(imu);
 TUNE(imu, drain_ms, IMU_DRAIN_MS, IMU_DRAIN_MIN_MS, IMU_DRAIN_MAX_MS);
+#define IMU_POLL_MAX_MS 5
+TUNE(imu, poll_ms, 0, 0, IMU_POLL_MAX_MS);
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Upper bound for the reporting window. */
 #define IMU_LOG_MAX_MS (60 * MATH_MS_PER_S)
@@ -55,6 +57,15 @@ static int64_t newest_us;
 static uint64_t reader_age_total_us;
 static int64_t reader_age_max_us;
 static unsigned reader_age_count;
+
+enum {
+    DRAIN_I2C_TRANSACTIONS,
+    DRAIN_DONE_SET_POLLS,
+    DRAIN_DONE_CLEAR_POLLS,
+    DRAIN_COUNTER_COUNT,
+};
+
+static unsigned drain_counts[DRAIN_COUNTER_COUNT];
 #endif
 
 /* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
@@ -113,12 +124,18 @@ static int pending_lost;
 
 static bool
 write_reg(uint8_t reg, uint8_t value) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    drain_counts[DRAIN_I2C_TRANSACTIONS]++;
+#endif
     const uint8_t buf[2] = {reg, value};
     return i2c_master_transmit(dev, buf, sizeof(buf), QMI8658_TIMEOUT_MS) == ESP_OK;
 }
 
 static bool
 read_regs(uint8_t reg, uint8_t* out, size_t len) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    drain_counts[DRAIN_I2C_TRANSACTIONS]++;
+#endif
     return i2c_master_transmit_receive(dev, &reg, 1, out, len, QMI8658_TIMEOUT_MS) == ESP_OK;
 }
 
@@ -126,6 +143,9 @@ static bool
 wait_command(bool done) {
     const int64_t deadline = timing_now_us() + CTRL9_TIMEOUT_US;
     do {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        drain_counts[done ? DRAIN_DONE_SET_POLLS : DRAIN_DONE_CLEAR_POLLS]++;
+#endif
         uint8_t status;
         if (!read_regs(REG_STATUSINT, &status, sizeof status)) {
             return false;
@@ -133,7 +153,15 @@ wait_command(bool done) {
         if (((status & STATUSINT_CMD_DONE) != 0) == done) {
             return true;
         }
-        esp_rom_delay_us(CTRL9_POLL_US);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (poll_ms > 0) {
+            const TickType_t ticks = pdMS_TO_TICKS(poll_ms);
+            vTaskDelay(ticks > 0 ? ticks : 1);
+        } else
+#endif
+        {
+            esp_rom_delay_us(CTRL9_POLL_US);
+        }
     } while (timing_now_us() < deadline);
     return false;
 }
@@ -364,6 +392,14 @@ log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us) {
     static unsigned drains;
     static unsigned delivered;
     static unsigned lost_total;
+    static uint64_t counter_totals[DRAIN_COUNTER_COUNT];
+    static unsigned counter_maxima[DRAIN_COUNTER_COUNT];
+    for (int i = 0; i < DRAIN_COUNTER_COUNT; i++) {
+        counter_totals[i] += drain_counts[i];
+        if (drain_counts[i] > counter_maxima[i]) {
+            counter_maxima[i] = drain_counts[i];
+        }
+    }
     drains++;
     total_us += (uint64_t)elapsed_us;
     if (elapsed_us > max_us) {
@@ -384,17 +420,25 @@ log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us) {
         portEXIT_CRITICAL(&lock);
     }
     if (log_ms > 0 && window_done) {
-        ESP_LOGI(TAG,
-                 "drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u reader_age_mean_us %llu "
-                 "reader_age_max_us %lld stack_free_bytes %u",
-                 drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered, lost_total,
-                 (unsigned long long)age_mean_us, (long long)age_max_us, (unsigned)uxTaskGetStackHighWaterMark(NULL));
+        ESP_LOGI(
+            TAG,
+            "drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u reader_age_mean_us %llu "
+            "reader_age_max_us %lld stack_free_bytes %u i2c_mean %llu i2c_max %u "
+            "done_set_polls_mean %llu done_set_polls_max %u done_clear_polls_mean %llu done_clear_polls_max %u",
+            drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered, lost_total,
+            (unsigned long long)age_mean_us, (long long)age_max_us, (unsigned)uxTaskGetStackHighWaterMark(NULL),
+            (unsigned long long)(counter_totals[DRAIN_I2C_TRANSACTIONS] / drains),
+            counter_maxima[DRAIN_I2C_TRANSACTIONS], (unsigned long long)(counter_totals[DRAIN_DONE_SET_POLLS] / drains),
+            counter_maxima[DRAIN_DONE_SET_POLLS], (unsigned long long)(counter_totals[DRAIN_DONE_CLEAR_POLLS] / drains),
+            counter_maxima[DRAIN_DONE_CLEAR_POLLS]);
     }
     if (window_done) {
         last_log_us = now_us;
         drains = delivered = lost_total = 0;
         total_us = 0;
         max_us = 0;
+        memset(counter_totals, 0, sizeof counter_totals);
+        memset(counter_maxima, 0, sizeof counter_maxima);
     }
 }
 #endif
@@ -406,6 +450,7 @@ imu_task(void* arg) {
     TickType_t last_wake = xTaskGetTickCount();
     while (1) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
+        memset(drain_counts, 0, sizeof drain_counts);
         const int64_t start_us = timing_now_us();
 #endif
         int lost = 0;
