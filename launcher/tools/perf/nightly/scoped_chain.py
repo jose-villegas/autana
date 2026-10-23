@@ -442,7 +442,7 @@ def plan(args, clock=None, request=None):
     skipped = queued and window is None
     start, deadline = window or (clock.now(), local_time(args.until, clock.now(), next_occurrence=True))
     if not skipped:
-        skipped = not wait_idle(lambda: gpu_pending(request=request), deadline, FIRST_STEP_SECONDS, clock)
+        skipped = not wait_idle(lambda: gpu_pending(request=request), deadline, FIRST_STEP_SECONDS, clock, idle_polls=2)
     now = clock.now()
     if skipped:
         args.boards, args.selftest_board = [], None

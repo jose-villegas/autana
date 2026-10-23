@@ -116,7 +116,10 @@ def heavy_root():
 
 
 def board_read_root():
-    """WSL observes the Windows account's board locks without acquiring them."""
+    """The WSL systemd GPU runner resolves Windows temp through PowerShell.
+    The interactive Windows board runner uses that same Windows account,
+    so this read-only root exposes its live board locks.
+    """
     if os.environ.get("_AUTANA_DEVICE_LOCK_ROOT") or not is_wsl():
         return default_root()
     windows_temp = subprocess.check_output(
@@ -393,8 +396,8 @@ class LockStore:
     def key_root(self, board):
         return heavy_root() if board == HEAVY and not self.explicit_root else self.root
 
-    def resource_now(self, board):
-        if board != HEAVY:
+    def resource_now(self, board, *, foreign=False):
+        if board != HEAVY and not foreign:
             return self.now()
         root = self.key_root(board)
         root.mkdir(parents=True, exist_ok=True)
@@ -444,10 +447,10 @@ class LockStore:
                        and record["board"] != HEAVY})
 
     def any_board_held(self):
-        """Observe live holders and human reservations without changing their store."""
+        """Observe active work without changing lock records or taking a board."""
         for board in self.boards():
             lock = self.read_json(self.lock_path(board))
-            if lock and not self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
+            if lock and lock.get("kind") != "human" and not self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return True
         return False
 
@@ -574,7 +577,10 @@ class LockStore:
                     pass
 
     def is_stale(self, lock, stale_seconds):
-        return self.resource_now(lock.get("board")) - lock["heartbeat_at"] > stale_seconds
+        board = lock.get("board")
+        now = (self.resource_now(board, foreign=True) if board != HEAVY and lock.get("host") != host_identity()
+               else self.resource_now(board))
+        return now - lock["heartbeat_at"] > stale_seconds
 
     def reclaim_reason(self, lock, stale_seconds):
         """Why `lock` may be taken from its holder, or "" while it holds."""
