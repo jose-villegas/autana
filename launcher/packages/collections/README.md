@@ -13,5 +13,5 @@ headers and suites through `launcher/tools/build/packages.sh`.
 <!-- generated: package-collections-headers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Header | Purpose |
 |---|---|
-| [include/collections/sort.h](include/collections/sort.h) | sort: stable in-place ordering of a small array by a qsort-shaped comparator, inline so the comparator inlines. |
+| [include/collections/sort.h](include/collections/sort.h) | sort: stable in-place insertion sort of small arrays. |
 <!-- /generated: package-collections-headers -->
