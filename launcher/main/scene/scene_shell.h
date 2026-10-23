@@ -45,5 +45,6 @@ void scene_unload_all(void);
  * context's scratch included; NULL, the default, is the heap. Set while no
  * scene is loaded. With a take, scene_unload() gives none of it back: once
  * the last scene is unloaded nothing points into it, and the lender may
- * take it back. Internal-RAM pieces stay on the heap either way. */
-void scene_set_take(memory_take_fn take);
+ * take it back. Internal-RAM pieces stay on the heap either way. Returns the
+take it replaces. */
+memory_take_fn scene_set_take(memory_take_fn take);

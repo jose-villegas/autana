@@ -88,11 +88,13 @@ scene_free_kept(void* block) {
     }
 }
 
-void
+memory_take_fn
 scene_set_take(memory_take_fn take) {
     assert(loaded_count == 0);
+    const memory_take_fn replaced = kept_take;
     kept_take = take;
     render_context_set_take(render_context_main(), take);
+    return replaced;
 }
 
 static scene_t*

@@ -22,5 +22,5 @@ SHELL_SYSTEM_REGISTER(scene_system);
 
 __attribute__((constructor)) static void
 scene_system_lend_arena(void) {
-    scene_set_take(app_arena_take);
+    (void)scene_set_take(app_arena_take);
 }
