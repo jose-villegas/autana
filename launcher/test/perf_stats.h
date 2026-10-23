@@ -8,6 +8,9 @@
 #include <stdlib.h>
 #include "unity.h"
 
+#define PERF_CYCLE_WARM_REPS              31
+#define PERF_CYCLE_COLD_REPS              9
+
 #define PERF_ICOUNT_PREFIX                "ICOUNT"
 #define PERF_ICOUNT_INFO_PREFIX           "ICOUNT_INFO"
 #define PERF_ICOUNT_TOLERANCE_DENOMINATOR 200
@@ -62,3 +65,29 @@ perf_stats_compute(int32_t* values, int n) {
     s.p95 = values[(n * 95) / 100];
     return s;
 }
+
+#ifdef DEVICE_BUILD
+#include "esp_cache.h"
+extern char _rodata_reserved_start[];
+extern char _rodata_reserved_end[];
+extern char _instruction_reserved_start[];
+extern char _instruction_reserved_end[];
+
+/* Cold calls refill instructions and flash rodata; PSRAM stays cached and inputs stay in internal RAM.
+ * Instructions and flash rodata are read-only, so dropping them loses nothing. Writing back then
+ * invalidating PSRAM would drop whatever the other core writes between those two steps. */
+static inline void
+perf_cache_cold(void) {
+    const uintptr_t data_line = CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE;
+    const uintptr_t data_start = (uintptr_t)_rodata_reserved_start & ~(data_line - 1);
+    const uintptr_t data_end = ((uintptr_t)_rodata_reserved_end + data_line - 1) & ~(data_line - 1);
+    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)data_start, data_end - data_start,
+                                              ESP_CACHE_MSYNC_FLAG_TYPE_DATA | ESP_CACHE_MSYNC_FLAG_DIR_M2C));
+    const uintptr_t line = CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE;
+    const uintptr_t start = (uintptr_t)_instruction_reserved_start & ~(line - 1);
+    const uintptr_t end = ((uintptr_t)_instruction_reserved_end + line - 1) & ~(line - 1);
+    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)start, end - start,
+                                              ESP_CACHE_MSYNC_FLAG_TYPE_INST | ESP_CACHE_MSYNC_FLAG_DIR_M2C));
+}
+
+#endif
