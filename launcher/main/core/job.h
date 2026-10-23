@@ -30,7 +30,8 @@ bool job_try_core1(job_fn_t fn, const void* ctx, size_t ctx_size);
 bool job_wait(unsigned timeout_ms);
 
 /* Microseconds from the last dispatch until its worker finished it, so time
- * spent queued behind a higher-priority task on core 1 counts. 0 on a host. */
+ * spent queued behind a higher-priority task on core 1 counts. Valid after a
+ * job_wait() that returned true, until the next dispatch. 0 on a host. */
 int64_t job_core1_elapsed_us(void);
 
 #define JOB_SPLIT_WAIT_MS 1000U
