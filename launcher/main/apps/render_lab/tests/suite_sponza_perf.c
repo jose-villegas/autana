@@ -37,9 +37,8 @@
 #include "math/linear/transformf.h"
 #include "profile/frame_cost.h"
 #include "render/r3d_lit_mesh.h"
-#include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
-#include "render/raster.h"
+#include "render/raster_internal.h"
 #include "render/raster_motion.h"
 #include "scene/scene.h"
 #include "services/build_id.h"
@@ -69,7 +68,7 @@ typedef struct {
     gfx_color_t* panel;
     raster_t raster;
     r3d_lens_t lens;
-    r3d_pipeline_buffers_t buffers;
+    raster_buffers_t buffers;
 } bench_t;
 
 static void
@@ -92,7 +91,7 @@ bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
-    b->buffers = r3d_pipeline_carve(&b->raster);
+    b->buffers = raster_carve(&b->raster);
     ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, b->raster.width, b->raster.height,
              render_lab_present(), perf_quarter->name);
     ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u" R3D_PERF_QUARTER_FORMAT,
@@ -118,7 +117,7 @@ view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms, r3d_lens_t* lens) {
 
 static void
 clear_and_draw(const raster_t* raster, const r3d_lens_t* lens, int visible) {
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    const raster_buffers_t b = raster_carve(raster);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     gfx_color_t* color = gfx_render_target_color(&b.picture, 0);
     for (size_t i = 0; i < pixels; i++) {
@@ -142,7 +141,7 @@ static void
 draw_half(half_job_t* j) {
     const raster_t* f = j->raster;
     const int64_t start = timing_now_us();
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(f);
+    const raster_buffers_t b = raster_carve(f);
     r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
     gfx_render_target_window(&target.rows, &b.picture, j->row0, j->row1);
     memset(gfx_render_target_depth(&target.rows, j->row0), 0,
@@ -199,7 +198,7 @@ open_the_meshes(void) {
  * names (r3d_span_stop_after; 0 runs every stage); the clear is not timed. */
 static int64_t
 stopped_draw_us(const raster_t* raster, const r3d_lens_t* lens, int visible, int stop) {
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    const raster_buffers_t b = raster_carve(raster);
     memset(gfx_render_target_depth(&b.picture, 0), 0,
            (size_t)raster->width * (size_t)raster->height * sizeof(uint16_t));
     const r3d_span_target_t target = {b.picture, NULL, 0, &r3d_span_small_fill_default};
@@ -219,7 +218,7 @@ report_stage_split(int bake) {
     TEST_ASSERT_NOT_NULL(b);
     const r3d_instance_t instance = {&meshes[bake], NULL};
     bench_open(b, &instance, NULL);
-    const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b->raster);
+    const raster_buffers_t parts = raster_carve(&b->raster);
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     int64_t stopped[4] = {0};
     int poses = 0;
@@ -257,7 +256,7 @@ test_sponza_draw_stage_breakdown(void) {
     bench_open(b, &atrium, NULL);
     view_at(atrium.mesh, 0, &b->lens);
     const r3d_lens_t* lens = &b->lens;
-    const r3d_pipeline_buffers_t* parts = &b->buffers;
+    const raster_buffers_t* parts = &b->buffers;
     const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0]);
     int64_t start = timing_now_us();
     r3d_pipeline_transform(atrium.mesh, lens, parts->culled + 1, visible, parts->cs, parts->rows);
