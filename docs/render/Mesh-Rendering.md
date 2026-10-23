@@ -168,10 +168,12 @@ app exits.
 ### On both cores
 
 The work before the framebuffer runs in the app's `update()`, overlapped
-with sending the previous frame. Each stage is split between the two cores,
-core 1's half dispatched through `core/job.h`. It runs inline when core 1
-is busy, and always on a host. Present shares core 1, so `job_run_steered()`
-times both halves of every stage and moves work toward the faster core.
+with sending the previous frame. Each stage is split between the two cores:
+
+- Core 1's half is dispatched through `core/job.h`. It runs inline when
+  core 1 is busy, and always on a host.
+- Present shares core 1, so `job_run_steered()` times both halves of every
+  stage and moves work toward the faster core.
 
 ```mermaid
 sequenceDiagram
