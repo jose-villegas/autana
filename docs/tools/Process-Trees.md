@@ -48,5 +48,5 @@ the tree on any error, on Ctrl+C, or the moment the held lock is lost
 | On Linux, start a `parent_lifetime=True` child from the thread that waits for it | start it from a worker thread that may exit first; the signal follows that thread |
 | Treat the "using tree kill" message as a downgrade | rely on a job object when the message appeared |
 
-The [device lock](Device-Lock.md) depends on this: a lock is released when its holder ends,
+The [device lock](../cli/Device-Lock.md) depends on this: a lock is released when its holder ends,
 and the holder's children must end with it.

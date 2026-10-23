@@ -10,7 +10,7 @@ command that needs a project (build, flash, selftest, suite --flash) acts
 on the current directory, like `make -C`, or on --project PATH. Anything
 that touches the board goes through scripts/device/device.py, which takes
 the device lock. The command list is COMMAND_GROUPS at the end of this
-file; docs/tools/Autana-CLI.md mirrors it.
+file; docs/cli/ shows it, written by scripts/autana/cli_reference.py.
 """
 
 import contextlib
@@ -1644,8 +1644,8 @@ def save():
 def forward(line, verb):
     """A line no autana command recognises, sent to the device as typed;
     the maintainer's rule that every board operation goes through autana,
-    for an app's own command (docs/tools/Autana-CLI.md's "Adding a command
-    from an app") same as any built-in one. The reply prefix is the line's
+    for an app's own command (docs/cli/App-Commands.md)
+    same as any built-in one. The reply prefix is the line's
     own first word in capitals: an app's reply always starts with its own
     prefix, so this returns as soon as `<PREFIX>_END`/`<PREFIX>_ERR`
     arrives rather than waiting out send()'s own window; a raw verb with
@@ -1752,116 +1752,116 @@ def debug(args):
 
 
 LOCK_USAGES = (
-    ("lock run --heavy -- <command...>", "hold the host-wide heavy key; nested builds reuse it"),
+    ("lock run --heavy -- <command...>", "hold the host-wide heavy key; nested builds reuse its token; acquire a board before heavy when both are needed"),
     ("lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>", "hold the board while a command runs"),
-    ("lock take [--for <seconds> | --until-released [--pid <pid>]] [--estimate <seconds>] <note...>", "hold the board across commands; print its token"),
-    ("lock wait", "wait until free without taking the board; --wait caps it"),
-    ("lock release [<token>]", "release a lock this session holds, given its token"),
+    ("lock take [--for <seconds> | --until-released [--pid <pid>]] [--estimate <seconds>] <note...>", "wait for the board and print a token; a timed hold lasts at most an hour"),
+    ("lock wait", "wait until the board is free without taking it; --wait caps the wait"),
+    ("lock release [<token>]", "release a hold early; the token is optional inside a hold"),
     ("lock hand [--until-back <seconds>] <note...>",
-     "reserve the board for a person at it for an hour; run again to renew"),
+     "reserve the board for a person for an hour; run again to renew"),
     ("lock take-back", "clear that reservation"),
 )
 
 
-# Section rules: docs/tools/Autana-CLI.md.
+# Written into docs/cli/ by cli_reference.py, one page per group.
 COMMAND_GROUPS = (
     ("lock", "Sharing the board", (
-        Command("devices", devices, (("devices [--json]", "compact board list: ids, ports and availability"),)),
-        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
+        Command("devices", devices, (("devices [--json]", "short ids, serials, ports and availability; the same JSON as status --json"),)),
+        Command("status", status, (("status [--json]", "every board and the heavy key: holder, command, since when, estimated free time and queue"),)),
         Command("lock", lock, LOCK_USAGES),
     )),
     ("build", "Build and flash", (
         Command("build", build, (
             ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]",
-             "build this project, no board; dev when omitted; a seed N > 0 pads the layout, 0 is the plain build; --configure only writes sdkconfig and compile_commands.json"),
+             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
-            "build and flash this project; dev when omitted"),
-        one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board is running"),
+            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image"),
+        one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board runs, to check against what was flashed"),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
             ("suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--hot-tunables] [--verbose]",
-             "run suites under one lock; --flash builds and flashes first; seconds caps a "
-             "capture (1800 when omitted)"),
+             "run suites under one lock, N times each (1 when omitted); seconds caps each capture "
+             "(1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures"),
             ("suite <name> --test PATTERN[,PATTERN]",
-             "only the tests whose name contains a pattern; --test repeats"),
+             "only the tests whose name contains a pattern (case-sensitive); --test repeats"),
             ("suite <name> --send LINE",
-             "send before every capture; repeatable, sequence should be idempotent"),
+             "send a console line after tunables, before every capture; --send repeats in order; the sequence should be idempotent, and an error or incomplete reply stops the batch"),
             ("suite <name> --set NAME=VALUE",
-             "set a tunable under each capture's lock first; --set repeats"),
-            ("suite list [text] [--json]", "the suites this project registers"))),
+             "set a tunable before each capture; --set repeats"),
+            ("suite list [text] [--json]", "the registered suites; [on request] ones run only by name"))),
         one("selftest", selftest, "selftest [seconds] [--verbose]",
-            "build diagnostics+autorun, run every suite on the board"),
+            "build the autorun diagnostics image, flash, run every suite; 3000 s when omitted"),
         one("melody", melody, "melody [volume] [--check] [--internal] [--json]",
-            "play a phrase or check each note through loopback; development builds"),
+            "development builds: play the phrase, or check every note with --check; --internal selects silent codec feedback"),
         one("tone", tone, "tone <hz> <ms> [volume] [--internal] [--json]",
-            "check a tone through the mic or silent codec feedback; development builds"),
+            "development builds: play <hz> for <ms> at volume % (firmware default 30) and report the level against a silence baseline, whether it was heard and the measured frequency; --internal uses silent codec feedback"),
     )),
     ("watch", "Watch the board", (
         one("monitor", monitor, "monitor [seconds] [--follow] [--stream] [--elf PATH]",
-            "the console live until Ctrl+C, or for N s"),
+            "in a terminal the console live, until Ctrl+C or for seconds; piped it needs seconds or --follow and prints only errors and FRAME_WATCH warnings unless --stream; exits 1 on a crash or reboot"),
         Command("coredump", coredump, (
-            ("coredump [--elf PATH]", "the last panic's core dump from flash, saved, decoded against the build that crashed"),
+            ("coredump [--elf PATH]", "the last panic's core dump, saved to the records and decoded against the build that crashed; resets the board"),
             ("coredump --core FILE [--elf PATH]", "decode a saved dump; no board"),
-            ("coredump --erase", "clear it, so the next crash's dump is told from this one"),)),
+            ("coredump --erase", "clear the dump so the next crash's is told apart; resets the board"),)),
         Command("screenshot", screenshot, (
-            ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
-            ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
+            ("screenshot [--as-shown|--framebuffer] [-o PATH]", "PATH.png plus a PATH.json state snapshot; landscape by default"),
+            ("screenshot --frames N -o PATH", "N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed"),)),
         Command("battery", battery, (
-            ("battery [--json]", "fresh battery and USB status; development builds"),
-            ("battery --log [--json]", "persistent battery history, oldest first"),
+            ("battery [--json]", "fresh voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds"),
+            ("battery --log [--json]", "persistent battery records oldest first (JSON is an array); reasons: periodic, transition, boot, shutdown-warning; development builds"),
             ("battery --log --clear", "erase the battery history namespace"))),
-        one("heap", heap, "heap [--json]", "free internal heap and largest block (development builds)"),
+        one("heap", heap, "heap [--json]", "free bytes and largest block in the internal DMA pool (MEMORY_DMA); development builds"),
         Command("perf", perf, (
             ("perf", "the frame_cost names seen and the counter events"),
             ("perf <name> [event] [seconds]",
-             "cycles and one event over one bracket for `seconds` s (10 when omitted), then off"),
+             "count one event (insn when omitted) on one frame_cost bracket for seconds (10 when omitted); prints cycles avg/min/max, n and cycles per event"),
             ("perf off", "disarm the counters"))),
-        one("framewatch", framewatch, "framewatch", "allocations and log lines repeating frame after frame, as JSON"),
+        one("framewatch", framewatch, "framewatch", "the frame watch as JSON: allocations, frees and log lines repeating frame after frame"),
     )),
     ("drive", "Drive", (
         Command("sound", sound, (
-            ("sound play <name> [loop] [gain]", "play an engine-pack sound; development builds"),
+            ("sound play <name> [loop] [gain]", "play a sound from the engine pack; gain is a percent, full gain when omitted; development builds"),
             ("sound stop [voice|all]", "stop a voice or all voices; all when omitted"),
             ("sound stats", "voice states, dropped commands, amplifier state and RAM sizes"),
-            ("sound onset <event> [hz] [gain]", "measure start, stop, steal and amplifier transients"))),
-        one("tap", tap, "tap <x> <y>", "tap a point, in pixels of the default screenshot"),
+            ("sound onset <event> [hz] [gain]", "measure amplifier, start, stop and steal transients"))),
+        one("tap", tap, "tap <x> <y>", "tap, 50 ms, at a point in pixels of the default screenshot"),
         one("press", press, "press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),
         one("drag", drag, "drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),
         Command("button", button, (
             ("button <boot|power> [short]", "press a board button; short when omitted"),
             ("button <boot|power> long", "hold it"))),
         one("reset", reset, "reset [--capture [seconds]] [--verbose]",
-            "reboot the board; --capture records the boot"),
+            "reboot and wait for USB serial; --capture records the boot (20 s when omitted)"),
         Command("apps", apps, (
             ("apps", "the registered apps, and which is running"),
             ("apps --json", "the same, as JSON"))),
-        one("open", open_app, "open <name>", "enter an app; case-insensitive prefix"),
+        one("open", open_app, "open <name>", "enter an app; a case-insensitive, unambiguous prefix"),
         one("home", home, "home", "back to the launcher"),
     )),
     ("tune", "Tune", (
         Command("tune", tune, (
-            ("tune [text] [--json]", "list the tunables, names containing text"),
-            ("tune <name> [value]", "show one, or set it on the board"),
+            ("tune [text] [--json]", "list the tunables with ranges; names containing text"),
+            ("tune <name> [value]", "show one, or set it on the board (lost on reboot)"),
             ("tune reset <name>", "back to the value the source declares"),
-            ("tune save", "write the board's values into this project's TUNE() lines"))),
+            ("tune save", "write the board's values into this project's TUNE(...) lines"))),
     )),
     ("debug", "Debug", (
         Command("debug", debug, (
             ("debug freeze", "stop the frame loop where it is"),
             ("debug resume", "run it again"),
             ("debug step [N]", "advance N frames while frozen; 1 when omitted"),
-            ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
-            ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"))),
+            ("debug touch <down|up> <x> <y>", "one raw touch level at a panel-frame point (a --framebuffer pixel); up hands back to the controller"),
+            ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu quarter <q> turns the screen to display quarter q, imu release hands back to the sensor"))),
     )),
     ("docs", "Docs", (
         Command("docs", docs, (
-            ("docs <question...>", "the sections that answer it, and where to read on"),
-            ("docs --section <path:line>", "one section whole; --deep adds its subsections"),
+            ("docs <question...>", "the three best sections, excerpted with their path:line, then five more to read on"),
+            ("docs --section <path:line>", "one section whole, or path#heading words; --deep adds subsections"),
             ("docs --outline <path>", "a document's headings, with lines and sizes"),
             ("docs --ask <question...>", "a short answer from the local chat model"),
-            ("docs --usage [--days N]", "what has been asked here, and what found nothing"))),
+            ("docs --usage [--days N]", "what this machine has looked up: counts, repeats, misses, documents refused whole"))),
     )),
 )
 
@@ -1911,7 +1911,7 @@ BOARD_FLAGS = (
 def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
     lines = ["--wait, --owner, --board (-b) and --project are global: they go anywhere on the "
-             "line, and docs/tools/Autana-CLI.md#settings has their defaults.",
+             "line, and docs/cli/Settings.md has their defaults.",
              "",
              "Flags (on top of each command's own usage above)"]
     for flag, summary, commands in BOARD_FLAGS:

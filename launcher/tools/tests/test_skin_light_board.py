@@ -68,8 +68,9 @@ skin_light_perf: test_table_build_1 med=200cycles
 COST cycles_per_build=200
 """
         table = lighting_modes(text)
-        self.assertIn("Build `runtime-diag`", table)
-        self.assertIn("| table | 1 | 100.000 | 8 | 0.5 | 200.000 | 40.000 | 80 | 1920 | 124 |", table)
+        self.assertIn("| table | 1 | 8 | 200 | 1920 |", table)
+        self.assertIn("In every row the normal palette costs 40 cycles", table)
+        self.assertNotIn("Normal-palette", table)
 
     def test_modes_require_table_capture(self):
         with self.assertRaisesRegex(ValueError, "table"):
@@ -84,14 +85,33 @@ COST cycles_per_build=200
             return text
         text = capture("old-diag", 10, [100]) + capture("new-diag", 40, [2, 4])
         table = lighting_modes(text)
-        self.assertIn("Build `new-diag`", table)
-        self.assertIn("| table | 3 | 3.000 | 1 | 0.1 |", table)
-        self.assertIn("| 40 | 20 | 30 |", table)
-        self.assertNotIn("old-diag", table)
+        self.assertIn("| table | 3 | 1 | 1 | 20 |", table)
+        self.assertIn("the renderer holds 40 bytes", table)
+        self.assertNotIn("10 bytes", table)
 
     def test_modes_require_table_build_cost(self):
         with self.assertRaisesRegex(ValueError, "table"):
             lighting_modes("BUILD_ID empty-diag\nskin_light_perf: test_fused_table_1 med=1cycles\nCOST cycles_per_vertex=1\n")
+
+    def test_a_column_that_differs_between_modes_stays_in_the_table(self):
+        text = """BUILD_ID a-diag
+POSE vertices=4
+RAM mode=direct renderer_bytes=80 scene_bytes=10 scene_metadata_psram=30
+RAM mode=table renderer_bytes=90 scene_bytes=20 scene_metadata_psram=30
+skin_light_perf: test_fused_direct_1 med=1cycles
+COST cycles_per_vertex=1
+QUALITY max=1 mean=0.1
+skin_light_perf: test_fused_table_1 med=1cycles
+COST cycles_per_vertex=1
+QUALITY max=1 mean=0.1
+skin_light_perf: test_table_build_1 med=1cycles
+COST cycles_per_build=1
+"""
+        table = lighting_modes(text)
+        self.assertIn("Renderer internal bytes", table)
+        self.assertIn("| direct | 1 | 1 | — | 10 | 80 |", table)
+        self.assertIn("the scene holds 30 bytes of PSRAM", table)
+        self.assertNotIn("renderer holds", table)
 
     def test_comment_lines_are_ignored(self):
         self.assertEqual(list(rows("# Capture comments\n")), [])
