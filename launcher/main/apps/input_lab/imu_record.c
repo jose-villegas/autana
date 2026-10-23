@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "collections/strbuf.h"
 #include "core/memory.h"
 
 void
@@ -32,26 +33,22 @@ imu_record_appendf(imu_record_t* record, const char* format, ...) {
     if (record->text == NULL || record->truncated) {
         return false;
     }
-    char line[IMU_RECORD_LINE_SIZE] = IMU_RECORD_PREFIX " ";
-    const size_t prefix = sizeof(IMU_RECORD_PREFIX " ") - 1;
+    char line[IMU_RECORD_LINE_SIZE];
+    strbuf_t text = strbuf_make(line, sizeof line);
     va_list args;
     va_start(args, format);
-    const int payload = vsnprintf(line + prefix, sizeof line - prefix - 1, format, args);
+    const bool formed = strbuf_appendf(&text, IMU_RECORD_PREFIX " ") && strbuf_vappendf(&text, format, args)
+                        && strbuf_appendf(&text, "\n");
     va_end(args);
-    const bool fits = payload >= 0 && (size_t)payload < sizeof line - prefix - 1;
-    const size_t length = fits ? prefix + (size_t)payload + 1 : 0;
-    if (fits) {
-        line[length - 1] = '\n';
-        line[length] = '\0';
-    }
-    if (!fits || length > record->capacity - record->used - sizeof IMU_RECORD_TRUNCATED) {
+    /* The marker's bytes stay free until a line does not fit. */
+    strbuf_t kept = strbuf_at(record->text, record->capacity - (sizeof IMU_RECORD_TRUNCATED - 1), record->used);
+    if (!formed || !strbuf_appendf(&kept, "%s", line)) {
         memcpy(record->text + record->used, IMU_RECORD_TRUNCATED, sizeof IMU_RECORD_TRUNCATED);
         record->used += sizeof IMU_RECORD_TRUNCATED - 1;
         record->truncated = true;
         return false;
     }
-    memcpy(record->text + record->used, line, length + 1);
-    record->used += length;
+    record->used = kept.length;
     return true;
 }
 
