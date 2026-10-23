@@ -7,7 +7,7 @@ import time
 
 GPU_START = "01:00"
 GPU_END = "03:00"
-GPU_NEXT_NIGHT_AFTER = "12:00"
+NEXT_NIGHT_AFTER = "12:00"
 REFUSED = "GPU stage renders 01:00-03:00 local time; dispatch with override to render now"
 EXIT_REFUSED = 1
 SKIPPED = "skipped: too late, next night renders it"
@@ -44,7 +44,7 @@ def night_window(start_at, until, scheduled=False, clock=None):
             start -= timedelta(days=1)
         else:
             end += timedelta(days=1)
-    if scheduled and now > local_time(GPU_NEXT_NIGHT_AFTER, now) and now >= end:
+    if scheduled and now > local_time(NEXT_NIGHT_AFTER, now) and now >= end:
         start += timedelta(days=1)
         end += timedelta(days=1)
     if scheduled and now < start:
