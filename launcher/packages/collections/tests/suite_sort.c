@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -12,13 +13,27 @@ typedef struct {
 } keyed_t;
 
 static int
+compare_int(const void* a, const void* b) {
+    const int x = *(const int*)a;
+    const int y = *(const int*)b;
+    return (x > y) - (x < y);
+}
+
+static int
 by_key(const void* a, const void* b) {
-    return sort_compare_int(&((const keyed_t*)a)->key, &((const keyed_t*)b)->key);
+    return compare_int(&((const keyed_t*)a)->key, &((const keyed_t*)b)->key);
 }
 
 typedef struct {
     uint8_t bytes[SORT_ELEMENT_MAX];
 } widest_t;
+
+static inline bool
+key_before(keyed_t a, keyed_t b) {
+    return a.key < b.key;
+}
+
+SORT_DEFINE_INSERTION(keyed, keyed_t, key_before)
 
 static int
 by_first_byte(const void* a, const void* b) {
@@ -39,8 +54,8 @@ test_sort_insertion_orders_like_qsort(void) {
         sorted[i] = (int)(state >> 16) - 32768;
         expected[i] = sorted[i];
     }
-    sort_insertion(sorted, COUNT, sizeof sorted[0], sort_compare_int);
-    qsort(expected, COUNT, sizeof expected[0], sort_compare_int);
+    sort_insertion(sorted, COUNT, sizeof sorted[0], compare_int);
+    qsort(expected, COUNT, sizeof expected[0], compare_int);
     TEST_ASSERT_EQUAL_INT_ARRAY(expected, sorted, COUNT);
     free(sorted);
     free(expected);
@@ -59,9 +74,9 @@ test_sort_insertion_keeps_equal_keys_in_arrival_order(void) {
 static void
 test_sort_insertion_leaves_short_arrays_alone(void) {
     int one = 7;
-    sort_insertion(&one, 1, sizeof one, sort_compare_int);
+    sort_insertion(&one, 1, sizeof one, compare_int);
     TEST_ASSERT_EQUAL_INT(7, one);
-    sort_insertion(NULL, 0, sizeof one, sort_compare_int);
+    sort_insertion(NULL, 0, sizeof one, compare_int);
 }
 
 static void
@@ -80,8 +95,33 @@ test_sort_insertion_moves_the_widest_element_whole(void) {
     }
 }
 
+static void
+test_typed_sort_keeps_equal_keys_in_arrival_order(void) {
+    keyed_t items[] = {{2, 0}, {1, 1}, {2, 2}, {0, 3}, {1, 4}, {2, 5}};
+    const int arrivals[] = {3, 1, 4, 0, 2, 5};
+    keyed_sort(items, sizeof items / sizeof items[0]);
+    for (size_t i = 0; i < sizeof items / sizeof items[0]; i++) {
+        TEST_ASSERT_EQUAL_INT(arrivals[i], items[i].arrival);
+    }
+}
+
+static void
+test_typed_insert_builds_the_same_order_one_item_at_a_time(void) {
+    const keyed_t arriving[] = {{2, 0}, {1, 1}, {2, 2}, {0, 3}, {1, 4}, {2, 5}};
+    const int arrivals[] = {3, 1, 4, 0, 2, 5};
+    keyed_t items[sizeof arriving / sizeof arriving[0]];
+    for (size_t i = 0; i < sizeof arriving / sizeof arriving[0]; i++) {
+        keyed_insert(items, i, arriving[i]);
+    }
+    for (size_t i = 0; i < sizeof items / sizeof items[0]; i++) {
+        TEST_ASSERT_EQUAL_INT(arrivals[i], items[i].arrival);
+    }
+}
+
 void
 run_sort_suite(void) {
+    RUN_TEST(test_typed_sort_keeps_equal_keys_in_arrival_order);
+    RUN_TEST(test_typed_insert_builds_the_same_order_one_item_at_a_time);
     RUN_TEST(test_sort_insertion_orders_like_qsort);
     RUN_TEST(test_sort_insertion_keeps_equal_keys_in_arrival_order);
     RUN_TEST(test_sort_insertion_leaves_short_arrays_alone);
