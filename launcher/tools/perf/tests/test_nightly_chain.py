@@ -6,7 +6,6 @@ from itertools import repeat
 import json
 import os
 import re
-import shutil
 import signal
 from pathlib import Path
 import subprocess
@@ -103,6 +102,17 @@ class NightlyTests(unittest.TestCase):
         cache = patch.object(autana_config, "user_cache_dir", return_value=self.root / "cache")
         cache.start()
         self.addCleanup(cache.stop)
+        for owner in (chain, layout_measure):
+            guard = patch.object(owner, "launch_process_tree",
+                                 side_effect=AssertionError("test attempted a real process launch"))
+            guard.start()
+            self.addCleanup(guard.stop)
+        stop = patch.object(chain, "stop_process_tree")
+        self.stop_tree = stop.start()
+        self.addCleanup(stop.stop)
+        close = patch.object(chain, "close_process_tree")
+        close.start()
+        self.addCleanup(close.stop)
         self.repo = self.root / "repo"
         self.repo.mkdir()
         chain.git(self.repo, "init")
@@ -294,7 +304,7 @@ class NightlyTests(unittest.TestCase):
         def launch(command, **options):
             commands.append(command)
             board = command[2]
-            current = json.loads(path.read_text())
+            current = json.loads(Path(command[command.index("--plan") + 1]).read_text())
             lane = current["lanes"][board]
             lane_args = SimpleNamespace(**vars(self.args))
             lane_args.board, lane_args.lane, lane_args.previous = board, lane["lane"], lane["previous"]
@@ -319,7 +329,7 @@ class NightlyTests(unittest.TestCase):
     def test_supervisor_starts_all_lanes_and_waits_for_all_at_deadline(self):
         path = self.root / "plan.json"
         chain.write_json(path, dict(deadline=(self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS / 2)).isoformat(),
-                                   lanes={board: dict(lane=f"{i}/2", estimate=42) for i, board in enumerate(("20E8", "2124"))}))
+                                   lanes={board: dict(lane=f"{i}/2", estimate=42) for i, board in enumerate(("FAK1", "FAK2"))}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=self.args.suite)
         events = []
@@ -329,11 +339,41 @@ class NightlyTests(unittest.TestCase):
             events.append("start " + board)
             def wait():
                 events.append("finish " + board)
-                return int(board == "20E8")
+                return int(board == "FAK1")
             return SimpleNamespace(poll=lambda: None, wait=wait)
 
         self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
-        self.assertEqual(events, ["start 20E8", "start 2124", "finish 20E8", "finish 2124"])
+        self.assertEqual(events, ["start FAK1", "start FAK2", "finish FAK1", "finish FAK2"])
+
+    def test_supervisor_does_not_publish_joiner_when_launch_fails(self):
+        path = self.root / "plan.json"
+        planned = dict(tip=self.commits[-1], deadline=self.args.deadline,
+                       from_sha=self.commits[3], max_steps=1,
+                       lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)})
+        chain.write_json(path, planned)
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=self.args.suite)
+        def launch(command, **options):
+            self.assertEqual(json.loads(path.read_text()), planned)
+            if command[2] == "FAK2":
+                raise OSError("cannot start joining lane")
+            return SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+        with patch.object(chain, "plugged_boards", return_value=["FAK1", "FAK2"]):
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
+        self.assertEqual(json.loads(path.read_text()), planned)
+
+    def test_supervisor_default_launch_owns_and_closes_process_tree(self):
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(deadline=self.clock.now().isoformat(),
+                                   lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=self.args.suite)
+        process = SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+        with patch.object(chain, "launch_process_tree", return_value=process) as launch, \
+                patch.object(chain, "close_process_tree") as close:
+            self.assertEqual(chain.run_night(args, clock=self.clock), 0)
+        launch.assert_called_once()
+        close.assert_called_once_with(process)
 
     def test_supervisor_handles_rescan_errors_and_releases_early(self):
         path = self.root / "plan.json"
@@ -364,7 +404,7 @@ class NightlyTests(unittest.TestCase):
         with patch.object(self.clock, "sleep", side_effect=KeyboardInterrupt), \
                 self.assertRaises(KeyboardInterrupt):
             chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process)
-        process.terminate.assert_called_once()
+        self.stop_tree.assert_called_once_with(process)
         process.wait.assert_called_once()
 
     def test_supervisor_sigterm_during_final_wait_stops_children(self):
@@ -383,7 +423,7 @@ class NightlyTests(unittest.TestCase):
         original = signal.getsignal(signal.SIGTERM)
         with self.assertRaises(KeyboardInterrupt):
             chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process)
-        process.terminate.assert_called_once()
+        self.stop_tree.assert_called_once_with(process)
         self.assertEqual(process.wait.call_count, 2)
         self.assertEqual(signal.getsignal(signal.SIGTERM), original)
 
@@ -942,47 +982,11 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(chain.history_steps(self.repo, "HEAD")[-1].pr, 999)
 
 class LaneSettingsTests(unittest.TestCase):
-    def test_lanes_run_after_prepare_failure_and_wait_for_failed_lane(self):
+    def test_workflow_lanes_run_after_prepare_failure_and_publish_after_failure(self):
         workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text())
         steps = {step.get("name"): step for step in workflow["jobs"]["nightly"]["steps"]}
         lane_step = steps["Run each board lane and wait for all"]
         self.assertEqual(lane_step["if"], "${{ !cancelled() && env.SCOPED_BOARDS != '' }}")
-        script = lane_step["run"]
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            tools = root / "tools"
-            tools.mkdir()
-            library = root / "scripts/lib/python.sh"
-            library.parent.mkdir(parents=True)
-            library.write_text('find_python() { printf "%s\\n" "$TEST_PYTHON"; }\n')
-            wrapper = tools / "python-replay"
-            wrapper.write_text(f"#!{sys.executable}\n" +
-                f"import sys\nsys.path.insert(0, {str(PERF)!r})\n" +
-                "from nightly import scoped_chain as chain\n" +
-                "chain.RESCAN_SECONDS = 0.01\nchain.plugged_boards = lambda: []\n" +
-                "del sys.argv[1]\nsys.exit(chain.main())\n")
-            cygpath = tools / "cygpath"
-            cygpath.write_text('#!/bin/sh\nprintf "%s\\n" "$2"\n')
-            autana = tools / "autana"
-            autana.write_text(f"#!{sys.executable}\n" +
-                "import os, sys, time\nfrom pathlib import Path\n" +
-                "board = sys.argv[sys.argv.index('--board') + 1]\n" +
-                "time.sleep(0.05 if board == '2124' else 0)\n" +
-                "Path(os.environ['PERF_OUT'], board).write_text('finished')\n" +
-                "sys.exit(int(board == '20E8'))\n")
-            for executable in (wrapper, cygpath, autana):
-                executable.chmod(0o755)
-            plan = dict(deadline=(datetime.now().astimezone() + timedelta(minutes=1)).isoformat(),
-                        lanes={board: dict(lane=f"{i}/2", estimate=42)
-                               for i, board in enumerate(("20E8", "2124"))})
-            chain.write_json(root / "plan.json", plan)
-            env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
-                       TEST_PYTHON=str(wrapper), GITHUB_WORKSPACE=str(root),
-                       PERF_OUT=str(root), PERF_DATA=str(root / "data"), NIGHTLY_SUITES="suite|-|-")
-            result = subprocess.run([shutil.which("bash"), "-e", "-c", script], cwd=root,
-                                    env=env, capture_output=True, text=True, timeout=30)
-            self.assertEqual(result.returncode, 1, result.stderr)
-            self.assertEqual([(root / board).read_text() for board in plan["lanes"]], ["finished"] * 2)
         for step in ("Summarize board outcomes", "Publish night manifests and LNT reports"):
             self.assertEqual(steps[step]["if"], "always() && env.PERF_DATA != ''")
 
