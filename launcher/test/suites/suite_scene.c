@@ -743,11 +743,11 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     const scene_entity_t camera = scene_find(scene, "camera");
     const scene_transform_t* flight = scene_entity_transform(scene, camera);
     TEST_ASSERT_EQUAL_UINT32(1000, scene_animator_clip_duration_ms(scene, camera, 0));
-    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
-    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
+    TEST_ASSERT_EQUAL_INT(JOB_SHARE_MIN - JOB_SHARE_EVEN, render_context_main()->split.top_offset[0]);
     TEST_ASSERT_TRUE(scene_activate(scene, NULL));
-    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
     TEST_ASSERT_EQUAL_INT(0, render_context_main()->split.top_offset[0]);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, flight->position.x);
@@ -1349,7 +1349,7 @@ test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen(voi
     scene_t* solo = load("test_solo");
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
-    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_activate(solo, "eye"));
     TEST_ASSERT_EQUAL_INT(0, render_context_main()->split.top_offset[0]);
     render_context_set_scale(render_context_main(), 100);
@@ -2325,9 +2325,9 @@ test_property_animation_moves_a_drawn_entity(void) {
     TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, NULL, clips, 1, NULL));
     TEST_ASSERT_EQUAL_INT(0, scene->animators[entity].layer.shown.joint_count);
     TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 0, 0));
-    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
-    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
+    TEST_ASSERT_EQUAL_INT(JOB_SHARE_MIN - JOB_SHARE_EVEN, render_context_main()->split.top_offset[0]);
     frame(0);
     const uint16_t red = fx.pixels[CENTER * SIZE + CENTER];
     frame(RIG_DURATION_MS / 2);
@@ -2366,9 +2366,9 @@ test_inactive_property_target_invalidates_its_entity_matrix(void) {
     TEST_ASSERT_TRUE(scene_animator_play(scene, owner, 0, 0));
     TEST_ASSERT_TRUE(scene_entity_transform(scene, target)->cached);
     scene->flags[target] &= (uint8_t)~SCENE_FLAG_DIRTY;
-    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, owner, SCENE_ANIMATOR_CURRENT, RIG_DURATION_MS / 2));
-    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
+    TEST_ASSERT_EQUAL_INT(JOB_SHARE_MIN - JOB_SHARE_EVEN, render_context_main()->split.top_offset[0]);
     scene_transform_t sampled = *scene_entity_transform(scene, target);
     TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, transformf_matrix(&sampled).m[0][3]);
     TEST_ASSERT_TRUE((scene->flags[target] & SCENE_FLAG_DIRTY) != 0);

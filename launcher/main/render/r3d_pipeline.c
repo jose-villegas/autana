@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "core/job.h"
 #include "display/viewport.h"
 #include "math/geometry/planef.h"
 #include "math/linear/mat3f.h"
@@ -217,7 +218,7 @@ r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
 }
 
 int
-r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count) {
+r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count, int first_permille) {
     int total = 0;
     for (int i = 0; i < count; i++) {
         total += mesh->clusters[clusters[i]].vertex_count;
@@ -225,7 +226,7 @@ r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* cluster
     int prefix = 0;
     for (int i = 0; i < count; i++) {
         prefix += mesh->clusters[clusters[i]].vertex_count;
-        if (2 * prefix >= total) {
+        if ((int64_t)prefix * JOB_SHARE_PERMILLE >= (int64_t)total * first_permille) {
             return i + 1;
         }
     }
@@ -265,9 +266,9 @@ draw_split_row(const int* weight, int height, int top_permille) {
     int prefix = 0;
     for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
         current += weight[bucket];
-        if (current > 0 && (int64_t)(prefix + current) * RASTER_SPLIT_PERMILLE >= target) {
-            const int64_t bucket_weight = (int64_t)current * RASTER_SPLIT_PERMILLE;
-            const int64_t position = ((bucket * bucket_weight) + target) - ((int64_t)prefix * RASTER_SPLIT_PERMILLE);
+        if (current > 0 && (int64_t)(prefix + current) * JOB_SHARE_PERMILLE >= target) {
+            const int64_t bucket_weight = (int64_t)current * JOB_SHARE_PERMILLE;
+            const int64_t position = ((bucket * bucket_weight) + target) - ((int64_t)prefix * JOB_SHARE_PERMILLE);
             return mathi_clamp((int)(position * height / (bucket_weight * DRAW_SPLIT_BUCKETS)), 1, height - 1);
         }
         prefix += current;
@@ -278,7 +279,7 @@ draw_split_row(const int* weight, int height, int top_permille) {
 int
 r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
                         int count, int height, int top_permille) {
-    assert(top_permille >= 0 && top_permille <= RASTER_SPLIT_PERMILLE);
+    assert(top_permille >= 0 && top_permille <= JOB_SHARE_PERMILLE);
     int weight[DRAW_SPLIT_BUCKETS + 1] = {0};
     draw_split_histogram(weight, mesh, clusters, rows, count, height);
     return draw_split_row(weight, height, top_permille);

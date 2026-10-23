@@ -87,11 +87,11 @@ void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
                        const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
                        const r3d_span_target_t* target, r3d_pipeline_work_t* work);
 
-/* The length of the shortest prefix of `clusters` holding at least half of
- * their vertices; 0 when there are none. */
-int r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count);
+/* The length of the shortest prefix of `clusters` holding at least
+ * first_permille / JOB_SHARE_PERMILLE of their vertices; 0 when there are none. */
+int r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count, int first_permille);
 
-/* A row between 1 and height - 1 assigning top_permille / RASTER_SPLIT_PERMILLE
+/* A row between 1 and height - 1 assigning top_permille / JOB_SHARE_PERMILLE
  * of estimated draw weight to the top slice, interpolated within its bucket.
  * Weight is each visible cluster's triangle count across the buckets it spans.
  * With no weight, returns the middle row. */

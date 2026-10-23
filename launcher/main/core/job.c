@@ -8,6 +8,23 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "math/scalar/mathi.h"
+
+/* Moves halfway from the current share to the balanced one. */
+#define JOB_SHARE_DAMPING_DIVISOR 2.0F
+
+int
+job_share_update(int core1_permille, int64_t core1_us, int64_t caller_us) {
+    const int share = core1_permille;
+    assert(share >= JOB_SHARE_MIN && share <= JOB_SHARE_MAX);
+    if (core1_us <= 0 || caller_us <= 0) {
+        return share;
+    }
+    const float rate_core1 = (float)core1_us / (float)share;
+    const float rate_caller = (float)caller_us / (float)(JOB_SHARE_PERMILLE - share);
+    const float balanced = (float)JOB_SHARE_PERMILLE * rate_caller / (rate_core1 + rate_caller);
+    return mathi_clamp((int)(((float)share + balanced) / JOB_SHARE_DAMPING_DIVISOR), JOB_SHARE_MIN, JOB_SHARE_MAX);
+}
 
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
@@ -30,6 +47,8 @@ static bool job_unavailable;
 static bool job_active;
 static bool job_waits_for_core;
 static job_fn_t volatile job_fn;
+static int64_t job_dispatched_us;
+static int64_t volatile job_finished_us;
 static uint8_t job_ctx[JOB_CTX_MAX] __attribute__((aligned(8)));
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -52,6 +71,7 @@ job_task_fn(void* arg) {
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         job_fn(job_ctx);
+        job_finished_us = timing_now_us();
         xSemaphoreGive(job_done_sem);
     }
 }
@@ -123,6 +143,7 @@ job_dispatch(job_fn_t fn, const void* ctx, size_t ctx_size) {
     job_fn = fn;
     job_active = true;
     job_waits_for_core = true;
+    job_dispatched_us = timing_now_us();
     xTaskNotifyGive(job_task_handle);
     return true;
 }
@@ -154,6 +175,11 @@ job_try_core1(job_fn_t fn, const void* ctx, size_t ctx_size) {
     assert(fn != NULL);
     assert(ctx != NULL || ctx_size == 0);
     return ctx_size <= JOB_CTX_MAX && job_dispatch(fn, ctx, ctx_size);
+}
+
+int64_t
+job_core1_elapsed_us(void) {
+    return job_finished_us - job_dispatched_us;
 }
 
 bool
@@ -210,6 +236,11 @@ job_try_core1(job_fn_t fn, const void* ctx, size_t ctx_size) {
     (void)ctx;
     (void)ctx_size;
     return false;
+}
+
+int64_t
+job_core1_elapsed_us(void) {
+    return 0;
 }
 
 bool
