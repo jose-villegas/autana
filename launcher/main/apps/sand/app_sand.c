@@ -31,7 +31,7 @@
  * largest of any tier: 61 * 6 = 366 and 74 * 6 = 444, a 2 px strip on the
  * right and a 4 px strip on the bottom. That is harmless only because
  * the colour of an empty cell and the menu's background are the same value,
- * 0x0A0C14, see COL_BACKGROUND, so the untouched strip is indistinguishable
+ * UI_BACKGROUND, so the untouched strip is indistinguishable
  * from the screen around it. start_sim() still clears the screen explicitly
  * before the first frame rather than leaning on that coincidence alone.
  */
@@ -59,6 +59,8 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "input/input.h"
+#include "input/motion/gravity.h"
+#include "input/motion/shake.h"
 #include "input/motion/tilt.h"
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
@@ -82,8 +84,6 @@
 #include "ui/ui.h"
 
 static const char* TAG = "sand";
-
-#define COL_BACKGROUND 0x0A0C14
 
 typedef struct {
     const char* name;
@@ -254,6 +254,8 @@ typedef struct {
 static sim_buffers_t buffers;
 static sand_t sim;
 static tilt_t tilt;
+static gravity_t shake_gravity;
+static shake_t shake;
 static bool failed;
 static uint32_t label_left_ms; /* countdown for the mode label */
 
@@ -622,6 +624,8 @@ start_sim(void) {
      * tap in BOOM mode. */
     sand_enable_impulses(&sim, buffers.impulse_buf, APP_IMPULSE_MAX);
     tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
+    gravity_reset(&shake_gravity);
+    shake_reset(&shake);
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -1070,8 +1074,10 @@ read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int
     *gy = tilt_y(&tilt);
     *flow = tilt_strength(&tilt);
 
-    const int shake = tilt_shake(&tilt);
-    *jostle = shake > SAND_SHAKE_DEADZONE ? shake : 0;
+    const uint32_t dt_us = dt_ms * MATH_US_PER_MS;
+    gravity_update(&shake_gravity, motion, dt_us);
+    shake_update(&shake, gravity_linear(&shake_gravity), dt_us);
+    *jostle = sand_controls_jostle(shake_level(&shake));
 }
 
 static void
@@ -1319,7 +1325,7 @@ draw_menu(const input_t* input) {
     } else {
         draw_title();
     }
-    ui_end(COL_BACKGROUND);
+    ui_end(UI_BACKGROUND);
 }
 
 /* Everything the play screen needs each pass that does not draw: gravity and

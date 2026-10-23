@@ -1,27 +1,7 @@
-/*
- * app_input_lab: measures how precisely the touch panel reports a tap. A
- * small magenta square appears on the screen; tap it, and on release the tap
- * is scored against its centre before the next one appears. The running hit
- * rate and offset sit at the top, and every tap is logged to the console as
- * one "probe" line for probe_fit.py. BOOT cycles random targets, a shuffled
- * 5x5 grid and a bezel page, and starts a fresh round.
- *
- * Each probe records its first, settled and release samples in screen and
- * panel coordinates, as the touch driver delivers them; its `cal` field says
- * whether the driver's correction was on, so only `cal 0` rounds refit it.
- *
- * The bezel page draws an arc in every corner; dragging up or down changes
- * its radius until the arcs sit on the edge of the glass, and each release
- * logs it. Sliding off each edge there fills in the panel range, logged at
- * the end of every round. A ruler in the middle of each edge draws a short
- * 1 px line at every depth 0..RULER_DEPTH from that edge, labelled every
- * RULER_LABEL_EVERY: the first line that shows is how many pixels the glass
- * hides there.
- *
- * The motion page shows acceleration, gravity angles, a bubble level and
- * the tilt filter, with a 10 Hz "motion ..." console line. Numbers stay in
- * panel axes; the whole page stays fixed in the default landscape orientation.
- */
+/* BOOT cycles touch targets, bezel edges, motion calibration and shake.
+ * Motion pages stay in default landscape with panel axes. Shake compares
+ * sample-rate linear acceleration candidates against frame-rate tilt shake
+ * and retains a guided round in PSRAM for labdump. */
 
 #include <math.h>
 #include <stdarg.h>
@@ -34,7 +14,9 @@
 #include "app/app.h"
 #include "apps/input_lab/imu_probe.h"
 #include "apps/input_lab/imu_record.h"
+#include "apps/input_lab/motion_feedback.h"
 #include "apps/input_lab/motion_probe.h"
+#include "apps/input_lab/shake_probe.h"
 #include "apps/input_lab/touch_probe.h"
 #include "core/memory.h"
 #include "core/timing.h"
@@ -62,7 +44,6 @@ static const char* TAG = "input_lab";
 #define HUD_LINE_H           20
 #define HUD_SCALE            2
 #define MARK_SIDE            4
-#define COL_BACKGROUND       0x0A0C14
 #define BEZEL_MAX            80
 #define BEZEL_DRAG_PX        4
 #define ARC_STEP             2
@@ -85,42 +66,57 @@ static const char* TAG = "input_lab";
 
 TUNE_OWNER(input_lab);
 TUNE(input_lab, imu_drain_ms, 0, 0, MOTION_DRAIN_MAX_MS);
-#define MOTION_RING_RADIUS 88
-#define MOTION_DOT_SIDE    7
-#define MOTION_FILTER_SIDE 11
-#define MOTION_MARGIN      16
-#define MOTION_HUD_ROWS    5
-#define MOTION_HUD_SCALE   1
-#define COL_HIT            0x40E060
-#define COL_MISS           0xFFB020
-#define COL_TARGET         0xFF00FF
-#define COL_HUD            0xE0E0E0
-#define COL_MOTION_FILTER  0x40E0FF
-#define COL_MOTION_RING    0x607080
+#define SHAKE_BAR_X           200
+#define SHAKE_BAR_HEIGHT      8
+#define SHAKE_BAR_ROW         6
+#define SHAKE_BAR_ROW_SPACING 2
+#define SHAKE_OLD_FULL        255
+
+#define MOTION_RING_RADIUS    88
+#define MOTION_DOT_SIDE       7
+#define MOTION_FILTER_SIDE    11
+#define MOTION_MARGIN         16
+#define MOTION_HUD_ROWS       5
+#define MOTION_HUD_SCALE      1
+#define COL_HIT               0x40E060
+#define COL_MISS              0xFFB020
+#define COL_TARGET            0xFF00FF
+#define COL_HUD               0xE0E0E0
+#define COL_MOTION_FILTER     0x40E0FF
+#define COL_MOTION_RING       0x607080
 
 /* White acknowledges a reading; longer cyan ends the round. Both are readable
  * at arm's length while unplugged. */
-#define IMU_POSE_FLASH_MS  160U
-#define IMU_DONE_FLASH_MS  600U
-#define COL_IMU_POSE_FLASH 0xFFFFFF
-#define COL_IMU_DONE_FLASH 0x00FFFF
+#define IMU_POSE_FLASH_MS     MOTION_STEP_FLASH_MS
+#define IMU_DONE_FLASH_MS     MOTION_DONE_FLASH_MS
+#define COL_IMU_POSE_FLASH    0xFFFFFF
+#define COL_IMU_DONE_FLASH    0x00FFFF
 /* Sub-mg resolution keeps small changes visible in the turn trace. */
-#define IMU_GRAVITY_DIGITS 6
+#define IMU_GRAVITY_DIGITS    6
 
-typedef enum { MODE_RANDOM, MODE_GRID, MODE_BEZEL, MODE_MOTION, MODE_COUNT } lab_mode_t;
+typedef enum { MODE_RANDOM, MODE_GRID, MODE_BEZEL, MODE_MOTION, MODE_SHAKE, MODE_COUNT } lab_mode_t;
 
 typedef struct {
     int cx, cy, radius;
     recti_t bounds;
 } motion_ring_t;
 
-static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "motion"};
+typedef struct {
+    input_motion_batch_t* slice;
+    shake_probe_round_t round;
+    shake_probe_levels_t levels;
+    int64_t start_us;
+    uint32_t clock_ms;
+} shake_capture_t;
+
+static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "motion", "shake"};
 
 static lab_mode_t mode;
 static tilt_t tilt;
 static gravity_t gravity;
 static input_motion_t motion;
 static input_motion_batch_t* motion_batch;
+static shake_capture_t shake_capture;
 static int motion_samples;
 static int motion_lost;
 static uint32_t motion_since_drain_ms;
@@ -153,6 +149,11 @@ static bool last_hit;
 
 static int bezel_radius = DISPLAY_PANEL_CORNER_RADIUS;
 static int radius_at_press;
+
+static bool
+motion_page(void) {
+    return mode == MODE_MOTION || mode == MODE_SHAKE;
+}
 
 static void
 place_target(void) {
@@ -193,7 +194,7 @@ start_round(void) {
     grid_next = 0;
     panel_min_x = panel_min_y = 1 << 20;
     panel_max_x = panel_max_y = -1;
-    if (mode == MODE_MOTION) {
+    if (motion_page()) {
         tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
         gravity_reset(&gravity);
         have_motion = false;
@@ -204,6 +205,8 @@ start_round(void) {
         motion_drain_us = 0;
         motion_read_us = timing_now_us();
         imu_round = (imu_probe_round_t){0};
+        shake_capture.round = (shake_probe_round_t){0};
+        shake_capture.levels = (shake_probe_levels_t){0};
         const bool sideways = (DISPLAY_DEFAULT_QUARTER % 2) != 0;
         screen_w = sideways ? GFX_HEIGHT : GFX_WIDTH;
         screen_h = sideways ? GFX_WIDTH : GFX_HEIGHT;
@@ -219,6 +222,7 @@ input_lab_enter(void) {
     if (motion_batch == NULL) {
         ESP_LOGE(TAG, "Cannot allocate motion batch in PSRAM");
     }
+    shake_capture.slice = memory_alloc(sizeof *shake_capture.slice, MEMORY_PSRAM);
     rng_seed(&rng, (uint32_t)timing_now_us());
     panel_max_x = -1;
     mode = MODE_RANDOM;
@@ -389,7 +393,7 @@ draw_edge_rulers(void) {
 static void
 hud_text(recti_t r, const char* text, uint32_t ink) {
     ui_color_begin(UI_COLOR_TEXT, ink);
-    ui_scale_begin(mode == MODE_MOTION ? MOTION_HUD_SCALE : HUD_SCALE);
+    ui_scale_begin(motion_page() ? MOTION_HUD_SCALE : HUD_SCALE);
     ui_text_centre(r, text);
     ui_scale_end();
     ui_color_end();
@@ -485,6 +489,63 @@ integrate_turn_gyro(const input_motion_batch_t* batch) {
 }
 
 static void
+advance_shake_clock(uint32_t ms) {
+    while (ms > shake_capture.clock_ms) {
+        const uint32_t remaining = SHAKE_PROBE_STEP_MS - shake_capture.round.ms;
+        const uint32_t delta = ms - shake_capture.clock_ms;
+        const uint32_t dt = delta < remaining ? delta : remaining;
+        shake_capture.clock_ms += dt;
+        if (shake_probe_advance(&shake_capture.round, dt)) {
+            (void)imu_record_appendf(&imu_record, "shake_step %d %u", shake_capture.round.step,
+                                     (unsigned)shake_capture.clock_ms);
+            ESP_LOGI(TAG, "shake_step %d %u", shake_capture.round.step, (unsigned)shake_capture.clock_ms);
+        }
+    }
+}
+
+/* Only this adapter depends on batch loss placement. The scratch batch lives in PSRAM. */
+static void
+read_shake_samples(const input_motion_batch_t* batch) {
+    if (shake_capture.slice == NULL) {
+        return;
+    }
+    shake_capture.slice->gap = batch->gap;
+    shake_capture.slice->lost = batch->lost;
+    shake_capture.slice->count = batch->count > 0 ? 1 : 0;
+    if (batch->count == 0) {
+        gravity_update_batch(&gravity, shake_capture.slice);
+    }
+    const int64_t end_us = timing_now_us();
+    for (int i = 0; i < batch->count; i++) {
+        shake_capture.slice->samples[0] = batch->samples[i];
+        gravity_update_batch(&gravity, shake_capture.slice);
+        shake_capture.slice->gap = false;
+        shake_capture.slice->lost = 0;
+        const vec3f_t linear = gravity_linear(&gravity);
+        shake_probe_feed(&shake_capture.levels, linear);
+        const int64_t elapsed_us =
+            (end_us - shake_capture.start_us) - ((int64_t)((batch->count - i) - 1) * INPUT_MOTION_SAMPLE_US);
+        if (shake_capture.round.step == SHAKE_PROBE_IDLE || elapsed_us < 0) {
+            continue;
+        }
+        const uint32_t ms = elapsed_us / MATH_US_PER_MS > SHAKE_PROBE_ROUND_MS
+                                ? SHAKE_PROBE_ROUND_MS
+                                : (uint32_t)(elapsed_us / MATH_US_PER_MS);
+        advance_shake_clock(ms);
+        if (ms >= SHAKE_PROBE_ROUND_MS) {
+            continue;
+        }
+        const vec3i_t acc = imu_probe_mg(batch->samples[i].acceleration);
+        const vec3i_t lin = motion_log_vector(linear, IMU_PROBE_MILLI);
+        (void)imu_record_appendf(
+            &imu_record, SHAKE_PROBE_SAMPLE_FORMAT, (int)SHAKE_PROBE_STILL + (int)(ms / SHAKE_PROBE_STEP_MS),
+            (unsigned)ms, (int)acc.x, (int)acc.y, (int)acc.z, (int)lin.x, (int)lin.y, (int)lin.z,
+            (int)lroundf(shake_capture.levels.size),
+            (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI), tilt_shake(&tilt));
+    }
+}
+
+static void
 read_motion(uint32_t dt_ms) {
     motion_log_ms += dt_ms;
     const int64_t drain_start_us = timing_now_us();
@@ -504,15 +565,22 @@ read_motion(uint32_t dt_ms) {
     }
     if (read) {
         motion_lost += motion_batch->lost;
-        gravity_update_batch(&gravity, motion_batch);
-        integrate_turn_gyro(motion_batch);
+        if (mode == MODE_MOTION) {
+            gravity_update_batch(&gravity, motion_batch);
+            integrate_turn_gyro(motion_batch);
+        }
+    }
+    if (have_motion) {
+        tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
+    }
+    if (read && mode == MODE_SHAKE) {
+        read_shake_samples(motion_batch);
     }
     if (!have_motion) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
         return;
     }
     raw_acceleration = vec3i_add(motion.acceleration, input_accel_offset());
-    tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
     motion_probe = motion_probe_measure(motion.acceleration);
     if (motion_log_ms >= MOTION_LOG_PERIOD_MS) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
@@ -539,8 +607,9 @@ read_motion(uint32_t dt_ms) {
     } while (0)
 
 static void
-emit_imu_record(const char* text) {
-    printf("%s", text);
+emit_imu_record(const char* text, size_t length) {
+    printf("%.*s", (int)length, text);
+    timing_yield();
 }
 
 static bool
@@ -548,12 +617,14 @@ dump_imu_record(const char* args) {
     if (*args != '\0') {
         return false;
     }
-    const char* error = imu_record_dump_error(&imu_record, imu_round.step);
+    const bool running = mode == MODE_SHAKE ? shake_probe_running(&shake_capture.round)
+                                            : imu_round.step != IMU_PROBE_IDLE && imu_round.step != IMU_PROBE_DONE;
+    const char* error = imu_record_dump_error(&imu_record, running);
     if (error != NULL) {
         printf("%s", error);
     } else {
         printf(IMU_RECORD_PREFIX "_BEGIN\n");
-        imu_record_take(&imu_record, emit_imu_record);
+        imu_record_replay(&imu_record, emit_imu_record);
         printf(IMU_RECORD_PREFIX "_END\n");
     }
     if (fflush(stdout) != 0) {
@@ -625,6 +696,66 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
     }
     if (previous != IMU_PROBE_DONE && imu_round.step == IMU_PROBE_DONE) {
         imu_flash_ms = IMU_DONE_FLASH_MS;
+    }
+}
+
+static void
+update_shake_round(uint32_t dt_ms, const input_t* input) {
+    if (input->pressed && !shake_probe_running(&shake_capture.round)) {
+        imu_record_failed = motion_batch == NULL || shake_capture.slice == NULL
+                            || !imu_record_start(&imu_record, IMU_RECORD_SHAKE_CAPACITY);
+        if (!imu_record_failed) {
+            shake_probe_start(&shake_capture.round);
+            shake_capture.start_us = timing_now_us();
+            shake_capture.clock_ms = 0;
+            LOG_IMU_LINE("round shake");
+            LOG_IMU_LINE("shake_step %d 0", shake_capture.round.step);
+        }
+    }
+    const bool was_done = shake_capture.round.step == SHAKE_PROBE_DONE;
+    read_motion(dt_ms);
+    if (shake_probe_running(&shake_capture.round)) {
+        const int64_t elapsed_ms = (timing_now_us() - shake_capture.start_us) / MATH_US_PER_MS;
+        advance_shake_clock(elapsed_ms > SHAKE_PROBE_ROUND_MS ? SHAKE_PROBE_ROUND_MS : (uint32_t)elapsed_ms);
+    } else if (was_done) {
+        (void)shake_probe_advance(&shake_capture.round, dt_ms);
+    }
+}
+
+static void
+draw_shake(void) {
+    char line[MOTION_HUD_TEXT_SIZE];
+    hud_line(0, "SHAKE  /  BOOT TO CHANGE PAGE");
+    hud_line(1, shake_probe_prompt(shake_capture.round.step));
+    if (shake_probe_running(&shake_capture.round)) {
+        (void)snprintf(line, sizeof line, "STEP %d/%d  %u S LEFT", shake_capture.round.step - SHAKE_PROBE_STILL + 1,
+                       SHAKE_PROBE_STEP_COUNT,
+                       (unsigned)((SHAKE_PROBE_STEP_MS - shake_capture.round.ms + MATH_MS_PER_S - 1) / MATH_MS_PER_S));
+        hud_line(2, line);
+    } else {
+        hud_line(2, imu_record_failed ? "NO MEMORY FOR ROUND" : "TAP TO START ROUND");
+    }
+    if (!have_motion) {
+        hud_line(4, "WAITING FOR IMU");
+        return;
+    }
+    const vec3i_t lin = motion_log_vector(gravity_linear(&gravity), IMU_PROBE_MILLI);
+    (void)snprintf(line, sizeof line, "LINEAR %d %d %d MG", (int)lin.x, (int)lin.y, (int)lin.z);
+    hud_line(4, line);
+    static const char* const names[] = {"SIZE", "SMOOTH", "OLD"};
+    const int values[] = {(int)lroundf(shake_capture.levels.size),
+                          (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI), tilt_shake(&tilt)};
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
+        const int row = SHAKE_BAR_ROW + ((int)i * SHAKE_BAR_ROW_SPACING);
+        const int full = i == (sizeof values / sizeof values[0]) - 1 ? SHAKE_OLD_FULL : IMU_PROBE_MILLI;
+        const int width = screen_w - SHAKE_BAR_X - MOTION_MARGIN;
+        const int value = values[i] < full ? values[i] : full;
+        (void)snprintf(line, sizeof line, "%s %d%s", names[i], values[i], full == SHAKE_OLD_FULL ? "" : " MG");
+        hud_text((recti_t){MOTION_MARGIN, HUD_TOP + (row * HUD_LINE_H), SHAKE_BAR_X - MOTION_MARGIN, HUD_LINE_H}, line,
+                 COL_HUD);
+        const recti_t bar = {SHAKE_BAR_X, HUD_TOP + (row * HUD_LINE_H), width, SHAKE_BAR_HEIGHT};
+        ui_outline(bar, COL_MOTION_RING);
+        ui_fill((recti_t){bar.x, bar.y, width * value / full, bar.h}, COL_MOTION_FILTER);
     }
 }
 
@@ -816,7 +947,7 @@ draw_motion(void) {
 
 static void
 resize_page(void) {
-    if (mode == MODE_MOTION || (ui_width() == screen_w && ui_height() == screen_h)) {
+    if (motion_page() || (ui_width() == screen_w && ui_height() == screen_h)) {
         return;
     }
     place_target();
@@ -824,6 +955,10 @@ resize_page(void) {
 
 static void
 update_page(uint32_t dt_ms, const input_t* input) {
+    if (mode == MODE_SHAKE) {
+        update_shake_round(dt_ms, input);
+        return;
+    }
     if (mode == MODE_MOTION) {
         update_imu_round(dt_ms, input);
         return;
@@ -836,6 +971,10 @@ update_page(uint32_t dt_ms, const input_t* input) {
 
 static void
 draw_page(void) {
+    if (mode == MODE_SHAKE) {
+        draw_shake();
+        return;
+    }
     if (mode == MODE_MOTION) {
         draw_motion();
         return;
@@ -851,11 +990,13 @@ draw_page(void) {
 
 static void
 draw_imu_flash(void) {
-    if (mode != MODE_MOTION || imu_flash_ms == 0) {
+    const uint32_t flash_ms = mode == MODE_SHAKE ? shake_capture.round.flash_ms : imu_flash_ms;
+    const bool done =
+        mode == MODE_SHAKE ? shake_capture.round.step == SHAKE_PROBE_DONE : imu_round.step == IMU_PROBE_DONE;
+    if ((mode != MODE_MOTION && mode != MODE_SHAKE) || flash_ms == 0) {
         return;
     }
-    ui_fill((recti_t){0, 0, screen_w, screen_h},
-            imu_round.step == IMU_PROBE_DONE ? COL_IMU_DONE_FLASH : COL_IMU_POSE_FLASH);
+    ui_fill((recti_t){0, 0, screen_w, screen_h}, done ? COL_IMU_DONE_FLASH : COL_IMU_POSE_FLASH);
 }
 
 static void
@@ -867,21 +1008,23 @@ input_lab_frame(uint32_t dt_ms, const input_t* input) {
     resize_page();
     update_page(dt_ms, input);
 
-    if (mode == MODE_MOTION) {
+    if (motion_page()) {
         ui_set_transform(ui_transform_quarter_turn(DISPLAY_DEFAULT_QUARTER, GFX_WIDTH, GFX_HEIGHT));
     }
     ui_begin(input);
     ui_screen();
     draw_page();
     draw_imu_flash();
-    ui_end(COL_BACKGROUND);
-    if (mode == MODE_MOTION) {
+    ui_end(UI_BACKGROUND);
+    if (motion_page()) {
         ui_set_transform(shell_transform());
     }
 }
 
 static void
 input_lab_exit(void) {
+    memory_free(shake_capture.slice);
+    shake_capture.slice = NULL;
     memory_free(motion_batch);
     motion_batch = NULL;
     imu_record_free(&imu_record);

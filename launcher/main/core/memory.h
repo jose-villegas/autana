@@ -98,3 +98,8 @@ memory_free(void* block) {
     free(block);
 #endif
 }
+
+/* A lender's take, as app/app_arena.h's app_arena_take(): the next `size`
+ * bytes at `align`, or NULL. A taken block is never freed: its owner gives
+ * back everything at once. NULL in place of one means the heap. */
+typedef void* (*memory_take_fn)(size_t size, size_t align);
