@@ -36,6 +36,7 @@ import autana_config
 
 # A board is named by its USB serial number; COM5 is where it enumerates.
 BOARD = "90:70:69:FE:A3:08"
+EXAMPLE_PREFIX = "EXAMPLE"
 
 
 def mock_store(token="token"):
@@ -697,8 +698,8 @@ class DeviceTests(unittest.TestCase):
         printed.assert_called_once_with("EXAMPLE status=ok\nEXAMPLE_END")
 
     def test_exchange_long_reply_uses_idle_time_and_parses_each_line_once(self):
-        payload = b"LABDUMP sample " + b"x" * 100 + b"\n"
-        transcript = b"LABDUMP_BEGIN\n" + payload * 12000 + b"LABDUMP_END\n"
+        payload = f"{EXAMPLE_PREFIX} sample ".encode() + b"x" * 100 + b"\n"
+        transcript = f"{EXAMPLE_PREFIX}_BEGIN\n".encode() + payload * 12000 + f"{EXAMPLE_PREFIX}_END\n".encode()
         chunks = [transcript[i:i + 4096] for i in range(0, len(transcript), 4096)]
         connection = FakeConnection(chunks)
         clock = [0.0]
@@ -711,15 +712,15 @@ class DeviceTests(unittest.TestCase):
         with mock.patch.object(connection, "read", side_effect=read), \
              mock.patch.object(device.time, "monotonic", side_effect=lambda: clock[0]), \
              mock.patch.object(device, "replies_to", wraps=device.replies_to) as parsed:
-            found, complete = device.exchange(connection, "labdump", "LABDUMP",
-                                               ["LABDUMP_END", "LABDUMP_ERR"], 3.0)
+            found, complete = device.exchange(connection, EXAMPLE_PREFIX.lower(), EXAMPLE_PREFIX,
+                                               [f"{EXAMPLE_PREFIX}_END", f"{EXAMPLE_PREFIX}_ERR"], 3.0)
         self.assertTrue(complete)
         self.assertEqual(found, transcript.decode().splitlines())
         self.assertGreater(clock[0], 3.0)
         self.assertEqual(sum(len(call.args[0]) for call in parsed.call_args_list), len(transcript))
 
     def test_exchange_caps_active_replies_and_does_not_extend_for_unrelated_logs(self):
-        for payload, expected_seconds in ((b"LABDUMP sample\n", 5.0), (b"I (1) shell: frame\n", 3.0)):
+        for payload, expected_seconds in ((f"{EXAMPLE_PREFIX} sample\n".encode(), 5.0), (b"I (1) shell: frame\n", 3.0)):
             with self.subTest(payload=payload):
                 connection = FakeConnection([payload] * 20)
                 clock = [0.0]
@@ -732,8 +733,8 @@ class DeviceTests(unittest.TestCase):
                 with mock.patch.object(connection, "read", side_effect=read), \
                      mock.patch.object(device.time, "monotonic", side_effect=lambda: clock[0]), \
                      mock.patch.object(device, "EXCHANGE_MAX_SECONDS", 5.0):
-                    _, complete = device.exchange(connection, "labdump", "LABDUMP",
-                                                   ["LABDUMP_END", "LABDUMP_ERR"], 3.0)
+                    _, complete = device.exchange(connection, EXAMPLE_PREFIX.lower(), EXAMPLE_PREFIX,
+                                                   [f"{EXAMPLE_PREFIX}_END", f"{EXAMPLE_PREFIX}_ERR"], 3.0)
                 self.assertFalse(complete)
                 self.assertEqual(clock[0], expected_seconds)
 
