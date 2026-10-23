@@ -38,9 +38,8 @@
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
-#include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
-#include "render/raster.h"
+#include "render/raster_internal.h"
 #include "render/resolution/resolution.h"
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
@@ -88,8 +87,7 @@ static r3d_lit_mesh_t mesh;
 /* One core's whole draw, cleared first, stopped after the stage `stop`
  * names (r3d_span_stop_after; 0 runs every stage). */
 static int64_t
-one_core_draw_us(const raster_t* raster, const r3d_pipeline_buffers_t* b, const r3d_lens_t* lens, int visible,
-                 int stop) {
+one_core_draw_us(const raster_t* raster, const raster_buffers_t* b, const r3d_lens_t* lens, int visible, int stop) {
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     memset(gfx_render_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
     r3d_span_stop_after = stop;
@@ -104,7 +102,7 @@ one_core_draw_us(const raster_t* raster, const r3d_pipeline_buffers_t* b, const 
 typedef struct {
     int64_t setup, edges, carry, fill, clear;
     r3d_lens_t lens;
-    r3d_pipeline_buffers_t buffers;
+    raster_buffers_t buffers;
 } span_split_t;
 
 /* One core, one pose: each stage as the difference of two stopped draws;
@@ -119,8 +117,8 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
         r3d_lens_init(draw_lens, &view, mesh.position_scale);
     }
     r3d_lens_fit(draw_lens, raster->width, raster->height);
-    sum->buffers = r3d_pipeline_carve(raster);
-    const r3d_pipeline_buffers_t* b = &sum->buffers;
+    sum->buffers = raster_carve(raster);
+    const raster_buffers_t* b = &sum->buffers;
     const int visible = r3d_pipeline_cull(&mesh, draw_lens, b->culled + 1, b->work[0]);
     r3d_pipeline_transform(&mesh, draw_lens, b->culled + 1, visible, b->cs, b->rows);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
@@ -576,7 +574,7 @@ run_raster_scale_perf_suite(void) {
         RUN_TEST(test_raster_counters);
         RUN_TEST(test_dynamic_resolution_policies_along_the_path);
     }
-    loaded = (sponza_suite_t){scene, pack, lens};
+    loaded = (sponza_suite_t){scene, pack, lens, loaded.arena_mark};
     sponza_suite_release(&loaded);
     scene = NULL;
     pack = NULL;

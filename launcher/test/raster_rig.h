@@ -10,8 +10,7 @@
 #include <stdlib.h>
 
 #include "r3d_quad_mesh.h"
-#include "render/r3d_pipeline.h"
-#include "render/raster.h"
+#include "render/raster_internal.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -82,5 +81,5 @@ raster_rig_open(const int16_t (*const positions[])[3], int count, unsigned place
 /* Further attachment `k`'s pixels, every row, as the last draw left them. */
 static inline const void*
 raster_rig_attachment(const raster_rig_t* r, int k) {
-    return r3d_pipeline_carve(&r->raster).picture.attachment[GFX_ATTACHMENT_FURTHER + k].pixels;
+    return raster_carve(&r->raster).picture.attachment[GFX_ATTACHMENT_FURTHER + k].pixels;
 }
