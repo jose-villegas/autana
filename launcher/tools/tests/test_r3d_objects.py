@@ -1,6 +1,8 @@
 """Synthetic source objects, rigid placements and offline scene reporting."""
 
 import csv
+from dataclasses import replace
+from itertools import product
 import hashlib
 import json
 import pathlib
@@ -187,9 +189,12 @@ class ObjectsTests(unittest.TestCase):
         poses = np.array([[0., 0., 0., 0., 0., -1.], [0., 0., -95., 0., 0., -1.],
                           [0., 0., -99., 0., 0., -1.]])
         width, height = 184, 224
-        with patch('r3d.objects.objects_report.camera_path_poses',
+        with patch('r3d.objects.objects_report.sample_camera_path',
                    return_value=(width, height, 1., 0.1, poses)):
-            result = pose_rows(shapes, None, job, 1000, (width, height))
+            component = SimpleNamespace(path=SimpleNamespace(animation=None, node=None),
+                                        half_fov_short_tan=1., near_z=0.1)
+            scene = SimpleNamespace(camera=SimpleNamespace(component=component))
+            result = pose_rows(shapes, scene, job, 1000, (width, height))
         budget, rows = result[:2]
         self.assertEqual(budget, len(triangles))
         self.assertEqual(rows[0]['budget_triangles_in_view'], budget)
@@ -251,23 +256,26 @@ class ObjectsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             src = self.alpha_source(directory)
             src.tri_t[len(TRIANGLES):] = 0
-            objects = masked_objects(src, SimpleNamespace(alpha_keep=0.5))
+            objects, triangles = masked_objects(src, SimpleNamespace(alpha_keep=0.5))
         self.assertEqual([obj.name for obj in objects], ['first'])
+        np.testing.assert_array_equal(triangles, src.tri_v[:len(TRIANGLES)])
 
     def test_alpha_partial_copy_no_longer_matches(self):
         with tempfile.TemporaryDirectory() as directory:
             src = self.alpha_source(directory)
             src.tri_t[-1] = 0
-            objects = masked_objects(src, SimpleNamespace(alpha_keep=0.5))
+            objects, triangles = masked_objects(src, SimpleNamespace(alpha_keep=0.5))
         self.assertEqual([len(obj.triangles) for obj in objects], [4, 3])
+        np.testing.assert_array_equal(triangles, src.tri_v[:-1])
         self.assertEqual(len(match_instances(objects)), 2)
 
     def test_alpha_none_keeps_everything(self):
         with tempfile.TemporaryDirectory() as directory:
             src = self.alpha_source(directory)
             src.tri_t[:] = 0
-            objects = masked_objects(src, SimpleNamespace(alpha_keep=None))
+            objects, triangles = masked_objects(src, SimpleNamespace(alpha_keep=None))
         self.assertEqual([len(obj.triangles) for obj in objects], [4, 4])
+        np.testing.assert_array_equal(triangles, src.tri_v)
         self.assertEqual(len(match_instances(objects)), 1)
 
     def test_load_obj_source_alignment(self):
@@ -304,9 +312,12 @@ class ObjectsTests(unittest.TestCase):
         job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(triangles=budget)),
                               object=SimpleNamespace(matrix=np.eye(3) if matrix is None else matrix,
                                                      position=np.zeros(3) if position is None else position))
-        with patch('r3d.objects.objects_report.camera_path_poses',
+        with patch('r3d.objects.objects_report.sample_camera_path',
                    return_value=(184, 224, 1., 0.1, np.array([[0., 0., 0., 0., 0., -1.]]))):
-            return pose_rows(match_instances(objects), None, job, 1000, (184, 224))
+            component = SimpleNamespace(path=SimpleNamespace(animation=None, node=None),
+                                        half_fov_short_tan=1., near_z=0.1)
+            scene = SimpleNamespace(camera=SimpleNamespace(component=component))
+            return pose_rows(match_instances(objects), scene, job, 1000, (184, 224))
 
     def test_pose_explicit_budget_proportional_shares(self):
         objects = [SourceObject('inside', POINTS + [0, 0, -10], TRIANGLES[:1], MATERIALS[:1]),
@@ -404,6 +415,199 @@ class ObjectsTests(unittest.TestCase):
             summary = (out / 'objects.md').read_text()
             self.assertIn('Calibrated pixels per triangle:', summary)
             self.assertIn('| Triangles LOD frees |', summary)
+
+
+class InstancesFigureTests(unittest.TestCase):
+    def test_view_visible_length_then_shapes_copies_earliest(self):
+        from r3d.objects.instances_figure import choose_view
+
+        boxes = np.array([np.array(list(product((-1., 1.), repeat=3))) + [0, 0, -10]] * 4)
+        owners = np.array([0, 0, 1, 1])
+        poses = [np.array([index, 0., 0., 0., 0., -1.]) for index in range(4)]
+        segments = np.array([[[0., 0.], [10., 0.]], [[0., 0.], [2., 0.]]])
+        samples = [(segments / 2, owners[:2]), (segments, owners[:2]),
+                   (segments, owners[1:3]), (segments, owners[1:3])]
+        with patch('r3d.objects.instances_figure.visible_segments', side_effect=samples), \
+                patch('r3d.objects.instances_figure.clusters_in_view', side_effect=map(np.array,
+                      [[True, True, True, True], [True, True, False, False],
+                       [True, True, True, False], [True, True, True, False]])):
+            index, _, _, _, _ = choose_view(boxes, owners, poses, (100, 80), 0.6, 1., None)
+        self.assertEqual(index, 2)
+        with patch('r3d.objects.instances_figure.visible_segments', side_effect=samples[:2]):
+            self.assertEqual(choose_view(boxes, owners, poses[:2], (100, 80), 0.6, 1., None)[0], 1)
+
+    def test_projected_corner_matches_camera_ray(self):
+        from r3d.objects.instances_figure import project_points
+        from r3d.poses import camera_rays
+
+        size, lens = (20, 16), 0.6
+        pose = np.array([3., 7., 2., -1., -0.2, -3.])
+        origins, rays = camera_rays(*size, lens, pose[:3], pose[3:], 1)
+        for pixel in (0, 83, 319):
+            corner = origins[pixel] + rays[pixel] * 12
+            projected, depth = project_points(np.array([corner]), pose, size, lens, 1.)
+            np.testing.assert_allclose(projected[0], [pixel % size[0] + 0.5, pixel // size[0] + 0.5])
+            self.assertGreater(depth[0], 1.)
+
+    def test_edge_occlusion_wall(self):
+        from r3d.objects.instances_figure import edge_visibility
+        from r3d.ray_query import RayQuery
+
+        wall = np.array([[-5., -5., -5.], [5., -5., -5.], [5., 5., -5.], [-5., 5., -5.]])
+        query = RayQuery(wall, np.array([[0, 1, 2], [0, 2, 3]]), variant='scalar_rgb')
+        for z, expected in ((-10., False), (-2., True)):
+            _, visible = edge_visibility(query, np.zeros(3), np.array([-1., 0., z]), np.array([1., 0., z]), 0.001)
+            self.assertTrue((visible == expected).all())
+
+    def test_visible_segments_near_plane(self):
+        from r3d.objects.instances_figure import edge_visibility, project_points, visible_segments
+        from r3d.ray_query import RayQuery
+
+        pose, size, lens, near = np.array([0., 0., 0., 0., 0., -1.]), (100, 80), 0.6, 1.
+        edge = np.array([[0.2, 0.1, -0.5], [0.2, 0.1, -2.]])
+        boxes = np.tile(edge, (1, 4, 1))
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        with patch('r3d.objects.instances_figure.BOX_EDGES', ((0, 1),)), \
+                patch('r3d.objects.instances_figure.edge_visibility', wraps=edge_visibility) as sampled:
+            segments, owners = visible_segments(boxes, np.array([7]), pose, size, lens, near, query)
+        np.testing.assert_allclose(sampled.call_args.args[2], [[0.2, 0.1, -near]])
+        expected, _ = project_points(np.array([[0.2, 0.1, -near], edge[1]]), pose, size, lens, near)
+        np.testing.assert_allclose(segments[0, 0], expected[0])
+        np.testing.assert_allclose(segments[-1, 1], expected[1])
+        self.assertTrue((owners == 7).all())
+
+    def test_visible_segments_picture_border(self):
+        from r3d.objects.instances_figure import visible_segments
+        from r3d.ray_query import RayQuery
+
+        size = (100, 80)
+        boxes = np.tile(np.array([[0., 0., -2.], [10., 0., -2.]]), (1, 4, 1))
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        with patch('r3d.objects.instances_figure.BOX_EDGES', ((0, 1),)):
+            segments, owners = visible_segments(boxes, np.array([3]), np.array([0., 0., 0., 0., 0., -1.]),
+                                               size, 0.6, 1., query)
+        np.testing.assert_allclose(segments[0, 0], np.array(size) / 2)
+        np.testing.assert_allclose(segments[-1, 1], [size[0], size[1] / 2])
+        self.assertTrue((segments >= 0).all())
+        self.assertTrue((segments <= size).all())
+        self.assertTrue((owners == 3).all())
+
+    def test_visible_segments_offscreen_and_behind_eye(self):
+        from r3d.objects.instances_figure import visible_segments
+        from r3d.ray_query import RayQuery
+
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        for offset in ([100., 0., -5.], [0., 0., 5.]):
+            with self.subTest(offset=offset):
+                boxes = np.array([np.array(list(product((-1., 1.), repeat=3))) + offset])
+                segments, owners = visible_segments(boxes, np.array([9]), np.array([0., 0., 0., 0., 0., -1.]),
+                                                   (100, 80), 0.6, 1., query)
+                self.assertEqual(segments.shape, (0, 2, 2))
+                self.assertEqual(owners.shape, (0,))
+
+    def test_visible_segments_owners_after_culling(self):
+        from r3d.objects.instances_figure import visible_segments
+        from r3d.ray_query import RayQuery
+
+        boxes = np.array([np.array(list(product((-1., 1.), repeat=3))) + offset
+                          for offset in ([100., 0., -5.], [-2., 0., -10.], [0., 0., 5.], [2., 0., -10.])])
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        segments, owners = visible_segments(boxes, np.array([11, 23, 37, 49]),
+                                           np.array([0., 0., 0., 0., 0., -1.]), (100, 80), 0.6, 1., query)
+        self.assertEqual(set(owners), {23, 49})
+        self.assertTrue((segments[owners == 23, :, 0] < 50).all())
+        self.assertTrue((segments[owners == 49, :, 0] > 50).all())
+
+    def test_draw_figure_selected_owner_inside_picture(self):
+        from PIL import Image
+        from r3d.objects.instances_figure import draw_figure
+
+        picture = Image.new('RGB', (100, 80), 'white')
+        segments = np.array([[[10., 20.], [30., 20.]], [[60., 20.], [80., 20.]]])
+        colour = (200, 30, 50)
+        image = draw_figure(picture, segments, np.array([7, 9]), {7: colour}, [])
+        offset = 0
+        self.assertEqual(image.getpixel((offset + 20, 20)), colour)
+        self.assertEqual(image.getpixel((offset + 70, 20)), (255, 255, 255))
+
+    def test_material_legend_top_lengths_suffixes_and_overflow(self):
+        from r3d.objects.instances_figure import legend_rows
+
+        shape = pair_shapes(POINTS + 10)[0]
+        shapes = [shape, replace(shape, triangles=np.tile(shape.triangles, (2, 1))), shape]
+        colours, rows = legend_rows(shapes, {0: 2., 1: 8., 2: 4.}, ['bronze', 'stone'],
+                                    palette=('red', 'blue'))
+        self.assertEqual(rows, [('red', 'bronze, 8 tris', 2), ('blue', 'bronze, 4 tris', 2),
+                                (None, '1 more repeated shapes not drawn', None)])
+        self.assertEqual(colours, {1: 'red', 2: 'blue'})
+
+    def test_material_legend_unique_name_has_triangle_count(self):
+        from r3d.objects.instances_figure import legend_rows
+
+        shape = pair_shapes(POINTS + 10)[0]
+        _, rows = legend_rows([shape], {0: 1.}, ['bronze', 'stone'])
+        self.assertEqual(rows, [(rows[0][0], 'bronze, 4 tris', 2)])
+
+    def test_legend_column_follows_rows_and_stays_right_of_picture(self):
+        from PIL import Image, ImageDraw
+        from r3d.objects.instances_figure import PADDING, ROW_HEIGHT, draw_figure
+        from render.render_compare import _font
+
+        picture = Image.new('RGB', (100, 80), 'black')
+        colour = (200, 30, 50)
+        overflow = '1 more repeated shapes not drawn'
+        font = _font()
+        text = ImageDraw.ImageDraw.text
+        for name, count in [('bronze', 1), ('long material name', 6)]:
+            with self.subTest(name=name):
+                label = f'{name}, 4 tris, 2 copies'
+                rows = [(colour, f'{name}, 4 tris', 2)] * count + [(None, overflow, None)]
+                measure = ImageDraw.Draw(picture)
+                width = max(measure.textbbox((0, 0), label, font=font)[2] + ROW_HEIGHT,
+                            measure.textbbox((0, 0), overflow, font=font)[2]) + PADDING * 2
+                with patch.object(ImageDraw.ImageDraw, 'text', autospec=True, side_effect=text) as drawn:
+                    image = draw_figure(picture, [], [], {}, rows)
+                self.assertEqual(image.size, (picture.width + width,
+                                             max(picture.height, len(rows) * ROW_HEIGHT + PADDING * 2)))
+                self.assertEqual(image.crop((0, 0, *picture.size)).tobytes(), picture.tobytes())
+                self.assertEqual(image.getpixel((picture.width + PADDING, PADDING)), colour)
+                self.assertEqual([call.args[2] for call in drawn.call_args_list], [label] * count + [overflow])
+                self.assertTrue(all(call.args[1][0] >= picture.width + PADDING for call in drawn.call_args_list))
+
+    def test_generate_with_blank_host_image(self):
+        from PIL import Image
+        from r3d.objects.instances_figure import DOC_SIZE, generate
+
+        src = SimpleNamespace(p=np.concatenate([POINTS, POINTS + [5, 0, 0]]),
+                              tri_v=np.concatenate([TRIANGLES, TRIANGLES + len(POINTS)]),
+                              tri_m=np.tile(MATERIALS, 2), tri_o=np.repeat([0, 1], len(TRIANGLES)),
+                              object_names=['first', 'second'], names=['bronze', 'stone'])
+        job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None),
+                              object=SimpleNamespace(matrix=np.eye(3), position=np.zeros(3), name='mesh'))
+        scene = SimpleNamespace(path=pathlib.Path('test.scene.toml'))
+        component = SimpleNamespace(path=SimpleNamespace(animation='unused', node='camera'),
+                                    half_fov_short_tan=0.6, near_z=1.)
+        cameras = [SimpleNamespace(name=name, component=component) for name in ('far', 'near')]
+        pose = np.array([2., 3., 20., 0., 0., -1.])
+        calls = []
+
+        def blank(*args):
+            calls.append(args)
+            return Image.new('RGB', DOC_SIZE, 'white')
+
+        with tempfile.TemporaryDirectory() as directory, \
+                patch('r3d.objects.instances_figure.load_object_source', return_value=src), \
+                patch('r3d.objects.instances_figure.sample_camera_path', side_effect=[
+                    (*DOC_SIZE, 0.6, 1., [pose + [0, 0, 20, 0, 0, 0]]),
+                    (*DOC_SIZE, 0.6, 1., [pose + [0, 0, 20, 0, 0, 0], pose])]):
+            out = pathlib.Path(directory) / 'figure.png'
+            generate(scene, job, cameras, pathlib.Path('unused'), out, 1000, host_render=blank)
+            self.assertTrue(out.exists())
+            with Image.open(out) as image:
+                self.assertEqual(image.height, DOC_SIZE[1])
+                self.assertGreater(image.width, DOC_SIZE[0])
+                self.assertGreater(len(image.getcolors(image.width * image.height)), 1)
+        self.assertEqual(calls[0][1:], ('test', 'mesh', 'near', 1000))
 
 
 if __name__ == '__main__':
