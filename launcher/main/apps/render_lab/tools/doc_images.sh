@@ -33,12 +33,14 @@ gif_from_avi "$W/sponza-flat-motion.avi" "$OUT/render-lab-sponza-flat.gif" "fps=
 
 # The capybara's clips in the order the scene lists them, each blended into
 # the next as the BLEND slider does and shown for an equal CLIP_MS share of
-# the loop, then back to the first so the loop restarts where it began, as
-# the camera turns once around it. The first clip's share is split across
-# the loop's two ends.
+# the loop. Then it rewinds through them in reverse, REWIND_MS each, back to
+# the first, so the loop restarts where it began, as the camera turns once
+# around it. The first clip's share is split across the loop's two ends.
 CLIP_DT=40
 CLIP_MS=2500
 CLIP_BLEND_MS=500
+REWIND_MS=500
+REWIND_BLEND_MS=250
 clip_frame() { echo $(($1 / CLIP_DT)); }
 clips=$("$W/render_lab_render" --quarter 1 --no-hud --scene capybara --frames 1 --console 0:clips \
     -o "$W/capybara-clips.bmp" 2> "$W/capybara-clips.log" | sed -n 's/^RENDER clip=\([^ ]*\) .*/\1/p')
@@ -48,15 +50,26 @@ if [ -z "$clips" ]; then
 fi
 set -- $clips
 first=$1
-loop_ms=$(($# * CLIP_MS))
 shift
 later=$*
+reversed=
+for clip in $later; do
+    reversed="$clip $reversed"
+done
+set -- $reversed
+shift
+rewind=$*
 set --
 at=$((CLIP_MS / 2))
-for clip in $later $first; do
+for clip in $later; do
     set -- "$@" --console "$(clip_frame "$at"):clip $clip $CLIP_BLEND_MS"
     at=$((at + CLIP_MS))
 done
+for clip in $rewind $first; do
+    set -- "$@" --console "$(clip_frame "$at"):clip $clip $REWIND_BLEND_MS"
+    at=$((at + REWIND_MS))
+done
+loop_ms=$((at - REWIND_MS + CLIP_MS / 2))
 run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara --dt "$CLIP_DT" \
     --frames "$(clip_frame "$loop_ms")" --set render_lab.orbit_ms="$loop_ms" "$@" \
     -o "$W/capybara-motion.bmp" --video "$W/capybara-motion.avi" 2> "$W/capybara.log"
