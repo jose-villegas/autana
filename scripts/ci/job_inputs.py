@@ -45,7 +45,6 @@ def arm(root, temporary):
     if os.environ.get('RUNNER_OS') != 'Linux':
         raise RuntimeError('job inputs require a Linux runner with working atime')
     git(root, 'config', 'core.trustctime', 'false')
-    git(root, 'config', 'core.checkStat', 'minimal')
     # A whole filesystem timestamp tick keeps freshly checked-out entries non-racy.
     time.sleep(INDEX_SETTLE_SECONDS)
     git(root, 'update-index', '--really-refresh')
