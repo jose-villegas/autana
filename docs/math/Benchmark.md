@@ -86,7 +86,7 @@ Board build: `e8baae1999ad-diag`.
 | mul (scalar) | s | 11.3 | 2287.0 | 10.5 | 10.2 | 1.1 | - | - |
 | mul (scalar) | x | 22.3 | 3310.0 | 17.5 | 17.3 | 1.3 | - | - |
 | nlerp | f | 94.8 | 8850.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 ulp (sweep) |
-| nlerp | x | 718.9 | 62715.0 | 558.8 | 909.9 | 1.3 | calls *a8, mu_pool_get+0xc, title_screen_layout+0x18 | - |
+| nlerp | x | 718.9 | 62715.0 | 558.8 | 909.9 | 1.3 | calls __assert_func | - |
 | normalize (vec3) | f | 57.4 | 5719.0 | 29.5 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (sweep) |
 | normalize (vec3) | x | 356.9 | 30067.0 | 319.9 | 681.2 | 1.1 | calls __assert_func | - |
 | quat mul | f | 30.3 | 3303.0 | 30.5 | 30.2 | 1.0 | madd.s msub.s | - |

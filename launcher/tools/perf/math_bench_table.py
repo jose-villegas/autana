@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT / "launcher/tools" / folder) for folder in ("render", "quality", "perf")]
 from generated_blocks import replace_block
 from icount_gate import load_baseline
-from code_layout import LayoutError, find_tool, instructions, parse_objdump, run, skip_pools, symbols
+from code_layout import LayoutError, find_tool, instructions, parse_objdump, run, skip_pools, symbols, target_of
 from capture import build_id
 
 DATA = ROOT / "docs/math/data"
@@ -31,6 +31,8 @@ CAPTURE_ROW = re.compile(
 SYMBOL = re.compile(r"^[0-9a-fA-F]+ <([^>]+)>:$")
 ROW_SYMBOL_PREFIX = "math_bench_"
 MANIFEST = "math_bench_manifest"
+XTENSA_LITERAL_BYTES = 4
+CALL_SYMBOL = re.compile(r"[\w.$@]+")
 
 
 def parse_capture(text, rows):
@@ -57,6 +59,30 @@ def parse_capture(text, rows):
     return build, measured
 
 
+def skip_literals(decoded, decode_from=None):
+    if not decoded:
+        return decoded
+    start = decoded[0][0]
+    end = decoded[-1][0] + decoded[-1][1]
+    pools = set()
+    while True:
+        literals = {target_of(operands) for _, _, mnemonic, operands in decoded if mnemonic == "l32r"}
+        pending = sorted(address for address in literals
+                         if address is not None and start <= address <= end - XTENSA_LITERAL_BYTES and address not in pools)
+        if not pending:
+            repaired = skip_pools(decoded, decode_from, jump_max=end - start)
+            if repaired == decoded:
+                return decoded
+            decoded = repaired
+            continue
+        for address in pending:
+            pools.add(address)
+            resume = address + XTENSA_LITERAL_BYTES
+            prefix = [ins for ins in decoded if ins[0] + ins[1] <= address]
+            suffix = decode_from(resume) if decode_from else [ins for ins in decoded if ins[0] >= resume]
+            decoded = prefix + [ins for ins in suffix if ins[0] < end]
+
+
 def parse_disassembly(text, rows, resolve=None):
     expected = {key for key, *_ in rows}
     found = {}
@@ -75,7 +101,7 @@ def parse_disassembly(text, rows, resolve=None):
     for key in sorted(found):
         body = "\n".join(found[key])
         decoded, again = resolve(ROW_SYMBOL_PREFIX + key, body) if resolve else (parse_objdump(body), None)
-        code = skip_pools(decoded, again)
+        code = skip_literals(decoded, again)
         mnemonics = {item[2] for item in code}
         registers = {}
         callees = set()
@@ -83,12 +109,15 @@ def parse_disassembly(text, rows, resolve=None):
             targets = re.findall(r"<([^>]+)>", operands)
             register = operands.split(",", 1)[0].strip()
             if mnemonic == "call8" and targets:
+                if not CALL_SYMBOL.fullmatch(targets[-1]):
+                    raise ValueError(f"invalid call target in {key}: {operands}")
                 callees.add(targets[-1])
                 registers.clear()
             elif mnemonic == "callx8":
-                callees.add(targets[-1] if targets else registers.get(register, "*" + register))
+                callees.add(targets[-1] if targets and CALL_SYMBOL.fullmatch(targets[-1])
+                            else registers.get(register, "*" + register))
                 registers.clear()
-            elif mnemonic == "l32r" and targets and "(" in operands:
+            elif mnemonic == "l32r" and targets and "(" in operands and CALL_SYMBOL.fullmatch(targets[-1]):
                 registers[register] = targets[-1]
             else:
                 registers.pop(register, None)
@@ -217,8 +246,8 @@ def main(argv=None):
             if missing:
                 raise ValueError(f"missing wrapper symbols: {missing}")
             def resolve(symbol, body):
-                _, again = instructions(objdump, args.from_elf, symbol, bounds[symbol])
-                return parse_objdump(body), again
+                decoded, again = instructions(objdump, args.from_elf, symbol, bounds[symbol])
+                return [ins for ins in decoded if ins[0] < bounds[symbol]], again
             fpu = parse_disassembly(run(objdump, "-d", str(args.from_elf)), rows, resolve)
             lines = ["# Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.",
                      "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest()]

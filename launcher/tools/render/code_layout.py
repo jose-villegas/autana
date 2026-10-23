@@ -132,7 +132,7 @@ def target_of(operands):
 POOL_JUMP_MAX = 32
 
 
-def skip_pools(found, decode_from=None):
+def skip_pools(found, decode_from=None, jump_max=POOL_JUMP_MAX):
     """The instructions outside any span a short forward j jumps over that
     nothing outside it branches into: code skipped that way, an else block,
     is always entered by a branch, and a pool never is. A span entered past
@@ -141,7 +141,7 @@ def skip_pools(found, decode_from=None):
     spans = []
     for address, size, mnemonic, operands in found:
         target = target_of(operands)
-        if mnemonic == "j" and target is not None and 0 < target - (address + size) <= POOL_JUMP_MAX:
+        if mnemonic == "j" and target is not None and 0 < target - (address + size) <= jump_max:
             spans.append((address + size, target))
 
     def inside(address, span):
