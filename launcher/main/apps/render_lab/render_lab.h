@@ -3,8 +3,7 @@
 
 #include <stdbool.h>
 
-#define RENDER_LAB_BACKGROUND_RGB 0x0A0C14
-#define RENDER_LAB_STATUS_LEN     48
+#define RENDER_LAB_STATUS_LEN 48
 
 extern const char* render_lab_start_scene_key;
 

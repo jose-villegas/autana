@@ -141,6 +141,7 @@ $MAIN_DIR/input/touch/touch_inject_fsm.c
 $MAIN_DIR/input/touch/gesture.c
 $MAIN_DIR/input/motion/tilt.c
 $MAIN_DIR/input/motion/gravity.c
+$MAIN_DIR/input/motion/shake.c
 $MAIN_DIR/input/buttons/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim.c
@@ -150,43 +151,14 @@ $MAIN_DIR/selftest/post_layout.c
 $MAIN_DIR/core/job.c
 $MAIN_DIR/core/memory.c
 $MAIN_DIR/services/settings_policy.c
-$MAIN_DIR/anim/anim_track.c
-$MAIN_DIR/anim/anim_tracks.c
-$MAIN_DIR/anim/anim_skeleton.c
-$MAIN_DIR/anim/pose/anim_pose.c
-$MAIN_DIR/anim/playback/anim_playhead.c
-$MAIN_DIR/anim/playback/anim_layer.c
 $MAIN_DIR/sound/sound.c
 $MAIN_DIR/audio/audio_adpcm.c
-$MAIN_DIR/render/r3d_skin.c
-$MAIN_DIR/render/skin/r3d_skinning.c
-$MAIN_DIR/render/skin/r3d_skin_light.c
-$MAIN_DIR/anim/anim_binding.c
 $MAIN_DIR/asset/asset_pack.c
 $MAIN_DIR/asset/asset_table.c
 $MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_directory.c
 $MAIN_DIR/asset/asset_store.c
 $MAIN_DIR/asset/asset_store_file.c
-$MAIN_DIR/render/r3d_lit_mesh.c
-$MAIN_DIR/render/render_view.c
-$MAIN_DIR/render/raster.c
-$MAIN_DIR/render/raster_split.c
-$MAIN_DIR/render/raster_show.c
-$MAIN_DIR/render/raster_motion.c
-$MAIN_DIR/render/raster_meshlets.c
-$MAIN_DIR/render/r3d_pipeline.c
-$MAIN_DIR/render/upscale.c
-$MAIN_DIR/render/resolution/resolution.c
-$MAIN_DIR/render/context/render_context.c
-$MAIN_DIR/render/r3d_span.c
-$MAIN_DIR/scene/camera/camera.c
-$MAIN_DIR/scene/scene.c
-$MAIN_DIR/scene/scene_animation.c
-$MAIN_DIR/scene/scene_light.c
-$MAIN_DIR/scene/scene_asset.c
-$MAIN_DIR/scene/scene_draw.c
-$MAIN_DIR/scene/scene_shell.c
 $MAIN_DIR/input/mapping/orbit_motion_touch.c
 $MAIN_DIR/services/tune.c
 $MAIN_DIR/console/console_verbs.c
@@ -201,11 +173,13 @@ $MAIN_DIR/../tools/gen/draw_palette_gen.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
 "
 
+# shellcheck source=../tools/build/renderer.sh
+. "$LAUNCHER_DIR/tools/build/renderer.sh"
 # shellcheck source=../tools/build/ui_sources.sh
 . "$LAUNCHER_DIR/tools/build/ui_sources.sh"
-for ui_source in $UI_SOURCES; do
+for shared_source in $(renderer_sources "$LAUNCHER_DIR") $UI_SOURCES; do
     SOURCES="$SOURCES
-$LAUNCHER_DIR/$ui_source"
+$LAUNCHER_DIR/$shared_source"
 done
 
 # Every package's sources and suites, found the same way (tools/build/packages.sh).

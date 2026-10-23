@@ -72,7 +72,7 @@ static toggles_screen_result_t
 frame(const toggles_screen_state_t* state, const input_t* in) {
     ui_begin(in);
     const toggles_screen_result_t result = toggles_screen_draw(state);
-    ui_end(TOGGLES_SCREEN_BACKGROUND);
+    ui_end(UI_BACKGROUND);
     return result;
 }
 

@@ -12,11 +12,11 @@ The papers and specifications behind its techniques are in [Citations](docs/Cita
 <table>
 <tr><th width="33%">Boot animation</th><th width="33%">Launcher, board rocking</th><th width="33%">Falling Sand, board turning</th></tr>
 <tr><td width="33%"><img src="docs/images/overview/boot-anim.gif" width="100%" alt="The boot animation growing a grid and moving the camera through it before fading to black"></td><td width="33%"><img src="docs/images/overview/launcher-home.gif" width="100%" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"></td><td width="33%"><img src="docs/images/overview/sand-simulation.gif" width="100%" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"></td></tr>
-<tr><th width="33%">Capybara, idle to gallop</th><th width="33%">Sponza, baked light</th><th width="33%">Sponza, flat shading</th></tr>
-<tr><td width="33%"><img src="docs/images/overview/render-lab-capybara.gif" width="100%" alt="A skinned capybara on a meadow blending from idle to walk, run and gallop, then back to idle"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza-flat.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with flat shading on the fitted mesh"></td></tr>
+<tr><th width="33%">Capybara, every clip</th><th width="33%">Sponza, baked light</th><th width="33%">Sponza, flat shading</th></tr>
+<tr><td width="33%"><img src="docs/images/overview/render-lab-capybara.gif" width="100%" alt="A skinned capybara on a meadow blending through each of its animation clips in turn, then back to the first"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza-flat.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with flat shading on the fitted mesh"></td></tr>
 </table>
 
-These images are host renders of the real firmware drawing code, sized to fit this grid. The boot clip follows the startup animation's timeline, the launcher backdrop responds to scripted rocking and lists the apps a release build carries, the sand clip runs the real simulation with scripted tilt, the capybara blends through its idle, walk, run and gallop clips, and the Sponza clips follow a camera flythrough with baked light or flat shading.
+These images are host renders of the real firmware drawing code, sized to fit this grid. The boot clip follows the startup animation's timeline, the launcher backdrop responds to scripted rocking and lists the apps a release build carries, the sand clip runs the real simulation with scripted tilt, the capybara blends through each of its animation clips, and the Sponza clips follow a camera flythrough with baked light or flat shading.
 
 Image render commands are in each app's tools README ([sand](launcher/main/apps/sand/tools/README.md), [render lab](launcher/main/apps/render_lab/tools/README.md)) and the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
 
@@ -59,7 +59,7 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 ./tools/autana monitor 30
 ```
 
-`flash dev` builds the checkout you run it from and flashes it; `monitor 30` reads the serial console for 30 seconds. Board operations use a device lock. To call `autana` by name from future terminals, run `scripts/add-tools-to-path.sh` from the checkout you keep. See the [CLI guide](docs/tools/Autana-CLI.md) for screenshots, tests on the chip, and recovery. The [flashing and toolchain notes](docs/notes/Flashing-and-Toolchain.md) cover board setup problems.
+`flash dev` builds the checkout you run it from and flashes it; `monitor 30` reads the serial console for 30 seconds. Board operations use a device lock. To call `autana` by name from future terminals, run `scripts/add-tools-to-path.sh` from the checkout you keep. See the [CLI guide](docs/cli/README.md) for screenshots, tests on the chip, and recovery. The [flashing and toolchain notes](docs/notes/Flashing-and-Toolchain.md) cover board setup problems.
 
 ## Find your way around
 
@@ -72,7 +72,8 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
 | Run or add tests | [Testing Guide](docs/Testing-Guide.md) |
 | Work with fonts and controls | [Text and Fonts](docs/Text-and-Fonts.md), [UI Toolkit](docs/UI-Toolkit.md) |
-| Build, flash, render, or inspect the board | [Tools index](docs/tools/README.md), [board notes](docs/notes/README.md) |
+| Build, flash, test or drive the board with `autana` | [CLI guide](docs/cli/README.md), [board notes](docs/notes/README.md) |
+| Render, check or generate with the repository's tools | [Tools index](docs/tools/README.md) |
 | Play sounds or add one | [Audio docs](docs/audio/README.md), [Sound assets](docs/audio/Sound-Assets.md) |
 | Check build flags and C style | [Build Variants](docs/Build-Variants.md), [C Style Guide](docs/C-Style-Guide.md) |
 | Explore proposed work | [Rendering Roadmap](docs/plans/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |

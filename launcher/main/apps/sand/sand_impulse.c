@@ -21,40 +21,18 @@
 
 #include "sand_priv.h"
 
+#include "math/geometry/circlei.h"
+
 /* Exact number of lattice cells inside a disc of radius r - every cell with
  * dx*dx + dy*dy <= r*r.
  *
  * A TABLE, because it is a pure function of one small integer and every
  * radius a caller can reach is bounded: the largest today is 25, at ULTRA
  * quality, so the lookup answers every call in a single load. */
-#define DISC_COUNT_MAX_RADIUS 32
-
 static const uint16_t disc_counts[DISC_COUNT_MAX_RADIUS + 1] = {
     1,   5,    13,   29,   49,   81,   113,  149,  197,  253,  317,  377,  441,  529,  613,  709,  797,
     901, 1009, 1129, 1257, 1373, 1517, 1653, 1793, 1961, 2121, 2289, 2453, 2629, 2821, 3001, 3209,
 };
-
-/* The out-of-range path: as |dy| grows the widest x can only shrink, so
- * ONE monotone walk finds every row's half-width using multiplies and
- * compares - no division, no sqrt needed anywhere in this file - and x
- * steps down at most `radius` times across the whole loop.
- * sand_displace() is public, so a radius past the table is reachable
- * even though nothing in the tree does it. */
-static int
-disc_count_walk(int radius) {
-    const int r2 = radius * radius;
-    int count = 0;
-    int x = radius;
-
-    for (int dy = 0; dy <= radius; dy++) {
-        while (x > 0 && (x * x) + (dy * dy) > r2) {
-            x--;
-        }
-        const int row = (2 * x) + 1;
-        count += (dy == 0) ? row : 2 * row; /* +dy and -dy are symmetric */
-    }
-    return count;
-}
 
 int
 sand_disc_count(int radius) {
@@ -64,7 +42,7 @@ sand_disc_count(int radius) {
     if (radius <= DISC_COUNT_MAX_RADIUS) {
         return disc_counts[radius];
     }
-    return disc_count_walk(radius);
+    return circlei_cell_count(radius);
 }
 
 /* Forward-declared: the shared implementation behind both sand_impulse()
@@ -74,15 +52,13 @@ sand_disc_count(int radius) {
 static void queue_flying_grain(sand_t* s, int x, int y, int dir, int speed, bool allow_dislodge_static, int mat_filter,
                                bool guaranteed_dislodge, int ramp);
 
-/* `r2` enforces the true circular disc though the caller loop walks square
- * Chebyshev shells (shell order picks the SEQUENCE, this decides
- * MEMBERSHIP). `disc_count`/`keep`/`*accum` self-limit via a DDA, not a
- * modulo stride (aliases with the ring's own edge lengths), degrading
- * DENSITY evenly instead of truncating the SHAPE. */
+/* `disc_count`/`keep`/`accum` self-limit via a DDA rather than a modulo
+ * stride, which aliases with the ring's edge lengths. Density must degrade
+ * evenly instead of truncating the shape. */
 typedef struct {
     sand_t* s;
     int cx, cy;
-    int r2, disc_count, keep, accum;
+    int disc_count, keep, accum;
     int mat_filter;
 } disc_walk_t;
 
@@ -94,9 +70,6 @@ queue_outward_impulse(disc_walk_t* w, int dx, int dy) {
     const int cx = w->cx;
     const int cy = w->cy;
     const int mat_filter = w->mat_filter;
-    if ((dx * dx) + (dy * dy) > w->r2) {
-        return;
-    }
 
     w->accum += w->keep;
     if (w->accum < w->disc_count) {
@@ -287,13 +260,6 @@ displace_disc(sand_t* s, int cx, int cy, int radius, int mat_filter, bool guaran
         return; /* sand_enable_impulses() was never called, see its comment */
     }
 
-    /* RING ORDER (Chebyshev distance), NOT ROW ORDER: an undersized buffer's
-     * cap would otherwise land entirely in the disc's top rows before the
-     * scan reaches the core or lower half. The r2 check still enforces the
-     * true circular disc regardless of ring - ring order only changes the
-     * SEQUENCE cells are offered in, never which cells qualify. */
-    const int r2 = radius * radius;
-
     /* `disc_count` is sand_disc_count()'s own EXACT count, not a safe
      * over-estimate - fine for sizing the buffer itself, but an overshoot
      * would compute `keep` too low for small discs. `keep` is sized
@@ -304,22 +270,21 @@ displace_disc(sand_t* s, int cx, int cy, int radius, int mat_filter, bool guaran
     const int disc_count = sand_disc_count(radius);
     const int room = s->impulse_max - s->impulse_count;
     const int keep = (disc_count < room) ? disc_count : room;
-    disc_walk_t walk = {.s = s,
-                        .cx = cx,
-                        .cy = cy,
-                        .r2 = r2,
-                        .disc_count = disc_count,
-                        .keep = keep,
-                        .accum = 0,
-                        .mat_filter = mat_filter};
+    disc_walk_t walk = {
+        .s = s, .cx = cx, .cy = cy, .disc_count = disc_count, .keep = keep, .accum = 0, .mat_filter = mat_filter};
 
+    /* Ring order spreads an undersized buffer's offers across the disc
+     * instead of exhausting its capacity in the top rows. */
     queue_outward_impulse(&walk, 0, 0);
     for (int ring = 1; ring <= radius; ring++) {
-        for (int dx = -ring; dx <= ring; dx++) {
+        const int half = mathi_half_chord(radius, ring);
+        const int edge_half = mathi_min(half, ring);
+        for (int dx = -edge_half; dx <= edge_half; dx++) {
             queue_outward_impulse(&walk, dx, -ring);
             queue_outward_impulse(&walk, dx, ring);
         }
-        for (int dy = -ring + 1; dy <= ring - 1; dy++) {
+        const int side_half = mathi_min(half, ring - 1);
+        for (int dy = -side_half; dy <= side_half; dy++) {
             queue_outward_impulse(&walk, -ring, dy);
             queue_outward_impulse(&walk, ring, dy);
         }
@@ -381,11 +346,9 @@ sand_explode(sand_t* s, int cx, int cy, int radius) {
     const int core_radius = (core_radius_raw == 0 && radius >= 2) ? 1 : core_radius_raw;
     const int core_r2 = core_radius * core_radius;
     for (int fdy = -core_radius; fdy <= core_radius; fdy++) {
-        for (int fdx = -core_radius; fdx <= core_radius; fdx++) {
+        const int half = mathi_half_chord(core_radius, fdy);
+        for (int fdx = -half; fdx <= half; fdx++) {
             const int d2 = (fdx * fdx) + (fdy * fdy);
-            if (d2 > core_r2) {
-                continue;
-            }
             ignite_core_cell(s, cx + fdx, cy + fdy, d2, core_r2);
         }
     }

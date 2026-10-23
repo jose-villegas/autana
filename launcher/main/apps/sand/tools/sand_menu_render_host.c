@@ -23,8 +23,6 @@
 #include "apps/sand/ui/sand_icons.h"
 #include "apps/sand/ui/title_screen.h"
 
-#define BACKGROUND 0x0A0C14
-
 static const char* const QUALITY_NAMES[] = {"ULTRA", "HIGH", "NORMAL", "LOW", "VERY LOW"};
 static const char* const DITHER_NAMES[] = {"NONE", "CELL CHECKER", "CELL BAYER2", "PIXEL CHECKER2", "PIXEL BAYER4"};
 
@@ -117,7 +115,7 @@ draw(const render_frame_t* frame) {
     } else {
         title_screen_draw();
     }
-    ui_end(BACKGROUND);
+    ui_end(UI_BACKGROUND);
 }
 
 const render_scene_t render_scene = {
