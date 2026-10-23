@@ -1,7 +1,9 @@
 """Console stream framing and reply contracts shared by board and emulator."""
 import re
 
+# Both success and refusal terminate a framed reply, so callers must stop on either.
 FRAMED_ENDINGS = ("_END", "_ERR")
+# Firmware logging can wrap replies; only its leading decoration may be discarded.
 LOG_PREFIX = re.compile(r"^[IWEVD] \(\d+\) [^:]+:\s*")
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")

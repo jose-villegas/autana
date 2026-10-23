@@ -68,6 +68,7 @@ perf_stats_compute(int32_t* values, int n) {
 
 #ifdef DEVICE_BUILD
 #include "esp_cache.h"
+#include "esp_cpu.h"
 extern char _rodata_reserved_start[];
 extern char _rodata_reserved_end[];
 extern char _instruction_reserved_start[];
@@ -77,17 +78,44 @@ extern char _instruction_reserved_end[];
  * Instructions and flash rodata are read-only, so dropping them loses nothing. Writing back then
  * invalidating PSRAM would drop whatever the other core writes between those two steps. */
 static inline void
-perf_cache_cold(void) {
+perf_cache_rodata_cold(void) {
     const uintptr_t data_line = CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE;
     const uintptr_t data_start = (uintptr_t)_rodata_reserved_start & ~(data_line - 1);
     const uintptr_t data_end = ((uintptr_t)_rodata_reserved_end + data_line - 1) & ~(data_line - 1);
     TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)data_start, data_end - data_start,
                                               ESP_CACHE_MSYNC_FLAG_TYPE_DATA | ESP_CACHE_MSYNC_FLAG_DIR_M2C));
+}
+
+static inline void
+perf_cache_code_cold(void) {
     const uintptr_t line = CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE;
     const uintptr_t start = (uintptr_t)_instruction_reserved_start & ~(line - 1);
     const uintptr_t end = ((uintptr_t)_instruction_reserved_end + line - 1) & ~(line - 1);
     TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)start, end - start,
                                               ESP_CACHE_MSYNC_FLAG_TYPE_INST | ESP_CACHE_MSYNC_FLAG_DIR_M2C));
+}
+
+static inline void
+perf_cache_cold(void) {
+    perf_cache_rodata_cold();
+    perf_cache_code_cold();
+}
+
+static inline float
+perf_cycle_median(void (*run)(void* ctx), void* ctx, bool cold) {
+    _Static_assert(PERF_CYCLE_COLD_REPS <= PERF_CYCLE_WARM_REPS, "cold samples must fit warm sample storage");
+    int32_t samples[PERF_CYCLE_WARM_REPS];
+    const int reps = cold ? PERF_CYCLE_COLD_REPS : PERF_CYCLE_WARM_REPS;
+    run(ctx);
+    for (int rep = 0; rep < reps; rep++) {
+        if (cold) {
+            perf_cache_cold();
+        }
+        const uint32_t start = esp_cpu_get_cycle_count();
+        run(ctx);
+        samples[rep] = (int32_t)(esp_cpu_get_cycle_count() - start);
+    }
+    return (float)perf_stats_compute(samples, reps).med;
 }
 
 #endif

@@ -1804,7 +1804,7 @@ def exchange_retrying(connection, requests):
             if not found:
                 break
             replies.extend(found)
-            if not complete or found[-1].startswith(endings[1]):
+            if found[-1].startswith(endings[1]):
                 return line, replies, False
         else:
             return line, replies, True

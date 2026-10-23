@@ -3,7 +3,6 @@
 #include <math.h>
 #include "core/memory.h"
 #include "core/timing.h"
-#include "esp_cache.h"
 #include "esp_cpu.h"
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
@@ -200,21 +199,15 @@ fixture(void) {
     return f;
 }
 
-static float
-median_cycles(const row_t* row, fixture_t* f, bool cold) {
-    _Static_assert(PERF_CYCLE_COLD_REPS <= PERF_CYCLE_WARM_REPS, "cold samples must fit warm sample storage");
-    int32_t samples[PERF_CYCLE_WARM_REPS];
-    const int reps = cold ? PERF_CYCLE_COLD_REPS : PERF_CYCLE_WARM_REPS;
-    row->fn(f);
-    for (int j = 0; j < reps; j++) {
-        if (cold) {
-            perf_cache_cold();
-        }
-        const uint32_t start = esp_cpu_get_cycle_count();
-        row->fn(f);
-        samples[j] = (int32_t)(esp_cpu_get_cycle_count() - start);
-    }
-    return (float)perf_stats_compute(samples, reps).med / (float)(cold ? 1 : row->ops);
+typedef struct {
+    const row_t* row;
+    fixture_t* fixture;
+} cycle_context_t;
+
+static void
+run_cycles(void* ctx) {
+    cycle_context_t* c = ctx;
+    c->row->fn(c->fixture);
 }
 
 static void
@@ -230,8 +223,9 @@ test_math_board_rows(void) {
     fixture_t* f = fixture();
     for (size_t j = 0; j < sizeof rows / sizeof *rows; j++) {
         const row_t* row = &rows[j];
-        const float warm = median_cycles(row, f, false);
-        const float cold = median_cycles(row, f, true);
+        cycle_context_t ctx = {.row = row, .fixture = f};
+        const float warm = perf_cycle_median(run_cycles, &ctx, false) / (float)row->ops;
+        const float cold = perf_cycle_median(run_cycles, &ctx, true);
         row->fn(f);
         TEST_ASSERT_TRUE(frame_cost_count_begin(insn));
         row->fn(f);

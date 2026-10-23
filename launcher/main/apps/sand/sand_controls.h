@@ -24,4 +24,5 @@
  * visible lurch; fewer would slow the sand on a slow frame. */
 #define SAND_MAX_CATCHUP             2
 
-int sand_controls_jostle(float shake_level);
+/* Shake level (0..1) to a jostle strength in 0..SAND_JOSTLE_MAX; out-of-range levels clamp. */
+int sand_controls_jostle(float level);
