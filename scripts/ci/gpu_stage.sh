@@ -1,6 +1,7 @@
 #!/bin/sh
 # Board work must finish before joining the heavy queue; recheck the cap after it.
 set -eu
+: "${GPU_WORKFLOW:?GPU_WORKFLOW is required}"
 status=0
 python3 scripts/lib/local_schedule.py ready || status=$?
 skipped=$(python3 -c 'from scripts.lib.local_schedule import EXIT_SKIPPED; print(EXIT_SKIPPED)')

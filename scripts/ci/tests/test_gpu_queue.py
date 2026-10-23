@@ -1,18 +1,32 @@
 """GPU and board work share a bounded night without touching hardware."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 import os
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from scripts.ci.github_api import PER_PAGE
 from scripts.lib import local_schedule as schedule
 from scripts.ci.tests.test_local_schedule import Clock
 import yaml
 
 
 class GpuQueueTests(unittest.TestCase):
+    def test_pending_reads_only_first_recent_page_per_workflow(self):
+        request = Mock(side_effect=[
+            {'workflow_runs': [{'status': 'completed'}] * PER_PAGE}
+            for workflow in schedule.GPU_ESTIMATES])
+        now = datetime(2026, 10, 23, tzinfo=timezone.utc)
+        with patch.object(schedule, 'Clock') as clock:
+            clock.return_value.now.return_value = now
+            self.assertFalse(schedule.gpu_pending(request=request))
+        cutoff = (now - schedule.RECENT_RUNS_WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.assertEqual(request.call_args_list, [
+            unittest.mock.call('GET', f'/actions/workflows/{workflow}/runs?created=>={cutoff}&per_page={PER_PAGE}')
+            for workflow in schedule.GPU_ESTIMATES])
+
     def test_invalid_night_start_fails_loudly(self):
         for value in ('7:00', '24:00', '17:59', '07:00', '22:60', 'evening'):
             with self.subTest(value=value), patch.dict(os.environ, NIGHT_START=value):
@@ -44,7 +58,8 @@ class GpuQueueTests(unittest.TestCase):
         import contextlib
         import io
         clock = Clock(12)
-        with patch.dict(os.environ, OVERRIDE='true', GITHUB_EVENT_NAME='workflow_dispatch'), \
+        with patch.dict(os.environ, OVERRIDE='true', GITHUB_EVENT_NAME='workflow_dispatch',
+                        GPU_WORKFLOW=schedule.DOC_IMAGES_WORKFLOW), \
                 patch.object(sys, 'argv', ['local_schedule', 'ready']), \
                 patch.object(schedule, 'gpu_queue', return_value=None), \
                 patch.object(schedule, 'gpu_ready', partial(schedule.gpu_ready, board_held=lambda: True)), \
@@ -108,7 +123,7 @@ class GpuQueueTests(unittest.TestCase):
         for event, expected in (('schedule', schedule.EXIT_SKIPPED),
                                 ('workflow_dispatch', schedule.EXIT_REFUSED)):
             with self.subTest(event=event), patch.dict(os.environ, GITHUB_EVENT_NAME=event,
-                    OVERRIDE='false'), \
+                    OVERRIDE='false', GPU_WORKFLOW=schedule.DOC_IMAGES_WORKFLOW), \
                     patch.object(schedule, 'Clock', return_value=Clock(6, 41)), \
                     patch.object(schedule, 'gpu_pending', return_value=False), \
                     patch.object(sys, 'argv', ['local_schedule', 'ready']), \
@@ -116,7 +131,7 @@ class GpuQueueTests(unittest.TestCase):
                     contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(schedule.main(), expected)
             with patch.dict(os.environ, GITHUB_EVENT_NAME=event,
-                    OVERRIDE='false'), patch.object(schedule, 'Clock', return_value=Clock(6, 41)), \
+                    OVERRIDE='false', GPU_WORKFLOW=schedule.DOC_IMAGES_WORKFLOW), patch.object(schedule, 'Clock', return_value=Clock(6, 41)), \
                     patch.object(schedule, 'gpu_pending', return_value=False), \
                     patch.object(sys, 'argv', ['local_schedule', 'start', '--', 'render']), \
                     patch.object(schedule.subprocess, 'call') as run, \

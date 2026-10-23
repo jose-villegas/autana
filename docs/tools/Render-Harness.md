@@ -162,6 +162,9 @@ and lists every input.
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
 Changed images remain pending for the night window; pushes do not render.
 
+The doc job takes its fingerprint at its 16:00Z start; inputs merged during
+the evening wait render the next night.
+
 The [night order](../../launcher/tools/perf/README.md#nightly-scoped-chain)
 owns the local wait, bake priority and board-plan handoff. The hosted job
 only fingerprints. Every Bakes GPU completion triggers a fresh check.
