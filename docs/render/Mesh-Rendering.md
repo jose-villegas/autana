@@ -76,9 +76,8 @@ The importer bakes the placement from a position, a rotation and a scale
 | `r3d_project.h` | Float pixel snapping through a `projectf_t` lens and math near clipping |
 | `r3d_project_x.h` | Camera-space model matrix and fixed-point pixel projection, with math near clipping |
 
-Only
-`r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
-suite or host tool include them.
+Only `r3d_pipeline.h`, `raster_internal.h` and `r3d_span_internal.h` are
+internal: render/ and any suite or host tool include them.
 
 ## The maths
 
@@ -496,9 +495,10 @@ upscale maps share one block. The list comes first, at an offset
 independent of render size; storage is padded for picture attachments.
 
 `raster_carve()` in `raster_internal.h` states the layout once, and
-`raster_scratch_bytes()` sizes the block from it. The caller obtains it once
-and sets `scratch`; each call carves it. The caller decides where it lives,
-so it need not consume internal RAM.
+`raster_scratch_bytes()` sizes the block from it.
+
+The caller obtains the block once and sets `scratch`; each call carves it.
+The caller decides where it lives, so it need not consume internal RAM.
 
 ## Rules the layer keeps
 
