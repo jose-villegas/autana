@@ -218,7 +218,7 @@ contiguous block will remain available after runtime allocations.
 
 | Question | Where to look |
 |---|---|
-| Free heap and largest block now | POST, the development build's `HEAPMARK` lines, and `autana heap` (internal DMA pool, [Autana-CLI.md](../tools/Autana-CLI.md)) |
+| Free heap and largest block now | POST, the development build's `HEAPMARK` lines, and `autana heap` (internal DMA pool, [Watch.md](../cli/Watch.md)) |
 | Static `.bss`, `.data`, RAM-resident code | the linker map and size report, for every variant (release, `--dev`, `--diag`) |
 | Host model's budget | `launcher/tools/device/device_profiles/esp32s3.sh`; not a live heap measurement of every variant |
 

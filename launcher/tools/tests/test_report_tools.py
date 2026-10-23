@@ -176,7 +176,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
     """device_report.sh as a report script sources it, with `autana` (not
     device.py, #454 removed --owner/--worktree/--purpose from it, and
     device_report.sh now goes through `autana` like every other command,
-    docs/tools/Device-Lock.md) stubbed to record the call instead of
+    docs/cli/Device-Lock.md) stubbed to record the call instead of
     reaching a board."""
 
     def setUp(self):

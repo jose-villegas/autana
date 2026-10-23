@@ -1,11 +1,11 @@
 why does my app freeze the frame loop when I call vTaskDelay	docs/firmware/Design-Rules.md	There is exactly one frame loop, and it belongs to the shell
 how do I register a new app with APP_REGISTER	docs/Building-an-App.md	Registration
 what does CONFIG_LAUNCHER_SELFTEST actually gate	docs/Build-Variants.md	Development-only instrumentation is its own flag, not SELFTEST
-flash diagnostics build	docs/tools/Autana-CLI.md	Build and flash
-autana monitor without --follow hangs, why	docs/tools/Autana-CLI.md	Watch the board
-how do two agents share the same board without stepping on each other	docs/tools/Device-Lock.md	Device lock
+flash diagnostics build	docs/cli/Build-and-Flash.md	Build and flash
+autana monitor without --follow hangs, why	docs/cli/Watch.md	Watch the board
+how do two agents share the same board without stepping on each other	docs/cli/Device-Lock.md	Device lock
 why is my host test failing but the device suite passes	docs/testing/Host-Tests.md	The host enforces the device's memory limits
-how do I make a tunable I can change live on the device	docs/tools/Live-Tuning.md	Making something tunable
+how do I make a tunable I can change live on the device	docs/cli/Live-Tuning.md	Making something tunable
 clang-format version mismatch breaks CI	docs/C-Style-Guide.md	One formatter version
 why is LVGL not used here	docs/firmware/UI.md	Why microui, not LVGL
 touch taps feel laggy in the UI	docs/firmware/UI.md	Two things to know before touching it
@@ -24,7 +24,7 @@ how do I add a screen to the host editor	editor/README.md	Adding a screen
 running qemu tests without a board	docs/testing/QEMU.md	QEMU: the device image with no board
 pinning pixels for a rendered scene against a reference capture	docs/tools/Render-Harness.md	Diffing against a capture
 what suite naming pattern does SUITE_REGISTER expect	docs/testing/Writing-a-Test.md	Adding a suite
-how do I take a screenshot of the panel from the CLI	docs/tools/Flash-and-Captures.md	Screenshots
+how do I take a screenshot of the panel from the CLI	docs/cli/Flash-and-Captures.md	Screenshots
 console is not showing up as a normal UART port	docs/notes/Debugging.md	The console is USB-Serial-JTAG, not UART0
 IMU axes seem swapped compared to the screen orientation	docs/input/Motion-Axes.md	Motion axes
 board keeps resetting when flashing at high baud, warm reset issue	docs/notes/Flashing-and-Toolchain.md	Warm resets at 120 MHz
@@ -42,10 +42,10 @@ how are tool tests under apps tools tests discovered and run in CI	scripts/run-t
 Building an App exit heap leak warning log internal memory app arena	docs/Building-an-App.md	App memory
 minimum python version for tools tests	scripts/lib/python.sh	scripts/lib/python.sh
 perf_compare scoped seeded run --runs --test	launcher/tools/perf/README.md	Performance comparison
-autana unknown verb forwarded to device console app verb	docs/tools/App-Commands.md	App commands
+autana unknown verb forwarded to device console app verb	docs/cli/App-Commands.md	App commands
 why does 80 MHz send only full-width rows	docs/gfx/Present.md	Panel clock
 test suite registration setUp per test reset global state	docs/testing/Writing-a-Test.md	Conventions
-autana touch tap swipe drive the board	docs/tools/Autana-CLI.md	Drive
+autana touch tap swipe drive the board	docs/cli/Drive.md	Drive
 which QEMU binary runs the qemu tests and CI caches	docs/testing/QEMU.md	A QEMU with its bugs patched
 bake bytes differ across CPUs determinism	launcher/tools/r3d/isa.py	launcher/tools/r3d/isa.py
 How are citation names and Cited by lists validated?	scripts/gates/check_doc_citations.py	scripts/gates/check_doc_citations.py
@@ -54,14 +54,14 @@ which test suites run on host versus QEMU versus device	docs/Testing-Guide.md	Tw
 sand block sleep awake rule	docs/sand/Architecture.md	Block and row sleeping
 which layers does main.c own, startup sequence, layers table	docs/firmware/Layers.md	Layers
 function name prefix module	docs/C-Style-Guide.md	Names
-open the sand app from the launcher, send a console verb like PERF	docs/tools/App-Commands.md	App commands
+open the sand app from the launcher, send a console verb like PERF	docs/cli/App-Commands.md	App commands
 two-core draw split row	docs/render/Mesh-Rendering.md	On both cores
 FIFO loss accounting gravity motion sample interval	docs/input/Gravity.md	Limits
 run one host test suite filter	docs/testing/Host-Tests.md	Run them
 full frame transfer time QSPI panel	docs/notes/Display-and-Rendering.md	Transfer payload
 How is docs/Shared-Helpers.md generated?	docs/Shared-Helpers.md	Shared helpers
 frame dt_ms clamped 250 timestamp	docs/Building-an-App.md	One pass of the frame loop
-lock protocol	docs/tools/Device-Lock.md	Device lock
+lock protocol	docs/cli/Device-Lock.md	Device lock
 frame cost	docs/tools/Frame-Cost.md	Frame cost
 which chip handles the pwr button and how is a press read	docs/input/Buttons.md	Buttons
 tearing effect te panel scan	docs/notes/Display-and-Rendering.md	Tearing and the TE line

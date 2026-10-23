@@ -40,7 +40,7 @@ bool ui_probe_icon_rgb(recti_t within, uint32_t* rgb);
 int ui_probe_bevel_index(recti_t r, uint32_t face_rgb, bool sunken);
 
 /* How wide a label may be inside a button, or a dropdown, `w` wide under
- * `theme`. */
+ * `theme`; NULL is the shell look. */
 int ui_probe_button_label_width(int w, bool has_icon, const ui_theme_t* theme);
 int ui_probe_dropdown_label_width(int w, bool has_icons, const ui_theme_t* theme);
 

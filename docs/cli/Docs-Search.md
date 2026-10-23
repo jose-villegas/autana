@@ -17,6 +17,20 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 `python scripts/docs/docs_search.py` takes the same arguments, plus `--json`,
 `--top N`, `--budget CHARS` and `--lexical`.
 
+## Commands
+
+`autana help docs` lists the same commands.
+
+<!-- generated: cli-docs check: python scripts/autana/cli_reference.py --check -->
+| Command | What it does |
+|---|---|
+| `autana docs <question...>` | the three best sections, excerpted with their path:line, then five more to read on |
+| `autana docs --section <path:line>` | one section whole, or path#heading words; --deep adds subsections |
+| `autana docs --outline <path>` | a document's headings, with lines and sizes |
+| `autana docs --ask <question...>` | a short answer from the local chat model |
+| `autana docs --usage [--days N]` | what this machine has looked up: counts, repeats, misses, documents refused whole |
+<!-- /generated: cli-docs -->
+
 ## What it reads
 
 | Source | Unit |
@@ -37,7 +51,7 @@ Build trees and clones are judged by what the directory holds, never by its
 name, so `launcher/tools/build/`, a real source folder, is never mistaken for one.
 
 The `docs_extra` key of `autana.local.toml` lets notes kept outside the
-checkout join the index ([Settings](Autana-CLI.md#settings)). It is a list of
+checkout join the index ([Settings](Settings.md)). It is a list of
 paths, each relative to the checkout unless absolute. A named folder is walked
 like the checkout, with no ignore file consulted; a named file must end in `.md`.
 
