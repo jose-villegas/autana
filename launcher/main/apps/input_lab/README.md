@@ -36,8 +36,8 @@ autana labdump > shake.log
 python launcher/main/apps/input_lab/tools/shake_fit.py shake.log --plot shake.png
 ```
 
-The dump frees the retained PSRAM. Reset, leaving the page or starting another
-round also discards it. Allocation failure displays `NO MEMORY FOR ROUND`.
+The transcript stays in PSRAM for repeated dumps. Reset, leaving the page or
+starting another round discards it. Allocation failure displays `NO MEMORY FOR ROUND`.
 
 ## Transcript and analysis
 

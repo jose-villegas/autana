@@ -602,8 +602,9 @@ read_motion(uint32_t dt_ms) {
     } while (0)
 
 static void
-emit_imu_record(const char* text) {
-    printf("%s", text);
+emit_imu_record(const char* text, size_t length) {
+    printf("%.*s", (int)length, text);
+    timing_yield();
 }
 
 static bool
@@ -618,7 +619,7 @@ dump_imu_record(const char* args) {
         printf("%s", error);
     } else {
         printf(IMU_RECORD_PREFIX "_BEGIN\n");
-        imu_record_take(&imu_record, emit_imu_record);
+        imu_record_replay(&imu_record, emit_imu_record);
         printf(IMU_RECORD_PREFIX "_END\n");
     }
     if (fflush(stdout) != 0) {
