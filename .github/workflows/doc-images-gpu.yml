@@ -149,8 +149,6 @@ jobs:
         if: steps.gpu.outputs.rendered == 'true' && steps.render.outputs.count == '0'
         env:
           GH_TOKEN: ${{ github.token }}
-  NIGHT_START: ${{ vars.NIGHT_START }}
-  GPU_WORKFLOW: doc-images-gpu.yml
         run: |
           "$GPU_ENV/bin/python3" scripts/ci/refresh_pr.py close \
             "Every GPU-rendered image and generated table already matches main; nothing left to refresh."
@@ -159,8 +157,6 @@ jobs:
         if: steps.gpu.outputs.rendered == 'true' && steps.render.outputs.count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
-  NIGHT_START: ${{ vars.NIGHT_START }}
-  GPU_WORKFLOW: doc-images-gpu.yml
         run: |
           # The run rendered its trigger commit; the branch is built on the current main from
           # the changed images and the tables (scripts/ci/refresh_branch.py says why).
