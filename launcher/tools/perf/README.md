@@ -361,22 +361,25 @@ sequenceDiagram
     GPU->>GPU: Wait for active board locks
     GPU->>Heavy: Take heavy, render before 07:00
     GPU->>Heavy: Release heavy
-    Plan->>Plan: Both GPU workflows idle on two polls
+    Plan->>Plan: If GPU marker fresh, wait for two idle polls
     Plan->>Lanes: Start board lanes until 07:00
 ```
 
 `vars.NIGHT_START` is HH:MM in 18:00–23:59 local; an empty value uses the
 default in `scripts/lib/local_schedule.py`, which also owns the night end.
 Dispatch inputs `queue_at` and `window_end` override the plan window.
-An empty dispatch `queue_at` starts after pending GPU work.
+An empty dispatch `queue_at` starts after pending GPU work on the same host.
 
 The GPU runner waits at most `MAX_EVENING_WAIT` for the night start,
 yielding green to pending bakes. Earlier arrivals end green with
 “pending: renders tonight”. Every bake completion triggers another check.
 
-The plan requires both GPU workflows idle on two consecutive polls before
-taking any board lock. The board night retains the shared morning deadline
-in `plan.json`; insufficient time for `FIRST_STEP_SECONDS` skips green.
+The plan waits for both GPU workflows to be idle on two consecutive polls
+only when the heavy root's runner marker is fresh within `GPU_HOST_MARKER_DAYS`
+(`scripts/lib/local_schedule.py`); otherwise it reports “GPU runner not on this host”.
+
+The board night retains the shared morning deadline in `plan.json`;
+insufficient time for `FIRST_STEP_SECONDS` skips green.
 
 Morning scheduled arrivals after the night end skip; arrivals after noon
 wait for the next night start. A dispatch with `queue_at` follows this rule.
