@@ -180,7 +180,7 @@ be checked to have measured the same thing.
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render-lab-sponza-flat.gif` | the flythrough with the fitted flat-shaded bake |
-| `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and back to the first, as the camera turns once around it |
+| `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and, more slowly, back to the first, as the camera turns once around it |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 

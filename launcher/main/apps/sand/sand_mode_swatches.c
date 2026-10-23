@@ -2,6 +2,8 @@
 
 #include <stdbool.h>
 
+#include "collections/sort.h"
+
 static int
 luma(uint32_t rgb) {
     return (int)((((rgb >> 16) & 0xFF) * 299) + (((rgb >> 8) & 0xFF) * 587) + ((rgb & 0xFF) * 114));
@@ -18,17 +20,11 @@ contains(const uint32_t* colors, int n, uint32_t rgb) {
 }
 
 /* Dark to light, so the grid reads as the mode's own ramp. */
-static void
-sort_by_luma(uint32_t* colors, int n) {
-    for (int i = 1; i < n; i++) {
-        const uint32_t c = colors[i];
-        int j = i - 1;
-        while (j >= 0 && luma(colors[j]) > luma(c)) {
-            colors[j + 1] = colors[j];
-            j--;
-        }
-        colors[j + 1] = c;
-    }
+static int
+by_luma(const void* a, const void* b) {
+    const int luma_a = luma(*(const uint32_t*)a);
+    const int luma_b = luma(*(const uint32_t*)b);
+    return (luma_a > luma_b) - (luma_a < luma_b);
 }
 
 static void
@@ -41,7 +37,7 @@ build_sixteen(const gfx_color_t* none_lut, int lut_size, sand_mode_swatch_t* out
             out->rgb[n++] = rgb;
         }
     }
-    sort_by_luma(out->rgb, n);
+    sort_insertion(out->rgb, (size_t)n, sizeof out->rgb[0], by_luma);
     for (; n < want; n++) {
         out->rgb[n] = out->rgb[n - 1];
     }

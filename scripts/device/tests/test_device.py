@@ -36,6 +36,7 @@ import autana_config
 
 # A board is named by its USB serial number; COM5 is where it enumerates.
 BOARD = "90:70:69:FE:A3:08"
+EXAMPLE_PREFIX = "EXAMPLE"
 
 
 def mock_store(token="token"):
@@ -695,6 +696,93 @@ class DeviceTests(unittest.TestCase):
                                                           self.send_args("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], optional=True))
         self.assertEqual(status, 0)
         printed.assert_called_once_with("EXAMPLE status=ok\nEXAMPLE_END")
+
+    def test_exchange_long_reply_uses_idle_time_and_parses_each_line_once(self):
+        payload = f"{EXAMPLE_PREFIX} sample ".encode() + b"x" * 100 + b"\n"
+        transcript = f"{EXAMPLE_PREFIX}_BEGIN\n".encode() + payload * 12000 + f"{EXAMPLE_PREFIX}_END\n".encode()
+        chunks = [transcript[i:i + 4096] for i in range(0, len(transcript), 4096)]
+        connection = FakeConnection(chunks)
+        clock = [0.0]
+        original_read = connection.read
+
+        def read(size):
+            clock[0] += 0.1
+            return original_read(size)
+
+        with mock.patch.object(connection, "read", side_effect=read), \
+             mock.patch.object(device.time, "monotonic", side_effect=lambda: clock[0]), \
+             mock.patch.object(device, "replies_to", wraps=device.replies_to) as parsed:
+            found, complete, _ = device.exchange(connection, EXAMPLE_PREFIX.lower(), EXAMPLE_PREFIX,
+                                               [f"{EXAMPLE_PREFIX}_END", f"{EXAMPLE_PREFIX}_ERR"], 3.0)
+        self.assertTrue(complete)
+        self.assertEqual(found, transcript.decode().splitlines())
+        self.assertGreater(clock[0], 3.0)
+        self.assertEqual(sum(len(call.args[0]) for call in parsed.call_args_list), len(transcript))
+
+    def test_exchange_caps_active_replies_and_does_not_extend_for_unrelated_logs(self):
+        for payload, expected_seconds in ((f"{EXAMPLE_PREFIX} sample\n".encode(), 5.0), (b"I (1) shell: frame\n", 3.0)):
+            with self.subTest(payload=payload):
+                connection = FakeConnection([payload] * 20)
+                clock = [0.0]
+                original_read = connection.read
+
+                def read(size):
+                    clock[0] += 1.0
+                    return original_read(size)
+
+                with mock.patch.object(connection, "read", side_effect=read), \
+                     mock.patch.object(device.time, "monotonic", side_effect=lambda: clock[0]), \
+                     mock.patch.object(device, "EXCHANGE_MAX_SECONDS", 5.0):
+                    _, complete, _ = device.exchange(connection, EXAMPLE_PREFIX.lower(), EXAMPLE_PREFIX,
+                                                   [f"{EXAMPLE_PREFIX}_END", f"{EXAMPLE_PREFIX}_ERR"], 3.0)
+                self.assertFalse(complete)
+                self.assertEqual(clock[0], expected_seconds)
+
+    def test_exchange_partial_reply_returns_cutoff(self):
+        with mock.patch.object(device, "open_when_free", return_value=FakeConnection()):
+            found, complete, cut_off = device.exchange(FakeConnection([b"EXAMPLE partial"]),
+                "example", "EXAMPLE", ["EXAMPLE_END", "EXAMPLE_ERR"], 0.001)
+        self.assertEqual([], found)
+        self.assertFalse(complete)
+        self.assertTrue(cut_off)
+
+    def test_send_partial_reply_contracts(self):
+        for optional in (False, True):
+            for framed in (False, True):
+                with self.subTest(optional=optional, framed=framed):
+                    args = self.send_args("example", reply="EXAMPLE", seconds=0.001, optional=optional,
+                        until=["EXAMPLE_END", "EXAMPLE_ERR"] if framed else ["EXAMPLE"])
+                    if optional and not framed:
+                        self.assertEqual(0, self.send_response([b"EXAMPLE partial"], args)[0])
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "reply cut off"):
+                            self.send_response([b"EXAMPLE partial"], args)
+        args = self.send_args("example", reply="EXAMPLE", until=["EXAMPLE_END"], seconds=0.001, optional=True)
+        self.assertEqual(0, self.send_response([b"unrelated partial"], args)[0])
+
+    def test_exchange_renews_only_for_complete_reply_lines(self):
+        for payload in (b"EXAMPLE partial", b"I (1) shell: mentions EXAMPLE inside a log\n",
+                        b"NOTEXAMPLE value\n"):
+            with self.subTest(payload=payload):
+                clock = [0.0]
+                connection = FakeConnection([payload] * 20)
+                original_read = connection.read
+
+                def read(size):
+                    clock[0] += 1.0
+                    return original_read(size)
+
+                with mock.patch.object(connection, "read", side_effect=read), \
+                     mock.patch.object(device.time, "monotonic", side_effect=lambda: clock[0]):
+                    device.exchange(connection, "example", "EXAMPLE", ["EXAMPLE_END"], 3.0)
+                self.assertEqual(3.0, clock[0])
+
+    def test_send_optional_rejects_a_reply_without_its_end(self):
+        with self.assertRaisesRegex(RuntimeError, "reply cut off"):
+            self.send_response([b"EXAMPLE_BEGIN\n", b"EXAMPLE partial"],
+                               self.send_args("example", reply="EXAMPLE",
+                                              until=["EXAMPLE_END", "EXAMPLE_ERR"],
+                                              seconds=0.01, optional=True))
 
     def test_send_forwards_an_app_command_and_fails_on_its_own_err_line(self):
         status, connection, printed = self.send_response([b"EXAMPLE_ERR not running\n"],
@@ -1469,7 +1557,7 @@ class ConsoleSetupTests(unittest.TestCase):
 
     def test_partial_reply_is_never_retried(self):
         connection = FakeConnection()
-        with mock.patch.object(device, "exchange", return_value=(["SOUND pending"], False)) as exchange:
+        with mock.patch.object(device, "exchange", return_value=(["SOUND pending"], False, True)) as exchange:
             with self.assertRaises(device.ConsoleRefused):
                 device.apply_console_lines(connection, ["sound stop all", "sound play tap loop"])
         self.assertEqual(exchange.call_count, 1)
@@ -1477,9 +1565,9 @@ class ConsoleSetupTests(unittest.TestCase):
     def test_silence_restarts_the_sequence(self):
         connection = FakeConnection()
         with mock.patch.object(device, "exchange", side_effect=[
-                ([device.reply_prefix("sound stop all")[1][0]], True), ([], False),
-                ([device.reply_prefix("sound stop all")[1][0]], True),
-                ([device.reply_prefix("sound play tap loop")[1][0]], True)]) as exchange, mock.patch("builtins.print"):
+                ([device.reply_prefix("sound stop all")[1][0]], True, False), ([], False, False),
+                ([device.reply_prefix("sound stop all")[1][0]], True, False),
+                ([device.reply_prefix("sound play tap loop")[1][0]], True, False)]) as exchange, mock.patch("builtins.print"):
             device.apply_console_lines(connection, ["sound stop all", "sound play tap loop"])
         self.assertEqual([call.args[1] for call in exchange.call_args_list],
                          ["sound stop all", "sound play tap loop"] * 2)
