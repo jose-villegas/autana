@@ -26,6 +26,36 @@ class HeavyTests(unittest.TestCase):
         self.addCleanup(self.env.stop)
         self.store = locks.LockStore(self.root, is_alive=lambda pid: pid == os.getpid())
 
+    def test_board_observer_ignores_heavy_waiters_and_expired_holders(self):
+        heavy = self.store.acquire(locks.HEAVY, "gpu", "build")
+        self.assertFalse(self.store.any_board_held())
+        self.store.release(locks.HEAVY, heavy["token"])
+        self.store.enqueue("queued", "waiter", "suite")
+        self.assertFalse(self.store.any_board_held())
+        held = self.store.acquire("BOARD", "night", "suite")
+        before = self.store.lock_path("BOARD").read_bytes()
+        self.assertTrue(self.store.any_board_held())
+        self.assertEqual(self.store.lock_path("BOARD").read_bytes(), before)
+        self.store.release("BOARD", held["token"])
+        self.assertFalse(self.store.any_board_held())
+        locks.write_json(self.store.lock_path("BOARD"), dict(held, host="windows", heartbeat_at=0))
+        self.assertFalse(self.store.any_board_held())
+        locks.write_json(self.store.lock_path("BOARD"), dict(held, kind="human", expires_at=self.store.now() + 60))
+        self.assertTrue(self.store.any_board_held())
+
+    def test_wsl_board_observer_reads_windows_temp_store(self):
+        with patch.dict(os.environ, {"_AUTANA_DEVICE_LOCK_ROOT": ""}), \
+                patch.object(locks, "is_wsl", return_value=True), \
+                patch.object(locks.subprocess, "check_output", side_effect=["C:\\Users\\runner\\Temp\r\n", str(self.root)]) as run:
+            self.assertEqual(locks.board_read_root(), self.root / "autana-device")
+        self.assertIn("GetTempPath", run.call_args_list[0].args[0][-1])
+        self.assertEqual(run.call_args_list[1].args[0], ["wslpath", "-u", "C:\\Users\\runner\\Temp"])
+        with patch.dict(os.environ, {"_AUTANA_DEVICE_LOCK_ROOT": ""}), \
+                patch.object(locks, "is_wsl", return_value=True), \
+                patch.object(locks.subprocess, "check_output", side_effect=["missing", str(self.root / "missing")]):
+            with self.assertRaisesRegex(OSError, "unreachable"):
+                locks.board_read_root()
+
     def test_stale_foreign_and_legacy_dead_waiters_are_pruned(self):
         for foreign in (True, False):
             with self.subTest(foreign=foreign):

@@ -13,6 +13,7 @@ import signal
 import threading
 import weakref
 import statistics
+import subprocess
 import sys
 import tempfile
 import time
@@ -112,6 +113,19 @@ def heavy_root():
             raise OSError("WSL heavy lock root is unreachable: " + str(shared))
         return shared / "autana" / HEAVY
     return Path("/tmp/autana-heavy")
+
+
+def board_read_root():
+    """WSL observes the Windows account's board locks without acquiring them."""
+    if os.environ.get("_AUTANA_DEVICE_LOCK_ROOT") or not is_wsl():
+        return default_root()
+    windows_temp = subprocess.check_output(
+        ["powershell.exe", "-NoProfile", "-Command", "[System.IO.Path]::GetTempPath()"],
+        text=True, timeout=30).strip()
+    shared = Path(subprocess.check_output(["wslpath", "-u", windows_temp], text=True, timeout=30).strip())
+    if not shared.is_dir():
+        raise OSError("WSL board lock root is unreachable: " + str(shared))
+    return shared / "autana-device"
 
 
 def default_owner():
@@ -428,6 +442,14 @@ class LockStore:
         return sorted({record["board"] for record in map(self.read_json, paths)
                        if isinstance(record, dict) and isinstance(record.get("board"), str)
                        and record["board"] != HEAVY})
+
+    def any_board_held(self):
+        """Observe live holders and human reservations without changing their store."""
+        for board in self.boards():
+            lock = self.read_json(self.lock_path(board))
+            if lock and not self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
+                return True
+        return False
 
     def seen_boards(self):
         """Every board this machine has ever found on USB, kept past its own
