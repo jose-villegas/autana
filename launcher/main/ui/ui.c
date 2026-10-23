@@ -44,7 +44,7 @@
 #include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_target.h"
 #include "math/scalar/mathi.h"
-#include "name_hash/name_hash.h"
+#include "name_hash/name_hash64.h"
 #include "services/tune.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/input/ui_bridge.h"

@@ -5,6 +5,7 @@
 #include "unity.h"
 
 #include "name_hash/name_hash.h"
+#include "name_hash/name_hash64.h"
 #include "name_hash_vectors.h"
 
 static const char* const names[] = NAME_HASH_TEST_NAMES;

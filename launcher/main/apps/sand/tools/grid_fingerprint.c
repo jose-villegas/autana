@@ -46,7 +46,7 @@
 
 #include "apps/sand/tests/sand_fill.h"
 #include "material.h"
-#include "name_hash/name_hash.h"
+#include "name_hash/name_hash64.h"
 #include "sand.h"
 #if defined(SAND_FORCE_WORK) || defined(SAND_COUNT_SKIPS)
 #include "sand_priv.h"

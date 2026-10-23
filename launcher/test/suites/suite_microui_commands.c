@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "name_hash/name_hash.h"
+#include "name_hash/name_hash64.h"
 #include "suites.h"
 #include "unity.h"
 
