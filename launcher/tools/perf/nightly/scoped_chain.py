@@ -36,6 +36,7 @@ IMAGE_HASH_DIGITS = 16
 REPORT_SHA_DIGITS = 12
 STEP_INDEX_DIGITS = 2
 FIRST_STEP_SECONDS = 23 * 60
+RESCAN_SECONDS = 60
 CAPTURE_FAILURE_LIMIT = 2
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
@@ -195,9 +196,12 @@ def run_chain(steps, args, runner=None, clock=None):
     try:
         run_selftest()
         for index, step in enumerate(steps):
+            if not stop_reason and board not in plugged_boards():
+                stop_reason = "unplugged"
             if not stop_reason and clock.now() + timedelta(seconds=worst_step) > deadline:
                 stop_reason = "window"
-            result = StepResult(step, "not_run_stopped" if stop_reason == "capture_failures" else "not_run_window")
+            outcome = {"capture_failures": "not_run_stopped", "unplugged": "not_run_unplugged"}
+            result = StepResult(step, outcome.get(stop_reason, "not_run_window"))
             results.append(result)
             if stop_reason:
                 save()
@@ -230,6 +234,11 @@ def run_chain(steps, args, runner=None, clock=None):
                     log.write(str(error) + "\n")
             result.build_seconds = max(0, (clock.now() - begin).total_seconds() - result.wait_seconds)
             remaining = max(0, worst_step - result.build_seconds)
+            if not result.image_hash and board not in plugged_boards():
+                stop_reason = "unplugged"
+                result.outcome = "not_run_unplugged"
+                save()
+                continue
             if code == autana_config.EXIT_BUSY or clock.now() + timedelta(seconds=remaining) > deadline:
                 stop_reason = "window"
                 result.outcome = "not_run_window"
@@ -273,9 +282,13 @@ def run_chain(steps, args, runner=None, clock=None):
                         failures = 0
                     except (OSError, RuntimeError, ValueError) as error:
                         (output / f"{index:0{STEP_INDEX_DIGITS}}-error.log").write_text(str(error), encoding="utf-8")
-                        failures += 1
-                        if failures >= CAPTURE_FAILURE_LIMIT:
-                            stop_reason = "capture_failures"
+                        if board not in plugged_boards():
+                            stop_reason = "unplugged"
+                            result.outcome = "not_run_unplugged"
+                        else:
+                            failures += 1
+                            if failures >= CAPTURE_FAILURE_LIMIT:
+                                stop_reason = "capture_failures"
                     result.measure_seconds = (clock.now() - measure).total_seconds()
             if result.outcome in ("measured", "skipped_same_image", "build_failed"):
                 if step.position >= positions.get(last_attempted, 0):
@@ -325,6 +338,60 @@ def plugged_boards(autana=None):
     return [short_id(board["board"]) for board in json.loads(listing)["boards"] if board["port"]]
 
 
+def plan_lane(args, tip, board, lane, lanes, selftest=False):
+    previous = read_last_night(args.data, board)
+    steps = select_steps(args.repo, tip, previous, lane, lanes,
+                         getattr(args, "from_sha", None), getattr(args, "max_steps", None))
+    return dict(lane=f"{lane}/{lanes}", previous=previous, steps=[asdict(step) for step in steps],
+                estimate=len(steps) * FIRST_STEP_SECONDS + (SELFTEST_ALLOWANCE_SECONDS if selftest else 0))
+
+
+def run_night(args, clock=None, launch=None):
+    clock, launch = clock or Clock(), launch or subprocess.Popen
+    planned = json.loads(args.plan.read_text(encoding="utf-8"))
+    deadline = datetime.fromisoformat(planned["deadline"])
+    processes = []
+    failed = False
+
+    def start(board):
+        nonlocal failed
+        command = ["bash", (PERF / "nightly/lane.sh").as_posix(), board, args.plan.resolve().as_posix(),
+                   args.data.resolve().as_posix(), args.out.resolve().as_posix(), "--"]
+        for suite in args.suite:
+            command.extend(["--suite", *suite])
+        try:
+            processes.append(launch(command, cwd=args.repo))
+        except OSError as error:
+            print(f"lane {board}: {error}", file=sys.stderr)
+            failed = True
+
+    for board in planned["lanes"]:
+        start(board)
+    while clock.now() < deadline:
+        clock.sleep(min(RESCAN_SECONDS, (deadline - clock.now()).total_seconds()))
+        if clock.now() >= deadline:
+            break
+        boards = plugged_boards()
+        for board in boards:
+            if board in planned["lanes"] or clock.now() + timedelta(seconds=FIRST_STEP_SECONDS) > deadline:
+                continue
+            planned["lanes"][board] = plan_lane(args, planned["tip"], board, 0, 1)
+            write_json(args.plan, planned)
+            start(board)
+        active = []
+        for process in processes:
+            code = process.poll()
+            if code is None:
+                active.append(process)
+            elif code:
+                failed = True
+        processes = active
+    for process in processes:
+        if process.wait():
+            failed = True
+    return int(failed)
+
+
 def plan(args, clock=None, request=None):
     clock = clock or Clock()
     queued = args.queue_at is not None
@@ -350,12 +417,8 @@ def plan(args, clock=None, request=None):
     lanes = {}
     for lane, board in enumerate(args.boards):
         board = short_id(board)
-        previous = read_last_night(args.data, board)
-        steps = select_steps(args.repo, tip, previous, lane, len(args.boards), args.from_sha, args.max_steps)
-        lanes[board] = dict(lane=f"{lane}/{len(args.boards)}", previous=previous,
-                            steps=[asdict(step) for step in steps],
-                            estimate=len(steps) * FIRST_STEP_SECONDS
-                            + (SELFTEST_ALLOWANCE_SECONDS if args.selftest_board and board == short_id(args.selftest_board) else 0))
+        lanes[board] = plan_lane(args, tip, board, lane, len(args.boards),
+                                 args.selftest_board and board == short_id(args.selftest_board))
     write_json(Path(args.out), dict(tip=tip, night=start.date().isoformat(),
                                     started=now.isoformat(), deadline=deadline.isoformat(), lanes=lanes))
     # For the workflow's later steps, which run one lane per board.
@@ -381,13 +444,16 @@ def main():
     planning.add_argument("--queue-at")
     planning.add_argument("--until", default=NIGHT_END)
     planning.add_argument("--selftest-board")
+    night = commands.add_parser("night")
+    night.add_argument("--plan", type=Path, required=True)
+    night.add_argument("--suite", nargs=3, action="append", default=[])
     running = commands.add_parser("run")
     running.add_argument("--plan", type=Path, required=True)
     running.add_argument("--board", required=True)
     running.add_argument("--lane", required=True)
     running.add_argument("--suite", nargs=3, action="append", default=[])
     running.add_argument("--selftest", nargs=argparse.REMAINDER)
-    for command in (planning, running):
+    for command in (planning, running, night):
         command.add_argument("--repo", type=Path, default=REPO)
         command.add_argument("--data", type=Path, required=True)
         command.add_argument("--out", type=Path, required=True)
@@ -411,7 +477,9 @@ def main():
         plan(args)
         return 0
     if not args.suite:
-        parser.error("run requires at least one --suite")
+        parser.error(f"{args.command} requires at least one --suite")
+    if args.command == "night":
+        return run_night(args)
     if not os.environ.get("_AUTANA_DEVICE_LOCK_TOKEN"):
         parser.error("run requires an enclosing autana lock run hold")
     planned = json.loads(args.plan.read_text(encoding="utf-8"))
@@ -426,6 +494,8 @@ def main():
         steps = select_steps(args.repo, planned["tip"], args.previous, index, count, args.from_sha, args.max_steps)
     results = run_chain(steps, args)
     manifest = read_last_night(args.data, short_id(args.board))
+    if manifest.get("stop_reason") == "unplugged":
+        return 0
     return int(any(result.outcome in ("build_failed", "capture_failed") for result in results)
                or manifest["selftest"]["outcome"] == "failed")
 

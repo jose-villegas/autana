@@ -18,7 +18,7 @@ wait_seconds=$("$PY" "$driver" wait-seconds --plan "$plan") || exit 1
 args=(run --plan "$plan" --repo "$repo" --data "$data" --out "$out/$board"
       --board "$board" --lane "$lane" "$@")
 unset BOARD_CI_LOG
-if [ "$board" = "$SELFTEST_BOARD" ]; then
+if [ "$board" = "${SELFTEST_BOARD:-}" ]; then
     export BOARD_CI_LOG="$out/$board-selftest.log"
     shell=$BASH
     if command -v cygpath >/dev/null 2>&1; then
