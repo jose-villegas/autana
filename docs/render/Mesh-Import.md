@@ -6,28 +6,26 @@ its light is computed and scored is [Bake-Method.md](Bake-Method.md), and
 drawing it is [Mesh-Rendering.md](Mesh-Rendering.md).
 
 ```mermaid
-flowchart LR
-    subgraph Import_lane["Import lane: geometry"]
-    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"]
-    Mask["Mask alpha cards<br/><i>opt in</i>"]
-    Thin["Thin one material<br/><i>opt in</i>"]
-    Dense["Split long edges<br/><i>with simplify</i>"]
-    Simp["Simplify to the budget<br/><i>opt in</i>"]
+flowchart TB
+    subgraph Cut["1 · Choose triangles"]
+    direction LR
+    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"] --> Mask["Mask alpha cards<br/><i>import, opt in</i>"] --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"] --> Thin["Thin one material<br/><i>import, opt in</i>"]
     end
-    subgraph Scene_lane["Scene lane: renderer options"]
-    Vis["Cull by camera visibility<br/><i>opt in</i>"]
-    Lit["Light per vertex<br/><i>bake = true</i>"]
-    Albedo["Albedo, no light<br/><i>no bake</i>"]
-    Face["Light per face<br/><i>flat shading</i>"]
+    subgraph Light["2 · Colour vertices"]
+    direction LR
+    Dense["Split long edges<br/><i>import, with simplify</i>"] --> Lit["Light per vertex<br/><i>scene, bake</i><br/>or albedo, no light"]
     end
-    Fetch --> Mask --> Vis --> Thin --> Dense
-    Dense --> Lit --> Simp
-    Dense --> Albedo --> Simp
-    Simp --> Face --> Write["Write: quantise,<br/>meshlets, octree"]
-    Simp --> Write
-    Write --> Entry["Pack entry<br/><i>name.mesh</i>"]
-    Entry --> Pack["build_pack.py<br/><i>its root's pack</i>"]
+    subgraph Finish["3 · Reduce and write"]
+    direction LR
+    Simp["Simplify to the budget<br/><i>import, opt in</i>"] --> Face["Light per face<br/><i>scene, flat only</i>"] --> Write["Write: quantise,<br/>meshlets, octree"] --> Pack["name.mesh into<br/>build_pack.py"]
+    Simp -. smooth .-> Write
+    end
+    Cut --> Light --> Finish
+    classDef scene fill:#3d6b8a,color:#fff
+    class Vis,Lit,Face scene
 ```
+
+Blue steps are the scene's renderer options; the rest are the import file's.
 
 ## Import options
 
