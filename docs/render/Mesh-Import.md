@@ -93,25 +93,8 @@ Unknown values fail naming the import file and allowed modes.
 - `renormalised`: normalises the blended normal before direct shading.
 - `table`: samples bilinear irradiance from the scene's normal-direction table.
 
-[Lighting modes](Skinned-Lighting.md#lighting-modes) includes the comparison
-sheet. This quality/cost table is generated from the committed board capture;
-cycles per vertex are grouped by light count, errors are 8-bit channel steps.
-
-<!-- generated: skin-light-import check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
-Build `8d0d33ecbdb9-diag`.
-
-| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| direct | 1 | 640.495 | 8 | 0.246612 | — | 5104.000 | 3744 | 1024 | 124 |
-| direct | 2 | 663.714 | 9 | 0.264905 | — | 5104.000 | 3744 | 1024 | 124 |
-| direct | 4 | 708.679 | 13 | 0.353997 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 1 | 680.045 | 1 | 0.184282 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 2 | 702.716 | 1 | 0.185637 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 4 | 748.143 | 2 | 0.180217 | — | 5104.000 | 3744 | 1024 | 124 |
-| table | 1 | 865.099 | 7 | 0.455623 | 32224.000 | 5104.000 | 3744 | 2048 | 124 |
-| table | 2 | 861.271 | 4 | 0.360095 | 44202.000 | 5104.000 | 3744 | 2048 | 124 |
-| table | 4 | 861.167 | 4 | 0.380420 | 67278.000 | 5104.000 | 3744 | 2048 | 124 |
-<!-- /generated: skin-light-import -->
+[Lighting modes](Skinned-Lighting.md#lighting-modes) has the comparison sheet and the
+cost and error of each mode on the board.
 
 ### Process options
 
