@@ -31,6 +31,7 @@ CAPTURE_ROW = re.compile(
 SYMBOL = re.compile(r"^[0-9a-fA-F]+ <([^>]+)>:$")
 ROW_SYMBOL_PREFIX = "math_bench_"
 MANIFEST = "math_bench_manifest"
+CALL_SYMBOL = re.compile(r"[\w.$@]+")
 
 
 def parse_capture(text, rows):
@@ -83,12 +84,15 @@ def parse_disassembly(text, rows, resolve=None):
             targets = re.findall(r"<([^>]+)>", operands)
             register = operands.split(",", 1)[0].strip()
             if mnemonic == "call8" and targets:
+                if not CALL_SYMBOL.fullmatch(targets[-1]):
+                    raise ValueError(f"invalid call target in {key}: {operands}")
                 callees.add(targets[-1])
                 registers.clear()
             elif mnemonic == "callx8":
-                callees.add(targets[-1] if targets else registers.get(register, "*" + register))
+                callees.add(targets[-1] if targets and CALL_SYMBOL.fullmatch(targets[-1])
+                            else registers.get(register, "*" + register))
                 registers.clear()
-            elif mnemonic == "l32r" and targets and "(" in operands:
+            elif mnemonic == "l32r" and targets and "(" in operands and CALL_SYMBOL.fullmatch(targets[-1]):
                 registers[register] = targets[-1]
             else:
                 registers.pop(register, None)
@@ -217,8 +221,8 @@ def main(argv=None):
             if missing:
                 raise ValueError(f"missing wrapper symbols: {missing}")
             def resolve(symbol, body):
-                _, again = instructions(objdump, args.from_elf, symbol, bounds[symbol])
-                return parse_objdump(body), again
+                decoded, again = instructions(objdump, args.from_elf, symbol, bounds[symbol])
+                return [ins for ins in decoded if ins[0] < bounds[symbol]], again
             fpu = parse_disassembly(run(objdump, "-d", str(args.from_elf)), rows, resolve)
             lines = ["# Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.",
                      "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest()]
