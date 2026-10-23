@@ -1567,6 +1567,18 @@ test_fixed_scalar_rsqrt_bound(void) {
 }
 
 static void
+assert_unit_components(const double* reference, const int32_t* got, size_t n, double bound) {
+    double sum = 0;
+    for (size_t c = 0; c < n; c++) {
+        sum += reference[c] * reference[c];
+    }
+    const double length = sqrt(sum);
+    for (size_t c = 0; c < n; c++) {
+        TEST_ASSERT_TRUE(fabs(got[c] - reference[c] * MATHX_ONE / length) <= bound);
+    }
+}
+
+static void
 test_fixed_quaternion_normalize_extremes(void) {
     const quatx_t cases[] = {{200 * MATHX_ONE, 0, 0, 0},
                              {1, 0, 0, 0},
@@ -1576,15 +1588,9 @@ test_fixed_quaternion_normalize_extremes(void) {
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         const quatx_t q = cases[i];
         const quatx_t got = quatx_normalize(q);
-        const int32_t input[] = {q.x, q.y, q.z, q.w};
+        const double input[] = {q.x, q.y, q.z, q.w};
         const int32_t output[] = {got.x, got.y, got.z, got.w};
-        double sum = 0;
-        for (size_t c = 0; c < sizeof input / sizeof input[0]; c++) {
-            sum += (double)input[c] * input[c];
-        }
-        for (size_t c = 0; c < sizeof input / sizeof input[0]; c++) {
-            TEST_ASSERT_TRUE(fabs(output[c] - input[c] * (double)MATHX_ONE / sqrt(sum)) <= NORMALIZE_COMPONENT_ERROR);
-        }
+        assert_unit_components(input, output, sizeof input / sizeof input[0], NORMALIZE_COMPONENT_ERROR);
     }
 }
 
@@ -1597,16 +1603,12 @@ assert_fixed_nlerp_sample(quatx_t a, quatx_t b, int32_t t) {
         dot += (double)av[c] * bv[c];
     }
     double blend[sizeof av / sizeof av[0]];
-    double sum = 0;
     for (size_t c = 0; c < sizeof av / sizeof av[0]; c++) {
         blend[c] = (av[c] * (double)(MATHX_ONE - t) + (dot < 0 ? -1 : 1) * bv[c] * (double)t) / MATHX_ONE;
-        sum += blend[c] * blend[c];
     }
     const quatx_t got = quatx_nlerp(a, b, t);
     const int32_t output[] = {got.x, got.y, got.z, got.w};
-    for (size_t c = 0; c < sizeof av / sizeof av[0]; c++) {
-        TEST_ASSERT_TRUE(fabs(output[c] - blend[c] * MATHX_ONE / sqrt(sum)) <= FIXED_NLERP_COMPONENT_ERROR);
-    }
+    assert_unit_components(blend, output, sizeof blend / sizeof blend[0], FIXED_NLERP_COMPONENT_ERROR);
 }
 
 static void
