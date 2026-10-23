@@ -171,6 +171,7 @@ class JobInputsTests(unittest.TestCase):
             prefix = ['git', '-c', f'safe.directory={root.resolve()}']
             self.assertEqual(commands, [
                 prefix + ['config', 'core.trustctime', 'false'],
+                prefix + ['config', 'core.checkStat', 'minimal'],
                 prefix + ['update-index', '--really-refresh'],
                 prefix + ['ls-files', '-z'],
             ])
