@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "core/memory.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
 #include "render/render_view.h"
@@ -52,6 +53,7 @@ typedef struct {
     raster_t raster; /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
+    memory_take_fn take; /* where the scratch comes from; NULL is the heap */
     int scale_percent;
 
     enum { RENDER_FIXED, RENDER_STEPPED, RENDER_PREDICTED } policy;
@@ -69,8 +71,17 @@ typedef struct {
 /* The engine's own context, the one the scene manager draws through. */
 render_context_t* render_context_main(void);
 
-/* Frees the scratch block and returns every setting to its default. */
+/* Drops the scratch block and returns every setting but `take` to its default. */
 void render_context_release(render_context_t* context);
+
+/* Takes the scratch from `take` from now on; NULL is the heap. A taken block
+ * is only dropped here, never freed: its lender gets it back once
+ * render_context_drop_scratch() or render_context_release() has run. */
+void render_context_set_take(render_context_t* context, memory_take_fn take);
+
+/* Forgets the scratch block, freeing it when it came from the heap; the next
+ * draw takes one again. */
+void render_context_drop_scratch(render_context_t* context);
 
 /* Drops feedback after a camera cut. */
 void render_context_forget(render_context_t* context);
