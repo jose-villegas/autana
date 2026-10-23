@@ -30,10 +30,21 @@ A name may drop its owner when that is unambiguous: `theme_rgb` for
 `ridge.theme_rgb`, and when it is not exactly one tunable's own, `tune <name>`
 falls back to the same filtered listing `tune [text]` gives. `autana` is the
 terminal command: every command it takes is in
-[Autana-CLI.md](Autana-CLI.md). It calls `scripts/device/device.py send`,
-which takes the device lock like everything else that touches the board. A
-console session takes the lock for each line and lets go, so the board stays
-free between two of them.
+[the command index](README.md). It calls `scripts/device/device.py send`,
+which takes the device lock like everything else that touches the board.
+
+## Commands
+
+`autana help tune` lists the same commands.
+
+<!-- generated: cli-tune check: python scripts/autana/cli_reference.py --check -->
+| Command | What it does |
+|---|---|
+| `autana tune [text] [--json]` | list the tunables with ranges; names containing text |
+| `autana tune <name> [value]` | show one, or set it on the board (lost on reboot) |
+| `autana tune reset <name>` | back to the value the source declares |
+| `autana tune save` | write the board's values into this project's TUNE(...) lines |
+<!-- /generated: cli-tune -->
 
 **Development builds only, and the device keeps nothing.** A release build
 has no listener, no registry and no names: the same declaration compiles to

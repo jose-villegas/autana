@@ -175,7 +175,7 @@ The [layout costs](../gfx/Targets-and-Modes.md#layout-costs) table measures
 r3d scenes and the boot animation in each layout on one board.
 Confirm the pick on the board in the app that ships it, comparing frame,
 draw, compose and send times in each layout
-([Flash-and-Captures.md](../tools/Flash-and-Captures.md) runs a suite).
+([Flash-and-Captures.md](../cli/Flash-and-Captures.md) runs a suite).
 
 ## Present policy
 

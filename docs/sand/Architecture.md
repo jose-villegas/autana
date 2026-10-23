@@ -400,7 +400,7 @@ per material actually on the board, skipping the rest, ending with
 capitals. Every extended cell, gunpowder included, shares one `Extended`
 line: [`MAT_EXTENDED`](#the-grid-in-one-byte) above says what those are.
 See
-[`../tools/App-Commands.md`](../tools/App-Commands.md)
+[`../cli/App-Commands.md`](../cli/App-Commands.md)
 for how a line like this reaches the app at all, and how to send it from an
 interactive `autana` session.
 
