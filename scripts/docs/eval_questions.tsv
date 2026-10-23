@@ -34,7 +34,7 @@ cognitive complexity ratchet failing the build	docs/tools/Complexity-Gate.md	A r
 generating and validating a mermaid diagram before commit	docs/tools/Mermaid-Diagrams.md	Pre-commit
 what does the icon baker refuse in an atlas or svg	docs/tools/Icon-Baker.md	The source
 proposal for a compile-time log level per build variant	docs/plans/Log-Level-Plan.md	Plan: a compile-time log-level ceiling per build variant, not a logging class
-plan for splitting diagnostics into a settings app	docs/plans/Settings-App-Plan.md	Plan: split Diagnostics into a Settings app, then unify SELFTEST/diagnostics naming
+plan for the settings app and the selftest naming	docs/plans/Settings-App-Plan.md	Plan: Settings and SELFTEST/diagnostics naming
 UI editor plan, native app rendering in-process with Dear ImGui	docs/plans/UI-Editor-Plan.md	Native editor
 band-mode framebuffer and span rasterizer roadmap for future games	docs/plans/Autana-Rendering-Roadmap.md	Runtime foundations
 orientation change relayout rotate UI	docs/UI-Toolkit.md	Orientation
