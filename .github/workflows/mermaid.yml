@@ -3,32 +3,13 @@ name: Mermaid Diagrams
 # Renders every ```mermaid block in tracked Markdown through mermaid-cli, the only thing
 # that catches a broken diagram, since GitHub fails silently and shows a parse error where
 # the picture should be. docs/tools/Mermaid-Diagrams.md has the full picture; this job just
-# runs the command it documents. Path-filtered, unlike this repo's other workflows, because
-# installing mermaid-cli's bundled Chrome is real per-run cost and nothing outside a .md
-# file or the validator itself can change the result, which is also why it is its own
-# workflow: a path filter applies to a whole workflow, never to one job. A weekly run
-# asks GitHub which mermaid it renders with and, when that moved, opens the pull request
-# that bumps the pin and lockfile (CI then renders every diagram with it), without waiting
-# for a .md change.
+# runs the command it documents. Pull requests run when a recorded input changes.
+# A weekly run checks GitHub's Mermaid version and opens a pin update when needed.
 
 on:
   push:
     branches: [main]
-    paths:
-      - '**/*.md'
-      - 'scripts/gates/check-mermaid.mjs'
-      - 'scripts/gates/mermaid/**'
-      - '.github/workflows/mermaid.yml'
-      - '.node-version'
-      - '.github/actions/host-tools/**'
   pull_request:
-    paths:
-      - '**/*.md'
-      - 'scripts/gates/check-mermaid.mjs'
-      - 'scripts/gates/mermaid/**'
-      - '.github/workflows/mermaid.yml'
-      - '.node-version'
-      - '.github/actions/host-tools/**'
   schedule:
     - cron: '17 6 * * 1'
   workflow_dispatch:
@@ -38,12 +19,33 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      check-mermaid: ${{ steps.affected.outputs.check-mermaid }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job check-mermaid
+
   check-mermaid:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.check-mermaid == 'true') && github.event_name != 'schedule' }}
     name: Mermaid diagrams
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/host-tools
 
       - name: Install the pinned mermaid-cli
@@ -59,6 +61,10 @@ jobs:
         env:
           CHECK_MERMAID_MMDC_ARGS: -p ${{ runner.temp }}/puppeteer-config.json
         run: node scripts/gates/check-mermaid.mjs
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
 
   github-mermaid-version:
     name: Bump the pin to GitHub's mermaid
