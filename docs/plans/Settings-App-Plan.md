@@ -15,8 +15,8 @@ It has no settings store of its own.
 | DISPLAY: panel clock | Every build | Display persists the system value in NVS and restores it on app switches. |
 | DEVELOPER: panel-grid overlay, leaf-rect overlay, interlace, send audit | Development builds | Gfx holds runtime values, reset at boot. |
 
-The panel-clock row retains its warning about stray pixels and thin lines.
-The fast clock is outside the panel's rating; see
+The fast clock is outside the panel's rating, so gfx sends only full-width
+rows at it; see
 [Display-and-Rendering.md](../notes/Display-and-Rendering.md).
 
 Diagnostics is development-only. It shows the POST report and orientation

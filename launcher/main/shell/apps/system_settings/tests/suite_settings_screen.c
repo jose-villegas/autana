@@ -32,13 +32,13 @@ STUB_OWNER(3)
 STUB_OWNER(4)
 
 static const settings_toggle_t DISPLAY_ROWS[] = {
-    {settings_panel_clock_label, get_0, set_0, settings_panel_clock_note, SETTINGS_NOTE_LINE_COUNT},
+    {settings_panel_clock_label, get_0, set_0},
 };
 static const settings_toggle_t DEVELOPER_ROWS[] = {
-    {settings_overlay_label, get_1, set_1, NULL, 0},
-    {settings_leaf_label, get_2, set_2, NULL, 0},
-    {settings_interlace_label, get_3, set_3, NULL, 0},
-    {settings_send_audit_label, get_4, set_4, NULL, 0},
+    {settings_overlay_label, get_1, set_1},
+    {settings_leaf_label, get_2, set_2},
+    {settings_interlace_label, get_3, set_3},
+    {settings_send_audit_label, get_4, set_4},
 };
 static const settings_section_t SECTIONS[] = {
     {settings_display_heading, DISPLAY_ROWS, 1},
@@ -147,8 +147,8 @@ test_a_tap_on_a_row_calls_only_that_rows_owner(void) {
     }
 }
 
-/* Rows below the fold are not drawn, so each string is measured at the
- * offset the first drawn one of its kind sits at inside its row; every row
+/* Rows below the fold are not drawn, so each label is measured at the
+ * offset the first label is drawn at inside its row; every row
  * of the window is the same width. */
 static void
 test_every_fixed_string_fits_its_row_at_both_canvases(void) {
@@ -159,18 +159,11 @@ test_every_fixed_string_fits_its_row_at_both_canvases(void) {
         frame(&(input_t){0});
         recti_t row;
         recti_t label;
-        recti_t note;
         TEST_ASSERT_TRUE(ui_probe_widget(settings_panel_clock_label, &row));
         TEST_ASSERT_TRUE(ui_probe_text(settings_panel_clock_label, &label));
-        TEST_ASSERT_TRUE(ui_probe_text(settings_panel_clock_note[0], &note));
         const int label_room = row.x + row.w - label.x;
-        const int note_room = row.x + row.w - note.x;
         for (int i = 0; i < ROW_COUNT; i++) {
             TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(label_room, ui_measure_text(LABELS[i]), LABELS[i]);
-        }
-        for (int i = 0; i < SETTINGS_NOTE_LINE_COUNT; i++) {
-            TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(note_room, ui_measure_text(settings_panel_clock_note[i]),
-                                                  settings_panel_clock_note[i]);
         }
         for (int s = 0; s < SECTION_COUNT; s++) {
             TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(row.w, ui_measure_text(SECTIONS[s].heading), SECTIONS[s].heading);

@@ -26,16 +26,15 @@ set_panel_clock_fast(bool fast) {
 }
 
 static const settings_toggle_t DISPLAY_ROWS[] = {
-    {settings_panel_clock_label, panel_clock_fast, set_panel_clock_fast, settings_panel_clock_note,
-     SETTINGS_NOTE_LINE_COUNT},
+    {settings_panel_clock_label, panel_clock_fast, set_panel_clock_fast},
 };
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 static const settings_toggle_t DEVELOPER_ROWS[] = {
-    {settings_overlay_label, gfx_debug_overlay, gfx_set_debug_overlay, NULL, 0},
-    {settings_leaf_label, gfx_debug_leaf_overlay, gfx_set_leaf_overlay, NULL, 0},
-    {settings_interlace_label, gfx_interlace_enabled, gfx_set_interlace, NULL, 0},
-    {settings_send_audit_label, gfx_send_audit, gfx_set_send_audit, NULL, 0},
+    {settings_overlay_label, gfx_debug_overlay, gfx_set_debug_overlay},
+    {settings_leaf_label, gfx_debug_leaf_overlay, gfx_set_leaf_overlay},
+    {settings_interlace_label, gfx_interlace_enabled, gfx_set_interlace},
+    {settings_send_audit_label, gfx_send_audit, gfx_set_send_audit},
 };
 #endif
 
