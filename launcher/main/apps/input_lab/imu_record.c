@@ -1,5 +1,6 @@
 #include "apps/input_lab/imu_record.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -55,17 +56,31 @@ imu_record_appendf(imu_record_t* record, const char* format, ...) {
     return true;
 }
 
+_Static_assert(IMU_RECORD_LINE_SIZE <= IMU_RECORD_CHUNK_SIZE, "each line must fit one output chunk");
+
 void
-imu_record_take(imu_record_t* record, void (*emit)(const char* text)) {
-    if (record->text != NULL) {
-        emit(record->text);
+imu_record_replay(const imu_record_t* record, void (*emit)(const char* text, size_t length)) {
+    if (record == NULL) {
+        return;
     }
-    imu_record_free(record);
+    size_t offset = 0;
+    while (offset < record->used) {
+        size_t length = record->used - offset;
+        if (length > IMU_RECORD_CHUNK_SIZE) {
+            length = IMU_RECORD_CHUNK_SIZE;
+        }
+        while (length > 0 && record->text[offset + length - 1] != '\n') {
+            length--;
+        }
+        assert(length > 0);
+        emit(record->text + offset, length);
+        offset += length;
+    }
 }
 
 const char*
-imu_record_dump_error(const imu_record_t* record, imu_probe_step_t step) {
-    if (step != IMU_PROBE_IDLE && step != IMU_PROBE_DONE) {
+imu_record_dump_error(const imu_record_t* record, bool round_running) {
+    if (round_running) {
         return IMU_RECORD_PREFIX "_ERR round active\n";
     }
     return record->text == NULL ? IMU_RECORD_PREFIX "_ERR no kept round\n" : NULL;

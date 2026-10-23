@@ -15,6 +15,7 @@ indirect shell_systems_update : scene_shell_render
 indirect instance_writers : raster_motion.c:writer raster_meshlets.c:writer
 indirect raster_draw raster_draw_culled : raster_motion.c:begin raster_meshlets.c:begin
 indirect resolve_slice : raster_motion.c:resolve
+indirect job_run_steered : transform_slice draw_slice resolve_slice upscale_slice animate_slice skin_slice
 indirect draw_slice : clear_color clear_depth raster_motion.c:clear raster_meshlets.c:clear
 indirect raster_show : raster_motion.c:show raster_meshlets.c:show depth_show tiles_show
 indirect raster_show_map : raster_motion.c:pixel_color raster_meshlets.c:pixel_color

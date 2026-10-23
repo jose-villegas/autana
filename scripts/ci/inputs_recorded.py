@@ -24,6 +24,17 @@ def current(artifacts, fingerprint, force=False):
         RENDERED_PREFIX + fingerprint)
 
 
+def latest_job_artifact(artifacts, name, base_ref, request=call):
+    records = (item for item in artifacts if not item["expired"]
+               and item["name"] == name
+               and item.get("workflow_run", {}).get("head_branch") == base_ref)
+    for item in sorted(records, key=lambda item: item["created_at"], reverse=True):
+        run = request("GET", f"/actions/runs/{item['workflow_run']['id']}")
+        if run["event"] != "pull_request":
+            return item
+    return None
+
+
 def main(argv=None, request=call):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fingerprint")
