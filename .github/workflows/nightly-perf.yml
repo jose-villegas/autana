@@ -97,7 +97,7 @@ jobs:
         run: bash scripts/ci/board-prepare.sh
 
       - name: Run each board lane and wait for all
-        if: always() && env.SCOPED_BOARDS != ''
+        if: ${{ !cancelled() && env.SCOPED_BOARDS != '' }}
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           suites=()

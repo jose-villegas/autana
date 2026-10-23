@@ -22,7 +22,7 @@ import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
-from local_schedule import Clock, local_time, wait_seconds, night_window, SKIPPED
+from local_schedule import Clock, local_time, night_window, SKIPPED
 from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
 
 IMAGE_HEADER_BYTES = 24
@@ -142,7 +142,7 @@ def run_chain(steps, args, runner=None, clock=None):
     runner, clock = runner or run_stamped, clock or Clock()
     started = clock.now()
     night_started = datetime.fromisoformat(args.started) if getattr(args, "started", None) else started
-    deadline = local_time(args.until, night_started, next_occurrence=True)
+    deadline = datetime.fromisoformat(args.deadline)
     night = getattr(args, "night", None) or started.date().isoformat()
     output = Path(args.out).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -176,15 +176,13 @@ def run_chain(steps, args, runner=None, clock=None):
             (deadline - timedelta(seconds=SELFTEST_ALLOWANCE_SECONDS)).timestamp())
         selftest["started"] = begin.isoformat()
         log_path = output / "selftest.log"
-        selftest["report"] = str(log_path)
+        selftest["report"] = str(log_path.relative_to(output))
         with log_path.open("w", encoding="utf-8") as log:
             try:
                 code, lines, _ = runner(args.selftest, log, SELFTEST_ALLOWANCE_SECONDS)
                 selftest["outcome"] = "failed" if code else "passed"
                 reports = [match[1] for _, line in lines if (match := REPORT_LINE.match(line))]
-                candidates = [os.environ.get("BOARD_CI_LOG", "")] + reports
-                selftest["report"] = next((str(Path(path).resolve()) for path in reversed(candidates)
-                                           if path and Path(path).is_file()), str(log_path))
+                selftest["report"] = reports[-1] if reports else str(log_path.relative_to(output))
             except (OSError, RuntimeError) as error:
                 log.write(str(error) + "\n")
                 selftest["outcome"] = "failed"
@@ -329,8 +327,10 @@ def plugged_boards(autana=None):
 
 def plan(args, clock=None):
     clock = clock or Clock()
-    skipped = bool(args.queue_at and night_window(args.queue_at, args.until,
-                                                scheduled=True, clock=clock) is None)
+    window = night_window(args.queue_at, args.until, scheduled=True, clock=clock) if args.queue_at else None
+    skipped = bool(args.queue_at and window is None)
+    now = clock.now()
+    start, deadline = window or (now, local_time(args.until, now, next_occurrence=True))
     if skipped:
         args.boards, args.selftest_board = [], None
         print(SKIPPED, file=sys.stderr)
@@ -353,8 +353,8 @@ def plan(args, clock=None):
                             steps=[asdict(step) for step in steps],
                             estimate=len(steps) * FIRST_STEP_SECONDS
                             + (SELFTEST_ALLOWANCE_SECONDS if args.selftest_board and board == short_id(args.selftest_board) else 0))
-    write_json(Path(args.out), dict(tip=tip, night=clock.now().date().isoformat(),
-                                    started=clock.now().isoformat(), lanes=lanes))
+    write_json(Path(args.out), dict(tip=tip, night=start.date().isoformat(),
+                                    started=now.isoformat(), deadline=deadline.isoformat(), lanes=lanes))
     # For the workflow's later steps, which run one lane per board.
     print("SCOPED_BOARDS=" + " ".join(lanes))
     print("SELFTEST_BOARD=" + (short_id(args.selftest_board) if args.selftest_board else ""))
@@ -368,8 +368,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     waiting = commands.add_parser("wait-seconds")
-    waiting.add_argument("--until", required=True)
-    waiting.add_argument("--plan", type=Path)
+    waiting.add_argument("--plan", type=Path, required=True)
     info = commands.add_parser("lane-info")
     info.add_argument("--plan", type=Path, required=True)
     info.add_argument("--board", required=True)
@@ -383,7 +382,6 @@ def main():
     running.add_argument("--plan", type=Path, required=True)
     running.add_argument("--board", required=True)
     running.add_argument("--lane", required=True)
-    running.add_argument("--until", required=True)
     running.add_argument("--suite", nargs=3, action="append", default=[])
     running.add_argument("--selftest", nargs=argparse.REMAINDER)
     for command in (planning, running):
@@ -396,8 +394,8 @@ def main():
     os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
     if args.command == "wait-seconds":
         now = Clock().now()
-        started = datetime.fromisoformat(json.loads(args.plan.read_text(encoding="utf-8"))["started"]) if args.plan else None
-        print(wait_seconds(args.until, now, next_occurrence=True, started=started))
+        deadline = datetime.fromisoformat(json.loads(args.plan.read_text(encoding="utf-8"))["deadline"])
+        print(max(0, int((deadline - now).total_seconds())))
         return 0
     if args.command == "lane-info":
         try:
@@ -417,7 +415,8 @@ def main():
     lane = lane_of(planned, args.board)
     if lane["lane"] != args.lane:
         parser.error("lane differs from the shared plan")
-    args.previous, args.night, args.started = lane["previous"], planned["night"], planned["started"]
+    args.previous = lane["previous"]
+    args.night, args.started, args.deadline = (planned[key] for key in ("night", "started", "deadline"))
     steps = [Step(**step) for step in lane["steps"]]
     if args.from_sha is not None or args.max_steps is not None:
         index, count = map(int, args.lane.split("/"))
