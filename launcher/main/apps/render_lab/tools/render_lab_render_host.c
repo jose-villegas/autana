@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "app/app.h"
+#include "app/app_arena.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "gfx/gfx.h"
@@ -224,6 +225,7 @@ setup(int quarter) {
     ui_init();
     gfx_set_frame_overlay(ui_replay_band);
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
+    scene_set_take(app_arena_take); /* as shell/scene_system.c does on the board */
     registered->enter();
     if (render_lab_start_camera != NULL && !scene_has_active_camera()) {
         (void)fprintf(stderr, "--camera: no camera %s in this scene\n", render_lab_start_camera);

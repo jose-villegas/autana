@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "core/memory.h"
 #include "scene/scene.h"
 
 /* The picture a frame is composed into. NULL pixels: nothing to upscale into,
@@ -39,3 +40,10 @@ void scene_shell_compose(uint32_t dt_ms);
 /* An app has exited: unloads every scene, releases the render context and
  * lifts a pause. */
 void scene_unload_all(void);
+
+/* Where the memory a loaded scene keeps in PSRAM comes from, the render
+ * context's scratch included; NULL, the default, is the heap. Set while no
+ * scene is loaded. With a take, scene_unload() gives none of it back: once
+ * the last scene is unloaded nothing points into it, and the lender may
+ * take it back. Internal-RAM pieces stay on the heap either way. */
+void scene_set_take(memory_take_fn take);

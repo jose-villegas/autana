@@ -256,6 +256,11 @@ static void yours_exit(void) {
 }
 ```
 
+The scenes an app loads live in it too
+([Scene-Manager.md](render/Scene-Manager.md#ownership)): mark before
+`scene_load()` and rewind after `scene_unload()` to reuse their memory within
+one visit.
+
 The arena is PSRAM: right for large buffers, wrong for a small hot table
 that wants internal RAM. An app frees in `exit()` everything it took from the
 heap in `enter()`, including whatever a failed `enter()` had already taken;

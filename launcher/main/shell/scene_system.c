@@ -1,9 +1,11 @@
 /*
  * The scene manager as a shell system: drawn while the last frame is sent,
  * upscaled into the framebuffer before the app's frame(), and unloaded when
- * the app that loaded it exits. Registered here because scene/ sits below
- * the shell and cannot see shell_system.h.
+ * the app that loaded it exits. Its scenes live in the app arena, lent for
+ * the visit like the rest of the app's memory. Registered here because
+ * scene/ sits below the shell and cannot see shell_system.h or app/.
  */
+#include "app/app_arena.h"
 #include "scene/scene_shell.h"
 #include "shell/shell_system.h"
 
@@ -17,3 +19,8 @@ static shell_system_t scene_system = {
 };
 
 SHELL_SYSTEM_REGISTER(scene_system);
+
+__attribute__((constructor)) static void
+scene_system_lend_arena(void) {
+    scene_set_take(app_arena_take);
+}

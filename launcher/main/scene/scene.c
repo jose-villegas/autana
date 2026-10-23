@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdalign.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -10,6 +11,7 @@
 #include "core/memory.h"
 #include "gfx/target/gfx_color.h"
 #include "math/scalar/mathi.h"
+#include "render/context/render_context.h"
 #include "scene/scene_internal.h"
 
 #define LOADED_MAX 8
@@ -19,6 +21,7 @@ int scene_fail_allocation_after = -1;
 #endif
 static scene_t* loaded[LOADED_MAX];
 static int loaded_count;
+static memory_take_fn kept_take;
 
 /* The block's layout: the header, then each array on its own alignment. */
 typedef struct {
@@ -50,24 +53,52 @@ layout_for(const scene_asset_t* asset) {
     return l;
 }
 
-void*
-scene_allocate(size_t bytes, memory_kind_t kind) {
+/* True when fault injection fails this allocation. */
+static bool
+injected_failure(void) {
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
     if (scene_fail_allocation_after == 0) {
         scene_fail_allocation_after = -1;
-        return NULL;
+        return true;
     }
     if (scene_fail_allocation_after > 0) {
         scene_fail_allocation_after--;
     }
 #endif
-    return memory_alloc(bytes, kind);
+    return false;
+}
+
+void*
+scene_allocate(size_t bytes, memory_kind_t kind) {
+    return injected_failure() ? NULL : memory_alloc(bytes, kind);
+}
+
+void*
+scene_allocate_kept(size_t bytes) {
+    if (injected_failure()) {
+        return NULL;
+    }
+    return kept_take != NULL ? kept_take(bytes, _Alignof(max_align_t)) : memory_alloc(bytes, MEMORY_PSRAM);
+}
+
+void
+scene_free_kept(void* block) {
+    if (kept_take == NULL) {
+        memory_free(block);
+    }
+}
+
+void
+scene_set_take(memory_take_fn take) {
+    assert(loaded_count == 0);
+    kept_take = take;
+    render_context_set_take(render_context_main(), take);
 }
 
 static scene_t*
 instantiate(const scene_asset_t* asset) {
     const layout_t l = layout_for(asset);
-    uint8_t* block = scene_allocate(l.total, MEMORY_PSRAM);
+    uint8_t* block = scene_allocate_kept(l.total);
     if (block == NULL) {
         return NULL;
     }
@@ -302,7 +333,7 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     if (done.status != SCENE_OK) {
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
-        memory_free(scene);
+        scene_free_kept(scene);
         return NULL;
     }
     loaded[loaded_count++] = scene;
@@ -339,7 +370,12 @@ scene_unload(scene_t* scene) {
         loaded[loaded_count] = NULL;
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
-        memory_free(scene);
+        scene_free_kept(scene);
+        if (loaded_count == 0) {
+            /* Nothing left to draw: drop the scratch, so whoever lent it can
+             * take it back. */
+            render_context_drop_scratch(render_context_main());
+        }
         return;
     }
 }

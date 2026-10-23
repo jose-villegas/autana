@@ -481,7 +481,7 @@ run_sponza_perf_suite(void) {
         RUN_TEST(test_sponza_frame_cost_along_the_flythrough);
         RUN_TEST(test_sponza_frame_cost_with_motion);
     }
-    loaded = (sponza_suite_t){sponza, pack, flythrough};
+    loaded = (sponza_suite_t){sponza, pack, flythrough, loaded.arena_mark};
     sponza_suite_release(&loaded);
     sponza = NULL;
     pack = NULL;

@@ -1,6 +1,7 @@
 #include "render/context/render_context.h"
 
 #include <assert.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "build/build_variant.h"
@@ -67,13 +68,30 @@ render_context_main(void) {
 }
 
 void
+render_context_drop_scratch(render_context_t* c) {
+    if (c->take == NULL) {
+        memory_free(c->scratch);
+    }
+    c->scratch = NULL;
+    c->scratch_bytes = 0;
+    c->raster.scratch = NULL;
+}
+
+void
 render_context_release(render_context_t* c) {
-    memory_free(c->scratch);
+    render_context_drop_scratch(c);
     memory_free(c->debug_view_state);
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
         .frame = {.step = -1},
+        .take = c->take,
     };
+}
+
+void
+render_context_set_take(render_context_t* c, memory_take_fn take) {
+    render_context_drop_scratch(c);
+    c->take = take;
 }
 
 void
@@ -161,8 +179,12 @@ fit_scratch(render_context_t* c) {
     c->raster.width = width;
     c->raster.height = height;
     if (needed > c->scratch_bytes) {
-        memory_free(c->scratch);
-        c->scratch = memory_alloc(needed, MEMORY_PSRAM);
+        /* A taken block cannot grow or be freed: a larger need takes a new
+         * one and abandons the old to its lender. The need only grows, at
+         * most to the destination's size, so a lender that gives back per
+         * scene loses a few blocks at most. */
+        render_context_drop_scratch(c);
+        c->scratch = c->take != NULL ? c->take(needed, _Alignof(max_align_t)) : memory_alloc(needed, MEMORY_PSRAM);
         c->scratch_bytes = c->scratch == NULL ? 0 : needed;
     }
     c->raster.scratch = c->scratch;
