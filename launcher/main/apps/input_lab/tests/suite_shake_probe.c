@@ -6,7 +6,7 @@
 
 #define TEST_TOLERANCE_MG 0.01F
 #define TEST_OFFSET_G     0.3F
-#define TEST_SETTLE_MS    (20U * SHAKE_PROBE_SLOW_MS)
+#define TEST_SETTLE_MS    (20U * SHAKE_TAU_MS)
 #define TEST_SINE_HZ      4.0F
 
 static shake_probe_levels_t
@@ -19,8 +19,7 @@ test_still(void) {
     shake_probe_levels_t levels = fixture();
     shake_probe_feed(&levels, (vec3f_t){0});
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, 0, levels.size);
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, 0, levels.smooth);
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, 0, levels.jerky);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, 0, levels.shake.smooth_mg);
 }
 
 static void
@@ -29,8 +28,7 @@ test_constant_offset(void) {
     for (uint32_t us = 0; us < TEST_SETTLE_MS * MATH_US_PER_MS; us += INPUT_MOTION_SAMPLE_US) {
         shake_probe_feed(&levels, (vec3f_t){TEST_OFFSET_G, 0, 0});
     }
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, TEST_OFFSET_G * SHAKE_PROBE_MILLI_G, levels.smooth);
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, 0, levels.jerky);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, TEST_OFFSET_G * SHAKE_PROBE_MILLI_G, levels.shake.smooth_mg);
 }
 
 static void
@@ -41,10 +39,9 @@ test_sine_axes(void) {
         const float value = TEST_OFFSET_G * sinf(2.0F * MATH_PI * TEST_SINE_HZ * (float)us / MATH_US_PER_S);
         shake_probe_feed(&across, (vec3f_t){value, 0, 0});
         shake_probe_feed(&along, (vec3f_t){0, 0, value});
-        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, along.smooth, across.smooth);
-        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, along.jerky, across.jerky);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, along.shake.smooth_mg, across.shake.smooth_mg);
     }
-    TEST_ASSERT_GREATER_THAN(SHAKE_PROBE_MILLI_G * TEST_OFFSET_G / 4, across.smooth);
+    TEST_ASSERT_GREATER_THAN(SHAKE_PROBE_MILLI_G * TEST_OFFSET_G / 4, across.shake.smooth_mg);
 }
 
 static void
@@ -76,7 +73,7 @@ test_sample_line_bound(void) {
     const int level = SHAKE_PROBE_CANDIDATE_MAX_MG;
     TEST_ASSERT_TRUE(imu_record_appendf(&record, SHAKE_PROBE_SAMPLE_FORMAT, SHAKE_PROBE_TAP,
                                         (unsigned)(SHAKE_PROBE_ROUND_MS - 1), acc, acc, acc, lin, lin, lin, level,
-                                        level, level, UINT8_MAX));
+                                        level, UINT8_MAX));
     TEST_ASSERT_LESS_OR_EQUAL_UINT(IMU_RECORD_SHAKE_LINE_SIZE, record.used);
     TEST_ASSERT_FALSE(record.truncated);
     imu_record_free(&record);

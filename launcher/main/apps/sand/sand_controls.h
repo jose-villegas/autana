@@ -23,6 +23,3 @@
 /* Steps or pours one frame may catch up on. More would turn a stall into a
  * visible lurch; fewer would slow the sand on a slow frame. */
 #define SAND_MAX_CATCHUP             2
-
-/* Shake below this reads as a steady hand, not a jostle. */
-#define SAND_SHAKE_DEADZONE          40

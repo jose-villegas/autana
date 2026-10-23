@@ -59,6 +59,8 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "input/input.h"
+#include "input/motion/gravity.h"
+#include "input/motion/shake.h"
 #include "input/motion/tilt.h"
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
@@ -254,6 +256,8 @@ typedef struct {
 static sim_buffers_t buffers;
 static sand_t sim;
 static tilt_t tilt;
+static gravity_t shake_gravity;
+static shake_t shake;
 static bool failed;
 static uint32_t label_left_ms; /* countdown for the mode label */
 
@@ -622,6 +626,8 @@ start_sim(void) {
      * tap in BOOM mode. */
     sand_enable_impulses(&sim, buffers.impulse_buf, APP_IMPULSE_MAX);
     tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
+    gravity_reset(&shake_gravity);
+    shake_reset(&shake);
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -1070,8 +1076,10 @@ read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int
     *gy = tilt_y(&tilt);
     *flow = tilt_strength(&tilt);
 
-    const int shake = tilt_shake(&tilt);
-    *jostle = shake > SAND_SHAKE_DEADZONE ? shake : 0;
+    const uint32_t dt_us = dt_ms * MATH_US_PER_MS;
+    gravity_update(&shake_gravity, motion, dt_us);
+    shake_update(&shake, gravity_linear(&shake_gravity), dt_us);
+    *jostle = (int)lroundf(shake_level(&shake) * SAND_JOSTLE_MAX);
 }
 
 static void

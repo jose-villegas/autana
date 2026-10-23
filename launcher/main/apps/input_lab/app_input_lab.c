@@ -535,8 +535,8 @@ read_shake_samples(const input_motion_batch_t* batch) {
         (void)imu_record_appendf(&imu_record, SHAKE_PROBE_SAMPLE_FORMAT,
                                  (int)SHAKE_PROBE_STILL + (int)(ms / SHAKE_PROBE_STEP_MS), (unsigned)ms, (int)acc.x,
                                  (int)acc.y, (int)acc.z, (int)lin.x, (int)lin.y, (int)lin.z,
-                                 (int)lroundf(shake_capture.levels.size), (int)lroundf(shake_capture.levels.smooth),
-                                 (int)lroundf(shake_capture.levels.jerky), tilt_shake(&tilt));
+                                 (int)lroundf(shake_capture.levels.size),
+                                 (int)lroundf(shake_capture.levels.shake.smooth_mg), tilt_shake(&tilt));
     }
 }
 
@@ -738,9 +738,9 @@ draw_shake(void) {
     const vec3i_t lin = motion_log_vector(gravity_linear(&gravity), SHAKE_PROBE_MILLI_G);
     (void)snprintf(line, sizeof line, "LINEAR %d %d %d MG", (int)lin.x, (int)lin.y, (int)lin.z);
     hud_line(4, line);
-    static const char* const names[] = {"SIZE", "SMOOTH", "JERKY", "OLD"};
-    const int values[] = {(int)lroundf(shake_capture.levels.size), (int)lroundf(shake_capture.levels.smooth),
-                          (int)lroundf(shake_capture.levels.jerky), tilt_shake(&tilt)};
+    static const char* const names[] = {"SIZE", "SMOOTH", "OLD"};
+    const int values[] = {(int)lroundf(shake_capture.levels.size), (int)lroundf(shake_capture.levels.shake.smooth_mg),
+                          tilt_shake(&tilt)};
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
         const int row = SHAKE_BAR_ROW + ((int)i * SHAKE_BAR_ROW_SPACING);
         const int full = i == (sizeof values / sizeof values[0]) - 1 ? SHAKE_OLD_FULL : SHAKE_PROBE_BAR_MG;
