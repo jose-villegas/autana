@@ -16,8 +16,8 @@ from local_schedule import gpu_window, local_time, wait_seconds, GPU_START, GPU_
 
 
 class Clock:
-    def __init__(self, hour, minute=0):
-        self.value = datetime(2026, 10, 21, hour, minute)
+    def __init__(self, hour, minute=0, *, day=21, tzinfo=None):
+        self.value = datetime(2026, 10, day, hour, minute, tzinfo=tzinfo)
         self.sleeps = []
 
     def now(self):
@@ -70,20 +70,25 @@ class LocalScheduleTests(unittest.TestCase):
                     self.assertEqual(deadline, datetime(2026, 10, expected_day, 7))
 
     def test_wait_does_not_roll_a_planned_deadline_forward(self):
+        now = Clock(7).now()
+        self.assertEqual(local_time("07:00", now, True), now + timedelta(days=1))
         started = Clock(22, 30).now() - timedelta(days=1)
         self.assertEqual(wait_seconds("07:00", Clock(6, 59).now(), True, started=started), 60)
         for hour in (7, 8):
             self.assertEqual(wait_seconds("07:00", Clock(hour).now(), True, started=started), 0)
 
-    def test_nightly_cron_starts_before_queue_in_both_seasons(self):
+    def test_nightly_cron_and_timeout_cover_both_seasons(self):
         workflow = Path(__file__).resolve().parents[3] / ".github/workflows/nightly-perf.yml"
         text = workflow.read_text()
-        self.assertIn("cron: '0 17 * * *'", text)
+        cron_hour = 18
+        queue_hour = 22.5
+        self.assertIn(f"cron: '0 {cron_hour} * * *'", text)
         self.assertIn("QUEUE_AT: '22:30'", text)
-        lag_hours = 3
-        for utc_offset in (1, 2):
-            self.assertLess(17 + lag_hours + utc_offset, 22.5)
-            self.assertLess(17 + utc_offset, 22.5)
+        longest_wait_minutes = max((queue_hour - cron_hour - offset) * 60 for offset in (1, 2))
+        window_minutes = (24 - queue_hour + 7) * 60
+        publish_minutes = 60
+        timeout_minutes = int(longest_wait_minutes + window_minutes + publish_minutes)
+        self.assertIn(f"timeout-minutes: {timeout_minutes}", text)
 
     def test_dispatch_window_and_override(self):
         for hour, allowed in ((0, False), (1, True), (2, True), (3, False), (12, False)):

@@ -2,7 +2,7 @@ name: Nightly scoped performance
 
 on:
   schedule:
-    - cron: '0 17 * * *'
+    - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       from:
@@ -44,8 +44,8 @@ env:
 jobs:
   nightly:
     runs-on: [self-hosted, windows, board]
-    # Wait up to 270 min (18:00 local to 22:30), run 510 min to 07:00, publish 60 min.
-    timeout-minutes: 840
+    # Wait up to 210 min (19:00 local to 22:30), run 510 min to 07:00, publish 60 min.
+    timeout-minutes: 780
     defaults:
       run:
         shell: 'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
