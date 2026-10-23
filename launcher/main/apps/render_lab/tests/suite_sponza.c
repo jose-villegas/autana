@@ -400,7 +400,7 @@ run_sponza_suite(void) {
     RUN_TEST(test_the_flythrough_moves_smoothly_and_closes_its_loop);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
     RUN_TEST(test_the_flythrough_sees_mostly_building);
-    loaded = (sponza_suite_t){sponza, pack, flythrough};
+    loaded = (sponza_suite_t){sponza, pack, flythrough, loaded.arena_mark};
     sponza_suite_release(&loaded);
     sponza = NULL;
     pack = NULL;
