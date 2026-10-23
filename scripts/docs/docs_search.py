@@ -31,7 +31,7 @@ the body, and embedding similarity from docs_llama.py's local model when it is
 set up. Without the model, search is the first alone and says so. The index is
 rebuilt on every run, in about a second, so it is never stale; only the
 vectors are cached. Every question is logged locally (query_log.py).
-docs/tools/Docs-Search.md has the setup.
+docs/cli/Docs-Search.md has the setup.
 """
 import argparse
 import json

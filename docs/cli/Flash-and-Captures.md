@@ -4,8 +4,8 @@ What `autana flash`, `suite`, `selftest` and `monitor` do with the board once
 they hold it: what a successful flash proves, how a measurement holds one
 lock across a flash and its captures, and where every capture and record
 lands. Who may hold the board, and what to do when it is busy, is
-[Device-Lock.md](Device-Lock.md); the command list is
-[Autana-CLI.md](Autana-CLI.md).
+[Device-Lock.md](Device-Lock.md); the commands are in
+[Build and flash](Build-and-Flash.md), [Tests](Tests.md) and [Watch](Watch.md).
 
 ## What a flash proves
 
