@@ -15,7 +15,10 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '0 18 * * *'
+  workflow_run:
+    workflows: [Bakes GPU]
+    types: [completed]
   push:
     branches: [main]
 
@@ -29,6 +32,8 @@ permissions:
 # needs this token.
 env:
   GH_TOKEN: ${{ github.token }}
+  NIGHT_START: ${{ vars.NIGHT_START }}
+  GPU_WORKFLOW: doc-images-gpu.yml
   REFRESH_BRANCH: feature/refresh-doc-images-gpu
   MPLBACKEND: Agg
   RECORD_RETENTION_DAYS: 90
@@ -39,9 +44,11 @@ jobs:
   fingerprint:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 360
     outputs:
       fingerprint: ${{ steps.inputs.outputs.fingerprint }}
       current: ${{ steps.inputs.outputs.current }}
+      gpu: ${{ steps.queue.outputs.gpu }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -61,9 +68,16 @@ jobs:
             echo "GPU images pending; render in the local night window." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Wait for the night and yield to pending bakes
+        id: queue
+        if: github.event_name != 'push' && steps.inputs.outputs.current != 'true'
+        run: python3 scripts/lib/local_schedule.py queue
+
   refresh:
     needs: fingerprint
-    if: github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'
+    if: needs.fingerprint.outputs.gpu == 'true'
+    env:
+      GPU_QUEUE_READY: 'true'
     runs-on: [self-hosted, linux, gpu]
     timeout-minutes: 1440
     concurrency:
@@ -135,6 +149,8 @@ jobs:
         if: steps.gpu.outputs.rendered == 'true' && steps.render.outputs.count == '0'
         env:
           GH_TOKEN: ${{ github.token }}
+  NIGHT_START: ${{ vars.NIGHT_START }}
+  GPU_WORKFLOW: doc-images-gpu.yml
         run: |
           "$GPU_ENV/bin/python3" scripts/ci/refresh_pr.py close \
             "Every GPU-rendered image and generated table already matches main; nothing left to refresh."
@@ -143,6 +159,8 @@ jobs:
         if: steps.gpu.outputs.rendered == 'true' && steps.render.outputs.count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
+  NIGHT_START: ${{ vars.NIGHT_START }}
+  GPU_WORKFLOW: doc-images-gpu.yml
         run: |
           # The run rendered its trigger commit; the branch is built on the current main from
           # the changed images and the tables (scripts/ci/refresh_branch.py says why).

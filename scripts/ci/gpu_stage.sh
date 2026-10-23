@@ -1,21 +1,21 @@
 #!/bin/sh
-# Recheck the start cap after the FIFO wait, before running the full stage.
+# Board work must finish before joining the heavy queue; recheck the cap after it.
 set -eu
-wait_seconds=$(python3 - <<'PY'
-import os
-from scripts.lib.local_schedule import Clock, GPU_END, wait_seconds
-from scripts.lib.autana_config import DEFAULT_LOCK_WAIT_SECONDS
-print(DEFAULT_LOCK_WAIT_SECONDS if os.environ.get("OVERRIDE") == "true"
-      else wait_seconds(GPU_END, Clock().now()))
-PY
-)
+GPU_ESTIMATE_SECONDS=$(python3 scripts/lib/local_schedule.py estimate)
+export GPU_ESTIMATE_SECONDS
+status=0
+python3 scripts/lib/local_schedule.py ready || status=$?
+skipped=$(python3 -c 'from scripts.lib.local_schedule import EXIT_SKIPPED; print(EXIT_SKIPPED)')
+if [ "$status" -eq "$skipped" ]; then exit 0; fi
+[ "$status" -eq 0 ] || exit "$status"
+wait_seconds=$(python3 scripts/lib/local_schedule.py budget)
 export PATH="$PWD/tools:$PATH"
 status=0
 autana lock run --heavy --wait "$wait_seconds" -- \
     python3 scripts/lib/local_schedule.py start -- "$@" || status=$?
 busy=$(python3 -c 'from scripts.lib.autana_config import EXIT_BUSY; print(EXIT_BUSY)')
 if [ "$status" -eq "$busy" ] && [ "${OVERRIDE:-}" != true ]; then
-    if [ "${GITHUB_EVENT_NAME:-}" = schedule ]; then
+    if [ "${GITHUB_EVENT_NAME:-}" = schedule ] || [ "${GITHUB_EVENT_NAME:-}" = workflow_run ]; then
         python3 -c 'from scripts.lib.local_schedule import SKIPPED; print(SKIPPED)'
         exit 0
     fi

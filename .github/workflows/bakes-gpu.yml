@@ -40,6 +40,10 @@ permissions:
   contents: read
   actions: read
 
+env:
+  NIGHT_START: ${{ vars.NIGHT_START }}
+  GPU_WORKFLOW: bakes-gpu.yml
+
 jobs:
   probe:
     name: Probe Mitsuba CUDA

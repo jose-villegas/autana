@@ -162,20 +162,27 @@ and lists every input.
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
 Changed images remain pending for the night window; pushes do not render.
 
-The schedule is `0 23 * * *` UTC. Scheduled work waits until local 01:00,
-using the next day if triggered before midnight. It may start before 03:00.
+The schedule is `0 18 * * *` UTC. Scheduled work waits for `vars.NIGHT_START`,
+with the empty-variable default owned by `scripts/lib/local_schedule.py`.
+The GPU queue runs bakes first, then doc images whose fingerprint changed.
 
-A schedule firing from local 03:00 through noon skips successfully with
-`skipped: too late, next night renders it`.
+The board and GPU runners share one host. GPU stages wait for board locks
+before taking heavy. The hosted fingerprint job waits for the night start;
+pending bakes defer doc images without occupying the GPU runner.
+A completed Bakes GPU run triggers a fresh doc-images check.
 
-Manual dispatch uses the same start window and refuses an early or late
-start with `GPU stage renders 01:00-03:00 local time; dispatch with override to render now`.
-Set `override` to render at any time; `force` controls freshness independently.
+The board nightly waits for both GPU workflows before taking board locks,
+then runs until local 07:00.
 
-The full stage holds `autana lock run --heavy`, queued only until local
-03:00 unless overridden. It checks the start cap again after acquiring the
-lock. GPU bakes hold the same key without a night start cap.
+A GPU stage starts only if its estimate fits before the shared local night
+end in `local_schedule.py`. The estimate is its workflow's last successful
+main run duration, or the named per-stage fallback in that module.
+The cap is checked again after acquiring heavy.
 
+A scheduled stage that cannot fit skips successfully. Manual dispatch
+refuses; `override` allows daytime work while still waiting for board locks.
+`force` controls freshness independently. Override guard waits are bounded
+by `DEFAULT_LOCK_WAIT_SECONDS`.
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
 failed attempt is a record too, so a newer failed one makes them stale
 and the next run renders again.

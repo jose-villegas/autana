@@ -343,15 +343,25 @@ timing lines. The workflow's `NIGHTLY_SUITES` supplies these triplets.
 it per board; `lane-info --plan plan.json --board BOARD_A` prints it and its
 estimated duration in seconds.
 
-`QUEUE_AT` and `WINDOW_END` set local times. Dispatch inputs `queue_at` and
-`window_end` override them; an empty dispatch `queue_at` starts immediately.
+`vars.NIGHT_START` sets the shared local start; an empty variable uses the
+default in `scripts/lib/local_schedule.py`, which also owns the night end.
+Dispatch inputs `queue_at` and `window_end` override these times;
+an empty dispatch `queue_at` starts immediately after pending GPU work.
+
+The board and GPU runners share one host. From the night start, bakes run
+first, then doc images with changed inputs. Doc images defer to pending
+bakes from a hosted job and recheck when Bakes GPU completes.
+The plan waits for both GPU workflows before taking any board lock.
+
+The board night starts when the GPU queue ends and retains the shared
+morning deadline in `plan.json`. If less than `FIRST_STEP_SECONDS` remains,
+the plan skips successfully with one summary line.
+
+Morning scheduled arrivals after the night end skip; arrivals after noon
+wait for the next night start. A dispatch with `queue_at` follows this rule.
 A dispatch holds boards until its window end or `max_steps`.
 
-Scheduled plans start immediately inside the overnight window. Morning
-arrivals after `WINDOW_END` skip; arrivals after noon wait until `QUEUE_AT`.
-A dispatch with `queue_at` follows the scheduled window rule, skipping 07:00–12:00.
-
-A step starts only if it fits before `WINDOW_END`, and a lane stops after
+A step starts only if it fits before the plan deadline, and a lane stops after
 `CAPTURE_FAILURE_LIMIT` consecutive capture failures (`scoped_chain.py`).
 Unattempted commits go to the same board's next night.
 

@@ -277,7 +277,7 @@ class NightlyTests(unittest.TestCase):
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8", "2124"], data=self.args.data,
                                out=self.root / "plan.json", queue_at="22:00", until="07:00", from_sha=self.commits[1],
                                max_steps=2, selftest_board="2124")
-        chain.plan(args, self.clock)
+        chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
         plan = json.loads(args.out.read_text())
         self.assertEqual(plan["tip"], self.commits[-1])
         self.assertEqual(self.clock.sleeps, [])
@@ -288,12 +288,12 @@ class NightlyTests(unittest.TestCase):
             self.assertLessEqual(lane["steps"][-1]["position"], 6)
         self.assertEqual(plan["deadline"], "2026-10-19T07:00:00+00:00")
         self.clock.value += timedelta(hours=2)
-        chain.plan(args, self.clock)
+        chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
         late = json.loads(args.out.read_text())
         self.assertEqual((late["night"], late["deadline"]), (plan["night"], plan["deadline"]))
         args.queue_at = None
         self.clock.sleeps.clear()
-        chain.plan(args, self.clock)
+        chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
         self.assertEqual(self.clock.sleeps, [])
         self.assertEqual(json.loads(args.out.read_text())["deadline"], late["deadline"])
         previous = {"last_measured": self.commits[0]}
@@ -484,6 +484,26 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(writes[-1]["selftest"]["outcome"], "failed")
         self.assertTrue((self.args.out / writes[-1]["selftest"]["report"]).is_file())
 
+    def test_plan_waits_for_gpu_queue_with_fixed_morning_deadline(self):
+        for release_hour, release_minute, allowed in ((22, 30, True), (1, 30, True), (6, 45, False)):
+            with self.subTest(release_hour=release_hour):
+                clock = ScheduleClock(18)
+                day = 21 if release_hour > 12 else 22
+                released = datetime(2026, 10, day, release_hour, release_minute)
+                args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
+                    data=self.args.data, out=self.root / "plan.json", queue_at="", until="07:00",
+                    from_sha=None, max_steps=None, selftest_board="20E8")
+                def request(method, path):
+                    return {"workflow_runs": [dict(status="in_progress")] if clock.now() < released else []}
+                with patch.object(chain, "read_last_night", return_value=None), \
+                        patch.object(chain, "select_steps", return_value=[]):
+                    chain.plan(args, clock, request=request)
+                planned = json.loads(args.out.read_text())
+                self.assertEqual(bool(planned["lanes"]), allowed)
+                self.assertEqual(planned["deadline"], datetime(2026, 10, 22, 7).isoformat())
+                expected = released if allowed else datetime(2026, 10, 22, 7) - timedelta(seconds=chain.FIRST_STEP_SECONDS)
+                self.assertEqual(planned["started"], expected.isoformat())
+
     def test_plan_delegates_window_and_writes_skip_summary(self):
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
             data=self.args.data, out=self.root / "plan.json", queue_at="22:30", until="06:00",
@@ -492,7 +512,7 @@ class NightlyTests(unittest.TestCase):
         with patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(summary)), \
                 patch.object(chain, "night_window", return_value=None) as window, \
                 patch.object(chain, "plugged_boards") as discover:
-            chain.plan(args, self.clock)
+            chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
         window.assert_called_once_with(args.queue_at, args.until, scheduled=True, clock=self.clock)
         discover.assert_not_called()
         self.assertEqual(json.loads(args.out.read_text())["lanes"], {})
@@ -613,7 +633,7 @@ class NightlyTests(unittest.TestCase):
                                out=self.root / "plan.json", queue_at=None, until="07:00", from_sha=None, max_steps=None,
                                selftest_board=None)
         with patch.object(chain, "read_last_night", side_effect=lambda data, board: previous[board]):
-            chain.plan(args, self.clock)
+            chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
         planned = json.loads(args.out.read_text())
         self.assertEqual({board: lane["previous"] for board, lane in planned["lanes"].items()}, previous)
 
@@ -630,7 +650,7 @@ class NightlyTests(unittest.TestCase):
         with patch.object(chain.subprocess, "check_output", side_effect=devices), \
                 patch.object(chain, "read_last_night", return_value=None), \
                 patch("sys.stdout", new_callable=io.StringIO) as output:
-            chain.plan(args, self.clock)
+            chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
         planned = json.loads(args.out.read_text())
         self.assertEqual({board: lane["lane"] for board, lane in planned["lanes"].items()},
                          {"20E8": "0/2", "A308": "1/2"})
@@ -639,7 +659,7 @@ class NightlyTests(unittest.TestCase):
         args.boards = None
         with patch.object(chain.subprocess, "check_output", side_effect=devices), \
                 self.assertRaises(SystemExit):
-            chain.plan(args, self.clock)
+            chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
 
     def test_cleanup_fallback_deletes_tree_and_copies_records(self):
         original_git, original_replay, original_remove = chain.git, Replay.__call__, chain.remove_output
@@ -789,7 +809,7 @@ bash "$1" board "$2" data out -- --suite suite - "table with spaces"
                 # The plan's output goes to the job environment, not the log.
                 github_env = Path(tmp) / "github_env"
                 env = dict(os.environ, GITHUB_EVENT_NAME=event, DISPATCH_QUEUE_AT=requested,
-                           QUEUE_AT="22:30", FROM_SHA="", MAX_STEPS="", GITHUB_ENV=str(github_env))
+                           NIGHT_START="22:30", DISPATCH_WINDOW_END="", FROM_SHA="", MAX_STEPS="", GITHUB_ENV=str(github_env))
                 subprocess.run(["bash", "-c", command], env=env, capture_output=True, text=True, check=True)
                 args = github_env.read_text().splitlines()
                 self.assertNotIn("--boards", args)

@@ -22,7 +22,7 @@ import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
-from local_schedule import Clock, local_time, night_window, SKIPPED
+from local_schedule import Clock, local_time, night_window, wait_idle, gpu_pending, NIGHT_END, SKIPPED
 from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
 
 IMAGE_HEADER_BYTES = 24
@@ -325,12 +325,15 @@ def plugged_boards(autana=None):
     return [short_id(board["board"]) for board in json.loads(listing)["boards"] if board["port"]]
 
 
-def plan(args, clock=None):
+def plan(args, clock=None, request=None):
     clock = clock or Clock()
-    window = night_window(args.queue_at, args.until, scheduled=True, clock=clock) if args.queue_at else None
-    skipped = bool(args.queue_at and window is None)
+    queued = args.queue_at is not None
+    window = night_window(args.queue_at, args.until, scheduled=True, clock=clock) if queued else None
+    skipped = queued and window is None
+    start, deadline = window or (clock.now(), local_time(args.until, clock.now(), next_occurrence=True))
+    if not skipped:
+        skipped = not wait_idle(lambda: gpu_pending(request=request), deadline, FIRST_STEP_SECONDS, clock)
     now = clock.now()
-    start, deadline = window or (now, local_time(args.until, now, next_occurrence=True))
     if skipped:
         args.boards, args.selftest_board = [], None
         print(SKIPPED, file=sys.stderr)
@@ -376,7 +379,7 @@ def main():
     planning.add_argument("--boards", nargs="+", help="default: every board `autana devices` lists as plugged in")
     planning.add_argument("--tip", default="origin/main")
     planning.add_argument("--queue-at")
-    planning.add_argument("--until", required=True)
+    planning.add_argument("--until", default=NIGHT_END)
     planning.add_argument("--selftest-board")
     running = commands.add_parser("run")
     running.add_argument("--plan", type=Path, required=True)
