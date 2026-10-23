@@ -1,6 +1,6 @@
 /*
  * imu: QMI8658 stream FIFO drained by a polling task.
- * imu_read() returns the newest drained sample. Register values follow the
+ * imu_read() returns the newest sample read by the task. Register values follow the
  * QST QMI8658A datasheet Rev A (2022).
  */
 #pragma once
@@ -52,7 +52,7 @@ void imu_start(void);
 
 bool imu_ready(void);
 
-/* Copies the newest drained sample. False when no sensor or no sample is available. */
+/* Copies the newest sample read by the task. False when no sensor or no sample is available. */
 bool imu_read(imu_sample_t* out);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
