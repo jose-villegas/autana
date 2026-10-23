@@ -47,7 +47,6 @@ on-device replay suite and its timing rows.
 | Output | Generator | Run in | Command |
 |---|---|---|---|
 | [sand_palette256.h](../sand_palette256.h) | [report_shading_palette.sh](report_shading_palette.sh) | `launcher/` | `main/apps/sand/tools/report_shading_palette.sh main/apps/sand/sand_palette256.h` |
-| [motion_replay_generated.h](../tests/motion_replay_generated.h) | [gen_motion_replay.py](../../input_lab/tools/gen_motion_replay.py) | `./` | `python launcher/main/apps/input_lab/tools/gen_motion_replay.py launcher/main/apps/input_lab/tools/data/shake-mixed.log.gz launcher/main/apps/sand/tests/motion_replay_generated.h --hz-header launcher/main/apps/sand/sand_controls.h --hz-name SAND_STEP_HZ --segment STILL:2000:1600 --segment HARD:2000:1600 --segment STILL:4000:1600` |
 <!-- /generated: generated-files-sand -->
 
 ## Host renders
