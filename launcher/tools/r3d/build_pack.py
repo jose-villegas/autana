@@ -70,7 +70,7 @@ SOUND = sound_asset.SUFFIX
 CURVE = curve_asset.SUFFIX
 ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE, SOUND)
 BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE)  # entries baked from their file here; meshes and sounds come from the cache
-FETCHED = (IMPORT, SOUND)
+FETCHED = (bake.MESH_SUFFIX, SOUND)
 FOLDER_PACK = ".pack.toml"
 PACK_SUFFIX = ".apak"
 
@@ -216,7 +216,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
     for item in replace:
         mesh, _, file = item.partition("=")
         holder = next((entries for entries in packs.values() if mesh in entries), None)
-        if holder is None or not holder[mesh].name.endswith(IMPORT):
+        if holder is None or not holder[mesh].name.endswith(bake.MESH_SUFFIX):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
