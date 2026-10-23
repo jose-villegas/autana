@@ -200,7 +200,7 @@ apply_display_orientation(int64_t now_us) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* `<PREFIX>_ERR <reason>`: the app's own prefix in capitals, like a
  * verb's own TUNE_ERR, so a caller matching `<PREFIX>_ERR`
- * (docs/tools/Autana-CLI.md) recognises either failure below the same way
+ * (docs/cli/README.md) recognises either failure below the same way
  * it recognises a completed reply. */
 static void
 reply_app_err(const char* prefix, const char* reason) {
