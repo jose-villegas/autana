@@ -16,8 +16,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "math/scalar/math_calls.h"
-
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathf_round.h"
 #include "math/scalar/mathi.h"
@@ -180,7 +178,6 @@ static const uint32_t mathx_rsqrt_seeds[] = {
 
 static inline uint32_t
 mathx_rsqrt_q30(uint32_t m) {
-    MATH_FAST_CALL(mathx_rsqrt_q30);
     assert(m >= MATHX_RSQRT_MIN);
     _Static_assert(sizeof mathx_rsqrt_seeds / sizeof mathx_rsqrt_seeds[0]
                        == (1 << MATHX_RSQRT_SEED_BITS) - (1 << (MATHX_RSQRT_SEED_BITS - 2)),

@@ -47,6 +47,22 @@ class FastPathTests(unittest.TestCase):
                 self.header.write_text(original.replace('#define EXAMPLE_LIMIT 1', definition))
                 paths.annotations(self.root)
 
+    def test_literal_limit_matches_test_constant_and_unit(self):
+        self.header.write_text(self.header.read_text().replace(
+            '#define EXAMPLE_LIMIT 1\n', '').replace('EXAMPLE_LIMIT)', 'EXAMPLE_LIMIT=1 ulp)'))
+        source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
+        original = source.read_text()
+        source.write_text('#define EXAMPLE_LIMIT 1\n' + original)
+        self.assertEqual(paths.annotations(self.root)[0].limit, 1)
+        for definition in ('#define EXAMPLE_LIMIT 2\n', '#define EXAMPLE_LIMIT -1\n', ''):
+            with self.subTest(definition=definition), self.assertRaises(ValueError):
+                source.write_text(definition + original)
+                paths.annotations(self.root)
+        source.write_text('#define EXAMPLE_LIMIT 1\n' + original)
+        self.header.write_text(self.header.read_text().replace('=1 ulp)', '=1 relative)'))
+        with self.assertRaises(ValueError):
+            paths.annotations(self.root)
+
     def test_section_missing_and_extra(self):
         for text in ('', '## example\n## unexpected\n'):
             with self.subTest(text=text), self.assertRaisesRegex(ValueError, 'section'):
@@ -116,17 +132,6 @@ class FastPathTests(unittest.TestCase):
         self.assertIn('math/linear', paths.callers(self.root, 'mathx_rsqrt_q30'))
         item = next(item for item in paths.annotations(self.root) if item.key == 'mathx_rsqrt_q30')
         self.assertEqual(paths.tables_for(item, self.root), ['mathx_rsqrt_seeds'])
-
-    def test_call_windows_sum_translation_units_before_scene_statistics(self):
-        capture = ('MATHCALLS begin\n'
-                   'MATHCALLS fn=example caller=C:/tree/launcher/main/apps/a/use.c per_frame=2\n'
-                   'MATHCALLS fn=example caller=C:/tree/launcher/main/apps/b/use.c per_frame=4\n'
-                   'MATHCALLS end\nMATHCALLS begin\n'
-                   'MATHCALLS fn=example caller=C:/tree/launcher/main/render/use.c per_frame=8\n'
-                   'MATHCALLS end\n')
-        self.assertEqual(paths.parse_calls(capture), {('example', 'apps (not named)'): (6, 3), ('example', 'render'): (8, 4)})
-        self.assertEqual(paths.parse_calls(capture.replace('C:/tree/launcher/', './')),
-                         {('example', 'apps (not named)'): (6, 3), ('example', 'render'): (8, 4)})
 
     def test_target_capture_requires_hardware_and_one_identity(self):
         good = 'MATHTARGET target=esp32s3 arch=Xtensa execution=hardware\n'

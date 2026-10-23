@@ -1079,12 +1079,6 @@ class BatchCommandTests(unittest.TestCase):
 
 
 class SuiteCommandTests(unittest.TestCase):
-    def test_math_count_calls_passes_without_perf_scope(self):
-        for flags in (["--math-count-calls"], ["--math-count-calls", "--flash"]):
-            with self.subTest(flags=flags), project_call() as called:
-                autana.suite(["run_sponza_perf_suite", *flags])
-            self.assertIn("--math-count-calls", called.call_args.args[0])
-
     def test_verbose_reaches_device(self):
         with project_call() as called:
             autana.suite(["run_gfx_suite", "--verbose"])

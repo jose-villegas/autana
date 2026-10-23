@@ -1,4 +1,4 @@
-# ELF sha256=79c1aa7957acbf968fa5d2ddbb56e67065c9a1778af5f04208134c614ca752e1
+# ELF sha256=649fa3c4490d057b09b08392941a7e3022907860905cb00ba7f52555ff16f45b
 # row	symbol	bytes	region; sizes belong to the --from-elf build
 add_f	math_bench_add_f	65	flash
 add_i	math_bench_add_i	54	flash

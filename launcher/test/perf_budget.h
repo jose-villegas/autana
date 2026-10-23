@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_log.h"
-#include "profile/frame_cost.h"
 #include "unity.h"
 
 #define PERF_BUDGET_TAG     "device_tests"
@@ -17,7 +16,7 @@ typedef struct {
 
 static inline bool
 perf_guard_passes(int64_t measured_us, int64_t ceiling_us) {
-#if CONFIG_LAUNCHER_QEMU || FRAME_COST_INSTRUMENTED
+#if CONFIG_LAUNCHER_QEMU
     (void)measured_us;
     (void)ceiling_us;
     return true;
@@ -32,7 +31,7 @@ perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
         ESP_LOGI(PERF_BUDGET_TAG, "%s: ceiling not yet pegged (measured_us=%lld)", name, (long long)measured_us);
         return;
     }
-#if CONFIG_LAUNCHER_QEMU || FRAME_COST_INSTRUMENTED
+#if CONFIG_LAUNCHER_QEMU
     ESP_LOGI(PERF_BUDGET_TAG, "%s: %lld us, board ceiling %lld us not enforced", name, (long long)measured_us,
              (long long)ceiling_us);
 #else

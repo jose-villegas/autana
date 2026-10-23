@@ -346,7 +346,7 @@ def idf_note(project, emit=True):
 def flash(args):
     project = resolve_project()
     seed, args = pop_layout_seed(args)
-    _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope", "--hot-tunables", "--math-count-calls"), project)
+    _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope", "--hot-tunables"), project)
     refuse_release_seed(seed, variant)
     if "--hot-tunables" in seen and variant == "release":
         sys.exit("autana: --hot-tunables needs dev or diag")
@@ -356,8 +356,6 @@ def flash(args):
     command = device_command(
         "flash", "--variant", variant, "--worktree", project,
     )
-    if "--math-count-calls" in seen:
-        command.append("--math-count-calls")
     if perf_scope:
         command.append("--perf-scope")
     if hot_tunables:
@@ -389,7 +387,7 @@ def build(args):
             sys.exit("usage: autana build diag --check")
         return build_diag_check(project)
     seed, args = pop_layout_seed(args)
-    _, variant, seen = variant_request("build", args, ("--perf-scope", "--hot-tunables", "--configure", "--math-count-calls"), project)
+    _, variant, seen = variant_request("build", args, ("--perf-scope", "--hot-tunables", "--configure"), project)
     refuse_release_seed(seed, variant)
     if "--hot-tunables" in seen and variant == "release":
         sys.exit("autana: --hot-tunables needs dev or diag")
@@ -956,7 +954,7 @@ def suite_list(args):
 
 
 SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--test PATTERN] "
-              "[--flash] [--perf-scope] [--math-count-calls] [--layout-seed N] [--hot-tunables] [--set NAME=VALUE] [--send LINE] [--verbose] [--out PATH] "
+              "[--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--set NAME=VALUE] [--send LINE] [--verbose] [--out PATH] "
               "[--expect-build-id ID] | "
               "autana suite list [text]")
 
@@ -998,9 +996,6 @@ def suite(args):
     hot_tunables = "--hot-tunables" in rest
     if hot_tunables:
         rest.remove("--hot-tunables")
-    math_count_calls = "--math-count-calls" in rest
-    if math_count_calls:
-        rest.remove("--math-count-calls")
     perf_scope = "--perf-scope" in rest
     if perf_scope:
         rest.remove("--perf-scope")
@@ -1057,8 +1052,6 @@ def suite(args):
         command.append("--no-flash")
     for name in names:
         command += ["--suite", name]
-    if math_count_calls:
-        command.append("--math-count-calls")
     if perf_scope:
         command.append("--perf-scope")
     if hot_tunables:
@@ -1779,20 +1772,18 @@ COMMAND_GROUPS = (
     )),
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope] [--math-count-calls] [--layout-seed N] [--hot-tunables] [--configure]",
-             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json; --math-count-calls (diag) counts annotated math calls per translation unit"),
+            ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]",
+             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
-        one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope] [--math-count-calls] [--layout-seed N] [--hot-tunables]",
-            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image; --math-count-calls (diag) counts annotated math calls per translation unit"),
+        one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
+            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image"),
         one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board runs, to check against what was flashed"),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
-            ("suite <name>... [seconds] [--runs N] [--flash] [--perf-scope] [--math-count-calls] [--layout-seed N] [--hot-tunables] [--verbose]",
+            ("suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--hot-tunables] [--verbose]",
              "run suites under one lock, N times each (1 when omitted); seconds caps each capture "
-             "(1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures; --math-count-calls (diag) counts annotated math calls per translation unit"),
-            ("suite <name> --flash --math-count-calls",
-             "--math-count-calls (diag) counts annotated math calls per translation unit in measurement windows"),
+             "(1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures"),
             ("suite <name> --test PATTERN[,PATTERN]",
              "only the tests whose name contains a pattern (case-sensitive); --test repeats"),
             ("suite <name> --send LINE",

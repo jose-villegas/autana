@@ -11,15 +11,11 @@
 
 #include <stdint.h>
 
-#include "math/scalar/math_calls.h"
-
-#define TRIG_TURN_SHIFT    16
-#define TRIG_TURN          (1u << TRIG_TURN_SHIFT)
-#define TRIG_QUARTER_TURN  (TRIG_TURN / 4)
-#define TRIG_SIN_SHIFT     15
-#define TRIG_SIN_MAX       ((1 << TRIG_SIN_SHIFT) - 1)
-
-#define TRIG_SIN_LSB_LIMIT 5
+#define TRIG_TURN_SHIFT   16
+#define TRIG_TURN         (1u << TRIG_TURN_SHIFT)
+#define TRIG_QUARTER_TURN (TRIG_TURN / 4)
+#define TRIG_SIN_SHIFT    15
+#define TRIG_SIN_MAX      ((1 << TRIG_SIN_SHIFT) - 1)
 
 static const int16_t trig_sin_quarter[65] = {
     0,     804,   1608,  2410,  3212,  4011,  4808,  5602,  6393,  7179,  7962,  8739,  9512,
@@ -45,11 +41,10 @@ trig_sin_quadrant(uint32_t r) {
 /* Sine of phase, TRIG_TURN to the turn; TRIG_SIN_SHIFT fractional bits. */
 /* For 16-bit phase input, quarter-wave samples a and b bracket it; t is the low eight phase bits and s is sine in output LSBs. | s = a + floor((b-a)t/256) | every 16-bit phase against sinf in output LSBs */
 
-/* MATH_FAST_PATH(trig_sin_i, sinf_f, TRIG_SIN_LSB_LIMIT) */
+/* MATH_FAST_PATH(trig_sin_i, sinf_f, TRIG_SIN_LSB_LIMIT=5 lsb) */
 
 static inline int32_t
 trig_sin(uint16_t phase) {
-    MATH_FAST_CALL(trig_sin);
     const uint32_t quadrant = (uint32_t)phase >> (TRIG_TURN_SHIFT - 2);
     const uint32_t rest = (uint32_t)phase & (TRIG_QUARTER_TURN - 1);
 

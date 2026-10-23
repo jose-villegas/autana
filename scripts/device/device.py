@@ -1155,8 +1155,6 @@ def layout_flags(args):
     """Image selection flags passed through to build.sh."""
     seed = getattr(args, "layout_seed", 0)
     flags = ["--layout-seed", str(seed)] if seed else []
-    if getattr(args, "math_count_calls", False):
-        flags.append("--math-count-calls")
     if getattr(args, "hot_tunables", False):
         flags.append("--hot-tunables")
     return flags
@@ -2174,7 +2172,6 @@ def main(argv=None):
     flash_parser.add_argument("--out")
     flash_parser.add_argument("--hot-tunables", action="store_true",
                               help="build with live hot-path tunables")
-    flash_parser.add_argument("--math-count-calls", action="store_true", help="count annotated math calls per translation unit (diag)")
     flash_parser.add_argument("--perf-scope", action="store_true",
                               help="with --variant diag: build the perf-scoped image")
     flash_parser.add_argument("--layout-seed", type=int, default=0,
@@ -2263,7 +2260,6 @@ def main(argv=None):
                               help="capture against the image already on the board")
     batch_parser.add_argument("--hot-tunables", action="store_true",
                               help="build with live hot-path tunables")
-    batch_parser.add_argument("--math-count-calls", action="store_true", help="count annotated math calls per translation unit (diag)")
     batch_parser.add_argument("--perf-scope", action="store_true",
                               help="build the perf-scoped image (needs --flash, the default)")
     batch_parser.add_argument("--layout-seed", type=int, default=0,

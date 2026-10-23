@@ -95,7 +95,6 @@ header's opening comment; `--check` verifies it.
 | [include/math/motion/orbit_motion.h](include/math/motion/orbit_motion.h) | orbit_motion: moves a transform around a target, turntable style: it turns about the world's up axis (yaw) and tilts above or below the target (pitch), always facing it. |
 | [include/math/motion/spring_line.h](include/math/motion/spring_line.h) | spring_line, a row of points on springs: each is pulled toward rest and toward its neighbours, so a push travels along the row as a wave and dies away. |
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
-| [include/math/scalar/math_calls.h](include/math/scalar/math_calls.h) | Optional per-translation-unit call counts; begin/report require quiescent frame workers. |
 | [include/math/scalar/math_const.h](include/math/scalar/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
 | [include/math/scalar/math_db.h](include/math/scalar/math_db.h) | Floored decibel conversions for nonnegative ratios. |
 | [include/math/scalar/mathf.h](include/math/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (docs/math/Scalar.md). |

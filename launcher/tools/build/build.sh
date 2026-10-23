@@ -73,7 +73,6 @@ set -euo pipefail
 
 VARIANT=release
 PERF_SCOPE=0
-MATH_COUNT_CALLS=0
 AUTORUN=0
 VERBOSE=0
 PREPARED_BUILD=""
@@ -87,7 +86,6 @@ while [ $# -gt 0 ]; do
         -d|--diag) VARIANT=diag; shift ;;
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
-        --math-count-calls) MATH_COUNT_CALLS=1; shift ;;
         --hot-tunables) HOT_TUNABLES=1; shift ;;
         --layout-seed)
             [ $# -ge 2 ] || { echo "--layout-seed needs a number" >&2; exit 2; }
@@ -159,9 +157,6 @@ if [ "$AUTORUN" -eq 1 ]; then
 fi
 if [ "$PERF_SCOPE" -eq 1 ]; then
     VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
-fi
-if [ "$MATH_COUNT_CALLS" -eq 1 ]; then
-    VARIANT_OPTIONS="$VARIANT_OPTIONS --math-count-calls"
 fi
 VARIANT_OPTIONS="$VARIANT_OPTIONS --layout-seed $LAYOUT_SEED"
 if [ "$HOT_TUNABLES" -eq 1 ]; then

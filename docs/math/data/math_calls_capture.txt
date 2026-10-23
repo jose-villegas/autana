@@ -1,1 +1,0 @@
-# Call counts pending: autana suite run_sponza_perf_suite --flash --perf-scope --math-count-calls

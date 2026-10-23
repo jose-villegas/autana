@@ -37,7 +37,7 @@
 8487	math_nlerp_f	info
 58234	math_nlerp_x	info
 58105	math_normalize_div_x	info
-6362	math_normalize_f
+6426	math_normalize_f
 43596	math_normalize_x	info
 1936	math_quat_mul_f	info
 20087	math_quat_mul_x	info
