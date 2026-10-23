@@ -40,7 +40,7 @@ gif_from_avi "$W/sponza-flat-motion.avi" "$OUT/render-lab-sponza-flat.gif" "fps=
 CLIP_DT=40
 CLIP_MS=2500
 CLIP_BLEND_MS=500
-RETURN_BLEND_MS=1000
+RETURN_BLEND_MS=1500
 clip_frame() { echo $(($1 / CLIP_DT)); }
 clips=$("$W/render_lab_render" --quarter 1 --no-hud --scene capybara --frames 1 --console 0:clips \
     -o "$W/capybara-clips.bmp" 2> "$W/capybara-clips.log" | sed -n 's/^RENDER clip=\([^ ]*\) .*/\1/p')
