@@ -27,7 +27,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
-from c_comments import EXCLUDED, blank_comments, scan  # noqa: E402
+from c_comments import excluded, blank_comments, scan  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
@@ -112,12 +112,12 @@ def _doc_walk(root, files=None):
 def _c_walk(root, files=None):
     """First-party .c/.h files: vendored trees and generated files keep
     their upstream or generator-owned form, the same exemption
-    check-format.sh and check_comment_length.py's EXCLUDED give them."""
+    check-format.sh and c_comments.excluded() give them."""
     root = pathlib.Path(root)
     for rel in tracked_files(root, ["*.c", "*.h"]):
         if files is not None and rel not in files:
             continue
-        if any(rel.startswith(e) for e in EXCLUDED):
+        if any(rel.startswith(e) for e in excluded()):
             continue
         path = root / rel
         if not path.is_file():

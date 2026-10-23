@@ -10,13 +10,39 @@ on:
     branches: [main]
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      lfs-objects: ${{ steps.affected.outputs.lfs-objects }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job lfs-objects
+
   lfs-objects:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lfs-objects == 'true') }}
     name: LFS objects exist on the server
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/host-tools
       - name: Ask the server for every pointer's object
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/gates/check_lfs_objects.py
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
