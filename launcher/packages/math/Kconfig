@@ -7,4 +7,11 @@ menu "Math"
             Use the ESP32-S3 FPU recip0.s and rsqrt0.s seeds. Disable where
             the emulator lacks these instructions (Espressif QEMU).
 
+    config MATH_FPU_FUSED_MADD
+        bool "Use FPU fused multiply-add"
+        default y
+        help
+            Rely on madd.s/msub.s rounding once. Disable where the emulator
+            rounds the product (Espressif QEMU).
+
 endmenu
