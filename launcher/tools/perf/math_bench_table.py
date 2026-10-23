@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update the math benchmark block; --from-elf records wrapper metadata and FPU ops."""
+"""Parse and render math benchmarks; --from-elf records wrapper metadata and FPU ops."""
 import argparse
 import hashlib
 import math
@@ -10,15 +10,11 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT / "launcher/tools" / folder) for folder in ("render", "quality", "perf")]
-from generated_blocks import replace_block
 from icount_gate import load_baseline
 from code_layout import LayoutError, find_tool, instructions, parse_objdump, run, skip_pools, symbols
 from capture import build_id
 
 DATA = ROOT / "docs/math/data"
-BASELINE = ROOT / "launcher/tools/quality/icount_baseline.txt"
-DOCUMENT = ROOT / "docs/math/Benchmark.md"
-BLOCK = "math-benchmark"
 PLACEHOLDER = "# Board capture pending: run autana suite math_perf --flash."
 FPU_OPS = ("madd.s", "msub.s", "recip0.s", "rsqrt0.s", "div0.s", "divn.s", "sqrt0.s")
 DEVICE_ONLY_FPU_OPS = ("recip0.s", "rsqrt0.s")
@@ -242,39 +238,27 @@ def elf_rows(objdump, elf, located):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--capture", type=Path, default=DATA / "math_bench_capture.txt")
-    parser.add_argument("--error-capture", type=Path, help="math_numbers capture with scalar proofs and component sweeps")
-    parser.add_argument("--baseline", type=Path, default=BASELINE)
     parser.add_argument("--fpu", type=Path, default=DATA / "math_bench_fpu_ops.txt")
-    parser.add_argument("--from-elf", type=Path)
+    parser.add_argument("--from-elf", type=Path, required=True)
     parser.add_argument("--objdump", help="IDF Xtensa objdump executable")
     parser.add_argument("--nm", help="IDF Xtensa nm executable")
-    parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
     try:
-        if args.from_elf:
-            objdump = args.objdump or find_tool("objdump")
-            located = symbols(args.nm or find_tool("nm"), args.from_elf, records=True)
-            rows = elf_rows(objdump, args.from_elf, located)
-            bounds = {record.name: record.address + record.size for record in located if record.size is not None}
-            missing = [ROW_SYMBOL_PREFIX + key for key, *_ in rows if ROW_SYMBOL_PREFIX + key not in bounds]
-            if missing:
-                raise ValueError(f"missing wrapper symbols: {missing}")
-            def resolve(symbol, body):
-                decoded, again = instructions(objdump, args.from_elf, symbol, bounds[symbol])
-                return [ins for ins in decoded if ins[0] < bounds[symbol]], again
-            fpu = parse_disassembly(run(objdump, "-d", str(args.from_elf)), rows, resolve)
-            lines = ["# Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.",
-                     "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest()]
-            lines.extend("\t".join(map(str, (*row, fpu[row[0]]))) for row in sorted(rows))
-            args.fpu.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
-        else:
-            rows, fpu = read_fpu(args.fpu)
-            build, measured = parse_capture(args.capture.read_text(encoding="utf-8"), rows, allow_missing=True)
-            changed = replace_block(DOCUMENT, BLOCK, render_table(rows, measured, load_baseline(args.baseline), fpu, build,
-                                                 parse_errors((args.error_capture or args.capture).read_text(encoding="utf-8"))),
-                                    check=args.check, command="python launcher/tools/perf/math_bench_table.py --check")
-            return int(args.check and changed)
+        objdump = args.objdump or find_tool("objdump")
+        located = symbols(args.nm or find_tool("nm"), args.from_elf, records=True)
+        rows = elf_rows(objdump, args.from_elf, located)
+        bounds = {record.name: record.address + record.size for record in located if record.size is not None}
+        missing = [ROW_SYMBOL_PREFIX + key for key, *_ in rows if ROW_SYMBOL_PREFIX + key not in bounds]
+        if missing:
+            raise ValueError(f"missing wrapper symbols: {missing}")
+        def resolve(symbol, body):
+            decoded, again = instructions(objdump, args.from_elf, symbol, bounds[symbol])
+            return [ins for ins in decoded if ins[0] < bounds[symbol]], again
+        fpu = parse_disassembly(run(objdump, "-d", str(args.from_elf)), rows, resolve)
+        lines = ["# Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.",
+                 "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest()]
+        lines.extend("\t".join(map(str, (*row, fpu[row[0]]))) for row in sorted(rows))
+        args.fpu.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
     except (OSError, ValueError, RuntimeError, LayoutError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"math_bench_table: {error}\n")
     return 0

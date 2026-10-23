@@ -2,6 +2,9 @@
 
 See [fast paths](Fast-Paths.md) for paired costs, error curves and callers.
 
+Regenerate the benchmark and fast-path evidence with
+`python launcher/tools/perf/fast_paths.py`; add `--check` to verify without writing.
+
 The board supplies cycles and retired instructions. QEMU supplies instruction
 counts for every row as information, without cache stalls or FPU latency.
 Only float dot, normalize, mat4 mul and slerp are guarded by the CI ratchet.
