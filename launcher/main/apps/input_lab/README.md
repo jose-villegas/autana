@@ -1,4 +1,4 @@
-# Shake round
+# Input Lab: shake round
 
 Input Lab's development shake page follows motion in the BOOT cycle.
 It stays in default landscape with panel-axis measurements.
@@ -8,8 +8,8 @@ Linear x/y/z and SIZE show acceleration minus estimated down, in mg.
 SMOOTH is the shared `shake_t` reader's smoothed linear-acceleration size.
 OLD shows `tilt_shake()` on its 0–255 scale, updated once per frame.
 
-`shake_probe.h` owns the protocol duration and bar scale.
-SIZE and SMOOTH use that mg bar scale; OLD uses its full range.
+`shake_probe.h` owns the protocol duration.
+SIZE and SMOOTH use `IMU_PROBE_MILLI` for the mg bar scale; OLD uses its full range.
 Candidates continue updating outside a capture round.
 
 ## Guided capture
@@ -60,9 +60,7 @@ non-shake actions from gentle shaking at the proposed threshold.
 ## Results
 
 SMOOTH separates a deliberate shake; a gentle shake overlaps walking.
-JERKY tracks SMOOTH and is excluded from the reader and analysis.
-OLD saturates: gentle shaking reads about 190, hard shaking about 220 of 255;
-lifting the board reads about 165.
+The OLD rows below show saturation during shaking and a response to lifting the board.
 
 Regenerate both figures and tables from the retained gzip transcripts:
 
@@ -74,7 +72,7 @@ python launcher/main/apps/input_lab/tools/shake_fit.py --results
 
 ![Mixed-direction shaking: SIZE, SMOOTH and OLD by protocol step](images/shake-mixed.png)
 
-<!-- generated: shake-mixed sha256=f52bbe05bbb91d449b22ad62af064a0ba175c8c0cde8a585287d850ca8d94fc5 -->
+<!-- generated: shake-mixed check: python launcher/main/apps/input_lab/tools/shake_fit.py --results --check -->
 <details>
 <summary>Per-step statistics (mg; OLD 0-255)</summary>
 
@@ -112,7 +110,7 @@ python launcher/main/apps/input_lab/tools/shake_fit.py --results
 
 ![Side-to-side shaking: SIZE, SMOOTH and OLD by protocol step](images/shake-side.png)
 
-<!-- generated: shake-side sha256=3396fdcb911962f777f0271752e1f90508cd604ecb7e9747f71fbe3758a6bb3b -->
+<!-- generated: shake-side check: python launcher/main/apps/input_lab/tools/shake_fit.py --results --check -->
 <details>
 <summary>Per-step statistics (mg; OLD 0-255)</summary>
 

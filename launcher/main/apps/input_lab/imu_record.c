@@ -60,6 +60,9 @@ _Static_assert(IMU_RECORD_LINE_SIZE <= IMU_RECORD_CHUNK_SIZE, "each line must fi
 
 void
 imu_record_replay(const imu_record_t* record, void (*emit)(const char* text, size_t length)) {
+    if (record == NULL) {
+        return;
+    }
     size_t offset = 0;
     while (offset < record->used) {
         size_t length = record->used - offset;
@@ -76,8 +79,8 @@ imu_record_replay(const imu_record_t* record, void (*emit)(const char* text, siz
 }
 
 const char*
-imu_record_dump_error(const imu_record_t* record, imu_probe_step_t step) {
-    if (step != IMU_PROBE_IDLE && step != IMU_PROBE_DONE) {
+imu_record_dump_error(const imu_record_t* record, bool round_running) {
+    if (round_running) {
         return IMU_RECORD_PREFIX "_ERR round active\n";
     }
     return record->text == NULL ? IMU_RECORD_PREFIX "_ERR no kept round\n" : NULL;

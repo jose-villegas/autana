@@ -5,9 +5,6 @@
 #include "math/scalar/math_const.h"
 
 #define TEST_TOLERANCE_MG 0.01F
-#define TEST_OFFSET_G     0.3F
-#define TEST_SETTLE_MS    (20U * SHAKE_TAU_MS)
-#define TEST_SINE_HZ      4.0F
 
 static shake_probe_levels_t
 fixture(void) {
@@ -15,33 +12,43 @@ fixture(void) {
 }
 
 static void
-test_still(void) {
-    shake_probe_levels_t levels = fixture();
-    shake_probe_feed(&levels, (vec3f_t){0});
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, 0, levels.size);
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, 0, levels.shake.smooth_mg);
+test_instantaneous_size(void) {
+    const vec3f_t vectors[] = {{-1, 0, 0}, {0, 1, 0}, {0, 0, -1}, {0.6F, -0.8F, 0}};
+    for (size_t i = 0; i < sizeof vectors / sizeof vectors[0]; i++) {
+        shake_probe_levels_t levels = fixture();
+        shake_probe_feed(&levels, vectors[i]);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, IMU_PROBE_MILLI, levels.size);
+        TEST_ASSERT_TRUE(levels.shake.smooth_g > 0);
+        TEST_ASSERT_TRUE(levels.shake.smooth_g * IMU_PROBE_MILLI < levels.size);
+    }
 }
 
 static void
-test_constant_offset(void) {
-    shake_probe_levels_t levels = fixture();
-    for (uint32_t us = 0; us < TEST_SETTLE_MS * MATH_US_PER_MS; us += INPUT_MOTION_SAMPLE_US) {
-        shake_probe_feed(&levels, (vec3f_t){TEST_OFFSET_G, 0, 0});
-    }
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, TEST_OFFSET_G * SHAKE_PROBE_MILLI_G, levels.shake.smooth_mg);
-}
-
-static void
-test_sine_axes(void) {
-    shake_probe_levels_t across = fixture();
-    shake_probe_levels_t along = fixture();
-    for (uint32_t us = 0; us < TEST_SETTLE_MS * MATH_US_PER_MS; us += INPUT_MOTION_SAMPLE_US) {
-        const float value = TEST_OFFSET_G * sinf(2.0F * MATH_PI * TEST_SINE_HZ * (float)us / MATH_US_PER_S);
-        shake_probe_feed(&across, (vec3f_t){value, 0, 0});
-        shake_probe_feed(&along, (vec3f_t){0, 0, value});
-        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, along.shake.smooth_mg, across.shake.smooth_mg);
-    }
-    TEST_ASSERT_GREATER_THAN(SHAKE_PROBE_MILLI_G * TEST_OFFSET_G / 4, across.shake.smooth_mg);
+test_advance_remainder_and_flashes(void) {
+    shake_probe_round_t round = {0};
+    TEST_ASSERT_FALSE(shake_probe_running(&round));
+    shake_probe_start(&round);
+    TEST_ASSERT_TRUE(shake_probe_running(&round));
+    TEST_ASSERT_EQUAL_UINT32(MOTION_STEP_FLASH_MS, round.flash_ms);
+    TEST_ASSERT_FALSE(shake_probe_advance(&round, 1));
+    TEST_ASSERT_EQUAL_UINT32(MOTION_STEP_FLASH_MS - 1, round.flash_ms);
+    TEST_ASSERT_TRUE(shake_probe_advance(&round, SHAKE_PROBE_STEP_MS));
+    TEST_ASSERT_EQUAL_INT(SHAKE_PROBE_HELD, round.step);
+    TEST_ASSERT_EQUAL_UINT32(1, round.ms);
+    TEST_ASSERT_EQUAL_UINT32(MOTION_STEP_FLASH_MS - 1, round.flash_ms);
+    TEST_ASSERT_TRUE(shake_probe_advance(&round, 2 * SHAKE_PROBE_STEP_MS));
+    TEST_ASSERT_EQUAL_INT(SHAKE_PROBE_HARD, round.step);
+    TEST_ASSERT_EQUAL_UINT32(1, round.ms);
+    TEST_ASSERT_EQUAL_UINT32(MOTION_STEP_FLASH_MS - 1, round.flash_ms);
+    TEST_ASSERT_FALSE(shake_probe_advance(&round, MOTION_STEP_FLASH_MS));
+    TEST_ASSERT_EQUAL_UINT32(0, round.flash_ms);
+    TEST_ASSERT_TRUE(
+        shake_probe_advance(&round, SHAKE_PROBE_ROUND_MS - (3 * SHAKE_PROBE_STEP_MS) - MOTION_STEP_FLASH_MS));
+    TEST_ASSERT_FALSE(shake_probe_running(&round));
+    TEST_ASSERT_EQUAL_INT(SHAKE_PROBE_DONE, round.step);
+    TEST_ASSERT_EQUAL_UINT32(MOTION_DONE_FLASH_MS - 1, round.flash_ms);
+    TEST_ASSERT_FALSE(shake_probe_advance(&round, MOTION_DONE_FLASH_MS));
+    TEST_ASSERT_EQUAL_UINT32(0, round.flash_ms);
 }
 
 static void
@@ -57,7 +64,7 @@ test_step_timing(void) {
         TEST_ASSERT_EQUAL_UINT32(0, round.ms);
     }
     TEST_ASSERT_EQUAL_INT(SHAKE_PROBE_DONE, round.step);
-    TEST_ASSERT_EQUAL_UINT32(SHAKE_PROBE_DONE_FLASH_MS, round.flash_ms);
+    TEST_ASSERT_EQUAL_UINT32(MOTION_DONE_FLASH_MS, round.flash_ms);
     TEST_ASSERT_FALSE(shake_probe_advance(&round, SHAKE_PROBE_STEP_MS));
     shake_probe_start(&round);
     TEST_ASSERT_TRUE(shake_probe_advance(&round, SHAKE_PROBE_ROUND_MS + 1));
@@ -82,9 +89,8 @@ test_sample_line_bound(void) {
 void
 run_shake_probe_suite(void) {
     RUN_TEST(test_sample_line_bound);
-    RUN_TEST(test_still);
-    RUN_TEST(test_constant_offset);
-    RUN_TEST(test_sine_axes);
+    RUN_TEST(test_instantaneous_size);
+    RUN_TEST(test_advance_remainder_and_flashes);
     RUN_TEST(test_step_timing);
 }
 

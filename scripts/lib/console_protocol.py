@@ -1,6 +1,9 @@
 """Console stream framing and reply contracts shared by board and emulator."""
 import re
 
+FRAMED_ENDINGS = ("_END", "_ERR")
+LOG_PREFIX = re.compile(r"^[IWEVD] \(\d+\) [^:]+:\s*")
+
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -10,7 +13,7 @@ def reply_prefix(line):
     if not words:
         raise ValueError("empty console line")
     prefix = words[0].upper()
-    return prefix, (prefix + "_END", prefix + "_ERR")
+    return prefix, tuple(prefix + ending for ending in FRAMED_ENDINGS)
 
 
 def replies_to(data, reply, until):
@@ -18,10 +21,9 @@ def replies_to(data, reply, until):
     Only newline-terminated lines count: a read can end mid-line."""
     found = []
     for raw in data.split(b"\n")[:-1]:
-        at = raw.find(reply.encode("ascii"))
-        if at < 0:
+        text = LOG_PREFIX.sub("", ANSI.sub("", raw.decode("ascii", errors="replace"))).strip()
+        if not text.startswith((reply + " ", reply + "_")) and text != reply:
             continue
-        text = raw[at:].decode("ascii", errors="replace").strip()
         found.append(text)
         if text.startswith(tuple(until)):
             return found, True

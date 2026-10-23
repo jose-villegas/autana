@@ -19,11 +19,9 @@ An unplugged round runs on battery so USB cannot disturb the readings:
 4. A longer cyan flash means the round is complete. Keep the app open and reconnect USB.
 5. Run `autana labdump > imu-round.log` on the PC.
 
-`autana labdump` prints the kept lines between `LABDUMP_BEGIN` and `LABDUMP_END`.
-Repeated dumps return the same text, so an interrupted capture can be retried.
-
-It sets DTR and RTS low before opening on Windows; on POSIX hosts it opens with
-both raised, then lowers RTS before DTR.
+`autana labdump` prints kept lines between `LABDUMP_BEGIN` and `LABDUMP_END`.
+Repeated dumps return the same text. It sets DTR and RTS low before opening
+on Windows; POSIX opens with both raised, then lowers RTS before DTR.
 
 Results live in RAM. A reset, a new round or leaving the app discards them; SAVE and CLEAR
 keep them available for replay.
