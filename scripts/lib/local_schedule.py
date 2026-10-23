@@ -1,6 +1,6 @@
 """Local wall-clock deadlines shared by nightly jobs."""
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import re
 import subprocess
@@ -10,13 +10,14 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
-from scripts.ci.github_api import call, pages
+from scripts.ci.github_api import PER_PAGE, call
 from scripts.lib.autana_config import DEFAULT_LOCK_WAIT_SECONDS
 from device_lock import LockStore, board_read_root
 
 NIGHT_START = "22:30"
 NIGHT_END = "07:00"
 QUEUE_POLL_SECONDS = 60
+RECENT_RUNS_WINDOW = timedelta(days=2)
 BAKES_WORKFLOW = "bakes-gpu.yml"
 DOC_IMAGES_WORKFLOW = "doc-images-gpu.yml"
 # Doc images uses the measured 3–7 h worst case; bakes has a 2 h allowance.
@@ -83,9 +84,11 @@ def gpu_window(scheduled=False, override=False, clock=None):
 
 
 def gpu_pending(workflows=tuple(GPU_ESTIMATES), request=None):
+    cutoff = (Clock().now().astimezone(timezone.utc) - RECENT_RUNS_WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ")
+    request = request or call
     return any(run["status"] in GPU_PENDING_STATUSES
                for workflow in workflows
-               for run in pages(f"/actions/workflows/{workflow}/runs", "workflow_runs", request or call))
+               for run in request("GET", f"/actions/workflows/{workflow}/runs?created=>={cutoff}&per_page={PER_PAGE}")["workflow_runs"])
 
 
 def wait_idle(busy, deadline, estimate, clock, idle_polls=1):
@@ -143,7 +146,7 @@ def main():
     args = parser.parse_args()
     override = os.environ.get("OVERRIDE") == "true"
     scheduled = os.environ.get("GITHUB_EVENT_NAME") in ("schedule", "workflow_run")
-    workflow = os.environ.get("GPU_WORKFLOW", DOC_IMAGES_WORKFLOW)
+    workflow = os.environ["GPU_WORKFLOW"]
     estimate = GPU_ESTIMATES[workflow]
     clock = Clock()
     message = gpu_queue(estimate, scheduled, override, clock) if args.mode == "ready" and workflow == DOC_IMAGES_WORKFLOW else None
