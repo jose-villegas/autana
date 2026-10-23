@@ -23,6 +23,7 @@ import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
+from process_tree import launch_process_tree, stop_process_tree, close_process_tree
 from local_schedule import Clock, local_time, night_window, wait_idle, gpu_pending, NIGHT_END, SKIPPED
 from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
 
@@ -341,28 +342,26 @@ def plugged_boards(autana=None):
     return [short_id(board["board"]) for board in json.loads(listing)["boards"] if board["port"]]
 
 
-def plan_lane(args, tip, board, lane, lanes, selftest=False, selection=None):
-    selection = selection if selection is not None else vars(args)
+def plan_lane(args, selection, board, lane, lanes, selftest=False):
     previous = read_last_night(args.data, board)
-    steps = select_steps(args.repo, tip, previous, lane, lanes,
+    steps = select_steps(args.repo, selection["tip"], previous, lane, lanes,
                          selection.get("from_sha"), selection.get("max_steps"))
     return dict(lane=f"{lane}/{lanes}", previous=previous, steps=[asdict(step) for step in steps],
                 estimate=len(steps) * FIRST_STEP_SECONDS + (SELFTEST_ALLOWANCE_SECONDS if selftest else 0))
 
 
 def run_night(args, clock=None, launch=None):
-    clock, launch = clock or Clock(), launch or subprocess.Popen
+    clock, launch = clock or Clock(), launch or launch_process_tree
     planned = json.loads(args.plan.read_text(encoding="utf-8"))
     deadline = datetime.fromisoformat(planned["deadline"])
     processes, skipped = [], set()
     failed, interrupted = False, False
 
-    def start(board):
-        lane = planned["lanes"][board]
+    def start(board, lane, lane_plan):
         wait = max(0, int((deadline - clock.now()).total_seconds()))
         command = autana_command("--board", board, "--wait", str(wait), "lock", "run",
                                  "--estimate", str(lane["estimate"]), "--", sys.executable,
-                                 str(Path(__file__).resolve()), "run", "--plan", str(args.plan.resolve()),
+                                 str(Path(__file__).resolve()), "run", "--plan", str(lane_plan.resolve()),
                                  "--repo", str(args.repo.resolve()), "--data", str(args.data.resolve()),
                                  "--out", str(args.out.resolve() / board), "--board", board, "--lane", lane["lane"])
         for suite in args.suite:
@@ -385,7 +384,7 @@ def run_night(args, clock=None, launch=None):
     try:
         for board in planned["lanes"]:
             try:
-                start(board)
+                start(board, planned["lanes"][board], args.plan)
             except (OSError, ValueError, subprocess.CalledProcessError) as error:
                 print(f"lane {board}: {error}", file=sys.stderr)
                 failed = True
@@ -402,9 +401,12 @@ def run_night(args, clock=None, launch=None):
                 if board in planned["lanes"] or board in skipped or clock.now() + timedelta(seconds=FIRST_STEP_SECONDS) > deadline:
                     continue
                 try:
-                    planned["lanes"][board] = plan_lane(args, planned["tip"], board, 0, 1, selection=planned)
+                    lane = plan_lane(args, planned, board, 0, 1)
+                    lane_plan = args.out / board / "lane.json"
+                    write_json(lane_plan, dict(planned, lanes={board: lane}))
+                    start(board, lane, lane_plan)
+                    planned["lanes"][board] = lane
                     write_json(args.plan, planned)
-                    start(board)
                     joined = True
                 except (OSError, ValueError, subprocess.CalledProcessError) as error:
                     print(f"lane {board}: {error}", file=sys.stderr)
@@ -422,10 +424,10 @@ def run_night(args, clock=None, launch=None):
                     if interrupted:
                         for process in pending:
                             if process.poll() is None:
-                                process.terminate()
+                                stop_process_tree(process)
                     if pending[0].wait():
                         failed = True
-                    pending.pop(0)
+                    close_process_tree(pending.pop(0))
                 except KeyboardInterrupt:
                     interrupted = True
         finally:
@@ -457,14 +459,14 @@ def plan(args, clock=None, request=None):
         # The self-test runs on one board, whichever is plugged in first.
         args.selftest_board = args.selftest_board or args.boards[0]
     tip = git(args.repo, "rev-parse", args.tip + "^{commit}")
-    lanes = {}
+    planned = dict(tip=tip, night=start.date().isoformat(), started=now.isoformat(),
+                   deadline=deadline.isoformat(), lanes={}, from_sha=args.from_sha, max_steps=args.max_steps)
+    lanes = planned["lanes"]
     for lane, board in enumerate(args.boards):
         board = short_id(board)
-        lanes[board] = plan_lane(args, tip, board, lane, len(args.boards),
+        lanes[board] = plan_lane(args, planned, board, lane, len(args.boards),
                                  args.selftest_board and board == short_id(args.selftest_board))
-    write_json(Path(args.out), dict(tip=tip, night=start.date().isoformat(),
-                                    started=now.isoformat(), deadline=deadline.isoformat(), lanes=lanes,
-                                    from_sha=args.from_sha, max_steps=args.max_steps))
+    write_json(Path(args.out), planned)
     # For the workflow's later steps, which run one lane per board.
     print("SCOPED_BOARDS=" + " ".join(lanes))
     print("SELFTEST_BOARD=" + (short_id(args.selftest_board) if args.selftest_board else ""))
