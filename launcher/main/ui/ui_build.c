@@ -280,7 +280,7 @@ ui_init(void) {
     layout_generation = 0;
 
     /* The shell look (ui_style.h). */
-    ui_ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color)UI_RGB(UI_SHELL_BACKGROUND);
+    ui_ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color)UI_RGB(UI_BACKGROUND);
     ui_ctx.style->colors[MU_COLOR_TEXT] = (mu_Color)UI_RGB(UI_SHELL_TEXT);
     ui_ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color)UI_RGB(UI_SHELL_BUTTON);
     ui_ctx.style->colors[MU_COLOR_BUTTONHOVER] = (mu_Color)UI_RGB(UI_SHELL_BUTTON_HOVER);

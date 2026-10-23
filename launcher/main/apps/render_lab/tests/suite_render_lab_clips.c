@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "anim/anim_tracks_format.h"
+#include "app/app_arena.h"
 #include "apps/render_lab/render_lab_clips.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "collections/strbuf.h"
@@ -22,7 +23,7 @@ typedef struct {
     scene_t scene;
     transformf_t shown_pose, frozen_pose;
     render_lab_clips_t choice;
-    void* blocked_heap;
+    size_t arena_mark; /* the arena before the test, given back after it */
     char reply[(TEST_CLIP_COUNT * (ASSET_NAME_MAX + sizeof("RENDER clip= current=1\n"))) + sizeof("RENDER_END\n")];
     char long_name[ASSET_NAME_MAX + 1];
 } clip_fixture_t;
@@ -35,7 +36,7 @@ release_fixture(void) {
     ui_probe_widgets_stop();
 #endif
     render_lab_clips_destroy(&shown->choice);
-    memory_free(shown->blocked_heap);
+    app_arena_rewind(shown->arena_mark);
     memory_free(shown);
     shown = NULL;
 }
@@ -48,7 +49,8 @@ fixture(void) {
     suite_set_test_cleanup(release_fixture);
     static const anim_clip_t times[TEST_CLIP_COUNT] = {{0}, {0}};
     *f = (clip_fixture_t){.clips = {{.id = "idle"}, {.id = "gallop"}},
-                          .choice = {.blend_ms = RENDER_LAB_BLEND_DEFAULT_MS}};
+                          .choice = {.blend_ms = RENDER_LAB_BLEND_DEFAULT_MS},
+                          .arena_mark = app_arena_mark()};
     f->animator = (scene_animator_t){.storage = f->clips, .clips = f->clips, .root = ANIM_ROOT_SKELETON};
     anim_layer_init(&f->animator.layer, times, TEST_CLIP_COUNT, (anim_pose_t){&f->shown_pose, 1},
                     (anim_pose_t){&f->frozen_pose, 1});
@@ -199,29 +201,28 @@ test_console_uses_current_blend_when_omitted(void) {
 }
 
 static void
-test_picker_init_destroy_releases_items(void) {
+test_picker_init_takes_items_from_the_arena(void) {
     clip_fixture_t* f = fixture();
-    const size_t free_before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t psram_before = memory_free_bytes(MEMORY_PSRAM);
     TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
     TEST_ASSERT_EQUAL_INT(TEST_CLIP_COUNT, f->choice.count);
     TEST_ASSERT_NOT_NULL(f->choice.items);
     for (int i = 0; i < TEST_CLIP_COUNT; i++) {
         TEST_ASSERT_EQUAL_STRING(f->clips[i].id, f->choice.items[i]);
     }
-    TEST_ASSERT_LESS_THAN(free_before, memory_free_bytes(MEMORY_PSRAM));
+    TEST_ASSERT_GREATER_OR_EQUAL_size_t(f->arena_mark + (TEST_CLIP_COUNT * sizeof *f->choice.items), app_arena_mark());
+    TEST_ASSERT_EQUAL_size_t(psram_before, memory_free_bytes(MEMORY_PSRAM));
     render_lab_clips_destroy(&f->choice);
     TEST_ASSERT_NULL(f->choice.items);
     TEST_ASSERT_EQUAL_INT(0, f->choice.count);
-    TEST_ASSERT_EQUAL(free_before, memory_free_bytes(MEMORY_PSRAM));
 }
 
-#ifdef HOST_HEAP_ARENA
+#ifndef ESP_PLATFORM
 static void
 test_picker_init_reports_allocation_failure(void) {
     clip_fixture_t* f = fixture();
     ui_probe_widgets_start();
-    f->blocked_heap = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
-    TEST_ASSERT_NOT_NULL(f->blocked_heap);
+    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_BYTES - app_arena_mark(), 1)); /* the arena full */
     TEST_ASSERT_FALSE(render_lab_clips_init(&f->choice, &f->scene, 0, "gallop"));
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     request(f, "clips");
@@ -394,8 +395,8 @@ run_render_lab_clips_suite(void) {
     RUN_TEST(test_console_errors_leave_playback_unchanged);
     RUN_TEST(test_console_accepts_name_and_blend_boundaries);
     RUN_TEST(test_console_matches_case_folded_words);
-    RUN_TEST(test_picker_init_destroy_releases_items);
-#ifdef HOST_HEAP_ARENA
+    RUN_TEST(test_picker_init_takes_items_from_the_arena);
+#ifndef ESP_PLATFORM
     RUN_TEST(test_picker_init_reports_allocation_failure);
 #endif
     RUN_TEST(test_console_uses_current_blend_when_omitted);
