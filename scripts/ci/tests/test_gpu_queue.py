@@ -4,6 +4,7 @@ from functools import partial
 from pathlib import Path
 import os
 import sys
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -14,6 +15,10 @@ import yaml
 
 
 class GpuQueueTests(unittest.TestCase):
+    def setUp(self):
+        root = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(patch.dict(os.environ, _AUTANA_HEAVY_LOCK_ROOT=root))
+
     def test_pending_reads_only_first_recent_page_per_workflow(self):
         request = Mock(side_effect=[
             {'workflow_runs': [{'status': 'completed'}] * PER_PAGE}

@@ -12,11 +12,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from scripts.ci.github_api import PER_PAGE, call
 from scripts.lib.autana_config import DEFAULT_LOCK_WAIT_SECONDS
-from device_lock import LockStore, board_read_root
+from device_lock import LockStore, board_read_root, heavy_root, write_json
 
 NIGHT_START = "22:30"
 NIGHT_END = "07:00"
 QUEUE_POLL_SECONDS = 60
+GPU_HOST_MARKER = "gpu-runner.json"
+GPU_HOST_MARKER_DAYS = 14
+GPU_NOT_ON_HOST = "GPU runner not on this host"
 RECENT_RUNS_WINDOW = timedelta(days=2)
 BAKES_WORKFLOW = "bakes-gpu.yml"
 DOC_IMAGES_WORKFLOW = "doc-images-gpu.yml"
@@ -81,6 +84,23 @@ def night_window(start_at=None, until=NIGHT_END, scheduled=False, clock=None):
 
 def gpu_window(scheduled=False, override=False, clock=None):
     return override or night_window(scheduled=scheduled, clock=clock) is not None
+
+
+def refresh_gpu_host(runner, clock):
+    write_json(heavy_root() / GPU_HOST_MARKER,
+               {"runner": runner, "refreshed_at": clock.now().isoformat()})
+
+
+def gpu_on_host(clock):
+    try:
+        root = heavy_root()
+        marker = LockStore(root, board_observer=True).read_json(root / GPU_HOST_MARKER)
+        if not isinstance(marker, dict) or not marker.get("runner"):
+            return False
+        age = clock.now() - datetime.fromisoformat(marker["refreshed_at"])
+        return timedelta(0) <= age <= timedelta(days=GPU_HOST_MARKER_DAYS)
+    except (OSError, KeyError, TypeError, ValueError):
+        return False
 
 
 def gpu_pending(workflows=tuple(GPU_ESTIMATES), request=None):
@@ -149,6 +169,8 @@ def main():
     workflow = os.environ["GPU_WORKFLOW"]
     estimate = GPU_ESTIMATES[workflow]
     clock = Clock()
+    if args.mode == "ready":
+        refresh_gpu_host(os.environ.get("RUNNER_NAME") or "local", clock)
     message = gpu_queue(estimate, scheduled, override, clock) if args.mode == "ready" and workflow == DOC_IMAGES_WORKFLOW else None
     if args.mode == "ready":
         allowed = message is None and gpu_ready(estimate, scheduled, override, clock)

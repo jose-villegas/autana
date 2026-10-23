@@ -29,6 +29,40 @@ class Clock:
 
 
 class LocalScheduleTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.marker_root = Path(temporary.name) / "heavy"
+        environment = patch.dict(os.environ, _AUTANA_HEAVY_LOCK_ROOT=str(self.marker_root))
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def test_gpu_stage_refreshes_host_marker_before_refusing(self):
+        import json
+        for workflow in local_schedule.GPU_ESTIMATES:
+            for runner in ("gpu-runner-a", "gpu-runner-b"):
+                env = dict(os.environ, GPU_WORKFLOW=workflow, RUNNER_NAME=runner,
+                           GITHUB_EVENT_NAME="workflow_dispatch", OVERRIDE="false")
+                with patch.dict(os.environ, env), \
+                        patch.object(sys, "argv", ["local_schedule", "ready"]), \
+                        patch.object(local_schedule, "gpu_queue", return_value=None), \
+                        patch.object(local_schedule, "gpu_ready", return_value=False), \
+                        patch.object(local_schedule, "Clock", return_value=Clock(12)), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(local_schedule.main(), local_schedule.EXIT_REFUSED)
+                record = json.loads((self.marker_root / local_schedule.GPU_HOST_MARKER).read_text())
+                self.assertEqual(record["runner"], runner)
+                self.assertEqual(record["refreshed_at"], Clock(12).now().isoformat())
+
+    def test_gpu_marker_read_needs_no_lock_or_directory(self):
+        with patch.object(local_schedule.LockStore, "guard", side_effect=AssertionError("reader took lock")):
+            self.assertFalse(local_schedule.gpu_on_host(Clock(12)))
+            self.assertFalse(self.marker_root.exists())
+            local_schedule.refresh_gpu_host("runner", Clock(12))
+            self.assertTrue(local_schedule.gpu_on_host(Clock(12)))
+            self.assertTrue(local_schedule.gpu_on_host(Clock(12, day=21 + 7)))
+            self.assertFalse(local_schedule.gpu_on_host(Clock(11)))
+
     def test_missing_gpu_workflow_refuses_before_running(self):
         env = dict(os.environ, OVERRIDE="true")
         env.pop("GPU_WORKFLOW", None)

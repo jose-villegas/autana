@@ -24,7 +24,7 @@ from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
 from process_tree import launch_process_tree, stop_process_tree, close_process_tree
-from local_schedule import Clock, local_time, night_window, wait_idle, gpu_pending, NIGHT_END, SKIPPED
+from local_schedule import Clock, local_time, night_window, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST, NIGHT_END, SKIPPED
 from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
 
 IMAGE_HEADER_BYTES = 24
@@ -444,7 +444,15 @@ def plan(args, clock=None, request=None):
     skipped = queued and window is None
     start, deadline = window or (clock.now(), local_time(args.until, clock.now(), next_occurrence=True))
     if not skipped:
-        skipped = not wait_idle(lambda: gpu_pending(request=request), deadline, FIRST_STEP_SECONDS, clock, idle_polls=2)
+        if gpu_on_host(clock):
+            skipped = not wait_idle(lambda: gpu_pending(request=request), deadline, FIRST_STEP_SECONDS, clock, idle_polls=2)
+        else:
+            message = GPU_NOT_ON_HOST
+            print(message, file=sys.stderr)
+            if os.environ.get("GITHUB_STEP_SUMMARY"):
+                with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+                    summary.write(message + "\n")
+            skipped = (deadline - clock.now()).total_seconds() <= FIRST_STEP_SECONDS
     now = clock.now()
     if skipped:
         args.boards, args.selftest_board = [], None
