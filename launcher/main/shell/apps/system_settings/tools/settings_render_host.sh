@@ -10,7 +10,6 @@ main/app/app_registry.c
 main/shell/apps/system_settings/app_settings.c
 main/shell/apps/system_settings/ui/settings_screen.c
 main/shell/apps/system_settings/ui/settings_layout.c
-main/shell/apps/system_settings/settings_ui.c
 main/shell/apps/system_settings/tools/settings_render_host.c
 "
 scene_assets="main/engine"

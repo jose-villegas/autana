@@ -13,9 +13,10 @@
 
 #define TAP_FRAME 2
 #define FRAME_MS  16
-/* The panel-clock toggle, in portrait panel space. */
-#define TAP_X     60
-#define TAP_Y     65
+/* Inside the panel-clock row, the first under the DISPLAY heading, in
+ * portrait panel space. */
+#define TAP_X     (UI_ROW_HEIGHT / 2)
+#define TAP_Y     (UI_TITLE_HEIGHT + (UI_ROW_HEIGHT / 2))
 
 static bool tap;
 static int shell_quarter;
