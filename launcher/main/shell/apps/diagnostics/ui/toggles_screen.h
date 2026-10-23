@@ -42,8 +42,5 @@ typedef struct {
     bool selftest_clicked; /* meaningful only in a SELFTEST build */
 } toggles_screen_result_t;
 
-/* The colour the caller passes to ui_end() for this page. */
-#define TOGGLES_SCREEN_BACKGROUND 0x0A0C14
-
 /* Caller brackets drawing with ui_begin()/ui_end(). */
 toggles_screen_result_t toggles_screen_draw(const toggles_screen_state_t* state);

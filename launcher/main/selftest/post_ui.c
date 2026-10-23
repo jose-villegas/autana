@@ -15,8 +15,8 @@
 #include "gfx/gfx.h"
 #include "selftest/post_layout.h"
 #include "ui/layout/ui_transform.h"
+#include "ui/ui.h"
 
-#define BG_RGB      0x0A0C14
 #define HEADING_RGB 0xE6EAF2
 #define OK_RGB      0x3DDC97
 #define FAIL_RGB    0xFF5C5C
@@ -202,7 +202,7 @@ post_ui_draw_report(const post_ui_report_t* report) {
         .quarter = quarter,
     };
 
-    draw_clear(gfx_rgb(BG_RGB));
+    draw_clear(gfx_rgb(UI_BACKGROUND));
 
     const int failures = post_failure_count();
     const gfx_color_t title_colour = failures ? gfx_rgb(FAIL_RGB) : gfx_rgb(HEADING_RGB);
