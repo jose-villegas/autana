@@ -1,5 +1,5 @@
 """Catalogue every tracked C/C++ header or Python module outside apps/, test/
-and tests/ folders and c_comments.EXCLUDED paths that is included or imported
+and tests/ folders and c_comments.excluded() paths that is included or imported
 from more than one directory, using its banner sentence and public names.
 It also fills each launcher/packages/<name>/README.md's generated header
 index, one row per header under its include/ with its banner sentence.
@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 
 from build.packages import package_part
-from c_comments import EXCLUDED, blank_comments, file_header
+from c_comments import excluded, blank_comments, file_header
 from c_constants import file_scope
 from check_style_audit import resolve_include
 from check_doc_constants import sentences
@@ -39,7 +39,7 @@ def catalogue(root):
     owners = {path for path, text in texts.items()
               if pathlib.PurePosixPath(path).suffix in {".h", ".hh", ".hpp", ".hxx", ".py"}
               and not {"apps", "test", "tests"}.intersection(pathlib.PurePosixPath(path).parts)
-              and not path.startswith(EXCLUDED)}
+              and not path.startswith(excluded())}
     users = {path: set() for path in owners}
     modules = {path[:-3].replace("/", "."): path for path in owners if path.endswith(".py")}
     for path, text in texts.items():
