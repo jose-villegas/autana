@@ -175,6 +175,53 @@ class JobInputsTests(unittest.TestCase):
                 result = job_inputs.record(root, root, 'unused', 'build')
             self.assertNotIn('link', result['files'])
 
+    @unittest.skipUnless(sys.platform == 'linux', 'git read recording requires Linux atime')
+    def test_git_metadata_does_not_record_tracked_reads(self):
+        for namespace in (False, True):
+            with self.subTest(root_user=namespace), tempfile.TemporaryDirectory() as directory, \
+                    mock.patch.dict(os.environ, RUNNER_OS='Linux'):
+                prefix = ['unshare', '-Ur'] if namespace else []
+                if namespace:
+                    try:
+                        available = subprocess.run(prefix + ['true'], capture_output=True)
+                    except FileNotFoundError:
+                        self.skipTest('unshare is unavailable for root-user Git check')
+                    if available.returncode:
+                        self.skipTest('user namespaces are unavailable for root-user Git check')
+                root = Path(directory)
+                git = ['git', '-C', str(root)]
+                subprocess.run(git + ['init', '-q'], check=True)
+                names = ('first.txt', 'second.txt')
+                for name in names:
+                    (root / name).write_text(name)
+                subprocess.run(git + ['add', '.'], check=True)
+                subprocess.run(git + ['-c', 'user.name=Test', '-c', 'user.email=test@example.org',
+                                     'commit', '-qm', 'fixture'], check=True)
+                # Whole-second mtimes reproduce checkout on coarse-timestamp filesystems.
+                index_second = (root / '.git/index').stat().st_mtime_ns // job_inputs.NANOSECONDS_PER_SECOND
+                for name in names:
+                    os.utime(root / name, ns=(0, index_second * job_inputs.NANOSECONDS_PER_SECOND))
+                subprocess.run(git + ['update-index', '--really-refresh'], check=True)
+                timestamp = index_second * job_inputs.NANOSECONDS_PER_SECOND
+                os.utime(root / '.git/index', ns=(timestamp, timestamp))
+                job_inputs.arm(root, root / '.git')
+                reader = prefix + git
+                self.assertEqual(subprocess.check_output(reader + ['status', '--porcelain']), b'')
+                subprocess.check_output(reader + ['describe', '--always', '--dirty'])
+                (root / job_inputs.CANARY).read_bytes()
+                if (root / job_inputs.CANARY).stat().st_atime_ns == 0:
+                    self.skipTest('filesystem does not update atime on reads')
+                with mock.patch.object(job_inputs, 'workflow_inputs', return_value=set()):
+                    with self.assertRaisesRegex(RuntimeError, 'no tree input read'):
+                        job_inputs.record(root, root / '.git', 'unused', 'build')
+                self.assertEqual([name for name in names
+                                  if (root / name).stat().st_atime_ns != 0], [])
+                (root / names[0]).write_text('changed content')
+                self.assertIn(names[0].encode(), subprocess.check_output(
+                    reader + ['status', '--porcelain']))
+                self.assertTrue(subprocess.check_output(
+                    reader + ['describe', '--always', '--dirty']).strip().endswith(b'-dirty'))
+
     def test_filesystem_round_trip(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ, RUNNER_OS='Linux'):
             root = Path(directory) / 'repo'

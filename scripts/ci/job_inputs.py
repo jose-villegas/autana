@@ -11,12 +11,16 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
+import time
 import zipfile
 from urllib.parse import quote
 
 from github_api import call, pages
 from inputs_recorded import latest_job_artifact
 
+NANOSECONDS_PER_SECOND = 1_000_000_000
+TIMESTAMP_POLL_SECONDS = 0.01
+TIMESTAMP_TIMEOUT_SECONDS = 5
 ARTIFACT_PREFIX = 'job-inputs-'
 PR_FILES_LIMIT = 3000
 MANIFEST_NAME = 'job-inputs.json'
@@ -38,6 +42,22 @@ def arm(root, temporary):
     if os.environ.get('RUNNER_OS') != 'Linux':
         raise RuntimeError('job inputs require a Linux runner with working atime')
     subprocess.run(['git', 'config', 'core.trustctime', 'false'], cwd=root, check=True)
+    # Container users can see different ownership and inode stat data on bind mounts.
+    subprocess.run(['git', 'config', 'core.checkStat', 'minimal'], cwd=root, check=True)
+    index = Path(os.fsdecode(subprocess.check_output(
+        ['git', 'rev-parse', '--git-path', 'index'], cwd=root)).strip())
+    index = root / index
+    # The filesystem clock can lag the wall clock; Git must see a later whole second.
+    ready = (index.stat().st_mtime_ns // NANOSECONDS_PER_SECOND + 1) * NANOSECONDS_PER_SECOND
+    marker = temporary / MARKER_NAME
+    deadline = time.monotonic() + TIMESTAMP_TIMEOUT_SECONDS
+    marker.touch()
+    while marker.stat().st_mtime_ns < ready:
+        if time.monotonic() >= deadline:
+            raise RuntimeError('filesystem clock did not advance past the Git index timestamp')
+        time.sleep(TIMESTAMP_POLL_SECONDS)
+        marker.touch()
+    subprocess.run(['git', 'update-index', '--really-refresh', '--force-write-index'], cwd=root, check=True)
     files, directories = tracked_paths(root)
     (root / CANARY).write_text('canary')
     for name in files | directories | {CANARY}:
@@ -48,7 +68,6 @@ def arm(root, temporary):
         except FileNotFoundError:
             continue
     # Filesystem timestamps can be coarser than the runner's wall clock.
-    marker = temporary / MARKER_NAME
     marker.write_text('')
     marker.write_text(str(marker.stat().st_mtime_ns))
 
