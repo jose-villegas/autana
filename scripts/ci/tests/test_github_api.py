@@ -26,6 +26,17 @@ class GithubApiTests(unittest.TestCase):
         self.assertEqual(request.get_header('Authorization'), 'Bearer token')
         self.assertEqual(request.data, b'{"title": "text"}')
 
+    def test_binary_artifact_download_keeps_repository_request_owner(self):
+        with mock.patch.dict(os.environ, GH_TOKEN='token', GITHUB_REPOSITORY='owner/repo'), \
+                mock.patch.object(github_api.urllib.request, 'urlopen',
+                                  return_value=io.BytesIO(b'zip bytes')):
+            self.assertEqual(github_api.call('GET', '/actions/artifacts/5/zip', raw=True), b'zip bytes')
+
+    def test_pages_handles_a_bare_list(self):
+        request = mock.Mock(side_effect=[list(range(github_api.PER_PAGE)), ['last']])
+        self.assertEqual(list(github_api.pages('/pulls/7/files', None, request)),
+                         list(range(github_api.PER_PAGE)) + ['last'])
+
     def test_get_retries_transient_errors_with_backoff_and_timeout(self):
         errors = (urllib.error.URLError('connect'), TimeoutError('timeout'),
                   ConnectionError('connect'), OSError('connect'),

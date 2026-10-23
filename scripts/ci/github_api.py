@@ -15,7 +15,7 @@ REQUEST_TIMEOUT_SECONDS = 30
 RETRY_HTTP_STATUSES = (429, *range(500, 600))
 
 
-def call(method, path, body=None):
+def call(method, path, body=None, *, raw=False):
     request = urllib.request.Request(
         f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}{path}", method=method,
         data=None if body is None else json.dumps(body).encode(),
@@ -24,7 +24,7 @@ def call(method, path, body=None):
     for attempt in range(attempts):
         try:
             with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-                return json.load(response)
+                return response.read() if raw else json.load(response)
         except (OSError, http.client.HTTPException) as error:
             if (attempt == attempts - 1 or
                     isinstance(error, urllib.error.HTTPError) and error.code not in RETRY_HTTP_STATUSES):
@@ -36,7 +36,8 @@ def pages(path, key, request=call):
     page = 1
     separator = '&' if '?' in path else '?'
     while True:
-        items = request('GET', f'{path}{separator}per_page={PER_PAGE}&page={page}')[key]
+        result = request('GET', f'{path}{separator}per_page={PER_PAGE}&page={page}')
+        items = result if key is None else result[key]
         yield from items
         if len(items) < PER_PAGE:
             return
