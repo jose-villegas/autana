@@ -107,16 +107,9 @@ jobs:
           while IFS="|" read -r suite tests table; do
             [ -z "$suite" ] || suites+=(--suite "$suite" "$tests" "$table")
           done <<< "$NIGHTLY_SUITES"
-          pids=()
-          for board in $SCOPED_BOARDS; do
-            bash launcher/tools/perf/nightly/lane.sh "$board" "$PERF_OUT/plan.json" "$PERF_DATA" "$PERF_OUT" -- "${suites[@]}" &
-            pids+=($!)
-          done
-          status=0
-          for pid in "${pids[@]}"; do
-            wait "$pid" || status=1
-          done
-          exit "$status"
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" launcher/tools/perf/nightly/scoped_chain.py night \
+            --plan "$PERF_OUT/plan.json" --data "$PERF_DATA" --out "$PERF_OUT" "${suites[@]}"
 
       - name: Summarize board outcomes
         if: always() && env.PERF_DATA != ''
