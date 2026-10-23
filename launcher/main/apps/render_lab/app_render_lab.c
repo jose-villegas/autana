@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "app/app.h"
+#include "app/app_arena.h"
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
@@ -89,6 +90,23 @@ static bool menu_open;
  * a menu tap; -1 for none. */
 static int scene_requested = -1;
 
+/* The app arena's use before the showing scene was entered: everything the
+ * scene took (its scene, the render context's scratch, its clip list) goes
+ * back by rewinding here after its exit(), on a switch and on leaving. */
+static size_t scene_mark;
+
+static void
+enter_scene(void) {
+    scene_mark = app_arena_mark();
+    current_scene()->enter(current_scene());
+}
+
+static void
+exit_scene(void) {
+    current_scene()->exit();
+    app_arena_rewind(scene_mark);
+}
+
 /* On-screen framerate, since the shell's report_fps() reaches only the
  * serial console. Windowed on the dt_ms render_lab_frame() is handed. */
 #define FPS_WINDOW_MS 500
@@ -131,7 +149,7 @@ void
 render_lab_enter(void) {
     current_scene_index = scene_index_for_key(render_lab_start_scene_key);
     enter_layout();
-    current_scene()->enter(current_scene());
+    enter_scene();
     render_lab_dynres_apply();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 
@@ -151,14 +169,14 @@ render_lab_enter(void) {
 static void
 switch_to_scene(int index) {
     render_lab_dynres_stop();
-    current_scene()->exit();
+    exit_scene();
     current_scene_index = index;
     render_lab_start_scene_key = current_scene()->key; /* keeps a later re-entry on this same scene */
     /* The new scene clears the full framebuffer, so discard the composed half picture first. */
     gfx_mode_exit();
     enter_layout();
     ui_invalidate();
-    current_scene()->enter(current_scene());
+    enter_scene();
     render_lab_dynres_apply();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 }
@@ -332,7 +350,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
 void
 render_lab_exit(void) {
     render_lab_dynres_stop();
-    current_scene()->exit();
+    exit_scene();
     gfx_invalidate();
     gfx_mode_exit();
 }
