@@ -176,6 +176,8 @@ done 3< "$W/pairs.txt"
 
 . scripts/lib/python.sh
 R3D_PYTHON=$(run find_r3d_python "$PWD")
+run "$R3D_PYTHON" launcher/tools/r3d/objects/instances_figure.py "$SCENE" \
+    --object "$SHOWCASE" --host "$HOST" --out "$RENDER/${ID}-instances.png"
 # The fidelity sheet: two poses of the committed flat bake against the source
 # model lit per pixel. The reference skips the initial pose.
 # The source model lives in the demo folder and uses Git LFS.
