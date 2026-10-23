@@ -155,6 +155,26 @@ class JobInputsTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'canary.*atime'):
                     job_inputs.record(root, root, 'unused', 'build')
 
+    def test_git_commands_trust_resolved_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / '.git').mkdir()
+            (root / 'child').mkdir()
+            unresolved = root / 'child' / '..'
+            with mock.patch.dict(os.environ, RUNNER_OS='Linux'), \
+                    mock.patch.object(job_inputs.time, 'sleep'), \
+                    mock.patch.object(job_inputs.subprocess, 'run') as run:
+                run.return_value.stdout = b''
+                with mock.patch.object(job_inputs.subprocess, 'check_output', return_value=b'') as output:
+                    job_inputs.arm(unresolved, root)
+                commands = [call.args[0] for call in run.call_args_list + output.call_args_list]
+            prefix = ['git', '-c', f'safe.directory={root.resolve()}']
+            self.assertEqual(commands, [
+                prefix + ['config', 'core.trustctime', 'false'],
+                prefix + ['update-index', '--really-refresh'],
+                prefix + ['ls-files', '-z'],
+            ])
+
     def test_arm_rejects_non_linux_runner(self):
         with mock.patch.dict(os.environ, RUNNER_OS='Windows'):
             with self.assertRaisesRegex(RuntimeError, 'Linux'):

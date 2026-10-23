@@ -29,8 +29,13 @@ RECORDER_FILES = {'scripts/ci/job_inputs.py', 'scripts/ci/github_api.py',
 LOCAL_ACTION = re.compile(r'uses:\s*[\'\"]?(\./\.github/actions/[\w/-]+)')
 
 
+def git(root, *args):
+    return subprocess.run(['git', '-c', f'safe.directory={root.resolve()}', *args],
+                          cwd=root, check=True, stdout=subprocess.PIPE).stdout
+
+
 def tracked_paths(root):
-    files = os.fsdecode(subprocess.check_output(['git', 'ls-files', '-z'], cwd=root)).split('\0')
+    files = os.fsdecode(git(root, 'ls-files', '-z')).split('\0')
     files = {name for name in files if name}
     directories = {str(parent) for name in files for parent in PurePosixPath(name).parents}
     return files, directories
@@ -39,10 +44,10 @@ def tracked_paths(root):
 def arm(root, temporary):
     if os.environ.get('RUNNER_OS') != 'Linux':
         raise RuntimeError('job inputs require a Linux runner with working atime')
-    subprocess.run(['git', 'config', 'core.trustctime', 'false'], cwd=root, check=True)
+    git(root, 'config', 'core.trustctime', 'false')
     # A whole filesystem timestamp tick keeps freshly checked-out entries non-racy.
     time.sleep(INDEX_SETTLE_SECONDS)
-    subprocess.run(['git', 'update-index', '--really-refresh'], cwd=root, check=True)
+    git(root, 'update-index', '--really-refresh')
     files, directories = tracked_paths(root)
     (root / CANARY).write_text('canary')
     for name in files | directories | {CANARY}:
