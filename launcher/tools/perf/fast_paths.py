@@ -401,21 +401,23 @@ def elf_sizes(rows, fpu, located, sections=(), root=ROOT):
             elif letters <= {"R"}:
                 region = "rodata"
             else:
-                owners = {section for record in matches
+                code_sections = {section for record in matches
                           for section, begin, size in sections if begin <= record.address < begin + size}
-                if owners and all("iram" in section for section in owners):
+                if ".flash.rodata" in code_sections:
+                    region = "rodata"
+                elif code_sections and all("iram" in section for section in code_sections):
                     region = "IRAM"
-                elif owners and all(section.startswith(".flash") for section in owners):
+                elif code_sections and all(section.startswith(".flash") for section in code_sections):
                     region = "flash"
                 else:
-                    raise ValueError(f"unknown ELF code section: {name}: {owners}")
+                    raise ValueError(f"unknown ELF code section: {name}: {code_sections}")
             size = "-" if any(record.size is None for record in matches) else str(sum(record.size for record in matches))
             lines.append(f"{key}\t{name}\t{size}\t{region}")
     return "\n".join(lines) + "\n"
 
 
 def rekey_errors(items, rows, errors):
-    labels = {key: (label, kind) for key, label, kind, _ in rows}
+    labels = {key: (label, kind) for key, label, kind, _, family in rows}
     result = dict(errors)
     for item in items:
         identity = item.key, item.kind

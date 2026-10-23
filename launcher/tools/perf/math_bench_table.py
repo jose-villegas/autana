@@ -27,6 +27,7 @@ CAPTURE_ROW = re.compile(
 SYMBOL = re.compile(r"^[0-9a-fA-F]+ <([^>]+)>:$")
 ROW_SYMBOL_PREFIX = "math_bench_"
 MANIFEST = "math_bench_manifest"
+ROW_FAMILIES = ("vector", "scalar", "quaternion", "matrix", "libm")
 CALL_SYMBOL = re.compile(r"[\w.$@]+")
 
 
@@ -53,7 +54,7 @@ def parse_capture(text, rows, allow_missing=False):
     if text.rstrip("\r\n") == PLACEHOLDER:
         return None, {}
     build = build_id(text)
-    expected = {(label, kind): (key, ops) for key, label, kind, ops in rows}
+    expected = {(label, kind): (key, ops) for key, label, kind, ops, family in rows}
     measured = {}
     for line in text.splitlines():
         if not line.startswith("MATHBENCH"):
@@ -119,12 +120,14 @@ def parse_disassembly(text, rows, resolve=None):
 
 def parse_row(line):
     fields = line.split("\t")
-    if len(fields) != 4:
-        raise ValueError(f"expected four tab-separated row fields: {line}")
-    key, label, kind, ops = fields
+    if len(fields) != 5:
+        raise ValueError(f"expected five tab-separated row fields: {line}")
+    key, label, kind, ops, family = fields
+    if family not in ROW_FAMILIES:
+        raise ValueError(f"unknown row family: {family}")
     if not re.fullmatch(r"\w+", key) or not label or not re.fullmatch(r"\w+", kind) or not ops.isdecimal() or int(ops) <= 0:
         raise ValueError(f"invalid row metadata: {line}")
-    return key, label, kind, int(ops)
+    return key, label, kind, int(ops), family
 
 
 def read_fpu(path):
@@ -132,8 +135,8 @@ def read_fpu(path):
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line or line.startswith("#"):
             continue
-        if line.count("\t") != 4:
-            raise ValueError(f"expected five tab-separated FPU fields: {line}")
+        if line.count("\t") != 5:
+            raise ValueError(f"expected six tab-separated FPU fields: {line}")
         metadata, ops = line.rsplit("\t", 1)
         row = parse_row(metadata)
         direct, separator, calls = ops.partition("calls ")
@@ -145,7 +148,7 @@ def read_fpu(path):
             raise ValueError(f"invalid FPU row: {line}")
         rows.append(row)
         result[row[0]] = ops
-    if not rows or len({(label, kind) for _, label, kind, _ in rows}) != len(rows):
+    if not rows or len({(label, kind) for _, label, kind, _, family in rows}) != len(rows):
         raise ValueError("missing or duplicate FPU rows")
     return rows, result
 
@@ -201,10 +204,10 @@ def render_table(rows, measured, baseline, fpu, build=None, errors=None):
              "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |",
              "|---|---|---:|---:|---:|---:|---:|---|---|"]
     bounds = dict(errors or {})
-    unmatched = set(bounds) - {(label, kind) for _, label, kind, _ in rows}
+    unmatched = set(bounds) - {(label, kind) for _, label, kind, _, family in rows}
     if unmatched:
         raise ValueError(f"error measurements match no row: {sorted(unmatched)}")
-    for key, label, kind, ops in rows:
+    for key, label, kind, ops, family in rows:
         qemu = f"{baseline['math_' + key] / ops:.1f}" if "math_" + key in baseline else "-"
         if set(fpu[key].partition(";")[0].split()) & set(DEVICE_ONLY_FPU_OPS):
             qemu = DEVICE_ONLY_INSTRUCTION

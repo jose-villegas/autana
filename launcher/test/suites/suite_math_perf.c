@@ -165,55 +165,56 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
 /* MATH_PLAIN(sinf_f): sinf(phase * (MATH_TAU / TRIG_TURN)) */
 
 #define MATH_VECTOR_ROWS(X, type, vmember, smember, dot_ratchet, ...)                                                  \
-    X(add, "add (vec3)", type, false, vmember, vec3##type##_add(p->a##type, p->b##type))                               \
-    X(scale, "scale (vec3)", type, false, vmember, vec3##type##_scale(p->a##type, p->b##type.x))                       \
-    X(dot, "dot (vec3)", type, dot_ratchet, smember, vec3##type##_dot(p->a##type, p->b##type))                         \
-    X(mul, "mul (scalar)", type, false, smember, math##type##_mul(p->a##type.x, p->b##type.x))                         \
-    X(lerp, "lerp (vec3)", type, false, vmember, vec3##type##_lerp(p->a##type, p->b##type, __VA_ARGS__))
+    X(add, "add (vec3)", type, "vector", false, vmember, vec3##type##_add(p->a##type, p->b##type))                     \
+    X(scale, "scale (vec3)", type, "vector", false, vmember, vec3##type##_scale(p->a##type, p->b##type.x))             \
+    X(dot, "dot (vec3)", type, "vector", dot_ratchet, smember, vec3##type##_dot(p->a##type, p->b##type))               \
+    X(mul, "mul (scalar)", type, "scalar", false, smember, math##type##_mul(p->a##type.x, p->b##type.x))               \
+    X(lerp, "lerp (vec3)", type, "vector", false, vmember, vec3##type##_lerp(p->a##type, p->b##type, __VA_ARGS__))
 
 #define MATH_ROWS(X, DOT)                                                                                              \
     MATH_VECTOR_ROWS(X, f, vf, f, true, MATH_BENCH_LERP_F)                                                             \
     MATH_VECTOR_ROWS(X, i, vi, i, false, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR)                       \
     MATH_VECTOR_ROWS(X, s, vs, i, false, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR)                       \
     MATH_VECTOR_ROWS(X, x, vx, i, false, MATH_BENCH_LERP_X)                                                            \
-    X(normalize, "normalize (vec3)", f, true, vf, vec3f_normalize(p->af))                                              \
-    X(normalize, "normalize (vec3)", x, false, vx, vec3x_normalize(p->ax))                                             \
-    X(wrap, "wrap", f, false, f, mathf_wrap(p->angle, -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))                  \
-    X(wrap, "wrap", i, false, i, mathi_wrap(p->ai.x, -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))                   \
-    X(wrap, "wrap", x, false, i,                                                                                       \
+    X(normalize, "normalize (vec3)", f, "vector", true, vf, vec3f_normalize(p->af))                                    \
+    X(normalize, "normalize (vec3)", x, "vector", false, vx, vec3x_normalize(p->ax))                                   \
+    X(wrap, "wrap", f, "scalar", false, f, mathf_wrap(p->angle, -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))        \
+    X(wrap, "wrap", i, "scalar", false, i, mathi_wrap(p->ai.x, -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))         \
+    X(wrap, "wrap", x, "scalar", false, i,                                                                             \
       mathx_wrap(p->ax.x, -MATH_BENCH_WRAP_LIMIT* MATHX_ONE, MATH_BENCH_WRAP_LIMIT* MATHX_ONE))                        \
-    X(convert, "convert", f_to_x, false, vx, vec3x_from_vec3f(p->af))                                                  \
-    X(convert, "convert", x_to_f, false, vf, vec3f_from_vec3x(p->ax))                                                  \
-    X(convert, "convert", f_to_s, false, vs, vec3s_from_vec3f(p->af, MATH_BENCH_INPUT_SCALE))                          \
-    X(convert, "convert", s_to_f, false, vf, vec3f_from_vec3s(p->as, MATH_BENCH_INPUT_SCALE))                          \
-    X(convert, "convert", i_to_f, false, vf, vec3f_from_vec3i(p->ai))                                                  \
-    X(convert, "convert", f_to_i, false, vi, vec3i_from_vec3f(p->af))                                                  \
-    X(slerp, "slerp", f, true, qf, quatf_slerp(p->qf, p->rf, MATH_BENCH_LERP_F))                                       \
-    X(nlerp, "nlerp", f, false, qf, quatf_nlerp(p->qf, p->rf, MATH_BENCH_LERP_F))                                      \
-    X(nlerp, "nlerp", x, false, qx, quatx_nlerp(p->qx, p->rx, MATH_BENCH_LERP_X))                                      \
-    X(quat_mul, "quat mul", f, false, qf, quatf_mul(p->qf, p->rf))                                                     \
-    X(quat_mul, "quat mul", x, false, qx, quatx_mul(p->qx, p->rx))                                                     \
-    X(mat4_mul, "mat4 mul", f, true, mf, mat4f_mul(p->mf, p->nf))                                                      \
-    X(mat4_mul, "mat4 mul", x, false, mx, mat4x_mul(p->mx, p->nx))                                                     \
-    X(transform_compute_matrix, "transform compute_matrix", f, false, mf, transformf_compute_matrix(&p->tf))           \
-    X(transform_compute_matrix, "transform compute_matrix", x, false, mx, transformx_compute_matrix(&p->tx))           \
-    X(mathf_recip, "mathf_recip", f, false, f, mathf_recip(p->af.x))                                                   \
-    X(mathf_rsqrt, "mathf_rsqrt", f, false, f, mathf_rsqrt(p->af.x))                                                   \
-    X(mathf_rsqrt_approx, "mathf_rsqrt_approx", f, false, f, mathf_rsqrt_approx(p->af.x))                              \
-    X(wrap_fmodf, "wrap_fmodf", f, false, f, wrap_fmodf(p->angle, -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))      \
-    X(normalize_div, "normalize_div", x, false, vx, normalize_div(p->ax))                                              \
-    X(nlerp_div, "nlerp_div", x, false, qx, nlerp_div(p->qx, p->rx, MATH_BENCH_LERP_X))                                \
-    X(mathx_rsqrt_q30, "mathx_rsqrt_q30", x, false, i, mathx_rsqrt_q30(MATHX_RSQRT_MIN + (uint32_t)p->ax.x))           \
-    X(div_recip, "div_recip", f, false, f, 1.0F / p->af.x)                                                             \
-    X(div_rsqrt, "div_rsqrt", f, false, f, 1.0F / sqrtf(p->af.x))                                                      \
-    X(sinf, "sinf", f, false, f, sinf((float)p->phase*(MATH_TAU / TRIG_TURN)))                                         \
-    X(cosf, "cosf", f, false, f, cosf(p->angle))                                                                       \
-    X(atan2f, "atan2f", f, false, f, atan2f(p->angle, p->bf.x))                                                        \
-    X(sqrtf, "sqrtf", f, false, f, sqrtf(p->af.x))                                                                     \
-    X(trig_sin, "trig_sin", i, false, i, trig_sin(p->phase))                                                           \
-    DOT(dot_f32_n256, "dot_f32_n256", f, false, 1)
+    X(convert, "convert", f_to_x, "vector", false, vx, vec3x_from_vec3f(p->af))                                        \
+    X(convert, "convert", x_to_f, "vector", false, vf, vec3f_from_vec3x(p->ax))                                        \
+    X(convert, "convert", f_to_s, "vector", false, vs, vec3s_from_vec3f(p->af, MATH_BENCH_INPUT_SCALE))                \
+    X(convert, "convert", s_to_f, "vector", false, vf, vec3f_from_vec3s(p->as, MATH_BENCH_INPUT_SCALE))                \
+    X(convert, "convert", i_to_f, "vector", false, vf, vec3f_from_vec3i(p->ai))                                        \
+    X(convert, "convert", f_to_i, "vector", false, vi, vec3i_from_vec3f(p->af))                                        \
+    X(slerp, "slerp", f, "quaternion", true, qf, quatf_slerp(p->qf, p->rf, MATH_BENCH_LERP_F))                         \
+    X(nlerp, "nlerp", f, "quaternion", false, qf, quatf_nlerp(p->qf, p->rf, MATH_BENCH_LERP_F))                        \
+    X(nlerp, "nlerp", x, "quaternion", false, qx, quatx_nlerp(p->qx, p->rx, MATH_BENCH_LERP_X))                        \
+    X(quat_mul, "quat mul", f, "quaternion", false, qf, quatf_mul(p->qf, p->rf))                                       \
+    X(quat_mul, "quat mul", x, "quaternion", false, qx, quatx_mul(p->qx, p->rx))                                       \
+    X(mat4_mul, "mat4 mul", f, "matrix", true, mf, mat4f_mul(p->mf, p->nf))                                            \
+    X(mat4_mul, "mat4 mul", x, "matrix", false, mx, mat4x_mul(p->mx, p->nx))                                           \
+    X(transform_compute_matrix, "transform compute_matrix", f, "matrix", false, mf, transformf_compute_matrix(&p->tf)) \
+    X(transform_compute_matrix, "transform compute_matrix", x, "matrix", false, mx, transformx_compute_matrix(&p->tx)) \
+    X(mathf_recip, "mathf_recip", f, "scalar", false, f, mathf_recip(p->af.x))                                         \
+    X(mathf_rsqrt, "mathf_rsqrt", f, "scalar", false, f, mathf_rsqrt(p->af.x))                                         \
+    X(mathf_rsqrt_approx, "mathf_rsqrt_approx", f, "scalar", false, f, mathf_rsqrt_approx(p->af.x))                    \
+    X(wrap_fmodf, "wrap_fmodf", f, "libm", false, f,                                                                   \
+      wrap_fmodf(p->angle, -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))                                             \
+    X(normalize_div, "normalize_div", x, "vector", false, vx, normalize_div(p->ax))                                    \
+    X(nlerp_div, "nlerp_div", x, "quaternion", false, qx, nlerp_div(p->qx, p->rx, MATH_BENCH_LERP_X))                  \
+    X(mathx_rsqrt_q30, "mathx_rsqrt_q30", x, "scalar", false, i, mathx_rsqrt_q30(MATHX_RSQRT_MIN + (uint32_t)p->ax.x)) \
+    X(div_recip, "div_recip", f, "scalar", false, f, 1.0F / p->af.x)                                                   \
+    X(div_rsqrt, "div_rsqrt", f, "scalar", false, f, 1.0F / sqrtf(p->af.x))                                            \
+    X(sinf, "sinf", f, "libm", false, f, sinf((float)p->phase*(MATH_TAU / TRIG_TURN)))                                 \
+    X(cosf, "cosf", f, "libm", false, f, cosf(p->angle))                                                               \
+    X(atan2f, "atan2f", f, "libm", false, f, atan2f(p->angle, p->bf.x))                                                \
+    X(sqrtf, "sqrtf", f, "libm", false, f, sqrtf(p->af.x))                                                             \
+    X(trig_sin, "trig_sin", i, "scalar", false, i, trig_sin(p->phase))                                                 \
+    DOT(dot_f32_n256, "dot_f32_n256", f, "vector", false, 1)
 
-#define MATH_KERNEL(name, label, type, ratchet, member, expression)                                                    \
+#define MATH_KERNEL(name, label, type, family, ratchet, member, expression)                                            \
     static __attribute__((noinline)) void math_bench_##name##_##type(fixture_t* f) {                                   \
         for (int j = 0; j < MATH_BENCH_BATCH; j++) {                                                                   \
             const input_t* p = &f->input[j];                                                                           \
@@ -222,7 +223,7 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
         __asm__ volatile("" : : "r"(f->output) : "memory");                                                            \
     }
 
-#define MATH_DOT_KERNEL(name, label, type, ratchet, ops)                                                               \
+#define MATH_DOT_KERNEL(name, label, type, family, ratchet, ops)                                                       \
     static __attribute__((noinline)) void math_bench_##name##_##type(fixture_t* f) {                                   \
         float acc = 0.0F;                                                                                              \
         for (int j = 0; j < MATH_BENCH_DOT_SIZE; j++) {                                                                \
@@ -233,16 +234,17 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
     }
 MATH_ROWS(MATH_KERNEL, MATH_DOT_KERNEL)
 
-#define MATH_ROW_OPS(name, label, type, hot, count)                                                                    \
+#define MATH_ROW_OPS(name, label, type, family, hot, count)                                                            \
     {"math_" #name "_" #type, label, #type, math_bench_##name##_##type, hot, count},
-#define MATH_ROW(name, label, type, hot, member, expression) MATH_ROW_OPS(name, label, type, hot, MATH_BENCH_BATCH)
+#define MATH_ROW(name, label, type, family, hot, member, expression)                                                   \
+    MATH_ROW_OPS(name, label, type, family, hot, MATH_BENCH_BATCH)
 static const row_t rows[] = {MATH_ROWS(MATH_ROW, MATH_ROW_OPS)};
 
 #define MATH_STRING(value) #value
-#define MATH_MANIFEST_OPS(name, label, type, hot, count)                                                               \
-    #name "_" #type "\t" label "\t" #type "\t" MATH_STRING(count) "\n"
-#define MATH_MANIFEST(name, label, type, hot, member, expression)                                                      \
-    MATH_MANIFEST_OPS(name, label, type, hot, MATH_BENCH_BATCH)
+#define MATH_MANIFEST_OPS(name, label, type, family, hot, count)                                                       \
+    #name "_" #type "\t" label "\t" #type "\t" MATH_STRING(count) "\t" family "\n"
+#define MATH_MANIFEST(name, label, type, family, hot, member, expression)                                              \
+    MATH_MANIFEST_OPS(name, label, type, family, hot, MATH_BENCH_BATCH)
 /* The ELF retains row identity for reports made before a board capture exists. */
 static const char math_bench_manifest[] = MATH_ROWS(MATH_MANIFEST, MATH_MANIFEST_OPS);
 
