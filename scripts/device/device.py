@@ -1745,21 +1745,44 @@ def decode_coredump(core, elf=None):
     return subprocess.run(command + [str(elf)]).returncode
 
 
+EXCHANGE_MAX_SECONDS = 600.0
+EXCHANGE_READ_BYTES = 4096
+
+
 def exchange(connection, line, reply, until, seconds):
-    """Write one console line on a port the caller holds; (replies, whether
-    the answer completed) within `seconds`."""
-    data = bytearray()
+    """Write one console line; return (replies, completed) within an idle limit.
+
+    Only matching reply bytes renew the idle deadline; all exchanges have
+    an overall cap so a continuously talking device cannot hold the lock forever.
+    """
+    pending = bytearray()
     found = []
+    reply_bytes = reply.encode("ascii")
     connection.reset_input_buffer()
     connection.write(("\n" + line + "\n").encode("ascii"))
-    deadline = time.monotonic() + seconds
+    started = time.monotonic()
+    overall_deadline = started + EXCHANGE_MAX_SECONDS
+    deadline = min(started + seconds, overall_deadline)
     while time.monotonic() < deadline:
         require_unlost()
-        data.extend(connection.read(4096))
-        found, complete = replies_to(bytes(data), reply, until)
+        chunk = connection.read(EXCHANGE_READ_BYTES)
+        if not chunk:
+            continue
+        pending.extend(chunk)
+        if reply_bytes in pending:
+            deadline = min(time.monotonic() + seconds, overall_deadline)
+        end = pending.rfind(b"\n") + 1
+        if not end:
+            continue
+        data = bytes(pending[:end])
+        del pending[:end]
+        new, complete = replies_to(data, reply, until)
+        found.extend(new)
         if complete:
             return found, True
         require_development(data, line)
+    if reply_bytes in pending and not found:
+        raise RuntimeError("reply cut off for '" + line + "' before a complete reply line")
     return found, False
 
 
@@ -1828,20 +1851,10 @@ def apply_console_lines(connection, lines):
 
 
 def send(args, store, board):
-    """Write one console line and print what the device answers.
+    """Print a console reply under the device lock, without creating a capture.
 
-    Not a capture: nothing is written under records/ and index.jsonl gets no
-    line. A tuning session is dozens of these, and none of them is evidence.
-
-    `args.optional` is for a verb that only answers when something is wrong
-    (TOUCH, IMU): a timeout with nothing seen is success, not "no reply";
-    silence is that verb's normal happy path, so whatever partial match was
-    found (possibly nothing) is printed and this returns 0 rather than
-    raising. autana console forwards a line the same optional way, with
-    `args.reply` set to the line's own first word in capitals; an app's
-    own command always replies under its own prefix, so this still
-    completes as soon as `<PREFIX>_END`/`<PREFIX>_ERR` arrives rather than
-    waiting out the window.
+    Optional silence succeeds for commands that only report errors. Once a
+    framed reply starts it must reach its terminator, even when optional.
     """
     with HeldLock(store, board, args.owner, "send", args.wait) as held:
         with open_when_free() as connection:
@@ -1852,6 +1865,9 @@ def send(args, store, board):
                     held.error = found[-1]
                     return 1
                 return 0
+    if found and any(ending.endswith(("_END", "_ERR")) for ending in args.until):
+        print("\n".join(found))
+        raise RuntimeError("reply cut off for '" + args.line + "': missing " + " or ".join(args.until))
     if args.optional:
         print("\n".join(found))
         return 0
@@ -2234,7 +2250,8 @@ def main(argv=None):
     send_parser.add_argument("--until", action="append",
                              help="a reply prefix that ends the answer; repeatable "
                                   "(default: TUNE_OK, TUNE_ERR, TUNE_END)")
-    send_parser.add_argument("--seconds", type=float, default=3.0)
+    send_parser.add_argument("--seconds", type=float, default=EXCHANGE_SECONDS,
+                             help=f"reply idle limit in seconds (overall cap: {EXCHANGE_MAX_SECONDS:g} s)")
     send_parser.add_argument("--optional", action="store_true",
                              help="a timeout with nothing seen is success, not an error - "
                                   "for a verb that only answers when something is wrong")

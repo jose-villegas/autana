@@ -696,6 +696,54 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(status, 0)
         printed.assert_called_once_with("EXAMPLE status=ok\nEXAMPLE_END")
 
+    def test_exchange_long_reply_uses_idle_time_and_parses_each_line_once(self):
+        payload = b"LABDUMP sample " + b"x" * 100 + b"\n"
+        transcript = b"LABDUMP_BEGIN\n" + payload * 12000 + b"LABDUMP_END\n"
+        chunks = [transcript[i:i + 4096] for i in range(0, len(transcript), 4096)]
+        connection = FakeConnection(chunks)
+        clock = [0.0]
+        original_read = connection.read
+
+        def read(size):
+            clock[0] += 0.1
+            return original_read(size)
+
+        with mock.patch.object(connection, "read", side_effect=read), \
+             mock.patch.object(device.time, "monotonic", side_effect=lambda: clock[0]), \
+             mock.patch.object(device, "replies_to", wraps=device.replies_to) as parsed:
+            found, complete = device.exchange(connection, "labdump", "LABDUMP",
+                                               ["LABDUMP_END", "LABDUMP_ERR"], 3.0)
+        self.assertTrue(complete)
+        self.assertEqual(found, transcript.decode().splitlines())
+        self.assertGreater(clock[0], 3.0)
+        self.assertEqual(sum(len(call.args[0]) for call in parsed.call_args_list), len(transcript))
+
+    def test_exchange_caps_active_replies_and_does_not_extend_for_unrelated_logs(self):
+        for payload, expected_seconds in ((b"LABDUMP sample\n", 5.0), (b"I (1) shell: frame\n", 3.0)):
+            with self.subTest(payload=payload):
+                connection = FakeConnection([payload] * 20)
+                clock = [0.0]
+                original_read = connection.read
+
+                def read(size):
+                    clock[0] += 1.0
+                    return original_read(size)
+
+                with mock.patch.object(connection, "read", side_effect=read), \
+                     mock.patch.object(device.time, "monotonic", side_effect=lambda: clock[0]), \
+                     mock.patch.object(device, "EXCHANGE_MAX_SECONDS", 5.0):
+                    _, complete = device.exchange(connection, "labdump", "LABDUMP",
+                                                   ["LABDUMP_END", "LABDUMP_ERR"], 3.0)
+                self.assertFalse(complete)
+                self.assertEqual(clock[0], expected_seconds)
+
+    def test_send_optional_rejects_a_reply_without_its_end(self):
+        with self.assertRaisesRegex(RuntimeError, "reply cut off"):
+            self.send_response([b"EXAMPLE_BEGIN\n", b"EXAMPLE partial"],
+                               self.send_args("example", reply="EXAMPLE",
+                                              until=["EXAMPLE_END", "EXAMPLE_ERR"],
+                                              seconds=0.01, optional=True))
+
     def test_send_forwards_an_app_command_and_fails_on_its_own_err_line(self):
         status, connection, printed = self.send_response([b"EXAMPLE_ERR not running\n"],
                                                           self.send_args("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], optional=True))

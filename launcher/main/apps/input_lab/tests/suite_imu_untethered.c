@@ -14,6 +14,8 @@
 
 /* The callback is synchronous; only the test owns this pointer. */
 static const char* expected_text;
+static size_t replay_calls;
+static size_t replay_bytes;
 
 static input_motion_t
 fixture(void) {
@@ -21,21 +23,55 @@ fixture(void) {
 }
 
 static void
-check_replay(const char* text) {
-    TEST_ASSERT_EQUAL_STRING(expected_text, text);
+check_replay(const char* text, size_t length) {
+    replay_calls++;
+    TEST_ASSERT_EQUAL_UINT(strlen(expected_text), length);
+    TEST_ASSERT_EQUAL_MEMORY(expected_text, text, length);
 }
 
 static void
-test_record_replay_and_release(void) {
+test_record_replay_retains_text(void) {
     imu_record_t record = {0};
     TEST_ASSERT_TRUE(imu_record_start(&record, IMU_RECORD_CAPACITY));
     TEST_ASSERT_TRUE(imu_record_appendf(&record, "round imu quarter %d", 1));
     TEST_ASSERT_TRUE(imu_record_appendf(&record, "round imu quarter %d", 1));
     expected_text = TEST_LINE TEST_LINE;
-    imu_record_take(&record, check_replay);
-    imu_record_take(&record, check_replay);
-    TEST_ASSERT_NULL(record.text);
-    TEST_ASSERT_EQUAL_UINT(0, record.used);
+    replay_calls = 0;
+    imu_record_replay(&record, check_replay);
+    imu_record_replay(&record, check_replay);
+    TEST_ASSERT_EQUAL_UINT(2, replay_calls);
+    TEST_ASSERT_NOT_NULL(record.text);
+    TEST_ASSERT_EQUAL_STRING(expected_text, record.text);
+    imu_record_free(&record);
+}
+
+static void
+check_chunk(const char* text, size_t length) {
+    TEST_ASSERT_GREATER_THAN(0, length);
+    TEST_ASSERT_LESS_OR_EQUAL(IMU_RECORD_CHUNK_SIZE, length);
+    TEST_ASSERT_EQUAL_CHAR('\n', text[length - 1]);
+    for (size_t i = 0; i < length; i++) {
+        TEST_ASSERT_EQUAL_CHAR(TEST_LINE[(replay_bytes + i) % (sizeof TEST_LINE - 1)], text[i]);
+    }
+    replay_bytes += length;
+    replay_calls++;
+}
+
+static void
+test_record_replay_chunks_whole_lines(void) {
+    imu_record_t record = {0};
+    TEST_ASSERT_TRUE(imu_record_start(&record, (3 * IMU_RECORD_CHUNK_SIZE) + sizeof IMU_RECORD_TRUNCATED));
+    const size_t lines = (3 * IMU_RECORD_CHUNK_SIZE) / (sizeof TEST_LINE - 1);
+    for (size_t i = 0; i < lines; i++) {
+        TEST_ASSERT_TRUE(imu_record_appendf(&record, "round imu quarter %d", 1));
+    }
+    for (int repeat = 0; repeat < 2; repeat++) {
+        replay_bytes = 0;
+        replay_calls = 0;
+        imu_record_replay(&record, check_chunk);
+        TEST_ASSERT_EQUAL_UINT(record.used, replay_bytes);
+        TEST_ASSERT_GREATER_THAN(1, replay_calls);
+    }
     imu_record_free(&record);
 }
 
@@ -49,12 +85,13 @@ test_record_overflow_and_restart(void) {
     TEST_ASSERT_FALSE(imu_record_appendf(&record, "ignored"));
     TEST_ASSERT_LESS_THAN(record.capacity, record.used);
     expected_text = IMU_RECORD_PREFIX " 1234567\n" IMU_RECORD_TRUNCATED;
-    imu_record_take(&record, check_replay);
+    imu_record_replay(&record, check_replay);
     TEST_ASSERT_TRUE(imu_record_start(&record, TEST_SMALL_CAPACITY));
     TEST_ASSERT_TRUE(imu_record_appendf(&record, "old"));
     TEST_ASSERT_TRUE(imu_record_start(&record, TEST_SMALL_CAPACITY));
-    expected_text = "";
-    imu_record_take(&record, check_replay);
+    TEST_ASSERT_EQUAL_STRING("", record.text);
+    TEST_ASSERT_EQUAL_UINT(0, record.used);
+    imu_record_free(&record);
 }
 
 static void
@@ -331,7 +368,8 @@ run_imu_untethered_suite(void) {
     RUN_TEST(test_upright_cone_uses_direction);
     RUN_TEST(test_trace_missing_reading_deadline_and_period);
     RUN_TEST(test_record_boundaries_and_dump_decision);
-    RUN_TEST(test_record_replay_and_release);
+    RUN_TEST(test_record_replay_retains_text);
+    RUN_TEST(test_record_replay_chunks_whole_lines);
     RUN_TEST(test_record_overflow_and_restart);
     RUN_TEST(test_pose_upright_turn_order);
     RUN_TEST(test_turn_threshold_window_and_decimation);

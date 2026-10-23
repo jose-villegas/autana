@@ -1809,6 +1809,13 @@ class OneShotForwardingTests(unittest.TestCase):
         printed.assert_any_call("EXAMPLE status=ok\nEXAMPLE_END")
         self.assertEqual(code, 0)
 
+    def test_a_cut_off_forwarded_reply_returns_failure(self):
+        with mock.patch.object(autana, "send", return_value=(1, ["LABDUMP_BEGIN"])), \
+             mock.patch("builtins.print") as printed:
+            code = self.run_main(["labdump"])
+        self.assertEqual(code, 1)
+        printed.assert_any_call("LABDUMP_BEGIN")
+
     def test_a_recognised_command_is_still_dispatched_directly(self):
         fake = mock.Mock(return_value=0)
         with mock.patch.dict(autana.COMMANDS, {"buildid": fake}), \
