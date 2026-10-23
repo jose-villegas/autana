@@ -6,27 +6,23 @@ its light is computed and scored is [Bake-Method.md](Bake-Method.md), and
 drawing it is [Mesh-Rendering.md](Mesh-Rendering.md).
 
 ```mermaid
-flowchart LR
-    subgraph Import_lane["Import lane: geometry"]
+flowchart TB
     Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"]
-    Mask["Mask alpha cards<br/><i>opt in</i>"]
-    Thin["Thin one material<br/><i>opt in</i>"]
-    Dense["Split long edges<br/><i>with simplify</i>"]
-    Simp["Simplify to the budget<br/><i>opt in</i>"]
-    end
-    subgraph Scene_lane["Scene lane: renderer options"]
-    Vis["Cull by camera visibility<br/><i>opt in</i>"]
-    Lit["Light per vertex<br/><i>bake = true</i>"]
-    Albedo["Albedo, no light<br/><i>no bake</i>"]
-    Face["Light per face<br/><i>flat shading</i>"]
-    end
-    Fetch --> Mask --> Vis --> Thin --> Dense
-    Dense --> Lit --> Simp
-    Dense --> Albedo --> Simp
-    Simp --> Face --> Write["Write: quantise,<br/>meshlets, octree"]
-    Simp --> Write
+    Fetch --> Mask["Mask alpha cards<br/><i>import, opt in</i>"]
+    Mask --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"]
+    Vis --> Thin["Thin one material<br/><i>import, opt in</i>"]
+    Thin --> Dense["Split long edges<br/><i>import, with simplify</i>"]
+    Dense --> Lit["Light per vertex<br/><i>scene, bake</i>"]
+    Dense --> Albedo["Albedo, no light<br/><i>no bake</i>"]
+    Lit --> Simp["Simplify to the budget<br/><i>import, opt in</i>"]
+    Albedo --> Simp
+    Simp --> Face["Light per face<br/><i>scene, flat shading</i>"]
+    Simp --> Write["Write: quantise,<br/>meshlets, octree"]
+    Face --> Write
     Write --> Entry["Pack entry<br/><i>name.mesh</i>"]
     Entry --> Pack["build_pack.py<br/><i>its root's pack</i>"]
+    classDef scene fill:#3d6b8a,color:#fff
+    class Vis,Lit,Face scene
 ```
 
 ## Import options
