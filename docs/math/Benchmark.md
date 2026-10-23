@@ -6,11 +6,12 @@ The board supplies cycles and retired instructions. QEMU supplies instruction
 counts for every row as information, without cache stalls or FPU latency.
 Only float dot, normalize, mat4 mul and slerp are guarded by the CI ratchet.
 The QEMU column marks wrappers containing `recip0.s`/`rsqrt0.s` as
-"device-only instruction": `CONFIG_LAUNCHER_QEMU` selects `1 / a` and
-`1 / sqrtf(a)` instead of the device's seed instructions and Newton corrections.
+"device-only instruction". `CONFIG_MATH_FPU_RECIP` gates the seed instructions;
+the [build conditions](Fast-Paths.md) include the QEMU configuration.
 
-Max error comes from the `suite_math_numbers` board run, appended to the capture.
-Each `MATHERROR` line joins by table label and type; absent measurements show `-`.
+Max error comes from `suite_math_numbers`; board and host captures stay separate.
+The annotation generator joins `MATHERROR` lines to benchmark rows; absent
+measurements show `-`.
 
 `proof` covers every float in `[1, 4)`, each normal exponent's edges, and a
 strided mantissa sample at every normal exponent, using an integer bracket.
@@ -42,19 +43,25 @@ The fused/approx column lists matching wrapper mnemonics and sorted callees,
 without surveying callee bodies. An unresolved indirect target is a starred
 register; `-` means no matching instruction or call.
 
-Record `BUILD_ID=` and `MATHBENCH` lines from
+## Capture
+
+Record `BUILD_ID=`, `MATHTARGET` and `MATHBENCH` lines from
 `autana suite run_math_perf_suite --flash --perf-scope` in
 `data/math_bench_capture.txt`. Record wrapper metadata and instructions from the
 same build's ELF with `python launcher/tools/perf/math_bench_table.py --from-elf <launcher.elf>`.
+Record linked sizes with `python launcher/tools/perf/fast_paths.py --from-elf <launcher.elf>`.
 The ELF manifest and capture carry row labels, types and op counts.
-Run `python launcher/tools/perf/math_bench_table.py` to update the block, or add
+
+`autana suite suite_math_numbers --flash` supplies board error bins.
+The fixed-point double-reference sweep runs on the host; keep its bins separate
+from hardware captures. `autana suite run_sponza_perf_suite run_capybara_perf_suite --flash --math-count-calls`
+counts calls in profiling measurement windows; these timings do not gate budgets.
+Run `python launcher/tools/perf/fast_paths.py` to update the evidence blocks, or add
 `--check` to verify it without writing.
 
 <details><summary>Full benchmark log</summary>
 
-<!-- generated: math-benchmark check: python launcher/tools/perf/math_bench_table.py --check -->
-Board build: `d36d792d3134-diag`.
-
+<!-- generated: math-benchmark check: python launcher/tools/perf/fast_paths.py --check -->
 | function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |
 |---|---|---:|---:|---:|---:|---:|---|---|
 | add (vec3) | f | 15.3 | 1998.0 | 14.5 | 14.2 | 1.1 | - | - |

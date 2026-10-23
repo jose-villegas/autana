@@ -17,8 +17,7 @@ HEADERS = Path("launcher/packages/math/include/math")
 DOCUMENT = Path("docs/math/Fast-Paths.md")
 BLOCK = "math-fast-paths"
 COMMAND = "python launcher/tools/perf/fast_paths.py --check"
-TARGETS = {"MATH_TARGET_ESP32S3": "ESP32-S3 / Xtensa LX7", "MATH_TARGET_PORTABLE": "Portable C"}
-ANNOTATION = re.compile(r"^/\* MATH_FAST_PATH\(\s*(\w+),\s*(\w+),\s*(\w+),\s*(\w+),\s*(\w+),\s*(ulp|relative|lsb),\s*(proof|sweep),\s*(\w+)\) \*/", re.M)
+ANNOTATION = re.compile(r"^/\* MATH_FAST_PATH\(\s*(\w+),\s*(\w+),\s*(\w+)\) \*/", re.M)
 FUNCTION = re.compile(r"^[ \t]*(?!(?:return|if|for|while|switch|case|else)\b)(?:(?:static[ \t]+)?(?:inline[ \t]+)?[\w*]+[ \t\n]+)(\w+)[ \t]*\([^;{}]*\)[ \t]*\{", re.M)
 CALL = re.compile(r"\b(\w+)\s*\(")
 
@@ -32,7 +31,6 @@ class Annotation:
     limit_name: str
     unit: str
     method: str
-    target_name: str
     target: str
     header: Path
     line: int
@@ -43,37 +41,40 @@ class Annotation:
 
 
 def annotations(root=ROOT):
-    targets = TARGETS
     result = []
+    source = (root / "launcher/packages/math/tests/suite_math_numbers.c").read_text(encoding="utf-8")
+    contracts = {name: (unit, method) for name, unit, method in re.findall(
+        r'MATHERROR name=(\w+) type=\w+ max=.*? unit=(ulp|relative|lsb) method=(proof|sweep)', source)}
     for header in sorted((root / HEADERS).rglob("*.h")):
         text = header.read_text(encoding="utf-8")
         matches = list(ANNOTATION.finditer(text))
-        declarations = re.findall(r"^/\* MATH_FAST_PATH\(", text, re.M)
-        if len(matches) != len(declarations):
+        if len(matches) != len(re.findall(r"^/\* MATH_FAST_PATH\(", text, re.M)):
             raise ValueError(f"malformed fast-path annotation: {header}")
-        for index, match in enumerate(matches):
-            key, kind, fast, plain, limit_name, unit, method, target_name = match.groups()
-            if target_name not in targets:
-                raise ValueError(f"unknown fast-path target: {target_name}")
+        for match in matches:
+            fast, plain, limit_name = match.groups()
+            following = FUNCTION.search(re.sub(r"__attribute__\(\(.*?\)\)", "", text[match.end():]))
+            if not following:
+                raise ValueError(f"missing function below {fast}")
+            key, kind = following[1], fast.rsplit("_", 1)[1]
+            if key not in contracts:
+                raise ValueError(f"missing MATHERROR row for {fast}: {key}")
             define = re.search(r"^#define\s+" + limit_name + r"[ \t]+([^\n]+)$", text, re.M)
             if not define:
                 raise ValueError(f"missing limit {limit_name}: {header}")
-            value = define[1].removesuffix("F").removesuffix("f")
+            value = define[1].strip().removesuffix("F").removesuffix("f")
             limit = float.fromhex(value) if value.lower().startswith("0x") else float(value)
             if not math.isfinite(limit) or limit < 0:
                 raise ValueError(f"invalid limit {limit_name}")
             before = text[:match.start()]
-            if not before.rstrip().endswith("*/"):
-                previous = matches[index - 1] if index else None
-                if previous is None or previous[1] != key or text[previous.end():match.start()].strip():
-                    raise ValueError(f"missing adjacent fast-path description: {key}")
-            # Adjacent row pairs share the owner's description.
-            comment = [" ".join(re.sub(r"^\s*\* ?", "", body, flags=re.M).split())
-                       for body in re.findall(r"/\*(.*?)\*/", before, re.S) if body.count("|") == 2]
-            if not comment:
+            comments = [" ".join(re.sub(r"^\s*\* ?", "", body, flags=re.M).split())
+                        for body in re.findall(r"/\*(.*?)\*/", before, re.S) if body.count("|") == 2]
+            if not comments:
                 raise ValueError(f"missing description, formula or coverage: {key}")
-            description, formula, coverage = map(str.strip, comment[-1].split("|"))
-            result.append(Annotation(key, kind, fast, plain, limit_name, unit, method, target_name, targets[target_name],
+            description, formula, coverage = map(str.strip, comments[-1].split("|"))
+            body = function_bodies(text)[key]
+            target = "Target-specific" if re.search(r"^#(?:if|elif).*(?<!!)defined\(__XTENSA__\).*CONFIG_MATH_", body, re.M) else "Portable C"
+            unit, method = contracts[key]
+            result.append(Annotation(key, kind, fast, plain, limit_name, unit, method, target,
                                      header.relative_to(root), before.count("\n") + 1,
                                      limit, description, formula, coverage))
     if not result:
@@ -104,7 +105,7 @@ def hardware_features(root, item):
 
 def validate_hardware(root, items, fpu):
     for item in items:
-        if item.target_name == "MATH_TARGET_PORTABLE":
+        if item.target == "Portable C":
             continue
         _, expected = hardware_features(root, item)
         observed = set(fpu[item.fast].partition(";")[0].split())
@@ -112,16 +113,21 @@ def validate_hardware(root, items, fpu):
             raise ValueError(f"{item.fast}: target wrapper lacks an expected seed/fused instruction ({sorted(expected)})")
 
 
-def reference_pages(item):
+def reference_pages(item, root=ROOT):
     pages = {item.header.parent.name.capitalize()}
-    if item.fast.startswith(("normalize_", "nlerp_")):
-        pages.add("Linear")
+    functions, owners = package_functions(root, with_owners=True)
+    source = (root / "launcher/test/suites/suite_math_perf.c").read_text(encoding="utf-8")
+    row_name = item.fast.rsplit("_", 1)[0]
+    for line in source.splitlines():
+        if re.search(r"\bX\(" + row_name + r",", line):
+            if any(name in owners and owners[name].parent.name == "linear" for name in CALL.findall(line)):
+                pages.add("Linear")
     return pages
 
 
 def validate_links(root, items):
     for item in items:
-        for page in reference_pages(item):
+        for page in reference_pages(item, root):
             path = root / "docs/math" / (page + ".md")
             if not path.exists() or f"Fast-Paths.md#{item.key.replace('_', '-')}" not in path.read_text(encoding="utf-8"):
                 raise ValueError(f"{page}.md lacks link to section {item.key}")
@@ -135,11 +141,9 @@ def validate(items, rows, capture):
             if key not in manifest:
                 raise ValueError(f"annotation row missing: {key}")
         identity = (item.key, item.kind)
-        if bins and (identity not in errors or identity not in bins):
-            raise ValueError(f"missing error summary or bins: {identity}")
+        if identity in bins and identity not in errors:
+            raise ValueError(f"missing error summary for bins: {identity}")
         if identity in errors:
-            if bins and identity not in bins:
-                raise ValueError(f"missing error summary or bins: {identity}")
             maximum, unit, method = re.fullmatch(r"(\S+) (\w+) \((\w+)\)", errors[identity]).groups()
             if unit != item.unit or method != item.method or any(row[2] != unit for row in bins.get(identity, [])):
                 raise ValueError(f"error contract mismatch: {identity}")
@@ -166,20 +170,19 @@ def function_bodies(text):
 
 
 @lru_cache(maxsize=4)
-def package_functions(root):
+def package_functions(root, with_owners=False):
     sys.path.insert(0, str(ROOT / "scripts/gates"))
     from check_math_docs import HEADER_CALL, TEMPLATE_MACRO, MACRO_CALL, split_args
-    macros, headers, functions = {}, [], {}
+    macros, headers, functions, owners = {}, [], {}, {}
     for path in sorted((root / HEADERS).rglob("*.h")):
         text = path.read_text(encoding="utf-8")
         if path.name.endswith("_template.h"):
             for name, params, body in TEMPLATE_MACRO.findall(text):
                 macros[name] = (split_args(params), body.replace("\\\n", "\n"))
         else:
-            headers.append(text)
-            functions.update(function_bodies(text))
+            headers.append((path, text))
 
-    def expand(name, arguments, active=()):
+    def expand(name, arguments, owner, active=()):
         if name not in macros or name in active:
             return
         params, body = macros[name]
@@ -187,14 +190,20 @@ def package_functions(root):
         for param, value in bind.items():
             body = re.sub(r"\b" + param + r"\b", lambda _: value, body)
         body = re.sub(r"\s*##\s*", "", body)
-        functions.update(function_bodies(body))
+        made = function_bodies(body)
+        functions.update(made)
+        owners.update(dict.fromkeys(made, owner))
         for callee, args in MACRO_CALL.findall(body):
-            expand(callee, split_args(args), (*active, name))
+            expand(callee, split_args(args), owner, (*active, name))
 
-    for text in headers:
+    for path, text in headers:
         for name, args in HEADER_CALL.findall(text):
-            expand(name, split_args(args))
-    return functions
+            expand(name, split_args(args), path)
+    for path, text in headers:
+        made = function_bodies(text)
+        functions.update(made)
+        owners.update(dict.fromkeys(made, path))
+    return (functions, owners) if with_owners else functions
 
 
 def tables_for(item, root):
@@ -223,14 +232,19 @@ def callers(root, key):
     modules = {}
     sources = [path for folder in ("main", "packages") for path in (root / "launcher" / folder).rglob("*")]
     for path in sorted(sources):
-        if path.is_relative_to(root / HEADERS) or path.suffix not in (".c", ".h") or any(part in ("tests", "tools") for part in path.parts):
+        if path.suffix not in (".c", ".h") or any(part in ("tests", "tools") for part in path.parts):
             continue
         text = re.sub(r"/\*.*?\*/|//[^\n]*", "", path.read_text(encoding="utf-8"), flags=re.S)
+        if path.is_relative_to(root / HEADERS):
+            text = "\n".join(body for name, body in function_bodies(text).items() if name != key)
         used = set(CALL.findall(text)) & reachable
         if used:
             relative = path.relative_to(root / "launcher")
-            module = relative.parts[1] if len(relative.parts) > 2 else relative.parts[0]
-            modules.setdefault(module, set()).update(used)
+            if path.is_relative_to(root / HEADERS):
+                module = "math/" + path.relative_to(root / HEADERS).parts[0]
+            else:
+                module = relative.parts[1] if len(relative.parts) > 2 else relative.parts[0]
+            modules.setdefault("apps (not named)" if relative.parts[:2] == ("main", "apps") else module, set()).update(used)
     return modules
 
 
@@ -255,7 +269,7 @@ def parse_calls(text):
             if not owner:
                 continue
             module = owner[2].split("/", 1)[0] if "/" in owner[2] else owner[1]
-            identity = key, module
+            identity = key, "apps (not named)" if owner[1] == "main" and module == "apps" else module
             current[identity] = current.get(identity, 0) + float(value)
     if current:
         raise ValueError("missing MATHCALLS end")
@@ -279,45 +293,20 @@ def build_rows(item, root):
         disabled = re.search(r"^# " + symbol + r" is not set$", qemu, re.M)
         setting = value[1] if value else "n" if disabled else "default"
         lines.append(f"- `{symbol}`: {help_text} QEMU: `{setting}`.")
-    def compiled(xtensa, settings):
-        active = [True]
-        selected = []
-        for line in body.splitlines():
-            guard = re.match(r"#if (.*)", line)
-            if guard:
-                expression = guard[1].replace("defined(__XTENSA__)", str(xtensa))
-                expression = re.sub(r"CONFIG_MATH_\w+", lambda m: str(settings.get(m[0], False)), expression)
-                expression = expression.replace("&&", " and ").replace("||", " or ").replace("!", " not ")
-                if not re.fullmatch(r"[ TrueFalsandornt()]+", expression):
-                    raise ValueError(f"unsupported build condition: {guard[1]}")
-                active.append(active[-1] and eval(expression, {"__builtins__": {}}))
-            elif line == "#else":
-                active[-1] = active[-2] and not active[-1]
-            elif line == "#endif":
-                active.pop()
-            elif active[-1]:
-                selected.append(line.strip())
-        expressions = [line for line in selected if line.startswith("return ") or "= fmaf(" in line or "= fmodf(" in line]
-        return list(dict.fromkeys(expressions))
-    qemu_settings = {symbol: bool(re.search(r"^" + symbol + r"=y$", qemu, re.M)) for symbol in symbols}
-    lines += [f"Fast branch: `{' ; '.join(conditions) or 'all builds'}`."]
-    if symbols:
-        for target, xtensa, settings in (("Host (!defined(__XTENSA__))", False, {}), ("QEMU", True, qemu_settings)):
-            expressions = compiled(xtensa, settings)
-            lines += [f"{target} compiles:", *[f"- `{expression}`" for expression in expressions]]
-    else:
-        lines += [f"Host and QEMU compile the same `{item.key}` expression; no CONFIG_MATH_* branch selects it."]
+    guard = " ; ".join(conditions) or "all builds (portable C)"
+    lines += [f"Host: `!defined(__XTENSA__)`; source conditions: `{guard}`.",
+              f"QEMU: `CONFIG_LAUNCHER_QEMU`; source conditions: `{guard}` (values above).",
+              f"Target: source conditions `{guard}`; configured values come from the capture build."]
     return "\n\n".join(lines)
 
 
 
 def plain_expression(item, root):
     text = (root / "launcher/test/suites/suite_math_perf.c").read_text(encoding="utf-8")
-    name, kind = item.plain.rsplit("_", 1)
-    match = re.search(r"X\(" + name + r',\s*"[^"]+",\s*' + kind + r",\s*\w+,\s*\w+,\s*(.*?)\)\s*\\", text)
+    match = re.search(r"/\* MATH_PLAIN\(" + item.plain + r"\): (.*?) \*/", text)
     if not match:
-        raise ValueError(f"plain row has no kernel expression: {item.plain}")
-    return re.sub(r"\s+", " ", match[1])
+        raise ValueError(f"plain row has no C description: {item.plain}")
+    return match[1]
 
 
 def render(root, items, rows, measured, errors, bins, sizes, counts, fpu, target):
@@ -330,7 +319,7 @@ def render(root, items, rows, measured, errors, bins, sizes, counts, fpu, target
         item = group[0]
         lines += [f'<a id="{key.replace("_", "-")}"></a>', "", f"## {key}", "", "**Plain way**", ""]
         for pair in group:
-            lines += [f"{manifest[pair.plain][1]}:", "", "```c", plain_expression(pair, root), "```", ""]
+            lines += [plain_expression(pair, root) + ".", ""]
         lines += ["**What we do**", "", item.description, "", "```math", item.formula, "```", "", f"Implementation target: {item.target}.", "", "**Cost**", "",
                   "| Row | Measured target | Warm cycles/op | Cold cycles/call | Plain/fast warm |", "|---|---|---:|---:|---:|"]
         for pair in group:
@@ -339,7 +328,7 @@ def render(root, items, rows, measured, errors, bins, sizes, counts, fpu, target
             for row in (pair.fast, pair.plain):
                 values = measured.get(row)
                 warm, cold = (f"{value:.1f}" for value in values[:2]) if values else ("-", "-")
-                lines.append(f"| `{row}` | {target if values else '-'} | {warm} | {cold} | {ratio if row == pair.fast else '-'} |")
+                lines.append(f"| `{row}` | {target if values else '-'} | {warm} | {cold} | {ratio if row == pair.fast else 'n/a'} |")
         error = errors.get((key, item.kind), "-")
         lines += ["", "**Error**", "", "| Measured target | Maximum error | Limit | Unit | Method |",
                   "|---|---:|---|---|---|",
@@ -349,7 +338,7 @@ def render(root, items, rows, measured, errors, bins, sizes, counts, fpu, target
             lines += [f"![Error across the input range](../images/math/fast-path-{key}.png)", ""]
         else:
             lines += ["Error curve: - (capture pending).", ""]
-        lines += ["**Size**", "", "Table bytes total the linked copies of each referenced table.", "", "| Row | Code bytes / region | Callee bytes | Table bytes |", "|---|---|---|---|"]
+        lines += ["**Size**", "", "| Row | Code bytes / region | Callee bytes | Table bytes |", "|---|---|---|---|"]
         for pair in group:
             for row in (pair.fast, pair.plain):
                 records = sizes.get(row, [])
@@ -357,41 +346,137 @@ def render(root, items, rows, measured, errors, bins, sizes, counts, fpu, target
                 callees = [f"`{name}`: {size if size is not None else '-'} / {region}" for name, size, region in records
                            if name != bench.ROW_SYMBOL_PREFIX + row and region != "rodata"]
                 tables = [f"`{name}`: {size}" for name, size, region in records if region == "rodata"]
-                lines.append(f"| `{row}` | {', '.join(code) or '-'} | {', '.join(callees) or '-'} | {', '.join(tables) or '-'} |")
+                lines.append(f"| `{row}` | {', '.join(code) or '-'} | {', '.join(callees) or ('none' if records else '-')} | {', '.join(tables) or ('0' if records else '-')} |")
         symbols, _ = hardware_features(root, item)
         observed = ", ".join(f"`{op}`" for op in fpu[item.fast].partition(";")[0].split() if op in bench.FPU_OPS)
         gates = ", ".join(f"`{symbol}`" for symbol in symbols)
-        feature = f"ELF instructions: {observed or '-'}. Gating symbols: {gates or '-'}."
+        feature = f"ELF instructions: {observed or 'none'}. Gating symbols: {gates or 'none'}."
         lines += ["", "**Builds**", "", feature, "", build_rows(item, root), "", "**Where it pays**", "",
                   "| Engine module | Calls through | Max calls/frame | Median calls/frame |", "|---|---|---:|---:|"]
         modules = callers(root, key)
         for module, functions in sorted(modules.items()):
             values = counts.get((key, module))
             high, median = (f"{value:.2f}" for value in values) if values else ("-", "-")
-            spelling = "-" if module == "apps" else ", ".join(f"`{name}`" for name in sorted(functions))
+            spelling = ", ".join(f"`{name}`" for name in sorted(functions))
             lines.append(f"| {module} | {spelling} | {high} | {median} |")
         if not modules:
-            lines.append("| - | - | - | - |")
+            lines += ["", "No production callers found."]
         lines.append("")
     return "\n".join(lines)
+
+
+def parse_sizes(text):
+    result = {}
+    seen = set()
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        if len(fields) != 4:
+            raise ValueError(f"expected four size fields: {line}")
+        key, symbol, size, region = fields
+        if (not re.fullmatch(r"\w+", key) or not bench.CALL_SYMBOL.fullmatch(symbol)
+                or not (size.isdecimal() or size == "-" and region == "ROM") or region not in ("flash", "IRAM", "rodata", "ROM") or (key, symbol) in seen):
+            raise ValueError(f"invalid or duplicate size record: {line}")
+        seen.add((key, symbol))
+        result.setdefault(key, []).append((symbol, int(size) if size != "-" else None, region))
+    return result
+
+
+def elf_sizes(rows, fpu, located, sections=(), root=ROOT):
+    owners = {item.fast: item for item in annotations(root)}
+    lines = ["# row\tsymbol\tbytes\tregion; sizes belong to the --from-elf build"]
+    for key, *_ in rows:
+        calls = fpu[key].partition("calls ")[2].split(", ")
+        names = [bench.ROW_SYMBOL_PREFIX + key, *(name for name in calls if name and not name.startswith("*"))]
+        if key in owners:
+            names.extend(tables_for(owners[key], root))
+        for name in sorted(set(names)):
+            matches = [record for record in located if record.name == name or record.name.startswith(name + ".")]
+            if not matches:
+                raise ValueError(f"size symbol missing from ELF: {name}")
+            letters = {record.section.upper() for record in matches}
+            if letters <= {"A"}:
+                region = "ROM"
+            elif letters <= {"R"}:
+                region = "rodata"
+            else:
+                owners = {section for record in matches
+                          for section, begin, size in sections if begin <= record.address < begin + size}
+                if owners and all("iram" in section for section in owners):
+                    region = "IRAM"
+                elif owners and all(section.startswith(".flash") for section in owners):
+                    region = "flash"
+                else:
+                    raise ValueError(f"unknown ELF code section: {name}: {owners}")
+            size = "-" if any(record.size is None for record in matches) else str(sum(record.size for record in matches))
+            lines.append(f"{key}\t{name}\t{size}\t{region}")
+    return "\n".join(lines) + "\n"
+
+
+def rekey_errors(items, rows, errors):
+    labels = {key: (label, kind) for key, label, kind, _ in rows}
+    result = dict(errors)
+    for item in items:
+        identity = item.key, item.kind
+        if identity in errors:
+            result[labels[item.fast]] = errors[identity]
+            if identity not in labels.values():
+                result.pop(identity, None)
+    return result
+
+
+def update_links(root, items, check=False):
+    groups = {"Scalar": [], "Linear": []}
+    for item in items:
+        for page in reference_pages(item, root):
+            link = f"[{item.key}](Fast-Paths.md#{item.key.replace('_', '-')})"
+            if link not in groups.setdefault(page, []):
+                groups[page].append(link)
+    groups["README"] = ["[Fast-path evidence](Fast-Paths.md)"]
+    for page, links in groups.items():
+        path = root / "docs/math" / (page + ".md")
+        changed = replace_block(path, "math-fast-links-" + page.lower(), (", ".join(links) + " pairs costs, bounds and callers." if page == "README" else "Fast-path evidence: " + ", ".join(links) + "."), check=check, command=COMMAND)
+        if check and changed:
+            raise ValueError(f"{page}.md fast-path links are stale")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--from-elf", type=Path)
+    parser.add_argument("--objdump")
+    parser.add_argument("--nm")
     args = parser.parse_args(argv)
     root = args.root
     try:
         items = annotations(root)
         rows, fpu = bench.read_fpu(root / "docs/math/data/math_bench_fpu_ops.txt")
+        if args.from_elf:
+            import hashlib
+            from code_layout import find_tool, run, symbols
+            located = symbols(args.nm or find_tool("nm"), args.from_elf, records=True)
+            dump = run(args.objdump or find_tool("objdump"), "-h", str(args.from_elf))
+            sections = [(name, int(address, 16), int(size, 16)) for name, size, address in re.findall(
+                r"^\s*\d+\s+(\S+)\s+([0-9a-f]+)\s+([0-9a-f]+)", dump, re.M)]
+            body = elf_sizes(rows, fpu, located, sections, root)
+            provenance = "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest() + "\n"
+            (root / "docs/math/data/math_bench_sizes.txt").write_bytes((provenance + body).encode())
         capture = (root / "docs/math/data/math_bench_capture.txt").read_text(encoding="utf-8")
         errors, bins = validate(items, rows, capture)
+        build, measured = bench.parse_capture(capture, rows, allow_missing=True)
+        benchmark_body = bench.render_table(rows, measured, bench.load_baseline(root / "launcher/tools/quality/icount_baseline.txt"),
+                                            fpu, build, rekey_errors(items, rows, errors))
+        benchmark_changed = replace_block(root / "docs/math/Benchmark.md", "math-benchmark", benchmark_body,
+                                          check=args.check, command=COMMAND)
+        if args.check and benchmark_changed:
+            raise ValueError("benchmark generated table is stale")
         validate_hardware(root, items, fpu)
-        validate_links(root, items)
+        update_links(root, items, check=args.check)
         _, measured = bench.parse_capture(capture, rows, allow_missing=not bins)
         size_path = root / "docs/math/data/math_bench_sizes.txt"
-        sizes = bench.parse_sizes(size_path.read_text(encoding="utf-8")) if size_path.exists() else {}
+        sizes = parse_sizes(size_path.read_text(encoding="utf-8")) if size_path.exists() else {}
         count_path = root / "docs/math/data/math_calls_capture.txt"
         counts = parse_calls(count_path.read_text(encoding="utf-8")) if count_path.exists() else {}
         page = root / DOCUMENT
@@ -406,8 +491,6 @@ def main(argv=None):
         target = bench.parse_target(capture)
         if bins and not target:
             raise ValueError("error bins require a hardware MATHTARGET capture record")
-        if target and any(item.target_name != "MATH_TARGET_PORTABLE" and item.target != target for item in items):
-            raise ValueError("capture target disagrees with fast-path annotation")
         body = render(root, items, rows, measured if target else {}, errors if target else {}, bins, sizes, counts,
                       fpu, target or "-")
         changed = replace_block(page, BLOCK, body, check=args.check, command=COMMAND)

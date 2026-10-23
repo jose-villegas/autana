@@ -3,16 +3,24 @@
 
 #if defined(CONFIG_MATH_COUNT_CALLS) && CONFIG_MATH_COUNT_CALLS
 #include <stdio.h>
+#ifdef ESP_PLATFORM
+#include "esp_attr.h"
+#else
+#define IRAM_ATTR
+#endif
 
 static _Atomic(math_call_record_t*) records;
 static atomic_bool measuring;
 
-void
+/* Inline callers can execute from IRAM; counting must not introduce a flash call.
+ * IRAM budget: 94 B */
+void IRAM_ATTR
 math_calls_hit(math_call_record_t* record) {
     if (!atomic_load_explicit(&measuring, memory_order_acquire)) {
         return;
     }
-    if (!atomic_exchange_explicit(&record->registered, true, memory_order_relaxed)) {
+    if (!atomic_load_explicit(&record->registered, memory_order_relaxed)
+        && !atomic_exchange_explicit(&record->registered, true, memory_order_relaxed)) {
         math_call_record_t* head = atomic_load_explicit(&records, memory_order_acquire);
         do {
             record->next = head;

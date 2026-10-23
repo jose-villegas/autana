@@ -28,7 +28,7 @@ def main(argv=None):
         fast_paths.validate(items, rows, text)
         done = set()
         for item in items:
-            if item.key in done:
+            if item.key in done or (item.key, item.kind) not in bins:
                 continue
             done.add(item.key)
             points = sorted(bins[item.key, item.kind])

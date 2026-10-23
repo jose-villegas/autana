@@ -172,9 +172,11 @@ static const uint32_t mathx_rsqrt_seeds[] = {
 };
 
 /* For m in [2^30, 2^32), midpoint rounding bounds relative error by 2^-31. */
-/* Seed table, three integer Newton corrections and an exact midpoint bracket. | y = round(2^{46}/sqrt(m)) | mantissa segment strides and exact midpoint brackets */
-/* MATH_FAST_PATH(mathx_rsqrt_q30, x, normalize_x, normalize_div_x, MATHX_RSQRT_Q30_RELATIVE_LIMIT, relative, proof, MATH_TARGET_PORTABLE) */
-/* MATH_FAST_PATH(mathx_rsqrt_q30, x, nlerp_x, nlerp_div_x, MATHX_RSQRT_Q30_RELATIVE_LIMIT, relative, proof, MATH_TARGET_PORTABLE) */
+/* For integer mantissa m in [MATHX_RSQRT_MIN, 2^32), seed table, three Newton corrections and exact midpoint bracket give reciprocal root y. | y = round(2^{46}/sqrt(m)) | mantissa segment strides and exact midpoint brackets */
+
+/* MATH_FAST_PATH(normalize_x, normalize_div_x, MATHX_RSQRT_Q30_RELATIVE_LIMIT) */
+
+/* MATH_FAST_PATH(nlerp_x, nlerp_div_x, MATHX_RSQRT_Q30_RELATIVE_LIMIT) */
 
 static inline uint32_t
 mathx_rsqrt_q30(uint32_t m) {

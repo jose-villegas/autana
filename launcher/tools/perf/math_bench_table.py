@@ -39,7 +39,7 @@ def parse_target(text):
     for line in text.splitlines():
         if not line.startswith("MATHTARGET"):
             continue
-        match = re.fullmatch(r"MATHTARGET target=(.+) execution=(hardware|qemu|host)", line)
+        match = re.fullmatch(r"MATHTARGET target=(\w+) arch=([\w-]+)(?: core=([\w.-]+))? execution=(hardware|qemu|host)", line)
         if not match:
             raise ValueError(f"malformed math target: {line}")
         targets.add(match.groups())
@@ -47,11 +47,10 @@ def parse_target(text):
         raise ValueError("mixed math capture targets")
     if not targets:
         return None
-    target, execution = targets.pop()
+    target, architecture, core, execution = targets.pop()
     if execution != "hardware":
         raise ValueError("math target measurements require hardware execution")
-    from fast_paths import TARGETS
-    return TARGETS.get(target, target)
+    return f"{target} ({architecture}{', ' + core if core else ''})"
 
 
 def parse_capture(text, rows, allow_missing=False):
@@ -197,78 +196,15 @@ def parse_bins(text):
     return result
 
 
-def parse_sizes(text):
-    result = {}
-    seen = set()
-    for line in text.splitlines():
-        if not line or line.startswith("#"):
-            continue
-        fields = line.split("\t")
-        if len(fields) != 4:
-            raise ValueError(f"expected four size fields: {line}")
-        key, symbol, size, region = fields
-        if (not re.fullmatch(r"\w+", key) or not CALL_SYMBOL.fullmatch(symbol)
-                or not (size.isdecimal() or size == "-" and region == "ROM") or region not in ("flash", "IRAM", "rodata", "ROM") or (key, symbol) in seen):
-            raise ValueError(f"invalid or duplicate size record: {line}")
-        seen.add((key, symbol))
-        result.setdefault(key, []).append((symbol, int(size) if size != "-" else None, region))
-    return result
-
-
-def elf_sizes(rows, fpu, located, absolute=None, aliases=()):
-    # Xtensa instruction and flash windows distinguish code from read-only tables.
-    iram_start, iram_end = 0x40370000, 0x40400000
-    flash_start, flash_end = 0x42000000, 0x44000000
-    rodata_start, rodata_end = 0x3c000000, 0x3e000000
-    by_name = {}
-    rom_start, rom_end = 0x40000000, 0x40080000
-    for address, (name, size) in [*located.items(), *aliases]:
-        by_name.setdefault(name, {})[address] = size
-    from fast_paths import annotations, tables_for
-    owners = {item.fast: item for item in annotations(ROOT)}
-    lines = ["# row\tsymbol\tbytes\tregion; sizes belong to the --from-elf build"]
-    for key, *_ in rows:
-        calls = fpu[key].partition("calls ")[2].split(", ")
-        names = [ROW_SYMBOL_PREFIX + key, *(name for name in calls if name and not name.startswith("*"))]
-        if key in owners:
-            names.extend(tables_for(owners[key], ROOT))
-        for name in sorted(set(names)):
-            matches = [(symbol, address, size) for symbol, values in by_name.items()
-                       if symbol == name or symbol.startswith(name + ".") for address, size in values.items()]
-            if not matches:
-                address = (absolute or {}).get(name)
-                if address is not None and rom_start <= address < rom_end:
-                    lines.append(f"{key}\t{name}\t-\tROM")
-                    continue
-                raise ValueError(f"size symbol missing from ELF: {name}")
-            # Header-local constants can have several linked copies; report their total footprint.
-            size = sum(size for _, _, size in matches)
-            address = matches[0][1]
-            region = ("IRAM" if iram_start <= address < iram_end else
-                      "flash" if flash_start <= address < flash_end else
-                      "rodata" if rodata_start <= address < rodata_end else
-                      "ROM" if rom_start <= address < rom_end else None)
-            if region is None:
-                raise ValueError(f"unknown size region: {name} at {address:x}")
-            lines.append(f"{key}\t{name}\t{size}\t{region}")
-    return "\n".join(lines) + "\n"
-
-
 def render_table(rows, measured, baseline, fpu, build=None, errors=None):
     keys = {key for key, *_ in rows}
     missing = {name for name in baseline if name.startswith("math_") and name[5:] not in keys}
     if missing:
         raise ValueError(f"baseline rows missing from table: {sorted(missing)}")
-    lines = [f"Board build: `{build}`." if build else "Board capture pending; board columns remain unmeasured.", "",
+    lines = [
              "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |",
              "|---|---|---:|---:|---:|---:|---:|---|---|"]
     bounds = dict(errors or {})
-    from fast_paths import annotations
-    labels = {key: (label, kind) for key, label, kind, _ in rows}
-    for item in annotations(ROOT):
-        identity = (item.key, item.kind)
-        if identity in bounds and identity not in labels.values() and item.fast in labels:
-            bounds[labels[item.fast]] = bounds.pop(identity)
     unmatched = set(bounds) - {(label, kind) for _, label, kind, _ in rows}
     if unmatched:
         raise ValueError(f"error measurements match no row: {sorted(unmatched)}")
@@ -289,7 +225,7 @@ def render_table(rows, measured, baseline, fpu, build=None, errors=None):
 
 
 def elf_rows(objdump, elf, located):
-    address, size = next(((address, size) for address, (name, size) in located.items() if name == MANIFEST), (None, None))
+    address, size = next(((record.address, record.size) for record in located if record.name == MANIFEST), (None, None))
     if address is None:
         raise ValueError("missing ELF row manifest")
     dump = run(objdump, "-s", f"--start-address={address}", f"--stop-address={address + size}", str(elf))
@@ -310,7 +246,6 @@ def main(argv=None):
     parser.add_argument("--error-capture", type=Path, help="math_numbers capture with scalar proofs and component sweeps")
     parser.add_argument("--baseline", type=Path, default=BASELINE)
     parser.add_argument("--fpu", type=Path, default=DATA / "math_bench_fpu_ops.txt")
-    parser.add_argument("--sizes", type=Path, default=DATA / "math_bench_sizes.txt")
     parser.add_argument("--from-elf", type=Path)
     parser.add_argument("--objdump", help="IDF Xtensa objdump executable")
     parser.add_argument("--nm", help="IDF Xtensa nm executable")
@@ -319,9 +254,9 @@ def main(argv=None):
     try:
         if args.from_elf:
             objdump = args.objdump or find_tool("objdump")
-            located = symbols(args.nm or find_tool("nm"), args.from_elf)
+            located = symbols(args.nm or find_tool("nm"), args.from_elf, records=True)
             rows = elf_rows(objdump, args.from_elf, located)
-            bounds = {name: address + size for address, (name, size) in located.items()}
+            bounds = {record.name: record.address + record.size for record in located if record.size is not None}
             missing = [ROW_SYMBOL_PREFIX + key for key, *_ in rows if ROW_SYMBOL_PREFIX + key not in bounds]
             if missing:
                 raise ValueError(f"missing wrapper symbols: {missing}")
@@ -332,17 +267,7 @@ def main(argv=None):
             lines = ["# Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.",
                      "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest()]
             lines.extend("\t".join(map(str, (*row, fpu[row[0]]))) for row in sorted(rows))
-            absolute, aliases = {}, []
-            for line in run(args.nm or find_tool("nm"), "-n", "-S", str(args.from_elf)).splitlines():
-                fields = line.split()
-                if len(fields) == 3:
-                    absolute[fields[2]] = int(fields[0], 16)
-                elif len(fields) == 4:
-                    aliases.append((int(fields[0], 16), (fields[3], int(fields[1], 16))))
-            sizes = elf_sizes(rows, fpu, located, absolute, aliases)
-            provenance = "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest() + "\n"
             args.fpu.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
-            args.sizes.write_bytes((provenance + sizes).encode("utf-8"))
         else:
             rows, fpu = read_fpu(args.fpu)
             build, measured = parse_capture(args.capture.read_text(encoding="utf-8"), rows, allow_missing=True)

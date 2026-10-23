@@ -348,8 +348,6 @@ def flash(args):
     seed, args = pop_layout_seed(args)
     _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope", "--hot-tunables", "--math-count-calls"), project)
     refuse_release_seed(seed, variant)
-    if "--math-count-calls" in seen and (variant != "diag" or "--perf-scope" not in seen):
-        sys.exit("autana: --math-count-calls needs diag --perf-scope")
     if "--hot-tunables" in seen and variant == "release":
         sys.exit("autana: --hot-tunables needs dev or diag")
     quiet = "--quiet" in seen
@@ -393,8 +391,6 @@ def build(args):
     seed, args = pop_layout_seed(args)
     _, variant, seen = variant_request("build", args, ("--perf-scope", "--hot-tunables", "--configure", "--math-count-calls"), project)
     refuse_release_seed(seed, variant)
-    if "--math-count-calls" in seen and (variant != "diag" or "--perf-scope" not in seen):
-        sys.exit("autana: --math-count-calls needs diag --perf-scope")
     if "--hot-tunables" in seen and variant == "release":
         sys.exit("autana: --hot-tunables needs dev or diag")
     flags = sorted(seen) + (["--layout-seed", seed] if seed is not None else [])
@@ -1041,8 +1037,6 @@ def suite(args):
     # `suite` is board-only: the capture still names a project (device.py's
     # own --worktree is metadata, not something it builds), but any
     # directory does, unvalidated.
-    if math_count_calls and (not flash or not perf_scope):
-        sys.exit("autana: --math-count-calls needs --flash --perf-scope")
     project = resolve_project() if flash else autana_config.project_dir().as_posix()
     runs = runs or "1"
     filtered = f" --test {','.join(tests)}" if tests else ""
@@ -1786,19 +1780,19 @@ COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
             ("build [rel|dev|diag] [--perf-scope] [--math-count-calls] [--layout-seed N] [--hot-tunables] [--configure]",
-             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
+             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json; --math-count-calls (diag) counts annotated math calls per translation unit"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope] [--math-count-calls] [--layout-seed N] [--hot-tunables]",
-            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image"),
+            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image; --math-count-calls (diag) counts annotated math calls per translation unit"),
         one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board runs, to check against what was flashed"),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
             ("suite <name>... [seconds] [--runs N] [--flash] [--perf-scope] [--math-count-calls] [--layout-seed N] [--hot-tunables] [--verbose]",
              "run suites under one lock, N times each (1 when omitted); seconds caps each capture "
-             "(1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures"),
-            ("suite <name> --flash --perf-scope --math-count-calls",
-             "count annotated math calls per translation unit in measured render windows"),
+             "(1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures; --math-count-calls (diag) counts annotated math calls per translation unit"),
+            ("suite <name> --flash --math-count-calls",
+             "--math-count-calls (diag) counts annotated math calls per translation unit in measurement windows"),
             ("suite <name> --test PATTERN[,PATTERN]",
              "only the tests whose name contains a pattern (case-sensitive); --test repeats"),
             ("suite <name> --send LINE",

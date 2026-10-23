@@ -43,8 +43,9 @@ trig_sin_quadrant(uint32_t r) {
 }
 
 /* Sine of phase, TRIG_TURN to the turn; TRIG_SIN_SHIFT fractional bits. */
-/* Quarter-wave table with linear interpolation. | s = a + floor((b-a)t/256) | every 16-bit phase against sinf in output LSBs */
-/* MATH_FAST_PATH(trig_sin, i, trig_sin_i, sinf_f, TRIG_SIN_LSB_LIMIT, lsb, sweep, MATH_TARGET_PORTABLE) */
+/* For 16-bit phase input, quarter-wave samples a and b bracket it; t is the low eight phase bits and s is sine in output LSBs. | s = a + floor((b-a)t/256) | every 16-bit phase against sinf in output LSBs */
+
+/* MATH_FAST_PATH(trig_sin_i, sinf_f, TRIG_SIN_LSB_LIMIT) */
 
 static inline int32_t
 trig_sin(uint16_t phase) {

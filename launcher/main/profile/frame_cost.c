@@ -148,6 +148,9 @@ frame_cost_begin(void) {
         foreign_task_calls++;
         return FRAME_COST_IGNORE_MARK;
     }
+    if (shared.count == 0 && shared.depth == 0) {
+        math_calls_begin();
+    }
     const bool counting = shared.armed_name > 0;
     return frame_cost_enter_counted(&shared, timing_now_us(), counting ? xtensa_perfmon_value(0) : 0,
                                     counting ? xtensa_perfmon_value(1) : 0);
@@ -167,6 +170,7 @@ frame_cost_take_counts(char* out, size_t out_size) {
 
 int
 frame_cost_take_report(uint32_t frames, char* out, size_t out_size) {
+    math_calls_report(frames);
     int length = frame_cost_report(&shared, frames, out, out_size);
     if (frames && out_size) {
         portENTER_CRITICAL(&external_lock);

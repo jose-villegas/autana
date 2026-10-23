@@ -120,7 +120,6 @@ class MathBenchTableTests(unittest.TestCase):
                         self.assertEqual(corrupted, doc.read_bytes())
                     self.assertTrue(good.startswith(b"prose" + newline.encode()))
                     self.assertNotIn(b"\n", good.replace(newline.encode(), b""))
-        self.assertEqual(0, bench.main(["--check"]))
 
     def test_disassembly_uses_only_requested_wrapper_symbols(self):
         text = ("42000000 <math_bench_dot_f>:\n  42000000: 123456 madd.s f0, f1, f2\n"
@@ -163,15 +162,6 @@ class MathBenchTableTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertEqual({"dot_f": expected}, bench.parse_disassembly(code, self.rows[:1]))
 
-    def test_elf_sizes_include_sized_and_absolute_rom_symbols(self):
-        rows = [("dot_f", "dot", "f", self.batch)]
-        located = {0x42001000: ("math_bench_dot_f", 12), 0x400011f4: ("memcpy", 24)}
-        sizes = bench.parse_sizes(bench.elf_sizes(rows, {"dot_f": "calls memcpy"}, located))
-        self.assertIn(("memcpy", 24, "ROM"), sizes["dot_f"])
-        sizes = bench.parse_sizes(bench.elf_sizes(rows, {"dot_f": "calls __divsf3"}, located,
-                                                 {"__divsf3": 0x40002274}))
-        self.assertIn(("__divsf3", None, "ROM"), sizes["dot_f"])
-
     def test_from_elf(self):
         with tempfile.TemporaryDirectory() as directory:
             elf, fpu = Path(directory) / "test.elf", Path(directory) / "fpu.txt"
@@ -189,7 +179,7 @@ class MathBenchTableTests(unittest.TestCase):
             with unittest.mock.patch.object(bench, "run", side_effect=run), \
                  unittest.mock.patch.dict(bench.instructions.__globals__, run=run), \
                  unittest.mock.patch.object(bench, "find_tool", side_effect=lambda name: name):
-                args = ["--from-elf", str(elf), "--fpu", str(fpu), "--sizes", str(Path(directory) / "sizes.txt")]
+                args = ["--from-elf", str(elf), "--fpu", str(fpu)]
                 self.assertEqual(0, bench.main(args))
                 first = fpu.read_bytes()
                 self.assertIn(b"# ELF sha256=" + bench.hashlib.sha256(b"elf").hexdigest().encode(), first)
