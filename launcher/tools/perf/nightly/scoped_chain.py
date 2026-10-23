@@ -22,7 +22,7 @@ import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
-from local_schedule import Clock, local_time, wait_seconds
+from local_schedule import Clock, local_time, wait_seconds, night_window, SKIPPED
 from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
 
 IMAGE_HEADER_BYTES = 24
@@ -175,12 +175,16 @@ def run_chain(steps, args, runner=None, clock=None):
         os.environ[autana_config.BUILD_LATEST_START_ENV] = str(
             (deadline - timedelta(seconds=SELFTEST_ALLOWANCE_SECONDS)).timestamp())
         selftest["started"] = begin.isoformat()
-        with (output / "selftest.log").open("w", encoding="utf-8") as log:
+        log_path = output / "selftest.log"
+        selftest["report"] = str(log_path)
+        with log_path.open("w", encoding="utf-8") as log:
             try:
                 code, lines, _ = runner(args.selftest, log, SELFTEST_ALLOWANCE_SECONDS)
                 selftest["outcome"] = "failed" if code else "passed"
                 reports = [match[1] for _, line in lines if (match := REPORT_LINE.match(line))]
-                selftest["report"] = reports[-1] if reports else None
+                candidates = [os.environ.get("BOARD_CI_LOG", "")] + reports
+                selftest["report"] = next((str(Path(path).resolve()) for path in reversed(candidates)
+                                           if path and Path(path).is_file()), str(log_path))
             except (OSError, RuntimeError) as error:
                 log.write(str(error) + "\n")
                 selftest["outcome"] = "failed"
@@ -325,10 +329,15 @@ def plugged_boards(autana=None):
 
 def plan(args, clock=None):
     clock = clock or Clock()
-    now = clock.now()
-    if args.queue_at:
-        clock.sleep(max(0, (local_time(args.queue_at, now) - now).total_seconds()))
-    if not args.boards:
+    skipped = bool(args.queue_at and night_window(args.queue_at, args.until,
+                                                scheduled=True, clock=clock) is None)
+    if skipped:
+        args.boards, args.selftest_board = [], None
+        print(SKIPPED, file=sys.stderr)
+        if os.environ.get("GITHUB_STEP_SUMMARY"):
+            with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+                summary.write(SKIPPED + "\n")
+    if not skipped and not args.boards:
         args.boards = plugged_boards()
         if not args.boards:
             raise SystemExit("plan: no board is plugged in")
@@ -360,6 +369,7 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     waiting = commands.add_parser("wait-seconds")
     waiting.add_argument("--until", required=True)
+    waiting.add_argument("--plan", type=Path)
     info = commands.add_parser("lane-info")
     info.add_argument("--plan", type=Path, required=True)
     info.add_argument("--board", required=True)
@@ -367,6 +377,7 @@ def main():
     planning.add_argument("--boards", nargs="+", help="default: every board `autana devices` lists as plugged in")
     planning.add_argument("--tip", default="origin/main")
     planning.add_argument("--queue-at")
+    planning.add_argument("--until", required=True)
     planning.add_argument("--selftest-board")
     running = commands.add_parser("run")
     running.add_argument("--plan", type=Path, required=True)
@@ -385,7 +396,8 @@ def main():
     os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
     if args.command == "wait-seconds":
         now = Clock().now()
-        print(wait_seconds(args.until, now, next_occurrence=True))
+        started = datetime.fromisoformat(json.loads(args.plan.read_text(encoding="utf-8"))["started"]) if args.plan else None
+        print(wait_seconds(args.until, now, next_occurrence=True, started=started))
         return 0
     if args.command == "lane-info":
         try:

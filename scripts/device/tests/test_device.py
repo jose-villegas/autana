@@ -3033,7 +3033,9 @@ class SelftestTests(unittest.TestCase):
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"), \
                  mock.patch.object(device, "reset_and_capture", wraps=device.reset_and_capture) as captured:
-                if capture is not None:
+                if isinstance(capture, Exception):
+                    captured.side_effect = capture
+                elif capture is not None:
                     captured.side_effect = lambda path, *unused: (Path(path).write_bytes(capture[0]), capture)[1]
                 try:
                     code = device.selftest(args, store, BOARD)
@@ -3043,6 +3045,15 @@ class SelftestTests(unittest.TestCase):
                                              for path in root.rglob("*.md"))
                 entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
         return code, calls, entry
+
+    def test_capture_error_without_log_skips_report(self):
+        with contextlib.redirect_stderr(io.StringIO()) as errors:
+            code, calls, entry = self.run_selftest(capture=RuntimeError("USB disconnected"))
+        self.assertIsInstance(code, RuntimeError)
+        self.assertIn("report skipped: capture log was not created", errors.getvalue())
+        self.assertNotIn("No such file", errors.getvalue())
+        self.assertEqual(calls["reports"], "")
+        self.assertEqual(entry["error"], "USB disconnected")
 
     def test_incomplete_selftest_fails_and_keeps_the_report(self):
         for reason in ("idle", "timeout"):

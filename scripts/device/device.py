@@ -1499,6 +1499,17 @@ def check_test_filter(data, suite, patterns):
             + "\n  ".join(dict.fromkeys(names)))
 
 
+def report_recorded_capture(path):
+    if not path.is_file():
+        print("report skipped: capture log was not created", file=sys.stderr)
+        return
+    try:
+        report_path = device_report.write_report_for_capture(path, records_root() / "index.jsonl")
+        print("report: " + str(report_path))
+    except Exception as report_error:  # A report is a convenience, never fails the capture.
+        print("report generation failed (capture is unaffected): " + str(report_error), file=sys.stderr)
+
+
 def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
     """`worktree`/`commit` name the checkout the flashed build came from. A
     standalone `run-suite` has no `--worktree` of its own, so it keeps
@@ -1533,13 +1544,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             acquired_at=held.held["acquired_at"] if held else None,
             test_filter=patterns or None,
             console_send=getattr(args, "console_send", None))
-        try:
-            report_path = device_report.write_report_for_capture(
-                final_path, records_root() / "index.jsonl")
-            print("report: " + str(report_path))
-        except Exception as report_error:  # a report is a convenience, never fails the capture
-            print("report generation failed (capture is unaffected): " + str(report_error),
-                  file=sys.stderr)
+        report_recorded_capture(final_path)
     failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), BOOTS_ON_RUNNING)
     if patterns:
         check_test_filter(data, args.suite, patterns)
@@ -1586,13 +1591,7 @@ def selftest(args, store, board):
                 build_id=latest_build_id_from_bytes(data) or build_id,
                 worktree=worktree, commit=commit, reason=reason, error=error,
                 acquired_at=held.held["acquired_at"])
-            try:
-                report_path = device_report.write_report_for_capture(
-                    final_path, records_root() / "index.jsonl")
-                print("report: " + str(report_path))
-            except Exception as report_error:  # a report is a convenience, never fails the capture
-                print("report generation failed (capture is unaffected): " + str(report_error),
-                      file=sys.stderr)
+            report_recorded_capture(final_path)
         failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False), BOOTS_FROM_RESET)
         return 1 if failed else 0
 
