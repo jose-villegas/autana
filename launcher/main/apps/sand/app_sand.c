@@ -1079,7 +1079,7 @@ read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int
     const uint32_t dt_us = dt_ms * MATH_US_PER_MS;
     gravity_update(&shake_gravity, motion, dt_us);
     shake_update(&shake, gravity_linear(&shake_gravity), dt_us);
-    *jostle = (int)lroundf(shake_level(&shake) * SAND_JOSTLE_MAX);
+    *jostle = sand_controls_jostle(shake_level(&shake));
 }
 
 static void

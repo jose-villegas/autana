@@ -9,24 +9,21 @@ Spinning about the screen normal reads nothing because gravity tracks the rotati
 ## Reader
 
 Feed `shake_update()` with `gravity_linear()` in g and elapsed microseconds,
-per sample or per frame. A one-pole low-pass uses the exponential step for dt;
-intervals are capped at `GRAVITY_MAX_DT_US`. Zero dt leaves the state unchanged.
-`shake_reset()` clears the smoothed size.
+per sample or frame. The one-pole exponential step accepts any dt;
+zero dt leaves the state unchanged. `shake_reset()` clears the smoothed size.
 
 `shake_level()` is zero at or below START, rises linearly to one at FULL,
 and stays at one above FULL. Direction does not affect the result.
 
-| Constant | Value | Capture constraint |
-|---|---|---|
-| `SHAKE_TAU_MS` | 120 ms | Mixed-direction and side-to-side shaking: carries motion between strokes |
-| `SHAKE_START_MG` | 500 mg | Both protocols: above walking, taps, flips and lifting the board |
-| `SHAKE_FULL_MG` | 1500 mg | Both protocols: hard shaking reaches full level |
+| Constant | Capture constraint |
+|---|---|
+| `SHAKE_TAU_MS` | Mixed-direction and side-to-side shaking: carries motion between strokes |
+| `SHAKE_START_G` | Both protocols: above walking, taps, flips and lifting the board |
+| `SHAKE_FULL_G` | Both protocols: hard shaking reaches full level |
 
-The development guided shake protocol retains mixed-direction and side-to-side
-transcripts, with per-step median, p95, p99 and maximum results beside its tool.
-The smoothed size separates deliberate shaking; gentle shaking overlaps walking.
+The constants in `shake.h` come from guided board captures.
 
-`tilt_shake()` remains until gravity's M4 removes it.
+`tilt_shake()` is kept until its remaining callers move to this reader.
 
 ## Figure
 

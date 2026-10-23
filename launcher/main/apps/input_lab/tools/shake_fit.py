@@ -13,7 +13,7 @@ from render.doc_tables import markdown
 
 HEADER = Path(__file__).resolve().parents[1] / "shake_probe.h"
 STEP_MS = read_define(HEADER, "SHAKE_PROBE_STEP_MS")
-MILLI = read_define(Path(__file__).resolve().parents[4] / "packages" / "math" / "include" / "math" / "scalar" / "units.h",
+MS_PER_S = read_define(Path(__file__).resolve().parents[4] / "packages" / "math" / "include" / "math" / "scalar" / "units.h",
                     "MATH_MS_PER_S")
 STEP_ENUM = re.search(r"typedef enum\s*\{([^}]+)\}\s*shake_probe_step_t", HEADER.read_text())[1]
 STEP_NAMES = tuple(re.findall(r"SHAKE_PROBE_(\w+)", STEP_ENUM))
@@ -66,7 +66,8 @@ def generate_results(doc, images, captures, check=False):
                 for step in STEPS for candidate in CANDIDATES]
         table = markdown(("Step", "Candidate", "Median", "p95", "p99", "Max"), rows)
         body = "<details>\n<summary>Per-step statistics (mg; OLD 0-255)</summary>\n\n" + table + "\n</details>"
-        changed |= replace_block(doc, "shake-" + name, body, check=check)
+        changed |= replace_block(doc, "shake-" + name, body, check=check,
+                                 command="python launcher/main/apps/input_lab/tools/shake_fit.py --results --check")
         if not check:
             plot(samples, images / ("shake-" + name + ".png"))
     return changed
@@ -106,7 +107,7 @@ def plot(samples, output):
     for axis, candidate in zip(axes, CANDIDATES):
         for index, step in enumerate(STEPS):
             rows = [s for s in samples if s["step"] == step]
-            axis.plot([s["ms"] / MILLI for s in rows], [s[candidate] for s in rows],
+            axis.plot([s["ms"] / MS_PER_S for s in rows], [s[candidate] for s in rows],
                       color=colors(index), label=step)
         style_axes(axis, candidate.upper())
         axis.set_ylim(bottom=0)
@@ -126,7 +127,8 @@ def main():
     args = parser.parse_args()
     if args.results:
         app = HEADER.parent
-        captures = {name: app / "tools/data" / ("shake-" + name + ".log.gz") for name in ("mixed", "side")}
+        captures = {path.stem.removeprefix("shake-").removesuffix(".log"): path
+                    for path in sorted((app / "tools/data").glob("shake-*.log.gz"))}
         return int(generate_results(app / "README.md", app / "images", captures, check=args.check) and args.check)
     if args.log is None:
         parser.error("a capture or --results is required")

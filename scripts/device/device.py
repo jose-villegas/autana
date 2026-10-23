@@ -30,7 +30,7 @@ import lock_scope
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 import board_serial
-from console_protocol import replies_to, require_development, reply_prefix
+from console_protocol import FRAMED_ENDINGS, replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
                             crash_signs, suite_failure_signs)
 
@@ -1750,14 +1750,13 @@ EXCHANGE_READ_BYTES = 4096
 
 
 def exchange(connection, line, reply, until, seconds):
-    """Write one console line; return (replies, completed) within an idle limit.
+    """Write one console line; return (replies, completed, cut_off) within an idle limit.
 
-    Only matching reply bytes renew the idle deadline; all exchanges have
+    Only complete matching reply lines renew the idle deadline; all exchanges have
     an overall cap so a continuously talking device cannot hold the lock forever.
     """
     pending = bytearray()
     found = []
-    reply_bytes = reply.encode("ascii")
     connection.reset_input_buffer()
     connection.write(("\n" + line + "\n").encode("ascii"))
     started = time.monotonic()
@@ -1769,8 +1768,6 @@ def exchange(connection, line, reply, until, seconds):
         if not chunk:
             continue
         pending.extend(chunk)
-        if reply_bytes in pending:
-            deadline = min(time.monotonic() + seconds, overall_deadline)
         end = pending.rfind(b"\n") + 1
         if not end:
             continue
@@ -1778,12 +1775,13 @@ def exchange(connection, line, reply, until, seconds):
         del pending[:end]
         new, complete = replies_to(data, reply, until)
         found.extend(new)
+        if new:
+            deadline = min(time.monotonic() + seconds, overall_deadline)
         if complete:
-            return found, True
+            return found, True, False
         require_development(data, line)
-    if reply_bytes in pending and not found:
-        raise RuntimeError("reply cut off for '" + line + "' before a complete reply line")
-    return found, False
+    partial, _ = replies_to(bytes(pending) + b"\n", reply, until)
+    return found, False, bool(found or partial)
 
 
 TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
@@ -1800,7 +1798,9 @@ def exchange_retrying(connection, requests):
     for _ in range(EXCHANGE_ATTEMPTS):
         replies = []
         for line, prefix, endings in requests:
-            found, complete = exchange(connection, line, prefix, endings, EXCHANGE_SECONDS)
+            found, complete, cut_off = exchange(connection, line, prefix, endings, EXCHANGE_SECONDS)
+            if cut_off:
+                return line, replies + found, False
             if not found:
                 break
             replies.extend(found)
@@ -1858,14 +1858,14 @@ def send(args, store, board):
     """
     with HeldLock(store, board, args.owner, "send", args.wait) as held:
         with open_when_free() as connection:
-            found, complete = exchange(connection, args.line, args.reply, args.until, args.seconds)
+            found, complete, cut_off = exchange(connection, args.line, args.reply, args.until, args.seconds)
             if complete:
                 print("\n".join(found))
                 if found[-1].startswith(args.reply + "_ERR"):
                     held.error = found[-1]
                     return 1
                 return 0
-    if found and any(ending.endswith(("_END", "_ERR")) for ending in args.until):
+    if cut_off and (not args.optional or any(ending.endswith(FRAMED_ENDINGS) for ending in args.until)):
         print("\n".join(found))
         raise RuntimeError("reply cut off for '" + args.line + "': missing " + " or ".join(args.until))
     if args.optional:

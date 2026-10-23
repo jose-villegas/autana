@@ -47,11 +47,11 @@ static const quality_t qualities[] = {
 typedef struct {
     const char* name;
     int gx, gy;
-} gravity_t;
+} gravity_case_t;
 
 /* Landscape first: it is the shipping orientation. The diagonal is the one
  * class whose chunk order is a wave rather than a line sweep. */
-static const gravity_t gravities[] = {
+static const gravity_case_t gravities[] = {
     {"landscape", 1000, 0},
     {"portrait", 0, 1000},
     {"diagonal", 700, 700},
@@ -143,7 +143,7 @@ sum_chunk_work(int chunks, uint16_t* cost) {
 }
 
 static void
-measure(const quality_t* q, const scene_t* sc, const gravity_t* g, int side_x, int side_y, result_t* out) {
+measure(const quality_t* q, const scene_t* sc, const gravity_case_t* g, int side_x, int side_y, result_t* out) {
     board_t b;
     sand_chunk_plan_t plan;
 

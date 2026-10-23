@@ -44,4 +44,4 @@ bool imu_record_appendf(imu_record_t* record, const char* format, ...);
 void imu_record_replay(const imu_record_t* record, void (*emit)(const char* text, size_t length));
 
 /* NULL when ready to dump; otherwise the console error for a running or absent round. */
-const char* imu_record_dump_error(const imu_record_t* record, imu_probe_step_t step);
+const char* imu_record_dump_error(const imu_record_t* record, bool round_running);
