@@ -31,7 +31,7 @@
  * largest of any tier: 61 * 6 = 366 and 74 * 6 = 444, a 2 px strip on the
  * right and a 4 px strip on the bottom. That is harmless only because
  * the colour of an empty cell and the menu's background are the same value,
- * 0x0A0C14, see COL_BACKGROUND, so the untouched strip is indistinguishable
+ * UI_BACKGROUND, so the untouched strip is indistinguishable
  * from the screen around it. start_sim() still clears the screen explicitly
  * before the first frame rather than leaning on that coincidence alone.
  */
@@ -84,8 +84,6 @@
 #include "ui/ui.h"
 
 static const char* TAG = "sand";
-
-#define COL_BACKGROUND 0x0A0C14
 
 typedef struct {
     const char* name;
@@ -1327,7 +1325,7 @@ draw_menu(const input_t* input) {
     } else {
         draw_title();
     }
-    ui_end(COL_BACKGROUND);
+    ui_end(UI_BACKGROUND);
 }
 
 /* Everything the play screen needs each pass that does not draw: gravity and
