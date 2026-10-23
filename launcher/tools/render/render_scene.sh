@@ -39,6 +39,7 @@
 #                   --deps compiles nothing: it prints `flags` and the compile
 #                   flags, then the compiler's -MM list (sources and project
 #                   headers; -MM omits system headers).
+#   scene_renderer  OPTIONAL, 1 links the renderer (tools/build/renderer.sh).
 #   scene_ui        OPTIONAL, 1 links the shared host UI sources.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
@@ -151,6 +152,10 @@ render_scene_build() {
         return 1
     fi
     _rs_tools="$_rs_launcher/tools"
+    if [ "${scene_renderer:-0}" = 1 ]; then
+        . "$_rs_tools/build/renderer.sh"
+        scene_sources="$scene_sources $(renderer_sources "$_rs_launcher")"
+    fi
     if [ "${scene_ui:-0}" = 1 ]; then
         . "$_rs_tools/build/ui_sources.sh"
         scene_sources="$scene_sources $UI_SOURCES"

@@ -53,39 +53,13 @@ set(app_srcs
     "ui/input/ui_snap.c"
     "shell/ui/ui_ridge.c"
     "ui/controls/ui_widgets.c"
-    "anim/anim_track.c"
-    "anim/anim_tracks.c"
-    "anim/anim_skeleton.c"
-    "anim/pose/anim_pose.c"
-    "anim/playback/anim_playhead.c"
-    "anim/playback/anim_layer.c"
     "sound/sound.c"
     "audio/audio_adpcm.c"
-    "render/r3d_skin.c"
-    "render/skin/r3d_skinning.c"
-    "render/skin/r3d_skin_light.c"
-    "anim/anim_binding.c"
     "asset/asset_pack.c"
     "asset/asset_table.c"
     "asset/asset_directory.c"
     "asset/asset_store.c"
     "asset/asset_store_flash.c"
-    "render/render_view.c"
-    "render/raster.c"
-    "render/raster_split.c"
-    "render/r3d_lit_mesh.c"
-    "render/r3d_pipeline.c"
-    "render/upscale.c"
-    "render/resolution/resolution.c"
-    "render/context/render_context.c"
-    "render/r3d_span.c"
-    "scene/camera/camera.c"
-    "scene/scene.c"
-    "scene/scene_animation.c"
-    "scene/scene_light.c"
-    "scene/scene_asset.c"
-    "scene/scene_draw.c"
-    "scene/scene_shell.c"
     "input/mapping/orbit_motion_touch.c"
     "shell/scene_system.c"
     "shell/shell.c"
@@ -117,10 +91,23 @@ if(CONFIG_LAUNCHER_QEMU)
     list(APPEND app_srcs "gfx/present/panel/gfx_null_panel_device.c")
 endif()
 
+# The renderer: every .c below the folders renderer_folders.txt names, the
+# list host builds read too (tools/build/renderer.sh, renderer.py).
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt" renderer_folders REGEX "^[^#]")
+foreach(folder IN LISTS renderer_folders)
+    launcher_glob(folder_srcs "${CMAKE_CURRENT_LIST_DIR}/${folder}/*.c")
+    list(APPEND app_srcs ${folder_srcs})
+endforeach()
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt")
+endif()
+
 # The frame's view modes: a development tool, with nothing calling them in a
 # release build.
-if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs "render/raster_show.c" "render/raster_motion.c" "render/raster_meshlets.c")
+if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
+    foreach(view_mode raster_show raster_motion raster_meshlets)
+        list(REMOVE_ITEM app_srcs "${CMAKE_CURRENT_LIST_DIR}/render/${view_mode}.c")
+    endforeach()
 endif()
 
 # The console listener: a release image has nobody watching the serial
