@@ -46,6 +46,7 @@ any type-specific operations.
 | `ball_template.h` | `MATH_DEFINE_BALL`, `MATH_DEFINE_BALL_REAL` | closed balls; real closest-point/segment queries | via circle and sphere templates |
 | `circle_template.h` | `MATH_DEFINE_CIRCLE`, `MATH_DEFINE_CIRCLE_REAL` | ball queries, disc bounds and rect queries | `circlef`, `circlei`; real `f` |
 | `sphere_template.h` | `MATH_DEFINE_SPHERE` | ball queries and sphere box queries | `spheref` |
+| `stats_template.h` | `MATH_DEFINE_STATS` | percentile and median by in-place selection | `statsi`, `statsf` |
 | `plane_template.h` | `MATH_DEFINE_PLANE` | planes, signed distance, frustum planes from a matrix's rows | `planef`, `planex` |
 
 The macro arguments:

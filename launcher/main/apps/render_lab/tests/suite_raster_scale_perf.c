@@ -34,6 +34,7 @@
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "math/scalar/units.h"
+#include "math/stats/statsi.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
@@ -83,13 +84,6 @@ static const asset_pack_t* pack;
 static const camera_t* lens;
 static scene_entity_t camera_entity;
 static r3d_lit_mesh_t mesh;
-
-static int
-compare_us(const void* a, const void* b) {
-    const int32_t x = *(const int32_t*)a;
-    const int32_t y = *(const int32_t*)b;
-    return (x > y) - (x < y);
-}
 
 /* One core's whole draw, cleared first, stopped after the stage `stop`
  * names (r3d_span_stop_after; 0 runs every stage). */
@@ -177,11 +171,11 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     for (int i = 0; i < poses; i++) {
         sum += frame_us[i];
     }
-    qsort(frame_us, (size_t)poses, sizeof *frame_us, compare_us);
     ESP_LOGI(TAG,
              "scale_split: %dx%d poses=%d tris=%lld frame mean/p50/max us %lld/%ld/%ld | %s" R3D_PERF_QUARTER_FORMAT,
              size.width, size.height, poses, (long long)(triangles / poses), (long long)(sum / poses),
-             (long)frame_us[poses / 2], (long)frame_us[poses - 1], report, perf_quarter->name);
+             (long)statsi_median(frame_us, (size_t)poses), (long)statsi_percentile(frame_us, (size_t)poses, 100),
+             report, perf_quarter->name);
     ESP_LOGI(TAG,
              "scale_spans: %dx%d one core us/pose setup %lld edges %lld carry %lld fill %lld clear "
              "%lld" R3D_PERF_QUARTER_FORMAT,
