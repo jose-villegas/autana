@@ -6,13 +6,15 @@ from itertools import repeat
 import json
 import os
 import re
+import shutil
+import signal
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 PERF = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PERF))
@@ -238,15 +240,24 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(writes[-1]["last_measured"], self.commits[1])
 
     def test_error_after_unplug_does_not_count_as_capture_failure(self):
-        for options in (dict(captures=(True,)), dict(builds=(1,))):
-            with self.subTest(options=options), \
-                    patch.object(chain, "plugged_boards", side_effect=[["20E8"], []]):
-                results, _, writes = self.run_chain(**options)
-            self.assertEqual([result.outcome for result in results], ["not_run_unplugged"] * 3)
-            self.assertEqual(writes[-1]["stop_reason"], "unplugged")
-            self.assertIsNone(writes[-1]["last_attempted"])
+        with patch.object(chain, "plugged_boards", side_effect=[["20E8"], []]):
+            results, _, writes = self.run_chain(captures=(True,))
+        self.assertEqual([result.outcome for result in results], ["not_run_unplugged"] * 3)
+        self.assertIsNone(writes[-1]["last_attempted"])
 
-    def test_unplugged_lane_exit_is_success_even_after_failure(self):
+    def test_failed_build_before_unplug_keeps_failure(self):
+        with patch.object(chain, "plugged_boards", side_effect=[["20E8"], []]):
+            results, _, writes = self.run_chain(builds=(1,))
+        self.assertEqual([result.outcome for result in results],
+                         ["build_failed", "not_run_unplugged", "not_run_unplugged"])
+        self.assertEqual(writes[-1]["last_attempted"], self.commits[1])
+
+    def test_presence_query_failure_keeps_lane_running(self):
+        with patch.object(chain, "plugged_boards", side_effect=OSError("devices failed")):
+            results, _, _ = self.run_chain(self.steps((5,)))
+        self.assertEqual(results[0].outcome, "measured")
+
+    def test_unplugged_lane_preserves_failure_exit(self):
         path = self.root / "plan.json"
         path.write_text(json.dumps(dict(night="2026-10-18", started=self.clock.now().isoformat(),
                                        deadline=self.args.deadline, lanes={"20E8": dict(
@@ -260,10 +271,10 @@ class NightlyTests(unittest.TestCase):
                 patch.object(chain, "run_stamped", replay), \
                 patch.object(chain, "plugged_boards", side_effect=[["20E8"], ["20E8"], []]), \
                 patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="hold"):
-            self.assertEqual(chain.main(), 0)
+            self.assertEqual(chain.main(), 1)
 
     def supervise(self, *, late=False, failed=False, unplugged=False):
-        previous = dict(last_measured=self.commits[2], machine=OTHER_MACHINE)
+        previous = dict(last_measured=self.commits[2], last_attempted=self.commits[4], machine=OTHER_MACHINE)
         chain.write_json(self.args.data / "scoped/2124/2026-10-17-2230/night.json", previous)
         planned = dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
                        deadline=(self.clock.now() + timedelta(seconds=(
@@ -298,7 +309,7 @@ class NightlyTests(unittest.TestCase):
             return SimpleNamespace(poll=lambda: int(any(r.outcome == "build_failed" for r in results)),
                                    wait=lambda: int(any(r.outcome == "build_failed" for r in results)))
 
-        boards = iter((["20E8"], ["20E8", "2124"]))
+        boards = iter((["20E8", "2124"],))
         with patch.object(chain, "plugged_boards", side_effect=lambda: next(boards, ["20E8", "2124"])):
             status = chain.run_night(args, clock=self.clock, launch=launch)
         return status, commands, json.loads(path.read_text()), manifests
@@ -306,7 +317,7 @@ class NightlyTests(unittest.TestCase):
     def test_supervisor_starts_all_lanes_and_waits_for_all_at_deadline(self):
         path = self.root / "plan.json"
         chain.write_json(path, dict(deadline=(self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS / 2)).isoformat(),
-                                   lanes={"20E8": {}, "2124": {}}))
+                                   lanes={board: dict(lane=f"{i}/2", estimate=42) for i, board in enumerate(("20E8", "2124"))}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=self.args.suite)
         events = []
@@ -322,6 +333,85 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
         self.assertEqual(events, ["start 20E8", "start 2124", "finish 20E8", "finish 2124"])
 
+    def test_supervisor_handles_rescan_errors_and_releases_early(self):
+        path = self.root / "plan.json"
+        planned = dict(tip=self.commits[-1], deadline=self.args.deadline,
+                       lanes={"20E8": dict(lane="0/1", estimate=42)})
+        chain.write_json(path, planned)
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=self.args.suite)
+        process = Mock()
+        process.poll.side_effect = [None, None, 0]
+        process.wait.return_value = 0
+        with patch.object(chain, "plugged_boards", return_value=["20E8", "2124"]), \
+                patch.object(chain, "plan_lane", side_effect=ValueError("bad history")) as lane:
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process), 1)
+        lane.assert_called_once()
+        process.wait.assert_called_once()
+        self.assertLess(self.clock.now(), datetime.fromisoformat(self.args.deadline))
+
+    def test_supervisor_interrupt_terminates_and_waits_every_child(self):
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(deadline=self.args.deadline,
+                                   lanes={"20E8": dict(lane="0/1", estimate=42)}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=self.args.suite)
+        process = Mock()
+        process.poll.return_value = None
+        process.wait.return_value = 0
+        with patch.object(self.clock, "sleep", side_effect=KeyboardInterrupt), \
+                self.assertRaises(KeyboardInterrupt):
+            chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process)
+        process.terminate.assert_called_once()
+        process.wait.assert_called_once()
+
+    def test_supervisor_sigterm_during_final_wait_stops_children(self):
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(deadline=self.clock.now().isoformat(),
+                                   lanes={"20E8": dict(lane="0/1", estimate=42)}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=self.args.suite)
+        process = Mock()
+        process.poll.return_value = None
+        def wait():
+            value = next(waits)
+            return value() if callable(value) else value
+        waits = iter([lambda: signal.raise_signal(signal.SIGTERM), 0])
+        process.wait.side_effect = wait
+        original = signal.getsignal(signal.SIGTERM)
+        with self.assertRaises(KeyboardInterrupt):
+            chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process)
+        process.terminate.assert_called_once()
+        self.assertEqual(process.wait.call_count, 2)
+        self.assertEqual(signal.getsignal(signal.SIGTERM), original)
+
+    def test_supervisor_lane_settings_and_plan_selection(self):
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(tip=self.commits[-1], deadline=self.args.deadline,
+            from_sha=self.commits[3], max_steps=1, lanes={"20E8": dict(lane="0/2", estimate=42)}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=[("suite", "-", "table with spaces")])
+        launch = Mock(return_value=SimpleNamespace(poll=lambda: 0, wait=lambda: 0))
+        original = subprocess.check_output
+        def converted(command, **options):
+            if command[0] == "/tools/cygpath":
+                return "C:/bash.exe\n" if command[1] == "-w" else "/captures/ci.log\n"
+            return original(command, **options)
+        with patch.dict(os.environ, SELFTEST_BOARD="20E8", BOARD_CI_LOG="inherited"), \
+                patch.object(chain.shutil, "which", side_effect=lambda name: "/tools/" + name), \
+                patch.object(chain.subprocess, "check_output", side_effect=converted):
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 0)
+        first, second = launch.call_args_list
+        command = first.args[0]
+        self.assertEqual(command[command.index("--selftest") + 1:],
+                         ["C:/bash.exe", str(self.repo / "scripts/ci/board-steps.sh")])
+        self.assertEqual(first.kwargs["env"]["BOARD_CI_LOG"], "/captures/ci.log")
+        self.assertNotIn("BOARD_CI_LOG", second.kwargs["env"])
+        self.assertNotIn("--selftest", second.args[0])
+        self.assertEqual(command[command.index("--suite") + 1:command.index("--suite") + 4], list(args.suite[0]))
+        joining = json.loads(path.read_text())["lanes"]["2124"]
+        self.assertEqual([step["commit"] for step in joining["steps"]], [self.commits[3]])
+
     def test_joiner_uses_own_anchor_and_is_in_summary(self):
         status, commands, planned, manifests = self.supervise()
         self.assertEqual(status, 0)
@@ -330,7 +420,7 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(joiner["lane"], "0/1")
         self.assertEqual(joiner["steps"][0]["commit"], self.commits[2])
         self.assertEqual(joiner["steps"][0]["role"], "anchor")
-        self.assertEqual([step["commit"] for step in joiner["steps"]], self.commits[2:])
+        self.assertEqual([step["commit"] for step in joiner["steps"]], [self.commits[2], self.commits[5]])
         self.assertEqual(planned["lanes"]["20E8"]["lane"], "0/2")
         self.assertEqual(manifests["2124"]["machine"], OTHER_MACHINE)
         workflow = (PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text()
@@ -340,7 +430,7 @@ class NightlyTests(unittest.TestCase):
         with patch.dict(os.environ, PERF_OUT=str(self.root), PERF_DATA=str(self.args.data),
                         GITHUB_STEP_SUMMARY=str(summary)):
             exec(script, {})
-        self.assertIn("2124: measured=4", summary.read_text())
+        self.assertIn("2124: measured=2", summary.read_text())
 
     def test_joiner_too_late_is_not_started(self):
         status, commands, planned, _ = self.supervise(late=True)
@@ -355,13 +445,13 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(manifests["20E8"]["stop_reason"], "unplugged")
         self.assertEqual([step["outcome"] for step in manifests["20E8"]["steps"]],
                          ["measured", "not_run_unplugged", "not_run_unplugged"])
-        self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 4)
+        self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 2)
 
     def test_supervisor_failed_lane_does_not_stop_joiner(self):
         status, commands, _, manifests = self.supervise(failed=True)
         self.assertEqual(status, 1)
         self.assertEqual(len(commands), 2)
-        self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 4)
+        self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 2)
 
     def test_image_hash_excludes_metadata_but_includes_code_and_assets(self):
         build = self.root / "image"
@@ -418,6 +508,7 @@ class NightlyTests(unittest.TestCase):
         chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
         plan = json.loads(args.out.read_text())
         self.assertEqual(plan["tip"], self.commits[-1])
+        self.assertEqual((plan["from_sha"], plan["max_steps"]), (args.from_sha, args.max_steps))
         self.assertEqual(self.clock.sleeps, [])
         for board, lane in plan["lanes"].items():
             reserve = chain.SELFTEST_ALLOWANCE_SECONDS if board == args.selftest_board else 0
@@ -760,11 +851,6 @@ class NightlyTests(unittest.TestCase):
                 patch.object(chain, "read_last_night", return_value={"selftest": {"outcome": "not_run"}}):
             self.assertEqual(chain.main(), 0)
             self.assertEqual(select.call_args.args[-1], 0)
-        with patch.object(sys, "argv", ["chain", "wait-seconds", "--plan", str(path)]), \
-                patch.object(chain, "Clock", return_value=self.clock), patch("sys.stdout", new_callable=io.StringIO) as output:
-            chain.main()
-        self.assertEqual(int(output.getvalue()), int(timedelta(hours=8, minutes=30).total_seconds()))
-
     def test_plan_reads_each_boards_manifest(self):
         previous = {"20E8": {"last_measured": self.commits[0]}, "2124": {"last_measured": self.commits[2]}}
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=list(previous), data=self.args.data,
@@ -853,17 +939,6 @@ class NightlyTests(unittest.TestCase):
         chain.git(self.repo, "commit", "--allow-empty", "-qm", "fix (#7) and (#8) (#999)")
         self.assertEqual(chain.history_steps(self.repo, "HEAD")[-1].pr, 999)
 
-    def test_lane_info_reports_share_and_rejects_unknown_board(self):
-        plan = self.root / "plan.json"
-        plan.write_text(json.dumps({"lanes": {"20E8": {"lane": "0/2", "estimate": 42}}}))
-        for board, expected in (("20E8", 0), (MACHINE.lower(), 0), ("missing", 2)):
-            result = subprocess.run([sys.executable, str(PERF / "nightly/scoped_chain.py"),
-                                     "lane-info", "--plan", str(plan), "--board", board],
-                                    capture_output=True, text=True)
-            self.assertEqual(result.returncode, expected, result.stderr)
-            self.assertIn("0/2 42" if expected == 0 else "unknown board", result.stdout + result.stderr)
-
-
 class LaneSettingsTests(unittest.TestCase):
     def test_lanes_run_after_prepare_failure_and_wait_for_failed_lane(self):
         workflow = (PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text()
@@ -871,63 +946,43 @@ class LaneSettingsTests(unittest.TestCase):
         self.assertIn("if: ${{ !cancelled() && env.SCOPED_BOARDS != '' }}", section)
         script = section.split("        run: |\n", 1)[1]
         script = "\n".join(line[10:] for line in script.splitlines())
-        self.assertIn('"$PY" launcher/tools/perf/nightly/scoped_chain.py night', script)
-        self.assertIn('--plan "$PERF_OUT/plan.json"', script)
-        self.assertNotRegex(script, r"(?m)&\s*$")
-        for step in ("Summarize board outcomes", "Publish night manifests and LNT reports"):
-            self.assertIn("if: always()", workflow.split("- name: " + step, 1)[1].split("run:", 1)[0])
-
-    def test_lane_wait_uses_plan_deadline(self):
-        with tempfile.TemporaryDirectory() as directory:
-            plan = Path(directory) / "plan.json"
-            plan.write_text(json.dumps(dict(deadline="2026-10-19T07:00:00+00:00")))
-            command = ["chain", "wait-seconds", "--plan", str(plan)]
-            clock = Clock(8, 30)
-            clock.value += timedelta(days=1)
-            with patch.object(sys, "argv", command), patch.object(chain, "Clock", return_value=clock), \
-                    patch("sys.stdout", new_callable=io.StringIO) as output:
-                self.assertEqual(chain.main(), 0)
-            self.assertEqual(output.getvalue(), "0\n")
-
-    def test_lane_uses_configured_window_and_selftest_command(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            tools = root / "tools"
+            tools.mkdir()
             library = root / "scripts/lib/python.sh"
             library.parent.mkdir(parents=True)
             library.write_text('find_python() { printf "%s\\n" "$TEST_PYTHON"; }\n')
-            driver = root / "launcher/tools/perf/nightly/scoped_chain.py"
-            driver.parent.mkdir(parents=True)
-            driver.write_text('import sys\nprint("123" if sys.argv[1] == "wait-seconds" else "0/1 42")\n')
-            plan = root / "plan.json"
-            plan.write_text(json.dumps({"lanes": {"board": {"lane": "0/1", "estimate": 42}}}))
-            script = PERF / "nightly/lane.sh"
-            command = r"""
-autana() { printf '%s\n' "$@"; printf 'BOARD_CI_LOG=%s\n' "${BOARD_CI_LOG:-}"; }
-export -f autana
-bash "$1" board "$2" data out -- --suite suite - "table with spaces"
-"""
-            env = dict(os.environ, TEST_PYTHON=sys.executable, SELFTEST_BOARD="board")
-            result = subprocess.run(["bash", "-c", command, "lane-test", script.as_posix(), plan.as_posix()],
-                                    cwd=root, env=env, capture_output=True, text=True, check=True)
-            args = result.stdout.splitlines()
-            self.assertEqual(args[args.index("--suite") + 1:args.index("--suite") + 4],
-                             ["suite", "-", "table with spaces"])
-            self.assertEqual(args[args.index("--estimate") + 1], "42")
-            env["SELFTEST_BOARD"] = "another-board"
-            env["BOARD_CI_LOG"] = "inherited-log"
-            other = subprocess.run(["bash", "-c", command, "lane-test", script.as_posix(), plan.as_posix()],
-                                   cwd=root, env=env, capture_output=True, text=True, check=True).stdout.splitlines()
-            self.assertNotIn("--selftest", other)
-            self.assertNotIn("--selftest-at", other)
-            self.assertIn("BOARD_CI_LOG=", other)
-            del env["SELFTEST_BOARD"]
-            without_selftest = subprocess.run(["bash", "-c", command, "lane-test", script.as_posix(), plan.as_posix()],
-                                             cwd=root, env=env, capture_output=True, text=True, check=True)
-            self.assertNotIn("--selftest", without_selftest.stdout.splitlines())
-
-            self.assertNotIn("--selftest-at", args)
-            self.assertIn("--selftest", args)
-            self.assertNotIn("--until", args)
+            wrapper = tools / "python-replay"
+            wrapper.write_text(f"#!{sys.executable}\n" +
+                f"import sys\nsys.path.insert(0, {str(PERF)!r})\n" +
+                "from nightly import scoped_chain as chain\n" +
+                "chain.RESCAN_SECONDS = 0.01\nchain.plugged_boards = lambda: []\n" +
+                "del sys.argv[1]\nsys.exit(chain.main())\n")
+            cygpath = tools / "cygpath"
+            cygpath.write_text('#!/bin/sh\nprintf "%s\\n" "$2"\n')
+            autana = tools / "autana"
+            autana.write_text(f"#!{sys.executable}\n" +
+                "import os, sys, time\nfrom pathlib import Path\n" +
+                "board = sys.argv[sys.argv.index('--board') + 1]\n" +
+                "time.sleep(0.05 if board == '2124' else 0)\n" +
+                "Path(os.environ['PERF_OUT'], board).write_text('finished')\n" +
+                "sys.exit(int(board == '20E8'))\n")
+            for executable in (wrapper, cygpath, autana):
+                executable.chmod(0o755)
+            plan = dict(deadline=(datetime.now().astimezone() + timedelta(minutes=1)).isoformat(),
+                        lanes={board: dict(lane=f"{i}/2", estimate=42)
+                               for i, board in enumerate(("20E8", "2124"))})
+            chain.write_json(root / "plan.json", plan)
+            env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
+                       TEST_PYTHON=str(wrapper), GITHUB_WORKSPACE=str(root),
+                       PERF_OUT=str(root), PERF_DATA=str(root / "data"), NIGHTLY_SUITES="suite|-|-")
+            result = subprocess.run([shutil.which("bash"), "-e", "-c", script], cwd=root,
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual([(root / board).read_text() for board in plan["lanes"]], ["finished"] * 2)
+        for step in ("Summarize board outcomes", "Publish night manifests and LNT reports"):
+            self.assertIn("if: always()", workflow.split("- name: " + step, 1)[1].split("run:", 1)[0])
 
     def test_workflow_queue_input_can_start_immediately(self):
         workflow = (PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text()

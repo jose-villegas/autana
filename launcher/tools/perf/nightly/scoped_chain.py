@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -167,6 +168,13 @@ def run_chain(steps, args, runner=None, clock=None):
         value["last_image_hash"] = previous_hash
         write_json(manifest, value)
 
+    def gone():
+        try:
+            return board not in plugged_boards()
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            print(f"devices: {error}", file=sys.stderr)
+            return False
+
     def run_selftest():
         if not getattr(args, "selftest", None):
             return
@@ -196,7 +204,7 @@ def run_chain(steps, args, runner=None, clock=None):
     try:
         run_selftest()
         for index, step in enumerate(steps):
-            if not stop_reason and board not in plugged_boards():
+            if not stop_reason and gone():
                 stop_reason = "unplugged"
             if not stop_reason and clock.now() + timedelta(seconds=worst_step) > deadline:
                 stop_reason = "window"
@@ -234,11 +242,6 @@ def run_chain(steps, args, runner=None, clock=None):
                     log.write(str(error) + "\n")
             result.build_seconds = max(0, (clock.now() - begin).total_seconds() - result.wait_seconds)
             remaining = max(0, worst_step - result.build_seconds)
-            if not result.image_hash and board not in plugged_boards():
-                stop_reason = "unplugged"
-                result.outcome = "not_run_unplugged"
-                save()
-                continue
             if code == autana_config.EXIT_BUSY or clock.now() + timedelta(seconds=remaining) > deadline:
                 stop_reason = "window"
                 result.outcome = "not_run_window"
@@ -282,7 +285,7 @@ def run_chain(steps, args, runner=None, clock=None):
                         failures = 0
                     except (OSError, RuntimeError, ValueError) as error:
                         (output / f"{index:0{STEP_INDEX_DIGITS}}-error.log").write_text(str(error), encoding="utf-8")
-                        if board not in plugged_boards():
+                        if gone():
                             stop_reason = "unplugged"
                             result.outcome = "not_run_unplugged"
                         else:
@@ -338,10 +341,11 @@ def plugged_boards(autana=None):
     return [short_id(board["board"]) for board in json.loads(listing)["boards"] if board["port"]]
 
 
-def plan_lane(args, tip, board, lane, lanes, selftest=False):
+def plan_lane(args, tip, board, lane, lanes, selftest=False, selection=None):
+    selection = selection if selection is not None else vars(args)
     previous = read_last_night(args.data, board)
     steps = select_steps(args.repo, tip, previous, lane, lanes,
-                         getattr(args, "from_sha", None), getattr(args, "max_steps", None))
+                         selection.get("from_sha"), selection.get("max_steps"))
     return dict(lane=f"{lane}/{lanes}", previous=previous, steps=[asdict(step) for step in steps],
                 estimate=len(steps) * FIRST_STEP_SECONDS + (SELFTEST_ALLOWANCE_SECONDS if selftest else 0))
 
@@ -350,45 +354,84 @@ def run_night(args, clock=None, launch=None):
     clock, launch = clock or Clock(), launch or subprocess.Popen
     planned = json.loads(args.plan.read_text(encoding="utf-8"))
     deadline = datetime.fromisoformat(planned["deadline"])
-    processes = []
-    failed = False
+    processes, skipped = [], set()
+    failed, interrupted = False, False
 
     def start(board):
-        nonlocal failed
-        command = ["bash", (PERF / "nightly/lane.sh").as_posix(), board, args.plan.resolve().as_posix(),
-                   args.data.resolve().as_posix(), args.out.resolve().as_posix(), "--"]
+        lane = planned["lanes"][board]
+        wait = max(0, int((deadline - clock.now()).total_seconds()))
+        command = autana_command("--board", board, "--wait", str(wait), "lock", "run",
+                                 "--estimate", str(lane["estimate"]), "--", sys.executable,
+                                 str(Path(__file__).resolve()), "run", "--plan", str(args.plan.resolve()),
+                                 "--repo", str(args.repo.resolve()), "--data", str(args.data.resolve()),
+                                 "--out", str(args.out.resolve() / board), "--board", board, "--lane", lane["lane"])
         for suite in args.suite:
             command.extend(["--suite", *suite])
-        try:
-            processes.append(launch(command, cwd=args.repo))
-        except OSError as error:
-            print(f"lane {board}: {error}", file=sys.stderr)
-            failed = True
+        env = dict(os.environ)
+        env.pop("BOARD_CI_LOG", None)
+        if board == env.get("SELFTEST_BOARD"):
+            shell = shutil.which("bash")
+            if not shell:
+                raise OSError("bash is required for the self-test")
+            env["BOARD_CI_LOG"] = str(args.out.resolve() / f"{board}-selftest.log")
+            if cygpath := shutil.which("cygpath"):
+                shell = subprocess.check_output([cygpath, "-w", shell], text=True).strip()
+                env["BOARD_CI_LOG"] = subprocess.check_output(
+                    [cygpath, "-u", env["BOARD_CI_LOG"]], text=True).strip()
+            command.extend(["--selftest", shell, str(args.repo.resolve() / "scripts/ci/board-steps.sh")])
+        processes.append(launch(command, cwd=args.repo, env=env))
 
-    for board in planned["lanes"]:
-        start(board)
-    while clock.now() < deadline:
-        clock.sleep(min(RESCAN_SECONDS, (deadline - clock.now()).total_seconds()))
-        if clock.now() >= deadline:
-            break
-        boards = plugged_boards()
-        for board in boards:
-            if board in planned["lanes"] or clock.now() + timedelta(seconds=FIRST_STEP_SECONDS) > deadline:
-                continue
-            planned["lanes"][board] = plan_lane(args, planned["tip"], board, 0, 1)
-            write_json(args.plan, planned)
-            start(board)
-        active = []
-        for process in processes:
-            code = process.poll()
-            if code is None:
-                active.append(process)
-            elif code:
+    previous_handler = signal.signal(signal.SIGTERM, signal.default_int_handler)
+    try:
+        for board in planned["lanes"]:
+            try:
+                start(board)
+            except (OSError, ValueError, subprocess.CalledProcessError) as error:
+                print(f"lane {board}: {error}", file=sys.stderr)
                 failed = True
-        processes = active
-    for process in processes:
-        if process.wait():
-            failed = True
+                skipped.add(board)
+        while planned["lanes"] and clock.now() < deadline:
+            clock.sleep(min(RESCAN_SECONDS, (deadline - clock.now()).total_seconds()))
+            joined = False
+            try:
+                boards = plugged_boards() if clock.now() < deadline else []
+            except (OSError, ValueError, subprocess.CalledProcessError) as error:
+                print(f"devices: {error}", file=sys.stderr)
+                failed, boards = True, []
+            for board in boards:
+                if board in planned["lanes"] or board in skipped or clock.now() + timedelta(seconds=FIRST_STEP_SECONDS) > deadline:
+                    continue
+                try:
+                    planned["lanes"][board] = plan_lane(args, planned["tip"], board, 0, 1, selection=planned)
+                    write_json(args.plan, planned)
+                    start(board)
+                    joined = True
+                except (OSError, ValueError, subprocess.CalledProcessError) as error:
+                    print(f"lane {board}: {error}", file=sys.stderr)
+                    failed = True
+                    skipped.add(board)
+            if not any(process.poll() is None for process in processes) and not joined:
+                break
+    except KeyboardInterrupt:
+        interrupted = True
+    finally:
+        try:
+            pending = list(processes)
+            while pending:
+                try:
+                    if interrupted:
+                        for process in pending:
+                            if process.poll() is None:
+                                process.terminate()
+                    if pending[0].wait():
+                        failed = True
+                    pending.pop(0)
+                except KeyboardInterrupt:
+                    interrupted = True
+        finally:
+            signal.signal(signal.SIGTERM, previous_handler)
+    if interrupted:
+        raise KeyboardInterrupt
     return int(failed)
 
 
@@ -420,7 +463,8 @@ def plan(args, clock=None, request=None):
         lanes[board] = plan_lane(args, tip, board, lane, len(args.boards),
                                  args.selftest_board and board == short_id(args.selftest_board))
     write_json(Path(args.out), dict(tip=tip, night=start.date().isoformat(),
-                                    started=now.isoformat(), deadline=deadline.isoformat(), lanes=lanes))
+                                    started=now.isoformat(), deadline=deadline.isoformat(), lanes=lanes,
+                                    from_sha=args.from_sha, max_steps=args.max_steps))
     # For the workflow's later steps, which run one lane per board.
     print("SCOPED_BOARDS=" + " ".join(lanes))
     print("SELFTEST_BOARD=" + (short_id(args.selftest_board) if args.selftest_board else ""))
@@ -433,11 +477,6 @@ def lane_of(plan, board):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    waiting = commands.add_parser("wait-seconds")
-    waiting.add_argument("--plan", type=Path, required=True)
-    info = commands.add_parser("lane-info")
-    info.add_argument("--plan", type=Path, required=True)
-    info.add_argument("--board", required=True)
     planning = commands.add_parser("plan")
     planning.add_argument("--boards", nargs="+", help="default: every board `autana devices` lists as plugged in")
     planning.add_argument("--tip", default="origin/main")
@@ -457,22 +496,11 @@ def main():
         command.add_argument("--repo", type=Path, default=REPO)
         command.add_argument("--data", type=Path, required=True)
         command.add_argument("--out", type=Path, required=True)
+    for command in (planning, running):
         command.add_argument("--from", dest="from_sha")
         command.add_argument("--max-steps", type=int)
     args = parser.parse_args()
     os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
-    if args.command == "wait-seconds":
-        now = Clock().now()
-        deadline = datetime.fromisoformat(json.loads(args.plan.read_text(encoding="utf-8"))["deadline"])
-        print(max(0, int((deadline - now).total_seconds())))
-        return 0
-    if args.command == "lane-info":
-        try:
-            lane = lane_of(json.loads(args.plan.read_text(encoding="utf-8")), args.board)
-        except KeyError:
-            parser.error(f"unknown board in plan: {args.board}")
-        print(lane["lane"], lane["estimate"])
-        return 0
     if args.command == "plan":
         plan(args)
         return 0
@@ -494,8 +522,6 @@ def main():
         steps = select_steps(args.repo, planned["tip"], args.previous, index, count, args.from_sha, args.max_steps)
     results = run_chain(steps, args)
     manifest = read_last_night(args.data, short_id(args.board))
-    if manifest.get("stop_reason") == "unplugged":
-        return 0
     return int(any(result.outcome in ("build_failed", "capture_failed") for result in results)
                or manifest["selftest"]["outcome"] == "failed")
 
