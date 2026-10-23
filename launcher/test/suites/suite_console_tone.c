@@ -8,12 +8,8 @@
 #include "math/scalar/math_db.h"
 #include "suites.h"
 #include "unity.h"
-#define TEST_CONSOLE_VOICE_FIRST  1u
-#define TEST_CONSOLE_VOICE_SECOND 2u
-#define TEST_CONSOLE_VOICE_SYSTEM 3u
-
-#define TEST_TARGET_HZ            1000u
-#define TEST_DURATION_MS          100u
+#define TEST_TARGET_HZ   1000u
+#define TEST_DURATION_MS 100u
 
 static console_tone_args_t
 fixture(void) {
@@ -116,6 +112,10 @@ test_tone_parse_invalid(void) {
 #include "core/timing.h"
 #include "sound/sound_engine.h"
 #include "test_asset_dir.h"
+
+#define TEST_CONSOLE_VOICE_FIRST      1u
+#define TEST_CONSOLE_VOICE_SECOND     2u
+#define TEST_CONSOLE_VOICE_SYSTEM     3u
 
 #define TEST_TONE_REGISTER_OLD        0x58u
 #define TEST_TONE_IO_ERROR            (-1)
