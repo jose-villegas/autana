@@ -30,8 +30,8 @@ def local_time(value, now, next_occurrence=False):
     return target
 
 
-def wait_seconds(until, now, next_occurrence=False, started=None):
-    return max(0, int((local_time(until, started or now, next_occurrence) - now).total_seconds()))
+def wait_seconds(until, now, next_occurrence=False):
+    return max(0, int((local_time(until, now, next_occurrence) - now).total_seconds()))
 
 
 def night_window(start_at, until, scheduled=False, clock=None):
@@ -50,7 +50,7 @@ def night_window(start_at, until, scheduled=False, clock=None):
     if scheduled and now < start:
         clock.sleep((start - now).total_seconds())
         now = clock.now()
-    return end if start <= now < end else None
+    return (start, end) if start <= now < end else None
 
 
 def gpu_window(scheduled=False, override=False, clock=None):

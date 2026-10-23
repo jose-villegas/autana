@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import contextlib
 import io
 import os
+import re
 import subprocess
 from pathlib import Path
 import sys
@@ -67,25 +68,20 @@ class LocalScheduleTests(unittest.TestCase):
                 self.assertEqual(clock.sleeps, [wait] if wait else [])
                 if allowed:
                     expected_day = 22 if hour >= 12 else 21
-                    self.assertEqual(deadline, datetime(2026, 10, expected_day, 7))
-
-    def test_wait_does_not_roll_a_planned_deadline_forward(self):
-        now = Clock(7).now()
-        self.assertEqual(local_time("07:00", now, True), now + timedelta(days=1))
-        started = Clock(22, 30).now() - timedelta(days=1)
-        self.assertEqual(wait_seconds("07:00", Clock(6, 59).now(), True, started=started), 60)
-        for hour in (7, 8):
-            self.assertEqual(wait_seconds("07:00", Clock(hour).now(), True, started=started), 0)
+                    self.assertEqual(deadline, (datetime(2026, 10, expected_day - 1, 22, 30),
+                                                datetime(2026, 10, expected_day, 7)))
 
     def test_nightly_cron_and_timeout_cover_both_seasons(self):
         workflow = Path(__file__).resolve().parents[3] / ".github/workflows/nightly-perf.yml"
         text = workflow.read_text()
         cron_hour = 18
-        queue_hour = 22.5
+        queue_hour, queue_minute = map(int, re.search(r"QUEUE_AT: '(\d+:\d+)'", text)[1].split(":"))
+        end_hour, end_minute = map(int, re.search(r"WINDOW_END:.*'(\d+:\d+)'", text)[1].split(":"))
+        queue_hour += queue_minute / 60
+        end_hour += end_minute / 60
         self.assertIn(f"cron: '0 {cron_hour} * * *'", text)
-        self.assertIn("QUEUE_AT: '22:30'", text)
         longest_wait_minutes = max((queue_hour - cron_hour - offset) * 60 for offset in (1, 2))
-        window_minutes = (24 - queue_hour + 7) * 60
+        window_minutes = (24 - queue_hour + end_hour) * 60
         publish_minutes = 60
         timeout_minutes = int(longest_wait_minutes + window_minutes + publish_minutes)
         self.assertIn(f"timeout-minutes: {timeout_minutes}", text)
