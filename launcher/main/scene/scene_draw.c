@@ -5,6 +5,8 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include "esp_log.h"
+
 #include "render/context/render_context.h"
 #include "scene/scene_internal.h"
 
@@ -20,6 +22,7 @@ static bool paused;
 static bool expanded;
 static bool stepped;  /* scene_render() ran, and scene_compose() has not yet */
 static bool rendered; /* it drew, and scene_compose() has not upscaled it */
+static bool refused;  /* the context had no scratch for the active camera, logged once */
 
 bool
 scene_has_active_camera(void) {
@@ -41,6 +44,7 @@ scene_activate(scene_t* scene, const char* camera) {
     }
     active = (active_t){scene, index};
     render_context_forget(render_context_main());
+    refused = false;
     rendered = false;
     stepped = false;
     expanded = false;
@@ -121,6 +125,10 @@ draw_active(int quarter, int width, int height) {
     const render_view_t view =
         camera_view(&camera->lens, &scene->locals[camera->entity], (viewport_t){width, height, quarter});
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
+    if (!rendered && !refused) {
+        ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->id);
+        refused = true;
+    }
 }
 
 void
