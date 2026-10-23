@@ -1,15 +1,29 @@
 """Regression tests for --changed comment scoping."""
+import importlib.util
 import pathlib
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import gate_tree
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "check_comment_length.py"
 
 
 class CommentLengthTest(unittest.TestCase):
+    def test_import_c_comments_runs_no_subprocess(self):
+        spec = importlib.util.spec_from_file_location("fresh_c_comments", SCRIPT.with_name("c_comments.py"))
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch.object(sys, "path", [str(SCRIPT.parent), *sys.path]), \
+                mock.patch("subprocess.run", side_effect=AssertionError("subprocess during import")):
+            spec.loader.exec_module(module)
+        with mock.patch.object(module, "generated_files", return_value=("generated.h",)) as generated:
+            self.assertEqual(module.excluded(),
+                             ("launcher/components/", "launcher/test/framework/", "generated.h"))
+            self.assertIs(module.excluded(), module.excluded())
+            generated.assert_called_once_with()
+
     def git(self, root, *args):
         return subprocess.run(["git", *args], cwd=root, check=True,
                               capture_output=True, text=True)

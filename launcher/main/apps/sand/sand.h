@@ -706,8 +706,10 @@ void sand_set_gas_walk(sand_t* s, bool on);
 void sand_set_two_core_step(bool on);
 bool sand_two_core_step_enabled(void);
 
+#define SAND_JOSTLE_MAX 255
+
 /* Advance one frame. (gx, gy) is a gravity vector, direction matters. Zero
- * vector means free fall. `jostle` (0-255) makes grains slide sideways and
+ * vector means free fall. `jostle` (0..SAND_JOSTLE_MAX) makes grains slide sideways and
  * overrides friction. */
 void sand_step(sand_t* s, int gx, int gy, int jostle);
 

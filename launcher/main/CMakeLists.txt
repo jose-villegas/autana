@@ -41,6 +41,7 @@ set(app_srcs
     "input/input_device.c"
     "input/motion/tilt.c"
     "input/motion/gravity.c"
+    "input/motion/shake.c"
     "ui/ui.c"
     "ui/input/ui_bridge.c"
     "ui/ui_build.c"
