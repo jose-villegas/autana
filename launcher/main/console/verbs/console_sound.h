@@ -4,8 +4,6 @@
 #include <stdbool.h>
 
 #include "asset/asset_pack.h"
-#include "sound/sound.h"
-#include "sound/sound_play.h"
 
 #define CONSOLE_SOUND_LINE_MAX (sizeof("sound play ") + (2 * (ASSET_NAME_MAX - 1)) + sizeof("/ loop 100"))
 
@@ -38,10 +36,5 @@ typedef struct {
 
 /* Answers a play request taken from the frame mailbox. */
 void console_sound_answer(const console_sound_args_t* args);
-/* After sound_stop_app_voices(): releases views once all borrowed reads are fenced. */
-void console_sound_app_exit(void);
-/* Stops launcher playback and fences its reads before releasing views. */
-void console_sound_app_enter(void);
-void console_sound_track_voice(const sound_t* sound, sound_voice_t voice);
-
-const sound_t* console_sound_view(const console_sound_args_t* args, int64_t* open_us);
+/* Stops tracked voices and fences borrowed reads before releasing mapped packs. */
+void console_sound_release_views(void);

@@ -5,7 +5,7 @@
 static shell_system_t console_system = {
     .name = "console",
     .order = SHELL_ORDER_CONSOLE,
-    .app_exit = console_sound_app_exit,
+    .app_exit = console_sound_release_views,
 };
 
 SHELL_SYSTEM_REGISTER(console_system);

@@ -21,7 +21,7 @@ console_registry_line_max(const console_registry_t* registry) {
     return line_max;
 }
 
-bool
+static bool
 console_registry_accepts_line(const console_registry_t* registry, const char* line) {
     const size_t length = strlen(line);
     if (length < CONSOLE_LINE_MAX) {
@@ -34,11 +34,6 @@ console_registry_accepts_line(const console_registry_t* registry, const char* li
         }
     }
     return false;
-}
-
-bool
-console_registry_handle_line(console_registry_t* registry, const char* line, console_reply_fn reply) {
-    return console_registry_dispatch(registry, line, reply) == CONSOLE_LINE_HANDLED;
 }
 
 console_line_result_t

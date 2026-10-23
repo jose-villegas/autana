@@ -108,7 +108,7 @@ test_tone_parse_invalid(void) {
 #include "audio/audio_loopback.h"
 #include "audio/audio_out_device.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_sound.h"
+#include "console/verbs/console_sound_views.h"
 #include "core/timing.h"
 #include "sound/sound_engine.h"
 #include "test_asset_dir.h"
@@ -144,7 +144,6 @@ typedef enum {
 static struct {
     struct {
         bool enabled;
-        bool app_active;
         bool system_playing;
         uint32_t playing;
         unsigned stop_drops;
@@ -416,7 +415,7 @@ test_melody_console_play_and_check(void) {
         device.melody.play = mode == 0;
         device.internal = mode == 2;
         device.reg = TEST_TONE_REGISTER_OLD;
-        TEST_ASSERT_TRUE(console_registry_handle_line(&registry, commands[mode], melody_collect));
+        TEST_ASSERT_TRUE(console_registry_dispatch(&registry, commands[mode], melody_collect) == CONSOLE_LINE_HANDLED);
         TEST_ASSERT_TRUE(device.melody.ended);
         TEST_ASSERT_FALSE(device.melody.error);
         TEST_ASSERT_EQUAL_UINT(MELODY_PHRASE_NOTES, device.melody.starts);
@@ -443,7 +442,7 @@ test_melody_console_failure_and_usage(void) {
         memset(&device, 0, sizeof device);
         device.melody.enabled = true;
         device.failure = TEST_TONE_OPEN_FAIL;
-        TEST_ASSERT_TRUE(console_registry_handle_line(&registry, commands[i], melody_collect));
+        TEST_ASSERT_TRUE(console_registry_dispatch(&registry, commands[i], melody_collect) == CONSOLE_LINE_HANDLED);
         TEST_ASSERT_TRUE(device.melody.error);
         TEST_ASSERT_FALSE(device.melody.ended);
         TEST_ASSERT_EQUAL_UINT(0, device.melody.starts);
@@ -467,8 +466,9 @@ test_melody_console_later_failures(void) {
         } else {
             device.melody.fail_measure = TEST_MELODY_FAIL_NOTE * TEST_MELODY_MEASURES_PER_NOTE;
         }
-        TEST_ASSERT_TRUE(console_registry_handle_line(
-            &registry, failure == TEST_TONE_MEASURE_FAIL ? "melody check" : "melody", melody_collect));
+        TEST_ASSERT_TRUE(console_registry_dispatch(
+                             &registry, failure == TEST_TONE_MEASURE_FAIL ? "melody check" : "melody", melody_collect)
+                         == CONSOLE_LINE_HANDLED);
         TEST_ASSERT_TRUE(device.melody.error);
         TEST_ASSERT_FALSE(device.melody.ended);
         if (failure == TEST_TONE_STOP_STUCK) {
@@ -492,7 +492,8 @@ test_tone_capture_restores_every_exit(void) {
         device.internal = true;
         device.reg = TEST_TONE_REGISTER_OLD;
         device.amp.requested = true;
-        TEST_ASSERT_TRUE(console_registry_handle_line(&registry, "tone 1000 100 internal", tone_collect));
+        TEST_ASSERT_TRUE(console_registry_dispatch(&registry, "tone 1000 100 internal", tone_collect)
+                         == CONSOLE_LINE_HANDLED);
         TEST_ASSERT_EQUAL_UINT(1, device.closes);
         if (failure == TEST_TONE_RESTORE_FAIL) {
             TEST_ASSERT_TRUE(device.feedback.restore_pending);
@@ -523,7 +524,8 @@ test_tone_pending_restore_blocks_both_modes(void) {
     device.internal = true;
     device.reg = TEST_TONE_REGISTER_OLD;
     device.failure = TEST_TONE_RESTORE_FAIL;
-    TEST_ASSERT_TRUE(console_registry_handle_line(&registry, "tone 1000 100 internal", tone_collect));
+    TEST_ASSERT_TRUE(console_registry_dispatch(&registry, "tone 1000 100 internal", tone_collect)
+                     == CONSOLE_LINE_HANDLED);
     TEST_ASSERT_TRUE(device.replied);
     TEST_ASSERT_TRUE(device.tone_error);
     TEST_ASSERT_TRUE(device.feedback.restore_pending);
@@ -532,7 +534,7 @@ test_tone_pending_restore_blocks_both_modes(void) {
     device.internal = false;
     for (size_t i = 0; i < sizeof commands / sizeof commands[0]; i++) {
         device.replied = false;
-        TEST_ASSERT_TRUE(console_registry_handle_line(&registry, commands[i], tone_collect));
+        TEST_ASSERT_TRUE(console_registry_dispatch(&registry, commands[i], tone_collect) == CONSOLE_LINE_HANDLED);
         TEST_ASSERT_TRUE(device.replied);
         TEST_ASSERT_TRUE(device.tone_error);
         TEST_ASSERT_EQUAL_UINT(measures, device.measures);
@@ -540,7 +542,7 @@ test_tone_pending_restore_blocks_both_modes(void) {
     }
     device.failure = TEST_TONE_OK;
     device.replied = false;
-    TEST_ASSERT_TRUE(console_registry_handle_line(&registry, commands[0], tone_collect));
+    TEST_ASSERT_TRUE(console_registry_dispatch(&registry, commands[0], tone_collect) == CONSOLE_LINE_HANDLED);
     TEST_ASSERT_FALSE(device.replied);
     TEST_ASSERT_FALSE(device.feedback.restore_pending);
     TEST_ASSERT_EQUAL_UINT(measures + 2, device.measures);
@@ -550,17 +552,12 @@ static void
 test_tone_acoustic_has_no_feedback(void) {
     memset(&device, 0, sizeof device);
     device.reg = TEST_TONE_REGISTER_OLD;
-    TEST_ASSERT_TRUE(console_registry_handle_line(&registry, "tone 1000 100", tone_collect));
+    TEST_ASSERT_TRUE(console_registry_dispatch(&registry, "tone 1000 100", tone_collect) == CONSOLE_LINE_HANDLED);
     TEST_ASSERT_EQUAL_UINT(2, device.measures);
     TEST_ASSERT_EQUAL_UINT(1, device.closes);
     TEST_ASSERT_EQUAL_HEX(TEST_TONE_REGISTER_OLD, device.reg);
     TEST_ASSERT_FALSE(device.feedback.restore_pending);
     TEST_ASSERT_FALSE(device.replied);
-}
-
-bool
-sound_app_active(void) {
-    return device.console.app_active;
 }
 
 bool
@@ -609,16 +606,17 @@ test_sound_transition_releases_all_views(void) {
         }
         device.console.stop_drops = 1;
         TEST_ASSERT_EQUAL_INT(device.console.mounted + 1, asset_store_mounted());
-        device.console.app_active = false;
         device.console.phase = 0;
         device.console.system_playing = true;
-        console_sound_app_enter();
+        console_sound_release_views();
         TEST_ASSERT_TRUE(device.console.system_playing);
         TEST_ASSERT_EQUAL_INT(3, device.console.phase);
         TEST_ASSERT_EQUAL_INT(device.console.mounted, asset_store_mounted());
-        device.console.app_active = true;
         TEST_ASSERT_NOT_NULL(console_sound_view(&args, &open_us));
-        console_sound_app_exit();
+        device.console.expected_stops = 0;
+        device.console.phase = 0;
+        console_sound_release_views();
+        device.console.expected_stops = 2;
         TEST_ASSERT_EQUAL_INT(device.console.mounted, asset_store_mounted());
     }
 }
@@ -630,15 +628,14 @@ test_sound_transition_retains_views_until_a_fence_succeeds(void) {
     device.console.fence_timeout = true;
     int64_t open_us = 0;
     TEST_ASSERT_NOT_NULL(console_sound_view(&args, &open_us));
-    console_sound_app_enter();
+    console_sound_release_views();
     TEST_ASSERT_EQUAL_INT(device.console.mounted + 1, asset_store_mounted());
-    device.console.app_active = true;
     device.console.phase = 0;
-    console_sound_app_exit();
+    console_sound_release_views();
     TEST_ASSERT_EQUAL_INT(device.console.mounted + 1, asset_store_mounted());
     device.console.fence_timeout = false;
     device.console.phase = 0;
-    console_sound_app_exit();
+    console_sound_release_views();
     TEST_ASSERT_EQUAL_INT(device.console.mounted, asset_store_mounted());
 }
 

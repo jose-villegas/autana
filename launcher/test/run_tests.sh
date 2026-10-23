@@ -439,6 +439,7 @@ EXPECT_SU="$BUILD_DIR/expected_su.txt"
     printf 'BASE_CFLAGS := %s\n' "$BASE_CFLAGS"
     printf 'TEST_FLAGS := %s %s -include %s/timing.h\n' "$HEAP_ARENA_DEFINES" "$TEST_INC" "$TEST_N"
     printf 'OBJ := %s\nSU := su\n' "$OBJ_DIR"
+    printf '$(OBJ)/main__console__verbs__console_sound_views.o: CFLAGS += -DCONFIG_LAUNCHER_DEVELOPMENT=1\n'
     printf 'OBJS :='
     printf '%s\n' "$OBJ_PAIRS" | awk '{ printf " $(OBJ)/%s.o", $1 }'
     printf '\nSUOBJS :='

@@ -109,16 +109,10 @@ bool console_register(console_registry_t* registry, console_verb_t* verb);
 /* The reader capacity follows the registered verbs, with CONSOLE_LINE_MAX as its floor. */
 int console_registry_line_max(const console_registry_t* registry);
 
-/* Oversized lines need a matching verb whose declared bound holds the whole line. */
-bool console_registry_accepts_line(const console_registry_t* registry, const char* line);
-
 typedef enum { CONSOLE_LINE_UNCLAIMED, CONSOLE_LINE_HANDLED, CONSOLE_LINE_REJECTED } console_line_result_t;
 
 /* Classifies and dispatches a line with one length check. */
 console_line_result_t console_registry_dispatch(console_registry_t* registry, const char* line, console_reply_fn reply);
-
-/* True if `line` fits and matched a registered verb, whatever its handler then did. */
-bool console_registry_handle_line(console_registry_t* registry, const char* line, console_reply_fn reply);
 
 typedef enum {
     CONSOLE_CLASH_NONE = 0,

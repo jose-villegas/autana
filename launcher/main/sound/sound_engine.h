@@ -45,13 +45,12 @@ typedef struct {
 bool sound_capture_open(void);
 bool sound_capture_close(void);
 bool sound_init(void);
-bool sound_app_active(void);
 void sound_begin_app(void);
 void sound_end_app(void);
 void sound_stop_app_voices(void);
+#if CONFIG_LAUNCHER_DEVELOPMENT
 /* Drains prior commands and waits for reads. On failure, borrowed sources must stay mapped. */
 bool sound_fence(void);
-#if CONFIG_LAUNCHER_DEVELOPMENT
 void sound_get_stats(sound_stats_t* out);
 #endif
 sound_voice_t sound_play_tone(uint16_t hz, uint8_t gain_pct);

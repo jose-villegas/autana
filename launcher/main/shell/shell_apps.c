@@ -227,9 +227,7 @@ shell_start_app(const app_t** current, const app_t* next) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     app_internal_free_before_enter = memory_free_bytes(MEMORY_INTERNAL);
     app_8bit_free_before_enter = memory_free_bytes(MEMORY_8BIT);
-#endif
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    console_sound_app_enter();
+    console_sound_release_views();
 #endif
     sound_begin_app();
     (*current)->enter();

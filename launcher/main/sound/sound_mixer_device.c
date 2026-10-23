@@ -169,14 +169,6 @@ sound_set_bus_gain(sound_bus_t bus, uint8_t pct) {
     control_command(SOUND_VOICE_NULL, bus, SOUND_COMMAND_BUS_GAIN, pct);
 }
 
-bool
-sound_app_active(void) {
-    portENTER_CRITICAL(&control_lock);
-    const bool active = control.app_generation >= SOUND_APP_GENERATION_FIRST;
-    portEXIT_CRITICAL(&control_lock);
-    return active;
-}
-
 void
 sound_begin_app(void) {
     portENTER_CRITICAL(&control_lock);
@@ -424,8 +416,8 @@ capture_request(uint32_t sequence) {
     return false;
 }
 
-bool
-sound_fence(void) {
+static bool
+capture_hold(bool (*during)(void)) {
     const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
     uint32_t sequence = 0;
     sound_capture_acquire_result_t acquired;
@@ -433,7 +425,7 @@ sound_fence(void) {
         portENTER_CRITICAL(&control_lock);
         if (!control.ready) {
             portEXIT_CRITICAL(&control_lock);
-            return true;
+            return during == NULL;
         }
         acquired = sound_capture_acquire(&capture, timing_now_us(), deadline, &sequence);
         portEXIT_CRITICAL(&control_lock);
@@ -441,48 +433,34 @@ sound_fence(void) {
             timing_sleep_ms(SOUND_CONTROL_POLL_MS);
         }
     } while (acquired == SOUND_CAPTURE_WAIT);
-    const bool ok = acquired == SOUND_CAPTURE_ACQUIRED && capture_request(sequence);
+    const bool ok = acquired == SOUND_CAPTURE_ACQUIRED && capture_request(sequence) && (!during || during());
     if (sequence) {
         portENTER_CRITICAL(&control_lock);
         sound_capture_resume(&capture, sequence);
         portEXIT_CRITICAL(&control_lock);
     }
-    if (!ok) {
-        ESP_LOGW(TAG, "mixer fence failed; borrowed storage must stay mapped");
-    }
     return ok;
 }
 
+bool
+sound_fence(void) {
+    return capture_hold(NULL);
+}
+
 static bool
-capture_change(bool open) {
-    portENTER_CRITICAL(&control_lock);
-    const uint32_t sequence = control.ready ? sound_capture_begin(&capture) : 0;
-    portEXIT_CRITICAL(&control_lock);
-    if (!sequence) {
-        return false;
-    }
-    bool ok = capture_request(sequence);
-    if (ok) {
-        if (open) {
-            ok = audio_in_open();
-        } else {
-            audio_in_close();
-        }
-    }
-    portENTER_CRITICAL(&control_lock);
-    sound_capture_resume(&capture, sequence);
-    portEXIT_CRITICAL(&control_lock);
-    return ok;
+capture_close(void) {
+    audio_in_close();
+    return true;
 }
 
 bool
 sound_capture_open(void) {
-    return capture_change(true);
+    return capture_hold(audio_in_open);
 }
 
 bool
 sound_capture_close(void) {
-    return capture_change(false);
+    return capture_hold(capture_close);
 }
 
 #endif

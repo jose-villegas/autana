@@ -13,6 +13,7 @@
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
 #include "console/verbs/console_sound_parse.h"
+#include "console/verbs/console_sound_views.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "sound/sound_engine.h"

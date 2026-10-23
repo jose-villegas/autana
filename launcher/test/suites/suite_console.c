@@ -112,7 +112,7 @@ test_overlong_short_verb_is_dropped(void) {
     memset(line, 'x', sizeof line - 1);
     memcpy(line, "ALPHA ", strlen("ALPHA "));
     line[sizeof line - 1] = '\0';
-    TEST_ASSERT_FALSE(console_registry_handle_line(&registry, line, collect));
+    TEST_ASSERT_FALSE(console_registry_dispatch(&registry, line, collect) == CONSOLE_LINE_HANDLED);
     TEST_ASSERT_EQUAL_STRING("", last_verb);
 }
 
@@ -131,18 +131,18 @@ test_registered_long_verbs_own_their_bounds(void) {
         memcpy(line, names[i], strlen(names[i]));
         line[strlen(names[i])] = ' ';
         line[CONSOLE_SOUND_LINE_MAX - 1] = '\0';
-        TEST_ASSERT_TRUE(console_registry_handle_line(&verbs, line, collect));
+        TEST_ASSERT_TRUE(console_registry_dispatch(&verbs, line, collect) == CONSOLE_LINE_HANDLED);
         line[CONSOLE_SOUND_LINE_MAX - 1] = 'x';
         line[CONSOLE_SOUND_LINE_MAX] = '\0';
-        TEST_ASSERT_FALSE(console_registry_handle_line(&verbs, line, collect));
-        TEST_ASSERT_FALSE(console_registry_accepts_line(&registry, line));
+        TEST_ASSERT_FALSE(console_registry_dispatch(&verbs, line, collect) == CONSOLE_LINE_HANDLED);
+        TEST_ASSERT_EQUAL_INT(CONSOLE_LINE_REJECTED, console_registry_dispatch(&registry, line, collect));
     }
 }
 
 static bool
 say(const char* line) {
     reply_count = 0;
-    return console_registry_handle_line(&registry, line, collect);
+    return console_registry_dispatch(&registry, line, collect) == CONSOLE_LINE_HANDLED;
 }
 
 static int
@@ -464,7 +464,7 @@ test_a_take_never_sees_a_post_half_written(void) {
     TEST_ASSERT_EQUAL_INT(0, torn);
 }
 
-/* console_word_match() is console_registry_handle_line()'s own matcher,
+/* console_word_match() is console_registry_dispatch() == CONSOLE_LINE_HANDLED's own matcher,
  * exported so the shell can match an app's console prefix the same way. */
 static void
 test_word_match_carries_what_follows_the_name(void) {

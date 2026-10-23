@@ -380,6 +380,9 @@ class SoundMixToolsTest(unittest.TestCase):
                 target = tree / "launcher/main" / owner
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes((ROOT / "launcher/main" / owner).read_bytes())
+            asset_store = tree / "launcher/main/asset/asset_store.h"
+            asset_store.parent.mkdir(parents=True)
+            asset_store.write_text('#define ASSET_ENGINE_PACK "engine"\n', encoding="utf-8")
             stub = tree / "fake.py"
             log = tree / "commands.jsonl"
             stub.write_text(
