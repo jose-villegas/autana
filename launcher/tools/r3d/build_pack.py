@@ -20,8 +20,8 @@ entry; an NAME.sound.toml is pack NAME, holding its one sound.
 A NAME.pack.toml makes its folder one pack NAME instead:
 every root under that folder puts its entries there, and folder packs do
 not nest. `development = true` limits a folder pack to development images;
-host builds and bake discovery include every pack. A mesh is the entry <id>.mesh that mesh_import.py wrote, and its
-pack id is that id; a scene (r3d/scene_asset.py), a clip
+host builds and bake discovery include every pack. A mesh is the entry
+<id>.mesh that mesh_import.py wrote, and its pack id is that id; a scene (r3d/scene_asset.py), a clip
 (anim/tracks_asset.py), a picture (gfx/image_asset.py), a curve
 (gfx/curve_asset.py) and an icon (gfx/icons_asset.py) are baked here from
 their files, each with its stem for
@@ -73,6 +73,7 @@ ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE, SOUND)
 BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE)  # entries baked from their file here; meshes and sounds come from the cache
 FETCHED = (bake.MESH_SUFFIX, SOUND)
 FOLDER_PACK = ".pack.toml"
+PACK_DEVELOPMENT = "development"
 PACK_SUFFIX = ".apak"
 
 
@@ -133,10 +134,10 @@ def folder_packs(folder):
             values = tomllib.loads(path.read_text(encoding="utf-8"))
         except tomllib.TOMLDecodeError as error:
             raise SettingsError(f"{path}: {error}") from None
-        unknown = values.keys() - {"development"}
+        unknown = values.keys() - {PACK_DEVELOPMENT}
         if unknown:
             raise SettingsError(f"{path}: unknown keys {sorted(unknown)}")
-        development = values.get("development", False)
+        development = values.get(PACK_DEVELOPMENT, False)
         if not isinstance(development, bool):
             raise SettingsError(f"{path}: development must be a boolean")
         found[path] = development
