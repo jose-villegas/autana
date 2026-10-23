@@ -193,6 +193,8 @@ mathf_repeat(float v, float len) {
     if (v >= 0.0F && v < len) {
         return v;
     }
+    /* QEMU's msub.s rounds the product, so the fused remainder is not exact there. */
+#if !defined(__XTENSA__) || CONFIG_MATH_FPU_FUSED_MADD
     const float reciprocal = mathf_recip(len);
     const float quotient = v * reciprocal;
     if (fabsf(quotient) < MATHF_REPEAT_FAST_QUOTIENT) {
@@ -218,6 +220,7 @@ mathf_repeat(float v, float len) {
         }
         return rem < len ? rem : 0.0F;
     }
+#endif
     float r = fmodf(v, len);
     if (r < 0.0F) {
         r += len;
