@@ -25,12 +25,20 @@
 
 static const char* TAG = "imu";
 
-/* 50 Hz drains every 20 ms, well inside the FIFO's retained history (IMU_FIFO_SAMPLES * IMU_SAMPLE_US).
- * Faster drains lose more: each drain's read mode discards ~0.86 ms of arrivals on top of a fixed per-sample floor. */
-#define IMU_DRAIN_HZ         50
-#define IMU_DRAIN_MS         (MATH_MS_PER_S / IMU_DRAIN_HZ)
-#define IMU_DRAIN_MIN_MS     1
-#define IMU_DRAIN_MAX_MS     (MATH_MS_PER_S / 2)
+/* Each I2C transaction costs the simulation cores ~40 us. At 10 Hz, seven transactions per 100 ms
+ * incur ~6.9% read-mode loss (0.86 ms handshake + 0.27 ms/sample); gravity batches arrive up to 100 ms late.
+ * Register reads at 50 Hz keep the newest sample ~10 ms old. */
+#define IMU_READ_HZ          50
+#define IMU_FIFO_DRAIN_HZ    10
+#define IMU_FIFO_DRAIN_TICKS (IMU_READ_HZ / IMU_FIFO_DRAIN_HZ)
+#define IMU_READ_MS          (MATH_MS_PER_S / IMU_READ_HZ)
+#define IMU_DRAIN_MS         (IMU_FIFO_DRAIN_TICKS * IMU_READ_MS)
+#define IMU_PERIOD_MIN_MS    1
+#define IMU_PERIOD_MAX_MS    ((IMU_FIFO_SAMPLES * IMU_SAMPLE_US - 1) / MATH_US_PER_MS)
+
+_Static_assert(IMU_READ_HZ % IMU_FIFO_DRAIN_HZ == 0, "FIFO drains need whole read periods");
+_Static_assert(IMU_DRAIN_MS* MATH_US_PER_MS < IMU_FIFO_SAMPLES * IMU_SAMPLE_US,
+               "FIFO drain period must fit retained history");
 /* Above the frame (main) task: FIFO history lasts only IMU_FIFO_SAMPLES * IMU_SAMPLE_US. */
 #define IMU_TASK_PRIORITY    5
 /* Holds I2C driver frames and ESP_LOGI/ESP_LOGE on the bus-error path.
@@ -38,7 +46,8 @@ static const char* TAG = "imu";
 #define IMU_TASK_STACK_BYTES (3 * 1024)
 
 TUNE_OWNER(imu);
-TUNE(imu, drain_ms, IMU_DRAIN_MS, IMU_DRAIN_MIN_MS, IMU_DRAIN_MAX_MS);
+TUNE(imu, read_ms, IMU_READ_MS, IMU_PERIOD_MIN_MS, IMU_PERIOD_MAX_MS);
+TUNE(imu, drain_ms, IMU_DRAIN_MS, IMU_PERIOD_MIN_MS, IMU_PERIOD_MAX_MS);
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Upper bound for the reporting window. */
 #define IMU_LOG_MAX_MS (60 * MATH_MS_PER_S)
@@ -55,6 +64,7 @@ static int64_t newest_us;
 static uint64_t reader_age_total_us;
 static int64_t reader_age_max_us;
 static unsigned reader_age_count;
+static unsigned register_reads;
 #endif
 
 /* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
@@ -74,6 +84,7 @@ static unsigned reader_age_count;
 #define REG_FIFO_SMPL_CNT       0x15
 #define REG_FIFO_DATA           0x17
 #define REG_STATUSINT           0x2D
+#define REG_AX_L                0x35
 
 #define WHO_AM_I_VALUE          0x05
 
@@ -385,13 +396,16 @@ log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us) {
     }
     if (log_ms > 0 && window_done) {
         ESP_LOGI(TAG,
-                 "drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u reader_age_mean_us %llu "
+                 "register_reads %u drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u "
+                 "reader_age_mean_us %llu "
                  "reader_age_max_us %lld stack_free_bytes %u",
-                 drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered, lost_total,
-                 (unsigned long long)age_mean_us, (long long)age_max_us, (unsigned)uxTaskGetStackHighWaterMark(NULL));
+                 register_reads, drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered,
+                 lost_total, (unsigned long long)age_mean_us, (long long)age_max_us,
+                 (unsigned)uxTaskGetStackHighWaterMark(NULL));
     }
     if (window_done) {
         last_log_us = now_us;
+        register_reads = 0;
         drains = delivered = lost_total = 0;
         total_us = 0;
         max_us = 0;
@@ -404,31 +418,56 @@ imu_task(void* arg) {
     (void)arg;
     static imu_sample_t samples[IMU_FIFO_SAMPLES];
     TickType_t last_wake = xTaskGetTickCount();
+    unsigned read_ticks = 0;
     while (1) {
+        const TickType_t requested_period = pdMS_TO_TICKS(read_ms);
+        const TickType_t period = requested_period > 0 ? requested_period : 1;
+        const TickType_t drain_ticks = pdMS_TO_TICKS(drain_ms) / period;
+        bool drain_due = read_ticks == 0 || read_ticks >= drain_ticks;
 #if CONFIG_LAUNCHER_DEVELOPMENT
+        portENTER_CRITICAL(&lock);
+        drain_due = drain_due || injected;
+        portEXIT_CRITICAL(&lock);
         const int64_t start_us = timing_now_us();
 #endif
-        int lost = 0;
-        bool gap = false;
-        const int count = drain_fifo(samples, &lost, &gap);
-        const int64_t now_us = timing_now_us();
-        portENTER_CRITICAL(&lock);
-        imu_queue_push_drain(&queue, samples, count, lost, gap);
-        if (count > 0) {
-            newest = samples[count - 1];
-            have_newest = true;
+        if (drain_due) {
+            read_ticks = 0;
+            int lost = 0;
+            bool gap = false;
+            const int count = drain_fifo(samples, &lost, &gap);
+            const int64_t now_us = timing_now_us();
+            portENTER_CRITICAL(&lock);
+            imu_queue_push_drain(&queue, samples, count, lost, gap);
+            if (count > 0) {
+                newest = samples[count - 1];
+                have_newest = true;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-            newest_us = now_us;
+                newest_us = now_us;
 #endif
-        }
-        portEXIT_CRITICAL(&lock);
+            }
+            portEXIT_CRITICAL(&lock);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        log_drain_stats(count, lost, now_us - start_us, now_us);
+            log_drain_stats(count, lost, now_us - start_us, now_us);
 #else
-        (void)now_us;
+            (void)now_us;
 #endif
-        const TickType_t period = pdMS_TO_TICKS(drain_ms);
-        xTaskDelayUntil(&last_wake, period > 0 ? period : 1);
+        } else if (sensor_present) {
+            imu_sample_t sample;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+            register_reads++;
+#endif
+            if (read_regs(REG_AX_L, (uint8_t*)&sample, sizeof sample)) {
+                portENTER_CRITICAL(&lock);
+                newest = sample;
+                have_newest = true;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+                newest_us = timing_now_us();
+#endif
+                portEXIT_CRITICAL(&lock);
+            }
+        }
+        read_ticks++;
+        xTaskDelayUntil(&last_wake, period);
     }
 }
 

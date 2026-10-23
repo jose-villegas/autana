@@ -9,10 +9,13 @@ calibration are described in [Motion-Axes.md](Motion-Axes.md) and [Motion-Calibr
 
 ## Update
 
-The IMU task drains the QMI8658 stream FIFO at the task period
-(`IMU_DRAIN_HZ` in `input/motion/imu.c`) by default.
-`imu.drain_ms` tunes its period in development builds.
+The IMU task drains the QMI8658 stream FIFO at 10 Hz (`IMU_FIFO_DRAIN_HZ`)
+and reads the newest sample at 50 Hz (`IMU_READ_HZ` in `input/motion/imu.c`).
+Development tunables `imu.drain_ms` and `imu.read_ms` set those periods.
+
 `input_read_motion_batch()` takes queued samples from memory, oldest first.
+Batches arrive up to one drain period late. On drain ticks the FIFO supplies
+the newest sample instead of a register read.
 
 `gravity_update_batch()` predicts and corrects once per sample, using microseconds.
 Gyro prediction is minus angular velocity crossed with down in screen axes.
@@ -27,7 +30,8 @@ batch capacity against `IMU_FIFO_SAMPLES`.
 ```mermaid
 flowchart LR
     subgraph Input["IMU task and queue"]
-        Drain["Periodic FIFO drain<br/>count then request read mode"] --> Batch["Ring: oldest first<br/>loss before each sample, gap"]
+        Newest["50 Hz newest sample<br/>register read or FIFO drain"]
+        Drain["10 Hz FIFO drain<br/>batches up to 100 ms late"] --> Batch["Ring: oldest first<br/>loss before each sample, gap"]
     end
     subgraph Update["Frame: for each queued sample"]
         Missing["Advance bounded lost time<br/>holding previous rotation"] --> Predict["Datasheet interval<br/>predict down from gyro"]
