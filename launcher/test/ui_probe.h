@@ -61,6 +61,10 @@ bool ui_probe_list(recti_t* rows, int* scroll_y);
 void ui_probe_budget_assert(const char* screen_name);
 
 #ifndef ESP_PLATFORM
+/* Defined where widget rects are recorded, for a suite that cannot name the
+ * platform. */
+#define UI_PROBE_WIDGETS_RECORDED 1
+
 /* Records every face widget's latest rectangle by its identity key, until
  * ui_probe_widgets_stop(), which a suite's cleanup must call. */
 void ui_probe_widgets_start(void);

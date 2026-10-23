@@ -461,8 +461,10 @@ is future work.
 - The tilt filter (`tilt.h`): `TILT_TAU_STILL_MS` 260, `TILT_TAU_MOVING_MS`
   40 (an exponential-moving-average time constant, not a hard delay),
   `TILT_MAX_DT_MS` 100 (caps a stall from teleporting the filter), trust
-  gate 70-130% of 1g, free-fall below 30%, shake threshold 50% of 1g,
-  shake's own smoothing tau 120ms.
+  gate 70-130% of 1g, free-fall below 30%.
+- Jostle uses the [shake reader](../input/Shake.md), fed by a separate
+  `gravity_t` once per frame. `shake_level()` scales to `SAND_JOSTLE_MAX`;
+  tilt supplies direction and flow.
 - **`gravity_quarter_turn()` (`app_sand.c`) is a separate, discrete (0-3)
   mechanism**: a plain snap-to-nearest-90-degrees, used only to turn the
   mode label's text to follow whichever edge is physically "up." It is not

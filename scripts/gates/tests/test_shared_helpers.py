@@ -11,7 +11,7 @@ from unittest import mock
 REPO = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "launcher/tools/gen"))
 from shared_helpers import CHECK, catalogue, package_headers, update
-from c_comments import EXCLUDED
+from c_comments import excluded
 from check_doc_generated import run_check
 from check_generated_files import generated_files
 from gate_tree import commit, write
@@ -75,7 +75,7 @@ class SharedHelpers(unittest.TestCase):
         write(self.root, "engine/generated.h", "/* GENERATED FILE - do not edit. */\n")
         self.include("engine/generated.h")
         commit(self.root, ".")
-        with mock.patch("shared_helpers.EXCLUDED", (*EXCLUDED, *generated_files(self.root))):
+        with mock.patch("shared_helpers.excluded", return_value=(*excluded(), *generated_files(self.root))):
             self.assertEqual([], catalogue(self.root))
 
     def test_vendored_owners_are_excluded(self):
