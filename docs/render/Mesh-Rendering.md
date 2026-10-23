@@ -369,7 +369,9 @@ rule, and a mesh of mixed sizes to one fill per pixel.
 ### Small fill
 
 Eligible triangles skip plane setup and use one depth, with colour from the
-camera's style. The camera owns the bounding-box ceiling, colour gate and
+camera's style.
+
+The camera owns the bounding-box ceiling, colour gate and
 style; `render_view_t.small_fill` carries them to the frame's row workers.
 
 | Preset | Ceiling/gate, style | Use |
@@ -437,8 +439,8 @@ measures triangle-scale pops; the difference clips also show spatial noise.
 
 #### Board frame-cost gains when opted in
 
-Two committed sweeps, each one build on one board, time the fitted-full
-mesh frame and the animated skinned render. Times are seed means in
+Two committed sweeps time the fitted-full mesh frame and the animated
+skinned render. Times are seed means in
 landscape, and each sweep's percentages compare with its first row.
 
 | Sweep | Measures | Its plan records |
