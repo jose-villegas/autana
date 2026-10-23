@@ -1,5 +1,7 @@
 # Math benchmark
 
+See [fast paths](Fast-Paths.md) for paired costs, error curves and callers.
+
 The board supplies cycles and retired instructions. QEMU supplies instruction
 counts for every row as information, without cache stalls or FPU latency.
 Only float dot, normalize, mat4 mul and slerp are guarded by the CI ratchet.
@@ -48,6 +50,8 @@ The ELF manifest and capture carry row labels, types and op counts.
 Run `python launcher/tools/perf/math_bench_table.py` to update the block, or add
 `--check` to verify it without writing.
 
+<details><summary>Full benchmark log</summary>
+
 <!-- generated: math-benchmark check: python launcher/tools/perf/math_bench_table.py --check -->
 Board build: `d36d792d3134-diag`.
 
@@ -81,12 +85,15 @@ Board build: `d36d792d3134-diag`.
 | mathf_recip | f | 26.3 | 2994.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | 1 ulp (sweep) |
 | mathf_rsqrt_approx | f | 24.3 | 3083.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | 5.94258e-05 relative (proof) |
 | mathf_rsqrt | f | 38.4 | 4234.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (proof) |
+| mathx_rsqrt_q30 | x | - | - | - | 143.6 | - | calls __assert_func | - |
 | mul (scalar) | f | 9.3 | 1396.0 | 6.5 | 6.2 | 1.4 | - | - |
 | mul (scalar) | i | 9.3 | 1716.0 | 8.5 | 8.2 | 1.1 | - | - |
 | mul (scalar) | s | 11.3 | 2179.0 | 10.5 | 10.2 | 1.1 | - | - |
 | mul (scalar) | x | 22.3 | 3168.0 | 17.5 | 17.3 | 1.3 | - | - |
+| nlerp_div | x | - | - | - | 529.4 | - | calls __divdi3, mathi_isqrt64_digits | - |
 | nlerp | f | 94.8 | 8917.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 ulp (sweep) |
 | nlerp | x | 719.9 | 63055.0 | 558.8 | 909.9 | 1.3 | calls __assert_func | - |
+| normalize_div | x | - | - | - | 907.9 | - | calls __udivdi3, mathi_isqrt64_digits | - |
 | normalize (vec3) | f | 57.4 | 5611.0 | 29.9 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (sweep) |
 | normalize (vec3) | x | 349.5 | 29427.0 | 296.9 | 681.2 | 1.2 | calls __assert_func | - |
 | quat mul | f | 30.3 | 3195.0 | 30.5 | 30.2 | 1.0 | madd.s msub.s | - |
@@ -102,8 +109,11 @@ Board build: `d36d792d3134-diag`.
 | transform compute_matrix | x | 855.6 | 75525.0 | 660.2 | 661.4 | 1.3 | calls mat4x_from_trs, memcpy | - |
 | trig_sin | i | 30.8 | 4911.0 | 24.0 | 23.8 | 1.3 | - | - |
 | wrap | f | 63.8 | 7132.0 | 30.1 | device-only instruction | 2.1 | madd.s msub.s recip0.s; calls fmodf | - |
+| wrap_fmodf | f | - | - | - | 88.6 | - | calls fmodf | - |
 | wrap | i | 7.3 | 1590.0 | 7.5 | 7.2 | 1.0 | - | - |
 | wrap | x | 10.3 | 1777.0 | 10.5 | 10.2 | 1.0 | - | - |
 
 ESP-DSP calibration: measured warm 1305.0 cycles/call; ANSI O2 reference 1311 cycles/call; measured/reference 99.5%.
 <!-- /generated: math-benchmark -->
+
+</details>

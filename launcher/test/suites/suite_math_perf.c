@@ -86,6 +86,71 @@ typedef struct {
     int ops;
 } row_t;
 
+static float
+wrap_fmodf(float v, float lo, float hi) {
+    const float len = hi - lo;
+    float r = fmodf(v - lo, len);
+    if (r < 0.0F) {
+        r += len;
+    }
+    const float wrapped = lo + (r < len ? r : 0.0F);
+    return wrapped < hi ? wrapped : lo;
+}
+
+static vec3x_t
+normalize_div(vec3x_t a) {
+    enum {
+        COMPONENT_SHIFT = 29,
+        TOP_BIT = 31,
+        RECIPROCAL_SHIFT = COMPONENT_SHIFT + TOP_BIT,
+        OUTPUT_SHIFT = RECIPROCAL_SHIFT - MATHX_SHIFT,
+    };
+
+    const int32_t components[] = {a.x, a.y, a.z};
+    uint32_t magnitude = 0;
+    for (size_t i = 0; i < sizeof components / sizeof components[0]; i++) {
+        const uint32_t absolute = components[i] < 0 ? (uint32_t)-(int64_t)components[i] : (uint32_t)components[i];
+        if (absolute > magnitude) {
+            magnitude = absolute;
+        }
+    }
+    if (magnitude == 0) {
+        return a;
+    }
+    const int shift = COMPONENT_SHIFT - (TOP_BIT - __builtin_clz(magnitude));
+    int64_t scaled[3];
+    uint64_t square = 0;
+    for (size_t i = 0; i < sizeof scaled / sizeof scaled[0]; i++) {
+        scaled[i] = shift >= 0 ? (int64_t)components[i] * (INT64_C(1) << shift) : fx_round_shift(components[i], -shift);
+        square += (uint64_t)(scaled[i] * scaled[i]);
+    }
+    uint64_t length = mathi_isqrt64(square);
+    length += square - length * length > length;
+    const int32_t reciprocal = mathx_saturate((int64_t)(((UINT64_C(1) << RECIPROCAL_SHIFT) + length / 2) / length));
+    return (vec3x_t){(int32_t)fx_round_shift(scaled[0] * reciprocal, OUTPUT_SHIFT),
+                     (int32_t)fx_round_shift(scaled[1] * reciprocal, OUTPUT_SHIFT),
+                     (int32_t)fx_round_shift(scaled[2] * reciprocal, OUTPUT_SHIFT)};
+}
+
+static quatx_t
+nlerp_div(quatx_t a, quatx_t b, int32_t t) {
+    const int32_t dot = mathx_add(mathx_add(mathx_add(mathx_mul(a.x, b.x), mathx_mul(a.y, b.y)), mathx_mul(a.z, b.z)),
+                                  mathx_mul(a.w, b.w));
+    if (dot < 0) {
+        b = (quatx_t){mathx_neg(b.x), mathx_neg(b.y), mathx_neg(b.z), mathx_neg(b.w)};
+    }
+    const int32_t wa = mathx_sub(MATHX_ONE, t);
+    const quatx_t blend = {
+        mathx_add(mathx_mul(a.x, wa), mathx_mul(b.x, t)), mathx_add(mathx_mul(a.y, wa), mathx_mul(b.y, t)),
+        mathx_add(mathx_mul(a.z, wa), mathx_mul(b.z, t)), mathx_add(mathx_mul(a.w, wa), mathx_mul(b.w, t))};
+    const int32_t square = mathx_add(
+        mathx_add(mathx_add(mathx_mul(blend.x, blend.x), mathx_mul(blend.y, blend.y)), mathx_mul(blend.z, blend.z)),
+        mathx_mul(blend.w, blend.w));
+    const int32_t reciprocal = mathx_div(MATHX_ONE, (int32_t)mathi_isqrt64((uint64_t)square << MATHX_SHIFT));
+    return (quatx_t){mathx_mul(blend.x, reciprocal), mathx_mul(blend.y, reciprocal), mathx_mul(blend.z, reciprocal),
+                     mathx_mul(blend.w, reciprocal)};
+}
+
 #define MATH_VECTOR_ROWS(X, type, vmember, smember, dot_ratchet, ...)                                                  \
     X(add, "add (vec3)", type, false, vmember, vec3##type##_add(p->a##type, p->b##type))                               \
     X(scale, "scale (vec3)", type, false, vmember, vec3##type##_scale(p->a##type, p->b##type.x))                       \
@@ -122,9 +187,13 @@ typedef struct {
     X(mathf_recip, "mathf_recip", f, false, f, mathf_recip(p->af.x))                                                   \
     X(mathf_rsqrt, "mathf_rsqrt", f, false, f, mathf_rsqrt(p->af.x))                                                   \
     X(mathf_rsqrt_approx, "mathf_rsqrt_approx", f, false, f, mathf_rsqrt_approx(p->af.x))                              \
+    X(wrap_fmodf, "wrap_fmodf", f, false, f, wrap_fmodf(p->angle, -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))      \
+    X(normalize_div, "normalize_div", x, false, vx, normalize_div(p->ax))                                              \
+    X(nlerp_div, "nlerp_div", x, false, qx, nlerp_div(p->qx, p->rx, MATH_BENCH_LERP_X))                                \
+    X(mathx_rsqrt_q30, "mathx_rsqrt_q30", x, false, i, mathx_rsqrt_q30(MATHX_RSQRT_MIN + (uint32_t)p->ax.x))           \
     X(div_recip, "div_recip", f, false, f, 1.0F / p->af.x)                                                             \
     X(div_rsqrt, "div_rsqrt", f, false, f, 1.0F / sqrtf(p->af.x))                                                      \
-    X(sinf, "sinf", f, false, f, sinf(p->angle))                                                                       \
+    X(sinf, "sinf", f, false, f, sinf((float)p->phase*(MATH_TAU / TRIG_TURN)))                                         \
     X(cosf, "cosf", f, false, f, cosf(p->angle))                                                                       \
     X(atan2f, "atan2f", f, false, f, atan2f(p->angle, p->bf.x))                                                        \
     X(sqrtf, "sqrtf", f, false, f, sqrtf(p->af.x))                                                                     \
@@ -182,8 +251,8 @@ fixture(void) {
         p->bs = vec3s_from_vec3f(p->bf, MATH_BENCH_INPUT_SCALE);
         p->ax = vec3x_from_vec3f(p->af);
         p->bx = vec3x_from_vec3f(p->bf);
-        p->angle = (turn - 0.5F) * MATH_TAU;
         p->phase = (uint16_t)(j * TRIG_TURN / MATH_BENCH_BATCH);
+        p->angle = (turn - 0.5F) * MATH_TAU;
         p->qf = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, p->angle);
         p->rf = quatf_from_axis_angle((vec3f_t){1.0F, 0.0F, 0.0F}, p->angle + MATH_PI / 2.0F);
         p->qx = quatx_from_axis_angle((vec3x_t){0, MATHX_ONE, 0}, mathf_to_x(turn - 0.5F));
@@ -251,6 +320,7 @@ test_math_board_rows(void) {
     const int insn = frame_cost_event_index(FRAME_COST_DEFAULT_EVENT);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, insn);
     printf("BUILD_ID=%s\n", build_id());
+    printf("MATHTARGET target=MATH_TARGET_ESP32S3 execution=hardware\n");
     fixture_t* f = fixture();
     for (size_t j = 0; j < sizeof rows / sizeof *rows; j++) {
         const row_t* row = &rows[j];

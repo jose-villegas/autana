@@ -12,6 +12,8 @@
 #include <math.h>
 #include <stdint.h>
 
+#include "math/scalar/math_calls.h"
+
 #ifdef __XTENSA__
 #include "sdkconfig.h"
 #endif
@@ -76,13 +78,15 @@ mathf_div(float a, float b) {
     return a / b;
 }
 
-/* 1 / a for a nonzero a away from float's range limits. The S3's `/` is a
- * libgcc routine of about 56 cycles; its FPU's reciprocal seed and two Newton
- * steps take about 18 and land within one ulp of the quotient, on it 99.9% of
- * the time. CONFIG_MATH_FPU_RECIP enables the seed; without it, division
- * is exact, as on other targets. */
+#define MATHF_RECIP_ULP_LIMIT 1
+
+/* Nonzero inputs away from float range limits; CONFIG_MATH_FPU_RECIP enables the seed. */
+/* Reciprocal seed with two Newton corrections. | y = y + y(1 - ay) | signed magnitudes and power-of-two edges */
+/* MATH_FAST_PATH(mathf_recip, f, mathf_recip_f, div_recip_f, MATHF_RECIP_ULP_LIMIT, ulp, sweep, MATH_TARGET_ESP32S3) */
+
 static inline float
 mathf_recip(float a) {
+    MATH_FAST_CALL(mathf_recip);
 #if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
     float y;
     __asm__("recip0.s %0, %1" : "=f"(y) : "f"(a));
@@ -97,28 +101,18 @@ mathf_recip(float a) {
 #define MATHF_RSQRT_APPROX_RELATIVE_LIMIT 0.0001F
 /* Two seed corrections must stay close to the correctly rounded reciprocal root. */
 #define MATHF_RSQRT_ULP_LIMIT             1
-/* The reciprocal sweep guards the two-correction path against division. */
-#define MATHF_RECIP_ULP_LIMIT             1
 /* Vector component sweeps bound the error introduced by reciprocal-length scaling. */
 #define MATHF_NORMALIZE_ULP_LIMIT         1
 /* Quaternion interpolation compounds reciprocal-length scaling and blend rounding. */
 #define MATHF_NLERP_ULP_LIMIT             2
 
-/* One correction serves callers that accept the relative error limit for positive normal inputs. */
-static inline __attribute__((always_inline)) float
-mathf_rsqrt_approx(float value) {
-#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
-    float seed;
-    __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
-    return seed * (1.5F - 0.5F * value * seed * seed);
-#else
-    return 1.0F / sqrtf(value);
-#endif
-}
-
 /* Subnormal squared lengths retain the 1 / sqrtf path. On the board +inf gives NaN, outside normalize's domain. */
+/* Reciprocal-root seed with two Newton corrections. | y = y + (y/2)(1 - vy^2) | all mantissas in [1,4), normal exponent strides and edges */
+/* MATH_FAST_PATH(mathf_rsqrt, f, mathf_rsqrt_f, div_rsqrt_f, MATHF_RSQRT_ULP_LIMIT, ulp, proof, MATH_TARGET_ESP32S3) */
+
 static inline __attribute__((always_inline)) float
 mathf_rsqrt(float value) {
+    MATH_FAST_CALL(mathf_rsqrt);
 #if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
     if (value < FLT_MIN) {
         return 1.0F / sqrtf(value);
@@ -127,6 +121,22 @@ mathf_rsqrt(float value) {
     __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
     seed += (0.5F * seed) * (1.0F - (value * seed) * seed);
     return seed + (0.5F * seed) * (1.0F - (value * seed) * seed);
+#else
+    return 1.0F / sqrtf(value);
+#endif
+}
+
+/* One correction serves callers that accept the relative error limit for positive normal inputs. */
+/* Reciprocal-root seed with one Newton correction. | y = y(3/2 - vy^2/2) | all mantissas in [1,4), normal exponent strides and edges */
+/* MATH_FAST_PATH(mathf_rsqrt_approx, f, mathf_rsqrt_approx_f, div_rsqrt_f, MATHF_RSQRT_APPROX_RELATIVE_LIMIT, relative, proof, MATH_TARGET_ESP32S3) */
+
+static inline __attribute__((always_inline)) float
+mathf_rsqrt_approx(float value) {
+    MATH_FAST_CALL(mathf_rsqrt_approx);
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+    float seed;
+    __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
+    return seed * (1.5F - 0.5F * value * seed * seed);
 #else
     return 1.0F / sqrtf(value);
 #endif
@@ -189,8 +199,14 @@ mathf_max(float a, float b) {
 _Static_assert((MATHF_RECIP_ULP_LIMIT + 0.5F) * MATHF_REPEAT_FAST_QUOTIENT * FLT_EPSILON < 1.0F,
                "repeat quotient guard exceeds the reciprocal error bound");
 
+#define MATHF_WRAP_ULP_LIMIT 0
+
+/* Reciprocal quotient and fused remainder, with range fallback. | r = fma(-floor(v/len), len, v) | signed float bit patterns, quotient guard and endpoint edges */
+/* MATH_FAST_PATH(mathf_repeat, f, wrap_f, wrap_fmodf_f, MATHF_WRAP_ULP_LIMIT, ulp, sweep, MATH_TARGET_ESP32S3) */
+
 static inline float
 mathf_repeat(float v, float len) {
+    MATH_FAST_CALL(mathf_repeat);
     assert(len > 0.0F);
     if (v >= 0.0F && v < len) {
         return v;

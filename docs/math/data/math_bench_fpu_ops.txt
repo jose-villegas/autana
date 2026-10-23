@@ -1,5 +1,5 @@
 # Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.
-# ELF sha256=d36d792d3134bb55a34295e293af75e580f1ec4eea00ae470bbb8465c8a44d1d
+# ELF sha256=79f6382bf561b6d8f3cba8cfcdd8b66ab6b13c14f3e41f7cc9bbca9e6efddff6
 add_f	add (vec3)	f	64	-
 add_i	add (vec3)	i	64	-
 add_s	add (vec3)	s	64	-
@@ -28,12 +28,15 @@ mat4_mul_x	mat4 mul	x	64	calls memcpy
 mathf_recip_f	mathf_recip	f	64	madd.s msub.s recip0.s
 mathf_rsqrt_approx_f	mathf_rsqrt_approx	f	64	msub.s rsqrt0.s
 mathf_rsqrt_f	mathf_rsqrt	f	64	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
+mathx_rsqrt_q30_x	mathx_rsqrt_q30	x	64	calls __assert_func
 mul_f	mul (scalar)	f	64	-
 mul_i	mul (scalar)	i	64	-
 mul_s	mul (scalar)	s	64	-
 mul_x	mul (scalar)	x	64	-
+nlerp_div_x	nlerp_div	x	64	calls __divdi3, mathi_isqrt64_digits
 nlerp_f	nlerp	f	64	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
 nlerp_x	nlerp	x	64	calls __assert_func
+normalize_div_x	normalize_div	x	64	calls __udivdi3, mathi_isqrt64_digits
 normalize_f	normalize (vec3)	f	64	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
 normalize_x	normalize (vec3)	x	64	calls __assert_func
 quat_mul_f	quat mul	f	64	madd.s msub.s
@@ -49,5 +52,6 @@ transform_compute_matrix_f	transform compute_matrix	f	64	madd.s msub.s
 transform_compute_matrix_x	transform compute_matrix	x	64	calls mat4x_from_trs, memcpy
 trig_sin_i	trig_sin	i	64	-
 wrap_f	wrap	f	64	madd.s msub.s recip0.s; calls fmodf
+wrap_fmodf_f	wrap_fmodf	f	64	calls fmodf
 wrap_i	wrap	i	64	-
 wrap_x	wrap	x	64	-

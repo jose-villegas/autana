@@ -35,6 +35,7 @@
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "math/linear/transformf.h"
+#include "math/scalar/math_calls.h"
 #include "profile/frame_cost.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
@@ -330,6 +331,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     TEST_ASSERT_NOT_NULL(frame_us);
     int64_t frame_sum = 0;
     int samples = 0;
+    math_calls_begin();
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_PERF_POSE_EVERY_MS) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
         const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
@@ -353,6 +355,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         frame_us[samples] = (int32_t)us;
         samples++;
     }
+    math_calls_report((uint32_t)samples);
     const perf_stats_t stats = perf_stats_compute(frame_us, samples);
     memory_free(frame_us);
     ESP_LOGI(TAG, FRAME_PROFILE_ROW R3D_PERF_QUARTER_FORMAT, label, (long long)stats.avg,
@@ -360,7 +363,12 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
              perf_quarter->name);
     const size_t q = (size_t)(perf_quarter - r3d_perf_quarters);
     const bool ceiling_applies = shipped_meshlet == 0 || size == shipped_meshlet;
+#if !CONFIG_MATH_COUNT_CALLS
     r3d_perf_budget(label, perf_quarter, stats.avg, stats.p95, &budget[q], ceiling_applies);
+#else
+    (void)budget;
+    (void)q;
+#endif
     if (!ceiling_applies) {
         ESP_LOGI(TAG, "%s: p95 %lldus, ceiling %lldus gates only meshlets of %ld" R3D_PERF_QUARTER_FORMAT, label,
                  (long long)stats.p95, (long long)budget[q].p95_ceiling_us, (long)shipped_meshlet, perf_quarter->name);

@@ -1,5 +1,7 @@
 # Linear
 
+Fixed-point [normalize and nlerp fast-path evidence](Fast-Paths.md#mathx-rsqrt-q30).
+
 Vectors, rotations, affine maps and cached transforms. [Math index](README.md).
 
 `P` stands for the type's prefix (`vec3f`, `vec3x`, ...). The families pass small
