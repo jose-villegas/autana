@@ -22,6 +22,7 @@ sys.path.insert(0, str(PERF.parents[2] / "scripts/ci/tests"))
 import port_guard
 from test_local_schedule import Clock as ScheduleClock
 from scripts.lib.local_schedule import QUEUE_POLL_SECONDS
+import local_schedule as schedule
 from nightly import scoped_chain as chain, lnt
 from test_perf_compare import FakeAutana
 from layout_measure import make_table, parse_report, parse_timings
@@ -96,6 +97,9 @@ class Replay(FakeAutana):
 class NightlyTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
+        marker_env = patch.dict(os.environ, _AUTANA_HEAVY_LOCK_ROOT=str(Path(self.temp.name) / "heavy"))
+        marker_env.start()
+        self.addCleanup(marker_env.stop)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         cache = patch.object(autana_config, "user_cache_dir", return_value=self.root / "cache")
@@ -276,6 +280,7 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual((steps[-1].position, steps[-1].pr), (7, 999))
 
     def test_shared_tip_and_explicit_range_limit(self):
+        schedule.refresh_gpu_host("gpu-runner", self.clock)
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8", "2124"], data=self.args.data,
                                out=self.root / "plan.json", queue_at="22:00", until="07:00", from_sha=self.commits[1],
                                max_steps=2, selftest_board="2124")
@@ -490,6 +495,7 @@ class NightlyTests(unittest.TestCase):
         for release_hour, release_minute, allowed in ((22, 30, True), (1, 30, True), (6, 45, False)):
             with self.subTest(release_hour=release_hour):
                 clock = ScheduleClock(18)
+                schedule.refresh_gpu_host("gpu-runner", clock)
                 day = 21 if release_hour > 12 else 22
                 released = datetime(2026, 10, day, release_hour, release_minute)
                 args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
@@ -505,6 +511,26 @@ class NightlyTests(unittest.TestCase):
                 self.assertEqual(planned["deadline"], datetime(2026, 10, 22, 7).isoformat())
                 expected = released + timedelta(seconds=QUEUE_POLL_SECONDS) if allowed else datetime(2026, 10, 22, 7) - timedelta(seconds=chain.FIRST_STEP_SECONDS)
                 self.assertEqual(planned["started"], expected.isoformat())
+
+    def test_plan_missing_or_stale_gpu_host_skips_queue_and_reports(self):
+        for age in (None, schedule.GPU_HOST_MARKER_DAYS + 1):
+            with self.subTest(age=age):
+                clock = ScheduleClock(23)
+                if age is not None:
+                    schedule.refresh_gpu_host("other-runner", ScheduleClock(23, day=21 - age))
+                args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
+                    data=self.args.data, out=self.root / "plan.json", queue_at=None, until="07:00",
+                    from_sha=None, max_steps=None, selftest_board="20E8")
+                summary = self.root / "gpu-summary"
+                summary.unlink(missing_ok=True)
+                with patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(summary)), \
+                        patch.object(chain, "read_last_night", return_value=None), \
+                        patch.object(chain, "select_steps", return_value=[]), \
+                        patch.object(chain, "gpu_pending", side_effect=AssertionError("remote GPU queue queried")):
+                    chain.plan(args, clock)
+                self.assertEqual(clock.sleeps, [])
+                self.assertEqual(summary.read_text(), schedule.GPU_NOT_ON_HOST + "\n")
+                self.assertTrue(json.loads(args.out.read_text())["lanes"])
 
     def test_plan_delegates_window_and_writes_skip_summary(self):
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
