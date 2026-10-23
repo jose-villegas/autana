@@ -246,7 +246,7 @@ def run_chain(steps, args, runner=None, clock=None):
                     try:
                         capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
                                                        suite=args.suite, runs=1, timeout=CAPTURE_TIMEOUT_SECONDS,
-                                                       wait=max(0, (deadline - clock.now()).total_seconds()))
+                                                       wait=max(0, int((deadline - clock.now()).total_seconds())))
                         record = run_flash(capture_args, seed=LAYOUT_SEED, runner=run_step)
                         actual = require_same_board({"previous": machine, "capture": record["board"]}
                                                     if machine else {"capture": record["board"]})

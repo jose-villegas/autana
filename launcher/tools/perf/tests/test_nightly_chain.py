@@ -138,6 +138,9 @@ class NightlyTests(unittest.TestCase):
                 patch.object(chain, "write_json", side_effect=record):
             results = chain.run_chain(self.steps() if steps is None else steps, self.args, replay, self.clock)
         self.assertTrue(all(token == "outer-hold" for token in replay.tokens))
+        for command in replay.calls:
+            if "suite" in command:
+                self.assertRegex(command[command.index("--wait") + 1], r"^[0-9]+$")
         self.assertEqual(chain.git(self.repo, "worktree", "list", "--porcelain").count("worktree "), 1)
         self.assertEqual(len(writes[-1]["steps"]), len(results))
         return results, replay, writes
@@ -300,7 +303,11 @@ class NightlyTests(unittest.TestCase):
 
     def test_equal_image_skips_but_anchor_measures(self):
         steps = self.steps(indices=(1, 1, 1), anchor=True)
-        results, replay, writes = self.run_chain(steps)
+        build_seconds = 60.75
+        expected_wait = int((datetime.fromisoformat(self.args.deadline) - self.clock.now()).total_seconds() - build_seconds)
+        results, replay, writes = self.run_chain(steps, durations=(build_seconds,))
+        capture = next(command for command in replay.calls if "suite" in command)
+        self.assertEqual(capture[capture.index("--wait") + 1], str(expected_wait))
         self.assertEqual([r.outcome for r in results], ["measured", "skipped_same_image", "skipped_same_image"])
         self.assertEqual(sum("suite" in cmd for cmd in replay.calls), 1)
         self.assertEqual([len(w["steps"]) for w in writes], [0, 1, 2, 3, 3])
