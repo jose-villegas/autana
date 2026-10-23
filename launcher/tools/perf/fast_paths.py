@@ -85,7 +85,7 @@ def annotations(root=ROOT):
 
 
 def validate_sections(text, items):
-    sections = re.findall(r"^## (\w+)\s*$", text, re.M)
+    sections = re.findall(r"^## `?(\w+)`?\s*$", text, re.M)
     expected = list(dict.fromkeys(item.key for item in items))
     if len(sections) != len(expected) or set(sections) != set(expected):
         raise ValueError(f"fast-path section mismatch: expected {expected}, found {sections}")
@@ -251,26 +251,36 @@ def callers(root, key):
 
 
 def build_rows(item, root):
-    body = function_bodies((root / item.header).read_text(encoding="utf-8"))[item.key]
-    conditions = re.findall(r"^#(?:if|elif) (.*CONFIG_MATH_.*)$", body, re.M)
-    symbols = sorted(set(re.findall(r"CONFIG_MATH_\w+", "\n".join(conditions))))
+    symbols, _ = hardware_features(root, item)
     qemu = (root / "launcher/sdkconfig.defaults.qemu").read_text(encoding="utf-8")
-    kconfig = (root / "launcher/packages/math/Kconfig").read_text(encoding="utf-8")
-    lines = []
-    for symbol in symbols:
-        option = symbol.removeprefix("CONFIG_")
-        definition = re.search(r"    config " + option + r"\n(.*?)(?=\n    config |\nendmenu)", kconfig, re.S)
-        help_text = " ".join(definition[1].split("help", 1)[1].split()) if definition else ""
-        value = re.search(r"^" + symbol + r"=(\w+)$", qemu, re.M)
-        disabled = re.search(r"^# " + symbol + r" is not set$", qemu, re.M)
-        setting = value[1] if value else "n" if disabled else "default"
-        lines.append(f"- `{symbol}`: {help_text} QEMU: `{setting}`.")
-    guard = " ; ".join(conditions) or "all builds (portable C)"
-    lines += [f"Host: `!defined(__XTENSA__)`; source conditions: `{guard}`.",
-              f"QEMU: `CONFIG_LAUNCHER_QEMU`; source conditions: `{guard}` (values above).",
-              f"Target: source conditions `{guard}`; configured values come from the capture build."]
-    return "\n\n".join(lines)
+    disabled = any(re.search(r"^# " + symbol + r" is not set$|^" + symbol + r"=n$", qemu, re.M) for symbol in symbols)
+    gates = ", ".join(f"`{symbol}`" for symbol in symbols) or "none"
+    return f"{gates} | {'plain' if disabled else 'fast'} | {'plain' if item.target == 'Target-specific' else 'fast'}"
 
+
+def _description_fields(item):
+    inputs, algorithm = re.split(r", (?=[a-z])", item.description.removeprefix("For "), maxsplit=1)
+    symbols = re.findall(r"(?:reciprocal(?:-root)? seed|reciprocal root|fused remainder) [a-z]\b", algorithm)
+    if "; " in algorithm:
+        return algorithm.split(" samples", 1)[0] + " interpolation", inputs + "; " + algorithm.removesuffix(".")
+    algorithm = re.sub(r" (?:y|r)\b| give reciprocal root y", "", algorithm).removesuffix(".")
+    return algorithm, "; ".join([inputs, *symbols])
+
+
+def _size_cell(row, sizes):
+    records = sizes.get(row, [])
+    regions = {}
+    for _, size, region in records:
+        if region != "rodata":
+            regions.setdefault(region, []).append(size)
+    parts = [f"{sum(size for size in values if size is not None)}{' + ?' if None in values else ''} / {region}"
+             for region, values in sorted(regions.items())]
+    tables = sum(size for _, size, region in records if region == "rodata")
+    return ", ".join(parts) + f"; tables {tables}" if records else "-"
+
+
+def _inline_expressions(text):
+    return re.sub(r"\[[^]\n]+[)\]]|\b(?:[a-z]|len|sinf|MATH\w+)\b", lambda match: f"`{match[0]}`", text)
 
 
 def plain_expression(item, root):
@@ -282,56 +292,42 @@ def plain_expression(item, root):
 
 
 def render(root, items, rows, measured, errors, bins, sizes, fpu, target):
-    manifest = {row[0]: row for row in rows}
     groups = {}
     for item in items:
         groups.setdefault(item.key, []).append(item)
-    lines = []
+    lines = [f"Measured target: {target}.", "",
+             "| Fast path | Plain way | Ours | Target / hardware feature | Warm cycles/op (ratio) | Cold cycles/call | Max error (limit; method) | Code bytes / region; table bytes (fast vs plain) |",
+             "|---|---|---|---|---|---|---|---|"]
     for key, group in groups.items():
         item = group[0]
-        lines += [f'<a id="{key.replace("_", "-")}"></a>', "", f"## {key}", "", "**Plain way**", ""]
+        plain_cells, warm_cells, cold_cells, _size_cells = [], [], [], []
         for pair in group:
-            lines += [plain_expression(pair, root) + ".", ""]
-        lines += ["**What we do**", "", item.description, "", "```math", item.formula, "```", "", f"Implementation target: {item.target}.", "", "**Cost**", "",
-                  "| Row | Measured target | Warm cycles/op | Cold cycles/call | Plain/fast warm |", "|---|---|---:|---:|---:|"]
-        for pair in group:
+            label = f"`{pair.fast}`: " if len(group) > 1 else ""
             fast, plain = measured.get(pair.fast), measured.get(pair.plain)
             ratio = f"{plain[0] / fast[0]:.2f}" if fast and plain else "-"
-            for row in (pair.fast, pair.plain):
-                values = measured.get(row)
-                warm, cold = (f"{value:.1f}" for value in values[:2]) if values else ("-", "-")
-                lines.append(f"| `{row}` | {target if values else '-'} | {warm} | {cold} | {ratio if row == pair.fast else 'n/a'} |")
-        error = errors.get((key, item.kind), "-")
-        lines += ["", "**Error**", "", "| Measured target | Maximum error | Limit | Unit | Method |",
-                  "|---|---:|---|---|---|",
-                  f"| {target if error != '-' else '-'} | {error.split()[0]} | `{item.limit_name}` ({item.limit:g}) | {item.unit} | {item.method} |",
-                  "", f"{item.method.capitalize()}: {item.coverage}.", ""]
-        if (key, item.kind) in bins:
-            lines += [f"![Error across the input range](../images/math/fast-path-{key}.png)", ""]
-        else:
-            lines += ["Error curve: - (capture pending).", ""]
-        lines += ["**Size**", "", "| Row | Code bytes / region | Callee bytes | Table bytes |", "|---|---|---|---|"]
-        for pair in group:
-            for row in (pair.fast, pair.plain):
-                records = sizes.get(row, [])
-                code = [f"{size if size is not None else '-'} / {region}" for name, size, region in records if name == bench.ROW_SYMBOL_PREFIX + row]
-                callees = [f"`{name}`: {size if size is not None else '-'} / {region}" for name, size, region in records
-                           if name != bench.ROW_SYMBOL_PREFIX + row and region != "rodata"]
-                tables = [f"`{name}`: {size}" for name, size, region in records if region == "rodata"]
-                lines.append(f"| `{row}` | {', '.join(code) or '-'} | {', '.join(callees) or ('none' if records else '-')} | {', '.join(tables) or ('0' if records else '-')} |")
-        symbols, _ = hardware_features(root, item)
+            warm, cold = [(f"{fast[i]:.1f}" if fast else "-") + " vs " +
+                          (f"{plain[i]:.1f}" if plain else "-") for i in range(2)]
+            plain_cells.append(f"`{pair.fast}` / `{pair.plain}`: `{plain_expression(pair, root)}`")
+            warm_cells.append(f"{label}{warm} ({ratio})")
+            cold_cells.append(label + cold)
+            _size_cells.append(f"{label}{_size_cell(pair.fast, sizes)} vs {_size_cell(pair.plain, sizes)}")
         observed = ", ".join(f"`{op}`" for op in fpu[item.fast].partition(";")[0].split() if op in bench.FPU_OPS)
-        gates = ", ".join(f"`{symbol}`" for symbol in symbols)
-        feature = f"ELF instructions: {observed or 'none'}. Gating symbols: {gates or 'none'}."
-        lines += ["", "**Builds**", "", feature, "", build_rows(item, root), "", "**Where it pays**", "",
-                  "| Engine module | Calls through |", "|---|---|"]
-        modules = callers(root, key)
-        for module, functions in sorted(modules.items()):
-            spelling = ", ".join(f"`{name}`" for name in sorted(functions))
-            lines.append(f"| {module} | {spelling} |")
-        if not modules:
-            lines += ["", "No production callers found."]
-        lines.append("")
+        error = errors.get((key, item.kind), "-").split()[0]
+        cells = [f"[`{key}`](#{key.replace('_', '-')})", "<br>".join(plain_cells), _description_fields(item)[0],
+                 f"{item.target}; {observed or 'no special instructions'}", "<br>".join(warm_cells), "<br>".join(cold_cells),
+                 f"{error} {item.unit} (`{item.limit_name}` ({item.limit:g}); {item.method}).", "<br>".join(_size_cells)]
+        lines.append("| " + " | ".join(cells) + " |")
+    lines += ["", "### Builds and callers", "", "| Fast path | Gating Kconfig | QEMU | Host | Engine modules |", "|---|---|---|---|---|"]
+    for key, group in groups.items():
+        modules = ", ".join(f"`{module}`" for module in sorted(callers(root, key))) or "none"
+        lines.append(f"| [`{key}`](#{key.replace('_', '-')}) | {build_rows(group[0], root)} | {modules} |")
+    for key, group in groups.items():
+        item = group[0]
+        lines += ["", f'<a id="{key.replace("_", "-")}"></a>', "", f"## `{key}`", "",
+                  "```math", item.formula, "```", "", f"Symbols: {_inline_expressions(_description_fields(item)[1])}.", "",
+                  f"{item.method.capitalize()}: {_inline_expressions(item.coverage)}.", ""]
+        lines += [f"![Error across the input range](../images/math/fast-path-{key}.png)" if (key, item.kind) in bins
+                  else "Error curve: - (capture pending)."]
     return "\n".join(lines)
 
 
@@ -451,7 +447,7 @@ def main(argv=None):
         sizes = parse_sizes(size_path.read_text(encoding="utf-8")) if size_path.exists() else {}
         page = root / DOCUMENT
         page_text = page.read_text(encoding="utf-8")
-        section_order = re.findall(r"^## (\w+)\s*$", page_text, re.M)
+        section_order = re.findall(r"^## `?(\w+)`?\s*$", page_text, re.M)
         if section_order:
             if args.check:
                 validate_sections(page_text, items)

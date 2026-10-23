@@ -166,6 +166,40 @@ class FastPathTests(unittest.TestCase):
         for key in ('fast_f', 'plain_f'):
             self.assertIn(('seeds', 16, 'rodata'), sizes[key])
 
+    def test_compact_tables_and_formula_details(self):
+        items = paths.annotations()
+        rows, fpu = bench.read_fpu(ROOT / "docs/math/data/math_bench_fpu_ops.txt")
+        sizes = paths.parse_sizes((ROOT / "docs/math/data/math_bench_sizes.txt").read_text())
+        measured = {row[0]: (10.0, 20.0) for row in rows}
+        measured["div_recip_f"] = (25.0, 40.0)
+        errors = {(item.key, item.kind): "0 ulp" for item in items}
+        bins = {(item.key, item.kind): [(1.0, 0.0, item.unit)] for item in items}
+        text = paths.render(ROOT, items, rows, measured, errors, bins, sizes, fpu, "test target")
+        summary, details = text.split('<a id="mathf-recip"></a>', 1)
+        self.assertEqual(summary.count("| [`"), len({item.key for item in items}) * 2)
+        self.assertIn("`1.0F / x`", summary)
+        self.assertIn("10.0 vs 25.0 (2.50", summary)
+        self.assertIn("20.0 vs 40.0", summary)
+        self.assertIn("`normalize_x`", summary)
+        self.assertIn("`nlerp_x`", summary)
+        self.assertIn("768", summary)
+        self.assertIn("ROM", summary)
+        self.assertIn("`CONFIG_MATH_FPU_RECIP`", summary)
+        self.assertIn("render", summary)
+        self.assertNotIn("|", details)
+        self.assertNotIn("**Plain way**", details)
+        self.assertIn("Symbols: nonzero input `a`; reciprocal seed `y`.", details)
+        self.assertIn("`sinf` in output LSBs", details)
+        self.assertIn("`[MATHX_RSQRT_MIN, 2^32)`", details)
+        self.assertIn("| `CONFIG_MATH_FPU_RECIP` | plain | plain |", summary)
+        self.assertIn("| `CONFIG_MATH_FPU_FUSED_MADD` | plain | fast |", summary)
+        self.assertEqual(details.count("```math"), len({item.key for item in items}))
+        self.assertEqual(details.count("![Error across"), len({item.key for item in items}))
+        paths.validate_sections(text, items)
+        pending = paths.render(ROOT, items, rows, {}, {}, {}, {}, fpu, "-")
+        self.assertIn("capture pending", pending)
+        self.assertIn("- vs - (-)", pending)
+
     def test_size_records_are_strict(self):
         text = 'fast_f\tmath_bench_fast_f\t12\tflash\nfast_f\t__divsf3\t32\tIRAM\n'
         self.assertEqual(paths.parse_sizes(text)['fast_f'][0], ('math_bench_fast_f', 12, 'flash'))
