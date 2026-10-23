@@ -40,12 +40,12 @@ import sys
 
 
 from c_lexer import c_code
-from c_comments import EXCLUDED, RULE_RUN, file_header, scan, sources
+from c_comments import excluded, RULE_RUN, file_header, scan, sources
 
 
 def tracked_sources():
     return [p.as_posix() for p in sources(".", tracked=True,
-            extensions=(".c", ".h", ".cpp", ".hpp"), excluded=False)]
+            extensions=(".c", ".h", ".cpp", ".hpp"), exclude=False)]
 
 def changed_files(ref):
     """Tracked C/C++ files that differ from `ref`, staged or not."""
@@ -183,7 +183,7 @@ def main(argv):
 
     if selected is not None:
         paths = [p for p in selected if p.endswith((".c", ".h", ".cpp", ".hpp"))
-                 and not p.startswith(EXCLUDED) and pathlib.Path(p).is_file()]
+                 and not p.startswith(excluded()) and pathlib.Path(p).is_file()]
     elif explicit:
         pass
     elif changed_ref is not None or staged:
@@ -195,7 +195,7 @@ def main(argv):
         paths = tracked_sources()
 
     if not include_all and not explicit:
-        paths = [p for p in paths if not any(p.startswith(x) for x in EXCLUDED)]
+        paths = [p for p in paths if not any(p.startswith(x) for x in excluded())]
 
     scoped = (changed_ref is not None or staged) and not explicit
     base_comments = (comments_at_ref(changed_ref)
