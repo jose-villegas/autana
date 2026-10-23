@@ -150,7 +150,7 @@ Host tools and tests pass a `const render_view_t*` to `raster_draw()`
 and compose its picture with `raster_upscale()`. `camera_view()` builds a
 frame view from a lens (`camera_t`, `scene/camera/camera.h`) and a pose; a
 scene camera's pose is its entity's, which an [animation
-track](../Animation-Tracks.md) moves.
+track](Animation-Tracks.md) moves.
 
 The shell's half of the API (the two frame halves and the unload on exit) is
 `scene/scene_shell.h`; apps include only `scene/scene.h`.

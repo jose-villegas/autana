@@ -23,7 +23,7 @@ class SharedHelpers(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
-        write(self.root, "docs/Shared-Helpers.md",
+        write(self.root, "docs/tools/Shared-Helpers.md",
               "Before\n<!-- generated: shared-helpers -->\n<!-- /generated: shared-helpers -->\nAfter\n")
 
     def include(self, owner, directories=("one", "two")):
@@ -118,7 +118,7 @@ class SharedHelpers(unittest.TestCase):
         self.assertEqual({"pkg/value.py", "engine/value.h"}, {r[0] for r in catalogue(self.root)})
 
     def test_stale_check_preserves_crlf(self):
-        page = self.root / "docs/Shared-Helpers.md"
+        page = self.root / "docs/tools/Shared-Helpers.md"
         page.write_bytes(page.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
         owner = "engine/value.h"
         write(self.root, owner, "/* Values. */\nint value(void);\n")
@@ -136,7 +136,7 @@ class SharedHelpers(unittest.TestCase):
         write(self.root, owner, "/* Values. */\nint value(void);\n")
         self.include(owner)
         update(self.root)
-        page = self.root / "docs/Shared-Helpers.md"
+        page = self.root / "docs/tools/Shared-Helpers.md"
         self.assertEqual({"shared-helpers": CHECK}, check_commands(page.read_text(encoding="utf-8")))
         command = f"{CHECK} --root {shlex.quote(self.root.as_posix())}"
         self.assertIsNone(run_check(REPO, command))

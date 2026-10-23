@@ -406,7 +406,7 @@ interactive `autana` session.
 
 ## Verifying performance on real hardware
 
-[`../Testing-Guide.md`](../Testing-Guide.md) is the host/device split and
+[`testing/README.md`](../testing/README.md) is the host/device split and
 the general practice; [`Testing-Sand.md`](Testing-Sand.md) is this app's
 own half of it: the frame-budget capture, `runsuite`, how to read a
 result, and the current state of `suite_sand_perf.c`'s frame-budget tests

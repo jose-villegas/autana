@@ -8,7 +8,7 @@ name: Format
 # commit CI or a merge makes.
 #
 # clang-format is pinned to one exact version, not a minimum: see
-# docs/C-Style-Guide.md's "One formatter version" for why the versions
+# docs/c-style/README.md's "One formatter version" for why the versions
 # disagree on real files in this tree. The version is the esp-clang release
 # the pinned ESP-IDF bundles (launcher/idf-pin.json), run inside that image,
 # so a contributor with that ESP-IDF formats with the same binary.

@@ -16,7 +16,7 @@ Two rules a script cannot judge reliably were left out rather than scripted
 badly: journey words in prose docs (find_narrative_comments.py's own
 SIGNS list is, by its own docstring, "a WORKLIST, NOT A VERDICT"; tested
 against this tree's docs it is nearly all ordinary technical prose, not
-narration) and whether a comment should exist at all (docs/C-Style-Guide.md
+narration) and whether a comment should exist at all (docs/c-style/README.md
 calls that judgement, not a length or a name). HEADING-COMMENT is WARN for
 the same reason: a worklist, not a verdict.
 """
@@ -183,7 +183,7 @@ def rule_tracker_ref_comment(root, path, text, comments):
 
 
 # RULE: a calendar date in a C comment or a doc records when something was
-# true, not what is true now. docs/doc_review_ledger.txt is a genuine dated
+# true, not what is true now. scripts/gates/doc_review_ledger.txt is a genuine dated
 # log; as a .txt it is outside this rule's .md/.c/.h scope.
 
 DATE = re.compile(r"\b(?:19|20)\d{2}-\d{2}-\d{2}\b")
@@ -218,7 +218,7 @@ def rule_living_document(root, path, raw_lines):
             yield number, '"living document" - say what the doc covers, not that it changes'
 
 
-# RULE: includes are layer-qualified (docs/C-Style-Guide.md, "Headers and
+# RULE: includes are layer-qualified (docs/c-style/README.md, "Headers and
 # module boundaries"): "gfx/gfx.h", never "../../gfx/gfx.h" or a bare
 # "gfx.h", even between two files in the same folder. launcher/main is a
 # registered include root (INCLUDE_DIRS "." in CMakeLists.txt, and -I
@@ -912,7 +912,7 @@ def rule_drawn_comment(root, path, text, comments):
 
 # RULE: a one-line block comment of up to five plain words, sitting inside a
 # function body, is a leftover section label for a block that should have
-# been an extracted, named helper, docs/C-Style-Guide.md's "needing to
+# been an extracted, named helper, docs/c-style/README.md's "needing to
 # comment parts of a function separately means the function is the
 # problem." The identical shape is also this tree's normal way to divide a
 # FILE's top-level declarations into named groups (gfx_present.c's own
@@ -920,7 +920,7 @@ def rule_drawn_comment(root, path, text, comments):
 # different, accepted use, so this only fires once brace tracking proves
 # the comment sits inside a real function body, not a top-level divider or
 # initializer. WARN, not ERROR: whether a comment should exist at all is
-# judgement (docs/C-Style-Guide.md's "Judgment rules"), and this is a
+# judgement (docs/c-style/README.md's "Judgment rules"), and this is a
 # worklist for a reader to weigh, not a verdict a script can hand down.
 
 LABEL = re.compile(r"^[A-Z][a-z]+(?:\s[A-Za-z][a-z]*){0,4}$")

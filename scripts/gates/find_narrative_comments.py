@@ -5,7 +5,7 @@
     python scripts/gates/find_narrative_comments.py --tombstones   fail on any "moved to <file>"
     Add --paths FILE... to scope either mode to complete files.
 
-docs/C-Style-Guide.md's first comment rule: a comment states the constraint that holds
+docs/c-style/README.md's first comment rule: a comment states the constraint that holds
 now, never the journey. This finds candidates for that rule by keyword, so it
 is a WORKLIST, NOT A VERDICT; "previously" can describe current behaviour and
 "failed" can be what a test asserts. Every hit still needs a person deciding

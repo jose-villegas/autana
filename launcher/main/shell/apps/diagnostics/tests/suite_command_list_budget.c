@@ -3,7 +3,7 @@
  * command list reaches, and taps the page, driving the REAL
  * toggles_screen_draw() through ui_begin()/ui_end() as app_diagnostics.c
  * does rather than a hand-mirrored reconstruction; see
- * docs/Building-a-Screen.md.
+ * docs/ui/Building-a-Screen.md.
  *
  * CONFIG_LAUNCHER_SELFTEST is never defined on a host build, so this run
  * never reaches the self-test button/result row toggles_screen.c guards on

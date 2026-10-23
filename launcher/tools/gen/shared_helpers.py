@@ -26,7 +26,7 @@ from generated_blocks import replace_block
 from idf_vocabulary import c_declarations
 from tracked import tracked_files
 
-PAGE = pathlib.Path("docs/Shared-Helpers.md")
+PAGE = pathlib.Path("docs/tools/Shared-Helpers.md")
 CHECK = "python launcher/tools/gen/shared_helpers.py --check"
 INCLUDE = re.compile(r'^\s*#\s*include\s+([<"])([^>"\n]+)[>"]', re.M)
 
