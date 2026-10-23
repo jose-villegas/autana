@@ -305,6 +305,7 @@ its ADPCM block headers; a cached view reports zero.
 Sound views live in PSRAM. They and their pack references are released at
 the next app transition, after the mixer fence.
 Distinct mounted packs share `ASSET_STORE_MOUNTS_MAX` slots with other asset users.
+A timeout keeps views mapped for a later transition.
 
 ```mermaid
 sequenceDiagram

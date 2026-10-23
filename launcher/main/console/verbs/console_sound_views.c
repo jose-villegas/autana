@@ -9,6 +9,7 @@
 #include "console/verbs/console_tone.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "esp_log.h"
 #include "sound/sound_engine.h"
 
 typedef struct console_sound_view {
@@ -20,7 +21,9 @@ typedef struct console_sound_view {
     struct console_sound_view* next;
 } console_sound_view_t;
 
+static const char* TAG = "console_sound";
 static console_sound_view_t* views;
+static bool views_need_fence;
 
 const sound_t*
 console_sound_view(const console_sound_args_t* args, int64_t* open_us) {
@@ -53,8 +56,26 @@ console_sound_view(const console_sound_args_t* args, int64_t* open_us) {
     return &view->sound;
 }
 
+static bool
+fence_views(void) {
+    for (const console_sound_view_t* view = views; view; view = view->next) {
+        for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+            sound_voice_t voice = view->voices[i];
+            if (!console_tone_stop(&voice)) {
+                ESP_LOGW(TAG, "sound stop timed out; views kept");
+                return false;
+            }
+        }
+    }
+    return sound_fence();
+}
+
 void
 console_sound_app_exit(void) {
+    if (views_need_fence && !fence_views()) {
+        return;
+    }
+    views_need_fence = false;
     console_sound_view_t** link = &views;
     while (*link) {
         console_sound_view_t* view = *link;
@@ -82,15 +103,7 @@ console_sound_track_voice(const sound_t* sound, sound_voice_t voice) {
 void
 console_sound_app_enter(void) {
     if (views && !sound_app_active()) {
-        for (const console_sound_view_t* view = views; view; view = view->next) {
-            for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-                sound_voice_t voice = view->voices[i];
-                if (!console_tone_stop(&voice)) {
-                    abort();
-                }
-            }
-        }
-        sound_fence();
+        views_need_fence = true;
         console_sound_app_exit();
     }
 }

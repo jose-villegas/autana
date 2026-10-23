@@ -148,6 +148,8 @@ static struct {
         bool system_playing;
         uint32_t playing;
         unsigned stop_drops;
+        bool fence_timeout;
+        int expected_stops;
         int phase;
         int mounted;
     } console;
@@ -561,18 +563,20 @@ sound_app_active(void) {
     return device.console.app_active;
 }
 
-void
+bool
 sound_fence(void) {
-    TEST_ASSERT_EQUAL_INT(2, device.console.phase);
+    TEST_ASSERT_EQUAL_INT(device.console.expected_stops, device.console.phase);
     TEST_ASSERT_EQUAL_UINT32(0, device.console.playing);
     TEST_ASSERT_EQUAL_INT(device.console.mounted + 1, asset_store_mounted());
     device.console.phase++;
+    return !device.console.fence_timeout;
 }
 
-static void
-test_sound_transition_releases_all_views(void) {
+static console_sound_args_t
+sound_fixture(void) {
     reset_device();
     device.console.enabled = true;
+    device.console.expected_stops = 2;
     const char* probe = getenv("AUTANA_SOUND_PROBE");
     TEST_ASSERT_NOT_NULL(probe);
     char* folder = malloc(strlen(probe) + 1);
@@ -584,10 +588,16 @@ test_sound_transition_releases_all_views(void) {
     test_asset_dir_use(folder);
     free(folder);
     device.console.mounted = asset_store_mounted();
+    console_sound_args_t args = {0};
+    console_copy_text(args.pack, sizeof args.pack, "sound_probe");
+    console_copy_text(args.name, sizeof args.name, "adpcm");
+    return args;
+}
+
+static void
+test_sound_transition_releases_all_views(void) {
+    const console_sound_args_t args = sound_fixture();
     for (int transition = 0; transition < ASSET_STORE_MOUNTS_MAX; transition++) {
-        console_sound_args_t args = {0};
-        console_copy_text(args.pack, sizeof args.pack, "sound_probe");
-        console_copy_text(args.name, sizeof args.name, "adpcm");
         int64_t open_us = 0;
         const sound_t* sound = console_sound_view(&args, &open_us);
         TEST_ASSERT_NOT_NULL(sound);
@@ -613,6 +623,25 @@ test_sound_transition_releases_all_views(void) {
     }
 }
 
+static void
+test_sound_transition_retains_views_until_a_fence_succeeds(void) {
+    const console_sound_args_t args = sound_fixture();
+    device.console.expected_stops = 0;
+    device.console.fence_timeout = true;
+    int64_t open_us = 0;
+    TEST_ASSERT_NOT_NULL(console_sound_view(&args, &open_us));
+    console_sound_app_enter();
+    TEST_ASSERT_EQUAL_INT(device.console.mounted + 1, asset_store_mounted());
+    device.console.app_active = true;
+    device.console.phase = 0;
+    console_sound_app_exit();
+    TEST_ASSERT_EQUAL_INT(device.console.mounted + 1, asset_store_mounted());
+    device.console.fence_timeout = false;
+    device.console.phase = 0;
+    console_sound_app_exit();
+    TEST_ASSERT_EQUAL_INT(device.console.mounted, asset_store_mounted());
+}
+
 #endif
 
 static void
@@ -636,6 +665,7 @@ test_tone_reply_frequency(void) {
 void
 run_console_tone_suite(void) {
 #ifndef ESP_PLATFORM
+    RUN_TEST(test_sound_transition_retains_views_until_a_fence_succeeds);
     RUN_TEST(test_sound_transition_releases_all_views);
     RUN_TEST(test_melody_console_play_and_check);
     RUN_TEST(test_melody_console_failure_and_usage);

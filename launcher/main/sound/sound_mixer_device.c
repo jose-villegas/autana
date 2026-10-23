@@ -424,22 +424,33 @@ capture_request(uint32_t sequence) {
     return false;
 }
 
-void
+bool
 sound_fence(void) {
-    portENTER_CRITICAL(&control_lock);
-    const bool ready = control.ready;
-    const uint32_t sequence = ready ? sound_capture_begin(&capture) : 0;
-    portEXIT_CRITICAL(&control_lock);
-    if (!ready) {
-        return;
+    const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
+    uint32_t sequence = 0;
+    sound_capture_acquire_result_t acquired;
+    do {
+        portENTER_CRITICAL(&control_lock);
+        if (!control.ready) {
+            portEXIT_CRITICAL(&control_lock);
+            return true;
+        }
+        acquired = sound_capture_acquire(&capture, timing_now_us(), deadline, &sequence);
+        portEXIT_CRITICAL(&control_lock);
+        if (acquired == SOUND_CAPTURE_WAIT) {
+            timing_sleep_ms(SOUND_CONTROL_POLL_MS);
+        }
+    } while (acquired == SOUND_CAPTURE_WAIT);
+    const bool ok = acquired == SOUND_CAPTURE_ACQUIRED && capture_request(sequence);
+    if (sequence) {
+        portENTER_CRITICAL(&control_lock);
+        sound_capture_resume(&capture, sequence);
+        portEXIT_CRITICAL(&control_lock);
     }
-    if (!sequence || !capture_request(sequence)) {
-        ESP_LOGE(TAG, "mixer fence exceeded %u ms", (unsigned)SOUND_CAPTURE_TIMEOUT_MS);
-        abort();
+    if (!ok) {
+        ESP_LOGW(TAG, "mixer fence failed; borrowed storage must stay mapped");
     }
-    portENTER_CRITICAL(&control_lock);
-    sound_capture_resume(&capture, sequence);
-    portEXIT_CRITICAL(&control_lock);
+    return ok;
 }
 
 static bool

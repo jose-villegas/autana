@@ -38,7 +38,7 @@ typedef struct {
 
 /* Answers a play request taken from the frame mailbox. */
 void console_sound_answer(const console_sound_args_t* args);
-/* After sound_stop_app_voices(): releases all console views and pack references. */
+/* After sound_stop_app_voices(): releases views once all borrowed reads are fenced. */
 void console_sound_app_exit(void);
 /* Stops launcher playback and fences its reads before releasing views. */
 void console_sound_app_enter(void);
