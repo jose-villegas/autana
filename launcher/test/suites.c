@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "collections/sort.h"
+
 typedef struct {
     const char* name;
     suite_fn fn;
@@ -139,19 +141,16 @@ suites_dropped(void) {
     return dropped;
 }
 
+static int
+by_name(const void* a, const void* b) {
+    return strcmp(((const suite_entry_t*)a)->name, ((const suite_entry_t*)b)->name);
+}
+
 void
 suites_run_all(void) {
     /* Link order decides constructor order, so sort to keep the output stable
      * between builds. */
-    for (int i = 1; i < registered; i++) {
-        const suite_entry_t key = suites[i];
-        int j = i - 1;
-        while (j >= 0 && strcmp(suites[j].name, key.name) > 0) {
-            suites[j + 1] = suites[j];
-            j--;
-        }
-        suites[j + 1] = key;
-    }
+    sort_insertion(suites, (size_t)registered, sizeof suites[0], by_name);
 
     for (int i = 0; i < registered; i++) {
         if (!suites[i].on_request && !suite_waits(suites[i].name)) {
