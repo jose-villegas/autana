@@ -112,9 +112,7 @@ test_vec2_ops_agree_across_every_number_type(void) {
 #define NORMALIZE_ROUNDING_ERROR          0.5
 #define NORMALIZE_COMPONENT_ERROR         (NORMALIZE_ROUNDING_ERROR + 0x1p-12)
 
-/* Budget in 2^-30 units: prescale <= sqrt(n), sum truncation <= 0.5,
- * root <= 0.5, reciprocal rounding <= 0.5; n <= 4 gives total < 4 = 2^-28.
- * This gives < 2^-12 component LSB before final 0.5 LSB rounding. */
+/* mathx_normalize_n() documents the shared component and quotient error budget. */
 #define NORMALIZE_QUOTIENT_RELATIVE_ERROR 0x1p-28
 #define NORMALIZE_WORD_BITS               32
 #define NORMALIZE_SWEEP_SAMPLES           2048

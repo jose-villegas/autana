@@ -101,12 +101,11 @@ interpolation weights against the `1 / sqrtf` path.
 `quatx_normalize` accepts every nonzero int32 quaternion; zero gives zero.
 Its component error is at most $`0.5 + 2^{-12}`$ LSB against exact normalization.
 
-`quatx_unit` uses the `quatx_unit_t` alias of `quatx_t`.
-Its `quatx_unit_nlerp` and `quatx_unit_from_basis` implement the public
-`quatx_nlerp` and `quatx_from_basis` entry points.
+`quatx_unit_normalize` is the near-unit Q16.16 path `quatx_nlerp` uses.
 
-`quatx_unit_normalize` is the Q16.16 template path for near-unit inputs.
-`quatx_nlerp` uses it for the blend of unit inputs, with `t` in [0, 1].
+`quatx_unit`'s public second spellings keep the shared template unchanged:
+`quatx_unit_normalize`, `quatx_unit_nlerp`, `quatx_unit_from_basis`.
+Callers use `quatx_*`, including `quatx_from_basis`.
 
 The unit-input sweep in `suite_math_numbers.c` checks an 8 LSB component
 bound against a double reference, including blend and squared-length rounding.

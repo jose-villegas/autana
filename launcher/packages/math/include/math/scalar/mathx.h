@@ -12,6 +12,8 @@
  */
 #pragma once
 
+#include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "math/scalar/fixed.h"
@@ -275,8 +277,10 @@ mathx_wrap(int32_t v, int32_t lo, int32_t hi) {
     return mathi_wrap(v, lo, hi);
 }
 
-/* n <= 4. Relative budget in 2^-30 units: prescale <= sqrt(n), sum truncation
- * <= 0.5, root <= 0.5, reciprocal rounding <= 0.5; total < 4 = 2^-28.
+/* n <= 4. Relative budget in 2^-30 units for scaled length L:
+ * L < 2^30: prescale <= sqrt(n), no reciprocal rounding.
+ * L >= 2^30: prescale <= 1, reciprocal rounding <= 1.
+ * Both: sum truncation <= 0.5, root <= 0.5; total < 4 = 2^-28.
  * Components: 0.5 + 2^-12 LSB. Quotient: relative 2^-28 + 0.5 LSB, saturated.
  * Zero input gives zero and mathx_div(t, 0). */
 static inline void
@@ -322,8 +326,8 @@ mathx_normalize_n(const int32_t* in, int32_t* out, size_t n, int32_t t, int32_t*
     const uint32_t mantissa = (uint32_t)(mantissa_shift >= 0 ? sum >> mantissa_shift : sum << -mantissa_shift);
     const uint32_t root = mathx_rsqrt_q30(mantissa);
     const int reciprocal_shift = exponent / 2 + 1 - MATHX_RSQRT_SHIFT;
-    const uint64_t reciprocal =
-        reciprocal_shift > 0 ? (uint64_t)fx_round_shift(root, reciprocal_shift) : (uint64_t)root << -reciprocal_shift;
+    assert(reciprocal_shift >= 0 && reciprocal_shift <= 2);
+    const uint64_t reciprocal = reciprocal_shift > 0 ? (uint64_t)fx_round_shift(root, reciprocal_shift) : root;
     const int32_t k = mathx_saturate((int64_t)reciprocal);
     *q = mathx_saturate(fx_round_shift((int64_t)t * k, MATHX_NORMALIZE_OUTPUT_SHIFT - s));
     for (size_t i = 0; i < n; i++) {

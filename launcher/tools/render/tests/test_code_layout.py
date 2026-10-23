@@ -107,6 +107,48 @@ class PoolTests(unittest.TestCase):
         kept = code_layout.skip_pools(found, lambda start: [ins for ins in again if ins[0] >= start])
         self.assertEqual([ins[2] for ins in kept], ["beqz", "j", "l32i.n", "addi.n", "retw.n"])
 
+    def test_embedded_literal_pool_resumes_at_its_end(self):
+        found = [
+            (0x42000000, 3, "l32r", "a8, 42000008 <f+0x8> (40002274 <callee>)"),
+            (0x42000003, 3, "j", "4200000c <f+0xc>"),
+            (0x42000006, 3, "bnez", "a2, 42000009 <f+0x9>"),
+            (0x42000009, 3, "call8", "4200100c <unrelated+0xc>"),
+            (0x4200000c, 3, "callx8", "a8"),
+            (0x4200000f, 2, "retw.n", ""),
+        ]
+        starts = []
+
+        def again(start):
+            starts.append(start)
+            return found[-2:]
+
+        self.assertEqual(code_layout.skip_pools(found, again), found[:2] + found[-2:])
+        self.assertIn(0x4200000c, starts)
+
+    def test_alignment_before_code_in_a_long_jump_span(self):
+        found = [
+            (0x42000000, 3, "bltz", "a4, 42000008 <f+0x8>"),
+            (0x42000003, 3, "j", "42000040 <f+0x40>"),
+            (0x42000006, 3, "srai", "a0, a0, 16"),
+            (0x42000009, 3, "call8", "4200100c <unrelated+0xc>"),
+            (0x42000040, 2, "retw.n", ""),
+        ]
+        again = [
+            (0x42000008, 3, "l32r", "a8, 42001000 <pool> (40002274 <callee>)"),
+            (0x4200000b, 3, "callx8", "a8"), (0x4200000e, 2, "retw.n", ""),
+        ]
+        self.assertEqual(code_layout.skip_pools(found, lambda start: again), found[:2] + again + found[-1:])
+
+    def test_redecodes_code_entering_a_literal_pool(self):
+        found = [
+            (0x42000000, 3, "bnez", "a2, 42000007 <f+0x7>"),
+            (0x42000003, 3, "j", "42000010 <f+0x10>"),
+            (0x42000006, 3, "msub.s", "f0, f1, f2"),
+            (0x42000010, 3, "madd.s", "f0, f1, f2"),
+        ]
+        again = [(0x42000007, 3, "add.n", "a2, a2, a3")]
+        self.assertEqual(code_layout.skip_pools(found, lambda start: again), found[:2] + again + found[-1:])
+
 
 class SmallLoopTests(unittest.TestCase):
     def entries(self, found, start=0x1000, first_line=20, line_size=32, locations=None):

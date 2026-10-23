@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT / "launcher/tools" / folder) for folder in ("render", "quality", "perf")]
 from generated_blocks import replace_block
 from icount_gate import load_baseline
-from code_layout import LayoutError, find_tool, instructions, parse_objdump, run, skip_pools, symbols, target_of
+from code_layout import LayoutError, find_tool, instructions, parse_objdump, run, skip_pools, symbols
 from capture import build_id
 
 DATA = ROOT / "docs/math/data"
@@ -31,7 +31,6 @@ CAPTURE_ROW = re.compile(
 SYMBOL = re.compile(r"^[0-9a-fA-F]+ <([^>]+)>:$")
 ROW_SYMBOL_PREFIX = "math_bench_"
 MANIFEST = "math_bench_manifest"
-XTENSA_LITERAL_BYTES = 4
 CALL_SYMBOL = re.compile(r"[\w.$@]+")
 
 
@@ -59,30 +58,6 @@ def parse_capture(text, rows):
     return build, measured
 
 
-def skip_literals(decoded, decode_from=None):
-    if not decoded:
-        return decoded
-    start = decoded[0][0]
-    end = decoded[-1][0] + decoded[-1][1]
-    pools = set()
-    while True:
-        literals = {target_of(operands) for _, _, mnemonic, operands in decoded if mnemonic == "l32r"}
-        pending = sorted(address for address in literals
-                         if address is not None and start <= address <= end - XTENSA_LITERAL_BYTES and address not in pools)
-        if not pending:
-            repaired = skip_pools(decoded, decode_from, jump_max=end - start)
-            if repaired == decoded:
-                return decoded
-            decoded = repaired
-            continue
-        for address in pending:
-            pools.add(address)
-            resume = address + XTENSA_LITERAL_BYTES
-            prefix = [ins for ins in decoded if ins[0] + ins[1] <= address]
-            suffix = decode_from(resume) if decode_from else [ins for ins in decoded if ins[0] >= resume]
-            decoded = prefix + [ins for ins in suffix if ins[0] < end]
-
-
 def parse_disassembly(text, rows, resolve=None):
     expected = {key for key, *_ in rows}
     found = {}
@@ -101,7 +76,7 @@ def parse_disassembly(text, rows, resolve=None):
     for key in sorted(found):
         body = "\n".join(found[key])
         decoded, again = resolve(ROW_SYMBOL_PREFIX + key, body) if resolve else (parse_objdump(body), None)
-        code = skip_literals(decoded, again)
+        code = skip_pools(decoded, again)
         mnemonics = {item[2] for item in code}
         registers = {}
         callees = set()
