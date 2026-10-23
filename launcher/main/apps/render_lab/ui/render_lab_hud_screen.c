@@ -22,7 +22,7 @@ text_box(const char* text, int x, int y) {
 static recti_t
 draw_text_box(const char* text, int x, int y) {
     const recti_t box = text_box(text, x, y);
-    ui_fill(box, RENDER_LAB_BACKGROUND_RGB);
+    ui_fill(box, UI_BACKGROUND);
     ui_text_centre(box, text);
     return box;
 }
@@ -45,7 +45,7 @@ draw_scene_title(const char* title, uint8_t alpha, const int row_right[HUD_CORNE
         row++;
     }
     box.y = HUD_INSET_PX + (row * (box.h + HUD_LINE_GAP_PX));
-    ui_fill(box, RENDER_LAB_BACKGROUND_RGB);
+    ui_fill(box, UI_BACKGROUND);
     ui_alpha_begin(alpha);
     ui_text_centre(box, title);
     ui_alpha_end();
