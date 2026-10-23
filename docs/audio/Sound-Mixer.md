@@ -324,7 +324,7 @@ Development builds can play pack sounds from a terminal with
 |---|---|
 | `autana sound play tap` | play the engine pack's tap sound once |
 | `autana sound play <pack>/<name> [loop] [gain]` | play from any mounted asset pack; a bare name selects `engine` |
-| `autana play engine/carreno_waltz loop 50` | the flat alias for `sound play`, at 50 % gain |
+| `autana play console/carreno_waltz loop 50` | the flat alias for `sound play`, at 50 % gain |
 | `autana sound stop <voice>` | stop the voice the play returned |
 | `autana sound stop all` | stop every voice, SYSTEM included |
 | `autana sound stats` | ready state, drops, amplifier state, voices and RAM sizes |
@@ -355,7 +355,7 @@ sequenceDiagram
 ```
 
 To compare one long voice alone and mixed with short ones, run
-`sound_mix_capture.py --sounds engine/carreno_waltz --voices 1,8 --fill-sound engine/tap`;
+`sound_mix_capture.py --sounds console/carreno_waltz --voices 1,8 --fill-sound engine/tap`;
 voice counts include the long voice.
 
 The `tone` verb plays an engine tone on the SYSTEM bus through the mixer.

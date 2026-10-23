@@ -5,6 +5,7 @@ import tempfile
 import argparse
 import json
 import os
+import re
 import sys
 from unittest import mock
 import unittest
@@ -37,6 +38,8 @@ class AudioTablesTest(unittest.TestCase):
                     *sorted((ROOT / audio.MIX_CAPTURES).glob("sound_mix_capture*.txt"))]
         bodies = list(audio.render(captures[0]).values()) + [audio.render_drc(captures[1])]
         bodies += [audio.render_mix(path) for path in captures[2:]]
+        expected_images = {Path(name).name for body in bodies
+                           for name in re.findall(r'\.\./images/([^" ]+\.png)', body)}
         data = json.loads(gate.DATA.read_text())
         bodies += list(gate.render(gate.DATA).values())
         identifiers = [data["board"], data["board"].replace(":", "")[-4:]]
@@ -66,7 +69,7 @@ class AudioTablesTest(unittest.TestCase):
                                     *(("sound_mix_figures", path) for path in captures[2:])):
                 load_tool(module).render(capture, output)
             images = sorted(output.glob("*.png"))
-            self.assertEqual(len(images), 12)
+            self.assertEqual({path.name for path in images}, expected_images)
             for path in images:
                 if not path.stem.endswith("-dark"):
                     self.assertNotEqual(path.read_bytes(), path.with_stem(path.stem + "-dark").read_bytes())

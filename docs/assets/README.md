@@ -39,7 +39,9 @@ searching, so no list is kept:
 
 A `NAME.pack.toml` makes its folder one pack, `NAME`: every root under that
 folder puts its entries there instead of making a pack of its own, each with
-its stem for id. Folder packs do not nest, and the file holds no settings yet.
+its stem for id. Folder packs do not nest. `development = true` limits a
+folder pack to development firmware images (`--image --development`); release
+images omit it. Host builds and bake checks include every pack.
 The engine's own content, which any app may use, is the folder pack
 `engine` (`launcher/main/engine/`); an app's artwork is a folder pack the app
 names, mounted while it runs.

@@ -19,7 +19,8 @@ each named by the icon; an NAME.curve.toml is pack NAME, holding its one table
 entry; an NAME.sound.toml is pack NAME, holding its one sound.
 A NAME.pack.toml makes its folder one pack NAME instead:
 every root under that folder puts its entries there, and folder packs do
-not nest. A mesh is the entry <id>.mesh that mesh_import.py wrote, and its
+not nest. `development = true` limits a folder pack to development images;
+host builds and bake discovery include every pack. A mesh is the entry <id>.mesh that mesh_import.py wrote, and its
 pack id is that id; a scene (r3d/scene_asset.py), a clip
 (anim/tracks_asset.py), a picture (gfx/image_asset.py), a curve
 (gfx/curve_asset.py) and an icon (gfx/icons_asset.py) are baked here from
@@ -125,15 +126,20 @@ def scene_entries(path, scene):
 
 @functools.cache
 def folder_packs(folder):
-    """The NAME.pack.toml files in `folder`, checked: they hold no settings yet."""
-    found = sorted(folder.glob("*" + FOLDER_PACK))
-    for path in found:
+    """{NAME.pack.toml path: development-only}, with settings validated."""
+    found = {}
+    for path in sorted(folder.glob("*" + FOLDER_PACK)):
         try:
-            values = tomllib.loads(path.read_text())
+            values = tomllib.loads(path.read_text(encoding="utf-8"))
         except tomllib.TOMLDecodeError as error:
             raise SettingsError(f"{path}: {error}") from None
-        if values:
-            raise SettingsError(f"{path}: unknown keys {sorted(values)}")
+        unknown = values.keys() - {"development"}
+        if unknown:
+            raise SettingsError(f"{path}: unknown keys {sorted(unknown)}")
+        development = values.get("development", False)
+        if not isinstance(development, bool):
+            raise SettingsError(f"{path}: development must be a boolean")
+        found[path] = development
     return found
 
 
@@ -153,9 +159,10 @@ def pack_files(paths):
     return pack_jobs(paths)[0]
 
 
-def pack_jobs(paths):
+def pack_jobs(paths, development=True):
     """pack_files() and, for each mesh source, the job that bakes it:
-    {resolved .mesh path: (job, its scene or None, the file that asks for it)}."""
+    {resolved .mesh path: (job, its scene or None, the file that asks for it)}.
+    Non-development images omit development-only folder packs."""
     files = input_files(paths)
     roots, placed, jobs = {}, set(), {}
     for path in files:
@@ -185,6 +192,8 @@ def pack_jobs(paths):
     packs, owner = {}, {}
     for path, entries in roots.items():
         maker = folder_pack(path) or path
+        if maker.name.endswith(FOLDER_PACK) and folder_packs(maker.parent)[maker] and not development:
+            continue
         name = maker.name
         for suffix in (FOLDER_PACK, *ROOTS):
             name = name.removesuffix(suffix)
@@ -204,14 +213,15 @@ def pack_jobs(paths):
 
 
 def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
-               max_influences=skin_asset.DEFAULT_INFLUENCES):
+               max_influences=skin_asset.DEFAULT_INFLUENCES, development=True):
     """{pack name: its bytes}. Every mesh and sound come from the bake cache by its locked key (bake/bake.py),
     `cache` or the user cache, downloading what it lacks unless `offline`; each --replace NAME=FILE takes
     mesh NAME from FILE instead and is never fetched. The lock is this repository's: a mesh of a scene
     or import outside it (a test's or a scratch scene) is the file beside it. With `unlocked` a list, a
     pack whose bakes only lack their lock rows (bake.BakeUnlocked) is left out and its name appended.
-    The uncached skin step adds rig entries with `max_influences` weights per vertex."""
-    packs, jobs = pack_jobs(paths)
+    The uncached skin step adds rig entries with `max_influences` weights per vertex.
+    `development=False` omits development-only folder packs."""
+    packs, jobs = pack_jobs(paths) if development else pack_jobs(paths, development=False)
     replaced = {}
     for item in replace:
         mesh, _, file = item.partition("=")
@@ -341,6 +351,7 @@ def main(argv=None):
     parser.add_argument("paths", nargs="*", help="import, scene, clip or icon set files, or folders; launcher/main when omitted")
     parser.add_argument("-o", "--out", help="the folder the packs are written to")
     parser.add_argument("--image", help="also write the partition image: the pack directory and every pack")
+    parser.add_argument("--development", action="store_true", help="include development-only packs in the partition image")
     parser.add_argument("--replace", action="append", default=[], metavar="NAME=FILE",
                         help="take mesh NAME from FILE: a scratch bake beside the committed ones")
     parser.add_argument("--pack-of", metavar="ID", help="print the pack that holds entry ID and write nothing")
@@ -364,7 +375,8 @@ def main(argv=None):
             parser.error("-o DIR is required")
         cache = pathlib.Path(args.bake_cache) if args.bake_cache else None
         unlocked = [] if args.skip_unlocked else None
-        packs = pack_bytes(paths, args.replace, cache, args.offline, unlocked, args.max_influences)
+        packs = pack_bytes(paths, args.replace, cache, args.offline, unlocked, args.max_influences,
+                           development=args.development or not args.image)
         if args.skip_unlocked:
             pathlib.Path(args.skip_unlocked).write_text("".join(f"{name}\n" for name in unlocked), newline="\n")
         for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):

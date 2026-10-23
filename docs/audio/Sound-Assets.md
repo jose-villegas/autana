@@ -34,9 +34,10 @@ The CPU Bakes workflow produces missing sound rows.
 `build_pack.py` consumes the locked SOND bytes and never decodes audio or imports numpy/soundfile.
 The firmware streams samples from the mapped pack through its cursor.
 
-The engine pack's `carreno_waltz` loops the whole stereo 44.1 kHz FLAC excerpt.
-Its [recipe](../../launcher/main/engine/sounds/carreno_waltz.sound.toml) records the public-domain source and excerpt.
-`autana play engine/carreno_waltz loop` plays it; its SOND size follows the ADPCM rows below.
+The console pack's `carreno_waltz` test sound ships only in development builds.
+It loops the whole stereo 44.1 kHz FLAC excerpt.
+Its [recipe](../../launcher/main/console/sounds/carreno_waltz.sound.toml) records the public-domain source and excerpt.
+`autana play console/carreno_waltz loop` plays it; its SOND size follows the ADPCM rows below.
 
 ## Flash per minute
 
