@@ -18,7 +18,7 @@
 #define MOTION_ROTATION_X_DPS 30
 #define MOTION_ROTATION_Y_DPS (-20)
 #define MOTION_ROTATION_Z_DPS 10
-#define MOTION_PERCENT        100.0
+#define MOTION_PERCENT        100.0f
 #define MOTION_FRAME_COUNT    (sizeof motion_replay_acceleration / sizeof *motion_replay_acceleration)
 #define MOTION_DT_US          (SAND_STEP_MS * MATH_US_PER_MS)
 
@@ -124,7 +124,7 @@ report_rows(bool rotating) {
         frame_t f = {0};
         gravity_reset(&f.gravity);
         shake_reset(&f.shake);
-        double warm = 0, cold = 0;
+        float warm = 0, cold = 0;
         for (size_t i = 0; i < MOTION_FRAME_COUNT; i++) {
             f.motion = motion[i];
             frame_t next = f;
@@ -137,13 +137,14 @@ report_rows(bool rotating) {
         }
         warm /= MOTION_FRAME_COUNT;
         cold /= MOTION_FRAME_COUNT;
-        const double warm_us = warm / CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
-        const double cold_us = cold / CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+        const float warm_us = warm / CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+        const float cold_us = cold / CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
         printf("MOTIONBENCH name=%s rotation=%s frames=%u dt_us=%u warm_cycles=%.1f cold_cycles=%.1f "
                "warm_us=%.3f cold_us=%.3f warm_frame_pct=%.5f cold_frame_pct=%.5f\n",
                rows[row].name, rotating ? "typical" : "zero", (unsigned)MOTION_FRAME_COUNT, (unsigned)MOTION_DT_US,
-               warm, cold, warm_us, cold_us, warm_us * SAND_STEP_HZ * MOTION_PERCENT / MATH_US_PER_S,
-               cold_us * SAND_STEP_HZ * MOTION_PERCENT / MATH_US_PER_S);
+               (double)warm, (double)cold, (double)warm_us, (double)cold_us,
+               (double)(warm_us * SAND_STEP_HZ * MOTION_PERCENT / MATH_US_PER_S),
+               (double)(cold_us * SAND_STEP_HZ * MOTION_PERCENT / MATH_US_PER_S));
     }
     release();
     suite_clear_test_cleanup();
