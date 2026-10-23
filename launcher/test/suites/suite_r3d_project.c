@@ -70,7 +70,7 @@ test_view_matrix_matches_the_hand_built_one_for_two_unrelated_poses(void) {
     check_view_matrix_matches_hand_built(camera_b, model_b);
 }
 
-/* The screen mapping and the point clip */
+/* The screen mapping */
 
 static void
 test_a_point_on_the_optical_axis_lands_on_center(void) {
@@ -78,7 +78,7 @@ test_a_point_on_the_optical_axis_lands_on_center(void) {
     const vec3f_t p = {0, 0, 5.0F};
     int x, y;
 
-    TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view.lens, &x, &y));
+    r3d_project_screen(p, &view.lens, &x, &y);
     TEST_ASSERT_EQUAL_INT(view.lens.cx, x);
     TEST_ASSERT_EQUAL_INT(view.lens.cy, y);
 }
@@ -97,7 +97,7 @@ check_off_axis_point_matches_the_formula(int center_x, int center_y, float pixel
     const vec3f_t p = {2.0F, -4.0F, 4.0F};
     int x, y;
 
-    TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view.lens, &x, &y));
+    r3d_project_screen(p, &view.lens, &x, &y);
     TEST_ASSERT_EQUAL_INT(expected_x, x);
     TEST_ASSERT_EQUAL_INT(expected_y, y);
 }
@@ -106,71 +106,6 @@ static void
 test_an_off_axis_point_lands_where_the_formula_says(void) {
     check_off_axis_point_matches_the_formula(184, 224, 184.0F, 184 + 92, 224 + 184);
     check_off_axis_point_matches_the_formula(50, 80, 80.0F, 50 + 40, 80 + 80);
-}
-
-static void
-test_a_point_exactly_at_near_z_counts_as_behind(void) {
-    const render_view_t view = fixture();
-    const vec3f_t p = {0, 0, view.lens.near_z};
-    int x = -1, y = -1;
-
-    TEST_ASSERT_FALSE(r3d_project_point_cs(p, &view.lens, &x, &y));
-    TEST_ASSERT_EQUAL_INT(-1, x);
-    TEST_ASSERT_EQUAL_INT(-1, y);
-}
-
-/* The segment clip */
-
-static void
-test_segment_with_both_ends_behind_returns_false(void) {
-    const render_view_t view = fixture();
-    const vec3f_t p0 = {0, 0, 0};
-    const vec3f_t p1 = {10, 10, view.lens.near_z}; /* AT near_z, not past it */
-    int ax, ay, bx, by;
-
-    TEST_ASSERT_FALSE(r3d_project_segment_cs(p0, p1, &view.lens, &ax, &ay, &bx, &by));
-}
-
-static void
-assert_screen_point(const projectf_t* lens, vec3f_t point, int x, int y) {
-    int expected_x, expected_y;
-    r3d_project_screen(point, lens, &expected_x, &expected_y);
-    TEST_ASSERT_EQUAL_INT(expected_x, x);
-    TEST_ASSERT_EQUAL_INT(expected_y, y);
-}
-
-static void
-test_one_end_behind_clips_to_the_near_plane_crossing(void) {
-    const float near_z = 2.0F;
-    const vec3f_t behind = {7.0F, -5.0F, -2.0F};
-    const vec3f_t front = {-4.0F, 13.0F, 14.0F};
-    const float crossing_parts = 4.0F;
-    const float remaining_parts = 3.0F;
-    render_view_t view = fixture();
-    view.lens.near_z = near_z;
-    /* The near plane is one quarter of the way from behind to front. */
-    const vec3f_t crossing = {(remaining_parts * behind.x + front.x) / crossing_parts,
-                              (remaining_parts * behind.y + front.y) / crossing_parts, near_z};
-    for (int reverse = 0; reverse < 2; reverse++) {
-        int ax, ay, bx, by;
-        TEST_ASSERT_TRUE(reverse ? r3d_project_segment_cs(front, behind, &view.lens, &ax, &ay, &bx, &by)
-                                 : r3d_project_segment_cs(behind, front, &view.lens, &ax, &ay, &bx, &by));
-        assert_screen_point(&view.lens, crossing, reverse ? bx : ax, reverse ? by : ay);
-        assert_screen_point(&view.lens, front, reverse ? ax : bx, reverse ? ay : by);
-    }
-}
-
-static void
-test_both_ends_in_front_matches_projecting_each_point(void) {
-    const render_view_t view = fixture();
-    const vec3f_t p0 = {50.0F, -30.0F, 300.0F};
-    const vec3f_t p1 = {-80.0F, 60.0F, 500.0F};
-    int ax, ay, bx, by;
-
-    TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &view.lens, &ax, &ay, &bx, &by));
-
-    assert_screen_point(&view.lens, p0, ax, ay);
-    assert_screen_point(&view.lens, p1, bx, by);
 }
 
 /* A point exactly at the camera plane divides by zero; the pixel is a
@@ -285,7 +220,7 @@ check_line_point(const render_view_t* view, const r3d_line_projector_t* fixed, c
     const float expected_x = view->lens.cx + view->lens.fx * vec3f_dot(view->screen_x, delta) / z;
     const float expected_y = view->lens.cy + view->lens.fx * vec3f_dot(view->screen_y, delta) / z;
     int fx, fy, qx, qy;
-    TEST_ASSERT_TRUE(r3d_project_point_cs(mat4f_apply(matrix, point), &view->lens, &fx, &fy));
+    r3d_project_screen(mat4f_apply(matrix, point), &view->lens, &fx, &fy);
     const vec3x_t camera = mat4x_apply(&fixed->matrix, vec3x_from_vec3f(point));
     TEST_ASSERT_TRUE(r3d_project_point_cs_x(camera, fixed, &qx, &qy));
     TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_x, (float)fx);
@@ -409,17 +344,12 @@ run_r3d_project_suite(void) {
     RUN_TEST(test_narrow_transform_at_the_sum_bound_matches_the_wide_one);
     RUN_TEST(test_a_point_on_the_optical_axis_lands_on_center);
     RUN_TEST(test_an_off_axis_point_lands_where_the_formula_says);
-    RUN_TEST(test_a_point_exactly_at_near_z_counts_as_behind);
     RUN_TEST(test_a_nan_offset_and_a_point_at_the_axis_on_the_camera_plane_clamp);
     RUN_TEST(test_a_pixel_offset_truncates_toward_zero_on_both_sides);
     RUN_TEST(test_the_fixed_projection_lands_within_two_pixels_of_the_float_one);
     RUN_TEST(test_the_line_near_plane_rounds_to_the_camera_unit);
     RUN_TEST(test_the_fixed_segment_clip_and_point_test_follow_the_near_plane);
     RUN_TEST(test_a_point_at_the_camera_plane_projects_to_a_far_off_but_defined_pixel);
-
-    RUN_TEST(test_segment_with_both_ends_behind_returns_false);
-    RUN_TEST(test_one_end_behind_clips_to_the_near_plane_crossing);
-    RUN_TEST(test_both_ends_in_front_matches_projecting_each_point);
 }
 
 SUITE_REGISTER(run_r3d_project_suite);
