@@ -453,11 +453,12 @@ The layer allocates nothing. Raster draw work owns the resolved camera
 settings and per-side spread table, shared read-only by the row workers.
 
 Per-vertex and per-cluster buffers, the census list, picture attachments and
-upscale maps share one block. The list follows geometry at an offset
+upscale maps share one block. The list comes first, at an offset
 independent of render size; storage is padded for picture attachments.
 
-`raster_scratch_bytes()` sizes the block. The caller obtains it once and sets
-`scratch`; each call carves it. The caller decides where it lives,
+`raster_carve()` in `raster_internal.h` states the layout once, and
+`raster_scratch_bytes()` sizes the block from it. The caller obtains it once
+and sets `scratch`; each call carves it. The caller decides where it lives,
 so it need not consume internal RAM.
 
 ## Rules the layer keeps

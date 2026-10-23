@@ -5,9 +5,8 @@
 #include <string.h>
 
 #include "math/scalar/mathf.h"
-#include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
-#include "render/raster.h"
+#include "render/raster_internal.h"
 #include "render/raster_show.h"
 
 /* While drawing, the attachment holds each pixel's tag: 0 for anything

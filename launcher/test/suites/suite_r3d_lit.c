@@ -21,9 +21,8 @@
 #include "gfx/target/gfx_color.h"
 #include "math/linear/transformf.h"
 #include "render/r3d_lit_mesh.h"
-#include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
-#include "render/raster.h"
+#include "render/raster_internal.h"
 #include "render/raster_show.h"
 #include "services/tune.h"
 
@@ -1679,7 +1678,7 @@ test_the_frame_workspace_is_aligned(void) {
                                    .destination_height = destination};
                 raster.scratch = malloc(raster_scratch_bytes(&raster));
                 TEST_ASSERT_NOT_NULL(raster.scratch);
-                const r3d_pipeline_buffers_t b = r3d_pipeline_carve(&raster);
+                const raster_buffers_t b = raster_carve(&raster);
                 TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.work[0] % _Alignof(r3d_span_target_t));
                 TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.work[1] % _Alignof(r3d_span_target_t));
                 TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.draw % _Alignof(r3d_span_target_t));
@@ -1700,11 +1699,11 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     char* scratch = malloc(bytes);
     TEST_ASSERT_NOT_NULL(scratch);
     raster.scratch = scratch;
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(&raster);
+    const raster_buffers_t b = raster_carve(&raster);
     const span_of_bytes_t parts[] = {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
-        {(const char*)b.culled, r3d_pipeline_culled_bytes(&raster)},
+        {(const char*)b.culled, raster_culled_bytes(&raster)},
         {(const char*)b.work[0], r3d_pipeline_work_bytes()},
         {(const char*)b.work[1], r3d_pipeline_work_bytes()},
         {(const char*)b.draw, bytes - (size_t)((const char*)b.draw - scratch)},
@@ -1723,6 +1722,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         total += parts[i].size;
     }
     const char* const maps = (const char*)gfx_render_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
+    TEST_ASSERT_TRUE((const char*)b.upscale == maps);
     const size_t padding = (size_t)((const char*)b.work[0] - maps);
     TEST_ASSERT_TRUE(padding < _Alignof(r3d_span_target_t));
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
@@ -1730,11 +1730,11 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_depth(&b.picture, 0) % 4);
     /* The census list holds every instance's slot and takes whole cache ways,
      * so the parts after it keep the cache sets they have without it. */
-    TEST_ASSERT_TRUE(r3d_pipeline_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.culled) % R3D_PIPELINE_CACHE_WAY));
+    TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.culled) % RASTER_CACHE_WAY));
     raster.width /= 2;
     raster.height /= 2;
-    TEST_ASSERT_TRUE(b.culled == r3d_pipeline_carve(&raster).culled);
+    TEST_ASSERT_TRUE(b.culled == raster_carve(&raster).culled);
     free(scratch);
 }
 
