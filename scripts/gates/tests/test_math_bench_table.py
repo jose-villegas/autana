@@ -100,26 +100,20 @@ class MathBenchTableTests(unittest.TestCase):
         self.assertEqual(bench.parse_capture(self.capture, self.rows),
                          bench.parse_capture("noise\n" + self.capture + "noise\n", self.rows))
 
-    def test_block_check_and_write_preserve_newlines(self):
+    def test_document_commands_are_rejected_without_writing(self):
         for newline in ("\n", "\r\n"):
             with self.subTest(newline=newline), tempfile.TemporaryDirectory() as directory:
                 doc = Path(directory) / "Benchmark.md"
-                original = ("prose\n<!-- generated: math-benchmark sha256=0000000000000000000000000000000000000000000000000000000000000000 -->\nold\n"
-                            "<!-- /generated: math-benchmark -->\nend\n").replace("\n", newline).encode()
+                original = ("prose\n<!-- generated: math-benchmark check: python launcher/tools/perf/fast_paths.py --check -->\n"
+                            "old\n<!-- /generated: math-benchmark -->\nend\n").replace("\n", newline).encode()
                 doc.write_bytes(original)
-                with unittest.mock.patch.object(bench, "DOCUMENT", doc):
-                    self.assertEqual(1, bench.main(["--check"]))
-                    self.assertEqual(original, doc.read_bytes())
-                    self.assertEqual(0, bench.main([]))
-                    self.assertEqual(0, bench.main(["--check"]))
-                    good = doc.read_bytes()
-                    for corrupted in (good.replace(b"| function |", b"| changed |"),
-                                      good.replace(b"check: python launcher/tools/perf/math_bench_table.py --check", b"sha256=" + b"0" * 64)):
-                        doc.write_bytes(corrupted)
-                        self.assertEqual(1, bench.main(["--check"]))
-                        self.assertEqual(corrupted, doc.read_bytes())
-                    self.assertTrue(good.startswith(b"prose" + newline.encode()))
-                    self.assertNotIn(b"\n", good.replace(newline.encode(), b""))
+                with unittest.mock.patch.object(bench, "DOCUMENT", doc, create=True):
+                    for args in ([], ["--check"]):
+                        with self.subTest(args=args):
+                            with self.assertRaises(SystemExit) as error:
+                                bench.main(args)
+                            self.assertEqual(2, error.exception.code)
+                            self.assertEqual(original, doc.read_bytes())
 
     def test_disassembly_uses_only_requested_wrapper_symbols(self):
         text = ("42000000 <math_bench_dot_f>:\n  42000000: 123456 madd.s f0, f1, f2\n"
