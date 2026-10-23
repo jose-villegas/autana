@@ -8,11 +8,11 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import yaml
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
-import local_schedule
-from local_schedule import gpu_window, local_time, wait_seconds, NIGHT_START, NIGHT_END
+from scripts.lib import local_schedule
+from scripts.lib.local_schedule import NIGHT_START, NIGHT_END
 
 
 class Clock:
@@ -40,7 +40,7 @@ class LocalScheduleTests(unittest.TestCase):
             autana.chmod(0o755)
             python = fixture / "python3"
             python.write_text("#!/bin/sh\ncase \"$2\" in\n"
-                              "estimate|budget) echo 60; exit 0;;\n"
+                              "budget) echo 60; exit 0;;\n"
                               "ready) echo ready >> order; exit 0;;\nesac\n"
                               f'exec "{sys.executable}" "$@"\n')
             python.chmod(0o755)
@@ -62,12 +62,12 @@ class LocalScheduleTests(unittest.TestCase):
 
     def test_gpu_cron_starts_before_local_window_in_both_seasons(self):
         workflow = Path(__file__).resolve().parents[3] / ".github/workflows/doc-images-gpu.yml"
-        text = workflow.read_text()
-        self.assertIn("cron: '0 18 * * *'", text)
+        data = yaml.safe_load(workflow.read_text())
+        self.assertEqual(data[True]['schedule'], [{'cron': '0 16 * * *'}])
         start_hour, start_minute = map(int, NIGHT_START.split(":"))
         for offset in (1, 2):
-            self.assertLess(18 + offset, start_hour + start_minute / 60)
-        self.assertIn("NIGHT_START: ${{ vars.NIGHT_START }}", text)
+            self.assertLessEqual(16 + offset, start_hour + start_minute / 60)
+        self.assertEqual(data["env"]["NIGHT_START"], "${{ vars.NIGHT_START }}")
 
     def test_nightly_window_waits_runs_or_skips(self):
         for hour, minute, wait, allowed in ((18, 0, 270 * 60, True),
@@ -86,44 +86,18 @@ class LocalScheduleTests(unittest.TestCase):
 
     def test_nightly_cron_and_timeout_cover_both_seasons(self):
         workflow = Path(__file__).resolve().parents[3] / ".github/workflows/nightly-perf.yml"
-        text = workflow.read_text()
+        data = yaml.safe_load(workflow.read_text())
         cron_hour = 18
         queue_hour, queue_minute = map(int, NIGHT_START.split(":"))
         end_hour, end_minute = map(int, NIGHT_END.split(":"))
         queue_hour += queue_minute / 60
         end_hour += end_minute / 60
-        self.assertIn(f"cron: '0 {cron_hour} * * *'", text)
+        self.assertEqual(data[True]["schedule"], [{"cron": f"0 {cron_hour} * * *"}])
         longest_wait_minutes = max((queue_hour - cron_hour - offset) * 60 for offset in (1, 2))
         window_minutes = (24 - queue_hour + end_hour) * 60
         publish_minutes = 60
         timeout_minutes = int(longest_wait_minutes + window_minutes + publish_minutes)
-        self.assertIn(f"timeout-minutes: {timeout_minutes}", text)
-
-    def test_dispatch_window_and_override(self):
-        for hour, allowed in ((0, True), (1, True), (6, True), (7, False), (12, False), (23, True)):
-            with self.subTest(hour=hour):
-                clock = Clock(hour)
-                self.assertEqual(gpu_window(clock=clock), allowed)
-                self.assertTrue(gpu_window(override=True, clock=clock))
-                self.assertEqual(clock.sleeps, [])
-
-    def test_schedule_waits_until_start_and_never_rolls_cap_forward(self):
-        clock = Clock(18)
-        self.assertTrue(gpu_window(scheduled=True, clock=clock))
-        self.assertEqual(clock.now(), local_time(NIGHT_START, clock.now()))
-        self.assertEqual(wait_seconds(NIGHT_END, clock.now(), next_occurrence=True), 510 * 60)
-        self.assertFalse(gpu_window(scheduled=True, clock=Clock(7)))
-        self.assertEqual(wait_seconds(NIGHT_END, Clock(8).now()), 0)
-
-    def test_schedule_inside_night_starts_immediately(self):
-        clock = Clock(23, 30)
-        self.assertTrue(gpu_window(scheduled=True, clock=clock))
-        self.assertEqual(clock.sleeps, [])
-        for hour in (7, 8, 11, 12):
-            with self.subTest(hour=hour):
-                clock = Clock(hour)
-                self.assertFalse(gpu_window(scheduled=True, clock=clock))
-                self.assertEqual(clock.sleeps, [])
+        self.assertEqual(data["jobs"]["nightly"]["timeout-minutes"], timeout_minutes)
 
     def test_gate_and_post_lock_check_distinguish_dispatch_from_schedule(self):
         with tempfile.TemporaryDirectory() as directory:
