@@ -15,7 +15,7 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '0 18 * * *'
+    - cron: '0 16 * * *'
   workflow_run:
     workflows: [Bakes GPU]
     types: [completed]
@@ -44,11 +44,10 @@ jobs:
   fingerprint:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 30
     outputs:
       fingerprint: ${{ steps.inputs.outputs.fingerprint }}
       current: ${{ steps.inputs.outputs.current }}
-      gpu: ${{ steps.queue.outputs.gpu }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -68,18 +67,12 @@ jobs:
             echo "GPU images pending; render in the local night window." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Wait for the night and yield to pending bakes
-        id: queue
-        if: github.event_name != 'push' && steps.inputs.outputs.current != 'true'
-        run: python3 scripts/lib/local_schedule.py queue
-
   refresh:
     needs: fingerprint
-    if: needs.fingerprint.outputs.gpu == 'true'
-    env:
-      GPU_QUEUE_READY: 'true'
+    if: github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'
     runs-on: [self-hosted, linux, gpu]
-    timeout-minutes: 1440
+    # 7 h MAX_EVENING_WAIT + 13 h (18:00–07:00 cap) + 1 h setup/publish = 1260 min.
+    timeout-minutes: 1260
     concurrency:
       group: doc-images-gpu
       cancel-in-progress: false

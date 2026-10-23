@@ -343,19 +343,40 @@ timing lines. The workflow's `NIGHTLY_SUITES` supplies these triplets.
 it per board; `lane-info --plan plan.json --board BOARD_A` prints it and its
 estimated duration in seconds.
 
-`vars.NIGHT_START` sets the shared local start; an empty variable uses the
+```mermaid
+sequenceDiagram
+    participant Cron
+    participant GPU as GPU runner
+    participant Heavy
+    participant Plan as Board plan
+    participant Lanes as Board lanes
+    Cron->>GPU: 16:00 UTC fingerprint check
+    loop Until local NIGHT_START
+        GPU->>GPU: Poll for queued bakes
+        opt Bakes pending
+            GPU-->>Cron: Deferred, end green
+            Cron->>GPU: Check again on any bake completion
+        end
+    end
+    GPU->>GPU: Wait for active board locks
+    GPU->>Heavy: Take heavy, render before 07:00
+    GPU->>Heavy: Release heavy
+    Plan->>Plan: Both GPU workflows idle on two polls
+    Plan->>Lanes: Start board lanes until 07:00
+```
+
+`vars.NIGHT_START` is HH:MM in 18:00–23:59 local; an empty value uses the
 default in `scripts/lib/local_schedule.py`, which also owns the night end.
-Dispatch inputs `queue_at` and `window_end` override these times;
-an empty dispatch `queue_at` starts immediately after pending GPU work.
+Dispatch inputs `queue_at` and `window_end` override the plan window.
+An empty dispatch `queue_at` starts after pending GPU work.
 
-The board and GPU runners share one host. From the night start, bakes run
-first, then doc images with changed inputs. Doc images defer to pending
-bakes from a hosted job and recheck when Bakes GPU completes.
-The plan waits for both GPU workflows before taking any board lock.
+The GPU runner waits at most `MAX_EVENING_WAIT` for the night start,
+yielding green to pending bakes. Earlier arrivals end green with
+“pending: renders tonight”. Every bake completion triggers another check.
 
-The board night starts when the GPU queue ends and retains the shared
-morning deadline in `plan.json`. If less than `FIRST_STEP_SECONDS` remains,
-the plan skips successfully with one summary line.
+The plan requires both GPU workflows idle on two consecutive polls before
+taking any board lock. The board night retains the shared morning deadline
+in `plan.json`; insufficient time for `FIRST_STEP_SECONDS` skips green.
 
 Morning scheduled arrivals after the night end skip; arrivals after noon
 wait for the next night start. A dispatch with `queue_at` follows this rule.
