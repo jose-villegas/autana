@@ -1,5 +1,5 @@
 /*
- * The firmware that runs on the board: a shell that launches apps and draws
+ * The firmware that runs on the board: a shell that launches apps and paints
  * every frame itself. This is its entry point; it starts the hardware in a
  * fixed order, then hands the task to the shell (shell/shell.h), which never
  * gives it back.
