@@ -49,7 +49,7 @@ Run `python launcher/tools/perf/math_bench_table.py` to update the block, or add
 `--check` to verify it without writing.
 
 <!-- generated: math-benchmark check: python launcher/tools/perf/math_bench_table.py --check -->
-Board build: `cb14104df0a7-diag`.
+Board build: `cf6fcd9d562a-diag`.
 
 | function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |
 |---|---|---:|---:|---:|---:|---:|---|---|
@@ -65,7 +65,7 @@ Board build: `cb14104df0a7-diag`.
 | convert | s_to_f | 14.3 | 2244.0 | 14.5 | 14.3 | 1.0 | - | - |
 | convert | x_to_f | 14.3 | 2514.0 | 14.5 | 14.3 | 1.0 | - | - |
 | cosf | f | 191.5 | 21300.0 | 110.7 | 111.6 | 1.7 | calls _cosf | - |
-| div_recip | f | 58.3 | 5339.0 | 40.5 | 40.3 | 1.4 | calls __divsf3 | - |
+| div_recip | f | 58.3 | 5339.0 | 40.8 | 40.3 | 1.4 | calls __divsf3 | - |
 | div_rsqrt | f | 114.2 | 9991.0 | 81.5 | 82.3 | 1.4 | calls __divsf3, sqrtf | - |
 | dot (vec3) | f | 17.3 | 2220.0 | 12.5 | 12.2 | 1.4 | madd.s | - |
 | dot_f32_n256 | f | 1305.0 | 2511.0 | 1315.0 | 1299.0 | 1.0 | madd.s | - |
@@ -76,19 +76,19 @@ Board build: `cb14104df0a7-diag`.
 | lerp (vec3) | i | 101.3 | 9101.0 | 93.5 | 93.4 | 1.1 | - | - |
 | lerp (vec3) | s | 33.3 | 3751.0 | 31.5 | 31.3 | 1.1 | - | - |
 | lerp (vec3) | x | 126.3 | 12595.0 | 99.5 | 99.5 | 1.3 | - | - |
-| mat4 mul | f | 738.4 | 49640.0 | 517.6 | 506.4 | 1.4 | madd.s; calls memcpy | - |
-| mat4 mul | x | 2404.9 | 160391.0 | 1648.9 | 1640.4 | 1.5 | calls log_reply+0xf4c, memcpy | - |
+| mat4 mul | f | 738.4 | 49640.0 | 517.3 | 506.4 | 1.4 | madd.s; calls memcpy | - |
+| mat4 mul | x | 2404.9 | 160396.0 | 1648.9 | 1640.4 | 1.5 | calls log_reply+0xf4c, memcpy | - |
 | mathf_recip | f | 26.3 | 3102.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | 1 ulp (sweep) |
 | mathf_rsqrt_approx | f | 24.3 | 3191.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | 5.94258e-05 relative (proof) |
 | mathf_rsqrt | f | 38.4 | 4342.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (proof) |
 | mul (scalar) | f | 9.3 | 1504.0 | 6.5 | 6.2 | 1.4 | - | - |
-| mul (scalar) | i | 9.3 | 1902.0 | 8.5 | 8.2 | 1.1 | - | - |
+| mul (scalar) | i | 9.3 | 1824.0 | 8.5 | 8.2 | 1.1 | - | - |
 | mul (scalar) | s | 11.3 | 2290.0 | 10.5 | 10.2 | 1.1 | - | - |
 | mul (scalar) | x | 22.3 | 3417.0 | 17.5 | 17.3 | 1.3 | - | - |
 | nlerp | f | 94.8 | 8908.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 ulp (sweep) |
-| nlerp | x | 724.1 | 59875.0 | 521.5 | 909.9 | 1.4 | calls __divdi3, mathi_isqrt64_digits | - |
+| nlerp | x | 724.1 | 59887.0 | 521.5 | 909.9 | 1.4 | calls __divdi3, mathi_isqrt64_digits | - |
 | normalize (vec3) | f | 57.4 | 5719.0 | 29.9 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (sweep) |
-| normalize (vec3) | x | 1118.7 | 77918.0 | 924.0 | 681.2 | 1.2 | calls __udivdi3, mathi_isqrt64_digits | - |
+| normalize (vec3) | x | 1118.7 | 79138.0 | 912.2 | 681.2 | 1.2 | calls __udivdi3, mathi_isqrt64_digits | - |
 | quat mul | f | 30.3 | 3303.0 | 30.5 | 30.2 | 1.0 | madd.s msub.s | - |
 | quat mul | x | 418.3 | 38592.0 | 313.5 | 313.9 | 1.3 | - | - |
 | scale (vec3) | f | 13.3 | 1977.0 | 12.5 | 12.2 | 1.1 | - | - |
@@ -96,10 +96,10 @@ Board build: `cb14104df0a7-diag`.
 | scale (vec3) | s | 36.4 | 4341.0 | 30.6 | 30.4 | 1.2 | - | - |
 | scale (vec3) | x | 66.0 | 7788.0 | 49.2 | 49.0 | 1.3 | - | - |
 | sinf | f | 191.4 | 22144.0 | 109.1 | 110.0 | 1.8 | calls _sinf | - |
-| slerp | f | 452.7 | 35385.0 | 318.1 | device-only instruction | 1.4 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | - |
+| slerp | f | 452.7 | 35385.0 | 306.3 | device-only instruction | 1.5 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | - |
 | sqrtf | f | 61.2 | 6108.0 | 45.5 | 46.3 | 1.3 | calls sqrtf | - |
 | transform compute_matrix | f | 67.4 | 7038.0 | 67.6 | 67.4 | 1.0 | madd.s msub.s | - |
-| transform compute_matrix | x | 854.7 | 75245.0 | 660.2 | 661.4 | 1.3 | calls mat4x_from_trs, memcpy | - |
+| transform compute_matrix | x | 854.5 | 76173.0 | 660.2 | 661.4 | 1.3 | calls mat4x_from_trs, memcpy | - |
 | trig_sin | i | 30.8 | 4718.0 | 24.0 | 23.8 | 1.3 | - | - |
 | wrap | f | 63.8 | 7110.0 | 30.1 | 89.5 | 2.1 | msub.s | - |
 | wrap | i | 7.3 | 1509.0 | 7.5 | 7.2 | 1.0 | - | - |

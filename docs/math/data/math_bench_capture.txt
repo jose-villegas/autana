@@ -1,4 +1,4 @@
-BUILD_ID=cb14104df0a7-diag
+BUILD_ID=cf6fcd9d562a-diag
 MATHBENCH name=add (vec3) type=f ops=64 warm=15.3 cold=2106.0 insn=14.5
 MATHBENCH name=scale (vec3) type=f ops=64 warm=13.3 cold=1977.0 insn=12.5
 MATHBENCH name=dot (vec3) type=f ops=64 warm=17.3 cold=2220.0 insn=12.5
@@ -7,7 +7,7 @@ MATHBENCH name=lerp (vec3) type=f ops=64 warm=19.3 cold=2486.0 insn=17.5
 MATHBENCH name=add (vec3) type=i ops=64 warm=14.3 cold=2184.0 insn=14.5
 MATHBENCH name=scale (vec3) type=i ops=64 warm=12.3 cold=2008.0 insn=12.5
 MATHBENCH name=dot (vec3) type=i ops=64 warm=24.3 cold=2741.0 insn=24.5
-MATHBENCH name=mul (scalar) type=i ops=64 warm=9.3 cold=1902.0 insn=8.5
+MATHBENCH name=mul (scalar) type=i ops=64 warm=9.3 cold=1824.0 insn=8.5
 MATHBENCH name=lerp (vec3) type=i ops=64 warm=101.3 cold=9101.0 insn=93.5
 MATHBENCH name=add (vec3) type=s ops=64 warm=37.4 cold=4377.0 insn=31.6
 MATHBENCH name=scale (vec3) type=s ops=64 warm=36.4 cold=4341.0 insn=30.6
@@ -20,7 +20,7 @@ MATHBENCH name=dot (vec3) type=x ops=64 warm=83.8 cold=9747.0 insn=65.9
 MATHBENCH name=mul (scalar) type=x ops=64 warm=22.3 cold=3417.0 insn=17.5
 MATHBENCH name=lerp (vec3) type=x ops=64 warm=126.3 cold=12595.0 insn=99.5
 MATHBENCH name=normalize (vec3) type=f ops=64 warm=57.4 cold=5719.0 insn=29.9
-MATHBENCH name=normalize (vec3) type=x ops=64 warm=1118.7 cold=77918.0 insn=924.0
+MATHBENCH name=normalize (vec3) type=x ops=64 warm=1118.7 cold=79138.0 insn=912.2
 MATHBENCH name=wrap type=f ops=64 warm=63.8 cold=7110.0 insn=30.1
 MATHBENCH name=wrap type=i ops=64 warm=7.3 cold=1509.0 insn=7.5
 MATHBENCH name=wrap type=x ops=64 warm=10.3 cold=2040.0 insn=10.5
@@ -30,19 +30,19 @@ MATHBENCH name=convert type=f_to_s ops=64 warm=104.5 cold=10188.0 insn=75.6
 MATHBENCH name=convert type=s_to_f ops=64 warm=14.3 cold=2244.0 insn=14.5
 MATHBENCH name=convert type=i_to_f ops=64 warm=11.3 cold=1827.0 insn=11.5
 MATHBENCH name=convert type=f_to_i ops=64 warm=95.5 cold=9080.0 insn=62.1
-MATHBENCH name=slerp type=f ops=64 warm=452.7 cold=35385.0 insn=318.1
+MATHBENCH name=slerp type=f ops=64 warm=452.7 cold=35385.0 insn=306.3
 MATHBENCH name=nlerp type=f ops=64 warm=94.8 cold=8908.0 insn=53.7
-MATHBENCH name=nlerp type=x ops=64 warm=724.1 cold=59875.0 insn=521.5
+MATHBENCH name=nlerp type=x ops=64 warm=724.1 cold=59887.0 insn=521.5
 MATHBENCH name=quat mul type=f ops=64 warm=30.3 cold=3303.0 insn=30.5
 MATHBENCH name=quat mul type=x ops=64 warm=418.3 cold=38592.0 insn=313.5
-MATHBENCH name=mat4 mul type=f ops=64 warm=738.4 cold=49640.0 insn=517.6
-MATHBENCH name=mat4 mul type=x ops=64 warm=2404.9 cold=160391.0 insn=1648.9
+MATHBENCH name=mat4 mul type=f ops=64 warm=738.4 cold=49640.0 insn=517.3
+MATHBENCH name=mat4 mul type=x ops=64 warm=2404.9 cold=160396.0 insn=1648.9
 MATHBENCH name=transform compute_matrix type=f ops=64 warm=67.4 cold=7038.0 insn=67.6
-MATHBENCH name=transform compute_matrix type=x ops=64 warm=854.7 cold=75245.0 insn=660.2
+MATHBENCH name=transform compute_matrix type=x ops=64 warm=854.5 cold=76173.0 insn=660.2
 MATHBENCH name=mathf_recip type=f ops=64 warm=26.3 cold=3102.0 insn=13.5
 MATHBENCH name=mathf_rsqrt type=f ops=64 warm=38.4 cold=4342.0 insn=18.6
 MATHBENCH name=mathf_rsqrt_approx type=f ops=64 warm=24.3 cold=3191.0 insn=12.5
-MATHBENCH name=div_recip type=f ops=64 warm=58.3 cold=5339.0 insn=40.5
+MATHBENCH name=div_recip type=f ops=64 warm=58.3 cold=5339.0 insn=40.8
 MATHBENCH name=div_rsqrt type=f ops=64 warm=114.2 cold=9991.0 insn=81.5
 MATHBENCH name=sinf type=f ops=64 warm=191.4 cold=22144.0 insn=109.1
 MATHBENCH name=cosf type=f ops=64 warm=191.5 cold=21300.0 insn=110.7
