@@ -272,11 +272,11 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     const int writer_count = instance_writers(raster, index, work->writers);
     /* Instances past the retained state split evenly and forget it. */
     const bool retained = raster->split != NULL && index < RASTER_SPLIT_INSTANCES;
-    int16_t even[2] = {0, 0};
-    int16_t* transform_share = retained ? &raster->split->transform_offset[index] : &even[0];
-    int16_t* draw_share = retained ? &raster->split->top_offset[index] : &even[1];
+    int16_t* transform_share = retained ? &raster->split->transform_offset[index] : NULL;
+    int16_t* draw_share = retained ? &raster->split->top_offset[index] : NULL;
     FRAME_COST_BEGIN(transformed_from);
-    const int half = r3d_pipeline_transform_split(mesh, visible, count, JOB_SHARE_EVEN - *transform_share);
+    const int half =
+        r3d_pipeline_transform_split(mesh, visible, count, JOB_SHARE_PERMILLE - job_share_permille(transform_share));
     slice_t* mine = &work->mine;
     slice_t* other = &work->other;
     *mine = (slice_t){.raster = raster,
@@ -294,8 +294,8 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     FRAME_COST_END(transformed_from, "r3d.transform");
 
     FRAME_COST_BEGIN(drawn_from);
-    const int mid =
-        r3d_pipeline_draw_split(mesh, visible, work->buffers.rows, count, raster->height, JOB_SHARE_EVEN + *draw_share);
+    const int mid = r3d_pipeline_draw_split(mesh, visible, work->buffers.rows, count, raster->height,
+                                            job_share_permille(draw_share));
     mine->writers = other->writers = work->writers;
     mine->writer_count = other->writer_count = writer_count;
     mine->work_index = 1;
@@ -349,9 +349,8 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     }
     if (resolves) {
         FRAME_COST_BEGIN(resolved_from);
-        int16_t even = 0;
-        int16_t* share = raster->split != NULL ? &raster->split->resolve_offset : &even;
-        const int mid = job_share_core1_count(*share, raster->height);
+        int16_t* share = raster->split != NULL ? &raster->split->resolve_offset : NULL;
+        const int mid = job_share_core1_count(share, raster->height);
         work->mine = (slice_t){.raster = raster, .first = mid, .count = raster->height - mid};
         work->other = (slice_t){.raster = raster, .count = mid};
         job_run_steered(share, resolve_slice, &work->mine, &work->other, sizeof work->mine);
@@ -442,9 +441,8 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
             upscale_init(&raster->upscale, raster->width, raster->height, width, height, columns, rows);
         assert(initialized);
     }
-    int16_t even = 0;
-    int16_t* share = raster->split != NULL ? &raster->split->upscale_offset : &even;
-    const int mid = job_share_core1_count(*share, height);
+    int16_t* share = raster->split != NULL ? &raster->split->upscale_offset : NULL;
+    const int mid = job_share_core1_count(share, height);
     slice_t mine = {.raster = raster, .first = mid, .count = height - mid, .destination = destination};
     const slice_t other = {.raster = raster, .count = mid, .destination = destination};
     job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);

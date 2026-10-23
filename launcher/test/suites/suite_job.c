@@ -129,10 +129,12 @@ test_share_update_converges_and_clamps(void) {
 
 static void
 test_share_counts_round_down_within_the_total(void) {
-    TEST_ASSERT_EQUAL_INT(3, job_share_core1_count(0, 7));
-    TEST_ASSERT_EQUAL_INT(0, job_share_core1_count(0, 1));
-    TEST_ASSERT_EQUAL_INT(15, job_share_core1_count(JOB_SHARE_MIN - JOB_SHARE_EVEN, 100));
-    TEST_ASSERT_EQUAL_INT(85, job_share_core1_count(JOB_SHARE_MAX - JOB_SHARE_EVEN, 100));
+    const int16_t low = JOB_SHARE_MIN - JOB_SHARE_EVEN;
+    const int16_t high = JOB_SHARE_MAX - JOB_SHARE_EVEN;
+    TEST_ASSERT_EQUAL_INT(3, job_share_core1_count(NULL, 7));
+    TEST_ASSERT_EQUAL_INT(0, job_share_core1_count(NULL, 1));
+    TEST_ASSERT_EQUAL_INT(15, job_share_core1_count(&low, 100));
+    TEST_ASSERT_EQUAL_INT(85, job_share_core1_count(&high, 100));
 }
 
 /* Spins rather than sleeps, so its time is the work a core does. */
@@ -160,6 +162,26 @@ test_a_steered_split_gives_the_slower_half_less(void) {
     (void)job_run_steered(&core1_offset, job_test_spin, &first, &second, sizeof first);
     TEST_ASSERT_LESS_THAN_INT(0, core1_offset);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(JOB_SHARE_MIN, JOB_SHARE_EVEN + core1_offset);
+}
+
+/* A share low enough to give core 1 nothing still runs the split, so the
+ * empty half's near-zero time wins work back instead of latching. */
+static void
+test_an_empty_core_1_half_wins_its_share_back(void) {
+    int16_t core1_offset = JOB_SHARE_MIN - JOB_SHARE_EVEN;
+    TEST_ASSERT_EQUAL_INT(0, job_share_core1_count(&core1_offset, 2));
+    job_spin_ctx_t first = {.us = JOB_SPIN_SHORT_US};
+    const job_spin_ctx_t second = {.us = 1}; /* near zero, never below the clock's resolution */
+    (void)job_run_steered(&core1_offset, job_test_spin, &first, &second, sizeof first);
+    TEST_ASSERT_GREATER_THAN_INT(JOB_SHARE_MIN - JOB_SHARE_EVEN, core1_offset);
+}
+
+static void
+test_a_null_share_splits_evenly_and_steers_nothing(void) {
+    job_spin_ctx_t first = {.us = JOB_SPIN_SHORT_US};
+    const job_spin_ctx_t second = {.us = JOB_SPIN_LONG_US};
+    (void)job_run_steered(NULL, job_test_spin, &first, &second, sizeof first);
+    TEST_ASSERT_EQUAL_INT(JOB_SHARE_EVEN, job_share_permille(NULL));
 }
 
 #ifndef DEVICE_BUILD
@@ -282,6 +304,8 @@ suite_job(void) {
     RUN_TEST(test_share_update_converges_and_clamps);
     RUN_TEST(test_share_counts_round_down_within_the_total);
     RUN_TEST(test_a_steered_split_gives_the_slower_half_less);
+    RUN_TEST(test_an_empty_core_1_half_wins_its_share_back);
+    RUN_TEST(test_a_null_share_splits_evenly_and_steers_nothing);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_a_host_try_refuses_rather_than_running_inline);
     RUN_TEST(test_a_host_split_reports_inline_and_finishes_both_ranges);

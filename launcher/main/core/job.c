@@ -26,6 +26,27 @@ job_share_update(int core1_permille, int64_t core1_us, int64_t caller_us) {
     return mathi_clamp((int)(((float)share + balanced) / JOB_SHARE_DAMPING_DIVISOR), JOB_SHARE_MIN, JOB_SHARE_MAX);
 }
 
+bool
+job_run_steered(int16_t* core1_offset, job_fn_t fn, void* first_half, const void* second_half, size_t ctx_size) {
+    const int64_t began_us = timing_now_us();
+    const bool dispatched = job_try_core1(fn, second_half, ctx_size);
+    if (!dispatched) {
+        fn((void*)second_half);
+    }
+    const int64_t caller_began_us = timing_now_us();
+    fn(first_half);
+    const int64_t caller_us = timing_now_us() - caller_began_us;
+    const bool done = job_wait(JOB_SPLIT_WAIT_MS);
+    assert(done); /* the next stage reads what core 1 wrote */
+    (void)done;
+    if (core1_offset != NULL) {
+        const int64_t core1_us = dispatched ? job_core1_elapsed_us() : caller_began_us - began_us;
+        *core1_offset =
+            (int16_t)(job_share_update(job_share_permille(core1_offset), core1_us, caller_us) - JOB_SHARE_EVEN);
+    }
+    return dispatched;
+}
+
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"

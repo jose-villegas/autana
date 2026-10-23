@@ -6,8 +6,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "core/timing.h"
-
 #define JOB_CTX_MAX 128
 
 typedef void (*job_fn_t)(void* ctx);
@@ -64,29 +62,20 @@ job_run_split(job_fn_t fn, void* first_half, const void* second_half, size_t ctx
  * Nonpositive times leave the share unchanged. */
 int job_share_update(int core1_permille, int64_t core1_us, int64_t caller_us);
 
+/* Core 1's share in permille; a NULL offset is even. */
+static inline int
+job_share_permille(const int16_t* core1_offset) {
+    return JOB_SHARE_EVEN + (core1_offset == NULL ? 0 : *core1_offset);
+}
+
 /* How many of `total` items core 1 takes at this share offset, rounded down. */
 static inline int
-job_share_core1_count(int16_t core1_offset, int total) {
-    return (int)(((int64_t)total * (JOB_SHARE_EVEN + core1_offset)) / JOB_SHARE_PERMILLE);
+job_share_core1_count(const int16_t* core1_offset, int total) {
+    return total * job_share_permille(core1_offset) / JOB_SHARE_PERMILLE;
 }
 
 /* job_run_split() that steers *core1_offset toward equal times for both
- * halves. The panel present shares core 1 with the worker; a fixed split
- * waits on it, a steered one gives that core less. */
-static inline __attribute__((always_inline)) bool
-job_run_steered(int16_t* core1_offset, job_fn_t fn, void* first_half, const void* second_half, size_t ctx_size) {
-    const int64_t began_us = timing_now_us();
-    const bool dispatched = job_try_core1(fn, second_half, ctx_size);
-    if (!dispatched) {
-        fn((void*)second_half);
-    }
-    const int64_t caller_began_us = timing_now_us();
-    fn(first_half);
-    const int64_t caller_us = timing_now_us() - caller_began_us;
-    const bool done = job_wait(JOB_SPLIT_WAIT_MS);
-    assert(done); /* the next stage reads what core 1 wrote */
-    (void)done;
-    const int64_t core1_us = dispatched ? job_core1_elapsed_us() : caller_began_us - began_us;
-    *core1_offset = (int16_t)(job_share_update(JOB_SHARE_EVEN + *core1_offset, core1_us, caller_us) - JOB_SHARE_EVEN);
-    return dispatched;
-}
+ * halves; NULL splits evenly and steers nothing. The panel present shares
+ * core 1 with the worker; a fixed split waits on it, a steered one gives
+ * that core less. An empty half still runs, so its time can win work back. */
+bool job_run_steered(int16_t* core1_offset, job_fn_t fn, void* first_half, const void* second_half, size_t ctx_size);
