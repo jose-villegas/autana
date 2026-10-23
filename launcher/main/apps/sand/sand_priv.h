@@ -1350,15 +1350,8 @@ tick_decay(sand_t* s, uint8_t* row, int x, int y, cell_t* grain, uint8_t mat_id,
  * source, no interest in gravity. */
 void sand_step_reactions(sand_t* s);
 
-/* Defined in sand_plants.c: the tree/root/leaf growth stages of
- * step_one_reacting_row()'s (sand_reactions.c) per-cell dispatch, called
- * across the file boundary the same way sand_step_reactions() above is
- * called from sand.c.
- *
- * sand_disc_count(): exact lattice-cell count for a disc of radius r
- * (sand_impulse.c). Declared here rather than left static so the suite
- * can check the shipped table against a direct count, the only way that
- * table is verified. */
+/* Exact lattice-cell count; the suite verifies every lookup entry. */
+#define DISC_COUNT_MAX_RADIUS 32
 int sand_disc_count(int radius);
 
 /* The fall stage's own question, minus the roll and the write. Declared here
@@ -1367,6 +1360,10 @@ int sand_disc_count(int radius);
  * asking the same question the pass asks. */
 bool faller_can_move(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 
+/* Defined in sand_plants.c: the tree/root/leaf growth stages of
+ * step_one_reacting_row()'s (sand_reactions.c) per-cell dispatch, called
+ * across the file boundary the same way sand_step_reactions() above is
+ * called from sand.c. */
 bool step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 bool step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 bool step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
