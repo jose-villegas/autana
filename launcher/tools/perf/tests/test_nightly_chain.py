@@ -4,6 +4,7 @@ import io
 from itertools import repeat
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -278,12 +279,12 @@ class NightlyTests(unittest.TestCase):
 
     def test_shared_tip_and_explicit_range_limit(self):
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8", "2124"], data=self.args.data,
-                               out=self.root / "plan.json", queue_at="22:00", from_sha=self.commits[1],
+                               out=self.root / "plan.json", queue_at="22:00", until="07:00", from_sha=self.commits[1],
                                max_steps=2, selftest_board="2124")
         chain.plan(args, self.clock)
         plan = json.loads(args.out.read_text())
         self.assertEqual(plan["tip"], self.commits[-1])
-        self.assertEqual(self.clock.sleeps, [0])
+        self.assertEqual(self.clock.sleeps, [])
         for board, lane in plan["lanes"].items():
             reserve = chain.SELFTEST_ALLOWANCE_SECONDS if board == args.selftest_board else 0
             self.assertEqual(lane["estimate"], len(lane["steps"]) * chain.FIRST_STEP_SECONDS + reserve)
@@ -348,7 +349,7 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual([r.outcome for r in results], ["measured"] * 3)
         self.assertEqual(replay.boundaries, [datetime(2026, 10, 18, 22, 30, tzinfo=timezone.utc)])
         self.assertEqual(writes[-1]["selftest"]["outcome"], "failed")
-        self.assertEqual(writes[-1]["selftest"]["report"], "selftest.md")
+        self.assertTrue(Path(writes[-1]["selftest"]["report"]).is_file())
 
     def test_selftest_runs_first_without_waiting_and_respects_deadline(self):
         self.args.selftest = ["selftest-replay"]
@@ -470,6 +471,33 @@ class NightlyTests(unittest.TestCase):
             self.assertIsNone(writes[-1]["last_attempted"])
             self.assertFalse(any("suite" in cmd for cmd in replay.calls))
 
+    def test_failed_selftest_log_exists_and_remaining_steps_continue(self):
+        self.args.selftest = ["selftest-replay"]
+        with patch.object(chain, "REPORT_LINE", re.compile(r"never matches")):
+            results, _, writes = self.run_chain(builds=(1, 0, 0), captures=(True, False), selftest_code=1)
+        self.assertEqual([result.outcome for result in results],
+                         ["build_failed", "capture_failed", "measured"])
+        self.assertEqual(writes[-1]["selftest"]["outcome"], "failed")
+        self.assertTrue(Path(writes[-1]["selftest"]["report"]).is_file())
+
+    def test_plan_night_window_and_skip(self):
+        for hour, minute, wait, skipped in ((18, 0, 270 * 60, False), (22, 30, 0, False),
+                (23, 52, 0, False), (0, 30, 0, False), (1, 52, 0, False),
+                (6, 59, 0, False), (7, 0, 0, True), (8, 0, 0, True), (12, 30, 600 * 60, False)):
+            with self.subTest(hour=hour, minute=minute):
+                args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
+                    data=self.args.data, out=self.root / "plan.json", queue_at="22:30", until="07:00",
+                    from_sha=None, max_steps=None, selftest_board="20E8")
+                clock = Clock(hour, minute)
+                summary = self.root / "summary"
+                summary.write_text("")
+                with patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(summary)):
+                    chain.plan(args, clock)
+                planned = json.loads(args.out.read_text())
+                self.assertEqual(bool(planned["lanes"]), not skipped)
+                self.assertEqual(clock.sleeps, [wait] if wait else [])
+                self.assertEqual("skipped" in summary.read_text(), skipped)
+
     def test_selftest_limits_timeout_and_saves_metadata(self):
         self.args.selftest = ["selftest-replay"]
         self.args.until = "00:30"
@@ -479,7 +507,7 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(saved["outcome"], "passed")
         self.assertEqual(saved["started"], replay.boundaries[0].isoformat())
         self.assertEqual(saved["seconds"], 60)
-        self.assertEqual(saved["report"], "selftest.md")
+        self.assertEqual(saved["report"], str((self.args.out / "selftest.log").resolve()))
         self.assertEqual(replay.timeouts[0][1], chain.SELFTEST_ALLOWANCE_SECONDS)
 
     def test_capture_identity_rows_start_and_empty_capture(self):
@@ -678,6 +706,39 @@ class NightlyTests(unittest.TestCase):
 
 
 class LaneSettingsTests(unittest.TestCase):
+    def test_lanes_run_after_prepare_failure_and_wait_for_failed_lane(self):
+        workflow = (PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text()
+        section = workflow.split("      - name: Run each board lane and wait for all\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("if: always() && env.SCOPED_BOARDS != ''", section)
+        script = section.split("        run: |\n", 1)[1]
+        script = "\n".join(line[10:] for line in script.splitlines())
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lane = root / "launcher/tools/perf/nightly/lane.sh"
+            lane.parent.mkdir(parents=True)
+            lane.write_text('echo "$1" >> "$EVENTS"\n[ "$1" != first ]\n')
+            events = root / "events"
+            env = dict(os.environ, GITHUB_WORKSPACE=directory, NIGHTLY_SUITES="", SCOPED_BOARDS="first second",
+                       PERF_OUT=directory, PERF_DATA=directory, EVENTS=str(events))
+            result = subprocess.run(["bash", "-eo", "pipefail", "-c",
+                'cygpath() { echo "$2"; }; ' + script], cwd=root, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(sorted(events.read_text().splitlines()), ["first", "second"])
+        for step in ("Summarize board outcomes", "Publish night manifests and LNT reports"):
+            self.assertIn("if: always()", workflow.split("- name: " + step, 1)[1].split("run:", 1)[0])
+
+    def test_lane_wait_uses_plan_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = Path(directory) / "plan.json"
+            plan.write_text(json.dumps(dict(started=Clock(22, 30).now().isoformat())))
+            command = ["chain", "wait-seconds", "--until", "07:00", "--plan", str(plan)]
+            clock = Clock(8)
+            clock.value += timedelta(days=1)
+            with patch.object(sys, "argv", command), patch.object(chain, "Clock", return_value=clock), \
+                    patch("sys.stdout", new_callable=io.StringIO) as output:
+                self.assertEqual(chain.main(), 0)
+            self.assertEqual(output.getvalue(), "0\n")
+
     def test_lane_uses_configured_window_and_selftest_command(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

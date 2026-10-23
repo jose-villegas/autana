@@ -55,6 +55,36 @@ class LocalScheduleTests(unittest.TestCase):
         workflow = Path(__file__).resolve().parents[3] / ".github/workflows/doc-images-gpu.yml"
         self.assertIn("cron: '0 22 * * *'", workflow.read_text())
 
+    def test_nightly_window_waits_runs_or_skips(self):
+        for hour, minute, wait, allowed in ((18, 0, 270 * 60, True),
+                (22, 30, 0, True), (23, 52, 0, True), (0, 30, 0, True),
+                (1, 52, 0, True), (6, 59, 0, True), (7, 0, 0, False),
+                (8, 0, 0, False), (12, 30, 600 * 60, True)):
+            with self.subTest(hour=hour, minute=minute):
+                clock = Clock(hour, minute)
+                deadline = local_schedule.night_window("22:30", "07:00", scheduled=True, clock=clock)
+                self.assertEqual(deadline is not None, allowed)
+                self.assertEqual(clock.sleeps, [wait] if wait else [])
+                if allowed:
+                    expected_day = 22 if hour >= 12 else 21
+                    self.assertEqual(deadline, datetime(2026, 10, expected_day, 7))
+
+    def test_wait_does_not_roll_a_planned_deadline_forward(self):
+        started = Clock(22, 30).now() - timedelta(days=1)
+        self.assertEqual(wait_seconds("07:00", Clock(6, 59).now(), True, started=started), 60)
+        for hour in (7, 8):
+            self.assertEqual(wait_seconds("07:00", Clock(hour).now(), True, started=started), 0)
+
+    def test_nightly_cron_starts_before_queue_in_both_seasons(self):
+        workflow = Path(__file__).resolve().parents[3] / ".github/workflows/nightly-perf.yml"
+        text = workflow.read_text()
+        self.assertIn("cron: '0 17 * * *'", text)
+        self.assertIn("QUEUE_AT: '22:30'", text)
+        lag_hours = 3
+        for utc_offset in (1, 2):
+            self.assertLess(17 + lag_hours + utc_offset, 22.5)
+            self.assertLess(17 + utc_offset, 22.5)
+
     def test_dispatch_window_and_override(self):
         for hour, allowed in ((0, False), (1, True), (2, True), (3, False), (12, False)):
             with self.subTest(hour=hour):

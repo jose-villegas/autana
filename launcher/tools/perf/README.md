@@ -327,7 +327,7 @@ to the lane; `--max-steps` limits new candidates and retains the anchor.
 
 ```sh
 python launcher/tools/perf/nightly/scoped_chain.py plan \
-  --boards BOARD_A BOARD_B --data DATA --out plan.json \
+  --boards BOARD_A BOARD_B --data DATA --out plan.json --until 07:00 \
   --from SHA --max-steps 2
 autana --board BOARD_A --wait 3600 lock run -- \
   python launcher/tools/perf/nightly/scoped_chain.py run \
@@ -346,6 +346,9 @@ estimated duration in seconds.
 `QUEUE_AT` and `WINDOW_END` set local times. Dispatch inputs `queue_at` and
 `window_end` override them; an empty dispatch `queue_at` starts immediately.
 A dispatch holds boards until its window end or `max_steps`.
+
+Scheduled plans start immediately inside the overnight window. Morning
+arrivals after `WINDOW_END` skip; arrivals after noon wait until `QUEUE_AT`.
 
 A step starts only if it fits before `WINDOW_END`, and a lane stops after
 `CAPTURE_FAILURE_LIMIT` consecutive capture failures (`scoped_chain.py`).
