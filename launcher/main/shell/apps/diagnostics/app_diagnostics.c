@@ -135,7 +135,7 @@ draw_toggles_page(const input_t* input) {
     }
 #endif
 
-    ui_end(TOGGLES_SCREEN_BACKGROUND);
+    ui_end(UI_BACKGROUND);
 }
 
 static void
