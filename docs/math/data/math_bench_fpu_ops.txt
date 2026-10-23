@@ -1,5 +1,5 @@
 # Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.
-# ELF sha256=ed5e96d92029ddbf6788edd176296147488bf2876edc1c5d812c30a333618977
+# ELF sha256=7e9c13a9f8d184795b0e90c22d998c829fe70958e89e556808f4ba238d43f825
 add_f	add (vec3)	f	64	-
 add_i	add (vec3)	i	64	-
 add_s	add (vec3)	s	64	-
@@ -33,9 +33,9 @@ mul_i	mul (scalar)	i	64	-
 mul_s	mul (scalar)	s	64	-
 mul_x	mul (scalar)	x	64	-
 nlerp_f	nlerp	f	64	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
-nlerp_x	nlerp	x	64	calls __divdi3
+nlerp_x	nlerp	x	64	calls __assert_func
 normalize_f	normalize (vec3)	f	64	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
-normalize_x	normalize (vec3)	x	64	calls __udivdi3
+normalize_x	normalize (vec3)	x	64	calls __assert_func
 quat_mul_f	quat mul	f	64	madd.s msub.s
 quat_mul_x	quat mul	x	64	-
 scale_f	scale (vec3)	f	64	-
