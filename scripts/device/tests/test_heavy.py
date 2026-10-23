@@ -46,10 +46,27 @@ class HeavyTests(unittest.TestCase):
     def test_foreign_board_heartbeat_uses_filesystem_clock(self):
         held = self.store.acquire("BOARD", "night", "run")
         locks.write_json(self.store.lock_path("BOARD"), dict(held, host="windows"))
-        with patch.object(self.store, "now", return_value=held["heartbeat_at"] + locks.DEFAULT_STALE_SECONDS * 2):
-            self.assertTrue(self.store.any_board_held())
+        observer = locks.LockStore(self.root, board_observer=True)
+        with patch.object(observer, "now", return_value=held["heartbeat_at"] + locks.DEFAULT_STALE_SECONDS * 2):
+            self.assertTrue(observer.any_board_held())
         locks.write_json(self.store.lock_path("BOARD"), dict(held, host="windows", heartbeat_at=0))
-        self.assertFalse(self.store.any_board_held())
+        self.assertFalse(observer.any_board_held())
+
+    def test_normal_board_store_uses_its_clock_for_every_record_host(self):
+        now = locks.DEFAULT_STALE_SECONDS * 4
+        interval = locks.DEFAULT_STALE_SECONDS * 2
+        store = locks.LockStore(self.root, now=lambda: now, is_alive=lambda pid: True)
+        for host in (None, locks.host_identity(), "foreign-host"):
+            for kind in ("run", "hold", "human"):
+                for offset, expired in ((-interval, True), (interval, False)):
+                    with self.subTest(host=host, kind=kind, offset=offset):
+                        record = dict(board="BOARD", kind=kind, pid=os.getpid(),
+                                      heartbeat_at=now + offset, expires_at=now + offset)
+                        if host is not None:
+                            record["host"] = host
+                        reason = "heartbeat expiry" if kind == "run" else "hold lapsed"
+                        self.assertEqual(store.reclaim_reason(record, locks.DEFAULT_STALE_SECONDS),
+                                         reason if expired else "")
 
     def test_wsl_board_observer_reads_windows_temp_store(self):
         with patch.dict(os.environ, {"_AUTANA_DEVICE_LOCK_ROOT": ""}), \
@@ -125,7 +142,7 @@ class HeavyTests(unittest.TestCase):
         filesystem_now = self.root.stat().st_mtime
         for kind in ("hold", "human"):
             for skew in (-86400, 86400):
-                store = locks.LockStore(self.root, now=lambda: filesystem_now + skew)
+                store = locks.LockStore(self.root, now=lambda: filesystem_now + skew, board_observer=True)
                 for offset, reason in ((600, ""), (-600, "hold lapsed")):
                     with self.subTest(kind=kind, skew=skew, offset=offset):
                         held = dict(board="BOARD", kind=kind, host="foreign-host",
