@@ -32,7 +32,7 @@ BUILD_PRIORITY_BELOW_NORMAL = "below_normal"
 BUILD_LATEST_START_ENV = "_AUTANA_BUILD_LATEST_START"
 
 # Exit statuses beyond 0, 1 and 2: 75 (EX_TEMPFAIL) is a board that was busy
-# or not handed back, 130 is Ctrl+C. Documented in docs/tools/Device-Lock.md.
+# or not handed back, 130 is Ctrl+C. Documented in docs/cli/Device-Lock.md.
 EXIT_BUSY = 75
 EXIT_INTERRUPTED = 130
 

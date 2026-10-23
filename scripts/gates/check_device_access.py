@@ -5,7 +5,7 @@
 
 Every command that touches the board goes through `scripts/device/device.py`,
 which takes the device lock before it opens the port, see
-docs/tools/Autana-CLI.md and docs/tools/Device-Lock.md. A file elsewhere that
+docs/cli/README.md and docs/cli/Device-Lock.md. A file elsewhere that
 opens pyserial's `Serial(`, invokes `idf_monitor`/`idf.py monitor`, runs
 `idf.py ... flash`, or shells out to `esptool` bypasses that lock, so two
 sessions can fight over one port. scripts/device/ and scripts/gates/ are
