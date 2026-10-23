@@ -9,11 +9,6 @@ draw_toggle(const settings_toggle_t* row) {
     if (ui_toggle(ui_next(), row->label, &on)) {
         row->set(on);
     }
-    /* A paragraph's lines sit one text height apart, with no padding. */
-    for (int i = 0; i < row->note_lines; i++) {
-        ui_row(ui_text_height());
-        ui_text(ui_next(), row->note[i]);
-    }
 }
 
 void

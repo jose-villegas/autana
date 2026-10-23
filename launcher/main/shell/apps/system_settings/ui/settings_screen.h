@@ -2,13 +2,11 @@
 #pragma once
 #include <stdbool.h>
 
-/* One row: its owner's getter and setter, and an optional note under it. */
+/* One row: its label and its owner's getter and setter. */
 typedef struct {
     const char* label;
     bool (*get)(void);
     void (*set)(bool on);
-    const char* const* note;
-    int note_lines;
 } settings_toggle_t;
 
 typedef struct {
