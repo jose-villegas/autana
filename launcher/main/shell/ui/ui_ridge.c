@@ -444,10 +444,17 @@ add_row_break(int* points, int* count, int x, int lo, int hi) {
     }
 }
 
+static inline bool
+lower(int a, int b) {
+    return a < b;
+}
+
+SORT_DEFINE_INSERTION(breaks, int, lower)
+
 /* Sorts points[1..count) and drops repeats; points[0] is lo, below every break. */
 static inline __attribute__((always_inline)) int
 order_row_breaks(int* points, int count) {
-    sort_insertion(points + 1, (size_t)(count - 1), sizeof points[0], sort_compare_int);
+    breaks_sort(points + 1, (size_t)(count - 1));
     int kept = 1;
     for (int i = 1; i < count; i++) {
         if (points[i] != points[kept - 1]) {
