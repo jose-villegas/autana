@@ -5,32 +5,48 @@ measured cost and error, linked size, build conditions, and calling modules.
 The [capture commands](Benchmark.md#capture) produce the evidence.
 
 Key: warm cycles measure cached batches; cold cycles include instruction-cache refill.
-Pairs are fast vs plain; parentheses give plain / fast warm (greater than one wins).
-Code totals wrappers and callees by ELF region; ? marks unknown ROM size. Tables total linked copies.
-A dash means unmeasured. Package wrapper modules are included. App callers share the row “apps (not named)”.
+Plain/fast is the warm cycle ratio (greater than one wins).
+Code totals wrappers and callees by ELF region; table bytes total linked copies.
+A dash means no measurement or table. Callers are engine modules; app names are grouped.
 
 <!-- generated: math-fast-paths check: python launcher/tools/perf/fast_paths.py --check -->
 Measured target: -.
 
-| Fast path | Plain way | Ours | Target / hardware feature | Warm cycles/op (ratio) | Cold cycles/call | Max error (limit; method) | Code bytes / region; table bytes (fast vs plain) |
+### What it replaces
+
+| Fast path | Plain way | Ours | Target / hardware feature |
+|---|---|---|---|
+| [`mathf_recip`](#mathf-recip) | `1.0F / x` | reciprocal seed with two Newton corrections | Xtensa: `recip0.s`, `madd.s`, `msub.s` |
+| [`mathf_rsqrt`](#mathf-rsqrt) | `1.0F / sqrtf(x)` | reciprocal-root seed with two Newton corrections | Xtensa: `rsqrt0.s`, `madd.s`, `msub.s` |
+| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | `1.0F / sqrtf(x)` | reciprocal-root seed with one Newton correction | Xtensa: `rsqrt0.s`, `msub.s` |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | isqrt64 squared length, then 64-bit divide and component scaling | seed table, three Newton corrections and exact midpoint bracket | portable |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | linear quaternion blend, isqrt64 length, then 64-bit divide normalization | seed table, three Newton corrections and exact midpoint bracket | portable |
+| [`mathf_repeat`](#mathf-repeat) | `fmodf(v - lo, hi - lo)` | reciprocal quotient and fused remainder, with range fallback | portable; Xtensa needs fused `madd.s`, `msub.s` |
+| [`trig_sin`](#trig-sin) | `sinf(phase * (MATH_TAU / TRIG_TURN))` | quarter-wave interpolation | portable |
+
+### Cost and error
+
+| Fast path | Bench rows | Warm cycles fast | Warm plain | Plain/fast | Cold fast | Cold plain | Max error | Limit | Method |
+|---|---|---|---|---|---|---|---|---|---|
+| [`mathf_recip`](#mathf-recip) | `mathf_recip_f` vs `div_recip_f` | - | - | - | - | - | - ulp | `MATHF_RECIP_ULP_LIMIT` (1) | sweep |
+| [`mathf_rsqrt`](#mathf-rsqrt) | `mathf_rsqrt_f` vs `div_rsqrt_f` | - | - | - | - | - | - ulp | `MATHF_RSQRT_ULP_LIMIT` (1) | proof |
+| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | `mathf_rsqrt_approx_f` vs `div_rsqrt_f` | - | - | - | - | - | - relative | `MATHF_RSQRT_APPROX_RELATIVE_LIMIT` (0.0001) | proof |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | `normalize_x` vs `normalize_div_x` | - | - | - | - | - | - relative | `MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31) | proof |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | `nlerp_x` vs `nlerp_div_x` | - | - | - | - | - | - relative | `MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31) | proof |
+| [`mathf_repeat`](#mathf-repeat) | `wrap_f` vs `wrap_fmodf_f` | - | - | - | - | - | - ulp | `MATHF_WRAP_ULP_LIMIT` (0) | sweep |
+| [`trig_sin`](#trig-sin) | `trig_sin_i` vs `sinf_f` | - | - | - | - | - | - lsb | `TRIG_SIN_LSB_LIMIT` (5) | sweep |
+
+### Size and builds
+
+| Fast path | Fast code bytes (region) | Plain code bytes (region) | Table bytes | Gating Kconfig | QEMU | Host | Callers |
 |---|---|---|---|---|---|---|---|
-| [`mathf_recip`](#mathf-recip) | `mathf_recip_f` / `div_recip_f`: `1.0F / x` | reciprocal seed with two Newton corrections | Target-specific; `madd.s`, `msub.s`, `recip0.s` | - vs - (-) | - vs - | - ulp (`MATHF_RECIP_ULP_LIMIT` (1); sweep). | 62 / flash; tables 0 vs 0 + ? / ROM, 45 / flash; tables 0 |
-| [`mathf_rsqrt`](#mathf-rsqrt) | `mathf_rsqrt_f` / `div_rsqrt_f`: `1.0F / sqrtf(x)` | reciprocal-root seed with two Newton corrections | Target-specific; `madd.s`, `msub.s`, `rsqrt0.s` | - vs - (-) | - vs - | - ulp (`MATHF_RSQRT_ULP_LIMIT` (1); proof). | 0 + ? / ROM, 152 / flash; tables 0 vs 0 + ? / ROM, 65 / flash; tables 0 |
-| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | `mathf_rsqrt_approx_f` / `div_rsqrt_f`: `1.0F / sqrtf(x)` | reciprocal-root seed with one Newton correction | Target-specific; `msub.s`, `rsqrt0.s` | - vs - (-) | - vs - | - relative (`MATHF_RSQRT_APPROX_RELATIVE_LIMIT` (0.0001); proof). | 66 / flash; tables 0 vs 0 + ? / ROM, 65 / flash; tables 0 |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | `normalize_x` / `normalize_div_x`: `isqrt64 squared length, then 64-bit divide and component scaling`<br>`nlerp_x` / `nlerp_div_x`: `linear quaternion blend, isqrt64 length, then 64-bit divide normalization` | seed table, three Newton corrections and exact midpoint bracket | Portable C; no special instructions | `normalize_x`: - vs - (-)<br>`nlerp_x`: - vs - (-) | `normalize_x`: - vs -<br>`nlerp_x`: - vs - | - relative (`MATHX_RSQRT_Q30_RELATIVE_LIMIT` (4.65661e-10); proof). | `normalize_x`: 236 / IRAM, 956 / flash; tables 768 vs 582 / ROM, 2061 / flash; tables 0<br>`nlerp_x`: 236 / IRAM, 2664 / flash; tables 768 vs 606 / ROM, 3534 / flash; tables 0 |
-| [`mathf_repeat`](#mathf-repeat) | `wrap_f` / `wrap_fmodf_f`: `fmodf(v - lo, hi - lo), adjusted into [lo, hi)` | reciprocal quotient and fused remainder, with range fallback | Portable C; `madd.s`, `msub.s`, `recip0.s` | - vs - (-) | - vs - | - ulp (`MATHF_WRAP_ULP_LIMIT` (0); sweep). | 612 / flash; tables 0 vs 460 / flash; tables 0 |
-| [`trig_sin`](#trig-sin) | `trig_sin_i` / `sinf_f`: `sinf(phase * (MATH_TAU / TRIG_TURN))` | quarter-wave interpolation | Portable C; no special instructions | - vs - (-) | - vs - | - lsb (`TRIG_SIN_LSB_LIMIT` (5); sweep). | 202 / flash; tables 1040 vs 181 / flash; tables 0 |
-
-### Builds and callers
-
-| Fast path | Gating Kconfig | QEMU | Host | Engine modules |
-|---|---|---|---|---|
-| [`mathf_recip`](#mathf-recip) | `CONFIG_MATH_FPU_RECIP` | plain | plain | `math/linear`, `math/scalar`, `render` |
-| [`mathf_rsqrt`](#mathf-rsqrt) | `CONFIG_MATH_FPU_RECIP` | plain | plain | `anim`, `apps (not named)`, `input`, `math`, `math/linear`, `scene` |
-| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | `CONFIG_MATH_FPU_RECIP` | plain | plain | `render` |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | none | fast | fast | `math/linear`, `math/scalar` |
-| [`mathf_repeat`](#mathf-repeat) | `CONFIG_MATH_FPU_FUSED_MADD` | plain | fast | `math/scalar` |
-| [`trig_sin`](#trig-sin) | none | fast | fast | `audio`, `boot`, `math/scalar`, `shell` |
+| [`mathf_recip`](#mathf-recip) | 62 flash | ROM + 45 flash | - | `CONFIG_MATH_FPU_RECIP` | plain | plain | `render` |
+| [`mathf_rsqrt`](#mathf-rsqrt) | ROM + 152 flash | ROM + 65 flash | - | `CONFIG_MATH_FPU_RECIP` | plain | plain | `anim`, `apps (not named)`, `input`, `scene` |
+| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 66 flash | ROM + 65 flash | - | `CONFIG_MATH_FPU_RECIP` | plain | plain | `render` |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | 236 IRAM + 956 flash | ROM + 2061 flash | 768 | none | fast | fast | none |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | 236 IRAM + 2664 flash | ROM + 3534 flash | 768 | none | fast | fast | none |
+| [`mathf_repeat`](#mathf-repeat) | 612 flash | 460 flash | - | `CONFIG_MATH_FPU_FUSED_MADD` | plain | fast | none |
+| [`trig_sin`](#trig-sin) | 202 flash | 181 flash | 1040 | none | fast | fast | `audio`, `boot`, `shell` |
 
 <a id="mathf-recip"></a>
 

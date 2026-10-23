@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'launcher/tools/perf'))
 import math_bench_table as bench
 import fast_paths as paths
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
+from test_assertions import assert_contains
 
 
 class FastPathTests(unittest.TestCase):
@@ -129,7 +131,7 @@ class FastPathTests(unittest.TestCase):
         self.assertEqual(paths.callers(self.root, 'mathf_rsqrt')['render'], {'quatf_nlerp'})
         self.assertEqual(paths.callers(self.root, 'mathx_rsqrt_q30')['render'],
                          {'vec3x_normalize', 'quatx_nlerp'})
-        self.assertIn('math/linear', paths.callers(self.root, 'mathx_rsqrt_q30'))
+        self.assertEqual(set(paths.callers(self.root, 'mathx_rsqrt_q30')), {'render'})
         item = next(item for item in paths.annotations(self.root) if item.key == 'mathx_rsqrt_q30')
         self.assertEqual(paths.tables_for(item, self.root), ['mathx_rsqrt_seeds'])
 
@@ -176,29 +178,46 @@ class FastPathTests(unittest.TestCase):
         bins = {(item.key, item.kind): [(1.0, 0.0, item.unit)] for item in items}
         text = paths.render(ROOT, items, rows, measured, errors, bins, sizes, fpu, "test target")
         summary, details = text.split('<a id="mathf-recip"></a>', 1)
-        self.assertEqual(summary.count("| [`"), len({item.key for item in items}) * 2)
-        self.assertIn("`1.0F / x`", summary)
-        self.assertIn("10.0 vs 25.0 (2.50", summary)
-        self.assertIn("20.0 vs 40.0", summary)
-        self.assertIn("`normalize_x`", summary)
-        self.assertIn("`nlerp_x`", summary)
-        self.assertIn("768", summary)
-        self.assertIn("ROM", summary)
-        self.assertIn("`CONFIG_MATH_FPU_RECIP`", summary)
-        self.assertIn("render", summary)
-        self.assertNotIn("|", details)
-        self.assertNotIn("**Plain way**", details)
-        self.assertIn("Symbols: nonzero input `a`; reciprocal seed `y`.", details)
-        self.assertIn("`sinf` in output LSBs", details)
-        self.assertIn("`[MATHX_RSQRT_MIN, 2^32)`", details)
+        self.assertEqual(summary.count("| [`"), len(items) * 3)
+        assert_contains(self, summary, (
+            "`1.0F / x`",
+            "10.0 | 25.0 | 2.50 | 20.0 | 40.0",
+            "`normalize_x`",
+            "`nlerp_x`",
+            "### What it replaces",
+            "### Cost and error",
+            "### Size and builds",
+        ))
+        self.assertNotIn("<br>", summary)
+        self.assertNotIn("`math/", summary)
+        self.assertNotIn("`math`", summary)
+        assert_contains(self, summary, (
+            "| `fmodf(v - lo, hi - lo)` |",
+            "| isqrt64 squared length, then 64-bit divide and component scaling |",
+            "portable; Xtensa needs fused `madd.s`, `msub.s`",
+            "Xtensa: `recip0.s`, `madd.s`, `msub.s`",
+            "`MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31)",
+            "236 IRAM + 956 flash",
+            "| 768 |",
+            "ROM",
+            "`CONFIG_MATH_FPU_RECIP`",
+            "render",
+        ))
         self.assertIn("| `CONFIG_MATH_FPU_RECIP` | plain | plain |", summary)
         self.assertIn("| `CONFIG_MATH_FPU_FUSED_MADD` | plain | fast |", summary)
+        self.assertNotIn("|", details)
+        self.assertNotIn("**Plain way**", details)
+        assert_contains(self, details, (
+            "Symbols: nonzero input `a`; reciprocal seed `y`.",
+            "`sinf` in output LSBs",
+            "`[MATHX_RSQRT_MIN, 2^32)`",
+        ))
         self.assertEqual(details.count("```math"), len({item.key for item in items}))
         self.assertEqual(details.count("![Error across"), len({item.key for item in items}))
         paths.validate_sections(text, items)
         pending = paths.render(ROOT, items, rows, {}, {}, {}, {}, fpu, "-")
         self.assertIn("capture pending", pending)
-        self.assertIn("- vs - (-)", pending)
+        self.assertIn("| - | - | - | - | - |", pending)
 
     def test_size_records_are_strict(self):
         text = 'fast_f\tmath_bench_fast_f\t12\tflash\nfast_f\t__divsf3\t32\tIRAM\n'
