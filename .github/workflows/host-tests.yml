@@ -23,11 +23,33 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      host-tests: ${{ steps.affected.outputs.host-tests }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job host-tests
+
   host-tests:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.host-tests == 'true') }}
     name: Host and editor tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/host-tools
       # The packs' meshes come from the bake cache; fetching first names a missing bake on its own.
       - name: Fetch the bakes launcher/bakes.lock names
@@ -59,3 +81,7 @@ jobs:
       - name: Editor tests
         if: ${{ !cancelled() && steps.editor-build.outcome == 'success' }}
         run: ctest --test-dir editor/build --output-on-failure
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
