@@ -74,7 +74,10 @@ def annotations(root=ROOT):
                 raise ValueError(f"missing description, formula or coverage: {key}")
             description, formula, coverage = map(str.strip, comments[-1].split("|"))
             body = function_bodies(text)[key]
-            target = "Target-specific" if re.search(r"^#(?:if|elif).*(?<!!)defined\(__XTENSA__\).*CONFIG_MATH_", body, re.M) else "Portable C"
+            guard = re.search(r"^#(?:if|elif).*defined\(__XTENSA__\).*CONFIG_MATH_.*$", body, re.M)
+            target = "portable"
+            if guard:
+                target = "portable; Xtensa needs fused" if "!defined(__XTENSA__)" in guard[0] else "Xtensa"
             unit, method = contracts[key]
             result.append(Annotation(key, kind, fast, plain, limit_name, unit, method, target,
                                      header.relative_to(root), before.count("\n") + 1,
@@ -107,7 +110,7 @@ def hardware_features(root, item):
 
 def validate_hardware(root, items, fpu):
     for item in items:
-        if item.target == "Portable C":
+        if item.target != "Xtensa":
             continue
         _, expected = hardware_features(root, item)
         observed = set(fpu[item.fast].partition(";")[0].split())
@@ -234,18 +237,14 @@ def callers(root, key):
     modules = {}
     sources = [path for folder in ("main", "packages") for path in (root / "launcher" / folder).rglob("*")]
     for path in sorted(sources):
-        if path.suffix not in (".c", ".h") or any(part in ("tests", "tools") for part in path.parts):
+        if (path.suffix not in (".c", ".h") or path.is_relative_to(root / "launcher/packages/math")
+                or any(part in ("tests", "tools") for part in path.parts)):
             continue
         text = re.sub(r"/\*.*?\*/|//[^\n]*", "", path.read_text(encoding="utf-8"), flags=re.S)
-        if path.is_relative_to(root / HEADERS):
-            text = "\n".join(body for name, body in function_bodies(text).items() if name != key)
         used = set(CALL.findall(text)) & reachable
         if used:
             relative = path.relative_to(root / "launcher")
-            if path.is_relative_to(root / HEADERS):
-                module = "math/" + path.relative_to(root / HEADERS).parts[0]
-            else:
-                module = relative.parts[1] if len(relative.parts) > 2 else relative.parts[0]
+            module = relative.parts[1] if len(relative.parts) > 2 else relative.parts[0]
             modules.setdefault("apps (not named)" if relative.parts[:2] == ("main", "apps") else module, set()).update(used)
     return modules
 
@@ -255,7 +254,7 @@ def build_rows(item, root):
     qemu = (root / "launcher/sdkconfig.defaults.qemu").read_text(encoding="utf-8")
     disabled = any(re.search(r"^# " + symbol + r" is not set$|^" + symbol + r"=n$", qemu, re.M) for symbol in symbols)
     gates = ", ".join(f"`{symbol}`" for symbol in symbols) or "none"
-    return f"{gates} | {'plain' if disabled else 'fast'} | {'plain' if item.target == 'Target-specific' else 'fast'}"
+    return f"{gates} | {'plain' if disabled else 'fast'} | {'plain' if item.target == 'Xtensa' else 'fast'}"
 
 
 def _description_fields(item):
@@ -273,10 +272,9 @@ def _size_cell(row, sizes):
     for _, size, region in records:
         if region != "rodata":
             regions.setdefault(region, []).append(size)
-    parts = [f"{sum(size for size in values if size is not None)}{' + ?' if None in values else ''} / {region}"
+    parts = ["ROM" if region == "ROM" else f"{sum(values)} {region}"
              for region, values in sorted(regions.items())]
-    tables = sum(size for _, size, region in records if region == "rodata")
-    return ", ".join(parts) + f"; tables {tables}" if records else "-"
+    return " + ".join(parts) or "-"
 
 
 def _inline_expressions(text):
@@ -288,39 +286,48 @@ def plain_expression(item, root):
     match = re.search(r"/\* MATH_PLAIN\(" + item.plain + r"\): (.*?) \*/", text)
     if not match:
         raise ValueError(f"plain row has no C description: {item.plain}")
-    return match[1]
+    expression = match[1].split(", adjusted", 1)[0]
+    return expression if "isqrt64" in expression else f"`{expression}`"
 
 
 def render(root, items, rows, measured, errors, bins, sizes, fpu, target):
     groups = {}
     for item in items:
         groups.setdefault(item.key, []).append(item)
-    lines = [f"Measured target: {target}.", "",
-             "| Fast path | Plain way | Ours | Target / hardware feature | Warm cycles/op (ratio) | Cold cycles/call | Max error (limit; method) | Code bytes / region; table bytes (fast vs plain) |",
-             "|---|---|---|---|---|---|---|---|"]
-    for key, group in groups.items():
-        item = group[0]
-        plain_cells, warm_cells, cold_cells, _size_cells = [], [], [], []
-        for pair in group:
-            label = f"`{pair.fast}`: " if len(group) > 1 else ""
-            fast, plain = measured.get(pair.fast), measured.get(pair.plain)
-            ratio = f"{plain[0] / fast[0]:.2f}" if fast and plain else "-"
-            warm, cold = [(f"{fast[i]:.1f}" if fast else "-") + " vs " +
-                          (f"{plain[i]:.1f}" if plain else "-") for i in range(2)]
-            plain_cells.append(f"`{pair.fast}` / `{pair.plain}`: `{plain_expression(pair, root)}`")
-            warm_cells.append(f"{label}{warm} ({ratio})")
-            cold_cells.append(label + cold)
-            _size_cells.append(f"{label}{_size_cell(pair.fast, sizes)} vs {_size_cell(pair.plain, sizes)}")
-        observed = ", ".join(f"`{op}`" for op in fpu[item.fast].partition(";")[0].split() if op in bench.FPU_OPS)
-        error = errors.get((key, item.kind), "-").split()[0]
-        cells = [f"[`{key}`](#{key.replace('_', '-')})", "<br>".join(plain_cells), _description_fields(item)[0],
-                 f"{item.target}; {observed or 'no special instructions'}", "<br>".join(warm_cells), "<br>".join(cold_cells),
-                 f"{error} {item.unit} (`{item.limit_name}` ({item.limit:g}); {item.method}).", "<br>".join(_size_cells)]
-        lines.append("| " + " | ".join(cells) + " |")
-    lines += ["", "### Builds and callers", "", "| Fast path | Gating Kconfig | QEMU | Host | Engine modules |", "|---|---|---|---|---|"]
-    for key, group in groups.items():
-        modules = ", ".join(f"`{module}`" for module in sorted(callers(root, key))) or "none"
-        lines.append(f"| [`{key}`](#{key.replace('_', '-')}) | {build_rows(group[0], root)} | {modules} |")
+    lines = [f"Measured target: {target}.", ""]
+    replacements, costs, builds = [], [], []
+    for item in items:
+        link = f"[`{item.key}`](#{item.key.replace('_', '-')})"
+        features = set(fpu[item.fast].partition(";")[0].split()) & set(bench.FPU_OPS)
+        if item.target.startswith("portable;"):
+            features &= {"madd.s", "msub.s"}
+        operations = ", ".join(f"`{op}`" for op in sorted(features, key=lambda op: (not op.endswith("0.s"), op)))
+        hardware = item.target
+        if operations and item.target != "portable":
+            hardware += (": " if item.target == "Xtensa" else " ") + operations
+        replacements.append([link, plain_expression(item, root), _description_fields(item)[0], hardware])
+        fast, plain = measured.get(item.fast), measured.get(item.plain)
+        warm_fast, cold_fast = [f"{value:.1f}" for value in fast] if fast else ["-", "-"]
+        warm_plain, cold_plain = [f"{value:.1f}" for value in plain] if plain else ["-", "-"]
+        ratio = f"{plain[0] / fast[0]:.2f}" if fast and plain else "-"
+        fraction, exponent = math.frexp(item.limit)
+        limit = f"2^{exponent - 1}" if fraction == 0.5 and item.limit < 1 else f"{item.limit:g}"
+        error = errors.get((item.key, item.kind), "-").split()[0]
+        costs.append([link, f"`{item.fast}` vs `{item.plain}`", warm_fast, warm_plain, ratio,
+                      cold_fast, cold_plain, f"{error} {item.unit}", f"`{item.limit_name}` ({limit})", item.method])
+        table_bytes = sum(size for _, size, region in sizes.get(item.fast, []) if region == "rodata")
+        modules = ", ".join(f"`{module}`" for module in sorted(callers(root, item.key))) or "none"
+        builds.append([link, _size_cell(item.fast, sizes), _size_cell(item.plain, sizes), str(table_bytes) if table_bytes else "-",
+                       build_rows(item, root), modules])
+    for title, headings, entries in (
+        ("What it replaces", "Fast path | Plain way | Ours | Target / hardware feature", replacements),
+        ("Cost and error", "Fast path | Bench rows | Warm cycles fast | Warm plain | Plain/fast | Cold fast | Cold plain | Max error | Limit | Method", costs),
+        ("Size and builds", "Fast path | Fast code bytes (region) | Plain code bytes (region) | Table bytes | Gating Kconfig | QEMU | Host | Callers", builds),
+    ):
+        lines += [f"### {title}", "", "| " + headings + " |", "|" + "---|" * len(headings.split(" | "))]
+        lines.extend("| " + " | ".join(cells) + " |" for cells in entries)
+        lines.append("")
+    lines.pop()
     for key, group in groups.items():
         item = group[0]
         lines += ["", f'<a id="{key.replace("_", "-")}"></a>', "", f"## `{key}`", "",
