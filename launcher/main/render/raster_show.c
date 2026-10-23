@@ -9,9 +9,8 @@
 #include <stdint.h>
 
 #include "profile/frame_cost.h"
-#include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
-#include "render/raster.h"
+#include "render/raster_internal.h"
 
 #define GREY_MAX 255
 
@@ -162,7 +161,7 @@ raster_show_map(const gfx_render_target_t* picture, int index, uint16_t clear,
 void
 raster_show(const raster_t* raster) {
     FRAME_COST_BEGIN(shown_from);
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    const raster_buffers_t b = raster_carve(raster);
     for (int k = 0; k < raster->attachment_count; k++) {
         const raster_attachment_t* a = raster->attachments[k];
         if (a->show != NULL) {
