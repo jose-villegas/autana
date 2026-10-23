@@ -16,6 +16,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/scalar/math_calls.h"
+
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathf_round.h"
 #include "math/scalar/mathi.h"
@@ -169,11 +171,14 @@ static const uint32_t mathx_rsqrt_seeds[] = {
     [45] = 1095348453u, [46] = 1086550331u, [47] = 1077960865u,
 };
 
-/* m in [2^30, 2^32): nearest 2^30 / sqrt(m / 2^32).
- * A midpoint bracket bounds rounding by 0.5; the result exceeds 2^30,
- * so relative error <= 0.5 / 2^30 = 2^-31. */
+/* For m in [2^30, 2^32), midpoint rounding bounds relative error by 2^-31. */
+/* Seed table, three integer Newton corrections and an exact midpoint bracket. | y = round(2^{46}/sqrt(m)) | mantissa segment strides and exact midpoint brackets */
+/* MATH_FAST_PATH(mathx_rsqrt_q30, x, normalize_x, normalize_div_x, MATHX_RSQRT_Q30_RELATIVE_LIMIT, relative, proof, MATH_TARGET_PORTABLE) */
+/* MATH_FAST_PATH(mathx_rsqrt_q30, x, nlerp_x, nlerp_div_x, MATHX_RSQRT_Q30_RELATIVE_LIMIT, relative, proof, MATH_TARGET_PORTABLE) */
+
 static inline uint32_t
 mathx_rsqrt_q30(uint32_t m) {
+    MATH_FAST_CALL(mathx_rsqrt_q30);
     assert(m >= MATHX_RSQRT_MIN);
     _Static_assert(sizeof mathx_rsqrt_seeds / sizeof mathx_rsqrt_seeds[0]
                        == (1 << MATHX_RSQRT_SEED_BITS) - (1 << (MATHX_RSQRT_SEED_BITS - 2)),

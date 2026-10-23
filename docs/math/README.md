@@ -1,5 +1,7 @@
 # Math: vectors, rotations, matrices, transforms, signals
 
+[Fast-path evidence](Fast-Paths.md) pairs costs, error bounds and callers.
+
 The [math package](../../launcher/packages/math/README.md) holds scalar operations
 in `scalar/`, vectors and transforms in `linear/`, shapes and queries in
 `geometry/`, orbit steering and spring lines in `motion/`, and single-bin

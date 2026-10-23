@@ -163,16 +163,25 @@ class MathBenchTableTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertEqual({"dot_f": expected}, bench.parse_disassembly(code, self.rows[:1]))
 
+    def test_elf_sizes_include_sized_and_absolute_rom_symbols(self):
+        rows = [("dot_f", "dot", "f", self.batch)]
+        located = {0x42001000: ("math_bench_dot_f", 12), 0x400011f4: ("memcpy", 24)}
+        sizes = bench.parse_sizes(bench.elf_sizes(rows, {"dot_f": "calls memcpy"}, located))
+        self.assertIn(("memcpy", 24, "ROM"), sizes["dot_f"])
+        sizes = bench.parse_sizes(bench.elf_sizes(rows, {"dot_f": "calls __divsf3"}, located,
+                                                 {"__divsf3": 0x40002274}))
+        self.assertIn(("__divsf3", None, "ROM"), sizes["dot_f"])
+
     def test_from_elf(self):
         with tempfile.TemporaryDirectory() as directory:
             elf, fpu = Path(directory) / "test.elf", Path(directory) / "fpu.txt"
             elf.write_bytes(b"elf")
             manifest = b"sinf_f\tsinf\tf\t64\ndot_f\tdot (vec3)\tf\t2\n\0"
             dump = "1000 " + manifest.hex() + "  ignored ascii\n"
-            disassembly = ("2000 <math_bench_sinf_f>:\n2000: 12 nop.n\n"
-                           "2010 <math_bench_dot_f>:\n2010: 12 madd.s f0, f1\n")
+            disassembly = ("42002000 <math_bench_sinf_f>:\n42002000: 12 nop.n\n"
+                           "42002010 <math_bench_dot_f>:\n42002010: 12 madd.s f0, f1\n")
             located = {4096: ("math_bench_manifest", len(manifest)),
-                       8192: ("math_bench_sinf_f", 2), 8208: ("math_bench_dot_f", 2)}
+                       0x42002000: ("math_bench_sinf_f", 2), 0x42002010: ("math_bench_dot_f", 2)}
             def run(tool, *args):
                 if tool == "nm":
                     return "\n".join(f"{address:x} {size:x} r {name}" for address, (name, size) in located.items())
@@ -180,7 +189,7 @@ class MathBenchTableTests(unittest.TestCase):
             with unittest.mock.patch.object(bench, "run", side_effect=run), \
                  unittest.mock.patch.dict(bench.instructions.__globals__, run=run), \
                  unittest.mock.patch.object(bench, "find_tool", side_effect=lambda name: name):
-                args = ["--from-elf", str(elf), "--fpu", str(fpu)]
+                args = ["--from-elf", str(elf), "--fpu", str(fpu), "--sizes", str(Path(directory) / "sizes.txt")]
                 self.assertEqual(0, bench.main(args))
                 first = fpu.read_bytes()
                 self.assertIn(b"# ELF sha256=" + bench.hashlib.sha256(b"elf").hexdigest().encode(), first)
@@ -188,7 +197,7 @@ class MathBenchTableTests(unittest.TestCase):
                 self.assertLess(first.index(b"dot_f\t"), first.index(b"sinf_f\t"))
                 self.assertEqual(0, bench.main(args))
                 self.assertEqual(first, fpu.read_bytes())
-                del located[8208]
+                del located[0x42002010]
                 with self.assertRaisesRegex(SystemExit, "1"):
                     bench.main(args)
 
