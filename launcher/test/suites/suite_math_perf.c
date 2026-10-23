@@ -212,7 +212,7 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
     X(atan2f, "atan2f", f, "libm", false, f, atan2f(p->angle, p->bf.x))                                                \
     X(sqrtf, "sqrtf", f, "libm", false, f, sqrtf(p->af.x))                                                             \
     X(trig_sin, "trig_sin", i, "scalar", false, i, trig_sin(p->phase))                                                 \
-    DOT(dot_f32_n256, "dot_f32_n256", f, "vector", false, 1)
+    DOT(dot_f32_n256, "dot_f32_n256", f, "calibration", false, 1)
 
 #define MATH_KERNEL(name, label, type, family, ratchet, member, expression)                                            \
     static __attribute__((noinline)) void math_bench_##name##_##type(fixture_t* f) {                                   \

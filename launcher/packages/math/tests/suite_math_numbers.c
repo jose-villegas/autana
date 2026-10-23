@@ -14,7 +14,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "math_target.h"
 #include "suites.h"
 #include "transform_cache.h"
 #include "unity.h"
@@ -1051,6 +1050,8 @@ repeat_reference(float v, float len) {
     return r < len ? r : 0.0F;
 }
 
+#define MATHF_WRAP_ULP_LIMIT 0
+
 static void
 assert_repeat_and_wrap_bits(float v, float len) {
     const float expected = repeat_reference(v, len);
@@ -1058,7 +1059,7 @@ assert_repeat_and_wrap_bits(float v, float len) {
     if (isnan(expected)) {
         TEST_ASSERT_TRUE(isnan(actual));
     } else {
-        TEST_ASSERT_EQUAL_HEX32(float_bits(expected), float_bits(actual));
+        TEST_ASSERT_UINT32_WITHIN(MATHF_WRAP_ULP_LIMIT, float_bits(expected), float_bits(actual));
     }
     const float lo = -len;
     const float hi = len;
@@ -1068,7 +1069,7 @@ assert_repeat_and_wrap_bits(float v, float len) {
     if (isnan(expected_wrap)) {
         TEST_ASSERT_TRUE(isnan(actual_wrap));
     } else {
-        TEST_ASSERT_EQUAL_HEX32(float_bits(expected_wrap), float_bits(actual_wrap));
+        TEST_ASSERT_UINT32_WITHIN(MATHF_WRAP_ULP_LIMIT, float_bits(expected_wrap), float_bits(actual_wrap));
     }
 }
 
@@ -1807,6 +1808,8 @@ test_fixed_quaternion_normalize_zero_and_unit_path(void) {
     TEST_ASSERT_EQUAL_INT32(safe.w, unit.w);
 }
 
+#define TRIG_SIN_LSB_LIMIT  5
+
 #define FAST_PATH_PHASE_BIN (TRIG_TURN / (sizeof trig_sin_quarter / sizeof trig_sin_quarter[0] - 1))
 
 static void
@@ -1834,7 +1837,6 @@ test_trig_sin_error_bins(void) {
 
 void
 suite_math_numbers(void) {
-    math_target_report();
     RUN_TEST(test_trig_sin_error_bins);
     RUN_TEST(test_fixed_scalar_rsqrt_nonpositive);
     RUN_TEST(test_fixed_quaternion_normalize_zero_and_unit_path);

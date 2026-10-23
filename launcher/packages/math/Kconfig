@@ -14,12 +14,4 @@ menu "Math"
             Rely on madd.s/msub.s rounding once. Disable where the emulator
             rounds the product (Espressif QEMU).
 
-    config MATH_COUNT_CALLS
-        bool "Count math fast-path calls by translation unit"
-        default n
-        help
-            Attribute calls to the calling translation unit during
-            measurement windows. Counts are diagnostic instrumentation and add
-            atomic operations to each annotated call.
-
 endmenu

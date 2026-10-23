@@ -6,7 +6,6 @@ import math
 from functools import lru_cache
 from pathlib import Path
 import re
-import statistics
 import sys
 
 import math_bench_table as bench
@@ -17,7 +16,7 @@ HEADERS = Path("launcher/packages/math/include/math")
 DOCUMENT = Path("docs/math/Fast-Paths.md")
 BLOCK = "math-fast-paths"
 COMMAND = "python launcher/tools/perf/fast_paths.py --check"
-ANNOTATION = re.compile(r"^/\* MATH_FAST_PATH\(\s*(\w+),\s*(\w+),\s*(\w+)\) \*/", re.M)
+ANNOTATION = re.compile(r"^/\* MATH_FAST_PATH\(\s*(\w+),\s*(\w+),\s*(\w+)(?:=([^ )]+) (ulp|relative|lsb))?\) \*/", re.M)
 FUNCTION = re.compile(r"^[ \t]*(?!(?:return|if|for|while|switch|case|else)\b)(?:(?:static[ \t]+)?(?:inline[ \t]+)?[\w*]+[ \t\n]+)(\w+)[ \t]*\([^;{}]*\)[ \t]*\{", re.M)
 CALL = re.compile(r"\b(\w+)\s*\(")
 
@@ -51,20 +50,23 @@ def annotations(root=ROOT):
         if len(matches) != len(re.findall(r"^/\* MATH_FAST_PATH\(", text, re.M)):
             raise ValueError(f"malformed fast-path annotation: {header}")
         for match in matches:
-            fast, plain, limit_name = match.groups()
+            fast, plain, limit_name, literal, literal_unit = match.groups()
             following = FUNCTION.search(re.sub(r"__attribute__\(\(.*?\)\)", "", text[match.end():]))
             if not following:
                 raise ValueError(f"missing function below {fast}")
             key, kind = following[1], fast.rsplit("_", 1)[1]
             if key not in contracts:
                 raise ValueError(f"missing MATHERROR row for {fast}: {key}")
-            define = re.search(r"^#define\s+" + limit_name + r"[ \t]+([^\n]+)$", text, re.M)
+            definition_text = source if literal is not None else text
+            define = re.search(r"^#define\s+" + limit_name + r"[ \t]+([^\n]+)$", definition_text, re.M)
             if not define:
                 raise ValueError(f"missing limit {limit_name}: {header}")
             value = define[1].strip().removesuffix("F").removesuffix("f")
             limit = float.fromhex(value) if value.lower().startswith("0x") else float(value)
             if not math.isfinite(limit) or limit < 0:
                 raise ValueError(f"invalid limit {limit_name}")
+            if literal is not None and (float(literal) != limit or literal_unit != contracts[key][0]):
+                raise ValueError(f"annotation/test limit mismatch: {limit_name}")
             before = text[:match.start()]
             comments = [" ".join(re.sub(r"^\s*\* ?", "", body, flags=re.M).split())
                         for body in re.findall(r"/\*(.*?)\*/", before, re.S) if body.count("|") == 2]
@@ -248,36 +250,6 @@ def callers(root, key):
     return modules
 
 
-def parse_calls(text):
-    windows, current = [], {}
-    number = rf"{bench.NUMBER}(?:[eE][+-]?[0-9]+)?"
-    for line in text.splitlines():
-        if line == "MATHCALLS begin":
-            if current:
-                raise ValueError("unterminated call-count window")
-            current = {}
-        elif line == "MATHCALLS end":
-            windows.append(current)
-            current = {}
-        elif line.startswith("MATHCALLS "):
-            match = re.fullmatch(rf"MATHCALLS fn=(\w+) caller=(.+) per_frame=({number})", line)
-            if not match or not math.isfinite(float(match[3])):
-                raise ValueError(f"malformed call count: {line}")
-            key, caller, value = match.groups()
-            caller = caller.replace("\\", "/")
-            owner = re.search(r"(?:^|/)(?:launcher/)?(main|packages)/(.+)", caller)
-            if not owner:
-                continue
-            module = owner[2].split("/", 1)[0] if "/" in owner[2] else owner[1]
-            identity = key, "apps (not named)" if owner[1] == "main" and module == "apps" else module
-            current[identity] = current.get(identity, 0) + float(value)
-    if current:
-        raise ValueError("missing MATHCALLS end")
-    identities = {identity for window in windows for identity in window}
-    return {identity: (max(values), statistics.median(values)) for identity in identities
-            for values in [[window.get(identity, 0) for window in windows]]}
-
-
 def build_rows(item, root):
     body = function_bodies((root / item.header).read_text(encoding="utf-8"))[item.key]
     conditions = re.findall(r"^#(?:if|elif) (.*CONFIG_MATH_.*)$", body, re.M)
@@ -309,7 +281,7 @@ def plain_expression(item, root):
     return match[1]
 
 
-def render(root, items, rows, measured, errors, bins, sizes, counts, fpu, target):
+def render(root, items, rows, measured, errors, bins, sizes, fpu, target):
     manifest = {row[0]: row for row in rows}
     groups = {}
     for item in items:
@@ -352,13 +324,11 @@ def render(root, items, rows, measured, errors, bins, sizes, counts, fpu, target
         gates = ", ".join(f"`{symbol}`" for symbol in symbols)
         feature = f"ELF instructions: {observed or 'none'}. Gating symbols: {gates or 'none'}."
         lines += ["", "**Builds**", "", feature, "", build_rows(item, root), "", "**Where it pays**", "",
-                  "| Engine module | Calls through | Max calls/frame | Median calls/frame |", "|---|---|---:|---:|"]
+                  "| Engine module | Calls through |", "|---|---|"]
         modules = callers(root, key)
         for module, functions in sorted(modules.items()):
-            values = counts.get((key, module))
-            high, median = (f"{value:.2f}" for value in values) if values else ("-", "-")
             spelling = ", ".join(f"`{name}`" for name in sorted(functions))
-            lines.append(f"| {module} | {spelling} | {high} | {median} |")
+            lines.append(f"| {module} | {spelling} |")
         if not modules:
             lines += ["", "No production callers found."]
         lines.append("")
@@ -479,8 +449,6 @@ def main(argv=None):
         _, measured = bench.parse_capture(capture, rows, allow_missing=not bins)
         size_path = root / "docs/math/data/math_bench_sizes.txt"
         sizes = parse_sizes(size_path.read_text(encoding="utf-8")) if size_path.exists() else {}
-        count_path = root / "docs/math/data/math_calls_capture.txt"
-        counts = parse_calls(count_path.read_text(encoding="utf-8")) if count_path.exists() else {}
         page = root / DOCUMENT
         page_text = page.read_text(encoding="utf-8")
         section_order = re.findall(r"^## (\w+)\s*$", page_text, re.M)
@@ -493,7 +461,7 @@ def main(argv=None):
         target = bench.parse_target(capture)
         if bins and not target:
             raise ValueError("error bins require a hardware MATHTARGET capture record")
-        body = render(root, items, rows, measured if target else {}, errors if target else {}, bins, sizes, counts,
+        body = render(root, items, rows, measured if target else {}, errors if target else {}, bins, sizes,
                       fpu, target or "-")
         changed = replace_block(page, BLOCK, body, check=args.check, command=COMMAND)
         if args.check and changed:

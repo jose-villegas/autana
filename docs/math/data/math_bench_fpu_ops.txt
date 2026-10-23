@@ -1,5 +1,5 @@
 # Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.
-# ELF sha256=79c1aa7957acbf968fa5d2ddbb56e67065c9a1778af5f04208134c614ca752e1
+# ELF sha256=649fa3c4490d057b09b08392941a7e3022907860905cb00ba7f52555ff16f45b
 add_f	add (vec3)	f	64	vector	-
 add_i	add (vec3)	i	64	vector	-
 add_s	add (vec3)	s	64	vector	-
@@ -15,7 +15,7 @@ cosf_f	cosf	f	64	libm	calls _cosf
 div_recip_f	div_recip	f	64	scalar	calls __divsf3
 div_rsqrt_f	div_rsqrt	f	64	scalar	calls __divsf3, sqrtf
 dot_f	dot (vec3)	f	64	vector	madd.s
-dot_f32_n256_f	dot_f32_n256	f	1	vector	madd.s
+dot_f32_n256_f	dot_f32_n256	f	1	calibration	madd.s
 dot_i	dot (vec3)	i	64	vector	-
 dot_s	dot (vec3)	s	64	vector	-
 dot_x	dot (vec3)	x	64	vector	-

@@ -27,7 +27,7 @@ CAPTURE_ROW = re.compile(
 SYMBOL = re.compile(r"^[0-9a-fA-F]+ <([^>]+)>:$")
 ROW_SYMBOL_PREFIX = "math_bench_"
 MANIFEST = "math_bench_manifest"
-ROW_FAMILIES = ("vector", "scalar", "quaternion", "matrix", "libm")
+ROW_FAMILIES = ("vector", "scalar", "quaternion", "matrix", "libm", "calibration")
 CALL_SYMBOL = re.compile(r"[\w.$@]+")
 
 

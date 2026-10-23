@@ -66,11 +66,11 @@ Target: source conditions `defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP`; config
 
 **Where it pays**
 
-| Engine module | Calls through | Max calls/frame | Median calls/frame |
-|---|---|---:|---:|
-| math/linear | `mathf_recip`, `projectf_offset` | - | - |
-| math/scalar | `mathf_recip`, `mathf_repeat` | - | - |
-| render | `mathf_recip`, `projectf_offset`, `vec3f_octahedral` | - | - |
+| Engine module | Calls through |
+|---|---|
+| math/linear | `mathf_recip`, `projectf_offset` |
+| math/scalar | `mathf_recip`, `mathf_repeat` |
+| render | `mathf_recip`, `projectf_offset`, `vec3f_octahedral` |
 
 <a id="mathf-rsqrt"></a>
 
@@ -128,14 +128,14 @@ Target: source conditions `defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP`; config
 
 **Where it pays**
 
-| Engine module | Calls through | Max calls/frame | Median calls/frame |
-|---|---|---:|---:|
-| anim | `quatf_nlerp`, `quatf_normalize`, `quatf_slerp` | - | - |
-| apps (not named) | `vec3f_normalize` | - | - |
-| input | `vec3f_normalize` | - | - |
-| math | `transformf_look_at`, `transformf_rotate_around` | - | - |
-| math/linear | `quatf_nlerp`, `quatf_normalize`, `vec3f_normalize` | - | - |
-| scene | `transformf_from_mat` | - | - |
+| Engine module | Calls through |
+|---|---|
+| anim | `quatf_nlerp`, `quatf_normalize`, `quatf_slerp` |
+| apps (not named) | `vec3f_normalize` |
+| input | `vec3f_normalize` |
+| math | `transformf_look_at`, `transformf_rotate_around` |
+| math/linear | `quatf_nlerp`, `quatf_normalize`, `vec3f_normalize` |
+| scene | `transformf_from_mat` |
 
 <a id="mathf-rsqrt-approx"></a>
 
@@ -193,9 +193,9 @@ Target: source conditions `defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP`; config
 
 **Where it pays**
 
-| Engine module | Calls through | Max calls/frame | Median calls/frame |
-|---|---|---:|---:|
-| render | `mathf_rsqrt_approx` | - | - |
+| Engine module | Calls through |
+|---|---|
+| render | `mathf_rsqrt_approx` |
 
 <a id="mathx-rsqrt-q30"></a>
 
@@ -257,10 +257,10 @@ Target: source conditions `all builds (portable C)`; configured values come from
 
 **Where it pays**
 
-| Engine module | Calls through | Max calls/frame | Median calls/frame |
-|---|---|---:|---:|
-| math/linear | `mathx_normalize_n`, `quatx_unit_nlerp`, `vec3x_normalize_divide` | - | - |
-| math/scalar | `mathx_rsqrt_q30` | - | - |
+| Engine module | Calls through |
+|---|---|
+| math/linear | `mathx_normalize_n`, `quatx_unit_nlerp`, `vec3x_normalize_divide` |
+| math/scalar | `mathx_rsqrt_q30` |
 
 <a id="mathf-repeat"></a>
 
@@ -318,9 +318,9 @@ Target: source conditions `!defined(__XTENSA__) || CONFIG_MATH_FPU_FUSED_MADD`; 
 
 **Where it pays**
 
-| Engine module | Calls through | Max calls/frame | Median calls/frame |
-|---|---|---:|---:|
-| math/scalar | `mathf_repeat` | - | - |
+| Engine module | Calls through |
+|---|---|
+| math/scalar | `mathf_repeat` |
 
 <a id="trig-sin"></a>
 
@@ -376,10 +376,10 @@ Target: source conditions `all builds (portable C)`; configured values come from
 
 **Where it pays**
 
-| Engine module | Calls through | Max calls/frame | Median calls/frame |
-|---|---|---:|---:|
-| audio | `trig_sin` | - | - |
-| boot | `trig_cos`, `trig_sin` | - | - |
-| math/scalar | `mathx_cos_turns`, `mathx_sin_turns`, `trig_cos`, `trig_sin` | - | - |
-| shell | `trig_cos`, `trig_sin` | - | - |
+| Engine module | Calls through |
+|---|---|
+| audio | `trig_sin` |
+| boot | `trig_cos`, `trig_sin` |
+| math/scalar | `mathx_cos_turns`, `mathx_sin_turns`, `trig_cos`, `trig_sin` |
+| shell | `trig_cos`, `trig_sin` |
 <!-- /generated: math-fast-paths -->

@@ -48,19 +48,24 @@ register; `-` means no matching instruction or call.
 
 ## Capture
 
-Record `BUILD_ID=`, `MATHTARGET` and `MATHBENCH` lines from
-`autana suite run_math_perf_suite --flash --perf-scope` in
-`data/math_bench_capture.txt`. Record wrapper metadata and instructions from the
-same build's ELF with `python launcher/tools/perf/math_bench_table.py --from-elf <launcher.elf>`.
+Capture both suites from one diagnostics image:
+
+```sh
+autana --wait 3600 suite run_math_perf_suite suite_math_numbers --flash
+```
+
+Keep its `BUILD_ID=`, `MATHTARGET`, `MATHBENCH`, `MATHERROR` and `MATHERRORBIN`
+records in `data/math_bench_capture.txt`. The engine bench prints `MATHTARGET`
+once; it identifies the entire capture file.
+
+Record wrapper metadata and instructions from the same build's ELF with
+`python launcher/tools/perf/math_bench_table.py --from-elf <launcher.elf>`.
 Record linked sizes with `python launcher/tools/perf/fast_paths.py --from-elf <launcher.elf>`.
 The ELF manifest and capture carry row labels, types and op counts.
 
-`autana suite suite_math_numbers --flash` supplies board error bins.
 The fixed-point double-reference sweep runs on the host; keep its bins separate
-from hardware captures. `autana suite run_sponza_perf_suite run_capybara_perf_suite --flash --math-count-calls`
-counts calls in profiling measurement windows; these timings do not gate budgets.
-Run `python launcher/tools/perf/fast_paths.py` to update the evidence blocks, or add
-`--check` to verify it without writing.
+from hardware captures. Run `python launcher/tools/perf/fast_paths.py` to update
+the evidence blocks, or add `--check` to verify without writing.
 
 <details><summary>Full benchmark log</summary>
 

@@ -12,8 +12,6 @@
 #include <math.h>
 #include <stdint.h>
 
-#include "math/scalar/math_calls.h"
-
 #ifdef __XTENSA__
 #include "sdkconfig.h"
 #endif
@@ -85,7 +83,6 @@ mathf_div(float a, float b) {
 
 static inline float
 mathf_recip(float a) {
-    MATH_FAST_CALL(mathf_recip);
 #if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
     float y;
     __asm__("recip0.s %0, %1" : "=f"(y) : "f"(a));
@@ -114,7 +111,6 @@ mathf_recip(float a) {
 
 static inline __attribute__((always_inline)) float
 mathf_rsqrt_approx(float value) {
-    MATH_FAST_CALL(mathf_rsqrt_approx);
 #if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
     float seed;
     __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
@@ -131,7 +127,6 @@ mathf_rsqrt_approx(float value) {
 
 static inline __attribute__((always_inline)) float
 mathf_rsqrt(float value) {
-    MATH_FAST_CALL(mathf_rsqrt);
 #if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
     if (value < FLT_MIN) {
         return 1.0F / sqrtf(value);
@@ -202,15 +197,12 @@ mathf_max(float a, float b) {
 _Static_assert((MATHF_RECIP_ULP_LIMIT + 0.5F) * MATHF_REPEAT_FAST_QUOTIENT * FLT_EPSILON < 1.0F,
                "repeat quotient guard exceeds the reciprocal error bound");
 
-#define MATHF_WRAP_ULP_LIMIT 0
-
 /* For input v and positive period len, reciprocal quotient and fused remainder r, with range fallback. | r = fma(-floor(v/len), len, v) | signed float bit patterns, quotient guard and endpoint edges */
 
-/* MATH_FAST_PATH(wrap_f, wrap_fmodf_f, MATHF_WRAP_ULP_LIMIT) */
+/* MATH_FAST_PATH(wrap_f, wrap_fmodf_f, MATHF_WRAP_ULP_LIMIT=0 ulp) */
 
 static inline float
 mathf_repeat(float v, float len) {
-    MATH_FAST_CALL(mathf_repeat);
     assert(len > 0.0F);
     if (v >= 0.0F && v < len) {
         return v;
