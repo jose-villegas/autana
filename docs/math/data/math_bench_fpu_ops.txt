@@ -1,5 +1,5 @@
 # Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.
-# ELF sha256=7e9c13a9f8d184795b0e90c22d998c829fe70958e89e556808f4ba238d43f825
+# ELF sha256=d36d792d3134bb55a34295e293af75e580f1ec4eea00ae470bbb8465c8a44d1d
 add_f	add (vec3)	f	64	-
 add_i	add (vec3)	i	64	-
 add_s	add (vec3)	s	64	-
@@ -48,6 +48,6 @@ sqrtf_f	sqrtf	f	64	calls sqrtf
 transform_compute_matrix_f	transform compute_matrix	f	64	madd.s msub.s
 transform_compute_matrix_x	transform compute_matrix	x	64	calls mat4x_from_trs, memcpy
 trig_sin_i	trig_sin	i	64	-
-wrap_f	wrap	f	64	calls fmodf
+wrap_f	wrap	f	64	madd.s msub.s recip0.s; calls fmodf
 wrap_i	wrap	i	64	-
 wrap_x	wrap	x	64	-
