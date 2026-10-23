@@ -49,61 +49,61 @@ Run `python launcher/tools/perf/math_bench_table.py` to update the block, or add
 `--check` to verify it without writing.
 
 <!-- generated: math-benchmark check: python launcher/tools/perf/math_bench_table.py --check -->
-Board build: `2a01f8108518-diag`.
+Board build: `d36d792d3134-diag`.
 
 | function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |
 |---|---|---:|---:|---:|---:|---:|---|---|
-| add (vec3) | f | 15.3 | 2116.0 | 14.5 | 14.2 | 1.1 | - | - |
-| add (vec3) | i | 14.3 | 1858.0 | 14.5 | 14.2 | 1.0 | - | - |
-| add (vec3) | s | 37.4 | 4324.0 | 31.6 | 31.4 | 1.2 | - | - |
-| add (vec3) | x | 58.4 | 6529.0 | 44.6 | 44.4 | 1.3 | - | - |
-| atan2f | f | 336.7 | 29770.0 | 195.9 | 197.0 | 1.7 | calls atan2f | - |
-| convert | f_to_i | 95.5 | 9187.0 | 62.1 | 62.0 | 1.5 | - | - |
-| convert | f_to_s | 104.5 | 9994.0 | 75.6 | 75.5 | 1.4 | - | - |
-| convert | f_to_x | 110.6 | 10348.0 | 70.7 | 70.5 | 1.6 | - | - |
-| convert | i_to_f | 11.3 | 1876.0 | 11.5 | 11.2 | 1.0 | - | - |
-| convert | s_to_f | 14.4 | 2065.0 | 14.5 | 14.3 | 1.0 | - | - |
-| convert | x_to_f | 14.3 | 2050.0 | 14.5 | 14.3 | 1.0 | - | - |
-| cosf | f | 191.5 | 21487.0 | 110.7 | 111.6 | 1.7 | calls _cosf | - |
-| div_recip | f | 58.3 | 5125.0 | 40.5 | 40.3 | 1.4 | calls __divsf3 | - |
-| div_rsqrt | f | 114.2 | 10069.0 | 81.5 | 82.3 | 1.4 | calls __divsf3, sqrtf | - |
-| dot (vec3) | f | 17.3 | 2254.0 | 12.5 | 12.2 | 1.4 | madd.s | - |
-| dot_f32_n256 | f | 1305.0 | 2467.0 | 1315.0 | 1299.0 | 1.0 | madd.s | - |
-| dot (vec3) | i | 24.3 | 2899.0 | 24.5 | 24.2 | 1.0 | - | - |
-| dot (vec3) | s | 24.3 | 2905.0 | 24.5 | 24.2 | 1.0 | - | - |
-| dot (vec3) | x | 83.8 | 9694.0 | 65.9 | 65.8 | 1.3 | - | - |
-| lerp (vec3) | f | 19.3 | 2635.0 | 17.5 | 17.3 | 1.1 | madd.s | - |
-| lerp (vec3) | i | 101.3 | 9190.0 | 93.5 | 93.4 | 1.1 | - | - |
-| lerp (vec3) | s | 33.3 | 3706.0 | 31.5 | 31.3 | 1.1 | - | - |
-| lerp (vec3) | x | 127.4 | 12877.0 | 99.5 | 99.5 | 1.3 | - | - |
-| mat4 mul | f | 738.4 | 49291.0 | 550.5 | 506.4 | 1.3 | madd.s; calls memcpy | - |
-| mat4 mul | x | 2389.4 | 159370.0 | 1655.1 | 1640.4 | 1.4 | calls memcpy | - |
-| mathf_recip | f | 26.3 | 3058.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | 1 ulp (sweep) |
-| mathf_rsqrt_approx | f | 24.3 | 2947.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | 5.94258e-05 relative (proof) |
-| mathf_rsqrt | f | 38.4 | 4372.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (proof) |
-| mul (scalar) | f | 9.3 | 1537.0 | 6.5 | 6.2 | 1.4 | - | - |
-| mul (scalar) | i | 9.3 | 1549.0 | 8.5 | 8.2 | 1.1 | - | - |
-| mul (scalar) | s | 11.3 | 2332.0 | 10.5 | 10.2 | 1.1 | - | - |
-| mul (scalar) | x | 22.3 | 3223.0 | 17.5 | 17.3 | 1.3 | - | - |
-| nlerp | f | 94.8 | 8761.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 ulp (sweep) |
-| nlerp | x | 1172.8 | 91072.0 | 920.1 | 909.9 | 1.3 | calls __divdi3 | - |
-| normalize (vec3) | f | 57.4 | 5866.0 | 29.9 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (sweep) |
-| normalize (vec3) | x | 1127.1 | 77746.0 | 931.6 | 681.2 | 1.2 | calls __udivdi3 | - |
-| quat mul | f | 30.3 | 3277.0 | 30.5 | 30.2 | 1.0 | madd.s msub.s | - |
-| quat mul | x | 419.1 | 40174.0 | 313.5 | 313.9 | 1.3 | - | - |
-| scale (vec3) | f | 13.3 | 2020.0 | 12.5 | 12.2 | 1.1 | - | - |
-| scale (vec3) | i | 12.3 | 1933.0 | 12.5 | 12.2 | 1.0 | - | - |
-| scale (vec3) | s | 36.4 | 4300.0 | 30.6 | 30.4 | 1.2 | - | - |
-| scale (vec3) | x | 66.0 | 7996.0 | 49.2 | 49.0 | 1.3 | - | - |
-| sinf | f | 191.4 | 22222.0 | 109.1 | 110.0 | 1.8 | calls _sinf | - |
-| slerp | f | 452.7 | 34576.0 | 306.3 | device-only instruction | 1.5 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | - |
-| sqrtf | f | 61.2 | 6436.0 | 45.5 | 46.3 | 1.3 | calls sqrtf | - |
-| transform compute_matrix | f | 67.4 | 7027.0 | 67.6 | 67.4 | 1.0 | madd.s msub.s | - |
-| transform compute_matrix | x | 854.0 | 76513.0 | 660.2 | 661.4 | 1.3 | calls mat4x_from_trs, memcpy | - |
-| trig_sin | i | 30.8 | 5233.0 | 24.0 | 23.8 | 1.3 | - | - |
-| wrap | f | 137.0 | 14263.0 | 88.7 | 89.5 | 1.5 | calls fmodf | - |
-| wrap | i | 7.3 | 1411.0 | 7.5 | 7.2 | 1.0 | - | - |
-| wrap | x | 10.3 | 2050.0 | 10.5 | 10.2 | 1.0 | - | - |
+| add (vec3) | f | 15.3 | 1998.0 | 14.5 | 14.2 | 1.1 | - | - |
+| add (vec3) | i | 14.3 | 2073.0 | 14.5 | 14.2 | 1.0 | - | - |
+| add (vec3) | s | 37.4 | 4269.0 | 31.6 | 31.4 | 1.2 | - | - |
+| add (vec3) | x | 58.4 | 6075.0 | 44.6 | 44.4 | 1.3 | - | - |
+| atan2f | f | 336.7 | 29484.0 | 195.9 | 197.0 | 1.7 | calls atan2f | - |
+| convert | f_to_i | 95.5 | 8905.0 | 62.1 | 62.0 | 1.5 | - | - |
+| convert | f_to_s | 104.5 | 9907.0 | 75.6 | 75.5 | 1.4 | - | - |
+| convert | f_to_x | 110.6 | 10081.0 | 70.7 | 70.5 | 1.6 | - | - |
+| convert | i_to_f | 11.3 | 1716.0 | 11.5 | 11.2 | 1.0 | - | - |
+| convert | s_to_f | 14.3 | 2136.0 | 14.5 | 14.3 | 1.0 | - | - |
+| convert | x_to_f | 14.3 | 2406.0 | 14.5 | 14.3 | 1.0 | - | - |
+| cosf | f | 191.5 | 21197.0 | 110.7 | 111.6 | 1.7 | calls _cosf | - |
+| div_recip | f | 58.3 | 5231.0 | 52.0 | 40.3 | 1.1 | calls __divsf3 | - |
+| div_rsqrt | f | 114.2 | 9679.0 | 81.5 | 82.3 | 1.4 | calls __divsf3, sqrtf | - |
+| dot (vec3) | f | 17.3 | 2112.0 | 12.5 | 12.2 | 1.4 | madd.s | - |
+| dot_f32_n256 | f | 1305.0 | 2403.0 | 1315.0 | 1299.0 | 1.0 | madd.s | - |
+| dot (vec3) | i | 24.3 | 2633.0 | 24.5 | 24.2 | 1.0 | - | - |
+| dot (vec3) | s | 24.3 | 2942.0 | 24.5 | 24.2 | 1.0 | - | - |
+| dot (vec3) | x | 86.8 | 9448.0 | 65.9 | 65.8 | 1.3 | - | - |
+| lerp (vec3) | f | 19.3 | 2393.0 | 17.5 | 17.3 | 1.1 | madd.s | - |
+| lerp (vec3) | i | 101.3 | 9103.0 | 93.5 | 93.4 | 1.1 | - | - |
+| lerp (vec3) | s | 33.3 | 3614.0 | 31.5 | 31.3 | 1.1 | - | - |
+| lerp (vec3) | x | 127.3 | 12810.0 | 99.5 | 99.5 | 1.3 | - | - |
+| mat4 mul | f | 738.4 | 49605.0 | 517.6 | 506.4 | 1.4 | madd.s; calls memcpy | - |
+| mat4 mul | x | 2389.4 | 159651.0 | 1648.9 | 1640.4 | 1.4 | calls memcpy | - |
+| mathf_recip | f | 26.3 | 2994.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | 1 ulp (sweep) |
+| mathf_rsqrt_approx | f | 24.3 | 3083.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | 5.94258e-05 relative (proof) |
+| mathf_rsqrt | f | 38.4 | 4234.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (proof) |
+| mul (scalar) | f | 9.3 | 1396.0 | 6.5 | 6.2 | 1.4 | - | - |
+| mul (scalar) | i | 9.3 | 1716.0 | 8.5 | 8.2 | 1.1 | - | - |
+| mul (scalar) | s | 11.3 | 2179.0 | 10.5 | 10.2 | 1.1 | - | - |
+| mul (scalar) | x | 22.3 | 3168.0 | 17.5 | 17.3 | 1.3 | - | - |
+| nlerp | f | 94.8 | 8917.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 ulp (sweep) |
+| nlerp | x | 719.9 | 63055.0 | 558.8 | 909.9 | 1.3 | calls __assert_func | - |
+| normalize (vec3) | f | 57.4 | 5611.0 | 29.9 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (sweep) |
+| normalize (vec3) | x | 349.5 | 29427.0 | 296.9 | 681.2 | 1.2 | calls __assert_func | - |
+| quat mul | f | 30.3 | 3195.0 | 30.5 | 30.2 | 1.0 | madd.s msub.s | - |
+| quat mul | x | 418.3 | 38736.0 | 313.5 | 313.9 | 1.3 | - | - |
+| scale (vec3) | f | 13.3 | 1869.0 | 12.5 | 12.2 | 1.1 | - | - |
+| scale (vec3) | i | 12.3 | 1900.0 | 12.5 | 12.2 | 1.0 | - | - |
+| scale (vec3) | s | 36.4 | 4233.0 | 30.6 | 30.4 | 1.2 | - | - |
+| scale (vec3) | x | 66.0 | 7465.0 | 49.2 | 49.0 | 1.3 | - | - |
+| sinf | f | 191.4 | 21639.0 | 109.1 | 110.0 | 1.8 | calls _sinf | - |
+| slerp | f | 455.1 | 34564.0 | 306.3 | device-only instruction | 1.5 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | - |
+| sqrtf | f | 61.2 | 5868.0 | 45.5 | 46.3 | 1.3 | calls sqrtf | - |
+| transform compute_matrix | f | 67.4 | 6852.0 | 67.6 | 67.4 | 1.0 | madd.s msub.s | - |
+| transform compute_matrix | x | 855.6 | 75525.0 | 660.2 | 661.4 | 1.3 | calls mat4x_from_trs, memcpy | - |
+| trig_sin | i | 30.8 | 4911.0 | 24.0 | 23.8 | 1.3 | - | - |
+| wrap | f | 63.8 | 7132.0 | 30.1 | device-only instruction | 2.1 | madd.s msub.s recip0.s; calls fmodf | - |
+| wrap | i | 7.3 | 1590.0 | 7.5 | 7.2 | 1.0 | - | - |
+| wrap | x | 10.3 | 1777.0 | 10.5 | 10.2 | 1.0 | - | - |
 
 ESP-DSP calibration: measured warm 1305.0 cycles/call; ANSI O2 reference 1311 cycles/call; measured/reference 99.5%.
 <!-- /generated: math-benchmark -->
