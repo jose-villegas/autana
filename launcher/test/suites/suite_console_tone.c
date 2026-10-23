@@ -115,7 +115,7 @@ test_tone_parse_invalid(void) {
 
 #define TEST_CONSOLE_VOICE_FIRST      1u
 #define TEST_CONSOLE_VOICE_SECOND     2u
-#define TEST_CONSOLE_VOICE_SYSTEM     3u
+#define TEST_CONSOLE_VOICE_SYSTEM     (TEST_CONSOLE_VOICE_SECOND + SOUND_VOICE_COUNT + 1u)
 
 #define TEST_TONE_REGISTER_OLD        0x58u
 #define TEST_TONE_IO_ERROR            (-1)
@@ -591,9 +591,12 @@ test_sound_transition_releases_all_views(void) {
         int64_t open_us = 0;
         const sound_t* sound = console_sound_view(&args, &open_us);
         TEST_ASSERT_NOT_NULL(sound);
+        device.console.playing = 1u << TEST_CONSOLE_VOICE_FIRST;
         console_sound_track_voice(sound, (sound_voice_t){.id = TEST_CONSOLE_VOICE_FIRST});
-        console_sound_track_voice(sound, (sound_voice_t){.id = TEST_CONSOLE_VOICE_SECOND});
-        device.console.playing = (1u << TEST_CONSOLE_VOICE_FIRST) | (1u << TEST_CONSOLE_VOICE_SECOND);
+        for (uint32_t id = TEST_CONSOLE_VOICE_SECOND; id <= TEST_CONSOLE_VOICE_SECOND + SOUND_VOICE_COUNT; id++) {
+            device.console.playing = (1u << TEST_CONSOLE_VOICE_FIRST) | (1u << id);
+            console_sound_track_voice(sound, (sound_voice_t){.id = id});
+        }
         device.console.stop_drops = 1;
         TEST_ASSERT_EQUAL_INT(device.console.mounted + 1, asset_store_mounted());
         device.console.app_active = false;

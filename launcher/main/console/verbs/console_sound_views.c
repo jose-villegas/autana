@@ -6,15 +6,15 @@
 
 #include "asset/asset_store.h"
 #include "console/console_verbs.h"
+#include "console/verbs/console_tone.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "sound/sound_engine.h"
 
 typedef struct console_sound_view {
     sound_t sound;
-    /* Later successful plays steal slots before this history can lose a live handle. */
+    /* At most SOUND_VOICE_COUNT handles per view can remain live. */
     sound_voice_t voices[SOUND_VOICE_COUNT];
-    unsigned next_voice;
     char name[ASSET_NAME_MAX];
     char pack[ASSET_NAME_MAX];
     struct console_sound_view* next;
@@ -68,9 +68,13 @@ void
 console_sound_track_voice(const sound_t* sound, sound_voice_t voice) {
     for (console_sound_view_t* view = views; view; view = view->next) {
         if (&view->sound == sound) {
-            view->voices[view->next_voice] = voice;
-            view->next_voice = (view->next_voice + 1) % SOUND_VOICE_COUNT;
-            return;
+            for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+                if (!sound_is_playing(view->voices[i])) {
+                    view->voices[i] = voice;
+                    return;
+                }
+            }
+            abort();
         }
     }
 }
@@ -78,18 +82,11 @@ console_sound_track_voice(const sound_t* sound, sound_voice_t voice) {
 void
 console_sound_app_enter(void) {
     if (views && !sound_app_active()) {
-        const int64_t deadline = timing_now_us() + ((int64_t)SOUND_EXIT_READ_TIMEOUT_MS * MATH_US_PER_MS);
         for (const console_sound_view_t* view = views; view; view = view->next) {
             for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-                const sound_voice_t voice = view->voices[i];
-                while (sound_is_playing(voice)) {
-                    if (timing_now_us() >= deadline) {
-                        abort();
-                    }
-                    sound_stop(voice);
-                    if (sound_is_playing(voice)) {
-                        timing_sleep_ms(SOUND_CONTROL_POLL_MS);
-                    }
+                sound_voice_t voice = view->voices[i];
+                if (!console_tone_stop(&voice)) {
+                    abort();
                 }
             }
         }
