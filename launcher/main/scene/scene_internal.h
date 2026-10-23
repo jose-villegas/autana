@@ -183,6 +183,12 @@ extern int scene_fail_allocation_after;
 
 void* scene_allocate(size_t bytes, memory_kind_t kind);
 
+/* A PSRAM block that lives as long as its scene: from the take that
+ * scene_set_take() installed, else the heap. scene_free_kept() frees it only
+ * when it came from the heap; a taken one goes back with its lender. */
+void* scene_allocate_kept(size_t bytes);
+void scene_free_kept(void* block);
+
 /* The loaded scenes, in load order. */
 int scene_loaded_count(void);
 scene_t* scene_loaded_at(int index);
