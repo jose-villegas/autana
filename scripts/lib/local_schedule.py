@@ -131,7 +131,7 @@ def gpu_ready(estimate, scheduled=False, override=False, clock=None,
     if not override and window is None:
         return False
     if board_held is None:
-        board_held = LockStore(board_read_root()).any_board_held
+        board_held = LockStore(board_read_root(), board_observer=True).any_board_held
     if override:
         deadline = clock.now() + timedelta(seconds=DEFAULT_LOCK_WAIT_SECONDS)
     else:
