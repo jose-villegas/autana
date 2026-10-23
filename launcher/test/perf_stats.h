@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "math/stats/statsi.h"
 #include "unity.h"
 
 #define PERF_ICOUNT_PREFIX                "ICOUNT"
@@ -36,13 +38,6 @@ typedef struct {
     int64_t min, max, avg, med, p95;
 } perf_stats_t;
 
-static inline int
-perf_stats_compare(const void* a, const void* b) {
-    const int32_t va = *(const int32_t*)a;
-    const int32_t vb = *(const int32_t*)b;
-    return (va > vb) - (va < vb);
-}
-
 static inline perf_stats_t
 perf_stats_compute(int32_t* values, int n) {
     perf_stats_t s = {.min = INT64_MAX, .max = 0, .avg = 0, .med = 0, .p95 = 0};
@@ -57,8 +52,7 @@ perf_stats_compute(int32_t* values, int n) {
         sum += values[i];
     }
     s.avg = sum / n;
-    qsort(values, n, sizeof(int32_t), perf_stats_compare);
-    s.med = values[n / 2];
-    s.p95 = values[(n * 95) / 100];
+    s.med = statsi_median(values, (size_t)n);
+    s.p95 = statsi_percentile(values, (size_t)n, 95);
     return s;
 }
