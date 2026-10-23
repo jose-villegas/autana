@@ -376,13 +376,10 @@ class SoundMixToolsTest(unittest.TestCase):
                 (sounds / f"{sound}.sound.toml").write_text(f'format = "{fmt}"\n')
             for owner in ["shell/shell.c", "audio/audio_out_device.h", "sound/sound_mixer.h",
                           "sound/sound_engine.h", "audio/audio_codec.h", "audio/audio_out.h",
-                          "sound/sound_mixer_device.c", "shell/shell_apps.c"]:
+                          "sound/sound_mixer_device.c", "shell/shell_apps.c", "asset/asset_store.h"]:
                 target = tree / "launcher/main" / owner
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes((ROOT / "launcher/main" / owner).read_bytes())
-            asset_store = tree / "launcher/main/asset/asset_store.h"
-            asset_store.parent.mkdir(parents=True)
-            asset_store.write_text('#define ASSET_ENGINE_PACK "engine"\n', encoding="utf-8")
             stub = tree / "fake.py"
             log = tree / "commands.jsonl"
             stub.write_text(
