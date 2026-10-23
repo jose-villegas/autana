@@ -193,6 +193,7 @@ $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/console/verbs/console_tone.c
 $MAIN_DIR/console/verbs/console_melody.c
 $MAIN_DIR/console/console_frame_request.c
+$MAIN_DIR/console/verbs/console_sound_views.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/shell/ui/ui_launcher.c
 $MAIN_DIR/shell/ui/ui_launcher_draw.c

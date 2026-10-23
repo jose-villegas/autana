@@ -28,17 +28,3 @@ product the build fetches by its row in `launcher/bakes.lock`
   Amazon Lumberyard Bistro's exterior (CC BY 4.0), made by
   [`reduce_source.py`](../tools/r3d/source/reduce_source.py); the attribution,
   licence and the command that made it sit beside it.
-
-The engine's [carreno_waltz](../main/engine/sounds/carreno_waltz.sound.toml)
-is Teresa Carreño (1853–1917), *Gottschalk Waltz*, Op. 1. The composition is
-public domain.
-
-The [recording](https://commons.wikimedia.org/wiki/File:Teresa_Carre%C3%B1o_-_Gottschalk_Waltz.ogg)
-is a virtual-piano rendering by Wikimedia Commons user Pracchia-78,
-released into the public domain worldwide (`{{PD-self}}`).
-
-The source OGG has SHA-256
-`24821ef4dc0303908d83bc76c4b07ab024ce0d6ab4156b8419f94605cccd7f51`.
-
-The excerpt spans 226.75–248.00 s, cut sample-exact at 44.1 kHz and stored
-as stereo PCM16 FLAC. The recipe contains the reproducible cut command.

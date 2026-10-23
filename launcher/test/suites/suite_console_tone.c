@@ -1,5 +1,6 @@
 /* Tone command accepts complete decimal arguments within audio limits. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "console/verbs/console_melody.h"
 #include "console/verbs/console_tone_parse.h"
@@ -7,8 +8,12 @@
 #include "math/scalar/math_db.h"
 #include "suites.h"
 #include "unity.h"
-#define TEST_TARGET_HZ   1000u
-#define TEST_DURATION_MS 100u
+#define TEST_CONSOLE_VOICE_FIRST  1u
+#define TEST_CONSOLE_VOICE_SECOND 2u
+#define TEST_CONSOLE_VOICE_SYSTEM 3u
+
+#define TEST_TARGET_HZ            1000u
+#define TEST_DURATION_MS          100u
 
 static console_tone_args_t
 fixture(void) {
@@ -102,12 +107,15 @@ test_tone_parse_invalid(void) {
 }
 
 #ifndef ESP_PLATFORM
+#include "asset/asset_store.h"
 #include "audio/audio_codec_feedback.h"
 #include "audio/audio_loopback.h"
 #include "audio/audio_out_device.h"
 #include "console/console_verbs.h"
+#include "console/verbs/console_sound.h"
 #include "core/timing.h"
 #include "sound/sound_engine.h"
+#include "test_asset_dir.h"
 
 #define TEST_TONE_REGISTER_OLD        0x58u
 #define TEST_TONE_IO_ERROR            (-1)
@@ -134,6 +142,16 @@ typedef enum {
 } tone_failure_t;
 
 static struct {
+    struct {
+        bool enabled;
+        bool app_active;
+        bool system_playing;
+        uint32_t playing;
+        unsigned stop_drops;
+        int phase;
+        int mounted;
+    } console;
+
     tone_failure_t failure;
     audio_codec_feedback_t feedback;
     audio_out_amp_t amp;
@@ -274,6 +292,11 @@ sound_play_tone(uint16_t hz, uint8_t gain_pct) {
 
 bool
 sound_is_playing(sound_voice_t voice) {
+    if (device.console.enabled) {
+        return voice.id == TEST_CONSOLE_VOICE_SYSTEM ? device.console.system_playing
+               : voice.id                            ? (device.console.playing & (1u << voice.id)) != 0
+                                                     : false;
+    }
     return voice.id && device.playing;
 }
 
@@ -303,6 +326,18 @@ timing_sleep_ms(uint32_t ms) {
 
 void
 sound_stop(sound_voice_t voice) {
+    if (device.console.enabled) {
+        if (voice.id == TEST_CONSOLE_VOICE_SYSTEM) {
+            device.console.system_playing = false;
+        } else if (device.console.stop_drops) {
+            device.console.stop_drops--;
+            return;
+        } else {
+            device.console.playing &= ~(1u << voice.id);
+        }
+        device.console.phase++;
+        return;
+    }
     (void)voice;
     if (!device.stops) {
         device.stop_started = timing_now_us();
@@ -520,6 +555,61 @@ test_tone_acoustic_has_no_feedback(void) {
     TEST_ASSERT_FALSE(device.feedback.restore_pending);
     TEST_ASSERT_FALSE(device.replied);
 }
+
+bool
+sound_app_active(void) {
+    return device.console.app_active;
+}
+
+void
+sound_fence(void) {
+    TEST_ASSERT_EQUAL_INT(2, device.console.phase);
+    TEST_ASSERT_EQUAL_UINT32(0, device.console.playing);
+    TEST_ASSERT_EQUAL_INT(device.console.mounted + 1, asset_store_mounted());
+    device.console.phase++;
+}
+
+static void
+test_sound_transition_releases_all_views(void) {
+    reset_device();
+    device.console.enabled = true;
+    const char* probe = getenv("AUTANA_SOUND_PROBE");
+    TEST_ASSERT_NOT_NULL(probe);
+    char* folder = malloc(strlen(probe) + 1);
+    TEST_ASSERT_NOT_NULL(folder);
+    strcpy(folder, probe);
+    char* slash = strrchr(folder, '/');
+    TEST_ASSERT_NOT_NULL(slash);
+    *slash = '\0';
+    test_asset_dir_use(folder);
+    free(folder);
+    device.console.mounted = asset_store_mounted();
+    for (int transition = 0; transition < ASSET_STORE_MOUNTS_MAX; transition++) {
+        console_sound_args_t args = {0};
+        console_copy_text(args.pack, sizeof args.pack, "sound_probe");
+        console_copy_text(args.name, sizeof args.name, "adpcm");
+        int64_t open_us = 0;
+        const sound_t* sound = console_sound_view(&args, &open_us);
+        TEST_ASSERT_NOT_NULL(sound);
+        console_sound_track_voice(sound, (sound_voice_t){.id = TEST_CONSOLE_VOICE_FIRST});
+        console_sound_track_voice(sound, (sound_voice_t){.id = TEST_CONSOLE_VOICE_SECOND});
+        device.console.playing = (1u << TEST_CONSOLE_VOICE_FIRST) | (1u << TEST_CONSOLE_VOICE_SECOND);
+        device.console.stop_drops = 1;
+        TEST_ASSERT_EQUAL_INT(device.console.mounted + 1, asset_store_mounted());
+        device.console.app_active = false;
+        device.console.phase = 0;
+        device.console.system_playing = true;
+        console_sound_app_enter();
+        TEST_ASSERT_TRUE(device.console.system_playing);
+        TEST_ASSERT_EQUAL_INT(3, device.console.phase);
+        TEST_ASSERT_EQUAL_INT(device.console.mounted, asset_store_mounted());
+        device.console.app_active = true;
+        TEST_ASSERT_NOT_NULL(console_sound_view(&args, &open_us));
+        console_sound_app_exit();
+        TEST_ASSERT_EQUAL_INT(device.console.mounted, asset_store_mounted());
+    }
+}
+
 #endif
 
 static void
@@ -543,6 +633,7 @@ test_tone_reply_frequency(void) {
 void
 run_console_tone_suite(void) {
 #ifndef ESP_PLATFORM
+    RUN_TEST(test_sound_transition_releases_all_views);
     RUN_TEST(test_melody_console_play_and_check);
     RUN_TEST(test_melody_console_failure_and_usage);
     RUN_TEST(test_melody_console_later_failures);

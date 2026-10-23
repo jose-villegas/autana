@@ -112,6 +112,11 @@ int console_registry_line_max(const console_registry_t* registry);
 /* Oversized lines need a matching verb whose declared bound holds the whole line. */
 bool console_registry_accepts_line(const console_registry_t* registry, const char* line);
 
+typedef enum { CONSOLE_LINE_UNCLAIMED, CONSOLE_LINE_HANDLED, CONSOLE_LINE_REJECTED } console_line_result_t;
+
+/* Classifies and dispatches a line with one length check. */
+console_line_result_t console_registry_dispatch(console_registry_t* registry, const char* line, console_reply_fn reply);
+
 /* True if `line` fits and matched a registered verb, whatever its handler then did. */
 bool console_registry_handle_line(console_registry_t* registry, const char* line, console_reply_fn reply);
 
@@ -143,6 +148,7 @@ console_registry_t* console_shared(void);
  * sized to `line_max` (console.c), and the verb owns its own copy of the
  * args. Every other verb still sees only lines of CONSOLE_LINE_MAX. */
 #define CONSOLE_VERB_LONG(VERB, longest_args, line_max, function)                                                      \
+    _Static_assert((line_max) >= CONSOLE_LINE_MAX, "verb line limit below console minimum");                           \
     _Static_assert(sizeof(#VERB) + 1 + (longest_args) <= (line_max),                                                   \
                    #VERB " plus its longest args cannot fit " #line_max);                                              \
     static console_verb_t VERB##_console_verb = {#VERB, (function), NULL, (line_max)};                                 \

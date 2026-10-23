@@ -1,14 +1,8 @@
-# Teresa Carreño (1853–1917), Gottschalk Waltz, Op. 1; composition public domain.
-
-# Virtual-piano rendering by Wikimedia Commons user Pracchia-78,
-# released into the public domain worldwide ({{PD-self}}).
+# Teresa Carre?o (1853?1917), Gottschalk Waltz, Op. 1, public-domain composition.
+# Virtual-piano recording by Pracchia-78, Commons PD-self:
 # https://commons.wikimedia.org/wiki/File:Teresa_Carre%C3%B1o_-_Gottschalk_Waltz.ogg
-
-# Source OGG sha256: 24821ef4dc0303908d83bc76c4b07ab024ce0d6ab4156b8419f94605cccd7f51
-
-# Excerpt 226.75–248.00 s, sample-exact at 44.1 kHz, stereo PCM16 FLAC.
-# With launcher/tools/audio/requirements.txt installed and the source saved as source.ogg:
-# python -c "import soundfile as sf; d,r=sf.read('source.ogg',dtype='int16'); sf.write('launcher/main/engine/sounds/carreno_waltz.flac',d[round(226.75*r):round(248.00*r)],r,subtype='PCM_16')"
+# Source OGG sha256: 24821ef4dc0303908d83bc76c4b07ab024ce0d6ab4156b8419f94605cccd7f51.
+# Excerpt 226.75?248.00 s, cut sample-exact at 44.1 kHz as stereo PCM16 FLAC.
 source = "carreno_waltz.flac"
 format = "adpcm"
 loop = [0, 468562]

@@ -28,6 +28,9 @@
 #include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
 #include "sound/sound_engine.h"
+#if CONFIG_LAUNCHER_DEVELOPMENT
+#include "console/verbs/console_sound.h"
+#endif
 #include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
 
@@ -224,6 +227,9 @@ shell_start_app(const app_t** current, const app_t* next) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     app_internal_free_before_enter = memory_free_bytes(MEMORY_INTERNAL);
     app_8bit_free_before_enter = memory_free_bytes(MEMORY_8BIT);
+#endif
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    console_sound_app_enter();
 #endif
     sound_begin_app();
     (*current)->enter();

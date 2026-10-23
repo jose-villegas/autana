@@ -410,7 +410,7 @@ shell_run(void) {
         console_frame_take(console_frame_mailbox(), &requests);
         console_freeze_apply(&requests);
         if (requests.kinds & CONSOLE_FRAME_SOUND) {
-            console_sound_answer(requests.sound, current != NULL);
+            console_sound_answer(&requests.sound);
             console_frame_done(console_frame_mailbox(), CONSOLE_FRAME_SOUND);
         }
         if (requests.kinds & CONSOLE_FRAME_FRAMEWATCH) {

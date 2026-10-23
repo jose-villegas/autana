@@ -1,10 +1,6 @@
 """Encode, validate and read NAME.sound.toml and SOND entries.
 
-The TOML owns format and loop frames at the stored rate. The source's sample
-level is the sound's level; there is no gain setting, and cue/smpl chunks are
-not read. Mixdown takes the channel mean. Resampling uses a Hann-windowed sinc
-with 32 zero crossings on each side, widened by the downsampling ratio for an
-anti-alias lowpass. Matching-rate sources skip the filter. Layout:
+The TOML owns format and loop frames at the stored rate. Layout:
 docs/audio/Sound-Assets.md. Standard library only; sound_import.py decodes sources.
 """
 

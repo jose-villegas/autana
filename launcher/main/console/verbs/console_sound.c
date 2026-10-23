@@ -19,62 +19,6 @@
 
 #define CONSOLE_SOUND_REPLY_MAX 128
 
-typedef struct console_sound_view {
-    sound_t sound;
-    char name[ASSET_NAME_MAX];
-    char pack[ASSET_NAME_MAX];
-    bool app_owned;
-    struct console_sound_view* next;
-} console_sound_view_t;
-
-static console_sound_view_t* views;
-
-static const sound_t*
-console_sound_view(const console_sound_args_t* args, bool app_owned, int64_t* open_us) {
-    for (const console_sound_view_t* view = views; view; view = view->next) {
-        if (strcmp(view->name, args->name) == 0 && strcmp(view->pack, args->pack) == 0) {
-            return &view->sound;
-        }
-    }
-    const asset_pack_t* pack = asset_store_pack(args->pack);
-    if (!pack) {
-        return NULL;
-    }
-    sound_t sound;
-    const int64_t began = timing_now_us();
-    const asset_status_t status = sound_open(pack, args->name, &sound);
-    *open_us = timing_now_us() - began;
-    if (status != ASSET_OK) {
-        asset_store_release(args->pack);
-        return NULL;
-    }
-    console_sound_view_t* view = memory_alloc(sizeof *view, MEMORY_PSRAM);
-    if (!view) {
-        asset_store_release(args->pack);
-        return NULL;
-    }
-    *view = (console_sound_view_t){.sound = sound, .next = views, .app_owned = app_owned};
-    console_copy_text(view->name, sizeof view->name, args->name);
-    console_copy_text(view->pack, sizeof view->pack, args->pack);
-    views = view;
-    return &view->sound;
-}
-
-void
-console_sound_app_exit(void) {
-    console_sound_view_t** link = &views;
-    while (*link) {
-        console_sound_view_t* view = *link;
-        if (!view->app_owned) {
-            link = &view->next;
-            continue;
-        }
-        *link = view->next;
-        asset_store_release(view->pack);
-        memory_free(view);
-    }
-}
-
 static const char format_error[] = "SOUND_ERR formatting failed";
 
 static void
@@ -282,24 +226,18 @@ sound_onset(const console_sound_args_t* args, console_reply_fn reply) {
 }
 
 static void
-sound_command(const char* args, bool app_owned, console_reply_fn reply) {
-    console_sound_args_t parsed;
-    if (!console_sound_parse(args, &parsed)) {
-        reply("SOUND_ERR usage: sound play <pack>/<name> [loop] [gain] | stop [voice|all] | stats | onset <event> [hz] "
-              "[gain]");
+sound_run_parsed(const console_sound_args_t* parsed, console_reply_fn reply) {
+    if (parsed->action == CONSOLE_SOUND_ONSET) {
+        sound_onset(parsed, reply);
         return;
     }
-    if (parsed.action == CONSOLE_SOUND_ONSET) {
-        sound_onset(&parsed, reply);
-        return;
-    }
-    if (parsed.action == CONSOLE_SOUND_STATS) {
+    if (parsed->action == CONSOLE_SOUND_STATS) {
         sound_stats(reply);
         return;
     }
-    if (parsed.action == CONSOLE_SOUND_STOP) {
-        if (parsed.voice) {
-            sound_stop((sound_voice_t){.id = parsed.voice});
+    if (parsed->action == CONSOLE_SOUND_STOP) {
+        if (parsed->voice) {
+            sound_stop((sound_voice_t){.id = parsed->voice});
         } else {
             stop_all();
         }
@@ -307,37 +245,42 @@ sound_command(const char* args, bool app_owned, console_reply_fn reply) {
         return;
     }
     int64_t open_us = 0;
-    const sound_t* sound = console_sound_view(&parsed, app_owned, &open_us);
+    const sound_t* sound = console_sound_view(parsed, &open_us);
     if (!sound) {
         reply("SOUND_ERR sound unavailable");
         return;
     }
     const sound_play_opts_t opts = {
-        .bus = SOUND_BUS_SFX, .gain_pct = parsed.gain_pct, .priority = SOUND_PRIORITY_NORMAL, .loop = parsed.loop};
+        .bus = SOUND_BUS_SFX, .gain_pct = parsed->gain_pct, .priority = SOUND_PRIORITY_NORMAL, .loop = parsed->loop};
     const sound_voice_t voice = sound_play(sound, &opts);
     if (!voice.id) {
         reply("SOUND_ERR playback unavailable");
         return;
     }
+    console_sound_track_voice(sound, voice);
     char line[CONSOLE_SOUND_REPLY_MAX];
     const int length = snprintf(line, sizeof line, "SOUND_END voice=%" PRIu32 " open_us=%" PRId64, voice.id, open_us);
     reply(length < 0 ? format_error : line);
 }
 
 void
-console_sound_answer(const char* args, bool app_owned) {
-    sound_command(args, app_owned, console_reply_stdio);
+console_sound_answer(const console_sound_args_t* args) {
+    sound_run_parsed(args, console_reply_stdio);
 }
 
 static void
 console_verb_sound(const char* args, console_reply_fn reply) {
     console_sound_args_t parsed;
-    if (!console_sound_parse(args, &parsed) || parsed.action != CONSOLE_SOUND_PLAY) {
-        sound_command(args, false, reply);
+    if (!console_sound_parse(args, &parsed)) {
+        reply("SOUND_ERR usage: sound play <pack>/<name> [loop] [gain] | stop [voice|all] | stats | onset <event> [hz] "
+              "[gain]");
         return;
     }
-    console_frame_request_t request = {.kinds = CONSOLE_FRAME_SOUND};
-    console_copy_text(request.sound, sizeof request.sound, args);
+    if (parsed.action != CONSOLE_SOUND_PLAY) {
+        sound_run_parsed(&parsed, reply);
+        return;
+    }
+    const console_frame_request_t request = {.kinds = CONSOLE_FRAME_SOUND, .sound = parsed};
     if (!console_frame_post(console_frame_mailbox(), &request)) {
         reply("SOUND_ERR play pending");
     }

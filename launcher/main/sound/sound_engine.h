@@ -45,9 +45,12 @@ typedef struct {
 bool sound_capture_open(void);
 bool sound_capture_close(void);
 bool sound_init(void);
+bool sound_app_active(void);
 void sound_begin_app(void);
 void sound_end_app(void);
 void sound_stop_app_voices(void);
+/* Drains prior commands and waits until the mixer has finished reading their sources. */
+void sound_fence(void);
 #if CONFIG_LAUNCHER_DEVELOPMENT
 void sound_get_stats(sound_stats_t* out);
 #endif

@@ -70,6 +70,7 @@ SOUND = sound_asset.SUFFIX
 CURVE = curve_asset.SUFFIX
 ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE, SOUND)
 BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE)  # entries baked from their file here; meshes and sounds come from the cache
+FETCHED = (IMPORT, SOUND)
 FOLDER_PACK = ".pack.toml"
 PACK_SUFFIX = ".apak"
 
@@ -215,7 +216,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
     for item in replace:
         mesh, _, file = item.partition("=")
         holder = next((entries for entries in packs.values() if mesh in entries), None)
-        if holder is None or holder[mesh].name.endswith((*BAKED_HERE, SOUND)):
+        if holder is None or not holder[mesh].name.endswith(IMPORT):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
@@ -242,7 +243,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
         raise error("\n".join(map(str, errors)))
     packs = {name: entries for name, entries in packs.items() if name not in (unlocked or ())}
     unkeyed = [f"{name}/{entry}" for name, entries in packs.items() for entry, source in entries.items()
-               if not source.name.endswith(BAKED_HERE) and entry not in replaced
+               if source.name.endswith(FETCHED) and entry not in replaced
                and source.resolve() in locked and source.resolve() not in fetched]
     if unkeyed:
         raise bake.BakeMissing("no bake keys these meshes, so the cache cannot give them and the tree's "

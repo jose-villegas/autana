@@ -6,9 +6,6 @@
 
 bool
 console_register(console_registry_t* registry, console_verb_t* verb) {
-    if (verb->line_max < CONSOLE_LINE_MAX) {
-        verb->line_max = CONSOLE_LINE_MAX;
-    }
     static const registry_rule_t rule = REGISTRY_RULE(console_verb_t, console_name_cmp, NULL);
     return registry_add(&registry->first, &rule, verb) != REGISTRY_CLASH;
 }
@@ -41,17 +38,22 @@ console_registry_accepts_line(const console_registry_t* registry, const char* li
 
 bool
 console_registry_handle_line(console_registry_t* registry, const char* line, console_reply_fn reply) {
+    return console_registry_dispatch(registry, line, reply) == CONSOLE_LINE_HANDLED;
+}
+
+console_line_result_t
+console_registry_dispatch(console_registry_t* registry, const char* line, console_reply_fn reply) {
     if (!console_registry_accepts_line(registry, line)) {
-        return false;
+        return CONSOLE_LINE_REJECTED;
     }
     for (const console_verb_t* entry = registry->first; entry != NULL; entry = entry->next) {
         const char* args;
         if (console_word_match(line, entry->name, &args)) {
             entry->handle(args, reply);
-            return true;
+            return CONSOLE_LINE_HANDLED;
         }
     }
-    return false;
+    return CONSOLE_LINE_UNCLAIMED;
 }
 
 console_clash_t

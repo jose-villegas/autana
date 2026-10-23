@@ -56,7 +56,7 @@ def sound_formats(tree, names):
     for name in names:
         pack, separator, entry = name.partition("/")
         if not separator:
-            pack, entry = "engine", name
+            pack, entry = read_define(tree / "launcher/main/asset/asset_store.h", "ASSET_ENGINE_PACK"), name
         source = packs.get(pack, {}).get(entry)
         if source is None or not source.name.endswith(".sound.toml"):
             raise ValueError(f"unknown sound {name!r}")

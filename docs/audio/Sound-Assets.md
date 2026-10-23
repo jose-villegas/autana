@@ -31,13 +31,12 @@ A sound key covers the recipe, source bytes (or LFS oid), tool code,
 format constants and dependency pins. Comments and docstrings do not count.
 The CPU Bakes workflow produces missing sound rows.
 
-`bake.py lock --from-run N` records the CI output. `build_pack.py` consumes
-those locked SOND bytes without decoding audio or importing numpy or soundfile.
+`build_pack.py` consumes the locked SOND bytes and never decodes audio or imports numpy/soundfile.
 The firmware streams samples from the mapped pack through its cursor.
 
 The engine pack's `carreno_waltz` loops the whole stereo 44.1 kHz FLAC excerpt.
-Its recipe records the public-domain source and cut command.
-`autana play engine/carreno_waltz loop` plays it; the baked SOND uses 237,600 flash bytes.
+Its [recipe](../../launcher/main/engine/sounds/carreno_waltz.sound.toml) records the public-domain source and excerpt.
+`autana play engine/carreno_waltz loop` plays it; its SOND size follows the ADPCM rows below.
 
 ## Flash per minute
 
@@ -156,7 +155,9 @@ flowchart TB
     end
     subgraph Use["3. Store and read"]
         direction LR
-        S["Cached SOND entry<br/>32-byte header + data"] --> K[Pack]
+        S["Bake SOND"] --> Lk["Lock CI output"]
+        Lk --> Ft["Fetch locked bytes"]
+        Ft --> K[Pack]
         K --> O[sound_open maps it in place]
     end
     Source -->|mono samples, format, loop| Encode

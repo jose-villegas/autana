@@ -302,13 +302,29 @@ Replies end in `SOUND_END` or `SOUND_ERR <reason>`. A play reply includes
 `voice` and `open_us`, the time spent in `sound_open()` checking the entry and
 its ADPCM block headers; a cached view reports zero.
 
-The frame task mounts packs with `asset_store_pack()` and keeps sound views
-in PSRAM. App-owned views and pack references are released after the app-exit
-mixer fence. Launcher-owned views stay alive across app exits.
+Sound views live in PSRAM. They and their pack references are released at
+the next app transition, after the mixer fence.
+Distinct mounted packs share `ASSET_STORE_MOUNTS_MAX` slots with other asset users.
 
-For a long voice alone and with seven taps, capture with
-`--sounds engine/carreno_waltz --voices 1,8 --fill-sound engine/tap` on
-`sound_mix_capture.py`. Voice counts include the long voice.
+```mermaid
+sequenceDiagram
+    participant Reader as Reader task
+    participant Mailbox
+    participant Frame as Frame task
+    participant Mixer
+    Reader->>Mailbox: Post parsed play
+    Mailbox->>Frame: Take request
+    Frame->>Frame: Mount pack and open view
+    Frame->>Mixer: Play voice
+    Note over Frame,Mixer: App transition
+    Frame->>Mixer: Stop voices and fence reads
+    Mixer-->>Frame: Mixer fence complete
+    Frame->>Frame: Release views and pack references
+```
+
+To compare one long voice alone and mixed with short ones, run
+`sound_mix_capture.py --sounds engine/carreno_waltz --voices 1,8 --fill-sound engine/tap`;
+voice counts include the long voice.
 
 The `tone` verb plays an engine tone on the SYSTEM bus through the mixer.
 See its [capture and detection](Audio-Path.md#development-check) output.

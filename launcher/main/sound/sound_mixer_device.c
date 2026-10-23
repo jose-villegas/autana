@@ -169,6 +169,14 @@ sound_set_bus_gain(sound_bus_t bus, uint8_t pct) {
     control_command(SOUND_VOICE_NULL, bus, SOUND_COMMAND_BUS_GAIN, pct);
 }
 
+bool
+sound_app_active(void) {
+    portENTER_CRITICAL(&control_lock);
+    const bool active = control.app_generation >= SOUND_APP_GENERATION_FIRST;
+    portEXIT_CRITICAL(&control_lock);
+    return active;
+}
+
 void
 sound_begin_app(void) {
     portENTER_CRITICAL(&control_lock);
@@ -414,6 +422,24 @@ capture_request(uint32_t sequence) {
         }
     }
     return false;
+}
+
+void
+sound_fence(void) {
+    portENTER_CRITICAL(&control_lock);
+    const bool ready = control.ready;
+    const uint32_t sequence = ready ? sound_capture_begin(&capture) : 0;
+    portEXIT_CRITICAL(&control_lock);
+    if (!ready) {
+        return;
+    }
+    if (!sequence || !capture_request(sequence)) {
+        ESP_LOGE(TAG, "mixer fence exceeded %u ms", (unsigned)SOUND_CAPTURE_TIMEOUT_MS);
+        abort();
+    }
+    portENTER_CRITICAL(&control_lock);
+    sound_capture_resume(&capture, sequence);
+    portEXIT_CRITICAL(&control_lock);
 }
 
 static bool

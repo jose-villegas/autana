@@ -8,8 +8,8 @@
  * itself: see console.c's top comment.
  *
  * Each kind keeps only its latest request, the line the device saw most
- * recently, except the CONSOLE_FRAME_HELD kinds: they run across frames, one
- * at a time, so a second is refused while the first waits or runs.
+ * recently, except the CONSOLE_FRAME_HELD kinds: a second post is refused
+ * while the first is pending or being answered. RUNSUITE can span frames.
  *
  * Every call holds the mailbox's lock for its whole copy, so a take never
  * sees a kind's bit without its fields, nor fields a post is still writing.
@@ -21,7 +21,7 @@
 
 #include "build/build_variant.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_sound_parse.h"
+#include "console/verbs/console_sound.h"
 #include "freertos/FreeRTOS.h"
 
 /* RUNSUITE exists where the suites do: a self-test image and the host runner. */
@@ -52,7 +52,7 @@ typedef enum {
 typedef struct {
     uint32_t kinds;
     console_navigation_t navigation;
-    char sound[CONSOLE_SOUND_LINE_MAX];
+    console_sound_args_t sound;
     char app[CONSOLE_LINE_MAX]; /* OPEN's name */
     bool frozen;                /* FREEZE and STEP; RESUME clears it */
     int steps;                  /* STEP's frame count */

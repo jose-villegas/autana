@@ -1,4 +1,4 @@
-"""Generate a deterministic mono PCM16 damped sine WAV."""
+"""Generate a deterministic mono PCM16 damped sine WAV at the stored rate."""
 
 import argparse
 import math
@@ -29,13 +29,11 @@ def main(argv=None):
     if frames == 0:
         parser.error("duration must contain at least one sample")
     samples = [round(SAMPLE_MAX * args.peak * math.exp(-args.decay * i / SAMPLE_RATE_HZ)
-                     * math.sin(2 * math.pi * args.frequency * i / SAMPLE_RATE_HZ))
-               for i in range(frames)]
+                     * math.sin(2 * math.pi * args.frequency * i / SAMPLE_RATE_HZ)) for i in range(frames)]
     args.o.parent.mkdir(parents=True, exist_ok=True)
-    pcm = struct.pack(f"<{len(samples)}h", *samples)
     with wave.open(str(args.o), "wb") as wav:
         wav.setparams((CHANNELS, PCM_BYTES, SAMPLE_RATE_HZ, 0, "NONE", ""))
-        wav.writeframes(pcm)
+        wav.writeframes(struct.pack(f"<{len(samples)}h", *samples))
 
 
 if __name__ == "__main__":

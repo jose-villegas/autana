@@ -26,7 +26,7 @@ merge(console_frame_request_t* into, const console_frame_request_t* from) {
     }
 #endif
     if (from->kinds & CONSOLE_FRAME_SOUND) {
-        memcpy(into->sound, from->sound, sizeof into->sound);
+        into->sound = from->sound;
     }
     into->kinds |= from->kinds;
 }

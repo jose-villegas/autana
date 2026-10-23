@@ -135,10 +135,16 @@ queue_unclaimed_line(const char* line) {
     }
 }
 
+typedef struct {
+    int size;
+    char line[];
+} console_reader_t;
+
 static void
 console_task(void* arg) {
-    char* line = arg;
-    const int line_max = console_registry_line_max(&shared);
+    console_reader_t* reader = arg;
+    char* line = reader->line;
+    const int line_max = reader->size;
     int len = 0;
     bool overflowed = false;
 
@@ -156,10 +162,13 @@ console_task(void* arg) {
         if (overflowed && !was_overflowed) {
             ESP_LOGW(TAG, "console line too long (max %d) - dropped", (int)line_max - 1);
         }
-        if (complete && !console_registry_accepts_line(&shared, line)) {
-            ESP_LOGW(TAG, "console line too long (max %d) - dropped", CONSOLE_LINE_MAX - 1);
-        } else if (complete && !console_registry_handle_line(&shared, line, console_reply_stdio)) {
-            queue_unclaimed_line(line);
+        if (complete) {
+            const console_line_result_t result = console_registry_dispatch(&shared, line, console_reply_stdio);
+            if (result == CONSOLE_LINE_REJECTED) {
+                ESP_LOGW(TAG, "console line too long (max %d) - dropped", CONSOLE_LINE_MAX - 1);
+            } else if (result == CONSOLE_LINE_UNCLAIMED) {
+                queue_unclaimed_line(line);
+            }
         }
     }
 }
@@ -205,14 +214,16 @@ console_start(void) {
      * its time blocked waiting on bytes nobody is usually sending; when a
      * line does arrive there is nothing time-critical about noticing it a
      * frame or two later. */
-    char* line = malloc((size_t)console_registry_line_max(&shared));
-    if (line == NULL) {
+    const int line_max = console_registry_line_max(&shared);
+    console_reader_t* reader = malloc(sizeof *reader + (size_t)line_max);
+    if (reader == NULL) {
         ESP_LOGE(TAG, "line allocation failed - listener not started");
         return;
     }
-    const BaseType_t created = xTaskCreate(console_task, "console", 3072, line, 4, NULL);
+    reader->size = line_max;
+    const BaseType_t created = xTaskCreate(console_task, "console", 3072, reader, 4, NULL);
     if (created != pdPASS) {
-        free(line);
+        free(reader);
         ESP_LOGE(TAG, "xTaskCreate failed (out of memory?) - listener not started");
         return;
     }

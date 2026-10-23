@@ -140,6 +140,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_melody.c"
         "console/verbs/console_codec.c"
         "console/verbs/console_sound.c"
+        "console/verbs/console_sound_views.c"
         "shell/console_system.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
