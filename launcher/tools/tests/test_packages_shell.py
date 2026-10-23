@@ -1,5 +1,6 @@
-"""packages.sh lists a launcher's packages as packages.py does; check_packages_alone.sh
-fails a package that needs more than its own include root."""
+"""packages.sh lists a launcher's packages as packages.py does, and renderer.sh the renderer's
+sources as renderer.py does; check_packages_alone.sh fails a package that needs more than its
+own include root."""
 import os
 from pathlib import Path
 import shutil
@@ -16,6 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts/device/tests"))
 import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 import device  # noqa: E402
 import packages  # noqa: E402
+import renderer  # noqa: E402
 
 SHELL = device.git_bash() if os.name == "nt" else shutil.which("sh")
 ALONE = ROOT / "launcher/test/check_packages_alone.sh"
@@ -79,6 +81,31 @@ class PackageListing(FixtureLauncher):
         for function in ("package_include_dirs", "package_includes", "package_sources", "package_suites"):
             with self.subTest(function=function):
                 self.assertEqual([], self.lines(function))
+
+
+class RendererSources(FixtureLauncher):
+    def shell_sources(self, launcher):
+        script = f'. "{(BUILD / "renderer.sh").as_posix()}"\nrenderer_sources "{Path(launcher).as_posix()}"\n'
+        result = run_shell("-c", script)
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.splitlines()
+
+    def python_sources(self, launcher):
+        return [path.relative_to(launcher).as_posix() for path in renderer.sources(launcher)]
+
+    def test_every_c_file_below_a_named_folder_and_nothing_else(self):
+        for name in ("main/alpha/x.c", "main/alpha/deep/y.c", "main/alpha/x.h", "main/beta/z.c", "main/gamma/w.c"):
+            self.write(name)
+        self.write("main/renderer_folders.txt", "# not a folder\nalpha\nbeta\n")
+        expected = ["main/alpha/deep/y.c", "main/alpha/x.c", "main/beta/z.c"]
+        self.assertEqual(expected, self.python_sources(self.launcher))
+        self.assertEqual(expected, self.shell_sources(self.launcher))
+
+    def test_the_twins_agree_on_this_tree(self):
+        launcher = ROOT / "launcher"
+        listed = self.python_sources(launcher)
+        self.assertIn("main/render/raster.c", listed)
+        self.assertEqual(listed, self.shell_sources(launcher))
 
 
 @unittest.skipUnless(shutil.which("cc") or shutil.which("gcc") or shutil.which("clang") or os.environ.get("CC"),

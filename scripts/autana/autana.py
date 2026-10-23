@@ -1659,7 +1659,10 @@ def forward(line, verb):
         sys.exit(f"autana: unknown option {verb.split('=', 1)[0]}; 'autana help' lists the commands")
     reply, endings = reply_prefix(line)
     with command_named(f"console {verb}"):
-        _, replies = send(line, reply=reply, until=list(endings), optional=True)
+        code, replies = send(line, reply=reply, until=list(endings), optional=True)
+    if code:
+        print("\n".join(replies))
+        raise SystemExit(code)
     return replies
 
 

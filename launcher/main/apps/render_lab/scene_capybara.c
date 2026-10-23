@@ -31,6 +31,7 @@
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "services/tune.h"
+#include "ui/ui.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "apps/render_lab/tests/render_lab_test.h"
 #endif
@@ -104,7 +105,7 @@ frame_subject(void) {
 static void
 scene_capybara_enter(const render_lab_scene_t* self) {
     (void)self;
-    draw_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
+    draw_clear(gfx_rgb(UI_BACKGROUND));
     failure[0] = '\0';
     scene_failure_t why;
     capybara = scene_load(CAPYBARA_SCENE, &why);

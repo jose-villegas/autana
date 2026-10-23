@@ -26,12 +26,35 @@ permissions:
   contents: read
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      cpu: ${{ steps.affected.outputs.cpu }}
+      lock: ${{ steps.affected.outputs.lock }}
+      sky-through-walls: ${{ steps.affected.outputs.sky-through-walls }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job cpu --job lock --job sky-through-walls
+
   cpu:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.cpu == 'true') }}
     name: Bake missing exports, meshes and sounds
-    if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
 
       - uses: ./.github/actions/host-tools
 
@@ -91,26 +114,40 @@ jobs:
           name: bakes-cpu
           path: ${{ runner.temp }}/bakes
 
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
+
   lock:
     name: Lock is current
-    if: github.event_name == 'pull_request'
-    needs: cpu
+    if: ${{ !cancelled() && needs.cpu.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lock == 'true') }}
+    needs: [inputs, cpu]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
 
       - uses: ./.github/actions/host-tools
 
       - name: Every needed key has a row and every row is needed
         run: python launcher/tools/bake/bake.py check
 
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
+
   sky-through-walls:
     name: Sky through walls
-    if: github.event_name == 'pull_request'
-    needs: lock
+    if: ${{ !cancelled() && needs.lock.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.sky-through-walls == 'true') }}
+    needs: [inputs, lock]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
 
       - uses: ./.github/actions/host-tools
 
@@ -124,6 +161,10 @@ jobs:
 
       - name: Check the full camera flythrough for enclosed sky
         run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
 
   publish:
     name: Publish locked bakes
