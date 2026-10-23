@@ -1,5 +1,5 @@
-"""Gate CI jobs using file access times, following fabricate.py's AtimesRunner
-(https://github.com/SimonAlfie/fabricate/blob/master/fabricate.py).
+"""Gate CI jobs using file access times, following fabricate's AtimesRunner class
+(https://github.com/brushtyler/fabricate).
 Linux relatime records the first read after arm resets access times; Docker
 bind mounts share those inodes. Missing evidence runs the job.
 """
@@ -21,7 +21,7 @@ ARTIFACT_PREFIX = 'job-inputs-'
 PR_FILES_LIMIT = 3000
 MANIFEST_NAME = 'job-inputs.json'
 MARKER_NAME = 'job-inputs-marker'
-CANARY = 'AGENTS.md'
+CANARY = '.git/job-inputs-canary'
 RECORDER_FILES = {'scripts/ci/job_inputs.py', 'scripts/ci/github_api.py',
                   'scripts/ci/inputs_recorded.py'}
 LOCAL_ACTION = re.compile(r'uses:\s*[\'\"]?(\./\.github/actions/[\w/-]+)')
@@ -39,7 +39,8 @@ def arm(root, temporary):
         raise RuntimeError('job inputs require a Linux runner with working atime')
     subprocess.run(['git', 'config', 'core.trustctime', 'false'], cwd=root, check=True)
     files, directories = tracked_paths(root)
-    for name in files | directories:
+    (root / CANARY).write_text('canary')
+    for name in files | directories | {CANARY}:
         path = root / name
         try:
             stat = path.lstat()
@@ -76,7 +77,10 @@ def workflow_inputs(root, workflow, job, files):
 def record(root, temporary, workflow, job):
     marker = int((temporary / MARKER_NAME).read_text())
     files, directories = tracked_paths(root)
-    (root / CANARY).read_bytes()
+    canary = root / CANARY
+    canary.read_bytes()
+    if canary.stat().st_atime_ns < marker:
+        raise RuntimeError('job inputs canary was not recorded: filesystem atime does not work')
     observed = {}
     for kind, names in (('files', files), ('directories', directories)):
         observed[kind] = set()
@@ -86,10 +90,8 @@ def record(root, temporary, workflow, job):
                     observed[kind].add(name)
             except FileNotFoundError:
                 continue
-    if CANARY not in observed['files']:
-        raise RuntimeError('job inputs canary was not recorded: filesystem atime does not work')
     included = workflow_inputs(root, workflow, job, files)
-    if not observed['files'] - included - RECORDER_FILES - {CANARY}:
+    if not observed['files'] - included - RECORDER_FILES:
         raise RuntimeError(f'{job}: no tree input read besides canary and workflow files; do not gate this job')
     observed['files'].update(included)
     result = {kind: sorted(names) for kind, names in observed.items()}
@@ -102,23 +104,23 @@ def matching_paths(changes, manifest, base_files=()):
     directories = set(manifest['directories'])
     base_files = set(base_files)
     base_directories = {parent for name in base_files for parent in PurePosixPath(name).parents}
-    read_paths = [PurePosixPath(name) for name in (files & base_files) - RECORDER_FILES - {CANARY}]
+    read_paths = [PurePosixPath(name) for name in (files & base_files) - RECORDER_FILES]
     matches = set()
     for change in changes:
         names = [change['filename']]
         if 'previous_filename' in change:
             names.append(change['previous_filename'])
         for name in names:
-            if name in files or (change['status'] in {'added', 'removed', 'renamed'}
-                    and any(str(parent) in directories for parent in PurePosixPath(name).parents)):
-                matches.add(name)
-        if change['status'] in {'added', 'renamed'}:
-            path = PurePosixPath(change['filename'])
+            path = PurePosixPath(name)
             ancestor = next((parent for parent in path.parents if parent in base_directories),
                             PurePosixPath('.'))
-            # The job read files like this one in that part of the tree.
-            if any(read.suffix == path.suffix and read.is_relative_to(ancestor) for read in read_paths):
-                matches.add(str(path))
+            if name in files or (change['status'] in {'added', 'removed', 'renamed'}
+                    and str(ancestor) in directories):
+                matches.add(name)
+            if name == change['filename'] and change['status'] in {'added', 'renamed'}:
+                # The job read files like this one in that part of the tree.
+                if any(read.suffix == path.suffix and read.is_relative_to(ancestor) for read in read_paths):
+                    matches.add(name)
     return sorted(matches)
 
 

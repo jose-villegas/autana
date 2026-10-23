@@ -33,6 +33,26 @@ class JobInputsTests(unittest.TestCase):
         self.assertEqual(job_inputs.matching_paths([change], manifest,
             set(manifest['files'])), [])
 
+    def test_directory_matching_uses_nearest_base_ancestor(self):
+        base_files = {'docs/x/existing.md'}
+        for status in ('added', 'removed', 'renamed'):
+            for name in ('docs/x/new.gif', 'docs/x/new/sub/new.gif'):
+                for directories, expected in [(['.', 'docs'], []),
+                        (['.', 'docs', 'docs/x'], [name])]:
+                    with self.subTest(status=status, name=name, directories=directories):
+                        change = {'filename': name, 'status': status}
+                        self.assertEqual(job_inputs.matching_paths([change],
+                            {'files': [], 'directories': directories}, base_files), expected)
+        change = {'filename': 'elsewhere/new.gif', 'previous_filename': 'docs/x/old.gif',
+                  'status': 'renamed'}
+        self.assertEqual(job_inputs.matching_paths([change],
+            {'files': [], 'directories': ['docs/x']}, base_files), ['docs/x/old.gif'])
+
+    def test_tracked_agents_read_establishes_extension_coverage(self):
+        change = {'filename': 'NEW.md', 'status': 'added'}
+        self.assertEqual(job_inputs.matching_paths([change],
+            {'files': ['AGENTS.md'], 'directories': []}, {'AGENTS.md'}), ['NEW.md'])
+
     def test_added_tool_shell_script_runs_only_shell_lint(self):
         source = 'launcher/main/apps/render_lab/scene.c'
         script = 'launcher/main/apps/render_lab/tools/existing.sh'
@@ -49,8 +69,8 @@ class JobInputsTests(unittest.TestCase):
         for reads, expected in [([source], []), ([markdown], [change['filename']])]:
             with self.subTest(reads=reads):
                 self.assertEqual(job_inputs.matching_paths([change],
-                    {'files': reads + [job_inputs.CANARY], 'directories': []},
-                    {source, markdown, job_inputs.CANARY}), expected)
+                    {'files': reads, 'directories': []},
+                    {source, markdown}), expected)
         change = {'filename': 'NOTICE', 'status': 'added'}
         self.assertEqual(job_inputs.matching_paths([change],
             {'files': ['docs/LICENSE'], 'directories': []}, {'docs/LICENSE'}), ['NOTICE'])
@@ -68,7 +88,8 @@ class JobInputsTests(unittest.TestCase):
                   ['src/new/sub/file.c'])]
         for change, expected in cases:
             with self.subTest(change=change):
-                self.assertEqual(job_inputs.matching_paths([change], manifest), expected)
+                self.assertEqual(job_inputs.matching_paths([change], manifest,
+                    {'src/new/existing.h'}), expected)
 
     def test_latest_artifact_uses_base_branch_and_excludes_pr_runs(self):
         artifacts = [dict(id=number, name='job-inputs-ci-build', expired=expired,
@@ -124,9 +145,10 @@ class JobInputsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / job_inputs.MARKER_NAME).write_text('1')
+            (root / '.git').mkdir()
             (root / job_inputs.CANARY).write_text('canary')
             os.utime(root / job_inputs.CANARY, ns=(0, 0))
-            with mock.patch.object(job_inputs, 'tracked_paths', return_value=({job_inputs.CANARY}, set())), \
+            with mock.patch.object(job_inputs, 'tracked_paths', return_value=(set(), set())), \
                     mock.patch.object(Path, 'read_bytes', return_value=b'canary'):
                 with self.assertRaisesRegex(RuntimeError, 'canary.*atime'):
                     job_inputs.record(root, root, 'unused', 'build')
@@ -140,7 +162,6 @@ class JobInputsTests(unittest.TestCase):
     def test_collection_does_not_follow_unread_symlink(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / job_inputs.CANARY).write_text('canary')
             (root / 'input').write_text('read')
             (root / 'link').symlink_to('input')
             subprocess.run(['git', 'init', '-q', str(root)], check=True)
@@ -165,19 +186,25 @@ class JobInputsTests(unittest.TestCase):
                                   '.github/workflows/ci.yml': 'jobs:\n  build:\n    steps:\n'
                                   '      - uses: ./.github/actions/example\n',
                                   '.github/actions/example/action.yml': 'runs: {}',
-                                  job_inputs.CANARY: 'canary'}.items():
+                                  'AGENTS.md': 'job guidance'}.items():
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content)
             subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
             before = (root / 'src/read.c').stat().st_mtime_ns
             job_inputs.arm(root, temporary)
+            self.assertTrue((root / job_inputs.CANARY).is_file())
+            self.assertEqual((root / job_inputs.CANARY).stat().st_atime_ns, 0)
+            self.assertNotIn(job_inputs.CANARY, job_inputs.tracked_paths(root)[0])
             self.assertEqual((root / 'src/read.c').stat().st_mtime_ns, before)
+            (root / 'AGENTS.md').read_bytes()
             (root / 'src/read.c').read_bytes()
             if (root / 'src/read.c').stat().st_atime_ns == 0:
                 self.skipTest('filesystem does not update atime on reads')
             list((root / 'src').iterdir())
             result = job_inputs.record(root, temporary, '.github/workflows/ci.yml', 'build')
+            self.assertIn('AGENTS.md', result['files'])
+            self.assertNotIn(job_inputs.CANARY, result['files'])
             self.assertIn('src/read.c', result['files'])
             self.assertNotIn('src/unread.c', result['files'])
             self.assertIn('src', result['directories'])

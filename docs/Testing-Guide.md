@@ -102,15 +102,17 @@ resets tracked files' and directories' access times after checkout. Its last
 step records reads, the workflow and its local actions in a 90-day artifact.
 
 The pull request gate compares changed paths with the newest unexpired
-manifest on its base branch. Additions, removals and renames also match read
-parent directories. The log and step summary show decisions and matches.
+manifest on its base branch. Additions, removals and renames also match their
+nearest directory present on the base if it was read. The log and step summary
+show decisions and matches.
 
 An addition or rename destination matches a tracked read with the same
 extension under its nearest ancestor present on the base. Extensionless
 files match other extensionless files.
 
 The index and changed paths identify base directories, with the root as fallback.
-Canary and recorder reads do not establish extension coverage.
+The untracked `.git/job-inputs-canary` checks access times and stays outside
+the manifest. Recorder reads do not establish extension coverage.
 
 A missing manifest runs the job with a notice. A failed gate or a pull request
 at the files API's limit runs all jobs. Recording fails if a canary read is
