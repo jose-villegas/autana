@@ -89,7 +89,7 @@ static bool gas_row_map_live;
 static inline void
 gas_row_arm(int y) {
     if (gas_row_map_live && (unsigned)y < (unsigned)GAS_ROW_MAX) {
-        bits32_set(gas_row_map.w, (unsigned)y);
+        gas_row_map.w[(unsigned)y >> 5] |= 1U << ((unsigned)y & 31U);
     }
 }
 
@@ -98,7 +98,7 @@ gas_row_may_hold(int y) {
     if (!gas_row_map_live) {
         return true;
     }
-    return bits32_get(gas_row_map.w, (unsigned)y);
+    return ((gas_row_map.w[(unsigned)y >> 5] >> ((unsigned)y & 31U)) & 1U) != 0U;
 }
 
 /*
