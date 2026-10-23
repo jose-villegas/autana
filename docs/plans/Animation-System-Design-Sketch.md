@@ -122,7 +122,7 @@ const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity
 ```
 
 An animated scene's picker: a dropdown of clip names (`ui_mu_dropdown`) and a
-blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets,
+blend-time slider (`ui_slider_int`, 0 to 2000 ms), both existing widgets,
 and a console command making the same `scene_animator_play()` call.
 
 ## 5. Where the later pieces plug in

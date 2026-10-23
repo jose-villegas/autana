@@ -20,7 +20,6 @@
  * Deliberately dark: this is an OLED, so black pixels are off pixels; it
  * costs less power and looks better than a grey chrome. It has no panel
  * edge, so a slider there is drawn without a frame. */
-#define UI_SHELL_BACKGROUND   0x0A0C14
 #define UI_SHELL_TEXT         0xE6EAF2
 #define UI_SHELL_BUTTON       0x161A28
 #define UI_SHELL_BUTTON_HOVER 0x232A40

@@ -139,7 +139,7 @@ enter_layout(void) {
     };
     (void)gfx_mode_enter(&mode_request);
     if (chosen->clear_on_send) {
-        (void)gfx_set_clear_on_send(true, gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
+        (void)gfx_set_clear_on_send(true, gfx_rgb(UI_BACKGROUND));
     }
 
     gfx_invalidate();
@@ -280,7 +280,7 @@ draw_menu(const input_t* input) {
         (void)request_variant(families[family], result.variant_picked);
     }
 
-    ui_end(RENDER_LAB_BACKGROUND_RGB);
+    ui_end(UI_BACKGROUND);
 }
 
 static void
