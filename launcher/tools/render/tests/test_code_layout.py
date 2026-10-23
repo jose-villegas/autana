@@ -96,13 +96,9 @@ class PoolTests(unittest.TestCase):
     def test_code_entered_past_a_pool_is_decoded_again_from_its_entry(self):
         # As objdump read r3d_span_triangle_impl: a two-byte pool after a
         # short j, then code a beqz enters at 0x1408, read out of step.
-        found = [
-            (0x1400, 3, "beqz", "a10, 1408 <h+0x8>"),
-            (0x1403, 3, "j", "140c <h+0xc>"),
-            (0x1406, 3, "src", "a0, a0, a0"),
-            (0x1409, 3, "bgez", "a13, 1300 <h-0x100>"),
-            (0x140C, 2, "retw.n", ""),
-        ]
+        found = self.misdecoded_pool(
+            0x1400, ("beqz", "a10, 1408 <h+0x8>"), "140c <h+0xc>",
+            [("src", "a0, a0, a0"), ("bgez", "a13, 1300 <h-0x100>")], 0x140C)
         again = [(0x1408, 2, "l32i.n", "a8, a1, 4"), (0x140A, 2, "addi.n", "a8, a8, 1"), (0x140C, 2, "retw.n", "")]
         kept = code_layout.skip_pools(found, lambda start: [ins for ins in again if ins[0] >= start])
         self.assertEqual([ins[2] for ins in kept], ["beqz", "j", "l32i.n", "addi.n", "retw.n"])
@@ -126,13 +122,9 @@ class PoolTests(unittest.TestCase):
         self.assertIn(0x4200000c, starts)
 
     def test_alignment_before_code_in_a_long_jump_span(self):
-        found = [
-            (0x42000000, 3, "bltz", "a4, 42000008 <f+0x8>"),
-            (0x42000003, 3, "j", "42000040 <f+0x40>"),
-            (0x42000006, 3, "srai", "a0, a0, 16"),
-            (0x42000009, 3, "call8", "4200100c <unrelated+0xc>"),
-            (0x42000040, 2, "retw.n", ""),
-        ]
+        found = self.misdecoded_pool(
+            0x42000000, ("bltz", "a4, 42000008 <f+0x8>"), "42000040 <f+0x40>",
+            [("srai", "a0, a0, 16"), ("call8", "4200100c <unrelated+0xc>")], 0x42000040)
         again = [
             (0x42000008, 3, "l32r", "a8, 42001000 <pool> (40002274 <callee>)"),
             (0x4200000b, 3, "callx8", "a8"), (0x4200000e, 2, "retw.n", ""),
@@ -148,6 +140,15 @@ class PoolTests(unittest.TestCase):
         ]
         again = [(0x42000007, 3, "add.n", "a2, a2, a3")]
         self.assertEqual(code_layout.skip_pools(found, lambda start: again), found[:2] + again + found[-1:])
+
+    def misdecoded_pool(self, start, branch, jump, pool, end):
+        return [
+            (start, 3, *branch),
+            (start + 3, 3, "j", jump),
+            (start + 6, 3, *pool[0]),
+            (start + 9, 3, *pool[1]),
+            (end, 2, "retw.n", ""),
+        ]
 
 
 class SmallLoopTests(unittest.TestCase):
