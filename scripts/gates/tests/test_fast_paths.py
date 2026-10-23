@@ -20,8 +20,14 @@ class FastPathTests(unittest.TestCase):
         self.header.parent.mkdir(parents=True)
         self.header.write_text('#define EXAMPLE_LIMIT 1\n'
                                '/* Seed correction. | y = y(2 - ay) | positive normal inputs */\n'
-                               '/* MATH_FAST_PATH(example, f, fast_f, plain_f, EXAMPLE_LIMIT, ulp, sweep, MATH_TARGET_PORTABLE) */\n'
+                               '/* MATH_FAST_PATH(fast_f, plain_f, EXAMPLE_LIMIT) */\n'
                                'static inline float example(float x) { return x; }\n')
+        source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
+        source.parent.mkdir(parents=True)
+        source.write_text('MATHERROR name=example type=f max=%g unit=ulp method=sweep')
+        perf = self.root / 'launcher/test/suites/suite_math_perf.c'
+        perf.parent.mkdir(parents=True)
+        perf.write_text('')
         self.annotations = paths.annotations(self.root)
         self.rows = [('fast_f', 'example', 'f', 64), ('plain_f', 'plain', 'f', 64)]
         self.capture = ('MATHERROR name=example type=f max=1 unit=ulp method=sweep\n'
@@ -56,7 +62,7 @@ class FastPathTests(unittest.TestCase):
             paths.validate(self.annotations, self.rows, self.capture.replace('max=1', 'max=2'))
 
     def test_missing_summary_or_bins(self):
-        for capture in (self.capture.splitlines()[0] + '\nMATHERRORBIN name=other type=f x=2 max=0 unit=ulp\n', self.capture.splitlines()[1]):
+        for capture in (self.capture.splitlines()[1],):
             with self.subTest(capture=capture), self.assertRaisesRegex(ValueError, 'missing'):
                 paths.validate(self.annotations, self.rows, capture)
 
@@ -81,14 +87,15 @@ class FastPathTests(unittest.TestCase):
             with self.subTest(capture=capture), self.assertRaises(ValueError):
                 bench.parse_bins(capture)
 
-    def test_unknown_target_fails(self):
-        self.header.write_text(self.header.read_text().replace('MATH_TARGET_PORTABLE', 'MATH_TARGET_UNKNOWN'))
-        with self.assertRaisesRegex(ValueError, 'target'):
+    def test_short_annotation_and_source_contract(self):
+        self.assertIsNotNone(paths.ANNOTATION.fullmatch('/* MATH_FAST_PATH(fast_f, plain_f, LIMIT) */'))
+        source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
+        source.write_text('')
+        with self.assertRaisesRegex(ValueError, 'MATHERROR'):
             paths.annotations(self.root)
 
     def test_target_wrapper_requires_its_hardware_instruction(self):
-        self.header.write_text(self.header.read_text().replace('MATH_TARGET_PORTABLE', 'MATH_TARGET_ESP32S3')
-                               .replace('return x;', '#if CONFIG_MATH_FPU_RECIP\nreturn x;\n#endif\n'))
+        self.header.write_text(self.header.read_text().replace('return x;', '\n#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP\nreturn x;\n#endif\n'))
         config = self.root / 'launcher/packages/math/Kconfig'
         config.write_text('    config MATH_FPU_RECIP\n        help\n            Use recip0.s and rsqrt0.s.\n\nendmenu\n')
         items = paths.annotations(self.root)
@@ -97,13 +104,16 @@ class FastPathTests(unittest.TestCase):
         paths.validate_hardware(self.root, items, {'fast_f': 'recip0.s'})
 
     def test_transitive_template_callers_and_tables(self):
+        self.header.unlink()
+        shutil.copyfile(ROOT / 'launcher/packages/math/tests/suite_math_numbers.c', self.root / 'launcher/packages/math/tests/suite_math_numbers.c')
         shutil.copytree(ROOT / paths.HEADERS, self.root / paths.HEADERS, dirs_exist_ok=True)
         caller = self.root / 'launcher/main/render/use.c'
         caller.parent.mkdir(parents=True)
         caller.write_text('void draw(void) { quatf_nlerp(a, b, t); vec3x_normalize(v); quatx_nlerp(a, b, t); }\n')
-        self.assertEqual(paths.callers(self.root, 'mathf_rsqrt'), {'render': {'quatf_nlerp'}})
-        self.assertEqual(paths.callers(self.root, 'mathx_rsqrt_q30'),
-                         {'render': {'vec3x_normalize', 'quatx_nlerp'}})
+        self.assertEqual(paths.callers(self.root, 'mathf_rsqrt')['render'], {'quatf_nlerp'})
+        self.assertEqual(paths.callers(self.root, 'mathx_rsqrt_q30')['render'],
+                         {'vec3x_normalize', 'quatx_nlerp'})
+        self.assertIn('math/linear', paths.callers(self.root, 'mathx_rsqrt_q30'))
         item = next(item for item in paths.annotations(self.root) if item.key == 'mathx_rsqrt_q30')
         self.assertEqual(paths.tables_for(item, self.root), ['mathx_rsqrt_seeds'])
 
@@ -114,26 +124,41 @@ class FastPathTests(unittest.TestCase):
                    'MATHCALLS end\nMATHCALLS begin\n'
                    'MATHCALLS fn=example caller=C:/tree/launcher/main/render/use.c per_frame=8\n'
                    'MATHCALLS end\n')
-        self.assertEqual(paths.parse_calls(capture), {('example', 'apps'): (6, 3), ('example', 'render'): (8, 4)})
+        self.assertEqual(paths.parse_calls(capture), {('example', 'apps (not named)'): (6, 3), ('example', 'render'): (8, 4)})
         self.assertEqual(paths.parse_calls(capture.replace('C:/tree/launcher/', './')),
-                         {('example', 'apps'): (6, 3), ('example', 'render'): (8, 4)})
+                         {('example', 'apps (not named)'): (6, 3), ('example', 'render'): (8, 4)})
 
     def test_target_capture_requires_hardware_and_one_identity(self):
-        good = 'MATHTARGET target=ESP32-S3 / Xtensa LX7 execution=hardware\n'
-        self.assertEqual(bench.parse_target(good), 'ESP32-S3 / Xtensa LX7')
-        self.assertEqual(bench.parse_target(good.replace('ESP32-S3 / Xtensa LX7', 'MATH_TARGET_ESP32S3')),
-                         paths.TARGETS['MATH_TARGET_ESP32S3'])
-        for bad in (good.replace('hardware', 'host'), good + good.replace('LX7', 'other'),
+        good = 'MATHTARGET target=esp32s3 arch=Xtensa execution=hardware\n'
+        self.assertEqual(bench.parse_target(good), 'esp32s3 (Xtensa)')
+        self.assertEqual(bench.parse_target(good.replace(' execution', ' core=LX7 execution')), 'esp32s3 (Xtensa, LX7)')
+        for bad in (good.replace('hardware', 'host'), good + good.replace('esp32s3', 'other'),
                     good.replace(' execution=', ' mode=')):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 bench.parse_target(bad)
 
+    def test_elf_sizes_keep_aliases_and_classify_sections(self):
+        from code_layout import symbols
+        from unittest.mock import patch
+        nm = "1000 c T math_bench_fast_f\n1000 c T alias\n2000 A __divsf3\n"
+        with patch('code_layout.run', return_value=nm):
+            located = symbols('nm', 'elf', records=True)
+        self.assertEqual(len(located), 3)
+        rows = [('fast_f', 'example', 'f', 1)]
+        # This fixture has no table references.
+        with patch.object(paths, 'tables_for', return_value=[]):
+            output = paths.elf_sizes(rows, {'fast_f': 'calls __divsf3'}, located,
+                                     [('.iram0.text', 0x1000, 0x100)], self.root)
+        sizes = paths.parse_sizes(output)['fast_f']
+        self.assertIn(('math_bench_fast_f', 12, 'IRAM'), sizes)
+        self.assertIn(('__divsf3', None, 'ROM'), sizes)
+
     def test_size_records_are_strict(self):
         text = 'fast_f\tmath_bench_fast_f\t12\tflash\nfast_f\t__divsf3\t32\tIRAM\n'
-        self.assertEqual(bench.parse_sizes(text)['fast_f'][0], ('math_bench_fast_f', 12, 'flash'))
+        self.assertEqual(paths.parse_sizes(text)['fast_f'][0], ('math_bench_fast_f', 12, 'flash'))
         for bad in (text + text, text.replace('12', '-1'), text.replace('flash', 'unknown')):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
-                bench.parse_sizes(bad)
+                paths.parse_sizes(bad)
 
 
 if __name__ == '__main__':

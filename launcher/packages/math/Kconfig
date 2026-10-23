@@ -18,8 +18,8 @@ menu "Math"
         bool "Count math fast-path calls by translation unit"
         default n
         help
-            Attribute calls to the calling translation unit during measured
-            render windows. Counts are diagnostic instrumentation and add
+            Attribute calls to the calling translation unit during
+            measurement windows. Counts are diagnostic instrumentation and add
             atomic operations to each annotated call.
 
 endmenu

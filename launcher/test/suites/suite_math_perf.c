@@ -11,6 +11,7 @@
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/trig.h"
+#include "math_target.h"
 #include "perf_stats.h"
 #include "profile/frame_cost.h"
 #include "services/build_id.h"
@@ -151,6 +152,18 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
                      mathx_mul(blend.w, reciprocal)};
 }
 
+/* MATH_PLAIN(div_recip_f): 1.0F / x */
+
+/* MATH_PLAIN(div_rsqrt_f): 1.0F / sqrtf(x) */
+
+/* MATH_PLAIN(wrap_fmodf_f): fmodf(v - lo, hi - lo), adjusted into [lo, hi) */
+
+/* MATH_PLAIN(normalize_div_x): isqrt64 squared length, then 64-bit divide and component scaling */
+
+/* MATH_PLAIN(nlerp_div_x): linear quaternion blend, isqrt64 length, then 64-bit divide normalization */
+
+/* MATH_PLAIN(sinf_f): sinf(phase * (MATH_TAU / TRIG_TURN)) */
+
 #define MATH_VECTOR_ROWS(X, type, vmember, smember, dot_ratchet, ...)                                                  \
     X(add, "add (vec3)", type, false, vmember, vec3##type##_add(p->a##type, p->b##type))                               \
     X(scale, "scale (vec3)", type, false, vmember, vec3##type##_scale(p->a##type, p->b##type.x))                       \
@@ -251,8 +264,8 @@ fixture(void) {
         p->bs = vec3s_from_vec3f(p->bf, MATH_BENCH_INPUT_SCALE);
         p->ax = vec3x_from_vec3f(p->af);
         p->bx = vec3x_from_vec3f(p->bf);
-        p->phase = (uint16_t)(j * TRIG_TURN / MATH_BENCH_BATCH);
         p->angle = (turn - 0.5F) * MATH_TAU;
+        p->phase = (uint16_t)(j * TRIG_TURN / MATH_BENCH_BATCH);
         p->qf = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, p->angle);
         p->rf = quatf_from_axis_angle((vec3f_t){1.0F, 0.0F, 0.0F}, p->angle + MATH_PI / 2.0F);
         p->qx = quatx_from_axis_angle((vec3x_t){0, MATHX_ONE, 0}, mathf_to_x(turn - 0.5F));
@@ -320,7 +333,7 @@ test_math_board_rows(void) {
     const int insn = frame_cost_event_index(FRAME_COST_DEFAULT_EVENT);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, insn);
     printf("BUILD_ID=%s\n", build_id());
-    printf("MATHTARGET target=MATH_TARGET_ESP32S3 execution=hardware\n");
+    math_target_report();
     fixture_t* f = fixture();
     for (size_t j = 0; j < sizeof rows / sizeof *rows; j++) {
         const row_t* row = &rows[j];

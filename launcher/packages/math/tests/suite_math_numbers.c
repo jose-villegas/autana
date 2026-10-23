@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "math_target.h"
 #include "suites.h"
 #include "transform_cache.h"
 #include "unity.h"
@@ -110,7 +111,7 @@ test_vec2_ops_agree_across_every_number_type(void) {
     TEST_ASSERT_FALSE(vec2s_equal((vec2s_t){1, 2}, (vec2s_t){1, 3}));
 }
 
-/* These component sweeps use host double references. */
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
 #ifndef DEVICE_BUILD
 #define NORMALIZE_ROUNDING_ERROR          0.5
 #define NORMALIZE_COMPONENT_ERROR         (NORMALIZE_ROUNDING_ERROR + 0x1p-12)
@@ -165,7 +166,7 @@ test_normalize_divide_zero_and_float(void) {
     }
 }
 
-/* These component sweeps use host double references. */
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
 #ifndef DEVICE_BUILD
 static void
 test_fixed_normalize_saturation_edges(void) {
@@ -212,7 +213,7 @@ test_fixed_normalize_extreme_magnitudes(void) {
     TEST_ASSERT_EQUAL_INT32(INT32_MIN, q);
 }
 
-/* These component sweeps use host double references. */
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
 #ifndef DEVICE_BUILD
 static void
 test_fixed_normalize_every_magnitude(void) {
@@ -1129,6 +1130,21 @@ test_mathf_repeat_and_wrap_near_quotient_guard(void) {
 #define REPEAT_BIN_COUNT      ((-2 * REPEAT_BIN_LOW + REPEAT_BIN_WIDTH) / REPEAT_BIN_WIDTH)
 
 static void
+assert_repeat_sample(float v, float len, unsigned bins[REPEAT_BIN_COUNT]) {
+    if (!(len > 0.0F) || !isfinite(len)) {
+        return;
+    }
+    assert_repeat_and_wrap_bits(v, len);
+    if (!isfinite(v)) {
+        return;
+    }
+    const int exponent = v == 0.0F ? REPEAT_BIN_LOW : ilogbf(fabsf(v)) - ilogbf(len);
+    const int bin = (exponent - REPEAT_BIN_LOW) / REPEAT_BIN_WIDTH;
+    TEST_ASSERT_TRUE(bin >= 0 && bin < REPEAT_BIN_COUNT);
+    bins[bin]++;
+}
+
+static void
 test_mathf_repeat_and_wrap_reference_sweep(void) {
     unsigned bins[REPEAT_BIN_COUNT] = {0};
     static const uint32_t seeds[] = {UINT32_C(1), UINT32_C(0x12345678), UINT32_C(0xdeadbeef)};
@@ -1139,15 +1155,7 @@ test_mathf_repeat_and_wrap_reference_sweep(void) {
             const float v = float_from_bits(state);
             state = state * NUMBER_LCG_MULTIPLIER + NUMBER_LCG_INCREMENT;
             const float len = float_from_bits(state & REPEAT_MAGNITUDE_MASK);
-            if (len > 0.0F && isfinite(len)) {
-                assert_repeat_and_wrap_bits(v, len);
-                if (isfinite(v)) {
-                    const int exponent = v == 0.0F ? REPEAT_BIN_LOW : ilogbf(fabsf(v)) - ilogbf(len);
-                    const int bin = (exponent - REPEAT_BIN_LOW) / REPEAT_BIN_WIDTH;
-                    TEST_ASSERT_TRUE(bin >= 0 && bin < REPEAT_BIN_COUNT);
-                    bins[bin]++;
-                }
-            }
+            assert_repeat_sample(v, len, bins);
         }
     }
     for (int bin = 0; bin < REPEAT_BIN_COUNT; bin++) {
@@ -1636,7 +1644,7 @@ test_integer_half_chords_int32(void) {
     }
 }
 
-/* These component sweeps use host double references. */
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
 #ifndef DEVICE_BUILD
 #define FIXED_RSQRT_SWEEP_STRIDE    (UINT32_C(1) << 20)
 #define FIXED_NLERP_COMPONENT_ERROR 8.0
@@ -1653,10 +1661,12 @@ test_fixed_rsqrt_seed_provenance(void) {
     }
 }
 
-static void
+static double
 assert_fixed_rsqrt_reference(uint32_t m) {
     const double exact = ldexp(1.0, MATHX_RSQRT_SHIFT + MATHX_RSQRT_WORD_BITS / 2) / sqrt((double)m);
-    TEST_ASSERT_TRUE(fabs(mathx_rsqrt_q30(m) - exact) <= exact * MATHX_RSQRT_Q30_RELATIVE_LIMIT);
+    const double relative = fabs(mathx_rsqrt_q30(m) / exact - 1.0);
+    TEST_ASSERT_TRUE(relative <= MATHX_RSQRT_Q30_RELATIVE_LIMIT);
+    return relative;
 }
 
 static void
@@ -1671,9 +1681,18 @@ test_fixed_rsqrt_seed_boundaries_and_stride(void) {
             }
         }
     }
-    for (uint64_t m = MATHX_RSQRT_MIN; m < end; m += FIXED_RSQRT_SWEEP_STRIDE) {
-        assert_fixed_rsqrt_reference((uint32_t)m);
+    double maximum = 0.0;
+    for (uint64_t start = MATHX_RSQRT_MIN; start < end; start += segment) {
+        double bin_maximum = 0.0;
+        for (uint64_t m = start; m < start + segment; m += FIXED_RSQRT_SWEEP_STRIDE) {
+            const double relative = assert_fixed_rsqrt_reference((uint32_t)m);
+            bin_maximum = fmax(bin_maximum, relative);
+        }
+        maximum = fmax(maximum, bin_maximum);
+        printf("MATHERRORBIN name=mathx_rsqrt_q30 type=x x=%g max=%.12g unit=relative\n", (double)(start + segment / 2),
+               bin_maximum);
     }
+    printf("MATHERROR name=mathx_rsqrt_q30 type=x max=%.12g unit=relative method=proof\n", maximum);
 }
 
 static void
@@ -1788,8 +1807,7 @@ test_fixed_quaternion_normalize_zero_and_unit_path(void) {
     TEST_ASSERT_EQUAL_INT32(safe.w, unit.w);
 }
 
-#define FAST_PATH_PHASE_BIN    (TRIG_TURN / (sizeof trig_sin_quarter / sizeof trig_sin_quarter[0] - 1))
-#define FAST_PATH_FIXED_STRIDE (UINT32_C(1) << 20)
+#define FAST_PATH_PHASE_BIN (TRIG_TURN / (sizeof trig_sin_quarter / sizeof trig_sin_quarter[0] - 1))
 
 static void
 test_trig_sin_error_bins(void) {
@@ -1814,43 +1832,10 @@ test_trig_sin_error_bins(void) {
     TEST_ASSERT_TRUE(maximum <= TRIG_SIN_LSB_LIMIT);
 }
 
-static void
-test_fixed_rsqrt_error_bins(void) {
-    const uint64_t end = UINT64_C(1) << MATHX_RSQRT_WORD_BITS;
-    const uint32_t segment = UINT32_C(1) << (MATHX_RSQRT_WORD_BITS - MATHX_RSQRT_SEED_BITS);
-    double maximum = 0.0;
-    for (uint64_t start = MATHX_RSQRT_MIN; start < end; start += segment) {
-        double bin_maximum = 0.0;
-        for (uint64_t m = start; m < start + segment; m += FAST_PATH_FIXED_STRIDE) {
-            for (int edge = 0; edge <= 1; edge++) {
-                const uint32_t input = (uint32_t)(edge ? m + FAST_PATH_FIXED_STRIDE - 1 : m);
-                const uint32_t got = mathx_rsqrt_q30(input);
-                TEST_ASSERT_TRUE(mathx_rsqrt_midpoint(input, got - 1));
-                TEST_ASSERT_FALSE(mathx_rsqrt_midpoint(input, got));
-                const double exact = ldexp(1.0, MATHX_RSQRT_SHIFT + MATHX_RSQRT_WORD_BITS / 2) / sqrt((double)input);
-                const double relative = fabs((double)got / exact - 1.0);
-                if (relative > bin_maximum) {
-                    bin_maximum = relative;
-                }
-            }
-        }
-        if (bin_maximum > maximum) {
-            maximum = bin_maximum;
-        }
-        printf("MATHERRORBIN name=mathx_rsqrt_q30 type=x x=%g max=%.12g unit=relative\n", (double)(start + segment / 2),
-               bin_maximum);
-    }
-    printf("MATHERROR name=mathx_rsqrt_q30 type=x max=%.12g unit=relative method=proof\n", maximum);
-    TEST_ASSERT_TRUE(maximum <= MATHX_RSQRT_Q30_RELATIVE_LIMIT);
-}
-
 void
 suite_math_numbers(void) {
-#if defined(DEVICE_BUILD) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
-    printf("MATHTARGET target=MATH_TARGET_ESP32S3 execution=hardware\n");
-#endif
+    math_target_report();
     RUN_TEST(test_trig_sin_error_bins);
-    RUN_TEST(test_fixed_rsqrt_error_bins);
     RUN_TEST(test_fixed_scalar_rsqrt_nonpositive);
     RUN_TEST(test_fixed_quaternion_normalize_zero_and_unit_path);
 #ifndef DEVICE_BUILD

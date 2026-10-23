@@ -17,6 +17,14 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "math/scalar/math_calls.h"
+
+#if defined(CONFIG_MATH_COUNT_CALLS) && CONFIG_MATH_COUNT_CALLS
+#define FRAME_COST_INSTRUMENTED 1
+#else
+#define FRAME_COST_INSTRUMENTED 0
+#endif
+
 #define FRAME_COST_SLOTS          12
 
 /* Distinct names remembered for the console to list and check an arm

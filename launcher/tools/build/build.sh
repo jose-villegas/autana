@@ -153,10 +153,6 @@ quiet_finish() {
 }
 trap quiet_finish EXIT
 
-if [ "$MATH_COUNT_CALLS" -eq 1 ] && { [ "$VARIANT" != diag ] || [ "$PERF_SCOPE" -ne 1 ]; }; then
-    echo "--math-count-calls needs diag --perf-scope" >&2
-    exit 2
-fi
 VARIANT_OPTIONS=""
 if [ "$AUTORUN" -eq 1 ]; then
     VARIANT_OPTIONS="$VARIANT_OPTIONS --autorun"
