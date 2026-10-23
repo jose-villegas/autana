@@ -324,7 +324,9 @@ Two files, the same declare-then-source shape a report script uses:
   checking each image, converting to PNG) is that one procedure. A scene that
   reads asset packs also declares `scene_assets`, the folders whose roots
   `build_pack.py` writes as packs beside the renderer; a folder with no asset
-  roots fails the build.
+  roots fails the build. `scene_renderer=1` links the renderer: every `.c`
+  below the folders `launcher/main/renderer_folders.txt` names, the list the
+  firmware and the host tests build too.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.

@@ -7,7 +7,6 @@
 #pragma once
 
 #include <math.h>
-#include <stdbool.h>
 
 #include "math/linear/projectf.h"
 #include "math/scalar/mathf.h"
@@ -41,27 +40,4 @@ r3d_project_screen(vec3f_t p, const projectf_t* lens, int* screen_x, int* screen
     const vec2f_t offset = projectf_offset(lens, p);
     *screen_x = (int)lens->cx + r3d_pixel_offset(offset.x);
     *screen_y = (int)lens->cy - r3d_pixel_offset(offset.y);
-}
-
-/* False when the point is at or behind the near plane. */
-static inline bool
-r3d_project_point_cs(vec3f_t p, const projectf_t* lens, int* screen_x, int* screen_y) {
-    if (p.z <= lens->near_z) {
-        return false;
-    }
-    r3d_project_screen(p, lens, screen_x, screen_y);
-    return true;
-}
-
-/* Clips to near plane; avoids screen wrap. Returns false if segment is at or
- * behind the plane. */
-static inline bool
-r3d_project_segment_cs(vec3f_t p0, vec3f_t p1, const projectf_t* lens, int* ax, int* ay, int* bx, int* by) {
-    if (!projectf_clip_near(lens->near_z, &p0, &p1)) {
-        return false;
-    }
-
-    r3d_project_screen(p0, lens, ax, ay);
-    r3d_project_screen(p1, lens, bx, by);
-    return true;
 }

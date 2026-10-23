@@ -124,7 +124,8 @@ report_rows(bool rotating) {
         frame_t f = {0};
         gravity_reset(&f.gravity);
         shake_reset(&f.shake);
-        float warm = 0, cold = 0;
+        float warm = 0;
+        float cold = 0;
         for (size_t i = 0; i < MOTION_FRAME_COUNT; i++) {
             f.motion = motion[i];
             frame_t next = f;
