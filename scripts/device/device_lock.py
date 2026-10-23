@@ -387,17 +387,18 @@ class Held(dict):
 class LockStore:
     """A key is a board's USB serial number or the host-wide HEAVY resource."""
 
-    def __init__(self, root=None, now=time.time, is_alive=process_alive):
+    def __init__(self, root=None, now=time.time, is_alive=process_alive, *, board_observer=False):
         self.root = Path(root) if root else default_root()
         self.explicit_root = root is not None
+        self.board_observer = board_observer
         self.now = now
         self.is_alive = is_alive
 
     def key_root(self, board):
         return heavy_root() if board == HEAVY and not self.explicit_root else self.root
 
-    def resource_now(self, board, *, foreign=False):
-        if board != HEAVY and not foreign:
+    def resource_now(self, board):
+        if board != HEAVY and not self.board_observer:
             return self.now()
         root = self.key_root(board)
         root.mkdir(parents=True, exist_ok=True)
@@ -578,8 +579,7 @@ class LockStore:
 
     def is_stale(self, lock, stale_seconds):
         board = lock.get("board")
-        now = (self.resource_now(board, foreign=True) if board != HEAVY and lock.get("host") != host_identity()
-               else self.resource_now(board))
+        now = self.resource_now(board)
         return now - lock["heartbeat_at"] > stale_seconds
 
     def reclaim_reason(self, lock, stale_seconds):
@@ -588,8 +588,7 @@ class LockStore:
             expires = lock.get("expires_at")
             if expires is not None:
                 board = lock.get("board")
-                now = (self.resource_now(board, foreign=True) if board != HEAVY and lock.get("host") != host_identity()
-                       else self.resource_now(board))
+                now = self.resource_now(board)
                 return "hold lapsed" if now >= expires else ""
             if not lock.get("until_released"):
                 return ""
