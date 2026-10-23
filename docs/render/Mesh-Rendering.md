@@ -345,6 +345,7 @@ fills its spans without those clamps, which would change nothing there.
 
 Cameras start with `SMALL_FILL_SMOOTH` (4/0 FLAT), preserving the smooth rendering checksum.
 Apps opt into `SMALL_FILL_FAST` (12/16 FLAT) for the measured frame-cost gains.
+`SMALL_FILL_FAST_DITHER` and `SMALL_FILL_FAST_GRAIN` keep its ceiling and gate with the DITHER or GRAIN style.
 Eligible triangles skip plane setup and use one depth, with colour from the camera's style.
 The camera owns the bounding-box ceiling, colour gate and style;
 `render_view_t.small_fill` carries them to the frame's row workers.
@@ -357,7 +358,7 @@ The camera owns the bounding-box ceiling, colour gate and style;
 | `style` | 0..2 | 0 | FLAT (0), GRAIN (1), DITHER (2) |
 <!-- /generated: small-fill-levers -->
 
-Both presets are defined in `render_view.h`. Opt in with the
+The presets are defined in `render_view.h`. Opt in with the
 [scene camera API](Scene-Manager.md#what-an-app-calls), or pass custom `small_fill_t` values:
 
 ```c

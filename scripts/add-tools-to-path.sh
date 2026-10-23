@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Puts this checkout's tools/ folder on the user's PATH, so `autana` runs
-# from any terminal, and proves it did. See docs/tools/Autana-CLI.md.
+# from any terminal, and proves it did. See docs/cli/README.md.
 #
 #   scripts/add-tools-to-path.sh            # add, then verify
 #   scripts/add-tools-to-path.sh --check    # verify only, change nothing

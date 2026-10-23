@@ -75,7 +75,7 @@ typedef struct app {
     void (*diagnostic_json)(char* out, size_t len);
 
     /* Opt-in, NULL unless an app declares one with APP_CONSOLE_PTR() above.
-     * See docs/tools/App-Commands.md. */
+     * See docs/cli/App-Commands.md. */
     const app_console_t* console;
 
     /* The registry's link, set by app_register(); an app never sets it. */
