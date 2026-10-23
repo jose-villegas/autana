@@ -7,12 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
   pull_request:
-    paths:
-      - 'launcher/**'
-      - 'scripts/lib/console_protocol.py'
-      - 'scripts/lib/device_capture.py'
-      - '.github/workflows/icount-ratchet.yml'
-      - '.github/actions/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
@@ -22,13 +16,35 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      icount-ratchet: ${{ steps.affected.outputs.icount-ratchet }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job icount-ratchet
+
   icount-ratchet:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.icount-ratchet == 'true') }}
     name: Instruction budgets
     runs-on: ubuntu-24.04
     # Headroom for a cold emulator build.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/patched-qemu
         with:
           # Capture ceiling.
@@ -56,10 +72,14 @@ jobs:
             launcher/build.qemu.shell/config/sdkconfig.json
           if-no-files-found: error
 
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
+
   console-tests:
     name: Console suite, YAML recipe and lifecycle model
     needs: icount-ratchet
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.icount-ratchet.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
