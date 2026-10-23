@@ -184,8 +184,10 @@ mathf_max(float a, float b) {
     return a < b ? b : a;
 }
 
-/* The reciprocal bound keeps the estimated floor within one integer. */
+/* Reciprocal and product rounding must leave the floor within one integer. */
 #define MATHF_REPEAT_FAST_QUOTIENT 0x1p22F
+_Static_assert((MATHF_RECIP_ULP_LIMIT + 0.5F) * MATHF_REPEAT_FAST_QUOTIENT * FLT_EPSILON < 1.0F,
+               "repeat quotient guard exceeds the reciprocal error bound");
 
 static inline float
 mathf_repeat(float v, float len) {
@@ -197,7 +199,7 @@ mathf_repeat(float v, float len) {
 #if !defined(__XTENSA__) || CONFIG_MATH_FPU_FUSED_MADD
     const float reciprocal = mathf_recip(len);
     const float quotient = v * reciprocal;
-    if (fabsf(quotient) < MATHF_REPEAT_FAST_QUOTIENT) {
+    if (fabsf(quotient) < MATHF_REPEAT_FAST_QUOTIENT && len <= FLT_MAX) {
         float q = (float)(int32_t)quotient;
         if (q > quotient) {
             q -= 1.0F;

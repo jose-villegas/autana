@@ -1060,7 +1060,7 @@ assert_repeat_and_wrap_bits(float v, float len) {
 
 static void
 test_mathf_repeat_and_wrap_reference_edges(void) {
-    static const float lengths[] = {FLT_TRUE_MIN, FLT_MIN / 2.0F, FLT_MIN, 0.1F, 1.0F, 4.0F, FLT_MAX};
+    static const float lengths[] = {FLT_TRUE_MIN, FLT_MIN / 2.0F, FLT_MIN, 0.1F, 1.0F, 4.0F, FLT_MAX, INFINITY};
     for (size_t i = 0; i < sizeof lengths / sizeof lengths[0]; i++) {
         const float len = lengths[i];
         const float boundary = MATHF_REPEAT_FAST_QUOTIENT * len;
@@ -1084,6 +1084,27 @@ test_mathf_repeat_and_wrap_reference_edges(void) {
                                 NAN};
         for (size_t j = 0; j < sizeof values / sizeof values[0]; j++) {
             assert_repeat_and_wrap_bits(values[j], len);
+        }
+    }
+}
+
+static void
+test_mathf_repeat_and_wrap_near_quotient_guard(void) {
+    static const int exponents[] = {-100, -20, 0, 20, 100};
+    const int sample_count = 32;
+    const float first_quotient = MATHF_REPEAT_FAST_QUOTIENT / 2.0F;
+    const float last_quotient = MATHF_REPEAT_FAST_QUOTIENT - 1.0F;
+    for (size_t i = 0; i < sizeof exponents / sizeof exponents[0]; i++) {
+        const float len = ldexpf(1.3F, exponents[i]);
+        for (int sample = 0; sample < sample_count; sample++) {
+            const float k =
+                first_quotient + (last_quotient - first_quotient) * (float)sample / (float)(sample_count - 1);
+            const float v = k * len;
+            const float values[] = {v,  nextafterf(v, -INFINITY),  nextafterf(v, INFINITY),
+                                    -v, nextafterf(-v, -INFINITY), nextafterf(-v, INFINITY)};
+            for (size_t j = 0; j < sizeof values / sizeof values[0]; j++) {
+                assert_repeat_and_wrap_bits(values[j], len);
+            }
         }
     }
 }
@@ -1598,6 +1619,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_mathf_repeat);
     RUN_TEST(test_mathf_repeat_and_wrap_reference_edges);
     RUN_TEST(test_mathf_repeat_and_wrap_reference_sweep);
+    RUN_TEST(test_mathf_repeat_and_wrap_near_quotient_guard);
     RUN_TEST(test_mathf_repeat_preserves_decimal_remainders);
     RUN_TEST(test_mathf_wrap);
     RUN_TEST(test_mathf_min);
