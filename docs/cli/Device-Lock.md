@@ -64,6 +64,31 @@ sequenceDiagram
   `reclaimed lock from sam@bench:4120 for autana monitor (dead process)` and
   carries on.
 
+## The commands
+
+Host only; they never talk to the firmware. The lock lives on this machine, so
+it guards sessions and CI jobs on one PC, not two PCs plugged into one board.
+`autana help lock` lists the same commands.
+
+<!-- generated: cli-lock check: python scripts/autana/cli_reference.py --check -->
+| Command | What it does |
+|---|---|
+| `autana devices [--json]` | short ids, serials, ports and availability; the same JSON as status --json |
+| `autana status [--json]` | every board and the heavy key: holder, command, since when, estimated free time and queue |
+| `autana lock run --heavy -- <command...>` | hold the host-wide heavy key; nested builds reuse its token; acquire a board before heavy when both are needed |
+| `autana lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>` | hold the board while a command runs |
+| `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] [--estimate <seconds>] <note...>` | wait for the board and print a token; a timed hold lasts at most an hour |
+| `autana lock wait` | wait until the board is free without taking it; --wait caps the wait |
+| `autana lock release [<token>]` | release a hold early; the token is optional inside a hold |
+| `autana lock hand [--until-back <seconds>] <note...>` | reserve the board for a person for an hour; run again to renew |
+| `autana lock take-back` | clear that reservation |
+<!-- /generated: cli-lock -->
+
+Give `--wait S` to bound the heavy-lock wait in seconds. Name a board with
+`--board A308`, the last four hex digits of its serial; with several plugged
+in, jobs that flash pick a free one and the others need `--board`
+([which board](#which-board)).
+
 ## Holding the board across commands
 
 `lock run`, `lock take`, and `lock hand` use the same board lock and FIFO queue.
@@ -200,7 +225,7 @@ work down this list.
    (59m left, unless renewed; ...)`.
 
 3. **Do not wait.** For a command that should fail rather than queue, put
-   `--wait 0` before it ([Settings](Autana-CLI.md#settings)):
+   `--wait 0` before it ([Settings](Settings.md)):
 
    ```text
    autana --wait 0 flash
@@ -517,6 +542,6 @@ stateDiagram-v2
 
 - [Flash-and-Captures.md](Flash-and-Captures.md): what a flash proves, how a
   measurement holds one lock, and where captures land.
-- [Autana-CLI.md](Autana-CLI.md): the `autana` command built on this lock.
+- [The autana command](README.md): every command that takes this lock.
 - [Flashing-and-Toolchain.md](../notes/Flashing-and-Toolchain.md): resets,
   download mode and recovery on this board.
