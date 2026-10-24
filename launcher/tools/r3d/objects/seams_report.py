@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from asset.asset_pack import build_pack  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
+from build.c_header import read_define  # noqa: E402
 from r3d import scene_asset  # noqa: E402
 from r3d.import_settings import load_import_settings, load_scene, match_meshes  # noqa: E402
 from r3d.lit_mesh import POSITION_SCALE  # noqa: E402
@@ -32,6 +33,8 @@ from r3d.objects.contact import contact_graph
 from r3d.objects.instances_figure import project_points  # noqa: E402
 from r3d.objects.objects_report import REPO, masked_objects  # noqa: E402
 from r3d.poses import camera_basis  # noqa: E402
+
+ASSET_DIR_ENV = read_define(REPO / 'launcher/main/asset/asset_store.h', 'ASSET_STORE_DIR_ENV')
 
 DEFAULT_DIRECTION = (0.0, 0.0, -1.0)
 DEFAULT_LENS = 0.6
@@ -82,7 +85,7 @@ def render_contacts(out, host, job, scene, cameras, geometries):
         for camera in cameras:
             subprocess.run([str(host), '--scene', PACK_NAME, '--camera', camera.name, '--frames', str(RENDER_FRAMES),
                             '-o', str(folder / f'{camera.name}.bmp')], check=True,
-                           env={**os.environ, 'AUTANA_ASSET_DIR': str(folder)})
+                           env={**os.environ, ASSET_DIR_ENV: str(folder)})
             image_path = folder / f'{camera.name}.bmp'
             with Image.open(image_path) as image:
                 pose = np.concatenate([camera.position, -camera.matrix[:, 2]])

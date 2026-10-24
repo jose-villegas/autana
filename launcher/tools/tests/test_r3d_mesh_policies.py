@@ -14,13 +14,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.import_settings import SettingsError
 from r3d import import_settings
 from r3d.simplify import Allocation, simplify
-
-
-def sphere(seed):
-    points = np.random.default_rng(seed).normal(size=(120, 3))
-    points /= np.linalg.norm(points, axis=1)[:, None]
-    faces = ConvexHull(points).simplices
-    return points, faces
+from soup import edge_counts, sphere, split_sphere
 
 
 class MeshPolicyTests(unittest.TestCase):
@@ -69,11 +63,8 @@ class MeshPolicyTests(unittest.TestCase):
 
     def test_weld_adds_to_touched_rest_pass(self):
         from r3d import simplify as owner
-        p, t = sphere(11)
-        ownership = (p[t].mean(axis=1)[:, 0] > 0).astype(int)
         report = {}
-        allocation = Allocation(tri_o=ownership, object_names=('left', 'right'), material_names=('plain',), report=report,
-                                meshes=({'match': {'object': 'left'}, 'triangles': 40, 'seam': 'weld'},))
+        p, t, _, allocation = split_sphere(11, 40, 'weld', report)
         with patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
             q, _, faces, _ = simplify(p, np.full_like(p, 100), t, np.zeros(len(t), dtype=int), 80,
                                        colour_deviation=1, allocation=allocation)
@@ -81,8 +72,7 @@ class MeshPolicyTests(unittest.TestCase):
         self.assertLess(len(faces), len(t))
         self.assertEqual(report['requested_scene_total'], 120)
         self.assertEqual(report['scene_total'], len(faces))
-        edges = np.sort(np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]]), axis=1)
-        _, counts = np.unique(edges, axis=0, return_counts=True)
+        counts = edge_counts(faces)
         np.testing.assert_array_equal(counts, np.full(len(counts), 2))
 
     def test_no_rules_parity_with_material_shares(self):
@@ -139,18 +129,14 @@ class MeshPolicyTests(unittest.TestCase):
                 if seam == 'lock':
                     _, inverse = np.unique(q, axis=0, return_inverse=True)
                     welded = inverse[out]
-                    edges = np.sort(np.concatenate([welded[:, [0, 1]], welded[:, [1, 2]], welded[:, [2, 0]]]), axis=1)
-                    _, counts = np.unique(edges, axis=0, return_counts=True)
+                    counts = edge_counts(welded)
                     np.testing.assert_array_equal(counts, np.full(len(counts), 2))
             self.assertEqual(results['lock'], [True, True])
             self.assertNotEqual(results['free'], [True, True])
 
     def test_ceiling_counts_lock_excess(self):
-        p, t = sphere(12)
-        owners = (p[t].mean(axis=1)[:, 0] > 0).astype(int)
         report = {}
-        allocation = Allocation(tri_o=owners, object_names=('left', 'right'), material_names=('plain',), report=report,
-                                meshes=({'match': {'object': 'left'}, 'triangles': 10, 'seam': 'lock'},))
+        p, t, _, allocation = split_sphere(12, 10, 'lock', report)
         simplify(p, np.full_like(p, 100), t, np.zeros(len(t), dtype=int), 10, colour_deviation=1, allocation=allocation)
         self.assertGreater(report['scene_total'], report['requested_scene_total'])
         self.assertGreater(sum(row['locked_border_excess'] for row in report['passes']), 0)
