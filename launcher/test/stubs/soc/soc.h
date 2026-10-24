@@ -1,3 +1,4 @@
+/* Host stub of ESP-IDF soc/soc.h: register access, discarded. */
 #pragma once
 #include <stdint.h>
 

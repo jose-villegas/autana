@@ -21,7 +21,7 @@ formatting or naming rules; commands are in
 | Tasks, cores, spinlocks, atomics, queues | [Concurrency](Concurrency.md) |
 | Driver, HAL and register access, wrapping a driver function | [Register access](Register-Access.md) |
 | Placing code or data with a linker fragment | [Linker fragments](../memory/Linker-Fragments.md) |
-| Helpers that already have an owner | [Shared helpers](../tools/Shared-Helpers.md) |
+| Helpers that already have an owner | [Code search](../tools/Code-Search.md) |
 
 ## Mechanical rules
 
@@ -39,7 +39,9 @@ prose or change the formatter in its own reviewed PR; never hand-format around i
 | Take the formatter's spacing, continuation, blank-line and `case` indentation. | |
 | Let clang-format sort each include block, system headers first; keep the blank lines between blocks. | Sorting is per block: the blank line after the own header keeps it first. |
 
+<!-- generated: c-style-clamp-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Clamp a pixel coordinate to its upper bound. */
 static int
 clamp_px(int value, int max_px) {
     if (value > max_px) {
@@ -48,6 +50,7 @@ clamp_px(int value, int max_px) {
     return value;
 }
 ```
+<!-- /generated: c-style-clamp-example -->
 
 Check, then format, only the first-party files you touched; never the whole tree or
 vendored or generated sources:
@@ -85,7 +88,7 @@ scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check 
 
 | Rule | Gate |
 |---|---|
-| Check the [shared-owner catalogue](../tools/Shared-Helpers.md) before writing a helper; extend an owner that fits. | |
+| Search for an owner before writing a helper ([code search](../tools/Code-Search.md)); extend one that fits. | `python scripts/docs/code_search.py --shared <words>` |
 | Never grow a file pair's copied tokens; extract a shared owner instead. | `python scripts/gates/check_clones.py` (jscpd: `npm ci --prefix scripts/gates`) |
 | Never restate an integer a file already sees through its `#include "..."` chain, or a firmware string a Python tool repeats; use the named constant. | `python scripts/gates/check_magic_numbers.py` |
 | Mark a deliberate literal on its line with `/* magic: reason */` (`# magic: reason` in Python); the reason may not be empty. | `check_magic_numbers.py` |
@@ -211,12 +214,25 @@ scripts/gates/check-comment-length.sh --files         # per-file counts
 - Never return while holding part of what a function acquired: acquire all, test once, release everything on the one failure path.
 - Keep return codes small: no project-wide error enum; `esp_err_t`, `bool`, or a module enum only for three or more outcomes callers treat differently.
 
+<!-- generated: c-style-acquire-all-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-uint8_t* a = malloc(n);
-uint8_t* b = malloc(n);
-if (a == NULL || b == NULL) {
-    free(a); /* free(NULL) is a no-op */
-    free(b);
-    return false;
+/* Return both buffers to the caller, or release every partial acquisition. */
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+static bool
+acquire_all(size_t n, uint8_t** out_a, uint8_t** out_b) {
+    uint8_t* a = malloc(n);
+    uint8_t* b = malloc(n);
+    if (a == NULL || b == NULL) {
+        free(a); /* free(NULL) is a no-op */
+        free(b);
+        return false;
+    }
+    *out_a = a;
+    *out_b = b;
+    return true;
 }
 ```
+<!-- /generated: c-style-acquire-all-example -->

@@ -28,23 +28,25 @@ class MathBenchTableTests(unittest.TestCase):
         errors = bench.parse_errors(text)
         self.assertEqual("0 ulp (sweep)", errors["normalize (vec3)", "f"])
         self.assertEqual("5.94258e-05 relative (proof)", errors["arbitrary label", "x"])
-        rows = [("vector_f", "normalize (vec3)", "f", self.batch, "vector"),
-                ("vector_x", "normalize (vec3)", "x", self.batch, "vector"), ("other_x", "arbitrary label", "x", self.batch, "vector")]
-        table = bench.render_table(rows, {}, {}, {"vector_f": "-", "vector_x": "-", "other_x": "-"}, errors=errors)
-        lines = table.splitlines()
-        self.assertTrue(next(line for line in lines if line.startswith("| normalize (vec3) | f")).endswith("0 ulp (sweep) |"))
-        self.assertTrue(next(line for line in lines if line.startswith("| normalize (vec3) | x")).endswith("- |"))
 
-    def test_scalar_without_error_capture_has_no_invented_bound(self):
+    def test_scalar_table_links_rendered_error(self):
         rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch, "scalar")]
-        table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"})
-        self.assertTrue(next(line for line in table.splitlines() if line.startswith("| mathf_rsqrt |")).endswith("- |"))
+        table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"},
+                                   errors={("mathf_rsqrt", "f"): "1 ulp (proof)"},
+                                   error_links={"rsqrt_f": "Fast-Paths.md#mathf-rsqrt"})
+        self.assertIn("| mathf_rsqrt | f | - | - | - | device-only instruction | - | rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt) |", table)
+        self.assertIn("max error", table)
 
-    def test_error_measurement_without_a_row_raises(self):
-        errors = bench.parse_errors("MATHERROR name=normalise (vec3) type=f max=1 unit=ulp method=sweep\n")
-        rows = [("vector_f", "normalize (vec3)", "f", self.batch, "vector")]
-        with self.assertRaisesRegex(ValueError, "match no row"):
-            bench.render_table(rows, {}, {}, {"vector_f": "-"}, errors=errors)
+    def test_grouped_table_keeps_errors_not_rendered_in_fast_paths(self):
+        links = {"dot_f": "Fast-Paths.md#example", "sinf_f": "Fast-Paths.md#example"}
+        table = bench.render_table(self.rows, {}, {}, {"dot_f": "-", "sinf_f": "-"}, links=links,
+                                   errors={("dot (vec3)", "f"): "1 ulp (sweep)"})
+        self.assertLess(table.index("#### Vector"), table.index("#### Libm"))
+        self.assertIn("\n\n#### Libm\n", table)
+        self.assertIn("[dot (vec3)](Fast-Paths.md#example)", table)
+        self.assertIn("[sinf](Fast-Paths.md#example)", table)
+        self.assertIn("| 1 ulp (sweep) |", table)
+        self.assertIn("max error", table)
 
     def test_malformed_and_duplicate_error_measurements_raise(self):
         good = "MATHERROR name=mathf_rsqrt type=f max=1 unit=ulp method=proof\n"
@@ -86,7 +88,7 @@ class MathBenchTableTests(unittest.TestCase):
     def test_ratchet_join_and_cycles_per_instruction(self):
         build, measured = bench.parse_capture(self.capture, self.rows)
         table = bench.render_table(self.rows, measured, {"math_dot_f": 448},
-                                   {"dot_f": "madd.s", "sinf_f": "-"}, build)
+                                   {"dot_f": "madd.s", "sinf_f": "-"})
         self.assertIn("| dot (vec3) | f | 12.0 | 24.0 | 6.0 | 7.0 | 2.0 | madd.s |", table)
         self.assertEqual("abcdef-diag", build)
         with self.assertRaisesRegex(ValueError, "baseline"):
@@ -139,7 +141,7 @@ class MathBenchTableTests(unittest.TestCase):
             bench.parse_disassembly("", self.rows)
 
     def test_operation_counts_come_from_each_row(self):
-        rows = [("dot_f", "dot (vec3)", "f", 2, "vector"), ("dot_f32_n256_f", "dot_f32_n256", "f", 1, "vector")]
+        rows = [("dot_f", "dot (vec3)", "f", 2, "vector"), ("dot_f32_n256_f", "dot_f32_n256", "f", 1, "calibration")]
         table = bench.render_table(rows, {}, {"math_dot_f": 7, "math_dot_f32_n256_f": 13},
                                    {"dot_f": "-", "dot_f32_n256_f": "-"})
         self.assertIn("| dot (vec3) | f | - | - | - | 3.5 |", table)
