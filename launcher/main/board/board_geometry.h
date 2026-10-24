@@ -3,8 +3,8 @@
  * host checks. No driver includes, so it links on a host.
  *
  * Device axes: x right, y up the screen, z out of the glass toward the viewer; origin
- * at the centre of the glass. Lengths in millimetres. Shapes come from Waveshare's 3D
- * model of the ESP32-S3-Touch-AMOLED-1.8; chip axes from the QMI8658C datasheet.
+ * at the centre of the glass. Lengths in millimetres. Shapes come from the ESP32-S3-Touch-
+ * AMOLED-1.8's Waveshare 3D model; chip axes from the QMI8658C datasheet.
  */
 #pragma once
 
@@ -13,7 +13,8 @@
 #define BOARD_DEVICE_HEIGHT_MM        41.2F
 /* Plan-view corner radius of that outline (3D model, circle fit to the corner spline). */
 #define BOARD_DEVICE_CORNER_RADIUS_MM 6.4F
-/* Glass front to the PCB's back face: 6.2 mm module and stack, 1.2 mm PCB (3D model). */
+/* Glass front to the PCB's back face: 6.2 mm module and stack, 1.2 mm PCB (3D model);
+ * a placeholder until measured on a board. */
 #define BOARD_DEVICE_DEPTH_MM         7.4F
 
 /* QMI8658C package, 2.5 x 3.0 x 0.86 mm LGA (datasheet, page 1); the 3.0 mm side runs along chip X. */
