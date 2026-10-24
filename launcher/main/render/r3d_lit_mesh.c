@@ -200,10 +200,10 @@ r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_
         return ASSET_ERR_FORMAT;
     }
     const uint64_t bytes = (uint64_t)count * stride;
-    if (LCOL_HEADER_SIZE + bytes * sets != asset->size) {
+    if (LCOL_HEADER_SIZE + (bytes * sets) != asset->size) {
         return ASSET_ERR_BOUNDS;
     }
-    const void* colors = asset->data + LCOL_HEADER_SIZE + bytes * set;
+    const void* colors = asset->data + LCOL_HEADER_SIZE + (bytes * set);
     mesh->colors = vertex ? colors : NULL;
     mesh->face_colors = vertex ? NULL : colors;
     return ASSET_OK;
