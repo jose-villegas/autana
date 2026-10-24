@@ -35,14 +35,18 @@ def include_roots(launcher=LAUNCHER):
     return (pathlib.Path(launcher) / "main", *include_dirs(launcher))
 
 
+def requires_line(name):
+    """The declaration's one grammar: unindented, on one line, bare package names."""
+    return re.compile(r"^set\(" + re.escape(name) + r"_requires((?:[ \t]+\w+)*)[ \t]*\)[ \t]*$", re.M)
+
+
 def requires(package_dir):
     """The packages `package_dir` declares it uses, in its CMakeLists.txt order."""
     package_dir = pathlib.Path(package_dir)
     lists = package_dir / "CMakeLists.txt"
     if not lists.is_file():
         return ()
-    line = re.compile(r"^set\(" + re.escape(package_dir.name) + r"_requires((?:[ \t]+\w+)*)[ \t]*\)", re.M)
-    m = line.search(lists.read_text(encoding="utf-8"))
+    m = requires_line(package_dir.name).search(lists.read_text(encoding="utf-8"))
     return tuple(m.group(1).split()) if m else ()
 
 

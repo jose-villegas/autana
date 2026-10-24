@@ -576,8 +576,15 @@ def rule_package_requires(root, path, text):
     package = package_of(root, path)
     if package is None or path.name != "CMakeLists.txt" or path.parent.resolve() != package:
         return
-    number = next((n for n, line in enumerate(text.splitlines(), 1)
-                   if line.startswith(f"set({package.name}_requires")), 1)
+    declared = packages.requires_line(package.name)
+    any_declaration = re.compile(r"^\s*set\(\s*" + re.escape(package.name) + r"_requires\b")
+    number = 1
+    for n, line in enumerate(text.splitlines(), 1):
+        if any_declaration.match(line):
+            number = n
+            if not declared.match(line):
+                yield n, (f"{package.name}_requires is read only as one unindented line of bare package "
+                          f"names: set({package.name}_requires math)")
     for name in packages.requires(package):
         dep = package.parent / name
         if name == package.name:
