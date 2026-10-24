@@ -46,6 +46,10 @@ BINARY_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".otf", ".
                      ".dll", ".pyc", ".gz", ".zip", ".wav", ".mp3", ".mp4", ".pdf", ".glb"}
 
 
+# Generated checks consume compressed captures; snapshot them without treating them as text.
+DATA_EXTENSIONS = {".gz"}
+
+
 class Finding:
     def __init__(self, path, line, rule_id, severity, message, fixable):
         self.path = path

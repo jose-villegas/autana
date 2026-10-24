@@ -1,55 +1,17 @@
-/*
- * display: which way is "up", decided once for the whole shell.
- *
- * Orientation belongs to the physical device, not to any one app's panel, so
- * it is decided here and the shell applies it; every UI surface follows.
- * display.c has no IMU, no gfx, no ui: the gravity vector arrives already
- * read, which is what lets it link and run on a host. The shell's side is
- * display_shell.h.
- *
- * The hysteresis is the module, not a refinement of it. Snapping to whichever
- * of gx/gy is larger puts the boundary at 45 degrees, where a board held near
- * that angle flips the whole shell every frame the tilt wobbles across it. A
- * Schmitt trigger expressed directly in the gravity components replaces it:
- * DISPLAY_HYST_NUM/DEN is 7/4, a small-integer stand-in for tan(60 degrees),
- * and applying that one ratio against whichever quarter is current is what
- * yields "60 degrees out, 30 back" without needing a second constant.
- */
+/* display: board quarter names, panel geometry and shell display state. */
 #pragma once
 
 #include <stdbool.h>
-
-#include "math/linear/vec2i.h"
+#include <stdint.h>
 
 /* How far anything meant to be read sits from every panel edge: a reading
  * margin, not hidden pixels. The cover glass hides nothing along the straight
  * edges (an edge ruler read on the board) and only the rounded
  * corners below. */
-#define DISPLAY_PANEL_SAFE_INSET    15
+#define DISPLAY_PANEL_SAFE_INSET           15
 
 /* Measured on the panel's cover glass. */
-#define DISPLAY_PANEL_CORNER_RADIUS 42
-
-/* tan(60 deg) = 1.732..., approximated as a small integer ratio so the
- * hysteresis test is exact integer (cross-multiplied) arithmetic: no
- * division, no float, no rounding to reason about. See this header's
- * top comment for why one ratio, applied relative to whichever quarter
- * is currently committed, is enough to give both the 60-degrees-out and
- * the 30-degrees-back behaviour. */
-#define DISPLAY_HYST_NUM            7
-#define DISPLAY_HYST_DEN            4
-
-typedef struct {
-    /* Which quarter turn currently reads as "upright", numbered the
-     * same way draw_text_turned() and ui_transform_quarter_turn() do: 0
-     * upright, 1 top-to-bottom, 2 upside down, 3 bottom-to-top. The only
-     * state this module keeps. The hysteresis test above is a pure
-     * function of (quarter, gx, gy); nothing here accumulates over
-     * time or needs a clock, which is also why display_update() takes
-     * no dt: the caller controls how often it is called, and the decision
-     * itself does not care. */
-    int quarter;
-} display_t;
+#define DISPLAY_PANEL_CORNER_RADIUS        42
 
 /* Quarter names are board-wiring facts, measured with the orientation
  * overlay rather than derived from source.
@@ -58,30 +20,24 @@ typedef struct {
  *     1   Landscape              (USB connector at the top)
  *     2   Portrait, upside down
  *     3   Landscape, upside down */
-#define DISPLAY_PORTRAIT              0
-#define DISPLAY_LANDSCAPE             1
-#define DISPLAY_PORTRAIT_UPSIDE_DOWN  2
-#define DISPLAY_LANDSCAPE_UPSIDE_DOWN 3
+#define DISPLAY_PORTRAIT                   0
+#define DISPLAY_LANDSCAPE                  1
+#define DISPLAY_PORTRAIT_UPSIDE_DOWN       2
+#define DISPLAY_LANDSCAPE_UPSIDE_DOWN      3
 
-#define DISPLAY_PORTRAIT_NAME         "portrait"
-#define DISPLAY_LANDSCAPE_NAME        "landscape"
+#define DISPLAY_PORTRAIT_NAME              "portrait"
+#define DISPLAY_LANDSCAPE_NAME             "landscape"
+#define DISPLAY_PORTRAIT_UPSIDE_DOWN_NAME  "portrait upside down"
+#define DISPLAY_LANDSCAPE_UPSIDE_DOWN_NAME "landscape upside down"
 
-#define DISPLAY_QUARTER_COUNT         (DISPLAY_LANDSCAPE_UPSIDE_DOWN + 1)
+#define DISPLAY_QUARTER_COUNT              (DISPLAY_LANDSCAPE_UPSIDE_DOWN + 1)
 
 /* The shell starts landscape because that is this board's normal held
  * orientation. display_init() remains neutral; display_reset_quarter()
  * applies this physical-board choice. */
-#define DISPLAY_DEFAULT_QUARTER       DISPLAY_LANDSCAPE
+#define DISPLAY_DEFAULT_QUARTER            DISPLAY_LANDSCAPE
 
-/* Starts at quarter 0. There is no "unknown" orientation: readings correct a
- * wrong guess like any other change. */
-void display_init(display_t* d);
-
-/* Feed gravity in consistent screen-axis units. True means quarter changed,
- * so the caller must update its UI transform. */
-bool display_update(display_t* d, vec2i_t gravity);
-
-int display_quarter(const display_t* d);
+const char* display_quarter_name(int quarter);
 
 /* Returns the horizontal inset where a row meets a rounded canvas corner. */
 int display_panel_corner_inset(int radius, int canvas_height, int row);

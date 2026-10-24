@@ -192,7 +192,7 @@ run_pending_selftest_suite(const console_frame_request_t* requests) {
 
 static void
 apply_display_orientation(int64_t now_us) {
-    if (display_sample_orientation(now_us, input_read_gravity)) {
+    if (display_sample_orientation(now_us, input_read_acceleration)) {
         ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
         gfx_request_full_redraw();
     }
@@ -422,6 +422,9 @@ shell_run(void) {
 #endif
 
         input_poll(&input);
+        if (input.down) {
+            display_touch_now(now_us);
+        }
         apply_display_orientation(now_us);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
