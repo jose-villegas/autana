@@ -514,7 +514,7 @@ class LockTests(ClockStoreTests):
     def test_dead_lock_holder_on_other_host_is_not_reclaimed_by_pid(self):
         ticket = self.lock.enqueue("COM5", "remote", "flash", pid=1)
         device_lock.write_json(self.lock.lock_path("COM5"), {
-            "acquired_at": 1000, "heartbeat_at": 1000,
+            "acquired_at": 1000, "heartbeat_at": self.lock.resource_now("COM5"),
             "expected_build_id": "", "host": "another-host",
             "owner": "remote", "pid": 99, "port": "COM5", "purpose": "flash",
             "token": "old", "protocol": device_lock.LOCK_PROTOCOL,

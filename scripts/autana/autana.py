@@ -638,6 +638,10 @@ def melody(args):
     return int(check and any(not note["heard"] for note in result))
 
 
+def play(args):
+    return sound(["play", *args])
+
+
 def sound(args):
     prefix = "SOUND"
     code, replies = send(prefix + " " + " ".join(args), reply=prefix,
@@ -1824,8 +1828,10 @@ COMMAND_GROUPS = (
         one("framewatch", framewatch, "framewatch", "the frame watch as JSON: allocations, frees and log lines repeating frame after frame"),
     )),
     ("drive", "Drive", (
+        one("play", play, "play <pack>/<name> [loop] [gain]", "play a pack sound; alias for sound play"),
         Command("sound", sound, (
-            ("sound play <name> [loop] [gain]", "play a sound from the engine pack; gain is a percent, full gain when omitted; development builds"),
+            ("sound play <pack>/<name> [loop] [gain]",
+             "play a sound from a pack; a bare name means the engine pack; gain is a percent, full gain when omitted; development builds"),
             ("sound stop [voice|all]", "stop a voice or all voices; all when omitted"),
             ("sound stats", "voice states, dropped commands, amplifier state and RAM sizes"),
             ("sound onset <event> [hz] [gain]", "measure amplifier, start, stop and steal transients"))),

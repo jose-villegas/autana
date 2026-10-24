@@ -14,11 +14,9 @@
  * render loop runs on the main one would be two tasks driving one panel.
  */
 #include "console/console.h"
-#if CONFIG_LAUNCHER_SELFTEST
-#include "console/verbs/console_runsuite.h"
-#endif
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #if CONFIG_LAUNCHER_QEMU
@@ -33,6 +31,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
+#include "collections/strbuf.h"
 #include "core/timing.h"
 
 static const char* TAG = "console";
@@ -130,19 +129,6 @@ console_emit_line(const char* prefix, const char* payload) {
     emit_bytes("\n", 1);
 }
 
-/* Only RUNSUITE may use the long line; a handler written for CONSOLE_LINE_MAX
- * never sees more. */
-static bool
-runsuite_line(const char* line) {
-#if CONFIG_LAUNCHER_SELFTEST
-    const char* args;
-    return console_word_match(line, "runsuite", &args);
-#else
-    (void)line;
-    return false;
-#endif
-}
-
 static void
 queue_unclaimed_line(const char* line) {
     if (app_line_queue == NULL || xQueueSend(app_line_queue, line, 0) != pdTRUE) {
@@ -150,23 +136,16 @@ queue_unclaimed_line(const char* line) {
     }
 }
 
-/* The one buffer that reads a line. A self-test build's RUNSUITE carries
- * patterns, so its line is longer; every other verb is held to
- * CONSOLE_LINE_MAX (see console_task). */
-#if CONFIG_LAUNCHER_SELFTEST
-#define READER_LINE_MAX RUNSUITE_LINE_MAX
-#else
-#define READER_LINE_MAX CONSOLE_LINE_MAX
-#endif
+typedef struct {
+    int size;
+    char line[];
+} console_reader_t;
 
 static void
 console_task(void* arg) {
-    (void)arg;
-#if CONFIG_LAUNCHER_SELFTEST
-    static char line[READER_LINE_MAX];
-#else
-    char line[READER_LINE_MAX];
-#endif
+    console_reader_t* reader = arg;
+    char* line = reader->line;
+    const int line_max = reader->size;
     int len = 0;
     bool overflowed = false;
 
@@ -180,14 +159,17 @@ console_task(void* arg) {
             continue;
         }
         const bool was_overflowed = overflowed;
-        const bool complete = console_append_char_max(line, READER_LINE_MAX, &len, &overflowed, c);
+        const bool complete = console_append_char_max(line, line_max, &len, &overflowed, c);
         if (overflowed && !was_overflowed) {
-            ESP_LOGW(TAG, "console line too long (max %d) - dropped", READER_LINE_MAX - 1);
+            ESP_LOGW(TAG, "console line too long (max %d) - dropped", (int)line_max - 1);
         }
-        if (complete && strlen(line) >= CONSOLE_LINE_MAX && !runsuite_line(line)) {
-            ESP_LOGW(TAG, "console line too long (max %d) - dropped", CONSOLE_LINE_MAX - 1);
-        } else if (complete && !console_registry_handle_line(&shared, line, console_reply_stdio)) {
-            queue_unclaimed_line(line);
+        if (complete) {
+            const console_line_result_t result = console_registry_dispatch(&shared, line, console_reply_stdio);
+            if (result == CONSOLE_LINE_REJECTED) {
+                ESP_LOGW(TAG, "console line too long (max %d) - dropped", CONSOLE_LINE_MAX - 1);
+            } else if (result == CONSOLE_LINE_UNCLAIMED) {
+                queue_unclaimed_line(line);
+            }
         }
     }
 }
@@ -199,12 +181,12 @@ console_task(void* arg) {
 static void
 log_listening(void) {
     char line[192];
-    int n = snprintf(line, sizeof line, "listening for 'screenshot'");
-    for (const console_verb_t* entry = shared.first; entry != NULL && n < (int)sizeof line; entry = entry->next) {
-        if (strcmp(entry->name, "screenshot") == 0) {
-            continue;
+    strbuf_t text = strbuf_make(line, sizeof line);
+    strbuf_appendf(&text, "listening for 'screenshot'");
+    for (const console_verb_t* entry = shared.first; entry != NULL; entry = entry->next) {
+        if (strcmp(entry->name, "screenshot") != 0) {
+            strbuf_appendf(&text, ", '%s'", entry->name);
         }
-        n += snprintf(line + n, sizeof(line) - (size_t)n, ", '%s'", entry->name);
     }
     ESP_LOGI(TAG, "%s on the console", line);
 }
@@ -233,8 +215,16 @@ console_start(void) {
      * its time blocked waiting on bytes nobody is usually sending; when a
      * line does arrive there is nothing time-critical about noticing it a
      * frame or two later. */
-    const BaseType_t created = xTaskCreate(console_task, "console", 3072, NULL, 4, NULL);
+    const int line_max = console_registry_line_max(&shared);
+    console_reader_t* reader = malloc(sizeof *reader + (size_t)line_max);
+    if (reader == NULL) {
+        ESP_LOGE(TAG, "line allocation failed - listener not started");
+        return;
+    }
+    reader->size = line_max;
+    const BaseType_t created = xTaskCreate(console_task, "console", 3072, reader, 4, NULL);
     if (created != pdPASS) {
+        free(reader);
         ESP_LOGE(TAG, "xTaskCreate failed (out of memory?) - listener not started");
         return;
     }
