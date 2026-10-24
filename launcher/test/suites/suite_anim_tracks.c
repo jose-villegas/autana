@@ -16,6 +16,8 @@
 #include "test_pack.h"
 #include "unity.h"
 #ifndef DEVICE_BUILD
+#include "../anim_examples/camera_field.c"
+#include "../anim_examples/track.c"
 #include "asset/asset_file.h"
 #endif
 enum {
@@ -393,6 +395,40 @@ check_reference_row(const anim_tracks_t* tracks, const uint8_t* row) {
 }
 
 static void
+test_doc_track_advances_and_samples(void) {
+    asset_pack_t pack;
+    void* buffer = NULL;
+    open_probe(&pack, &buffer);
+    track_example_t s = {0};
+    TEST_ASSERT_TRUE(track_example_start(&s, &pack, "probe", "lamp"));
+    const uint32_t step_ms = 500;
+    track_example(&s, step_ms);
+    TEST_ASSERT_EQUAL_FLOAT((float)step_ms / 1000, anim_playhead_seconds(&s.playhead));
+    float expected[ANIM_WIDTH_MAX];
+    anim_track_sample(&s.move, anim_playhead_seconds(&s.playhead), expected);
+    TEST_ASSERT_EQUAL_FLOAT_ARRAY(expected, s.out, s.move.width);
+    TEST_ASSERT_FALSE(track_example_start(&s, &pack, "missing", "lamp"));
+    TEST_ASSERT_FALSE(track_example_start(&s, &pack, "probe", "missing"));
+    asset_file_release(buffer);
+}
+
+static void
+test_doc_camera_field_samples_fov(void) {
+    asset_pack_t pack;
+    void* buffer = NULL;
+    open_probe(&pack, &buffer);
+    anim_tracks_t clip;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&pack, "probe", &clip));
+    float fov[ANIM_WIDTH_MAX] = {0};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, camera_field_example(&clip, "lamp", 0, fov));
+    const float first_half_fov = 0.6F / 2;
+    TEST_ASSERT_FLOAT_WITHIN(2e-5F, tanf(first_half_fov), fov[0]);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, camera_field_example(&clip, "missing", 0, fov));
+    TEST_ASSERT_FLOAT_WITHIN(2e-5F, tanf(first_half_fov), fov[0]);
+    asset_file_release(buffer);
+}
+
+static void
 test_the_probe_clip_samples_as_the_python_sampler(void) {
     asset_pack_t pack;
     void* buffer = NULL;
@@ -437,6 +473,8 @@ suite_anim_tracks(void) {
     RUN_TEST(test_version_and_bounds);
     RUN_TEST(test_every_clip_in_the_boot_clip_s_pack_opens);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_doc_track_advances_and_samples);
+    RUN_TEST(test_doc_camera_field_samples_fov);
     RUN_TEST(test_the_probe_clip_samples_as_the_python_sampler);
     RUN_TEST(test_a_missing_clip_and_an_entry_of_another_type_are_told_apart);
 #endif
