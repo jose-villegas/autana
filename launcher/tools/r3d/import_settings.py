@@ -273,14 +273,11 @@ def load_geometry(table, steps):
                                      keep=number(thin["keep"], "geometry.thin.keep"))
     if "simplify" in table:
         simplify = table["simplify"]
-        if isinstance(simplify, dict):
-            for key in ("props", "props_share"):
-                if key in simplify:
-                    home = "[objects].props_share" if key == "props_share" else "[objects] overrides with triangles or importance"
-                    raise SettingsError(f"geometry.simplify.{key} was removed: use {home}")
-        check_keys(simplify, ("dense_edge", "seal_seams", "colour_deviation"), "geometry.simplify")
+        check_keys(simplify, ("dense_edge", "props", "props_share", "seal_seams", "colour_deviation"), "geometry.simplify")
         steps.simplify = SimpleNamespace(
             dense_edge=number(simplify["dense_edge"], "geometry.simplify.dense_edge"),
+            props=set(strings(simplify["props"], "geometry.simplify.props")),
+            props_share=number(simplify["props_share"], "geometry.simplify.props_share"),
             seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"),
             colour_deviation=number(simplify["colour_deviation"], "geometry.simplify.colour_deviation"))
         if steps.simplify.colour_deviation <= 0:
@@ -289,7 +286,7 @@ def load_geometry(table, steps):
 
 def pass_overrides(objects, materials_by_object, overrides):
     """Apply rules once per pass; fixed selectors must cover every welded object."""
-    importance, fixed = 1.0, None
+    fixed = None
     for rule in overrides:
         material_rule = "material" in rule
         pattern = rule.get("material", rule.get("object"))
@@ -300,36 +297,27 @@ def pass_overrides(objects, materials_by_object, overrides):
             matched = [name for name in objects if fnmatchcase(name, pattern)]
         if not matched:
             continue
-        if "importance" in rule:
-            importance *= rule["importance"]
-        else:
-            others = [name for name in objects if name not in matched]
-            if others:
-                kind = "material " if material_rule else ""
-                raise SettingsError(f"fixed {kind}override {pattern!r} also caps welded objects: {', '.join(others)}")
-            fixed = (fixed or 0) + rule["triangles"]
-    return importance, fixed
+        others = [name for name in objects if name not in matched]
+        if others:
+            raise SettingsError(f"fixed override {pattern!r} also caps welded objects: {', '.join(others)}")
+        fixed = (fixed or 0) + rule["triangles"]
+    return fixed
 
 
 def load_object_overrides(table):
     """Closed glob rules for connected simplifier passes."""
-    check_keys(table, (), "objects", optional=("overrides", "props_share"))
-    if "props_share" in table and not 0 <= number(table["props_share"], "objects.props_share") <= 1:
-        raise SettingsError("objects.props_share must be between 0 and 1")
+    check_keys(table, (), "objects", optional=("overrides",))
     rules = table.get("overrides", [])
     if not isinstance(rules, list):
         raise SettingsError("objects.overrides must be an array of tables")
     for index, rule in enumerate(rules):
         where = f"objects.overrides[{index}]"
-        check_keys(rule, (), where, optional=("material", "object", "importance", "triangles"))
-        if ("material" in rule) == ("object" in rule) or ("importance" in rule) == ("triangles" in rule):
-            raise SettingsError(f"{where} needs exactly one of material/object and importance/triangles")
+        check_keys(rule, ("triangles",), where, optional=("material", "object"))
+        if ("material" in rule) == ("object" in rule):
+            raise SettingsError(f"{where} needs exactly one of material/object and triangles")
         selector = "material" if "material" in rule else "object"
         text(rule[selector], f"{where}.{selector}")
-        if "triangles" in rule:
-            count(rule["triangles"], f"{where}.triangles")
-        elif number(rule["importance"], f"{where}.importance") <= 0:
-            raise SettingsError(f"{where}.importance must be above 0")
+        count(rule["triangles"], f"{where}.triangles")
     return rules
 
 
@@ -390,15 +378,12 @@ def load_import_settings(path):
         if steps.simplify:
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
         variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None)]
-    if steps.simplify and "props_share" not in values.get("objects", {}):
-        raise SettingsError("geometry.simplify needs a prop share: add props_share = 0.3 to [objects]")
     return SimpleNamespace(
         path=path, source=source, mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         overrides=load_object_overrides(values.get("objects", {})),
-        props_share=values.get("objects", {}).get("props_share"),
         meshlet_triangles=steps.meshlet_triangles,
         variants=variants, skin_lighting=lighting)
 

@@ -1,8 +1,7 @@
-"""Synthetic ownership, welded-pass and projected-area allocation contracts."""
+"""Source ownership and fixed simplifier reservations."""
 
 import pathlib
 import sys
-import tempfile
 import unittest
 
 import numpy as np
@@ -11,7 +10,7 @@ from scipy.spatial import ConvexHull
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import simplify as owner
-from r3d.import_settings import SettingsError, load_import_settings, pass_overrides
+from r3d.import_settings import SettingsError, pass_overrides
 
 
 def props():
@@ -28,7 +27,6 @@ def props():
 class ObjectBudgetTests(unittest.TestCase):
     def allocate(self, budget=400, **kwargs):
         p, t, o = props()
-        kwargs.setdefault("props_share", 1.0)
         return owner.simplify(p, np.full_like(p, 100), t, o, budget,
                               allocation=owner.Allocation(tri_o=o, object_names=['near', 'far'], material_names=['plain', 'leaf'], **kwargs),
                               colour_deviation=1.0)
@@ -41,27 +39,6 @@ class ObjectBudgetTests(unittest.TestCase):
         self.assertEqual(groups[0], groups[1])
         self.assertNotEqual(groups[0], groups[2])
 
-    def test_near_receives_more_and_budget_holds(self):
-        *_, t, labels = self.allocate(eyes=np.array([[0., 0., 0.], [1., 0., 0.]]), focal_px=100)
-        self.assertGreater(np.count_nonzero(labels == 0), np.count_nonzero(labels == 1))
-        self.assertLessEqual(len(t), 400)
-
-    def test_deterministic(self):
-        a = self.allocate(eyes=np.zeros((1, 3)), focal_px=100)
-        b = self.allocate(eyes=np.zeros((1, 3)), focal_px=100)
-        for x, y in zip(a, b):
-            np.testing.assert_array_equal(x, y)
-
-    def test_reordered_objects(self):
-        p, t, o = props()
-        a = self.allocate(eyes=np.zeros((1, 3)), focal_px=100)
-        order = np.concatenate([np.flatnonzero(o == 1), np.flatnonzero(o == 0)])
-        b = owner.simplify(p, np.full_like(p, 100), t[order], o[order], 400, colour_deviation=1,
-                          allocation=owner.Allocation(tri_o=1 - o[order], object_names=['far', 'near'], material_names=['plain', 'leaf'],
-                                                      eyes=np.zeros((1, 3)), focal_px=100, props_share=1))
-        for label in (0, 1):
-            self.assertEqual(np.count_nonzero(a[3] == label), np.count_nonzero(b[3] == label))
-        np.testing.assert_array_equal(np.sort(a[0], axis=0), np.sort(b[0], axis=0))
 
     def test_ownership_through_bake_geometry(self):
         from types import SimpleNamespace as NS
@@ -77,8 +54,8 @@ class ObjectBudgetTests(unittest.TestCase):
                  object_names=['near', 'far'], names=['plain', 'leaf'], textures=[texture, texture])
         settings = NS(seed=5, position_scale=None, alpha_keep=0.5, double_sided=[],
                       thin=NS(material='leaf', keep=0.7),
-                      simplify=NS(dense_edge=0.5, seal_seams=True, colour_deviation=1),
-                      overrides=[{'object': 'far', 'triangles': 100}], props_share=1)
+                      simplify=NS(dense_edge=0.5, seal_seams=True, colour_deviation=1, props=set(), props_share=0),
+                      overrides=[{'object': 'far', 'triangles': 100}])
         job = NS(settings=settings, renderer=NS(visibility=NS(source='camera_region'),
                                                 variant=NS(triangles=500)), bake=None)
         stages = []
@@ -120,23 +97,42 @@ class ObjectBudgetTests(unittest.TestCase):
         self.assertEqual(np.count_nonzero(result.tri_mat == 1), 100)
         self.assertTrue(np.all(result.positions[result.tris[result.tri_mat == 1]][:, :, 2] > 40))
 
+    def test_reserved_share_matches_main_formula(self):
+        from unittest.mock import patch
+        p, t, o = props()
+        for budget, share in ((401, 0.3), (400, 0), (400, 1)):
+            calls = []
+            def record(p, c, t, target, *args):
+                calls.append(target)
+                return p, c, t[:target], np.arange(len(p))
+            with self.subTest(budget=budget, share=share), patch.object(owner, 'simplify_with_update', side_effect=record):
+                owner.simplify(p, np.full_like(p, 100), t, o, budget, reserved=[({0}, share)],
+                               colour_deviation=1, allocation=owner.Allocation(tri_o=o))
+            prop = max(1, int(budget * share))
+            self.assertEqual(calls, [prop, max(1, budget - prop)])
+
+    def test_override_schema(self):
+        from r3d.import_settings import load_object_overrides
+        for rule in ({'object': '*', 'material': '*', 'triangles': 1},
+                     {'object': '*', 'importance': 1}, {'object': '*', 'triangles': 0},
+                     {'object': '*', 'triangles': 1, 'typo': True}):
+            with self.subTest(rule=rule), self.assertRaises(SettingsError):
+                load_object_overrides({'overrides': [rule]})
+        with self.assertRaises(SettingsError):
+            load_object_overrides({'props_share': 0.3})
+        self.assertEqual(load_object_overrides({'overrides': [{'object': '*', 'triangles': 10}]}),
+                         [{'object': '*', 'triangles': 10}])
+
+    def test_fixed_reservation_can_fill_budget(self):
+        from unittest.mock import patch
+        with patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
+            self.allocate(budget=100, overrides=[{'object': 'near', 'triangles': 100}])
+        self.assertEqual([call.args[3] for call in run.call_args_list], [100])
+
     def test_fixed_count(self):
         *_, labels = self.allocate(overrides=[{'object': 'near', 'triangles': 100}])
         self.assertEqual(np.count_nonzero(labels == 0), 100)
 
-    def test_importance_shifts_triangles(self):
-        *_, plain = self.allocate()
-        *_, shifted = self.allocate(overrides=[{'material': 'leaf', 'importance': 3}])
-        self.assertGreater(np.count_nonzero(shifted == 1), np.count_nonzero(plain == 1))
-
-    def test_old_props_pointer(self):
-        for key, value in [('props', '[]'), ('props_share', '0.3')]:
-            with self.subTest(key=key), tempfile.TemporaryDirectory() as directory:
-                path = pathlib.Path(directory) / 'm.import.toml'
-                path.write_text('[source]\npath="m.obj"\ncredit="test"\n[output]\n'
-                                f'[geometry.simplify]\n{key}={value}\n')
-                with self.assertRaisesRegex(SettingsError, r'\[objects\]'):
-                    load_import_settings(path)
 
     def test_no_new_cracks(self):
         p, t, o = props()
@@ -165,49 +161,6 @@ class ObjectBudgetTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'exceed triangle budget'):
             self.allocate(overrides=[{'object': '*', 'triangles': 300}])
 
-    def test_override_schema_and_combination(self):
-        from r3d.import_settings import load_object_overrides
-        for rule in ({'object': '*', 'material': '*', 'triangles': 1},
-                     {'object': '*', 'importance': 1, 'triangles': 1},
-                     {'object': '*', 'importance': 0}, {'object': '*', 'triangles': 0},
-                     {'object': '*', 'triangles': 1, 'typo': True}):
-            with self.subTest(rule=rule), self.assertRaises(SettingsError):
-                load_object_overrides({'overrides': [rule]})
-        rules = [{'object': '*', 'importance': 2}, {'material': 'leaf*', 'importance': 0.5},
-                 {'object': '*', 'triangles': 10}]
-        factor, fixed = pass_overrides(['a', 'b'], {'a': ['leaf'], 'b': ['leaf']}, rules)
-        self.assertEqual((factor, fixed), (1, 10))
-
-    def test_view_eyes(self):
-        from types import SimpleNamespace as NS
-        from unittest.mock import patch
-        from r3d.mesh_import import view_eyes, REGION_EYE_SAMPLES
-        from r3d.poses import focal_px
-        from panel_size import PANEL_WIDTH, PANEL_HEIGHT
-        camera = NS(component=NS(half_fov_short_tan=0.5))
-        scene = NS(camera=camera, region=[[0, 0, 0], [1, 2, 3]])
-        region = NS(source='region')
-        eyes, focal = view_eyes(region, scene, 5)
-        self.assertEqual(eyes.shape, (REGION_EYE_SAMPLES, 3))
-        self.assertEqual(focal, focal_px(PANEL_WIDTH, PANEL_HEIGHT, 0.5))
-        np.testing.assert_array_equal(eyes, view_eyes(region, scene, 5)[0])
-        poses = np.array([[1, 2, 3, 0, 0, 1]])
-        with patch('r3d.mesh_import.camera_path_poses', return_value=(400, 200, 0.25, 1, poses)):
-            eyes, focal = view_eyes(NS(source='camera_path'), scene, 5)
-        np.testing.assert_array_equal(eyes, poses[:, :3])
-        self.assertEqual(focal, focal_px(400, 200, 0.25))
-        self.assertEqual(view_eyes(region, NS(camera=None), 5), (None, 1))
-        for visibility in (None, region):
-            self.assertEqual(view_eyes(visibility, NS(camera=camera, region=None), 5), (None, 1))
-
-    def test_projected_scale_edges(self):
-        p = np.array([[0., 0., 0.]])
-        self.assertEqual(owner.projected_scale(p, None, 100), 1)
-        self.assertEqual(owner.projected_scale(p, np.empty((0, 3)), 100), 1)
-        self.assertEqual(owner.projected_scale(p, p, 1), 1 / np.finfo(np.float32).eps)
-        scale = owner.projected_scale(p, np.array([[1., 0, 0], [2., 0, 0], [4., 0, 0]]), 1)
-        self.assertGreater(scale, 0.25)
-        self.assertLess(scale, 1)
 
     def test_material_fixed_and_clamp(self):
         from unittest.mock import patch
@@ -222,15 +175,6 @@ class ObjectBudgetTests(unittest.TestCase):
         self.assertEqual(np.count_nonzero(labels == 0), np.count_nonzero(props()[2] == 0))
         self.assertTrue(any('clamped' in str(call) for call in logged.call_args_list))
 
-    def test_inside_room_scale_is_comparable(self):
-        corners = np.array([[x, y, z] for x in (-5., 5.) for y in (-5., 5.) for z in (-5., 5.)])
-        room_t = ConvexHull(corners).simplices
-        room, _, _ = owner.densify(corners, room_t, np.zeros(len(room_t)), 0.5)
-        eye = np.zeros((1, 3))
-        room_scale = owner.projected_scale(room, eye, 100)
-        prop_scale = owner.projected_scale(np.array([[0., 0., 2.], [0., 0., 3.]]), eye, 100)
-        self.assertLess(room_scale, prop_scale * 2)
-        self.assertGreater(room_scale, prop_scale / 10)
 
     def test_override_no_match(self):
         with self.assertRaisesRegex(SettingsError, 'missing'):
@@ -252,10 +196,6 @@ class ObjectBudgetTests(unittest.TestCase):
             owner.simplify(p, np.full_like(p, 100), t, o, 2, colour_deviation=1,
                            allocation=owner.Allocation(tri_o=o, object_names=['chosen', 'other'], material_names=['plain', 'leaf'],
                                                        overrides=[{'material': 'plain', 'triangles': 1}]))
-
-    def test_importance_once_per_pass(self):
-        self.assertEqual(pass_overrides(['a', 'b'], {'a': [], 'b': []}, [{'object': '*', 'importance': 2}]), (2, None))
-
 
 
 if __name__ == '__main__':

@@ -14,10 +14,7 @@ seed = 1
 [geometry]
 alpha_mask = { keep_alpha = 0.5 }
 thin = { material = "Foliage_Paris_Flowers", keep = 0.3 }
-simplify = { dense_edge = 300.0, seal_seams = false, colour_deviation = 2.0 }
-
-[objects]
-props_share = 0.2
+simplify = { dense_edge = 300.0, props = ["Paris_Chair_01", "Paris_Table_Terrace", "Vespa", "Streetlight_Metal", "Paris_StreetSign_01", "Paris_TrafficSign_A", "Bollards", "Trashcan"], props_share = 0.2, seal_seams = false, colour_deviation = 2.0 }
 
 [[variants]]
 name = "bistro"

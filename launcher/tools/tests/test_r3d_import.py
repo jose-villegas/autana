@@ -35,7 +35,7 @@ SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 OUTPUT = '[output]\nname = "mesh"\n'
 AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
-SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, seal_seams = true, colour_deviation = 1.0 }\n[objects]\nprops_share = 0.3\n'
+SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true, colour_deviation = 1.0 }\n'
 VARIANT = '[[variants]]\nname = "mesh"\ntriangles = 10\n'
 BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\n'
 HEAD = TONEMAP + AMBIENT + BAKE
@@ -796,8 +796,8 @@ class BakeStepTests(unittest.TestCase):
         self.assertEqual(seen, [own])
 
     def test_the_simplifier_gets_the_imports_colour_deviation(self):
-        steps = SimpleNamespace(dense_edge=10.0, seal_seams=True, colour_deviation=2.5)
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), overrides=[], props_share=0.3)
+        steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
+        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), overrides=[])
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
         source = triangle_source(p)
         given = {}

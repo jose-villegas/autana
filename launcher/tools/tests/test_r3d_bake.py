@@ -299,11 +299,8 @@ class ColourDeviationTests(unittest.TestCase):
         self.assertAlmostEqual(colour_weight(p, tris, 8, 3.0), 3 * weight)
 
     def test_each_part_weighs_colour_by_its_own_area_and_budget(self):
-        base, faces = grid(4)
-        scales = (0.01, 0.02, 10.0)
-        p = np.concatenate([base * scale + [0, 0, index * 10] for index, scale in enumerate(scales)])
-        tris = np.concatenate([faces + index * len(base) for index in range(len(scales))])
-        labels = np.repeat(np.arange(len(scales)), len(faces))
+        p, tris = grid(4)
+        labels = (np.arange(len(tris)) < 6).astype(int)  # a reserved part of six triangles, the rest twenty-six
         seen = []
 
         def record(pos, rgb, t, budget, weight, options):
@@ -311,10 +308,9 @@ class ColourDeviationTests(unittest.TestCase):
             return simplify_with_update(pos, rgb, t, budget, weight, options)
 
         with mock.patch.object(simplify_module, "simplify_with_update", side_effect=record):
-            simplify(p, np.full((len(p), 3), 100.0), tris, labels, 20, colour_deviation=2.0,
-                     allocation=simplify_module.Allocation(tri_o=labels, props_share=0.4))
-        self.assertEqual([budget for budget, _, _, _ in seen], [2, 6, 12])
-        np.testing.assert_allclose([area for _, _, _, area in seen], [0.0016, 0.0064, 1600.0])
+            simplify(p, np.full((len(p), 3), 100.0), tris, labels, 12, [({1}, 0.25)], colour_deviation=2.0)
+        self.assertEqual([budget for budget, _, _, _ in seen], [3, 9])
+        self.assertEqual([area for _, _, _, area in seen], [3.0, 13.0])
         for _, weight, expected, _ in seen:
             self.assertAlmostEqual(weight, expected)
 
