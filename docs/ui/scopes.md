@@ -42,16 +42,6 @@ disabled_example(disabled_example_t* s) {
 | ![disabled, portrait](../images/ui/disabled.png) | ![disabled, landscape](../images/ui/disabled-landscape.png) |
 <!-- /generated: ui-disabled-renders -->
 
-<!-- generated: ui-disabled-states sha256=d440a005bb9f029ca8754cb0ac7f2fe9bfa9766a7e60d02fe6705c77e7c186d5 -->
-| State | Render | Fires |
-|---|---|---|
-| rest | ![disabled, rest](../images/ui/disabled.png) | no |
-| pressed | looks like rest | no |
-| tapped | looks like rest | no |
-| disabled | looks like rest | no |
-| no-pack | looks like rest | no |
-<!-- /generated: ui-disabled-states -->
-
 A scope rides inside the frame's description like everything else, so
 entering or leaving one costs nothing beyond the commands it changes. The
 disabled row of each control's States table is that control inside
