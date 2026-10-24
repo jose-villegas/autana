@@ -397,6 +397,51 @@ class StyleAuditTest(unittest.TestCase):
         })
         self.assertEqual(findings, [])
 
+    def test_a_package_may_include_the_packages_it_declares_and_theirs_but_no_other(self):
+        findings = self.audit("PACKAGE-INCLUDE", {
+            "launcher/packages/physics/CMakeLists.txt": "set(physics_requires kinematics)\n",
+            "launcher/packages/physics/include/physics/body.h":
+                '#include "kinematics/follow.h"\n#include "math/scalar/mathf.h"\n#include "name_hash/name_hash.h"\n',
+            "launcher/packages/kinematics/CMakeLists.txt": "set(kinematics_requires math)\n",
+            "launcher/packages/kinematics/include/kinematics/follow.h": '#include "physics/body.h"\n',
+            "launcher/packages/name_hash/include/name_hash/name_hash.h": "#pragma once\n",
+            f"{self.PACKAGE}/include/math/scalar/mathf.h": "#pragma once\n",
+        })
+        self.assertEqual(sorted((f.path, f.line) for f in findings),
+                         [("launcher/packages/kinematics/include/kinematics/follow.h", 1),
+                          ("launcher/packages/physics/include/physics/body.h", 3)])
+
+    def test_package_requires_names_real_packages_one_way(self):
+        findings = self.audit("PACKAGE-REQUIRES", {
+            "launcher/packages/physics/CMakeLists.txt": "# physics\nset(physics_requires math physics nowhere)\n",
+            "launcher/packages/physics/include/physics/body.h": "#pragma once\n",
+            "launcher/packages/kinematics/CMakeLists.txt": "set(kinematics_requires math)\n",
+            "launcher/packages/kinematics/include/kinematics/follow.h": "#pragma once\n",
+            f"{self.PACKAGE}/CMakeLists.txt": "set(math_requires collections)\n",
+            f"{self.PACKAGE}/include/math/scalar/mathf.h": "#pragma once\n",
+            "launcher/packages/collections/CMakeLists.txt": "set(collections_requires kinematics)\n",
+            "launcher/packages/collections/include/collections/list.h": "#pragma once\n",
+        })
+        messages = sorted((f.path, f.line, f.message.split(",")[0]) for f in findings)
+        self.assertEqual(messages, [
+            ("launcher/packages/collections/CMakeLists.txt", 1, "collections requires kinematics"),
+            ("launcher/packages/kinematics/CMakeLists.txt", 1, "kinematics requires math"),
+            (f"{self.PACKAGE}/CMakeLists.txt", 1, "math requires collections"),
+            ("launcher/packages/physics/CMakeLists.txt", 2, "physics requires itself"),
+            ("launcher/packages/physics/CMakeLists.txt", 2, "physics requires nowhere"),
+        ])
+
+    def test_package_requires_passes_a_one_way_graph_and_ignores_nested_lists(self):
+        findings = self.audit("PACKAGE-REQUIRES", {
+            "launcher/packages/physics/CMakeLists.txt": "set(physics_requires math kinematics)\n",
+            "launcher/packages/physics/include/physics/body.h": "#pragma once\n",
+            "launcher/packages/physics/tests/CMakeLists.txt": "set(physics_requires physics)\n",
+            "launcher/packages/kinematics/CMakeLists.txt": "set(kinematics_requires math)\n",
+            "launcher/packages/kinematics/include/kinematics/follow.h": "#pragma once\n",
+            f"{self.PACKAGE}/include/math/scalar/mathf.h": "#pragma once\n",
+        })
+        self.assertEqual(findings, [])
+
     def test_package_config_rejects_product_and_other_package_symbols(self):
         for name in ("probe.c", "include/math/probe.h", "CMakeLists.txt", "Kconfig"):
             for symbol in ("CONFIG_LAUNCHER_QEMU", "CONFIG_OTHER_FPU_RECIP"):

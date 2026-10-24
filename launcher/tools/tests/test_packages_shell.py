@@ -1,6 +1,6 @@
 """packages.sh lists a launcher's packages as packages.py does, and renderer.sh the renderer's
 sources as renderer.py does; check_packages_alone.sh fails a package that needs more than its
-own include root."""
+own include root and those of the packages it declares."""
 import os
 from pathlib import Path
 import shutil
@@ -83,6 +83,50 @@ class PackageListing(FixtureLauncher):
                 self.assertEqual([], self.lines(function))
 
 
+class PackageRequires(FixtureLauncher):
+    """Both twins read `set(<name>_requires ...)` the same way and follow it to every package."""
+
+    def setUp(self):
+        super().setUp()
+        for name in ("alpha", "beta", "gamma", "delta"):
+            self.write(f"packages/{name}/include/{name}/{name}.h")
+        self.write("packages/alpha/CMakeLists.txt", "# alpha\nset(alpha_requires beta  gamma)\nadd_library(alpha)\n")
+        self.write("packages/beta/CMakeLists.txt", "set(beta_requires delta)\n")
+        self.write("packages/gamma/CMakeLists.txt", "set(gamma_requires)\n")
+        self.write("packages/delta/CMakeLists.txt", "set(delta_requires alpha)\n")
+
+    def shell(self, function, package):
+        package_dir = (self.launcher / "packages" / package).as_posix()
+        result = run_shell("-c", f'. "{(BUILD / "packages.sh").as_posix()}"\n{function} "{package_dir}"\n')
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.splitlines()
+
+    def test_requires_reads_the_packages_own_line_in_order(self):
+        self.assertEqual(("beta", "gamma"), packages.requires(self.launcher / "packages/alpha"))
+        self.assertEqual(["beta", "gamma"], self.shell("package_requires", "alpha"))
+
+    def test_an_empty_or_missing_line_requires_nothing(self):
+        for name in ("gamma", "missing"):
+            with self.subTest(name=name):
+                self.assertEqual((), packages.requires(self.launcher / "packages" / name))
+                self.assertEqual([], self.shell("package_requires", name))
+
+    def test_another_packages_line_is_not_this_ones(self):
+        self.write("packages/gamma/CMakeLists.txt", "set(alpha_requires beta)\n")
+        self.assertEqual((), packages.requires(self.launcher / "packages/gamma"))
+        self.assertEqual([], self.shell("package_requires", "gamma"))
+
+    def test_reachable_follows_declarations_through_a_cycle_once_each(self):
+        twin = [path.name for path in packages.reachable(self.launcher / "packages/alpha")]
+        self.assertEqual(["alpha", "beta", "gamma", "delta"], twin)
+        self.assertEqual(twin, [Path(line).name for line in self.shell("package_reachable", "alpha")])
+
+    def test_reachable_skips_a_name_with_no_package(self):
+        self.write("packages/gamma/CMakeLists.txt", "set(gamma_requires nowhere)\n")
+        self.assertEqual(["gamma"], [path.name for path in packages.reachable(self.launcher / "packages/gamma")])
+        self.assertEqual(["gamma"], [Path(line).name for line in self.shell("package_reachable", "gamma")])
+
+
 class RendererSources(FixtureLauncher):
     def shell_sources(self, launcher):
         script = f'. "{(BUILD / "renderer.sh").as_posix()}"\nrenderer_sources "{Path(launcher).as_posix()}"\n'
@@ -140,6 +184,20 @@ class PackagesAlone(FixtureLauncher):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("src/clock.c", result.stdout)
         self.assertNotIn("src/p.c", result.stdout)
+
+    def test_a_declared_package_is_on_the_include_path_and_an_undeclared_one_is_not(self):
+        self.self_contained()
+        self.write("packages/q/include/q/q.h", "#pragma once\nint q_value(void);\n")
+        self.write("packages/r/include/r/r.h", '#pragma once\n#include "q/q.h"\n')
+        self.write("packages/p/include/p/uses.h", '#pragma once\n#include "r/r.h"\n')
+        result = self.check()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("FAIL p: p/uses.h", result.stdout)
+        self.assertIn("FAIL r: r/r.h", result.stdout)
+        self.write("packages/p/CMakeLists.txt", "set(p_requires r)\n")
+        self.write("packages/r/CMakeLists.txt", "set(r_requires q)\n")
+        result = self.check()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
     def test_no_packages_is_a_failure_not_a_pass(self):
         self.assertNotEqual(0, self.check().returncode)
