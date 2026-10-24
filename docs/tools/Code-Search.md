@@ -24,7 +24,7 @@ Each search is logged on this machine through `query_log.py`, beside `autana doc
 | Ties | files used from two or more directories first, then by path |
 | Spread | one file shows three names before the next file's |
 
-The first 20 results are shown, followed by a count of the rest. When nothing matches, the five names spelled closest to the query are shown instead, and the command exits 1.
+The first 20 results are shown, followed by a count of the rest. When nothing matches, the names spelled closest to the query are shown instead, and the command exits 1.
 
 ## A result
 
@@ -42,6 +42,6 @@ Each result is `path:line` and the name, the declaration on one line (a type's b
 
 ## Measuring it
 
-Each row of `scripts/docs/code_search_eval.tsv` holds words someone typed, or would type, before writing a helper that already existed, the file that owned it, and the ticket where the second copy was merged into it. `--eval` reports how many owners land in the first 20 results (recall@20), in the first 5, and the mean reciprocal rank. Add a row whenever a duplicate is merged.
+Each row of `scripts/docs/code_search_eval.tsv` holds words someone typed, or would type, before writing a helper that already existed, the file that owned it, and the ticket where the second copy was merged into it. `--eval` reports how many owners land in the first 20 results (recall@20), the share ranked first and in the top three, and the mean reciprocal rank, and keeps the score beside earlier runs in the shared evaluation history. Add a row whenever a duplicate is merged.
 
 References and call sites are not indexed; use your editor or `git grep` for those.

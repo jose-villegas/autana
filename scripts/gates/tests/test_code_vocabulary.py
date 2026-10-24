@@ -13,110 +13,94 @@ sys.path.insert(0, str(SCRIPTS))
 import code_vocabulary  # noqa: E402
 
 
+def _vocab_of(path, text):
+    """The vocabulary of a tree holding only `text` at `path`."""
+    with tempfile.TemporaryDirectory() as temp:
+        root = pathlib.Path(temp)
+        gate_tree.write(root, path, text)
+        return code_vocabulary.vocabulary(str(root))
+
+
 class NamesRequireADefinitionTest(unittest.TestCase):
     def test_a_name_only_inside_a_comment_is_not_defined(self):
         # gfx_default_font() and cover_count() both leaked into the "defined"
         # set this way: a *different* comment citing a dead name was itself
         # enough to make code_vocabulary.vocabulary() think the name was real.
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                            "/* replaces the old gfx_default_font() call */\n"
-                            "void gfx_init(void) {}\n")
-            vocab = code_vocabulary.vocabulary(str(root))
+        vocab = _vocab_of("launcher/main/gfx/gfx.c",
+                          "/* replaces the old gfx_default_font() call */\n"
+                          "void gfx_init(void) {}\n")
         self.assertNotIn("gfx_default_font", vocab.functions)
         self.assertIn("gfx_init", vocab.functions)
 
     def test_a_name_only_inside_a_string_literal_is_not_defined(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/apps/sand/tests/suite_sand.c",
-                            'TEST_ASSERT_TRUE_MESSAGE(x, "the case cover_count() '
-                            'could never fire");\n'
-                            "void real_function(void) {}\n")
-            vocab = code_vocabulary.vocabulary(str(root))
+        vocab = _vocab_of("launcher/main/apps/sand/tests/suite_sand.c",
+                          'TEST_ASSERT_TRUE_MESSAGE(x, "the case cover_count() '
+                          'could never fire");\n'
+                          "void real_function(void) {}\n")
         self.assertNotIn("cover_count", vocab.functions)
         self.assertIn("real_function", vocab.functions)
 
     def test_a_real_declaration_is_still_found(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/gfx.h",
-                            "/* draws a rectangle */\n"
-                            "void draw_rect(int x, int y, int w, int h);\n")
-            vocab = code_vocabulary.vocabulary(str(root))
+        vocab = _vocab_of("launcher/main/gfx/gfx.h",
+                          "/* draws a rectangle */\n"
+                          "void draw_rect(int x, int y, int w, int h);\n")
         self.assertIn("draw_rect", vocab.functions)
 
     def test_a_real_call_site_is_still_found(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                            "void gfx_init(void) {\n"
-                            "    gfx_reset_palette();\n"
-                            "}\n")
-            vocab = code_vocabulary.vocabulary(str(root))
+        vocab = _vocab_of("launcher/main/gfx/gfx.c",
+                          "void gfx_init(void) {\n"
+                          "    gfx_reset_palette();\n"
+                          "}\n")
         self.assertIn("gfx_reset_palette", vocab.functions)
+
+    def test_a_package_kconfig_option_is_defined(self):
+        vocab = _vocab_of("launcher/packages/math/Kconfig",
+                          "config MATH_FPU_FUSED_MADD\n    bool \"fused\"\n")
+        self.assertIn("MATH_FPU_FUSED_MADD", vocab.constants)
+        self.assertIn("CONFIG_MATH_FPU_FUSED_MADD", vocab.constants)
 
     def test_a_python_apostrophe_comment_does_not_eat_the_next_def(self):
         # The C blanker was applied to .py files too: "# don't" has no `#`
         # case, so the apostrophe in "don't" opened a bogus string that
         # swallowed everything up to the next real quote, including
         # real_one()'s own definition, as blanked-out "string content".
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "scripts/gates/example.py",
-                            "# don't do this\n"
-                            "def real_one():\n"
-                            "    pass\n")
-            vocab = code_vocabulary.vocabulary(str(root))
+        vocab = _vocab_of("scripts/gates/example.py",
+                          "# don't do this\n"
+                          "def real_one():\n"
+                          "    pass\n")
         self.assertIn("real_one", vocab.script_functions)
 
     def test_python_floor_division_does_not_blank_the_rest_of_the_line(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "scripts/gates/example.py",
-                            "def real_two():\n"
-                            "    return a // real_two_helper()\n")
-            vocab = code_vocabulary.vocabulary(str(root))
+        vocab = _vocab_of("scripts/gates/example.py",
+                          "def real_two():\n"
+                          "    return a // real_two_helper()\n")
         self.assertIn("real_two", vocab.script_functions)
         self.assertIn("real_two_helper", vocab.script_functions)
 
     def test_a_python_docstring_does_not_hide_the_function_after_it(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "scripts/gates/example.py",
-                            '"""Module docstring."""\n'
-                            "def real_three():\n"
-                            "    pass\n")
-            vocab = code_vocabulary.vocabulary(str(root))
+        vocab = _vocab_of("scripts/gates/example.py",
+                          '"""Module docstring."""\n'
+                          "def real_three():\n"
+                          "    pass\n")
         self.assertIn("real_three", vocab.script_functions)
 
     def test_an_mjs_string_constant_counts_and_its_function_names_do_not(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "scripts/gates/check.mjs",
-                            "function render_block() {}\n"
-                            "const extra = process.env['CHECK_EXTRA_ARGS'];\n"
-                            "render_block(extra);\n")
-            vocab = code_vocabulary.vocabulary(str(root))
+        vocab = _vocab_of("scripts/gates/check.mjs",
+                          "function render_block() {}\n"
+                          "const extra = process.env['CHECK_EXTRA_ARGS'];\n"
+                          "render_block(extra);\n")
         self.assertIn("CHECK_EXTRA_ARGS", vocab.constants)
         self.assertNotIn("render_block", vocab.functions | vocab.script_functions)
 
     def test_node_modules_is_not_read(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "scripts/node_modules/lib/index.mjs", "const x = 'VENDORED_NAME';\n")
-            vocab = code_vocabulary.vocabulary(str(root))
+        vocab = _vocab_of("scripts/node_modules/lib/index.mjs", "const x = 'VENDORED_NAME';\n")
         self.assertNotIn("VENDORED_NAME", vocab.constants)
 
     def test_a_shell_variable_counts_and_one_only_its_comment_names_does_not(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/tools/profile.sh",
-                            "# PROFILE_COMMENTED_ONLY is only named here\n"
-                            "PROFILE_FREE_BYTES=51200\n"
-                            'BASE="${PROFILE_GATE_BASE:-origin/main}"\n')
-            vocab = code_vocabulary.vocabulary(str(root))
+        vocab = _vocab_of("launcher/tools/profile.sh",
+                          "# PROFILE_COMMENTED_ONLY is only named here\n"
+                          "PROFILE_FREE_BYTES=51200\n"
+                          'BASE="${PROFILE_GATE_BASE:-origin/main}"\n')
         self.assertIn("PROFILE_FREE_BYTES", vocab.constants)
         self.assertIn("PROFILE_GATE_BASE", vocab.constants)
         self.assertNotIn("PROFILE_COMMENTED_ONLY", vocab.constants)
