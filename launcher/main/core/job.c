@@ -54,9 +54,6 @@ job_run_steered(int16_t* core1_offset, job_fn_t fn, void* first_half, const void
 #include "freertos/task.h"
 
 #define JOB_CORE1_STACK_BYTES 3072
-/* Gfx presents at priority 5; rendering must preempt engine work. */
-#define JOB_CORE1_PRIORITY    3
-#define JOB_CORE1             1
 
 static TaskHandle_t job_task_handle;
 static void (*job_started_fn)(void* task);
