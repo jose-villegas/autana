@@ -1,0 +1,19 @@
+bitset	launcher/packages/collections/include/collections/bits.h	autana-ks4hn #1143
+bit flags per index	launcher/packages/collections/include/collections/bits.h	autana-ks4hn #1143
+string builder	launcher/packages/collections/include/collections/strbuf.h	autana-ks4hn #1144
+snprintf append to a buffer	launcher/packages/collections/include/collections/strbuf.h	autana-ks4hn #1144
+insertion sort	launcher/packages/collections/include/collections/sort.h	autana-ks4hn
+fnv hash of a name	launcher/packages/hash/include/hash/name_hash.h	ldf7 #1102
+page background colour	launcher/main/ui/ui.h	autana-ea8w #1124
+save a matplotlib figure	launcher/tools/docs/plot_style.py	autana-mn4k #1054
+pinhole projection lens	launcher/packages/math/include/math/linear/projectf.h	#998
+project a point and a segment	launcher/main/render/r3d_project.h	autana-xx47
+time a named frame stage	launcher/main/profile/frame_cost.h	#532
+read a little-endian field	launcher/main/asset/asset_bytes.h	#878
+parse compiler -M dependency output	launcher/tools/build/compile_db.py	#874
+view matrix	launcher/packages/math/include/math/linear/mat4_template.h	thqb #938
+map a pixel through the inverse transform	launcher/main/ui/layout/ui_transform.h	ui_transform_unmap_pixel
+rgb565 byte swap and channels	launcher/main/gfx/target/gfx_color.h	#673
+integer square root and clamp	launcher/packages/math/include/math/scalar/mathi.h	#658
+panel width and height	launcher/tools/device/panel_size.py	panel size owner
+colour back to 0xRRGGBB	launcher/main/ui/controls/ui_style.h	ui face colour unpack
