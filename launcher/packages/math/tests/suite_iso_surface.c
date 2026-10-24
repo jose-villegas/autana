@@ -84,14 +84,25 @@ test_a_sphere_comes_back_on_the_sphere(void) {
     }
 }
 
-/* Every triangle faces out, and every edge is shared by exactly two: the
- * surface is closed and wound one way. */
+/* How many triangles hold the edge from `from` to `to`, in that direction. */
+static int
+edges_from_to(const iso_mesh_t* m, int from, int to) {
+    int found = 0;
+    for (int u = 0; u < m->triangle_count; u++) {
+        for (int k = 0; k < 3; k++) {
+            found += triangles[u][k] == from && triangles[u][(k + 1) % 3] == to ? 1 : 0;
+        }
+    }
+    return found;
+}
+
+/* Every triangle faces out, and every edge meets its reverse exactly once:
+ * the surface is closed and wound one way. */
 static void
 test_the_sphere_is_closed_and_wound_outward(void) {
     fixture_begin();
     iso_mesh_t m = mesh(MAX_VERTICES, MAX_TRIANGLES);
     TEST_ASSERT_TRUE(iso_surface_nets(&unit, 0.0F, &m));
-    int balance = 0;
     for (int t = 0; t < m.triangle_count; t++) {
         const vec3f_t a = positions[triangles[t][0]];
         const vec3f_t b = positions[triangles[t][1]];
@@ -99,21 +110,10 @@ test_the_sphere_is_closed_and_wound_outward(void) {
         const vec3f_t facing = vec3f_cross(vec3f_sub(b, a), vec3f_sub(c, a));
         const vec3f_t centroid = vec3f_scale(vec3f_add(vec3f_add(a, b), c), 1.0F / 3.0F);
         TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, vec3f_dot(facing, vec3f_sub(centroid, (vec3f_t){CENTRE, CENTRE, CENTRE})));
-        /* Each directed edge must meet its reverse once: count them signed. */
         for (int e = 0; e < 3; e++) {
-            const int from = triangles[t][e];
-            const int to = triangles[t][(e + 1) % 3];
-            int reverse = 0;
-            for (int u = 0; u < m.triangle_count; u++) {
-                for (int k = 0; k < 3; k++) {
-                    reverse += triangles[u][k] == to && triangles[u][(k + 1) % 3] == from ? 1 : 0;
-                }
-            }
-            TEST_ASSERT_EQUAL_INT(1, reverse);
-            balance++;
+            TEST_ASSERT_EQUAL_INT(1, edges_from_to(&m, triangles[t][(e + 1) % 3], triangles[t][e]));
         }
     }
-    TEST_ASSERT_EQUAL_INT(3 * m.triangle_count, balance);
 }
 
 static void
