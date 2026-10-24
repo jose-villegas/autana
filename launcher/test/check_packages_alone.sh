@@ -64,7 +64,7 @@ for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
         # shellcheck disable=SC2086
         check "$package_dir" "${source#"$package_dir"/}" "$CC_BIN" $CFLAGS $roots "$source"
     done
-    test_roots="-I $include_dir -I $LAUNCHER_DIR/packages/testkit/include -I $LAUNCHER_DIR/packages/testkit/unity"
+    test_roots="$roots $(testkit_includes "$LAUNCHER_DIR")"
     for folder in tests bench; do
         [ -d "$package_dir/$folder" ] || continue
         for source in $(find "$package_dir/$folder" -name '*.c' | sort); do

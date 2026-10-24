@@ -114,6 +114,7 @@ $TEST_DIR/host_main.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $LAUNCHER_DIR/packages/testkit/harness/cleanup.c
+$LAUNCHER_DIR/packages/testkit/harness/registry.c
 $TEST_DIR/frame_profile.c
 $TEST_DIR/ui_probe.c
 $TEST_DIR/heap_arena.c
@@ -249,7 +250,7 @@ case "${1:-}" in
     --print-flags)
         printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
             -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") \
-            -I "$TEST_DIR" -I "$TEST_DIR/../packages/testkit/unity" -I "$TEST_DIR/stubs" \
+            -I "$TEST_DIR" $(testkit_includes "$TEST_DIR/..") -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../tools/gen" -I "$TEST_DIR/../tools/r3d" $HEAP_ARENA_DEFINES \
             -include "$TEST_DIR/timing.h"
@@ -360,7 +361,6 @@ OUT_N=$(native "$OUT")
 CONFIG=plain
 [ "$SANITIZE" = 1 ] && CONFIG=ubsan
 OBJ_DIR="obj/$CONFIG"
-UNITY_OBJECT=packages__testkit__unity__unity
 SU_DIR="$BUILD_DIR/su"
 mkdir -p "$BUILD_DIR/$OBJ_DIR" "$SU_DIR"
 
@@ -374,7 +374,7 @@ PACKAGE_INC=""
 for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
     PACKAGE_INC="$PACKAGE_INC -I $(native "$include_dir")"
 done
-COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N -I $LAUNCHER_N/packages/testkit/unity -I $TEST_N/stubs"
+COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -Wl,--wrap=job_run_steered -Wl,--wrap=draw_line_ex -pthread -lm"
 
@@ -403,6 +403,7 @@ printf '%s\n' $SU_SOURCES | sed '/^$/d' | to_native | squash >"$SU_LIST"
 pairs() { # source-list-file
     sed -e "s|^$LAUNCHER_N/||" -e 's|/|__|g' -e 's|\.c$||' "$1" | paste -d' ' - "$1"
 }
+UNITY_OBJECT=$(printf '%s/packages/testkit/unity/unity.c\n' "$LAUNCHER_N" | pairs /dev/stdin | cut -d' ' -f1)
 OBJ_PAIRS=$(pairs "$SRC_LIST")
 SU_PAIRS=$(pairs "$SU_LIST")
 

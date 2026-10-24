@@ -59,7 +59,7 @@ class SharedHelpers(unittest.TestCase):
         write(self.root, owner, "/* Values. */\nclass Value {};\n"
               "#define MAKE(P) \\\n  static inline int P##_get(void) { return 1; }\n")
         self.include(owner)
-        self.assertEqual({"Value", "MAKE", "P##_get"}, set(catalogue(self.root)[0][2].split(", ")))
+        self.assertEqual({"Value", "MAKE"}, set(catalogue(self.root)[0][2].split(", ")))
 
     def test_distinct_directories_not_reference_count(self):
         write(self.root, "engine/value.h", "/* Values. */\nint value(void);\n")

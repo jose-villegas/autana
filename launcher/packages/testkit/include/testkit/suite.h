@@ -1,7 +1,25 @@
 /* suite: self-registering test entry points for a caller-owned runner. */
 #pragma once
 
+#include <stdbool.h>
+#include <stddef.h>
+
+#define TESTKIT_SUITE_MAX 256
+
 typedef void (*suite_fn)(void);
+
+typedef struct {
+    const char* name;
+    suite_fn fn;
+    bool on_request;
+} suite_entry_t;
+
+size_t suites_count(void);
+/* Entries are sorted by name on first access. */
+const suite_entry_t* suites_at(size_t i);
+int suites_dropped(void);
+/* Engine metadata shares the registration failure count. */
+void suites_record_drop(void);
 
 /* On-request suites run only when the caller explicitly selects them. */
 void suite_register(const char* name, suite_fn fn);

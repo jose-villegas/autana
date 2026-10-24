@@ -27,9 +27,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* Headroom over the ~200 suites registered; a suite past it fails the run. */
-#define SUITE_MAX       256
-
 /* SUITE_READS(fn, "pack", ...) names the packs suite `fn` reads from the
  * runner's asset folder (asset/asset_store.h), so a run whose pack waits on the
  * bake lock skips that suite rather than fail it. The host runner fails a run
@@ -89,14 +86,6 @@ void suites_print_run(const suite_run_t* run);
 
 /* Asked by suite_run_test_timed() (timing.c) for each test: true to run it. */
 bool suites_test_runs(const char* test_name);
-
-/* How many suites did NOT fit and were dropped; see suite_register().
- *
- * Both runners fail when this is nonzero. It is checked there rather than in
- * a suite of its own for the obvious reason: a guard that registers like
- * everything else could be the very suite that gets dropped, and would then
- * be the one thing not reporting the problem. */
-int suites_dropped(void);
 
 /* Prints how many tests since the last call presented past the frame
  * watch's warm-up (profile/frame_watch.h), so a run shows how much of it was
