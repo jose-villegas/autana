@@ -1,3 +1,4 @@
+"""Console replies complete only at their newline, and a release image's refusal is named."""
 from pathlib import Path
 import sys
 import unittest

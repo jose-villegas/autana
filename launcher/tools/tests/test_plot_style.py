@@ -1,3 +1,4 @@
+"""plot_style saves figures and shared-palette GIFs and closes what it opens."""
 import pathlib
 import sys
 import tempfile
