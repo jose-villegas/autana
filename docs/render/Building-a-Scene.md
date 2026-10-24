@@ -136,14 +136,16 @@ never calls draw; `frame()` runs after the scene is in the framebuffer and
 draws over it. Entities are found by name once the scene has loaded, so a
 misspelt one is found missing then:
 
+<!-- generated: scene-hall-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Scene: load by name, find an entity and activate the first camera. */
 #include "scene/scene.h"
 
 static scene_t* hall;
 static scene_entity_t statue;
 
 static void
-enter(void) {
+hall_example_start(void) {
     scene_failure_t why;
     hall = scene_load("hall", &why); /* NULL when an entry is missing: `why` names it */
     if (hall != NULL) {
@@ -151,12 +153,8 @@ enter(void) {
         scene_activate(hall, NULL);          /* its first camera */
     }
 }
-
-static void
-frame(uint32_t dt_ms, const input_t* input) {
-    draw_hud();
-}
 ```
+<!-- /generated: scene-hall-example -->
 
 Nothing else: the shell unloads what the app loaded when it exits. To move
 something, `scene_set_transform(hall, statue, &where)`; to hide

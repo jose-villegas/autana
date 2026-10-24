@@ -219,31 +219,40 @@ def parse_input_counts(text):
         r"^MATHERROR name=(.+) type=(\w+) .* inputs=([0-9]+)$", text, re.M)}
 
 
-def render_table(rows, measured, baseline, fpu, build=None, errors=None):
+def render_table(rows, measured, baseline, fpu, links=None, errors=None, error_links=None):
     keys = {key for key, *_ in rows}
     missing = {name for name in baseline if name.startswith("math_") and name[5:] not in keys}
     if missing:
         raise ValueError(f"baseline rows missing from table: {sorted(missing)}")
-    lines = [
-             "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |",
-             "|---|---|---:|---:|---:|---:|---:|---|---|"]
-    bounds = dict(errors or {})
-    unmatched = set(bounds) - {(label, kind) for _, label, kind, _, family in rows}
-    if unmatched:
-        raise ValueError(f"error measurements match no row: {sorted(unmatched)}")
-    for key, label, kind, ops, family in rows:
-        qemu = f"{baseline['math_' + key] / ops:.1f}" if "math_" + key in baseline else "-"
-        if set(fpu[key].partition(";")[0].split()) & set(DEVICE_ONLY_FPU_OPS):
-            qemu = DEVICE_ONLY_INSTRUCTION
-        values = measured.get(key)
-        costs = [f"{value:.1f}" for value in values] if values else ["-"] * 3
-        ratio = f"{values[0] / values[2]:.1f}" if values else "-"
-        lines.append("| " + " | ".join([label, kind, *costs, qemu, ratio, fpu[key], bounds.get((label, kind), "-")]) + " |")
-    reference = ESP_DSP_DOTPROD_F32_N256_ANSI_O2_CYCLES
-    calibration = measured.get("dot_f32_n256_f")
-    warm = f"{calibration[0]:.1f}" if calibration else "pending"
-    ratio = f"{calibration[0] / reference:.1%}" if calibration else "pending"
-    lines.extend(["", f"ESP-DSP calibration: measured warm {warm} cycles/call; ANSI O2 reference {reference} cycles/call; measured/reference {ratio}."])
+    lines = []
+    for family in ROW_FAMILIES:
+        members = [row for row in rows if row[4] == family]
+        if not members:
+            continue
+        if lines:
+            lines.append("")
+        lines.extend([f"#### {family.capitalize()}", "",
+                      "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |",
+                      "|---|---|---:|---:|---:|---:|---:|---|---|"])
+        for key, label, kind, ops, _ in members:
+            qemu = f"{baseline['math_' + key] / ops:.1f}" if "math_" + key in baseline else "-"
+            if set(fpu[key].partition(";")[0].split()) & set(DEVICE_ONLY_FPU_OPS):
+                qemu = DEVICE_ONLY_INSTRUCTION
+            values = measured.get(key)
+            costs = [f"{value:.1f}" for value in values] if values else ["-"] * 3
+            ratio = f"{values[0] / values[2]:.1f}" if values else "-"
+            function = f"[{label}]({links[key]})" if links and key in links else label
+            identity = label, kind
+            error = (errors or {}).get(identity, "-")
+            if key in (error_links or {}):
+                error = f"[fast paths]({error_links[key]})"
+            lines.append("| " + " | ".join([function, kind, *costs, qemu, ratio, fpu[key], error]) + " |")
+        if family == "calibration":
+            reference = ESP_DSP_DOTPROD_F32_N256_ANSI_O2_CYCLES
+            calibration = measured.get("dot_f32_n256_f")
+            warm = f"{calibration[0]:.1f}" if calibration else "pending"
+            ratio = f"{calibration[0] / reference:.1%}" if calibration else "pending"
+            lines.extend(["", f"ESP-DSP calibration: measured warm {warm} cycles/call; ANSI O2 reference {reference} cycles/call; measured/reference {ratio}."])
     return "\n".join(lines)
 
 

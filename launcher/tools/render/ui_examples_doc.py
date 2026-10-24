@@ -3,6 +3,7 @@
     python launcher/tools/render/ui_examples_doc.py --renders DIR --out OUT
 
 Identical state renders share the rest image. Tables are written under OUT/tables.
+State tables require an owned ui-<name>-states block.
 """
 import argparse
 import os
@@ -87,6 +88,8 @@ def write_renders(renders, out):
         (out / "tables" / f"{table}.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
     for path in controls:
         name = path.stem
+        if block(name, "states") not in owners:
+            continue
         images = image_dir(owners, block(name, "states"))
         rest = (renders / f"{name}.bmp").read_bytes()
         rows = ["| State | Render | Fires |", "|---|---|---|"]
