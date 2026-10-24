@@ -64,7 +64,7 @@ jobs:
 
       - name: Host lock and night scheduling tests
         run: |
-          python3 -m pip install pyserial
+          python3 -m pip install pyserial -r scripts/gates/requirements.txt
           python3 -m unittest discover -s scripts/device/tests
           python3 -m unittest discover -s scripts/autana/tests
           python3 -m unittest discover -s scripts/ci/tests

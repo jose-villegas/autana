@@ -1,277 +1,251 @@
 # Build variants
 
-What a build is FOR is one Kconfig `choice` in `main/Kconfig.projbuild`, and
-exactly one of its two entries is ever true:
+What a build is for is one Kconfig `choice` in
+[`main/Kconfig.projbuild`][kconfig]: release (the default) or development,
+exactly one ever true. Test suites (off unless set), scope and QEMU are options
+layered on a development build.
 
-- **`CONFIG_LAUNCHER_RELEASE`**: the product, and the default. No test
-  suites, no profiling counters, no logging meant to be read over a serial
-  console.
-- **`CONFIG_LAUNCHER_DEVELOPMENT`**: everything meant for someone at the
-  device or watching its console while working on it: frame timings, step
-  counters, debug overlays, the screenshot listener, the development-only
-  apps.
+[kconfig]: ../../launcher/main/Kconfig.projbuild
+[math-kconfig]: ../../launcher/packages/math/Kconfig
+[idf-variant]: ../../launcher/tools/build/idf_variant.sh
 
-**`CONFIG_LAUNCHER_SELFTEST`** is a separate option on top, off by default,
-that compiles the on-device test suites into the image. It *depends on*
-`LAUNCHER_DEVELOPMENT` rather than turning it on, so a config asking for
-SELFTEST alone silently gets neither; `sdkconfig.defaults.diag` sets both for
-that reason. Two further options narrow a SELFTEST image:
-`LAUNCHER_SELFTEST_AUTORUN` (the suites run at boot rather than on demand)
-and the `LAUNCHER_SELFTEST_SCOPE_*` choice (which suites are compiled at
-all).
+## The variants
 
-Each image has its own build directory so one never reconfigures another:
+| Kconfig symbol | release | dev | diag | QEMU |
+|---|---|---|---|---|
+| [`LAUNCHER_DEVELOPMENT`][kconfig]: instrumentation, development-only apps | no | yes | yes | yes |
+| [`LAUNCHER_SELFTEST`][kconfig]: test code | no | no | yes | yes |
+| [`LAUNCHER_SELFTEST_AUTORUN`][kconfig]: suites run at boot | no | no | `--autorun` | yes¹ |
+| [`LAUNCHER_SELFTEST_SCOPE_PERF`][kconfig]: perf scope | no | no | `--perf-scope` | `--perf-scope` |
+| [`LAUNCHER_QEMU`][kconfig]: null panel | no | no | no | yes |
+| [`MATH_FPU_*`][math-kconfig]: FPU seeds, fused multiply-add | yes | yes | yes | no |
 
-| image | flags | built by | directory |
-|---|---|---|---|
-| release | neither | `autana build rel`, `autana flash rel` | `build/` |
-| dev | DEVELOPMENT | `autana build dev`, `autana flash dev` | `build.dev/` |
-| diag | DEVELOPMENT + SELFTEST | `autana build diag`, `autana flash diag`, `autana selftest` | `build.diag/` |
+¹ Except `build.qemu.shell/`, which boots into the shell.
 
-See [Where builds live](Build-Environment.md#where-builds-live) for variant
-paths and their ESP-IDF identity stamps.
+| Variant | Built by | Directory |
+|---|---|---|
+| release | `autana build rel`, `autana flash rel` | `build/` |
+| dev | `autana build dev`, `autana flash dev` | `build.dev/` |
+| diag | `autana build diag`, `autana flash diag`, `autana selftest` (with `--autorun`) | `build.diag/` |
+| QEMU | `launcher/test/run_qemu_tests.sh` | `build.qemu/`, `build.qemu.shell/`; `.perf` suffix for the perf scope |
 
-`autana build` needs no board and takes no board lock; what it runs is
-`launcher/tools/build/build.sh` with the variant's flag (`--dev`, `--diag`),
-and CI builds every variant the same way. `--configure` stops after CMake's
-configure step: the variant's `sdkconfig` and `compile_commands.json`,
-nothing compiled.
+Each image has its own directory, so one never reconfigures another.
+[Where builds live](Build-Environment.md#where-builds-live) gives the paths
+and their ESP-IDF identity stamps.
 
----
+## How a build picks its flags
+
+```mermaid
+flowchart LR
+    Base["sdkconfig.defaults"] --> Rel["release: nothing more"]
+    Base --> Dev["dev: + .dev"]
+    Base --> Diag["diag: + .diag"]
+    Diag --> Auto["+ .diag_autorun<br/>if --autorun"]
+    Auto --> Perf["+ .diag_perf<br/>if --perf-scope"]
+    Perf --> Qemu["+ .qemu, last<br/>if built for QEMU"]
+    Rel --> Check{"every required symbol set,<br/>no forbidden one?"}
+    Dev --> Check
+    Qemu --> Check
+    Check -->|"yes"| Image["image in its own directory"]
+    Check -->|"no"| Fail["build fails"]
+```
+
+[`idf_variant.sh`][idf-variant] holds each variant's fragments and its
+required and forbidden symbols. An `sdkconfig` older than a fragment, or
+out of line with those symbols, is regenerated first; the symbols are checked
+again after the build.
+
+- `autana build` needs no board and takes no board lock. It runs
+  `launcher/tools/build/build.sh` with `--dev` or `--diag`, as CI does for
+  every variant.
+- `--configure` stops after CMake's configure step: the variant's `sdkconfig`
+  and `compile_commands.json`, nothing compiled.
+- `--hot-tunables` (dev, diag) makes `TUNE_HOT` values live for sweeps;
+  default images keep them constant. Like `--layout-seed`, it selects the image
+  built, so a suite run with it needs `--flash`.
 
 ## Release builds contain no test code
 
-`CONFIG_LAUNCHER_SELFTEST` defaults **off**, and the CMake conditional leaves
-the suites and the runner out of the build entirely, not `#ifdef`-ed out,
-simply never compiled. `build/launcher.elf` (release) is neither DEVELOPMENT
-nor SELFTEST, so **a development-only app** is out of it too, for a related
-but separate reason: it is gated on `CONFIG_LAUNCHER_DEVELOPMENT`, a strictly
-broader flag than `CONFIG_LAUNCHER_SELFTEST`: it also ships in a `--dev`
-build, which carries no test suites at all. An app is gated this way by
-holding a `development_only.cmake` in its own folder; `main/CMakeLists.txt`
-globs the markers and names no app (see
-[Building-an-App.md](../firmware/Building-an-App.md#an-app-is-a-folder)).
+- **Suites and runner:** under `LAUNCHER_SELFTEST` the CMake conditional
+  leaves them out. Not `#ifdef`-ed out: never compiled.
+- **Development-only apps:** an app holding a `development_only.cmake` in its
+  folder is gated on `LAUNCHER_DEVELOPMENT`, a broader flag. It ships in dev
+  and diag, never in release. `main/CMakeLists.txt` globs the markers and
+  names no app ([an app is a folder](../firmware/Building-an-App.md#an-app-is-a-folder)).
+- **Self-test runner inside an app** (a button, its result line, the
+  `selftest_run()` call): gated on `LAUNCHER_SELFTEST` in the app's own file.
+  `selftest/selftest.c` joins `app_srcs` only in a SELFTEST build, so the
+  symbol does not link anywhere else.
 
-`tools/build/check_release_symbols.sh build/launcher.elf` rejects a release image that
-defines any of the suite, console or self-test symbols it names (including a
-`run_<name>_suite` entry point) or the `app_<name>` of any app carrying a
-`development_only.cmake`. CI runs it after the release build.
+CI then checks the release image:
 
 ```sh
 autana build rel
 launcher/tools/build/check_release_symbols.sh launcher/build/launcher.elf
 ```
 
-A development-only app's `app_<name>` belongs in the same count as
-`unity`/`suite_`/`selftest` because release is neither DEVELOPMENT nor
-SELFTEST, so every one of those symbols is absent from that image whichever
-flag gates it.
+It fails if the image defines a suite, console or self-test symbol it names
+(`unity`, `suite_`, `selftest`, a `run_<name>_suite` entry point) or the
+`app_<name>` of an app with a `development_only.cmake`. Release is neither
+DEVELOPMENT nor SELFTEST, so all of them are absent whichever flag gates each.
 
-That matters for more than size. The suites draw to the framebuffer and drive
-the panel, which is fine in a diagnostics build and unacceptable in a
-product; and test hooks in a shipped image are a liability rather than a
-feature.
+Why it matters beyond size:
 
-A development-only app is a bench tool. One that re-runs POST on entry
-cycles the audio power rail and re-mounts the SD card live (both while the
-display keeps running undisturbed, since neither shares its bus):
-reasonable while debugging, not something to leave reachable in a shipped
-product, hence DEVELOPMENT, not left ungated. The boot POST still runs in
-release; only this way *in* is compiled out. The self-test *runner* an app
-hosts (a button, its result line, the `selftest_run()` call) is narrower
-still: gated on `CONFIG_LAUNCHER_SELFTEST` specifically, inside the app's
-own file, because `selftest_run()` is not even a linkable symbol outside a
-SELFTEST build (`selftest/selftest.c` is only added to `app_srcs` under
-`CONFIG_LAUNCHER_SELFTEST`; see `main/CMakeLists.txt`).
+- The suites draw to the framebuffer and drive the panel: fine in diag,
+  unacceptable in a product. Test hooks in a shipped image are a liability.
+- A development-only app is a bench tool. One that re-runs POST on entry
+  cycles the audio power rail and re-mounts the SD card live, while the
+  display runs undisturbed (neither shares its bus). Boot POST still runs in
+  release; only this way in is compiled out.
 
 ## A diagnostics build can be scoped
 
-A diagnostics build compiles **every** suite, and a full run takes the time
-[Device tests: which run, when](../testing/Device-Tests.md#which-run-when) gives.
-Perf-scoped compiles only the sources declared in
-`launcher/test/scope_perf.cmake`, `launcher/main/apps/*/scope_perf.cmake` and
-`launcher/main/shell/apps/*/scope_perf.cmake`,
-so a performance capture does not pay for every other suite too. The same
-glob discovers engine and app manifests; each appends its suite sources and
-link dependencies to `perf_scope_srcs` using `CMAKE_CURRENT_LIST_DIR` paths.
+A diag build compiles every suite; a full run takes the time
+[which run, when](../testing/Device-Tests.md#which-run-when) gives. A scope
+narrows which suites are compiled, and removes each dropped suite's `.text`
+and `.bss`.
 
-`CONFIG_LAUNCHER_SELFTEST` says whether the suites are compiled in;
-`CONFIG_LAUNCHER_SELFTEST_SCOPE_*` says **which**. Excluding a suite removes
-its `.text` *and* its `.bss`, which is what buys the run time back.
-
-The full self-test gate rejects a suite object whose writable static data
-exceeds `SUITE_STATIC_DATA_LIMIT` in
-`launcher/tools/quality/suite_static_data_gate.py`. Suite tables are `static
-const`; mutable test buffers allocate for a test and release before the suite
-returns, so the image does not reserve their storage at boot.
-CI's self-test build job runs the gate against its fresh full-scope
-`build.diag`. A local gate measures whatever scope `build.diag` was last
-configured with.
-
-| scope | fragment | carries | for |
+| Scope | Fragment | Carries | For |
 |---|---|---|---|
-| Full: the default | none | every suite, shell-owned and app-owned | every gate: `autana selftest`, `report_test_results.sh` |
-| Perf | `sdkconfig.defaults.diag_perf` | sources engine and apps declare in `scope_perf.cmake` | a performance capture |
+| Full, the default | none | every suite, shell-owned and app-owned | every gate: `autana selftest`, `report_test_results.sh` |
+| Perf | `sdkconfig.defaults.diag_perf` | the sources declared in `scope_perf.cmake` | a performance capture |
 
-An app's own frame-budget capture script, in its `tools/`, passes the flag
-through; the image alone is:
+| To get a perf-scoped image | Command |
+|---|---|
+| left on the board, no capture | `autana flash diag --perf-scope` |
+| built only, no board | `autana build diag --perf-scope` |
+| under QEMU | `launcher/test/run_qemu_tests.sh --perf-scope` |
 
-```sh
-# left on the board, with no capture taken:
-autana flash diag --perf-scope
-# built only, no board:
-autana build diag --perf-scope
-```
+An app's frame-budget capture script, in its own `tools/`, passes the flag
+through. The perf manifests are globbed from:
 
-Scoped around **what a run reads**, not around folders. An app owns the perf
-sources it needs, so deleting its folder also removes its declaration.
+- `launcher/test/scope_perf.cmake`
+- `launcher/main/apps/*/scope_perf.cmake`
+- `launcher/main/shell/apps/*/scope_perf.cmake`
 
-- **Full is the default and stays globbed.** A scope only ever narrows, and
-  only when named, so coverage cannot shrink by accident.
-- **Every source a perf run links is declared there.** A builder or fixture
-  omitted from a manifest's list fails at link.
-- **Release is untouched.** Both scope symbols live under `LAUNCHER_SELFTEST`,
-  itself under `LAUNCHER_DEVELOPMENT`; a release config resolves neither, and
-  the suites were never in that image to scope.
+Each appends its suite sources and link dependencies to `perf_scope_srcs`,
+with `CMAKE_CURRENT_LIST_DIR` paths.
 
-A perf-scoped build is **not a gate**: it drops behaviour coverage on purpose.
-Never take a merge decision from one, and never diff its numbers against an
-unscoped capture's: different scope, different layout.
+- **Scoped around what a run reads, not around folders.** An app owns its perf
+  sources, so deleting its folder removes its declaration.
+- **Full stays the default and stays globbed.** A scope narrows only when
+  named, so coverage cannot shrink by accident.
+- **Every source a perf run links is declared.** A builder or fixture missing
+  from a manifest fails at link.
+- **Release is untouched.** Both scope symbols sit under `LAUNCHER_SELFTEST`,
+  itself under `LAUNCHER_DEVELOPMENT`.
 
-`--hot-tunables` (dev/diag) enables live `TUNE_HOT` values for sweeps; default
-device images keep them constant. Like `--layout-seed`, it selects the image
-built and requires `--flash` when running suites.
+> [!WARNING]
+> A perf-scoped build is not a gate: it drops behaviour coverage on purpose.
+> Never take a merge decision from one, and never compare its numbers with an
+> unscoped capture's: different scope, different instruction-cache layout.
+
+**Suite static data** is gated in the full self-test:
+
+- **Limit:** a suite object's writable static data may not exceed
+  `SUITE_STATIC_DATA_LIMIT` in `launcher/tools/quality/suite_static_data_gate.py`.
+- **Rule:** suite tables are `static const`; mutable test buffers are
+  allocated per test and released before the suite returns, so the image
+  reserves none of them at boot.
+- **Scope:** CI gates its fresh full-scope `build.diag`; a local run measures
+  whatever scope `build.diag` was last configured with.
 
 ## Float maths is single precision, and the build holds it there
 
 The S3's FPU has no double: every `double` operation is a libgcc call, about
-ten times a float's cost. The `main` component and each package compile with
-`-Werror=double-promotion` and `-Werror=float-conversion`, so a float widened
-to a double, or a double constant in float maths, does not compile; code that
-needs one on purpose casts it explicitly, in the function that logs it. The host test,
-render and camera-path sampler builds compile with `-ffp-contract=off`, so a
-pinned pixel or a sampled pose never depends on a fused multiply-add; the firmware keeps the fused operations,
-which are faster. The host never fuses and the device does, so a host pixel
-and a device pixel can differ by one at a truncation boundary. The warning
-flags live only in the firmware build, which compiles every portable source;
-the host builds also compile vendored code and tests that use `double` on
-purpose.
+ten times a float's cost.
 
-The compiler accepts an explicit cast, so the `diag` build checks the
-objects too: `launcher/tools/build/check_no_soft_double.py` lists every
-function that calls a soft-double routine and fails unless the same function
-also calls a logging or formatting routine (a `%f` argument is a double by
-the language). It runs in `build_diag_check.sh` and in CI's diag build job.
+| Build | Flags | Effect |
+|---|---|---|
+| Firmware: `main` and each package | `-Werror=double-promotion -Werror=float-conversion` | a float widened to double, or a double constant in float maths, does not compile |
+| `diag` objects | `launcher/tools/build/check_no_soft_double.py` | fails a function that calls a soft-double routine unless it also logs or formats |
+| Host tests, render, camera-path sampler | `-ffp-contract=off` | a pinned pixel or sampled pose never depends on a fused multiply-add |
+| QEMU | `MATH_FPU_RECIP=n`, `MATH_FPU_FUSED_MADD=n` | QEMU lacks the reciprocal seeds and rounds the fused product |
+
+- Code that needs a double on purpose casts it explicitly, in the function
+  that logs it. A `%f` argument is a double by the language, hence the logging
+  exception in `check_no_soft_double.py`, which runs in `build_diag_check.sh`
+  and CI's diag build job.
+- The warnings live only in the firmware build, which compiles every portable
+  source. The host builds also compile vendored code and tests that use
+  `double` on purpose.
+- The firmware keeps fused operations, which are faster. So a host pixel and
+  a device pixel can differ by one at a truncation boundary.
 
 ## Development-only instrumentation is its own flag, not SELFTEST
 
-`CONFIG_LAUNCHER_SELFTEST` answers "does this build carry the test suites."
-It does not answer "is this a development build"; that is a broader
-question, and `CONFIG_LAUNCHER_DEVELOPMENT` answers it instead.
+| Flag | Answers | Guards |
+|---|---|---|
+| `LAUNCHER_DEVELOPMENT` | is this a development build, not release? | anything whose only reader is a developer: a log line, a rolling average, a per-frame timer, a debug overlay, the screenshot listener, development-only apps |
+| `LAUNCHER_SELFTEST` | does this build carry the test suites? | the suites, and anything that only makes sense beside them |
 
-This project does not do telemetry. Nobody downstream ever reads a frame
-counter or a step-timing average; the only audience for that kind of number
-is a developer at the device or watching its serial console while working on
-it. So anything built purely for that audience (rolling averages, per-frame
-timers, a summary logged on exit) is pure cost in a release image: flash for
-the strings and the accounting, cycles for the bookkeeping, for output that
-helps nobody. It gets guarded by `CONFIG_LAUNCHER_DEVELOPMENT`, the same way
-test code is guarded by `CONFIG_LAUNCHER_SELFTEST`.
+This project does no telemetry: only a developer at the device or its serial
+console reads a frame counter. In release such code is pure cost, flash for
+the strings and cycles for the bookkeeping.
 
-The two are related but not the same flag, because they answer different
-questions and can genuinely diverge:
+- **SELFTEST depends on DEVELOPMENT**, it does not turn it on. A config asking
+  for SELFTEST alone silently gets neither, so `sdkconfig.defaults.diag` sets
+  both, and the variant check above fails a diag `sdkconfig` without them.
+- **The reverse is not forced.** A dev build has the profiling and logging
+  without Unity and the suites' footprint: real frame timings, nothing else.
+- **Neither is off by omission.** RELEASE and DEVELOPMENT are one `choice`, so
+  `CONFIG_LAUNCHER_DEVELOPMENT` means "not a release build", never "something
+  nobody named yet".
+- **Neither gates the other's code.** They travel together in `build.diag/`,
+  but a debug log is not gated on SELFTEST, and a suite is not gated on
+  DEVELOPMENT alone.
 
-- `LAUNCHER_SELFTEST` **depends on** `LAUNCHER_DEVELOPMENT`: a build
-  carrying the test suites is a development build by definition. Kconfig does
-  not turn the second one on for you: a config that asks for SELFTEST alone
-  silently gets neither, which is why every defaults fragment sets both.
-- The reverse is not forced. A build can want the profiling and logging
-  without the test suites: watching real frame timings without also paying
-  for Unity and the suites' own footprint.
+A log line has a second mechanism: ESP-IDF's `CONFIG_LOG_MAXIMUM_LEVEL`
+compiles `ESP_LOGI`, `ESP_LOGW` and the rest out above a severity,
+project-wide. This project does not yet split that ceiling per variant
+([Log-Level-Plan.md](../plans/Log-Level-Plan.md)).
 
-`LAUNCHER_DEVELOPMENT` and `LAUNCHER_RELEASE` are the two entries of one
-Kconfig `choice` (`main/Kconfig.projbuild`), so exactly one is ever true and
-neither is "off by omission." Checking `CONFIG_LAUNCHER_DEVELOPMENT` means
-"not a release build," not "development, or maybe some other thing nobody
-named yet."
-
-**The rule going forward:** guard anything whose only reader is a developer
-(a log line, a rolling average, a debug overlay) with
-`CONFIG_LAUNCHER_DEVELOPMENT`. Guard the test suites themselves, and anything
-that only makes sense alongside them, with `CONFIG_LAUNCHER_SELFTEST`. Neither
-belongs ungated, and neither belongs gated on the other one just because they
-currently happen to travel together in `build.diag/`.
-
-A bare log line specifically has a second, complementary mechanism worth
-knowing about: ESP-IDF's own `CONFIG_LOG_MAXIMUM_LEVEL` compiles
-`ESP_LOGI`/`ESP_LOGW`/etc. calls out of the binary entirely above a given
-severity, project-wide, with no per-call-site `#if` needed; this project
-just doesn't split that ceiling per build variant yet. See
-[Log-Level-Plan.md](../plans/Log-Level-Plan.md).
-
-A FRAME_COST bracket ([`profile/frame_cost.h`](Frame-Cost.md)) names a stage of the frame:
-something the shell or a screen does once per frame, and stays in the
-source, compiled out of release the same as everything else in this section.
-A bracket put inside a stage to answer one question is scaffolding instead:
-it leaves with the measurement it was for, the same as any switch that turns
-a phase of work off to see what it cost. The first kind may stay because it
-only reads a clock: the code that ships is the code that was measured,
-minus two clock reads per stage.
+A FRAME_COST bracket ([`profile/frame_cost.h`](Frame-Cost.md)) names a stage
+the shell or a screen runs once per frame, and stays in the source, compiled
+out of release. It only reads a clock: the code that ships is the code that
+was measured, minus two clock reads per stage. A bracket put inside a stage to
+answer one question is scaffolding, and leaves with its measurement.
 
 ## The Kconfig trap in REQUIRES
 
-One thing must **not** be gated on `CONFIG_LAUNCHER_SELFTEST`: the `unity`
-entry in `REQUIRES`.
+`unity` in `main`'s `REQUIRES` is listed unconditionally, never gated on
+`CONFIG_LAUNCHER_SELFTEST`.
 
-ESP-IDF expands component requirements in an early pass where `CONFIG_*` is not
-yet defined, so a Kconfig-gated `REQUIRES` silently evaluates false and does
-nothing. `SRCS` and `target_compile_definitions` are evaluated in a later pass
-and *do* work, which makes the failure genuinely confusing: the test sources
-get compiled, `DEVICE_BUILD` is defined, and every one of them fails with
-`fatal error: unity.h: No such file or directory`.
+| ESP-IDF pass | `CONFIG_*` defined? | A Kconfig-gated entry |
+|---|---|---|
+| Early: component requirements (`REQUIRES`) | no | silently evaluates false |
+| Later: `SRCS`, `target_compile_definitions` | yes | works |
 
-Worse, it only shows up on a **clean** build directory. An incremental build
-already has a `sdkconfig`, so it appears to work, meaning this can sit latent
-until CI, or until someone deletes `build.diag/`.
+- **Symptom:** the test sources compile with `DEVICE_BUILD` defined, and each
+  fails with `fatal error: unity.h: No such file or directory`.
+- **Only on a clean build directory.** An incremental build already has an
+  `sdkconfig` and seems to work, so the bug sits latent until CI, or until
+  someone deletes `build.diag/`.
+- **Costs release nothing.** IDF puts unity in the component graph either way;
+  `REQUIRES` only decides whether `main` sees its headers. With no test source
+  compiled nothing references it, and `--gc-sections` drops it. The release
+  binary is byte-for-byte the same size with and without the entry.
 
-So `unity` is listed unconditionally. That costs release nothing: IDF puts unity
-in the component graph either way, `REQUIRES` only decides whether `main` can
-see its headers, and with no test sources compiled nothing references it and
-`--gc-sections` drops it. Confirmed: the release binary is byte-for-byte the
-same size with and without the entry.
+This is the norm, not a compromise:
 
-```sh
-autana build rel                      # build/       release, no test code
-autana selftest                       # build.diag/  firmware + suites
-```
-
-The two use separate build directories so each keeps its own `sdkconfig` and
-running the tests can never silently reconfigure your normal build.
-
-This is the norm, not a compromise. Unit tests verify *units*: `touch_fsm.c`
-compiles from identical sources with identical flags in both variants, and
-linking a test framework beside it cannot change how it behaves. Verifying an
-*image* is a separate activity (POST, functional tests, checksums) that unit
-tests were never doing in either build.
-
-If anything the direction favours release: the diagnostics variant carries more
-code and less free RAM, so a suite passing there leaves release with more
-headroom, not less.
-
-A failing self test is logged, not fatal: the harness reads the result from
-the console, and a board that still boots is easier to investigate than one
-that refuses to.
-
----
+- Unit tests verify units. `touch_fsm.c` compiles from identical sources with
+  identical flags in both variants; a test framework linked beside it cannot
+  change its behaviour.
+- Verifying an image (POST, functional tests, checksums) is a separate
+  activity that unit tests do in neither build.
+- Diag carries more code and less free RAM, so a suite passing there leaves
+  release more headroom, not less.
+- A failing self test is logged, not fatal: the harness reads the result from
+  the console, and a board that still boots is easier to investigate.
 
 ## Related
 
-- [`testing/README.md`](../testing/README.md): the suites these flags carry or
+- [Testing](../testing/README.md): the suites these flags carry or
   drop, and how to run them.
-- [`notes/Debugging.md`](../notes/Debugging.md):
-  which tool to reach for when the board misbehaves, and which build each
-  one needs.
-- [`plans/Log-Level-Plan.md`](../plans/Log-Level-Plan.md): a planned
-  compile-time log-severity ceiling per variant, complementing this split.
-- [`plans/Settings-App-Plan.md`](../plans/Settings-App-Plan.md): the remaining
+- [Debugging.md](../notes/Debugging.md): which tool to reach for when the
+  board misbehaves, and which build each one needs.
+- [Log-Level-Plan.md](../plans/Log-Level-Plan.md): a planned compile-time
+  log-severity ceiling per variant.
+- [Settings-App-Plan.md](../plans/Settings-App-Plan.md): the remaining
   DEVELOPMENT/SELFTEST seam inside a development-only app.
+- [QEMU.md](../testing/QEMU.md): the QEMU image and its runner.

@@ -254,7 +254,8 @@ run "$PYTHON" launcher/tools/audio/sound_onset_figures.py --out "$OUT/audio" > "
 # --orphans scans this runner: drc-level.png, drc-thd.png, drc-level-dark.png, drc-thd-dark.png,
 # audio-frequency.png, audio-volume.png, audio-frequency-dark.png, audio-volume-dark.png,
 # sound-onset.png, sound-onset-dark.png,
-# sound_mix_capture_v8.png, sound_mix_capture_v32.png, sound_mix_capture_v8-dark.png, sound_mix_capture_v32-dark.png
+# sound_mix_capture_v8.png, sound_mix_capture_v32.png, sound_mix_capture_v8-dark.png, sound_mix_capture_v32-dark.png,
+# sound_mix_capture_long.png, sound_mix_capture_long-dark.png
 
 if [ "$AUDIO_ONLY" = 0 ]; then
 
