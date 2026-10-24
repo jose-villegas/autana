@@ -15,7 +15,7 @@
 #include <string.h>
 
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "console/console_frame_request.h"

@@ -59,7 +59,7 @@ class SharedHelpers(unittest.TestCase):
         write(self.root, owner, "/* Values. */\nclass Value {};\n"
               "#define MAKE(P) \\\n  static inline int P##_get(void) { return 1; }\n")
         self.include(owner)
-        self.assertEqual({"Value", "MAKE", "P##_get"}, set(catalogue(self.root)[0][2].split(", ")))
+        self.assertEqual({"Value", "MAKE"}, set(catalogue(self.root)[0][2].split(", ")))
 
     def test_distinct_directories_not_reference_count(self):
         write(self.root, "engine/value.h", "/* Values. */\nint value(void);\n")
@@ -81,7 +81,7 @@ class SharedHelpers(unittest.TestCase):
     def test_vendored_owners_are_excluded(self):
         for owner in ("launcher/components/bsp/value.h",
                       "launcher/components/microui/microui.h",
-                      "launcher/test/framework/value.h"):
+                      "launcher/packages/testkit/unity/value.h"):
             with self.subTest(owner=owner):
                 write(self.root, owner, "/* Values. */\nint value(void);\n")
                 self.include(owner)

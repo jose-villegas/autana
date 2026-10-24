@@ -16,7 +16,7 @@
 #include "display/display_shell.h"
 
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 /* A magnitude comfortably past every threshold this module uses, so a vector
