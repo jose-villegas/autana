@@ -400,6 +400,13 @@ entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
 `asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c`, `draw_image.c` and
 `sound.c` are the respective readers.
 
+A carved renderer has a `.bundle` bake row; an uncarved one has a `.mesh`
+row. A carved fit's CPU start is `.start.bundle`.
+
+The GPU fits only the rest, copying shapes, LCOL and the
+[MCOP manifest](../render/Baked-Mesh.md#mcop-v1) unchanged. Its key names the
+locked start bundle's bytes; references use the full source.
+
 Meshes and sounds are bake products, fetched by their lock rows; a clip
 or image entry is baked from its source when the packs are built. Packs are never
 committed: the firmware build, the host tests and

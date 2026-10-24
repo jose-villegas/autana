@@ -25,7 +25,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from gltf.gltf_read import ASSET_SUFFIXES  # noqa: E402
-from r3d import log  # noqa: E402
+from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
 from r3d.gltf_mesh import load_gltf_mesh  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
@@ -42,7 +42,7 @@ from r3d.light import (  # noqa: E402
     visible_from_path,
     visible_from_region,
 )
-from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, write_lit_mesh  # noqa: E402
+from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, panel_colour, write_lit_mesh  # noqa: E402
 from r3d.process_budget import NULL_RECORDER
 from r3d.path_bake import PathLight  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
@@ -119,7 +119,7 @@ def path_light_for(src, job, scene, variant=None):
     return PATH_LIGHTS[key]
 
 
-def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels):
+def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, preserve_corners=False):
     """Vertices split along creases and lit on their own normals, near colours merged."""
     normals = corner_normals(mp, mt)
     corner_pos, corner_n = mp[mt].reshape(-1, 3), normals.reshape(-1, 3)
@@ -132,6 +132,8 @@ def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *,
     radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, job.bake.ray_offset, bounce,
                      bounce_groups=welded, ao=job.bake.ao, bounce_intensity=scene.indirect.intensity)
     vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
+    if preserve_corners:
+        return corner_pos, vrgb[inverse], np.arange(len(corner_pos)).reshape(-1, 3), labels
     return merge_matching_colours(vpos, vrgb, vtris, grid, job.bake.colour_merge_step, labels=labels)
 
 
@@ -192,7 +194,7 @@ def thin_meshes(src, selected, thin, seed):
     return keep
 
 
-def bake_geometry(job, scene, recorder=None):
+def bake_geometry(job, scene, recorder=None, *, carve=False):
     """Everything a mesh needs before its colours are final: the source, its
     ray intersector and the simplified geometry with the colours a smooth bake
     keeps. `scene` is None for a bare import."""
@@ -234,6 +236,7 @@ def bake_geometry(job, scene, recorder=None):
         step["triangles_out"] = int(seen.sum())
     shown_v, shown_m, shown_o = tri_v[seen], tri_m[seen], src.tri_o[seen]
     mesh_report = {}
+    shapes = [] if settings.meshes and carve else None
     with recorder.step("light", len(shown_v)) as step:
         bounce = path_light_for(src, job, scene)
         if settings.simplify:
@@ -284,7 +287,10 @@ def bake_geometry(job, scene, recorder=None):
                                                                          ceiling=getattr(renderer.variant, 'ceiling', None),
                                                                          shade=(lambda p, c, t, m: shade_placed(src, job, scene, p, c, t, m,
                                                                                                              intersector, bounce)) if job.bake else None,
-                                                                         report=mesh_report),
+                                                                         shade_shared=(lambda p, c, t, m: shade_placed(src, job, scene, p, c, t, m,
+                                                                                                             intersector, bounce, preserve_corners=True))
+                                                                                      if job.bake and carve else None,
+                                                                         report=mesh_report, shapes=shapes),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
                                                               steps.props_share)],
                                                    colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
@@ -293,10 +299,10 @@ def bake_geometry(job, scene, recorder=None):
         step["triangles_out"] = len(tris)
     check_ceiling(len(tris), getattr(renderer.variant, 'ceiling', None))
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
-                           tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report)
+                           tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 
 
-def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce):
+def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce, *, preserve_corners=False):
     """Light the simplified placed geometry against the full source occluder."""
     out_p, out_c, out_t, out_m = [], [], [], []
     base = 0
@@ -305,7 +311,7 @@ def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bou
         p, t = compact(positions, tris[selected])
         double = src.names[material] in job.settings.double_sided
         p, c, t, m = shade_lit(src, job, scene, material, p, t, double, intersector, bounce,
-                               labels=labels[selected])
+                               labels=labels[selected], preserve_corners=preserve_corners)
         out_p.append(p)
         out_c.append(c)
         out_t.append(t + base)
@@ -337,15 +343,73 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     is and smooth otherwise, from `geometry` when bake_geometry already made it.
     Returns the baked mesh."""
     renderer = job.renderer
+    out_dir = pathlib.Path(out_dir)
     recorder = NULL_RECORDER if recorder is None else recorder
-    geometry = bake_geometry(job, scene, recorder) if geometry is None else geometry
+    geometry = bake_geometry(job, scene, recorder, carve=True) if geometry is None else geometry
     face_rgb = None
-    if renderer.face_samples:
+    if renderer.face_samples and len(geometry.tris):
         with recorder.step("face colours", len(geometry.tris)):
             face_rgb = flat_colours(job, scene, geometry, renderer.face_samples)
-    return write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
-                          geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder,
-                          meshlet_triangles=job.settings.meshlet_triangles, **geometry.scale)
+    mesh = SimpleNamespace(pos=geometry.positions, tris=geometry.tris, clusters=[], nodes=[])
+    if len(geometry.tris):
+        mesh = write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
+                              geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder,
+                              meshlet_triangles=job.settings.meshlet_triangles, **geometry.scale)
+    if getattr(geometry, "shapes", None) is not None:
+        entries = [(name, mesh_asset.TYPE, (out_dir / f"{name}.mesh").read_bytes())] if len(mesh.tris) else []
+        copies = []
+        for shape in geometry.shapes:
+            products, placed = write_shape(job, scene, out_dir, name, geometry, shape, recorder)
+            entries.extend(products)
+            copies.extend(placed)
+        (out_dir / f"{name}{mesh_bundle.SUFFIX}").write_bytes(mesh_bundle.encode(entries, copies))
+    return mesh
+
+
+def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
+    """One local mesh per handedness, with colour sets following its baked array order."""
+    entries, rows = [], []
+    for mirrored in (False, True):
+        copies = [(instance, lit) for instance, lit in shape['copies'] if instance.mirrored == mirrored]
+        if not copies:
+            continue
+        first, lit = copies[0]
+        first_name = geometry.src.object_names[int(first.object_name)]
+        mesh_id = mesh_bundle.shape_id(name, shape['rule'], first_name)
+        reflect = np.diag([-1 if mirrored else 1, 1, 1])
+        p, _, t, labels = lit
+        local = ((p[t].reshape(-1, 3) - first.position) @ first.linear) @ reflect
+        tris = np.arange(len(local)).reshape(-1, 3)
+        double = np.isin(labels, [i for i, material in enumerate(geometry.src.names)
+                                if material in job.settings.double_sided]).astype(int)
+        colours = []
+        for instance, (p, rgb, t, labels) in copies:
+            if job.renderer.face_samples:
+                placed = SimpleNamespace(**vars(geometry))
+                placed.positions, placed.tris, placed.tri_mat = p, t, labels
+                colours.append(flat_colours(job, scene, placed, job.renderer.face_samples))
+            else:
+                colours.append(rgb[t].reshape(-1, 3))
+        keys = np.concatenate(colours, axis=1)
+        mesh = write_lit_mesh(out_dir, mesh_id, local, None if job.renderer.face_samples else keys,
+                              tris, double, face_rgb=keys if job.renderer.face_samples else None,
+                              colourless=True, recorder=recorder,
+                              meshlet_triangles=job.settings.meshlet_triangles, **geometry.scale)
+        encoding = lcol_asset.RGB565 if job.renderer.face_samples else lcol_asset.RGB888
+        keys = mesh.face_keys if job.renderer.face_samples else mesh.colour_keys
+        channels = lcol_asset.STRIDES[lcol_asset.RGB888]
+        sets = [panel_colour(keys[:, k:k + channels]).tobytes() if job.renderer.face_samples
+                else keys[:, k:k + channels].astype('u1').tobytes() for k in range(0, keys.shape[1], channels)]
+        entries.append((mesh_id, mesh_asset.TYPE, (out_dir / f"{mesh_id}.mesh").read_bytes()))
+        entries.append((lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE,
+                        lcol_asset.encode(encoding, len(keys), sets)))
+        for index, (instance, _) in enumerate(copies):
+            rows.append(dict(name=mesh_bundle.copy_name(job.object.name if job.object else name, mesh_id, index), mesh=mesh_id,
+                             matrix=(instance.linear @ reflect).tolist(), position=instance.position.tolist(),
+                             colour_set=index, owner=job.object.name if job.object else name,
+                             match=shape["rule"]["match"], first=first_name,
+                             source=geometry.src.object_names[int(instance.object_name)]))
+    return entries, rows
 
 
 def bake(job, scene, out_dir):

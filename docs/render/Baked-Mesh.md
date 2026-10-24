@@ -237,3 +237,41 @@ the triangles are the same.
 
 Levels of detail built on the meshlets, and what they would save, are in
 [plans/Cluster-LOD.md](../plans/Cluster-LOD.md).
+
+## MCOP v1
+
+An APAK `.bundle` caches LMSH/LCOL products and a `copies` MCOP manifest.
+`r3d/mesh_bundle.py` owns its reader and writer. Pack building ships the
+products and discards the manifest; SCNE retains the authored rest only.
+
+Little-endian; string offsets count from the string content's first byte.
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 70
+---
+packet-beta
+title MCOP header, 16 bytes at 0, one cell a byte
+0-1: "version"
+2-3: "reserved"
+4-7: "copy_count"
+8-11: "strings_off"
+12-15: "strings_size"
+```
+
+| Part | At | Size |
+|---|---|---|
+| Header | 0 | `mesh_bundle.HEADER.size` |
+| Copy registry | `HEADER.size` | One SCNE `NAME`, `TRANSFORM`, `RENDERER` and `METADATA` per copy |
+| Content: strings | `strings_off` | `strings_size` bytes, NUL-terminated UTF-8 strings |
+
+Copy rows reuse SCNE `NAME`, `TRANSFORM` and `RENDERER`: name, local
+placement, copy index, colour set and mesh id. `METADATA` holds uint32 string
+offsets for owner, first source, copy source and a sorted JSON match map.
+
+The reader rejects unknown versions, nonzero reserved fields, invalid section
+bounds, duplicate names, nonfinite transforms and invalid string offsets.
+Entries are sorted by name; string interning follows copy and metadata order.

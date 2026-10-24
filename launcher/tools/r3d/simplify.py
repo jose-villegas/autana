@@ -94,7 +94,9 @@ class Allocation:
     selection: object = None
     ceiling: object = None
     shade: object = None
+    shade_shared: object = None
     report: object = None
+    shapes: object = None
 
 
 def object_groups(pos, tris, tri_o):
@@ -204,7 +206,7 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
     return merged, policies
 
 
-def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade):
+def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None):
     from scipy.spatial import cKDTree
     from .objects.instances import match_instances, source_objects
 
@@ -249,18 +251,27 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                                locked_vertices=int(union.sum()), output_triangles=len(t),
                                locked_border_excess=max(0, len(t) - budget) if np.any(union) else 0))
             mat = _label_after(shape.triangles, shape.materials, kept, t)
+            copies = []
             for instance, indices in placements:
                 placed = p @ instance.linear.T + instance.position
                 # World-space locked positions must survive local-frame float conversion.
                 placed[union[kept]] = pos[indices[kept[union[kept]]]].astype(np.float32)
                 faces = t[:, ::-1] if instance.mirrored else t
                 result = placed, c.copy(), faces, mat.copy()
-                emitted.append(shade(*result) if shade is not None else result)
+                lit = shade(*result) if shade is not None else result
+                if shapes is None:
+                    emitted.append(lit)
+                else:
+                    copies.append((instance, lit))
+            if shapes is not None:
+                shapes.append(dict(positions=p, tris=t, materials=mat, rule=selected[int(shape.instances[0].object_name)],
+                                   copies=copies))
     return emitted, consumed, shared
 
 
 def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation, deviation, options, position_scale):
     from .objects.contact import contact_graph
+    from .objects.instances import Instance
 
     selected = (match_meshes(tri_o, labels, allocation.object_names, allocation.material_names, allocation.meshes)
                 if allocation.selection is None else {obj: rule for obj, rule in allocation.selection.items() if np.any(tri_o == obj)})
@@ -281,7 +292,7 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                                locked_vertices=int(locks[np.unique(tris[tri_o == obj])].sum())) for obj, rule in selected.items()])
     log(f"  scene requested triangles {requested}, ceiling {allocation.ceiling}")
     emitted, consumed, shared = _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks,
-                                       deviation, options, allocation.shade)
+                                       deviation, options, allocation.shade_shared or allocation.shade, allocation.shapes)
     shared_objects = {obj for entry in shared for obj in entry['objects']}
     report['meshes'] = [row for obj, row in zip(selected, report['meshes']) if obj not in shared_objects]
     for entry in shared:
@@ -293,9 +304,11 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
             continue
         result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
                            locks if np.any(locks) else None)
-        if allocation.shade is not None and np.any(np.isin(tri_o[sel], list(selected))):
-            result = allocation.shade(*result)
         objects = np.unique(tri_o[sel])
+        carved = allocation.shapes is not None and len(objects) == 1 and objects[0] in selected
+        shade = (allocation.shade_shared or allocation.shade) if carved else allocation.shade
+        if shade is not None and np.any(np.isin(tri_o[sel], list(selected))):
+            result = shade(*result)
         entry = dict(objects=[allocation.object_names[obj] for obj in objects], copies=1, budget=budget,
                      output_triangles=len(result[2]), locked_vertices=int(locks[np.unique(tris[sel])].sum()),
                      locked_border_excess=max(0, len(result[2]) - budget) if np.any(locks[tris[sel]]) else 0)
@@ -304,7 +317,12 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
             if row.get('object') in entry['objects']:
                 row.update(output_triangles=entry['output_triangles'], pass_objects=entry['objects'],
                            pass_budget=budget, locked_border_excess=entry['locked_border_excess'])
-        emitted.append(result)
+        if carved:
+            instance = Instance(str(objects[0]), np.eye(3), np.zeros(3), False, 0.0)
+            allocation.shapes.append(dict(positions=result[0], tris=result[2], materials=result[3],
+                                         rule=selected[objects[0]], copies=[(instance, result)]))
+        else:
+            emitted.append(result)
     out_p, out_c, out_t, out_m = [], [], [], []
     base = 0
     for p, c, t, m in emitted:
@@ -313,8 +331,11 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
         out_t.append(t + base)
         out_m.append(m)
         base += len(p)
-    report['scene_total'] = report['output_triangles'] = sum(len(t) for t in out_t)
+    report['scene_total'] = report['output_triangles'] = (sum(len(t) for t in out_t) +
+        (sum(len(shape['copies'][0][1][2]) * len(shape['copies']) for shape in allocation.shapes) if allocation.shapes is not None else 0))
     if allocation.report is not None:
         allocation.report.update(report)
     check_ceiling(report['scene_total'], allocation.ceiling)
+    if not out_p:
+        return pos[:0], rgb[:0], tris[:0], labels[:0]
     return np.concatenate(out_p), np.concatenate(out_c), np.concatenate(out_t), np.concatenate(out_m)

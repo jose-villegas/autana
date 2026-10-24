@@ -17,10 +17,12 @@ from anim import clip_name
 from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
 from r3d.scene_name import scene_id
+from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
 from gltf.gltf_read import ASSET_SUFFIXES
 
 MESHLET_TRIANGLES = 32
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
+COLOUR_SET_OWN = read_define(SCENE_OWNER.with_name("scene_format.h"), "SCENE_ASSET_COLOUR_SET_OWN")
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
 ANIM_WRAPS = ("clamp", "loop")
@@ -541,7 +543,7 @@ def load_camera_path(path, base, where):
 
 
 def load_renderer(component, base, where):
-    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "fit", "indirect"))
+    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "fit", "indirect", "colour_set"))
     path = (base / text(component["mesh"], f"{where}.mesh")).resolve()
     if not path.is_file():
         raise SettingsError(f"{where}.mesh {component['mesh']!r} is not a file")
@@ -578,13 +580,18 @@ def load_renderer(component, base, where):
         indirect = False
     if not bake and (face_samples or visibility or fit or not indirect):
         raise SettingsError(f"{where} bake = true is required for shading, visibility, fit or indirect")
+    colour_set = component.get("colour_set", COLOUR_SET_OWN)
+    if "colour_set" in component and (type(colour_set) is not int or not 0 <= colour_set <= COLOUR_SET_OWN):
+        raise SettingsError(f"{where}.colour_set must fit the renderer colour-set field")
     return SimpleNamespace(settings=settings, variant=variant, bake=bake, face_samples=face_samples, visibility=visibility,
-                           fit=fit, indirect=indirect)
+                           fit=fit, indirect=indirect, colour_set=colour_set)
 
 
 def make_job(settings, renderer, obj, asset_name, asset_path, bake):
     """One mesh to write: its import, the renderer that decides its look, the scene object it belongs to
     (None for a bare import), where it is written and the scene bake settings it is traced with (None for albedo)."""
+    if settings.meshes:
+        asset_path = asset_path.with_suffix(BUNDLE_SUFFIX)
     return SimpleNamespace(settings=settings, renderer=renderer, object=obj, asset_name=asset_name, asset_path=asset_path,
                            bake=bake)
 
