@@ -206,7 +206,7 @@ class CheckTests(unittest.TestCase):
 
     def test_two_tracks_with_one_name_are_refused(self):
         tracks, duration_ms, root = probe_tracks()
-        with self.assertRaisesRegex(TracksError, "lamp:TRNS.position"):
+        with self.assertRaisesRegex(TracksError, "camera:TRNS.position"):
             tracks_asset.encode(tracks + [tracks[0]], duration_ms)
 
     def test_a_held_cubic_channel_with_no_slope_is_one_key_with_its_three_runs(self):
