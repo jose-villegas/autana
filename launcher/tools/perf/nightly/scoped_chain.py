@@ -380,7 +380,7 @@ def run_night(args, clock=None, launch=None):
         while any(id(process) not in hung and process.poll() is None for process, *_ in processes):
             clock.sleep(RESCAN_SECONDS)
             for process, started, estimate, board in processes:
-                if id(process) not in hung and process.poll() is None and (clock.now() - started).total_seconds() >= LANE_HANG_FACTOR * estimate:
+                if id(process) not in hung and process.poll() is None and (clock.now() - started).total_seconds() >= LANE_HANG_FACTOR * max(estimate, FIRST_STEP_SECONDS):
                     print(f"LANE_HANG_FACTOR expired for board {board}", file=sys.stderr)
                     stop_process_tree(process)
                     hung.add(id(process))
