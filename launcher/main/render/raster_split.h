@@ -1,24 +1,20 @@
-/* raster_split: caller-owned, damped feedback for each instance's top draw share. */
+/* raster_split: caller-owned core-1 shares for the raster's two-core stages (core/job.h steers them). */
 #pragma once
 
 #include <stdint.h>
 
-/* Bounds the split state size; instances past this cap draw with an even share. */
-#define RASTER_SPLIT_INSTANCES 16
-#define RASTER_SPLIT_PERMILLE  1000
-#define RASTER_SPLIT_EVEN      (RASTER_SPLIT_PERMILLE / 2)
-/* Keeps either core from being starved by one noisy frame. */
-#define RASTER_SPLIT_MIN       150
-#define RASTER_SPLIT_MAX       (RASTER_SPLIT_PERMILLE - RASTER_SPLIT_MIN)
+#include "core/job.h"
 
-/* Caller-owned shares of draw weight assigned to the top slice, by instance.
- * Offsets from even are in permille. Forget on a cut; NULL state keeps every draw even.
- * Instances beyond the state capacity also draw with an even share. */
+/* Bounds the split state size; instances past this cap split evenly. */
+#define RASTER_SPLIT_INSTANCES 16
+
+/* Each stage's offset from an even share, in permille; per instance where a
+ * stage runs per instance. Forget on a cut; NULL state keeps every split even. */
 typedef struct {
-    int16_t top_offset[RASTER_SPLIT_INSTANCES];
+    int16_t top_offset[RASTER_SPLIT_INSTANCES]; /* draw: core 1 takes the top rows */
+    int16_t transform_offset[RASTER_SPLIT_INSTANCES];
+    int16_t resolve_offset;
+    int16_t upscale_offset;
 } raster_split_t;
 
 void raster_split_forget(raster_split_t* split);
-/* Half-damped balanced share from positive slice times.
- * Nonpositive times leave the share unchanged. */
-int raster_split_update(int top_permille, int64_t top_us, int64_t bottom_us);
