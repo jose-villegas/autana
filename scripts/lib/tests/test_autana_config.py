@@ -13,7 +13,7 @@ LIB = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LIB))
 import autana_config  # noqa: E402
 
-DOCUMENT = LIB.parents[1] / "docs" / "tools" / "Autana-CLI.md"
+DOCUMENT = LIB.parents[1] / "docs" / "cli" / "Settings.md"
 
 
 class ConfigTest(unittest.TestCase):

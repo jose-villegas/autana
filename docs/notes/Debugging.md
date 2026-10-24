@@ -89,7 +89,7 @@ mechanism and the full field list.
 - **Development-only** (`--dev` or `--diag` build): a release build carries
   none of it.
 - **Serial transfer**: a full frame is streamed as base64<sup>[[27]](../Citations.md#27)</sup> over the console.
-  [Flash-and-Captures.md](../tools/Flash-and-Captures.md#screenshots) records
+  [Flash-and-Captures.md](../cli/Flash-and-Captures.md#screenshots) records
   the baud and capture workflow. `autana screenshot`
   prints progress every few seconds so this does not read as a hang.
 - **Does not reset the board**: opens the port with DTR/RTS held low so a
@@ -121,7 +121,7 @@ directory whose own `build_id.txt` matches the capture's `BUILD_ID`, or
 `--elf path/to/other.elf` to pin a specific one. Passing the right `.elf`
 matters for more than bookkeeping; it carries the debug symbols that turn
 a crash address into a file and line number. See
-[`../tools/Autana-CLI.md`](../tools/Autana-CLI.md).
+[`../cli/README.md`](../cli/README.md).
 
 ## After a crash: the reset reason and the core dump
 
@@ -177,9 +177,9 @@ sends, and lets go.
 
 ## Rendering looks wrong: gfx debug overlays
 
-`--dev`/`--diag` builds carry runtime overlays, switched by
+`--dev`/`--diag` builds carry runtime overlays, set by
 `gfx_set_debug_overlay()` / `gfx_set_leaf_overlay()` (`main/gfx/present/gfx_debug.h`),
-which a development-only app's toggle page calls:
+switched from the settings list's developer rows in a development build:
 
 - **Dirty-region overlay**: draws a border around whatever rectangle
   `gfx_present()` is about to send, so a stale patch of screen (something

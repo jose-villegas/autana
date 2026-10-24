@@ -43,7 +43,7 @@ on the camera's entity whose tracks bind to that entity through
 | Call | Meaning |
 |---|---|
 | `scene_load(id, &why)` | mounts the [asset pack](../assets/README.md#the-store) `id` and loads its scene entry `id`, every mesh, skin, skeleton and clip it names, beside any scene already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or no pack or an entry it could not open, or an entity whose placement does not decompose, with the entry's id and the pack's status |
-| `scene_unload(scene)` | frees it and releases its pack; its camera, if active, is deactivated |
+| `scene_unload(scene)` | unloads it and releases its pack; its camera, if active, is deactivated; its arena memory waits for the app's rewind ([Ownership](#ownership)) |
 | `scene_find(scene, name)` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
 | `scene_camera_lens(scene, camera)` | a camera's lens (NULL: the first); its pose is its entity's transform |
@@ -114,18 +114,32 @@ enabled renderers and draws. The raster's scratch block is the engine's, sized
 for the largest enabled mesh's working buffers, every enabled instance's
 census slot and the render size. Dynamic resolution reserves the finest
 step's raster block; the census list stays at the same offset across steps.
-The block grows only when the required storage exceeds its capacity.
+The block grows only when the required storage exceeds its capacity. A
+taken block cannot grow, so growing takes a new one and leaves the old one
+for the next rewind.
 
 ## Ownership
 
 A scene belongs to the app running when it was loaded. When an app exits the
 shell runs its systems' `app_exit` phase, which for scenes is
-`scene_unload_all()`: it unloads every scene and frees the
+`scene_unload_all()`: it unloads every scene and drops the
 scratch, so nothing an app loaded outlives it. An app may unload a scene itself
 sooner.
 
-Scenes are not taken from the app arena: it gives memory back only in the
-reverse order it was taken, and scenes unload in any order. A scene is opened
+The shell lends the manager the app arena with `scene_set_take()`. What a
+scene keeps in PSRAM, and the render context's scratch, are taken from it:
+
+| Piece | From |
+|---|---|
+| The scene's block, its animators' storage | the app arena |
+| The raster scratch block | the app arena |
+| Skinning output, skin light storage, light tables | the internal heap |
+| A development debug view's state | the PSRAM heap |
+
+`scene_unload()` frees the heap pieces only. Arena memory goes back when the
+app rewinds past it, so scenes still unload in any order. Unloading the last
+scene also drops the scratch, so an app that marks before `scene_load()` may
+rewind after `scene_unload()`. A scene is opened
 from an `asset_pack_t`: `scene_load()` mounts the scene's pack, and
 `scene_load_from()` takes the pack, so a test can load from one it builds. The
 pack outlives the scene, which reads its entry and every mesh, skin, skeleton

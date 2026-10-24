@@ -61,6 +61,12 @@ def placed_corners(shape, instance, matrix, position):
     return (corners @ instance.linear.T + instance.position) @ matrix.T + position
 
 
+def placed_corners(shape, instance, matrix, position):
+    """Eight local bounds corners under instance and renderer placement."""
+    corners = np.array(list(product(*zip(shape.positions.min(axis=0), shape.positions.max(axis=0)))))
+    return (corners @ instance.linear.T + instance.position) @ matrix.T + position
+
+
 def triangle_materials(triangles, materials):
     """Oriented triangle multiset, including materials and duplicate faces."""
     return Counter((oriented(face), int(material)) for face, material in zip(triangles, materials))

@@ -4,7 +4,7 @@
 #include "scene/scene.h"
 
 #define RENDER_LAB_BLEND_DEFAULT_MS             250
-#define RENDER_LAB_BLEND_MAX_MS                 1000
+#define RENDER_LAB_BLEND_MAX_MS                 2000
 #define RENDER_LAB_BLEND_STEP_MS                50
 #define RENDER_LAB_CLIPS_STRINGIFY_VALUE(value) #value
 #define RENDER_LAB_CLIPS_STRINGIFY(value)       RENDER_LAB_CLIPS_STRINGIFY_VALUE(value)

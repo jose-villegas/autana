@@ -5,6 +5,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "app/app_arena.h"
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/sponza_content.h"
 #include "scene/scene.h"
@@ -14,6 +15,7 @@ test_every_family_places_each_variant_and_its_camera(void) {
     for (int f = 0; f < BAKED_FAMILY_COUNT; f++) {
         const scene_baked_t* family = baked_families[f];
         scene_failure_t why;
+        const size_t mark = app_arena_mark();
         scene_t* scene = scene_load(family->scene, &why);
         TEST_ASSERT_NOT_NULL_MESSAGE(scene, family->scene);
         for (int v = 0; v < (int)SCENE_BAKED_VARIANT_COUNT; v++) {
@@ -23,6 +25,7 @@ test_every_family_places_each_variant_and_its_camera(void) {
         }
         TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, scene_find(scene, family->camera), family->camera);
         scene_unload(scene);
+        app_arena_rewind(mark);
     }
 }
 
