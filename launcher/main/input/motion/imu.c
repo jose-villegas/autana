@@ -40,11 +40,13 @@ static const char* TAG = "imu";
 _Static_assert(IMU_READ_HZ % IMU_FIFO_DRAIN_HZ == 0, "FIFO drains need whole read periods");
 _Static_assert(IMU_DRAIN_MS* MATH_US_PER_MS < IMU_FIFO_SAMPLES * IMU_SAMPLE_US,
                "FIFO drain period must fit retained history");
-/* Runs only while the core-1 job worker is idle, so the two-core step never waits on it.
- * A drain delayed past IMU_FIFO_SAMPLES * IMU_SAMPLE_US surfaces as a gap (gravity restart), not lost frames. */
-#define IMU_TASK_CORE     JOB_CORE1
-#define IMU_TASK_PRIORITY (JOB_CORE1_PRIORITY - 1)
+/* Starts each tick while the core-1 job worker is idle.
+ * A drain delayed past IMU_FIFO_SAMPLES * IMU_SAMPLE_US surfaces as a gap (gravity restart). */
+#define IMU_TASK_CORE         JOB_CORE1
+#define IMU_TASK_PRIORITY     (JOB_CORE1_PRIORITY - 1)
+#define IMU_TASK_BUS_PRIORITY (JOB_CORE1_PRIORITY + 1)
 _Static_assert(IMU_TASK_PRIORITY > tskIDLE_PRIORITY, "IMU task must run above idle priority");
+_Static_assert(IMU_TASK_BUS_PRIORITY < configMAX_PRIORITIES, "IMU bus priority must fit task priorities");
 /* Holds I2C driver frames and ESP_LOGI/ESP_LOGE on the bus-error path.
  * Size from the board's stack high-water mark. */
 #define IMU_TASK_STACK_BYTES (3 * 1024)
@@ -487,10 +489,14 @@ imu_task(void* arg) {
         const TickType_t period = requested_period > 0 ? requested_period : 1;
         const TickType_t drain_ticks = pdMS_TO_TICKS(drain_ms) / period;
         const bool drain_due = read_ticks == 0 || read_ticks >= drain_ticks;
+        /* The bus lock has no priority inheritance: a preempted drain holds the bus
+         * and keeps the FIFO in read mode, discarding arrivals. */
+        vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
         if (imu_read_or_drain(drain_due)) {
             read_ticks = 0;
         }
         read_ticks++;
+        vTaskPrioritySet(NULL, IMU_TASK_PRIORITY);
         if (xTaskDelayUntil(&last_wake, period) == pdFALSE) {
             last_wake = xTaskGetTickCount();
         }
