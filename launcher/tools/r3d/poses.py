@@ -39,6 +39,11 @@ def parse_pose_rows(text):
     return width, height, lens, near, poses
 
 
+def focal_px(width, height, lens):
+    """Pixels per world unit at unit view depth."""
+    return min(width, height) / (2 * lens)
+
+
 def camera_basis(forward):
     """(right, up, forward) unit vectors of a camera looking along `forward`
     with world +y up: the frame reference_render.py casts its rays in."""

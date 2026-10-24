@@ -25,8 +25,8 @@ from r3d.cost_model import clusters_in_view  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.light import drop_masked  # noqa: E402
 from r3d.objects.instances import MATCH_TOLERANCE, bounds_diagonal, match_instances, placed_corners, source_objects  # noqa: E402
-from r3d.objects.source import load_object_source  # noqa: E402
-from r3d.poses import camera_basis, sample_camera_path  # noqa: E402
+from r3d.mesh_import import load_source  # noqa: E402
+from r3d.poses import camera_basis, focal_px, sample_camera_path  # noqa: E402
 
 LOD_LEVELS = 4
 LOD_TRIANGLE_RATIO = 4
@@ -45,7 +45,7 @@ def masked_objects(src, settings):
     objects, triangles = [], []
     for index, name in enumerate(src.object_names):
         selected = src.tri_o == index
-        tv, _, tm = drop_masked(src.p, src.uv, src.tri_v[selected], src.tri_t[selected], src.tri_m[selected],
+        tv, _, tm, _ = drop_masked(src.p, src.uv, src.tri_v[selected], src.tri_t[selected], src.tri_m[selected],
                                 src.textures, settings.alpha_keep)
         triangles.append(tv)
         objects.extend(source_objects(src.p, tv, tm, np.zeros(len(tv), dtype=int), [name]))
@@ -83,7 +83,7 @@ def pose_rows(shapes, scene, job, every_ms, size):
         for shown, (centre, radius, share, repeated) in zip(visible, placements):
             if shown:
                 z = float((centre - pose[:3]) @ forward)
-                pixels = radius * min(width, height) / (2 * lens * max(z, near))
+                pixels = radius * focal_px(width, height, lens) / max(z, near)
                 view.append((share, min(picture_area, np.pi * pixels ** 2), repeated))
         views.append(view)
     mean_in_view = np.mean([sum(share for share, _, _ in view) for view in views])
@@ -191,7 +191,7 @@ def main(argv=None):
     if size is None:
         parser.error('--size is required when the selected renderer has no fit or visibility size')
     every_ms = args.every_ms or (visibility.every_ms if visibility and visibility.source == 'camera_path' else DEFAULT_EVERY_MS)
-    src = load_object_source(job.settings)
+    src = load_source(job.settings)
     objects, _ = masked_objects(src, job.settings)
     shapes = match_instances(objects, args.tolerance)
     budget, rows, pixels_per_triangle = pose_rows(shapes, scene, job, every_ms, size)

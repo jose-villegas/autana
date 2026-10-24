@@ -1,19 +1,13 @@
-"""Bake NAME.sound.toml and its integer PCM WAV into a SOND entry.
+"""Encode, validate and read NAME.sound.toml and SOND entries.
 
-The TOML owns format and loop frames at the stored rate. The WAV's sample
-level is the sound's level; there is no gain setting, and cue/smpl chunks are
-not read. Mixdown takes the channel mean. Resampling uses a Hann-windowed sinc
-with 32 zero crossings on each side, widened by the downsampling ratio for an
-anti-alias lowpass. Matching-rate sources skip the filter. Layout:
-docs/audio/Sound-Assets.md. Standard library only.
+The TOML owns format and loop frames at the stored rate. Layout:
+docs/audio/Sound-Assets.md. Standard library only; sound_import.py decodes sources.
 """
 
-import math
 import pathlib
 import struct
 import sys
 import tomllib
-import wave
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -51,8 +45,7 @@ SAMPLE_BITS = PCM_BYTES * 8
 SAMPLE_MAX = (1 << (SAMPLE_BITS - 1)) - 1
 SAMPLE_MIN = -(1 << (SAMPLE_BITS - 1))
 FRAME_MAX = (1 << 32) - 1
-SINC_RADIUS = 32
-PCM_WIDTHS = (1, 2, 3, 4)
+SOURCE_SUFFIXES = (".wav", ".flac", ".ogg", ".mp3")
 
 
 class SoundError(ValueError):
@@ -188,55 +181,12 @@ def load_source(path):
     if set(values) - {"source", "format", "loop"} or not isinstance(source, str) \
             or not isinstance(fmt, str) or fmt not in FORMATS:
         raise SoundError(f"{path}: requires source and format = adpcm or pcm16; allowed keys: source, format, loop")
-    if pathlib.PurePath(source).name != source or ":" in source or "\\" in source or not source.lower().endswith(".wav"):
-        raise SoundError(f"{path}: source {source!r} is not a .wav in the same folder")
+    if pathlib.PurePath(source).name != source or ":" in source or "\\" in source or pathlib.Path(source).suffix.lower() not in SOURCE_SUFFIXES:
+        raise SoundError(f"{path}: source {source!r} is not a WAV, FLAC, OGG or MP3 in the same folder")
     if "loop" in values:
         validate_loop(loop, FRAME_MAX, 0)
     return path.parent / source, fmt, loop
 
 
-def resample(samples, rate):
-    if rate == SAMPLE_RATE_HZ:
-        return samples
-    cutoff = min(1.0, SAMPLE_RATE_HZ / rate)
-    radius = SINC_RADIUS / cutoff
-    result = []
-    for i in range(round(len(samples) * SAMPLE_RATE_HZ / rate)):
-        position = i * rate / SAMPLE_RATE_HZ
-        total = weight_sum = 0.0
-        for j in range(max(0, math.ceil(position - radius)), min(len(samples), math.floor(position + radius) + 1)):
-            distance = j - position
-            phase = distance * cutoff
-            sinc = math.sin(math.pi * phase) / (math.pi * phase) if phase else 1.0
-            weight = sinc * (1 + math.cos(math.pi * distance / radius)) / 2
-            total += samples[j] * weight
-            weight_sum += weight
-        result.append(total / weight_sum)
-    return result
-
-
-def read_wav(path):
-    try:
-        with wave.open(str(path), "rb") as wav:
-            channels, width, rate, frames, compression, _ = wav.getparams()
-            if compression != "NONE" or width not in PCM_WIDTHS:
-                raise SoundError("WAV must be integer PCM 8/16/24/32-bit")
-            raw = wav.readframes(frames)
-    except (OSError, EOFError, wave.Error) as error:
-        raise SoundError(f"{path}: expected integer PCM 8/16/24/32-bit WAV: {error}") from error
-    if len(raw) != frames * channels * width or frames == 0:
-        raise SoundError(f"{path}: empty or truncated WAV")
-    values = [raw[i] - 128 if width == 1 else int.from_bytes(raw[i:i + width], "little", signed=True)
-              for i in range(0, len(raw), width)]
-    scale = 2 ** (SAMPLE_BITS - width * 8)
-    mono = [sum(values[i:i + channels]) * scale / channels for i in range(0, len(values), channels)]
-    return [clamp(round(v)) for v in resample(mono, rate)]
-
-
 def sound_id(path):
     return pathlib.Path(path).name.removesuffix(SUFFIX)
-
-
-def bake(path):
-    source, fmt, loop = load_source(path)
-    return encode(read_wav(source), fmt, loop)

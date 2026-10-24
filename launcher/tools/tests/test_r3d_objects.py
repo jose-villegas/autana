@@ -23,7 +23,7 @@ from r3d.obj import Texture, load_obj
 from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, rigid_fit, source_objects
 from r3d.objects.objects_report import LOD_LEVELS, LOD_TRIANGLE_RATIO, main, masked_objects, pose_rows
-from r3d.objects.source import obj_ownership, gltf_ownership, load_object_source
+from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
 
 POINTS = np.array([[0., 0., 0.], [3., 0., 0.], [0., 2., 0.], [0., 0., 1.]])
@@ -172,8 +172,7 @@ class ObjectsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / 'rounded.obj'
             path.write_text(obj_text([('original', POINTS, TRIANGLES), ('rounded', rounded, TRIANGLES)]))
-            p, _, tv, _, tm, _ = load_obj(path)
-            to, names = obj_ownership(path)
+            p, _, tv, _, tm, _, to, names = load_obj(path)
         shapes = match_instances(source_objects(p, tv, tm, to, names))
         self.assertEqual([len(shape.instances) for shape in shapes], [2])
 
@@ -210,11 +209,11 @@ class ObjectsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / 'plain.obj'
             path.write_text('v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\ng next\nf 1 3 2\n')
-            loaded = obj_ownership(path)
+            loaded = load_obj(path)[-2:]
             self.assertEqual(loaded[1], ['plain', 'next'])
             np.testing.assert_array_equal(loaded[0], [0, 1])
             path.write_text('v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n')
-            self.assertEqual(obj_ownership(path)[1], ['plain'])
+            self.assertEqual(load_obj(path)[-2:][1], ['plain'])
 
     def test_gltf_shared_and_baked(self):
         mesh = {'primitives': [{'positions': POINTS.tolist(), 'indices': TRIANGLES.ravel().tolist()}]}
@@ -224,7 +223,6 @@ class ObjectsTests(unittest.TestCase):
             path.write_bytes(build_glb([{'mesh': 0, 'name': 'first'}, {'mesh': 0, 'translation': [4, 0, 0]},
                                         {'mesh': 1}], [], meshes=[mesh, baked]))
             src = load_gltf_mesh(path)
-            src.tri_o, src.object_names = gltf_ownership(path)
             self.assertEqual(len(src.tri_o), len(src.tri_v))
         objects = source_objects(src.positions, src.tri_v, src.tri_m, src.tri_o, src.object_names)
         self.assertEqual(src.object_names, ['first', 'node_1', 'node_2'])
@@ -238,7 +236,7 @@ class ObjectsTests(unittest.TestCase):
             settings.source['path'].write_text('version https://git-lfs.github.com/spec/v1\n'
                                                + 'oid sha256:' + hashlib.sha256(b'').hexdigest() + '\nsize 1\n')
             with self.assertRaisesRegex(SettingsError, 'Git LFS'):
-                load_object_source(settings)
+                load_source(settings)
 
     def alpha_source(self, directory):
         from PIL import Image
@@ -283,7 +281,7 @@ class ObjectsTests(unittest.TestCase):
             settings = load_import_settings(write_import(directory))
             settings.source['path'].write_text(obj_text([('first', POINTS, TRIANGLES),
                                                         ('second', POINTS + 10, TRIANGLES)]))
-            src = load_object_source(settings)
+            src = load_source(settings)
         self.assertEqual(src.object_names, ['first', 'second'])
         np.testing.assert_array_equal(src.tri_o, np.repeat([0, 1], 4))
         np.testing.assert_array_equal(src.p[src.tri_v[src.tri_o == 1]], (POINTS + 10)[TRIANGLES])
@@ -296,17 +294,10 @@ class ObjectsTests(unittest.TestCase):
             path.write_bytes(build_glb([{'mesh': 0, 'name': 'first'}, {'mesh': 0, 'translation': [10, 0, 0]}],
                                        [], meshes=[mesh]))
             settings.source['path'] = path
-            src = load_object_source(settings)
+            src = load_source(settings)
         self.assertEqual(src.object_names, ['first', 'node_1'])
         np.testing.assert_array_equal(src.tri_o, np.repeat([0, 1], 4))
         np.testing.assert_array_equal(src.p[src.tri_v[src.tri_o == 1]], (POINTS + [10, 0, 0])[TRIANGLES])
-
-    def test_load_source_count_mismatch_raises(self):
-        with tempfile.TemporaryDirectory() as directory:
-            settings = load_import_settings(write_import(directory))
-            with patch('r3d.objects.source.obj_ownership', return_value=(np.array([0]), ['bad'])):
-                with self.assertRaisesRegex(ValueError, 'ownership disagree'):
-                    load_object_source(settings)
 
     def run_pose(self, objects, budget=None, matrix=None, position=None):
         job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(triangles=budget)),
@@ -596,7 +587,7 @@ class InstancesFigureTests(unittest.TestCase):
             return Image.new('RGB', DOC_SIZE, 'white')
 
         with tempfile.TemporaryDirectory() as directory, \
-                patch('r3d.objects.instances_figure.load_object_source', return_value=src), \
+                patch('r3d.objects.instances_figure.load_source', return_value=src), \
                 patch('r3d.objects.instances_figure.sample_camera_path', side_effect=[
                     (*DOC_SIZE, 0.6, 1., [pose + [0, 0, 20, 0, 0, 0]]),
                     (*DOC_SIZE, 0.6, 1., [pose + [0, 0, 20, 0, 0, 0], pose])]):

@@ -1,0 +1,63 @@
+# autana sound-mix capture on A308, 2026-10-23, one record per line: <record>	<payload>
+buildid	{"build_id": "e0d94a627002-dev"}
+stage mix	sound_mix
+stage present	present
+period_us	5804.988662131519
+window_seconds	1.5
+capacity	8
+voices	0,1,8
+fill_sound	engine/tap
+fill_format	adpcm
+sound engine/carreno_waltz	adpcm
+dropped engine/carreno_waltz 0	0
+playing engine/carreno_waltz 0	0
+point engine/carreno_waltz 0	I (32283) shell: ms/frame avg/worst: ui.build 0.26/0.3  ridge.layers 2.23/2.3  ridge.paint 1.92/6.5  ui.paint 3.08/3.2  present 9.64/10.0  frame.rest 1.22/1.6 | total 18.38 || sound_mix 0.004/0.015 ms/block n=260
+point engine/carreno_waltz 0	I (33792) shell: ms/frame avg/worst: ui.build 0.26/0.3  ridge.layers 2.23/2.3  ridge.paint 1.86/2.1  ui.paint 3.07/3.2  present 9.56/10.1  frame.rest 1.23/1.6 | total 18.23 || sound_mix 0.004/0.016 ms/block n=260
+point engine/carreno_waltz 0	I (35309) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.23/2.3  ridge.paint 1.85/2.1  ui.paint 3.07/3.2  present 9.66/10.0  frame.rest 1.22/1.6 | total 18.32 || sound_mix 0.004/0.017 ms/block n=262
+point engine/carreno_waltz 0	I (36823) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.24/2.3  ridge.paint 1.88/2.1  ui.paint 3.08/3.2  present 9.64/10.0  frame.rest 1.22/1.6 | total 18.35 || sound_mix 0.004/0.016 ms/block n=261
+point engine/carreno_waltz 0	I (38342) shell: ms/frame avg/worst: ui.build 0.26/0.3  ridge.layers 2.23/2.3  ridge.paint 1.86/2.1  ui.paint 3.08/3.2  present 9.69/9.9  frame.rest 1.22/1.6 | total 18.36 || sound_mix 0.004/0.016 ms/block n=261
+point engine/carreno_waltz 0	I (39846) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.23/2.3  ridge.paint 1.84/2.1  ui.paint 3.08/3.2  present 9.56/10.0  frame.rest 1.22/1.6 | total 18.21 || sound_mix 0.004/0.015 ms/block n=259
+point engine/carreno_waltz 0	I (41346) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.24/2.3  ridge.paint 1.84/2.2  ui.paint 3.07/3.2  present 9.69/9.9  frame.rest 1.23/1.6 | total 18.35 || sound_mix 0.004/0.022 ms/block n=259
+point engine/carreno_waltz 0	I (42847) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.24/2.3  ridge.paint 1.88/2.1  ui.paint 3.07/3.2  present 9.66/10.0  frame.rest 1.22/1.7 | total 18.35 || sound_mix 0.004/0.016 ms/block n=258
+point engine/carreno_waltz 0	I (44362) shell: ms/frame avg/worst: ui.build 0.26/0.3  ridge.layers 2.23/2.3  ridge.paint 1.86/2.1  ui.paint 3.07/3.2  present 9.66/10.0  frame.rest 1.23/1.6 | total 18.34 || sound_mix 0.004/0.014 ms/block n=261
+point engine/carreno_waltz 0	I (45878) shell: ms/frame avg/worst: ui.build 0.26/0.3  ridge.layers 2.23/2.3  ridge.paint 1.85/2.2  ui.paint 3.08/3.2  present 9.65/10.0  frame.rest 1.22/1.6 | total 18.32 || sound_mix 0.004/0.014 ms/block n=261
+dropped engine/carreno_waltz 0	0
+dropped engine/carreno_waltz 1	0
+playing engine/carreno_waltz 1	1
+point engine/carreno_waltz 1	I (57964) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.24/2.3  ridge.paint 1.95/6.6  ui.paint 3.09/3.3  present 9.71/10.0  frame.rest 1.23/1.6 | total 18.51 || sound_mix 0.056/0.107 ms/block n=261
+point engine/carreno_waltz 1	I (59481) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.24/2.3  ridge.paint 1.88/2.1  ui.paint 3.09/3.2  present 9.65/10.0  frame.rest 1.24/1.7 | total 18.40 || sound_mix 0.058/0.105 ms/block n=262
+point engine/carreno_waltz 1	I (60981) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.24/2.3  ridge.paint 1.85/2.1  ui.paint 3.10/3.3  present 9.70/10.0  frame.rest 1.24/1.6 | total 18.41 || sound_mix 0.058/0.105 ms/block n=258
+point engine/carreno_waltz 1	I (62512) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.24/2.3  ridge.paint 3.49/25.3  ui.paint 3.11/3.3  present 9.70/10.0  frame.rest 1.26/1.7 | total 20.10 || sound_mix 0.056/0.100 ms/block n=264
+point engine/carreno_waltz 1	I (64026) shell: ms/frame avg/worst: ui.build 0.28/0.3  ridge.layers 2.25/2.3  ridge.paint 16.75/28.2  ui.paint 2.96/3.2  present 9.47/10.2  frame.rest 2.03/3.0 | total 33.76 || sound_mix 0.052/0.094 ms/block n=261
+point engine/carreno_waltz 1	I (65533) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.20/2.3  ridge.paint 7.94/28.5  ui.paint 2.81/3.1  present 8.05/10.0  frame.rest 2.01/2.8 | total 23.30 || sound_mix 0.055/0.097 ms/block n=259
+point engine/carreno_waltz 1	I (67092) shell: ms/frame avg/worst: ui.build 0.27/0.3  ridge.layers 2.19/2.2  ridge.paint 11.53/41.1  ui.paint 2.86/3.2  present 7.87/10.0  frame.rest 1.55/2.7 | total 26.28 || sound_mix 0.053/0.101 ms/block n=269
+point engine/carreno_waltz 1	I (68595) shell: ms/frame avg/worst: ui.build 0.29/0.3  ridge.layers 2.24/2.3  ridge.paint 23.10/39.3  ui.paint 3.12/3.2  present 9.45/10.1  frame.rest 2.79/3.4 | total 41.02 || sound_mix 0.051/0.092 ms/block n=259
+point engine/carreno_waltz 1	I (70102) shell: ms/frame avg/worst: ui.build 0.29/0.3  ridge.layers 2.24/2.3  ridge.paint 9.18/25.9  ui.paint 3.19/3.3  present 9.99/10.2  frame.rest 2.38/3.0 | total 27.29 || sound_mix 0.054/0.102 ms/block n=259
+point engine/carreno_waltz 1	I (71628) shell: ms/frame avg/worst: ui.build 0.28/0.3  ridge.layers 2.25/2.4  ridge.paint 7.24/25.4  ui.paint 3.14/3.3  present 9.94/10.2  frame.rest 1.49/2.6 | total 24.36 || sound_mix 0.055/0.113 ms/block n=263
+dropped engine/carreno_waltz 1	0
+dropped engine/carreno_waltz 8	0
+playing engine/carreno_waltz 8	8
+point engine/carreno_waltz 8	I (89745) shell: ms/frame avg/worst: ui.build 0.28/0.3  ridge.layers 2.25/2.3  ridge.paint 2.49/17.2  ui.paint 3.11/3.3  present 9.88/15.1  frame.rest 1.36/2.5 | total 19.38 || sound_mix 0.263/0.326 ms/block n=261
+point engine/carreno_waltz 8	I (91270) shell: ms/frame avg/worst: ui.build 0.29/0.3  ridge.layers 2.25/2.4  ridge.paint 6.22/25.5  ui.paint 3.17/3.3  present 10.08/10.5  frame.rest 1.96/2.8 | total 23.98 || sound_mix 0.261/0.320 ms/block n=263
+point engine/carreno_waltz 8	I (92794) shell: ms/frame avg/worst: ui.build 0.29/0.3  ridge.layers 2.25/2.4  ridge.paint 9.79/26.2  ui.paint 3.19/3.4  present 10.13/10.6  frame.rest 1.36/2.0 | total 27.03 || sound_mix 0.259/0.313 ms/block n=262
+point engine/carreno_waltz 8	I (94298) shell: ms/frame avg/worst: ui.build 0.28/0.3  ridge.layers 2.26/2.4  ridge.paint 6.64/27.0  ui.paint 3.14/3.3  present 10.02/10.6  frame.rest 1.29/1.6 | total 23.66 || sound_mix 0.261/0.322 ms/block n=259
+point engine/carreno_waltz 8	I (95805) shell: ms/frame avg/worst: ui.build 0.28/0.3  ridge.layers 2.26/2.4  ridge.paint 3.95/4.6  ui.paint 3.13/3.3  present 10.00/10.5  frame.rest 1.27/1.6 | total 20.90 || sound_mix 0.260/0.313 ms/block n=260
+point engine/carreno_waltz 8	I (97312) shell: ms/frame avg/worst: ui.build 0.28/0.3  ridge.layers 2.26/2.4  ridge.paint 3.06/3.9  ui.paint 3.10/3.2  present 9.81/10.5  frame.rest 1.25/1.6 | total 19.78 || sound_mix 0.261/0.320 ms/block n=260
+point engine/carreno_waltz 8	I (98825) shell: ms/frame avg/worst: ui.build 0.28/0.3  ridge.layers 2.26/2.3  ridge.paint 2.50/2.9  ui.paint 3.08/3.2  present 9.62/10.1  frame.rest 1.27/1.7 | total 19.05 || sound_mix 0.262/0.321 ms/block n=260
+point engine/carreno_waltz 8	I (100332) shell: ms/frame avg/worst: ui.build 0.28/0.3  ridge.layers 2.26/2.4  ridge.paint 2.33/2.8  ui.paint 3.09/3.2  present 9.74/10.4  frame.rest 1.26/1.6 | total 18.99 || sound_mix 0.260/0.327 ms/block n=260
+point engine/carreno_waltz 8	I (101837) shell: ms/frame avg/worst: ui.build 0.28/0.3  ridge.layers 2.26/2.4  ridge.paint 2.22/2.8  ui.paint 3.10/3.3  present 9.78/10.5  frame.rest 1.27/1.7 | total 18.94 || sound_mix 0.261/0.322 ms/block n=259
+point engine/carreno_waltz 8	I (103344) shell: ms/frame avg/worst: ui.build 0.28/0.3  ridge.layers 2.26/2.3  ridge.paint 2.15/2.4  ui.paint 3.10/3.2  present 9.67/10.3  frame.rest 1.27/1.6 | total 18.75 || sound_mix 0.261/0.329 ms/block n=260
+dropped engine/carreno_waltz 8	0
+stats engine/carreno_waltz 8	SOUND ready=1 dropped=0 amp=2
+stats engine/carreno_waltz 8	SOUND slot=0 voice=17 playing=1 bus=1 gain=100 priority=128 frame=165806
+stats engine/carreno_waltz 8	SOUND slot=1 voice=10 playing=1 bus=1 gain=100 priority=128 frame=4326
+stats engine/carreno_waltz 8	SOUND slot=2 voice=3 playing=1 bus=1 gain=100 priority=128 frame=818
+stats engine/carreno_waltz 8	SOUND slot=3 voice=4 playing=1 bus=1 gain=100 priority=128 frame=4721
+stats engine/carreno_waltz 8	SOUND slot=4 voice=5 playing=1 bus=1 gain=100 priority=128 frame=2493
+stats engine/carreno_waltz 8	SOUND slot=5 voice=6 playing=1 bus=1 gain=100 priority=128 frame=1417
+stats engine/carreno_waltz 8	SOUND slot=6 voice=7 playing=1 bus=1 gain=100 priority=128 frame=1864
+stats engine/carreno_waltz 8	SOUND slot=7 voice=8 playing=1 bus=1 gain=100 priority=128 frame=20
+stats engine/carreno_waltz 8	SOUND ram voices=256 queue=340 stack=2560 tx_samples=1024 mixer=828
+stats engine/carreno_waltz 8	SOUND stack_min_free=588 margin=512
+stats engine/carreno_waltz 8	SOUND_END
+buildid	{"build_id": "e0d94a627002-dev"}
