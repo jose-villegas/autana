@@ -15,6 +15,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
 from anim import track_host  # noqa: E402
+from build import packages  # noqa: E402
 
 LAUNCHER = TOOLS.parent
 TEST = LAUNCHER / "test"
@@ -38,8 +39,9 @@ class SuiteReadsTests(unittest.TestCase):
     @classmethod
     def build(cls, name, *defines):
         out = pathlib.Path(cls.folder.name) / f"{name}{track_host.EXE}"
-        built = subprocess.run([cls.cc, *track_host.FLAGS, *defines, "-I", str(LAUNCHER / "main"), "-I", str(TEST),
-                                *map(str, SOURCES), "-Wl,--wrap=asset_store_pack", "-o", str(out)],
+        includes = [flag for root in (*packages.include_roots(LAUNCHER), TEST) for flag in ("-I", str(root))]
+        built = subprocess.run([cls.cc, *track_host.FLAGS, *defines, *includes, *map(str, SOURCES),
+                                "-Wl,--wrap=asset_store_pack", "-o", str(out)],
                                capture_output=True, text=True)
         if built.returncode != 0:
             raise AssertionError(f"building {name} failed:\n{built.stderr}")

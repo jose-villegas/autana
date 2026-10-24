@@ -1,6 +1,6 @@
 /*
- * app_diagnostics: shows the POST report on demand, plus a second page of
- * developer-only toggles.
+ * app_diagnostics: shows the POST report on demand, plus a second page with
+ * the orientation readout and, in a SELFTEST build, the self-test runner.
  *
  * The POST itself is silent when everything passes, which is the right default
  * for a device that should just boot. This is how you look anyway, without
@@ -8,39 +8,26 @@
  * console.
  *
  * Entering it RE-RUNS the checks, so the report is live rather than a record of
- * what boot found; the point of opening it is usually to see whether something
- * is failing now.
+ * what boot found. Every check is repeated, including the SD card: the re-run
+ * re-mounts the card on its own SDMMC bus, independent of the display, and the
+ * report prints how long that round trip took.
  *
- * Every check is repeated, including the SD card: the re-run just re-mounts
- * the card on its own dedicated SDMMC bus, independent of the display, and
- * the report prints how long that round trip took.
- *
- * BOOT pages between the report and the toggle screen, rather than the
- * toggle screen adding a control to the report itself; the report is
- * already a dense list with no obvious room, and a second page costs
- * nothing the report's own layout has to account for.
- *
- * The toggle screen is built with ui.h like any other app UI, so it is
- * drawn and dirty-tracked the way the launcher's own menu is, rather than
- * hand-rolling a one-off control that reads a button directly. Any future developer toggle belongs on this same page as another
- * ui_toggle() row, not as its own bespoke screen.
+ * BOOT pages between the report and the second page; the report is already a
+ * dense list with no room for controls.
  */
-
 #include <stdio.h>
 
 #include "app/app.h"
 #include "build/build_variant.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_debug.h"
-#include "gfx/present/gfx_present.h"
 #include "input/motion/imu.h"
 #include "selftest/post_layout.h"
 #include "selftest/post_ui.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "selftest/selftest.h"
 #endif
-#include "shell/apps/diagnostics/ui/toggles_screen.h"
+#include "shell/apps/diagnostics/ui/tools_screen.h"
 #include "ui/ui.h"
 
 #define PAGE_COUNT 2
@@ -83,15 +70,10 @@ diagnostics_enter(void) {
 }
 
 static void
-draw_toggles_page(const input_t* input) {
+draw_tools_page(const input_t* input) {
     ui_begin(input);
 
-    toggles_screen_state_t state = {
-        .overlay_on = gfx_debug_overlay(),
-        .leaf_on = gfx_debug_leaf_overlay(),
-        .interlace_on = gfx_interlace_enabled(),
-        .fast_clock = display_system_panel_clock_hz() == GFX_PANEL_CLOCK_FAST_HZ,
-        .send_audit_on = gfx_send_audit(),
+    diagnostics_tools_screen_state_t state = {
         .show_orientation = show_orientation,
         .imu_ready = imu_ready(),
         .shell_quarter = display_quarter_now(),
@@ -113,13 +95,8 @@ draw_toggles_page(const input_t* input) {
         }
     }
 
-    const toggles_screen_result_t result = toggles_screen_draw(&state);
+    const diagnostics_tools_screen_result_t result = diagnostics_tools_screen_draw(&state);
 
-    gfx_set_debug_overlay(result.overlay_on);
-    gfx_set_leaf_overlay(result.leaf_on);
-    gfx_set_interlace(result.interlace_on);
-    display_set_system_panel_clock_hz(result.fast_clock ? GFX_PANEL_CLOCK_FAST_HZ : GFX_PANEL_CLOCK_SLOW_HZ);
-    gfx_set_send_audit(result.send_audit_on);
     show_orientation = result.show_orientation;
 #if CONFIG_LAUNCHER_SELFTEST
     /* Only FLAGGED here, not run: selftest_run() itself happens at the top
@@ -131,7 +108,7 @@ draw_toggles_page(const input_t* input) {
     }
 #endif
 
-    ui_end(TOGGLES_SCREEN_BACKGROUND);
+    ui_end(UI_BACKGROUND);
 }
 
 static void
@@ -141,7 +118,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
 #if CONFIG_LAUNCHER_SELFTEST
     /* Consumed here, before this frame's own ui_begin()/ui_end() bracket
      * opens, never from inside ui_button()'s own if-block in
-     * draw_toggles_page(). selftest_run() runs suite_ui.c, whose
+     * draw_tools_page(). selftest_run() runs suite_ui.c, whose
      * fixture() calls ui_init() on the same UI context
      * singleton every window in this shell draws through; running it
      * synchronously mid-frame would stomp state ui_end() further down
@@ -152,7 +129,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
         /* selftest_run()'s own tests set ui_set_transform() to a fixed
          * sequence of quarter-turns ending wherever the LAST test left
          * it, not the board's real orientation, restored here
-         * immediately, one frame of latency before draw_toggles_page()
+         * immediately, one frame of latency before draw_tools_page()
          * ever opens its own frame. */
         ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
     }
@@ -176,7 +153,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
         const post_ui_report_t report = {.title = POST_LAYOUT_TITLE, .quarter = display_quarter_now()};
         post_ui_draw_report(&report);
     } else {
-        draw_toggles_page(input);
+        draw_tools_page(input);
     }
 }
 

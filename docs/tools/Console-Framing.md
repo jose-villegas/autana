@@ -41,7 +41,7 @@ The decoder, [`launcher/tools/device/screenshot.py`](../../launcher/tools/device
 `BEGIN`, `DATA:`, `STATE:`, `REFUSED:` and `END` by exact prefix and ignores every other line,
 because the device keeps logging while it streams. It converts the BMP to PNG in memory with
 the standard library only; opening the port is the caller's job, under the
-[device lock](Device-Lock.md).
+[device lock](../cli/Device-Lock.md).
 
 ## Other verbs
 
@@ -50,4 +50,4 @@ Multi-line replies end with their own marker: `PERFMON_END` after the `PERFMON_N
 `SOUND_END` ([`console_sound.c:69`](../../launcher/main/console/verbs/console_sound.c#L69)),
 `MELODY_END` ([`console_melody.c:108`](../../launcher/main/console/verbs/console_melody.c#L108)).
 A new verb with a multi-line reply ends it with a line starting `<VERB>_END` so a script knows when to stop
-reading; see [App commands](App-Commands.md) for adding a verb.
+reading; see [App commands](../cli/App-Commands.md) for adding a verb.

@@ -87,6 +87,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(REPO / "scripts/gates"))
 sys.path.insert(0, str(REPO / "scripts/lib"))
 from autana_config import user_cache_dir
+from http_get import get
 
 from build import packages  # noqa: E402
 from build.c_header import read_define  # noqa: E402
@@ -801,8 +802,7 @@ def download(row, suffix, cache):
     """The locked file from the release into the cache, or None when the release has no such file."""
     name = f"{row['sha256']}{suffix}"
     try:
-        with urllib.request.urlopen(RELEASE_URL + name, timeout=DOWNLOAD_TIMEOUT_S) as response:
-            data = response.read()
+        data = get(RELEASE_URL + name, timeout=DOWNLOAD_TIMEOUT_S)
     except urllib.error.HTTPError as error:
         error.close()
         if error.code == 404:
@@ -921,7 +921,8 @@ def from_run(row, suffix, cache):
         with tempfile.TemporaryDirectory() as folder:
             produce.import_run(run_files(row["run"], pathlib.Path(folder)), row["run"], cache)
     except (OSError, urllib.error.URLError, subprocess.CalledProcessError, BakeMissing, zipfile.BadZipFile) as error:
-        return None, f"{type(error).__name__}: {error}"
+        reason = "; ".join([f"{type(error).__name__}: {error}", *getattr(error, "__notes__", ())])
+        return None, reason
     path = cached(row, suffix, cache)
     if not path.is_file():
         return None, "its uploads hold no file for this key"
@@ -953,15 +954,13 @@ def github_get(url, token):
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}",
                                                    "Accept": "application/vnd.github+json"})
     try:
-        with urllib.request.build_opener(KeepRedirect).open(request, timeout=DOWNLOAD_TIMEOUT_S) as response:
-            return response.read()
+        return get(request, timeout=DOWNLOAD_TIMEOUT_S, opener=urllib.request.build_opener(KeepRedirect))
     except urllib.error.HTTPError as error:
         location = error.headers.get("Location")
         error.close()
         if error.code not in (301, 302, 303, 307, 308) or not location:
             raise
-    with urllib.request.urlopen(location, timeout=DOWNLOAD_TIMEOUT_S) as response:
-        return response.read()
+    return get(location, timeout=DOWNLOAD_TIMEOUT_S)
 
 
 def run_files(run, folder):

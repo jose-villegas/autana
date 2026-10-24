@@ -4,7 +4,7 @@ Per-type arithmetic, fixed point, random draws and units. [Math index](README.md
 
 `math/scalar/` holds per-type arithmetic, fixed point, random draws, trigonometry
 and time units. The tables list the range, lerp and rounding helpers; the
-[catalogue](../Shared-Helpers.md) lists the rest.
+[catalogue](../tools/Shared-Helpers.md) lists the rest.
 
 ## mathi.h
 
@@ -59,6 +59,22 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 | `mathx_min(a, b)`, `mathx_max(a, b)`, `mathx_clamp(v, lo, hi)`, `mathx_repeat(v, len)`, `mathx_wrap(v, lo, hi)` | range helpers on the value | as in `mathi.h` |
 | `mathf_to_x(v)` | Q16.16, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
 | `mathx_to_f(v)` | float | $`v/2^{16}`$ |
+
+`mathx_rsqrt_q30(m)` accepts $`2^{30} \le m < 2^{32}`$ and returns
+$`2^{30}/\sqrt{m/2^{32}}`$ rounded to nearest.
+`MATHX_RSQRT_Q30_RELATIVE_LIMIT` bounds relative error by $`2^{-31}`$.
+The seed table, Newton corrections and midpoint bracket use integer products.
+
+The exhaustive checker runs separately from unit tests:
+
+```sh
+cc -O3 -Ilauncher/packages/math/include launcher/test/math_rsqrt_check.c -lm -o /tmp/math_rsqrt_check
+/tmp/math_rsqrt_check
+```
+
+`mathx_rsqrt(v)` returns Q16.16 reciprocal square root, with error at most
+0.5 LSB plus `MATHX_RSQRT_RELATIVE_LIMIT` times the exact result.
+Nonpositive input gives `INT32_MAX`; positive input uses `mathx_rsqrt_q30`.
 
 ## mathf_round.h
 

@@ -41,6 +41,8 @@ On a development build the BOOT menu has a SMALL FILL dropdown with every
 
 ![The Sponza menu closed, then the SCENE, VARIANT and SMALL FILL lists open](images/scene-menu/scene-menu.png)
 
+![The SMALL FILL list open in landscape](images/scene-menu/small-fill-landscape.png)
+
 The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
 come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
 The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)
@@ -178,7 +180,7 @@ be checked to have measured the same thing.
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render-lab-sponza-flat.gif` | the flythrough with the fitted flat-shaded bake |
-| `render-lab-capybara.gif` | the capybara's idle, walk, walk_fast and gallop clips in turn, each blended into the next, as the camera turns once around it |
+| `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and, more slowly, back to the first, as the camera turns once around it |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 

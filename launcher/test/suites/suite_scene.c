@@ -492,6 +492,8 @@ typedef struct {
     void* saved_skin[2];
     asset_pack_t pack;
     scene_target_t target;
+    uint8_t* lent; /* a test's own lender: its block and how much it handed out */
+    size_t lent_used;
 } fixture_t;
 
 static fixture_t fx;
@@ -499,6 +501,8 @@ static fixture_t fx;
 static void
 release_fixture(void) {
     scene_unload_all();
+    (void)scene_set_take(NULL);
+    memory_free(fx.lent);
 #ifndef DEVICE_BUILD
     gfx_reset_for_test();
 #endif
@@ -624,6 +628,69 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
 }
 
+/* A lender as the app arena is one: a block handed out by bumping. */
+#define LENT_BYTES (1024u * 1024u)
+
+static void*
+lend(size_t size, size_t align) {
+    const size_t at = (fx.lent_used + align - 1) & ~(align - 1);
+    if (at > LENT_BYTES || size > LENT_BYTES - at) {
+        return NULL;
+    }
+    fx.lent_used = at + size;
+    return fx.lent + at;
+}
+
+static bool
+lent_from(const void* p) {
+    return (const uint8_t*)p >= fx.lent && (const uint8_t*)p < fx.lent + LENT_BYTES;
+}
+
+/* With a take installed, the scene and the frame's scratch come from it and
+ * the heap is left alone. Unloading frees none of it, and unloading the last
+ * scene drops the scratch, so the lender can take everything back. */
+static void
+test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    scene_t* scene = show("test_pair", NULL);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_TRUE(lent_from(scene));
+    TEST_ASSERT_TRUE(lent_from(render_context_main()->scratch));
+    TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_PSRAM));
+    const size_t taken = fx.lent_used;
+    scene_unload(scene);
+    TEST_ASSERT_NULL(render_context_main()->scratch);
+    TEST_ASSERT_EQUAL_size_t(taken, fx.lent_used);
+    TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_PSRAM));
+}
+
+/* A refused take leaves the scene unloaded, or its camera drawing nothing,
+ * and takes nothing more. */
+static void
+test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    fx.lent_used = LENT_BYTES;
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+
+    fx.lent_used = 0;
+    scene_t* scene = show("test_pair", NULL);
+    fx.lent_used = LENT_BYTES;
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
+    TEST_ASSERT_NULL(render_context_main()->scratch);
+    scene_unload(scene);
+}
+
 static void
 test_a_camera_clears_to_the_colour_its_scene_gives(void) {
     fixture();
@@ -743,11 +810,11 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     const scene_entity_t camera = scene_find(scene, "camera");
     const scene_transform_t* flight = scene_entity_transform(scene, camera);
     TEST_ASSERT_EQUAL_UINT32(1000, scene_animator_clip_duration_ms(scene, camera, 0));
-    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
-    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
+    TEST_ASSERT_EQUAL_INT(JOB_SHARE_MIN - JOB_SHARE_EVEN, render_context_main()->split.top_offset[0]);
     TEST_ASSERT_TRUE(scene_activate(scene, NULL));
-    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
     TEST_ASSERT_EQUAL_INT(0, render_context_main()->split.top_offset[0]);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, flight->position.x);
@@ -1349,7 +1416,7 @@ test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen(voi
     scene_t* solo = load("test_solo");
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
-    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_activate(solo, "eye"));
     TEST_ASSERT_EQUAL_INT(0, render_context_main()->split.top_offset[0]);
     render_context_set_scale(render_context_main(), 100);
@@ -2325,9 +2392,9 @@ test_property_animation_moves_a_drawn_entity(void) {
     TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, NULL, clips, 1, NULL));
     TEST_ASSERT_EQUAL_INT(0, scene->animators[entity].layer.shown.joint_count);
     TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 0, 0));
-    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
-    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
+    TEST_ASSERT_EQUAL_INT(JOB_SHARE_MIN - JOB_SHARE_EVEN, render_context_main()->split.top_offset[0]);
     frame(0);
     const uint16_t red = fx.pixels[CENTER * SIZE + CENTER];
     frame(RIG_DURATION_MS / 2);
@@ -2366,9 +2433,9 @@ test_inactive_property_target_invalidates_its_entity_matrix(void) {
     TEST_ASSERT_TRUE(scene_animator_play(scene, owner, 0, 0));
     TEST_ASSERT_TRUE(scene_entity_transform(scene, target)->cached);
     scene->flags[target] &= (uint8_t)~SCENE_FLAG_DIRTY;
-    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, owner, SCENE_ANIMATOR_CURRENT, RIG_DURATION_MS / 2));
-    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
+    TEST_ASSERT_EQUAL_INT(JOB_SHARE_MIN - JOB_SHARE_EVEN, render_context_main()->split.top_offset[0]);
     scene_transform_t sampled = *scene_entity_transform(scene, target);
     TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, transformf_matrix(&sampled).m[0][3]);
     TEST_ASSERT_TRUE((scene->flags[target] & SCENE_FLAG_DIRTY) != 0);
@@ -3310,6 +3377,10 @@ test_table_later_frames_mode_changes_and_light_enable(void) {
 
 void
 run_scene_suite(void) {
+    /* The tests count the heap, so they run on it; the board lends the app
+     * arena, put back once they are done. */
+    scene_unload_all();
+    const memory_take_fn lender = scene_set_take(NULL);
     RUN_TEST(test_table_later_frames_mode_changes_and_light_enable);
     RUN_TEST(test_skin_modes_share_table_transactionally_and_rebuild_only_for_lights);
     RUN_TEST(test_invalid_normal_transform_skips_lighting_and_recovers);
@@ -3374,6 +3445,8 @@ run_scene_suite(void) {
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);
 #endif
     RUN_TEST(test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took);
+    RUN_TEST(test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender);
+    RUN_TEST(test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing);
     RUN_TEST(test_a_camera_clears_to_the_colour_its_scene_gives);
     RUN_TEST(test_a_load_that_fails_says_what_it_was_about);
     RUN_TEST(test_a_success_clears_what_an_earlier_failure_said);
@@ -3426,6 +3499,8 @@ run_scene_suite(void) {
     RUN_TEST(test_a_camera_keeps_its_fixed_scale_unless_dynamic_resolution_is_asked_for);
     RUN_TEST(test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose);
     RUN_TEST(test_the_scratch_is_the_finest_steps_raster_block);
+    scene_unload_all();
+    (void)scene_set_take(lender);
 }
 
 SUITE_REGISTER(run_scene_suite);

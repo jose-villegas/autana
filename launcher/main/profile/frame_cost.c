@@ -8,6 +8,7 @@
 #include "xtensa/xt_perf_consts.h"
 #include "xtensa_perfmon_access.h"
 
+#include "collections/strbuf.h"
 #include "core/timing.h"
 #include "math/scalar/units.h"
 
@@ -180,13 +181,10 @@ frame_cost_take_report(uint32_t frames, char* out, size_t out_size) {
     if (frames == 0 || out_size == 0 || foreign_task_calls == 0) {
         return length;
     }
-    const int wrote = snprintf(out + length, out_size - (size_t)length, " +%d foreign", foreign_task_calls);
+    strbuf_t line = strbuf_at(out, out_size, (size_t)length);
+    strbuf_appendf(&line, " +%d foreign", foreign_task_calls);
     foreign_task_calls = 0;
-    if (wrote < 0 || (size_t)(length + wrote) >= out_size) {
-        out[length] = '\0';
-        return length;
-    }
-    return length + wrote;
+    return (int)line.length;
 }
 
 #endif

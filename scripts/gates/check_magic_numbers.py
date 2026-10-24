@@ -7,7 +7,7 @@ is rare (RARE_MINIMUM or more and not a multiple of ROUND_MULTIPLE) or is a
 shift count equal to a visible *_SHIFT. Shift expressions such as 1 << 16,
 #define/enum/file-scope const initializers, declaration array bounds,
 static asserts and data rows of DATA_ROW_MINIMUM numbers or more are not
-counted. Fixtures, generated files and c_comments.EXCLUDED paths are skipped.
+counted. Fixtures, generated files and c_comments.excluded() paths are skipped.
 
 PROTOCOL: a string literal in launcher/main C that is identifier-shaped
 (dots allowed), at least TOKEN_MINIMUM characters, and contains `_` or `.`
@@ -32,7 +32,7 @@ import sys
 import time
 import tokenize
 
-from c_comments import EXCLUDED, balanced_end, blank_comments
+from c_comments import excluded, balanced_end, blank_comments
 from c_lexer import tokens
 from c_constants import ConstantIndex, DEFINE, ENUM, INTEGER, SCALAR, file_scope
 from check_clones import C_TOKENS, INCLUDE_DIRECTIVE, ROOT, changed_paths, comparison_base, git
@@ -82,7 +82,7 @@ class Hit:
 
 def eligible_c(path, text):
     return (path.startswith(("launcher/", "editor/")) and Path(path).suffix in C_SUFFIXES
-            and not path.startswith(EXCLUDED) and not is_generated(text)
+            and not path.startswith(excluded()) and not is_generated(text)
             and not {"fixture", "fixtures"}.intersection(PurePosixPath(path).parts))
 
 

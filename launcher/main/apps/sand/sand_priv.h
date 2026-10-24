@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "collections/bits.h"
 #include "core/job.h"
 #include "profile/frame_cost.h"
 #include "sand.h"
@@ -111,13 +112,13 @@ sand_chunk_rows(const sand_t* s, sand_chunk_travel_t travel) {
  * never within a chunk side of each other, so they never share one. */
 static inline size_t
 sand_stamp_stride(int w) {
-    return ((size_t)w + 7) / 8;
+    return BITS8_BYTES(w);
 }
 
 static inline bool
 sand_cell_stamped(const sand_t* s, int x, int y) {
     const uint8_t* const live = s->stamps_live;
-    return live != NULL && ((live[(size_t)y * sand_stamp_stride(s->w) + ((unsigned)x >> 3)] >> (x & 7)) & 1u) != 0;
+    return live != NULL && bits8_get(live + ((size_t)y * sand_stamp_stride(s->w)), (unsigned)x);
 }
 
 /* One row's stamp bits, NULL when no pass has armed any - for a walk that
@@ -132,7 +133,7 @@ sand_stamp_row(const sand_t* s, int y) {
 
 static inline bool
 sand_row_cell_stamped(const uint8_t* stamp_row, int x) {
-    return stamp_row != NULL && ((stamp_row[(unsigned)x >> 3] >> (x & 7)) & 1u) != 0;
+    return stamp_row != NULL && bits8_get(stamp_row, (unsigned)x);
 }
 
 /* Only a move that leaves its chunk: inside one, the pass's own sweep order
@@ -147,7 +148,7 @@ sand_stamp_crossing(sand_t* s, int x0, int y0, int x1, int y1) {
     if (x0 / s->stamp_side_x == x1 / s->stamp_side_x && y0 / s->stamp_side_y == y1 / s->stamp_side_y) {
         return;
     }
-    live[(size_t)y1 * sand_stamp_stride(s->w) + ((unsigned)x1 >> 3)] |= (uint8_t)(1u << (x1 & 7));
+    bits8_set(live + ((size_t)y1 * sand_stamp_stride(s->w)), (unsigned)x1);
     s->stamped = true;
 }
 
@@ -1350,15 +1351,8 @@ tick_decay(sand_t* s, uint8_t* row, int x, int y, cell_t* grain, uint8_t mat_id,
  * source, no interest in gravity. */
 void sand_step_reactions(sand_t* s);
 
-/* Defined in sand_plants.c: the tree/root/leaf growth stages of
- * step_one_reacting_row()'s (sand_reactions.c) per-cell dispatch, called
- * across the file boundary the same way sand_step_reactions() above is
- * called from sand.c.
- *
- * sand_disc_count(): exact lattice-cell count for a disc of radius r
- * (sand_impulse.c). Declared here rather than left static so the suite
- * can check the shipped table against a direct count, the only way that
- * table is verified. */
+/* Exact lattice-cell count; the suite verifies every lookup entry. */
+#define DISC_COUNT_MAX_RADIUS 32
 int sand_disc_count(int radius);
 
 /* The fall stage's own question, minus the roll and the write. Declared here
@@ -1367,6 +1361,10 @@ int sand_disc_count(int radius);
  * asking the same question the pass asks. */
 bool faller_can_move(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 
+/* Defined in sand_plants.c: the tree/root/leaf growth stages of
+ * step_one_reacting_row()'s (sand_reactions.c) per-cell dispatch, called
+ * across the file boundary the same way sand_step_reactions() above is
+ * called from sand.c. */
 bool step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 bool step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 bool step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
