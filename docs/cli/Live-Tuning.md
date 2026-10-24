@@ -102,7 +102,7 @@ own. The console answers from the shared one, `tune_shared()`.
 /* Tune: expose a colour under its owner. */
 #include "core/tune.h"
 
-TUNE_OWNER(glow);
+TUNE_OWNER(glow); /* once per file, before its tunables */
 TUNE(glow, theme_rgb, 0x1199C8, 0, 0xffffff);
 ```
 <!-- /generated: cli-tune-example -->

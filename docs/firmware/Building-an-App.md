@@ -30,21 +30,16 @@ the shell, not `CMakeLists.txt`:
 #include "draw/draw.h"
 
 static void
-yours_enter(void) {}
-
-#define HELLO_BACKGROUND_RGB 0x101010
-#define HELLO_TEXT_RGB       0xFFFFFF
-#define HELLO_TEXT_X         20
-#define HELLO_TEXT_Y         20
+yours_enter(void) { /* reset state */ }
 
 static void
 yours_frame(uint32_t dt_ms, const input_t* input) {
-    draw_clear(gfx_rgb(HELLO_BACKGROUND_RGB));
-    draw_text(HELLO_TEXT_X, HELLO_TEXT_Y, "hello", gfx_rgb(HELLO_TEXT_RGB));
+    draw_clear(gfx_rgb(0x101010));
+    draw_text(20, 20, "hello", gfx_rgb(0xFFFFFF));
 }
 
 static void
-yours_exit(void) {}
+yours_exit(void) { /* release what enter() took */ }
 
 app_t app_yours = {
     .name = "Your App",
@@ -270,12 +265,12 @@ static gfx_color_t* buf;
 
 static void
 arena_enter(void) {
-    buf = app_arena_take(BUF_BYTES, _Alignof(gfx_color_t));
+    buf = app_arena_take(BUF_BYTES, _Alignof(gfx_color_t)); /* NULL: run without it */
 }
 
 static void
 arena_exit(void) {
-    buf = NULL;
+    buf = NULL; /* nothing to free */
 }
 ```
 <!-- /generated: app-arena-example -->

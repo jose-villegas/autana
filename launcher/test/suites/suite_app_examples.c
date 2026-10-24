@@ -12,7 +12,12 @@
 #include "../app_examples/arena.c"
 #include "../app_examples/hello.c"
 
-#define CONSOLE_REPLY_BYTES 64
+#define HELLO_BACKGROUND_RGB 0x101010
+#define HELLO_TEXT_RGB       0xFFFFFF
+#define HELLO_TEXT_X         20
+#define HELLO_TEXT_Y         20
+
+#define CONSOLE_REPLY_BYTES  64
 
 static char replies[CONSOLE_REPLY_BYTES];
 static size_t reply_bytes;
