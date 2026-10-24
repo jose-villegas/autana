@@ -1,4 +1,5 @@
 """C comment and literal spans, prose and source selection for repository gates."""
+from functools import cache
 import pathlib
 import re
 
@@ -9,7 +10,10 @@ from tracked import tracked_files, committable
 # Vendored upstream (microui) and every file whose banner says it is
 # generated: neither is ours to rewrite, and the generators' banner comments
 # would dominate the report.
-EXCLUDED = ("launcher/components/", "launcher/test/framework/", *generated_files())
+@cache
+def excluded():
+    """Vendored prefixes and generated files excluded from repository gates."""
+    return ("launcher/components/", "launcher/test/framework/", *generated_files())
 
 
 # A drawn rule's run: 3+ of `=`, `_`, `#` or `-`; this tree's own
@@ -162,7 +166,7 @@ def file_header(path, source):
     return comments[0] if comments else None
 
 
-def sources(root, *, tracked=False, extensions=(".c", ".h"), excluded=True, files=None):
+def sources(root, *, tracked=False, extensions=(".c", ".h"), exclude=True, files=None):
     """C sources eligible for comment gates, with tracked-only selection optional."""
     root = pathlib.Path(root)
     paths = (root / name for name in tracked_files(root)) if tracked else committable(root)
@@ -170,7 +174,7 @@ def sources(root, *, tracked=False, extensions=(".c", ".h"), excluded=True, file
         rp = path.relative_to(root).as_posix() if tracked else path.as_posix()
         if files is not None and path.as_posix() not in files:
             continue
-        if path.suffix in extensions and (not excluded or not rp.startswith(EXCLUDED)):
+        if path.suffix in extensions and (not exclude or not rp.startswith(excluded())):
             yield path
 
 

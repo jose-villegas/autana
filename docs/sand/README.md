@@ -47,6 +47,6 @@ The rest of this folder is a reference by topic:
   `Reaction-Doc-Generator-Plan.md`'s brush-blurb phase is still unbuilt.
 - [`../notes/README.md`](../notes/README.md): the hardware constraints
   (the PSRAM and memory budget) this app's numbers are shaped by.
-- [`../Testing-Guide.md`](../Testing-Guide.md): how any of this gets
+- [`testing/README.md`](../testing/README.md): how any of this gets
   verified, on host and on device; [`Testing-Sand.md`](Testing-Sand.md)
   is this app's own half of that.

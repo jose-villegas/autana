@@ -39,7 +39,7 @@ panel_example(panel_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-panel-states sha256=fb8152979310e99cc0fd7e98ba063545c830e92617c82d0841bdaade2bb0c9e3 -->
@@ -64,4 +64,4 @@ return true.
 
 - [Slider](slider.md)
 - [Header](header.md)
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

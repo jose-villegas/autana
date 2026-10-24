@@ -3,7 +3,6 @@
 #include <math.h>
 #include "core/memory.h"
 #include "core/timing.h"
-#include "esp_cache.h"
 #include "esp_cpu.h"
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
@@ -20,8 +19,6 @@
 #include "unity.h"
 
 #define MATH_BENCH_BATCH             64
-#define MATH_BENCH_WARM_REPS         31
-#define MATH_BENCH_COLD_REPS         9
 #define MATH_BENCH_ICOUNT_CALLS      4096
 #define MATH_BENCH_ICOUNT_INFO_CALLS 256
 #define MATH_BENCH_ICOUNT_BATCHES    3
@@ -286,43 +283,15 @@ fixture(void) {
     return f;
 }
 
-extern char _rodata_reserved_start[];
-extern char _rodata_reserved_end[];
-extern char _instruction_reserved_start[];
-extern char _instruction_reserved_end[];
+typedef struct {
+    const row_t* row;
+    fixture_t* fixture;
+} cycle_context_t;
 
-/* Cold calls refill instructions and flash rodata; PSRAM stays cached and inputs stay in internal RAM.
- * Instructions and flash rodata are read-only, so dropping them loses nothing. Writing back then
- * invalidating PSRAM would drop whatever the other core writes between those two steps. */
 static void
-cold_cache(void) {
-    const uintptr_t data_line = CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE;
-    const uintptr_t data_start = (uintptr_t)_rodata_reserved_start & ~(data_line - 1);
-    const uintptr_t data_end = ((uintptr_t)_rodata_reserved_end + data_line - 1) & ~(data_line - 1);
-    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)data_start, data_end - data_start,
-                                              ESP_CACHE_MSYNC_FLAG_TYPE_DATA | ESP_CACHE_MSYNC_FLAG_DIR_M2C));
-    const uintptr_t line = CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE;
-    const uintptr_t start = (uintptr_t)_instruction_reserved_start & ~(line - 1);
-    const uintptr_t end = ((uintptr_t)_instruction_reserved_end + line - 1) & ~(line - 1);
-    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)start, end - start,
-                                              ESP_CACHE_MSYNC_FLAG_TYPE_INST | ESP_CACHE_MSYNC_FLAG_DIR_M2C));
-}
-
-static float
-median_cycles(const row_t* row, fixture_t* f, bool cold) {
-    _Static_assert(MATH_BENCH_COLD_REPS <= MATH_BENCH_WARM_REPS, "cold samples must fit warm sample storage");
-    int32_t samples[MATH_BENCH_WARM_REPS];
-    const int reps = cold ? MATH_BENCH_COLD_REPS : MATH_BENCH_WARM_REPS;
-    row->fn(f);
-    for (int j = 0; j < reps; j++) {
-        if (cold) {
-            cold_cache();
-        }
-        const uint32_t start = esp_cpu_get_cycle_count();
-        row->fn(f);
-        samples[j] = (int32_t)(esp_cpu_get_cycle_count() - start);
-    }
-    return (float)perf_stats_compute(samples, reps).med / (float)(cold ? 1 : row->ops);
+run_cycles(void* ctx) {
+    cycle_context_t* c = ctx;
+    c->row->fn(c->fixture);
 }
 
 static void
@@ -339,8 +308,9 @@ test_math_board_rows(void) {
     fixture_t* f = fixture();
     for (size_t j = 0; j < sizeof rows / sizeof *rows; j++) {
         const row_t* row = &rows[j];
-        const float warm = median_cycles(row, f, false);
-        const float cold = median_cycles(row, f, true);
+        cycle_context_t ctx = {.row = row, .fixture = f};
+        const float warm = perf_cycle_median(run_cycles, &ctx, false) / (float)row->ops;
+        const float cold = perf_cycle_median(run_cycles, &ctx, true);
         row->fn(f);
         TEST_ASSERT_TRUE(frame_cost_count_begin(insn));
         row->fn(f);

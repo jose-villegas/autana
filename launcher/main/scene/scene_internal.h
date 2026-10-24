@@ -157,6 +157,7 @@ struct scene {
     bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
     int renderer_count;
     int animator_count, skeleton_animator_count;
+    int16_t animate_share, skin_share; /* core 1's, as core/job.h steers them */
     int light_count;
     r3d_skin_lights_t world_lights;
     scene_light_t* lights;

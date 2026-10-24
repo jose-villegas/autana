@@ -22,7 +22,7 @@ def git_date(root, *args):
 
 def reviews(root):
     result = {}
-    path = pathlib.Path(root) / "docs/doc_review_ledger.txt"
+    path = pathlib.Path(root) / "scripts/gates/doc_review_ledger.txt"
     if not path.exists():
         return result
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
