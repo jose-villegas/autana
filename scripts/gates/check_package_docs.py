@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail when a package's pages (docs/<package>/*.md) and its headers disagree about what exists.
 
-    python scripts/gates/check_math_docs.py [--root ROOT]
+    python scripts/gates/check_package_docs.py [--root ROOT]
 
 Every package with a docs/<package>/README.md is checked: the index links
 every page, each folder of include/<package>/ has its page (spring/ becomes
@@ -209,11 +209,15 @@ def package_problems(root):
             if path not in pages:
                 problems.append("%s: %s/ has no page %s" % (index.as_posix(), folder, path.name))
                 continue
-            text = read(header)
-            for symbol in HAND_WRITTEN.findall(text) + PUBLIC_TYPE.findall(text):
-                if symbol not in pages[path]:
-                    problems.append("%s: the page does not name %s (%s)" % (path.as_posix(), symbol, header.name))
+            problems += unnamed_on_page(read(header), header, path, pages)
     return problems
+
+
+def unnamed_on_page(text, header, path, pages):
+    """A header's public functions and types its folder's page does not name; a leading _ is internal."""
+    names = HAND_WRITTEN.findall(text) + PUBLIC_TYPE.findall(text)
+    return ["%s: the page does not name %s (%s)" % (path.as_posix(), name, header.name)
+            for name in names if not name.startswith("_") and name not in pages.get(path, "")]
 
 
 def check(root):
@@ -261,10 +265,7 @@ def check(root):
         text = read(header)
         defined.update(HAND_WRITTEN.findall(text))
         if header.parent.name == "motion":
-            path = family_page(header.parent)
-            for name in HAND_WRITTEN.findall(text) + PUBLIC_TYPE.findall(text):
-                if name not in pages.get(path, ""):
-                    problems.append("%s: the page does not name %s (%s)" % (path.as_posix(), name, header.name))
+            problems += unnamed_on_page(text, header, family_page(header.parent), pages)
 
     for name in sorted(standalone):
         if not any(name in text for text in pages.values()):

@@ -1,9 +1,8 @@
 # physics
 
 State advanced by integrating forces: each step pushes it by springs, pressure
-or gravity it is given. Motion that follows a prescribed target belongs in
-kinematics; stateless maths in [math](../math/README.md), the one package this
-one uses (`set(physics_requires math)` in `CMakeLists.txt`).
+or gravity it is given. It uses one package, [math](../math/README.md)
+(`set(physics_requires math)` in `CMakeLists.txt`).
 
 | Folder | Holds |
 |---|---|
