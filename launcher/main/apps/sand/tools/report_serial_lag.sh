@@ -50,7 +50,7 @@ OUT_BIN="$BUILD_DIR/serial_lag"
 
 # The portable half of the app only. app_sand.c and sand_ui.c are the
 # hardware-facing entry points (the apps/<name>/app_*.c convention in
-# docs/Building-an-App.md) and do not belong in a host build;
+# docs/firmware/Building-an-App.md) and do not belong in a host build;
 # palette.c and row_runs.c
 # are draw-path concerns the grid state does not depend on.
 # shellcheck disable=SC2086

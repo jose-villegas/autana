@@ -18,3 +18,16 @@ class ReplyTests(unittest.TestCase):
         line = b"TONE heard 1000 Hz: -52.9 dB (silence -109.7 dB), open 1424 B DMA"
         self.assertEqual(replies_to(line[:40], "TONE", ("TONE",)), ([], False))
         self.assertEqual(replies_to(line + b"\r\n", "TONE", ("TONE",)), ([line.decode()], True))
+
+    def test_reply_boundaries(self):
+        cases = (
+            (b"I (20) console: EXAMPLE data\n", (["EXAMPLE data"], False)),
+            (b"\x1b[32mEXAMPLE data\x1b[0m\n", (["EXAMPLE data"], False)),
+            (b"EXAMPLE\n", (["EXAMPLE"], False)),
+            (b"text EXAMPLE data\n", ([], False)),
+            (b"NOTEXAMPLE data\n", ([], False)),
+            (b"I (20) EXAMPLE_END: EXAMPLE data\n", (["EXAMPLE data"], False)),
+        )
+        for data, expected in cases:
+            with self.subTest(data=data):
+                self.assertEqual(replies_to(data, "EXAMPLE", ("EXAMPLE_END", "EXAMPLE_ERR")), expected)

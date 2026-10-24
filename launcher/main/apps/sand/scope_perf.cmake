@@ -2,6 +2,7 @@
 # the ones named _perf - a builder or fixture left out fails at link.
 list(APPEND perf_scope_srcs
     "${CMAKE_CURRENT_LIST_DIR}/tests/suite_sand_perf.c"
+    "${CMAKE_CURRENT_LIST_DIR}/tests/suite_sand_motion_perf.c"
     "${CMAKE_CURRENT_LIST_DIR}/tests/suite_sand_scenes.c"
     "${CMAKE_CURRENT_LIST_DIR}/tests/suite_sand_common.c"
 )

@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <float.h>
 #include <math.h>
+#include <stdint.h>
 
 #ifdef __XTENSA__
 #include "sdkconfig.h"
@@ -183,9 +184,45 @@ mathf_max(float a, float b) {
     return a < b ? b : a;
 }
 
+/* Reciprocal and product rounding must leave the floor within one integer. */
+#define MATHF_REPEAT_FAST_QUOTIENT 0x1p22F
+_Static_assert((MATHF_RECIP_ULP_LIMIT + 0.5F) * MATHF_REPEAT_FAST_QUOTIENT * FLT_EPSILON < 1.0F,
+               "repeat quotient guard exceeds the reciprocal error bound");
+
 static inline float
 mathf_repeat(float v, float len) {
     assert(len > 0.0F);
+    if (v >= 0.0F && v < len) {
+        return v;
+    }
+    /* QEMU's msub.s rounds the product, so the fused remainder is not exact there. */
+#if !defined(__XTENSA__) || CONFIG_MATH_FPU_FUSED_MADD
+    const float reciprocal = mathf_recip(len);
+    const float quotient = v * reciprocal;
+    if (fabsf(quotient) < MATHF_REPEAT_FAST_QUOTIENT && len <= FLT_MAX) {
+        float q = (float)(int32_t)quotient;
+        if (q > quotient) {
+            q -= 1.0F;
+        }
+        /* For the correct floor, fmaf rounds v - q*len once: the exact fmodf
+         * remainder for v >= 0, or the same rounding as len - |fmodf| for v < 0. */
+        float rem = fmaf(-q, len, v);
+        if (rem < 0.0F) {
+            rem = fmaf(-(q - 1.0F), len, v);
+        } else if (rem >= len) {
+            rem = fmaf(-(q + 1.0F), len, v);
+            /* A negative correction means the remainder rounded onto the excluded endpoint. */
+            if (rem < 0.0F) {
+                return 0.0F;
+            }
+        }
+        /* fmodf preserves the dividend's sign on exact multiples. */
+        if (rem == 0.0F) {
+            return copysignf(0.0F, v);
+        }
+        return rem < len ? rem : 0.0F;
+    }
+#endif
     float r = fmodf(v, len);
     if (r < 0.0F) {
         r += len;

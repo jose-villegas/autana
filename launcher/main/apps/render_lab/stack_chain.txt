@@ -32,3 +32,5 @@ indirect render_lab_clips_reply : console_reply_stdio suite_render_lab_clips.c:c
 indirect render_lab_clips.c:reply_line : console_reply_stdio suite_render_lab_clips.c:capture_reply
 
 root test_boot_menu_draws_controls_only_for_animated_scene test
+indirect render_context_draw : app_arena_take
+indirect scene_allocate_kept : app_arena_take

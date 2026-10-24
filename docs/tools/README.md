@@ -2,23 +2,17 @@
 
 To see real firmware screens without a board, start with the
 [render harness](Render-Harness.md). To run portable logic tests, use the
-[Testing Guide](../Testing-Guide.md). Board commands live in the
-[`autana` CLI guide](Autana-CLI.md).
+[Testing Guide](../testing/README.md). Board commands live in the
+[`autana` CLI guide](../cli/README.md), not here.
 
-The rest of this index explains the repository's checks and tools in depth.
+The rest of this index lists the repository's checks and tools.
 
 | | |
 |---|---|
-| [Autana-CLI.md](Autana-CLI.md) | The `autana` terminal command: every command it takes, where it lives, and how it is put on the PATH. |
 | [Build-Environment.md](Build-Environment.md) | Which ESP-IDF `autana build` picks and where its build folders live. |
-| [App-Commands.md](App-Commands.md) | Giving an app its own console command. |
-| [Docs-Search.md](Docs-Search.md) | `autana docs`: answering a question from the documentation one section at a time, how it ranks, and the optional local models. |
-| [Device-Lock.md](Device-Lock.md) | The board lock in `scripts/device/`, the only code that opens the serial port: what to do when the board is busy, what is and is not guaranteed, failure modes, running a shared rig or CI, and how it works. |
-| [Flash-and-Captures.md](Flash-and-Captures.md) | What a flash proves, measuring with one lock across a flash and its captures, `send` and screenshots, where captures and records land, and wait estimates. |
 | [Framework-Versions.md](Framework-Versions.md) | Where each framework's exact version lives, how a bump pull request arrives and what it regenerates, and how to match your own machine. |
 | [Complexity-Gate.md](Complexity-Gate.md) | The cognitive-complexity ratchet: what it measures, the committed baseline, and when a score fails or only warns. |
 | [Doc-Drift.md](Doc-Drift.md) | Ranking documents for review by age and changed cited sources, and recording a review in the ledger. |
-| [Live-Tuning.md](Live-Tuning.md) | Changing a number on a running device by name, with no build and no flash: the commands, the console protocol, and making a constant tunable. |
 | [Layout-Noise.md](Layout-Noise.md) | Why a neutral edit moves a timing, the seeded padding build (`--layout-seed`), and the pilot that measures how much a row moves with layout alone. |
 | [Frame-Cost.md](Frame-Cost.md) | Measuring named stages of the frame loop and reading their console report. |
 | [Console-Framing.md](Console-Framing.md) | How the device frames a block of data between begin and end lines on the console, and how a host script decodes it. |

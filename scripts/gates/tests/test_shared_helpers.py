@@ -11,7 +11,7 @@ from unittest import mock
 REPO = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "launcher/tools/gen"))
 from shared_helpers import CHECK, catalogue, package_headers, update
-from c_comments import EXCLUDED
+from c_comments import excluded
 from check_doc_generated import run_check
 from check_generated_files import generated_files
 from gate_tree import commit, write
@@ -23,7 +23,7 @@ class SharedHelpers(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
-        write(self.root, "docs/Shared-Helpers.md",
+        write(self.root, "docs/tools/Shared-Helpers.md",
               "Before\n<!-- generated: shared-helpers -->\n<!-- /generated: shared-helpers -->\nAfter\n")
 
     def include(self, owner, directories=("one", "two")):
@@ -75,7 +75,7 @@ class SharedHelpers(unittest.TestCase):
         write(self.root, "engine/generated.h", "/* GENERATED FILE - do not edit. */\n")
         self.include("engine/generated.h")
         commit(self.root, ".")
-        with mock.patch("shared_helpers.EXCLUDED", (*EXCLUDED, *generated_files(self.root))):
+        with mock.patch("shared_helpers.excluded", return_value=(*excluded(), *generated_files(self.root))):
             self.assertEqual([], catalogue(self.root))
 
     def test_vendored_owners_are_excluded(self):
@@ -118,7 +118,7 @@ class SharedHelpers(unittest.TestCase):
         self.assertEqual({"pkg/value.py", "engine/value.h"}, {r[0] for r in catalogue(self.root)})
 
     def test_stale_check_preserves_crlf(self):
-        page = self.root / "docs/Shared-Helpers.md"
+        page = self.root / "docs/tools/Shared-Helpers.md"
         page.write_bytes(page.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
         owner = "engine/value.h"
         write(self.root, owner, "/* Values. */\nint value(void);\n")
@@ -136,7 +136,7 @@ class SharedHelpers(unittest.TestCase):
         write(self.root, owner, "/* Values. */\nint value(void);\n")
         self.include(owner)
         update(self.root)
-        page = self.root / "docs/Shared-Helpers.md"
+        page = self.root / "docs/tools/Shared-Helpers.md"
         self.assertEqual({"shared-helpers": CHECK}, check_commands(page.read_text(encoding="utf-8")))
         command = f"{CHECK} --root {shlex.quote(self.root.as_posix())}"
         self.assertIsNone(run_check(REPO, command))

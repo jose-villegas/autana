@@ -2,15 +2,15 @@
 
 Suites and checks that run on the board: one suite at a time, a full
 self-test, pytest console recipes, POST and Board CI. Back to the
-[Testing Guide](../Testing-Guide.md).
+[Testing Guide](README.md).
 
 Every board operation goes through `autana`, which queues on the device lock
 instead of fighting for the port; `autana status` shows who holds it. See
-[Device-Lock.md](../tools/Device-Lock.md).
+[Device-Lock.md](../cli/Device-Lock.md).
 
 ## First board run
 
-1. Install `autana` and put it on your `PATH` ([how](../tools/Autana-CLI.md)), and ESP-IDF ([which one](../tools/Build-Environment.md)).
+1. Install `autana` and put it on your `PATH` ([how](../cli/README.md)), and ESP-IDF ([which one](../tools/Build-Environment.md)).
 2. Build and flash the diag image once: `autana build diag`, then `autana flash diag`.
 3. Run a suite: `autana suite run_button_fsm_suite`. It ends with a `RUNSUITE_COMPLETE name=... found=1` line.
 
@@ -21,7 +21,7 @@ commands never fight for the board.
 ## Which run, when
 
 1. **While developing:** `autana suite <name>` for the area you touched, on a normal diag build (SELFTEST on, AUTORUN off, full scope).
-2. **Perf captures only:** a [scoped build](../Build-Variants.md#a-diagnostics-build-can-be-scoped), plus the capturing app's own docs.
+2. **Perf captures only:** a [scoped build](../tools/Build-Variants.md#a-diagnostics-build-can-be-scoped), plus the capturing app's own docs.
 3. **Before a merge:** the full self-test, `autana selftest` or `report_test_results.sh`, autorun, unattended. About 18 minutes on this board: the gate, not the everyday loop.
 
 `autana selftest` builds, flashes and runs every suite under the device lock,
@@ -54,7 +54,7 @@ so a harness never has to guess from a quiet console.
 
 **Narrowing a suite.** `runsuite <suite> <pattern>[,<pattern>...]` runs only
 tests whose name contains a pattern; `autana suite <name> --test <pattern>`
-sends it ([syntax](../tools/Autana-CLI.md#tests)).
+sends it ([syntax](../cli/Tests.md)).
 
 - The `RUN_TEST` override in `launcher/test/timing.c` does the filtering, so no suite changes. Each test it reaches prints `SUITE_TEST name=<test> selected=<0|1>`.
 - Patterns live for that one request; the next `runsuite` runs everything.
@@ -92,7 +92,7 @@ reporter and output location. It hands the work to
 
 - A report script takes its board from `--board SERIAL`, else the only board plugged in.
 - Its one positional argument is the report path, ending in `.md`.
-- Like every `autana` command it never runs a checkout's own `scripts/device/device.py`; see [Device-Lock](../tools/Device-Lock.md#one-copy-of-the-tools).
+- Like every `autana` command it never runs a checkout's own `scripts/device/device.py`; see [Device-Lock](../cli/Device-Lock.md#one-copy-of-the-tools).
 
 An app's capture rules (any free-heap precondition, the perf-scope trade-off,
 its scenes) live beside the app, in its docs and `tools/`.

@@ -25,5 +25,5 @@ for python in "${IDF_TOOLS_PATH:-$HOME/.espressif}"/python_env/idf*_env/Scripts/
     python_meets_minimum "$python" && exec "$python" "$here/scripts/autana/autana.py" "$@"
 done
 
-echo "autana: no Python >= $PYTHON_MIN_VERSION found - install Python >= $PYTHON_MIN_VERSION, the py launcher or ESP-IDF; see docs/tools/Autana-CLI.md" >&2
+echo "autana: no Python >= $PYTHON_MIN_VERSION found - install Python >= $PYTHON_MIN_VERSION, the py launcher or ESP-IDF; see docs/cli/README.md" >&2
 exit 1
