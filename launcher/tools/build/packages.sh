@@ -16,7 +16,7 @@
 # src/, package_suites every tests/suite_*.c. package_requires prints the
 # packages one package's CMakeLists.txt sets in `set(<name>_requires ...)`,
 # package_reachable that package's folder and every package it reaches
-# through them (packages.py's requires() and reachable()).
+# through them (package_requires.py's requires() and reachable()).
 
 package_include_dirs() {
     for package_dir in "$1"/packages/*/; do
