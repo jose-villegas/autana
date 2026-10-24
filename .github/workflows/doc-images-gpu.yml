@@ -15,7 +15,10 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '0 16 * * *'
+  workflow_run:
+    workflows: [Bakes GPU]
+    types: [completed]
   push:
     branches: [main]
 
@@ -29,6 +32,8 @@ permissions:
 # needs this token.
 env:
   GH_TOKEN: ${{ github.token }}
+  NIGHT_START: ${{ vars.NIGHT_START }}
+  GPU_WORKFLOW: doc-images-gpu.yml
   REFRESH_BRANCH: feature/refresh-doc-images-gpu
   MPLBACKEND: Agg
   RECORD_RETENTION_DAYS: 90
@@ -39,6 +44,7 @@ jobs:
   fingerprint:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     outputs:
       fingerprint: ${{ steps.inputs.outputs.fingerprint }}
       current: ${{ steps.inputs.outputs.current }}
@@ -65,7 +71,8 @@ jobs:
     needs: fingerprint
     if: github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'
     runs-on: [self-hosted, linux, gpu]
-    timeout-minutes: 1440
+    # 7 h MAX_EVENING_WAIT + 13 h (18:00–07:00 cap) + 1 h setup/publish = 1260 min.
+    timeout-minutes: 1260
     concurrency:
       group: doc-images-gpu
       cancel-in-progress: false
