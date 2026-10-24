@@ -1,3 +1,4 @@
+"""The board lock writes its records safely and tells a live holder from a dead one."""
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import contextlib
 import errno
