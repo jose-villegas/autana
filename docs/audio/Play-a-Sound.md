@@ -1,4 +1,4 @@
-# Sound how-to
+# Play a sound
 
 Play sounds from an app: open a sound from a pack, play it, put it on a bus,
 loop it, add your own. Every code block is a compiled, tested file; the rules
