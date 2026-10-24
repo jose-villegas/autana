@@ -83,6 +83,11 @@ def replace_block(path, name, body, check=False, command=None):
     return changed
 
 
+def replace_blocks(path, bodies, check=False, command=None):
+    """replace_block for each name and body of `bodies`; True when any changes the file."""
+    return any([replace_block(path, name, body, check, command) for name, body in bodies.items()])
+
+
 def block_owners(root):
     """Document paths by generated block name, rejecting duplicate owners."""
     listing = tracked_files(root, ("*.md",))

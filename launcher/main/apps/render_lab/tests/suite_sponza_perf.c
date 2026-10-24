@@ -31,6 +31,7 @@
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "display/display.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
@@ -43,7 +44,6 @@
 #include "render/raster_motion.h"
 #include "scene/scene.h"
 #include "services/build_id.h"
-#include "services/tune.h"
 #include "sponza_suite.h"
 
 static const r3d_perf_quarter_t* perf_quarter;
@@ -306,7 +306,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===" R3D_PERF_QUARTER_FORMAT,
              label, mesh->triangle_count, mesh->vertex_count, mesh->cluster_count, b->raster.width, b->raster.height,
              perf_quarter->name);
-    const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
+    const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
     TEST_ASSERT_NOT_NULL(culling);
     int size = 0;
     for (int i = 0; i < mesh->cluster_count; i++) {
@@ -392,17 +392,8 @@ showcase_bake(void) {
 static int32_t saved_cull;
 
 static void
-cull_reply(const char* line) {
-    ESP_LOGI(TAG, "%s" R3D_PERF_QUARTER_FORMAT, line, perf_quarter->name);
-}
-
-static void
 restore_culling(void) {
-    char command[sizeof("SET render.cull -2147483648")];
-    const int length = snprintf(command, sizeof command, "SET render.cull %ld", (long)saved_cull);
-    if (length > 0 && (size_t)length < sizeof command) {
-        (void)tune_handle_line(command, cull_reply);
-    }
+    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), saved_cull);
 }
 
 void
@@ -413,11 +404,11 @@ test_sponza_frame_cost_along_the_flythrough(void) {
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
              perf_quarter->name);
     open_the_meshes();
-    const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
+    const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
     TEST_ASSERT_NOT_NULL(culling);
     saved_cull = *culling->value;
     suite_set_test_cleanup(restore_culling);
-    (void)tune_handle_line("RESET render.cull", cull_reply);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, cull)));
     /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
      * 2124, + 1%; per quarter, portrait then landscape. */
     static const perf_budget_t bake_budgets[SCENE_BAKED_VARIANT_COUNT][R3D_PERF_QUARTER_COUNT] = {
@@ -433,7 +424,7 @@ test_sponza_frame_cost_along_the_flythrough(void) {
         const r3d_instance_t instance = {&meshes[i], NULL};
         report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, NULL, bake_budgets[i]);
     }
-    (void)tune_handle_line("SET render.cull 0", cull_reply);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
     const scene_baked_variant_t showcase = showcase_bake();
     const r3d_instance_t shown = {&meshes[showcase], NULL};
     report_frame_cost("cull_off", sponza_bakes[showcase], &shown, NULL, NULL, NULL, cull_off_budget);
