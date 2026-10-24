@@ -1532,13 +1532,18 @@ class BlendTests(unittest.TestCase):
             produce.produce(export, self.root / "cache", blender="blender")
 
 
-def filled_cache(directory):
-    """Every mesh the tree's lock names, and every .blend export (the skin step reads a rigged one at pack
-    time), in the cache `directory`: copied from the user cache, fetched there first when it lacks one.
-    Returns the mesh bakes and the lock."""
+def filled_cache(directory, test):
+    """The tree's packed bakes and exports in `directory`, with an in-memory lock fixture for sound
+    rows CI has not locked yet. The tracked lock is never written."""
     every = bake.bakes([build_pack.DEFAULT_SEARCH])
     found = [item for item in every if item.packed]
     lock = bake.read_lock()
+    for item in found:
+        if item.kind == "sound" and item.key not in lock:
+            lock[item.key] = produce.made(item.key, bake.default_cache()) or produce.produce(item, bake.default_cache())
+    replacement = mock.patch.object(bake, "read_lock", return_value=lock)
+    replacement.start()
+    test.addCleanup(replacement.stop)
     for path in bake.fetch_all(found + [item for item in every if item.kind == "blend"], lock,
                                bake.default_cache()).values():
         shutil.copyfile(path, pathlib.Path(directory) / path.name)
@@ -1613,7 +1618,7 @@ class StdlibKeysTests(unittest.TestCase):
 class TreeTests(unittest.TestCase):
     def test_packs_build_offline_from_a_filled_cache_as_they_do_online(self):
         with tempfile.TemporaryDirectory() as directory:
-            filled_cache(directory)
+            filled_cache(directory, self)
             with mock.patch("urllib.request.urlopen") as network:
                 offline = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=pathlib.Path(directory), offline=True)
             network.assert_not_called()
@@ -1621,7 +1626,7 @@ class TreeTests(unittest.TestCase):
 
     def test_a_mesh_no_bake_keys_fails_instead_of_taking_another_file(self):
         with tempfile.TemporaryDirectory() as directory:
-            found, lock = filled_cache(directory)
+            found, lock = filled_cache(directory, self)
             dropped = found[0]
             with mock.patch.object(bake, "bakes_in", return_value=[item for item in found if item is not dropped]), \
                     self.assertRaisesRegex(bake.BakeMissing, "no bake keys these meshes") as raised:
@@ -1631,7 +1636,7 @@ class TreeTests(unittest.TestCase):
     def test_a_mesh_outside_the_repository_is_its_own_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            found, lock = filled_cache(root)
+            found, lock = filled_cache(root, self)
             some_mesh = bake.cached(lock[found[0].key], bake.MESH_SUFFIX, root).read_bytes()
             (root / "tree").mkdir()
             imported = write_import(root / "tree")
@@ -1646,7 +1651,7 @@ class TreeTests(unittest.TestCase):
     def test_a_replaced_mesh_is_never_fetched(self):
         with tempfile.TemporaryDirectory() as directory:
             cache = pathlib.Path(directory)
-            found, lock = filled_cache(cache)
+            found, lock = filled_cache(cache, self)
             scratch = found[0]
             mesh = cache / "scratch.mesh"
             mesh.write_bytes(bake.cached(lock[scratch.key], bake.MESH_SUFFIX, cache).read_bytes())
@@ -1681,7 +1686,7 @@ class SkipUnlockedTests(unittest.TestCase):
         self.root = pathlib.Path(folder.name)
         self.cache, self.out, self.listed = self.root / "cache", self.root / "packs", self.root / "unlocked.txt"
         self.cache.mkdir()
-        self.found, self.lock = filled_cache(self.cache)
+        self.found, self.lock = filled_cache(self.cache, self)
         self.packs = build_pack.pack_files([build_pack.DEFAULT_SEARCH])
         self.waiting = self.found[0]
         entry = self.waiting.output.removesuffix(bake.MESH_SUFFIX)

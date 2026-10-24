@@ -2,6 +2,7 @@
 #pragma once
 
 #include "audio/audio_codec.h"
+#include "build/build_variant.h"
 #include "sound/sound_mixer.h"
 #include "sound/sound_status.h"
 
@@ -36,7 +37,7 @@ typedef struct {
     size_t stack_bytes;
     size_t dma_sample_bytes;
     size_t mixer_bytes;
-#if CONFIG_LAUNCHER_DEVELOPMENT
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     size_t stack_min_free_bytes;
     size_t stack_margin_bytes;
 #endif
@@ -48,7 +49,9 @@ bool sound_init(void);
 void sound_begin_app(void);
 void sound_end_app(void);
 void sound_stop_app_voices(void);
-#if CONFIG_LAUNCHER_DEVELOPMENT
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Drains prior commands and waits for reads. On failure, borrowed sources must stay mapped. */
+bool sound_fence(void);
 void sound_get_stats(sound_stats_t* out);
 #endif
 sound_voice_t sound_play_tone(uint16_t hz, uint8_t gain_pct);

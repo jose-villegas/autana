@@ -13,6 +13,7 @@ import signal
 import threading
 import weakref
 import statistics
+import subprocess
 import sys
 import tempfile
 import time
@@ -112,6 +113,22 @@ def heavy_root():
             raise OSError("WSL heavy lock root is unreachable: " + str(shared))
         return shared / "autana" / HEAVY
     return Path("/tmp/autana-heavy")
+
+
+def board_read_root():
+    """The WSL systemd GPU runner resolves Windows temp through PowerShell.
+    The interactive Windows board runner uses that same Windows account,
+    so this read-only root exposes its live board locks.
+    """
+    if os.environ.get("_AUTANA_DEVICE_LOCK_ROOT") or not is_wsl():
+        return default_root()
+    windows_temp = subprocess.check_output(
+        ["powershell.exe", "-NoProfile", "-Command", "[System.IO.Path]::GetTempPath()"],
+        text=True, timeout=30).strip()
+    shared = Path(subprocess.check_output(["wslpath", "-u", windows_temp], text=True, timeout=30).strip())
+    if not shared.is_dir():
+        raise OSError("WSL board lock root is unreachable: " + str(shared))
+    return shared / "autana-device"
 
 
 def default_owner():
@@ -370,9 +387,10 @@ class Held(dict):
 class LockStore:
     """A key is a board's USB serial number or the host-wide HEAVY resource."""
 
-    def __init__(self, root=None, now=time.time, is_alive=process_alive):
+    def __init__(self, root=None, now=time.time, is_alive=process_alive, *, board_observer=False):
         self.root = Path(root) if root else default_root()
         self.explicit_root = root is not None
+        self.board_observer = board_observer
         self.now = now
         self.is_alive = is_alive
 
@@ -380,7 +398,7 @@ class LockStore:
         return heavy_root() if board == HEAVY and not self.explicit_root else self.root
 
     def resource_now(self, board):
-        if board != HEAVY:
+        if board != HEAVY and not self.board_observer:
             return self.now()
         root = self.key_root(board)
         root.mkdir(parents=True, exist_ok=True)
@@ -428,6 +446,14 @@ class LockStore:
         return sorted({record["board"] for record in map(self.read_json, paths)
                        if isinstance(record, dict) and isinstance(record.get("board"), str)
                        and record["board"] != HEAVY})
+
+    def any_board_held(self):
+        """Observe active work without changing lock records or taking a board."""
+        for board in self.boards():
+            lock = self.read_json(self.lock_path(board))
+            if lock and lock.get("kind") != "human" and not self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
+                return True
+        return False
 
     def seen_boards(self):
         """Every board this machine has ever found on USB, kept past its own
@@ -552,14 +578,18 @@ class LockStore:
                     pass
 
     def is_stale(self, lock, stale_seconds):
-        return self.resource_now(lock.get("board")) - lock["heartbeat_at"] > stale_seconds
+        board = lock.get("board")
+        now = self.resource_now(board)
+        return now - lock["heartbeat_at"] > stale_seconds
 
     def reclaim_reason(self, lock, stale_seconds):
         """Why `lock` may be taken from its holder, or "" while it holds."""
         if lock.get("kind") in ("hold", "human"):
             expires = lock.get("expires_at")
             if expires is not None:
-                return "hold lapsed" if self.resource_now(lock.get("board")) >= expires else ""
+                board = lock.get("board")
+                now = self.resource_now(board)
+                return "hold lapsed" if now >= expires else ""
             if not lock.get("until_released"):
                 return ""
             if lock.get("host") != host_identity():
