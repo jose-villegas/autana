@@ -123,7 +123,7 @@ Plain way: `1.0F / sqrtf(x)`.
 
 <a id="mathx-rsqrt-q30"></a>
 
-## `mathx_rsqrt_q30` <sup>[[85]](../Citations.md#85)</sup> <sup>[[89]](../Citations.md#89)</sup>
+## `mathx_rsqrt_q30` <sup>[[85]](../Citations.md#85)</sup> <sup>[[90]](../Citations.md#90)</sup>
 
 | Original | Fast path |
 |---|---|

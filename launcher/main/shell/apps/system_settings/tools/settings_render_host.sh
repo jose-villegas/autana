@@ -5,7 +5,6 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=settings
 scene_ui=1
 scene_sources="
-main/services/tune.c
 main/app/app_registry.c
 main/shell/apps/system_settings/app_settings.c
 main/shell/apps/system_settings/ui/settings_screen.c

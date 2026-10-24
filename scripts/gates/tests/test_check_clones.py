@@ -37,6 +37,9 @@ BLOCK = """int alpha(int input) {
 """
 
 
+CROSS = "def cross(a, b):\n    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])\n"
+
+
 READY = shutil.which("node") is not None and gate.ENGINE.is_file()
 SKIP_REASON = "Install Node.js and run npm ci --prefix scripts/gates"
 
@@ -100,6 +103,11 @@ class CloneTests(unittest.TestCase):
         a = "def first(value):\n    total = 0\n    for index in range(value):\n        if index > 3:\n            total += index * 2\n        else:\n            total -= index\n    return total\n"
         b = a.replace("first", "second").replace("value", "limit").replace("total", "sum_value").replace("3", "8")
         self.assertTrue(self.scan({"scripts/a.py": a, "scripts/b.py": b}))
+
+    def test_a_short_python_copy_under_the_engine_floor_is_a_pair(self):
+        pairs = self.scan({"scripts/a.py": CROSS, "scripts/b.py": CROSS.replace("cross", "outer")}, 80)
+        self.assertEqual([(pair["firstFile"]["name"], pair["secondFile"]["name"]) for pair in pairs],
+                         [("scripts/a.py", "scripts/b.py")])
 
     def test_below_minimum(self):
         self.assertEqual(self.scan({"launcher/main/a.c": "int a(int x) {\n int y = x + 2;\n return y;\n}\n",
@@ -487,6 +495,35 @@ class CloneTests(unittest.TestCase):
     def test_missing_engine_message(self):
         with mock.patch.object(gate, "ENGINE", Path("missing-engine.js")):
             self.assertIn("npm ci --prefix scripts/gates", gate.dependency_problem())
+
+
+class ShortFunctionTests(unittest.TestCase):
+    def pairs(self, *texts, minimum=gate.MIN_TOKENS):
+        return gate.short_function_pairs({f"scripts/{index}.py": text for index, text in enumerate(texts)}, minimum)
+
+    def test_a_copy_with_renamed_parameters_annotations_and_docstring_pairs(self):
+        renamed = ('def outer(left: tuple, right: tuple) -> tuple:\n    """The cross product."""\n'
+                   + CROSS.splitlines()[1].replace("a[", "left[").replace("b[", "right[") + "\n")
+        self.assertEqual(len(self.pairs(CROSS, renamed)), 1)
+
+    def test_a_nested_copy_pairs_and_three_copies_make_three_pairs(self):
+        nested = "def write(rows):\n" + "".join("    " + line + "\n" for line in CROSS.splitlines()) + "    return rows\n"
+        self.assertEqual(len(self.pairs(CROSS, nested, CROSS)), 3)
+
+    def test_a_changed_literal_global_or_attribute_does_not_pair(self):
+        for changed in (CROSS.replace("b[0])", "b[2])"), CROSS.replace("(a[1]", "(norm(a)[1]"),
+                        CROSS.replace("return (a[1]", "return (a.x[1]")):
+            with self.subTest(changed=changed):
+                self.assertEqual(self.pairs(CROSS, changed), [])
+
+    def test_an_idiom_under_the_node_floor_does_not_pair(self):
+        idiom = "def tearDown(self):\n    self.directory.cleanup()\n"
+        self.assertEqual(self.pairs(idiom, idiom), [])
+
+    def test_a_function_at_the_engine_floor_is_left_to_the_engine(self):
+        self.assertEqual(len(self.pairs(CROSS, CROSS)), 1)
+        self.assertEqual(self.pairs(CROSS, CROSS, minimum=gate.function_shape(
+            gate.ast.parse(CROSS).body[0])[1]), [])
 
 
 if __name__ == "__main__":
