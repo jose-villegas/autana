@@ -34,7 +34,7 @@ from check_doc_index import blank_fences  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
-from build import packages  # noqa: E402
+from build import package_requires, packages  # noqa: E402
 from build.apps import app_part  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
@@ -539,7 +539,7 @@ def rule_ui_backend(root, path, text):
 
 # RULE: a package (launcher/packages/<name>/) sits under every layer, so it
 # includes only itself and the packages it declares in its own CMakeLists.txt
-# (`set(<name>_requires ...)`, launcher/tools/build/packages.py), theirs in
+# (`set(<name>_requires ...)`, launcher/tools/build/package_requires.py), theirs in
 # turn: no #include, quoted or angled, may reach a tracked header of the
 # firmware or of an undeclared package. A header that resolves
 # nowhere in the tree is the toolchain's or the build's own (<stdint.h>,
@@ -559,7 +559,7 @@ def rule_package_include(root, path, text):
     package = package_of(root, path)
     if package is None:
         return
-    reachable = packages.reachable(package)
+    reachable = package_requires.reachable(package)
     for number, line in enumerate(text.splitlines(), 1):
         m = ANY_INCLUDE.match(line)
         if not m:
@@ -576,7 +576,7 @@ def rule_package_requires(root, path, text):
     package = package_of(root, path)
     if package is None or path.name != "CMakeLists.txt" or path.parent.resolve() != package:
         return
-    declared = packages.requires_line(package.name)
+    declared = package_requires.requires_line(package.name)
     any_declaration = re.compile(r"^\s*set\(\s*" + re.escape(package.name) + r"_requires\b")
     number = 1
     for n, line in enumerate(text.splitlines(), 1):
@@ -585,13 +585,13 @@ def rule_package_requires(root, path, text):
             if not declared.match(line):
                 yield n, (f"{package.name}_requires is read only as one unindented line of bare package "
                           f"names: set({package.name}_requires math)")
-    for name in packages.requires(package):
+    for name in package_requires.requires(package):
         dep = package.parent / name
         if name == package.name:
             yield number, f"{package.name} requires itself"
         elif not (dep / "include").is_dir():
             yield number, f"{package.name} requires {name}, which is no package (no launcher/packages/{name}/include)"
-        elif package in packages.reachable(dep):
+        elif package in package_requires.reachable(dep):
             yield number, f"{package.name} requires {name}, which requires {package.name} back - dependencies run one way"
 
 
