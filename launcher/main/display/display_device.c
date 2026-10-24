@@ -63,7 +63,7 @@ display_quarter_held(void) {
 }
 
 bool
-display_sample_orientation(int64_t now_us, display_gravity_reader_t read) {
+display_sample_orientation(int64_t now_us, display_acceleration_reader_t read) {
     return display_orientation_sample(&shell_orientation, now_us, read);
 }
 
@@ -91,4 +91,9 @@ display_set_system_panel_clock_hz(int hz) {
 void
 display_restore_system_state(void) {
     gfx_set_panel_clock_hz(panel_clock_for_switch(&shell_panel_clock));
+}
+
+void
+display_touch_now(int64_t now_us) {
+    display_touch(&shell_orientation.display, now_us);
 }

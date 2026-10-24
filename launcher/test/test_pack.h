@@ -1,4 +1,4 @@
-/* Writes an asset pack into a test's buffer, the layout docs/assets/README.md
+/* Writes an asset pack into a test's buffer, the layout docs/assets/Pack-Format.md
  * gives: test_pack_begin() with the entry count, test_pack_add() for each
  * entry, which returns its zeroed bytes to fill, then test_pack_finish().
  * test_pack_put16/put32 write little-endian fields; test_pack_put_floats
@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "asset/asset_pack.h"
+#include "hash/crc32.h"
 #include "unity.h"
 
 typedef struct {
@@ -73,6 +74,6 @@ test_pack_finish(test_pack_t* pack) {
     test_pack_put32(pack->bytes + 8, pack->count);
     test_pack_put32(pack->bytes + 12, pack->end);
     test_pack_put32(pack->bytes + 16,
-                    asset_crc32(pack->bytes + ASSET_PACK_HEADER_SIZE, pack->end - ASSET_PACK_HEADER_SIZE));
+                    crc32_update(0, pack->bytes + ASSET_PACK_HEADER_SIZE, pack->end - ASSET_PACK_HEADER_SIZE));
     return pack->end;
 }

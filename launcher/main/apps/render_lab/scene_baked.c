@@ -13,6 +13,7 @@
 
 #include "esp_log.h"
 
+#include "core/tune.h"
 #include "draw/draw.h"
 #include "gfx/present/gfx_present.h"
 #include "render/context/render_context.h"
@@ -20,7 +21,6 @@
 #include "render_lab_dynres.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
-#include "services/tune.h"
 #include "ui/ui.h"
 
 static const char* TAG = "scene_baked";

@@ -13,8 +13,6 @@ line alike:
 autana> tune wave                 # the tunables whose names contain "wave"
 autana> tune theme                # show matching tunables
 autana> tune theme_rgb 0x1199C8   # change it: on the screen a frame later
-autana> tune save                 # write the device's values into the source
-autana> flash dev
 ```
 
 Each is also a command of its own, for a script or a single change:
@@ -23,7 +21,6 @@ Each is also a command of its own, for a script or a single change:
 autana tune                       # every tunable, its value and its range
 autana tune theme_rgb
 autana tune theme_rgb 0x1199C8
-autana tune save
 ```
 
 A name may drop its owner when that is unambiguous: `theme_rgb` for
@@ -43,18 +40,22 @@ which takes the device lock like everything else that touches the board.
 | `autana tune [text] [--json]` | list the tunables with ranges; names containing text |
 | `autana tune <name> [value]` | show one, or set it on the board (lost on reboot) |
 | `autana tune reset <name>` | back to the value the source declares |
-| `autana tune save` | write the board's values into this project's TUNE(...) lines |
 <!-- /generated: cli-tune -->
 
 **Development builds only, and the device keeps nothing.** A release build
 has no listener, no registry and no names: the same declaration compiles to
-a plain constant there, and a value set on a device is gone at its next
-reboot. The source stays the truth, and `save` is what puts a session's
-values into it: it asks the device for every tunable and rewrites the
-initial value in the `TUNE` line each was declared with, in the worktree
-it is run from; those lines only, byte for byte otherwise. What it wrote is
-an ordinary diff to review and commit, and the next build, release included,
-is made with it.
+a plain constant there. A value set on a device is gone at its next reboot.
+
+The source stays the truth. `autana` only talks to the device, so a source
+tool puts a session's values into the source:
+
+```sh
+autana tune --json | python launcher/tools/tune/apply.py
+```
+
+It rewrites the initial value in each tunable's `TUNE` line, in the tree
+`apply.py` lives in, and nothing else. The result is an ordinary diff to
+review and commit, and the next build, release included, is made with it.
 
 ## How it works
 
@@ -66,17 +67,20 @@ sequenceDiagram
     participant T as autana
     participant D as device.py
     participant C as console.c
-    participant S as console_tune.c
-    participant R as services/tune.c
+    participant S as verbs/console_tune.c
+    participant P as console/console_tune.c
+    participant R as core/tune.c
     T->>D: tune theme_rgb 0x1199C8
     D->>C: SET ridge.theme_rgb 0x1199C8
     C->>S: the SET verb
-    S->>R: tune_handle_line()
+    S->>P: console_tune_line()
+    P->>R: tune_set()
     Note over R: writes the int32_t,<br/>its owner reads it each frame
-    R-->>D: TUNE_OK ridge.theme_rgb=1153480
+    P-->>D: TUNE_OK ridge.theme_rgb=1153480
 ```
 
-The console protocol is four lines, answered by `services/tune`:
+The console protocol is four lines, answered by `console/console_tune` from
+the registry in `core/tune`:
 
 | line | replies |
 |---|---|
@@ -93,15 +97,18 @@ own. The console answers from the shared one, `tune_shared()`.
 
 ## Making something tunable
 
+<!-- generated: cli-tune-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-#include "services/tune.h"
+/* Tune: expose a colour under its owner. */
+#include "core/tune.h"
 
-TUNE_OWNER(ridge);                    /* once per file, before its tunables */
-TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
+TUNE_OWNER(glow); /* once per file, before its tunables */
+TUNE(glow, theme_rgb, 0x1199C8, 0, 0xffffff);
 ```
+<!-- /generated: cli-tune-example -->
 
 - That one line is the whole declaration: the variable `theme_rgb`, its name
-  `ridge.theme_rgb`, the value it ships with and its range. On a development
+  `glow.theme_rgb`, the value it ships with and its range. On a development
   build it is a `static int32_t` and an entry that joins the registry by
   itself before `app_main()`, the way `APP_REGISTER` works, so there is
   nothing to call and every tunable linked into the image is listed from

@@ -14,6 +14,7 @@
 #include "unity.h"
 
 #include "asset/asset_pack.h"
+#include "hash/crc32.h"
 #include "render/r3d_lit_mesh.h"
 #include "test_alloc.h"
 #include "test_pack.h"
@@ -71,7 +72,7 @@ make_pack(uint8_t* pack, const uint8_t* entry, uint32_t entry_size, uint32_t typ
 
 static void
 seal(uint8_t* pack, uint32_t total) {
-    test_pack_put32(pack + 16, asset_crc32(pack + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE));
+    test_pack_put32(pack + 16, crc32_update(0, pack + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE));
 }
 
 typedef struct {
@@ -303,9 +304,9 @@ test_a_cluster_or_node_range_outside_the_mesh_is_refused(void) {
 
 /* Inside its range, a field holds a value no mesh can have. */
 static void
-test_a_mesh_without_one_colour_source_a_scale_clusters_or_nodes_is_a_format_error(void) {
+test_mesh_colour_ownership_scale_and_tree(void) {
     fixture_t f = fixture();
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_mesh_with(&f, 24, 0)); /* no colours at all */
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_mesh_with(&f, 24, 0));
     release(&f);
     f = fixture();
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_mesh_with(&f, 16, 0)); /* no position scale */
@@ -442,7 +443,7 @@ suite_asset_pack(void) {
     RUN_TEST(test_a_missing_id_and_a_wrong_type_are_told_apart);
     RUN_TEST(test_a_mesh_array_outside_its_entry_is_refused);
     RUN_TEST(test_a_cluster_or_node_range_outside_the_mesh_is_refused);
-    RUN_TEST(test_a_mesh_without_one_colour_source_a_scale_clusters_or_nodes_is_a_format_error);
+    RUN_TEST(test_mesh_colour_ownership_scale_and_tree);
     RUN_TEST(test_an_entry_row_is_read_by_its_index_and_an_index_past_the_table_is_not_found);
     RUN_TEST(test_a_base_that_is_not_16_byte_aligned_is_refused);
     RUN_TEST(test_a_header_with_reserved_bytes_in_use_is_refused);

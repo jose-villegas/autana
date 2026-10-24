@@ -6,7 +6,7 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "services/tune.h"
+#include "core/tune.h"
 
 #include "bsp/esp-bsp.h"
 #include "bsp/touch.h"

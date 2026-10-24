@@ -31,7 +31,7 @@ CLIP = 'source = "probe.glb"\nanimation = "clip"\n'
 
 def lens(path=None, extra=""):
     """A camera object; `path` is the .anim.toml it flies, relative to the scene."""
-    flight = f'path = {{ animation = "{path}", node = "lamp" }}\n' if path else ""
+    flight = f'path = {{ animation = "{path}", node = "camera" }}\n' if path else ""
     return ('[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.5\n'
             + extra + flight)
 
@@ -145,7 +145,7 @@ class SceneEntryTests(SceneFiles):
         path = self.root / "clips/fly.anim.toml"
         with self.assertRaisesRegex(tracks_asset.TracksError, "has no property tracks"):
             tracks_asset.bake(path, "absent")
-        second = lens("clips/fly.anim.toml").replace('name = "camera"', 'name = "other"').replace('node = "lamp"', 'node = "other"')
+        second = lens("clips/fly.anim.toml").replace('name = "camera"', 'name = "other"').replace('node = "camera"', 'node = "other"')
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml") + second)
         with self.assertRaisesRegex(SettingsError, "selects different nodes"):
             build_pack.pack_bytes([self.root])
@@ -173,7 +173,7 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(scene["entities"][0]["matrix"], [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 0.5]])
         self.assertEqual(scene["entities"][0]["position"], [1.0, 2.0, 3.0])
         self.assertEqual([e["position"] for e in scene["entities"][1:]], [[0.0, 0.0, 0.0]] * 2)
-        self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "a"}, {"entity": 1, "mesh": "b"}])
+        self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "a", "colour_set": scene_asset.COLOUR_SET_OWN}, {"entity": 1, "mesh": "b", "colour_set": scene_asset.COLOUR_SET_OWN}])
         self.assertEqual(scene["cameras"], [{"entity": 2, "half_fov_short_tan": single(0.6), "near_z": 1.5,
                                              "clear_rgb": 0x336699}])
 
@@ -195,7 +195,7 @@ class SceneEntryTests(SceneFiles):
                    + renderer("b.import.toml", extra="bake = true\n") + lens())
         scene = scene_asset.decode(self.entry(objects, HEAD))
         self.assertEqual([e["name"] for e in scene["entities"]], ["a", "sun", "b", "camera"])
-        self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "hall.a"}, {"entity": 2, "mesh": "hall.b"}])
+        self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "hall.a", "colour_set": scene_asset.COLOUR_SET_OWN}, {"entity": 2, "mesh": "hall.b", "colour_set": scene_asset.COLOUR_SET_OWN}])
 
     def test_the_entry_holds_only_what_the_device_reads(self):
         objects = renderer("a.import.toml", extra="bake = true\n") + sun_object() + lens()
@@ -214,14 +214,14 @@ class SceneEntryTests(SceneFiles):
             with self.subTest(path=path), self.assertRaisesRegex(SettingsError, pattern):
                 load_scene(self.scene(renderer("a.import.toml") + lens(path)))
         node = "n" * (NAME_BYTES - 1)
-        long_node = lens("clips/fly.anim.toml").replace('node = "lamp"', 'node = "' + node + '"')
+        long_node = lens("clips/fly.anim.toml").replace('node = "camera"', 'node = "' + node + '"')
         scene = load_scene(self.scene(renderer("a.import.toml") + long_node))
         self.assertEqual(scene.camera.component.path.node, node)
         with self.assertRaisesRegex(SettingsError, "at most"):
             load_scene(self.scene(renderer("a.import.toml") +
                        long_node.replace(node, "n" * NAME_BYTES)))
         with self.assertRaisesRegex(SettingsError, "letters, digits and _"):
-            load_scene(self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml").replace('"lamp"', '"no-good"')))
+            load_scene(self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml").replace('node = "camera"', 'node = "no-good"')))
 
     def test_a_clip_id_must_fit_a_pack_name(self):
         for stem, refused in (("c" * 31, False), ("c" * 32, True)):
@@ -289,8 +289,7 @@ class SceneEntryRefusalTests(unittest.TestCase):
         cases = [("lights", 2, "B", 0), ("lights", 2, "B", 2), ("lights", 2, "B", 255), ("lights", 3, "B", 1),
                  ("animators", 4, "<I", 2), ("animators", 4, "<I", (1 << 32) - 1), ("animators", 8, "<H", 1),
                  ("animators", 10, "B", 2), ("animators", 10, "B", 255), ("animators", 11, "B", 1),
-                 ("skinned_renderers", 2, "<H", 1), ("cameras", 2, "<H", 1),
-                 ("renderers", 2, "<H", 1)]
+                 ("skinned_renderers", 2, "<H", 1), ("cameras", 2, "<H", 1)]
         for part in ("lights", "animators", "skinned_renderers"):
             row = scene_asset.ROWS[scene_asset.PARTS.index(part)]
             cases.append((part, row.size, "<H", 0))
@@ -346,7 +345,7 @@ class ScenePackTests(SceneFiles):
         self.assertEqual(hall["hall"], (scene_asset.TYPE, to_engine(scene_asset.TYPE, scene_asset.bake(path))))
         self.assertEqual({name: kind for name, (kind, _) in hall.items()},
                          {"hall": scene_asset.TYPE, "a": LIT_MESH, "b": LIT_MESH, "fly": tracks_asset.TYPE})
-        self.assertEqual(hall["fly"][1], to_engine(tracks_asset.TYPE, tracks_asset.bake(self.root / "clips/fly.anim.toml", "lamp")))
+        self.assertEqual(hall["fly"][1], to_engine(tracks_asset.TYPE, tracks_asset.bake(self.root / "clips/fly.anim.toml", "camera")))
 
     def test_replace_takes_only_a_mesh(self):
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))

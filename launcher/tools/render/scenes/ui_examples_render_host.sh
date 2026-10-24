@@ -19,7 +19,6 @@ scene_ui=1
 scene_assets="main/engine"
 scene_includes="tools/render/ui_examples"
 scene_sources="
-main/services/tune.c
 tools/render/scenes/ui_examples_render_host.c
 "
 scene_renders=

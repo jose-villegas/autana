@@ -162,7 +162,17 @@ open_meshes(scene_t* scene, const asset_pack_t* pack) {
         const char* mesh = i < scene->asset.renderer_count
                                ? scene->asset.renderers[i].mesh
                                : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
-        const asset_status_t status = r3d_lit_mesh_open(pack, mesh, &scene->renderers[i].mesh);
+        r3d_lit_mesh_t* view = &scene->renderers[i].mesh;
+        asset_status_t status = r3d_lit_mesh_open(pack, mesh, view);
+        if (status == ASSET_OK && i < scene->asset.renderer_count) {
+            const uint16_t set = scene->asset.renderers[i].colour_set;
+            if (set != SCENE_ASSET_COLOUR_SET_OWN) {
+                status = r3d_lit_mesh_open_colours(pack, mesh, set, view);
+            }
+        }
+        if (status == ASSET_OK && view->colors == NULL && view->face_colors == NULL) {
+            status = ASSET_ERR_FORMAT;
+        }
         if (status != ASSET_OK) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }

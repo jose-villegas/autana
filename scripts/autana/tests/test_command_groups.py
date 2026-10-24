@@ -11,6 +11,7 @@ import io
 import re
 import unittest
 import os
+import tempfile
 from unittest import mock
 
 
@@ -23,6 +24,24 @@ import cli_reference  # noqa: E402
 class CommandGroupTests(unittest.TestCase):
     def test_every_group_has_a_page_with_a_current_table(self):
         self.assertEqual(cli_reference.run(check=True), [])
+
+    def test_example_block_owned_by_another_generator_is_ignored(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            page = root / "docs/cli/Examples.md"
+            page.parent.mkdir(parents=True)
+            page.write_text(
+                "<!-- generated: cli-x-example check: python launcher/tools/gen/examples_doc.py --check -->\n"
+                "```c\nint x;\n```\n<!-- /generated: cli-x-example -->\n",
+                encoding="utf-8")
+            with mock.patch.object(cli_reference, "ROOT", root), \
+                    mock.patch.object(cli_reference, "tables", return_value=[]):
+                self.assertEqual(cli_reference.run(check=True), [])
+                page.write_text(page.read_text(encoding="utf-8").replace(
+                    "python launcher/tools/gen/examples_doc.py --check", cli_reference.CHECK),
+                    encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "belongs to no command group"):
+                    cli_reference.run(check=True)
 
     def test_a_group_without_a_page_fails_rather_than_falls_back(self):
         pages = {key: page for key, page in cli_reference.GROUP_PAGES.items() if key != "tune"}
