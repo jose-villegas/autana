@@ -121,15 +121,18 @@ class CodeSearch(unittest.TestCase):
         self.assertEqual({"one"}, self.owners()["engine/value.h"].users)
 
     def test_python_import_forms_relative_imports_and_local_includes(self):
-        write(self.root, "tools/common/value.py", '"""Shared values."""\ndef public(): pass\n')
-        write(self.root, "tools/one/use.py", "from common.value import public\n")
-        write(self.root, "tools/two/use.py", "def late():\n    import common.value as value\n")
-        write(self.root, "pkg/value.py", '"""Values."""\ndef value(): pass\n')
-        write(self.root, "pkg/one/use.py", "from ..value import value\n")
-        write(self.root, "pkg/two/use.py", "from .. import value\n")
-        write(self.root, "engine/value.h", "/* Values. */\nint value(void);\n")
-        write(self.root, "engine/use.c", '#include "value.h"\n')
-        write(self.root, "other/use.c", '/* #include "engine/value.h" */\n#include "engine/value.h"\n')
+        for path, text in {
+            "tools/common/value.py": '"""Shared values."""\ndef public(): pass\n',
+            "tools/one/use.py": "from common.value import public\n",
+            "tools/two/use.py": "def late():\n    import common.value as value\n",
+            "pkg/value.py": '"""Values."""\ndef value(): pass\n',
+            "pkg/one/use.py": "from ..value import value\n",
+            "pkg/two/use.py": "from .. import value\n",
+            "engine/value.h": "/* Values. */\nint value(void);\n",
+            "engine/use.c": '#include "value.h"\n',
+            "other/use.c": '/* #include "engine/value.h" */\n#include "engine/value.h"\n',
+        }.items():
+            write(self.root, path, text)
         owners = self.owners()
         self.assertEqual({"tools/one", "tools/two"}, owners["tools/common/value.py"].users)
         self.assertEqual({"pkg/one", "pkg/two"}, owners["pkg/value.py"].users)
