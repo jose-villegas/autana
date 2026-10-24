@@ -17,6 +17,9 @@ and reads the newest sample at 50 Hz (`IMU_READ_HZ` in `input/motion/imu.c`).
 The task runs on `JOB_CORE1` at `JOB_CORE1_PRIORITY - 1`, yielding to the core-1 job worker.
 A drain delayed past FIFO capacity while core 1 is busy becomes a gap.
 
+Each tick boosts to `IMU_TASK_BUS_PRIORITY` for I2C work: the bus lock has no priority
+inheritance, so a preempted drain holds the bus and keeps the FIFO in read mode.
+
 `input_read_motion_batch()` takes queued samples from memory, oldest first.
 Batches arrive up to one drain period late. On drain ticks the FIFO supplies
 the newest sample instead of a register read.
