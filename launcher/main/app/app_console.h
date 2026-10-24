@@ -31,7 +31,7 @@ typedef struct {
     bool (*handle)(const char* args);
 } app_console_t;
 
-#if CONFIG_LAUNCHER_DEVELOPMENT || !defined(ESP_PLATFORM)
+#if CONFIG_LAUNCHER_DEVELOPMENT
 /* The only way to fill one: APP_CONSOLE() at top level, then
  * APP_CONSOLE_PTR(handler) as the app_t's `.console`. Two macros, since the
  * assert is a declaration. Clashes and long prefixes are checked at boot
