@@ -70,6 +70,27 @@ tone_measure(const console_tone_args_t* args, float* db, audio_loopback_result_t
     return ok;
 }
 
+/* The IMU at IMU_BUZZ_ODR_CODE and a buffer for its samples; NULL leaves both as they were. */
+static tone_shake_buffer_t*
+tone_shake_open(void) {
+    tone_shake_buffer_t* fifo = imu_ready() ? memory_alloc(sizeof *fifo, MEMORY_PSRAM) : NULL;
+    if (fifo && !imu_set_odr(IMU_BUZZ_ODR_CODE)) {
+        memory_free(fifo);
+        fifo = NULL;
+    }
+    return fifo;
+}
+
+/* False when the IMU could not return to IMU_ODR_CODE. */
+static bool
+tone_shake_close(tone_shake_buffer_t* fifo) {
+    if (!fifo) {
+        return true;
+    }
+    memory_free(fifo);
+    return imu_set_odr(IMU_ODR_CODE);
+}
+
 const char*
 console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REPLY_BYTES]) {
     const size_t dma_before = memory_free_bytes(MEMORY_DMA);
@@ -79,12 +100,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     float tone_db = 0;
     audio_loopback_result_t loopback = {0};
     sound_voice_t voice = SOUND_VOICE_NULL;
-    tone_shake_buffer_t* fifo = imu_ready() ? memory_alloc(sizeof *fifo, MEMORY_PSRAM) : NULL;
-    const bool fast = fifo && imu_set_odr(IMU_BUZZ_ODR_CODE);
-    if (!fast) {
-        memory_free(fifo);
-        fifo = NULL;
-    }
+    tone_shake_buffer_t* fifo = tone_shake_open();
     imu_vibration_t silence_shake = {0};
     imu_vibration_t tone_shake = {0};
     bool held = false;
@@ -94,8 +110,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
               && console_tone_start(&voice, args->hz, args->volume_pct)
               && tone_measure(args, &tone_db, &loopback, fifo, &tone_shake);
     ok = console_tone_stop(&voice) && ok;
-    memory_free(fifo);
-    ok = (!fast || imu_set_odr(IMU_ODR_CODE)) && ok;
+    ok = tone_shake_close(fifo) && ok;
     if (held) {
         timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
     }
