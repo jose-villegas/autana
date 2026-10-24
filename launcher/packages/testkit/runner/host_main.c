@@ -19,24 +19,26 @@ tearDown(void) {
     suite_run_test_cleanup();
 }
 
-int
-main(int argc, char** argv) {
-    int errors = suites_dropped();
-    if (argc == 2 && strcmp(argv[1], TESTKIT_LIST_OPTION) == 0) {
-        for (size_t i = 0; i < suites_count(); i++) {
-            puts(suites_at(i)->name);
-        }
-        return errors != 0 ? EXIT_FAILURE : EXIT_SUCCESS;
+static void
+list_suites(void) {
+    for (size_t i = 0; i < suites_count(); i++) {
+        puts(suites_at(i)->name);
     }
-    UNITY_BEGIN();
-    if (argc == 1) {
-        for (size_t i = 0; i < suites_count(); i++) {
-            const suite_entry_t* suite = suites_at(i);
-            if (!suite->on_request) {
-                suite->fn();
-            }
+}
+
+static void
+run_default(void) {
+    for (size_t i = 0; i < suites_count(); i++) {
+        const suite_entry_t* suite = suites_at(i);
+        if (!suite->on_request) {
+            suite->fn();
         }
     }
+}
+
+static int
+run_named(int argc, char** argv) {
+    int errors = 0;
     for (int arg = 1; arg < argc; arg++) {
         const suite_entry_t* suite = NULL;
         for (size_t i = 0; i < suites_count(); i++) {
@@ -52,6 +54,21 @@ main(int argc, char** argv) {
             errors++;
         }
     }
+    return errors;
+}
+
+int
+main(int argc, char** argv) {
+    int errors = suites_dropped();
+    if (argc == 2 && strcmp(argv[1], TESTKIT_LIST_OPTION) == 0) {
+        list_suites();
+        return errors != 0 ? EXIT_FAILURE : EXIT_SUCCESS;
+    }
+    UNITY_BEGIN();
+    if (argc == 1) {
+        run_default();
+    }
+    errors += run_named(argc, argv);
     int failures = UNITY_END();
     return failures != 0 || errors != 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }
