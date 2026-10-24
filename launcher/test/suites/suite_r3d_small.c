@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "asset/asset_pack.h"
+#include "hash/crc32.h"
 #include "math/scalar/rng.h"
 #include "render/raster_attachment.h"
 #include "suites.h"
@@ -114,7 +115,7 @@ span_checksum(bool dither) {
                     }
                     const r3d_span_vertex_t ordered[TRIANGLE_VERTICES] = {v[0], v[winding ? 2 : 1], v[winding ? 1 : 2]};
                     draw_triangle(&target, ordered, solid != 0);
-                    checksum = rng_avalanche32(checksum ^ asset_crc32(pixels, sizeof(*pixels) * TEST_PIXELS * 2));
+                    checksum = rng_avalanche32(checksum ^ crc32_update(0, pixels, sizeof(*pixels) * TEST_PIXELS * 2));
                 }
             }
         }

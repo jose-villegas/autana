@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "asset/asset_pack.h"
+#include "hash/crc32.h"
 #include "unity.h"
 
 typedef struct {
@@ -73,6 +74,6 @@ test_pack_finish(test_pack_t* pack) {
     test_pack_put32(pack->bytes + 8, pack->count);
     test_pack_put32(pack->bytes + 12, pack->end);
     test_pack_put32(pack->bytes + 16,
-                    asset_crc32(pack->bytes + ASSET_PACK_HEADER_SIZE, pack->end - ASSET_PACK_HEADER_SIZE));
+                    crc32_update(0, pack->bytes + ASSET_PACK_HEADER_SIZE, pack->end - ASSET_PACK_HEADER_SIZE));
     return pack->end;
 }

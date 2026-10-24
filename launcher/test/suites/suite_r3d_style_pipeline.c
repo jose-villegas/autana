@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "asset/asset_pack.h"
+#include "hash/crc32.h"
 #include "render/r3d_pipeline.c"
 #include "render/r3d_span.c"
 #include "suites.h"
@@ -160,7 +161,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
             }
             TEST_ASSERT_GREATER_THAN(0, covered);
         }
-        checksums[style] = asset_crc32(pixels, TEST_PIXELS * sizeof(*pixels));
+        checksums[style] = crc32_update(0, pixels, TEST_PIXELS * sizeof(*pixels));
         for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
             TEST_ASSERT_NOT_EQUAL(checksums[previous], checksums[style]);
         }

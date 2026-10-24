@@ -11,9 +11,9 @@ from build import name_hash
 from build.c_header import read_define
 
 LAUNCHER = Path(__file__).resolve().parents[2]
-VECTORS = LAUNCHER / "packages/name_hash/tests/name_hash_vectors.h"
+VECTORS = LAUNCHER / "packages/hash/tests/name_hash_vectors.h"
 
-OWNER64 = LAUNCHER / "packages/name_hash/include/name_hash/name_hash64.h"
+OWNER64 = LAUNCHER / "packages/hash/include/hash/name_hash64.h"
 OFFSET_BASIS64 = read_define(OWNER64, "NAME_HASH64_OFFSET_BASIS")
 PRIME64 = read_define(OWNER64, "NAME_HASH64_PRIME")
 

@@ -1,4 +1,4 @@
-#include "name_hash/name_hash.h"
+#include "hash/name_hash.h"
 
 #include <string.h>
 
