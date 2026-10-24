@@ -73,6 +73,13 @@ def generate_results(doc, images, captures, check=False):
     return changed
 
 
+def write_samples(samples, output):
+    """One "step ms ax ay az lx ly lz" line in mg per sample, for the input reference figures."""
+    with open(output, "w", encoding="utf-8") as stream:
+        for sample in samples:
+            print(sample["step"], sample["ms"], *sample["acc"], *sample["lin"], file=stream)
+
+
 def summarize(samples):
     result = {}
     for step in STEPS:
@@ -124,6 +131,7 @@ def main():
     parser.add_argument("--results", action="store_true", help="regenerate retained capture figures and README tables")
     parser.add_argument("--check", action="store_true", help="check generated tables without writing")
     parser.add_argument("--plot", type=Path)
+    parser.add_argument("--samples", type=Path, help="write the capture's samples for the input reference figures")
     args = parser.parse_args()
     if args.results:
         app = HEADER.parent
@@ -132,6 +140,9 @@ def main():
         return int(generate_results(app / "README.md", app / "images", captures, check=args.check) and args.check)
     if args.log is None:
         parser.error("a capture or --results is required")
+    if args.samples:
+        write_samples(read_capture(args.log), args.samples)
+        return 0
     try:
         samples = read_capture(args.log)
         stats = summarize(samples)
