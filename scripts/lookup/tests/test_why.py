@@ -154,6 +154,12 @@ class History(unittest.TestCase):
             json.dumps({"title": "t", "body": "Beta.\r\n\r\nTicket: q1q1\r\n"}), encoding="utf-8")
         self.assertEqual(self.reply("src/frame.c:2")["rows"][0]["tickets"], ["autana-b2b2", "q1q1"])
 
+    def test_a_ticket_named_in_subject_and_ticket_line_appears_once(self):
+        (self.cache / "pr" / "local").mkdir(parents=True)
+        (self.cache / "pr" / "local" / "2.json").write_text(
+            json.dumps({"title": "t", "body": "Beta.\n\nTicket: autana-b2b2"}), encoding="utf-8")
+        self.assertEqual(self.reply("src/frame.c:2")["rows"][0]["tickets"], ["autana-b2b2"])
+
     def test_offline_without_a_cached_body_keeps_the_subject_and_runs_no_gh(self):
         with mock.patch.object(why.subprocess, "run", wraps=subprocess.run) as spawned:
             row = self.reply("src/frame.c:2")["rows"][0]
@@ -185,6 +191,239 @@ class History(unittest.TestCase):
         self.assertIsNone(why.eval_rank(reply, "#9"))
 
 
+class Scratch(unittest.TestCase):
+    """A fixture history built once per class by build(), with a throwaway cache and log."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.root = cls.build()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def setUp(self):
+        self.cache = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.cache, True)
+        for patch in (mock.patch.object(query_log, "log_dir", return_value=self.cache / "usage"),
+                      mock.patch.object(why, "pr_cache", return_value=self.cache / "pr")):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def reply(self, query):
+        return why.answer(self.root, "HEAD", query, offline=True, with_tickets=False)
+
+    def prs(self, rows):
+        return [row["pr"] for row in rows]
+
+    def cache_body(self, number, body):
+        (self.cache / "pr" / "local").mkdir(parents=True, exist_ok=True)
+        (self.cache / "pr" / "local" / f"{number}.json").write_text(
+            json.dumps({"title": "t", "body": body}), encoding="utf-8")
+
+
+def new_repo():
+    root = Path(tempfile.mkdtemp())
+    run(root, "init", "-q", "-b", "main")
+    return root
+
+
+class MergeOrder(Scratch):
+    @staticmethod
+    def build():
+        """Merge order is #7, #3, #5 (a merge commit), #4: neither number order."""
+        root = new_repo()
+        commit(root, {"f.c": "l1\n"}, "f: one (#7)", 1)
+        commit(root, {"f.c": "l1\nl2\n"}, "f: two (#3)", 2)
+        run(root, "checkout", "-q", "-b", "topic", day=3)
+        commit(root, {"f.c": "l1\nl2\nl3\n"}, "wip", 3)
+        run(root, "checkout", "-q", "main", day=3)
+        run(root, "merge", "-q", "--no-ff", "topic", "-m", "Merge pull request #5 from x/topic\n\nthree", day=4)
+        commit(root, {"f.c": "l1\nl2\nl3\nl4\n"}, "f: four (#4)", 5)
+        return root
+
+    def test_rows_come_out_newest_merge_first_not_by_pr_number(self):
+        self.assertEqual(self.prs(self.reply("f.c")["rows"]), [4, 5, 3, 7])
+
+
+class NameSites(Scratch):
+    @staticmethod
+    def build():
+        root = new_repo()
+        commit(root, {"include/x.h": "int beta;\nint beta;\nint beta_frame;\n", "src/b.c": "beta();\n",
+                      "docs/a.md": "beta is\n", "docs/d.md": "beta too\n"}, "names (#1)", 1)
+        return root
+
+    def test_a_name_matches_whole_words_only(self):
+        sites = why.name_sites(self.root, "HEAD", "beta")
+        self.assertNotIn(("include/x.h", 3), sites)
+        self.assertEqual(len(sites), 5)
+
+    def test_shown_sites_lead_with_the_header_one_per_file_at_most_the_cap(self):
+        reply = self.reply("beta")
+        self.assertEqual(reply["sites"], [("include/x.h", 1), ("src/b.c", 1), ("docs/a.md", 1)])
+        self.assertEqual(len(reply["sites"]), why.SITES_SHOWN)
+
+    def test_site_count_counts_every_line_that_names_it(self):
+        self.assertEqual(self.reply("beta")["site_count"], 5)
+
+
+class Capped(Scratch):
+    @staticmethod
+    def build():
+        root = new_repo()
+        lines = ""
+        for n in range(1, why.FULL_ROWS + 2):
+            lines += f"line {n}\n"
+            commit(root, {"f.c": lines}, f"f: line {n} (#{n})", n)
+        return root
+
+    def test_only_the_first_full_rows_read_pr_text(self):
+        for n in range(1, why.FULL_ROWS + 2):
+            self.cache_body(n, f"Body {n}.")
+        rows = self.reply("f.c")["rows"]
+        self.assertEqual(len(rows), why.FULL_ROWS + 1)
+        self.assertEqual([r.get("summary") for r in rows[:why.FULL_ROWS]],
+                         [f"Body {n}." for n in range(why.FULL_ROWS + 1, 1, -1)])
+        self.assertNotIn("summary", rows[why.FULL_ROWS])
+
+
+class Reindent(Scratch):
+    @staticmethod
+    def build():
+        root = new_repo()
+        commit(root, {"f.c": "if (x) {\n  a();\n}\n"}, "f: first (#1)", 1)
+        commit(root, {"f.c": "if (x) {\n    a();\n}\n"}, "f: reindent (#2)", 2)
+        return root
+
+    def test_a_pr_that_only_reindents_a_line_does_not_own_it(self):
+        self.assertEqual(self.prs(self.reply("f.c:2")["rows"]), [1])
+
+
+class Render(unittest.TestCase):
+    def row(self, pr, title, commit="abcdef123"):
+        return {"pr": pr, "commit": commit, "date": "2026-10-01", "title": title, "tickets": [], "lines": 1}
+
+    def reply(self, rows, kind="file", history=(), **extra):
+        return {"kind": kind, "target": "f.c", "lines": 3, "sites": [], "site_count": 0,
+                "rows": rows, "history": list(history), **extra}
+
+    @staticmethod
+    def size(lines):
+        return sum(len(x) + 1 for x in lines)
+
+    def test_a_block_that_overflows_stops_the_list_instead_of_skipping_to_a_shorter_one(self):
+        reply = self.reply([self.row(1, "short"), self.row(2, "x" * 300), self.row(3, "short")])
+        whole = why.render(reply, 10_000, 5)
+        out = why.render(reply, self.size([whole[0], whole[1], whole[3]]), 5)
+        self.assertTrue(any(x.startswith("#1 ") for x in out))
+        self.assertFalse([x for x in out if x.startswith(("#2 ", "#3 "))])
+
+    def test_the_history_line_is_absent_when_rows_were_cut(self):
+        old = self.row(9, "old")
+        reply = self.reply([self.row(1, "short"), self.row(2, "x" * 300)], history=[old])
+        whole = why.render(reply, 10_000, 5)
+        self.assertTrue(whole[-1].startswith("history: "))
+        out = why.render(reply, self.size([whole[0], whole[1], whole[-1]]) + 5, 5)
+        self.assertFalse([x for x in out if x.startswith("history:")])
+        self.assertEqual(out[-1], "+1 more PRs and 1 older (--budget, --history or --json)")
+
+    def test_a_main_line_commit_without_a_pr_is_labelled_by_its_sha_prefix(self):
+        out = why.render(self.reply([self.row(None, "direct push")]), 10_000, 5)
+        self.assertTrue(out[1].startswith("abcdef123 2026-10-01"))
+
+    def test_folder_name_and_file_headers_differ(self):
+        rows = [self.row(1, "a"), self.row(2, "b")]
+        self.assertEqual(why.render(self.reply(rows, "folder"), 10_000, 5)[0], "f.c  2 PRs changed 3 lines in it")
+        self.assertEqual(why.render(self.reply(rows, "file"), 10_000, 5)[0], "f.c  2 PRs own these 3 lines")
+        self.assertEqual(why.render(self.reply(rows, "name", site_count=4), 10_000, 5)[0],
+                         "f.c  2 PRs own these 3 lines (4 lines name it)")
+
+
+class PrText(unittest.TestCase):
+    def setUp(self):
+        self.cache = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.cache, True)
+        for patch in (mock.patch.object(why, "pr_cache", return_value=self.cache),
+                      mock.patch.object(why, "repo_key", return_value="o-r")):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def gh(self, state):
+        reply = subprocess.CompletedProcess([], 0, stdout=json.dumps({"title": "t", "body": "b", "state": state}))
+        return mock.patch.object(why.subprocess, "run", return_value=reply)
+
+    def test_a_merged_reply_is_cached_and_the_second_call_runs_no_gh(self):
+        with self.gh("MERGED") as spawned:
+            first = why.pr_text(self.cache, 7, False)
+            second = why.pr_text(self.cache, 7, False)
+        self.assertEqual(spawned.call_count, 1)
+        self.assertEqual(first, second)
+        self.assertTrue((self.cache / "o-r" / "7.json").is_file())
+
+    def test_an_open_reply_is_returned_but_not_cached(self):
+        with self.gh("OPEN") as spawned:
+            self.assertEqual(why.pr_text(self.cache, 7, False)["state"], "OPEN")
+            why.pr_text(self.cache, 7, False)
+        self.assertEqual(spawned.call_count, 2)
+        self.assertFalse((self.cache / "o-r" / "7.json").exists())
+
+    def test_gh_failing_or_timing_out_gives_none(self):
+        failed = subprocess.CompletedProcess([], 1, stdout="")
+        for effect in ({"return_value": failed}, {"side_effect": OSError("no gh")},
+                       {"side_effect": subprocess.TimeoutExpired("gh", 1)}):
+            with mock.patch.object(why.subprocess, "run", **effect):
+                self.assertIsNone(why.pr_text(self.cache, 7, False))
+
+
+class RepoKey(unittest.TestCase):
+    def key(self, url):
+        root = new_repo()
+        self.addCleanup(shutil.rmtree, root, True)
+        run(root, "remote", "add", "origin", url)
+        return why.repo_key(root)
+
+    def test_https_and_ssh_urls_of_one_repo_share_a_key_and_other_repos_differ(self):
+        self.assertEqual(self.key("https://github.com/o/r.git"), self.key("git@github.com:o/r"))
+        self.assertNotEqual(self.key("https://github.com/o/r.git"), self.key("https://github.com/o/other.git"))
+        self.assertNotEqual(self.key("https://github.com/o/r.git"), self.key("https://github.com/p/r.git"))
+
+
+class Eval(Scratch):
+    @staticmethod
+    def build():
+        return make_history()
+
+    def test_a_question_ranks_from_the_main_line_as_of_the_day_it_was_asked(self):
+        table = self.cache / "eval.tsv"
+        table.write_text("gamma_frame\t#3\t2026-10-02T23:00:00+00:00\n"
+                         "src/a.c\t#2\t2026-10-02T23:00:00+00:00\n"
+                         "alpha\t#1\t2026-10-02T23:00:00+00:00\n", encoding="utf-8")
+        with mock.patch.object(why, "EVAL_FILE", table), mock.patch("sys.stdout", io.StringIO()) as out:
+            why.run_eval(self.root, "HEAD")
+        # #3 had not merged yet, so its question finds nothing; the others rank first.
+        self.assertEqual([line.split()[0] for line in out.getvalue().splitlines()[:3]], ["-", "1", "1"])
+        kept = query_log.scores_of("why")[-1]
+        self.assertEqual((kept["mode"], kept["rows"], kept["mrr"], kept["top1"]), ("git", 3, 0.667, 0.667))
+
+
+class Bd(unittest.TestCase):
+    def test_a_missing_bd_bad_json_or_a_timeout_gives_no_tickets(self):
+        bad = subprocess.CompletedProcess([], 0, stdout="not json")
+        for effect in ({"side_effect": OSError("no bd")}, {"return_value": bad},
+                       {"side_effect": subprocess.TimeoutExpired("bd", 1)}):
+            with mock.patch.object(why.subprocess, "run", **effect):
+                self.assertEqual(why.tickets(["autana-x1y2"]), {})
+
+    def test_a_returned_id_is_found_with_and_without_the_autana_prefix(self):
+        issues = [{"id": "autana-x1y2", "status": "open", "title": "T"}]
+        done = subprocess.CompletedProcess([], 0, stdout=json.dumps(issues))
+        with mock.patch.object(why.subprocess, "run", return_value=done):
+            found = why.tickets(["x1y2"])
+        self.assertEqual(found["x1y2"], found["autana-x1y2"])
+        self.assertEqual(found["x1y2"]["title"], "T")
+
+
 class Tickets(unittest.TestCase):
     def tickets(self, subject):
         return why.Commit("0" * 40, "0", "2026-10-01", subject, "").tickets
@@ -207,6 +446,12 @@ class Summary(unittest.TestCase):
 
     def test_headings_tables_lists_and_ticket_lines_are_skipped(self):
         self.assertEqual(why.summary("# T\n\n| a |\n\n- x\n\nTicket: autana-q1q1"), "")
+
+    def test_a_long_paragraph_with_no_early_sentence_end_ends_in_an_ellipsis(self):
+        for text in ("word " * 100, "A. " + "B" * 400):
+            cut = why.summary(text)
+            self.assertTrue(cut.endswith(" ..."), cut)
+            self.assertLessEqual(len(cut), why.SUMMARY_CHARS + 4)
 
 
 if __name__ == "__main__":
