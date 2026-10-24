@@ -193,7 +193,7 @@ typedef struct {
     struct {
         const char* name;
         scene_asset_transform_t at;
-    } entities[3];
+    } entities[5];
 
     struct {
         int entity;
@@ -274,6 +274,16 @@ static const scene_spec_t SCENES[] = {
      .entities = {{"camera", CAMERA_AT(0)}, {"red", AT(-2, 0, 0)}, {"green", AT(4, 0, 0)}}, /* green's parent: red */
      .renderers = {{1, "red"}, {2, "green"}},
      .cameras = {{0, CLEAR_RGB, ""}}},
+    /* a scaled root, a turned child, a grandchild that draws; and a second root carrying a quad */
+    {.id = "test_tree",
+     .entity_count = 5,
+     .renderer_count = 2,
+     .entities = {{"root", {{{{2, 0, 0}, {0, 2, 0}, {0, 0, 2}}}, {1, 0, 0}}},
+                  {"arm", {{{{0, -1, 0}, {1, 0, 0}, {0, 0, 1}}}, {0, 2, 0}}},
+                  {"hand", AT(1, 0, 0)},
+                  {"other", AT(0, 0, 5)},
+                  {"cup", AT(0, 1, 0)}},
+     .renderers = {{2, "red"}, {4, "green"}}},
     /* a red quad turned inside out */
     {.id = "test_mirror",
      .entity_count = 1,
@@ -290,14 +300,37 @@ parents_size(int entities) {
 
 enum { FAMILY_PARENT = 1, FAMILY_CHILD = 2 };
 
-/* Every entity is a root but the family's green quad. */
+/* Which entities have a parent; every other entity is a root. */
+static const struct {
+    const char* scene;
+    int child, parent;
+} PARENTS[] = {
+    {"test_family", FAMILY_CHILD, FAMILY_PARENT}, {"test_tree", 1, 0}, {"test_tree", 2, 1}, {"test_tree", 4, 3}};
+
 static uint16_t
 parent_index(const scene_spec_t* s, int entity) {
-    return strcmp(s->id, "test_family") == 0 && entity == FAMILY_CHILD ? FAMILY_PARENT : SCENE_ASSET_PARENT_ROOT;
+    for (size_t i = 0; i < sizeof PARENTS / sizeof PARENTS[0]; i++) {
+        if (strcmp(s->id, PARENTS[i].scene) == 0 && entity == PARENTS[i].child) {
+            return (uint16_t)PARENTS[i].parent;
+        }
+    }
+    return SCENE_ASSET_PARENT_ROOT;
 }
 
 #define SCENE_COUNT ((int)(sizeof SCENES / sizeof SCENES[0]))
-#define BAD_SCENE   "test_bad" /* the pair, its second renderer naming entity 9 */
+
+static const scene_spec_t*
+spec_named(const char* id) {
+    for (int i = 0; i < SCENE_COUNT; i++) {
+        if (strcmp(SCENES[i].id, id) == 0) {
+            return &SCENES[i];
+        }
+    }
+    TEST_FAIL_MESSAGE(id);
+    return NULL;
+}
+
+#define BAD_SCENE "test_bad" /* the pair, its second renderer naming entity 9 */
 
 static int
 camera_clip_count(const scene_spec_t* s) {
@@ -897,6 +930,7 @@ static const breakage_t BREAKAGES[] = {
     {"an entity its own parent", PAIR_PARENTS + 2, 2, 1, false, ASSET_ERR_FORMAT},
     {"a parent listed after its child", PAIR_PARENTS + 2, 2, 2, false, ASSET_ERR_FORMAT},
     {"a parent past the entities", PAIR_PARENTS + 4, 2, 3, false, ASSET_ERR_FORMAT},
+    {"the padding after the parents in use", PAIR_LAST_ROW_END, 2, 1, false, ASSET_ERR_FORMAT},
 };
 
 static void
@@ -957,6 +991,14 @@ test_scene_header_counts_are_independent_of_components(void) {
                    {SCENE_ASSET_SETTINGS, 0},
                    {SCENE_ASSET_SETTINGS, 2}};
 
+    const int entity_parts[] = {SCENE_ASSET_NAMES, SCENE_ASSET_TRANSFORMS, SCENE_ASSET_PARENTS};
+    for (size_t i = 0; i < sizeof entity_parts / sizeof entity_parts[0]; i++) {
+        test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + entity_parts[i] * sizeof(uint16_t), SCENE_ENTITY_NONE);
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_FORMAT, open_entry(entry, size), "as many entities as the none mark");
+    for (size_t i = 0; i < sizeof entity_parts / sizeof entity_parts[0]; i++) {
+        test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + entity_parts[i] * sizeof(uint16_t), ENTITIES);
+    }
     for (size_t i = 0; i < sizeof changes / sizeof changes[0]; i++) {
         const uint32_t at = SCENE_ASSET_AT_COUNTS + changes[i].part * sizeof(uint16_t);
         test_pack_put16(entry + at, changes[i].count);
@@ -1036,6 +1078,88 @@ test_an_entity_knows_its_parent_its_ancestors_and_its_world(void) {
     TEST_ASSERT_EQUAL_FLOAT(4.0F, scene_entity_transform(scene, green)->position.x);
 }
 
+/* The tree's hand: 1 right of an arm turned a quarter about z and 2 up,
+ * under a root scaled 2 and 1 right, so at (1, 6, 0); multiplied the other
+ * way round it would be at (1, 3, 0). */
+static void
+assert_at(vec3f_t want, mat4f_t m) {
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, want.x, m.m[0][3]);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, want.y, m.m[1][3]);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, want.z, m.m[2][3]);
+}
+
+static mat4f_t
+model_of(const scene_t* scene, const char* name) {
+    return scene->renderers[scene_renderer_index(scene, scene_find(scene, name))].model;
+}
+
+static void
+test_a_world_is_the_parents_world_times_the_entitys_own(void) {
+    fixture();
+    scene_t* scene = load("test_tree");
+    scene_resolve(scene);
+    assert_at((vec3f_t){1, 6, 0}, model_of(scene, "hand"));
+    assert_at((vec3f_t){1, 6, 0}, scene_entity_world(scene, scene_find(scene, "hand")));
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, -2.0F, model_of(scene, "hand").m[0][1]); /* turned, and scaled by 2 */
+    assert_at((vec3f_t){0, 1, 5}, model_of(scene, "cup"));
+}
+
+/* Moving the root carries its grandchild through the arm; the other root's
+ * child stays where it was. Moves made while disabled land on enabling. */
+static void
+test_a_moved_grandparent_carries_its_grandchild(void) {
+    fixture();
+    scene_t* scene = load("test_tree");
+    scene_resolve(scene);
+    const scene_entity_t root = scene_find(scene, "root");
+    scene_entity_set_enabled(scene, root, false);
+    scene_transform_t moved = *scene_entity_transform(scene, root);
+    transformf_set_position(&moved, (vec3f_t){0, 0, 0});
+    scene_set_transform(scene, root, &moved);
+    transformf_set_position(&moved, (vec3f_t){3, 0, 0});
+    scene_set_transform(scene, root, &moved);
+    scene_entity_set_enabled(scene, root, true);
+    scene_resolve(scene);
+    assert_at((vec3f_t){3, 6, 0}, model_of(scene, "hand"));
+    assert_at((vec3f_t){0, 1, 5}, model_of(scene, "cup"));
+}
+
+static void
+test_enabling_carries_down_every_level_and_stops_at_a_disabled_middle(void) {
+    fixture();
+    scene_t* scene = load("test_tree");
+    const scene_entity_t root = scene_find(scene, "root");
+    const scene_entity_t arm = scene_find(scene, "arm");
+    const scene_entity_t hand = scene_find(scene, "hand");
+    const scene_entity_t cup = scene_find(scene, "cup");
+    scene_entity_set_enabled(scene, root, false);
+    TEST_ASSERT_FALSE(scene_entity_active(scene, hand));
+    TEST_ASSERT_TRUE(scene_entity_active(scene, cup));
+    scene_entity_set_enabled(scene, arm, false);
+    scene_entity_set_enabled(scene, root, true);
+    TEST_ASSERT_TRUE(scene_entity_active(scene, root));
+    TEST_ASSERT_FALSE(scene_entity_active(scene, hand));
+    scene_entity_set_enabled(scene, arm, true);
+    TEST_ASSERT_TRUE(scene_entity_active(scene, hand));
+    TEST_ASSERT_TRUE(scene_entity_is_within(scene, hand, root));
+    TEST_ASSERT_FALSE(scene_entity_is_within(scene, cup, root));
+}
+
+/* A light's direction and a skin's lit normals are in its own frame, so
+ * neither attaches under a parent. */
+static void
+test_a_light_or_skin_does_not_attach_under_a_parent(void) {
+    fixture();
+    scene_t* scene = load("test_family");
+    const scene_entity_t green = scene_find(scene, "green");
+    TEST_ASSERT_FALSE(scene_light_set_intensity(scene, green, 1.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, scene_light_intensity(scene, green));
+    scene_failure_t why;
+    TEST_ASSERT_FALSE(scene_renderer_set_skin(scene, green, "rig.quad", &why));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+    TEST_ASSERT_TRUE(scene_light_set_intensity(scene, scene_find(scene, "red"), 1.0F));
+}
+
 static void
 test_a_camera_with_a_parent_is_refused(void) {
     fixture();
@@ -1045,8 +1169,7 @@ test_a_camera_with_a_parent_is_refused(void) {
                         + 2 * sizeof(scene_asset_renderer_t)
     };
 
-    const scene_spec_t* family = &SCENES[SCENE_COUNT - 2];
-    TEST_ASSERT_EQUAL_STRING("test_family", family->id);
+    const scene_spec_t* family = spec_named("test_family");
     const uint32_t size = scene_entry_size(family);
     void* raw = NULL;
     uint8_t* entry = test_alloc_aligned(size, 4, &raw);
@@ -1119,6 +1242,12 @@ assert_load_failures_release(const asset_pack_t* pack, const char* id) {
         }
     }
     TEST_ASSERT_TRUE(succeeded);
+}
+
+static void
+test_a_scene_with_parents_releases_everything_when_a_load_fails(void) {
+    fixture();
+    assert_load_failures_release(&fx.pack, "test_tree");
 }
 
 #ifndef DEVICE_BUILD
@@ -3473,7 +3602,9 @@ test_light_attachment_defaults_refusals_and_capacity(void) {
 
     scene_light_t lights[ENTITIES] = {0};
     uint8_t flags[ENTITIES] = {0};
-    scene_t scene = {.asset = {.entity_count = ENTITIES}, .lights = lights, .flags = flags};
+    uint16_t roots[ENTITIES];
+    memset(roots, 0xFF, sizeof roots);
+    scene_t scene = {.asset = {.entity_count = ENTITIES, .parents = roots}, .lights = lights, .flags = flags};
     TEST_ASSERT_TRUE(scene_light_set_color(&scene, 0, (vec3f_t){0.5F, 0.25F, 0.125F}));
     TEST_ASSERT_EQUAL_FLOAT(SCENE_LIGHT_INTENSITY_DEFAULT, scene_light_intensity(&scene, 0));
     TEST_ASSERT_TRUE(scene_light_set_intensity(&scene, 1, 2.0F));
@@ -3824,6 +3955,11 @@ run_scene_suite(void) {
     RUN_TEST(test_an_entity_knows_its_parent_its_ancestors_and_its_world);
     RUN_TEST(test_a_camera_with_a_parent_is_refused);
     RUN_TEST(test_a_mirrored_transform_is_refused_by_name);
+    RUN_TEST(test_a_world_is_the_parents_world_times_the_entitys_own);
+    RUN_TEST(test_a_moved_grandparent_carries_its_grandchild);
+    RUN_TEST(test_enabling_carries_down_every_level_and_stops_at_a_disabled_middle);
+    RUN_TEST(test_a_light_or_skin_does_not_attach_under_a_parent);
+    RUN_TEST(test_a_scene_with_parents_releases_everything_when_a_load_fails);
     scene_unload_all();
     (void)scene_set_take(lender);
 }

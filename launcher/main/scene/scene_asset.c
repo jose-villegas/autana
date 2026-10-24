@@ -32,16 +32,6 @@ count(asset_view_t entry, int part) {
     return asset_read_u16(entry.data + SCENE_ASSET_AT_COUNTS + (part * sizeof(uint16_t)));
 }
 
-static bool
-header_pad_zero(asset_view_t entry) {
-    for (size_t at = AT_HEADER_PAD; at < SCENE_ASSET_AT_OFFSETS; at++) {
-        if (entry.data[at] != 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static const void*
 section(asset_view_t entry, int part, size_t row) {
     const uint32_t offset = asset_read_u32(entry.data + SCENE_ASSET_AT_OFFSETS + (part * sizeof(uint32_t)));
@@ -70,6 +60,14 @@ text_fits(const void* row) {
 static bool
 nonnegative(float value) {
     return isfinite(value) && value >= 0.0F;
+}
+
+/* The writer pads the parents part, two bytes a row, to 4; the pad is zero. */
+static bool
+parents_pad_zero(asset_view_t entry, const scene_asset_t* scene) {
+    const uint32_t end = (uint32_t)((const uint8_t*)(scene->parents + scene->entity_count) - entry.data);
+    const uint32_t padded = end + ((ENTRY_ALIGNMENT - (end % ENTRY_ALIGNMENT)) % ENTRY_ALIGNMENT);
+    return asset_entry_zero(entry, end, padded < entry.size ? padded : entry.size);
 }
 
 static bool
@@ -214,7 +212,8 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
     }
     const uint16_t entities = count(entry, SCENE_ASSET_NAMES);
     if (count(entry, SCENE_ASSET_TRANSFORMS) != entities || count(entry, SCENE_ASSET_PARENTS) != entities
-        || entities == SCENE_ENTITY_NONE || count(entry, SCENE_ASSET_SETTINGS) != 1 || !header_pad_zero(entry)) {
+        || entities == SCENE_ENTITY_NONE || count(entry, SCENE_ASSET_SETTINGS) != 1
+        || !asset_entry_zero(entry, AT_HEADER_PAD, SCENE_ASSET_AT_OFFSETS)) {
         return ASSET_ERR_FORMAT;
     }
     scene_asset_t scene = {0};
@@ -229,6 +228,9 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
             const uint16_t rows_count = count(entry, part);
             memcpy((uint8_t*)&scene + layout->count, &rows_count, sizeof rows_count);
         }
+    }
+    if (!parents_pad_zero(entry, &scene)) {
+        return ASSET_ERR_FORMAT;
     }
     const asset_status_t checked = check_rows(&scene);
     if (checked == ASSET_OK) {

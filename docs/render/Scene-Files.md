@@ -622,12 +622,13 @@ mesh, skin, skeleton and clip it names, and fails naming whichever is missing or
 and its clip cannot share a stem ([assets/README.md](../assets/README.md#packs)).
 
 Objects are entities in file order, found by name. Transforms store a 3x3
-rotation-times-scale matrix and position, in the parent's frame. Each entity
-has one parent listed before it, or none; a parent's transform and enabled
-state carry to its descendants ([Scene-Manager.md](Scene-Manager.md#hierarchy)).
-A transform may be a reflection (determinant −1), read as a negative x scale;
-until the raster draws reflections the right way out, `scene_load()` refuses
-one and names its entity. Names hold letters, digits and
+rotation-times-scale matrix and position, in the parent's frame; the scale
+is positive, and `scene_load()` refuses a shear or a reflection (determinant
+−1) and names its entity. Each entity has one parent listed before it, or
+none; a parent's transform and enabled state carry to its descendants
+([Scene-Manager.md](Scene-Manager.md#hierarchy)). A scene file names no
+parents, so its objects are roots; `scene_asset.encode()` writes the parent of
+an object that carries one. Names hold letters, digits and
 `_`, start with a letter or `_`, and fit 31 bytes.
 
 Directional lights rotate `SCENE_LIGHT_AXIS` (+Y) by their entity's rotation.
@@ -826,7 +827,7 @@ title Content: entity_parents, 2 bytes an entity from parents off
 | Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (64), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_ASSET_PARENT_ROOT` (0xFFFF), `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
 | Layout | little-endian; every part offset is a multiple of 4, at least 64, and the part ends inside the entry; the writer lays parts out in header order, each padded to 4 bytes |
 | Counts | each at most 65535, entities at most 65534; names equals transforms and entity_parents; settings is exactly 1 |
-| Parents | `parent` is `SCENE_ASSET_PARENT_ROOT` or below its own entity, so one forward pass meets every parent before its children; a camera, light or skinned renderer has none yet |
+| Parents | `parent` is `SCENE_ASSET_PARENT_ROOT` or below its own entity, so one forward pass meets every parent before its children; a camera, light or skinned renderer is a root |
 | Colour sets | [Selection and ownership](Baked-Mesh.md#lcol-v1): own colours require no LCOL, checked at pack time. Authored scenes write own colours |
 | Entities | every `entity` is below the names' count; at most one light, one skinned renderer and one animator an entity |
 | Text | `name`, `mesh_id`, `skin_id`, `skeleton_id` and clip ids are nonempty, NUL terminated, zero after the NUL; the bake limits names as stated above |

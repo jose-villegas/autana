@@ -10,6 +10,8 @@
 
 #include "scene/scene_internal.h"
 
+_Static_assert(SCENE_WORLD_SLOT_NONE == 0xFFFFU, "world_slots are cleared with 0xFF bytes");
+
 static scene_entity_t
 parent_of(const scene_t* scene, scene_entity_t entity) {
     const uint16_t parent = scene->asset.parents[entity];
@@ -20,30 +22,31 @@ bool
 scene_hierarchy_open(scene_t* scene) {
     const int entities = scene->asset.entity_count;
     memset(scene->world_slots, 0xFF, sizeof *scene->world_slots * (size_t)entities);
-    int parents = 0;
+    int worlds_needed = 0;
     for (int e = 0; e < entities; e++) {
         const scene_entity_t parent = parent_of(scene, (scene_entity_t)e);
         if (parent != SCENE_ENTITY_NONE && scene->world_slots[parent] == SCENE_WORLD_SLOT_NONE) {
             scene->world_slots[parent] = 0; /* has children; numbered below, in entity order */
-            parents++;
+            worlds_needed++;
         }
     }
-    if (parents == 0) {
+    if (worlds_needed == 0) {
         return true;
     }
     size_t end = 0;
-    const size_t worlds = scene_storage_carve(&end, sizeof(mat4f_t) * (size_t)parents, alignof(mat4f_t));
-    const size_t slotted = scene_storage_carve(&end, sizeof(scene_entity_t) * (size_t)parents, alignof(scene_entity_t));
+    const size_t worlds = scene_storage_carve(&end, sizeof(mat4f_t) * (size_t)worlds_needed, alignof(mat4f_t));
+    const size_t owners =
+        scene_storage_carve(&end, sizeof(scene_entity_t) * (size_t)worlds_needed, alignof(scene_entity_t));
     uint8_t* block = scene_allocate_kept(end);
     if (block == NULL) {
         return false;
     }
     scene->worlds = (mat4f_t*)(void*)(block + worlds);
-    scene->slotted = (scene_entity_t*)(void*)(block + slotted);
+    scene->world_entities = (scene_entity_t*)(void*)(block + owners);
     for (int e = 0; e < entities; e++) {
         if (scene->world_slots[e] != SCENE_WORLD_SLOT_NONE) {
-            scene->slotted[scene->parent_count] = (scene_entity_t)e;
-            scene->world_slots[e] = (uint16_t)scene->parent_count++;
+            scene->world_entities[scene->world_count] = (scene_entity_t)e;
+            scene->world_slots[e] = (uint16_t)scene->world_count++;
         }
     }
     return true;
@@ -72,8 +75,8 @@ world_from_parent(const scene_t* scene, scene_entity_t entity) {
 
 void
 scene_resolve(scene_t* scene) {
-    for (int i = 0; i < scene->parent_count; i++) {
-        const scene_entity_t e = scene->slotted[i];
+    for (int i = 0; i < scene->world_count; i++) {
+        const scene_entity_t e = scene->world_entities[i];
         if (changed(scene, e)) {
             scene->worlds[i] = world_from_parent(scene, e);
             scene->flags[e] |= SCENE_FLAG_MOVED;
@@ -82,7 +85,8 @@ scene_resolve(scene_t* scene) {
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
         if (changed(scene, r->entity)) {
-            r->model = world_from_parent(scene, r->entity);
+            const uint16_t slot = scene->world_slots[r->entity];
+            r->model = slot != SCENE_WORLD_SLOT_NONE ? scene->worlds[slot] : world_from_parent(scene, r->entity);
             r->placed = !scene_transform_is_identity(&r->model);
         }
     }

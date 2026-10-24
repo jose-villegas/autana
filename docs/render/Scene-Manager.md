@@ -131,12 +131,13 @@ parent's frame; a world is the parent's world times the entity's own transform.
 | Step | When | Does |
 |---|---|---|
 | `scene_entity_set_enabled()` | the call | recomputes the active flag of the entity and every later one, so a disabled parent hides its descendants at once; each keeps its own enabled flag |
-| resolve | each `scene_render()`, after animation, before the draw, on core 0 | rebuilds the world of each parent and renderer whose own transform moved or whose parent's world did, in entity order; nothing else is rebuilt |
-| draw | after the resolve | the raster reads the renderers' worlds on both cores |
+| resolve | each `scene_render()`, after animation, before the draw | rebuilds the world of each parent and renderer whose own transform moved or whose parent's world did, in entity order; nothing else is rebuilt |
+| draw | after the resolve | the raster reads the renderers' worlds ([Each frame](#each-frame)) |
 
 Property clips move an entity's own transform, so a clip on a parent carries
-its children in the same frame. A camera, light or skinned renderer has no
-parent yet: the entry check refuses one.
+its children in the same frame. A camera, light or skinned renderer is a
+root: the entry check refuses one with a parent, and a light or skin does not
+attach under one.
 
 ## Ownership
 
@@ -170,12 +171,13 @@ Settings supply ambient and tone map before light and skin attachment.
 
 ```mermaid
 flowchart LR
-    Entry["Validate entry<br/>and settings"] --> Mesh["Meshes and<br/>transforms"]
+    Entry["Validate entry<br/>and settings"] --> Worlds["Number parents,<br/>allocate worlds"]
+    Worlds --> Mesh["Meshes and<br/>transforms"]
     Mesh --> Lights["Record lights"]
     Lights --> Anim["Bind animators"]
     Anim --> Skins["Attach skins<br/>allocate lit storage"]
     Skins --> Ready["Register scene"]
-    Mesh & Lights & Anim & Skins -. failure .-> Cleanup["Release components<br/>and scene"]
+    Worlds & Mesh & Lights & Anim & Skins -. failure .-> Cleanup["Release components<br/>and scene"]
 ```
 
 ## Beneath it
