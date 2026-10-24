@@ -88,14 +88,44 @@ Device and IMU placement come from `board/board_geometry.h`.<sup>[[89]](../Citat
 | Bias reaches per-axis limit | Clamp in deg/s |
 | Rejection, zero acceleration or recovery | No bias learning |
 
-Bias along gravity: unobservable, because rotation about down leaves down unchanged. At full trust, the target is 2% settling for a datasheet-sized offset.
+Bias along gravity is unobservable: rotation about down leaves down unchanged.
+At full trust, the target is 2% settling for a datasheet-sized offset.
 
-```text
-theta' = b_err - theta/TAU; b_err' = -KI*theta
-s^2 + s/TAU + KI = 0; KI = 4/(TAU*SETTLE_S)
-```
+| Symbol | Meaning |
+|---|---|
+| $`\theta`$ | Tilt error |
+| $`b_{\mathrm{err}}`$ | Gyro-bias error |
+| $`\tau`$ | `GRAVITY_TAU_S`, correction time constant |
+| $`K_{I}`$ | `GRAVITY_BIAS_KI`, integral gain |
+| $`T_s`$ | `GRAVITY_BIAS_SETTLE_S`, settling target |
 
-The loop is overdamped: slow pole ~ -4/SETTLE_S, so e^-4 ~ 1.8% at SETTLE_S.
+1. Linearised for small angles: bias makes the estimate drift; acceleration correction pulls it back at rate $`1/\tau`$. The integral learns bias from persistent error.
+
+   ```math
+   \theta' = b_{\mathrm{err}} - \frac{\theta}{\tau}, \qquad b_{\mathrm{err}}' = -K_{I}\theta
+   ```
+
+2. The characteristic equation is:
+
+   ```math
+   s^2 + \frac{s}{\tau} + K_{I} = 0
+   ```
+
+3. The gain and settling target give two real roots (overdamped):
+
+   ```math
+   K_{I} = \frac{4}{\tau T_s}, \qquad T_s > 16\tau \quad (20\,\mathrm{s} > 8\,\mathrm{s})
+   ```
+
+   ```math
+   s_{\mathrm{fast}} \approx -\frac{1}{\tau}, \qquad s_{\mathrm{slow}} \approx -K_{I}\tau = -\frac{4}{T_s}
+   ```
+
+4. The slow mode gives the approximate bias-error decay, with about 1.8% left at the settling target (the 2% settling rule):
+
+   ```math
+   b_{\mathrm{err}}(t) \propto e^{-4t/T_s}, \qquad e^{-4T_s/T_s} = e^{-4} \approx 0.018
+   ```
 
 ## Constants
 
