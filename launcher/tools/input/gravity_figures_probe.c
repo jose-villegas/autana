@@ -114,27 +114,6 @@ main(void) {
         const float error = PROBE_ERROR_MAX_G * i / PROBE_STEPS;
         printf("%s[%g,%g]", i == 0 ? "" : ",", (double)error, (double)(correction_bias(error) / full_bias));
     }
-    printf("],\"device\":{\"width\":%g,\"height\":%g,\"depth\":%g,\"corner\":%g},", (double)BOARD_DEVICE_WIDTH_MM,
-           (double)BOARD_DEVICE_HEIGHT_MM, (double)BOARD_DEVICE_DEPTH_MM, (double)BOARD_DEVICE_CORNER_RADIUS_MM);
-    printf("\"imu\":{\"centre\":[%g,%g,%g],\"size\":[%g,%g,%g],\"axes\":[", (double)BOARD_IMU_CENTRE_X_MM,
-           (double)BOARD_IMU_CENTRE_Y_MM, (double)-(BOARD_DEVICE_DEPTH_MM + BOARD_IMU_SIZE_Z_MM / 2),
-           (double)BOARD_IMU_SIZE_X_MM, (double)BOARD_IMU_SIZE_Y_MM, (double)BOARD_IMU_SIZE_Z_MM);
-    for (int i = 0; i < 3; i++) {
-        printf("%s[%g,%g,%g]", i ? "," : "", (double)chip_axes[i][0], (double)chip_axes[i][1], (double)chip_axes[i][2]);
-    }
-    /* Screen axes as device vectors: where imu_axes_screen sends each chip axis. */
-    printf("]},\"screen_axes\":[");
-    for (int s = 0; s < 3; s++) {
-        float v[3] = {0};
-        for (int c = 0; c < 3; c++) {
-            const vec3i_t unit = imu_axes_screen(c == 0, c == 1, c == 2);
-            const int along = s == 0 ? unit.x : s == 1 ? unit.y : unit.z;
-            for (int i = 0; i < 3; i++) {
-                v[i] += (float)along * chip_axes[c][i];
-            }
-        }
-        printf("%s[%g,%g,%g]", s ? "," : "", (double)v[0], (double)v[1], (double)v[2]);
-    }
     printf("]");
     const float bias[3] = PROBE_BIAS_DPS;
     const vec3i_t screen_bias =
