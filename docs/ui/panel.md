@@ -6,7 +6,7 @@ without inviting a press itself.
 
 ## Example
 
-<!-- generated: ui-panel-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-panel-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A panel grouping a caption and a control, inviting no press itself. */
 #include "ui/ui.h"
