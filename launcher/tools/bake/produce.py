@@ -184,10 +184,25 @@ def produce_fit(bake, cache, lock):
         return record(bake, target, cache)
 
 
+def produce_sound(bake, cache):
+    from audio import sound_asset, sound_import
+
+    with tempfile.TemporaryDirectory() as work:
+        target = pathlib.Path(work) / bake.output
+        try:
+            target.write_bytes(sound_import.bake(bake.source))
+        except sound_asset.SoundError as error:
+            raise keys.SettingsError(str(error)) from error
+        return record(bake, target, cache)
+
+
 def produce(bake, cache, lock=None, blender=None):
     """Makes `bake` into the cache and returns its row; the environment must match its pins."""
     if bake.kind == "blend":
         return produce_blend(bake, cache, blender)
+    if bake.kind == "sound":
+        check_environment(("sound",))
+        return produce_sound(bake, cache)
     check_environment(("mesh", "reference", "fit") if bake.kind == "fit" else ("mesh",))
     if bake.kind == "fit":
         return produce_fit(bake, cache, lock or {})

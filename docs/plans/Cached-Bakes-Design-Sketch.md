@@ -38,6 +38,7 @@ stage before it. A fit splits in two, so a fitter edit costs the fit
 | `mesh` | a lit mesh, or a fit's start (locked and published like any mesh, held by no pack) | recipe, sources, the sampled poses' digest for camera-path visibility, `mesh_import.py` closure |
 | `reference` | a fit's reference frames and poses, a directory kept only in the GPU runner's cache, never published or locked | every field of `fitted_variant.ReferenceInputs`, the sampled poses' digest for training and coverage, `reference_render.py` closure; not the start, so fits that differ only in it share one set |
 | `fit` | the fitted mesh | the reference key, the start's locked bytes, the fit recipe, `fitted_variant.py` + `appearance_simplify.py` closure, the GPU requirements; unknown until the start is locked |
+| `sound` | a `.sond` | recipe, source bytes or LFS oid, sound importer and encoder closure, format constants and pinned audio requirements; consumed without audio decoding by the pack build |
 | `blend` | a `.glb` | the `.blend`, export arguments, `blend_skin_to_glb.py` + the pinned Blender version |
 
 ```python
@@ -46,7 +47,7 @@ stage before it. A fit splits in two, so a fitter edit costs the fit
 class Bake:
     output: str          # "sponza.atrium_fitted.mesh": what errors call it
     source: Path         # the file that asks for it: sponza.scene.toml, capybara.import.toml
-    kind: str            # "mesh" | "reference" | "fit" | "blend"
+    kind: str            # "mesh" | "reference" | "fit" | "blend" | "sound"
     key: str             # sha256 hex of the inputs in the table above
     suffix: str          # ".mesh" | ".tar" | ".glb"
 
@@ -117,7 +118,7 @@ flowchart LR
 
 | Caller | Calls | When |
 |---|---|---|
-| `bakes.yml` CPU job on a PR (ubuntu, LFS cache, pinned Blender cached) | `produce` for missing `mesh` and `blend` keys on an AMD runner (`vendor_id` checked, rerun on another vendor [A]: `r3d/isa.py` makes bytes per CPU vendor, and the hosted pool mixes AMD and Intel); uploads them and the lock they make as the run's artifact; fails when the committed `bakes.lock` differs, and the author runs `bake.py lock --from-run N` and commits | every PR; seconds when the lock already holds every key |
+| `bakes.yml` CPU job on a PR (ubuntu, LFS cache, pinned Blender cached) | `produce` for missing `mesh`, `blend` and `sound` keys on an AMD runner (`vendor_id` checked, rerun on another vendor [A]: `r3d/isa.py` makes bytes per CPU vendor, and the hosted pool mixes AMD and Intel); uploads them and the lock they make as the run's artifact; fails when the committed `bakes.lock` differs, and the author runs `bake.py lock --from-run N` and commits | every PR; seconds when the lock already holds every key |
 | `bakes.yml` GPU job (self-hosted runner) | `produce` for a missing `fit`; its `reference` comes from the runner's own cache, made there first when absent | on a dispatch for the branch, when the maintainer's machine is up; skippable, and while skipped the lock check names the missing fit |
 | `bakes.yml` on main | `publish`: takes each locked file from its `run`'s artifact, checks its sha256, uploads it | every push to main |
 | host-tests, qemu-tests, build-release, doc-images, doc-images-gpu | `uses: ./.github/workflows/bakes.yml` first | so a PR's bakes exist before anything consumes them |
