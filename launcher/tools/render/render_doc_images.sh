@@ -225,7 +225,7 @@ done
 
 run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEMO_OBJECT"
 
-# The math reference's figures, from the library's own functions.
+# The math and physics references' figures, from the libraries' own functions.
 # shellcheck source=../build/find_cc.sh
 . launcher/tools/build/find_cc.sh
 cc=$(find_cc) || exit 2
@@ -238,9 +238,12 @@ run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
 # --orphans scans this runner: rect-queries.png, circle-rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
 run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/motion_figures.log"
-# --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png, spring-line-wave.gif, spring-line-spacetime.png
+# --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
+run mkdir -p "$OUT/physics"
+run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
+# --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 
 fi
 

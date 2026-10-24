@@ -118,7 +118,7 @@ Every layer above `core/` builds on it:
 Below every folder of `main/`, `board/` included, sit the packages: first-party
 libraries in `launcher/packages/<name>/`, each its own ESP-IDF component with an
 `include/` root, `src/` and `tests/`;
-[math](../../launcher/packages/math/README.md) is one.
+[math](../../launcher/packages/math/README.md) and [physics](../../launcher/packages/physics/README.md) are two.
 
 A package includes nothing outside itself but the C library, the build config and the
 packages it declares, so the firmware, the host tests, the tools and the editor all build it.
