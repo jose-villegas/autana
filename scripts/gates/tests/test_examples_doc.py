@@ -60,6 +60,18 @@ class ExampleTests(unittest.TestCase):
                 for remedy in ("example file", "declaration block", "```c fragment"):
                     self.assertIn(remedy, output)
 
+    def test_c_language_aliases_are_case_insensitive(self):
+        for language in ("C", "c++", "cc", "h", "cpp", "C++", "CC", "H", "CPP"):
+            with self.subTest(language=language):
+                self.check_fence(f"```{language}\nint x;\n```\n", 1)
+                self.check_fence(f"```{language} fragment\nint x;\n```\n", 0)
+
+    def test_blockquoted_fences_are_scanned(self):
+        for quote in ("> ", "> > "):
+            with self.subTest(quote=quote):
+                self.check_fence(f"{quote}```c\n{quote}int x;\n{quote}```\n", 1)
+                self.check_fence(f"{quote}```c fragment\n{quote}int x;\n{quote}```\n", 0)
+
     def test_fragment_word_marks_a_fence(self):
         self.check_fence("```c fragment\nint x;\n```\n", 0)
         self.check_fence("```c notfragment\nint x;\n```\n", 1)
