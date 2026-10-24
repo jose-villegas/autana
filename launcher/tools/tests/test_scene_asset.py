@@ -173,7 +173,7 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(scene["entities"][0]["matrix"], [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 0.5]])
         self.assertEqual(scene["entities"][0]["position"], [1.0, 2.0, 3.0])
         self.assertEqual([e["position"] for e in scene["entities"][1:]], [[0.0, 0.0, 0.0]] * 2)
-        self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "a"}, {"entity": 1, "mesh": "b"}])
+        self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "a", "colour_set": scene_asset.COLOUR_SET_OWN}, {"entity": 1, "mesh": "b", "colour_set": scene_asset.COLOUR_SET_OWN}])
         self.assertEqual(scene["cameras"], [{"entity": 2, "half_fov_short_tan": single(0.6), "near_z": 1.5,
                                              "clear_rgb": 0x336699}])
 
@@ -195,7 +195,7 @@ class SceneEntryTests(SceneFiles):
                    + renderer("b.import.toml", extra="bake = true\n") + lens())
         scene = scene_asset.decode(self.entry(objects, HEAD))
         self.assertEqual([e["name"] for e in scene["entities"]], ["a", "sun", "b", "camera"])
-        self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "hall.a"}, {"entity": 2, "mesh": "hall.b"}])
+        self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "hall.a", "colour_set": scene_asset.COLOUR_SET_OWN}, {"entity": 2, "mesh": "hall.b", "colour_set": scene_asset.COLOUR_SET_OWN}])
 
     def test_the_entry_holds_only_what_the_device_reads(self):
         objects = renderer("a.import.toml", extra="bake = true\n") + sun_object() + lens()
@@ -289,8 +289,7 @@ class SceneEntryRefusalTests(unittest.TestCase):
         cases = [("lights", 2, "B", 0), ("lights", 2, "B", 2), ("lights", 2, "B", 255), ("lights", 3, "B", 1),
                  ("animators", 4, "<I", 2), ("animators", 4, "<I", (1 << 32) - 1), ("animators", 8, "<H", 1),
                  ("animators", 10, "B", 2), ("animators", 10, "B", 255), ("animators", 11, "B", 1),
-                 ("skinned_renderers", 2, "<H", 1), ("cameras", 2, "<H", 1),
-                 ("renderers", 2, "<H", 1)]
+                 ("skinned_renderers", 2, "<H", 1), ("cameras", 2, "<H", 1)]
         for part in ("lights", "animators", "skinned_renderers"):
             row = scene_asset.ROWS[scene_asset.PARTS.index(part)]
             cases.append((part, row.size, "<H", 0))
