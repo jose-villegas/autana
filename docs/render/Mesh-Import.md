@@ -116,7 +116,7 @@ Every Geometry table opts its step in; without it the step does not run.
 |---|---|---|---|---|---|
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
-| `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; reserves `props` and can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
+| `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 
 #### alpha_mask
 
@@ -151,6 +151,16 @@ The baked colour steers which edges collapse: losing one colour step costs as
 much as moving a surface `colour_deviation` away, for `props` and the rest
 alike, at every budget. A smaller value keeps surfaces nearer their source
 planes and less colour detail: a trade, not a limit.
+
+The optional `[objects]` table accepts fixed reservations:
+
+| Key | Value |
+|---|---|
+| `overrides` | Array of `{ object = "glob", triangles = N }` or `{ material = "glob", triangles = N }` tables. |
+
+Each rule reserves a count per welded group alongside the material share.
+It must match, cover every object in a welded group, and fit the budget.
+A material rule must select one group. Counts above source size are clamped.
 
 #### seal_seams
 
