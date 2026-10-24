@@ -9,8 +9,10 @@ from types import SimpleNamespace
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset.asset_pack import NAME_BYTES
 from build.c_header import read_define
-from r3d.import_settings import COLOUR_SET_OWN, ANIM_WRAPS, SettingsError, color_fits, load_scene
+from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
+from r3d.scene_rows import (COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
+                            SceneError, decode_transform, field, text_at)
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_format.h"
 INTERNAL = OWNER.with_name("scene_internal.h")
@@ -26,21 +28,12 @@ DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings")
 HEADER = struct.Struct(f"<{1 + len(PARTS)}H{len(PARTS)}I")
-U16_MAX = (1 << 16) - 1
-NAME = struct.Struct(f"<{NAME_BYTES}s")
-TRANSFORM_AXES = 3
-TRANSFORM = struct.Struct(f"<{TRANSFORM_AXES * (TRANSFORM_AXES + 1)}f")
-RENDERER = struct.Struct(f"<HH{NAME_BYTES}s")
 CAMERA = struct.Struct("<HHffI")
 LIGHT = struct.Struct("<HBB4f")
 SKINNED_RENDERER = struct.Struct(f"<HH{NAME_BYTES}s{NAME_BYTES}s{NAME_BYTES}s")
 ANIMATOR = struct.Struct("<HHIHBB")
 SETTINGS = struct.Struct("<5f")
 ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, NAME, SETTINGS)
-
-
-class SceneError(ValueError):
-    """An authored scene or mapped row violates the scene format."""
 
 
 def check_header(owner_size):
@@ -53,13 +46,6 @@ check_header(read_define(OWNER, "SCENE_ASSET_HEADER_SIZE"))
 
 def mesh_ids(scene):
     return [item.asset_name for item in scene.renderers]
-
-
-def field(value, what):
-    raw = value.encode("ascii")
-    if len(raw) >= NAME_BYTES:
-        raise SceneError(f"{what} {value!r} does not fit the entry's {NAME_BYTES - 1}-byte field")
-    return raw
 
 
 def encode(scene, cache=None, offline=False):
@@ -120,13 +106,6 @@ def bake(path, cache=None, offline=False):
         raise SceneError(f"{path}: {error}") from error
 
 
-def text_at(raw, what):
-    value, nul, rest = raw.partition(b"\0")
-    if not value or not nul or any(rest):
-        raise SceneError(f"{what} is not NUL terminated and padded")
-    return value.decode("ascii")
-
-
 def section(entry, offset, count, row, table_end, what):
     if offset % 4 or offset < table_end or offset + count * row.size > len(entry):
         raise SceneError(f"the {what} leave the entry or are misaligned")
@@ -135,13 +114,6 @@ def section(entry, offset, count, row, table_end, what):
 
 def nonnegative(value):
     return math.isfinite(value) and value >= 0
-
-
-def decode_transform(values):
-    """The matrix and position fields of one SCNE transform row."""
-    end = TRANSFORM_AXES * TRANSFORM_AXES
-    return {"matrix": [list(values[i:i + TRANSFORM_AXES]) for i in range(0, end, TRANSFORM_AXES)],
-            "position": list(values[end:])}
 
 
 def decode(entry):
