@@ -34,6 +34,14 @@ static int read_count;
 static int waiting_count;
 static const char* current;
 
+static int
+by_name(const void* a, const void* b) {
+    return strcmp(((const suite_entry_t*)a)->name, ((const suite_entry_t*)b)->name);
+}
+
+/* Link order decides constructor order, so each registration keeps the list
+ * in name order: output is stable between builds, and the list never changes
+ * once main() starts. */
 static void
 register_suite(const char* name, suite_fn fn, bool on_request) {
     if (registered >= SUITE_MAX) {
@@ -49,6 +57,7 @@ register_suite(const char* name, suite_fn fn, bool on_request) {
     suites[registered].fn = fn;
     suites[registered].on_request = on_request;
     registered++;
+    sort_insertion(suites, (size_t)registered, sizeof suites[0], by_name);
 }
 
 void
@@ -141,17 +150,15 @@ suites_dropped(void) {
     return dropped;
 }
 
-static int
-by_name(const void* a, const void* b) {
-    return strcmp(((const suite_entry_t*)a)->name, ((const suite_entry_t*)b)->name);
+void
+suites_each(suite_each_fn each, void* context) {
+    for (int i = 0; i < registered; i++) {
+        each(suites[i].name, suites[i].on_request, context);
+    }
 }
 
 void
 suites_run_all(void) {
-    /* Link order decides constructor order, so sort to keep the output stable
-     * between builds. */
-    sort_insertion(suites, (size_t)registered, sizeof suites[0], by_name);
-
     for (int i = 0; i < registered; i++) {
         if (!suites[i].on_request && !suite_waits(suites[i].name)) {
             current = suites[i].name;

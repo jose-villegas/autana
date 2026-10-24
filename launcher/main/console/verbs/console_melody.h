@@ -43,6 +43,9 @@ typedef struct {
 #define MELODY_PHRASE_NOTES        13u
 /* The host table test enforces the phrase duration limit. */
 #define CONSOLE_MELODY_PLAY_MAX_MS 5000u
+/* `melody ?`: what a host needs to time and check a run, so it never reads this header. */
+#define MELODY_INFO_QUERY          "?"
+#define MELODY_INFO_BYTES          96u
 
 extern const melody_note_t melody_notes[];
 
@@ -59,4 +62,11 @@ melody_note_name(melody_note_t note, char name[MELODY_NAME_BYTES]) {
         (absolute % PITCH_SEMITONES_PER_OCTAVE + PITCH_SEMITONES_PER_OCTAVE) % PITCH_SEMITONES_PER_OCTAVE;
     (void)snprintf(name, MELODY_NAME_BYTES, "%s%d", names[pitch_class],
                    (absolute - pitch_class) / PITCH_SEMITONES_PER_OCTAVE);
+}
+
+static inline void
+melody_info_line(char line[MELODY_INFO_BYTES]) {
+    (void)snprintf(line, MELODY_INFO_BYTES, "MELODY_INFO notes=%u check_ms=%u play_max_ms=%u cents_per_octave=%d",
+                   MELODY_PHRASE_NOTES, CONSOLE_MELODY_CHECK_MS, CONSOLE_MELODY_PLAY_MAX_MS,
+                   PITCH_CENTS_PER_SEMITONE * PITCH_SEMITONES_PER_OCTAVE);
 }

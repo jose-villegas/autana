@@ -74,3 +74,6 @@ docs/cli/Drive.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Debug.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Settings.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Sessions.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
+docs/math/Stats.md	2026-10-24	formulas and rank figure, docs-reviewer pass
+docs/tools/Pull-Requests.md	2026-10-24	new page, docs-reviewer pass
+.github/pull_request_template.md	2026-10-24	new template, docs-reviewer pass

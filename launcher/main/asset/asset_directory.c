@@ -4,6 +4,7 @@
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_directory_format.h"
+#include "hash/crc32.h"
 
 static const uint8_t*
 row_at(const uint8_t* base, uint32_t index) {
@@ -74,7 +75,7 @@ asset_directory_open(asset_directory_t* directory, const void* base, size_t size
     if (end == 0 || end > size || end > region) {
         return ASSET_ERR_TRUNCATED;
     }
-    if (asset_crc32(bytes + ASSET_DIRECTORY_HEADER_VERSION, end - ASSET_DIRECTORY_HEADER_VERSION)
+    if (crc32_update(0, bytes + ASSET_DIRECTORY_HEADER_VERSION, end - ASSET_DIRECTORY_HEADER_VERSION)
         != asset_read_u32(bytes + ASSET_DIRECTORY_HEADER_CRC)) {
         return ASSET_ERR_CRC;
     }
