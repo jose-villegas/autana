@@ -1787,7 +1787,6 @@
 3	launcher/main/console/verbs/console_freeze.c:59	step_credit
 3	launcher/main/console/verbs/console_inject.c:39	console_verb_imu
 3	launcher/main/console/verbs/console_screenshot.c:176	emit_rows
-3	launcher/main/console/console_verbs.c:83	console_registry_handle_line
 3	launcher/main/console/console_verbs.c:66	console_word_match
 3	launcher/main/console/console_verbs.c:37	listed_in
 3	launcher/main/display/display_device.c:66	display_set_system_panel_clock_hz
