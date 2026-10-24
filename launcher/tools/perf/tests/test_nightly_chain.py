@@ -602,6 +602,15 @@ class NightlyTests(unittest.TestCase):
         results, _, _ = self.run_chain([chain.Step(steps[0].commit, 101, "anchor", 2)])
         self.assertEqual(results[0].outcome, "measured")
 
+    def test_busy_build_stops_without_advancing_cursor(self):
+        self.args.previous = dict(last_measured=self.commits[0], last_attempted=self.commits[0])
+        results, replay, writes = self.run_chain(builds=(autana_config.EXIT_BUSY,))
+        self.assertEqual([r.outcome for r in results], ['not_run_busy'] * 3)
+        self.assertEqual(writes[-1]['stop_reason'], 'busy')
+        self.assertEqual(writes[-1]['last_attempted'], self.commits[0])
+        self.assertEqual(writes[-1]['last_measured'], self.commits[0])
+        self.assertEqual(sum('build' in command for command, _ in replay.timeouts), 1)
+
     def test_build_failure_continues_without_updating_hash(self):
         results, _, _ = self.run_chain(self.steps(indices=(1, 3, 1)), builds=(0, 1, 0))
         self.assertEqual([r.outcome for r in results], ["measured", "build_failed", "skipped_same_image"])
@@ -731,7 +740,9 @@ class NightlyTests(unittest.TestCase):
                     data=self.args.data, out=self.root / "plan.json", marker=self.clock.now().isoformat(),
                     from_sha=None, max_steps=None, selftest_board="20E8")
                 def request(method, path):
-                    return {"workflow_runs": [dict(status="in_progress")] if clock.now() < released else []}
+                    if '/jobs?' in path:
+                        return {"jobs": [dict(status="in_progress", labels=[schedule.GPU_LABEL])]}
+                    return {"workflow_runs": [dict(id=1, status="in_progress")] if clock.now() < released else []}
                 with patch.object(chain, "read_last_night", return_value=None), \
                         patch.object(chain, "select_steps", return_value=[]):
                     chain.plan(args, clock, request=request)
@@ -966,7 +977,7 @@ class LaneSettingsTests(unittest.TestCase):
         step = next(step for step in workflow["jobs"]["nightly"]["steps"]
                     if step.get("name") == "Prepare the data branch and shared plan")
         self.assertIn('--marker "$MARKER"', step['run'])
-        self.assertEqual(workflow['jobs']['nightly']['needs'], 'marker')
+        self.assertEqual(workflow['jobs']['nightly']['needs'], ['marker', 'wait'])
 
 
 if __name__ == "__main__":

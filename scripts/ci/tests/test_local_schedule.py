@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import unittest
 from unittest.mock import Mock, patch
 
@@ -29,32 +29,33 @@ class Clock:
 
 
 class LocalScheduleTests(unittest.TestCase):
+    @property
+    def zone(self):
+        try:
+            return ZoneInfo(schedule.NIGHT_ZONE)
+        except ZoneInfoNotFoundError:
+            self.skipTest("requires Europe/Berlin timezone data")
+
     def test_marker_same_date_and_next_date(self):
         for hour, day in ((0, 21), (1, 21), (2, 22)):
-            trigger = Clock(hour).now().astimezone()
+            trigger = Clock(hour, tzinfo=self.zone).now()
             self.assertEqual(schedule.next_marker(trigger, '01:00'),
-                             datetime(2026, 10, day, 1).astimezone())
+                             datetime(2026, 10, day, 1, tzinfo=self.zone))
 
-    @unittest.skipUnless(hasattr(time, 'tzset'), 'requires local timezone rules')
     def test_marker_uses_target_date_dst_rules(self):
-        previous = os.environ.get('TZ')
-        try:
-            os.environ['TZ'] = 'Europe/Berlin'
-            time.tzset()
-            trigger = datetime(2026, 10, 24, 23).astimezone()
-            marker = schedule.next_marker(trigger, '04:00')
-            self.assertEqual(marker.isoformat(), '2026-10-25T04:00:00+01:00')
-            same_day = datetime(2026, 10, 25, 1).astimezone()
-            self.assertEqual(schedule.next_marker(same_day, '04:00'), marker)
-        finally:
-            if previous is None:
-                os.environ.pop('TZ', None)
-            else:
-                os.environ['TZ'] = previous
-            time.tzset()
+        trigger = datetime(2026, 10, 24, 23, tzinfo=self.zone).astimezone(timezone.utc)
+        marker = schedule.next_marker(trigger, '04:00')
+        self.assertEqual(marker.isoformat(), '2026-10-25T04:00:00+01:00')
+        same_day = datetime(2026, 10, 25, 1, tzinfo=self.zone)
+        self.assertEqual(schedule.next_marker(same_day, '04:00'), marker)
+
+    def test_marker_date_is_independent_of_host_zone(self):
+        trigger = datetime(2026, 10, 22, 0, 30, tzinfo=self.zone).astimezone(timezone.utc)
+        self.assertEqual(schedule.next_marker(trigger, '01:00').isoformat(),
+                         '2026-10-22T01:00:00+02:00')
 
     def test_marker_validation(self):
-        trigger = Clock(0).now().astimezone()
+        trigger = Clock(0, tzinfo=self.zone).now()
         for value in ('00:00', '05:59', ''):
             with patch.dict(os.environ, NIGHT_START=value):
                 self.assertIsNotNone(schedule.next_marker(trigger))
@@ -65,39 +66,64 @@ class LocalScheduleTests(unittest.TestCase):
 
     def test_late_daily_cron_keeps_its_trigger(self):
         now = datetime(2026, 10, 25, 7, tzinfo=timezone.utc)
-        self.assertEqual(schedule.trigger_time('schedule', '0 22 * * *', now),
-                         datetime(2026, 10, 24, 22, tzinfo=timezone.utc))
+        self.assertEqual(schedule.trigger_time('schedule', '17 20 * * *', now),
+                         datetime(2026, 10, 24, 20, 17, tzinfo=timezone.utc))
         self.assertEqual(schedule.trigger_time('schedule', '0 7 * * *', now), now)
         for event in ('workflow_dispatch', 'workflow_run'):
             self.assertEqual(schedule.trigger_time(event, '', now), now)
 
-    def test_marker_polls_and_override(self):
+    def test_marker_outputs_without_sleep_and_override(self):
         for override in ('true', 'false'):
             with tempfile.TemporaryDirectory() as root:
                 output = Path(root) / 'output'
-                clock = Clock(0, 58, tzinfo=datetime(2026, 10, 21).astimezone().tzinfo)
+                clock = Clock(0, 58, tzinfo=self.zone)
                 with patch.dict(os.environ, OVERRIDE=override, NIGHT_START='01:00',
                                 GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_OUTPUT=str(output)), \
                         patch.object(schedule, 'Clock', return_value=clock), \
                         patch.object(sys, 'argv', ['schedule', 'marker']), \
                         contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(schedule.main(), 0)
-                self.assertEqual(sum(clock.sleeps), 0 if override == 'true' else 120)
-                self.assertTrue(all(seconds <= schedule.QUEUE_POLL_SECONDS for seconds in clock.sleeps))
-                self.assertEqual(output.read_text(), 'marker=' + clock.now().isoformat() + '\n')
+                self.assertEqual(clock.sleeps, [])
+                marker = clock.now() if override == 'true' else schedule.next_marker(clock.now())
+                self.assertEqual(output.read_text(), 'marker=' + marker.isoformat() + '\n')
 
     def test_late_cron_after_marker_starts_without_sleep(self):
-        now = datetime(2026, 10, 25, 9).astimezone()
+        now = datetime(2026, 10, 25, 9, tzinfo=self.zone)
         clock = Mock()
         clock.now.return_value = now
         with patch.dict(os.environ, OVERRIDE='false', NIGHT_START='04:00',
-                        GITHUB_EVENT_NAME='schedule', SCHEDULE='0 22 * * *', GITHUB_OUTPUT=''), \
+                        GITHUB_EVENT_NAME='schedule', SCHEDULE='17 20 * * *', GITHUB_OUTPUT=''), \
                 patch.object(schedule, 'Clock', return_value=clock), \
                 patch.object(sys, 'argv', ['schedule', 'marker']), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(schedule.main(), 0)
         clock.sleep.assert_not_called()
         self.assertLess(datetime.fromisoformat(output.getvalue().strip()), now)
+
+    def test_hosted_wait_is_bounded_and_passed_marker_returns_at_once(self):
+        for remaining in (-1, 120, 24 * 60 * 60):
+            clock = Clock(1, tzinfo=timezone.utc)
+            marker = clock.now() + timedelta(seconds=remaining)
+            with patch.object(schedule, 'Clock', return_value=clock), \
+                    patch.object(sys, 'argv', ['schedule', 'wait', '--until', marker.isoformat()]):
+                self.assertEqual(schedule.main(), 0)
+            self.assertEqual(sum(clock.sleeps), max(0, min(remaining, schedule.HOSTED_WAIT_SECONDS)))
+
+    def test_bakes_without_marker_records_stage_start(self):
+        with tempfile.TemporaryDirectory() as root:
+            clock = Clock(3, tzinfo=timezone.utc)
+            process = Mock()
+            process.wait.return_value = 0
+            with patch.dict(os.environ, GPU_WORKFLOW=schedule.BAKES_WORKFLOW, MARKER='',
+                            GITHUB_OUTPUT='', _AUTANA_HEAVY_LOCK_ROOT=root), \
+                    patch.object(schedule, 'Clock', return_value=clock), \
+                    patch.object(sys, 'argv', ['schedule', 'start', '--', 'bake']), \
+                    patch.object(schedule, 'launch_process_tree', return_value=process), \
+                    patch.object(schedule, 'close_process_tree'):
+                self.assertEqual(schedule.main(), 0)
+            key = clock.now().strftime(schedule.MARKER_KEY_FORMAT)
+            record = json.loads((Path(root) / 'night-steps' / key / (schedule.BAKES_WORKFLOW + '.json')).read_text())
+            self.assertEqual(record['marker'], clock.now().isoformat())
 
     def test_gpu_shell_only_deferral_ends_green(self):
         root = Path(__file__).resolve().parents[3]

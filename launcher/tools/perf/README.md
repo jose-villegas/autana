@@ -252,36 +252,45 @@ rows. Single-viewport render documentation readers select portrait by default;
 
 ```mermaid
 sequenceDiagram
-    participant Marker as Marker jobs
+    participant Marker as Hosted marker
+    participant Wait as Hosted wait legs
     participant GPU as GPU stage
     participant Heavy as Heavy lock
     participant Plan as Board plan
     participant Lanes as Board lanes
-    Marker->>Marker: Wait for NIGHT_START
-    Marker->>GPU: Start work with a fresh token
+    Marker->>Wait: Compute Europe/Berlin marker
+    Wait->>Wait: Sleep until marker within each leg budget
+    Wait->>GPU: Start work with a fresh token
     GPU->>GPU: Wait for board locks to clear
     GPU->>Heavy: Take heavy
     GPU->>GPU: Render to completion
     GPU->>Heavy: Release heavy
-    Marker->>Plan: Start work with a fresh token
+    Wait->>Plan: Start work with a fresh token
     Plan->>Plan: Wait for two GPU idle polls
     Plan->>Lanes: Run lanes to completion
     Lanes-->>Plan: Lane outcomes and timestamps
     Plan->>Plan: Record timeline and host free time
 ```
 
-`vars.NIGHT_START` accepts HH:MM in 00:00–05:59 local time on the host.
+`vars.NIGHT_START` accepts HH:MM in 00:00–05:59 in Europe/Berlin.
 An empty value uses `NIGHT_START` in `scripts/lib/local_schedule.py`.
-The marker is the first local start at or after the trigger; override starts now.
+The marker is the first Berlin start at or after the trigger; override starts now.
 
-For a scheduled run, the trigger is its latest daily UTC cron slot,
+Both workflows schedule at 20:17Z. The trigger is the latest daily UTC cron slot,
 including when GitHub starts it late. Other events use the current time.
-A passed marker starts immediately. Each date uses its own local UTC offset.
+A passed marker starts immediately. Each date uses Berlin's UTC offset.
+
+The hosted marker job computes the marker and exits. Serialized hosted wait
+legs sleep within `HOSTED_WAIT_SECONDS` in `scripts/lib/local_schedule.py`.
+The work jobs depend on both jobs and start after the marker passes.
 
 The GPU stage yields green when bakes are queued or running.
 Every Bakes GPU completion triggers a fresh image check.
-The plan waits for both GPU workflows to be idle on two consecutive polls
-when the host's GPU runner marker is fresh within `GPU_HOST_MARKER_DAYS`.
+
+The plan waits for two polls without queued, waiting or running jobs carrying
+`gpu` in either GPU workflow. Hosted jobs waiting for a later marker do not count.
+
+This check requires a host GPU runner marker fresh within `GPU_HOST_MARKER_DAYS`.
 Otherwise it reports “GPU runner not on this host” and continues.
 
 Initial boards split first-parent commits on main by position modulo their count.
@@ -303,6 +312,8 @@ an anchor always measures.
 
 A lane stops after `CAPTURE_FAILURE_LIMIT` consecutive capture failures or
 when its board unplugs. A returning planned board does not restart.
+
+A busy heavy lock stops the lane with `not_run_busy` and preserves its cursors.
 Build failures advance `last_attempted`; measured steps advance both cursors
 and `last_image_hash`. Capture failures keep the cursors.
 
@@ -320,8 +331,10 @@ The orphan `perf-data` branch holds these records:
 | `scoped/timeline/<marker>.json` | GPU and board intervals, outcomes and latest completion (`free_at`) |
 
 `night` is the marker's date. The timeline summary reports elapsed time from
-the marker until the host is free. GPU timing records live under the shared
-heavy root's `night-steps/<marker>/` directory.
+the marker until the host is free.
+
+GPU timing records live under the shared heavy root's `night-steps/<marker>/`.
+Bakes without a marker key records by the stage's start time.
 
 For a manual chain, create a data checkout and plan, then run `night`.
 `--from` includes that commit when assigned to the lane; `--max-steps`

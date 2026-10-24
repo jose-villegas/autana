@@ -7,14 +7,18 @@ import subprocess
 import sys
 from pathlib import Path
 import time
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
-from scripts.ci.github_api import PER_PAGE, call
+from scripts.ci.github_api import PER_PAGE, call, pages
 from device_lock import LockStore, board_read_root, heavy_root, write_json
 from process_tree import launch_process_tree, stop_process_tree, close_process_tree
 
 NIGHT_START = "01:00"
+NIGHT_ZONE = "Europe/Berlin"
+HOSTED_WAIT_SECONDS = 350 * 60
+GPU_LABEL = "gpu"
 QUEUE_POLL_SECONDS = 60
 GPU_HOST_MARKER = "gpu-runner.json"
 GPU_HOST_MARKER_DAYS = 14
@@ -25,7 +29,7 @@ DOC_IMAGES_WORKFLOW = "doc-images-gpu.yml"
 GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
 GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 4 * 60 * 60}
 NIGHT_STEP_HANG_SECONDS = 23 * 60 * 60
-GPU_PENDING_STATUSES = ("queued", "waiting", "in_progress", "pending", "requested")
+GPU_PENDING_STATUSES = ("queued", "waiting", "in_progress")
 DEFERRED = "GPU doc images deferred: bakes queued or running"
 EXIT_DEFERRED = 3
 EXIT_HUNG = 1
@@ -45,11 +49,12 @@ def next_marker(trigger, night_start=None):
     if not re.fullmatch(r"0[0-5]:[0-5][0-9]", night_start):
         raise ValueError(f"NIGHT_START must be HH:MM in 00:00–05:59: {night_start!r}")
     hour, minute = map(int, night_start.split(":"))
-    date = trigger.astimezone().date()
-    candidate = datetime(date.year, date.month, date.day, hour, minute).astimezone()
+    zone = ZoneInfo(NIGHT_ZONE)
+    date = trigger.astimezone(zone).date()
+    candidate = datetime(date.year, date.month, date.day, hour, minute, tzinfo=zone)
     if candidate < trigger:
         date += timedelta(days=1)
-        candidate = datetime(date.year, date.month, date.day, hour, minute).astimezone()
+        candidate = datetime(date.year, date.month, date.day, hour, minute, tzinfo=zone)
     return candidate
 
 
@@ -81,9 +86,11 @@ def gpu_on_host(clock):
 def gpu_pending(workflows=GPU_WORKFLOWS, request=None):
     cutoff = (Clock().now().astimezone(timezone.utc) - RECENT_RUNS_WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ")
     request = request or call
-    return any(run["status"] in GPU_PENDING_STATUSES
+    return any(job.get("status") in GPU_PENDING_STATUSES and GPU_LABEL in job.get("labels", [])
                for workflow in workflows
-               for run in request("GET", f"/actions/workflows/{workflow}/runs?created=>={cutoff}&per_page={PER_PAGE}")["workflow_runs"])
+               for run in request("GET", f"/actions/workflows/{workflow}/runs?created=>={cutoff}&per_page={PER_PAGE}")["workflow_runs"]
+               if run["status"] != "completed"
+               for job in pages(f"/actions/runs/{run['id']}/jobs", "jobs", request))
 
 
 def wait_idle(busy, clock, idle_polls=1):
@@ -104,7 +111,7 @@ def gpu_ready(clock=None, board_held=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("marker", "ready", "start"))
+    parser.add_argument("mode", choices=("marker", "wait", "ready", "start"))
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     clock = Clock()
@@ -116,7 +123,13 @@ def main():
         if os.environ.get("GITHUB_OUTPUT"):
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                 output.write("marker=" + marker.isoformat() + "\n")
-        while (remaining := (marker - clock.now()).total_seconds()) > 0:
+        return 0
+    if args.mode == "wait":
+        wait_parser = argparse.ArgumentParser(description="Wait for a marker within the hosted job budget")
+        wait_parser.add_argument("--until", required=True, type=datetime.fromisoformat)
+        marker = wait_parser.parse_args(args.command).until
+        deadline = min(marker, clock.now() + timedelta(seconds=HOSTED_WAIT_SECONDS))
+        while (remaining := (deadline - clock.now()).total_seconds()) > 0:
             clock.sleep(min(QUEUE_POLL_SECONDS, remaining))
         return 0
     workflow = os.environ["GPU_WORKFLOW"]
@@ -149,11 +162,11 @@ def main():
     finally:
         if process is not None:
             close_process_tree(process)
-        if marker := os.environ.get("MARKER"):
-            key = datetime.fromisoformat(marker).strftime(MARKER_KEY_FORMAT)
-            write_json(heavy_root() / "night-steps" / key / (workflow + ".json"),
-                       dict(workflow=workflow, run=os.environ.get("GITHUB_RUN_ID"), marker=marker,
-                            started=started.isoformat(), ended=clock.now().isoformat(), exit=code))
+        marker = os.environ.get("MARKER") or started.isoformat()
+        key = datetime.fromisoformat(marker).strftime(MARKER_KEY_FORMAT)
+        write_json(heavy_root() / "night-steps" / key / (workflow + ".json"),
+                   dict(workflow=workflow, run=os.environ.get("GITHUB_RUN_ID"), marker=marker,
+                        started=started.isoformat(), ended=clock.now().isoformat(), exit=code))
 
 
 if __name__ == "__main__":
