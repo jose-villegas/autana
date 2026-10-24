@@ -66,7 +66,9 @@ jobs:
         run: |
           python3 -m pip install pyserial -r scripts/gates/requirements.txt
           python3 -m unittest discover -s scripts/device/tests
-          python3 -m unittest discover -s scripts/autana/tests
+          python3 scripts/gates/check_autana_source.py
+          python3 -m unittest discover -s scripts/gates/tests -p test_check_autana_source.py
+          python3 -m unittest discover -s launcher/tools/tune/tests
           python3 -m unittest discover -s scripts/ci/tests
           python3 -m unittest discover -s launcher/tools/perf/tests -p test_nightly_chain.py
 
