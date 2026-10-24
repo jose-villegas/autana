@@ -25,6 +25,39 @@ class OrientationReplayTests(unittest.TestCase):
             raise RuntimeError("run replay tests with a host compiler on PATH")
         cls.binary = build_probe(cc, replay.SOURCES, cls.directory.name)
 
+    def test_script_turns_end_at_default_and_keep_it_by_name(self):
+        import subprocess
+        result = subprocess.run([str(self.binary), "--script"], text=True, capture_output=True, check=True)
+        rows = [line.split(" ", 2) for line in result.stdout.splitlines()]
+        default_name = next(line.split()[2] for line in replay.DISPLAY.read_text().splitlines()
+                            if line.startswith("#define DISPLAY_DEFAULT_QUARTER "))
+        default = replay.read_define(replay.DISPLAY, default_name)
+        count = replay.read_define(replay.DISPLAY, "DISPLAY_LANDSCAPE_UPSIDE_DOWN") + 1
+        names = [replay.read_define(replay.DISPLAY, name) for name in (
+            "DISPLAY_PORTRAIT_NAME", "DISPLAY_LANDSCAPE_NAME",
+            "DISPLAY_PORTRAIT_UPSIDE_DOWN_NAME", "DISPLAY_LANDSCAPE_UPSIDE_DOWN_NAME")]
+        for step in range(count + 1):
+            target = (default + step) % count
+            self.assertEqual(int(rows[step][1]), target)
+            self.assertEqual(rows[step][2], "READ AT 45 DEG: " + names[target])
+        self.assertEqual(int(rows[count + 1][1]), replay.NO_QUARTER)
+        for step in range(count + 2, len(rows) - 1):
+            self.assertEqual(int(rows[step][1]), default)
+            self.assertTrue(rows[step][2].endswith("KEEP " + names[default]))
+        self.assertEqual(int(rows[-1][1]), replay.NO_QUARTER)
+
+    def test_replay_validates_capture_targets_against_shared_script(self):
+        import subprocess
+        result = subprocess.run([str(self.binary), "--script"], text=True, capture_output=True, check=True)
+        segments = [(int(step), index, int(target)) for index, (step, target, _) in enumerate(
+            line.split(" ", 2) for line in result.stdout.splitlines())]
+        replay.validate_targets(self.binary, segments)
+        with self.assertRaises(ValueError):
+            replay.validate_targets(self.binary, segments[:-1])
+        step, time, target = segments[0]
+        with self.assertRaises(ValueError):
+            replay.validate_targets(self.binary, [(step, time, target + 1), *segments[1:]])
+
     def test_real_probe_steady_turn_commits_and_flat_offset_does_not(self):
         scale = replay.read_define(ROOT / "launcher/main/input/input.h", "INPUT_ACCEL_ONE_G")
         for model in ("accel", "fused"):
@@ -47,10 +80,10 @@ class OrientationReplayTests(unittest.TestCase):
             "LABDUMP round orientation",
             "LABDUMP orientation_step 0 0 0",
             "LABDUMP orientation 0 1234 0 4096 0 0 0 0",
-            "LABDUMP orientation_step 4 10000 -1",
-            "LABDUMP orientation 4 10001 0 0 -4096 0 0 0",
-            "LABDUMP orientation_step 9 20000 -1"])
-        self.assertEqual(segments, [(0, 0, 0), (4, 10000, -1), (9, 20000, -1)])
+            "LABDUMP orientation_step 5 10000 -1",
+            "LABDUMP orientation 5 10001 0 0 -4096 0 0 0",
+            "LABDUMP orientation_step 10 20000 -1"])
+        self.assertEqual(segments, [(0, 0, 0), (5, 10000, -1), (10, 20000, -1)])
         self.assertEqual(samples[0], (1234, 0, 4096, 0, 0, 0, 0))
 
     def test_truncation_invalid_order_and_missing_segments_are_errors(self):

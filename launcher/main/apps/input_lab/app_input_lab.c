@@ -521,7 +521,7 @@ record_orientation_sample(const input_motion_t* sample, int64_t elapsed_us) {
         imu_flash_ms = step == ORIENTATION_PROBE_DONE ? IMU_DONE_FLASH_MS : IMU_POSE_FLASH_MS;
         (void)imu_record_appendf(&imu_record, "orientation_step %d %lld %d", (int)step,
                                  (long long)((int64_t)step * ORIENTATION_PROBE_STEP_MS * MATH_US_PER_MS),
-                                 step <= ORIENTATION_PROBE_READ_3 ? (int)step : DISPLAY_QUARTER_NONE);
+                                 orientation_probe_target(step));
     }
     if (step == ORIENTATION_PROBE_DONE) {
         orientation_running = false;
@@ -768,7 +768,7 @@ update_orientation_round(uint32_t dt_ms, const input_t* input) {
             orientation_step = ORIENTATION_PROBE_READ_0;
             shake_capture.start_us = timing_now_us();
             LOG_IMU_LINE("round orientation");
-            LOG_IMU_LINE("orientation_step %d 0 %d", (int)orientation_step, DISPLAY_PORTRAIT);
+            LOG_IMU_LINE("orientation_step %d 0 %d", (int)orientation_step, orientation_probe_target(orientation_step));
         }
     }
     read_motion(dt_ms);
@@ -787,8 +787,11 @@ static void
 draw_orientation(void) {
     char line[MOTION_HUD_TEXT_SIZE];
     hud_line(0, "ORIENTATION / BOOT TO CHANGE PAGE");
-    hud_line(1, orientation_probe_prompt(orientation_step));
-    (void)snprintf(line, sizeof line, "COMMITTED QUARTER %d", display_quarter_now());
+    orientation_probe_prompt(
+        orientation_running || orientation_step == ORIENTATION_PROBE_DONE ? orientation_step : ORIENTATION_PROBE_READ_0,
+        line, sizeof line);
+    hud_line(1, line);
+    (void)snprintf(line, sizeof line, "COMMITTED %s", display_quarter_name(display_quarter_now()));
     hud_line(3, line);
     if (!orientation_running) {
         hud_line(5, imu_record_failed ? "NO MEMORY FOR ROUND" : "TAP TO START ROUND");
