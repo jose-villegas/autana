@@ -1,4 +1,7 @@
 """Shared captions and numeric disclosures for capture-derived audio docs."""
+import argparse
+from pathlib import Path
+
 from docs.plot_style import FIGURE_SIZE, picture, subplots
 
 
@@ -17,3 +20,12 @@ def line_chart(series, **axes):
         axis.plot([x for x, _ in points], [y for _, y in points], style, label=label, color=color)
     axis.set(**axes)
     return fig, axis
+
+
+def figures_main(description, capture, render):
+    """The figure scripts' command line: --capture PATH (default `capture`) --out DIR."""
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--capture", type=Path, default=capture)
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args()
+    render(args.capture, args.out)
