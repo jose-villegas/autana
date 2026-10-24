@@ -7,7 +7,7 @@
 #include "render/r3d_skin.h"
 #include "skin_light_reference.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #define PACK_ID "capybara"
