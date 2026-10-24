@@ -589,10 +589,14 @@ read_motion(uint32_t dt_ms) {
     if (have_motion) {
         tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
     }
-    if (read && mode == MODE_SHAKE) {
-        read_round_samples(motion_batch, shake_capture.start_us, record_shake_sample);
-    } else if (read && mode == MODE_ORIENTATION) {
-        read_round_samples(motion_batch, orientation_capture.start_us, record_orientation_sample);
+    if (read) {
+        switch (mode) {
+            case MODE_SHAKE: read_round_samples(motion_batch, shake_capture.start_us, record_shake_sample); break;
+            case MODE_ORIENTATION:
+                read_round_samples(motion_batch, orientation_capture.start_us, record_orientation_sample);
+                break;
+            default: break;
+        }
     }
     if (!have_motion) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
