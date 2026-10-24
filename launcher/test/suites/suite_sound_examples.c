@@ -140,9 +140,10 @@ test_tap_plays_once_on_sfx_and_stops(void) {
     TEST_ASSERT_TRUE(sound_control_is_playing(&rig->control, s.last));
     TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_SFX.id, rig->control.voices[0].opts.bus.id);
     TEST_ASSERT_FALSE(rig->control.voices[0].opts.loop);
-    render();
-    play_example_cancel(&s);
+    play_example_cancel(&s); /* before the first block: the sound is still playing */
     TEST_ASSERT_FALSE(sound_control_is_playing(&rig->control, s.last));
+    render();
+    TEST_ASSERT_FALSE(rig->mixer.voices[0].playing);
     play_example_cancel(&s); /* a stale handle is ignored */
 }
 
