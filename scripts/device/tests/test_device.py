@@ -1215,6 +1215,7 @@ class FlashDefaultPathTests(unittest.TestCase):
             self.assertIsNone(entry["error"])
             self.assertEqual(entry["worktree"], str(worktree.resolve()))
             self.assertEqual(entry["commit"], "deadbeef")
+            self.assertEqual(entry["image_flags"], [])
 
     def test_builds_then_passes_the_lock_token_to_flash_image_sh(self):
         # flash_image.sh refuses to flash without the token; write_image()
