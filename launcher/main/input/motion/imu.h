@@ -56,7 +56,8 @@ bool imu_ready(void);
 /* Copies the newest sample read by the task. False when no sensor or no sample is available. */
 bool imu_read(imu_sample_t* out);
 
-/* Development builds, vibration measurements only: ODR code 3 is IMU_ODR_BASE_HZ / 8, whose
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Vibration measurements only: ODR code 3 is IMU_ODR_BASE_HZ / 8, whose
  * default accelerometer bandwidth (half the ODR, Table 11) reaches the speaker's low tones. */
 #define IMU_BUZZ_ODR_CODE 3U
 /* Asks the IMU task to run the sensor at another ODR code until asked for IMU_ODR_CODE again,
@@ -64,6 +65,7 @@ bool imu_read(imu_sample_t* out);
  * never mixes rates; between the switches samples are not IMU_SAMPLE_US apart.
  * False without a sensor or task, on a bus error, or when the task does not answer in time. */
 bool imu_set_odr(unsigned odr_code);
+#endif
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Makes imu_read() report `sample` until imu_inject_release() hands back to
