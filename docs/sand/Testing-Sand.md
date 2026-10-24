@@ -1,7 +1,7 @@
 # Testing Sand
 
 Everything about verifying the sand app on real hardware that is specific
-to this app, split out of [`../Testing-Guide.md`](../Testing-Guide.md)
+to this app, split out of [`testing/README.md`](../testing/README.md)
 (read that first for the host/device split, runsuite, and the general
 practice). This page is the sand-only half: the frame-budget capture, the
 free-heap precondition it depends on, how to read what it prints, and the
@@ -234,7 +234,7 @@ for the other core counts the wait. Details and the arm handoff are in
 
 ## Related
 
-- [`../Testing-Guide.md`](../Testing-Guide.md): the host/device split,
+- [`testing/README.md`](../testing/README.md): the host/device split,
   runsuite, the two device-only traps, and the suite-to-area table.
 - [`Architecture.md`](Architecture.md), the app's own shape: the grid,
   the material tables, the step pipeline.

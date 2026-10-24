@@ -466,7 +466,7 @@ so it need not consume internal RAM.
 - **Single precision only.** The FPU has no double, and one stray promotion
   costs an order of magnitude. The firmware build turns
   `-Wdouble-promotion` and `-Wfloat-conversion` into errors for the whole
-  `main` component (see [Build-Variants.md](../Build-Variants.md)).
+  `main` component (see [Build-Variants.md](../tools/Build-Variants.md)).
 - **Host-testable.** The headers are ESP-IDF-free, and the portable
   `test/suites/suite_r3d_*.c` suites check them on a laptop.
   `suite_r3d_lit.c` builds its meshes inside the test, never a baked one.
@@ -477,4 +477,4 @@ so it need not consume internal RAM.
 
 - [firmware/README.md](../firmware/README.md): the layers and the frame loop
 - [gfx/Present.md](../gfx/Present.md#present-who-runs-it): the split present `update()` overlaps
-- [Building-an-App.md](../Building-an-App.md#app-memory): the app arena, one place a frame's scratch block can come from
+- [Building-an-App.md](../firmware/Building-an-App.md#app-memory): the app arena, one place a frame's scratch block can come from
