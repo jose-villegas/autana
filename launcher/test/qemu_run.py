@@ -76,7 +76,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "scripts", "device"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "qemu"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "lib"))
-from suite_registry import registered_suites  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "gates"))
+from c_lexer import tokens  # noqa: E402
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
@@ -97,8 +98,29 @@ SENTINEL = "SELFTEST_COMPLETE"
 LISTENING = "listening for 'screenshot'"
 
 
+SUITE_REGISTRATION = re.compile(r"^[ \t]*SUITE_REGISTER(_ON_REQUEST)?\(\s*([A-Za-z_]\w*)\s*\)", re.M)
+
+
+def registered_suites(root):
+    """{name: on request} for every SUITE_REGISTER line under launcher/, build output aside."""
+    found = {}
+    for folder in sorted((Path(root) / "launcher").glob("*")):
+        if folder.name.startswith("build"):
+            continue
+        for source in folder.rglob("*.c") if folder.is_dir() else [folder]:
+            if source.suffix != ".c":
+                continue
+            text = source.read_text(encoding="utf-8", errors="replace")
+            matches = list(SUITE_REGISTRATION.finditer(text))
+            spans = list(tokens(text)) if matches else []
+            for match in matches:
+                if not any(start <= match.start(2) < end for _, start, end in spans):
+                    found[match[2]] = bool(match[1])
+    return found
+
+
 def icount_suites(root):
-    suites = [name for name, (_, on_request, _) in registered_suites(root).items()
+    suites = [name for name, on_request in registered_suites(root).items()
               if on_request and name.endswith("_icount_suite")]
     if not suites:
         raise ValueError("no instruction ratchet suites registered")
