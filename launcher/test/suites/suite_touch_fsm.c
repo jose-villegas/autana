@@ -15,6 +15,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "../input_examples/touch.c"
+
 /* Time is supplied, never read from a clock, so tests are instant and
  * deterministic. All helpers work in milliseconds for readability. */
 #define MS(x) ((int64_t)(x) * 1000)
@@ -191,11 +193,49 @@ test_a_full_tap_produces_exactly_one_press_and_one_release(void) {
     TEST_ASSERT_EQUAL_INT(1, releases);
 }
 
+static void
+test_touch_example_counts_edges_and_tracks_held_position(void) {
+    fixture();
+    const vec2i_t start = {1, 1};
+    const vec2i_t middle = vec2i_add(start, start);
+    const vec2i_t last = vec2i_add(middle, start);
+    const int64_t step_us = TOUCH_RELEASE_QUIET_US;
+    touch_example_t state = {0};
+    input_t input;
+    touch_fsm_update(&fsm, true, start, 0);
+    touch_fsm_take(&fsm, &input);
+    touch_example(&state, &input);
+    touch_fsm_update(&fsm, true, middle, step_us);
+    touch_fsm_take(&fsm, &input);
+    touch_example(&state, &input);
+    touch_fsm_update(&fsm, true, last, step_us + step_us);
+    touch_fsm_take(&fsm, &input);
+    touch_example(&state, &input);
+    touch_fsm_update(&fsm, false, start, step_us + step_us + TOUCH_RELEASE_QUIET_US + 1);
+    touch_fsm_take(&fsm, &input);
+    TEST_ASSERT_TRUE(input.released);
+    /* Distinct release coordinates prove the example follows only while down. */
+    input.x = start.x;
+    input.y = start.y;
+    touch_example(&state, &input);
+    TEST_ASSERT_EQUAL_INT(1, state.taps);
+    TEST_ASSERT_EQUAL_INT(last.x, state.x);
+    TEST_ASSERT_EQUAL_INT(last.y, state.y);
+    touch_fsm_update(&fsm, true, start, step_us * 4);
+    touch_fsm_take(&fsm, &input);
+    TEST_ASSERT_TRUE(input.pressed);
+    touch_example(&state, &input);
+    TEST_ASSERT_EQUAL_INT(2, state.taps);
+    TEST_ASSERT_EQUAL_INT(start.x, state.x);
+    TEST_ASSERT_EQUAL_INT(start.y, state.y);
+}
+
 /* suite */
 
 void
 run_touch_fsm_suite(void) {
 
+    RUN_TEST(test_touch_example_counts_edges_and_tracks_held_position);
     RUN_TEST(test_starts_with_nothing_pressed);
     RUN_TEST(test_first_contact_reports_a_press);
     RUN_TEST(test_press_is_reported_only_once);
