@@ -7,6 +7,7 @@
 #include "sound/sound_mixer.h"
 #include "sound/sound_play.h"
 #include "suites.h"
+#include "test_alloc.h"
 #include "test_pack.h"
 #include "unity.h"
 
@@ -15,7 +16,8 @@ enum { PACK_CAPACITY = 1024, SOUND_FRAMES = 8, BLOCK = 8, STARTUP_MS = 0, LOOP_E
 typedef struct {
     sound_control_t control;
     sound_mixer_t mixer;
-    _Alignas(ASSET_PACK_BASE_ALIGN) uint8_t pack_bytes[PACK_CAPACITY];
+    uint8_t* pack_bytes;
+    void* pack_raw;
     asset_pack_t pack;
     int16_t out[BLOCK];
     int32_t accumulator[BLOCK];
@@ -28,6 +30,9 @@ static rig_t* rig;
 
 static void
 cleanup(void) {
+    if (rig) {
+        test_free_aligned(rig->pack_raw);
+    }
     free(rig);
     rig = NULL;
 }
@@ -52,6 +57,8 @@ begin(void) {
     rig = calloc(1, sizeof *rig);
     TEST_ASSERT_NOT_NULL(rig);
     suite_set_test_cleanup(cleanup);
+    rig->pack_bytes = test_alloc_aligned(PACK_CAPACITY, ASSET_PACK_BASE_ALIGN, &rig->pack_raw);
+    TEST_ASSERT_NOT_NULL(rig->pack_bytes);
     sound_control_init(&rig->control, true);
     sound_control_begin_app(&rig->control);
     sound_mixer_init(&rig->mixer);

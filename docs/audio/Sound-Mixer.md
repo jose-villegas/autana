@@ -4,11 +4,11 @@ The sound mixer plays [stored sounds](Sound-Assets.md) on the speaker: an app as
 for a sound, and one background task mixes every playing sound into the codec (the
 audio chip that drives the speaker). The app API is `sound/sound_play.h`; the shell
 and boot use `sound/sound_engine.h`. This page is the reference. To get a sound
-playing, start with the [how-to](Sound-How-To.md).
+playing, start with [Play a sound](Play-a-Sound.md).
 
 | Page | Reader |
 |---|---|
-| [Sound-How-To.md](Sound-How-To.md) | app author: tested steps |
+| [Play-a-Sound.md](Play-a-Sound.md) | app author: tested steps |
 | Sound-Mixer.md (this page) | app author: voices, handles, buses, loops |
 | [Mixer-Internals.md](Mixer-Internals.md) | engine developer: task, queue, amplifier, exit |
 | [Mixer-Cost.md](Mixer-Cost.md) | performance work: measured cost and RAM |
@@ -42,7 +42,7 @@ slot is reused, so an old handle can never reach a newer sound in its slot.
 | Stale handle | after a stop or a steal, stop and gain calls do nothing and `sound_is_playing()` is false |
 | Full table | a new play always steals: the lowest priority voice, then the oldest among equals |
 | Null options | SFX bus, full gain, `SOUND_PRIORITY_NORMAL`, no loop |
-| Pointer lifetime | `sound_play()` keeps your `sound_t` pointer: keep it and its pack valid until app exit ([how-to](Sound-How-To.md#keep-it-alive-until-the-app-exits)) |
+| Pointer lifetime | `sound_play()` keeps your `sound_t` pointer: keep it and its pack valid until app exit ([Play a sound](Play-a-Sound.md#keep-it-alive-until-the-app-exits)) |
 
 ### Buses and gain
 
