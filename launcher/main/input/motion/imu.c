@@ -47,9 +47,9 @@ static const char* TAG = "imu";
 /* CTRL1.ADDR_AI enables bursts; BE stays clear for little-endian axes. */
 #define CTRL1_ADDR_AUTO_INC     0x40
 
-/* QMI8658A Rev A, Table 22: range fields and matching 6DOF ODR codes. */
-#define CTRL2_ACCEL_8G          (0x20 | IMU_ODR_CODE)
-#define CTRL3_GYRO_512DPS       (0x50 | IMU_ODR_CODE)
+/* QMI8658A Rev A, Table 22: range fields, ORed with a matching 6DOF ODR code. */
+#define CTRL2_ACCEL_8G          0x20
+#define CTRL3_GYRO_512DPS       0x50
 #define REVISION_QMI8658C       0x79
 #define REVISION_QMI8658A       0x7C
 #define CTRL9_ACK               0x00
@@ -110,6 +110,15 @@ static bool
 write_command(uint8_t command) {
     return write_reg(REG_CTRL9, command) && wait_command(true) && write_reg(REG_CTRL9, CTRL9_ACK)
            && wait_command(false);
+}
+
+/* Sensors off, ranges and rate, a fresh FIFO, sensors on. */
+static bool
+configure(unsigned odr_code) {
+    return write_reg(REG_CTRL7, 0) && write_reg(REG_CTRL1, CTRL1_ADDR_AUTO_INC)
+           && write_reg(REG_CTRL2, (uint8_t)(CTRL2_ACCEL_8G | odr_code))
+           && write_reg(REG_CTRL3, (uint8_t)(CTRL3_GYRO_512DPS | odr_code)) && write_command(CTRL9_RST_FIFO)
+           && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG) && write_reg(REG_CTRL7, CTRL7_ENABLE_ACCEL_GYRO);
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -199,12 +208,7 @@ imu_init(void) {
         return false;
     }
 
-    const bool configured = write_reg(REG_CTRL7, 0) && write_reg(REG_CTRL1, CTRL1_ADDR_AUTO_INC)
-                            && write_reg(REG_CTRL2, CTRL2_ACCEL_8G) && write_reg(REG_CTRL3, CTRL3_GYRO_512DPS)
-                            && write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG)
-                            && write_reg(REG_CTRL7, CTRL7_ENABLE_ACCEL_GYRO);
-
-    if (!configured) {
+    if (!configure(IMU_ODR_CODE)) {
         ESP_LOGE(TAG, "Configuration write failed");
         return false;
     }
@@ -224,6 +228,19 @@ bool
 imu_ready(void) {
     return ready;
 }
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+bool
+imu_set_odr_code(unsigned odr_code) {
+    if (!ready || injected) {
+        return false;
+    }
+    fifo_gap = true;
+    pending_lost = 0;
+    loss_remainder_us = 0;
+    return configure(odr_code);
+}
+#endif
 
 bool
 imu_read(imu_sample_t* out) {

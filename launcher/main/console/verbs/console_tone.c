@@ -13,6 +13,8 @@
 #include "console/verbs/console_tone_reply.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "input/motion/imu.h"
+#include "input/motion/imu_vibration.h"
 #include "sound/sound_engine.h"
 
 bool
@@ -41,6 +43,29 @@ console_tone_start(sound_voice_t* voice, uint16_t hz, uint8_t gain) {
     return true;
 }
 
+/* Drains the IMU FIFO; with `shake` NULL the samples are dropped to open a window.
+ * The FIFO has one drainer, so a check run inside an app that drains it shares it. */
+static bool
+tone_shake_read(imu_sample_t fifo[IMU_FIFO_SAMPLES], imu_vibration_t* shake) {
+    int lost = 0;
+    bool overflowed = false;
+    const int count = imu_read_fifo(fifo, &lost, &overflowed);
+    return count >= 0 && (!shake || imu_vibration_measure(fifo, count, shake));
+}
+
+/* audio_loopback_measure() plus the board's vibration over the newest IMU_FIFO_SAMPLES of
+ * the same window, read at IMU_BUZZ_ODR_CODE; `shake->samples` stays zero without an IMU reading. */
+static bool
+tone_measure(const console_tone_args_t* args, float* db, audio_loopback_result_t* result, imu_sample_t* fifo,
+             imu_vibration_t* shake) {
+    const bool opened = fifo && tone_shake_read(fifo, NULL);
+    const bool ok = audio_loopback_measure(args->hz, args->ms, db, result);
+    if (!(opened && ok && tone_shake_read(fifo, shake))) {
+        *shake = (imu_vibration_t){0};
+    }
+    return ok;
+}
+
 const char*
 console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REPLY_BYTES]) {
     const size_t dma_before = memory_free_bytes(MEMORY_DMA);
@@ -50,13 +75,23 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     float tone_db = 0;
     audio_loopback_result_t loopback = {0};
     sound_voice_t voice = SOUND_VOICE_NULL;
+    imu_sample_t* fifo = imu_ready() ? memory_alloc(IMU_FIFO_SAMPLES * sizeof *fifo, MEMORY_PSRAM) : NULL;
+    const bool fast = fifo && imu_set_odr_code(IMU_BUZZ_ODR_CODE);
+    if (!fast) {
+        memory_free(fifo);
+        fifo = NULL;
+    }
+    imu_vibration_t silence_shake = {0};
+    imu_vibration_t tone_shake = {0};
     bool held = false;
     bool ok = opened && audio_codec_dac_feedback(false)
               && (!args->internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
-              && audio_loopback_measure(args->hz, args->ms, &silence_db, NULL)
+              && tone_measure(args, &silence_db, NULL, fifo, &silence_shake)
               && console_tone_start(&voice, args->hz, args->volume_pct)
-              && audio_loopback_measure(args->hz, args->ms, &tone_db, &loopback);
+              && tone_measure(args, &tone_db, &loopback, fifo, &tone_shake);
     ok = console_tone_stop(&voice) && ok;
+    memory_free(fifo);
+    ok = (!fast || imu_set_odr_code(IMU_ODR_CODE)) && ok;
     if (held) {
         timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
     }
@@ -67,7 +102,8 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     if (!ok) {
         return opened ? "loopback failed" : "codec open failed";
     }
-    if (!console_tone_reply(result, CONSOLE_TONE_REPLY_BYTES, args, heard, tone_db, silence_db, &loopback, dma_open)) {
+    if (!console_tone_reply(result, CONSOLE_TONE_REPLY_BYTES, args, heard, tone_db, silence_db, &loopback, dma_open)
+        || !console_tone_append_shake(result, CONSOLE_TONE_REPLY_BYTES, &silence_shake, &tone_shake)) {
         return "frequency formatting failed";
     }
     return NULL;

@@ -51,6 +51,13 @@ bool imu_ready(void);
 /* Reads the latest six axes. Returns false on a bus error. */
 bool imu_read(imu_sample_t* out);
 
+/* Development builds, vibration measurements only: ODR code 3 is IMU_ODR_BASE_HZ / 8, whose
+ * default accelerometer bandwidth (half the ODR, Table 11) reaches the speaker's low tones. */
+#define IMU_BUZZ_ODR_CODE 3U
+/* Runs the sensor at another ODR code until called again with IMU_ODR_CODE. The FIFO
+ * restarts and its samples are no longer IMU_SAMPLE_US apart. False when injected or on a bus error. */
+bool imu_set_odr_code(unsigned odr_code);
+
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Makes imu_read() report `sample` until imu_inject_release() hands back to
  * the sensor. */
