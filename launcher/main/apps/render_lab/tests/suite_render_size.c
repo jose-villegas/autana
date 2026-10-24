@@ -1,42 +1,26 @@
-#include <stdio.h>
-#include <string.h>
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 
+#include "core/tune.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
-#include "services/tune.h"
 #include "suites.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui_probe.h"
 #include "unity.h"
 
-static bool tune_ok;
-
-static void
-size_reply(const char* line) {
-    tune_ok = strncmp(line, "TUNE_OK ", sizeof "TUNE_OK " - 1) == 0;
-}
-
-static void
-size_command(const char* line) {
-    tune_ok = false;
-    (void)tune_handle_line(line, size_reply);
-    TEST_ASSERT_TRUE(tune_ok);
-}
-
 static void
 fixture(void) {
-    size_command("RESET render_lab.scale");
-    size_command("RESET render_lab.present");
-    size_command("RESET render_lab.small_fill_ceiling");
-    size_command("RESET render_lab.small_fill_gate");
-    size_command("RESET render_lab.small_fill_style");
-    size_command("RESET render_lab.budget");
+    static const char* const tuned[] = {
+        "render_lab.scale",           "render_lab.present",          "render_lab.small_fill_ceiling",
+        "render_lab.small_fill_gate", "render_lab.small_fill_style", "render_lab.budget"};
+    for (size_t i = 0; i < sizeof tuned / sizeof tuned[0]; i++) {
+        TEST_ASSERT_TRUE(tune_reset(tune_shared(), tuned[i]));
+    }
 }
 
 static void
@@ -46,16 +30,14 @@ test_render_size_and_percent_follow_and_clamp(void) {
     TEST_ASSERT_EQUAL_INT(184, size.width);
     TEST_ASSERT_EQUAL_INT(224, size.height);
     TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_NEAREST, render_lab_present());
-    size_command("SET render_lab.present 1");
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), "render_lab.present", 1));
     size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     TEST_ASSERT_EQUAL_INT(184, size.width);
     TEST_ASSERT_EQUAL_INT(112, size.height);
     TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_SCANLINE, render_lab_present());
-    size_command("SET render_lab.present 2");
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), "render_lab.present", 2));
     TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_DOUBLE, render_lab_present());
-    tune_ok = false;
-    TEST_ASSERT_TRUE(tune_handle_line("SET render_lab.present 3", size_reply));
-    TEST_ASSERT_FALSE(tune_ok);
+    TEST_ASSERT_FALSE(tune_set(tune_shared(), "render_lab.present", 3));
     fixture();
 }
 
@@ -63,8 +45,7 @@ static void
 test_small_fill_ceiling_range(void) {
     fixture();
     tune_registry_t* registry = tune_shared();
-    const char* reset = "RESET render_lab.small_fill_ceiling";
-    const char* name = reset + sizeof "RESET " - 1;
+    const char* name = "render_lab.small_fill_ceiling";
     TEST_ASSERT_TRUE(tune_set(registry, name, SMALL_FILL_CEILING_MAX));
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, render_lab_small_fill().ceiling);
     TEST_ASSERT_FALSE(tune_set(registry, name, SMALL_FILL_CEILING_MAX + 1));
@@ -73,7 +54,7 @@ test_small_fill_ceiling_range(void) {
     TEST_ASSERT_TRUE(tune_set(registry, name, 0));
     TEST_ASSERT_EQUAL_INT(0, render_lab_small_fill().ceiling);
     TEST_ASSERT_FALSE(tune_set(registry, name, -1));
-    size_command(reset);
+    TEST_ASSERT_TRUE(tune_reset(registry, name));
 }
 
 static void
@@ -93,7 +74,7 @@ test_small_fill_menu_choice_moves_the_tunables(void) {
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_FAST, render_lab_small_fill().ceiling);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_FAST, render_lab_small_fill().gate);
 
-    size_command("SET render_lab.small_fill_gate 3");
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), "render_lab.small_fill_gate", 3));
     TEST_ASSERT_EQUAL_INT(3, render_lab_small_fill().gate);
     TEST_ASSERT_FALSE(render_lab_small_fill_select(count));
     TEST_ASSERT_EQUAL_INT(1, render_lab_small_fill_selected());
@@ -138,7 +119,7 @@ test_dynamic_resolution_toggle_moves_the_budget_into_the_context(void) {
     render_lab_dynres_apply();
     TEST_ASSERT_EQUAL_INT(RENDER_PREDICTED, context->policy);
 
-    size_command("SET render_lab.budget 75");
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), "render_lab.budget", 75));
     TEST_ASSERT_TRUE(render_lab_dynres_on());
     render_lab_dynres_apply();
     TEST_ASSERT_EQUAL_INT(75 * MATH_US_PER_MS, context->ladder.budget_us);

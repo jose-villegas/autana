@@ -9,7 +9,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "services/tune.h"
+#include "console/console_tune.h"
 
 #define REPLIES_MAX 8
 
@@ -50,7 +50,7 @@ fixture(void) {
 static bool
 say(const char* line) {
     reply_count = 0;
-    return tune_registry_handle_line(&registry, line, collect);
+    return console_tune_line(&registry, line, collect);
 }
 
 static void
@@ -210,10 +210,10 @@ test_a_declared_tunable_is_in_the_shared_registry_before_anything_runs(void) {
     TEST_ASSERT_EQUAL_INT32(5, entry->initial);
 
     const uint32_t before = TUNE_GENERATION(tune_suite);
-    TEST_ASSERT_TRUE(tune_handle_line("SET tune_suite.knob 8", collect));
+    TEST_ASSERT_TRUE(console_tune_line(tune_shared(), "SET tune_suite.knob 8", collect));
     TEST_ASSERT_EQUAL_INT32(8, knob);
     TEST_ASSERT_EQUAL_UINT32(before + 1, TUNE_GENERATION(tune_suite));
-    tune_handle_line("RESET tune_suite.knob", collect);
+    (void)console_tune_line(tune_shared(), "RESET tune_suite.knob", collect);
     TEST_ASSERT_EQUAL_INT32(5, knob);
 }
 

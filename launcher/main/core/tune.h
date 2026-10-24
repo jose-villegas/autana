@@ -15,9 +15,8 @@
  * is written back into its TUNE line, and nothing is kept across a reboot.
  *
  * A registry is a list threaded through the entries themselves, so there is
- * no table to fill. The protocol is pure (a line in, replies out through a
- * callback, against a registry a test can own) and the console listener is
- * the device's caller, against the shared one.
+ * no table to fill. The console's SET, GET, RESET and TUNE lines are
+ * console/console_tune.h, against a registry a test can own or the shared one.
  */
 #pragma once
 
@@ -55,28 +54,19 @@ typedef struct {
     tune_entry_t* clashed;
 } tune_registry_t;
 
-typedef void (*tune_reply_fn)(const char* line);
-
 /* Kept in name order, so a listing does not depend on link order. False for a
  * name already taken by another entry: the first keeps it, and a listing
  * reports the clash. An entry registered twice is registered once. */
 bool tune_register(tune_registry_t* registry, tune_entry_t* entry);
 
+/* False for an unknown name or a value outside its range, which leaves the
+ * value as it was. */
 bool tune_set(tune_registry_t* registry, const char* name, int32_t value);
+bool tune_reset(tune_registry_t* registry, const char* name);
 bool tune_parse_value(const char* text, int32_t* out_value);
 
 int tune_count(const tune_registry_t* registry);
 const tune_entry_t* tune_find(const tune_registry_t* registry, const char* name);
-
-/* True if `line` was one of these, whatever came of it. Replies, one call
- * each:
- *   SET <name> <value>   TUNE_OK <name>=<value>, or TUNE_ERR <reason> ...
- *   GET <name>           the same
- *   RESET <name>         the same, the value being the initial one again
- *   TUNE                 TUNE <name>=<value> min=<low> max=<high> default=<initial>
- *                        per tunable, TUNE_ERR clash <name> per name declared
- *                        twice, then TUNE_END count=<n> */
-bool tune_registry_handle_line(tune_registry_t* registry, const char* line, tune_reply_fn reply);
 
 #define TUNE_CONSTANT(owner, what, initial_value, low_value, high_value)                                               \
     _Static_assert((initial_value) >= (low_value) && (initial_value) <= (high_value),                                  \
@@ -91,7 +81,6 @@ bool tune_registry_handle_line(tune_registry_t* registry, const char* line, tune
 
 /* The one TUNE() entries join, and the console answers from. */
 tune_registry_t* tune_shared(void);
-bool tune_handle_line(const char* line, tune_reply_fn reply);
 
 #define TUNE_OWNER(owner) static tune_owner_t owner##_tunables __attribute__((unused))
 

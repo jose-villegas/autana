@@ -1,79 +1,29 @@
-#include "services/tune.h"
+#include "console/console_tune.h"
 
-/* A release build has no tunables: the file is compiled for it, since the
- * source list is not conditional, and comes to nothing. */
+/* A release build has no tunables, and so no lines for them. */
 #if TUNE_ENABLED
 
-#include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-
-#include "core/registry.h"
 
 #define REPLY_MAX 112
 
-static tune_registry_t shared;
-
-tune_registry_t*
-tune_shared(void) {
-    return &shared;
-}
-
-bool
-tune_handle_line(const char* line, tune_reply_fn reply) {
-    return tune_registry_handle_line(&shared, line, reply);
-}
-
-const tune_entry_t*
-tune_find(const tune_registry_t* registry, const char* name) {
-    for (const tune_entry_t* entry = registry->first; entry != NULL; entry = entry->next) {
-        if (strcmp(entry->name, name) == 0) {
-            return entry;
-        }
-    }
-    return NULL;
-}
-
-bool
-tune_register(tune_registry_t* registry, tune_entry_t* entry) {
-    static const registry_rule_t rule = REGISTRY_RULE(tune_entry_t, strcmp, NULL);
-    if (registry_contains(registry->clashed, rule.link, entry)) {
-        return false;
-    }
-    if (registry_add(&registry->first, &rule, entry) == REGISTRY_CLASH) {
-        entry->next = registry->clashed;
-        registry->clashed = entry;
-        return false;
-    }
-    return true;
-}
-
-int
-tune_count(const tune_registry_t* registry) {
-    int count = 0;
-    for (const tune_entry_t* entry = registry->first; entry != NULL; entry = entry->next) {
-        count++;
-    }
-    return count;
-}
-
 static void
-reply_value(tune_reply_fn reply, const tune_entry_t* entry) {
+reply_value(console_reply_fn reply, const tune_entry_t* entry) {
     char line[REPLY_MAX];
     (void)snprintf(line, sizeof line, "TUNE_OK %s=%ld", entry->name, (long)*entry->value);
     reply(line);
 }
 
 static void
-reply_error(tune_reply_fn reply, const char* reason, const char* about) {
+reply_error(console_reply_fn reply, const char* reason, const char* about) {
     char line[REPLY_MAX];
     (void)snprintf(line, sizeof line, "TUNE_ERR %s %s", reason, about);
     reply(line);
 }
 
 static void
-list_all(const tune_registry_t* registry, tune_reply_fn reply) {
+list_all(const tune_registry_t* registry, console_reply_fn reply) {
     char line[REPLY_MAX];
     for (const tune_entry_t* entry = registry->first; entry != NULL; entry = entry->next) {
         (void)snprintf(line, sizeof line, "TUNE %s=%ld min=%ld max=%ld default=%ld", entry->name, (long)*entry->value,
@@ -87,34 +37,9 @@ list_all(const tune_registry_t* registry, tune_reply_fn reply) {
     reply(line);
 }
 
-bool
-tune_set(tune_registry_t* registry, const char* name, int32_t value) {
-    const tune_entry_t* entry = tune_find(registry, name);
-    if (entry == NULL || value < entry->low || value > entry->high) {
-        return false;
-    }
-    *entry->value = value;
-    if (entry->owner != NULL) {
-        entry->owner->generation++;
-    }
-    return true;
-}
-
-bool
-tune_parse_value(const char* text, int32_t* out_value) {
-    char* end = NULL;
-    errno = 0;
-    const long value = strtol(text, &end, 0);
-    if (errno != 0 || end == text || *end != '\0' || value < INT32_MIN || value > INT32_MAX) {
-        return false;
-    }
-    *out_value = (int32_t)value;
-    return true;
-}
-
 /* `rest` is what follows "SET ": a name, one space, a whole number. */
 static void
-set_from(tune_registry_t* registry, const char* rest, tune_reply_fn reply) {
+set_from(tune_registry_t* registry, const char* rest, console_reply_fn reply) {
     char name[TUNE_NAME_MAX + 1];
     const char* space = strchr(rest, ' ');
     if (space == NULL || space == rest || (size_t)(space - rest) > TUNE_NAME_MAX) {
@@ -145,7 +70,7 @@ set_from(tune_registry_t* registry, const char* rest, tune_reply_fn reply) {
 
 /* A name alone after its verb: what GET and RESET take. */
 static const tune_entry_t*
-named(const tune_registry_t* registry, const char* name, tune_reply_fn reply) {
+named(const tune_registry_t* registry, const char* name, console_reply_fn reply) {
     const tune_entry_t* entry = tune_find(registry, name);
     if (entry == NULL) {
         reply_error(reply, "unknown", name);
@@ -154,7 +79,7 @@ named(const tune_registry_t* registry, const char* name, tune_reply_fn reply) {
 }
 
 bool
-tune_registry_handle_line(tune_registry_t* registry, const char* line, tune_reply_fn reply) {
+console_tune_line(tune_registry_t* registry, const char* line, console_reply_fn reply) {
     if (strcmp(line, "TUNE") == 0) {
         list_all(registry, reply);
         return true;
@@ -169,7 +94,7 @@ tune_registry_handle_line(tune_registry_t* registry, const char* line, tune_repl
     if (strncmp(line, "RESET ", 6) == 0) {
         const tune_entry_t* entry = named(registry, line + 6, reply);
         if (entry != NULL) {
-            (void)tune_set(registry, entry->name, entry->initial);
+            (void)tune_reset(registry, entry->name);
             reply_value(reply, entry);
         }
         return true;
@@ -183,6 +108,6 @@ tune_registry_handle_line(tune_registry_t* registry, const char* line, tune_repl
 
 #else
 
-typedef int tune_has_nothing_in_a_release_build_t;
+typedef int console_tune_has_nothing_in_a_release_build_t;
 
 #endif

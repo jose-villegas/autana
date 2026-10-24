@@ -1,6 +1,5 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
-#include <stdio.h>
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
@@ -8,6 +7,7 @@
 #include "asset/asset_pack.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
@@ -18,7 +18,6 @@
 #include "render/context/render_context.h"
 #include "render/raster_split.h"
 #include "scene/scene_shell.h"
-#include "services/tune.h"
 #include "test_cleanup.h"
 #include "ui/ui.h"
 #include "unity.h"
@@ -56,15 +55,8 @@ typedef struct {
 static fixture_t* active;
 
 static void
-reply(const char* line) {
-    ESP_LOGI(TAG, "%s", line);
-}
-
-static void
 set_layout(int32_t layout) {
-    char command[sizeof("SET render_lab.layout -2147483648")];
-    TEST_ASSERT_TRUE(snprintf(command, sizeof command, "SET render_lab.layout %ld", (long)layout) > 0);
-    TEST_ASSERT_TRUE(tune_handle_line(command, reply));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), "render_lab.layout", layout));
 }
 
 static void

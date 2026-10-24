@@ -12,11 +12,11 @@
 
 #include "core/memory.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
 #include "ridge_arms.h"
-#include "services/tune.h"
 #include "shell/ui/ui_ridge.h"
 
 static const char* TAG = "ridge_perf";
@@ -187,20 +187,15 @@ pixels_unlike_a_full_paint(arm_t arm, int frames) {
     return pixels_unlike_a_full_paint_counting(arm, frames, NULL);
 }
 
-static void
-ignore_tune_reply(const char* line) {
-    (void)line;
-}
-
 /* The dissolve a development build can turn on for the strip switch: it
  * must run through a sweep and still end on a full paint's frame, every
  * changed pixel sent. */
 void
 test_ridge_dissolve_matches_a_full_paint(void) {
-    tune_handle_line("SET ridge.axis_dissolve_ms 400", ignore_tune_reply);
+    (void)tune_set(tune_shared(), "ridge.axis_dissolve_ms", 400);
     int dissolved = 0;
     const int unlike = pixels_unlike_a_full_paint_counting(ARM_TILT_SWEEP, 150, &dissolved);
-    tune_handle_line("RESET ridge.axis_dissolve_ms", ignore_tune_reply);
+    (void)tune_reset(tune_shared(), "ridge.axis_dissolve_ms");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, dissolved, "the sweep never dissolved a strip switch");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, unlike, "after a dissolved strip switch");
 }

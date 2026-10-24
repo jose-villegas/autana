@@ -554,7 +554,7 @@
 8	launcher/main/shell/ui/ui_ridge.c:335	raster_segment
 8	launcher/main/shell/ui/ui_ridge.c:836	repaint_changed
 8	launcher/main/shell/ui/ui_ridge.c:769	repaint_group_row
-8	launcher/main/services/tune.c:157	tune_registry_handle_line
+8	launcher/main/console/console_tune.c:82	console_tune_line
 8	launcher/test/suites/suite_draw_dither.c:15	test_every_pattern_visits_each_threshold_once_per_period
 8	launcher/test/suites/suite_ridge_motion.c:154	test_smoothing_leaves_a_flat_line_alone_and_rounds_a_step
 8	launcher/test/suites/suite_ui_widgets.c:512	chevron_hash
@@ -695,7 +695,7 @@
 7	launcher/main/ui/input/ui_pointer.c:114	step_hover
 7	launcher/main/shell/ui/ui_ridge.c:238	ridge_layer_alpha
 7	launcher/main/ui/controls/ui_widgets.c:201	draw_dropdown_list
-7	launcher/main/services/tune.c:116	set_from
+7	launcher/main/console/console_tune.c:42	set_from
 7	launcher/test/heap_arena.c:481	__wrap_realloc
 7	launcher/test/heap_arena.c:320	arena_pool_alloc
 7	launcher/test/heap_arena.c:191	arena_pool_heap_bytes
@@ -1149,7 +1149,7 @@
 5	launcher/main/profile/frame_watch.c:215	frame_watch_presented
 5	launcher/main/profile/frame_watch.c:58	watching_this_task
 5	launcher/main/core/job.c:62	job_bring_up
-5	launcher/main/services/tune.c:46	tune_register
+5	launcher/main/core/tune.c:31	tune_register
 5	launcher/test/suites/suite_boot_anim_perf.c:117	compute_stats
 5	launcher/test/suites/suite_gfx.c:455	test_dithered_text_at_alpha_255_matches_solid_text_exactly
 5	launcher/test/suites/suite_post_ui.c:328	place_entry
@@ -1841,8 +1841,7 @@
 3	launcher/main/core/job.c:117	job_dispatch
 3	launcher/main/core/job.c:154	job_wait
 3	launcher/main/services/settings_device.c:39	settings_write_i32
-3	launcher/main/services/tune.c:26	listed_in
-3	launcher/main/services/tune.c:36	tune_find
+3	launcher/main/core/tune.c:21	tune_find
 3	launcher/test/heap_arena.c:468	__wrap_calloc
 3	launcher/test/heap_arena.c:566	heap_caps_calloc
 3	launcher/test/heap_arena.c:579	heap_caps_free
@@ -2223,7 +2222,7 @@
 2	launcher/main/core/job.c:133	job_run_core1
 2	launcher/main/core/job.c:110	job_timeout_ticks
 2	launcher/main/services/settings_device.c:28	settings_read_i32
-2	launcher/main/services/tune.c:91	list_all
+2	launcher/main/console/console_tune.c:26	list_all
 2	launcher/test/heap_arena.c:392	arena_pool_free
 2	launcher/test/heap_arena.c:234	arena_pool_init_once
 2	launcher/test/heap_arena.c:406	heap_arena_snapshot
