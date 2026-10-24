@@ -191,6 +191,7 @@ static struct {
     bool replied;
     bool tone_error;
     unsigned odr_code;
+    bool shake_short;
 
     struct {
         int64_t clock_us;
@@ -411,16 +412,21 @@ imu_set_odr(unsigned odr_code) {
     return true;
 }
 
-/* Two samples either side of zero on x, TEST_SHAKE_COUNTS wider per measured window. */
+/* A full queue of samples either side of zero on x, TEST_SHAKE_COUNTS wider per measured
+ * window; device.shake_short leaves it one short, as another reader taking would. */
 int
-imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES], bool* gap) {
+imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                 bool* gap) {
+    TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, odr_code);
     TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, device.odr_code);
-    *gap = false;
+    *gap = true;
     const int16_t counts = (int16_t)(device.measures * TEST_SHAKE_COUNTS);
-    out[0] = (imu_sample_t){.ax = counts};
-    out[1] = (imu_sample_t){.ax = (int16_t)-counts};
-    lost_before[0] = lost_before[1] = 0;
-    return 2;
+    const int count = device.shake_short ? IMU_FIFO_SAMPLES - 1 : IMU_FIFO_SAMPLES;
+    for (int i = 0; i < count; i++) {
+        out[i] = (imu_sample_t){.ax = i % 2 ? (int16_t)-counts : counts};
+        lost_before[i] = 0;
+    }
+    return count;
 }
 
 static void
@@ -609,6 +615,18 @@ test_tone_check_measures_shake_per_window(void) {
 }
 
 static void
+test_tone_check_short_shake_window_is_unavailable(void) {
+    memset(&device, 0, sizeof device);
+    device.reg = TEST_TONE_REGISTER_OLD;
+    device.shake_short = true;
+    const console_tone_args_t args = fixture();
+    char line[CONSOLE_TONE_REPLY_BYTES];
+    TEST_ASSERT_NULL(console_tone_check(&args, line));
+    TEST_ASSERT_NOT_NULL(strstr(line, ", shake n/a"));
+    TEST_ASSERT_EQUAL_UINT(IMU_ODR_CODE, device.odr_code);
+}
+
+static void
 test_tone_acoustic_has_no_feedback(void) {
     memset(&device, 0, sizeof device);
     device.reg = TEST_TONE_REGISTER_OLD;
@@ -731,6 +749,7 @@ run_console_tone_suite(void) {
     RUN_TEST(test_tone_pending_restore_blocks_both_modes);
     RUN_TEST(test_tone_acoustic_has_no_feedback);
     RUN_TEST(test_tone_check_measures_shake_per_window);
+    RUN_TEST(test_tone_check_short_shake_window_is_unavailable);
 #endif
     RUN_TEST(test_tone_reply_frequency);
     RUN_TEST(test_tone_reply_capacity);

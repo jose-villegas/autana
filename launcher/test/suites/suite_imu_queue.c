@@ -193,6 +193,40 @@ test_drain_result_maps_failure_and_clamps_count(void) {
     free(f);
 }
 
+/* Samples at another rate never reach a default-rate reader: gravity would integrate them
+ * at IMU_SAMPLE_US. The rate's own reader then finds them gone behind a gap. */
+static void
+test_other_rate_is_a_gap_for_default_readers(void) {
+    fixture_t* f = fixture();
+    const imu_sample_t sample = {.ax = 1};
+    imu_queue_set_rate(&f->queue, IMU_BUZZ_ODR_CODE);
+    imu_queue_take_at(&f->queue, IMU_BUZZ_ODR_CODE, f->samples, f->lost, &f->gap);
+    imu_queue_push(&f->queue, &sample, 1, 0, false);
+    TEST_ASSERT_EQUAL_INT(0, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
+    TEST_ASSERT_TRUE(f->gap);
+    TEST_ASSERT_EQUAL_INT(0, imu_queue_take_at(&f->queue, IMU_BUZZ_ODR_CODE, f->samples, f->lost, &f->gap));
+    TEST_ASSERT_TRUE(f->gap);
+    free(f);
+}
+
+static void
+test_rate_reader_takes_its_samples(void) {
+    fixture_t* f = fixture();
+    const imu_sample_t sample = {.ax = 1};
+    imu_queue_push(&f->queue, &sample, 1, 0, false);
+    imu_queue_set_rate(&f->queue, IMU_BUZZ_ODR_CODE);
+    imu_queue_push(&f->queue, &sample, 1, 0, false);
+    TEST_ASSERT_EQUAL_INT(1, imu_queue_take_at(&f->queue, IMU_BUZZ_ODR_CODE, f->samples, f->lost, &f->gap));
+    TEST_ASSERT_TRUE(f->gap);
+    imu_queue_set_rate(&f->queue, IMU_ODR_CODE);
+    imu_queue_push(&f->queue, &sample, 1, 0, false);
+    TEST_ASSERT_EQUAL_INT(1, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
+    TEST_ASSERT_TRUE(f->gap);
+    TEST_ASSERT_EQUAL_INT(0, imu_queue_take_at(&f->queue, IMU_BUZZ_ODR_CODE, f->samples, f->lost, &f->gap));
+    TEST_ASSERT_TRUE(f->gap);
+    free(f);
+}
+
 void
 run_imu_queue_suite(void) {
     RUN_TEST(test_loss_stays_at_each_drain_boundary);
@@ -206,6 +240,8 @@ run_imu_queue_suite(void) {
     RUN_TEST(test_empty_gap_is_taken_once);
     RUN_TEST(test_gap_discards_preceding_samples);
     RUN_TEST(test_drain_result_maps_failure_and_clamps_count);
+    RUN_TEST(test_other_rate_is_a_gap_for_default_readers);
+    RUN_TEST(test_rate_reader_takes_its_samples);
 }
 
 SUITE_REGISTER(run_imu_queue_suite);
