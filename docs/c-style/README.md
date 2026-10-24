@@ -1,34 +1,19 @@
 # C style guide
 
-This guide records the style already used by the first-party firmware under
-`launcher/main/`. It also applies to its host and device tests. Vendored
-components and generated files keep their upstream or generator-owned form.
-Self-contained apps follow the guide, but do not define its conventions or
-provide its examples because they can be added or removed independently.
+The style of first-party C under `launcher/main/` and its host and device tests.
+Vendored and generated files keep their upstream or generator form. Apps follow the
+guide but never supply its conventions or examples, since they can be deleted whole.
 
-The comment policy is under "Comments" below, and the layering rule comments
-obey is there with it; the include half of that rule lives in
-[`firmware/README.md`](../firmware/README.md), since it is
-about how the layers fit together rather than about C. Cppcheck and the MISRA
-addon check semantic rules through `launcher/tools/quality/misra_check.sh`.
-The checkable first-party subset is gated by
-`launcher/tools/quality/misra_tidy_gate.py`, compiler warnings, and
-`scripts/gates/check_style_audit.py`; see
-`launcher/tools/quality/README.md` for their commands. Their findings are
-not formatting or naming rules and are not part of this guide.
+The structure follows [OpenBSD style(9)](https://man.openbsd.org/style.9), interfaces
+[POSIX](https://pubs.opengroup.org/onlinepubs/9799919799/functions/V2_chap02.html), and
+invariants [SQLite's assert](https://sqlite.org/assert.html). Their surface syntax never
+overrides this repository's: four spaces, attached braces, pointer-left declarations, plain
+names, and declarations near first use.
 
-The guide deliberately takes structural ideas from
-[OpenBSD style(9)](https://man.openbsd.org/style.9), interface discipline from
-[POSIX](https://pubs.opengroup.org/onlinepubs/9799919799/functions/V2_chap02.html),
-and invariant checking from
-[SQLite's use of assert](https://sqlite.org/assert.html). Their surface syntax
-does not override this repository's established C: four spaces, attached
-braces, pointer-left declarations, plain names, and declarations near first
-use.
-
-## Low-level topics
-
-These sit beside the guide because each needs call sites and numbers, not only rules.
+Cppcheck's MISRA addon (`launcher/tools/quality/misra_check.sh`, `misra_tidy_gate.py`)
+compiler warnings and `scripts/gates/check_style_audit.py` report semantic findings, not
+formatting or naming rules; commands are in
+[`launcher/tools/quality/README.md`](../../launcher/tools/quality/README.md).
 
 | Topic | Page |
 |---|---|
@@ -36,68 +21,53 @@ These sit beside the guide because each needs call sites and numbers, not only r
 | Tasks, cores, spinlocks, atomics, queues | [Concurrency](Concurrency.md) |
 | Driver, HAL and register access, wrapping a driver function | [Register access](Register-Access.md) |
 | Placing code or data with a linker fragment | [Linker fragments](../memory/Linker-Fragments.md) |
+| Helpers that already have an owner | [Shared helpers](../tools/Shared-Helpers.md) |
 
 ## Mechanical rules
 
-These rules are decidable. `.clang-format` is their definition and
-`.github/workflows/format.yml` is their enforcement. If this prose and the
-formatter ever disagree, fix the prose or make a separately reviewed formatter
-change; do not hand-format around the tool.
+`.clang-format` defines these rules and `.github/workflows/format.yml` enforces them. It
+lists only where the tree departs from LLVM style. If prose and formatter disagree, fix the
+prose or change the formatter in its own reviewed PR; never hand-format around it.
 
-`.clang-format` lists only the keys where this repository deviates from
-clang-format's LLVM style, so everything in it is a decision someone made,
-and anything absent is that style's default.
+| Rule | Note |
+|---|---|
+| Indent with four spaces, never tabs. | |
+| Attach opening braces; brace every control-statement body. | |
+| Bind `*` to the type: `gfx_color_t* fb`. | |
+| Put a definition's return type on its own line above the name. | The least guessable rule. |
+| Keep lines within 120 columns where no token, string or unflowed comment must change. | |
+| Take the formatter's spacing, continuation, blank-line and `case` indentation. | |
+| Let clang-format sort each include block, system headers first; keep the blank lines between blocks. | Sorting is per block: the blank line after the own header keeps it first. |
 
-- Indent with four spaces and never tabs.
-- Attach opening braces and require braces around control-statement bodies.
-- Bind `*` to the type in pointer declarations.
-- Put a definition's return type on its own line, above the function name.
-  This is the most visible thing about the style and the least guessable, so
-  it is named here rather than left to the config.
-- Keep code within 120 columns where clang-format can do so without changing a
-  token, string, or unflowed comment.
-- Use the formatter's spacing, continuation indentation, blank-line, and
-  `case` indentation decisions.
-- Let clang-format sort each existing include block, with system headers before
-  project headers. Preserve intentional blank lines between blocks. That
-  ordering is *within* a block: the own-header-first rule under "Headers and
-  module boundaries" survives only because a blank line separates it from the
-  standard-library block, so removing one of those blank lines changes which
-  rule applies.
+```c
+static int
+clamp_px(int value, int max_px) {
+    if (value > max_px) {
+        return max_px;
+    }
+    return value;
+}
+```
 
-Run the checker on every first-party C or header file a change touches:
+Check, then format, only the first-party files you touched; never the whole tree or
+vendored or generated sources:
 
 ```sh
 scripts/gates/check-format.sh --check path/to/file.c path/to/file.h
-```
-
-Format named files only. Do not aim the formatter at the whole repository or
-at vendored/generated sources:
-
-```sh
 scripts/gates/check-format.sh path/to/file.c path/to/file.h
 ```
 
 ### One formatter version
 
-One exact clang-format release, not "this major or newer". `.clang-format`
-does not define a formatting on its own; a version of clang-format reading it
-does, and majors disagree about this config on real files here. The release is
-the esp-clang the pinned ESP-IDF bundles (`launcher/idf-pin.json`), so installing
-that ESP-IDF is all it takes, and CI formats with that same esp-clang inside the
-pinned ESP-IDF image. `check-format.sh` runs another patch release of the same
-major with a note naming both, and refuses any other major.
-`CLANG_FORMAT_ANY_VERSION=1` forces a one-off run on another major, at the cost
-of reformatting files you did not touch. An ESP-IDF bump that moves esp-clang to
-a new major is a migration: its pull request reformats the tree in a commit of
-its own, listed in `.git-blame-ignore-revs`.
+- Use the exact esp-clang the pinned ESP-IDF bundles (`launcher/idf-pin.json`); CI uses the same one.
+- `check-format.sh` runs another patch release of that major with a note and refuses other majors.
+- `CLANG_FORMAT_ANY_VERSION=1` forces another major, and reformats files you did not touch.
+- An ESP-IDF bump that changes the esp-clang major reformats the tree in its own commit, listed in `.git-blame-ignore-revs`.
 
 ### Where the rules are checked
 
-Three places, one file list. `scripts/gates/format-file-list.sh` defines which
-files the rules apply to: vendored trees by path, generated files by the
-banner they carry ([Generated-Files.md](../tools/Generated-Files.md)); so the
-hook and CI cannot disagree about what is in scope.
+`scripts/gates/format-file-list.sh` is the one file list for hook and CI: vendored trees
+by path, generated files by banner ([Generated files](../tools/Generated-Files.md)).
 
 ```sh
 scripts/install-git-hooks.sh          # opt in to pre-commit and pre-push hooks
@@ -105,154 +75,72 @@ scripts/install-git-hooks.sh --status # is it active in this clone?
 scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check  # what CI runs
 ```
 
-The pre-commit hook checks the *staged content* of the C and header files in a
-commit, so a partially staged file is judged by what is actually being
-committed. It also checks executable bits and file-scoped text rules. Install
-the Python dependencies with `python -m pip install -r scripts/gates/requirements.txt`.
-Run `scripts/gates/check-text-rules-staged.sh` by hand for the same text checks.
-The commands and flags come from steps marked `STAGED_TEXT_GATE` in
-`.github/workflows/comment-rules.yml`, run side by side on a temporary index
-snapshot. A step marked `"true"` is file-scoped: the hook adds `--paths` and
-the staged files. One marked `"snapshot"` checks the whole tree, such as a
-generated catalogue or document against its sources, and runs as it is. Header companions and citation vocabulary
-also come from the index. Without ESP-IDF, the citation check reports which
-external names it cannot verify; CI requires the SDK.
+| Check | What it runs |
+|---|---|
+| Pre-commit | Format of the *staged* C and headers, executable bits, and the `STAGED_TEXT_GATE` steps of `comment-rules.yml` on an index snapshot. Run the text part alone with `scripts/gates/check-text-rules-staged.sh`; install its dependencies with `python -m pip install -r scripts/gates/requirements.txt`. Without ESP-IDF the citation check lists names it cannot verify. |
+| Pre-push | Branch names, and sanitized host tests when the range changes `.c` or `.h`; see [Host tests: git hooks](../testing/Host-Tests.md#git-hooks). |
+| CI | Every listed file on every pull request and push to `main`. Hooks are feedback (`--no-verify` skips them, and they never see merges or CI commits); CI is the gate. |
 
-Pre-push checks target branch names and runs sanitized host tests when a
-pushed range changes `.c` or `.h`; see [Host tests: git hooks](../testing/Host-Tests.md#git-hooks).
-The hooks are feedback: `git commit --no-verify` or `git push --no-verify`
-skips them, `.git/hooks`
-is not cloned, and it never sees a merge or a commit made by CI. The workflow
-is the gate, and it checks every file in the list on every pull request and
-every push to `main`; a drift that reaches `main` is a failed build, not
-a surprise six months later.
+### Duplication gates
 
-### Shared helpers
+| Rule | Gate |
+|---|---|
+| Check the [shared-owner catalogue](../tools/Shared-Helpers.md) before writing a helper; extend an owner that fits. | |
+| Never grow a file pair's copied tokens; extract a shared owner instead. | `python scripts/gates/check_clones.py` (jscpd: `npm ci --prefix scripts/gates`) |
+| Never restate an integer a file already sees through its `#include "..."` chain, or a firmware string a Python tool repeats; use the named constant. | `python scripts/gates/check_magic_numbers.py` |
+| Mark a deliberate literal on its line with `/* magic: reason */` (`# magic: reason` in Python); the reason may not be empty. | `check_magic_numbers.py` |
 
-Consult the [shared-owner catalogue](../tools/Shared-Helpers.md) before writing a helper and extend an existing owner when it fits.
+Both gates compare HEAD with its merge-base with `--base` (`origin/main` unless the pull
+request targets another branch), or with `HEAD~1` on that branch. Both take `--report` and run
+in the Linux comment-rules workflow.
 
-### Token clones
+Clone budgets, from the script's docstring:
 
-`python scripts/gates/check_clones.py` rejects growing clone file-pair budgets in HEAD
-compared with the merge-base with `--base` (`origin/main` unless a pull
-request targets another branch), or `HEAD~1` when HEAD is on that branch. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
-Extract a shared owner for each new clone that exceeds its file pair's allowance.
-Each sorted file pair has its own budget: new fragments may use only the
-tokens of base fragments that vanished from HEAD; a surviving shrink gives no
-headroom. Renames map to the base names; line shifts do not change a budget.
-Code moved out of a file the change deletes keeps the fragments it held there,
-and a block of `#include` or `RUN_TEST` lines is not a clone. Literal-only
-object-like `#define`s are blanked on both sides before matching, preserving
-line numbers. A declaration statement is written one declarator per statement,
-and parentheses after no name, `)` or `]` (a grouping or a cast) are blanked,
-so splitting a declaration or adding a grouping is not a new clone; a copy
-holding groupings counts fewer tokens. Removing another file pair gives no
-headroom.
-
-Use `--report` to list every pair with file and line ranges, including both
-sides of each new pair. `--min-tokens N` reports a different threshold without
-checking new pairs; the gate's `MIN_TOKENS` defines the enforced threshold.
-
-The gate scans tracked C, C++ and Python under `launcher/`, `scripts/` and
-`editor/`. Vendored component and test-framework directories, generated-banner
-files and fixture-data directories are excluded by rule. Comments and
-whitespace are ignored; identifier names and literal values are abstracted
-for detection. Literal-only fragments and same-file, same-range self-matches
-are excluded. Short helpers below the threshold are missed; longer helpers
-and repeated test setup are detected, so a reported pair needs review before
-extraction. The Linux comment-rules workflow runs the gate.
-
-### Restated constants
-
-`python scripts/gates/check_magic_numbers.py` rejects a change that raises a file's count of integer literals equal to a constant the file already sees through its `#include "..."` chain, or of firmware string tokens that a Python tool repeats. It compares with the same merge-base as the clone gate. Use the named constant. Where the literal is deliberate, mark its line `/* magic: reason */` (`# magic: reason` in Python); an empty reason fails. The script's docstring gives the exact rules, and `--report` lists every hit with totals by module. The Linux comment-rules workflow runs the gate.
+- Each sorted file pair has its own budget; new fragments may spend only tokens of base fragments gone from HEAD.
+- A surviving shrink, or removing another pair, gives no headroom; renames map to base names; line shifts change nothing.
+- Code moved out of a file the change deletes keeps its fragments.
+- Not clones: `#include` or `RUN_TEST` blocks, literal-only `#define`s, split declarations, added groupings, comments, whitespace.
+- Scope: tracked C, C++ and Python under `launcher/`, `scripts/` and `editor/`, minus vendored, test-framework, generated and fixture-data files.
+- `MIN_TOKENS` sets the threshold, so short helpers are missed; `--min-tokens N` reports another one without checking. Review a reported pair before extracting.
 
 ## Judgment rules
 
-These rules need a reader who understands the code. Do not add scripts that
-guess at them. Comments are the one place where part of the rule *is* scored
-by a script, and the split is deliberate: a length, a cited name and an app
-name are decidable, and everything about whether a comment should exist is
-not.
-
-`scripts/gates/check_style_audit.py`'s HEADING-COMMENT rule warns on a
-one-line `/* */` inside a function body that is only a short label: up
-to five plain words, no punctuation. It is a worklist for a reader, not a
-verdict on whether the comment should exist.
+These need a reader who understands the code; never script a guess at them. Only the
+decidable parts of the comment rules are scripted: length, cited names and app names.
 
 ### Comments
 
-**A comment is the exception. Most code needs none.** Follow OpenBSD's
-balance: sparse comments, verbose code. The fix for a comment explaining a
-mechanism is nearly always a better name or an extracted function, not
-shorter prose.
+**A comment is the exception; most code needs none.** Prefer a better name or an
+extracted function to prose explaining a mechanism.
 
-- **Never the HOW.** The code is the how. Needing to comment parts of a
-  function separately means the function is the problem.
-- **The WHAT is usually already in the names.** Drop it.
-- **The WHY only where it is genuinely needed:** a constraint, an external
-  fact, a measured number that is the evidence, a decision someone would
-  otherwise undo. Most of the time it is not needed.
-- **Never the journey.** git log owns "a first attempt...", "an earlier
-  version...", "was reverted". `scripts/gates/find_narrative_comments.py` lists
-  existing cases.
-- **Never where code went.** A comment naming the file something moved to
-  describes a layout the reader never saw, and it outlives whatever made the
-  move worth mentioning. Say what the thing there now must obey, or delete the
-  comment; the destination is one grep away either way.
-  `find_narrative_comments.py --tombstones` fails on these, and CI runs it.
+| Rule | Gate |
+|---|---|
+| Never comment the HOW. Needing to comment parts of a function separately means the function is the problem. | `check_style_audit.py` HEADING-COMMENT warns on a ≤5-word label inside a function |
+| Drop the WHAT; the names already say it. | |
+| Write the WHY only for a constraint, an external fact, a measured number, or a decision someone would undo. | |
+| Never narrate the journey ("a first attempt", "was reverted"); git log owns it. | `find_narrative_comments.py` lists cases |
+| Never say where code moved; state what the code there must obey, or delete. | `find_narrative_comments.py --tombstones` (CI) |
+| Update a comment in the edit that changes its code, or delete it. | |
+| Open every firmware module with a one-sentence header, `name: ...`, in its .h or .c. Test suites need none. | `check_file_headers.py` (CI) |
+| Never write a header that declares nothing; describe a folder in its `README.md`. | `check_file_headers.py` (CI) |
+| Use a style(9) shape: one-line `/* ... */`, a three-line `VERY important` block, or filled sentences. | |
+| Never put headings or `/*====` rules in a comment; a comment needing sections belongs in `docs/`. | `check_style_audit.py` |
+| Aim for 300 characters per comment; 500 is the ceiling. | `check_comment_length.py` (CI) |
+| Aim for 30 lines in a file's header (its first comment); 50 is the ceiling and already too long. | `check_comment_length.py` (CI) |
+| Cite only names that exist: full function or constant names, a family as `PREFIX_*` (never a shortened name), a file only where its code spells the name, a heading only where a comment carries it. | `check_comment_symbols.py` (CI) |
+| Below `apps/`, never name an app, in a comment or an engine document; say what shape of caller needs the thing, or the rule it must follow. | `check_comment_layers.py` (CI) |
+| Below `apps/`, never borrow an app's vocabulary either; state the constraint (block size, call rate). | read, not checked |
 
-Keep a comment accurate or delete it; an outdated one is worse than none.
-Update it in the same edit that changes the code it describes.
+Length counts adjacent own-line comments as one, with markers and `*` gutters stripped, so
+splitting or re-wrapping never changes the score. A header says what the module is and
+what was rejected; prose about particular code goes beside that code.
 
-Every module of the firmware opens with a header: one sentence, in its .h or
-its .c, saying what it is (`name: ...`). A suite's test names say what it
-proves, so a suite needs none. A header that declares nothing is not a
-module: a folder is described by its `README.md`.
-`scripts/gates/check_file_headers.py` fails a module without a header and a
-header that declares nothing, and CI runs it.
+A function the firmware calls but does not define resolves if ESP-IDF or its C library
+declares it for any chip; runs without ESP-IDF count such names instead of failing.
 
-Shape follows OpenBSD `style(9)`: a one-line `/* ... */`, a `VERY important`
-one-liner in a three-line block, or real sentences filled like a paragraph.
-No headings inside a comment: one needing sections is a document, so put it
-in `docs/`. Nothing draws a `/*====` rule; `style(9)` has three comment
-shapes and none of them has one, and position is what marks a header.
-
-**300 characters is the aim, 500 the hard ceiling.** A run of consecutive
-own-line `//` lines, or of consecutive own-line `/* */` blocks with no code
-between them, counts as one comment for scoring, so chopping one explanation
-into adjacent blocks does not dodge the limit; length is the prose with
-markers and `*` gutters stripped, so re-wrapping never changes the score.
-
-**A file's header (its first comment) answers to height instead: 30 lines
-the aim, 50 the hard limit**, and 50 is already too long rather than a
-comfortable allowance. It says what the module IS and what was deliberately
-rejected; prose belonging beside the code it describes lives there, where the
-character rule applies to it.
-
-Two further rules a length alone cannot express. **A comment may not cite
-something that does not exist:** a trim that garbles a cited name, or a
-rename the comment never heard about, leaves it pointing at nothing. Cite a
-function or constant by its full name; a family by its prefix and a star
-(`BLOCK_SETTLED_*`), never by a shortened name the tree does not define; a
-name's file only where that file's code spells it; a heading only where some
-comment carries it. And **nothing below `apps/` may name a
-particular app**: an app is a folder designed to be deleted whole, so a
-comment in a lower layer naming one is a dangling reference by construction,
-and it survives the code it described. Say what shape of caller needs the
-thing ("a checkbox toggle", "a per-tile badge") or state the rule a caller
-must follow. An app's own files may name anything below them; that direction
-cannot dangle. This is the comment half of the layering rule; see
-[`firmware/README.md`](../firmware/README.md). The engine's
-documents sit at the same layer and answer to the same rule: every Markdown
-file under `docs/` but an app's own folder and `docs/plans/`, whose designs
-name the apps they plan for.
-
-A NAME is all that is scripted. Borrowing an app's vocabulary is the same
-fault one step quieter: "an app's working grid" names no app but still
-assumes apps have grids, and `gfx` has no concept of a grain; that one
-is read rather than checked, because the dirty tracker really does have a
-grid of cells and a font really does have a glyph cell. State the constraint
-itself instead: how large the block is, or how often the call happens.
+The app rule is the comment half of the layering rule in
+[Firmware architecture](../firmware/README.md). It covers every Markdown file under `docs/`
+except an app's own folder and `docs/plans/`. An app's files may name anything below them.
 
 ```sh
 scripts/gates/check-comment-length.sh                 # whole repo, 20 worst listed
@@ -260,147 +148,74 @@ scripts/gates/check-comment-length.sh --changed main  # only comments a change t
 scripts/gates/check-comment-length.sh --files         # per-file counts
 ```
 
-`.github/workflows/comment-rules.yml` holds the tree to all three checks on
-every pull request and every push to `main`: length beside code and header
-height (`scripts/gates/check_comment_length.py`), every citation resolving
-(`check_comment_symbols.py`), and no app named below `apps/`, in a
-comment or an engine document (`check_comment_layers.py`). The last two take
-their vocabulary from the tree itself, so neither needs updating when code
-moves. A function the firmware
-calls but does not define resolves when ESP-IDF or its toolchain's C library
-declares it, read from the resolved ESP-IDF checkout. ESP-IDF counts for every
-chip it supports, so a name declared only for another chip passes too; that is
-check's known limit. It runs inside the ESP-IDF image, and a run without
-ESP-IDF counts such names rather than failing on them.
-
 ### Names
 
-Use lowercase `snake_case` for functions, variables, and fields. Public
-functions start with their module name and then say what they do:
-`display_init()`, `draw_rect()`, `imu_read()`, `touch_read()`. Keep the
-prefix stable because it is the C namespace for that module.
-
-Static functions do not need a synthetic prefix. Give them the shortest clear
-verb or predicate in their file's context, such as `qspi_bus_up()`. Do not
-add `prv_`, type-encoded Hungarian prefixes, or another naming layer whose only
-purpose is to restate linkage or type information.
-
-Name predicates so true has an obvious meaning. `is_`, `has_`, `can_`,
-`may_have_`, and `*_ready()` are established forms. Use `bool`, `true`, and
-`false` for boolean state rather than integer substitutes.
-
-Use a lowercase `_t` name for project types and uppercase names for enum
-constants and macros. A private struct may have a matching tag when a forward
-declaration helps; do not introduce tags or typedefs that no interface needs.
-Use `TAG` for an ESP logging tag local to one translation unit.
-
-Names describe the domain quantity, not its storage width. Add a unit suffix
-when the unit is otherwise ambiguous (`dt_ms`, `now_us`, `radius_px`). Use an
-`out_` prefix for output parameters when it distinguishes them from inputs.
+| Rule | Example |
+|---|---|
+| Use lowercase `snake_case` for functions, variables and fields. | |
+| Start a public function with its module name, then the action; keep the prefix stable. | `display_init()`, `imu_read()` |
+| Give a static function the shortest clear name in its file; no `prv_`, Hungarian or linkage prefixes. | `qspi_bus_up()` |
+| Name predicates so true is obvious. | `is_`, `has_`, `can_`, `may_have_`, `*_ready()` |
+| Use `bool`, `true`, `false` for boolean state, never integers. | |
+| Name project types lowercase with `_t`; enum constants and macros uppercase. | `gfx_color_t`, `DISPLAY_PORTRAIT` |
+| Add a struct tag only when a forward declaration needs it; no typedefs no interface needs. | |
+| Call a unit's ESP logging tag `TAG`. | |
+| Name the domain quantity, not its width; add a unit when ambiguous. | `dt_ms`, `now_us`, `radius_px` |
+| Prefix output parameters with `out_` where it separates them from inputs. | `out_size` |
 
 ### Integer and type discipline
 
-Use fixed-width integer types when width or signedness is part of the value's
-contract: pixels, device registers, serialized bytes, protocol fields,
-persistent counters with deliberate wrap, and arithmetic that depends on a
-known width. Use `size_t` for object sizes, `sizeof` results, allocation sizes,
-and indexes whose contract is the size of an object.
+| Use | For |
+|---|---|
+| Fixed-width types | width or signedness in the contract: pixels, registers, serialized bytes, protocol fields, deliberate wrap |
+| `size_t` | object sizes, `sizeof`, allocation sizes, indexes bounded by an object's size |
+| `int` | coordinates, small counts, loop indexes, enum-like values, `-1` sentinels, when the range fits; keeps subtraction signed |
+| `unsigned` | bit masks, hashes, intentional modulo when no width is required |
 
-Plain `int` is the normal type for screen coordinates, small counts, loop
-indexes, enum-adjacent values, and return sentinels such as `-1`, provided the
-whole documented range fits. It keeps coordinate subtraction and boundary
-checks signed and avoids casts that hide underflow. Plain `unsigned` is
-appropriate for bit masks, hashes, and intentional modulo arithmetic when no
-specific width is required.
-
-Convert at a boundary, then calculate in one deliberate type. Do not mix
-signed and unsigned operands merely to silence a warning. Before narrowing,
-make the range evident from a check, a compile-time assertion, or the source
-type's contract. Prefer `sizeof object` to `sizeof(type)` when allocating or
-copying that object.
-
-Cppcheck's MISRA essential-type rules (especially the 10.x family) can demand
-more explicit conversions than this house style. Treat those as semantic
-findings on the affected expression; do not replace every natural `int` with a
-fixed-width type as a formatting rule.
+- Convert at a boundary, then calculate in one type; never mix signedness to silence a warning.
+- Make the range evident (a check, `_Static_assert`, or the source type) before narrowing.
+- Write `sizeof object`, not `sizeof(type)`, when allocating or copying that object.
+- Treat MISRA 10.x essential-type findings per expression; never swap every `int` for a fixed width.
 
 ### Headers and module boundaries
 
-Give each module one public header that owns its public types, constants, and
-function declarations. A module may have a private header when several of its
-`.c` files share implementation details. Do not create forwarding headers or
-one-declaration headers.
-
-Headers use `#pragma once`, are safe to include more than once, and include the
-headers required to understand their own public declarations. They must not
-depend on an includer's order or unrelated transitive includes. Keep
-implementation-only dependencies in the `.c` file.
-
-A `.c` file includes its own public header first when it has one. Follow it
-with standard-library headers, then ESP-IDF or other external headers, then
-project headers. Keep project includes layer-qualified: `"gfx/gfx.h"`, not
-`"gfx.h"`, including between two files in the same folder; see
-[`firmware/README.md`](../firmware/README.md) for why. Do not
-expose a lower layer to a higher-layer type just to avoid passing a small
-value across the boundary.
-
-Keep a module's public contract small and stable. Add an exported function
-when another translation unit needs the operation, not merely to shorten the
-original file. A function should perform one coherent job; split it when the
-new function has a name and contract clearer than the block it replaces.
+- Give each module one public header for its types, constants and declarations; add a private header only when several of its `.c` files share details.
+- Never create forwarding or one-declaration headers.
+- Use `#pragma once`; a header includes what its declarations need and never relies on includer order or transitive includes.
+- Keep implementation-only includes in the `.c` file.
+- Include order in a `.c`: its own header (if it has one), standard library, ESP-IDF and external, then project.
+- Qualify project includes by layer, even within one folder: `"gfx/gfx.h"`, never `"gfx.h"`; see [Firmware architecture](../firmware/README.md).
+- Never expose a lower layer to a higher-layer type to avoid passing a small value.
+- Keep a module's public contract small and stable.
+- Export a function only when another translation unit needs it, not to shorten a file.
+- Give a function one job; split it when the new function's name and contract are clearer than the block.
 
 ### Assertions
 
-Use `_Static_assert` for facts the compiler can prove: encoded values, array
-capacity, table stride, object size, and relationships between constants.
-
-Use `assert()` at internal boundaries for invariants that normal callers
-cannot violate: a private helper's precondition already established by its
-caller, an index derived from validated state, or a state-machine relationship
-whose failure means the program is internally inconsistent. Assertions must
-have no side effects.
-
-Do not use `assert()` for allocation failure, device absence, I/O failure,
-untrusted input, or any condition the running product must handle. Assertions
-may be compiled out, so code that needs a release behavior still needs a
-simple branch and a return, fallback, or terminal action. Do not add an
-assertion merely because a condition seems unlikely.
-
-The current tree relies heavily on `_Static_assert` and has little runtime
-`assert()` use. Add runtime assertions where a real internal contract benefits
-from executable documentation; do not seed files with speculative assertions
-to meet a count.
+- Use `_Static_assert` for what the compiler can prove: encodings, capacities, strides, sizes, constant relations.
+- Use `assert()` for internal invariants no caller can break: a helper's established precondition, an index from validated state, a state-machine relationship.
+- Never give an assertion side effects.
+- Never `assert()` allocation failure, absent devices, I/O errors, untrusted input, or anything the product must handle; assertions may compile out, so keep a branch with a return, fallback or terminal action.
+- Add a runtime assertion for a real internal contract only; never because a case seems unlikely or to reach a count.
 
 ### Errors and failure
 
-Return errors to the boundary that can decide what they mean. Driver-facing
-helpers normally preserve `esp_err_t`. A module whose callers only need
-available/unavailable may translate that to `bool` at its public boundary.
-Pure lookup and geometry functions use a documented sentinel such as `false`,
-`NULL`, or `-1` when absence is an ordinary result.
+- Return errors to the boundary that decides what they mean; driver-facing helpers keep `esp_err_t`.
+- A module whose callers only need available/unavailable may return `bool` at its public boundary.
+- Lookups and geometry return a documented sentinel (`false`, `NULL`, `-1`) when absence is ordinary.
+- Log once, where the failure gains meaning, never at every level of a call chain; a helper whose caller adds context returns without logging.
+- Optional peripheral or feature: log and continue degraded. Required startup resource: log and stop before the frame loop (park the task so the board stays flashable).
+- Invalid internal state is an assertion; a recoverable hardware condition never is.
+- Return early for failed preconditions and finished edge cases. MISRA 15.5 (single exit) is advisory and disapplied here.
+- Never return while holding part of what a function acquired: acquire all, test once, release everything on the one failure path.
+- Keep return codes small: no project-wide error enum; `esp_err_t`, `bool`, or a module enum only for three or more outcomes callers treat differently.
 
-Log where the failure acquires operational meaning, usually once. A low-level
-helper should return the error without logging if its caller can add the useful
-device or operation context. Do not emit the same failure at every level of a
-call chain.
-
-For an optional peripheral or feature, log the loss and continue in the
-documented degraded mode. For a required startup resource, log and stop before
-entering the frame loop; on the device that can mean parking the task so the
-board remains flashable. For invalid internal state, assert as described
-above. Do not turn recoverable hardware conditions into assertions.
-
-Prefer early returns for failed preconditions and completed edge cases. They
-keep the main path shallow. MISRA C:2012 Rule 15.5 asks for a single exit;
-it is advisory, and this project disapplies it.
-
-What the rule protects is kept: a function that acquires resources (memory, a
-task, a peripheral) never returns while holding some of them. Acquire first,
-test once, and on failure release everything acquired so far before the one
-failure return; `free(NULL)` is a no-op, so the release needs no bookkeeping
-of which acquisitions succeeded.
-
-Keep return-code contracts small. Avoid a project-wide error enum: use
-`esp_err_t` where its detail is useful, `bool` for a two-state module boundary,
-and a module-specific enum only when callers genuinely make different choices
-for three or more outcomes.
+```c
+uint8_t* a = malloc(n);
+uint8_t* b = malloc(n);
+if (a == NULL || b == NULL) {
+    free(a); /* free(NULL) is a no-op */
+    free(b);
+    return false;
+}
+```
