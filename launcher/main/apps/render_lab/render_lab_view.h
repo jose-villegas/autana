@@ -1,9 +1,9 @@
 /* render_lab_view: context view, scale and frame-budget tunables. */
 #pragma once
 
+#include "core/tune.h"
 #include "render/context/render_context.h"
 #include "scene/scene.h"
-#include "services/tune.h"
 
 #define RENDER_LAB_SCALE_UNIT    100
 #define RENDER_LAB_SCALE_DEFAULT (2 * RENDER_LAB_SCALE_UNIT)

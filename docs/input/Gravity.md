@@ -4,6 +4,39 @@
 Gyro predicts motion; trusted acceleration corrects drift.
 Acceleration cannot distinguish gravity from other forces. See [axes](Motion-Axes.md) and [calibration](Motion-Calibration.md).
 
+## Example
+
+<!-- generated: input-gravity-example check: python launcher/tools/gen/examples_doc.py --check -->
+```c
+/* Gravity: a ball rolls downhill. Call from your app's update(dt_ms, input). */
+#include "input/motion/gravity.h"
+#include "input/input.h"
+
+#define BALL_SPEED 0.1F /* pixels per ms at full tilt */
+
+typedef struct {
+    gravity_t gravity;
+    input_motion_batch_t batch;
+    float ball_x, ball_y;
+} gravity_example_t;
+
+void
+gravity_example_start(gravity_example_t* s) {
+    gravity_reset(&s->gravity);
+}
+
+void
+gravity_example(gravity_example_t* s, uint32_t dt_ms) {
+    if (input_read_motion_batch(&s->batch)) {
+        gravity_update_batch(&s->gravity, &s->batch);
+    }
+    const vec3f_t down = gravity_down(&s->gravity);
+    s->ball_x += down.x * BALL_SPEED * dt_ms;
+    s->ball_y += down.y * BALL_SPEED * dt_ms;
+}
+```
+<!-- /generated: input-gravity-example -->
+
 ## Update
 
 Periods and task settings live in `input/motion/imu.c`; header-owned settings name their owners below.
@@ -77,7 +110,10 @@ flowchart LR
 
 ## Bias learning
 
-![Stationary gyro offset converges within the settling target](../images/input/gravity-bias.png)
+![The device rocks about flat while the estimate of down converges on true down and the gyro bias error decays](../images/input/gravity-bias.gif)
+
+The device rocks about flat with a known gyro offset. Its readings pass through `imu_axes_screen()` into `gravity_update_batch()`.
+Device and IMU placement come from `board/board_geometry.h`.<sup>[[89]](../Citations.md#89)</sup>
 
 | Condition | Effect |
 |---|---|

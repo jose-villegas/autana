@@ -7,7 +7,7 @@ closing the list return false. `count` is at least one.
 
 ## Example
 
-<!-- generated: ui-dropdown-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-dropdown-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A dropdown: a tap opens the list, a pick writes the index and returns true. */
 #include "ui/ui.h"

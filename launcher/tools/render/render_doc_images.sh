@@ -211,7 +211,7 @@ run "$B/boot_anim_render" 0 "$@" --frames "$(((boot_ms + 15) / 16 + 1))" --dt 16
     -o "$B/boot.bmp" --video "$B/boot.avi" 2> "$WORK/boot_anim_video.log"
 gif_from_avi "$B/boot.avi" "$OUT/overview/boot-anim.gif" "transpose=2,fps=15" "stats_mode=full"
 
-# The face examples: each one's renders, and each control's states table.
+# UI render tables; source embedding: docs/tools/Generated-Files.md#usage-examples.
 U=$WORK/ui_examples
 run sh launcher/tools/render/scenes/ui_examples_render_host.sh -o "$U" > "$WORK/ui_examples.log"
 run "$PYTHON" "$TOOLS_DIR/ui_examples_doc.py" --renders "$U" --out "$OUT"
@@ -233,7 +233,7 @@ run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input
     > "$WORK/shake_figures.log"
 run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/gravity_figures.log"
-# --orphans scans this runner: gravity-trust.png, gravity-bias.png
+# --orphans scans this runner: gravity-trust.png, gravity-bias.gif
 run mkdir -p "$OUT/math"
 run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
