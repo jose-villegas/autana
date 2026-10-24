@@ -1,3 +1,4 @@
+"""SKEL and SKIN assets round-trip, mirror and refuse malformed rigs."""
 import math
 import pathlib
 import struct

@@ -1,3 +1,4 @@
+"""Device reports parse suite results and perf targets from a console capture."""
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import json
 import tempfile
