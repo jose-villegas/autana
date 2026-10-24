@@ -16,6 +16,7 @@ sys.path.insert(0, str(BUILD))
 sys.path.insert(0, str(ROOT / "scripts/device/tests"))
 import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 import device  # noqa: E402
+import package_requires  # noqa: E402
 import packages  # noqa: E402
 import renderer  # noqa: E402
 
@@ -102,28 +103,28 @@ class PackageRequires(FixtureLauncher):
         return result.stdout.splitlines()
 
     def test_requires_reads_the_packages_own_line_in_order(self):
-        self.assertEqual(("beta", "gamma"), packages.requires(self.launcher / "packages/alpha"))
+        self.assertEqual(("beta", "gamma"), package_requires.requires(self.launcher / "packages/alpha"))
         self.assertEqual(["beta", "gamma"], self.shell("package_requires", "alpha"))
 
     def test_an_empty_or_missing_line_requires_nothing(self):
         for name in ("gamma", "missing"):
             with self.subTest(name=name):
-                self.assertEqual((), packages.requires(self.launcher / "packages" / name))
+                self.assertEqual((), package_requires.requires(self.launcher / "packages" / name))
                 self.assertEqual([], self.shell("package_requires", name))
 
     def test_another_packages_line_is_not_this_ones(self):
         self.write("packages/gamma/CMakeLists.txt", "set(alpha_requires beta)\n")
-        self.assertEqual((), packages.requires(self.launcher / "packages/gamma"))
+        self.assertEqual((), package_requires.requires(self.launcher / "packages/gamma"))
         self.assertEqual([], self.shell("package_requires", "gamma"))
 
     def test_reachable_follows_declarations_through_a_cycle_once_each(self):
-        twin = [path.name for path in packages.reachable(self.launcher / "packages/alpha")]
+        twin = [path.name for path in package_requires.reachable(self.launcher / "packages/alpha")]
         self.assertEqual(["alpha", "beta", "gamma", "delta"], twin)
         self.assertEqual(twin, [Path(line).name for line in self.shell("package_reachable", "alpha")])
 
     def test_reachable_skips_a_name_with_no_package(self):
         self.write("packages/gamma/CMakeLists.txt", "set(gamma_requires nowhere)\n")
-        self.assertEqual(["gamma"], [path.name for path in packages.reachable(self.launcher / "packages/gamma")])
+        self.assertEqual(["gamma"], [path.name for path in package_requires.reachable(self.launcher / "packages/gamma")])
         self.assertEqual(["gamma"], [Path(line).name for line in self.shell("package_reachable", "gamma")])
 
 
@@ -162,38 +163,38 @@ class PackagesAlone(FixtureLauncher):
         self.write("packages/p/include/p/p.h", "#pragma once\nint p_value(void);\n")
         self.write("packages/p/src/p.c", '#include "p/p.h"\nint p_value(void) { return 1; }\n')
 
+    def fails_naming(self, *names):
+        """Runs the check, which must fail naming each of `names`; returns its output."""
+        result = self.check()
+        self.assertNotEqual(0, result.returncode)
+        for name in names:
+            self.assertIn(name, result.stdout)
+        return result.stdout
+
     def test_a_self_contained_package_passes(self):
         self.self_contained()
         result = self.check()
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
-    def test_a_header_that_reaches_outside_the_package_fails_naming_it(self):
-        self.self_contained()
-        self.write("main/microui.h", "#pragma once\n")
-        self.write("packages/p/include/p/ui.h", '#pragma once\n#include "microui.h"\n')
-        result = self.check()
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("ui.h", result.stdout)
-        self.assertNotIn("FAIL p: p/p.h", result.stdout)
-
-    def test_a_source_that_reaches_outside_the_package_fails_naming_it(self):
-        self.self_contained()
-        self.write("main/esp_timer.h", "#pragma once\n")
-        self.write("packages/p/src/clock.c", '#include "esp_timer.h"\nint p_clock(void) { return 0; }\n')
-        result = self.check()
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("src/clock.c", result.stdout)
-        self.assertNotIn("src/p.c", result.stdout)
+    def test_a_file_that_reaches_outside_the_package_fails_naming_only_it(self):
+        rows = (("main/microui.h", "packages/p/include/p/ui.h", '#pragma once\n#include "microui.h"\n',
+                 "ui.h", "FAIL p: p/p.h"),
+                ("main/esp_timer.h", "packages/p/src/clock.c",
+                 '#include "esp_timer.h"\nint p_clock(void) { return 0; }\n', "src/clock.c", "src/p.c"))
+        for outside, reaching, text, named, unnamed in rows:
+            with self.subTest(reaching=reaching):
+                self.setUp()
+                self.self_contained()
+                self.write(outside, "#pragma once\n")
+                self.write(reaching, text)
+                self.assertNotIn(unnamed, self.fails_naming(named))
 
     def test_a_declared_package_is_on_the_include_path_and_an_undeclared_one_is_not(self):
         self.self_contained()
         self.write("packages/q/include/q/q.h", "#pragma once\nint q_value(void);\n")
         self.write("packages/r/include/r/r.h", '#pragma once\n#include "q/q.h"\n')
         self.write("packages/p/include/p/uses.h", '#pragma once\n#include "r/r.h"\n')
-        result = self.check()
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("FAIL p: p/uses.h", result.stdout)
-        self.assertIn("FAIL r: r/r.h", result.stdout)
+        self.fails_naming("FAIL p: p/uses.h", "FAIL r: r/r.h")
         self.write("packages/p/CMakeLists.txt", "set(p_requires r)\n")
         self.write("packages/r/CMakeLists.txt", "set(r_requires q)\n")
         result = self.check()
