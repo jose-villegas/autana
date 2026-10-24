@@ -59,8 +59,8 @@ TICKET_LINE = re.compile(r"^Ticket:[ \t]*((?:autana-)?[a-z0-9]+(?:\.[0-9]+)*)[ \
 RANGE = re.compile(r"^(.+):(\d+)(?:-(\d+))?$")
 
 
-def git(root, *args, check=True):
-    done = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
+def git(root, *args, check=True, stdin=None):
+    done = subprocess.run(["git", "-C", str(root), *args], input=stdin, capture_output=True, text=True,
                           encoding="utf-8", errors="replace")
     if check and done.returncode:
         raise SystemExit(f"git {' '.join(args)}: {done.stderr.strip()}")
@@ -90,7 +90,9 @@ def commits(root, shas):
     """Commit by full sha, for every sha asked."""
     if not shas:
         return {}
-    out = git(root, "show", "-s", "--format=%H%x1f%ct%x1f%ad%x1f%s%x1f%b%x1e", "--date=short", *sorted(shas))
+    # Through stdin: a folder can name thousands of commits, past a Windows command line.
+    out = git(root, "log", "--no-walk=unsorted", "--stdin", "-s", "--format=%H%x1f%ct%x1f%ad%x1f%s%x1f%b%x1e",
+              "--date=short", stdin="\n".join(sorted(shas)) + "\n")
     found = {}
     for record in out.split("\x1e"):
         parts = record.strip("\n").split("\x1f")
@@ -316,9 +318,10 @@ def label(row):
 def render(reply, budget, history_rows):
     """The answer as text lines, cut to budget characters."""
     target, rows = reply["target"], reply["rows"]
-    owning = "changed" if reply["kind"] == "folder" else "own"
-    noun = "lines changed" if reply["kind"] == "folder" else "lines"
-    head = f"{target}  {len(rows)} PRs {owning} these {reply['lines']} {noun}"
+    if reply["kind"] == "folder":
+        head = f"{target}  {len(rows)} PRs changed {reply['lines']} lines in it"
+    else:
+        head = f"{target}  {len(rows)} PRs own these {reply['lines']} lines"
     if reply["kind"] == "name":
         head += f" ({reply['site_count']} lines name it)"
     lines = [head]
