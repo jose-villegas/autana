@@ -28,6 +28,7 @@ env:
     run_render_lab_frame_profile_suite|-|-
     run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
   NIGHT_START: ${{ vars.NIGHT_START }}
+  NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
   GH_TOKEN: ${{ github.token }}
   GIT_CONFIG_COUNT: '4'
   GIT_CONFIG_KEY_0: core.hooksPath
@@ -47,6 +48,7 @@ jobs:
       OVERRIDE: ${{ inputs.override }}
       SCHEDULE: ${{ github.event.schedule }}
       NIGHT_START: ${{ vars.NIGHT_START }}
+      NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
     outputs:
       marker: ${{ steps.marker.outputs.marker }}
     steps:

@@ -33,6 +33,7 @@ permissions:
 env:
   GH_TOKEN: ${{ github.token }}
   NIGHT_START: ${{ vars.NIGHT_START }}
+  NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
   GPU_WORKFLOW: doc-images-gpu.yml
   REFRESH_BRANCH: feature/refresh-doc-images-gpu
   MPLBACKEND: Agg

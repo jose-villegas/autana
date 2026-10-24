@@ -29,12 +29,17 @@ class Clock:
 
 
 class LocalScheduleTests(unittest.TestCase):
+    def setUp(self):
+        environment = patch.dict(os.environ, NIGHT_ZONE="Europe/Paris")
+        environment.start()
+        self.addCleanup(environment.stop)
+
     @property
     def zone(self):
         try:
-            return ZoneInfo(schedule.NIGHT_ZONE)
+            return ZoneInfo(os.environ["NIGHT_ZONE"])
         except ZoneInfoNotFoundError:
-            self.skipTest("requires Europe/Berlin timezone data")
+            self.skipTest("requires test zone timezone data")
 
     def test_marker_same_date_and_next_date(self):
         for hour, day in ((0, 21), (1, 21), (2, 22)):
@@ -63,6 +68,28 @@ class LocalScheduleTests(unittest.TestCase):
             with patch.dict(os.environ, NIGHT_START=value):
                 with self.assertRaisesRegex(ValueError, '00:00–05:59'):
                     schedule.next_marker(trigger)
+
+    def test_invalid_night_zone_raises(self):
+        trigger = Clock(0, tzinfo=timezone.utc).now()
+        for value in ('Invalid/Zone', '/invalid/zone'):
+            with self.subTest(value=value), patch.dict(os.environ, NIGHT_ZONE=value):
+                with self.assertRaises(ValueError) as raised:
+                    schedule.next_marker(trigger)
+                self.assertIn('NIGHT_ZONE', str(raised.exception))
+                self.assertIn(value, str(raised.exception))
+
+    def test_empty_or_unset_night_zone_uses_utc(self):
+        try:
+            ZoneInfo('UTC')
+        except ZoneInfoNotFoundError:
+            self.skipTest("requires UTC timezone data")
+        trigger = Clock(0, tzinfo=timezone.utc).now()
+        for value in ('', None):
+            with self.subTest(value=value), patch.dict(os.environ, NIGHT_ZONE=''):
+                if value is None:
+                    del os.environ['NIGHT_ZONE']
+                marker = schedule.next_marker(trigger, '01:00')
+                self.assertEqual(marker.isoformat(), '2026-10-21T01:00:00+00:00')
 
     def test_late_daily_cron_keeps_its_trigger(self):
         now = datetime(2026, 10, 25, 7, tzinfo=timezone.utc)
