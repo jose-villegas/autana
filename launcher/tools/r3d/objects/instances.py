@@ -7,6 +7,7 @@ from itertools import product
 import numpy as np
 from scipy.spatial import cKDTree
 
+from r3d.geometry import bounds_diagonal
 from r3d.lit_mesh import oriented
 
 # A 381-object OBJ scene measured a matching plateau between 1e-3 and 1e-2 of the bounds diagonal.
@@ -52,11 +53,6 @@ def source_objects(positions, tri_v, tri_m, tri_o, object_names) -> list[SourceO
         remap = np.argsort(order)
         objects.append(SourceObject(name, positions[vertices[order]], remap[inverse].reshape(-1, 3), tri_m[selected]))
     return objects
-
-
-def bounds_diagonal(positions):
-    """Length of the axis-aligned bounds diagonal, including degenerate objects."""
-    return float(np.linalg.norm(np.ptp(positions, axis=0)))
 
 
 def placed_corners(shape, instance, matrix, position):
