@@ -1155,7 +1155,7 @@ test_an_entity_knows_its_parent_its_ancestors_and_its_world(void) {
     TEST_ASSERT_FALSE(scene_entity_is_within(scene, red, green));
     TEST_ASSERT_FALSE(scene_entity_is_within(scene, green, camera));
     TEST_ASSERT_FALSE(scene_entity_is_within(scene, green, SCENE_ENTITY_NONE));
-    TEST_ASSERT_EQUAL_FLOAT(2.0F, scene_entity_world(scene, green).m[0][3]);
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, scene_entity_world(scene, green).position.x);
     TEST_ASSERT_EQUAL_FLOAT(4.0F, scene_entity_transform(scene, green)->position.x);
 }
 
@@ -1180,7 +1180,14 @@ test_a_world_is_the_parents_world_times_the_entitys_own(void) {
     scene_t* scene = load("test_tree");
     scene_resolve(scene);
     assert_at((vec3f_t){1, 6, 0}, model_of(scene, "hand"));
-    assert_at((vec3f_t){1, 6, 0}, scene_entity_world(scene, scene_find(scene, "hand")));
+    assert_at((vec3f_t){1, 6, 0}, scene_world_matrix(scene, scene_find(scene, "hand")));
+    const transformf_t hand = scene_entity_world(scene, scene_find(scene, "hand")); /* the root scales evenly */
+    const mat4f_t from_trs = transformf_compute_matrix(&hand);
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 4; c++) {
+            TEST_ASSERT_FLOAT_WITHIN(1e-5F, model_of(scene, "hand").m[r][c], from_trs.m[r][c]);
+        }
+    }
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, -2.0F, model_of(scene, "hand").m[0][1]); /* turned, and scaled by 2 */
     assert_at((vec3f_t){0, 1, 5}, model_of(scene, "cup"));
 }
