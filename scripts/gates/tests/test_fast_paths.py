@@ -36,6 +36,26 @@ class FastPathTests(unittest.TestCase):
         self.capture = ('MATHERROR name=example type=f max=1 unit=ulp method=sweep\n'
                         'MATHERRORBIN name=example type=f x=2 max=1 unit=ulp\n')
 
+    def test_annotation_sources_resolve_by_name(self):
+        doc = self.root / 'docs/Citations.md'
+        doc.parent.mkdir(parents=True)
+        doc.write_text('| <a id="123"></a>[123] | Example source.<br>`Example author` cited by: [example](example.md) |\n')
+        text = self.header.read_text().replace('/* exact:', '/* source: Example author */\n/* exact:')
+        self.header.write_text(text)
+        self.assertEqual(paths.annotations(self.root)[0].citations, (123,))
+        self.header.write_text(text.replace('Example author', 'Unknown author'))
+        with self.assertRaisesRegex(ValueError, 'Unknown author'):
+            paths.annotations(self.root)
+
+    def test_period_axis_label_uses_folded_range(self):
+        from unittest.mock import Mock
+        sys.path.insert(0, str(ROOT / 'launcher/tools/math'))
+        import fast_path_figures as figures
+        for end in (2, 4):
+            axis = Mock()
+            figures._configure_axis(axis, [(1.01, 0.25, 'ulp'), (end - 0.01, 0.5, 'ulp')], 'period')
+            axis.set_xlabel.assert_called_once_with(f'Input mantissa (every input folded into [1, {end}))')
+
     def test_fractional_bins_keep_integer_summary_contract(self):
         capture = self.capture.replace('max=1 unit=ulp\n', 'max=1.25 unit=ulp axis=period\n')
         paths.validate(self.annotations, self.rows, capture)
@@ -227,6 +247,8 @@ class FastPathTests(unittest.TestCase):
     def test_transitive_template_callers_and_tables(self):
         self.header.unlink()
         shutil.copyfile(ROOT / 'launcher/packages/math/tests/suite_math_numbers.c', self.root / 'launcher/packages/math/tests/suite_math_numbers.c')
+        (self.root / "docs").mkdir(exist_ok=True)
+        shutil.copyfile(ROOT / "docs/Citations.md", self.root / "docs/Citations.md")
         shutil.copytree(ROOT / paths.HEADERS, self.root / paths.HEADERS, dirs_exist_ok=True)
         caller = self.root / 'launcher/main/render/use.c'
         caller.parent.mkdir(parents=True)
@@ -276,10 +298,10 @@ class FastPathTests(unittest.TestCase):
                                 (5104, "5100"), (1.03, "1"), (5.94258e-5, "5.9e-5")):
             with self.subTest(value=value):
                 self.assertEqual(paths.format_measurement(value), expected)
-        self.assertEqual(paths.format_error("1 ulp (sweep)", "hardware"), "1 ulp")
+        self.assertEqual(paths.format_error("1 ulp (sweep)", "hardware"), "1 step")
         self.assertEqual(paths.format_error("4.61224169968e-10 relative (proof)", "host"),
                          "4.6e-10 rel (host)")
-        self.assertEqual(paths.format_error("0 ulp (sweep)", "hardware"), "0 ulp")
+        self.assertEqual(paths.format_error("0 ulp (sweep)", "hardware"), "0 steps")
         self.assertEqual(paths.format_error("-", "hardware"), "-")
 
     def test_compact_tables_and_formula_details(self):
@@ -306,7 +328,7 @@ class FastPathTests(unittest.TestCase):
             for line in table.splitlines():
                 if line.startswith("|"):
                     self.assertLessEqual(line.count("|"), 5)
-        self.assertIn("Bench rows `mathf_recip_f` vs `div_recip_f`; limit `MATHF_RECIP_ULP_LIMIT` (1 ulp); sweep.", details)
+        self.assertIn("Bench rows `mathf_recip_f` vs `div_recip_f`; limit `MATHF_RECIP_ULP_LIMIT` (1 step); sweep.", details)
         self.assertIn("Bench rows `normalize_x` vs `normalize_div_x`", details)
         self.assertIn("Bench rows `nlerp_x` vs `nlerp_div_x`", details)
         self.assertNotIn("<br>", summary)

@@ -13,8 +13,8 @@ The QEMU column marks wrappers containing `recip0.s`/`rsqrt0.s` as
 the [build conditions](Fast-Paths.md) include the QEMU configuration.
 
 Max error comes from `suite_math_numbers`; board and host captures stay separate.
-The annotation generator joins `MATHERROR` lines to benchmark rows; absent
-measurements show `-`.
+`MATHERROR` rows report ulp steps from the rounded result; figures show ulp from the exact value.
+Missing measurements show `-`.
 
 `proof` covers every float in `[1, 4)`, each normal exponent's edges, and a
 strided mantissa sample at every normal exponent, using an integer bracket.
@@ -109,19 +109,19 @@ add `--check` to verify without writing. Generate the error plots with
 | lerp (vec3) | x | 127.3 | 12644.0 | 99.5 | 99.5 | 1.3 | - | - |
 | mat4 mul | f | 738.4 | 49412.0 | 642.6 | 506.4 | 1.1 | madd.s; calls memcpy | - |
 | mat4 mul | x | 2436.9 | 162409.0 | 1648.9 | 1640.4 | 1.5 | calls memcpy | - |
-| mathf_recip | f | 26.3 | 3000.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | 1 ulp (sweep) |
+| mathf_recip | f | 26.3 | 3000.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | 1 step (sweep) |
 | mathf_rsqrt_approx | f | 24.3 | 3084.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | 5.94258e-05 relative (proof) |
-| mathf_rsqrt | f | 38.4 | 4517.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (proof) |
+| mathf_rsqrt | f | 38.4 | 4517.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 step (proof) |
 | mathx_rsqrt_q30 | x | 157.4 | 13717.0 | 143.6 | 143.6 | 1.1 | calls __assert_func | 4.61224169968e-10 relative (proof) (host) |
 | mul (scalar) | f | 9.3 | 1477.0 | 6.5 | 6.2 | 1.4 | - | - |
 | mul (scalar) | i | 9.3 | 1497.0 | 8.5 | 8.2 | 1.1 | - | - |
 | mul (scalar) | s | 11.3 | 2451.0 | 10.5 | 10.2 | 1.1 | - | - |
 | mul (scalar) | x | 22.3 | 3321.0 | 17.5 | 17.3 | 1.3 | - | - |
 | nlerp_div | x | 738.4 | 61192.0 | 528.5 | 529.4 | 1.4 | calls __divdi3, mathi_isqrt64_digits | - |
-| nlerp | f | 94.8 | 8989.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 ulp (sweep) |
+| nlerp | f | 94.8 | 8989.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 steps (sweep) |
 | nlerp | x | 719.4 | 63286.0 | 558.8 | 909.9 | 1.3 | calls __assert_func | 4.61224169968e-10 relative (proof) (host) |
 | normalize_div | x | 1114.7 | 77202.0 | 906.2 | 907.9 | 1.2 | calls __udivdi3, mathi_isqrt64_digits | - |
-| normalize (vec3) | f | 57.4 | 5814.0 | 29.5 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (sweep) |
+| normalize (vec3) | f | 57.4 | 5814.0 | 29.5 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 step (sweep) |
 | normalize (vec3) | x | 348.5 | 29326.0 | 296.9 | 681.2 | 1.2 | calls __assert_func | 4.61224169968e-10 relative (proof) (host) |
 | quat mul | f | 30.3 | 3207.0 | 30.5 | 30.2 | 1.0 | madd.s msub.s | - |
 | quat mul | x | 419.3 | 39758.0 | 313.5 | 313.9 | 1.3 | - | - |
@@ -135,7 +135,7 @@ add `--check` to verify without writing. Generate the error plots with
 | transform compute_matrix | f | 67.4 | 6781.0 | 67.6 | 67.4 | 1.0 | madd.s msub.s | - |
 | transform compute_matrix | x | 855.7 | 74653.0 | 660.2 | 661.4 | 1.3 | calls mat4x_from_trs, memcpy | - |
 | trig_sin | i | 30.8 | 4915.0 | 24.0 | 23.8 | 1.3 | - | 4.64258 lsb (sweep) |
-| wrap | f | 63.8 | 7166.0 | 30.1 | device-only instruction | 2.1 | madd.s msub.s recip0.s; calls fmodf | 0 ulp (sweep) |
+| wrap | f | 63.8 | 7166.0 | 30.1 | device-only instruction | 2.1 | madd.s msub.s recip0.s; calls fmodf | 0 steps (sweep) |
 | wrap_fmodf | f | 137.0 | 14131.0 | 88.7 | 88.6 | 1.5 | calls fmodf | - |
 | wrap | i | 7.3 | 1350.0 | 7.5 | 7.2 | 1.0 | - | - |
 | wrap | x | 10.3 | 1983.0 | 10.5 | 10.2 | 1.0 | - | - |
