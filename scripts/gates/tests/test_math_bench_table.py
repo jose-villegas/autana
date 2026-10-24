@@ -56,6 +56,20 @@ class MathBenchTableTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 bench.parse_errors(text)
 
+    def test_separate_bench_and_error_build_provenance(self):
+        text = self.capture.replace("BUILD_ID=abcdef-diag", "BUILD_ID=abcdef-diag scope=bench")
+        text += "BUILD_ID=123456-diag scope=error\nMATHERROR name=mathf_recip type=f max=1 unit=ulp method=sweep\n"
+        build, measured = bench.parse_capture(text, self.rows)
+        self.assertEqual("abcdef-diag", build)
+        self.assertEqual(2, len(measured))
+        for invalid in (text.replace(" scope=error", ""),
+                        text.replace("scope=error", "scope=bench"),
+                        text.replace("scope=error", "scope=unknown"),
+                        text.split("BUILD_ID=123456")[0],
+                        text + "BUILD_ID=abcdef-diag scope=bench\n"):
+            with self.subTest(text=invalid), self.assertRaises(ValueError):
+                bench.parse_capture(invalid, self.rows)
+
     def test_missing_row_is_an_error(self):
         with self.assertRaisesRegex(ValueError, "missing"):
             bench.parse_capture(self.capture.split("MATHBENCH name=sinf")[0], self.rows)

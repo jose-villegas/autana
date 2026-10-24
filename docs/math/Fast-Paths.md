@@ -10,7 +10,7 @@ Code totals wrappers and callees by ELF region; table bytes total linked copies.
 A dash means no measurement or table. Callers are engine modules; app names are grouped.
 
 <!-- generated: math-fast-paths check: python launcher/tools/perf/fast_paths.py --check -->
-Measured target: -.
+Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 
 ### What it replaces
 
@@ -28,13 +28,13 @@ Measured target: -.
 
 | Fast path | Bench rows | Warm cycles fast | Warm plain | Plain/fast | Cold fast | Cold plain | Max error | Limit | Method |
 |---|---|---|---|---|---|---|---|---|---|
-| [`mathf_recip`](#mathf-recip) | `mathf_recip_f` vs `div_recip_f` | - | - | - | - | - | - ulp | `MATHF_RECIP_ULP_LIMIT` (1) | sweep |
-| [`mathf_rsqrt`](#mathf-rsqrt) | `mathf_rsqrt_f` vs `div_rsqrt_f` | - | - | - | - | - | - ulp | `MATHF_RSQRT_ULP_LIMIT` (1) | proof |
-| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | `mathf_rsqrt_approx_f` vs `div_rsqrt_f` | - | - | - | - | - | - relative | `MATHF_RSQRT_APPROX_RELATIVE_LIMIT` (0.0001) | proof |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | `normalize_x` vs `normalize_div_x` | - | - | - | - | - | - relative | `MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31) | proof |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | `nlerp_x` vs `nlerp_div_x` | - | - | - | - | - | - relative | `MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31) | proof |
-| [`mathf_repeat`](#mathf-repeat) | `wrap_f` vs `wrap_fmodf_f` | - | - | - | - | - | - ulp | `MATHF_WRAP_ULP_LIMIT` (0) | sweep |
-| [`trig_sin`](#trig-sin) | `trig_sin_i` vs `sinf_f` | - | - | - | - | - | - lsb | `TRIG_SIN_LSB_LIMIT` (5) | sweep |
+| [`mathf_recip`](#mathf-recip) | `mathf_recip_f` vs `div_recip_f` | 26.3 | 58.3 | 2.22 | 3000.0 | 5104.0 | 1 ulp | `MATHF_RECIP_ULP_LIMIT` (1) | sweep |
+| [`mathf_rsqrt`](#mathf-rsqrt) | `mathf_rsqrt_f` vs `div_rsqrt_f` | 38.4 | 114.2 | 2.97 | 4517.0 | 9841.0 | 1 ulp | `MATHF_RSQRT_ULP_LIMIT` (1) | proof |
+| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | `mathf_rsqrt_approx_f` vs `div_rsqrt_f` | 24.3 | 114.2 | 4.70 | 3084.0 | 9841.0 | 5.94258e-05 relative | `MATHF_RSQRT_APPROX_RELATIVE_LIMIT` (0.0001) | proof |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | `normalize_x` vs `normalize_div_x` | 348.5 | 1114.7 | 3.20 | 29326.0 | 77202.0 | 4.61224169968e-10 relative (host) | `MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31) | proof |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | `nlerp_x` vs `nlerp_div_x` | 719.4 | 738.4 | 1.03 | 63286.0 | 61192.0 | 4.61224169968e-10 relative (host) | `MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31) | proof |
+| [`mathf_repeat`](#mathf-repeat) | `wrap_f` vs `wrap_fmodf_f` | 63.8 | 137.0 | 2.15 | 7166.0 | 14131.0 | 0 ulp | `MATHF_WRAP_ULP_LIMIT` (0) | sweep |
+| [`trig_sin`](#trig-sin) | `trig_sin_i` vs `sinf_f` | 30.8 | 223.7 | 7.26 | 4915.0 | 23868.0 | 4.64258 lsb | `TRIG_SIN_LSB_LIMIT` (5) | sweep |
 
 ### Size and builds
 
@@ -43,10 +43,10 @@ Measured target: -.
 | [`mathf_recip`](#mathf-recip) | 62 flash | ROM + 45 flash | - | `CONFIG_MATH_FPU_RECIP` | plain | plain | `render` |
 | [`mathf_rsqrt`](#mathf-rsqrt) | ROM + 152 flash | ROM + 65 flash | - | `CONFIG_MATH_FPU_RECIP` | plain | plain | `anim`, `apps (not named)`, `input`, `scene` |
 | [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 66 flash | ROM + 65 flash | - | `CONFIG_MATH_FPU_RECIP` | plain | plain | `render` |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | 236 IRAM + 956 flash | ROM + 2061 flash | 768 | none | fast | fast | none |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | 236 IRAM + 2664 flash | ROM + 3534 flash | 768 | none | fast | fast | none |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | 236 IRAM + 956 flash | ROM + 1666 flash | 192 | none | fast | fast | none |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) | 236 IRAM + 2664 flash | ROM + 3139 flash | 192 | none | fast | fast | none |
 | [`mathf_repeat`](#mathf-repeat) | 612 flash | 460 flash | - | `CONFIG_MATH_FPU_FUSED_MADD` | plain | fast | none |
-| [`trig_sin`](#trig-sin) | 202 flash | 181 flash | 1040 | none | fast | fast | `audio`, `boot`, `shell` |
+| [`trig_sin`](#trig-sin) | 202 flash | 181 flash | 520 | none | fast | fast | `audio`, `boot`, `shell` |
 
 <a id="mathf-recip"></a>
 
@@ -60,7 +60,7 @@ Symbols: nonzero input `a`; reciprocal seed `y`.
 
 Sweep: signed magnitudes and power-of-two edges.
 
-Error curve: - (capture pending).
+![Error across the input range](../images/math/fast-path-mathf_recip.png)
 
 <a id="mathf-rsqrt"></a>
 
@@ -74,7 +74,7 @@ Symbols: positive input `v`; reciprocal-root seed `y`.
 
 Proof: all mantissas in `[1,4)`, normal exponent strides and edges.
 
-Error curve: - (capture pending).
+![Error across the input range](../images/math/fast-path-mathf_rsqrt.png)
 
 <a id="mathf-rsqrt-approx"></a>
 
@@ -88,7 +88,7 @@ Symbols: positive input `v`; reciprocal-root seed `y`.
 
 Proof: all mantissas in `[1,4)`, normal exponent strides and edges.
 
-Error curve: - (capture pending).
+![Error across the input range](../images/math/fast-path-mathf_rsqrt_approx.png)
 
 <a id="mathx-rsqrt-q30"></a>
 
@@ -102,7 +102,7 @@ Symbols: integer mantissa `m` in `[MATHX_RSQRT_MIN, 2^32)`; reciprocal root `y`.
 
 Proof: mantissa segment strides and exact midpoint brackets.
 
-Error curve: - (capture pending).
+![Error across the input range](../images/math/fast-path-mathx_rsqrt_q30.png)
 
 <a id="mathf-repeat"></a>
 
@@ -116,7 +116,7 @@ Symbols: input `v` and positive period `len`; fused remainder `r`.
 
 Sweep: signed float bit patterns, quotient guard and endpoint edges.
 
-Error curve: - (capture pending).
+![Error across the input range](../images/math/fast-path-mathf_repeat.png)
 
 <a id="trig-sin"></a>
 
@@ -130,5 +130,5 @@ Symbols: 16-bit phase input; quarter-wave samples `a` and `b` bracket it; `t` is
 
 Sweep: every 16-bit phase against `sinf` in output LSBs.
 
-Error curve: - (capture pending).
+![Error across the input range](../images/math/fast-path-trig_sin.png)
 <!-- /generated: math-fast-paths -->

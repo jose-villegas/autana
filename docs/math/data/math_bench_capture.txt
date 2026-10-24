@@ -1,57 +1,712 @@
-BUILD_ID=d36d792d3134-diag
+BUILD_ID=ee380b1899fb-diag scope=bench
+MATHTARGET target=esp32s3 arch=Xtensa core=LX7_ESP32_S3_MP execution=hardware
 MATHBENCH name=add (vec3) type=f ops=64 warm=15.3 cold=1998.0 insn=14.5
-MATHBENCH name=scale (vec3) type=f ops=64 warm=13.3 cold=1869.0 insn=12.5
-MATHBENCH name=dot (vec3) type=f ops=64 warm=17.3 cold=2112.0 insn=12.5
-MATHBENCH name=mul (scalar) type=f ops=64 warm=9.3 cold=1396.0 insn=6.5
-MATHBENCH name=lerp (vec3) type=f ops=64 warm=19.3 cold=2393.0 insn=17.5
-MATHBENCH name=add (vec3) type=i ops=64 warm=14.3 cold=2073.0 insn=14.5
-MATHBENCH name=scale (vec3) type=i ops=64 warm=12.3 cold=1900.0 insn=12.5
-MATHBENCH name=dot (vec3) type=i ops=64 warm=24.3 cold=2633.0 insn=24.5
-MATHBENCH name=mul (scalar) type=i ops=64 warm=9.3 cold=1716.0 insn=8.5
-MATHBENCH name=lerp (vec3) type=i ops=64 warm=101.3 cold=9103.0 insn=93.5
-MATHBENCH name=add (vec3) type=s ops=64 warm=37.4 cold=4269.0 insn=31.6
-MATHBENCH name=scale (vec3) type=s ops=64 warm=36.4 cold=4233.0 insn=30.6
-MATHBENCH name=dot (vec3) type=s ops=64 warm=24.3 cold=2942.0 insn=24.5
-MATHBENCH name=mul (scalar) type=s ops=64 warm=11.3 cold=2179.0 insn=10.5
-MATHBENCH name=lerp (vec3) type=s ops=64 warm=33.3 cold=3614.0 insn=31.5
-MATHBENCH name=add (vec3) type=x ops=64 warm=58.4 cold=6075.0 insn=44.6
-MATHBENCH name=scale (vec3) type=x ops=64 warm=66.0 cold=7465.0 insn=49.2
-MATHBENCH name=dot (vec3) type=x ops=64 warm=86.8 cold=9448.0 insn=65.9
-MATHBENCH name=mul (scalar) type=x ops=64 warm=22.3 cold=3168.0 insn=17.5
-MATHBENCH name=lerp (vec3) type=x ops=64 warm=127.3 cold=12810.0 insn=99.5
-MATHBENCH name=normalize (vec3) type=f ops=64 warm=57.4 cold=5611.0 insn=29.9
-MATHBENCH name=normalize (vec3) type=x ops=64 warm=349.5 cold=29427.0 insn=296.9
-MATHBENCH name=wrap type=f ops=64 warm=63.8 cold=7132.0 insn=30.1
-MATHBENCH name=wrap type=i ops=64 warm=7.3 cold=1590.0 insn=7.5
-MATHBENCH name=wrap type=x ops=64 warm=10.3 cold=1777.0 insn=10.5
-MATHBENCH name=convert type=f_to_x ops=64 warm=110.6 cold=10081.0 insn=70.7
-MATHBENCH name=convert type=x_to_f ops=64 warm=14.3 cold=2406.0 insn=14.5
-MATHBENCH name=convert type=f_to_s ops=64 warm=104.5 cold=9907.0 insn=75.6
-MATHBENCH name=convert type=s_to_f ops=64 warm=14.3 cold=2136.0 insn=14.5
-MATHBENCH name=convert type=i_to_f ops=64 warm=11.3 cold=1716.0 insn=11.5
-MATHBENCH name=convert type=f_to_i ops=64 warm=95.5 cold=8905.0 insn=62.1
-MATHBENCH name=slerp type=f ops=64 warm=455.1 cold=34564.0 insn=306.3
-MATHBENCH name=nlerp type=f ops=64 warm=94.8 cold=8917.0 insn=53.7
-MATHBENCH name=nlerp type=x ops=64 warm=719.9 cold=63055.0 insn=558.8
-MATHBENCH name=quat mul type=f ops=64 warm=30.3 cold=3195.0 insn=30.5
-MATHBENCH name=quat mul type=x ops=64 warm=418.3 cold=38736.0 insn=313.5
-MATHBENCH name=mat4 mul type=f ops=64 warm=738.4 cold=49605.0 insn=517.6
-MATHBENCH name=mat4 mul type=x ops=64 warm=2389.4 cold=159651.0 insn=1648.9
-MATHBENCH name=transform compute_matrix type=f ops=64 warm=67.4 cold=6852.0 insn=67.6
-MATHBENCH name=transform compute_matrix type=x ops=64 warm=855.6 cold=75525.0 insn=660.2
-MATHBENCH name=mathf_recip type=f ops=64 warm=26.3 cold=2994.0 insn=13.5
-MATHBENCH name=mathf_rsqrt type=f ops=64 warm=38.4 cold=4234.0 insn=18.6
-MATHBENCH name=mathf_rsqrt_approx type=f ops=64 warm=24.3 cold=3083.0 insn=12.5
-MATHBENCH name=div_recip type=f ops=64 warm=58.3 cold=5231.0 insn=52.0
-MATHBENCH name=div_rsqrt type=f ops=64 warm=114.2 cold=9679.0 insn=81.5
-MATHBENCH name=sinf type=f ops=64 warm=191.4 cold=21639.0 insn=109.1
-MATHBENCH name=cosf type=f ops=64 warm=191.5 cold=21197.0 insn=110.7
-MATHBENCH name=atan2f type=f ops=64 warm=336.7 cold=29484.0 insn=195.9
-MATHBENCH name=sqrtf type=f ops=64 warm=61.2 cold=5868.0 insn=45.5
-MATHBENCH name=trig_sin type=i ops=64 warm=30.8 cold=4911.0 insn=24.0
-MATHBENCH name=dot_f32_n256 type=f ops=1 warm=1305.0 cold=2403.0 insn=1315.0
+MATHBENCH name=scale (vec3) type=f ops=64 warm=13.3 cold=1884.0 insn=12.5
+MATHBENCH name=dot (vec3) type=f ops=64 warm=17.4 cold=2103.0 insn=12.5
+MATHBENCH name=mul (scalar) type=f ops=64 warm=9.3 cold=1477.0 insn=6.5
+MATHBENCH name=lerp (vec3) type=f ops=64 warm=19.3 cold=2466.0 insn=17.5
+MATHBENCH name=add (vec3) type=i ops=64 warm=14.3 cold=1854.0 insn=14.5
+MATHBENCH name=scale (vec3) type=i ops=64 warm=12.3 cold=1882.0 insn=12.5
+MATHBENCH name=dot (vec3) type=i ops=64 warm=24.3 cold=2733.0 insn=24.5
+MATHBENCH name=mul (scalar) type=i ops=64 warm=9.3 cold=1497.0 insn=8.5
+MATHBENCH name=lerp (vec3) type=i ops=64 warm=101.3 cold=9150.0 insn=93.5
+MATHBENCH name=add (vec3) type=s ops=64 warm=37.4 cold=4263.0 insn=31.6
+MATHBENCH name=scale (vec3) type=s ops=64 warm=36.4 cold=4239.0 insn=30.6
+MATHBENCH name=dot (vec3) type=s ops=64 warm=24.3 cold=2910.0 insn=24.5
+MATHBENCH name=mul (scalar) type=s ops=64 warm=11.3 cold=2451.0 insn=10.5
+MATHBENCH name=lerp (vec3) type=s ops=64 warm=33.3 cold=3596.0 insn=31.5
+MATHBENCH name=add (vec3) type=x ops=64 warm=58.4 cold=6159.0 insn=44.6
+MATHBENCH name=scale (vec3) type=x ops=64 warm=66.0 cold=7671.0 insn=49.2
+MATHBENCH name=dot (vec3) type=x ops=64 warm=83.8 cold=9596.0 insn=65.9
+MATHBENCH name=mul (scalar) type=x ops=64 warm=22.3 cold=3321.0 insn=17.5
+MATHBENCH name=lerp (vec3) type=x ops=64 warm=127.3 cold=12644.0 insn=99.5
+MATHBENCH name=normalize (vec3) type=f ops=64 warm=57.4 cold=5814.0 insn=29.5
+MATHBENCH name=normalize (vec3) type=x ops=64 warm=348.5 cold=29326.0 insn=296.9
+MATHBENCH name=wrap type=f ops=64 warm=63.8 cold=7166.0 insn=30.1
+MATHBENCH name=wrap type=i ops=64 warm=7.3 cold=1350.0 insn=7.5
+MATHBENCH name=wrap type=x ops=64 warm=10.3 cold=1983.0 insn=10.5
+MATHBENCH name=convert type=f_to_x ops=64 warm=110.6 cold=10044.0 insn=70.7
+MATHBENCH name=convert type=x_to_f ops=64 warm=14.3 cold=1908.0 insn=14.5
+MATHBENCH name=convert type=f_to_s ops=64 warm=104.5 cold=9927.0 insn=75.6
+MATHBENCH name=convert type=s_to_f ops=64 warm=14.3 cold=2148.0 insn=14.5
+MATHBENCH name=convert type=i_to_f ops=64 warm=11.3 cold=1725.0 insn=11.5
+MATHBENCH name=convert type=f_to_i ops=64 warm=95.5 cold=8862.0 insn=62.1
+MATHBENCH name=slerp type=f ops=64 warm=452.7 cold=34873.0 insn=306.3
+MATHBENCH name=nlerp type=f ops=64 warm=94.8 cold=8989.0 insn=53.7
+MATHBENCH name=nlerp type=x ops=64 warm=719.4 cold=63286.0 insn=558.8
+MATHBENCH name=quat mul type=f ops=64 warm=30.3 cold=3207.0 insn=30.5
+MATHBENCH name=quat mul type=x ops=64 warm=419.3 cold=39758.0 insn=313.5
+MATHBENCH name=mat4 mul type=f ops=64 warm=738.4 cold=49412.0 insn=642.6
+MATHBENCH name=mat4 mul type=x ops=64 warm=2436.9 cold=162409.0 insn=1648.9
+MATHBENCH name=transform compute_matrix type=f ops=64 warm=67.4 cold=6781.0 insn=67.6
+MATHBENCH name=transform compute_matrix type=x ops=64 warm=855.7 cold=74653.0 insn=660.2
+MATHBENCH name=mathf_recip type=f ops=64 warm=26.3 cold=3000.0 insn=13.5
+MATHBENCH name=mathf_rsqrt type=f ops=64 warm=38.4 cold=4517.0 insn=18.6
+MATHBENCH name=mathf_rsqrt_approx type=f ops=64 warm=24.3 cold=3084.0 insn=12.5
+MATHBENCH name=wrap_fmodf type=f ops=64 warm=137.0 cold=14131.0 insn=88.7
+MATHBENCH name=normalize_div type=x ops=64 warm=1114.7 cold=77202.0 insn=906.2
+MATHBENCH name=nlerp_div type=x ops=64 warm=738.4 cold=61192.0 insn=528.5
+MATHBENCH name=mathx_rsqrt_q30 type=x ops=64 warm=157.4 cold=13717.0 insn=143.6
+MATHBENCH name=div_recip type=f ops=64 warm=58.3 cold=5104.0 insn=40.5
+MATHBENCH name=div_rsqrt type=f ops=64 warm=114.2 cold=9841.0 insn=81.5
+MATHBENCH name=sinf type=f ops=64 warm=223.7 cold=23868.0 insn=126.0
+MATHBENCH name=cosf type=f ops=64 warm=191.5 cold=21315.0 insn=122.8
+MATHBENCH name=atan2f type=f ops=64 warm=336.7 cold=29564.0 insn=195.9
+MATHBENCH name=sqrtf type=f ops=64 warm=61.2 cold=6170.0 insn=45.5
+MATHBENCH name=trig_sin type=i ops=64 warm=30.8 cold=4915.0 insn=24.0
+MATHBENCH name=dot_f32_n256 type=f ops=1 warm=1305.0 cold=2370.0 insn=1315.0
+# Error build identity supplied with the capture; the raw error log omits BUILD_ID.
+BUILD_ID=d1fd3d9b0804-diag scope=error
+MATHERRORBIN name=trig_sin type=i x=512 max=1.55737 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=1536 max=1.44434 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=2560 max=2.05664 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=3584 max=2.34863 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=4608 max=2.8916 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=5632 max=3.16602 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=6656 max=3.36523 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=7680 max=3.42188 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=8704 max=3.97656 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=9728 max=3.69141 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=10752 max=4.1543 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=11776 max=4.25195 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=12800 max=4.40625 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=13824 max=4.45898 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=14848 max=4.39258 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=15872 max=4.64258 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=16896 max=4.64258 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=17920 max=4.39062 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=18944 max=4.45703 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=19968 max=4.40625 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=20992 max=4.24805 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=22016 max=4.15234 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=23040 max=3.69141 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=24064 max=3.97852 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=25088 max=3.42383 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=26112 max=3.35938 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=27136 max=3.16797 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=28160 max=2.89062 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=29184 max=2.34668 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=30208 max=2.0498 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=31232 max=1.44238 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=32256 max=1.55469 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=33280 max=1.5603 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=34304 max=1.44824 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=35328 max=2.05469 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=36352 max=2.35156 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=37376 max=2.89551 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=38400 max=3.17188 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=39424 max=3.36523 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=40448 max=3.42773 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=41472 max=3.97656 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=42496 max=3.69141 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=43520 max=4.1543 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=44544 max=4.25586 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=45568 max=4.4082 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=46592 max=4.45898 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=47616 max=4.39258 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=48640 max=4.64258 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=49664 max=4.64062 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=50688 max=4.39258 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=51712 max=4.45703 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=52736 max=4.4043 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=53760 max=4.24805 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=54784 max=4.15039 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=55808 max=3.68945 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=56832 max=3.97656 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=57856 max=3.41602 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=58880 max=3.36328 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=59904 max=3.1582 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=60928 max=2.88086 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=61952 max=2.34375 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=62976 max=2.05469 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=64000 max=1.43213 unit=lsb
+MATHERRORBIN name=trig_sin type=i x=65024 max=1.54395 unit=lsb
+MATHERROR name=trig_sin type=i max=4.64258 unit=lsb method=sweep
+MATHERRORBIN name=mathf_rsqrt type=f x=1.76324e-38 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.76324e-38 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.52648e-38 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.52648e-38 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.05297e-38 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.05297e-38 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.41059e-37 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.41059e-37 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.82119e-37 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.82119e-37 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.64237e-37 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.64237e-37 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.12847e-36 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.12847e-36 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.25695e-36 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.25695e-36 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.5139e-36 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.5139e-36 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.0278e-36 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.0278e-36 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.80556e-35 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.80556e-35 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.61112e-35 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.61112e-35 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.22224e-35 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.22224e-35 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.44445e-34 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.44445e-34 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.88889e-34 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.88889e-34 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.77779e-34 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.77779e-34 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.15556e-33 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.15556e-33 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.31112e-33 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.31112e-33 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.62223e-33 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.62223e-33 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.24446e-33 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.24446e-33 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.84889e-32 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.84889e-32 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.69779e-32 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.69779e-32 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.39557e-32 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.39557e-32 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.47911e-31 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.47911e-31 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.95823e-31 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.95823e-31 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.91646e-31 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.91646e-31 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.18329e-30 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.18329e-30 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.36658e-30 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.36658e-30 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.73317e-30 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.73317e-30 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.46633e-30 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.46633e-30 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.89327e-29 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.89327e-29 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.78653e-29 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.78653e-29 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.57306e-29 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.57306e-29 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.51461e-28 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.51461e-28 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.02923e-28 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.02923e-28 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.05845e-28 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.05845e-28 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.21169e-27 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.21169e-27 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.42338e-27 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.42338e-27 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.84676e-27 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.84676e-27 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.69352e-27 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.69352e-27 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.9387e-26 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.9387e-26 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.87741e-26 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.87741e-26 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.75482e-26 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.75482e-26 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.55096e-25 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.55096e-25 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.10193e-25 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.10193e-25 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.20385e-25 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.20385e-25 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.24077e-24 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.24077e-24 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.48154e-24 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.48154e-24 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.96308e-24 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.96308e-24 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.92617e-24 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.92617e-24 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.98523e-23 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.98523e-23 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.97047e-23 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.97047e-23 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.94093e-23 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.94093e-23 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.58819e-22 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.58819e-22 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.17637e-22 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.17637e-22 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.35275e-22 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.35275e-22 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.27055e-21 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.27055e-21 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.5411e-21 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.5411e-21 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.0822e-21 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.0822e-21 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.01644e-20 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.01644e-20 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.03288e-20 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.03288e-20 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.06576e-20 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.06576e-20 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=8.13152e-20 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=8.13152e-20 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.6263e-19 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.6263e-19 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.25261e-19 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.25261e-19 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.50521e-19 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.50521e-19 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.30104e-18 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.30104e-18 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.60209e-18 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.60209e-18 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.20417e-18 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.20417e-18 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.04083e-17 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.04083e-17 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.08167e-17 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.08167e-17 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.16334e-17 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.16334e-17 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=8.32667e-17 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=8.32667e-17 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.66533e-16 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.66533e-16 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.33067e-16 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.33067e-16 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.66134e-16 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.66134e-16 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.33227e-15 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.33227e-15 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.66454e-15 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.66454e-15 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.32907e-15 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.32907e-15 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.06581e-14 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.06581e-14 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.13163e-14 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.13163e-14 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.26326e-14 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.26326e-14 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=8.52651e-14 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=8.52651e-14 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.7053e-13 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.7053e-13 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.41061e-13 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.41061e-13 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.82121e-13 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.82121e-13 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.36424e-12 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.36424e-12 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.72848e-12 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.72848e-12 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.45697e-12 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.45697e-12 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.09139e-11 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.09139e-11 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.18279e-11 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.18279e-11 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.36557e-11 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.36557e-11 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=8.73115e-11 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=8.73115e-11 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.74623e-10 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.74623e-10 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.49246e-10 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.49246e-10 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.98492e-10 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.98492e-10 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.39698e-09 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.39698e-09 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.79397e-09 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.79397e-09 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.58794e-09 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.58794e-09 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.11759e-08 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.11759e-08 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.23517e-08 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.23517e-08 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.47035e-08 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.47035e-08 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=8.9407e-08 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=8.9407e-08 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.78814e-07 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.78814e-07 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.57628e-07 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.57628e-07 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.15256e-07 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.15256e-07 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.43051e-06 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.43051e-06 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.86102e-06 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.86102e-06 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.72205e-06 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.72205e-06 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.14441e-05 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.14441e-05 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.28882e-05 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.28882e-05 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.57764e-05 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.57764e-05 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.15527e-05 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.15527e-05 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.000183105 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.000183105 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.000366211 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.000366211 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.000732422 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.000732422 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.00146484 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.00146484 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.00292969 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.00292969 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.00585938 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.00585938 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.0117188 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.0117188 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.0234375 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.0234375 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.046875 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.046875 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.09375 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.09375 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.1875 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.1875 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.375 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.375 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=0.75 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=0.75 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.5 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.5 max=4.48823e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3 max=5.94258e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=12 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=12 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=24 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=24 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=48 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=48 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=96 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=96 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=192 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=192 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=384 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=384 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=768 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=768 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1536 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1536 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3072 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3072 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6144 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6144 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=12288 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=12288 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=24576 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=24576 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=49152 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=49152 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=98304 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=98304 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=196608 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=196608 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=393216 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=393216 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=786432 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=786432 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.57286e+06 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.57286e+06 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.14573e+06 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.14573e+06 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.29146e+06 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.29146e+06 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.25829e+07 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.25829e+07 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.51658e+07 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.51658e+07 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.03316e+07 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.03316e+07 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.00663e+08 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.00663e+08 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.01327e+08 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.01327e+08 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.02653e+08 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.02653e+08 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=8.05306e+08 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=8.05306e+08 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.61061e+09 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.61061e+09 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.22123e+09 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.22123e+09 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.44245e+09 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.44245e+09 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.28849e+10 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.28849e+10 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.57698e+10 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.57698e+10 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.15396e+10 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.15396e+10 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.03079e+11 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.03079e+11 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.06158e+11 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.06158e+11 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.12317e+11 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.12317e+11 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=8.24634e+11 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=8.24634e+11 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.64927e+12 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.64927e+12 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.29853e+12 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.29853e+12 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.59707e+12 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.59707e+12 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.31941e+13 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.31941e+13 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.63883e+13 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.63883e+13 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.27766e+13 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.27766e+13 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.05553e+14 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.05553e+14 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.11106e+14 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.11106e+14 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.22212e+14 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.22212e+14 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=8.44425e+14 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=8.44425e+14 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.68885e+15 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.68885e+15 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.3777e+15 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.3777e+15 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.7554e+15 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.7554e+15 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.35108e+16 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.35108e+16 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.70216e+16 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.70216e+16 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.40432e+16 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.40432e+16 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.08086e+17 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.08086e+17 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.16173e+17 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.16173e+17 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.32346e+17 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.32346e+17 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=8.64691e+17 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=8.64691e+17 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.72938e+18 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.72938e+18 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.45876e+18 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.45876e+18 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.91753e+18 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.91753e+18 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.38351e+19 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.38351e+19 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.76701e+19 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.76701e+19 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.53402e+19 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.53402e+19 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.1068e+20 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.1068e+20 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.21361e+20 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.21361e+20 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.42722e+20 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.42722e+20 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=8.85444e+20 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=8.85444e+20 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.77089e+21 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.77089e+21 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.54177e+21 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.54177e+21 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.08355e+21 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.08355e+21 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.41671e+22 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.41671e+22 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.83342e+22 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.83342e+22 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.66684e+22 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.66684e+22 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.13337e+23 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.13337e+23 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.26674e+23 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.26674e+23 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.53347e+23 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.53347e+23 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.06694e+23 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.06694e+23 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.81339e+24 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.81339e+24 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.62678e+24 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.62678e+24 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.25355e+24 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.25355e+24 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.45071e+25 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.45071e+25 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.90142e+25 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.90142e+25 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.80284e+25 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.80284e+25 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.16057e+26 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.16057e+26 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.32114e+26 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.32114e+26 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.64228e+26 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.64228e+26 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.28455e+26 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.28455e+26 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.85691e+27 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.85691e+27 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.71382e+27 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.71382e+27 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.42764e+27 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.42764e+27 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.48553e+28 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.48553e+28 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.97106e+28 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.97106e+28 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=5.94211e+28 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=5.94211e+28 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.18842e+29 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.18842e+29 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.37684e+29 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.37684e+29 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.75369e+29 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.75369e+29 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.50738e+29 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.50738e+29 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.90148e+30 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.90148e+30 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.80295e+30 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.80295e+30 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.6059e+30 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.6059e+30 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.52118e+31 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.52118e+31 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.04236e+31 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.04236e+31 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.08472e+31 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.08472e+31 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.21694e+32 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.21694e+32 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.43389e+32 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.43389e+32 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.86778e+32 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.86778e+32 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.73556e+32 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.73556e+32 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.94711e+33 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.94711e+33 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.89422e+33 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.89422e+33 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.78845e+33 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.78845e+33 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.55769e+34 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.55769e+34 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.11538e+34 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.11538e+34 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.23076e+34 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.23076e+34 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.24615e+35 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.24615e+35 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.4923e+35 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.4923e+35 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=4.9846e+35 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=4.9846e+35 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=9.96921e+35 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=9.96921e+35 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.99384e+36 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.99384e+36 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.98768e+36 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.98768e+36 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=7.97537e+36 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=7.97537e+36 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.59507e+37 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.59507e+37 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=3.19015e+37 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.19015e+37 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=6.38029e+37 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=6.38029e+37 max=5.9247e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=1.27606e+38 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.27606e+38 max=4.48227e-05 unit=relative
+MATHERRORBIN name=mathf_rsqrt type=f x=2.55212e+38 max=1 unit=ulp
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.55212e+38 max=5.9247e-05 unit=relative
 MATHERROR name=mathf_rsqrt type=f max=1 unit=ulp method=proof
 MATHERROR name=mathf_rsqrt_approx type=f max=5.94258e-05 unit=relative method=proof
 MATHERROR name=normalize (vec3) type=f max=1 unit=ulp method=sweep
 MATHERROR name=nlerp type=f max=2 unit=ulp method=sweep
+MATHERRORBIN name=mathf_repeat type=f x=1.38179e-76 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=9.05568e-72 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=5.93473e-67 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=3.88938e-62 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=2.54895e-57 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=1.67048e-52 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=1.09476e-47 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=7.17465e-43 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=4.70198e-38 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=3.08149e-33 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=2.01948e-28 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=1.32349e-23 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=8.67362e-19 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=5.68434e-14 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=3.72529e-09 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=0.000244141 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=16 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=1.04858e+06 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=6.87195e+10 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=4.5036e+15 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=2.95148e+20 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=1.93428e+25 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=1.26765e+30 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=8.30767e+34 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=5.44452e+39 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=3.56812e+44 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=2.3384e+49 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=1.5325e+54 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=1.00434e+59 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=6.58202e+63 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=4.31359e+68 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=2.82696e+73 max=0 unit=ulp
+MATHERRORBIN name=mathf_repeat type=f x=1.85267e+78 max=0 unit=ulp
+MATHERROR name=mathf_repeat type=f max=0 unit=ulp method=sweep
+MATHERRORBIN name=mathf_recip type=f x=1.43051e-06 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=2.86102e-06 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=5.72205e-06 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=1.14441e-05 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=2.28882e-05 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=4.57764e-05 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=9.15527e-05 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.000183105 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.000366211 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.000732422 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.00146484 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.00292969 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.00585938 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.0117188 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.0234375 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.046875 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.09375 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.1875 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.375 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=0.75 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=1.5 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=3 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=6 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=12 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=24 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=48 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=96 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=192 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=384 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=768 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=1536 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=3072 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=6144 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=12288 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=24576 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=49152 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=98304 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=196608 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=393216 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=786432 max=1 unit=ulp
+MATHERRORBIN name=mathf_recip type=f x=1.57286e+06 max=1 unit=ulp
 MATHERROR name=mathf_recip type=f max=1 unit=ulp method=sweep

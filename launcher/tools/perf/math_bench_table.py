@@ -31,7 +31,7 @@ ROW_FAMILIES = ("vector", "scalar", "quaternion", "matrix", "libm", "calibration
 CALL_SYMBOL = re.compile(r"[\w.$@]+")
 
 
-def parse_target(text):
+def parse_target(text, execution="hardware"):
     targets = set()
     for line in text.splitlines():
         if not line.startswith("MATHTARGET"):
@@ -44,16 +44,23 @@ def parse_target(text):
         raise ValueError("mixed math capture targets")
     if not targets:
         return None
-    target, architecture, core, execution = targets.pop()
-    if execution != "hardware":
-        raise ValueError("math target measurements require hardware execution")
+    target, architecture, core, observed = targets.pop()
+    if observed != execution:
+        raise ValueError(f"math target measurements require {execution} execution")
     return f"{target} ({architecture}{', ' + core if core else ''})"
 
 
 def parse_capture(text, rows, allow_missing=False):
     if text.rstrip("\r\n") == PLACEHOLDER:
         return None, {}
-    build = build_id(text)
+    provenance = [line for line in text.splitlines() if line.startswith("BUILD_ID")]
+    if any("scope=" in line for line in provenance):
+        scoped = [re.fullmatch(r"BUILD_ID=([\w.-]+) scope=(bench|error)", line) for line in provenance]
+        if len(scoped) != 2 or any(match is None for match in scoped) or {match[2] for match in scoped} != {"bench", "error"}:
+            raise ValueError("expected one bench and one error build id")
+        build = build_id(next("BUILD_ID=" + match[1] for match in scoped if match[2] == "bench"))
+    else:
+        build = build_id(text)
     expected = {(label, kind): (key, ops) for key, label, kind, ops, family in rows}
     measured = {}
     for line in text.splitlines():

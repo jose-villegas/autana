@@ -15,6 +15,7 @@ ROOT = bench.ROOT
 HEADERS = Path("launcher/packages/math/include/math")
 DOCUMENT = Path("docs/math/Fast-Paths.md")
 BLOCK = "math-fast-paths"
+HOST_CAPTURE = Path("docs/math/data/math_error_host_capture.txt")
 COMMAND = "python launcher/tools/perf/fast_paths.py --check"
 ANNOTATION = re.compile(r"^/\* MATH_FAST_PATH\(\s*(\w+),\s*(\w+),\s*(\w+)(?:=([^ )]+) (ulp|relative|lsb))?\) \*/", re.M)
 FUNCTION = re.compile(r"^[ \t]*(?!(?:return|if|for|while|switch|case|else)\b)(?:(?:static[ \t]+)?(?:inline[ \t]+)?[\w*]+[ \t\n]+)(\w+)[ \t]*\([^;{}]*\)[ \t]*\{", re.M)
@@ -159,6 +160,23 @@ def validate(items, rows, capture):
     return errors, bins
 
 
+def error_evidence(root, items, rows, capture):
+    errors, bins = validate(items, rows, capture)
+    sources = dict.fromkeys(errors, "hardware")
+    host = root / HOST_CAPTURE
+    if host.exists():
+        text = host.read_text(encoding="utf-8")
+        if not bench.parse_target(text, execution="host"):
+            raise ValueError("host errors require a target record (MATHTARGET)")
+        host_errors, host_bins = validate(items, rows, text)
+        if errors.keys() & host_errors.keys() or bins.keys() & host_bins.keys():
+            raise ValueError("duplicate hardware and host error evidence")
+        errors.update(host_errors)
+        bins.update(host_bins)
+        sources.update(dict.fromkeys(host_errors, "host"))
+    return errors, bins, sources
+
+
 def function_bodies(text):
     text = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
     text = re.sub(r"__attribute__\(\(.*?\)\)", "", text)
@@ -290,7 +308,7 @@ def plain_expression(item, root):
     return expression if "isqrt64" in expression else f"`{expression}`"
 
 
-def render(root, items, rows, measured, errors, bins, sizes, fpu, target):
+def render(root, items, rows, measured, errors, bins, sizes, fpu, target, sources=None):
     groups = {}
     for item in items:
         groups.setdefault(item.key, []).append(item)
@@ -307,14 +325,16 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target):
             hardware += (": " if item.target == "Xtensa" else " ") + operations
         replacements.append([link, plain_expression(item, root), _description_fields(item)[0], hardware])
         fast, plain = measured.get(item.fast), measured.get(item.plain)
-        warm_fast, cold_fast = [f"{value:.1f}" for value in fast] if fast else ["-", "-"]
-        warm_plain, cold_plain = [f"{value:.1f}" for value in plain] if plain else ["-", "-"]
+        warm_fast, cold_fast = [f"{value:.1f}" for value in fast[:2]] if fast else ["-", "-"]
+        warm_plain, cold_plain = [f"{value:.1f}" for value in plain[:2]] if plain else ["-", "-"]
         ratio = f"{plain[0] / fast[0]:.2f}" if fast and plain else "-"
         fraction, exponent = math.frexp(item.limit)
         limit = f"2^{exponent - 1}" if fraction == 0.5 and item.limit < 1 else f"{item.limit:g}"
-        error = errors.get((item.key, item.kind), "-").split()[0]
+        identity = item.key, item.kind
+        error = errors.get(identity, "-").split()[0]
+        origin = " (host)" if (sources or {}).get(identity) == "host" else ""
         costs.append([link, f"`{item.fast}` vs `{item.plain}`", warm_fast, warm_plain, ratio,
-                      cold_fast, cold_plain, f"{error} {item.unit}", f"`{item.limit_name}` ({limit})", item.method])
+                      cold_fast, cold_plain, f"{error} {item.unit}{origin}", f"`{item.limit_name}` ({limit})", item.method])
         table_bytes = sum(size for _, size, region in sizes.get(item.fast, []) if region == "rodata")
         modules = ", ".join(f"`{module}`" for module in sorted(callers(root, item.key))) or "none"
         builds.append([link, _size_cell(item.fast, sizes), _size_cell(item.plain, sizes), str(table_bytes) if table_bytes else "-",
@@ -439,10 +459,11 @@ def main(argv=None):
             provenance = "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest() + "\n"
             (root / "docs/math/data/math_bench_sizes.txt").write_bytes((provenance + body).encode())
         capture = (root / "docs/math/data/math_bench_capture.txt").read_text(encoding="utf-8")
-        errors, bins = validate(items, rows, capture)
+        errors, bins, sources = error_evidence(root, items, rows, capture)
+        displayed_errors = {key: value + (" (host)" if sources[key] == "host" else "") for key, value in errors.items()}
         build, measured = bench.parse_capture(capture, rows, allow_missing=True)
         benchmark_body = bench.render_table(rows, measured, bench.load_baseline(root / "launcher/tools/quality/icount_baseline.txt"),
-                                            fpu, build, rekey_errors(items, rows, errors))
+                                            fpu, build, rekey_errors(items, rows, displayed_errors))
         benchmark_changed = replace_block(root / "docs/math/Benchmark.md", "math-benchmark", benchmark_body,
                                           check=args.check, command=COMMAND)
         if args.check and benchmark_changed:
@@ -465,7 +486,7 @@ def main(argv=None):
         if bins and not target:
             raise ValueError("error bins require a hardware MATHTARGET capture record")
         body = render(root, items, rows, measured if target else {}, errors if target else {}, bins, sizes,
-                      fpu, target or "-")
+                      fpu, target or "-", sources)
         changed = replace_block(page, BLOCK, body, check=args.check, command=COMMAND)
         if args.check and changed:
             raise ValueError("fast-path generated sections are stale")
