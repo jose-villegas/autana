@@ -174,9 +174,10 @@ typedef struct {
 
 static bool
 track_example_start(track_example_t* s, const asset_pack_t* pack) {
+    const name_hash_t camera = name_hash("camera");
+    const name_hash_t position = name_hash("position");
     if (anim_tracks_from_pack(pack, "probe", &s->clip) != ASSET_OK
-        || anim_tracks_find(&s->clip, name_hash("camera"), ANIM_COMPONENT_TRANSFORM, name_hash("position"), &s->move)
-               != ASSET_OK) {
+        || anim_tracks_find(&s->clip, camera, ANIM_COMPONENT_TRANSFORM, position, &s->move) != ASSET_OK) {
         return false;
     }
     anim_playhead_init(&s->playhead, ANIM_LOOP);
@@ -214,13 +215,11 @@ as `CAMERA_FIELDS` in `scene/camera/camera.h`.
 
 ## Sampling
 
-`track_example()` advances the playhead and samples the position curve in
-the [reading example](#reading-a-clip). Call it once per frame after
-`track_example_start()` succeeds.
-
 `anim_playhead_t` (`anim/playback/anim_playhead.h`) owns clip time in
 integer milliseconds; `anim_playhead_advance()` moves it by each frame's
-`dt_ms`. Below, a real clip played through the scene's calls:
+`dt_ms`; the [reading example](#reading-a-clip) samples with it each frame.
+
+Below, a real clip played through the scene's calls:
 
 ![Clip time against app time: a loop wraps at the clip's duration and a clamp holds there; speed 0.5 halves the slope, a pause holds it flat and speed 2 doubles it](../images/anim/anim-playhead.png)
 
