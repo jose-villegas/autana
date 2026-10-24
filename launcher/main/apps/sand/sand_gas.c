@@ -64,18 +64,16 @@ gas_mask(void) {
  * same cells. A bitmap, not a byte per row: RAM is this board's binding
  * constraint, and this is read once per row against a per-cell loop.
  *
- * GAS_ROW_WORDS caps the grid height it can describe. A taller grid is not
+ * GAS_ROW_MAX caps the grid height it can describe. A taller grid is not
  * wrong, it just leaves the map off and spreads as before. */
-#define GAS_ROW_WORDS 16
-#define GAS_ROW_MAX   (GAS_ROW_WORDS * 32)
+#define GAS_ROW_MAX 512
 
 typedef struct {
-    uint32_t w[GAS_ROW_WORDS];
+    uint32_t w[BITS32_WORDS(GAS_ROW_MAX)];
 } gas_rows_t;
 
-/* File-static rather than threaded through the pass: step_one_gas_grain()
- * already carries sixteen parameters, and this is built and consumed inside
- * one sand_step_gas() call, which never nests. */
+/* File-static rather than threaded through the pass: it is built and
+ * consumed inside one sand_step_gas() call, which never nests. */
 static gas_rows_t gas_row_map;
 static bool gas_row_map_live;
 
@@ -89,7 +87,7 @@ static bool gas_row_map_live;
 static inline void
 gas_row_arm(int y) {
     if (gas_row_map_live && (unsigned)y < (unsigned)GAS_ROW_MAX) {
-        gas_row_map.w[(unsigned)y >> 5] |= 1U << ((unsigned)y & 31U);
+        bits32_set(gas_row_map.w, (unsigned)y);
     }
 }
 
@@ -98,8 +96,34 @@ gas_row_may_hold(int y) {
     if (!gas_row_map_live) {
         return true;
     }
-    return ((gas_row_map.w[(unsigned)y >> 5] >> ((unsigned)y & 31U)) & 1U) != 0U;
+    return bits32_get(gas_row_map.w, (unsigned)y);
 }
+
+/* driven_by_gravity()'s table for this pass, built against the REVERSED
+ * gravity vector - see sand_step_gas(). File-static so a core-1 half that
+ * misses its join is not reading a frame that has returned, and because the
+ * pass never nests. MATERIAL_MAX, not MATERIAL_ROWS: only KIND_GAS cells
+ * read it, and no gas material lives in MAT_EXTENDED's twin-row range. */
+static bool gas_driven[MATERIAL_MAX][2];
+
+typedef struct {
+    sand_lane_t* lanes;
+    bool found_any[SAND_LANE_COUNT];
+    int rslide_a[2];
+    int rslide_b[2];
+    int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
+    int y_step;
+} gas_pass_t;
+
+/* What one row of the walk needs and the span around it already knows: the
+ * three rows a gas cell can reach, its stamp bits, and the columns the caller
+ * owns. Carried rather than re-derived, for the reason sweep_ctx_t (sand.c)
+ * is - a span cut into pieces pays this once per piece per row. */
+typedef struct {
+    uint8_t *row, *prow, *arow, *brow;
+    const uint8_t* stamp_row;
+    int y, x0, x1;
+} gas_row_t;
 
 /*
  * Sub-pass 1: rise, and the two diagonal slides - try_fall_or_scatter()/
@@ -123,13 +147,13 @@ gas_row_may_hold(int y) {
  * read per cell per step by the sweep, costing every falling grain
  * forever. */
 static bool
-try_bubble(sand_t* s, uint8_t* row, uint8_t* prow, int x, int y, int w, int rdx, int rdy, cell_t grain,
-           uint8_t density) {
+try_bubble(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t grain, uint8_t density) {
+    uint8_t* const prow = r->prow;
     if (prow == NULL) {
         return false;
     }
-    const int nx = x + rdx;
-    if ((unsigned)nx >= (unsigned)w) {
+    const int nx = x + c->rdx;
+    if ((unsigned)nx >= (unsigned)s->w) {
         return false;
     }
 
@@ -157,12 +181,13 @@ try_bubble(sand_t* s, uint8_t* row, uint8_t* prow, int x, int y, int w, int rdx,
      * move. Mass is conserved by construction - a swap of two whole
      * cells, the liquid keeping its own variant nibble untouched. */
     prow[nx] = grain;
-    row[x] = target;
+    r->row[x] = target;
 
-    mark_slide(s, x, y, nx, y + rdy);
-    gas_row_arm(y + rdy);
-    wake_block_and_neighbors(s, x, y);
-    wake_block_and_neighbors(s, nx, y + rdy);
+    const int ny = r->y + c->rdy;
+    mark_slide(s, x, r->y, nx, ny);
+    gas_row_arm(ny);
+    wake_block_and_neighbors(s, x, r->y);
+    wake_block_and_neighbors(s, nx, ny);
     return true;
 }
 
@@ -236,12 +261,14 @@ build_gas_tables(void) {
  * downward is unsafe for a sweep that guarantees a single move per cell
  * only in the direction it sweeps. */
 static inline bool
-gas_walk_once(sand_t* s, uint8_t* row, int x, int y, int w, int rdx, int rdy, cell_t grain, uint8_t density) {
+gas_walk_once(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t grain, uint8_t density) {
+    uint8_t* const row = r->row;
+    const int y = r->y;
     const int roll = (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_WALK) & 0xFF);
 
     const int off = gas_walk_offset[roll];
 
-    const int* d = ring_dir(ring_of(rdx, rdy) + off);
+    const int* d = ring_dir(ring_of(c->rdx, c->rdy) + off);
     const int ny = y + d[1];
     const int nx = x + d[0];
 
@@ -251,7 +278,7 @@ gas_walk_once(sand_t* s, uint8_t* row, int x, int y, int w, int rdx, int rdy, ce
      * can_enter() has already asked whether the blocker is a liquid and
      * how heavy it is. */
     uint8_t* const trow = dest_row(s, ny);
-    if (trow == NULL || (unsigned)nx >= (unsigned)w) {
+    if (trow == NULL || (unsigned)nx >= (unsigned)s->w) {
         return false;
     }
     const cell_t target = trow[nx];
@@ -303,11 +330,9 @@ arm_exhaustive_landing(int y) {
  * fall or scatter, then slide, then bubble, stopping at the first that moves
  * it. */
 static inline __attribute__((always_inline)) bool
-gas_move_exhaustive(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int rdx,
-                    int rdy, const int* rslide_a, const int* rslide_b, int rload_dx, int rload_dy, int jostle,
-                    cell_t grain, uint8_t mat_id, uint8_t density, const material_t* mat,
-                    bool driven_gas[MATERIAL_MAX][2]) {
-    if (jostle == 0) {
+gas_move_exhaustive(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t grain, uint8_t mat_id,
+                    uint8_t density, const material_t* mat) {
+    if (c->jostle == 0) {
         const int scatter = (s->scatter >= 0) ? s->scatter : mat->scatter;
         /* The _impl, not the public wrapper. Both live in sand_priv.h as
          * static inline; the wrappers are extern in sand.c and exist for the
@@ -315,32 +340,31 @@ gas_move_exhaustive(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8
          * gas grain pay a cross-translation-unit call with thirteen arguments -
          * and the gas rise sweep is 49% of the app's most expensive scene.
          * The main sweep already calls the _impl directly. */
-        if (try_fall_or_scatter_impl(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, grain, density,
-                                     scatter)) {
+        if (try_fall_or_scatter_impl(s, r->row, r->prow, r->arow, r->brow, x, r->y, s->w, c->rdx, c->rdy, c->rslide_a,
+                                     c->rslide_b, grain, density, scatter)) {
             return true;
         }
     }
     /* Same as above, and worse: try_slide() is a 22-byte thunk, so this
      * marshalled sixteen arguments only to forward them to try_slide_impl
      * on the other side of the call. */
-    if (try_slide_impl(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, rload_dx, rload_dy, jostle,
-                       grain, mat_id, density, mat, driven_gas)) {
+    if (try_slide_impl(s, r->row, r->prow, r->arow, r->brow, x, r->y, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b,
+                       c->rload_dx, c->rload_dy, c->jostle, grain, mat_id, density, mat, gas_driven)) {
         return true;
     }
     /* Last, so an ordinary rise into open space always wins over shoving a
      * liquid aside - a gas with somewhere free to go takes it, and only a
      * gas that is genuinely capped by liquid pays for the extra check. */
-    return try_bubble(s, row, prow, x, y, w, rdx, rdy, grain, density);
+    return try_bubble(s, r, c, x, grain, density);
 }
 
 static bool
-step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int rdx,
-                   int rdy, const int* rslide_a, const int* rslide_b, int rload_dx, int rload_dy, int jostle,
-                   cell_t grain, bool driven_gas[MATERIAL_MAX][2]) {
+step_one_gas_grain(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t grain) {
+    const int y = r->y;
     const uint8_t mat_id = CELL_MATERIAL(grain);
     const uint8_t density = gas_density[mat_id];
 
-    if (!tick_decay(s, row, x, y, &grain, mat_id, (s->decay >= 0) ? s->decay : gas_decay[mat_id])) {
+    if (!tick_decay(s, r->row, x, y, &grain, mat_id, (s->decay >= 0) ? s->decay : gas_decay[mat_id])) {
         return true; /* vanished - already woken, nothing left to move */
     }
 
@@ -350,7 +374,7 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
      * test that places gas and expects a deterministic one-cell move. */
     const int mobility = (s->mobility >= 0) ? s->mobility : gas_mobility[mat_id];
     const bool try_moving =
-        jostle != 0 || (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_MOBILITY) & 0xFF) < mobility;
+        c->jostle != 0 || (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_MOBILITY) & 0xFF) < mobility;
 
     /* The walk replaces only the MOVEMENT half - tick_decay() above still runs,
      * so fire still burns down at the same rate. It draws its own direction, so
@@ -360,7 +384,7 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
         /* gas_walk_once() handles an up-ish draw blocked by a
          * lighter-than-gas liquid itself, so this needs no separate
          * try_bubble() call of its own. */
-        const bool walked = try_moving && gas_walk_once(s, row, x, y, w, rdx, rdy, grain, density);
+        const bool walked = try_moving && gas_walk_once(s, r, c, x, grain, density);
         if (walked) {
             wake_block_and_neighbors(s, x, y);
         }
@@ -368,41 +392,13 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
     }
 
     const material_t* const mat = material_of(grain);
-    const bool moved = try_moving
-                       && gas_move_exhaustive(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, rload_dx,
-                                              rload_dy, jostle, grain, mat_id, density, mat, driven_gas);
+    const bool moved = try_moving && gas_move_exhaustive(s, r, c, x, grain, mat_id, density, mat);
     if (moved) {
         arm_exhaustive_landing(y);
         wake_block_and_neighbors(s, x, y);
     }
     return moved;
 }
-
-/* driven_by_gravity()'s table for this pass, built against the REVERSED
- * gravity vector - see sand_step_gas(). File-static so a core-1 half that
- * misses its join is not reading a frame that has returned, and because the
- * pass never nests. MATERIAL_MAX, not MATERIAL_ROWS: only KIND_GAS cells
- * read it, and no gas material lives in MAT_EXTENDED's twin-row range. */
-static bool gas_driven[MATERIAL_MAX][2];
-
-typedef struct {
-    sand_lane_t* lanes;
-    bool found_any[SAND_LANE_COUNT];
-    int rslide_a[2];
-    int rslide_b[2];
-    int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
-    int y_step;
-} gas_pass_t;
-
-/* What one row of the walk needs and the span around it already knows: the
- * three rows a gas cell can reach, its stamp bits, and the columns the caller
- * owns. Carried rather than re-derived, for the reason sweep_ctx_t (sand.c)
- * is - a span cut into pieces pays this once per piece per row. */
-typedef struct {
-    uint8_t *row, *prow, *arow, *brow;
-    const uint8_t* stamp_row;
-    int y, x0, x1;
-} gas_row_t;
 
 /* One row of the reversed sweep - only gas cells are dispatched; everything
  * else was either already handled by the main sweep or is a static wall
@@ -411,7 +407,6 @@ static bool
 step_one_gas_row(sand_t* s, const gas_row_t* r, const gas_pass_t* c) {
     uint8_t* const row = r->row;
     const int y = r->y;
-    const int w = s->w;
     const int rx_step = c->rx_step;
 
     const int x_from = (rx_step > 0) ? r->x0 : r->x1 - 1;
@@ -438,8 +433,7 @@ step_one_gas_row(sand_t* s, const gas_row_t* r, const gas_pass_t* c) {
         if (sand_row_cell_stamped(r->stamp_row, x)) {
             continue;
         }
-        step_one_gas_grain(s, row, r->prow, r->arow, r->brow, x, y, w, c->rdx, c->rdy, c->rslide_a, c->rslide_b,
-                           c->rload_dx, c->rload_dy, c->jostle, cell, gas_driven);
+        step_one_gas_grain(s, r, c, x, cell);
     }
     return any;
 }
