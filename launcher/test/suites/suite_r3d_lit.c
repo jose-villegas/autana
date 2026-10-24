@@ -2363,14 +2363,17 @@ release_fixture(void) {
 }
 
 static void
-test_the_transform_split_is_the_shortest_prefix_holding_half_the_vertices(void) {
+test_the_transform_split_is_the_shortest_prefix_holding_its_share_of_the_vertices(void) {
     const r3d_lit_cluster_t clusters[] = {
         {.vertex_count = 1}, {.vertex_count = 1}, {.vertex_count = 10}, {.vertex_count = 10}};
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0, 1, 2, 3};
-    TEST_ASSERT_EQUAL_INT(3, r3d_pipeline_transform_split(&mesh, visible, 4));
-    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_transform_split(&mesh, &visible[2], 1));
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_transform_split(&mesh, visible, 0));
+    TEST_ASSERT_EQUAL_INT(3, r3d_pipeline_transform_split(&mesh, visible, 4, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_transform_split(&mesh, &visible[2], 1, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_transform_split(&mesh, visible, 0, JOB_SHARE_EVEN));
+    /* 2 of 22 vertices hold a twentieth; 12 of 22 fall short of nine tenths. */
+    TEST_ASSERT_EQUAL_INT(2, r3d_pipeline_transform_split(&mesh, visible, 4, JOB_SHARE_PERMILLE / 20));
+    TEST_ASSERT_EQUAL_INT(4, r3d_pipeline_transform_split(&mesh, visible, 4, JOB_SHARE_PERMILLE * 9 / 10));
 }
 
 static void
@@ -2379,8 +2382,8 @@ test_the_draw_split_of_no_work_is_the_middle_row(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t rows[] = {{0, 99, false}};
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100, RASTER_SPLIT_EVEN));
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100, JOB_SHARE_EVEN));
 }
 
 static void
@@ -2389,15 +2392,15 @@ test_the_draw_split_falls_inside_the_rows_the_work_covers(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t top[] = {{0, 9, false}};
-    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100, RASTER_SPLIT_EVEN);
+    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100, JOB_SHARE_EVEN);
     TEST_ASSERT_TRUE(split >= 1 && split <= 9);
 
     const r3d_pipeline_rows_t beyond[] = {{-50, 500, false}};
-    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100, RASTER_SPLIT_EVEN);
+    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100, JOB_SHARE_EVEN);
     TEST_ASSERT_TRUE(middle >= 48 && middle <= 52);
 
     const r3d_pipeline_rows_t unbounded[] = {{0, 0, true}};
-    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100, JOB_SHARE_EVEN));
 }
 
 static void
@@ -2407,9 +2410,9 @@ test_draw_split_accumulates_bounded_uneven_buckets(void) {
     const uint16_t visible[] = {0, 1};
     const r3d_pipeline_rows_t rows[] = {{0, 9, false}, {40, 49, false}};
     const int height = 640;
-    TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE / 4));
-    TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_EVEN));
-    TEST_ASSERT_EQUAL_INT(46, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE * 3 / 4));
+    TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(46, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_PERMILLE * 3 / 4));
 }
 
 static void
@@ -2419,13 +2422,11 @@ test_draw_split_interpolates_the_requested_share_and_clamps_rows(void) {
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t rows[] = {{0, 0, true}};
     const int height = 640;
-    TEST_ASSERT_EQUAL_INT(height / 4,
-                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE / 4));
-    TEST_ASSERT_EQUAL_INT(height / 2, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_EVEN));
-    TEST_ASSERT_EQUAL_INT(height / 3,
-                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE / 3));
+    TEST_ASSERT_EQUAL_INT(height / 4, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(height / 2, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(height / 3, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE / 3));
     TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, 0));
-    TEST_ASSERT_EQUAL_INT(height - 1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE));
+    TEST_ASSERT_EQUAL_INT(height - 1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE));
 }
 
 #undef RUN_TEST
@@ -2496,7 +2497,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey);
     RUN_TEST(test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn);
     RUN_TEST(test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone);
-    RUN_TEST(test_the_transform_split_is_the_shortest_prefix_holding_half_the_vertices);
+    RUN_TEST(test_the_transform_split_is_the_shortest_prefix_holding_its_share_of_the_vertices);
     RUN_TEST(test_the_draw_split_of_no_work_is_the_middle_row);
     RUN_TEST(test_the_draw_split_falls_inside_the_rows_the_work_covers);
 }

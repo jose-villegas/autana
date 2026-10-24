@@ -8,7 +8,7 @@ provide its examples because they can be added or removed independently.
 
 The comment policy is under "Comments" below, and the layering rule comments
 obey is there with it; the include half of that rule lives in
-[`firmware/README.md`](firmware/README.md), since it is
+[`firmware/README.md`](../firmware/README.md), since it is
 about how the layers fit together rather than about C. Cppcheck and the MISRA
 addon check semantic rules through `launcher/tools/quality/misra_check.sh`.
 The checkable first-party subset is gated by
@@ -32,10 +32,10 @@ These sit beside the guide because each needs call sites and numbers, not only r
 
 | Topic | Page |
 |---|---|
-| `IRAM_ATTR`, `noinline`, `always_inline`, constructors | [Function attributes](c-style/Function-Attributes.md) |
-| Tasks, cores, spinlocks, atomics, queues | [Concurrency](c-style/Concurrency.md) |
-| Driver, HAL and register access, wrapping a driver function | [Register access](c-style/Register-Access.md) |
-| Placing code or data with a linker fragment | [Linker fragments](memory/Linker-Fragments.md) |
+| `IRAM_ATTR`, `noinline`, `always_inline`, constructors | [Function attributes](Function-Attributes.md) |
+| Tasks, cores, spinlocks, atomics, queues | [Concurrency](Concurrency.md) |
+| Driver, HAL and register access, wrapping a driver function | [Register access](Register-Access.md) |
+| Placing code or data with a linker fragment | [Linker fragments](../memory/Linker-Fragments.md) |
 
 ## Mechanical rules
 
@@ -96,7 +96,7 @@ its own, listed in `.git-blame-ignore-revs`.
 
 Three places, one file list. `scripts/gates/format-file-list.sh` defines which
 files the rules apply to: vendored trees by path, generated files by the
-banner they carry ([Generated-Files.md](tools/Generated-Files.md)); so the
+banner they carry ([Generated-Files.md](../tools/Generated-Files.md)); so the
 hook and CI cannot disagree about what is in scope.
 
 ```sh
@@ -119,7 +119,7 @@ also come from the index. Without ESP-IDF, the citation check reports which
 external names it cannot verify; CI requires the SDK.
 
 Pre-push checks target branch names and runs sanitized host tests when a
-pushed range changes `.c` or `.h`; see [Host tests: git hooks](testing/Host-Tests.md#git-hooks).
+pushed range changes `.c` or `.h`; see [Host tests: git hooks](../testing/Host-Tests.md#git-hooks).
 The hooks are feedback: `git commit --no-verify` or `git push --no-verify`
 skips them, `.git/hooks`
 is not cloned, and it never sees a merge or a commit made by CI. The workflow
@@ -129,7 +129,7 @@ a surprise six months later.
 
 ### Shared helpers
 
-Consult the [shared-owner catalogue](Shared-Helpers.md) before writing a helper and extend an existing owner when it fits.
+Consult the [shared-owner catalogue](../tools/Shared-Helpers.md) before writing a helper and extend an existing owner when it fits.
 
 ### Token clones
 
@@ -242,7 +242,7 @@ and it survives the code it described. Say what shape of caller needs the
 thing ("a checkbox toggle", "a per-tile badge") or state the rule a caller
 must follow. An app's own files may name anything below them; that direction
 cannot dangle. This is the comment half of the layering rule; see
-[`firmware/README.md`](firmware/README.md). The engine's
+[`firmware/README.md`](../firmware/README.md). The engine's
 documents sit at the same layer and answer to the same rule: every Markdown
 file under `docs/` but an app's own folder and `docs/plans/`, whose designs
 name the apps they plan for.
@@ -340,7 +340,7 @@ A `.c` file includes its own public header first when it has one. Follow it
 with standard-library headers, then ESP-IDF or other external headers, then
 project headers. Keep project includes layer-qualified: `"gfx/gfx.h"`, not
 `"gfx.h"`, including between two files in the same folder; see
-[`firmware/README.md`](firmware/README.md) for why. Do not
+[`firmware/README.md`](../firmware/README.md) for why. Do not
 expose a lower layer to a higher-layer type just to avoid passing a small
 value across the boundary.
 

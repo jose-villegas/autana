@@ -105,6 +105,6 @@ sequenceDiagram
 
 ## Related
 
-- [`../Build-Variants.md`](../Build-Variants.md): development and release instrumentation
+- [`Build-Variants.md`](Build-Variants.md): development and release instrumentation
 - [`firmware/README.md`](../firmware/README.md): the shell frame loop
 - [`gfx/README.md`](../gfx/README.md): gfx send counters and overlays

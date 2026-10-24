@@ -15,7 +15,7 @@ its rest pose; SKIN holds, per vertex, which joints move it and by how much.
 | Term | Meaning |
 |---|---|
 | LMSH | the baked mesh entry the skin moves ([Baked mesh](Baked-Mesh.md#lmsh)) |
-| TRCK | an animation clip entry ([Animation tracks](../Animation-Tracks.md)) |
+| TRCK | an animation clip entry ([Animation tracks](Animation-Tracks.md)) |
 | Tick | one int16 step of an LMSH position; the mesh's position scale is ticks per model unit |
 | Palette | one matrix per joint taking a bind position to its posed position |
 | Cluster, node | the mesh's draw clusters and the bounding tree over them |
@@ -43,7 +43,7 @@ flowchart LR
 
 | Step | Owner | Beyond the diagram |
 |---|---|---|
-| Local TRS | `anim_pose_rest()`, `anim_sample_pose()`, `anim_pose_blend()` | blending in [Animation tracks](../Animation-Tracks.md#scene-playback) |
+| Local TRS | `anim_pose_rest()`, `anim_sample_pose()`, `anim_pose_blend()` | blending in [Animation tracks](Animation-Tracks.md#scene-playback) |
 | Model matrices | `anim_pose_model()` | each root independent |
 | Palette | the scene | the position scale makes bind ticks map to posed ticks |
 | Blend | `render/skin/r3d_skinning.h` | linear blend skinning (LBS)<sup>[[57]](../Citations.md#57)</sup>; two- and four-influence kernels, picked once per entry, outside the vertex loop |
@@ -267,7 +267,7 @@ skin or fails.
 |---|---|
 | SKIN | `<mesh id>.skin` |
 | SKEL | the glTF skin's name, else the root joints' common non-joint parent's; one per rig shared in a pack |
-| TRCK | each name in `source.clips`, through `tracks_asset` ([layout](../Animation-Tracks.md)); Blender import settings accept the list |
+| TRCK | each name in `source.clips`, through `tracks_asset` ([layout](Animation-Tracks.md)); Blender import settings accept the list |
 
 Ids are ASCII and fit 31 bytes. `--max-influences` is a pack parameter, not
 an import setting.
@@ -341,8 +341,9 @@ sequenceDiagram
     S->>S: draw mesh views through camera pose
 ```
 
-`job_run_split()` (`core/job.h`, shared with the raster) gives core 1 the
-second range, or runs it inline first when core 1 is busy. Animator jobs
+`job_run_steered()` (`core/job.h`, shared with the raster) gives core 1 the
+second range, or runs it inline first when core 1 is busy. Each stage's share
+on the scene moves toward equal times for both halves. Animator jobs
 write their own poses and palettes; skin jobs write disjoint cluster vertex
 ranges. Job contexts are checked against `JOB_CTX_MAX` at compile time.
 
@@ -373,5 +374,5 @@ runs both, with the model and clip it names, and rewrites the figures and tables
 
 ## Current limits
 
-Playback limits are in [Animation tracks](../Animation-Tracks.md#scene-playback);
+Playback limits are in [Animation tracks](Animation-Tracks.md#scene-playback);
 authoring limits are in [Skinned Meshes](Skinned-Meshes.md#5-current-limits).

@@ -3,7 +3,7 @@
 Rendering a firmware screen into an image on a laptop: how a scene is
 declared, what its pixels are pinned to, the same scenes under QEMU, and
 diffing any of them against a device capture.
-[`../Testing-Guide.md`](../Testing-Guide.md) is the host/device test split
+[`testing/README.md`](../testing/README.md) is the host/device test split
 this sits inside.
 
 On Windows, run the `.sh` commands below in Git Bash. On Linux, use a
@@ -586,10 +586,10 @@ and frame count. `--panel-width PX` scales each picture before adding its label
 
 ## Related
 
-- [`../Testing-Guide.md`](../Testing-Guide.md): the host and device test
+- [`testing/README.md`](../testing/README.md): the host and device test
   runners, runsuite, and the QEMU suite run this harness's second backend
   borrows its image from.
-- [`../Building-a-Screen.md`](../Building-a-Screen.md): building the screen
+- [`ui/Building-a-Screen.md`](../ui/Building-a-Screen.md): building the screen
   a scene renders.
 - [`../notes/Debugging.md`](../notes/Debugging.md#performance-seems-off):
   why a host timing is not a cost.
