@@ -231,6 +231,9 @@ run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEM
 cc=$(find_cc) || exit 2
 run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input/shake-level.png" \
     > "$WORK/shake_figures.log"
+run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
+    > "$WORK/gravity_figures.log"
+# --orphans scans this runner: gravity-trust.png, gravity-bias.png
 run mkdir -p "$OUT/math"
 run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
