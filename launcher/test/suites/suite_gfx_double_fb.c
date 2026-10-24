@@ -19,6 +19,7 @@
 
 static void
 fixture(void) {
+    doubled = false;
     gfx_present_guard_end();
     gfx_reset_for_test();
     TEST_ASSERT_TRUE(gfx_init());

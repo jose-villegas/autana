@@ -11,9 +11,10 @@ typedef struct {
 
 static bool
 track_example_start(track_example_t* s, const asset_pack_t* pack) {
+    const name_hash_t camera = name_hash("camera");
+    const name_hash_t position = name_hash("position");
     if (anim_tracks_from_pack(pack, "probe", &s->clip) != ASSET_OK
-        || anim_tracks_find(&s->clip, name_hash("camera"), ANIM_COMPONENT_TRANSFORM, name_hash("position"), &s->move)
-               != ASSET_OK) {
+        || anim_tracks_find(&s->clip, camera, ANIM_COMPONENT_TRANSFORM, position, &s->move) != ASSET_OK) {
         return false;
     }
     anim_playhead_init(&s->playhead, ANIM_LOOP);
