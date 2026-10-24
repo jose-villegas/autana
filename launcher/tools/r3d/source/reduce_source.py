@@ -80,20 +80,6 @@ def simplify(positions, triangles, error):
     return out[:n].reshape(-1, 3).astype(np.int64)
 
 
-def triangle_objects(path):
-    """The object (`o`) names of an OBJ and, per triangle in load_obj's order,
-    the index of the object it belongs to."""
-    names, owner, current = [], [], -1
-    with open(path, encoding="latin-1") as f:
-        for line in f:
-            if line.startswith("o "):
-                names.append(line[2:].strip())
-                current = len(names) - 1
-            elif line.startswith("f "):
-                owner += [current] * (len(line.split()) - 3)
-    return names, np.array(owner, dtype=np.int64)
-
-
 def write_obj(path, mtllib, positions, uvs, triangles, objects, object_names, materials, names):
     used = np.unique(triangles)
     remap = np.full(len(positions), -1, dtype=np.int64)
@@ -124,8 +110,7 @@ def reduce(exported, name, out, error, error_for=()):
     `out`, beside its .mtl and textures; returns the triangle counts before
     and after."""
     obj_path = exported / f"{name}.obj"
-    p, uv, tri_v, tri_t, tri_m, names = load_obj(str(obj_path))
-    object_names, tri_o = triangle_objects(obj_path)
+    p, uv, tri_v, tri_t, tri_m, names, tri_o, object_names = load_obj(str(obj_path))
     if len(uv) == 0:
         uv = np.zeros((1, 2))
     # One vertex per (position, texture coordinate, material, object) corner:
