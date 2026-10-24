@@ -1,19 +1,26 @@
 # Citations
 
-This table names the papers, books and specifications whose techniques this
-tree uses. A document cites an entry by its number, as a superscript link:
-`<sup>[[3]](Citations.md#3)</sup>`, with the path relative to the citing file.
-Code and its comments never cite by number: they name the source in place.
-An entry code uses opens its "cited by" line with that name in backticks ("Durstenfeld",
-"Ericson, Real-Time Collision Detection", "RFC 4648"), written once:
-`` `Durstenfeld` cited by: ... ``. The line lists the documents citing the entry by
-number and every source file that contains the name, spelled exactly as
-stated (a mention in another spelling is not found).
-[`check_doc_citations.py`](../scripts/gates/check_doc_citations.py) fails when
-a cited number has no entry, a source file writes a `Citations.md` anchor, an
-entry's name appears in no source file, or a list differs, and `--fix`
-rewrites the lists. A number is permanent: an entry nothing uses is deleted
-and its number is never reused. A new source takes one past the highest.
+The papers, books and specifications whose techniques this tree uses.
+[`check_doc_citations.py`](../scripts/gates/check_doc_citations.py)
+checks every rule below, and `--fix` rewrites the "cited by" lists.
+
+```mermaid
+flowchart LR
+    Doc["Document"] -- "superscript link to #n" --> Entry["Entry [n]<br/>source, then name cited by: list"]
+    Code["Source file"] -- "names the source in place" --> Name["Name, spelled<br/>as the entry writes it"]
+    Name -- "listed in cited by" --> Entry
+    Gate["check_doc_citations.py"] -- "lists citers, --fix rewrites" --> Entry
+    Gate -- "rejects a Citations.md anchor" --> Code
+```
+
+| Rule | Detail |
+|---|---|
+| A document cites by number | `<sup>[[3]](Citations.md#3)</sup>`, the path relative to the citing file |
+| Code cites by name | Never a `Citations.md` anchor: the comment names the source ("Durstenfeld", "RFC 4648") |
+| An entry code uses carries that name | Its line opens `` `Durstenfeld` cited by: ``, written once; a mention in another spelling is not found |
+| "Cited by" lists every citer | The documents citing the number, then every source file containing the name |
+| A number is permanent | An entry nothing uses is deleted and its number never reused; a new source takes one past the highest |
+| The gate fails | A cited number with no entry, a source file writing a `Citations.md` anchor, a name in no source file, an entry cited nowhere, a list that differs, rows out of order |
 
 | [n] | Source |
 |---|---|
