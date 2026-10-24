@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Draw benchmark families from committed measurements and annotated plain references."""
 import argparse
+import re
 from pathlib import Path
 import sys
 
@@ -11,7 +12,9 @@ import math_bench_table as bench
 from docs.plot_style import SLOTS, MUTED, LABEL_SIZE, TITLE_SIZE, subplots, style_axes, save
 from matplotlib.patches import Patch
 
-TYPE_ORDER = ("f", "i", "s", "x")
+REFERENCE_HATCH = "///"
+REFERENCE_FILL = "white"
+REFERENCE_CUT_FACTOR = 1.25
 FIGURE_WIDTH = 12
 PANEL_HEIGHT = 2
 BAR_WIDTH = 0.18
@@ -20,6 +23,7 @@ VALUE_SIZE = 6
 VALUE_GAP = 2
 REFERENCE_GAP = 11
 VALUE_HEADROOM = 1.35
+REFERENCE_HEADROOM = 1.5
 CATEGORY_MARGIN = 0.6
 BREAK_TOP_FRACTION = 0.94
 BREAK_GAP_FRACTION = 0.04
@@ -27,7 +31,25 @@ BREAK_RISE_FRACTION = 0.025
 BREAK_LINE_WIDTH = 2
 
 
+def destination_type(kind):
+    return kind.split("_to_")[-1]
+
+
+def number_types(rows):
+    kinds = {destination_type(row[2]) for row in rows}
+    readme = (ROOT / "docs/math/README.md").read_text(encoding="utf-8")
+    section = readme.split("## Number types\n", 1)[1].split("\n## ", 1)[0]
+    documented = re.findall(r"^\| `(\w+)` \|", section, re.M)
+    ordered = list(dict.fromkeys(kind for kind in documented if kind in kinds))
+    ordered.extend(sorted(kinds - set(ordered)))
+    if len(ordered) > len(SLOTS):
+        raise ValueError(f"too many number types for plot palette: {ordered}")
+    return ordered
+
+
 def render(rows, measured, items):
+    type_order = number_types(rows)
+    type_indices = {kind: index for index, kind in enumerate(type_order)}
     metadata = {row[0]: row for row in rows}
     pairs = {item.fast: item.plain for item in items}
     references = set(pairs.values())
@@ -40,7 +62,7 @@ def render(rows, measured, items):
             key, label, kind, _, owner = row
             if owner != family or key in references:
                 continue
-            label = label.removesuffix(" (vec3)").removesuffix(" (scalar)")
+            label = re.sub(r" \([^)]*\)$", "", label)
             if "_to_" in kind:
                 label += " " + kind.replace("_to_", "\u2192")
             groups.setdefault(label, []).append(row)
@@ -51,9 +73,12 @@ def render(rows, measured, items):
     fig, axes = subplots(len(panels), 1, (FIGURE_WIDTH, PANEL_HEIGHT * len(panels)), squeeze=False)
     for axis, (family, groups) in zip(axes.flat, panels):
         limit = max(measured[row[0]][0] for members in groups.values() for row in members) * VALUE_HEADROOM
+        near_references = [measured[pairs[row[0]]][0] for members in groups.values() for row in members
+                           if row[0] in pairs and limit < measured[pairs[row[0]]][0] <= limit * REFERENCE_CUT_FACTOR]
+        limit = max(limit, max(near_references, default=0) * REFERENCE_HEADROOM)
         for tick, members in enumerate(groups.values()):
             bars = []
-            for row in sorted(members, key=lambda row: TYPE_ORDER.index(row[2].split("_to_")[-1])):
+            for row in sorted(members, key=lambda row: type_indices[destination_type(row[2])]):
                 bars.append((row, False))
                 if row[0] in pairs:
                     bars.append((metadata[pairs[row[0]]], True))
@@ -63,14 +88,14 @@ def render(rows, measured, items):
                 value = measured[key][0]
                 height = min(value, limit) if reference else value
                 position = tick + (offset - (len(bars) - 1) / 2) * width
-                colour = SLOTS[TYPE_ORDER.index(kind.split("_to_")[-1])]
-                axis.bar(position, height, width, color="white" if reference else colour,
-                         edgecolor=colour, hatch="///" if reference else None)
+                colour = SLOTS[type_indices[destination_type(kind)]]
+                axis.bar(position, height, width, color=REFERENCE_FILL if reference else colour,
+                         edgecolor=colour, hatch=REFERENCE_HATCH if reference else None)
                 if reference and value > limit:
                     for top in (BREAK_TOP_FRACTION, BREAK_TOP_FRACTION - BREAK_GAP_FRACTION):
                         axis.plot([position - width / 2, position + width / 2],
                                   [limit * (top - BREAK_RISE_FRACTION), limit * top],
-                                  color="white", linewidth=BREAK_LINE_WIDTH, solid_capstyle="butt")
+                                  color=REFERENCE_FILL, linewidth=BREAK_LINE_WIDTH, solid_capstyle="butt")
                 axis.annotate(f"{value:.0f}", (position, height), xytext=(0, VALUE_GAP),
                               textcoords="offset points", ha="center", fontsize=VALUE_SIZE, color=MUTED)
                 if reference:
@@ -85,13 +110,13 @@ def render(rows, measured, items):
         axis.set_title(title, loc="left", fontsize=TITLE_SIZE)
         axis.spines[["top", "right"]].set_visible(False)
     blank = Patch(visible=False)
-    handles = [handle for colour in SLOTS[:len(TYPE_ORDER)] for handle in (Patch(color=colour), blank)]
-    labels = [label for kind in TYPE_ORDER for label in (kind, "")]
-    types = fig.legend(handles, labels, title="type", fontsize=LABEL_SIZE, ncols=len(TYPE_ORDER),
+    handles = [handle for colour in SLOTS[:len(type_order)] for handle in (Patch(color=colour), blank)]
+    labels = [label for kind in type_order for label in (kind, "")]
+    types = fig.legend(handles, labels, title="type", fontsize=LABEL_SIZE, ncols=len(type_order),
                        loc="outside upper right", frameon=False)
     fig.canvas.draw()
     box = types.get_window_extent().transformed(fig.transFigure.inverted())
-    fig.legend([Patch(facecolor="white", edgecolor=SLOTS[0], hatch="///")], ["plain reference"],
+    fig.legend([Patch(facecolor=REFERENCE_FILL, edgecolor=SLOTS[0], hatch=REFERENCE_HATCH)], ["plain reference"],
                fontsize=LABEL_SIZE, frameon=False, loc="lower right", bbox_to_anchor=(box.x1, box.y0),
                borderaxespad=0)
     fig.set_layout_engine("none")
