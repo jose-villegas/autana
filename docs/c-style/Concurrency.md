@@ -1,7 +1,7 @@
 # Concurrency
 
 Tasks, cores and shared state in first-party C: which primitive to pick and where the code
-already does it. Part of the [C style guide](../C-Style-Guide.md).
+already does it. Part of the [C style guide](README.md).
 
 ## Who runs where
 
@@ -42,9 +42,8 @@ flowchart TD
 
 ## Critical sections
 
-A spinlock section is correct on one or two cores, and it disables interrupts on the core
-that holds it. Keep it to a few field updates ([`touch.c:45`](../../launcher/main/input/touch/touch.c#L45)
-says the same).
+A spinlock section disables interrupts on the core that holds it: keep it to a few field
+updates ([`touch.c:45`](../../launcher/main/input/touch/touch.c#L45)).
 
 | Do | Do not |
 |---|---|
@@ -54,16 +53,12 @@ says the same).
 
 ## Atomics and volatile
 
-`volatile` stops the compiler caching a value; it does not make two fields change together
-and it orders nothing between cores. It is enough for a lone flag written by one side and read
-by the other, as in [`touch.c:53`](../../launcher/main/input/touch/touch.c#L53). Anything that
-publishes data behind a flag needs a release store and an acquire load, as `frame_watch.c`
-does at lines 94 and 201. `memory_order_relaxed` is for counters nothing else depends on.
+- Use `volatile` only for a lone flag one side writes and the other reads ([`touch.c:53`](../../launcher/main/input/touch/touch.c#L53)); it orders nothing between cores.
+- Publish data behind a flag with a release store and an acquire load (`frame_watch.c` lines 94 and 201).
+- Use `memory_order_relaxed` only for counters nothing else depends on.
 
 ## Starting tasks
 
-Create static state first, the task last, and check the return. A task that fails to start
-logs and leaves the feature off ([`touch.c:264`](../../launcher/main/input/touch/touch.c#L264),
-[`console.c:236`](../../launcher/main/console/console.c#L236)). Prefer
-`xTaskCreateStaticPinnedToCore` with a stack from `memory_alloc(..., MEMORY_INTERNAL)` where
-the stack must stay in internal RAM ([`job.c:76`](../../launcher/main/core/job.c#L76)).
+- Create static state first and the task last, and check the return.
+- A task that fails to start logs and leaves its feature off ([`touch.c:264`](../../launcher/main/input/touch/touch.c#L264), [`console.c:236`](../../launcher/main/console/console.c#L236)).
+- Use `xTaskCreateStaticPinnedToCore` with a stack from `memory_alloc(..., MEMORY_INTERNAL)` when the stack must stay in internal RAM ([`job.c:76`](../../launcher/main/core/job.c#L76)).

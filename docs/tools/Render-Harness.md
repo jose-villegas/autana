@@ -3,7 +3,7 @@
 Rendering a firmware screen into an image on a laptop: how a scene is
 declared, what its pixels are pinned to, the same scenes under QEMU, and
 diffing any of them against a device capture.
-[`../Testing-Guide.md`](../Testing-Guide.md) is the host/device test split
+[`testing/README.md`](../testing/README.md) is the host/device test split
 this sits inside.
 
 On Windows, run the `.sh` commands below in Git Bash. On Linux, use a
@@ -324,7 +324,9 @@ Two files, the same declare-then-source shape a report script uses:
   checking each image, converting to PNG) is that one procedure. A scene that
   reads asset packs also declares `scene_assets`, the folders whose roots
   `build_pack.py` writes as packs beside the renderer; a folder with no asset
-  roots fails the build.
+  roots fails the build. `scene_renderer=1` links the renderer: every `.c`
+  below the folders `launcher/main/renderer_folders.txt` names, the list the
+  firmware and the host tests build too.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
@@ -580,10 +582,10 @@ and frame count. `--panel-width PX` scales each picture before adding its label
 
 ## Related
 
-- [`../Testing-Guide.md`](../Testing-Guide.md): the host and device test
+- [`testing/README.md`](../testing/README.md): the host and device test
   runners, runsuite, and the QEMU suite run this harness's second backend
   borrows its image from.
-- [`../Building-a-Screen.md`](../Building-a-Screen.md): building the screen
+- [`ui/Building-a-Screen.md`](../ui/Building-a-Screen.md): building the screen
   a scene renders.
 - [`../notes/Debugging.md`](../notes/Debugging.md#performance-seems-off):
   why a host timing is not a cost.

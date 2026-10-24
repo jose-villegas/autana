@@ -142,7 +142,7 @@ effect_exit(void) {
 ```
 
 The full loop, with and without `update()`, is in
-[Building-an-App.md](../Building-an-App.md#one-pass-of-the-frame-loop).
+[Building-an-App.md](../firmware/Building-an-App.md#one-pass-of-the-frame-loop).
 
 ## Framebuffer layouts
 
@@ -175,7 +175,7 @@ The [layout costs](../gfx/Targets-and-Modes.md#layout-costs) table measures
 r3d scenes and the boot animation in each layout on one board.
 Confirm the pick on the board in the app that ships it, comparing frame,
 draw, compose and send times in each layout
-([Flash-and-Captures.md](../tools/Flash-and-Captures.md) runs a suite).
+([Flash-and-Captures.md](../cli/Flash-and-Captures.md) runs a suite).
 
 ## Present policy
 
@@ -318,5 +318,5 @@ how to refresh it.
 
 - [gfx/README.md](../gfx/README.md): layouts, dirty tracking and the present path
 - [Render-Pipeline.md](Render-Pipeline.md): every r3d stage, its settings and its cost
-- [Building-an-App.md](../Building-an-App.md): the frame loop and app memory
+- [Building-an-App.md](../firmware/Building-an-App.md): the frame loop and app memory
 - [Board-and-Memory.md](../notes/Board-and-Memory.md#psram-throughput): PSRAM against internal RAM

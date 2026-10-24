@@ -9,13 +9,14 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "collections/bits.h"
 #include "draw/draw_dither.h"
 
 static void
 test_every_pattern_visits_each_threshold_once_per_period(void) {
     for (int pattern = 0; pattern < DRAW_DITHER_PATTERN_COUNT; pattern++) {
         const draw_dither_pattern_t* const table = draw_dither_pattern((draw_dither_pattern_id_t)pattern);
-        uint32_t seen[DRAW_DITHER_MAX_LEVELS / 32] = {0};
+        uint32_t seen[BITS32_WORDS(DRAW_DITHER_MAX_LEVELS)] = {0};
 
         TEST_ASSERT_NOT_NULL(table);
         TEST_ASSERT_TRUE(table->levels <= DRAW_DITHER_MAX_LEVELS);
@@ -24,12 +25,12 @@ test_every_pattern_visits_each_threshold_once_per_period(void) {
                 const int level =
                     draw_dither_threshold((draw_dither_pattern_id_t)pattern, x * table->scale_x, y * table->scale_y);
                 TEST_ASSERT_TRUE(level >= 0 && level < table->levels);
-                TEST_ASSERT_FALSE((seen[level / 32] >> (level & 31)) & 1u);
-                seen[level / 32] |= 1u << (level & 31);
+                TEST_ASSERT_FALSE(bits32_get(seen, (size_t)level));
+                bits32_set(seen, (size_t)level);
             }
         }
         for (int level = 0; level < table->levels; level++) {
-            TEST_ASSERT_TRUE((seen[level / 32] >> (level & 31)) & 1u);
+            TEST_ASSERT_TRUE(bits32_get(seen, (size_t)level));
         }
     }
 }

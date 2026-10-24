@@ -165,7 +165,7 @@ device_report_run() {
 
 # Build, flash and capture are one call, through `autana` on PATH, never a
 # worktree's own scripts/device/device.py, so every report always runs the
-# one lock code every other autana command does (docs/tools/Device-Lock.md):
+# one lock code every other autana command does (docs/cli/Device-Lock.md):
 # `autana suite --runs 1 --flash` (report_suite=<name>, one suite via
 # RUNSUITE) or `autana selftest` (report_suite="", every suite at boot).
 device_report_capture() {

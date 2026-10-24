@@ -19,9 +19,11 @@ typedef enum { SMALL_FILL_FLAT, SMALL_FILL_GRAIN, SMALL_FILL_DITHER, SMALL_FILL_
 #define SMALL_FILL_GATE_FAST      16
 #define SMALL_FILL_SMOOTH         ((small_fill_t){SMALL_FILL_CEILING_SMOOTH, SMALL_FILL_GATE_SMOOTH, SMALL_FILL_FLAT})
 #define SMALL_FILL_FAST           ((small_fill_t){SMALL_FILL_CEILING_FAST, SMALL_FILL_GATE_FAST, SMALL_FILL_FLAT})
+#define SMALL_FILL_FAST_DITHER    ((small_fill_t){SMALL_FILL_CEILING_FAST, SMALL_FILL_GATE_FAST, SMALL_FILL_DITHER})
+#define SMALL_FILL_FAST_GRAIN     ((small_fill_t){SMALL_FILL_CEILING_FAST, SMALL_FILL_GATE_FAST, SMALL_FILL_GRAIN})
 
 /* Every SMALL_FILL_<name> preset, for a list that has to cover them all: X(name) each. */
-#define SMALL_FILL_PRESETS(X)     X(SMOOTH) X(FAST)
+#define SMALL_FILL_PRESETS(X)     X(SMOOTH) X(FAST) X(FAST_DITHER) X(FAST_GRAIN)
 
 typedef struct {
     uint8_t ceiling;          /* largest bounding-box side in pixel centres; 0 disables small fill */
