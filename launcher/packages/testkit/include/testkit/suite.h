@@ -17,6 +17,7 @@ typedef struct {
 size_t suites_count(void);
 /* Entries are sorted by name on first access. */
 const suite_entry_t* suites_at(size_t i);
+/* Runners must fail on dropped suites: a boot log alone can hide tests that never ran. */
 int suites_dropped(void);
 /* Engine metadata shares the registration failure count. */
 void suites_record_drop(void);

@@ -10,8 +10,9 @@ own Unity component.
 | `testkit` | `testkit/cleanup.h`, `testkit/suite.h` and harness implementations; links Unity |
 | `testkit_runner` | Standalone selection and host main; links testkit |
 
-A package includes `cmake/PackageTests.cmake` and calls
-`testkit_add_package_tests()` after defining its library target.
+A package calls `enable_testing()` in its CMake directory, includes
+`cmake/PackageTests.cmake`, and calls `testkit_add_package_tests()` after
+defining its library target.
 `<PACKAGE>_BUILD_TESTS` defaults on for a top-level build and off when embedded.
 The helper builds `tests/*.c` and registers the executable with CTest.
 
