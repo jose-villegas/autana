@@ -163,6 +163,16 @@ class Lookup(Isolated):
         _, out = self.ask(ROW)
         self.assertIn("worst 100", out)
 
+    def test_only_the_named_records_answer(self):
+        self.records.capture(A308, "a1-diag", "2026-10-23T10:00:00", target(ROW, 100, 200))
+        self.ask(ROW)
+        # The cache now knows a capture; a different records folder must not see it.
+        self.records = Records(self.dir / "other")
+        self.records.capture(A308, "a2-diag", "2026-10-23T11:00:00", target(ROW, 150, 200))
+        _, out = self.ask(ROW, "-b", "A308")
+        self.assertIn("a2-diag", out)
+        self.assertNotIn("a1-diag", out)
+
     def test_budget_caps_output(self):
         for index in range(6):
             self.records.capture(A308, f"a{index}-diag", f"2026-10-2{index}T10:00:00", target(ROW, 100, 200))
