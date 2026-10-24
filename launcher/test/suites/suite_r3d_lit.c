@@ -16,6 +16,7 @@
 #include "unity.h"
 
 #include "core/memory.h"
+#include "core/tune.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
@@ -24,7 +25,6 @@
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
 #include "render/raster_show.h"
-#include "services/tune.h"
 
 #define W 64
 #define H 48
@@ -35,11 +35,6 @@ static r3d_pipeline_work_t* work;
 
 static bool cull_changed;
 static int32_t saved_cull;
-
-static void
-cull_reply(const char* line) {
-    (void)line;
-}
 
 static void release_fixture(void);
 
@@ -1832,9 +1827,9 @@ test_cull_off_keeps_every_cluster(void) {
     TEST_ASSERT_NOT_NULL(entry);
     saved_cull = *entry->value;
     cull_changed = true;
-    (void)tune_handle_line("RESET render.cull", cull_reply);
+    (void)tune_reset(tune_shared(), "render.cull");
     const raster_stats_t on = raster_draw(&raster, &view);
-    (void)tune_handle_line("SET render.cull 0", cull_reply);
+    (void)tune_set(tune_shared(), "render.cull", 0);
     const raster_stats_t off = raster_draw(&raster, &view);
     TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
     TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
@@ -2337,11 +2332,7 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 static void
 release_fixture(void) {
     if (cull_changed) {
-        char command[sizeof("SET render.cull -2147483648")];
-        const int length = snprintf(command, sizeof command, "SET render.cull %ld", (long)saved_cull);
-        if (length > 0 && (size_t)length < sizeof command) {
-            (void)tune_handle_line(command, cull_reply);
-        }
+        (void)tune_set(tune_shared(), "render.cull", saved_cull);
         cull_changed = false;
     }
     free(work);

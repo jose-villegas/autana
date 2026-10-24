@@ -63,13 +63,13 @@ flowchart TB
             Gfx["gfx/<br/><i>target types, the framebuffer, present/</i>"]:::hw
         end
         subgraph R12["device services"]
-            Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
+            Services["services/<br/><i>settings, build id</i>"]:::hw
         end
         subgraph R13["frame measurement"]
             Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
         end
         subgraph R14["the platform core"]
-            Core["core/<br/><i>two-core jobs, memory placement, time</i>"]:::hw
+            Core["core/<br/><i>two-core jobs, memory placement, time, tunables</i>"]:::hw
         end
         subgraph R15["board"]
             Board["board/<br/><i>pins, peripherals, panel link</i>"]:::hw
@@ -113,6 +113,7 @@ Every layer above `core/` builds on it:
 | `core/job.h` | hands one copied job at a time to core 1; runs it inline when core 1 is busy or on a host |
 | `core/memory.h` | places memory by kind |
 | `core/timing.h` | reads time |
+| `core/tune.h` | declares a tunable where it is used: a live variable on a development build, a constant on a release build |
 | `build/build_variant.h` | says which build this is |
 
 Below every folder of `main/`, `board/` included, sit the packages: first-party
