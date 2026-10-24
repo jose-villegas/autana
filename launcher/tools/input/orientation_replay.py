@@ -12,9 +12,9 @@ from build.c_header import read_define
 DISPLAY = ROOT / "launcher/main/display/display.h"
 COARSE_SAMPLE_MS = 100
 US_PER_MS = 1000
-DONE_SEGMENT = 9
 NO_QUARTER = -1
 SOURCES = (Path(__file__).with_name("orientation_replay_probe.c"),
+           ROOT / "launcher/main/apps/input_lab/orientation_probe.c",
            ROOT / "launcher/main/display/display.c", ROOT / "launcher/main/input/motion/gravity.c")
 
 
@@ -42,7 +42,7 @@ def parse_capture(lines):
             if samples and sample[0] <= samples[-1][0]:
                 raise ValueError("sample timestamps must increase")
             samples.append(tuple(sample))
-    if not samples or len(segments) < 2 or segments[-1][0] != DONE_SEGMENT:
+    if not samples or len(segments) < 2:
         raise ValueError("complete orientation round required")
     return segments, samples
 
@@ -69,12 +69,23 @@ def run(binary, model, period_ms, initial, samples):
     return [tuple(map(int, line.split())) for line in result.stdout.splitlines()]
 
 
+def validate_targets(binary, segments):
+    result = subprocess.run([str(binary), "--script"], text=True, capture_output=True, check=True)
+    targets = {int(step): int(target) for step, target, _ in
+               (line.split(" ", 2) for line in result.stdout.splitlines())}
+    if segments[-1][0] != max(targets):
+        raise ValueError("complete orientation round required")
+    if any(targets.get(step) != target for step, _, target in segments):
+        raise ValueError("segment target does not match orientation script")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", type=Path)
     parser.add_argument("--model", required=True, choices=("accel", "fused", "both"))
     parser.add_argument("--cc", default="cc")
-    parser.add_argument("--initial-quarter", type=int, required=True)
+    parser.add_argument("--initial-quarter", type=int, required=True,
+                        help="quarter actually committed when recording started, not the first requested pose")
     args = parser.parse_args()
     try:
         segments, samples = parse_capture(args.capture.read_text(encoding="utf-8").splitlines())
@@ -89,6 +100,10 @@ def main():
     targets = {step: target for step, _, target in segments}
     with tempfile.TemporaryDirectory() as directory:
         binary = build_probe(args.cc, SOURCES, directory)
+        try:
+            validate_targets(binary, segments)
+        except ValueError as error:
+            parser.error(str(error))
         for model in models:
             for period in (read_define(DISPLAY, "DISPLAY_SAMPLE_MS"), COARSE_SAMPLE_MS):
                 events = run(binary, model, period, initial, samples)

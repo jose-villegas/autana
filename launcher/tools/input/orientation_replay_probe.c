@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "apps/input_lab/orientation_probe.h"
 #include "display/display.h"
 #include "input/motion/gravity.h"
 #include "math/linear/vec_convert.h"
@@ -13,6 +14,14 @@
 
 int
 main(int argc, char** argv) {
+    if (argc == 2 && strcmp(argv[1], "--script") == 0) {
+        char prompt[ORIENTATION_PROBE_PROMPT_SIZE];
+        for (orientation_probe_step_t step = ORIENTATION_PROBE_READ_0; step <= ORIENTATION_PROBE_DONE; ++step) {
+            orientation_probe_prompt(step, prompt, sizeof prompt);
+            printf("%d %d %s\n", (int)step, orientation_probe_target(step), prompt);
+        }
+        return EXIT_SUCCESS;
+    }
     if (argc != REPLAY_ARGUMENTS || (strcmp(argv[1], "accel") != 0 && strcmp(argv[1], "fused") != 0)) {
         return EXIT_FAILURE;
     }

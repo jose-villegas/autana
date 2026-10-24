@@ -8,6 +8,17 @@
 #include "display/viewport.h"
 #include "math/scalar/mathi.h"
 
+const char*
+display_quarter_name(int quarter) {
+    static const char* const names[DISPLAY_QUARTER_COUNT] = {
+        [DISPLAY_PORTRAIT] = DISPLAY_PORTRAIT_NAME,
+        [DISPLAY_LANDSCAPE] = DISPLAY_LANDSCAPE_NAME,
+        [DISPLAY_PORTRAIT_UPSIDE_DOWN] = DISPLAY_PORTRAIT_UPSIDE_DOWN_NAME,
+        [DISPLAY_LANDSCAPE_UPSIDE_DOWN] = DISPLAY_LANDSCAPE_UPSIDE_DOWN_NAME,
+    };
+    return quarter >= 0 && quarter < DISPLAY_QUARTER_COUNT ? names[quarter] : "";
+}
+
 int
 display_panel_corner_inset(int radius, int canvas_height, int row) {
     if (radius <= 0 || row < 0 || row >= canvas_height) {
