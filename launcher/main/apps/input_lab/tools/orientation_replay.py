@@ -122,6 +122,8 @@ def motion_quarter(binary, sample, old):
 
 
 def measure(binary, samples, events, initial, segments=()):
+    scale = read_define(ROOT / "launcher/main/input/input.h", "INPUT_ACCEL_ONE_G")
+    samples = [(sample[0], *(value / scale for value in sample[1:4])) for sample in samples]
     classify(binary, samples)
     pending, turns, unwanted, latencies = None, [], 0, []
     position = 0
@@ -131,10 +133,14 @@ def measure(binary, samples, events, initial, segments=()):
     for sample in samples:
         time = sample[0]
         candidate, valid = motion_quarter(binary, sample, current)
-        if candidate is not None and (pending is None or pending[0] != candidate):
+        if candidate is None:
+            pending = None
+        elif pending is None or pending[0] != candidate:
             pending = (candidate, time, time if valid else None, time if valid else None)
-        elif candidate is not None and valid:
+        elif valid:
             pending = (candidate, pending[1], pending[2] if pending[2] is not None else time, time)
+        else:
+            pending = (candidate, pending[1], None, None)
         while position < len(events) and events[position][0] <= time:
             commit, quarter = events[position]
             wanted = (commit < quiet_start and pending is not None and pending[0] == quarter

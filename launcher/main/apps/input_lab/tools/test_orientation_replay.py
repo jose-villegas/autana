@@ -133,18 +133,54 @@ class OrientationReplayTests(unittest.TestCase):
         result = replay.measure(self.binary, samples, [(600_000, 0)], initial=1)
         self.assertEqual(result.unwanted, 1)
 
+    def test_lost_candidate_restarts_settle(self):
+        scale = replay.read_define(ROOT / "launcher/main/input/input.h", "INPUT_ACCEL_ONE_G")
+        period = replay.display_define("DISPLAY_SAMPLE_MS") * replay.US_PER_MS
+        samples = [(0, 0, scale, 0), (period, -scale, 0, 0), (2 * period, 0, scale, 0)]
+        result = replay.measure(self.binary, samples, [(2 * period, 0)], initial=1)
+        self.assertEqual((0, 1), (result.wanted, result.unwanted))
+
+    def test_invalid_tilt_restarts_valid_settle(self):
+        scale = replay.read_define(ROOT / "launcher/main/input/input.h", "INPUT_ACCEL_ONE_G")
+        period = replay.display_define("DISPLAY_SAMPLE_MS") * replay.US_PER_MS
+        settle = replay.display_define("DISPLAY_SETTLE_MS") * replay.US_PER_MS
+        samples = [(0, 0, scale, 0), (period, 0, scale, -10 * scale), (settle, 0, scale, 0)]
+        result = replay.measure(self.binary, samples, [(settle, 0)], initial=1)
+        self.assertEqual((0, 1), (result.wanted, result.unwanted))
+
+    def test_scoring_near_zero_counts_do_not_justify_commit(self):
+        scale = replay.read_define(ROOT / "launcher/main/input/input.h", "INPUT_ACCEL_ONE_G")
+        tiny = int(scale * replay.display_define("DISPLAY_NEAR_ZERO_G") / 2)
+        settle = replay.display_define("DISPLAY_SETTLE_MS") * replay.US_PER_MS
+        samples = [(time, 0, tiny, 0) for time in (0, settle)]
+        result = replay.measure(self.binary, samples, [(settle, 0)], initial=1)
+        self.assertEqual((0, 1), (result.wanted, result.unwanted))
+
+    def test_flat_dwell_uses_only_face_up(self):
+        scale = replay.read_define(ROOT / "launcher/main/input/input.h", "INPUT_ACCEL_ONE_G")
+        dwell = replay.display_define("DISPLAY_FLAT_MS") * replay.US_PER_MS
+        for sign, flat in ((-1, 1), (1, 0)):
+            with self.subTest(sign=sign):
+                samples = [(time, 0, 0, sign * scale, 0, 0, 0) for time in range(0, dwell + 1, 5000)]
+                rows = replay.gate_trace(self.binary, "accel", 20, 1, samples)
+                gates = [row for kind, row in rows if kind == "G"]
+                self.assertEqual(flat, gates[-1][-2])
+                self.assertEqual(replay.NO_QUARTER, gates[-1][2])
+                self.assertEqual(flat == 1, gates[-1][4] >= 0)
+
     def test_scoring_settle_quiet_and_freshness_boundaries(self):
         settle = replay.display_define("DISPLAY_SETTLE_MS") * replay.US_PER_MS
         period = replay.display_define("DISPLAY_SAMPLE_MS") * replay.US_PER_MS
-        samples = [(0, 0, 1, 0), (settle, 0, 1, 0)]
+        scale = replay.read_define(ROOT / "launcher/main/input/input.h", "INPUT_ACCEL_ONE_G")
+        samples = [(0, 0, scale, 0), (settle, 0, scale, 0)]
         self.assertEqual(1, replay.measure(self.binary, samples, [(settle, 0)], 1).wanted)
         self.assertEqual(1, replay.measure(self.binary, samples, [(settle - 1, 0)], 1).unwanted)
         self.assertEqual(1, replay.measure(self.binary, samples, [(settle, 0)], 1,
                                          [(5, settle, replay.NO_QUARTER)]).unwanted)
         self.assertEqual(1, replay.measure(self.binary, samples, [(settle + 1, 0)], 1).unwanted)
-        for age, wanted in ((2 * period, 1), (2 * period + 1, 0)):
-            stale = [*samples, (settle + age, -1, 0, 0)]
-            self.assertEqual(wanted, replay.measure(self.binary, stale, [(settle + age, 0)], 1).wanted)
+        for age in (2 * period, 2 * period + 1):
+            stale = [*samples, (settle + age, -scale, 0, 0)]
+            self.assertEqual(1, replay.measure(self.binary, stale, [(settle + age, 0)], 1).unwanted)
         self.assertEqual(1, replay.measure(self.binary, samples, [(settle, 2)], 1).unwanted)
 
     def test_motion_quarter_agrees_with_c_for_axes_gap_and_tilt(self):

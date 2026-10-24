@@ -129,6 +129,25 @@ test_flat_cooldown_starts_when_flat_ends(void) {
 }
 
 static void
+test_face_down_has_no_flat_dwell_or_cooldown(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        display_t d = fixture(q);
+        int64_t now = 0;
+        const int target = (q + 1) % DISPLAY_QUARTER_COUNT;
+        const vec3f_t down = sample(target, 0, -DISPLAY_FLAT_DEG - TEST_ANGLE_MARGIN_DEG, 1);
+        TEST_ASSERT_EQUAL_INT(0, feed(&d, down, &now, DISPLAY_FLAT_MS));
+        TEST_ASSERT_FALSE(d.flat);
+        TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_NONE, d.predicted);
+        TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, d.flat_since_us);
+        TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, d.flat_ended_us);
+        const vec3f_t upright = sample(target, 0, 0, 1);
+        d.filtered = upright;
+        display_update(&d, upright, now);
+        TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, d.flat_ended_us);
+    }
+}
+
+static void
 test_near_zero_interrupts_continuous_flat_dwell(void) {
     display_t d = fixture(DISPLAY_PORTRAIT);
     int64_t now = 0;
@@ -477,6 +496,7 @@ run_display_suite(void) {
     RUN_TEST(test_tilt_limits_are_relative_to_default);
     RUN_TEST(test_flat_and_face_up_offset_never_switch);
     RUN_TEST(test_flat_cooldown_starts_when_flat_ends);
+    RUN_TEST(test_face_down_has_no_flat_dwell_or_cooldown);
     RUN_TEST(test_near_zero_interrupts_continuous_flat_dwell);
     RUN_TEST(test_overhead_hysteresis_in_every_rotation);
     RUN_TEST(test_acceleration_cooldown_in_every_rotation);

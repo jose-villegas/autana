@@ -87,7 +87,7 @@ track_swing(display_t* d, float sine, float cosine, int64_t now_us) {
 static void
 track_tilt(display_t* d, float sine, float cosine, int64_t now_us) {
     const bool was_flat = d->flat;
-    if (fabsf(sine) >= DISPLAY_FLAT_SIN) {
+    if (sine >= DISPLAY_FLAT_SIN) {
         if (d->flat_since_us == DISPLAY_TIME_NONE) {
             d->flat_since_us = now_us;
         }
