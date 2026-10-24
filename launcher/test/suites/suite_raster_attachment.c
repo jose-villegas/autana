@@ -20,9 +20,9 @@
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/raster.h"
-#include "render/raster_meshlets.h"
-#include "render/raster_motion.h"
-#include "render/raster_show.h"
+#include "render/view/raster_meshlets.h"
+#include "render/view/raster_motion.h"
+#include "render/view/raster_show.h"
 #ifdef HOST_HEAP_ARENA
 #include "heap_arena.h"
 #endif
@@ -54,7 +54,7 @@ id_writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out)
 static bool
 cluster_writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     id_writer(self, instance, out);
-    out->per_cluster = true;
+    out->step = R3D_SPAN_STEP_CLUSTER;
     return true;
 }
 
@@ -97,8 +97,10 @@ static void
 test_two_writing_attachments_each_record_the_instance_that_won(void) {
     static uint32_t ones = 1;
     static uint32_t tens = 10;
-    const raster_attachment_t a = {sizeof(uint16_t), id_clear, NULL, id_writer, NULL, NULL, &ones};
-    const raster_attachment_t b = {sizeof(uint16_t), id_clear, NULL, id_writer, NULL, NULL, &tens};
+    const raster_attachment_t a = {
+        .bytes_per_pixel = sizeof(uint16_t), .clear = id_clear, .writer = id_writer, .state = &ones};
+    const raster_attachment_t b = {
+        .bytes_per_pixel = sizeof(uint16_t), .clear = id_clear, .writer = id_writer, .state = &tens};
     const raster_attachment_t* const both[] = {&a, &b};
     raster_rig_t* r = rig_open(both, 2);
     draw(r);
@@ -122,7 +124,8 @@ test_attachments_leave_colour_and_depth_as_they_are(void) {
     memcpy(plain + (W * H), raster_depth(&r->raster), sizeof(uint16_t) * W * H);
     raster_rig_release();
     static uint32_t ones = 1;
-    const raster_attachment_t a = {sizeof(uint16_t), id_clear, NULL, id_writer, NULL, NULL, &ones};
+    const raster_attachment_t a = {
+        .bytes_per_pixel = sizeof(uint16_t), .clear = id_clear, .writer = id_writer, .state = &ones};
     const raster_attachment_t* const one[] = {&a};
     r = rig_open(one, 1);
     draw(r);
@@ -135,7 +138,7 @@ test_attachments_leave_colour_and_depth_as_they_are(void) {
  * to 4, and a new size carves every one anew. */
 static void
 test_every_attachment_is_carved_at_the_drawn_size(void) {
-    const raster_attachment_t wide = {4, id_clear, NULL, NULL, NULL, NULL, NULL};
+    const raster_attachment_t wide = {.bytes_per_pixel = 4, .clear = id_clear};
     const raster_attachment_t* const one[] = {&wide};
     raster_rig_t* r = raster_rig_open(wall_and_card, 2, 0, 2 * W, 2 * H, 0);
     raster_rig_attach(r, one, 1);
@@ -158,7 +161,11 @@ static void
 test_begin_runs_once_and_resolve_covers_every_row_once(void) {
     hooks_t* hooks = calloc(1, sizeof(*hooks));
     TEST_ASSERT_NOT_NULL(hooks);
-    const raster_attachment_t a = {sizeof(uint16_t), id_clear, hooks_begin, NULL, hooks_resolve, NULL, hooks};
+    const raster_attachment_t a = {.bytes_per_pixel = sizeof(uint16_t),
+                                   .clear = id_clear,
+                                   .begin = hooks_begin,
+                                   .resolve = hooks_resolve,
+                                   .state = hooks};
     const raster_attachment_t* const one[] = {&a};
     raster_rig_t* r = rig_open(one, 1);
     draw(r);
@@ -192,8 +199,10 @@ split_quad(raster_rig_t* rig, r3d_lit_cluster_t clusters[2]) {
 static void
 test_cluster_values_and_constant_writers(void) {
     uint32_t base = 17;
-    const raster_attachment_t per = {sizeof(uint16_t), id_clear, NULL, cluster_writer, NULL, NULL, &base};
-    const raster_attachment_t constant = {sizeof(uint16_t), id_clear, NULL, id_writer, NULL, NULL, &base};
+    const raster_attachment_t per = {
+        .bytes_per_pixel = sizeof(uint16_t), .clear = id_clear, .writer = cluster_writer, .state = &base};
+    const raster_attachment_t constant = {
+        .bytes_per_pixel = sizeof(uint16_t), .clear = id_clear, .writer = id_writer, .state = &base};
     const raster_attachment_t* both[] = {&per, &constant};
     raster_rig_t* r = rig_open(both, 2);
     r->raster.instance_count = 1;
@@ -296,17 +305,18 @@ test_depth_and_tiles_rows_use_no_scratch(void) {
 static bool
 partial_writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     if (instance == 0) {
-        out->per_cluster = true;
+        out->step = R3D_SPAN_STEP_CLUSTER;
         return false;
     }
-    TEST_ASSERT_FALSE(out->per_cluster);
+    TEST_ASSERT_EQUAL_INT(R3D_SPAN_STEP_NONE, out->step);
     return id_writer(self, instance, out);
 }
 
 static void
 test_writer_slot_is_zeroed_before_each_hook(void) {
     uint32_t base = 1;
-    const raster_attachment_t view = {sizeof(uint16_t), id_clear, NULL, partial_writer, NULL, NULL, &base};
+    const raster_attachment_t view = {
+        .bytes_per_pixel = sizeof(uint16_t), .clear = id_clear, .writer = partial_writer, .state = &base};
     const raster_attachment_t* one[] = {&view};
     draw(rig_open(one, 1));
 }
@@ -394,7 +404,7 @@ test_view_table_and_context_ownership(void) {
     size_t before_blocks, before_bytes, blocks, bytes;
     heap_arena_snapshot(&before_blocks, &before_bytes);
 #endif
-    static const char* const names[] = {"depth", "tiles", "motion", "meshlets"};
+    static const char* const names[] = {"depth", "tiles", "motion", "meshlets", "cull"};
     TEST_ASSERT_EQUAL_INT(sizeof names / sizeof names[0], RENDER_DEBUG_VIEW_COUNT);
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, render_context_debug_view_named("shaded"));
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_UNKNOWN, render_context_debug_view_named("unknown"));
@@ -456,7 +466,7 @@ test_printed_views_match_the_declared_names(void) {
     char names[128] = {0};
     const size_t bytes = fread(names, 1, sizeof names - 1, out);
     fclose(out);
-    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, motion, meshlets", names);
+    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, motion, meshlets, cull", names);
     int count = 1;
     for (size_t i = 0; i < bytes; i++) {
         count += names[i] == ',';

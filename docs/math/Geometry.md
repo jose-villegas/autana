@@ -102,6 +102,7 @@ and union; any crossed axis is empty.
 | `P_contains(outer, inner)` | inner bounds within outer | $`\forall k: outer_{lo,k} \le inner_{lo,k}`$<br>$`inner_{hi,k} \le outer_{hi,k}`$ |
 | `P_overlaps(a, b)` | shared points, including touching faces | $`\neg\mathrm{is\_empty}(\mathrm{intersect}(a,b))`$ |
 | `P_closest_point(b, p)` | closest point on a nonempty box | $`\mathrm{clamp}(p,lo,hi)`$ |
+| `P_corner(b, k)` | corner `k` of eight; bit 0 picks $`hi_x`$, bit 1 $`hi_y`$, bit 2 $`hi_z`$ | $`(k_0\,?\,hi_x:lo_x,\ k_1\,?\,hi_y:lo_y,\ k_2\,?\,hi_z:lo_z)`$ |
 | `P_centre(b)` | midpoint (`f`) | $`c = 0.5(lo+hi)`$ |
 | `P_half_extent(b)` | half size (`f`) | $`e = 0.5(hi-lo)`$ |
 | `P_segment_hit(b, a, c, &t)` | slab entry in `[0,1]` (`f`); inside starts at zero | $`v=c-a`$; intersect $`[0,1]`$ with each axis's $`[(lo_k-a_k)/v_k,(hi_k-a_k)/v_k]`$, sorted |

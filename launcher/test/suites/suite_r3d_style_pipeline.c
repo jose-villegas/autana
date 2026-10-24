@@ -13,6 +13,8 @@
 #define r3d_lens_place               constant_r3d_lens_place
 #define r3d_pipeline_work_bytes      constant_r3d_pipeline_work_bytes
 #define r3d_pipeline_cull            constant_r3d_pipeline_cull
+#define r3d_pipeline_cull_counted    constant_r3d_pipeline_cull_counted
+#define r3d_pipeline_count_triangles constant_r3d_pipeline_count_triangles
 #define r3d_pipeline_transform       constant_r3d_pipeline_transform
 #define r3d_pipeline_transform_split constant_r3d_pipeline_transform_split
 #define r3d_pipeline_draw_split      constant_r3d_pipeline_draw_split
@@ -88,7 +90,7 @@ test_styles_match_pipeline_colours(void) {
         expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
-        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, work);
+        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false);
         TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
         int coloured = 0;
         for (int i = 0; i < TEST_PIXELS; i++) {
@@ -153,7 +155,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
             }
             r3d_lit_cluster_t selected = cluster;
             selected.triangle_count = mixed ? 2 : 1;
-            draw_cluster(&mesh, &lens, &selected, transformed, &actual, false, work);
+            draw_cluster(&mesh, &lens, &selected, transformed, &actual, false, NULL, NULL, work);
             TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
             int covered = 0;
             for (int i = 0; i < TEST_PIXELS; i++) {

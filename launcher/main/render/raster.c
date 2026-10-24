@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "build/build_variant.h"
 #include "core/job.h"
 #include "core/tune.h"
 #include "profile/frame_cost.h"
@@ -69,8 +70,8 @@ clear_depth(const raster_attachment_t* self, const raster_t* raster, void* pixel
     memset(pixels, 0, count * sizeof(uint16_t));
 }
 
-static const raster_attachment_t color_attachment = {sizeof(gfx_color_t), clear_color, NULL, NULL, NULL, NULL, NULL};
-static const raster_attachment_t depth_attachment = {sizeof(uint16_t), clear_depth, NULL, NULL, NULL, NULL, NULL};
+static const raster_attachment_t color_attachment = {.bytes_per_pixel = sizeof(gfx_color_t), .clear = clear_color};
+static const raster_attachment_t depth_attachment = {.bytes_per_pixel = sizeof(uint16_t), .clear = clear_depth};
 _Static_assert(R3D_DEPTH_EMPTY == 0, "depth is cleared with memset");
 
 /* Colour, depth, then the caller's, in the order raster_picture() lays them. */
@@ -93,17 +94,21 @@ raster_picture(const raster_t* raster) {
     return picture;
 }
 
-void
-raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
-                      int32_t z, int32_t dz) {
-    const uint16_t* depth = gfx_render_target_depth(rows, y);
-    uint16_t* tag = gfx_render_target_row(rows, writer->attachment, y);
-    for (int x = x_first; x <= x_last; x++, z += dz) {
-        if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
-            tag[x] = (uint16_t)writer->value;
-        }
+/* A tag writer for an attachment of `type`: one body, a name per width. */
+#define RASTER_ATTACHMENT_TAG(name, type)                                                                              \
+    void name(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,        \
+              int32_t z, int32_t dz) {                                                                                 \
+        const uint16_t* depth = gfx_render_target_depth(rows, y);                                                      \
+        type* tag = gfx_render_target_row(rows, writer->attachment, y);                                                \
+        for (int x = x_first; x <= x_last; x++, z += dz) {                                                             \
+            if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {                                                        \
+                tag[x] = (type)writer->value;                                                                          \
+            }                                                                                                          \
+        }                                                                                                              \
     }
-}
+
+RASTER_ATTACHMENT_TAG(raster_attachment_tag, uint16_t)
+RASTER_ATTACHMENT_TAG(raster_attachment_tag32, uint32_t)
 
 gfx_color_t*
 raster_color(const raster_t* raster) {
@@ -214,12 +219,23 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const rend
     }
 }
 
+/* Development views only: a release build always culls. */
+static inline bool
+keeps_every_cluster(const raster_t* raster) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    return raster->keep_every_cluster;
+#else
+    (void)raster;
+    return false;
+#endif
+}
+
 static int
-cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
-              r3d_pipeline_work_t* work) {
+cull_instance(const raster_t* raster, const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out,
+              raster_stats_t* stats, r3d_pipeline_work_t* work) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     int visible;
-    if (cull) {
+    if (cull && !keeps_every_cluster(raster)) {
         visible = r3d_pipeline_cull(mesh, lens, out, work);
     } else {
         visible = mesh->cluster_count;
@@ -304,6 +320,20 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* The attachments that follow each instance's draw; none in a frame's own. */
+static __attribute__((noinline)) void
+tell_drawn(const raster_t* raster, int index, const r3d_lens_t* lens, const uint16_t* visible, int count,
+           const r3d_pipeline_vertex_t* cs) {
+    for (int i = 0; i < raster->attachment_count; i++) {
+        const raster_attachment_t* a = raster->attachments[i];
+        if (a->drawn != NULL) {
+            a->drawn(a, raster, index, lens, visible, count, cs);
+        }
+    }
+}
+#endif
+
 /* Frame validation stays outside the inlined draw chain. */
 static __attribute__((noinline)) void
 assert_view_size(const raster_t* raster, const render_view_t* view) {
@@ -335,10 +365,15 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         instance_lens(raster, instance, view, true, lens);
         if (stats != NULL) {
             FRAME_COST_BEGIN(culled_from);
-            culled[0] = (uint16_t)cull_instance(instance, lens, culled + 1, stats, work->buffers.work[0]);
+            culled[0] = (uint16_t)cull_instance(raster, instance, lens, culled + 1, stats, work->buffers.work[0]);
             FRAME_COST_END(culled_from, "r3d.cull");
         }
         draw_visible(raster, i, lens, culled + 1, culled[0], work);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+        if (raster->attachment_count != 0) {
+            tell_drawn(raster, i, lens, culled + 1, culled[0], work->buffers.cs);
+        }
+#endif
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
     if (resolves) {
@@ -380,7 +415,7 @@ raster_census(const raster_t* raster, const render_view_t* view) {
         const r3d_instance_t* instance = &raster->instances[i];
         r3d_lens_t lens;
         instance_lens(raster, instance, view, false, &lens);
-        culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, &stats, work->buffers.work[0]);
+        culled[0] = (uint16_t)cull_instance(raster, instance, &lens, culled + 1, &stats, work->buffers.work[0]);
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
     FRAME_COST_END(counted_from, "r3d.census");
