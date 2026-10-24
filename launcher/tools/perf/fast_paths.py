@@ -19,6 +19,7 @@ HOST_CAPTURE = Path("docs/math/data/math_error_host_capture.txt")
 COMMAND = "python launcher/tools/perf/fast_paths.py --check"
 ANNOTATION = re.compile(r"^/\* MATH_FAST_PATH\(\s*(\w+),\s*(\w+),\s*(\w+)(?:=([^ )]+) (ulp|relative|lsb))?\) \*/", re.M)
 FUNCTION = re.compile(r"^[ \t]*(?!(?:return|if|for|while|switch|case|else)\b)(?:(?:static[ \t]+)?(?:inline[ \t]+)?[\w*]+[ \t\n]+)(\w+)[ \t]*\([^;{}]*\)[ \t]*\{", re.M)
+MEASUREMENT_SIGNIFICANT_DIGITS = 2
 CALL = re.compile(r"\b(\w+)\s*\(")
 
 
@@ -279,7 +280,7 @@ def build_rows(item, root):
     qemu = (root / "launcher/sdkconfig.defaults.qemu").read_text(encoding="utf-8")
     disabled = any(re.search(r"^# " + symbol + r" is not set$|^" + symbol + r"=n$", qemu, re.M) for symbol in symbols)
     gates = ", ".join(f"`{symbol}`" for symbol in symbols) or "none"
-    return f"{gates} | {'plain' if disabled else 'fast'} | {'plain' if item.target == 'Xtensa' else 'fast'}"
+    return f"Builds: {gates}; QEMU {'plain' if disabled else 'fast'}; host {'plain' if item.target == 'Xtensa' else 'fast'}."
 
 
 def _description_fields(item):
@@ -320,14 +321,34 @@ def format_limit(value):
     return f"2^{exponent - 1}" if fraction == 0.5 and value < 1 else f"{value:g}"
 
 
+def format_measurement(value):
+    rounded = f"{value:.{MEASUREMENT_SIGNIFICANT_DIGITS}g}"
+    mantissa, separator, exponent = rounded.partition("e")
+    if separator:
+        return f"{float(rounded):.0f}" if int(exponent) >= 0 else f"{mantissa}e{int(exponent)}"
+    return rounded
+
+
+def format_error(evidence, source):
+    if evidence == "-":
+        return evidence
+    value, unit, *_ = evidence.split()
+    unit = "rel" if unit == "relative" else unit
+    origin = " (host)" if source == "host" else ""
+    return f"{format_measurement(float(value))} {unit}{origin}"
+
+
 def render(root, items, rows, measured, errors, bins, sizes, fpu, target, sources=None, input_counts=None):
     groups = {}
     for item in items:
         groups.setdefault(item.key, []).append(item)
     lines = [f"Measured target: {target}.", ""]
     replacements, costs, builds = [], [], []
+    entry_details = {}
     for item in items:
         link = f"[`{item.key}`](#{item.key.replace('_', '-')})"
+        if len(groups[item.key]) > 1:
+            link += f" ({item.fast.split('_', 1)[0]})"
         features = set(fpu[item.fast].partition(";")[0].split()) & set(bench.FPU_OPS)
         if item.target.startswith("portable;"):
             features &= {"madd.s", "msub.s"}
@@ -335,25 +356,26 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
         hardware = item.target
         if operations and item.target != "portable":
             hardware += (": " if item.target == "Xtensa" else " ") + operations
-        replacements.append([link, plain_expression(item, root), _description_fields(item)[0], hardware])
+        expression = plain_expression(item, root)
+        short_expression = "isqrt64 normalization" if "isqrt64" in expression else expression
+        if "quaternion" in expression:
+            short_expression = "blend + " + short_expression
+        replacements.append([link, short_expression, _description_fields(item)[0]])
         fast, plain = measured.get(item.fast), measured.get(item.plain)
-        warm_fast, cold_fast = [f"{value:.1f}" for value in fast[:2]] if fast else ["-", "-"]
-        warm_plain, cold_plain = [f"{value:.1f}" for value in plain[:2]] if plain else ["-", "-"]
-        ratio = f"{plain[0] / fast[0]:.2f}" if fast and plain else "-"
-        limit = format_limit(item.limit)
+        warm_fast, cold_fast = [format_measurement(value) for value in fast[:2]] if fast else ["-", "-"]
+        warm_plain, cold_plain = [format_measurement(value) for value in plain[:2]] if plain else ["-", "-"]
+        ratio = format_measurement(plain[0] / fast[0]) if fast and plain else "-"
         identity = item.key, item.kind
-        error = errors.get(identity, "-").split()[0]
-        origin = " (host)" if (sources or {}).get(identity) == "host" else ""
-        costs.append([link, f"`{item.fast}` vs `{item.plain}`", warm_fast, warm_plain, ratio,
-                      cold_fast, cold_plain, f"{error} {item.unit}{origin}", f"`{item.limit_name}` ({limit})", item.method])
+        error = format_error(errors.get(identity, "-"), (sources or {}).get(identity))
+        costs.append([link, f"{warm_fast} / {warm_plain} ({ratio}×)", f"{cold_fast} / {cold_plain}", error])
         table_bytes = sum(size for _, size, region in sizes.get(item.fast, []) if region == "rodata")
         modules = ", ".join(f"`{module}`" for module in sorted(callers(root, item.key))) or "none"
-        builds.append([link, _size_cell(item.fast, sizes), _size_cell(item.plain, sizes), str(table_bytes) if table_bytes else "-",
-                       build_rows(item, root), modules])
+        builds.append([link, _size_cell(item.fast, sizes), _size_cell(item.plain, sizes), str(table_bytes) if table_bytes else "-"])
+        entry_details[item.fast] = (hardware, expression, modules)
     for title, headings, entries in (
-        ("What it replaces", "Fast path | Plain way | Ours | Target / hardware feature", replacements),
-        ("Cost and error", "Fast path | Bench rows | Warm cycles fast | Warm plain | Plain/fast | Cold fast | Cold plain | Max error | Limit | Method", costs),
-        ("Size and builds", "Fast path | Fast code bytes (region) | Plain code bytes (region) | Table bytes | Gating Kconfig | QEMU | Host | Callers", builds),
+        ("What it replaces", "Fast path | Plain way | Ours", replacements),
+        ("Cost and error", "Fast path | Warm cycles: fast / plain (×) | Cold cycles: fast / plain | Max error", costs),
+        ("Size and builds", "Fast path | Fast code bytes | Plain code bytes | Table bytes", builds),
     ):
         lines += [f"### {title}", "", "| " + headings + " |", "|" + "---|" * len(headings.split(" | "))]
         lines.extend("| " + " | ".join(cells) + " |" for cells in entries)
@@ -365,6 +387,14 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
                   "| Original | Fast path |", "|---|---|",
                   f"| $`{item.original}`$ | $`{item.formula}`$ |", "", f"Symbols: {_inline_expressions(_description_fields(item)[1])}.", "",
                   f"{item.method.capitalize()}: {_inline_expressions(item.coverage)}.", ""]
+        hardware, _, modules = entry_details[item.fast]
+        lines += [f"Target: {hardware}.", "", build_rows(item, root), "", f"Callers: {modules}.", ""]
+        for row in group:
+            _, expression, _ = entry_details[row.fast]
+            limit_unit = "rel" if row.unit == "relative" else row.unit
+            lines += [f"Bench rows `{row.fast}` vs `{row.plain}`; limit `{row.limit_name}` "
+                      f"({format_limit(row.limit)} {limit_unit}); {row.method}.", "",
+                      f"Plain way: {expression}.", ""]
         identity = key, item.kind
         if identity in errors and float(errors[identity].split()[0]) == 0:
             count = (input_counts or {}).get(identity)
