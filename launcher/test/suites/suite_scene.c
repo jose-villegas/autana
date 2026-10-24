@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "anim/anim_tracks_format.h"
+#include "hash/crc32.h"
 #include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
@@ -1941,7 +1942,7 @@ test_camera_small_fill_changes_scene_pixels(void) {
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style}));
         scene_render(0, 0, SIZE, SIZE);
-        checksums[style] = asset_crc32(raster_color(&context->raster), SIZE * SIZE * sizeof(uint16_t));
+        checksums[style] = crc32_update(0, raster_color(&context->raster), SIZE * SIZE * sizeof(uint16_t));
         for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
             TEST_ASSERT_NOT_EQUAL(checksums[previous], checksums[style]);
         }

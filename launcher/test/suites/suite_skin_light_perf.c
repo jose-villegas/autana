@@ -2,6 +2,7 @@
 #include <string.h>
 #include "anim/anim_skeleton.h"
 #include "asset/asset_store.h"
+#include "hash/crc32.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_skin.h"
 #include "skin_light_reference.h"
@@ -236,14 +237,14 @@ quality(fixture_t* f, kernel_t kind) {
         return;
     }
     const size_t positions = (size_t)f->bind.vertex_count * sizeof *f->posed.positions;
-    const uint32_t position_crc = asset_crc32(f->posed.positions, positions);
+    const uint32_t position_crc = crc32_update(0, f->posed.positions, positions);
     if (kind == SKIN) {
         ESP_LOGI(TAG, "CHECK positions=%08" PRIx32, position_crc);
         return;
     }
-    const uint32_t checksum = asset_crc32(f->light, (size_t)f->bind.vertex_count * sizeof *f->light);
+    const uint32_t checksum = crc32_update(0, f->light, (size_t)f->bind.vertex_count * sizeof *f->light);
     kernel(f, SKIN);
-    TEST_ASSERT_EQUAL_HEX32(position_crc, asset_crc32(f->posed.positions, positions));
+    TEST_ASSERT_EQUAL_HEX32(position_crc, crc32_update(0, f->posed.positions, positions));
     uint64_t error_sum = 0;
     int error_max = 0;
     for (int v = 0; v < f->bind.vertex_count; v++) {
