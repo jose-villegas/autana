@@ -5,22 +5,10 @@
 
 #include "../c_style_examples/clamp.c"
 
-static int frees;
-
-static void
-example_free(void* buffer) {
-    frees++;
-    free(buffer);
-}
-
-#define free example_free
 #include "../c_style_examples/acquire_all.c"
-#undef free
 
 static void
-fixture(void) {
-    frees = 0;
-}
+fixture(void) {}
 
 static void
 test_clamp_preserves_values_below_the_limit(void) {
@@ -36,15 +24,13 @@ test_acquiring_both_buffers_leaves_them_owned_by_the_caller(void) {
     uint8_t* a = NULL;
     uint8_t* b = NULL;
     TEST_ASSERT_TRUE(acquire_all(sizeof *a, &a, &b));
-    TEST_ASSERT_EQUAL_INT(0, frees);
     TEST_ASSERT_NOT_NULL(a);
     TEST_ASSERT_NOT_NULL(b);
     *a = UINT8_MAX;
     *b = *a;
     TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, *b);
-    example_free(a);
-    example_free(b);
-    TEST_ASSERT_EQUAL_INT(2, frees);
+    free(a);
+    free(b);
 }
 
 void

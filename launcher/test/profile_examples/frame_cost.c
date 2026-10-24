@@ -1,18 +1,11 @@
-/* Bracket one drawing stage so a development build can charge its time. */
+/* Charge one stage's time to a name. */
 #include "profile/frame_cost.h"
 
-typedef struct {
-    int draws;
-} frame_cost_example_t;
+void draw_the_thing(void);
 
-static void
-draw_the_thing(frame_cost_example_t* s) {
-    s->draws++;
-}
-
-static void
-frame_cost_example(frame_cost_example_t* s) {
+void
+frame_cost_example(void) {
     FRAME_COST_BEGIN(began);
-    draw_the_thing(s);
+    draw_the_thing();
     FRAME_COST_END(began, "thing.draw");
 }

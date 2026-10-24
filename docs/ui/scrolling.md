@@ -39,16 +39,6 @@ scroll_example(scroll_example_t* s) {
 | ![scroll, portrait](../images/ui/scroll.png) | ![scroll, landscape](../images/ui/scroll-landscape.png) |
 <!-- /generated: ui-scroll-renders -->
 
-<!-- generated: ui-scroll-states sha256=1c43b76c22080dab3541431645224b099bc7b4b5d8726f00c0a491244a31ee05 -->
-| State | Render | Fires |
-|---|---|---|
-| rest | ![scroll, rest](../images/ui/scroll.png) | on release |
-| pressed | looks like rest | on release |
-| tapped | looks like rest | on release |
-| disabled | ![scroll, disabled](../images/ui/scroll-disabled.png) | no |
-| no-pack | looks like rest | on release |
-<!-- /generated: ui-scroll-states -->
-
 ## A drag or a press
 
 On content that can scroll, a finger that comes down is not yet a press: it
