@@ -19,6 +19,7 @@
 #include "test_pack.h"
 
 #ifndef DEVICE_BUILD
+#include "hash/crc32.h"
 #include "test_asset_dir.h"
 #endif
 
@@ -33,7 +34,7 @@ row(uint8_t* directory, int index) {
 
 static void
 seal(uint8_t* directory) {
-    test_pack_put32(directory + 4, asset_crc32(directory + 8, DIRECTORY_BYTES - 8));
+    test_pack_put32(directory + 4, crc32_update(0, directory + 8, DIRECTORY_BYTES - 8));
 }
 
 /* Pack "one" at the first MMU page after the directory, "two" two MMU pages on. */

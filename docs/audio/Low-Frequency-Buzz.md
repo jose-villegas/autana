@@ -21,7 +21,7 @@ shake over both windows.
 | Window | the newest `IMU_FIFO_SAMPLES` samples of the tone | Long enough for three cycles of the lowest tone |
 | Silence (mg RMS) | the same reading over the silent window | The noise floor; shake counts only at twice this |
 | Tone, THD (dBFS, dB) | the loopback Goertzel at the tone and its harmonics | As in [Audio-Path.md](Audio-Path.md) |
-| Audible (dBFS, A) | tone plus harmonics, A-weighted<sup>[[87]](../Citations.md#87)</sup> | Harmonic power is taken as all at the second harmonic. A small cone is heard mostly through its harmonics at low frequency |
+| Audible (dBFS, A) | tone plus harmonics, A-weighted<sup>[[89]](../Citations.md#89)</sup> | Harmonic power is taken as all at the second harmonic. A small cone is heard mostly through its harmonics at low frequency |
 | Score (dB) | 20 log10 of the shake above the floor, minus the audible level | Higher means more shake for the same loudness |
 
 The microphone's own low-frequency roll-off is not corrected, so the
