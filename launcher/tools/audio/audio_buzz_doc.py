@@ -3,13 +3,12 @@
 Tables: python launcher/tools/audio/audio_doc_tables.py --write
 Figures: python launcher/tools/audio/audio_buzz_doc.py --out DIR
 """
-import argparse
 import math
 from pathlib import Path
 from statistics import median
 
 from audio_doc_tables import ROOT, read_capture
-from audio_doc_blocks import caption, details, line_chart
+from audio_doc_blocks import caption, details, figures_main, line_chart
 from audio_buzz_sweep import CAPTURE  # noqa: F401 (audio_doc_tables reads it from here)
 from docs.plot_style import SLOTS, picture, save_themed_plot
 from doc_tables import markdown
@@ -131,13 +130,5 @@ def figures(path, output):
         save_themed_plot(fig, axis, output / f"{name}.png", title)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--capture", type=Path, default=ROOT / CAPTURE)
-    parser.add_argument("--out", type=Path, required=True)
-    args = parser.parse_args()
-    figures(args.capture, args.out)
-
-
 if __name__ == "__main__":
-    main()
+    figures_main(__doc__, ROOT / CAPTURE, figures)

@@ -1,10 +1,8 @@
 """Plot acoustic level sweeps from committed tone replies."""
-import argparse
-from pathlib import Path
 from matplotlib.ticker import NullLocator
 
 from audio_doc_tables import CAPTURE, ROOT, path_data, sweep_data
-from audio_doc_blocks import line_chart
+from audio_doc_blocks import figures_main, line_chart
 from docs.plot_style import SLOTS, save_themed_plot
 
 
@@ -23,13 +21,5 @@ def render(capture, output):
         save_themed_plot(fig, axis, output / f"{name}.png", context)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--capture", type=Path, default=ROOT / CAPTURE)
-    parser.add_argument("--out", type=Path, required=True)
-    args = parser.parse_args()
-    render(args.capture, args.out)
-
-
 if __name__ == "__main__":
-    main()
+    figures_main(__doc__, ROOT / CAPTURE, render)
