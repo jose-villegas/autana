@@ -3,7 +3,14 @@
 An app answers its own console commands without joining the console's verb
 list (`launcher/main/console/`, one file per verb):
 
+<!-- generated: app-console-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Console: answer status under the app prefix. */
+#include <stdio.h>
+#include <string.h>
+
+#include "app/app.h"
+
 static bool
 app_example_console(const char* args) {
     if (strcmp(args, "status") != 0) {
@@ -18,10 +25,10 @@ APP_CONSOLE("example", app_example_console);
 
 app_t app_example = {
     .name = "Example",
-    ...
     .console = APP_CONSOLE_PTR(app_example_console),
 };
 ```
+<!-- /generated: app-console-example -->
 
 - `APP_CONSOLE()` declares the prefix once, before the `app_t`. A prefix that
   clashes with a verb or another app's fails the boot.
