@@ -367,6 +367,44 @@ captures follow.
 Partial manifests are written after every step. Raw captures and result
 directories are uploaded even when a lane fails.
 
+## Row history
+
+`perf_rows.py "<row words>"` answers where one row stands: one line per board
+with its goal, latest worst, margin, trend and noise. Boards are never pooled
+or compared; each line comes from that board's captures alone.
+
+```sh
+python launcher/tools/perf/perf_rows.py "gas cascade full"
+python launcher/tools/perf/perf_rows.py "gas cascade full" -b 2124 -n 10 --runs
+python launcher/tools/perf/perf_rows.py sync --host Legion
+```
+
+| Term | Meaning |
+|---|---|
+| row | a measurement name: `PERF TARGET` lines (pegged or not), `mean Nus` lines, `frame_profile:` rows; every query word must appear in it |
+| capture | one build id on one board; all its runs pool into worst and median |
+| margin | goal minus latest worst, as a percentage of the goal; negative is over it |
+| trend | latest worst against the median worst of the earlier captures shown |
+| noise | that board's median spread within one build |
+| flags | `OVER GOAL`, `moved ±X%` (past 1% since the previous capture), `re-pegged`, `stale Nd`, `unpegged` |
+
+A query naming several rows lists them with capture counts. `-b` adds one
+line per capture, `--runs` each capture's samples, `--json` the same data
+for scripts. `--budget` caps the output (400 tokens by default).
+Perf-scoped and layout-seeded images are left out; `--scoped` shows only them.
+
+Rows come from the `perf-data` branch plus this machine's records not yet on
+it. `sync` parses new captures into `captures/<board>/<YYYY-MM>/<date>-<host>.jsonl`
+there, one line per capture, and pushes. A line holds the board's short id,
+the `--host` name, build id, commit, suite, date, image flags and each row's
+goal and samples: never a log, path or user name. Each machine writes its
+own files, so two machines never conflict. The nightly syncs before it
+publishes; a machine can sync from `lock_hook` on `released`.
+
+Each capture is parsed once; the parsed lines are cached in the per-user
+autana cache. Flashes record `image_flags`, so captures from before that
+show `?` for scope.
+
 ## Real-time playback
 
 `frame_profile:` rows time whole app frames while a clip plays; the render_lab
