@@ -16,9 +16,9 @@ python scripts/pr/pr_body.py check body.md && gh pr create --body-file body.md
 | `perf` | timing work and goal changes | perf_compare's rows from `--perf <its --out dir>`, a `Goal \| Old \| New` row, then `change` rows |
 | `docs` | documentation | `File \| Before \| After` in lines and words, then `change` rows for the rest |
 
-- **Rows:** changed files are grouped by top-level directory, and the largest groups are split into subdirectories while the table stays within `MAX_ROWS` (eight) rows.
+- **Rows:** changed files are grouped by top-level directory, and the largest groups are split into subdirectories while the table stays within `MAX_ROWS` rows (set in `scripts/pr/pr_body.py`).
 - **Lines:** every kind ends its table with the added, removed and net line counts against the merge base of `--base` (default `origin/main`).
 - **Ticket:** `--ticket <id>`, else the first segment of the branch name (`feature/ks4hn-hash` → `ks4hn`) that `bd show` finds. Without either, `new` stops and asks for `--ticket`.
-- **Unfilled parts** stay as HTML comments starting with `fill`, which GitHub renders as nothing.
+- **Unfilled parts** stay as HTML comments starting with `fill`, which GitHub renders as nothing; a leftover `block` comment also fails `check`.
 
 `check` fails on a marker left in, on a Ticket line that [`scripts/gates/check-pr-ticket.sh`](../../scripts/gates/check-pr-ticket.sh) rejects, and on a ```` ```mermaid ```` block that [`check-mermaid.mjs`](Mermaid-Diagrams.md) cannot render. The pull request check runs the ticket gate alone.
