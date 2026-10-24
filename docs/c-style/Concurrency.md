@@ -1,7 +1,7 @@
 # Concurrency
 
 Tasks, cores and shared state in first-party C: which primitive to pick and where the code
-already does it. Part of the [C style guide](../C-Style-Guide.md).
+already does it. Part of the [C style guide](README.md).
 
 ## Who runs where
 

@@ -1,6 +1,6 @@
 # The C format for this repository, as deviations from clang-format's LLVM
 # style. Anything absent here is that style's default, so this file lists
-# only what was actually decided - see docs/C-Style-Guide.md for the prose
+# only what was actually decided - see docs/c-style/README.md for the prose
 # and scripts/gates/format-file-list.sh for which files it applies to.
 #
 # One clang-format major version and no other: the esp-clang release
