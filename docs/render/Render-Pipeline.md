@@ -164,7 +164,7 @@ no seam opens.
 
 | Reads | Writes | Settings |
 |---|---|---|
-| lit triangles | the variant's mesh | `geometry.simplify`: `dense_edge`, `props`, `props_share`, `seal_seams`, `colour_deviation`; each variant's `triangles` |
+| lit triangles | the variant's mesh | `geometry.simplify`: `dense_edge`, `props`, `props_share`, `seal_seams`, `colour_deviation`; `[objects] overrides`; each variant's `triangles` |
 
 Cost: `simplify` in the bake-steps rows.
 
