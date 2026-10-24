@@ -27,7 +27,7 @@ from r3d.cost_model import clusters_in_view  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.objects.instances import bounds_diagonal, match_instances, placed_corners  # noqa: E402
 from r3d.objects.objects_report import DEFAULT_EVERY_MS, masked_objects  # noqa: E402
-from r3d.objects.source import load_object_source  # noqa: E402
+from r3d.mesh_import import load_source  # noqa: E402
 from r3d.poses import sample_camera_path  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import scene_id  # noqa: E402
@@ -189,7 +189,7 @@ def draw_figure(image, segments, owners, colours, rows):
 
 
 def generate(scene, job, cameras, host, out, every_ms, host_render=render_host):
-    src = load_object_source(job.settings)
+    src = load_source(job.settings)
     objects, triangles = masked_objects(src, job.settings)
     shapes = match_instances(objects)
     boxes, owners = placed_boxes(shapes, job)
