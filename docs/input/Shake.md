@@ -37,6 +37,11 @@ The grey size swings with every stroke; the smoothed size carries between
 strokes. Walking stays under START, gentle shaking touches it, and hard
 shaking climbs past FULL.
 
+![The device posed from the capture's gravity, its acceleration beside it, while the smoothed size and the level follow](../images/input/shake-motion.gif)
+
+The same three spans played slowed on the device. The pose comes from the
+capture's gravity, and the arrow is the device's linear acceleration.
+
 ## Figures
 
 `launcher/tools/input/shake_figures.py` builds a probe against `shake.c`, so
@@ -48,4 +53,4 @@ python launcher/tools/input/shake_figures.py --cc cc --out docs/images/input/sha
 ```
 
 The image pipeline (`launcher/tools/render/render_doc_images.sh`) regenerates
-both, the trace from the capture.
+all three, the trace and animation from the capture.
