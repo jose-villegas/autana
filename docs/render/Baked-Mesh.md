@@ -6,25 +6,21 @@ The mesh a bake writes and a renderer reads: its clusters and tree, the
 
 ## Clusters and the tree
 
-The triangles are grouped into **clusters**, the leaves of a tree rooted at
-`nodes[0]`, so one box test culls a whole subtree. Positions are `int16` ticks,
-`position_scale` ticks per model unit.
+Triangles group into **clusters**, the leaves of a tree rooted at `nodes[0]`:
+one box test culls a subtree. Positions are `int16`, `position_scale` per unit.
 
 ![A baked mesh's clusters, then the tree level by level with one root-to-leaf path bold](../images/render/baked-mesh-tree.gif)
 
-*The demo scene's lite mesh: clusters in the meshlets view's hues, then each
-level's boxes, the triangles of the bold path's node in full colour.*
+*Clusters, then each level's boxes with one root-to-leaf path bold.*
 
 ![The first leaves' clusters as runs of the triangle and vertex arrays](../images/render/baked-mesh-ranges.png)
 
-*Each cluster owns one contiguous run of vertices and one of triangles, and its
-triangles index only its own vertices; a leaf owns a run of clusters.*
+*A cluster owns a run of each array and indexes only its own vertices.*
 
-A vertex carries one sRGB colour: the baked light times the albedo, or the
-albedo alone with no bake. With `shading = { flat = ... }` the mesh is flat
-instead: one RGB565 colour per triangle (`light.face_colours()`), averaged over
-the points `shading.flat` sets under one shared set of sun and sky directions.
-Flat vertices weld by position alone and draw with no colour gradients.
+A vertex carries one sRGB colour, baked light times albedo. With
+`shading = { flat = ... }` each triangle instead has one RGB565 colour
+(`light.face_colours()`) averaged over the points `shading.flat` sets, and
+vertices weld by position alone.
 
 ## LMSH
 
@@ -173,31 +169,21 @@ title Content: face colour, 2 bytes a triangle from face_colours_off
 
 ## Meshlets
 
-The clusters are **meshlets** from meshoptimizer's
-clusterizer<sup>[[11]](../Citations.md#11)</sup>: at most `geometry.meshlet_triangles`
-triangles (4 through 256, default 32), of one sidedness, each owning the
-vertices its triangles use. The octree is built over their centres; a leaf
-holds a few hundred triangles' worth.
+Clusters are meshoptimizer's **meshlets**<sup>[[11]](../Citations.md#11)</sup>:
+at most `geometry.meshlet_triangles` (4 to 256, default 32) of one sidedness.
+The octree is built over their centres.
 
 ![The clusterizer cutting a small flat patch into meshlets, one per step](../images/render/meshlet-build.gif)
 
-*The importer's own clusterizer call on a flat patch, limit 16, the newest
-meshlet outlined. meshoptimizer has no per-triangle hook and the call reorders
-each meshlet's triangles, so each step is a whole meshlet, in emitted order.*
+*The importer's clusterizer call on a flat patch, limit 16: whole meshlets in
+emitted order, since meshoptimizer has no per-triangle hook.*
 
 ![Clusters painted by the meshlets debug view](../images/render/sponza-meshlets.png)
 
-*The meshlets view on the full, lite and fitted meshes.*
-
 ![Clusters and submitted triangles against the meshlet size](../images/render/meshlets/meshlet-size-trade.png)
 
-*Smaller meshlets cost more clusters to walk; bigger ones span looser boxes and
-submit more triangles. Measured rows: the [size table](Render-Pipeline.md#meshlets).*
+*Measured rows: the [size table](Render-Pipeline.md#meshlets).*
 
-Meshlets share more vertices than leaves of an octree of the triangles would, so
-a frame transforms fewer. Import and `rebake.py --import PATH` read the same size
-setting. Where two triangles reach the same depth the first drawn wins, so the
-clusterizer's order changes a fraction of a percent of pixels, from ties alone.
-
-Levels of detail built on the meshlets are in
-[plans/Cluster-LOD.md](../plans/Cluster-LOD.md).
+Meshlets share vertices, so a frame transforms fewer than with octree-cut
+leaves. The draw order they set decides depth ties, a fraction of a percent of
+pixels. Levels of detail on them: [plans/Cluster-LOD.md](../plans/Cluster-LOD.md).
