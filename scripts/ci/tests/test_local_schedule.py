@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import contextlib
 import io
 import os
+import re
 import subprocess
 from pathlib import Path
 import sys
@@ -16,8 +17,8 @@ from local_schedule import gpu_window, local_time, wait_seconds, GPU_START, GPU_
 
 
 class Clock:
-    def __init__(self, hour, minute=0):
-        self.value = datetime(2026, 10, 21, hour, minute)
+    def __init__(self, hour, minute=0, *, day=21, tzinfo=None):
+        self.value = datetime(2026, 10, day, hour, minute, tzinfo=tzinfo)
         self.sleeps = []
 
     def now(self):
@@ -54,6 +55,36 @@ class LocalScheduleTests(unittest.TestCase):
     def test_gpu_cron_starts_before_local_window_in_both_seasons(self):
         workflow = Path(__file__).resolve().parents[3] / ".github/workflows/doc-images-gpu.yml"
         self.assertIn("cron: '0 22 * * *'", workflow.read_text())
+
+    def test_nightly_window_waits_runs_or_skips(self):
+        for hour, minute, wait, allowed in ((18, 0, 270 * 60, True),
+                (22, 30, 0, True), (23, 52, 0, True), (0, 30, 0, True),
+                (1, 52, 0, True), (6, 59, 0, True), (7, 0, 0, False),
+                (8, 0, 0, False), (12, 30, 600 * 60, True)):
+            with self.subTest(hour=hour, minute=minute):
+                clock = Clock(hour, minute)
+                deadline = local_schedule.night_window("22:30", "07:00", scheduled=True, clock=clock)
+                self.assertEqual(deadline is not None, allowed)
+                self.assertEqual(clock.sleeps, [wait] if wait else [])
+                if allowed:
+                    expected_day = 22 if hour >= 12 else 21
+                    self.assertEqual(deadline, (datetime(2026, 10, expected_day - 1, 22, 30),
+                                                datetime(2026, 10, expected_day, 7)))
+
+    def test_nightly_cron_and_timeout_cover_both_seasons(self):
+        workflow = Path(__file__).resolve().parents[3] / ".github/workflows/nightly-perf.yml"
+        text = workflow.read_text()
+        cron_hour = 18
+        queue_hour, queue_minute = map(int, re.search(r"QUEUE_AT: '(\d+:\d+)'", text)[1].split(":"))
+        end_hour, end_minute = map(int, re.search(r"WINDOW_END:.*'(\d+:\d+)'", text)[1].split(":"))
+        queue_hour += queue_minute / 60
+        end_hour += end_minute / 60
+        self.assertIn(f"cron: '0 {cron_hour} * * *'", text)
+        longest_wait_minutes = max((queue_hour - cron_hour - offset) * 60 for offset in (1, 2))
+        window_minutes = (24 - queue_hour + end_hour) * 60
+        publish_minutes = 60
+        timeout_minutes = int(longest_wait_minutes + window_minutes + publish_minutes)
+        self.assertIn(f"timeout-minutes: {timeout_minutes}", text)
 
     def test_dispatch_window_and_override(self):
         for hour, allowed in ((0, False), (1, True), (2, True), (3, False), (12, False)):

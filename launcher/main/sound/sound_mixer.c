@@ -15,6 +15,16 @@ sound_capture_begin(sound_capture_t* capture) {
     return capture->sequence;
 }
 
+sound_capture_acquire_result_t
+sound_capture_acquire(sound_capture_t* capture, int64_t now_us, int64_t deadline_us, uint32_t* sequence) {
+    *sequence = 0;
+    if (now_us >= deadline_us) {
+        return SOUND_CAPTURE_TIMED_OUT;
+    }
+    *sequence = sound_capture_begin(capture);
+    return *sequence ? SOUND_CAPTURE_ACQUIRED : SOUND_CAPTURE_WAIT;
+}
+
 bool
 sound_capture_park(sound_capture_t* capture, uint32_t sequence) {
     if (!sequence || capture->requested != sequence) {
