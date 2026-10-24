@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "name_hash/name_hash64.h"
+#include "hash/name_hash64.h"
 #include "perf_stats.h"
 #include "suites.h"
 #include "test_cleanup.h"
