@@ -206,6 +206,8 @@ typedef struct {
         uint32_t clear_rgb;
         const char* clip;
     } cameras[2];
+
+    bool skinned, lit;
 } scene_spec_t;
 
 typedef struct {
@@ -226,15 +228,41 @@ static const scene_spec_t SCENES[] = {
      1,
      {{"camera", CAMERA_AT(0)}, {"red", IDENTITY}, {"green", AT(4, 0, 0)}},
      {{1, "red"}, {2, "green"}},
-     {{0, CLEAR_RGB, ""}}},
+     {{0, CLEAR_RGB, ""}},
+     false,
+     false},
     /* its own camera and one blue quad at the origin */
-    {"test_solo", 2, 1, 1, {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, ""}}},
+    {"test_solo",
+     2,
+     1,
+     1,
+     {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}},
+     {{1, "blue"}},
+     {{0, CLEAR_RGB, ""}},
+     false,
+     false},
     /* the same as solo, its camera clearing to a colour of its own */
-    {"test_sky", 2, 1, 1, {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, ""}}},
+    {"test_sky",
+     2,
+     1,
+     1,
+     {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}},
+     {{1, "blue"}},
+     {{0, 0x996633, ""}},
+     false,
+     false},
     /* names a mesh the pack does not hold */
-    {"test_broken", 2, 2, 0, {{"red", IDENTITY}, {"gone", IDENTITY}}, {{0, "red"}, {1, "gone"}}, {{0}}},
+    {"test_broken", 2, 2, 0, {{"red", IDENTITY}, {"gone", IDENTITY}}, {{0, "red"}, {1, "gone"}}, {{0}}, false, false},
     /* a camera that flies the clip "flight", and a red quad */
-    {"test_flight", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "flight"}}},
+    {"test_flight",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "flight"}},
+     false,
+     false},
     /* two cameras, 4 units apart, and a red quad at the origin */
     {"test_twin",
      3,
@@ -242,7 +270,9 @@ static const scene_spec_t SCENES[] = {
      2,
      {{"left", CAMERA_AT(0)}, {"right", CAMERA_AT(4)}, {"red", IDENTITY}},
      {{2, "red"}},
-     {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, ""}}},
+     {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, ""}},
+     false,
+     false},
     {.id = "test_aliases",
      .entity_count = 2,
      .camera_count = 2,
@@ -250,12 +280,37 @@ static const scene_spec_t SCENES[] = {
      .cameras = {{.entity = 0, .clear_rgb = CLEAR_RGB, .clip = "flight"},
                  {.entity = 1, .clear_rgb = CLEAR_RGB, .clip = "flight"}}},
     /* a camera flying a clip the pack does not hold */
-    {"test_lost", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "nowhere"}}},
+    {"test_lost",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "nowhere"}},
+     false,
+     false},
     /* cameras flying a translation of the wrong width, and a clip with no rotation */
-    {"test_skewed", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "skewed"}}},
-    {"test_unturned", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "unturned"}}},
+    {"test_skewed",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "skewed"}},
+     false,
+     false},
+    {"test_unturned",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "unturned"}},
+     false,
+     false},
 
     {.id = "test_lit",
+     .lit = true,
      .entity_count = 3,
      .renderer_count = 1,
      .camera_count = 1,
@@ -263,12 +318,22 @@ static const scene_spec_t SCENES[] = {
      .renderers = {{1, "red"}},
      .cameras = {{0, CLEAR_RGB, ""}}},
     {.id = "test_skin",
+     .skinned = true,
      .entity_count = 2,
      .renderer_count = 1,
      .entities = {{"red", IDENTITY}, {"lamp", IDENTITY}},
      .renderers = {{0, "red"}}},
-    {"hall", 2, 1, 1, {{"camera", CAMERA_AT(0)}, {"statue", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, ""}}},
+    {"hall",
+     2,
+     1,
+     1,
+     {{"camera", CAMERA_AT(0)}, {"statue", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, ""}},
+     false,
+     false},
     {.id = "meadow",
+     .skinned = true,
      .entity_count = 2,
      .renderer_count = 1,
      .entities = {{"subject", IDENTITY}, {"lamp", IDENTITY}},
@@ -293,18 +358,17 @@ scene_entry_size(const scene_spec_t* s) {
            + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t))
            + ((uint32_t)s->camera_count * sizeof(scene_asset_camera_t)) + sizeof(scene_asset_settings_t)
            + camera_clip_count(s) * (sizeof(scene_asset_animator_t) + ASSET_NAME_MAX)
-           + (strcmp(s->id, "test_lit") == 0 ? sizeof(scene_asset_light_t) : 0)
-           + ((strcmp(s->id, "test_skin") == 0 || strcmp(s->id, "meadow") == 0)
-                  ? sizeof(scene_asset_skinned_renderer_t) - sizeof(scene_asset_renderer_t)
-                        + sizeof(scene_asset_animator_t) + 2 * ASSET_NAME_MAX
-                  : 0);
+           + (s->lit ? sizeof(scene_asset_light_t) : 0)
+           + (s->skinned ? sizeof(scene_asset_skinned_renderer_t) - sizeof(scene_asset_renderer_t)
+                               + sizeof(scene_asset_animator_t) + 2 * ASSET_NAME_MAX
+                         : 0);
 }
 
 static void
 make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fixture_options_t* options) {
-    const uint16_t skins = (strcmp(s->id, "test_skin") == 0 || strcmp(s->id, "meadow") == 0);
+    const uint16_t skins = s->skinned;
     const uint16_t clips = camera_clip_count(s) + 2 * skins;
-    const uint16_t lights = strcmp(s->id, "test_lit") == 0;
+    const uint16_t lights = s->lit;
     const uint16_t counts[SCENE_ASSET_PART_COUNT] = {s->entity_count,
                                                      s->entity_count,
                                                      s->renderer_count - skins,
@@ -532,6 +596,12 @@ release_fixture(void) {
 static void
 fixture_with_skin(const skin_fixture_options_t* options) {
     scene_unload_all();
+#ifndef DEVICE_BUILD
+    hall = NULL;
+    statue = SCENE_ENTITY_NONE;
+    scene = NULL;
+    subject = SCENE_ENTITY_NONE;
+#endif
     fx.bytes = test_alloc_aligned(PACK_MAX, ASSET_PACK_BASE_ALIGN, &fx.raw);
     fx.pixels = malloc(sizeof(*fx.pixels) * SIZE * SIZE);
     fx.held = malloc(sizeof(*fx.held) * SIZE * SIZE);
@@ -1268,9 +1338,26 @@ test_doc_scene_load_find_activate(void) {
     remove_pack("hall");
     TEST_ASSERT_NOT_NULL(hall);
     TEST_ASSERT_EQUAL_INT(scene_find(hall, "statue"), statue);
+    TEST_ASSERT_EQUAL_INT(SCENE_ENTITY_NONE, scene_find(hall, "missing"));
     TEST_ASSERT_TRUE(scene_has_active_camera());
     frame(0);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), fx.pixels[CENTER * SIZE + CENTER]);
+}
+
+static void
+test_doc_scene_missing_leaves_entities_and_camera_alone(void) {
+    fixture();
+    test_asset_dir_use(".");
+    statue = 0;
+    hall_example_start();
+    TEST_ASSERT_NULL(hall);
+    TEST_ASSERT_EQUAL_INT(0, statue);
+    TEST_ASSERT_FALSE(scene_has_active_camera());
+    scene_failure_t why = {0};
+    TEST_ASSERT_NULL(scene_load("hall", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
+    TEST_ASSERT_EQUAL_STRING("hall", why.what);
 }
 
 static void
@@ -1293,24 +1380,27 @@ test_doc_animator_blends_to_selected_clip(void) {
 static void
 test_doc_present_modes_reach_camera(void) {
     fixture();
-    scene_t* scene = show("test_pair", NULL);
-    const scene_entity_t camera = scene_find(scene, "camera");
-    TEST_ASSERT_TRUE(present_example(scene, camera));
-    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_SCANLINE, scene_camera_lens(scene, NULL)->present);
-    TEST_ASSERT_FALSE(present_example(scene, scene_find(scene, "red")));
+    scene_t* loaded = show("test_pair", NULL);
+    const scene_entity_t camera = scene_find(loaded, "camera");
+    TEST_ASSERT_TRUE(present_example(loaded, camera));
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_SCANLINE, scene_camera_lens(loaded, NULL)->present);
+    TEST_ASSERT_FALSE(present_example(loaded, scene_find(loaded, "red")));
 }
 
 static void
 test_doc_small_fill_reaches_camera(void) {
     fixture();
-    scene_t* scene = show("test_pair", NULL);
-    TEST_ASSERT_TRUE(small_fill_example(scene, scene_find(scene, "camera")));
-    const small_fill_t actual = scene_camera_lens(scene, NULL)->small_fill;
+    scene_t* loaded = show("test_pair", NULL);
+    const small_fill_t before = scene_camera_lens(loaded, NULL)->small_fill;
     const small_fill_t expected = SMALL_FILL_FAST;
+    TEST_ASSERT_TRUE(before.ceiling != expected.ceiling || before.gate != expected.gate
+                     || before.style != expected.style);
+    TEST_ASSERT_TRUE(small_fill_example(loaded, scene_find(loaded, "camera")));
+    const small_fill_t actual = scene_camera_lens(loaded, NULL)->small_fill;
     TEST_ASSERT_EQUAL_INT(expected.ceiling, actual.ceiling);
     TEST_ASSERT_EQUAL_INT(expected.gate, actual.gate);
     TEST_ASSERT_EQUAL_INT(expected.style, actual.style);
-    TEST_ASSERT_FALSE(small_fill_example(scene, scene_find(scene, "red")));
+    TEST_ASSERT_FALSE(small_fill_example(loaded, scene_find(loaded, "red")));
 }
 
 /* scene_load() reads the pack named after the scene once and holds it while
@@ -3531,6 +3621,7 @@ run_scene_suite(void) {
 #endif
 #ifndef DEVICE_BUILD
     RUN_TEST(test_doc_scene_load_find_activate);
+    RUN_TEST(test_doc_scene_missing_leaves_entities_and_camera_alone);
     RUN_TEST(test_doc_animator_blends_to_selected_clip);
     RUN_TEST(test_doc_present_modes_reach_camera);
     RUN_TEST(test_doc_small_fill_reaches_camera);
