@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "collections/bits.h"
 #include "core/job.h"
 #include "profile/frame_cost.h"
 #include "sand.h"
@@ -111,13 +112,13 @@ sand_chunk_rows(const sand_t* s, sand_chunk_travel_t travel) {
  * never within a chunk side of each other, so they never share one. */
 static inline size_t
 sand_stamp_stride(int w) {
-    return ((size_t)w + 7) / 8;
+    return BITS8_BYTES(w);
 }
 
 static inline bool
 sand_cell_stamped(const sand_t* s, int x, int y) {
     const uint8_t* const live = s->stamps_live;
-    return live != NULL && ((live[(size_t)y * sand_stamp_stride(s->w) + ((unsigned)x >> 3)] >> (x & 7)) & 1u) != 0;
+    return live != NULL && bits8_get(live + ((size_t)y * sand_stamp_stride(s->w)), (unsigned)x);
 }
 
 /* One row's stamp bits, NULL when no pass has armed any - for a walk that
@@ -132,7 +133,7 @@ sand_stamp_row(const sand_t* s, int y) {
 
 static inline bool
 sand_row_cell_stamped(const uint8_t* stamp_row, int x) {
-    return stamp_row != NULL && ((stamp_row[(unsigned)x >> 3] >> (x & 7)) & 1u) != 0;
+    return stamp_row != NULL && bits8_get(stamp_row, (unsigned)x);
 }
 
 /* Only a move that leaves its chunk: inside one, the pass's own sweep order
@@ -147,7 +148,7 @@ sand_stamp_crossing(sand_t* s, int x0, int y0, int x1, int y1) {
     if (x0 / s->stamp_side_x == x1 / s->stamp_side_x && y0 / s->stamp_side_y == y1 / s->stamp_side_y) {
         return;
     }
-    live[(size_t)y1 * sand_stamp_stride(s->w) + ((unsigned)x1 >> 3)] |= (uint8_t)(1u << (x1 & 7));
+    bits8_set(live + ((size_t)y1 * sand_stamp_stride(s->w)), (unsigned)x1);
     s->stamped = true;
 }
 

@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "collections/strbuf.h"
+
 #define FRAME_COST_SLOTS          12
 
 /* Distinct names remembered for the console to list and check an arm
@@ -271,36 +273,6 @@ frame_cost_leave(frame_cost_t* cost, int mark, const char* name, int64_t now_us)
     (void)frame_cost_leave_counted(cost, mark, name, now_us, 0, 0);
 }
 
-/* The " | total T.TT" tail: the sum of every slot's own average, in the same
- * milliseconds-with-two-decimals shape as a slot's line. Appended after
- * every slot, so a reader sees how the frame adds up without summing it
- * themselves. */
-static inline int
-frame_cost_append_total(char* out, size_t out_size, int length, int64_t total_avg_us) {
-    const int wrote = snprintf(out + length, out_size - (size_t)length, " | total %d.%02d", (int)(total_avg_us / 1000),
-                               (int)(total_avg_us % 1000 / 10));
-    if (wrote < 0 || (size_t)(length + wrote) >= out_size) {
-        out[length] = '\0';
-        return length;
-    }
-    return length + wrote;
-}
-
-/* " +N dropped", once there is a total to trail: a name refused for want of
- * a slot, this window. */
-static inline int
-frame_cost_append_dropped(char* out, size_t out_size, int length, int dropped) {
-    if (dropped <= 0) {
-        return length;
-    }
-    const int wrote = snprintf(out + length, out_size - (size_t)length, " +%d dropped", dropped);
-    if (wrote < 0 || (size_t)(length + wrote) >= out_size) {
-        out[length] = '\0';
-        return length;
-    }
-    return length + wrote;
-}
-
 /* "perf: name cyc avg/min/max A/B/C event avg D n=N" for the armed slot,
  * when it ran this window: the one line `autana perf` reads. Taken before
  * the report, which forgets the window. Returns its length, 0 for none. */
@@ -320,9 +292,11 @@ frame_cost_counts_line(const frame_cost_t* cost, const char* event, char* out, s
     return 0;
 }
 
-/* "name avg/worst" per slot, then a total and any drop count, then forgets
- * the window and empties the open-bracket stack, so a report taken mid-
- * bracket leaves no stale level for that bracket's own END to find.
+/* "name avg/worst" per slot, then " | total T.TT" (the sum of every slot's
+ * own average, so a reader sees how the frame adds up) and " +N dropped" for
+ * names refused a slot; then forgets the window and empties the open-bracket
+ * stack, so a report taken mid-bracket leaves no stale level for that
+ * bracket's own END to find.
  *
  * `frames` zero leaves the window for the next report to find; `out_size`
  * zero writes nothing but still clears the window: the caller did ask for
@@ -342,30 +316,26 @@ frame_cost_report(frame_cost_t* cost, uint32_t frames, char* out, size_t out_siz
         return 0;
     }
 
-    out[0] = '\0';
-    int length = 0;
+    strbuf_t line = strbuf_make(out, out_size);
     int64_t total_avg_us = 0;
-    for (int i = 0; i < cost->count; i++) {
+    bool fits = true;
+    for (int i = 0; fits && i < cost->count; i++) {
         const frame_cost_slot_t* slot = &cost->slots[i];
         const int64_t average_us = slot->total_us / frames;
         total_avg_us += average_us;
-        const int wrote = snprintf(out + length, out_size - (size_t)length, "%s%s %d.%02d/%d.%d", i > 0 ? "  " : "",
-                                   slot->name, (int)(average_us / 1000), (int)(average_us % 1000 / 10),
-                                   (int)(slot->worst_us / 1000), (int)(slot->worst_us % 1000 / 100));
-        if (wrote < 0 || (size_t)(length + wrote) >= out_size) {
-            out[length] = '\0';
-            cost->count = 0;
-            cost->dropped = 0;
-            return length;
-        }
-        length += wrote;
+        fits = strbuf_appendf(&line, "%s%s %d.%02d/%d.%d", i > 0 ? "  " : "", slot->name, (int)(average_us / 1000),
+                              (int)(average_us % 1000 / 10), (int)(slot->worst_us / 1000),
+                              (int)(slot->worst_us % 1000 / 100));
     }
-
-    length = frame_cost_append_total(out, out_size, length, total_avg_us);
-    length = frame_cost_append_dropped(out, out_size, length, cost->dropped);
+    if (fits) {
+        strbuf_appendf(&line, " | total %d.%02d", (int)(total_avg_us / 1000), (int)(total_avg_us % 1000 / 10));
+        if (cost->dropped > 0) {
+            strbuf_appendf(&line, " +%d dropped", cost->dropped);
+        }
+    }
     cost->count = 0;
     cost->dropped = 0;
-    return length;
+    return (int)line.length;
 }
 
 typedef struct {
@@ -390,28 +360,18 @@ frame_cost_external_add(frame_cost_external_t* slot, const char* name, int64_t u
 
 static inline int
 frame_cost_external_report(frame_cost_external_t* slot, char* out, size_t capacity, int length) {
-    if (!slot->n || !capacity || length < 0 || (size_t)length >= capacity) {
+    if (!slot->n || length < 0 || (size_t)length >= capacity) {
         return length;
     }
-    if (capacity - (size_t)length <= sizeof " || ") {
-        out[length] = '\0';
-        slot->total_us = 0;
-        slot->worst_us = 0;
-        slot->n = 0;
-        return length;
-    }
+    strbuf_t line = strbuf_at(out, capacity, (size_t)length);
     const int64_t average = slot->total_us / slot->n;
-    const int wrote = snprintf(out + length, capacity - (size_t)length, " || %s %d.%03d/%d.%03d ms/block n=%u",
-                               slot->name, (int)(average / 1000), (int)(average % 1000), (int)(slot->worst_us / 1000),
-                               (int)(slot->worst_us % 1000), (unsigned)slot->n);
+    strbuf_appendf(&line, " || %s %d.%03d/%d.%03d ms/block n=%u", slot->name, (int)(average / 1000),
+                   (int)(average % 1000), (int)(slot->worst_us / 1000), (int)(slot->worst_us % 1000),
+                   (unsigned)slot->n);
     slot->total_us = 0;
     slot->worst_us = 0;
     slot->n = 0;
-    if (wrote < 0 || (size_t)(length + wrote) >= capacity) {
-        out[length] = '\0';
-        return length;
-    }
-    return length + wrote;
+    return (int)line.length;
 }
 
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT

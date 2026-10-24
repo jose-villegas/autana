@@ -1,7 +1,7 @@
 # A loop: a walk at eye height from the plaza out along the west street;
 # a rise out of it and a drone shot over the roofs, pitched down so only
 # roofs and streets show, into the far end of the lane; the lane at 10 m,
-# above its awnings and string lights; then eye height, slowly round the cafe
+# above its awnings and string lights; then eye height, round the cafe
 # on the corner looking at it, along the main street and round the north of
 # the fountain to the start.
 node = "camera"
@@ -138,156 +138,156 @@ eye = [363, 295, -1728]
 look_at = [-221, 229, -829]
 
 [[keys]]
-t = 76.65
+t = 75.86
 eye = [-92, 170, -1460]
 look_at = [-377, 233, -357]
 
 [[keys]]
-t = 80.66
+t = 77.84
 eye = [-176, 170, -1073]
 look_at = [-53, 290, -16]
 
 [[keys]]
-t = 84.16
+t = 78.99
 eye = [-319, 170, -893]
 look_at = [-4, 299, 0]
 
 [[keys]]
-t = 87.51
+t = 80.00
 eye = [-470, 170, -758]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 90.85
+t = 81.00
 eye = [-602, 170, -609]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 94.18
+t = 82.00
 eye = [-693, 170, -431]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 97.51
+t = 83.00
 eye = [-737, 170, -237]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 100.85
+t = 84.00
 eye = [-741, 170, -37]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 104.18
+t = 85.00
 eye = [-705, 170, 160]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 107.51
+t = 86.00
 eye = [-631, 170, 345]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 110.85
+t = 87.00
 eye = [-516, 170, 508]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 114.18
+t = 88.00
 eye = [-364, 170, 637]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 117.51
+t = 89.00
 eye = [-190, 170, 735]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 120.85
+t = 90.00
 eye = [-4, 170, 809]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 124.18
+t = 91.00
 eye = [186, 170, 870]
 look_at = [0, 300, 0]
 
 [[keys]]
-t = 127.42
+t = 92.00
 eye = [377, 170, 929]
 look_at = [32, 297, 32]
 
 [[keys]]
-t = 130.31
+t = 93.04
 eye = [556, 170, 1036]
 look_at = [234, 280, 221]
 
 [[keys]]
-t = 132.82
+t = 94.35
 eye = [719, 170, 1242]
 look_at = [790, 238, 775]
 
 [[keys]]
-t = 135.43
+t = 97.14
 eye = [1086, 170, 1298]
 look_at = [1643, 195, 1321]
 
 [[keys]]
-t = 138.23
+t = 99.75
 eye = [1589, 170, 1437]
 look_at = [2539, 170, 1748]
 
 [[keys]]
-t = 141.23
+t = 102.75
 eye = [2157, 170, 1630]
 look_at = [3088, 170, 1995]
 
 [[keys]]
-t = 144.23
+t = 105.75
 eye = [2711, 170, 1856]
 look_at = [3694, 170, 2040]
 
 [[keys]]
-t = 147.23
+t = 108.75
 eye = [3261, 170, 2092]
 look_at = [4249, 170, 1938]
 
 [[keys]]
-t = 150.23
+t = 111.75
 eye = [3784, 170, 1934]
 look_at = [4732, 170, 1616]
 
 [[keys]]
-t = 153.23
+t = 114.75
 eye = [4098, 170, 1639]
 look_at = [5095, 170, 1567]
 
 [[keys]]
-t = 156.23
+t = 117.75
 eye = [4694, 170, 1610]
 look_at = [5549, 170, 2130]
 
 [[keys]]
-t = 159.23
+t = 120.75
 eye = [5205, 170, 1831]
 look_at = [5477, 170, 2793]
 
 [[keys]]
-t = 162.23
+t = 123.75
 eye = [5348, 170, 2400]
 look_at = [4959, 170, 3321]
 
 [[keys]]
-t = 165.23
+t = 126.75
 eye = [5062, 170, 2910]
 look_at = [4403, 170, 3663]
 
 [[keys]]
-t = 168.07
+t = 129.59
 eye = [4607, 170, 3247]
 look_at = [3806, 170, 3845]
 
 [[keys]]
-t = 170.57
+t = 132.09
 eye = [4620, 170, 3233]
 look_at = [3836, 170, 2613]
