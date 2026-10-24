@@ -30,7 +30,7 @@ searching, so no list is kept:
 
 | Root | Pack | Holds |
 |---|---|---|
-| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#scne-v2) `NAME`, every mesh, skin, skeleton and clip it names |
+| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#scne-v3) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
 | `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), fetched as a locked `sound` bake of its WAV, FLAC, OGG or MP3 source |
@@ -73,10 +73,11 @@ owns a kind of content defines its type, there is no central list, and
 | `APAK` pack | 1 | `asset/asset_pack.py` | `asset/asset_pack.c` | [APAK v1](#apak-v1) |
 | `ABDR` directory | 2 | `asset/asset_directory.py` | `asset/asset_directory.c` | [ABDR v2](#abdr-v2) |
 | `LMSH` lit mesh | none | `r3d/lit_mesh.py` | `render/r3d_lit_mesh.c` | [LMSH](../render/Baked-Mesh.md#lmsh) |
+| `LCOL` colour sets | 0 | `r3d/lcol_asset.py` | `render/r3d_lit_mesh.c` | [LCOL v0](../render/Baked-Mesh.md#lcol-v0) |
 | `TRCK` animation tracks | 3 | `anim/tracks_asset.py` | `anim/anim_tracks.c` | [TRCK v3](../render/Animation-Tracks.md#trck-v3) |
 | `SKEL` skeleton | 1 | `anim/skeleton_asset.py` | `anim/anim_skeleton.c` | [SKEL v1](../render/Skeleton-and-Skin.md#skel-v1) |
 | `SKIN` skin | 2 | `r3d/skin_asset.py` | `render/r3d_skin.c` | [SKIN v2](../render/Skeleton-and-Skin.md#skin-v2) |
-| `SCNE` scene | 2 | `r3d/scene_asset.py` | `scene/scene_asset.c` | [SCNE v2](../render/Scene-Files.md#scne-v2) |
+| `SCNE` scene | 3 | `r3d/scene_asset.py` | `scene/scene_asset.c` | [SCNE v3](../render/Scene-Files.md#scne-v3) |
 | `SOND` sound | 1 | `audio/sound_asset.py` | `sound/sound.c` | [SOND v1](../audio/Sound-Assets.md#sond-v1) |
 | `IMAG` picture | 1 | `gfx/image_asset.py` | `draw/draw_image.c` | [IMAG v1](#imag-v1) |
 | `TABL` named int16 rows | 1 | `asset/table_asset.py` | `asset/asset_table.c` | [TABL v1](#tabl-v1) |
