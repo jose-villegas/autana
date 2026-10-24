@@ -13,6 +13,8 @@
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
 
+#include "../input_examples/gravity.c"
+
 #define STEP_MS              (GRAVITY_MAX_DT_MS / 10U)
 #define SETTLE_MS            ((uint32_t)(GRAVITY_TAU_S * MATH_MS_PER_S) * 10U)
 #define BIAS_SETTLE_MS       ((uint32_t)(GRAVITY_BIAS_SETTLE_S * MATH_MS_PER_S))
@@ -739,8 +741,43 @@ test_gyro_overrange_boundary(void) {
     }
 }
 
+#ifndef DEVICE_BUILD
+bool
+input_read_motion_batch(input_motion_batch_t* out) {
+    out->count = 1;
+    out->lost = 0;
+    out->gap = false;
+    out->samples[0] = (input_motion_t){.acceleration = {INPUT_ACCEL_ONE_G, 0, 0}};
+    return true;
+}
+
+static void
+test_gravity_example_rolls_right_at_rest(void) {
+    fixture();
+    gravity_example_t* state = malloc(sizeof *state);
+    TEST_ASSERT_NOT_NULL(state);
+    state->ball_x = 0;
+    state->ball_y = 0;
+    gravity_example_start(state);
+    const uint32_t dt_ms = INPUT_MOTION_SAMPLE_US / MATH_US_PER_MS;
+    const uint32_t frames = SETTLE_MS / dt_ms;
+    for (uint32_t frame = 0; frame < frames; frame++) {
+        gravity_example(state, dt_ms);
+    }
+    const float x = state->ball_x;
+    const float y = state->ball_y;
+    free(state);
+    TEST_ASSERT_TRUE(x > 0);
+    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE * frames, BALL_SPEED * dt_ms * frames, x);
+    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE, 0, y);
+}
+#endif
+
 void
 run_gravity_suite(void) {
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_gravity_example_rolls_right_at_rest);
+#endif
     RUN_TEST(test_fifo_lock_loss_carries_fractional_time);
     RUN_TEST(test_fifo_lock_loss_gap_resets_remainder);
     RUN_TEST(test_lost_prediction_clamps_without_acceleration_correction);

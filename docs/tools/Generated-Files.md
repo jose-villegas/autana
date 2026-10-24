@@ -64,3 +64,18 @@ from, and it carries no banner.
 
 The formatter, the comment-length rule and the style audit skip every file
 the banner marks, since the generator, not a person, decides their form.
+
+## Usage examples
+
+[`examples_doc.py`](../../launcher/tools/gen/examples_doc.py) embeds every tracked
+`.c` file below any `<area>_examples` folder, at any depth, whole in a C fence.
+Its owning document declares `<area>-<name>-example`, where `<name>` is the file
+stem and underscores become hyphens in both area and name.
+
+```sh
+python launcher/tools/gen/examples_doc.py
+python launcher/tools/gen/examples_doc.py --check
+```
+
+The check rejects stale bodies, missing sources or owners, and duplicate names.
+Each block names this check command for `check_doc_generated.py` to run in CI.

@@ -79,7 +79,7 @@ The same code draws both orientations, because it measures against
 `ui_width()` rather than a fixed width. The render wraps it in
 `ui_begin()`, `ui_screen()` and `ui_end()`:
 
-<!-- generated: ui-settings-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-settings-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A whole settings screen: a title bar, then rows flowing down a window below it. */
 #include "ui/ui.h"
@@ -170,7 +170,7 @@ Those are all of its fields; colours are `0xRRGGBB`.
 | ![themed, portrait](../images/ui/themed.png) | ![themed, landscape](../images/ui/themed-landscape.png) |
 <!-- /generated: ui-themed-renders -->
 
-<!-- generated: ui-themed-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-themed-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A screen in its own colours: ui_theme() once, then the same verbs as any other. */
 #include "ui/ui.h"
