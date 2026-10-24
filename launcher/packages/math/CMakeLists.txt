@@ -1,9 +1,6 @@
 if(NOT ESP_PLATFORM)
-    cmake_minimum_required(VERSION 3.21)
-    if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-        project(math C)
-        enable_testing()
-    endif()
+    cmake_minimum_required(VERSION 3.21...3.31)
+    project(math C)
 endif()
 
 # math: the engine's maths library (README.md). It depends on nothing but
@@ -36,9 +33,6 @@ else()
     if(NOT WIN32)
         target_link_libraries(math PUBLIC m)
     endif()
-endif()
-
-if(NOT ESP_PLATFORM)
     include("${CMAKE_CURRENT_LIST_DIR}/../testkit/cmake/PackageTests.cmake")
-    testkit_add_package_tests(math)
+    testkit_add_package_tests()
 endif()

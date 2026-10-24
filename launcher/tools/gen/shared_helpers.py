@@ -98,8 +98,8 @@ def describe(path, text):
             r"^\s*#\s*ifndef\s+(\w+)\s*\n\s*#\s*define\s+\1[ \t]*$",
             blank_comments(text), re.M)
             if ("_" + re.sub(r"\W", "_", path).upper()).endswith("_" + name)}
-        names = sorted(pasted.get(name, name) for name in set().union(*declarations)
-                       if not name.startswith("_") and name not in guards)
+        names = sorted(name for name in set().union(*declarations)
+                       if not name.startswith("_") and name not in guards and name not in pasted)
     purpose = next(sentences(None, prose), (0, ""))[1].strip()
     return " ".join(purpose.split()), ", ".join(names)
 
