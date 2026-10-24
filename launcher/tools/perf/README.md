@@ -258,7 +258,7 @@ sequenceDiagram
     participant Heavy as Heavy lock
     participant Plan as Board plan
     participant Lanes as Board lanes
-    Marker->>Wait: Compute Europe/Berlin marker
+    Marker->>Wait: Compute the marker in NIGHT_ZONE
     Wait->>Wait: Sleep until marker within each leg budget
     Wait->>GPU: Start work with a fresh token
     GPU->>GPU: Wait for board locks to clear
@@ -272,13 +272,15 @@ sequenceDiagram
     Plan->>Plan: Record timeline and host free time
 ```
 
-`vars.NIGHT_START` accepts HH:MM in 00:00–05:59 in Europe/Berlin.
+`vars.NIGHT_START` accepts HH:MM in 00:00–05:59.
 An empty value uses `NIGHT_START` in `scripts/lib/local_schedule.py`.
-The marker is the first Berlin start at or after the trigger; override starts now.
+
+The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
+The marker is the first local start at or after the trigger; override starts now.
 
 Both workflows schedule at 20:17Z. The trigger is the latest daily UTC cron slot,
 including when GitHub starts it late. Other events use the current time.
-A passed marker starts immediately. Each date uses Berlin's UTC offset.
+A passed marker starts immediately. Each date uses the configured zone's UTC offset.
 
 The hosted marker job computes the marker and exits. Serialized hosted wait
 legs sleep within `HOSTED_WAIT_SECONDS` in `scripts/lib/local_schedule.py`.

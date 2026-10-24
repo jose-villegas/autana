@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 import time
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
@@ -16,7 +16,7 @@ from device_lock import LockStore, board_read_root, heavy_root, write_json
 from process_tree import launch_process_tree, stop_process_tree, close_process_tree
 
 NIGHT_START = "01:00"
-NIGHT_ZONE = "Europe/Berlin"
+NIGHT_ZONE = "UTC"
 HOSTED_WAIT_SECONDS = 350 * 60
 GPU_LABEL = "gpu"
 QUEUE_POLL_SECONDS = 60
@@ -49,7 +49,11 @@ def next_marker(trigger, night_start=None):
     if not re.fullmatch(r"0[0-5]:[0-5][0-9]", night_start):
         raise ValueError(f"NIGHT_START must be HH:MM in 00:00–05:59: {night_start!r}")
     hour, minute = map(int, night_start.split(":"))
-    zone = ZoneInfo(NIGHT_ZONE)
+    night_zone = os.environ.get("NIGHT_ZONE") or NIGHT_ZONE
+    try:
+        zone = ZoneInfo(night_zone)
+    except (ZoneInfoNotFoundError, ValueError) as error:
+        raise ValueError(f"NIGHT_ZONE must be an IANA name: {night_zone!r}") from error
     date = trigger.astimezone(zone).date()
     candidate = datetime(date.year, date.month, date.day, hour, minute, tzinfo=zone)
     if candidate < trigger:
