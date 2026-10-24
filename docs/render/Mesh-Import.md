@@ -140,60 +140,27 @@ share is random, so `process.seed` makes it repeatable.
 budget with meshoptimizer's<sup>[[11]](../Citations.md#11)</sup> quadric error simplifier<sup>[[12]](../Citations.md#12)</sup>,
 with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#13)</sup>.
 
-`dense_edge` is the longest unsplit edge. Objects sharing a welded vertex
-stay in one pass. `seal_seams` joins touching pieces before grouping
-(see [seal_seams](#seal_seams)).
+| Key | Meaning |
+|---|---|
+| `dense_edge` | The longest unsplit edge. |
+| `props`, `props_share` | Materials that reserve the `props_share` part of the budget. |
+| `seal_seams` | See [seal_seams](#seal_seams). |
+| `colour_deviation` | Source units that price one panel colour step. |
 
-Props are free-standing weld groups containing one source object, with a
-bounds diagonal below `PROP_DIAGONAL_FRACTION` of the import's source
-bounds diagonal. The constant lives in `simplify.py`.
+The baked colour steers which edges collapse: losing one colour step costs as
+much as moving a surface `colour_deviation` away, for `props` and the rest
+alike, at every budget. A smaller value keeps surfaces nearer their source
+planes and less colour detail: a trade, not a limit.
 
-The `[objects]` table reserves `props_share` of each variant's triangle
-budget for props. Unused prop capacity returns to structure, which uses
-one global simplifier pass except for fixed overrides.
+The optional `[objects]` table accepts fixed reservations:
 
-Props split their share by projected area: `(scale * diagonal)²`, multiplied
-by importance. A pass is capped at its source triangles; excess goes back
-to the other props in proportion. Integer shares use largest remainders.
+| Key | Value |
+|---|---|
+| `overrides` | Array of `{ object = "glob", triangles = N }` or `{ material = "glob", triangles = N }` tables. |
 
-Scale uses `SCALE_PERCENTILE` in `simplify.py` over focal pixels divided by
-distance to the nearest densified surface vertex. A cKDTree queries those
-vertices; `dense_edge` bounds their spacing. Without eyes, scale is one.
-
-Path eyes use their pose size and lens. Region eyes are seeded uniform
-draws, with count `REGION_EYE_SAMPLES` in `mesh_import.py`, panel size and
-scene lens. Sampling is independent of visibility culling.
-
-Each pass uses its count target with unrestricted simplification error.
-`colour_deviation` prices one panel colour step against surface movement,
-scaled by the square root of that pass's area over its budget.
-
-A smaller `colour_deviation` preserves geometry more strongly than colour;
-it is a trade, not a limit.
-
-With `geometry.simplify`, `[objects]` requires an explicit share and accepts
-an array of closed override tables:
-
-| Key | Value | Effect |
-|---|---|---|
-| `props_share` | Required number from zero to one | Reserves this fraction of the variant budget for props; without props, structure gets the full budget. |
-| `overrides` | Array of tables with the keys below | Applies each matching rule once per weld group. |
-
-Each override needs one selector and one allocation value:
-
-| Key | Value | Effect |
-|---|---|---|
-| `object` | Object-name glob, such as `"statue_*"` | Selects groups holding matching objects. |
-| `material` | Material-name glob, such as `"leaf*"` | Selects groups holding matching materials. |
-| `importance` | Number greater than zero | Multiplies a prop's projected-area weight; matching rules multiply. An error on structure, which has nothing to split against. |
-| `triangles` | Integer at least one | Fixes a ceiling per matching group, deducted from its props or structure share. An object rule must match every object in that group; a material rule must name one group. |
-
-Unmatched rules are errors. Ceilings above source counts are clamped and
-logged; ceilings exceeding the available pool budget are errors.
-
-A fixed structural group gets its own pass; other structure stays global.
-The simplifier can return fewer triangles than a target; the log records
-source counts, budgets and actual counts per pass.
+Each rule reserves a count per welded group alongside the material share.
+It must match, cover every object in a welded group, and fit the budget.
+A material rule must select one group. Counts above source size are clamped.
 
 #### seal_seams
 
