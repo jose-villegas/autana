@@ -1180,7 +1180,7 @@ test_a_world_is_the_parents_world_times_the_entitys_own(void) {
     scene_t* scene = load("test_tree");
     scene_resolve(scene);
     assert_at((vec3f_t){1, 6, 0}, model_of(scene, "hand"));
-    assert_at((vec3f_t){1, 6, 0}, scene_world_matrix(scene, scene_find(scene, "hand")));
+    assert_at((vec3f_t){1, 6, 0}, scene_entity_world_matrix(scene, scene_find(scene, "hand")));
     const transformf_t hand = scene_entity_world(scene, scene_find(scene, "hand")); /* the root scales evenly */
     const mat4f_t from_trs = transformf_compute_matrix(&hand);
     for (int r = 0; r < 3; r++) {

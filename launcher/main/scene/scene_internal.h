@@ -228,9 +228,6 @@ void scene_hierarchy_release(scene_t* scene);
  * since it cannot be a descendant. */
 void scene_hierarchy_update_active(scene_t* scene, scene_entity_t entity);
 
-/* The entity's exact world matrix, shear included: its parents' matrices times its own. */
-mat4f_t scene_world_matrix(const scene_t* scene, scene_entity_t entity);
-
 /* True when drawing the mesh as it is gives the same picture. */
 bool scene_transform_is_identity(const mat4f_t* transform);
 

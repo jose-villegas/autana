@@ -55,7 +55,8 @@ on the camera's entity whose tracks bind to that entity through
 | `scene_set_transform()` / `scene_entity_set_enabled()` | set an entity's TRS value in its parent's frame, hide or show it with its descendants |
 | `scene_entity_transform(scene, entity)` | reads the entity's TRS component |
 | `scene_entity_parent()` / `scene_entity_is_within()` | its parent, or `SCENE_ENTITY_NONE` for a root; whether it is an entity or one of its descendants |
-| `scene_entity_active()` / `scene_entity_world()` | enabled with every ancestor (drawn and animated); its transform placed in its parents', as a `transformf_t` whose scale is approximate only under an unevenly scaled parent holding a turned child |
+| `scene_entity_active()` | enabled with every ancestor: drawn and animated |
+| `scene_entity_world()` / `_world_matrix()` | its transform placed in its parents': a `transformf_t`, whose scale is approximate only under an unevenly scaled parent holding a turned child, or the exact `mat4f_t` the renderer draws with |
 | `scene_animator_set_clips()` / `scene_renderer_set_skin()` | attach clips and a skeleton, or a skin, by asset id |
 | `scene_animator_play()` / `_set_speed()` / `_set_paused()` / `_seek()` | control playback slots on an entity |
 | `scene_animator_clip_count()` / `_clip_name()` / `_clip_duration_ms()` | query the attached clips |

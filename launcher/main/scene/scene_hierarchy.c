@@ -142,7 +142,7 @@ scene_entity_world(const scene_t* scene, scene_entity_t entity) {
 }
 
 mat4f_t
-scene_world_matrix(const scene_t* scene, scene_entity_t entity) {
+scene_entity_world_matrix(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
     mat4f_t world = transformf_compute_matrix(&scene->locals[entity]);
     for (scene_entity_t e = parent_of(scene, entity); e != SCENE_ENTITY_NONE; e = parent_of(scene, e)) {

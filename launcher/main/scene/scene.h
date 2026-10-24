@@ -98,9 +98,14 @@ scene_entity_t scene_entity_parent(const scene_t* scene, scene_entity_t entity);
 bool scene_entity_is_within(const scene_t* scene, scene_entity_t entity, scene_entity_t ancestor);
 
 /* Where the entity stands in the world: its own transform placed in its
- * parents'. Exact unless an unevenly scaled parent holds a turned child:
- * that world is sheared, and its scale here is an approximation. */
+ * parents'. The usual call: a position, rotation and scale to read or copy.
+ * Exact unless an unevenly scaled parent holds a turned child: that world is
+ * sheared, and its scale here is an approximation. */
 transformf_t scene_entity_world(const scene_t* scene, scene_entity_t entity);
+
+/* The same world as a matrix, its parents' matrices times its own: exact
+ * under any parent, shear included, and cheaper to apply to many points. */
+mat4f_t scene_entity_world_matrix(const scene_t* scene, scene_entity_t entity);
 
 /* Makes the scene's camera `camera` (NULL: its first) the active one. False
  * when the scene has no such camera. */
