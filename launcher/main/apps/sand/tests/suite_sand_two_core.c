@@ -7,7 +7,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "name_hash/name_hash.h"
+#include "hash/name_hash.h"
 
 #include "suites.h"
 #include "unity.h"

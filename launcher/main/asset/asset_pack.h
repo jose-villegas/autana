@@ -64,9 +64,6 @@ typedef struct {
 /* The alignment a pack's base address must have. */
 #define ASSET_PACK_BASE_ALIGN 16U
 
-/* CRC-32 (zlib's), which is the checksum a pack carries over its bytes after the header. */
-uint32_t asset_crc32(const void* data, size_t size);
-
 /* The size a pack states in its header, from at least ASSET_PACK_HEADER_SIZE
  * bytes at `head`; 0 when they are not an asset pack's. How much to read or
  * map before opening it. */

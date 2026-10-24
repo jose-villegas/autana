@@ -9,6 +9,7 @@
 #include <time.h>
 
 #include "gfx/target/gfx_color.h"
+#include "hash/crc32.h"
 #include "math/linear/vec3f.h"
 #include "math/stats/statsf.h"
 #include "render/r3d_skin_format.h"
@@ -350,10 +351,10 @@ measure(const data_t* d, const variant_t* v, unsigned lights, uint8_t (*out)[3])
     r.vertex_ns = (double)statsf_median(vertex, RUNS);
     r.build_ns = is_lut(v->kind) ? (double)statsf_median(build, RUNS) : 0.0;
     if (v->kind != K_SKIN) {
-        r.light_crc = asset_crc32(&out[(size_t)d->sheet_frame * d->vertices], (size_t)d->vertices * sizeof *out);
+        r.light_crc = crc32_update(0, &out[(size_t)d->sheet_frame * d->vertices], (size_t)d->vertices * sizeof *out);
     }
     if (is_lut(v->kind)) {
-        r.table_crc = asset_crc32(lut.rgb, (size_t)lut.size * lut.size * sizeof *lut.rgb);
+        r.table_crc = crc32_update(0, lut.rgb, (size_t)lut.size * lut.size * sizeof *lut.rgb);
     }
     return r;
 }
