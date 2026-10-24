@@ -28,6 +28,7 @@ class ReplyTests(unittest.TestCase):
             (b"text EXAMPLE data\n", ([], False)),
             (b"NOTEXAMPLE data\n", ([], False)),
             (b"EXAMPLEMARK data\n", ([], False)),
+            (b"EXAMPLE2 data\n", ([], False)),
             (b"EXAMPLE=value\n", (["EXAMPLE=value"], False)),
             (b"I (20) EXAMPLE_END: EXAMPLE data\n", (["EXAMPLE data"], False)),
         )

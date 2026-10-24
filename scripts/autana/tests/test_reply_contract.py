@@ -9,7 +9,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
-from console_protocol import replies_to  # noqa: E402
+from console_protocol import FRAMED_ENDINGS, replies_to  # noqa: E402
 
 AUTANA = REPO / "scripts" / "autana" / "autana.py"
 FIRMWARE = REPO / "launcher" / "main"
@@ -62,13 +62,16 @@ class ReplyContractTests(unittest.TestCase):
         lines = firmware_lines()
         for reply, until in contracts:
             with self.subTest(reply=reply):
-                kept = [line for line in lines if replies_to(line.encode() + b"\n", reply, ())[0]]
+                # A terminator alone (HEAP_END) is not the reply a caller waits for.
+                kept = [line for line in lines if replies_to(line.encode() + b"\n", reply, ())[0]
+                        and not line.startswith(tuple(reply.rstrip("_") + ending for ending in FRAMED_ENDINGS))]
                 printed = [line for line in lines if line.startswith(reply)]
                 self.assertTrue(kept, f"no firmware line {printed} survives the {reply!r} reply filter")
             for ending in until:
                 with self.subTest(reply=reply, until=ending):
-                    self.assertTrue(any(line.startswith(ending) for line in lines),
-                                    f"no firmware line starts with {ending!r}")
+                    self.assertTrue(any(line.startswith(ending) and replies_to(line.encode() + b"\n", reply, until)[1]
+                                        for line in lines),
+                                    f"no firmware line starts with {ending!r} and ends the {reply!r} reply")
 
 
 if __name__ == "__main__":
