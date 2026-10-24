@@ -98,6 +98,20 @@ class FastPathTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Linear'):
             paths.validate_links(self.root, paths.annotations(self.root))
 
+    def test_host_error_evidence_is_separate_and_labelled(self):
+        capture = self.root / paths.HOST_CAPTURE
+        capture.parent.mkdir(parents=True)
+        capture.write_text("MATHTARGET target=host arch=x86_64 execution=host\n" + self.capture)
+        errors, bins, sources = paths.error_evidence(self.root, self.annotations, self.rows, "")
+        self.assertEqual("host", sources["example", "f"])
+        self.assertEqual("1 ulp (sweep)", errors["example", "f"])
+        self.assertEqual([(2.0, 1.0, "ulp")], bins["example", "f"])
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            paths.error_evidence(self.root, self.annotations, self.rows, self.capture)
+        capture.write_text(self.capture)
+        with self.assertRaisesRegex(ValueError, "target"):
+            paths.error_evidence(self.root, self.annotations, self.rows, "")
+
     def test_error_bins_are_strict(self):
         self.assertEqual(bench.parse_bins(self.capture)[('example', 'f')], [(2.0, 1.0, 'ulp')])
         for capture in (self.capture + self.capture.splitlines()[1] + '\n',
@@ -172,8 +186,8 @@ class FastPathTests(unittest.TestCase):
         items = paths.annotations()
         rows, fpu = bench.read_fpu(ROOT / "docs/math/data/math_bench_fpu_ops.txt")
         sizes = paths.parse_sizes((ROOT / "docs/math/data/math_bench_sizes.txt").read_text())
-        measured = {row[0]: (10.0, 20.0) for row in rows}
-        measured["div_recip_f"] = (25.0, 40.0)
+        measured = {row[0]: (10.0, 20.0, 5.0) for row in rows}
+        measured["div_recip_f"] = (25.0, 40.0, 15.0)
         errors = {(item.key, item.kind): "0 ulp" for item in items}
         bins = {(item.key, item.kind): [(1.0, 0.0, item.unit)] for item in items}
         text = paths.render(ROOT, items, rows, measured, errors, bins, sizes, fpu, "test target")
@@ -198,7 +212,7 @@ class FastPathTests(unittest.TestCase):
             "Xtensa: `recip0.s`, `madd.s`, `msub.s`",
             "`MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31)",
             "236 IRAM + 956 flash",
-            "| 768 |",
+            f"| {sum(size for _, size, region in sizes['normalize_x'] if region == 'rodata')} |",
             "ROM",
             "`CONFIG_MATH_FPU_RECIP`",
             "render",
@@ -215,6 +229,9 @@ class FastPathTests(unittest.TestCase):
         self.assertEqual(details.count("```math"), len({item.key for item in items}))
         self.assertEqual(details.count("![Error across"), len({item.key for item in items}))
         paths.validate_sections(text, items)
+        host_sources = {(item.key, item.kind): "host" for item in items}
+        host_text = paths.render(ROOT, items, rows, measured, errors, bins, sizes, fpu, "test target", host_sources)
+        self.assertEqual(len(items), host_text.count(" (host) |"))
         pending = paths.render(ROOT, items, rows, {}, {}, {}, {}, fpu, "-")
         self.assertIn("capture pending", pending)
         self.assertIn("| - | - | - | - | - |", pending)

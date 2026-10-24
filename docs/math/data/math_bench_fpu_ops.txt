@@ -1,5 +1,5 @@
 # Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.
-# ELF sha256=649fa3c4490d057b09b08392941a7e3022907860905cb00ba7f52555ff16f45b
+# ELF sha256=318e89771beceb36405254e02aa79653728f2a8c8e2a521eeb176d9aef962ab6
 add_f	add (vec3)	f	64	vector	-
 add_i	add (vec3)	i	64	vector	-
 add_s	add (vec3)	s	64	vector	-

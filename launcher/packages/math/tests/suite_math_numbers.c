@@ -1346,20 +1346,9 @@ rsqrt_reference_bits(uint32_t input, uint32_t candidate) {
     return midpoint < 0 || (midpoint == 0 && (candidate & 1)) ? upper : candidate;
 }
 
+#ifndef DEVICE_BUILD
 static void
-test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
-    static const float inputs[] = {1.0F, 2.0F, 4.0F, FLT_MIN, FLT_MAX};
-    for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
-        const uint32_t guess = float_bits(1.0F / sqrtf(inputs[i]));
-        const uint32_t result = rsqrt_reference_bits(float_bits(inputs[i]), guess);
-#ifndef DEVICE_BUILD
-        const float exact = (float)(1.0 / sqrt((double)inputs[i]));
-        TEST_ASSERT_EQUAL_HEX32(float_bits(exact), result);
-#endif
-        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess - 1));
-        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess + 1));
-    }
-#ifndef DEVICE_BUILD
+assert_rsqrt_integer_bracket_midpoints(void) {
     /* A float midpoint has an odd significand greater than one; its square times a binary input cannot be one. */
     for (int exponent = 1; exponent <= RSQRT_EXPONENT_MAX; exponent++) {
         const uint32_t stride = exponent == RSQRT_EXPONENT_BIAS || exponent == RSQRT_EXPONENT_BIAS + 1
@@ -1380,6 +1369,24 @@ test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
             }
         }
     }
+}
+#endif
+
+static void
+test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
+    static const float inputs[] = {1.0F, 2.0F, 4.0F, FLT_MIN, FLT_MAX};
+    for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
+        const uint32_t guess = float_bits(1.0F / sqrtf(inputs[i]));
+        const uint32_t result = rsqrt_reference_bits(float_bits(inputs[i]), guess);
+#ifndef DEVICE_BUILD
+        const float exact = (float)(1.0 / sqrt((double)inputs[i]));
+        TEST_ASSERT_EQUAL_HEX32(float_bits(exact), result);
+#endif
+        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess - 1));
+        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess + 1));
+    }
+#ifndef DEVICE_BUILD
+    assert_rsqrt_integer_bracket_midpoints();
 #endif
 }
 
