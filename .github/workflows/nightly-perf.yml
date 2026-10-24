@@ -2,7 +2,7 @@ name: Nightly scoped performance
 
 on:
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '17 20 * * *'
   workflow_dispatch:
     inputs:
       from:
@@ -41,11 +41,8 @@ env:
 
 jobs:
   marker:
-    runs-on: [self-hosted, windows, board]
-    timeout-minutes: 1500
-    defaults:
-      run:
-        shell: 'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     env:
       OVERRIDE: ${{ inputs.override }}
       SCHEDULE: ${{ github.event.schedule }}
@@ -59,18 +56,30 @@ jobs:
           persist-credentials: false
           set-safe-directory: false
       - id: marker
-        run: |
-          PY=$(. scripts/lib/python.sh && find_python)
-          "$PY" scripts/lib/local_schedule.py marker
+        run: python3 scripts/lib/local_schedule.py marker
+
+  wait:
+    needs: marker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    strategy:
+      max-parallel: 1
+      matrix:
+        leg: [1, 2, 3, 4, 5]
+    env:
+      MARKER: ${{ needs.marker.outputs.marker }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: python3 scripts/lib/local_schedule.py wait --until "$MARKER"
 
   nightly:
-    needs: marker
+    needs: [marker, wait]
     env:
       MARKER: ${{ needs.marker.outputs.marker }}
     outputs:
       held: ${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}
     runs-on: [self-hosted, windows, board]
-    # Hang guard under the 24 h GITHUB_TOKEN life; the marker job gives work a fresh token.
+    # Hang guard under the 24 h GITHUB_TOKEN life; work gets a fresh token after the hosted wait.
     timeout-minutes: 1380
     defaults:
       run:

@@ -115,12 +115,14 @@ class BoardAlarmTests(unittest.TestCase):
             self.assertEqual(bool(alarm.stuck_board_jobs(request, NOW)), expected)
 
     def test_running_night_suppresses_health_and_probe_wait(self):
-        for name in ('marker', 'nightly'):
+        for status in ('completed', 'in_progress'):
             request = Repository()
             request.runs[f'/actions/workflows/{alarm.NIGHTLY_WORKFLOW}/runs'] = [dict(id=1, status='in_progress')]
             job = board_job('in_progress')
-            job['name'] = name
-            request.jobs['/actions/runs/1/jobs'] = [job]
+            job['name'] = 'nightly'
+            request.jobs['/actions/runs/1/jobs'] = [
+                {'name': 'marker', 'labels': ['ubuntu-24.04'], 'status': 'completed'},
+                {'name': 'wait (1)', 'labels': ['ubuntu-24.04'], 'status': status}, job]
             with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
                 self.assertEqual(alarm.check(request, NOW, ['missing'], []), [])
                 with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ,
@@ -150,6 +152,15 @@ class BoardAlarmTests(unittest.TestCase):
                 job['labels'] = labels
                 request.jobs['/actions/runs/1/jobs'] = [job]
                 self.assertFalse(alarm.night_running(request))
+
+    def test_hosted_wait_does_not_suppress_board_health(self):
+        request = Repository()
+        request.runs[f'/actions/workflows/{alarm.NIGHTLY_WORKFLOW}/runs'] = [dict(id=1, status='in_progress')]
+        request.jobs['/actions/runs/1/jobs'] = [
+            {'name': 'marker', 'labels': ['ubuntu-24.04'], 'status': 'completed'},
+            {'name': 'wait (1)', 'labels': ['ubuntu-24.04'], 'status': 'in_progress'},
+            {'name': 'nightly', 'labels': [alarm.BOARD_LABEL], 'status': 'queued'}]
+        self.assertFalse(alarm.night_running(request))
 
     def test_missing_boards(self):
         self.assertEqual(alarm.missing_boards(['2124', 'abcd'], ['abcd', 'eeee']), ['2124'])

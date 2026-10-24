@@ -206,7 +206,7 @@ def run_chain(steps, args, runner=None, clock=None):
         for index, step in enumerate(steps):
             if not stop_reason and gone():
                 stop_reason = "unplugged"
-            outcome = {"capture_failures": "not_run_stopped", "unplugged": "not_run_unplugged"}
+            outcome = {"capture_failures": "not_run_stopped", "unplugged": "not_run_unplugged", "busy": "not_run_busy"}
             result = StepResult(step, outcome.get(stop_reason, "not_run"))
             results.append(result)
             if stop_reason:
@@ -229,6 +229,9 @@ def run_chain(steps, args, runner=None, clock=None):
                     git(worktree, "submodule", "update", "--init", "--recursive")
                     code, _, _ = run_step(autana_command("--project", str(worktree), "build", VARIANT,
                                                       *BUILD_FLAGS), log, BUILD_TIMEOUT_SECONDS)
+                    if code == autana_config.EXIT_BUSY:
+                        stop_reason = "busy"
+                        result.outcome = "not_run_busy"
                     if code:
                         raise RuntimeError(f"build exited {code}")
                     build = latest_build(worktree)

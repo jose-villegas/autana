@@ -15,7 +15,7 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '17 20 * * *'
   workflow_run:
     workflows: [Bakes GPU]
     types: [completed]
@@ -70,8 +70,8 @@ jobs:
   marker:
     needs: fingerprint
     if: github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'
-    runs-on: [self-hosted, linux, gpu]
-    timeout-minutes: 1500
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     env:
       SCHEDULE: ${{ github.event.schedule }}
     outputs:
@@ -81,11 +81,26 @@ jobs:
       - id: marker
         run: python3 scripts/lib/local_schedule.py marker
 
-  refresh:
+  wait:
     needs: [fingerprint, marker]
     if: github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    strategy:
+      max-parallel: 1
+      matrix:
+        leg: [1, 2, 3, 4, 5]
+    env:
+      MARKER: ${{ needs.marker.outputs.marker }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: python3 scripts/lib/local_schedule.py wait --until "$MARKER"
+
+  refresh:
+    needs: [fingerprint, marker, wait]
+    if: github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'
     runs-on: [self-hosted, linux, gpu]
-    # Hang guard under the 24 h GITHUB_TOKEN life; the marker job gives work a fresh token.
+    # Hang guard under the 24 h GITHUB_TOKEN life; work gets a fresh token after the hosted wait.
     timeout-minutes: 1380
     env:
       MARKER: ${{ needs.marker.outputs.marker }}

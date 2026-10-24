@@ -161,8 +161,8 @@ and lists every input.
 
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
 Changed images remain pending for the next NIGHT_START; pushes do not render.
-The daily cron triggers at 22:00Z. The marker job waits for the local start,
-and the work job gets a fresh token after the wait.
+The daily cron triggers at 20:17Z. A hosted marker job computes the Berlin
+start, hosted wait legs sleep until it, and work gets a fresh token.
 
 The [night order](../../launcher/tools/perf/README.md#nightly-scoped-chain)
 owns the marker, bake priority and board-plan handoff. The hosted job

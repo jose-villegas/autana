@@ -63,21 +63,41 @@ class GpuQueueTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[3]
         for filename, job in (('doc-images-gpu.yml', 'refresh'), ('nightly-perf.yml', 'nightly')):
             workflow = yaml.safe_load((root / '.github/workflows' / filename).read_text())
-            self.assertEqual(workflow[True]['schedule'], [{'cron': '0 22 * * *'}])
-            self.assertEqual(workflow['jobs']['marker']['timeout-minutes'], 1500)
+            self.assertEqual(workflow[True]['schedule'], [{'cron': '17 20 * * *'}])
+            self.assertEqual(workflow['jobs']['marker']['runs-on'], 'ubuntu-24.04')
+            wait = workflow['jobs']['wait']
+            self.assertEqual(wait['runs-on'], 'ubuntu-24.04')
+            self.assertIn('marker', wait['needs'])
+            self.assertEqual(wait['timeout-minutes'], 355)
+            self.assertEqual(wait['strategy'], {'max-parallel': 1, 'matrix': {'leg': [1, 2, 3, 4, 5]}})
+            self.assertLess(schedule.HOSTED_WAIT_SECONDS, wait['timeout-minutes'] * 60)
+            self.assertIn('wait', workflow['jobs'][job]['needs'])
+            if job == 'refresh':
+                self.assertEqual(wait['if'], workflow['jobs'][job]['if'])
+                self.assertIn('fingerprint', wait['needs'])
             self.assertEqual(workflow['jobs'][job]['timeout-minutes'], 1380)
             self.assertIn('marker', workflow['jobs'][job]['needs'])
             self.assertEqual(workflow['jobs'][job]['env']['MARKER'], '${{ needs.marker.outputs.marker }}')
 
-    def test_pending_includes_queued_waiting_and_running_on_any_branch(self):
+    def test_pending_counts_only_gpu_jobs_ready_to_run(self):
         for status in ('queued', 'waiting', 'in_progress', 'pending', 'requested', 'completed'):
-            paths = []
-            def request(method, path):
-                paths.append(path)
-                return {'workflow_runs': [dict(status=status)]}
-            self.assertEqual(schedule.gpu_pending(request=request), status != 'completed')
-            self.assertTrue(all('branch=' not in path and 'status=' not in path for path in paths))
-            self.assertEqual(len(paths), 1 if status != 'completed' else len(schedule.GPU_WORKFLOWS))
+            for labels in (['self-hosted', 'linux', 'gpu'], ['ubuntu-24.04']):
+                with self.subTest(status=status, labels=labels):
+                    def request(method, path):
+                        if '/jobs?' in path:
+                            return {'jobs': [dict(status=status, labels=labels)]}
+                        return {'workflow_runs': [dict(id=1, status='in_progress')]}
+                    self.assertEqual(schedule.gpu_pending(request=request),
+                                     'gpu' in labels and status in ('queued', 'waiting', 'in_progress'))
+
+    def test_tomorrow_marker_wait_does_not_hold_tonights_board_plan(self):
+        def request(method, path):
+            if '/jobs?' in path:
+                return {'jobs': [dict(name='marker', status='completed', labels=['ubuntu-24.04']),
+                                 dict(name='wait (1)', status='in_progress', labels=['ubuntu-24.04']),
+                                 dict(name='refresh', status='pending', labels=['gpu'])]}
+            return {'workflow_runs': [dict(id=1, status='in_progress')]}
+        self.assertFalse(schedule.gpu_pending(request=request))
 
 
 if __name__ == '__main__':
