@@ -33,7 +33,7 @@ import zlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "device"))
 from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402  (path must be set up first)
-from screenshot import rgb_png, turn_png  # noqa: E402
+from screenshot import encode_png, turn_png  # noqa: E402
 
 BMP_HEADER_SIZE = 54
 
@@ -268,7 +268,7 @@ def masked(rects, x, y):
 
 def write_png(path, width, height, rows):
     with open(path, "wb") as f:
-        f.write(rgb_png(width, height, rows))
+        f.write(encode_png(width, height, rows))
 
 
 def main(argv=None):

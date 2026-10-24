@@ -8,26 +8,23 @@ import struct
 import sys
 import tempfile
 import unittest
-import zlib
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(TOOLS / "device"))
 
 from asset.asset_pack import parse_pack  # noqa: E402
 from gfx import image_asset  # noqa: E402
 from gfx.image_asset import HEADER, ImageError  # noqa: E402
 from r3d import build_pack  # noqa: E402
+from screenshot import PNG_RGBA, encode_png  # noqa: E402
 
 AT_FORMAT, AT_WIDTH, AT_STRIDE, AT_PIXELS = 2, 4, 8, 12
 
 
 def png(width, height, rgba_rows):
     """An 8-bit RGBA PNG of `rgba_rows`, each a list of (r, g, b, a)."""
-    def chunk(tag, data):
-        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
-    raw = b"".join(b"\0" + bytes(v for px in row for v in px) for row in rgba_rows)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
-            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    return encode_png(width, height, (bytes(v for px in row for v in px) for row in rgba_rows), PNG_RGBA)
 
 
 def edited(entry, offset, fmt, value):
