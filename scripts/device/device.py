@@ -32,7 +32,7 @@ import autana_config  # noqa: E402
 import board_serial
 from console_protocol import FRAMED_ENDINGS, replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
-                            crash_signs, suite_failure_signs)
+                            ERROR_LINE_RE, crash_signs, suite_failure_signs)
 
 from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
                           install_console_interrupt_handler)
@@ -64,7 +64,7 @@ ESPRESSIF_VID = 0x303A
 # only once it clears this, so the common case stays plain-text and greppable.
 COMPRESS_ABOVE_BYTES = 200_000
 SLUG_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
-BOOT_ERROR = re.compile(r"(?:\berror\b|\bpanic\b|\babort\b|\bassert\b|^E \(\d+\))", re.I)
+BOOT_ERROR = ERROR_LINE_RE
 MAX_PRINTED_FAILURES = 10
 
 
@@ -520,8 +520,18 @@ def print_crash_signs(data, boots_allowed):
     return len(signs)
 
 
-def print_suite_output(data, record_path, command, reason, verbose, boots_allowed):
-    """Failures, crash signs and missing completion, after printing the verdict."""
+def print_report_summary(report_path):
+    """The report's path, then its errors section: what to read before the capture."""
+    if report_path is None:
+        return
+    print("report: " + str(report_path))
+    for line in device_report.errors_section(Path(report_path).read_text(encoding="utf-8")):
+        print("  " + line)
+
+
+def print_suite_output(data, record_path, command, reason, verbose, boots_allowed, report_path=None):
+    """Failures, crash signs and missing completion, after printing the verdict,
+    then the report path and its errors section last, where a run is read."""
     text = data.decode("utf-8", errors="replace")
     if verbose and text:
         print(text, end="" if text.endswith("\n") else "\n")
@@ -540,6 +550,7 @@ def print_suite_output(data, record_path, command, reason, verbose, boots_allowe
         print(sign)
     print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
+    print_report_summary(report_path)
     if reason != "complete":
         raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
     return failed + crashed + len(signs)
@@ -1505,14 +1516,15 @@ def check_test_filter(data, suite, patterns):
 
 
 def report_recorded_capture(path):
+    """The report's path, or None when it could not be written."""
     if not path.is_file():
         print("report skipped: capture log was not created", file=sys.stderr)
-        return
+        return None
     try:
-        report_path = device_report.write_report_for_capture(path, records_root() / "index.jsonl")
-        print("report: " + str(report_path))
+        return device_report.write_report_for_capture(path, records_root() / "index.jsonl")
     except Exception as report_error:  # A report is a convenience, never fails the capture.
         print("report generation failed (capture is unaffected): " + str(report_error), file=sys.stderr)
+        return None
 
 
 def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
@@ -1549,8 +1561,9 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             acquired_at=held.held["acquired_at"] if held else None,
             test_filter=patterns or None,
             console_send=getattr(args, "console_send", None))
-        report_recorded_capture(final_path)
-    failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), BOOTS_ON_RUNNING)
+        report_path = report_recorded_capture(final_path)
+    failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), BOOTS_ON_RUNNING,
+                                report_path)
     if patterns:
         check_test_filter(data, args.suite, patterns)
     return 1 if failed else 0
@@ -1596,8 +1609,9 @@ def selftest(args, store, board):
                 build_id=latest_build_id_from_bytes(data) or build_id,
                 worktree=worktree, commit=commit, reason=reason, error=error,
                 acquired_at=held.held["acquired_at"])
-            report_recorded_capture(final_path)
-        failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False), BOOTS_FROM_RESET)
+            report_path = report_recorded_capture(final_path)
+        failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False), BOOTS_FROM_RESET,
+                                    report_path)
         return 1 if failed else 0
 
 
