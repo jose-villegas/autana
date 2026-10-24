@@ -267,6 +267,12 @@ static const scene_spec_t SCENES[] = {
      .renderer_count = 1,
      .entities = {{"red", IDENTITY}, {"lamp", IDENTITY}},
      .renderers = {{0, "red"}}},
+    {"hall", 2, 1, 1, {{"camera", CAMERA_AT(0)}, {"statue", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, ""}}},
+    {.id = "meadow",
+     .entity_count = 2,
+     .renderer_count = 1,
+     .entities = {{"subject", IDENTITY}, {"lamp", IDENTITY}},
+     .renderers = {{0, "red"}}},
 };
 
 #define SCENE_COUNT ((int)(sizeof SCENES / sizeof SCENES[0]))
@@ -288,14 +294,15 @@ scene_entry_size(const scene_spec_t* s) {
            + ((uint32_t)s->camera_count * sizeof(scene_asset_camera_t)) + sizeof(scene_asset_settings_t)
            + camera_clip_count(s) * (sizeof(scene_asset_animator_t) + ASSET_NAME_MAX)
            + (strcmp(s->id, "test_lit") == 0 ? sizeof(scene_asset_light_t) : 0)
-           + (strcmp(s->id, "test_skin") == 0 ? sizeof(scene_asset_skinned_renderer_t) - sizeof(scene_asset_renderer_t)
-                                                    + sizeof(scene_asset_animator_t) + 2 * ASSET_NAME_MAX
-                                              : 0);
+           + ((strcmp(s->id, "test_skin") == 0 || strcmp(s->id, "meadow") == 0)
+                  ? sizeof(scene_asset_skinned_renderer_t) - sizeof(scene_asset_renderer_t)
+                        + sizeof(scene_asset_animator_t) + 2 * ASSET_NAME_MAX
+                  : 0);
 }
 
 static void
 make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fixture_options_t* options) {
-    const uint16_t skins = strcmp(s->id, "test_skin") == 0;
+    const uint16_t skins = (strcmp(s->id, "test_skin") == 0 || strcmp(s->id, "meadow") == 0);
     const uint16_t clips = camera_clip_count(s) + 2 * skins;
     const uint16_t lights = strcmp(s->id, "test_lit") == 0;
     const uint16_t counts[SCENE_ASSET_PART_COUNT] = {s->entity_count,
@@ -1256,11 +1263,11 @@ static void
 test_doc_scene_load_find_activate(void) {
     fixture();
     test_asset_dir_use(".");
-    write_pack("test_pair", false);
-    hall_example_start("test_pair", "red");
-    remove_pack("test_pair");
+    write_pack("hall", false);
+    hall_example_start();
+    remove_pack("hall");
     TEST_ASSERT_NOT_NULL(hall);
-    TEST_ASSERT_EQUAL_INT(scene_find(hall, "red"), statue);
+    TEST_ASSERT_EQUAL_INT(scene_find(hall, "statue"), statue);
     TEST_ASSERT_TRUE(scene_has_active_camera());
     frame(0);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), fx.pixels[CENTER * SIZE + CENTER]);
@@ -1270,17 +1277,17 @@ static void
 test_doc_animator_blends_to_selected_clip(void) {
     fixture();
     test_asset_dir_use(".");
-    write_pack("test_skin", false);
-    animator_example_start("test_skin", "red");
-    remove_pack("test_skin");
-    TEST_ASSERT_NOT_NULL(animated_scene);
-    TEST_ASSERT_EQUAL_INT(scene_find(animated_scene, "red"), subject);
-    TEST_ASSERT_TRUE(animator_example(1));
-    const anim_layer_t* layer = &animated_scene->animators[subject].layer;
+    write_pack("meadow", false);
+    start();
+    remove_pack("meadow");
+    TEST_ASSERT_NOT_NULL(scene);
+    TEST_ASSERT_EQUAL_INT(scene_find(scene, "subject"), subject);
+    TEST_ASSERT_TRUE(on_pick(1));
+    const anim_layer_t* layer = &scene->animators[subject].layer;
     TEST_ASSERT_EQUAL_INT(1, layer->current.clip);
     TEST_ASSERT_EQUAL_INT(0, layer->previous.clip);
-    TEST_ASSERT_EQUAL_UINT32(ANIMATOR_EXAMPLE_BLEND_MS, layer->blend_ms);
-    TEST_ASSERT_FALSE(animator_example(scene_animator_clip_count(animated_scene, subject)));
+    TEST_ASSERT_EQUAL_UINT32(BLEND_MS, layer->blend_ms);
+    TEST_ASSERT_FALSE(on_pick(scene_animator_clip_count(scene, subject)));
 }
 
 static void
@@ -1288,12 +1295,9 @@ test_doc_present_modes_reach_camera(void) {
     fixture();
     scene_t* scene = show("test_pair", NULL);
     const scene_entity_t camera = scene_find(scene, "camera");
-    const camera_present_t modes[] = {CAMERA_PRESENT_SCANLINE, CAMERA_PRESENT_DOUBLE, CAMERA_PRESENT_NEAREST};
-    for (size_t i = 0; i < sizeof modes / sizeof modes[0]; i++) {
-        TEST_ASSERT_TRUE(present_example(scene, camera, modes[i]));
-        TEST_ASSERT_EQUAL_INT(modes[i], scene_camera_lens(scene, NULL)->present);
-    }
-    TEST_ASSERT_FALSE(present_example(scene, scene_find(scene, "red"), CAMERA_PRESENT_DOUBLE));
+    TEST_ASSERT_TRUE(present_example(scene, camera));
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_SCANLINE, scene_camera_lens(scene, NULL)->present);
+    TEST_ASSERT_FALSE(present_example(scene, scene_find(scene, "red")));
 }
 
 static void

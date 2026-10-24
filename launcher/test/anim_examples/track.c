@@ -10,9 +10,9 @@ typedef struct {
 } track_example_t;
 
 static bool
-track_example_start(track_example_t* s, const asset_pack_t* pack, const char* clip_id, const char* node) {
-    if (anim_tracks_from_pack(pack, clip_id, &s->clip) != ASSET_OK
-        || anim_tracks_find(&s->clip, name_hash(node), ANIM_COMPONENT_TRANSFORM, name_hash("position"), &s->move)
+track_example_start(track_example_t* s, const asset_pack_t* pack) {
+    if (anim_tracks_from_pack(pack, "probe", &s->clip) != ASSET_OK
+        || anim_tracks_find(&s->clip, name_hash("camera"), ANIM_COMPONENT_TRANSFORM, name_hash("position"), &s->move)
                != ASSET_OK) {
         return false;
     }

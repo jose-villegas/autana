@@ -134,8 +134,7 @@ An app loads the scene by name and activates its camera. The shell advances
 every loaded scene and draws through the active camera each frame, so the app
 never calls draw; `frame()` runs after the scene is in the framebuffer and
 draws over it. Entities are found by name once the scene has loaded, so a
-misspelt one is found missing then. Pass the scene and entity names to
-`hall_example_start()`:
+misspelt one is found missing then:
 
 <!-- generated: scene-hall-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
@@ -146,12 +145,12 @@ static scene_t* hall;
 static scene_entity_t statue;
 
 static void
-hall_example_start(const char* scene_id, const char* entity_name) {
+hall_example_start(void) {
     scene_failure_t why;
-    hall = scene_load(scene_id, &why);
+    hall = scene_load("hall", &why); /* NULL when an entry is missing: `why` names it */
     if (hall != NULL) {
-        statue = scene_find(hall, entity_name);
-        scene_activate(hall, NULL);
+        statue = scene_find(hall, "statue"); /* SCENE_ENTITY_NONE when there is none */
+        scene_activate(hall, NULL);          /* its first camera */
     }
 }
 ```

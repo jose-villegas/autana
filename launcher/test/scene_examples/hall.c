@@ -5,11 +5,11 @@ static scene_t* hall;
 static scene_entity_t statue;
 
 static void
-hall_example_start(const char* scene_id, const char* entity_name) {
+hall_example_start(void) {
     scene_failure_t why;
-    hall = scene_load(scene_id, &why);
+    hall = scene_load("hall", &why); /* NULL when an entry is missing: `why` names it */
     if (hall != NULL) {
-        statue = scene_find(hall, entity_name);
-        scene_activate(hall, NULL);
+        statue = scene_find(hall, "statue"); /* SCENE_ENTITY_NONE when there is none */
+        scene_activate(hall, NULL);          /* its first camera */
     }
 }

@@ -159,9 +159,6 @@ title Binding registry, one 28-byte row a binding from byte 20
 
 ### Reading a clip
 
-Pass the pack, clip id and node name to `track_example_start()`. Its state
-holds the curve and playhead for `track_example()` to sample each frame.
-
 <!-- generated: anim-track-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Track: load a position curve once, then sample it each frame. */
@@ -176,9 +173,9 @@ typedef struct {
 } track_example_t;
 
 static bool
-track_example_start(track_example_t* s, const asset_pack_t* pack, const char* clip_id, const char* node) {
-    if (anim_tracks_from_pack(pack, clip_id, &s->clip) != ASSET_OK
-        || anim_tracks_find(&s->clip, name_hash(node), ANIM_COMPONENT_TRANSFORM, name_hash("position"), &s->move)
+track_example_start(track_example_t* s, const asset_pack_t* pack) {
+    if (anim_tracks_from_pack(pack, "probe", &s->clip) != ASSET_OK
+        || anim_tracks_find(&s->clip, name_hash("camera"), ANIM_COMPONENT_TRANSFORM, name_hash("position"), &s->move)
                != ASSET_OK) {
         return false;
     }
@@ -296,7 +293,8 @@ If glTF can animate the property, map the channel in
 `tracks_asset.channel_binding()`, converting the curve to the field's units in
 the bake. The readers accept any nonzero code, so neither reader changes.
 
-For example, find a camera's field-of-view track and sample it at `seconds`:
+For example, resolve a camera's field of view once at load, then sample the
+curve each frame:
 
 <!-- generated: anim-camera-field-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
@@ -304,15 +302,15 @@ For example, find a camera's field-of-view track and sample it at `seconds`:
 #include "anim/anim_tracks.h"
 
 static asset_status_t
-camera_field_example(const anim_tracks_t* clip, const char* node, float seconds, float fov[ANIM_WIDTH_MAX]) {
-    anim_track_t lens;
-    const name_hash_t camera = name_hash(node);
+camera_field_example_start(const anim_tracks_t* clip, anim_track_t* lens) {
+    const name_hash_t camera = name_hash("camera");
     const name_hash_t field = name_hash("half_fov_short_tan");
-    const asset_status_t status = anim_tracks_find(clip, camera, ANIM_COMPONENT_CAMERA, field, &lens);
-    if (status == ASSET_OK) {
-        anim_track_sample(&lens, seconds, fov);
-    }
-    return status;
+    return anim_tracks_find(clip, camera, ANIM_COMPONENT_CAMERA, field, lens);
+}
+
+static void
+camera_field_example(const anim_track_t* lens, float seconds, float fov[ANIM_WIDTH_MAX]) {
+    anim_track_sample(lens, seconds, fov);
 }
 ```
 <!-- /generated: anim-camera-field-example -->
