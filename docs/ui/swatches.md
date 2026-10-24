@@ -5,7 +5,7 @@
 
 ## Example
 
-<!-- generated: ui-swatches-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-swatches-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A grid of colours, with the caller's pick outlined over it. */
 #include "ui/ui.h"
