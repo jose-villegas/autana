@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""A local log of documentation lookups, and its summary.
+"""The shared base of the lookup tools: a local log of every lookup, its
+summary, and each tool's tracked retrieval score.
 
     python scripts/docs/query_log.py [--days N] [--tool NAME]   summarise the log
+
+A lookup tool wraps each lookup in `with lookup(tool, kind, query) as call:`
+and prints through call.print, then sets call.hits, call.weak and any
+call.fields; the row is written when the block ends, with its time and the
+characters it printed. A tool's --eval passes its (question, rank) rows to
+keep_score, which keeps one history for every tool.
 
 Each lookup appends one JSON line to queries.jsonl in the per-user autana
 cache (%LOCALAPPDATA%/autana/usage, else $XDG_CACHE_HOME or ~/.cache, then
@@ -14,15 +21,19 @@ that writes rows in this format is summarised beside docs_search.py:
     hits      [[label, score], ...]   ms     latency, when known
     weak      true when nothing answered well
     followed  optional: rank of the result opened next, 0 for none
-    session   optional: the AUTANA_SESSION of the process that asked
+    chars     optional: characters printed, totalled as tokens in the summary
+    session   optional: the label of the session that asked
 
 Other fields are kept but not summarised. To group lookups by session, run
 the session's commands with AUTANA_SESSION=<any label> in their environment
-(set per process; nothing is stored); --session NAME then shows only that one.
+(set per process; nothing is stored), or name in the `session_vars` setting
+the variables that already label one; --session NAME then shows only that one.
 
 A failure to write the log never fails the lookup that made it.
 """
 import argparse
+import contextlib
+import difflib
 import json
 import os
 import sys
@@ -35,9 +46,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 
 LOG_NAME = "queries.jsonl"
+EVAL_HISTORY = "eval/history.jsonl"
 HITS_KEPT = 5
 SESSION_VAR = "AUTANA_SESSION"
 TOP_SHOWN = 15
+# The usual rough size of an English token, enough to rank tools by output.
+CHARS_PER_TOKEN = 4
+NEAREST_SHOWN = 3
+NEAREST_CUTOFF = 0.8
 
 
 def log_dir():
@@ -49,18 +65,90 @@ def iso(seconds=None):
     return moment.isoformat(timespec="seconds")
 
 
+def session():
+    """This process's session label: AUTANA_SESSION, else the first set variable
+    the `session_vars` setting names, else None."""
+    names = [SESSION_VAR]
+    try:
+        names += autana_config.load().get("session_vars", [])
+    except autana_config.ConfigError:
+        pass
+    return next((os.environ[name] for name in names if os.environ.get(name)), None)
+
+
 def record(tool, kind, query, hits=(), started=None, **fields):
     """Append one lookup; hits are (label, score) pairs, best first."""
     row = {"time": iso(), "tool": tool, "kind": kind, "query": query,
            "hits": [[label, None if score is None else round(score, 4)]
                     for label, score in list(hits)[:HITS_KEPT]]}
-    session = os.environ.get(SESSION_VAR)
-    if session:
-        row["session"] = session
+    label = session()
+    if label:
+        row["session"] = label
     if started is not None:
         row["ms"] = round((time.perf_counter() - started) * 1000)
     row.update(fields)
     append(LOG_NAME, row)
+
+
+class Lookup:
+    """One lookup as it runs: what it printed, what it found, and its verdict."""
+
+    def __init__(self):
+        self.hits, self.weak, self.fields, self.chars = [], False, {}, 0
+
+    def print(self, text="", end="\n", flush=False):
+        self.chars += len(text) + len(end)
+        print(text, end=end, flush=flush)
+
+
+@contextlib.contextmanager
+def lookup(tool, kind, query):
+    """Time one lookup and log it, with what it printed, when the block ends;
+    a block that raises logs nothing."""
+    call, started = Lookup(), time.perf_counter()
+    yield call
+    record(tool, kind, query, hits=call.hits, started=started, weak=call.weak,
+           chars=call.chars, **call.fields)
+
+
+def nearest(word, words):
+    """The indexed words closest in spelling to one that matched nothing."""
+    return difflib.get_close_matches(word, words, NEAREST_SHOWN, NEAREST_CUTOFF)
+
+
+def scores(ranks):
+    """Mean reciprocal rank over (question, rank or None) rows, and the share
+    found first and in the top three."""
+    count = max(len(ranks), 1)
+    return {"rows": len(ranks),
+            "mrr": round(sum(1 / r for _, r in ranks if r) / count, 3),
+            "top1": round(sum(1 for _, r in ranks if r == 1) / count, 3),
+            "top3": round(sum(1 for _, r in ranks if r and r <= 3) / count, 3)}
+
+
+def eval_history():
+    return log_dir() / EVAL_HISTORY
+
+
+def keep_score(tool, mode, ranks, started, **fields):
+    """Score one tool's evaluation, print it beside the last comparable run of
+    that tool, and keep it in the history every checkout shares."""
+    result = {"time": iso(), "suite": tool, "mode": mode, **fields, **scores(ranks),
+              "seconds": round(time.perf_counter() - started, 1)}
+    try:
+        earlier = [json.loads(line) for line in eval_history().read_text(encoding="utf-8").splitlines()]
+    except (OSError, ValueError):
+        earlier = []
+    print(f"{tool} {mode}: MRR {result['mrr']:.3f}, top-1 {result['top1']:.0%}, "
+          f"top-3 {result['top3']:.0%} of {result['rows']} questions in {result['seconds']} s")
+    # Only a run of the same tool and mode over the same set compares.
+    previous = next((e for e in reversed(earlier) if e.get("suite") == tool
+                     and e.get("mode") == mode and e.get("rows") == result["rows"]), None)
+    if previous:
+        print(f"last {previous['time'][:10]}: MRR {previous['mrr']:.3f}, top-3 {previous['top3']:.0%}"
+              f" of {previous['rows']}")
+    append(EVAL_HISTORY, result)
+    return result
 
 
 def append(name, row):
@@ -113,7 +201,8 @@ def summary(rows):
     for row in rows:
         by_tool[row["tool"]].append(row)
     lines.append("")
-    lines.append(f"{'tool':<10} {'kind':<9} {'count':>6} {'weak':>6} {'opened':>7} {'median ms':>10}")
+    lines.append(f"{'tool':<10} {'kind':<9} {'count':>6} {'weak':>6} {'opened':>7} {'median ms':>10}"
+                 f" {'tokens':>8}")
     for tool in sorted(by_tool):
         kinds = Counter(r.get("kind", "?") for r in by_tool[tool])
         for kind, count in kinds.most_common():
@@ -123,8 +212,10 @@ def summary(rows):
             opened = sum(1 for r in judged if r["followed"])
             times = sorted(r["ms"] for r in group if isinstance(r.get("ms"), (int, float)))
             median = str(times[len(times) // 2]) if times else "-"
+            sized = [r["chars"] for r in group if isinstance(r.get("chars"), int)]
+            tokens = str(sum(sized) // CHARS_PER_TOKEN) if sized else "-"
             lines.append(f"{tool:<10} {kind:<9} {count:>6} {percent(weak, count):>6} "
-                         f"{percent(opened, len(judged)):>7} {median:>10}")
+                         f"{percent(opened, len(judged)):>7} {median:>10} {tokens:>8}")
     asked = Counter((r["tool"], r.get("kind", "?"), r["query"].lower()) for r in rows if r.get("query"))
     repeated = [(key, count) for key, count in asked.most_common(TOP_SHOWN) if count > 1]
     if repeated:

@@ -77,7 +77,7 @@ Plans, `docs_extra` notes and sections headed "Related" or "See also"
 rank below documents of record: a plan describes code that does not exist
 yet, notes from outside the tree are not the record, and a list of links
 names every topic and answers none. A question whose words no
-document uses says so, and a result that neither holds most of the question's
+document uses says so, with the closest indexed spellings, and a result that neither holds most of the question's
 words nor is close in meaning is flagged as a weak match.
 
 ## How well it finds
@@ -104,13 +104,22 @@ Every question, `--ask`, `--section` and `--outline` appends one JSON line to
 `queries.jsonl` in `%LOCALAPPDATA%/autana/usage` (elsewhere
 `$XDG_CACHE_HOME/autana/usage`, by default `~/.cache/autana/usage`): the
 time, the question, the best results with their scores, how long it took,
-whether meaning was used, and whether the answer was weak. It stays on the
-machine; deleting the folder loses only the history.
+how many characters it printed, whether meaning was used, and whether the
+answer was weak. It stays on the machine; deleting the folder loses only the
+history.
 
 To group lookups by session, run the commands with `AUTANA_SESSION=<label>`
-in their environment (per process, nothing is stored); each row then carries
-it, and `autana docs --usage` counts the sessions. `python
-scripts/docs/query_log.py --session <label>` shows one session.
+in their environment (per process, nothing is stored), or list in the
+`session_vars` [setting](Settings.md) variables your terminal already sets
+per session; the first one set labels the row. `autana docs --usage` counts
+the sessions, and `python scripts/docs/query_log.py --session <label>` shows
+one.
+
+`query_log.py` is the base every lookup tool shares. A tool wraps each lookup
+in `query_log.lookup(tool, kind, query)`, which times it, counts what it
+printed and writes the row; its `--eval` hands its ranks to
+`query_log.keep_score`, which keeps one history for every tool, and
+`scripts/docs/eval_summary.py --tool NAME` reports a tool's last score.
 
 `autana docs --usage` summarises every `*.jsonl` in that folder. Another
 tool that writes rows in the format `scripts/docs/query_log.py` documents is
@@ -118,7 +127,7 @@ summarised too:
 
 | Part | Shows |
 |---|---|
-| Per tool and kind | count, share weak, share where a result was opened next (when a row records it), median time |
+| Per tool and kind | count, share weak, share where a result was opened next (when a row records it), median time, printed output in tokens (characters / 4) |
 | Most asked | questions asked more than once |
 | Missed | weak or empty answers of any kind: the documents to write or retitle |
 
