@@ -6,6 +6,7 @@ from itertools import repeat
 import json
 import os
 import re
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -13,7 +14,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 import yaml
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 PERF = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PERF))
@@ -105,12 +106,27 @@ class NightlyTests(unittest.TestCase):
         cache = patch.object(autana_config, "user_cache_dir", return_value=self.root / "cache")
         cache.start()
         self.addCleanup(cache.stop)
+        for owner in (chain, layout_measure):
+            guard = patch.object(owner, "launch_process_tree",
+                                 side_effect=AssertionError("test attempted a real process launch"))
+            guard.start()
+            self.addCleanup(guard.stop)
+        stop = patch.object(chain, "stop_process_tree")
+        self.stop_tree = stop.start()
+        self.addCleanup(stop.stop)
+        close = patch.object(chain, "close_process_tree")
+        close.start()
+        self.addCleanup(close.stop)
         self.repo = self.root / "repo"
         self.repo.mkdir()
         chain.git(self.repo, "init")
         chain.git(self.repo, "config", "user.email", "test@example.invalid")
         chain.git(self.repo, "config", "user.name", "Test")
         chain.git(self.repo, "config", "core.hooksPath", str(self.root / "no-hooks"))
+        plugged = patch.object(chain, "plugged_boards", return_value=["20E8", "2124"])
+        self.plugged_patch = plugged
+        plugged.start()
+        self.addCleanup(plugged.stop)
         self.commits = []
         header = self.repo / "launcher/test/suites.h"
         header.parent.mkdir(parents=True)
@@ -231,6 +247,258 @@ class NightlyTests(unittest.TestCase):
                 manifest = lnt.read_last_night(self.args.data, "20E8")
                 self.assertTrue(manifest["cleanup"].startswith("failed:"))
 
+    def test_unplugged_before_second_step_keeps_result(self):
+        with patch.object(chain, "plugged_boards", side_effect=[["20E8"], []]):
+            results, _, writes = self.run_chain()
+        self.assertEqual([result.outcome for result in results],
+                         ["measured", "not_run_unplugged", "not_run_unplugged"])
+        self.assertEqual(writes[-1]["stop_reason"], "unplugged")
+        self.assertEqual(writes[-1]["last_measured"], self.commits[1])
+
+    def test_error_after_unplug_does_not_count_as_capture_failure(self):
+        with patch.object(chain, "plugged_boards", side_effect=[["20E8"], []]):
+            results, _, writes = self.run_chain(captures=(True,))
+        self.assertEqual([result.outcome for result in results], ["not_run_unplugged"] * 3)
+        self.assertIsNone(writes[-1]["last_attempted"])
+
+    def test_failed_build_before_unplug_keeps_failure(self):
+        with patch.object(chain, "plugged_boards", side_effect=[["20E8"], []]):
+            results, _, writes = self.run_chain(builds=(1,))
+        self.assertEqual([result.outcome for result in results],
+                         ["build_failed", "not_run_unplugged", "not_run_unplugged"])
+        self.assertEqual(writes[-1]["last_attempted"], self.commits[1])
+
+    def test_presence_query_failure_keeps_lane_running(self):
+        with patch.object(chain, "plugged_boards", side_effect=OSError("devices failed")):
+            results, _, _ = self.run_chain(self.steps((5,)))
+        self.assertEqual(results[0].outcome, "measured")
+
+    def test_unplugged_lane_preserves_failure_exit(self):
+        path = self.root / "plan.json"
+        path.write_text(json.dumps(dict(night="2026-10-18", started=self.clock.now().isoformat(),
+                                       deadline=self.args.deadline, lanes={"20E8": dict(
+                                           lane=self.args.lane, previous=None,
+                                           steps=[vars(step) for step in self.steps()])})))
+        command = ["chain", "run", "--plan", str(path), "--board", "20E8", "--lane", self.args.lane,
+                   "--repo", str(self.repo), "--data", str(self.args.data), "--out", str(self.args.out),
+                   "--suite", "suite", "-", "-"]
+        replay = Replay(self.root, self.clock, builds=(1,))
+        with patch.object(sys, "argv", command), patch.object(chain, "Clock", return_value=self.clock), \
+                patch.object(chain, "run_stamped", replay), \
+                patch.object(chain, "plugged_boards", side_effect=[["20E8"], ["20E8"], []]), \
+                patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="hold"):
+            self.assertEqual(chain.main(), 1)
+
+    def supervise(self, *, late=False, failed=False, unplugged=False):
+        previous = dict(last_measured=self.commits[2], last_attempted=self.commits[4], machine=OTHER_MACHINE)
+        chain.write_json(self.args.data / "scoped/2124/2026-10-17-2230/night.json", previous)
+        planned = dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
+                       deadline=(self.clock.now() + timedelta(seconds=(
+                           chain.FIRST_STEP_SECONDS if late else chain.FIRST_STEP_SECONDS * 2))).isoformat(),
+                       lanes={"20E8": dict(lane="0/2", previous=None,
+                                          steps=[vars(step) for step in self.steps((1, 3, 5) if unplugged else (5,))],
+                                          estimate=chain.FIRST_STEP_SECONDS)})
+        path = self.root / "plan.json"
+        chain.write_json(path, planned)
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
+                               suite=self.args.suite)
+        commands = []
+        manifests = {}
+
+        def launch(command, **options):
+            commands.append(command)
+            board = command[2]
+            current = json.loads(Path(command[command.index("--plan") + 1]).read_text())
+            lane = current["lanes"][board]
+            lane_args = SimpleNamespace(**vars(self.args))
+            lane_args.board, lane_args.lane, lane_args.previous = board, lane["lane"], lane["previous"]
+            lane_args.started, lane_args.deadline = current["started"], current["deadline"]
+            lane_args.out = self.args.out / board
+            steps = [chain.Step(**step) for step in lane["steps"]]
+            replay = Replay(self.root, self.clock, builds=(1,) if failed and board == "20E8" else ())
+            machine = MACHINE if board == "20E8" else OTHER_MACHINE
+            plugged = iter(([board], [])) if unplugged and board == "20E8" else repeat([board])
+            with patch.object(chain, "plugged_boards", side_effect=lambda: next(plugged)), \
+                    patch("layout_measure.capture_board", return_value=machine):
+                results = chain.run_chain(steps, lane_args, replay, self.clock)
+            manifests[board] = lnt.read_last_night(self.args.data, board)
+            return SimpleNamespace(poll=lambda: int(any(r.outcome == "build_failed" for r in results)),
+                                   wait=lambda: int(any(r.outcome == "build_failed" for r in results)))
+
+        boards = iter((["20E8", "2124"],))
+        with patch.object(chain, "plugged_boards", side_effect=lambda: next(boards, ["20E8", "2124"])):
+            status = chain.run_night(args, clock=self.clock, launch=launch)
+        return status, commands, json.loads(path.read_text()), manifests
+
+    def test_supervisor_starts_all_lanes_and_waits_for_all_at_deadline(self):
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(deadline=(self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS / 2)).isoformat(),
+                                   lanes={board: dict(lane=f"{i}/2", estimate=42) for i, board in enumerate(("FAK1", "FAK2"))}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
+                               suite=self.args.suite)
+        events = []
+
+        def launch(command, **options):
+            board = command[2]
+            events.append("start " + board)
+            def wait():
+                events.append("finish " + board)
+                return int(board == "FAK1")
+            return SimpleNamespace(poll=lambda: None, wait=wait)
+
+        self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
+        self.assertEqual(events, ["start FAK1", "start FAK2", "finish FAK1", "finish FAK2"])
+
+    def test_supervisor_does_not_publish_joiner_when_launch_fails(self):
+        path = self.root / "plan.json"
+        planned = dict(tip=self.commits[-1], deadline=self.args.deadline,
+                       from_sha=self.commits[3], max_steps=1,
+                       lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)})
+        chain.write_json(path, planned)
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=self.args.suite)
+        def launch(command, **options):
+            self.assertEqual(json.loads(path.read_text()), planned)
+            if command[2] == "FAK2":
+                raise OSError("cannot start joining lane")
+            return SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+        with patch.object(chain, "plugged_boards", return_value=["FAK1", "FAK2"]):
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
+        self.assertEqual(json.loads(path.read_text()), planned)
+
+    def test_supervisor_default_launch_owns_and_closes_process_tree(self):
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(deadline=self.clock.now().isoformat(),
+                                   lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=self.args.suite)
+        process = SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+        with patch.object(chain, "launch_process_tree", return_value=process) as launch, \
+                patch.object(chain, "close_process_tree") as close:
+            self.assertEqual(chain.run_night(args, clock=self.clock), 0)
+        launch.assert_called_once()
+        close.assert_called_once_with(process)
+
+    def test_supervisor_handles_rescan_errors_and_releases_early(self):
+        path = self.root / "plan.json"
+        planned = dict(tip=self.commits[-1], deadline=self.args.deadline,
+                       lanes={"20E8": dict(lane="0/1", estimate=42)})
+        chain.write_json(path, planned)
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=self.args.suite)
+        process = Mock()
+        process.poll.side_effect = [None, None, 0]
+        process.wait.return_value = 0
+        with patch.object(chain, "plugged_boards", return_value=["20E8", "2124"]), \
+                patch.object(chain, "plan_lane", side_effect=ValueError("bad history")) as lane:
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process), 1)
+        lane.assert_called_once()
+        process.wait.assert_called_once()
+        self.assertLess(self.clock.now(), datetime.fromisoformat(self.args.deadline))
+
+    def test_supervisor_interrupt_terminates_and_waits_every_child(self):
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(deadline=self.args.deadline,
+                                   lanes={"20E8": dict(lane="0/1", estimate=42)}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=self.args.suite)
+        process = Mock()
+        process.poll.return_value = None
+        process.wait.return_value = 0
+        with patch.object(self.clock, "sleep", side_effect=KeyboardInterrupt), \
+                self.assertRaises(KeyboardInterrupt):
+            chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process)
+        self.stop_tree.assert_called_once_with(process)
+        process.wait.assert_called_once()
+
+    def test_supervisor_sigterm_during_final_wait_stops_children(self):
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(deadline=self.clock.now().isoformat(),
+                                   lanes={"20E8": dict(lane="0/1", estimate=42)}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=self.args.suite)
+        process = Mock()
+        process.poll.return_value = None
+        def wait():
+            value = next(waits)
+            return value() if callable(value) else value
+        waits = iter([lambda: signal.raise_signal(signal.SIGTERM), 0])
+        process.wait.side_effect = wait
+        original = signal.getsignal(signal.SIGTERM)
+        with self.assertRaises(KeyboardInterrupt):
+            chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process)
+        self.stop_tree.assert_called_once_with(process)
+        self.assertEqual(process.wait.call_count, 2)
+        self.assertEqual(signal.getsignal(signal.SIGTERM), original)
+
+    def test_supervisor_lane_settings_and_plan_selection(self):
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(tip=self.commits[-1], deadline=self.args.deadline,
+            from_sha=self.commits[3], max_steps=1, lanes={"20E8": dict(lane="0/2", estimate=42)}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
+                               out=self.args.out, suite=[("suite", "-", "table with spaces")])
+        launch = Mock(return_value=SimpleNamespace(poll=lambda: 0, wait=lambda: 0))
+        original = subprocess.check_output
+        def converted(command, **options):
+            if command[0] == "/tools/cygpath":
+                return "C:/bash.exe\n" if command[1] == "-w" else "/captures/ci.log\n"
+            return original(command, **options)
+        with patch.dict(os.environ, SELFTEST_BOARD="20E8", BOARD_CI_LOG="inherited"), \
+                patch.object(chain.shutil, "which", side_effect=lambda name: "/tools/" + name), \
+                patch.object(chain.subprocess, "check_output", side_effect=converted):
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 0)
+        first, second = launch.call_args_list
+        command = first.args[0]
+        self.assertEqual(command[command.index("--selftest") + 1:],
+                         ["C:/bash.exe", str(self.repo / "scripts/ci/board-steps.sh")])
+        self.assertEqual(first.kwargs["env"]["BOARD_CI_LOG"], "/captures/ci.log")
+        self.assertNotIn("BOARD_CI_LOG", second.kwargs["env"])
+        self.assertNotIn("--selftest", second.args[0])
+        self.assertEqual(command[command.index("--suite") + 1:command.index("--suite") + 4], list(args.suite[0]))
+        joining = json.loads(path.read_text())["lanes"]["2124"]
+        self.assertEqual([step["commit"] for step in joining["steps"]], [self.commits[3]])
+
+    def test_joiner_uses_own_anchor_and_is_in_summary(self):
+        status, commands, planned, manifests = self.supervise()
+        self.assertEqual(status, 0)
+        self.assertEqual([command[2] for command in commands], ["20E8", "2124"])
+        joiner = planned["lanes"]["2124"]
+        self.assertEqual(joiner["lane"], "0/1")
+        self.assertEqual(joiner["steps"][0]["commit"], self.commits[2])
+        self.assertEqual(joiner["steps"][0]["role"], "anchor")
+        self.assertEqual([step["commit"] for step in joiner["steps"]], [self.commits[2], self.commits[5]])
+        self.assertEqual(planned["lanes"]["20E8"]["lane"], "0/2")
+        self.assertEqual(manifests["2124"]["machine"], OTHER_MACHINE)
+        workflow = (PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text()
+        script = workflow.split("          \"$PY\" - <<'PY'\n", 1)[1].split('          PY', 1)[0]
+        script = "\n".join(line[10:] for line in script.splitlines())
+        summary = self.root / "summary"
+        with patch.dict(os.environ, PERF_OUT=str(self.root), PERF_DATA=str(self.args.data),
+                        GITHUB_STEP_SUMMARY=str(summary)):
+            exec(script, {})
+        self.assertIn("2124: measured=2", summary.read_text())
+
+    def test_joiner_too_late_is_not_started(self):
+        status, commands, planned, _ = self.supervise(late=True)
+        self.assertEqual(status, 0)
+        self.assertEqual(len(commands), 1)
+        self.assertNotIn("2124", planned["lanes"])
+
+    def test_supervisor_unplugged_lane_keeps_result_and_other_lane_finishes(self):
+        status, commands, _, manifests = self.supervise(unplugged=True)
+        self.assertEqual(status, 0)
+        self.assertEqual(len(commands), 2)
+        self.assertEqual(manifests["20E8"]["stop_reason"], "unplugged")
+        self.assertEqual([step["outcome"] for step in manifests["20E8"]["steps"]],
+                         ["measured", "not_run_unplugged", "not_run_unplugged"])
+        self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 2)
+
+    def test_supervisor_failed_lane_does_not_stop_joiner(self):
+        status, commands, _, manifests = self.supervise(failed=True)
+        self.assertEqual(status, 1)
+        self.assertEqual(len(commands), 2)
+        self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 2)
+
     def test_image_hash_excludes_metadata_but_includes_code_and_assets(self):
         build = self.root / "image"
         build.mkdir()
@@ -287,6 +555,7 @@ class NightlyTests(unittest.TestCase):
         chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
         plan = json.loads(args.out.read_text())
         self.assertEqual(plan["tip"], self.commits[-1])
+        self.assertEqual((plan["from_sha"], plan["max_steps"]), (args.from_sha, args.max_steps))
         self.assertEqual(self.clock.sleeps, [QUEUE_POLL_SECONDS])
         for board, lane in plan["lanes"].items():
             reserve = chain.SELFTEST_ALLOWANCE_SECONDS if board == args.selftest_board else 0
@@ -650,11 +919,6 @@ class NightlyTests(unittest.TestCase):
                 patch.object(chain, "read_last_night", return_value={"selftest": {"outcome": "not_run"}}):
             self.assertEqual(chain.main(), 0)
             self.assertEqual(select.call_args.args[-1], 0)
-        with patch.object(sys, "argv", ["chain", "wait-seconds", "--plan", str(path)]), \
-                patch.object(chain, "Clock", return_value=self.clock), patch("sys.stdout", new_callable=io.StringIO) as output:
-            chain.main()
-        self.assertEqual(int(output.getvalue()), int(timedelta(hours=8, minutes=30).total_seconds()))
-
     def test_plan_reads_each_boards_manifest(self):
         previous = {"20E8": {"last_measured": self.commits[0]}, "2124": {"last_measured": self.commits[2]}}
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=list(previous), data=self.args.data,
@@ -666,6 +930,7 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual({board: lane["previous"] for board, lane in planned["lanes"].items()}, previous)
 
     def test_plan_without_boards_takes_every_plugged_board(self):
+        self.plugged_patch.stop()
         listing = {"boards": [{"board": "44:BD:8D:78:20:E8", "port": "COM3"},
                               {"board": "44:BD:8D:78:21:24", "port": None},
                               {"board": "90:70:69:FE:A3:08", "port": "COM5"}]}
@@ -742,87 +1007,14 @@ class NightlyTests(unittest.TestCase):
         chain.git(self.repo, "commit", "--allow-empty", "-qm", "fix (#7) and (#8) (#999)")
         self.assertEqual(chain.history_steps(self.repo, "HEAD")[-1].pr, 999)
 
-    def test_lane_info_reports_share_and_rejects_unknown_board(self):
-        plan = self.root / "plan.json"
-        plan.write_text(json.dumps({"lanes": {"20E8": {"lane": "0/2", "estimate": 42}}}))
-        for board, expected in (("20E8", 0), (MACHINE.lower(), 0), ("missing", 2)):
-            result = subprocess.run([sys.executable, str(PERF / "nightly/scoped_chain.py"),
-                                     "lane-info", "--plan", str(plan), "--board", board],
-                                    capture_output=True, text=True)
-            self.assertEqual(result.returncode, expected, result.stderr)
-            self.assertIn("0/2 42" if expected == 0 else "unknown board", result.stdout + result.stderr)
-
-
 class LaneSettingsTests(unittest.TestCase):
-    def test_lanes_run_after_prepare_failure_and_wait_for_failed_lane(self):
+    def test_workflow_lanes_run_after_prepare_failure_and_publish_after_failure(self):
         workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text())
         steps = {step.get("name"): step for step in workflow["jobs"]["nightly"]["steps"]}
         lane_step = steps["Run each board lane and wait for all"]
         self.assertEqual(lane_step["if"], "${{ !cancelled() && env.SCOPED_BOARDS != '' }}")
-        script = lane_step["run"]
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            lane = root / "launcher/tools/perf/nightly/lane.sh"
-            lane.parent.mkdir(parents=True)
-            lane.write_text('echo "$1" >> "$EVENTS"\n[ "$1" != first ]\n')
-            events = root / "events"
-            env = dict(os.environ, GITHUB_WORKSPACE=directory, NIGHTLY_SUITES="", SCOPED_BOARDS="first second",
-                       PERF_OUT=directory, PERF_DATA=directory, EVENTS=str(events))
-            result = subprocess.run(["bash", "-eo", "pipefail", "-c",
-                'cygpath() { echo "$2"; }; ' + script], cwd=root, env=env, capture_output=True, text=True)
-            self.assertEqual(result.returncode, 1, result.stderr)
-            self.assertEqual(sorted(events.read_text().splitlines()), ["first", "second"])
         for step in ("Summarize board outcomes", "Publish night manifests and LNT reports"):
             self.assertEqual(steps[step]["if"], "always() && env.PERF_DATA != ''")
-
-    def test_lane_wait_uses_plan_deadline(self):
-        with tempfile.TemporaryDirectory() as directory:
-            plan = Path(directory) / "plan.json"
-            plan.write_text(json.dumps(dict(deadline="2026-10-19T07:00:00+00:00")))
-            command = ["chain", "wait-seconds", "--plan", str(plan)]
-            clock = Clock(8, 30)
-            clock.value += timedelta(days=1)
-            with patch.object(sys, "argv", command), patch.object(chain, "Clock", return_value=clock), \
-                    patch("sys.stdout", new_callable=io.StringIO) as output:
-                self.assertEqual(chain.main(), 0)
-            self.assertEqual(output.getvalue(), "0\n")
-
-    def test_lane_uses_configured_window_and_selftest_command(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            library = root / "scripts/lib/python.sh"
-            library.parent.mkdir(parents=True)
-            library.write_text('find_python() { printf "%s\\n" "$TEST_PYTHON"; }\n')
-            driver = root / "launcher/tools/perf/nightly/scoped_chain.py"
-            driver.parent.mkdir(parents=True)
-            driver.write_text('import sys\nprint("123" if sys.argv[1] == "wait-seconds" else "0/1 42")\n')
-            plan = root / "plan.json"
-            plan.write_text(json.dumps({"lanes": {"board": {"lane": "0/1", "estimate": 42}}}))
-            script = PERF / "nightly/lane.sh"
-            command = r"""
-autana() { printf '%s\n' "$@"; printf 'BOARD_CI_LOG=%s\n' "${BOARD_CI_LOG:-}"; }
-export -f autana
-bash "$1" board "$2" data out -- --suite suite - "table with spaces"
-"""
-            env = dict(os.environ, TEST_PYTHON=sys.executable, SELFTEST_BOARD="board")
-            result = subprocess.run(["bash", "-c", command, "lane-test", script.as_posix(), plan.as_posix()],
-                                    cwd=root, env=env, capture_output=True, text=True, check=True)
-            args = result.stdout.splitlines()
-            self.assertEqual(args[args.index("--suite") + 1:args.index("--suite") + 4],
-                             ["suite", "-", "table with spaces"])
-            self.assertEqual(args[args.index("--estimate") + 1], "42")
-            env["SELFTEST_BOARD"] = "another-board"
-            env["BOARD_CI_LOG"] = "inherited-log"
-            other = subprocess.run(["bash", "-c", command, "lane-test", script.as_posix(), plan.as_posix()],
-                                   cwd=root, env=env, capture_output=True, text=True, check=True).stdout.splitlines()
-            self.assertNotIn("--selftest", other)
-            self.assertNotIn("--selftest-at", other)
-            self.assertIn("BOARD_CI_LOG=", other)
-            env["SELFTEST_BOARD"] = "board"
-
-            self.assertNotIn("--selftest-at", args)
-            self.assertIn("--selftest", args)
-            self.assertNotIn("--until", args)
 
     def test_workflow_queue_input_can_start_immediately(self):
         workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text())
