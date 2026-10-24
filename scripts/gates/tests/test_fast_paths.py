@@ -271,6 +271,17 @@ class FastPathTests(unittest.TestCase):
         for key in ('fast_f', 'plain_f'):
             self.assertIn(('seeds', 16, 'rodata'), sizes[key])
 
+    def test_measurement_formatters(self):
+        for value, expected in ((26.3, "26"), (58.3, "58"), (3000, "3000"),
+                                (5104, "5100"), (1.03, "1"), (5.94258e-5, "5.9e-5")):
+            with self.subTest(value=value):
+                self.assertEqual(paths.format_measurement(value), expected)
+        self.assertEqual(paths.format_error("1 ulp (sweep)", "hardware"), "1 ulp")
+        self.assertEqual(paths.format_error("4.61224169968e-10 relative (proof)", "host"),
+                         "4.6e-10 rel (host)")
+        self.assertEqual(paths.format_error("0 ulp (sweep)", "hardware"), "0 ulp")
+        self.assertEqual(paths.format_error("-", "hardware"), "-")
+
     def test_compact_tables_and_formula_details(self):
         items = paths.annotations()
         rows, fpu = bench.read_fpu(ROOT / "docs/math/data/math_bench_fpu_ops.txt")
@@ -284,30 +295,39 @@ class FastPathTests(unittest.TestCase):
         self.assertEqual(summary.count("| [`"), len(items) * 3)
         assert_contains(self, summary, (
             "`1.0F / x`",
-            "10.0 | 25.0 | 2.50 | 20.0 | 40.0",
-            "`normalize_x`",
-            "`nlerp_x`",
+            "10 / 25 (2.5×) | 20 / 40",
+            "(normalize)",
+            "(nlerp)",
             "### What it replaces",
             "### Cost and error",
             "### Size and builds",
         ))
+        for table in summary.split("### ")[1:]:
+            for line in table.splitlines():
+                if line.startswith("|"):
+                    self.assertLessEqual(line.count("|"), 5)
+        self.assertIn("Bench rows `mathf_recip_f` vs `div_recip_f`; limit `MATHF_RECIP_ULP_LIMIT` (1 ulp); sweep.", details)
+        self.assertIn("Bench rows `normalize_x` vs `normalize_div_x`", details)
+        self.assertIn("Bench rows `nlerp_x` vs `nlerp_div_x`", details)
         self.assertNotIn("<br>", summary)
         self.assertNotIn("`math/", summary)
         self.assertNotIn("`math`", summary)
         assert_contains(self, summary, (
             "| `fmodf(v - lo, hi - lo)` |",
-            "| isqrt64 squared length, then 64-bit divide and component scaling |",
-            "portable; Xtensa needs fused `madd.s`, `msub.s`",
-            "Xtensa: `recip0.s`, `madd.s`, `msub.s`",
-            "`MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31)",
+            "| isqrt64 normalization |",
             "236 IRAM + 956 flash",
             f"| {sum(size for _, size, region in sizes['normalize_x'] if region == 'rodata')} |",
             "ROM",
-            "`CONFIG_MATH_FPU_RECIP`",
-            "render",
         ))
-        self.assertIn("| `CONFIG_MATH_FPU_RECIP` | plain | plain |", summary)
-        self.assertIn("| `CONFIG_MATH_FPU_FUSED_MADD` | plain | fast |", summary)
+        self.assertIn("Builds: `CONFIG_MATH_FPU_RECIP`; QEMU plain; host plain.", details)
+        self.assertIn("Builds: `CONFIG_MATH_FPU_FUSED_MADD`; QEMU plain; host fast.", details)
+        assert_contains(self, details, (
+            "portable; Xtensa needs fused `madd.s`, `msub.s`",
+            "Xtensa: `recip0.s`, `madd.s`, `msub.s`",
+            "`MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31 rel)",
+            "Callers: `render`.",
+            "isqrt64 squared length, then 64-bit divide and component scaling",
+        ))
         self.assertIn("| Original | Fast path |", details)
         self.assertIn("| $`y = 1/a`$ | $`y = y + y(1 - ay)`$ |", details)
         self.assertNotIn("**Plain way**", details)
@@ -328,7 +348,7 @@ class FastPathTests(unittest.TestCase):
         self.assertEqual(len(items), host_text.count(" (host) |"))
         pending = paths.render(ROOT, items, rows, {}, {}, {}, {}, fpu, "-")
         self.assertIn("capture pending", pending)
-        self.assertIn("| - | - | - | - | - |", pending)
+        self.assertIn("| - / - (-×) | - / - | - |", pending)
 
     def test_size_records_are_strict(self):
         text = 'fast_f\tmath_bench_fast_f\t12\tflash\nfast_f\t__divsf3\t32\tIRAM\n'
