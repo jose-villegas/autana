@@ -54,12 +54,9 @@ asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);
 
-/* Derives the LCOL id, replacing a terminal .mesh or appending .colors.
- * ASSET_ERR_FORMAT for empty ids, ASSET_ERR_BOUNDS when the result cannot fit. */
-asset_status_t r3d_lit_mesh_colour_name(const char* mesh_id, char out[ASSET_NAME_MAX]);
-
-/* Binds a validated colour set in place; failure leaves the mesh unchanged. */
-asset_status_t r3d_lit_mesh_colour_set(const asset_view_t* asset, uint16_t set, r3d_lit_mesh_t* mesh);
+/* Colour ownership: docs/render/Baked-Mesh.md#lcol-v1. */
+asset_status_t r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set,
+                                         r3d_lit_mesh_t* mesh);
 
 /* A sphere holding every vertex, in model units: centred on the box of them
  * (the root node's bounds), its radius the furthest vertex from that centre. */

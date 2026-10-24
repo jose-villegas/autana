@@ -1331,115 +1331,164 @@ test_an_entity_is_found_by_its_name(void) {
     TEST_ASSERT_EQUAL_FLOAT(4.0F, scene_entity_transform(scene, scene_find(scene, "green"))->position.x);
 }
 
+enum { LCOL_TEST_SETS = 2, MESH_COLOURS_WORD = 6 };
+
 static void
 test_lcol_shared_names(void) {
     fixture();
     static const char* const meshes[] = LCOL_TEST_MESHES;
     static const char* const names[] = LCOL_TEST_NAMES;
     static const char* const invalid[] = LCOL_TEST_INVALID;
-    char name[ASSET_NAME_MAX];
     for (size_t i = 0; i < sizeof meshes / sizeof meshes[0]; i++) {
-        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_colour_name(meshes[i], name));
-        TEST_ASSERT_EQUAL_STRING(names[i], name);
+        test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 1);
+        uint8_t* colors = test_pack_add(&pack, names[i], LCOL_ASSET, LCOL_HEADER_SIZE + LCOL_RGB888_BYTES);
+        test_pack_put16(colors + LCOL_AT_VERSION, LCOL_VERSION);
+        test_pack_put16(colors + LCOL_AT_ENCODING, LCOL_ENCODING_RGB888);
+        test_pack_put32(colors + LCOL_AT_SET_COUNT, 1);
+        test_pack_put32(colors + LCOL_AT_COUNT, 1);
+        const uint32_t total = test_pack_finish(&pack);
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
+        r3d_lit_mesh_t mesh = {.vertex_count = 1};
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open_colours(&fx.pack, meshes[i], 0, &mesh));
+        TEST_ASSERT_EQUAL_PTR(colors + LCOL_HEADER_SIZE, mesh.colors);
     }
     for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
-        TEST_ASSERT_NOT_EQUAL(ASSET_OK, r3d_lit_mesh_colour_name(invalid[i], name));
+        r3d_lit_mesh_t mesh = {0};
+        const asset_status_t expected = invalid[i][0] == '\0' ? ASSET_ERR_FORMAT : ASSET_ERR_BOUNDS;
+        TEST_ASSERT_EQUAL_INT(expected, r3d_lit_mesh_open_colours(&fx.pack, invalid[i], 0, &mesh));
     }
 }
 
 static void
+test_skinned_mesh_requires_colours(void) {
+    const skin_fixture_options_t options = {.mode = R3D_SKIN_LIGHT_DIRECT};
+    fixture_with_skin(&options);
+    scene_t* scene = load("test_skin");
+    TEST_ASSERT_NOT_NULL(scene->renderers[0].mesh.colors);
+    scene_unload_all();
+    asset_view_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "red", R3D_LIT_MESH_ASSET, &mesh));
+
+    test_pack_put32((uint8_t*)mesh.data + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_skin", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+}
+
+typedef struct {
+    const char* id;
+    asset_status_t expected;
+    uint16_t first_set, second_set;
+    bool missing, coloured, wrong_encoding, short_entry;
+    uint16_t version_delta;
+    uint32_t count_extra, payload_extra;
+} lcol_case_t;
+
+static void
+make_lcol_scene(test_pack_t* pack, const lcol_case_t* spec, const char* message) {
+    const uint32_t size = scene_entry_size(&SCENES[0]);
+    uint8_t* entry = test_pack_add(pack, "test_pair", SCENE_ASSET, size);
+    make_scene_entry(entry, &SCENES[0]);
+    scene_asset_t asset;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, scene_asset_open((asset_view_t){entry, size}, &asset), message);
+    scene_asset_renderer_t* rows = (scene_asset_renderer_t*)(void*)asset.renderers;
+    test_pack_put16((uint8_t*)&rows[0] + sizeof(uint16_t), spec->first_set);
+    test_pack_put16((uint8_t*)&rows[1] + sizeof(uint16_t), spec->second_set);
+    memset(rows[1].mesh, 0, sizeof rows[1].mesh);
+    memcpy(rows[1].mesh, "red", sizeof "red");
+}
+
+static void
+make_lcol_entry(test_pack_t* pack, const lcol_case_t* spec, uint16_t encoding) {
+    const int count = encoding == LCOL_ENCODING_RGB888 ? QUAD_VERTICES : QUAD_TRIANGLES;
+    const int stride = encoding == LCOL_ENCODING_RGB888 ? LCOL_RGB888_BYTES : LCOL_RGB565_BYTES;
+    uint8_t* colors = test_pack_add(pack, "red.colors", LCOL_ASSET,
+                                    LCOL_HEADER_SIZE + LCOL_TEST_SETS * count * stride + spec->payload_extra);
+    test_pack_put16(colors + LCOL_AT_VERSION, LCOL_VERSION + spec->version_delta);
+    test_pack_put16(colors + LCOL_AT_ENCODING, spec->wrong_encoding ? 1 - encoding : encoding);
+    test_pack_put32(colors + LCOL_AT_SET_COUNT, LCOL_TEST_SETS);
+    test_pack_put32(colors + LCOL_AT_COUNT, count + spec->count_extra);
+    for (int v = 0; v < count; v++) {
+        if (encoding == LCOL_ENCODING_RGB888) {
+            colors[LCOL_HEADER_SIZE + v * stride] = UINT8_MAX;
+            colors[LCOL_HEADER_SIZE + (count + v) * stride + 1] = UINT8_MAX;
+        } else {
+            test_pack_put16(colors + LCOL_HEADER_SIZE + v * stride, GFX_RGB(0xFF0000));
+            test_pack_put16(colors + LCOL_HEADER_SIZE + (count + v) * stride, GFX_RGB(0x00FF00));
+        }
+    }
+}
+
+static void
+make_lcol_pack(const lcol_case_t* spec, uint16_t encoding, const char* message) {
+    enum { ENTRY_SIZE_AT = ASSET_NAME_MAX + 2 * sizeof(uint32_t) };
+
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, spec->missing ? 2 : 3);
+    uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
+    make_quad_entry(mesh, UINT8_MAX, 0, 0, 1);
+    if (!spec->coloured) {
+        test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    }
+    make_lcol_scene(&pack, spec, message);
+    if (!spec->missing) {
+        make_lcol_entry(&pack, spec, encoding);
+    }
+    if (spec->short_entry) {
+        test_pack_put32(pack.bytes + ASSET_PACK_HEADER_SIZE + (pack.added - 1) * ASSET_PACK_ENTRY_SIZE + ENTRY_SIZE_AT,
+                        LCOL_HEADER_SIZE - 1);
+    }
+    const uint32_t total = test_pack_finish(&pack);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total), message);
+}
+
+static void
+assert_lcol_scene(const lcol_case_t* spec, const char* message) {
+    scene_failure_t why;
+    scene_t* scene = scene_load_from(&fx.pack, "test_pair", &why);
+    if (spec->expected != ASSET_OK) {
+        TEST_ASSERT_NULL_MESSAGE(scene, message);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, message);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(spec->expected, why.asset, message);
+        return;
+    }
+    TEST_ASSERT_NOT_NULL_MESSAGE(scene, message);
+    TEST_ASSERT_TRUE_MESSAGE(scene_activate(scene, NULL), message);
+    render_context_set_scale(render_context_main(), 100);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0xFF0000), pixel(0.0F), message);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0x00FF00), pixel(4.0F), message);
+    TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.positions, scene->renderers[1].mesh.positions, message);
+}
+
+static void
 test_lcol_instances_and_refusals(void) {
-    enum {
-        VALID,
-        RANGE,
-        MISSING,
-        COUNT,
-        OWN_WITH_LCOL,
-        ENCODING,
-        COLOURLESS_OWN,
-        VERSION,
-        SHORT,
-        OVERSIZED,
-        COLOURED_PROTOTYPE,
-        CASES
+    static const lcol_case_t cases[] = {
+        {.id = "valid", .expected = ASSET_OK, .second_set = LCOL_TEST_SETS - 1},
+        {.id = "range", .expected = ASSET_ERR_FORMAT, .second_set = LCOL_TEST_SETS},
+        {.id = "missing", .expected = ASSET_ERR_NOT_FOUND, .missing = true},
+        {.id = "count", .expected = ASSET_ERR_FORMAT, .count_extra = 1},
+        {.id = "encoding", .expected = ASSET_ERR_FORMAT, .wrong_encoding = true},
+        {.id = "colourless-own",
+         .expected = ASSET_ERR_FORMAT,
+         .first_set = SCENE_ASSET_COLOUR_SET_OWN,
+         .missing = true},
+        {.id = "version", .expected = ASSET_ERR_VERSION, .version_delta = 1},
+        {.id = "short", .expected = ASSET_ERR_BOUNDS, .short_entry = true},
+        {.id = "oversized", .expected = ASSET_ERR_BOUNDS, .payload_extra = sizeof(uint16_t)},
+        {.id = "coloured-prototype",
+         .expected = ASSET_ERR_FORMAT,
+         .second_set = SCENE_ASSET_COLOUR_SET_OWN,
+         .coloured = true},
     };
-
-    enum {
-        SETS = 2,
-        COLOR_MAX = UINT8_MAX,
-        MESH_COLOURS_WORD = 6,
-        ENTRY_SIZE_AT = ASSET_NAME_MAX + 2 * sizeof(uint32_t)
-    };
-
     fixture();
     for (uint16_t encoding = LCOL_ENCODING_RGB888; encoding <= LCOL_ENCODING_RGB565; encoding++) {
-        for (int invalid = VALID; invalid < CASES; invalid++) {
+        for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+            char message[64];
+            snprintf(message, sizeof message, "LCOL case %s encoding %u", cases[i].id, encoding);
             scene_unload_all();
-            test_pack_t pack =
-                test_pack_begin(fx.bytes, PACK_MAX, invalid == MISSING || invalid == COLOURLESS_OWN ? 2 : 3);
-            uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
-            make_quad_entry(mesh, COLOR_MAX, 0, 0, 1);
-            test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
-            uint8_t* entry = test_pack_add(&pack, "test_pair", SCENE_ASSET, scene_entry_size(&SCENES[0]));
-            make_scene_entry(entry, &SCENES[0]);
-            scene_asset_t asset;
-            TEST_ASSERT_EQUAL_INT(ASSET_OK,
-                                  scene_asset_open((asset_view_t){entry, scene_entry_size(&SCENES[0])}, &asset));
-            scene_asset_renderer_t* rows = (scene_asset_renderer_t*)(void*)asset.renderers;
-            test_pack_put16((uint8_t*)&rows[0] + sizeof(uint16_t),
-                            invalid == OWN_WITH_LCOL || invalid == COLOURLESS_OWN ? SCENE_ASSET_COLOUR_SET_OWN : 0);
-            test_pack_put16((uint8_t*)&rows[1] + sizeof(uint16_t), invalid == RANGE ? SETS : SETS - 1);
-            memset(rows[1].mesh, 0, sizeof rows[1].mesh);
-            memcpy(rows[1].mesh, "red", sizeof "red");
-            if (invalid != MISSING && invalid != COLOURLESS_OWN) {
-                const int count = encoding == LCOL_ENCODING_RGB888 ? QUAD_VERTICES : QUAD_TRIANGLES;
-                const int stride = encoding == LCOL_ENCODING_RGB888 ? LCOL_RGB888_BYTES : LCOL_RGB565_BYTES;
-                uint8_t* colors = test_pack_add(&pack, "red.colors", LCOL_ASSET,
-                                                LCOL_HEADER_SIZE + SETS * count * stride
-                                                    + (invalid == OVERSIZED ? sizeof(uint16_t) : 0));
-                test_pack_put16(colors + LCOL_AT_VERSION, invalid == VERSION ? LCOL_VERSION + 1 : LCOL_VERSION);
-                test_pack_put16(colors + LCOL_AT_ENCODING, invalid == ENCODING ? 1 - encoding : encoding);
-                test_pack_put32(colors + LCOL_AT_SET_COUNT, SETS);
-                test_pack_put32(colors + LCOL_AT_COUNT, invalid == COUNT ? count + 1 : count);
-                for (int v = 0; v < count; v++) {
-                    if (encoding == LCOL_ENCODING_RGB888) {
-                        colors[LCOL_HEADER_SIZE + v * stride] = COLOR_MAX;
-                        colors[LCOL_HEADER_SIZE + (count + v) * stride + 1] = COLOR_MAX;
-                    } else {
-                        test_pack_put16(colors + LCOL_HEADER_SIZE + v * stride, GFX_RGB(0xFF0000));
-                        test_pack_put16(colors + LCOL_HEADER_SIZE + (count + v) * stride, GFX_RGB(0x00FF00));
-                    }
-                }
-            }
-            if (invalid == SHORT) {
-                test_pack_put32(pack.bytes + ASSET_PACK_HEADER_SIZE + (pack.added - 1) * ASSET_PACK_ENTRY_SIZE
-                                    + ENTRY_SIZE_AT,
-                                LCOL_HEADER_SIZE - 1);
-            }
-            if (invalid == COLOURED_PROTOTYPE) {
-                make_quad_entry(mesh, COLOR_MAX, 0, 0, 1);
-            }
-            const uint32_t total = test_pack_finish(&pack);
-            TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
-            scene_failure_t why;
-            scene_t* scene = scene_load_from(&fx.pack, "test_pair", &why);
-            if (invalid != VALID) {
-                TEST_ASSERT_NULL(scene);
-                TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
-                const asset_status_t expected = invalid == MISSING                         ? ASSET_ERR_NOT_FOUND
-                                                : invalid == VERSION                       ? ASSET_ERR_VERSION
-                                                : invalid == SHORT || invalid == OVERSIZED ? ASSET_ERR_BOUNDS
-                                                                                           : ASSET_ERR_FORMAT;
-                TEST_ASSERT_EQUAL_INT(expected, why.asset);
-            } else {
-                TEST_ASSERT_NOT_NULL(scene);
-                TEST_ASSERT_TRUE(scene_activate(scene, NULL));
-                render_context_set_scale(render_context_main(), 100);
-                frame(16);
-                TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
-                TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(4.0F));
-                TEST_ASSERT_EQUAL_PTR(scene->renderers[0].mesh.positions, scene->renderers[1].mesh.positions);
-            }
+            make_lcol_pack(&cases[i], encoding, message);
+            assert_lcol_scene(&cases[i], message);
         }
     }
 }
@@ -3584,6 +3633,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_load_with_no_memory_left_says_so_and_takes_nothing);
     RUN_TEST(test_a_full_manager_refuses_another_scene_until_one_is_unloaded);
     RUN_TEST(test_an_entity_is_found_by_its_name);
+    RUN_TEST(test_skinned_mesh_requires_colours);
     RUN_TEST(test_lcol_shared_names);
     RUN_TEST(test_lcol_instances_and_refusals);
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);

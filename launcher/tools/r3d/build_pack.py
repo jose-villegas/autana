@@ -301,12 +301,18 @@ def validate_colour_sets(rows):
     for name, kind, data in rows:
         if kind != scene_asset.TYPE:
             continue
-        for row in scene_asset.decode(data)["renderers"]:
+        scene = scene_asset.decode(data)
+        for row in scene["renderers"] + scene["skinned_renderers"]:
             if row["mesh"] not in entries:
                 raise SettingsError(f"{name}: renderer mesh is missing")
             mesh_kind, mesh = entries[row["mesh"]]
             if mesh_kind != LIT_MESH:
                 raise SettingsError(f"{name}: renderer mesh has the wrong type")
+            if "colour_set" not in row:
+                _, _, _, _, _, _, colors_at, _, _, _, face_at = BLOB_HEADER.unpack_from(mesh)
+                if not (colors_at or face_at):
+                    raise SettingsError(f"{name}: skinned renderer requires a coloured mesh")
+                continue
             try:
                 colors = entries.get(lcol_asset.name_for_mesh(row["mesh"]))
             except PackError:

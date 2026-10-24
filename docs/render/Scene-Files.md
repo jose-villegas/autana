@@ -3,7 +3,7 @@
 A scene file holds transformed objects, renderer, light and camera components,
 optional animators, and ambient and tone-map settings. The offline importer bakes the lit meshes
 the scene places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
-[scene entry](#scne-v2) it reads at run time.
+[scene entry](#scne-v3) it reads at run time.
 
 ```toml
 tonemap_white = 0.35             # larger is darker
@@ -802,10 +802,10 @@ title Content: settings, 20 bytes at settings off, exactly one
 
 | Rule | Detail |
 |---|---|
-| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (56), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
+| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (56), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
 | Layout | little-endian; every part offset is a multiple of 4, at least 56, and the part ends inside the entry; the writer lays parts out in header order |
 | Counts | each at most 65535; names equals transforms; settings is exactly 1 |
-| Colour sets | A renderer selects an [LCOL set](Baked-Mesh.md#lcol-v0), or `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF) for LMSH colours. Own colours require no LCOL; a colourless mesh requires a valid set. Authored scenes write own colours |
+| Colour sets | [Selection and ownership](Baked-Mesh.md#lcol-v1): own colours require no LCOL, checked at pack time. Authored scenes write own colours |
 | Entities | every `entity` is below the names' count; at most one light, one skinned renderer and one animator an entity |
 | Text | `name`, `mesh_id`, `skin_id`, `skeleton_id` and clip ids are nonempty, NUL terminated, zero after the NUL; the bake limits names as stated above |
 | Padding | every `0` above is zero |

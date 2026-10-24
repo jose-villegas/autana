@@ -73,7 +73,7 @@ owns a kind of content defines its type, there is no central list, and
 | `APAK` pack | 1 | `asset/asset_pack.py` | `asset/asset_pack.c` | [APAK v1](#apak-v1) |
 | `ABDR` directory | 2 | `asset/asset_directory.py` | `asset/asset_directory.c` | [ABDR v2](#abdr-v2) |
 | `LMSH` lit mesh | none | `r3d/lit_mesh.py` | `render/r3d_lit_mesh.c` | [LMSH](../render/Baked-Mesh.md#lmsh) |
-| `LCOL` colour sets | 0 | `r3d/lcol_asset.py` | `render/r3d_lit_mesh.c` | [LCOL v0](../render/Baked-Mesh.md#lcol-v0) |
+| `LCOL` colour sets | 1 | `r3d/lcol_asset.py` | `render/r3d_lit_mesh.c` | [LCOL v1](../render/Baked-Mesh.md#lcol-v1) |
 | `TRCK` animation tracks | 3 | `anim/tracks_asset.py` | `anim/anim_tracks.c` | [TRCK v3](../render/Animation-Tracks.md#trck-v3) |
 | `SKEL` skeleton | 1 | `anim/skeleton_asset.py` | `anim/anim_skeleton.c` | [SKEL v1](../render/Skeleton-and-Skin.md#skel-v1) |
 | `SKIN` skin | 2 | `r3d/skin_asset.py` | `render/r3d_skin.c` | [SKIN v2](../render/Skeleton-and-Skin.md#skin-v2) |
