@@ -495,6 +495,8 @@ def main():
         changed |= update_onset(args.mix_captures, args.mix_document, args.check)
         changed |= replace_block(ROOT / "docs/audio/Sound-Assets.md", "sound-storage", render_storage(),
                                  check=args.check)
+        from audio_buzz_doc import CAPTURE as BUZZ_CAPTURE, DOCUMENT as BUZZ_DOCUMENT, update as update_buzz
+        changed |= update_buzz(ROOT / BUZZ_CAPTURE, ROOT / BUZZ_DOCUMENT, args.check)
     except (ValueError, KeyError, OSError, RuntimeError) as error:
         parser.exit(2, f"{error}\n")
     print(f"audio tables: {'stale' if changed and args.check else 'updated' if changed else 'current'}")

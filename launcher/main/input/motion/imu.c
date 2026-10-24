@@ -22,6 +22,7 @@
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
 
 static const char* TAG = "imu";
@@ -98,9 +99,9 @@ static int64_t wake_gap_max_us;
 /* CTRL1.ADDR_AI enables bursts; BE stays clear for little-endian axes. */
 #define CTRL1_ADDR_AUTO_INC     0x40
 
-/* QMI8658A Rev A, Table 22: range fields and matching 6DOF ODR codes. */
-#define CTRL2_ACCEL_8G          (0x20 | IMU_ODR_CODE)
-#define CTRL3_GYRO_512DPS       (0x50 | IMU_ODR_CODE)
+/* QMI8658A Rev A, Table 22: full-scale fields in bits 6:4; configure() ORs the 6DOF ODR code into bits 3:0. */
+#define CTRL2_ACCEL_8G          0x20
+#define CTRL3_GYRO_512DPS       0x50
 #define REVISION_QMI8658C       0x79
 #define REVISION_QMI8658A       0x7C
 #define CTRL9_ACK               0x00
@@ -162,6 +163,15 @@ static bool
 write_command(uint8_t command) {
     return write_reg(REG_CTRL9, command) && wait_command(true) && write_reg(REG_CTRL9, CTRL9_ACK)
            && wait_command(false);
+}
+
+/* Sensors off, ranges and rate, a fresh FIFO, sensors on. */
+static bool
+configure(unsigned odr_code) {
+    return write_reg(REG_CTRL7, 0) && write_reg(REG_CTRL1, CTRL1_ADDR_AUTO_INC)
+           && write_reg(REG_CTRL2, (uint8_t)(CTRL2_ACCEL_8G | odr_code))
+           && write_reg(REG_CTRL3, (uint8_t)(CTRL3_GYRO_512DPS | odr_code)) && write_command(CTRL9_RST_FIFO)
+           && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG) && write_reg(REG_CTRL7, CTRL7_ENABLE_ACCEL_GYRO);
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -244,12 +254,7 @@ imu_init(void) {
         return false;
     }
 
-    const bool configured = write_reg(REG_CTRL7, 0) && write_reg(REG_CTRL1, CTRL1_ADDR_AUTO_INC)
-                            && write_reg(REG_CTRL2, CTRL2_ACCEL_8G) && write_reg(REG_CTRL3, CTRL3_GYRO_512DPS)
-                            && write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG)
-                            && write_reg(REG_CTRL7, CTRL7_ENABLE_ACCEL_GYRO);
-
-    if (!configured) {
+    if (!configure(IMU_ODR_CODE)) {
         ESP_LOGE(TAG, "Configuration write failed");
         return false;
     }
@@ -468,6 +473,71 @@ imu_read_or_drain(bool drain_due) {
     return drain_due;
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* imu_set_odr() asks, the task applies between drains; both under `lock`. */
+static imu_odr_t odr = {.requested = IMU_ODR_CODE, .applied = IMU_ODR_CODE};
+/* Longest a request waits: two of the slowest task periods the tunables allow. */
+#define IMU_ODR_WAIT_MS (2 * IMU_PERIOD_MAX_MS)
+
+/* The bus work runs outside `lock` on a copy; imu_set_odr() only waits on it meanwhile.
+ * Any reconfigure resets the FIFO, so a gap drops queued samples spaced at the old rate. */
+static void
+apply_odr_request(void) {
+    portENTER_CRITICAL(&lock);
+    imu_odr_t next = odr;
+    portEXIT_CRITICAL(&lock);
+    const imu_odr_outcome_t outcome = imu_odr_apply(&next, configure);
+    if (outcome == IMU_ODR_UNCHANGED) {
+        return;
+    }
+    if (outcome == IMU_ODR_LOST) {
+        ESP_LOGE(TAG, "ODR switch to %u and restore of %u both failed; the sensor may be off", odr.requested,
+                 next.applied);
+    }
+    fifo_gap = true;
+    pending_lost = 0;
+    loss_remainder_us = 0;
+    portENTER_CRITICAL(&lock);
+    imu_queue_set_rate(&queue, next.applied);
+    odr = next;
+    portEXIT_CRITICAL(&lock);
+}
+
+int
+imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                 bool* gap) {
+    *gap = false;
+    if (!ready) {
+        return -1;
+    }
+    portENTER_CRITICAL(&lock);
+    const int count = imu_queue_take_at(&queue, odr_code, out, lost_before, gap);
+    portEXIT_CRITICAL(&lock);
+    return count;
+}
+
+bool
+imu_set_odr(unsigned odr_code) {
+    if (!sensor_present || task_handle == NULL) {
+        return false;
+    }
+    portENTER_CRITICAL(&lock);
+    odr.requested = odr_code;
+    portEXIT_CRITICAL(&lock);
+    const int64_t deadline = timing_now_us() + ((int64_t)IMU_ODR_WAIT_MS * MATH_US_PER_MS);
+    for (;;) {
+        portENTER_CRITICAL(&lock);
+        const unsigned applied = odr.applied;
+        const unsigned requested = odr.requested;
+        portEXIT_CRITICAL(&lock);
+        if (applied == odr_code || requested != odr_code || timing_now_us() >= deadline) {
+            return applied == odr_code;
+        }
+        timing_sleep_ms(IMU_PERIOD_MIN_MS);
+    }
+}
+#endif
+
 static void
 imu_task(void* arg) {
     (void)arg;
@@ -492,6 +562,11 @@ imu_task(void* arg) {
         /* The bus lock has no priority inheritance: a preempted drain holds the bus
          * and keeps the FIFO in read mode, discarding arrivals. */
         vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (sensor_present) {
+            apply_odr_request();
+        }
+#endif
         if (imu_read_or_drain(drain_due)) {
             read_ticks = 0;
         }
