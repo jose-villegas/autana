@@ -108,7 +108,7 @@ The approximate path evaluates its single correction as $`y_0\,(1.5-0.5xy_0^2)`$
 `mathf_rsqrt` uses that same formula and preserves its bits.
 
 The limits in `mathf.h` define the accuracy contract; the
-[benchmark table](Benchmark.md) reports measured maxima and coverage.
+[fast-path evidence](Fast-Paths.md) reports measured maxima and coverage.
 
 The suite's integer product bracket rounds the exact reciprocal root without
 using the twice-rounded `1 / sqrtf` as a reference. The suite prints

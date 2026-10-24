@@ -457,18 +457,6 @@ def elf_sizes(rows, fpu, located, sections=(), root=ROOT):
     return "\n".join(lines) + "\n"
 
 
-def rekey_errors(items, rows, errors):
-    labels = {key: (label, kind) for key, label, kind, _, family in rows}
-    result = dict(errors)
-    for item in items:
-        identity = item.key, item.kind
-        if identity in errors:
-            result[labels[item.fast]] = errors[identity]
-            if identity not in labels.values():
-                result.pop(identity, None)
-    return result
-
-
 def update_links(root, items, check=False):
     groups = {"Scalar": [], "Linear": []}
     for item in items:
@@ -508,10 +496,11 @@ def main(argv=None):
             (root / "docs/math/data/math_bench_sizes.txt").write_bytes((provenance + body).encode())
         capture = (root / "docs/math/data/math_bench_capture.txt").read_text(encoding="utf-8")
         errors, bins, sources = error_evidence(root, items, rows, capture)
-        displayed_errors = {key: value + (" (host)" if sources[key] == "host" else "") for key, value in errors.items()}
-        build, measured = bench.parse_capture(capture, rows, allow_missing=True)
+        _, measured = bench.parse_capture(capture, rows, allow_missing=True)
+        links = {row: f"Fast-Paths.md#{item.key.replace('_', '-')}"
+                 for item in items for row in (item.fast, item.plain)}
         benchmark_body = bench.render_table(rows, measured, bench.load_baseline(root / "launcher/tools/quality/icount_baseline.txt"),
-                                            fpu, build, rekey_errors(items, rows, displayed_errors))
+                                            fpu, links=links)
         benchmark_changed = replace_block(root / "docs/math/Benchmark.md", "math-benchmark", benchmark_body,
                                           check=args.check, command=COMMAND)
         if args.check and benchmark_changed:
