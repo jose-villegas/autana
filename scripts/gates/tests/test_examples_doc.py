@@ -109,6 +109,113 @@ class ExampleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "multiple files"):
             self.run_tool(True)
 
+    def header(self, name, text):
+        path = self.root / "launcher" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        self.track(path.relative_to(self.root).as_posix())
+
+    def test_declaration_found_without_doc_comment(self):
+        self.header("api.h", "/* Call the API. */\nvoid touch_fsm_update(int value);\n")
+        self.document("declaration-touch-fsm-update")
+        self.run_tool()
+        body = (self.root / "declaration-touch-fsm-update.md").read_text()
+        self.assertIn("```c\nvoid touch_fsm_update(int value);\n```", body)
+        self.assertNotIn("Call the API", body)
+        self.assertFalse(self.run_tool(True)[0])
+
+    def test_declaration_missing_names_function(self):
+        self.document("declaration-touch-fsm-update", CHECK)
+        with self.assertRaisesRegex(ValueError, "touch_fsm_update"):
+            self.run_tool(True)
+
+    def test_declaration_ambiguous_names_function_and_headers(self):
+        for name in ("a.h", "b.h"):
+            self.header(name, "void touch_fsm_update(int value);\n")
+        self.document("declaration-touch-fsm-update")
+        with self.assertRaisesRegex(ValueError, "touch_fsm_update.*a.h.*b.h"):
+            self.run_tool(True)
+
+    def test_declaration_multiline_is_copied_whole(self):
+        declaration = "const char*\nlookup_name(int value,\n            bool required);"
+        self.header("api.h", "#pragma once\n/* Lookup. */\n" + declaration + "\n")
+        self.document("declaration-lookup-name")
+        self.run_tool()
+        self.assertIn("```c\n" + declaration + "\n```",
+                      (self.root / "declaration-lookup-name.md").read_text())
+
+    def test_declaration_stale_check_does_not_write(self):
+        self.header("api.h", "void touch_fsm_update(int value);\n")
+        self.document("declaration-touch-fsm-update")
+        self.run_tool()
+        self.header("api.h", "void touch_fsm_update(bool value);\n")
+        before = (self.root / "declaration-touch-fsm-update.md").read_bytes()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(1, main(["--check"], root=self.root))
+        self.assertEqual(before, (self.root / "declaration-touch-fsm-update.md").read_bytes())
+        self.run_tool()
+        self.assertFalse(self.run_tool(True)[0])
+
+    def assert_touch_declaration(self, text):
+        self.header("api.h", text)
+        self.document("declaration-touch-fsm-update")
+        self.run_tool()
+        body = (self.root / "declaration-touch-fsm-update.md").read_text()
+        self.assertIn("```c\nvoid touch_fsm_update(int value);\n```", body)
+        self.assertFalse(self.run_tool(True)[0])
+
+    def test_declaration_ignores_tracked_headers_outside_launcher(self):
+        self.header("../outside.h", "void touch_fsm_update(bool value);\n")
+        self.assert_touch_declaration("void touch_fsm_update(int value);\n")
+
+    def test_declaration_ignores_commented_prototypes(self):
+        self.assert_touch_declaration("// void touch_fsm_update(bool value);\n"
+                                      "/*\nvoid touch_fsm_update(char value);\n*/\n"
+                                      "void touch_fsm_update(int value);\n")
+
+    def test_declaration_ignores_preprocessor_directives(self):
+        self.header("api.h", "#define CALL void touch_fsm_update(int value);\n"
+                    "#if touch_fsm_update(int value);\n"
+                    "#define MULTILINE \\\nvoid touch_fsm_update(int value);\n#endif\n")
+        self.document("declaration-touch-fsm-update", CHECK)
+        with self.assertRaisesRegex(ValueError, "touch_fsm_update"):
+            self.run_tool(True)
+
+    def test_declaration_ignores_definitions(self):
+        self.header("api.h", "static inline void touch_fsm_update(int value) { }\n")
+        self.document("declaration-touch-fsm-update", CHECK)
+        with self.assertRaisesRegex(ValueError, "touch_fsm_update"):
+            self.run_tool(True)
+
+    def test_declaration_requires_exact_function_name(self):
+        self.header("api.h", "void touch_fsm_update_x(int value);\n"
+                    "void xtouch_fsm_update(int value);\n")
+        self.document("declaration-touch-fsm-update", CHECK)
+        with self.assertRaisesRegex(ValueError, "touch_fsm_update"):
+            self.run_tool(True)
+
+    def test_declaration_repeated_in_one_header_is_unambiguous(self):
+        self.assert_touch_declaration("#ifdef OPTION\nvoid touch_fsm_update(int value);\n"
+                                      "#else\nvoid touch_fsm_update(int value);\n#endif\n")
+
+    def test_declaration_strips_leading_whitespace(self):
+        self.assert_touch_declaration("\n    void touch_fsm_update(int value);\n")
+
+    def test_declaration_ignores_untracked_headers(self):
+        (self.root / "launcher").mkdir()
+        (self.root / "launcher/untracked.h").write_text("void touch_fsm_update(int value);\n")
+        self.document("declaration-touch-fsm-update", CHECK)
+        with self.assertRaisesRegex(ValueError, "touch_fsm_update"):
+            self.run_tool(True)
+
+    def test_declaration_area_example_is_copied_from_example_file(self):
+        self.source("test/declaration_examples/x.c")
+        self.document("declaration-x-example")
+        self.run_tool()
+        body = (self.root / "declaration-x-example.md").read_text()
+        self.assertIn("/* whole example */", body)
+        self.assertFalse(self.run_tool(True)[0])
+
     def test_main_exit_codes(self):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(1, main(["--check"], root=self.root))

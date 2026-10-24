@@ -31,7 +31,7 @@ CLIP = 'source = "probe.glb"\nanimation = "clip"\n'
 
 def lens(path=None, extra=""):
     """A camera object; `path` is the .anim.toml it flies, relative to the scene."""
-    flight = f'path = {{ animation = "{path}", node = "lamp" }}\n' if path else ""
+    flight = f'path = {{ animation = "{path}", node = "camera" }}\n' if path else ""
     return ('[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.5\n'
             + extra + flight)
 
@@ -145,7 +145,7 @@ class SceneEntryTests(SceneFiles):
         path = self.root / "clips/fly.anim.toml"
         with self.assertRaisesRegex(tracks_asset.TracksError, "has no property tracks"):
             tracks_asset.bake(path, "absent")
-        second = lens("clips/fly.anim.toml").replace('name = "camera"', 'name = "other"').replace('node = "lamp"', 'node = "other"')
+        second = lens("clips/fly.anim.toml").replace('name = "camera"', 'name = "other"').replace('node = "camera"', 'node = "other"')
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml") + second)
         with self.assertRaisesRegex(SettingsError, "selects different nodes"):
             build_pack.pack_bytes([self.root])
@@ -214,14 +214,14 @@ class SceneEntryTests(SceneFiles):
             with self.subTest(path=path), self.assertRaisesRegex(SettingsError, pattern):
                 load_scene(self.scene(renderer("a.import.toml") + lens(path)))
         node = "n" * (NAME_BYTES - 1)
-        long_node = lens("clips/fly.anim.toml").replace('node = "lamp"', 'node = "' + node + '"')
+        long_node = lens("clips/fly.anim.toml").replace('node = "camera"', 'node = "' + node + '"')
         scene = load_scene(self.scene(renderer("a.import.toml") + long_node))
         self.assertEqual(scene.camera.component.path.node, node)
         with self.assertRaisesRegex(SettingsError, "at most"):
             load_scene(self.scene(renderer("a.import.toml") +
                        long_node.replace(node, "n" * NAME_BYTES)))
         with self.assertRaisesRegex(SettingsError, "letters, digits and _"):
-            load_scene(self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml").replace('"lamp"', '"no-good"')))
+            load_scene(self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml").replace('node = "camera"', 'node = "no-good"')))
 
     def test_a_clip_id_must_fit_a_pack_name(self):
         for stem, refused in (("c" * 31, False), ("c" * 32, True)):
@@ -345,7 +345,7 @@ class ScenePackTests(SceneFiles):
         self.assertEqual(hall["hall"], (scene_asset.TYPE, to_engine(scene_asset.TYPE, scene_asset.bake(path))))
         self.assertEqual({name: kind for name, (kind, _) in hall.items()},
                          {"hall": scene_asset.TYPE, "a": LIT_MESH, "b": LIT_MESH, "fly": tracks_asset.TYPE})
-        self.assertEqual(hall["fly"][1], to_engine(tracks_asset.TYPE, tracks_asset.bake(self.root / "clips/fly.anim.toml", "lamp")))
+        self.assertEqual(hall["fly"][1], to_engine(tracks_asset.TYPE, tracks_asset.bake(self.root / "clips/fly.anim.toml", "camera")))
 
     def test_replace_takes_only_a_mesh(self):
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))
