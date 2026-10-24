@@ -2,6 +2,7 @@
 
 | File | Purpose |
 |---|---|
+| [examples_doc.py](examples_doc.py) | Embeds tracked C examples in their owning documents. |
 | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | Bakes the boot animation timeline. |
 | [gen_draw_dither_patterns.py](gen_draw_dither_patterns.py) | Bakes the ordered-dither threshold ranks `draw_dither.h` reads. |
 | [gen_draw_palette_standard.py](gen_draw_palette_standard.py) | Bakes standard graphics palette data. |
