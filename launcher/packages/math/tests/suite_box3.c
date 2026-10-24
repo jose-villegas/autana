@@ -1,6 +1,6 @@
 #include "math/geometry/box3f.h"
 #include "math/geometry/planex.h"
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 MATH_DEFINE_BOX3(box3x, vec3x, int32_t, mathx, INT32_MIN, INT32_MAX)

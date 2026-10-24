@@ -390,13 +390,24 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_a_package_may_include_itself_the_toolchain_the_build_config_and_the_test_harness(self):
         findings = self.audit("PACKAGE-INCLUDE", {
-            "launcher/test/suites.h": "#pragma once\n",
+            "launcher/packages/testkit/include/testkit/suite.h": "#pragma once\n",
             f"{self.PACKAGE}/include/math/scalar/mathf.h": '#include <math.h>\n#include "sdkconfig.h"\n',
             f"{self.PACKAGE}/include/math/linear/vec3f.h": '#include "math/scalar/mathf.h"\n',
             f"{self.PACKAGE}/src/motion/orbit.c": '#include "math/linear/vec3f.h"\n',
-            f"{self.PACKAGE}/tests/suite_vec3.c": '#include "suites.h"\n#include "unity.h"\n#include "math/linear/vec3f.h"\n',
+            f"{self.PACKAGE}/tests/suite_vec3.c": '#include "testkit/suite.h"\n#include "unity.h"\n#include "math/linear/vec3f.h"\n',
         })
         self.assertEqual(findings, [])
+
+    def test_only_package_tests_and_benches_may_include_testkit(self):
+        findings = self.audit("PACKAGE-INCLUDE", {
+            "launcher/packages/testkit/include/testkit/suite.h": "#pragma once\n",
+            f"{self.PACKAGE}/tests/suite_x.c": '#include "testkit/suite.h"\n',
+            f"{self.PACKAGE}/bench/measure.c": '#include "testkit/suite.h"\n',
+            f"{self.PACKAGE}/src/x.c": '#include "testkit/suite.h"\n',
+            f"{self.PACKAGE}/include/math/x.h": '#include "testkit/suite.h"\n',
+        })
+        self.assertEqual(sorted(f.path for f in findings),
+                         [f"{self.PACKAGE}/include/math/x.h", f"{self.PACKAGE}/src/x.c"])
 
     def test_a_package_may_include_the_packages_it_declares_and_theirs_but_no_other(self):
         findings = self.audit("PACKAGE-INCLUDE", {

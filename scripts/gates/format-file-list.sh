@@ -45,12 +45,12 @@ qualifies() {
     # Vendored trees, checked in as-is. Patterns are spelled out in the case
     # itself rather than looped over a variable: an unquoted pattern in a
     # loop is subject to pathname expansion, which silently turns
-    # "launcher/test/framework/*" into the three paths it matches today and
+    # "launcher/packages/testkit/unity/*" into the three paths it matches today and
     # lets everything else through. A case pattern is never expanded.
     case "$path" in
         launcher/components/esp32_s3_touch_amoled_1_8/* | \
             launcher/components/microui/* | \
-            launcher/test/framework/*)
+            launcher/packages/testkit/unity/*)
             return 1
             ;;
     esac

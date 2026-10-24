@@ -15,7 +15,7 @@
 #include "profile/frame_cost.h"
 #include "services/build_id.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #define MATH_BENCH_BATCH             64

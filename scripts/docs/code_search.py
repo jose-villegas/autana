@@ -104,9 +104,11 @@ def c_owner(path, text, comments):
     declarations[2].update(re.findall(r"\bclass\s+([A-Za-z_]\w*)", code))
     guards = {name for name in re.findall(r"^\s*#\s*ifndef\s+(\w+)\s*\n\s*#\s*define\s+\1[ \t]*$", comments, re.M)
               if ("_" + re.sub(r"\W", "_", path).upper()).endswith("_" + name)}
+    private = {name for name in pasted
+               if re.search(r"\bconstructor\b", declaration(code, code.find(name)))}
     names = []
     for name in sorted(pasted.get(name, name) for name in set().union(*declarations)
-                       if not name.startswith("_") and name not in guards):
+                       if not name.startswith("_") and name not in guards and name not in private):
         found = re.search(rf"(?<!\w){re.escape(name)}(?!\w)", spelled)
         at = found.start() if found else 0
         names.append((name, spelled.count("\n", 0, at) + 1, declaration(spelled, at) if found else name))
