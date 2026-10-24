@@ -83,7 +83,7 @@ class MergeTests(unittest.TestCase):
         wp, wt = weld(doubled, split)
         self.assertTrue(np.all(z_normals(wp, wt) > 0))
         rgb = np.full((len(doubled), 3), 100)
-        mp, _, mt = merge_matching_colours(doubled, rgb, split, WELD_PER_TICK * POSITION_SCALE)
+        mp, _, mt, _ = merge_matching_colours(doubled, rgb, split, WELD_PER_TICK * POSITION_SCALE, labels=np.zeros(len(split)))
         self.assertEqual(len(mt), len(tris))
         self.assertTrue(np.all(z_normals(mp, mt) > 0))
 

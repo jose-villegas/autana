@@ -22,6 +22,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "name_hash/name_hash.h"
+
 #include "suites.h"
 #include "unity.h"
 
@@ -55,10 +57,7 @@ test_empty_runs_preserve_reaction_grid_and_material_mask(void) {
         sim->last_step_dy = 0;
         sand_reactions_cells_dispatched = 0;
         sand_step_reactions(sim);
-        unsigned hash = 2166136261U;
-        for (int i = 0; i < ROW_W * ROW_H; i++) {
-            hash = (hash ^ grid[i]) * 16777619U;
-        }
+        const name_hash_t hash = name_hash_n(grid, ROW_W * ROW_H);
         static const unsigned expected_hash[] = {0x3f5b7751U, 0xab700f36U, 0xab700f36U, 0xd16230d9U};
         TEST_ASSERT_EQUAL_HEX32(expected_hash[seed - 1], hash);
         TEST_ASSERT_EQUAL_HEX16(0x0069, sim->may_have_materials);
