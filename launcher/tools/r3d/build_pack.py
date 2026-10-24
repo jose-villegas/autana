@@ -60,7 +60,7 @@ from asset.asset_pack import PackError, build_pack, parse_pack  # noqa: E402
 from asset.asset_directory import build_directory, parse_directory  # noqa: E402
 from r3d import scene_asset, scene_name, skin_asset, skin_pack, lcol_asset  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
-from r3d.mesh_asset import BLOB_HEADER, TYPE as LIT_MESH  # noqa: E402
+from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_SEARCH = REPO / "launcher" / "main"
@@ -309,8 +309,8 @@ def validate_colour_sets(rows):
             if mesh_kind != LIT_MESH:
                 raise SettingsError(f"{name}: renderer mesh has the wrong type")
             if "colour_set" not in row:
-                _, _, _, _, _, _, colors_at, _, _, _, face_at = BLOB_HEADER.unpack_from(mesh)
-                if not (colors_at or face_at):
+                header = lcol_asset.read_mesh_header(mesh)
+                if not (header.colors_at or header.face_at):
                     raise SettingsError(f"{name}: skinned renderer requires a coloured mesh")
                 continue
             try:
@@ -320,8 +320,8 @@ def validate_colour_sets(rows):
                     raise
                 colors = None
             if row["colour_set"] == scene_asset.COLOUR_SET_OWN:
-                _, _, _, _, _, _, colors_at, _, _, _, face_at = BLOB_HEADER.unpack_from(mesh)
-                if colors is not None or not (colors_at or face_at):
+                header = lcol_asset.read_mesh_header(mesh)
+                if colors is not None or not (header.colors_at or header.face_at):
                     raise SettingsError(f"{name}: own colours require a coloured mesh without LCOL")
             else:
                 if colors is None or colors[0] != lcol_asset.TYPE:

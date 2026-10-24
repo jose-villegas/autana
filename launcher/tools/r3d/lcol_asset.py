@@ -1,6 +1,7 @@
 """LCOL v1 colour sets; layout constants belong to render/lcol_format.h."""
 import pathlib
 import struct
+from typing import NamedTuple
 from asset.asset_pack import NAME_BYTES, PackError
 from build.c_header import read_define
 from r3d.mesh_asset import BLOB_HEADER
@@ -21,6 +22,21 @@ for field, layout in HEADER_FIELDS:
     offset += struct.calcsize("<" + layout)
 if HEADER.size != read_define(OWNER, "LCOL_HEADER_SIZE") or offset != HEADER.size:
     raise ValueError("LCOL header size disagrees with its C owner")
+
+
+class MeshHeader(NamedTuple):
+    vertices: int
+    triangles: int
+    colors_at: int
+    face_at: int
+
+
+def read_mesh_header(mesh):
+    """Moves into mesh_asset.py when that file next changes with a rebake."""
+    if len(mesh) < BLOB_HEADER.size:
+        raise PackError("LMSH header is truncated")
+    vertices, triangles, _, _, _, _, colors_at, _, _, _, face_at = BLOB_HEADER.unpack_from(mesh)
+    return MeshHeader(vertices, triangles, colors_at, face_at)
 
 
 def name_for_mesh(mesh):
@@ -55,9 +71,7 @@ def encode(encoding, count, sets):
 
 def validate_mesh(entry, mesh, colour_set):
     encoding, count, sets = decode(entry)
-    if len(mesh) < BLOB_HEADER.size:
-        raise ValueError("LMSH header is truncated")
-    vertices, triangles, _, _, _, _, colors_at, _, _, _, face_at = BLOB_HEADER.unpack_from(mesh)
-    expected = vertices if encoding == RGB888 else triangles
-    if colour_set >= len(sets) or count != expected or colors_at or face_at:
+    header = read_mesh_header(mesh)
+    expected = header.vertices if encoding == RGB888 else header.triangles
+    if colour_set >= len(sets) or count != expected or header.colors_at or header.face_at:
         raise ValueError("LCOL set, count or mesh colour ownership is invalid")
