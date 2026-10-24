@@ -92,6 +92,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/vec_convert.h](include/math/linear/vec_convert.h) | vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. |
 | [include/math/linear/vec_ops_template.h](include/math/linear/vec_ops_template.h) | vec_ops_template: component-wise arithmetic and lerp for vectors of every dimension and number type. |
 | [include/math/linear/vec_swizzle_template.h](include/math/linear/vec_swizzle_template.h) | vec_swizzle_template: swizzles, a new vector made of named components of another (vec3f_zyx, vec2f_yx), for every number type. |
+| [include/math/motion/flip3.h](include/math/motion/flip3.h) | flip3: water in a closed box, simulated as FLIP particles on a MAC grid (Harlow and Welch; Brackbill and Ruppel), blended with PIC as in Bridson, with the drift push of Muller's Ten Minute Physics FLIP tank, in 3-D. |
 | [include/math/motion/orbit_motion.h](include/math/motion/orbit_motion.h) | orbit_motion: moves a transform around a target, turntable style: it turns about the world's up axis (yaw) and tilts above or below the target (pitch), always facing it. |
 | [include/math/motion/spring_line.h](include/math/motion/spring_line.h) | spring_line, a row of points on springs: each is pulled toward rest and toward its neighbours, so a push travels along the row as a wave and dies away. |
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
