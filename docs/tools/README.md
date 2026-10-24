@@ -22,5 +22,6 @@ The rest of this index lists the repository's checks and tools.
 | [Pull-Requests.md](Pull-Requests.md) | The pull request description layout, the scaffold that fills its table from the branch, and its check. |
 | [Mermaid-Diagrams.md](Mermaid-Diagrams.md) | Validating ```` ```mermaid ```` diagrams with mermaid-cli: the command, the pre-commit step, and CI. |
 | [Math-Formulas.md](Math-Formulas.md) | Writing maths GitHub renders, and validating every formula with GitHub's MathJax configuration: the command, the pre-commit step, and CI. |
+| [Code-Search.md](Code-Search.md) | Finding an existing helper by name and purpose, and the gate that every header and module states its purpose. |
 | [Generated-Files.md](Generated-Files.md) | Checked-in generated headers: the banner that names their command, and the gate that reruns it and compares bytes. |
 | [Icon-Baker.md](Icon-Baker.md) | Icons as pack content: the `.icons.toml` source, what the baker rejects, the one-bit image entry, drawing without the pack, and how the shipped icons are tested. |
