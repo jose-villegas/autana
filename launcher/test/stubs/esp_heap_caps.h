@@ -1,3 +1,4 @@
+/* Host stub of ESP-IDF esp_heap_caps.h: capability allocation and heap sizes. */
 #pragma once
 #include <stdint.h>
 #include <stdlib.h>
