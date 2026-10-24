@@ -102,10 +102,11 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     triangles of one sidedness; an octree leaf holds meshlets to leaf_triangles
     triangles. Given face_rgb, one 0..255 colour per triangle, the mesh is
     flat: rgb is None, vertices weld by position alone and face_colors holds
-    the colours; otherwise face_colors is None."""
+    the colours; otherwise face_colors is None. With neither input colour
+    array, the mesh is colourless."""
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
     flat = face_rgb is not None
-    col = None if flat else np.clip(np.rint(rgb), 0, 255).astype(np.int64)
+    col = None if flat or rgb is None else np.clip(np.rint(rgb), 0, 255).astype(np.int64)
     face = np.clip(np.rint(face_rgb), 0, 255).astype(np.int64) if flat else None
     assert not flat or len(face) == len(tris), "a flat bake needs one face colour per triangle"
     q, col, tris, double, face = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, face)
@@ -156,8 +157,8 @@ def box_of(q, tris):
 def lay_out(q, col, entries):
     """The vertex, colour and triangle arrays of a run of clusters, each
     owning the vertices its triangles use, and the cluster rows over them.
-    With no vertex colours (`col` None) each entry carries its faces' colours."""
-    flat = col is None
+    Absent colour arrays stay absent."""
+    flat = entries[0]["face"] is not None
     pos, rgb, tris, clusters, face = [], [], [], [], []
     vbase = tbase = 0
     for e in entries:
@@ -166,12 +167,12 @@ def lay_out(q, col, entries):
         tris.append(local + vbase)
         if flat:
             face.append(e["face"])
-        else:
+        elif col is not None:
             rgb.append(col[used])
         clusters.append((vbase, len(used), tbase, len(local), e["box"][0], e["box"][1], bool(e["double"])))
         vbase += len(used)
         tbase += len(local)
-    return (np.concatenate(pos), None if flat else np.concatenate(rgb), np.concatenate(tris), clusters,
+    return (np.concatenate(pos), np.concatenate(rgb) if rgb else None, np.concatenate(tris), clusters,
             np.concatenate(face) if flat else None)
 
 
@@ -180,10 +181,11 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     assert len(tris) <= MAX_TRIANGLES, f"{len(tris)} triangles exceed uint16 offsets"
     assert len(clusters) <= MAX_CLUSTERS, f"{len(clusters)} clusters exceed uint16 offsets"
     assert np.abs(pos).max() <= INT16_MAX, "a position does not fit int16"
-    assert (face_colors is not None) != (rgb is not None), "vertex colours or face colours, never both"
+    assert face_colors is None or rgb is None, "vertex colours or face colours, never both"
     colours = rgb if rgb is not None else face_colors
-    assert colours.min() >= 0 and colours.max() <= 255
-    assert len(colours) == (len(pos) if rgb is not None else len(tris))
+    if colours is not None:
+        assert colours.min() >= 0 and colours.max() <= 255
+        assert len(colours) == (len(pos) if rgb is not None else len(tris))
     assert tris.min() >= 0 and tris.max() < len(pos)
     assert np.all(distinct_corners(tris))
     next_v = next_t = 0
@@ -208,16 +210,20 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     assert len(nodes) <= MAX_NODES
 
 
-def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, **options):
+def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, colourless=False, **options):
     """Writes <name>.mesh into out_dir, the pack entry main/render/
     r3d_lit_mesh.h reads. positions are model units, rgb 0..255 per vertex
     (None for a flat mesh), tris counter-clockwise seen from the front,
     double one flag per triangle; options, face_rgb among them, go to
-    bake_lit_mesh. Returns the baked mesh."""
+    bake_lit_mesh. With colourless, colour columns are weld keys returned in
+    colour_keys or face_keys; neither colour array is written. Returns the baked mesh."""
     recorder = NULL_RECORDER if recorder is None else recorder
     with recorder.step("meshlets", len(tris)) as step:
         mesh = bake_lit_mesh(positions, rgb, tris, double, **options)
         step["triangles_out"] = len(mesh.tris)
+    if colourless:
+        mesh.colour_keys, mesh.face_keys = mesh.rgb, mesh.face_colors
+        mesh.rgb = mesh.face_colors = None
     with recorder.step("write", len(mesh.tris)):
         (pathlib.Path(out_dir) / f"{name}.mesh").write_bytes(mesh_blob(mesh))
     return mesh

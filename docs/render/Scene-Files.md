@@ -231,6 +231,7 @@ normal_weight = 1.0
 |---|---|---|---|---|
 | `bake: renderer` | `true` | Traces this renderer against its own source. | `false`. | [bake renderer](#bake-renderer) |
 | `variant` | name | Chooses a named geometry variant. | Required when the import has variants. | [variant](#variant) |
+| `colour_set` | nonnegative integer | Selects an external LCOL set on a colourless mesh. | Mesh-owned colours. | [colour_set](#colour_set) |
 | `visibility: camera_region` | `source = "camera_region"`, `rounds` | Keeps triangles visible from any point in the camera's region. | Off. | [visibility: camera_region](#visibility-camera_region) |
 | `visibility: camera_path` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. | Off. | [visibility: camera_path](#visibility-camera_path) |
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
@@ -253,6 +254,12 @@ may be placed anywhere, by many scenes.
 #### variant
 
 `variant` selects a named geometry output from its import.
+
+#### colour_set
+
+`colour_set` is a uint16 index into `<mesh id>.colors`; the
+`SCENE_ASSET_COLOUR_SET_OWN` sentinel selects mesh-owned colours. Pack
+validation checks ownership, set range, encoding and element count.
 
 #### visibility: camera_region
 

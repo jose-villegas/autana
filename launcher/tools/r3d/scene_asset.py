@@ -9,7 +9,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset.asset_pack import NAME_BYTES
 from build.c_header import read_define
-from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
+from r3d.import_settings import COLOUR_SET_OWN, ANIM_WRAPS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_format.h"
@@ -22,14 +22,14 @@ LIGHT_KINDS = {"directional": DIRECTIONAL}
 DEFAULT_COLOR = read_define(INTERNAL, "SCENE_LIGHT_COLOR_DEFAULT")
 AMBIENT_NONE = read_define(INTERNAL, "SCENE_AMBIENT_INTENSITY_NONE")
 TONEMAP_NONE = read_define(INTERNAL, "SCENE_TONEMAP_WHITE_NONE")
-COLOUR_SET_OWN = read_define(OWNER, "SCENE_ASSET_COLOUR_SET_OWN")
 DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings")
 HEADER = struct.Struct(f"<{1 + len(PARTS)}H{len(PARTS)}I")
 U16_MAX = (1 << 16) - 1
 NAME = struct.Struct(f"<{NAME_BYTES}s")
-TRANSFORM = struct.Struct("<12f")
+TRANSFORM_AXES = 3
+TRANSFORM = struct.Struct(f"<{TRANSFORM_AXES * (TRANSFORM_AXES + 1)}f")
 RENDERER = struct.Struct(f"<HH{NAME_BYTES}s")
 CAMERA = struct.Struct("<HHffI")
 LIGHT = struct.Struct("<HBB4f")
@@ -77,7 +77,7 @@ def encode(scene, cache=None, offline=False):
             rows["skinned_renderers"].append((entity, 0, field(mesh, "mesh id"),
                 field(skin, "skin id"), field(skeleton, "skeleton id")))
         else:
-            rows["renderers"].append((entity, COLOUR_SET_OWN, field(mesh, "mesh id")))
+            rows["renderers"].append((entity, getattr(item.renderer, "colour_set", COLOUR_SET_OWN), field(mesh, "mesh id")))
     for obj in objects:
         entity = index[obj.name]
         animator = getattr(obj, "animator", None)
@@ -137,6 +137,13 @@ def nonnegative(value):
     return math.isfinite(value) and value >= 0
 
 
+def decode_transform(values):
+    """The matrix and position fields of one SCNE transform row."""
+    end = TRANSFORM_AXES * TRANSFORM_AXES
+    return {"matrix": [list(values[i:i + TRANSFORM_AXES]) for i in range(0, end, TRANSFORM_AXES)],
+            "position": list(values[end:])}
+
+
 def decode(entry):
     if len(entry) >= 2 and struct.unpack_from("<H", entry)[0] != VERSION:
         raise SceneError(f"version {struct.unpack_from('<H', entry)[0]}, this reads {VERSION}")
@@ -149,8 +156,7 @@ def decode(entry):
     rows = {part: section(entry, at, count, row, HEADER.size, part)
             for part, at, count, row in zip(PARTS, offsets, counts, ROWS)}
     out = {part: [] for part in PARTS if part not in ("names", "transforms")}
-    out["entities"] = [{"name": text_at(raw, "entity name"),
-                        "matrix": [list(values[i:i + 3]) for i in range(0, 9, 3)], "position": list(values[9:])}
+    out["entities"] = [{"name": text_at(raw, "entity name"), **decode_transform(values)}
                        for (raw,), values in zip(rows["names"], rows["transforms"])]
     for part in ("renderers", "skinned_renderers", "cameras", "lights", "animators"):
         seen = set()

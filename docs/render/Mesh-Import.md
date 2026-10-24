@@ -178,9 +178,19 @@ The tolerance is the reciprocal of `output.position_scale`.
 
 Free shifts the contact footprint; lock retains the base vertices.
 
-Rigid copies share simplification in their local frame, using albedo colours
-and the union of their locks. Each placed copy is lit against the full source;
-mirrored copies reverse winding. Output remains a merged mesh.
+Rigid copies share local simplification and their union of locks. Each copy
+is lit against the full source.
+
+A shape writes a colourless LMSH and an LCOL with one set per copy: RGB888
+vertices for smooth shading, RGB565 faces for flat. Mirrored copies own a
+shape with reversed winding and a positive-determinant placement.
+
+A carved renderer's cache `.bundle` holds the coloured rest, shapes, LCOL
+entries and a versioned copy manifest. Pack building unpacks assets and
+discards the manifest; SCNE keeps the rest renderer only.
+
+Shape ids use the scene name and a stable name hash; the manifest retains
+the rule, source object and copy names.
 
 Rules match the alpha-masked source. Carved meshes skip per-triangle visibility;
 `thin` runs once per shared shape with the import seed. The rest keeps its
