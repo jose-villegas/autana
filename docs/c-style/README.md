@@ -21,7 +21,7 @@ formatting or naming rules; commands are in
 | Tasks, cores, spinlocks, atomics, queues | [Concurrency](Concurrency.md) |
 | Driver, HAL and register access, wrapping a driver function | [Register access](Register-Access.md) |
 | Placing code or data with a linker fragment | [Linker fragments](../memory/Linker-Fragments.md) |
-| Helpers that already have an owner | [Shared helpers](../tools/Shared-Helpers.md) |
+| Helpers that already have an owner | [Code search](../tools/Code-Search.md) |
 
 ## Mechanical rules
 
@@ -85,7 +85,7 @@ scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check 
 
 | Rule | Gate |
 |---|---|
-| Check the [shared-owner catalogue](../tools/Shared-Helpers.md) before writing a helper; extend an owner that fits. | |
+| Search for an owner before writing a helper ([code search](../tools/Code-Search.md)); extend one that fits. | `python scripts/docs/code_search.py --shared <words>` |
 | Never grow a file pair's copied tokens; extract a shared owner instead. | `python scripts/gates/check_clones.py` (jscpd: `npm ci --prefix scripts/gates`) |
 | Never restate an integer a file already sees through its `#include "..."` chain, or a firmware string a Python tool repeats; use the named constant. | `python scripts/gates/check_magic_numbers.py` |
 | Mark a deliberate literal on its line with `/* magic: reason */` (`# magic: reason` in Python); the reason may not be empty. | `check_magic_numbers.py` |
@@ -101,7 +101,8 @@ Clone budgets, from the script's docstring:
 - Code moved out of a file the change deletes keeps its fragments.
 - Not clones: `#include` or `RUN_TEST` blocks, literal-only `#define`s, split declarations, added groupings, comments, whitespace.
 - Scope: tracked C, C++ and Python under `launcher/`, `scripts/` and `editor/`, minus vendored, test-framework, generated and fixture-data files.
-- `MIN_TOKENS` sets the threshold, so short helpers are missed; `--min-tokens N` reports another one without checking. Review a reported pair before extracting.
+- `MIN_TOKENS` sets the threshold; `--min-tokens N` reports another one without checking. Review a reported pair before extracting.
+- A shorter Python function is a clone when its body matches another's once its parameters and locals are renamed. Literals, attributes and globals must match exactly, and the docstring and annotations are ignored. Functions under `MIN_FUNCTION_NODES` AST nodes are skipped, since at that size they are idioms rather than helpers.
 
 ## Judgment rules
 

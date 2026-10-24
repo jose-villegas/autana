@@ -4,7 +4,7 @@
 
 #include <math.h>
 
-#include "board/board_size.h"
+#include "board/board_geometry.h"
 #include "gfx/gfx.h"
 
 /* Square pixels: the diagonal over the diagonal's pixel count. */

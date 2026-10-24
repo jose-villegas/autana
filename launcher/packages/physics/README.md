@@ -19,7 +19,7 @@ target. Host scripts discover sources and suites through
 
 ## Headers
 
-<!-- generated: package-physics-headers check: python launcher/tools/gen/shared_helpers.py --check -->
+<!-- generated: package-physics-headers check: python launcher/tools/gen/package_headers.py --check -->
 | Header | Purpose |
 |---|---|
 | [include/physics/fluid/flip3.h](include/physics/fluid/flip3.h) | flip3: water in a closed box, simulated as FLIP particles on a MAC grid (Harlow and Welch; Brackbill and Ruppel), blended with PIC as in Bridson, with the drift push of Muller's Ten Minute Physics FLIP tank, in 3-D. |

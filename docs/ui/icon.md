@@ -6,7 +6,7 @@ draws a one-bit icon filling `r` in the text ink, or `fallback` centred when
 
 ## Example
 
-<!-- generated: ui-icon-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-icon-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Icons in the text colour: a pack icon with a short fallback, and the system check. */
 #include "ui/controls/ui_icons.h"

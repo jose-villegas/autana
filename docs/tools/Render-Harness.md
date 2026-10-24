@@ -105,7 +105,7 @@ requests".
 | `overview/launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
 | `overview/launcher-home.gif` | the same, rocking the board either way |
 | `overview/boot-anim.gif` | the boot animation in landscape orientation |
-| `ui/*.png` | each face example in its states, and the States tables of `docs/ui/` (`ui_examples_render_host.sh`, `ui_examples_doc.py`) |
+| `ui/*.png` | each face example in its states, and the States tables of `docs/ui/` (`ui_examples_render_host.sh`, `ui_examples_doc.py`); source uses the [usage example rule](Generated-Files.md#usage-examples) |
 
 Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
 the dynamic-resolution report write one Markdown table per block name into

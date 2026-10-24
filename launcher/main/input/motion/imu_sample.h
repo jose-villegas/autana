@@ -27,11 +27,11 @@ _Static_assert(sizeof(imu_sample_t) == 12, "FIFO order is six little-endian int1
 #define IMU_COUNTS_PER_G   4096
 #define IMU_COUNTS_PER_DPS 64
 
-/* Sensor axes to screen axes: how the QMI8658 is soldered relative to the
- * panel is a board layout fact no datasheet carries, so both facts here come
- * from tilting the board: held upright the sensor reads about +1 g on its
- * X axis and roughly zero on Y, so the chip's X runs down the screen and its
- * Y runs across it pointing left, hence the negation. */
+/* Sensor axes to the screen labels x right, y down, z out. The chip sits with X
+ * up the screen, Y right and Z out of the back (board/board_geometry.h). It reads
+ * specific force, which points up at rest, and callers treat the vector as down,
+ * so each label is a chip axis negated: held upright the chip reads +1 g on X,
+ * which lands on +y, down. The labels are left-handed; the numbers are true down. */
 static inline vec3i_t
 imu_axes_screen(int x, int y, int z) {
     return (vec3i_t){-y, x, z};

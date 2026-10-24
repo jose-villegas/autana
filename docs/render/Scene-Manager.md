@@ -30,7 +30,7 @@ block transactionally; attachment failure preserves the scene.
 | names | entity | the scene entry's, read in the pack, looked up only by `scene_find()` |
 
 Array lengths come from the scene's `SCNE` entry
-([Scene-Files.md](Scene-Files.md#scne-v2)). SCNE v2 carries authored lights, lighting settings, skins and animators.
+([Scene-Files.md](Scene-Files.md#scne-v3)). SCNE v3 carries authored lights, lighting settings, skins, animators and renderer colour-set selections.
 Authored lights attach at load, and `scene_light_set_*()` attaches or changes
 them at run time; only skinned renderers are lit at run time, baked renderers
 keep their pack colors. Names and immutable mesh and track views point into

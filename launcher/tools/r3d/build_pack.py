@@ -58,7 +58,7 @@ from asset.engine_frame import to_engine  # noqa: E402
 from gfx import icons_asset, image_asset, curve_asset  # noqa: E402
 from asset.asset_pack import PackError, build_pack, parse_pack  # noqa: E402
 from asset.asset_directory import build_directory, parse_directory  # noqa: E402
-from r3d import scene_asset, scene_name, skin_asset, skin_pack  # noqa: E402
+from r3d import scene_asset, scene_name, skin_asset, skin_pack, lcol_asset  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
@@ -290,8 +290,43 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
                 mirrored.append((key, kind, to_engine(kind, data)))
             except ValueError as error:
                 raise SettingsError(f"entry {key!r}: {error}") from error
+        validate_colour_sets(mirrored)
         result[name] = build_pack(sorted(mirrored))
     return result
+
+
+def validate_colour_sets(rows):
+    """Validate each scene renderer against its mesh and optional LCOL owner."""
+    entries = {name: (kind, data) for name, kind, data in rows}
+    for name, kind, data in rows:
+        if kind != scene_asset.TYPE:
+            continue
+        scene = scene_asset.decode(data)
+        for row in scene["renderers"] + scene["skinned_renderers"]:
+            if row["mesh"] not in entries:
+                raise SettingsError(f"{name}: renderer mesh is missing")
+            mesh_kind, mesh = entries[row["mesh"]]
+            if mesh_kind != LIT_MESH:
+                raise SettingsError(f"{name}: renderer mesh has the wrong type")
+            if "colour_set" not in row:
+                header = lcol_asset.read_mesh_header(mesh)
+                if not (header.colors_at or header.face_at):
+                    raise SettingsError(f"{name}: skinned renderer requires a coloured mesh")
+                continue
+            try:
+                colors = entries.get(lcol_asset.name_for_mesh(row["mesh"]))
+            except PackError:
+                if row["colour_set"] != scene_asset.COLOUR_SET_OWN:
+                    raise
+                colors = None
+            if row["colour_set"] == scene_asset.COLOUR_SET_OWN:
+                header = lcol_asset.read_mesh_header(mesh)
+                if colors is not None or not (header.colors_at or header.face_at):
+                    raise SettingsError(f"{name}: own colours require a coloured mesh without LCOL")
+            else:
+                if colors is None or colors[0] != lcol_asset.TYPE:
+                    raise SettingsError(f"{name}: colour set requires an LCOL entry")
+                lcol_asset.validate_mesh(colors[1], mesh, row["colour_set"])
 
 
 def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, offline=False):

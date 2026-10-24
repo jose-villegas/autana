@@ -149,22 +149,72 @@ title Content: face colour, 2 bytes a triangle from face_colours_off
 |---|---|---|
 | Header | 0 | 44 bytes |
 | Content: positions | `positions_off` | 6 bytes a vertex |
-| Content: colours | `colours_off`, or 0 for a flat mesh | 3 bytes a vertex |
+| Content: colours | `colours_off`, or 0 when absent | 3 bytes a vertex |
 | Content: triangles | `triangles_off` | 6 bytes each |
 | Cluster registry | `clusters_off` | 22 bytes a cluster, the layout of `r3d_lit_cluster_t` |
 | Node registry | `nodes_off` | 16 bytes a node, the layout of `r3d_lit_node_t`; `nodes[0]` is the root |
-| Content: face colours | `face_colours_off`, or 0 for a vertex-coloured mesh | 2 bytes a triangle |
+| Content: face colours | `face_colours_off`, or 0 when absent | 2 bytes a triangle |
 
 | Rule | Detail |
 |---|---|
 | Owners | the header's word order is the `enum` in `r3d_lit_mesh.c`; `VERTEX_LIMIT` (65535) there caps the four counts (`ASSET_ERR_BOUNDS`); `r3d_lit_cluster_t` and `r3d_lit_node_t` are `_Static_assert`ed to 22 and 16 bytes with the field offsets above, and `lit_mesh.py`'s `CLUSTER` and `NODE` write the same bytes |
 | Arrays | each offset a multiple of 4 and at least 44, the array inside the entry; the writer pads each array to 4 bytes and sets the offset of an empty one to 0 (`ASSET_ERR_BOUNDS`, also for a header shorter than 44 bytes); only colours and face colours may be 0 |
-| Colour source | exactly one of colours and face colours, never both (`ASSET_ERR_FORMAT`) |
+| Colour source | At most one of colours and face colours (`ASSET_ERR_FORMAT` for both) |
 | Scale | `position_scale` is ticks per model unit, in 1..`INT_MAX` (`ASSET_ERR_FORMAT`); positions are int16 ticks |
 | Counts | at least one cluster and one node (`ASSET_ERR_FORMAT`) |
 | Clusters | vertex ranges tile every vertex once and in order: the first starts at 0, each starts at the previous end, the last ends at `vertex_count` (`ASSET_ERR_FORMAT`); each cluster's vertex and triangle ranges lie inside the mesh and its triangles index only its own vertices (`ASSET_ERR_BOUNDS`); the writer also tiles the triangle ranges in order |
 | Nodes | a leaf's children are clusters, an inner node's are nodes, `first + count` inside that array; an inner node's children come after it, so a walk down the tree ends, and number at most `R3D_LIT_INNER_CHILDREN_MAX` (8), the octree's split (`ASSET_ERR_BOUNDS`); the writer limits `count` to `MAX_NODE_CHILDREN` and hangs every cluster off exactly one leaf |
 | Order | header, then the arrays in the order of the Part table, each padded to 4; padding zero |
+
+## LCOL v1
+
+A shared LMSH prototype has neither colour array. Each renderer selects a
+mapped set from its `LCOL` entry; its mesh view owns the colour pointers
+while geometry stays shared.
+
+`r3d_lit_mesh_open_colours()` and `lcol_asset.name_for_mesh()` use exactly
+`<mesh_id>.colors`. The mesh id must be nonempty and the result must fit
+the pack name field.
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 12
+    bitWidth: 60
+---
+packet-beta
+title Header, 12 bytes at 0, one cell a byte
+0-1: "version = 1"
+2-3: "encoding"
+4-7: "set_count"
+8-11: "count"
+```
+
+| Encoding | Stride | Unit | Cell layout |
+|---|---|---|---|
+| 0: RGB888 | 3 bytes | vertex | `uint8 r, g, b` |
+| 1: RGB565 | 2 bytes | triangle | little-endian `uint16` panel RGB565 |
+
+| Part | At | Size |
+|---|---|---|
+| Version | 0 | u16 |
+| Encoding | 2 | u16 |
+| Set count | 4 | u32 |
+| Element count | 8 | u32 |
+| Sets | 12 | `set_count × count × stride` bytes |
+
+| Rule | Detail |
+|---|---|
+| Owners | Layout constants in `render/lcol_format.h`; Python reads them with `read_define`. Writer and reader: `r3d/lcol_asset.py`; C opener: `r3d_lit_mesh_open_colours()` |
+| Encoding | 0: RGB888, 3 bytes per vertex; 1: panel RGB565, 2 bytes per triangle; other encodings return `ASSET_ERR_FORMAT` |
+| Counts | At least one set; `count` equals the prototype's vertex or triangle count for the encoding |
+| Ownership | Both LMSH colour arrays are absent; LCOL holds all baked lighting for the prototype |
+| Selection | SCNE `colour_set` is below `set_count`; `SCENE_ASSET_COLOUR_SET_OWN` requires LMSH colours; own colours require no LCOL, checked at pack time |
+| Layout | Little-endian, header then contiguous sets; set k starts at `12 + k × count × stride`; no trailing bytes |
+| Refusals | Versions other than 1 return `ASSET_ERR_VERSION`; invalid counts, selection or ownership return `ASSET_ERR_FORMAT`; an incomplete or oversized payload returns `ASSET_ERR_BOUNDS`; a missing LCOL returns `ASSET_ERR_NOT_FOUND` |
+
+The Python LMSH writer always writes colours; colourless prototypes have no writer yet.
 
 ## Meshlets
 

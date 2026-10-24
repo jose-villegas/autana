@@ -20,9 +20,10 @@
 #include <string.h>
 
 #include "app/app_arena.h"
-#include "board/board_size.h"
+#include "board/board_geometry.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "display/display_size.h"
 #include "draw/draw.h"
 #include "esp_log.h"
@@ -40,7 +41,6 @@
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
-#include "services/tune.h"
 #include "ui/ui.h"
 
 static const char* TAG = "water";
@@ -58,8 +58,10 @@ static const char* TAG = "water";
 #define WATER_FILL_LABEL    "WATER FILL: %d%%"
 #define WATER_PERCENT       100
 
-/* Grid cells across the depth; the cell is the depth over this. */
-#define WATER_CELLS_DEEP    5
+/* Grid cells across the depth; the cell is the depth over this. Three over
+ * the device's 7.4 mm keeps cells near 2.5 mm, the size the frame budget
+ * was sketched for: 12 x 14 x 3 cells and about 2400 particles at most. */
+#define WATER_CELLS_DEEP    3
 /* Density samples per cell along each axis, for the surface. */
 #define WATER_SAMPLES       2
 /* The surface sits where the density is half the rest density. */
@@ -408,7 +410,7 @@ scene_water_enter(const render_lab_scene_t* self) {
     (void)self;
     draw_clear(gfx_rgb(UI_BACKGROUND));
     failure[0] = '\0';
-    box = (vec3f_t){display_width_mm(), display_height_mm(), BOARD_THICKNESS_MM};
+    box = (vec3f_t){display_width_mm(), display_height_mm(), BOARD_DEVICE_DEPTH_MM};
     scene_failure_t why;
     tank_scene = scene_load(WATER_SCENE, &why);
     if (tank_scene == NULL) {
