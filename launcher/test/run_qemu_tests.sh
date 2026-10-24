@@ -77,13 +77,14 @@ if [ "$BUILD" = 1 ]; then
     . "$LAUNCHER_DIR/tools/build/idf.sh"
     idf_init "$LAUNCHER_DIR" "$LAUNCHER_DIR/tools/build" || exit 2
     . "$LAUNCHER_DIR/tools/build/idf_variant.sh"
-    VARIANT_OPTIONS="--qemu"
+    VARIANT_OPTIONS=""
     if [ "$AUTORUN" = 1 ]; then
         VARIANT_OPTIONS="$VARIANT_OPTIONS --autorun"
     fi
     if [ "$PERF" = 1 ]; then
         VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
     fi
+    VARIANT_OPTIONS="$VARIANT_OPTIONS --qemu"
     idf_variant_prepare "$LAUNCHER_DIR" "$BUILD_DIR" || exit 2
     # shellcheck disable=SC2086
     idf_variant_build "$LAUNCHER_DIR" diag "$IDF_VARIANT_BUILD" $VARIANT_OPTIONS
