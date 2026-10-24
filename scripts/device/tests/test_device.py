@@ -3240,11 +3240,8 @@ class TouchPointTests(unittest.TestCase):
     def coordinate_png(width, height):
         """Each pixel's red and green are its own x and y."""
         import screenshot as screenshot_tool
-        raw = b"".join(b"\0" + b"".join(bytes((x, y, 0)) for x in range(width)) for y in range(height))
-        return (b"\x89PNG\r\n\x1a\n"
-                + screenshot_tool._png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-                + screenshot_tool._png_chunk(b"IDAT", zlib.compress(raw))
-                + screenshot_tool._png_chunk(b"IEND", b""))
+        return screenshot_tool.encode_png(width, height, (b"".join(bytes((x, y, 0)) for x in range(width))
+                                                          for y in range(height)))
 
     @staticmethod
     def pixels(png):

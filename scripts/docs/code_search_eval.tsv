@@ -3,7 +3,7 @@ bit flags per index	launcher/packages/collections/include/collections/bits.h	aut
 string builder	launcher/packages/collections/include/collections/strbuf.h	autana-ks4hn #1144
 snprintf append to a buffer	launcher/packages/collections/include/collections/strbuf.h	autana-ks4hn #1144
 insertion sort	launcher/packages/collections/include/collections/sort.h	autana-ks4hn
-fnv hash of a name	launcher/packages/name_hash/include/name_hash/name_hash.h	ldf7 #1102
+fnv hash of a name	launcher/packages/hash/include/hash/name_hash.h	ldf7 #1102
 page background colour	launcher/main/ui/ui.h	autana-ea8w #1124
 save a matplotlib figure	launcher/tools/docs/plot_style.py	autana-mn4k #1054
 pinhole projection lens	launcher/packages/math/include/math/linear/projectf.h	#998

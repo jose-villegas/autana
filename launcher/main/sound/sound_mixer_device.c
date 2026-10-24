@@ -14,8 +14,8 @@
 #include "audio/audio_in.h"
 #include "audio/audio_out_device.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "profile/frame_cost.h"
-#include "services/tune.h"
 
 TUNE_OWNER(sound);
 TUNE_HOT(sound, declick_us, SOUND_DECLICK_US, 0, MATH_US_PER_S);

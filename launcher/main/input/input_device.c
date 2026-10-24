@@ -48,6 +48,7 @@ input_start(void) {
     if (!imu_init()) {
         ESP_LOGW(TAG, "No IMU - motion reads report nothing");
     }
+    imu_start();
 }
 
 vec3i_t
@@ -104,8 +105,7 @@ bool
 input_read_motion_batch(input_motion_batch_t* out) {
     out->count = 0;
     out->gap = false;
-    out->lost = 0;
-    const int count = imu_read_fifo((imu_sample_t*)out->samples, &out->lost, &out->gap);
+    const int count = imu_take_fifo((imu_sample_t*)out->samples, out->lost_before, &out->gap);
     if (count < 0) {
         return false;
     }
