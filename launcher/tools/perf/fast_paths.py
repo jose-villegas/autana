@@ -40,6 +40,7 @@ class Annotation:
     formula: str
     original: str
     coverage: str
+    citations: tuple = ()
 
     @property
     def anchor(self):
@@ -58,6 +59,12 @@ def benchmark_links(items, rows):
 
 
 def annotations(root=ROOT):
+    sys.path.insert(0, str(ROOT / "scripts/gates"))
+    from check_doc_citations import citation_rows
+    rows, problems = citation_rows(root)
+    if problems:
+        raise ValueError("; ".join(problems))
+    citation_names = {name: number for number, (_, name, _) in rows.items() if name}
     result = []
     source = (root / "launcher/packages/math/tests/suite_math_numbers.c").read_text(encoding="utf-8")
     contracts = {name: (unit, method) for name, unit, method in re.findall(
@@ -94,6 +101,12 @@ def annotations(root=ROOT):
             exact = re.search(r"/\* exact: (.*?) \*/\s*$", before)
             if not exact:
                 raise ValueError(f"missing exact formula: {key}")
+            cited = re.search(r"/\* source: (.*?) \*/\s*/\* exact: .*? \*/\s*$", before)
+            names = [name.strip() for name in cited[1].split(";")] if cited else []
+            for name in names:
+                if name not in citation_names:
+                    raise ValueError(f"unknown fast-path source: {name}")
+            citations = tuple(citation_names[name] for name in names)
             body = function_bodies(text)[key]
             guard = re.search(r"^#(?:if|elif).*defined\(__XTENSA__\).*CONFIG_MATH_.*$", body, re.M)
             target = "portable"
@@ -102,14 +115,14 @@ def annotations(root=ROOT):
             unit, method = contracts[key]
             result.append(Annotation(key, kind, fast, plain, limit_name, unit, method, target,
                                      header.relative_to(root), before.count("\n") + 1,
-                                     limit, description, formula, exact[1], coverage))
+                                     limit, description, formula, exact[1], coverage, citations))
     if not result:
         raise ValueError("no fast-path annotations")
     return result
 
 
 def validate_sections(text, items):
-    sections = re.findall(r"^## `?(\w+)`?\s*$", text, re.M)
+    sections = re.findall(r"^## `?(\w+)`?(?: <sup>.*?</sup>)*\s*$", text, re.M)
     expected = list(dict.fromkeys(item.key for item in items))
     if len(sections) != len(expected) or set(sections) != set(expected):
         raise ValueError(f"fast-path section mismatch: expected {expected}, found {sections}")
@@ -353,7 +366,7 @@ def format_error(evidence, source):
     if evidence == "-":
         return evidence
     value, unit, *_ = evidence.split()
-    unit = "rel" if unit == "relative" else unit
+    unit = ("step" if float(value) == 1 else "steps") if unit == "ulp" else "rel" if unit == "relative" else unit
     origin = " (host)" if source == "host" else ""
     return f"{format_measurement(float(value))} {unit}{origin}"
 
@@ -403,7 +416,9 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
     lines.pop()
     for key, group in groups.items():
         item = group[0]
-        lines += ["", f'<a id="{item.anchor}"></a>', "", f"## `{key}`", "",
+        citations = "".join(f" <sup>[[{number}]](../Citations.md#{number})</sup>" for number in dict.fromkeys(
+            number for row in group for number in row.citations))
+        lines += ["", f'<a id="{item.anchor}"></a>', "", f"## `{key}`{citations}", "",
                   "| Original | Fast path |", "|---|---|",
                   f"| $`{item.original}`$ | $`{item.formula}`$ |", "", f"Symbols: {_inline_expressions(_description_fields(item)[1])}.", "",
                   f"{item.method.capitalize()}: {_inline_expressions(item.coverage)}.", ""]
@@ -411,7 +426,7 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
         lines += [f"Target: {hardware}.", "", build_rows(item, root), "", f"Callers: {modules}.", ""]
         for row in group:
             _, expression, _ = entry_details[row.fast]
-            limit_unit = "rel" if row.unit == "relative" else row.unit
+            limit_unit = ("step" if row.limit == 1 else "steps") if row.unit == "ulp" else "rel" if row.unit == "relative" else row.unit
             lines += [f"Bench rows `{row.fast}` vs `{row.plain}`; limit `{row.limit_name}` "
                       f"({format_limit(row.limit)} {limit_unit}); {row.method}.", "",
                       f"Plain way: {expression}.", ""]
@@ -516,10 +531,13 @@ def main(argv=None):
             (root / "docs/math/data/math_bench_sizes.txt").write_bytes((provenance + body).encode())
         capture = (root / "docs/math/data/math_bench_capture.txt").read_text(encoding="utf-8")
         errors, bins, sources = error_evidence(root, items, rows, capture)
+        displayed_errors = {
+            key: re.sub(r"(\S+) ulp", lambda m: m[1] + (" step" if float(m[1]) == 1 else " steps"), value) + (" (host)" if sources[key] == "host" else "")
+            for key, value in errors.items()}
         _, measured = bench.parse_capture(capture, rows, allow_missing=not bins)
         page = root / DOCUMENT
         page_text = page.read_text(encoding="utf-8")
-        section_order = re.findall(r"^## `?(\w+)`?\s*$", page_text, re.M)
+        section_order = re.findall(r"^## `?(\w+)`?(?: <sup>.*?</sup>)*\s*$", page_text, re.M)
         if section_order:
             if args.check:
                 validate_sections(page_text, items)
@@ -531,7 +549,7 @@ def main(argv=None):
         plain = {item.plain for item in items}
         error_links = {key: link for key, link in links.items() if key not in plain}
         benchmark_body = bench.render_table(rows, measured, bench.load_baseline(root / "launcher/tools/quality/icount_baseline.txt"),
-                                            fpu, links=links, errors=errors, error_links=error_links)
+                                            fpu, links=links, errors=displayed_errors, error_links=error_links)
         benchmark_changed = replace_block(root / "docs/math/Benchmark.md", "math-benchmark", benchmark_body,
                                           check=args.check, command=COMMAND)
         if args.check and benchmark_changed:
