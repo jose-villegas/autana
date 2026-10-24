@@ -44,6 +44,7 @@ typedef struct {
     transformx_t tx;
     float angle;
     uint16_t phase;
+    int32_t saturate;
 } input_t;
 
 typedef union {
@@ -149,6 +150,8 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
                      mathx_mul(blend.w, reciprocal)};
 }
 
+/* MATH_PLAIN(saturate_plain_s): v > INT16_MAX ? INT16_MAX : v < INT16_MIN ? INT16_MIN : (int16_t)v */
+
 /* MATH_PLAIN(div_recip_f): 1.0F / x */
 
 /* MATH_PLAIN(div_rsqrt_f): 1.0F / sqrtf(x) */
@@ -194,6 +197,11 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
     X(mat4_mul, "mat4 mul", x, "matrix", false, mx, mat4x_mul(p->mx, p->nx))                                           \
     X(transform_compute_matrix, "transform compute_matrix", f, "matrix", false, mf, transformf_compute_matrix(&p->tf)) \
     X(transform_compute_matrix, "transform compute_matrix", x, "matrix", false, mx, transformx_compute_matrix(&p->tx)) \
+    X(maths_saturate, "maths_saturate", s, "scalar", false, i, maths_saturate(p->saturate))                            \
+    X(saturate_plain, "saturate_plain", s, "scalar", false, i,                                                         \
+      p->saturate > INT16_MAX   ? INT16_MAX                                                                            \
+      : p->saturate < INT16_MIN ? INT16_MIN                                                                            \
+                                : (int16_t)p->saturate)                                                                \
     X(mathf_recip, "mathf_recip", f, "scalar", false, f, mathf_recip(p->af.x))                                         \
     X(mathf_rsqrt, "mathf_rsqrt", f, "scalar", false, f, mathf_rsqrt(p->af.x))                                         \
     X(mathf_rsqrt_approx, "mathf_rsqrt_approx", f, "scalar", false, f, mathf_rsqrt_approx(p->af.x))                    \
@@ -253,6 +261,9 @@ fixture(void) {
     TEST_ASSERT_NOT_NULL(f);
     for (int j = 0; j < MATH_BENCH_BATCH; j++) {
         input_t* p = &f->input[j];
+        static const int32_t saturate_inputs[] = {INT32_MIN, INT16_MIN - 1, INT16_MIN, 0,
+                                                  INT16_MAX, INT16_MAX + 1, INT32_MAX};
+        p->saturate = saturate_inputs[j % (sizeof saturate_inputs / sizeof saturate_inputs[0])];
         const float v = (float)(j % MATH_BENCH_INPUT_PERIOD + 1) * MATH_BENCH_INPUT_SCALE;
         const float turn = (float)j / MATH_BENCH_BATCH;
         p->af = (vec3f_t){v, v + 1.0F, v - 1.0F};

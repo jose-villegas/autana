@@ -394,7 +394,27 @@ test_fixed_point_overflow_saturates_and_divide_by_zero_follows_the_sign(void) {
 }
 
 static void
+test_maths_saturate_exhaustive(void) {
+    enum { MARGIN = 4096 };
+
+    for (int32_t value = INT16_MIN - MARGIN; value <= INT16_MAX + MARGIN; value++) {
+        const int16_t expected = value > INT16_MAX ? INT16_MAX : value < INT16_MIN ? INT16_MIN : (int16_t)value;
+        TEST_ASSERT_EQUAL_INT16(expected, maths_saturate(value));
+    }
+    TEST_ASSERT_EQUAL_INT16(INT16_MIN, maths_saturate(INT32_MIN));
+    TEST_ASSERT_EQUAL_INT16(INT16_MAX, maths_saturate(INT32_MAX));
+    printf("MATHERROR name=maths_saturate type=s max=0 unit=lsb method=sweep\n");
+}
+
+static void
 test_int16_arithmetic_and_conversion_saturate_at_the_int16_range(void) {
+    TEST_ASSERT_EQUAL_INT16(INT16_MIN, maths_saturate(INT32_MIN));
+    TEST_ASSERT_EQUAL_INT16(INT16_MIN, maths_saturate(INT16_MIN - 1));
+    TEST_ASSERT_EQUAL_INT16(INT16_MIN, maths_saturate(INT16_MIN));
+    TEST_ASSERT_EQUAL_INT16(INT16_MAX, maths_saturate(INT16_MAX));
+    TEST_ASSERT_EQUAL_INT16(INT16_MAX, maths_saturate(INT16_MAX + 1));
+    TEST_ASSERT_EQUAL_INT16(INT16_MAX, maths_saturate(INT32_MAX));
+
     TEST_ASSERT_EQUAL_INT16(INT16_MAX, vec3s_add((vec3s_t){INT16_MAX, 0, 0}, (vec3s_t){1, 0, 0}).x);
     TEST_ASSERT_EQUAL_INT16(INT16_MIN, vec3s_sub((vec3s_t){INT16_MIN, 0, 0}, (vec3s_t){1, 0, 0}).x);
     TEST_ASSERT_EQUAL_INT16(INT16_MAX, vec3s_scale((vec3s_t){300, 0, 0}, 300).x);
@@ -1987,6 +2007,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_fixed_transform_builds_once_and_rebuilds_after_each_setter);
     RUN_TEST(test_round_trip_conversions_return_the_original_where_representable);
     RUN_TEST(test_fixed_point_overflow_saturates_and_divide_by_zero_follows_the_sign);
+    RUN_TEST(test_maths_saturate_exhaustive);
     RUN_TEST(test_int16_arithmetic_and_conversion_saturate_at_the_int16_range);
     RUN_TEST(test_int32_dot_widens_to_int64);
     RUN_TEST(test_fixed_dot_fast_paths_floor_each_term_and_add_the_constant);
