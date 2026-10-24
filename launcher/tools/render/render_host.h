@@ -63,6 +63,8 @@ typedef struct {
 
 /* Fully qualified tunable names use the same validation as the console. */
 bool render_host_set_tunable(const char* name, int32_t value);
+/* "owner.name=value", as --set takes it; false, said on stderr, for anything else. */
+bool render_host_set_tunable_text(const char* assignment);
 
 /* Every scene defines exactly one of these. */
 extern const render_scene_t render_scene;

@@ -66,6 +66,17 @@ class RevisionTests(unittest.TestCase):
             self.assertIn(f"{missing['side'].upper()} incomplete timing seeds for `suite/quiet`: {missing['seed']}", summary)
             self.assertIn("suite/quiet", result["rows"])
 
+    def test_pr_table_has_a_row_per_compared_row(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.measure(root, FakeAutana(root))
+            payload = json.loads((pathlib.Path(root)/"out/comparison.json").read_text())
+        table = tool.pr_table(payload)
+        self.assertEqual(table[0], f"| Row | {payload['label_a']} us | {payload['label_b']} us | Change | Verdict |")
+        self.assertEqual(len(table), 2 + len(payload["rows"]))
+        for name, row in payload["rows"].items():
+            self.assertTrue(any(line.startswith(f"| `{name}` |") and line.endswith(f"| {row['verdict']} |")
+                                for line in table), name)
+
     def test_table_failure_has_stderr(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaisesRegex(RuntimeError, "table exploded"):

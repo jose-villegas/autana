@@ -230,8 +230,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/services/tune.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/apps/foo/app_foo.c", '#include "services/tune.h"\n')
+            gate_tree.write(root, "launcher/main/core/tune.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/apps/foo/app_foo.c", '#include "core/tune.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
@@ -240,8 +240,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/services/tune.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "services/tune.h"\n')
+            gate_tree.write(root, "launcher/main/core/tune.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "core/tune.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
@@ -256,15 +256,16 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
 
-    def test_core_may_not_include_display(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/display/display.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/core/device_state.c", '#include "display/display.h"\n')
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
-        self.assertEqual(len(findings), 1)
+    def test_core_may_not_include_display_or_services(self):
+        for target in ("display/display.h", "services/settings.h"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as temp:
+                root = pathlib.Path(temp)
+                self.layer_tree(root)
+                gate_tree.write(root, "launcher/main/" + target, "#pragma once\n")
+                gate_tree.write(root, "launcher/main/core/device_state.c", f'#include "{target}"\n')
+                gate_tree.commit(root, "launcher")
+                findings = self.rule_hits(root, "INCLUDE-DIRECTION")
+            self.assertEqual(len(findings), 1)
 
     def test_input_may_include_display_but_display_not_input_and_gfx_not_display(self):
         # Input maps gestures into the display viewport; display does not read input.

@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "render"))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "perf"))
 from capture import build_ids
-from generated_blocks import replace_block
+from generated_blocks import replace_blocks
 
 MODES = ("direct", "renormalised", "table")
 # The columns that leave the table for one sentence when every row holds the same value.
@@ -175,11 +175,8 @@ def main():
     table.extend("| " + " | ".join(row) + " |" for row in rows(capture))
     command = ("python launcher/tools/r3d/skin_light/report_skin_light_board.py "
                "docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check")
-    changed = False
-    for document, name, body in ((args.document, "skin-light-board", "\n".join(table)),
-                                 (args.document, "skin-light-modes", modes),
-                                 ):
-        changed |= replace_block(document, name, body, check=args.check, command=command)
+    changed = replace_blocks(args.document, {"skin-light-board": "\n".join(table), "skin-light-modes": modes},
+                             check=args.check, command=command)
     if not args.check:
         write_figure(capture, args.figure)
     return int(args.check and changed)
