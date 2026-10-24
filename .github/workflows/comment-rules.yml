@@ -121,6 +121,9 @@ jobs:
           STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_generated.py
 
+      - name: Every indexed header and module states its purpose
+        run: python3 scripts/docs/code_search.py --check
+
       - name: Example embedder tests
         run: python3 -m unittest discover -s scripts/gates/tests -p test_examples_doc.py
 
