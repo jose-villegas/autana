@@ -126,7 +126,7 @@ class BakeRoundTripTest(unittest.TestCase):
 
     def test_channels_with_different_key_ranges_stay_on_one_timeline(self):
         self.assertEqual(self.duration_ms, 3000)
-        early = self.channels["lamp:TRNS.position"]
+        early = self.channels["camera:TRNS.position"]
         self.assertEqual(early["times"][-1], 2.5)
         looped = {(t, n): v for t, n, v in self.sampled()}
         # 3.2 s is 0.2 s into the second lap for every channel: the arm has not started its own range.
@@ -153,8 +153,8 @@ class BakeRoundTripTest(unittest.TestCase):
 
     def test_a_pointer_targeted_scalar_bakes_as_a_width_one_track_named_by_its_object(self):
         tracks, _ = baked(probe_glb())
-        self.assertEqual(len(tracks["lamp:CAMR.half_fov_short_tan"]["values"][0]), 1)
-        rows = [v for _, n, v in self.sampled() if n == "lamp:CAMR.half_fov_short_tan"]
+        self.assertEqual(len(tracks["camera:CAMR.half_fov_short_tan"]["values"][0]), 1)
+        rows = [v for _, n, v in self.sampled() if n == "camera:CAMR.half_fov_short_tan"]
         self.assertTrue(all(len(v) == 1 for v in rows))
         self.assertAlmostEqual(rows[0][0], gltf_read.camera_half_fov_short_tan(0.6), delta=TOLERANCE)
 
