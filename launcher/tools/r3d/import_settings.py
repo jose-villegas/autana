@@ -17,12 +17,12 @@ from anim import clip_name
 from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
 from r3d.scene_name import scene_id
+from r3d.scene_rows import COLOUR_SET_OWN
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
 from gltf.gltf_read import ASSET_SUFFIXES
 
 MESHLET_TRIANGLES = 32
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
-COLOUR_SET_OWN = read_define(SCENE_OWNER.with_name("scene_format.h"), "SCENE_ASSET_COLOUR_SET_OWN")
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
 ANIM_WRAPS = ("clamp", "loop")

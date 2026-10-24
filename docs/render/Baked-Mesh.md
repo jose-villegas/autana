@@ -268,7 +268,7 @@ title MCOP header, 16 bytes at 0, one cell a byte
 | Copy registry | `HEADER.size` | One SCNE `NAME`, `TRANSFORM`, `RENDERER` and `METADATA` per copy |
 | Content: strings | `strings_off` | `strings_size` bytes, NUL-terminated UTF-8 strings |
 
-Copy rows reuse SCNE `NAME`, `TRANSFORM` and `RENDERER`: name, local
+Copy rows reuse `scene_rows.py`'s SCNE `NAME`, `TRANSFORM` and `RENDERER`: name, local
 placement, copy index, colour set and mesh id. `METADATA` holds uint32 string
 offsets for owner, first source, copy source and a sorted JSON match map.
 
