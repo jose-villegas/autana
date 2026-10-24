@@ -1,3 +1,4 @@
+"""autana melody: timing from the board's `melody ?` reply, play and check output, and refusals."""
 import contextlib
 import io
 import json

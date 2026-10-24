@@ -18,7 +18,10 @@
 static const char* TAG = "console";
 
 #define RUNSUITE_LIST_QUERY "?"
-#define RUNSUITE_LIST_BYTES (sizeof "RUNSUITE_SUITE name= on_request=0" + SUITE_NAME_MAX)
+#define SUITE_COUNT_DIGITS  3
+_Static_assert(SUITE_MAX < 1000, "SUITE_COUNT_DIGITS holds SUITE_MAX");
+/* A registered name is not held to SUITE_NAME_MAX, so a listed one gets the whole request line's room. */
+#define RUNSUITE_LIST_BYTES (sizeof "RUNSUITE_SUITE name= on_request=0" + RUNSUITE_ARGS_MAX)
 
 typedef struct {
     console_reply_fn reply;
@@ -40,7 +43,7 @@ static void
 list_suites(console_reply_fn reply) {
     runsuite_listing_t listing = {.reply = reply};
     suites_each(list_one, &listing);
-    char line[RUNSUITE_LIST_BYTES];
+    char line[sizeof "RUNSUITE_END count=" + SUITE_COUNT_DIGITS];
     (void)snprintf(line, sizeof line, "RUNSUITE_END count=%d", listing.count);
     reply(line);
 }

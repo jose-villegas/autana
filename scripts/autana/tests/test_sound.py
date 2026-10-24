@@ -1,3 +1,4 @@
+"""autana sound: lines forwarded to the SOUND verb, its errors, and the shell's sound order around an app."""
 import contextlib
 import io
 import sys
