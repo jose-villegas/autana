@@ -96,7 +96,7 @@ scene_resolve(scene_t* scene) {
 }
 
 void
-scene_hierarchy_enable(scene_t* scene, scene_entity_t entity) {
+scene_hierarchy_update_active(scene_t* scene, scene_entity_t entity) {
     for (int e = entity; e < scene->asset.entity_count; e++) {
         const scene_entity_t parent = parent_of(scene, (scene_entity_t)e);
         const bool active = (scene->flags[e] & SCENE_FLAG_ENABLED) != 0

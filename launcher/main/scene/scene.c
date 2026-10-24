@@ -538,7 +538,7 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
     scene->flags[entity] = enabled ? (uint8_t)(scene->flags[entity] | SCENE_FLAG_ENABLED)
                                    : (uint8_t)(scene->flags[entity] & ~SCENE_FLAG_ENABLED);
     scene->flags[entity] |= SCENE_FLAG_CHANGED;
-    scene_hierarchy_enable(scene, entity);
+    scene_hierarchy_update_active(scene, entity);
 }
 
 bool
