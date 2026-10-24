@@ -109,8 +109,12 @@ def sweep_rows(data, name):
     return plan, rows
 
 
+SWEEP_SUMMARIES = {"ceiling-gate": "Ceiling by gate, FLAT, rows in the sweep's point order",
+                   "styles": "Camera style, rows in the sweep's point order"}
+
+
 def small_fill_board(data, scene_id, object_name):
-    """Flat camera settings plus optional camera-style measurements."""
+    """Flat camera settings plus optional camera-style measurements, each a collapsed sweep."""
     styles = small_fill_styles()
     mesh = f"run_{scene_id}_perf_suite/{object_name}_fitted_full quarter=landscape"
     tables = []
@@ -139,9 +143,10 @@ def small_fill_board(data, scene_id, object_name):
             for metric in (mesh, skin[0]):
                 value = row["metrics"][metric]["mean"]
                 values.extend((f"{value / MICROSECONDS_PER_MILLISECOND:.3f}", f"{100 * (value / base[metric]['mean'] - 1):+.2f}%"))
-            measured.append((ceiling, gate, style, *values, f"{name}, point {row['point']}"))
-        tables.append(markdown(["Ceiling", "Gate", "Style", "Mesh frame ms", "vs first row",
-                               "Skinned render ms", "vs first row", "Capture"], measured))
+            measured.append((ceiling, gate, style, *values))
+        tables.append(collapsed(SWEEP_SUMMARIES[name], markdown(
+            ["Ceiling", "Gate", "Style", "Mesh frame ms", "vs first row", "Skinned render ms", "vs first row"],
+            measured)))
     return "\n".join(tables)
 
 

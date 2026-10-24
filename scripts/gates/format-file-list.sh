@@ -2,7 +2,7 @@
 #
 # Prints the first-party C and header files the formatting rules apply to,
 # the single definition of that set, so the pre-commit hook and the CI gate
-# cannot disagree about what is checked. docs/C-Style-Guide.md is the prose;
+# cannot disagree about what is checked. docs/c-style/README.md is the prose;
 # this is the file list.
 #
 # Usage:

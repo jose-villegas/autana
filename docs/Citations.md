@@ -1,19 +1,26 @@
 # Citations
 
-This table names the papers, books and specifications whose techniques this
-tree uses. A document cites an entry by its number, as a superscript link:
-`<sup>[[3]](Citations.md#3)</sup>`, with the path relative to the citing file.
-Code and its comments never cite by number: they name the source in place.
-An entry code uses opens its "cited by" line with that name in backticks ("Durstenfeld",
-"Ericson, Real-Time Collision Detection", "RFC 4648"), written once:
-`` `Durstenfeld` cited by: ... ``. The line lists the documents citing the entry by
-number and every source file that contains the name, spelled exactly as
-stated (a mention in another spelling is not found).
-[`check_doc_citations.py`](../scripts/gates/check_doc_citations.py) fails when
-a cited number has no entry, a source file writes a `Citations.md` anchor, an
-entry's name appears in no source file, or a list differs, and `--fix`
-rewrites the lists. A number is permanent: an entry nothing uses is deleted
-and its number is never reused. A new source takes one past the highest.
+The papers, books and specifications whose techniques this tree uses.
+[`check_doc_citations.py`](../scripts/gates/check_doc_citations.py)
+checks every rule below, and `--fix` rewrites the "cited by" lists.
+
+```mermaid
+flowchart LR
+    Doc["Document"] -- "superscript link to #n" --> Entry["Entry [n]<br/>source, then name cited by: list"]
+    Code["Source file"] -- "names the source in place" --> Name["Name, spelled<br/>as the entry writes it"]
+    Name -- "listed in cited by" --> Entry
+    Gate["check_doc_citations.py"] -- "lists citers, --fix rewrites" --> Entry
+    Gate -- "rejects a Citations.md anchor" --> Code
+```
+
+| Rule | Detail |
+|---|---|
+| A document cites by number | `<sup>[[3]](Citations.md#3)</sup>`, the path relative to the citing file |
+| Code cites by name | Never a `Citations.md` anchor: the comment names the source ("Durstenfeld", "RFC 4648") |
+| An entry code uses carries that name | Its line opens `` `Durstenfeld` cited by: ``, written once; a mention in another spelling is not found |
+| "Cited by" lists every citer | The documents citing the number, then every source file containing the name |
+| A number is permanent | An entry nothing uses is deleted and its number never reused; a new source takes one past the highest |
+| The gate fails | A cited number with no entry, a source file writing a `Citations.md` anchor, a name in no source file, an entry cited nowhere, a list that differs, rows out of order |
 
 | [n] | Source |
 |---|---|
@@ -33,10 +40,10 @@ and its number is never reused. A new source takes one past the highest.
 | <a id="14"></a>[14] | S. Zhukov, A. Iones, G. Kronin. *An Ambient Light Illumination Model.* Eurographics Workshop on Rendering, 1998. [doi:10.1007/978-3-7091-6453-2_5](https://doi.org/10.1007/978-3-7091-6453-2_5)<br>Cited by: [docs/render/Bake-Method.md](render/Bake-Method.md) |
 | <a id="15"></a>[15] | W. Jakob et al. *Mitsuba 3.* Software renderer. [mitsuba-renderer.org](https://www.mitsuba-renderer.org/)<br>Cited by: [docs/render/Bake-Method.md](render/Bake-Method.md), [docs/render/Render-Pipeline.md](render/Render-Pipeline.md), [launcher/tools/r3d/README.md](../launcher/tools/r3d/README.md) |
 | <a id="16"></a>[16] | J. T. Kajiya. *The Rendering Equation.* SIGGRAPH, 1986. [doi:10.1145/15886.15902](https://doi.org/10.1145/15886.15902)<br>Cited by: [docs/render/Bake-Method.md](render/Bake-Method.md) |
-| <a id="17"></a>[17] | The Khronos Group. *glTF 2.0 Specification: Animations and Appendix C, Animation Sampler Interpolation Modes.* Specification. [registry.khronos.org/glTF/specs/2.0](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#appendix-c-interpolation)<br>Cited by: [docs/Animation-Tracks.md](Animation-Tracks.md), [launcher/tools/anim/README.md](../launcher/tools/anim/README.md) |
-| <a id="18"></a>[18] | The Khronos Group. *KHR_animation_pointer.* Ratified glTF 2.0 extension. [github.com/KhronosGroup/glTF](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_animation_pointer/README.md)<br>Cited by: [docs/Animation-Tracks.md](Animation-Tracks.md) |
-| <a id="19"></a>[19] | K. Shoemake. *Animating Rotation with Quaternion Curves.* SIGGRAPH, 1985. [doi:10.1145/325334.325242](https://doi.org/10.1145/325334.325242)<br>Cited by: [docs/Animation-Tracks.md](Animation-Tracks.md), [docs/math/Linear.md](math/Linear.md) |
-| <a id="20"></a>[20] | E. Catmull, R. Rom. *A Class of Local Interpolating Splines.* Computer Aided Geometric Design, Academic Press, 1974. [doi:10.1016/B978-0-12-079050-0.50020-5](https://doi.org/10.1016/B978-0-12-079050-0.50020-5)<br>Cited by: [docs/Animation-Tracks.md](Animation-Tracks.md), [launcher/tools/anim/README.md](../launcher/tools/anim/README.md) |
+| <a id="17"></a>[17] | The Khronos Group. *glTF 2.0 Specification: Animations and Appendix C, Animation Sampler Interpolation Modes.* Specification. [registry.khronos.org/glTF/specs/2.0](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#appendix-c-interpolation)<br>Cited by: [docs/render/Animation-Tracks.md](render/Animation-Tracks.md), [launcher/tools/anim/README.md](../launcher/tools/anim/README.md) |
+| <a id="18"></a>[18] | The Khronos Group. *KHR_animation_pointer.* Ratified glTF 2.0 extension. [github.com/KhronosGroup/glTF](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_animation_pointer/README.md)<br>Cited by: [docs/render/Animation-Tracks.md](render/Animation-Tracks.md) |
+| <a id="19"></a>[19] | K. Shoemake. *Animating Rotation with Quaternion Curves.* SIGGRAPH, 1985. [doi:10.1145/325334.325242](https://doi.org/10.1145/325334.325242)<br>Cited by: [docs/math/Linear.md](math/Linear.md), [docs/render/Animation-Tracks.md](render/Animation-Tracks.md) |
+| <a id="20"></a>[20] | E. Catmull, R. Rom. *A Class of Local Interpolating Splines.* Computer Aided Geometric Design, Academic Press, 1974. [doi:10.1016/B978-0-12-079050-0.50020-5](https://doi.org/10.1016/B978-0-12-079050-0.50020-5)<br>Cited by: [docs/render/Animation-Tracks.md](render/Animation-Tracks.md), [launcher/tools/anim/README.md](../launcher/tools/anim/README.md) |
 | <a id="21"></a>[21] | Z. H. Cigolle, S. Donow, D. Evangelakos, M. Mara, M. McGuire, Q. Meyer. *A Survey of Efficient Representations for Independent Unit Vectors.* Journal of Computer Graphics Techniques 3(2), 2014. [jcgt.org/published/0003/02/01](https://jcgt.org/published/0003/02/01/)<br>`Cigolle et al. 2014` cited by: [docs/math/Linear.md](math/Linear.md), [docs/render/Skinned-Lighting.md](render/Skinned-Lighting.md), [launcher/main/render/skin/r3d_skin_light.c](../launcher/main/render/skin/r3d_skin_light.c), [launcher/packages/math/include/math/linear/vec3f.h](../launcher/packages/math/include/math/linear/vec3f.h), [launcher/tools/r3d/skin_light/skin_light_baseline.c](../launcher/tools/r3d/skin_light/skin_light_baseline.c), [launcher/tools/r3d/skin_light/skin_light_bench.c](../launcher/tools/r3d/skin_light/skin_light_bench.c) |
 | <a id="22"></a>[22] | R. E. Kalman. *A New Approach to Linear Filtering and Prediction Problems.* Journal of Basic Engineering 82(1), 1960. [doi:10.1115/1.3662552](https://doi.org/10.1115/1.3662552)<br>`Kalman 1960` cited by: [docs/render/Dynamic-Resolution.md](render/Dynamic-Resolution.md), [launcher/main/render/resolution/resolution.h](../launcher/main/render/resolution/resolution.h) |
 | <a id="23"></a>[23] | C. Ericson. *Real-Time Collision Detection.* Morgan Kaufmann, 2004. [doi:10.1201/b14581](https://doi.org/10.1201/b14581)<br>`Ericson, Real-Time Collision Detection` cited by: [launcher/main/apps/render_lab/tests/suite_sponza.c](../launcher/main/apps/render_lab/tests/suite_sponza.c) |
@@ -72,7 +79,7 @@ and its number is never reused. A new source takes one past the highest.
 | <a id="53"></a>[53] | S. W. Shepperd. *Quaternion from Rotation Matrix.* Journal of Guidance and Control 1(3), 1978. [doi:10.2514/3.55767b](https://doi.org/10.2514/3.55767b)<br>Cited by: [docs/math/Linear.md](math/Linear.md) |
 | <a id="54"></a>[54] | B. Karis, R. Stubbe, G. Wihlidal. *Nanite: A Deep Dive.* SIGGRAPH Advances in Real-Time Rendering course, 2021. [advances.realtimerendering.com/s2021](https://advances.realtimerendering.com/s2021/Karis_Nanite_SIGGRAPH_Advances_2021_final.pdf)<br>Cited by: [docs/plans/Cluster-LOD.md](plans/Cluster-LOD.md) |
 | <a id="55"></a>[55] | W. Jakob, S. Speierer, N. Roussel, D. Vicini. *Dr.Jit: A Just-In-Time Compiler for Differentiable Rendering.* ACM Transactions on Graphics 41(4), SIGGRAPH, 2022. [doi:10.1145/3528223.3530099](https://doi.org/10.1145/3528223.3530099)<br>Cited by: [launcher/tools/r3d/README.md](../launcher/tools/r3d/README.md) |
-| <a id="56"></a>[56] | L. Kavan, S. Collins, J. Žára, C. O'Sullivan. *Geometric Skinning with Approximate Dual Quaternion Blending.* ACM Transactions on Graphics 27(4), article 105, pp. 1–23, 2008. [doi:10.1145/1409625.1409627](https://doi.org/10.1145/1409625.1409627)<br>Cited by: [docs/Animation-Tracks.md](Animation-Tracks.md) |
+| <a id="56"></a>[56] | L. Kavan, S. Collins, J. Žára, C. O'Sullivan. *Geometric Skinning with Approximate Dual Quaternion Blending.* ACM Transactions on Graphics 27(4), article 105, pp. 1–23, 2008. [doi:10.1145/1409625.1409627](https://doi.org/10.1145/1409625.1409627)<br>Cited by: [docs/render/Animation-Tracks.md](render/Animation-Tracks.md) |
 | <a id="57"></a>[57] | J. P. Lewis, M. Cordner, N. Fong. *Pose Space Deformation: A Unified Approach to Shape Interpolation and Skeleton-Driven Deformation.* Proceedings of SIGGRAPH '00, pp. 165–172, 2000. [doi:10.1145/344779.344862](https://doi.org/10.1145/344779.344862)<br>Cited by: [docs/plans/Animation-System-Design-Sketch.md](plans/Animation-System-Design-Sketch.md), [docs/render/Skeleton-and-Skin.md](render/Skeleton-and-Skin.md) |
 | <a id="58"></a>[58] | G. S. Miller, C. R. Hoffman. *Illumination and Reflection Maps: Simulated Objects in Simulated and Real Environments.* SIGGRAPH 1984, Advanced Computer Graphics Animation course notes, 23 July 1984. [Primary text](https://www.pauldebevec.com/ReflectionMapping/IlluMAP84.html)<br>`Miller and Hoffman 1984` cited by: [docs/render/Skinned-Lighting.md](render/Skinned-Lighting.md), [launcher/main/render/skin/r3d_skin_light.c](../launcher/main/render/skin/r3d_skin_light.c), [launcher/tools/r3d/skin_light/skin_light_baseline.c](../launcher/tools/r3d/skin_light/skin_light_baseline.c) |
 | <a id="59"></a>[59] | Espressif. *ESP-IDF v5.5, ESP32-S3: SPI Master Driver.* [Programming Guide](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/peripherals/spi_master.html)<br>`ESP-IDF v5.5 SPI Master Driver` cited by: [docs/plans/Internal-Memory-Opportunities.md](plans/Internal-Memory-Opportunities.md), [launcher/main/gfx/present/gfx_present.c](../launcher/main/gfx/present/gfx_present.c) |

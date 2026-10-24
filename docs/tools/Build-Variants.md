@@ -28,7 +28,7 @@ Each image has its own build directory so one never reconfigures another:
 | dev | DEVELOPMENT | `autana build dev`, `autana flash dev` | `build.dev/` |
 | diag | DEVELOPMENT + SELFTEST | `autana build diag`, `autana flash diag`, `autana selftest` | `build.diag/` |
 
-See [Where builds live](tools/Build-Environment.md#where-builds-live) for variant
+See [Where builds live](Build-Environment.md#where-builds-live) for variant
 paths and their ESP-IDF identity stamps.
 
 `autana build` needs no board and takes no board lock; what it runs is
@@ -50,7 +50,7 @@ broader flag than `CONFIG_LAUNCHER_SELFTEST`: it also ships in a `--dev`
 build, which carries no test suites at all. An app is gated this way by
 holding a `development_only.cmake` in its own folder; `main/CMakeLists.txt`
 globs the markers and names no app (see
-[Building-an-App.md](Building-an-App.md#an-app-is-a-folder)).
+[Building-an-App.md](../firmware/Building-an-App.md#an-app-is-a-folder)).
 
 `tools/build/check_release_symbols.sh build/launcher.elf` rejects a release image that
 defines any of the suite, console or self-test symbols it names (including a
@@ -87,7 +87,7 @@ SELFTEST build (`selftest/selftest.c` is only added to `app_srcs` under
 ## A diagnostics build can be scoped
 
 A diagnostics build compiles **every** suite, and a full run takes the time
-[Device tests: which run, when](testing/Device-Tests.md#which-run-when) gives.
+[Device tests: which run, when](../testing/Device-Tests.md#which-run-when) gives.
 Perf-scoped compiles only the sources declared in
 `launcher/test/scope_perf.cmake`, `launcher/main/apps/*/scope_perf.cmake` and
 `launcher/main/shell/apps/*/scope_perf.cmake`,
@@ -207,9 +207,9 @@ knowing about: ESP-IDF's own `CONFIG_LOG_MAXIMUM_LEVEL` compiles
 `ESP_LOGI`/`ESP_LOGW`/etc. calls out of the binary entirely above a given
 severity, project-wide, with no per-call-site `#if` needed; this project
 just doesn't split that ceiling per build variant yet. See
-[Log-Level-Plan.md](plans/Log-Level-Plan.md).
+[Log-Level-Plan.md](../plans/Log-Level-Plan.md).
 
-A FRAME_COST bracket ([`profile/frame_cost.h`](tools/Frame-Cost.md)) names a stage of the frame:
+A FRAME_COST bracket ([`profile/frame_cost.h`](Frame-Cost.md)) names a stage of the frame:
 something the shell or a screen does once per frame, and stays in the
 source, compiled out of release the same as everything else in this section.
 A bracket put inside a stage to answer one question is scaffolding instead:
@@ -266,12 +266,12 @@ that refuses to.
 
 ## Related
 
-- [`Testing-Guide.md`](Testing-Guide.md): the suites these flags carry or
+- [`testing/README.md`](../testing/README.md): the suites these flags carry or
   drop, and how to run them.
-- [`notes/Debugging.md`](notes/Debugging.md):
+- [`notes/Debugging.md`](../notes/Debugging.md):
   which tool to reach for when the board misbehaves, and which build each
   one needs.
-- [`plans/Log-Level-Plan.md`](plans/Log-Level-Plan.md): a planned
+- [`plans/Log-Level-Plan.md`](../plans/Log-Level-Plan.md): a planned
   compile-time log-severity ceiling per variant, complementing this split.
-- [`plans/Settings-App-Plan.md`](plans/Settings-App-Plan.md): the remaining
+- [`plans/Settings-App-Plan.md`](../plans/Settings-App-Plan.md): the remaining
   DEVELOPMENT/SELFTEST seam inside a development-only app.
