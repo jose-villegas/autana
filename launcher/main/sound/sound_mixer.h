@@ -46,6 +46,10 @@ typedef struct {
     uint32_t parked;
 } sound_capture_t;
 
+typedef enum { SOUND_CAPTURE_WAIT, SOUND_CAPTURE_ACQUIRED, SOUND_CAPTURE_TIMED_OUT } sound_capture_acquire_result_t;
+
+sound_capture_acquire_result_t sound_capture_acquire(sound_capture_t* capture, int64_t now_us, int64_t deadline_us,
+                                                     uint32_t* sequence);
 uint32_t sound_capture_begin(sound_capture_t* capture);
 bool sound_capture_park(sound_capture_t* capture, uint32_t sequence);
 bool sound_capture_is_parked(const sound_capture_t* capture, uint32_t sequence);
