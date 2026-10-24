@@ -29,6 +29,7 @@
 #include "apps/render_lab/sponza_content.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "asset/asset_store.h"
+#include "collections/strbuf.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "display/viewport.h"
@@ -386,12 +387,12 @@ log_frames(const char* camera, const char* policy, const char* ladder, int32_t b
     char* line = malloc(line_size);
     TEST_ASSERT_NOT_NULL(line);
     for (int first = 0; first < frames; first += LINE_FRAMES) {
-        int length =
-            snprintf(line, line_size, "dynres_frames: %s %s %s %ld %d", camera, policy, ladder, (long)budget_us, first);
-        for (int i = first; i < frames && i < first + LINE_FRAMES && length > 0 && (size_t)length < line_size; i++) {
+        strbuf_t text = strbuf_make(line, line_size);
+        strbuf_appendf(&text, "dynres_frames: %s %s %s %ld %d", camera, policy, ladder, (long)budget_us, first);
+        for (int i = first; i < frames && i < first + LINE_FRAMES; i++) {
             const frame_record_t* r = &records[i];
-            length += snprintf(line + length, line_size - (size_t)length, " %d:%ld:%ld:%ld:%ld", r->step,
-                               (long)r->draw_us, (long)r->upscale_us, (long)r->triangles, (long)r->predicted_us);
+            strbuf_appendf(&text, " %d:%ld:%ld:%ld:%ld", r->step, (long)r->draw_us, (long)r->upscale_us,
+                           (long)r->triangles, (long)r->predicted_us);
         }
         ESP_LOGI(TAG, "%s" R3D_PERF_QUARTER_FORMAT, line, perf_quarter->name);
     }
