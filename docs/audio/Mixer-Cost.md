@@ -7,7 +7,7 @@ plays, and internal RAM. Every measured table below is generated from committed 
 |---|---|
 | A sound | its pack bytes in flash (2.5 KB for the engine `tap`); no RAM beyond its `sound_t` |
 | Internal heap, vs the same build without the mixer | −6,300 B free (2.2 % of 282,739); largest free block −4,096 B |
-| Extra RAM during a development capture | about 1.4 KB of microphone buffers (`open_dma_bytes` 1,448), freed when it closes. [Audio-Path's RAM capture](Audio-Path.md#ram) predates the mixer and opened both channels |
+| Extra RAM during a development capture | about 1.4 KB of microphone buffers (`open_dma_bytes` 1,448): TX is already open, so only RX is new. Closing frees it, within a few dozen bytes. [Audio-Path's RAM capture](Audio-Path.md#ram) predates the mixer and opened both channels |
 | Frame time, one voice looping vs silence | [below](#frame-time-with-a-voice-playing) |
 
 The mixer allocates internal heap at boot whether or not anything plays. Internal
