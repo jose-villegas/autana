@@ -107,23 +107,24 @@ track_tilt(display_t* d, float sine, float cosine, int64_t now_us) {
     }
 }
 
+static bool
+tilt_accepted(int quarter, float sine) {
+    const int relative = (quarter - DISPLAY_DEFAULT_QUARTER + DISPLAY_QUARTER_COUNT) % DISPLAY_QUARTER_COUNT;
+    const float max_sin = relative == 0                           ? DISPLAY_TILT_DEFAULT_MAX_SIN
+                          : relative == DISPLAY_QUARTER_COUNT / 2 ? DISPLAY_TILT_OPPOSITE_MAX_SIN
+                                                                  : DISPLAY_TILT_ADJACENT_MAX_SIN;
+    return fabsf(sine) <= DISPLAY_MAX_TILT_SIN && sine >= DISPLAY_TILT_MIN_SIN && sine <= max_sin;
+}
+
 int
 display_candidate(vec3f_t v, int current, bool tilt_limits) {
     const float magnitude = sqrtf(vec3f_dot(v, v));
     if (magnitude < DISPLAY_NEAR_ZERO_G) {
         return DISPLAY_QUARTER_NONE;
     }
-    const float tilt_sin = -v.z / magnitude;
-    if (tilt_limits && fabsf(tilt_sin) > DISPLAY_MAX_TILT_SIN) {
-        return DISPLAY_QUARTER_NONE;
-    }
     const int quarter = fabsf(v.x) > fabsf(v.y) ? (v.x > 0.0F ? DISPLAY_LANDSCAPE_UPSIDE_DOWN : DISPLAY_LANDSCAPE)
                                                 : (v.y > 0.0F ? DISPLAY_PORTRAIT : DISPLAY_PORTRAIT_UPSIDE_DOWN);
-    const int relative = (quarter - DISPLAY_DEFAULT_QUARTER + DISPLAY_QUARTER_COUNT) % DISPLAY_QUARTER_COUNT;
-    const float max_sin = relative == 0                           ? DISPLAY_TILT_DEFAULT_MAX_SIN
-                          : relative == DISPLAY_QUARTER_COUNT / 2 ? DISPLAY_TILT_OPPOSITE_MAX_SIN
-                                                                  : DISPLAY_TILT_ADJACENT_MAX_SIN;
-    if (tilt_limits && (tilt_sin < DISPLAY_TILT_MIN_SIN || tilt_sin > max_sin)) {
+    if (tilt_limits && !tilt_accepted(quarter, -v.z / magnitude)) {
         return DISPLAY_QUARTER_NONE;
     }
     const viewport_quarter_axes_t axes = viewport_quarter_axes(current);
@@ -135,8 +136,8 @@ display_candidate(vec3f_t v, int current, bool tilt_limits) {
     return quarter;
 }
 
-bool
-display_update(display_t* d, vec3f_t accel_g, int64_t now_us) {
+static void
+filter_sample(display_t* d, vec3f_t accel_g, int64_t now_us) {
     const bool zero = vec3f_dot(accel_g, accel_g) == 0.0F;
     const bool needs_restart = !d->primed || now_us < d->sample_us
                                || now_us - d->sample_us > (int64_t)DISPLAY_FILTER_RESET_MS * MATH_US_PER_MS || zero;
@@ -153,6 +154,11 @@ display_update(display_t* d, vec3f_t accel_g, int64_t now_us) {
         d->filtered = vec3f_lerp(d->filtered, accel_g, alpha);
     }
     d->sample_us = now_us;
+}
+
+bool
+display_update(display_t* d, vec3f_t accel_g, int64_t now_us) {
+    filter_sample(d, accel_g, now_us);
     const float magnitude = sqrtf(vec3f_dot(d->filtered, d->filtered));
     int predicted = DISPLAY_QUARTER_NONE;
     if (magnitude >= DISPLAY_NEAR_ZERO_G) {
