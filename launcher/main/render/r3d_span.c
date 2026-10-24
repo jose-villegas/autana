@@ -6,11 +6,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "core/tune.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "render/code_layout.h"
-#include "services/tune.h"
 
 /* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
  * steepest real step (255 levels in one pixel) is far below the clamp. Only a
