@@ -188,7 +188,8 @@ def sweep_data(tones):
 
 
 MIX_CAPTURES = Path("docs/audio/data")
-MIX_DOCUMENT = Path("docs/audio/Sound-Mixer.md")
+MIX_DOCUMENT = Path("docs/audio/Mixer-Cost.md")
+ONSET_DOCUMENT = Path("docs/audio/Clicks.md")
 PERCENT = 100
 
 
@@ -488,11 +489,12 @@ def main():
     parser.add_argument("--document", type=Path, default=ROOT / DOCUMENT)
     parser.add_argument("--mix-captures", type=Path, default=ROOT / MIX_CAPTURES)
     parser.add_argument("--mix-document", type=Path, default=ROOT / MIX_DOCUMENT)
+    parser.add_argument("--onset-document", type=Path, default=ROOT / ONSET_DOCUMENT)
     parser.add_argument("--drc-capture", type=Path, default=ROOT / DRC_CAPTURE)
     args = parser.parse_args()
     try:
         changed = update(args.capture, args.document, args.check, args.mix_captures, args.mix_document, args.drc_capture)
-        changed |= update_onset(args.mix_captures, args.mix_document, args.check)
+        changed |= update_onset(args.mix_captures, args.onset_document, args.check)
         changed |= replace_block(ROOT / "docs/audio/Sound-Assets.md", "sound-storage", render_storage(),
                                  check=args.check)
     except (ValueError, KeyError, OSError, RuntimeError) as error:
