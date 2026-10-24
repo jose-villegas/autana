@@ -1193,8 +1193,6 @@ def try_lock_file(handle):
 def build_directory_lock(build_dir):
     """Lock one build directory through its snapshot; yield its prepared path,
     or None when the checkout has no --prepared-build support."""
-    latest = os.environ.get(autana_config.BUILD_LATEST_START_ENV)
-    expires = time.monotonic() + max(0, float(latest) - time.time()) if latest else None
     build_dir = Path(build_dir)
     prepared = None
     if (build_dir.parent / "tools/build/build_paths.py").is_file():
@@ -1205,10 +1203,7 @@ def build_directory_lock(build_dir):
         if not try_lock_file(handle):
             print("waiting for another build in " + str(build_dir), file=sys.stderr)
             while not try_lock_file(handle):
-                if expires is not None and time.monotonic() >= expires:
-                    raise TimeoutError("build lock wait exceeded its window")
-                time.sleep(min(BUILD_LOCK_POLL_SECONDS, max(0, expires - time.monotonic()))
-                           if expires is not None else BUILD_LOCK_POLL_SECONDS)
+                time.sleep(BUILD_LOCK_POLL_SECONDS)
         yield prepared
 
 
@@ -1277,15 +1272,13 @@ BUILD_WAIT_REPORT_MIN_SECONDS = 1
 @contextlib.contextmanager
 def build_policy(environment):
     """Private process-tree policy limits compilation, never board captures."""
-    latest = environment.get(autana_config.BUILD_LATEST_START_ENV)
-    latest = float(latest) if latest else None
     options = {}
     if environment.get(autana_config.BUILD_PRIORITY_ENV) == autana_config.BUILD_PRIORITY_BELOW_NORMAL:
         if os.name == "nt":
             options["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
         else:
             options["preexec_fn"] = partial(os.nice, BUILD_NICE_INCREMENT)
-    wait = max(0, latest - time.time()) if latest is not None else float(
+    wait = float(
         environment.get(autana_config.WAIT_ENV, autana_config.DEFAULT_LOCK_WAIT_SECONDS))
     started = time.monotonic()
     try:
@@ -1294,8 +1287,6 @@ def build_policy(environment):
             elapsed = time.monotonic() - started
             if elapsed >= BUILD_WAIT_REPORT_MIN_SECONDS:
                 print(autana_config.HEAVY_WAIT_PREFIX + str(elapsed), flush=True)
-            if latest is not None and time.time() > latest:
-                raise TimeoutError("build cannot start inside its window")
             yield options
     except LockBusy as error:
         elapsed = time.monotonic() - started

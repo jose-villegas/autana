@@ -392,8 +392,8 @@ class RecordedInputsTests(unittest.TestCase):
         self.assertEqual(steps[gate]['env']['FINGERPRINT'], '${{ needs.fingerprint.outputs.fingerprint }}')
         self.assertEqual(workflow['jobs']['fingerprint']['outputs']['current'], '${{ steps.inputs.outputs.current }}')
         refresh = workflow['jobs']['refresh']
-        self.assertEqual(refresh['needs'], 'fingerprint')
-        # A push only marks images pending; the render waits for the night window.
+        self.assertEqual(refresh['needs'], ['fingerprint', 'marker'])
+        # A push only marks images pending; the render waits for NIGHT_START.
         self.assertEqual(refresh['if'], "github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'")
         self.assertEqual(refresh['concurrency'], {'group': 'doc-images-gpu', 'cancel-in-progress': 'false', 'queue': 'max'})
         self.assertEqual(workflow['env']['FORCE'], '${{ inputs.force }}')

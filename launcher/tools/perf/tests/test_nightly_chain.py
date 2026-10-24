@@ -6,7 +6,6 @@ from itertools import repeat
 import json
 import os
 import re
-import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -138,7 +137,7 @@ class NightlyTests(unittest.TestCase):
             self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
         self.clock = Clock(22, 30)
         self.args = SimpleNamespace(repo=self.repo, out=self.root / "out", data=self.root / "data",
-                                    board="20E8", lane="0/2", deadline="2026-10-19T07:00:00+00:00", previous=None,
+                                    board="20E8", lane="0/2", previous=None,
                                     suite=[("suite", "-", "-")], selftest=None)
 
     def steps(self, indices=(1, 3, 5), anchor=False):
@@ -172,6 +171,28 @@ class NightlyTests(unittest.TestCase):
         def capture(*args, **kwargs):
             return dict(original(*args, **kwargs), **fields)
         return patch.object(chain, "run_flash", side_effect=capture)
+
+    def test_lane_timestamps_and_timeline(self):
+        marker = self.clock.now().isoformat()
+        _, _, writes = self.run_chain()
+        self.assertEqual(writes[-1]['started'], marker)
+        self.assertEqual(writes[-1]['ended'], self.clock.now().isoformat())
+        plan = self.root / 'plan.json'
+        chain.write_json(plan, dict(marker=marker, started=marker, lanes={'20E8': {}}))
+        gpu_end = (self.clock.now() + timedelta(hours=1)).isoformat()
+        key = datetime.fromisoformat(marker).strftime(schedule.MARKER_KEY_FORMAT)
+        chain.write_json(schedule.heavy_root() / 'night-steps' / key / 'gpu.json',
+                         dict(workflow=schedule.DOC_IMAGES_WORKFLOW, marker=marker,
+                              started=marker, ended=gpu_end, exit=0))
+        summary = self.root / 'summary'
+        chain.timeline(SimpleNamespace(plan=plan, data=self.args.data, summary=summary))
+        record = json.loads((self.args.data / 'scoped/timeline' / (key + '.json')).read_text())
+        self.assertEqual(record['free_at'], gpu_end)
+        self.assertEqual([step['name'] for step in record['steps']],
+                         ['gpu ' + schedule.DOC_IMAGES_WORKFLOW, 'board 20E8'])
+        self.assertEqual(len(summary.read_text().splitlines()), 1)
+        self.assertIn('host free', summary.read_text())
+        self.assertIn('1h 06min after the marker', summary.read_text())
 
     def test_worktree_git_commands_enable_longpaths(self):
         commands = []
@@ -218,7 +239,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_cleanup_warning_does_not_change_lane_exit_status(self):
         plan = self.root / "plan.json"
-        plan.write_text(json.dumps(dict(night="2026-10-18", started=self.clock.now().isoformat(), deadline=self.args.deadline,
+        plan.write_text(json.dumps(dict(night="2026-10-18", started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(),
                                        lanes={"20E8": dict(lane="0/2", previous=None,
                                                           steps=[vars(self.steps()[0])])})))
         command = ["scoped_chain", "run", "--plan", str(plan), "--board", "20E8", "--lane", "0/2",
@@ -276,7 +297,7 @@ class NightlyTests(unittest.TestCase):
     def test_unplugged_lane_preserves_failure_exit(self):
         path = self.root / "plan.json"
         path.write_text(json.dumps(dict(night="2026-10-18", started=self.clock.now().isoformat(),
-                                       deadline=self.args.deadline, lanes={"20E8": dict(
+                                       marker=self.clock.now().isoformat(), lanes={"20E8": dict(
                                            lane=self.args.lane, previous=None,
                                            steps=[vars(step) for step in self.steps()])})))
         command = ["chain", "run", "--plan", str(path), "--board", "20E8", "--lane", self.args.lane,
@@ -289,12 +310,11 @@ class NightlyTests(unittest.TestCase):
                 patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="hold"):
             self.assertEqual(chain.main(), 1)
 
-    def supervise(self, *, late=False, failed=False, unplugged=False):
+    def supervise(self, *, failed=False, unplugged=False):
         previous = dict(last_measured=self.commits[2], last_attempted=self.commits[4], machine=OTHER_MACHINE)
         chain.write_json(self.args.data / "scoped/2124/2026-10-17-2230/night.json", previous)
         planned = dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
-                       deadline=(self.clock.now() + timedelta(seconds=(
-                           chain.FIRST_STEP_SECONDS if late else chain.FIRST_STEP_SECONDS * 2))).isoformat(),
+                       marker=self.clock.now().isoformat(),
                        lanes={"20E8": dict(lane="0/2", previous=None,
                                           steps=[vars(step) for step in self.steps((1, 3, 5) if unplugged else (5,))],
                                           estimate=chain.FIRST_STEP_SECONDS)})
@@ -312,7 +332,7 @@ class NightlyTests(unittest.TestCase):
             lane = current["lanes"][board]
             lane_args = SimpleNamespace(**vars(self.args))
             lane_args.board, lane_args.lane, lane_args.previous = board, lane["lane"], lane["previous"]
-            lane_args.started, lane_args.deadline = current["started"], current["deadline"]
+            lane_args.started = current["started"]
             lane_args.out = self.args.out / board
             steps = [chain.Step(**step) for step in lane["steps"]]
             replay = Replay(self.root, self.clock, builds=(1,) if failed and board == "20E8" else ())
@@ -322,7 +342,8 @@ class NightlyTests(unittest.TestCase):
                     patch("layout_measure.capture_board", return_value=machine):
                 results = chain.run_chain(steps, lane_args, replay, self.clock)
             manifests[board] = lnt.read_last_night(self.args.data, board)
-            return SimpleNamespace(poll=lambda: int(any(r.outcome == "build_failed" for r in results)),
+            polls = iter((None, None))
+            return SimpleNamespace(poll=lambda: next(polls, int(any(r.outcome == "build_failed" for r in results))),
                                    wait=lambda: int(any(r.outcome == "build_failed" for r in results)))
 
         boards = iter((["20E8", "2124"],))
@@ -330,9 +351,9 @@ class NightlyTests(unittest.TestCase):
             status = chain.run_night(args, clock=self.clock, launch=launch)
         return status, commands, json.loads(path.read_text()), manifests
 
-    def test_supervisor_starts_all_lanes_and_waits_for_all_at_deadline(self):
+    def test_supervisor_hang_guard_stops_each_lane_and_waits_for_all(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(deadline=(self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS / 2)).isoformat(),
+        chain.write_json(path, dict(marker=self.clock.now().isoformat(),
                                    lanes={board: dict(lane=f"{i}/2", estimate=42) for i, board in enumerate(("FAK1", "FAK2"))}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=self.args.suite)
@@ -346,12 +367,14 @@ class NightlyTests(unittest.TestCase):
                 return int(board == "FAK1")
             return SimpleNamespace(poll=lambda: None, wait=wait)
 
-        self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
+        with patch.object(chain, "plugged_boards", return_value=["FAK1", "FAK2"]):
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
+        self.assertEqual(self.stop_tree.call_count, 2)
         self.assertEqual(events, ["start FAK1", "start FAK2", "finish FAK1", "finish FAK2"])
 
     def test_supervisor_does_not_publish_joiner_when_launch_fails(self):
         path = self.root / "plan.json"
-        planned = dict(tip=self.commits[-1], deadline=self.args.deadline,
+        planned = dict(tip=self.commits[-1], marker=self.clock.now().isoformat(),
                        from_sha=self.commits[3], max_steps=1,
                        lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)})
         chain.write_json(path, planned)
@@ -361,14 +384,15 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), planned)
             if command[2] == "FAK2":
                 raise OSError("cannot start joining lane")
-            return SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+            polls = iter((None, None))
+            return SimpleNamespace(poll=lambda: next(polls, 0), wait=lambda: 0)
         with patch.object(chain, "plugged_boards", return_value=["FAK1", "FAK2"]):
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
         self.assertEqual(json.loads(path.read_text()), planned)
 
     def test_supervisor_default_launch_owns_and_closes_process_tree(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(deadline=self.clock.now().isoformat(),
+        chain.write_json(path, dict(marker=self.clock.now().isoformat(),
                                    lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
                                out=self.args.out, suite=self.args.suite)
@@ -381,7 +405,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_supervisor_handles_rescan_errors_and_releases_early(self):
         path = self.root / "plan.json"
-        planned = dict(tip=self.commits[-1], deadline=self.args.deadline,
+        planned = dict(tip=self.commits[-1], marker=self.clock.now().isoformat(),
                        lanes={"20E8": dict(lane="0/1", estimate=42)})
         chain.write_json(path, planned)
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
@@ -394,11 +418,11 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process), 1)
         lane.assert_called_once()
         process.wait.assert_called_once()
-        self.assertLess(self.clock.now(), datetime.fromisoformat(self.args.deadline))
+        self.assertLess(len(self.clock.sleeps), 10)
 
     def test_supervisor_interrupt_terminates_and_waits_every_child(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(deadline=self.args.deadline,
+        chain.write_json(path, dict(marker=self.clock.now().isoformat(),
                                    lanes={"20E8": dict(lane="0/1", estimate=42)}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
                                out=self.args.out, suite=self.args.suite)
@@ -411,33 +435,14 @@ class NightlyTests(unittest.TestCase):
         self.stop_tree.assert_called_once_with(process)
         process.wait.assert_called_once()
 
-    def test_supervisor_sigterm_during_final_wait_stops_children(self):
-        path = self.root / "plan.json"
-        chain.write_json(path, dict(deadline=self.clock.now().isoformat(),
-                                   lanes={"20E8": dict(lane="0/1", estimate=42)}))
-        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
-                               out=self.args.out, suite=self.args.suite)
-        process = Mock()
-        process.poll.return_value = None
-        def wait():
-            value = next(waits)
-            return value() if callable(value) else value
-        waits = iter([lambda: signal.raise_signal(signal.SIGTERM), 0])
-        process.wait.side_effect = wait
-        original = signal.getsignal(signal.SIGTERM)
-        with self.assertRaises(KeyboardInterrupt):
-            chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process)
-        self.stop_tree.assert_called_once_with(process)
-        self.assertEqual(process.wait.call_count, 2)
-        self.assertEqual(signal.getsignal(signal.SIGTERM), original)
-
     def test_supervisor_lane_settings_and_plan_selection(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(tip=self.commits[-1], deadline=self.args.deadline,
+        chain.write_json(path, dict(tip=self.commits[-1], marker=self.clock.now().isoformat(),
             from_sha=self.commits[3], max_steps=1, lanes={"20E8": dict(lane="0/2", estimate=42)}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
                                out=self.args.out, suite=[("suite", "-", "table with spaces")])
-        launch = Mock(return_value=SimpleNamespace(poll=lambda: 0, wait=lambda: 0))
+        polls = iter((None, None))
+        launch = Mock(side_effect=lambda *a, **kw: SimpleNamespace(poll=lambda: next(polls, 0), wait=lambda: 0))
         original = subprocess.check_output
         def converted(command, **options):
             if command[0] == "/tools/cygpath":
@@ -478,11 +483,11 @@ class NightlyTests(unittest.TestCase):
             exec(script, {})
         self.assertIn("2124: measured=2", summary.read_text())
 
-    def test_joiner_too_late_is_not_started(self):
-        status, commands, planned, _ = self.supervise(late=True)
+    def test_joiner_has_no_time_cutoff(self):
+        status, commands, planned, _ = self.supervise()
         self.assertEqual(status, 0)
-        self.assertEqual(len(commands), 1)
-        self.assertNotIn("2124", planned["lanes"])
+        self.assertEqual(len(commands), 2)
+        self.assertIn("2124", planned["lanes"])
 
     def test_supervisor_unplugged_lane_keeps_result_and_other_lane_finishes(self):
         status, commands, _, manifests = self.supervise(unplugged=True)
@@ -550,7 +555,7 @@ class NightlyTests(unittest.TestCase):
     def test_shared_tip_and_explicit_range_limit(self):
         schedule.refresh_gpu_host("gpu-runner", self.clock)
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8", "2124"], data=self.args.data,
-                               out=self.root / "plan.json", queue_at="22:00", until="07:00", from_sha=self.commits[1],
+                               out=self.root / "plan.json", marker=self.clock.now().isoformat(), from_sha=self.commits[1],
                                max_steps=2, selftest_board="2124")
         chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
         plan = json.loads(args.out.read_text())
@@ -562,16 +567,8 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(lane["estimate"], len(lane["steps"]) * chain.FIRST_STEP_SECONDS + reserve)
             self.assertEqual(len(lane["steps"]), 2)
             self.assertLessEqual(lane["steps"][-1]["position"], 6)
-        self.assertEqual(plan["deadline"], "2026-10-19T07:00:00+00:00")
-        self.clock.value += timedelta(hours=2)
-        chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
-        late = json.loads(args.out.read_text())
-        self.assertEqual((late["night"], late["deadline"]), (plan["night"], plan["deadline"]))
-        args.queue_at = None
-        self.clock.sleeps.clear()
-        chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
-        self.assertEqual(self.clock.sleeps, [QUEUE_POLL_SECONDS])
-        self.assertEqual(json.loads(args.out.read_text())["deadline"], late["deadline"])
+        self.assertEqual(plan["marker"], args.marker)
+        self.assertNotIn("deadline", plan)
         previous = {"last_measured": self.commits[0]}
         limited = chain.select_steps(self.repo, "HEAD", previous, 0, 2, self.commits[1], 1)
         self.assertEqual([step.role for step in limited], ["anchor", "new"])
@@ -580,7 +577,7 @@ class NightlyTests(unittest.TestCase):
     def test_equal_image_skips_but_anchor_measures(self):
         steps = self.steps(indices=(1, 1, 1), anchor=True)
         build_seconds = 60.75
-        expected_wait = int((datetime.fromisoformat(self.args.deadline) - self.clock.now()).total_seconds() - build_seconds)
+        expected_wait = chain.NIGHT_STEP_HANG_SECONDS
         results, replay, writes = self.run_chain(steps, durations=(build_seconds,))
         capture = next(command for command in replay.calls if "suite" in command)
         self.assertEqual(capture[capture.index("--wait") + 1], str(expected_wait))
@@ -603,27 +600,17 @@ class NightlyTests(unittest.TestCase):
         results, _, _ = self.run_chain(captures=(True, False, True))
         self.assertEqual([r.outcome for r in results], ["capture_failed", "measured", "capture_failed"])
 
-    def test_heavy_wait_is_recorded_without_inflating_build_or_worst_step(self):
-        self.args.deadline = "2026-10-19T02:00:00+00:00"
+    def test_heavy_wait_is_recorded_without_inflating_build(self):
         results, _, writes = self.run_chain(heavy_wait=60 * 60)
         self.assertEqual([r.outcome for r in results], ["measured"] * 3)
         self.assertEqual([r.build_seconds for r in results], [60] * 3)
         self.assertEqual([s["wait_seconds"] for s in writes[-1]["steps"]], [60 * 60] * 3)
 
-    def test_flash_rebuild_wait_is_recorded_without_inflating_worst_step(self):
-        self.args.deadline = "2026-10-19T02:00:00+00:00"
+    def test_flash_rebuild_wait_is_recorded(self):
         results, _, writes = self.run_chain(capture_wait=(2 * 60 * 60, 0, 0))
         self.assertEqual([r.outcome for r in results], ["measured"] * 3)
         self.assertEqual([r.build_seconds for r in results], [60] * 3)
         self.assertEqual([s["wait_seconds"] for s in writes[-1]["steps"]], [2 * 60 * 60, 0, 0])
-
-    def test_deadline_and_observed_worst_step(self):
-        self.args.deadline = "2026-10-18T22:52:00+00:00"
-        results, _, _ = self.run_chain()
-        self.assertEqual([r.outcome for r in results], ["not_run_window"] * 3)
-        self.args.deadline = "2026-10-18T23:33:00+00:00"
-        results, _, _ = self.run_chain(durations=(30 * 60, 60))
-        self.assertEqual([r.outcome for r in results], ["measured", "measured", "not_run_window"])
 
     def test_selftest_failure_continues_inside_hold(self):
         self.args.selftest = ["selftest-replay"]
@@ -633,27 +620,13 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(writes[-1]["selftest"]["outcome"], "failed")
         self.assertEqual(writes[-1]["selftest"]["report"], "selftest.md")
 
-    def test_selftest_runs_first_without_waiting_and_respects_deadline(self):
+    def test_selftest_runs_first_without_waiting(self):
         self.args.selftest = ["selftest-replay"]
         results, replay, writes = self.run_chain(self.steps(indices=(1,)))
         self.assertEqual(replay.boundaries, [Clock(22, 30).now()])
         self.assertEqual(replay.timeouts[0][0], ["selftest-replay"])
         self.assertEqual(writes[-1]["selftest"]["outcome"], "passed")
         self.assertEqual(results[0].outcome, "measured")
-        self.clock = Clock(22, 30)
-        self.args.deadline = "2026-10-19T00:00:00+00:00"
-        _, replay, writes = self.run_chain()
-        self.assertEqual(replay.boundaries, [])
-        self.assertEqual(writes[-1]["selftest"]["outcome"], "not_run")
-
-    def test_partial_manifest_retains_board_hash(self):
-        self.args.previous = dict(last_measured=self.commits[1], machine=MACHINE,
-                                  last_image_hash="previous-hash", steps=[])
-        self.args.deadline = "2026-10-18T22:31:00+00:00"
-        _, _, writes = self.run_chain()
-        self.assertEqual(writes[-1]["last_image_hash"], "previous-hash")
-        self.assertEqual(writes[-1]["last_measured"], self.commits[1])
-
     def test_lnt_shape_seconds_quarter_and_latest_night(self):
         report = lnt.lnt_report(MACHINE, "20E8", self.commits[0], None, "anchor", "2026-10-18",
                                 "build-diag", "hash", "start", "end", {"suite/frame quarter=landscape": [412]})
@@ -718,38 +691,12 @@ class NightlyTests(unittest.TestCase):
         results, _, _ = self.run_chain(self.steps(indices=(1, 2, 3, 4)), captures=(True, False, True, False))
         self.assertEqual([r.outcome for r in results], ["capture_failed", "measured", "capture_failed", "measured"])
 
-    def test_stopped_reason_survives_later_window(self):
-        self.args.deadline = "2026-10-18T23:20:00+00:00"
+    def test_stopped_reason_survives_long_step(self):
         results, _, writes = self.run_chain(self.steps(indices=(1, 2, 3, 4)),
                                            captures=(True, True), durations=(60, 26 * 60))
         self.assertEqual([r.outcome for r in results],
                          ["capture_failed", "capture_failed", "not_run_stopped", "not_run_stopped"])
         self.assertEqual(writes[-1]["stop_reason"], "capture_failures")
-
-    def test_exact_budget_plan_clock_and_night(self):
-        self.args.started = self.clock.now().isoformat()
-        self.args.night = "planned-night"
-        self.args.deadline = "2026-10-18T22:53:00+00:00"
-        for extra, outcome in ((0, "measured"), (1, "not_run_window")):
-            self.clock = Clock(22, 30)
-            self.clock.sleep(extra)
-            results, _, writes = self.run_chain(self.steps(indices=(1,)), durations=(22 * 60,))
-            self.assertEqual(results[0].outcome, outcome)
-            self.assertEqual(writes[-1]["night"], "planned-night")
-        self.clock = Clock(0, 0)
-        self.clock.value += timedelta(days=1)
-        self.args.deadline = "2026-10-18T23:00:00+00:00"
-        results, _, _ = self.run_chain(self.steps(indices=(1,)))
-        self.assertEqual(results[0].outcome, "not_run_window")
-
-    def test_window_after_build_and_build_lock_timeout_preserves_cursor(self):
-        self.args.deadline = "2026-10-18T23:00:00+00:00"
-        for duration, code in ((61 * 60, 0), (8 * 60, autana_config.EXIT_BUSY)):
-            self.clock = Clock(22, 30)
-            results, replay, writes = self.run_chain(self.steps(indices=(1,)), durations=(duration,), builds=(code,))
-            self.assertEqual(results[0].outcome, "not_run_window")
-            self.assertIsNone(writes[-1]["last_attempted"])
-            self.assertFalse(any("suite" in cmd for cmd in replay.calls))
 
     def test_failed_selftest_log_exists_and_remaining_steps_continue(self):
         self.args.selftest = ["selftest-replay"]
@@ -760,15 +707,15 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(writes[-1]["selftest"]["outcome"], "failed")
         self.assertTrue((self.args.out / writes[-1]["selftest"]["report"]).is_file())
 
-    def test_plan_waits_for_gpu_queue_with_fixed_morning_deadline(self):
-        for release_hour, release_minute, allowed in ((22, 30, True), (1, 30, True), (6, 45, False)):
+    def test_plan_waits_for_gpu_queue_to_finish(self):
+        for release_hour, release_minute in ((22, 30), (1, 30), (12, 45)):
             with self.subTest(release_hour=release_hour):
                 clock = ScheduleClock(18)
                 schedule.refresh_gpu_host("gpu-runner", clock)
                 day = 21 if release_hour > 12 else 22
                 released = datetime(2026, 10, day, release_hour, release_minute)
                 args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
-                    data=self.args.data, out=self.root / "plan.json", queue_at="", until="07:00",
+                    data=self.args.data, out=self.root / "plan.json", marker=self.clock.now().isoformat(),
                     from_sha=None, max_steps=None, selftest_board="20E8")
                 def request(method, path):
                     return {"workflow_runs": [dict(status="in_progress")] if clock.now() < released else []}
@@ -776,9 +723,9 @@ class NightlyTests(unittest.TestCase):
                         patch.object(chain, "select_steps", return_value=[]):
                     chain.plan(args, clock, request=request)
                 planned = json.loads(args.out.read_text())
-                self.assertEqual(bool(planned["lanes"]), allowed)
-                self.assertEqual(planned["deadline"], datetime(2026, 10, 22, 7).isoformat())
-                expected = released + timedelta(seconds=QUEUE_POLL_SECONDS) if allowed else datetime(2026, 10, 22, 7) - timedelta(seconds=chain.FIRST_STEP_SECONDS)
+                self.assertTrue(planned["lanes"])
+                self.assertNotIn("deadline", planned)
+                expected = released + timedelta(seconds=QUEUE_POLL_SECONDS)
                 self.assertEqual(planned["started"], expected.isoformat())
 
     def test_plan_missing_or_stale_gpu_host_skips_queue_and_reports(self):
@@ -788,7 +735,7 @@ class NightlyTests(unittest.TestCase):
                 if age is not None:
                     schedule.refresh_gpu_host("other-runner", ScheduleClock(23, day=21 - age))
                 args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
-                    data=self.args.data, out=self.root / "plan.json", queue_at=None, until="07:00",
+                    data=self.args.data, out=self.root / "plan.json", marker=self.clock.now().isoformat(),
                     from_sha=None, max_steps=None, selftest_board="20E8")
                 summary = self.root / "gpu-summary"
                 summary.unlink(missing_ok=True)
@@ -801,23 +748,8 @@ class NightlyTests(unittest.TestCase):
                 self.assertEqual(summary.read_text(), schedule.GPU_NOT_ON_HOST + "\n")
                 self.assertTrue(json.loads(args.out.read_text())["lanes"])
 
-    def test_plan_delegates_window_and_writes_skip_summary(self):
-        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
-            data=self.args.data, out=self.root / "plan.json", queue_at="22:30", until="06:00",
-            from_sha=None, max_steps=None, selftest_board="20E8")
-        summary = self.root / "summary"
-        with patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(summary)), \
-                patch.object(chain, "night_window", return_value=None) as window, \
-                patch.object(chain, "plugged_boards") as discover:
-            chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
-        window.assert_called_once_with(args.queue_at, args.until, scheduled=True, clock=self.clock)
-        discover.assert_not_called()
-        self.assertEqual(json.loads(args.out.read_text())["lanes"], {})
-        self.assertEqual(summary.read_text(), chain.SKIPPED + "\n")
-
     def test_selftest_limits_timeout_and_saves_metadata(self):
         self.args.selftest = ["selftest-replay"]
-        self.args.deadline = "2026-10-19T00:30:00+00:00"
         self.args.started = Clock(22, 0).now().isoformat()
         _, replay, writes = self.run_chain(steps=[])
         saved = writes[1]["selftest"]
@@ -847,7 +779,7 @@ class NightlyTests(unittest.TestCase):
         with self.capture_with(suites={}):
             results, _, _ = self.run_chain(self.steps(indices=(1,)))
         self.assertEqual(results[0].outcome, "capture_failed")
-        self.assertTrue(all(timeout > chain.BUILD_TIMEOUT_SECONDS for cmd, timeout in replay.timeouts if "build" in cmd))
+        self.assertTrue(all(timeout == chain.BUILD_TIMEOUT_SECONDS for cmd, timeout in replay.timeouts if "build" in cmd))
         self.assertTrue(all(timeout > chain.CAPTURE_TIMEOUT_SECONDS for cmd, timeout in replay.timeouts if "suite" in cmd))
         suites = [cmd for cmd, _ in replay.timeouts if "suite" in cmd]
         self.assertTrue(suites)
@@ -896,7 +828,7 @@ class NightlyTests(unittest.TestCase):
         self.assertNotEqual(lnt.read_last_night(self.args.data, "20E8")["night"], "invalid")
 
     def test_main_refusals_replan_and_wait_rollover(self):
-        planned = dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(), deadline=self.args.deadline,
+        planned = dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(),
                        lanes={"20E8": dict(lane="0/2", previous=None, steps=[])})
         path = self.root / "plan.json"
         path.write_text(json.dumps(planned))
@@ -922,7 +854,7 @@ class NightlyTests(unittest.TestCase):
     def test_plan_reads_each_boards_manifest(self):
         previous = {"20E8": {"last_measured": self.commits[0]}, "2124": {"last_measured": self.commits[2]}}
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=list(previous), data=self.args.data,
-                               out=self.root / "plan.json", queue_at=None, until="07:00", from_sha=None, max_steps=None,
+                               out=self.root / "plan.json", marker=self.clock.now().isoformat(), from_sha=None, max_steps=None,
                                selftest_board=None)
         with patch.object(chain, "read_last_night", side_effect=lambda data, board: previous[board]):
             chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
@@ -935,7 +867,7 @@ class NightlyTests(unittest.TestCase):
                               {"board": "44:BD:8D:78:21:24", "port": None},
                               {"board": "90:70:69:FE:A3:08", "port": "COM5"}]}
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
-                               out=self.root / "plan.json", queue_at=None, until="07:00", from_sha=None, max_steps=None,
+                               out=self.root / "plan.json", marker=self.clock.now().isoformat(), from_sha=None, max_steps=None,
                                selftest_board=None)
         real = chain.subprocess.check_output
         def devices(command, **kwargs):
@@ -1016,28 +948,12 @@ class LaneSettingsTests(unittest.TestCase):
         for step in ("Summarize board outcomes", "Publish night manifests and LNT reports"):
             self.assertEqual(steps[step]["if"], "always() && env.PERF_DATA != ''")
 
-    def test_workflow_queue_input_can_start_immediately(self):
+    def test_workflow_passes_marker_to_plan(self):
         workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text())
         step = next(step for step in workflow["jobs"]["nightly"]["steps"]
                     if step.get("name") == "Prepare the data branch and shared plan")
-        script = "args=()" + step["run"].split("args=()", 1)[1]
-        command = 'driver() { printf "%s\\n" "$@"; }; PY=driver; ' + script
-        for event, requested, expected in (("schedule", "", "22:30"),
-                                           ("workflow_dispatch", "", None),
-                                           ("workflow_dispatch", "21:15", "21:15")):
-            with self.subTest(event=event, requested=requested), tempfile.TemporaryDirectory() as tmp:
-                # The plan's output goes to the job environment, not the log.
-                github_env = Path(tmp) / "github_env"
-                env = dict(os.environ, GITHUB_EVENT_NAME=event, DISPATCH_QUEUE_AT=requested,
-                           NIGHT_START="22:30", DISPATCH_WINDOW_END="", FROM_SHA="", MAX_STEPS="", GITHUB_ENV=str(github_env))
-                subprocess.run(["bash", "-c", command], env=env, capture_output=True, text=True, check=True)
-                args = github_env.read_text().splitlines()
-                self.assertNotIn("--boards", args)
-                if expected is None:
-                    self.assertNotIn("--queue-at", args)
-                else:
-                    self.assertEqual(args[args.index("--queue-at") + 1], expected)
-                self.assertNotIn("--suite", args)
+        self.assertIn('--marker "$MARKER"', step['run'])
+        self.assertEqual(workflow['jobs']['nightly']['needs'], 'marker')
 
 
 if __name__ == "__main__":

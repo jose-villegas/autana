@@ -2,7 +2,7 @@ name: Nightly scoped performance
 
 on:
   schedule:
-    - cron: '0 18 * * *'
+    - cron: '0 22 * * *'
   workflow_dispatch:
     inputs:
       from:
@@ -11,12 +11,10 @@ on:
       max_steps:
         description: Maximum new candidates per board
         required: false
-      window_end:
-        description: Local window end (HH:MM; defaults to the shared night end)
-        required: false
-      queue_at:
-        description: Local queue time (HH:MM; empty starts immediately)
-        required: false
+      override:
+        description: Start now instead of at the next NIGHT_START
+        type: boolean
+        default: false
 
 concurrency: nightly-perf
 permissions:
@@ -42,12 +40,38 @@ env:
   GIT_CONFIG_VALUE_3: 'false'
 
 jobs:
+  marker:
+    runs-on: [self-hosted, windows, board]
+    timeout-minutes: 1500
+    defaults:
+      run:
+        shell: 'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+    env:
+      OVERRIDE: ${{ inputs.override }}
+      SCHEDULE: ${{ github.event.schedule }}
+      NIGHT_START: ${{ vars.NIGHT_START }}
+    outputs:
+      marker: ${{ steps.marker.outputs.marker }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          lfs: false
+          persist-credentials: false
+          set-safe-directory: false
+      - id: marker
+        run: |
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" scripts/lib/local_schedule.py marker
+
   nightly:
+    needs: marker
+    env:
+      MARKER: ${{ needs.marker.outputs.marker }}
     outputs:
       held: ${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}
     runs-on: [self-hosted, windows, board]
-    # Wait up to 210 min (19:00 local to 22:30), run 510 min to 07:00, publish 60 min.
-    timeout-minutes: 780
+    # Hang guard under the 24 h GITHUB_TOKEN life; the marker job gives work a fresh token.
+    timeout-minutes: 1380
     defaults:
       run:
         shell: 'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
@@ -63,8 +87,6 @@ jobs:
         env:
           FROM_SHA: ${{ inputs.from }}
           MAX_STEPS: ${{ inputs.max_steps }}
-          DISPATCH_QUEUE_AT: ${{ inputs.queue_at }}
-          DISPATCH_WINDOW_END: ${{ inputs.window_end }}
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           PY=$(. scripts/lib/python.sh && find_python)
@@ -85,17 +107,11 @@ jobs:
             git -C "$data" checkout --orphan perf-data
           fi
           args=()
-          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
-            args+=(--queue-at "$NIGHT_START")
-          elif [ -n "$DISPATCH_QUEUE_AT" ]; then
-            args+=(--queue-at "$DISPATCH_QUEUE_AT")
-          fi
-          [ -z "$DISPATCH_WINDOW_END" ] || args+=(--until "$DISPATCH_WINDOW_END")
           [ -z "$FROM_SHA" ] || args+=(--from "$FROM_SHA")
           [ -z "$MAX_STEPS" ] || args+=(--max-steps "$MAX_STEPS")
           # One lane per board plugged in; the plan sets SCOPED_BOARDS and SELFTEST_BOARD.
           "$PY" launcher/tools/perf/nightly/scoped_chain.py plan \
-            --data "$data" --out "$out/plan.json" "${args[@]}" >> "$GITHUB_ENV"
+            --data "$data" --out "$out/plan.json" --marker "$MARKER" "${args[@]}" >> "$GITHUB_ENV"
 
       - name: Prepare the self-test's console tests
         if: env.SELFTEST_BOARD != ''
@@ -138,6 +154,8 @@ jobs:
                   test = manifest["selftest"]
                   summary.write(f"Self-test {board}: {test['outcome']}; report: {test['report']}\n\n")
           PY
+          "$PY" launcher/tools/perf/nightly/scoped_chain.py timeline \
+            --plan "$PERF_OUT/plan.json" --data "$PERF_DATA" --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Publish night manifests and LNT reports
         if: always() && env.PERF_DATA != ''

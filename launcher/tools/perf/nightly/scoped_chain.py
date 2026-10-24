@@ -24,7 +24,8 @@ from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
 from process_tree import launch_process_tree, stop_process_tree, close_process_tree
-from local_schedule import Clock, local_time, night_window, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST, NIGHT_END, SKIPPED
+from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
+                            NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root)
 from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
 
 IMAGE_HEADER_BYTES = 24
@@ -43,6 +44,7 @@ CAPTURE_FAILURE_LIMIT = 2
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
 BUILD_TIMEOUT_SECONDS = 3600
+LANE_HANG_FACTOR = 2
 
 
 @dataclass
@@ -145,7 +147,6 @@ def run_chain(steps, args, runner=None, clock=None):
     runner, clock = runner or run_stamped, clock or Clock()
     started = clock.now()
     night_started = datetime.fromisoformat(args.started) if getattr(args, "started", None) else started
-    deadline = datetime.fromisoformat(args.deadline)
     night = getattr(args, "night", None) or started.date().isoformat()
     output = Path(args.out).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -156,14 +157,16 @@ def run_chain(steps, args, runner=None, clock=None):
     last_attempted = previous.get("last_attempted") or last_measured
     previous_hash = previous.get("last_image_hash")
     positions = {step.commit: step.position for step in history_steps(args.repo, "HEAD")}
-    results, failures, worst_step, stop_reason = [], 0, FIRST_STEP_SECONDS, None
+    results, failures, stop_reason = [], 0, None
+    ended = None
     selftest = dict(board=board, outcome="not_run", report=None, started=None, seconds=0)
-    manifest = Path(args.data) / "scoped" / board / night_started.strftime("%Y-%m-%d-%H%M") / "night.json"
+    manifest = Path(args.data) / "scoped" / board / night_started.strftime(MARKER_KEY_FORMAT) / "night.json"
 
     cleanup = "pending"
 
     def save():
-        value = night_manifest(board, machine, night, args.lane, results, stop_reason, last_measured, selftest)
+        value = night_manifest(board, machine, night, args.lane, results, stop_reason, last_measured, selftest,
+                               started.isoformat(), ended)
         value["last_attempted"] = last_attempted
         value["cleanup"] = cleanup
         value["last_image_hash"] = previous_hash
@@ -179,11 +182,7 @@ def run_chain(steps, args, runner=None, clock=None):
     def run_selftest():
         if not getattr(args, "selftest", None):
             return
-        if clock.now() + timedelta(seconds=SELFTEST_ALLOWANCE_SECONDS) > deadline:
-            return
         begin = clock.now()
-        os.environ[autana_config.BUILD_LATEST_START_ENV] = str(
-            (deadline - timedelta(seconds=SELFTEST_ALLOWANCE_SECONDS)).timestamp())
         selftest["started"] = begin.isoformat()
         log_path = output / "selftest.log"
         selftest["report"] = str(log_path.relative_to(output))
@@ -207,10 +206,8 @@ def run_chain(steps, args, runner=None, clock=None):
         for index, step in enumerate(steps):
             if not stop_reason and gone():
                 stop_reason = "unplugged"
-            if not stop_reason and clock.now() + timedelta(seconds=worst_step) > deadline:
-                stop_reason = "window"
             outcome = {"capture_failures": "not_run_stopped", "unplugged": "not_run_unplugged"}
-            result = StepResult(step, outcome.get(stop_reason, "not_run_window"))
+            result = StepResult(step, outcome.get(stop_reason, "not_run"))
             results.append(result)
             if stop_reason:
                 save()
@@ -230,10 +227,8 @@ def run_chain(steps, args, runner=None, clock=None):
                         git(args.repo, "worktree", "add", "--detach", str(worktree), step.commit)
                     git(worktree, "checkout", "--detach", step.commit)
                     git(worktree, "submodule", "update", "--init", "--recursive")
-                    os.environ[autana_config.BUILD_LATEST_START_ENV] = str(
-                        (deadline - timedelta(seconds=worst_step)).timestamp())
                     code, _, _ = run_step(autana_command("--project", str(worktree), "build", VARIANT,
-                                                      *BUILD_FLAGS), log, BUILD_TIMEOUT_SECONDS + max(0, (deadline - clock.now()).total_seconds()))
+                                                      *BUILD_FLAGS), log, BUILD_TIMEOUT_SECONDS)
                     if code:
                         raise RuntimeError(f"build exited {code}")
                     build = latest_build(worktree)
@@ -242,24 +237,16 @@ def run_chain(steps, args, runner=None, clock=None):
                 except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
                     log.write(str(error) + "\n")
             result.build_seconds = max(0, (clock.now() - begin).total_seconds() - result.wait_seconds)
-            remaining = max(0, worst_step - result.build_seconds)
-            if code == autana_config.EXIT_BUSY or clock.now() + timedelta(seconds=remaining) > deadline:
-                stop_reason = "window"
-                result.outcome = "not_run_window"
-                save()
-                continue
             if result.image_hash:
                 if step.role != "anchor" and result.image_hash == previous_hash:
                     result.outcome = "skipped_same_image"
                 else:
-                    os.environ[autana_config.BUILD_LATEST_START_ENV] = str(
-                        (deadline - timedelta(seconds=remaining)).timestamp())
                     measure = clock.now()
                     result.outcome = "capture_failed"
                     try:
                         capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
                                                        suite=args.suite, runs=1, timeout=CAPTURE_TIMEOUT_SECONDS,
-                                                       wait=max(0, int((deadline - clock.now()).total_seconds())))
+                                                       wait=NIGHT_STEP_HANG_SECONDS)
                         record = run_flash(capture_args, seed=LAYOUT_SEED, runner=run_step)
                         actual = require_same_board({"previous": machine, "capture": record["board"]}
                                                     if machine else {"capture": record["board"]})
@@ -297,7 +284,6 @@ def run_chain(steps, args, runner=None, clock=None):
             if result.outcome in ("measured", "skipped_same_image", "build_failed"):
                 if step.position >= positions.get(last_attempted, 0):
                     last_attempted = step.commit
-            worst_step = max(worst_step, (clock.now() - begin).total_seconds() - result.wait_seconds)
             save()
     finally:
         errors = []
@@ -332,6 +318,7 @@ def run_chain(steps, args, runner=None, clock=None):
         except OSError as error:
             cleanup += "; cleanup log: " + str(error)
         finally:
+            ended = clock.now().isoformat()
             save()
     return results
 
@@ -353,12 +340,12 @@ def plan_lane(args, selection, board, lane, lanes, selftest=False):
 def run_night(args, clock=None, launch=None):
     clock, launch = clock or Clock(), launch or launch_process_tree
     planned = json.loads(args.plan.read_text(encoding="utf-8"))
-    deadline = datetime.fromisoformat(planned["deadline"])
     processes, skipped = [], set()
     failed, interrupted = False, False
+    hung = set()
 
     def start(board, lane, lane_plan):
-        wait = max(0, int((deadline - clock.now()).total_seconds()))
+        wait = NIGHT_STEP_HANG_SECONDS
         command = autana_command("--board", board, "--wait", str(wait), "lock", "run",
                                  "--estimate", str(lane["estimate"]), "--", sys.executable,
                                  str(Path(__file__).resolve()), "run", "--plan", str(lane_plan.resolve()),
@@ -378,7 +365,8 @@ def run_night(args, clock=None, launch=None):
                 env["BOARD_CI_LOG"] = subprocess.check_output(
                     [cygpath, "-u", env["BOARD_CI_LOG"]], text=True).strip()
             command.extend(["--selftest", shell, str(args.repo.resolve() / "scripts/ci/board-steps.sh")])
-        processes.append(launch(command, cwd=args.repo, env=env))
+        process = launch(command, cwd=args.repo, env=env)
+        processes.append((process, clock.now(), lane["estimate"], board))
 
     previous_handler = signal.signal(signal.SIGTERM, signal.default_int_handler)
     try:
@@ -389,16 +377,21 @@ def run_night(args, clock=None, launch=None):
                 print(f"lane {board}: {error}", file=sys.stderr)
                 failed = True
                 skipped.add(board)
-        while planned["lanes"] and clock.now() < deadline:
-            clock.sleep(min(RESCAN_SECONDS, (deadline - clock.now()).total_seconds()))
-            joined = False
+        while any(id(process) not in hung and process.poll() is None for process, *_ in processes):
+            clock.sleep(RESCAN_SECONDS)
+            for process, started, estimate, board in processes:
+                if id(process) not in hung and process.poll() is None and (clock.now() - started).total_seconds() >= LANE_HANG_FACTOR * estimate:
+                    print(f"LANE_HANG_FACTOR expired for board {board}", file=sys.stderr)
+                    stop_process_tree(process)
+                    hung.add(id(process))
+                    failed = True
             try:
-                boards = plugged_boards() if clock.now() < deadline else []
+                boards = plugged_boards()
             except (OSError, ValueError, subprocess.CalledProcessError) as error:
                 print(f"devices: {error}", file=sys.stderr)
                 failed, boards = True, []
             for board in boards:
-                if board in planned["lanes"] or board in skipped or clock.now() + timedelta(seconds=FIRST_STEP_SECONDS) > deadline:
+                if board in planned["lanes"] or board in skipped:
                     continue
                 try:
                     lane = plan_lane(args, planned, board, 0, 1)
@@ -407,18 +400,15 @@ def run_night(args, clock=None, launch=None):
                     start(board, lane, lane_plan)
                     planned["lanes"][board] = lane
                     write_json(args.plan, planned)
-                    joined = True
                 except (OSError, ValueError, subprocess.CalledProcessError) as error:
                     print(f"lane {board}: {error}", file=sys.stderr)
                     failed = True
                     skipped.add(board)
-            if not any(process.poll() is None for process in processes) and not joined:
-                break
     except KeyboardInterrupt:
         interrupted = True
     finally:
         try:
-            pending = list(processes)
+            pending = [process for process, *_ in processes]
             while pending:
                 try:
                     if interrupted:
@@ -439,36 +429,24 @@ def run_night(args, clock=None, launch=None):
 
 def plan(args, clock=None, request=None):
     clock = clock or Clock()
-    queued = args.queue_at is not None
-    window = night_window(args.queue_at, args.until, scheduled=True, clock=clock) if queued else None
-    skipped = queued and window is None
-    start, deadline = window or (clock.now(), local_time(args.until, clock.now(), next_occurrence=True))
-    if not skipped:
-        if gpu_on_host(clock):
-            skipped = not wait_idle(lambda: gpu_pending(request=request), deadline, FIRST_STEP_SECONDS, clock, idle_polls=2)
-        else:
-            message = GPU_NOT_ON_HOST
-            print(message, file=sys.stderr)
-            if os.environ.get("GITHUB_STEP_SUMMARY"):
-                with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-                    summary.write(message + "\n")
-            skipped = (deadline - clock.now()).total_seconds() <= FIRST_STEP_SECONDS
-    now = clock.now()
-    if skipped:
-        args.boards, args.selftest_board = [], None
-        print(SKIPPED, file=sys.stderr)
+    marker = datetime.fromisoformat(args.marker)
+    if gpu_on_host(clock):
+        wait_idle(lambda: gpu_pending(request=request), clock, idle_polls=2)
+    else:
+        print(GPU_NOT_ON_HOST, file=sys.stderr)
         if os.environ.get("GITHUB_STEP_SUMMARY"):
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-                summary.write(SKIPPED + "\n")
-    if not skipped and not args.boards:
+                summary.write(GPU_NOT_ON_HOST + "\n")
+    now = clock.now()
+    if not args.boards:
         args.boards = plugged_boards()
         if not args.boards:
             raise SystemExit("plan: no board is plugged in")
         # The self-test runs on one board, whichever is plugged in first.
         args.selftest_board = args.selftest_board or args.boards[0]
     tip = git(args.repo, "rev-parse", args.tip + "^{commit}")
-    planned = dict(tip=tip, night=start.date().isoformat(), started=now.isoformat(),
-                   deadline=deadline.isoformat(), lanes={}, from_sha=args.from_sha, max_steps=args.max_steps)
+    planned = dict(tip=tip, night=marker.date().isoformat(), started=now.isoformat(),
+                   marker=args.marker, lanes={}, from_sha=args.from_sha, max_steps=args.max_steps)
     lanes = planned["lanes"]
     for lane, board in enumerate(args.boards):
         board = short_id(board)
@@ -480,6 +458,41 @@ def plan(args, clock=None, request=None):
     print("SELFTEST_BOARD=" + (short_id(args.selftest_board) if args.selftest_board else ""))
 
 
+def timeline(args):
+    planned = json.loads(args.plan.read_text(encoding="utf-8"))
+    marker = datetime.fromisoformat(planned["marker"])
+    key = marker.strftime(MARKER_KEY_FORMAT)
+    steps = []
+    for path in sorted((heavy_root() / "night-steps" / key).glob("*.json")):
+        record = json.loads(path.read_text(encoding="utf-8"))
+        steps.append(dict(name="gpu " + record["workflow"], started=record["started"],
+                          ended=record["ended"], outcome="failed" if record["exit"] else "passed"))
+    lane_key = datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)
+    for board in planned["lanes"]:
+        path = args.data / "scoped" / board / lane_key / "night.json"
+        if not path.is_file():
+            continue
+        record = json.loads(path.read_text(encoding="utf-8"))
+        failed = record["selftest"]["outcome"] == "failed" or any(
+            step["outcome"] in ("build_failed", "capture_failed") for step in record["steps"])
+        steps.append(dict(name="board " + board, started=record["started"], ended=record["ended"],
+                          outcome="failed" if failed else "passed" if record["ended"] else "running"))
+    ended = [datetime.fromisoformat(step["ended"]) for step in steps if step["ended"]]
+    free_at = max(ended, default=marker)
+    write_json(args.data / "scoped" / "timeline" / (key + ".json"),
+               dict(marker=planned["marker"], steps=steps, free_at=free_at.isoformat()))
+    if args.summary:
+        spans = [step["name"] + " " + datetime.fromisoformat(step["started"]).astimezone().strftime("%H:%M")
+                 + "–" + (datetime.fromisoformat(step["ended"]).astimezone().strftime("%H:%M")
+                          if step["ended"] else "running") for step in steps]
+        hours, remainder = divmod(free_at - marker, timedelta(hours=1))
+        minutes = remainder // timedelta(minutes=1)
+        line = (f"Night {marker:%Y-%m-%d}: marker {marker:%H:%M}, " + ", ".join(spans)
+                + f", host free {free_at.astimezone():%H:%M} ({hours}h {minutes:02d}min after the marker)\n")
+        with args.summary.open("a", encoding="utf-8") as summary:
+            summary.write(line)
+
+
 def lane_of(plan, board):
     return plan["lanes"][short_id(board)]
 
@@ -487,11 +500,14 @@ def lane_of(plan, board):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    timing = commands.add_parser("timeline")
+    timing.add_argument("--plan", type=Path, required=True)
+    timing.add_argument("--data", type=Path, required=True)
+    timing.add_argument("--summary", type=Path)
     planning = commands.add_parser("plan")
     planning.add_argument("--boards", nargs="+", help="default: every board `autana devices` lists as plugged in")
     planning.add_argument("--tip", default="origin/main")
-    planning.add_argument("--queue-at")
-    planning.add_argument("--until", default=NIGHT_END)
+    planning.add_argument("--marker", required=True)
     planning.add_argument("--selftest-board")
     night = commands.add_parser("night")
     night.add_argument("--plan", type=Path, required=True)
@@ -511,6 +527,9 @@ def main():
         command.add_argument("--max-steps", type=int)
     args = parser.parse_args()
     os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
+    if args.command == "timeline":
+        timeline(args)
+        return 0
     if args.command == "plan":
         plan(args)
         return 0
@@ -525,7 +544,7 @@ def main():
     if lane["lane"] != args.lane:
         parser.error("lane differs from the shared plan")
     args.previous = lane["previous"]
-    args.night, args.started, args.deadline = (planned[key] for key in ("night", "started", "deadline"))
+    args.night, args.started = (planned[key] for key in ("night", "started"))
     steps = [Step(**step) for step in lane["steps"]]
     if args.from_sha is not None or args.max_steps is not None:
         index, count = map(int, args.lane.split("/"))

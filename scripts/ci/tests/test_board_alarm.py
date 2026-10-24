@@ -114,6 +114,19 @@ class BoardAlarmTests(unittest.TestCase):
                 request.jobs['/actions/runs/1/jobs'].append(board_job('in_progress'))
             self.assertEqual(bool(alarm.stuck_board_jobs(request, NOW)), expected)
 
+    def test_running_night_suppresses_health_and_probe_wait(self):
+        for status in ('queued', 'in_progress'):
+            request = Repository()
+            request.runs[f'/actions/workflows/{alarm.NIGHTLY_WORKFLOW}/runs'] = [dict(id=1, status=status)]
+            with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
+                self.assertEqual(alarm.check(request, NOW, ['missing'], []), [])
+                with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ,
+                        GITHUB_OUTPUT=str(Path(directory) / 'output')):
+                    self.assertEqual(alarm.probe_devices('/absent', '/absent', request), 0)
+                    self.assertEqual((Path(directory) / 'output').read_text(), 'enabled=false\n')
+            self.assertIn('::notice::', output.getvalue())
+            self.assertIn('night is still running', output.getvalue())
+
     def test_missing_boards(self):
         self.assertEqual(alarm.missing_boards(['2124', 'abcd'], ['abcd', 'eeee']), ['2124'])
 

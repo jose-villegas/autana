@@ -1,18 +1,18 @@
-"""Night starts use an injected local clock."""
-from datetime import datetime, timedelta
+"""Night markers use a local calendar and a UTC cron trigger."""
+from datetime import datetime, timedelta, timezone
 import contextlib
 import io
+import json
 import os
-import subprocess
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
-import yaml
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from scripts.lib import local_schedule
-from scripts.lib.local_schedule import NIGHT_START, NIGHT_END
+from scripts.lib import local_schedule as schedule
 
 
 class Clock:
@@ -29,154 +29,123 @@ class Clock:
 
 
 class LocalScheduleTests(unittest.TestCase):
-    def setUp(self):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.marker_root = Path(temporary.name) / "heavy"
-        environment = patch.dict(os.environ, _AUTANA_HEAVY_LOCK_ROOT=str(self.marker_root))
-        environment.start()
-        self.addCleanup(environment.stop)
+    def test_marker_same_date_and_next_date(self):
+        for hour, day in ((0, 21), (1, 21), (2, 22)):
+            trigger = Clock(hour).now().astimezone()
+            self.assertEqual(schedule.next_marker(trigger, '01:00'),
+                             datetime(2026, 10, day, 1).astimezone())
 
-    def test_gpu_stage_refreshes_host_marker_before_refusing(self):
-        import json
-        for workflow in local_schedule.GPU_ESTIMATES:
-            for runner in ("gpu-runner-a", "gpu-runner-b"):
-                env = dict(os.environ, GPU_WORKFLOW=workflow, RUNNER_NAME=runner,
-                           GITHUB_EVENT_NAME="workflow_dispatch", OVERRIDE="false")
-                with patch.dict(os.environ, env), \
-                        patch.object(sys, "argv", ["local_schedule", "ready"]), \
-                        patch.object(local_schedule, "gpu_queue", return_value=None), \
-                        patch.object(local_schedule, "gpu_ready", return_value=False), \
-                        patch.object(local_schedule, "Clock", return_value=Clock(12)), \
+    @unittest.skipUnless(hasattr(time, 'tzset'), 'requires local timezone rules')
+    def test_marker_uses_target_date_dst_rules(self):
+        previous = os.environ.get('TZ')
+        try:
+            os.environ['TZ'] = 'Europe/Berlin'
+            time.tzset()
+            trigger = datetime(2026, 10, 24, 23).astimezone()
+            marker = schedule.next_marker(trigger, '04:00')
+            self.assertEqual(marker.isoformat(), '2026-10-25T04:00:00+01:00')
+            same_day = datetime(2026, 10, 25, 1).astimezone()
+            self.assertEqual(schedule.next_marker(same_day, '04:00'), marker)
+        finally:
+            if previous is None:
+                os.environ.pop('TZ', None)
+            else:
+                os.environ['TZ'] = previous
+            time.tzset()
+
+    def test_marker_validation(self):
+        trigger = Clock(0).now().astimezone()
+        for value in ('00:00', '05:59', ''):
+            with patch.dict(os.environ, NIGHT_START=value):
+                self.assertIsNotNone(schedule.next_marker(trigger))
+        for value in ('06:00', '23:00', '1:00', '00:60', 'bad'):
+            with patch.dict(os.environ, NIGHT_START=value):
+                with self.assertRaisesRegex(ValueError, '00:00–05:59'):
+                    schedule.next_marker(trigger)
+
+    def test_late_daily_cron_keeps_its_trigger(self):
+        now = datetime(2026, 10, 25, 7, tzinfo=timezone.utc)
+        self.assertEqual(schedule.trigger_time('schedule', '0 22 * * *', now),
+                         datetime(2026, 10, 24, 22, tzinfo=timezone.utc))
+        self.assertEqual(schedule.trigger_time('schedule', '0 7 * * *', now), now)
+        for event in ('workflow_dispatch', 'workflow_run'):
+            self.assertEqual(schedule.trigger_time(event, '', now), now)
+
+    def test_marker_polls_and_override(self):
+        for override in ('true', 'false'):
+            with tempfile.TemporaryDirectory() as root:
+                output = Path(root) / 'output'
+                clock = Clock(0, 58, tzinfo=datetime(2026, 10, 21).astimezone().tzinfo)
+                with patch.dict(os.environ, OVERRIDE=override, NIGHT_START='01:00',
+                                GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_OUTPUT=str(output)), \
+                        patch.object(schedule, 'Clock', return_value=clock), \
+                        patch.object(sys, 'argv', ['schedule', 'marker']), \
                         contextlib.redirect_stdout(io.StringIO()):
-                    self.assertEqual(local_schedule.main(), local_schedule.EXIT_REFUSED)
-                record = json.loads((self.marker_root / local_schedule.GPU_HOST_MARKER).read_text())
-                self.assertEqual(record["runner"], runner)
-                self.assertEqual(record["refreshed_at"], Clock(12).now().isoformat())
+                    self.assertEqual(schedule.main(), 0)
+                self.assertEqual(sum(clock.sleeps), 0 if override == 'true' else 120)
+                self.assertTrue(all(seconds <= schedule.QUEUE_POLL_SECONDS for seconds in clock.sleeps))
+                self.assertEqual(output.read_text(), 'marker=' + clock.now().isoformat() + '\n')
 
-    def test_gpu_marker_read_needs_no_lock_or_directory(self):
-        with patch.object(local_schedule.LockStore, "guard", side_effect=AssertionError("reader took lock")):
-            self.assertFalse(local_schedule.gpu_on_host(Clock(12)))
-            self.assertFalse(self.marker_root.exists())
-            local_schedule.refresh_gpu_host("runner", Clock(12))
-            self.assertTrue(local_schedule.gpu_on_host(Clock(12)))
-            self.assertTrue(local_schedule.gpu_on_host(Clock(12, day=21 + 7)))
-            self.assertFalse(local_schedule.gpu_on_host(Clock(11)))
+    def test_late_cron_after_marker_starts_without_sleep(self):
+        now = datetime(2026, 10, 25, 9).astimezone()
+        clock = Mock()
+        clock.now.return_value = now
+        with patch.dict(os.environ, OVERRIDE='false', NIGHT_START='04:00',
+                        GITHUB_EVENT_NAME='schedule', SCHEDULE='0 22 * * *', GITHUB_OUTPUT=''), \
+                patch.object(schedule, 'Clock', return_value=clock), \
+                patch.object(sys, 'argv', ['schedule', 'marker']), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(schedule.main(), 0)
+        clock.sleep.assert_not_called()
+        self.assertLess(datetime.fromisoformat(output.getvalue().strip()), now)
 
-    def test_missing_gpu_workflow_refuses_before_running(self):
-        env = dict(os.environ, OVERRIDE="true")
-        env.pop("GPU_WORKFLOW", None)
-        with patch.dict(os.environ, env, clear=True), \
-                patch.object(sys, "argv", ["local_schedule", "start", "--", "render"]), \
-                patch.object(local_schedule.subprocess, "call") as run:
-            with self.assertRaisesRegex(KeyError, "GPU_WORKFLOW"):
-                local_schedule.main()
-            run.assert_not_called()
-
-    def test_gpu_stage_busy_dispatch_refuses_and_schedule_skips(self):
+    def test_gpu_shell_only_deferral_ends_green(self):
         root = Path(__file__).resolve().parents[3]
-        with tempfile.TemporaryDirectory() as temporary:
-            fixture = Path(temporary)
-            tools = fixture / "tools"
-            tools.mkdir()
-            autana = tools / "autana"
-            autana.write_text("#!/bin/sh\necho 'heavy held by render-owner' >&2\nexit 75\n")
-            autana.chmod(0o755)
-            python = fixture / "python3"
-            python.write_text("#!/bin/sh\ncase \"$2\" in\n"
-                              "budget) echo 60; exit 0;;\n"
-                              "ready) echo ready >> order; exit 0;;\nesac\n"
-                              f'exec "{sys.executable}" "$@"\n')
-            python.chmod(0o755)
-            autana.write_text(autana.read_text().replace("echo 'heavy", "echo heavy >> order\necho 'heavy"))
-            env = dict(os.environ, PYTHONPATH=str(root), OVERRIDE="false",
-                       GPU_WORKFLOW=local_schedule.DOC_IMAGES_WORKFLOW,
-                       PATH=str(fixture) + os.pathsep + os.environ["PATH"])
-            for event in ("workflow_dispatch", "schedule", "workflow_run"):
-                env["GITHUB_EVENT_NAME"] = event
-                result = subprocess.run(["sh", str(root / "scripts/ci/gpu_stage.sh"), "render"],
-                                        cwd=fixture, env=env, capture_output=True, text=True)
-                self.assertIn("render-owner", result.stderr)
-                self.assertEqual((fixture / "order").read_text().splitlines()[-2:], ["ready", "heavy"])
-                if event in ("schedule", "workflow_run"):
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn(local_schedule.SKIPPED, result.stdout)
-                else:
-                    self.assertNotEqual(result.returncode, 0)
-                    self.assertIn(local_schedule.REFUSED, result.stdout)
-
-    def test_gpu_cron_starts_before_local_window_in_both_seasons(self):
-        workflow = Path(__file__).resolve().parents[3] / ".github/workflows/doc-images-gpu.yml"
-        data = yaml.safe_load(workflow.read_text())
-        self.assertEqual(data[True]['schedule'], [{'cron': '0 16 * * *'}])
-        start_hour, start_minute = map(int, NIGHT_START.split(":"))
-        for offset in (1, 2):
-            self.assertLessEqual(16 + offset, start_hour + start_minute / 60)
-        self.assertEqual(data["env"]["NIGHT_START"], "${{ vars.NIGHT_START }}")
-
-    def test_nightly_window_waits_runs_or_skips(self):
-        for hour, minute, wait, allowed in ((18, 0, 270 * 60, True),
-                (22, 30, 0, True), (23, 52, 0, True), (0, 30, 0, True),
-                (1, 52, 0, True), (6, 59, 0, True), (7, 0, 0, False),
-                (8, 0, 0, False), (12, 30, 600 * 60, True)):
-            with self.subTest(hour=hour, minute=minute):
-                clock = Clock(hour, minute)
-                deadline = local_schedule.night_window("22:30", "07:00", scheduled=True, clock=clock)
-                self.assertEqual(deadline is not None, allowed)
-                self.assertEqual(clock.sleeps, [wait] if wait else [])
-                if allowed:
-                    expected_day = 22 if hour >= 12 else 21
-                    self.assertEqual(deadline, (datetime(2026, 10, expected_day - 1, 22, 30),
-                                                datetime(2026, 10, expected_day, 7)))
-
-    def test_nightly_cron_and_timeout_cover_both_seasons(self):
-        workflow = Path(__file__).resolve().parents[3] / ".github/workflows/nightly-perf.yml"
-        data = yaml.safe_load(workflow.read_text())
-        cron_hour = 18
-        queue_hour, queue_minute = map(int, NIGHT_START.split(":"))
-        end_hour, end_minute = map(int, NIGHT_END.split(":"))
-        queue_hour += queue_minute / 60
-        end_hour += end_minute / 60
-        self.assertEqual(data[True]["schedule"], [{"cron": f"0 {cron_hour} * * *"}])
-        longest_wait_minutes = max((queue_hour - cron_hour - offset) * 60 for offset in (1, 2))
-        window_minutes = (24 - queue_hour + end_hour) * 60
-        publish_minutes = 60
-        timeout_minutes = int(longest_wait_minutes + window_minutes + publish_minutes)
-        self.assertEqual(data["jobs"]["nightly"]["timeout-minutes"], timeout_minutes)
-
-    def test_gate_and_post_lock_check_distinguish_dispatch_from_schedule(self):
         with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / "output"
-            summary = Path(directory) / "summary"
-            env = dict(GPU_WORKFLOW=local_schedule.DOC_IMAGES_WORKFLOW, GITHUB_OUTPUT=str(output), GITHUB_STEP_SUMMARY=str(summary), OVERRIDE="false")
-            refusal = local_schedule.REFUSED
-            for event, hour in (("schedule", 7), ("workflow_dispatch", 18),
-                                ("workflow_dispatch", 7), ("workflow_dispatch", 15)):
-                env["GITHUB_EVENT_NAME"] = event
-                for mode in ("gate", "start"):
-                    output.write_text("")
-                    summary.write_text("")
-                    with self.subTest(event=event, hour=hour, mode=mode), patch.dict(os.environ, env), \
-                            patch.object(local_schedule, "Clock", return_value=Clock(hour)), \
-                            patch.object(sys, "argv", ["local_schedule", mode, "--", "render"]), \
-                            patch.object(local_schedule.subprocess, "call") as run, \
-                            contextlib.redirect_stdout(io.StringIO()) as notice:
-                        code = local_schedule.main()
-                        if event in ("schedule", "workflow_run"):
-                            self.assertEqual(code, local_schedule.EXIT_SKIPPED if mode == "gate" else 0)
-                            message = local_schedule.SKIPPED
-                        else:
-                            self.assertNotEqual(code, 0)
-                            self.assertNotEqual(code, local_schedule.EXIT_SKIPPED)
-                            message = refusal
-                        self.assertEqual(notice.getvalue(), message + "\n")
-                        self.assertEqual(summary.read_text(), message + "\n")
-                        self.assertEqual(output.read_text(), "render=false\n" if mode == "gate" else "")
-                        run.assert_not_called()
-            env["OVERRIDE"] = "true"
-            with patch.dict(os.environ, env), patch.object(local_schedule, "Clock", return_value=Clock(12)), \
-                    patch.object(sys, "argv", ["local_schedule", "start", "--", "render"]), \
-                    patch.object(local_schedule.subprocess, "call", return_value=0) as run:
-                self.assertEqual(local_schedule.main(), 0)
-                run.assert_called_once_with(["render"])
-            self.assertIn("rendered=true", output.read_text())
+            fixture = Path(directory)
+            tools = fixture / 'tools'
+            tools.mkdir()
+            autana = tools / 'autana'
+            autana.write_text('#!/bin/sh\nprintf "%s\\n" "$*"\nexit 75\n')
+            autana.chmod(0o755)
+            python = fixture / 'python3'
+            python.write_text('#!/bin/sh\nif [ "$2" = ready ]; then exit "$READY_CODE"; fi\n'
+                              + f'exec "{sys.executable}" "$@"\n')
+            python.chmod(0o755)
+            for code in (0, schedule.EXIT_DEFERRED):
+                env = dict(os.environ, PYTHONPATH=str(root), READY_CODE=str(code),
+                           GPU_WORKFLOW=schedule.DOC_IMAGES_WORKFLOW,
+                           PATH=str(fixture) + os.pathsep + os.environ['PATH'])
+                result = subprocess.run(['sh', str(root / 'scripts/ci/gpu_stage.sh'), 'render'],
+                                        cwd=fixture, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0 if code == schedule.EXIT_DEFERRED else 75, result.stderr)
+                if not code:
+                    self.assertIn('--wait ' + str(schedule.NIGHT_STEP_HANG_SECONDS), result.stdout)
+                    self.assertIn('start -- render', result.stdout)
+                else:
+                    self.assertEqual(result.stdout, '')
+
+    def test_start_records_result_and_stops_tree_on_guard(self):
+        for expired in (False, True):
+            with tempfile.TemporaryDirectory() as root:
+                marker = Clock(1, tzinfo=timezone.utc).now().isoformat()
+                process = Mock()
+                process.wait.side_effect = subprocess.TimeoutExpired('render', 1) if expired else None
+                process.wait.return_value = 7
+                with patch.dict(os.environ, GPU_WORKFLOW=schedule.DOC_IMAGES_WORKFLOW,
+                                GITHUB_RUN_ID='42', MARKER=marker, _AUTANA_HEAVY_LOCK_ROOT=root), \
+                        patch.object(sys, 'argv', ['schedule', 'start', '--', 'render']), \
+                        patch.object(schedule, 'launch_process_tree', return_value=process), \
+                        patch.object(schedule, 'stop_process_tree') as stop, \
+                        patch.object(schedule, 'close_process_tree'), \
+                        contextlib.redirect_stdout(io.StringIO()) as output:
+                    self.assertNotEqual(schedule.main(), 0)
+                process.wait.assert_called_once_with(timeout=schedule.GPU_STAGE_HANG_SECONDS[schedule.DOC_IMAGES_WORKFLOW])
+                self.assertEqual(stop.called, expired)
+                if expired:
+                    self.assertIn('GPU_STAGE_HANG_SECONDS', output.getvalue())
+                record = json.loads(next((Path(root) / 'night-steps').glob('*/*.json')).read_text())
+                self.assertEqual((record['marker'], record['run'], record['workflow']),
+                                 (marker, '42', schedule.DOC_IMAGES_WORKFLOW))
+                self.assertTrue(record['started'] <= record['ended'])
+                self.assertNotEqual(record['exit'], 0)
