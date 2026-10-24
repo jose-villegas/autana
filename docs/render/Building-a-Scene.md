@@ -134,29 +134,28 @@ An app loads the scene by name and activates its camera. The shell advances
 every loaded scene and draws through the active camera each frame, so the app
 never calls draw; `frame()` runs after the scene is in the framebuffer and
 draws over it. Entities are found by name once the scene has loaded, so a
-misspelt one is found missing then:
+misspelt one is found missing then. Pass the scene and entity names to
+`hall_example_start()`:
 
+<!-- generated: scene-hall-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Scene: load by name, find an entity and activate the first camera. */
 #include "scene/scene.h"
 
 static scene_t* hall;
 static scene_entity_t statue;
 
 static void
-enter(void) {
+hall_example_start(const char* scene_id, const char* entity_name) {
     scene_failure_t why;
-    hall = scene_load("hall", &why); /* NULL when an entry is missing: `why` names it */
+    hall = scene_load(scene_id, &why);
     if (hall != NULL) {
-        statue = scene_find(hall, "statue"); /* SCENE_ENTITY_NONE when there is none */
-        scene_activate(hall, NULL);          /* its first camera */
+        statue = scene_find(hall, entity_name);
+        scene_activate(hall, NULL);
     }
 }
-
-static void
-frame(uint32_t dt_ms, const input_t* input) {
-    draw_hud();
-}
 ```
+<!-- /generated: scene-hall-example -->
 
 Nothing else: the shell unloads what the app loaded when it exits. To move
 something, `scene_set_transform(hall, statue, &where)`; to hide

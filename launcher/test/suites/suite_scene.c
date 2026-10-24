@@ -48,6 +48,10 @@
 #ifndef DEVICE_BUILD
 #include <stdio.h>
 
+#include "../scene_examples/animator.c"
+#include "../scene_examples/hall.c"
+#include "../scene_examples/present.c"
+#include "../scene_examples/small_fill.c"
 #include "anim/anim_skeleton_format.h"
 #include "asset/asset_file.h"
 #include "render/r3d_skin_format.h"
@@ -1246,6 +1250,63 @@ remove_pack(const char* name) {
     char path[64];
     (void)snprintf(path, sizeof path, "./%s.apak", name);
     TEST_ASSERT_EQUAL_INT(0, remove(path));
+}
+
+static void
+test_doc_scene_load_find_activate(void) {
+    fixture();
+    test_asset_dir_use(".");
+    write_pack("test_pair", false);
+    hall_example_start("test_pair", "red");
+    remove_pack("test_pair");
+    TEST_ASSERT_NOT_NULL(hall);
+    TEST_ASSERT_EQUAL_INT(scene_find(hall, "red"), statue);
+    TEST_ASSERT_TRUE(scene_has_active_camera());
+    frame(0);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), fx.pixels[CENTER * SIZE + CENTER]);
+}
+
+static void
+test_doc_animator_blends_to_selected_clip(void) {
+    fixture();
+    test_asset_dir_use(".");
+    write_pack("test_skin", false);
+    animator_example_start("test_skin", "red");
+    remove_pack("test_skin");
+    TEST_ASSERT_NOT_NULL(animated_scene);
+    TEST_ASSERT_EQUAL_INT(scene_find(animated_scene, "red"), subject);
+    TEST_ASSERT_TRUE(animator_example(1));
+    const anim_layer_t* layer = &animated_scene->animators[subject].layer;
+    TEST_ASSERT_EQUAL_INT(1, layer->current.clip);
+    TEST_ASSERT_EQUAL_INT(0, layer->previous.clip);
+    TEST_ASSERT_EQUAL_UINT32(ANIMATOR_EXAMPLE_BLEND_MS, layer->blend_ms);
+    TEST_ASSERT_FALSE(animator_example(scene_animator_clip_count(animated_scene, subject)));
+}
+
+static void
+test_doc_present_modes_reach_camera(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    const scene_entity_t camera = scene_find(scene, "camera");
+    const camera_present_t modes[] = {CAMERA_PRESENT_SCANLINE, CAMERA_PRESENT_DOUBLE, CAMERA_PRESENT_NEAREST};
+    for (size_t i = 0; i < sizeof modes / sizeof modes[0]; i++) {
+        TEST_ASSERT_TRUE(present_example(scene, camera, modes[i]));
+        TEST_ASSERT_EQUAL_INT(modes[i], scene_camera_lens(scene, NULL)->present);
+    }
+    TEST_ASSERT_FALSE(present_example(scene, scene_find(scene, "red"), CAMERA_PRESENT_DOUBLE));
+}
+
+static void
+test_doc_small_fill_reaches_camera(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    TEST_ASSERT_TRUE(small_fill_example(scene, scene_find(scene, "camera")));
+    const small_fill_t actual = scene_camera_lens(scene, NULL)->small_fill;
+    const small_fill_t expected = SMALL_FILL_FAST;
+    TEST_ASSERT_EQUAL_INT(expected.ceiling, actual.ceiling);
+    TEST_ASSERT_EQUAL_INT(expected.gate, actual.gate);
+    TEST_ASSERT_EQUAL_INT(expected.style, actual.style);
+    TEST_ASSERT_FALSE(small_fill_example(scene, scene_find(scene, "red")));
 }
 
 /* scene_load() reads the pack named after the scene once and holds it while
@@ -3465,6 +3526,10 @@ run_scene_suite(void) {
     RUN_TEST(test_a_scene_the_tools_bake_loads_as_its_file_says);
 #endif
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_doc_scene_load_find_activate);
+    RUN_TEST(test_doc_animator_blends_to_selected_clip);
+    RUN_TEST(test_doc_present_modes_reach_camera);
+    RUN_TEST(test_doc_small_fill_reaches_camera);
     RUN_TEST(test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads);
     RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_pack);
 #endif

@@ -70,26 +70,33 @@ mesh = "subject.import.toml"
 default_clip = "idle"
 ```
 
-An app finds the entity once and plays clips by index; the last argument of
-a play is the transition blend in milliseconds. `start` and `on_pick` are the
-app's own functions:
+Find the entity at entry, then play clips by index. The final play argument
+is the blend in milliseconds. Call `animator_example_start()` at entry and
+`animator_example()` when a clip is picked:
 
+<!-- generated: scene-animator-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Animator: find an entity at load and blend to a selected clip. */
 #include "scene/scene.h"
 
-static scene_t* scene;
+#define ANIMATOR_EXAMPLE_BLEND_MS 250
+
+static scene_t* animated_scene;
 static scene_entity_t subject;
 
-void start(void) {
-    scene = scene_load("meadow", NULL);
-    subject = scene_find(scene, "subject");
-    scene_activate(scene, NULL);
+static void
+animator_example_start(const char* scene_id, const char* entity_name) {
+    animated_scene = scene_load(scene_id, NULL);
+    subject = scene_find(animated_scene, entity_name);
+    scene_activate(animated_scene, NULL);
 }
 
-void on_pick(int clip) {
-    scene_animator_play(scene, subject, clip, 250);
+static bool
+animator_example(int clip) {
+    return scene_animator_play(animated_scene, subject, clip, ANIMATOR_EXAMPLE_BLEND_MS);
 }
 ```
+<!-- /generated: scene-animator-example -->
 
 | Call | Does |
 |---|---|

@@ -1,0 +1,19 @@
+/* Double framebuffer: request the layout on entry and release it on exit. */
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
+
+static bool doubled;
+
+static void
+effect_enter(void) {
+    const gfx_mode_request_t request = {.layout = GFX_LAYOUT_DOUBLE_FB};
+    doubled = gfx_mode_enter(&request)->layout == GFX_LAYOUT_DOUBLE_FB;
+    if (doubled) {
+        (void)gfx_set_clear_on_send(true, gfx_rgb(0x000000));
+    }
+}
+
+static void
+effect_exit(void) {
+    gfx_mode_exit();
+}

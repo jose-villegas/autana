@@ -120,7 +120,9 @@ A layout other than the default is requested in `enter()` and released in
 `exit()`. A refused allocation grants the full framebuffer, so check what
 was granted:
 
+<!-- generated: gfx-double-fb-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Double framebuffer: request the layout on entry and release it on exit. */
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 
@@ -131,15 +133,16 @@ effect_enter(void) {
     const gfx_mode_request_t request = {.layout = GFX_LAYOUT_DOUBLE_FB};
     doubled = gfx_mode_enter(&request)->layout == GFX_LAYOUT_DOUBLE_FB;
     if (doubled) {
-        (void)gfx_set_clear_on_send(true, gfx_rgb(0x000000)); /* frame() starts with draw_clear() of black */
+        (void)gfx_set_clear_on_send(true, gfx_rgb(0x000000));
     }
 }
 
 static void
 effect_exit(void) {
-    gfx_mode_exit(); /* also turns clear on send off */
+    gfx_mode_exit();
 }
 ```
+<!-- /generated: gfx-double-fb-example -->
 
 The full loop, with and without `update()`, is in
 [Building-an-App.md](../firmware/Building-an-App.md#one-pass-of-the-frame-loop).

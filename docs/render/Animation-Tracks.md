@@ -159,19 +159,40 @@ title Binding registry, one 28-byte row a binding from byte 20
 
 ### Reading a clip
 
+Pass the pack, clip id and node name to `track_example_start()`. Its state
+holds the curve and playhead for `track_example()` to sample each frame.
+
+<!-- generated: anim-track-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-anim_tracks_t clip;
-anim_track_t move;
-anim_playhead_t playhead;
-float out[ANIM_WIDTH_MAX];
-const name_hash_t camera = name_hash("camera");
-const name_hash_t position = name_hash("position");
-if (anim_tracks_from_pack(pack, "NAME", &clip) == ASSET_OK
-    && anim_tracks_find(&clip, camera, ANIM_COMPONENT_TRANSFORM,
-                        position, &move) == ASSET_OK) {
-    anim_playhead_init(&playhead, ANIM_LOOP);
+/* Track: load a position curve once, then sample it each frame. */
+#include "anim/anim_tracks.h"
+#include "anim/playback/anim_playhead.h"
+
+typedef struct {
+    anim_tracks_t clip;
+    anim_track_t move;
+    anim_playhead_t playhead;
+    float out[ANIM_WIDTH_MAX];
+} track_example_t;
+
+static bool
+track_example_start(track_example_t* s, const asset_pack_t* pack, const char* clip_id, const char* node) {
+    if (anim_tracks_from_pack(pack, clip_id, &s->clip) != ASSET_OK
+        || anim_tracks_find(&s->clip, name_hash(node), ANIM_COMPONENT_TRANSFORM, name_hash("position"), &s->move)
+               != ASSET_OK) {
+        return false;
+    }
+    anim_playhead_init(&s->playhead, ANIM_LOOP);
+    return true;
+}
+
+static void
+track_example(track_example_t* s, uint32_t dt_ms) {
+    anim_playhead_advance(&s->playhead, &s->clip.clip, dt_ms);
+    anim_track_sample(&s->move, anim_playhead_seconds(&s->playhead), s->out);
 }
 ```
+<!-- /generated: anim-track-example -->
 
 | Call | Gives |
 |---|---|
@@ -196,10 +217,9 @@ as `CAMERA_FIELDS` in `scene/camera/camera.h`.
 
 ## Sampling
 
-```c
-anim_playhead_advance(&playhead, &clip.clip, dt_ms);
-anim_track_sample(&move, anim_playhead_seconds(&playhead), out);
-```
+`track_example()` advances the playhead and samples the position curve in
+the [reading example](#reading-a-clip). Call it once per frame after
+`track_example_start()` succeeds.
 
 `anim_playhead_t` (`anim/playback/anim_playhead.h`) owns clip time in
 integer milliseconds; `anim_playhead_advance()` moves it by each frame's
@@ -276,18 +296,26 @@ If glTF can animate the property, map the channel in
 `tracks_asset.channel_binding()`, converting the curve to the field's units in
 the bake. The readers accept any nonzero code, so neither reader changes.
 
-For example, resolve a camera's field of view once at load, then sample the
-curve each frame:
+For example, find a camera's field-of-view track and sample it at `seconds`:
 
+<!-- generated: anim-camera-field-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-anim_track_t lens;
-float fov[ANIM_WIDTH_MAX];
-const name_hash_t camera = name_hash("camera");
-const name_hash_t field = name_hash("half_fov_short_tan");
-if (anim_tracks_find(&clip, camera, ANIM_COMPONENT_CAMERA, field, &lens) == ASSET_OK) {
-    anim_track_sample(&lens, seconds, fov);
+/* Camera field: resolve a lens curve and sample its field of view. */
+#include "anim/anim_tracks.h"
+
+static asset_status_t
+camera_field_example(const anim_tracks_t* clip, const char* node, float seconds, float fov[ANIM_WIDTH_MAX]) {
+    anim_track_t lens;
+    const name_hash_t camera = name_hash(node);
+    const name_hash_t field = name_hash("half_fov_short_tan");
+    const asset_status_t status = anim_tracks_find(clip, camera, ANIM_COMPONENT_CAMERA, field, &lens);
+    if (status == ASSET_OK) {
+        anim_track_sample(&lens, seconds, fov);
+    }
+    return status;
 }
 ```
+<!-- /generated: anim-camera-field-example -->
 
 ## Looking at a baked animation
 
