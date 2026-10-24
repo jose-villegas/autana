@@ -49,17 +49,19 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     float silence_db = 0;
     float tone_db = 0;
     audio_loopback_result_t loopback = {0};
+    audio_loopback_result_t silence = {0};
     sound_voice_t voice = SOUND_VOICE_NULL;
     bool held = false;
     bool ok = opened && audio_codec_dac_feedback(false)
               && (!args->internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
-              && audio_loopback_measure(args->hz, args->ms, &silence_db, NULL)
+              && audio_loopback_measure(args->hz, args->ms, &silence_db, &silence)
               && console_tone_start(&voice, args->hz, args->volume_pct)
               && audio_loopback_measure(args->hz, args->ms, &tone_db, &loopback);
     ok = console_tone_stop(&voice) && ok;
     if (held) {
         timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
     }
+    loopback.noise_dbfs = silence.noise_dbfs;
     const bool heard = tone_db - silence_db >= AUDIO_LOOPBACK_HEARD_MARGIN_DB;
     ok = audio_codec_dac_feedback(false) && ok;
     ok = audio_out_amp_hold(false) && ok;
