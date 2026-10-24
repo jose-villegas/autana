@@ -75,7 +75,7 @@ stem. For example:
 | Source | Block |
 |---|---|
 | `input_examples/touch.c` | `input-touch-example` |
-| `ui_examples/screens/tile_icon.c` | `ui-tile-icon-example` |
+| `ui_examples/screens/settings.c` | `ui-settings-example` |
 
 ```sh
 python launcher/tools/gen/examples_doc.py
