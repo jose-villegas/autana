@@ -1,3 +1,4 @@
+"""Board selection keeps a chosen board, resolves tokens and auto-picks by queued time."""
 import contextlib
 import io
 import json
