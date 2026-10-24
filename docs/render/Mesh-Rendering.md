@@ -522,9 +522,17 @@ style; `render_view_t.small_fill` carries them to the frame's row workers.
 The presets are defined in `render_view.h`. Opt in with the
 [scene camera API](Scene-Manager.md#what-an-app-calls), or pass custom `small_fill_t` values:
 
+<!-- generated: scene-small-fill-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-scene_camera_set_small_fill(scene, camera, SMALL_FILL_FAST);
+/* Small fill: choose the fast policy for a scene camera. */
+#include "scene/scene.h"
+
+static bool
+small_fill_example(scene_t* scene, scene_entity_t camera) {
+    return scene_camera_set_small_fill(scene, camera, SMALL_FILL_FAST);
+}
 ```
+<!-- /generated: scene-small-fill-example -->
 
 The gate:
 

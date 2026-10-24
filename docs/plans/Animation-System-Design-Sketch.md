@@ -2,7 +2,7 @@
 
 **Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning, the scene
 animator and skinned-renderer components, and per-renderer lighting (direct
-by default), mode selection from the SKIN entry, SCNE v2 and the clip
+by default), mode selection from the SKIN entry, SCNE v3 and the clip
 picker are implemented; [Skinned Meshes](../render/Skinned-Meshes.md) is
 the user guide. `[A]` marks a proposal of this sketch.
 
@@ -87,8 +87,8 @@ TRCK v2 is defined by [Animation tracks](../render/Animation-Tracks.md#the-pack-
 Skeleton clips use joint paths from each root joint. SKIN normals hold the
 bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 
-SCNE v2 carries authored skinned-renderer, animator and light rows, plus ambient
-and tone-map settings. [Scene-Files.md](../render/Scene-Files.md#scne-v2)
+SCNE v3 carries authored skinned-renderer, animator and light rows, plus ambient
+and tone-map settings. [Scene-Files.md](../render/Scene-Files.md#scne-v3)
 owns the layout and syntax. SKIN v2 supplies the renderer's lighting mode;
 [lighting modes](../render/Skinned-Lighting.md#lighting-modes) holds costs and
 quality. Runtime lights shade skinned albedo; static renderers keep baked
@@ -115,7 +115,7 @@ SCNE animator rows create animators; a camera path loads as one. Public
 playback controls are declared in `scene/scene.h`; apps hold entity handles
 and clip indices. The playback query API includes:
 
-```c
+```c fragment
 bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);
 int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
 const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);

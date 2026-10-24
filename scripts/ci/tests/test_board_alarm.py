@@ -1,3 +1,4 @@
+"""board_alarm raises one outage issue once, clears it, and reads recovery and stuck-job evidence from runs."""
 import io
 import json
 import os
