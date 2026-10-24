@@ -1,21 +1,11 @@
-/*
- * display: see display.h for the module's job and the hysteresis math.
- *
- * A real translation unit rather than static inline in the header (compare
- * ui_style.h/ui_transform.h, which are header-only because their geometry is
- * a handful of one-shot computations with no state of their own to carry
- * between calls). This module is a small state machine: the decision on
- * one call depends on where display_update() left `quarter` last time, so
- * it gets the same treatment as gesture.c and tilt.c, the two modules this
- * one is explicitly modelled on.
- */
-
+/* Android WindowOrientationListener's gates use our down-vector sign convention. */
 #include "display/display.h"
 #include "display/display_shell.h"
 
 #include <assert.h>
-#include <stdint.h>
+#include <math.h>
 
+#include "display/viewport.h"
 #include "math/scalar/mathi.h"
 
 int
@@ -33,77 +23,142 @@ display_panel_corner_inset(int radius, int canvas_height, int row) {
 
 void
 display_init(display_t* d) {
-    /* 0, always: a neutral reset with no opinion about which way the
-     * board is actually held. DISPLAY_DEFAULT_QUARTER (display.h) is a
-     * physical fact about THIS shell's board, not something a
-     * device-agnostic module should bake into its own idea of "reset";
-     * display_orientation_init() applies it, right after this call. */
-    d->quarter = 0;
+    *d = (display_t){.predicted = DISPLAY_QUARTER_NONE,
+                     .flat_since_us = DISPLAY_TIME_NONE,
+                     .flat_ended_us = DISPLAY_TIME_NONE,
+                     .swing_ended_us = DISPLAY_TIME_NONE,
+                     .accel_ended_us = DISPLAY_TIME_NONE,
+                     .touch_ended_us = DISPLAY_TIME_NONE};
 }
 
-/* Splits (gx, gy) into the component along quarter `q`'s own "down"
- * direction and the component perpendicular to it; see display.h's top
- * comment. Mirrors the branch structure of picking a quarter from scratch:
- * quarters 0/2 read gy as the deciding axis and gx as the offender; 1/3 the
- * other way round. `*aligned` is positive when the board is still roughly
- * where quarter `q` expects. */
+void
+display_touch(display_t* d, int64_t now_us) {
+    d->touched = true;
+    d->touch_ended_us = now_us;
+}
+
+static bool
+elapsed(int64_t now_us, int64_t event_us, int duration_ms) {
+    return event_us == DISPLAY_TIME_NONE
+           || (now_us >= event_us && now_us - event_us >= (int64_t)duration_ms * MATH_US_PER_MS);
+}
+
 static void
-split_gravity(int q, int gx, int gy, int* aligned, int* perp) {
-    switch (q) {
-        case 0:
-            *aligned = gy;
-            *perp = gx;
-            break; /* down is down */
-        case 2:
-            *aligned = -gy;
-            *perp = gx;
-            break; /* board upside down */
-        case 3:
-            *aligned = gx;
-            *perp = gy;
-            break;       /* down is to the right */
-        default: /* 1 */ /* down is to the left */
-            *aligned = -gx;
-            *perp = gy;
+track_tilt(display_t* d, float sine, float cosine, int64_t now_us) {
+    const bool was_flat = d->flat;
+    if (fabsf(sine) >= DISPLAY_FLAT_SIN) {
+        if (d->flat_since_us == DISPLAY_TIME_NONE) {
+            d->flat_since_us = now_us;
+        }
+        d->flat = elapsed(now_us, d->flat_since_us, DISPLAY_FLAT_MS);
+    } else {
+        d->flat_since_us = DISPLAY_TIME_NONE;
+        d->flat = false;
+    }
+    if (d->flat || was_flat) {
+        d->flat_ended_us = now_us;
+    }
+    for (int i = 0; i < d->tilt_count; i++) {
+        if (now_us - d->tilts[i].time_us > (int64_t)DISPLAY_SWING_MS * MATH_US_PER_MS) {
+            continue;
+        }
+        const float rise_sin = sine * d->tilts[i].cosine - cosine * d->tilts[i].sine;
+        const float rise_cos = cosine * d->tilts[i].cosine + sine * d->tilts[i].sine;
+        if (sine > d->tilts[i].sine && (rise_cos < 0.0F || rise_sin >= DISPLAY_SWING_SIN)) {
+            d->swing_ended_us = now_us;
             break;
+        }
+    }
+    d->tilts[d->tilt_next].sine = sine;
+    d->tilts[d->tilt_next].cosine = cosine;
+    d->tilts[d->tilt_next].time_us = now_us;
+    d->tilt_next = (d->tilt_next + 1) % DISPLAY_TILT_HISTORY_COUNT;
+    if (d->tilt_count < DISPLAY_TILT_HISTORY_COUNT) {
+        d->tilt_count++;
+    }
+    if (sine <= DISPLAY_OVERHEAD_ENTER_SIN) {
+        d->overhead = true;
+    } else if (sine >= DISPLAY_OVERHEAD_EXIT_SIN) {
+        d->overhead = false;
     }
 }
 
-/* Which quarter is reached by leaving `q` when `perp` (the perpendicular
- * component split_gravity() just computed for `q`) is the one driving the
- * switch, entered from whichever quarter is already current instead of
- * recomputed from nothing every call. */
 static int
-neighbor_quarter(int q, int perp) {
-    if (q == 0 || q == 2) {
-        return (perp >= 0) ? 3 : 1;
+predict_quarter(const display_t* d, float tilt_sin) {
+    if (d->overhead || fabsf(tilt_sin) > DISPLAY_MAX_TILT_SIN) {
+        return DISPLAY_QUARTER_NONE;
     }
-    return (perp >= 0) ? 0 : 2;
+    const vec3f_t v = d->filtered;
+    const int quarter = fabsf(v.x) > fabsf(v.y) ? (v.x > 0.0F ? DISPLAY_LANDSCAPE_UPSIDE_DOWN : DISPLAY_LANDSCAPE)
+                                                : (v.y > 0.0F ? DISPLAY_PORTRAIT : DISPLAY_PORTRAIT_UPSIDE_DOWN);
+    const int relative = (quarter - DISPLAY_DEFAULT_QUARTER + DISPLAY_QUARTER_COUNT) % DISPLAY_QUARTER_COUNT;
+    const float max_sin = relative == 0                           ? DISPLAY_TILT_DEFAULT_MAX_SIN
+                          : relative == DISPLAY_QUARTER_COUNT / 2 ? DISPLAY_TILT_OPPOSITE_MAX_SIN
+                                                                  : DISPLAY_TILT_ADJACENT_MAX_SIN;
+    if (tilt_sin < DISPLAY_TILT_MIN_SIN || tilt_sin > max_sin) {
+        return DISPLAY_QUARTER_NONE;
+    }
+    const viewport_quarter_axes_t axes = viewport_quarter_axes(d->quarter);
+    const float aligned = v.x * axes.x_down + v.y * axes.y_down;
+    const float plane = sqrtf(v.x * v.x + v.y * v.y);
+    if (quarter != d->quarter && aligned >= plane * DISPLAY_ADJACENT_MIN_COS) {
+        return DISPLAY_QUARTER_NONE;
+    }
+    return quarter;
 }
 
 bool
-display_update(display_t* d, vec2i_t gravity) {
-    int aligned;
-    int perp;
-    split_gravity(d->quarter, gravity.x, gravity.y, &aligned, &perp);
-
-    const int perp_abs = (perp < 0) ? -perp : perp;
-
-    /* Cross-multiplied instead of divided: exact integer arithmetic, no
-     * rounding, and no need to guard a zero denominator. See display.h's top
-     * comment for the ratio, the angle it stands in for, and why a negative
-     * `aligned` (tilt past 90 degrees from the current quarter) falls
-     * straight through to a switch instead of getting stuck: the right side
-     * goes negative while perp_abs stays non-negative, so the "no switch"
-     * branch below can never be taken. */
-    if ((int64_t)perp_abs * DISPLAY_HYST_DEN <= (int64_t)aligned * DISPLAY_HYST_NUM) {
+display_update(display_t* d, vec3f_t accel_g, int64_t now_us) {
+    const bool touched = d->touched;
+    d->touched = false;
+    const bool zero = vec3f_dot(accel_g, accel_g) == 0.0F;
+    const bool restart = !d->primed || now_us < d->sample_us
+                         || now_us - d->sample_us > (int64_t)DISPLAY_FILTER_RESET_MS * MATH_US_PER_MS || zero;
+    if (restart) {
+        const int quarter = d->quarter;
+        const int64_t touch_us = d->touch_ended_us;
+        display_init(d);
+        d->quarter = quarter;
+        d->touch_ended_us = touch_us > now_us ? now_us : touch_us;
+        d->filtered = accel_g;
+        d->primed = !zero;
+    } else {
+        const float dt_us = (float)(now_us - d->sample_us);
+        const float alpha = dt_us / ((float)DISPLAY_FILTER_TAU_MS * MATH_US_PER_MS + dt_us);
+        d->filtered = vec3f_lerp(d->filtered, accel_g, alpha);
+    }
+    d->sample_us = now_us;
+    const float magnitude = sqrtf(vec3f_dot(d->filtered, d->filtered));
+    int predicted = DISPLAY_QUARTER_NONE;
+    if (magnitude >= DISPLAY_NEAR_ZERO_G) {
+        if (fabsf(magnitude - 1.0F) > DISPLAY_ACCEL_TOLERANCE_G) {
+            d->accel_ended_us = now_us;
+        }
+        /* Down points into a face-up screen, opposite Android's accelerometer z. */
+        const float sine = -d->filtered.z / magnitude;
+        const float cosine = sqrtf(fmaxf(0.0F, 1.0F - sine * sine));
+        track_tilt(d, sine, cosine, now_us);
+        predicted = predict_quarter(d, sine);
+    } else {
+        if (d->flat) {
+            d->flat_ended_us = now_us;
+        }
+        d->flat = false;
+        d->flat_since_us = DISPLAY_TIME_NONE;
+    }
+    if (predicted != d->predicted) {
+        d->predicted = predicted;
+        d->predicted_us = now_us;
+    }
+    if (predicted == DISPLAY_QUARTER_NONE || predicted == d->quarter || touched || d->flat
+        || !elapsed(now_us, d->predicted_us, DISPLAY_SETTLE_MS)
+        || !elapsed(now_us, d->flat_ended_us, DISPLAY_AFTER_FLAT_MS)
+        || !elapsed(now_us, d->accel_ended_us, DISPLAY_AFTER_ACCEL_MS)
+        || !elapsed(now_us, d->swing_ended_us, DISPLAY_AFTER_SWING_MS)
+        || !elapsed(now_us, d->touch_ended_us, DISPLAY_AFTER_TOUCH_MS)) {
         return false;
     }
-
-    /* neighbor_quarter() always returns something other than d->quarter by
-     * construction: each of the four cases above maps to one of the other
-     * three, so reaching here always is a real change. */
-    d->quarter = neighbor_quarter(d->quarter, perp);
+    d->quarter = predicted;
     return true;
 }
 
@@ -122,17 +177,17 @@ display_orientation_init(display_orientation_t* o) {
 }
 
 bool
-display_orientation_sample(display_orientation_t* o, int64_t now_us, display_gravity_reader_t read) {
+display_orientation_sample(display_orientation_t* o, int64_t now_us, display_acceleration_reader_t read) {
     if (o->held || now_us < o->next_sample_us) {
         return false;
     }
-    o->next_sample_us = now_us + ((int64_t)DISPLAY_SAMPLE_MS * 1000);
+    o->next_sample_us = now_us + ((int64_t)DISPLAY_SAMPLE_MS * MATH_US_PER_MS);
 
-    vec2i_t gravity;
-    if (!read(&gravity)) {
+    vec3f_t acceleration;
+    if (!read(&acceleration)) {
         return false;
     }
-    const bool changed = display_update(&o->display, gravity) || o->released;
+    const bool changed = display_update(&o->display, acceleration, now_us) || o->released;
     o->released = false;
     return changed;
 }
@@ -147,6 +202,11 @@ display_orientation_hold(display_orientation_t* o, int quarter) {
 void
 display_orientation_release(display_orientation_t* o) {
     o->held = false;
+    const int quarter = o->display.quarter;
+    const int64_t touch_ended_us = o->display.touch_ended_us;
+    display_init(&o->display);
+    o->display.quarter = quarter;
+    o->display.touch_ended_us = touch_ended_us;
     o->released = true;
     o->next_sample_us = 0;
 }

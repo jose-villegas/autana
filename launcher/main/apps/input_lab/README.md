@@ -143,3 +143,5 @@ python launcher/main/apps/input_lab/tools/shake_fit.py --results
 
 </details>
 <!-- /generated: shake-side -->
+
+The [orientation round](tools/README.md) records shell quarter decisions.
