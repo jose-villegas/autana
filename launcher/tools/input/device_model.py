@@ -1,7 +1,9 @@
 """The device as a 3D figure: rounded box, IMU and both axis sets, from board/board_geometry.h.
 
 Device axes: x right, y up the screen, z out of the glass; millimetres; origin at the glass centre.
-A pose is a 3x3 matrix whose columns are the device axes in the figure's world axes.
+A pose is a 3x3 matrix whose columns are the device axes in the figure's world axes; world z is up.
+DeviceAnimation is the input figures' one animation: the posed device with its direction vectors on the left,
+scalar signals over time on the right, a time cursor in sync.
 """
 from pathlib import Path
 
@@ -10,7 +12,7 @@ from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from math_figures import run_probe
-from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS
+from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, figure, save_gif
 
 PROBE = Path(__file__).with_name("device_model_probe.c")
 CORNER_SEGMENTS = 8
@@ -26,6 +28,26 @@ EDGE_WIDTH = 0.2
 AXIS_SHARE = 0.32
 ARROW_RATIO = 0.15
 LABEL_PAST = 1.12
+WORLD_DOWN = np.array([0.0, 0.0, -1.0])
+VIEW_ELEVATION = 22
+VIEW_AZIMUTH = -60
+ANIMATION_DPI = 80
+# Palette size: the shaded device takes many entries, and every line and arrow colour must keep its own.
+ANIMATION_COLORS = 128
+ANIMATION_SIZE = (10, 5.4)
+# The scene's half extent, and the length of a vector at its scale's unit, as shares of the device height.
+EXTENT_SHARE = 0.7
+VECTOR_SHARE = 0.5
+# Vectors start to the camera's right and left of the device, this share of the height past its half diagonal,
+# so they stay clear of it in any pose.
+BESIDE_SHARE = 0.1
+# Figure shares: the scene on the left, the signal plots stacked on the right, the legend under both.
+SCENE = (0, 0.08, 0.62, 0.84)
+PLOTS = (0.68, 0.2, 0.3, 0.64)
+PLOT_GAP = 0.1
+TITLE_Y = 0.94
+LEGEND_Y = 0.02
+LEGEND_COLUMNS = 6
 
 
 def rounded_outline(width, height, radius):
@@ -92,3 +114,77 @@ def legend_handles():
     """Legend entries for the two axis sets."""
     return [Line2D([], [], color=CHIP_AXES, label="Chip axes X Y Z"),
             Line2D([], [], color=SCREEN_AXES, label="Screen axes x y z")]
+
+
+def pose_from_down(down, yaw=0.0):
+    """The pose that turns device vector `down` onto world down by the smallest rotation (Rodrigues), then `yaw`
+    radians about world down's axis: a down vector cannot tell that turn, so the caller picks it."""
+    down = np.asarray(down, dtype=float) / np.linalg.norm(down)
+    axis = np.cross(down, WORLD_DOWN)
+    sine, cosine = np.linalg.norm(axis), down @ WORLD_DOWN
+    if sine < 1e-9:
+        tilt = np.eye(3) if cosine > 0 else np.diag((1.0, -1.0, -1.0))
+    else:
+        k = axis / sine
+        cross = np.array(((0, -k[2], k[1]), (k[2], 0, -k[0]), (-k[1], k[0], 0)))
+        tilt = np.eye(3) + sine * cross + (1 - cosine) * cross @ cross
+    turn = np.array(((np.cos(yaw), -np.sin(yaw), 0), (np.sin(yaw), np.cos(yaw), 0), (0, 0, 1)))
+    return turn @ tilt
+
+
+def facing_yaw(down, azimuth=VIEW_AZIMUTH):
+    """The yaw for pose_from_down that turns the glass towards a camera at `azimuth` degrees."""
+    normal = pose_from_down(down) @ np.array([0.0, 0.0, 1.0])
+    return np.radians(azimuth) - np.arctan2(normal[1], normal[0])
+
+
+class DeviceAnimation:
+    """The posed device with direction vectors on the left and scalar signal plots on the right, in sync.
+
+    Fill and style each of `plots` (top first) before saving; `frame` redraws the scene and moves every plot's
+    time cursor. Vectors are (start, vector, colour, width) in world axes, millimetres.
+    """
+
+    def __init__(self, model, plots=1):
+        self.model = model
+        self.fig = figure(ANIMATION_SIZE)
+        self.fig.set_layout_engine(None)
+        # Arrows draw over the translucent device in call order, not depth order, so their colours stay true.
+        self.scene = self.fig.add_axes(SCENE, projection="3d", computed_zorder=False)
+        left, bottom, width, height = PLOTS
+        each = (height - PLOT_GAP * (plots - 1)) / plots
+        self.plots = [self.fig.add_axes((left, bottom + (plots - 1 - row) * (each + PLOT_GAP), width, each))
+                      for row in range(plots)]
+        self.cursors = [plot.axvline(0, color=INK, linewidth=1) for plot in self.plots]
+        self.title = self.fig.text(0.5, TITLE_Y, "", ha="center", fontsize=TITLE_SIZE, color=INK)
+        self.unit = VECTOR_SHARE * model.height
+        away = np.hypot(model.width, model.height) / 2 + BESIDE_SHARE * model.height
+        right = np.radians(VIEW_AZIMUTH + 90)
+        right = away * np.array([np.cos(right), np.sin(right), 0.0])
+        # World down is drawn on the right, centred on the device's height; the device's own motion on the left.
+        self.beside = right + (0, 0, self.unit / 2)
+        self.left = -right
+
+    def legend(self, handles):
+        self.fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, LEGEND_Y),
+                        ncol=min(len(handles), LEGEND_COLUMNS), fontsize=LABEL_SIZE, frameon=False)
+
+    def frame(self, pose, vectors, time, title, azimuth=VIEW_AZIMUTH, **axes):
+        """Draw one frame: the device in `pose` (draw's axis-set switches in `axes`), then the vectors over it."""
+        scene, extent = self.scene, EXTENT_SHARE * self.model.height
+        scene.cla()
+        scene.set_axis_off()
+        for setter in (scene.set_xlim, scene.set_ylim, scene.set_zlim):
+            setter(-extent, extent)
+        scene.set_box_aspect((1, 1, 1))
+        scene.view_init(elev=VIEW_ELEVATION, azim=azimuth)
+        self.model.draw(scene, pose, **axes)
+        for start, vector, colour, width in vectors:
+            scene.quiver(*start, *vector, color=colour, arrow_length_ratio=ARROW_RATIO, linewidth=width)
+        self.title.set_text(title)
+        for cursor in self.cursors:
+            cursor.set_xdata([time] * 2)
+
+    def save(self, output, frames, draw_frame, fps=GIF_FPS):
+        self.fig.set_dpi(ANIMATION_DPI)
+        save_gif(self.fig, draw_frame, frames, output, fps, colors=ANIMATION_COLORS)
