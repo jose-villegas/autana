@@ -6,20 +6,25 @@ The mesh a bake writes and a renderer reads: its clusters and tree, the
 
 ## Clusters and the tree
 
-A vertex carries one sRGB colour: the baked light times the albedo, or, with no
-bake, the albedo alone. A renderer with `shading = { flat = ... }` is flat instead,
-with one RGB565 colour per triangle (`light.face_colours()`): the light and
-albedo averaged over the points of the face that `shading.flat` sets, a fixed count
-or one chosen per face, every face sharing one set
-of sun and sky directions so neighbours on one surface agree unless something
-really shades one of them. Vertices weld by position alone since colour no
-longer splits them, and a flat mesh draws with no colour gradients. The
-triangles are grouped into
-**clusters**. Each cluster
-owns a contiguous range of vertices and triangles, and its triangles index
-only its own vertices. The clusters are the leaves of a tree rooted at
-`nodes[0]`, so one box test culls a whole subtree. Positions are `int16`
-ticks, `position_scale` ticks per model unit.
+The triangles are grouped into **clusters**, the leaves of a tree rooted at
+`nodes[0]`, so one box test culls a whole subtree. Positions are `int16` ticks,
+`position_scale` ticks per model unit.
+
+![A baked mesh's clusters, then the tree level by level with one root-to-leaf path bold](../images/render/baked-mesh-tree.gif)
+
+*The demo scene's lite mesh: clusters in the meshlets view's hues, then each
+level's boxes, the triangles of the bold path's node in full colour.*
+
+![The first leaves' clusters as runs of the triangle and vertex arrays](../images/render/baked-mesh-ranges.png)
+
+*Each cluster owns one contiguous run of vertices and one of triangles, and its
+triangles index only its own vertices; a leaf owns a run of clusters.*
+
+A vertex carries one sRGB colour: the baked light times the albedo, or the
+albedo alone with no bake. With `shading = { flat = ... }` the mesh is flat
+instead: one RGB565 colour per triangle (`light.face_colours()`), averaged over
+the points `shading.flat` sets under one shared set of sun and sky directions.
+Flat vertices weld by position alone and draw with no colour gradients.
 
 ## LMSH
 
@@ -168,22 +173,31 @@ title Content: face colour, 2 bytes a triangle from face_colours_off
 
 ## Meshlets
 
-The clusters are **meshlets**: compact runs bounded by `geometry.meshlet_triangles`
-(4 through 256, default 32), from
-meshoptimizer's clusterizer<sup>[[11]](../Citations.md#11)</sup>, each of one sidedness and owning the vertices its
-triangles use. The octree above them is built over the meshlets' centres, and
-its leaves hold a few hundred triangles' worth.
+The clusters are **meshlets** from meshoptimizer's
+clusterizer<sup>[[11]](../Citations.md#11)</sup>: at most `geometry.meshlet_triangles`
+triangles (4 through 256, default 32), of one sidedness, each owning the
+vertices its triangles use. The octree is built over their centres; a leaf
+holds a few hundred triangles' worth.
 
-Meshlets share more vertices than clusters cut as leaves of an octree of the
-triangles, so a frame transforms fewer. Bigger ones span looser boxes and
-submit more triangles for the same view, and smaller ones cost more clusters
-to walk. The [measured size table](Render-Pipeline.md#meshlets) shows this trade.
-Import and `rebake.py --import PATH` read the same meshlet size setting.
+![The clusterizer cutting a small flat patch into meshlets, one per step](../images/render/meshlet-build.gif)
 
-Meshlets also change the draw order of the finest level. Where two triangles
-reach the same depth the first drawn wins, so a redrawn frame differs from the
-clusterizer's order in a fraction of a percent of its pixels, from ties alone:
-the triangles are the same.
+*The importer's own clusterizer call on a flat patch, limit 16, the newest
+meshlet outlined. meshoptimizer has no per-triangle hook and the call reorders
+each meshlet's triangles, so each step is a whole meshlet, in emitted order.*
 
-Levels of detail built on the meshlets, and what they would save, are in
+![Clusters painted by the meshlets debug view](../images/render/sponza-meshlets.png)
+
+*The meshlets view on the full, lite and fitted meshes.*
+
+![Clusters and submitted triangles against the meshlet size](../images/render/meshlets/meshlet-size-trade.png)
+
+*Smaller meshlets cost more clusters to walk; bigger ones span looser boxes and
+submit more triangles. Measured rows: the [size table](Render-Pipeline.md#meshlets).*
+
+Meshlets share more vertices than leaves of an octree of the triangles would, so
+a frame transforms fewer. Import and `rebake.py --import PATH` read the same size
+setting. Where two triangles reach the same depth the first drawn wins, so the
+clusterizer's order changes a fraction of a percent of pixels, from ties alone.
+
+Levels of detail built on the meshlets are in
 [plans/Cluster-LOD.md](../plans/Cluster-LOD.md).
