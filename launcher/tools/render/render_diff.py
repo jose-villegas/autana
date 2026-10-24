@@ -33,7 +33,7 @@ import zlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "device"))
 from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402  (path must be set up first)
-from screenshot import turn_png  # noqa: E402
+from screenshot import rgb_png, turn_png  # noqa: E402
 
 BMP_HEADER_SIZE = 54
 
@@ -267,17 +267,8 @@ def masked(rects, x, y):
 
 
 def write_png(path, width, height, rows):
-    def chunk(tag, body):
-        return (struct.pack(">I", len(body)) + tag + body
-                + struct.pack(">I", zlib.crc32(tag + body) & 0xffffffff))
-
-    raw = b"".join(b"\x00" + bytes(row) for row in rows)
-    png = b"\x89PNG\r\n\x1a\n"
-    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-    png += chunk(b"IDAT", zlib.compress(raw, 6))
-    png += chunk(b"IEND", b"")
     with open(path, "wb") as f:
-        f.write(png)
+        f.write(rgb_png(width, height, rows))
 
 
 def main(argv=None):

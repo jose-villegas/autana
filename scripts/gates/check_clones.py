@@ -8,8 +8,9 @@ fragments that vanished from HEAD, or a fragment a file this change deleted
 already held (code moved out of it). A surviving shrink gives no headroom.
 --report lists all pairs. --min-tokens N reports another threshold without
 checking new pairs. MIN_TOKENS is 80: longer copied helpers and test setup
-are detected, including renamed identifiers and changed literal values;
-short helpers are missed. Literal-only fragments and exact self-matches
+are detected, including renamed identifiers and changed literal values.
+A shorter Python function pairs with another whose body is the same up to
+the names it binds (see function_shape). Literal-only fragments and exact self-matches
 are excluded. Literal-only object-like #defines are blanked on both sides
 before matching, preserving line numbers; a declaration statement is written
 one declarator per statement and parentheses after no name, `)` or `]` are
@@ -17,6 +18,9 @@ blanked, so neither a split nor an added grouping counts as copying. The pinned
 engine ignores comments and whitespace.
 """
 import argparse
+import ast
+import copy
+import itertools
 import json
 import re
 from pathlib import Path
@@ -31,6 +35,9 @@ from tracked import revision_contents
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / "scripts/gates/node_modules/jscpd/run-jscpd.js"
 MIN_TOKENS = 80
+# Below this many AST nodes a same-shape function is an idiom (`return self`,
+# `self.directory.cleanup()`), not a helper worth an owner.
+MIN_FUNCTION_NODES = 20
 SUFFIXES = {".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".py"}
 
 
@@ -169,6 +176,49 @@ def normalise_c(text):
     return drop_grouping_parentheses(split_declarations(text))
 
 
+def function_shape(function):
+    """The function's AST dump with its docstring, name, decorators and annotations
+    dropped and each parameter and local renamed by first use; globals, attributes
+    and literals stay as written. None for a body that is only a docstring."""
+    tree = copy.deepcopy(function)
+    tree.name, tree.decorator_list, tree.returns = "", [], None
+    if isinstance(tree.body[0], ast.Expr) and isinstance(tree.body[0].value, ast.Constant) \
+            and isinstance(tree.body[0].value.value, str):
+        tree.body = tree.body[1:]
+    if not tree.body:
+        return None
+    bound = {node.arg for node in ast.walk(tree.args) if isinstance(node, ast.arg)}
+    bound |= {node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load)}
+    numbers = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.arg):
+            node.arg, node.annotation = numbers.setdefault(node.arg, f"_{len(numbers)}"), None
+        elif isinstance(node, ast.Name) and node.id in bound:
+            node.id = numbers.setdefault(node.id, f"_{len(numbers)}")
+    if sum(1 for _ in ast.walk(tree)) < MIN_FUNCTION_NODES:
+        return None
+    return ast.dump(tree)
+
+
+def short_function_pairs(sources, minimum):
+    """Pairs of same-shape Python functions under `minimum` tokens, the engine's
+    floor, from {name: text}."""
+    shapes = {}
+    for name, text in sources.items():
+        for function in ast.walk(ast.parse(text)):
+            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            fragment = ast.get_source_segment(text, function)
+            tokens = len(re.findall(r"\w+|[^\w\s]", fragment))
+            shape = function_shape(function) if tokens < minimum else None
+            if shape:
+                side = {"name": name, "start": function.lineno, "end": function.end_lineno}
+                shapes.setdefault(shape, []).append((side, tokens, fragment))
+    return [{"format": "python", "tokens": tokens, "fragment": fragment, "firstFile": first, "secondFile": second}
+            for group in shapes.values()
+            for (first, tokens, fragment), (second, _, _) in itertools.combinations(group, 2)]
+
+
 def registration_only(pair):
     if pair["format"] == "python":
         return False
@@ -207,10 +257,13 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
         tree.mkdir()
         names = [name for name in names if eligible_name(name)]
         contents = revision_contents(root, revision, names, renames)
+        python_sources = {}
         for name, content in contents:
             content = content.replace(b"\r\n", b"\n")
             if is_generated(content.decode("utf-8")):
                 continue
+            if name.endswith(".py"):
+                python_sources[name] = content.decode("utf-8")
             target = tree / name
             target.parent.mkdir(parents=True, exist_ok=True)
             if target.suffix != ".py":
@@ -235,6 +288,7 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
         for pair in pairs:
             for side in ("firstFile", "secondFile"):
                 pair[side]["name"] = Path(pair[side]["name"].removeprefix("\\\\?\\")).relative_to(tree).as_posix()
+        pairs += short_function_pairs(python_sources, minimum)
         return sorted(filter_pairs(pairs), key=lambda pair: (-pair["tokens"], pair["firstFile"]["name"],
                                               pair["firstFile"]["start"], pair["secondFile"]["name"]))
 
