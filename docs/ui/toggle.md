@@ -5,7 +5,7 @@ label. It writes `*on` and returns true on the frame it changed it.
 
 ## Example
 
-<!-- generated: ui-toggle-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-toggle-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A toggle: writes through its pointer and returns true when it changed it. */
 #include "ui/ui.h"

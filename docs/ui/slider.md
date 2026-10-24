@@ -7,7 +7,7 @@ identity and is not drawn.
 
 ## Example
 
-<!-- generated: ui-slider-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-slider-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A slider over a whole-number range: true on a frame it changed the value. */
 #include "ui/ui.h"
