@@ -24,9 +24,9 @@ typedef struct {
 /* Starts at DISPLAY_DEFAULT_QUARTER, due to sample at once. */
 void display_orientation_init(display_orientation_t* o);
 
-/* Reads acceleration through `read` when DISPLAY_SAMPLE_MS has passed since the
- * last attempt, a failed read included, and feeds display_update(). True when
- * the quarter changed or the sampler has been released. */
+/* Reads acceleration through `read` at most once per DISPLAY_SAMPLE_MS,
+ * counting failed reads. True when the quarter changes or a released hold
+ * requires the shell to reapply its UI transform. */
 bool display_orientation_sample(display_orientation_t* o, int64_t now_us, display_acceleration_reader_t read);
 
 void display_orientation_hold(display_orientation_t* o, int quarter);

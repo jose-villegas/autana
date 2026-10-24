@@ -12,6 +12,7 @@
 #include "esp_log.h"
 
 #include "app/app.h"
+#include "apps/input_lab/guided_step.h"
 #include "apps/input_lab/imu_probe.h"
 #include "apps/input_lab/imu_record.h"
 #include "apps/input_lab/motion_feedback.h"
@@ -119,6 +120,7 @@ static input_motion_batch_t* motion_batch;
 static shake_capture_t shake_capture;
 static bool orientation_running;
 static orientation_probe_step_t orientation_step;
+static guided_step_t orientation_guide;
 static int motion_samples;
 static int motion_lost;
 static uint32_t motion_since_drain_ms;
@@ -512,21 +514,7 @@ record_orientation_sample(const input_motion_t* sample, int64_t elapsed_us) {
     if (!orientation_running || elapsed_us < 0) {
         return;
     }
-    const int64_t ms = elapsed_us / MATH_US_PER_MS;
-    const orientation_probe_step_t step = ms >= ORIENTATION_PROBE_ROUND_MS
-                                              ? ORIENTATION_PROBE_DONE
-                                              : (orientation_probe_step_t)(ms / ORIENTATION_PROBE_STEP_MS);
-    if (step != orientation_step) {
-        orientation_step = step;
-        imu_flash_ms = step == ORIENTATION_PROBE_DONE ? IMU_DONE_FLASH_MS : IMU_POSE_FLASH_MS;
-        (void)imu_record_appendf(&imu_record, "orientation_step %d %lld %d", (int)step,
-                                 (long long)((int64_t)step * ORIENTATION_PROBE_STEP_MS * MATH_US_PER_MS),
-                                 orientation_probe_target(step));
-    }
-    if (step == ORIENTATION_PROBE_DONE) {
-        orientation_running = false;
-        return;
-    }
+    const orientation_probe_step_t step = orientation_step;
     const vec3i_t a = sample->acceleration;
     const vec3i_t r = sample->rotation;
     (void)imu_record_appendf(&imu_record, ORIENTATION_PROBE_SAMPLE_FORMAT, (int)step, (long long)elapsed_us, (int)a.x,
@@ -760,25 +748,39 @@ update_shake_round(uint32_t dt_ms, const input_t* input) {
 static void
 update_orientation_round(uint32_t dt_ms, const input_t* input) {
     imu_flash_ms = dt_ms < imu_flash_ms ? imu_flash_ms - dt_ms : 0;
+    bool started = false;
     if (input->pressed && !orientation_running) {
         imu_record_failed = motion_batch == NULL || shake_capture.slice == NULL
                             || !imu_record_start(&imu_record, IMU_RECORD_ORIENTATION_CAPACITY);
         if (!imu_record_failed) {
             orientation_running = true;
+            started = true;
             orientation_step = ORIENTATION_PROBE_READ_0;
             shake_capture.start_us = timing_now_us();
+            guided_step_begin(&orientation_guide, orientation_step, shake_capture.start_us);
             LOG_IMU_LINE("round orientation");
             LOG_IMU_LINE("orientation_step %d 0 %d", (int)orientation_step, orientation_probe_target(orientation_step));
+            LOG_IMU_LINE("orientation_gate %d 0 begin", (int)orientation_step);
         }
     }
     read_motion(dt_ms);
-    if (orientation_running) {
-        if (timing_now_us() - shake_capture.start_us >= (int64_t)ORIENTATION_PROBE_ROUND_MS * MATH_US_PER_MS) {
-            orientation_running = false;
-            orientation_step = ORIENTATION_PROBE_DONE;
-            imu_flash_ms = IMU_DONE_FLASH_MS;
-            LOG_IMU_LINE("orientation_step %d %lld %d", (int)orientation_step,
-                         (long long)((int64_t)ORIENTATION_PROBE_ROUND_MS * MATH_US_PER_MS), DISPLAY_QUARTER_NONE);
+    if (orientation_running && !started) {
+        const int64_t now_us = timing_now_us();
+        const int64_t elapsed_us = now_us - shake_capture.start_us;
+        const guided_step_event_t event = guided_step_update(&orientation_guide, input->pressed, now_us,
+                                                             (int64_t)ORIENTATION_PROBE_STEP_MS * MATH_US_PER_MS);
+        if (event == GUIDED_STEP_ARMED) {
+            LOG_IMU_LINE("orientation_gate %d %lld end", (int)orientation_step, (long long)elapsed_us);
+        } else if (event == GUIDED_STEP_NEXT) {
+            orientation_step = (orientation_probe_step_t)orientation_guide.step;
+            imu_flash_ms = orientation_step == ORIENTATION_PROBE_DONE ? IMU_DONE_FLASH_MS : IMU_POSE_FLASH_MS;
+            LOG_IMU_LINE("orientation_step %d %lld %d", (int)orientation_step, (long long)elapsed_us,
+                         orientation_probe_target(orientation_step));
+            if (orientation_step == ORIENTATION_PROBE_DONE) {
+                orientation_running = false;
+            } else {
+                LOG_IMU_LINE("orientation_gate %d %lld begin", (int)orientation_step, (long long)elapsed_us);
+            }
         }
     }
 }
@@ -791,6 +793,30 @@ draw_orientation(void) {
         orientation_running || orientation_step == ORIENTATION_PROBE_DONE ? orientation_step : ORIENTATION_PROBE_READ_0,
         line, sizeof line);
     hud_line(1, line);
+    if (orientation_running) {
+        const int64_t left_us = guided_step_remaining_us(&orientation_guide, timing_now_us(),
+                                                         (int64_t)ORIENTATION_PROBE_STEP_MS * MATH_US_PER_MS);
+        (void)snprintf(line, sizeof line, "STEP %d/%d  %lld S LEFT", orientation_step + 1, ORIENTATION_PROBE_DONE,
+                       (long long)((left_us + MATH_US_PER_S - 1) / MATH_US_PER_S));
+        hud_line(2, line);
+        if (imu_record.truncated) {
+            hud_line(4, "TRANSCRIPT FULL - RESTART");
+        }
+        const int target = orientation_probe_target(orientation_step);
+        const motion_probe_t reading = motion_probe_measure(raw_acceleration);
+        const int bearing = ((target + 1) * (int)DISPLAY_QUARTER_DEG) % MOTION_PROBE_FULL_TURN_DEG;
+        static const char* const actions[] = {"PICK UP, KEEP", "WALK, KEEP", "SHAKE, KEEP", "OVERHEAD, KEEP"};
+        const char* action = orientation_step == ORIENTATION_PROBE_READ_0   ? "HOLD"
+                             : orientation_step <= ORIENTATION_PROBE_READ_4 ? "TURN TO"
+                             : orientation_step == ORIENTATION_PROBE_FLAT
+                                 ? "PUT DOWN FLAT"
+                                 : actions[orientation_step - ORIENTATION_PROBE_PICKUP];
+        guided_step_draw(&orientation_guide, action,
+                         target == DISPLAY_QUARTER_NONE ? NULL : display_quarter_name(target), reading.bearing_deg,
+                         ((display_quarter_now() + 1) * (int)DISPLAY_QUARTER_DEG) % MOTION_PROBE_FULL_TURN_DEG, bearing,
+                         (int)lroundf(reading.tilt_deg),
+                         target == DISPLAY_QUARTER_NONE ? 0 : ORIENTATION_PROBE_READING_TILT_DEG, screen_w, screen_h);
+    }
     (void)snprintf(line, sizeof line, "COMMITTED %s", display_quarter_name(display_quarter_now()));
     hud_line(3, line);
     if (!orientation_running) {

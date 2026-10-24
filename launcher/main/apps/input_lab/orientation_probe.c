@@ -18,7 +18,9 @@ orientation_probe_prompt(orientation_probe_step_t step, char* text, size_t size)
     static const char* const actions[] = {"PICK UP", "WALK", "SHAKE", "OVERHEAD"};
     const int target = orientation_probe_target(step);
     if (step >= ORIENTATION_PROBE_READ_0 && step <= ORIENTATION_PROBE_READ_4) {
-        (void)snprintf(text, size, "READ AT 45 DEG: %s", display_quarter_name(target));
+        (void)snprintf(text, size,
+                       step == ORIENTATION_PROBE_READ_0 ? "HOLD %s AT %d DEG" : "TURN TO %s, HOLD AT %d DEG",
+                       display_quarter_name(target), ORIENTATION_PROBE_READING_TILT_DEG);
     } else if (step >= ORIENTATION_PROBE_PICKUP && step <= ORIENTATION_PROBE_OVERHEAD) {
         (void)snprintf(text, size, "%s, KEEP %s", actions[step - ORIENTATION_PROBE_PICKUP],
                        display_quarter_name(target));

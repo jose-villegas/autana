@@ -9,8 +9,9 @@
 #include "input/motion/gravity.h"
 #include "math/linear/vec_convert.h"
 
-#define REPLAY_ARGUMENTS 4
-#define REPLAY_FIELDS    7
+#define REPLAY_ARGUMENTS       4
+#define REPLAY_FIELDS          7
+#define REPLAY_TRACE_ARGUMENTS (REPLAY_ARGUMENTS + 1)
 
 int
 main(int argc, char** argv) {
@@ -22,7 +23,8 @@ main(int argc, char** argv) {
         }
         return EXIT_SUCCESS;
     }
-    if (argc != REPLAY_ARGUMENTS || (strcmp(argv[1], "accel") != 0 && strcmp(argv[1], "fused") != 0)) {
+    const bool trace = argc == REPLAY_TRACE_ARGUMENTS && strcmp(argv[4], "--gates") == 0;
+    if ((argc != REPLAY_ARGUMENTS && !trace) || (strcmp(argv[1], "accel") != 0 && strcmp(argv[1], "fused") != 0)) {
         return EXIT_FAILURE;
     }
     const int sample_ms = atoi(argv[2]);
@@ -59,8 +61,16 @@ main(int argc, char** argv) {
         const vec3f_t acceleration = fused
                                          ? gravity_down(&gravity)
                                          : vec3f_scale(vec3f_from_vec3i(motion.acceleration), 1.0F / INPUT_ACCEL_ONE_G);
-        if (display_update(&display, acceleration, now_us)) {
-            printf("%" PRId64 " %d\n", now_us, display_quarter(&display));
+        const bool changed = display_update(&display, acceleration, now_us);
+        if (trace) {
+            printf("G %" PRId64 " %d %d %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64
+                   " %.6f %.6f %.6f %d %d\n",
+                   now_us, display.quarter, display.predicted, display.predicted_us, display.flat_ended_us,
+                   display.accel_ended_us, display.swing_ended_us, display.touch_ended_us, display.filtered.x,
+                   display.filtered.y, display.filtered.z, display.flat, display.overhead);
+        }
+        if (changed) {
+            printf(trace ? "C %" PRId64 " %d\n" : "%" PRId64 " %d\n", now_us, display_quarter(&display));
         }
     }
     return fields == EOF ? EXIT_SUCCESS : EXIT_FAILURE;
