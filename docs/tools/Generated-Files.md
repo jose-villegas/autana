@@ -70,12 +70,18 @@ the banner marks, since the generator, not a person, decides their form.
 [`examples_doc.py`](../../launcher/tools/gen/examples_doc.py) embeds every tracked
 `.c` file below any `<area>_examples` folder, at any depth, whole in a C fence.
 Its owning document declares `<area>-<name>-example`, where `<name>` is the file
-stem and underscores become hyphens in both area and name.
+stem. For example:
+
+| Source | Block |
+|---|---|
+| `input_examples/touch.c` | `input-touch-example` |
+| `ui_examples/screens/tile_icon.c` | `ui-tile-icon-example` |
 
 ```sh
 python launcher/tools/gen/examples_doc.py
 python launcher/tools/gen/examples_doc.py --check
 ```
 
-The check rejects stale bodies, missing sources or owners, and duplicate names.
+The check rejects stale bodies, missing owners, duplicate names, and blocks
+naming its check command that have no example file.
 Each block names this check command for `check_doc_generated.py` to run in CI.

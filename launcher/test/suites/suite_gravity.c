@@ -14,6 +14,9 @@
 #include "math/scalar/units.h"
 
 #include "../input_examples/gravity.c"
+#ifndef DEVICE_BUILD
+#include "../input_fake.h"
+#endif
 
 #define STEP_MS              (GRAVITY_MAX_DT_MS / 10U)
 #define SETTLE_MS            ((uint32_t)(GRAVITY_TAU_S * MATH_MS_PER_S) * 10U)
@@ -795,41 +798,49 @@ test_gyro_overrange_boundary(void) {
 }
 
 #ifndef DEVICE_BUILD
-bool
-input_read_motion_batch(input_motion_batch_t* out) {
-    out->count = 1;
-    out->lost = 0;
-    out->gap = false;
-    out->samples[0] = (input_motion_t){.acceleration = {INPUT_ACCEL_ONE_G, 0, 0}};
-    return true;
-}
-
 static void
-test_gravity_example_rolls_right_at_rest(void) {
+test_gravity_example_holds_down_without_batches(void) {
     fixture();
     gravity_example_t* state = malloc(sizeof *state);
+    input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(state);
+    TEST_ASSERT_NOT_NULL(batch);
+    *batch = (input_motion_batch_t){.count = 1};
+    const int32_t axis_accel = INPUT_ACCEL_ONE_G / 2;
+    batch->samples[0].acceleration = (vec3i_t){axis_accel, -axis_accel, 0};
     state->ball_x = 0;
     state->ball_y = 0;
     gravity_example_start(state);
     const uint32_t dt_ms = INPUT_MOTION_SAMPLE_US / MATH_US_PER_MS;
+    input_fake_motion_batch(batch);
+    gravity_example(state, dt_ms);
+    const float first_x = state->ball_x;
+    const float first_y = state->ball_y;
+    input_fake_motion_batch(NULL);
+    const bool absent = !input_read_motion_batch(batch);
     const uint32_t frames = SETTLE_MS / dt_ms;
     for (uint32_t frame = 0; frame < frames; frame++) {
         gravity_example(state, dt_ms);
     }
     const float x = state->ball_x;
     const float y = state->ball_y;
+    free(batch);
     free(state);
-    TEST_ASSERT_TRUE(x > 0);
-    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE * frames, BALL_SPEED * dt_ms * frames, x);
-    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE, 0, y);
+    TEST_ASSERT_TRUE(absent);
+    TEST_ASSERT_TRUE(first_x > 0);
+    TEST_ASSERT_TRUE(first_y < 0);
+    TEST_ASSERT_TRUE(x > first_x);
+    TEST_ASSERT_TRUE(y < first_y);
+    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE * frames, first_x * (frames + 1), x);
+    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE * frames, first_y * (frames + 1), y);
 }
+
 #endif
 
 void
 run_gravity_suite(void) {
 #ifndef DEVICE_BUILD
-    RUN_TEST(test_gravity_example_rolls_right_at_rest);
+    RUN_TEST(test_gravity_example_holds_down_without_batches);
 #endif
     RUN_TEST(test_loss_mid_batch_holds_the_immediately_previous_rotation);
     RUN_TEST(test_multiple_losses_match_sequential_holds_with_acceleration);

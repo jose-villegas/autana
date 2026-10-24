@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "launcher/tools/gen"))
-from examples_doc import write_examples
+from examples_doc import CHECK, main, write_examples
 
 
 class ExampleTests(unittest.TestCase):
@@ -28,9 +28,10 @@ class ExampleTests(unittest.TestCase):
         path.write_bytes(b"/* whole example */\r\nint value;\r\n")
         self.track(name)
 
-    def document(self, name):
+    def document(self, name, command=None):
         path = self.root / f"{name}.md"
-        path.write_bytes(f"<!-- generated: {name} -->\r\n<!-- /generated: {name} -->\r\n".encode())
+        stamp = f" check: {command}" if command else ""
+        path.write_bytes(f"<!-- generated: {name}{stamp} -->\r\n<!-- /generated: {name} -->\r\n".encode())
         self.track(path.name)
 
     def track(self, name):
@@ -64,14 +65,63 @@ class ExampleTests(unittest.TestCase):
             self.run_tool(True)
 
     def test_owner_without_source(self):
-        self.document("input-missing-example")
-        with self.assertRaisesRegex(ValueError, "input-missing-example.md"):
+        self.document("orphan", CHECK)
+        with self.assertRaisesRegex(ValueError, "orphan.md"):
             self.run_tool(True)
 
     def test_duplicate_normalized_stems(self):
         self.source("tools/ui_examples/check-box.c")
         with self.assertRaisesRegex(ValueError, "ui-check-box-example"):
             self.run_tool(True)
+
+    def test_written_marker_names_check(self):
+        self.run_tool()
+        self.assertIn(f"check: {CHECK}", (self.root / "input-touch-example.md").read_text())
+
+    def test_other_generator_example_is_ignored(self):
+        self.source("tools/skin_examples/README.md")
+        self.document("skin-weight-example", "python other.py --check")
+        self.run_tool()
+        self.assertFalse(self.run_tool(True)[0])
+
+    def test_non_c_files_need_no_owner_or_embedding(self):
+        self.source("tools/other_examples/README.md")
+        self.source("tools/other_examples/api.h")
+        self.run_tool()
+        text = (self.root / "input-touch-example.md").read_text()
+        self.assertNotIn("api.h", text)
+        self.assertFalse(self.run_tool(True)[0])
+
+    def test_area_underscores(self):
+        self.source("tools/foo_bar_examples/x.c")
+        self.document("foo-bar-x-example")
+        self.run_tool()
+        self.assertIn("```c", (self.root / "foo-bar-x-example.md").read_text())
+
+    def test_same_stem_in_different_areas(self):
+        self.source("tools/ui_examples/touch.c")
+        self.document("ui-touch-example")
+        self.run_tool()
+        self.assertFalse(self.run_tool(True)[0])
+
+    def test_duplicate_at_different_depths(self):
+        self.source("tools/ui_examples/deeper/check_box.c")
+        with self.assertRaisesRegex(ValueError, "multiple files"):
+            self.run_tool(True)
+
+    def test_main_exit_codes(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(1, main(["--check"], root=self.root))
+            self.assertEqual(0, main([], root=self.root))
+            self.assertEqual(0, main(["--check"], root=self.root))
+
+    def test_main_value_error_exit_code(self):
+        self.document("orphan", CHECK)
+        with contextlib.redirect_stderr(io.StringIO()) as error:
+            with self.assertRaises(SystemExit) as result:
+                main(["--check"], root=self.root)
+        self.assertEqual(2, result.exception.code)
+        self.assertIn("orphan", error.getvalue())
 
     def test_untracked_source_is_ignored(self):
         (self.root / "test/input_examples/untracked.c").write_text("ignored")

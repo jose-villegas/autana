@@ -325,7 +325,8 @@ something else.
 
 ```sh
 sh launcher/tools/render/scenes/ui_examples_render_host.sh
-python launcher/tools/render/ui_examples_doc.py
+python launcher/tools/render/ui_examples_doc.py --renders launcher/tools/results/render/ui_examples --out launcher/tools/results/render/ui_examples
+python launcher/tools/gen/examples_doc.py
 ```
 
 The scene renders every file in `ui_examples/`, each cut to what it drew
@@ -333,8 +334,13 @@ plus `UI_MARGIN`, into `launcher/tools/results/render/ui_examples/`, and
 checks it against `ui_examples_render_baseline.txt`, so a change that moves
 a pixel fails until the new picture is looked at and re-pinned with
 `--update-baseline`. A file in `ui_examples/screens/` is a whole screen,
-drawn at rest only. `ui_examples_doc.py` copies each example file into its
-page; `--check` fails when one is stale.
+drawn at rest only.
+
+`ui_examples_doc.py` writes only render and States tables and requires
+`--renders` and `--out`. `examples_doc.py` embeds the example files;
+`--check` fails when one is stale. See
+[Usage examples](../tools/Generated-Files.md#usage-examples).
+
 `launcher/tools/render/render_doc_images.sh` turns the renders into
 `docs/images/ui/` and the States tables; see "Images in these docs" in
 [`tools/Render-Harness.md`](../tools/Render-Harness.md).

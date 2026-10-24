@@ -9,6 +9,8 @@ import os
 import pathlib
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "gen"))
+from examples_doc import block_name
 from generated_blocks import block_owners
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -21,8 +23,7 @@ ORIENTATIONS = {"": "Portrait", "-landscape": "Landscape"}
 
 
 def block(name, kind):
-    """A block name for example `name`: block names take hyphens, not underscores."""
-    return f"ui-{name.replace('_', '-')}-{kind}"
+    return block_name("ui", name, kind)
 
 
 def examples():
