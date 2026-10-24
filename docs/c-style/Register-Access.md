@@ -1,6 +1,6 @@
 # Register access
 
-How first-party C touches hardware. Part of the [C style guide](../C-Style-Guide.md).
+How first-party C touches hardware. Part of the [C style guide](README.md).
 
 | Level | Use | Where in the tree |
 |---|---|---|
