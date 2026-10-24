@@ -63,7 +63,8 @@ bool imu_read(imu_sample_t* out);
 /* Asks the IMU task to run the sensor at another ODR code until asked for IMU_ODR_CODE again,
  * and waits until it has. Every switch resets the FIFO and queues a gap, so imu_take_fifo()
  * never mixes rates; between the switches samples are not IMU_SAMPLE_US apart.
- * False without a sensor or task, on a bus error, or when the task does not answer in time. */
+ * False without a sensor or task, on a bus error, or when the task does not answer in time.
+ * Blocks up to two of the slowest IMU task periods: console task only, never the frame thread. */
 bool imu_set_odr(unsigned odr_code);
 /* imu_take_fifo() for samples queued at `odr_code`. A take at the wrong rate, by either
  * reader, drops the queue behind a gap, so a reader at the other rate sees it lost them. */
