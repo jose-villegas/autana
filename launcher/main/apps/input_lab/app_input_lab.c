@@ -1,4 +1,4 @@
-/* BOOT cycles touch targets, bezel edges, motion calibration and shake.
+/* BOOT cycles touch targets, bezel edges, motion calibration, shake and orientation.
  * Motion pages stay in default landscape with panel axes. Shake compares
  * sample-rate linear acceleration candidates against frame-rate tilt shake
  * and retains a guided round in PSRAM for labdump. */
@@ -94,7 +94,7 @@ TUNE(input_lab, imu_drain_ms, 0, 0, MOTION_DRAIN_MAX_MS);
 /* Sub-mg resolution keeps small changes visible in the turn trace. */
 #define IMU_GRAVITY_DIGITS    6
 
-typedef enum { MODE_RANDOM, MODE_GRID, MODE_BEZEL, MODE_MOTION, MODE_SHAKE, MODE_COUNT } lab_mode_t;
+typedef enum { MODE_RANDOM, MODE_GRID, MODE_BEZEL, MODE_MOTION, MODE_SHAKE, MODE_ORIENTATION, MODE_COUNT } lab_mode_t;
 
 typedef struct {
     int cx, cy, radius;
@@ -109,7 +109,7 @@ typedef struct {
     uint32_t clock_ms;
 } shake_capture_t;
 
-static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "motion", "shake"};
+static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "motion", "shake", "orientation"};
 
 static lab_mode_t mode;
 static tilt_t tilt;
@@ -117,6 +117,8 @@ static gravity_t gravity;
 static input_motion_t motion;
 static input_motion_batch_t* motion_batch;
 static shake_capture_t shake_capture;
+static bool orientation_running;
+static orientation_probe_step_t orientation_step;
 static int motion_samples;
 static int motion_lost;
 static uint32_t motion_since_drain_ms;
@@ -152,7 +154,7 @@ static int radius_at_press;
 
 static bool
 motion_page(void) {
-    return mode == MODE_MOTION || mode == MODE_SHAKE;
+    return mode == MODE_MOTION || mode == MODE_SHAKE || mode == MODE_ORIENTATION;
 }
 
 static void
@@ -189,6 +191,8 @@ start_round(void) {
     imu_record_free(&imu_record);
     imu_flash_ms = 0;
     imu_record_failed = false;
+    orientation_running = false;
+    orientation_step = ORIENTATION_PROBE_READ_0;
     stats = (touch_probe_stats_t){0};
     have_last_tap = false;
     grid_next = 0;
@@ -503,6 +507,32 @@ advance_shake_clock(uint32_t ms) {
     }
 }
 
+static void
+record_orientation_sample(const input_motion_t* sample, int64_t elapsed_us) {
+    if (!orientation_running || elapsed_us < 0) {
+        return;
+    }
+    const int64_t ms = elapsed_us / MATH_US_PER_MS;
+    const orientation_probe_step_t step = ms >= ORIENTATION_PROBE_ROUND_MS
+                                              ? ORIENTATION_PROBE_DONE
+                                              : (orientation_probe_step_t)(ms / ORIENTATION_PROBE_STEP_MS);
+    if (step != orientation_step) {
+        orientation_step = step;
+        imu_flash_ms = step == ORIENTATION_PROBE_DONE ? IMU_DONE_FLASH_MS : IMU_POSE_FLASH_MS;
+        (void)imu_record_appendf(&imu_record, "orientation_step %d %lld %d", (int)step,
+                                 (long long)((int64_t)step * ORIENTATION_PROBE_STEP_MS * MATH_US_PER_MS),
+                                 step <= ORIENTATION_PROBE_READ_3 ? (int)step : DISPLAY_QUARTER_NONE);
+    }
+    if (step == ORIENTATION_PROBE_DONE) {
+        orientation_running = false;
+        return;
+    }
+    const vec3i_t a = sample->acceleration;
+    const vec3i_t r = sample->rotation;
+    (void)imu_record_appendf(&imu_record, ORIENTATION_PROBE_SAMPLE_FORMAT, (int)step, (long long)elapsed_us, (int)a.x,
+                             (int)a.y, (int)a.z, (int)r.x, (int)r.y, (int)r.z);
+}
+
 /* Only this adapter depends on batch loss placement. The scratch batch lives in PSRAM. */
 static void
 read_shake_samples(const input_motion_batch_t* batch) {
@@ -525,6 +555,10 @@ read_shake_samples(const input_motion_batch_t* batch) {
         shake_probe_feed(&shake_capture.levels, linear);
         const int64_t elapsed_us =
             (end_us - shake_capture.start_us) - ((int64_t)((batch->count - i) - 1) * INPUT_MOTION_SAMPLE_US);
+        if (mode == MODE_ORIENTATION) {
+            record_orientation_sample(&batch->samples[i], elapsed_us);
+            continue;
+        }
         if (shake_capture.round.step == SHAKE_PROBE_IDLE || elapsed_us < 0) {
             continue;
         }
@@ -573,7 +607,7 @@ read_motion(uint32_t dt_ms) {
     if (have_motion) {
         tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
     }
-    if (read && mode == MODE_SHAKE) {
+    if (read && (mode == MODE_SHAKE || mode == MODE_ORIENTATION)) {
         read_shake_samples(motion_batch);
     }
     if (!have_motion) {
@@ -617,8 +651,9 @@ dump_imu_record(const char* args) {
     if (*args != '\0') {
         return false;
     }
-    const bool running = mode == MODE_SHAKE ? shake_probe_running(&shake_capture.round)
-                                            : imu_round.step != IMU_PROBE_IDLE && imu_round.step != IMU_PROBE_DONE;
+    const bool running = mode == MODE_ORIENTATION ? orientation_running
+                         : mode == MODE_SHAKE     ? shake_probe_running(&shake_capture.round)
+                                              : imu_round.step != IMU_PROBE_IDLE && imu_round.step != IMU_PROBE_DONE;
     const char* error = imu_record_dump_error(&imu_record, running);
     if (error != NULL) {
         printf("%s", error);
@@ -719,6 +754,44 @@ update_shake_round(uint32_t dt_ms, const input_t* input) {
         advance_shake_clock(elapsed_ms > SHAKE_PROBE_ROUND_MS ? SHAKE_PROBE_ROUND_MS : (uint32_t)elapsed_ms);
     } else if (was_done) {
         (void)shake_probe_advance(&shake_capture.round, dt_ms);
+    }
+}
+
+static void
+update_orientation_round(uint32_t dt_ms, const input_t* input) {
+    imu_flash_ms = dt_ms < imu_flash_ms ? imu_flash_ms - dt_ms : 0;
+    if (input->pressed && !orientation_running) {
+        imu_record_failed = motion_batch == NULL || shake_capture.slice == NULL
+                            || !imu_record_start(&imu_record, IMU_RECORD_ORIENTATION_CAPACITY);
+        if (!imu_record_failed) {
+            orientation_running = true;
+            orientation_step = ORIENTATION_PROBE_READ_0;
+            shake_capture.start_us = timing_now_us();
+            LOG_IMU_LINE("round orientation");
+            LOG_IMU_LINE("orientation_step %d 0 %d", (int)orientation_step, DISPLAY_PORTRAIT);
+        }
+    }
+    read_motion(dt_ms);
+    if (orientation_running) {
+        if (timing_now_us() - shake_capture.start_us >= (int64_t)ORIENTATION_PROBE_ROUND_MS * MATH_US_PER_MS) {
+            orientation_running = false;
+            orientation_step = ORIENTATION_PROBE_DONE;
+            imu_flash_ms = IMU_DONE_FLASH_MS;
+            LOG_IMU_LINE("orientation_step %d %lld %d", (int)orientation_step,
+                         (long long)((int64_t)ORIENTATION_PROBE_ROUND_MS * MATH_US_PER_MS), DISPLAY_QUARTER_NONE);
+        }
+    }
+}
+
+static void
+draw_orientation(void) {
+    char line[MOTION_HUD_TEXT_SIZE];
+    hud_line(0, "ORIENTATION / BOOT TO CHANGE PAGE");
+    hud_line(1, orientation_probe_prompt(orientation_step));
+    (void)snprintf(line, sizeof line, "COMMITTED QUARTER %d", display_quarter_now());
+    hud_line(3, line);
+    if (!orientation_running) {
+        hud_line(5, imu_record_failed ? "NO MEMORY FOR ROUND" : "TAP TO START ROUND");
     }
 }
 
@@ -955,6 +1028,10 @@ resize_page(void) {
 
 static void
 update_page(uint32_t dt_ms, const input_t* input) {
+    if (mode == MODE_ORIENTATION) {
+        update_orientation_round(dt_ms, input);
+        return;
+    }
     if (mode == MODE_SHAKE) {
         update_shake_round(dt_ms, input);
         return;
@@ -971,6 +1048,10 @@ update_page(uint32_t dt_ms, const input_t* input) {
 
 static void
 draw_page(void) {
+    if (mode == MODE_ORIENTATION) {
+        draw_orientation();
+        return;
+    }
     if (mode == MODE_SHAKE) {
         draw_shake();
         return;
@@ -993,10 +1074,12 @@ draw_imu_flash(void) {
     const uint32_t flash_ms = mode == MODE_SHAKE ? shake_capture.round.flash_ms : imu_flash_ms;
     const bool done =
         mode == MODE_SHAKE ? shake_capture.round.step == SHAKE_PROBE_DONE : imu_round.step == IMU_PROBE_DONE;
-    if ((mode != MODE_MOTION && mode != MODE_SHAKE) || flash_ms == 0) {
+    if ((mode != MODE_MOTION && mode != MODE_SHAKE && mode != MODE_ORIENTATION) || flash_ms == 0) {
         return;
     }
-    ui_fill((recti_t){0, 0, screen_w, screen_h}, done ? COL_IMU_DONE_FLASH : COL_IMU_POSE_FLASH);
+    ui_fill((recti_t){0, 0, screen_w, screen_h},
+            (done || (mode == MODE_ORIENTATION && orientation_step == ORIENTATION_PROBE_DONE)) ? COL_IMU_DONE_FLASH
+                                                                                               : COL_IMU_POSE_FLASH);
 }
 
 static void

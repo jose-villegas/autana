@@ -1,333 +1,300 @@
-/*
- * Specification for display: shell-owned orientation, decided from a
- * smoothed gravity vector with hysteresis around the quarter boundaries.
- *
- * The test that matters is the boundary sweep: a slow tilt crossing the
- * 45-degree quarter boundary must change orientation exactly once, not chatter
- * back and forth as the reading wobbles either side of it. Everything else
- * here pins down the four unambiguous orientations, the no-oscillation
- * behaviour parked exactly on a boundary, the asymmetric "60 out, 30 back"
- * thresholds, and that display_update() only reports true on a genuine
- * change.
- */
-
-#include <stdlib.h>
+/* display: quarter decisions, event gates and shell sampling in all rotations. */
 #include "display/display.h"
 #include "display/display_shell.h"
 
+#include <math.h>
+#include <stdlib.h>
+
+#include "display/viewport.h"
+#include "math/scalar/math_const.h"
 #include "suites.h"
 #include "test_cleanup.h"
 #include "unity.h"
 
-/* A magnitude comfortably past every threshold this module uses, so a vector
- * built from it reads as "unambiguously" pointing one way. */
-#define STRONG 1000
+#define TEST_ANGLE_MARGIN_DEG 1.0F
+#define TEST_HYST_BELOW_DEG   (DISPLAY_ADJACENT_MIN_DEG - DISPLAY_HYSTERESIS_GAP_DEG / 6.0F)
+#define TEST_HYST_ABOVE_DEG   (DISPLAY_ADJACENT_MIN_DEG + DISPLAY_HYSTERESIS_GAP_DEG / 18.0F)
+#define TEST_STEP_US          ((int64_t)DISPLAY_SAMPLE_MS * MATH_US_PER_MS)
+#define TEST_STEADY_MS        (DISPLAY_COMMIT_MS * 2)
 
-/* Feeds the same steady (gx, gy) repeatedly, as a steadily-held tilt would
- * read at ~10 Hz, until display_update() stops reporting a change (or a
- * generous cap is hit); see display.h's own note that a single call can
- * only ever move one quarter, so settling into a fully opposite orientation
- * from a strong start can take a second call. Four calls is more than any
- * reachable case needs. */
-static void
-settle(display_t* d, int gx, int gy) {
-    for (int i = 0; i < 4; i++) {
-        if (!display_update(d, (vec2i_t){gx, gy})) {
-            return;
-        }
-    }
+static vec3f_t
+sample(int quarter, float turn_deg, float tilt_deg, float magnitude) {
+    const float radians_per_degree = MATH_PI / (2.0F * DISPLAY_QUARTER_DEG);
+    const float turn = turn_deg * radians_per_degree;
+    const float tilt = tilt_deg * radians_per_degree;
+    const viewport_quarter_axes_t axes = viewport_quarter_axes(quarter);
+    const float x = (float)axes.x_down;
+    const float y = (float)axes.y_down;
+    return (vec3f_t){(x * cosf(turn) - y * sinf(turn)) * cosf(tilt) * magnitude,
+                     (y * cosf(turn) + x * sinf(turn)) * cosf(tilt) * magnitude, -sinf(tilt) * magnitude};
 }
 
-/* the four unambiguous orientations */
-
-void
-test_gravity_straight_down_reads_upright(void) {
+static display_t
+fixture(int quarter) {
     display_t d;
     display_init(&d);
-    settle(&d, 0, STRONG);
-    TEST_ASSERT_EQUAL_INT(0, display_quarter(&d));
+    d.quarter = quarter;
+    return d;
 }
 
-void
-test_gravity_to_the_left_reads_quarter_one(void) {
-    display_t d;
-    display_init(&d);
-    settle(&d, -STRONG, 0);
-    TEST_ASSERT_EQUAL_INT(1, display_quarter(&d));
-}
-
-void
-test_gravity_straight_up_reads_upside_down(void) {
-    display_t d;
-    display_init(&d);
-    settle(&d, 0, -STRONG);
-    TEST_ASSERT_EQUAL_INT(2, display_quarter(&d));
-}
-
-void
-test_gravity_to_the_right_reads_quarter_three(void) {
-    display_t d;
-    display_init(&d);
-    settle(&d, STRONG, 0);
-    TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
-}
-
-/* the test that matters: a slow sweep changes orientation ONCE */
-
-void
-test_a_slow_sweep_through_a_boundary_flips_exactly_once(void) {
-    display_t d;
-    display_init(&d); /* quarter 0: down is down */
-
-    /* gy held fixed while gx climbs from 0 well past the old 45-degree snap
-     * point (gx == gy) and on past the 60-degree hysteresis trigger, in
-     * small steps: a tilt swept smoothly rather than jumped. */
-    const int gy = STRONG;
+static int
+feed(display_t* d, vec3f_t a, int64_t* now_us, int duration_ms) {
+    const int64_t end = *now_us + (int64_t)duration_ms * MATH_US_PER_MS;
     int changes = 0;
-    for (int gx = 0; gx <= 2 * STRONG; gx += 5) {
-        if (display_update(&d, (vec2i_t){gx, gy})) {
-            changes++;
+    while (*now_us <= end) {
+        changes += display_update(d, a, *now_us);
+        *now_us += TEST_STEP_US;
+    }
+    return changes;
+}
+
+static void
+test_clean_turn_settles_in_every_rotation(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        display_t d = fixture(q);
+        const int target = (q + 1) % DISPLAY_QUARTER_COUNT;
+        const vec3f_t a = sample(target, 0, 0, 1);
+        TEST_ASSERT_FALSE(display_update(&d, a, 0));
+        TEST_ASSERT_FALSE(display_update(&d, a, (int64_t)DISPLAY_SETTLE_MS * MATH_US_PER_MS - 1));
+        TEST_ASSERT_TRUE(display_update(&d, a, (int64_t)DISPLAY_SETTLE_MS * MATH_US_PER_MS));
+        TEST_ASSERT_EQUAL_INT(target, d.quarter);
+        TEST_ASSERT_FALSE(display_update(&d, a, (int64_t)DISPLAY_SETTLE_MS * MATH_US_PER_MS));
+    }
+}
+
+static void
+test_filtered_turn_and_hysteresis_in_every_rotation(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        display_t d = fixture(q);
+        int64_t now = 0;
+        feed(&d, sample(q, 0, 0, 1), &now, TEST_STEADY_MS);
+        TEST_ASSERT_EQUAL_INT(0, feed(&d, sample(q, TEST_HYST_BELOW_DEG, 0, 1), &now, TEST_STEADY_MS));
+        TEST_ASSERT_EQUAL_INT(q, d.quarter);
+        TEST_ASSERT_EQUAL_INT(1, feed(&d, sample(q, TEST_HYST_ABOVE_DEG, 0, 1), &now, TEST_STEADY_MS));
+        TEST_ASSERT_EQUAL_INT((q + 1) % DISPLAY_QUARTER_COUNT, d.quarter);
+    }
+}
+
+static void
+test_tilt_limits_are_relative_to_default(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        const int relative = (q - DISPLAY_DEFAULT_QUARTER + DISPLAY_QUARTER_COUNT) % DISPLAY_QUARTER_COUNT;
+        const float limit = relative == 0                           ? DISPLAY_TILT_DEFAULT_MAX_DEG
+                            : relative == DISPLAY_QUARTER_COUNT / 2 ? DISPLAY_TILT_OPPOSITE_MAX_DEG
+                                                                    : DISPLAY_TILT_ADJACENT_MAX_DEG;
+        display_t d = fixture((q + 1) % DISPLAY_QUARTER_COUNT);
+        int64_t now = 0;
+        TEST_ASSERT_EQUAL_INT(0, feed(&d, sample(q, 0, limit + TEST_ANGLE_MARGIN_DEG, 1), &now, TEST_STEADY_MS));
+        TEST_ASSERT_EQUAL_INT(1, feed(&d, sample(q, 0, limit - TEST_ANGLE_MARGIN_DEG, 1), &now, TEST_STEADY_MS));
+        TEST_ASSERT_EQUAL_INT(q, d.quarter);
+        d = fixture((q + 1) % DISPLAY_QUARTER_COUNT);
+        now = 0;
+        TEST_ASSERT_EQUAL_INT(
+            0, feed(&d, sample(q, 0, DISPLAY_TILT_MIN_DEG - TEST_ANGLE_MARGIN_DEG, 1), &now, TEST_STEADY_MS));
+        TEST_ASSERT_EQUAL_INT(
+            1, feed(&d, sample(q, 0, DISPLAY_TILT_MIN_DEG + TEST_ANGLE_MARGIN_DEG, 1), &now, TEST_STEADY_MS));
+    }
+}
+
+static void
+test_flat_and_face_up_offset_never_switch(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        display_t d = fixture(q);
+        int64_t now = 0;
+        const int target = (q + 1) % DISPLAY_QUARTER_COUNT;
+        TEST_ASSERT_EQUAL_INT(
+            0, feed(&d, sample(target, 0, DISPLAY_FLAT_DEG + TEST_ANGLE_MARGIN_DEG, 1), &now, DISPLAY_FLAT_MS));
+        TEST_ASSERT_TRUE(d.flat);
+        const vec3f_t offset = sample(target, 0, 0, DISPLAY_NEAR_ZERO_G);
+        TEST_ASSERT_EQUAL_INT(0, feed(&d, (vec3f_t){offset.x, offset.y, -1.0F}, &now, TEST_STEADY_MS));
+        TEST_ASSERT_EQUAL_INT(q, d.quarter);
+    }
+}
+
+static void
+test_flat_cooldown_starts_when_flat_ends(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        display_t d = fixture(q);
+        int64_t now = 0;
+        feed(&d, sample(q, 0, DISPLAY_FLAT_DEG + TEST_ANGLE_MARGIN_DEG, 1), &now, DISPLAY_FLAT_MS);
+        const vec3f_t a = sample((q + 1) % DISPLAY_QUARTER_COUNT, 0, 0, 1);
+        d.filtered = a;
+        TEST_ASSERT_FALSE(display_update(&d, a, now));
+        TEST_ASSERT_EQUAL_INT64(now, d.flat_ended_us);
+        const int64_t ended = now;
+        now += TEST_STEP_US;
+        TEST_ASSERT_EQUAL_INT(0, feed(&d, a, &now, DISPLAY_AFTER_FLAT_MS - 2 * DISPLAY_SAMPLE_MS));
+        TEST_ASSERT_TRUE(display_update(&d, a, ended + (int64_t)DISPLAY_AFTER_FLAT_MS * MATH_US_PER_MS));
+    }
+}
+
+static void
+test_near_zero_interrupts_continuous_flat_dwell(void) {
+    display_t d = fixture(DISPLAY_PORTRAIT);
+    int64_t now = 0;
+    const vec3f_t flat = sample(DISPLAY_PORTRAIT, 0, DISPLAY_FLAT_DEG + TEST_ANGLE_MARGIN_DEG, 1);
+    feed(&d, flat, &now, DISPLAY_FLAT_MS / 2);
+    const vec3f_t tiny = vec3f_scale(flat, DISPLAY_NEAR_ZERO_G / 2.0F);
+    d.filtered = tiny;
+    feed(&d, tiny, &now, DISPLAY_FLAT_MS / 2);
+    d.filtered = flat;
+    display_update(&d, flat, now);
+    TEST_ASSERT_FALSE(d.flat);
+}
+
+static void
+test_overhead_hysteresis_in_every_rotation(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        display_t d = fixture(q);
+        int64_t now = 0;
+        const int target = (q + 1) % DISPLAY_QUARTER_COUNT;
+        feed(&d, sample(target, 0, DISPLAY_OVERHEAD_ENTER_DEG - TEST_ANGLE_MARGIN_DEG, 1), &now, TEST_STEADY_MS);
+        TEST_ASSERT_TRUE(d.overhead);
+        feed(&d, sample(target, 0, DISPLAY_OVERHEAD_EXIT_DEG - TEST_ANGLE_MARGIN_DEG, 1), &now, TEST_STEADY_MS);
+        TEST_ASSERT_TRUE(d.overhead);
+        TEST_ASSERT_EQUAL_INT(q, d.quarter);
+        TEST_ASSERT_EQUAL_INT(
+            1, feed(&d, sample(target, 0, DISPLAY_OVERHEAD_EXIT_DEG + TEST_ANGLE_MARGIN_DEG, 1), &now, TEST_STEADY_MS));
+        TEST_ASSERT_FALSE(d.overhead);
+    }
+}
+
+static void
+test_acceleration_cooldown_in_every_rotation(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            display_t d = fixture(q);
+            int64_t now = 0;
+            const vec3f_t a = sample((q + 1) % DISPLAY_QUARTER_COUNT, 0, 0, 1);
+            const float magnitude = 1.0F + (float)sign * (DISPLAY_ACCEL_TOLERANCE_G + DISPLAY_NEAR_ZERO_G);
+            TEST_ASSERT_EQUAL_INT(0, feed(&d, vec3f_scale(a, magnitude), &now, DISPLAY_AFTER_ACCEL_MS));
+            const int64_t last_event = d.accel_ended_us;
+            d.filtered = a;
+            TEST_ASSERT_EQUAL_INT(0, feed(&d, a, &now, DISPLAY_AFTER_ACCEL_MS - 2 * DISPLAY_SAMPLE_MS));
+            TEST_ASSERT_TRUE(display_update(&d, a, last_event + (int64_t)DISPLAY_AFTER_ACCEL_MS * MATH_US_PER_MS));
         }
     }
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, changes, "a smooth sweep across one boundary must report exactly one change");
-    TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 }
 
-/* parked exactly on a boundary does not oscillate */
-
-void
-test_parked_on_the_old_boundary_does_not_oscillate(void) {
-    display_t d;
-    display_init(&d); /* quarter 0 */
-
-    /* |gx| == |gy| is the OLD snap-to-nearest boundary (45 degrees), well
-     * inside this module's 30..60 degree hysteresis band either way, so it
-     * must never be enough to switch. */
-    for (int i = 0; i < 20; i++) {
-        TEST_ASSERT_FALSE_MESSAGE(display_update(&d, (vec2i_t){STRONG, STRONG}),
-                                  "a vector held exactly on the old boundary must not flip");
+static void
+test_swing_cooldown_in_every_rotation(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        display_t d = fixture(q);
+        const vec3f_t initial = sample(q, 0, 0, 1);
+        display_update(&d, initial, 0);
+        const vec3f_t a = sample((q + 1) % DISPLAY_QUARTER_COUNT, 0, DISPLAY_SWING_DEG + TEST_ANGLE_MARGIN_DEG, 1);
+        d.filtered = a;
+        TEST_ASSERT_FALSE(display_update(&d, a, TEST_STEP_US));
+        TEST_ASSERT_EQUAL_INT64(TEST_STEP_US, d.swing_ended_us);
+        int64_t now = TEST_STEP_US * 2;
+        TEST_ASSERT_EQUAL_INT(0, feed(&d, a, &now, DISPLAY_SWING_MS));
+        const int64_t last_event = d.swing_ended_us;
+        now = last_event + ((int64_t)DISPLAY_AFTER_SWING_MS * MATH_US_PER_MS) - TEST_STEP_US;
+        TEST_ASSERT_FALSE(display_update(&d, a, now));
+        TEST_ASSERT_TRUE(display_update(&d, a, now + TEST_STEP_US));
     }
-    TEST_ASSERT_EQUAL_INT(0, display_quarter(&d));
 }
 
-void
-test_parked_on_the_boundary_from_the_other_side_does_not_oscillate(void) {
-    display_t d;
-    display_init(&d);
-    settle(&d, STRONG, 0); /* quarter 3 */
-    TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
-
-    for (int i = 0; i < 20; i++) {
-        TEST_ASSERT_FALSE_MESSAGE(display_update(&d, (vec2i_t){STRONG, STRONG}),
-                                  "the same parked vector must not flip quarter 3 back either");
+static void
+test_touch_blocks_then_waits_after_last_down_frame(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        display_t d = fixture(q);
+        const vec3f_t a = sample((q + 1) % DISPLAY_QUARTER_COUNT, 0, 0, 1);
+        int64_t now = 0;
+        for (; now <= (int64_t)DISPLAY_AFTER_TOUCH_MS * MATH_US_PER_MS; now += TEST_STEP_US) {
+            display_touch(&d, now);
+            TEST_ASSERT_FALSE(display_update(&d, a, now));
+        }
+        const int64_t ended = d.touch_ended_us;
+        TEST_ASSERT_EQUAL_INT(0, feed(&d, a, &now, DISPLAY_AFTER_TOUCH_MS - 2 * DISPLAY_SAMPLE_MS));
+        TEST_ASSERT_TRUE(display_update(&d, a, ended + (int64_t)DISPLAY_AFTER_TOUCH_MS * MATH_US_PER_MS));
     }
-    TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 }
 
-/* returning partway does not flip until past the inner threshold */
-
-void
-test_returning_partway_does_not_flip_until_the_inner_threshold(void) {
-    display_t d;
-    display_init(&d);
-    settle(&d, STRONG, 0); /* quarter 3: down is to the right */
-    TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
-
-    /* Tilting back toward "down is down", but only a little: angle from the
-     * x axis is arctan(700/1000) =~ 35 degrees, short of the 60-degree
-     * threshold this module needs to leave quarter 3. Must hold. */
-    TEST_ASSERT_FALSE_MESSAGE(display_update(&d, (vec2i_t){1000, 700}),
-                              "a partial return must not flip the orientation yet");
-    TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
-
-    /* Further still: angle from the x axis is now arctan(1000/500) =~ 63
-     * degrees, past the threshold (equivalently, ~27 degrees from "down is
-     * down", inside the 30-degree inner band); now it must flip. */
-    TEST_ASSERT_TRUE_MESSAGE(display_update(&d, (vec2i_t){500, 1000}),
-                             "a return well past the inner threshold must flip back");
-    TEST_ASSERT_EQUAL_INT(0, display_quarter(&d));
+static void
+test_gap_backwards_and_zero_restart_prediction(void) {
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        for (int reset = 0; reset < 3; reset++) {
+            display_t d = fixture(q);
+            const vec3f_t a = sample((q + 1) % DISPLAY_QUARTER_COUNT, 0, 0, 1);
+            const int64_t base = (int64_t)DISPLAY_FILTER_RESET_MS * MATH_US_PER_MS;
+            display_update(&d, a, base);
+            const int64_t now = reset == 0 ? base * 2 + 1 : base - TEST_STEP_US;
+            if (reset == 2) {
+                display_update(&d, (vec3f_t){0}, base + TEST_STEP_US);
+            }
+            TEST_ASSERT_FALSE(display_update(&d, a, now));
+            TEST_ASSERT_EQUAL_INT(q, d.quarter);
+            TEST_ASSERT_TRUE(display_update(&d, a, now + (int64_t)DISPLAY_SETTLE_MS * MATH_US_PER_MS));
+        }
+    }
 }
-
-/* display_update() reports true only on an actual change */
-
-void
-test_update_reports_true_only_on_an_actual_change(void) {
-    display_t d;
-    display_init(&d); /* already quarter 0 */
-
-    TEST_ASSERT_FALSE_MESSAGE(display_update(&d, (vec2i_t){0, STRONG}),
-                              "feeding the orientation the module already reports must not claim a change");
-
-    TEST_ASSERT_TRUE_MESSAGE(display_update(&d, (vec2i_t){STRONG, 0}), "a genuine switch must report true");
-    TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
-
-    TEST_ASSERT_FALSE_MESSAGE(display_update(&d, (vec2i_t){STRONG, 0}),
-                              "holding the same tilt steady after the switch must not report true again");
-    TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
-}
-
-/* the shell's sampler: cadence and reporting, with a scripted sensor */
 
 typedef struct {
-    vec2i_t gravity;
-    bool read_ok;
     int reads;
+    bool read_ok;
+    vec3f_t acceleration;
 } scripted_t;
 
-/* Allocated per test: a static would be internal RAM the device image keeps. */
 static scripted_t* scripted;
 
 static bool
-scripted_gravity(vec2i_t* out) {
+scripted_acceleration(vec3f_t* out) {
     scripted->reads++;
-    if (!scripted->read_ok) {
-        return false;
-    }
-    *out = scripted->gravity;
-    return true;
+    *out = scripted->acceleration;
+    return scripted->read_ok;
 }
 
 static void
-script_gravity(int gx, int gy) {
-    scripted->gravity = (vec2i_t){gx, gy};
-}
-
-static void
-end_scripted_sampler(void) {
+cleanup(void) {
     free(scripted);
     scripted = NULL;
 }
 
 static void
-begin_scripted_sampler(display_orientation_t* o) {
+test_sampler_cadence_failures_and_hold_release(void) {
     scripted = calloc(1, sizeof *scripted);
     TEST_ASSERT_NOT_NULL(scripted);
-    suite_set_test_cleanup(end_scripted_sampler);
-    display_orientation_init(o);
-    scripted->read_ok = true;
-    script_gravity(-STRONG, 0);
-}
-
-void
-test_the_sampler_starts_landscape_and_the_first_call_samples(void) {
-    display_orientation_t o;
-    begin_scripted_sampler(&o);
-    TEST_ASSERT_EQUAL_INT(DISPLAY_DEFAULT_QUARTER, display_quarter(&o.display));
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_gravity));
-    TEST_ASSERT_EQUAL_INT(1, scripted->reads);
-}
-
-void
-test_the_sampler_waits_for_its_deadline_and_samples_exactly_at_it(void) {
-    display_orientation_t o;
-    begin_scripted_sampler(&o);
-    display_orientation_sample(&o, 0, scripted_gravity);
-
-    display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000 - 1, scripted_gravity);
-    TEST_ASSERT_EQUAL_INT(1, scripted->reads);
-    display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000, scripted_gravity);
-    TEST_ASSERT_EQUAL_INT(2, scripted->reads);
-}
-
-void
-test_a_failed_read_still_moves_the_deadline(void) {
-    display_orientation_t o;
-    begin_scripted_sampler(&o);
-    scripted->read_ok = false;
-
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_gravity));
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 500, scripted_gravity));
-    TEST_ASSERT_EQUAL_INT(1, scripted->reads);
-    display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000, scripted_gravity);
-    TEST_ASSERT_EQUAL_INT(2, scripted->reads);
-}
-
-void
-test_the_sampler_reports_a_change_in_both_directions_and_only_then(void) {
-    display_orientation_t o;
-    begin_scripted_sampler(&o);
-    int64_t now = 0;
-    const int64_t step = DISPLAY_SAMPLE_MS * 1000;
-
-    script_gravity(0, STRONG);
-    TEST_ASSERT_TRUE(display_orientation_sample(&o, now, scripted_gravity));
-    TEST_ASSERT_EQUAL_INT(0, display_quarter(&o.display));
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, now += step, scripted_gravity));
-
-    script_gravity(-STRONG, 0);
-    TEST_ASSERT_TRUE(display_orientation_sample(&o, now += step, scripted_gravity));
-    TEST_ASSERT_EQUAL_INT(1, display_quarter(&o.display));
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, now += step, scripted_gravity));
-}
-
-static void
-test_held_quarter_wins_without_sampling_gravity(void) {
-    display_orientation_t o;
-    begin_scripted_sampler(&o);
-    const int64_t step = (int64_t)DISPLAY_SAMPLE_MS * 1000;
-    const int quarters[] = {DISPLAY_PORTRAIT, DISPLAY_PORTRAIT_UPSIDE_DOWN};
-    for (size_t q = 0; q < sizeof quarters / sizeof quarters[0]; q++) {
-        display_orientation_hold(&o, quarters[q]);
-        TEST_ASSERT_TRUE(o.held);
-        for (int sample = 0; sample < 4; sample++) {
-            TEST_ASSERT_FALSE(display_orientation_sample(&o, sample * step, scripted_gravity));
-            TEST_ASSERT_EQUAL_INT(quarters[q], display_quarter(&o.display));
-        }
+    suite_set_test_cleanup(cleanup);
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        display_orientation_t o;
+        display_orientation_init(&o);
+        TEST_ASSERT_EQUAL_INT(DISPLAY_DEFAULT_QUARTER, o.display.quarter);
+        scripted->reads = 0;
+        scripted->read_ok = false;
+        TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_acceleration));
+        display_orientation_sample(&o, TEST_STEP_US - 1, scripted_acceleration);
+        TEST_ASSERT_EQUAL_INT(1, scripted->reads);
+        display_orientation_sample(&o, TEST_STEP_US, scripted_acceleration);
+        TEST_ASSERT_EQUAL_INT(2, scripted->reads);
+        display_orientation_hold(&o, q);
+        TEST_ASSERT_FALSE(display_orientation_sample(&o, TEST_STEP_US * 2, scripted_acceleration));
+        TEST_ASSERT_EQUAL_INT(2, scripted->reads);
+        scripted->read_ok = true;
+        scripted->acceleration = sample((q + 1) % DISPLAY_QUARTER_COUNT, 0, 0, 1);
+        display_orientation_release(&o);
+        TEST_ASSERT_TRUE(display_orientation_sample(&o, TEST_STEP_US + 1, scripted_acceleration));
+        TEST_ASSERT_EQUAL_INT(q, o.display.quarter);
+        TEST_ASSERT_TRUE(display_orientation_sample(&o, TEST_STEP_US + 1 + (int64_t)DISPLAY_SETTLE_MS * MATH_US_PER_MS,
+                                                    scripted_acceleration));
+        TEST_ASSERT_EQUAL_INT((q + 1) % DISPLAY_QUARTER_COUNT, o.display.quarter);
     }
-    TEST_ASSERT_EQUAL_INT(0, scripted->reads);
 }
-
-static void
-test_release_resamples_before_the_previous_deadline(void) {
-    display_orientation_t o;
-    begin_scripted_sampler(&o);
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_gravity));
-    display_orientation_hold(&o, DISPLAY_PORTRAIT);
-    display_orientation_release(&o);
-    TEST_ASSERT_FALSE(o.held);
-    TEST_ASSERT_TRUE(display_orientation_sample(&o, 1, scripted_gravity));
-    TEST_ASSERT_EQUAL_INT(DISPLAY_LANDSCAPE, display_quarter(&o.display));
-    TEST_ASSERT_EQUAL_INT(2, scripted->reads);
-}
-
-static void
-test_release_reports_change_even_with_flat_gravity(void) {
-    display_orientation_t o;
-    begin_scripted_sampler(&o);
-    display_orientation_hold(&o, DISPLAY_PORTRAIT);
-    script_gravity(0, 0);
-    display_orientation_release(&o);
-    TEST_ASSERT_TRUE(display_orientation_sample(&o, 0, scripted_gravity));
-    TEST_ASSERT_EQUAL_INT(DISPLAY_PORTRAIT, display_quarter(&o.display));
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, (int64_t)DISPLAY_SAMPLE_MS * 1000, scripted_gravity));
-}
-
-/* suite */
 
 void
 run_display_suite(void) {
-    RUN_TEST(test_held_quarter_wins_without_sampling_gravity);
-    RUN_TEST(test_release_reports_change_even_with_flat_gravity);
-    RUN_TEST(test_release_resamples_before_the_previous_deadline);
-    RUN_TEST(test_gravity_straight_down_reads_upright);
-    RUN_TEST(test_gravity_to_the_left_reads_quarter_one);
-    RUN_TEST(test_gravity_straight_up_reads_upside_down);
-    RUN_TEST(test_gravity_to_the_right_reads_quarter_three);
-
-    RUN_TEST(test_a_slow_sweep_through_a_boundary_flips_exactly_once);
-
-    RUN_TEST(test_parked_on_the_old_boundary_does_not_oscillate);
-    RUN_TEST(test_parked_on_the_boundary_from_the_other_side_does_not_oscillate);
-
-    RUN_TEST(test_returning_partway_does_not_flip_until_the_inner_threshold);
-
-    RUN_TEST(test_update_reports_true_only_on_an_actual_change);
-
-    RUN_TEST(test_the_sampler_starts_landscape_and_the_first_call_samples);
-    RUN_TEST(test_the_sampler_waits_for_its_deadline_and_samples_exactly_at_it);
-    RUN_TEST(test_a_failed_read_still_moves_the_deadline);
-    RUN_TEST(test_the_sampler_reports_a_change_in_both_directions_and_only_then);
+    RUN_TEST(test_clean_turn_settles_in_every_rotation);
+    RUN_TEST(test_filtered_turn_and_hysteresis_in_every_rotation);
+    RUN_TEST(test_tilt_limits_are_relative_to_default);
+    RUN_TEST(test_flat_and_face_up_offset_never_switch);
+    RUN_TEST(test_flat_cooldown_starts_when_flat_ends);
+    RUN_TEST(test_near_zero_interrupts_continuous_flat_dwell);
+    RUN_TEST(test_overhead_hysteresis_in_every_rotation);
+    RUN_TEST(test_acceleration_cooldown_in_every_rotation);
+    RUN_TEST(test_swing_cooldown_in_every_rotation);
+    RUN_TEST(test_touch_blocks_then_waits_after_last_down_frame);
+    RUN_TEST(test_gap_backwards_and_zero_restart_prediction);
+    RUN_TEST(test_sampler_cadence_failures_and_hold_release);
 }
 
 SUITE_REGISTER(run_display_suite);
