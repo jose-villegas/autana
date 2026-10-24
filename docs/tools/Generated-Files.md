@@ -5,7 +5,7 @@ C headers (icon tables, palettes, curves, baked layouts) and SVG charts. Each
 one is checked in beside the code or document that reads it, and opens with
 a banner saying so and giving the command that writes it:
 
-```c
+```c fragment
 /*
  * GENERATED FILE - do not edit.
  *
@@ -89,3 +89,6 @@ Each block names this check command for `check_doc_generated.py` to run in CI.
 `declaration-<function>` copies the prototype from its tracked header under
 `launcher/` (`_` becomes `-`), in a C fence with its layout and no doc comment.
 The check names functions declared in zero or several headers.
+
+A `c`, `h` or `cpp` fence outside a generated block is marked `` ```c fragment ``; otherwise embed an example
+file or a declaration block. `--check` rejects an unmarked one.
