@@ -22,7 +22,7 @@ The C and Python tests share `tests/name_hash_vectors.h`.
 <!-- generated: package-hash-headers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Header | Purpose |
 |---|---|
-| [include/hash/crc32.h](include/hash/crc32.h) | crc32: the CRC-32 zlib and PNG compute, a nibble at a time, so no 1 KiB table sits in RAM. |
+| [include/hash/crc32.h](include/hash/crc32.h) | crc32: the CRC-32 of RFC 1952, which zlib and PNG compute, a nibble at a time, so no 1 KiB table sits in RAM. |
 | [include/hash/name_hash.h](include/hash/name_hash.h) | Names become stable numeric keys for lookup at initialization or load time. |
 | [include/hash/name_hash64.h](include/hash/name_hash64.h) | Seeded 64-bit name hashes support incremental byte-span fingerprints. |
 <!-- /generated: package-hash-headers -->

@@ -1,4 +1,4 @@
-/* crc32: the CRC-32 zlib and PNG compute, a nibble at a time, so no 1 KiB table sits in RAM. */
+/* crc32: the CRC-32 of RFC 1952, which zlib and PNG compute, a nibble at a time, so no 1 KiB table sits in RAM. */
 #pragma once
 
 #include <stddef.h>
