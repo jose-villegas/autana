@@ -30,7 +30,7 @@ or sound is off, `sound_play()` returns the null voice and nothing plays.
 
 To add your own sound, put `NAME.sound.toml` and its WAV in your app's pack
 folder; the build bakes it into entry `NAME` ([Sound assets](Sound-Assets.md),
-[Packs](../assets/README.md#packs)). Then open it from your pack with
+[Packs](../assets/Building-Packs.md#packs)). Then open it from your pack with
 `asset_store_pack()` the same way.
 
 | Format | Pack size per second | Example: 220 ms click |
