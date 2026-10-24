@@ -58,7 +58,7 @@ guided_step_remaining_us(const guided_step_t* state, int64_t now_us, int64_t dur
 
 static void
 guided_step_mark(int x, int y, int side) {
-    ui_fill((recti_t){x - side / 2, y - side / 2, side, side}, GUIDE_INK);
+    ui_fill((recti_t){x - (side / 2), y - (side / 2), side, side}, GUIDE_INK);
 }
 
 void
@@ -69,7 +69,7 @@ guided_step_draw(const guided_step_t* state, const guided_step_view_t* view) {
         mathi_wrap(view->target_bearing_deg - view->committed_bearing_deg, 0, MOTION_PROBE_FULL_TURN_DEG);
     const int signed_arrow = arrow_delta > GUIDE_DEG_HALF_TURN ? arrow_delta - MOTION_PROBE_FULL_TURN_DEG : arrow_delta;
     const int direction = signed_arrow < 0 ? -1 : 1;
-    const recti_t box = {GUIDE_BOX_MARGIN, GUIDE_BOX_Y, view->width - 2 * GUIDE_BOX_MARGIN, GUIDE_BOX_H};
+    const recti_t box = {GUIDE_BOX_MARGIN, GUIDE_BOX_Y, view->width - (2 * GUIDE_BOX_MARGIN), GUIDE_BOX_H};
     ui_fill(box, GUIDE_FACE);
     ui_outline(box, GUIDE_INK);
     char line[96];
@@ -85,7 +85,7 @@ guided_step_draw(const guided_step_t* state, const guided_step_view_t* view) {
     } else {
         (void)snprintf(line, sizeof line, "HOLD AT %d DEG", view->target_tilt_deg);
     }
-    ui_text_centre((recti_t){box.x, box.y + 2 * GUIDE_TEXT_H + 9, box.w, GUIDE_TEXT_H}, line);
+    ui_text_centre((recti_t){box.x, box.y + (2 * GUIDE_TEXT_H) + 9, box.w, GUIDE_TEXT_H}, line);
     ui_scale_end();
     ui_color_end();
     const int cx = view->width / 2;
@@ -99,7 +99,7 @@ guided_step_draw(const guided_step_t* state, const guided_step_view_t* view) {
     }
     const int length = abs(signed_arrow);
     for (int deg = 0; deg <= length; deg += GUIDE_RING_STEP_DEG) {
-        const float angle = (float)(GUIDE_TOP_ANGLE_DEG + direction * deg) * MATH_RADIANS_PER_DEGREE;
+        const float angle = (float)(GUIDE_TOP_ANGLE_DEG + (direction * deg)) * MATH_RADIANS_PER_DEGREE;
         guided_step_mark(cx + (int)lroundf(cosf(angle) * GUIDE_RING_RADIUS),
                          cy + (int)lroundf(sinf(angle) * GUIDE_RING_RADIUS), GUIDE_RING_MARK);
     }
