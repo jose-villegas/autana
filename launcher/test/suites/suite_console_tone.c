@@ -406,20 +406,20 @@ imu_ready(void) {
 }
 
 bool
-imu_set_odr_code(unsigned odr_code) {
+imu_set_odr(unsigned odr_code) {
     device.odr_code = odr_code;
     return true;
 }
 
 /* Two samples either side of zero on x, TEST_SHAKE_COUNTS wider per measured window. */
 int
-imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
+imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES], bool* gap) {
     TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, device.odr_code);
-    *lost = 0;
-    *overflowed = false;
+    *gap = false;
     const int16_t counts = (int16_t)(device.measures * TEST_SHAKE_COUNTS);
     out[0] = (imu_sample_t){.ax = counts};
     out[1] = (imu_sample_t){.ax = (int16_t)-counts};
+    lost_before[0] = lost_before[1] = 0;
     return 2;
 }
 
