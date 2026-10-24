@@ -27,8 +27,11 @@ class MathBenchFigureTests(unittest.TestCase):
             bars = [bar for axis in fig.axes for bar in axis.patches]
             self.assertEqual(len(bars), len(ordinary) + len(items))
             hatched = [bar for bar in bars if bar.get_hatch() == "///"]
-            self.assertCountEqual([bar.get_height() for bar in hatched],
-                                  [measured[item.plain][0] for item in items])
+            self.assertEqual(len(hatched), len(items))
+            self.assertCountEqual([text.get_text() for axis in fig.axes for text in axis.texts
+                                   if text.get_text().isdigit()],
+                                  [f"{measured[row[0]][0]:.0f}" for row in ordinary] +
+                                  [f"{measured[item.plain][0]:.0f}" for item in items])
             labels = [tick.get_text() for axis in fig.axes for tick in axis.get_xticklabels()]
             self.assertNotIn("dot_f32_n256", labels)
             for key, label, kind, _, _ in rows:
@@ -39,6 +42,7 @@ class MathBenchFigureTests(unittest.TestCase):
             for axis in fig.axes:
                 self.assertEqual(axis.get_ylim()[0], 0)
                 self.assertEqual(axis.get_yscale(), "linear")
+                self.assertEqual(axis._left_title.get_fontsize(), figures.TITLE_SIZE)
             import matplotlib.pyplot as plt
             plt.close(fig)
 
@@ -50,7 +54,7 @@ class MathBenchFigureTests(unittest.TestCase):
         from types import SimpleNamespace
         rows = [("a_f", "chosen", "f", 1, "scalar"),
                 ("b_i", "reference", "i", 1, "libm")]
-        measured = {"a_f": (2, 3, 1), "b_i": (5, 6, 1)}
+        measured = {"a_f": (5, 6, 1), "b_i": (2, 3, 1)}
         items = [SimpleNamespace(fast="a_f", plain="b_i")]
         fig = figures.render(rows, measured, items)
         self.assertEqual(len(fig.axes), 1)
@@ -58,7 +62,33 @@ class MathBenchFigureTests(unittest.TestCase):
         self.assertEqual([tick.get_text() for tick in axis.get_xticklabels()], ["chosen"])
         fast, plain = axis.patches
         self.assertLess(fast.get_x(), plain.get_x())
+        self.assertEqual(plain.get_height(), measured["b_i"][0])
+        self.assertEqual(len(axis.lines), 0)
         self.assertEqual(plain.get_edgecolor(), to_rgba(figures.SLOTS[1]))
         self.assertIn("reference (i)", [text.get_text() for text in axis.texts])
         import matplotlib.pyplot as plt
         plt.close(fig)
+
+    def test_tall_reference_preserves_panel_scale_and_true_value(self):
+        import math_bench_figures as figures
+        from types import SimpleNamespace
+        rows = [("fast_x", "normalize", "x", 1, "vector"),
+                ("plain_x", "normalize_div", "x", 1, "vector")]
+        measured = {"fast_x": (100, 100, 1), "plain_x": (1115, 1115, 1)}
+        fig = figures.render(rows, measured, [SimpleNamespace(fast="fast_x", plain="plain_x")])
+        import matplotlib.pyplot as plt
+        self.addCleanup(plt.close, fig)
+        axis = fig.axes[0]
+        limit = measured["fast_x"][0] * figures.VALUE_HEADROOM
+        self.assertEqual(axis.get_ylim(), (0, limit))
+        self.assertEqual(axis.get_yscale(), "linear")
+        self.assertEqual(axis.patches[1].get_height(), limit)
+        value = next(text for text in axis.texts if text.get_text() == "1115")
+        name = next(text for text in axis.texts if text.get_text() == "normalize_div (x)")
+        self.assertEqual(value.xy[1], limit)
+        self.assertEqual(name.xy[1], limit)
+        self.assertGreater(name.get_position()[1], value.get_position()[1])
+        self.assertEqual(len(axis.lines), 2)
+        for line in axis.lines:
+            self.assertEqual(line.get_color(), "white")
+            self.assertTrue(all(0 < y < limit for y in line.get_ydata()))
