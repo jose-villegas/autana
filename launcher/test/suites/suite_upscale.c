@@ -5,7 +5,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 
 #include "gfx/target/gfx_color.h"
 #include "gfx/target/gfx_target.h"

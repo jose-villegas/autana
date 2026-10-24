@@ -200,6 +200,23 @@ class PackagesAlone(FixtureLauncher):
         result = self.check()
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
+    def test_tests_and_benches_cannot_reach_engine_headers(self):
+        self.self_contained()
+        self.write("test/suites.h", "#pragma once\n")
+        self.write("packages/p/tests/suite_p.c", '#include "suites.h"\n')
+        self.write("packages/p/bench/measure.c", '#include "suites.h"\n')
+        self.fails_naming("tests/suite_p.c", "bench/measure.c")
+
+    def test_tests_get_local_headers_testkit_and_unity(self):
+        self.self_contained()
+        self.write("packages/testkit/include/testkit/suite.h", "#pragma once\n")
+        self.write("packages/testkit/unity/unity.h", "#pragma once\n")
+        self.write("packages/p/tests/local.h", "#pragma once\n")
+        self.write("packages/p/tests/suite_p.c",
+                   '#include "local.h"\n#include "testkit/suite.h"\n#include "unity.h"\n')
+        result = self.check()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
     def test_no_packages_is_a_failure_not_a_pass(self):
         self.assertNotEqual(0, self.check().returncode)
 

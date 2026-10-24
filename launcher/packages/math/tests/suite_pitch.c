@@ -1,6 +1,6 @@
 #include <math.h>
 #include "math/signal/pitch.h"
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #define TEST_REFERENCE_HZ    256.0F

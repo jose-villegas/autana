@@ -68,8 +68,8 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
 # -ffreestanding because there is no target libc startup involved here: this
-# only ever compiles, never links. DEVICE_BUILD matches what the device
-# selftest compiles the suites with; a suite whose DEVICE_BUILD half needs
+# only ever compiles, never links. DEVICE_BUILD and ESP_PLATFORM select the
+# device selftest paths; a suite whose device half needs
 # ESP-IDF headers is measured as the host sees it instead, and one that
 # needs them either way is outside the host gate too, so it is skipped aloud.
 compile_suite() {
@@ -77,7 +77,7 @@ compile_suite() {
     "$CC_BIN" $STD_FLAG $ARCH_FLAGS $CODEGEN_FLAGS -ffreestanding \
         -Wall -Wextra -Wno-unused-parameter -g \
         $1 -DCONFIG_LAUNCHER_DEVELOPMENT=1 \
-        -I "$MAIN_DIR" $(package_includes "$TEST_DIR/..") -I "$TEST_DIR" -I "$TEST_DIR/framework" \
+        -I "$MAIN_DIR" $(package_includes "$TEST_DIR/..") -I "$TEST_DIR" -I "$TEST_DIR/../packages/testkit/unity" \
         -I "$TEST_DIR/stubs" \
         -I "$TEST_DIR/../components/microui/include" \
         -include "$TEST_DIR/timing.h" \
@@ -86,10 +86,10 @@ compile_suite() {
 
 for f in $(find $(app_directories "$TEST_DIR/..") -path '*/tests/suite_*.c' | sort) "$TEST_DIR"/suites/suite_*.c $(package_suites "$TEST_DIR/.."); do
     [ -e "$f" ] || continue
-    if compile_suite -DDEVICE_BUILD "$f"; then
+    if compile_suite "-DDEVICE_BUILD -DESP_PLATFORM" "$f"; then
         continue
     elif compile_suite "" "$f"; then
-        echo "portable half only (DEVICE_BUILD needs ESP-IDF headers): $(basename "$f")"
+        echo "portable half only (device guards need ESP-IDF headers): $(basename "$f")"
     else
         echo "skipped (needs ESP-IDF headers): $(basename "$f")"
     fi

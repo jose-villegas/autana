@@ -114,7 +114,7 @@ TEST_ASSERT_FALSE_MESSAGE(second.pressed,
 A trimmed real one, `launcher/test/suites/suite_button_fsm.c`:
 
 ```c
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 #include "input/buttons/button_fsm.h"
 
@@ -137,6 +137,10 @@ The module under test (`input/buttons/button_fsm.c`) is ordinary firmware source
 to its neighbours; only the suite is auto-discovered. Run it with
 `launcher/test/run_tests.sh` (host) or `autana suite run_button_fsm_suite`
 (board). See [Building-an-App.md](../firmware/Building-an-App.md) for app layout.
+
+Package suites include `testkit/suite.h` for registration and `testkit/cleanup.h`
+for deferred fixture cleanup. Engine-only runner features live in `suites.h`.
+Use `ESP_PLATFORM` for hardware guards inside packages.
 
 ## Adding a suite
 

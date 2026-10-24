@@ -10,8 +10,9 @@
 # folders or an undeclared package; this catches the reaches a resolver
 # cannot see: a stub, a vendored component, an ESP-IDF header. PACKAGE-CONFIG
 # requires package-prefixed settings and Kconfig entries, ignoring comments.
-# Each header compiles on its own; relying on an includer's headers fails
-# too. Syntax only: nothing is linked and nothing runs.
+# Each header compiles on its own. Tests and benchmarks also get testkit
+# and Unity, plus their own folder for local headers. Syntax only: nothing
+# is linked and nothing runs.
 #
 # Usage: check_packages_alone.sh [<launcher dir>]
 
@@ -62,6 +63,15 @@ for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
     for source in $(find "$package_dir/src" -name '*.c' 2>/dev/null | sort); do
         # shellcheck disable=SC2086
         check "$package_dir" "${source#"$package_dir"/}" "$CC_BIN" $CFLAGS $roots "$source"
+    done
+    test_roots="-I $include_dir -I $LAUNCHER_DIR/packages/testkit/include -I $LAUNCHER_DIR/packages/testkit/unity"
+    for folder in tests bench; do
+        [ -d "$package_dir/$folder" ] || continue
+        for source in $(find "$package_dir/$folder" -name '*.c' | sort); do
+            # shellcheck disable=SC2086
+            check "$package_dir" "${source#"$package_dir"/}" "$CC_BIN" $CFLAGS $test_roots \
+                -I "$package_dir/$folder" "$source"
+        done
     done
 done
 

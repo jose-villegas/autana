@@ -10,9 +10,9 @@ CC_BIN=$(find_cc)
 BUILD_DIR="$SCRIPT_DIR/build"
 mkdir -p "$BUILD_DIR"
 "$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -g -O1 \
-    -I "$LAUNCHER_DIR/main" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" -I "$LAUNCHER_DIR/test" -I "$LAUNCHER_DIR/test/framework" \
+    -I "$LAUNCHER_DIR/main" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" -I "$LAUNCHER_DIR/test" -I "$LAUNCHER_DIR/packages/testkit/unity" \
     "$SCRIPT_DIR/crossflow_bench.c" "$SAND_DIR/tests/suite_sand_scenes.c" "$SAND_DIR/tests/suite_sand_common.c" \
-    "$LAUNCHER_DIR/test/framework/unity.c" "$LAUNCHER_DIR/test/suites.c" \
+    "$LAUNCHER_DIR/packages/testkit/unity/unity.c" "$LAUNCHER_DIR/test/suites.c" \
     "$SAND_DIR/sand.c" "$SAND_DIR/sand_chunk_sched.c" "$LAUNCHER_DIR/main/core/job.c" "$SAND_DIR/sand_impulse.c" \
     "$SAND_DIR/sand_reactions.c" "$SAND_DIR/sand_plants.c" "$SAND_DIR/sand_gas.c" \
     "$SAND_DIR/sand_liquid.c" "$SAND_DIR/material.c" \

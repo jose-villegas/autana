@@ -11,7 +11,7 @@
 #include "gfx/present/gfx_present_guard.h"
 #include "gfx/present/gfx_test.h"
 #include "heap_arena.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 
 #define FRAME_COLOUR GFX_RGB(0x204060)
 #define CLEAR_COLOUR GFX_RGB(0x102030)

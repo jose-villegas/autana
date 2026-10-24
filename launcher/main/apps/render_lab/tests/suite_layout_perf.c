@@ -20,7 +20,7 @@
 #include "render/raster_split.h"
 #include "scene/scene_shell.h"
 #include "services/tune.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "ui/ui.h"
 #include "unity.h"
 

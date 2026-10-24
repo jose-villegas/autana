@@ -1,0 +1,14 @@
+/* suite: self-registering test entry points for a caller-owned runner. */
+#pragma once
+
+typedef void (*suite_fn)(void);
+
+/* On-request suites run only when the caller explicitly selects them. */
+void suite_register(const char* name, suite_fn fn);
+void suite_register_on_request(const char* name, suite_fn fn);
+
+#define SUITE_REGISTER(fn)                                                                                             \
+    __attribute__((constructor)) static void fn##_register(void) { suite_register(#fn, fn); }
+
+#define SUITE_REGISTER_ON_REQUEST(fn)                                                                                  \
+    __attribute__((constructor)) static void fn##_register(void) { suite_register_on_request(#fn, fn); }

@@ -119,7 +119,7 @@ class CloneTests(unittest.TestCase):
 
     def test_skip_rules(self):
         files = {"launcher/main/a.c": BLOCK, "scripts/tool.py": "pass",
-                 "launcher/components/x.c": BLOCK, "launcher/test/framework/x.h": BLOCK,
+                 "launcher/components/x.c": BLOCK, "launcher/packages/testkit/unity/x.h": BLOCK,
                  "editor/tests/fixtures/data.py": "pass", "launcher/main/b.h":
                  "/* GENERATED FILE - do not edit. */\n" + BLOCK}
         self.assertEqual(self.scan(files), [])
