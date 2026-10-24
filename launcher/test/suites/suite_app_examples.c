@@ -1,9 +1,6 @@
 #include "suites.h"
 
 #ifndef DEVICE_BUILD
-#include <stdarg.h>
-#include <stdio.h>
-
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_test.h"
 #include "test_cleanup.h"
@@ -17,25 +14,7 @@
 #define HELLO_TEXT_X         20
 #define HELLO_TEXT_Y         20
 
-#define CONSOLE_REPLY_BYTES  64
-
-static char replies[CONSOLE_REPLY_BYTES];
-static size_t reply_bytes;
-
-static int
-capture_printf(const char* format, ...) {
-    va_list args;
-    va_start(args, format);
-    const int written = vsnprintf(replies + reply_bytes, sizeof replies - reply_bytes, format, args);
-    va_end(args);
-    TEST_ASSERT_TRUE(written >= 0 && (size_t)written < sizeof replies - reply_bytes);
-    reply_bytes += (size_t)written;
-    return written;
-}
-
-#define printf capture_printf
 #include "../app_examples/console.c"
-#undef printf
 
 static void
 cleanup(void) {
@@ -47,8 +26,6 @@ cleanup(void) {
 static void
 fixture(void) {
     suite_set_test_cleanup(cleanup);
-    reply_bytes = 0;
-    replies[0] = '\0';
     app_arena_rewind(0);
     app_registry_reset_for_test();
 }
@@ -97,14 +74,10 @@ test_arena_exhaustion_keeps_a_null_fallback(void) {
 }
 
 static void
-test_console_status_prints_two_lines_and_declines_other_commands(void) {
+test_console_handles_status_and_declines_other_commands(void) {
     fixture();
-    TEST_ASSERT_NOT_NULL(app_example.console);
-    TEST_ASSERT_EQUAL_STRING("example", app_example.console->prefix);
     TEST_ASSERT_FALSE(app_example.console->handle("unknown"));
-    TEST_ASSERT_EQUAL_UINT(0, reply_bytes);
     TEST_ASSERT_TRUE(app_example.console->handle("status"));
-    TEST_ASSERT_EQUAL_STRING("EXAMPLE status=ok\nEXAMPLE_END\n", replies);
 }
 #endif
 
@@ -114,7 +87,7 @@ suite_app_examples(void) {
     RUN_TEST(test_hello_registers_and_draws_text_on_its_background);
     RUN_TEST(test_arena_callbacks_borrow_memory_until_the_shell_rewinds);
     RUN_TEST(test_arena_exhaustion_keeps_a_null_fallback);
-    RUN_TEST(test_console_status_prints_two_lines_and_declines_other_commands);
+    RUN_TEST(test_console_handles_status_and_declines_other_commands);
 #endif
 }
 

@@ -154,6 +154,9 @@ static struct {
         int mounted;
     } console;
 
+    const sound_play_opts_t* play_opts;
+    sound_voice_t play_voice;
+    sound_voice_t stop_voice;
     tone_failure_t failure;
     audio_codec_feedback_t feedback;
     audio_out_amp_t amp;
@@ -272,9 +275,10 @@ sound_capture_close(void) {
 
 sound_voice_t
 sound_play(const sound_t* sound, const sound_play_opts_t* opts) {
-    (void)opts;
+    device.play_opts = opts;
     device.playing = sound && sound->data && sound->frames && device.failure != TEST_TONE_START_FAIL;
-    return device.playing ? (sound_voice_t){.id = TEST_CONSOLE_VOICE_FIRST} : SOUND_VOICE_NULL;
+    device.play_voice = device.playing ? (sound_voice_t){.id = TEST_CONSOLE_VOICE_FIRST} : SOUND_VOICE_NULL;
+    return device.play_voice;
 }
 
 sound_voice_t
@@ -335,6 +339,7 @@ timing_sleep_ms(uint32_t ms) {
 
 void
 sound_stop(sound_voice_t voice) {
+    device.stop_voice = voice;
     if (device.console.enabled) {
         if (voice.id == TEST_CONSOLE_VOICE_SYSTEM) {
             device.console.system_playing = false;
@@ -347,7 +352,6 @@ sound_stop(sound_voice_t voice) {
         device.console.phase++;
         return;
     }
-    (void)voice;
     if (!device.stops) {
         device.stop_started = timing_now_us();
     }
@@ -634,6 +638,8 @@ test_tap_example_opens_plays_and_stops(void) {
     reset_device();
     TEST_ASSERT_TRUE(tap_start());
     TEST_ASSERT_NOT_NULL(tap.data);
+    TEST_ASSERT_NULL(device.play_opts);
+    TEST_ASSERT_EQUAL_UINT(device.play_voice.id, device.stop_voice.id);
     TEST_ASSERT_TRUE(device.playing);
     TEST_ASSERT_EQUAL_UINT(1, device.stops);
     TEST_ASSERT_TRUE(device.stop_pending);

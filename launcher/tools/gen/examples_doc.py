@@ -16,8 +16,8 @@ from tracked import tracked_files
 from idf_vocabulary import prototypes
 
 CHECK = "python launcher/tools/gen/examples_doc.py --check"
-FENCE = re.compile(r"^\s*(?:(?:[-+*]|[0-9]+[.)])\s+)?(`{3,}|~{3,})(.*)$")
-C_LANGUAGES = {"c", "h", "cpp"}
+FENCE = re.compile(r"^\s*(?:>\s*)*(?:(?:[-+*]|[0-9]+[.)])\s+)?(`{3,}|~{3,})(.*)$")
+C_LANGUAGES = {"c", "h", "cpp", "c++", "cc"}
 
 
 def block_name(area, stem, kind):
@@ -87,7 +87,6 @@ def write_examples(root, check=False):
 
 def unmarked_fences(text):
     """Line numbers of handwritten C fences without the fragment word."""
-    text = text.replace("\r\n", "\n")
     generated = [(start, end) for start, end, *_ in blocks(text).values()]
     opened = None
     offset = 0
@@ -101,7 +100,7 @@ def unmarked_fences(text):
             else:
                 opened = fence
                 words = info.split()
-                if (words and words[0] in C_LANGUAGES and "fragment" not in words[1:]
+                if (words and words[0].lower() in C_LANGUAGES and "fragment" not in words[1:]
                         and not any(start <= offset < end for start, end in generated)):
                     yield number
         offset += len(line)

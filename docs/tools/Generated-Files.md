@@ -90,6 +90,5 @@ Each block names this check command for `check_doc_generated.py` to run in CI.
 `launcher/` (`_` becomes `-`), in a C fence with its layout and no doc comment.
 The check names functions declared in zero or several headers.
 
-Every tracked Markdown `c`, `h` or `cpp` fence outside a generated block must
-include the word `fragment` after its language, such as `` ```c fragment ``.
-Otherwise, embed an example file or a declaration block.
+A `c`, `h` or `cpp` fence outside a generated block is marked `` ```c fragment ``; otherwise embed an example
+file or a declaration block. `--check` rejects an unmarked one.
