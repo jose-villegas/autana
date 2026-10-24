@@ -11,7 +11,7 @@ DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device_report
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
-from test_assertions import assert_contains
+from report_assertions import assert_contains
 
 
 SAND_CAPTURE = """I (13050) screenshot: RUNSUITE run_sand_perf_suite

@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / 'launcher/tools/perf'))
 import math_bench_table as bench
 import fast_paths as paths
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
-from test_assertions import assert_contains
+from report_assertions import assert_contains
 
 
 class FastPathTests(unittest.TestCase):

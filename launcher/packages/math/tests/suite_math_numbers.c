@@ -710,11 +710,13 @@ float_from_bits(uint32_t bits) {
 }
 
 #define RECIP_OCTAVES           20
-#define FAST_PATH_ROUNDING_ULP  0.5
 #define FAST_PATH_RECIP_OCTAVES 1
 #define FAST_PATH_BINS_PER_UNIT 32
+#if !defined(DEVICE_BUILD) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
+#define FAST_PATH_ROUNDING_ULP  0.5
 #define FAST_PATH_RSQRT_OCTAVES 2
 #define FAST_PATH_RSQRT_BINS    (((1 << FAST_PATH_RSQRT_OCTAVES) - 1) * FAST_PATH_BINS_PER_UNIT)
+#endif
 
 static float
 fast_path_period_position(float input, int octaves) {
