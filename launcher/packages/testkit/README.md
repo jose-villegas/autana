@@ -30,7 +30,7 @@ The exit status counts test failures and runner errors. Engine runners link test
 
 ## Headers
 
-<!-- generated: package-testkit-headers check: python launcher/tools/gen/shared_helpers.py --check -->
+<!-- generated: package-testkit-headers check: python launcher/tools/gen/package_headers.py --check -->
 | Header | Purpose |
 |---|---|
 | [include/testkit/cleanup.h](include/testkit/cleanup.h) | Deferred cleanups registered by test fixtures. |

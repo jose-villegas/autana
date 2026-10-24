@@ -1,3 +1,4 @@
+"""dynres_report reads span stages, compares fast-path steps and prices refits."""
 import pathlib
 import unittest
 import tempfile
