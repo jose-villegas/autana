@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Draw each annotated error curve from captures with explicit execution provenance."""
 import argparse
+import math
 from pathlib import Path
 import sys
 
@@ -22,7 +23,11 @@ def _configure_axis(axis, points, mode=None):
     if not periodic and min(x) > 0 and max(x) / min(x) >= 2:
         axis.set_xscale("log", base=2)
     axis.set_xlim(min(x), max(x))
-    axis.set_xlabel({"period": "Position within error period", "phase": "Phase (turns)"}.get(mode, "Input bin centre"))
+    label = "Phase (turns)" if mode == "phase" else "Input bin centre"
+    if mode == "period":
+        period_end = 2 ** math.ceil(math.log2(max(point[0] for point in points)))
+        label = f"Input mantissa (every input folded into [1, {period_end}))"
+    axis.set_xlabel(label)
 
 
 def main(argv=None):
@@ -60,7 +65,7 @@ def main(argv=None):
                 axis.axhline(item.limit, color=SLOTS[1], linestyle="--", label=limit_label)
             _configure_axis(axis, points, axes.get((item.key, item.kind)))
             axis.set_ylim(bottom=0, top=(max(y) if zoom else max(item.limit, max(y))) * ERROR_HEADROOM)
-            unit = "fractional ulp" if item.unit == "ulp" and axes.get((item.key, item.kind)) == "period" else item.unit
+            unit = "ulp from the exact value" if item.unit == "ulp" and axes.get((item.key, item.kind)) == "period" else item.unit
             axis.set_ylabel(f"Error ({unit})")
             axis.grid(color=FAINT)
             title = f"{item.key} ({sources[identity]})"

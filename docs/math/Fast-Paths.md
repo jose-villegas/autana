@@ -6,6 +6,7 @@ The [capture commands](Benchmark.md#capture) produce the evidence.
 
 Key: warm cycles measure cached batches; cold cycles include instruction-cache refill.
 Plain/fast is the warm cycle ratio (greater than one wins).
+Errors: steps count ulp steps from the rounded result; figures show ulp from the exact value.
 Code totals wrappers and callees by ELF region; table bytes total linked copies.
 A dash means no measurement or table. Callers are engine modules; app names are grouped.
 
@@ -28,12 +29,12 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 
 | Fast path | Warm cycles: fast / plain (×) | Cold cycles: fast / plain | Max error |
 |---|---|---|---|
-| [`mathf_recip`](#mathf-recip) | 26 / 58 (2.2×) | 3000 / 5100 | 1 ulp |
-| [`mathf_rsqrt`](#mathf-rsqrt) | 38 / 110 (3×) | 4500 / 9800 | 1 ulp |
+| [`mathf_recip`](#mathf-recip) | 26 / 58 (2.2×) | 3000 / 5100 | 1 step |
+| [`mathf_rsqrt`](#mathf-rsqrt) | 38 / 110 (3×) | 4500 / 9800 | 1 step |
 | [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 24 / 110 (4.7×) | 3100 / 9800 | 5.9e-5 rel |
 | [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 350 / 1100 (3.2×) | 29000 / 77000 | 4.6e-10 rel (host) |
 | [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 720 / 740 (1×) | 63000 / 61000 | 4.6e-10 rel (host) |
-| [`mathf_repeat`](#mathf-repeat) | 64 / 140 (2.1×) | 7200 / 14000 | 0 ulp |
+| [`mathf_repeat`](#mathf-repeat) | 64 / 140 (2.1×) | 7200 / 14000 | 0 steps |
 | [`trig_sin`](#trig-sin) | 31 / 220 (7.3×) | 4900 / 24000 | 4.6 lsb |
 
 ### Size and builds
@@ -50,7 +51,7 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 
 <a id="mathf-recip"></a>
 
-## `mathf_recip`
+## `mathf_recip` <sup>[[85]](../Citations.md#85)</sup>
 
 | Original | Fast path |
 |---|---|
@@ -66,7 +67,7 @@ Builds: `CONFIG_MATH_FPU_RECIP`; QEMU plain; host plain.
 
 Callers: `render`.
 
-Bench rows `mathf_recip_f` vs `div_recip_f`; limit `MATHF_RECIP_ULP_LIMIT` (1 ulp); sweep.
+Bench rows `mathf_recip_f` vs `div_recip_f`; limit `MATHF_RECIP_ULP_LIMIT` (1 step); sweep.
 
 Plain way: `1.0F / x`.
 
@@ -74,7 +75,7 @@ Plain way: `1.0F / x`.
 
 <a id="mathf-rsqrt"></a>
 
-## `mathf_rsqrt`
+## `mathf_rsqrt` <sup>[[85]](../Citations.md#85)</sup>
 
 | Original | Fast path |
 |---|---|
@@ -90,7 +91,7 @@ Builds: `CONFIG_MATH_FPU_RECIP`; QEMU plain; host plain.
 
 Callers: `anim`, `apps (not named)`, `input`, `scene`.
 
-Bench rows `mathf_rsqrt_f` vs `div_rsqrt_f`; limit `MATHF_RSQRT_ULP_LIMIT` (1 ulp); proof.
+Bench rows `mathf_rsqrt_f` vs `div_rsqrt_f`; limit `MATHF_RSQRT_ULP_LIMIT` (1 step); proof.
 
 Plain way: `1.0F / sqrtf(x)`.
 
@@ -98,7 +99,7 @@ Plain way: `1.0F / sqrtf(x)`.
 
 <a id="mathf-rsqrt-approx"></a>
 
-## `mathf_rsqrt_approx`
+## `mathf_rsqrt_approx` <sup>[[85]](../Citations.md#85)</sup>
 
 | Original | Fast path |
 |---|---|
@@ -122,7 +123,7 @@ Plain way: `1.0F / sqrtf(x)`.
 
 <a id="mathx-rsqrt-q30"></a>
 
-## `mathx_rsqrt_q30`
+## `mathx_rsqrt_q30` <sup>[[85]](../Citations.md#85)</sup> <sup>[[90]](../Citations.md#90)</sup>
 
 | Original | Fast path |
 |---|---|
@@ -150,7 +151,7 @@ Plain way: linear quaternion blend, isqrt64 length, then 64-bit divide normaliza
 
 <a id="mathf-repeat"></a>
 
-## `mathf_repeat`
+## `mathf_repeat` <sup>[[85]](../Citations.md#85)</sup>
 
 | Original | Fast path |
 |---|---|
@@ -166,7 +167,7 @@ Builds: `CONFIG_MATH_FPU_FUSED_MADD`; QEMU plain; host fast.
 
 Callers: none.
 
-Bench rows `wrap_f` vs `wrap_fmodf_f`; limit `MATHF_WRAP_ULP_LIMIT` (0 ulp); sweep.
+Bench rows `wrap_f` vs `wrap_fmodf_f`; limit `MATHF_WRAP_ULP_LIMIT` (0 steps); sweep.
 
 Plain way: `fmodf(v - lo, hi - lo)`.
 
