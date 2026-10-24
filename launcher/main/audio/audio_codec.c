@@ -35,7 +35,7 @@ static const audio_codec_if_t* codec;
 static esp_codec_dev_handle_t input_device;
 static unsigned references;
 static const char* failed_step;
-static audio_codec_mic_saved_t mic_saved;
+static audio_codec_saved_t mic_saved;
 
 static int
 feedback_get(void* context, int reg, int* value) {
@@ -60,12 +60,10 @@ audio_codec_mic_set(const audio_codec_mic_t* config) {
 
 bool
 audio_codec_mic_restore(void) {
-    return !mic_saved.restore_pending
-           || (codec
-               && audio_codec_check("restore microphone DSP",
-                                    audio_codec_mic_restore_saved(&mic_saved, NULL, feedback_set)
-                                        ? ESP_CODEC_DEV_OK
-                                        : ESP_CODEC_DEV_DRV_ERR));
+    return codec ? audio_codec_check("restore microphone DSP", audio_codec_saved_restore(&mic_saved, NULL, feedback_set)
+                                                                   ? ESP_CODEC_DEV_OK
+                                                                   : ESP_CODEC_DEV_DRV_ERR)
+                 : !mic_saved.restore_pending;
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
