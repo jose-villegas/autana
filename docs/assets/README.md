@@ -33,13 +33,15 @@ searching, so no list is kept:
 | `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#scne-v2) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
-| `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), baked from the WAV it names |
+| `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), fetched as a locked `sound` bake of its WAV, FLAC, OGG or MP3 source |
 | `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names |
 | `NAME.icons.toml` | `NAME` | an image entry per [icon](../tools/Icon-Baker.md), named by the icon, baked from the set's atlas and SVGs |
 
 A `NAME.pack.toml` makes its folder one pack, `NAME`: every root under that
 folder puts its entries there instead of making a pack of its own, each with
-its stem for id. Folder packs do not nest, and the file holds no settings yet.
+its stem for id. Folder packs do not nest. `development = true` limits a
+folder pack to development firmware images (`--image --development`); release
+images omit it. Host builds and bake checks include every pack.
 The engine's own content, which any app may use, is the folder pack
 `engine` (`launcher/main/engine/`); an app's artwork is a folder pack the app
 names, mounted while it runs.
@@ -71,7 +73,7 @@ owns a kind of content defines its type, there is no central list, and
 | `APAK` pack | 1 | `asset/asset_pack.py` | `asset/asset_pack.c` | [APAK v1](#apak-v1) |
 | `ABDR` directory | 2 | `asset/asset_directory.py` | `asset/asset_directory.c` | [ABDR v2](#abdr-v2) |
 | `LMSH` lit mesh | none | `r3d/lit_mesh.py` | `render/r3d_lit_mesh.c` | [LMSH](../render/Baked-Mesh.md#lmsh) |
-| `TRCK` animation tracks | 3 | `anim/tracks_asset.py` | `anim/anim_tracks.c` | [TRCK v3](../Animation-Tracks.md#trck-v3) |
+| `TRCK` animation tracks | 3 | `anim/tracks_asset.py` | `anim/anim_tracks.c` | [TRCK v3](../render/Animation-Tracks.md#trck-v3) |
 | `SKEL` skeleton | 1 | `anim/skeleton_asset.py` | `anim/anim_skeleton.c` | [SKEL v1](../render/Skeleton-and-Skin.md#skel-v1) |
 | `SKIN` skin | 2 | `r3d/skin_asset.py` | `render/r3d_skin.c` | [SKIN v2](../render/Skeleton-and-Skin.md#skin-v2) |
 | `SCNE` scene | 2 | `r3d/scene_asset.py` | `scene/scene_asset.c` | [SCNE v2](../render/Scene-Files.md#scne-v2) |
@@ -125,7 +127,7 @@ title Entry registry, one 48-byte row an entry from byte 32
 | Rule | Detail |
 |---|---|
 | Owners | `ASSET_PACK_MAGIC`, `ASSET_PACK_VERSION`, `ASSET_PACK_HEADER_SIZE` (32), `ASSET_PACK_ENTRY_SIZE` (48), `ASSET_NAME_MAX` (32, with the NUL), all in `asset_pack.h`; Python reads the layout from its own `HEADER` and `ENTRY` structs |
-| Header | `total_size` is the pack's size and at most the buffer's (a partition may be larger, never smaller); `crc32` is zlib's CRC-32 of every byte from 32 to `total_size` (`asset_crc32()`); the 12 reserved bytes are zero |
+| Header | `total_size` is the pack's size and at most the buffer's (a partition may be larger, never smaller); `crc32` is zlib's CRC-32 of every byte from 32 to `total_size` (`crc32_update()` in the hash package); the 12 reserved bytes are zero |
 | Base | the pack starts on `ASSET_PACK_BASE_ALIGN` (16) bytes, which a page-aligned mapping and `aligned_alloc()` both give |
 | Names | unique, ASCII, 1 to 31 characters; entries are found by name, then checked for their type |
 | Type | four ASCII bytes, `ASSET_TYPE(a, b, c, d)` of the owning module |
@@ -397,7 +399,7 @@ entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
 `asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c`, `draw_image.c` and
 `sound.c` are the respective readers.
 
-No mesh is committed: each is a bake product, fetched by its lock row; a clip
+Meshes and sounds are bake products, fetched by their lock rows; a clip
 or image entry is baked from its source when the packs are built. Packs are never
 committed: the firmware build, the host tests and
 the render scripts each write the tree they are in, so there is no second copy

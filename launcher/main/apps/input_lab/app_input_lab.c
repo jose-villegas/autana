@@ -34,39 +34,36 @@
 
 static const char* TAG = "input_lab";
 
-#define TARGET_SIDE          12
-#define TARGET_MARGIN        4
-#define GRID_COLS            5
-#define GRID_ROWS            5
-#define GRID_COUNT           (GRID_COLS * GRID_ROWS)
-#define SETTLE_FROM_MS       30
-#define SETTLE_TO_MS         80
-#define HUD_TOP              24
-#define HUD_LINE_H           20
-#define HUD_SCALE            2
-#define MARK_SIDE            4
-#define BEZEL_MAX            80
-#define BEZEL_DRAG_PX        4
-#define ARC_STEP             2
-#define RULER_DEPTH          20
-#define RULER_SLOT           12
-#define RULER_TICK           8
-#define RULER_LABEL_EVERY    5
-#define RULER_LABEL_DEPTH    32
-#define RULER_LABEL_SIDE     20
-#define COL_RULER            0xFFFFFF
-#define COL_RULER_MAJOR      0xFF3030
-#define MOTION_G_TEXT_SIZE   16
-#define MOTION_MILLI_DIGITS  3
-#define OFFSET_DIGITS        1
-#define OFFSET_SCALE         10
-#define MOTION_HUD_TEXT_SIZE 96
-#define MOTION_US_PER_MS     1000
-#define MOTION_LOG_PERIOD_MS 100
-#define MOTION_DRAIN_MAX_MS  (MATH_MS_PER_S / 2U)
+#define TARGET_SIDE           12
+#define TARGET_MARGIN         4
+#define GRID_COLS             5
+#define GRID_ROWS             5
+#define GRID_COUNT            (GRID_COLS * GRID_ROWS)
+#define SETTLE_FROM_MS        30
+#define SETTLE_TO_MS          80
+#define HUD_TOP               24
+#define HUD_LINE_H            20
+#define HUD_SCALE             2
+#define MARK_SIDE             4
+#define BEZEL_MAX             80
+#define BEZEL_DRAG_PX         4
+#define ARC_STEP              2
+#define RULER_DEPTH           20
+#define RULER_SLOT            12
+#define RULER_TICK            8
+#define RULER_LABEL_EVERY     5
+#define RULER_LABEL_DEPTH     32
+#define RULER_LABEL_SIDE      20
+#define COL_RULER             0xFFFFFF
+#define COL_RULER_MAJOR       0xFF3030
+#define MOTION_G_TEXT_SIZE    16
+#define MOTION_MILLI_DIGITS   3
+#define OFFSET_DIGITS         1
+#define OFFSET_SCALE          10
+#define MOTION_HUD_TEXT_SIZE  96
+#define MOTION_US_PER_MS      1000
+#define MOTION_LOG_PERIOD_MS  100
 
-TUNE_OWNER(input_lab);
-TUNE(input_lab, imu_drain_ms, 0, 0, MOTION_DRAIN_MAX_MS);
 #define SHAKE_BAR_X           200
 #define SHAKE_BAR_HEIGHT      8
 #define SHAKE_BAR_ROW         6
@@ -110,6 +107,12 @@ typedef struct {
     uint32_t clock_ms;
 } shake_capture_t;
 
+typedef struct {
+    bool running;
+    orientation_probe_step_t step;
+    guided_step_t guide;
+} orientation_capture_t;
+
 static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "motion", "shake", "orientation"};
 
 static lab_mode_t mode;
@@ -118,12 +121,9 @@ static gravity_t gravity;
 static input_motion_t motion;
 static input_motion_batch_t* motion_batch;
 static shake_capture_t shake_capture;
-static bool orientation_running;
-static orientation_probe_step_t orientation_step;
-static guided_step_t orientation_guide;
+static orientation_capture_t orientation_capture;
 static int motion_samples;
 static int motion_lost;
-static uint32_t motion_since_drain_ms;
 static int64_t motion_drain_us;
 /* Bias-corrected gyro rotation since the turn step armed, in degrees: proves the gyro scale on its own. */
 static vec3f_t turn_gyro_deg;
@@ -193,8 +193,8 @@ start_round(void) {
     imu_record_free(&imu_record);
     imu_flash_ms = 0;
     imu_record_failed = false;
-    orientation_running = false;
-    orientation_step = ORIENTATION_PROBE_READ_0;
+    orientation_capture.running = false;
+    orientation_capture.step = ORIENTATION_PROBE_READ_0;
     stats = (touch_probe_stats_t){0};
     have_last_tap = false;
     grid_next = 0;
@@ -207,7 +207,6 @@ start_round(void) {
         motion_log_ms = 0;
         motion_samples = 0;
         motion_lost = 0;
-        motion_since_drain_ms = 0;
         motion_drain_us = 0;
         motion_read_us = timing_now_us();
         imu_round = (imu_probe_round_t){0};
@@ -484,9 +483,9 @@ integrate_turn_gyro(const input_motion_batch_t* batch) {
         return;
     }
     const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
-    /* Samples lost to FIFO read mode advance at the last rate, as gravity_update_batch does. */
-    turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(turn_gyro_rate, dt * (float)batch->lost));
     for (int i = 0; i < batch->count; i++) {
+        const uint32_t held_us = gravity_held_us(batch->lost_before[i]);
+        turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(turn_gyro_rate, (float)held_us / MATH_US_PER_S));
         turn_gyro_rate =
             vec3f_sub(vec3f_scale(vec3f_from_vec3i(batch->samples[i].rotation), 1.0F / INPUT_ROTATION_ONE_DPS),
                       gravity_gyro_bias(&gravity));
@@ -511,10 +510,10 @@ advance_shake_clock(uint32_t ms) {
 
 static void
 record_orientation_sample(const input_motion_t* sample, int64_t elapsed_us) {
-    if (!orientation_running || elapsed_us < 0) {
+    if (!orientation_capture.running || elapsed_us < 0) {
         return;
     }
-    const orientation_probe_step_t step = orientation_step;
+    const orientation_probe_step_t step = orientation_capture.step;
     const vec3i_t a = sample->acceleration;
     const vec3i_t r = sample->rotation;
     (void)imu_record_appendf(&imu_record, ORIENTATION_PROBE_SAMPLE_FORMAT, (int)step, (long long)elapsed_us, (int)a.x,
@@ -528,7 +527,6 @@ read_shake_samples(const input_motion_batch_t* batch) {
         return;
     }
     shake_capture.slice->gap = batch->gap;
-    shake_capture.slice->lost = batch->lost;
     shake_capture.slice->count = batch->count > 0 ? 1 : 0;
     if (batch->count == 0) {
         gravity_update_batch(&gravity, shake_capture.slice);
@@ -536,9 +534,9 @@ read_shake_samples(const input_motion_batch_t* batch) {
     const int64_t end_us = timing_now_us();
     for (int i = 0; i < batch->count; i++) {
         shake_capture.slice->samples[0] = batch->samples[i];
+        shake_capture.slice->lost_before[0] = batch->lost_before[i];
         gravity_update_batch(&gravity, shake_capture.slice);
         shake_capture.slice->gap = false;
-        shake_capture.slice->lost = 0;
         const vec3f_t linear = gravity_linear(&gravity);
         shake_probe_feed(&shake_capture.levels, linear);
         const int64_t elapsed_us =
@@ -571,14 +569,9 @@ static void
 read_motion(uint32_t dt_ms) {
     motion_log_ms += dt_ms;
     const int64_t drain_start_us = timing_now_us();
-    motion_since_drain_ms += dt_ms;
-    const bool due = motion_since_drain_ms >= (uint32_t)imu_drain_ms;
-    const bool read = due && motion_batch != NULL && input_read_motion_batch(motion_batch);
-    if (due) {
-        motion_since_drain_ms = 0;
-        motion_drain_us += timing_now_us() - drain_start_us;
-    }
-    if (due && !read) {
+    const bool read = motion_batch != NULL && input_read_motion_batch(motion_batch);
+    motion_drain_us += timing_now_us() - drain_start_us;
+    if (!read) {
         have_motion = false;
     } else if (read && motion_batch->count > 0) {
         motion = motion_batch->samples[motion_batch->count - 1];
@@ -586,7 +579,9 @@ read_motion(uint32_t dt_ms) {
         motion_samples += motion_batch->count;
     }
     if (read) {
-        motion_lost += motion_batch->lost;
+        for (int i = 0; i < motion_batch->count; i++) {
+            motion_lost += motion_batch->lost_before[i];
+        }
         if (mode == MODE_MOTION) {
             gravity_update_batch(&gravity, motion_batch);
             integrate_turn_gyro(motion_batch);
@@ -639,7 +634,7 @@ dump_imu_record(const char* args) {
     if (*args != '\0') {
         return false;
     }
-    const bool running = mode == MODE_ORIENTATION ? orientation_running
+    const bool running = mode == MODE_ORIENTATION ? orientation_capture.running
                          : mode == MODE_SHAKE     ? shake_probe_running(&shake_capture.round)
                                               : imu_round.step != IMU_PROBE_IDLE && imu_round.step != IMU_PROBE_DONE;
     const char* error = imu_record_dump_error(&imu_record, running);
@@ -749,37 +744,38 @@ static void
 update_orientation_round(uint32_t dt_ms, const input_t* input) {
     imu_flash_ms = dt_ms < imu_flash_ms ? imu_flash_ms - dt_ms : 0;
     bool started = false;
-    if (input->pressed && !orientation_running) {
+    if (input->pressed && !orientation_capture.running) {
         imu_record_failed = motion_batch == NULL || shake_capture.slice == NULL
                             || !imu_record_start(&imu_record, IMU_RECORD_ORIENTATION_CAPACITY);
         if (!imu_record_failed) {
-            orientation_running = true;
+            orientation_capture.running = true;
             started = true;
-            orientation_step = ORIENTATION_PROBE_READ_0;
+            orientation_capture.step = ORIENTATION_PROBE_READ_0;
             shake_capture.start_us = timing_now_us();
-            guided_step_begin(&orientation_guide, orientation_step, shake_capture.start_us);
+            guided_step_begin(&orientation_capture.guide, orientation_capture.step, shake_capture.start_us);
             LOG_IMU_LINE("round orientation");
-            LOG_IMU_LINE("orientation_step %d 0 %d", (int)orientation_step, orientation_probe_target(orientation_step));
-            LOG_IMU_LINE("orientation_gate %d 0 begin", (int)orientation_step);
+            LOG_IMU_LINE("orientation_step %d 0 %d", (int)orientation_capture.step,
+                         orientation_probe_target(orientation_capture.step));
+            LOG_IMU_LINE("orientation_gate %d 0 begin", (int)orientation_capture.step);
         }
     }
     read_motion(dt_ms);
-    if (orientation_running && !started) {
+    if (orientation_capture.running && !started) {
         const int64_t now_us = timing_now_us();
         const int64_t elapsed_us = now_us - shake_capture.start_us;
-        const guided_step_event_t event = guided_step_update(&orientation_guide, input->pressed, now_us,
+        const guided_step_event_t event = guided_step_update(&orientation_capture.guide, input->pressed, now_us,
                                                              (int64_t)ORIENTATION_PROBE_STEP_MS * MATH_US_PER_MS);
         if (event == GUIDED_STEP_ARMED) {
-            LOG_IMU_LINE("orientation_gate %d %lld end", (int)orientation_step, (long long)elapsed_us);
+            LOG_IMU_LINE("orientation_gate %d %lld end", (int)orientation_capture.step, (long long)elapsed_us);
         } else if (event == GUIDED_STEP_NEXT) {
-            orientation_step = (orientation_probe_step_t)orientation_guide.step;
-            imu_flash_ms = orientation_step == ORIENTATION_PROBE_DONE ? IMU_DONE_FLASH_MS : IMU_POSE_FLASH_MS;
-            LOG_IMU_LINE("orientation_step %d %lld %d", (int)orientation_step, (long long)elapsed_us,
-                         orientation_probe_target(orientation_step));
-            if (orientation_step == ORIENTATION_PROBE_DONE) {
-                orientation_running = false;
+            orientation_capture.step = (orientation_probe_step_t)orientation_capture.guide.step;
+            imu_flash_ms = orientation_capture.step == ORIENTATION_PROBE_DONE ? IMU_DONE_FLASH_MS : IMU_POSE_FLASH_MS;
+            LOG_IMU_LINE("orientation_step %d %lld %d", (int)orientation_capture.step, (long long)elapsed_us,
+                         orientation_probe_target(orientation_capture.step));
+            if (orientation_capture.step == ORIENTATION_PROBE_DONE) {
+                orientation_capture.running = false;
             } else {
-                LOG_IMU_LINE("orientation_gate %d %lld begin", (int)orientation_step, (long long)elapsed_us);
+                LOG_IMU_LINE("orientation_gate %d %lld begin", (int)orientation_capture.step, (long long)elapsed_us);
             }
         }
     }
@@ -789,29 +785,30 @@ static void
 draw_orientation(void) {
     char line[MOTION_HUD_TEXT_SIZE];
     hud_line(0, "ORIENTATION / BOOT TO CHANGE PAGE");
-    orientation_probe_prompt(
-        orientation_running || orientation_step == ORIENTATION_PROBE_DONE ? orientation_step : ORIENTATION_PROBE_READ_0,
-        line, sizeof line);
+    orientation_probe_prompt(orientation_capture.running || orientation_capture.step == ORIENTATION_PROBE_DONE
+                                 ? orientation_capture.step
+                                 : ORIENTATION_PROBE_READ_0,
+                             line, sizeof line);
     hud_line(1, line);
-    if (orientation_running) {
-        const int64_t left_us = guided_step_remaining_us(&orientation_guide, timing_now_us(),
+    if (orientation_capture.running) {
+        const int64_t left_us = guided_step_remaining_us(&orientation_capture.guide, timing_now_us(),
                                                          (int64_t)ORIENTATION_PROBE_STEP_MS * MATH_US_PER_MS);
-        (void)snprintf(line, sizeof line, "STEP %d/%d  %lld S LEFT", orientation_step + 1, ORIENTATION_PROBE_DONE,
-                       (long long)((left_us + MATH_US_PER_S - 1) / MATH_US_PER_S));
+        (void)snprintf(line, sizeof line, "STEP %d/%d  %lld S LEFT", orientation_capture.step + 1,
+                       ORIENTATION_PROBE_DONE, (long long)((left_us + MATH_US_PER_S - 1) / MATH_US_PER_S));
         hud_line(2, line);
         if (imu_record.truncated) {
             hud_line(4, "TRANSCRIPT FULL - RESTART");
         }
-        const int target = orientation_probe_target(orientation_step);
+        const int target = orientation_probe_target(orientation_capture.step);
         const motion_probe_t reading = motion_probe_measure(raw_acceleration);
         const int bearing = ((target + 1) * (int)DISPLAY_QUARTER_DEG) % MOTION_PROBE_FULL_TURN_DEG;
         static const char* const actions[] = {"PICK UP, KEEP", "WALK, KEEP", "SHAKE, KEEP", "OVERHEAD, KEEP"};
-        const char* action = orientation_step == ORIENTATION_PROBE_READ_0   ? "HOLD"
-                             : orientation_step <= ORIENTATION_PROBE_READ_4 ? "TURN TO"
-                             : orientation_step == ORIENTATION_PROBE_FLAT
+        const char* action = orientation_capture.step == ORIENTATION_PROBE_READ_0   ? "HOLD"
+                             : orientation_capture.step <= ORIENTATION_PROBE_READ_4 ? "TURN TO"
+                             : orientation_capture.step == ORIENTATION_PROBE_FLAT
                                  ? "PUT DOWN FLAT"
-                                 : actions[orientation_step - ORIENTATION_PROBE_PICKUP];
-        guided_step_draw(&orientation_guide, action,
+                                 : actions[orientation_capture.step - ORIENTATION_PROBE_PICKUP];
+        guided_step_draw(&orientation_capture.guide, action,
                          target == DISPLAY_QUARTER_NONE ? NULL : display_quarter_name(target), reading.bearing_deg,
                          ((display_quarter_now() + 1) * (int)DISPLAY_QUARTER_DEG) % MOTION_PROBE_FULL_TURN_DEG, bearing,
                          (int)lroundf(reading.tilt_deg),
@@ -819,7 +816,7 @@ draw_orientation(void) {
     }
     (void)snprintf(line, sizeof line, "COMMITTED %s", display_quarter_name(display_quarter_now()));
     hud_line(3, line);
-    if (!orientation_running) {
+    if (!orientation_capture.running) {
         hud_line(5, imu_record_failed ? "NO MEMORY FOR ROUND" : "TAP TO START ROUND");
     }
 }
@@ -1107,8 +1104,9 @@ draw_imu_flash(void) {
         return;
     }
     ui_fill((recti_t){0, 0, screen_w, screen_h},
-            (done || (mode == MODE_ORIENTATION && orientation_step == ORIENTATION_PROBE_DONE)) ? COL_IMU_DONE_FLASH
-                                                                                               : COL_IMU_POSE_FLASH);
+            (done || (mode == MODE_ORIENTATION && orientation_capture.step == ORIENTATION_PROBE_DONE))
+                ? COL_IMU_DONE_FLASH
+                : COL_IMU_POSE_FLASH);
 }
 
 static void

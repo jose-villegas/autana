@@ -13,8 +13,6 @@ line alike:
 autana> tune wave                 # the tunables whose names contain "wave"
 autana> tune theme                # show matching tunables
 autana> tune theme_rgb 0x1199C8   # change it: on the screen a frame later
-autana> tune save                 # write the device's values into the source
-autana> flash dev
 ```
 
 Each is also a command of its own, for a script or a single change:
@@ -23,7 +21,6 @@ Each is also a command of its own, for a script or a single change:
 autana tune                       # every tunable, its value and its range
 autana tune theme_rgb
 autana tune theme_rgb 0x1199C8
-autana tune save
 ```
 
 A name may drop its owner when that is unambiguous: `theme_rgb` for
@@ -43,18 +40,22 @@ which takes the device lock like everything else that touches the board.
 | `autana tune [text] [--json]` | list the tunables with ranges; names containing text |
 | `autana tune <name> [value]` | show one, or set it on the board (lost on reboot) |
 | `autana tune reset <name>` | back to the value the source declares |
-| `autana tune save` | write the board's values into this project's TUNE(...) lines |
 <!-- /generated: cli-tune -->
 
 **Development builds only, and the device keeps nothing.** A release build
 has no listener, no registry and no names: the same declaration compiles to
-a plain constant there, and a value set on a device is gone at its next
-reboot. The source stays the truth, and `save` is what puts a session's
-values into it: it asks the device for every tunable and rewrites the
-initial value in the `TUNE` line each was declared with, in the worktree
-it is run from; those lines only, byte for byte otherwise. What it wrote is
-an ordinary diff to review and commit, and the next build, release included,
-is made with it.
+a plain constant there. A value set on a device is gone at its next reboot.
+
+The source stays the truth. `autana` only talks to the device, so a source
+tool puts a session's values into the source:
+
+```sh
+autana tune --json | python launcher/tools/tune/apply.py
+```
+
+It rewrites the initial value in each tunable's `TUNE` line, in the tree
+`apply.py` lives in, and nothing else. The result is an ordinary diff to
+review and commit, and the next build, release included, is made with it.
 
 ## How it works
 
@@ -120,7 +121,7 @@ TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
 - `TUNE_HOT` is the same declaration for code whose layout is pinned or
   measured, such as the raster's inner loops: a constant in every
   build, live only on an image built with `--hot-tunables`
-  ([Build-Variants.md](../Build-Variants.md)), which is what
+  ([Build-Variants.md](../tools/Build-Variants.md)), which is what
   `launcher/tools/perf/perf_sweep.sh` flashes.
 - A value read every frame takes effect at once. One baked into a table needs
   its owner to notice:
@@ -133,4 +134,4 @@ TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
 
 ## Related
 
-- [`../Build-Variants.md`](../Build-Variants.md): what a development build is
+- [`tools/Build-Variants.md`](../tools/Build-Variants.md): what a development build is

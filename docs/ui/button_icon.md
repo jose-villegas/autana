@@ -39,7 +39,7 @@ button_icon_example(button_icon_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-button-icon-states sha256=f26a72eee8ef0d00df4a96162a45c9f48c96953fb4e27d78d809309d75a52ca7 -->
@@ -70,4 +70,4 @@ return true.
 
 - [Button](button.md)
 - [Icon](icon.md): `ui_icon_image()` and app icon sets
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

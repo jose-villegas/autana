@@ -138,6 +138,6 @@ tracked separately. This is a placeholder for future work.
 
 ## Related
 
-- [Build-Variants.md](../Build-Variants.md#development-only-instrumentation-is-its-own-flag-not-selftest),
+- [Build-Variants.md](../tools/Build-Variants.md#development-only-instrumentation-is-its-own-flag-not-selftest),
   "Development-only instrumentation is its own flag, not SELFTEST": the
   rule this plan complements rather than replaces.

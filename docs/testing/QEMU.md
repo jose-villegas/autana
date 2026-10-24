@@ -3,7 +3,7 @@
 Espressif's QEMU has an `esp32s3` machine. The diagnostics image runs its
 suites there: the real Xtensa binary, ESP-IDF, FreeRTOS and both cores, with
 no board and no port to share. Any number of instances run at once.
-Back to the [Testing Guide](../Testing-Guide.md).
+Back to the [Testing Guide](README.md).
 
 ## Run it
 

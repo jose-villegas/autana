@@ -1,6 +1,6 @@
 /*
  * anim_tracks: the bindings and curves of a TRCK pack entry, written by
- * launcher/tools/anim/tracks_asset.py; the layout is in docs/Animation-Tracks.md.
+ * launcher/tools/anim/tracks_asset.py; the layout is in docs/render/Animation-Tracks.md.
  * Views point into the entry, which must outlive them. No allocation.
  */
 #pragma once
@@ -9,7 +9,7 @@
 #include "anim/anim_track.h"
 #include "anim/anim_tracks_format.h"
 #include "asset/asset_pack.h"
-#include "name_hash/name_hash.h"
+#include "hash/name_hash.h"
 
 typedef struct {
     const uint8_t* base;

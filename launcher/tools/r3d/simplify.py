@@ -4,13 +4,16 @@ part with colour as an attribute. Groups of materials can hold a reserved
 share of the budget, so small detailed props are not starved by large
 surfaces a global pass prefers to keep."""
 
+from dataclasses import dataclass
+from fnmatch import fnmatchcase
 import pathlib
 import sys
 
 import numpy as np
 
 from . import log
-from .geometry import triangle_areas
+from .geometry import triangle_areas, weld_keeping
+from .import_settings import SettingsError, pass_overrides
 from .lit_mesh import POSITION_SCALE
 from .meshopt import PERMISSIVE, REGULARIZE, REGULARIZE_LIGHT, simplify_with_update
 from .repair import repair
@@ -43,14 +46,8 @@ def densify(p, tris, labels, max_edge, rounds=16):
 
 
 def colour_weight(pos, tris, budget, deviation):
-    """The colour weight, per 8-bit level, at which one panel colour step
-    (the coarsest channel's) costs the simplifier as much as moving the
-    surface `deviation` units. meshoptimizer weighs a vertex's colour error
-    by the area it stands for, so the trade scales with the side of that
-    area, the square root of the part's area over its budget; dividing by it
-    makes the trade the same for every part and budget, and steeper shading
-    costs more colour steps, not more deviation for each. A part with no
-    area has no surface to move, and its colour weighs nothing."""
+    """Price one panel colour step against surface deviation, using the side of
+    the surface area per budgeted triangle as meshoptimizer's attribute scale."""
     side = np.sqrt(triangle_areas(pos, tris).sum() / budget)
     return deviation / (side * max(gfx_color.STEP)) if side > 0 else 0.0
 
@@ -88,34 +85,83 @@ def merge_close_colours(q, rgb, tolerance):
     return out
 
 
+@dataclass
+class Allocation:
+    """Source ownership and fixed per-pass overrides."""
+    tri_o: object = None
+    object_names: tuple = ()
+    material_names: tuple = ()
+    overrides: tuple = ()
+
+
+def object_groups(pos, tris, tri_o):
+    """Objects sharing a welded vertex form one pass, so no pass splits a shared edge."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    _, welded = weld_keeping(pos, tris)
+    owners, inverse = np.unique(tri_o, return_inverse=True)
+    corners = np.column_stack([welded.ravel(), np.repeat(inverse, 3)])
+    corners = np.unique(corners, axis=0)
+    shared = corners[1:, 0] == corners[:-1, 0]
+    a, b = corners[:-1, 1][shared], corners[1:, 1][shared]
+    graph = coo_matrix((np.ones(len(a)), (a, b)), shape=(len(owners), len(owners)))
+    _, groups = connected_components(graph, directed=False)
+    return groups[inverse]
+
+
 def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation, seal_seams=False,
-             position_scale=POSITION_SCALE):
-    """`reserved` is a list of (label set, share of `triangles`); what is
-    left of the budget goes to every other label. Colour steers which edges
-    collapse, priced so one colour step costs as much as moving the surface
-    `colour_deviation` units in every part (see colour_weight). `seal_seams`
-    is the import option that joins pieces touching within one quantisation
-    step (`1 / position_scale`, see repair.py) before the pass, simplifies
-    with light regularizing, and afterwards gives vertices that end at one
-    quantised position and differ by less than a panel colour step one
-    colour. Returns pos, rgb (0..255 floats), tris and a label per
-    triangle."""
+             position_scale=POSITION_SCALE, allocation=None):
+    """Reserve material shares and fixed welded-object counts before the global pass.
+    Colour is priced per pass; seam repair retains source ownership for overrides."""
+    allocation = Allocation() if allocation is None else allocation
+    tri_o = np.zeros(len(tris), dtype=np.int64) if allocation.tri_o is None else np.asarray(allocation.tri_o)
     options = REGULARIZE | PERMISSIVE
     if seal_seams:
-        pos, rgb, tris, labels = repair(pos, rgb, tris, labels, 1.0 / position_scale)
+        pos, rgb, tris, ownership = repair(pos, rgb, tris, np.column_stack([labels, tri_o]), 1.0 / position_scale)
+        labels, tri_o = ownership.T
         options = REGULARIZE_LIGHT | PERMISSIVE
     labels = np.asarray(labels)
     parts, taken = [], np.zeros(len(tris), dtype=bool)
+    if allocation.overrides:
+        groups = object_groups(pos, tris, tri_o)
+        matched = [0] * len(allocation.overrides)
+        for group in np.unique(groups):
+            sel = groups == group
+            names = [allocation.object_names[i] for i in np.unique(tri_o[sel])]
+            materials = {allocation.object_names[obj]:
+                         [allocation.material_names[i] for i in np.unique(labels[sel & (tri_o == obj)])]
+                         for obj in np.unique(tri_o[sel])}
+            fixed = pass_overrides(names, materials, allocation.overrides)
+            for index, rule in enumerate(allocation.overrides):
+                candidates = names if "object" in rule else [name for values in materials.values() for name in values]
+                matched[index] += any(fnmatchcase(name, rule.get("object", rule.get("material"))) for name in candidates)
+            if fixed is not None:
+                if fixed > triangles:
+                    raise SettingsError(f"fixed overrides ({fixed}) exceed triangle budget {triangles}")
+                if fixed > int(sel.sum()):
+                    log(f"  fixed override {names}: clamped {fixed} to {int(sel.sum())} triangles")
+                parts.append((sel, min(fixed, int(sel.sum()))))
+                taken |= sel
+        for rule, hits in zip(allocation.overrides, matched):
+            pattern = rule.get("object", rule.get("material"))
+            if not hits:
+                raise SettingsError(f"override {pattern!r} matches no object or material")
+            if "material" in rule and hits > 1:
+                raise SettingsError(f"fixed material override {pattern!r} matches several passes")
     for group, share in reserved:
-        sel = np.isin(labels, list(group))
+        sel = np.isin(labels, list(group)) & ~taken
         parts.append((sel, max(1, int(triangles * share))))
         taken |= sel
-    parts.append((~taken, max(1, triangles - sum(n for _, n in parts))))
+    if allocation.overrides and sum(n for _, n in parts) > triangles:
+        raise SettingsError(f"fixed overrides and reserved shares exceed triangle budget {triangles}")
+    minimum = 0 if allocation.overrides else 1
+    parts.append((~taken, max(minimum, triangles - sum(n for _, n in parts))))
 
     out_pos, out_rgb, out_tris, out_labels = [], [], [], []
     base = 0
     for sel, budget in parts:
-        if not np.any(sel):
+        if budget == 0 or not np.any(sel):
             continue
         sub = tris[sel]
         used, local = np.unique(sub, return_inverse=True)

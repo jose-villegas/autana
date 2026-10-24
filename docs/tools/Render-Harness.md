@@ -3,7 +3,7 @@
 Rendering a firmware screen into an image on a laptop: how a scene is
 declared, what its pixels are pinned to, the same scenes under QEMU, and
 diffing any of them against a device capture.
-[`../Testing-Guide.md`](../Testing-Guide.md) is the host/device test split
+[`testing/README.md`](../testing/README.md) is the host/device test split
 this sits inside.
 
 On Windows, run the `.sh` commands below in Git Bash. On Linux, use a
@@ -162,20 +162,24 @@ and lists every input.
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
 Changed images remain pending for the night window; pushes do not render.
 
-The schedule is `0 23 * * *` UTC. Scheduled work waits until local 01:00,
-using the next day if triggered before midnight. It may start before 03:00.
+The doc job takes its fingerprint at its 16:00Z start; inputs merged during
+the evening wait render the next night.
 
-A schedule firing from local 03:00 through noon skips successfully with
-`skipped: too late, next night renders it`.
+The [night order](../../launcher/tools/perf/README.md#nightly-scoped-chain)
+owns the local wait, bake priority and board-plan handoff. The hosted job
+only fingerprints. Every Bakes GPU completion triggers a fresh check.
 
-Manual dispatch uses the same start window and refuses an early or late
-start with `GPU stage renders 01:00-03:00 local time; dispatch with override to render now`.
-Set `override` to render at any time; `force` controls freshness independently.
+GPU stages observe active board locks, then take heavy, holding nothing in
+between. A board can be claimed in that gap, and its builds then wait on
+heavy. Human reservations do not block the GPU stage.
 
-The full stage holds `autana lock run --heavy`, queued only until local
-03:00 unless overridden. It checks the start cap again after acquiring the
-lock. GPU bakes hold the same key without a night start cap.
+A stage starts only if `GPU_ESTIMATES[workflow]` fits before the local night
+end in `scripts/lib/local_schedule.py`. The cap is checked again after heavy.
 
+A scheduled stage that cannot fit skips successfully. Manual dispatch
+refuses; `override` allows daytime work while still waiting for board locks.
+`force` controls freshness independently. Override guard waits are bounded
+by `DEFAULT_LOCK_WAIT_SECONDS`.
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
 failed attempt is a record too, so a newer failed one makes them stale
 and the next run renders again.
@@ -582,10 +586,10 @@ and frame count. `--panel-width PX` scales each picture before adding its label
 
 ## Related
 
-- [`../Testing-Guide.md`](../Testing-Guide.md): the host and device test
+- [`testing/README.md`](../testing/README.md): the host and device test
   runners, runsuite, and the QEMU suite run this harness's second backend
   borrows its image from.
-- [`../Building-a-Screen.md`](../Building-a-Screen.md): building the screen
+- [`ui/Building-a-Screen.md`](../ui/Building-a-Screen.md): building the screen
   a scene renders.
 - [`../notes/Debugging.md`](../notes/Debugging.md#performance-seems-off):
   why a host timing is not a cost.
