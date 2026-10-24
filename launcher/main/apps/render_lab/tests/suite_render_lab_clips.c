@@ -4,6 +4,7 @@
 #include "app/app_arena.h"
 #include "apps/render_lab/render_lab_clips.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
+#include "collections/strbuf.h"
 #include "core/memory.h"
 #include "gfx/gfx.h"
 #include "scene/scene_internal.h"
@@ -62,9 +63,8 @@ fixture(void) {
 
 static void
 capture_reply(const char* line) {
-    const size_t used = strlen(shown->reply);
-    TEST_ASSERT_LESS_THAN(sizeof shown->reply - used, strlen(line) + 1);
-    TEST_ASSERT_TRUE(snprintf(shown->reply + used, sizeof shown->reply - used, "%s\n", line) >= 0);
+    strbuf_t reply = strbuf_at(shown->reply, sizeof shown->reply, strlen(shown->reply));
+    TEST_ASSERT_TRUE(strbuf_appendf(&reply, "%s\n", line));
 }
 
 static void
