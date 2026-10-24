@@ -1,7 +1,7 @@
 # Demo assets
 
-Reference content for renderer documentation, CI and host renders. It ships
-in firmware only when an app [selects it](../../docs/assets/README.md#packs).
+Reference content for documentation, CI and host renders. Renderer content
+ships in firmware only when an app [selects it](../../docs/assets/README.md#packs).
 
 Firmware inputs (`.toml`, clip `.glb`) sit outside `source/`, which is Git LFS
 and absent from firmware clones. No baked mesh is committed: each is a bake
