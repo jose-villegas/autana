@@ -6,11 +6,28 @@ pixels reach the panel, see [`gfx/README.md`](../gfx/README.md).
 **Where a frame's time goes.** `profile/frame_cost.h` brackets a stage of
 a frame and charges its microseconds to a name:
 
+<!-- generated: profile-frame-cost-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-FRAME_COST_BEGIN(began);
-draw_the_thing();
-FRAME_COST_END(began, "thing.draw");
+/* Bracket one drawing stage so a development build can charge its time. */
+#include "profile/frame_cost.h"
+
+typedef struct {
+    int draws;
+} frame_cost_example_t;
+
+static void
+draw_the_thing(frame_cost_example_t* s) {
+    s->draws++;
+}
+
+static void
+frame_cost_example(frame_cost_example_t* s) {
+    FRAME_COST_BEGIN(began);
+    draw_the_thing(s);
+    FRAME_COST_END(began, "thing.draw");
+}
 ```
+<!-- /generated: profile-frame-cost-example -->
 
 Every 1.5 s, under the shell's fps line, the console prints each name's
 average milliseconds per frame over the window and the worst single bracket,

@@ -19,6 +19,8 @@
 #include "math/linear/vec_convert.h"
 #include "math/scalar/rng.h"
 
+#include "../../../test/math_examples/transform.c"
+
 #define HALF_PI 1.57079632679F
 #define SLACK   1e-5F
 
@@ -199,6 +201,20 @@ test_compute_matrix_leaves_the_cache_alone(void) {
     const mat4f_t fresh = transformf_compute_matrix(&t);
     TEST_ASSERT_FLOAT_WITHIN(SLACK, 7.0F, fresh.m[0][3]);
     TEST_ASSERT_FALSE(t.cached);
+}
+
+static void
+test_documented_transform_centres_the_point_and_halves_the_rotation(void) {
+    transform_example_t state = {0};
+    transform_example(&state);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.0F, state.in_camera.x);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.0F, state.in_camera.y);
+    TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, state.in_camera.z);
+    const vec3f_t turned = quatf_rotate(state.halfway, (vec3f_t){0.0F, 0.0F, 1.0F});
+    const float diagonal = sqrtf(0.5F);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, diagonal, turned.x);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.0F, turned.y);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, diagonal, turned.z);
 }
 
 static void
@@ -731,6 +747,7 @@ test_mat3_product_applies_right_operand_first(void) {
 
 void
 suite_math(void) {
+    RUN_TEST(test_documented_transform_centres_the_point_and_halves_the_rotation);
     RUN_TEST(test_vector_float_ranges_with_decimal_lengths);
     RUN_TEST(test_vector_float_repeat_preserves_decimal_remainders);
     RUN_TEST(test_vector_ratio_lerp_uses_its_denominator);
