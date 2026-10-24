@@ -142,6 +142,14 @@ def default_owner():
     return f"{user}@{host_identity()}:{os.getpid()}"
 
 
+def bound_owner(owner, pid):
+    """Name the process an until-released hold is bound to."""
+    label, separator, suffix = owner.rpartition(":")
+    if separator and suffix.isdecimal():
+        owner = label
+    return f"{owner}:{pid}"
+
+
 def caller_pid(explicit=None):
     """The invoking process outside the Windows launcher and interpreter shims."""
     if explicit:
@@ -776,6 +784,8 @@ class LockStore:
                 lock["expires_at"] = now + seconds
             else:
                 lock["until_released"] = True
+                if not human:
+                    lock["owner"] = bound_owner(lock["owner"], lock["pid"])
             write_json(self.lock_path(board), lock)
             return True
 

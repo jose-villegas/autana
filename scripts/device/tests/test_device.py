@@ -856,6 +856,36 @@ class DeviceTests(unittest.TestCase):
             BOARD, f"sam@devbox:{os.getpid()}", "check cable", wait=600, on_wait=mock.ANY)
 
 
+class TakeOwnerTests(unittest.TestCase):
+    def test_take_status_names_bound_child_and_timed_hold_keeps_owner(self):
+        with tempfile.TemporaryDirectory() as root, subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL) as child:
+            try:
+                with mock.patch.dict(os.environ, {"_AUTANA_DEVICE_LOCK_ROOT": root}), \
+                        mock.patch.object(device, "plugged_boards", return_value=[]):
+                    store = device_lock.LockStore(root)
+                    owner = device_lock.default_owner()
+                    for flags, expected in ((["--until-released", "--pid", str(child.pid)],
+                                             owner.rsplit(":", 1)[0] + f":{child.pid}"),
+                                            ([], owner)):
+                        with self.subTest(flags=flags), contextlib.redirect_stdout(io.StringIO()) as output:
+                            self.assertEqual(device.main(["--board", BOARD, "--owner", owner,
+                                                          "take", *flags, "bench"]), 0)
+                        token = output.getvalue().strip()
+                        try:
+                            self.assertEqual(store.status(BOARD)["lock"]["owner"], expected)
+                            with contextlib.redirect_stdout(io.StringIO()) as status:
+                                self.assertEqual(device.main(["--board", BOARD, "status"]), 0)
+                            self.assertIn(expected, status.getvalue())
+                        finally:
+                            store.release(BOARD, token)
+            finally:
+                child.kill()
+                child.wait()
+
+
 class RemovedParameterTests(unittest.TestCase):
     """A command's lock label is its kind, and hand-to-human takes only a note."""
 
