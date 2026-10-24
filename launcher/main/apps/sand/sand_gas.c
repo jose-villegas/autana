@@ -43,7 +43,6 @@
 
 #include <limits.h>
 
-#include "render/code_layout.h"
 #include "sand_priv.h"
 
 /* Which materials are gas, as a bitmask over the nibble - see
@@ -65,16 +64,19 @@ gas_mask(void) {
  * same cells. A bitmap, not a byte per row: RAM is this board's binding
  * constraint, and this is read once per row against a per-cell loop.
  *
- * GAS_ROW_MAX caps the grid height it can describe. A taller grid is not
+ * GAS_ROW_WORDS caps the grid height it can describe. A taller grid is not
  * wrong, it just leaves the map off and spreads as before. */
-#define GAS_ROW_MAX 512
+#define GAS_ROW_WORDS 16
+#define GAS_ROW_MAX   (GAS_ROW_WORDS * 32)
 
 typedef struct {
-    uint32_t w[BITS32_WORDS(GAS_ROW_MAX)];
+    uint32_t w[GAS_ROW_WORDS];
 } gas_rows_t;
 
 /* File-static rather than threaded through the pass: it is built and
- * consumed inside one sand_step_gas() call, which never nests. */
+ * consumed inside one sand_step_gas() call, which never nests. Its bits are
+ * written out rather than through bits32_*(): a store through the helper's
+ * pointer costs gas_sweep_range() registers, and the board ran slower. */
 static gas_rows_t gas_row_map;
 static bool gas_row_map_live;
 
@@ -88,7 +90,7 @@ static bool gas_row_map_live;
 static inline void
 gas_row_arm(int y) {
     if (gas_row_map_live && (unsigned)y < (unsigned)GAS_ROW_MAX) {
-        bits32_set(gas_row_map.w, (unsigned)y);
+        gas_row_map.w[(unsigned)y >> 5] |= 1U << ((unsigned)y & 31U);
     }
 }
 
@@ -97,7 +99,7 @@ gas_row_may_hold(int y) {
     if (!gas_row_map_live) {
         return true;
     }
-    return bits32_get(gas_row_map.w, (unsigned)y);
+    return ((gas_row_map.w[(unsigned)y >> 5] >> ((unsigned)y & 31U)) & 1U) != 0U;
 }
 
 /* driven_by_gravity()'s table for this pass, built against the REVERSED
@@ -1085,7 +1087,7 @@ equalise_gas(sand_t* s, const int* perp, int rdx, int rdy) {
 
 /* The whole step. */
 
-CODE_ENTRY_OFFSET(4) void
+void
 sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
               const int* perp_b, int load_dx, int load_dy, int x_step, int jostle) {
     SAND_FORCED_STATE(s);
