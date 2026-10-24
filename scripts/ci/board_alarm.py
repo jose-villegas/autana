@@ -108,10 +108,11 @@ def missing_boards(lanes, plugged):
 
 
 def night_running(request):
-    running = any(run.get('status') == status
-                  for status in ('queued', 'in_progress')
-                  for run in pages(f'/actions/workflows/{NIGHTLY_WORKFLOW}/runs?status={status}',
-                                   'workflow_runs', request))
+    running = any(job.get('status') == 'in_progress' and BOARD_LABEL in job.get('labels', [])
+                  for run in pages(f'/actions/workflows/{NIGHTLY_WORKFLOW}/runs?status=in_progress',
+                                   'workflow_runs', request)
+                  if run.get('status') == 'in_progress'
+                  for job in pages(f"/actions/runs/{run['id']}/jobs", 'jobs', request))
     if running:
         print('::notice::The night is still running')
     return running

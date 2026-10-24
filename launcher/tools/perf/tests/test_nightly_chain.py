@@ -351,6 +351,19 @@ class NightlyTests(unittest.TestCase):
             status = chain.run_night(args, clock=self.clock, launch=launch)
         return status, commands, json.loads(path.read_text()), manifests
 
+    def test_supervisor_empty_lane_can_finish_after_multiple_rescans(self):
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(marker=self.clock.now().isoformat(),
+                                   lanes={"FAK1": dict(lane="0/1", steps=[], estimate=0)}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
+                               suite=self.args.suite)
+        finish = self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS * 2)
+        process = SimpleNamespace(poll=lambda: 0 if self.clock.now() >= finish else None, wait=lambda: 0)
+        with patch.object(chain, "plugged_boards", return_value=["FAK1"]):
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process), 0)
+        self.assertGreaterEqual(self.clock.now(), finish)
+        self.stop_tree.assert_not_called()
+
     def test_supervisor_hang_guard_stops_each_lane_and_waits_for_all(self):
         path = self.root / "plan.json"
         chain.write_json(path, dict(marker=self.clock.now().isoformat(),
