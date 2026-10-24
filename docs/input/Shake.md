@@ -39,8 +39,9 @@ shaking climbs past FULL.
 
 ![The device posed from the capture's gravity, its acceleration beside it, while the smoothed size and the level follow](../images/input/shake-motion.gif)
 
-The same three spans played slowed on the device. The pose comes from the
-capture's gravity, and the arrow is the device's linear acceleration.
+A recording, not a scripted sweep: the same three spans, played slowed on the
+device. The pose comes from the capture's gravity; the arrow is the device's
+linear acceleration.
 
 ## Figures
 

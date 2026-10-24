@@ -37,13 +37,13 @@ Rotation follows the right-hand rule on the chip axes behind those labels (left,
 +z is clockwise from the front, +x tips the bottom edge toward the viewer, +y turns the right edge
 away. Calibrating the offsets is in [Motion-Calibration.md](Motion-Calibration.md).
 
-![The device turning out and back about rotation x, y and z, with its acceleration and rotation axis, and the rotation and turn_speed it reports](../images/input/motion-rotation.gif)
+![The device turning out and back about rotation x, y and z, with its acceleration (the vector the code treats as down) and rotation axis, and the rotation and turn_speed it reports](../images/input/motion-rotation.gif)
 
 A scripted sweep, not a recording: the device starts upright, facing the viewer,
-and turns 90 degrees out and back about each rotation label in turn. Each sample
-is what the chip would read, mapped as `input_read_motion()` maps it. The
-acceleration follows the turns about x and z. A turn about y is about gravity,
-so the acceleration does not change.
+and turns 90 degrees out and back about each rotation label, mapped as
+`input_read_motion()` maps it. The acceleration follows the turns about x and z.
+Rotation y is the vertical axis of the upright start pose, so a turn about it
+leaves the acceleration unchanged.
 
 ## Figures
 
