@@ -57,6 +57,15 @@ class NamesRequireADefinitionTest(unittest.TestCase):
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertIn("gfx_reset_palette", vocab.functions)
 
+    def test_a_package_kconfig_option_is_defined(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            gate_tree.write(root, "launcher/packages/math/Kconfig",
+                            "config MATH_FPU_FUSED_MADD\n    bool \"fused\"\n")
+            vocab = code_vocabulary.vocabulary(str(root))
+        self.assertIn("MATH_FPU_FUSED_MADD", vocab.constants)
+        self.assertIn("CONFIG_MATH_FPU_FUSED_MADD", vocab.constants)
+
     def test_a_python_apostrophe_comment_does_not_eat_the_next_def(self):
         # The C blanker was applied to .py files too: "# don't" has no `#`
         # case, so the apostrophe in "don't" opened a bogus string that
