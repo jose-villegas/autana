@@ -515,6 +515,7 @@ command fails with `device lock was lost`. Holds have no heartbeat: a
 person's reservation lapses one hour after the last `lock hand`, a timed
 hold at its expiry, and an until-released hold when it is released or its
 owner exits on this host (a reused pid or a zombie counts as exited).
+The owner label of an until-released hold ends in the bound process's pid.
 
 ```mermaid
 stateDiagram-v2
