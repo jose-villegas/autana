@@ -128,6 +128,8 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_melody.c"
         "console/verbs/console_codec.c"
         "console/verbs/console_sound.c"
+        "console/verbs/console_sound_views.c"
+        "shell/console_system.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
         "console/verbs/console_frame_watch.c"
@@ -397,9 +399,13 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     set(asset_image "${CMAKE_BINARY_DIR}/assets.bin")
     set(asset_packs "${CMAKE_BINARY_DIR}/assets")
     set(asset_tools "${CMAKE_CURRENT_LIST_DIR}/../tools")
+    set(asset_variant_args "")
+    if(CONFIG_LAUNCHER_DEVELOPMENT)
+        list(APPEND asset_variant_args --development)
+    endif()
     add_custom_target(asset_pack_image ALL
         COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_packs}" --image "${asset_image}"
-                "${CMAKE_CURRENT_LIST_DIR}"
+                ${asset_variant_args} "${CMAKE_CURRENT_LIST_DIR}"
         BYPRODUCTS "${asset_image}"
         COMMENT "Writing the asset packs"
         VERBATIM)

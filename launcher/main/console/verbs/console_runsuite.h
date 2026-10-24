@@ -6,7 +6,7 @@
 
 /* The longest request suites_run_request() accepts: a name, a space, and
  * SUITE_FILTER_MAX patterns with a comma between each. */
-#define RUNSUITE_ARGS_MAX (SUITE_NAME_MAX + 1 + SUITE_FILTER_MAX * SUITE_FILTER_LEN)
+#define RUNSUITE_ARGS_MAX (SUITE_NAME_MAX + 1 + (SUITE_FILTER_MAX * SUITE_FILTER_LEN))
 
 /* The console line that carries it, and the size of the reader's buffer. */
 #define RUNSUITE_LINE_MAX (sizeof("runsuite") + 1 + RUNSUITE_ARGS_MAX)
