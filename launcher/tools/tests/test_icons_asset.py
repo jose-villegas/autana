@@ -9,16 +9,17 @@ import struct
 import sys
 import tempfile
 import unittest
-import zlib
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(TOOLS / "device"))
 
 from asset.asset_pack import parse_pack  # noqa: E402
 from gfx import icons_asset, image_asset  # noqa: E402
 from gfx.icons_asset import IconsError  # noqa: E402
 from gfx.image_asset import HEADER, ImageError  # noqa: E402
 from r3d import build_pack  # noqa: E402
+from screenshot import PNG_GREY, encode_png  # noqa: E402
 
 # Two 3x2 cells side by side, ink "X": a plus-ish mark and a bar.
 ATLAS = ["X.X...",
@@ -40,11 +41,8 @@ SQUARE_SVG = '<svg viewBox="0 0 4 4"><path d="M1 1h2v2H1z"/></svg>'
 def png(rows, grey=128):
     """An 8-bit greyscale PNG of `rows`, "X" black and anything else white,
     or `grey` where given."""
-    def chunk(tag, body):
-        return struct.pack(">I", len(body)) + tag + body + struct.pack(">I", zlib.crc32(tag + body))
-    raw = b"".join(b"\0" + bytes(0 if c == "X" else (grey if c == "g" else 255) for c in row) for row in rows)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", len(rows[0]), len(rows), 8, 0, 0, 0, 0))
-            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    return encode_png(len(rows[0]), len(rows), (bytes(0 if c == "X" else (grey if c == "g" else 255) for c in row)
+                                                for row in rows), PNG_GREY)
 
 
 def drawn(rows):

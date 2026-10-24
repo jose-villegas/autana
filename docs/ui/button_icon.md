@@ -6,7 +6,7 @@ centred in the rest. A `NULL` icon is `ui_button()`.
 
 ## Example
 
-<!-- generated: ui-button-icon-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-button-icon-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A button with an icon at its left: true on the frame a tap is released on it. */
 #include "ui/controls/ui_icons.h"

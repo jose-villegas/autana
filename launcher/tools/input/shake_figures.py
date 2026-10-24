@@ -4,7 +4,7 @@ from docs.plot_style import SLOTS, save, style_axes, subplots
 
 
 def main():
-    data, output = probe_data(__file__, "shake.c", __doc__)
+    data, output, _ = probe_data(__file__, "shake.c", __doc__)
     fig, axis = subplots(1, 1, (7, 3))
     axis.plot(*zip(*data["points"]), color=SLOTS[0])
     for name in ("start_mg", "full_mg"):

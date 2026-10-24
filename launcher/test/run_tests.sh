@@ -111,6 +111,7 @@ HEAP_ARENA_DEFINES="-DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES=$HOST_HEAP_ARENA_B
 
 SOURCES="
 $TEST_DIR/host_main.c
+$TEST_DIR/input_fake.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $LAUNCHER_DIR/packages/testkit/harness/cleanup.c
@@ -162,7 +163,8 @@ $MAIN_DIR/asset/asset_directory.c
 $MAIN_DIR/asset/asset_store.c
 $MAIN_DIR/asset/asset_store_file.c
 $MAIN_DIR/input/mapping/orbit_motion_touch.c
-$MAIN_DIR/services/tune.c
+$MAIN_DIR/core/tune.c
+$MAIN_DIR/console/console_tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/console/verbs/console_tone.c
 $MAIN_DIR/console/verbs/console_melody.c

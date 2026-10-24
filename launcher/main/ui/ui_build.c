@@ -27,11 +27,11 @@
 static const char* TAG = "ui";
 #endif
 
+#include "core/tune.h"
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "profile/frame_cost.h"
-#include "services/tune.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/controls/ui_slider.h"
 #include "ui/controls/ui_widgets.h"

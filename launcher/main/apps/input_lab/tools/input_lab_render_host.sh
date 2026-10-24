@@ -5,7 +5,6 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=input_lab
 scene_ui=1
 scene_sources="
-main/services/tune.c
 main/app/app_registry.c
 main/display/display.c
 main/input/motion/tilt.c

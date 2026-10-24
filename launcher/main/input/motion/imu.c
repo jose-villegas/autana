@@ -16,13 +16,13 @@
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "input/motion/imu_queue.h"
-#include "services/tune.h"
 
 static const char* TAG = "imu";
 

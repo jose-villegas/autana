@@ -10,13 +10,13 @@
 #include "unity.h"
 
 #include "core/memory.h"
+#include "core/tune.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "gfx/present/send/gfx_dirty.h"
 #include "ridge_arms.h"
-#include "services/tune.h"
 #include "shell/ui/ui_ridge.h"
 
 #define FB_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
@@ -37,14 +37,9 @@ typedef struct {
 } rig_t;
 
 static void
-ignore_tune_reply(const char* line) {
-    (void)line;
-}
-
-static void
 release(void) {
-    tune_handle_line("RESET ridge.axis_dissolve_ms", ignore_tune_reply);
-    tune_handle_line("RESET ridge.level_tau_ms", ignore_tune_reply);
+    (void)tune_reset(tune_shared(), TUNE_NAME(ridge, axis_dissolve_ms));
+    (void)tune_reset(tune_shared(), TUNE_NAME(ridge, level_tau_ms));
     gfx_reset_for_test();
 }
 
@@ -224,7 +219,7 @@ test_the_boot_hold_and_ease_in_repaint_as_a_full_paint_and_are_sent(void) {
 static void
 test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint(void) {
     fixture();
-    tune_handle_line("SET ridge.axis_dissolve_ms 400", ignore_tune_reply);
+    (void)tune_set(tune_shared(), TUNE_NAME(ridge, axis_dissolve_ms), 400);
     const audit_t audit = audit_arm(ARM_TILT_SWEEP, 150);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.dissolved, "the sweep never dissolved a strip switch");
     TEST_ASSERT_FALSE_MESSAGE(ui_ridge_dissolving_for_test(), "the strip switch never finished dissolving in");
@@ -236,8 +231,8 @@ test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint(void) {
 static void
 test_a_strip_switch_inside_a_running_dissolve_is_sent_and_ends_on_a_full_paint(void) {
     fixture();
-    tune_handle_line("SET ridge.axis_dissolve_ms 400", ignore_tune_reply);
-    tune_handle_line("SET ridge.level_tau_ms 60", ignore_tune_reply);
+    (void)tune_set(tune_shared(), TUNE_NAME(ridge, axis_dissolve_ms), 400);
+    (void)tune_set(tune_shared(), TUNE_NAME(ridge, level_tau_ms), 60);
     start_arm(ARM_TILT_SWEEP);
     rig_t rig;
     rig_open(&rig);
