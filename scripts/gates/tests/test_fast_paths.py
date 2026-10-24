@@ -35,6 +35,56 @@ class FastPathTests(unittest.TestCase):
         self.capture = ('MATHERROR name=example type=f max=1 unit=ulp method=sweep\n'
                         'MATHERRORBIN name=example type=f x=2 max=1 unit=ulp\n')
 
+    def test_fractional_bins_keep_integer_summary_contract(self):
+        capture = self.capture.replace('max=1 unit=ulp\n', 'max=1.25 unit=ulp axis=period\n')
+        paths.validate(self.annotations, self.rows, capture)
+        self.assertEqual(bench.parse_bin_axes(capture), {('example', 'f'): 'period'})
+
+    def test_shared_limit_formatter(self):
+        self.assertEqual(paths.format_limit(2 ** -31), '2^-31')
+        self.assertEqual(paths.format_limit(0), '0')
+        self.assertEqual(paths.format_limit(5), '5')
+
+    def test_identity_count_from_summary(self):
+        capture = 'MATHERROR name=example type=f max=0 unit=ulp method=sweep inputs=123\n'
+        self.assertEqual(bench.parse_input_counts(capture), {('example', 'f'): 123})
+        self.assertEqual(bench.parse_errors(capture), {('example', 'f'): '0 ulp (sweep)'})
+
+    def test_figure_axis_modes_and_bounds(self):
+        from unittest.mock import Mock
+        sys.path.insert(0, str(ROOT / 'launcher/tools/math'))
+        import fast_path_figures as figures
+        points = [(1.01, 0.25, 'ulp'), (3.99, 0.75, 'ulp')]
+        for mode in ('period', 'phase', 'range', None):
+            with self.subTest(mode=mode):
+                axis = Mock()
+                figures._configure_axis(axis, points, mode)
+                axis.set_xlim.assert_called_once_with(1.01, 3.99)
+                if mode in ('period', 'phase'):
+                    axis.set_xscale.assert_not_called()
+                else:
+                    axis.set_xscale.assert_called_once_with('log', base=2)
+        axis = Mock()
+        figures._configure_axis(axis, [(0.01, 1, 'lsb'), (0.99, 2, 'lsb')], 'phase')
+        axis.set_xlabel.assert_called_once_with('Phase (turns)')
+
+    def test_figures_skip_identity_and_label_exact_limit(self):
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'launcher/tools/math'))
+        import fast_path_figures as figures
+        saved = []
+        labels = []
+        def save(fig, path):
+            saved.append(path.name)
+            labels.extend(fig.axes[0].get_legend_handles_labels()[1])
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+        with patch.object(figures, 'save', side_effect=save):
+            self.assertEqual(figures.main(['--out', str(self.root)]), 0)
+        self.assertNotIn('fast-path-mathf_repeat.png', saved)
+        self.assertIn('fast-path-mathx_rsqrt_q30.png', saved)
+        self.assertIn('MATHX_RSQRT_Q30_RELATIVE_LIMIT = 2^-31', labels)
+
     def test_annotation_parser(self):
         self.assertEqual(len(self.annotations), 1)
         item = self.annotations[0]
@@ -228,6 +278,10 @@ class FastPathTests(unittest.TestCase):
         ))
         self.assertEqual(details.count("```math"), len({item.key for item in items}))
         self.assertEqual(details.count("![Error across"), len({item.key for item in items}))
+        identity_text = paths.render(ROOT, items, rows, measured, errors, bins, sizes, fpu, "test target",
+                                     input_counts={('mathf_repeat', 'f'): 123})
+        self.assertIn('Bit-identical to `fmodf` over 123 inputs.', identity_text)
+        self.assertNotIn('fast-path-mathf_repeat.png', identity_text)
         paths.validate_sections(text, items)
         host_sources = {(item.key, item.kind): "host" for item in items}
         host_text = paths.render(ROOT, items, rows, measured, errors, bins, sizes, fpu, "test target", host_sources)

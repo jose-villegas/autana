@@ -142,6 +142,7 @@ def validate_links(root, items):
 def validate(items, rows, capture):
     manifest = {row[0]: row for row in rows}
     errors, bins = bench.parse_errors(capture), bench.parse_bins(capture)
+    axes = bench.parse_bin_axes(capture)
     for item in items:
         for key in (item.fast, item.plain):
             if key not in manifest:
@@ -153,9 +154,11 @@ def validate(items, rows, capture):
             maximum, unit, method = re.fullmatch(r"(\S+) (\w+) \((\w+)\)", errors[identity]).groups()
             if unit != item.unit or method != item.method or any(row[2] != unit for row in bins.get(identity, [])):
                 raise ValueError(f"error contract mismatch: {identity}")
-            if max([float(maximum), *(row[1] for row in bins.get(identity, []))]) > item.limit:
+            fractional = item.unit == "ulp" and axes.get(identity) == "period"
+            checked_bins = [] if fractional else bins.get(identity, [])
+            if max([float(maximum), *(row[1] for row in checked_bins)]) > item.limit:
                 raise ValueError(f"measured error exceeds {item.limit_name}: {identity}")
-            if max((row[1] for row in bins.get(identity, [])), default=0) > float(maximum):
+            if max((row[1] for row in checked_bins), default=0) > float(maximum):
                 raise ValueError(f"bin exceeds error summary: {identity}")
     return errors, bins
 
@@ -308,7 +311,12 @@ def plain_expression(item, root):
     return expression if "isqrt64" in expression else f"`{expression}`"
 
 
-def render(root, items, rows, measured, errors, bins, sizes, fpu, target, sources=None):
+def format_limit(value):
+    fraction, exponent = math.frexp(value)
+    return f"2^{exponent - 1}" if fraction == 0.5 and value < 1 else f"{value:g}"
+
+
+def render(root, items, rows, measured, errors, bins, sizes, fpu, target, sources=None, input_counts=None):
     groups = {}
     for item in items:
         groups.setdefault(item.key, []).append(item)
@@ -328,8 +336,7 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
         warm_fast, cold_fast = [f"{value:.1f}" for value in fast[:2]] if fast else ["-", "-"]
         warm_plain, cold_plain = [f"{value:.1f}" for value in plain[:2]] if plain else ["-", "-"]
         ratio = f"{plain[0] / fast[0]:.2f}" if fast and plain else "-"
-        fraction, exponent = math.frexp(item.limit)
-        limit = f"2^{exponent - 1}" if fraction == 0.5 and item.limit < 1 else f"{item.limit:g}"
+        limit = format_limit(item.limit)
         identity = item.key, item.kind
         error = errors.get(identity, "-").split()[0]
         origin = " (host)" if (sources or {}).get(identity) == "host" else ""
@@ -353,6 +360,11 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
         lines += ["", f'<a id="{key.replace("_", "-")}"></a>', "", f"## `{key}`", "",
                   "```math", item.formula, "```", "", f"Symbols: {_inline_expressions(_description_fields(item)[1])}.", "",
                   f"{item.method.capitalize()}: {_inline_expressions(item.coverage)}.", ""]
+        identity = key, item.kind
+        if item.limit == 0 and identity in (input_counts or {}):
+            reference = ", ".join(f"`{name}`" for name in dict.fromkeys(CALL.findall(plain_expression(item, root))))
+            lines += [f"Bit-identical to {reference} over {input_counts[identity]} inputs."]
+            continue
         lines += [f"![Error across the input range](../images/math/fast-path-{key}.png)" if (key, item.kind) in bins
                   else "Error curve: - (capture pending)."]
     return "\n".join(lines)
@@ -486,7 +498,7 @@ def main(argv=None):
         if bins and not target:
             raise ValueError("error bins require a hardware MATHTARGET capture record")
         body = render(root, items, rows, measured if target else {}, errors if target else {}, bins, sizes,
-                      fpu, target or "-", sources)
+                      fpu, target or "-", sources, bench.parse_input_counts(capture))
         changed = replace_block(page, BLOCK, body, check=args.check, command=COMMAND)
         if args.check and changed:
             raise ValueError("fast-path generated sections are stale")

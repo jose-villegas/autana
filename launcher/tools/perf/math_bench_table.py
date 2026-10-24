@@ -164,7 +164,7 @@ def parse_errors(text):
     result = {}
     pattern = re.compile(
         rf"MATHERROR name=(.+) type=(\w+) max=({NUMBER}(?:[eE][+-]?[0-9]+)?) "
-        r"unit=(ulp|relative|lsb) method=(proof|sweep)")
+        r"unit=(ulp|relative|lsb) method=(proof|sweep)(?: inputs=[0-9]+)?")
     for line in text.splitlines():
         if not line.startswith("MATHERROR "):
             continue
@@ -184,7 +184,7 @@ def parse_errors(text):
 def parse_bins(text):
     result = {}
     number = rf"{NUMBER}(?:[eE][+-]?[0-9]+)?"
-    pattern = re.compile(rf"MATHERRORBIN name=(.+) type=(\w+) x=({number}) max=({number}) unit=(ulp|relative|lsb)")
+    pattern = re.compile(rf"MATHERRORBIN name=(.+) type=(\w+) x=({number}) max=({number}) unit=(ulp|relative|lsb)(?: axis=(?:period|phase|range))?")
     for line in text.splitlines():
         if not line.startswith("MATHERRORBIN"):
             continue
@@ -200,6 +200,23 @@ def parse_bins(text):
             raise ValueError(f"inconsistent error bin unit: {line}")
         bins.append((x, maximum, unit))
     return result
+
+
+def parse_bin_axes(text):
+    parse_bins(text)
+    result = {}
+    for name, kind, axis in re.findall(r"^MATHERRORBIN name=(.+) type=(\w+) .* axis=(period|phase|range)$", text, re.M):
+        identity = name, kind
+        if identity in result and result[identity] != axis:
+            raise ValueError(f"inconsistent error bin axis: {identity}")
+        result[identity] = axis
+    return result
+
+
+def parse_input_counts(text):
+    parse_errors(text)
+    return {(name, kind): int(count) for name, kind, count in re.findall(
+        r"^MATHERROR name=(.+) type=(\w+) .* inputs=([0-9]+)$", text, re.M)}
 
 
 def render_table(rows, measured, baseline, fpu, build=None, errors=None):
