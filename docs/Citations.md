@@ -1,19 +1,26 @@
 # Citations
 
-This table names the papers, books and specifications whose techniques this
-tree uses. A document cites an entry by its number, as a superscript link:
-`<sup>[[3]](Citations.md#3)</sup>`, with the path relative to the citing file.
-Code and its comments never cite by number: they name the source in place.
-An entry code uses opens its "cited by" line with that name in backticks ("Durstenfeld",
-"Ericson, Real-Time Collision Detection", "RFC 4648"), written once:
-`` `Durstenfeld` cited by: ... ``. The line lists the documents citing the entry by
-number and every source file that contains the name, spelled exactly as
-stated (a mention in another spelling is not found).
-[`check_doc_citations.py`](../scripts/gates/check_doc_citations.py) fails when
-a cited number has no entry, a source file writes a `Citations.md` anchor, an
-entry's name appears in no source file, or a list differs, and `--fix`
-rewrites the lists. A number is permanent: an entry nothing uses is deleted
-and its number is never reused. A new source takes one past the highest.
+The papers, books and specifications whose techniques this tree uses.
+[`check_doc_citations.py`](../scripts/gates/check_doc_citations.py)
+checks every rule below, and `--fix` rewrites the "cited by" lists.
+
+```mermaid
+flowchart LR
+    Doc["Document"] -- "superscript link to #n" --> Entry["Entry [n]<br/>source, then name cited by: list"]
+    Code["Source file"] -- "names the source in place" --> Name["Name, spelled<br/>as the entry writes it"]
+    Name -- "listed in cited by" --> Entry
+    Gate["check_doc_citations.py"] -- "lists citers, --fix rewrites" --> Entry
+    Gate -- "rejects a Citations.md anchor" --> Code
+```
+
+| Rule | Detail |
+|---|---|
+| A document cites by number | `<sup>[[3]](Citations.md#3)</sup>`, the path relative to the citing file |
+| Code cites by name | Never a `Citations.md` anchor: the comment names the source ("Durstenfeld", "RFC 4648") |
+| An entry code uses carries that name | Its line opens `` `Durstenfeld` cited by: ``, written once; a mention in another spelling is not found |
+| "Cited by" lists every citer | The documents citing the number, then every source file containing the name |
+| A number is permanent | An entry nothing uses is deleted and its number never reused; a new source takes one past the highest |
+| The gate fails | A cited number with no entry, a source file writing a `Citations.md` anchor, a name in no source file, an entry cited nowhere, a list that differs, rows out of order |
 
 | [n] | Source |
 |---|---|
@@ -35,7 +42,7 @@ and its number is never reused. A new source takes one past the highest.
 | <a id="16"></a>[16] | J. T. Kajiya. *The Rendering Equation.* SIGGRAPH, 1986. [doi:10.1145/15886.15902](https://doi.org/10.1145/15886.15902)<br>Cited by: [docs/render/Bake-Method.md](render/Bake-Method.md) |
 | <a id="17"></a>[17] | The Khronos Group. *glTF 2.0 Specification: Animations and Appendix C, Animation Sampler Interpolation Modes.* Specification. [registry.khronos.org/glTF/specs/2.0](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#appendix-c-interpolation)<br>Cited by: [docs/render/Animation-Tracks.md](render/Animation-Tracks.md), [launcher/tools/anim/README.md](../launcher/tools/anim/README.md) |
 | <a id="18"></a>[18] | The Khronos Group. *KHR_animation_pointer.* Ratified glTF 2.0 extension. [github.com/KhronosGroup/glTF](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_animation_pointer/README.md)<br>Cited by: [docs/render/Animation-Tracks.md](render/Animation-Tracks.md) |
-| <a id="19"></a>[19] | K. Shoemake. *Animating Rotation with Quaternion Curves.* SIGGRAPH, 1985. [doi:10.1145/325334.325242](https://doi.org/10.1145/325334.325242)<br>Cited by: [docs/render/Animation-Tracks.md](render/Animation-Tracks.md), [docs/math/Linear.md](math/Linear.md) |
+| <a id="19"></a>[19] | K. Shoemake. *Animating Rotation with Quaternion Curves.* SIGGRAPH, 1985. [doi:10.1145/325334.325242](https://doi.org/10.1145/325334.325242)<br>Cited by: [docs/math/Linear.md](math/Linear.md), [docs/render/Animation-Tracks.md](render/Animation-Tracks.md) |
 | <a id="20"></a>[20] | E. Catmull, R. Rom. *A Class of Local Interpolating Splines.* Computer Aided Geometric Design, Academic Press, 1974. [doi:10.1016/B978-0-12-079050-0.50020-5](https://doi.org/10.1016/B978-0-12-079050-0.50020-5)<br>Cited by: [docs/render/Animation-Tracks.md](render/Animation-Tracks.md), [launcher/tools/anim/README.md](../launcher/tools/anim/README.md) |
 | <a id="21"></a>[21] | Z. H. Cigolle, S. Donow, D. Evangelakos, M. Mara, M. McGuire, Q. Meyer. *A Survey of Efficient Representations for Independent Unit Vectors.* Journal of Computer Graphics Techniques 3(2), 2014. [jcgt.org/published/0003/02/01](https://jcgt.org/published/0003/02/01/)<br>`Cigolle et al. 2014` cited by: [docs/math/Linear.md](math/Linear.md), [docs/render/Skinned-Lighting.md](render/Skinned-Lighting.md), [launcher/main/render/skin/r3d_skin_light.c](../launcher/main/render/skin/r3d_skin_light.c), [launcher/packages/math/include/math/linear/vec3f.h](../launcher/packages/math/include/math/linear/vec3f.h), [launcher/tools/r3d/skin_light/skin_light_baseline.c](../launcher/tools/r3d/skin_light/skin_light_baseline.c), [launcher/tools/r3d/skin_light/skin_light_bench.c](../launcher/tools/r3d/skin_light/skin_light_bench.c) |
 | <a id="22"></a>[22] | R. E. Kalman. *A New Approach to Linear Filtering and Prediction Problems.* Journal of Basic Engineering 82(1), 1960. [doi:10.1115/1.3662552](https://doi.org/10.1115/1.3662552)<br>`Kalman 1960` cited by: [docs/render/Dynamic-Resolution.md](render/Dynamic-Resolution.md), [launcher/main/render/resolution/resolution.h](../launcher/main/render/resolution/resolution.h) |

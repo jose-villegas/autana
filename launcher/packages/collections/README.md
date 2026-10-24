@@ -13,5 +13,7 @@ headers and suites through `launcher/tools/build/packages.sh`.
 <!-- generated: package-collections-headers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Header | Purpose |
 |---|---|
+| [include/collections/bits.h](include/collections/bits.h) | bits: one flag per index in caller-owned bytes or 32-bit words, bit 0 first; inline so an index folds into its caller. |
 | [include/collections/sort.h](include/collections/sort.h) | sort: stable in-place insertion sort of small arrays. |
+| [include/collections/strbuf.h](include/collections/strbuf.h) | strbuf: text built by appending pieces into a caller's fixed buffer. |
 <!-- /generated: package-collections-headers -->
