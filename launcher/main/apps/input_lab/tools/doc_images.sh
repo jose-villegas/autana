@@ -6,7 +6,7 @@
 #   doc_images.sh <out-tree> <work-dir>
 #
 # <out-tree> gets input/: the Motion page and its results, rendered on the host
-# and turned upright, and the input reference's figures from the retained
+# and turned upright, and the shake reader's trace over the retained
 # mixed-direction shake capture.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow,
@@ -39,6 +39,3 @@ run "$PYTHON" "$APP/tools/shake_fit.py" "$APP/tools/data/shake-mixed.log.gz" --s
 run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --samples "$samples" \
     --trace "$OUT/shake-trace.png" --step "WALK:Walking" --step "GENTLE:Gentle shaking" --step "HARD:Hard shaking" \
     > "$W/shake_figures.log"
-# --orphans scans this runner: motion-tilt.gif, motion-shake.gif
-run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --samples "$samples" \
-    --tilt-step FLIP --shake-step HARD --out "$OUT" > "$W/motion_axes_figures.log"
