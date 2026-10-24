@@ -63,7 +63,7 @@ Warm cycles per op, generated from the committed capture.
 | [mathf_recip](Fast-Paths.md#mathf-recip) | f | 26.3 | 3000.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | [fast paths](Fast-Paths.md#mathf-recip) |
 | [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx) | f | 24.3 | 3084.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt-approx) |
 | [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt) | f | 38.4 | 4517.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | [fast paths](Fast-Paths.md#mathf-rsqrt) |
-| [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30) | x | 157.4 | 13717.0 | 143.6 | 143.6 | 1.1 | calls __assert_func | 4.61224169968e-10 relative (proof) |
+| [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30) | x | 157.4 | 13717.0 | 143.6 | 143.6 | 1.1 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
 | mul (scalar) | f | 9.3 | 1477.0 | 6.5 | 6.2 | 1.4 | - | - |
 | mul (scalar) | i | 9.3 | 1497.0 | 8.5 | 8.2 | 1.1 | - | - |
 | mul (scalar) | s | 11.3 | 2451.0 | 10.5 | 10.2 | 1.1 | - | - |

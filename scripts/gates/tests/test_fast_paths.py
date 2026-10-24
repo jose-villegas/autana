@@ -68,7 +68,8 @@ class FastPathTests(unittest.TestCase):
         lines = tables[0].splitlines()
         for label, kind, section in (("wrap", "f", "mathf-repeat"),
                                      ("normalize (vec3)", "x", "mathx-rsqrt-q30"),
-                                     ("nlerp", "x", "mathx-rsqrt-q30")):
+                                     ("nlerp", "x", "mathx-rsqrt-q30"),
+                                     ("mathx_rsqrt_q30", "x", "mathx-rsqrt-q30")):
             with self.subTest(label=label):
                 row = next(line for line in lines if line.startswith(f"| [{label}]") and f" | {kind} |" in line)
                 self.assertTrue(row.endswith(f"| [fast paths](Fast-Paths.md#{section}) |"), row)

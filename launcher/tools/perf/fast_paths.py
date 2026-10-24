@@ -527,7 +527,9 @@ def main(argv=None):
         elif args.check:
             validate_sections(page_text, items)
         links = benchmark_links(items, rows)
-        error_links = {item.fast: f"Fast-Paths.md#{item.anchor}" for item in items}
+        # Fast-Paths renders the error of every linked row except the plain references.
+        plain = {item.plain for item in items}
+        error_links = {key: link for key, link in links.items() if key not in plain}
         benchmark_body = bench.render_table(rows, measured, bench.load_baseline(root / "launcher/tools/quality/icount_baseline.txt"),
                                             fpu, links=links, errors=errors, error_links=error_links)
         benchmark_changed = replace_block(root / "docs/math/Benchmark.md", "math-benchmark", benchmark_body,
