@@ -3,7 +3,7 @@
 A scene file holds transformed objects, renderer, light and camera components,
 optional animators, and ambient and tone-map settings. The offline importer bakes the lit meshes
 the scene places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
-[scene entry](#scne-v2) it reads at run time.
+[scene entry](#scne-v3) it reads at run time.
 
 ```toml
 tonemap_white = 0.35             # larger is darker
@@ -611,7 +611,7 @@ lights, `tonemap_white`, a region or `[indirect]` that no placed mesh reads.
 Directional lights, `[ambient]` and `tonemap_white` are also read by skinned
 renderers, which require none of them; `[sky]` is read only by a bake.
 
-## SCNE v2
+## SCNE v3
 
 `build_pack.py` bakes each scene file into a `SCNE` entry of its own pack,
 named after the file: `NAME.scene.toml` is entry and pack `NAME`, beside every
@@ -621,16 +621,17 @@ reads it; `scene_load()` opens it ([Scene-Manager.md](Scene-Manager.md)), each
 mesh, skin, skeleton and clip it names, and fails naming whichever is missing or malformed. A scene
 and its clip cannot share a stem ([assets/README.md](../assets/README.md#packs)).
 
-Every object is an entity in file order, found by name at runtime. Transforms
-store a 3x3 rotation-times-scale matrix and position. Names are letters, digits
-and `_`, not starting with a digit, at most 31 bytes. Directional lights use
-their entity's rotation applied to `SCENE_LIGHT_AXIS` (+Y). Baked renderers
-keep their LMSH colours; runtime lights shade only skinned renderers. Sky and
-camera regions are bake inputs.
+Objects are entities in file order, found by name. Transforms store a 3x3
+rotation-times-scale matrix and position. Names hold letters, digits and
+`_`, start with a letter or `_`, and fit 31 bytes.
+
+Directional lights rotate `SCENE_LIGHT_AXIS` (+Y) by their entity's rotation.
+Baked renderers read LMSH or LCOL colours; runtime lights shade only skinned
+renderers. Sky and camera regions are bake inputs.
 
 | Format | Version | Writer (Python) | Reader (C) |
 |---|---|---|---|
-| SCNE | 2 | `r3d/scene_asset.py` | `scene/scene_asset.c` |
+| SCNE | 3 | `r3d/scene_asset.py` | `scene/scene_asset.c` |
 
 Settings are applied before lights attach. Absent ambient has zero intensity;
 `tonemap_white=0` is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map. A camera
@@ -647,7 +648,7 @@ config:
 ---
 packet-beta
 title Header, 56 bytes at 0, one cell a byte
-0-1: "version = 2"
+0-1: "version = 3"
 2-3: "names n"
 4-5: "transf. n"
 6-7: "render. n"
@@ -703,7 +704,7 @@ config:
 packet-beta
 title Content: renderer, 36 bytes from renderers off
 0-1: "entity"
-2-3: "0"
+2-3: "colour_set"
 4-35: "char mesh_id[32]"
 ```
 
@@ -801,9 +802,10 @@ title Content: settings, 20 bytes at settings off, exactly one
 
 | Rule | Detail |
 |---|---|
-| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (56), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
+| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (56), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
 | Layout | little-endian; every part offset is a multiple of 4, at least 56, and the part ends inside the entry; the writer lays parts out in header order |
 | Counts | each at most 65535; names equals transforms; settings is exactly 1 |
+| Colour sets | [Selection and ownership](Baked-Mesh.md#lcol-v1): own colours require no LCOL, checked at pack time. Authored scenes write own colours |
 | Entities | every `entity` is below the names' count; at most one light, one skinned renderer and one animator an entity |
 | Text | `name`, `mesh_id`, `skin_id`, `skeleton_id` and clip ids are nonempty, NUL terminated, zero after the NUL; the bake limits names as stated above |
 | Padding | every `0` above is zero |

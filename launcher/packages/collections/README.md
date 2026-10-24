@@ -10,7 +10,7 @@ headers and suites through `launcher/tools/build/packages.sh`.
 
 ## Headers
 
-<!-- generated: package-collections-headers check: python launcher/tools/gen/shared_helpers.py --check -->
+<!-- generated: package-collections-headers check: python launcher/tools/gen/package_headers.py --check -->
 | Header | Purpose |
 |---|---|
 | [include/collections/bits.h](include/collections/bits.h) | bits: one flag per index in caller-owned bytes or 32-bit words, bit 0 first; inline so an index folds into its caller. |
