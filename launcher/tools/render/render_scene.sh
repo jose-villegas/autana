@@ -221,6 +221,8 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
+    # The host takes --set and --tunables: the registry and its console lines.
+    _rs_files="$_rs_files $_rs_launcher/main/core/tune.c $_rs_launcher/main/console/console_tune.c"
     # Every scene uses drawing and presentation, excluding device-only backends.
     _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" "$_rs_launcher/main/draw" -name '*.c' ! -name '*_device.c' | sort | tr '
 ' ' ')"

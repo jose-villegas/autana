@@ -6,7 +6,7 @@ and the title centred in its `accent`.
 
 ## Example
 
-<!-- generated: ui-header-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-header-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A title bar across the top of the canvas, over the screen's rows. */
 #include "ui/ui.h"
