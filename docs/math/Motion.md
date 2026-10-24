@@ -1,6 +1,6 @@
 # Motion
 
-Orbit steering and spring-line motion with caller-owned state. [Math index](README.md).
+Orbit steering, spring-line motion and water in a box, with caller-owned state. [Math index](README.md).
 
 ## orbit_motion.h
 
@@ -141,3 +141,53 @@ A nudge or poke uses the compact bump $`(1-t^2)^2`$ for $`\lvert t\rvert<1`$,
 with $`t`$ the distance from the centre divided by the half-width; outside it is zero.
 
 ![Offset heatmap by column and tick with active range edges, beside the integer-sampled bump from the initial nudge](../images/math/spring-line-spacetime.png)
+
+## flip3.h
+
+Water in a closed box: FLIP particles on a MAC grid<sup>[[87]](../Citations.md#87)</sup><sup>[[88]](../Citations.md#88)</sup>,
+driven by any acceleration, in caller-owned grid and particle blocks.
+
+| Function | Purpose |
+|---|---|
+| `flip3_config_t` | Box size, nominal cell and particle capacity |
+| `flip3_tuning_t` | FLIP share, pressure sweeps, over-relaxation and drift gain |
+| `flip3_t` | Grid, particles, cell and seed spacing per axis, rest density |
+| `flip3_grid_bytes`, `flip3_particle_bytes` | The two blocks a configuration needs; 0 when refused |
+| `flip3_init` | Carves the blocks; empty, at the default tuning |
+| `flip3_fill` | Refills a share of the volume at rest, lowest first along a down vector |
+| `flip3_step` | Advances one substep under an acceleration |
+| `flip3_fraction` | The share of the volume the particles stand for |
+| `flip3_particle` | A particle in box coordinates |
+| `flip3_cells_x`, `flip3_cells_y`, `flip3_cells_z` | Cells inside the box per axis |
+| `flip3_density_field` | Density over the box at any samples per cell, 1 at rest, padded with empty samples |
+
+| Constant | Purpose |
+|---|---|
+| `FLIP3_RADIUS_CELLS` | Closest a particle comes to a wall |
+| `FLIP3_SEED_SPACING_CELLS` | Seed lattice spacing; a cell holds about 4.6 seeds |
+| `FLIP3_FLIP_RATIO`, `FLIP3_PRESSURE_ITERS`, `FLIP3_OVER_RELAXATION` | Defaults of the Ten Minute Physics tank<sup>[[90]](../Citations.md#90)</sup> |
+| `FLIP3_DRIFT_GAIN` | Share of a cell's density error turned into flow per step |
+| `FLIP3_TUNING_DEFAULT` | All four together |
+
+### The step
+
+Each step runs in Bridson's order<sup>[[89]](../Citations.md#89)</sup>:
+
+| Stage | What it does |
+|---|---|
+| Particles to grid | Trilinear splat of each velocity component onto its faces; cells holding a particle are water |
+| Acceleration | Added to every face not on a wall |
+| Pressure | Gauss-Seidel on the divergence, cells of any aspect, plus the drift push |
+| Grid to particles | PIC and FLIP blended by the FLIP share |
+| Move | Particles advect with the projected velocity, then stop a radius from each wall |
+
+The cell is rounded per axis so whole cells fill the box, so no wall cell
+leaks pressure as a false free surface. The drift push turns a cell's
+density error $`
+ho-
+ho_0`$ into flow: always when the cell is packed,
+and also when thin if water surrounds it, since a divergence-free field never
+closes a gap and a resting pool would slowly turn to foam. The Ten Minute
+Physics tank instead moves particles before the pressure solve and pushes
+overlapping pairs apart; that sinks a pool by $`a\Delta t^2`$ each step and
+holds heaps up the way grains do, so flip3 does neither.
