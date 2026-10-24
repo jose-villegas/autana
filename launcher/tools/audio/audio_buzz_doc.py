@@ -9,9 +9,9 @@ from pathlib import Path
 from statistics import median
 
 from audio_doc_tables import ROOT, read_capture
-from audio_doc_blocks import caption, details
+from audio_doc_blocks import caption, details, line_chart
 from audio_buzz_sweep import CAPTURE  # noqa: F401 (audio_doc_tables reads it from here)
-from docs.plot_style import FIGURE_SIZE, SLOTS, picture, save_themed_plot, subplots
+from docs.plot_style import SLOTS, picture, save_themed_plot
 from doc_tables import markdown
 
 DOCUMENT = Path("docs/audio/Low-Frequency-Buzz.md")
@@ -116,20 +116,18 @@ def update(capture, document, check=False):
 
 def figures(path, output):
     points = buzz_data(path)
+    reference = reference_volume(points)
     for name, field, label, title in (
             ("buzz-shake", "shake", "Board shake (mg RMS)", "Board shake against tone frequency"),
             ("buzz-score", "score", "Shake per audible dB (dB re 1 mg)", "Shake per audible decibel")):
-        fig, axis = subplots(1, 1, FIGURE_SIZE)
-        for volume, color in zip(volumes_of(points), SLOTS):
-            curve = sorted((hz, point[field]) for (hz, gain), point in points.items()
-                           if gain == volume and point[field] is not None)
-            axis.plot([hz for hz, _ in curve], [value for _, value in curve], "o-", label=f"{volume}%", color=color)
+        series = [(f"{volume}%", sorted((hz, point[field]) for (hz, gain), point in points.items()
+                                        if gain == volume and point[field] is not None), "o-", color)
+                  for volume, color in zip(volumes_of(points), SLOTS)]
         if field == "shake":
-            floor = sorted((hz, point["floor"]) for (hz, gain), point in points.items()
-                           if gain == reference_volume(points))
-            axis.plot([hz for hz, _ in floor], [value for _, value in floor], "--", label="Silence", color=SLOTS[-1])
-            axis.set_yscale("log")
-        axis.set(xlabel="Tone frequency (Hz)", ylabel=label)
+            series.append(("Silence", sorted((hz, point["floor"]) for (hz, gain), point in points.items()
+                                             if gain == reference), "--", SLOTS[-1]))
+        fig, axis = line_chart(series, xlabel="Tone frequency (Hz)", ylabel=label,
+                               yscale="log" if field == "shake" else "linear")
         save_themed_plot(fig, axis, output / f"{name}.png", title)
 
 
