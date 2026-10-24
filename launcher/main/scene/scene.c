@@ -12,6 +12,7 @@
 #include "gfx/target/gfx_color.h"
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
+#include "render/lcol_format.h"
 #include "scene/scene_internal.h"
 
 #define LOADED_MAX 8
@@ -162,7 +163,32 @@ open_meshes(scene_t* scene, const asset_pack_t* pack) {
         const char* mesh = i < scene->asset.renderer_count
                                ? scene->asset.renderers[i].mesh
                                : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
-        const asset_status_t status = r3d_lit_mesh_open(pack, mesh, &scene->renderers[i].mesh);
+        r3d_lit_mesh_t* view = &scene->renderers[i].mesh;
+        asset_status_t status = r3d_lit_mesh_open(pack, mesh, view);
+        if (status == ASSET_OK && i < scene->asset.renderer_count) {
+            char name[ASSET_NAME_MAX];
+            const uint16_t set = scene->asset.renderers[i].colour_set;
+            status = r3d_lit_mesh_colour_name(mesh, name);
+            if (status == ASSET_ERR_BOUNDS && set == SCENE_ASSET_COLOUR_SET_OWN
+                && (view->colors != NULL || view->face_colors != NULL)) {
+                status = ASSET_OK;
+            } else if (status == ASSET_OK) {
+                asset_view_t colors;
+                status = asset_pack_find(pack, name, LCOL_ASSET, &colors);
+                if (set == SCENE_ASSET_COLOUR_SET_OWN) {
+                    if (status == ASSET_OK
+                        || (status == ASSET_ERR_NOT_FOUND && view->colors == NULL && view->face_colors == NULL)) {
+                        status = ASSET_ERR_FORMAT;
+                    } else if (status == ASSET_ERR_NOT_FOUND) {
+                        status = ASSET_OK;
+                    }
+                } else if (status == ASSET_OK) {
+                    status = r3d_lit_mesh_colour_set(&colors, set, view);
+                }
+            }
+        } else if (status == ASSET_OK && view->colors == NULL && view->face_colors == NULL) {
+            status = ASSET_ERR_FORMAT;
+        }
         if (status != ASSET_OK) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }

@@ -3,8 +3,10 @@
 #include <limits.h>
 #include <math.h>
 #include <stddef.h>
+#include <string.h>
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
+#include "render/lcol_format.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
 _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bounds) == 8
@@ -117,8 +119,8 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
         return ASSET_ERR_BOUNDS;
     }
     const uint32_t scale = word(asset->data, POSITION_SCALE);
-    /* One colour source, a scale, and a root for the tree to start from. */
-    if (clusters == 0 || nodes == 0 || (colors_at == 0) == (face_at == 0) || scale == 0 || scale > INT_MAX) {
+    /* Colourless prototypes receive their lighting at scene open. */
+    if (clusters == 0 || nodes == 0 || (colors_at != 0 && face_at != 0) || scale == 0 || scale > INT_MAX) {
         return ASSET_ERR_FORMAT;
     }
     r3d_lit_mesh_t built = {
@@ -134,7 +136,7 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
         .position_scale = (int)scale,
         .face_colors = face_at == 0 ? NULL : array_at(asset, face_at, triangles, 2),
     };
-    const bool colours_fit = colors_at == 0 ? built.face_colors != NULL : built.colors != NULL;
+    const bool colours_fit = (colors_at == 0 || built.colors != NULL) && (face_at == 0 || built.face_colors != NULL);
     if (built.positions == NULL || built.triangles == NULL || built.clusters == NULL || built.nodes == NULL
         || !colours_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
         return ASSET_ERR_BOUNDS;
@@ -155,6 +157,56 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
         return status;
     }
     return r3d_lit_mesh_from_asset(&asset, mesh);
+}
+
+asset_status_t
+r3d_lit_mesh_colour_name(const char* mesh_id, char out[ASSET_NAME_MAX]) {
+    size_t length = strlen(mesh_id);
+    const size_t mesh_suffix = sizeof LCOL_MESH_SUFFIX - 1U;
+    if (length >= mesh_suffix && strcmp(mesh_id + length - mesh_suffix, LCOL_MESH_SUFFIX) == 0) {
+        length -= mesh_suffix;
+    }
+    if (length == 0) {
+        return ASSET_ERR_FORMAT;
+    }
+    if (length + sizeof LCOL_NAME_SUFFIX > ASSET_NAME_MAX) {
+        return ASSET_ERR_BOUNDS;
+    }
+    memcpy(out, mesh_id, length);
+    memcpy(out + length, LCOL_NAME_SUFFIX, sizeof LCOL_NAME_SUFFIX);
+    return ASSET_OK;
+}
+
+asset_status_t
+r3d_lit_mesh_colour_set(const asset_view_t* asset, uint16_t set, r3d_lit_mesh_t* mesh) {
+    const asset_status_t status =
+        asset_entry_validate(*asset, LCOL_VERSION, LCOL_AT_VERSION, LCOL_HEADER_SIZE, ENTRY_ALIGNMENT);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    if (asset_read_u16(asset->data + LCOL_AT_VERSION) != LCOL_VERSION) {
+        return ASSET_ERR_VERSION;
+    }
+    const uint16_t encoding = asset_read_u16(asset->data + LCOL_AT_ENCODING);
+    const uint32_t sets = asset_read_u32(asset->data + LCOL_AT_SET_COUNT);
+    const uint32_t count = asset_read_u32(asset->data + LCOL_AT_COUNT);
+    if (encoding != LCOL_ENCODING_RGB888 && encoding != LCOL_ENCODING_RGB565) {
+        return ASSET_ERR_FORMAT;
+    }
+    const bool vertex = encoding == LCOL_ENCODING_RGB888;
+    const uint32_t expected = (uint32_t)(vertex ? mesh->vertex_count : mesh->triangle_count);
+    const uint32_t stride = vertex ? LCOL_RGB888_BYTES : LCOL_RGB565_BYTES;
+    if (sets == 0 || set >= sets || count != expected || mesh->colors != NULL || mesh->face_colors != NULL) {
+        return ASSET_ERR_FORMAT;
+    }
+    const uint64_t bytes = (uint64_t)count * stride;
+    if (LCOL_HEADER_SIZE + bytes * sets != asset->size) {
+        return ASSET_ERR_BOUNDS;
+    }
+    const void* colors = asset->data + LCOL_HEADER_SIZE + bytes * set;
+    mesh->colors = vertex ? colors : NULL;
+    mesh->face_colors = vertex ? NULL : colors;
+    return ASSET_OK;
 }
 
 spheref_t

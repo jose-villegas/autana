@@ -34,7 +34,7 @@ typedef struct {
 
 typedef struct {
     const int16_t (*positions)[3];  /* ticks; position_scale ticks per model unit */
-    const uint8_t (*colors)[3];     /* NULL when face_colors carries the lighting */
+    const uint8_t (*colors)[3];     /* NULL for face colours or a colourless prototype */
     const uint16_t (*triangles)[3]; /* counter-clockwise seen from the front */
     const r3d_lit_cluster_t* clusters;
     const r3d_lit_node_t* nodes; /* children of a node sit together */
@@ -53,6 +53,13 @@ asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t
 
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);
+
+/* Derives the LCOL id, replacing a terminal .mesh or appending .colors.
+ * ASSET_ERR_FORMAT for empty ids, ASSET_ERR_BOUNDS when the result cannot fit. */
+asset_status_t r3d_lit_mesh_colour_name(const char* mesh_id, char out[ASSET_NAME_MAX]);
+
+/* Binds a validated colour set in place; failure leaves the mesh unchanged. */
+asset_status_t r3d_lit_mesh_colour_set(const asset_view_t* asset, uint16_t set, r3d_lit_mesh_t* mesh);
 
 /* A sphere holding every vertex, in model units: centred on the box of them
  * (the root node's bounds), its radius the furthest vertex from that centre. */
