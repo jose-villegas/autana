@@ -26,7 +26,9 @@ typedef enum {
 } orientation_probe_step_t;
 
 #define ORIENTATION_PROBE_ROUND_MS        (ORIENTATION_PROBE_DONE * ORIENTATION_PROBE_STEP_MS)
+/* Allow as much ready dwell as timed recording before the transcript fills. */
 #define ORIENTATION_PROBE_READY_BUDGET_MS ORIENTATION_PROBE_ROUND_MS
+/* Samples plus step and ready-gate markers, including round and completion. */
 #define ORIENTATION_PROBE_RECORD_LINES                                                                                 \
     (((ORIENTATION_PROBE_ROUND_MS + ORIENTATION_PROBE_READY_BUDGET_MS) * MATH_US_PER_MS + INPUT_MOTION_SAMPLE_US - 1)  \
          / INPUT_MOTION_SAMPLE_US                                                                                      \
@@ -45,5 +47,7 @@ typedef enum {
     (ORIENTATION_PROBE_SAMPLE_LABEL_SIZE + IMU_PROBE_DECIMAL_DIGITS(ORIENTATION_PROBE_DONE)                            \
      + IMU_PROBE_DECIMAL_DIGITS(ORIENTATION_PROBE_ROUND_MS * MATH_US_PER_MS) + (3 * ORIENTATION_PROBE_ACCEL_WIDTH)     \
      + (3 * ORIENTATION_PROBE_GYRO_WIDTH))
+const char* orientation_probe_action(orientation_probe_step_t step);
+int orientation_probe_bearing(int quarter);
 int orientation_probe_target(orientation_probe_step_t step);
 void orientation_probe_prompt(orientation_probe_step_t step, char* text, size_t size);

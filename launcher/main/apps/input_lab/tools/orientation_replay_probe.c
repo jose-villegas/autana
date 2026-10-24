@@ -5,12 +5,13 @@
 #include <string.h>
 
 #include "apps/input_lab/orientation_probe.h"
-#include "display/display.h"
+#include "display/display_judge.h"
 #include "input/motion/gravity.h"
 #include "math/linear/vec_convert.h"
 
 #define REPLAY_ARGUMENTS       4
 #define REPLAY_FIELDS          7
+#define REPLAY_VECTOR_FIELDS   3
 #define REPLAY_TRACE_ARGUMENTS (REPLAY_ARGUMENTS + 1)
 
 int
@@ -20,6 +21,16 @@ main(int argc, char** argv) {
         for (orientation_probe_step_t step = ORIENTATION_PROBE_READ_0; step <= ORIENTATION_PROBE_DONE; ++step) {
             orientation_probe_prompt(step, prompt, sizeof prompt);
             printf("%d %d %s\n", (int)step, orientation_probe_target(step), prompt);
+        }
+        return EXIT_SUCCESS;
+    }
+    if (argc == 2 && strcmp(argv[1], "--candidates") == 0) {
+        vec3f_t down;
+        while (scanf("%f %f %f", &down.x, &down.y, &down.z) == REPLAY_VECTOR_FIELDS) {
+            for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+                printf("%d %d%c", display_candidate(down, q, false), display_candidate(down, q, true),
+                       q == DISPLAY_QUARTER_COUNT - 1 ? '\n' : ' ');
+            }
         }
         return EXIT_SUCCESS;
     }

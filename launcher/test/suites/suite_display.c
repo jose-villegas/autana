@@ -1,5 +1,5 @@
 /* display: quarter decisions, event gates and shell sampling in all rotations. */
-#include "display/display.h"
+#include "display/display_judge.h"
 #include "display/display_shell.h"
 
 #include <math.h>
@@ -19,7 +19,7 @@
 
 static vec3f_t
 sample(int quarter, float turn_deg, float tilt_deg, float magnitude) {
-    const float radians_per_degree = MATH_PI / (2.0F * DISPLAY_QUARTER_DEG);
+    const float radians_per_degree = MATH_RADIANS_PER_DEGREE;
     const float turn = turn_deg * radians_per_degree;
     const float tilt = tilt_deg * radians_per_degree;
     const viewport_quarter_axes_t axes = viewport_quarter_axes(quarter);
@@ -281,8 +281,197 @@ test_sampler_cadence_failures_and_hold_release(void) {
     }
 }
 
+static void
+test_angle_companions_match_degrees(void) {
+    static const struct {
+        float degrees, companion;
+        bool cosine;
+    } angles[] = {
+        {DISPLAY_FLAT_DEG, DISPLAY_FLAT_SIN, false},
+        {DISPLAY_MAX_TILT_DEG, DISPLAY_MAX_TILT_SIN, false},
+        {DISPLAY_SWING_DEG, DISPLAY_SWING_SIN, false},
+        {DISPLAY_OVERHEAD_ENTER_DEG, DISPLAY_OVERHEAD_ENTER_SIN, false},
+        {DISPLAY_OVERHEAD_EXIT_DEG, DISPLAY_OVERHEAD_EXIT_SIN, false},
+        {DISPLAY_TILT_MIN_DEG, DISPLAY_TILT_MIN_SIN, false},
+        {DISPLAY_TILT_DEFAULT_MAX_DEG, DISPLAY_TILT_DEFAULT_MAX_SIN, false},
+        {DISPLAY_TILT_ADJACENT_MAX_DEG, DISPLAY_TILT_ADJACENT_MAX_SIN, false},
+        {DISPLAY_TILT_OPPOSITE_MAX_DEG, DISPLAY_TILT_OPPOSITE_MAX_SIN, false},
+        {DISPLAY_ADJACENT_MIN_DEG, DISPLAY_ADJACENT_MIN_COS, true},
+    };
+
+    for (size_t i = 0; i < sizeof angles / sizeof angles[0]; i++) {
+        const float radians = angles[i].degrees * MATH_RADIANS_PER_DEGREE;
+        TEST_ASSERT_FLOAT_WITHIN(0.000001F, angles[i].cosine ? cosf(radians) : sinf(radians), angles[i].companion);
+    }
+}
+
+static void
+test_quarter_names_and_filter_step_response(void) {
+    static const char* const names[] = {DISPLAY_PORTRAIT_NAME, DISPLAY_LANDSCAPE_NAME,
+                                        DISPLAY_PORTRAIT_UPSIDE_DOWN_NAME, DISPLAY_LANDSCAPE_UPSIDE_DOWN_NAME};
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        TEST_ASSERT_EQUAL_STRING(names[q], display_quarter_name(q));
+    }
+    TEST_ASSERT_EQUAL_STRING("", display_quarter_name(-1));
+    TEST_ASSERT_EQUAL_STRING("", display_quarter_name(DISPLAY_QUARTER_COUNT));
+    display_t d = fixture(DISPLAY_PORTRAIT);
+    const vec3f_t first = sample(DISPLAY_PORTRAIT, 0, 0, 1);
+    const vec3f_t next = sample(DISPLAY_LANDSCAPE, 0, 0, 1);
+    display_update(&d, first, 0);
+    display_update(&d, next, (int64_t)DISPLAY_FILTER_TAU_MS * MATH_US_PER_MS);
+    TEST_ASSERT_FLOAT_WITHIN(0.000001F, (first.x + next.x) / 2, d.filtered.x);
+    TEST_ASSERT_FLOAT_WITHIN(0.000001F, (first.y + next.y) / 2, d.filtered.y);
+}
+
+static void
+test_swing_direction_history_age_and_wrap(void) {
+    display_t d = fixture(DISPLAY_PORTRAIT);
+    const vec3f_t level = sample(DISPLAY_PORTRAIT, 0, 0, 1);
+    const vec3f_t rise = sample(DISPLAY_PORTRAIT, 0, DISPLAY_SWING_DEG + TEST_ANGLE_MARGIN_DEG, 1);
+    display_update(&d, rise, 0);
+    d.filtered = level;
+    display_update(&d, level, TEST_STEP_US);
+    TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, d.swing_ended_us);
+    d = fixture(DISPLAY_PORTRAIT);
+    display_update(&d, level, 0);
+    d.filtered = rise;
+    display_update(&d, rise, (int64_t)DISPLAY_SWING_MS * MATH_US_PER_MS + 1);
+    TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, d.swing_ended_us);
+    d = fixture(DISPLAY_PORTRAIT);
+    int64_t now = 0;
+    feed(&d, level, &now, DISPLAY_SWING_MS * 3);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_TILT_HISTORY_COUNT, d.tilt_count);
+    TEST_ASSERT_EQUAL_INT((DISPLAY_SWING_MS * 3 / DISPLAY_SAMPLE_MS + 1) % DISPLAY_TILT_HISTORY_COUNT, d.tilt_next);
+    d.filtered = rise;
+    display_update(&d, rise, now);
+    TEST_ASSERT_EQUAL_INT64(now, d.swing_ended_us);
+    d = fixture(DISPLAY_PORTRAIT);
+    display_update(&d, sample(DISPLAY_PORTRAIT, 0, -DISPLAY_QUARTER_DEG, 1), 0);
+    const vec3f_t high = sample(DISPLAY_PORTRAIT, 0, DISPLAY_QUARTER_DEG, 1);
+    d.filtered = high;
+    display_update(&d, high, TEST_STEP_US);
+    TEST_ASSERT_EQUAL_INT64(TEST_STEP_US, d.swing_ended_us);
+    d = fixture(DISPLAY_PORTRAIT);
+    display_update(&d, high, 0);
+    const vec3f_t low = sample(DISPLAY_PORTRAIT, 0, -DISPLAY_QUARTER_DEG, 1);
+    d.filtered = low;
+    display_update(&d, low, TEST_STEP_US);
+    TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, d.swing_ended_us);
+}
+
+static void
+test_short_flat_inside_accel_band_and_overhead_middle(void) {
+    display_t d = fixture(DISPLAY_PORTRAIT);
+    int64_t now = 0;
+    feed(&d, sample(DISPLAY_PORTRAIT, 0, DISPLAY_FLAT_DEG - TEST_ANGLE_MARGIN_DEG, 1), &now, DISPLAY_FLAT_MS * 2);
+    TEST_ASSERT_FALSE(d.flat);
+    TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, d.flat_since_us);
+    d = fixture(DISPLAY_PORTRAIT);
+    now = 0;
+    feed(&d, sample(DISPLAY_PORTRAIT, 0, DISPLAY_FLAT_DEG + TEST_ANGLE_MARGIN_DEG, 1), &now,
+         DISPLAY_FLAT_MS - DISPLAY_SAMPLE_MS);
+    TEST_ASSERT_FALSE(d.flat);
+    for (int sign = -1; sign <= 1; sign += 2) {
+        d = fixture(DISPLAY_PORTRAIT);
+        now = 0;
+        feed(&d, sample(DISPLAY_PORTRAIT, 0, 0, 1 + sign * (DISPLAY_ACCEL_TOLERANCE_G - DISPLAY_NEAR_ZERO_G)), &now,
+             DISPLAY_AFTER_ACCEL_MS);
+        TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, d.accel_ended_us);
+    }
+    d = fixture(DISPLAY_PORTRAIT);
+    now = 0;
+    const float middle = (DISPLAY_OVERHEAD_ENTER_DEG + DISPLAY_OVERHEAD_EXIT_DEG) / 2;
+    feed(&d, sample(DISPLAY_PORTRAIT, 0, middle, 1), &now, DISPLAY_SAMPLE_MS);
+    TEST_ASSERT_FALSE(d.overhead);
+    d.overhead = true;
+    feed(&d, sample(DISPLAY_PORTRAIT, 0, middle, 1), &now, DISPLAY_SAMPLE_MS);
+    TEST_ASSERT_TRUE(d.overhead);
+}
+
+static void
+test_max_tilt_overrides_candidate_tilt_limits(void) {
+    display_t d = fixture(DISPLAY_PORTRAIT);
+    const vec3f_t high = sample(DISPLAY_LANDSCAPE, 0, DISPLAY_MAX_TILT_DEG + TEST_ANGLE_MARGIN_DEG, 1);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_LANDSCAPE, display_candidate(high, d.quarter, false));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_NONE, display_candidate(high, d.quarter, true));
+    TEST_ASSERT_FALSE(display_update(&d, high, 0));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_NONE, d.predicted);
+}
+
+static void
+test_prediction_dropout_restarts_settle(void) {
+    display_t d = fixture(DISPLAY_PORTRAIT);
+    const vec3f_t turned = sample(DISPLAY_LANDSCAPE, 0, 0, 1);
+    display_update(&d, turned, 0);
+    const vec3f_t invalid = sample(DISPLAY_LANDSCAPE, 0, 0, DISPLAY_NEAR_ZERO_G / 2);
+    d.filtered = invalid;
+    display_update(&d, invalid, TEST_STEP_US);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_NONE, d.predicted);
+    d.filtered = turned;
+    TEST_ASSERT_FALSE(display_update(&d, turned, TEST_STEP_US * 2));
+    TEST_ASSERT_EQUAL_INT64(TEST_STEP_US * 2, d.predicted_us);
+    TEST_ASSERT_FALSE(display_update(&d, turned, TEST_STEP_US * 2 + (int64_t)DISPLAY_SETTLE_MS * MATH_US_PER_MS - 1));
+    TEST_ASSERT_TRUE(display_update(&d, turned, TEST_STEP_US * 2 + (int64_t)DISPLAY_SETTLE_MS * MATH_US_PER_MS));
+}
+
+static void
+test_release_clears_motion_history_and_preserves_touch(void) {
+    display_orientation_t o;
+    display_orientation_init(&o);
+    o.display.flat = true;
+    o.display.overhead = true;
+    o.display.primed = true;
+    o.display.filtered = sample(DISPLAY_PORTRAIT, 0, DISPLAY_FLAT_DEG, 1);
+    o.display.flat_since_us = o.display.flat_ended_us = o.display.swing_ended_us = o.display.accel_ended_us =
+        TEST_STEP_US;
+    o.display.tilt_count = DISPLAY_TILT_HISTORY_COUNT;
+    o.display.tilt_next = DISPLAY_TILT_HISTORY_COUNT - 1;
+    o.display.predicted = DISPLAY_PORTRAIT;
+    display_touch(&o.display, TEST_STEP_US);
+    display_orientation_hold(&o, DISPLAY_LANDSCAPE);
+    display_orientation_release(&o);
+    TEST_ASSERT_FALSE(o.display.flat);
+    TEST_ASSERT_FALSE(o.display.overhead);
+    TEST_ASSERT_FALSE(o.display.primed);
+    TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, o.display.flat_since_us);
+    TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, o.display.flat_ended_us);
+    TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, o.display.accel_ended_us);
+    TEST_ASSERT_EQUAL_INT64(DISPLAY_TIME_NONE, o.display.swing_ended_us);
+    TEST_ASSERT_EQUAL_INT64(TEST_STEP_US, o.display.touch_ended_us);
+    TEST_ASSERT_EQUAL_INT(0, o.display.tilt_count);
+    TEST_ASSERT_EQUAL_INT(0, o.display.tilt_next);
+    TEST_ASSERT_EQUAL_FLOAT(0, vec3f_dot(o.display.filtered, o.display.filtered));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_NONE, o.display.predicted);
+}
+
+static void
+test_single_touch_and_backwards_clamp(void) {
+    for (int backwards = 0; backwards <= 1; backwards++) {
+        display_t d = fixture(DISPLAY_PORTRAIT);
+        const vec3f_t turned = sample(DISPLAY_LANDSCAPE, 0, 0, 1);
+        display_update(&d, turned, TEST_STEP_US);
+        display_touch(&d, TEST_STEP_US);
+        const int64_t now = backwards ? 0 : TEST_STEP_US;
+        TEST_ASSERT_FALSE(display_update(&d, turned, now));
+        TEST_ASSERT_EQUAL_INT64(now, d.touch_ended_us);
+        int64_t clock = now + TEST_STEP_US;
+        feed(&d, turned, &clock, DISPLAY_AFTER_TOUCH_MS - 2 * DISPLAY_SAMPLE_MS);
+        TEST_ASSERT_EQUAL_INT(DISPLAY_PORTRAIT, d.quarter);
+        TEST_ASSERT_TRUE(display_update(&d, turned, now + (int64_t)DISPLAY_AFTER_TOUCH_MS * MATH_US_PER_MS));
+    }
+}
+
 void
 run_display_suite(void) {
+    RUN_TEST(test_angle_companions_match_degrees);
+    RUN_TEST(test_quarter_names_and_filter_step_response);
+    RUN_TEST(test_swing_direction_history_age_and_wrap);
+    RUN_TEST(test_short_flat_inside_accel_band_and_overhead_middle);
+    RUN_TEST(test_max_tilt_overrides_candidate_tilt_limits);
+    RUN_TEST(test_prediction_dropout_restarts_settle);
+    RUN_TEST(test_release_clears_motion_history_and_preserves_touch);
+    RUN_TEST(test_single_touch_and_backwards_clamp);
+
     RUN_TEST(test_clean_turn_settles_in_every_rotation);
     RUN_TEST(test_filtered_turn_and_hysteresis_in_every_rotation);
     RUN_TEST(test_tilt_limits_are_relative_to_default);

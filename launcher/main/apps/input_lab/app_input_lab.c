@@ -22,7 +22,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
-#include "display/display.h"
+#include "display/display_judge.h"
 #include "gfx/gfx.h"
 #include "input/input_shell.h"
 #include "input/motion/gravity.h"
@@ -100,7 +100,6 @@ typedef struct {
 } motion_ring_t;
 
 typedef struct {
-    input_motion_batch_t* slice;
     shake_probe_round_t round;
     shake_probe_levels_t levels;
     int64_t start_us;
@@ -111,6 +110,7 @@ typedef struct {
     bool running;
     orientation_probe_step_t step;
     guided_step_t guide;
+    int64_t start_us;
 } orientation_capture_t;
 
 static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "motion", "shake", "orientation"};
@@ -120,6 +120,7 @@ static tilt_t tilt;
 static gravity_t gravity;
 static input_motion_t motion;
 static input_motion_batch_t* motion_batch;
+static input_motion_batch_t* motion_slice;
 static shake_capture_t shake_capture;
 static orientation_capture_t orientation_capture;
 static int motion_samples;
@@ -227,7 +228,7 @@ input_lab_enter(void) {
     if (motion_batch == NULL) {
         ESP_LOGE(TAG, "Cannot allocate motion batch in PSRAM");
     }
-    shake_capture.slice = memory_alloc(sizeof *shake_capture.slice, MEMORY_PSRAM);
+    motion_slice = memory_alloc(sizeof *motion_slice, MEMORY_PSRAM);
     rng_seed(&rng, (uint32_t)timing_now_us());
     panel_max_x = -1;
     mode = MODE_RANDOM;
@@ -522,46 +523,44 @@ record_orientation_sample(const input_motion_t* sample, int64_t elapsed_us) {
 
 /* Only this adapter depends on batch loss placement. The scratch batch lives in PSRAM. */
 static void
-read_shake_samples(const input_motion_batch_t* batch) {
-    if (shake_capture.slice == NULL) {
+record_shake_sample(const input_motion_t* sample, int64_t elapsed_us) {
+    const vec3f_t linear = gravity_linear(&gravity);
+    shake_probe_feed(&shake_capture.levels, linear);
+    if (shake_capture.round.step == SHAKE_PROBE_IDLE || elapsed_us < 0) {
         return;
     }
-    shake_capture.slice->gap = batch->gap;
-    shake_capture.slice->count = batch->count > 0 ? 1 : 0;
+    const uint32_t ms = elapsed_us / MATH_US_PER_MS > SHAKE_PROBE_ROUND_MS ? SHAKE_PROBE_ROUND_MS
+                                                                           : (uint32_t)(elapsed_us / MATH_US_PER_MS);
+    advance_shake_clock(ms);
+    if (ms >= SHAKE_PROBE_ROUND_MS) {
+        return;
+    }
+    const vec3i_t acc = imu_probe_mg(sample->acceleration);
+    const vec3i_t lin = motion_log_vector(linear, IMU_PROBE_MILLI);
+    (void)imu_record_appendf(
+        &imu_record, SHAKE_PROBE_SAMPLE_FORMAT, (int)SHAKE_PROBE_STILL + (int)(ms / SHAKE_PROBE_STEP_MS), (unsigned)ms,
+        (int)acc.x, (int)acc.y, (int)acc.z, (int)lin.x, (int)lin.y, (int)lin.z, (int)lroundf(shake_capture.levels.size),
+        (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI), tilt_shake(&tilt));
+}
+
+static void
+read_round_samples(const input_motion_batch_t* batch, int64_t start_us, void (*sink)(const input_motion_t*, int64_t)) {
+    if (motion_slice == NULL) {
+        return;
+    }
+    motion_slice->gap = batch->gap;
+    motion_slice->count = batch->count > 0 ? 1 : 0;
     if (batch->count == 0) {
-        gravity_update_batch(&gravity, shake_capture.slice);
+        gravity_update_batch(&gravity, motion_slice);
     }
     const int64_t end_us = timing_now_us();
     for (int i = 0; i < batch->count; i++) {
-        shake_capture.slice->samples[0] = batch->samples[i];
-        shake_capture.slice->lost_before[0] = batch->lost_before[i];
-        gravity_update_batch(&gravity, shake_capture.slice);
-        shake_capture.slice->gap = false;
-        const vec3f_t linear = gravity_linear(&gravity);
-        shake_probe_feed(&shake_capture.levels, linear);
-        const int64_t elapsed_us =
-            (end_us - shake_capture.start_us) - ((int64_t)((batch->count - i) - 1) * INPUT_MOTION_SAMPLE_US);
-        if (mode == MODE_ORIENTATION) {
-            record_orientation_sample(&batch->samples[i], elapsed_us);
-            continue;
-        }
-        if (shake_capture.round.step == SHAKE_PROBE_IDLE || elapsed_us < 0) {
-            continue;
-        }
-        const uint32_t ms = elapsed_us / MATH_US_PER_MS > SHAKE_PROBE_ROUND_MS
-                                ? SHAKE_PROBE_ROUND_MS
-                                : (uint32_t)(elapsed_us / MATH_US_PER_MS);
-        advance_shake_clock(ms);
-        if (ms >= SHAKE_PROBE_ROUND_MS) {
-            continue;
-        }
-        const vec3i_t acc = imu_probe_mg(batch->samples[i].acceleration);
-        const vec3i_t lin = motion_log_vector(linear, IMU_PROBE_MILLI);
-        (void)imu_record_appendf(
-            &imu_record, SHAKE_PROBE_SAMPLE_FORMAT, (int)SHAKE_PROBE_STILL + (int)(ms / SHAKE_PROBE_STEP_MS),
-            (unsigned)ms, (int)acc.x, (int)acc.y, (int)acc.z, (int)lin.x, (int)lin.y, (int)lin.z,
-            (int)lroundf(shake_capture.levels.size),
-            (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI), tilt_shake(&tilt));
+        motion_slice->samples[0] = batch->samples[i];
+        motion_slice->lost_before[0] = batch->lost_before[i];
+        gravity_update_batch(&gravity, motion_slice);
+        motion_slice->gap = false;
+        const int64_t elapsed_us = (end_us - start_us) - ((int64_t)((batch->count - i) - 1) * INPUT_MOTION_SAMPLE_US);
+        sink(&batch->samples[i], elapsed_us);
     }
 }
 
@@ -590,8 +589,10 @@ read_motion(uint32_t dt_ms) {
     if (have_motion) {
         tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
     }
-    if (read && (mode == MODE_SHAKE || mode == MODE_ORIENTATION)) {
-        read_shake_samples(motion_batch);
+    if (read && mode == MODE_SHAKE) {
+        read_round_samples(motion_batch, shake_capture.start_us, record_shake_sample);
+    } else if (read && mode == MODE_ORIENTATION) {
+        read_round_samples(motion_batch, orientation_capture.start_us, record_orientation_sample);
     }
     if (!have_motion) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
@@ -720,8 +721,8 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
 static void
 update_shake_round(uint32_t dt_ms, const input_t* input) {
     if (input->pressed && !shake_probe_running(&shake_capture.round)) {
-        imu_record_failed = motion_batch == NULL || shake_capture.slice == NULL
-                            || !imu_record_start(&imu_record, IMU_RECORD_SHAKE_CAPACITY);
+        imu_record_failed =
+            motion_batch == NULL || motion_slice == NULL || !imu_record_start(&imu_record, IMU_RECORD_SHAKE_CAPACITY);
         if (!imu_record_failed) {
             shake_probe_start(&shake_capture.round);
             shake_capture.start_us = timing_now_us();
@@ -742,13 +743,13 @@ update_shake_round(uint32_t dt_ms, const input_t* input) {
 
 static bool
 start_orientation_round(void) {
-    imu_record_failed = motion_batch == NULL || shake_capture.slice == NULL
-                        || !imu_record_start(&imu_record, IMU_RECORD_ORIENTATION_CAPACITY);
+    imu_record_failed =
+        motion_batch == NULL || motion_slice == NULL || !imu_record_start(&imu_record, IMU_RECORD_ORIENTATION_CAPACITY);
     if (!imu_record_failed) {
         orientation_capture.running = true;
         orientation_capture.step = ORIENTATION_PROBE_READ_0;
-        shake_capture.start_us = timing_now_us();
-        guided_step_begin(&orientation_capture.guide, orientation_capture.step, shake_capture.start_us);
+        orientation_capture.start_us = timing_now_us();
+        guided_step_begin(&orientation_capture.guide, orientation_capture.step, orientation_capture.start_us);
         LOG_IMU_LINE("round orientation");
         LOG_IMU_LINE("orientation_step %d 0 %d", (int)orientation_capture.step,
                      orientation_probe_target(orientation_capture.step));
@@ -767,7 +768,7 @@ update_orientation_round(uint32_t dt_ms, const input_t* input) {
     read_motion(dt_ms);
     if (orientation_capture.running && !started) {
         const int64_t now_us = timing_now_us();
-        const int64_t elapsed_us = now_us - shake_capture.start_us;
+        const int64_t elapsed_us = now_us - orientation_capture.start_us;
         const guided_step_event_t event = guided_step_update(&orientation_capture.guide, input->pressed, now_us,
                                                              (int64_t)ORIENTATION_PROBE_STEP_MS * MATH_US_PER_MS);
         if (event == GUIDED_STEP_ARMED) {
@@ -790,18 +791,18 @@ static void
 draw_orientation_guide(void) {
     const int target = orientation_probe_target(orientation_capture.step);
     const motion_probe_t reading = motion_probe_measure(raw_acceleration);
-    const int bearing = ((target + 1) * (int)DISPLAY_QUARTER_DEG) % MOTION_PROBE_FULL_TURN_DEG;
-    static const char* const actions[] = {"PICK UP, KEEP", "WALK, KEEP", "SHAKE, KEEP", "OVERHEAD, KEEP"};
-    const char* action = orientation_capture.step == ORIENTATION_PROBE_READ_0   ? "HOLD"
-                         : orientation_capture.step <= ORIENTATION_PROBE_READ_4 ? "TURN TO"
-                         : orientation_capture.step == ORIENTATION_PROBE_FLAT
-                             ? "PUT DOWN FLAT"
-                             : actions[orientation_capture.step - ORIENTATION_PROBE_PICKUP];
-    guided_step_draw(&orientation_capture.guide, action,
-                     target == DISPLAY_QUARTER_NONE ? NULL : display_quarter_name(target), reading.bearing_deg,
-                     ((display_quarter_now() + 1) * (int)DISPLAY_QUARTER_DEG) % MOTION_PROBE_FULL_TURN_DEG, bearing,
-                     (int)lroundf(reading.tilt_deg),
-                     target == DISPLAY_QUARTER_NONE ? 0 : ORIENTATION_PROBE_READING_TILT_DEG, screen_w, screen_h);
+    const guided_step_view_t view = {
+        .action = orientation_probe_action(orientation_capture.step),
+        .target = target == DISPLAY_QUARTER_NONE ? NULL : display_quarter_name(target),
+        .current_bearing_deg = reading.bearing_deg,
+        .committed_bearing_deg = orientation_probe_bearing(display_quarter_now()),
+        .target_bearing_deg = orientation_probe_bearing(target),
+        .tilt_deg = (int)lroundf(reading.tilt_deg),
+        .target_tilt_deg = target == DISPLAY_QUARTER_NONE ? 0 : ORIENTATION_PROBE_READING_TILT_DEG,
+        .width = screen_w,
+        .height = screen_h,
+    };
+    guided_step_draw(&orientation_capture.guide, &view);
 }
 
 static void
@@ -1143,8 +1144,8 @@ input_lab_frame(uint32_t dt_ms, const input_t* input) {
 
 static void
 input_lab_exit(void) {
-    memory_free(shake_capture.slice);
-    shake_capture.slice = NULL;
+    memory_free(motion_slice);
+    motion_slice = NULL;
     memory_free(motion_batch);
     motion_batch = NULL;
     imu_record_free(&imu_record);

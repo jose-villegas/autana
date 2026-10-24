@@ -12,9 +12,19 @@ typedef struct {
     bool ready;
 } guided_step_t;
 
+/* WAIT leaves the phase unchanged; ARMED starts the clock at this tap;
+ * NEXT increments the step and waits for a fresh tap. A tap on NEXT is not reused. */
 void guided_step_begin(guided_step_t* state, int step, int64_t now_us);
 guided_step_event_t guided_step_update(guided_step_t* state, bool tap, int64_t now_us, int64_t duration_us);
 int64_t guided_step_remaining_us(const guided_step_t* state, int64_t now_us, int64_t duration_us);
-void guided_step_draw(const guided_step_t* state, const char* action, const char* target, int current_bearing_deg,
-                      int committed_bearing_deg, int target_bearing_deg, int tilt_deg, int target_tilt_deg, int width,
-                      int height);
+
+/* Bearings and tilts are degrees; width and height are canvas pixels. */
+typedef struct {
+    const char* action;
+    const char* target;
+    int current_bearing_deg, committed_bearing_deg, target_bearing_deg;
+    int tilt_deg, target_tilt_deg;
+    int width, height;
+} guided_step_view_t;
+
+void guided_step_draw(const guided_step_t* state, const guided_step_view_t* view);

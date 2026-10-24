@@ -24,10 +24,6 @@
 
 static const char* TAG = "console";
 
-#define IMU_REPLY_FORMAT        "IMU_OK quarter=%d quarters=%d sample_ms=%d commit_ms=%d"
-#define IMU_REPLY_INTEGER_COUNT 4
-#define IMU_REPLY_SIZE          (sizeof IMU_REPLY_FORMAT + IMU_REPLY_INTEGER_COUNT * sizeof "-2147483648")
-
 static void
 console_verb_touch(const char* args, console_reply_fn reply) {
     (void)reply;
@@ -52,10 +48,8 @@ console_verb_imu(const char* args, console_reply_fn reply) {
         imu_inject_release();
     } else if (console_imu_quarter_parse(args, &sample, &quarter)) {
         imu_inject(&sample);
-        char line[IMU_REPLY_SIZE];
-        const int written = snprintf(line, sizeof line, IMU_REPLY_FORMAT, quarter, DISPLAY_QUARTER_COUNT,
-                                     DISPLAY_SAMPLE_MS, DISPLAY_COMMIT_MS);
-        if (written < 0 || (size_t)written >= sizeof line) {
+        char line[CONSOLE_IMU_REPLY_SIZE];
+        if (!console_imu_reply(line, sizeof line, quarter)) {
             reply("IMU_ERR reply formatting failed");
             return;
         }

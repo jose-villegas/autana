@@ -1,39 +1,49 @@
-# Orientation capture
+# Orientation capture and replay
 
-BOOT selects the orientation page. Hold landscape at 45 degrees and tap to
-start recording. Each step opens a ready box: turn toward the named pose while
-it records, then tap to start its timed reading. Follow the arrow and live
-rotation and tilt angles. Read the full turn back to landscape, then put the
-screen face-up, pick up, walk, shake and read overhead while keeping landscape.
+BOOT selects the orientation page. Hold the default reading pose and tap to
+start recording. Each ready gate records the turn; a fresh tap starts the
+timed reading. The script targets come from `../orientation_probe.h`.
 
-Reading targets start at `DISPLAY_DEFAULT_QUARTER`, advance modulo
-`DISPLAY_QUARTER_COUNT`, and finish at the default. Pickup, walking, shaking
-and overhead targets keep the default; flat and completion have no target.
+| Steps | Target |
+|---|---|
+| Reading poses | Start at `DISPLAY_DEFAULT_QUARTER`, advance modulo `DISPLAY_QUARTER_COUNT`, finish at the default |
+| Flat | Face up, no quarter target |
+| Pickup, walk, shake, overhead | Keep the default quarter |
+| Done | No target, collect the transcript |
 
-The HUD names the committed quarter in a fixed reading transform. White flashes
-mark steps; cyan marks completion. The shared recorder retains FIFO accel
-and gyro counts with microsecond timestamps.
-
-`IMU_RECORD_ORIENTATION_CAPACITY` in `../imu_record.h` reserves space for
-timed steps and ready dwell in PSRAM. The HUD reports a full transcript when
-the ready gates exceed that capacity; restart the round for a complete dump.
-Step and ready-gate markers carry elapsed microsecond timestamps.
+`IMU_RECORD_ORIENTATION_CAPACITY` in `../imu_record.h` reserves PSRAM for timed
+steps and ready dwell. A full transcript is reported when that budget is
+exceeded; restart the round for a complete dump.
 
 ```sh
 autana labdump > orientation.log
-python launcher/tools/input/orientation_replay.py orientation.log --model both --initial-quarter 1 --cc gcc --gates
+python launcher/main/apps/input_lab/tools/orientation_replay.py orientation.log --model both --initial-quarter 1 --cc gcc --gates
 ```
 
-`--initial-quarter` is the quarter actually committed at recording start,
-not the first requested pose. The replay probe uses `orientation_probe_target()`
-to validate each segment annotation against the capture script.
+`--initial-quarter` is the committed quarter at recording start.
+The C probe validates segment targets against `orientation_probe_target()`.
+Step and gate markers retain elapsed microsecond timestamps.
 
-The models and segment metrics are described in [Orientation.md](../../../../../docs/input/Orientation.md).
+| Replay choice | Behavior |
+|---|---|
+| `accel` | Offset-calibrated counts through the judge's low-pass filter |
+| `fused` | Unit `gravity_down()` updated at FIFO cadence, then the same judge filter and gates |
+| Judge cadence | First available sample after each fine or coarse deadline |
+| Wanted turn | Raw acceleration crosses the C candidate rule's gap edge, satisfies tilt and settle, then commits |
+| Unwanted switch | Commit without a matching turn, or during a flat or keep step |
+| Latency | Raw gap-edge crossing to commitment, independent of prompts |
+| `--gates` | Last blocking gate and longest hold for each commit |
+| Missing input | Timestamp gaps remain visible; touch is absent |
 
-The committed orientation transcript is `data/orientation.log.gz`, with
-provenance in `data/orientation.json`. Replay reads gzip directly. Generate or check the results in the orientation guide:
+The scorer and judge share `display_candidate()` in
+`display/display_judge.h`. Segment targets validate the script only.
+
+The retained transcript is `data/orientation.log.gz`; provenance is in
+`data/orientation.json`. Replay reads gzip directly. Generate or check the
+results in the [app README](../README.md):
 
 ```sh
-python launcher/tools/input/orientation_replay.py --results --cc gcc
-python launcher/tools/input/orientation_replay.py --results --check --cc gcc
+python launcher/main/apps/input_lab/tools/orientation_replay.py --results --cc gcc
+python launcher/main/apps/input_lab/tools/orientation_replay.py --results --check --cc gcc
 ```
+`display/display_judge.h` and the [engine judge](../../../../../docs/input/Orientation.md) describe the filter and event gates.
