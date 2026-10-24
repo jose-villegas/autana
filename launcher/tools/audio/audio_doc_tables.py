@@ -25,10 +25,10 @@ from frame_cost import frame_cost_window, US_PER_MS
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audio_drc_sweep import AUDIO, DB_AMPLITUDE_SCALE, DRC_LEVEL_DB, TUNABLES, VOLUME_MAX
 
-from audio_doc_blocks import caption, details, picture
+from audio_doc_blocks import CLIPPED_DBFS, caption, details, picture
 
+MIC_CAPTURE = Path("docs/audio/data/audio_mic_dsp_capture.txt")
 DRC_CAPTURE = Path("docs/audio/data/audio_drc_capture.txt")
-DRC_CLIPPED_DBFS = -0.5
 CODEC_VOLUME_MIN_DB = read_define(AUDIO / "audio_out.c", "AUDIO_OUT_CODEC_VOLUME_MIN_DB")
 CODEC_VOLUME_MAX_DB = read_define(AUDIO / "audio_out.c", "AUDIO_OUT_CODEC_VOLUME_MAX_DB")
 CODEC_PA_SUPPLY_VOLTS = read_define(AUDIO / "audio_codec.c", "AUDIO_CODEC_PA_SUPPLY_VOLTS")
@@ -347,7 +347,7 @@ def render_drc(path):
         values = [*[f"{level:.1f}" for level in point["levels"]],
                   f"{point['thd']:.1f}" if point["thd"] is not None else "n/a"]
         rows.append((codec, f"{static_output:.1f}", label, window, ramp, *values, f"{point['peak']:.1f}",
-                     "yes" if point["peak"] >= DRC_CLIPPED_DBFS else "no"))
+                     "yes" if point["peak"] >= CLIPPED_DBFS else "no"))
         if key == DRC_DEFAULT or (codec == DRC_REFERENCE_CODEC and not on):
             summary.append(("Default" if on else f"Codec {codec}%, DRC off", *values))
     headings = [*[f"Level {volume}% (dBFS)" for volume in volumes], f"THD {volumes[-1]}% (dB)"]
@@ -361,6 +361,17 @@ def render_drc(path):
                         *headings, "Worst peak (dBFS)", "Mic clipped"], rows)
             + "\n</details>\n")
 
+
+
+def render_mic(path):
+    from audio_mic_dsp_tables import render
+    _, records, _ = read_capture(path)
+    return render(path, records, caption, picture, details, markdown, REGENERATE)
+
+
+def update_mic(capture, document, check=False):
+    body = render_mic(capture) if capture.exists() else "No capture yet.\n"
+    return replace_block(document, "audio-mic-dsp", body, check=check)
 
 
 def update_drc(capture, document, check=False):
@@ -486,14 +497,13 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
-    parser.add_argument("--capture", type=Path, default=ROOT / CAPTURE)
-    parser.add_argument("--document", type=Path, default=ROOT / DOCUMENT)
-    parser.add_argument("--mix-captures", type=Path, default=ROOT / MIX_CAPTURES)
-    parser.add_argument("--mix-document", type=Path, default=ROOT / MIX_DOCUMENT)
-    parser.add_argument("--drc-capture", type=Path, default=ROOT / DRC_CAPTURE)
+    for option, default in (("capture", CAPTURE), ("document", DOCUMENT), ("mix-captures", MIX_CAPTURES),
+                            ("mix-document", MIX_DOCUMENT), ("drc-capture", DRC_CAPTURE), ("mic-capture", MIC_CAPTURE)):
+        parser.add_argument("--" + option, type=Path, default=ROOT / default)
     args = parser.parse_args()
     try:
         changed = update(args.capture, args.document, args.check, args.mix_captures, args.mix_document, args.drc_capture)
+        changed |= update_mic(args.mic_capture, args.document, args.check)
         changed |= update_onset(args.mix_captures, args.mix_document, args.check)
         changed |= replace_block(ROOT / "docs/audio/Sound-Assets.md", "sound-storage", render_storage(),
                                  check=args.check)

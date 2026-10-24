@@ -9,6 +9,8 @@ typedef struct {
     audio_frequency_t frequency;
     size_t harmonic_count;
     int peak;
+    uint64_t square_sum;
+    size_t sample_count;
 } audio_loopback_detector_t;
 
 void audio_loopback_detector_init(audio_loopback_detector_t* detector, uint16_t hz, bool analyze);

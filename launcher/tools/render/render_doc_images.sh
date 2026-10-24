@@ -244,6 +244,11 @@ run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math"
 
 fi
 
+if [ -f docs/audio/data/audio_mic_dsp_capture.txt ]; then
+    run "$PYTHON" launcher/tools/audio/audio_mic_dsp_figures.py --out "$OUT/audio" > "$WORK/audio_mic_dsp_figures.log"
+fi
+# --orphans scans this runner: mic-dsp-level.png, mic-dsp-level-dark.png, mic-dsp-noise.png,
+# mic-dsp-noise-dark.png, mic-dsp-hpf.png, mic-dsp-hpf-dark.png
 run "$PYTHON" launcher/tools/audio/audio_drc_figures.py --out "$OUT/audio" > "$WORK/audio_drc_figures.log"
 run "$PYTHON" launcher/tools/audio/audio_path_figures.py --out "$OUT/audio" > "$WORK/audio_path_figures.log"
 run "$PYTHON" launcher/tools/audio/sound_mix_figures.py --out "$OUT/audio" > "$WORK/sound_mix_figures.log"

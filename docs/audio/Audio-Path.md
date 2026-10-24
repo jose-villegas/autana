@@ -368,3 +368,49 @@ The host exits with status 1 if any note is not heard.
 Check JSON is a list of tone result objects, each with `note` and
 `cents_error` added. Cents error is `1200 * log2(measured_hz / hz)`;
 it is null when the frequency estimate is unavailable.
+
+## Microphone DSP (experiment)
+
+The ES8311 ADC offers automatic level control (ALC), an automatic mute noise
+gate, and a high-pass filter (HPF). Development captures apply these settings
+after PGA gain; release defaults perform no DSP register writes.
+
+| Feature | Tunables under `mic.` | Meaning |
+|---|---|---|
+| ALC | `alc`, `alc_max`, `alc_min`, `alc_win`, `alc_gain` | Enable, target indices, response window, maximum ADC gain code |
+| Gate | `gate`, `gate_ng`, `gate_win`, `gate_depth` | Enable, threshold index, window, mute depth |
+| HPF | `hpf`, `hpf_s1`, `hpf_s2` | Dynamic tracking or freeze, filter coefficients |
+
+ALC adjusts gain toward its target range; its ADC volume code caps gain.
+The gate attenuates quiet input. HPF dynamic mode tracks DC; freeze holds its
+state. Field ranges, defaults and dB tables live in `audio_codec_mic.h`.
+
+Capture open saves the exact register read-backs before changing DSP fields.
+Close restores them before closing the device. A failed restore retains the
+saved values and retries on the next close or open.
+
+EQ is excluded: its coefficient format is unpublished and it needs
+MCLK/LRCK >= 256. The EQ bypass bit stays set. The gate cannot wake the chip:
+the codec has no interrupt output, so I2S must keep running.
+
+A software alternative is estimated at about 15 FPU operations: a one-pole
+DC blocker (2 multiplies, 2 adds), envelope follower and gate (abs, one
+multiply-add, compare/select), and a biquad (5 multiplies, 4 adds).
+
+With loads and stores, estimate 20-25 cycles/sample. At 22,050 Hz,
+25 * 22,050 = 0.55 million cycles/s, <= 0.25% of one 240 MHz core.
+This is a cost estimate, not a measurement.
+
+```sh
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_mic_dsp_sweep.py --board <id>
+python launcher/tools/audio/audio_doc_tables.py --write
+python launcher/tools/audio/audio_mic_dsp_figures.py
+```
+
+The sweep arguments select tone volumes, frequencies, repeats and DSP fields.
+Every configuration sets all mic fields; exit resets them. Raw replies live
+in `docs/audio/data/audio_mic_dsp_capture.txt`.
+
+<!-- generated: audio-mic-dsp sha256=a93006c90ebb47c04a5a941a4f16d5cd1d65ec2d7326a2c3e4506015b15e8a1c -->
+No capture yet.
+<!-- /generated: audio-mic-dsp -->

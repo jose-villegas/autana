@@ -14,6 +14,11 @@ import autana
 
 
 class ToneReplyTest(unittest.TestCase):
+    def test_broadband_noise_parses(self):
+        reply = ("TONE heard 1000 Hz: -12.0 dB (silence -100.0 dB), noise -70.0 dBFS, "
+                 "path acoustic, measured 1000.00 Hz, open 0 B DMA, thd -40.0 dB, peak -6.0 dBFS")
+        self.assertEqual(autana.parse_tone(reply)["noise_dbfs"], -70.0)
+
     def test_firmware_reply_parses(self):
         lines = [line for line in host_runner.run("run_console_tone_suite reply_frequency").splitlines()
                  if line.startswith("TONE ")]

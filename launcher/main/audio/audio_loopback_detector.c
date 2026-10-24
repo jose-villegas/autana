@@ -19,6 +19,11 @@ audio_loopback_detector_init(audio_loopback_detector_t* detector, uint16_t hz, b
 
 void
 audio_loopback_detector_feed(audio_loopback_detector_t* detector, const int16_t* samples, size_t count, bool analyze) {
+    for (size_t i = 0; i < count; i++) {
+        const int32_t sample = samples[i];
+        detector->square_sum += (uint32_t)(sample * sample);
+    }
+    detector->sample_count += count;
     goertzel_feed_s(&detector->fundamental, samples, count);
     audio_frequency_feed(&detector->frequency, samples, count);
     if (!analyze) {
@@ -37,6 +42,10 @@ audio_loopback_detector_feed(audio_loopback_detector_t* detector, const int16_t*
 
 void
 audio_loopback_detector_result(const audio_loopback_detector_t* detector, audio_loopback_result_t* result) {
+    result->noise_dbfs = detector->sample_count
+                             ? math_db_power((float)detector->square_sum / (float)detector->sample_count
+                                             / ((float)INT16_MAX * INT16_MAX))
+                             : MATH_DB_FLOOR;
     result->measured_hz = audio_frequency_hz(&detector->frequency);
     float harmonic_power = 0;
     for (size_t harmonic = 0; harmonic < detector->harmonic_count; harmonic++) {
