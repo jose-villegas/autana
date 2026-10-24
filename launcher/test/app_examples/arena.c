@@ -8,10 +8,10 @@ static gfx_color_t* buf;
 
 static void
 arena_enter(void) {
-    buf = app_arena_take(BUF_BYTES, _Alignof(gfx_color_t));
+    buf = app_arena_take(BUF_BYTES, _Alignof(gfx_color_t)); /* NULL: run without it */
 }
 
 static void
 arena_exit(void) {
-    buf = NULL;
+    buf = NULL; /* nothing to free */
 }
