@@ -13,7 +13,10 @@
 #
 # package_include_dirs prints each package's include root, package_includes
 # the same as "-I <root>" flags, package_sources every .c under a package's
-# src/, package_suites every tests/suite_*.c.
+# src/, package_suites every tests/suite_*.c. package_requires prints the
+# packages one package's CMakeLists.txt sets in `set(<name>_requires ...)`,
+# package_reachable that package's folder and every package it reaches
+# through them (package_requires.py's requires() and reachable()).
 
 package_include_dirs() {
     for package_dir in "$1"/packages/*/; do
@@ -34,6 +37,35 @@ package_sources() {
 
 package_suites() {
     find "$1"/packages/*/tests -name 'suite_*.c' 2>/dev/null | sort
+}
+
+package_requires() { # package-dir
+    requires_name=$(basename "$1")
+    [ -f "$1/CMakeLists.txt" ] || return 0
+    for requires_dep in $(sed -n "s/^set(${requires_name}_requires\([[:space:]][^)]*\)\{0,1\}).*/\1/p" \
+        "$1/CMakeLists.txt" | head -n 1); do
+        printf '%s\n' "$requires_dep"
+    done
+}
+
+package_reachable() { # package-dir
+    reach_dir=$(CDPATH= cd -- "$1" && pwd)
+    reach_seen=$reach_dir
+    reach_todo=$reach_dir
+    while [ -n "$reach_todo" ]; do
+        reach_next=""
+        for reach_current in $reach_todo; do
+            for reach_name in $(package_requires "$reach_current"); do
+                reach_dep=$(dirname "$reach_dir")/$reach_name
+                [ -d "$reach_dep" ] || continue
+                case " $reach_seen " in *" $reach_dep "*) continue ;; esac
+                reach_seen="$reach_seen $reach_dep"
+                reach_next="$reach_next $reach_dep"
+            done
+        done
+        reach_todo=$reach_next
+    done
+    printf '%s\n' $reach_seen
 }
 
 app_directories() {

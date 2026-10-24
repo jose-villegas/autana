@@ -251,15 +251,20 @@ class JsonReadTests(unittest.TestCase):
                                             "max": 255, "default": 226}]})
 
     def test_suite_list(self):
-        with tempfile.TemporaryDirectory() as temp:
-            source = Path(temp) / "launcher" / "test" / "suite.c"
-            source.parent.mkdir(parents=True)
-            source.write_text("SUITE_REGISTER(run_example_suite)\n")
-            with mock.patch.object(autana, "resolve_project", return_value=temp):
-                self.assertEqual(self.output(autana.suite, ["list", "--json"]),
-                                 {"suites": [{"name": "run_example_suite",
-                                              "source": "launcher/test/suite.c",
-                                              "on_request": False, "device_only": False}]})
+        replies = ["RUNSUITE_SUITE name=run_b_suite on_request=1", "RUNSUITE_SUITE name=run_a_suite on_request=0",
+                   "RUNSUITE_END count=2"]
+        with mock.patch.object(autana, "send", return_value=(0, replies)) as send:
+            self.assertEqual(self.output(autana.suite, ["list", "--json"]),
+                             {"suites": [{"name": "run_a_suite", "on_request": False},
+                                         {"name": "run_b_suite", "on_request": True}]})
+        send.assert_called_once_with("RUNSUITE ?", reply="RUNSUITE_", until=["RUNSUITE_END"])
+
+    def test_suite_list_without_a_self_test_image_says_so(self):
+        for code, replies in ((1, []), (0, ["RUNSUITE_SUITE name=a on_request=0", "RUNSUITE_END count=2"])):
+            stderr = io.StringIO()
+            with mock.patch.object(autana, "send", return_value=(code, replies)),                     contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+                self.assertEqual(autana.suite(["list"]), 1)
+            self.assertIn("autana suite list", stderr.getvalue())
 
     def test_text_output_is_the_board_reply_unchanged(self):
         replies = ["APPS name=B running=1 extra=kept", "APPS_END"]
@@ -271,7 +276,7 @@ class JsonReadTests(unittest.TestCase):
 
     def test_json_rejected_for_tune_write(self):
         with self.assertRaises(SystemExit):
-            autana.tune(["save", "--json"])
+            autana.tune(["reset", "x", "--json"])
 
 
 class BatteryLogTests(unittest.TestCase):
