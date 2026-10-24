@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "transform_cache.h"
 #include "unity.h"
 
@@ -112,7 +112,7 @@ test_vec2_ops_agree_across_every_number_type(void) {
 }
 
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 #define NORMALIZE_ROUNDING_ERROR          0.5
 #define NORMALIZE_COMPONENT_ERROR         (NORMALIZE_ROUNDING_ERROR + 0x1p-12)
 
@@ -167,7 +167,7 @@ test_normalize_divide_zero_and_float(void) {
 }
 
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 static void
 test_fixed_normalize_saturation_edges(void) {
     static const struct {
@@ -196,7 +196,7 @@ static void
 test_fixed_normalize_extreme_magnitudes(void) {
     static const vec3x_t cases[] = {{200 * MATHX_ONE, 0, 0},           {1, 0, 0},         {1, 1, 0}, {1, 1, 1},
                                     {INT32_MIN, INT32_MIN, INT32_MIN}, {INT32_MAX, -5, 3}};
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         assert_normalize_reference(cases[i]);
     }
@@ -214,7 +214,7 @@ test_fixed_normalize_extreme_magnitudes(void) {
 }
 
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 static void
 test_fixed_normalize_every_magnitude(void) {
     uint32_t state = 1;
@@ -732,7 +732,7 @@ float_from_bits(uint32_t bits) {
 #define RECIP_OCTAVES           20
 #define FAST_PATH_RECIP_OCTAVES 1
 #define FAST_PATH_BINS_PER_UNIT 32
-#if !defined(DEVICE_BUILD) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
+#if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
 #define FAST_PATH_ROUNDING_ULP  0.5
 #define FAST_PATH_RSQRT_OCTAVES 2
 #define FAST_PATH_RSQRT_BINS    (((1 << FAST_PATH_RSQRT_OCTAVES) - 1) * FAST_PATH_BINS_PER_UNIT)
@@ -762,7 +762,7 @@ fast_path_fractional_ulp(float got, double exact) {
     return fabs((double)got - exact) / ulp;
 }
 
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 static void
 test_fast_path_period_bins_and_fractional_ulp(void) {
     double bins[FAST_PATH_BINS_PER_UNIT] = {0};
@@ -1368,11 +1368,11 @@ test_rsqrt_tiny_inputs_preserve_exact_bits(void) {
 #define RSQRT_SIGNIFICAND_ONE (UINT32_C(1) << RSQRT_FRACTION_BITS)
 #define RSQRT_FRACTION_MASK   (RSQRT_SIGNIFICAND_ONE - 1)
 #define RSQRT_WORD_BITS       32
-#if !defined(DEVICE_BUILD) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
+#if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
 #define RSQRT_EXPONENT_MAX    254
 #define RSQRT_MANTISSA_STRIDE 65537
 #endif
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 #define RSQRT_DENSE_STRIDE      251
 #define RSQRT_SEED_RADIUS       4
 #define RSQRT_DOUBLE_TIE_MARGIN 8
@@ -1414,7 +1414,7 @@ rsqrt_reference_bits(uint32_t input, uint32_t candidate) {
     return midpoint < 0 || (midpoint == 0 && (candidate & 1)) ? upper : candidate;
 }
 
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 static void
 assert_rsqrt_integer_bracket_midpoints(void) {
     /* A float midpoint has an odd significand greater than one; its square times a binary input cannot be one. */
@@ -1446,19 +1446,19 @@ test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
     for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
         const uint32_t guess = float_bits(1.0F / sqrtf(inputs[i]));
         const uint32_t result = rsqrt_reference_bits(float_bits(inputs[i]), guess);
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
         const float exact = (float)(1.0 / sqrt((double)inputs[i]));
         TEST_ASSERT_EQUAL_HEX32(float_bits(exact), result);
 #endif
         TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess - 1));
         TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess + 1));
     }
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     assert_rsqrt_integer_bracket_midpoints();
 #endif
 }
 
-#if defined(DEVICE_BUILD) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+#if defined(ESP_PLATFORM) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
 #define RSQRT_DIRECTION_RADIUS 4
 #define RSQRT_MAGNITUDE_MIN    -70
 #define RSQRT_MAGNITUDE_MAX    60
@@ -1731,7 +1731,7 @@ test_integer_half_chords_int32(void) {
 }
 
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 #define FIXED_RSQRT_SWEEP_STRIDE    (UINT32_C(1) << 20)
 #define FIXED_NLERP_COMPONENT_ERROR 8.0
 #define FIXED_NLERP_STEPS           32
@@ -1922,13 +1922,13 @@ test_trig_sin_error_bins(void) {
 
 void
 suite_math_numbers(void) {
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     RUN_TEST(test_fast_path_period_bins_and_fractional_ulp);
 #endif
     RUN_TEST(test_trig_sin_error_bins);
     RUN_TEST(test_fixed_scalar_rsqrt_nonpositive);
     RUN_TEST(test_fixed_quaternion_normalize_zero_and_unit_path);
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     RUN_TEST(test_fixed_rsqrt_seed_provenance);
     RUN_TEST(test_fixed_rsqrt_seed_boundaries_and_stride);
     RUN_TEST(test_fixed_scalar_rsqrt_bound);
@@ -1943,7 +1943,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_scalar_half_and_absolute_value);
     RUN_TEST(test_rsqrt_tiny_inputs_preserve_exact_bits);
     RUN_TEST(test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints);
-#if defined(DEVICE_BUILD) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+#if defined(ESP_PLATFORM) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
     RUN_TEST(test_rsqrt_device_mantissas_and_normal_exponent_edges);
     RUN_TEST(test_rsqrt_normalize_and_nlerp_component_sweeps);
 #endif
@@ -1990,11 +1990,11 @@ suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_normalize_divide_zero_and_float);
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     RUN_TEST(test_fixed_normalize_saturation_edges);
 #endif
     RUN_TEST(test_fixed_normalize_extreme_magnitudes);
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     RUN_TEST(test_fixed_normalize_every_magnitude);
 #endif
     RUN_TEST(test_fixed_normalize_matches_float_within_its_precision);

@@ -9,7 +9,7 @@
 #include "gfx/gfx.h"
 #include "scene/scene_internal.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "ui/ui.h"
 #include "ui_probe.h"
 #include "unity.h"

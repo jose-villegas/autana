@@ -9,7 +9,7 @@
 #include "sound/sound_engine.h"
 #include "sound/sound_mixer.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #define TEST_FRAMES     12

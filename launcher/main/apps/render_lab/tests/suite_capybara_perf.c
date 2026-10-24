@@ -19,7 +19,7 @@
 #include "render/context/render_context.h"
 #include "render/r3d_span_internal.h"
 #include "scene/scene_internal.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #define PERF_SAMPLES  100
