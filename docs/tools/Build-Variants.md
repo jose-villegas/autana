@@ -1,8 +1,9 @@
 # Build variants
 
 What a build is for is one Kconfig `choice` in
-[`main/Kconfig.projbuild`][kconfig]: release or development, exactly one ever
-true. Test suites, scope and QEMU are options layered on a development build.
+[`main/Kconfig.projbuild`][kconfig]: release (the default) or development,
+exactly one ever true. Test suites (off unless set), scope and QEMU are options
+layered on a development build.
 
 [kconfig]: ../../launcher/main/Kconfig.projbuild
 [math-kconfig]: ../../launcher/packages/math/Kconfig
@@ -14,11 +15,11 @@ true. Test suites, scope and QEMU are options layered on a development build.
 |---|---|---|---|---|
 | Built by | `autana build rel`, `autana flash rel` | `autana build dev`, `autana flash dev` | `autana build diag`, `autana flash diag`, `autana selftest` | `launcher/test/run_qemu_tests.sh` |
 | Directory | `build/` | `build.dev/` | `build.diag/` | `build.qemu/`, `build.qemu.shell/` (no autorun), `.perf` suffix for the perf scope |
-| Fragments over `sdkconfig.defaults` | none | `.dev` | `.diag` | `.diag`, `.diag_autorun` (not for `.shell`), `.qemu` last |
+| Fragments over `sdkconfig.defaults` | none | `.dev` | `.diag` | `.diag`, `.diag_autorun` (not for `.shell`), `.diag_perf` (perf scope), `.qemu` last |
 | Build type | [`LAUNCHER_RELEASE`][kconfig] | [`LAUNCHER_DEVELOPMENT`][kconfig] | [`LAUNCHER_DEVELOPMENT`][kconfig] | [`LAUNCHER_DEVELOPMENT`][kconfig] |
 | Test code ([`LAUNCHER_SELFTEST`][kconfig]) | never compiled | no | yes | yes |
-| Suites run at boot ([`LAUNCHER_SELFTEST_AUTORUN`][kconfig]) | — | — | with `--autorun` | yes, except `build.qemu.shell/` |
-| Development instrumentation and development-only apps | no | yes | yes | yes |
+| Suites run at boot ([`LAUNCHER_SELFTEST_AUTORUN`][kconfig]) | — | — | with `--autorun`, as `autana selftest` builds it | yes, except `build.qemu.shell/` |
+| Development instrumentation and development-only apps ([`LAUNCHER_DEVELOPMENT`][kconfig]) | no | yes | yes | yes |
 | Suite scope ([`LAUNCHER_SELFTEST_SCOPE_*`][kconfig]) | — | — | full, or perf with `--perf-scope` | full, or perf with `--perf-scope` |
 | Null panel ([`LAUNCHER_QEMU`][kconfig]) | no | no | no | yes |
 | Float maths | single, FPU seeds + fused multiply-add | same | same | single, [`MATH_FPU_RECIP`][math-kconfig] and [`MATH_FPU_FUSED_MADD`][math-kconfig] off |
@@ -111,10 +112,14 @@ and `.bss`.
 | under QEMU | `launcher/test/run_qemu_tests.sh --perf-scope` |
 
 An app's frame-budget capture script, in its own `tools/`, passes the flag
-through. Perf manifests are globbed from `launcher/test/scope_perf.cmake`,
-`launcher/main/apps/*/scope_perf.cmake` and
-`launcher/main/shell/apps/*/scope_perf.cmake`. Each appends its suite sources
-and link dependencies to `perf_scope_srcs` with `CMAKE_CURRENT_LIST_DIR` paths.
+through. The perf manifests are globbed from:
+
+- `launcher/test/scope_perf.cmake`
+- `launcher/main/apps/*/scope_perf.cmake`
+- `launcher/main/shell/apps/*/scope_perf.cmake`
+
+Each appends its suite sources and link dependencies to `perf_scope_srcs`,
+with `CMAKE_CURRENT_LIST_DIR` paths.
 
 - **Scoped around what a run reads, not around folders.** An app owns its perf
   sources, so deleting its folder removes its declaration.
@@ -130,13 +135,15 @@ and link dependencies to `perf_scope_srcs` with `CMAKE_CURRENT_LIST_DIR` paths.
 > Never take a merge decision from one, and never compare its numbers with an
 > unscoped capture's: different scope, different instruction-cache layout.
 
-**Suite static data.** The full self-test gate fails a suite object whose
-writable static data exceeds `SUITE_STATIC_DATA_LIMIT` in
-`launcher/tools/quality/suite_static_data_gate.py`. Suite tables are
-`static const`; mutable test buffers are allocated for a test and released
-before the suite returns, so the image reserves none of them at boot. CI runs
-the gate on its fresh full-scope `build.diag`; a local run measures whatever
-scope `build.diag` was last configured with.
+**Suite static data** is gated in the full self-test:
+
+- **Limit:** a suite object's writable static data may not exceed
+  `SUITE_STATIC_DATA_LIMIT` in `launcher/tools/quality/suite_static_data_gate.py`.
+- **Rule:** suite tables are `static const`; mutable test buffers are
+  allocated per test and released before the suite returns, so the image
+  reserves none of them at boot.
+- **Scope:** CI gates its fresh full-scope `build.diag`; a local run measures
+  whatever scope `build.diag` was last configured with.
 
 ## Float maths is single precision, and the build holds it there
 
