@@ -7,7 +7,7 @@ picture of the choice. A `NULL` icon is `ui_tile()`.
 
 ## Example
 
-<!-- generated: ui-tile-icon-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-tile-icon-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A tile with an icon above its label, standing for one setting: tapping it
  * flips whether it is selected. */

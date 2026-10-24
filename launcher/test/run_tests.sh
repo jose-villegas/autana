@@ -111,6 +111,7 @@ HEAP_ARENA_DEFINES="-DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES=$HOST_HEAP_ARENA_B
 
 SOURCES="
 $TEST_DIR/host_main.c
+$TEST_DIR/input_fake.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c

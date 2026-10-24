@@ -12,6 +12,8 @@ permissions:
 
 jobs:
   board:
+    outputs:
+      held: ${{ (steps.device.outcome == 'success' || steps.device.outcome == 'failure') && steps.device.outputs.skipped != 'true' }}
     runs-on: [self-hosted, windows, board]
     timeout-minutes: 120
     defaults:
@@ -83,3 +85,33 @@ jobs:
           path: .records/device
           include-hidden-files: true
           if-no-files-found: ignore
+
+  alarm:
+    needs: board
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: board-ci-alarm
+      cancel-in-progress: false
+    permissions:
+      issues: write
+      actions: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Raise the board-ci-down alarm
+        if: needs.board.result == 'failure' || needs.board.result == 'cancelled'
+        env:
+          BOARD_RESULT: ${{ needs.board.result }}
+        run: python3 scripts/ci/board_alarm.py raise --reason "board job $BOARD_RESULT"
+
+      - name: Clear the board-ci-down alarm
+        if: needs.board.result == 'success' && needs.board.outputs.held == 'true'
+        run: python3 scripts/ci/board_alarm.py clear
