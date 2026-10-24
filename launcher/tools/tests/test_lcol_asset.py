@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from asset.asset_pack import padded
+from asset.asset_pack import PackError, padded
 from build.c_header import read_define
 from r3d import build_pack, lcol_asset, mesh_asset, scene_asset
 from r3d.import_settings import SettingsError
@@ -13,6 +13,20 @@ from test_scene_asset import authored_entry
 
 
 class LcolTests(unittest.TestCase):
+    def test_mesh_header(self):
+        words = tuple(range(1, 12))
+        mesh = mesh_asset.BLOB_HEADER.pack(*words)
+        header = lcol_asset.read_mesh_header(mesh + b"payload")
+        self.assertEqual(header.vertices, words[0])
+        self.assertEqual(header.triangles, words[1])
+        self.assertEqual(header.colors_at, words[6])
+        self.assertEqual(header.face_at, words[10])
+
+    def test_short_mesh_header(self):
+        for size in range(mesh_asset.BLOB_HEADER.size):
+            with self.subTest(size=size), self.assertRaisesRegex(PackError, "LMSH header is truncated"):
+                lcol_asset.read_mesh_header(bytes(size))
+
     def test_round_trip(self):
         owner = lcol_asset
         for encoding, stride in ((owner.RGB888, 3), (owner.RGB565, 2)):
