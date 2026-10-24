@@ -73,7 +73,9 @@ jobs:
           echo "PERF_OUT=$(cygpath -w "$out")" >> "$GITHUB_ENV"
           auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
           # perf_rows.py owns the store branch: checked out from origin, or started empty.
-          GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="$auth" \
+          # The token joins the job's git settings as one more entry, keeping hooks and LFS off.
+          n=$GIT_CONFIG_COUNT
+          env "GIT_CONFIG_COUNT=$((n + 1))" "GIT_CONFIG_KEY_$n=http.extraheader" "GIT_CONFIG_VALUE_$n=$auth" \
             "$PY" launcher/tools/perf/perf_rows.py store --path "$data"
           args=()
           if [ "$GITHUB_EVENT_NAME" = schedule ]; then
