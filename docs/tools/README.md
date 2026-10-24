@@ -2,7 +2,7 @@
 
 To see real firmware screens without a board, start with the
 [render harness](Render-Harness.md). To run portable logic tests, use the
-[Testing Guide](../Testing-Guide.md). Board commands live in the
+[Testing Guide](../testing/README.md). Board commands live in the
 [`autana` CLI guide](../cli/README.md), not here.
 
 The rest of this index lists the repository's checks and tools.
