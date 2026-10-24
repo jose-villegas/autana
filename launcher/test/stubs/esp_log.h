@@ -1,3 +1,4 @@
+/* Host stub of ESP-IDF esp_log.h: the log macros. */
 #pragma once
 #include <stdio.h>
 /* Argument-checked, so a wrong format string still fails the check. To stderr
