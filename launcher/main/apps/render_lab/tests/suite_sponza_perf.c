@@ -35,6 +35,7 @@
 #include "display/display.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
+#include "hash/crc32.h"
 #include "math/linear/transformf.h"
 #include "profile/frame_cost.h"
 #include "render/r3d_lit_mesh.h"
@@ -317,7 +318,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     ESP_LOGI(TAG,
              "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u "
              "pose_every_ms=%u raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT,
-             build_id(), (unsigned)asset_crc32(pack->base, pack->size), object_name, size, (long)*culling->value,
+             build_id(), (unsigned)crc32_update(0, pack->base, pack->size), object_name, size, (long)*culling->value,
              (unsigned)period, (unsigned)SPONZA_PERF_POSE_EVERY_MS, b->raster.width, b->raster.height,
              render_lab_present(), perf_quarter->name);
     char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);

@@ -34,7 +34,7 @@ from check_doc_index import blank_fences  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
-from build import packages  # noqa: E402
+from build import package_requires, packages  # noqa: E402
 from build.apps import app_part  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
@@ -538,13 +538,16 @@ def rule_ui_backend(root, path, text):
 
 
 # RULE: a package (launcher/packages/<name>/) sits under every layer, so it
-# includes nothing outside itself: no #include, quoted or angled, may reach a
-# tracked header of the firmware or of another package. A header that resolves
+# includes only itself and the packages it declares in its own CMakeLists.txt
+# (`set(<name>_requires ...)`, launcher/tools/build/package_requires.py), theirs in
+# turn: no #include, quoted or angled, may reach a tracked header of the
+# firmware or of an undeclared package. A header that resolves
 # nowhere in the tree is the toolchain's or the build's own (<stdint.h>,
 # "sdkconfig.h"), and a suite's test harness (suites.h, unity.h) sits under
 # no firmware include root, so neither resolves and the rule passes both.
 # launcher/test/check_packages_alone.sh compiles each package file with only
-# its own include root, which catches what no resolver here can see.
+# those include roots, which catches what no resolver here can see.
+# PACKAGE-REQUIRES keeps the declarations a one-way graph of real packages.
 # PACKAGE-CONFIG keeps build settings local too: CONFIG_<PACKAGE>_ in C/H,
 # CMakeLists.txt and Kconfig, and <PACKAGE>_ for Kconfig declarations.
 # Comments do not consume settings and are ignored in all these files.
@@ -556,14 +559,40 @@ def rule_package_include(root, path, text):
     package = package_of(root, path)
     if package is None:
         return
+    reachable = package_requires.reachable(package)
     for number, line in enumerate(text.splitlines(), 1):
         m = ANY_INCLUDE.match(line)
         if not m:
             continue
         resolved = resolve_include(root, path, m.group(1))
-        if resolved is not None and not resolved.is_relative_to(package):
+        if resolved is not None and not any(resolved.is_relative_to(p) for p in reachable):
             yield number, (f'"{m.group(1)}" reaches outside the {package.name} package '
-                           f"({relpath(root, resolved)}) - a package includes only itself")
+                           f"({relpath(root, resolved)}) - a package includes only itself "
+                           f"and the packages its CMakeLists.txt sets in {package.name}_requires")
+
+
+@text_rule("PACKAGE-REQUIRES")
+def rule_package_requires(root, path, text):
+    package = package_of(root, path)
+    if package is None or path.name != "CMakeLists.txt" or path.parent.resolve() != package:
+        return
+    declared = package_requires.requires_line(package.name)
+    any_declaration = re.compile(r"^\s*set\(\s*" + re.escape(package.name) + r"_requires\b")
+    number = 1
+    for n, line in enumerate(text.splitlines(), 1):
+        if any_declaration.match(line):
+            number = n
+            if not declared.match(line):
+                yield n, (f"{package.name}_requires is read only as one unindented line of bare package "
+                          f"names: set({package.name}_requires math)")
+    for name in package_requires.requires(package):
+        dep = package.parent / name
+        if name == package.name:
+            yield number, f"{package.name} requires itself"
+        elif not (dep / "include").is_dir():
+            yield number, f"{package.name} requires {name}, which is no package (no launcher/packages/{name}/include)"
+        elif package in package_requires.reachable(dep):
+            yield number, f"{package.name} requires {name}, which requires {package.name} back - dependencies run one way"
 
 
 PACKAGE_CONFIG_SYMBOL = re.compile(r"\bCONFIG_[A-Za-z0-9_]+\b")
