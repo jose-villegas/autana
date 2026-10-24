@@ -21,7 +21,21 @@ value a control edits, `0xRRGGBB` for a colour. The library behind them is
 private to `ui/`, and the include gate refuses it anywhere else, so the
 backend can change without touching a screen.
 
+<!-- generated: screen-settings-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* A settings frame owns its state and brackets its drawing. */
+#include "ui/ui.h"
+
+typedef struct {
+    int volume;
+    bool muted;
+    int output;
+    bool reset_requested;
+} settings_state_t;
+
+static const char* const OUTPUTS[] = {"SPEAKER", "HEADPHONES", "BLUETOOTH", "OFF"};
+#define OUTPUT_COUNT (sizeof OUTPUTS / sizeof OUTPUTS[0])
+
 static void
 settings_draw(settings_state_t* s) {
     ui_screen();
@@ -44,6 +58,7 @@ settings_frame(const input_t* input, settings_state_t* s) {
     ui_end(UI_BACKGROUND);
 }
 ```
+<!-- /generated: screen-settings-example -->
 
 | A screen needs | Verbs |
 |---|---|

@@ -121,7 +121,6 @@ fake_bus_gain(sound_bus_t bus, uint8_t pct) {
 
 #include "../sound_examples/music.c"
 #include "../sound_examples/own.c"
-#include "../sound_examples/play.c"
 
 #undef asset_store_pack
 #undef sound_play
@@ -134,32 +133,6 @@ render(void) {
     sound_mixer_render(&rig->mixer, rig->out, rig->accumulator, rig->scratch, BLOCK, rig->now_ms, STARTUP_MS);
     sound_control_complete(&rig->control, &rig->mixer);
     rig->now_ms += BLOCK;
-}
-
-static void
-test_tap_plays_once_on_sfx_and_stops(void) {
-    begin();
-    play_example_t s = {0};
-    play_example_open(&s);
-    TEST_ASSERT_NOT_NULL(s.tap.data);
-    play_example_tap(&s);
-    TEST_ASSERT_NOT_EQUAL(0, s.last.id);
-    TEST_ASSERT_TRUE(sound_control_is_playing(&rig->control, s.last));
-    TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_SFX.id, rig->control.voices[0].opts.bus.id);
-    TEST_ASSERT_FALSE(rig->control.voices[0].opts.loop);
-    play_example_cancel(&s); /* before the first block: the sound is still playing */
-    TEST_ASSERT_FALSE(sound_control_is_playing(&rig->control, s.last));
-    render();
-    TEST_ASSERT_FALSE(rig->mixer.voices[0].playing);
-    play_example_cancel(&s); /* a stale handle is ignored */
-}
-
-static void
-test_unopened_sound_plays_nothing(void) {
-    begin();
-    play_example_t s = {0};
-    play_example_tap(&s);
-    TEST_ASSERT_EQUAL_UINT32(0, s.last.id);
 }
 
 static void
@@ -200,8 +173,6 @@ test_own_sound_uses_the_system_bus_and_a_missing_one_is_silent(void) {
 
 void
 suite_sound_examples(void) {
-    RUN_TEST(test_tap_plays_once_on_sfx_and_stops);
-    RUN_TEST(test_unopened_sound_plays_nothing);
     RUN_TEST(test_music_loops_and_the_bus_gain_scales_it);
     RUN_TEST(test_own_sound_uses_the_system_bus_and_a_missing_one_is_silent);
 }

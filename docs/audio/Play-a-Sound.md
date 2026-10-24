@@ -16,36 +16,28 @@ behind it are in the [Sound mixer](Sound-Mixer.md) reference.
 
 A pack is the read-only bundle of baked content in flash
 ([Asset packs](../assets/README.md)). The engine pack ships a `tap` click any app
-may use. Open it once, play it by pointer.
+may use. Open it once into app state, play it by pointer, and stop it if you need to.
 
-<!-- generated: sound-play-example check: python launcher/tools/gen/examples_doc.py --check -->
+<!-- generated: audio-tap-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-/* Play a pack sound: open it once, play it on a tap, stop it early. */
-#include "asset/asset_store.h"
+/* Tap: keep the sound in app state until exit. */
+#include "asset/asset_store.h" /* asset_store_pack, ASSET_ENGINE_PACK */
 #include "sound/sound_play.h"
 
-typedef struct {
-    sound_t tap; /* app state, not a stack local: the mixer reads it until the app exits */
-    sound_voice_t last;
-} play_example_t;
+static sound_t tap; /* app state, not a stack local */
 
-void
-play_example_open(play_example_t* s) {
-    /* A failed open leaves the zeroed sound empty: sound_play() then returns the null voice. */
-    (void)sound_open(asset_store_pack(ASSET_ENGINE_PACK), "tap", &s->tap);
-}
-
-void
-play_example_tap(play_example_t* s) {
-    s->last = sound_play(&s->tap, NULL); /* SFX bus, full gain, once; never waits */
-}
-
-void
-play_example_cancel(play_example_t* s) {
-    sound_stop(s->last); /* optional; a stale handle is ignored */
+static bool
+tap_start(void) {
+    if (sound_open(asset_store_pack(ASSET_ENGINE_PACK), "tap", &tap) != ASSET_OK) {
+        /* no click */
+        return false;
+    }
+    sound_voice_t voice = sound_play(&tap, NULL); /* SFX bus, full gain, once */
+    sound_stop(voice);                            /* optional; stale handles are ignored */
+    return true;
 }
 ```
-<!-- /generated: sound-play-example -->
+<!-- /generated: audio-tap-example -->
 
 `sound_play()` returns a handle at once and the mixer starts the sound within one
 block, about 5.8 ms. After a quiet spell the first click starts about 250 ms late
@@ -57,7 +49,7 @@ while the amplifier warms up ([Amplifier](Mixer-Internals.md#amplifier)).
 |---|---|
 | 1. Source | put `click.wav` (WAV, FLAC, OGG or MP3, any channel count) in your app's pack folder, the one holding its `NAME.pack.toml` |
 | 2. Recipe | beside it, `click.sound.toml` with `source = "click.wav"` and `format = "adpcm"` or `"pcm16"` ([Sound assets](Sound-Assets.md)) |
-| 3. Bake | the build bakes it into entry `click` of that folder's pack ([Packs](../assets/README.md#packs)) |
+| 3. Bake | the build bakes it into entry `click` of that folder's pack ([Packs](../assets/Building-Packs.md#packs)) |
 | 4. Open | `sound_open(asset_store_pack(...), "click", &state)` as below |
 
 <!-- generated: sound-own-example check: python launcher/tools/gen/examples_doc.py --check -->
