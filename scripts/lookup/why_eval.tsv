@@ -1,0 +1,33 @@
+# question	expected PR (#N) or ticket	asked (UTC); --eval answers each on the main line as it stood then.
+# Past lookups: a git log or blame of the question, then gh pr view of a PR merged before it was asked.
+launcher/main/apps/sand/code_layout.txt	#853	2026-10-12T07:11:11Z
+launcher/main/apps/sand/code_layout.txt	#867	2026-10-13T19:46:27Z
+launcher/main/apps/render_lab/tests/suite_scene_switch.c	#1101	2026-10-22T16:52:53Z
+launcher/main/render/r3d_span.c	#820	2026-10-17T11:22:34Z
+docs/render/Mesh-Rendering.md	#704	2026-10-07T16:27:24Z
+launcher/bakes.lock	#837	2026-10-11T12:48:03Z
+launcher/main/boot	#1013	2026-10-20T21:32:54Z
+# Closed tickets: a file the ticket names and its merged PR changed; the answer is the ticket.
+launcher/main/apps/render_lab/tests/suite_scene_switch.c	autana-ooxxp	2026-10-24T09:24:37Z
+launcher/main/boot/boot_anim.c	autana-6nxl	2026-10-24T09:24:37Z
+launcher/tools/math/geometry_figures_probe.c	autana-7ee9	2026-10-24T09:24:37Z
+launcher/test/run_tests.sh	autana-lbs2	2026-10-24T09:24:37Z
+launcher/main/render/r3d_project.h	autana-xx47	2026-10-24T09:24:37Z
+launcher/test/suites/suite_sound.c	autana-mgc5	2026-10-24T09:24:37Z
+tools/autana.cmd	autana-9rhk	2026-10-24T09:24:37Z
+launcher/tools/perf/capture.py	autana-bj34	2026-10-24T09:24:37Z
+docs/sand/Sand-Simulation.md	autana-r5ge	2026-10-24T09:24:37Z
+docs/c-style/README.md	autana-73mqk	2026-10-24T09:24:37Z
+docs/render/Mesh-Rendering.md	autana-md9a7	2026-10-24T09:24:37Z
+docs/images/overview/render-lab-capybara.gif	autana-uykg0	2026-10-24T09:24:37Z
+launcher/tools/math/geometry_figures.py	autana-eok0	2026-10-24T09:24:37Z
+launcher/tools/docs/plot_style.py	autana-8ujh	2026-10-24T09:24:37Z
+scripts/lib/console_protocol.py	autana-d5qt	2026-10-24T09:24:37Z
+docs/ui/input.md	autana-fpr2	2026-10-24T09:24:37Z
+docs/render/README.md	autana-nmti	2026-10-24T09:24:37Z
+docs/math/README.md	autana-ldcu	2026-10-24T09:24:37Z
+docs/Citations.md	autana-z264	2026-10-24T09:24:37Z
+launcher/tools/perf/capture.py	autana-t7zf	2026-10-24T09:24:37Z
+docs/render/Mesh-Import.md	autana-slinr	2026-10-24T09:24:37Z
+launcher/main/boot/boot_anim.c	autana-oabj.12	2026-10-24T09:24:37Z
+launcher/tools/tests/test_bake.py	autana-sz8p	2026-10-24T09:24:37Z
