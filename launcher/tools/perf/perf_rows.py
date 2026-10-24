@@ -137,12 +137,15 @@ def local_lines(index_paths):
             parsed[tuple(key)] = line
     except (OSError, ValueError):
         pass
-    fresh = []
+    fresh, wanted = [], set()
     for index in index_paths:
         entries = read_index(index)
         images = image_flags(entries)
         for entry in entries:
-            if not recorded(entry) or entry_key(entry) in parsed:
+            if not recorded(entry):
+                continue
+            wanted.add(entry_key(entry))
+            if entry_key(entry) in parsed:
                 continue
             try:
                 text = read_capture_text(entry["capture_path"])
@@ -157,7 +160,7 @@ def local_lines(index_paths):
                 stream.writelines(json.dumps(item, separators=(",", ":")) + "\n" for item in fresh)
         except OSError:
             pass
-    return [line for line in parsed.values() if line]
+    return [parsed[key] for key in wanted if parsed.get(key)]
 
 
 # --- the store --------------------------------------------------------------
