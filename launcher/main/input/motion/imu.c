@@ -21,6 +21,7 @@
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
 #include "services/tune.h"
 
@@ -98,7 +99,7 @@ static int64_t wake_gap_max_us;
 /* CTRL1.ADDR_AI enables bursts; BE stays clear for little-endian axes. */
 #define CTRL1_ADDR_AUTO_INC     0x40
 
-/* QMI8658A Rev A, Table 22: range fields, ORed with a matching 6DOF ODR code. */
+/* QMI8658A Rev A, Table 22: full-scale fields in bits 6:4; configure() ORs the 6DOF ODR code into bits 3:0. */
 #define CTRL2_ACCEL_8G          0x20
 #define CTRL3_GYRO_512DPS       0x50
 #define REVISION_QMI8658C       0x79
@@ -474,31 +475,31 @@ imu_read_or_drain(bool drain_due) {
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* imu_set_odr() asks, the task applies between drains; both under `lock`. */
-static unsigned odr_requested = IMU_ODR_CODE;
-static unsigned odr_applied = IMU_ODR_CODE;
+static imu_odr_t odr = {.requested = IMU_ODR_CODE, .applied = IMU_ODR_CODE};
 /* Longest a request waits: two of the slowest task periods the tunables allow. */
 #define IMU_ODR_WAIT_MS (2 * IMU_PERIOD_MAX_MS)
 
-/* The reconfigure resets the FIFO; a gap drops queued samples spaced at the old rate. */
+/* The bus work runs outside `lock` on a copy; imu_set_odr() only waits on it meanwhile.
+ * Any reconfigure resets the FIFO, so a gap drops queued samples spaced at the old rate. */
 static void
 apply_odr_request(void) {
     portENTER_CRITICAL(&lock);
-    const unsigned code = odr_requested;
+    imu_odr_t next = odr;
     portEXIT_CRITICAL(&lock);
-    if (code == odr_applied) {
+    const imu_odr_outcome_t outcome = imu_odr_apply(&next, configure);
+    if (outcome == IMU_ODR_UNCHANGED) {
         return;
     }
-    const bool ok = configure(code);
+    if (outcome == IMU_ODR_LOST) {
+        ESP_LOGE(TAG, "ODR switch to %u and restore of %u both failed; the sensor may be off", odr.requested,
+                 next.applied);
+    }
     fifo_gap = true;
     pending_lost = 0;
     loss_remainder_us = 0;
     portENTER_CRITICAL(&lock);
     imu_queue_push(&queue, NULL, 0, 0, true);
-    if (ok) {
-        odr_applied = code;
-    } else {
-        odr_requested = odr_applied;
-    }
+    odr = next;
     portEXIT_CRITICAL(&lock);
 }
 
@@ -508,13 +509,13 @@ imu_set_odr(unsigned odr_code) {
         return false;
     }
     portENTER_CRITICAL(&lock);
-    odr_requested = odr_code;
+    odr.requested = odr_code;
     portEXIT_CRITICAL(&lock);
     const int64_t deadline = timing_now_us() + ((int64_t)IMU_ODR_WAIT_MS * MATH_US_PER_MS);
     for (;;) {
         portENTER_CRITICAL(&lock);
-        const unsigned applied = odr_applied;
-        const unsigned requested = odr_requested;
+        const unsigned applied = odr.applied;
+        const unsigned requested = odr.requested;
         portEXIT_CRITICAL(&lock);
         if (applied == odr_code || requested != odr_code || timing_now_us() >= deadline) {
             return applied == odr_code;
