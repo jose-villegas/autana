@@ -1,6 +1,8 @@
 #include "suites.h"
 
 #ifndef DEVICE_BUILD
+#define CONFIG_LAUNCHER_DEVELOPMENT 1
+
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_test.h"
 #include "test_cleanup.h"
