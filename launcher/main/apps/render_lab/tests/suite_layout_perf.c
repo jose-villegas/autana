@@ -56,7 +56,7 @@ static fixture_t* active;
 
 static void
 set_layout(int32_t layout) {
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), "render_lab.layout", layout));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), layout));
 }
 
 static void

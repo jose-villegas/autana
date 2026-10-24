@@ -192,10 +192,10 @@ pixels_unlike_a_full_paint(arm_t arm, int frames) {
  * changed pixel sent. */
 void
 test_ridge_dissolve_matches_a_full_paint(void) {
-    (void)tune_set(tune_shared(), "ridge.axis_dissolve_ms", 400);
+    (void)tune_set(tune_shared(), TUNE_NAME(ridge, axis_dissolve_ms), 400);
     int dissolved = 0;
     const int unlike = pixels_unlike_a_full_paint_counting(ARM_TILT_SWEEP, 150, &dissolved);
-    (void)tune_reset(tune_shared(), "ridge.axis_dissolve_ms");
+    (void)tune_reset(tune_shared(), TUNE_NAME(ridge, axis_dissolve_ms));
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, dissolved, "the sweep never dissolved a strip switch");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, unlike, "after a dissolved strip switch");
 }

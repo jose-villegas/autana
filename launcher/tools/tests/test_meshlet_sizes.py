@@ -176,7 +176,7 @@ static void report_frame_cost(const char* label, const char* object_name, const 
 ''' + body + '''
 int main(void) {
     for (int initial = 0; initial <= 1; initial++) {
-        assert(tune_set(tune_shared(), "render.cull", initial));
+        assert(tune_set(tune_shared(), TUNE_NAME(render, cull), initial));
         cleanup = 0;
         if (setjmp(aborted) == 0) {
             test_sponza_frame_cost_along_the_flythrough();

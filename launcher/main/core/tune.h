@@ -68,6 +68,10 @@ bool tune_parse_value(const char* text, int32_t* out_value);
 int tune_count(const tune_registry_t* registry);
 const tune_entry_t* tune_find(const tune_registry_t* registry, const char* name);
 
+/* "owner.what", the name TUNE(owner, what, ...) registers, for code that sets
+ * one by name. */
+#define TUNE_NAME(owner, what) #owner "." #what
+
 #define TUNE_CONSTANT(owner, what, initial_value, low_value, high_value)                                               \
     _Static_assert((initial_value) >= (low_value) && (initial_value) <= (high_value),                                  \
                    #owner "." #what " starts outside its own range");                                                  \
