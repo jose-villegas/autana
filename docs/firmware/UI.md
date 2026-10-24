@@ -1,8 +1,8 @@
 # UI
 
 `ui/ui.c` owns the microui integration; the launcher is a caller like any
-app. The controls are catalogued in [UI-Toolkit.md](../UI-Toolkit.md), and a
-screen is put together as in [Building-a-Screen.md](../Building-a-Screen.md).
+app. The controls are catalogued in [UI-Toolkit.md](../ui/README.md), and a
+screen is put together as in [Building-a-Screen.md](../ui/Building-a-Screen.md).
 This page is how the integration underneath works.
 
 ## Immediate mode versus dirty bands
@@ -60,7 +60,7 @@ so a scrim in it would walk the frozen backdrop toward black.
   needs the general form: whoever repaints a region restores the backdrop under
   it, re-scrims that region, then draws.
 - `suite_gfx_color.c` pins the arithmetic; the app recipe is
-  [a panel over a paused app](../Building-a-Screen.md#a-panel-over-a-paused-app).
+  [a panel over a paused app](../ui/Building-a-Screen.md#a-panel-over-a-paused-app).
 
 ## Why microui, not LVGL
 

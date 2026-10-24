@@ -100,7 +100,7 @@ intensity = 3.0
 
 The camera object has the lens and, if it flies a glTF animation, the clip:
 its `NAME.anim.toml`, relative to the scene file, and the node that is the
-camera ([Animation-Tracks.md](../Animation-Tracks.md)). A `region` (the box
+camera ([Animation-Tracks.md](Animation-Tracks.md)). A `region` (the box
 region `visibility` culls against) belongs here only when a placed mesh has
 that step:
 

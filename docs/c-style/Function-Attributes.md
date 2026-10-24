@@ -1,7 +1,7 @@
 # Function attributes
 
 Which GCC and ESP-IDF attributes this firmware puts on functions, when, and what each one
-costs. Part of the [C style guide](../C-Style-Guide.md).
+costs. Part of the [C style guide](README.md).
 
 | Attribute | Use it when | Cost | Example |
 |---|---|---|---|

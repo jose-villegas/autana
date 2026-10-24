@@ -2,7 +2,7 @@
 
 The portable suites, compiled and run on your own machine. This is the
 everyday red-green loop: the tests take seconds, the wait is compiling.
-Back to the [Testing Guide](../Testing-Guide.md).
+Back to the [Testing Guide](README.md).
 
 ## Install what you need
 

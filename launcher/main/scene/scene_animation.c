@@ -485,14 +485,14 @@ animate_entities(scene_t* scene, uint32_t dt_ms) {
         return;
     }
     const int entities = scene->asset.entity_count;
-    const int half = entities / 2;
-    range_t a = {scene, 0, half, dt_ms};
-    range_t b = {scene, half, entities - half, dt_ms};
+    const int mine = entities - job_share_core1_count(&scene->animate_share, entities);
+    range_t a = {scene, 0, mine, dt_ms};
+    range_t b = {scene, mine, entities - mine, dt_ms};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "animation range fits job context");
-    if (half == 0) {
-        animate_slice(&b);
+    if (entities < 2) {
+        animate_slice(&a);
     } else {
-        job_run_split(animate_slice, &a, &b, sizeof a);
+        job_run_steered(&scene->animate_share, animate_slice, &a, &b, sizeof a);
     }
 }
 
@@ -556,13 +556,14 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     if (scene->light_transfer != NULL) {
         scene_lights_prepare(scene);
     }
-    range_t a = {scene, 0, clusters / 2, 0};
-    range_t b = {scene, clusters / 2, clusters - (clusters / 2), 0};
+    const int mine = clusters - job_share_core1_count(&scene->skin_share, clusters);
+    range_t a = {scene, 0, mine, 0};
+    range_t b = {scene, mine, clusters - mine, 0};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "skin range fits job context");
-    if (a.count == 0) {
-        skin_slice(&b);
+    if (clusters < 2) {
+        skin_slice(&a);
     } else {
-        job_run_split(skin_slice, &a, &b, sizeof a);
+        job_run_steered(&scene->skin_share, skin_slice, &a, &b, sizeof a);
     }
     for (int e = 0; e < entities; e++) {
         if (scene->skinned_renderers[e].internal_storage != NULL && scene->animators[e].posed) {
