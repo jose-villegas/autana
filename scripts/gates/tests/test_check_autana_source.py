@@ -33,11 +33,12 @@ class T(unittest.TestCase):
 
 
 class AutanaSourceTest(unittest.TestCase):
-    def gate(self, call):
+    def gate(self, call, tool=TOOL):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             for name, text in (("launcher/main/x.c", ""), ("launcher/packages/y.h", ""),
-                               ("scripts/autana/tool.py", TOOL),
+                               ("scripts/autana/shared_helpers.py", ""),
+                               ("scripts/autana/tool.py", tool),
                                ("scripts/autana/tests/test_tool.py", TEST.format(call=call))):
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
                 (root / name).write_text(text)
@@ -49,6 +50,11 @@ class AutanaSourceTest(unittest.TestCase):
         self.assertIn("scripts/autana/tool.py: opened", result.stderr)
         self.assertIn("launcher/main/x.c", result.stderr)
         self.assertNotIn("y.h", result.stderr)
+
+    def test_importing_the_docs_tooling_fails(self):
+        result = self.gate("pass", tool="import shared_helpers  # noqa: F401\n" + TOOL)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("shared_helpers was imported", result.stderr)
 
     def test_opens_by_tests_alone_pass(self):
         result = self.gate("pass")

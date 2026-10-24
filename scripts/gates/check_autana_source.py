@@ -9,7 +9,8 @@ under ROOT/scripts/autana/tests with an audit hook on `open`; an open of a
 path under either folder fails the gate unless the nearest frame in ROOT that
 made it is a test file, since a test may compare a reply with the source. The
 hook sees every open, so code autana imports (scripts/lib/...) is held to the
-same rule.
+same rule. The docs tooling that may read source, shared_helpers.py, must not
+be imported at all.
 """
 import os
 import re
@@ -18,6 +19,7 @@ import unittest
 from pathlib import Path
 
 SOURCE_PATH = re.compile(r"(^|/)launcher/(main|packages)(/|$)")
+DOCS_TOOLING = "shared_helpers"
 
 
 def folder(path):
@@ -61,7 +63,10 @@ def main(argv):
     for by, path in sorted(set(found)):
         print(f"{Path(by).relative_to(root).as_posix()}: opened {path} - autana asks the device, "
               f"source belongs to source tools", file=sys.stderr)
-    return 0 if result.wasSuccessful() and not found else 1
+    imported = DOCS_TOOLING in sys.modules
+    if imported:
+        print(f"{DOCS_TOOLING} was imported - it is docs tooling, not autana's", file=sys.stderr)
+    return 0 if result.wasSuccessful() and not found and not imported else 1
 
 
 if __name__ == "__main__":
