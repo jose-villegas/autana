@@ -47,7 +47,7 @@ neither source reaches, and that is not excluded, fails the gate by name.
 entry carries the reason a reader can check.
 
 Unmodified vendored code (`launcher/components/`, `managed_components/`,
-`test/framework/`) is out of scope: a ratchet on this project's own
+`packages/testkit/unity/`) is out of scope: a ratchet on this project's own
 functions has nothing to say about code it did not write, and it is never
 a source of a coverage gap since it sits outside both. A
 vendored function this project changed is measured; see the end of this

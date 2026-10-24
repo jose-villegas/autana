@@ -31,6 +31,10 @@ package_includes() {
     done
 }
 
+testkit_includes() {
+    printf -- '-I %s/packages/testkit/include -I %s/packages/testkit/unity ' "$1" "$1"
+}
+
 package_sources() {
     find "$1"/packages/*/src -name '*.c' 2>/dev/null | sort
 }

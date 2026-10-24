@@ -19,7 +19,7 @@
 #include "render/context/render_context.h"
 #include "render/raster_split.h"
 #include "scene/scene_shell.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "ui/ui.h"
 #include "unity.h"
 

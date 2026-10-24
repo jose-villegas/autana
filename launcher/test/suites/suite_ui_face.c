@@ -9,7 +9,7 @@
 #endif
 #include "draw/draw_image_format.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "timing.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"

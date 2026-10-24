@@ -21,7 +21,7 @@
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "core/memory.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "ui_probe.h"
 
 /* Landscape (448x368 logical) - this app's shipping orientation. */
