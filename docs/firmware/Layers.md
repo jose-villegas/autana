@@ -63,13 +63,13 @@ flowchart TB
             Gfx["gfx/<br/><i>target types, the framebuffer, present/</i>"]:::hw
         end
         subgraph R12["device services"]
-            Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
+            Services["services/<br/><i>settings, build id</i>"]:::hw
         end
         subgraph R13["frame measurement"]
             Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
         end
         subgraph R14["the platform core"]
-            Core["core/<br/><i>two-core jobs, memory placement, time</i>"]:::hw
+            Core["core/<br/><i>two-core jobs, memory placement, time, tunables</i>"]:::hw
         end
         subgraph R15["board"]
             Board["board/<br/><i>pins, peripherals, panel link</i>"]:::hw
@@ -97,7 +97,7 @@ flowchart TB
 | Includes are layer-qualified | `"gfx/gfx.h"`, not `"gfx.h"`, even inside one folder, so an app reaching past `ui` into `gfx` shows at the line that does it | the style audit |
 | Apps use the engine, the platform and the app contract | an app under `apps/` includes nothing else of the system band; a system app under `shell/apps/` is part of the shell | SYSTEM-BAND |
 | The UI backend stays inside `ui/` | outside it, no firmware or editor source includes microui or a header that reaches it, so a screen sees only `ui/ui.h` and a backend swap touches `ui/` alone | UI-BACKEND |
-| `core/`, `build/` and the packages are the base | see [the base](#the-base) | PACKAGE-INCLUDE, PACKAGE-CONFIG |
+| `core/`, `build/` and the packages are the base | see [the base](#the-base) | PACKAGE-INCLUDE, PACKAGE-REQUIRES, PACKAGE-CONFIG |
 | Every drawing path ends in gfx | nothing else allocates pixels; how a draw call becomes panel pixels is [Gfx](../gfx/README.md#the-path), and `render/` sits above `gfx/` because it draws into gfx's [render targets](../gfx/Targets-and-Modes.md#render-targets) | the layer order |
 | Drivers are split from the logic they feed | `power_device.c`, `touch.c`, `buttons.c` and `imu.c` touch hardware; `power_decode`, `power_cache`, `touch_fsm`, `button_fsm`, `gesture` and `tilt` are pure and tested on a laptop; the split runs through every folder and is what the [Testing-Guide.md](../testing/README.md) relies on | review |
 | The shell names no vendor firmware | `main.c` and `shell/` reach vendor code only through [the modules that own it](#vendor-owners); a module's device half lives in a `*_device.c` beside it, compiled for the board only, so host builds stay pure | `check_shell_firmware.py`: an ESP-IDF, FreeRTOS, NVS or BSP include or call fails, logging (`esp_log.h`, `ESP_LOG[A-Z]`) excepted |
@@ -113,6 +113,7 @@ Every layer above `core/` builds on it:
 | `core/job.h` | hands one copied job at a time to core 1; runs it inline when core 1 is busy or on a host |
 | `core/memory.h` | places memory by kind |
 | `core/timing.h` | reads time |
+| `core/tune.h` | declares a tunable where it is used: a live variable on a development build, a constant on a release build |
 | `build/build_variant.h` | says which build this is |
 
 Below every folder of `main/`, `board/` included, sit the packages: first-party
@@ -120,12 +121,23 @@ libraries in `launcher/packages/<name>/`, each its own ESP-IDF component with an
 `include/` root, `src/` and `tests/`;
 [math](../../launcher/packages/math/README.md) is one.
 
-A package includes nothing outside itself but the C library and the build config,
-so the firmware, the host tests, the tools and the editor all build it.
+A package includes nothing outside itself but the C library, the build config and the
+packages it declares, so the firmware, the host tests, the tools and the editor all build it.
+It declares them on one line of its own `CMakeLists.txt`, which both builds read:
+
+```cmake
+set(physics_requires math)
+idf_component_register(SRCS ${physics_srcs} INCLUDE_DIRS "include" REQUIRES ${physics_requires})
+target_link_libraries(physics PUBLIC ${physics_requires})   # the plain CMake build
+```
+
+A header-only package is an `INTERFACE` library, so it links with `INTERFACE` in place of `PUBLIC`.
+The declaration is one unindented line of bare names; PACKAGE-REQUIRES refuses any other spelling.
 
 | Rule | Checks |
 |---|---|
-| PACKAGE-INCLUDE | a package reaching into the firmware; `launcher/test/check_packages_alone.sh` compiles each package file with only its own include root |
+| PACKAGE-INCLUDE | a package reaching into the firmware or into a package it does not declare (directly or through a declared one); `launcher/test/check_packages_alone.sh` compiles each package file with only those include roots |
+| PACKAGE-REQUIRES | each declared name is another package (it has an `include/`), and none reaches back to the declaring package: dependencies run one way |
 | PACKAGE-CONFIG | `CONFIG_<PACKAGE>_` settings in C/H sources, `CMakeLists.txt` and `Kconfig`, and `<PACKAGE>_` names for Kconfig entries, folder name uppercased; comments are ignored |
 
 ## Vendor owners

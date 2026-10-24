@@ -140,6 +140,7 @@ $MAIN_DIR/input/touch/touch_calib.c
 $MAIN_DIR/input/touch/touch_inject_fsm.c
 $MAIN_DIR/input/touch/gesture.c
 $MAIN_DIR/input/motion/tilt.c
+$MAIN_DIR/input/motion/imu_queue.c
 $MAIN_DIR/input/motion/gravity.c
 $MAIN_DIR/input/motion/shake.c
 $MAIN_DIR/input/buttons/button_fsm.c
@@ -160,7 +161,8 @@ $MAIN_DIR/asset/asset_directory.c
 $MAIN_DIR/asset/asset_store.c
 $MAIN_DIR/asset/asset_store_file.c
 $MAIN_DIR/input/mapping/orbit_motion_touch.c
-$MAIN_DIR/services/tune.c
+$MAIN_DIR/core/tune.c
+$MAIN_DIR/console/console_tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/console/verbs/console_tone.c
 $MAIN_DIR/console/verbs/console_melody.c

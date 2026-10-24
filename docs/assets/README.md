@@ -128,7 +128,7 @@ title Entry registry, one 48-byte row an entry from byte 32
 | Rule | Detail |
 |---|---|
 | Owners | `ASSET_PACK_MAGIC`, `ASSET_PACK_VERSION`, `ASSET_PACK_HEADER_SIZE` (32), `ASSET_PACK_ENTRY_SIZE` (48), `ASSET_NAME_MAX` (32, with the NUL), all in `asset_pack.h`; Python reads the layout from its own `HEADER` and `ENTRY` structs |
-| Header | `total_size` is the pack's size and at most the buffer's (a partition may be larger, never smaller); `crc32` is zlib's CRC-32 of every byte from 32 to `total_size` (`asset_crc32()`); the 12 reserved bytes are zero |
+| Header | `total_size` is the pack's size and at most the buffer's (a partition may be larger, never smaller); `crc32` is zlib's CRC-32 of every byte from 32 to `total_size` (`crc32_update()` in the hash package); the 12 reserved bytes are zero |
 | Base | the pack starts on `ASSET_PACK_BASE_ALIGN` (16) bytes, which a page-aligned mapping and `aligned_alloc()` both give |
 | Names | unique, ASCII, 1 to 31 characters; entries are found by name, then checked for their type |
 | Type | four ASCII bytes, `ASSET_TYPE(a, b, c, d)` of the owning module |

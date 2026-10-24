@@ -194,7 +194,7 @@ test_lost_samples_advance_at_datasheet_rate(void) {
     const uint32_t drain_us = produced_per_drain * IMU_SAMPLE_US;
     uint32_t remainder_us = 0;
     const int lost = imu_fifo_lost(LOST_PER_DRAIN * IMU_SAMPLE_US, &remainder_us, false);
-    *batch = (input_motion_batch_t){.count = DELIVERED_PER_DRAIN, .lost = lost};
+    *batch = (input_motion_batch_t){.count = DELIVERED_PER_DRAIN, .lost_before = {(uint8_t)lost}};
     const float turn_rate = QUARTER_TURN_DEG * MATH_US_PER_S / (float)(DRAINS * drain_us);
     const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
     gravity_update(&g, &initial, 0);
@@ -205,9 +205,9 @@ test_lost_samples_advance_at_datasheet_rate(void) {
     }
     for (int i = 0; i < DRAINS; i++) {
         gravity_update_batch(&g, batch);
-        batch->lost = 0;
+        batch->lost_before[0] = 0;
         gravity_update_batch(&unadvanced, batch);
-        batch->lost = lost;
+        batch->lost_before[0] = lost;
     }
     free(batch);
     const float error = angle_error((vec3f_t){0, -1, 0}, g.down);
@@ -222,7 +222,7 @@ test_lost_prediction_clamps_without_acceleration_correction(void) {
     fixture();
     input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
-    *batch = (input_motion_batch_t){.count = 1, .lost = IMU_FIFO_SAMPLES};
+    *batch = (input_motion_batch_t){.count = 1, .lost_before = {IMU_FIFO_SAMPLES}};
     const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
     gravity_update(&g, &initial, 0);
     batch->samples[0] = sample((vec3f_t){0}, (vec3f_t){FAST_TURN_DPS, 0, 0});
@@ -249,18 +249,71 @@ test_lost_time_uses_previous_rotation_before_delivered_samples(void) {
     const gravity_t start = g;
     input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
-    *batch = (input_motion_batch_t){.lost = 1};
-    gravity_update_batch(&g, batch);
-    const float radians = FAST_TURN_DPS * IMU_SAMPLE_US / MATH_US_PER_S * MATH_PI / (2.0F * QUARTER_TURN_DEG);
-    const vec3f_t target = {0, -sinf(radians), -cosf(radians)};
-    const float empty_error = angle_error(target, g.down);
-    g = start;
-    batch->count = 1;
+    *batch = (input_motion_batch_t){.count = 1, .lost_before = {1}};
     batch->samples[0] = sample((vec3f_t){0}, (vec3f_t){-FAST_TURN_DPS, 0, 0});
     gravity_update_batch(&g, batch);
     free(batch);
-    TEST_ASSERT_TRUE(empty_error < ANGLE_TOLERANCE_DEG / 10.0F);
     TEST_ASSERT_TRUE(angle_error(start.down, g.down) < ANGLE_TOLERANCE_DEG / 10.0F);
+}
+
+static void
+init_loss_batch(input_motion_batch_t* batch, vec3f_t acceleration) {
+    const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
+    gravity_update(&g, &initial, 0);
+    batch->count = 2;
+    batch->lost_before[1] = 2;
+    batch->samples[0] = sample(acceleration, (vec3f_t){FAST_TURN_DPS, 0, 0});
+    batch->samples[1] = sample(acceleration, (vec3f_t){0, FAST_TURN_DPS, 0});
+}
+
+static void
+test_loss_mid_batch_holds_the_immediately_previous_rotation(void) {
+    fixture();
+    input_motion_batch_t* batch = calloc(1, sizeof *batch);
+    TEST_ASSERT_NOT_NULL(batch);
+    init_loss_batch(batch, (vec3f_t){0});
+    gravity_t expected = g;
+    gravity_update_batch(&g, batch);
+    gravity_update(&expected, &batch->samples[0], IMU_SAMPLE_US);
+    gravity_update(&expected, &batch->samples[0], IMU_SAMPLE_US);
+    gravity_update(&expected, &batch->samples[0], IMU_SAMPLE_US);
+    gravity_update(&expected, &batch->samples[1], IMU_SAMPLE_US);
+    free(batch);
+    TEST_ASSERT_TRUE(angle_error(expected.down, g.down) < ANGLE_TOLERANCE_DEG / 10.0F);
+}
+
+static void
+test_multiple_losses_match_sequential_holds_with_acceleration(void) {
+    fixture();
+    input_motion_batch_t* batch = calloc(1, sizeof *batch);
+    TEST_ASSERT_NOT_NULL(batch);
+    init_loss_batch(batch, (vec3f_t){0, 0, -1});
+    gravity_t expected = g;
+    batch->count = 3;
+    batch->lost_before[2] = UINT8_MAX;
+    batch->samples[2] = sample((vec3f_t){0, 0, -1}, (vec3f_t){0, 0, FAST_TURN_DPS});
+    for (int i = 0; i < batch->count; i++) {
+        const vec3f_t acceleration = vec3f_add(expected.linear, expected.down);
+        const vec3f_t rotation = expected.rotation;
+        uint32_t remaining = (uint32_t)batch->lost_before[i] * INPUT_MOTION_SAMPLE_US;
+        if (remaining > GRAVITY_MAX_DT_US) {
+            remaining = GRAVITY_MAX_DT_US;
+        }
+        const input_motion_t held = sample((vec3f_t){0}, rotation);
+        while (remaining > 0) {
+            const uint32_t step = remaining < INPUT_MOTION_SAMPLE_US ? remaining : INPUT_MOTION_SAMPLE_US;
+            gravity_update(&expected, &held, step);
+            remaining -= step;
+        }
+        expected.linear = vec3f_sub(acceleration, expected.down);
+        gravity_update(&expected, &batch->samples[i], INPUT_MOTION_SAMPLE_US);
+    }
+    gravity_update_batch(&g, batch);
+    TEST_ASSERT_TRUE(angle_error(expected.down, g.down) < ANGLE_TOLERANCE_DEG / 10.0F);
+    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE, expected.linear.x, g.linear.x);
+    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE, expected.linear.y, g.linear.y);
+    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE, expected.linear.z, g.linear.z);
+    free(batch);
 }
 
 static void
@@ -741,6 +794,8 @@ test_gyro_overrange_boundary(void) {
 
 void
 run_gravity_suite(void) {
+    RUN_TEST(test_loss_mid_batch_holds_the_immediately_previous_rotation);
+    RUN_TEST(test_multiple_losses_match_sequential_holds_with_acceleration);
     RUN_TEST(test_fifo_lock_loss_carries_fractional_time);
     RUN_TEST(test_fifo_lock_loss_gap_resets_remainder);
     RUN_TEST(test_lost_prediction_clamps_without_acceleration_correction);

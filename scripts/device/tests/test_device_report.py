@@ -10,6 +10,8 @@ import sys
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device_report
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
+from report_assertions import assert_contains
 
 
 SAND_CAPTURE = """I (13050) screenshot: RUNSUITE run_sand_perf_suite
@@ -295,9 +297,11 @@ class FilteredRunReportTests(unittest.TestCase):
             index = write_index(directory, [{"capture_path": str(capture), "suite": "sand",
                                              "test_filter": ["fire", "gas"]}])
             markdown = device_report.build_report_markdown(capture, index)
-        self.assertIn("PASS: 1  FAIL: 1", markdown)
-        self.assertIn("PERF TARGET SUMMARY: 1 unmet", markdown)
-        self.assertIn("- Test filter: `fire, gas`", markdown)
+        assert_contains(self, markdown, (
+            "PASS: 1  FAIL: 1",
+            "PERF TARGET SUMMARY: 1 unmet",
+            "- Test filter: `fire, gas`",
+        ))
         self.assertNotIn("test_water_fits", markdown)
 
 
@@ -575,16 +579,18 @@ class BuildReportMarkdownTests(unittest.TestCase):
             }])
             markdown = device_report.build_report_markdown(capture, index_path)
 
-        self.assertIn("# Device Capture Report", markdown)
-        self.assertIn("Suite: `run_sand_perf_suite`", markdown)
-        self.assertIn("Build: `deadbeef-diag`", markdown)
-        self.assertIn("Commit: `cafef00d` (worktree unknown)", markdown)
-        self.assertIn("PASS: 1  FAIL: 1", markdown)
-        self.assertIn("### Failures", markdown)
-        self.assertIn("test_a_full_size_step_fits_in_the_frame_budget", markdown)
-        self.assertIn("## Performance Targets", markdown)
-        self.assertIn("PERF TARGET SUMMARY: 1 unmet", markdown)
-        self.assertIn("no worktree recorded", markdown)
+        assert_contains(self, markdown, (
+            "# Device Capture Report",
+            "Suite: `run_sand_perf_suite`",
+            "Build: `deadbeef-diag`",
+            "Commit: `cafef00d` (worktree unknown)",
+            "PASS: 1  FAIL: 1",
+            "### Failures",
+            "test_a_full_size_step_fits_in_the_frame_budget",
+            "## Performance Targets",
+            "PERF TARGET SUMMARY: 1 unmet",
+            "no worktree recorded",
+        ))
 
     def test_selftest_report_identifies_board_and_reports_failures_and_partial_capture(self):
         for complete in (False, True):
