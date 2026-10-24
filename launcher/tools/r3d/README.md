@@ -84,7 +84,7 @@ the price of frame time; what it does and costs is in
 
 `mesh_import.py` is the shared full-import command. Each import file, the
 scene file that places it and the `.mesh` it bakes live together.
-Reference content lives in `launcher/demo/`; an app [selects](../../../docs/assets/README.md#packs)
+Reference content lives in `launcher/demo/`; an app [selects](../../../docs/assets/Building-Packs.md#packs)
 what ships.
 
 ## Fidelity reference

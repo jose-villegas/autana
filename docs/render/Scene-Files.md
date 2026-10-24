@@ -619,7 +619,7 @@ mesh, skin, skeleton and clip it names
 ([assets/README.md](../assets/README.md)). `tools/r3d/scene_asset.py` writes and
 reads it; `scene_load()` opens it ([Scene-Manager.md](Scene-Manager.md)), each
 mesh, skin, skeleton and clip it names, and fails naming whichever is missing or malformed. A scene
-and its clip cannot share a stem ([assets/README.md](../assets/README.md#packs)).
+and its clip cannot share a stem ([assets/README.md](../assets/Building-Packs.md#packs)).
 
 Objects are entities in file order, found by name. Transforms store a 3x3
 rotation-times-scale matrix and position, in the parent's frame; the scale
