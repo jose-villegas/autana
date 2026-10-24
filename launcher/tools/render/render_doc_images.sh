@@ -238,6 +238,8 @@ run mkdir -p "$OUT/math"
 run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
 # --orphans scans this runner: trs-scale.gif, trs-rotate.gif, trs-translate.gif
+run "$PYTHON" launcher/tools/math/math_bench_figures.py --out "$OUT/math" > "$WORK/math_bench_figures.log"
+# --orphans scans this runner: benchmark-families.png
 run "$PYTHON" launcher/tools/math/fast_path_figures.py --out "$OUT/math" > "$WORK/fast_path_figures.log"
 # --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
