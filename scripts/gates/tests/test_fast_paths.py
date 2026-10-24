@@ -52,6 +52,43 @@ class FastPathTests(unittest.TestCase):
         self.assertEqual(links["example_f"], "Fast-Paths.md#example")
         self.assertNotIn("normalize_f", links)
 
+    def test_main_benchmark_error_cells_follow_fast_rows(self):
+        from unittest.mock import patch
+        render_table = bench.render_table
+        tables = []
+
+        def record_table(*args, **kwargs):
+            table = render_table(*args, **kwargs)
+            tables.append(table)
+            return table
+
+        with patch.object(paths.bench, "render_table", side_effect=record_table), \
+                patch.object(paths, "replace_block", return_value=False):
+            self.assertEqual(paths.main(["--check"]), 0)
+        lines = tables[0].splitlines()
+        for label, kind, section in (("wrap", "f", "mathf-repeat"),
+                                     ("normalize (vec3)", "x", "mathx-rsqrt-q30"),
+                                     ("nlerp", "x", "mathx-rsqrt-q30")):
+            with self.subTest(label=label):
+                row = next(line for line in lines if line.startswith(f"| [{label}]") and f" | {kind} |" in line)
+                self.assertTrue(row.endswith(f"| [fast paths](Fast-Paths.md#{section}) |"), row)
+        ordinary = next(line for line in lines if line.startswith("| normalize (vec3) | f |"))
+        self.assertTrue(ordinary.endswith("| 1 ulp (sweep) |"), ordinary)
+        unmeasured = next(line for line in lines if line.startswith("| add (vec3) | f |"))
+        self.assertTrue(unmeasured.endswith("| - |"), unmeasured)
+
+    def test_unmatched_error_measurements_are_rejected(self):
+        for host in (False, True):
+            with self.subTest(host=host):
+                capture = "MATHERROR name=normalise (vec3) type=f max=0 unit=ulp method=sweep\n"
+                if host:
+                    file = self.root / paths.HOST_CAPTURE
+                    file.parent.mkdir(parents=True, exist_ok=True)
+                    file.write_text("MATHTARGET target=host arch=x86_64 execution=host\n" + capture)
+                    capture = ""
+                with self.assertRaisesRegex(ValueError, "error measurements match no row"):
+                    paths.error_evidence(self.root, self.annotations, self.rows, capture)
+
     def test_fractional_bins_keep_integer_summary_contract(self):
         capture = self.capture.replace('max=1 unit=ulp\n', 'max=1.25 unit=ulp axis=period\n')
         paths.validate(self.annotations, self.rows, capture)

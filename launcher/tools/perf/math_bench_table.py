@@ -244,8 +244,8 @@ def render_table(rows, measured, baseline, fpu, links=None, errors=None, error_l
             function = f"[{label}]({links[key]})" if links and key in links else label
             identity = label, kind
             error = (errors or {}).get(identity, "-")
-            if identity in (error_links or {}):
-                error = f"[fast paths]({error_links[identity]})"
+            if key in (error_links or {}):
+                error = f"[fast paths]({error_links[key]})"
             lines.append("| " + " | ".join([function, kind, *costs, qemu, ratio, fpu[key], error]) + " |")
         if family == "calibration":
             reference = ESP_DSP_DOTPROD_F32_N256_ANSI_O2_CYCLES

@@ -14,6 +14,7 @@ See [fast paths](Fast-Paths.md) for each fast path's plain-versus-ours cost, err
 | Cycles/insn | Warm cycles divided by board instructions. | Includes stalls and call overhead. |
 | Op | One input element; types follow [math suffixes](README.md#number-types), conversions name source and destination. | Mat4 includes by-value struct copies; transform compute_matrix composes TRS, quat mul composes rotations. |
 | Fused/approx column | Matching wrapper mnemonics and sorted callees. | Callee bodies are excluded; unresolved indirect targets are starred registers; `-` means no match. |
+| Max error | Measured by `suite_math_numbers` on the board; host captures are labelled separately. | A fast path's error is in its linked Fast-Paths section. Only rows without a section carry a value here; `-` means no measurement. |
 | Calibration | `dot_f32_n256` is a full dot-product call matching ESP-DSP's ANSI O2 workload.<sup>[[68]](../Citations.md#68)</sup> | Compares warm cycles/call; compiler flags, loads, stores and call overhead affect the ratio. |
 
 ![Warm benchmark costs grouped by math family and number type](../images/math/benchmark-families.png)
@@ -47,7 +48,7 @@ Warm cycles per op, generated from the committed capture.
 | lerp (vec3) | x | 127.3 | 12644.0 | 99.5 | 99.5 | 1.3 | - | - |
 | [normalize_div](Fast-Paths.md#mathx-rsqrt-q30) | x | 1114.7 | 77202.0 | 906.2 | 907.9 | 1.2 | calls __udivdi3, mathi_isqrt64_digits | - |
 | normalize (vec3) | f | 57.4 | 5814.0 | 29.5 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 ulp (sweep) |
-| [normalize (vec3)](Fast-Paths.md#mathx-rsqrt-q30) | x | 348.5 | 29326.0 | 296.9 | 681.2 | 1.2 | calls __assert_func | - |
+| [normalize (vec3)](Fast-Paths.md#mathx-rsqrt-q30) | x | 348.5 | 29326.0 | 296.9 | 681.2 | 1.2 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
 | scale (vec3) | f | 13.3 | 1884.0 | 12.5 | 12.2 | 1.1 | - | - |
 | scale (vec3) | i | 12.3 | 1882.0 | 12.5 | 12.2 | 1.0 | - | - |
 | scale (vec3) | s | 36.4 | 4239.0 | 30.6 | 30.4 | 1.2 | - | - |
@@ -62,13 +63,13 @@ Warm cycles per op, generated from the committed capture.
 | [mathf_recip](Fast-Paths.md#mathf-recip) | f | 26.3 | 3000.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | [fast paths](Fast-Paths.md#mathf-recip) |
 | [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx) | f | 24.3 | 3084.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt-approx) |
 | [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt) | f | 38.4 | 4517.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | [fast paths](Fast-Paths.md#mathf-rsqrt) |
-| [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30) | x | 157.4 | 13717.0 | 143.6 | 143.6 | 1.1 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
+| [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30) | x | 157.4 | 13717.0 | 143.6 | 143.6 | 1.1 | calls __assert_func | 4.61224169968e-10 relative (proof) |
 | mul (scalar) | f | 9.3 | 1477.0 | 6.5 | 6.2 | 1.4 | - | - |
 | mul (scalar) | i | 9.3 | 1497.0 | 8.5 | 8.2 | 1.1 | - | - |
 | mul (scalar) | s | 11.3 | 2451.0 | 10.5 | 10.2 | 1.1 | - | - |
 | mul (scalar) | x | 22.3 | 3321.0 | 17.5 | 17.3 | 1.3 | - | - |
 | [trig_sin](Fast-Paths.md#trig-sin) | i | 30.8 | 4915.0 | 24.0 | 23.8 | 1.3 | - | [fast paths](Fast-Paths.md#trig-sin) |
-| [wrap](Fast-Paths.md#mathf-repeat) | f | 63.8 | 7166.0 | 30.1 | device-only instruction | 2.1 | madd.s msub.s recip0.s; calls fmodf | - |
+| [wrap](Fast-Paths.md#mathf-repeat) | f | 63.8 | 7166.0 | 30.1 | device-only instruction | 2.1 | madd.s msub.s recip0.s; calls fmodf | [fast paths](Fast-Paths.md#mathf-repeat) |
 | wrap | i | 7.3 | 1350.0 | 7.5 | 7.2 | 1.0 | - | - |
 | wrap | x | 10.3 | 1983.0 | 10.5 | 10.2 | 1.0 | - | - |
 
@@ -78,7 +79,7 @@ Warm cycles per op, generated from the committed capture.
 |---|---|---:|---:|---:|---:|---:|---|---|
 | [nlerp_div](Fast-Paths.md#mathx-rsqrt-q30) | x | 738.4 | 61192.0 | 528.5 | 529.4 | 1.4 | calls __divdi3, mathi_isqrt64_digits | - |
 | nlerp | f | 94.8 | 8989.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 ulp (sweep) |
-| [nlerp](Fast-Paths.md#mathx-rsqrt-q30) | x | 719.4 | 63286.0 | 558.8 | 909.9 | 1.3 | calls __assert_func | - |
+| [nlerp](Fast-Paths.md#mathx-rsqrt-q30) | x | 719.4 | 63286.0 | 558.8 | 909.9 | 1.3 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
 | quat mul | f | 30.3 | 3207.0 | 30.5 | 30.2 | 1.0 | madd.s msub.s | - |
 | quat mul | x | 419.3 | 39758.0 | 313.5 | 313.9 | 1.3 | - | - |
 | slerp | f | 452.7 | 34873.0 | 306.3 | device-only instruction | 1.5 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | - |
