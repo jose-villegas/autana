@@ -50,7 +50,7 @@ run_named(int argc, char** argv) {
         if (suite != NULL) {
             suite->fn();
         } else {
-            fprintf(stderr, "Unknown suite: %s\n", argv[arg]);
+            (void)fprintf(stderr, "Unknown suite: %s\n", argv[arg]);
             errors++;
         }
     }
