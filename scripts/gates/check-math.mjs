@@ -295,10 +295,15 @@ export function extractFormulas(text) {
   const formulas = [];
   const blocks = new Map();
   const opaque = [];
+  const nestedFences = [];
   let line = 0;
   let footnote = false;
+  let listDepth = 0;
 
   for (const token of tokens) {
+    if (token.type === 'list_item_open' || token.type === 'list_item_close') {
+      listDepth += token.nesting;
+    }
     if (token.map) {
       line = token.map[0] + 1;
       if (['paragraph_open', 'heading_open', 'tr_open'].includes(token.type)) {
@@ -310,6 +315,9 @@ export function extractFormulas(text) {
     if (token.type === 'fence' && token.info.trim().split(/\s+/)[0] === 'math') {
       const source = `$$${displayLines(token.content).trim()}$$`;
       formulas.push({ line: line + 1, delimiter: '```math', source, display: true });
+      if (listDepth > 0 || /^\s/.test(text.split(/\r?\n/, line)[line - 1])) {
+        nestedFences.push(line);
+      }
     } else if (token.type === 'html_block') {
       formulas.push(...htmlBlockFormulas(token.content, line));
     } else if (token.type === 'paragraph_open') {
@@ -323,7 +331,7 @@ export function extractFormulas(text) {
     }
   }
   formulas.sort((a, b) => a.line - b.line);
-  return { formulas, blocks: [...blocks.values()], opaque };
+  return { formulas, blocks: [...blocks.values()], opaque, nestedFences };
 }
 
 // The formulas as written in some Markdown source, before Markdown touches it, by
@@ -358,6 +366,8 @@ export function markdownHazard(content) {
 
 const USE_CODE_FORM = 'Write it as $`...`$, which Markdown leaves alone.';
 const USE_FENCE = 'Write display maths as a ```math fence and inline maths as $`...`$.';
+const NESTED_FENCE =
+  'GitHub shows a ```math fence that is indented or in a list item as code. Move it to column 0, outside the list.';
 
 // The forms Markdown can rewrite, refused as written, and formulas GitHub never hands to
 // MathJax because they sit in emphasis, a link, <b> or a footnote.
@@ -504,8 +514,13 @@ export function renderError(formula, pageBraces = 0) {
 
 // Every problem in one Markdown document: [{ line, delimiter, source, message }].
 export function checkDocument(text) {
-  const { formulas, blocks, opaque } = extractFormulas(text);
-  const problems = [];
+  const { formulas, blocks, opaque, nestedFences } = extractFormulas(text);
+  const problems = nestedFences.map((line) => ({
+    line,
+    delimiter: '```math',
+    source: text.split(/\r?\n/)[line - 1].trim(),
+    message: NESTED_FENCE,
+  }));
   let pageBraces = 0;
   for (const formula of formulas) {
     const message = renderError(formula, pageBraces);
