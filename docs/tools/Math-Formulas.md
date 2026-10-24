@@ -9,7 +9,7 @@ renders each one with GitHub's own MathJax configuration.
 
 | Form | Use for | The gate |
 |---|---|---|
-| ```` ```math ```` fence | display maths | renders it |
+| ```` ```math ```` fence | display maths | renders it; refuses it indented or in a list item, which GitHub shows as code |
 | `` $`...`$ `` | inline maths | renders it |
 | `$...$` | short inline maths | refuses `_`, `*` or a backslash before punctuation in it |
 | `$$...$$` | nothing | refuses it |
