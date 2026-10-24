@@ -107,7 +107,7 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_a_date_in_a_dated_log_txt_file_is_not_scanned(self):
         findings = self.audit("CALENDAR-DATE", {
-            "docs/doc_review_ledger.txt": "docs/Guide.md\t2026-09-17\tchecked\n",
+            "scripts/gates/doc_review_ledger.txt": "docs/Guide.md\t2026-09-17\tchecked\n",
         })
         self.assertEqual(findings, [])
 

@@ -18,27 +18,27 @@ file drawn on a host by `ui_examples_render_host.sh` (see
 
 | Control | Call | For |
 |---|---|---|
-| [Button](ui/button.md) | `ui_button()` | an action, by a label |
-| [Button with an icon](ui/button_icon.md) | `ui_button_icon()` | an action, by an icon and a label |
-| [Tile](ui/tile.md) | `ui_tile()` | one of a row of choices |
-| [Tile with an icon](ui/tile_icon.md) | `ui_tile_icon()`, `ui_tile_icon_rect()` | one of a row of choices, icon above label |
-| [Toggle](ui/toggle.md) | `ui_toggle()` | on or off |
-| [Slider](ui/slider.md) | `ui_slider()` | a whole number in a range |
-| [Dropdown](ui/dropdown.md) | `ui_dropdown()` | one of a list, without scrolling the screen |
-| [Dropdown with icons](ui/dropdown_icons.md) | `ui_dropdown_icons()` | the same, an icon beside each name |
-| [Text](ui/text.md) | `ui_text()`, `ui_text_right()`, `ui_text_centre()`, `ui_caption()`, `ui_caption_centre()` | a line of text in a rect |
-| [Header](ui/header.md) | `ui_header()` | a title bar |
-| [Panel](ui/panel.md) | `ui_panel()` | a captioned section |
-| [Swatches](ui/swatches.md) | `ui_swatches()` | a grid of colours |
-| [Icon](ui/icon.md) | `ui_icon()`, `ui_check()` | an icon, or the check mark |
+| [Button](button.md) | `ui_button()` | an action, by a label |
+| [Button with an icon](button_icon.md) | `ui_button_icon()` | an action, by an icon and a label |
+| [Tile](tile.md) | `ui_tile()` | one of a row of choices |
+| [Tile with an icon](tile_icon.md) | `ui_tile_icon()`, `ui_tile_icon_rect()` | one of a row of choices, icon above label |
+| [Toggle](toggle.md) | `ui_toggle()` | on or off |
+| [Slider](slider.md) | `ui_slider()` | a whole number in a range |
+| [Dropdown](dropdown.md) | `ui_dropdown()` | one of a list, without scrolling the screen |
+| [Dropdown with icons](dropdown_icons.md) | `ui_dropdown_icons()` | the same, an icon beside each name |
+| [Text](text.md) | `ui_text()`, `ui_text_right()`, `ui_text_centre()`, `ui_caption()`, `ui_caption_centre()` | a line of text in a rect |
+| [Header](header.md) | `ui_header()` | a title bar |
+| [Panel](panel.md) | `ui_panel()` | a captioned section |
+| [Swatches](swatches.md) | `ui_swatches()` | a grid of colours |
+| [Icon](icon.md) | `ui_icon()`, `ui_check()` | an icon, or the check mark |
 
 How the controls share a finger, a scroll and a scope:
 
 | Page | Covers |
 |---|---|
-| [Input](ui/input.md) | a tap from press to release, a tap that misses, a control's identity |
-| [Scrolling](ui/scrolling.md) | scroll windows, when a moving finger is a drag, flowed rows and fixed rects |
-| [Scopes](ui/scopes.md) | `ui_disabled_begin()`, `ui_color_begin()`, `ui_scale_begin()`, `ui_alpha_begin()`, and the frame settings |
+| [Input](input.md) | a tap from press to release, a tap that misses, a control's identity |
+| [Scrolling](scrolling.md) | scroll windows, when a moving finger is a drag, flowed rows and fixed rects |
+| [Scopes](scopes.md) | `ui_disabled_begin()`, `ui_color_begin()`, `ui_scale_begin()`, `ui_alpha_begin()`, and the frame settings |
 
 `ui_fill()`, `ui_outline()` and `ui_bevel()` are the marks the controls are
 built from, for a screen drawing its own.
@@ -63,16 +63,16 @@ nothing: hashing a few kilobytes of commands is far cheaper than repainting
 and sending a whole screen to the panel.
 
 Anything painted outside the list is invisible to the hash and stays on
-screen as a stale smear. In an [expanded frame](gfx/Targets-and-Modes.md#expanded-frames)
+screen as a stale smear. In an [expanded frame](../gfx/Targets-and-Modes.md#expanded-frames)
 `ui_end()` bins the commands as `ui_end_for_bands()` does, and the present
 replays them over each strip it sends.
 
 ## A whole screen
 
-<!-- generated: ui-settings-renders sha256=a09dc8ad52b04e3885cafc0e989764e43cff33755dfcd2855a5240b0298b2fc9 -->
+<!-- generated: ui-settings-renders sha256=2a1a0cb81f3d94cec7263d86b5dc1f29e375078c6f42845d5391326f4c70de11 -->
 | Portrait | Landscape |
 |---|---|
-| ![settings, portrait](images/ui/settings.png) | ![settings, landscape](images/ui/settings-landscape.png) |
+| ![settings, portrait](../images/ui/settings.png) | ![settings, landscape](../images/ui/settings-landscape.png) |
 <!-- /generated: ui-settings-renders -->
 
 The same code draws both orientations, because it measures against
@@ -113,7 +113,7 @@ settings_example(settings_example_t* s) {
   or dropdown writes through the pointer and returns true on the frame it
   changed. Between frames the toolkit remembers only the pressed control and
   whether a dropdown's list is open and how far it is scrolled.
-- **Labels are ids.** See [identity](ui/input.md#identity).
+- **Labels are ids.** See [identity](input.md#identity).
 - **One file here, three in a real screen.** A shipped screen splits this
   into layout, state and drawing, each tested on a host, as
   [`Building-a-Screen.md`](Building-a-Screen.md) describes.
@@ -122,11 +122,11 @@ settings_example(settings_example_t* s) {
 
 | For | Use |
 |---|---|
-| a whole number in a range | [`ui_slider()`](ui/slider.md) |
-| on or off | [`ui_toggle()`](ui/toggle.md), or two tiles when the choice deserves pictures |
-| one of two to four choices, all worth seeing at once | a row of [`ui_tile_icon()`](ui/tile_icon.md)s, with `selected` on the current one |
-| one of a longer list, or where there is no room for a row | [`ui_dropdown()`](ui/dropdown.md) |
-| an action | [`ui_button_icon()`](ui/button_icon.md), or [`ui_button()`](ui/button.md) for a label alone |
+| a whole number in a range | [`ui_slider()`](slider.md) |
+| on or off | [`ui_toggle()`](toggle.md), or two tiles when the choice deserves pictures |
+| one of two to four choices, all worth seeing at once | a row of [`ui_tile_icon()`](tile_icon.md)s, with `selected` on the current one |
+| one of a longer list, or where there is no room for a row | [`ui_dropdown()`](dropdown.md) |
+| an action | [`ui_button_icon()`](button_icon.md), or [`ui_button()`](button.md) for a label alone |
 
 ## States
 
@@ -164,10 +164,10 @@ frame; `NULL` restores the shell look the pictures here use. `ui_theme_t`:
 
 Those are all of its fields; colours are `0xRRGGBB`.
 
-<!-- generated: ui-themed-renders sha256=ca5076b7cd77d1b111759662d2a1392aa8755818ea15d00cd945d0b93f2bb9c4 -->
+<!-- generated: ui-themed-renders sha256=ce90d245fc56abf913679889c16dcc7dc96dbc20863a3114d87492dded49eda8 -->
 | Portrait | Landscape |
 |---|---|
-| ![themed, portrait](images/ui/themed.png) | ![themed, landscape](images/ui/themed-landscape.png) |
+| ![themed, portrait](../images/ui/themed.png) | ![themed, landscape](../images/ui/themed-landscape.png) |
 <!-- /generated: ui-themed-renders -->
 
 <!-- generated: ui-themed-example check: python launcher/tools/render/ui_examples_doc.py --check -->
@@ -247,7 +247,7 @@ here. 56 px is about 4.4 mm.
   `ui_anchor_rect()` places one against a parent's edge, corner or centre
   (`UI_ANCHOR_*`) with a pivot and offset, and `ui_rect_inset()` makes a
   safe area.
-- **Rows that may overflow.** [Scrolling](ui/scrolling.md).
+- **Rows that may overflow.** [Scrolling](scrolling.md).
 
 ## Text
 
@@ -259,7 +259,7 @@ here. 56 px is about 4.4 mm.
 
 A font and its scale ride inside every text command, so changing size costs
 nothing extra. A text style does not, and needs `ui_invalidate()` when it
-changes. The details are in [`Text-and-Fonts.md`](Text-and-Fonts.md).
+changes. The details are in [`Text-and-Fonts.md`](../gfx/Text-and-Fonts.md).
 
 ## Orientation
 
@@ -277,7 +277,7 @@ it, keep it, and compare later.
 |---|---|
 | `ui_end(background)` | the usual case. `UI_NO_BACKGROUND` draws over an app's own output instead of clearing |
 | `ui_end_over(paint_backdrop)` | the backdrop is a picture rather than a colour |
-| `ui_end_for_bands()`, `ui_replay_band()` | band mode, where the screen is drawn a strip at a time with no whole framebuffer kept. The shell passes `ui_replay_band()` to `gfx_band_run()` as the per-band overlay (see [`gfx/README.md`](gfx/README.md)) |
+| `ui_end_for_bands()`, `ui_replay_band()` | band mode, where the screen is drawn a strip at a time with no whole framebuffer kept. The shell passes `ui_replay_band()` to `gfx_band_run()` as the per-band overlay (see [`gfx/README.md`](../gfx/README.md)) |
 | `ui_invalidate()` | something replaced the screen behind the UI's back, so the next `ui_end()` must repaint |
 
 How a panel over a paused app and a drawn backdrop use these is in
@@ -337,7 +337,7 @@ drawn at rest only. `ui_examples_doc.py` copies each example file into its
 page; `--check` fails when one is stale.
 `launcher/tools/render/render_doc_images.sh` turns the renders into
 `docs/images/ui/` and the States tables; see "Images in these docs" in
-[`tools/Render-Harness.md`](tools/Render-Harness.md).
+[`tools/Render-Harness.md`](../tools/Render-Harness.md).
 
 ### Band replay measurements
 

@@ -26,7 +26,7 @@ from generated_blocks import replace_block
 from idf_vocabulary import c_declarations
 from tracked import tracked_files
 
-PAGE = pathlib.Path("docs/Shared-Helpers.md")
+PAGE = pathlib.Path("docs/tools/Shared-Helpers.md")
 CHECK = "python launcher/tools/gen/shared_helpers.py --check"
 INCLUDE = re.compile(r'^\s*#\s*include\s+([<"])([^>"\n]+)[>"]', re.M)
 
@@ -130,7 +130,7 @@ def table(owner, rows, link, names=True):
 def update(root, check=False):
     root = pathlib.Path(root)
     rows = catalogue(root)
-    stale = [PAGE.as_posix()] if replace_block(root / PAGE, "shared-helpers", table("Owner", rows, "../"),
+    stale = [PAGE.as_posix()] if replace_block(root / PAGE, "shared-helpers", table("Owner", rows, "../" * len(PAGE.parent.parts)),
                                                check, CHECK) else []
     for readme, headers in package_headers(root).items():
         package = pathlib.PurePosixPath(readme).parent.name.replace("_", "-")
