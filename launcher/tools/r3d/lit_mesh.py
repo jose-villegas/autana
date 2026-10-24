@@ -110,17 +110,30 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     assert not flat or len(face) == len(tris), "a flat bake needs one face colour per triangle"
     q, col, tris, double, face = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, face)
     tris, double, face = canonical_order(tris, double, face)
+    return assemble(q, col, meshlet_entries(q, tris, double, face, meshlet_triangles), position_scale,
+                    leaf_triangles, max_depth)
 
+
+def meshlet_entries(q, tris, double, face, meshlet_triangles):
+    """The clusters of welded triangles in canonical order: meshlets of one
+    sidedness each, as dicts of "double", "tris" (indices into q) and "face"
+    (their colours, None unless flat)."""
     entries = []
     for is_double in (0, 1):
         member = double == is_double
         members = tris[member]
         if len(members):
-            colours = {oriented(t): c for t, c in zip(members, face[member])} if flat else None
-            assert not flat or len(colours) == len(members), "two triangles repeat one winding of the same vertices"
+            colours = {oriented(t): c for t, c in zip(members, face[member])} if face is not None else None
+            assert colours is None or len(colours) == len(members), "two triangles repeat one winding of the same vertices"
             entries += [{"double": is_double, "tris": t,
                          "face": None if colours is None else np.array([colours[oriented(x)] for x in t])}
                         for t in build_meshlets(q, members, meshlet_triangles)]
+    return entries
+
+
+def assemble(q, col, entries, position_scale, leaf_triangles, max_depth):
+    """The baked mesh of clusters cut by any means: an octree over their
+    centres, each cluster owning its vertices, checked against the format."""
     for e in entries:
         e["box"] = box_of(q, e["tris"])
     centres = np.array([(lo + hi) / 2.0 for lo, hi in (e["box"] for e in entries)])
