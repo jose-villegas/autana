@@ -1,3 +1,4 @@
+"""check_pr_ticket accepts and rejects pull request ticket lines."""
 import pathlib
 import subprocess
 import tempfile

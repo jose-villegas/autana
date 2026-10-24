@@ -2,9 +2,13 @@
 
 Per-type arithmetic, fixed point, random draws and units. [Math index](README.md).
 
+<!-- generated: math-fast-links-scalar check: python launcher/tools/perf/fast_paths.py --check -->
+Fast-path evidence: [mathf_recip](Fast-Paths.md#mathf-recip), [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx), [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt), [mathf_repeat](Fast-Paths.md#mathf-repeat), [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30), [trig_sin](Fast-Paths.md#trig-sin).
+<!-- /generated: math-fast-links-scalar -->
+
 `math/scalar/` holds per-type arithmetic, fixed point, random draws, trigonometry
-and time units. The tables list the range, lerp and rounding helpers; the
-[catalogue](../tools/Shared-Helpers.md) lists the rest.
+and time units. The tables list the range, lerp and rounding helpers;
+[code search](../tools/Code-Search.md) finds the rest.
 
 ## mathi.h
 

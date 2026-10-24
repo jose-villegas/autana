@@ -33,6 +33,7 @@ set(app_srcs
     "input/buttons/buttons.c"
     "input/touch/gesture.c"
     "input/motion/imu.c"
+    "input/motion/imu_queue.c"
     "power/power_decode.c"
     "power/power_cache.c"
     "power/power_log.c"
@@ -76,7 +77,7 @@ set(app_srcs
     "services/build_id.c"
     "services/settings_device.c"
     "services/settings_policy.c"
-    "services/tune.c"
+    "core/tune.c"
 )
 
 function(launcher_glob output)
@@ -135,6 +136,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_frame_watch.c"
         "console/verbs/console_navigation.c"
         "console/verbs/console_perf.c"
+        "console/console_tune.c"
         "console/verbs/console_tune.c"
         "console/verbs/console_screenshot.c"
         "console/capture/device_state.c"

@@ -79,7 +79,7 @@ The same code draws both orientations, because it measures against
 `ui_width()` rather than a fixed width. The render wraps it in
 `ui_begin()`, `ui_screen()` and `ui_end()`:
 
-<!-- generated: ui-settings-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-settings-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A whole settings screen: a title bar, then rows flowing down a window below it. */
 #include "ui/ui.h"
@@ -170,7 +170,7 @@ Those are all of its fields; colours are `0xRRGGBB`.
 | ![themed, portrait](../images/ui/themed.png) | ![themed, landscape](../images/ui/themed-landscape.png) |
 <!-- /generated: ui-themed-renders -->
 
-<!-- generated: ui-themed-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-themed-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A screen in its own colours: ui_theme() once, then the same verbs as any other. */
 #include "ui/ui.h"
@@ -325,7 +325,8 @@ something else.
 
 ```sh
 sh launcher/tools/render/scenes/ui_examples_render_host.sh
-python launcher/tools/render/ui_examples_doc.py
+python launcher/tools/render/ui_examples_doc.py --renders launcher/tools/results/render/ui_examples --out launcher/tools/results/render/ui_examples
+python launcher/tools/gen/examples_doc.py
 ```
 
 The scene renders every file in `ui_examples/`, each cut to what it drew
@@ -333,8 +334,13 @@ plus `UI_MARGIN`, into `launcher/tools/results/render/ui_examples/`, and
 checks it against `ui_examples_render_baseline.txt`, so a change that moves
 a pixel fails until the new picture is looked at and re-pinned with
 `--update-baseline`. A file in `ui_examples/screens/` is a whole screen,
-drawn at rest only. `ui_examples_doc.py` copies each example file into its
-page; `--check` fails when one is stale.
+drawn at rest only.
+
+`ui_examples_doc.py` writes only render and States tables and requires
+`--renders` and `--out`. `examples_doc.py` embeds the example files;
+`--check` fails when one is stale. See
+[Usage examples](../tools/Generated-Files.md#usage-examples).
+
 `launcher/tools/render/render_doc_images.sh` turns the renders into
 `docs/images/ui/` and the States tables; see "Images in these docs" in
 [`tools/Render-Harness.md`](../tools/Render-Harness.md).

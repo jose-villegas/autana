@@ -60,7 +60,7 @@ nonnegative(float value) {
 static bool
 renderer_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_renderer_t* r = row;
-    return r->entity < scene->entity_count && r->pad == 0 && text_fits(r->mesh);
+    return r->entity < scene->entity_count && text_fits(r->mesh);
 }
 
 static bool

@@ -4,8 +4,8 @@
 
 #include <stdbool.h>
 
+#include "core/tune.h"
 #include "render/resolution/resolution.h"
-#include "services/tune.h"
 
 /* Rows and span setup follow height, so the ladder reduces height before
  * width. Widths use fast upscale paths; the board fit from
