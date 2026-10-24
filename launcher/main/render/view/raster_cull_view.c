@@ -180,24 +180,26 @@ find_nodes(raster_cull_t* s, const raster_t* raster) {
     int offset = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
-        uint16_t stack[2][R3D_LIT_WALK_STACK_MAX];
+        uint16_t* node_of = s->walk_node;
+        uint16_t* shown_of = s->walk_shown; /* the node standing for it at `level` */
+        uint8_t* depth = s->walk_depth;
         int top = 0;
-        stack[0][top] = 0;
-        stack[1][top++] = 0; /* node, then the node standing for it at `level` */
-        int depth[R3D_LIT_WALK_STACK_MAX] = {0};
+        node_of[top] = 0;
+        shown_of[top] = 0;
+        depth[top++] = 0;
         while (top > 0) {
             top--;
-            const r3d_lit_node_t* node = &mesh->nodes[stack[0][top]];
-            const uint16_t shown = depth[top] <= level ? stack[0][top] : stack[1][top];
-            const int below = depth[top] + 1;
+            const r3d_lit_node_t* node = &mesh->nodes[node_of[top]];
+            const uint16_t shown = depth[top] <= level ? node_of[top] : shown_of[top];
+            const uint8_t below = (uint8_t)(depth[top] + 1);
             for (int k = 0; k < node->count; k++) {
                 if (node->leaf) {
                     s->node[offset + node->first + k] = shown;
                     continue;
                 }
                 assert(top < R3D_LIT_WALK_STACK_MAX);
-                stack[0][top] = (uint16_t)(node->first + k);
-                stack[1][top] = shown;
+                node_of[top] = (uint16_t)(node->first + k);
+                shown_of[top] = shown;
                 depth[top++] = below;
             }
         }
@@ -377,9 +379,9 @@ frustum_lines(const r3d_lens_t* lens, const render_view_t* camera, float depth, 
 
 /* The boxes of the nodes at depth cullview.level, and of shallower leaves. */
 static void
-level_boxes(const r3d_lens_t* lens, const r3d_lit_mesh_t* mesh) {
-    uint16_t stack[R3D_LIT_WALK_STACK_MAX];
-    uint8_t depth[R3D_LIT_WALK_STACK_MAX];
+level_boxes(raster_cull_t* s, const r3d_lens_t* lens, const r3d_lit_mesh_t* mesh) {
+    uint16_t* stack = s->walk_node;
+    uint8_t* depth = s->walk_depth;
     int top = 0;
     stack[top] = 0;
     depth[top++] = 0;
@@ -404,7 +406,7 @@ level_boxes(const r3d_lens_t* lens, const r3d_lit_mesh_t* mesh) {
 
 void
 raster_cull_overlay(void* state, int width, int height) {
-    const raster_cull_t* s = state;
+    raster_cull_t* s = state;
     if (s->raster == NULL) {
         return;
     }
@@ -419,7 +421,7 @@ raster_cull_overlay(void* state, int width, int height) {
         if (instance->model != NULL) {
             r3d_lens_place(&lens, instance->model, instance->mesh->position_scale);
         }
-        level_boxes(&lens, instance->mesh);
+        level_boxes(s, &lens, instance->mesh);
     }
     if (spectated) {
         r3d_lens_t lens;
