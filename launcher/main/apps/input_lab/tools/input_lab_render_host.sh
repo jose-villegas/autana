@@ -10,6 +10,8 @@ main/app/app_registry.c
 main/display/display.c
 main/input/motion/tilt.c
 main/input/motion/gravity.c
+main/input/motion/shake.c
+main/apps/input_lab/shake_probe.c
 main/input/motion/imu_calib.c
 main/apps/input_lab/imu_probe.c
 main/apps/input_lab/imu_record.c
