@@ -8,6 +8,9 @@ import unittest
 import zipfile
 from datetime import datetime, timedelta, timezone
 from unittest import mock
+from urllib.parse import parse_qs, urlsplit
+
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import board_alarm as alarm
@@ -71,13 +74,14 @@ class BoardAlarmTests(unittest.TestCase):
                 ('POST', '/issues/7/comments', {'body': 'Recovered: https://run'}),
                 ('PATCH', '/issues/7', {'state': 'closed'})] if opened else [])
 
-    def test_disabled_nights_bypass_every_problem(self):
+    def test_completed_runs_query_has_utc_success_window(self):
         request = Repository()
-        request.active = False
-        with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
-            self.assertEqual(alarm.check(request, NOW, ['2124'], []), [])
-        self.assertIn('disabled', output.getvalue())
-        self.assertEqual(len(request.calls), 1)
+        alarm.last_board_success(request, NOW.astimezone(timezone(timedelta(hours=2))))
+        self.assertEqual(len(request.calls), 2)
+        for _, path, _ in request.calls:
+            query = parse_qs(urlsplit(path).query)
+            self.assertEqual(query['status'], ['completed'])
+            self.assertEqual(query['created'], ['>=' + (NOW - alarm.SUCCESS_WINDOW).isoformat().replace('+00:00', 'Z')])
 
     def test_success_requires_board_success_and_successful_clear_step(self):
         for conclusion, cleared in [('success', 'success'), ('success', 'skipped'),
@@ -138,8 +142,10 @@ class BoardAlarmTests(unittest.TestCase):
     def test_cli_disabled_needs_no_devices_file(self):
         request = Repository()
         request.active = False
-        with mock.patch.object(alarm, 'call', request):
-            self.assertEqual(alarm.main(['check', '--lanes-from', '/absent', '--devices', '/absent']), 0)
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(alarm, 'call', request):
+            self.assertEqual(alarm.main(['check', '--lanes-from', '/absent', '--devices', '/absent',
+                                         '--reason-file', str(Path(directory) / 'reason')]), 0)
+        self.assertEqual(len(request.calls), 1)
 
     def test_probe_disabled_marks_workflow_output(self):
         request = Repository()
@@ -147,20 +153,21 @@ class BoardAlarmTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / 'output'
             with mock.patch.dict(os.environ, GITHUB_OUTPUT=str(output)):
-                self.assertEqual(alarm.probe_devices(Path(directory) / 'devices', request), 0)
+                self.assertEqual(alarm.probe_devices(Path(directory) / 'devices', Path(directory) / 'reason', request), 0)
             self.assertEqual(output.read_text(), 'enabled=false\n')
 
-    def test_probe_wait_is_bounded_and_raises_offline_without_cancel(self):
+    def test_probe_wait_is_bounded_and_records_offline_without_cancel(self):
         request = Repository()
         request.jobs['/actions/runs/42/attempts/2/jobs'] = [board_job('queued')]
         clock = mock.Mock(side_effect=[0, 0, alarm.QUEUED_LIMIT.total_seconds()])
         sleep = mock.Mock()
-        with mock.patch.dict(os.environ, GITHUB_RUN_ID='42', GITHUB_RUN_ATTEMPT='2',
-                GITHUB_SERVER_URL='https://github.com', GITHUB_REPOSITORY='owner/repo'):
-            self.assertEqual(alarm.probe_devices('/unused', request, clock, sleep), 1)
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ,
+                GITHUB_RUN_ID='42', GITHUB_RUN_ATTEMPT='2'):
+            reason = Path(directory) / 'reason'
+            self.assertEqual(alarm.probe_devices('/unused', reason, request, clock, sleep), 1)
+            self.assertEqual(reason.read_text(), 'board runner offline or idle')
         sleep.assert_called_once_with(alarm.POLL_SECONDS)
-        issue = next(body for method, path, body in request.calls if method == 'POST' and path == '/issues')
-        self.assertIn('board runner offline or idle', issue['body'])
+        self.assertFalse(any(method != 'GET' for method, _, _ in request.calls))
         self.assertFalse(any('cancel' in path for _, path, _ in request.calls))
 
     def test_probe_downloads_only_current_attempt_artifact(self):
@@ -182,10 +189,10 @@ class BoardAlarmTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ,
                 GITHUB_RUN_ID='42', GITHUB_RUN_ATTEMPT='2'):
             destination = Path(directory) / 'devices'
-            self.assertEqual(alarm.probe_devices(destination, download), 0)
+            self.assertEqual(alarm.probe_devices(destination, Path(directory) / 'reason', download), 0)
             self.assertEqual(json.loads(destination.read_text()), {'boards': []})
 
-    def test_probe_failed_job_and_missing_artifact_raise(self):
+    def test_probe_failed_job_and_missing_artifact_record_reason(self):
         for conclusion in ('failure', 'success'):
             request = Repository()
             job = board_job(conclusion=conclusion)
@@ -195,32 +202,85 @@ class BoardAlarmTests(unittest.TestCase):
                 if '/artifacts?' in path:
                     return {'artifacts': []}
                 return request(method, path, body)
-            with mock.patch.dict(os.environ, GITHUB_RUN_ID='42', GITHUB_RUN_ATTEMPT='2',
-                    GITHUB_SERVER_URL='https://github.com', GITHUB_REPOSITORY='owner/repo'):
-                self.assertEqual(alarm.probe_devices('/unused', without_artifact), 1)
-            self.assertTrue(request.issues)
+            with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ,
+                    GITHUB_RUN_ID='42', GITHUB_RUN_ATTEMPT='2'):
+                reason = Path(directory) / 'reason'
+                self.assertEqual(alarm.probe_devices('/unused', reason, without_artifact), 1)
+                self.assertIn('failure' if conclusion == 'failure' else 'no devices artifact', reason.read_text())
+            self.assertFalse(any(method != 'GET' for method, _, _ in request.calls))
 
     def test_cli_check_exit_codes_and_raise_clear(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ,
                 GITHUB_SERVER_URL='https://github.com', GITHUB_REPOSITORY='owner/repo', GITHUB_RUN_ID='42'):
             devices = Path(directory) / 'devices.json'
             devices.write_text('{"boards": []}')
+            reason = Path(directory) / 'reason'
             for problems in ([], ['offline', 'missing']):
-                with mock.patch.object(alarm, 'nights_enabled', return_value=True), \
+                with mock.patch.object(alarm, 'nights_enabled', return_value=True) as enabled, \
                         mock.patch.object(alarm, 'check', return_value=problems), \
                         mock.patch.object(alarm, 'raise_alarm') as raised:
-                    result = alarm.main(['check', '--lanes-from', directory, '--devices', str(devices)])
+                    result = alarm.main(['check', '--lanes-from', directory, '--devices', str(devices),
+                                         '--reason-file', str(reason)])
                     self.assertEqual(result, int(bool(problems)))
-                    self.assertEqual(raised.call_count, int(bool(problems)))
+                    enabled.assert_called_once()
+                    raised.assert_not_called()
                     if problems:
-                        self.assertIn('offline', raised.call_args.args[0])
-                        self.assertEqual(raised.call_args.args[1], 'https://github.com/owner/repo/actions/runs/42')
+                        self.assertEqual(reason.read_text(), 'offline\nmissing')
+                    else:
+                        self.assertFalse(reason.exists())
             with mock.patch.object(alarm, 'raise_alarm') as raised, \
                     mock.patch.object(alarm, 'clear_alarm') as cleared:
                 self.assertEqual(alarm.main(['raise', '--reason', 'failed']), 0)
                 self.assertEqual(alarm.main(['clear']), 0)
                 raised.assert_called_once()
                 cleared.assert_called_once()
+
+    def test_cli_enabled_guard_is_called_once(self):
+        request = Repository()
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(alarm, 'call', request):
+            devices = Path(directory) / 'devices'
+            devices.write_text('{"boards": []}')
+            self.assertEqual(alarm.main(['check', '--lanes-from', directory, '--devices', str(devices),
+                                         '--reason-file', str(Path(directory) / 'reason')]), 1)
+        self.assertEqual(sum(path == '/actions/workflows/' + alarm.NIGHTLY_WORKFLOW
+                             for _, path, _ in request.calls), 1)
+        self.assertFalse(any(method != 'GET' for method, _, _ in request.calls))
+
+    def test_cli_raise_reads_reason_file_or_falls_back_after_crash(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(alarm, 'run_url', return_value='logs'):
+            reason = Path(directory) / 'reason'
+            for text in (None, 'offline\nmissing'):
+                if text is not None:
+                    reason.write_text(text)
+                with mock.patch.object(alarm, 'raise_alarm') as raised:
+                    self.assertEqual(alarm.main(['raise', '--reason-file', str(reason)]), 0)
+                    raised.assert_called_once_with(text or alarm.FAILURE_REASON, 'logs')
+            with mock.patch('sys.stderr', new_callable=io.StringIO), self.assertRaises(SystemExit) as error:
+                alarm.main(['raise', '--reason', 'failed', '--reason-file', str(reason)])
+            self.assertEqual(error.exception.code, 2)
+
+    def test_workflow_has_one_reporting_path_without_shared_check_concurrency(self):
+        root = Path(__file__).resolve().parents[3] / '.github/workflows'
+        workflow = yaml.safe_load((root / 'board-health.yml').read_text())
+        check = workflow['jobs']['check']
+        self.assertNotIn('concurrency', check)
+        commands = [step for step in check['steps'] if 'board_alarm.py' in step.get('run', '')]
+        self.assertEqual(len(commands), 3)
+        for step in commands:
+            self.assertIn('--reason-file "$RUNNER_TEMP/board-alarm-reason"', step['run'])
+        reports = [step for step in commands if 'board_alarm.py raise ' in step['run']]
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0]['if'], 'failure()')
+        for name in ('nightly-perf.yml', 'board-ci.yml'):
+            job = yaml.safe_load((root / name).read_text())['jobs']['alarm']
+            self.assertEqual(job['concurrency']['group'], 'board-ci-alarm')
+            self.assertEqual(job['timeout-minutes'], 5)
+
+    def test_nightly_held_output_uses_lane_outcome_only(self):
+        workflow = Path(__file__).resolve().parents[3] / '.github/workflows/nightly-perf.yml'
+        nightly = yaml.safe_load(workflow.read_text())['jobs']['nightly']
+        self.assertEqual(nightly['outputs']['held'],
+                         "${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}")
 
 
 if __name__ == '__main__':

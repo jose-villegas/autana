@@ -51,9 +51,6 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
-    concurrency:
-      group: board-ci-alarm
-      cancel-in-progress: false
     permissions:
       issues: write
       actions: read
@@ -68,7 +65,7 @@ jobs:
 
       - name: Wait for the USB probe and download its artifact
         id: probe
-        run: python3 scripts/ci/board_alarm.py probe --devices "$RUNNER_TEMP/devices.json"
+        run: python3 scripts/ci/board_alarm.py probe --devices "$RUNNER_TEMP/devices.json" --reason-file "$RUNNER_TEMP/board-alarm-reason"
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: steps.probe.outputs.enabled == 'true'
@@ -81,8 +78,8 @@ jobs:
 
       - name: Check board health
         if: steps.probe.outputs.enabled == 'true'
-        run: python3 scripts/ci/board_alarm.py check --lanes-from perf-data --devices "$RUNNER_TEMP/devices.json"
+        run: python3 scripts/ci/board_alarm.py check --lanes-from perf-data --devices "$RUNNER_TEMP/devices.json" --reason-file "$RUNNER_TEMP/board-alarm-reason"
 
       - name: Report health check failures
         if: failure()
-        run: python3 scripts/ci/board_alarm.py raise --reason 'Board health check failed; see the job logs'
+        run: python3 scripts/ci/board_alarm.py raise --reason-file "$RUNNER_TEMP/board-alarm-reason"
