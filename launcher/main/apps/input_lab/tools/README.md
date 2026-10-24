@@ -12,6 +12,10 @@ The HUD names the committed quarter in a fixed reading transform. White flashes
 mark steps; cyan marks completion. The shared recorder retains FIFO accel
 and gyro counts with microsecond timestamps.
 
+`IMU_RECORD_ORIENTATION_CAPACITY` in `../imu_record.h` bounds the transcript
+below `IMU_RECORD_SHAKE_CAPACITY`. Each line uses the orientation format's
+worst-case field widths; every FIFO sample is retained for the full script.
+
 ```sh
 autana labdump > orientation.log
 python launcher/tools/input/orientation_replay.py orientation.log --model both --initial-quarter 1 --cc gcc

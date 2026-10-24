@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "input/input.h"
+#include "apps/input_lab/imu_probe.h"
 #include "math/scalar/units.h"
 
 #define ORIENTATION_PROBE_STEP_MS     10000U
@@ -29,6 +29,18 @@ typedef enum {
     ((ORIENTATION_PROBE_ROUND_MS * MATH_US_PER_MS + INPUT_MOTION_SAMPLE_US - 1) / INPUT_MOTION_SAMPLE_US               \
      + ORIENTATION_PROBE_DONE + 2)
 /* Counts retain offset-calibrated acceleration and raw gyro precision. */
-#define ORIENTATION_PROBE_SAMPLE_FORMAT "orientation %d %lld %d %d %d %d %d %d"
+#define ORIENTATION_PROBE_SAMPLE_FORMAT    "orientation %d %lld %d %d %d %d %d %d"
+#define ORIENTATION_PROBE_ACCEL_MAX_COUNTS (-INT16_MIN + IMU_CALIB_OFFSET_MAX)
+#define ORIENTATION_PROBE_GYRO_MAX_COUNTS  (-INT16_MIN)
+#define ORIENTATION_PROBE_ACCEL_WIDTH      (1 + IMU_PROBE_DECIMAL_DIGITS(ORIENTATION_PROBE_ACCEL_MAX_COUNTS))
+#define ORIENTATION_PROBE_GYRO_WIDTH       (1 + IMU_PROBE_DECIMAL_DIGITS(ORIENTATION_PROBE_GYRO_MAX_COUNTS))
+#define ORIENTATION_PROBE_SAMPLE_FIELDS    (2 + 3 + 3)
+#define ORIENTATION_PROBE_SAMPLE_LABEL_SIZE                                                                            \
+    (sizeof(ORIENTATION_PROBE_SAMPLE_FORMAT) - 1 - (ORIENTATION_PROBE_SAMPLE_FIELDS * (sizeof("%d") - 1))              \
+     - (sizeof("%lld") - sizeof("%d")))
+#define ORIENTATION_PROBE_SAMPLE_SIZE                                                                                  \
+    (ORIENTATION_PROBE_SAMPLE_LABEL_SIZE + IMU_PROBE_DECIMAL_DIGITS(ORIENTATION_PROBE_DONE)                            \
+     + IMU_PROBE_DECIMAL_DIGITS(ORIENTATION_PROBE_ROUND_MS * MATH_US_PER_MS) + (3 * ORIENTATION_PROBE_ACCEL_WIDTH)     \
+     + (3 * ORIENTATION_PROBE_GYRO_WIDTH))
 int orientation_probe_target(orientation_probe_step_t step);
 void orientation_probe_prompt(orientation_probe_step_t step, char* text, size_t size);
