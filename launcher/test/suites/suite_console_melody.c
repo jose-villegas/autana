@@ -7,6 +7,7 @@
 #define TEST_MELODY_BARS             4u
 #define TEST_MELODY_QUARTERS_PER_BAR 3u
 #define TEST_MELODY_MAX_CENTS        5.0F
+#define TEST_MELODY_INFO_FIELDS      4
 
 static melody_note_t
 fixture(size_t index) {
@@ -38,8 +39,26 @@ test_melody_phrase_names_and_rhythm(void) {
     TEST_ASSERT_EQUAL_UINT(TEST_MELODY_BARS * TEST_MELODY_QUARTERS_PER_BAR * MELODY_STEPS_PER_QUARTER, steps);
 }
 
+static void
+test_melody_info_carries_what_a_host_times_a_run_by(void) {
+    char line[MELODY_INFO_BYTES];
+    melody_info_line(line);
+    unsigned notes;
+    unsigned check_ms;
+    unsigned play_max_ms;
+    int cents_per_octave;
+    TEST_ASSERT_EQUAL_INT(TEST_MELODY_INFO_FIELDS,
+                          sscanf(line, "MELODY_INFO notes=%u check_ms=%u play_max_ms=%u cents_per_octave=%d", &notes,
+                                 &check_ms, &play_max_ms, &cents_per_octave));
+    TEST_ASSERT_EQUAL_UINT(MELODY_PHRASE_NOTES, notes);
+    TEST_ASSERT_EQUAL_UINT(CONSOLE_MELODY_CHECK_MS, check_ms);
+    TEST_ASSERT_EQUAL_UINT(CONSOLE_MELODY_PLAY_MAX_MS, play_max_ms);
+    TEST_ASSERT_EQUAL_INT(PITCH_CENTS_PER_SEMITONE * PITCH_SEMITONES_PER_OCTAVE, cents_per_octave);
+}
+
 void
 run_console_melody_suite(void) {
     RUN_TEST(test_melody_phrase_names_and_rhythm);
+    RUN_TEST(test_melody_info_carries_what_a_host_times_a_run_by);
 }
 SUITE_REGISTER(run_console_melody_suite)

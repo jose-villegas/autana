@@ -1387,14 +1387,10 @@ class TuneCommandTests(unittest.TestCase):
             autana.tune(["reset", "trail"])
         sent.assert_called_once_with("RESET ridge.trail")
 
-    def test_save_takes_no_further_words(self):
-        with self.assertRaises(SystemExit):
-            autana.tune(["save", "extra"])
-
-    def test_save_calls_the_source_writer(self):
-        with mock.patch.object(autana, "save", return_value=0) as saved:
+    def test_save_is_filter_text_now_the_source_writer_is_its_own_tool(self):
+        with mock.patch.object(autana, "tunables", return_value=self.ROWS) as rows,                 contextlib.redirect_stdout(io.StringIO()):
             code = autana.tune(["save"])
-        saved.assert_called_once_with()
+        rows.assert_called_once_with()
         self.assertEqual(code, 0)
 
     def test_reset_as_a_value_is_a_set_not_the_reset_subcommand(self):
