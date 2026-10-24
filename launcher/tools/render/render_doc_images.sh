@@ -246,6 +246,9 @@ fi
 
 run "$PYTHON" launcher/tools/audio/audio_drc_figures.py --out "$OUT/audio" > "$WORK/audio_drc_figures.log"
 run "$PYTHON" launcher/tools/audio/audio_path_figures.py --out "$OUT/audio" > "$WORK/audio_path_figures.log"
+if [ -f docs/audio/data/audio_buzz_capture.txt ]; then
+    run "$PYTHON" launcher/tools/audio/audio_buzz_doc.py --out "$OUT/audio" > "$WORK/audio_buzz_doc.log"
+fi
 run "$PYTHON" launcher/tools/audio/sound_mix_figures.py --out "$OUT/audio" > "$WORK/sound_mix_figures.log"
 run "$PYTHON" launcher/tools/audio/sound_onset_figures.py --out "$OUT/audio" > "$WORK/sound_onset_figures.log"
 # --orphans scans this runner: drc-level.png, drc-thd.png, drc-level-dark.png, drc-thd-dark.png,
