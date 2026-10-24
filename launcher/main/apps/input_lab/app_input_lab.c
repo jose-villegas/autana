@@ -33,39 +33,36 @@
 
 static const char* TAG = "input_lab";
 
-#define TARGET_SIDE          12
-#define TARGET_MARGIN        4
-#define GRID_COLS            5
-#define GRID_ROWS            5
-#define GRID_COUNT           (GRID_COLS * GRID_ROWS)
-#define SETTLE_FROM_MS       30
-#define SETTLE_TO_MS         80
-#define HUD_TOP              24
-#define HUD_LINE_H           20
-#define HUD_SCALE            2
-#define MARK_SIDE            4
-#define BEZEL_MAX            80
-#define BEZEL_DRAG_PX        4
-#define ARC_STEP             2
-#define RULER_DEPTH          20
-#define RULER_SLOT           12
-#define RULER_TICK           8
-#define RULER_LABEL_EVERY    5
-#define RULER_LABEL_DEPTH    32
-#define RULER_LABEL_SIDE     20
-#define COL_RULER            0xFFFFFF
-#define COL_RULER_MAJOR      0xFF3030
-#define MOTION_G_TEXT_SIZE   16
-#define MOTION_MILLI_DIGITS  3
-#define OFFSET_DIGITS        1
-#define OFFSET_SCALE         10
-#define MOTION_HUD_TEXT_SIZE 96
-#define MOTION_US_PER_MS     1000
-#define MOTION_LOG_PERIOD_MS 100
-#define MOTION_DRAIN_MAX_MS  (MATH_MS_PER_S / 2U)
+#define TARGET_SIDE           12
+#define TARGET_MARGIN         4
+#define GRID_COLS             5
+#define GRID_ROWS             5
+#define GRID_COUNT            (GRID_COLS * GRID_ROWS)
+#define SETTLE_FROM_MS        30
+#define SETTLE_TO_MS          80
+#define HUD_TOP               24
+#define HUD_LINE_H            20
+#define HUD_SCALE             2
+#define MARK_SIDE             4
+#define BEZEL_MAX             80
+#define BEZEL_DRAG_PX         4
+#define ARC_STEP              2
+#define RULER_DEPTH           20
+#define RULER_SLOT            12
+#define RULER_TICK            8
+#define RULER_LABEL_EVERY     5
+#define RULER_LABEL_DEPTH     32
+#define RULER_LABEL_SIDE      20
+#define COL_RULER             0xFFFFFF
+#define COL_RULER_MAJOR       0xFF3030
+#define MOTION_G_TEXT_SIZE    16
+#define MOTION_MILLI_DIGITS   3
+#define OFFSET_DIGITS         1
+#define OFFSET_SCALE          10
+#define MOTION_HUD_TEXT_SIZE  96
+#define MOTION_US_PER_MS      1000
+#define MOTION_LOG_PERIOD_MS  100
 
-TUNE_OWNER(input_lab);
-TUNE(input_lab, imu_drain_ms, 0, 0, MOTION_DRAIN_MAX_MS);
 #define SHAKE_BAR_X           200
 #define SHAKE_BAR_HEIGHT      8
 #define SHAKE_BAR_ROW         6
@@ -119,7 +116,6 @@ static input_motion_batch_t* motion_batch;
 static shake_capture_t shake_capture;
 static int motion_samples;
 static int motion_lost;
-static uint32_t motion_since_drain_ms;
 static int64_t motion_drain_us;
 /* Bias-corrected gyro rotation since the turn step armed, in degrees: proves the gyro scale on its own. */
 static vec3f_t turn_gyro_deg;
@@ -201,7 +197,6 @@ start_round(void) {
         motion_log_ms = 0;
         motion_samples = 0;
         motion_lost = 0;
-        motion_since_drain_ms = 0;
         motion_drain_us = 0;
         motion_read_us = timing_now_us();
         imu_round = (imu_probe_round_t){0};
@@ -478,9 +473,9 @@ integrate_turn_gyro(const input_motion_batch_t* batch) {
         return;
     }
     const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
-    /* Samples lost to FIFO read mode advance at the last rate, as gravity_update_batch does. */
-    turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(turn_gyro_rate, dt * (float)batch->lost));
     for (int i = 0; i < batch->count; i++) {
+        const uint32_t held_us = gravity_held_us(batch->lost_before[i]);
+        turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(turn_gyro_rate, (float)held_us / MATH_US_PER_S));
         turn_gyro_rate =
             vec3f_sub(vec3f_scale(vec3f_from_vec3i(batch->samples[i].rotation), 1.0F / INPUT_ROTATION_ONE_DPS),
                       gravity_gyro_bias(&gravity));
@@ -510,7 +505,6 @@ read_shake_samples(const input_motion_batch_t* batch) {
         return;
     }
     shake_capture.slice->gap = batch->gap;
-    shake_capture.slice->lost = batch->lost;
     shake_capture.slice->count = batch->count > 0 ? 1 : 0;
     if (batch->count == 0) {
         gravity_update_batch(&gravity, shake_capture.slice);
@@ -518,9 +512,9 @@ read_shake_samples(const input_motion_batch_t* batch) {
     const int64_t end_us = timing_now_us();
     for (int i = 0; i < batch->count; i++) {
         shake_capture.slice->samples[0] = batch->samples[i];
+        shake_capture.slice->lost_before[0] = batch->lost_before[i];
         gravity_update_batch(&gravity, shake_capture.slice);
         shake_capture.slice->gap = false;
-        shake_capture.slice->lost = 0;
         const vec3f_t linear = gravity_linear(&gravity);
         shake_probe_feed(&shake_capture.levels, linear);
         const int64_t elapsed_us =
@@ -549,14 +543,9 @@ static void
 read_motion(uint32_t dt_ms) {
     motion_log_ms += dt_ms;
     const int64_t drain_start_us = timing_now_us();
-    motion_since_drain_ms += dt_ms;
-    const bool due = motion_since_drain_ms >= (uint32_t)imu_drain_ms;
-    const bool read = due && motion_batch != NULL && input_read_motion_batch(motion_batch);
-    if (due) {
-        motion_since_drain_ms = 0;
-        motion_drain_us += timing_now_us() - drain_start_us;
-    }
-    if (due && !read) {
+    const bool read = motion_batch != NULL && input_read_motion_batch(motion_batch);
+    motion_drain_us += timing_now_us() - drain_start_us;
+    if (!read) {
         have_motion = false;
     } else if (read && motion_batch->count > 0) {
         motion = motion_batch->samples[motion_batch->count - 1];
@@ -564,7 +553,9 @@ read_motion(uint32_t dt_ms) {
         motion_samples += motion_batch->count;
     }
     if (read) {
-        motion_lost += motion_batch->lost;
+        for (int i = 0; i < motion_batch->count; i++) {
+            motion_lost += motion_batch->lost_before[i];
+        }
         if (mode == MODE_MOTION) {
             gravity_update_batch(&gravity, motion_batch);
             integrate_turn_gyro(motion_batch);

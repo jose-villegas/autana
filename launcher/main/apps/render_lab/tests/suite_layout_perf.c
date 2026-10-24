@@ -13,6 +13,7 @@
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "hash/crc32.h"
 #include "perf_layout_labels.h"
 #include "perf_stats.h"
 #include "render/context/render_context.h"
@@ -160,7 +161,7 @@ sent_frame_crc(fixture_t* f) {
         gfx_read_panel_row(y, &panel[(size_t)y * GFX_WIDTH]);
     }
     gfx_readback_end();
-    const uint32_t crc = asset_crc32(panel, GFX_FRAMEBUFFER_BYTES);
+    const uint32_t crc = crc32_update(0, panel, GFX_FRAMEBUFFER_BYTES);
     memory_free(panel);
     return crc;
 }

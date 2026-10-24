@@ -5,7 +5,7 @@ from pathlib import Path
 
 from build.c_header import read_define
 
-OWNER = Path(__file__).resolve().parents[2] / "packages/name_hash/include/name_hash/name_hash.h"
+OWNER = Path(__file__).resolve().parents[2] / "packages/hash/include/hash/name_hash.h"
 OFFSET_BASIS = read_define(OWNER, "NAME_HASH_OFFSET_BASIS")
 PRIME = read_define(OWNER, "NAME_HASH_PRIME")
 NONE = read_define(OWNER, "NAME_HASH_NONE")

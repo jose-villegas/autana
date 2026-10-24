@@ -7,12 +7,8 @@ FILE holds one "step ms ax ay az lx ly lz" line in mg per motion sample.
 """
 import argparse
 from pathlib import Path
-import sys
 
-TOOLS = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(TOOLS))
-sys.path.insert(0, str(TOOLS / "math"))
-from math_figures import ROOT, run_probe
+from input_figures import ROOT, run_probe
 from docs.plot_style import FAINT, LABEL_SIZE, MUTED, SLOTS, save, style_axes, subplots
 
 PROBE = Path(__file__).with_name("shake_figures_probe.c")
@@ -59,7 +55,7 @@ def window(trace, name):
 def trace_figure(data, steps, output):
     windows = [(label, window(data["trace"], name)) for name, label in steps]
     top = max(row[2] for _, rows in windows for row in rows) * SIZE_ROOM
-    fig, axes = subplots(2, len(windows), TRACE_SIZE, sharey="row",
+    fig, axes = subplots(2, len(windows), TRACE_SIZE, sharey="row", squeeze=False,
                          gridspec_kw={"height_ratios": (1, LEVEL_ROW_SHARE)})
     for column, (label, rows) in enumerate(windows):
         seconds = [(row[1] - rows[0][1]) / MS_PER_S for row in rows]
