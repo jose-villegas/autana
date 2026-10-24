@@ -18,6 +18,7 @@ The rest of this index lists the repository's checks and tools.
 | [Console-Framing.md](Console-Framing.md) | How the device frames a block of data between begin and end lines on the console, and how a host script decodes it. |
 | [Process-Trees.md](Process-Trees.md) | Starting and stopping a command as one process tree on Windows and POSIX, so no child outlives its parent. |
 | [Render-Harness.md](Render-Harness.md) | Rendering real firmware screens on a host: declaring a scene, what its pixels are pinned to, video output, the QEMU backend, and diffing against a device capture. |
+| [Pull-Requests.md](Pull-Requests.md) | The pull request description layout, the scaffold that fills its table from the branch, and its check. |
 | [Mermaid-Diagrams.md](Mermaid-Diagrams.md) | Validating ```` ```mermaid ```` diagrams with mermaid-cli: the command, the pre-commit step, and CI. |
 | [Math-Formulas.md](Math-Formulas.md) | Writing maths GitHub renders, and validating every formula with GitHub's MathJax configuration: the command, the pre-commit step, and CI. |
 | [Generated-Files.md](Generated-Files.md) | Checked-in generated headers: the banner that names their command, and the gate that reruns it and compares bytes. |
