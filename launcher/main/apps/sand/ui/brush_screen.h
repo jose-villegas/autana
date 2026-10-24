@@ -97,5 +97,5 @@ void brush_screen_layout(int screen_w, int screen_h, brush_screen_layout_t* out)
 /* Draws the whole screen - header, mode segments, size slider - and applies
  * a segment tap to `ui` before returning. Caller brackets this with
  * ui_begin()/ui_end(UI_NO_BACKGROUND): input and presentation are the app's
- * job, this is only the UI build - see docs/Building-a-Screen.md. */
+ * job, this is only the UI build - see docs/ui/Building-a-Screen.md. */
 void brush_screen_draw(sand_ui_t* ui);

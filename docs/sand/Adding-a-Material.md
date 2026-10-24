@@ -9,7 +9,7 @@ cells it has moved so the same cell does not move twice in one update.
 Read [the architecture map](Architecture.md) for the byte and file layout,
 then [the simulation guide](Sand-Simulation.md) for movement and reactions.
 The checklist below assumes those rules are familiar. A new row can be
-checked by [host tests](../Testing-Guide.md), while seeing it in the running
+checked by [host tests](../testing/README.md), while seeing it in the running
 sandbox requires a board build.
 
 ---
@@ -542,7 +542,7 @@ number goes in a comment next to the constant and the probe is disposable.
 
 Follow the sand test suite's existing conventions (split across
 `suite_sand_*.c`): host-portable, direct
-assertions, not visual inspection (see `docs/Testing-Guide.md` for why).
+assertions, not visual inspection (see `docs/testing/README.md` for why).
 The gas tests are a reasonable template for a new `KIND`:
 
 - Basic movement under ordinary gravity, and under at least one other
@@ -592,5 +592,5 @@ pass makes the two existing fire budgets worth re-measuring.
 - [`Shading-and-Colour.md`](Shading-and-Colour.md), the deeper dive on
   painting an *existing* material once it has a palette block: the
   pipeline, the recurring shading mistakes, and the one item still open.
-- `docs/Testing-Guide.md`: the host/device test split this guide's
+- `docs/testing/README.md`: the host/device test split this guide's
   testing section assumes.

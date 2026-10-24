@@ -39,7 +39,7 @@ dropdown_icons_example(dropdown_icons_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-dropdown-icons-states sha256=909746633152ec3adf7afe24359fffbf2c09de565c3b7fdfcf80f9b09e7ad197 -->
@@ -72,4 +72,4 @@ return true.
 
 - [Dropdown](dropdown.md)
 - [Icon](icon.md)
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

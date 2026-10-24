@@ -1,7 +1,7 @@
 /*
  * Portable suite: the peak bytes each screen's command list reaches, drawn
  * by the real screen functions through the real face (see
- * docs/Building-a-Screen.md), with the app's own sand_brushes[]. Each
+ * docs/ui/Building-a-Screen.md), with the app's own sand_brushes[]. Each
  * scenario takes the worst case a visit can reach (every tile a source, the
  * longest names, the DITHER list open), not a zeroed sand_ui_t.
  */
