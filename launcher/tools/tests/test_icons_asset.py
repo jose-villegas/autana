@@ -158,7 +158,7 @@ class FolderPackTests(Fixture):
         self.refused({"ui/ui.pack.toml": "", "ui/inner/inner.pack.toml": "", "ui/inner/marks.icons.toml": 2},
                      "do not nest")
 
-    def test_a_pack_toml_holds_no_settings_yet(self):
+    def test_unknown_pack_settings_are_refused(self):
         self.refused({"ui/ui.pack.toml": "entries = []\n", "ui/marks.icons.toml": 1}, "unknown keys")
 
     def test_one_id_twice_in_a_folder_pack_is_refused(self):

@@ -10,16 +10,45 @@ console_register(console_registry_t* registry, console_verb_t* verb) {
     return registry_add(&registry->first, &rule, verb) != REGISTRY_CLASH;
 }
 
-bool
-console_registry_handle_line(console_registry_t* registry, const char* line, console_reply_fn reply) {
+int
+console_registry_line_max(const console_registry_t* registry) {
+    int line_max = CONSOLE_LINE_MAX;
+    for (const console_verb_t* entry = registry->first; entry != NULL; entry = entry->next) {
+        if (entry->line_max > line_max) {
+            line_max = entry->line_max;
+        }
+    }
+    return line_max;
+}
+
+static bool
+console_registry_accepts_line(const console_registry_t* registry, const char* line) {
+    const size_t length = strlen(line);
+    if (length < CONSOLE_LINE_MAX) {
+        return true;
+    }
+    for (const console_verb_t* entry = registry->first; entry != NULL; entry = entry->next) {
+        const char* args;
+        if (console_word_match(line, entry->name, &args)) {
+            return length < (size_t)entry->line_max;
+        }
+    }
+    return false;
+}
+
+console_line_result_t
+console_registry_dispatch(console_registry_t* registry, const char* line, console_reply_fn reply) {
+    if (!console_registry_accepts_line(registry, line)) {
+        return CONSOLE_LINE_REJECTED;
+    }
     for (const console_verb_t* entry = registry->first; entry != NULL; entry = entry->next) {
         const char* args;
         if (console_word_match(line, entry->name, &args)) {
             entry->handle(args, reply);
-            return true;
+            return CONSOLE_LINE_HANDLED;
         }
     }
-    return false;
+    return CONSOLE_LINE_UNCLAIMED;
 }
 
 console_clash_t
