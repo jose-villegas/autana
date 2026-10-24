@@ -22,11 +22,33 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      build-release: ${{ steps.affected.outputs.build-release }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job build-release
+
   build-release:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.build-release == 'true') }}
     name: Build (release, esp32s3)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
 
       - uses: ./.github/actions/idf-build
         with:
@@ -38,3 +60,7 @@ jobs:
             && python3 launcher/tools/render/code_layout.py --check launcher/build
             && python3 launcher/tools/build/memory_map.py --check --require-pin launcher/build
             && python3 launcher/tools/build/check_psram_tuning_wrap.py launcher/build
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}

@@ -91,6 +91,60 @@ not prove the Xtensa build behaves the same.
 Release images contain no test code: the suites are never compiled in. See
 [`Build-Variants.md`](../tools/Build-Variants.md#release-builds-contain-no-test-code).
 
+## CI job inputs
+
+Tree checks on pull requests run when a recorded input changes. A skipped
+job reports success, including “Every suite under QEMU”. Branch Name,
+PR ticket and Board perf judge the pull request itself and run without this gate.
+
+On pushes and manual runs, [job-inputs](../../.github/actions/job-inputs/action.yml)
+resets tracked files' and directories' access times after checkout. Its last
+step records reads, the workflow and its local actions in a 90-day artifact.
+
+The pull request gate compares changed paths with the newest unexpired
+manifest on its base branch. Additions, removals and renames also match their
+nearest directory present on the base if it was read. The log and step summary
+show decisions and matches.
+
+An addition or rename destination matches a tracked read with the same
+extension under its nearest ancestor present on the base. Extensionless
+files match other extensionless files.
+
+The index and changed paths identify base directories, with the root as fallback.
+The untracked `.git/job-inputs-canary` checks access times and stays outside
+the manifest. Recorder reads do not establish extension coverage.
+
+A missing manifest runs the job with a notice. A failed gate or a pull request
+at the files API's limit runs all jobs. Recording fails if a canary read is
+missing or no tree input besides the recorder and workflow files was read.
+
+To add a gated job:
+
+1. Add its output to the workflow's `inputs` job and its id to the
+   `job_inputs.py affected --job JOB` arguments.
+2. Add these steps immediately after checkout and last, respectively:
+
+   ```yaml
+   - uses: ./.github/actions/job-inputs
+     with: {step: arm}
+   # The job's existing steps go here.
+   - uses: ./.github/actions/job-inputs
+     if: ${{ !cancelled() }}
+     with: {step: record}
+   ```
+
+3. Keep its check name and add the dependency and condition, substituting
+   its id for `JOB`:
+
+   ```yaml
+   needs: inputs
+   if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.JOB == 'true') }}
+   ```
+
+4. Use `ubuntu-24.04`. A gated job's cache keys must come from reads after
+   arm, including cache hits. Linux access times must work; Windows runners
+   are rejected when arming.
+
 ## Related
 
 - [`Build-Variants.md`](../tools/Build-Variants.md): what RELEASE, DEVELOPMENT and SELFTEST gate, and the scope choice.

@@ -62,6 +62,11 @@
  * 448px screen. */
 #define UI_BANNER_HEIGHT   56
 
+/* The page background: what a screen passes to ui_end(), what the shell look
+ * paints its windows with, and what an app matches when it draws beside the
+ * UI. The one spelling of this colour. */
+#define UI_BACKGROUND      0x0A0C14
+
 /* Pass as ui_end()'s background to draw without clearing first, for a UI laid
  * over an app's own output rather than replacing it. */
 #define UI_NO_BACKGROUND   0xFFFFFFFFu
