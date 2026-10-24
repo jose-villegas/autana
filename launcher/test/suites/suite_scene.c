@@ -182,6 +182,7 @@ make_clip_entry(uint8_t* entry, anim_value_t position_type, int track_count) {
         {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, { x, y, z }                                                               \
     }
 #define CAMERA_AT(x) AT(x, 0, -CAMERA_DISTANCE) /* a camera's pose, x across */
+#define MIRRORED     {{{{-1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, {0, 0, 0}}
 
 /* What a scene entry holds, written out as tools/r3d/scene_asset.py would.
  * Every camera has a half field of view and a near plane of 1. */
@@ -265,7 +266,35 @@ static const scene_spec_t SCENES[] = {
      .renderer_count = 1,
      .entities = {{"red", IDENTITY}, {"lamp", IDENTITY}},
      .renderers = {{0, "red"}}},
+    /* a red quad 2 units left, carrying a green one 4 units to its right */
+    {.id = "test_family",
+     .entity_count = 3,
+     .renderer_count = 2,
+     .camera_count = 1,
+     .entities = {{"camera", CAMERA_AT(0)}, {"red", AT(-2, 0, 0)}, {"green", AT(4, 0, 0)}}, /* green's parent: red */
+     .renderers = {{1, "red"}, {2, "green"}},
+     .cameras = {{0, CLEAR_RGB, ""}}},
+    /* a red quad turned inside out */
+    {.id = "test_mirror",
+     .entity_count = 1,
+     .renderer_count = 1,
+     .entities = {{"mirror", MIRRORED}},
+     .renderers = {{0, "red"}}},
 };
+
+/* The bytes of an entity_parents part, padded as the writer pads every part. */
+static uint32_t
+parents_size(int entities) {
+    return (uint32_t)mathi_size_ceil(sizeof(uint16_t) * (size_t)entities, sizeof(uint32_t));
+}
+
+enum { FAMILY_PARENT = 1, FAMILY_CHILD = 2 };
+
+/* Every entity is a root but the family's green quad. */
+static uint16_t
+parent_index(const scene_spec_t* s, int entity) {
+    return strcmp(s->id, "test_family") == 0 && entity == FAMILY_CHILD ? FAMILY_PARENT : SCENE_ASSET_PARENT_ROOT;
+}
 
 #define SCENE_COUNT ((int)(sizeof SCENES / sizeof SCENES[0]))
 #define BAD_SCENE   "test_bad" /* the pair, its second renderer naming entity 9 */
@@ -288,7 +317,8 @@ scene_entry_size(const scene_spec_t* s) {
            + (strcmp(s->id, "test_lit") == 0 ? sizeof(scene_asset_light_t) : 0)
            + (strcmp(s->id, "test_skin") == 0 ? sizeof(scene_asset_skinned_renderer_t) - sizeof(scene_asset_renderer_t)
                                                     + sizeof(scene_asset_animator_t) + 2 * ASSET_NAME_MAX
-                                              : 0);
+                                              : 0)
+           + parents_size(s->entity_count);
 }
 
 static void
@@ -304,7 +334,8 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
                                                      skins,
                                                      camera_clip_count(s) + skins,
                                                      clips,
-                                                     1};
+                                                     1,
+                                                     s->entity_count};
     const size_t sizes[SCENE_ASSET_PART_COUNT] = {ASSET_NAME_MAX,
                                                   sizeof(scene_asset_transform_t),
                                                   sizeof(scene_asset_renderer_t),
@@ -313,7 +344,8 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
                                                   sizeof(scene_asset_skinned_renderer_t),
                                                   sizeof(scene_asset_animator_t),
                                                   ASSET_NAME_MAX,
-                                                  sizeof(scene_asset_settings_t)};
+                                                  sizeof(scene_asset_settings_t),
+                                                  sizeof(uint16_t)};
     uint32_t offsets[SCENE_ASSET_PART_COUNT], at = SCENE_ASSET_HEADER_SIZE;
     test_pack_put16(entry, SCENE_ASSET_VERSION);
     for (int i = 0; i < SCENE_ASSET_PART_COUNT; i++) {
@@ -327,6 +359,7 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
                strlen(s->entities[i].name));
         memcpy(entry + offsets[SCENE_ASSET_TRANSFORMS] + sizeof(scene_asset_transform_t) * i, &s->entities[i].at,
                sizeof(scene_asset_transform_t));
+        test_pack_put16(entry + offsets[SCENE_ASSET_PARENTS] + sizeof(uint16_t) * i, parent_index(s, i));
     }
     for (int i = 0; i < s->renderer_count - skins; i++) {
         const scene_asset_renderer_t row = {.entity = s->renderers[i].entity, .colour_set = SCENE_ASSET_COLOUR_SET_OWN};
@@ -829,7 +862,10 @@ enum {
     PAIR_NAMES = SCENE_ASSET_HEADER_SIZE,
     PAIR_RENDERERS = PAIR_NAMES + 3 * (ASSET_NAME_MAX + sizeof(scene_asset_transform_t)),
     PAIR_CAMERA = PAIR_RENDERERS + 2 * sizeof(scene_asset_renderer_t),
-    PAIR_BYTES = PAIR_CAMERA + sizeof(scene_asset_camera_t) + sizeof(scene_asset_settings_t)
+    PAIR_PARENTS = PAIR_CAMERA + sizeof(scene_asset_camera_t) + sizeof(scene_asset_settings_t),
+    PAIR_LAST_ROW_END = PAIR_PARENTS + 3 * sizeof(uint16_t),
+    PAIR_BYTES = PAIR_PARENTS + 4 * sizeof(uint16_t), /* three rows, padded to 4 bytes */
+    PAIR_HEADER_PAD = SCENE_ASSET_AT_COUNTS + SCENE_ASSET_PART_COUNT * sizeof(uint16_t)
 };
 
 /* One edit that breaks the pair's entry: `width` bytes of `value` at `at`,
@@ -857,6 +893,10 @@ static const breakage_t BREAKAGES[] = {
     {"a near plane that is not a number", PAIR_CAMERA + 8, 4, 0x7FC00000U, false, ASSET_ERR_FORMAT},
     {"an infinite field of view", PAIR_CAMERA + 4, 4, 0x7F800000U, false, ASSET_ERR_FORMAT},
     {"a clear colour past 0xFFFFFF", PAIR_CAMERA + 12, 4, 0x1000000U, false, ASSET_ERR_FORMAT},
+    {"the header's padding in use", PAIR_HEADER_PAD, 2, 1, false, ASSET_ERR_FORMAT},
+    {"an entity its own parent", PAIR_PARENTS + 2, 2, 1, false, ASSET_ERR_FORMAT},
+    {"a parent listed after its child", PAIR_PARENTS + 2, 2, 2, false, ASSET_ERR_FORMAT},
+    {"a parent past the entities", PAIR_PARENTS + 4, 2, 3, false, ASSET_ERR_FORMAT},
 };
 
 static void
@@ -887,7 +927,8 @@ test_scene_header_counts_are_independent_of_components(void) {
     const uint32_t names = SCENE_ASSET_HEADER_SIZE;
     const uint32_t transforms = names + ROWS * ASSET_NAME_MAX;
     const uint32_t settings = transforms + ROWS * sizeof(scene_asset_transform_t);
-    const uint32_t size = settings + 2 * sizeof(scene_asset_settings_t);
+    const uint32_t parents = settings + 2 * sizeof(scene_asset_settings_t);
+    const uint32_t size = parents + parents_size(ROWS);
     uint8_t* entry = fx.bytes;
     memset(entry, 0, size);
     test_pack_put16(entry, SCENE_ASSET_VERSION);
@@ -896,6 +937,9 @@ test_scene_header_counts_are_independent_of_components(void) {
     }
     test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + SCENE_ASSET_NAMES * sizeof(uint32_t), names);
     test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + SCENE_ASSET_TRANSFORMS * sizeof(uint32_t), transforms);
+    test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + SCENE_ASSET_PARENTS * sizeof(uint32_t), parents);
+    test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + SCENE_ASSET_PARENTS * sizeof(uint16_t), ENTITIES);
+    memset(entry + parents, 0xFF, sizeof(uint16_t) * ROWS); /* every row a root */
     test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + SCENE_ASSET_NAMES * sizeof(uint16_t), ENTITIES);
     test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + SCENE_ASSET_TRANSFORMS * sizeof(uint16_t), ENTITIES);
     test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + SCENE_ASSET_SETTINGS * sizeof(uint16_t), 1);
@@ -908,6 +952,8 @@ test_scene_header_counts_are_independent_of_components(void) {
         int part, count;
     } changes[] = {{SCENE_ASSET_TRANSFORMS, ENTITIES - 1},
                    {SCENE_ASSET_TRANSFORMS, ENTITIES + 1},
+                   {SCENE_ASSET_PARENTS, ENTITIES - 1},
+                   {SCENE_ASSET_PARENTS, ENTITIES + 1},
                    {SCENE_ASSET_SETTINGS, 0},
                    {SCENE_ASSET_SETTINGS, 2}};
 
@@ -917,6 +963,112 @@ test_scene_header_counts_are_independent_of_components(void) {
         TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(entry, size));
         test_pack_put16(entry + at, changes[i].part == SCENE_ASSET_SETTINGS ? 1 : ENTITIES);
     }
+}
+
+static void
+test_a_child_is_drawn_where_its_parent_places_it(void) {
+    fixture();
+    scene_t* scene = show("test_family", NULL);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.0F));
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(2.0F));
+    scene_transform_t home = TRANSFORMF_IDENTITY;
+    scene_set_transform(scene, scene_find(scene, "red"), &home);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-2.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
+}
+
+/* The parent's world is kept, so a child moved alone composes with it. */
+static void
+test_a_child_moved_alone_stays_in_its_parents_frame(void) {
+    fixture();
+    scene_t* scene = show("test_family", NULL);
+    frame(16);
+    scene_transform_t near = TRANSFORMF_IDENTITY;
+    transformf_set_position(&near, (vec3f_t){2, 0, 0});
+    scene_set_transform(scene, scene_find(scene, "green"), &near);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
+}
+
+static void
+test_a_disabled_parent_hides_its_children_and_keeps_their_own_flags(void) {
+    fixture();
+    scene_t* scene = show("test_family", NULL);
+    const scene_entity_t red = scene_find(scene, "red");
+    const scene_entity_t green = scene_find(scene, "green");
+    scene_entity_set_enabled(scene, red, false);
+    TEST_ASSERT_TRUE(scene_entity_enabled(scene, green));
+    TEST_ASSERT_FALSE(scene_entity_active(scene, green));
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(2.0F));
+    scene_entity_set_enabled(scene, green, false);
+    scene_entity_set_enabled(scene, red, true);
+    TEST_ASSERT_TRUE(scene_entity_active(scene, red));
+    TEST_ASSERT_FALSE(scene_entity_active(scene, green));
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
+    scene_entity_set_enabled(scene, green, true);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(2.0F));
+}
+
+static void
+test_an_entity_knows_its_parent_its_ancestors_and_its_world(void) {
+    fixture();
+    scene_t* scene = load("test_family");
+    const scene_entity_t camera = scene_find(scene, "camera");
+    const scene_entity_t red = scene_find(scene, "red");
+    const scene_entity_t green = scene_find(scene, "green");
+    TEST_ASSERT_EQUAL_UINT16(SCENE_ENTITY_NONE, scene_entity_parent(scene, red));
+    TEST_ASSERT_EQUAL_UINT16(red, scene_entity_parent(scene, green));
+    TEST_ASSERT_TRUE(scene_entity_is_within(scene, green, red));
+    TEST_ASSERT_TRUE(scene_entity_is_within(scene, red, red));
+    TEST_ASSERT_FALSE(scene_entity_is_within(scene, red, green));
+    TEST_ASSERT_FALSE(scene_entity_is_within(scene, green, camera));
+    TEST_ASSERT_FALSE(scene_entity_is_within(scene, green, SCENE_ENTITY_NONE));
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, scene_entity_world(scene, green).m[0][3]);
+    TEST_ASSERT_EQUAL_FLOAT(4.0F, scene_entity_transform(scene, green)->position.x);
+}
+
+static void
+test_a_camera_with_a_parent_is_refused(void) {
+    fixture();
+
+    enum {
+        FAMILY_CAMERA = SCENE_ASSET_HEADER_SIZE + 3 * (ASSET_NAME_MAX + sizeof(scene_asset_transform_t))
+                        + 2 * sizeof(scene_asset_renderer_t)
+    };
+
+    const scene_spec_t* family = &SCENES[SCENE_COUNT - 2];
+    TEST_ASSERT_EQUAL_STRING("test_family", family->id);
+    const uint32_t size = scene_entry_size(family);
+    void* raw = NULL;
+    uint8_t* entry = test_alloc_aligned(size, 4, &raw);
+    TEST_ASSERT_NOT_NULL(entry);
+    memset(entry, 0, size);
+    make_scene_entry(entry, family);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(entry, size));
+    test_pack_put16(entry + FAMILY_CAMERA, FAMILY_CHILD);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(entry, size));
+    test_free_aligned(raw);
+}
+
+/* Until the raster can draw a reflection the right way out, a mirrored
+ * transform is refused and named. */
+static void
+test_a_mirrored_transform_is_refused_by_name(void) {
+    fixture();
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_mirror", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+    TEST_ASSERT_EQUAL_STRING("mirror", why.what);
 }
 
 static void
@@ -935,7 +1087,7 @@ test_the_reader_refuses_an_entry_that_breaks_any_one_rule(void) {
     memset(entry, 0, PAIR_BYTES + 4);
     make_scene_entry(entry, &SCENES[0]);
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_BOUNDS, open_entry(entry, 23), "shorter than its header");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_BOUNDS, open_entry(entry, PAIR_BYTES - 1), "a byte short");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_BOUNDS, open_entry(entry, PAIR_LAST_ROW_END - 1), "a byte short");
     memmove(entry + 1, entry, PAIR_BYTES);
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_BOUNDS, open_entry(entry + 1, PAIR_BYTES), "not 4-aligned");
     test_free_aligned(raw);
@@ -3666,6 +3818,12 @@ run_scene_suite(void) {
     RUN_TEST(test_a_camera_keeps_its_fixed_scale_unless_dynamic_resolution_is_asked_for);
     RUN_TEST(test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose);
     RUN_TEST(test_the_scratch_is_the_finest_steps_raster_block);
+    RUN_TEST(test_a_child_is_drawn_where_its_parent_places_it);
+    RUN_TEST(test_a_child_moved_alone_stays_in_its_parents_frame);
+    RUN_TEST(test_a_disabled_parent_hides_its_children_and_keeps_their_own_flags);
+    RUN_TEST(test_an_entity_knows_its_parent_its_ancestors_and_its_world);
+    RUN_TEST(test_a_camera_with_a_parent_is_refused);
+    RUN_TEST(test_a_mirrored_transform_is_refused_by_name);
     scene_unload_all();
     (void)scene_set_take(lender);
 }

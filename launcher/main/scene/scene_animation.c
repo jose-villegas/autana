@@ -402,7 +402,7 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms) {
         scene_animator_t* a = &scene->animators[e];
         a->posed = false;
         if (a->storage == NULL || a->root != ANIM_ROOT_SKELETON || a->layer.current.clip == ANIM_LAYER_CLIP_NONE
-            || !(scene->flags[e] & SCENE_FLAG_ENABLED)) {
+            || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
             continue;
         }
         a->posed = advance_animator(a, dt_ms);
@@ -516,7 +516,7 @@ skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
     for (int e = 0; e < entities; e++) {
         scene_animator_t* animator = &scene->animators[e];
         if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
-            && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ENABLED)) {
+            && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
             apply_property(scene, animator, dt_ms);
         }
     }
@@ -525,7 +525,7 @@ skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
     for (int e = 0; e < entities; e++) {
         scene_animator_t* animator = &scene->animators[e];
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
-        if (!(scene->flags[e] & SCENE_FLAG_ENABLED)) {
+        if (!(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
             continue;
         }
         if (skin->internal_storage != NULL && scene->light_transfer != NULL) {

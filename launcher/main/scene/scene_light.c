@@ -178,7 +178,7 @@ scene_lights_prepare(scene_t* scene) {
                                .transfer = scene->light_transfer};
     for (int l = 0; l < scene->asset.entity_count; l++) {
         const scene_light_t* light = &scene->lights[l];
-        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ENABLED)) {
+        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ACTIVE)) {
             continue;
         }
         const int at = world.count++;
