@@ -775,7 +775,7 @@ class DigestTests(unittest.TestCase):
 def triangle_source(p):
     """A loaded source of one untextured, uncoloured triangle at the corners p."""
     return SimpleNamespace(colors=None, p=p, uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
-                           names=["m"], textures=[None], materials={})
+                           names=["m"], textures=[None], materials={}, tri_o=np.array([0]), object_names=["mesh"])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -797,7 +797,7 @@ class BakeStepTests(unittest.TestCase):
 
     def test_the_simplifier_gets_the_imports_colour_deviation(self):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set())
+        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), overrides=[])
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
         source = triangle_source(p)
         given = {}
