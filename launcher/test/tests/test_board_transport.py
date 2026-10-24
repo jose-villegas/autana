@@ -39,7 +39,7 @@ class BoardTransportTests(unittest.TestCase):
         dut.expect.side_effect = [[line] for line in (
             b"rst:0xc (RTC_SW_CPU_RST),boot:0x8\n", b"RESET_REASON=POWERON\n",
             console_pytest.qemu_run.LISTENING.encode(), b"BUILD_ID=host\n",
-            b"IMU_OK quarter=0 quarters=4 sample_ms=10\n")]
+            b"IMU_OK quarter=0 quarters=4 sample_ms=20 commit_ms=1580\n")]
         original_expect = dut.expect
         fixture = console_pytest.console.__wrapped__(dut)
         next(fixture)
@@ -52,7 +52,7 @@ class BoardTransportTests(unittest.TestCase):
                       b"rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\r\nI (12) boot: ESP-IDF\r\n"
                       b"I (6529) console: " + console_pytest.qemu_run.LISTENING.encode() + b", 'apps'\r\n"
                       b"RESET_REASON=POWERON\r\nCOREDUMP=none\r\n"
-                      b"BUILD_ID=host\r\nIMU_OK quarter=0 quarters=4 sample_ms=10\r\n")
+                      b"BUILD_ID=host\r\nIMU_OK quarter=0 quarters=4 sample_ms=20 commit_ms=1580\r\n")
 
         consumed = [0]
 
@@ -91,7 +91,7 @@ class BoardTransportTests(unittest.TestCase):
         dut.serial = object()
         original_expect = dut.expect
         original_expect.side_effect = [[b"BUILD_ID=host\n"],
-                                       [b"IMU_OK quarter=0 quarters=4 sample_ms=10\n"]]
+                                       [b"IMU_OK quarter=0 quarters=4 sample_ms=20 commit_ms=1580\n"]]
         fixture = console_pytest.console.__wrapped__(dut)
         shell = next(fixture)
         original_expect.side_effect = None

@@ -1,4 +1,8 @@
-# Input Lab: shake round
+# Input Lab
+
+The [orientation capture and replay](tools/README.md) tool records shell quarter decisions.
+
+## Shake round
 
 Input Lab's development shake page follows motion in the BOOT cycle.
 It stays in default landscape with panel-axis measurements.
@@ -143,3 +147,40 @@ python launcher/main/apps/input_lab/tools/shake_fit.py --results
 
 </details>
 <!-- /generated: shake-side -->
+
+
+## Orientation replay results
+
+<!-- generated: orientation-results check: python launcher/main/apps/input_lab/tools/orientation_replay.py --results --check --cc gcc -->
+| Model | Cadence | Wanted turns | Unwanted switches | Median latency | Max latency |
+|---|---:|---:|---:|---:|---:|
+| accel | 20 ms | 4 | 0 | 130 ms | 227 ms |
+| accel | 100 ms | 4 | 0 | 242 ms | 377 ms |
+| fused | 20 ms | 4 | 0 | 150 ms | 227 ms |
+| fused | 100 ms | 3 | 1 | 274 ms | 377 ms |
+
+![Gate hold durations](images/orientation-gates.png)
+
+<details>
+<summary>Per-commit gate durations</summary>
+
+| Model | Cadence | Quarter | Last gate | Last hold | Longest gate | Longest hold |
+|---|---:|---:|---|---:|---|---:|
+| accel | 20 ms | 2 | settle | 50 ms | filtered hysteresis / angle | 70 ms |
+| accel | 20 ms | 3 | settle | 42 ms | filtered hysteresis / angle | 84 ms |
+| accel | 20 ms | 0 | settle | 45 ms | filtered hysteresis / angle | 84 ms |
+| accel | 20 ms | 1 | settle | 41 ms | filtered hysteresis / angle | 177 ms |
+| accel | 100 ms | 2 | settle | 101 ms | settle | 101 ms |
+| accel | 100 ms | 3 | settle | 100 ms | filtered hysteresis / angle | 102 ms |
+| accel | 100 ms | 0 | settle | 100 ms | filtered hysteresis / angle | 102 ms |
+| accel | 100 ms | 1 | settle | 107 ms | filtered hysteresis / angle | 201 ms |
+| fused | 20 ms | 2 | settle | 43 ms | filtered hysteresis / angle | 120 ms |
+| fused | 20 ms | 3 | settle | 42 ms | filtered hysteresis / angle | 84 ms |
+| fused | 20 ms | 0 | settle | 45 ms | filtered hysteresis / angle | 84 ms |
+| fused | 20 ms | 1 | settle | 41 ms | filtered hysteresis / angle | 177 ms |
+| fused | 100 ms | 3 | settle | 100 ms | filtered hysteresis / angle | 102 ms |
+| fused | 100 ms | 0 | settle | 100 ms | filtered hysteresis / angle | 102 ms |
+| fused | 100 ms | 1 | settle | 107 ms | filtered hysteresis / angle | 201 ms |
+
+</details>
+<!-- /generated: orientation-results -->
