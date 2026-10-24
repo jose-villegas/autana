@@ -35,8 +35,10 @@
 #ifdef HOST_HEAP_ARENA
 #include "job_calls.h"
 #endif
+#include "lcol_name_vectors.h"
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
+#include "render/lcol_format.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
@@ -402,7 +404,7 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
                sizeof(scene_asset_transform_t));
     }
     for (int i = 0; i < s->renderer_count - skins; i++) {
-        const scene_asset_renderer_t row = {.entity = s->renderers[i].entity};
+        const scene_asset_renderer_t row = {.entity = s->renderers[i].entity, .colour_set = SCENE_ASSET_COLOUR_SET_OWN};
         uint8_t* bytes = entry + offsets[SCENE_ASSET_RENDERERS] + sizeof row * i;
         memcpy(bytes, &row, sizeof row);
         memcpy(bytes + offsetof(scene_asset_renderer_t, mesh), s->renderers[i].mesh, strlen(s->renderers[i].mesh));
@@ -930,7 +932,6 @@ static const breakage_t BREAKAGES[] = {
     {"bytes after a name's NUL", PAIR_NAMES + 20, 1, 'x', false, ASSET_ERR_FORMAT},
     {"an empty entity name", PAIR_NAMES, 1, 0, true, ASSET_ERR_FORMAT},
     {"an empty mesh id", PAIR_RENDERERS + 4, 1, 0, true, ASSET_ERR_FORMAT},
-    {"a renderer's padding in use", PAIR_RENDERERS + 2, 2, 1, false, ASSET_ERR_FORMAT},
     {"a camera of no entity", PAIR_CAMERA, 2, 3, false, ASSET_ERR_FORMAT},
     {"a camera's padding in use", PAIR_CAMERA + 2, 2, 1, false, ASSET_ERR_FORMAT},
     {"a field of view of 0", PAIR_CAMERA + 4, 4, 0, false, ASSET_ERR_FORMAT},
@@ -1484,6 +1485,168 @@ test_an_entity_is_found_by_its_name(void) {
     TEST_ASSERT_EQUAL_UINT16(2, scene_find(scene, "green"));
     TEST_ASSERT_EQUAL_UINT16(SCENE_ENTITY_NONE, scene_find(scene, "yellow"));
     TEST_ASSERT_EQUAL_FLOAT(4.0F, scene_entity_transform(scene, scene_find(scene, "green"))->position.x);
+}
+
+enum { LCOL_TEST_SETS = 2, MESH_COLOURS_WORD = 6 };
+
+static void
+test_lcol_shared_names(void) {
+    fixture();
+    static const char* const meshes[] = LCOL_TEST_MESHES;
+    static const char* const names[] = LCOL_TEST_NAMES;
+    static const char* const invalid[] = LCOL_TEST_INVALID;
+    for (size_t i = 0; i < sizeof meshes / sizeof meshes[0]; i++) {
+        test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 1);
+        uint8_t* colors = test_pack_add(&pack, names[i], LCOL_ASSET, LCOL_HEADER_SIZE + LCOL_RGB888_BYTES);
+        test_pack_put16(colors + LCOL_AT_VERSION, LCOL_VERSION);
+        test_pack_put16(colors + LCOL_AT_ENCODING, LCOL_ENCODING_RGB888);
+        test_pack_put32(colors + LCOL_AT_SET_COUNT, 1);
+        test_pack_put32(colors + LCOL_AT_COUNT, 1);
+        const uint32_t total = test_pack_finish(&pack);
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
+        r3d_lit_mesh_t mesh = {.vertex_count = 1};
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open_colours(&fx.pack, meshes[i], 0, &mesh));
+        TEST_ASSERT_EQUAL_PTR(colors + LCOL_HEADER_SIZE, mesh.colors);
+    }
+    for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
+        r3d_lit_mesh_t mesh = {0};
+        const asset_status_t expected = invalid[i][0] == '\0' ? ASSET_ERR_FORMAT : ASSET_ERR_BOUNDS;
+        TEST_ASSERT_EQUAL_INT(expected, r3d_lit_mesh_open_colours(&fx.pack, invalid[i], 0, &mesh));
+    }
+}
+
+static void
+test_skinned_mesh_requires_colours(void) {
+    const skin_fixture_options_t options = {.mode = R3D_SKIN_LIGHT_DIRECT};
+    fixture_with_skin(&options);
+    scene_t* scene = load("test_skin");
+    TEST_ASSERT_NOT_NULL(scene->renderers[0].mesh.colors);
+    scene_unload_all();
+    asset_view_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "red", R3D_LIT_MESH_ASSET, &mesh));
+
+    test_pack_put32((uint8_t*)mesh.data + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_skin", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+}
+
+typedef struct {
+    const char* id;
+    asset_status_t expected;
+    uint16_t first_set, second_set;
+    bool missing, coloured, wrong_encoding, short_entry;
+    uint16_t version_delta;
+    uint32_t count_extra, payload_extra;
+} lcol_case_t;
+
+static void
+make_lcol_scene(test_pack_t* pack, const lcol_case_t* spec, const char* message) {
+    const uint32_t size = scene_entry_size(&SCENES[0]);
+    uint8_t* entry = test_pack_add(pack, "test_pair", SCENE_ASSET, size);
+    make_scene_entry(entry, &SCENES[0]);
+    scene_asset_t asset;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, scene_asset_open((asset_view_t){entry, size}, &asset), message);
+    scene_asset_renderer_t* rows = (scene_asset_renderer_t*)(void*)asset.renderers;
+    test_pack_put16((uint8_t*)&rows[0] + sizeof(uint16_t), spec->first_set);
+    test_pack_put16((uint8_t*)&rows[1] + sizeof(uint16_t), spec->second_set);
+    memset(rows[1].mesh, 0, sizeof rows[1].mesh);
+    memcpy(rows[1].mesh, "red", sizeof "red");
+}
+
+static void
+make_lcol_entry(test_pack_t* pack, const lcol_case_t* spec, uint16_t encoding) {
+    const int count = encoding == LCOL_ENCODING_RGB888 ? QUAD_VERTICES : QUAD_TRIANGLES;
+    const int stride = encoding == LCOL_ENCODING_RGB888 ? LCOL_RGB888_BYTES : LCOL_RGB565_BYTES;
+    uint8_t* colors = test_pack_add(pack, "red.colors", LCOL_ASSET,
+                                    LCOL_HEADER_SIZE + LCOL_TEST_SETS * count * stride + spec->payload_extra);
+    test_pack_put16(colors + LCOL_AT_VERSION, LCOL_VERSION + spec->version_delta);
+    test_pack_put16(colors + LCOL_AT_ENCODING, spec->wrong_encoding ? 1 - encoding : encoding);
+    test_pack_put32(colors + LCOL_AT_SET_COUNT, LCOL_TEST_SETS);
+    test_pack_put32(colors + LCOL_AT_COUNT, count + spec->count_extra);
+    for (int v = 0; v < count; v++) {
+        if (encoding == LCOL_ENCODING_RGB888) {
+            colors[LCOL_HEADER_SIZE + v * stride] = UINT8_MAX;
+            colors[LCOL_HEADER_SIZE + (count + v) * stride + 1] = UINT8_MAX;
+        } else {
+            test_pack_put16(colors + LCOL_HEADER_SIZE + v * stride, GFX_RGB(0xFF0000));
+            test_pack_put16(colors + LCOL_HEADER_SIZE + (count + v) * stride, GFX_RGB(0x00FF00));
+        }
+    }
+}
+
+static void
+make_lcol_pack(const lcol_case_t* spec, uint16_t encoding, const char* message) {
+    enum { ENTRY_SIZE_AT = ASSET_NAME_MAX + 2 * sizeof(uint32_t) };
+
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, spec->missing ? 2 : 3);
+    uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
+    make_quad_entry(mesh, UINT8_MAX, 0, 0, 1);
+    if (!spec->coloured) {
+        test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    }
+    make_lcol_scene(&pack, spec, message);
+    if (!spec->missing) {
+        make_lcol_entry(&pack, spec, encoding);
+    }
+    if (spec->short_entry) {
+        test_pack_put32(pack.bytes + ASSET_PACK_HEADER_SIZE + (pack.added - 1) * ASSET_PACK_ENTRY_SIZE + ENTRY_SIZE_AT,
+                        LCOL_HEADER_SIZE - 1);
+    }
+    const uint32_t total = test_pack_finish(&pack);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total), message);
+}
+
+static void
+assert_lcol_scene(const lcol_case_t* spec, const char* message) {
+    scene_failure_t why;
+    scene_t* scene = scene_load_from(&fx.pack, "test_pair", &why);
+    if (spec->expected != ASSET_OK) {
+        TEST_ASSERT_NULL_MESSAGE(scene, message);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, message);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(spec->expected, why.asset, message);
+        return;
+    }
+    TEST_ASSERT_NOT_NULL_MESSAGE(scene, message);
+    TEST_ASSERT_TRUE_MESSAGE(scene_activate(scene, NULL), message);
+    render_context_set_scale(render_context_main(), 100);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0xFF0000), pixel(0.0F), message);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0x00FF00), pixel(4.0F), message);
+    TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.positions, scene->renderers[1].mesh.positions, message);
+}
+
+static void
+test_lcol_instances_and_refusals(void) {
+    static const lcol_case_t cases[] = {
+        {.id = "valid", .expected = ASSET_OK, .second_set = LCOL_TEST_SETS - 1},
+        {.id = "range", .expected = ASSET_ERR_FORMAT, .second_set = LCOL_TEST_SETS},
+        {.id = "missing", .expected = ASSET_ERR_NOT_FOUND, .missing = true},
+        {.id = "count", .expected = ASSET_ERR_FORMAT, .count_extra = 1},
+        {.id = "encoding", .expected = ASSET_ERR_FORMAT, .wrong_encoding = true},
+        {.id = "colourless-own",
+         .expected = ASSET_ERR_FORMAT,
+         .first_set = SCENE_ASSET_COLOUR_SET_OWN,
+         .missing = true},
+        {.id = "version", .expected = ASSET_ERR_VERSION, .version_delta = 1},
+        {.id = "short", .expected = ASSET_ERR_BOUNDS, .short_entry = true},
+        {.id = "oversized", .expected = ASSET_ERR_BOUNDS, .payload_extra = sizeof(uint16_t)},
+        {.id = "coloured-prototype",
+         .expected = ASSET_ERR_FORMAT,
+         .second_set = SCENE_ASSET_COLOUR_SET_OWN,
+         .coloured = true},
+    };
+    fixture();
+    for (uint16_t encoding = LCOL_ENCODING_RGB888; encoding <= LCOL_ENCODING_RGB565; encoding++) {
+        for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+            char message[64];
+            snprintf(message, sizeof message, "LCOL case %s encoding %u", cases[i].id, encoding);
+            scene_unload_all();
+            make_lcol_pack(&cases[i], encoding, message);
+            assert_lcol_scene(&cases[i], message);
+        }
+    }
 }
 
 static void
@@ -3631,6 +3794,9 @@ run_scene_suite(void) {
     RUN_TEST(test_a_load_with_no_memory_left_says_so_and_takes_nothing);
     RUN_TEST(test_a_full_manager_refuses_another_scene_until_one_is_unloaded);
     RUN_TEST(test_an_entity_is_found_by_its_name);
+    RUN_TEST(test_skinned_mesh_requires_colours);
+    RUN_TEST(test_lcol_shared_names);
+    RUN_TEST(test_lcol_instances_and_refusals);
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
     RUN_TEST(test_a_moved_entity_is_drawn_where_it_now_stands);
