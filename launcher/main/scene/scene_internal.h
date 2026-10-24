@@ -221,8 +221,12 @@ void scene_resolve(scene_t* scene);
 bool scene_hierarchy_open(scene_t* scene);
 void scene_hierarchy_release(scene_t* scene);
 
-/* The entity's enabled flag changed: recomputes ACTIVE for it and every later entity. */
-void scene_hierarchy_enable(scene_t* scene, scene_entity_t entity);
+/* The entity's enabled flag changed: recomputes ACTIVE for it and every
+ * later entity, descendants or not; parents come before children, so one
+ * forward pass is correct. O(entities) a call, cheap at today's counts; if
+ * they grow, a later entity whose parent is before `entity` can be skipped,
+ * since it cannot be a descendant. */
+void scene_hierarchy_update_active(scene_t* scene, scene_entity_t entity);
 
 /* True when drawing the mesh as it is gives the same picture. */
 bool scene_transform_is_identity(const mat4f_t* transform);
