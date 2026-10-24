@@ -74,9 +74,8 @@ typedef struct {
 } gas_rows_t;
 
 /* File-static rather than threaded through the pass: it is built and
- * consumed inside one sand_step_gas() call, which never nests. Its bits are
- * written out rather than through bits32_*(): a store through the helper's
- * pointer costs gas_sweep_range() registers, and the board ran slower. */
+ * consumed inside one sand_step_gas() call, which never nests. Its bits go
+ * through the macro forms - see BITS32_SET()'s own comment (bits.h). */
 static gas_rows_t gas_row_map;
 static bool gas_row_map_live;
 
@@ -90,7 +89,7 @@ static bool gas_row_map_live;
 static inline void
 gas_row_arm(int y) {
     if (gas_row_map_live && (unsigned)y < (unsigned)GAS_ROW_MAX) {
-        gas_row_map.w[(unsigned)y >> 5] |= 1U << ((unsigned)y & 31U);
+        BITS32_SET(gas_row_map.w, (unsigned)y);
     }
 }
 
@@ -99,7 +98,7 @@ gas_row_may_hold(int y) {
     if (!gas_row_map_live) {
         return true;
     }
-    return ((gas_row_map.w[(unsigned)y >> 5] >> ((unsigned)y & 31U)) & 1U) != 0U;
+    return BITS32_GET(gas_row_map.w, (unsigned)y);
 }
 
 /* driven_by_gravity()'s table for this pass, built against the REVERSED
@@ -132,14 +131,6 @@ typedef struct {
  * Sub-pass 1: rise, and the two diagonal slides - try_fall_or_scatter()/
  * try_slide(), reused from sand.c with the direction inverted.
  */
-
-/* One gas grain's turn - the same dispatch step_one_grain() runs for a
- * powder (fall/rise, then the two slides), but with an explicit wake,
- * since this pass gets none of step_one_block()'s own moved_here ->
- * BLOCK_ACTIVE bookkeeping. Unlike a powder, the whole attempt is gated
- * behind material.h's `mobility` roll first (jostle == 0 only): a grain
- * that misses the roll just sits this step, which is what makes gas rise
- * at a lazy drift instead of sand's instant one-cell-per-step. */
 
 /* A BUBBLE: a gas cell trading places with the LIQUID above it - the one
  * move that runs against can_enter()'s rule rather than through it.
@@ -360,6 +351,14 @@ gas_move_exhaustive(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, c
      * gas that is genuinely capped by liquid pays for the extra check. */
     return try_bubble(s, r, c, x, grain, density);
 }
+
+/* One gas grain's turn - the same dispatch step_one_grain() runs for a
+ * powder (fall/rise, then the two slides), but with an explicit wake,
+ * since this pass gets none of step_one_block()'s own moved_here ->
+ * BLOCK_ACTIVE bookkeeping. Unlike a powder, the whole attempt is gated
+ * behind material.h's `mobility` roll first (jostle == 0 only): a grain
+ * that misses the roll just sits this step, which is what makes gas rise
+ * at a lazy drift instead of sand's instant one-cell-per-step. */
 
 static bool
 step_one_gas_grain(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t grain) {
@@ -703,7 +702,7 @@ note_gas_late_arrival(unsigned* late, int x, int y, int tx, int ty) {
  * `carry_ok` is that carry's on/off switch. */
 static inline bool
 equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_t* nrow, int x, int y, int px, int py,
-                      int rdx, int rdy, int sight, uint8_t gas_id, cell_t grain, bool* stayed_in_row, int* touched_x,
+                      int rdx, int sight, uint8_t gas_id, cell_t grain, bool* stayed_in_row, int* touched_x,
                       bool carry_ok, gas_run_t* run, unsigned* late) {
     bool moved = false;
     int tx = 0;
@@ -771,7 +770,7 @@ gas_union_touched_x(bool* touched, int* x0, int* x1, int lo, int hi) {
 
 static inline bool
 equalise_gas_one_row_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_t* nrow, int x, int y, int px,
-                          int py, int rdx, int rdy, uint16_t is_gas, bool* touched, int* touched_x0, int* touched_x1,
+                          int py, int rdx, uint16_t is_gas, bool* touched, int* touched_x0, int* touched_x1,
                           bool carry_ok, gas_run_t* run, unsigned* late) {
     const cell_t c = row[x];
     if (CELL_IS_EMPTY(c)) {
@@ -798,8 +797,8 @@ equalise_gas_one_row_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const ui
 
     bool stayed_in_row = false;
     int tx = 0;
-    if (equalise_gas_one_cell(s, row, arow, nrow, x, y, px, py, rdx, rdy, sight, id, c, &stayed_in_row, &tx, carry_ok,
-                              run, late)
+    if (equalise_gas_one_cell(s, row, arow, nrow, x, y, px, py, rdx, sight, id, c, &stayed_in_row, &tx, carry_ok, run,
+                              late)
         && stayed_in_row) {
         gas_union_touched_x(touched, touched_x0, touched_x1, x < tx ? x : tx, x > tx ? x : tx);
     }
@@ -839,7 +838,7 @@ row_is_packed(const uint8_t* row, int w, uint16_t is_gas, bool* any_gas, int* ma
  * `along_col` is a constant at both call sites, so each gets its own loop. */
 static inline __attribute__((always_inline)) bool
 equalise_gas_row_cells(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_t* nrow, int y, int x_from, int x_to,
-                       int x_step, int px, int py, int rdx, int rdy, uint16_t is_gas, bool along_col, bool* touched,
+                       int x_step, int px, int py, int rdx, uint16_t is_gas, bool along_col, bool* touched,
                        int* touched_x0, int* touched_x1, unsigned* late) {
     const bool carry_ok = along_col || py == 0;
     gas_run_t row_run = {.id = -1, .len = 0};
@@ -847,8 +846,8 @@ equalise_gas_row_cells(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8
 
     for (int x = x_from; x != x_to; x += x_step) {
         gas_run_t* const run = along_col ? &gas_cols.run[x] : &row_run;
-        if (equalise_gas_one_row_cell(s, row, arow, nrow, x, y, px, py, rdx, rdy, is_gas, touched, touched_x0,
-                                      touched_x1, carry_ok, run, late)) {
+        if (equalise_gas_one_row_cell(s, row, arow, nrow, x, y, px, py, rdx, is_gas, touched, touched_x0, touched_x1,
+                                      carry_ok, run, late)) {
             any_gas = true;
         }
     }
@@ -901,10 +900,10 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
             }
         }
         gas_cols.stale = false;
-        any_gas |= equalise_gas_row_cells(s, row, arow, nrow, y, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, true,
+        any_gas |= equalise_gas_row_cells(s, row, arow, nrow, y, x_from, x_to, x_step, px, py, rdx, is_gas, true,
                                           &touched, &touched_x0, &touched_x1, late);
     } else {
-        any_gas |= equalise_gas_row_cells(s, row, arow, nrow, y, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, false,
+        any_gas |= equalise_gas_row_cells(s, row, arow, nrow, y, x_from, x_to, x_step, px, py, rdx, is_gas, false,
                                           &touched, &touched_x0, &touched_x1, late);
     }
 
