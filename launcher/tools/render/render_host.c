@@ -11,6 +11,8 @@
 #include <string.h>
 
 #include "console/capture/screenshot.h"
+#include "console/console_tune.h"
+#include "core/tune.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
@@ -18,7 +20,6 @@
 #include "gfx/target/gfx_color.h"
 #include "render_video.h"
 #include "render_watch.h"
-#include "services/tune.h"
 #include "ui/layout/ui_transform.h"
 
 #include "scene/scene_shell.h"
@@ -48,8 +49,8 @@ render_host_set_tunable(const char* name, int32_t value) {
     return true;
 }
 
-static bool
-set_tunable_option(const char* assignment) {
+bool
+render_host_set_tunable_text(const char* assignment) {
     char name[TUNE_NAME_MAX + 1];
     const char* equal = strchr(assignment, '=');
     if (equal == NULL || equal == assignment || equal - assignment > TUNE_NAME_MAX) {
@@ -256,10 +257,10 @@ main(int argc, char** argv) {
         } else if (strcmp(a, "--quarter") == 0 && has_value) {
             quarter = (int)strtol(argv[++i], NULL, 10);
         } else if (strcmp(a, "--tunables") == 0) {
-            (void)tune_handle_line("TUNE", tune_reply);
+            (void)console_tune_line(tune_shared(), "TUNE", tune_reply);
             return 0;
         } else if (strcmp(a, "--set") == 0 && has_value) {
-            if (!set_tunable_option(argv[++i])) {
+            if (!render_host_set_tunable_text(argv[++i])) {
                 return usage(argv[0]);
             }
         } else if (strcmp(a, "--frames") == 0 && has_value) {

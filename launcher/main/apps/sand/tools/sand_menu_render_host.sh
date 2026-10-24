@@ -8,7 +8,6 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=sand_menu
 scene_ui=1
 scene_sources="
-main/services/tune.c
 main/apps/sand/sand_menu.c
 main/apps/sand/sand_mode_swatches.c
 main/apps/sand/ui/sand_icons.c
