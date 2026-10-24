@@ -561,7 +561,10 @@ def build_compile_db():
             "compiler (see run_tests.sh's own message for how)."
         )
 
-    host_sources = [s for s in run_tests_print("--print-sources")
+    # Package runners have their own main(), so the firmware host binary
+    # cannot link them; analysis uses the same host includes and defines.
+    host_sources = [s for s in [*run_tests_print("--print-sources"),
+                               *map(str, (LAUNCHER_DIR / "packages").glob("*/runner/**/*.c"))]
                      if not is_vendored(s)]
     host_flags = run_tests_print("--print-flags") + [
         f"--target={host_target}", f"--gcc-toolchain={host_root}",
@@ -614,7 +617,9 @@ def check_main_coverage(measured_files):
     EXCLUDED_MAIN_FILES, with a reason, is a coverage regression and fails
     the gate by name rather than shrinking quietly."""
     measured = {str(Path(f).resolve()) for f in measured_files}
-    on_disk = sorted([*(LAUNCHER_DIR / "main").rglob("*.c"), *(LAUNCHER_DIR / "packages").rglob("*.c")])
+    on_disk = sorted(path for root in ("main", "packages")
+                     for path in (LAUNCHER_DIR / root).rglob("*.c")
+                     if not is_vendored(str(path)))
     missing = []
     for path in on_disk:
         resolved = str(path.resolve())

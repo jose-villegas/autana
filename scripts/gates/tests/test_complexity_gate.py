@@ -114,6 +114,51 @@ class EmptyScanGuardTest(unittest.TestCase):
             self.run_gate(files, changed=False)
 
 
+class SourceCoverageTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.launcher = Path(self.tmp.name)
+        patch = mock.patch.object(complexity_gate, "LAUNCHER_DIR", self.launcher)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def source(self, relative):
+        path = self.launcher / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        return str(path.resolve())
+
+    def test_coverage_uses_vendored_rule_without_hiding_first_party_gaps(self):
+        measured = self.source("main/measured.c")
+        self.source("packages/testkit/unity/unity.c")
+        self.source("packages/testkit/runner/host_main.c")
+        total, missing = complexity_gate.check_main_coverage([measured])
+        self.assertEqual(total, 2)
+        self.assertEqual(missing, ["packages/testkit/runner/host_main.c"])
+
+    def test_package_runners_get_host_commands_without_duplicate_sources(self):
+        runner = self.source("packages/testkit/runner/host_main.c")
+        nested = self.source("packages/example/runner/nested/entry.c")
+        host = self.source("test/host_main.c")
+        database = self.launcher / "compile_commands.json"
+        database.write_text("[]", encoding="utf-8")
+        with mock.patch.object(complexity_gate, "IDF_DB_PATH", database), \
+             mock.patch.object(complexity_gate, "BUILD_DIR", self.launcher / "build.tidy"), \
+             mock.patch.object(complexity_gate, "find_xtensa_toolchain_root", return_value="/xtensa"), \
+             mock.patch.object(complexity_gate, "build_idf_entries", return_value={}), \
+             mock.patch.object(complexity_gate, "find_host_toolchain", return_value=("host", "/gcc", None)), \
+             mock.patch.object(complexity_gate, "resolve_analysis_clang", return_value="clang"), \
+             mock.patch.object(complexity_gate, "run_tests_print", side_effect=[[host, nested], ["-DHOST_TEST"]]):
+            db_path, sources, counts = complexity_gate.build_compile_db()
+        self.assertEqual(sources, sorted([host, runner, nested]))
+        self.assertEqual(counts["host"], 3)
+        entries = {entry["file"]: entry for entry in json.loads(db_path.read_text(encoding="utf-8"))}
+        self.assertEqual(entries[runner]["arguments"],
+                         ["clang", "-DHOST_TEST", "--target=host", "--gcc-toolchain=/gcc",
+                          "-Wno-unknown-warning-option", "-Wno-string-plus-int", Path(runner).as_posix()])
+
+
 class DriverResolutionTest(unittest.TestCase):
     def test_versioned_analyzer_uses_same_major_driver(self):
         tidy = f"/usr/bin/clang-tidy-{pinned_tool.PINNED_MAJOR}"
