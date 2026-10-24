@@ -12,15 +12,26 @@ it by pointer. A pack is the read-only bundle of baked content in flash
 ([Asset packs](../assets/README.md)); the engine pack ships a `tap` click any
 app may use:
 
+<!-- generated: audio-tap-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-#include "asset/asset_store.h"                          /* asset_store_pack, ASSET_ENGINE_PACK */
+/* Tap: keep the sound in app state until exit. */
+#include "asset/asset_store.h" /* asset_store_pack, ASSET_ENGINE_PACK */
 #include "sound/sound_play.h"
 
-static sound_t tap;                                       /* app state, not a stack local */
-if (sound_open(asset_store_pack(ASSET_ENGINE_PACK), "tap", &tap) != ASSET_OK) { /* no click */ }
-sound_voice_t v = sound_play(&tap, NULL);                 /* SFX bus, full gain, once */
-sound_stop(v);                                            /* optional; stale handles are ignored */
+static sound_t tap; /* app state, not a stack local */
+
+static bool
+tap_start(void) {
+    if (sound_open(asset_store_pack(ASSET_ENGINE_PACK), "tap", &tap) != ASSET_OK) {
+        /* no click */
+        return false;
+    }
+    sound_voice_t voice = sound_play(&tap, NULL); /* SFX bus, full gain, once */
+    sound_stop(voice);                            /* optional; stale handles are ignored */
+    return true;
+}
 ```
+<!-- /generated: audio-tap-example -->
 
 `sound_play()` never waits: it returns a handle at once and the mixer starts
 the sound within one block of 128 samples, about 5.8 ms. If the open failed,
