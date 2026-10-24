@@ -68,8 +68,8 @@ track_swing(display_t* d, float sine, float cosine, int64_t now_us) {
         if (now_us - d->tilts[i].time_us > (int64_t)DISPLAY_SWING_MS * MATH_US_PER_MS) {
             continue;
         }
-        const float rise_sin = sine * d->tilts[i].cosine - cosine * d->tilts[i].sine;
-        const float rise_cos = cosine * d->tilts[i].cosine + sine * d->tilts[i].sine;
+        const float rise_sin = (sine * d->tilts[i].cosine) - (cosine * d->tilts[i].sine);
+        const float rise_cos = (cosine * d->tilts[i].cosine) + (sine * d->tilts[i].sine);
         if (sine > d->tilts[i].sine && (rise_cos < 0.0F || rise_sin >= DISPLAY_SWING_SIN)) {
             d->swing_ended_us = now_us;
             break;
@@ -128,8 +128,8 @@ display_candidate(vec3f_t v, int current, bool tilt_limits) {
         return DISPLAY_QUARTER_NONE;
     }
     const viewport_quarter_axes_t axes = viewport_quarter_axes(current);
-    const float aligned = v.x * axes.x_down + v.y * axes.y_down;
-    const float plane = sqrtf(v.x * v.x + v.y * v.y);
+    const float aligned = (v.x * (float)axes.x_down) + (v.y * (float)axes.y_down);
+    const float plane = sqrtf((v.x * v.x) + (v.y * v.y));
     if (quarter != current && aligned >= plane * DISPLAY_ADJACENT_MIN_COS) {
         return DISPLAY_QUARTER_NONE;
     }
@@ -167,7 +167,7 @@ display_update(display_t* d, vec3f_t accel_g, int64_t now_us) {
         }
         /* Down points into a face-up screen, opposite Android's accelerometer z. */
         const float sine = -d->filtered.z / magnitude;
-        const float cosine = sqrtf(fmaxf(0.0F, 1.0F - sine * sine));
+        const float cosine = sqrtf(fmaxf(0.0F, 1.0F - (sine * sine)));
         track_tilt(d, sine, cosine, now_us);
         if (!d->overhead) {
             predicted = display_candidate(d->filtered, d->quarter, true);

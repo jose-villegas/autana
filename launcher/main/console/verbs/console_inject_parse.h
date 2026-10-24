@@ -17,7 +17,7 @@
 #define CONSOLE_IMU_REPLY_FORMAT        "IMU_OK quarter=%d quarters=%d sample_ms=%d commit_ms=%d"
 #define CONSOLE_IMU_REPLY_INTEGER_COUNT 4
 #define CONSOLE_IMU_REPLY_SIZE                                                                                         \
-    (sizeof CONSOLE_IMU_REPLY_FORMAT + CONSOLE_IMU_REPLY_INTEGER_COUNT * sizeof "-2147483648")
+    (sizeof CONSOLE_IMU_REPLY_FORMAT + (CONSOLE_IMU_REPLY_INTEGER_COUNT * sizeof "-2147483648"))
 
 static inline bool
 console_imu_reply(char* line, size_t size, int quarter) {

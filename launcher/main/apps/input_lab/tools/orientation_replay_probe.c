@@ -68,7 +68,7 @@ replay_sample(replay_t* replay, const input_motion_t* motion, int64_t now_us) {
     if (now_us < replay->next_us) {
         return true;
     }
-    replay->next_us = now_us + (int64_t)replay->sample_ms * MATH_US_PER_MS;
+    replay->next_us = now_us + ((int64_t)replay->sample_ms * MATH_US_PER_MS);
     /* Unit fused input removes measured magnitude; judge filtering still changes vector length. */
     const vec3f_t acceleration = replay->fused
                                      ? gravity_down(&replay->gravity)
