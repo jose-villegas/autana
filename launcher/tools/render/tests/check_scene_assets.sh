@@ -17,7 +17,6 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=asset_fixture
 scene_sources="
-main/services/tune.c
 tools/render/tests/asset_fixture.c
 "
 scene_renders=""
