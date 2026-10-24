@@ -16,6 +16,7 @@
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "render/code_layout.h"
+#include "render/r3d_triangle_tests.h"
 
 void
 r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
@@ -102,7 +103,7 @@ SORT_DEFINE_INSERTION(children, child_depth_t, farther)
 
 /* Children go on the stack farthest first, so the nearest pops first and
  * the walk visits leaves roughly front to back. */
-static inline __attribute__((always_inline)) int
+static int
 push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
     child_depth_t order[R3D_LIT_NODE_CHILDREN_MAX];
@@ -122,11 +123,8 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
     return top;
 }
 
-/* The walk, counting into `counts` when it is not NULL: a constant at both
- * callers, so the frame's cull carries none of it. */
-static inline __attribute__((always_inline)) int
-cull_walk(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work,
-          r3d_pipeline_counts_t* counts) {
+int
+r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work) {
     planef_t* planes = work->cull.planes;
     planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
                    planes);
@@ -139,14 +137,8 @@ cull_walk(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d
         const walk_entry_t entry = stack[--top];
         const r3d_lit_node_t* node = &mesh->nodes[entry.node];
         unsigned mask = entry.mask;
-        if (counts != NULL) {
-            counts->nodes_visited++;
-        }
         if (mask != 0
             && box3f_outside_planes(box3f_from_box3s(node->bounds, 1.0F), planes, PLANE_FRUSTUM_COUNT, &mask)) {
-            if (counts != NULL) {
-                counts->nodes_cut++;
-            }
             continue;
         }
         if (!node->leaf) {
@@ -162,27 +154,6 @@ cull_walk(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d
                 out[count++] = (uint16_t)c;
             }
         }
-        if (counts != NULL) {
-            counts->clusters_tested += node->count;
-        }
-    }
-    if (counts != NULL) {
-        counts->clusters_kept += count;
-    }
-    return count;
-}
-
-int
-r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work) {
-    return cull_walk(mesh, lens, out, work, NULL);
-}
-
-int
-r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work,
-                          r3d_pipeline_counts_t* counts) {
-    const int count = cull_walk(mesh, lens, out, work, counts);
-    for (int i = 0; i < count; i++) {
-        counts->triangles_submitted += mesh->clusters[out[i]].triangle_count;
     }
     return count;
 }
@@ -327,20 +298,6 @@ project(const r3d_lens_t* lens, const clip_vertex_t* v) {
         r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->near_subpixels * inv, v->r, v->g, v->b};
 }
 
-/* Front faces wind negative on screen: counter-clockwise in a y-up world
- * turns clockwise once screen y points down. */
-static inline bool
-facing_away(int32_t area2, bool double_sided) {
-    return !double_sided && area2 >= 0;
-}
-
-/* Twice the signed area; with coordinates inside R3D_SPAN_RANGE each
- * product is under 2^30. */
-static inline int32_t
-signed_area2(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx, int32_t cy) {
-    return ((bx - ax) * (cy - ay)) - ((cx - ax) * (by - ay));
-}
-
 /* One Sutherland-Hodgman pass (Sutherland and Hodgman 1974): the polygon's part on the plane's inside. */
 static int
 clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* out) {
@@ -419,20 +376,6 @@ draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_col
     }
 }
 
-/* True when the bounding box holds no pixel centre inside the target, so
- * the rasterizer would fill nothing: most of these are triangles smaller
- * than a pixel falling between centres. */
-static inline bool
-misses_every_centre(const r3d_pipeline_vertex_t* a, const r3d_pipeline_vertex_t* b, const r3d_pipeline_vertex_t* c,
-                    const r3d_span_target_t* target) {
-    const int x_first = r3d_span_first_centre(r3d_span_min3(a->sx, b->sx, c->sx));
-    const int x_end = r3d_span_first_centre(r3d_span_max3(a->sx, b->sx, c->sx));
-    const int y_first = r3d_span_first_centre(r3d_span_min3(a->sy, b->sy, c->sy));
-    const int y_end = r3d_span_first_centre(r3d_span_max3(a->sy, b->sy, c->sy));
-    return x_first >= x_end || y_first >= y_end || x_end <= 0 || x_first >= target->rows.width
-           || y_end <= target->rows.row0 || y_first >= target->rows.row1;
-}
-
 static inline bool
 rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
     return !r->unbounded && (r->y1 < (float)target->rows.row0 || r->y0 > (float)target->rows.row1);
@@ -453,42 +396,14 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     draw_clipped(lens, double_sided, face_color, target, work);
 }
 
-typedef enum {
-    TRIANGLE_SET_UP,
-    TRIANGLE_CLIPPED, /* rebuilt from the mesh and clipped */
-    TRIANGLE_BEHIND,
-    TRIANGLE_MISSED,
-    TRIANGLE_FACING_AWAY,
-} triangle_fate_t;
-
-/* The sort the draw makes and r3d_pipeline_count_triangles() counts: every
- * corner in front, then some corner in front, then, for one wholly in front,
- * in_front_fate(). */
-static inline __attribute__((always_inline)) bool
-in_front(const r3d_pipeline_vertex_t* const v[3]) {
-    return v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F;
-}
-
-static inline __attribute__((always_inline)) bool
-partly_in_front(const r3d_pipeline_vertex_t* const v[3]) {
-    return v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F;
-}
-
-static inline __attribute__((always_inline)) triangle_fate_t
-in_front_fate(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const r3d_span_target_t* target) {
-    if (misses_every_centre(v[0], v[1], v[2], target)) {
-        return TRIANGLE_MISSED;
-    }
-    if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
-        return TRIANGLE_FACING_AWAY;
-    }
-    return TRIANGLE_SET_UP;
-}
-
 static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes) {
-    if (in_front_fate(v, double_sided, target) != TRIANGLE_SET_UP) {
+              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes,
+              r3d_pipeline_work_t* work) {
+    if (misses_every_centre(v[0], v[1], v[2], target)) {
+        return;
+    }
+    if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
         return;
     }
     r3d_span_vertex_t s[3];
@@ -499,26 +414,24 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
     fill_triangle(target, &s[0], &s[1], &s[2], face_color, writes);
 }
 
-/* `writers`, when `writes`, are the target's own, retagged per triangle
- * from `given` for those that ask. */
+/* `writers`, when `writes`, are the target's own; those stepping per
+ * triangle start at the cluster's first and advance one per triangle. */
 static inline __attribute__((always_inline)) void
 draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
              const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, bool writes, r3d_span_writer_t* writers,
-             const r3d_span_writer_t* given, r3d_pipeline_work_t* work) {
+             r3d_pipeline_work_t* work) {
     const int end = c->triangle_first + c->triangle_count;
     for (int t = c->triangle_first; t < end; t++) {
-        for (int k = 0; writes && k < target->writer_count; k++) {
-            if (writers[k].step == R3D_SPAN_STEP_TRIANGLE) {
-                writers[k].value = given[k].value + (uint32_t)t;
-            }
-        }
         const uint16_t* tri = mesh->triangles[t];
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-        if (in_front(v)) {
-            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes);
-        } else if (partly_in_front(v)) {
+        if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
+            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes, work);
+        } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
             draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
+        }
+        for (int k = 0; writes && k < target->writer_count; k++) {
+            writers[k].value += writers[k].step == R3D_SPAN_STEP_TRIANGLE ? 1U : 0U;
         }
     }
 }
@@ -538,38 +451,12 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
         for (int k = 0; k < target->writer_count; k++) {
             if (writers[k].step == R3D_SPAN_STEP_CLUSTER) {
                 writers[k].value = target->writers[k].value + clusters[i];
+            } else if (writers[k].step == R3D_SPAN_STEP_TRIANGLE) {
+                writers[k].value = target->writers[k].value + mesh->clusters[clusters[i]].triangle_first;
             }
         }
         if (rows == NULL || !rows_miss_target(&rows[clusters[i]], target)) {
-            draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, &writing, true, writers, target->writers, work);
-        }
-    }
-}
-
-void
-r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
-                             const r3d_pipeline_vertex_t* cs, r3d_pipeline_counts_t* counts, uint16_t* set_up) {
-    const r3d_span_target_t screen = {.rows = {.width = lens->width, .row0 = 0, .row1 = lens->height}};
-    for (int i = 0; i < count; i++) {
-        const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
-        const r3d_pipeline_counts_t before = *counts;
-        for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
-            const uint16_t* tri = mesh->triangles[t];
-            const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-            const triangle_fate_t fate = in_front(v)          ? in_front_fate(v, c->double_sided, &screen)
-                                         : partly_in_front(v) ? TRIANGLE_CLIPPED
-                                                              : TRIANGLE_BEHIND;
-            switch (fate) {
-                case TRIANGLE_SET_UP: counts->triangles_set_up++; break;
-                case TRIANGLE_CLIPPED: counts->triangles_clipped++; break;
-                case TRIANGLE_BEHIND: counts->triangles_behind++; break;
-                case TRIANGLE_MISSED: counts->triangles_missed++; break;
-                case TRIANGLE_FACING_AWAY: counts->triangles_facing_away++; break;
-            }
-        }
-        if (set_up != NULL) {
-            set_up[clusters[i]] = (uint16_t)((counts->triangles_set_up - before.triangles_set_up)
-                                             + (counts->triangles_clipped - before.triangles_clipped));
+            draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, &writing, true, writers, work);
         }
     }
 }
@@ -589,7 +476,7 @@ draw_reading(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
         if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
             continue;
         }
-        draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, false, NULL, NULL, work);
+        draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, false, NULL, work);
     }
 }
 

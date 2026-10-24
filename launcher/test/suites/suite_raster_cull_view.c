@@ -18,7 +18,9 @@
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
+#include "render/r3d_span.h"
 #include "render/raster.h"
+#include "render/view/r3d_pipeline_count.h"
 #include "render/view/raster_cull_view.h"
 
 #define W                64
@@ -50,6 +52,24 @@ pipeline_work(void) {
     work = malloc(r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(work);
     return work;
+}
+
+static r3d_pipeline_count_walk_t* walk;
+
+static void
+release_walk(void) {
+    free(walk);
+    walk = NULL;
+    release_work();
+}
+
+static r3d_pipeline_count_walk_t*
+count_walk(void) {
+    suite_set_test_cleanup(release_walk);
+    free(walk);
+    walk = malloc(sizeof(*walk));
+    TEST_ASSERT_NOT_NULL(walk);
+    return walk;
 }
 
 static r3d_lens_t
@@ -95,10 +115,16 @@ tree_mesh(void) {
                             .face_colors = tree_colors};
 }
 
+/* The same clusters, in any order: the counted walk skips the cull's
+ * nearest-first sort. */
 static void
 assert_same_list(const uint16_t* expected, const uint16_t* actual, int count) {
     for (int i = 0; i < count; i++) {
-        TEST_ASSERT_EQUAL_UINT16(expected[i], actual[i]);
+        bool found = false;
+        for (int j = 0; j < count; j++) {
+            found = found || expected[i] == actual[j];
+        }
+        TEST_ASSERT_TRUE(found);
     }
 }
 
@@ -110,12 +136,10 @@ test_counted_cull_returns_the_list_cull_returns(void) {
     uint16_t counted[3] = {0};
     r3d_pipeline_counts_t counts = {0};
     const int expected = r3d_pipeline_cull(&mesh, &lens, plain, pipeline_work());
-    const int actual = r3d_pipeline_cull_counted(&mesh, &lens, counted, pipeline_work(), &counts);
+    const int actual = r3d_pipeline_cull_counted(&mesh, &lens, counted, count_walk(), &counts);
     TEST_ASSERT_EQUAL_INT(2, expected);
     TEST_ASSERT_EQUAL_INT(expected, actual);
     assert_same_list(plain, counted, expected);
-    TEST_ASSERT_EQUAL_UINT16(0, plain[0]);
-    TEST_ASSERT_EQUAL_UINT16(1, plain[1]);
 }
 
 static void
@@ -124,7 +148,7 @@ test_counted_cull_counts_agree_with_the_list(void) {
     const r3d_lens_t lens = lens_for(&looking_at_origin);
     uint16_t out[3];
     r3d_pipeline_counts_t counts = {0};
-    const int kept = r3d_pipeline_cull_counted(&mesh, &lens, out, pipeline_work(), &counts);
+    const int kept = r3d_pipeline_cull_counted(&mesh, &lens, out, count_walk(), &counts);
     int submitted = 0;
     for (int i = 0; i < kept; i++) {
         submitted += mesh.clusters[out[i]].triangle_count;
@@ -137,7 +161,7 @@ test_counted_cull_counts_agree_with_the_list(void) {
     TEST_ASSERT_EQUAL_INT(2, counts.clusters_tested);
 
     r3d_pipeline_counts_t twice = counts;
-    (void)r3d_pipeline_cull_counted(&mesh, &lens, out, pipeline_work(), &twice);
+    (void)r3d_pipeline_cull_counted(&mesh, &lens, out, count_walk(), &twice);
     TEST_ASSERT_EQUAL_INT(2 * counts.nodes_visited, twice.nodes_visited);
     TEST_ASSERT_EQUAL_INT(2 * counts.nodes_cut, twice.nodes_cut);
     TEST_ASSERT_EQUAL_INT(2 * counts.clusters_tested, twice.clusters_tested);
@@ -151,7 +175,7 @@ test_counted_cull_cuts_a_mesh_wholly_outside_the_frustum(void) {
     const r3d_lens_t lens = lens_for(&looking_away);
     uint16_t out[3];
     r3d_pipeline_counts_t counts = {0};
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull_counted(&mesh, &lens, out, pipeline_work(), &counts));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull_counted(&mesh, &lens, out, count_walk(), &counts));
     TEST_ASSERT_TRUE(counts.nodes_cut >= 1);
     TEST_ASSERT_EQUAL_INT(1, counts.nodes_visited);
     TEST_ASSERT_EQUAL_INT(0, counts.clusters_tested);
@@ -243,6 +267,61 @@ test_set_up_per_cluster_counts_set_up_and_clipped_triangles(void) {
     TEST_ASSERT_EQUAL_INT(0, only.triangles_set_up);
     TEST_ASSERT_EQUAL_INT(0, only.triangles_missed);
     TEST_ASSERT_EQUAL_INT(0, only.triangles_facing_away);
+}
+
+/* The triangles a draw fills, each marked once by the writer that sees its spans. */
+static bool* filled;
+
+static void
+mark_filled(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last, int32_t z,
+            int32_t dz) {
+    (void)rows;
+    (void)y;
+    (void)x_first;
+    (void)x_last;
+    (void)z;
+    (void)dz;
+    filled[writer->value] = true;
+}
+
+static void
+release_filled(void) {
+    free(filled);
+    filled = NULL;
+    release_work();
+}
+
+/* The draw fills exactly the triangles the count says reach r3d_span: the
+ * count's sort and the draw's are one, checked rather than trusted. */
+static void
+test_the_draw_fills_the_triangles_the_count_sets_up(void) {
+    const r3d_lit_mesh_t mesh = sort_mesh();
+    const r3d_lens_t lens = lens_for(&looking_at_origin);
+    const uint16_t in_front[] = {0}; /* cluster 0: no corner behind the eye */
+    r3d_pipeline_vertex_t cs[SORT_VERTICES];
+    r3d_pipeline_transform(&mesh, &lens, in_front, 1, cs, NULL);
+    r3d_pipeline_counts_t counts = {0};
+    r3d_pipeline_count_triangles(&mesh, &lens, in_front, 1, cs, &counts, NULL);
+
+    uint16_t* pixels = calloc((size_t)W * H * 2, sizeof(uint16_t));
+    TEST_ASSERT_NOT_NULL(pixels);
+    (void)pipeline_work();
+    suite_set_test_cleanup(release_filled);
+    filled = calloc((size_t)mesh.triangle_count, sizeof(bool));
+    TEST_ASSERT_NOT_NULL(filled);
+    const r3d_span_writer_t marker = {.span = mark_filled, .step = R3D_SPAN_STEP_TRIANGLE};
+    r3d_span_target_t target = r3d_span_target(pixels, pixels + (size_t)W * H, W, 0, H);
+    target.writers = &marker;
+    target.writer_count = 1;
+    r3d_pipeline_draw(&mesh, &lens, in_front, 1, cs, NULL, &target, work);
+    int drawn = 0;
+    for (int t = 0; t < mesh.triangle_count; t++) {
+        drawn += filled[t];
+    }
+    free(pixels);
+    TEST_ASSERT_EQUAL_INT(1, counts.triangles_set_up);
+    TEST_ASSERT_EQUAL_INT(counts.triangles_set_up, drawn);
+    TEST_ASSERT_TRUE(filled[0]);
 }
 
 static void
@@ -398,6 +477,14 @@ set_cull_from(raster_cull_from_t from) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(cullview, from), from));
 }
 
+/* The raster's own culling switch, render.cull, as the frame left it. */
+static bool
+culling_on(void) {
+    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
+    TEST_ASSERT_NOT_NULL(entry);
+    return *entry->value != 0;
+}
+
 static scene_t*
 scene_open(void) {
     scene_t* s = calloc(1, sizeof(*s));
@@ -498,14 +585,14 @@ test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts(v
     scene_t* s = scene_open();
     scene_draw(s);
     const raster_cull_frame_t camera_only = raster_cull_frame(scene_state(s));
-    TEST_ASSERT_FALSE(s->context.raster.keep_every_cluster);
+    TEST_ASSERT_TRUE(culling_on());
     TEST_ASSERT_EQUAL_INT(0, pixels_of(s, CULLED_RGB));
 
     set_cull_from(RASTER_CULL_FROM_TOP);
     scene_draw(s);
     const raster_cull_t* state = scene_state(s);
     TEST_ASSERT_EQUAL_INT(RASTER_CULL_FROM_TOP, state->from);
-    TEST_ASSERT_FALSE(s->context.raster.keep_every_cluster);
+    TEST_ASSERT_TRUE(culling_on());
     TEST_ASSERT_FALSE(state->spectating);
 
     TEST_ASSERT_TRUE(state->spectator.position.y > state->camera.position.y);
@@ -524,6 +611,7 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_triangles_are_sorted_into_exactly_one_fate_each);
     RUN_TEST(test_set_up_per_cluster_counts_set_up_and_clipped_triangles);
     RUN_TEST(test_triangle_sort_adds_to_the_counts_it_is_given);
+    RUN_TEST(test_the_draw_fills_the_triangles_the_count_sets_up);
     RUN_TEST(test_per_triangle_writer_tags_the_triangle_that_won_each_pixel);
     RUN_TEST(test_cull_view_gives_each_cluster_its_fate);
     RUN_TEST(test_cull_view_frame_counts_clusters_by_fate);

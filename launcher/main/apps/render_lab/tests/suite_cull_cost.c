@@ -31,6 +31,7 @@
 #include "gfx/gfx.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
+#include "render/view/r3d_pipeline_count.h"
 #include "scene/scene.h"
 
 static const char* TAG = "cull_cost";
@@ -81,7 +82,10 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
     const stage_us_t us = time_stages(raster, mesh, lens, &visible);
     const raster_buffers_t b = raster_carve(raster);
     r3d_pipeline_counts_t n = {0};
-    TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, b.culled + 1, b.work[0], &n));
+    r3d_pipeline_count_walk_t* walk = memory_alloc(sizeof(*walk), MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(walk);
+    TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, b.culled + 1, walk, &n));
+    memory_free(walk);
     r3d_pipeline_transform(mesh, lens, b.culled + 1, visible, b.cs, b.rows);
     r3d_pipeline_count_triangles(mesh, lens, b.culled + 1, visible, b.cs, &n, NULL);
     int vertices = 0;
