@@ -13,6 +13,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "collections/strbuf.h"
+
 #define GATE_TESTS 4
 
 static const char* const gate_names[GATE_TESTS] = {"test_fire_fits", "test_gas_fits", "test_fire_and_gas_fit",
@@ -161,9 +163,10 @@ pattern_of(char* out, int length) {
 static suite_run_t
 request_with(const char* pattern, int copies) {
     char text[SUITE_NAME_MAX + 2 + SUITE_FILTER_MAX * SUITE_FILTER_LEN + SUITE_FILTER_LEN];
-    int n = snprintf(text, sizeof text, "gate_fixture_suite ");
+    strbuf_t line = strbuf_make(text, sizeof text);
+    strbuf_appendf(&line, "gate_fixture_suite ");
     for (int i = 0; i < copies; i++) {
-        n += snprintf(text + n, sizeof text - (size_t)n, "%s%s", i > 0 ? "," : "", pattern);
+        TEST_ASSERT_TRUE(strbuf_appendf(&line, "%s%s", i > 0 ? "," : "", pattern));
     }
     return request(text);
 }
