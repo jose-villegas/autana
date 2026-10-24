@@ -73,8 +73,8 @@ probe_body_rate(probe_pose_at_t pose, float t, float dt, float rate[3]) {
     rate[2] = (rel[1][0] - rel[0][1]) / (2 * dt);
 }
 
-/* What the chip reads at rest in that pose: specific force (up, 1 g) and the body rate plus a per-chip-axis
- * offset in deg/s, in chip counts. */
+/* What the chip reads in that pose: specific force (up, 1 g, no linear acceleration) and the body rate plus a
+ * per-chip-axis offset in deg/s, in chip counts. */
 static inline imu_sample_t
 probe_chip_sample(probe_pose_at_t pose, float t, float dt, const float offset_dps[3]) {
     const probe_pose_t now = pose(t);
