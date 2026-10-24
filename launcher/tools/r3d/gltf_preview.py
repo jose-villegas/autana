@@ -20,6 +20,7 @@ import sys
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from geometry.vectors import cross  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 
 LIGHT = (0.45, 0.80, 0.40)
@@ -34,10 +35,6 @@ VIEWS = {"front": (0.0, 8.0), "side": (90.0, 5.0), "top": (0.0, 88.0), "three-qu
 def normalize(v):
     length = math.sqrt(sum(x * x for x in v)) or 1.0
     return tuple(x / length for x in v)
-
-
-def cross(a, b):
-    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
 
 
 def linear_to_srgb(c):

@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-#include "services/tune.h"
+#include "core/tune.h"
 
 TUNE_OWNER(render_lab);
 TUNE(render_lab, view, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_COUNT);

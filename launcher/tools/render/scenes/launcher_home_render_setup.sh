@@ -7,7 +7,6 @@ main/app/app_registry.c
 main/shell/ui/ui_launcher.c
 main/shell/ui/ui_launcher_draw.c
 main/shell/ui/ui_ridge.c
-main/services/tune.c
 tools/render/scenes/launcher_home_render_setup.c
 "
 launcher_home_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
