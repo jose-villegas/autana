@@ -12,6 +12,7 @@ carry functions nothing calls yet.
 | `include/math/linear/` | Vectors, quaternions, 4x4 matrices and transforms, each one template instantiated per number type; [linear reference](../../../docs/math/Linear.md) describes the families |
 | `include/math/geometry/` | Shapes and their queries: half-open rectangles (`rectf`, `recti`, `rects`, `rectx`) and oriented planes (`planef`, `planex`), instantiated from geometry templates |
 | `include/math/motion/` | Orbiting a target |
+| `include/math/stats/` | Order statistics of sample arrays: percentile and median; [stats reference](../../../docs/math/Stats.md) |
 | `include/math/signal/` | Signal processing on sample blocks: Goertzel single-bin detection; [signal reference](../../../docs/math/Signal.md) |
 | `src/` | The few functions that are not inline |
 | `tests/` | Its suites, run by both runners like every other suite |
