@@ -260,6 +260,22 @@ Shake counts where it reaches 2x the silent board's reading.
 </details>
 <!-- /generated: audio-buzz -->
 
+## Felt by hand
+
+Board held in the hand, 3 s tones at the strongest points above:
+
+| Tone | Felt | Heard |
+|---|---|---|
+| 156 Hz, 60% | no | quietly |
+| 202 Hz, 10% | no | faintly |
+| 202 Hz, 30% | yes | clearly, but softly |
+| 202 Hz, 60% | yes | clearly |
+| 300 Hz, 60% | yes | too loud for feedback |
+
+Felt and heard rise together: no tone shakes the board while staying silent.
+The board's resonance, near 200 Hz, gives the most feel for its loudness. Its
+strength follows the volume up to the limiter, which stops any gain above 60%.
+
 ## Run it
 
 Board flat on a desk, untouched, in a quiet room, on a screen that reads no

@@ -125,8 +125,9 @@ def figures(path, output):
         if field == "shake":
             series.append(("Silence", sorted((hz, point["floor"]) for (hz, gain), point in points.items()
                                              if gain == reference), "--", SLOTS[-1]))
-        fig, axis = line_chart(series, xlabel="Tone frequency (Hz)", ylabel=label,
-                               yscale="log" if field == "shake" else "linear")
+        fig, axis = line_chart(series, xlabel="Tone frequency (Hz)", ylabel=label)
+        if field == "shake":
+            axis.set_ylim(bottom=0)
         save_themed_plot(fig, axis, output / f"{name}.png", title)
 
 
