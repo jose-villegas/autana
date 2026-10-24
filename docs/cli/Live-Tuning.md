@@ -120,7 +120,7 @@ TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
 - `TUNE_HOT` is the same declaration for code whose layout is pinned or
   measured, such as the raster's inner loops: a constant in every
   build, live only on an image built with `--hot-tunables`
-  ([Build-Variants.md](../Build-Variants.md)), which is what
+  ([Build-Variants.md](../tools/Build-Variants.md)), which is what
   `launcher/tools/perf/perf_sweep.sh` flashes.
 - A value read every frame takes effect at once. One baked into a table needs
   its owner to notice:
@@ -133,4 +133,4 @@ TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
 
 ## Related
 
-- [`../Build-Variants.md`](../Build-Variants.md): what a development build is
+- [`tools/Build-Variants.md`](../tools/Build-Variants.md): what a development build is

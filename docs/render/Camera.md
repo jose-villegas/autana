@@ -47,7 +47,7 @@ transform as component 0. An entity that carries a camera gets a second referenc
 `components[entity * 2 + 1]`, pointing at `&CAMERA_FIELDS` and that camera's `lens`, and its
 `component_count` becomes 2 ([`scene_animation.c:38`](../../launcher/main/scene/scene_animation.c#L38)).
 A clip then names `ANIM_COMPONENT_CAMERA` (`CAMR`) and a field by name; the track format and
-the glTF pointer it comes from are in [Animation tracks](../Animation-Tracks.md).
+the glTF pointer it comes from are in [Animation tracks](Animation-Tracks.md).
 
 To make another lens field animatable, add an `ANIM_FIELD(camera_t, field, type)` row beside
 the struct; nothing in the binder changes.
