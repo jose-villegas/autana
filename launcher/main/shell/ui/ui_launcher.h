@@ -10,7 +10,7 @@ struct app;
 void ui_launcher_init(void);
 
 /* The home screen's own rows, with no ui_begin()/ui_end() around them; see
- * this module's own top comment for why, and docs/Building-a-Screen.md for
+ * this module's own top comment for why, and docs/ui/Building-a-Screen.md for
  * the same split every app's own screen already keeps. Returns the app the
  * user picked, or NULL if none. */
 const struct app* ui_launcher_draw(void);

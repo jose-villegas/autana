@@ -72,11 +72,11 @@ The macro arguments:
 ## The float-precision build rules
 
 The S3's FPU is single precision, so a `double` is a software call; the cost
-and the rules are in [Build-Variants.md](../Build-Variants.md):
+and the rules are in [Build-Variants.md](../tools/Build-Variants.md):
 
 | Rule | Where |
 |---|---|
 | `-Werror=double-promotion`, `-Werror=float-conversion` | the whole `main` component |
-| `-ffp-contract=off` | the host builds [Build-Variants.md](../Build-Variants.md#float-maths-is-single-precision-and-the-build-holds-it-there) names; the device fuses |
+| `-ffp-contract=off` | the host builds [Build-Variants.md](../tools/Build-Variants.md#float-maths-is-single-precision-and-the-build-holds-it-there) names; the device fuses |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `lroundf`; link it |
