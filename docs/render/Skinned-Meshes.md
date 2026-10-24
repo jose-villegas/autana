@@ -74,22 +74,29 @@ An app finds the entity once and plays clips by index; the last argument of
 a play is the transition blend in milliseconds. `start` and `on_pick` are the
 app's own functions:
 
+<!-- generated: scene-animator-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Animator: find an entity at load and blend to a selected clip. */
 #include "scene/scene.h"
+
+#define BLEND_MS 250
 
 static scene_t* scene;
 static scene_entity_t subject;
 
-void start(void) {
+static void
+start(void) {
     scene = scene_load("meadow", NULL);
     subject = scene_find(scene, "subject");
     scene_activate(scene, NULL);
 }
 
-void on_pick(int clip) {
-    scene_animator_play(scene, subject, clip, 250);
+static bool
+on_pick(int clip) {
+    return scene_animator_play(scene, subject, clip, BLEND_MS);
 }
 ```
+<!-- /generated: scene-animator-example -->
 
 | Call | Does |
 |---|---|
