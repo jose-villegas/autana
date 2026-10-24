@@ -3,8 +3,8 @@
 How the shell, the apps and the screen fit together, and why ownership is
 arranged this way. Read this before changing the frame loop, the layering or
 the UI integration. To write an app, start at
-[Building-an-App.md](../Building-an-App.md); to build a screen, at
-[Building-a-Screen.md](../Building-a-Screen.md).
+[Building-an-App.md](Building-an-App.md); to build a screen, at
+[Building-a-Screen.md](../ui/Building-a-Screen.md).
 
 The board boots, shows the launcher, starts the selected app, and returns
 home when the app exits. Each frame has one owner per step:
@@ -51,14 +51,14 @@ screen.
 - [render/README.md](../render/README.md), `render/`: drawing a baked mesh (cameras,
   the span rasterizer, the two-core frame), making one from a source model, and
   describing a scene of objects.
-- [Animation-Tracks.md](../Animation-Tracks.md), `anim/`: glTF keyed values
+- [Animation-Tracks.md](../render/Animation-Tracks.md), `anim/`: glTF keyed values
   sampled over time, and how a scene's properties are animated.
 - [assets/README.md](../assets/README.md), `asset/`: the binary pack of content the
   firmware maps from a flash partition, its format and how it is flashed.
-- [Text-and-Fonts.md](../Text-and-Fonts.md): what a font is, the role
+- [Text-and-Fonts.md](../gfx/Text-and-Fonts.md): what a font is, the role
   accessor, text at more than one size.
 - [tools/Frame-Cost.md](../tools/Frame-Cost.md): where a frame's time goes, by
   stage.
-- [Testing-Guide.md](../Testing-Guide.md): how to test any of it.
-- [Build-Variants.md](../Build-Variants.md): what release, development and
+- [Testing-Guide.md](../testing/README.md): how to test any of it.
+- [Build-Variants.md](../tools/Build-Variants.md): what release, development and
   diagnostics builds each carry.

@@ -45,6 +45,8 @@ KEYS = {
                      "in the checkout"),
     "lock_hook": (str, "shell command run on every device lock event; fires only for "
                        "commands run from a checkout whose file sets it"),
+    "session_vars": (list, "environment variables, after AUTANA_SESSION, whose value "
+                           "labels the session a lookup is logged under; first set wins"),
 }
 
 

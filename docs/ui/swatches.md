@@ -46,7 +46,7 @@ swatches_example(swatches_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-swatches-states sha256=b5338f8ba771fef2606984a86d77e192f2e8a095717d5cd74bd172f1d8658bbc -->
@@ -68,4 +68,4 @@ return true.
 ## See also
 
 - [Tile](tile.md)
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

@@ -4,7 +4,7 @@ and its reader on the host; main/anim/anim_tracks.c is the firmware's.
 
 A NAME.anim.toml names its source, a .glb, .fbx or camera .keys.toml in its
 own folder, and the animation in it; the pack id is NAME. The keys and the
-entry's layout are in docs/Animation-Tracks.md, "TRCK v3".
+entry's layout are in docs/render/Animation-Tracks.md, "TRCK v3".
 
 Each curve is stored in its target field's units (a camera's yfov
 becomes `half_fov_short_tan`), and a channel that never changes

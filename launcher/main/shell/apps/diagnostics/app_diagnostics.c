@@ -73,10 +73,6 @@ static void
 draw_tools_page(const input_t* input) {
     ui_begin(input);
 
-    /* imu_read() is an I2C transaction: read only while the toggle is
-     * already on, not on the frame that turns it on (that frame shows the
-     * previous reading's absence for one repaint and self-corrects the
-     * next), so a page most visits never enable never pays for it. */
     diagnostics_tools_screen_state_t state = {
         .show_orientation = show_orientation,
         .imu_ready = imu_ready(),

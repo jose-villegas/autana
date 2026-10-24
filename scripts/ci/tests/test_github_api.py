@@ -98,15 +98,15 @@ class GithubApiTests(unittest.TestCase):
                     os.environ, GH_TOKEN='token', GITHUB_REPOSITORY='owner/repo'), \
                     mock.patch('time.sleep') as sleep, \
                     mock.patch.object(github_api.urllib.request, 'urlopen', side_effect=[
-                        *([error] * (github_api.GET_ATTEMPTS - 1)),
+                        *([error] * (github_api.http_get.GET_ATTEMPTS - 1)),
                         io.BytesIO(b'{"ok": true}')]) as open_url:
                 self.assertEqual(github_api.call('GET', '/actions/artifacts'), {'ok': True})
-                self.assertEqual(open_url.call_count, github_api.GET_ATTEMPTS)
+                self.assertEqual(open_url.call_count, github_api.http_get.GET_ATTEMPTS)
                 self.assertTrue(all(call.kwargs == {'timeout': github_api.REQUEST_TIMEOUT_SECONDS}
                                     for call in open_url.call_args_list))
                 self.assertEqual(sleep.call_args_list, [
-                    mock.call(github_api.RETRY_BASE_DELAY_SECONDS * 2 ** attempt)
-                    for attempt in range(github_api.GET_ATTEMPTS - 1)])
+                    mock.call(github_api.http_get.RETRY_BASE_DELAY_SECONDS * 2 ** attempt)
+                    for attempt in range(github_api.http_get.GET_ATTEMPTS - 1)])
 
     def test_nontransient_or_non_get_errors_are_not_retried(self):
         rejected = [('GET', urllib.error.HTTPError('url', code, 'rejected', {}, None))
@@ -126,15 +126,15 @@ class GithubApiTests(unittest.TestCase):
 
     def test_get_exhausts_attempts_and_propagates_last_error(self):
         errors = [urllib.error.URLError(f'connect {attempt}')
-                  for attempt in range(github_api.GET_ATTEMPTS)]
+                  for attempt in range(github_api.http_get.GET_ATTEMPTS)]
         with mock.patch.dict(os.environ, GH_TOKEN='token', GITHUB_REPOSITORY='owner/repo'), \
                 mock.patch('time.sleep') as sleep, \
                 mock.patch.object(github_api.urllib.request, 'urlopen', side_effect=errors) as open_url:
             with self.assertRaises(urllib.error.URLError) as raised:
                 github_api.call('GET', '/actions/runs')
             self.assertIs(raised.exception, errors[-1])
-            self.assertEqual(open_url.call_count, github_api.GET_ATTEMPTS)
-            self.assertEqual(sleep.call_count, github_api.GET_ATTEMPTS - 1)
+            self.assertEqual(open_url.call_count, github_api.http_get.GET_ATTEMPTS)
+            self.assertEqual(sleep.call_count, github_api.http_get.GET_ATTEMPTS - 1)
 
     def test_pages_stop_after_short_page_with_existing_query(self):
         first = list(range(github_api.PER_PAGE))

@@ -16,6 +16,7 @@ import subprocess
 import sys
 from collections import Counter, namedtuple
 from pathlib import Path
+from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parents[3]
 LAUNCHER = REPO / "launcher"
@@ -90,12 +91,25 @@ def cache_line_size(build):
     return int(match.group(1))
 
 
-def symbols(nm, elf, functions=None):
-    found = {}
+class Symbol(NamedTuple):
+    address: int
+    name: str
+    size: int | None
+    section: str
+
+
+def symbols(nm, elf, functions=None, *, records=False):
+    found = [] if records else {}
     for line in run(nm, "-n", "-S", str(elf)).splitlines():
         fields = line.split()
         if len(fields) == 4 and (functions is None or fields[3] in functions):
-            found[int(fields[0], 16)] = (fields[3], int(fields[1], 16))
+            record = Symbol(int(fields[0], 16), fields[3], int(fields[1], 16), fields[2])
+            if records:
+                found.append(record)
+            else:
+                found[record.address] = (record.name, record.size)
+        elif records and len(fields) == 3 and (functions is None or fields[2] in functions):
+            found.append(Symbol(int(fields[0], 16), fields[2], None, fields[1]))
     return found
 
 

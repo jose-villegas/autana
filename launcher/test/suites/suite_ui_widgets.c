@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "hash/name_hash64.h"
 #include "perf_stats.h"
 #include "suites.h"
 #include "test_cleanup.h"
@@ -520,11 +521,7 @@ static uint64_t
 canvas_hash(const char* name) {
     const mu_Container* cnt = mu_get_container(ui_context(), name);
     const unsigned char* p = (const unsigned char*)cnt->head + cnt->head->base.size;
-    uint64_t h = 1469598103934665603ull;
-    for (; p < (const unsigned char*)cnt->tail; p++) {
-        h = (h ^ *p) * 1099511628211ull;
-    }
-    return h;
+    return name_hash64_n(NAME_HASH64_OFFSET_BASIS, p, (size_t)((const unsigned char*)cnt->tail - p));
 }
 
 /* The dropdown shows whether its list is open, through its chevron. */
@@ -547,7 +544,7 @@ static uint64_t
 chevron_hash(void) {
     const mu_Rect box = {DROPDOWN.x + DROPDOWN.w - 40, DROPDOWN.y + 8, 32, 28};
     mu_Command* cmd = NULL;
-    uint64_t h = 1469598103934665603ull;
+    uint64_t h = NAME_HASH64_OFFSET_BASIS;
     while (mu_next_command(ui_context(), &cmd)) {
         if (cmd->type != MU_COMMAND_RECT) {
             continue;
@@ -556,10 +553,7 @@ chevron_hash(void) {
         if (r.x < box.x || r.y < box.y || r.x + r.w > box.x + box.w || r.y + r.h > box.y + box.h) {
             continue;
         }
-        const unsigned char* p = (const unsigned char*)&cmd->rect;
-        for (size_t i = 0; i < sizeof cmd->rect; i++) {
-            h = (h ^ p[i]) * 1099511628211ull;
-        }
+        h = name_hash64_n(h, &cmd->rect, sizeof cmd->rect);
     }
     return h;
 }
@@ -718,11 +712,9 @@ test_opening_release_cannot_pick_an_overlay_row(void) {
 static uint64_t
 framebuffer_rect_hash(mu_Rect r) {
     const gfx_color_t* fb = gfx_framebuffer();
-    uint64_t h = 1469598103934665603ull;
+    uint64_t h = NAME_HASH64_OFFSET_BASIS;
     for (int y = r.y; y < r.y + r.h; y++) {
-        for (int x = r.x; x < r.x + r.w; x++) {
-            h = (h ^ fb[y * GFX_WIDTH + x]) * 1099511628211ull;
-        }
+        h = name_hash64_n(h, &fb[y * GFX_WIDTH + r.x], (size_t)r.w * sizeof *fb);
     }
     return h;
 }
@@ -777,7 +769,7 @@ overflow_frame(bool bands, int revision) {
 static uint64_t
 owned_command_hash(const mu_Container* canvas) {
     mu_Context* ctx = ui_context();
-    uint64_t hash = 1469598103934665603ull;
+    uint64_t hash = NAME_HASH64_OFFSET_BASIS;
     mu_Command* cmd = NULL;
     while (mu_next_command(ctx, &cmd)) {
         const mu_Container* owner = NULL;
@@ -789,10 +781,7 @@ owned_command_hash(const mu_Container* canvas) {
             }
         }
         if (owner == canvas) {
-            const unsigned char* bytes = (const unsigned char*)cmd;
-            for (int i = 0; i < cmd->base.size; i++) {
-                hash = (hash ^ bytes[i]) * 1099511628211ull;
-            }
+            hash = name_hash64_n(hash, cmd, (size_t)cmd->base.size);
         }
     }
     return hash;

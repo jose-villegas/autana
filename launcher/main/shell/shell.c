@@ -40,6 +40,7 @@
 #include "console/verbs/console_freeze.h"
 #include "console/verbs/console_navigation_parse.h"
 #include "console/verbs/console_screenshot.h"
+#include "console/verbs/console_sound.h"
 #endif
 
 #if CONFIG_LAUNCHER_SELFTEST
@@ -408,6 +409,10 @@ shell_run(void) {
          * would skip is applied here, so a held frame still answers. */
         console_frame_take(console_frame_mailbox(), &requests);
         console_freeze_apply(&requests);
+        if (requests.kinds & CONSOLE_FRAME_SOUND) {
+            console_sound_answer(&requests.sound);
+            console_frame_done(console_frame_mailbox(), CONSOLE_FRAME_SOUND);
+        }
         if (requests.kinds & CONSOLE_FRAME_FRAMEWATCH) {
             console_frame_watch_answer();
         }

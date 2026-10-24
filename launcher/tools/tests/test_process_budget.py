@@ -95,8 +95,11 @@ if __name__ == '__main__':
                 parent.wait(timeout=5)
                 deadline = time.monotonic() + 2
                 while time.monotonic() < deadline:
-                    status = pathlib.Path(f'/proc/{pid}/status')
-                    if not status.exists() or 'State:\tZ' in status.read_text():
+                    try:
+                        state = pathlib.Path(f'/proc/{pid}/status').read_text()
+                    except (FileNotFoundError, ProcessLookupError):
+                        break
+                    if 'State:\tZ' in state:
                         break
                     time.sleep(.05)
                 else:

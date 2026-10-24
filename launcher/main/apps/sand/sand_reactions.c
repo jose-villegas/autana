@@ -88,7 +88,7 @@ static uint8_t pair_bits[MATERIAL_MAX][MATERIAL_MAX];
 
 /* Eligibility depends only on the encoded byte and the const reaction
  * tables, including the lit-fuse and cullet exclusions. */
-static uint32_t percolate_accept_mask[8];
+static uint32_t percolate_accept_mask[BITS32_WORDS(256)];
 
 /* Reads theirs-only bits. Used by try_heat_transform(), step_one_cold_cell(),
  * conduct_heat(). MAT_EMPTY stores theirs-only bits. */
@@ -726,7 +726,7 @@ cell_accepts_percolation(cell_t below) {
 
 static inline bool
 percolate_accepts(cell_t below) {
-    return (percolate_accept_mask[below >> 5] & (UINT32_C(1) << (below & 31U))) != 0;
+    return bits32_get(percolate_accept_mask, below);
 }
 
 /* Fills `open` with the percolation slots that can take water; returns how
@@ -2818,7 +2818,7 @@ build_reaction_tables(void) {
     fill_pair_bits();
     for (unsigned byte = 0; byte < 256U; byte++) {
         if (cell_accepts_percolation((cell_t)byte)) {
-            percolate_accept_mask[byte >> 5] |= UINT32_C(1) << (byte & 31U);
+            bits32_set(percolate_accept_mask, byte);
         }
     }
 

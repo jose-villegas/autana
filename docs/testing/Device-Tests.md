@@ -2,7 +2,7 @@
 
 Suites and checks that run on the board: one suite at a time, a full
 self-test, pytest console recipes, POST and Board CI. Back to the
-[Testing Guide](../Testing-Guide.md).
+[Testing Guide](README.md).
 
 Every board operation goes through `autana`, which queues on the device lock
 instead of fighting for the port; `autana status` shows who holds it. See
@@ -21,7 +21,7 @@ commands never fight for the board.
 ## Which run, when
 
 1. **While developing:** `autana suite <name>` for the area you touched, on a normal diag build (SELFTEST on, AUTORUN off, full scope).
-2. **Perf captures only:** a [scoped build](../Build-Variants.md#a-diagnostics-build-can-be-scoped), plus the capturing app's own docs.
+2. **Perf captures only:** a [scoped build](../tools/Build-Variants.md#a-diagnostics-build-can-be-scoped), plus the capturing app's own docs.
 3. **Before a merge:** the full self-test, `autana selftest` or `report_test_results.sh`, autorun, unattended. About 18 minutes on this board: the gate, not the everyday loop.
 
 `autana selftest` builds, flashes and runs every suite under the device lock,
@@ -90,6 +90,7 @@ reporter and output location. It hands the work to
 - writes the report;
 - reflashes release firmware unless given `--no-restore`.
 
+- `autana suite`, `batch` and `selftest` end with `report: <path>` and the report's Errors section: crashes, resets, and error or assert lines, or `None.`. Read that before the raw capture.
 - A report script takes its board from `--board SERIAL`, else the only board plugged in.
 - Its one positional argument is the report path, ending in `.md`.
 - Like every `autana` command it never runs a checkout's own `scripts/device/device.py`; see [Device-Lock](../cli/Device-Lock.md#one-copy-of-the-tools).
