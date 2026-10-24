@@ -69,7 +69,7 @@ built-in buses are never destroyed.
 
 | Sound | `opts.loop` | Result |
 |---|---|---|
-| has loop points | any | loops inside them (`sound_read()` wraps) |
+| has loop points | set | loops inside them (`sound_read()` wraps) |
 | none | set | restarts from frame 0 |
 | has loop points | clear | stops at `loop_end`, the cut de-clicked ([Clicks](Clicks.md)) |
 

@@ -139,8 +139,7 @@ music_example_stop(music_example_t* s) {
 ```
 <!-- /generated: sound-music-example -->
 
-A sound with loop points loops inside them without `opts.loop`. How loops and
-loop points interact: [Loops](Sound-Mixer.md#loops).
+`opts.loop` loops a sound inside its loop points, or from frame 0 when it has none. All cases: [Loops](Sound-Mixer.md#loops).
 
 ## Keep it alive until the app exits
 
