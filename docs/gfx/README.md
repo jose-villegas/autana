@@ -24,7 +24,7 @@ A caller includes the header for what it does:
 Draw reaches presentation only through `gfx.h`: `gfx_draw_begin()` hands it the
 target, clip and whether to mark, and the `gfx_mark_*` calls record what it wrote.
 
-For what an app owes the shell, see [`Building-an-App.md`](../Building-an-App.md);
+For what an app owes the shell, see [`Building-an-App.md`](../firmware/Building-an-App.md);
 for the panel constraints these choices obey,
 [`notes/Display-and-Rendering.md`](../notes/Display-and-Rendering.md).
 
@@ -76,7 +76,7 @@ allocates it again. Double mode adds a second one and frees it on exit.
 
 ## Related
 
-- [`Building-an-App.md`](../Building-an-App.md): when the shell presents, and `update()`
+- [`Building-an-App.md`](../firmware/Building-an-App.md): when the shell presents, and `update()`
 - [`firmware/README.md`](../firmware/README.md): why one framebuffer, one frame loop
 - [`notes/Display-and-Rendering.md`](../notes/Display-and-Rendering.md): the panel constraints these choices obey
 - [`plans/Autana-Rendering-Roadmap.md`](../plans/Autana-Rendering-Roadmap.md): where this is going
