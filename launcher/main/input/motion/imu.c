@@ -39,8 +39,10 @@ static const char* TAG = "imu";
 _Static_assert(IMU_READ_HZ % IMU_FIFO_DRAIN_HZ == 0, "FIFO drains need whole read periods");
 _Static_assert(IMU_DRAIN_MS* MATH_US_PER_MS < IMU_FIFO_SAMPLES * IMU_SAMPLE_US,
                "FIFO drain period must fit retained history");
-/* Above the frame (main) task: FIFO history lasts only IMU_FIFO_SAMPLES * IMU_SAMPLE_US. */
+/* Above the frame task; the FIFO must still be drained within IMU_FIFO_SAMPLES * IMU_SAMPLE_US. */
 #define IMU_TASK_PRIORITY    5
+/* Core 1 is idle during the step's serial parts on the frame task's core 0. */
+#define IMU_TASK_CORE        1
 /* Holds I2C driver frames and ESP_LOGI/ESP_LOGE on the bus-error path.
  * Size from the board's stack high-water mark. */
 #define IMU_TASK_STACK_BYTES (3 * 1024)
@@ -49,6 +51,8 @@ TUNE_OWNER(imu);
 TUNE(imu, read_ms, IMU_READ_MS, IMU_PERIOD_MIN_MS, IMU_PERIOD_MAX_MS);
 TUNE(imu, drain_ms, IMU_DRAIN_MS, IMU_PERIOD_MIN_MS, IMU_PERIOD_MAX_MS);
 #if CONFIG_LAUNCHER_DEVELOPMENT
+#define IMU_TASK_PRIORITY_MAX (configMAX_PRIORITIES - 1)
+TUNE(imu, priority, IMU_TASK_PRIORITY, 1, IMU_TASK_PRIORITY_MAX);
 /* Upper bound for the reporting window. */
 #define IMU_LOG_MAX_MS (60 * MATH_MS_PER_S)
 TUNE(imu, log_ms, 0, 0, IMU_LOG_MAX_MS);
@@ -398,10 +402,10 @@ log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us) {
         ESP_LOGI(TAG,
                  "register_reads %u drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u "
                  "reader_age_mean_us %llu "
-                 "reader_age_max_us %lld stack_free_bytes %u",
+                 "reader_age_max_us %lld stack_free_bytes %u core %u",
                  register_reads, drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered,
                  lost_total, (unsigned long long)age_mean_us, (long long)age_max_us,
-                 (unsigned)uxTaskGetStackHighWaterMark(NULL));
+                 (unsigned)uxTaskGetStackHighWaterMark(NULL), (unsigned)xPortGetCoreID());
     }
     if (window_done) {
         last_log_us = now_us;
@@ -419,7 +423,17 @@ imu_task(void* arg) {
     static imu_sample_t samples[IMU_FIFO_SAMPLES];
     TickType_t last_wake = xTaskGetTickCount();
     unsigned read_ticks = 0;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    UBaseType_t applied_priority = IMU_TASK_PRIORITY;
+#endif
     while (1) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        const UBaseType_t requested_priority = (UBaseType_t)priority;
+        if (requested_priority != applied_priority) {
+            vTaskPrioritySet(NULL, requested_priority);
+            applied_priority = requested_priority;
+        }
+#endif
         const TickType_t requested_period = pdMS_TO_TICKS(read_ms);
         const TickType_t period = requested_period > 0 ? requested_period : 1;
         const TickType_t drain_ticks = pdMS_TO_TICKS(drain_ms) / period;
@@ -484,8 +498,9 @@ imu_start(void) {
     if (!ready || task_handle != NULL) {
         return;
     }
-    /* Nothing needs a particular core; the scheduler places this task. */
-    if (xTaskCreate(imu_task, "imu", IMU_TASK_STACK_BYTES, NULL, IMU_TASK_PRIORITY, &task_handle) != pdPASS) {
+    if (xTaskCreatePinnedToCore(imu_task, "imu", IMU_TASK_STACK_BYTES, NULL, IMU_TASK_PRIORITY, &task_handle,
+                                IMU_TASK_CORE)
+        != pdPASS) {
         ESP_LOGE(TAG, "Could not start the IMU task (largest free block is %u bytes); motion will not work",
                  (unsigned)memory_largest_block(MEMORY_8BIT));
     }
