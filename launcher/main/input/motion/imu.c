@@ -26,9 +26,9 @@
 
 static const char* TAG = "imu";
 
-/* Each I2C transaction costs the simulation cores ~40 us. At 10 Hz, seven transactions per 100 ms
- * incur ~6.9% read-mode loss (0.86 ms handshake + 0.27 ms/sample); gravity batches arrive up to 100 ms late.
- * Register reads at 50 Hz keep the newest sample ~10 ms old. */
+/* 50 Hz register reads and 10 Hz FIFO drains: the newest sample averages ~11 ms old,
+ * with ~7% read-mode loss. Each I2C transaction costs the simulation cores ~40 us,
+ * so the FIFO is drained only at 10 Hz. */
 #define IMU_READ_HZ          50
 #define IMU_FIFO_DRAIN_HZ    10
 #define IMU_FIFO_DRAIN_TICKS (IMU_READ_HZ / IMU_FIFO_DRAIN_HZ)
@@ -69,6 +69,7 @@ static uint64_t reader_age_total_us;
 static int64_t reader_age_max_us;
 static unsigned reader_age_count;
 static unsigned register_reads;
+static int64_t wake_gap_max_us;
 #endif
 
 /* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
@@ -402,9 +403,9 @@ log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us) {
         ESP_LOGI(TAG,
                  "register_reads %u drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u "
                  "reader_age_mean_us %llu "
-                 "reader_age_max_us %lld stack_free_bytes %u",
+                 "reader_age_max_us %lld wake_gap_max_us %lld stack_free_bytes %u",
                  register_reads, drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered,
-                 lost_total, (unsigned long long)age_mean_us, (long long)age_max_us,
+                 lost_total, (unsigned long long)age_mean_us, (long long)age_max_us, (long long)wake_gap_max_us,
                  (unsigned)uxTaskGetStackHighWaterMark(NULL));
     }
     if (window_done) {
@@ -413,6 +414,7 @@ log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us) {
         drains = delivered = lost_total = 0;
         total_us = 0;
         max_us = 0;
+        wake_gap_max_us = 0;
     }
 }
 #endif
@@ -469,7 +471,18 @@ imu_task(void* arg) {
     (void)arg;
     TickType_t last_wake = xTaskGetTickCount();
     unsigned read_ticks = 0;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    int64_t last_wake_us = timing_now_us();
+#endif
     while (1) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        const int64_t now_us = timing_now_us();
+        const int64_t wake_gap_us = now_us - last_wake_us;
+        if (wake_gap_us > wake_gap_max_us) {
+            wake_gap_max_us = wake_gap_us;
+        }
+        last_wake_us = now_us;
+#endif
         const TickType_t requested_period = pdMS_TO_TICKS(read_ms);
         const TickType_t period = requested_period > 0 ? requested_period : 1;
         const TickType_t drain_ticks = pdMS_TO_TICKS(drain_ms) / period;
@@ -478,7 +491,9 @@ imu_task(void* arg) {
             read_ticks = 0;
         }
         read_ticks++;
-        xTaskDelayUntil(&last_wake, period);
+        if (xTaskDelayUntil(&last_wake, period) == pdFALSE) {
+            last_wake = xTaskGetTickCount();
+        }
     }
 }
 
