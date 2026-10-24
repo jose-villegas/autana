@@ -24,7 +24,6 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
-#include "display/display_size.h"
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
@@ -58,9 +57,13 @@ static const char* TAG = "water";
 #define WATER_FILL_LABEL    "WATER FILL: %d%%"
 #define WATER_PERCENT       100
 
+/* The tank is the room behind the screen: the visible area, as deep as the
+ * case less the display module and PCB stacked behind the glass. */
+#define WATER_TANK_DEPTH_MM (BOARD_CASE_DEPTH_MM - BOARD_DEVICE_DEPTH_MM)
+
 /* Grid cells across the depth; the cell is the depth over this. Three over
- * the device's 7.4 mm keeps cells near 2.5 mm, the size the frame budget
- * was sketched for: 12 x 14 x 3 cells and about 2400 particles at most. */
+ * the tank's 7.6 mm keeps cells near 2.5 mm, the size the frame budget was
+ * sketched for: 11 x 14 x 3 cells and about 2200 particles at most. */
 #define WATER_CELLS_DEEP    3
 /* Density samples per cell along each axis, for the surface. */
 #define WATER_SAMPLES       2
@@ -410,7 +413,7 @@ scene_water_enter(const render_lab_scene_t* self) {
     (void)self;
     draw_clear(gfx_rgb(UI_BACKGROUND));
     failure[0] = '\0';
-    box = (vec3f_t){display_width_mm(), display_height_mm(), BOARD_DEVICE_DEPTH_MM};
+    box = (vec3f_t){BOARD_SCREEN_WIDTH_MM, BOARD_SCREEN_HEIGHT_MM, WATER_TANK_DEPTH_MM};
     scene_failure_t why;
     tank_scene = scene_load(WATER_SCENE, &why);
     if (tank_scene == NULL) {
