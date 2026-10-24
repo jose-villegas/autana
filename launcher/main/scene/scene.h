@@ -1,6 +1,6 @@
 /*
  * scene: the engine's scene manager. Packed component arrays indexed by a
- * small entity id hold a transform per entity, and a renderer, camera,
+ * small entity id hold a transform and a parent per entity, and a renderer, camera,
  * animator or skinned renderer only for entities that have one; animator
  * and skin buffers are allocated when attached.
  */
@@ -79,12 +79,26 @@ bool scene_light_set_intensity(scene_t* scene, scene_entity_t entity, float inte
 vec3f_t scene_light_color(const scene_t* scene, scene_entity_t entity);
 float scene_light_intensity(const scene_t* scene, scene_entity_t entity);
 
+/* An entity's own transform, in its parent's frame. */
 const scene_transform_t* scene_entity_transform(const scene_t* scene, scene_entity_t entity);
 void scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform);
 bool scene_entity_enabled(const scene_t* scene, scene_entity_t entity);
 
-/* A disabled entity's renderer is not drawn; every entity starts enabled. */
+/* A disabled entity's renderer is not drawn, nor its descendants'; every entity starts enabled. */
 void scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled);
+
+/* Drawn and animated: enabled, and every ancestor enabled. */
+bool scene_entity_active(const scene_t* scene, scene_entity_t entity);
+
+/* The entity's parent, or SCENE_ENTITY_NONE for a root. An entity's transform
+ * is in its parent's frame. */
+scene_entity_t scene_entity_parent(const scene_t* scene, scene_entity_t entity);
+
+/* True when `entity` is `ancestor` or one of its descendants. */
+bool scene_entity_is_within(const scene_t* scene, scene_entity_t entity, scene_entity_t ancestor);
+
+/* Where the entity stands in the world: its parents' transforms times its own. */
+mat4f_t scene_entity_world(const scene_t* scene, scene_entity_t entity);
 
 /* Makes the scene's camera `camera` (NULL: its first) the active one. False
  * when the scene has no such camera. */

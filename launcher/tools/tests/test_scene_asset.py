@@ -8,6 +8,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -200,7 +201,9 @@ class SceneEntryTests(SceneFiles):
     def test_the_entry_holds_only_what_the_device_reads(self):
         objects = renderer("a.import.toml", extra="bake = true\n") + sun_object() + lens()
         entry = self.entry(objects, HEAD)
-        size = HEADER.size + 3 * (NAME.size + TRANSFORM.size) + RENDERER.size + CAMERA.size + scene_asset.LIGHT.size + scene_asset.SETTINGS.size
+        parents = -(-3 * scene_asset.PARENT.size // scene_asset.ALIGN) * scene_asset.ALIGN
+        size = (HEADER.size + 3 * (NAME.size + TRANSFORM.size) + RENDERER.size + CAMERA.size + scene_asset.LIGHT.size
+                + scene_asset.SETTINGS.size + parents)
         self.assertEqual(len(entry), size)
         self.assertIn(b"sun", entry)
 
@@ -257,7 +260,8 @@ def authored_entry():
         b"".join(scene_asset.SKINNED_RENDERER.pack(e, 0, b"mesh", b"mesh.skin", b"rig") for e in range(2)),
         b"".join(scene_asset.ANIMATOR.pack(e, 1, e, 0, scene_asset.WRAPS["loop"], 0) for e in range(2)),
         NAME.pack(b"idle") + NAME.pack(b"walk"),
-        scene_asset.SETTINGS.pack(0.1, 0.2, 0.3, 0.4, 0.5)]
+        scene_asset.SETTINGS.pack(0.1, 0.2, 0.3, 0.4, 0.5),
+        scene_asset.PARENT.pack(scene_asset.PARENT_ROOT) * 2]
     counts = [len(part) // row.size for part, row in zip(parts, scene_asset.ROWS)]
     offsets, at = [], HEADER.size
     for part in parts:
@@ -318,12 +322,19 @@ class SceneEntryRefusalTests(unittest.TestCase):
 
     def test_counts_and_skin_ids_are_strict(self):
         original = authored_entry()
-        for part, counts in (("transforms", (1, 3)), ("settings", (0, 2))):
+        for part, counts in (("transforms", (1, 3)), ("parents", (1, 3)), ("settings", (0, 2))):
             for count in counts:
                 entry = bytearray(original)
                 struct.pack_into("<H", entry, 2 + 2 * scene_asset.PARTS.index(part), count)
-                with self.subTest(part=part, count=count), self.assertRaisesRegex(SceneError, "transforms must match names"):
+                with self.subTest(part=part, count=count), self.assertRaisesRegex(SceneError, "must match names"):
                     scene_asset.decode(entry)
+        parents = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("parents")]
+        for row, parent, message in ((0, 0, "not listed before it"), (0, 1, "not listed before it"),
+                                     (1, 1, "not listed before it"), (1, 0, "skinned_renderers: entity 1 has a parent")):
+            entry = bytearray(original)
+            struct.pack_into("<H", entry, parents + row * scene_asset.PARENT.size, parent)
+            with self.subTest(row=row, parent=parent), self.assertRaisesRegex(SceneError, message):
+                scene_asset.decode(entry)
         skin = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("skinned_renderers")]
         for field, name in enumerate(("mesh", "skin", "skeleton")):
             for raw in (b"x" * NAME_BYTES, bytes(NAME_BYTES)):
@@ -332,6 +343,28 @@ class SceneEntryRefusalTests(unittest.TestCase):
                 entry[at:at + NAME_BYTES] = raw
                 with self.subTest(name=name, raw=raw), self.assertRaisesRegex(SceneError, name + " id is not NUL"):
                     scene_asset.decode(entry)
+
+
+class SceneParentTests(unittest.TestCase):
+    """An object's `parent` names an entity listed before it; cameras, lights and skins stay roots."""
+
+    @staticmethod
+    def objects(*rows):
+        return [SimpleNamespace(name=name, kind=kind, parent=parent, position=(0, 0, 0),
+                                matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1))) for name, kind, parent in rows]
+
+    def test_a_parent_listed_first_round_trips(self):
+        objects = self.objects(("variant", "empty", None), ("copy", "mesh_renderer", "variant"))
+        entry = scene_asset.encode(SimpleNamespace(objects=objects, renderers=[]))
+        self.assertEqual([e["parent"] for e in scene_asset.decode(entry)["entities"]], [None, 0])
+
+    def test_a_parent_after_its_child_or_on_a_camera_is_refused(self):
+        for rows, message in (((("copy", "empty", "variant"), ("variant", "empty", None)), "listed before it"),
+                              ((("copy", "empty", "copy"),), "listed before it"),
+                              ((("copy", "empty", "gone"),), "listed before it"),
+                              ((("variant", "empty", None), ("eye", "camera", "variant")), "a camera has no parent")):
+            with self.subTest(rows=rows), self.assertRaisesRegex(SceneError, message):
+                scene_asset.encode(SimpleNamespace(objects=self.objects(*rows), renderers=[]))
 
 
 class ScenePackTests(SceneFiles):
