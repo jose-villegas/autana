@@ -5,7 +5,6 @@ share of the budget, so small detailed props are not starved by large
 surfaces a global pass prefers to keep."""
 
 from dataclasses import dataclass
-from fnmatch import fnmatchcase
 import pathlib
 import sys
 
@@ -13,10 +12,10 @@ import numpy as np
 
 from . import log
 from .geometry import triangle_areas, weld_keeping
-from .import_settings import SettingsError, pass_overrides
+from .import_settings import SettingsError, match_meshes
 from .lit_mesh import POSITION_SCALE
 from .meshopt import PERMISSIVE, REGULARIZE, REGULARIZE_LIGHT, simplify_with_update
-from .repair import repair
+from .repair import repair, seal_tolerance
 from .tessellate import split_marked_edges
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
@@ -87,11 +86,15 @@ def merge_close_colours(q, rgb, tolerance):
 
 @dataclass
 class Allocation:
-    """Source ownership and fixed per-pass overrides."""
+    """Source ownership, mesh budgets and post-placement shading."""
     tri_o: object = None
     object_names: tuple = ()
     material_names: tuple = ()
-    overrides: tuple = ()
+    meshes: tuple = ()
+    selection: object = None
+    ceiling: object = None
+    shade: object = None
+    report: object = None
 
 
 def object_groups(pos, tris, tri_o):
@@ -112,71 +115,206 @@ def object_groups(pos, tris, tri_o):
 
 def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation, seal_seams=False,
              position_scale=POSITION_SCALE, allocation=None):
-    """Reserve material shares and fixed welded-object counts before the global pass.
-    Colour is priced per pass; seam repair retains source ownership for overrides."""
+    """Material shares budget the rest; carved meshes own independent per-copy budgets."""
     allocation = Allocation() if allocation is None else allocation
     tri_o = np.zeros(len(tris), dtype=np.int64) if allocation.tri_o is None else np.asarray(allocation.tri_o)
     options = REGULARIZE | PERMISSIVE
     if seal_seams:
-        pos, rgb, tris, ownership = repair(pos, rgb, tris, np.column_stack([labels, tri_o]), 1.0 / position_scale)
+        pos, rgb, tris, ownership = repair(pos, rgb, tris, np.column_stack([labels, tri_o]), seal_tolerance(position_scale))
         labels, tri_o = ownership.T
         options = REGULARIZE_LIGHT | PERMISSIVE
     labels = np.asarray(labels)
     parts, taken = [], np.zeros(len(tris), dtype=bool)
-    if allocation.overrides:
-        groups = object_groups(pos, tris, tri_o)
-        matched = [0] * len(allocation.overrides)
-        for group in np.unique(groups):
-            sel = groups == group
-            names = [allocation.object_names[i] for i in np.unique(tri_o[sel])]
-            materials = {allocation.object_names[obj]:
-                         [allocation.material_names[i] for i in np.unique(labels[sel & (tri_o == obj)])]
-                         for obj in np.unique(tri_o[sel])}
-            fixed = pass_overrides(names, materials, allocation.overrides)
-            for index, rule in enumerate(allocation.overrides):
-                candidates = names if "object" in rule else [name for values in materials.values() for name in values]
-                matched[index] += any(fnmatchcase(name, rule.get("object", rule.get("material"))) for name in candidates)
-            if fixed is not None:
-                if fixed > triangles:
-                    raise SettingsError(f"fixed overrides ({fixed}) exceed triangle budget {triangles}")
-                if fixed > int(sel.sum()):
-                    log(f"  fixed override {names}: clamped {fixed} to {int(sel.sum())} triangles")
-                parts.append((sel, min(fixed, int(sel.sum()))))
-                taken |= sel
-        for rule, hits in zip(allocation.overrides, matched):
-            pattern = rule.get("object", rule.get("material"))
-            if not hits:
-                raise SettingsError(f"override {pattern!r} matches no object or material")
-            if "material" in rule and hits > 1:
-                raise SettingsError(f"fixed material override {pattern!r} matches several passes")
+    if allocation.meshes:
+        return _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation,
+                                colour_deviation, options, position_scale)
     for group, share in reserved:
         sel = np.isin(labels, list(group)) & ~taken
         parts.append((sel, max(1, int(triangles * share))))
         taken |= sel
-    if allocation.overrides and sum(n for _, n in parts) > triangles:
-        raise SettingsError(f"fixed overrides and reserved shares exceed triangle budget {triangles}")
-    minimum = 0 if allocation.overrides else 1
-    parts.append((~taken, max(minimum, triangles - sum(n for _, n in parts))))
-
+    parts.append((~taken, max(1, triangles - sum(n for _, n in parts))))
     out_pos, out_rgb, out_tris, out_labels = [], [], [], []
     base = 0
     for sel, budget in parts:
         if budget == 0 or not np.any(sel):
             continue
-        sub = tris[sel]
-        used, local = np.unique(sub, return_inverse=True)
-        local = local.reshape(-1, 3)
-        weight = colour_weight(pos[used], local, budget, colour_deviation)
-        p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, weight, options)
+        p, c, t, m = _run_pass(pos, rgb, tris[sel], labels[sel], budget, colour_deviation, options)
         out_pos.append(p)
         out_rgb.append(c)
         out_tris.append(t + base)
-        out_labels.append(_label_after(local, labels[sel], kept, t))
+        out_labels.append(m)
         base += len(p)
-        log(f"  simplified {len(sub)} -> {len(t)} triangles (budget {budget}, colour weight {weight:.3g})")
     out_pos, out_rgb = np.concatenate(out_pos), np.concatenate(out_rgb)
     if seal_seams:
         rounded = np.clip(np.rint(out_rgb), 0, 255)
         out_rgb = merge_close_colours(np.round(out_pos * position_scale).astype(np.int64), rounded,
                                       SEAM_COLOUR_TOLERANCE)
+    check_ceiling(sum(len(t) for t in out_tris), allocation.ceiling)
     return out_pos, out_rgb, np.concatenate(out_tris), np.concatenate(out_labels)
+
+
+def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None):
+    used, local = np.unique(tris, return_inverse=True)
+    local = local.reshape(-1, 3)
+    weight = colour_weight(pos[used], local, budget, deviation)
+    kwargs = {} if locks is None else {'vertex_lock': locks[used]}
+    p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, weight, options, **kwargs)
+    log(f"  simplified {len(tris)} -> {len(t)} triangles (budget {budget}, colour weight {weight:.3g})")
+    return p, c, t, _label_after(local, labels, kept, t)
+
+
+def check_ceiling(total, ceiling):
+    """The scene ceiling caps emitted triangles, including every placed copy."""
+    if ceiling is not None and total > ceiling:
+        raise SettingsError(f"scene emitted triangles {total} exceeds ceiling {ceiling}")
+    return total
+
+
+def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    rest = ~np.isin(tri_o, list(selected))
+    taken = ~rest
+    parts = []
+    for group, share in reserved:
+        sel = np.isin(labels, list(group)) & ~taken
+        if np.any(sel):
+            parts.append((sel, max(1, int(triangles * share))))
+        taken |= sel
+    if np.any(~taken):
+        parts.append((~taken, max(1, triangles - sum(n for _, n in parts))))
+    for obj, rule in selected.items():
+        parts.append((tri_o == obj, rule['triangles']))
+    pass_ids = {obj: [i for i, (sel, _) in enumerate(parts) if np.any(sel & (tri_o == obj))]
+                for obj in np.unique(tri_o)}
+    links = []
+    touching = {obj for edge in edges for obj in (edge.a, edge.b)}
+    policies = {obj: rule.get('seam', 'lock' if obj in touching else 'free') for obj, rule in selected.items()}
+    for edge in edges:
+        if any(policies.get(obj) == 'weld' for obj in (edge.a, edge.b)):
+            links.extend((a, b) for a in pass_ids[edge.a] for b in pass_ids[edge.b])
+    a, b = np.array(links, dtype=int).reshape(-1, 2).T
+    graph = coo_matrix((np.ones(len(a)), (a, b)), shape=(len(parts), len(parts)))
+    _, groups = connected_components(graph, directed=False)
+    merged = []
+    for group in np.unique(groups):
+        members = [parts[i] for i in np.flatnonzero(groups == group)]
+        merged.append((np.logical_or.reduce([sel for sel, _ in members]), sum(n for _, n in members)))
+    return merged, policies
+
+
+def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade):
+    from scipy.spatial import cKDTree
+    from .objects.instances import match_instances, source_objects
+
+    single = {}
+    for index, (sel, budget) in enumerate(parts):
+        objects = np.unique(tri_o[sel])
+        if len(objects) == 1 and objects[0] in selected:
+            single[int(objects[0])] = index
+    names = tuple(str(i) for i in range(int(tri_o.max()) + 1))
+    objects = source_objects(pos, tris, labels, tri_o, names)
+    buckets = {}
+    for obj in objects:
+        obj_id = int(obj.name)
+        if obj_id in single:
+            rule = selected[obj_id]
+            buckets.setdefault(id(rule), []).append(obj)
+    emitted, consumed, shared = [], set(), []
+    for candidates in buckets.values():
+        for shape in match_instances(candidates):
+            if len(shape.instances) == 1:
+                continue
+            union = np.zeros(len(shape.positions), dtype=bool)
+            first_indices = None
+            placements = []
+            for instance in shape.instances:
+                obj = int(instance.object_name)
+                sel, budget = parts[single[obj]]
+                used = np.unique(tris[sel])
+                placed = shape.positions @ instance.linear.T + instance.position
+                _, nearest = cKDTree(pos[used]).query(placed)
+                indices = used[nearest]
+                union |= locks[indices]
+                if first_indices is None:
+                    first_indices = indices
+                placements.append((instance, indices))
+                consumed.add(single[obj])
+            p, c, t, kept = simplify_with_update(shape.positions, rgb[first_indices], shape.triangles, budget,
+                                                colour_weight(shape.positions, shape.triangles, budget, deviation),
+                                                options, vertex_lock=union if np.any(union) else None)
+            shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),
+                               budget=budget, policy=('lock' if np.any(union) else policies[int(shape.instances[0].object_name)]),
+                               locked_vertices=int(union.sum()), output_triangles=len(t),
+                               locked_border_excess=max(0, len(t) - budget) if np.any(union) else 0))
+            mat = _label_after(shape.triangles, shape.materials, kept, t)
+            for instance, indices in placements:
+                placed = p @ instance.linear.T + instance.position
+                # World-space locked positions must survive local-frame float conversion.
+                placed[union[kept]] = pos[indices[kept[union[kept]]]].astype(np.float32)
+                faces = t[:, ::-1] if instance.mirrored else t
+                result = placed, c.copy(), faces, mat.copy()
+                emitted.append(shade(*result) if shade is not None else result)
+    return emitted, consumed, shared
+
+
+def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation, deviation, options, position_scale):
+    from .objects.contact import contact_graph
+
+    selected = (match_meshes(tri_o, labels, allocation.object_names, allocation.material_names, allocation.meshes)
+                if allocation.selection is None else {obj: rule for obj, rule in allocation.selection.items() if np.any(tri_o == obj)})
+    rest_budget = triangles if np.any(~np.isin(tri_o, list(selected))) else 0
+    requested = rest_budget + sum(rule['triangles'] for rule in selected.values())
+    edges = contact_graph(pos, tris, tri_o, position_scale)
+    parts, policies = _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges)
+    locks = np.zeros(len(pos), dtype=bool)
+    for edge in edges:
+        if any(policies.get(obj) == 'lock' or (edge.unshared and policies.get(obj) == 'weld')
+               for obj in (edge.a, edge.b)):
+            locks[edge.vertices_a] = True
+            locks[edge.vertices_b] = True
+    report = dict(requested_scene_total=requested, rest_budget=rest_budget, ceiling=allocation.ceiling, passes=[],
+                  contacts=[dict(a=allocation.object_names[e.a], b=allocation.object_names[e.b], unshared=e.unshared,
+                                 vertices_a=e.vertices_a.tolist(), vertices_b=e.vertices_b.tolist()) for e in edges],
+                  meshes=[dict(object=allocation.object_names[obj], copies=1, budget=rule['triangles'], policy=policies[obj],
+                               locked_vertices=int(locks[np.unique(tris[tri_o == obj])].sum())) for obj, rule in selected.items()])
+    log(f"  scene requested triangles {requested}, ceiling {allocation.ceiling}")
+    emitted, consumed, shared = _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks,
+                                       deviation, options, allocation.shade)
+    shared_objects = {obj for entry in shared for obj in entry['objects']}
+    report['meshes'] = [row for obj, row in zip(selected, report['meshes']) if obj not in shared_objects]
+    for entry in shared:
+        entry['objects'] = [allocation.object_names[obj] for obj in entry['objects']]
+        report['meshes'].append(entry)
+        report['passes'].append(entry)
+    for index, (sel, budget) in enumerate(parts):
+        if index in consumed:
+            continue
+        result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
+                           locks if np.any(locks) else None)
+        if allocation.shade is not None and np.any(np.isin(tri_o[sel], list(selected))):
+            result = allocation.shade(*result)
+        objects = np.unique(tri_o[sel])
+        entry = dict(objects=[allocation.object_names[obj] for obj in objects], copies=1, budget=budget,
+                     output_triangles=len(result[2]), locked_vertices=int(locks[np.unique(tris[sel])].sum()),
+                     locked_border_excess=max(0, len(result[2]) - budget) if np.any(locks[tris[sel]]) else 0)
+        report['passes'].append(entry)
+        for row in report['meshes']:
+            if row.get('object') in entry['objects']:
+                row.update(output_triangles=entry['output_triangles'], pass_objects=entry['objects'],
+                           pass_budget=budget, locked_border_excess=entry['locked_border_excess'])
+        emitted.append(result)
+    out_p, out_c, out_t, out_m = [], [], [], []
+    base = 0
+    for p, c, t, m in emitted:
+        out_p.append(p)
+        out_c.append(c)
+        out_t.append(t + base)
+        out_m.append(m)
+        base += len(p)
+    report['scene_total'] = report['output_triangles'] = sum(len(t) for t in out_t)
+    if allocation.report is not None:
+        allocation.report.update(report)
+    check_ceiling(report['scene_total'], allocation.ceiling)
+    return np.concatenate(out_p), np.concatenate(out_c), np.concatenate(out_t), np.concatenate(out_m)

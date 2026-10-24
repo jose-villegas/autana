@@ -152,15 +152,45 @@ much as moving a surface `colour_deviation` away, for `props` and the rest
 alike, at every budget. A smaller value keeps surfaces nearer their source
 planes and less colour detail: a trade, not a limit.
 
-The optional `[objects]` table accepts fixed reservations:
+Each `[[objects.meshes]]` rule carves out matching source objects:
 
-| Key | Value |
+| Key | Meaning |
 |---|---|
-| `overrides` | Array of `{ object = "glob", triangles = N }` or `{ material = "glob", triangles = N }` tables. |
+| `match` | Exactly `{ object = "glob" }` or `{ material = "glob" }`; must match. |
+| `triangles` | Mesh budget per copy, separate from the variant's rest budget. |
+| `seam` | Optional policy; touching defaults to `lock`, otherwise `free`. |
 
-Each rule reserves a count per welded group alongside the material share.
-It must match, cover every object in a welded group, and fit the budget.
-A material rule must select one group. Counts above source size are clamped.
+The variant's `triangles` budgets the rest, retaining `props` shares and the
+global pass. Its optional `ceiling` caps emitted triangles, including copies;
+`simplify.check_ceiling` owns this check. Overlapping rules are rejected.
+
+Objects touch when a vertex lies within `repair.seal_tolerance` of the other's
+surface. `objects/contact.py` owns the graph and both sides' border vertices.
+The tolerance is the reciprocal of `output.position_scale`.
+
+| Policy | Simplification | Seam |
+|---|---|---|
+| `weld` | Join touched passes and sum budgets; shared vertices collapse together, touching unshared contacts are pinned. | Closed |
+| `lock` | Own pass; fix contact vertices on both sides. | Closed |
+| `free` | Own pass without locks. | May open |
+
+![Free and locked pillar contacts](images/import-mesh-contact.png)
+
+Free shifts the contact footprint; lock retains the base vertices.
+
+Rigid copies share simplification in their local frame, using albedo colours
+and the union of their locks. Each placed copy is lit against the full source;
+mirrored copies reverse winding. Output remains a merged mesh.
+
+Rules match the alpha-masked source. Carved meshes skip per-triangle visibility;
+`thin` runs once per shared shape with the import seed. The rest keeps its
+visibility and thinning steps.
+
+`objects/seams_report.py` accepts a scene renderer, scratch import settings and
+a host viewer. Its JSON reports contacts, budgets, copies and locked input
+vertices. Lock cost is emitted triangles above the pass target; locks can keep
+more than the target. Each affected contact gets a `free`/`lock` comparison
+and crops where pixels differ.
 
 #### seal_seams
 
