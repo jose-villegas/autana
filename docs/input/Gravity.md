@@ -11,9 +11,11 @@ calibration are described in [Motion-Axes.md](Motion-Axes.md) and [Motion-Calibr
 
 The IMU task drains the QMI8658 stream FIFO at 10 Hz (`IMU_FIFO_DRAIN_HZ`)
 and reads the newest sample at 50 Hz (`IMU_READ_HZ` in `input/motion/imu.c`).
-Development tunables `imu.drain_ms` and `imu.read_ms` set those periods.
+`imu.drain_ms` and `imu.read_ms` set those periods live in development builds.
+`TUNE` is a constant in release builds.
 
 The task runs on `JOB_CORE1` at `JOB_CORE1_PRIORITY - 1`, yielding to the core-1 job worker.
+A drain delayed past FIFO capacity while core 1 is busy becomes a gap.
 
 `input_read_motion_batch()` takes queued samples from memory, oldest first.
 Batches arrive up to one drain period late. On drain ticks the FIFO supplies
@@ -32,7 +34,6 @@ batch capacity against `IMU_FIFO_SAMPLES`.
 ```mermaid
 flowchart LR
     subgraph Input["IMU task and queue"]
-        Newest["50 Hz newest sample<br/>register read or FIFO drain"]
         Drain["10 Hz FIFO drain<br/>batches up to 100 ms late"] --> Batch["Ring: oldest first<br/>loss before each sample, gap"]
     end
     subgraph Update["Frame: for each queued sample"]
@@ -150,7 +151,8 @@ Queue overflow drops the oldest sample and marks a gap. Loss exceeding the
 Board A308, QMI8658A, build 7dae68f7c9d0-dev. Delivered rate
 agrees with the datasheet ODR multiplied by time outside FIFO read mode.
 
-These measurements use the drain at the stated fixed period.
+Rows labelled by period drain the FIFO at that fixed period. The shipped task drains
+at `IMU_FIFO_DRAIN_HZ`; these rows measure read-mode cost, not the shipped cadence.
 
 | Drain | Delivered | Time in read mode | 224.2 Hz × (1 − share) |
 |---|---|---|---|

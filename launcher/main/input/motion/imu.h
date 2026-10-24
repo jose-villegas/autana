@@ -47,7 +47,8 @@ int imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FI
  * Returns false if the chip does not answer or identifies as something else. */
 bool imu_init(void);
 
-/* Starts the unpinned polling task after initialisation. Safe when the sensor is absent. */
+/* Starts the polling task on the core-1 job worker's core, one priority below it.
+ * Safe when the sensor is absent. */
 void imu_start(void);
 
 bool imu_ready(void);
