@@ -104,6 +104,17 @@ class History(unittest.TestCase):
     def test_prs_that_own_no_line_now_follow_newest_first_through_the_rename(self):
         self.assertEqual(self.prs(self.reply("src/frame.c")["history"]), [6, 5, 4])
 
+    def test_a_line_ranges_history_is_the_history_of_those_lines(self):
+        history = self.prs(self.reply("src/frame.c:2")["history"])
+        self.assertIn(1, history)
+        self.assertFalse({3, 4, 5} & set(history))
+
+    def test_a_path_resolves_from_the_folder_the_command_runs_in(self):
+        reply = why.answer(self.root, "HEAD", "frame.c:2", offline=True, with_tickets=False, prefix="src/")
+        self.assertEqual((reply["kind"], self.prs(reply["rows"])), ("range", [2]))
+        reply = why.answer(self.root, "HEAD", "src/frame.c:2", offline=True, with_tickets=False, prefix="src/")
+        self.assertEqual(reply["kind"], "range")
+
     def test_a_name_ranks_the_lines_that_name_it_and_the_pr_that_added_it(self):
         reply = self.reply("beta_frame")
         self.assertEqual(reply["sites"], [("src/frame.c", 2)])
@@ -120,13 +131,20 @@ class History(unittest.TestCase):
         self.assertEqual({row["pr"]: row["lines"] for row in reply["rows"]}, {6: 0, 5: 1, 4: 1, 3: 2, 2: 2, 1: 3})
 
     def test_the_cached_pr_body_gives_the_summary_and_its_ticket_line(self):
-        (self.cache / "pr").mkdir()
-        (self.cache / "pr" / "2.json").write_text(json.dumps(
+        # The fixture has no origin remote, so its pull requests file under "local".
+        (self.cache / "pr" / "local").mkdir(parents=True)
+        (self.cache / "pr" / "local" / "2.json").write_text(json.dumps(
             {"title": "t", "body": "## Summary\n\nBeta is called once per frame. More after.\n\n"
                                    "| a | b |\n\nTicket: autana-x9x9"}), encoding="utf-8")
         row = self.reply("src/frame.c:2")["rows"][0]
         self.assertEqual(row["summary"], "Beta is called once per frame. More after.")
         self.assertEqual(row["tickets"], ["autana-b2b2", "autana-x9x9"])
+
+    def test_a_ticket_line_typed_on_github_with_crlf_ends_still_counts(self):
+        (self.cache / "pr" / "local").mkdir(parents=True)
+        (self.cache / "pr" / "local" / "2.json").write_text(
+            json.dumps({"title": "t", "body": "Beta.\r\n\r\nTicket: q1q1\r\n"}), encoding="utf-8")
+        self.assertEqual(self.reply("src/frame.c:2")["rows"][0]["tickets"], ["autana-b2b2", "q1q1"])
 
     def test_offline_without_a_cached_body_keeps_the_subject_and_runs_no_gh(self):
         with mock.patch.object(why.subprocess, "run", wraps=subprocess.run) as spawned:
@@ -139,8 +157,9 @@ class History(unittest.TestCase):
         whole = why.render(reply, 10_000, 5)
         cut = why.render(reply, len(whole[0]) + len(whole[1]) + 2, 5)
         self.assertEqual(cut[:2], whole[:2])
-        self.assertEqual(cut[-1], "+5 more (--budget, --history or --json)")
+        self.assertEqual(cut[-1], "+2 more PRs and 3 older (--budget, --history or --json)")
         self.assertTrue(whole[-1].startswith("history: #6 2026-10-07"))
+        self.assertEqual(why.render(reply, 10_000, 1)[-1], "+2 older (--budget, --history or --json)")
 
     def test_a_query_nothing_matches_exits_1_and_logs_a_weak_lookup(self):
         with mock.patch("sys.stdout", io.StringIO()) as out:
@@ -160,7 +179,7 @@ class History(unittest.TestCase):
 
 class Tickets(unittest.TestCase):
     def tickets(self, subject):
-        return why.Commit("0" * 40, "2026-10-01", subject, "").tickets
+        return why.Commit("0" * 40, "0", "2026-10-01", subject, "").tickets
 
     def test_the_subjects_last_parenthesis_names_its_tickets_and_milestones_are_dropped(self):
         self.assertEqual(self.tickets("a: b (autana-ks4hn) (#1)"), ["autana-ks4hn"])
