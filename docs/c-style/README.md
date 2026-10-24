@@ -13,15 +13,15 @@ names, and declarations near first use.
 Cppcheck's MISRA addon (`launcher/tools/quality/misra_check.sh`, `misra_tidy_gate.py`)
 compiler warnings and `scripts/gates/check_style_audit.py` report semantic findings, not
 formatting or naming rules; commands are in
-[`launcher/tools/quality/README.md`](../launcher/tools/quality/README.md).
+[`launcher/tools/quality/README.md`](../../launcher/tools/quality/README.md).
 
 | Topic | Page |
 |---|---|
-| `IRAM_ATTR`, `noinline`, `always_inline`, constructors | [Function attributes](c-style/Function-Attributes.md) |
-| Tasks, cores, spinlocks, atomics, queues | [Concurrency](c-style/Concurrency.md) |
-| Driver, HAL and register access, wrapping a driver function | [Register access](c-style/Register-Access.md) |
-| Placing code or data with a linker fragment | [Linker fragments](memory/Linker-Fragments.md) |
-| Helpers that already have an owner | [Shared helpers](Shared-Helpers.md) |
+| `IRAM_ATTR`, `noinline`, `always_inline`, constructors | [Function attributes](Function-Attributes.md) |
+| Tasks, cores, spinlocks, atomics, queues | [Concurrency](Concurrency.md) |
+| Driver, HAL and register access, wrapping a driver function | [Register access](Register-Access.md) |
+| Placing code or data with a linker fragment | [Linker fragments](../memory/Linker-Fragments.md) |
+| Helpers that already have an owner | [Shared helpers](../tools/Shared-Helpers.md) |
 
 ## Mechanical rules
 
@@ -67,7 +67,7 @@ scripts/gates/check-format.sh path/to/file.c path/to/file.h
 ### Where the rules are checked
 
 `scripts/gates/format-file-list.sh` is the one file list for hook and CI: vendored trees
-by path, generated files by banner ([Generated files](tools/Generated-Files.md)).
+by path, generated files by banner ([Generated files](../tools/Generated-Files.md)).
 
 ```sh
 scripts/install-git-hooks.sh          # opt in to pre-commit and pre-push hooks
@@ -78,14 +78,14 @@ scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check 
 | Check | What it runs |
 |---|---|
 | Pre-commit | Format of the *staged* C and headers, executable bits, and the `STAGED_TEXT_GATE` steps of `comment-rules.yml` on an index snapshot. Run the text part alone with `scripts/gates/check-text-rules-staged.sh`; install its dependencies with `python -m pip install -r scripts/gates/requirements.txt`. Without ESP-IDF the citation check lists names it cannot verify. |
-| Pre-push | Branch names, and sanitized host tests when the range changes `.c` or `.h`; see [Host tests: git hooks](testing/Host-Tests.md#git-hooks). |
+| Pre-push | Branch names, and sanitized host tests when the range changes `.c` or `.h`; see [Host tests: git hooks](../testing/Host-Tests.md#git-hooks). |
 | CI | Every listed file on every pull request and push to `main`. Hooks are feedback (`--no-verify` skips them, and they never see merges or CI commits); CI is the gate. |
 
 ### Duplication gates
 
 | Rule | Gate |
 |---|---|
-| Check the [shared-owner catalogue](Shared-Helpers.md) before writing a helper; extend an owner that fits. | |
+| Check the [shared-owner catalogue](../tools/Shared-Helpers.md) before writing a helper; extend an owner that fits. | |
 | Never grow a file pair's copied tokens; extract a shared owner instead. | `python scripts/gates/check_clones.py` (jscpd: `npm ci --prefix scripts/gates`) |
 | Never restate an integer a file already sees through its `#include "..."` chain, or a firmware string a Python tool repeats; use the named constant. | `python scripts/gates/check_magic_numbers.py` |
 | Mark a deliberate literal on its line with `/* magic: reason */` (`# magic: reason` in Python); the reason may not be empty. | `check_magic_numbers.py` |
@@ -139,7 +139,7 @@ A function the firmware calls but does not define resolves if ESP-IDF or its C l
 declares it for any chip; runs without ESP-IDF count such names instead of failing.
 
 The app rule is the comment half of the layering rule in
-[Firmware architecture](firmware/README.md). It covers every Markdown file under `docs/`
+[Firmware architecture](../firmware/README.md). It covers every Markdown file under `docs/`
 except an app's own folder and `docs/plans/`. An app's files may name anything below them.
 
 ```sh
@@ -184,7 +184,7 @@ scripts/gates/check-comment-length.sh --files         # per-file counts
 - Use `#pragma once`; a header includes what its declarations need and never relies on includer order or transitive includes.
 - Keep implementation-only includes in the `.c` file.
 - Include order in a `.c`: its own header (if it has one), standard library, ESP-IDF and external, then project.
-- Qualify project includes by layer, even within one folder: `"gfx/gfx.h"`, never `"gfx.h"`; see [Firmware architecture](firmware/README.md).
+- Qualify project includes by layer, even within one folder: `"gfx/gfx.h"`, never `"gfx.h"`; see [Firmware architecture](../firmware/README.md).
 - Never expose a lower layer to a higher-layer type to avoid passing a small value.
 - Keep a module's public contract small and stable.
 - Export a function only when another translation unit needs it, not to shorten a file.

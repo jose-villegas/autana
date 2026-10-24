@@ -3,14 +3,14 @@
 Build or change a UI screen here. A screen has three separable parts:
 rectangles and text that fit them, the state changed by input, and the drawing
 calls. The host renderer can show the real drawing code without a board;
-[the render harness](tools/Render-Harness.md) has a sample image and command.
-For the shell's frame ownership see [Firmware](firmware/README.md).
+[the render harness](../tools/Render-Harness.md) has a sample image and command.
+For the shell's frame ownership see [Firmware](../firmware/README.md).
 
 To inspect an existing screen first, run
-[`launcher_home_render_host.sh`](../launcher/tools/render/scenes/launcher_home_render_host.sh) from Git Bash on
+[`launcher_home_render_host.sh`](../../launcher/tools/render/scenes/launcher_home_render_host.sh) from Git Bash on
 Windows or a terminal on Linux. Its `results/render/launcher_home/`
 folder contains BMP output and PNG output if Pillow is installed. You need a
-host C compiler, as described in the [README](../README.md#try-it-without-a-board).
+host C compiler, as described in the [README](../../README.md#try-it-without-a-board).
 
 ## The face
 
@@ -50,23 +50,23 @@ settings_frame(const input_t* input, settings_state_t* s) {
 | a frame | `ui_begin()`, then `ui_end()` or `ui_end_over()` |
 | a window | `ui_screen()`, `ui_window(r)`, `ui_scroll_window(r)` |
 | rows that flow down the window | `ui_row(h)` or `ui_row_centre(w, h)`, then `ui_next()` for the rect |
-| controls | [`ui_button`](ui/button.md), [`ui_button_icon`](ui/button_icon.md), [`ui_tile`](ui/tile.md), [`ui_tile_icon`](ui/tile_icon.md), [`ui_toggle`](ui/toggle.md), [`ui_slider`](ui/slider.md), [`ui_dropdown`](ui/dropdown.md), [`ui_dropdown_icons`](ui/dropdown_icons.md) |
-| text | [`ui_text`, `ui_text_right`, `ui_text_centre`, `ui_caption`, `ui_caption_centre`](ui/text.md), [`ui_header`](ui/header.md) |
-| marks | [`ui_panel`](ui/panel.md), `ui_fill`, `ui_outline`, `ui_bevel`, [`ui_icon`, `ui_check`](ui/icon.md), [`ui_swatches`](ui/swatches.md) |
+| controls | [`ui_button`](button.md), [`ui_button_icon`](button_icon.md), [`ui_tile`](tile.md), [`ui_tile_icon`](tile_icon.md), [`ui_toggle`](toggle.md), [`ui_slider`](slider.md), [`ui_dropdown`](dropdown.md), [`ui_dropdown_icons`](dropdown_icons.md) |
+| text | [`ui_text`, `ui_text_right`, `ui_text_centre`, `ui_caption`, `ui_caption_centre`](text.md), [`ui_header`](header.md) |
+| marks | [`ui_panel`](panel.md), `ui_fill`, `ui_outline`, `ui_bevel`, [`ui_icon`, `ui_check`](icon.md), [`ui_swatches`](swatches.md) |
 | a look for the screen | `ui_theme(&theme)` once per screen; `NULL` restores the shell look |
-| a look for a few widgets | [scopes](ui/scopes.md): `ui_color_begin/end`, `ui_scale_begin/end`, `ui_alpha_begin/end`, `ui_disabled_begin/end` |
+| a look for a few widgets | [scopes](scopes.md): `ui_color_begin/end`, `ui_scale_begin/end`, `ui_alpha_begin/end`, `ui_disabled_begin/end` |
 
 - **Rect first.** Every widget takes its rect. A screen with fixed geometry
   passes rects from its layout module; a flowed screen passes `ui_next()`.
 - **The caller owns every value.** A toggle, slider or dropdown writes
   through its pointer and returns true on the frame it changed. A button or
   tile returns true on the frame a tap is released on it.
-- **A label is the identity.** See [identity](ui/input.md#identity).
-- **Scopes balance.** See [scopes](ui/scopes.md).
+- **A label is the identity.** See [identity](input.md#identity).
+- **Scopes balance.** See [scopes](scopes.md).
 
-The verbs and their arguments are in [`ui/ui.h`](../launcher/main/ui/ui.h);
+The verbs and their arguments are in [`ui/ui.h`](../../launcher/main/ui/ui.h);
 each control's page, with its example, renders and states, is listed in
-[`UI-Toolkit.md`](UI-Toolkit.md#controls).
+[`ui/README.md`](README.md#controls).
 
 ## The loop
 
@@ -106,7 +106,7 @@ same bug costs a second on a laptop.
 ## Exact commands
 
 ```sh
-./launcher/test/run_tests.sh          # host suites: the TDD loop, see Testing-Guide.md
+./launcher/test/run_tests.sh          # host suites: the TDD loop, see testing/README.md
 ./launcher/test/check_app_sources.sh  # compiles app_*.c against host stubs
 autana flash dev                      # --dev, always: autana screenshot needs it
 autana screenshot --framebuffer -o shot.png  # lossless PNG, does not reset
@@ -124,7 +124,7 @@ through the real drawing code and the real `draw.c`:
 A scene drives its screen over several frames with a declared synthetic
 touch. Declaring a scene for your own screen is two files, and diffing one
 against a device capture is one command; both are in
-[`tools/Render-Harness.md`](tools/Render-Harness.md). Every scene stands in
+[`tools/Render-Harness.md`](../tools/Render-Harness.md). Every scene stands in
 the data its screen normally gets: a fixture table, a timestamp, so nothing
 a render shows came off hardware.
 
@@ -170,7 +170,7 @@ logical canvas, then map it with `ui_transform_rect()`.
 Add it to `ui/` as a face verb in `ui/ui.h`, not as a private copy in one
 screen. It takes a rect and plain values, draws in the theme's colours,
 and gets a host test, an example and a page;
-[`UI-Toolkit.md`](UI-Toolkit.md#adding-to-the-toolkit) lists what a new
+[`ui/README.md`](README.md#adding-to-the-toolkit) lists what a new
 control must have. Hand its result to the state module;
 let that decide what it means.
 
@@ -190,12 +190,12 @@ so the scale) are free. Ask which kind you are adding before you add it.
 
 Measure it: `ui_measure_text()`, or `draw_font_text_width()` in a host test.
 Face text is one clipped line per rect. Fonts, scales and text styles are in
-[`Text-and-Fonts.md`](Text-and-Fonts.md).
+[`Text-and-Fonts.md`](../gfx/Text-and-Fonts.md).
 
 ### A list of rows that may overflow
 
 Open the window with `ui_scroll_window(r)` and flow the rows with `ui_row()`
-and `ui_next()`; [scrolling](ui/scrolling.md) has the example and when a
+and `ui_next()`; [scrolling](scrolling.md) has the example and when a
 moving finger is a drag.
 
 ### Artwork
@@ -209,7 +209,7 @@ artwork against the code that draws it.
 **Icons are always baked assets.** Do not assemble a symbol from `ui_fill()`
 or other marks. Shared UI vocabulary belongs in the engine pack's system set
 (`launcher/main/engine/icons/`); app-owned symbols are an icon set in the
-app's own pack ([icons](tools/Icon-Baker.md)), loaded with
+app's own pack ([icons](../tools/Icon-Baker.md)), loaded with
 `ui_icon_set_load()` (`ui/controls/ui_icons.h`). An icon can be missing when
 its pack is, so a control keeps a label or a short text to show instead.
 Marks remain appropriate for geometry such as panels, tracks and status
@@ -223,7 +223,7 @@ indicators, not pictograms.
    blend reads the pixel it writes, so a second pass darkens the first.
    Repaint the backdrop and dim again on a full-redraw request or a turn.
    Why this is a pixel write and not a face call is
-   [the scrim](firmware/UI.md#the-scrim-the-one-thing-drawn-outside-the-command-list).
+   [the scrim](../firmware/UI.md#the-scrim-the-one-thing-drawn-outside-the-command-list).
 3. Draw the panel over it.
 
 On close, force a full repaint of the app underneath and reset any
@@ -288,12 +288,12 @@ before adding a texture or a fifth icon.
 
 ## Related
 
-- [`Building-an-App.md`](Building-an-App.md): the app a screen lives in
-- [`UI-Toolkit.md`](UI-Toolkit.md): the toolkit behind the face, pictured
-- [`Text-and-Fonts.md`](Text-and-Fonts.md): fonts, scales, text styles
-- [`firmware/README.md`](firmware/README.md): the mechanisms
-- [`Testing-Guide.md`](Testing-Guide.md): suites and runners
-- [`Build-Variants.md`](Build-Variants.md): what release, dev and
+- [`Building-an-App.md`](../firmware/Building-an-App.md): the app a screen lives in
+- [`ui/README.md`](README.md): the toolkit behind the face, pictured
+- [`Text-and-Fonts.md`](../gfx/Text-and-Fonts.md): fonts, scales, text styles
+- [`firmware/README.md`](../firmware/README.md): the mechanisms
+- [`testing/README.md`](../testing/README.md): suites and runners
+- [`Build-Variants.md`](../tools/Build-Variants.md): what release, dev and
   diagnostics builds carry
-- [`tools/Render-Harness.md`](tools/Render-Harness.md): rendering a screen
+- [`tools/Render-Harness.md`](../tools/Render-Harness.md): rendering a screen
   on a host, and diffing it against a capture
