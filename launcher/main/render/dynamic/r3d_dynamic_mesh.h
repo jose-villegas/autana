@@ -4,8 +4,14 @@
  * plain indexed mesh with one colour per vertex; a build cuts it into
  * clusters of at most R3D_DYNAMIC_CLUSTER_TRIANGLES triangles, in source
  * order, each owning copies of the vertices it uses, and hangs them off a
- * two-level tree. The result is an ordinary r3d_lit_mesh_t the raster
+ * tree of leaves over R3D_DYNAMIC_LEAF_CLUSTERS clusters and inner nodes
+ * over R3D_LIT_INNER_CHILDREN_MAX. The result is an ordinary r3d_lit_mesh_t the raster
  * draws, valid until the next build.
+ *
+ * Its vertex and cluster counts are always the capacities, so a raster
+ * sizes its scratch once rather than growing it as the source does: the
+ * vertices and clusters past what was built sit in spare clusters with no
+ * triangles, which no node reaches.
  *
  * The caller owns one block; nothing here allocates.
  */
@@ -47,6 +53,7 @@ typedef struct {
     int16_t* remap; /* a source vertex's index in the open cluster, or -1 */
     r3d_dynamic_capacity_t capacity;
     int cluster_capacity, node_capacity;
+    int built_vertices, built_clusters; /* what the last build made, before the spares */
     r3d_lit_mesh_t mesh;
 } r3d_dynamic_mesh_t;
 
@@ -60,5 +67,5 @@ bool r3d_dynamic_mesh_init(r3d_dynamic_mesh_t* m, void* block, size_t bytes, r3d
 
 /* Rebuilds the mesh from `src`. False when it did not fit: the mesh then
  * holds the triangles that did, in order. Positions past int16 ticks clamp.
- * An empty source leaves no clusters and no nodes: nothing to draw. */
+ * An empty source leaves no nodes: nothing to draw. */
 bool r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src);

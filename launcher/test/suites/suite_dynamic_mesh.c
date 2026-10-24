@@ -13,9 +13,10 @@
 #include "test_cleanup.h"
 #include "unity.h"
 
-/* This suite's own source: a GRID x GRID quad sheet, two triangles each,
- * enough for many clusters and more than one leaf. */
-#define GRID           16
+/* This suite's own source: a GRID x GRID quad sheet, two triangles each:
+ * 68 clusters, so 9 leaves and a tree three levels deep, whose root has
+ * two children and whose middle level fills the walk's eight. */
+#define GRID           33
 #define CORNERS        ((GRID + 1) * (GRID + 1))
 #define QUADS          (GRID * GRID)
 #define POSITION_SCALE 64
@@ -76,7 +77,24 @@ fixture_begin(r3d_dynamic_capacity_t capacity) {
     TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&mesh, block, r3d_dynamic_mesh_bytes(capacity), capacity, POSITION_SCALE));
 }
 
-static const r3d_dynamic_capacity_t ROOMY = {3 * 2 * QUADS, 2 * QUADS, CORNERS};
+/* The built part alone, as a baked mesh would hold it: the spares are
+ * outside the tree on purpose, so a whole-mesh check would count them. */
+static r3d_lit_mesh_t
+built(void) {
+    r3d_lit_mesh_t view = mesh.mesh;
+    view.vertex_count = mesh.built_vertices;
+    view.cluster_count = mesh.built_clusters;
+    return view;
+}
+
+static void
+expect_valid(void) {
+    const r3d_lit_mesh_t view = built();
+    r3d_lit_mesh_expect_valid(&view);
+}
+
+/* A sheet's clusters share most vertices: two a triangle is room enough. */
+static const r3d_dynamic_capacity_t ROOMY = {2 * 2 * QUADS, 2 * QUADS, CORNERS};
 
 /* Each output vertex is the source vertex it copies: in ticks, same colour. */
 static void
@@ -98,11 +116,13 @@ test_a_sheet_builds_into_a_mesh_the_pipeline_can_walk(void) {
     fixture_begin(ROOMY);
     TEST_ASSERT_TRUE(build(QUADS));
     TEST_ASSERT_EQUAL_INT(2 * QUADS, mesh.mesh.triangle_count);
-    TEST_ASSERT_EQUAL_INT((2 * QUADS) / R3D_DYNAMIC_CLUSTER_TRIANGLES, mesh.mesh.cluster_count);
-    TEST_ASSERT_GREATER_THAN_INT(1, mesh.mesh.node_count);
-    r3d_lit_mesh_expect_valid(&mesh.mesh);
+    TEST_ASSERT_EQUAL_INT(((2 * QUADS) + R3D_DYNAMIC_CLUSTER_TRIANGLES - 1) / R3D_DYNAMIC_CLUSTER_TRIANGLES,
+                          mesh.built_clusters);
+    TEST_ASSERT_FALSE(mesh.mesh.nodes[0].leaf);
+    TEST_ASSERT_FALSE(mesh.mesh.nodes[mesh.mesh.nodes[0].first].leaf); /* three levels: the walk's fan-out matters */
+    expect_valid();
     expect_copies();
-    for (int c = 0; c < mesh.mesh.cluster_count; c++) {
+    for (int c = 0; c < mesh.built_clusters; c++) {
         TEST_ASSERT_LESS_OR_EQUAL_INT(R3D_DYNAMIC_CLUSTER_TRIANGLES, mesh.mesh.clusters[c].triangle_count);
     }
 }
@@ -113,7 +133,7 @@ static void
 test_clusters_share_vertices_within_themselves(void) {
     fixture_begin(ROOMY);
     TEST_ASSERT_TRUE(build(QUADS));
-    TEST_ASSERT_LESS_THAN_INT(2 * mesh.mesh.triangle_count, mesh.mesh.vertex_count);
+    TEST_ASSERT_LESS_THAN_INT(2 * mesh.mesh.triangle_count, mesh.built_vertices);
 }
 
 static void
@@ -122,8 +142,8 @@ test_a_source_too_big_leaves_a_whole_mesh(void) {
     fixture_begin(tight);
     TEST_ASSERT_FALSE(build(QUADS));
     TEST_ASSERT_GREATER_THAN_INT(0, mesh.mesh.triangle_count);
-    TEST_ASSERT_LESS_OR_EQUAL_INT(100, mesh.mesh.vertex_count);
-    r3d_lit_mesh_expect_valid(&mesh.mesh);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(100, mesh.built_vertices);
+    expect_valid();
     expect_copies();
 }
 
@@ -134,13 +154,28 @@ test_a_rebuild_replaces_what_was_there(void) {
     TEST_ASSERT_TRUE(build(QUADS));
     TEST_ASSERT_TRUE(build(3));
     TEST_ASSERT_EQUAL_INT(6, mesh.mesh.triangle_count);
-    TEST_ASSERT_EQUAL_INT(1, mesh.mesh.cluster_count);
+    TEST_ASSERT_EQUAL_INT(1, mesh.built_clusters);
     TEST_ASSERT_EQUAL_INT(1, mesh.mesh.node_count);
-    r3d_lit_mesh_expect_valid(&mesh.mesh);
+    expect_valid();
     expect_copies();
     TEST_ASSERT_TRUE(build(0));
     TEST_ASSERT_EQUAL_INT(0, mesh.mesh.triangle_count);
     TEST_ASSERT_EQUAL_INT(0, mesh.mesh.node_count);
+}
+
+/* The counts a raster sizes its scratch by stay the capacities, whatever
+ * each build makes, so a growing surface never asks for a larger block. */
+static void
+test_the_counts_a_raster_sizes_by_never_move(void) {
+    fixture_begin(ROOMY);
+    const int vertices = mesh.mesh.vertex_count;
+    const int clusters = mesh.mesh.cluster_count;
+    TEST_ASSERT_EQUAL_INT(ROOMY.vertices, vertices);
+    for (int quads = 0; quads <= QUADS; quads += QUADS / 4) {
+        TEST_ASSERT_TRUE(build(quads));
+        TEST_ASSERT_EQUAL_INT(vertices, mesh.mesh.vertex_count);
+        TEST_ASSERT_EQUAL_INT(clusters, mesh.mesh.cluster_count);
+    }
 }
 
 static void
@@ -159,6 +194,7 @@ suite_dynamic_mesh(void) {
     RUN_TEST(test_clusters_share_vertices_within_themselves);
     RUN_TEST(test_a_source_too_big_leaves_a_whole_mesh);
     RUN_TEST(test_a_rebuild_replaces_what_was_there);
+    RUN_TEST(test_the_counts_a_raster_sizes_by_never_move);
     RUN_TEST(test_a_bad_capacity_or_block_is_refused);
 }
 

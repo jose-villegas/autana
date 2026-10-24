@@ -25,6 +25,11 @@ typedef struct {
     bool double_sided;
 } r3d_lit_cluster_t;
 
+/* An inner node's children at most: the bake's octree splits in eight, and
+ * the cull walk orders a node's children in an array this long. A leaf's
+ * clusters are not limited by it. */
+#define R3D_LIT_INNER_CHILDREN_MAX 8
+
 typedef struct {
     box3s_t bounds; /* bounds of everything below, position ticks */
     uint16_t first; /* first child node, or a leaf's first cluster */

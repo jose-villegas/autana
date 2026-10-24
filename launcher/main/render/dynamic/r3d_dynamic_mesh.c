@@ -9,16 +9,23 @@
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
 #define NOT_MAPPED       (-1)
-/* Indices are uint16_t, the remap int16_t, a node's child count uint8_t. */
+/* Indices are uint16_t, the remap int16_t. */
 #define INDEX_LIMIT      UINT16_MAX
 #define SOURCE_LIMIT     INT16_MAX
-#define CHILD_LIMIT      UINT8_MAX
 /* A cluster's vertices at most: three a triangle, none shared. */
 #define CLUSTER_VERTICES (3 * R3D_DYNAMIC_CLUSTER_TRIANGLES)
+/* Enough for every cluster an index can name: 8^6 leaves' worth. */
+#define TREE_LEVELS_MAX  6
 
 static int
 clusters_for(int triangles) {
     return (triangles + R3D_DYNAMIC_CLUSTER_TRIANGLES - 1) / R3D_DYNAMIC_CLUSTER_TRIANGLES;
+}
+
+/* One more than the triangles fill, so a full build still leaves a spare. */
+static int
+cluster_capacity_for(int triangles) {
+    return clusters_for(triangles) + 1;
 }
 
 static int
@@ -26,17 +33,36 @@ leaves_for(int clusters) {
     return (clusters + R3D_DYNAMIC_LEAF_CLUSTERS - 1) / R3D_DYNAMIC_LEAF_CLUSTERS;
 }
 
-/* One root over the leaves; a single leaf is its own root. */
+/* Nodes per level of the tree, leaves first, root last, each inner node
+ * over at most R3D_LIT_INNER_CHILDREN_MAX of the level below. A single leaf
+ * is its own root. Returns the levels. */
+static int
+levels_for(int clusters, int counts[TREE_LEVELS_MAX]) {
+    int n = leaves_for(clusters);
+    int levels = 0;
+    counts[levels++] = n;
+    while (n > 1) {
+        n = (n + R3D_LIT_INNER_CHILDREN_MAX - 1) / R3D_LIT_INNER_CHILDREN_MAX;
+        counts[levels++] = n;
+    }
+    return levels;
+}
+
 static int
 nodes_for(int clusters) {
-    const int leaves = leaves_for(clusters);
-    return leaves > 1 ? leaves + 1 : 1;
+    int counts[TREE_LEVELS_MAX];
+    const int levels = levels_for(clusters, counts);
+    int total = 0;
+    for (int l = 0; l < levels; l++) {
+        total += counts[l];
+    }
+    return total;
 }
 
 static bool
 capacity_ok(r3d_dynamic_capacity_t c) {
-    return c.vertices > 0 && c.vertices <= INDEX_LIMIT && c.triangles > 0 && c.sources > 0 && c.sources <= SOURCE_LIMIT
-           && leaves_for(clusters_for(c.triangles)) <= CHILD_LIMIT;
+    return c.vertices > 0 && c.vertices <= INDEX_LIMIT && c.triangles > 0 && c.triangles <= INDEX_LIMIT && c.sources > 0
+           && c.sources <= SOURCE_LIMIT;
 }
 
 static size_t
@@ -50,8 +76,8 @@ layout(r3d_dynamic_capacity_t c, size_t offsets[6]) {
         (size_t)c.vertices * sizeof(int16_t[3]),
         (size_t)c.vertices * sizeof(uint8_t[3]),
         (size_t)c.triangles * sizeof(uint16_t[3]),
-        (size_t)clusters_for(c.triangles) * sizeof(r3d_lit_cluster_t),
-        (size_t)nodes_for(clusters_for(c.triangles)) * sizeof(r3d_lit_node_t),
+        (size_t)cluster_capacity_for(c.triangles) * sizeof(r3d_lit_cluster_t),
+        (size_t)nodes_for(cluster_capacity_for(c.triangles)) * sizeof(r3d_lit_node_t),
         (size_t)c.sources * sizeof(int16_t),
     };
     size_t at = 0;
@@ -84,7 +110,7 @@ r3d_dynamic_mesh_init(r3d_dynamic_mesh_t* m, void* block, size_t bytes, r3d_dyna
     m->nodes = (r3d_lit_node_t*)(void*)(p + at[4]);
     m->remap = (int16_t*)(void*)(p + at[5]);
     m->capacity = capacity;
-    m->cluster_capacity = clusters_for(capacity.triangles);
+    m->cluster_capacity = cluster_capacity_for(capacity.triangles);
     m->node_capacity = nodes_for(m->cluster_capacity);
     for (int i = 0; i < capacity.sources; i++) {
         m->remap[i] = NOT_MAPPED;
@@ -97,6 +123,8 @@ r3d_dynamic_mesh_init(r3d_dynamic_mesh_t* m, void* block, size_t bytes, r3d_dyna
         .nodes = m->nodes,
         .position_scale = position_scale,
     };
+    m->mesh.vertex_count = capacity.vertices;
+    m->mesh.cluster_count = m->cluster_capacity;
     return true;
 }
 
@@ -161,21 +189,52 @@ new_vertices(const builder_t* b, int t) {
     return fresh;
 }
 
+/* Levels laid out root first, leaves last, so an inner node's children
+ * come after it, as the walk requires. */
 static void
 build_tree(r3d_dynamic_mesh_t* m) {
     const int clusters = m->mesh.cluster_count;
-    const int leaves = leaves_for(clusters);
-    const int first_leaf = leaves > 1 ? 1 : 0;
-    for (int l = 0; l < leaves; l++) {
-        const int first = l * R3D_DYNAMIC_LEAF_CLUSTERS;
-        const int count = clusters - first < R3D_DYNAMIC_LEAF_CLUSTERS ? clusters - first : R3D_DYNAMIC_LEAF_CLUSTERS;
-        m->nodes[first_leaf + l] = (r3d_lit_node_t){.first = (uint16_t)first, .count = (uint8_t)count, .leaf = true};
+    int counts[TREE_LEVELS_MAX];
+    const int levels = clusters > 0 ? levels_for(clusters, counts) : 0;
+    int offset[TREE_LEVELS_MAX];
+    int at = 0;
+    for (int l = levels - 1; l >= 0; l--) {
+        offset[l] = at;
+        at += counts[l];
     }
-    if (leaves > 1) {
-        m->nodes[0] = (r3d_lit_node_t){.first = 1, .count = (uint8_t)leaves, .leaf = false};
+    for (int l = 0; l < levels; l++) {
+        const int fan = l == 0 ? R3D_DYNAMIC_LEAF_CLUSTERS : R3D_LIT_INNER_CHILDREN_MAX;
+        const int below = l == 0 ? clusters : counts[l - 1];
+        for (int i = 0; i < counts[l]; i++) {
+            const int first = i * fan;
+            const int count = below - first < fan ? below - first : fan;
+            m->nodes[offset[l] + i] = (r3d_lit_node_t){
+                .first = (uint16_t)(l == 0 ? first : offset[l - 1] + first),
+                .count = (uint8_t)count,
+                .leaf = l == 0,
+            };
+        }
     }
-    m->mesh.node_count = leaves > 1 ? leaves + 1 : leaves;
+    m->mesh.node_count = at;
     r3d_lit_mesh_refit_nodes(m->nodes, m->mesh.node_count, m->clusters);
+}
+
+/* The spares: the first holds every vertex left over, the rest nothing. */
+static void
+pad(r3d_dynamic_mesh_t* m) {
+    m->built_vertices = m->mesh.vertex_count;
+    m->built_clusters = m->mesh.cluster_count;
+    for (int c = m->built_clusters; c < m->cluster_capacity; c++) {
+        const int first = c == m->built_clusters ? m->built_vertices : m->capacity.vertices;
+        m->clusters[c] = (r3d_lit_cluster_t){
+            .vertex_first = (uint16_t)first,
+            .vertex_count = (uint16_t)(m->capacity.vertices - first),
+            .triangle_first = (uint16_t)m->mesh.triangle_count,
+            .bounds = box3s_empty(),
+        };
+    }
+    m->mesh.vertex_count = m->capacity.vertices;
+    m->mesh.cluster_count = m->cluster_capacity;
 }
 
 bool
@@ -195,7 +254,7 @@ r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
         }
         if (m->mesh.vertex_count + new_vertices(&b, t) > m->capacity.vertices
             || m->mesh.triangle_count >= m->capacity.triangles
-            || (b.open == NULL && m->mesh.cluster_count >= m->cluster_capacity)) {
+            || (b.open == NULL && m->mesh.cluster_count + 1 >= m->cluster_capacity)) {
             fitted = false;
             break;
         }
@@ -210,5 +269,6 @@ r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
     }
     close_cluster(&b);
     build_tree(m);
+    pad(m);
     return fitted;
 }

@@ -106,7 +106,7 @@ fill_instances(scene_t* scene) {
     int count = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
-        if ((scene->flags[r->entity] & SCENE_FLAG_ENABLED) != 0 && r->mesh.cluster_count > 0) {
+        if ((scene->flags[r->entity] & SCENE_FLAG_ENABLED) != 0 && r->mesh.node_count > 0) {
             scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL};
         }
     }

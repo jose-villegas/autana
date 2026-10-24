@@ -67,7 +67,7 @@ const r3d_lit_mesh_t* scene_entity_mesh(const scene_t* scene, scene_entity_t ent
 /* The entity's renderer draws `mesh` instead of the one it loaded: a mesh
  * made at run time, which the caller keeps alive for the scene's life. The
  * scene keeps a copy of the view, so call again after each rebuild changes
- * its counts. A mesh with no clusters draws nothing. False when the entity
+ * its counts. A mesh with no nodes draws nothing. False when the entity
  * has no renderer or a skinned one, whose mesh its animator writes. */
 bool scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mesh_t* mesh);
 
