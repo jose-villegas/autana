@@ -28,8 +28,13 @@
 
 _Static_assert(IMU_RECORD_SHAKE_LINE_SIZE <= IMU_RECORD_LINE_SIZE, "shake payload must fit the shared formatter");
 
+#define IMU_RECORD_ORIENTATION_LINE_SIZE                                                                               \
+    (ORIENTATION_PROBE_SAMPLE_SIZE + sizeof(IMU_RECORD_PREFIX " ") + IMU_RECORD_LINE_MARGIN)
+_Static_assert(IMU_RECORD_ORIENTATION_LINE_SIZE <= IMU_RECORD_LINE_SIZE,
+               "orientation payload must fit the shared formatter");
+
 #define IMU_RECORD_ORIENTATION_CAPACITY                                                                                \
-    ((ORIENTATION_PROBE_RECORD_LINES * IMU_RECORD_LINE_SIZE) + sizeof IMU_RECORD_TRUNCATED)
+    ((ORIENTATION_PROBE_RECORD_LINES * IMU_RECORD_ORIENTATION_LINE_SIZE) + sizeof IMU_RECORD_TRUNCATED)
 
 typedef struct {
     char* text;

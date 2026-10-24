@@ -5,7 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_log.h"
+
 #include "core/memory.h"
+
+static const char* const TAG = "imu_record";
 
 void
 imu_record_free(imu_record_t* record) {
@@ -21,6 +25,7 @@ imu_record_start(imu_record_t* record, size_t capacity) {
     }
     record->text = memory_alloc(capacity, MEMORY_PSRAM);
     if (record->text == NULL) {
+        ESP_LOGE(TAG, "no memory for round: requested %zu bytes in PSRAM", capacity);
         return false;
     }
     record->text[0] = '\0';
