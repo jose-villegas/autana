@@ -12,7 +12,7 @@ on:
         description: Maximum new candidates per board
         required: false
       window_end:
-        description: Local window end (HH:MM; defaults to WINDOW_END)
+        description: Local window end (HH:MM; defaults to the shared night end)
         required: false
       queue_at:
         description: Local queue time (HH:MM; empty starts immediately)
@@ -21,6 +21,7 @@ on:
 concurrency: nightly-perf
 permissions:
   contents: write
+  actions: read
 
 env:
   NIGHTLY_SUITES: |
@@ -28,8 +29,7 @@ env:
     run_sponza_perf_suite|-|-
     run_render_lab_frame_profile_suite|-|-
     run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
-  WINDOW_END: ${{ inputs.window_end || '07:00' }}
-  QUEUE_AT: '22:30'
+  NIGHT_START: ${{ vars.NIGHT_START }}
   GH_TOKEN: ${{ github.token }}
   GIT_CONFIG_COUNT: '4'
   GIT_CONFIG_KEY_0: core.hooksPath
@@ -62,6 +62,7 @@ jobs:
           FROM_SHA: ${{ inputs.from }}
           MAX_STEPS: ${{ inputs.max_steps }}
           DISPATCH_QUEUE_AT: ${{ inputs.queue_at }}
+          DISPATCH_WINDOW_END: ${{ inputs.window_end }}
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           PY=$(. scripts/lib/python.sh && find_python)
@@ -82,15 +83,17 @@ jobs:
             git -C "$data" checkout --orphan perf-data
           fi
           args=()
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            QUEUE_AT=$DISPATCH_QUEUE_AT
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            args+=(--queue-at "$NIGHT_START")
+          elif [ -n "$DISPATCH_QUEUE_AT" ]; then
+            args+=(--queue-at "$DISPATCH_QUEUE_AT")
           fi
-          [ -z "$QUEUE_AT" ] || args+=(--queue-at "$QUEUE_AT")
+          [ -z "$DISPATCH_WINDOW_END" ] || args+=(--until "$DISPATCH_WINDOW_END")
           [ -z "$FROM_SHA" ] || args+=(--from "$FROM_SHA")
           [ -z "$MAX_STEPS" ] || args+=(--max-steps "$MAX_STEPS")
           # One lane per board plugged in; the plan sets SCOPED_BOARDS and SELFTEST_BOARD.
           "$PY" launcher/tools/perf/nightly/scoped_chain.py plan \
-            --data "$data" --out "$out/plan.json" --until "$WINDOW_END" "${args[@]}" >> "$GITHUB_ENV"
+            --data "$data" --out "$out/plan.json" "${args[@]}" >> "$GITHUB_ENV"
 
       - name: Prepare the self-test's console tests
         if: env.SELFTEST_BOARD != ''
@@ -104,16 +107,9 @@ jobs:
           while IFS="|" read -r suite tests table; do
             [ -z "$suite" ] || suites+=(--suite "$suite" "$tests" "$table")
           done <<< "$NIGHTLY_SUITES"
-          pids=()
-          for board in $SCOPED_BOARDS; do
-            bash launcher/tools/perf/nightly/lane.sh "$board" "$PERF_OUT/plan.json" "$PERF_DATA" "$PERF_OUT" -- "${suites[@]}" &
-            pids+=($!)
-          done
-          status=0
-          for pid in "${pids[@]}"; do
-            wait "$pid" || status=1
-          done
-          exit "$status"
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" launcher/tools/perf/nightly/scoped_chain.py night \
+            --plan "$PERF_OUT/plan.json" --data "$PERF_DATA" --out "$PERF_OUT" "${suites[@]}"
 
       - name: Summarize board outcomes
         if: always() && env.PERF_DATA != ''

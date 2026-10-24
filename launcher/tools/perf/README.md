@@ -253,27 +253,22 @@ rows. Single-viewport render documentation readers select portrait by default;
 The same workflow runs docs-search retrieval evals alongside the board job:
 hybrid on the GPU runner and lexical on hosted Linux, with scores in each job summary.
 
-The workflow assigns first-parent commits on main by position modulo board
-count. Each board repeats its last measured commit as an anchor and plans
-new steps after `last_attempted`. A fresh board starts at its newest commit.
+Initial boards split first-parent commits on main by position modulo their count.
+Joiners use independent `0/1` series. Boards repeat their last measured anchor
+and resume after `last_attempted`; fresh boards start at their newest commit.
 
 ```mermaid
 flowchart LR
-    Plan[Shared plan] --> A
-    Plan --> B
-    subgraph A[Board A lock]
-        LaneA[Anchor and new steps]
-    end
-    subgraph B[Board B lock]
-        LaneB[Anchor and new steps]
-    end
-    Mutex[Shared build mutex]
-    Mutex -. Checkout and build .-> A
-    Mutex -. Checkout and build .-> B
-    A --> Publish[Publish]
-    B --> Publish
-    Publish --> Data[perf-data reports]
-    Publish --> Artifacts[Raw capture artifacts]
+    Plan[Shared plan] --> Supervisor
+    Supervisor --> A[Initial board lanes]
+    Supervisor --> Scan[Rescan USB]
+    Scan --> Join[Joining board on own 0/1 series]
+    Join --> Supervisor
+    A --> Done{All lanes ended and no join?}
+    Join --> Done
+    Done -->|Yes| Release[Release runner]
+    Done -->|No| Scan
+    Release --> Publish[Publish reports and artifacts]
 ```
 
 Builds take the host-wide heavy lock shared with GPU stages and run at
@@ -290,12 +285,14 @@ stateDiagram-v2
     [*] --> Planned
     Planned --> not_run_window: Cannot fit
     Planned --> not_run_stopped: Failure limit
+    Planned --> not_run_unplugged: Board unplugged
     Planned --> Build: Fits
     Build --> build_failed
     Build --> skipped_same_image: Same image
     Build --> Capture: Changed image or anchor
     Capture --> measured
     Capture --> capture_failed
+    Capture --> not_run_unplugged: Board unplugged
     state "Advance both cursors and hash" as Measured {
         measured
     }
@@ -307,6 +304,7 @@ stateDiagram-v2
         capture_failed
         not_run_window
         not_run_stopped
+        not_run_unplugged
     }
 ```
 
@@ -321,43 +319,75 @@ The manifest records step outcomes, cursors, image hashes, durations, and
 self-test results. LNT v2 reports use the full USB serial as machine name,
 the commit as `run.llvm_project_revision`, and timing samples in seconds.
 
-For a short manual chain, create a data checkout and a shared plan, then run
-each lane under its board's hold. `--from` includes that commit if assigned
-to the lane; `--max-steps` limits new candidates and retains the anchor.
+For a manual chain, create a data checkout and plan, then run `night`.
+`--from` includes that commit when assigned to the lane; `--max-steps`
+limits new candidates and retains the anchor.
 
 ```sh
 python launcher/tools/perf/nightly/scoped_chain.py plan \
   --boards BOARD_A BOARD_B --data DATA --out plan.json --until 07:00 \
   --from SHA --max-steps 2
-autana --board BOARD_A --wait 3600 lock run -- \
-  python launcher/tools/perf/nightly/scoped_chain.py run \
-  --plan plan.json --data DATA --board BOARD_A --lane 0/2 \
-  --out captures --suite SUITE - -
+python launcher/tools/perf/nightly/scoped_chain.py night \
+  --plan plan.json --data DATA --out captures --suite SUITE - -
 ```
 
 `--suite NAME TESTS TABLE` is perf_compare's triplet: suite name,
 comma-separated test patterns or `-` for all, and table command or `-` for raw
 timing lines. The workflow's `NIGHTLY_SUITES` supplies these triplets.
 
-`--lane INDEX/COUNT` is this board's share of the plan. `plan.json` records
-it per board; `lane-info --plan plan.json --board BOARD_A` prints it and its
-estimated duration in seconds.
+`plan.json` records each board's lane, estimated duration, and the planned
+`--from` and `--max-steps` selection. Joining boards use the same selection.
 
-`QUEUE_AT` and `WINDOW_END` set local times. Dispatch inputs `queue_at` and
-`window_end` override them; an empty dispatch `queue_at` starts immediately.
-A dispatch holds boards until its window end or `max_steps`.
+```mermaid
+sequenceDiagram
+    participant Cron
+    participant GPU as GPU runner
+    participant Heavy
+    participant Plan as Board plan
+    participant Lanes as Board lanes
+    Cron->>GPU: 16:00 UTC fingerprint check
+    loop Until local NIGHT_START
+        GPU->>GPU: Poll for queued bakes
+        opt Bakes pending
+            GPU-->>Cron: Deferred, end green
+            Cron->>GPU: Check again on any bake completion
+        end
+    end
+    GPU->>GPU: Wait for active board locks
+    GPU->>Heavy: Take heavy, render before 07:00
+    GPU->>Heavy: Release heavy
+    Plan->>Plan: If GPU marker fresh, wait for two idle polls
+    Plan->>Lanes: Start board lanes until 07:00
+```
 
-Scheduled plans start immediately inside the overnight window. Morning
-arrivals after `WINDOW_END` skip; arrivals after noon wait until `QUEUE_AT`.
-A dispatch with `queue_at` follows the scheduled window rule, skipping 07:00–12:00.
+`vars.NIGHT_START` is HH:MM in 18:00–23:59 local; an empty value uses the
+default in `scripts/lib/local_schedule.py`, which also owns the night end.
+Dispatch inputs `queue_at` and `window_end` override the plan window.
+An empty dispatch `queue_at` starts after pending GPU work on the same host.
 
-A step starts only if it fits before `WINDOW_END`, and a lane stops after
+The GPU runner waits at most `MAX_EVENING_WAIT` for the night start,
+yielding green to pending bakes. Earlier arrivals end green with
+“pending: renders tonight”. Every bake completion triggers another check.
+
+The plan waits for both GPU workflows to be idle on two consecutive polls
+only when the heavy root's runner marker is fresh within `GPU_HOST_MARKER_DAYS`
+(`scripts/lib/local_schedule.py`); otherwise it reports “GPU runner not on this host”.
+
+The board night retains the shared morning deadline in `plan.json`;
+insufficient time for `FIRST_STEP_SECONDS` skips green.
+
+Morning scheduled arrivals after the night end skip; arrivals after noon
+wait for the next night start. A dispatch with `queue_at` follows this rule.
+The supervisor releases the runner when all lanes end and a scan finds no
+new board. Joins remain possible while any lane runs.
+
+A step starts only if it fits before the plan deadline, and a lane stops after
 `CAPTURE_FAILURE_LIMIT` consecutive capture failures (`scoped_chain.py`).
 Unattempted commits go to the same board's next night.
 
-The nightly runs one lane per board `autana devices` lists as plugged in on
-the runner, so plugging a board in or out changes the lanes. A board's first
-night measures one commit as its baseline.
+The nightly starts with the boards `autana devices` lists as plugged in.
+A night with no board at plan time does not run. A planned board that
+unplugs and comes back is not restarted during that night.
 
 One board, the first one listed, also runs Board CI's steps
 (`scripts/ci/board-steps.sh`: the self-test, then the console tests) first,

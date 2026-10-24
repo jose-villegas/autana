@@ -3,17 +3,16 @@ from datetime import datetime, timedelta
 import contextlib
 import io
 import os
-import re
 import subprocess
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+import yaml
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
-import local_schedule
-from local_schedule import gpu_window, local_time, wait_seconds, GPU_START, GPU_END
+from scripts.lib import local_schedule
+from scripts.lib.local_schedule import NIGHT_START, NIGHT_END
 
 
 class Clock:
@@ -30,6 +29,50 @@ class Clock:
 
 
 class LocalScheduleTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.marker_root = Path(temporary.name) / "heavy"
+        environment = patch.dict(os.environ, _AUTANA_HEAVY_LOCK_ROOT=str(self.marker_root))
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def test_gpu_stage_refreshes_host_marker_before_refusing(self):
+        import json
+        for workflow in local_schedule.GPU_ESTIMATES:
+            for runner in ("gpu-runner-a", "gpu-runner-b"):
+                env = dict(os.environ, GPU_WORKFLOW=workflow, RUNNER_NAME=runner,
+                           GITHUB_EVENT_NAME="workflow_dispatch", OVERRIDE="false")
+                with patch.dict(os.environ, env), \
+                        patch.object(sys, "argv", ["local_schedule", "ready"]), \
+                        patch.object(local_schedule, "gpu_queue", return_value=None), \
+                        patch.object(local_schedule, "gpu_ready", return_value=False), \
+                        patch.object(local_schedule, "Clock", return_value=Clock(12)), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(local_schedule.main(), local_schedule.EXIT_REFUSED)
+                record = json.loads((self.marker_root / local_schedule.GPU_HOST_MARKER).read_text())
+                self.assertEqual(record["runner"], runner)
+                self.assertEqual(record["refreshed_at"], Clock(12).now().isoformat())
+
+    def test_gpu_marker_read_needs_no_lock_or_directory(self):
+        with patch.object(local_schedule.LockStore, "guard", side_effect=AssertionError("reader took lock")):
+            self.assertFalse(local_schedule.gpu_on_host(Clock(12)))
+            self.assertFalse(self.marker_root.exists())
+            local_schedule.refresh_gpu_host("runner", Clock(12))
+            self.assertTrue(local_schedule.gpu_on_host(Clock(12)))
+            self.assertTrue(local_schedule.gpu_on_host(Clock(12, day=21 + 7)))
+            self.assertFalse(local_schedule.gpu_on_host(Clock(11)))
+
+    def test_missing_gpu_workflow_refuses_before_running(self):
+        env = dict(os.environ, OVERRIDE="true")
+        env.pop("GPU_WORKFLOW", None)
+        with patch.dict(os.environ, env, clear=True), \
+                patch.object(sys, "argv", ["local_schedule", "start", "--", "render"]), \
+                patch.object(local_schedule.subprocess, "call") as run:
+            with self.assertRaisesRegex(KeyError, "GPU_WORKFLOW"):
+                local_schedule.main()
+            run.assert_not_called()
+
     def test_gpu_stage_busy_dispatch_refuses_and_schedule_skips(self):
         root = Path(__file__).resolve().parents[3]
         with tempfile.TemporaryDirectory() as temporary:
@@ -39,13 +82,23 @@ class LocalScheduleTests(unittest.TestCase):
             autana = tools / "autana"
             autana.write_text("#!/bin/sh\necho 'heavy held by render-owner' >&2\nexit 75\n")
             autana.chmod(0o755)
-            env = dict(os.environ, PYTHONPATH=str(root), OVERRIDE="false")
-            for event in ("workflow_dispatch", "schedule"):
+            python = fixture / "python3"
+            python.write_text("#!/bin/sh\ncase \"$2\" in\n"
+                              "budget) echo 60; exit 0;;\n"
+                              "ready) echo ready >> order; exit 0;;\nesac\n"
+                              f'exec "{sys.executable}" "$@"\n')
+            python.chmod(0o755)
+            autana.write_text(autana.read_text().replace("echo 'heavy", "echo heavy >> order\necho 'heavy"))
+            env = dict(os.environ, PYTHONPATH=str(root), OVERRIDE="false",
+                       GPU_WORKFLOW=local_schedule.DOC_IMAGES_WORKFLOW,
+                       PATH=str(fixture) + os.pathsep + os.environ["PATH"])
+            for event in ("workflow_dispatch", "schedule", "workflow_run"):
                 env["GITHUB_EVENT_NAME"] = event
                 result = subprocess.run(["sh", str(root / "scripts/ci/gpu_stage.sh"), "render"],
                                         cwd=fixture, env=env, capture_output=True, text=True)
                 self.assertIn("render-owner", result.stderr)
-                if event == "schedule":
+                self.assertEqual((fixture / "order").read_text().splitlines()[-2:], ["ready", "heavy"])
+                if event in ("schedule", "workflow_run"):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertIn(local_schedule.SKIPPED, result.stdout)
                 else:
@@ -54,7 +107,12 @@ class LocalScheduleTests(unittest.TestCase):
 
     def test_gpu_cron_starts_before_local_window_in_both_seasons(self):
         workflow = Path(__file__).resolve().parents[3] / ".github/workflows/doc-images-gpu.yml"
-        self.assertIn("cron: '0 22 * * *'", workflow.read_text())
+        data = yaml.safe_load(workflow.read_text())
+        self.assertEqual(data[True]['schedule'], [{'cron': '0 16 * * *'}])
+        start_hour, start_minute = map(int, NIGHT_START.split(":"))
+        for offset in (1, 2):
+            self.assertLessEqual(16 + offset, start_hour + start_minute / 60)
+        self.assertEqual(data["env"]["NIGHT_START"], "${{ vars.NIGHT_START }}")
 
     def test_nightly_window_waits_runs_or_skips(self):
         for hour, minute, wait, allowed in ((18, 0, 270 * 60, True),
@@ -73,54 +131,27 @@ class LocalScheduleTests(unittest.TestCase):
 
     def test_nightly_cron_and_timeout_cover_both_seasons(self):
         workflow = Path(__file__).resolve().parents[3] / ".github/workflows/nightly-perf.yml"
-        text = workflow.read_text()
+        data = yaml.safe_load(workflow.read_text())
         cron_hour = 18
-        queue_hour, queue_minute = map(int, re.search(r"QUEUE_AT: '(\d+:\d+)'", text)[1].split(":"))
-        end_hour, end_minute = map(int, re.search(r"WINDOW_END:.*'(\d+:\d+)'", text)[1].split(":"))
+        queue_hour, queue_minute = map(int, NIGHT_START.split(":"))
+        end_hour, end_minute = map(int, NIGHT_END.split(":"))
         queue_hour += queue_minute / 60
         end_hour += end_minute / 60
-        self.assertIn(f"cron: '0 {cron_hour} * * *'", text)
+        self.assertEqual(data[True]["schedule"], [{"cron": f"0 {cron_hour} * * *"}])
         longest_wait_minutes = max((queue_hour - cron_hour - offset) * 60 for offset in (1, 2))
         window_minutes = (24 - queue_hour + end_hour) * 60
         publish_minutes = 60
         timeout_minutes = int(longest_wait_minutes + window_minutes + publish_minutes)
-        self.assertIn(f"timeout-minutes: {timeout_minutes}", text)
-
-    def test_dispatch_window_and_override(self):
-        for hour, allowed in ((0, False), (1, True), (2, True), (3, False), (12, False)):
-            with self.subTest(hour=hour):
-                clock = Clock(hour)
-                self.assertEqual(gpu_window(clock=clock), allowed)
-                self.assertTrue(gpu_window(override=True, clock=clock))
-                self.assertEqual(clock.sleeps, [])
-
-    def test_schedule_waits_until_start_and_never_rolls_cap_forward(self):
-        clock = Clock(0)
-        self.assertTrue(gpu_window(scheduled=True, clock=clock))
-        self.assertEqual(clock.now(), local_time(GPU_START, clock.now()))
-        self.assertEqual(wait_seconds(GPU_END, clock.now()), 2 * 60 * 60)
-        self.assertFalse(gpu_window(scheduled=True, clock=Clock(3)))
-        self.assertEqual(wait_seconds(GPU_END, Clock(4).now()), 0)
-
-    def test_schedule_before_midnight_waits_for_next_start(self):
-        clock = Clock(23, 30)
-        self.assertTrue(gpu_window(scheduled=True, clock=clock))
-        self.assertEqual(clock.now(), datetime(2026, 10, 22, 1))
-        self.assertEqual(clock.sleeps, [90 * 60])
-        for hour in (3, 4, 11, 12):
-            with self.subTest(hour=hour):
-                clock = Clock(hour)
-                self.assertFalse(gpu_window(scheduled=True, clock=clock))
-                self.assertEqual(clock.sleeps, [])
+        self.assertEqual(data["jobs"]["nightly"]["timeout-minutes"], timeout_minutes)
 
     def test_gate_and_post_lock_check_distinguish_dispatch_from_schedule(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "output"
             summary = Path(directory) / "summary"
-            env = dict(GITHUB_OUTPUT=str(output), GITHUB_STEP_SUMMARY=str(summary), OVERRIDE="false")
-            refusal = "GPU stage renders 01:00-03:00 local time; dispatch with override to render now"
-            for event, hour in (("schedule", 3), ("workflow_dispatch", 0),
-                                ("workflow_dispatch", 3), ("workflow_dispatch", 15)):
+            env = dict(GPU_WORKFLOW=local_schedule.DOC_IMAGES_WORKFLOW, GITHUB_OUTPUT=str(output), GITHUB_STEP_SUMMARY=str(summary), OVERRIDE="false")
+            refusal = local_schedule.REFUSED
+            for event, hour in (("schedule", 7), ("workflow_dispatch", 18),
+                                ("workflow_dispatch", 7), ("workflow_dispatch", 15)):
                 env["GITHUB_EVENT_NAME"] = event
                 for mode in ("gate", "start"):
                     output.write_text("")
@@ -131,7 +162,7 @@ class LocalScheduleTests(unittest.TestCase):
                             patch.object(local_schedule.subprocess, "call") as run, \
                             contextlib.redirect_stdout(io.StringIO()) as notice:
                         code = local_schedule.main()
-                        if event == "schedule":
+                        if event in ("schedule", "workflow_run"):
                             self.assertEqual(code, local_schedule.EXIT_SKIPPED if mode == "gate" else 0)
                             message = local_schedule.SKIPPED
                         else:

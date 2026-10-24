@@ -28,7 +28,7 @@ def source_paths(root):
         if not base.is_dir():
             continue
         for path in committable(base):
-            if path.suffix in SOURCE_SUFFIXES or path.name == "Kconfig.projbuild":
+            if path.suffix in SOURCE_SUFFIXES or path.name in ("Kconfig", "Kconfig.projbuild"):
                 yield path
 
 
