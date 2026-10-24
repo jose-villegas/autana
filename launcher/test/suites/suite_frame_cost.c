@@ -12,6 +12,8 @@
 
 #include "profile/frame_cost.h"
 
+#include "../profile_examples/frame_cost.c"
+
 /* A frame_cost_t is too big for the device's test stack: each test owns a
  * zeroed one on the heap and frees it before it returns. */
 static frame_cost_t*
@@ -19,6 +21,20 @@ fixture(void) {
     frame_cost_t* const cost = calloc(1, sizeof *cost);
     TEST_ASSERT_NOT_NULL(cost);
     return cost;
+}
+
+static int draws;
+
+void
+draw_the_thing(void) {
+    draws++;
+}
+
+static void
+test_documented_bracket_runs_its_work(void) {
+    draws = 0;
+    frame_cost_example();
+    TEST_ASSERT_EQUAL_INT(1, draws);
 }
 
 static void
@@ -710,6 +726,7 @@ test_external_report_preserves_submillisecond_worst(void) {
 
 void
 suite_frame_cost(void) {
+    RUN_TEST(test_documented_bracket_runs_its_work);
     RUN_TEST(test_external_report_preserves_submillisecond_worst);
     RUN_TEST(test_external_report_exact_capacity_and_short_buffer);
     RUN_TEST(test_charges_to_one_name_add_up_and_the_report_is_per_frame);

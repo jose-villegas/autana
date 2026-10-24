@@ -123,6 +123,7 @@ test_tone_parse_invalid(void) {
 }
 
 #ifndef ESP_PLATFORM
+#include "../audio_examples/tap.c"
 #include "asset/asset_store.h"
 #include "audio/audio_codec_feedback.h"
 #include "audio/audio_loopback.h"
@@ -175,6 +176,9 @@ static struct {
         int mounted;
     } console;
 
+    const sound_play_opts_t* play_opts;
+    sound_voice_t play_voice;
+    sound_voice_t stop_voice;
     tone_failure_t failure;
     audio_codec_feedback_t feedback;
     audio_out_amp_t amp;
@@ -294,6 +298,14 @@ sound_capture_close(void) {
 }
 
 sound_voice_t
+sound_play(const sound_t* sound, const sound_play_opts_t* opts) {
+    device.play_opts = opts;
+    device.playing = sound && sound->data && sound->frames && device.failure != TEST_TONE_START_FAIL;
+    device.play_voice = device.playing ? (sound_voice_t){.id = TEST_CONSOLE_VOICE_FIRST} : SOUND_VOICE_NULL;
+    return device.play_voice;
+}
+
+sound_voice_t
 sound_play_tone(uint16_t hz, uint8_t gain_pct) {
     TEST_ASSERT_EQUAL_UINT16(
         device.melody.enabled ? melody_note_hz(melody_notes[device.melody.starts++]) : TEST_TARGET_HZ, hz);
@@ -351,6 +363,7 @@ timing_sleep_ms(uint32_t ms) {
 
 void
 sound_stop(sound_voice_t voice) {
+    device.stop_voice = voice;
     if (device.console.enabled) {
         if (voice.id == TEST_CONSOLE_VOICE_SYSTEM) {
             device.console.system_playing = false;
@@ -363,7 +376,6 @@ sound_stop(sound_voice_t voice) {
         device.console.phase++;
         return;
     }
-    (void)voice;
     if (!device.stops) {
         device.stop_started = timing_now_us();
     }
@@ -700,6 +712,19 @@ test_sound_transition_releases_all_views(void) {
 }
 
 static void
+test_tap_example_opens_plays_and_stops(void) {
+    reset_device();
+    TEST_ASSERT_TRUE(tap_start());
+    TEST_ASSERT_NOT_NULL(tap.data);
+    TEST_ASSERT_NULL(device.play_opts);
+    TEST_ASSERT_EQUAL_UINT(device.play_voice.id, device.stop_voice.id);
+    TEST_ASSERT_TRUE(device.playing);
+    TEST_ASSERT_EQUAL_UINT(1, device.stops);
+    TEST_ASSERT_TRUE(device.stop_pending);
+    asset_store_release(ASSET_ENGINE_PACK);
+}
+
+static void
 test_sound_transition_retains_views_until_a_fence_succeeds(void) {
     const console_sound_args_t args = sound_fixture();
     device.console.expected_stops = 0;
@@ -740,6 +765,7 @@ test_tone_reply_frequency(void) {
 void
 run_console_tone_suite(void) {
 #ifndef ESP_PLATFORM
+    RUN_TEST(test_tap_example_opens_plays_and_stops);
     RUN_TEST(test_sound_transition_retains_views_until_a_fence_succeeds);
     RUN_TEST(test_sound_transition_releases_all_views);
     RUN_TEST(test_melody_console_play_and_check);
@@ -758,3 +784,7 @@ run_console_tone_suite(void) {
     RUN_TEST(test_tone_parse_invalid);
 }
 SUITE_REGISTER(run_console_tone_suite)
+
+#ifndef ESP_PLATFORM
+SUITE_READS(run_console_tone_suite, ASSET_ENGINE_PACK);
+#endif
