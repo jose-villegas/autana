@@ -423,7 +423,7 @@ shell_run(void) {
 
         input_poll(&input);
         if (input.down) {
-            display_orientation_touch(now_us);
+            display_touch_now(now_us);
         }
         apply_display_orientation(now_us);
 

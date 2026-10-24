@@ -6,6 +6,7 @@
 
 #include "apps/input_lab/motion_probe.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/mathi.h"
 #include "ui/ui.h"
 
 #define GUIDE_BOX_Y         107
@@ -61,41 +62,39 @@ guided_step_mark(int x, int y, int side) {
 }
 
 void
-guided_step_draw(const guided_step_t* state, const char* action, const char* target, int current_bearing_deg,
-                 int committed_bearing_deg, int target_bearing_deg, int tilt_deg, int target_tilt_deg, int width,
-                 int height) {
-    const int delta =
-        (target_bearing_deg - current_bearing_deg + MOTION_PROBE_FULL_TURN_DEG) % MOTION_PROBE_FULL_TURN_DEG;
+guided_step_draw(const guided_step_t* state, const guided_step_view_t* view) {
+    const int delta = mathi_wrap(view->target_bearing_deg - view->current_bearing_deg, 0, MOTION_PROBE_FULL_TURN_DEG);
     const int signed_delta = delta > GUIDE_DEG_HALF_TURN ? delta - MOTION_PROBE_FULL_TURN_DEG : delta;
     const int arrow_delta =
-        (target_bearing_deg - committed_bearing_deg + MOTION_PROBE_FULL_TURN_DEG) % MOTION_PROBE_FULL_TURN_DEG;
+        mathi_wrap(view->target_bearing_deg - view->committed_bearing_deg, 0, MOTION_PROBE_FULL_TURN_DEG);
     const int signed_arrow = arrow_delta > GUIDE_DEG_HALF_TURN ? arrow_delta - MOTION_PROBE_FULL_TURN_DEG : arrow_delta;
     const int direction = signed_arrow < 0 ? -1 : 1;
-    const recti_t box = {GUIDE_BOX_MARGIN, GUIDE_BOX_Y, width - 2 * GUIDE_BOX_MARGIN, GUIDE_BOX_H};
+    const recti_t box = {GUIDE_BOX_MARGIN, GUIDE_BOX_Y, view->width - 2 * GUIDE_BOX_MARGIN, GUIDE_BOX_H};
     ui_fill(box, GUIDE_FACE);
     ui_outline(box, GUIDE_INK);
     char line[96];
     ui_color_begin(UI_COLOR_TEXT, GUIDE_INK);
     ui_scale_begin(2);
-    ui_text_centre((recti_t){box.x, box.y + 5, box.w, GUIDE_TEXT_H}, action);
+    ui_text_centre((recti_t){box.x, box.y + 5, box.w, GUIDE_TEXT_H}, view->action);
     ui_text_centre((recti_t){box.x, box.y + GUIDE_TEXT_H + 7, box.w, GUIDE_TEXT_H},
-                   target == NULL ? "FACE UP" : target);
+                   view->target == NULL ? "FACE UP" : view->target);
     if (state->ready) {
         (void)snprintf(line, sizeof line, "TAP WHEN READY");
-    } else if (target == NULL) {
+    } else if (view->target == NULL) {
         (void)snprintf(line, sizeof line, "HOLD FLAT");
     } else {
-        (void)snprintf(line, sizeof line, "HOLD AT %d DEG", target_tilt_deg);
+        (void)snprintf(line, sizeof line, "HOLD AT %d DEG", view->target_tilt_deg);
     }
     ui_text_centre((recti_t){box.x, box.y + 2 * GUIDE_TEXT_H + 9, box.w, GUIDE_TEXT_H}, line);
     ui_scale_end();
     ui_color_end();
-    const int cx = width / 2;
-    const int cy =
-        height < GUIDE_RING_Y + GUIDE_RING_RADIUS ? height - GUIDE_RING_RADIUS - GUIDE_BOX_MARGIN : GUIDE_RING_Y;
-    if (target == NULL) {
-        (void)snprintf(line, sizeof line, "TILT %d / %d DEG", tilt_deg, target_tilt_deg);
-        ui_text_centre((recti_t){0, height - GUIDE_ANGLE_BOTTOM - GUIDE_ANGLE_H, width, GUIDE_ANGLE_H}, line);
+    const int cx = view->width / 2;
+    const int cy = view->height < GUIDE_RING_Y + GUIDE_RING_RADIUS ? view->height - GUIDE_RING_RADIUS - GUIDE_BOX_MARGIN
+                                                                   : GUIDE_RING_Y;
+    if (view->target == NULL) {
+        (void)snprintf(line, sizeof line, "TILT %d / %d DEG", view->tilt_deg, view->target_tilt_deg);
+        ui_text_centre((recti_t){0, view->height - GUIDE_ANGLE_BOTTOM - GUIDE_ANGLE_H, view->width, GUIDE_ANGLE_H},
+                       line);
         return;
     }
     const int length = abs(signed_arrow);
@@ -108,6 +107,6 @@ guided_step_draw(const guided_step_t* state, const char* action, const char* tar
     guided_step_mark(cx + (int)lroundf(cosf(tip) * GUIDE_RING_RADIUS), cy + (int)lroundf(sinf(tip) * GUIDE_RING_RADIUS),
                      GUIDE_ARROW_MARK);
     (void)snprintf(line, sizeof line, "%d DEG %s TO GO   TILT %d / %d DEG", abs(signed_delta),
-                   signed_delta < 0 ? "CCW" : "CW", tilt_deg, target_tilt_deg);
-    ui_text_centre((recti_t){0, height - GUIDE_ANGLE_BOTTOM - GUIDE_ANGLE_H, width, GUIDE_ANGLE_H}, line);
+                   signed_delta < 0 ? "CCW" : "CW", view->tilt_deg, view->target_tilt_deg);
+    ui_text_centre((recti_t){0, view->height - GUIDE_ANGLE_BOTTOM - GUIDE_ANGLE_H, view->width, GUIDE_ANGLE_H}, line);
 }

@@ -5,7 +5,7 @@
  */
 #pragma once
 
-#include "display/display.h"
+#include "display/display_judge.h"
 #include "display/viewport.h"
 #include "input/motion/imu_sample.h"
 
@@ -13,6 +13,18 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#define CONSOLE_IMU_REPLY_FORMAT        "IMU_OK quarter=%d quarters=%d sample_ms=%d commit_ms=%d"
+#define CONSOLE_IMU_REPLY_INTEGER_COUNT 4
+#define CONSOLE_IMU_REPLY_SIZE                                                                                         \
+    (sizeof CONSOLE_IMU_REPLY_FORMAT + CONSOLE_IMU_REPLY_INTEGER_COUNT * sizeof "-2147483648")
+
+static inline bool
+console_imu_reply(char* line, size_t size, int quarter) {
+    const int written = snprintf(line, size, CONSOLE_IMU_REPLY_FORMAT, quarter, DISPLAY_QUARTER_COUNT,
+                                 DISPLAY_SAMPLE_MS, DISPLAY_COMMIT_MS);
+    return written >= 0 && (size_t)written < size;
+}
 
 /* Reads `<down|up> <x> <y>` into its three parts, in panel coordinates.
  * Returns false and writes nothing for a malformed line: a caller acts on a

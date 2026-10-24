@@ -42,9 +42,17 @@ display_init(display_t* d) {
                      .touch_ended_us = DISPLAY_TIME_NONE};
 }
 
+static void
+restart(display_t* d) {
+    const int quarter = d->quarter;
+    const int64_t touch_us = d->touch_ended_us;
+    display_init(d);
+    d->quarter = quarter;
+    d->touch_ended_us = touch_us;
+}
+
 void
 display_touch(display_t* d, int64_t now_us) {
-    d->touched = true;
     d->touch_ended_us = now_us;
 }
 
@@ -99,25 +107,29 @@ track_tilt(display_t* d, float sine, float cosine, int64_t now_us) {
     }
 }
 
-static int
-predict_quarter(const display_t* d, float tilt_sin) {
-    if (d->overhead || fabsf(tilt_sin) > DISPLAY_MAX_TILT_SIN) {
+int
+display_candidate(vec3f_t v, int current, bool tilt_limits) {
+    const float magnitude = sqrtf(vec3f_dot(v, v));
+    if (magnitude < DISPLAY_NEAR_ZERO_G) {
         return DISPLAY_QUARTER_NONE;
     }
-    const vec3f_t v = d->filtered;
+    const float tilt_sin = -v.z / magnitude;
+    if (tilt_limits && fabsf(tilt_sin) > DISPLAY_MAX_TILT_SIN) {
+        return DISPLAY_QUARTER_NONE;
+    }
     const int quarter = fabsf(v.x) > fabsf(v.y) ? (v.x > 0.0F ? DISPLAY_LANDSCAPE_UPSIDE_DOWN : DISPLAY_LANDSCAPE)
                                                 : (v.y > 0.0F ? DISPLAY_PORTRAIT : DISPLAY_PORTRAIT_UPSIDE_DOWN);
     const int relative = (quarter - DISPLAY_DEFAULT_QUARTER + DISPLAY_QUARTER_COUNT) % DISPLAY_QUARTER_COUNT;
     const float max_sin = relative == 0                           ? DISPLAY_TILT_DEFAULT_MAX_SIN
                           : relative == DISPLAY_QUARTER_COUNT / 2 ? DISPLAY_TILT_OPPOSITE_MAX_SIN
                                                                   : DISPLAY_TILT_ADJACENT_MAX_SIN;
-    if (tilt_sin < DISPLAY_TILT_MIN_SIN || tilt_sin > max_sin) {
+    if (tilt_limits && (tilt_sin < DISPLAY_TILT_MIN_SIN || tilt_sin > max_sin)) {
         return DISPLAY_QUARTER_NONE;
     }
-    const viewport_quarter_axes_t axes = viewport_quarter_axes(d->quarter);
+    const viewport_quarter_axes_t axes = viewport_quarter_axes(current);
     const float aligned = v.x * axes.x_down + v.y * axes.y_down;
     const float plane = sqrtf(v.x * v.x + v.y * v.y);
-    if (quarter != d->quarter && aligned >= plane * DISPLAY_ADJACENT_MIN_COS) {
+    if (quarter != current && aligned >= plane * DISPLAY_ADJACENT_MIN_COS) {
         return DISPLAY_QUARTER_NONE;
     }
     return quarter;
@@ -125,17 +137,14 @@ predict_quarter(const display_t* d, float tilt_sin) {
 
 bool
 display_update(display_t* d, vec3f_t accel_g, int64_t now_us) {
-    const bool touched = d->touched;
-    d->touched = false;
     const bool zero = vec3f_dot(accel_g, accel_g) == 0.0F;
-    const bool restart = !d->primed || now_us < d->sample_us
-                         || now_us - d->sample_us > (int64_t)DISPLAY_FILTER_RESET_MS * MATH_US_PER_MS || zero;
-    if (restart) {
-        const int quarter = d->quarter;
-        const int64_t touch_us = d->touch_ended_us;
-        display_init(d);
-        d->quarter = quarter;
-        d->touch_ended_us = touch_us > now_us ? now_us : touch_us;
+    const bool needs_restart = !d->primed || now_us < d->sample_us
+                               || now_us - d->sample_us > (int64_t)DISPLAY_FILTER_RESET_MS * MATH_US_PER_MS || zero;
+    if (needs_restart) {
+        restart(d);
+        if (d->touch_ended_us > now_us) {
+            d->touch_ended_us = now_us;
+        }
         d->filtered = accel_g;
         d->primed = !zero;
     } else {
@@ -154,7 +163,9 @@ display_update(display_t* d, vec3f_t accel_g, int64_t now_us) {
         const float sine = -d->filtered.z / magnitude;
         const float cosine = sqrtf(fmaxf(0.0F, 1.0F - sine * sine));
         track_tilt(d, sine, cosine, now_us);
-        predicted = predict_quarter(d, sine);
+        if (!d->overhead) {
+            predicted = display_candidate(d->filtered, d->quarter, true);
+        }
     } else {
         if (d->flat) {
             d->flat_ended_us = now_us;
@@ -166,7 +177,7 @@ display_update(display_t* d, vec3f_t accel_g, int64_t now_us) {
         d->predicted = predicted;
         d->predicted_us = now_us;
     }
-    if (predicted == DISPLAY_QUARTER_NONE || predicted == d->quarter || touched || d->flat
+    if (predicted == DISPLAY_QUARTER_NONE || predicted == d->quarter || d->flat
         || !elapsed(now_us, d->predicted_us, DISPLAY_SETTLE_MS)
         || !elapsed(now_us, d->flat_ended_us, DISPLAY_AFTER_FLAT_MS)
         || !elapsed(now_us, d->accel_ended_us, DISPLAY_AFTER_ACCEL_MS)
@@ -218,11 +229,7 @@ display_orientation_hold(display_orientation_t* o, int quarter) {
 void
 display_orientation_release(display_orientation_t* o) {
     o->held = false;
-    const int quarter = o->display.quarter;
-    const int64_t touch_ended_us = o->display.touch_ended_us;
-    display_init(&o->display);
-    o->display.quarter = quarter;
-    o->display.touch_ended_us = touch_ended_us;
+    restart(&o->display);
     o->released = true;
     o->next_sample_us = 0;
 }

@@ -94,6 +94,6 @@ display_restore_system_state(void) {
 }
 
 void
-display_orientation_touch(int64_t now_us) {
+display_touch_now(int64_t now_us) {
     display_touch(&shell_orientation.display, now_us);
 }

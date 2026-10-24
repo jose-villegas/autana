@@ -11,16 +11,17 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[5]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
 
 DISPLAY = ROOT / "launcher/main/display/display.h"
+JUDGE = ROOT / "launcher/main/display/display_judge.h"
 COARSE_SAMPLE_MS = 100
 US_PER_MS = 1000
 NO_QUARTER = -1
 RESULT_CAPTURE = ROOT / "launcher/main/apps/input_lab/tools/data/orientation.log.gz"
-RESULT_DOC = ROOT / "docs/input/Orientation.md"
+RESULT_DOC = Path(__file__).resolve().parents[1] / "README.md"
 RESULT_META = RESULT_CAPTURE.with_suffix("").with_suffix(".json")
 SOURCES = (Path(__file__).with_name("orientation_replay_probe.c"),
            ROOT / "launcher/main/apps/input_lab/orientation_probe.c",
@@ -29,7 +30,7 @@ SOURCES = (Path(__file__).with_name("orientation_replay_probe.c"),
 
 @cache
 def display_define(name):
-    return read_define(DISPLAY, name)
+    return read_define(JUDGE if name in JUDGE.read_text() else DISPLAY, name)
 
 
 def parse_capture(lines):
@@ -91,37 +92,37 @@ def default_quarter():
     return display_define(name)
 
 
-def motion_quarter(sample, old):
+CANDIDATES = {}
+
+
+def classify(binary, samples):
+    vectors = list(dict.fromkeys(tuple(sample[1:4]) for sample in samples))
+    vectors = [v for v in vectors if (binary, *v, 0, False) not in CANDIDATES]
+    if not vectors:
+        return
+    payload = "".join(" ".join(map(str, vector)) + "\n" for vector in vectors)
+    result = subprocess.run([str(binary), "--candidates"], input=payload,
+                            text=True, capture_output=True, check=True)
+    for vector, line in zip(vectors, result.stdout.splitlines(), strict=True):
+        for index, quarter in enumerate(map(int, line.split())):
+            CANDIDATES[binary, *vector, index // 2, bool(index % 2)] = quarter
+
+
+def candidate(binary, x, y, z, old, tilt_limits):
+    classify(binary, [(0, x, y, z)])
+    return CANDIDATES[binary, x, y, z, old, tilt_limits]
+
+
+def motion_quarter(binary, sample, old):
     _, x, y, z, *_ = sample
-    plane = math.hypot(x, y)
-    magnitude = math.hypot(plane, z)
-    if not plane or not magnitude:
+    quarter = candidate(binary, x, y, z, old, False)
+    if quarter in (old, NO_QUARTER):
         return None, False
-    quarter = ((display_define("DISPLAY_LANDSCAPE_UPSIDE_DOWN") if x > 0 else display_define("DISPLAY_LANDSCAPE"))
-               if abs(x) > abs(y) else
-               (display_define("DISPLAY_PORTRAIT") if y > 0 else display_define("DISPLAY_PORTRAIT_UPSIDE_DOWN")))
-    if quarter == old:
-        return None, False
-    old_axes = {display_define("DISPLAY_PORTRAIT"): (0, 1),
-                display_define("DISPLAY_LANDSCAPE"): (-1, 0),
-                display_define("DISPLAY_PORTRAIT_UPSIDE_DOWN"): (0, -1),
-                display_define("DISPLAY_LANDSCAPE_UPSIDE_DOWN"): (1, 0)}[old]
-    aligned = x * old_axes[0] + y * old_axes[1]
-    edge = (display_define("DISPLAY_QUARTER_DEG") +
-            display_define("DISPLAY_HYSTERESIS_GAP_DEG")) / 2
-    if aligned >= plane * math.cos(math.radians(edge)):
-        return None, False
-    count = display_define("DISPLAY_LANDSCAPE_UPSIDE_DOWN") + 1
-    relative = (quarter - default_quarter()) % count
-    max_tilt = ("DISPLAY_TILT_DEFAULT_MAX_DEG" if relative == 0 else
-                "DISPLAY_TILT_OPPOSITE_MAX_DEG" if relative == count // 2 else
-                "DISPLAY_TILT_ADJACENT_MAX_DEG")
-    tilt = math.degrees(math.asin(-z / magnitude))
-    valid = display_define("DISPLAY_TILT_MIN_DEG") <= tilt <= display_define(max_tilt)
-    return quarter, valid
+    return quarter, candidate(binary, x, y, z, old, True) == quarter
 
 
-def measure(samples, events, initial, segments=()):
+def measure(binary, samples, events, initial, segments=()):
+    classify(binary, samples)
     pending, turns, unwanted, latencies = None, [], 0, []
     position = 0
     current = initial
@@ -129,7 +130,7 @@ def measure(samples, events, initial, segments=()):
     settle_us = display_define("DISPLAY_SETTLE_MS") * US_PER_MS
     for sample in samples:
         time = sample[0]
-        candidate, valid = motion_quarter(sample, current)
+        candidate, valid = motion_quarter(binary, sample, current)
         if candidate is not None and (pending is None or pending[0] != candidate):
             pending = (candidate, time, time if valid else None, time if valid else None)
         elif candidate is not None and valid:
@@ -168,7 +169,8 @@ def gate_trace(binary, model, period_ms, initial, samples):
             for fields in (line.split() for line in result.stdout.splitlines())]
 
 
-def gate_report(rows, turns):
+def gate_report(binary, rows, turns):
+    classify(binary, [(row[0], *row[8:11]) for kind, row in rows if kind == "G"])
     limits = {"settle": "DISPLAY_SETTLE_MS", "after-flat": "DISPLAY_AFTER_FLAT_MS",
               "after-accel": "DISPLAY_AFTER_ACCEL_MS", "after-swing": "DISPLAY_AFTER_SWING_MS",
               "touch": "DISPLAY_AFTER_TOUCH_MS"}
@@ -182,7 +184,7 @@ def gate_report(rows, turns):
             time, current, predicted, predicted_us, flat_us, accel_us, swing_us, touch_us = row[:8]
             blocked = set()
             if predicted != quarter:
-                filtered_quarter, tilt_valid = motion_quarter((time, *row[8:11]), current)
+                filtered_quarter, tilt_valid = motion_quarter(binary, (time, *row[8:11]), current)
                 blocked.add("filtered tilt" if filtered_quarter == quarter and not tilt_valid
                             else "filtered hysteresis / angle")
             for name, since in zip(limits, (predicted_us, flat_us, accel_us, swing_us, touch_us)):
@@ -198,6 +200,9 @@ def gate_report(rows, turns):
                 last[name] = time
         for name, began in active.items():
             spans[name] = max(spans.get(name, 0), commit - began)
+        if not last:
+            yield start, commit, quarter, "none", 0, "none", 0
+            continue
         last_gate = max(last, key=last.get)
         dominant = max(spans, key=spans.get)
         yield start, commit, quarter, last_gate, spans[last_gate] / US_PER_MS, dominant, spans[dominant] / US_PER_MS
@@ -256,7 +261,7 @@ def main():
         for model in models:
             for period in (display_define("DISPLAY_SAMPLE_MS"), COARSE_SAMPLE_MS):
                 events = run(binary, model, period, initial, samples)
-                score = measure(samples, events, initial, segments)
+                score = measure(binary, samples, events, initial, segments)
                 latency = [value / US_PER_MS for value in score.latencies_us]
                 result_rows.append((model, period, score, latency))
                 if args.results:
@@ -268,7 +273,7 @@ def main():
                     print(f"  {start / 1e6:.2f} -> {commit / 1e6:.2f} q{quarter}: "
                           f"{(commit - start) / US_PER_MS:.1f} ms")
                 if args.gates:
-                    for start, commit, quarter, gate, duration, dominant, dominant_ms in gate_report(
+                    for start, commit, quarter, gate, duration, dominant, dominant_ms in gate_report(binary,
                             gate_trace(binary, model, period, initial, samples), score.turns):
                         print(f"  q{quarter} at {commit / 1e6:.2f}: last gate {gate} for {duration:.1f} ms; "
                               f"longest hold {dominant} for {dominant_ms:.1f} ms")
@@ -283,8 +288,15 @@ def main():
             for model, period, score, latency in result_rows:
                 body += (f"| {model} | {period} ms | {score.wanted} | {score.unwanted} | "
                          f"{median(latency):.0f} ms | {max(latency):.0f} ms |\n")
+            body += "\n| Model | Cadence | Quarter | Last gate | Last hold | Longest gate | Longest hold |\n"
+            body += "|---|---:|---:|---|---:|---|---:|\n"
+            for model, period, score, _ in result_rows:
+                rows = gate_trace(binary, model, period, initial, samples)
+                for _, _, quarter, gate, duration, dominant, dominant_ms in gate_report(binary, rows, score.turns):
+                    body += (f"| {model} | {period} ms | {quarter} | {gate} | {duration:.0f} ms | "
+                             f"{dominant} | {dominant_ms:.0f} ms |\n")
             changed = replace_block(RESULT_DOC, "orientation-results", body, check=args.check,
-                                    command="python launcher/tools/input/orientation_replay.py --results --check --cc gcc")
+                                    command="python launcher/main/apps/input_lab/tools/orientation_replay.py --results --check --cc gcc")
             if args.check and changed:
                 parser.exit(1, "orientation results differ from capture\n")
 

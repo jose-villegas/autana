@@ -7,7 +7,7 @@
 #include <string.h>
 
 #include "apps/input_lab/imu_record.h"
-#include "display/display.h"
+#include "display/display_judge.h"
 
 #define TEST_DT_MS          20U
 #define TEST_SMALL_CAPACITY (sizeof IMU_RECORD_TRUNCATED + sizeof(IMU_RECORD_PREFIX " 1234567\n") - 1)

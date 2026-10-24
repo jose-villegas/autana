@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "display/display.h"
+#include "display/display_judge.h"
 
 /* Fills screen-axis acceleration in g; false when there is no reading. */
 typedef bool (*display_acceleration_reader_t)(vec3f_t* acceleration);
@@ -57,4 +57,4 @@ bool display_quarter_held(void);
 bool display_sample_orientation(int64_t now_us, display_acceleration_reader_t read);
 
 /* Call every frame a finger is down, before sampling orientation. */
-void display_orientation_touch(int64_t now_us);
+void display_touch_now(int64_t now_us);

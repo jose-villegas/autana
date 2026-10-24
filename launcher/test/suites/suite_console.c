@@ -1015,8 +1015,23 @@ test_sound_parse_boundaries_and_whitespace(void) {
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, args.voice);
 }
 
+static void
+test_imu_reply_exposes_judge_timing_and_checks_capacity(void) {
+    char reply[CONSOLE_IMU_REPLY_SIZE];
+    TEST_ASSERT_TRUE(console_imu_reply(reply, sizeof reply, DISPLAY_DEFAULT_QUARTER));
+    int quarter, count, sample_ms, commit_ms;
+    TEST_ASSERT_EQUAL_INT(CONSOLE_IMU_REPLY_INTEGER_COUNT,
+                          sscanf(reply, CONSOLE_IMU_REPLY_FORMAT, &quarter, &count, &sample_ms, &commit_ms));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_DEFAULT_QUARTER, quarter);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_COUNT, count);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_SAMPLE_MS, sample_ms);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_COMMIT_MS, commit_ms);
+    TEST_ASSERT_FALSE(console_imu_reply(reply, 1, DISPLAY_DEFAULT_QUARTER));
+}
+
 void
 suite_console(void) {
+    RUN_TEST(test_imu_reply_exposes_judge_timing_and_checks_capacity);
     RUN_TEST(test_sound_parse_boundaries_and_whitespace);
     RUN_TEST(test_sound_arguments);
     RUN_TEST(test_overlong_short_verb_is_dropped);
