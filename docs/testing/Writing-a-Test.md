@@ -64,10 +64,11 @@ it.
 
 ### Pass time in, never read a clock
 
+<!-- generated: declaration-touch-fsm-update check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-void touch_fsm_update(touch_fsm_t *fsm, bool have_point,
-                      int x, int y, int64_t now_us);
+void touch_fsm_update(touch_fsm_t* fsm, bool have_point, vec2i_t point, int64_t now_us);
 ```
+<!-- /generated: declaration-touch-fsm-update -->
 
 Taking `now_us` instead of calling `timing_now_us()` lets a test assert a 60 ms
 debounce instantly, and build sequences (a dropout mid-touch) that are awkward
@@ -76,10 +77,11 @@ a parameter.
 
 ### Pass the environment in
 
+<!-- generated: declaration-gesture-is-home-swipe check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-bool gesture_is_home_swipe(const input_t *input, gesture_edge_t edge,
-                           int screen_w, int screen_h);
+bool gesture_is_home_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h);
 ```
+<!-- /generated: declaration-gesture-is-home-swipe -->
 
 It takes the edge and both screen sizes instead of including `gfx.h`, so it
 links against nothing and tests at any resolution, even one no real panel has.
@@ -101,41 +103,55 @@ around every test (`display_restore_system_state()` in its `setUp`/`tearDown`);
 a test that times a present pins its clock with `panel_clock_pin()`. The host
 runner has no panel and does neither.
 
-Put the *why* in the assertion message, not a comment. It is what a reader
-sees at the moment of failure:
-
-```c
-TEST_ASSERT_FALSE_MESSAGE(second.pressed,
-    "an edge must be consumed by the frame that reads it");
-```
+Put the *why* in the assertion message, as the edge-consumption assertion
+in the suite below does: the message is what a reader sees at failure.
 
 ## A minimal suite
 
-A trimmed real one, `launcher/test/suites/suite_button_fsm.c`:
+This real suite, `launcher/test/testing_examples/minimal_suite.c`, runs
+through `launcher/test/suites/suite_testing_examples.c`:
 
+<!-- generated: testing-minimal-suite-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* A real button suite feeds samples with an explicit clock. */
 #include "suites.h"
 #include "unity.h"
+
 #include "input/buttons/button_fsm.h"
 
 static button_fsm_t b;
 static int64_t now;
 
-static void fixture(void) { button_fsm_reset(&b); now = 1000000; }
-
-static void test_a_held_press_is_reported_once(void) {
-    fixture();
-    /* ...feed samples with advancing `now`... */
-    TEST_ASSERT_TRUE_MESSAGE(button_fsm_take_pressed(&b), "a level held past the debounce window must produce a press");
+static void
+fixture(void) {
+    button_fsm_reset(&b);
+    now = BUTTON_DEBOUNCE_US;
 }
 
-void run_button_fsm_suite(void) { RUN_TEST(test_a_held_press_is_reported_once); }
-SUITE_REGISTER(run_button_fsm_suite);
+static void
+test_a_held_press_is_reported_once(void) {
+    fixture();
+    button_fsm_update(&b, false, now);
+    button_fsm_update(&b, true, ++now);
+    now += BUTTON_DEBOUNCE_US;
+    button_fsm_update(&b, true, now);
+    TEST_ASSERT_TRUE_MESSAGE(button_fsm_take_pressed(&b), "a level held past the debounce window must produce a press");
+    button_fsm_update(&b, true, ++now);
+    TEST_ASSERT_FALSE_MESSAGE(button_fsm_take_pressed(&b), "an edge must be consumed by the frame that reads it");
+}
+
+void
+run_minimal_example_suite(void) {
+    RUN_TEST(test_a_held_press_is_reported_once);
+}
+
+SUITE_REGISTER(run_minimal_example_suite);
 ```
+<!-- /generated: testing-minimal-suite-example -->
 
 The module under test (`input/buttons/button_fsm.c`) is ordinary firmware source next
 to its neighbours; only the suite is auto-discovered. Run it with
-`launcher/test/run_tests.sh` (host) or `autana suite run_button_fsm_suite`
+`launcher/test/run_tests.sh` (host) or `autana suite run_minimal_example_suite`
 (board). See [Building-an-App.md](../firmware/Building-an-App.md) for app layout.
 
 ## Adding a suite

@@ -39,7 +39,9 @@ prose or change the formatter in its own reviewed PR; never hand-format around i
 | Take the formatter's spacing, continuation, blank-line and `case` indentation. | |
 | Let clang-format sort each include block, system headers first; keep the blank lines between blocks. | Sorting is per block: the blank line after the own header keeps it first. |
 
+<!-- generated: c-style-clamp-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Clamp a pixel coordinate to its upper bound. */
 static int
 clamp_px(int value, int max_px) {
     if (value > max_px) {
@@ -48,6 +50,7 @@ clamp_px(int value, int max_px) {
     return value;
 }
 ```
+<!-- /generated: c-style-clamp-example -->
 
 Check, then format, only the first-party files you touched; never the whole tree or
 vendored or generated sources:
@@ -211,12 +214,25 @@ scripts/gates/check-comment-length.sh --files         # per-file counts
 - Never return while holding part of what a function acquired: acquire all, test once, release everything on the one failure path.
 - Keep return codes small: no project-wide error enum; `esp_err_t`, `bool`, or a module enum only for three or more outcomes callers treat differently.
 
+<!-- generated: c-style-acquire-all-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-uint8_t* a = malloc(n);
-uint8_t* b = malloc(n);
-if (a == NULL || b == NULL) {
-    free(a); /* free(NULL) is a no-op */
-    free(b);
-    return false;
+/* Return both buffers to the caller, or release every partial acquisition. */
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+static bool
+acquire_all(size_t n, uint8_t** out_a, uint8_t** out_b) {
+    uint8_t* a = malloc(n);
+    uint8_t* b = malloc(n);
+    if (a == NULL || b == NULL) {
+        free(a); /* free(NULL) is a no-op */
+        free(b);
+        return false;
+    }
+    *out_a = a;
+    *out_b = b;
+    return true;
 }
 ```
+<!-- /generated: c-style-acquire-all-example -->
