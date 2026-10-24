@@ -8,7 +8,7 @@ Fast-path evidence: [mathf_recip](Fast-Paths.md#mathf-recip), [mathf_rsqrt_appro
 
 `math/scalar/` holds per-type arithmetic, fixed point, random draws, trigonometry
 and time units. The tables list the range, lerp and rounding helpers; the
-[catalogue](../Shared-Helpers.md) lists the rest.
+[catalogue](../tools/Shared-Helpers.md) lists the rest.
 
 ## mathi.h
 

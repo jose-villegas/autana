@@ -4,7 +4,7 @@
  * Geometry lives in palette.h (grid arithmetic, hit rects) and behaviour in
  * sand_ui.h (what a tile tap means); this file only turns a tile index and
  * `ui`'s own brush/mode state into face calls, the split
- * docs/Building-a-Screen.md asks every screen to keep.
+ * docs/ui/Building-a-Screen.md asks every screen to keep.
  */
 #pragma once
 

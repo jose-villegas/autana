@@ -41,6 +41,7 @@ set(app_srcs
     "input/input_device.c"
     "input/motion/tilt.c"
     "input/motion/gravity.c"
+    "input/motion/shake.c"
     "ui/ui.c"
     "ui/input/ui_bridge.c"
     "ui/ui_build.c"
@@ -228,7 +229,7 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs esp_codec_dev esp_driver_i2s math name_hash microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs esp_codec_dev esp_driver_i2s math name_hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump

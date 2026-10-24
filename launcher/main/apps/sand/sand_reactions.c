@@ -23,6 +23,7 @@
 
 #include <assert.h>
 
+#include "collections/sort.h"
 #include "reaction_doc.h"
 #include "sand_limits.h"
 #include "sand_priv.h"
@@ -2987,18 +2988,11 @@ react_entry_key(const uint8_t* entry) {
     return ((unsigned)entry[1] << 8) | entry[0];
 }
 
-static void
-react_sort_row_major(uint8_t* entries, size_t count, size_t size) {
-    uint8_t moving[sizeof(react_cooloff_defer_t)];
-    for (size_t i = 1; i < count; i++) {
-        memcpy(moving, entries + (i * size), size);
-        size_t j = i;
-        while (j > 0 && react_entry_key(entries + ((j - 1) * size)) > react_entry_key(moving)) {
-            memcpy(entries + (j * size), entries + ((j - 1) * size), size);
-            j--;
-        }
-        memcpy(entries + (j * size), moving, size);
-    }
+static int
+react_row_major(const void* a, const void* b) {
+    const unsigned key_a = react_entry_key(a);
+    const unsigned key_b = react_entry_key(b);
+    return (key_a > key_b) - (key_a < key_b);
 }
 
 typedef struct {
@@ -3018,7 +3012,7 @@ react_drain_begin(uint8_t* a, uint8_t* a_count, uint8_t* b, uint8_t* b_count, si
     react_drain_t drain = {{a, b}, {a_count, b_count}, {0, 0}, size};
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
         const unsigned held = *drain.counts[i];
-        react_sort_row_major(drain.entries[i], held, size);
+        sort_insertion(drain.entries[i], held, size, react_row_major);
         sand_reactions_defer_queued[i] += held;
         const unsigned fill_q8 = held * 256U / cap;
         if (fill_q8 > sand_reactions_defer_peak_q8) {

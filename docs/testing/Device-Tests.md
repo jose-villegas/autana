@@ -2,7 +2,7 @@
 
 Suites and checks that run on the board: one suite at a time, a full
 self-test, pytest console recipes, POST and Board CI. Back to the
-[Testing Guide](../Testing-Guide.md).
+[Testing Guide](README.md).
 
 Every board operation goes through `autana`, which queues on the device lock
 instead of fighting for the port; `autana status` shows who holds it. See
@@ -21,7 +21,7 @@ commands never fight for the board.
 ## Which run, when
 
 1. **While developing:** `autana suite <name>` for the area you touched, on a normal diag build (SELFTEST on, AUTORUN off, full scope).
-2. **Perf captures only:** a [scoped build](../Build-Variants.md#a-diagnostics-build-can-be-scoped), plus the capturing app's own docs.
+2. **Perf captures only:** a [scoped build](../tools/Build-Variants.md#a-diagnostics-build-can-be-scoped), plus the capturing app's own docs.
 3. **Before a merge:** the full self-test, `autana selftest` or `report_test_results.sh`, autorun, unattended. About 18 minutes on this board: the gate, not the everyday loop.
 
 `autana selftest` builds, flashes and runs every suite under the device lock,

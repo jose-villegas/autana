@@ -1,12 +1,12 @@
 why does my app freeze the frame loop when I call vTaskDelay	docs/firmware/Design-Rules.md	There is exactly one frame loop, and it belongs to the shell
-how do I register a new app with APP_REGISTER	docs/Building-an-App.md	Registration
-what does CONFIG_LAUNCHER_SELFTEST actually gate	docs/Build-Variants.md	Development-only instrumentation is its own flag, not SELFTEST
+how do I register a new app with APP_REGISTER	docs/firmware/Building-an-App.md	Registration
+what does CONFIG_LAUNCHER_SELFTEST actually gate	docs/tools/Build-Variants.md	Development-only instrumentation is its own flag, not SELFTEST
 flash diagnostics build	docs/cli/Build-and-Flash.md	Build and flash
 autana monitor without --follow hangs, why	docs/cli/Watch.md	Watch the board
 how do two agents share the same board without stepping on each other	docs/cli/Device-Lock.md	Device lock
 why is my host test failing but the device suite passes	docs/testing/Host-Tests.md	The host enforces the device's memory limits
 how do I make a tunable I can change live on the device	docs/cli/Live-Tuning.md	Making something tunable
-clang-format version mismatch breaks CI	docs/C-Style-Guide.md	One formatter version
+clang-format version mismatch breaks CI	docs/c-style/README.md	One formatter version
 why is LVGL not used here	docs/firmware/UI.md	Why microui, not LVGL
 touch taps feel laggy in the UI	docs/firmware/UI.md	Two things to know before touching it
 how does dirty-band redraw skip repainting unchanged microui windows	docs/firmware/UI.md	Immediate mode versus dirty bands
@@ -34,12 +34,12 @@ cognitive complexity ratchet failing the build	docs/tools/Complexity-Gate.md	A r
 generating and validating a mermaid diagram before commit	docs/tools/Mermaid-Diagrams.md	Pre-commit
 what does the icon baker refuse in an atlas or svg	docs/tools/Icon-Baker.md	The source
 proposal for a compile-time log level per build variant	docs/plans/Log-Level-Plan.md	Plan: a compile-time log-level ceiling per build variant, not a logging class
-plan for splitting diagnostics into a settings app	docs/plans/Settings-App-Plan.md	Plan: split Diagnostics into a Settings app, then unify SELFTEST/diagnostics naming
+plan for the settings app and the selftest naming	docs/plans/Settings-App-Plan.md	Plan: Settings and SELFTEST/diagnostics naming
 UI editor plan, native app rendering in-process with Dear ImGui	docs/plans/UI-Editor-Plan.md	Native editor
 band-mode framebuffer and span rasterizer roadmap for future games	docs/plans/Autana-Rendering-Roadmap.md	Runtime foundations
-orientation change relayout rotate UI	docs/UI-Toolkit.md	Orientation
+orientation change relayout rotate UI	docs/ui/README.md	Orientation
 how are tool tests under apps tools tests discovered and run in CI	scripts/run-tool-tests.sh	scripts/run-tool-tests.sh
-Building an App exit heap leak warning log internal memory app arena	docs/Building-an-App.md	App memory
+Building an App exit heap leak warning log internal memory app arena	docs/firmware/Building-an-App.md	App memory
 minimum python version for tools tests	scripts/lib/python.sh	scripts/lib/python.sh
 perf_compare scoped seeded run --runs --test	launcher/tools/perf/README.md	Performance comparison
 autana unknown verb forwarded to device console app verb	docs/cli/App-Commands.md	App commands
@@ -50,17 +50,17 @@ which QEMU binary runs the qemu tests and CI caches	docs/testing/QEMU.md	A QEMU 
 bake bytes differ across CPUs determinism	launcher/tools/r3d/isa.py	launcher/tools/r3d/isa.py
 How are citation names and Cited by lists validated?	scripts/gates/check_doc_citations.py	scripts/gates/check_doc_citations.py
 Where boot logs HEAPMARK Ready and how crashes or board resets are read	docs/notes/Debugging.md	After a crash
-which test suites run on host versus QEMU versus device	docs/Testing-Guide.md	Two runners, one set of suites
+which test suites run on host versus QEMU versus device	docs/testing/README.md	Two runners, one set of suites
 sand block sleep awake rule	docs/sand/Architecture.md	Block and row sleeping
 which layers does main.c own, startup sequence, layers table	docs/firmware/Layers.md	Layers
-function name prefix module	docs/C-Style-Guide.md	Names
+function name prefix module	docs/c-style/README.md	Names
 open the sand app from the launcher, send a console verb like PERF	docs/cli/App-Commands.md	App commands
 two-core draw split row	docs/render/Mesh-Rendering.md	On both cores
 FIFO loss accounting gravity motion sample interval	docs/input/Gravity.md	Limits
 run one host test suite filter	docs/testing/Host-Tests.md	Run them
 full frame transfer time QSPI panel	docs/notes/Display-and-Rendering.md	Transfer payload
-How is docs/Shared-Helpers.md generated?	docs/Shared-Helpers.md	Shared helpers
-frame dt_ms clamped 250 timestamp	docs/Building-an-App.md	One pass of the frame loop
+How is docs/tools/Shared-Helpers.md generated?	docs/tools/Shared-Helpers.md	Shared helpers
+frame dt_ms clamped 250 timestamp	docs/firmware/Building-an-App.md	One pass of the frame loop
 lock protocol	docs/cli/Device-Lock.md	Device lock
 frame cost	docs/tools/Frame-Cost.md	Frame cost
 which chip handles the pwr button and how is a press read	docs/input/Buttons.md	Buttons

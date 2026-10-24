@@ -12,3 +12,4 @@ constants and limits. Sensor, bus and chip facts are in the
 | [Motion-Calibration.md](Motion-Calibration.md) | six-pose and unplugged calibration rounds, offset storage, measured captures |
 | [Tilt.md](Tilt.md) | direction filtering, magnitude gate, shake strength |
 | [Gravity.md](Gravity.md) | gyro prediction, acceleration trust and rejection, recovery and gyro bias learning |
+| [Shake.md](Shake.md) | deliberate shaking from smoothed linear acceleration |

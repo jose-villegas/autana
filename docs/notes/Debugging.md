@@ -51,7 +51,7 @@ Runs on the host and covers every
 *portable* suite: anything with no hardware dependency. This is the loop for
 red-green-refactor; reach for it first for anything that is a question about
 logic rather than about the actual board. See
-[`../Testing-Guide.md`](../Testing-Guide.md).
+[`testing/README.md`](../testing/README.md).
 
 ## Does it still hold on the real chip? On-device suite
 
@@ -64,7 +64,7 @@ Builds the diagnostics variant, flashes it, and runs *every* registered
 suite, portable ones included, actually compiled by the Xtensa toolchain
 and executed on the chip, which a host run cannot vouch for. Needs a
 `CONFIG_LAUNCHER_SELFTEST` build; see
-[`../Build-Variants.md`](../Build-Variants.md) for what that flag carries
+[`tools/Build-Variants.md`](../tools/Build-Variants.md) for what that flag carries
 versus `--dev`.
 
 ## What does the screen look like right now? `autana screenshot`
@@ -177,9 +177,9 @@ sends, and lets go.
 
 ## Rendering looks wrong: gfx debug overlays
 
-`--dev`/`--diag` builds carry runtime overlays, switched by
+`--dev`/`--diag` builds carry runtime overlays, set by
 `gfx_set_debug_overlay()` / `gfx_set_leaf_overlay()` (`main/gfx/present/gfx_debug.h`),
-which a development-only app's toggle page calls:
+switched from the settings list's developer rows in a development build:
 
 - **Dirty-region overlay**: draws a border around whatever rectangle
   `gfx_present()` is about to send, so a stale patch of screen (something
@@ -257,11 +257,11 @@ Two ways to see raw sensor readings without adding any code:
 
 ## Related
 
-- [`../Build-Variants.md`](../Build-Variants.md): what
+- [`tools/Build-Variants.md`](../tools/Build-Variants.md): what
   `CONFIG_LAUNCHER_DEVELOPMENT` and `CONFIG_LAUNCHER_SELFTEST` actually
   gate, the three build variants (release/dev/diag), how an app is left out
   of release, and why a self-test runner is narrowed further, to SELFTEST.
-- [`../Testing-Guide.md`](../Testing-Guide.md): the host and device test
+- [`testing/README.md`](../testing/README.md): the host and device test
   runners, and runsuite.
 - [`Flashing-and-Toolchain.md`](Flashing-and-Toolchain.md): board recovery,
   and the toolchain details `autana monitor`'s crash decoding depends on.
