@@ -27,11 +27,9 @@ flowchart LR
     Sample --> Predict --> Commit
 ```
 
-The shell samples acceleration every `DISPLAY_SAMPLE_MS` and runs the
-Android WindowOrientationListener judge.<sup>[75](../Citations.md#75)</sup>
+The shell runs Android's WindowOrientationListener judge.<sup>[75](../Citations.md#75)</sup>
+This tree uses screen-axis down, board-relative tilt limits and shell sampling.
 `display_quarter_now()` returns the committed quarter.
-This tree adapts the down-vector sign, tilt limits relative to the board default,
-and sampling cadence to the shell.
 
 Screen axes point right, down and out. Down at rest is negative z face-up,
 so tilt uses `-z / magnitude`: positive means face-up.
@@ -65,6 +63,10 @@ The filter and gates use floats, square roots and precomputed angle companions.
 An adjacent quarter needs more than `(90 + gap) / 2` degrees from the
 committed axis. A prediction keeps its timer while unchanged.
 Flat, swing, acceleration and touch each postpone commitment.
+
+The sampler reads at most once per `DISPLAY_SAMPLE_MS`, including failed reads.
+The shell calls `display_touch_now()` before sampling on every finger-down frame;
+commitment waits `DISPLAY_AFTER_TOUCH_MS` after the last such frame.
 
 `display_hold_quarter(display_quarter_now())` locks rotation and stops
 sensor reads. Release resets the filter and prediction; the committed

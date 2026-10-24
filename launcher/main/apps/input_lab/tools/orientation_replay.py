@@ -218,6 +218,23 @@ def validate_targets(binary, segments):
         raise ValueError("segment target does not match orientation script")
 
 
+def plot_gates(rows, output):
+    from docs.plot_style import subplots, save, stacked_barh, style_axes, SLOTS
+    figure, axes = subplots(1, 2, (12, 7))
+    last_chart, longest_chart = [], []
+    for model, period, quarter, gate, duration, dominant, dominant_ms in rows:
+        label = f"{model} {period} ms q{quarter}"
+        last_chart.append((label, [(gate, duration)]))
+        longest_chart.append((label, [(dominant, dominant_ms)]))
+    for axis, title, chart in zip(axes, ("Last blocking gate", "Longest holding gate"), (last_chart, longest_chart)):
+        gates = sorted({gate for _, segments in chart for gate, _ in segments})
+        stacked_barh(axis, chart, dict(zip(gates, SLOTS)))
+        style_axes(axis, title)
+        axis.set_xlabel("Hold (ms)")
+        axis.legend(loc="lower right")
+    save(figure, output)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", type=Path, nargs="?")
@@ -288,17 +305,24 @@ def main():
             for model, period, score, latency in result_rows:
                 body += (f"| {model} | {period} ms | {score.wanted} | {score.unwanted} | "
                          f"{median(latency):.0f} ms | {max(latency):.0f} ms |\n")
-            body += "\n| Model | Cadence | Quarter | Last gate | Last hold | Longest gate | Longest hold |\n"
+            body += "\n![Gate hold durations](images/orientation-gates.png)\n\n"
+            body += "<details>\n<summary>Per-commit gate durations</summary>\n\n"
+            body += "| Model | Cadence | Quarter | Last gate | Last hold | Longest gate | Longest hold |\n"
             body += "|---|---:|---:|---|---:|---|---:|\n"
+            gate_rows = []
             for model, period, score, _ in result_rows:
                 rows = gate_trace(binary, model, period, initial, samples)
                 for _, _, quarter, gate, duration, dominant, dominant_ms in gate_report(binary, rows, score.turns):
+                    gate_rows.append((model, period, quarter, gate, duration, dominant, dominant_ms))
                     body += (f"| {model} | {period} ms | {quarter} | {gate} | {duration:.0f} ms | "
                              f"{dominant} | {dominant_ms:.0f} ms |\n")
+            body += "\n</details>\n"
             changed = replace_block(RESULT_DOC, "orientation-results", body, check=args.check,
                                     command="python launcher/main/apps/input_lab/tools/orientation_replay.py --results --check --cc gcc")
             if args.check and changed:
                 parser.exit(1, "orientation results differ from capture\n")
+            if not args.check:
+                plot_gates(gate_rows, RESULT_DOC.parent / "images/orientation-gates.png")
 
 
 if __name__ == "__main__":

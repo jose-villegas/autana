@@ -521,7 +521,6 @@ record_orientation_sample(const input_motion_t* sample, int64_t elapsed_us) {
                              (int)a.y, (int)a.z, (int)r.x, (int)r.y, (int)r.z);
 }
 
-/* Only this adapter depends on batch loss placement. The scratch batch lives in PSRAM. */
 static void
 record_shake_sample(const input_motion_t* sample, int64_t elapsed_us) {
     const vec3f_t linear = gravity_linear(&gravity);
@@ -543,6 +542,7 @@ record_shake_sample(const input_motion_t* sample, int64_t elapsed_us) {
         (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI), tilt_shake(&tilt));
 }
 
+/* Only this adapter depends on batch loss placement. The scratch batch lives in PSRAM. */
 static void
 read_round_samples(const input_motion_batch_t* batch, int64_t start_us, void (*sink)(const input_motion_t*, int64_t)) {
     if (motion_slice == NULL) {

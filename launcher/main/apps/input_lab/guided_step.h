@@ -12,9 +12,9 @@ typedef struct {
     bool ready;
 } guided_step_t;
 
-/* WAIT leaves the phase unchanged; ARMED starts the clock at this tap;
- * NEXT increments the step and waits for a fresh tap. A tap on NEXT is not reused. */
 void guided_step_begin(guided_step_t* state, int step, int64_t now_us);
+/* GUIDED_STEP_WAIT keeps the phase; GUIDED_STEP_ARMED starts the clock at this tap;
+ * GUIDED_STEP_NEXT increments the step and waits for a fresh tap, ignoring a tap on that update. */
 guided_step_event_t guided_step_update(guided_step_t* state, bool tap, int64_t now_us, int64_t duration_us);
 int64_t guided_step_remaining_us(const guided_step_t* state, int64_t now_us, int64_t duration_us);
 
