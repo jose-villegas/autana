@@ -9,6 +9,6 @@ starts its state zeroed, and fails to build when either name is missing.
 
 `screens/<name>.c` is the same for a whole screen, drawn at rest only.
 
-The folder is the list: [ui_examples_render_host.sh](../scenes/ui_examples_render_host.sh)
-renders every file in it, and [ui_examples_doc.py](../ui_examples_doc.py)
-puts each into the document that owns its `ui-<name>-example` block.
+[ui_examples_render_host.sh](../scenes/ui_examples_render_host.sh) renders every
+file in this folder. Source embedding follows the shared
+[usage example rule](../../../../docs/tools/Generated-Files.md#usage-examples).
