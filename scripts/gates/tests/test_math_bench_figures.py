@@ -10,6 +10,14 @@ sys.path.insert(0, str(ROOT / "launcher/tools/math"))
 
 
 class MathBenchFigureTests(unittest.TestCase):
+    def paired_figure(self, rows, measured):
+        import math_bench_figures as figures
+        from types import SimpleNamespace
+        import matplotlib.pyplot as plt
+        fig = figures.render(rows, measured, [SimpleNamespace(fast=rows[0][0], plain=rows[1][0])])
+        self.addCleanup(plt.close, fig)
+        return fig
+
     def test_committed_pairs_families_and_zero_axes(self):
         import math_bench_figures as figures
         rows, _ = figures.bench.read_fpu(figures.bench.DATA / "math_bench_fpu_ops.txt")
@@ -49,12 +57,10 @@ class MathBenchFigureTests(unittest.TestCase):
 
     def test_pairing_uses_annotations_and_skips_empty_panels(self):
         import math_bench_figures as figures
-        from types import SimpleNamespace
         rows = [("a_f", "chosen", "f", 1, "scalar"),
                 ("b_i", "reference", "i", 1, "libm")]
         measured = {"a_f": (5, 6, 1), "b_i": (2, 3, 1)}
-        items = [SimpleNamespace(fast="a_f", plain="b_i")]
-        fig = figures.render(rows, measured, items)
+        fig = self.paired_figure(rows, measured)
         self.assertEqual(len(fig.axes), 1)
         axis = fig.axes[0]
         self.assertEqual([tick.get_text() for tick in axis.get_xticklabels()], ["chosen"])
@@ -65,18 +71,13 @@ class MathBenchFigureTests(unittest.TestCase):
         self.assertEqual(len(axis.lines), 0)
         self.assertEqual(plain.get_edgecolor(), to_rgba(figures.SLOTS[1]))
         self.assertIn("reference (i)", [text.get_text() for text in axis.texts])
-        import matplotlib.pyplot as plt
-        plt.close(fig)
 
     def test_tall_reference_preserves_panel_scale_and_true_value(self):
         import math_bench_figures as figures
-        from types import SimpleNamespace
         rows = [("fast_x", "normalize", "x", 1, "vector"),
                 ("plain_x", "normalize_div", "x", 1, "vector")]
         measured = {"fast_x": (100, 100, 1), "plain_x": (1115, 1115, 1)}
-        fig = figures.render(rows, measured, [SimpleNamespace(fast="fast_x", plain="plain_x")])
-        import matplotlib.pyplot as plt
-        self.addCleanup(plt.close, fig)
+        fig = self.paired_figure(rows, measured)
         axis = fig.axes[0]
         limit = measured["fast_x"][0] * figures.VALUE_HEADROOM
         self.assertEqual(axis.get_ylim(), (0, limit))
@@ -94,13 +95,10 @@ class MathBenchFigureTests(unittest.TestCase):
 
     def test_near_limit_reference_grows_panel_without_break(self):
         import math_bench_figures as figures
-        from types import SimpleNamespace
         rows = [("fast_i", "sine (angle)", "i", 1, "scalar"),
                 ("plain_f", "sinf", "f", 1, "libm")]
         measured = {"fast_i": (157, 157, 1), "plain_f": (224, 224, 1)}
-        fig = figures.render(rows, measured, [SimpleNamespace(fast="fast_i", plain="plain_f")])
-        import matplotlib.pyplot as plt
-        self.addCleanup(plt.close, fig)
+        fig = self.paired_figure(rows, measured)
         axis = fig.axes[0]
         self.assertGreater(axis.get_ylim()[1], 224)
         self.assertEqual(axis.patches[1].get_height(), 224)
