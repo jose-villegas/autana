@@ -20,6 +20,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import docs_llama  # noqa: E402
 import docs_search  # noqa: E402
+import query_log  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -567,7 +568,7 @@ class RealDocuments(unittest.TestCase):
         ranks = docs_search.evaluate(index)
         found = sum(1 for _, rank in ranks if rank and rank <= 3)
         self.assertGreaterEqual(len(ranks), 30)
-        self.assertGreaterEqual(docs_search.scores(ranks)["mrr"], self.MRR_FLOOR)
+        self.assertGreaterEqual(query_log.scores(ranks)["mrr"], self.MRR_FLOOR)
         self.assertGreaterEqual(found / len(ranks), self.FLOOR,
                                 [q for q, rank in ranks if not rank or rank > 3])
 
