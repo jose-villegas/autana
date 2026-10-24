@@ -193,37 +193,43 @@ test_drain_result_maps_failure_and_clamps_count(void) {
     free(f);
 }
 
-/* Samples at another rate never reach a default-rate reader: gravity would integrate them
- * at IMU_SAMPLE_US. The rate's own reader then finds them gone behind a gap. */
-static void
-test_other_rate_is_a_gap_for_default_readers(void) {
-    fixture_t* f = fixture();
+/* One sample pushed, then a take at `odr_code`: its count, with the gap flag in f->gap. */
+static int
+push_then_take(fixture_t* f, bool push, unsigned odr_code) {
     const imu_sample_t sample = {.ax = 1};
-    imu_queue_set_rate(&f->queue, IMU_BUZZ_ODR_CODE);
-    imu_queue_take_at(&f->queue, IMU_BUZZ_ODR_CODE, f->samples, f->lost, &f->gap);
-    imu_queue_push(&f->queue, &sample, 1, 0, false);
-    TEST_ASSERT_EQUAL_INT(0, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
-    TEST_ASSERT_TRUE(f->gap);
-    TEST_ASSERT_EQUAL_INT(0, imu_queue_take_at(&f->queue, IMU_BUZZ_ODR_CODE, f->samples, f->lost, &f->gap));
-    TEST_ASSERT_TRUE(f->gap);
-    free(f);
+    if (push) {
+        imu_queue_push(&f->queue, &sample, 1, 0, false);
+    }
+    return imu_queue_take_at(&f->queue, odr_code, f->samples, f->lost, &f->gap);
 }
 
+/* Samples at another rate never reach a default-rate reader: gravity would integrate them
+ * at IMU_SAMPLE_US. The rate's own reader takes them, or finds them gone behind a gap. */
 static void
-test_rate_reader_takes_its_samples(void) {
+test_queued_rate_decides_who_takes(void) {
     fixture_t* f = fixture();
-    const imu_sample_t sample = {.ax = 1};
-    imu_queue_push(&f->queue, &sample, 1, 0, false);
-    imu_queue_set_rate(&f->queue, IMU_BUZZ_ODR_CODE);
-    imu_queue_push(&f->queue, &sample, 1, 0, false);
-    TEST_ASSERT_EQUAL_INT(1, imu_queue_take_at(&f->queue, IMU_BUZZ_ODR_CODE, f->samples, f->lost, &f->gap));
-    TEST_ASSERT_TRUE(f->gap);
-    imu_queue_set_rate(&f->queue, IMU_ODR_CODE);
-    imu_queue_push(&f->queue, &sample, 1, 0, false);
-    TEST_ASSERT_EQUAL_INT(1, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
-    TEST_ASSERT_TRUE(f->gap);
-    TEST_ASSERT_EQUAL_INT(0, imu_queue_take_at(&f->queue, IMU_BUZZ_ODR_CODE, f->samples, f->lost, &f->gap));
-    TEST_ASSERT_TRUE(f->gap);
+
+    static const struct {
+        bool switch_rate, push;
+        unsigned odr_code;
+        int taken;
+    } steps[] = {
+        {true, true, IMU_BUZZ_ODR_CODE, 1},   /* the switch dropped what came before */
+        {false, true, IMU_ODR_CODE, 0},       /* a default reader gets nothing */
+        {false, false, IMU_BUZZ_ODR_CODE, 0}, /* and the buzz reader sees its sample gone */
+        {true, true, IMU_ODR_CODE, 1},        /* back at the default rate */
+    };
+
+    (void)push_then_take(f, true, IMU_ODR_CODE);
+    unsigned rate = IMU_ODR_CODE;
+    for (size_t i = 0; i < sizeof steps / sizeof steps[0]; i++) {
+        if (steps[i].switch_rate) {
+            rate = rate == IMU_ODR_CODE ? IMU_BUZZ_ODR_CODE : IMU_ODR_CODE;
+            imu_queue_set_rate(&f->queue, rate);
+        }
+        TEST_ASSERT_EQUAL_INT(steps[i].taken, push_then_take(f, steps[i].push, steps[i].odr_code));
+        TEST_ASSERT_TRUE(f->gap);
+    }
     free(f);
 }
 
@@ -240,8 +246,7 @@ run_imu_queue_suite(void) {
     RUN_TEST(test_empty_gap_is_taken_once);
     RUN_TEST(test_gap_discards_preceding_samples);
     RUN_TEST(test_drain_result_maps_failure_and_clamps_count);
-    RUN_TEST(test_other_rate_is_a_gap_for_default_readers);
-    RUN_TEST(test_rate_reader_takes_its_samples);
+    RUN_TEST(test_queued_rate_decides_who_takes);
 }
 
 SUITE_REGISTER(run_imu_queue_suite);
