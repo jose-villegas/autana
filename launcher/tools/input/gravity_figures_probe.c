@@ -1,4 +1,4 @@
-/* gravity_figures_probe: measured correction gain and stationary gyro bias settling. */
+/* gravity_figures_probe: correction trust weight (via bias gain at a 0.05 rad tilt) and stationary gyro bias settling. */
 #include <math.h>
 #include <stdio.h>
 
