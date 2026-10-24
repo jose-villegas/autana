@@ -5,10 +5,10 @@
 #include <string.h>
 
 #include "core/job.h"
+#include "core/tune.h"
 #include "profile/frame_cost.h"
 #include "render/raster_internal.h"
 #include "render/upscale.h"
-#include "services/tune.h"
 
 TUNE_OWNER(render);
 /* The generated meshlet-size table measures both culling settings. */

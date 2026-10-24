@@ -67,17 +67,20 @@ sequenceDiagram
     participant T as autana
     participant D as device.py
     participant C as console.c
-    participant S as console_tune.c
-    participant R as services/tune.c
+    participant S as verbs/console_tune.c
+    participant P as console/console_tune.c
+    participant R as core/tune.c
     T->>D: tune theme_rgb 0x1199C8
     D->>C: SET ridge.theme_rgb 0x1199C8
     C->>S: the SET verb
-    S->>R: tune_handle_line()
+    S->>P: console_tune_line()
+    P->>R: tune_set()
     Note over R: writes the int32_t,<br/>its owner reads it each frame
-    R-->>D: TUNE_OK ridge.theme_rgb=1153480
+    P-->>D: TUNE_OK ridge.theme_rgb=1153480
 ```
 
-The console protocol is four lines, answered by `services/tune`:
+The console protocol is four lines, answered by `console/console_tune` from
+the registry in `core/tune`:
 
 | line | replies |
 |---|---|
@@ -95,7 +98,7 @@ own. The console answers from the shared one, `tune_shared()`.
 ## Making something tunable
 
 ```c
-#include "services/tune.h"
+#include "core/tune.h"
 
 TUNE_OWNER(ridge);                    /* once per file, before its tunables */
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);

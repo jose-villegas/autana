@@ -11,7 +11,7 @@
 #include "audio/audio_out_device.h"
 #include "board/board.h"
 #include "build/build_variant.h"
-#include "services/tune.h"
+#include "core/tune.h"
 
 #define AUDIO_OUT_CODEC_VOLUME        70
 #define AUDIO_OUT_CODEC_VOLUME_MIN_DB (-50.0F)
