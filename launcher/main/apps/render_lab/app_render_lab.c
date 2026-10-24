@@ -10,6 +10,7 @@
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
 #include "draw/draw.h"
+#include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
@@ -31,6 +32,7 @@ static const render_lab_scene_t* const scenes[] = {
     &scene_sponza[SCENE_BAKED_FLAT],
     &scene_sponza[SCENE_BAKED_FLAT_FITTED],
     &scene_capybara,
+    &scene_water,
     &scene_bistro[SCENE_BAKED_FITTED_FULL],
     &scene_bistro[SCENE_BAKED_FITTED],
     &scene_bistro[SCENE_BAKED_FULL],
@@ -429,3 +431,11 @@ app_t app_render_lab = {
 };
 
 APP_REGISTER(app_render_lab);
+
+void
+render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* what) {
+    ESP_LOGE(tag, "%s; the scene stays blank", what);
+    if (snprintf(failure, size, "%s", what) < 0) {
+        failure[0] = '\0';
+    }
+}

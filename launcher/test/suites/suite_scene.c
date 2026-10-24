@@ -1355,6 +1355,34 @@ test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again(void) {
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(4.0F));
 }
 
+/* A mesh handed in at run time is drawn in the loaded one's place, a view
+ * with no nodes draws nothing, and an entity with no renderer refuses. */
+static void
+test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    const scene_entity_t green = scene_find(scene, "green");
+    r3d_lit_mesh_t blue = *scene_entity_mesh(scene, green);
+    uint8_t (*colors)[3] = malloc(sizeof(uint8_t[3]) * (size_t)blue.vertex_count);
+    TEST_ASSERT_NOT_NULL(colors);
+    for (int v = 0; v < blue.vertex_count; v++) {
+        colors[v][0] = 0;
+        colors[v][1] = 0;
+        colors[v][2] = 0xFF;
+    }
+    blue.colors = (const uint8_t (*)[3])colors;
+    TEST_ASSERT_TRUE(scene_renderer_set_mesh(scene, green, &blue));
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    blue.node_count = 0;
+    TEST_ASSERT_TRUE(scene_renderer_set_mesh(scene, green, &blue));
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F));
+    TEST_ASSERT_FALSE(scene_renderer_set_mesh(scene, scene_find(scene, "camera"), &blue));
+    free(colors);
+}
+
 static void
 test_a_moved_entity_is_drawn_where_it_now_stands(void) {
     fixture();
@@ -3473,6 +3501,7 @@ run_scene_suite(void) {
     RUN_TEST(test_an_entity_is_found_by_its_name);
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
+    RUN_TEST(test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one);
     RUN_TEST(test_a_moved_entity_is_drawn_where_it_now_stands);
     RUN_TEST(test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned);
     RUN_TEST(test_with_nothing_enabled_the_picture_is_left_alone);

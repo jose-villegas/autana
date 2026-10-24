@@ -74,7 +74,7 @@ docs/cli/Drive.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Debug.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Settings.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Sessions.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
+docs/math/Stats.md	2026-10-24	formulas and rank figure, docs-reviewer pass
 docs/physics/README.md	2026-10-24	new index for the physics package; links checked against every docs/physics page
 docs/physics/Spring.md	2026-10-24	moved from docs/math/Motion.md with spring_line.h; checked against physics/spring/spring_line.h
 docs/math/Motion.md	2026-10-24	spring_line section moved to docs/physics/Spring.md; checked against orbit_motion.h
-docs/math/Stats.md	2026-10-24	formulas and rank figure, docs-reviewer pass

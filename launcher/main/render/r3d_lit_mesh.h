@@ -25,6 +25,11 @@ typedef struct {
     bool double_sided;
 } r3d_lit_cluster_t;
 
+/* An inner node's children at most: the bake's octree splits in eight, and
+ * the cull walk orders a node's children in an array this long. A leaf's
+ * clusters are not limited by it. */
+#define R3D_LIT_INNER_CHILDREN_MAX 8
+
 typedef struct {
     box3s_t bounds; /* bounds of everything below, position ticks */
     uint16_t first; /* first child node, or a leaf's first cluster */
@@ -53,6 +58,11 @@ asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t
 
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);
+
+/* Recomputes every node's bounds from its children's. An inner node's
+ * children come after it, so walking from the last node back meets every
+ * child before its parent. For a mesh whose vertices move. */
+void r3d_lit_mesh_refit_nodes(r3d_lit_node_t* nodes, int node_count, const r3d_lit_cluster_t* clusters);
 
 /* A sphere holding every vertex, in model units: centred on the box of them
  * (the root node's bounds), its radius the furthest vertex from that centre. */

@@ -449,6 +449,16 @@ scene_entity_mesh(const scene_t* scene, scene_entity_t entity) {
     return i < 0 ? NULL : &scene->renderers[i].mesh;
 }
 
+bool
+scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mesh_t* mesh) {
+    const int i = scene_renderer_index(scene, entity);
+    if (i < 0 || i >= scene->asset.renderer_count) {
+        return false;
+    }
+    scene->renderers[i].mesh = *mesh;
+    return true;
+}
+
 int
 scene_camera_index(const scene_t* scene, const char* camera) {
     for (int i = 0; i < scene->asset.camera_count; i++) {

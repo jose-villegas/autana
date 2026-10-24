@@ -91,8 +91,9 @@ nodes_are_inside(const r3d_lit_mesh_t* mesh) {
         if ((int)node->first + node->count > limit) {
             return false;
         }
-        /* An inner node's children come after it, so a walk down the tree always ends. */
-        if (!node->leaf && (int)node->first <= n) {
+        /* An inner node's children come after it, so a walk down the tree
+         * always ends, and they fit the walk's ordering. */
+        if (!node->leaf && ((int)node->first <= n || node->count > R3D_LIT_INNER_CHILDREN_MAX)) {
             return false;
         }
     }
@@ -168,4 +169,15 @@ r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
         furthest = fmaxf(furthest, vec3f_dot(d, d));
     }
     return (spheref_t){mid, sqrtf(furthest)};
+}
+
+void
+r3d_lit_mesh_refit_nodes(r3d_lit_node_t* nodes, int node_count, const r3d_lit_cluster_t* clusters) {
+    for (int n = node_count - 1; n >= 0; n--) {
+        r3d_lit_node_t* node = &nodes[n];
+        node->bounds = box3s_empty();
+        for (int i = node->first; i < node->first + node->count; i++) {
+            node->bounds = box3s_union(node->bounds, node->leaf ? clusters[i].bounds : nodes[i].bounds);
+        }
+    }
 }

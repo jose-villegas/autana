@@ -64,6 +64,13 @@ const char* scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity);
 /* The mesh the entity draws, or NULL when it draws none. */
 const r3d_lit_mesh_t* scene_entity_mesh(const scene_t* scene, scene_entity_t entity);
 
+/* The entity's renderer draws `mesh` instead of the one it loaded: a mesh
+ * made at run time, which the caller keeps alive for the scene's life. The
+ * scene keeps a copy of the view, so call again after each rebuild changes
+ * its counts. A mesh with no nodes draws nothing. False when the entity
+ * has no renderer or a skinned one, whose mesh its animator writes. */
+bool scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mesh_t* mesh);
+
 /* The lens of the scene's camera `camera` (NULL: its first); NULL when the scene has no such camera. */
 const camera_t* scene_camera_lens(const scene_t* scene, const char* camera);
 /* Returns false for a non-camera entity or an invalid presentation. */
