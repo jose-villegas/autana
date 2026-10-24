@@ -488,11 +488,7 @@ in_front_fate(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const 
 static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
               const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes) {
-    /* in_front_fate()'s two tests, as early returns: the hot draw's own shape. */
-    if (misses_every_centre(v[0], v[1], v[2], target)) {
-        return;
-    }
-    if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
+    if (in_front_fate(v, double_sided, target) != TRIANGLE_SET_UP) {
         return;
     }
     r3d_span_vertex_t s[3];

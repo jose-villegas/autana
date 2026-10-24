@@ -65,6 +65,9 @@ typedef struct {
     uint16_t set_up[RASTER_CULL_CLUSTERS_MAX];
     uint16_t node[RASTER_CULL_CLUSTERS_MAX]; /* each cluster's node at cullview.level */
     uint16_t walked[RASTER_CULL_CLUSTERS_MAX];
+    /* The tree walks' pending nodes, here rather than on the drawing task's stack. */
+    uint16_t walk_node[R3D_LIT_WALK_STACK_MAX], walk_shown[R3D_LIT_WALK_STACK_MAX];
+    uint8_t walk_depth[R3D_LIT_WALK_STACK_MAX];
     uint32_t covered[RASTER_CULL_TRIANGLES_MAX / 32];
 } raster_cull_t;
 
