@@ -38,7 +38,7 @@ imu_fifo_lost(uint64_t locked_us, uint32_t* remainder_us, bool gap) {
     return (int)(total_us / IMU_SAMPLE_US);
 }
 
-/* One consumer copies queued samples oldest first; loss precedes each sample.
+/* One consumer copies queued samples oldest first, at IMU_ODR_CODE; loss precedes each sample.
  * Gaps (bus error, overflow, loss saturation) are reported through *gap and precede samples[0].
  * Returns -1 only without a sensor. */
 int imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES], bool* gap);
@@ -65,6 +65,10 @@ bool imu_read(imu_sample_t* out);
  * never mixes rates; between the switches samples are not IMU_SAMPLE_US apart.
  * False without a sensor or task, on a bus error, or when the task does not answer in time. */
 bool imu_set_odr(unsigned odr_code);
+/* imu_take_fifo() for samples queued at `odr_code`. A take at the wrong rate, by either
+ * reader, drops the queue behind a gap, so a reader at the other rate sees it lost them. */
+int imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                     bool* gap);
 #endif
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

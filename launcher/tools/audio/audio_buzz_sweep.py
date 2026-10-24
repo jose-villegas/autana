@@ -80,7 +80,9 @@ def sweep(args, output, frequencies, shakes):
         command = ("tone", str(hz), str(args.ms), str(volume))
         reply = json.loads(autana_run(args.autana, *command, "--json"))
         record_line(output, " ".join(command), json.dumps(reply))
-        if volume == max(args.volumes) and reply["shake_rms_mg"] is not None:
+        if reply["shake_rms_mg"] is None:
+            raise RuntimeError(f"{' '.join(command)}: shake n/a; is another screen reading the IMU? (board log)")
+        if volume == max(args.volumes):
             levels.setdefault(hz, []).append(reply["shake_rms_mg"])
         time.sleep(args.rest)
     shakes.update({hz: median(values) for hz, values in levels.items()})

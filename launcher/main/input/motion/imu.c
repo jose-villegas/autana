@@ -498,9 +498,22 @@ apply_odr_request(void) {
     pending_lost = 0;
     loss_remainder_us = 0;
     portENTER_CRITICAL(&lock);
-    imu_queue_push(&queue, NULL, 0, 0, true);
+    imu_queue_set_rate(&queue, next.applied);
     odr = next;
     portEXIT_CRITICAL(&lock);
+}
+
+int
+imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                 bool* gap) {
+    *gap = false;
+    if (!ready) {
+        return -1;
+    }
+    portENTER_CRITICAL(&lock);
+    const int count = imu_queue_take_at(&queue, odr_code, out, lost_before, gap);
+    portEXIT_CRITICAL(&lock);
+    return count;
 }
 
 bool

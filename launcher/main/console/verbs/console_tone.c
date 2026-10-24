@@ -13,6 +13,7 @@
 #include "console/verbs/console_tone_reply.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "esp_log.h"
 #include "input/motion/imu.h"
 #include "input/motion/imu_vibration.h"
 #include "sound/sound_engine.h"
@@ -43,18 +44,29 @@ console_tone_start(sound_voice_t* voice, uint16_t hz, uint8_t gain) {
     return true;
 }
 
-/* The IMU queue's one consumer for the check; an app that also takes from it splits the samples. */
+static const char* TAG = "tone";
+
 typedef struct {
     imu_sample_t samples[IMU_FIFO_SAMPLES];
     uint8_t lost_before[IMU_FIFO_SAMPLES];
 } tone_shake_buffer_t;
 
-/* Takes the queued samples; with `shake` NULL they are dropped to open a window. */
+/* Takes the queued samples; with `shake` NULL they are dropped to open a window.
+ * A window long enough fills the queue, and its gaps are the overflow of that. Another reader
+ * taking during the window leaves at most one drain, so anything short of full is n/a, logged. */
 static bool
 tone_shake_read(tone_shake_buffer_t* fifo, imu_vibration_t* shake) {
     bool gap = false;
-    const int count = imu_take_fifo(fifo->samples, fifo->lost_before, &gap);
-    return count >= 0 && (!shake || imu_vibration_measure(fifo->samples, count, shake));
+    const int count = imu_take_fifo_at(IMU_BUZZ_ODR_CODE, fifo->samples, fifo->lost_before, &gap);
+    if (count < 0 || !shake) {
+        return count >= 0;
+    }
+    if (count < IMU_FIFO_SAMPLES) {
+        ESP_LOGW(TAG, "shake n/a: %d of %d IMU samples; another reader took them or the window is short", count,
+                 IMU_FIFO_SAMPLES);
+        return false;
+    }
+    return imu_vibration_measure(fifo->samples, count, shake);
 }
 
 /* audio_loopback_measure() plus the board's vibration over the newest IMU_FIFO_SAMPLES the IMU
