@@ -107,7 +107,19 @@ def missing_boards(lanes, plugged):
     return sorted(set(lanes) - set(plugged))
 
 
+def night_running(request):
+    running = any(run.get('status') == status
+                  for status in ('queued', 'in_progress')
+                  for run in pages(f'/actions/workflows/{NIGHTLY_WORKFLOW}/runs?status={status}',
+                                   'workflow_runs', request))
+    if running:
+        print('::notice::The night is still running')
+    return running
+
+
 def check(request, now, lanes, plugged):
+    if night_running(request):
+        return []
     problems = []
     success = last_board_success(request, now)
     if success is None or now - success > SUCCESS_WINDOW:
@@ -136,7 +148,7 @@ def run_url():
 
 
 def probe_devices(destination, reason_file, request=call, clock=time.monotonic, sleep=time.sleep):
-    enabled = nights_enabled(request)
+    enabled = nights_enabled(request) and not night_running(request)
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
             output.write(f'enabled={str(enabled).lower()}\n')
