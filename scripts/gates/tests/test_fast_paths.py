@@ -36,6 +36,22 @@ class FastPathTests(unittest.TestCase):
         self.capture = ('MATHERROR name=example type=f max=1 unit=ulp method=sweep\n'
                         'MATHERRORBIN name=example type=f x=2 max=1 unit=ulp\n')
 
+    def test_shared_plain_row_links_to_first_page_section(self):
+        from dataclasses import replace
+        first = replace(self.annotations[0], key="first_path")
+        second = replace(first, key="second_path", fast="second_f")
+        links = paths.benchmark_links([first, second], self.rows)
+        self.assertEqual(links["plain_f"], "Fast-Paths.md#first-path")
+        self.assertEqual(links["fast_f"], "Fast-Paths.md#first-path")
+
+    def test_links_include_benchmarked_function_but_not_unrendered_error(self):
+        item = self.annotations[0]
+        rows = [*self.rows, ("example_f", "example", "f", 1, "scalar"),
+                ("normalize_f", "normalize (vec3)", "f", 1, "vector")]
+        links = paths.benchmark_links([item], rows)
+        self.assertEqual(links["example_f"], "Fast-Paths.md#example")
+        self.assertNotIn("normalize_f", links)
+
     def test_fractional_bins_keep_integer_summary_contract(self):
         capture = self.capture.replace('max=1 unit=ulp\n', 'max=1.25 unit=ulp axis=period\n')
         paths.validate(self.annotations, self.rows, capture)

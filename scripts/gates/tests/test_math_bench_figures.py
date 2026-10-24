@@ -22,27 +22,25 @@ class MathBenchFigureTests(unittest.TestCase):
         def check_plot(fig, path):
             self.assertEqual(path.name, "benchmark-families.png")
             self.assertEqual([axis.get_title(loc="left") for axis in fig.axes],
-                             [family.capitalize() if family != "libm" else "libm (no fast path)"
-                              for family in figures.bench.ROW_FAMILIES if family != "calibration"])
+                             ["Vector", "Scalar", "Quaternion", "Matrix", "libm (no fast path)"])
             bars = [bar for axis in fig.axes for bar in axis.patches]
             self.assertEqual(len(bars), len(ordinary) + len(items))
-            hatched = [bar for bar in bars if bar.get_hatch() == "///"]
+            hatched = [bar for bar in bars if bar.get_hatch() == figures.REFERENCE_HATCH]
             self.assertEqual(len(hatched), len(items))
             self.assertCountEqual([text.get_text() for axis in fig.axes for text in axis.texts
                                    if text.get_text().isdigit()],
                                   [f"{measured[row[0]][0]:.0f}" for row in ordinary] +
                                   [f"{measured[item.plain][0]:.0f}" for item in items])
-            labels = [tick.get_text() for axis in fig.axes for tick in axis.get_xticklabels()]
-            self.assertNotIn("dot_f32_n256", labels)
-            for key, label, kind, _, _ in rows:
-                if key in references:
-                    self.assertNotIn(label, labels)
-                if "_to_" in kind:
-                    self.assertIn("convert " + kind.replace("_to_", "\u2192"), labels)
+            self.assertEqual([[tick.get_text() for tick in axis.get_xticklabels()] for axis in fig.axes], [
+                ["add", "convert f→i", "convert f→s", "convert f→x", "convert i→f", "convert s→f",
+                 "convert x→f", "dot", "lerp", "normalize", "scale"],
+                ["mathf_recip", "mathf_rsqrt_approx", "mathf_rsqrt", "mathx_rsqrt_q30", "mul", "trig_sin", "wrap"],
+                ["nlerp", "quat mul", "slerp"], ["mat4 mul", "transform compute_matrix"],
+                ["atan2f", "cosf", "sqrtf"],
+            ])
             for axis in fig.axes:
                 self.assertEqual(axis.get_ylim()[0], 0)
                 self.assertEqual(axis.get_yscale(), "linear")
-                self.assertEqual(axis._left_title.get_fontsize(), figures.TITLE_SIZE)
             import matplotlib.pyplot as plt
             plt.close(fig)
 
@@ -63,6 +61,7 @@ class MathBenchFigureTests(unittest.TestCase):
         fast, plain = axis.patches
         self.assertLess(fast.get_x(), plain.get_x())
         self.assertEqual(plain.get_height(), measured["b_i"][0])
+        self.assertEqual(plain.get_facecolor(), to_rgba(figures.REFERENCE_FILL))
         self.assertEqual(len(axis.lines), 0)
         self.assertEqual(plain.get_edgecolor(), to_rgba(figures.SLOTS[1]))
         self.assertIn("reference (i)", [text.get_text() for text in axis.texts])
@@ -90,5 +89,38 @@ class MathBenchFigureTests(unittest.TestCase):
         self.assertGreater(name.get_position()[1], value.get_position()[1])
         self.assertEqual(len(axis.lines), 2)
         for line in axis.lines:
-            self.assertEqual(line.get_color(), "white")
+            self.assertEqual(line.get_color(), figures.REFERENCE_FILL)
             self.assertTrue(all(0 < y < limit for y in line.get_ydata()))
+
+    def test_near_limit_reference_grows_panel_without_break(self):
+        import math_bench_figures as figures
+        from types import SimpleNamespace
+        rows = [("fast_i", "sine (angle)", "i", 1, "scalar"),
+                ("plain_f", "sinf", "f", 1, "libm")]
+        measured = {"fast_i": (157, 157, 1), "plain_f": (224, 224, 1)}
+        fig = figures.render(rows, measured, [SimpleNamespace(fast="fast_i", plain="plain_f")])
+        import matplotlib.pyplot as plt
+        self.addCleanup(plt.close, fig)
+        axis = fig.axes[0]
+        self.assertGreater(axis.get_ylim()[1], 224)
+        self.assertEqual(axis.patches[1].get_height(), 224)
+        self.assertEqual(len(axis.lines), 0)
+        self.assertEqual([tick.get_text() for tick in axis.get_xticklabels()], ["sine"])
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        for text in axis.texts:
+            self.assertLess(text.get_window_extent(renderer).y1, axis.get_window_extent(renderer).y1)
+
+    def test_row_types_define_palette_order_including_unknown_type(self):
+        import math_bench_figures as figures
+        rows = [("z", "sample", "z", 1, "scalar"),
+                ("i", "sample", "i", 1, "scalar"),
+                ("convert", "convert", "f_to_z", 1, "scalar"),
+                ("f", "sample", "f", 1, "scalar")]
+        fig = figures.render(rows, {row[0]: (1, 1, 1) for row in rows}, [])
+        import matplotlib.pyplot as plt
+        self.addCleanup(plt.close, fig)
+        self.assertEqual([bar.get_facecolor() for bar in fig.axes[0].patches],
+                         [to_rgba(figures.SLOTS[index]) for index in (0, 1, 2, 2)])
+        self.assertEqual([text.get_text() for text in fig.legends[0].get_texts()],
+                         ["f", "", "i", "", "z", ""])

@@ -29,19 +29,23 @@ class MathBenchTableTests(unittest.TestCase):
         self.assertEqual("0 ulp (sweep)", errors["normalize (vec3)", "f"])
         self.assertEqual("5.94258e-05 relative (proof)", errors["arbitrary label", "x"])
 
-    def test_scalar_table_has_no_error_column(self):
+    def test_scalar_table_links_rendered_error(self):
         rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch, "scalar")]
-        table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"})
-        self.assertIn("| mathf_rsqrt | f | - | - | - | device-only instruction | - | rsqrt0.s |", table)
-        self.assertNotIn("max error", table)
+        table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"},
+                                   errors={("mathf_rsqrt", "f"): "1 ulp (proof)"},
+                                   error_links={("mathf_rsqrt", "f"): "Fast-Paths.md#mathf-rsqrt"})
+        self.assertIn("| mathf_rsqrt | f | - | - | - | device-only instruction | - | rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt) |", table)
+        self.assertIn("max error", table)
 
-    def test_grouped_table_links_both_pair_rows_without_error_column(self):
+    def test_grouped_table_keeps_errors_not_rendered_in_fast_paths(self):
         links = {"dot_f": "Fast-Paths.md#example", "sinf_f": "Fast-Paths.md#example"}
-        table = bench.render_table(self.rows, {}, {}, {"dot_f": "-", "sinf_f": "-"}, links=links)
+        table = bench.render_table(self.rows, {}, {}, {"dot_f": "-", "sinf_f": "-"}, links=links,
+                                   errors={("dot (vec3)", "f"): "1 ulp (sweep)"})
         self.assertLess(table.index("#### Vector"), table.index("#### Libm"))
         self.assertIn("[dot (vec3)](Fast-Paths.md#example)", table)
         self.assertIn("[sinf](Fast-Paths.md#example)", table)
-        self.assertNotIn("max error", table)
+        self.assertIn("| 1 ulp (sweep) |", table)
+        self.assertIn("max error", table)
 
     def test_malformed_and_duplicate_error_measurements_raise(self):
         good = "MATHERROR name=mathf_rsqrt type=f max=1 unit=ulp method=proof\n"

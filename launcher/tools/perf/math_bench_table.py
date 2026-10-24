@@ -219,7 +219,7 @@ def parse_input_counts(text):
         r"^MATHERROR name=(.+) type=(\w+) .* inputs=([0-9]+)$", text, re.M)}
 
 
-def render_table(rows, measured, baseline, fpu, links=None):
+def render_table(rows, measured, baseline, fpu, links=None, errors=None, error_links=None):
     keys = {key for key, *_ in rows}
     missing = {name for name in baseline if name.startswith("math_") and name[5:] not in keys}
     if missing:
@@ -232,8 +232,8 @@ def render_table(rows, measured, baseline, fpu, links=None):
         if lines:
             lines.append("")
         lines.extend([f"#### {family.capitalize()}", "",
-                      "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls |",
-                      "|---|---|---:|---:|---:|---:|---:|---|"])
+                      "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |",
+                      "|---|---|---:|---:|---:|---:|---:|---|---|"])
         for key, label, kind, ops, _ in members:
             qemu = f"{baseline['math_' + key] / ops:.1f}" if "math_" + key in baseline else "-"
             if set(fpu[key].partition(";")[0].split()) & set(DEVICE_ONLY_FPU_OPS):
@@ -242,7 +242,11 @@ def render_table(rows, measured, baseline, fpu, links=None):
             costs = [f"{value:.1f}" for value in values] if values else ["-"] * 3
             ratio = f"{values[0] / values[2]:.1f}" if values else "-"
             function = f"[{label}]({links[key]})" if links and key in links else label
-            lines.append("| " + " | ".join([function, kind, *costs, qemu, ratio, fpu[key]]) + " |")
+            identity = label, kind
+            error = (errors or {}).get(identity, "-")
+            if identity in (error_links or {}):
+                error = f"[fast paths]({error_links[identity]})"
+            lines.append("| " + " | ".join([function, kind, *costs, qemu, ratio, fpu[key], error]) + " |")
         if family == "calibration":
             reference = ESP_DSP_DOTPROD_F32_N256_ANSI_O2_CYCLES
             calibration = measured.get("dot_f32_n256_f")
