@@ -1,0 +1,177 @@
+#include "math/geometry/iso_surface.h"
+
+#include <math.h>
+
+#pragma GCC diagnostic error "-Wdouble-promotion"
+
+/* A cell's corner k sits at +x when bit 0 is set, +y bit 1, +z bit 2. */
+#define CORNERS          8
+#define EDGES            12
+#define NO_VERTEX        (-1)
+/* Indices are uint16_t. */
+#define VERTEX_INDEX_MAX 65536
+
+static const uint8_t EDGE_CORNERS[EDGES][2] = {
+    {0, 1}, {2, 3}, {4, 5}, {6, 7}, /* along x */
+    {0, 2}, {1, 3}, {4, 6}, {5, 7}, /* along y */
+    {0, 4}, {1, 5}, {2, 6}, {3, 7}, /* along z */
+};
+
+typedef struct {
+    const iso_field_t* field;
+    float level;
+    iso_mesh_t* out;
+    int cy, cz; /* cells per axis in a slab */
+    bool full;
+} nets_t;
+
+static float
+value_at(const iso_field_t* f, int x, int y, int z) {
+    return f->values[(((x * f->ny) + y) * f->nz) + z];
+}
+
+static int32_t*
+slot(const nets_t* n, int x, int y, int z) {
+    return &n->out
+                ->scratch[((size_t)(x & 1) * (size_t)n->cy * (size_t)n->cz) + ((size_t)y * (size_t)n->cz) + (size_t)z];
+}
+
+static vec3f_t
+corner_offset(int k) {
+    return (vec3f_t){(float)(k & 1), (float)((k >> 1) & 1), (float)((k >> 2) & 1)};
+}
+
+/* The cell's vertex at the mean of its edge crossings, and the outward
+ * normal from the corners' gradient; NO_VERTEX when the surface misses the
+ * cell or the vertices ran out. */
+static int32_t
+cell_vertex(nets_t* n, int x, int y, int z) {
+    const iso_field_t* f = n->field;
+    float v[CORNERS];
+    int inside = 0;
+    for (int k = 0; k < CORNERS; k++) {
+        v[k] = value_at(f, x + (k & 1), y + ((k >> 1) & 1), z + ((k >> 2) & 1));
+        inside += v[k] > n->level ? 1 : 0;
+    }
+    if (inside == 0 || inside == CORNERS) {
+        return NO_VERTEX;
+    }
+    iso_mesh_t* out = n->out;
+    if (out->vertex_count >= out->vertex_capacity || out->vertex_count >= VERTEX_INDEX_MAX) {
+        n->full = true;
+        return NO_VERTEX;
+    }
+    vec3f_t sum = {0};
+    int crossings = 0;
+    for (int e = 0; e < EDGES; e++) {
+        const int a = EDGE_CORNERS[e][0];
+        const int b = EDGE_CORNERS[e][1];
+        if ((v[a] > n->level) == (v[b] > n->level)) {
+            continue;
+        }
+        const float t = (n->level - v[a]) / (v[b] - v[a]);
+        sum = vec3f_add(sum, vec3f_lerp(corner_offset(a), corner_offset(b), t));
+        crossings++;
+    }
+    const vec3f_t local = vec3f_scale(sum, 1.0F / (float)crossings);
+    const vec3f_t grad = {((v[1] - v[0]) + (v[3] - v[2]) + (v[5] - v[4]) + (v[7] - v[6])) / f->step.x,
+                          ((v[2] - v[0]) + (v[3] - v[1]) + (v[6] - v[4]) + (v[7] - v[5])) / f->step.y,
+                          ((v[4] - v[0]) + (v[5] - v[1]) + (v[6] - v[2]) + (v[7] - v[3])) / f->step.z};
+    const int32_t index = out->vertex_count++;
+    out->positions[index] =
+        (vec3f_t){f->origin.x + (((float)x + local.x) * f->step.x), f->origin.y + (((float)y + local.y) * f->step.y),
+                  f->origin.z + (((float)z + local.z) * f->step.z)};
+    const float length = sqrtf(vec3f_dot(grad, grad));
+    out->normals[index] = length > 0.0F ? vec3f_scale(grad, -1.0F / length) : (vec3f_t){0};
+    return index;
+}
+
+/* A quad over four cells, counter-clockwise about +axis; flipped when the
+ * inside is on the far side of the edge. */
+static void
+emit_quad(nets_t* n, int32_t c00, int32_t c10, int32_t c11, int32_t c01, bool flip) {
+    if (c00 == NO_VERTEX || c10 == NO_VERTEX || c11 == NO_VERTEX || c01 == NO_VERTEX) {
+        return;
+    }
+    iso_mesh_t* out = n->out;
+    if (out->triangle_count + 2 > out->triangle_capacity) {
+        n->full = true;
+        return;
+    }
+    const uint16_t a = (uint16_t)c00;
+    const uint16_t b = (uint16_t)(flip ? c01 : c10);
+    const uint16_t c = (uint16_t)c11;
+    const uint16_t d = (uint16_t)(flip ? c10 : c01);
+    out->triangles[out->triangle_count][0] = a;
+    out->triangles[out->triangle_count][1] = b;
+    out->triangles[out->triangle_count][2] = c;
+    out->triangle_count++;
+    out->triangles[out->triangle_count][0] = a;
+    out->triangles[out->triangle_count][1] = c;
+    out->triangles[out->triangle_count][2] = d;
+    out->triangle_count++;
+}
+
+/* Whether the edge from sample (x, y, z) one step along `axis` crosses the
+ * level, and which way: true for inside at its start. */
+static bool
+edge_crosses(const nets_t* n, int x, int y, int z, int axis, bool* inside_first) {
+    const iso_field_t* f = n->field;
+    const bool first = value_at(f, x, y, z) > n->level;
+    const bool second =
+        value_at(f, x + (axis == 0 ? 1 : 0), y + (axis == 1 ? 1 : 0), z + (axis == 2 ? 1 : 0)) > n->level;
+    *inside_first = first;
+    return first != second;
+}
+
+/* Quads for every crossing edge whose cells lie in slabs x - 1 and x. */
+static void
+emit_slab(nets_t* n, int x) {
+    bool first;
+    for (int y = 1; y < n->cy; y++) {
+        for (int z = 1; z < n->cz; z++) {
+            if (edge_crosses(n, x, y, z, 0, &first)) {
+                emit_quad(n, *slot(n, x, y - 1, z - 1), *slot(n, x, y, z - 1), *slot(n, x, y, z), *slot(n, x, y - 1, z),
+                          !first);
+            }
+        }
+    }
+    if (x == 0) {
+        return;
+    }
+    for (int y = 0; y < n->cy; y++) {
+        for (int z = 1; z < n->cz; z++) {
+            if (edge_crosses(n, x, y, z, 1, &first)) {
+                emit_quad(n, *slot(n, x - 1, y, z - 1), *slot(n, x - 1, y, z), *slot(n, x, y, z), *slot(n, x, y, z - 1),
+                          !first);
+            }
+        }
+    }
+    for (int y = 1; y < n->cy; y++) {
+        for (int z = 0; z < n->cz; z++) {
+            if (edge_crosses(n, x, y, z, 2, &first)) {
+                emit_quad(n, *slot(n, x - 1, y - 1, z), *slot(n, x, y - 1, z), *slot(n, x, y, z), *slot(n, x - 1, y, z),
+                          !first);
+            }
+        }
+    }
+}
+
+bool
+iso_surface_nets(const iso_field_t* field, float level, iso_mesh_t* out) {
+    out->vertex_count = 0;
+    out->triangle_count = 0;
+    if (field->nx < 2 || field->ny < 2 || field->nz < 2) {
+        return false;
+    }
+    nets_t n = {.field = field, .level = level, .out = out, .cy = field->ny - 1, .cz = field->nz - 1};
+    for (int x = 0; x < field->nx - 1; x++) {
+        for (int y = 0; y < n.cy; y++) {
+            for (int z = 0; z < n.cz; z++) {
+                *slot(&n, x, y, z) = cell_vertex(&n, x, y, z);
+            }
+        }
+        emit_slab(&n, x);
+    }
+    return !n.full;
+}
