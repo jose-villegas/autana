@@ -167,45 +167,51 @@ count_below(const lattice_t* l, vec3f_t down, float level) {
     return count;
 }
 
-int
-flip3_fill(flip3_t* f, float fraction, vec3f_t down) {
-    const lattice_t l = fill_lattice(f);
-    const int wanted = (int)lroundf(mathf_clamp(fraction, 0.0F, 1.0F) * (float)f->seed_count);
-    const int target = mathi_min(wanted, f->config.max_particles);
-
-    /* The level with `target` points below it, between the keys of the
-     * lattice's top and bottom corners. */
+/* The level with `target` lattice points below it, bisected between the
+ * keys of the lattice's top and bottom corners. */
+static float
+fill_level(const lattice_t* l, vec3f_t down, int target) {
     float lo = INFINITY;
     float hi = -INFINITY;
     for (int corner = 0; corner < 8; corner++) {
-        const vec3f_t p = lattice_point(&l, (corner & 1) != 0 ? l.n[0] - 1 : 0, (corner & 2) != 0 ? l.n[1] - 1 : 0,
-                                        (corner & 4) != 0 ? l.n[2] - 1 : 0);
+        const vec3f_t p = lattice_point(l, (corner & 1) != 0 ? l->n[0] - 1 : 0, (corner & 2) != 0 ? l->n[1] - 1 : 0,
+                                        (corner & 4) != 0 ? l->n[2] - 1 : 0);
         const float key = vec3f_dot(p, down);
         lo = fminf(lo, key);
         hi = fmaxf(hi, key);
     }
     for (int step = 0; step < FILL_LEVEL_STEPS; step++) {
         const float mid = 0.5F * (lo + hi);
-        if (count_below(&l, down, mid) >= target) {
+        if (count_below(l, down, mid) >= target) {
             lo = mid;
         } else {
             hi = mid;
         }
     }
+    return lo;
+}
 
+/* Up to `target` particles at rest on the lattice points at or below `level`. */
+static void
+place_below(flip3_t* f, const lattice_t* l, vec3f_t down, float level, int target) {
     f->count = 0;
-    for (int i = 0; i < l.n[0] && f->count < target; i++) {
-        for (int j = 0; j < l.n[1] && f->count < target; j++) {
-            for (int k = 0; k < l.n[2] && f->count < target; k++) {
-                const vec3f_t p = lattice_point(&l, i, j, k);
-                if (vec3f_dot(p, down) >= lo) {
-                    f->pos[f->count] = p;
-                    f->vel[f->count] = (vec3f_t){0};
-                    f->count++;
-                }
-            }
+    const int points = l->n[0] * l->n[1] * l->n[2];
+    for (int i = 0; i < points && f->count < target; i++) {
+        const vec3f_t p = lattice_point(l, i / (l->n[1] * l->n[2]), (i / l->n[2]) % l->n[1], i % l->n[2]);
+        if (vec3f_dot(p, down) >= level) {
+            f->pos[f->count] = p;
+            f->vel[f->count] = (vec3f_t){0};
+            f->count++;
         }
     }
+}
+
+int
+flip3_fill(flip3_t* f, float fraction, vec3f_t down) {
+    const lattice_t l = fill_lattice(f);
+    const int wanted = (int)lroundf(mathf_clamp(fraction, 0.0F, 1.0F) * (float)f->seed_count);
+    const int target = mathi_min(wanted, f->config.max_particles);
+    place_below(f, &l, down, fill_level(&l, down, target), target);
     const size_t n = (size_t)f->nx * (size_t)f->ny * (size_t)f->nz;
     memset(f->u, 0, n * sizeof(float));
     memset(f->v, 0, n * sizeof(float));
@@ -337,6 +343,35 @@ components(flip3_t* f, component_t out[3]) {
     out[2] = (component_t){f->w, f->prev_w, {half.x, half.y, 0.0F}, 1};
 }
 
+/* One velocity component splatted onto its faces, weighted by the stencil. */
+static void
+splat(flip3_t* f, const component_t* c, int axis, size_t n) {
+    memset(c->field, 0, n * sizeof(float));
+    memset(f->weight, 0, n * sizeof(float));
+    for (int i = 0; i < f->count; i++) {
+        const stencil_t s = stencil(f, f->pos[i], c->offset);
+        const float pv = axis_of(f->vel[i], axis);
+        for (int k = 0; k < 8; k++) {
+            c->field[s.at[k]] += pv * s.weight[k];
+            f->weight[s.at[k]] += s.weight[k];
+        }
+    }
+}
+
+/* Each face's weighted mean; static walls: a face of a solid cell carries nothing. */
+static void
+settle_faces(const flip3_t* f, const component_t* c, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        if (f->weight[i] > 0.0F) {
+            c->field[i] /= f->weight[i];
+        }
+        const bool solid_side = i >= (size_t)c->stride && f->kind[i - (size_t)c->stride] == KIND_SOLID;
+        if (f->kind[i] == KIND_SOLID || solid_side) {
+            c->field[i] = 0.0F;
+        }
+    }
+}
+
 static void
 to_grid(flip3_t* f) {
     const size_t n = (size_t)f->nx * (size_t)f->ny * (size_t)f->nz;
@@ -344,27 +379,8 @@ to_grid(flip3_t* f) {
     component_t comps[3];
     components(f, comps);
     for (int a = 0; a < 3; a++) {
-        const component_t* c = &comps[a];
-        memset(c->field, 0, n * sizeof(float));
-        memset(f->weight, 0, n * sizeof(float));
-        for (int i = 0; i < f->count; i++) {
-            const stencil_t s = stencil(f, f->pos[i], c->offset);
-            const float pv = axis_of(f->vel[i], a);
-            for (int k = 0; k < 8; k++) {
-                c->field[s.at[k]] += pv * s.weight[k];
-                f->weight[s.at[k]] += s.weight[k];
-            }
-        }
-        for (size_t i = 0; i < n; i++) {
-            if (f->weight[i] > 0.0F) {
-                c->field[i] /= f->weight[i];
-            }
-            /* Static walls: a face of a solid cell carries nothing. */
-            const bool solid_side = i >= (size_t)c->stride && f->kind[i - (size_t)c->stride] == KIND_SOLID;
-            if (f->kind[i] == KIND_SOLID || solid_side) {
-                c->field[i] = 0.0F;
-            }
-        }
+        splat(f, &comps[a], a, n);
+        settle_faces(f, &comps[a], n);
     }
 }
 
@@ -399,55 +415,72 @@ accelerate(flip3_t* f, float dt, vec3f_t accel) {
     }
 }
 
+/* What every cell's relaxation shares: neighbour strides, inverse spacing
+ * and its square, and the drift push's gain per unit of density error. */
+typedef struct {
+    int sx, sy;
+    vec3f_t ih, ih2;
+    float drift;
+} relax_t;
+
+/* 1 for a face that opens onto water or air, 0 for a wall's. */
+static float
+open_toward(const flip3_t* f, int cell) {
+    return f->kind[cell] != KIND_SOLID ? 1.0F : 0.0F;
+}
+
+/* Water or wall on all six sides. */
+static bool
+enclosed(const flip3_t* f, int c, const relax_t* r) {
+    return f->kind[c - r->sx] != KIND_AIR && f->kind[c + r->sx] != KIND_AIR && f->kind[c - r->sy] != KIND_AIR
+           && f->kind[c + r->sy] != KIND_AIR && f->kind[c - 1] != KIND_AIR && f->kind[c + 1] != KIND_AIR;
+}
+
+/* One Gauss-Seidel update of a water cell's six faces. Muller pushes only
+ * packed cells apart. A divergence-free field never closes a gap either,
+ * so cells with water all round are also drawn back to rest; at the
+ * surface that pull would act as a false surface tension. */
+static void
+relax_cell(flip3_t* f, int c, const relax_t* r) {
+    const float s0x = open_toward(f, c - r->sx);
+    const float s1x = open_toward(f, c + r->sx);
+    const float s0y = open_toward(f, c - r->sy);
+    const float s1y = open_toward(f, c + r->sy);
+    const float s0z = open_toward(f, c - 1);
+    const float s1z = open_toward(f, c + 1);
+    const float s = ((s0x + s1x) * r->ih2.x) + ((s0y + s1y) * r->ih2.y) + ((s0z + s1z) * r->ih2.z);
+    if (s == 0.0F) {
+        return;
+    }
+    float div = ((f->u[c + r->sx] - f->u[c]) * r->ih.x) + ((f->v[c + r->sy] - f->v[c]) * r->ih.y)
+                + ((f->w[c + 1] - f->w[c]) * r->ih.z);
+    const float compression = f->density[c] - f->rest_density;
+    if (compression > 0.0F || enclosed(f, c, r)) {
+        div -= r->drift * compression;
+    }
+    const float p = -div / s * f->tuning.over_relaxation;
+    f->u[c] -= s0x * p * r->ih.x;
+    f->u[c + r->sx] += s1x * p * r->ih.x;
+    f->v[c] -= s0y * p * r->ih.y;
+    f->v[c + r->sy] += s1y * p * r->ih.y;
+    f->w[c] -= s0z * p * r->ih.z;
+    f->w[c + 1] += s1z * p * r->ih.z;
+}
+
 /* Gauss-Seidel on the divergence over cells of any aspect, with the drift
  * push: a cell off rest density gets the tuned share of the difference as
- * flow per step. */
+ * flow per step. Water cells are never on the walls, so a flat walk in index
+ * order visits them as the nested x, y, z walk would. */
 static void
 solve_pressure(flip3_t* f, float dt) {
-    const int sx = f->ny * f->nz;
-    const int sy = f->nz;
     const vec3f_t ih = f->inv_h;
-    const vec3f_t ih2 = {ih.x * ih.x, ih.y * ih.y, ih.z * ih.z};
-    const float drift = f->tuning.drift_gain / dt / f->rest_density;
+    const relax_t r = {
+        f->ny * f->nz, f->nz, ih, {ih.x * ih.x, ih.y * ih.y, ih.z * ih.z}, f->tuning.drift_gain / dt / f->rest_density};
+    const int n = f->nx * f->ny * f->nz;
     for (int iter = 0; iter < f->tuning.pressure_iters; iter++) {
-        for (int x = 1; x < f->nx - 1; x++) {
-            for (int y = 1; y < f->ny - 1; y++) {
-                for (int z = 1; z < f->nz - 1; z++) {
-                    const int c = cell_index(f, x, y, z);
-                    if (f->kind[c] != KIND_FLUID) {
-                        continue;
-                    }
-                    const float s0x = f->kind[c - sx] != KIND_SOLID ? 1.0F : 0.0F;
-                    const float s1x = f->kind[c + sx] != KIND_SOLID ? 1.0F : 0.0F;
-                    const float s0y = f->kind[c - sy] != KIND_SOLID ? 1.0F : 0.0F;
-                    const float s1y = f->kind[c + sy] != KIND_SOLID ? 1.0F : 0.0F;
-                    const float s0z = f->kind[c - 1] != KIND_SOLID ? 1.0F : 0.0F;
-                    const float s1z = f->kind[c + 1] != KIND_SOLID ? 1.0F : 0.0F;
-                    const float s = ((s0x + s1x) * ih2.x) + ((s0y + s1y) * ih2.y) + ((s0z + s1z) * ih2.z);
-                    if (s == 0.0F) {
-                        continue;
-                    }
-                    float div = ((f->u[c + sx] - f->u[c]) * ih.x) + ((f->v[c + sy] - f->v[c]) * ih.y)
-                                + ((f->w[c + 1] - f->w[c]) * ih.z);
-                    /* Muller pushes only packed cells apart. A divergence-free
-                     * field never closes a gap either, so cells with water all
-                     * round are also drawn back to rest; at the surface that
-                     * pull would act as a false surface tension. */
-                    const bool enclosed = f->kind[c - sx] != KIND_AIR && f->kind[c + sx] != KIND_AIR
-                                          && f->kind[c - sy] != KIND_AIR && f->kind[c + sy] != KIND_AIR
-                                          && f->kind[c - 1] != KIND_AIR && f->kind[c + 1] != KIND_AIR;
-                    const float compression = f->density[c] - f->rest_density;
-                    if (compression > 0.0F || enclosed) {
-                        div -= drift * compression;
-                    }
-                    const float p = -div / s * f->tuning.over_relaxation;
-                    f->u[c] -= s0x * p * ih.x;
-                    f->u[c + sx] += s1x * p * ih.x;
-                    f->v[c] -= s0y * p * ih.y;
-                    f->v[c + sy] += s1y * p * ih.y;
-                    f->w[c] -= s0z * p * ih.z;
-                    f->w[c + 1] += s1z * p * ih.z;
-                }
+        for (int c = 0; c < n; c++) {
+            if (f->kind[c] == KIND_FLUID) {
+                relax_cell(f, c, &r);
             }
         }
     }

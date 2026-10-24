@@ -124,36 +124,48 @@ edge_crosses(const nets_t* n, int x, int y, int z, int axis, bool* inside_first)
     return first != second;
 }
 
-/* Quads for every crossing edge whose cells lie in slabs x - 1 and x. */
+/* For edges along each axis, the two other axes the quad steps back along:
+ * its cells are p - b - c, p - c, p and p - b, counter-clockwise about +axis
+ * in a right-handed frame. */
+static const int8_t QUAD_STEPS[3][2][3] = {
+    {{0, 1, 0}, {0, 0, 1}}, /* along x: back in y, then z */
+    {{0, 0, 1}, {1, 0, 0}}, /* along y: back in z, then x */
+    {{1, 0, 0}, {0, 1, 0}}, /* along z: back in x, then y */
+};
+
+static int32_t
+back(const nets_t* n, int x, int y, int z, const int8_t* b, const int8_t* c) {
+    return *slot(n, x - b[0] - c[0], y - b[1] - c[1], z - b[2] - c[2]);
+}
+
+/* Quads across the crossing edges along `axis` from sample plane x, whose
+ * cells all lie in slabs x - 1 and x. An edge along the axis needs cells
+ * back one step in each other axis, so those start at 1. */
+static void
+emit_axis(nets_t* n, int x, int axis) {
+    const int8_t* b = QUAD_STEPS[axis][0];
+    const int8_t* c = QUAD_STEPS[axis][1];
+    const int8_t none[3] = {0, 0, 0};
+    const int y0 = b[1] + c[1];
+    const int z0 = b[2] + c[2];
+    bool first;
+    for (int y = y0; y < n->cy; y++) {
+        for (int z = z0; z < n->cz; z++) {
+            if (edge_crosses(n, x, y, z, axis, &first)) {
+                emit_quad(n, back(n, x, y, z, b, c), back(n, x, y, z, none, c), back(n, x, y, z, none, none),
+                          back(n, x, y, z, b, none), !first);
+            }
+        }
+    }
+}
+
+/* Edges along x reach only slab x; along y and z they also reach x - 1. */
 static void
 emit_slab(nets_t* n, int x) {
-    bool first;
-    for (int y = 1; y < n->cy; y++) {
-        for (int z = 1; z < n->cz; z++) {
-            if (edge_crosses(n, x, y, z, 0, &first)) {
-                emit_quad(n, *slot(n, x, y - 1, z - 1), *slot(n, x, y, z - 1), *slot(n, x, y, z), *slot(n, x, y - 1, z),
-                          !first);
-            }
-        }
-    }
-    if (x == 0) {
-        return;
-    }
-    for (int y = 0; y < n->cy; y++) {
-        for (int z = 1; z < n->cz; z++) {
-            if (edge_crosses(n, x, y, z, 1, &first)) {
-                emit_quad(n, *slot(n, x - 1, y, z - 1), *slot(n, x - 1, y, z), *slot(n, x, y, z), *slot(n, x, y, z - 1),
-                          !first);
-            }
-        }
-    }
-    for (int y = 1; y < n->cy; y++) {
-        for (int z = 0; z < n->cz; z++) {
-            if (edge_crosses(n, x, y, z, 2, &first)) {
-                emit_quad(n, *slot(n, x - 1, y - 1, z), *slot(n, x, y - 1, z), *slot(n, x, y, z), *slot(n, x - 1, y, z),
-                          !first);
-            }
-        }
+    emit_axis(n, x, 0);
+    if (x > 0) {
+        emit_axis(n, x, 1);
+        emit_axis(n, x, 2);
     }
 }
 
