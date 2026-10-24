@@ -1,4 +1,4 @@
-"""SCNE v2 settings, lights, renderers and animators, validated against the mapped C reader."""
+"""SCNE v3 settings, lights, renderers and animators, validated against the mapped C reader."""
 
 import math
 import pathlib
@@ -22,6 +22,7 @@ LIGHT_KINDS = {"directional": DIRECTIONAL}
 DEFAULT_COLOR = read_define(INTERNAL, "SCENE_LIGHT_COLOR_DEFAULT")
 AMBIENT_NONE = read_define(INTERNAL, "SCENE_AMBIENT_INTENSITY_NONE")
 TONEMAP_NONE = read_define(INTERNAL, "SCENE_TONEMAP_WHITE_NONE")
+COLOUR_SET_OWN = read_define(OWNER, "SCENE_ASSET_COLOUR_SET_OWN")
 DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings")
@@ -76,7 +77,7 @@ def encode(scene, cache=None, offline=False):
             rows["skinned_renderers"].append((entity, 0, field(mesh, "mesh id"),
                 field(skin, "skin id"), field(skeleton, "skeleton id")))
         else:
-            rows["renderers"].append((entity, 0, field(mesh, "mesh id")))
+            rows["renderers"].append((entity, COLOUR_SET_OWN, field(mesh, "mesh id")))
     for obj in objects:
         entity = index[obj.name]
         animator = getattr(obj, "animator", None)
@@ -171,7 +172,7 @@ def decode(entry):
                     raise SceneError("light: invalid kind, colour, intensity or padding")
                 out[part].append(dict(entity=entity, kind=kind, color=values[:3], intensity=values[3]))
                 continue
-            if row[1]:
+            if part != "renderers" and row[1]:
                 raise SceneError(f"{part}: padding out of range")
             if part == "cameras":
                 _, _, tan, near, clear = row
@@ -181,6 +182,8 @@ def decode(entry):
             else:
                 names = ("mesh",) if part == "renderers" else ("mesh", "skin", "skeleton")
                 out[part].append(dict(entity=entity, **{key: text_at(raw, key + " id") for key, raw in zip(names, row[2:])}))
+                if part == "renderers":
+                    out[part][-1]["colour_set"] = row[1]
     out["clips"] = [text_at(raw, "clip id") for (raw,) in rows["clips"]]
     color, intensity, white = rows["settings"][0][:3], *rows["settings"][0][3:]
     if not color_fits(color) or not nonnegative(intensity) or not nonnegative(white):

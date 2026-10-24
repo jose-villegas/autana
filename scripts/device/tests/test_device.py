@@ -1,3 +1,4 @@
+"""device.py: interpreter choice, serial open and port guards, waits, records and captures."""
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import port_guard
 import ast
