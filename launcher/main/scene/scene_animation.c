@@ -79,7 +79,7 @@ layout_for(int clips, int curves, int joints) {
 static bool
 allocate_animator(scene_animator_t* a, int clips, int curves) {
     const animator_layout_t l = layout_for(clips, curves, a->skeleton.joint_count);
-    uint8_t* block = memory_alloc(l.total, MEMORY_PSRAM);
+    uint8_t* block = scene_allocate_kept(l.total);
     if (block == NULL) {
         return false;
     }
@@ -187,7 +187,7 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
     }
     status = bind_clips(scene, &a, ids, curves, entity, &failed);
     if (status != ASSET_OK) {
-        memory_free(a.storage);
+        scene_free_kept(a.storage);
         return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, failed));
     }
     if (a.root == ANIM_ROOT_SKELETON) {
@@ -203,7 +203,9 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
     scene->skeleton_animator_count +=
         (a.root == ANIM_ROOT_SKELETON) - (old->storage != NULL && old->root == ANIM_ROOT_SKELETON);
     scene->animator_count += old->storage == NULL;
-    memory_free(old->storage);
+    /* A taken block cannot be freed: rebinding a scene's clips abandons the
+     * old storage to the lender until the scene's memory goes back. */
+    scene_free_kept(old->storage);
     a.dirty = true;
     scene->animators[entity] = a;
     return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, scene->id));
@@ -371,7 +373,7 @@ scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip) 
 void
 scene_animation_release(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
-        memory_free(scene->animators[e].storage);
+        scene_free_kept(scene->animators[e].storage);
         scene_skin_light_table_release(scene, (scene_entity_t)e);
         memory_free(scene->skinned_renderers[e].light_storage);
         memory_free(scene->skinned_renderers[e].internal_storage);
@@ -483,14 +485,14 @@ animate_entities(scene_t* scene, uint32_t dt_ms) {
         return;
     }
     const int entities = scene->asset.entity_count;
-    const int half = entities / 2;
-    range_t a = {scene, 0, half, dt_ms};
-    range_t b = {scene, half, entities - half, dt_ms};
+    const int mine = entities - job_share_core1_count(&scene->animate_share, entities);
+    range_t a = {scene, 0, mine, dt_ms};
+    range_t b = {scene, mine, entities - mine, dt_ms};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "animation range fits job context");
-    if (half == 0) {
-        animate_slice(&b);
+    if (entities < 2) {
+        animate_slice(&a);
     } else {
-        job_run_split(animate_slice, &a, &b, sizeof a);
+        job_run_steered(&scene->animate_share, animate_slice, &a, &b, sizeof a);
     }
 }
 
@@ -554,13 +556,14 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     if (scene->light_transfer != NULL) {
         scene_lights_prepare(scene);
     }
-    range_t a = {scene, 0, clusters / 2, 0};
-    range_t b = {scene, clusters / 2, clusters - (clusters / 2), 0};
+    const int mine = clusters - job_share_core1_count(&scene->skin_share, clusters);
+    range_t a = {scene, 0, mine, 0};
+    range_t b = {scene, mine, clusters - mine, 0};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "skin range fits job context");
-    if (a.count == 0) {
-        skin_slice(&b);
+    if (clusters < 2) {
+        skin_slice(&a);
     } else {
-        job_run_split(skin_slice, &a, &b, sizeof a);
+        job_run_steered(&scene->skin_share, skin_slice, &a, &b, sizeof a);
     }
     for (int e = 0; e < entities; e++) {
         if (scene->skinned_renderers[e].internal_storage != NULL && scene->animators[e].posed) {

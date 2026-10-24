@@ -141,9 +141,9 @@ $RECYCLE.BIN/
 
 ### autana CLI
 # Where scripts/device/device.py writes a session's log and manifest when the
-# `records` setting names nowhere else - see docs/tools/Autana-CLI.md.
+# `records` setting names nowhere else - see docs/cli/Settings.md.
 .records/
-# This checkout's own settings; docs/tools/Autana-CLI.md lists the keys.
+# This checkout's own settings; docs/cli/Settings.md lists the keys.
 /autana.local.toml
 
 ### A maintainer's private tooling checkout, and what it links in

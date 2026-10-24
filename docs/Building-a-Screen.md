@@ -41,7 +41,7 @@ void
 settings_frame(const input_t* input, settings_state_t* s) {
     ui_begin(input);
     settings_draw(s);
-    ui_end(0x0A0C14);
+    ui_end(UI_BACKGROUND);
 }
 ```
 

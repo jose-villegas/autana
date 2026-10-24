@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "collections/sort.h"
 #include "draw/draw_palette.h"
 #include "draw_palette_gen.h"
 #include "gfx/present/gfx_mode.h"
@@ -375,14 +376,15 @@ scene_glass(sand_t* s) {
     steps(s, 40);
 }
 
+/* Canopy radius in grid cells. */
+#define PLANT_CANOPY_RADIUS 24
+
 static void
 plant_canopy(sand_t* s, int cx, int top, int ground) {
     rect_v(s, cx - 2, top, cx + 2, ground, CELL_MAKE(MAT_WOOD, 0));
-    for (int dy = -24; dy <= 24; dy++) {
-        for (int dx = -26; dx <= 26; dx++) {
-            if ((dx * dx) + (dy * dy) > 24 * 24) {
-                continue;
-            }
+    for (int dy = -PLANT_CANOPY_RADIUS; dy <= PLANT_CANOPY_RADIUS; dy++) {
+        const int half = mathi_half_chord(PLANT_CANOPY_RADIUS, dy);
+        for (int dx = -half; dx <= half; dx++) {
             const bool branch = ((dx + dy) & 3) == 0 && mathi_abs(dx) < 16;
             set_v(s, cx + dx, top + dy, branch ? CELL_MAKE(MAT_WOOD, 0) : MATX(MATX_LEAF));
         }
@@ -1086,18 +1088,20 @@ greedy_grow_palette(int budget) {
 }
 
 static int
+by_lightness(const void* a, const void* b) {
+    const double l_a = key_lab[*(const uint16_t*)a].l;
+    const double l_b = key_lab[*(const uint16_t*)b].l;
+    return (l_a > l_b) - (l_a < l_b);
+}
+
+static int
 group_centers_sorted_by_lightness(group_t g, uint16_t* sorted) {
     const gq_t* q = &quant[g];
     int n = 0;
     for (int j = 0; j < q->k && n < PALETTE_SIZE; j++) {
-        const uint16_t key = lab_to_key(q->c[j]);
-        int at = n++;
-        while (at > 0 && key_lab[sorted[at - 1]].l > key_lab[key].l) {
-            sorted[at] = sorted[at - 1];
-            at--;
-        }
-        sorted[at] = key;
+        sorted[n++] = lab_to_key(q->c[j]);
     }
+    sort_insertion(sorted, (size_t)n, sizeof sorted[0], by_lightness);
     return n;
 }
 

@@ -206,20 +206,15 @@ class MathBenchTableTests(unittest.TestCase):
             path.write_text("dot_f\tdot (vec3)\tf\t64\t" + result["dot_f"] + "\n", encoding="utf-8")
             self.assertEqual(result, bench.read_fpu(path)[1])
 
-    def test_redecodes_code_entering_a_literal_pool(self):
+    def test_call_targets_must_be_symbol_starts(self):
         text = ("42000000 <math_bench_dot_f>:\n"
-                "42000000: 123456 bnez a2, 42000007 <math_bench_dot_f+0x7>\n"
-                "42000003: 123456 j 42000010 <math_bench_dot_f+0x10>\n"
-                "42000006: 123456 msub.s f0, f1, f2\n"
-                "42000009: 12 .byte 0x12\n"
-                "42000010: 123456 madd.s f0, f1, f2\n")
-
-        def resolve(symbol, body):
-            self.assertEqual("math_bench_dot_f", symbol)
-            return bench.parse_objdump(body), lambda start: [(start, 3, "add.n", "a2, a2, a3")]
-
-        self.assertEqual({"dot_f": "madd.s"},
-                         bench.parse_disassembly(text, [self.rows[0]], resolve=resolve))
+                "42000000: 123456 call8 4200100c <unrelated+0xc>\n")
+        with self.assertRaisesRegex(ValueError, "call target"):
+            bench.parse_disassembly(text, self.rows[:1])
+        text = text.replace("call8 4200100c <unrelated+0xc>",
+                            "l32r a8, 42001000 <pool> (40002278 <__divdi3+0x4>)")
+        text += "42000003: 123456 callx8 a8\n"
+        self.assertEqual({"dot_f": "calls *a8"}, bench.parse_disassembly(text, self.rows[:1]))
 
 
 if __name__ == "__main__":

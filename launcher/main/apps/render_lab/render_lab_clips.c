@@ -6,8 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "app/app_arena.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
-#include "core/memory.h"
 #include "esp_log.h"
 #include "ui/ui.h"
 
@@ -27,7 +27,7 @@ render_lab_clips_init(render_lab_clips_t* choice, scene_t* scene, scene_entity_t
         ESP_LOGW("render_clips", "default clip missing");
     }
     (void)scene_animator_play(scene, subject, choice->selected, 0);
-    const char** items = memory_alloc((size_t)count * sizeof *items, MEMORY_PSRAM);
+    const char** items = app_arena_take((size_t)count * sizeof *items, _Alignof(const char*));
     if (items == NULL) {
         return false;
     }
@@ -41,7 +41,6 @@ render_lab_clips_init(render_lab_clips_t* choice, scene_t* scene, scene_entity_t
 
 void
 render_lab_clips_destroy(render_lab_clips_t* choice) {
-    memory_free(choice->items);
     *choice = (render_lab_clips_t){0};
 }
 

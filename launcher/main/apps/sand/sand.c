@@ -19,6 +19,8 @@
 
 #include "sand_priv.h"
 
+#include "math/scalar/mathi.h"
+
 #if defined(SAND_FORCE_WORK) || defined(SAND_COUNT_SKIPS)
 #include <stdio.h>
 
@@ -544,7 +546,6 @@ sand_spawn_cell(sand_t* s, int cx, int cy, int radius, cell_t spec) {
 int
 sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int share_pct) {
     int filled = 0;
-    const int r2 = radius * radius;
     /* Once for the whole brushful, see random_cell().
      * material_shade_span_cell(), not the plain id-only macro, because `spec` may be gunpowder
      * (whose span is 3, read off its own reaction row) rather than a
@@ -557,10 +558,8 @@ sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int sh
     const bool thinned = share_pct < SAND_SPAWN_SHARE_FULL;
 
     for (int dy = -radius; dy <= radius; dy++) {
-        for (int dx = -radius; dx <= radius; dx++) {
-            if ((dx * dx) + (dy * dy) > r2) {
-                continue;
-            }
+        const int half = mathi_half_chord(radius, dy);
+        for (int dx = -half; dx <= half; dx++) {
             const int x = cx + dx;
             const int y = cy + dy;
             /* Through sand_rng_next_at()'s wrapper rather than the plain
@@ -580,13 +579,10 @@ sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int sh
 int
 sand_erase(sand_t* s, int cx, int cy, int radius) {
     int removed = 0;
-    const int r2 = radius * radius;
 
     for (int dy = -radius; dy <= radius; dy++) {
-        for (int dx = -radius; dx <= radius; dx++) {
-            if ((dx * dx) + (dy * dy) > r2) {
-                continue;
-            }
+        const int half = mathi_half_chord(radius, dy);
+        for (int dx = -half; dx <= half; dx++) {
             const int x = cx + dx;
             const int y = cy + dy;
             if (x < 0 || x >= s->w || y < 0 || y >= s->h) {
@@ -643,7 +639,6 @@ sand_add_emitter(sand_t* s, int x, int y, cell_t cell) {
 
 int
 sand_remove_emitters(sand_t* s, int cx, int cy, int radius) {
-    const int r2 = radius * radius;
     int removed = 0;
     int kept = 0;
 
@@ -654,7 +649,7 @@ sand_remove_emitters(sand_t* s, int cx, int cy, int radius) {
     for (int i = 0; i < s->emitter_count; i++) {
         const int dx = s->emitters[i].x - cx;
         const int dy = s->emitters[i].y - cy;
-        if ((dx * dx) + (dy * dy) <= r2) {
+        if (mathi_in_disc(dx, dy, radius)) {
             removed++;
             continue;
         }
