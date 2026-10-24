@@ -14,6 +14,7 @@
 #include "app/app_arena.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
+#include "core/tune.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "input/input.h"
@@ -21,7 +22,6 @@
 #include "render/resolution/resolution.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
-#include "services/tune.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
@@ -81,16 +81,6 @@ option_value(int argc, char** argv, const char* name, const char** out) {
     return true;
 }
 
-static bool tune_succeeded;
-
-static void
-note_reply(const char* line) {
-    tune_succeeded = strncmp(line, "TUNE_OK ", sizeof "TUNE_OK " - 1) == 0;
-    if (!tune_succeeded) {
-        (void)fprintf(stderr, "render_lab_render_host: %s\n", line);
-    }
-}
-
 static bool
 view_from_name(const char* name) {
     const int view = render_context_debug_view_named(name);
@@ -109,25 +99,7 @@ tune_options(int argc, char** argv, const char* option) {
         if (strcmp(argv[i], option) != 0) {
             continue;
         }
-        if (++i == argc) {
-            return false;
-        }
-        if (strchr(argv[i], '=') == NULL) {
-            return false;
-        }
-        const size_t length = strlen(argv[i]);
-        char* line = malloc(sizeof "SET " + length);
-        if (line == NULL) {
-            return false;
-        }
-        memcpy(line, "SET ", sizeof "SET " - 1);
-        strcpy(line + sizeof "SET " - 1, argv[i]);
-        char* equal = strchr(line, '=');
-        *equal = ' ';
-        tune_succeeded = false;
-        (void)tune_handle_line(line, note_reply);
-        free(line);
-        if (!tune_succeeded) {
+        if (++i == argc || !render_host_set_tunable_text(argv[i])) {
             return false;
         }
     }

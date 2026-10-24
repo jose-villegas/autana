@@ -9,6 +9,7 @@
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
+#include "core/tune.h"
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
@@ -20,7 +21,6 @@
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "scene_baked.h"
-#include "services/tune.h"
 #include "ui/ui.h"
 
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */

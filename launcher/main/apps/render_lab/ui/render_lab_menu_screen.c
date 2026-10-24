@@ -2,7 +2,7 @@
 
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
-#include "services/tune.h"
+#include "core/tune.h"
 #include "ui/ui.h"
 
 #define MENU_BTN_W    300

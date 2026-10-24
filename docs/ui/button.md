@@ -6,7 +6,7 @@ caller decides what that means.
 
 ## Example
 
-<!-- generated: ui-button-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-button-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A button: true on the frame a tap is released on it. */
 #include "ui/ui.h"

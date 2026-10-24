@@ -15,6 +15,7 @@
 
 #include "app/app.h"
 #include "apps/render_lab/render_lab_clips.h"
+#include "core/tune.h"
 #include "display/display.h"
 #include "draw/draw.h"
 #include "esp_log.h"
@@ -30,7 +31,6 @@
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
-#include "services/tune.h"
 #include "ui/ui.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "apps/render_lab/tests/render_lab_test.h"

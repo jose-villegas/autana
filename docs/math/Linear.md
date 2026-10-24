@@ -2,6 +2,10 @@
 
 Vectors, rotations, affine maps and cached transforms. [Math index](README.md).
 
+<!-- generated: math-fast-links-linear check: python launcher/tools/perf/fast_paths.py --check -->
+Fast-path evidence: [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30).
+<!-- /generated: math-fast-links-linear -->
+
 `P` stands for the type's prefix (`vec3f`, `vec3x`, ...). The families pass small
 structs by value, and inputs may alias outputs. Output pointers receive
 transform state, affine2 inverses and normalization quotients.
@@ -50,7 +54,7 @@ transform state, affine2 inverses and normalization quotients.
 
 Float normalization uses `mathf_rsqrt` for the reciprocal length.
 The scalar limit is `MATHF_RSQRT_ULP_LIMIT`; nonzero input remains required.
-The [benchmark](Benchmark.md) reports measured component error against the `1 / sqrtf` path.
+The [benchmark table](Benchmark.md) reports measured component error against the `1 / sqrtf` path.
 
 `vec3x_normalize` and `vec3x_normalize_divide` accept any nonzero int32 vector.
 Components are within $`0.5 + 2^{-12}`$ LSB (nearest value or neighbour on a near-tie).
