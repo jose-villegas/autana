@@ -241,6 +241,8 @@ run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math"
 # --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png, spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
+run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/stats_figures.log"
+# --orphans scans this runner: stats-percentile-ranks.png
 
 fi
 
