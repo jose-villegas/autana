@@ -5,7 +5,7 @@
 
 #include "audio/audio_codec_device.h"
 #include "audio/audio_codec_mic.h"
-#include "services/tune.h"
+#include "core/tune.h"
 
 /* At 24 dB, a 1 kHz tone clipped the mic above 10% volume; 6 dB keeps full volume below full scale. */
 #define AUDIO_IN_GAIN_DB 6.0F
