@@ -6,7 +6,7 @@ char* const* names, const draw_image_t* const* icons, int count)` is a
 
 ## Example
 
-<!-- generated: ui-dropdown-icons-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-dropdown-icons-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A dropdown whose rows carry an icon beside the name. */
 #include "ui/controls/ui_icons.h"

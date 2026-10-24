@@ -1,8 +1,8 @@
+"""autana melody: timing from the board's `melody ?` reply, play and check output, and refusals."""
 import contextlib
 import io
 import json
 import math
-import runpy
 import sys
 import unittest
 from pathlib import Path
@@ -14,9 +14,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import autana  # noqa: E402
 
 
+INFO = "MELODY_INFO notes=13 check_ms=200 play_max_ms=5000 cents_per_octave=1200"
+
+
 class MelodyTests(unittest.TestCase):
     def setUp(self):
-        self.constants = autana.melody_constants()
+        self.constants = autana.parse_melody_info(INFO)
 
     def replies(self, heard=True, measured="440.00 Hz"):
         tone = (f"TONE {'heard' if heard else 'not heard'} 440 Hz: -12.0 dB "
@@ -26,21 +29,24 @@ class MelodyTests(unittest.TestCase):
 
     def invoke(self, args, replies, expected=0):
         stream = io.StringIO()
-        with mock.patch.object(autana, "send", return_value=(0, replies)) as send, \
+        with mock.patch.object(autana, "send", side_effect=[(0, [INFO]), (0, replies)]) as send, \
                 contextlib.redirect_stdout(stream), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(autana.melody(args), expected)
         return stream.getvalue(), send.call_args
 
-    def test_import_does_not_read_melody_headers(self):
-        read_text = Path.read_text
+    def test_the_board_reports_what_a_run_is_timed_by(self):
+        self.assertEqual(self.constants, {"notes": 13, "check_ms": 200, "play_max_ms": 5000, "cents_per_octave": 1200})
+        with mock.patch.object(autana, "send", return_value=(0, [INFO])) as send:
+            autana.melody_constants()
+        self.assertEqual(send.call_args.args, ("MELODY ?",))
+        self.assertEqual(send.call_args.kwargs, {"reply": "MELODY_INFO"})
 
-        def missing_headers(path, *args, **kwargs):
-            if path in (autana._MELODY_HEADER, autana._PITCH_HEADER):
-                raise FileNotFoundError(path)
-            return read_text(path, *args, **kwargs)
-
-        with mock.patch.object(Path, "read_text", missing_headers):
-            runpy.run_path(autana.__file__)
+    def test_a_board_without_the_query_stops_before_the_run(self):
+        for replies in ([], ["MELODY_INFO notes=13"]):
+            with mock.patch.object(autana, "send", return_value=(0, replies)) as send, \
+                    self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                autana.melody([])
+            self.assertEqual(send.call_count, 1)
 
     def test_play_and_timeout(self):
         reply = f"MELODY_END notes={self.constants['notes']} ms=4000"
@@ -74,7 +80,7 @@ class MelodyTests(unittest.TestCase):
     def test_parse_errors_and_incomplete_streams(self):
         for line in ("MELODY note=H4 TONE heard", "MELODY note=A4 invalid", "OTHER"):
             with self.assertRaises(ValueError):
-                autana.parse_melody_note(line)
+                autana.parse_melody_note(line, self.constants["cents_per_octave"])
         for replies in ([], ["MELODY_ERR loopback failed"], ["MELODY_END notes=1"],
                         self.replies()[:-1], self.replies()[1:],
                         self.replies()[:-1] + self.replies(),

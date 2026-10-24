@@ -1,53 +1,59 @@
 # Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.
-# ELF sha256=d36d792d3134bb55a34295e293af75e580f1ec4eea00ae470bbb8465c8a44d1d
-add_f	add (vec3)	f	64	-
-add_i	add (vec3)	i	64	-
-add_s	add (vec3)	s	64	-
-add_x	add (vec3)	x	64	-
-atan2f_f	atan2f	f	64	calls atan2f
-convert_f_to_i	convert	f_to_i	64	-
-convert_f_to_s	convert	f_to_s	64	-
-convert_f_to_x	convert	f_to_x	64	-
-convert_i_to_f	convert	i_to_f	64	-
-convert_s_to_f	convert	s_to_f	64	-
-convert_x_to_f	convert	x_to_f	64	-
-cosf_f	cosf	f	64	calls _cosf
-div_recip_f	div_recip	f	64	calls __divsf3
-div_rsqrt_f	div_rsqrt	f	64	calls __divsf3, sqrtf
-dot_f	dot (vec3)	f	64	madd.s
-dot_f32_n256_f	dot_f32_n256	f	1	madd.s
-dot_i	dot (vec3)	i	64	-
-dot_s	dot (vec3)	s	64	-
-dot_x	dot (vec3)	x	64	-
-lerp_f	lerp (vec3)	f	64	madd.s
-lerp_i	lerp (vec3)	i	64	-
-lerp_s	lerp (vec3)	s	64	-
-lerp_x	lerp (vec3)	x	64	-
-mat4_mul_f	mat4 mul	f	64	madd.s; calls memcpy
-mat4_mul_x	mat4 mul	x	64	calls memcpy
-mathf_recip_f	mathf_recip	f	64	madd.s msub.s recip0.s
-mathf_rsqrt_approx_f	mathf_rsqrt_approx	f	64	msub.s rsqrt0.s
-mathf_rsqrt_f	mathf_rsqrt	f	64	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
-mul_f	mul (scalar)	f	64	-
-mul_i	mul (scalar)	i	64	-
-mul_s	mul (scalar)	s	64	-
-mul_x	mul (scalar)	x	64	-
-nlerp_f	nlerp	f	64	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
-nlerp_x	nlerp	x	64	calls __assert_func
-normalize_f	normalize (vec3)	f	64	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
-normalize_x	normalize (vec3)	x	64	calls __assert_func
-quat_mul_f	quat mul	f	64	madd.s msub.s
-quat_mul_x	quat mul	x	64	-
-scale_f	scale (vec3)	f	64	-
-scale_i	scale (vec3)	i	64	-
-scale_s	scale (vec3)	s	64	-
-scale_x	scale (vec3)	x	64	-
-sinf_f	sinf	f	64	calls _sinf
-slerp_f	slerp	f	64	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
-sqrtf_f	sqrtf	f	64	calls sqrtf
-transform_compute_matrix_f	transform compute_matrix	f	64	madd.s msub.s
-transform_compute_matrix_x	transform compute_matrix	x	64	calls mat4x_from_trs, memcpy
-trig_sin_i	trig_sin	i	64	-
-wrap_f	wrap	f	64	madd.s msub.s recip0.s; calls fmodf
-wrap_i	wrap	i	64	-
-wrap_x	wrap	x	64	-
+# ELF sha256=dd9a9c1ed26d7ce395cf3ec4be5bb0774f42799614d7a1fb644bcec3ef8dfcc1
+add_f	add (vec3)	f	64	vector	-
+add_i	add (vec3)	i	64	vector	-
+add_s	add (vec3)	s	64	vector	clamps
+add_x	add (vec3)	x	64	vector	-
+atan2f_f	atan2f	f	64	libm	calls atan2f
+convert_f_to_i	convert	f_to_i	64	vector	-
+convert_f_to_s	convert	f_to_s	64	vector	-
+convert_f_to_x	convert	f_to_x	64	vector	-
+convert_i_to_f	convert	i_to_f	64	vector	-
+convert_s_to_f	convert	s_to_f	64	vector	-
+convert_x_to_f	convert	x_to_f	64	vector	-
+cosf_f	cosf	f	64	libm	calls _cosf
+div_recip_f	div_recip	f	64	scalar	calls __divsf3
+div_rsqrt_f	div_rsqrt	f	64	scalar	calls __divsf3, sqrtf
+dot_f	dot (vec3)	f	64	vector	madd.s
+dot_f32_n256_f	dot_f32_n256	f	1	calibration	madd.s
+dot_i	dot (vec3)	i	64	vector	-
+dot_s	dot (vec3)	s	64	vector	-
+dot_x	dot (vec3)	x	64	vector	-
+lerp_f	lerp (vec3)	f	64	vector	madd.s
+lerp_i	lerp (vec3)	i	64	vector	-
+lerp_s	lerp (vec3)	s	64	vector	-
+lerp_x	lerp (vec3)	x	64	vector	-
+mat4_mul_f	mat4 mul	f	64	matrix	madd.s; calls memcpy
+mat4_mul_x	mat4 mul	x	64	matrix	clamps; calls memcpy
+mathf_recip_f	mathf_recip	f	64	scalar	madd.s msub.s
+mathf_rsqrt_approx_f	mathf_rsqrt_approx	f	64	scalar	msub.s
+mathf_rsqrt_f	mathf_rsqrt	f	64	scalar	madd.s msub.s; calls __divsf3, sqrtf
+maths_saturate_s	maths_saturate	s	64	scalar	clamps
+mathx_rsqrt_q30_x	mathx_rsqrt_q30	x	64	scalar	calls __assert_func
+mul_f	mul (scalar)	f	64	scalar	-
+mul_i	mul (scalar)	i	64	scalar	-
+mul_s	mul (scalar)	s	64	scalar	clamps
+mul_x	mul (scalar)	x	64	scalar	-
+nlerp_div_x	nlerp_div	x	64	quaternion	calls __divdi3, mathi_isqrt64_digits
+nlerp_f	nlerp	f	64	quaternion	madd.s msub.s; calls __divsf3, sqrtf
+nlerp_x	nlerp	x	64	quaternion	calls __assert_func
+normalize_div_x	normalize_div	x	64	vector	calls __udivdi3, mathi_isqrt64_digits
+normalize_f	normalize (vec3)	f	64	vector	madd.s msub.s; calls __divsf3, sqrtf
+normalize_x	normalize (vec3)	x	64	vector	calls __assert_func
+quat_mul_f	quat mul	f	64	quaternion	madd.s msub.s
+quat_mul_x	quat mul	x	64	quaternion	-
+saturate_plain_s	saturate_plain	s	64	scalar	-
+scale_f	scale (vec3)	f	64	vector	-
+scale_i	scale (vec3)	i	64	vector	-
+scale_s	scale (vec3)	s	64	vector	clamps
+scale_x	scale (vec3)	x	64	vector	-
+sinf_f	sinf	f	64	libm	calls _sinf
+slerp_f	slerp	f	64	quaternion	madd.s msub.s; calls __divsf3, sqrtf
+sqrtf_f	sqrtf	f	64	libm	calls sqrtf
+transform_compute_matrix_f	transform compute_matrix	f	64	matrix	madd.s msub.s
+transform_compute_matrix_x	transform compute_matrix	x	64	matrix	calls mat4x_from_trs, memcpy
+trig_sin_i	trig_sin	i	64	scalar	-
+wrap_f	wrap	f	64	scalar	madd.s msub.s; calls fmodf
+wrap_fmodf_f	wrap_fmodf	f	64	libm	calls fmodf
+wrap_i	wrap	i	64	scalar	-
+wrap_x	wrap	x	64	scalar	-

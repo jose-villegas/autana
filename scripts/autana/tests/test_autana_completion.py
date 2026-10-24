@@ -1,3 +1,4 @@
+"""autana console tab completion: commands, subcommands and names offered at each word."""
 import sys
 from pathlib import Path
 

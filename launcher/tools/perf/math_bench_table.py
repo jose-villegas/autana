@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update the math benchmark block; --from-elf records wrapper metadata and FPU ops."""
+"""Parse and render math benchmarks; --from-elf records wrapper metadata and FPU ops."""
 import argparse
 import hashlib
 import math
@@ -10,17 +10,13 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT / "launcher/tools" / folder) for folder in ("render", "quality", "perf")]
-from generated_blocks import replace_block
 from icount_gate import load_baseline
 from code_layout import LayoutError, find_tool, instructions, parse_objdump, run, skip_pools, symbols
 from capture import build_id
 
 DATA = ROOT / "docs/math/data"
-BASELINE = ROOT / "launcher/tools/quality/icount_baseline.txt"
-DOCUMENT = ROOT / "docs/math/Benchmark.md"
-BLOCK = "math-benchmark"
 PLACEHOLDER = "# Board capture pending: run autana suite math_perf --flash."
-FPU_OPS = ("madd.s", "msub.s", "recip0.s", "rsqrt0.s", "div0.s", "divn.s", "sqrt0.s")
+FPU_OPS = ("madd.s", "msub.s", "recip0.s", "rsqrt0.s", "div0.s", "divn.s", "sqrt0.s", "clamps")
 DEVICE_ONLY_FPU_OPS = ("recip0.s", "rsqrt0.s")
 DEVICE_ONLY_INSTRUCTION = "device-only instruction"
 # ESP-DSP docs/esp_bm_results.csv at 3c8ac0fdfec8: S3, ANSI, O2, N=256 (ESP-DSP Library Benchmarks).
@@ -31,14 +27,41 @@ CAPTURE_ROW = re.compile(
 SYMBOL = re.compile(r"^[0-9a-fA-F]+ <([^>]+)>:$")
 ROW_SYMBOL_PREFIX = "math_bench_"
 MANIFEST = "math_bench_manifest"
+ROW_FAMILIES = ("vector", "scalar", "quaternion", "matrix", "libm", "calibration")
 CALL_SYMBOL = re.compile(r"[\w.$@]+")
 
 
-def parse_capture(text, rows):
+def parse_target(text, execution="hardware"):
+    targets = set()
+    for line in text.splitlines():
+        if not line.startswith("MATHTARGET"):
+            continue
+        match = re.fullmatch(r"MATHTARGET target=(\w+) arch=([\w-]+)(?: core=([\w.-]+))? execution=(hardware|qemu|host)", line)
+        if not match:
+            raise ValueError(f"malformed math target: {line}")
+        targets.add(match.groups())
+    if len(targets) > 1:
+        raise ValueError("mixed math capture targets")
+    if not targets:
+        return None
+    target, architecture, core, observed = targets.pop()
+    if observed != execution:
+        raise ValueError(f"math target measurements require {execution} execution")
+    return f"{target} ({architecture}{', ' + core if core else ''})"
+
+
+def parse_capture(text, rows, allow_missing=False):
     if text.rstrip("\r\n") == PLACEHOLDER:
         return None, {}
-    build = build_id(text)
-    expected = {(label, kind): (key, ops) for key, label, kind, ops in rows}
+    provenance = [line for line in text.splitlines() if line.startswith("BUILD_ID")]
+    if any("scope=" in line for line in provenance):
+        scoped = [re.fullmatch(r"BUILD_ID=([\w.-]+) scope=(bench|error)", line) for line in provenance]
+        if len(scoped) != 2 or any(match is None for match in scoped) or {match[2] for match in scoped} != {"bench", "error"}:
+            raise ValueError("expected one bench and one error build id")
+        build = build_id(next("BUILD_ID=" + match[1] for match in scoped if match[2] == "bench"))
+    else:
+        build = build_id(text)
+    expected = {(label, kind): (key, ops) for key, label, kind, ops, family in rows}
     measured = {}
     for line in text.splitlines():
         if not line.startswith("MATHBENCH"):
@@ -53,7 +76,7 @@ def parse_capture(text, rows):
         if key in measured or int(ops) != count or any(float(value) <= 0 for value in values):
             raise ValueError(f"invalid or duplicate measurement: {line}")
         measured[key] = tuple(map(float, values))
-    if len(measured) != len(rows):
+    if not allow_missing and len(measured) != len(rows):
         raise ValueError("missing capture rows")
     return build, measured
 
@@ -104,12 +127,14 @@ def parse_disassembly(text, rows, resolve=None):
 
 def parse_row(line):
     fields = line.split("\t")
-    if len(fields) != 4:
-        raise ValueError(f"expected four tab-separated row fields: {line}")
-    key, label, kind, ops = fields
+    if len(fields) != 5:
+        raise ValueError(f"expected five tab-separated row fields: {line}")
+    key, label, kind, ops, family = fields
+    if family not in ROW_FAMILIES:
+        raise ValueError(f"unknown row family: {family}")
     if not re.fullmatch(r"\w+", key) or not label or not re.fullmatch(r"\w+", kind) or not ops.isdecimal() or int(ops) <= 0:
         raise ValueError(f"invalid row metadata: {line}")
-    return key, label, kind, int(ops)
+    return key, label, kind, int(ops), family
 
 
 def read_fpu(path):
@@ -117,8 +142,8 @@ def read_fpu(path):
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line or line.startswith("#"):
             continue
-        if line.count("\t") != 4:
-            raise ValueError(f"expected five tab-separated FPU fields: {line}")
+        if line.count("\t") != 5:
+            raise ValueError(f"expected six tab-separated FPU fields: {line}")
         metadata, ops = line.rsplit("\t", 1)
         row = parse_row(metadata)
         direct, separator, calls = ops.partition("calls ")
@@ -130,7 +155,7 @@ def read_fpu(path):
             raise ValueError(f"invalid FPU row: {line}")
         rows.append(row)
         result[row[0]] = ops
-    if not rows or len({(label, kind) for _, label, kind, _ in rows}) != len(rows):
+    if not rows or len({(label, kind) for _, label, kind, _, family in rows}) != len(rows):
         raise ValueError("missing or duplicate FPU rows")
     return rows, result
 
@@ -139,9 +164,9 @@ def parse_errors(text):
     result = {}
     pattern = re.compile(
         rf"MATHERROR name=(.+) type=(\w+) max=({NUMBER}(?:[eE][+-]?[0-9]+)?) "
-        r"unit=(ulp|relative) method=(proof|sweep)")
+        r"unit=(ulp|relative|lsb) method=(proof|sweep)(?: inputs=[0-9]+)?")
     for line in text.splitlines():
-        if not line.startswith("MATHERROR"):
+        if not line.startswith("MATHERROR "):
             continue
         match = pattern.fullmatch(line)
         if match is None:
@@ -156,36 +181,83 @@ def parse_errors(text):
     return result
 
 
-def render_table(rows, measured, baseline, fpu, build=None, errors=None):
+def parse_bins(text):
+    result = {}
+    number = rf"{NUMBER}(?:[eE][+-]?[0-9]+)?"
+    pattern = re.compile(rf"MATHERRORBIN name=(.+) type=(\w+) x=({number}) max=({number}) unit=(ulp|relative|lsb)(?: axis=(?:period|phase|range))?")
+    for line in text.splitlines():
+        if not line.startswith("MATHERRORBIN"):
+            continue
+        match = pattern.fullmatch(line)
+        if match is None:
+            raise ValueError(f"malformed error bin: {line}")
+        label, kind, x, maximum, unit = match.groups()
+        x, maximum = float(x), float(maximum)
+        bins = result.setdefault((label, kind), [])
+        if not math.isfinite(x) or not math.isfinite(maximum) or any(row[0] == x for row in bins):
+            raise ValueError(f"nonfinite or duplicate error bin: {line}")
+        if bins and bins[0][2] != unit:
+            raise ValueError(f"inconsistent error bin unit: {line}")
+        bins.append((x, maximum, unit))
+    return result
+
+
+def parse_bin_axes(text):
+    parse_bins(text)
+    result = {}
+    for name, kind, axis in re.findall(r"^MATHERRORBIN name=(.+) type=(\w+) .* axis=(period|phase|range)$", text, re.M):
+        identity = name, kind
+        if identity in result and result[identity] != axis:
+            raise ValueError(f"inconsistent error bin axis: {identity}")
+        result[identity] = axis
+    return result
+
+
+def parse_input_counts(text):
+    parse_errors(text)
+    return {(name, kind): int(count) for name, kind, count in re.findall(
+        r"^MATHERROR name=(.+) type=(\w+) .* inputs=([0-9]+)$", text, re.M)}
+
+
+def render_table(rows, measured, baseline, fpu, links=None, errors=None, error_links=None):
     keys = {key for key, *_ in rows}
     missing = {name for name in baseline if name.startswith("math_") and name[5:] not in keys}
     if missing:
         raise ValueError(f"baseline rows missing from table: {sorted(missing)}")
-    lines = [f"Board build: `{build}`." if build else "Board capture pending; board columns remain unmeasured.", "",
-             "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |",
-             "|---|---|---:|---:|---:|---:|---:|---|---|"]
-    bounds = errors or {}
-    unmatched = set(bounds) - {(label, kind) for _, label, kind, _ in rows}
-    if unmatched:
-        raise ValueError(f"error measurements match no row: {sorted(unmatched)}")
-    for key, label, kind, ops in rows:
-        qemu = f"{baseline['math_' + key] / ops:.1f}" if "math_" + key in baseline else "-"
-        if set(fpu[key].partition(";")[0].split()) & set(DEVICE_ONLY_FPU_OPS):
-            qemu = DEVICE_ONLY_INSTRUCTION
-        values = measured.get(key)
-        costs = [f"{value:.1f}" for value in values] if values else ["-"] * 3
-        ratio = f"{values[0] / values[2]:.1f}" if values else "-"
-        lines.append("| " + " | ".join([label, kind, *costs, qemu, ratio, fpu[key], bounds.get((label, kind), "-")]) + " |")
-    reference = ESP_DSP_DOTPROD_F32_N256_ANSI_O2_CYCLES
-    calibration = measured.get("dot_f32_n256_f")
-    warm = f"{calibration[0]:.1f}" if calibration else "pending"
-    ratio = f"{calibration[0] / reference:.1%}" if calibration else "pending"
-    lines.extend(["", f"ESP-DSP calibration: measured warm {warm} cycles/call; ANSI O2 reference {reference} cycles/call; measured/reference {ratio}."])
+    lines = []
+    for family in ROW_FAMILIES:
+        members = [row for row in rows if row[4] == family]
+        if not members:
+            continue
+        if lines:
+            lines.append("")
+        lines.extend([f"#### {family.capitalize()}", "",
+                      "| function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |",
+                      "|---|---|---:|---:|---:|---:|---:|---|---|"])
+        for key, label, kind, ops, _ in members:
+            qemu = f"{baseline['math_' + key] / ops:.1f}" if "math_" + key in baseline else "-"
+            if set(fpu[key].partition(";")[0].split()) & set(DEVICE_ONLY_FPU_OPS):
+                qemu = DEVICE_ONLY_INSTRUCTION
+            values = measured.get(key)
+            costs = [f"{value:.1f}" for value in values] if values else ["-"] * 3
+            ratio = f"{values[0] / values[2]:.1f}" if values else "-"
+            function = f"[{label}]({links[key]})" if links and key in links else label
+            identity = label, kind
+            error = (errors or {}).get(identity, "-")
+            if key in (error_links or {}):
+                error = f"[fast paths]({error_links[key]})"
+            lines.append("| " + " | ".join([function, kind, *costs, qemu, ratio, fpu[key], error]) + " |")
+        if family == "calibration":
+            reference = ESP_DSP_DOTPROD_F32_N256_ANSI_O2_CYCLES
+            calibration = measured.get("dot_f32_n256_f")
+            warm = f"{calibration[0]:.1f}" if calibration else "pending"
+            ratio = f"{calibration[0] / reference:.1%}" if calibration else "pending"
+            lines.extend(["", f"ESP-DSP calibration: measured warm {warm} cycles/call; ANSI O2 reference {reference} cycles/call; measured/reference {ratio}."])
     return "\n".join(lines)
 
 
 def elf_rows(objdump, elf, located):
-    address, size = next(((address, size) for address, (name, size) in located.items() if name == MANIFEST), (None, None))
+    address, size = next(((record.address, record.size) for record in located if record.name == MANIFEST), (None, None))
     if address is None:
         raise ValueError("missing ELF row manifest")
     dump = run(objdump, "-s", f"--start-address={address}", f"--stop-address={address + size}", str(elf))
@@ -202,39 +274,27 @@ def elf_rows(objdump, elf, located):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--capture", type=Path, default=DATA / "math_bench_capture.txt")
-    parser.add_argument("--error-capture", type=Path, help="math_numbers capture with scalar proofs and component sweeps")
-    parser.add_argument("--baseline", type=Path, default=BASELINE)
     parser.add_argument("--fpu", type=Path, default=DATA / "math_bench_fpu_ops.txt")
-    parser.add_argument("--from-elf", type=Path)
+    parser.add_argument("--from-elf", type=Path, required=True)
     parser.add_argument("--objdump", help="IDF Xtensa objdump executable")
     parser.add_argument("--nm", help="IDF Xtensa nm executable")
-    parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
     try:
-        if args.from_elf:
-            objdump = args.objdump or find_tool("objdump")
-            located = symbols(args.nm or find_tool("nm"), args.from_elf)
-            rows = elf_rows(objdump, args.from_elf, located)
-            bounds = {name: address + size for address, (name, size) in located.items()}
-            missing = [ROW_SYMBOL_PREFIX + key for key, *_ in rows if ROW_SYMBOL_PREFIX + key not in bounds]
-            if missing:
-                raise ValueError(f"missing wrapper symbols: {missing}")
-            def resolve(symbol, body):
-                decoded, again = instructions(objdump, args.from_elf, symbol, bounds[symbol])
-                return [ins for ins in decoded if ins[0] < bounds[symbol]], again
-            fpu = parse_disassembly(run(objdump, "-d", str(args.from_elf)), rows, resolve)
-            lines = ["# Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.",
-                     "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest()]
-            lines.extend("\t".join(map(str, (*row, fpu[row[0]]))) for row in sorted(rows))
-            args.fpu.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
-        else:
-            rows, fpu = read_fpu(args.fpu)
-            build, measured = parse_capture(args.capture.read_text(encoding="utf-8"), rows)
-            changed = replace_block(DOCUMENT, BLOCK, render_table(rows, measured, load_baseline(args.baseline), fpu, build,
-                                                 parse_errors((args.error_capture or args.capture).read_text(encoding="utf-8"))),
-                                    check=args.check, command="python launcher/tools/perf/math_bench_table.py --check")
-            return int(args.check and changed)
+        objdump = args.objdump or find_tool("objdump")
+        located = symbols(args.nm or find_tool("nm"), args.from_elf, records=True)
+        rows = elf_rows(objdump, args.from_elf, located)
+        bounds = {record.name: record.address + record.size for record in located if record.size is not None}
+        missing = [ROW_SYMBOL_PREFIX + key for key, *_ in rows if ROW_SYMBOL_PREFIX + key not in bounds]
+        if missing:
+            raise ValueError(f"missing wrapper symbols: {missing}")
+        def resolve(symbol, body):
+            decoded, again = instructions(objdump, args.from_elf, symbol, bounds[symbol])
+            return [ins for ins in decoded if ins[0] < bounds[symbol]], again
+        fpu = parse_disassembly(run(objdump, "-d", str(args.from_elf)), rows, resolve)
+        lines = ["# Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.",
+                 "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest()]
+        lines.extend("\t".join(map(str, (*row, fpu[row[0]]))) for row in sorted(rows))
+        args.fpu.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
     except (OSError, ValueError, RuntimeError, LayoutError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"math_bench_table: {error}\n")
     return 0

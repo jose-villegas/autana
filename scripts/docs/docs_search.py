@@ -407,6 +407,14 @@ class Index:
     def unknown_terms(self, terms):
         return [t for t in terms if not self.frequency.get(t)]
 
+    def spellings(self):
+        """{stem: a word the documents spell it with}, built only when a word matched nothing."""
+        words = {}
+        for section in self.sections:
+            for word in WORD.findall(" ".join((section.title, *section.headings, section.body))):
+                words.setdefault(stem(word.lower()), word.lower())
+        return words
+
     def find_section(self, reference):
         """PATH:LINE (the section holding that line) or PATH#heading words."""
         path, _, where = reference.partition("#") if "#" in reference else reference.rpartition(":")
@@ -499,6 +507,9 @@ def breadcrumb(section):
 def answer(index, question, top=3, more=5, budget=1800):
     hits, terms = index.search(question, limit=top + more)
     unknown = index.unknown_terms(terms)
+    words = index.spellings() if unknown else {}
+    nearest = {term: [words[n] for n in near] for term in unknown
+               if (near := query_log.nearest(term, words))}
     weights = ([0.5, 0.3, 0.2] + [0.15] * max(top - 3, 0))[:max(top, 0)]
     shares = [w / sum(weights) for w in weights]
     results = []
@@ -510,7 +521,7 @@ def answer(index, question, top=3, more=5, budget=1800):
     best = hits[0] if hits else None
     weak = not best or (best.coverage < 0.5
                         and (best.similarity is None or best.similarity < WEAK_SIMILARITY))
-    return {"question": question, "terms": terms, "unknown": unknown, "weak": weak,
+    return {"question": question, "terms": terms, "unknown": unknown, "nearest": nearest, "weak": weak,
             "similarity": None if not best or best.similarity is None else round(best.similarity, 3),
             "semantic": bool(index.vectors), "results": results,
             "more": [{"location": location(h.section), "heading": breadcrumb(h.section)}
@@ -522,7 +533,9 @@ def format_answer(reply):
     if not reply["semantic"]:
         lines.append("exact words only; `python scripts/docs/docs_llama.py setup` adds meaning")
     if reply["unknown"]:
-        lines.append("no document uses: " + ", ".join(reply["unknown"]))
+        lines.append("no document uses: " + ", ".join(
+            term + (f" (nearest: {', '.join(reply['nearest'][term])})" if term in reply["nearest"] else "")
+            for term in reply["unknown"]))
     if not reply["results"]:
         lines.append("nothing matched; try other words, or --outline a likely document")
         return "\n".join(lines)
@@ -622,45 +635,13 @@ def evaluate(index, depth=10):
     return ranks
 
 
-def scores(ranks):
-    """Mean reciprocal rank over the rows, and the share found first and in the top three."""
-    count = max(len(ranks), 1)
-    return {"rows": len(ranks),
-            "mrr": round(sum(1 / r for _, r in ranks if r) / count, 3),
-            "top1": round(sum(1 for _, r in ranks if r == 1) / count, 3),
-            "top3": round(sum(1 for _, r in ranks if r and r <= 3) / count, 3)}
-
-
-EVAL_HISTORY = "eval/history.jsonl"
-
-
-def eval_history():
-    return query_log.log_dir() / EVAL_HISTORY
-
-
 def run_eval(index):
     started = time.perf_counter()
     ranks = evaluate(index)
     for question, rank in ranks:
         print(f"{rank or '-':>2}  {question}")
-    result = {"time": query_log.iso(), "suite": "docs", "mode": "hybrid" if index.vectors else "lexical",
-              "sections": len(index.sections), **scores(ranks),
-              "seconds": round(time.perf_counter() - started, 1)}
-    history = eval_history()
-    try:
-        earlier = [json.loads(line) for line in history.read_text(encoding="utf-8").splitlines()]
-    except (OSError, ValueError):
-        earlier = []
-    print(f"{result['mode']}: MRR {result['mrr']:.3f}, top-1 {result['top1']:.0%}, "
-          f"top-3 {result['top3']:.0%} of {result['rows']} questions in {result['seconds']} s")
-    # Every checkout shares the history; only a run over the same set compares.
-    previous = next((e for e in reversed(earlier) if e.get("suite") == "docs"
-                     and e.get("mode") == result["mode"] and e.get("rows") == result["rows"]), None)
-    if previous:
-        print(f"last {previous['time'][:10]}: MRR {previous['mrr']:.3f}, top-3 {previous['top3']:.0%}"
-              f" of {previous['rows']}")
-    query_log.append(EVAL_HISTORY, result)
-    return result
+    return query_log.keep_score("docs", "hybrid" if index.vectors else "lexical", ranks, started,
+                                sections=len(index.sections))
 
 
 def repo_root():
@@ -668,11 +649,11 @@ def repo_root():
     return Path(__file__).resolve().parents[2]
 
 
-def log_reply(kind, reply, started):
-    query_log.record("docs", kind, reply["question"], started=started,
-                     hits=[(r["location"], r["score"]) for r in reply["results"]],
-                     similarity=reply["similarity"], semantic=reply["semantic"],
-                     weak=reply["weak"], unknown=reply["unknown"])
+def note_reply(call, reply):
+    call.hits = [(r["location"], r["score"]) for r in reply["results"]]
+    call.weak = reply["weak"]
+    call.fields.update(similarity=reply["similarity"], semantic=reply["semantic"],
+                       unknown=reply["unknown"])
 
 
 def main(argv=None, root=None):
@@ -700,41 +681,45 @@ def main(argv=None, root=None):
     except autana_config.ConfigError as error:
         print(f"docs_search: {error}", file=sys.stderr)
         return 1
-    started = time.perf_counter()
-    index = Index(root or repo_root(), semantic=not args.lexical)
     if args.eval:
-        run_eval(index)
+        run_eval(Index(root or repo_root(), semantic=not args.lexical))
         return 0
-    if args.outline:
-        text = format_outline(index, args.outline)
-        query_log.record("docs", "outline", args.outline, started=started, weak=not text)
-        print(text or f"no document {args.outline}")
-        return 0 if text else 1
-    if args.section:
-        section = index.find_section(args.section)
-        query_log.record("docs", "section", args.section, started=started, weak=not section)
-        if not section:
-            print(f"no section {args.section}; --outline PATH lists them")
-            return 1
-        print(format_section(index, section, args.deep))
-        return 0
-    if not args.question:
+    question = " ".join(args.question)
+    kind, query = (("outline", args.outline) if args.outline else ("section", args.section) if args.section
+                   else ("ask", question) if args.ask else ("search", question))
+    if not query:
         parser.print_usage()
         return 2
-    if args.ask:
-        if not docs_llama.installed("chat") or not docs_llama.start():
-            print("no chat model: python scripts/docs/docs_llama.py setup --chat")
-            return 1
-        text, reply = ask(index, " ".join(args.question),
-                          stream=lambda piece: print(piece, end="", flush=True))
-        log_reply("ask", reply, started)
-        print("\n\nsources:")
-        print("\n".join(f"  [{n}] {r['location']}  {r['heading']}"
-                        for n, r in enumerate(reply["results"], 1)))
+    if kind == "ask" and (not docs_llama.installed("chat") or not docs_llama.start()):
+        print("no chat model: python scripts/docs/docs_llama.py setup --chat")
+        return 1
+    # The index is built inside the lookup, so its time counts as the lookup's.
+    with query_log.lookup("docs", kind, query) as call:
+        return respond(call, Index(root or repo_root(), semantic=not args.lexical), kind, query, args)
+
+
+def respond(call, index, kind, query, args):
+    if kind == "outline":
+        text = format_outline(index, query)
+        call.weak = not text
+        call.print(text or f"no document {query}")
+        return 0 if text else 1
+    if kind == "section":
+        section = index.find_section(query)
+        call.weak = not section
+        call.print(format_section(index, section, args.deep) if section
+                   else f"no section {query}; --outline PATH lists them")
+        return 0 if section else 1
+    if kind == "ask":
+        _, reply = ask(index, query, stream=lambda piece: call.print(piece, end="", flush=True))
+        note_reply(call, reply)
+        call.print("\n\nsources:")
+        call.print("\n".join(f"  [{n}] {r['location']}  {r['heading']}"
+                             for n, r in enumerate(reply["results"], 1)))
         return 0
-    reply = answer(index, " ".join(args.question), args.top, args.more, args.budget)
-    log_reply("search", reply, started)
-    print(json.dumps(reply, indent=1) if args.json else format_answer(reply))
+    reply = answer(index, query, args.top, args.more, args.budget)
+    note_reply(call, reply)
+    call.print(json.dumps(reply, indent=1) if args.json else format_answer(reply))
     return 0
 
 
