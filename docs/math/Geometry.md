@@ -174,7 +174,7 @@ The integer touch reaches `right−1`; segment markers show the first hit, inclu
 ## iso_surface
 
 The surface where a sampled field crosses a level, as triangles, by naive
-surface nets<sup>[[91]](../Citations.md#91)</sup>: one vertex per cell the surface
+surface nets<sup>[[92]](../Citations.md#92)</sup>: one vertex per cell the surface
 passes through, at the mean of its edge crossings, and a quad across every
 crossing sample edge.
 
