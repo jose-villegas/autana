@@ -24,7 +24,7 @@ model matrix and fixed-point pixel projection; the float projection helpers in
 and float near clipping; `math/linear/projectx.h` owns fixed near clipping
 without prescribing camera units. Render owns snapping and line-unit scaling.
 
-Bulk memory comes from the [app arena](../Building-an-App.md#app-memory)
+Bulk memory comes from the [app arena](../firmware/Building-an-App.md#app-memory)
 at entry. Internal SRAM is the scarce resource for hot buffers; PSRAM can
 hold retained pictures and content. Buffer placement must be judged from
 the final device image, including the diagnostics build's suite memory.

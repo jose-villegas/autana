@@ -51,7 +51,7 @@ tile_example(tile_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-tile-states sha256=98219f420cf217a32928cf37b1a8341e4e6e9ce21fb41623e62ace53dbe49e0d -->
@@ -83,4 +83,4 @@ return true.
 
 - [Tile with an icon](tile_icon.md)
 - [Toggle](toggle.md): on or off without a row of choices
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame
