@@ -9,7 +9,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "math/motion/spring_line.h"
+#include "physics/spring/spring_line.h"
 
 #define COLUMNS   200
 #define CENTRE    100

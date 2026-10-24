@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-"""Fail when docs/math/*.md and the math headers disagree about what exists.
+"""Fail when a package's pages (docs/<package>/*.md) and its headers disagree about what exists.
 
     python scripts/gates/check_math_docs.py [--root ROOT]
+
+Every package with a docs/<package>/README.md is checked: the index links
+every page, each folder of include/<package>/ has its page (spring/ becomes
+Spring.md), each header's public types and functions are named on its
+folder's page, and no inline formula is too long. Math's pages carry the
+template families, so math's names follow the rules below instead.
 
 Each family's folder names its reference page (linear/ becomes Linear.md).
 The index links every page. Motion headers' public types and functions must
@@ -165,17 +171,12 @@ def instantiations(root):
     return family_of, functions, patterns, names, standalone, problems
 
 
-def check(root):
-    root = pathlib.Path(root)
-    FAMILY_DIRS = family_dirs(root)
-    FAMILIES = tuple(FAMILY_DIRS)
-    pages = {p.relative_to(root): read(p) for p in sorted((root / PAGE.parent).glob("*.md"))}
-    # Benchmarks also cite platform APIs; their formulas and index link are still checked.
-    page = "\n".join(text for path, text in pages.items() if path.name != "Benchmark.md")
-    family_of, functions, patterns, swizzle_names, standalone, problems = instantiations(root)
+def page_problems(pages, index):
+    """The index's missing links and every page's overlong inline formulas."""
+    problems = []
     for path, text in pages.items():
-        if path != PAGE and not re.search(r"\]\(" + re.escape(path.name) + r"(?:#[^)]*)?\)", pages[PAGE]):
-            problems.append("%s: index lacks a link to %s" % (PAGE.as_posix(), path.name))
+        if path != index and not re.search(r"\]\(" + re.escape(path.name) + r"(?:#[^)]*)?\)", pages[index]):
+            problems.append("%s: index lacks a link to %s" % (index.as_posix(), path.name))
         for line_number, line in enumerate(FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), text).splitlines(), start=1):
             for quoted_formula, code_delimiter, plain_formula in INLINE_MATH.findall(line):
                 formula = quoted_formula or plain_formula
@@ -185,6 +186,45 @@ def check(root):
                         "split the formula into one span per step joined with <br>"
                         % (path.as_posix(), line_number, len(formula), MAX_INLINE_MATH_CHARS)
                     )
+    return problems
+
+
+def package_problems(root):
+    """Every package but math with a docs/<package>/README.md: links, a page per folder, names, formulas."""
+    problems = []
+    for docs in sorted((root / "docs").glob("*/README.md")):
+        name = docs.parent.name
+        include = root / "launcher/packages" / name / "include" / name
+        if name == MATH.parts[2] or not include.is_dir():
+            continue
+        index = docs.relative_to(root)
+        pages = {p.relative_to(root): read(p) for p in sorted(docs.parent.glob("*.md"))}
+        problems += page_problems(pages, index)
+        for header in sorted(include.rglob("*.h")):
+            if header.parent == include:
+                problems.append("%s sits in no folder, so it has no page" % header.relative_to(root).as_posix())
+                continue
+            folder = header.relative_to(include).parts[0]
+            path = index.parent / (folder.capitalize() + ".md")
+            if path not in pages:
+                problems.append("%s: %s/ has no page %s" % (index.as_posix(), folder, path.name))
+                continue
+            text = read(header)
+            for symbol in HAND_WRITTEN.findall(text) + PUBLIC_TYPE.findall(text):
+                if symbol not in pages[path]:
+                    problems.append("%s: the page does not name %s (%s)" % (path.as_posix(), symbol, header.name))
+    return problems
+
+
+def check(root):
+    root = pathlib.Path(root)
+    FAMILY_DIRS = family_dirs(root)
+    FAMILIES = tuple(FAMILY_DIRS)
+    pages = {p.relative_to(root): read(p) for p in sorted((root / PAGE.parent).glob("*.md"))}
+    # Benchmarks also cite platform APIs; their formulas and index link are still checked.
+    page = "\n".join(text for path, text in pages.items() if path.name != "Benchmark.md")
+    family_of, functions, patterns, swizzle_names, standalone, problems = instantiations(root)
+    problems += page_problems(pages, PAGE)
 
     for family in FAMILIES:
         template = root / FAMILY_DIRS[family] / (family + "_template.h")
@@ -235,7 +275,7 @@ def check(root):
     for name in sorted(set(PAGE_CALL.findall(FENCE.sub("", page)))):
         if name not in valid:
             problems.append("%s names %s(, which no header defines" % (PAGE.as_posix(), name))
-    return problems
+    return problems + package_problems(root)
 
 
 def main(argv):
@@ -245,7 +285,7 @@ def main(argv):
     problems = check(args.root)
     for p in problems:
         print(p)
-    print("%d math documentation problem(s)" % len(problems))
+    print("%d package documentation problem(s)" % len(problems))
     return 1 if problems else 0
 
 

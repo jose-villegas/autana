@@ -418,5 +418,55 @@ class Swizzles(unittest.TestCase):
         self.assertTrue(any("vec2 has 2" in p for p in swizzle_problems(vec2_n=3)))
 
 
+SPRING_HEADER = "typedef struct {\n    int count;\n} spring_t;\nvoid spring_step(spring_t* s);\n"
+
+
+def package_problems(files):
+    """The per-package rule's problems over a tree of `files`, {path: text}."""
+    with tempfile.TemporaryDirectory() as d:
+        root = pathlib.Path(d)
+        for path, text in files.items():
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_text(text, encoding="utf-8")
+        return check_math_docs.package_problems(root)
+
+
+class PackageDocs(unittest.TestCase):
+    TREE = {
+        "launcher/packages/physics/include/physics/spring/spring.h": SPRING_HEADER,
+        "docs/physics/README.md": "[Spring](Spring.md)\n",
+        "docs/physics/Spring.md": "`spring_t` and `spring_step`\n",
+    }
+
+    def test_a_package_whose_pages_name_every_header_passes(self):
+        self.assertEqual([], package_problems(self.TREE))
+
+    def test_each_broken_rule_is_named(self):
+        rows = (
+            ("a name missing from its folder's page", {"docs/physics/Spring.md": "`spring_t`\n"},
+             "docs/physics/Spring.md: the page does not name spring_step (spring.h)"),
+            ("a type missing from its folder's page", {"docs/physics/Spring.md": "`spring_step`\n"},
+             "docs/physics/Spring.md: the page does not name spring_t (spring.h)"),
+            ("a folder with no page", {"launcher/packages/physics/include/physics/fluid/flip.h": "#pragma once\n"},
+             "docs/physics/README.md: fluid/ has no page Fluid.md"),
+            ("a page the index does not link", {"docs/physics/Fluid.md": "nothing\n"},
+             "docs/physics/README.md: index lacks a link to Fluid.md"),
+            ("a header outside a folder", {"launcher/packages/physics/include/physics/loose.h": "#pragma once\n"},
+             "launcher/packages/physics/include/physics/loose.h sits in no folder, so it has no page"),
+            ("an overlong formula", {"docs/physics/Spring.md": "`spring_t` `spring_step` $" + "x" * 111 + "$\n"},
+             "docs/physics/Spring.md:1: inline math has 111 characters"),
+        )
+        for why, change, expected in rows:
+            with self.subTest(why=why):
+                problems = package_problems({**self.TREE, **change})
+                self.assertTrue(any(p.startswith(expected) for p in problems), problems)
+
+    def test_a_docs_folder_without_a_package_and_a_package_without_docs_are_not_checked(self):
+        self.assertEqual([], package_problems({
+            "docs/firmware/README.md": "no package\n",
+            "launcher/packages/name_hash/include/name_hash/name_hash.h": SPRING_HEADER,
+        }))
+
+
 if __name__ == "__main__":
     unittest.main()
