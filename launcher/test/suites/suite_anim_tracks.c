@@ -16,6 +16,8 @@
 #include "test_pack.h"
 #include "unity.h"
 #ifndef DEVICE_BUILD
+#include "../anim_examples/camera_field.c"
+#include "../anim_examples/track.c"
 #include "asset/asset_file.h"
 #endif
 enum {
@@ -393,6 +395,58 @@ check_reference_row(const anim_tracks_t* tracks, const uint8_t* row) {
 }
 
 static void
+test_doc_track_advances_and_samples(void) {
+    asset_pack_t pack;
+    void* buffer = NULL;
+    open_probe(&pack, &buffer);
+    track_example_t s = {0};
+    TEST_ASSERT_TRUE(track_example_start(&s, &pack));
+
+    static const struct {
+        uint32_t step_ms;
+        float seconds;
+        float position[3];
+    } frames[] = {{500, 0.5F, {2, -1, 0.5F}}, {500, 1, {4, -2, 1}}, {2500, 0.5F, {2, -1, 0.5F}}};
+
+    for (size_t i = 0; i < sizeof frames / sizeof frames[0]; i++) {
+        track_example(&s, frames[i].step_ms);
+        TEST_ASSERT_EQUAL_FLOAT(frames[i].seconds, anim_playhead_seconds(&s.playhead));
+        const size_t width = sizeof frames[i].position / sizeof frames[i].position[0];
+        for (size_t axis = 0; axis < width; axis++) {
+            TEST_ASSERT_FLOAT_WITHIN(2e-5F, frames[i].position[axis], s.out[axis]);
+        }
+        TEST_ASSERT_EQUAL_INT(width, s.move.width);
+    }
+    pack.count = 0;
+    TEST_ASSERT_FALSE(track_example_start(&s, &pack));
+    asset_file_release(buffer);
+}
+
+static void
+test_doc_camera_field_samples_fov(void) {
+    asset_pack_t pack;
+    void* buffer = NULL;
+    open_probe(&pack, &buffer);
+    anim_tracks_t clip;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&pack, "probe", &clip));
+    anim_track_t lens;
+    float fov[ANIM_WIDTH_MAX];
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, camera_field_example_start(&clip, &lens));
+    camera_field_example(&lens, 0, fov);
+    const float first_half_fov = 0.6F / 2;
+    TEST_ASSERT_FLOAT_WITHIN(2e-5F, tanf(first_half_fov), fov[0]);
+    const float first = fov[0];
+    const float later_seconds = 0.8F;
+    const float later_half_fov = 1.2F / 2;
+    camera_field_example(&lens, later_seconds, fov);
+    TEST_ASSERT_TRUE(first != fov[0]);
+    TEST_ASSERT_FLOAT_WITHIN(2e-5F, tanf(later_half_fov), fov[0]);
+    clip.count = 0;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, camera_field_example_start(&clip, &lens));
+    asset_file_release(buffer);
+}
+
+static void
 test_the_probe_clip_samples_as_the_python_sampler(void) {
     asset_pack_t pack;
     void* buffer = NULL;
@@ -437,6 +491,8 @@ suite_anim_tracks(void) {
     RUN_TEST(test_version_and_bounds);
     RUN_TEST(test_every_clip_in_the_boot_clip_s_pack_opens);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_doc_track_advances_and_samples);
+    RUN_TEST(test_doc_camera_field_samples_fov);
     RUN_TEST(test_the_probe_clip_samples_as_the_python_sampler);
     RUN_TEST(test_a_missing_clip_and_an_entry_of_another_type_are_told_apart);
 #endif

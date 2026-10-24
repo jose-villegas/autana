@@ -1,23 +1,18 @@
-"""Put the face examples into the UI pages: each example file whole, and each
-control's states table with the renders ui_examples_render_host.sh made.
+"""Write UI example render and state tables from scene captures.
 
-    python launcher/tools/render/ui_examples_doc.py [--check]
     python launcher/tools/render/ui_examples_doc.py --renders DIR --out OUT
 
-The first form writes block ui-<name>-example, wherever a document owns it,
-from ui_examples/<name>.c or ui_examples/screens/<name>.c, with the name's
-underscores as hyphens; --check only reports a stale block. The second turns
-the scene's results in DIR into OUT/ui/*.png, and OUT/tables/ui-<name>-renders.md
-(a column per orientation, named by the pinned label) and ui-<name>-states.md,
-for render_doc_images.sh.
-A state render with the same pixels as rest is not kept: its row says so.
+Identical state renders share the rest image. Tables are written under OUT/tables.
+State tables require an owned ui-<name>-states block.
 """
 import argparse
 import os
 import pathlib
 import sys
 
-from generated_blocks import block_owners, replace_block
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "gen"))
+from examples_doc import block_name
+from generated_blocks import block_owners
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
@@ -26,32 +21,15 @@ BASELINE = HERE / "scenes" / "ui_examples_render_baseline.txt"
 IMAGES = ROOT / "docs" / "images" / "ui"
 # The scene's rest renders by label suffix, and the column each one heads.
 ORIENTATIONS = {"": "Portrait", "-landscape": "Landscape"}
-CHECK = "python launcher/tools/render/ui_examples_doc.py --check"
 
 
 def block(name, kind):
-    """A block name for example `name`: block names take hyphens, not underscores."""
-    return f"ui-{name.replace('_', '-')}-{kind}"
+    return block_name("ui", name, kind)
 
 
 def examples():
     """Control examples and screen examples, by name."""
     return sorted(EXAMPLES.glob("*.c")), sorted((EXAMPLES / "screens").glob("*.c"))
-
-
-def write_examples(check):
-    owners = block_owners(ROOT)
-    controls, screens = examples()
-    changed = False
-    for path in controls + screens:
-        name = block(path.stem, "example")
-        if name not in owners:
-            raise ValueError(f"no document owns generated block {name} for {path.relative_to(ROOT).as_posix()}")
-        body = "```c\n" + path.read_text(encoding="utf-8").replace("\r\n", "\n").rstrip("\n") + "\n```"
-        different = replace_block(ROOT / owners[name], name, body, check, CHECK)
-        print(f"{'changed' if different else 'same'} {owners[name]}#{name}")
-        changed |= different
-    return changed
 
 
 def pinned():
@@ -110,6 +88,8 @@ def write_renders(renders, out):
         (out / "tables" / f"{table}.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
     for path in controls:
         name = path.stem
+        if block(name, "states") not in owners:
+            continue
         images = image_dir(owners, block(name, "states"))
         rest = (renders / f"{name}.bmp").read_bytes()
         rows = ["| State | Render | Fires |", "|---|---|---|"]
@@ -127,17 +107,12 @@ def write_renders(renders, out):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--check", action="store_true")
-    parser.add_argument("--renders", type=pathlib.Path)
-    parser.add_argument("--out", type=pathlib.Path)
+    parser.add_argument("--renders", type=pathlib.Path, required=True)
+    parser.add_argument("--out", type=pathlib.Path, required=True)
     args = parser.parse_args()
     try:
-        if args.renders:
-            if not args.out:
-                parser.error("--renders needs --out")
-            write_renders(args.renders, args.out)
-            return 0
-        return int(write_examples(args.check) and args.check)
+        write_renders(args.renders, args.out)
+        return 0
     except (ValueError, OSError) as error:
         print(error, file=sys.stderr)
         return 2

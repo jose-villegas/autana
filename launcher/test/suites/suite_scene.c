@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "anim/anim_tracks_format.h"
+#include "hash/crc32.h"
 #include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
@@ -34,8 +35,10 @@
 #ifdef HOST_HEAP_ARENA
 #include "job_calls.h"
 #endif
+#include "lcol_name_vectors.h"
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
+#include "render/lcol_format.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
@@ -47,6 +50,10 @@
 #ifndef DEVICE_BUILD
 #include <stdio.h>
 
+#include "../scene_examples/animator.c"
+#include "../scene_examples/hall.c"
+#include "../scene_examples/present.c"
+#include "../scene_examples/small_fill.c"
 #include "anim/anim_skeleton_format.h"
 #include "asset/asset_file.h"
 #include "render/r3d_skin_format.h"
@@ -201,6 +208,8 @@ typedef struct {
         uint32_t clear_rgb;
         const char* clip;
     } cameras[2];
+
+    bool skinned, lit;
 } scene_spec_t;
 
 typedef struct {
@@ -221,15 +230,41 @@ static const scene_spec_t SCENES[] = {
      1,
      {{"camera", CAMERA_AT(0)}, {"red", IDENTITY}, {"green", AT(4, 0, 0)}},
      {{1, "red"}, {2, "green"}},
-     {{0, CLEAR_RGB, ""}}},
+     {{0, CLEAR_RGB, ""}},
+     false,
+     false},
     /* its own camera and one blue quad at the origin */
-    {"test_solo", 2, 1, 1, {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, ""}}},
+    {"test_solo",
+     2,
+     1,
+     1,
+     {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}},
+     {{1, "blue"}},
+     {{0, CLEAR_RGB, ""}},
+     false,
+     false},
     /* the same as solo, its camera clearing to a colour of its own */
-    {"test_sky", 2, 1, 1, {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, ""}}},
+    {"test_sky",
+     2,
+     1,
+     1,
+     {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}},
+     {{1, "blue"}},
+     {{0, 0x996633, ""}},
+     false,
+     false},
     /* names a mesh the pack does not hold */
-    {"test_broken", 2, 2, 0, {{"red", IDENTITY}, {"gone", IDENTITY}}, {{0, "red"}, {1, "gone"}}, {{0}}},
+    {"test_broken", 2, 2, 0, {{"red", IDENTITY}, {"gone", IDENTITY}}, {{0, "red"}, {1, "gone"}}, {{0}}, false, false},
     /* a camera that flies the clip "flight", and a red quad */
-    {"test_flight", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "flight"}}},
+    {"test_flight",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "flight"}},
+     false,
+     false},
     /* two cameras, 4 units apart, and a red quad at the origin */
     {"test_twin",
      3,
@@ -237,7 +272,9 @@ static const scene_spec_t SCENES[] = {
      2,
      {{"left", CAMERA_AT(0)}, {"right", CAMERA_AT(4)}, {"red", IDENTITY}},
      {{2, "red"}},
-     {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, ""}}},
+     {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, ""}},
+     false,
+     false},
     {.id = "test_aliases",
      .entity_count = 2,
      .camera_count = 2,
@@ -245,12 +282,37 @@ static const scene_spec_t SCENES[] = {
      .cameras = {{.entity = 0, .clear_rgb = CLEAR_RGB, .clip = "flight"},
                  {.entity = 1, .clear_rgb = CLEAR_RGB, .clip = "flight"}}},
     /* a camera flying a clip the pack does not hold */
-    {"test_lost", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "nowhere"}}},
+    {"test_lost",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "nowhere"}},
+     false,
+     false},
     /* cameras flying a translation of the wrong width, and a clip with no rotation */
-    {"test_skewed", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "skewed"}}},
-    {"test_unturned", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "unturned"}}},
+    {"test_skewed",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "skewed"}},
+     false,
+     false},
+    {"test_unturned",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "unturned"}},
+     false,
+     false},
 
     {.id = "test_lit",
+     .lit = true,
      .entity_count = 3,
      .renderer_count = 1,
      .camera_count = 1,
@@ -258,9 +320,25 @@ static const scene_spec_t SCENES[] = {
      .renderers = {{1, "red"}},
      .cameras = {{0, CLEAR_RGB, ""}}},
     {.id = "test_skin",
+     .skinned = true,
      .entity_count = 2,
      .renderer_count = 1,
      .entities = {{"red", IDENTITY}, {"lamp", IDENTITY}},
+     .renderers = {{0, "red"}}},
+    {"hall",
+     2,
+     1,
+     1,
+     {{"camera", CAMERA_AT(0)}, {"statue", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, ""}},
+     false,
+     false},
+    {.id = "meadow",
+     .skinned = true,
+     .entity_count = 2,
+     .renderer_count = 1,
+     .entities = {{"subject", IDENTITY}, {"lamp", IDENTITY}},
      .renderers = {{0, "red"}}},
 };
 
@@ -282,17 +360,17 @@ scene_entry_size(const scene_spec_t* s) {
            + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t))
            + ((uint32_t)s->camera_count * sizeof(scene_asset_camera_t)) + sizeof(scene_asset_settings_t)
            + camera_clip_count(s) * (sizeof(scene_asset_animator_t) + ASSET_NAME_MAX)
-           + (strcmp(s->id, "test_lit") == 0 ? sizeof(scene_asset_light_t) : 0)
-           + (strcmp(s->id, "test_skin") == 0 ? sizeof(scene_asset_skinned_renderer_t) - sizeof(scene_asset_renderer_t)
-                                                    + sizeof(scene_asset_animator_t) + 2 * ASSET_NAME_MAX
-                                              : 0);
+           + (s->lit ? sizeof(scene_asset_light_t) : 0)
+           + (s->skinned ? sizeof(scene_asset_skinned_renderer_t) - sizeof(scene_asset_renderer_t)
+                               + sizeof(scene_asset_animator_t) + 2 * ASSET_NAME_MAX
+                         : 0);
 }
 
 static void
 make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fixture_options_t* options) {
-    const uint16_t skins = strcmp(s->id, "test_skin") == 0;
+    const uint16_t skins = s->skinned;
     const uint16_t clips = camera_clip_count(s) + 2 * skins;
-    const uint16_t lights = strcmp(s->id, "test_lit") == 0;
+    const uint16_t lights = s->lit;
     const uint16_t counts[SCENE_ASSET_PART_COUNT] = {s->entity_count,
                                                      s->entity_count,
                                                      s->renderer_count - skins,
@@ -326,7 +404,7 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
                sizeof(scene_asset_transform_t));
     }
     for (int i = 0; i < s->renderer_count - skins; i++) {
-        const scene_asset_renderer_t row = {.entity = s->renderers[i].entity};
+        const scene_asset_renderer_t row = {.entity = s->renderers[i].entity, .colour_set = SCENE_ASSET_COLOUR_SET_OWN};
         uint8_t* bytes = entry + offsets[SCENE_ASSET_RENDERERS] + sizeof row * i;
         memcpy(bytes, &row, sizeof row);
         memcpy(bytes + offsetof(scene_asset_renderer_t, mesh), s->renderers[i].mesh, strlen(s->renderers[i].mesh));
@@ -520,6 +598,12 @@ release_fixture(void) {
 static void
 fixture_with_skin(const skin_fixture_options_t* options) {
     scene_unload_all();
+#ifndef DEVICE_BUILD
+    hall = NULL;
+    statue = SCENE_ENTITY_NONE;
+    scene = NULL;
+    subject = SCENE_ENTITY_NONE;
+#endif
     fx.bytes = test_alloc_aligned(PACK_MAX, ASSET_PACK_BASE_ALIGN, &fx.raw);
     fx.pixels = malloc(sizeof(*fx.pixels) * SIZE * SIZE);
     fx.held = malloc(sizeof(*fx.held) * SIZE * SIZE);
@@ -848,7 +932,6 @@ static const breakage_t BREAKAGES[] = {
     {"bytes after a name's NUL", PAIR_NAMES + 20, 1, 'x', false, ASSET_ERR_FORMAT},
     {"an empty entity name", PAIR_NAMES, 1, 0, true, ASSET_ERR_FORMAT},
     {"an empty mesh id", PAIR_RENDERERS + 4, 1, 0, true, ASSET_ERR_FORMAT},
-    {"a renderer's padding in use", PAIR_RENDERERS + 2, 2, 1, false, ASSET_ERR_FORMAT},
     {"a camera of no entity", PAIR_CAMERA, 2, 3, false, ASSET_ERR_FORMAT},
     {"a camera's padding in use", PAIR_CAMERA + 2, 2, 1, false, ASSET_ERR_FORMAT},
     {"a field of view of 0", PAIR_CAMERA + 4, 4, 0, false, ASSET_ERR_FORMAT},
@@ -1247,6 +1330,80 @@ remove_pack(const char* name) {
     TEST_ASSERT_EQUAL_INT(0, remove(path));
 }
 
+static void
+test_doc_scene_load_find_activate(void) {
+    fixture();
+    test_asset_dir_use(".");
+    write_pack("hall", false);
+    hall_example_start();
+    remove_pack("hall");
+    TEST_ASSERT_NOT_NULL(hall);
+    TEST_ASSERT_EQUAL_INT(scene_find(hall, "statue"), statue);
+    TEST_ASSERT_EQUAL_INT(SCENE_ENTITY_NONE, scene_find(hall, "missing"));
+    TEST_ASSERT_TRUE(scene_has_active_camera());
+    frame(0);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), fx.pixels[CENTER * SIZE + CENTER]);
+}
+
+static void
+test_doc_scene_missing_leaves_entities_and_camera_alone(void) {
+    fixture();
+    test_asset_dir_use(".");
+    statue = 0;
+    hall_example_start();
+    TEST_ASSERT_NULL(hall);
+    TEST_ASSERT_EQUAL_INT(0, statue);
+    TEST_ASSERT_FALSE(scene_has_active_camera());
+    scene_failure_t why = {0};
+    TEST_ASSERT_NULL(scene_load("hall", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
+    TEST_ASSERT_EQUAL_STRING("hall", why.what);
+}
+
+static void
+test_doc_animator_blends_to_selected_clip(void) {
+    fixture();
+    test_asset_dir_use(".");
+    write_pack("meadow", false);
+    start();
+    remove_pack("meadow");
+    TEST_ASSERT_NOT_NULL(scene);
+    TEST_ASSERT_EQUAL_INT(scene_find(scene, "subject"), subject);
+    TEST_ASSERT_TRUE(on_pick(1));
+    const anim_layer_t* layer = &scene->animators[subject].layer;
+    TEST_ASSERT_EQUAL_INT(1, layer->current.clip);
+    TEST_ASSERT_EQUAL_INT(0, layer->previous.clip);
+    TEST_ASSERT_EQUAL_UINT32(BLEND_MS, layer->blend_ms);
+    TEST_ASSERT_FALSE(on_pick(scene_animator_clip_count(scene, subject)));
+}
+
+static void
+test_doc_present_modes_reach_camera(void) {
+    fixture();
+    scene_t* loaded = show("test_pair", NULL);
+    const scene_entity_t camera = scene_find(loaded, "camera");
+    TEST_ASSERT_TRUE(present_example(loaded, camera));
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_SCANLINE, scene_camera_lens(loaded, NULL)->present);
+    TEST_ASSERT_FALSE(present_example(loaded, scene_find(loaded, "red")));
+}
+
+static void
+test_doc_small_fill_reaches_camera(void) {
+    fixture();
+    scene_t* loaded = show("test_pair", NULL);
+    const small_fill_t before = scene_camera_lens(loaded, NULL)->small_fill;
+    const small_fill_t expected = SMALL_FILL_FAST;
+    TEST_ASSERT_TRUE(before.ceiling != expected.ceiling || before.gate != expected.gate
+                     || before.style != expected.style);
+    TEST_ASSERT_TRUE(small_fill_example(loaded, scene_find(loaded, "camera")));
+    const small_fill_t actual = scene_camera_lens(loaded, NULL)->small_fill;
+    TEST_ASSERT_EQUAL_INT(expected.ceiling, actual.ceiling);
+    TEST_ASSERT_EQUAL_INT(expected.gate, actual.gate);
+    TEST_ASSERT_EQUAL_INT(expected.style, actual.style);
+    TEST_ASSERT_FALSE(small_fill_example(loaded, scene_find(loaded, "red")));
+}
+
 /* scene_load() reads the pack named after the scene once and holds it while
  * a scene loaded from it stays: damage to the file goes unseen until the last
  * one unloads and the next load reads it again. */
@@ -1328,6 +1485,168 @@ test_an_entity_is_found_by_its_name(void) {
     TEST_ASSERT_EQUAL_UINT16(2, scene_find(scene, "green"));
     TEST_ASSERT_EQUAL_UINT16(SCENE_ENTITY_NONE, scene_find(scene, "yellow"));
     TEST_ASSERT_EQUAL_FLOAT(4.0F, scene_entity_transform(scene, scene_find(scene, "green"))->position.x);
+}
+
+enum { LCOL_TEST_SETS = 2, MESH_COLOURS_WORD = 6 };
+
+static void
+test_lcol_shared_names(void) {
+    fixture();
+    static const char* const meshes[] = LCOL_TEST_MESHES;
+    static const char* const names[] = LCOL_TEST_NAMES;
+    static const char* const invalid[] = LCOL_TEST_INVALID;
+    for (size_t i = 0; i < sizeof meshes / sizeof meshes[0]; i++) {
+        test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 1);
+        uint8_t* colors = test_pack_add(&pack, names[i], LCOL_ASSET, LCOL_HEADER_SIZE + LCOL_RGB888_BYTES);
+        test_pack_put16(colors + LCOL_AT_VERSION, LCOL_VERSION);
+        test_pack_put16(colors + LCOL_AT_ENCODING, LCOL_ENCODING_RGB888);
+        test_pack_put32(colors + LCOL_AT_SET_COUNT, 1);
+        test_pack_put32(colors + LCOL_AT_COUNT, 1);
+        const uint32_t total = test_pack_finish(&pack);
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
+        r3d_lit_mesh_t mesh = {.vertex_count = 1};
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open_colours(&fx.pack, meshes[i], 0, &mesh));
+        TEST_ASSERT_EQUAL_PTR(colors + LCOL_HEADER_SIZE, mesh.colors);
+    }
+    for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
+        r3d_lit_mesh_t mesh = {0};
+        const asset_status_t expected = invalid[i][0] == '\0' ? ASSET_ERR_FORMAT : ASSET_ERR_BOUNDS;
+        TEST_ASSERT_EQUAL_INT(expected, r3d_lit_mesh_open_colours(&fx.pack, invalid[i], 0, &mesh));
+    }
+}
+
+static void
+test_skinned_mesh_requires_colours(void) {
+    const skin_fixture_options_t options = {.mode = R3D_SKIN_LIGHT_DIRECT};
+    fixture_with_skin(&options);
+    scene_t* scene = load("test_skin");
+    TEST_ASSERT_NOT_NULL(scene->renderers[0].mesh.colors);
+    scene_unload_all();
+    asset_view_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "red", R3D_LIT_MESH_ASSET, &mesh));
+
+    test_pack_put32((uint8_t*)mesh.data + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_skin", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+}
+
+typedef struct {
+    const char* id;
+    asset_status_t expected;
+    uint16_t first_set, second_set;
+    bool missing, coloured, wrong_encoding, short_entry;
+    uint16_t version_delta;
+    uint32_t count_extra, payload_extra;
+} lcol_case_t;
+
+static void
+make_lcol_scene(test_pack_t* pack, const lcol_case_t* spec, const char* message) {
+    const uint32_t size = scene_entry_size(&SCENES[0]);
+    uint8_t* entry = test_pack_add(pack, "test_pair", SCENE_ASSET, size);
+    make_scene_entry(entry, &SCENES[0]);
+    scene_asset_t asset;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, scene_asset_open((asset_view_t){entry, size}, &asset), message);
+    scene_asset_renderer_t* rows = (scene_asset_renderer_t*)(void*)asset.renderers;
+    test_pack_put16((uint8_t*)&rows[0] + sizeof(uint16_t), spec->first_set);
+    test_pack_put16((uint8_t*)&rows[1] + sizeof(uint16_t), spec->second_set);
+    memset(rows[1].mesh, 0, sizeof rows[1].mesh);
+    memcpy(rows[1].mesh, "red", sizeof "red");
+}
+
+static void
+make_lcol_entry(test_pack_t* pack, const lcol_case_t* spec, uint16_t encoding) {
+    const int count = encoding == LCOL_ENCODING_RGB888 ? QUAD_VERTICES : QUAD_TRIANGLES;
+    const int stride = encoding == LCOL_ENCODING_RGB888 ? LCOL_RGB888_BYTES : LCOL_RGB565_BYTES;
+    uint8_t* colors = test_pack_add(pack, "red.colors", LCOL_ASSET,
+                                    LCOL_HEADER_SIZE + LCOL_TEST_SETS * count * stride + spec->payload_extra);
+    test_pack_put16(colors + LCOL_AT_VERSION, LCOL_VERSION + spec->version_delta);
+    test_pack_put16(colors + LCOL_AT_ENCODING, spec->wrong_encoding ? 1 - encoding : encoding);
+    test_pack_put32(colors + LCOL_AT_SET_COUNT, LCOL_TEST_SETS);
+    test_pack_put32(colors + LCOL_AT_COUNT, count + spec->count_extra);
+    for (int v = 0; v < count; v++) {
+        if (encoding == LCOL_ENCODING_RGB888) {
+            colors[LCOL_HEADER_SIZE + v * stride] = UINT8_MAX;
+            colors[LCOL_HEADER_SIZE + (count + v) * stride + 1] = UINT8_MAX;
+        } else {
+            test_pack_put16(colors + LCOL_HEADER_SIZE + v * stride, GFX_RGB(0xFF0000));
+            test_pack_put16(colors + LCOL_HEADER_SIZE + (count + v) * stride, GFX_RGB(0x00FF00));
+        }
+    }
+}
+
+static void
+make_lcol_pack(const lcol_case_t* spec, uint16_t encoding, const char* message) {
+    enum { ENTRY_SIZE_AT = ASSET_NAME_MAX + 2 * sizeof(uint32_t) };
+
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, spec->missing ? 2 : 3);
+    uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
+    make_quad_entry(mesh, UINT8_MAX, 0, 0, 1);
+    if (!spec->coloured) {
+        test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    }
+    make_lcol_scene(&pack, spec, message);
+    if (!spec->missing) {
+        make_lcol_entry(&pack, spec, encoding);
+    }
+    if (spec->short_entry) {
+        test_pack_put32(pack.bytes + ASSET_PACK_HEADER_SIZE + (pack.added - 1) * ASSET_PACK_ENTRY_SIZE + ENTRY_SIZE_AT,
+                        LCOL_HEADER_SIZE - 1);
+    }
+    const uint32_t total = test_pack_finish(&pack);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total), message);
+}
+
+static void
+assert_lcol_scene(const lcol_case_t* spec, const char* message) {
+    scene_failure_t why;
+    scene_t* scene = scene_load_from(&fx.pack, "test_pair", &why);
+    if (spec->expected != ASSET_OK) {
+        TEST_ASSERT_NULL_MESSAGE(scene, message);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, message);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(spec->expected, why.asset, message);
+        return;
+    }
+    TEST_ASSERT_NOT_NULL_MESSAGE(scene, message);
+    TEST_ASSERT_TRUE_MESSAGE(scene_activate(scene, NULL), message);
+    render_context_set_scale(render_context_main(), 100);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0xFF0000), pixel(0.0F), message);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0x00FF00), pixel(4.0F), message);
+    TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.positions, scene->renderers[1].mesh.positions, message);
+}
+
+static void
+test_lcol_instances_and_refusals(void) {
+    static const lcol_case_t cases[] = {
+        {.id = "valid", .expected = ASSET_OK, .second_set = LCOL_TEST_SETS - 1},
+        {.id = "range", .expected = ASSET_ERR_FORMAT, .second_set = LCOL_TEST_SETS},
+        {.id = "missing", .expected = ASSET_ERR_NOT_FOUND, .missing = true},
+        {.id = "count", .expected = ASSET_ERR_FORMAT, .count_extra = 1},
+        {.id = "encoding", .expected = ASSET_ERR_FORMAT, .wrong_encoding = true},
+        {.id = "colourless-own",
+         .expected = ASSET_ERR_FORMAT,
+         .first_set = SCENE_ASSET_COLOUR_SET_OWN,
+         .missing = true},
+        {.id = "version", .expected = ASSET_ERR_VERSION, .version_delta = 1},
+        {.id = "short", .expected = ASSET_ERR_BOUNDS, .short_entry = true},
+        {.id = "oversized", .expected = ASSET_ERR_BOUNDS, .payload_extra = sizeof(uint16_t)},
+        {.id = "coloured-prototype",
+         .expected = ASSET_ERR_FORMAT,
+         .second_set = SCENE_ASSET_COLOUR_SET_OWN,
+         .coloured = true},
+    };
+    fixture();
+    for (uint16_t encoding = LCOL_ENCODING_RGB888; encoding <= LCOL_ENCODING_RGB565; encoding++) {
+        for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+            char message[64];
+            snprintf(message, sizeof message, "LCOL case %s encoding %u", cases[i].id, encoding);
+            scene_unload_all();
+            make_lcol_pack(&cases[i], encoding, message);
+            assert_lcol_scene(&cases[i], message);
+        }
+    }
 }
 
 static void
@@ -1941,7 +2260,7 @@ test_camera_small_fill_changes_scene_pixels(void) {
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style}));
         scene_render(0, 0, SIZE, SIZE);
-        checksums[style] = asset_crc32(raster_color(&context->raster), SIZE * SIZE * sizeof(uint16_t));
+        checksums[style] = crc32_update(0, raster_color(&context->raster), SIZE * SIZE * sizeof(uint16_t));
         for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
             TEST_ASSERT_NOT_EQUAL(checksums[previous], checksums[style]);
         }
@@ -3464,12 +3783,20 @@ run_scene_suite(void) {
     RUN_TEST(test_a_scene_the_tools_bake_loads_as_its_file_says);
 #endif
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_doc_scene_load_find_activate);
+    RUN_TEST(test_doc_scene_missing_leaves_entities_and_camera_alone);
+    RUN_TEST(test_doc_animator_blends_to_selected_clip);
+    RUN_TEST(test_doc_present_modes_reach_camera);
+    RUN_TEST(test_doc_small_fill_reaches_camera);
     RUN_TEST(test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads);
     RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_pack);
 #endif
     RUN_TEST(test_a_load_with_no_memory_left_says_so_and_takes_nothing);
     RUN_TEST(test_a_full_manager_refuses_another_scene_until_one_is_unloaded);
     RUN_TEST(test_an_entity_is_found_by_its_name);
+    RUN_TEST(test_skinned_mesh_requires_colours);
+    RUN_TEST(test_lcol_shared_names);
+    RUN_TEST(test_lcol_instances_and_refusals);
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
     RUN_TEST(test_a_moved_entity_is_drawn_where_it_now_stands);

@@ -17,7 +17,7 @@ from icount_gate import INFO_MARKER
 
 class MathBenchTableTests(unittest.TestCase):
     batch = 64
-    rows = [("dot_f", "dot (vec3)", "f", batch), ("sinf_f", "sinf", "f", batch)]
+    rows = [("dot_f", "dot (vec3)", "f", batch, "vector"), ("sinf_f", "sinf", "f", batch, "libm")]
     capture = ("BUILD_ID=abcdef-diag\n"
                "MATHBENCH name=dot (vec3) type=f ops=64 warm=12.0 cold=24.0 insn=6.0\n"
                "MATHBENCH name=sinf type=f ops=64 warm=90.0 cold=110.0 insn=30.0\n")
@@ -28,23 +28,25 @@ class MathBenchTableTests(unittest.TestCase):
         errors = bench.parse_errors(text)
         self.assertEqual("0 ulp (sweep)", errors["normalize (vec3)", "f"])
         self.assertEqual("5.94258e-05 relative (proof)", errors["arbitrary label", "x"])
-        rows = [("vector_f", "normalize (vec3)", "f", self.batch),
-                ("vector_x", "normalize (vec3)", "x", self.batch), ("other_x", "arbitrary label", "x", self.batch)]
-        table = bench.render_table(rows, {}, {}, {"vector_f": "-", "vector_x": "-", "other_x": "-"}, errors=errors)
-        lines = table.splitlines()
-        self.assertTrue(next(line for line in lines if line.startswith("| normalize (vec3) | f")).endswith("0 ulp (sweep) |"))
-        self.assertTrue(next(line for line in lines if line.startswith("| normalize (vec3) | x")).endswith("- |"))
 
-    def test_scalar_without_error_capture_has_no_invented_bound(self):
-        rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch)]
-        table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"})
-        self.assertTrue(next(line for line in table.splitlines() if line.startswith("| mathf_rsqrt |")).endswith("- |"))
+    def test_scalar_table_links_rendered_error(self):
+        rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch, "scalar")]
+        table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"},
+                                   errors={("mathf_rsqrt", "f"): "1 ulp (proof)"},
+                                   error_links={"rsqrt_f": "Fast-Paths.md#mathf-rsqrt"})
+        self.assertIn("| mathf_rsqrt | f | - | - | - | device-only instruction | - | rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt) |", table)
+        self.assertIn("max error", table)
 
-    def test_error_measurement_without_a_row_raises(self):
-        errors = bench.parse_errors("MATHERROR name=normalise (vec3) type=f max=1 unit=ulp method=sweep\n")
-        rows = [("vector_f", "normalize (vec3)", "f", self.batch)]
-        with self.assertRaisesRegex(ValueError, "match no row"):
-            bench.render_table(rows, {}, {}, {"vector_f": "-"}, errors=errors)
+    def test_grouped_table_keeps_errors_not_rendered_in_fast_paths(self):
+        links = {"dot_f": "Fast-Paths.md#example", "sinf_f": "Fast-Paths.md#example"}
+        table = bench.render_table(self.rows, {}, {}, {"dot_f": "-", "sinf_f": "-"}, links=links,
+                                   errors={("dot (vec3)", "f"): "1 ulp (sweep)"})
+        self.assertLess(table.index("#### Vector"), table.index("#### Libm"))
+        self.assertIn("\n\n#### Libm\n", table)
+        self.assertIn("[dot (vec3)](Fast-Paths.md#example)", table)
+        self.assertIn("[sinf](Fast-Paths.md#example)", table)
+        self.assertIn("| 1 ulp (sweep) |", table)
+        self.assertIn("max error", table)
 
     def test_malformed_and_duplicate_error_measurements_raise(self):
         good = "MATHERROR name=mathf_rsqrt type=f max=1 unit=ulp method=proof\n"
@@ -55,6 +57,20 @@ class MathBenchTableTests(unittest.TestCase):
         for text in texts:
             with self.subTest(text=text), self.assertRaises(ValueError):
                 bench.parse_errors(text)
+
+    def test_separate_bench_and_error_build_provenance(self):
+        text = self.capture.replace("BUILD_ID=abcdef-diag", "BUILD_ID=abcdef-diag scope=bench")
+        text += "BUILD_ID=123456-diag scope=error\nMATHERROR name=mathf_recip type=f max=1 unit=ulp method=sweep\n"
+        build, measured = bench.parse_capture(text, self.rows)
+        self.assertEqual("abcdef-diag", build)
+        self.assertEqual(2, len(measured))
+        for invalid in (text.replace(" scope=error", ""),
+                        text.replace("scope=error", "scope=bench"),
+                        text.replace("scope=error", "scope=unknown"),
+                        text.split("BUILD_ID=123456")[0],
+                        text + "BUILD_ID=abcdef-diag scope=bench\n"):
+            with self.subTest(text=invalid), self.assertRaises(ValueError):
+                bench.parse_capture(invalid, self.rows)
 
     def test_missing_row_is_an_error(self):
         with self.assertRaisesRegex(ValueError, "missing"):
@@ -72,7 +88,7 @@ class MathBenchTableTests(unittest.TestCase):
     def test_ratchet_join_and_cycles_per_instruction(self):
         build, measured = bench.parse_capture(self.capture, self.rows)
         table = bench.render_table(self.rows, measured, {"math_dot_f": 448},
-                                   {"dot_f": "madd.s", "sinf_f": "-"}, build)
+                                   {"dot_f": "madd.s", "sinf_f": "-"})
         self.assertIn("| dot (vec3) | f | 12.0 | 24.0 | 6.0 | 7.0 | 2.0 | madd.s |", table)
         self.assertEqual("abcdef-diag", build)
         with self.assertRaisesRegex(ValueError, "baseline"):
@@ -100,27 +116,20 @@ class MathBenchTableTests(unittest.TestCase):
         self.assertEqual(bench.parse_capture(self.capture, self.rows),
                          bench.parse_capture("noise\n" + self.capture + "noise\n", self.rows))
 
-    def test_block_check_and_write_preserve_newlines(self):
+    def test_document_commands_are_rejected_without_writing(self):
         for newline in ("\n", "\r\n"):
             with self.subTest(newline=newline), tempfile.TemporaryDirectory() as directory:
                 doc = Path(directory) / "Benchmark.md"
-                original = ("prose\n<!-- generated: math-benchmark sha256=0000000000000000000000000000000000000000000000000000000000000000 -->\nold\n"
-                            "<!-- /generated: math-benchmark -->\nend\n").replace("\n", newline).encode()
+                original = ("prose\n<!-- generated: math-benchmark check: python launcher/tools/perf/fast_paths.py --check -->\n"
+                            "old\n<!-- /generated: math-benchmark -->\nend\n").replace("\n", newline).encode()
                 doc.write_bytes(original)
-                with unittest.mock.patch.object(bench, "DOCUMENT", doc):
-                    self.assertEqual(1, bench.main(["--check"]))
-                    self.assertEqual(original, doc.read_bytes())
-                    self.assertEqual(0, bench.main([]))
-                    self.assertEqual(0, bench.main(["--check"]))
-                    good = doc.read_bytes()
-                    for corrupted in (good.replace(b"| function |", b"| changed |"),
-                                      good.replace(b"check: python launcher/tools/perf/math_bench_table.py --check", b"sha256=" + b"0" * 64)):
-                        doc.write_bytes(corrupted)
-                        self.assertEqual(1, bench.main(["--check"]))
-                        self.assertEqual(corrupted, doc.read_bytes())
-                    self.assertTrue(good.startswith(b"prose" + newline.encode()))
-                    self.assertNotIn(b"\n", good.replace(newline.encode(), b""))
-        self.assertEqual(0, bench.main(["--check"]))
+                with unittest.mock.patch.object(bench, "DOCUMENT", doc, create=True):
+                    for args in ([], ["--check"]):
+                        with self.subTest(args=args):
+                            with self.assertRaises(SystemExit) as error:
+                                bench.main(args)
+                            self.assertEqual(2, error.exception.code)
+                            self.assertEqual(original, doc.read_bytes())
 
     def test_disassembly_uses_only_requested_wrapper_symbols(self):
         text = ("42000000 <math_bench_dot_f>:\n  42000000: 123456 madd.s f0, f1, f2\n"
@@ -132,7 +141,7 @@ class MathBenchTableTests(unittest.TestCase):
             bench.parse_disassembly("", self.rows)
 
     def test_operation_counts_come_from_each_row(self):
-        rows = [("dot_f", "dot (vec3)", "f", 2), ("dot_f32_n256_f", "dot_f32_n256", "f", 1)]
+        rows = [("dot_f", "dot (vec3)", "f", 2, "vector"), ("dot_f32_n256_f", "dot_f32_n256", "f", 1, "calibration")]
         table = bench.render_table(rows, {}, {"math_dot_f": 7, "math_dot_f32_n256_f": 13},
                                    {"dot_f": "-", "dot_f32_n256_f": "-"})
         self.assertIn("| dot (vec3) | f | - | - | - | 3.5 |", table)
@@ -141,11 +150,23 @@ class MathBenchTableTests(unittest.TestCase):
         _, measured = bench.parse_capture(capture, rows[1:])
         self.assertIn("1.5%", bench.render_table(rows[1:], measured, {}, {"dot_f32_n256_f": "-"}))
 
+    def test_row_family_is_required_and_validated(self):
+        for family in bench.ROW_FAMILIES:
+            with self.subTest(family=family):
+                self.assertEqual(("dot_f", "dot (vec3)", "f", 64, family),
+                                 bench.parse_row(f"dot_f\tdot (vec3)\tf\t64\t{family}"))
+        for family in ("unknown", "Vector", ""):
+            with self.subTest(family=family), self.assertRaisesRegex(ValueError, "family"):
+                bench.parse_row(f"dot_f\tdot (vec3)\tf\t64\t{family}")
+        with self.assertRaisesRegex(ValueError, "tab-separated"):
+            bench.parse_row("dot_f\tdot (vec3)\tf\t64")
+
     def test_fpu_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "fpu.txt"
-            good = "dot_f\tdot (vec3)\tf\t64\tmadd.s\n"
+            good = "dot_f\tdot (vec3)\tf\t64\tvector\tmadd.s\n"
             for text, error in ((good + good, "duplicate"), (good.replace("madd.s", "unknown"), "FPU"),
+                                (good.replace("vector", "unknown"), "family"),
                                 ("no tab", "tab")):
                 path.write_text(text)
                 with self.subTest(text=text), self.assertRaisesRegex(ValueError, error):
@@ -167,12 +188,12 @@ class MathBenchTableTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             elf, fpu = Path(directory) / "test.elf", Path(directory) / "fpu.txt"
             elf.write_bytes(b"elf")
-            manifest = b"sinf_f\tsinf\tf\t64\ndot_f\tdot (vec3)\tf\t2\n\0"
+            manifest = b"sinf_f\tsinf\tf\t64\tlibm\ndot_f\tdot (vec3)\tf\t2\tvector\n\0"
             dump = "1000 " + manifest.hex() + "  ignored ascii\n"
-            disassembly = ("2000 <math_bench_sinf_f>:\n2000: 12 nop.n\n"
-                           "2010 <math_bench_dot_f>:\n2010: 12 madd.s f0, f1\n")
+            disassembly = ("42002000 <math_bench_sinf_f>:\n42002000: 12 nop.n\n"
+                           "42002010 <math_bench_dot_f>:\n42002010: 12 madd.s f0, f1\n")
             located = {4096: ("math_bench_manifest", len(manifest)),
-                       8192: ("math_bench_sinf_f", 2), 8208: ("math_bench_dot_f", 2)}
+                       0x42002000: ("math_bench_sinf_f", 2), 0x42002010: ("math_bench_dot_f", 2)}
             def run(tool, *args):
                 if tool == "nm":
                     return "\n".join(f"{address:x} {size:x} r {name}" for address, (name, size) in located.items())
@@ -185,10 +206,12 @@ class MathBenchTableTests(unittest.TestCase):
                 first = fpu.read_bytes()
                 self.assertIn(b"# ELF sha256=" + bench.hashlib.sha256(b"elf").hexdigest().encode(), first)
                 self.assertNotIn(b"\r", first)
+                self.assertIn(b"dot_f\tdot (vec3)\tf\t2\tvector\tmadd.s", first)
+                self.assertIn(b"sinf_f\tsinf\tf\t64\tlibm\t-", first)
                 self.assertLess(first.index(b"dot_f\t"), first.index(b"sinf_f\t"))
                 self.assertEqual(0, bench.main(args))
                 self.assertEqual(first, fpu.read_bytes())
-                del located[8208]
+                del located[0x42002010]
                 with self.assertRaisesRegex(SystemExit, "1"):
                     bench.main(args)
 
@@ -203,7 +226,7 @@ class MathBenchTableTests(unittest.TestCase):
         self.assertEqual({"dot_f": "madd.s; calls __divsf3, sqrtf"}, result)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "fpu.txt"
-            path.write_text("dot_f\tdot (vec3)\tf\t64\t" + result["dot_f"] + "\n", encoding="utf-8")
+            path.write_text("dot_f\tdot (vec3)\tf\t64\tvector\t" + result["dot_f"] + "\n", encoding="utf-8")
             self.assertEqual(result, bench.read_fpu(path)[1])
 
     def test_call_targets_must_be_symbol_starts(self):
