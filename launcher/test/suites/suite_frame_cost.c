@@ -23,13 +23,18 @@ fixture(void) {
     return cost;
 }
 
+static int draws;
+
+void
+draw_the_thing(void) {
+    draws++;
+}
+
 static void
 test_documented_bracket_runs_its_work(void) {
-    frame_cost_t* const cost = fixture();
-    frame_cost_example_t state = {0};
-    frame_cost_example(&state);
-    TEST_ASSERT_EQUAL_INT(1, state.draws);
-    free(cost);
+    draws = 0;
+    frame_cost_example();
+    TEST_ASSERT_EQUAL_INT(1, draws);
 }
 
 static void

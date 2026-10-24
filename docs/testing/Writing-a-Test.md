@@ -108,8 +108,8 @@ in the suite below does: the message is what a reader sees at failure.
 
 ## A minimal suite
 
-This real suite, `launcher/test/testing_examples/minimal_suite.c`, runs
-through `launcher/test/suites/suite_testing_examples.c`:
+This real suite, [`launcher/test/testing_examples/minimal_suite.c`](../../launcher/test/testing_examples/minimal_suite.c), runs
+through [`launcher/test/suites/suite_testing_examples.c`](../../launcher/test/suites/suite_testing_examples.c):
 
 <!-- generated: testing-minimal-suite-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
