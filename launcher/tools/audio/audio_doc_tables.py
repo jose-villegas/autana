@@ -485,12 +485,10 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
-    parser.add_argument("--capture", type=Path, default=ROOT / CAPTURE)
-    parser.add_argument("--document", type=Path, default=ROOT / DOCUMENT)
-    parser.add_argument("--mix-captures", type=Path, default=ROOT / MIX_CAPTURES)
-    parser.add_argument("--mix-document", type=Path, default=ROOT / MIX_DOCUMENT)
-    parser.add_argument("--onset-document", type=Path, default=ROOT / ONSET_DOCUMENT)
-    parser.add_argument("--drc-capture", type=Path, default=ROOT / DRC_CAPTURE)
+    for flag, default in (("--capture", CAPTURE), ("--document", DOCUMENT), ("--mix-captures", MIX_CAPTURES),
+                          ("--mix-document", MIX_DOCUMENT), ("--onset-document", ONSET_DOCUMENT),
+                          ("--drc-capture", DRC_CAPTURE)):
+        parser.add_argument(flag, type=Path, default=ROOT / default)
     args = parser.parse_args()
     try:
         changed = update(args.capture, args.document, args.check, args.mix_captures, args.mix_document, args.drc_capture)
