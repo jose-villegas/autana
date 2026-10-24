@@ -207,7 +207,7 @@ class Scores(unittest.TestCase):
         self.assertEqual(len(query_log.scores_of("other")), 2)
 
     def test_a_field_may_not_reuse_a_score_name(self):
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             query_log.keep_score("other", "lexical", [("a", 1)], time.perf_counter(), rows=9)
 
 

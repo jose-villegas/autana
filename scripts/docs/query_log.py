@@ -130,7 +130,8 @@ def keep_score(tool, mode, ranks, started, **fields):
     """Score one tool's evaluation, print it beside the last comparable run of
     that tool, and keep it in the history every checkout shares."""
     measured = scores(ranks)
-    assert not set(fields) & set(measured), "a field may not reuse a score's name"
+    if set(fields) & set(measured):
+        raise ValueError(f"a field may not reuse a score's name: {sorted(set(fields) & set(measured))}")
     # The history names the tool `suite`, as its earliest rows already do.
     result = {"time": iso(), "suite": tool, "mode": mode, **fields, **measured,
               "seconds": round(time.perf_counter() - started, 1)}
