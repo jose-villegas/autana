@@ -20,6 +20,8 @@
 #include "test_alloc.h"
 #include "test_pack.h"
 
+#include "../asset_examples/image.c"
+
 /* A 3 x 2 picture with a stride of 4, rows from byte 16: its last pixel ends
  * the entry. */
 enum {
@@ -218,8 +220,29 @@ test_the_boot_picture_s_pack_opens_as_one_panel(void) {
     TEST_ASSERT_EQUAL_UINT32(GFX_WIDTH, image.stride);
 }
 
+static void
+test_the_image_example_reads_a_pixel_from_a_pack(void) {
+    fixture_t f = fixture();
+    void* raw;
+    uint8_t* bytes = test_alloc_aligned(256, 16, &raw);
+    TEST_ASSERT_NOT_NULL(bytes);
+    test_pack_t built = test_pack_begin(bytes, 256, 1);
+    memcpy(test_pack_add(&built, "pic", DRAW_IMAGE_ASSET, ENTRY_BYTES), f.entry, ENTRY_BYTES);
+    const uint32_t size = test_pack_finish(&built);
+    test_free_aligned(f.raw);
+    asset_pack_t pack;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, bytes, size));
+    gfx_color_t color = 0;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, image_example(&pack, "pic", 2, 1, &color));
+    TEST_ASSERT_EQUAL_UINT16(0x100 + STRIDE + 2, color);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, image_example(&pack, "pic", WIDTH, 0, &color));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, image_example(&pack, "absent", 0, 0, &color));
+    test_free_aligned(raw);
+}
+
 void
 suite_draw_image(void) {
+    RUN_TEST(test_the_image_example_reads_a_pixel_from_a_pack);
     RUN_TEST(test_an_entry_opens_and_its_pixels_point_into_it);
     RUN_TEST(test_a_last_row_one_byte_past_the_entry_is_out_of_bounds);
     RUN_TEST(test_a_truncated_header_is_out_of_bounds);

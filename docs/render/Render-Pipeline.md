@@ -247,7 +247,7 @@ clip) into one pack; `launcher/demo/` content ships only where an app's
 
 Cost: not timed in the bake-steps rows.
 
-Reference: [the asset packs](../assets/README.md#packs).
+Reference: [the asset packs](../assets/Building-Packs.md#packs).
 
 ## Every frame, on the board
 

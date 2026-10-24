@@ -18,7 +18,7 @@ bug class as `report_fps()`, just not yet tripped over again.
 
 `ESP_LOGI`/`W`/`E`/`D`/`V` expand (`components/log/include/esp_log.h`) to:
 
-```c
+```c fragment
 if (LOG_LOCAL_LEVEL >= level) { ESP_LOG_LEVEL(level, tag, format, ...); }
 ```
 
@@ -103,7 +103,7 @@ runtime default floor move together; setting only one silently no-ops
 
 `main/selftest/post.c:57`:
 
-```c
+```c fragment
 snprintf(r->detail, sizeof(r->detail), "%s", detail ? detail : "");
 ```
 

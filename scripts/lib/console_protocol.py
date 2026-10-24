@@ -20,11 +20,14 @@ def reply_prefix(line):
 
 def replies_to(data, reply, until):
     """Extract replies even when firmware logging prefixes their lines.
-    Only newline-terminated lines count: a read can end mid-line."""
+    Only newline-terminated lines count: a read can end mid-line. `reply`
+    starts the line as a whole word (HEAP never claims HEAPMARK; HEAP_END and
+    BUILD_ID= still answer) unless it ends in a separator (RUNSUITE_)."""
     found = []
+    start = re.compile(re.escape(reply) + (r"(?![A-Za-z0-9])" if reply[-1:].isalnum() else ""))
     for raw in data.split(b"\n")[:-1]:
         text = LOG_PREFIX.sub("", ANSI.sub("", raw.decode("ascii", errors="replace"))).strip()
-        if not text.startswith((reply + " ", reply + "_")) and text != reply:
+        if not start.match(text):
             continue
         found.append(text)
         if text.startswith(tuple(until)):
