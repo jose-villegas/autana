@@ -21,6 +21,7 @@
 #include "apps/input_lab/touch_probe.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "input/input_shell.h"
@@ -28,7 +29,6 @@
 #include "input/motion/tilt.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/mathi.h"
-#include "services/tune.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 

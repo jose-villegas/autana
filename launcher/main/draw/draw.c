@@ -1,8 +1,8 @@
 #include "draw/draw.h"
+#include "core/tune.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/mathi.h"
-#include "services/tune.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -14,7 +14,7 @@ TUNE_OWNER(draw);
 TUNE(draw, tight_fill_marks, 1, 0, 1);
 
 /* What every rect and blit primitive marks with. A release build folds
- * tight_fill_marks to the constant 1 (services/tune.h), so the branch and
+ * tight_fill_marks to the constant 1 (core/tune.h), so the branch and
  * gfx_mark_rows_dirty() call below cost nothing there. */
 static inline void
 mark_fill(const gfx_surface_t* state, recti_t rect) {
