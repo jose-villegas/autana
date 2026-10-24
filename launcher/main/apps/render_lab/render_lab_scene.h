@@ -42,6 +42,7 @@ typedef struct render_lab_scene {
 } render_lab_scene_t;
 
 extern const render_lab_scene_t scene_capybara;
+extern const render_lab_scene_t scene_water;
 
 /* A scene's `.console`: the hook in a development or host build, NULL otherwise,
  * as APP_CONSOLE_PTR() does, so a release links none of the console; a host

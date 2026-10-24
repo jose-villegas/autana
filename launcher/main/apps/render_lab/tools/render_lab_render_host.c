@@ -16,6 +16,7 @@
 #include "apps/render_lab/render_lab_view.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
+#include "input/input.h"
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
 #include "render_host.h"
@@ -38,6 +39,13 @@ static render_input_step_t touch[] = {
     {TAP_FRAME, true, 0, 0},
     {TAP_FRAME + 1, false, 0, 0},
 };
+
+/* No IMU on a host: a scene reading motion sees none, as on a board without one. */
+bool
+input_read_motion_batch(input_motion_batch_t* out) {
+    (void)out;
+    return false;
+}
 
 /* --console FRAME:WORDS, repeatable: the board's `render WORDS` command,
  * such as "clip walk 400", run before frame FRAME draws. */

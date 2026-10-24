@@ -1355,7 +1355,7 @@ test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again(void) {
 }
 
 /* A mesh handed in at run time is drawn in the loaded one's place, a view
- * with no clusters draws nothing, and an entity with no renderer refuses. */
+ * with no nodes draws nothing, and an entity with no renderer refuses. */
 static void
 test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one(void) {
     fixture();
@@ -1374,7 +1374,7 @@ test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one(void) {
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(4.0F));
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
-    blue.cluster_count = 0;
+    blue.node_count = 0;
     TEST_ASSERT_TRUE(scene_renderer_set_mesh(scene, green, &blue));
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F));

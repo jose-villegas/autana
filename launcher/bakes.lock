@@ -211,6 +211,14 @@ run = 39135787070
 host = "Linux x86_64"
 
 [[bake]]
+output = "tank.mesh"
+source = "launcher/demo/water/water.scene.toml"
+key = "4df6c32cc47e82eeb804f0de86e8bcd58d56886d1b4458494160346d3e18a1e3"
+sha256 = "acffca802265ae7e8731a1d79e12d1631dcbbfc11f550263e2fffcab267b7bcf"
+size = 3592
+seeded = true
+
+[[bake]]
 output = "tap.sond"
 source = "launcher/main/engine/sounds/tap.sound.toml"
 key = "d2991d8ffe9d35bd488df48bbd0ad70c5a8f73b68c3ef2ca1552592fc9ce030f"

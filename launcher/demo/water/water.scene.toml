@@ -1,0 +1,23 @@
+# Water in a tank the size of the screen and as deep as the device: the
+# scene scales the tank, places the camera and draws the water it simulates.
+[[objects]]
+name = "camera"
+position = [0.0, 0.0, 300.0]
+
+[objects.camera]
+half_fov_short_tan = 0.05
+near_z = 100.0
+background = 0x0B0D12
+
+[[objects]]
+name = "tank"
+
+[objects.mesh_renderer]
+mesh = "tank.import.toml"
+
+# Drawn from the simulation at run time; the tank stands in until then.
+[[objects]]
+name = "water"
+
+[objects.mesh_renderer]
+mesh = "tank.import.toml"

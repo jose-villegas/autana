@@ -31,6 +31,7 @@ static const render_lab_scene_t* const scenes[] = {
     &scene_sponza[SCENE_BAKED_FLAT],
     &scene_sponza[SCENE_BAKED_FLAT_FITTED],
     &scene_capybara,
+    &scene_water,
     &scene_bistro[SCENE_BAKED_FITTED_FULL],
     &scene_bistro[SCENE_BAKED_FITTED],
     &scene_bistro[SCENE_BAKED_FULL],

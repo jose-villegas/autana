@@ -106,10 +106,11 @@ SORT_DEFINE_INSERTION(children, child_depth_t, farther)
 static int
 push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
-    child_depth_t order[8];
+    child_depth_t order[R3D_LIT_INNER_CHILDREN_MAX];
     const float* f = lens->m.m[2];
     const planef_t depth = {{f[0], f[1], f[2]}, f[3]};
     const int n = node->count;
+    assert(n <= R3D_LIT_INNER_CHILDREN_MAX);
     for (int i = 0; i < n; i++) {
         const uint16_t child = (uint16_t)(node->first + i);
         /* The lens maps ticks, so the bounds scale is one. */
