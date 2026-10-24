@@ -1,3 +1,4 @@
+"""The mixer's frame-cost stage name comes from its define, and a missing define fails."""
 import sys
 import tempfile
 import unittest

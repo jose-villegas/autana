@@ -15,7 +15,7 @@ The C and Python tests share `tests/name_hash_vectors.h`.
 
 ## Headers
 
-<!-- generated: package-name-hash-headers check: python launcher/tools/gen/shared_helpers.py --check -->
+<!-- generated: package-name-hash-headers check: python launcher/tools/gen/package_headers.py --check -->
 | Header | Purpose |
 |---|---|
 | [include/name_hash/name_hash.h](include/name_hash/name_hash.h) | Names become stable numeric keys for lookup at initialization or load time. |
