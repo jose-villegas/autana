@@ -77,8 +77,9 @@ Plans, `docs_extra` notes and sections headed "Related" or "See also"
 rank below documents of record: a plan describes code that does not exist
 yet, notes from outside the tree are not the record, and a list of links
 names every topic and answers none. A question whose words no
-document uses says so, with the closest indexed spellings, and a result that neither holds most of the question's
-words nor is close in meaning is flagged as a weak match.
+document uses says so and offers the nearest indexed spellings; a result
+that neither holds most of the question's words nor is close in meaning is
+flagged as a weak match.
 
 ## How well it finds
 
@@ -115,11 +116,9 @@ per session; the first one set labels the row. `autana docs --usage` counts
 the sessions, and `python scripts/docs/query_log.py --session <label>` shows
 one.
 
-`query_log.py` is the base every lookup tool shares. A tool wraps each lookup
-in `query_log.lookup(tool, kind, query)`, which times it, counts what it
-printed and writes the row; its `--eval` hands its ranks to
-`query_log.keep_score`, which keeps one history for every tool, and
-`scripts/docs/eval_summary.py --tool NAME` reports a tool's last score.
+Every lookup tool logs through `query_log.py`, which documents the call a
+tool makes and keeps one evaluation history for all of them; `python
+scripts/docs/eval_summary.py --tool NAME` reports a tool's last score.
 
 `autana docs --usage` summarises every `*.jsonl` in that folder. Another
 tool that writes rows in the format `scripts/docs/query_log.py` documents is
@@ -127,7 +126,7 @@ summarised too:
 
 | Part | Shows |
 |---|---|
-| Per tool and kind | count, share weak, share where a result was opened next (when a row records it), median time, printed output in tokens (characters / 4) |
+| Per tool and kind | count, share weak, share where a result was opened next (when a row records it), median time, printed output in tokens (`CHARS_PER_TOKEN` in `query_log.py`) |
 | Most asked | questions asked more than once |
 | Missed | weak or empty answers of any kind: the documents to write or retitle |
 

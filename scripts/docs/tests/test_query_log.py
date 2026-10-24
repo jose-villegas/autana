@@ -33,6 +33,7 @@ class Logged(unittest.TestCase):
     def setUp(self):
         self.folder = Path(tempfile.mkdtemp())
         for patch in (mock.patch.object(query_log, "log_dir", return_value=self.folder),
+                      mock.patch.object(query_log.autana_config, "load", return_value={}),
                       mock.patch.object(docs_llama, "installed", return_value=False)):
             patch.start()
             self.addCleanup(patch.stop)
@@ -99,6 +100,17 @@ class Logged(unittest.TestCase):
             docs_search.main(["serial", "port"], root=self.root)
         self.assertEqual(self.rows()[0]["chars"], len(out.getvalue()))
 
+    def test_the_logged_time_includes_building_the_index(self):
+        build = docs_search.Index
+        build_seconds = 0.05
+
+        def slow_build(*args, **kwargs):
+            time.sleep(build_seconds)
+            return build(*args, **kwargs)
+        with mock.patch.object(docs_search, "Index", side_effect=slow_build):
+            self.run_search("serial", "port")
+        self.assertGreaterEqual(self.rows()[0]["ms"], build_seconds * 1000)
+
     def test_an_unknown_word_names_the_nearest_indexed_words(self):
         out = io.StringIO()
         with mock.patch("sys.stdout", out):
@@ -109,9 +121,10 @@ class Logged(unittest.TestCase):
 class Lookup(unittest.TestCase):
     def setUp(self):
         self.folder = Path(tempfile.mkdtemp())
-        patch = mock.patch.object(query_log, "log_dir", return_value=self.folder)
-        patch.start()
-        self.addCleanup(patch.stop)
+        for patch in (mock.patch.object(query_log, "log_dir", return_value=self.folder),
+                      mock.patch.object(query_log.autana_config, "load", return_value={})):
+            patch.start()
+            self.addCleanup(patch.stop)
 
     def test_a_lookup_logs_what_it_printed_found_and_judged(self):
         out = io.StringIO()
@@ -169,16 +182,33 @@ class Scores(unittest.TestCase):
     def test_a_score_is_kept_per_tool_and_compared_with_the_same_tool_only(self):
         out = io.StringIO()
         with mock.patch("sys.stdout", out):
-            query_log.keep_score("hwq", "lexical", [("a", 1), ("b", 2)], time.perf_counter())
+            query_log.keep_score("other", "lexical", [("a", 1), ("b", 2)], time.perf_counter())
             query_log.keep_score("docs", "lexical", [("a", 1), ("b", 2)], time.perf_counter())
-            query_log.keep_score("hwq", "lexical", [("a", 1), ("b", None)], time.perf_counter(), facts=2)
+            query_log.keep_score("other", "lexical", [("a", 1), ("b", None)], time.perf_counter(), facts=2)
         history = [json.loads(line) for line in query_log.eval_history().read_text(encoding="utf-8").splitlines()]
-        self.assertEqual([h["suite"] for h in history], ["hwq", "docs", "hwq"])
+        self.assertEqual([h["suite"] for h in history], ["other", "docs", "other"])
+        self.assertEqual([h["mrr"] for h in query_log.scores_of("other")], [0.75, 0.5])
         self.assertEqual((history[2]["mrr"], history[2]["facts"]), (0.5, 2))
         last = out.getvalue().splitlines()
-        self.assertIn("hwq lexical: MRR 0.500, top-1 50%, top-3 50% of 2 questions", last[-2])
+        self.assertIn("other lexical: MRR 0.500, top-1 50%, top-3 50% of 2 questions", last[-2])
         self.assertIn("last ", last[-1])
         self.assertIn("MRR 0.750", last[-1])
+
+
+    def test_an_unreadable_history_line_hides_no_earlier_score(self):
+        with mock.patch("sys.stdout", io.StringIO()):
+            query_log.keep_score("other", "lexical", [("a", 1)], time.perf_counter())
+        with open(query_log.eval_history(), "a", encoding="utf-8") as history:
+            history.write("not json\n[]\n")
+        out = io.StringIO()
+        with mock.patch("sys.stdout", out):
+            query_log.keep_score("other", "lexical", [("a", 2)], time.perf_counter())
+        self.assertIn("MRR 1.000", out.getvalue().splitlines()[-1])
+        self.assertEqual(len(query_log.scores_of("other")), 2)
+
+    def test_a_field_may_not_reuse_a_score_name(self):
+        with self.assertRaises(AssertionError):
+            query_log.keep_score("other", "lexical", [("a", 1)], time.perf_counter(), rows=9)
 
 
 class Summary(unittest.TestCase):

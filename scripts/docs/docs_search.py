@@ -407,6 +407,14 @@ class Index:
     def unknown_terms(self, terms):
         return [t for t in terms if not self.frequency.get(t)]
 
+    def spellings(self):
+        """{stem: a word the documents spell it with}, built only when a word matched nothing."""
+        words = {}
+        for section in self.sections:
+            for word in WORD.findall(" ".join((section.title, *section.headings, section.body))):
+                words.setdefault(stem(word.lower()), word.lower())
+        return words
+
     def find_section(self, reference):
         """PATH:LINE (the section holding that line) or PATH#heading words."""
         path, _, where = reference.partition("#") if "#" in reference else reference.rpartition(":")
@@ -499,7 +507,9 @@ def breadcrumb(section):
 def answer(index, question, top=3, more=5, budget=1800):
     hits, terms = index.search(question, limit=top + more)
     unknown = index.unknown_terms(terms)
-    nearest = {term: near for term in unknown if (near := query_log.nearest(term, index.frequency))}
+    words = index.spellings() if unknown else {}
+    nearest = {term: [words[n] for n in near] for term in unknown
+               if (near := query_log.nearest(term, words))}
     weights = ([0.5, 0.3, 0.2] + [0.15] * max(top - 3, 0))[:max(top, 0)]
     shares = [w / sum(weights) for w in weights]
     results = []
@@ -671,43 +681,47 @@ def main(argv=None, root=None):
     except autana_config.ConfigError as error:
         print(f"docs_search: {error}", file=sys.stderr)
         return 1
-    index = Index(root or repo_root(), semantic=not args.lexical)
     if args.eval:
-        run_eval(index)
+        run_eval(Index(root or repo_root(), semantic=not args.lexical))
         return 0
-    if args.outline:
-        with query_log.lookup("docs", "outline", args.outline) as call:
-            text = format_outline(index, args.outline)
-            call.weak = not text
-            call.print(text or f"no document {args.outline}")
-        return 0 if text else 1
-    if args.section:
-        with query_log.lookup("docs", "section", args.section) as call:
-            section = index.find_section(args.section)
-            call.weak = not section
-            call.print(format_section(index, section, args.deep) if section
-                       else f"no section {args.section}; --outline PATH lists them")
-        return 0 if section else 1
-    if not args.question:
+    question = " ".join(args.question)
+    kind, query = (("outline", args.outline) if args.outline else ("section", args.section) if args.section
+                   else ("ask", question) if args.ask else ("search", question))
+    if not query:
         parser.print_usage()
         return 2
-    question = " ".join(args.question)
-    if args.ask:
-        if not docs_llama.installed("chat") or not docs_llama.start():
-            print("no chat model: python scripts/docs/docs_llama.py setup --chat")
-            return 1
-        with query_log.lookup("docs", "ask", question) as call:
-            text, reply = ask(index, question, stream=lambda piece: call.print(piece, end="", flush=True))
-            note_reply(call, reply)
-            call.print("\n\nsources:")
-            call.print("\n".join(f"  [{n}] {r['location']}  {r['heading']}"
-                                 for n, r in enumerate(reply["results"], 1)))
-        return 0
-    with query_log.lookup("docs", "search", question) as call:
-        reply = answer(index, question, args.top, args.more, args.budget)
+    if kind == "ask" and (not docs_llama.installed("chat") or not docs_llama.start()):
+        print("no chat model: python scripts/docs/docs_llama.py setup --chat")
+        return 1
+    # The index is built inside the lookup, so its time counts as the lookup's.
+    with query_log.lookup("docs", kind, query) as call:
+        return respond(call, Index(root or repo_root(), semantic=not args.lexical), kind, query, args)
+
+
+def respond(call, index, kind, query, args):
+    if kind == "outline":
+        text = format_outline(index, query)
+        call.weak = not text
+        call.print(text or f"no document {query}")
+        return 0 if text else 1
+    if kind == "section":
+        section = index.find_section(query)
+        call.weak = not section
+        call.print(format_section(index, section, args.deep) if section
+                   else f"no section {query}; --outline PATH lists them")
+        return 0 if section else 1
+    if kind == "ask":
+        _, reply = ask(index, query, stream=lambda piece: call.print(piece, end="", flush=True))
         note_reply(call, reply)
-        call.print(json.dumps(reply, indent=1) if args.json else format_answer(reply))
+        call.print("\n\nsources:")
+        call.print("\n".join(f"  [{n}] {r['location']}  {r['heading']}"
+                             for n, r in enumerate(reply["results"], 1)))
+        return 0
+    reply = answer(index, query, args.top, args.more, args.budget)
+    note_reply(call, reply)
+    call.print(json.dumps(reply, indent=1) if args.json else format_answer(reply))
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

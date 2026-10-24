@@ -4,11 +4,7 @@ summary, and each tool's tracked retrieval score.
 
     python scripts/docs/query_log.py [--days N] [--tool NAME]   summarise the log
 
-A lookup tool wraps each lookup in `with lookup(tool, kind, query) as call:`
-and prints through call.print, then sets call.hits, call.weak and any
-call.fields; the row is written when the block ends, with its time and the
-characters it printed. A tool's --eval passes its (question, rank) rows to
-keep_score, which keeps one history for every tool.
+A call is `with lookup(tool, kind, query) as call:`; see Lookup and keep_score.
 
 Each lookup appends one JSON line to queries.jsonl in the per-user autana
 cache (%LOCALAPPDATA%/autana/usage, else $XDG_CACHE_HOME or ~/.cache, then
@@ -21,8 +17,8 @@ that writes rows in this format is summarised beside docs_search.py:
     hits      [[label, score], ...]   ms     latency, when known
     weak      true when nothing answered well
     followed  optional: rank of the result opened next, 0 for none
-    chars     optional: characters printed, totalled as tokens in the summary
-    session   optional: the label of the session that asked
+    chars     optional: characters printed; the summary shows them as tokens
+    session   optional: AUTANA_SESSION, else the first `session_vars` variable set
 
 Other fields are kept but not summarised. To group lookups by session, run
 the session's commands with AUTANA_SESSION=<any label> in their environment
@@ -50,7 +46,7 @@ EVAL_HISTORY = "eval/history.jsonl"
 HITS_KEPT = 5
 SESSION_VAR = "AUTANA_SESSION"
 TOP_SHOWN = 15
-# The usual rough size of an English token, enough to rank tools by output.
+# Rough characters per English token; only meant to compare tools by output.
 CHARS_PER_TOKEN = 4
 NEAREST_SHOWN = 3
 NEAREST_CUTOFF = 0.8
@@ -133,22 +129,26 @@ def eval_history():
 def keep_score(tool, mode, ranks, started, **fields):
     """Score one tool's evaluation, print it beside the last comparable run of
     that tool, and keep it in the history every checkout shares."""
-    result = {"time": iso(), "suite": tool, "mode": mode, **fields, **scores(ranks),
+    measured = scores(ranks)
+    assert not set(fields) & set(measured), "a field may not reuse a score's name"
+    # The history names the tool `suite`, as its earliest rows already do.
+    result = {"time": iso(), "suite": tool, "mode": mode, **fields, **measured,
               "seconds": round(time.perf_counter() - started, 1)}
-    try:
-        earlier = [json.loads(line) for line in eval_history().read_text(encoding="utf-8").splitlines()]
-    except (OSError, ValueError):
-        earlier = []
     print(f"{tool} {mode}: MRR {result['mrr']:.3f}, top-1 {result['top1']:.0%}, "
           f"top-3 {result['top3']:.0%} of {result['rows']} questions in {result['seconds']} s")
     # Only a run of the same tool and mode over the same set compares.
-    previous = next((e for e in reversed(earlier) if e.get("suite") == tool
-                     and e.get("mode") == mode and e.get("rows") == result["rows"]), None)
+    previous = next((e for e in reversed(scores_of(tool))
+                     if e.get("mode") == mode and e.get("rows") == result["rows"]), None)
     if previous:
         print(f"last {previous['time'][:10]}: MRR {previous['mrr']:.3f}, top-3 {previous['top3']:.0%}"
               f" of {previous['rows']}")
     append(EVAL_HISTORY, result)
     return result
+
+
+def scores_of(tool):
+    """Every kept score of one tool, oldest first; unreadable lines are skipped."""
+    return [row for row in rows_in(eval_history()) if row.get("suite") == tool]
 
 
 def append(name, row):
@@ -162,18 +162,27 @@ def append(name, row):
         pass
 
 
-def read(folder=None):
-    rows = []
-    for file in sorted(Path(folder or log_dir()).glob("*.jsonl")):
+def rows_in(file):
+    """The JSON objects of a log file, one per line; a missing file or a bad line is skipped."""
+    try:
         with open(file, encoding="utf-8", errors="replace") as stream:
-            for line in stream:
-                try:
-                    row = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(row, dict) and row.get("tool"):
-                    rows.append(row)
+            lines = stream.readlines()
+    except OSError:
+        return []
+    rows = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
     return rows
+
+
+def read(folder=None):
+    return [row for file in sorted(Path(folder or log_dir()).glob("*.jsonl"))
+            for row in rows_in(file) if row.get("tool")]
 
 
 def since(rows, days):
