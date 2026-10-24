@@ -214,12 +214,20 @@ test_touch_example_counts_edges_and_tracks_held_position(void) {
     touch_fsm_update(&fsm, false, start, step_us + step_us + TOUCH_RELEASE_QUIET_US + 1);
     touch_fsm_take(&fsm, &input);
     TEST_ASSERT_TRUE(input.released);
+    /* Distinct release coordinates prove the example follows only while down. */
     input.x = start.x;
     input.y = start.y;
     touch_example(&state, &input);
     TEST_ASSERT_EQUAL_INT(1, state.taps);
     TEST_ASSERT_EQUAL_INT(last.x, state.x);
     TEST_ASSERT_EQUAL_INT(last.y, state.y);
+    touch_fsm_update(&fsm, true, start, step_us * 4);
+    touch_fsm_take(&fsm, &input);
+    TEST_ASSERT_TRUE(input.pressed);
+    touch_example(&state, &input);
+    TEST_ASSERT_EQUAL_INT(2, state.taps);
+    TEST_ASSERT_EQUAL_INT(start.x, state.x);
+    TEST_ASSERT_EQUAL_INT(start.y, state.y);
 }
 
 /* suite */
