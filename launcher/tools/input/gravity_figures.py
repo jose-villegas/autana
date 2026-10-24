@@ -12,7 +12,7 @@ def main():
         axis.annotate(label, (data[key], 0.5), xytext=(5, 0), textcoords="offset points")
     axis.set(xlabel="Acceleration magnitude deviation from 1 g (g)", ylabel="Trust weight",
              ylim=(0, 1.1), xlim=(0, None))
-    style_axes(axis, "Magnitude trust from measured bias-learning gain")
+    style_axes(axis, "Acceleration trust weight against magnitude deviation")
     save(fig, output / "gravity-trust.png")
     fig, axis = subplots(1, 1, (7, 3))
     axis.plot(*zip(*data["bias"]), color=SLOTS[0], label="Learned bias")
