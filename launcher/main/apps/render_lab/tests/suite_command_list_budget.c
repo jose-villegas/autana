@@ -3,7 +3,7 @@
  * list reaches, driving the REAL render_lab_hud_screen_draw()/
  * render_lab_menu_screen_draw() through ui_begin(), the same calls
  * app_render_lab.c makes, rather than a hand-mirrored reconstruction - see
- * docs/Building-a-Screen.md.
+ * docs/ui/Building-a-Screen.md.
  */
 
 #include "suites.h"

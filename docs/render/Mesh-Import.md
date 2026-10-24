@@ -6,28 +6,26 @@ its light is computed and scored is [Bake-Method.md](Bake-Method.md), and
 drawing it is [Mesh-Rendering.md](Mesh-Rendering.md).
 
 ```mermaid
-flowchart LR
-    subgraph Import_lane["Import lane: geometry"]
-    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"]
-    Mask["Mask alpha cards<br/><i>opt in</i>"]
-    Thin["Thin one material<br/><i>opt in</i>"]
-    Dense["Split long edges<br/><i>with simplify</i>"]
-    Simp["Simplify to the budget<br/><i>opt in</i>"]
+flowchart TB
+    subgraph Cut["1 · Choose triangles"]
+    direction LR
+    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"] --> Mask["Mask alpha cards<br/><i>import, opt in</i>"] --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"] --> Thin["Thin one material<br/><i>import, opt in</i>"]
     end
-    subgraph Scene_lane["Scene lane: renderer options"]
-    Vis["Cull by camera visibility<br/><i>opt in</i>"]
-    Lit["Light per vertex<br/><i>bake = true</i>"]
-    Albedo["Albedo, no light<br/><i>no bake</i>"]
-    Face["Light per face<br/><i>flat shading</i>"]
+    subgraph Light["2 · Colour vertices"]
+    direction LR
+    Dense["Split long edges<br/><i>import, with simplify</i>"] --> Lit["Light per vertex<br/><i>scene, bake</i><br/>or albedo, no light"]
     end
-    Fetch --> Mask --> Vis --> Thin --> Dense
-    Dense --> Lit --> Simp
-    Dense --> Albedo --> Simp
-    Simp --> Face --> Write["Write: quantise,<br/>meshlets, octree"]
-    Simp --> Write
-    Write --> Entry["Pack entry<br/><i>name.mesh</i>"]
-    Entry --> Pack["build_pack.py<br/><i>its root's pack</i>"]
+    subgraph Finish["3 · Reduce and write"]
+    direction LR
+    Simp["Simplify to the budget<br/><i>import, opt in</i>"] --> Face["Light per face<br/><i>scene, flat only</i>"] --> Write["Write: quantise,<br/>meshlets, octree"] --> Pack["name.mesh into<br/>build_pack.py"]
+    Simp -. smooth .-> Write
+    end
+    Cut --> Light --> Finish
+    classDef scene fill:#3d6b8a,color:#fff
+    class Vis,Lit,Face scene
 ```
+
+Blue steps are the scene's renderer options; the rest are the import file's.
 
 ## Import options
 
@@ -97,25 +95,8 @@ Unknown values fail naming the import file and allowed modes.
 - `renormalised`: normalises the blended normal before direct shading.
 - `table`: samples bilinear irradiance from the scene's normal-direction table.
 
-[Lighting modes](Skinned-Lighting.md#lighting-modes) includes the comparison
-sheet. This quality/cost table is generated from the committed board capture;
-cycles per vertex are grouped by light count, errors are 8-bit channel steps.
-
-<!-- generated: skin-light-import check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
-Build `8d0d33ecbdb9-diag`.
-
-| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| direct | 1 | 640.495 | 8 | 0.246612 | — | 5104.000 | 3744 | 1024 | 124 |
-| direct | 2 | 663.714 | 9 | 0.264905 | — | 5104.000 | 3744 | 1024 | 124 |
-| direct | 4 | 708.679 | 13 | 0.353997 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 1 | 680.045 | 1 | 0.184282 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 2 | 702.716 | 1 | 0.185637 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 4 | 748.143 | 2 | 0.180217 | — | 5104.000 | 3744 | 1024 | 124 |
-| table | 1 | 865.099 | 7 | 0.455623 | 32224.000 | 5104.000 | 3744 | 2048 | 124 |
-| table | 2 | 861.271 | 4 | 0.360095 | 44202.000 | 5104.000 | 3744 | 2048 | 124 |
-| table | 4 | 861.167 | 4 | 0.380420 | 67278.000 | 5104.000 | 3744 | 2048 | 124 |
-<!-- /generated: skin-light-import -->
+[Lighting modes](Skinned-Lighting.md#lighting-modes) has the comparison sheet and the
+cost and error of each mode on the board.
 
 ### Process options
 
@@ -236,23 +217,19 @@ scaled copies remain separate shapes. Reflections are recorded per instance.
 | Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#86)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
 | Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangle winding and materials agree as multisets |
 
-The report writes counts, residuals and a camera-path estimate to an external
-`--out` directory. Single-instance shapes keep their full share.
+Each colour below is one repeated shape, boxed at every copy in view. The
+view is the camera-path pose where those boxes show the most visible edge;
+`render_doc_images.sh` regenerates it.
 
-Pixels per triangle is relative by construction: picture area divided by
-the path's own mean in-view budget.
+![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
 
-A repeated shape drops to a quarter-triangle level while its share exceeds
-what its projected area allows. `LOD_TRIANGLE_RATIO` and `LOD_LEVELS` in
-`objects_report.py` define the levels and cap.
+| Report output (`--out` directory) | What it shows |
+|---|---|
+| objects.md / objects.json | Shapes, copies, triangles saved, match residuals |
+| poses.csv, lod.png | Per camera-path pose: whole and in-view budgets, repeated-shape LOD budget, and triangles LOD frees |
 
-A sphere's disk overstates the footprint of tall thin props, so their
-saving is probably understated. Culling uses placed world bounds;
-the footprint estimate uses the enclosing sphere.
-
-The table, CSV and plot show the whole budget, in-view triangles, in-view
-triangles with repeated-shape LOD, and triangles LOD frees.
-The bake does not use objects or instances.
+- Repeated shapes step down while their triangle share exceeds what projected area allows; `LOD_TRIANGLE_RATIO` and `LOD_LEVELS` in `objects_report.py` set the quarter-triangle levels and cap.
+- This is an estimate: pixels per triangle is calibrated from the path; enclosing-sphere footprints overstate tall, thin props.
 
 ## The offline tools
 

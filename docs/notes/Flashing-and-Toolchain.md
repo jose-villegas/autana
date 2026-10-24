@@ -31,7 +31,7 @@ Either sequence forces the ROM bootloader regardless of firmware state.
 From there `autana flash` writes the image and ends with esptool's RTS
 reset. What a flash proves (esptool's hash check and the build's
 `BUILD_ID`, not the boot) and the whole hand-off under the device lock are
-in [Flash-and-Captures.md](../tools/Flash-and-Captures.md#what-a-flash-proves).
+in [Flash-and-Captures.md](../cli/Flash-and-Captures.md#what-a-flash-proves).
 
 After the RTS reset the new boot drops USB while it tunes PSRAM (below),
 and the port comes back, possibly on a **different COM number**.
