@@ -29,10 +29,13 @@ The constants in `shake.h` come from guided board captures.
 
 ![Size, smoothed size and level against START and FULL while walking, shaking gently and shaking hard](../images/input/shake-trace.png)
 
-A recorded capture's linear acceleration run through `shake_update()`, three
-seconds of each activity. The grey size swings with every stroke; the
-smoothed size carries between strokes. Walking stays under START, gentle
-shaking touches it, and hard shaking climbs past FULL.
+A hardware recording, the retained mixed-direction shake capture, run through
+`shake_update()`: for each activity, the three-second span with the median
+smoothed size.
+
+The grey size swings with every stroke; the smoothed size carries between
+strokes. Walking stays under START, gentle shaking touches it, and hard
+shaking climbs past FULL.
 
 ## Figures
 
@@ -44,5 +47,5 @@ the time constant and thresholds come from `shake.h`. The level curve probes
 python launcher/tools/input/shake_figures.py --cc cc --out docs/images/input/shake-level.png
 ```
 
-The recorded trace comes from the retained mixed-direction shake capture; the
-image pipeline (`launcher/tools/render/render_doc_images.sh`) regenerates both.
+The image pipeline (`launcher/tools/render/render_doc_images.sh`) regenerates
+both, the trace from the capture.

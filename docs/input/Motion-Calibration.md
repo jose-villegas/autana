@@ -5,12 +5,13 @@ offset and the gyro zero-rate on the board. Axes and fields are in
 [Motion-Axes.md](Motion-Axes.md); the gyro bias learned continuously is in
 [Gravity.md](Gravity.md).
 
-| Motion page, idle | Results, after a round |
+| Motion page, idle | Results page |
 |---|---|
 | ![Motion page: raw and filtered readings, stored offset and the tilt bubble](../images/input/motion-page.png) | ![Results page: per-axis residual, scale and gyro offset with SAVE and CLEAR](../images/input/motion-results.png) |
 
-Both screens are rendered on the host from the page's own drawing code,
-turned to read upright.
+Both screens are rendered on the host from the page's own drawing code with
+scripted, not recorded, values, turned to read upright. The results page shows
+its default state, not a fitted round.
 
 ## Calibration round
 
@@ -70,7 +71,7 @@ restarts settling. `imu_probe.h` owns every threshold and duration.
 |---|---|---|
 | Pose settling | recent per-axis accelerometer and gyro means are still and gravity is aligned; constant gyro bias does not block it | motion, a reading gap |
 | Upright arming | acceleration within the bottom-down cone `IMU_PROBE_UPRIGHT_MIN` and rotation at or below `IMU_PROBE_TURN_THRESHOLD` for `IMU_PROBE_SETTLE_MS`; no pose-grade stillness needed | missing readings, gaps, leaving the cone |
-| Turn trigger | rotation above `IMU_PROBE_TURN_THRESHOLD` after the upright hold | |
+| Turn trigger | rotation above `IMU_PROBE_TURN_THRESHOLD` after the upright hold | not applicable: fires once |
 
 Align each pose carefully: the gravity gate rejects wrong poses but does not
 establish precision alignment. The upright cone follows the pinned page quarter.
@@ -89,7 +90,7 @@ the trace's duration and sampling bound; missing readings are not synthesized.
 | `autana labdump` | Behaviour |
 |---|---|
 | Output | the kept lines between `LABDUMP_BEGIN` and `LABDUMP_END`; repeated dumps return the same text |
-| Line prefix | every kept line starts with `LABDUMP`, apart from the console's log lines; the tools accept live lines and replayed dumps |
+| Line prefix | every kept line starts with `LABDUMP`, which tells it apart from the console's log lines; the tools accept live lines and replayed dumps |
 | Serial lines | Windows sets DTR and RTS low before opening; POSIX opens with both raised, then lowers RTS before DTR |
 
 ## The fit
@@ -146,7 +147,7 @@ each capture it reports:
 - per turn trace, the maximum and final angle between estimated down and
   acceleration, skipping samples without a direction.
 
-## Measured on the board
+## Measured captures
 
 Accelerometer error is mostly offset and repeats across a power cycle; gyro
 bias drifts at rest, so it is learned continuously
