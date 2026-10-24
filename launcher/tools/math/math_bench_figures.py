@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT / "launcher/tools"), str(ROOT / "launcher/tools/perf")]
 import fast_paths
 import math_bench_table as bench
-from docs.plot_style import SLOTS, MUTED, LABEL_SIZE, subplots, style_axes, save
+from docs.plot_style import SLOTS, MUTED, LABEL_SIZE, TITLE_SIZE, subplots, style_axes, save
 from matplotlib.patches import Patch
 
 TYPE_ORDER = ("f", "i", "s", "x")
@@ -21,6 +21,10 @@ VALUE_GAP = 2
 REFERENCE_GAP = 11
 VALUE_HEADROOM = 1.35
 CATEGORY_MARGIN = 0.6
+BREAK_TOP_FRACTION = 0.94
+BREAK_GAP_FRACTION = 0.04
+BREAK_RISE_FRACTION = 0.025
+BREAK_LINE_WIDTH = 2
 
 
 def render(rows, measured, items):
@@ -46,7 +50,7 @@ def render(rows, measured, items):
         raise ValueError("no benchmark families to plot")
     fig, axes = subplots(len(panels), 1, (FIGURE_WIDTH, PANEL_HEIGHT * len(panels)), squeeze=False)
     for axis, (family, groups) in zip(axes.flat, panels):
-        heights = []
+        limit = max(measured[row[0]][0] for members in groups.values() for row in members) * VALUE_HEADROOM
         for tick, members in enumerate(groups.values()):
             bars = []
             for row in sorted(members, key=lambda row: TYPE_ORDER.index(row[2].split("_to_")[-1])):
@@ -57,23 +61,28 @@ def render(rows, measured, items):
             for offset, (row, reference) in enumerate(bars):
                 key, label, kind, _, _ = row
                 value = measured[key][0]
-                heights.append(value)
+                height = min(value, limit) if reference else value
                 position = tick + (offset - (len(bars) - 1) / 2) * width
                 colour = SLOTS[TYPE_ORDER.index(kind.split("_to_")[-1])]
-                axis.bar(position, value, width, color="white" if reference else colour,
+                axis.bar(position, height, width, color="white" if reference else colour,
                          edgecolor=colour, hatch="///" if reference else None)
-                axis.annotate(f"{value:.0f}", (position, value), xytext=(0, VALUE_GAP),
+                if reference and value > limit:
+                    for top in (BREAK_TOP_FRACTION, BREAK_TOP_FRACTION - BREAK_GAP_FRACTION):
+                        axis.plot([position - width / 2, position + width / 2],
+                                  [limit * (top - BREAK_RISE_FRACTION), limit * top],
+                                  color="white", linewidth=BREAK_LINE_WIDTH, solid_capstyle="butt")
+                axis.annotate(f"{value:.0f}", (position, height), xytext=(0, VALUE_GAP),
                               textcoords="offset points", ha="center", fontsize=VALUE_SIZE, color=MUTED)
                 if reference:
-                    axis.annotate(f"{label} ({kind})", (position, value), xytext=(0, REFERENCE_GAP),
+                    axis.annotate(f"{label} ({kind})", (position, height), xytext=(0, REFERENCE_GAP),
                                   textcoords="offset points", ha="center", fontsize=VALUE_SIZE, color=MUTED)
         axis.set_xticks(range(len(groups)), list(groups))
         axis.set_xlim(-CATEGORY_MARGIN, len(groups) - 1 + CATEGORY_MARGIN)
-        axis.set_ylim(0, max(heights) * VALUE_HEADROOM)
+        axis.set_ylim(0, limit)
         axis.set_ylabel("warm cycles/op", fontsize=LABEL_SIZE)
         style_axes(axis, "")
         title = "libm (no fast path)" if family == "libm" else family.capitalize()
-        axis.set_title(title, loc="left", fontsize=LABEL_SIZE)
+        axis.set_title(title, loc="left", fontsize=TITLE_SIZE)
         axis.spines[["top", "right"]].set_visible(False)
     blank = Patch(visible=False)
     handles = [handle for colour in SLOTS[:len(TYPE_ORDER)] for handle in (Patch(color=colour), blank)]
