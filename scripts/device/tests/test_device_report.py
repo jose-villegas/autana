@@ -36,6 +36,42 @@ def write_index(directory, entries):
     return index_path
 
 
+class ErrorsSectionTests(unittest.TestCase):
+    CRASHED = (":1:test_a:PASS\nE (5) sand: bad grain\nassert failed: step sand.c:9\n"
+               "Guru Meditation Error: Core 0 panic'ed (LoadProhibited)\n"
+               "ESP-ROM:esp32s3-20210327\nESP-ROM:esp32s3-20210327\n")
+
+    def errors(self, text, boots_allowed=0):
+        return device_report.errors_section("\n".join(device_report.errors_markdown(text, boots_allowed)))
+
+    def test_crashes_resets_and_error_lines_are_listed_without_result_lines(self):
+        text = "\n".join(self.errors(self.CRASHED))
+        self.assertIn("crash: Guru Meditation", text)
+        self.assertIn("rebooted: 2 boots", text)
+        self.assertIn("E (5) sand: bad grain", text)
+        self.assertNotIn("test_a", text)
+
+    def test_a_clean_capture_says_none(self):
+        self.assertEqual(self.errors(SAND_CAPTURE), ["None."])
+
+    def test_a_failing_test_message_is_not_an_error_line(self):
+        self.assertEqual(self.errors(":1:test_a:FAIL: error path taken\n"), ["None."])
+
+    def test_the_extra_error_lines_are_counted(self):
+        text = "".join(f"E ({n}) x: bad\n" for n in range(device_report.MAX_ERROR_LINES + 3))
+        self.assertIn("- 3 more error lines in the capture", self.errors(text))
+
+    def test_the_section_ends_at_the_next_heading(self):
+        self.assertEqual(device_report.errors_section("## Errors\n\n- a\n\n## Next\n- b\n"), ["- a"])
+
+    def test_the_report_carries_the_section(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "c.log"
+            capture.write_text(self.CRASHED, encoding="utf-8")
+            report = device_report.build_report_markdown(capture, Path(directory) / "none.jsonl")
+        self.assertIn("## Errors", report)
+
+
 class ParseSuiteResultsTests(unittest.TestCase):
     def test_unity_summary_preserves_all_console_readers(self):
         import device

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "name_hash/name_hash64.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -38,12 +39,7 @@ build_commands(mu_Context* ctx, int garbage) {
 
 static uint64_t
 command_hash(const mu_Context* ctx) {
-    uint64_t hash = 1469598103934665603ull;
-    for (int i = 0; i < ctx->command_list.idx; i++) {
-        hash ^= (unsigned char)ctx->command_list.items[i];
-        hash *= 1099511628211ull;
-    }
-    return hash;
+    return name_hash64_n(NAME_HASH64_OFFSET_BASIS, ctx->command_list.items, (size_t)ctx->command_list.idx);
 }
 
 static void

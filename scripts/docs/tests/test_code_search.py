@@ -179,7 +179,7 @@ class CodeSearch(unittest.TestCase):
     def test_no_match_prints_the_nearest_names_and_exits_one(self):
         write(self.root, "a/value.h", "/* Values. */\nint value_get(void);\nint other(void);\n")
         self.assertEqual((0, "a/value.h:2  value_get\n    int value_get(void)\n    Values.\n"), self.run_main("value"))
-        code, out = self.run_main("vaule", "gte")
+        code, out = self.run_main("vlue", "gte")
         self.assertEqual(1, code)
         self.assertEqual("no match; nearest names:\na/value.h:2  value_get", out.splitlines()[0] + "\n" + out.splitlines()[1])
         self.assertNotIn("other", out)
@@ -189,9 +189,10 @@ class CodeSearch(unittest.TestCase):
         self.run_main("value")
         self.run_main("--shared", "absent")
         rows = query_log.read(self.log)
-        self.assertEqual([("code", "value", [["a/value.h:2 value", None]], False, False),
-                          ("code", "absent", [], True, True)],
-                         [(r["tool"], r["query"], r["hits"], r["weak"], r["shared"]) for r in rows])
+        self.assertEqual([("code", "search", "value", [["a/value.h:2 value", None]], False),
+                          ("code", "shared", "absent", [], True)],
+                         [(r["tool"], r["kind"], r["query"], r["hits"], r["weak"]) for r in rows])
+        self.assertTrue(all(r["chars"] > 0 for r in rows))
 
     def test_eval_ranks_each_row_owner_within_the_shown_results(self):
         write(self.root, "a/ring.h", "/* Fixed queues of bytes. */\nint ring_push(int);\n")
@@ -199,7 +200,7 @@ class CodeSearch(unittest.TestCase):
         rows = pathlib.Path(self.temp.name) / "rows.tsv"
         rows.write_text("ring push\ta/ring.h\tcase\nring reader\tb/fifo.h\tcase\nbitset\ta/ring.h\tcase\n",
                         encoding="utf-8")
-        self.assertEqual([("ring push", "a/ring.h", 1), ("ring reader", "b/fifo.h", 1), ("bitset", "a/ring.h", None)],
+        self.assertEqual([("ring push", 1), ("ring reader", 1), ("bitset", None)],
                          evaluate(index(self.root), rows))
 
     def test_check_fails_and_names_a_file_without_a_purpose(self):

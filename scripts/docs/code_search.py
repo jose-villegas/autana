@@ -13,7 +13,6 @@ Exits 1 when nothing matches.
 """
 import argparse
 import ast
-import difflib
 import math
 import pathlib
 import posixpath
@@ -31,7 +30,7 @@ from c_constants import file_scope
 from c_includes import resolve_include
 from check_doc_constants import sentences
 import query_log
-from docs_search import CAMEL, STOPWORDS, WORD, eval_history, stem, tokens
+from docs_search import CAMEL, STOPWORDS, WORD, stem, tokens
 from idf_vocabulary import c_declarations
 from tracked import tracked_files
 
@@ -48,8 +47,6 @@ NAMES_PER_FILE = 3
 NAME_WEIGHT = 2
 # Results printed before the count of the rest.
 SHOWN = 20
-# Nearest names printed when nothing matches.
-NEAREST = 5
 # Longest declaration printed, in characters.
 DECLARATION_MAX = 160
 
@@ -280,40 +277,25 @@ def unexplained(owners):
 
 
 def nearest(owners, words):
-    """The rows of the public names spelled closest to the query's words, for a search that matched nothing."""
+    """The rows of the public names spelled closest to the query, for a search that matched nothing."""
     rows = {name.lower(): (owner.path, line, name, text, owner.purpose)
             for owner in owners for name, line, text in owner.names}
-    close = difflib.get_close_matches("_".join(words).lower(), list(rows), NEAREST)
-    return [rows[name] for name in close]
+    return [rows[name] for name in query_log.nearest("_".join(words).lower(), list(rows))]
 
 
 EVAL_ROWS = pathlib.Path(__file__).with_name("code_search_eval.tsv")
 
 
 def evaluate(owners, rows=EVAL_ROWS, depth=SHOWN):
-    """(words, owner, rank or None) for each row of `rows`: words a person would type before
-    writing a helper again, and the file that already owned it."""
+    """(words, rank or None) for each row of `rows`: words a person would type before writing a
+    helper again, and the file that already owned it."""
     ranks = []
     for line in pathlib.Path(rows).read_text(encoding="utf-8").splitlines():
         words, owner = line.split("\t")[:2]
         paths = [row[0] for row in search(owners, words.split())]
         rank = paths.index(owner) + 1 if owner in paths else None
-        ranks.append((words, owner, rank if rank and rank <= depth else None))
+        ranks.append((words, rank if rank and rank <= depth else None))
     return ranks
-
-
-def run_eval(owners):
-    ranks = evaluate(owners)
-    for words, owner, rank in ranks:
-        print(f"{rank or '-':>2}  {words}  ({owner})")
-    found = [rank for _, _, rank in ranks if rank]
-    result = {"time": query_log.iso(), "suite": "code", "rows": len(ranks),
-              "recall": round(len(found) / len(ranks), 3), "top5": round(sum(r <= 5 for r in found) / len(ranks), 3),
-              "mrr": round(sum(1 / r for r in found) / len(ranks), 3)}
-    print(f"recall@{SHOWN} {result['recall']:.0%}, recall@5 {result['top5']:.0%}, MRR {result['mrr']:.3f}"
-          f" of {result['rows']} rows")
-    query_log.append(eval_history(), result)
-    return result
 
 
 def main(argv=None, root=ROOT):
@@ -326,20 +308,27 @@ def main(argv=None, root=ROOT):
     args = parser.parse_args(argv)
     if not (args.check or args.eval or args.words):
         parser.error("give words to search for, --check or --eval")
-    owners = index(root)
     if args.eval:
-        run_eval(owners)
+        ranks = evaluate(index(root))
+        for words, rank in ranks:
+            print(f"{rank or '-':>2}  {words}")
+        recall = round(sum(1 for _, rank in ranks if rank) / max(len(ranks), 1), 3)
+        print(f"recall@{SHOWN} {recall:.0%}")
+        query_log.keep_score("code", "lexical", ranks, started, recall=recall)
         return 0
     if args.check:
+        owners = index(root)
         missing = unexplained(owners)
         for path in missing:
             print(f"{path}: no purpose; open it with a banner comment or docstring that says what it is for")
         print(f"code search: {len(owners)} files indexed; {len(missing)} without a purpose")
         return int(bool(missing))
-    rows = search(owners, args.words, args.shared)
-    query_log.record("code", "search", " ".join(args.words), started=started, weak=not rows, shared=args.shared,
-                     hits=[(f"{path}:{line} {name}", None) for path, line, name, _, _ in rows])
-    print(report(rows) if rows else "no match; nearest names:\n" + report(nearest(owners, args.words)))
+    with query_log.lookup("code", "shared" if args.shared else "search", " ".join(args.words)) as call:
+        owners = index(root)
+        rows = search(owners, args.words, args.shared)
+        call.hits = [(f"{path}:{line} {name}", None) for path, line, name, _, _ in rows]
+        call.weak = not rows
+        call.print(report(rows) if rows else "no match; nearest names:\n" + report(nearest(owners, args.words)))
     return 0 if rows else 1
 
 
