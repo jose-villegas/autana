@@ -55,7 +55,9 @@ slot is reused, so an old handle can never reach a newer sound in its slot.
 | `SOUND_BUS_MASTER` | gain only: scales every bus |
 
 Every bus feeds master directly, with no nesting. Gains are percents up to
-`SOUND_GAIN_MAX_PCT`, and out-of-range values are ignored. Each sample is scaled by
+`SOUND_GAIN_MAX_PCT`, and out-of-range values are ignored.
+
+Each sample is scaled by
 `voice gain x bus gain x master gain`, folded into one fixed-point factor per voice
 per block, so a sample costs one 32-bit multiply and shift.
 

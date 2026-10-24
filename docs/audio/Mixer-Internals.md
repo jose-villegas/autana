@@ -113,9 +113,30 @@ sequenceDiagram
 | Engine-owned sounds | the ones the shell plays survive every exit, so their storage must too |
 | Gains | the SYSTEM bus keeps the shell's UI volume, and SFX, MUSIC and master reset |
 | Stuck mixer | past `SOUND_EXIT_READ_TIMEOUT_MS` the board aborts rather than free memory it might read |
-| Console sound views | live in PSRAM and are released at the next app transition, after the mixer fence; a timeout keeps them mapped for a later one |
+| Console sound views | live in PSRAM and are released at the next app transition, after the mixer fence ([below](#console-play)); a timeout keeps them mapped for a later one |
 
 Distinct mounted packs share `ASSET_STORE_MOUNTS_MAX` slots with other asset users.
+
+### Console play
+
+A play from the terminal replies `SOUND_END` or `SOUND_ERR <reason>`. It carries `voice` and
+`open_us`, the time `sound_open()` spent checking the entry and its ADPCM block headers (zero for a cached view).
+
+```mermaid
+sequenceDiagram
+    participant Reader as Reader task
+    participant Mailbox
+    participant Frame as Frame task
+    participant Mixer
+    Reader->>Mailbox: Post parsed play
+    Mailbox->>Frame: Take request
+    Frame->>Frame: Mount pack and open view
+    Frame->>Mixer: Play voice
+    Note over Frame,Mixer: App transition
+    Frame->>Mixer: Stop voices and fence reads
+    Mixer-->>Frame: Mixer fence complete
+    Frame->>Frame: Release views and pack references
+```
 
 ## Capture
 

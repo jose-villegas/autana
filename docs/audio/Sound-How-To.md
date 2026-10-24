@@ -55,9 +55,9 @@ while the amplifier warms up ([Amplifier](Mixer-Internals.md#amplifier)).
 
 | Step | What you do |
 |---|---|
-| 1. Source | put `click.wav` (WAV, FLAC, OGG or MP3, any channel count) in your app's pack folder |
-| 2. Recipe | beside it, `click.sound.toml` with `source = "click.wav"` ([Sound assets](Sound-Assets.md)) |
-| 3. Bake | the build bakes it into entry `click` of your app's pack ([Packs](../assets/README.md#packs)) |
+| 1. Source | put `click.wav` (WAV, FLAC, OGG or MP3, any channel count) in your app's pack folder, the one holding its `NAME.pack.toml` |
+| 2. Recipe | beside it, `click.sound.toml` with `source = "click.wav"` and `format = "adpcm"` or `"pcm16"` ([Sound assets](Sound-Assets.md)) |
+| 3. Bake | the build bakes it into entry `click` of that folder's pack ([Packs](../assets/README.md#packs)) |
 | 4. Open | `sound_open(asset_store_pack(...), "click", &state)` as below |
 
 <!-- generated: sound-own-example check: python launcher/tools/gen/examples_doc.py --check -->
