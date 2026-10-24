@@ -23,6 +23,11 @@ REST = "rest of frame"  # the frame's time outside STAGES
 CHART_WIDTH = 8  # inches
 CHART_ROW_HEIGHT = 0.45  # inches per bar
 CHART_ROOM = 1.1  # inches for the title, axis and legend
+TRADE_CHART = "meshlet-size-trade.png"  # written beside the frame-cost chart
+TRADE_HEIGHT = 3.2  # inches
+TRADE_X_ROOM = 1.4  # factor of room before the smallest size; its square past the largest, for the labels
+TRADE_Y_ROOM = 1.15  # factor of room above the highest point
+TRADE_LABEL_GAP = 8  # points between a point and its label
 IDENTITY = re.compile(r"\bCAPTURE build_id=([0-9a-f]{12}-diag) pack_crc32=([0-9a-f]{8}) object=(\w+) size=(\d+) cull=([01]) period_ms=(\d+) pose_every_ms=(\d+)")
 BLOCK = re.compile(r"=== (\w+) FRAME COST .*?===.*?(?:\1 both cores: mean [^\n]+)", re.S)
 
@@ -128,6 +133,34 @@ def chart(rows, path):
     save(figure, path)
 
 
+def trade_chart(rows, path):
+    """The size trade: clusters to walk and triangles submitted against the meshlet size, each point labelled
+    with the board stage it costs. `rows` are the sized rows of `table`, smallest first."""
+    from docs.plot_style import LABEL_SIZE, MUTED, SLOTS, save, style_axes, subplots
+    sizes = [int(row) for row in ROWS]
+    figure, axes = subplots(1, 2, (CHART_WIDTH, TRADE_HEIGHT))
+    panels = (("clusters", [clusters for _, clusters, *_ in rows], "cull", STAGES.index("r3d.cull"),
+               "Smaller meshlets: more clusters to walk"),
+              ("mean triangles submitted", [submitted for _, _, _, submitted, *_ in rows], "draw",
+               STAGES.index("r3d.draw"), "Bigger meshlets: looser boxes, more submitted"))
+    for axis, (label, values, stage, at, title), colour in zip(axes, panels, SLOTS):
+        axis.plot(sizes, values, "o-", color=colour)
+        axis.set_xscale("log", base=2)
+        axis.set_xticks(sizes, [str(size) for size in sizes])
+        axis.set_xlim(sizes[0] / TRADE_X_ROOM, sizes[-1] * TRADE_X_ROOM ** 2)
+        axis.set_ylim(0, max(values) * TRADE_Y_ROOM)
+        axis.set_xlabel("geometry.meshlet_triangles", fontsize=LABEL_SIZE, color=MUTED)
+        axis.set_ylabel(label, fontsize=LABEL_SIZE, color=MUTED)
+        # A rising line's labels sit under their points, a falling line's to their right: both keep clear of it.
+        rising = values[-1] > values[0]
+        offset, align = ((0, -TRADE_LABEL_GAP), dict(ha="center", va="top")) if rising else             ((TRADE_LABEL_GAP, 0), dict(ha="left", va="center"))
+        for size, value, row in zip(sizes, values, rows):
+            axis.annotate(f"{value:,.0f}\n{stage} {row[4 + at]:.2f} ms", (size, value), textcoords="offset points",
+                          xytext=offset, fontsize=LABEL_SIZE, **align)
+        style_axes(axis, title)
+    save(figure, path)
+
+
 def table(scene_path, captures, bakes, chart_path):
     """The block of the scene's showcase: the chart, written to `chart_path`, then its rows collapsed."""
     from meshlet_capture import rebake_scene
@@ -171,6 +204,7 @@ def table(scene_path, captures, bakes, chart_path):
         rows.append(("cull off" if row == "cull-off" else f"meshlets of {row}" + (" (shipped)" if row == shipped else ""),
                      clusters, vertices / triangles, submitted, *means[row]))
     chart(rows, chart_path)
+    trade_chart(rows[1:], pathlib.Path(chart_path).with_name(TRADE_CHART))
     from render.doc_tables import collapsed
     body = markdown(["Row", "Clusters", "Vertices/triangle", "Mean submitted triangles", "Cull ms", "Transform ms",
                      "Draw ms", "Frame ms"],
