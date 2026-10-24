@@ -21,6 +21,8 @@
 #ifndef DEVICE_BUILD
 #include "hash/crc32.h"
 #include "test_asset_dir.h"
+
+#include "../asset_examples/load_pack.c"
 #endif
 
 #define ROWS            2
@@ -195,6 +197,22 @@ test_two_packs_mount_alone_and_a_bad_checksum_in_one_leaves_the_other_usable(voi
     remove_pack("suite_pack_b");
 }
 
+static void
+test_the_load_pack_example_reads_an_entry_and_releases_the_pack(void) {
+    test_asset_dir_use(".");
+    write_pack("suite_pack_a", "first", 0);
+    uint32_t size = 0;
+    const int mounted = asset_store_mounted();
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, load_pack_example("suite_pack_a", "note", NOTE_TYPE, &size));
+    TEST_ASSERT_EQUAL_UINT32(NOTE_BYTES, size);
+    TEST_ASSERT_EQUAL_INT(mounted, asset_store_mounted());
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, load_pack_example("suite_pack_a", "absent", NOTE_TYPE, &size));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_TYPE,
+                          load_pack_example("suite_pack_a", "note", ASSET_TYPE('N', 'O', 'P', 'E'), &size));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, load_pack_example("suite_pack_missing", "note", NOTE_TYPE, &size));
+    remove_pack("suite_pack_a");
+}
+
 /* A counted mount is read once: a damaged file goes unseen until the last
  * use is released and the next mount reads it again. */
 static void
@@ -245,6 +263,7 @@ suite_asset_store(void) {
     RUN_TEST(test_a_row_out_of_range_misaligned_or_overlapping_is_refused);
     RUN_TEST(test_two_packs_with_one_name_or_a_name_with_no_room_for_its_nul_are_refused);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_the_load_pack_example_reads_an_entry_and_releases_the_pack);
     RUN_TEST(test_two_packs_mount_alone_and_a_bad_checksum_in_one_leaves_the_other_usable);
     RUN_TEST(test_a_pack_is_read_on_its_first_use_and_again_only_after_its_last_release);
     RUN_TEST(test_a_mount_past_the_store_s_slots_is_refused_until_one_is_released);

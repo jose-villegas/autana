@@ -9,17 +9,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "display/display.h"
-#include "math/linear/vec2i.h"
+#include "display/display_judge.h"
 
-/* The shell's orientation sampler: the quarter and when it may next ask for
- * gravity, so the cadence is as testable as the decision. 10 Hz is enough
- * for reorientation without lag. */
-#define DISPLAY_SAMPLE_MS 100
-
-/* Fills `gravity` in screen axes, the units display_update() takes; false
- * when there is no reading. */
-typedef bool (*display_gravity_reader_t)(vec2i_t* gravity);
+/* Fills screen-axis acceleration in g; false when there is no reading. */
+typedef bool (*display_acceleration_reader_t)(vec3f_t* acceleration);
 
 typedef struct {
     display_t display;
@@ -31,10 +24,10 @@ typedef struct {
 /* Starts at DISPLAY_DEFAULT_QUARTER, due to sample at once. */
 void display_orientation_init(display_orientation_t* o);
 
-/* Reads gravity through `read` when DISPLAY_SAMPLE_MS has passed since the
- * last attempt, a failed read included, and feeds display_update(). True when
- * the quarter changed or the sampler has been released. */
-bool display_orientation_sample(display_orientation_t* o, int64_t now_us, display_gravity_reader_t read);
+/* Reads acceleration through `read` at most once per DISPLAY_SAMPLE_MS,
+ * counting failed reads. True when the quarter changes or a released hold
+ * requires the shell to reapply its UI transform. */
+bool display_orientation_sample(display_orientation_t* o, int64_t now_us, display_acceleration_reader_t read);
 
 void display_orientation_hold(display_orientation_t* o, int quarter);
 void display_orientation_release(display_orientation_t* o);
@@ -53,11 +46,15 @@ void display_load_panel_clock(void);
 /* Puts the shell's orientation at DISPLAY_DEFAULT_QUARTER. */
 void display_reset_quarter(void);
 
-/* Holds bypass gravity until release; the next sample after release is due. */
+/* Holds bypass sensor reads. Lock rotation with display_hold_quarter(display_quarter_now()).
+ * Release restarts the filter; changes still pass every judge gate. */
 void display_hold_quarter(int quarter);
 void display_release_quarter(void);
 bool display_quarter_held(void);
 
-/* Samples the shell's orientation, asking `read` for gravity at most every
+/* Samples the shell's orientation, asking `read` for acceleration at most every
  * DISPLAY_SAMPLE_MS. True when the quarter changed or after a release. */
-bool display_sample_orientation(int64_t now_us, display_gravity_reader_t read);
+bool display_sample_orientation(int64_t now_us, display_acceleration_reader_t read);
+
+/* Call every frame a finger is down, before sampling orientation. */
+void display_touch_now(int64_t now_us);
