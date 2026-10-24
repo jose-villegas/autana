@@ -141,10 +141,10 @@ jobs:
           STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_constants.py
 
-      - name: The math reference names every function the headers define
+      - name: Each package's pages name every function its headers define
         env:
           STAGED_TEXT_GATE: "snapshot"
-        run: python3 scripts/gates/check_math_docs.py
+        run: python3 scripts/gates/check_package_docs.py
 
       - name: Every document is reachable, and every anchor link resolves
         run: python3 scripts/gates/check_doc_index.py

@@ -1,5 +1,6 @@
 #include "render/dynamic/r3d_dynamic_mesh.h"
 
+#include <assert.h>
 #include <string.h>
 
 #include "math/geometry/box3s.h"
@@ -42,6 +43,7 @@ levels_for(int clusters, int counts[TREE_LEVELS_MAX]) {
     int levels = 0;
     counts[levels++] = n;
     while (n > 1) {
+        assert(levels < TREE_LEVELS_MAX);
         n = (n + R3D_LIT_INNER_CHILDREN_MAX - 1) / R3D_LIT_INNER_CHILDREN_MAX;
         counts[levels++] = n;
     }
@@ -86,6 +88,11 @@ layout(r3d_dynamic_capacity_t c, size_t offsets[6]) {
         at += align_up(sizes[i]);
     }
     return at;
+}
+
+r3d_dynamic_capacity_t
+r3d_dynamic_capacity_for(int sources, int triangles) {
+    return (r3d_dynamic_capacity_t){mathi_min(3 * triangles, INDEX_LIMIT), triangles, sources};
 }
 
 size_t
@@ -207,7 +214,7 @@ build_tree(r3d_dynamic_mesh_t* m) {
         const int below = l == 0 ? clusters : counts[l - 1];
         for (int i = 0; i < counts[l]; i++) {
             const int first = i * fan;
-            const int count = below - first < fan ? below - first : fan;
+            const int count = mathi_min(below - first, fan);
             m->nodes[offset[l] + i] = (r3d_lit_node_t){
                 .first = (uint16_t)(l == 0 ? first : offset[l - 1] + first),
                 .count = (uint8_t)count,
@@ -262,9 +269,10 @@ r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
             open_cluster(&b);
         }
         uint16_t* out = m->triangles[m->mesh.triangle_count++];
-        for (int k = 0; k < 3; k++) {
-            out[k] = vertex_for(&b, src->triangles[t][k]);
-        }
+        /* Turned over for the raster: corners 0, 2, 1. */
+        out[0] = vertex_for(&b, src->triangles[t][0]);
+        out[2] = vertex_for(&b, src->triangles[t][1]);
+        out[1] = vertex_for(&b, src->triangles[t][2]);
         b.open->triangle_count++;
     }
     close_cluster(&b);

@@ -29,11 +29,13 @@
 #include "gfx/gfx.h"
 #include "input/motion/gravity.h"
 #include "math/geometry/iso_surface.h"
-#include "math/motion/flip3.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/mathf.h"
 #include "math/scalar/units.h"
+#include "physics/fluid/flip3.h"
 #include "render/context/render_context.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
+#include "render/skin/r3d_skin_light.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
@@ -78,32 +80,34 @@ TUNE(water, gravity_mm_s2, 2000, 100, WATER_EARTH_MM_S2);
  * step needs. Read when the scene enters. */
 TUNE(water, grid_internal, 0, 0, 1);
 
-/* Surface buffers: vertices and triangles iso_surface may make, and what
- * the clusters' copies need beyond them. */
-#define WATER_MAX_VERTICES  8000
-#define WATER_MAX_TRIANGLES 16000
-#define WATER_CLUSTER_COPY  2
+/* Surface buffers: the vertices and triangles iso_surface may make. The
+ * tour's busiest frame makes about 2500 and 5000. */
+#define WATER_MAX_VERTICES       4000
+#define WATER_MAX_TRIANGLES      8000
 
 /* Position ticks per mm: the tank's largest side, 36 mm, stays inside int16. */
-#define WATER_TICKS_PER_MM  512
+#define WATER_TICKS_PER_MM       512
 
 /* The camera looks through the front glass from arm's length, and turns
  * this share of the tilt about the glass's centre. */
-#define WATER_VIEW_MM       300.0F
-#define WATER_PARALLAX      0.35F
+#define WATER_VIEW_MM            300.0F
+#define WATER_PARALLAX           0.35F
 
 /* Shading, in linear light. Deep and shallow water colours, absorbed over
  * WATER_ABSORB_MM of water (Beer-Lambert); Schlick's Fresnel toward the
  * sky colour, from water's reflectance at normal incidence; one light. */
-#define WATER_DEEP          ((vec3f_t){0.01F, 0.05F, 0.16F})
-#define WATER_SHALLOW       ((vec3f_t){0.20F, 0.55F, 0.80F})
-#define WATER_SKY           ((vec3f_t){0.75F, 0.85F, 1.00F})
-#define WATER_ABSORB_MM     8.0F
-#define WATER_F0            0.02F
-#define WATER_LIGHT         ((vec3f_t){-0.4F, -0.6F, 0.7F}) /* box axes: from up-left-front */
-#define WATER_SPECULAR_EXP  48.0F
-#define WATER_SPECULAR      0.6F
-#define WATER_DIFFUSE       0.35F
+#define WATER_DEEP               ((vec3f_t){0.01F, 0.05F, 0.16F})
+#define WATER_SHALLOW            ((vec3f_t){0.20F, 0.55F, 0.80F})
+#define WATER_SKY                ((vec3f_t){0.75F, 0.85F, 1.00F})
+#define WATER_ABSORB_MM          8.0F
+#define WATER_F0                 0.02F
+#define WATER_LIGHT              ((vec3f_t){-0.4F, -0.6F, 0.7F}) /* box axes: from up-left-front */
+/* The highlight's exponent, 3 * 2^4 = 48: a cube squared this many times. */
+#define WATER_SPECULAR_SQUARINGS 4
+#define WATER_SPECULAR           0.6F
+#define WATER_DIFFUSE            0.35F
+/* The encode table's tone-map white: none, the colours are already in range. */
+#define WATER_TONEMAP_NONE       0.0F
 
 /* A scripted tour of the tank, for host renders and repeatable timings:
  * down vectors in box axes, eased between keys, with a shake at the end. */
@@ -133,8 +137,10 @@ static scene_entity_t camera_entity, water_entity;
 static flip3_t water;
 static void* grid_internal_block;
 static float* field;
-static int fx, fy, fz;
-static float* thickness; /* water along z per field column, mm */
+static iso_field_t surface_field;
+static float* through; /* light left after crossing each field column's water */
+static r3d_skin_light_transfer_t* transfer;
+static bool truncated;
 static vec3f_t* positions;
 static vec3f_t* normals;
 static uint8_t (*colors)[3];
@@ -156,10 +162,7 @@ static char failure[RENDER_LAB_STATUS_LEN];
 
 static void
 fail(const char* what) {
-    ESP_LOGE(TAG, "%s; the scene stays blank", what);
-    if (snprintf(failure, sizeof failure, "%s", what) < 0) {
-        failure[0] = '\0';
-    }
+    render_lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
 /* From the app arena, which render_lab rewinds when the scene goes. */
@@ -194,21 +197,25 @@ allocate(void) {
     if (!flip3_init(&water, &config, grid, take(flip3_particle_bytes(&config)))) {
         return false;
     }
-    fx = (flip3_cells_x(&water) * WATER_SAMPLES) + 2;
-    fy = (flip3_cells_y(&water) * WATER_SAMPLES) + 2;
-    fz = (flip3_cells_z(&water) * WATER_SAMPLES) + 2;
-    field = take(sizeof(float) * (size_t)(fx * fy * fz));
-    thickness = take(sizeof(float) * (size_t)(fx * fy));
+    field = take(sizeof(float) * flip3_field_count(&water, WATER_SAMPLES));
+    if (field == NULL) {
+        return false;
+    }
+    surface_field = flip3_field(&water, WATER_SAMPLES, field);
+    through = take(sizeof(float) * (size_t)(surface_field.nx * surface_field.ny));
     positions = take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
     normals = take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
     colors = take(sizeof(uint8_t[3]) * WATER_MAX_VERTICES);
     triangles = take(sizeof(uint16_t[3]) * WATER_MAX_TRIANGLES);
-    scratch = take(sizeof(int32_t) * iso_surface_scratch_count(fy, fz));
-    const r3d_dynamic_capacity_t capacity = {WATER_CLUSTER_COPY * WATER_MAX_VERTICES, WATER_MAX_TRIANGLES,
-                                             WATER_MAX_VERTICES};
+    scratch = take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
+    transfer = take(sizeof *transfer);
+    if (transfer != NULL) {
+        r3d_skin_light_transfer_build(WATER_TONEMAP_NONE, transfer);
+    }
+    const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(WATER_MAX_VERTICES, WATER_MAX_TRIANGLES);
     const size_t mesh_bytes = r3d_dynamic_mesh_bytes(capacity);
     void* mesh_block = take(mesh_bytes);
-    return field != NULL && thickness != NULL && positions != NULL && normals != NULL && colors != NULL
+    return through != NULL && transfer != NULL && positions != NULL && normals != NULL && colors != NULL
            && triangles != NULL && scratch != NULL && mesh_block != NULL
            && r3d_dynamic_mesh_init(&surface, mesh_block, mesh_bytes, capacity, WATER_TICKS_PER_MM);
 }
@@ -294,62 +301,46 @@ read_accel(uint32_t dt_ms, vec3f_t* down) {
     return vec3f_add(*down, gravity_linear(&gravity));
 }
 
-/* One [1 2 1] / 4 pass along each axis, inside the empty border: a film a
- * sample thin falls under the surface level instead of meshing as noise,
- * and the surface rounds off. The walls mirror, so water touching glass
- * keeps its density there and an edge between two walls opens no crack.
- * In place, carrying the sample before. */
+/* The light left after crossing each field column's water along z
+ * (Beer-Lambert), for the colour's depth: one exponential a column. */
 static void
-smooth_axis(int stride, int count, int step_a, int count_a, int step_b, int count_b) {
-    for (int a = 1; a < count_a - 1; a++) {
-        for (int b = 1; b < count_b - 1; b++) {
-            float* line = &field[(a * step_a) + (b * step_b)];
-            float before = line[stride];
-            for (int i = 1; i < count - 1; i++) {
-                const float here = line[i * stride];
-                const float after = i + 1 < count - 1 ? line[(i + 1) * stride] : here;
-                line[i * stride] = 0.25F * (before + (2.0F * here) + after);
-                before = here;
+measure_through(void) {
+    const iso_field_t* f = &surface_field;
+    for (int x = 0; x < f->nx; x++) {
+        for (int y = 0; y < f->ny; y++) {
+            const float* column = &f->values[((x * f->ny) + y) * f->nz];
+            float depth = 0.0F;
+            for (int z = 0; z < f->nz; z++) {
+                depth += mathf_clamp(column[z], 0.0F, 1.0F);
             }
-        }
-    }
-}
-
-static void
-smooth_field(void) {
-    smooth_axis(fy * fz, fx, fz, fy, 1, fz);
-    smooth_axis(fz, fy, fy * fz, fx, 1, fz);
-    smooth_axis(1, fz, fy * fz, fx, fz, fy);
-}
-
-/* Water along z through each field column, for the colour's depth. */
-static void
-measure_thickness(void) {
-    const float dz = water.h.z / (float)WATER_SAMPLES;
-    for (int x = 0; x < fx; x++) {
-        for (int y = 0; y < fy; y++) {
-            float t = 0.0F;
-            for (int z = 0; z < fz; z++) {
-                t += fminf(field[(((x * fy) + y) * fz) + z], 1.0F);
-            }
-            thickness[(x * fy) + y] = t * dz;
+            through[(x * f->ny) + y] = expf(-depth * f->step.z / WATER_ABSORB_MM);
         }
     }
 }
 
 static float
-thickness_at(vec3f_t p) {
-    const vec3f_t step = vec3f_scale(water.h, 1.0F / (float)WATER_SAMPLES);
-    const int x = (int)fminf(fmaxf((p.x / step.x) + 0.5F, 0.0F), (float)(fx - 1));
-    const int y = (int)fminf(fmaxf((p.y / step.y) + 0.5F, 0.0F), (float)(fy - 1));
-    return thickness[(x * fy) + y];
+through_at(vec3f_t p) {
+    const iso_field_t* f = &surface_field;
+    const int x = (int)mathf_clamp(((p.x - f->origin.x) / f->step.x) + 0.5F, 0.0F, (float)(f->nx - 1));
+    const int y = (int)mathf_clamp(((p.y - f->origin.y) / f->step.y) + 0.5F, 0.0F, (float)(f->ny - 1));
+    return through[(x * f->ny) + y];
 }
 
-static uint8_t
-to_srgb8(float linear) {
-    const float c = fminf(fmaxf(linear, 0.0F), 1.0F);
-    const float s = c <= 0.0031308F ? 12.92F * c : (1.055F * powf(c, 1.0F / 2.4F)) - 0.055F;
-    return (uint8_t)lroundf(s * 255.0F);
+/* x^5, for Schlick's Fresnel. */
+static float
+pow5(float x) {
+    const float x2 = x * x;
+    return x2 * x2 * x;
+}
+
+/* x^(3 * 2^WATER_SPECULAR_SQUARINGS), for the highlight. */
+static float
+specular_power(float x) {
+    float p = x * x * x;
+    for (int i = 0; i < WATER_SPECULAR_SQUARINGS; i++) {
+        p *= p;
+    }
+    return p;
 }
 
 /* Absorbed body colour, a diffuse light, Fresnel sky and a highlight. The
@@ -361,46 +352,40 @@ shade(int count) {
     const vec3f_t half = vec3f_normalize(vec3f_add(light, eye));
     for (int i = 0; i < count; i++) {
         const vec3f_t n = normals[i];
-        const float through = expf(-thickness_at(positions[i]) / WATER_ABSORB_MM);
-        vec3f_t c = vec3f_lerp(WATER_DEEP, WATER_SHALLOW, through);
+        vec3f_t c = vec3f_lerp(WATER_DEEP, WATER_SHALLOW, through_at(positions[i]));
         c = vec3f_scale(c, 1.0F - WATER_DIFFUSE + (WATER_DIFFUSE * fmaxf(vec3f_dot(n, light), 0.0F)));
         const float facing = fmaxf(vec3f_dot(n, eye), 0.0F);
-        const float fresnel = WATER_F0 + ((1.0F - WATER_F0) * powf(1.0F - facing, 5.0F));
+        const float fresnel = WATER_F0 + ((1.0F - WATER_F0) * pow5(1.0F - facing));
         c = vec3f_lerp(c, WATER_SKY, fresnel);
-        const float spec = WATER_SPECULAR * powf(fmaxf(vec3f_dot(n, half), 0.0F), WATER_SPECULAR_EXP);
+        const float spec = WATER_SPECULAR * specular_power(fmaxf(vec3f_dot(n, half), 0.0F));
         c = vec3f_add(c, (vec3f_t){spec, spec, spec});
-        colors[i][0] = to_srgb8(c.x);
-        colors[i][1] = to_srgb8(c.y);
-        colors[i][2] = to_srgb8(c.z);
+        colors[i][0] = r3d_skin_light_encode(c.x, transfer);
+        colors[i][1] = r3d_skin_light_encode(c.y, transfer);
+        colors[i][2] = r3d_skin_light_encode(c.z, transfer);
     }
 }
 
-/* The density field meshed, moved into model axes and wound for them. */
+/* The surface field meshed, shaded, moved into model axes and handed to the
+ * scene. A surface too big for the buffers is cut, said once and shown. */
 static void
 rebuild_surface(void) {
-    (void)flip3_density_field(&water, WATER_SAMPLES, field, fx, fy, fz);
-    smooth_field();
-    measure_thickness();
-    const vec3f_t step = vec3f_scale(water.h, 1.0F / (float)WATER_SAMPLES);
-    const iso_field_t f = {field, fx, fy, fz, vec3f_scale(step, -0.5F), step};
+    surface_field = flip3_field(&water, WATER_SAMPLES, field);
+    measure_through();
     iso_mesh_t m = {positions, normals, WATER_MAX_VERTICES, triangles, WATER_MAX_TRIANGLES, scratch, 0, 0};
-    (void)iso_surface_nets(&f, WATER_SURFACE_LEVEL, &m);
+    bool fitted = iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, &m);
     shade(m.vertex_count);
     for (int i = 0; i < m.vertex_count; i++) {
         positions[i] = to_model(positions[i]);
         normals[i] = direction_to_model(normals[i]);
     }
-    /* The model axes keep handedness, and the raster's front faces wind the
-     * other way about their outward normal, so each triangle turns over. */
-    for (int t = 0; t < m.triangle_count; t++) {
-        const uint16_t keep = triangles[t][1];
-        triangles[t][1] = triangles[t][2];
-        triangles[t][2] = keep;
-    }
     const r3d_dynamic_source_t source = {positions,        (const uint8_t (*)[3])colors,
                                          m.vertex_count,   (const uint16_t (*)[3])triangles,
                                          m.triangle_count, false};
-    (void)r3d_dynamic_mesh_build(&surface, &source);
+    fitted = r3d_dynamic_mesh_build(&surface, &source) && fitted;
+    if (!fitted && !truncated) {
+        ESP_LOGW(TAG, "the surface outgrew its buffers and is cut");
+    }
+    truncated = !fitted;
     (void)scene_renderer_set_mesh(tank_scene, water_entity, &surface.mesh);
 }
 
@@ -443,6 +428,7 @@ scene_water_enter(const render_lab_scene_t* self) {
     }
     gravity_reset(&gravity);
     motion_seen = false;
+    truncated = false;
     carried_ms = 0;
     tour_ms = 0;
     refill((vec3f_t){0.0F, 1.0F, 0.0F});
@@ -505,8 +491,9 @@ water_status(void) {
     if (failure[0] != '\0') {
         return failure;
     }
-    if (snprintf(buf, sizeof buf, "%d%% %d tris %u.%u ms", fill_percent, surface.mesh.triangle_count,
-                 (unsigned)(step_us / MATH_US_PER_MS), (unsigned)((step_us % MATH_US_PER_MS) / 100U))
+    if (snprintf(buf, sizeof buf, "%d%% %d tris%s %u.%u ms", fill_percent, surface.mesh.triangle_count,
+                 truncated ? " cut" : "", (unsigned)(step_us / MATH_US_PER_MS),
+                 (unsigned)((step_us % MATH_US_PER_MS) / 100U))
         < 0) {
         buf[0] = '\0';
     }

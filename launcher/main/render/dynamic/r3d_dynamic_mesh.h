@@ -33,7 +33,11 @@ typedef struct {
     const vec3f_t* positions;   /* model units */
     const uint8_t (*colors)[3]; /* sRGB, one per vertex */
     int vertex_count;
-    const uint16_t (*triangles)[3]; /* counter-clockwise seen from the front */
+    /* Wound as the maths winds them: (b - a) x (c - a) points out of the
+     * front, right-handed, as iso_surface makes them. The build turns each
+     * over for the raster, which in the engine's mirrored frame meets a front
+     * face wound the other way about that numeric normal. */
+    const uint16_t (*triangles)[3];
     int triangle_count;
     bool double_sided;
 } r3d_dynamic_source_t;
@@ -56,6 +60,10 @@ typedef struct {
     int built_vertices, built_clusters; /* what the last build made, before the spares */
     r3d_lit_mesh_t mesh;
 } r3d_dynamic_mesh_t;
+
+/* Room for any mesh of up to `sources` vertices and `triangles` triangles:
+ * at worst a cluster copies three vertices for each triangle it holds. */
+r3d_dynamic_capacity_t r3d_dynamic_capacity_for(int sources, int triangles);
 
 size_t r3d_dynamic_mesh_bytes(r3d_dynamic_capacity_t capacity);
 
