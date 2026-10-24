@@ -101,7 +101,8 @@ Clone budgets, from the script's docstring:
 - Code moved out of a file the change deletes keeps its fragments.
 - Not clones: `#include` or `RUN_TEST` blocks, literal-only `#define`s, split declarations, added groupings, comments, whitespace.
 - Scope: tracked C, C++ and Python under `launcher/`, `scripts/` and `editor/`, minus vendored, test-framework, generated and fixture-data files.
-- `MIN_TOKENS` sets the threshold, so short helpers are missed; `--min-tokens N` reports another one without checking. Review a reported pair before extracting.
+- `MIN_TOKENS` sets the threshold; `--min-tokens N` reports another one without checking. Review a reported pair before extracting.
+- A shorter Python function is a clone when its body matches another's once its parameters and locals are renamed. Literals, attributes and globals must match exactly, and the docstring and annotations are ignored. Functions under `MIN_FUNCTION_NODES` AST nodes are skipped, since at that size they are idioms rather than helpers.
 
 ## Judgment rules
 
