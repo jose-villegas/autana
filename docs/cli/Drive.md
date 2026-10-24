@@ -6,7 +6,8 @@ lists the same commands.
 <!-- generated: cli-drive check: python scripts/autana/cli_reference.py --check -->
 | Command | What it does |
 |---|---|
-| `autana sound play <name> [loop] [gain]` | play a sound from the engine pack; gain is a percent, full gain when omitted; development builds |
+| `autana play <pack>/<name> [loop] [gain]` | play a pack sound; alias for sound play |
+| `autana sound play <pack>/<name> [loop] [gain]` | play a sound from a pack; a bare name means the engine pack; gain is a percent, full gain when omitted; development builds |
 | `autana sound stop [voice\|all]` | stop a voice or all voices; all when omitted |
 | `autana sound stats` | voice states, dropped commands, amplifier state and RAM sizes |
 | `autana sound onset <event> [hz] [gain]` | measure amplifier, start, stop and steal transients |

@@ -121,6 +121,15 @@ run = 39135787070
 host = "Linux x86_64"
 
 [[bake]]
+output = "carreno_waltz.sond"
+source = "launcher/main/engine/sounds/carreno_waltz.sound.toml"
+key = "94c2b9fcafcd8f5402d33104eb28a72465b2b2d292ab9d36862179bb2fe16416"
+sha256 = "1fea397ae21d950e2dc6c9be9eea2a3ba2959e1c587eae9f1f9a8d269aa5798b"
+size = 237600
+run = 39965855922
+host = "Linux x86_64"
+
+[[bake]]
 output = "sponza.atrium.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "faba70a23a89356d29f12db45e8117fba82bebd11cab8a562a49b93e0cee3098"
@@ -199,6 +208,15 @@ key = "f149645aa034249adff8a9cc93048b3f7119c984681e685302c9d45bc5958f04"
 sha256 = "39b51af4e1a6e241d1b5d9518132497f63dde80f14530c7fbf8c7e825bf5b7e5"
 size = 130140
 run = 39135787070
+host = "Linux x86_64"
+
+[[bake]]
+output = "tap.sond"
+source = "launcher/main/engine/sounds/tap.sound.toml"
+key = "d2991d8ffe9d35bd488df48bbd0ad70c5a8f73b68c3ef2ca1552592fc9ce030f"
+sha256 = "2bbe8de22ad6f0b92b93fced1a779933609df85eacac132de553e8b2e51fa2cf"
+size = 2592
+run = 39965855922
 host = "Linux x86_64"
 
 # [[poses]]: the digest of each camera-path sampling, keyed on its clip bytes, sampling arguments
