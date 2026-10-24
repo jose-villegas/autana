@@ -76,7 +76,7 @@ A `NAME.anim.toml` beside its source names one animation in it: a `.glb`, an
 `.fbx` (converted to glTF once) or a camera `.keys.toml` (built into glTF in
 memory at every bake). `build_pack.py` finds every such file by searching,
 so no list is kept. A
-clip no scene names is a [pack](../assets/README.md#packs) of its own, named
+clip no scene names is a [pack](../assets/Building-Packs.md#packs) of its own, named
 `NAME`, holding the one entry `NAME`; `asset_store_pack("NAME")` mounts it.
 A clip a scene's camera flies travels in that scene's pack instead.
 The [asset-pack boundary](Mesh-Import.md#the-offline-tools) mirrors
