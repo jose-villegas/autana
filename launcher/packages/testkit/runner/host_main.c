@@ -1,5 +1,6 @@
 /* host_main: standalone selection and Unity lifecycle for package suites. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "testkit/cleanup.h"
@@ -25,7 +26,7 @@ main(int argc, char** argv) {
         for (size_t i = 0; i < suites_count(); i++) {
             puts(suites_at(i)->name);
         }
-        return errors;
+        return errors != 0 ? EXIT_FAILURE : EXIT_SUCCESS;
     }
     UNITY_BEGIN();
     if (argc == 1) {
@@ -51,5 +52,6 @@ main(int argc, char** argv) {
             errors++;
         }
     }
-    return UNITY_END() + errors;
+    int failures = UNITY_END();
+    return failures != 0 || errors != 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }

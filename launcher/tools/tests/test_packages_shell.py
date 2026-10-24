@@ -221,5 +221,86 @@ class PackagesAlone(FixtureLauncher):
         self.assertNotEqual(0, self.check().returncode)
 
 
+@unittest.skipUnless(shutil.which("gcc") or shutil.which("cc") or shutil.which("clang"), "no C compiler")
+class StandaloneRunner(unittest.TestCase):
+    WRAP_COUNT = 1 << 8
+    DROP_ENV = "TESTKIT_SMOKE_DROPS"
+
+    @classmethod
+    def setUpClass(cls):
+        temp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(temp.cleanup)
+        work = Path(temp.name)
+        fixture = work / "suite.c"
+        fixture.write_text(r'''#include <stdlib.h>
+#include "testkit/suite.h"
+#include "unity.h"
+
+#define EXIT_STATUS_WRAP (1 << 8)
+#define DROP_ENV "TESTKIT_SMOKE_DROPS"
+
+static void fail(void) {
+    TEST_FAIL_MESSAGE("runner exit status regression");
+}
+
+static void failures(void) {
+    for (int i = 0; i < EXIT_STATUS_WRAP; i++) {
+        RUN_TEST(fail);
+    }
+}
+SUITE_REGISTER_ON_REQUEST(failures)
+
+__attribute__((constructor)) static void drops(void) {
+    if (getenv(DROP_ENV) != NULL) {
+        for (int i = 0; i < EXIT_STATUS_WRAP; i++) {
+            suites_record_drop();
+        }
+    }
+}
+''', encoding="utf-8")
+        cls.runner = work / ("runner.exe" if os.name == "nt" else "runner")
+        testkit = ROOT / "launcher/packages/testkit"
+        compiler = shutil.which("gcc") or shutil.which("cc") or shutil.which("clang")
+        result = subprocess.run([
+            compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
+            "-I", str(testkit / "include"), "-I", str(testkit / "unity"),
+            str(testkit / "runner/host_main.c"), str(testkit / "harness/registry.c"),
+            str(testkit / "harness/cleanup.c"), str(testkit / "unity/unity.c"),
+            str(fixture), "-o", str(cls.runner),
+        ], capture_output=True, text=True, timeout=120)
+        if result.returncode:
+            raise RuntimeError(result.stdout + result.stderr)
+
+    def run_runner(self, *args, drops=False):
+        env = os.environ.copy()
+        env.pop(self.DROP_ENV, None)
+        if drops:
+            env[self.DROP_ENV] = "1"
+        return subprocess.run([str(self.runner), *args], env=env,
+                              capture_output=True, text=True, timeout=30)
+
+    def test_success_and_listing_return_success(self):
+        for args in ((), ("--list",)):
+            with self.subTest(args=args):
+                result = self.run_runner(*args)
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_full_exit_status_range_of_failures_returns_failure(self):
+        result = self.run_runner("failures")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn(f"{self.WRAP_COUNT} Tests {self.WRAP_COUNT} Failures", result.stdout)
+
+    def test_full_exit_status_range_of_unknown_suites_returns_failure(self):
+        result = self.run_runner(*(["unknown"] * self.WRAP_COUNT))
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(self.WRAP_COUNT, result.stderr.count("Unknown suite: unknown"))
+
+    def test_full_exit_status_range_of_drops_fails_run_and_listing(self):
+        for args in ((), ("--list",)):
+            with self.subTest(args=args):
+                result = self.run_runner(*args, drops=True)
+                self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
