@@ -400,15 +400,15 @@ test_doc_track_advances_and_samples(void) {
     void* buffer = NULL;
     open_probe(&pack, &buffer);
     track_example_t s = {0};
-    TEST_ASSERT_TRUE(track_example_start(&s, &pack, "probe", "lamp"));
+    TEST_ASSERT_TRUE(track_example_start(&s, &pack));
     const uint32_t step_ms = 500;
     track_example(&s, step_ms);
     TEST_ASSERT_EQUAL_FLOAT((float)step_ms / 1000, anim_playhead_seconds(&s.playhead));
     float expected[ANIM_WIDTH_MAX];
     anim_track_sample(&s.move, anim_playhead_seconds(&s.playhead), expected);
     TEST_ASSERT_EQUAL_FLOAT_ARRAY(expected, s.out, s.move.width);
-    TEST_ASSERT_FALSE(track_example_start(&s, &pack, "missing", "lamp"));
-    TEST_ASSERT_FALSE(track_example_start(&s, &pack, "probe", "missing"));
+    pack.count = 0;
+    TEST_ASSERT_FALSE(track_example_start(&s, &pack));
     asset_file_release(buffer);
 }
 
@@ -419,12 +419,16 @@ test_doc_camera_field_samples_fov(void) {
     open_probe(&pack, &buffer);
     anim_tracks_t clip;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&pack, "probe", &clip));
-    float fov[ANIM_WIDTH_MAX] = {0};
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, camera_field_example(&clip, "lamp", 0, fov));
+    anim_track_t lens;
+    float fov[ANIM_WIDTH_MAX];
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, camera_field_example_start(&clip, &lens));
+    camera_field_example(&lens, 0, fov);
     const float first_half_fov = 0.6F / 2;
     TEST_ASSERT_FLOAT_WITHIN(2e-5F, tanf(first_half_fov), fov[0]);
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, camera_field_example(&clip, "missing", 0, fov));
+    clip.count = 0;
+    camera_field_example(&lens, 0, fov);
     TEST_ASSERT_FLOAT_WITHIN(2e-5F, tanf(first_half_fov), fov[0]);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, camera_field_example_start(&clip, &lens));
     asset_file_release(buffer);
 }
 
