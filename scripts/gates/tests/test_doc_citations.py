@@ -239,7 +239,7 @@ class DocCitationTest(unittest.TestCase):
                     "GIT_AUTHOR_DATE": committed,
                     "GIT_COMMITTER_DATE": committed,
                 })
-            gate_tree.write(root, "docs/doc_review_ledger.txt", "docs/Guide.md\t2026-09-17\tchecked\n")
+            gate_tree.write(root, "scripts/gates/doc_review_ledger.txt", "docs/Guide.md\t2026-09-17\tchecked\n")
             rows = doc_drift.report(root, today=datetime.date(2026, 9, 18))
         guide = next(row for row in rows if row["doc"] == "docs/Guide.md")
         self.assertEqual(guide["age"], 1)
@@ -249,7 +249,7 @@ class DocCitationTest(unittest.TestCase):
         older = "docs/Guide.md\t2026-09-12\tchecked\n"
         for ledger in (newer + older, older + newer):
             with self.subTest(ledger=ledger), gate_tree.temporary_tree() as root:
-                gate_tree.write(root, "docs/doc_review_ledger.txt", ledger)
+                gate_tree.write(root, "scripts/gates/doc_review_ledger.txt", ledger)
                 self.assertEqual(doc_drift.reviews(root), {
                     "docs/Guide.md": datetime.date(2026, 9, 17),
                 })

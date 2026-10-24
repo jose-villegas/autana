@@ -19,7 +19,7 @@ scripted run as one of the few lines it echoes, with every heap site decoded to
 a file and line against the matching `.elf`. In a saved capture, `grep
 FRAME_WATCH` finds it.
 
-The fix is the [Building-an-App.md](../Building-an-App.md#rules) rule:
+The fix is the [Building-an-App.md](Building-an-App.md#rules) rule:
 
 - allocate in `enter()`, free in `exit()`, and keep what a frame needs from one
   frame to the next;
