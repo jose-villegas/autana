@@ -9,7 +9,7 @@
  * teleporting to the ceiling in one step.
  *
  * HOW A GRAIN MOVES inside that pass is gas_walk_once(): one draw, one
- * probe, a biased random walk. The exhaustive mover - sand.c's
+ * probe, a biased random walk. The exhaustive mover - sand_priv.h's
  * try_fall_or_scatter()/try_slide(), run with the direction negated - is
  * still reachable through sand_set_gas_walk(false) so the two can be
  * compared; it needs driven_by_gravity()'s gas-local table built against
@@ -108,28 +108,17 @@ gas_row_may_hold(int y) {
  * read it, and no gas material lives in MAT_EXTENDED's twin-row range. */
 static bool gas_driven[MATERIAL_MAX][2];
 
+/* `m` holds the REVERSED vectors: its fall is the rise. */
 typedef struct {
     sand_lane_t* lanes;
     bool found_any[SAND_LANE_COUNT];
-    int rslide_a[2];
-    int rslide_b[2];
-    int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
-    int y_step;
+    mover_pass_t m;
+    int rx_step, y_step;
 } gas_pass_t;
-
-/* What one row of the walk needs and the span around it already knows: the
- * three rows a gas cell can reach, its stamp bits, and the columns the caller
- * owns. Carried rather than re-derived, for the reason sweep_ctx_t (sand.c)
- * is - a span cut into pieces pays this once per piece per row. */
-typedef struct {
-    uint8_t *row, *prow, *arow, *brow;
-    const uint8_t* stamp_row;
-    int y, x0, x1;
-} gas_row_t;
 
 /*
  * Sub-pass 1: rise, and the two diagonal slides - try_fall_or_scatter()/
- * try_slide(), reused from sand.c with the direction inverted.
+ * try_slide() (sand_priv.h), the main sweep's movers with the direction inverted.
  */
 
 /* A BUBBLE: a gas cell trading places with the LIQUID above it - the one
@@ -141,12 +130,12 @@ typedef struct {
  * read per cell per step by the sweep, costing every falling grain
  * forever. */
 static bool
-try_bubble(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t grain, uint8_t density) {
+try_bubble(sand_t* s, const mover_row_t* r, const gas_pass_t* c, int x, cell_t grain, uint8_t density) {
     uint8_t* const prow = r->prow;
     if (prow == NULL) {
         return false;
     }
-    const int nx = x + c->rdx;
+    const int nx = x + c->m.dx;
     if ((unsigned)nx >= (unsigned)s->w) {
         return false;
     }
@@ -177,7 +166,7 @@ try_bubble(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t gra
     prow[nx] = grain;
     r->row[x] = target;
 
-    const int ny = r->y + c->rdy;
+    const int ny = r->y + c->m.dy;
     mark_slide(s, x, r->y, nx, ny);
     gas_row_arm(ny);
     wake_block_and_neighbors(s, x, r->y);
@@ -255,14 +244,14 @@ build_gas_tables(void) {
  * downward is unsafe for a sweep that guarantees a single move per cell
  * only in the direction it sweeps. */
 static inline bool
-gas_walk_once(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t grain, uint8_t density) {
+gas_walk_once(sand_t* s, const mover_row_t* r, const gas_pass_t* c, int x, cell_t grain, uint8_t density) {
     uint8_t* const row = r->row;
     const int y = r->y;
     const int roll = (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_WALK) & 0xFF);
 
     const int off = gas_walk_offset[roll];
 
-    const int* d = ring_dir(ring_of(c->rdx, c->rdy) + off);
+    const int* d = ring_dir(ring_of(c->m.dx, c->m.dy) + off);
     const int ny = y + d[1];
     const int nx = x + d[0];
 
@@ -309,7 +298,7 @@ gas_walk_once(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t 
     return true;
 }
 
-/* try_fall_or_scatter_impl()/try_slide_impl() report only that they moved,
+/* try_fall_or_scatter()/try_slide() report only that they moved,
  * not where to, so the three rows their fall and two slides can reach are
  * armed together. Only the exhaustive mover pays this - the walk and
  * try_bubble() each arm the one row they actually landed in. */
@@ -324,26 +313,15 @@ arm_exhaustive_landing(int y) {
  * fall or scatter, then slide, then bubble, stopping at the first that moves
  * it. */
 static inline __attribute__((always_inline)) bool
-gas_move_exhaustive(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t grain, uint8_t mat_id,
+gas_move_exhaustive(sand_t* s, const mover_row_t* r, const gas_pass_t* c, int x, cell_t grain, uint8_t mat_id,
                     uint8_t density, const material_t* mat) {
-    if (c->jostle == 0) {
+    if (c->m.jostle == 0) {
         const int scatter = (s->scatter >= 0) ? s->scatter : mat->scatter;
-        /* The _impl, not the public wrapper. Both live in sand_priv.h as
-         * static inline; the wrappers are extern in sand.c and exist for the
-         * suite, which cannot reach a static. Calling them from here made every
-         * gas grain pay a cross-translation-unit call with thirteen arguments -
-         * and the gas rise sweep is 49% of the app's most expensive scene.
-         * The main sweep already calls the _impl directly. */
-        if (try_fall_or_scatter_impl(s, r->row, r->prow, r->arow, r->brow, x, r->y, s->w, c->rdx, c->rdy, c->rslide_a,
-                                     c->rslide_b, grain, density, scatter)) {
+        if (try_fall_or_scatter(s, r, &c->m, x, grain, density, scatter)) {
             return true;
         }
     }
-    /* Same as above, and worse: try_slide() is a 22-byte thunk, so this
-     * marshalled sixteen arguments only to forward them to try_slide_impl
-     * on the other side of the call. */
-    if (try_slide_impl(s, r->row, r->prow, r->arow, r->brow, x, r->y, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b,
-                       c->rload_dx, c->rload_dy, c->jostle, grain, mat_id, density, mat, gas_driven)) {
+    if (try_slide(s, r, &c->m, x, grain, mat_id, density, mat)) {
         return true;
     }
     /* Last, so an ordinary rise into open space always wins over shoving a
@@ -361,7 +339,7 @@ gas_move_exhaustive(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, c
  * at a lazy drift instead of sand's instant one-cell-per-step. */
 
 static bool
-step_one_gas_grain(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, cell_t grain) {
+step_one_gas_grain(sand_t* s, const mover_row_t* r, const gas_pass_t* c, int x, cell_t grain) {
     const int y = r->y;
     const uint8_t mat_id = CELL_MATERIAL(grain);
     const uint8_t density = gas_density[mat_id];
@@ -376,7 +354,7 @@ step_one_gas_grain(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, ce
      * test that places gas and expects a deterministic one-cell move. */
     const int mobility = (s->mobility >= 0) ? s->mobility : gas_mobility[mat_id];
     const bool try_moving =
-        c->jostle != 0 || (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_MOBILITY) & 0xFF) < mobility;
+        c->m.jostle != 0 || (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_MOBILITY) & 0xFF) < mobility;
 
     /* The walk replaces only the MOVEMENT half - tick_decay() above still runs,
      * so fire still burns down at the same rate. It draws its own direction, so
@@ -406,7 +384,7 @@ step_one_gas_grain(sand_t* s, const gas_row_t* r, const gas_pass_t* c, int x, ce
  * else was either already handled by the main sweep or is a static wall
  * gas has to work around, not through. */
 static bool
-step_one_gas_row(sand_t* s, const gas_row_t* r, const gas_pass_t* c) {
+step_one_gas_row(sand_t* s, const mover_row_t* r, const gas_pass_t* c) {
     uint8_t* const row = r->row;
     const int y = r->y;
     const int rx_step = c->rx_step;
@@ -447,9 +425,9 @@ static bool
 gas_sweep_range(sand_t* s, const gas_pass_t* c, int from, int to, int x0, int x1) {
     const int w = s->w;
     const int h = s->h;
-    const int a_dy = c->rslide_a[1];
-    const int b_dy = c->rslide_b[1];
-    const int p_off = c->rdy * w;
+    const int a_dy = c->m.slide_a[1];
+    const int b_dy = c->m.slide_b[1];
+    const int p_off = c->m.dy * w;
     const int a_off = a_dy * w;
     const int b_off = b_dy * w;
     const int row_step = c->y_step * w;
@@ -458,9 +436,9 @@ gas_sweep_range(sand_t* s, const gas_pass_t* c, int from, int to, int x0, int x1
 
     for (int y = from; y != to; y += c->y_step, row_at += row_step) {
         uint8_t* const row = s->cells + row_at;
-        const gas_row_t r = {
+        const mover_row_t r = {
             .row = row,
-            .prow = dest_row_stepped(row, y + c->rdy, h, p_off),
+            .prow = dest_row_stepped(row, y + c->m.dy, h, p_off),
             .arow = dest_row_stepped(row, y + a_dy, h, a_off),
             .brow = dest_row_stepped(row, y + b_dy, h, b_off),
             .stamp_row = sand_stamp_row(s, y),
@@ -516,7 +494,7 @@ step_gas_chunks(sand_t* s, bool* found_any) {
     }
 
     gas_row_map_live = false;
-    if (!sand_chunk_pass_run(s, SAND_SPLIT_GAS_WALK, gas_pass.rdx, gas_pass.rdy, SAND_CHUNK_PASS_STAMP_CROSSINGS,
+    if (!sand_chunk_pass_run(s, SAND_SPLIT_GAS_WALK, gas_pass.m.dx, gas_pass.m.dy, SAND_CHUNK_PASS_STAMP_CROSSINGS,
                              step_one_gas_chunk, &gas_pass)) {
         gas_row_map_live = was_live;
         return false;
@@ -1099,9 +1077,6 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     const int rdy = -dy;
     const int rslide_a[2] = {-slide_a[0], -slide_a[1]};
     const int rslide_b[2] = {-slide_b[0], -slide_b[1]};
-    const int rload_dx = -load_dx;
-    const int rload_dy = -load_dy;
-    const int rx_step = -x_step;
 
     const int* sweep_slide_a = rslide_a;
     const int* sweep_slide_b = rslide_b;
@@ -1128,14 +1103,18 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     memset(gas_row_map.w, 0, sizeof gas_row_map.w);
 
     gas_pass = (gas_pass_t){
-        .rslide_a = {sweep_slide_a[0], sweep_slide_a[1]},
-        .rslide_b = {sweep_slide_b[0], sweep_slide_b[1]},
-        .rdx = rdx,
-        .rdy = rdy,
-        .rx_step = rx_step,
-        .rload_dx = rload_dx,
-        .rload_dy = rload_dy,
-        .jostle = jostle,
+        .m =
+            {
+                .dx = rdx,
+                .dy = rdy,
+                .slide_a = {sweep_slide_a[0], sweep_slide_a[1]},
+                .slide_b = {sweep_slide_b[0], sweep_slide_b[1]},
+                .load_dx = -load_dx,
+                .load_dy = -load_dy,
+                .jostle = jostle,
+                .driven = gas_driven,
+            },
+        .rx_step = -x_step,
         .y_step = y_step,
     };
     if (!s->gas_walk || !step_gas_chunks(s, &found_any)) {
