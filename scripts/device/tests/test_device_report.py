@@ -10,6 +10,8 @@ import sys
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device_report
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
+from report_assertions import assert_contains
 
 
 SAND_CAPTURE = """I (13050) screenshot: RUNSUITE run_sand_perf_suite
@@ -33,6 +35,42 @@ def write_index(directory, entries):
         for entry in entries:
             stream.write(json.dumps(entry) + "\n")
     return index_path
+
+
+class ErrorsSectionTests(unittest.TestCase):
+    CRASHED = (":1:test_a:PASS\nE (5) sand: bad grain\nassert failed: step sand.c:9\n"
+               "Guru Meditation Error: Core 0 panic'ed (LoadProhibited)\n"
+               "ESP-ROM:esp32s3-20210327\nESP-ROM:esp32s3-20210327\n")
+
+    def errors(self, text, boots_allowed=0):
+        return device_report.errors_section("\n".join(device_report.errors_markdown(text, boots_allowed)))
+
+    def test_crashes_resets_and_error_lines_are_listed_without_result_lines(self):
+        text = "\n".join(self.errors(self.CRASHED))
+        self.assertIn("crash: Guru Meditation", text)
+        self.assertIn("rebooted: 2 boots", text)
+        self.assertIn("E (5) sand: bad grain", text)
+        self.assertNotIn("test_a", text)
+
+    def test_a_clean_capture_says_none(self):
+        self.assertEqual(self.errors(SAND_CAPTURE), ["None."])
+
+    def test_a_failing_test_message_is_not_an_error_line(self):
+        self.assertEqual(self.errors(":1:test_a:FAIL: error path taken\n"), ["None."])
+
+    def test_the_extra_error_lines_are_counted(self):
+        text = "".join(f"E ({n}) x: bad\n" for n in range(device_report.MAX_ERROR_LINES + 3))
+        self.assertIn("- 3 more error lines in the capture", self.errors(text))
+
+    def test_the_section_ends_at_the_next_heading(self):
+        self.assertEqual(device_report.errors_section("## Errors\n\n- a\n\n## Next\n- b\n"), ["- a"])
+
+    def test_the_report_carries_the_section(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "c.log"
+            capture.write_text(self.CRASHED, encoding="utf-8")
+            report = device_report.build_report_markdown(capture, Path(directory) / "none.jsonl")
+        self.assertIn("## Errors", report)
 
 
 class ParseSuiteResultsTests(unittest.TestCase):
@@ -259,9 +297,11 @@ class FilteredRunReportTests(unittest.TestCase):
             index = write_index(directory, [{"capture_path": str(capture), "suite": "sand",
                                              "test_filter": ["fire", "gas"]}])
             markdown = device_report.build_report_markdown(capture, index)
-        self.assertIn("PASS: 1  FAIL: 1", markdown)
-        self.assertIn("PERF TARGET SUMMARY: 1 unmet", markdown)
-        self.assertIn("- Test filter: `fire, gas`", markdown)
+        assert_contains(self, markdown, (
+            "PASS: 1  FAIL: 1",
+            "PERF TARGET SUMMARY: 1 unmet",
+            "- Test filter: `fire, gas`",
+        ))
         self.assertNotIn("test_water_fits", markdown)
 
 
@@ -539,16 +579,18 @@ class BuildReportMarkdownTests(unittest.TestCase):
             }])
             markdown = device_report.build_report_markdown(capture, index_path)
 
-        self.assertIn("# Device Capture Report", markdown)
-        self.assertIn("Suite: `run_sand_perf_suite`", markdown)
-        self.assertIn("Build: `deadbeef-diag`", markdown)
-        self.assertIn("Commit: `cafef00d` (worktree unknown)", markdown)
-        self.assertIn("PASS: 1  FAIL: 1", markdown)
-        self.assertIn("### Failures", markdown)
-        self.assertIn("test_a_full_size_step_fits_in_the_frame_budget", markdown)
-        self.assertIn("## Performance Targets", markdown)
-        self.assertIn("PERF TARGET SUMMARY: 1 unmet", markdown)
-        self.assertIn("no worktree recorded", markdown)
+        assert_contains(self, markdown, (
+            "# Device Capture Report",
+            "Suite: `run_sand_perf_suite`",
+            "Build: `deadbeef-diag`",
+            "Commit: `cafef00d` (worktree unknown)",
+            "PASS: 1  FAIL: 1",
+            "### Failures",
+            "test_a_full_size_step_fits_in_the_frame_budget",
+            "## Performance Targets",
+            "PERF TARGET SUMMARY: 1 unmet",
+            "no worktree recorded",
+        ))
 
     def test_selftest_report_identifies_board_and_reports_failures_and_partial_capture(self):
         for complete in (False, True):

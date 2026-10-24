@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "asset/asset_bytes.h"
+#include "hash/crc32.h"
 
 /* The header's byte offsets within a pack, and an entry's within its row. */
 enum {
@@ -18,23 +19,6 @@ enum {
     ENTRY_SIZE = 40,
     ENTRY_ALIGN = 44,
 };
-
-/* CRC-32 as zlib computes it, a nibble at a time: no 1 KiB table in RAM, and
- * the pack is read once. */
-uint32_t
-asset_crc32(const void* data, size_t size) {
-    const uint8_t* bytes = data;
-    static const uint32_t nibble[16] = {0x00000000U, 0x1DB71064U, 0x3B6E20C8U, 0x26D930ACU, 0x76DC4190U, 0x6B6B51F4U,
-                                        0x4DB26158U, 0x5005713CU, 0xEDB88320U, 0xF00F9344U, 0xD6D6A3E8U, 0xCB61B38CU,
-                                        0x9B64C2B0U, 0x86D3D2D4U, 0xA00AE278U, 0xBDBDF21CU};
-    uint32_t crc = 0xFFFFFFFFU;
-    for (size_t i = 0; i < size; i++) {
-        crc ^= bytes[i];
-        crc = (crc >> 4) ^ nibble[crc & 15U];
-        crc = (crc >> 4) ^ nibble[crc & 15U];
-    }
-    return ~crc;
-}
 
 uint32_t
 asset_pack_total_size(const void* head, size_t available) {
@@ -109,7 +93,7 @@ asset_pack_open(asset_pack_t* pack, const void* base, size_t size) {
     if (count > (total - ASSET_PACK_HEADER_SIZE) / ASSET_PACK_ENTRY_SIZE) {
         return ASSET_ERR_BOUNDS;
     }
-    if (asset_crc32(bytes + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE)
+    if (crc32_update(0, bytes + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE)
         != asset_read_u32(bytes + HEADER_CRC)) {
         return ASSET_ERR_CRC;
     }

@@ -17,8 +17,8 @@ orientation handling, rather than mapping sensor X to screen X. The
 accelerometer measures gravity plus linear acceleration; the gyroscope
 measures angular velocity, not tilt angle.
 
-`input_read_motion()` (`input/input.h`) returns `input_motion_t` with one I2C
-read per call:
+`input_read_motion()` (`input/input.h`) returns the newest sample read by
+the IMU task as `input_motion_t` from memory, with no bus traffic on the caller:
 
 | Field | Meaning |
 |---|---|

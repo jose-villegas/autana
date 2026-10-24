@@ -14,6 +14,7 @@
 #include "unity.h"
 
 #include "asset/asset_pack.h"
+#include "hash/crc32.h"
 #include "render/r3d_lit_mesh.h"
 #include "test_alloc.h"
 #include "test_pack.h"
@@ -71,7 +72,7 @@ make_pack(uint8_t* pack, const uint8_t* entry, uint32_t entry_size, uint32_t typ
 
 static void
 seal(uint8_t* pack, uint32_t total) {
-    test_pack_put32(pack + 16, asset_crc32(pack + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE));
+    test_pack_put32(pack + 16, crc32_update(0, pack + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE));
 }
 
 typedef struct {

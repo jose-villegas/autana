@@ -140,6 +140,7 @@ $MAIN_DIR/input/touch/touch_calib.c
 $MAIN_DIR/input/touch/touch_inject_fsm.c
 $MAIN_DIR/input/touch/gesture.c
 $MAIN_DIR/input/motion/tilt.c
+$MAIN_DIR/input/motion/imu_queue.c
 $MAIN_DIR/input/motion/gravity.c
 $MAIN_DIR/input/motion/shake.c
 $MAIN_DIR/input/buttons/button_fsm.c
@@ -165,6 +166,7 @@ $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/console/verbs/console_tone.c
 $MAIN_DIR/console/verbs/console_melody.c
 $MAIN_DIR/console/console_frame_request.c
+$MAIN_DIR/console/verbs/console_sound_views.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/shell/ui/ui_launcher.c
 $MAIN_DIR/shell/ui/ui_launcher_draw.c
