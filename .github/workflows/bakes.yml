@@ -48,7 +48,7 @@ jobs:
   cpu:
     needs: inputs
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.cpu == 'true') }}
-    name: Bake missing exports, meshes and sounds
+    name: Bake missing exports and meshes
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
