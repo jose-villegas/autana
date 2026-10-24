@@ -6,7 +6,7 @@
 
 #include <stdio.h>
 
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "app/app_arena.h"

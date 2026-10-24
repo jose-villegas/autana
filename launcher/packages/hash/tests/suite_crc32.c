@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "hash/crc32.h"
