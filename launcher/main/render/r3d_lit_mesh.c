@@ -159,13 +159,9 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
     return r3d_lit_mesh_from_asset(&asset, mesh);
 }
 
-asset_status_t
+static asset_status_t
 r3d_lit_mesh_colour_name(const char* mesh_id, char out[ASSET_NAME_MAX]) {
-    size_t length = strlen(mesh_id);
-    const size_t mesh_suffix = sizeof LCOL_MESH_SUFFIX - 1U;
-    if (length >= mesh_suffix && strcmp(mesh_id + length - mesh_suffix, LCOL_MESH_SUFFIX) == 0) {
-        length -= mesh_suffix;
-    }
+    const size_t length = strlen(mesh_id);
     if (length == 0) {
         return ASSET_ERR_FORMAT;
     }
@@ -178,15 +174,19 @@ r3d_lit_mesh_colour_name(const char* mesh_id, char out[ASSET_NAME_MAX]) {
 }
 
 asset_status_t
-r3d_lit_mesh_colour_set(const asset_view_t* asset, uint16_t set, r3d_lit_mesh_t* mesh) {
-    const asset_status_t status =
-        asset_entry_validate(*asset, LCOL_VERSION, LCOL_AT_VERSION, LCOL_HEADER_SIZE, ENTRY_ALIGNMENT);
+r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, r3d_lit_mesh_t* mesh) {
+    char name[ASSET_NAME_MAX];
+    asset_status_t status = r3d_lit_mesh_colour_name(mesh_id, name);
     if (status != ASSET_OK) {
         return status;
     }
-    if (asset_read_u16(asset->data + LCOL_AT_VERSION) != LCOL_VERSION) {
-        return ASSET_ERR_VERSION;
+    asset_view_t view;
+    status = asset_entry_open(pack, name, LCOL_ASSET, LCOL_VERSION, LCOL_AT_VERSION, LCOL_HEADER_SIZE, ENTRY_ALIGNMENT,
+                              &view);
+    if (status != ASSET_OK) {
+        return status;
     }
+    const asset_view_t* asset = &view;
     const uint16_t encoding = asset_read_u16(asset->data + LCOL_AT_ENCODING);
     const uint32_t sets = asset_read_u32(asset->data + LCOL_AT_SET_COUNT);
     const uint32_t count = asset_read_u32(asset->data + LCOL_AT_COUNT);

@@ -267,6 +267,10 @@ class PackStep(unittest.TestCase):
         import skin_probe
         from r3d import build_pack
         from asset.asset_pack import parse_pack
+        mesh = skin_probe.mesh_entry()
+        header = list(mesh_asset.BLOB_HEADER.unpack_from(mesh))
+        header[6] = len(mesh)
+        mesh = mesh_asset.BLOB_HEADER.pack(*header) + mesh[mesh_asset.BLOB_HEADER.size:] + bytes(len(skin_probe.POSITIONS) * 3)
         document, binary = skin_probe.rig()
         # Write the probe with the shared glTF writer so its source is portable.
         nodes = document['nodes']
@@ -276,7 +280,7 @@ class PackStep(unittest.TestCase):
         from gltf import gltf_read
         source_document, source_binary = gltf_read.parse_glb(data)
         _, source_skeleton, source_skin = skin_asset.bake(source_document, source_binary, 5,
-                                                        skin_probe.mesh_entry(), skin_asset.DEFAULT_INFLUENCES)
+                                                        mesh, skin_asset.DEFAULT_INFLUENCES)
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory)
             (path / 'rig.glb').write_bytes(data)
@@ -289,13 +293,13 @@ class PackStep(unittest.TestCase):
                     packs, _ = build_pack.pack_jobs([path])
                     mesh_id = next(key for key, source in packs['room' if placed else 'rig'].items() if source.suffix == '.mesh')
                     mesh_source = packs['room' if placed else 'rig'][mesh_id]
-                    mesh_source.write_bytes(skin_probe.mesh_entry())
+                    mesh_source.write_bytes(mesh)
                     decoded = parse_pack(build_pack.pack_bytes([path], offline=True)['room' if placed else 'rig'])
                     self.assertEqual(decoded['armature'][0], skeleton_asset.TYPE)
                     self.assertEqual(decoded[mesh_id + '.skin'][0], skin_asset.TYPE)
                     self.assertEqual(decoded['armature'][1], to_engine(skeleton_asset.TYPE, source_skeleton))
                     self.assertEqual(decoded[mesh_id + '.skin'][1], to_engine(skin_asset.TYPE, source_skin))
-                    self.assertEqual(decoded[mesh_id][1], to_engine(mesh_asset.TYPE, skin_probe.mesh_entry()))
+                    self.assertEqual(decoded[mesh_id][1], to_engine(mesh_asset.TYPE, mesh))
                     self.assertNotIn('move', decoded)
 
     def test_skin_pack_entries_use_the_import_mode_and_share_the_rig_read(self):
