@@ -48,6 +48,8 @@ REFUSED_PREFIX = "SCREENSHOT_REFUSED:"
 END_LINE = "SCREENSHOT_END"
 
 TRIGGER = b"SCREENSHOT\n"
+# PNG colour types: one grey, three RGB or four RGBA samples per pixel.
+PNG_GREY, PNG_RGB, PNG_RGBA = 0, 2, 6
 
 
 class ScreenshotRefused(RuntimeError):
@@ -55,8 +57,8 @@ class ScreenshotRefused(RuntimeError):
     is this exception's, e.g. "band mode, and no room in PSRAM..."."""
 
 
-def rgb_png(width: int, height: int, rows) -> bytes:
-    """An 8-bit RGB PNG of `rows`, each width * 3 bytes, top row first, unfiltered.
+def encode_png(width: int, height: int, rows, colour: int = PNG_RGB) -> bytes:
+    """An 8-bit PNG of `rows` in PNG colour type `colour`, top row first, unfiltered.
     A chunk is a 4-byte big-endian length, the 4-byte type, the data, then a
     big-endian CRC32 over type+data; the file is these end to end after the
     fixed 8-byte signature."""
@@ -64,7 +66,7 @@ def rgb_png(width: int, height: int, rows) -> bytes:
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff)
 
     raw = b"".join(b"\x00" + bytes(row) for row in rows)    # filter byte 0 = None
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, colour, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
 
 
@@ -116,7 +118,7 @@ def bmp_bytes_to_png(bmp: bytes) -> bytes:
         rgb[0::3], rgb[1::3], rgb[2::3] = bgr[2::3], bgr[1::3], bgr[0::3]
         scanlines.append(rgb)
 
-    return rgb_png(width, height, scanlines)
+    return encode_png(width, height, scanlines)
 
 
 # The turn a screenshot gets when no view is asked for: landscape, the same
@@ -188,7 +190,7 @@ def turn_png(png: bytes, quarter: int) -> bytes:
                 for y in range(width)]
 
     out_width, out_height = (height, width) if quarter % 2 else (width, height)
-    return rgb_png(out_width, out_height, rows)
+    return encode_png(out_width, out_height, rows)
 
 
 def read_screenshot(port, timeout, on_status=None):
