@@ -1437,6 +1437,19 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
             self.assertIn("PASS: 1  FAIL: 1", text)
             self.assertIn("test_two", text)
 
+    def test_the_run_ends_with_the_report_path_and_its_errors(self):
+        connection = FakeConnection([
+            b":1:test_one:PASS\nE (7) sand: bad grain\nRUNSUITE_COMPLETE name=sand found=1\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "records"
+            with recorded_serial(connection, root),                  mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+                device.run_suite(suite_args(), mock_store(), BOARD)
+        lines = out.getvalue().splitlines()
+        report = [i for i, line in enumerate(lines) if line.startswith("report: ")]
+        self.assertEqual(len(report), 1)
+        self.assertIn("E (7) sand: bad grain", lines[report[0] + 1])
+        self.assertGreater(report[0], max(i for i, line in enumerate(lines) if "capture ended" in line) - 1)
+
     def test_a_broken_reporter_step_does_not_fail_the_suite_command(self):
         connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()

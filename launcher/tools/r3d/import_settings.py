@@ -7,6 +7,7 @@ reads is an error.
 """
 
 import math
+from fnmatch import fnmatchcase
 import pathlib
 import re
 import tomllib
@@ -283,6 +284,43 @@ def load_geometry(table, steps):
             raise SettingsError("geometry.simplify.colour_deviation must be above 0")
 
 
+def pass_overrides(objects, materials_by_object, overrides):
+    """Apply rules once per pass; fixed selectors must cover every welded object."""
+    fixed = None
+    for rule in overrides:
+        material_rule = "material" in rule
+        pattern = rule.get("material", rule.get("object"))
+        if material_rule:
+            matched = [name for name in objects
+                       if any(fnmatchcase(material, pattern) for material in materials_by_object[name])]
+        else:
+            matched = [name for name in objects if fnmatchcase(name, pattern)]
+        if not matched:
+            continue
+        others = [name for name in objects if name not in matched]
+        if others:
+            raise SettingsError(f"fixed override {pattern!r} also caps welded objects: {', '.join(others)}")
+        fixed = (fixed or 0) + rule["triangles"]
+    return fixed
+
+
+def load_object_overrides(table):
+    """Closed glob rules for connected simplifier passes."""
+    check_keys(table, (), "objects", optional=("overrides",))
+    rules = table.get("overrides", [])
+    if not isinstance(rules, list):
+        raise SettingsError("objects.overrides must be an array of tables")
+    for index, rule in enumerate(rules):
+        where = f"objects.overrides[{index}]"
+        check_keys(rule, ("triangles",), where, optional=("material", "object"))
+        if ("material" in rule) == ("object" in rule):
+            raise SettingsError(f"{where} needs exactly one of material/object and triangles")
+        selector = "material" if "material" in rule else "object"
+        text(rule[selector], f"{where}.{selector}")
+        count(rule["triangles"], f"{where}.triangles")
+    return rules
+
+
 def load_import_settings(path):
     """One mesh asset: its source, output and opt-in processing. With only
     those, the mesh is imported as authored."""
@@ -292,7 +330,7 @@ def load_import_settings(path):
     for name, home in (("visibility", "objects.mesh_renderer.visibility"), ("lighting", "scene [bake]")):
         if name in values:
             raise SettingsError(f"[{name}] moved to {home}")
-    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "variants", "skin"))
+    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "variants", "skin", "objects"))
     skin = values.get("skin", {})
     check_keys(skin, (), f"{path}: skin", optional=("lighting",))
     lighting = skin.get("lighting", "direct")
@@ -345,6 +383,7 @@ def load_import_settings(path):
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
+        overrides=load_object_overrides(values.get("objects", {})),
         meshlet_triangles=steps.meshlet_triangles,
         variants=variants, skin_lighting=lighting)
 
