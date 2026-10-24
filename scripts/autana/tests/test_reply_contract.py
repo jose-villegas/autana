@@ -9,11 +9,12 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
+sys.path.insert(0, str(REPO / "scripts" / "gates"))
+from c_lexer import tokens  # noqa: E402
 from console_protocol import FRAMED_ENDINGS, replies_to  # noqa: E402
 
 AUTANA = REPO / "scripts" / "autana" / "autana.py"
 FIRMWARE = REPO / "launcher" / "main"
-C_STRING = re.compile(r'"((?:\\.|[^"\\\n])*)"')
 PRINTF_FIELD = re.compile(r"%[-+ #0-9.*]*[hljzt]*[a-zA-Z%]")
 
 
@@ -48,8 +49,11 @@ def firmware_lines():
     """Each firmware string literal as the line it prints, fields filled in."""
     lines = set()
     for path in list(FIRMWARE.rglob("*.c")) + list(FIRMWARE.rglob("*.h")):
-        for literal in C_STRING.findall(path.read_text(encoding="utf-8", errors="replace")):
-            line = PRINTF_FIELD.sub("0", literal.replace("\\n", "\n")).strip()
+        source = path.read_text(encoding="utf-8", errors="replace")
+        for kind, start, end in tokens(source):
+            if kind != "literal" or source[start] != '"':
+                continue
+            line = PRINTF_FIELD.sub("0", source[start + 1:end - 1].replace("\\n", "\n")).strip()
             if line:
                 lines.add(line)
     return lines
