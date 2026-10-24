@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """One perf row's recent history, one line per board.
 
-    python launcher/tools/perf/perf_rows.py "gas cascade"            every board, latest captures
-    python launcher/tools/perf/perf_rows.py "gas cascade" -b 2124 -n 10   one line per capture
-    python launcher/tools/perf/perf_rows.py "gas cascade" --runs     each capture's samples
-    python launcher/tools/perf/perf_rows.py sync --host Legion       publish this machine's captures
-    python launcher/tools/perf/perf_rows.py --eval                   score the row picker on its fixture
+    python launcher/tools/perf/perf_rows.py "gas cascade"                every board, latest captures
+    python launcher/tools/perf/perf_rows.py "gas cascade" -b <board> -n 10   one line per capture
+    python launcher/tools/perf/perf_rows.py "gas cascade" --runs         each capture's samples
+    python launcher/tools/perf/perf_rows.py sync --host <machine>        publish this machine's captures
+    python launcher/tools/perf/perf_rows.py store --path DIR             check out the store branch
+    python launcher/tools/perf/perf_rows.py --eval                       score the row picker on its fixture
 
 A row is a measurement name a capture prints: a pegged `PERF TARGET <row>:
 measured N us, goal G us` line, or an unpegged one (`goal not yet pegged`,
@@ -21,15 +22,19 @@ Rows come from the shared store, the `perf-data` branch of this repository
 (`captures/<board>/<YYYY-MM>/<date>-<host>.jsonl`, one line per capture),
 plus this machine's records not yet in it. `sync` parses new local captures
 into the store and pushes it; `--store DIR` uses an existing checkout of the
-branch and `--write-only` leaves the commit and push to the caller. A line holds no raw
-log, path or user name: board short id, the machine name given to `--host`,
-build id, commit, suite, date, image flags and each row's goal and samples.
+branch and `--write-only` leaves the commit and push to the caller. A line
+holds no raw log, path or user name: board short id, the machine name given
+to `--host`, build id, commit, suite, start time, image flags and each row's
+goal and samples. The branch is as public as the repository.
 
-Perf-scoped and layout-seeded images are hidden unless `--scoped` (which
-shows only them); captures from before images recorded their flags show `?`.
+Images built with any flag (perf scope, layout seed, hot tunables) are
+hidden unless `--scoped`, which shows only them; captures from before
+flashes recorded their flags show `?`.
 """
 import argparse
+import contextlib
 import json
+import os
 import re
 import statistics
 import subprocess
@@ -42,22 +47,19 @@ PERF = Path(__file__).resolve().parent
 REPO = PERF.parents[2]
 sys.path.insert(0, str(PERF))
 sys.path.insert(0, str(REPO / "scripts/docs"))
-import capture  # noqa: E402,F401  (puts scripts/device on the path)
+sys.path.insert(0, str(REPO / "scripts/device"))
 from device_lock import short_id  # noqa: E402
-from device_report import parse_perf_targets, read_capture_text, read_index, records_root  # noqa: E402
+from device_report import parse_perf_targets, parse_unpegged_targets, read_capture_text, read_index, records_root  # noqa: E402
 from layout_measure import timing_samples  # noqa: E402
+from nightly.scoped_chain import git  # noqa: E402
 import autana_config  # noqa: E402
 import query_log  # noqa: E402
 
 TOOL = "perf"
 BRANCH = "perf-data"
 CAPTURES = "captures"
-# perf_budget.h's perf_goal() line for a row with no goal yet.
-UNPEGGED_RE = re.compile(r"PERF TARGET (?P<name>.+?): measured (?P<measured>\d+) us, goal not yet pegged")
 HOST_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]{0,15}")
 CAPTURE_COMMANDS = ("run-suite", "selftest")
-SCOPE_FLAG = "--perf-scope"
-SEED_FLAG = "--layout-seed"
 COMMIT_DIGITS = 12
 DATE_CHARS = len("YYYY-MM-DD")
 SECOND_CHARS = len("YYYY-MM-DDTHH:MM:SS")
@@ -69,21 +71,22 @@ STALE_DAYS = 3
 DEFAULT_BUDGET_TOKENS = 400
 ROWS_LISTED = 10
 # Bumped whenever capture_rows() reads a capture differently, so cached lines are parsed again.
-PARSED_FORMAT = 1
+PARSED_FORMAT = 2
+# `git ls-remote --exit-code` status for a ref the remote does not have.
+LS_REMOTE_ABSENT = 2
+# Longer than any sync takes; a lock this old belongs to a sync that died.
+STORE_LOCK_SECONDS = 600
+LOCK_EVENT_VAR = "AUTANA_LOCK_EVENT"
+RELEASED = "released"
 
 
 # --- capture lines ---------------------------------------------------------
 
 def image_flags(entries):
-    """build id -> (perf scoped, layout seed) from the flash entries that name their image flags."""
-    images = {}
-    for entry in entries:
-        flags = entry.get("image_flags")
-        if entry.get("command") != "flash" or not entry.get("build_id") or flags is None:
-            continue
-        seed = int(flags[flags.index(SEED_FLAG) + 1]) if SEED_FLAG in flags else 0
-        images[entry["build_id"]] = (SCOPE_FLAG in flags, seed)
-    return images
+    """build id -> the flags its flash built with, for the flash entries that record them."""
+    return {entry["build_id"]: entry["image_flags"] for entry in entries
+            if entry.get("command") == "flash" and entry.get("build_id")
+            and entry.get("image_flags") is not None}
 
 
 def capture_rows(text):
@@ -92,22 +95,21 @@ def capture_rows(text):
     targets, _ = parse_perf_targets(text)
     for target in targets:
         rows.setdefault(target["name"], [int(target["goal"])]).append(int(target["measured"]))
-    for match in UNPEGGED_RE.finditer(text):
-        rows.setdefault(match["name"], [None]).append(int(match["measured"]))
+    for target in parse_unpegged_targets(text):
+        rows.setdefault(target["name"], [None]).append(int(target["measured"]))
     for name, value in timing_samples(text):
         rows.setdefault(name, [None]).append(value)
     return rows
 
 
-def capture_line(entry, images, text):
-    """The store's line for one recorded capture, host aside, or None when it measured no row."""
+def capture_line(entry, text):
+    """The store's line for one recorded capture, host and image aside, or None when it measured no row."""
     rows = capture_rows(text)
     if not rows:
         return None
-    scope, seed = images.get(entry["build_id"], (None, None))
     return {"board": short_id(entry["board"]), "build": entry["build_id"],
             "commit": (entry.get("commit") or "")[:COMMIT_DIGITS], "suite": entry.get("suite"),
-            "date": entry["started_at"][:SECOND_CHARS], "scope": scope, "seed": seed, "rows": rows}
+            "date": entry["started_at"][:SECOND_CHARS], "rows": rows}
 
 
 def recorded(entry):
@@ -129,7 +131,8 @@ def parsed_cache():
 
 def local_lines(index_paths):
     """Lines for this machine's recorded captures. Each capture is parsed once:
-    its line, or None for one that measured no row, is kept in a per-user cache."""
+    its line, or None for one that measured no row, is kept in a per-user cache.
+    Image flags join afterwards from every index's flashes, so no capture keeps a stale `?`."""
     cache, parsed = parsed_cache(), {}
     try:
         for text in cache.read_text(encoding="utf-8").splitlines():
@@ -137,10 +140,10 @@ def local_lines(index_paths):
             parsed[tuple(key)] = line
     except (OSError, ValueError):
         pass
-    fresh, wanted = [], set()
+    fresh, wanted, images = [], set(), {}
     for index in index_paths:
         entries = read_index(index)
-        images = image_flags(entries)
+        images.update(image_flags(entries))
         for entry in entries:
             if not recorded(entry):
                 continue
@@ -151,7 +154,7 @@ def local_lines(index_paths):
                 text = read_capture_text(entry["capture_path"])
             except OSError:
                 continue
-            parsed[entry_key(entry)] = capture_line(entry, images, text)
+            parsed[entry_key(entry)] = capture_line(entry, text)
             fresh.append([list(entry_key(entry)), parsed[entry_key(entry)]])
     if fresh:
         try:
@@ -160,15 +163,10 @@ def local_lines(index_paths):
                 stream.writelines(json.dumps(item, separators=(",", ":")) + "\n" for item in fresh)
         except OSError:
             pass
-    return [parsed[key] for key in wanted if parsed.get(key)]
+    return [dict(parsed[key], image=images.get(parsed[key]["build"])) for key in wanted if parsed.get(key)]
 
 
 # --- the store --------------------------------------------------------------
-
-def git(folder, *args, check=True):
-    return subprocess.run(["git", "-C", str(folder), *args], check=check, text=True,
-                          stdin=subprocess.DEVNULL, capture_output=True).stdout.strip()
-
 
 def default_store():
     return autana_config.user_cache_dir() / BRANCH
@@ -203,12 +201,18 @@ def write_lines(store, lines):
 
 
 def remote_has_branch(store):
-    return subprocess.run(["git", "-C", str(store), "ls-remote", "--exit-code", "origin", "refs/heads/" + BRANCH],
-                          stdin=subprocess.DEVNULL, capture_output=True).returncode == 0
+    try:
+        git(store, "ls-remote", "--exit-code", "origin", "refs/heads/" + BRANCH)
+    except subprocess.CalledProcessError as error:
+        if error.returncode == LS_REMOTE_ABSENT:
+            return False
+        raise
+    return True
 
 
 def open_store(store):
-    """A checkout of the store branch at `store`, cloned from this repository's origin when absent."""
+    """A checkout of the store branch at `store`, cloned from this repository's origin when absent.
+    Credentials come from git's own configuration, e.g. GIT_CONFIG_COUNT in a CI step."""
     store = Path(store)
     if (store / ".git").exists():
         return store
@@ -228,10 +232,50 @@ def pull(store):
         git(store, "pull", "-q", "--no-rebase", "--no-edit", "origin", BRANCH)
 
 
+@contextlib.contextmanager
+def store_lock(store):
+    """One sync per store at a time; a lock older than STORE_LOCK_SECONDS is a dead sync's and is taken over."""
+    lock = Path(store) / ".git" / "perf_rows.lock"
+    try:
+        if time.time() - lock.stat().st_mtime > STORE_LOCK_SECONDS:
+            lock.unlink()
+    except OSError:
+        pass
+    try:
+        os.close(os.open(lock, os.O_CREAT | os.O_EXCL))
+    except FileExistsError:
+        yield False
+        return
+    try:
+        yield True
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def hook(argv):
+    """`lock_hook` entry: on `released` only, start the sync detached, since a hook is killed after seconds."""
+    if os.environ.get(LOCK_EVENT_VAR) != RELEASED:
+        return 0
+    command = [sys.executable, str(Path(__file__).resolve())] + [word for word in argv if word != "--hook"]
+    detached = ({"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+                if os.name == "nt" else {"start_new_session": True})
+    subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, close_fds=True, **detached)
+    return 0
+
+
 def sync(args):
     if not HOST_RE.fullmatch(args.host or ""):
         raise SystemExit("sync: --host takes this machine's short name (letters, digits, '-')")
     store = open_store(args.store or default_store())
+    with store_lock(store) as held:
+        if not held:
+            print("sync: another sync holds this store")
+            return 0
+        return sync_held(args, store)
+
+
+def sync_held(args, store):
     if not args.write_only:
         pull(store)
     known = {line_key(line) for line in store_lines(store)}
@@ -266,10 +310,12 @@ class Capture:
 
     def __init__(self, line):
         self.board, self.build, self.date = line["board"], line["build"], line["date"]
-        self.scope, self.seed = line.get("scope"), line.get("seed")
+        self.image = line.get("image")
         self.goal, self.samples, self.runs = None, [], 0
 
-    def add(self, values):
+    def add(self, line, values):
+        """One run; the capture's date is its newest run's, so a rerun days later reads as recent."""
+        self.date = max(self.date, line["date"])
         self.goal = values[0] if values[0] is not None else self.goal
         self.samples += values[1:]
         self.runs += 1
@@ -293,7 +339,8 @@ class Capture:
 
 
 def scoped(line):
-    return bool(line.get("scope")) or bool(line.get("seed"))
+    """Built with any image flag; an unknown image (None) counts as a plain one."""
+    return bool(line.get("image"))
 
 
 def matching(name, words):
@@ -325,7 +372,7 @@ def series(lines, row, board=None):
         if row not in line["rows"] or (board and line["board"] != board):
             continue
         captures = boards.setdefault(line["board"], {})
-        captures.setdefault(line["build"], Capture(line)).add(line["rows"][row])
+        captures.setdefault(line["build"], Capture(line)).add(line, line["rows"][row])
     return {name: sorted(builds.values(), key=lambda c: c.date, reverse=True)
             for name, builds in sorted(boards.items())}
 
@@ -370,19 +417,18 @@ def board_line(board, captures, today):
 
 
 def capture_line_text(capture, runs):
-    scope = "?" if capture.scope is None else ("scoped" if capture.scope else "full")
-    seed = "" if not capture.seed else f" seed {capture.seed}"
+    image = "?" if capture.image is None else (" ".join(capture.image) or "plain")
     margin = "" if capture.margin is None else "  " + percent(capture.margin)
     text = (f"  {capture.build}  {capture.date[:16].replace('T', ' ')}  runs {capture.runs}  "
             f"worst {capture.worst}  median {capture.median}{margin}  goal {capture.goal or '-'}  "
-            f"{scope}{seed}")
+            f"{image}")
     return text + ("\n    " + " ".join(map(str, capture.samples)) if runs else "")
 
 
 def as_json(row, boards):
     return {"row": row, "boards": {board: [
         {"build": c.build, "date": c.date, "runs": c.runs, "goal": c.goal, "worst": c.worst,
-         "median": c.median, "margin": c.margin, "samples": c.samples, "scope": c.scope, "seed": c.seed}
+         "median": c.median, "margin": c.margin, "samples": c.samples, "image": c.image}
         for c in captures] for board, captures in boards.items()}}
 
 
@@ -420,7 +466,8 @@ def answer(args, lines, out, today):
     board = short_id(args.board) if args.board else None
     boards = {name: captures[:args.captures] for name, captures in series(lines, row, board).items()}
     if args.json:
-        out.print(json.dumps(as_json(row, boards), separators=(",", ":")))
+        # Whole or not at all: a script reads it, so the budget never cuts it.
+        out.call.print(json.dumps(as_json(row, boards), separators=(",", ":")))
         return row, boards
     out.print(f"{row}  (us; margin = goal vs latest worst; noise = that board's own spread within a build)")
     for name, captures in boards.items():
@@ -433,8 +480,8 @@ def answer(args, lines, out, today):
 
 def query(args):
     store = Path(args.store) if args.store else default_store()
-    if args.fetch and (store / ".git").exists():
-        pull(store)
+    if args.fetch:
+        pull(open_store(store))
     lines = store_lines(store) if store.exists() else []
     known = {line_key(line) for line in lines}
     lines += [line for line in local_lines(index_paths(args)) if line_key(line) not in known]
@@ -473,9 +520,16 @@ def main(argv=None):
     parser.add_argument("--store", help="checkout of the perf-data branch (default: a clone in the user cache)")
     parser.add_argument("--records", action="append",
                         help="records folder holding index.jsonl (repeatable; default: this checkout's)")
+    if argv[:1] == ["store"]:
+        parser.add_argument("store_command", metavar="store")
+        parser.add_argument("--path", required=True, help="folder for the checkout")
+        open_store(parser.parse_args(argv).path)
+        return 0
     if argv[:1] == ["sync"]:
+        if "--hook" in argv:
+            return hook(argv)
         parser.add_argument("sync")
-        parser.add_argument("--host", required=True, help="this machine's short name, e.g. Legion")
+        parser.add_argument("--host", required=True, help="this machine's short name")
         parser.add_argument("--write-only", action="store_true",
                             help="write the files only; the caller commits and pushes")
         parser.add_argument("--dry-run", action="store_true", help="count new captures, write nothing")
@@ -486,7 +540,7 @@ def main(argv=None):
     parser.add_argument("-b", "--board", help="one board's short id or serial: one line per capture")
     parser.add_argument("-n", "--captures", type=int, default=DEFAULT_CAPTURES, help="captures per board")
     parser.add_argument("--runs", action="store_true", help="each capture's samples")
-    parser.add_argument("--scoped", action="store_true", help="only perf-scoped or layout-seeded images")
+    parser.add_argument("--scoped", action="store_true", help="only images built with flags (perf scope, layout seed, ...)")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--fetch", action="store_true", help="pull the store before answering")
     parser.add_argument("--budget", type=int, default=DEFAULT_BUDGET_TOKENS, help="output cap in tokens")

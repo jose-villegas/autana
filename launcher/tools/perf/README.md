@@ -405,8 +405,8 @@ or compared; each line comes from that board's captures alone.
 
 ```sh
 python launcher/tools/perf/perf_rows.py "gas cascade full"
-python launcher/tools/perf/perf_rows.py "gas cascade full" -b 2124 -n 10 --runs
-python launcher/tools/perf/perf_rows.py sync --host Legion
+python launcher/tools/perf/perf_rows.py "gas cascade full" -b <board> -n 10 --runs
+python launcher/tools/perf/perf_rows.py sync --host <machine>
 ```
 
 | Term | Meaning |
@@ -420,20 +420,27 @@ python launcher/tools/perf/perf_rows.py sync --host Legion
 
 A query naming several rows lists them with capture counts. `-b` adds one
 line per capture, `--runs` each capture's samples, `--json` the same data
-for scripts. `--budget` caps the output (400 tokens by default).
-Perf-scoped and layout-seeded images are left out; `--scoped` shows only them.
+for scripts. `--budget` caps the text output (400 tokens by default); JSON
+is never cut. Images built with any flag (perf scope, layout seed, hot
+tunables) are left out; `--scoped` shows only them.
 
 Rows come from the `perf-data` branch plus this machine's records not yet on
 it. `sync` parses new captures into `captures/<board>/<YYYY-MM>/<date>-<host>.jsonl`
 there, one line per capture, and pushes. A line holds the board's short id,
 the `--host` name, build id, commit, suite, date, image flags and each row's
-goal and samples: never a log, path or user name. Each machine writes its
-own files, so two machines never conflict. The nightly syncs before it
-publishes; a machine can sync from `lock_hook` on `released`.
+goal and samples: never a log, path or user name. The branch is as public
+as the repository, so machine names and capture times are too. Each machine
+writes its own files, so two machines never conflict, and one sync per store
+runs at a time. `store --path DIR` checks the branch out (the nightly's
+first step); the nightly syncs before it publishes.
+
+On a desk machine, run `sync` by hand, or from `lock_hook` with `--hook`:
+`sync --hook --host <machine>` returns at once and, on a `released` event
+only, starts the sync detached, since a hook is stopped after three seconds.
 
 Each capture is parsed once; the parsed lines are cached in the per-user
-autana cache. Flashes record `image_flags`, so captures from before that
-show `?` for scope.
+autana cache. Flashes record `image_flags`; captures from before that show
+`?` for the image.
 
 ## Real-time playback
 
