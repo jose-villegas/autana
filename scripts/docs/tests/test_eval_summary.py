@@ -53,9 +53,9 @@ class EvalSummary(unittest.TestCase):
             history = Path(folder) / "history.jsonl"
             summary = Path(folder) / "summary.md"
             docs = json.dumps({"suite": "docs", "mode": "hybrid", "mrr": 0.5, "top1": 0.5, "top3": 0.5, "rows": 2})
-            hwq = json.dumps({"suite": "hwq", "mode": "lexical", "mrr": 0.9, "top1": 0.9, "top3": 0.9, "rows": 9})
-            history.write_text(docs + "\n" + hwq + "\n", encoding="utf-8")
-            for argv, expected in ((["hybrid"], docs), (["--tool", "hwq", "lexical"], hwq)):
+            other = json.dumps({"suite": "other", "mode": "lexical", "mrr": 0.9, "top1": 0.9, "top3": 0.9, "rows": 9})
+            history.write_text(docs + "\nnot json\n[]\n" + other + "\n", encoding="utf-8")
+            for argv, expected in ((["hybrid"], docs), (["--tool", "other", "lexical"], other)):
                 with self.subTest(argv=argv), mock.patch.object(query_log, "eval_history", return_value=history), \
                      mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}), \
                      mock.patch("sys.stdout", new_callable=io.StringIO) as output:

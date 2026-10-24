@@ -18,13 +18,12 @@ import query_log
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--tool", default="docs")
+    parser.add_argument("--tool", default="docs", help="the tool whose last score is read")
     parser.add_argument("mode", choices=("hybrid", "lexical"))
     args = parser.parse_args(argv)
     try:
-        lines = query_log.eval_history().read_text(encoding="utf-8").splitlines()
-        line = [entry for entry in lines if json.loads(entry).get("suite") == args.tool][-1]
-        result = json.loads(line)
+        result = query_log.scores_of(args.tool)[-1]
+        line = json.dumps(result)
         metrics = (f"{result['mode']}: MRR {result['mrr']:.3f}, top-1 {result['top1']:.0%}, "
                    f"top-3 {result['top3']:.0%}, {result['rows']} rows")
         print(line)
