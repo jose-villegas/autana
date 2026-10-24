@@ -40,21 +40,30 @@ def commit(root, files, message, day):
     run(root, "commit", "-q", "-m", message, day=day)
 
 
+def merge_topic(root, files, title, day):
+    """A side branch with one commit, merged into main as a pull request merge commit."""
+    run(root, "checkout", "-q", "-b", "topic", day=day)
+    commit(root, files, "wip", day)
+    run(root, "checkout", "-q", "main", day=day)
+    run(root, "merge", "-q", "--no-ff", "topic", "-m", title, day=day + 1)
+
+
+def new_repo():
+    root = Path(tempfile.mkdtemp())
+    run(root, "init", "-q", "-b", "main")
+    return root
+
+
 def make_history():
     """main: #1 adds the file, #2 rewrites line 2, #3 merges a branch that
     rewrites line 3, #4 adds a line that #5 takes out again, and #6 renames
     the file without touching a line."""
-    root = Path(tempfile.mkdtemp())
-    run(root, "init", "-q", "-b", "main")
+    root = new_repo()
     commit(root, {"src/a.c": "int alpha;\nint beta;\nint gamma;\n"}, "a: first cut (#1)", 1)
     commit(root, {"src/a.c": "int alpha;\nint beta_frame(void);\nint gamma;\n"},
            "a: beta becomes a frame call (autana-b2b2) (#2)", 2)
-    run(root, "checkout", "-q", "-b", "topic", day=3)
-    commit(root, {"src/a.c": "int alpha;\nint beta_frame(void);\nint gamma_frame(void);\n"},
-           "wip on gamma", 3)
-    run(root, "checkout", "-q", "main", day=3)
-    run(root, "merge", "-q", "--no-ff", "topic", "-m",
-        "Merge pull request #3 from someone/topic\n\ngamma follows beta (c3c3)", day=4)
+    merge_topic(root, {"src/a.c": "int alpha;\nint beta_frame(void);\nint gamma_frame(void);\n"},
+                "Merge pull request #3 from someone/topic\n\ngamma follows beta (c3c3)", 3)
     commit(root, {"src/a.c": "int alpha;\nint beta_frame(void);\nint gamma_frame(void);\nint delta;\n"},
            "a: delta (#4)", 5)
     commit(root, {"src/a.c": "int alpha;\nint beta_frame(void);\nint gamma_frame(void);\n"},
@@ -64,10 +73,12 @@ def make_history():
     return root
 
 
-class History(unittest.TestCase):
+class Scratch(unittest.TestCase):
+    """A fixture history built once per class by build(), with a throwaway cache and log."""
+
     @classmethod
     def setUpClass(cls):
-        cls.root = make_history()
+        cls.root = cls.build()
 
     @classmethod
     def tearDownClass(cls):
@@ -86,6 +97,16 @@ class History(unittest.TestCase):
 
     def prs(self, rows):
         return [row["pr"] for row in rows]
+
+    def cache_body(self, number, body):
+        # The fixtures have no origin remote, so their pull requests file under "local".
+        (self.cache / "pr" / "local").mkdir(parents=True, exist_ok=True)
+        (self.cache / "pr" / "local" / f"{number}.json").write_text(
+            json.dumps({"title": "t", "body": body}), encoding="utf-8")
+
+
+class History(Scratch):
+    build = staticmethod(make_history)
 
     def test_a_file_ranks_the_prs_that_own_its_lines_newest_first(self):
         reply = self.reply("src/frame.c")
@@ -139,25 +160,18 @@ class History(unittest.TestCase):
         self.assertEqual({row["pr"]: row["lines"] for row in reply["rows"]}, {6: 0, 5: 1, 4: 1, 3: 2, 2: 2, 1: 3})
 
     def test_the_cached_pr_body_gives_the_summary_and_its_ticket_line(self):
-        # The fixture has no origin remote, so its pull requests file under "local".
-        (self.cache / "pr" / "local").mkdir(parents=True)
-        (self.cache / "pr" / "local" / "2.json").write_text(json.dumps(
-            {"title": "t", "body": "## Summary\n\nBeta is called once per frame. More after.\n\n"
-                                   "| a | b |\n\nTicket: autana-x9x9"}), encoding="utf-8")
+        self.cache_body(2, "## Summary\n\nBeta is called once per frame. More after.\n\n"
+                           "| a | b |\n\nTicket: autana-x9x9")
         row = self.reply("src/frame.c:2")["rows"][0]
         self.assertEqual(row["summary"], "Beta is called once per frame. More after.")
         self.assertEqual(row["tickets"], ["autana-b2b2", "autana-x9x9"])
 
     def test_a_ticket_line_typed_on_github_with_crlf_ends_still_counts(self):
-        (self.cache / "pr" / "local").mkdir(parents=True)
-        (self.cache / "pr" / "local" / "2.json").write_text(
-            json.dumps({"title": "t", "body": "Beta.\r\n\r\nTicket: q1q1\r\n"}), encoding="utf-8")
+        self.cache_body(2, "Beta.\r\n\r\nTicket: q1q1\r\n")
         self.assertEqual(self.reply("src/frame.c:2")["rows"][0]["tickets"], ["autana-b2b2", "q1q1"])
 
     def test_a_ticket_named_in_subject_and_ticket_line_appears_once(self):
-        (self.cache / "pr" / "local").mkdir(parents=True)
-        (self.cache / "pr" / "local" / "2.json").write_text(
-            json.dumps({"title": "t", "body": "Beta.\n\nTicket: autana-b2b2"}), encoding="utf-8")
+        self.cache_body(2, "Beta.\n\nTicket: autana-b2b2")
         self.assertEqual(self.reply("src/frame.c:2")["rows"][0]["tickets"], ["autana-b2b2"])
 
     def test_offline_without_a_cached_body_keeps_the_subject_and_runs_no_gh(self):
@@ -191,43 +205,6 @@ class History(unittest.TestCase):
         self.assertIsNone(why.eval_rank(reply, "#9"))
 
 
-class Scratch(unittest.TestCase):
-    """A fixture history built once per class by build(), with a throwaway cache and log."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.root = cls.build()
-
-    @classmethod
-    def tearDownClass(cls):
-        shutil.rmtree(cls.root, ignore_errors=True)
-
-    def setUp(self):
-        self.cache = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, self.cache, True)
-        for patch in (mock.patch.object(query_log, "log_dir", return_value=self.cache / "usage"),
-                      mock.patch.object(why, "pr_cache", return_value=self.cache / "pr")):
-            patch.start()
-            self.addCleanup(patch.stop)
-
-    def reply(self, query):
-        return why.answer(self.root, "HEAD", query, offline=True, with_tickets=False)
-
-    def prs(self, rows):
-        return [row["pr"] for row in rows]
-
-    def cache_body(self, number, body):
-        (self.cache / "pr" / "local").mkdir(parents=True, exist_ok=True)
-        (self.cache / "pr" / "local" / f"{number}.json").write_text(
-            json.dumps({"title": "t", "body": body}), encoding="utf-8")
-
-
-def new_repo():
-    root = Path(tempfile.mkdtemp())
-    run(root, "init", "-q", "-b", "main")
-    return root
-
-
 class MergeOrder(Scratch):
     @staticmethod
     def build():
@@ -235,10 +212,7 @@ class MergeOrder(Scratch):
         root = new_repo()
         commit(root, {"f.c": "l1\n"}, "f: one (#7)", 1)
         commit(root, {"f.c": "l1\nl2\n"}, "f: two (#3)", 2)
-        run(root, "checkout", "-q", "-b", "topic", day=3)
-        commit(root, {"f.c": "l1\nl2\nl3\n"}, "wip", 3)
-        run(root, "checkout", "-q", "main", day=3)
-        run(root, "merge", "-q", "--no-ff", "topic", "-m", "Merge pull request #5 from x/topic\n\nthree", day=4)
+        merge_topic(root, {"f.c": "l1\nl2\nl3\n"}, "Merge pull request #5 from x/topic\n\nthree", 3)
         commit(root, {"f.c": "l1\nl2\nl3\nl4\n"}, "f: four (#4)", 5)
         return root
 
