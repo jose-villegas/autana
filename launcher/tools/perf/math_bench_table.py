@@ -16,7 +16,7 @@ from capture import build_id
 
 DATA = ROOT / "docs/math/data"
 PLACEHOLDER = "# Board capture pending: run autana suite math_perf --flash."
-FPU_OPS = ("madd.s", "msub.s", "recip0.s", "rsqrt0.s", "div0.s", "divn.s", "sqrt0.s")
+FPU_OPS = ("madd.s", "msub.s", "recip0.s", "rsqrt0.s", "div0.s", "divn.s", "sqrt0.s", "clamps")
 DEVICE_ONLY_FPU_OPS = ("recip0.s", "rsqrt0.s")
 DEVICE_ONLY_INSTRUCTION = "device-only instruction"
 # ESP-DSP docs/esp_bm_results.csv at 3c8ac0fdfec8: S3, ANSI, O2, N=256 (ESP-DSP Library Benchmarks).

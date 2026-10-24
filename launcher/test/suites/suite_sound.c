@@ -415,8 +415,51 @@ test_step_index_max_and_full_loop(void) {
     test_free_aligned(f.raw);
 }
 
+static void
+test_pcm_runs_match_byte_reader(void) {
+    enum { SOURCE_FRAMES = 137, MAX_RUN = 130, LOOP_START = 3, LOOP_END = 133 };
+
+    uint8_t* bytes = malloc(SOURCE_FRAMES * SOUND_PCM_BYTES);
+    int16_t* actual = malloc(MAX_RUN * sizeof *actual);
+    TEST_ASSERT_NOT_NULL(bytes);
+    TEST_ASSERT_NOT_NULL(actual);
+    for (unsigned i = 0; i < SOURCE_FRAMES * SOUND_PCM_BYTES; i++) {
+        bytes[i] = (uint8_t)(i * 73U);
+    }
+    for (unsigned loop = 0; loop <= 1; loop++) {
+        const sound_t sound = {.data = bytes,
+                               .frames = SOURCE_FRAMES,
+                               .format = SOUND_PCM16,
+                               .loop_start = loop ? LOOP_START : 0,
+                               .loop_end = loop ? LOOP_END : 0};
+        for (unsigned start = 0; start < SOURCE_FRAMES; start++) {
+            for (unsigned length = 1; length <= MAX_RUN; length++) {
+                sound_cursor_t cursor;
+                TEST_ASSERT_EQUAL(ASSET_OK, sound_seek(&cursor, &sound, start));
+                const unsigned count = sound_read(&cursor, actual, length);
+                unsigned pos = start;
+                for (unsigned j = 0; j < count; j++) {
+                    if (loop && pos == LOOP_END) {
+                        pos = LOOP_START;
+                    }
+                    TEST_ASSERT_EQUAL_INT16(sound_read_sample(bytes + pos * SOUND_PCM_BYTES), actual[j]);
+                    pos++;
+                }
+                TEST_ASSERT_EQUAL_UINT32(pos, cursor.position);
+                TEST_ASSERT_EQUAL_UINT32(loop && start <= LOOP_END
+                                             ? length
+                                             : (length < SOURCE_FRAMES - start ? length : SOURCE_FRAMES - start),
+                                         count);
+            }
+        }
+    }
+    free(actual);
+    free(bytes);
+}
+
 void
 suite_sound(void) {
+    RUN_TEST(test_pcm_runs_match_byte_reader);
     RUN_TEST(test_loop_cursors);
     RUN_TEST(test_pcm_cursor);
     RUN_TEST(test_adpcm_cursor);
