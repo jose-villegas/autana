@@ -12,6 +12,7 @@
 #include "math/linear/transformf.h"
 #include "render/r3d_span.h"
 #include "render/raster_internal.h"
+#include "render/view/r3d_pipeline_count.h"
 #include "render/view/raster_meshlets.h"
 
 TUNE_OWNER(cullview);
@@ -99,26 +100,53 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
         out->step = R3D_SPAN_STEP_TRIANGLE;
         out->value = 1U + (uint32_t)s->next_triangle;
     }
-    s->writing_cluster = s->next_cluster;
     s->next_cluster += mesh->cluster_count;
     s->next_triangle += mesh->triangle_count;
     return true;
 }
 
+/* Whether the frame culled at all: render.cull, the raster's own switch. */
+static bool
+culling(void) {
+    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
+    return entry == NULL || *entry->value != 0;
+}
+
+/* After the camera's draw, its scratch lists and vertices are free: each
+ * instance is culled, counted and transformed again into them, through the
+ * lens the draw used, and its kept clusters are not set up or hidden. */
 static void
-drawn(const raster_attachment_t* self, const raster_t* raster, int instance, const r3d_lens_t* lens,
-      const uint16_t* clusters, int count, const r3d_pipeline_vertex_t* cs) {
-    raster_cull_t* s = self->state;
-    if (s->spectating) {
-        return;
-    }
-    const r3d_lit_mesh_t* mesh = raster->instances[instance].mesh;
-    const int offset = s->writing_cluster;
-    (void)r3d_pipeline_cull_counted(mesh, lens, s->walked, raster_carve(raster).work[0], &s->frame.counts);
-    r3d_pipeline_count_triangles(mesh, lens, clusters, count, cs, &s->frame.counts, &s->set_up[offset]);
-    for (int i = 0; i < count; i++) {
-        const int c = offset + clusters[i];
-        s->fate[c] = s->set_up[c] != 0 ? RASTER_FATE_HIDDEN : RASTER_FATE_NOT_SET_UP;
+count_frame(raster_cull_t* s, const raster_t* raster) {
+    const raster_buffers_t b = raster_carve(raster);
+    const bool culls = culling();
+    int offset = 0;
+    for (int i = 0; i < raster->instance_count; i++) {
+        const r3d_instance_t* instance = &raster->instances[i];
+        const r3d_lit_mesh_t* mesh = instance->mesh;
+        r3d_lens_t lens;
+        raster_lens(raster, &s->camera, mesh->position_scale, &lens);
+        if (instance->model != NULL) {
+            r3d_lens_place(&lens, instance->model, mesh->position_scale);
+        }
+        uint16_t* kept = b.culled;
+        int count = mesh->cluster_count;
+        if (culls) {
+            count = r3d_pipeline_cull_counted(mesh, &lens, kept, &s->walk, &s->frame.counts);
+        } else {
+            for (int c = 0; c < count; c++) {
+                kept[c] = (uint16_t)c;
+                s->frame.counts.triangles_submitted += mesh->clusters[c].triangle_count;
+            }
+            s->frame.counts.clusters_tested += count;
+            s->frame.counts.clusters_kept += count;
+        }
+        r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL);
+        r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, &s->set_up[offset]);
+        for (int k = 0; k < count; k++) {
+            const int c = offset + kept[k];
+            s->fate[c] = s->set_up[c] != 0 ? RASTER_FATE_HIDDEN : RASTER_FATE_NOT_SET_UP;
+        }
+        offset += mesh->cluster_count;
     }
 }
 
@@ -255,6 +283,7 @@ spectator_view(const raster_cull_t* s, const raster_t* raster) {
 bool
 raster_cull_second_view(void* state, const raster_t* raster, render_view_t* out) {
     raster_cull_t* s = state;
+    count_frame(s, raster);
     tally(s, raster);
     find_nodes(s, raster);
     if (s->from == RASTER_CULL_FROM_CAMERA) {
@@ -326,7 +355,6 @@ raster_cull_view(void* state) {
                                  .clear = clear,
                                  .begin = begin,
                                  .writer = writer,
-                                 .drawn = drawn,
                                  .show = show,
                                  .state = state};
 }

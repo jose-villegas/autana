@@ -39,7 +39,6 @@ struct raster {
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
-    bool keep_every_cluster; /* development views: draws every cluster, culling none */
 };
 
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */

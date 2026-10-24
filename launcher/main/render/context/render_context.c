@@ -7,6 +7,7 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "core/tune.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_cull_view.h"
@@ -201,12 +202,14 @@ draw_second_view(render_context_t* c) {
     if (row == NULL || row->second_view == NULL || !row->second_view(c->debug_view_state, &c->raster, &second)) {
         return;
     }
-    /* Its own view and every cluster: neither may steer the frame's core split. */
+    /* Every cluster, from its own view: neither may steer the frame's core split. */
+    const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
+    const int32_t culled = *culling->value;
+    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
     c->raster.split = NULL;
-    c->raster.keep_every_cluster = true;
     (void)raster_draw(&c->raster, &second);
-    c->raster.keep_every_cluster = false;
     c->raster.split = &c->split;
+    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
 }
 #endif
 

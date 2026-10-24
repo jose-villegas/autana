@@ -19,6 +19,7 @@
 
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
+#include "render/view/r3d_pipeline_count.h"
 
 typedef enum {
     RASTER_CULL_FROM_CAMERA,
@@ -57,14 +58,13 @@ typedef struct {
     bool spectating; /* drawing the second time */
     int clusters, triangles;
     int next_cluster, next_triangle; /* the next instance's first IDs, as the draw reaches it */
-    int writing_cluster;             /* the instance being drawn's first cluster */
     const raster_t* raster;
     render_view_t camera, spectator;
     raster_cull_frame_t frame;
     uint8_t fate[RASTER_CULL_CLUSTERS_MAX];
     uint16_t set_up[RASTER_CULL_CLUSTERS_MAX];
     uint16_t node[RASTER_CULL_CLUSTERS_MAX]; /* each cluster's node at cullview.level */
-    uint16_t walked[RASTER_CULL_CLUSTERS_MAX];
+    r3d_pipeline_count_walk_t walk;
     /* The tree walks' pending nodes, here rather than on the drawing task's stack. */
     uint16_t walk_node[R3D_LIT_WALK_STACK_MAX], walk_shown[R3D_LIT_WALK_STACK_MAX];
     uint8_t walk_depth[R3D_LIT_WALK_STACK_MAX];
