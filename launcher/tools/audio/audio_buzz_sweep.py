@@ -13,6 +13,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from audio_drc_sweep import numbers
 from autana_runner import autana_run, record_line
 
 CAPTURE = Path("docs/audio/data/audio_buzz_capture.txt")
@@ -24,10 +25,6 @@ LOW_MAX_VOLUME = 60
 # The fine pass: this many coarse shake peaks, each walked in FINE_STEP_HZ steps to its coarse neighbours.
 PEAKS = 3
 FINE_STEP_HZ = 2
-
-
-def numbers(text):
-    return tuple(int(value) for value in text.split(",") if value)
 
 
 def parser():
