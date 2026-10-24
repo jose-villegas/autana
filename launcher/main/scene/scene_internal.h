@@ -45,7 +45,7 @@ typedef struct {
 /* The rows of the SCNE entry (scene_format.h) are read in place, so they are
  * the entry's bytes, little-endian as the device is. */
 typedef struct {
-    uint16_t entity, pad;
+    uint16_t entity, colour_set;
     char mesh[ASSET_NAME_MAX];
 } scene_asset_renderer_t;
 

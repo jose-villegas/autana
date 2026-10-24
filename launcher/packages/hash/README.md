@@ -19,7 +19,7 @@ The C and Python tests share `tests/name_hash_vectors.h`.
 
 ## Headers
 
-<!-- generated: package-hash-headers check: python launcher/tools/gen/shared_helpers.py --check -->
+<!-- generated: package-hash-headers check: python launcher/tools/gen/package_headers.py --check -->
 | Header | Purpose |
 |---|---|
 | [include/hash/crc32.h](include/hash/crc32.h) | crc32: the CRC-32 of RFC 1952, which zlib and PNG compute, a nibble at a time, so no 1 KiB table sits in RAM. |
