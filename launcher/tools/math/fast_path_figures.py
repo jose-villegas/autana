@@ -11,8 +11,13 @@ import math_bench_table as bench
 from docs.plot_style import FAINT, SLOTS, style_axes, subplots, save
 
 
+ERROR_ZOOM_FRACTION = 0.75
+ERROR_HEADROOM = 1.15
+
+
 def _configure_axis(axis, points, mode=None):
-    x, y, _ = zip(*sorted(points))
+    nonzero = [point for point in sorted(points) if point[1] != 0]
+    x, _, _ = zip(*(nonzero or sorted(points)))
     periodic = mode in ("period", "phase")
     if not periodic and min(x) > 0 and max(x) / min(x) >= 2:
         axis.set_xscale("log", base=2)
@@ -34,27 +39,34 @@ def main(argv=None):
         if not bench.parse_target(text):
             raise ValueError("error curves require a hardware MATHTARGET capture record")
         rows, _ = bench.read_fpu(bench.DATA / "math_bench_fpu_ops.txt")
-        _, bins, sources = fast_paths.error_evidence(ROOT, items, rows, text)
+        errors, bins, sources = fast_paths.error_evidence(ROOT, items, rows, text)
         axes = bench.parse_bin_axes(text)
         host = ROOT / fast_paths.HOST_CAPTURE
         if host.exists():
             axes.update(bench.parse_bin_axes(host.read_text(encoding="utf-8")))
         done = set()
         for item in items:
-            if item.limit == 0 or item.key in done or (item.key, item.kind) not in bins:
+            identity = item.key, item.kind
+            if item.key in done or identity not in bins or float(errors[identity].split()[0]) == 0:
                 continue
             done.add(item.key)
             points = sorted(bins[item.key, item.kind])
             x, y, _ = zip(*points)
             fig, axis = subplots(1, 1, (7, 3.6))
             axis.plot(x, y, color=SLOTS[0], label="Binned maximum")
-            axis.axhline(item.limit, color=SLOTS[1], linestyle="--", label=f"{item.limit_name} = {fast_paths.format_limit(item.limit)}")
+            zoom = float(errors[identity].split()[0]) < item.limit * ERROR_ZOOM_FRACTION
+            limit_label = f"{item.limit_name} = {fast_paths.format_limit(item.limit)}"
+            if not zoom:
+                axis.axhline(item.limit, color=SLOTS[1], linestyle="--", label=limit_label)
             _configure_axis(axis, points, axes.get((item.key, item.kind)))
-            axis.set_ylim(bottom=0, top=max(item.limit, max(y)) * 1.15)
+            axis.set_ylim(bottom=0, top=(max(y) if zoom else max(item.limit, max(y))) * ERROR_HEADROOM)
             unit = "fractional ulp" if item.unit == "ulp" and axes.get((item.key, item.kind)) == "period" else item.unit
             axis.set_ylabel(f"Error ({unit})")
             axis.grid(color=FAINT)
-            style_axes(axis, f"{item.key} ({sources[item.key, item.kind]})")
+            title = f"{item.key} ({sources[identity]})"
+            if zoom:
+                title += f"\nLimit: {limit_label}"
+            style_axes(axis, title)
             axis.legend(loc="upper center", bbox_to_anchor=(0.5, -0.24), fontsize="small")
             save(fig, args.out / f"fast-path-{item.key}.png")
     except (OSError, ValueError, KeyError) as error:

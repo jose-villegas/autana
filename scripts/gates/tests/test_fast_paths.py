@@ -22,6 +22,7 @@ class FastPathTests(unittest.TestCase):
         self.header.parent.mkdir(parents=True)
         self.header.write_text('#define EXAMPLE_LIMIT 1\n'
                                '/* Seed correction. | y = y(2 - ay) | positive normal inputs */\n'
+                               '/* exact: y = 1/x */\n'
                                '/* MATH_FAST_PATH(fast_f, plain_f, EXAMPLE_LIMIT) */\n'
                                'static inline float example(float x) { return x; }\n')
         source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
@@ -84,6 +85,44 @@ class FastPathTests(unittest.TestCase):
         self.assertNotIn('fast-path-mathf_repeat.png', saved)
         self.assertIn('fast-path-mathx_rsqrt_q30.png', saved)
         self.assertIn('MATHX_RSQRT_Q30_RELATIVE_LIMIT = 2^-31', labels)
+
+    def test_small_errors_zoom_and_trim_zero_edges(self):
+        from unittest.mock import Mock
+        sys.path.insert(0, str(ROOT / 'launcher/tools/math'))
+        import fast_path_figures as figures
+        points = [(1, 0, 'ulp'), (2, 0.01, 'ulp'), (3, 0.02, 'ulp'), (4, 0, 'ulp')]
+        axis = Mock()
+        figures._configure_axis(axis, points, 'range')
+        axis.set_xlim.assert_called_once_with(2, 3)
+        self.assertEqual(figures.ERROR_ZOOM_FRACTION, 0.75)
+        from unittest.mock import patch
+        evidence = ({('example', 'f'): '0.02 ulp (sweep)'}, {('example', 'f'): points},
+                    {('example', 'f'): 'hardware'})
+        def check_plot(fig, path):
+            plotted = fig.axes[0]
+            self.assertEqual(plotted.get_xlim(), (2, 3))
+            self.assertAlmostEqual(plotted.get_ylim()[1], 0.02 * figures.ERROR_HEADROOM)
+            self.assertEqual(len(plotted.lines), 1)
+            self.assertIn('Limit: EXAMPLE_LIMIT = 1', plotted.get_title())
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+        with patch.object(figures.fast_paths, 'annotations', return_value=self.annotations), \
+                patch.object(figures.fast_paths, 'error_evidence', return_value=evidence), \
+                patch.object(figures, 'save', side_effect=check_plot):
+            self.assertEqual(figures.main(['--out', str(self.root)]), 0)
+
+    def test_zero_error_with_nonzero_limit_skips_figure(self):
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'launcher/tools/math'))
+        import fast_path_figures as figures
+        evidence = ({('example', 'f'): '0 ulp (sweep)'},
+                    {('example', 'f'): [(1, 0, 'ulp'), (2, 0, 'ulp')]},
+                    {('example', 'f'): 'hardware'})
+        with patch.object(figures.fast_paths, 'annotations', return_value=self.annotations), \
+                patch.object(figures.fast_paths, 'error_evidence', return_value=evidence), \
+                patch.object(figures, 'save') as save:
+            self.assertEqual(figures.main(['--out', str(self.root)]), 0)
+        save.assert_not_called()
 
     def test_annotation_parser(self):
         self.assertEqual(len(self.annotations), 1)
@@ -269,18 +308,19 @@ class FastPathTests(unittest.TestCase):
         ))
         self.assertIn("| `CONFIG_MATH_FPU_RECIP` | plain | plain |", summary)
         self.assertIn("| `CONFIG_MATH_FPU_FUSED_MADD` | plain | fast |", summary)
-        self.assertNotIn("|", details)
+        self.assertIn("| Original | Fast path |", details)
+        self.assertIn("| $`y = 1/a`$ | $`y = y + y(1 - ay)`$ |", details)
         self.assertNotIn("**Plain way**", details)
         assert_contains(self, details, (
             "Symbols: nonzero input `a`; reciprocal seed `y`.",
             "`sinf` in output LSBs",
             "`[MATHX_RSQRT_MIN, 2^32)`",
         ))
-        self.assertEqual(details.count("```math"), len({item.key for item in items}))
-        self.assertEqual(details.count("![Error across"), len({item.key for item in items}))
+        self.assertEqual(details.count("| Original | Fast path |"), len({item.key for item in items}))
+        self.assertNotIn("![Error across", details)
         identity_text = paths.render(ROOT, items, rows, measured, errors, bins, sizes, fpu, "test target",
                                      input_counts={('mathf_repeat', 'f'): 123})
-        self.assertIn('Bit-identical to `fmodf` over 123 inputs.', identity_text)
+        self.assertIn('Exact: no error over 123 inputs of the sweep.', identity_text)
         self.assertNotIn('fast-path-mathf_repeat.png', identity_text)
         paths.validate_sections(text, items)
         host_sources = {(item.key, item.kind): "host" for item in items}

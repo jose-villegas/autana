@@ -52,9 +52,9 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 
 ## `mathf_recip`
 
-```math
-y = y + y(1 - ay)
-```
+| Original | Fast path |
+|---|---|
+| $`y = 1/a`$ | $`y = y + y(1 - ay)`$ |
 
 Symbols: nonzero input `a`; reciprocal seed `y`.
 
@@ -66,9 +66,9 @@ Sweep: signed magnitudes and power-of-two edges.
 
 ## `mathf_rsqrt`
 
-```math
-y = y + (y/2)(1 - vy^2)
-```
+| Original | Fast path |
+|---|---|
+| $`y = 1/\sqrt{v}`$ | $`y = y + (y/2)(1 - vy^2)`$ |
 
 Symbols: positive input `v`; reciprocal-root seed `y`.
 
@@ -80,9 +80,9 @@ Proof: all mantissas in `[1,4)`, normal exponent strides and edges.
 
 ## `mathf_rsqrt_approx`
 
-```math
-y = y(3/2 - (v/2)y^2)
-```
+| Original | Fast path |
+|---|---|
+| $`y = 1/\sqrt{v}`$ | $`y = y(3/2 - (v/2)y^2)`$ |
 
 Symbols: positive input `v`; reciprocal-root seed `y`.
 
@@ -94,9 +94,9 @@ Proof: all mantissas in `[1,4)`, normal exponent strides and edges.
 
 ## `mathx_rsqrt_q30`
 
-```math
-y = round(2^{46}/sqrt(m))
-```
+| Original | Fast path |
+|---|---|
+| $`y = 2^{46}/\sqrt{m}`$ | $`y = round(2^{46}/sqrt(m))`$ |
 
 Symbols: integer mantissa `m` in `[MATHX_RSQRT_MIN, 2^32)`; reciprocal root `y`.
 
@@ -108,23 +108,23 @@ Proof: mantissa segment strides and exact midpoint brackets.
 
 ## `mathf_repeat`
 
-```math
-r = fma(-floor(v/len), len, v)
-```
+| Original | Fast path |
+|---|---|
+| $`r = v - \lfloor v/len \rfloor len`$ | $`r = fma(-floor(v/len), len, v)`$ |
 
 Symbols: input `v` and positive period `len`; fused remainder `r`.
 
 Sweep: signed float bit patterns, quotient guard and endpoint edges.
 
-Bit-identical to `fmodf` over 97845 inputs.
+Exact: no error over 97845 inputs of the sweep.
 
 <a id="trig-sin"></a>
 
 ## `trig_sin`
 
-```math
-s = a + floor((b-a)t/256)
-```
+| Original | Fast path |
+|---|---|
+| $`s = 2^{TRIG\_SIN\_SHIFT}\sin(2\pi\,phase/TRIG\_TURN)`$ | $`s = a + floor((b-a)t/256)`$ |
 
 Symbols: 16-bit phase input; quarter-wave samples `a` and `b` bracket it; `t` is the low eight phase bits and `s` is sine in output LSBs.
 
