@@ -26,6 +26,7 @@ PROBE_JOB = 'boards'
 DEVICES_FILE = 'devices.json'
 ARTIFACT_PREFIX = 'board-health-devices'
 POLL_SECONDS = 30
+FAILURE_REASON = 'Board health check failed; see the job logs'
 
 
 def open_alarm(request=call):
@@ -66,8 +67,10 @@ def nights_enabled(request):
 
 def last_board_success(request, now):
     latest = None
+    cutoff = (now - SUCCESS_WINDOW).astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
     for workflow in (NIGHTLY_WORKFLOW, BOARD_WORKFLOW):
-        for run in pages(f'/actions/workflows/{workflow}/runs?status=completed', 'workflow_runs', request):
+        for run in pages(f'/actions/workflows/{workflow}/runs?status=completed&created=>={cutoff}',
+                         'workflow_runs', request):
             jobs = list(pages(f"/actions/runs/{run['id']}/jobs", 'jobs', request))
             cleared = any(job['name'] == 'alarm' and any(
                 step['name'] == CLEAR_STEP and step['conclusion'] == 'success'
@@ -105,8 +108,6 @@ def missing_boards(lanes, plugged):
 
 
 def check(request, now, lanes, plugged):
-    if not nights_enabled(request):
-        return []
     problems = []
     success = last_board_success(request, now)
     if success is None or now - success > SUCCESS_WINDOW:
@@ -134,7 +135,7 @@ def run_url():
             f"/actions/runs/{os.environ['GITHUB_RUN_ID']}")
 
 
-def probe_devices(destination, request=call, clock=time.monotonic, sleep=time.sleep):
+def probe_devices(destination, reason_file, request=call, clock=time.monotonic, sleep=time.sleep):
     enabled = nights_enabled(request)
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
@@ -167,7 +168,7 @@ def probe_devices(destination, request=call, clock=time.monotonic, sleep=time.sl
                       else f'Board health USB probe did not finish within {QUEUED_LIMIT}')
             break
         sleep(min(POLL_SECONDS, remaining))
-    raise_alarm(reason, run_url(), request)
+    Path(reason_file).write_text(reason, encoding='utf-8')
     print(reason, file=sys.stderr)
     return 1
 
@@ -175,26 +176,37 @@ def probe_devices(destination, request=call, clock=time.monotonic, sleep=time.sl
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
-    commands.add_parser('raise').add_argument('--reason', required=True)
+    reason = commands.add_parser('raise').add_mutually_exclusive_group(required=True)
+    reason.add_argument('--reason')
+    reason.add_argument('--reason-file', type=Path)
     commands.add_parser('clear')
     health = commands.add_parser('check')
     health.add_argument('--lanes-from', required=True, type=Path)
     health.add_argument('--devices', required=True, type=Path)
-    commands.add_parser('probe').add_argument('--devices', required=True, type=Path)
+    health.add_argument('--reason-file', required=True, type=Path)
+    probe = commands.add_parser('probe')
+    probe.add_argument('--devices', required=True, type=Path)
+    probe.add_argument('--reason-file', required=True, type=Path)
     args = parser.parse_args(argv)
     if args.command == 'raise':
-        raise_alarm(args.reason, run_url())
+        reason = args.reason
+        if args.reason_file is not None:
+            try:
+                reason = args.reason_file.read_text(encoding='utf-8')
+            except FileNotFoundError:
+                reason = FAILURE_REASON
+        raise_alarm(reason, run_url())
     elif args.command == 'clear':
         clear_alarm(run_url())
     elif args.command == 'probe':
-        return probe_devices(args.devices)
+        return probe_devices(args.devices, args.reason_file)
     else:
         if not nights_enabled(call):
             return 0
         problems = check(call, datetime.now(timezone.utc), latest_lanes(args.lanes_from), read_plugged(args.devices))
         if problems:
             reason = '\n'.join(problems)
-            raise_alarm(reason, run_url())
+            args.reason_file.write_text(reason, encoding='utf-8')
             print(reason, file=sys.stderr)
             return 1
     return 0

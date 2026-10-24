@@ -44,7 +44,7 @@ env:
 jobs:
   nightly:
     outputs:
-      held: ${{ env.SCOPED_BOARDS != '' && (steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure') }}
+      held: ${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}
     runs-on: [self-hosted, windows, board]
     # Wait up to 210 min (19:00 local to 22:30), run 510 min to 07:00, publish 60 min.
     timeout-minutes: 780
