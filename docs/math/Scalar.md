@@ -3,8 +3,8 @@
 Per-type arithmetic, fixed point, random draws and units. [Math index](README.md).
 
 `math/scalar/` holds per-type arithmetic, fixed point, random draws, trigonometry
-and time units. The tables list the range, lerp and rounding helpers; the
-[catalogue](../tools/Shared-Helpers.md) lists the rest.
+and time units. The tables list the range, lerp and rounding helpers;
+[code search](../tools/Code-Search.md) finds the rest.
 
 ## mathi.h
 
