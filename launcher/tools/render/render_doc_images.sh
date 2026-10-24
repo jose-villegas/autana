@@ -233,7 +233,7 @@ run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input
     > "$WORK/shake_figures.log"
 run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/gravity_figures.log"
-# --orphans scans this runner: gravity-trust.png, gravity-bias.png
+# --orphans scans this runner: gravity-trust.png, gravity-bias.gif
 run mkdir -p "$OUT/math"
 run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
