@@ -11,18 +11,23 @@ layered on a development build.
 
 ## The variants
 
-| | release | dev | diag | QEMU |
+| Kconfig symbol | release | dev | diag | QEMU |
 |---|---|---|---|---|
-| Built by | `autana build rel`, `autana flash rel` | `autana build dev`, `autana flash dev` | `autana build diag`, `autana flash diag`, `autana selftest` | `launcher/test/run_qemu_tests.sh` |
-| Directory | `build/` | `build.dev/` | `build.diag/` | `build.qemu/`, `build.qemu.shell/` (no autorun), `.perf` suffix for the perf scope |
-| Fragments over `sdkconfig.defaults` | none | `.dev` | `.diag` | `.diag`, `.diag_autorun` (not for `.shell`), `.diag_perf` (perf scope), `.qemu` last |
-| Build type | [`LAUNCHER_RELEASE`][kconfig] | [`LAUNCHER_DEVELOPMENT`][kconfig] | [`LAUNCHER_DEVELOPMENT`][kconfig] | [`LAUNCHER_DEVELOPMENT`][kconfig] |
-| Test code ([`LAUNCHER_SELFTEST`][kconfig]) | never compiled | no | yes | yes |
-| Suites run at boot ([`LAUNCHER_SELFTEST_AUTORUN`][kconfig]) | — | — | with `--autorun`, as `autana selftest` builds it | yes, except `build.qemu.shell/` |
-| Development instrumentation and development-only apps ([`LAUNCHER_DEVELOPMENT`][kconfig]) | no | yes | yes | yes |
-| Suite scope ([`LAUNCHER_SELFTEST_SCOPE_*`][kconfig]) | — | — | full, or perf with `--perf-scope` | full, or perf with `--perf-scope` |
-| Null panel ([`LAUNCHER_QEMU`][kconfig]) | no | no | no | yes |
-| Float maths | single, FPU seeds + fused multiply-add | same | same | single, [`MATH_FPU_RECIP`][math-kconfig] and [`MATH_FPU_FUSED_MADD`][math-kconfig] off |
+| [`LAUNCHER_DEVELOPMENT`][kconfig]: instrumentation, development-only apps | no | yes | yes | yes |
+| [`LAUNCHER_SELFTEST`][kconfig]: test code | no | no | yes | yes |
+| [`LAUNCHER_SELFTEST_AUTORUN`][kconfig]: suites run at boot | no | no | `--autorun` | yes¹ |
+| [`LAUNCHER_SELFTEST_SCOPE_PERF`][kconfig]: perf scope | no | no | `--perf-scope` | `--perf-scope` |
+| [`LAUNCHER_QEMU`][kconfig]: null panel | no | no | no | yes |
+| [`MATH_FPU_*`][math-kconfig]: FPU seeds, fused multiply-add | yes | yes | yes | no |
+
+¹ Except `build.qemu.shell/`, which boots into the shell.
+
+| Variant | Built by | Directory |
+|---|---|---|
+| release | `autana build rel`, `autana flash rel` | `build/` |
+| dev | `autana build dev`, `autana flash dev` | `build.dev/` |
+| diag | `autana build diag`, `autana flash diag`, `autana selftest` (with `--autorun`) | `build.diag/` |
+| QEMU | `launcher/test/run_qemu_tests.sh` | `build.qemu/`, `build.qemu.shell/`; `.perf` suffix for the perf scope |
 
 Each image has its own directory, so one never reconfigures another.
 [Where builds live](Build-Environment.md#where-builds-live) gives the paths
