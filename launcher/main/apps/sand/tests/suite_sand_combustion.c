@@ -22,7 +22,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#include "name_hash/name_hash.h"
+#include "hash/name_hash.h"
 
 #include "suites.h"
 #include "unity.h"
