@@ -36,6 +36,21 @@ transformf_rotate_around(transformf_t* t, vec3f_t point, vec3f_t axis, float ang
     transformf_set_rotation(t, quatf_normalize(quatf_mul(turn, t->rotation)));
 }
 
+/* `child` placed in `parent`'s frame: where the child stands in the frame
+ * the parent stands in. Exact unless a parent scaled unevenly holds a turned
+ * child, whose sheared result has no TRS form: the scale is then per axis,
+ * an approximation. */
+static inline transformf_t
+transformf_compose(const transformf_t* parent, const transformf_t* child) {
+    const vec3f_t scaled = {parent->scale.x * child->position.x, parent->scale.y * child->position.y,
+                            parent->scale.z * child->position.z};
+    return (transformf_t){
+        .position = vec3f_add(parent->position, quatf_rotate(parent->rotation, scaled)),
+        .rotation = quatf_normalize(quatf_mul(parent->rotation, child->rotation)),
+        .scale = {parent->scale.x * child->scale.x, parent->scale.y * child->scale.y, parent->scale.z * child->scale.z},
+        .cached = false};
+}
+
 #define TRANSFORMF_MATRIX_TOLERANCE 1e-4F
 
 /* Decomposes affine TRS; refuses shear, reflection, singular or nonfinite matrices. */

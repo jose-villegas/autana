@@ -131,8 +131,18 @@ scene_entity_active(const scene_t* scene, scene_entity_t entity) {
     return (scene->flags[entity] & SCENE_FLAG_ACTIVE) != 0;
 }
 
-mat4f_t
+transformf_t
 scene_entity_world(const scene_t* scene, scene_entity_t entity) {
+    assert(entity < scene->asset.entity_count);
+    transformf_t world = scene->locals[entity];
+    for (scene_entity_t e = parent_of(scene, entity); e != SCENE_ENTITY_NONE; e = parent_of(scene, e)) {
+        world = transformf_compose(&scene->locals[e], &world);
+    }
+    return world;
+}
+
+mat4f_t
+scene_world_matrix(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
     mat4f_t world = transformf_compute_matrix(&scene->locals[entity]);
     for (scene_entity_t e = parent_of(scene, entity); e != SCENE_ENTITY_NONE; e = parent_of(scene, e)) {
