@@ -33,7 +33,7 @@ class MathBenchTableTests(unittest.TestCase):
         rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch, "scalar")]
         table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"},
                                    errors={("mathf_rsqrt", "f"): "1 ulp (proof)"},
-                                   error_links={("mathf_rsqrt", "f"): "Fast-Paths.md#mathf-rsqrt"})
+                                   error_links={"rsqrt_f": "Fast-Paths.md#mathf-rsqrt"})
         self.assertIn("| mathf_rsqrt | f | - | - | - | device-only instruction | - | rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt) |", table)
         self.assertIn("max error", table)
 
@@ -42,6 +42,7 @@ class MathBenchTableTests(unittest.TestCase):
         table = bench.render_table(self.rows, {}, {}, {"dot_f": "-", "sinf_f": "-"}, links=links,
                                    errors={("dot (vec3)", "f"): "1 ulp (sweep)"})
         self.assertLess(table.index("#### Vector"), table.index("#### Libm"))
+        self.assertIn("\n\n#### Libm\n", table)
         self.assertIn("[dot (vec3)](Fast-Paths.md#example)", table)
         self.assertIn("[sinf](Fast-Paths.md#example)", table)
         self.assertIn("| 1 ulp (sweep) |", table)

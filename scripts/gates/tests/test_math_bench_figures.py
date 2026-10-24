@@ -122,3 +122,57 @@ class MathBenchFigureTests(unittest.TestCase):
                          [to_rgba(figures.SLOTS[index]) for index in (0, 1, 2, 2)])
         self.assertEqual([text.get_text() for text in fig.legends[0].get_texts()],
                          ["f", "", "i", "", "z", ""])
+
+    def test_reference_cut_threshold_boundaries(self):
+        import math
+        import math_bench_figures as figures
+        rows = [("fast", "chosen", "f", 1, "scalar"),
+                ("plain", "reference", "f", 1, "scalar")]
+        warm = 100
+        limit = warm * figures.VALUE_HEADROOM
+        threshold = limit * figures.REFERENCE_CUT_FACTOR
+        for reference, expected_limit, breaks in (
+                (limit, limit, 0),
+                (threshold, threshold * figures.REFERENCE_HEADROOM, 0),
+                (math.nextafter(threshold, math.inf), limit, 2)):
+            with self.subTest(reference=reference):
+                fig = self.paired_figure(rows, {"fast": (warm, warm, 1), "plain": (reference, reference, 1)})
+                axis = fig.axes[0]
+                self.assertEqual(axis.get_ylim()[1], expected_limit)
+                self.assertEqual(axis.patches[1].get_height(), min(reference, expected_limit))
+                self.assertEqual(len(axis.lines), breaks)
+                value = next(text for text in axis.texts if text.get_text() == f"{reference:.0f}")
+                self.assertEqual(value.xy[1], min(reference, expected_limit))
+
+    def test_group_width_bounds_and_small_group_bar_width(self):
+        import math_bench_figures as figures
+        import matplotlib.pyplot as plt
+        for count in (1, 2, 8):
+            with self.subTest(count=count):
+                rows = [(f"sample_{index}", "sample", "f", 1, "scalar") for index in range(count)]
+                rows.append(("next", "next", "f", 1, "scalar"))
+                fig = figures.render(rows, {row[0]: (1, 1, 1) for row in rows}, [])
+                self.addCleanup(plt.close, fig)
+                bars = fig.axes[0].patches
+                left = min(bar.get_x() for bar in bars[:count])
+                right = max(bar.get_x() + bar.get_width() for bar in bars[:count])
+                self.assertAlmostEqual(max(0, right - left - figures.GROUP_WIDTH), 0)
+                self.assertAlmostEqual(max(0, -figures.GROUP_WIDTH / 2 - left), 0)
+                self.assertAlmostEqual(max(0, right - figures.GROUP_WIDTH / 2), 0)
+                self.assertLess(right, bars[count].get_x())
+                if count <= 2:
+                    for bar in bars[:count]:
+                        self.assertAlmostEqual(bar.get_width(), figures.BAR_WIDTH)
+
+    def test_synthetic_calibration_is_excluded_and_families_remain(self):
+        import math_bench_figures as figures
+        import matplotlib.pyplot as plt
+        families = [family for family in figures.bench.ROW_FAMILIES if family != "calibration"]
+        rows = [(family, family, "f", 1, family) for family in families]
+        rows.append(("calibration", "calibration", "f", 1, "calibration"))
+        fig = figures.render(rows, {row[0]: (1, 1, 1) for row in rows}, [])
+        self.addCleanup(plt.close, fig)
+        self.assertEqual([axis.get_title(loc="left") for axis in fig.axes],
+                         ["libm (no fast path)" if family == "libm" else family.capitalize() for family in families])
+        self.assertEqual([tick.get_text() for axis in fig.axes for tick in axis.get_xticklabels()], families)
+        self.assertEqual(sum(len(axis.patches) for axis in fig.axes), len(families))

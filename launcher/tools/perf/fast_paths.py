@@ -163,6 +163,11 @@ def validate(items, rows, capture):
     manifest = {row[0]: row for row in rows}
     errors, bins = bench.parse_errors(capture), bench.parse_bins(capture)
     axes = bench.parse_bin_axes(capture)
+    identities = {(label, kind) for _, label, kind, _, _ in rows}
+    identities.update((item.key, item.kind) for item in items)
+    unmatched = errors.keys() - identities
+    if unmatched:
+        raise ValueError(f"error measurements match no row: {sorted(unmatched)}")
     for item in items:
         for key in (item.fast, item.plain):
             if key not in manifest:
@@ -522,7 +527,7 @@ def main(argv=None):
         elif args.check:
             validate_sections(page_text, items)
         links = benchmark_links(items, rows)
-        error_links = {(item.key, item.kind): f"Fast-Paths.md#{item.anchor}" for item in items}
+        error_links = {item.fast: f"Fast-Paths.md#{item.anchor}" for item in items}
         benchmark_body = bench.render_table(rows, measured, bench.load_baseline(root / "launcher/tools/quality/icount_baseline.txt"),
                                             fpu, links=links, errors=errors, error_links=error_links)
         benchmark_changed = replace_block(root / "docs/math/Benchmark.md", "math-benchmark", benchmark_body,
