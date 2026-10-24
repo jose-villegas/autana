@@ -10,6 +10,7 @@ from scipy.spatial import ConvexHull
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import simplify as owner
+from soup import edge_counts
 
 
 def props():
@@ -122,8 +123,7 @@ class ObjectBudgetTests(unittest.TestCase):
         self.assertTrue(np.any(independent_count == 1))
         result = owner.simplify(p, np.full_like(p, 100), t, o, 160, allocation=owner.Allocation(tri_o=o), colour_deviation=1)
         sp, _, st, _ = result
-        edges = np.sort(np.concatenate([st[:, [0, 1]], st[:, [1, 2]], st[:, [2, 0]]]), axis=1)
-        _, count = np.unique(edges, axis=0, return_counts=True)
+        count = edge_counts(st)
         np.testing.assert_array_equal(count, np.full(len(count), 2))
         self.assertLess(len(st), len(t))
         self.assertEqual(len(np.unique(sp, axis=0)), len(sp))
