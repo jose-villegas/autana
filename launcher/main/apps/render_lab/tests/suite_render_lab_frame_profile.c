@@ -11,7 +11,7 @@
 #include "frame_profile.h"
 #include "perf_budget.h"
 #include "scene/scene_internal.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 typedef struct {

@@ -1,0 +1,12 @@
+if(ESP_PLATFORM)
+    idf_component_register(SRCS "harness/cleanup.c" INCLUDE_DIRS "include" REQUIRES unity)
+    return()
+endif()
+
+add_library(unity STATIC unity/unity.c)
+target_include_directories(unity PUBLIC unity)
+add_library(testkit STATIC harness/cleanup.c)
+target_include_directories(testkit PUBLIC include)
+target_link_libraries(testkit PUBLIC unity)
+add_library(testkit_runner OBJECT runner/registry.c runner/host_main.c)
+target_link_libraries(testkit_runner PUBLIC testkit)

@@ -1,7 +1,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "collections/strbuf.h"

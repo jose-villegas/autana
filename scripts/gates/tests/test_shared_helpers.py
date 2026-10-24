@@ -81,7 +81,7 @@ class SharedHelpers(unittest.TestCase):
     def test_vendored_owners_are_excluded(self):
         for owner in ("launcher/components/bsp/value.h",
                       "launcher/components/microui/microui.h",
-                      "launcher/test/framework/value.h"):
+                      "launcher/packages/testkit/unity/value.h"):
             with self.subTest(owner=owner):
                 write(self.root, owner, "/* Values. */\nint value(void);\n")
                 self.include(owner)
