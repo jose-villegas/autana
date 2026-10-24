@@ -3,7 +3,7 @@
 **Status:** built. `[A]` marks a proposal that was approved with the rest
 rather than asked for. Where the build departs from it is in
 [As built](#as-built); the current reference is
-[Animation-Tracks.md](../Animation-Tracks.md),
+[Animation-Tracks.md](../render/Animation-Tracks.md),
 [assets/README.md](../assets/README.md) and
 [Scene-Manager.md](../render/Scene-Manager.md).
 

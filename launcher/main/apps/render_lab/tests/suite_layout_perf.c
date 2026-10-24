@@ -189,7 +189,7 @@ measure(fixture_t* f, const char* scene, int layout, const r3d_perf_quarter_t* q
         f->samples[STAGE_COMPOSE][i] = (int32_t)took.compose_us;
     }
     /* The top slice is core 1's; its share falls when the send contends. */
-    const int core1_share = RASTER_SPLIT_EVEN + render_context_main()->split.top_offset[0];
+    const int core1_share = JOB_SHARE_EVEN + render_context_main()->split.top_offset[0];
     const unsigned internal_free = (unsigned)memory_free_bytes(MEMORY_INTERNAL);
     const unsigned internal_largest = (unsigned)memory_largest_block(MEMORY_INTERNAL);
     const unsigned psram_free = (unsigned)memory_free_bytes(MEMORY_PSRAM);

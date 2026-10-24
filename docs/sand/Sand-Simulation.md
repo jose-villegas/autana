@@ -23,7 +23,7 @@ of the same app's shape, with the byte layout, the material table and the
 per-step pipeline diagram this document assumes rather than repeats.
 
 For the app-registration mechanics (how `main/apps/*` plugs into the
-shell), see `docs/Building-an-App.md`. For the hardware constraints
+shell), see `docs/firmware/Building-an-App.md`. For the hardware constraints
 underneath everything here, see `docs/notes/README.md`.
 
 ---
@@ -1687,7 +1687,7 @@ headers above.
 
 ## Related
 
-- `docs/Building-an-App.md`: how an app (this one included) plugs
+- `docs/firmware/Building-an-App.md`: how an app (this one included) plugs
   into the shell; the folder layout every app follows.
 - `docs/notes/`, the hardware constraints underneath all of this: the
   memory budget, the flash/RAM cache distinction, panel and touch gotchas.
@@ -1701,7 +1701,7 @@ headers above.
 - [`Architecture.md`](Architecture.md), a single-page, diagram-first map
   of the whole app: the pipeline, the sleeping system, the material
   table, and the exact hops to get a real number off the device.
-- `docs/Testing-Guide.md`: how the host and device test suites work, and
+- `docs/testing/README.md`: how the host and device test suites work, and
   why release builds carry none of the test code.
 - `docs/sand/Testing-Sand.md`: the frame-budget capture and the current
   state of `suite_sand_perf.c`'s numbers on this board.

@@ -26,8 +26,8 @@ uses swipes or a short PWR press for itself keeps them.
 
 | Topic | Where |
 |---|---|
-| what the shell does on each transition | [Building-an-App.md](../Building-an-App.md#lifecycle) |
-| one pass of the loop, with and without `update()` | [Building-an-App.md](../Building-an-App.md#one-pass-of-the-frame-loop) |
+| what the shell does on each transition | [Building-an-App.md](Building-an-App.md#lifecycle) |
+| one pass of the loop, with and without `update()` | [Building-an-App.md](Building-an-App.md#one-pass-of-the-frame-loop) |
 | the split present: with `app_t.update`, the previous frame is sent on core 1 while `update()` runs on core 0 | [Gfx: who runs the present](../gfx/Present.md#present-who-runs-it) |
 | drawing a mesh with `raster_draw()` from `update()`, on both cores | [Mesh-Rendering.md](../render/Mesh-Rendering.md#on-both-cores) |
 | an app with an active scene camera | [Scene-Manager.md](../render/Scene-Manager.md#each-frame) |
@@ -101,4 +101,4 @@ before anything draws:
 
 The flag is cleared before the draw, not after, so a request made inside that very
 `frame()` reaches the next pass. The app's side:
-[Building-an-App.md](../Building-an-App.md#full-redraw).
+[Building-an-App.md](Building-an-App.md#full-redraw).
