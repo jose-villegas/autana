@@ -139,11 +139,12 @@ def trade_chart(rows, path):
     from docs.plot_style import LABEL_SIZE, MUTED, SLOTS, save, style_axes, subplots
     sizes = [int(row) for row in ROWS]
     figure, axes = subplots(1, 2, (CHART_WIDTH, TRADE_HEIGHT))
-    panels = (("clusters", [clusters for _, clusters, *_ in rows], "cull", STAGES.index("r3d.cull"),
-               "Smaller meshlets: more clusters to walk"),
-              ("mean triangles submitted", [submitted for _, _, _, submitted, *_ in rows], "draw",
-               STAGES.index("r3d.draw"), "Bigger meshlets: looser boxes, more submitted"))
-    for axis, (label, values, stage, at, title), colour in zip(axes, panels, SLOTS):
+    cull, _transform, draw = STAGES
+    panels = (("clusters", [clusters for _, clusters, *_ in rows], cull, "Smaller meshlets: more clusters to walk"),
+              ("mean triangles submitted", [submitted for _, _, _, submitted, *_ in rows], draw,
+               "Bigger meshlets: looser boxes, more submitted"))
+    for axis, (label, values, stage_name, title), colour in zip(axes, panels, SLOTS):
+        at, stage = STAGES.index(stage_name), stage_name.rpartition(".")[2]
         axis.plot(sizes, values, "o-", color=colour)
         axis.set_xscale("log", base=2)
         axis.set_xticks(sizes, [str(size) for size in sizes])
