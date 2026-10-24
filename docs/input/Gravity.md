@@ -9,8 +9,10 @@ calibration are described in [Motion-Axes.md](Motion-Axes.md) and [Motion-Calibr
 
 ## Update
 
-The IMU task drains the QMI8658 stream FIFO at 10 Hz (`IMU_FIFO_DRAIN_HZ`)
-and reads the newest sample at 50 Hz (`IMU_READ_HZ` in `input/motion/imu.c`).
+The IMU task reads the newest QMI8658 sample on a 50 Hz tick (`IMU_READ_HZ`
+in `input/motion/imu.c`), using registers except on 10 Hz FIFO drain ticks
+(`IMU_FIFO_DRAIN_HZ`).
+
 `imu.drain_ms` and `imu.read_ms` set those periods live in development builds.
 `TUNE` is a constant in release builds.
 
