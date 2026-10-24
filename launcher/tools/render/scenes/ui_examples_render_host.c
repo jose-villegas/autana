@@ -17,7 +17,6 @@
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
-#define BACKGROUND      0x0A0C14
 /* ui_pointer holds a press back until microui's hover catches up. */
 #define TAP_HELD_FRAMES 4
 /* The image's tap lands once the screen has settled. */
@@ -130,7 +129,7 @@ draw(const render_frame_t* frame) {
     ui_disabled_begin(state == STATE_DISABLED);
     const bool fired = draw_example();
     ui_disabled_end();
-    ui_end(BACKGROUND);
+    ui_end(UI_BACKGROUND);
 
     if (frame->index >= press_frame && frame->index < release_frame) {
         fired_held |= fired;

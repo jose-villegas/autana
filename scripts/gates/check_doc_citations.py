@@ -35,7 +35,7 @@ import posixpath
 import re
 import sys
 
-from c_comments import EXCLUDED as C_EXCLUDED, scan
+from c_comments import excluded, scan
 from check_doc_index import blank_fences, doc_headings
 from code_vocabulary import vocabulary
 from idf_vocabulary import not_verified_notice, outside_vocabulary, required_missing
@@ -216,7 +216,7 @@ def section_citations(root):
         path = root / rel
         if not path.exists():
             continue
-        if any(rel.startswith(e) for e in C_EXCLUDED):
+        if any(rel.startswith(e) for e in excluded()):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         for c in scan(rel, text):

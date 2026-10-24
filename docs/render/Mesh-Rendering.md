@@ -162,7 +162,8 @@ manager draws the active camera through the engine's one context,
 The work before the framebuffer runs in the app's `update()`, overlapped
 with sending the previous frame. Each stage is split between the two cores,
 core 1's half dispatched through `core/job.h`. It runs inline when core 1
-is busy, and always on a host.
+is busy, and always on a host. Present shares core 1, so `job_run_steered()`
+times both halves of every stage and moves work toward the faster core.
 
 ```mermaid
 sequenceDiagram
@@ -171,23 +172,25 @@ sequenceDiagram
     participant P as present on core 1
     C0->>P: gfx_present_begin() sends frame N-1
     Note over C0: update(), cull every cluster
-    C0->>J: transform the clusters past the midpoint of the vertex work
+    C0->>J: transform the clusters past the instance's transform share
     Note over C0: transform the clusters before it
     J-->>C0: job_wait()
     Note over C0: pick the row at the instance's top share
     C0->>J: clear depth and draw the rows above it
     Note over C0: clear depth and draw the rows below it
     J-->>C0: job_wait()
-    Note over C0: raster_split_update() uses both slice times
+    Note over C0: job_share_update() steers each share by both halves' times
     C0->>P: gfx_present_wait()
     Note over C0: frame()
-    C0->>J: upscale the top half into the framebuffer
-    Note over C0: upscale the bottom half
+    C0->>J: upscale the top rows at the upscale share
+    Note over C0: upscale the rows below them
     J-->>C0: job_wait()
     Note over C0,P: frame N is presented on the next pass
 ```
 
-`raster_split_t` is caller-owned, NULL = even, forget after a cut.
+`raster_split_t` holds every raster share: caller-owned, NULL = even,
+forget after a cut. Core 1's time counts from dispatch, so a wait behind
+present counts against it.
 
 ### View modes
 
@@ -450,11 +453,12 @@ The layer allocates nothing. Raster draw work owns the resolved camera
 settings and per-side spread table, shared read-only by the row workers.
 
 Per-vertex and per-cluster buffers, the census list, picture attachments and
-upscale maps share one block. The list follows geometry at an offset
+upscale maps share one block. The list comes first, at an offset
 independent of render size; storage is padded for picture attachments.
 
-`raster_scratch_bytes()` sizes the block. The caller obtains it once and sets
-`scratch`; each call carves it. The caller decides where it lives,
+`raster_carve()` in `raster_internal.h` states the layout once, and
+`raster_scratch_bytes()` sizes the block from it. The caller obtains it once
+and sets `scratch`; each call carves it. The caller decides where it lives,
 so it need not consume internal RAM.
 
 ## Rules the layer keeps

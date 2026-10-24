@@ -72,7 +72,7 @@ board-free preview of its drawing, declare a scene with the
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
 | `home_gesture` | no (`false`) | - | `true`: shell owns the way home (edge swipe + hint strip) |
 | `diagnostic_json(out, len)` | no | dev builds, on a screenshot capture | write one JSON object; spliced in as the capture's `"app"` key |
-| `console` | no | dev builds, at most once per frame, for a line under this app's own prefix | set with `APP_CONSOLE()`/`APP_CONSOLE_PTR()`; see [App-Commands.md](tools/App-Commands.md) |
+| `console` | no | dev builds, at most once per frame, for a line under this app's own prefix | set with `APP_CONSOLE()`/`APP_CONSOLE_PTR()`; see [App-Commands.md](cli/App-Commands.md) |
 
 The shell calls the three required pointers without a NULL check.
 
@@ -255,6 +255,11 @@ static void yours_exit(void) {
     buf = NULL; /* nothing to free */
 }
 ```
+
+The scenes an app loads live in it too
+([Scene-Manager.md](render/Scene-Manager.md#ownership)): mark before
+`scene_load()` and rewind after `scene_unload()` to reuse their memory within
+one visit.
 
 The arena is PSRAM: right for large buffers, wrong for a small hot table
 that wants internal RAM. An app frees in `exit()` everything it took from the

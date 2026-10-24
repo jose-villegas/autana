@@ -287,7 +287,7 @@ are never destroyed.
 ## Development console
 
 Development builds can play pack sounds from a terminal with
-[`autana`](../tools/Autana-CLI.md), the board's command-line tool.
+[`autana`](../cli/README.md), the board's command-line tool.
 
 | Command | Result |
 |---|---|

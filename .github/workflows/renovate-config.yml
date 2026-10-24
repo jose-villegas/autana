@@ -6,13 +6,7 @@ name: Renovate config
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/renovate.json5'
-      - '.github/workflows/renovate-config.yml'
   pull_request:
-    paths:
-      - '.github/renovate.json5'
-      - '.github/workflows/renovate-config.yml'
   workflow_dispatch:
 
 concurrency:
@@ -20,7 +14,26 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      validate: ${{ steps.affected.outputs.validate }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job validate
+
   validate:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.validate == 'true') }}
     name: Renovate reads its config
     runs-on: ubuntu-24.04
     env:
@@ -28,6 +41,13 @@ jobs:
       RENOVATE_VERSION: 44.151.5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/host-tools
       - name: Validate .github/renovate.json5
         run: npx --yes --package "renovate@$RENOVATE_VERSION" -- renovate-config-validator --strict
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}

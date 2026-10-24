@@ -22,6 +22,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+EXAMPLE_PREFIX = "EXAMPLE"
+
 AUTANA = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AUTANA))
 import autana  # noqa: E402
@@ -1808,6 +1810,45 @@ class OneShotForwardingTests(unittest.TestCase):
         sent.assert_called_once_with("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], optional=True)
         printed.assert_any_call("EXAMPLE status=ok\nEXAMPLE_END")
         self.assertEqual(code, 0)
+
+    def test_a_cut_off_forwarded_reply_returns_failure(self):
+        with mock.patch.object(autana, "send", return_value=(1, [f"{EXAMPLE_PREFIX}_BEGIN"])), \
+             mock.patch("builtins.print") as printed:
+            code = self.run_main([EXAMPLE_PREFIX.lower()])
+        self.assertEqual(code, 1)
+        printed.assert_any_call(f"{EXAMPLE_PREFIX}_BEGIN")
+
+    def test_forward_through_real_device_send(self):
+        import device
+        from fake_serial import FakeConnection
+        from test_device import mock_store, BOARD
+
+        for transcript, expected in ((b"EXAMPLE partial", 1),
+                                     (b"EXAMPLE_BEGIN\nEXAMPLE partial", 1),
+                                     (b"EXAMPLE one\nEXAMPLE_END\n", 0)):
+            with self.subTest(transcript=transcript):
+                def capture(command, **options):
+                    stdout, stderr = io.StringIO(), io.StringIO()
+                    args = command[command.index("send"):] + ["--seconds", "0.001"]
+                    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                        code = device.main(args)
+                    return autana.subprocess.CompletedProcess(command, code, stdout.getvalue(), stderr.getvalue())
+
+                output, errors = io.StringIO(), io.StringIO()
+                with mock.patch.dict(os.environ), \
+                     mock.patch.object(autana, "capture_device", side_effect=capture), \
+                     mock.patch.object(autana, "refused_as_busy", return_value=False), \
+                     mock.patch.object(autana, "idf_python", return_value=sys.executable), \
+                     mock.patch.object(device.device_lock, "LockStore", return_value=mock_store()), \
+                     mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
+                     mock.patch.object(device, "open_when_free", return_value=FakeConnection([transcript])), \
+                     contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                    self.assertEqual(expected, self.run_main(["example"]))
+                self.assertNotIn("Traceback", errors.getvalue())
+                if expected:
+                    self.assertIn("reply cut off", errors.getvalue())
+                else:
+                    self.assertEqual(transcript.decode(), output.getvalue())
 
     def test_a_recognised_command_is_still_dispatched_directly(self):
         fake = mock.Mock(return_value=0)

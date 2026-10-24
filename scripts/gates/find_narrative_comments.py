@@ -42,7 +42,7 @@ SKIP = ("components",)
 
 
 def find(root, min_chars, files=None):
-    for p in sources(root, excluded=False, files=files):
+    for p in sources(root, exclude=False, files=files):
         if any(s in p.parts for s in SKIP):
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
@@ -54,7 +54,7 @@ def find(root, min_chars, files=None):
 
 
 def tombstones(root, files=None):
-    for p in sources(root, excluded=False, files=files):
+    for p in sources(root, exclude=False, files=files):
         if any(s in p.parts for s in SKIP):
             continue
         text = p.read_text(encoding="utf-8", errors="replace")

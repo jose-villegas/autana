@@ -341,8 +341,9 @@ sequenceDiagram
     S->>S: draw mesh views through camera pose
 ```
 
-`job_run_split()` (`core/job.h`, shared with the raster) gives core 1 the
-second range, or runs it inline first when core 1 is busy. Animator jobs
+`job_run_steered()` (`core/job.h`, shared with the raster) gives core 1 the
+second range, or runs it inline first when core 1 is busy. Each stage's share
+on the scene moves toward equal times for both halves. Animator jobs
 write their own poses and palettes; skin jobs write disjoint cluster vertex
 ranges. Job contexts are checked against `JOB_CTX_MAX` at compile time.
 
