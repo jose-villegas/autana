@@ -188,7 +188,7 @@ crossing sample edge.
 | Rule | Detail |
 |---|---|
 | Inside | Above the level |
-| Winding | Counter-clockwise about the outward normal, right-handed: $`X(c-a)`$ points out |
+| Winding | Counter-clockwise about the outward normal, right-handed: $`(b-a)\times(c-a)`$ points out |
 | Normals | Unit, down the field's gradient over the cell's corners |
 | Closed | A field below the level all round its border gives a closed surface |
 | Memory | Scratch is two slabs along x, so it does not grow with the field's length |
