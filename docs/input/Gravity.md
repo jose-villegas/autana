@@ -1,115 +1,96 @@
 # Gravity
 
-`gravity_t` (`input/motion/gravity.h`) estimates unit down, linear acceleration in g,
-gyro bias in deg/s, tilt strength and free fall. Gyro predicts motion;
-trusted acceleration corrects drift.
-
-Acceleration cannot distinguish gravity from other forces. Axes, scales and
-calibration are described in [Motion-Axes.md](Motion-Axes.md) and [Motion-Calibration.md](Motion-Calibration.md).
+`gravity_t` estimates unit down, linear acceleration, gyro bias, tilt strength and free fall.
+Acceleration cannot distinguish gravity from other forces.
+See [axes](Motion-Axes.md) and [calibration](Motion-Calibration.md).
 
 ## Update
 
-The IMU task reads the newest QMI8658 sample on a 50 Hz tick (`IMU_READ_HZ`
-in `input/motion/imu.c`), using registers except on 10 Hz FIFO drain ticks
-(`IMU_FIFO_DRAIN_HZ`).
+| Name | Value | Owner | Live tunable in development builds |
+|---|---|---|---|
+| `IMU_READ_HZ` | 50 Hz | `input/motion/imu.c` | `imu.read_ms` |
+| `IMU_FIFO_DRAIN_HZ` | 10 Hz | `input/motion/imu.c` | `imu.drain_ms` |
+| `imu.read_ms` | 20 ms default | `input/motion/imu.c` | Yes |
+| `imu.drain_ms` | 100 ms default | `input/motion/imu.c` | Yes |
+| `IMU_TASK_CORE` | `JOB_CORE1` | `input/motion/imu.c` | No |
+| `IMU_TASK_PRIORITY` | `JOB_CORE1_PRIORITY - 1` | `input/motion/imu.c` | No |
+| `IMU_TASK_BUS_PRIORITY` | `JOB_CORE1_PRIORITY + 1` | `input/motion/imu.c` | No |
+| `IMU_FIFO_SAMPLES` | 128 samples | `input/motion/imu.h` | No |
+| `IMU_SAMPLE_US` / `INPUT_MOTION_SAMPLE_US` | 4460 us | `input/motion/imu.h` / `input/input.h` | No |
 
-`imu.drain_ms` and `imu.read_ms` set those periods live in development builds.
-`TUNE` is a constant in release builds.
-
-The task runs on `JOB_CORE1` at `JOB_CORE1_PRIORITY - 1`, yielding to the core-1 job worker.
-A drain delayed past FIFO capacity while core 1 is busy becomes a gap.
-
-Each tick boosts to `IMU_TASK_BUS_PRIORITY` for I2C work: the bus lock has no priority
-inheritance, so a preempted drain holds the bus and keeps the FIFO in read mode.
-
-`input_read_motion_batch()` takes queued samples from memory, oldest first.
-Batches arrive up to one drain period late. On drain ticks the FIFO supplies
-the newest sample instead of a register read.
-
-`gravity_update_batch()` predicts and corrects once per sample, using microseconds.
-Gyro prediction is minus angular velocity crossed with down in screen axes.
-
-The nominal ODR and interval are `IMU_ODR_HZ` and `IMU_SAMPLE_US` in `input/motion/imu.h`.
-Matching CTRL2/CTRL3 codes follow QMI8658A Rev A and SensorLib.<sup>[[80]](../Citations.md#80)</sup><sup>[[79]](../Citations.md#79)</sup>
-
-Every delivered and lost sample integrates at `INPUT_MOTION_SAMPLE_US`.
-`input_device.c` checks this datasheet interval against `IMU_SAMPLE_US`, and
-batch capacity against `IMU_FIFO_SAMPLES`.
+The interval follows the QMI8658A CTRL2/CTRL3 ODR codes and SensorLib.<sup>[[80]](../Citations.md#80)</sup><sup>[[79]](../Citations.md#79)</sup>
+`input_device.c` checks the interval and batch capacity against the IMU definitions.
 
 ```mermaid
 flowchart LR
-    subgraph Input["IMU task and queue"]
-        Drain["10 Hz FIFO drain<br/>batches up to 100 ms late"] --> Batch["Ring: oldest first<br/>loss before each sample, gap"]
+    subgraph Task["IMU task: core 1, below job worker"]
+        direction TB
+        Tick["Task tick"] --> Boost["Raise to IMU_TASK_BUS_PRIORITY"]
+        Boost --> Read["Register read"] & Drain["FIFO drain when due"]
+        Read --> Newest["Newest sample"]
+        Drain --> Newest & Queue["Queue: samples + lost_before"]
+        Newest & Queue --> Drop["Drop to IMU_TASK_PRIORITY"]
     end
-    subgraph Update["Frame: for each queued sample"]
-        Missing["Advance bounded lost time<br/>holding previous rotation"] --> Predict["Datasheet interval<br/>predict down from gyro"]
-        Predict --> Judge["Overrange and<br/>acceleration trust"]
-        Judge --> Correct["Adopt, pull, learn bias<br/>or hold correction"]
+    subgraph Frame["Frame reads memory"]
+        direction TB
+        R["imu_read()"]
+        T["input_read_motion_batch()<br/>via imu_take_fifo()"] --> G["gravity_update_batch()"]
     end
-    Linear["Unit down and<br/>linear acceleration"]
-    Input --> Update --> Linear
+    Task --> Frame
 ```
 
-Strength is the in-plane share of the unit down vector, clamped to 0..1 and
-reported as zero in free fall. Free fall means the magnitude of linear
-acceleration plus down is below the free-fall threshold.
+The bus lock has no priority inheritance: a preempted drain holds the bus and the FIFO's read mode.
+
+```mermaid
+flowchart LR
+    Missing["Hold previous rotation<br/>across bounded loss"] --> Predict["Predict down<br/>minus gyro cross down"]
+    Predict --> Judge["Overrange and<br/>acceleration trust"]
+    Judge --> Correct["Adopt, pull and learn bias<br/>or hold correction"]
+    Correct --> Linear["Unit down and<br/>linear acceleration"]
+```
+
+| Output | Meaning |
+|---|---|
+| Linear acceleration | Acceleration minus unit down, in g |
+| Strength | In-plane share of unit down, clamped to 0..1; zero in free fall |
+| Free fall | Magnitude of linear acceleration plus down below `GRAVITY_FREE_FALL_G` |
 
 ## Trust and rejection
 
-Magnitude trust falls linearly from `GRAVITY_TRUST_FULL_G` to
-`GRAVITY_TRUST_NONE_G`. The latter approximates Android's acceleration tolerance,
-with a ramp instead of a hard gate.<sup>[[75]](../Citations.md#75)</sup>
+![Acceleration magnitude trust ramp](../images/input/gravity-trust.png)
 
-Accepted acceleration pulls down by `weight * dt / (tau + dt)`, then normalizes.
-Angular rejection and timed recovery follow x-io Fusion's recommendations.<sup>[[74]](../Citations.md#74)</sup>
+| Condition | Effect | Constant |
+|---|---|---|
+| Magnitude deviation from 1 g | Full trust through FULL, linear ramp to zero at NONE (Android tolerance)<sup>[[75]](../Citations.md#75)</sup> | `GRAVITY_TRUST_FULL_G`, `GRAVITY_TRUST_NONE_G` |
+| Positive trust and direction inside reject cone | Pull by `weight * dt / (tau + dt)`, normalize; angular rejection follows Fusion<sup>[[74]](../Citations.md#74)</sup> | `GRAVITY_TAU_S`, `GRAVITY_REJECT_DEG` |
+| Zero acceleration | No correction or distrust counting | - |
+| First nonzero acceleration after reset | Adopt direction exactly, even at zero dt | - |
 
 ## Recovery
 
-### Leaky counter
-
-Rejection adds dt to distrust; acceptance subtracts
-`GRAVITY_RECOVER_ACCEPT_WEIGHT * dt`. Debt is clamped to `GRAVITY_RECOVER_US`,
-equivalent to Fusion's sample counter at a fixed ODR.
-
-Exceeding the limit enters recovery. Nonzero acceleration corrects at full
-TAU gain, bypassing rejection until a reading enters the reject cone.
-Recovery neither snaps nor learns bias.
-
-### Still recovery
-
-Still means bias-corrected gyro magnitude below `GRAVITY_STILL_DPS`, with
-acceleration magnitude within `GRAVITY_TRUST_FULL_G` of one g.
-Rejection longer than `GRAVITY_STILL_RECOVER_US` adopts that direction exactly.
-
-Non-still or accepted readings clear the still timer. Adoption clears both
-timers and recovery. Reset adopts the first nonzero acceleration exactly,
-even at zero dt; zero acceleration skips correction and distrust counting.
-
-### Gyro overrange
-
-A raw axis reaching `GRAVITY_GYRO_OVERRANGE_DPS` enters recovery with maximum
-distrust. The clipped reading still predicts that sample's rotation.
-The threshold derives from `IMU_GYRO_RANGE_DPS` and Fusion's range ratio.
-
-Our boundary includes equality; Fusion uses strict greater-than. Recovery
-preserves down and bias and uses normal TAU gain without Fusion's startup ramp.
+| Condition | Effect | Constant |
+|---|---|---|
+| Rejection | Add dt to debt, clamp at limit; exceeding limit enters recovery (Fusion counter)<sup>[[74]](../Citations.md#74)</sup> | `GRAVITY_RECOVER_US` |
+| Acceptance | Subtract `RECOVER_ACCEPT_WEIGHT * dt` from debt, floor at zero; leave recovery<sup>[[74]](../Citations.md#74)</sup> | `GRAVITY_RECOVER_ACCEPT_WEIGHT` |
+| Recovery with nonzero acceleration | Full TAU gain, bypass rejection until inside cone; preserve bias, no learning or startup ramp<sup>[[74]](../Citations.md#74)</sup> | `GRAVITY_TAU_S` |
+| Corrected gyro below still limit, magnitude within FULL, rejection beyond still timeout | Adopt direction, clear both timers and recovery | `GRAVITY_STILL_DPS`, `GRAVITY_TRUST_FULL_G`, `GRAVITY_STILL_RECOVER_US` |
+| Motion or acceptance | Clear still timer | `GRAVITY_STILL_DPS` |
+| Any raw gyro axis reaches overrange (inclusive) | Maximum debt and recovery; clipped sample still predicts, down and bias preserved. Fusion uses strict greater-than<sup>[[74]](../Citations.md#74)</sup> | `GRAVITY_GYRO_OVERRANGE_DPS` |
 
 ## Bias learning
 
-Accepted acceleration accumulates `cross(down, direction)` before correction,
-weighted by trust and elapsed seconds. The integral follows Mahony, Hamel and
-Pflimlin; minus-cross prediction determines its sign.<sup>[[73]](../Citations.md#73)</sup>
+![Stationary gyro offset converges within the settling target](../images/input/gravity-bias.png)
 
-Bias is in deg/s, clamped per axis to `GRAVITY_BIAS_MAX_DPS`. Rejection, zero
-acceleration and recovery add no bias. The component along gravity is
-unobservable because rotation about down does not change down.
+| Condition | Effect | Constant |
+|---|---|---|
+| Accepted acceleration | Integrate `cross(down, direction) * weight * dt` before correction; Mahony integral, sign follows minus-cross prediction<sup>[[73]](../Citations.md#73)</sup> | `GRAVITY_BIAS_KI` |
+| Bias reaches per-axis limit | Clamp in deg/s | `GRAVITY_BIAS_MAX_DPS` |
+| Rejection, zero acceleration or recovery | No bias learning | - |
+| Bias along gravity | Unobservable: rotation about down leaves down unchanged | - |
+| Full trust | Target 2% settling for datasheet-sized offset | `GRAVITY_BIAS_SETTLE_S` |
 
-The linearised loop is theta' = b_err - theta/TAU and b_err' = -KI*theta,
-giving s^2 + s/TAU + KI = 0. For small KI the slow pole is approximately
--KI*TAU, so a 2% settle takes about four slow time constants.
-
-`GRAVITY_BIAS_KI` is 4/(TAU*SETTLE_S), in 1/s^2. This gives an overdamped loop;
-the settling target applies to accepted acceleration at full trust.
+Linearised: `theta' = b_err - theta/TAU`, `b_err' = -KI*theta`; poles satisfy `s^2 + s/TAU + KI = 0`.
+`KI = 4/(TAU*SETTLE_S)` gives an overdamped loop with slow pole approximately `-KI*TAU`.
 
 ## Constants
 
@@ -138,35 +119,26 @@ The constants are owned by `launcher/main/input/motion/gravity.h`:
 
 ## Limits
 
-FIFO and queue capacity bound the retained history. Overflow or a failed drain marks a gap;
-the next batch soft-restarts correction at full TAU gain, preserving down and bias.
+Read-mode loss = duration / `IMU_SAMPLE_US`, carrying fractional microseconds across drains (QMI8658A section 8.7).<sup>[[79]](../Citations.md#79)</sup>
 
-Sampling cannot resolve motion above the sensor bandwidth. FIFO read mode
-discards arrivals (section 8.7). Loss is the read-mode duration divided by
-`IMU_SAMPLE_US`, carrying fractional microseconds across drains.<sup>[[79]](../Citations.md#79)</sup>
+| Condition | Effect |
+|---|---|
+| Read-mode timing | `esp_timer`: before `CTRL9_REQ_FIFO` through `REG_FIFO_CTRL` rewrite |
+| Empty drain | Carry loss to next sample |
+| Loss boundary | Hold previous rotation for at most `GRAVITY_MAX_DT_US` |
+| FIFO overflow, failed drain, queue overflow or loss beyond `uint8_t` | Mark gap; drop oldest on queue overflow |
+| Gap | Clear pending loss and remainder; restart correction at full TAU gain, preserving down and bias |
 
-`esp_timer` measures from just before `CTRL9_REQ_FIFO` through the `REG_FIFO_CTRL` rewrite.
-The queue carries loss across empty drains to the next sample.
-Prediction holds the previous rotation at each loss boundary, bounded by
-`GRAVITY_MAX_DT_US`. Gaps clear pending loss and remainder.
-
-Queue overflow drops the oldest sample and marks a gap. Loss exceeding the
-`uint8_t` per-sample field also marks a gap instead of wrapping.
-
-Board A308, QMI8658A, build 7dae68f7c9d0-dev. Delivered rate
-agrees with the datasheet ODR multiplied by time outside FIFO read mode.
-
-Rows labelled by period drain the FIFO at that fixed period. The shipped task drains
-at `IMU_FIFO_DRAIN_HZ`; these rows measure read-mode cost, not the shipped cadence.
+Fixed drain periods measure read-mode cost; delivered rate follows ODR * time outside read mode.
 
 | Drain | Delivered | Time in read mode | 224.2 Hz × (1 − share) |
 |---|---|---|---|
 | Every frame | 197.8 Hz | 10.8% | 200.0 Hz |
 | Every 500 ms | 210.4 Hz | 6.1% | 210.5 Hz |
 
-A faster SCL shortens read mode, but SCL stays at 400 kHz, the QMI8658A's I2C rating.<sup>[[79]](../Citations.md#79)</sup>
-No other part on the bus states more than 400 kHz, and the ESP32-S3 stops at 800 kbit/s.<sup>[[66]](../Citations.md#66)</sup>
-Board A308, drain every frame, 45 s per speed:
+SCL stays at 400 kHz, the QMI8658A rating; no bus part states more, and ESP32-S3 stops at 800 kbit/s.<sup>[[79]](../Citations.md#79)</sup><sup>[[66]](../Citations.md#66)</sup>
+
+Drain every frame, 45 s per speed:
 
 | QMI8658 SCL | Delivered | Lost | Time per drain | Launcher `frame.rest` |
 |---|---|---|---|---|
@@ -174,9 +146,15 @@ Board A308, drain every frame, 45 s per speed:
 | 800 kHz | 212.6 Hz | 5.5% | 1.42 ms | 1.20 ms |
 | 1 MHz | 212.0 Hz | 5.2% | 1.31 ms | - |
 
-800 kHz ran a clean 10 min soak, but that cannot show the slower parts never misread its
-shorter clock, and the QMI8658A has no CRC.
+A clean 10 min soak at 800 kHz cannot establish reliable reads by slower parts; QMI8658A has no CRC.
 
-The count precedes `CTRL9_REQ_FIFO` (section 8.8). CTRL9 status uses consecutive I2C
-reads, with no minimum polling delay (section 5.10.1). Every drain attempts to
-leave read mode, including error paths.<sup>[[79]](../Citations.md#79)</sup>
+Count precedes `CTRL9_REQ_FIFO` (section 8.8); CTRL9 polls without a minimum delay (section 5.10.1); every drain attempts to exit read mode, including errors.<sup>[[79]](../Citations.md#79)</sup>
+
+## Figures
+
+The C probe calls `gravity_update()`: trust is the relative bias-learning gain at a small tilt;
+bias settling uses stationary 1 g and `GRAVITY_GYRO_OFFSET_TOL_DPS` about an observable axis.
+
+```sh
+python launcher/tools/input/gravity_figures.py --cc cc --out docs/images/input
+```
