@@ -81,10 +81,9 @@ class CaptureRows(unittest.TestCase):
     def test_line_carries_no_path_or_user(self):
         entry = dict(board=A308, build_id="b-diag", started_at="2026-10-24T10:00:00.123", suite="s",
                      commit="0123456789abcdef", owner="someone@HOSTNAME:1", worktree="/srv/private-worktree")
-        line = perf_rows.capture_line(entry, {"b-diag": (True, 7)}, target(ROW, 1, 2))
+        line = perf_rows.capture_line(entry, target(ROW, 1, 2))
         self.assertEqual(line, {"board": "A308", "build": "b-diag", "commit": "0123456789ab", "suite": "s",
-                                "date": "2026-10-24T10:00:00", "scope": True, "seed": 7,
-                                "rows": {ROW: [2, 1]}})
+                                "date": "2026-10-24T10:00:00", "rows": {ROW: [2, 1]}})
 
 
 class Lookup(Isolated):
@@ -150,8 +149,37 @@ class Lookup(Isolated):
         self.assertIn("worst 222", out)
         self.assertNotIn("111", out)
         _, out = self.ask(ROW, "--scoped", "-b", "A308")
-        self.assertIn("scoped seed 9", out)
+        self.assertIn("--perf-scope --layout-seed 9", out)
         self.assertNotIn("222", out)
+        _, out = self.ask(ROW, "-b", "A308")
+        self.assertIn("plain", out)
+
+    def test_flags_recorded_in_another_records_folder_still_count(self):
+        other = Records(self.dir / "flashes")
+        other.flash(A308, "t-diag", ["--hot-tunables"])
+        (other.root / "index.jsonl").write_text("".join(json.dumps(e) + "\n" for e in other.entries))
+        self.records.capture(A308, "t-diag", "2026-10-23T10:00:00", target(ROW, 111, 200))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            perf_rows.main([ROW, "--scoped", "--store", str(self.dir / "nostore"),
+                            "--records", str(self.records.root), "--records", str(other.root)])
+        self.assertIn("worst 111", out.getvalue())
+
+    def test_a_rerun_days_later_dates_the_capture_by_its_newest_run(self):
+        r = self.records
+        r.capture(A308, "a1-diag", "2026-10-10T10:00:00", target(ROW, 100, 200))
+        r.capture(A308, "a1-diag", "2026-10-23T10:00:00", target(ROW, 101, 200))
+        _, out = self.ask(ROW)
+        self.assertNotIn("stale", out)
+
+    def test_json_is_never_cut_by_the_budget(self):
+        for index in range(6):
+            for board in (A308, B2124, "11:22:33:44:55:66"):
+                self.records.capture(board, f"{board[-2:]}{index}-diag", f"2026-10-2{index}T10:00:00",
+                                     target(ROW, 100 + index, 200))
+        _, out = self.ask(ROW, "--json")
+        answer = json.loads(out)
+        self.assertEqual(sorted(answer["boards"]), ["2124", "5566", "A308"])
 
     def test_incomplete_captures_are_skipped_and_parsed_once(self):
         r = self.records
@@ -209,21 +237,51 @@ class Sync(Isolated):
             git(store, "checkout", "-q", "--orphan", perf_rows.BRANCH)
             stores.append(store)
         self.records.capture(A308, "a1-diag", "2026-10-23T10:00:00", target(ROW, 100, 200))
-        self.sync(stores[0], "Legion")
+        self.sync(stores[0], "hostA")
         # The board moved: the second machine records a capture of the same board that day.
         with patch.object(perf_rows, "parsed_cache", return_value=self.dir / "cache2.jsonl"):
             self.records = Records(self.dir / "records2")
             self.records.capture(A308, "a2-diag", "2026-10-23T15:00:00", target(ROW, 120, 200))
-            self.sync(stores[1], "Helios")
+            self.sync(stores[1], "hostB")
         files = sorted(p.relative_to(stores[1]).as_posix()
                        for p in (stores[1] / "captures").rglob("*.jsonl"))
-        self.assertEqual(files, ["captures/A308/2026-10/2026-10-23-Helios.jsonl",
-                                 "captures/A308/2026-10/2026-10-23-Legion.jsonl"])
+        self.assertEqual(files, ["captures/A308/2026-10/2026-10-23-hostA.jsonl",
+                                 "captures/A308/2026-10/2026-10-23-hostB.jsonl"])
         text = "".join(p.read_text() for p in (stores[1] / "captures").rglob("*.jsonl"))
         for private in ("someone", "HOSTNAME", "private-worktree", ".log"):
             self.assertNotIn(private, text)
-        self.assertEqual(self.sync(stores[1], "Helios"), 0)
+        self.assertEqual(self.sync(stores[1], "hostB"), 0)
         self.assertEqual(sum(1 for _ in text.splitlines()), 2)
+
+    def test_a_held_store_is_left_alone(self):
+        store = self.dir / "store"
+        store.mkdir()
+        git(store, "init", "-q")
+        (store / ".git" / "perf_rows.lock").write_text("")
+        self.records.capture(A308, "a1-diag", "2026-10-23T10:00:00", target(ROW, 100, 200))
+        self.assertEqual(self.sync(store, "hostA"), 0)
+        self.assertFalse((store / "captures").exists())
+
+    def test_hook_starts_a_sync_only_on_release(self):
+        with patch.object(perf_rows.subprocess, "Popen") as popen:
+            for event, started in (("acquired", False), ("released", True)):
+                with patch.dict(perf_rows.os.environ, {perf_rows.LOCK_EVENT_VAR: event}):
+                    perf_rows.main(["sync", "--hook", "--host", "hostA"])
+                self.assertEqual(popen.called, started)
+        self.assertNotIn("--hook", popen.call_args[0][0])
+
+    def test_store_starts_an_empty_branch_when_the_remote_has_none(self):
+        remote = self.dir / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True, stdin=subprocess.DEVNULL)
+        store = self.dir / "fresh"
+        with patch.object(perf_rows, "REPO", self.dir / "repo"):
+            (self.dir / "repo").mkdir()
+            git(self.dir / "repo", "init", "-q")
+            git(self.dir / "repo", "remote", "add", "origin", str(remote))
+            perf_rows.main(["store", "--path", str(store)])
+        head = subprocess.run(["git", "-C", str(store), "symbolic-ref", "HEAD"], capture_output=True,
+                              text=True, stdin=subprocess.DEVNULL).stdout.strip()
+        self.assertEqual(head, "refs/heads/" + perf_rows.BRANCH)
 
     def test_host_must_be_a_short_name(self):
         with self.assertRaises(SystemExit):

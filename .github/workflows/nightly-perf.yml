@@ -71,17 +71,10 @@ jobs:
           mkdir -p "$data" "$out"
           echo "PERF_DATA=$(cygpath -w "$data")" >> "$GITHUB_ENV"
           echo "PERF_OUT=$(cygpath -w "$out")" >> "$GITHUB_ENV"
-          git init "$data"
-          git -C "$data" remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
           auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          if git -c "http.extraheader=$auth" -C "$data" ls-remote --exit-code origin refs/heads/perf-data; then
-            git -c "http.extraheader=$auth" -C "$data" fetch origin perf-data
-            git -C "$data" checkout -b perf-data FETCH_HEAD
-          else
-            status=$?
-            [ "$status" -eq 2 ] || exit "$status"
-            git -C "$data" checkout --orphan perf-data
-          fi
+          # perf_rows.py owns the store branch: checked out from origin, or started empty.
+          GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="$auth" \
+            "$PY" launcher/tools/perf/perf_rows.py store --path "$data"
           args=()
           if [ "$GITHUB_EVENT_NAME" = schedule ]; then
             args+=(--queue-at "$NIGHT_START")
@@ -162,7 +155,7 @@ jobs:
           if ! git -C "$data" diff --cached --quiet; then
             git -C "$data" commit -m 'perf: record nightly scoped chains'
             auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-            git -c "http.extraheader=$auth" -C "$data" push origin HEAD:perf-data
+            git -c "http.extraheader=$auth" -C "$data" push origin HEAD
           fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
