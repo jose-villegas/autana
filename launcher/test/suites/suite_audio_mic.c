@@ -64,7 +64,7 @@ test_mic_restore_transaction(void) {
     for (unsigned failure = 0; failure <= AUDIO_CODEC_MIC_REGISTER_COUNT * 2; failure++) {
         fake_codec_t fake = fixture();
         const fake_codec_t original = fake;
-        audio_codec_mic_saved_t saved = {0};
+        audio_codec_saved_t saved = {0};
         audio_codec_mic_t config = AUDIO_CODEC_MIC_DEFAULT;
         config.alc = config.gate = true;
         config.hpf = false;
@@ -77,16 +77,16 @@ test_mic_restore_transaction(void) {
             TEST_ASSERT_TRUE(audio_codec_mic_apply(&saved, &fake, get_reg, set_reg, &config));
             TEST_ASSERT_EQUAL_UINT(reads, fake.reads);
         }
-        if (!audio_codec_mic_restore_saved(&saved, &fake, set_reg)) {
+        if (!audio_codec_saved_restore(&saved, &fake, set_reg)) {
             TEST_ASSERT_TRUE(saved.restore_pending);
-            TEST_ASSERT_TRUE(audio_codec_mic_restore_saved(&saved, &fake, set_reg));
+            TEST_ASSERT_TRUE(audio_codec_saved_restore(&saved, &fake, set_reg));
         }
         TEST_ASSERT_FALSE(saved.restore_pending);
         TEST_ASSERT_EQUAL_INT_ARRAY(original.values, fake.values, AUDIO_CODEC_MIC_REGISTER_COUNT);
     }
     fake_codec_t fake = fixture();
     fake.fail_read = true;
-    audio_codec_mic_saved_t saved = {0};
+    audio_codec_saved_t saved = {0};
     audio_codec_mic_t config = AUDIO_CODEC_MIC_DEFAULT;
     TEST_ASSERT_FALSE(audio_codec_mic_apply(&saved, &fake, get_reg, set_reg, &config));
     TEST_ASSERT_EQUAL_UINT(0, fake.writes);

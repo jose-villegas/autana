@@ -1,14 +1,9 @@
-/* audio_codec_mic: ES8311 ADC DSP fields and capture-scoped register transaction. */
+/* ES8311 ADC DSP fields and capture-scoped register configuration. */
 #pragma once
-#include "audio/audio_codec_feedback.h"
+#include <stdint.h>
 
-#define AUDIO_CODEC_MIC_VOLUME_REG      0x17
-#define AUDIO_CODEC_MIC_ALC_REG         0x18
-#define AUDIO_CODEC_MIC_LEVEL_REG       0x19
-#define AUDIO_CODEC_MIC_GATE_REG        0x1A
-#define AUDIO_CODEC_MIC_HPF1_REG        0x1B
-#define AUDIO_CODEC_MIC_HPF2_REG        0x1C
-#define AUDIO_CODEC_MIC_REGISTER_COUNT  (AUDIO_CODEC_MIC_HPF2_REG - AUDIO_CODEC_MIC_VOLUME_REG + 1)
+#include "audio/audio_codec_saved.h"
+
 #define AUDIO_CODEC_MIC_NIBBLE_MAX      15u
 #define AUDIO_CODEC_MIC_HPF_MAX         31u
 #define AUDIO_CODEC_MIC_DEPTH_MAX       7u
@@ -86,41 +81,16 @@ audio_codec_mic_hpf2_reg(const audio_codec_mic_t* config) {
            | (config->hpf_s2 & AUDIO_CODEC_MIC_HPF_MAX);
 }
 
-typedef struct {
-    int saved[AUDIO_CODEC_MIC_REGISTER_COUNT];
-    bool restore_pending;
-} audio_codec_mic_saved_t;
-
 static inline bool
-audio_codec_mic_restore_saved(audio_codec_mic_saved_t* state, void* context, audio_codec_set_reg_fn set_reg) {
-    if (!state->restore_pending) {
-        return true;
-    }
-    bool ok = true;
-    for (unsigned i = 0; i < AUDIO_CODEC_MIC_REGISTER_COUNT; i++) {
-        if (set_reg(context, AUDIO_CODEC_MIC_VOLUME_REG + (int)i, state->saved[i]) != 0) {
-            ok = false;
-        }
-    }
-    state->restore_pending = !ok;
-    return ok;
-}
-
-static inline bool
-audio_codec_mic_apply(audio_codec_mic_saved_t* state, void* context, audio_codec_get_reg_fn get_reg,
+audio_codec_mic_apply(audio_codec_saved_t* state, void* context, audio_codec_get_reg_fn get_reg,
                       audio_codec_set_reg_fn set_reg, const audio_codec_mic_t* config) {
-    if (!state->restore_pending) {
-        for (unsigned i = 0; i < AUDIO_CODEC_MIC_REGISTER_COUNT; i++) {
-            if (get_reg(context, AUDIO_CODEC_MIC_VOLUME_REG + (int)i, &state->saved[i]) != 0) {
-                return false;
-            }
-        }
+    if (!audio_codec_saved_capture(state, context, get_reg, AUDIO_CODEC_MIC_VOLUME_REG,
+                                   AUDIO_CODEC_MIC_REGISTER_COUNT)) {
+        return false;
     }
     const unsigned values[AUDIO_CODEC_MIC_REGISTER_COUNT] = {
         audio_codec_mic_volume_reg(config), audio_codec_mic_alc_reg(config),  audio_codec_mic_level_reg(config),
         audio_codec_mic_gate_reg(config),   audio_codec_mic_hpf1_reg(config), audio_codec_mic_hpf2_reg(config)};
-    /* A failed write may still reach the device. Retain every original until all restores succeed. */
-    state->restore_pending = true;
     for (unsigned i = 0; i < AUDIO_CODEC_MIC_REGISTER_COUNT; i++) {
         if (set_reg(context, AUDIO_CODEC_MIC_VOLUME_REG + (int)i, (int)values[i]) != 0) {
             return false;
