@@ -32,8 +32,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
-from c_header import read_define
-from suite_registry import registered_suites  # noqa: E402
 from process_tree import launch_process_tree, close_process_tree, install_console_interrupt_handler  # noqa: E402
 from console_protocol import reply_prefix
 import device_lock  # noqa: E402  (path must be set up first)
@@ -575,21 +573,26 @@ def tone(args):
 SOUND_ONSET_SECONDS = 30
 
 
-_MELODY_HEADER = Path(__file__).resolve().parents[2] / "launcher/main/console/verbs/console_melody.h"
-_PITCH_HEADER = Path(__file__).resolve().parents[2] / "launcher/packages/math/include/math/signal/pitch.h"
+def parse_melody_info(reply):
+    match = re.fullmatch(r"MELODY_INFO notes=([0-9]+) check_ms=([0-9]+) play_max_ms=([0-9]+) "
+                         r"cents_per_octave=([0-9]+)", reply)
+    if not match:
+        raise ValueError(f"invalid MELODY_INFO reply: {reply}")
+    return dict(zip(("notes", "check_ms", "play_max_ms", "cents_per_octave"), map(int, match.groups())))
 
 
 def melody_constants():
-    return {
-        "check_ms": read_define(_MELODY_HEADER, "CONSOLE_MELODY_CHECK_MS"),
-        "notes": read_define(_MELODY_HEADER, "MELODY_PHRASE_NOTES"),
-        "play_max_ms": read_define(_MELODY_HEADER, "CONSOLE_MELODY_PLAY_MAX_MS"),
-        "cents_per_octave": (read_define(_PITCH_HEADER, "PITCH_CENTS_PER_SEMITONE")
-                             * read_define(_PITCH_HEADER, "PITCH_SEMITONES_PER_OCTAVE")),
-    }
+    """What the image on the board times and checks a run by: `melody ?`."""
+    code, replies = send("MELODY ?", reply="MELODY_INFO")
+    if code or not replies:
+        sys.exit(code or 1)
+    try:
+        return parse_melody_info(replies[-1])
+    except ValueError as error:
+        sys.exit(str(error))
 
 
-def parse_melody_note(reply, cents_per_octave=None):
+def parse_melody_note(reply, cents_per_octave):
     match = re.fullmatch(r"MELODY note=([A-G]#?[0-9]+) (TONE .+)", reply)
     if not match:
         raise ValueError(f"invalid MELODY note reply: {reply}")
@@ -598,8 +601,6 @@ def parse_melody_note(reply, cents_per_octave=None):
     measured = result["measured_hz"]
     if measured is not None and (measured <= 0 or result["hz"] <= 0):
         raise ValueError(f"invalid MELODY frequency: {reply}")
-    if cents_per_octave is None:
-        cents_per_octave = melody_constants()["cents_per_octave"]
     return dict(result, note=note, cents_error=None if measured is None else
                 cents_per_octave * math.log2(measured / result["hz"]))
 
@@ -926,30 +927,37 @@ def take_back(args):
     return call_device(device_command("take-back"))
 
 
+def parse_suite_list(replies):
+    """`RUNSUITE ?` replies -> [{"name", "on_request"}], in name order."""
+    if not replies or not re.fullmatch(r"RUNSUITE_END count=([0-9]+)", replies[-1]):
+        raise ValueError("autana suite list: no suite listing - the board needs a self-test "
+                         "image (autana flash diag)")
+    rows = [re.fullmatch(r"RUNSUITE_SUITE name=(\w+) on_request=([01])", reply) for reply in replies[:-1]]
+    if None in rows or len(rows) != int(replies[-1].split("=")[1]):
+        raise ValueError(f"autana suite list: incomplete listing: {replies}")
+    return sorted(({"name": row[1], "on_request": row[2] == "1"} for row in rows), key=lambda row: row["name"])
+
+
 def suite_list(args):
-    """What this project registers, read from its sources: a suite names
-    itself where it is defined and the board serves no listing verb, so there
-    is nowhere else to ask. A name is runnable once a build carrying it is on
-    the board, which variant and scope was flashed decides that, not this."""
+    """What the self-test image on the board registers (`RUNSUITE ?`):
+    what this lists is exactly what `suite <name>` can run there."""
     json_output = "--json" in args
     args = [arg for arg in args if arg != "--json"]
     if len(args) > 1:
         sys.exit("usage: autana suite list [text] [--json]")
     wanted = args[0].lower() if args else ""
-    project = Path(resolve_project())
-
-    found = registered_suites(project)
-
-    shown = [{"name": name, "source": found[name][0], "on_request": found[name][1],
-              "device_only": found[name][2]} for name in sorted(found) if wanted in name.lower()]
+    code, replies = send("RUNSUITE ?", reply="RUNSUITE_", until=["RUNSUITE_END"])
+    try:
+        found = parse_suite_list(replies)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return code or 1
+    shown = [row for row in found if wanted in row["name"].lower()]
     if json_output:
         print(json.dumps({"suites": shown}))
         return 0
     for row in shown:
-        name, where = row["name"], row["source"]
-        on_request, device_only = row["on_request"], row["device_only"]
-        marks = "".join([" [on request]" if on_request else "", " [device]" if device_only else ""])
-        print(f"  {name}{marks}\n      {where}")
+        print(f"  {row['name']}" + (" [on request]" if row["on_request"] else ""))
     kept = f" matching '{wanted}'" if wanted else ""
     print(f"{len(shown)} suite(s){kept}")
     if any(row["on_request"] for row in shown):
@@ -1434,25 +1442,21 @@ def tune_reset(name):
 def tune(args):
     """`tune` alone or with filter text lists; a name that is exactly one
     tunable's own (owner optional when unambiguous) shows that one in the
-    same listing; a name and a value sets it; `reset`/`save` are recognised
-    only in first position, so a tunable actually named that would still be
-    reachable through the filtered listing."""
+    same listing; a name and a value sets it; `reset` is recognised only in
+    first position, so a tunable actually named that would still be
+    reachable through the filtered listing. Writing values into the source
+    is launcher/tools/tune/apply.py's, fed `tune --json`."""
     json_output = "--json" in args
     args = [arg for arg in args if arg != "--json"]
     reject_unknown("tune", args)
-    if json_output and (len(args) > 1 or args and args[0] in ("save", "reset")):
+    if json_output and (len(args) > 1 or args and args[0] == "reset"):
         sys.exit("usage: autana tune [text] [--json]")
-    if args and args[0] == "save":
-        if len(args) > 1:
-            sys.exit("usage: autana tune save")
-        return save()
     if args and args[0] == "reset":
         if len(args) != 2:
             sys.exit("usage: autana tune reset <name>")
         return tune_reset(args[1])
     if len(args) > 2:
-        sys.exit("usage: autana tune [text] | autana tune <name> [value] | "
-                 "autana tune reset <name> | autana tune save")
+        sys.exit("usage: autana tune [text] | autana tune <name> [value] | autana tune reset <name>")
     if len(args) == 2:
         return tune_set(args[0], args[1])
     rows = tunables()
@@ -1592,57 +1596,6 @@ def perf(args):
         return 1
     print(perf_summary(name, segments))
     return 0 if disarmed else 1
-
-
-def literal(name, value):
-    return f"0x{int(value):06X}" if name.endswith("_rgb") else str(int(value))
-
-
-TUNE_LINE = re.compile(r"^TUNE(?:_HOT)?\(\s*(\w+)\s*,\s*(\w+)\s*,", re.MULTILINE)
-
-
-def declarations(project):
-    """{tunable name: file}, from the TUNE(owner, what, ...) lines in the tree."""
-    found = {}
-    for source in (Path(project) / "launcher" / "main").rglob("*.[ch]"):
-        text = source.read_text(encoding="utf-8", errors="replace")
-        for owner, what in TUNE_LINE.findall(text):
-            if owner != "owner":  # tune.h's own macro definition
-                found[f"{owner}.{what}"] = source
-    return found
-
-
-def save():
-    """The device's values, written into the TUNE lines they came from."""
-    project = resolve_project()
-    where = declarations(project)
-    changed = 0
-    for name, value, _low, _high, _default in tunables():
-        if name not in where:
-            print(f"  {name}: not declared in this project - skipped")
-            continue
-        source = where[name]
-        owner, what = name.split(".", 1)
-        text = source.read_bytes().decode("utf-8")
-        declared = re.search(r"^TUNE(?:_HOT)?\(\s*" + re.escape(owner) + r"\s*,\s*" + re.escape(what) + r"\s*,\s*([^,]+?)\s*,",
-                             text, re.MULTILINE)
-        if declared is None:
-            print(f"  {name}: no TUNE({owner}, {what}, ...) in {source.name} - skipped")
-            continue
-        old = declared.group(1)
-        try:
-            same = int(old, 0) == int(value)
-        except ValueError:
-            same = False  # a macro or an expression: becomes the number it stood for
-        if same:
-            continue
-        start, end = declared.span(1)
-        source.write_bytes((text[:start] + literal(name, value) + text[end:]).encode("utf-8"))
-        print(f"  {name}: {old} -> {literal(name, value)}   ({source.relative_to(project).as_posix()})")
-        changed += 1
-    print(f"{changed} value(s) written" if changed else "the source already has the device's values")
-    return 0
-
 
 
 def forward(line, verb):
@@ -1853,8 +1806,7 @@ COMMAND_GROUPS = (
         Command("tune", tune, (
             ("tune [text] [--json]", "list the tunables with ranges; names containing text"),
             ("tune <name> [value]", "show one, or set it on the board (lost on reboot)"),
-            ("tune reset <name>", "back to the value the source declares"),
-            ("tune save", "write the board's values into this project's TUNE(...) lines"))),
+            ("tune reset <name>", "back to the value the source declares"))),
     )),
     ("debug", "Debug", (
         Command("debug", debug, (
@@ -1913,7 +1865,7 @@ BOARD_FLAGS = (
      "suite"),
     ("--project PATH", "act on PATH instead of the current directory - it must itself carry "
                        "launcher/CMakeLists.txt, no searching parent directories",
-     "build, flash, selftest, suite, suite list, tune save, docs"),
+     "build, flash, selftest, suite, docs"),
 )
 
 

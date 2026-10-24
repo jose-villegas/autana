@@ -210,6 +210,31 @@ test_an_unknown_or_overlong_suite_is_not_found(void) {
     TEST_ASSERT_FALSE(request(name).found);
 }
 
+typedef struct {
+    int seen;
+    int fixtures_on_request;
+    bool in_order;
+    const char* previous;
+} listing_t;
+
+static void
+list_one(const char* name, bool on_request, void* context) {
+    listing_t* listing = context;
+    listing->seen++;
+    listing->in_order &= listing->previous == NULL || strcmp(listing->previous, name) < 0;
+    listing->previous = name;
+    listing->fixtures_on_request += on_request && strstr(name, "_fixture_suite") != NULL;
+}
+
+static void
+test_the_listing_names_every_suite_in_order_with_its_on_request_mark(void) {
+    listing_t listing = {.in_order = true};
+    suites_each(list_one, &listing);
+    TEST_ASSERT_TRUE(listing.in_order);
+    TEST_ASSERT_GREATER_THAN_INT(2, listing.seen);
+    TEST_ASSERT_EQUAL_INT(2, listing.fixtures_on_request);
+}
+
 void
 run_suite_filter_suite(void) {
     RUN_TEST(test_a_plain_request_runs_every_test);
@@ -223,6 +248,7 @@ run_suite_filter_suite(void) {
     RUN_TEST(test_the_pattern_count_at_the_limit_is_accepted_and_one_more_is_refused);
     RUN_TEST(test_an_empty_pattern_is_refused);
     RUN_TEST(test_an_unknown_or_overlong_suite_is_not_found);
+    RUN_TEST(test_the_listing_names_every_suite_in_order_with_its_on_request_mark);
 }
 
 SUITE_REGISTER(run_suite_filter_suite)
