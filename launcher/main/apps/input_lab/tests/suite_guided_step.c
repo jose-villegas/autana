@@ -61,7 +61,10 @@ test_orientation_actions_bearings_and_invalid_prompts(void) {
     TEST_ASSERT_EQUAL_STRING("", prompt);
     orientation_probe_prompt(ORIENTATION_PROBE_DONE, prompt, sizeof prompt);
     TEST_ASSERT_EQUAL_STRING("DONE: LABDUMP TO COLLECT", prompt);
+    orientation_probe_prompt(ORIENTATION_PROBE_FLAT, prompt, sizeof prompt);
+    TEST_ASSERT_EQUAL_STRING("PUT DOWN FLAT, FACE UP", prompt);
     TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_NONE, orientation_probe_target((orientation_probe_step_t)-1));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_NONE, orientation_probe_target(ORIENTATION_PROBE_FLAT));
     TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_NONE, orientation_probe_target(ORIENTATION_PROBE_DONE));
 }
 

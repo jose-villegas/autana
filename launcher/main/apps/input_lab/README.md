@@ -159,6 +159,11 @@ python launcher/main/apps/input_lab/tools/shake_fit.py --results
 | fused | 20 ms | 4 | 0 | 360 ms | 1285 ms |
 | fused | 100 ms | 4 | 0 | 501 ms | 1425 ms |
 
+![Gate hold durations](images/orientation-gates.png)
+
+<details>
+<summary>Per-commit gate durations</summary>
+
 | Model | Cadence | Quarter | Last gate | Last hold | Longest gate | Longest hold |
 |---|---:|---:|---|---:|---|---:|
 | accel | 20 ms | 2 | settle | 50 ms | filtered hysteresis / angle | 302 ms |
@@ -177,4 +182,6 @@ python launcher/main/apps/input_lab/tools/shake_fit.py --results
 | fused | 100 ms | 3 | settle | 100 ms | filtered hysteresis / angle | 203 ms |
 | fused | 100 ms | 0 | settle | 100 ms | filtered hysteresis / angle | 1316 ms |
 | fused | 100 ms | 1 | settle | 107 ms | filtered hysteresis / angle | 305 ms |
+
+</details>
 <!-- /generated: orientation-results -->

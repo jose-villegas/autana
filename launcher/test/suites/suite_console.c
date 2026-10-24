@@ -1026,7 +1026,7 @@ test_imu_reply_exposes_judge_timing_and_checks_capacity(void) {
     TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_COUNT, count);
     TEST_ASSERT_EQUAL_INT(DISPLAY_SAMPLE_MS, sample_ms);
     TEST_ASSERT_EQUAL_INT(DISPLAY_COMMIT_MS, commit_ms);
-    TEST_ASSERT_FALSE(console_imu_reply(reply, 1, DISPLAY_DEFAULT_QUARTER));
+    TEST_ASSERT_FALSE(console_imu_reply(reply, strlen(reply), DISPLAY_DEFAULT_QUARTER));
 }
 
 void
