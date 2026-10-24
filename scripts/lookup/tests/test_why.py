@@ -125,6 +125,14 @@ class History(unittest.TestCase):
         reply = self.reply("delta")
         self.assertEqual((reply["lines"], self.prs(reply["rows"]), self.prs(reply["history"])), (0, [4], [5]))
 
+    def test_commit_shas_go_to_git_on_stdin_so_a_big_folder_fits_any_command_line(self):
+        shas = set(why.history(self.root, "HEAD", "--", "src"))
+        with mock.patch.object(why.subprocess, "run", wraps=subprocess.run) as spawned:
+            found = why.commits(self.root, shas)
+        self.assertEqual(set(found), shas)
+        argv = " ".join(" ".join(c.args[0]) for c in spawned.call_args_list)
+        self.assertFalse([sha for sha in shas if sha in argv])
+
     def test_a_folder_counts_the_lines_each_pr_changed_in_it(self):
         reply = self.reply("src")
         self.assertEqual(reply["kind"], "folder")
