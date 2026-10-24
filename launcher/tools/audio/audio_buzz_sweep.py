@@ -25,6 +25,10 @@ LOW_MAX_VOLUME = 60
 # The fine pass: this many coarse shake peaks, each walked in FINE_STEP_HZ steps to its coarse neighbours.
 PEAKS = 3
 FINE_STEP_HZ = 2
+# At the buzz rate the sensor FIFO holds 143 ms; a busy core 1 can delay the IMU task's
+# default 100 ms drain past that, and the overflow gap empties the window. Drain faster.
+DRAIN_TUNABLE = "imu.drain_ms"
+DRAIN_MS = 40
 
 
 def parser():
@@ -73,16 +77,23 @@ def sweep(args, output, frequencies, shakes):
     if not all(safe(hz, volume) for hz, volume in planned):
         raise ValueError(f"volumes above {LOW_MAX_VOLUME}% need {LOW_HZ} Hz or more")
     levels = {}
+    retries = 0
     for hz, volume in planned:
         command = ("tone", str(hz), str(args.ms), str(volume))
         reply = json.loads(autana_run(args.autana, *command, "--json"))
-        record_line(output, " ".join(command), json.dumps(reply))
         if reply["shake_rms_mg"] is None:
-            raise RuntimeError(f"{' '.join(command)}: shake n/a; is another screen reading the IMU? (board log)")
+            # One late drain can cost a window; another screen reading the IMU costs every one.
+            retries += 1
+            time.sleep(args.rest)
+            reply = json.loads(autana_run(args.autana, *command, "--json"))
+        if reply["shake_rms_mg"] is None:
+            raise RuntimeError(f"{' '.join(command)}: shake n/a twice; is another screen reading the IMU? (board log)")
+        record_line(output, " ".join(command), json.dumps(reply))
         if volume == max(args.volumes):
             levels.setdefault(hz, []).append(reply["shake_rms_mg"])
         time.sleep(args.rest)
     shakes.update({hz: median(values) for hz, values in levels.items()})
+    output.write(f"# {retries} of {len(planned)} tones retried after a shake n/a\n")
 
 
 def capture(args):
@@ -93,10 +104,14 @@ def capture(args):
         output.write(f"# autana --json replies on {args.board}, {date.today()}, "
                      "one command per line: <command>\t<reply>\n")
         record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
+        tune = ("tune", DRAIN_TUNABLE, str(DRAIN_MS))
+        record_line(output, " ".join(tune), json.dumps(autana_run(args.autana, *tune).strip()))
         shakes = {}
         sweep(args, output, args.hz, shakes)
         if args.peaks:
             sweep(args, output, fine_frequencies(dict(shakes), args.peaks), shakes)
+        reset = ("tune", "reset", DRAIN_TUNABLE)
+        record_line(output, " ".join(reset), json.dumps(autana_run(args.autana, *reset).strip()))
         record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
 
 
