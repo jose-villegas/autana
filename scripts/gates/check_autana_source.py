@@ -9,7 +9,7 @@ under ROOT/scripts/autana/tests with an audit hook on `open`; an open of a
 path under either folder fails the gate unless the nearest frame in ROOT that
 made it is a test file, since a test may compare a reply with the source. The
 hook sees every open, so code autana imports (scripts/lib/...) is held to the
-same rule. The docs tooling that may read source, shared_helpers.py, must not
+same rule. The docs tooling that may read source, code_search.py, must not
 be imported at all.
 """
 import os
@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 
 SOURCE_PATH = re.compile(r"(^|/)launcher/(main|packages)(/|$)")
-DOCS_TOOLING = "shared_helpers"
+DOCS_TOOLING = "code_search"
 
 
 def folder(path):

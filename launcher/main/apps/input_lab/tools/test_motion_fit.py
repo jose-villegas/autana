@@ -1,3 +1,4 @@
+"""motion_fit finds the rest, rounds and still spans of an IMU dump and fits them as the device does."""
 import re
 import subprocess
 import sys
