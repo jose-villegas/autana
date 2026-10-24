@@ -343,15 +343,49 @@ timing lines. The workflow's `NIGHTLY_SUITES` supplies these triplets.
 it per board; `lane-info --plan plan.json --board BOARD_A` prints it and its
 estimated duration in seconds.
 
-`QUEUE_AT` and `WINDOW_END` set local times. Dispatch inputs `queue_at` and
-`window_end` override them; an empty dispatch `queue_at` starts immediately.
+```mermaid
+sequenceDiagram
+    participant Cron
+    participant GPU as GPU runner
+    participant Heavy
+    participant Plan as Board plan
+    participant Lanes as Board lanes
+    Cron->>GPU: 16:00 UTC fingerprint check
+    loop Until local NIGHT_START
+        GPU->>GPU: Poll for queued bakes
+        opt Bakes pending
+            GPU-->>Cron: Deferred, end green
+            Cron->>GPU: Check again on any bake completion
+        end
+    end
+    GPU->>GPU: Wait for active board locks
+    GPU->>Heavy: Take heavy, render before 07:00
+    GPU->>Heavy: Release heavy
+    Plan->>Plan: If GPU marker fresh, wait for two idle polls
+    Plan->>Lanes: Start board lanes until 07:00
+```
+
+`vars.NIGHT_START` is HH:MM in 18:00–23:59 local; an empty value uses the
+default in `scripts/lib/local_schedule.py`, which also owns the night end.
+Dispatch inputs `queue_at` and `window_end` override the plan window.
+An empty dispatch `queue_at` starts after pending GPU work on the same host.
+
+The GPU runner waits at most `MAX_EVENING_WAIT` for the night start,
+yielding green to pending bakes. Earlier arrivals end green with
+“pending: renders tonight”. Every bake completion triggers another check.
+
+The plan waits for both GPU workflows to be idle on two consecutive polls
+only when the heavy root's runner marker is fresh within `GPU_HOST_MARKER_DAYS`
+(`scripts/lib/local_schedule.py`); otherwise it reports “GPU runner not on this host”.
+
+The board night retains the shared morning deadline in `plan.json`;
+insufficient time for `FIRST_STEP_SECONDS` skips green.
+
+Morning scheduled arrivals after the night end skip; arrivals after noon
+wait for the next night start. A dispatch with `queue_at` follows this rule.
 A dispatch holds boards until its window end or `max_steps`.
 
-Scheduled plans start immediately inside the overnight window. Morning
-arrivals after `WINDOW_END` skip; arrivals after noon wait until `QUEUE_AT`.
-A dispatch with `queue_at` follows the scheduled window rule, skipping 07:00–12:00.
-
-A step starts only if it fits before `WINDOW_END`, and a lane stops after
+A step starts only if it fits before the plan deadline, and a lane stops after
 `CAPTURE_FAILURE_LIMIT` consecutive capture failures (`scoped_chain.py`).
 Unattempted commits go to the same board's next night.
 

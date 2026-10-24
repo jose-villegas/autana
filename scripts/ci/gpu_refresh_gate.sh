@@ -7,11 +7,6 @@
 # GITHUB_ENV so later steps need not source gpu_env.sh (it puts conda's bin
 # first on PATH). Run from the repository root.
 set -eu
-status=0
-python3 scripts/lib/local_schedule.py gate || status=$?
-skipped=$(python3 -c 'from scripts.lib.local_schedule import EXIT_SKIPPED; print(EXIT_SKIPPED)')
-if [ "$status" -eq "$skipped" ]; then exit 0; fi
-[ "$status" -eq 0 ] || exit "$status"
 . launcher/tools/r3d/gpu_env.sh
 fingerprint=$(sh launcher/tools/render/render_doc_images.sh --stage gpu --inputs)
 if [ "$fingerprint" != "$FINGERPRINT" ]; then
