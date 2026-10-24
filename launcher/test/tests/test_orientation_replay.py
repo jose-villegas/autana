@@ -39,7 +39,7 @@ class OrientationReplayTests(unittest.TestCase):
         for step in range(count + 1):
             target = (default + step) % count
             self.assertEqual(int(rows[step][1]), target)
-            self.assertEqual(rows[step][2], "READ AT 45 DEG: " + names[target])
+            self.assertEqual(rows[step][2], ("HOLD " if step == 0 else "TURN TO ") + names[target] + (" AT 45 DEG" if step == 0 else ", HOLD AT 45 DEG"))
         self.assertEqual(int(rows[count + 1][1]), replay.NO_QUARTER)
         for step in range(count + 2, len(rows) - 1):
             self.assertEqual(int(rows[step][1]), default)
@@ -86,6 +86,18 @@ class OrientationReplayTests(unittest.TestCase):
         self.assertEqual(segments, [(0, 0, 0), (5, 10000, -1), (10, 20000, -1)])
         self.assertEqual(samples[0], (1234, 0, 4096, 0, 0, 0, 0))
 
+    def test_ready_gate_samples_remain_in_the_same_motion_step(self):
+        lines = ["LABDUMP orientation_step 0 0 1", "LABDUMP orientation_gate 0 0 begin",
+                 "LABDUMP orientation 0 1000 -4096 0 0 0 0 0",
+                 "LABDUMP orientation_gate 0 2000 end",
+                 "LABDUMP orientation 0 3000 0 4096 0 0 0 0",
+                 "LABDUMP orientation_step 10 4000 -1"]
+        segments, samples = replay.parse_capture(lines)
+        self.assertEqual(segments[-1], (10, 4000, -1))
+        self.assertEqual(len(samples), 2)
+        with self.assertRaises(ValueError):
+            replay.parse_capture(lines[:2] + lines[4:])
+
     def test_truncation_invalid_order_and_missing_segments_are_errors(self):
         for lines in (["LABDUMP_TRUNCATED"],
                       ["LABDUMP orientation 0 1 0 4096 0 0 0 0"],
@@ -94,16 +106,30 @@ class OrientationReplayTests(unittest.TestCase):
             with self.subTest(lines=lines), self.assertRaises(ValueError):
                 replay.parse_capture(lines)
 
-    def test_hold_segments_count_every_switch_as_false_and_latency_needs_target(self):
-        rows = replay.measure([(0, 0, 0), (1, 1000, 1), (4, 2000, -1), (9, 3000, -1)],
-                              [(100, 2), (500, 0), (1500, 1), (2100, 2), (2200, 1)], initial=1)
-        self.assertEqual(rows[0], (0, 2, 1, 500))
-        self.assertEqual(rows[1], (1, 1, 0, 500))
-        self.assertEqual(rows[2], (4, 2, 2, None))
+    def test_motion_scoring_accepts_on_time_and_early_turns(self):
+        scale = replay.read_define(ROOT / "launcher/main/input/input.h", "INPUT_ACCEL_ONE_G")
+        neutral = (-scale, 0, 0)
+        turned = (0, scale, 0)
+        for crossing in (1_100_000, 900_000):
+            samples = [(time, *(turned if time >= crossing else neutral), 0, 0, 0)
+                       for time in range(0, 2_000_000, 20_000)]
+            result = replay.measure(samples, [(crossing + 300_000, 0)], initial=1)
+            self.assertEqual(result.wanted, 1)
+            self.assertEqual(result.unwanted, 0)
+            self.assertEqual(result.latencies_us, [300_000])
 
-    def test_missing_wanted_turn_is_reported(self):
-        rows = replay.measure([(0, 0, 0), (9, 1000, -1)], [], initial=1)
-        self.assertEqual(rows[0], (0, 0, 0, None))
+    def test_motion_scoring_rejects_false_switch(self):
+        scale = replay.read_define(ROOT / "launcher/main/input/input.h", "INPUT_ACCEL_ONE_G")
+        samples = [(time, -scale, 0, 0, 0, 0, 0) for time in range(0, 1_000_000, 20_000)]
+        result = replay.measure(samples, [(400_000, 0)], initial=1)
+        self.assertEqual(result.unwanted, 1)
+
+    def test_transient_angle_crossing_does_not_justify_late_commit(self):
+        scale = replay.read_define(ROOT / "launcher/main/input/input.h", "INPUT_ACCEL_ONE_G")
+        samples = [(time, *( (0, scale, 0) if 100_000 <= time < 200_000 else (-scale, 0, 0)), 0, 0, 0)
+                   for time in range(0, 1_000_000, 20_000)]
+        result = replay.measure(samples, [(600_000, 0)], initial=1)
+        self.assertEqual(result.unwanted, 1)
 
 
 if __name__ == "__main__":

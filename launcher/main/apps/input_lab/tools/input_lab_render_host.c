@@ -17,7 +17,7 @@
 #define TAP_X 180
 #define TAP_Y 220
 static int page;
-static bool tapped, results;
+static bool tapped, results, orientation;
 static int shell_quarter;
 static int clock_frame;
 
@@ -37,7 +37,10 @@ display_quarter_now(void) {
 bool
 input_read_motion(input_motion_t* out) {
     *out = (input_motion_t){.acceleration = {INPUT_ACCEL_ONE_G / 4, INPUT_ACCEL_ONE_G / 8, INPUT_ACCEL_ONE_G}};
-    if (results) {
+    if (orientation) {
+        out->acceleration = (vec3i_t){-INPUT_ACCEL_ONE_G, 0, -INPUT_ACCEL_ONE_G};
+    }
+    if (results && !orientation) {
         const int pose_frame = clock_frame - TAP_FRAME;
         const int pose = mathi_clamp(pose_frame / POSE_FRAMES, 0, IMU_PROBE_POSE_COUNT - 1);
         const int turn_frame = (IMU_PROBE_POSE_COUNT * POSE_FRAMES) + ((IMU_PROBE_SETTLE_MS + FRAME_MS - 1) / FRAME_MS);
@@ -100,6 +103,11 @@ options(int argc, char** argv) {
     } else if (strcmp(name, "motion-results") == 0) {
         page = 3;
         results = true;
+    } else if (strcmp(name, "orientation-ready") == 0 || strcmp(name, "orientation-running") == 0
+               || strcmp(name, "orientation-turn-ready") == 0) {
+        page = 5;
+        orientation = true;
+        results = strcmp(name, "orientation-ready") != 0;
     } else {
         return false;
     }
@@ -108,7 +116,7 @@ options(int argc, char** argv) {
 
 static bool
 setup(int quarter) {
-    shell_quarter = quarter;
+    shell_quarter = orientation ? DISPLAY_DEFAULT_QUARTER : quarter;
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     app_list()->enter();
@@ -124,6 +132,10 @@ static void
 draw(const render_frame_t* frame) {
     clock_frame = frame->index;
     input_t in = tapped || results ? frame->input : (input_t){0};
+    if (orientation) {
+        in = (input_t){0};
+        in.pressed = frame->index == 6 || (results && frame->index == 10);
+    }
     in.boot.pressed = frame->index < page;
     app_list()->frame(frame->dt_ms, &in);
 }

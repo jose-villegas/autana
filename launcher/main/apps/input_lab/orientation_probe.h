@@ -7,8 +7,9 @@
 #include "apps/input_lab/imu_probe.h"
 #include "math/scalar/units.h"
 
-#define ORIENTATION_PROBE_STEP_MS     10000U
-#define ORIENTATION_PROBE_PROMPT_SIZE 96
+#define ORIENTATION_PROBE_STEP_MS          10000U
+#define ORIENTATION_PROBE_READING_TILT_DEG 45
+#define ORIENTATION_PROBE_PROMPT_SIZE      96
 
 typedef enum {
     ORIENTATION_PROBE_READ_0,
@@ -24,10 +25,12 @@ typedef enum {
     ORIENTATION_PROBE_DONE
 } orientation_probe_step_t;
 
-#define ORIENTATION_PROBE_ROUND_MS (ORIENTATION_PROBE_DONE * ORIENTATION_PROBE_STEP_MS)
+#define ORIENTATION_PROBE_ROUND_MS        (ORIENTATION_PROBE_DONE * ORIENTATION_PROBE_STEP_MS)
+#define ORIENTATION_PROBE_READY_BUDGET_MS ORIENTATION_PROBE_ROUND_MS
 #define ORIENTATION_PROBE_RECORD_LINES                                                                                 \
-    ((ORIENTATION_PROBE_ROUND_MS * MATH_US_PER_MS + INPUT_MOTION_SAMPLE_US - 1) / INPUT_MOTION_SAMPLE_US               \
-     + ORIENTATION_PROBE_DONE + 2)
+    (((ORIENTATION_PROBE_ROUND_MS + ORIENTATION_PROBE_READY_BUDGET_MS) * MATH_US_PER_MS + INPUT_MOTION_SAMPLE_US - 1)  \
+         / INPUT_MOTION_SAMPLE_US                                                                                      \
+     + (3 * ORIENTATION_PROBE_DONE) + 2)
 /* Counts retain offset-calibrated acceleration and raw gyro precision. */
 #define ORIENTATION_PROBE_SAMPLE_FORMAT    "orientation %d %lld %d %d %d %d %d %d"
 #define ORIENTATION_PROBE_ACCEL_MAX_COUNTS (-INT16_MIN + IMU_CALIB_OFFSET_MAX)

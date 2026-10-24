@@ -73,7 +73,9 @@ A continuing touch or rotation hold can prevent commitment indefinitely.
 ## Replay
 
 The guided orientation round records FIFO accel and gyro counts with
-microsecond timestamps in the shared `labdump` transcript.
+microsecond timestamps in the shared `labdump` transcript. Each ready gate
+records samples while the person turns; a tap starts its timed reading.
+Step and gate markers carry elapsed times.
 Its capture commands are in the round's README.
 
 ```sh
@@ -86,12 +88,32 @@ sample, so its magnitude gate sees only the judge filter's vector length.
 
 Both models retain the judge filter and timing gates. Fusion updates at
 FIFO cadence; judge runs use 20 ms and 100 ms deadlines, taking the first
-available sample after each deadline. Touch is absent from replay.
+available sample after each deadline.
 
-Each segment reports switches, false switches and wanted-switch latency.
-Hold segments count every switch as false; reading segments count switches
-to another target as false. An absent target is reported as missed.
+The scorer reads the unfiltered screen-axis acceleration. A turn begins when
+its x/y angle crosses the hysteresis gap edge away from the committed quarter.
+It lands when the new quarter is held inside its tilt limits and the judge
+commits it. Latency starts at that raw edge crossing, independent of prompts.
+A commit without a matching turn, or during a flat or keep step, is unwanted.
+The segment targets validate the recorded script only.
 
-Latency starts at the script prompt, including human reaction time.
-A target already committed at the prompt has zero latency. FIFO gaps remain
-visible as timestamp gaps; replay does not reconstruct missing samples.
+<!-- generated: orientation-results check: python launcher/tools/input/orientation_replay.py --results --check --cc gcc -->
+| Model | Cadence | Wanted turns | Unwanted switches | Median latency | Max latency |
+|---|---:|---:|---:|---:|---:|
+| accel | 20 ms | 4 | 0 | 338 ms | 1285 ms |
+| accel | 100 ms | 4 | 0 | 451 ms | 1425 ms |
+| fused | 20 ms | 4 | 0 | 360 ms | 1285 ms |
+| fused | 100 ms | 4 | 0 | 501 ms | 1425 ms |
+<!-- /generated: orientation-results -->
+
+Accel and fused land the same turns without unwanted switches on this
+capture. The shell uses low-passed accel at `DISPLAY_SAMPLE_MS`. FIFO gaps
+remain visible as timestamp gaps; replay does not reconstruct missing samples.
+Touch is absent from replay.
+
+Portrait crosses the raw gap edge at 23.89 s and commits at 25.17 s.
+The filtered angle hysteresis holds for 1.24 s; settle is last at 45 ms.
+Raw angles briefly cross, then linger at 50 to 60 degrees.
+
+`--gates` reports the last gate holding each commit and its hold time. It also
+shows the longest hold between raw edge crossing and commitment.

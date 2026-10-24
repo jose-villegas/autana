@@ -387,8 +387,8 @@ test_trace_missing_reading_deadline_and_period(void) {
 }
 
 static void
-test_orientation_capacity_fits_shake_budget(void) {
-    TEST_ASSERT_LESS_OR_EQUAL_UINT(IMU_RECORD_SHAKE_CAPACITY, IMU_RECORD_ORIENTATION_CAPACITY);
+test_orientation_capacity_covers_ready_dwell(void) {
+    TEST_ASSERT_GREATER_THAN_UINT(IMU_RECORD_SHAKE_CAPACITY, IMU_RECORD_ORIENTATION_CAPACITY);
     imu_record_t record = {0};
     TEST_ASSERT_TRUE(imu_record_start(&record, IMU_RECORD_ORIENTATION_LINE_SIZE + sizeof IMU_RECORD_TRUNCATED));
     const int acc = ORIENTATION_PROBE_ACCEL_MAX_COUNTS;
@@ -411,7 +411,7 @@ test_orientation_capacity_fits_shake_budget(void) {
 
 void
 run_imu_untethered_suite(void) {
-    RUN_TEST(test_orientation_capacity_fits_shake_budget);
+    RUN_TEST(test_orientation_capacity_covers_ready_dwell);
     RUN_TEST(test_upright_turn_restarts_settle);
     RUN_TEST(test_upright_gravity_mismatch_restarts_settle);
     RUN_TEST(test_upright_null_sample_restarts_settle);
