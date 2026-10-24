@@ -34,7 +34,7 @@ Open `launcher/tools/results/render/scene_viewer/landscape.bmp` to see the atriu
 ./launcher/test/run_tests.sh
 ```
 
-The test runner prints a verdict and saves its full log. It compiles and runs the parts of the firmware that do not need ESP32 peripherals. The [Testing Guide](docs/Testing-Guide.md) explains what it covers; the [render harness](docs/tools/Render-Harness.md) lists other screens you can render. If the shell cannot find a C compiler, install one for your computer:
+The test runner prints a verdict and saves its full log. It compiles and runs the parts of the firmware that do not need ESP32 peripherals. The [Testing Guide](docs/testing/README.md) explains what it covers; the [render harness](docs/tools/Render-Harness.md) lists other screens you can render. If the shell cannot find a C compiler, install one for your computer:
 
 | System | Compiler setup |
 |---|---|
@@ -46,9 +46,9 @@ The test runner prints a verdict and saves its full log. It compiles and runs th
 - **Falling Sand:** pour powders and liquids with touch; the board's motion sensor steers gravity. Gas, fire, heat, and material reactions make the sandbox interactive. Start with the [sand overview](docs/sand/README.md), then the [simulation details](docs/sand/Sand-Simulation.md).
 - **Render Lab:** flythroughs of Crytek Sponza with baked light, rendered in software. The [host renderer](launcher/main/apps/render_lab/tools/README.md) can produce still frames of these scenes without the board.
 - **Input Lab:** tap small targets and see how far the touch panel's reading lands from where you aimed; the numbers behind the touch correction, explained in the [touch notes](docs/input/Touch.md).
-- **Diagnostics:** a hardware self-test report and developer controls in development builds. The power-on check runs in every build. [Build variants](docs/Build-Variants.md) explains which tools ship in each image.
+- **Diagnostics:** a hardware self-test report and developer controls in development builds. The power-on check runs in every build. [Build variants](docs/tools/Build-Variants.md) explains which tools ship in each image.
 
-Project applications live under `launcher/main/apps/`; system applications live under `launcher/main/shell/apps/`. The shell calls an app once per frame and presents its drawing to the panel. [Building an App](docs/Building-an-App.md) shows the smallest implementation; [Firmware](docs/firmware/README.md) explains how the pieces fit.
+Project applications live under `launcher/main/apps/`; system applications live under `launcher/main/shell/apps/`. The shell calls an app once per frame and presents its drawing to the panel. [Building an App](docs/firmware/Building-an-App.md) shows the smallest implementation; [Firmware](docs/firmware/README.md) explains how the pieces fit.
 
 ## Run it on the board
 
@@ -65,17 +65,17 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 
 | If you want to... | Read |
 |---|---|
-| Change a game or add one | [Building an App](docs/Building-an-App.md), [Building a Screen](docs/Building-a-Screen.md) |
+| Change a game or add one | [Building an App](docs/firmware/Building-an-App.md), [Building a Screen](docs/ui/Building-a-Screen.md) |
 | Draw 3D, import a mesh or set up a scene | [3D rendering and scenes](docs/render/README.md), [Building a Scene](docs/render/Building-a-Scene.md) |
 | Understand gravity estimation and input features | [Input docs](docs/input/README.md) |
 | Understand the frame loop and drawing path | [Firmware](docs/firmware/README.md), [Graphics](docs/gfx/README.md) |
 | Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
-| Run or add tests | [Testing Guide](docs/Testing-Guide.md) |
-| Work with fonts and controls | [Text and Fonts](docs/Text-and-Fonts.md), [UI Toolkit](docs/UI-Toolkit.md) |
+| Run or add tests | [Testing Guide](docs/testing/README.md) |
+| Work with fonts and controls | [Text and Fonts](docs/gfx/Text-and-Fonts.md), [UI Toolkit](docs/ui/README.md) |
 | Build, flash, test or drive the board with `autana` | [CLI guide](docs/cli/README.md), [board notes](docs/notes/README.md) |
 | Render, check or generate with the repository's tools | [Tools index](docs/tools/README.md) |
 | Play sounds or add one | [Audio docs](docs/audio/README.md), [Sound assets](docs/audio/Sound-Assets.md) |
-| Check build flags and C style | [Build Variants](docs/Build-Variants.md), [C Style Guide](docs/C-Style-Guide.md) |
+| Check build flags and C style | [Build Variants](docs/tools/Build-Variants.md), [C Style Guide](docs/c-style/README.md) |
 | Explore proposed work | [Rendering Roadmap](docs/plans/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |
 
 The [`launcher/tools/` index](launcher/tools/README.md) maps build wrappers, generators, render scenes, and quality checks. `scripts/install-git-hooks.sh` installs optional local checks; [Mermaid diagrams](docs/tools/Mermaid-Diagrams.md) need `npm install -g @mermaid-js/mermaid-cli` if you edit them, and [math formulas](docs/tools/Math-Formulas.md) need `npm ci --prefix scripts/gates`. The complexity gate also needs `git submodule update --init`; see its [guide](docs/tools/Complexity-Gate.md).

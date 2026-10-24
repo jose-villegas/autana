@@ -30,6 +30,6 @@ the [demo assets](../../launcher/demo/README.md).
 | [Mesh-Rendering.md](Mesh-Rendering.md) | The runtime: cameras, culling, the span rasterizer, instances at transforms, the two-core frame and the view modes. |
 | [Dynamic-Resolution.md](Dynamic-Resolution.md) | The render size picked per frame to hold a budget: where a frame's time goes at each size, the stepped controller and the predictor, and how they flew the test path on the board. |
 
-Related: [Animation Tracks](../Animation-Tracks.md) for the camera path,
+Related: [Animation Tracks](Animation-Tracks.md) for the camera path,
 [Firmware](../firmware/README.md) for the layers, and the
 [render harness](../tools/Render-Harness.md) to see a scene without a board.

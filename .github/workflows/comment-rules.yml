@@ -1,6 +1,6 @@
 name: Comment Rules
 
-# The comment rules docs/C-Style-Guide.md states, measured rather than
+# The comment rules docs/c-style/README.md states, measured rather than
 # argued: nothing beside code over 500 characters, no file header over 50
 # lines, no comment citing a name, file or heading that is not there,
 # none below apps/ naming an app, nor any engine document, and none

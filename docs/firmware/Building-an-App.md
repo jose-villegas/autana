@@ -2,17 +2,17 @@
 
 What an app is to the shell: the callbacks it fills in, when the shell calls
 them, and how it gets into and out of the launcher list. The contract is
-[`launcher/main/app/app.h`](../launcher/main/app/app.h); the caller is the shell,
-[`launcher/main/shell/`](../launcher/main/shell/). For the UI inside an app see
-[`Building-a-Screen.md`](Building-a-Screen.md); for why the shell is built this
-way see [`firmware/README.md`](firmware/README.md).
+[`launcher/main/app/app.h`](../../launcher/main/app/app.h); the caller is the shell,
+[`launcher/main/shell/`](../../launcher/main/shell). For the UI inside an app see
+[`Building-a-Screen.md`](../ui/Building-a-Screen.md); for why the shell is built this
+way see [`firmware/README.md`](README.md).
 
 The first result is a new launcher entry. Put one `app_<name>.c` file in
 `launcher/main/apps/<name>/`, give it a display name, and register it with
 `APP_REGISTER()`. The build discovers the file; the shell calls `enter()`
 when selected, `frame()` once per screen update, and `exit()` when leaving.
 For a board-free first run of the existing firmware, use the
-[README's host render](../README.md#try-it-without-a-board).
+[README's host render](../../README.md#try-it-without-a-board).
 
 An app is an `app_t` (not `const`: the registry links it through its own
 `next` field) plus one `APP_REGISTER()` line. It is not a task or a process:
@@ -52,12 +52,12 @@ Name the `app_t` after the folder: `apps/yours/` registers `app_yours`. The
 release symbol check finds a development-only app by that name.
 
 To check a new `app_*.c` file without the ESP32 toolchain, run
-[`check_app_sources.sh`](../launcher/test/check_app_sources.sh) in Git Bash on
+[`check_app_sources.sh`](../../launcher/test/check_app_sources.sh) in Git Bash on
 Windows or a terminal on Linux. It syntax-checks the hardware-facing
 app sources with host stand-in headers; it does not run the app. A new app
 appears in the launcher after a firmware build and flash. To make a separate
 board-free preview of its drawing, declare a scene with the
-[host render harness](tools/Render-Harness.md#declaring-a-scene).
+[host render harness](../tools/Render-Harness.md#declaring-a-scene).
 
 ## The endpoints
 
@@ -72,7 +72,7 @@ board-free preview of its drawing, declare a scene with the
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
 | `home_gesture` | no (`false`) | - | `true`: shell owns the way home (edge swipe + hint strip) |
 | `diagnostic_json(out, len)` | no | dev builds, on a screenshot capture | write one JSON object; spliced in as the capture's `"app"` key |
-| `console` | no | dev builds, at most once per frame, for a line under this app's own prefix | set with `APP_CONSOLE()`/`APP_CONSOLE_PTR()`; see [App-Commands.md](cli/App-Commands.md) |
+| `console` | no | dev builds, at most once per frame, for a line under this app's own prefix | set with `APP_CONSOLE()`/`APP_CONSOLE_PTR()`; see [App-Commands.md](../cli/App-Commands.md) |
 
 The shell calls the three required pointers without a NULL check.
 
@@ -107,7 +107,7 @@ an app leaves by leaving the build:
 ## Lifecycle
 
 The shell's state machine (the launcher and a running app) is
-in [firmware/Frame-Loop.md](firmware/Frame-Loop.md#the-frame-loop). An
+in [firmware/Frame-Loop.md](Frame-Loop.md#the-frame-loop). An
 app only ever sees the `Running` state; it leaves by home swipe
 (`home_gesture`), PWR long-press (no `home_gesture`), or its own call to
 `shell_request_exit()`.
@@ -134,7 +134,7 @@ never sees the input that closed it.
 between leaving and stepping, `step_running_app()` picks one of the two shapes
 below and `shell_present_unless_deferred()` presents for the first. The
 engine systems' phases
-([Engine systems](firmware/Frame-Loop.md#engine-systems)) run at the points
+([Engine systems](Frame-Loop.md#engine-systems)) run at the points
 marked.
 
 Without `update()`: the shell presents synchronously after `frame()`.
@@ -257,7 +257,7 @@ static void yours_exit(void) {
 ```
 
 The scenes an app loads live in it too
-([Scene-Manager.md](render/Scene-Manager.md#ownership)): mark before
+([Scene-Manager.md](../render/Scene-Manager.md#ownership)): mark before
 `scene_load()` and rewind after `scene_unload()` to reuse their memory within
 one visit.
 
@@ -322,13 +322,13 @@ autana flash dev                      # then look for the app in the list
 Boot logs `Ready, N apps registered`; launch and leave log `Starting <name>` /
 `Leaving <name>` under the `shell` tag.
 
-An app's `IRAM_ATTR` function needs the comment directly above it to give a reason and `IRAM budget: N B`; see [Internal memory map](memory/Internal-Memory-Map.md#placement-rules-and-gate).
+An app's `IRAM_ATTR` function needs the comment directly above it to give a reason and `IRAM budget: N B`; see [Internal memory map](../memory/Internal-Memory-Map.md#placement-rules-and-gate).
 
 ## Related
 
-- [`Building-a-Screen.md`](Building-a-Screen.md): screens built on the `ui/ui.h` face inside an app
-- [`gfx/README.md`](gfx/README.md): draw targets, dirty tracking, the present path, the panel clock
-- [`firmware/README.md`](firmware/README.md): why one framebuffer and one frame loop
-- [`Testing-Guide.md`](Testing-Guide.md): suites and runners
-- [`Build-Variants.md`](Build-Variants.md): what release, dev and
+- [`Building-a-Screen.md`](../ui/Building-a-Screen.md): screens built on the `ui/ui.h` face inside an app
+- [`gfx/README.md`](../gfx/README.md): draw targets, dirty tracking, the present path, the panel clock
+- [`firmware/README.md`](README.md): why one framebuffer and one frame loop
+- [`testing/README.md`](../testing/README.md): suites and runners
+- [`Build-Variants.md`](../tools/Build-Variants.md): what release, dev and
   diagnostics builds carry, and which flag gates what
