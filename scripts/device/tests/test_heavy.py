@@ -26,6 +26,61 @@ class HeavyTests(unittest.TestCase):
         self.addCleanup(self.env.stop)
         self.store = locks.LockStore(self.root, is_alive=lambda pid: pid == os.getpid())
 
+    def test_board_observer_ignores_heavy_waiters_and_expired_holders(self):
+        heavy = self.store.acquire(locks.HEAVY, "gpu", "build")
+        self.assertFalse(self.store.any_board_held())
+        self.store.release(locks.HEAVY, heavy["token"])
+        self.store.enqueue("queued", "waiter", "suite")
+        self.assertFalse(self.store.any_board_held())
+        held = self.store.acquire("BOARD", "night", "suite")
+        before = self.store.lock_path("BOARD").read_bytes()
+        self.assertTrue(self.store.any_board_held())
+        self.assertEqual(self.store.lock_path("BOARD").read_bytes(), before)
+        self.store.release("BOARD", held["token"])
+        self.assertFalse(self.store.any_board_held())
+        locks.write_json(self.store.lock_path("BOARD"), dict(held, host="windows", heartbeat_at=0))
+        self.assertFalse(self.store.any_board_held())
+        locks.write_json(self.store.lock_path("BOARD"), dict(held, kind="human", expires_at=self.store.now() + 60))
+        self.assertFalse(self.store.any_board_held())
+
+    def test_foreign_board_heartbeat_uses_filesystem_clock(self):
+        held = self.store.acquire("BOARD", "night", "run")
+        locks.write_json(self.store.lock_path("BOARD"), dict(held, host="windows"))
+        observer = locks.LockStore(self.root, board_observer=True)
+        with patch.object(observer, "now", return_value=held["heartbeat_at"] + locks.DEFAULT_STALE_SECONDS * 2):
+            self.assertTrue(observer.any_board_held())
+        locks.write_json(self.store.lock_path("BOARD"), dict(held, host="windows", heartbeat_at=0))
+        self.assertFalse(observer.any_board_held())
+
+    def test_normal_board_store_uses_its_clock_for_every_record_host(self):
+        now = locks.DEFAULT_STALE_SECONDS * 4
+        interval = locks.DEFAULT_STALE_SECONDS * 2
+        store = locks.LockStore(self.root, now=lambda: now, is_alive=lambda pid: True)
+        for host in (None, locks.host_identity(), "foreign-host"):
+            for kind in ("run", "hold", "human"):
+                for offset, expired in ((-interval, True), (interval, False)):
+                    with self.subTest(host=host, kind=kind, offset=offset):
+                        record = dict(board="BOARD", kind=kind, pid=os.getpid(),
+                                      heartbeat_at=now + offset, expires_at=now + offset)
+                        if host is not None:
+                            record["host"] = host
+                        reason = "heartbeat expiry" if kind == "run" else "hold lapsed"
+                        self.assertEqual(store.reclaim_reason(record, locks.DEFAULT_STALE_SECONDS),
+                                         reason if expired else "")
+
+    def test_wsl_board_observer_reads_windows_temp_store(self):
+        with patch.dict(os.environ, {"_AUTANA_DEVICE_LOCK_ROOT": ""}), \
+                patch.object(locks, "is_wsl", return_value=True), \
+                patch.object(locks.subprocess, "check_output", side_effect=["C:\\Users\\runner\\Temp\r\n", str(self.root)]) as run:
+            self.assertEqual(locks.board_read_root(), self.root / "autana-device")
+        self.assertIn("GetTempPath", run.call_args_list[0].args[0][-1])
+        self.assertEqual(run.call_args_list[1].args[0], ["wslpath", "-u", "C:\\Users\\runner\\Temp"])
+        with patch.dict(os.environ, {"_AUTANA_DEVICE_LOCK_ROOT": ""}), \
+                patch.object(locks, "is_wsl", return_value=True), \
+                patch.object(locks.subprocess, "check_output", side_effect=["missing", str(self.root / "missing")]):
+            with self.assertRaisesRegex(OSError, "unreachable"):
+                locks.board_read_root()
+
     def test_stale_foreign_and_legacy_dead_waiters_are_pruned(self):
         for foreign in (True, False):
             with self.subTest(foreign=foreign):
@@ -82,6 +137,17 @@ class HeavyTests(unittest.TestCase):
                 self.assertEqual(device.main(["status"]), 0)
             self.assertIn("heavy: unavailable", output.getvalue())
             self.assertIn("missing Windows mount", output.getvalue())
+
+    def test_foreign_hold_expiry_uses_filesystem_clock(self):
+        filesystem_now = self.root.stat().st_mtime
+        for kind in ("hold", "human"):
+            for skew in (-86400, 86400):
+                store = locks.LockStore(self.root, now=lambda: filesystem_now + skew, board_observer=True)
+                for offset, reason in ((600, ""), (-600, "hold lapsed")):
+                    with self.subTest(kind=kind, skew=skew, offset=offset):
+                        held = dict(board="BOARD", kind=kind, host="foreign-host",
+                                    expires_at=filesystem_now + offset)
+                        self.assertEqual(store.reclaim_reason(held, locks.DEFAULT_STALE_SECONDS), reason)
 
     def test_shared_clock_ignores_wall_clock_skew_for_holder_waiter_and_guard(self):
         store = locks.LockStore(now=lambda: 0, is_alive=lambda pid: True)
