@@ -87,6 +87,14 @@ class ScaffoldTests(unittest.TestCase):
         self.assertTrue(body.rstrip().endswith('Ticket: cvpg'))
         self.assertNotIn('<!-- block', body)
 
+    def test_out_writes_utf8_whatever_the_shell(self):
+        with Repo({'a.c': 'x\n'}, {'a.c': 'y\n'}) as repo:
+            out = repo.path / 'body.md'
+            self.assertEqual(pr_body.main(['new', '--ticket', 'autana-cvpg', '--base', 'base', '-o', str(out)]), 0)
+            body = out.read_text(encoding='utf-8')
+        self.assertIn('**Lines:** +1 / −1 (net +0)', body)
+        self.assertTrue(body.rstrip().endswith('Ticket: cvpg'))
+
     def test_move_lists_renames_by_directory(self):
         old = {f'old/f{i}.c': f'body {i}\n' * 20 for i in range(3)}
         with Repo(old, {}, renames=[(f'old/f{i}.c', f'new/f{i}.c') for i in range(3)]):
@@ -110,7 +118,7 @@ class ScaffoldTests(unittest.TestCase):
             (repo.path / 'out').mkdir()
             (repo.path / 'out' / 'comparison.json').write_text(json.dumps(comparison))
             body = pr_body.scaffold('perf', 'cvpg', 'base', repo.path / 'out')
-        self.assertIn('| Row | main µs | pr µs | Change | Verdict |', body)
+        self.assertIn('| Row | main us | pr us | Change | Verdict |', body)
         self.assertIn('| `r3d/frame` | 1000 | 900 | -10.0% | improved |', body)
         self.assertIn('| `sand/step` | 50 | n/a | n/a | not measured |', body)
 

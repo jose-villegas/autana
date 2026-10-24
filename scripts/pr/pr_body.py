@@ -1,6 +1,6 @@
 """Scaffold and check a pull request description.
 
-  pr_body.py new [--kind change|move|perf|docs] [--ticket ID] [--base REF] [--perf DIR]
+  pr_body.py new [--kind change|move|perf|docs] [--ticket ID] [--base REF] [--perf DIR] [-o FILE]
   pr_body.py check BODY_FILE
 
 `new` prints .github/pull_request_template.md with its block slot replaced by
@@ -24,6 +24,7 @@ import subprocess
 import sys
 
 REPO = Path(__file__).resolve().parents[2]
+PERF_TOOLS = REPO / 'launcher' / 'tools' / 'perf'
 TEMPLATE = REPO / '.github' / 'pull_request_template.md'
 TICKET_GATE = REPO / 'scripts' / 'gates' / 'check-pr-ticket.sh'
 MERMAID_GATE = REPO / 'scripts' / 'gates' / 'check-mermaid.mjs'
@@ -35,7 +36,6 @@ FILL = '<!-- fill -->'
 MARKER = re.compile(r'<!-- (fill|block)\b')
 BLOCK_LINE = re.compile(r'^<!-- block\b.*-->$', re.M)
 TICKET_LINE = re.compile(r'^Ticket:.*$', re.M)
-TICKET_ID = re.compile(r'^[a-z0-9]+(\.[0-9]+)*$')
 FENCE = '```mermaid'
 
 
@@ -146,21 +146,13 @@ def docs_table(merge_base, files):
     return rows + ([''] + change_table(rest) if rest else [])
 
 
-def number(value):
-    return 'n/a' if value is None else f'{value:.4g}'
-
-
 def perf_table(perf_dir):
+    # perf_compare owns comparison.json; imported only here, since it brings the board tooling.
+    sys.path.insert(0, str(PERF_TOOLS))
+    import perf_compare
     comparison = json.loads((Path(perf_dir) / 'comparison.json').read_text(encoding='utf-8'))
-    rows = [f'| Row | {comparison["label_a"]} µs | {comparison["label_b"]} µs | Change | Verdict |',
-            '|---|---:|---:|---:|---|']
-    for name, row in sorted(comparison['rows'].items()):
-        ratio = row.get('ratio')
-        change = 'n/a' if not ratio else f'{100 * (ratio - 1):+.1f}%'
-        rows.append(f'| `{name}` | {number(row.get("a"))} | {number(row.get("b"))} | {change} | {row["verdict"]} |')
-    if comparison.get('incomplete'):
-        rows += ['', '**Incomplete comparison:** see its summary.md.']
-    return rows + ['', '| Goal | Old | New |', '|---|---:|---:|', f'| {FILL} | {FILL} | {FILL} |']
+    return perf_compare.pr_table(comparison) + [
+        '', '| Goal | Old | New |', '|---|---:|---:|', f'| {FILL} | {FILL} | {FILL} |']
 
 
 def ticket_from_branch():
@@ -169,8 +161,6 @@ def ticket_from_branch():
     if bd is None:
         return None
     for segment in re.split(r'[/-]', branch):
-        if not TICKET_ID.match(segment):
-            continue
         shown = subprocess.run([bd, 'show', segment, '--json'], capture_output=True, text=True,
                                encoding='utf-8')
         if shown.returncode:
@@ -229,6 +219,7 @@ def main(argv=None):
     new.add_argument('--ticket', help='backlog id; default: from the branch name')
     new.add_argument('--base', default='origin/main')
     new.add_argument('--perf', metavar='DIR', help="perf_compare's --out directory (kind perf)")
+    new.add_argument('--out', '-o', type=Path, help='write the description here as UTF-8; default: stdout')
     checked = commands.add_parser('check', help='fail on markers, a bad Ticket line or a broken diagram')
     checked.add_argument('body', type=Path)
     args = parser.parse_args(argv)
@@ -245,8 +236,12 @@ def main(argv=None):
     if not ticket:
         parser.error('no backlog id found in the branch name; pass --ticket')
     ticket = ticket.removeprefix('autana-')
-    sys.stdout.reconfigure(encoding='utf-8')
-    sys.stdout.write(scaffold(args.kind, ticket, args.base, args.perf))
+    body = scaffold(args.kind, ticket, args.base, args.perf)
+    if args.out:
+        args.out.write_text(body, encoding='utf-8')
+    else:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stdout.write(body)
     return 0
 
 

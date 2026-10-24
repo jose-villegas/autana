@@ -5,7 +5,7 @@ A description is read in under a minute: a paragraph saying what changes and why
 `scripts/pr/pr_body.py new` prints the template with its table filled from the branch, so only the paragraph, the table cells and the diagram are left to write:
 
 ```sh
-python scripts/pr/pr_body.py new --kind change > body.md
+python scripts/pr/pr_body.py new --kind change -o body.md
 python scripts/pr/pr_body.py check body.md && gh pr create --body-file body.md
 ```
 
