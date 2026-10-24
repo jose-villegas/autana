@@ -31,6 +31,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
+#include "collections/strbuf.h"
 #include "core/timing.h"
 
 static const char* TAG = "console";
@@ -180,12 +181,12 @@ console_task(void* arg) {
 static void
 log_listening(void) {
     char line[192];
-    int n = snprintf(line, sizeof line, "listening for 'screenshot'");
-    for (const console_verb_t* entry = shared.first; entry != NULL && n < (int)sizeof line; entry = entry->next) {
-        if (strcmp(entry->name, "screenshot") == 0) {
-            continue;
+    strbuf_t text = strbuf_make(line, sizeof line);
+    strbuf_appendf(&text, "listening for 'screenshot'");
+    for (const console_verb_t* entry = shared.first; entry != NULL; entry = entry->next) {
+        if (strcmp(entry->name, "screenshot") != 0) {
+            strbuf_appendf(&text, ", '%s'", entry->name);
         }
-        n += snprintf(line + n, sizeof(line) - (size_t)n, ", '%s'", entry->name);
     }
     ESP_LOGI(TAG, "%s on the console", line);
 }

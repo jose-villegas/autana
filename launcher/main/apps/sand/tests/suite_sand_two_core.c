@@ -10,6 +10,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "collections/strbuf.h"
 #include "core/job.h"
 #include "core/timing.h"
 
@@ -1166,13 +1167,13 @@ tc_body_breaks_at(cell_t fill, material_id_t material, int tx, int ty, bool two_
  * upstream chunk of a border first for the other half. */
 static void
 tc_assert_no_direction_breaks_a_body(cell_t fill, material_id_t material, bool two_core, const char* what) {
-    char broke[128] = "";
-    size_t used = 0;
+    char broke[128];
+    strbuf_t text = strbuf_make(broke, sizeof broke);
 
     for (size_t g = 0; g < sizeof tc_ring / sizeof tc_ring[0]; g++) {
         const int at = tc_body_breaks_at(fill, material, tc_ring[g][0], tc_ring[g][1], two_core);
-        if (at >= 0 && used < sizeof broke - 1) {
-            used += (size_t)snprintf(broke + used, sizeof broke - used, " %d,%d@%d", tc_ring[g][0], tc_ring[g][1], at);
+        if (at >= 0) {
+            strbuf_appendf(&text, " %d,%d@%d", tc_ring[g][0], tc_ring[g][1], at);
         }
     }
 
@@ -1293,8 +1294,8 @@ static void
 test_a_split_rising_body_of_gas_opens_no_gap(void) {
     static const int pulls[][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
     const int side = tc_force_square_side(TC_W, TC_H);
-    char parted[128] = "";
-    size_t used = 0;
+    char parted[128];
+    strbuf_t text = strbuf_make(parted, sizeof parted);
 
     /* The run has to cross a border, and its shaft has to clear the walls. */
     TEST_ASSERT_TRUE(2 * side < TC_W);
@@ -1302,9 +1303,8 @@ test_a_split_rising_body_of_gas_opens_no_gap(void) {
 
     for (size_t i = 0; i < sizeof pulls / sizeof pulls[0]; i++) {
         for (int phase = 0; phase < TC_SHAFT_PHASES; phase++) {
-            if (!tc_gas_shaft_matches_serial(side, pulls[i][0], pulls[i][1], phase) && used < sizeof parted - 1) {
-                used +=
-                    (size_t)snprintf(parted + used, sizeof parted - used, " %d,%d@%d", pulls[i][0], pulls[i][1], phase);
+            if (!tc_gas_shaft_matches_serial(side, pulls[i][0], pulls[i][1], phase)) {
+                strbuf_appendf(&text, " %d,%d@%d", pulls[i][0], pulls[i][1], phase);
             }
         }
     }

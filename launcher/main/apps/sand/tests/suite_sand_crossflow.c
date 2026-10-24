@@ -3,6 +3,7 @@
 
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
+#include "collections/strbuf.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -414,8 +415,8 @@ crossflow_level_faults(int px, int py) {
 
 static void
 test_crossflow_levels_a_line_across_every_border(void) {
-    char report[256] = "";
-    size_t used = 0;
+    char report[256];
+    strbuf_t text = strbuf_make(report, sizeof report);
     int faulty = 0;
 
     for (int px = -1; px <= 1; px++) {
@@ -428,7 +429,7 @@ test_crossflow_levels_a_line_across_every_border(void) {
                 continue;
             }
             faulty++;
-            used += (size_t)snprintf(report + used, sizeof report - used, " ray %d,%d faults %u", px, py, faults);
+            strbuf_appendf(&text, " ray %d,%d faults %u", px, py, faults);
         }
     }
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, faulty, report);
