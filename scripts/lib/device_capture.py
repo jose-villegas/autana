@@ -26,7 +26,7 @@ SUITE_OVERFLOW_RE = re.compile(r"SUITE OVERFLOW:")
 CRASH_LINE_RE = re.compile(r"Guru Meditation|panic'ed|abort\(\) was called|assert failed:")
 # Any line worth a look in a capture: an error, panic, abort or assert, or an
 # ESP-IDF "E (tick)" log line.
-ERROR_LINE_RE = re.compile(r"(?:error|panic|abort|assert|^E \(\d+\))", re.I)
+ERROR_LINE_RE = re.compile(r"(?:\berror\b|\bpanic\b|\babort\b|\bassert\b|^E \(\d+\))", re.I)
 # The ROM prints its banner and reset cause; firmware prints RESET_REASON.
 # A USB reset gap can hide any of them, so count the most frequent form.
 BOOT_BANNER = "ESP-ROM:esp32s3"
