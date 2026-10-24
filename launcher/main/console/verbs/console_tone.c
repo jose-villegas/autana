@@ -43,20 +43,24 @@ console_tone_start(sound_voice_t* voice, uint16_t hz, uint8_t gain) {
     return true;
 }
 
-/* Drains the IMU FIFO; with `shake` NULL the samples are dropped to open a window.
- * The FIFO has one drainer, so a check run inside an app that drains it shares it. */
+/* The IMU queue's one consumer for the check; an app that also takes from it splits the samples. */
+typedef struct {
+    imu_sample_t samples[IMU_FIFO_SAMPLES];
+    uint8_t lost_before[IMU_FIFO_SAMPLES];
+} tone_shake_buffer_t;
+
+/* Takes the queued samples; with `shake` NULL they are dropped to open a window. */
 static bool
-tone_shake_read(imu_sample_t fifo[IMU_FIFO_SAMPLES], imu_vibration_t* shake) {
-    int lost = 0;
-    bool overflowed = false;
-    const int count = imu_read_fifo(fifo, &lost, &overflowed);
-    return count >= 0 && (!shake || imu_vibration_measure(fifo, count, shake));
+tone_shake_read(tone_shake_buffer_t* fifo, imu_vibration_t* shake) {
+    bool gap = false;
+    const int count = imu_take_fifo(fifo->samples, fifo->lost_before, &gap);
+    return count >= 0 && (!shake || imu_vibration_measure(fifo->samples, count, shake));
 }
 
-/* audio_loopback_measure() plus the board's vibration over the newest IMU_FIFO_SAMPLES of
- * the same window, read at IMU_BUZZ_ODR_CODE; `shake->samples` stays zero without an IMU reading. */
+/* audio_loopback_measure() plus the board's vibration over the newest IMU_FIFO_SAMPLES the IMU
+ * task queued in the same window, read at IMU_BUZZ_ODR_CODE; `shake->samples` stays zero without one. */
 static bool
-tone_measure(const console_tone_args_t* args, float* db, audio_loopback_result_t* result, imu_sample_t* fifo,
+tone_measure(const console_tone_args_t* args, float* db, audio_loopback_result_t* result, tone_shake_buffer_t* fifo,
              imu_vibration_t* shake) {
     const bool opened = fifo && tone_shake_read(fifo, NULL);
     const bool ok = audio_loopback_measure(args->hz, args->ms, db, result);
@@ -75,8 +79,8 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     float tone_db = 0;
     audio_loopback_result_t loopback = {0};
     sound_voice_t voice = SOUND_VOICE_NULL;
-    imu_sample_t* fifo = imu_ready() ? memory_alloc(IMU_FIFO_SAMPLES * sizeof *fifo, MEMORY_PSRAM) : NULL;
-    const bool fast = fifo && imu_set_odr_code(IMU_BUZZ_ODR_CODE);
+    tone_shake_buffer_t* fifo = imu_ready() ? memory_alloc(sizeof *fifo, MEMORY_PSRAM) : NULL;
+    const bool fast = fifo && imu_set_odr(IMU_BUZZ_ODR_CODE);
     if (!fast) {
         memory_free(fifo);
         fifo = NULL;
@@ -91,7 +95,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
               && tone_measure(args, &tone_db, &loopback, fifo, &tone_shake);
     ok = console_tone_stop(&voice) && ok;
     memory_free(fifo);
-    ok = (!fast || imu_set_odr_code(IMU_ODR_CODE)) && ok;
+    ok = (!fast || imu_set_odr(IMU_ODR_CODE)) && ok;
     if (held) {
         timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
     }

@@ -62,7 +62,7 @@ input_read_motion_batch(input_motion_batch_t* out) {
     last_us += (int64_t)count * INPUT_MOTION_SAMPLE_US;
     out->count = mathi_min(count, INPUT_MOTION_SAMPLES);
     out->gap = count > INPUT_MOTION_SAMPLES;
-    out->lost = 0;
+    memset(out->lost_before, 0, sizeof out->lost_before);
     for (int i = 0; i < out->count; i++) {
         input_read_motion(&out->samples[i]);
     }

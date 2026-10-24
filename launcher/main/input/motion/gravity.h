@@ -78,6 +78,8 @@ void gravity_reset(gravity_t* g);
  * dt_us is clamped to GRAVITY_MAX_DT_US; zero dt skips prediction and blending.
  * Zero acceleration cannot correct down; only the initial prime may snap at zero dt. */
 void gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_us);
+/* Lost-sample duration, bounded by GRAVITY_MAX_DT_US. */
+uint32_t gravity_held_us(uint8_t lost);
 /* A gap soft-restarts correction; lost time holds the previous rotation before delivered samples. */
 void gravity_update_batch(gravity_t* g, const input_motion_batch_t* batch);
 /* Unit down vector in screen axes, including during free fall. */

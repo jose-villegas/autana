@@ -16,8 +16,8 @@ shake over both windows.
 
 | Quantity | Source | Detail |
 |---|---|---|
-| Shake (mg RMS) | IMU accelerometer FIFO, read at the end of each window | Spread of each sample around the window's mean. The mean holds gravity and tilt, so only shaking remains |
-| IMU rate | `IMU_BUZZ_ODR_CODE` during the check, `IMU_ODR_CODE` after | The sensor's default bandwidth is half its rate, so the normal rate is blind above about 110 Hz; the check runs it 4x faster |
+| Shake (mg RMS) | IMU accelerometer samples the IMU task queued during each window | Spread of each sample around the window's mean. The mean holds gravity and tilt, so only shaking remains |
+| IMU rate | `IMU_BUZZ_ODR_CODE` during the check, `IMU_ODR_CODE` after | The sensor's default bandwidth is half its rate, so the normal rate is blind above about 110 Hz; the check asks the IMU task to run it 4x faster, and each switch queues a gap |
 | Window | the newest `IMU_FIFO_SAMPLES` samples of the tone | Long enough for three cycles of the lowest tone |
 | Silence (mg RMS) | the same reading over the silent window | The noise floor; shake counts only at twice this |
 | Tone, THD (dBFS, dB) | the loopback Goertzel at the tone and its harmonics | As in [Audio-Path.md](Audio-Path.md) |
