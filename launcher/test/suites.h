@@ -69,6 +69,10 @@ const char* suites_current(void);
 void suites_wait_on(const char* pack);
 void suites_print_waiting(void);
 
+/* Calls `each` for every registered suite, in name order. */
+typedef void (*suite_each_fn)(const char* name, bool on_request, void* context);
+void suites_each(suite_each_fn each, void* context);
+
 /* Runs every registered suite, in name order so the output is stable. */
 void suites_run_all(void);
 

@@ -156,6 +156,7 @@ class PipelineMeasuresTests(unittest.TestCase):
         from types import SimpleNamespace as NS
         from r3d import mesh_import, lit_mesh
         source = NS(p=np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [1., 1., 0.]]),
+                    tri_o=np.zeros(4, dtype=int), object_names=["mesh"],
                     tri_v=np.array([[0, 1, 2], [1, 3, 2], [0, 1, 2], [0, 1, 2]]), tri_t=np.zeros((4, 3), dtype=int),
                     tri_m=np.array([0, 1, 0, 0]), uv=[], textures={}, names=["surface", "foliage"])
         settings = NS(seed=5, position_scale=None, alpha_keep=.5, thin=NS(material="foliage", keep=0),
@@ -163,7 +164,7 @@ class PipelineMeasuresTests(unittest.TestCase):
         job = NS(settings=settings, renderer=NS(visibility=object(), face_samples=None), bake=None)
         recorder = process_budget.StepRecorder(probe=lambda gpu: (100, None), interval=None)
         with patch.object(mesh_import, "load_source", return_value=source), \
-                patch.object(mesh_import, "drop_masked", return_value=(source.tri_v[:3], source.tri_t[:3], source.tri_m[:3])), \
+                patch.object(mesh_import, "drop_masked", return_value=(source.tri_v[:3], source.tri_t[:3], source.tri_m[:3], np.array([True, True, True, False]))), \
                 patch.object(mesh_import, "RayQuery"), \
                 patch.object(mesh_import, "visible_triangles", return_value=np.array([True, True, False])), \
                 patch.object(mesh_import, "shade_unlit", side_effect=lambda src, mat, p, t: (p, np.zeros_like(p), t)):
