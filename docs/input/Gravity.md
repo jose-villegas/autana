@@ -77,7 +77,10 @@ flowchart LR
 
 ## Bias learning
 
-![Stationary gyro offset converges within the settling target](../images/input/gravity-bias.png)
+![The device rocks about flat while the estimate of down converges on true down and the gyro bias error decays](../images/input/gravity-bias.gif)
+
+The device rocks about flat with a known gyro offset. Its readings pass through `imu_axes_screen()` into `gravity_update_batch()`.
+Device and IMU placement come from `board/board_geometry.h`.<sup>[[89]](../Citations.md#89)</sup>
 
 | Condition | Effect |
 |---|---|
