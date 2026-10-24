@@ -2,13 +2,14 @@
 
 | File | Purpose |
 |---|---|
+| [examples_doc.py](examples_doc.py) | Embeds tracked C examples in their owning documents. |
 | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | Bakes the boot animation timeline. |
 | [gen_draw_dither_patterns.py](gen_draw_dither_patterns.py) | Bakes the ordered-dither threshold ranks `draw_dither.h` reads. |
 | [gen_draw_palette_standard.py](gen_draw_palette_standard.py) | Bakes standard graphics palette data. |
 | [gen_skin_light_directions.c](gen_skin_light_directions.c) | Bakes unit directions with the math package's octahedral decoder. |
 | [gen_skin_light_directions.sh](gen_skin_light_directions.sh) | Compiles and runs the host direction generator. |
 | [bake_ui_layout.py](bake_ui_layout.py) | Runs the C++ authored-layout baker built in `editor/build`. |
-| [shared_helpers.py](shared_helpers.py) | Writes the shared-owner catalogue from file banners and public names. |
+| [package_headers.py](package_headers.py) | Writes each package README's header table from header banners. |
 | [gen_zeta_curve.py](gen_zeta_curve.py) | Bakes the boot animation curve. |
 | [draw_palette_gen.c](draw_palette_gen.c) | Portable palette table calculations shared by host tools and tests. |
 | [draw_palette_gen.h](draw_palette_gen.h) | OKLab colour space and palette table calculations for host generators. |

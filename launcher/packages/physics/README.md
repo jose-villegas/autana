@@ -17,7 +17,7 @@ target. Host scripts discover sources and suites through
 
 ## Headers
 
-<!-- generated: package-physics-headers check: python launcher/tools/gen/shared_helpers.py --check -->
+<!-- generated: package-physics-headers check: python launcher/tools/gen/package_headers.py --check -->
 | Header | Purpose |
 |---|---|
 | [include/physics/spring/spring_line.h](include/physics/spring/spring_line.h) | spring_line, a row of points on springs: each is pulled toward rest and toward its neighbours, so a push travels along the row as a wave and dies away. |

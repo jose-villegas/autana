@@ -66,7 +66,7 @@ int main(void) {
 ''')
             binary = work / "probe.exe"
             main = ROOT / "launcher/main"
-            sources = [*sorted((main / "render").rglob("*.c")), *(main / name for name in ("core/job.c", "services/tune.c", "asset/asset_pack.c"))]
+            sources = [*sorted((main / "render").rglob("*.c")), *(main / name for name in ("core/job.c", "core/tune.c", "asset/asset_pack.c"))]
             command = ["gcc", "-std=gnu11", "-ffunction-sections", "-fdata-sections",
                        "-I", str(work), *(arg for root in packages.include_roots() for arg in ("-I", str(root))),
                        "-I", str(ROOT / "launcher/test/stubs"), str(source),

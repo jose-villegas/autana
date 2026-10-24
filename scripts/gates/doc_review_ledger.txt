@@ -37,7 +37,6 @@ docs/tools/Render-Harness.md	2026-10-10	GPU input fingerprint, record lookup and
 docs/plans/Cached-Bakes-Design-Sketch.md	2026-10-10	GPU workflow trigger and current_stamp rows reviewed against doc_stages.py and doc-images-gpu.yml, accurate
 docs/math/README.md	2026-10-11
 docs/math/README.md	2026-10-12
-docs/tools/Shared-Helpers.md	2026-10-12
 docs/plans/UI-Editor-Plan.md	2026-10-14
 docs/audio/Audio-Path.md	2026-10-17	checked against audio/, console_tone.c and the committed capture
 docs/audio/Audio-Path.md	2026-10-17	call and signal diagrams, memory constraint and board settings checked against their source owners
@@ -78,3 +77,5 @@ docs/physics/README.md	2026-10-24	new index for the physics package; links check
 docs/physics/Spring.md	2026-10-24	moved from docs/math/Motion.md with spring_line.h; checked against physics/spring/spring_line.h
 docs/math/Motion.md	2026-10-24	spring_line section moved to docs/physics/Spring.md; checked against orbit_motion.h
 docs/math/Stats.md	2026-10-24	formulas and rank figure, docs-reviewer pass
+docs/tools/Pull-Requests.md	2026-10-24	new page, docs-reviewer pass
+.github/pull_request_template.md	2026-10-24	new template, docs-reviewer pass

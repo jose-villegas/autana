@@ -41,10 +41,10 @@ reciprocal-square-root seeds by default; the QEMU defaults disable it.
 
 Every header and what it is for; the functions each family offers are in
 [docs/math/README.md](../../../docs/math/README.md).
-`python launcher/tools/gen/shared_helpers.py` regenerates this table from each
+`python launcher/tools/gen/package_headers.py` regenerates this table from each
 header's opening comment; `--check` verifies it.
 
-<!-- generated: package-math-headers check: python launcher/tools/gen/shared_helpers.py --check -->
+<!-- generated: package-math-headers check: python launcher/tools/gen/package_headers.py --check -->
 | Header | Purpose |
 |---|---|
 | [include/math/geometry/ball_template.h](include/math/geometry/ball_template.h) | ball_template: closed balls in any dimension for one number type; see docs/math/Conventions.md#templates for macro arguments. |
