@@ -1431,12 +1431,34 @@ empty_run_end(const uint8_t* row, int x0, int x1) {
     return x0;
 }
 
-/* try_fall_or_scatter_impl()/try_slide_impl() live here, static inline,
- * same reason as dest_row()/mark_rows(): hottest path, called once per
- * grain per step. Un-static-ing them loses inlining at sand.c's hot site.
- * sand_gas.c calls the _impl forms directly too: routing it through the
- * non-inline wrappers in sand.c cost every gas grain a
- * cross-translation-unit call (see its call site). */
+/* What one row of a sweep hands the movers below: the three rows a grain on
+ * `row` can reach - the fall and both slides - its stamp bits, and the
+ * columns the caller owns. The gravity sweep (sand.c) and the gas walk
+ * (sand_gas.c) each build one per row; a span cut into pieces pays for it
+ * once per piece per row, not once per grain. */
+typedef struct {
+    uint8_t *row, *prow, *arow, *brow;
+    const uint8_t* stamp_row;
+    int y, x0, x1;
+} mover_row_t;
+
+/* What holds for a whole pass: the fall, the two slides, where load is read
+ * from, the shake, and driven_by_gravity()'s table. The gas walk fills it with
+ * the reversed vectors. `driven` is indexed by the caller's own key -
+ * step_one_grain() (sand.c) by row (grain >> 3) over MATERIAL_ROWS, sand_gas.c
+ * by material id over MATERIAL_MAX - so try_slide() takes that key, not the
+ * grain's id. */
+typedef struct {
+    int dx, dy;
+    int slide_a[2], slide_b[2];
+    int load_dx, load_dy, jostle;
+    bool (*driven)[2];
+} mover_pass_t;
+
+/* The movers live here, static inline, same reason as dest_row()/mark_rows():
+ * hottest path, called once per grain per step from both sweeps. Taking the
+ * row and pass by pointer keeps every call at a handful of registers - a flat
+ * list regressed on RISC-V, which has eight to overflow. */
 
 /* Static materials never yield regardless of density, so a wall stays a
  * wall - the general "yields to denser" rule below has this one
@@ -1493,142 +1515,95 @@ slide_chance(const material_t* m, int load, int jostle) {
 }
 
 static inline bool
-try_scatter(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx,
-            const int* slide_a, const int* slide_b, cell_t grain, uint8_t density, int scatter) {
-    if (scatter == 0 || !cell_open(prow, x + dx, w, density, CELL_MATERIAL(grain))) {
+try_scatter(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_t grain, uint8_t density, int scatter) {
+    if (scatter == 0 || !cell_open(r->prow, x + p->dx, s->w, density, CELL_MATERIAL(grain))) {
         return false;
     }
 
-    const uint32_t r = sand_rng_next_at(s, x, y, SAND_RNG_SLOT_SCATTER);
-    if ((int)(r & 0xFF) >= scatter) {
+    const uint32_t rnd = sand_rng_next_at(s, x, r->y, SAND_RNG_SLOT_SCATTER);
+    if ((int)(rnd & 0xFF) >= scatter) {
         return false;
     }
 
-    if ((r & 0x100) == 0) {
-        const bool pick_a = (r & 0x200) != 0;
-        uint8_t* drow = pick_a ? arow : brow;
-        const int ddx = pick_a ? slide_a[0] : slide_b[0];
-        const int ddy = pick_a ? slide_a[1] : slide_b[1];
+    if ((rnd & 0x100) == 0) {
+        const bool pick_a = (rnd & 0x200) != 0;
+        const int* const d = pick_a ? p->slide_a : p->slide_b;
 
-        if (move_to(row, drow, x, x + ddx, w, grain, density)) {
-            mark_slide(s, x, y, x + ddx, y + ddy);
+        if (move_to(r->row, pick_a ? r->arow : r->brow, x, x + d[0], s->w, grain, density)) {
+            mark_slide(s, x, r->y, x + d[0], r->y + d[1]);
         }
     }
     return true;
 }
 
 static inline bool
-try_fall_or_scatter_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w,
-                         int dx, int dy, const int* slide_a, const int* slide_b, cell_t grain, uint8_t density,
-                         int scatter) {
-    if (try_scatter(s, row, prow, arow, brow, x, y, w, dx, slide_a, slide_b, grain, density, scatter)) {
+try_fall_or_scatter(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_t grain, uint8_t density,
+                    int scatter) {
+    if (try_scatter(s, r, p, x, grain, density, scatter)) {
         return true;
     }
 
-    if (move_to(row, prow, x, x + dx, w, grain, density)) {
-        mark_slide(s, x, y, x + dx, y + dy);
+    if (move_to(r->row, r->prow, x, x + p->dx, s->w, grain, density)) {
+        mark_slide(s, x, r->y, x + p->dx, r->y + p->dy);
         return true;
     }
     return false;
-}
-
-static inline void
-pick_slide_order(uint32_t r, uint8_t* arow, uint8_t* brow, const int* slide_a, const int* slide_b, uint8_t driven_row,
-                 bool driven[][2], uint8_t** first_row, int* first_dx, int* first_dy, bool* first_driven,
-                 uint8_t** second_row, int* second_dx, int* second_dy, bool* second_driven) {
-    if (r & 1) {
-        *first_row = arow;
-        *first_dx = slide_a[0];
-        *first_dy = slide_a[1];
-        *first_driven = driven[driven_row][0];
-        *second_row = brow;
-        *second_dx = slide_b[0];
-        *second_dy = slide_b[1];
-        *second_driven = driven[driven_row][1];
-    } else {
-        *first_row = brow;
-        *first_dx = slide_b[0];
-        *first_dy = slide_b[1];
-        *first_driven = driven[driven_row][1];
-        *second_row = arow;
-        *second_dx = slide_a[0];
-        *second_dy = slide_a[1];
-        *second_driven = driven[driven_row][0];
-    }
 }
 
 /* Friction on slides: grain shuffle depends on surface. Reached if
- * gravity-ward move fails. Grain skips this in open air. */
+ * gravity-ward move fails. Grain skips this in open air. The two slides are
+ * tried in an order drawn from `rnd`, each only where gravity drives it. */
 static inline bool
-try_slide_pair(sand_t* s, uint8_t* row, int x, int y, int w, cell_t grain, uint8_t density, const material_t* mat,
-               int load_dx, int load_dy, int jostle, uint32_t r, uint8_t* first_row, int first_dx, int first_dy,
-               bool first_driven, uint8_t* second_row, int second_dx, int second_dy, bool second_driven) {
-    const int load = sand_load_above(s, x, y, load_dx, load_dy);
-    const int allowance = slide_chance(mat, load, jostle);
-    if (allowance < 256 && (int)((r >> 16) & 0xFF) >= allowance) {
+try_slide_pair(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_t grain, uint8_t driven_row,
+               uint8_t density, const material_t* mat, uint32_t rnd) {
+    const int load = sand_load_above(s, x, r->y, p->load_dx, p->load_dy);
+    const int allowance = slide_chance(mat, load, p->jostle);
+    if (allowance < 256 && (int)((rnd >> 16) & 0xFF) >= allowance) {
         return false;
     }
 
-    if (first_driven && move_to(row, first_row, x, x + first_dx, w, grain, density)) {
-        mark_slide(s, x, y, x + first_dx, y + first_dy);
+    const bool a_first = (rnd & 1) != 0;
+    const bool* const driven = p->driven[driven_row];
+    const int* const first = a_first ? p->slide_a : p->slide_b;
+    const int* const second = a_first ? p->slide_b : p->slide_a;
+
+    if (driven[!a_first] && move_to(r->row, a_first ? r->arow : r->brow, x, x + first[0], s->w, grain, density)) {
+        mark_slide(s, x, r->y, x + first[0], r->y + first[1]);
         return true;
     }
-    if (second_driven && move_to(row, second_row, x, x + second_dx, w, grain, density)) {
-        mark_slide(s, x, y, x + second_dx, y + second_dy);
+    if (driven[a_first] && move_to(r->row, a_first ? r->brow : r->arow, x, x + second[0], s->w, grain, density)) {
+        mark_slide(s, x, r->y, x + second[0], r->y + second[1]);
         return true;
     }
     return false;
 }
 
 static inline bool
-try_slide_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx,
-               int dy, const int* slide_a, const int* slide_b, int load_dx, int load_dy, int jostle, cell_t grain,
-               uint8_t driven_row, uint8_t density, const material_t* mat, bool driven[][2]) {
-    const uint32_t r = sand_rng_next_at(s, x, y, SAND_RNG_SLOT_SLIDE);
-
-    uint8_t *first_row, *second_row;
-    int first_dx, second_dx;
-    int first_dy, second_dy;
-    bool first_driven, second_driven;
-    pick_slide_order(r, arow, brow, slide_a, slide_b, driven_row, driven, &first_row, &first_dx, &first_dy,
-                     &first_driven, &second_row, &second_dx, &second_dy, &second_driven);
+try_slide(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_t grain, uint8_t driven_row,
+          uint8_t density, const material_t* mat) {
+    const uint32_t rnd = sand_rng_next_at(s, x, r->y, SAND_RNG_SLOT_SLIDE);
+    const int jostle = p->jostle;
 
     /* A shaken grain spreads sideways before dropping. Whether that
      * destination is already swept is the sweep order's business -
      * sand_choose_sweep_order() (sand.c) states where it holds. */
-    const bool shaken = jostle > 0 && (int)((r >> 8) & 0xFF) < jostle;
+    const bool shaken = jostle > 0 && (int)((rnd >> 8) & 0xFF) < jostle;
 
-    if (!shaken && jostle > 0 && move_to(row, prow, x, x + dx, w, grain, density)) {
-        mark_slide(s, x, y, x + dx, y + dy);
+    if (!shaken && jostle > 0 && move_to(r->row, r->prow, x, x + p->dx, s->w, grain, density)) {
+        mark_slide(s, x, r->y, x + p->dx, r->y + p->dy);
         return true;
     }
 
-    if (try_slide_pair(s, row, x, y, w, grain, density, mat, load_dx, load_dy, jostle, r, first_row, first_dx, first_dy,
-                       first_driven, second_row, second_dx, second_dy, second_driven)) {
+    if (try_slide_pair(s, r, p, x, grain, driven_row, density, mat, rnd)) {
         return true;
     }
 
-    if (shaken && move_to(row, prow, x, x + dx, w, grain, density)) {
-        mark_slide(s, x, y, x + dx, y + dy);
+    if (shaken && move_to(r->row, r->prow, x, x + p->dx, s->w, grain, density)) {
+        mark_slide(s, x, r->y, x + p->dx, r->y + p->dy);
         return true;
     }
-
     return false;
 }
-
-bool try_fall_or_scatter(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w,
-                         int dx, int dy, const int* slide_a, const int* slide_b, cell_t grain, uint8_t density,
-                         int scatter);
-
-/* `driven_row`/`bool driven[][2]`, not `mat_id`/`driven[MATERIAL_MAX][2]`:
- * step_one_grain() (sand.c) backs this with driven[MATERIAL_ROWS][2]
- * indexed by row (grain >> 3), while sand_gas.c backs it with
- * driven_gas[MATERIAL_MAX][2] indexed by material id - two different real
- * bounds behind the same shape, so naming either one here was never
- * accurate for both callers. */
-bool try_slide(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx,
-               int dy, const int* slide_a, const int* slide_b, int load_dx, int load_dy, int jostle, cell_t grain,
-               uint8_t driven_row, uint8_t density, const material_t* mat, bool driven[][2]);
 
 /* The gas walk passes a REVERSED gravity vector. */
 static inline bool
