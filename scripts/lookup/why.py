@@ -6,23 +6,12 @@
     python scripts/lookup/why.py <name>              every line that names it
     python scripts/lookup/why.py --eval              ranking score over why_eval.tsv
 
-Options: --rev REV (HEAD), --history N (5), --budget CHARS (2000), --json,
---offline, --usage [--days N].
+Options: --rev REV, --history N, --budget CHARS, --json, --offline,
+--usage [--days N].
 
-Every line that exists now is blamed with `git blame --first-parent`, which
-lands it on the main-line commit that brought it in: a squash commit
-`subject (#N)` or a merge commit `Merge pull request #N`, so one pull
-request. The pull requests that own a line now come newest first; for a
-name, the one that first added it joins them. A folder
-counts the lines each pull request changed in it instead, since blaming every
-file would be slow. Pull requests that touched it but own no line now
-follow as a one-line history.
-
-Each of the first FULL_ROWS rows adds the pull request's first paragraph
-(`gh`, cached per pull request in the per-user autana cache, since a merged
-pull request does not change) and the tickets its subject or `Ticket:` line
-names, each with its bd status and title. --offline reads only the cache.
-Nothing is guessed: the same history and cache give the same answer.
+Each line is blamed to the main-line commit, so the pull request, that
+brought it in; the first rows add the pull request's first paragraph (gh,
+cached) and its tickets (bd). docs/tools/Why.md has the sources and order.
 Every lookup is logged locally (scripts/docs/query_log.py).
 """
 import argparse
@@ -48,8 +37,10 @@ REASON_CHARS = 60
 # A name on more lines than this is too common to blame line by line.
 NAME_LINES_BLAMED = 400
 SITES_SHOWN = 3
-# bd waits on other writers of the shared database; past this the notes are left out.
+# bd waits on other writers of the shared database, gh on the network; past
+# these the notes or the description are left out.
 BD_SECONDS = 30
+GH_SECONDS = 30
 EVAL_DEPTH = 10
 SITE_ORDER = {".h": 0, ".c": 1, ".py": 1}
 EVAL_FILE = Path(__file__).with_name("why_eval.tsv")
@@ -60,8 +51,11 @@ MERGE = re.compile(r"^Merge pull request #(\d+)\b")
 # a milestone: "(autana-ks4hn)", "(hacgs)", "(cvt.16 M1)", but not "(cached bakes)".
 SUBJECT_TICKETS = re.compile(r"\(([^()]+)\)$")
 MILESTONE = re.compile(r"^M\d+[a-z]?$")
-TICKET_LINE = re.compile(r"^Ticket:\s*(.+)$", re.MULTILINE)
+# Subjects are not gated, so their ids are held to bd's shape: 4-5 characters, or 3 and a child number.
 TICKET_ID = re.compile(r"^(?:autana-)?(?:[a-z0-9]{4,5}|[a-z0-9]{3}(?=\.))(?:\.\d+)*$")
+# A description's one ticket, in the grammar scripts/gates/check-pr-ticket.sh enforces
+# (a body typed on GitHub keeps CRLF line ends).
+TICKET_LINE = re.compile(r"^Ticket:[ \t]*((?:autana-)?[a-z0-9]+(?:\.[0-9]+)*)[ \t\r]*$", re.MULTILINE)
 RANGE = re.compile(r"^(.+):(\d+)(?:-(\d+))?$")
 
 
@@ -76,8 +70,8 @@ def git(root, *args, check=True):
 class Commit:
     """One main-line commit: the pull request it merged, when it has one."""
 
-    def __init__(self, sha, date, subject, body):
-        self.sha, self.date = sha, date
+    def __init__(self, sha, seconds, date, subject, body):
+        self.sha, self.seconds, self.date = sha, int(seconds), date
         squash, merge = SQUASH.search(subject), MERGE.match(subject)
         self.pr = int((squash or merge).group(1)) if squash or merge else None
         # A merge commit's subject names the branch; its body's first line is the PR title.
@@ -87,28 +81,30 @@ class Commit:
         ids = all(TICKET_ID.match(w) or MILESTONE.match(w) for w in words)
         self.tickets = [w for w in words if TICKET_ID.match(w)] if ids else []
 
+    def row(self):
+        return {"pr": self.pr, "commit": self.sha[:9], "date": self.date, "title": self.title,
+                "tickets": list(self.tickets)}
+
 
 def commits(root, shas):
     """Commit by full sha, for every sha asked."""
     if not shas:
         return {}
-    out = git(root, "show", "-s", "--format=%H%x1f%ad%x1f%s%x1f%b%x1e", "--date=short", *sorted(shas))
+    out = git(root, "show", "-s", "--format=%H%x1f%ct%x1f%ad%x1f%s%x1f%b%x1e", "--date=short", *sorted(shas))
     found = {}
     for record in out.split("\x1e"):
         parts = record.strip("\n").split("\x1f")
-        if len(parts) == 4:
+        if len(parts) == 5:
             found[parts[0]] = Commit(*parts)
     return found
 
 
-def history(root, rev, path=None, name=None):
-    """Main-line commits that changed the path, or the count of the name, newest first."""
-    args = ["log", "--first-parent", "--format=%H", rev]
-    if name:
-        args[3:3] = ["-S", name]
-    if path:
-        args += (["--follow"] if Path(path).suffix else []) + ["--", path]
-    return [line for line in git(root, *args, check=False).splitlines() if line]
+def history(root, rev, *selector):
+    """Main-line commits, newest first, that a git log selector picks:
+    ("--follow", "--", path), ("-L<a>,<b>:<path>",) or ("-S", name)."""
+    options, paths = (selector[:-2], selector[-2:]) if "--" in selector else (selector, ())
+    out = git(root, "log", "--first-parent", "-s", "--format=%H", *options, rev, *paths, check=False)
+    return [line for line in out.splitlines() if line]
 
 
 def blame(root, rev, path, ranges=()):
@@ -120,9 +116,11 @@ def blame(root, rev, path, ranges=()):
     owned = Counter()
     for line in out.splitlines():
         head = line.split(" ")
-        # A porcelain header is "<sha> <orig line> <final line> [<group size>]".
-        if len(head) >= 3 and len(head[0]) == 40 and head[1].isdigit():
-            owned[head[0]] += 1
+        # A porcelain header is "<sha> <orig line> <final line> [<group size>]"; a
+        # shallow clone marks its boundary commit "^<sha>".
+        sha = head[0].lstrip("^")
+        if len(head) >= 3 and len(sha) == 40 and head[1].isdigit():
+            owned[sha] += 1
     return owned
 
 
@@ -141,43 +139,51 @@ def changed(root, rev, path):
 
 def name_sites(root, rev, name):
     """(path, line) of every tracked line that names it as a whole word."""
-    out = git(root, "grep", "-n", "-w", "-F", "-I", "-e", name, rev, check=False)
+    out = git(root, "grep", "-z", "-n", "-w", "-F", "-I", "-e", name, rev, check=False)
     sites = []
     for line in out.splitlines():
-        # rev:path:line:text
-        _, path, number, _ = line.split(":", 3)
-        sites.append((path, int(number)))
+        # -z: rev:path NUL line NUL text, so a ':' in a path cannot split it.
+        where, number, _ = line.split("\0", 2)
+        sites.append((where.removeprefix(f"{rev}:"), int(number)))
     # Code before prose, so the declaring header leads the shown sites.
     return sorted(sites, key=lambda site: (SITE_ORDER.get(Path(site[0]).suffix, len(SITE_ORDER)), site))
 
 
-def kind_of(root, rev, query):
-    """('range', path, [(a, b)]), ('file', path), ('folder', path) or ('name', query)."""
-    def object_type(path):
-        done = subprocess.run(["git", "-C", str(root), "cat-file", "-t", f"{rev}:{path}"],
-                              capture_output=True, text=True)
-        return done.stdout.strip() if done.returncode == 0 else None
+def kind_of(root, rev, query, prefix=""):
+    """('range', path, (a, b)), ('file', path), ('folder', path) or ('name', query).
+    A path is tried from the folder the command runs in (prefix), then from the root."""
+    def resolve(path):
+        for whole in dict.fromkeys((prefix + path, path)):
+            kind = git(root, "cat-file", "-t", f"{rev}:{whole}", check=False).strip()
+            if kind:
+                return kind, whole
+        return None, path
 
     query = query.replace("\\", "/")
     found = RANGE.match(query)
-    if found and object_type(found.group(1)) == "blob":
-        start = int(found.group(2))
-        return ("range", found.group(1), [(start, int(found.group(3) or start))])
-    kind = object_type(query.rstrip("/"))
+    if found:
+        kind, path = resolve(found.group(1))
+        if kind == "blob":
+            start = int(found.group(2))
+            return ("range", path, (start, int(found.group(3) or start)))
+    kind, path = resolve(query.rstrip("/"))
     if kind == "blob":
-        return ("file", query)
+        return ("file", path)
     if kind == "tree":
-        return ("folder", query.rstrip("/"))
+        return ("folder", path)
     return ("name", query)
 
 
-def rank(root, rev, query):
+def rank(root, rev, query, prefix=""):
     """The answer before any pull request text: target, ranked rows, history tail, sites."""
-    kind = kind_of(root, rev, query)
+    kind = kind_of(root, rev, query, prefix)
     sites, introduced = [], None
-    if kind[0] in ("file", "range"):
-        owned = blame(root, rev, kind[1], kind[2] if kind[0] == "range" else ())
-        touched = history(root, rev, path=kind[1])
+    if kind[0] == "file":
+        owned = blame(root, rev, kind[1])
+        touched = history(root, rev, "--follow", "--", kind[1])
+    elif kind[0] == "range":
+        owned = blame(root, rev, kind[1], [kind[2]])
+        touched = history(root, rev, f"-L{kind[2][0]},{kind[2][1]}:{kind[1]}")
     elif kind[0] == "folder":
         owned = changed(root, rev, kind[1])
         touched = list(owned)
@@ -189,11 +195,11 @@ def rank(root, rev, query):
             by_file.setdefault(path, []).append((line, line))
         for path, lines in by_file.items():
             owned.update(blame(root, rev, path, lines))
-        touched = history(root, rev, name=query)
+        touched = history(root, rev, "-S", query)
         introduced = touched[-1] if touched else None
     known = commits(root, set(owned) | set(touched))
-    # Newest first: in the eval it found the answer sooner than most lines first.
-    alive = sorted(owned, key=lambda sha: (known[sha].date, owned[sha], sha), reverse=True)
+    # Newest first: the change a reader asks about is usually a recent one.
+    alive = sorted(owned, key=lambda sha: (known[sha].seconds, sha), reverse=True)
     if introduced and introduced not in alive:
         alive.append(introduced)
     tail = [sha for sha in touched if sha not in owned and sha != introduced]
@@ -206,9 +212,15 @@ def pr_cache():
     return autana_config.user_cache_dir() / "why" / "pr"
 
 
+def repo_key(root):
+    """The origin remote's owner and name, so clones of different repositories keep apart."""
+    url = re.sub(r"\.git$", "", git(root, "remote", "get-url", "origin", check=False).strip())
+    return "-".join(url.replace(":", "/").split("/")[-2:]) or "local"
+
+
 def pr_text(root, number, offline):
     """{title, body} of a pull request from the cache, else gh (then cached); None when unknown."""
-    cached = pr_cache() / f"{number}.json"
+    cached = pr_cache() / repo_key(root) / f"{number}.json"
     try:
         return json.loads(cached.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -217,7 +229,7 @@ def pr_text(root, number, offline):
         return None
     try:
         done = subprocess.run([shutil.which("gh") or "gh", "pr", "view", str(number), "--json", "title,body,state"],
-                              cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=30)
+                              cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=GH_SECONDS)
     except (OSError, subprocess.TimeoutExpired):
         return None
     if done.returncode:
@@ -266,20 +278,18 @@ def tickets(ids):
     return found
 
 
-def answer(root, rev, query, offline=False, with_tickets=True):
-    found = rank(root, rev, query)
+def answer(root, rev, query, offline=False, with_tickets=True, bodies=True, prefix=""):
+    """Rows, history and sites; bodies=False reads no pull request text at all."""
+    found = rank(root, rev, query, prefix)
     rows = []
     for i, (commit, lines) in enumerate(found["rows"]):
-        row = {"pr": commit.pr, "commit": commit.sha[:9], "date": commit.date, "lines": lines,
-               "title": commit.title, "tickets": commit.tickets}
-        if i < FULL_ROWS and commit.pr:
-            text = pr_text(root, commit.pr, offline)
-            if text:
-                row["summary"] = summary(text.get("body"))
-                named = TICKET_LINE.search(text.get("body") or "")
-                if named:
-                    row["tickets"] += [w for w in named.group(1).replace(",", " ").split()
-                                       if TICKET_ID.match(w) and w not in row["tickets"]]
+        row = {**commit.row(), "lines": lines}
+        text = pr_text(root, commit.pr, offline) if bodies and i < FULL_ROWS and commit.pr else None
+        if text:
+            row["summary"] = summary(text.get("body"))
+            named = TICKET_LINE.search(text.get("body") or "")
+            if named and named.group(1) not in row["tickets"]:
+                row["tickets"].append(named.group(1))
         rows.append(row)
     if with_tickets:
         ids = [t for row in rows[:FULL_ROWS] for t in row["tickets"][:TICKETS_PER_ROW]]
@@ -289,8 +299,7 @@ def answer(root, rev, query, offline=False, with_tickets=True):
     return {"kind": found["kind"], "target": query, "lines": found["lines"],
             "sites": first_per_file(found["sites"])[:SITES_SHOWN],
             "site_count": len(found["sites"]), "rows": rows,
-            "history": [{"pr": c.pr, "commit": c.sha[:9], "date": c.date, "title": c.title}
-                        for c in found["history"]]}
+            "history": [c.row() for c in found["history"]]}
 
 
 def first_per_file(sites):
@@ -322,20 +331,23 @@ def render(reply, budget, history_rows):
             if row.get("summary"):
                 block.append(f"    {row['summary']}")
             for note in row.get("ticket_notes", []):
-                reason = f" ({note['reason'][:REASON_CHARS]})" if note["reason"] else ""
+                reason = f" ({note['reason'][:REASON_CHARS].rstrip()})" if note["reason"] else ""
                 block.append(f"    {note['id']}  {note['status']}{reason}  {note['title']}")
         if sum(len(x) + 1 for x in lines + block) > budget:
             break
         lines += block
         shown += 1
-    tail = [f"{label(h)} {h['date']} {h['title']}" for h in reply["history"][:history_rows]]
-    if tail and shown == len(rows):
+    older_shown = 0
+    if shown == len(rows) and reply["history"]:
+        tail = [f"{label(h)} {h['date']} {h['title']}" for h in reply["history"][:history_rows]]
         line = "history: " + "; ".join(tail)
         if sum(len(x) + 1 for x in lines) + len(line) <= budget:
             lines.append(line)
-    hidden = len(rows) - shown + max(len(reply["history"]) - (history_rows if shown == len(rows) else 0), 0)
-    if hidden > 0:
-        lines.append(f"+{hidden} more (--budget, --history or --json)")
+            older_shown = len(tail)
+    left = [f"{n} {what}" for n, what in ((len(rows) - shown, "more PRs"),
+                                         (len(reply["history"]) - older_shown, "older")) if n]
+    if left:
+        lines.append(f"+{' and '.join(left)} (--budget, --history or --json)")
     return lines
 
 
@@ -355,7 +367,7 @@ def eval_rank(reply, expected):
     for i, row in enumerate(ordered[:EVAL_DEPTH], 1):
         if expected.startswith("#") and row["pr"] == int(expected[1:]):
             return i
-        if not expected.startswith("#") and ticket in {t.removeprefix("autana-") for t in row.get("tickets", [])}:
+        if not expected.startswith("#") and ticket in {t.removeprefix("autana-") for t in row["tickets"]}:
             return i
     return None
 
@@ -364,21 +376,22 @@ def run_eval(root, rev):
     started = time.perf_counter()
     ranks = []
     for query, expected, asked in load_eval():
-        # Answered on the main line as it stood when the question was asked.
+        # Answered on the main line as it stood when the question was asked, from
+        # git alone, so every machine scores the same history the same.
         then = git(root, "rev-list", "-1", "--first-parent", f"--before={asked}", rev).strip()
-        reply = answer(root, then, query, offline=True, with_tickets=False)
+        reply = answer(root, then, query, with_tickets=False, bodies=False)
         found = eval_rank(reply, expected)
         print(f"{found or '-':>2}  {expected:<14} {query}")
         ranks.append((query, found))
-    return query_log.keep_score(TOOL, "offline", ranks, started)
+    return query_log.keep_score(TOOL, "git", ranks, started)
 
 
 def repo_root():
     """The checkout the command runs in, so any clone answers for its own history."""
-    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
-    if out.returncode:
+    top = git(Path.cwd(), "rev-parse", "--show-toplevel", check=False).strip()
+    if not top:
         raise SystemExit("why.py runs inside a git checkout")
-    return Path(out.stdout.strip())
+    return Path(top)
 
 
 def main(argv=None, root=None):
@@ -391,13 +404,14 @@ def main(argv=None, root=None):
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--eval", action="store_true")
     parser.add_argument("--usage", action="store_true")
-    parser.add_argument("--days", type=int, default=14)
+    parser.add_argument("--days", type=int, default=0)
     args = parser.parse_args(argv)
     # PR text carries any Unicode; a Windows console or pipe may not.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if args.usage:
         return query_log.main(["--days", str(args.days), "--tool", TOOL])
+    prefix = "" if root else git(Path.cwd(), "rev-parse", "--show-prefix", check=False).strip()
     root = root or repo_root()
     if args.eval:
         run_eval(root, args.rev)
@@ -405,7 +419,7 @@ def main(argv=None, root=None):
     if not args.query:
         parser.error("give a path, path:line or name")
     with query_log.lookup(TOOL, "why", args.query) as call:
-        reply = answer(root, args.rev, args.query, offline=args.offline)
+        reply = answer(root, args.rev, args.query, offline=args.offline, prefix=prefix)
         call.hits = [(label(r), r["lines"]) for r in reply["rows"]]
         call.weak = not reply["rows"] and not reply["history"]
         if args.json:
