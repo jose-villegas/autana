@@ -27,7 +27,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config
 from device_lock import board_label
-from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE, suite_failure_signs  # noqa: E402
+from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, ERROR_LINE_RE, RESULT_RE, SELFTEST_COMPLETE_RE,
+                            crash_signs, results, suite_failure_signs)  # noqa: E402
 
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
@@ -61,6 +62,37 @@ FRAME_TIME_PHASE_RE = re.compile(
 BUDGET_TABLE_HEADER = "| Test | Budget (us) | Measured (us) | Headroom | Status |"
 
 REPORTER_TIMEOUT_SECONDS = 120
+MAX_ERROR_LINES = 15
+ERRORS_HEADING = "## Errors"
+
+
+def errors_markdown(text, boots_allowed):
+    """Crashes, resets and error/assert lines, so a run is read here and not in the raw log."""
+    signs = crash_signs(text, boots_allowed)
+    errors = [line.strip() for line in text.splitlines()
+              if ERROR_LINE_RE.search(line) and not RESULT_RE.match(line.strip())]
+    lines = [ERRORS_HEADING, ""]
+    if not signs and not errors:
+        return lines + ["None.", ""]
+    lines += ["- " + sign for sign in signs]
+    lines += ["- `" + line + "`" for line in errors[:MAX_ERROR_LINES]]
+    if len(errors) > MAX_ERROR_LINES:
+        lines.append(f"- {len(errors) - MAX_ERROR_LINES} more error lines in the capture")
+    return lines + [""]
+
+
+def errors_section(report_markdown):
+    """The lines under the report's Errors heading, without blanks."""
+    lines = report_markdown.splitlines()
+    if ERRORS_HEADING not in lines:
+        return []
+    section = []
+    for line in lines[lines.index(ERRORS_HEADING) + 1:]:
+        if line.startswith("#"):
+            break
+        if line.strip():
+            section.append(line)
+    return section
 
 
 def records_root():
@@ -421,6 +453,9 @@ def build_report_markdown(capture_path, index_path):
         else:
             lines.append("No `PASS`/`FAIL` result lines found in this capture.")
             lines.append("")
+
+    from_reset = entry and entry.get("command") == "selftest"
+    lines.extend(errors_markdown(text, BOOTS_FROM_RESET if from_reset else BOOTS_ON_RUNNING))
 
     targets, summary_unmet = parse_perf_targets(text)
     if targets or summary_unmet is not None:

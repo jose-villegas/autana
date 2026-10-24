@@ -90,6 +90,7 @@ reporter and output location. It hands the work to
 - writes the report;
 - reflashes release firmware unless given `--no-restore`.
 
+- `autana suite`, `batch` and `selftest` end with `report: <path>` and the report's Errors section: crashes, resets, and error or assert lines, or `None.`. Read that before the raw capture.
 - A report script takes its board from `--board SERIAL`, else the only board plugged in.
 - Its one positional argument is the report path, ending in `.md`.
 - Like every `autana` command it never runs a checkout's own `scripts/device/device.py`; see [Device-Lock](../cli/Device-Lock.md#one-copy-of-the-tools).

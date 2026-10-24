@@ -37,15 +37,18 @@ def base_colour(document, material):
 
 def load_gltf_mesh(path):
     """positions, linear vertex colours, triangles (counter-clockwise, as
-    glTF winds them), each triangle's material index and the material names."""
+    glTF winds them), per-triangle material and object indices, and their names."""
     document, binary = load_asset(path)
     nodes = document.get("nodes", [])
     world = world_matrices(node_parents(nodes), [node_trs(node) for node in nodes])
     names = material_names(document)
     positions, colors, tri_v, tri_m = [], [], [], []
+    tri_o, object_names = [], []
     for index, node in enumerate(nodes):
         if "mesh" not in node:
             continue
+        owner = len(object_names)
+        object_names.append(node.get("name") or f"node_{index}")
         for primitive in document["meshes"][node["mesh"]]["primitives"]:
             if primitive.get("mode", TRIANGLES) != TRIANGLES:
                 raise ValueError(f"{path}: node {node.get('name', index)!r} has a primitive that is not triangles")
@@ -63,6 +66,8 @@ def load_gltf_mesh(path):
             material = primitive["material"] if "material" in primitive else names.index(DEFAULT_MATERIAL)
             tri_v += [(first + flat[i], first + flat[i + 1], first + flat[i + 2]) for i in range(0, len(flat), 3)]
             tri_m += [material] * (len(flat) // 3)
+            tri_o += [owner] * (len(flat) // 3)
     if not tri_v:
         raise ValueError(f"{path}: no mesh holds a triangle")
-    return SimpleNamespace(positions=positions, colors=colors, tri_v=tri_v, tri_m=tri_m, names=names)
+    return SimpleNamespace(positions=positions, colors=colors, tri_v=tri_v, tri_m=tri_m, names=names,
+                           tri_o=tri_o, object_names=object_names)
