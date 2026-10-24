@@ -43,6 +43,7 @@
 
 #include <limits.h>
 
+#include "render/code_layout.h"
 #include "sand_priv.h"
 
 /* Which materials are gas, as a bitmask over the nibble - see
@@ -1084,7 +1085,7 @@ equalise_gas(sand_t* s, const int* perp, int rdx, int rdy) {
 
 /* The whole step. */
 
-void
+CODE_ENTRY_OFFSET(4) void
 sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
               const int* perp_b, int load_dx, int load_dy, int x_step, int jostle) {
     SAND_FORCED_STATE(s);
