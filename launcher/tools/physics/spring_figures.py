@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Plot a spring line's wave for docs/physics/Spring.md; --cc CC --out DIR."""
-import argparse
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "math"))
-from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, SHAPE_ALPHA, run_probe
+from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, SHAPE_ALPHA, probe_into_folder
 from docs.plot_style import INK, LABEL_SIZE, SLOTS, TITLE_SIZE, save, save_gif, subplots, GIF_FRAMES, GIF_FPS
 import numpy as np
 
@@ -62,12 +61,8 @@ def wave_figures(data, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cc", required=True)
-    parser.add_argument("--out", type=pathlib.Path, required=True)
-    args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
-    wave_figures(run_probe(args.cc, (PROBE,)), args.out)
+    data, out = probe_into_folder(__doc__, (PROBE,))
+    wave_figures(data, out)
     return 0
 
 

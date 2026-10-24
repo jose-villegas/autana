@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Plot library trajectories for docs/math/Motion.md; --cc CC --out DIR."""
-import argparse
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from math_figures import (DISPLAY, PANEL_SIZE, PANEL_TITLE_ROOM, ROOT,
-                          VIEW_AZIMUTH, VIEW_ELEVATION, read_define, run_probe)
+                          VIEW_AZIMUTH, VIEW_ELEVATION, read_define, probe_into_folder)
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE,
                              figure, save, save_gif, subplots, wire_sphere, GIF_FPS,
                              ORBIT_GIF_COLORS, WIRE_WIDTH, WIRE_SAMPLES)
@@ -236,16 +235,11 @@ def fit_figure(data, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cc", required=True)
-    parser.add_argument("--out", type=pathlib.Path, required=True)
-    args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
-    data = run_probe(args.cc, SOURCES)
-    orbit_animation(data, args.out / "orbit-fling.gif")
-    decay_figure(data["decay"], args.out / "orbit-fling-decay.png")
-    reset_figure(data["reset"], args.out / "orbit-reset-spring.png")
-    fit_figure(data["fit"], args.out / "orbit-fit-distance.png")
+    data, out = probe_into_folder(__doc__, SOURCES)
+    orbit_animation(data, out / "orbit-fling.gif")
+    decay_figure(data["decay"], out / "orbit-fling-decay.png")
+    reset_figure(data["reset"], out / "orbit-reset-spring.png")
+    fit_figure(data["fit"], out / "orbit-fit-distance.png")
     for run in data["reset"]:
         print(f"reset v0={run['speed']:g}: minimum={run['minimum']:.9g} rad, settle={run['settle']:.3f} s")
     return 0
