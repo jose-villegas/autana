@@ -73,10 +73,7 @@ static bool
 cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
     int beyond[5] = {0};
     for (int i = 0; i < 8; i++) {
-        const float x = (float)(i & 1 ? c->bounds.hi.x : c->bounds.lo.x);
-        const float y = (float)(i & 2 ? c->bounds.hi.y : c->bounds.lo.y);
-        const float z = (float)(i & 4 ? c->bounds.hi.z : c->bounds.lo.z);
-        const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){x, y, z});
+        const vec3f_t l = mat4f_apply(&lens->m, vec3f_from_vec3s(box3s_corner(c->bounds, i), 1.0F));
         beyond[0] += l.z < lens->project.near_z;
         beyond[1] += l.x < -lens->project.cx * l.z;
         beyond[2] += l.x > ((float)lens->width - lens->project.cx) * l.z;

@@ -1,11 +1,11 @@
-#include "render/raster_meshlets.h"
+#include "render/view/raster_meshlets.h"
 
 #include <assert.h>
 #include <string.h>
 
 #include "render/r3d_span.h"
 #include "render/raster.h"
-#include "render/raster_show.h"
+#include "render/view/raster_show.h"
 
 static void
 clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
@@ -27,17 +27,21 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     raster_meshlets_t* state = self->state;
     const uint32_t clusters = (uint32_t)state->raster->instances[instance].mesh->cluster_count;
     assert(state->next > 0 && state->next + clusters <= (uint32_t)UINT16_MAX + 1);
-    *out = (r3d_span_writer_t){.span = raster_attachment_tag, .per_cluster = true, .value = state->next};
+    *out = (r3d_span_writer_t){.span = raster_attachment_tag, .step = R3D_SPAN_STEP_CLUSTER, .value = state->next};
     state->next += clusters;
     return true;
+}
+
+gfx_color_t
+raster_meshlets_color(uint32_t id) {
+    const uint32_t hash = id * 2654435761U;
+    return GFX_RGB(gfx_hue_rgb((int)(((uint64_t)hash * GFX_HUE_TURN) >> 32)));
 }
 
 static gfx_color_t
 pixel_color(const void* pixel, uint16_t clear_color) {
     const uint16_t id = *(const uint16_t*)pixel;
-    const uint32_t hash = (uint32_t)id * 2654435761U;
-    const uint32_t rgb = gfx_hue_rgb((int)(((uint64_t)hash * GFX_HUE_TURN) >> 32));
-    return id == 0 ? clear_color : GFX_RGB(rgb);
+    return id == 0 ? clear_color : raster_meshlets_color(id);
 }
 
 static void
@@ -48,5 +52,10 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_t
 
 raster_attachment_t
 raster_meshlets_view(void* state) {
-    return (raster_attachment_t){sizeof(uint16_t), clear, begin, writer, NULL, show, state};
+    return (raster_attachment_t){.bytes_per_pixel = sizeof(uint16_t),
+                                 .clear = clear,
+                                 .begin = begin,
+                                 .writer = writer,
+                                 .show = show,
+                                 .state = state};
 }

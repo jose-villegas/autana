@@ -2,7 +2,7 @@
  * raster_show: development attachments paint colour from depth or their
  * own per-pixel maps before upscale.
  */
-#include "render/raster_show.h"
+#include "render/view/raster_show.h"
 
 #include <stdbool.h>
 #include <stddef.h>

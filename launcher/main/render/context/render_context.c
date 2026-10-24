@@ -9,15 +9,17 @@
 #include "core/timing.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-#include "render/raster_meshlets.h"
-#include "render/raster_motion.h"
-#include "render/raster_show.h"
+#include "render/view/raster_cull_view.h"
+#include "render/view/raster_meshlets.h"
+#include "render/view/raster_motion.h"
+#include "render/view/raster_show.h"
 
 static const render_debug_view_t views[] = {
-    {"depth", 0, raster_depth_view},
-    {"tiles", 0, raster_depth_tiles_view},
-    {"motion", sizeof(raster_motion_t), raster_motion_view},
-    {"meshlets", sizeof(raster_meshlets_t), raster_meshlets_view},
+    {"depth", 0, raster_depth_view, NULL, NULL},
+    {"tiles", 0, raster_depth_tiles_view, NULL, NULL},
+    {"motion", sizeof(raster_motion_t), raster_motion_view, NULL, NULL},
+    {"meshlets", sizeof(raster_meshlets_t), raster_meshlets_view, NULL, NULL},
+    {"cull", sizeof(raster_cull_t), raster_cull_view, raster_cull_second_view, raster_cull_overlay},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
@@ -190,6 +192,24 @@ fit_scratch(render_context_t* c) {
     c->raster.scratch = c->scratch;
 }
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* The debug view's second draw, when it asks for one, every cluster kept. */
+static void
+draw_second_view(render_context_t* c) {
+    const render_debug_view_t* row = render_context_debug_view(c->debug_view);
+    render_view_t second;
+    if (row == NULL || row->second_view == NULL || !row->second_view(c->debug_view_state, &c->raster, &second)) {
+        return;
+    }
+    /* Its own view and every cluster: neither may steer the frame's core split. */
+    c->raster.split = NULL;
+    c->raster.keep_every_cluster = true;
+    (void)raster_draw(&c->raster, &second);
+    c->raster.keep_every_cluster = false;
+    c->raster.split = &c->split;
+}
+#endif
+
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
@@ -236,6 +256,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.step = current_step(c);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     if (r->attachment_count != 0) {
+        draw_second_view(c);
         raster_show(r);
     }
 #endif
@@ -268,4 +289,33 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
 render_context_frame_t
 render_context_frame(const render_context_t* c) {
     return c->frame;
+}
+
+bool
+render_context_has_overlay(const render_context_t* c) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    const render_debug_view_t* row = render_context_debug_view(c->debug_view);
+    return row != NULL && row->overlay != NULL && c->debug_view_state != NULL;
+#else
+    (void)c;
+    return false;
+#endif
+}
+
+void
+render_context_overlay(const render_context_t* c, int width, int height) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    if (render_context_has_overlay(c)) {
+        render_context_debug_view(c->debug_view)->overlay(c->debug_view_state, width, height);
+    }
+#else
+    (void)c;
+    (void)width;
+    (void)height;
+#endif
+}
+
+const void*
+render_context_debug_view_state(const render_context_t* c) {
+    return c->debug_view_state;
 }

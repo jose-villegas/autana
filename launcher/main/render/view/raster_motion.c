@@ -1,4 +1,4 @@
-#include "render/raster_motion.h"
+#include "render/view/raster_motion.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -7,7 +7,7 @@
 #include "math/scalar/mathf.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
-#include "render/raster_show.h"
+#include "render/view/raster_show.h"
 
 /* While drawing, the attachment holds each pixel's tag: 0 for anything
  * that did not move, i + 1 for instance i that did. Resolving turns the tag
@@ -219,7 +219,13 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_t
 
 raster_attachment_t
 raster_motion_view(void* state) {
-    return (raster_attachment_t){sizeof(raster_motion_px_t), clear, begin, writer, resolve, show, state};
+    return (raster_attachment_t){.bytes_per_pixel = sizeof(raster_motion_px_t),
+                                 .clear = clear,
+                                 .begin = begin,
+                                 .writer = writer,
+                                 .resolve = resolve,
+                                 .show = show,
+                                 .state = state};
 }
 
 void
