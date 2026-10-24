@@ -30,7 +30,9 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "hash/name_hash.h"
 #include "perf_budget.h"
+
 #include "suites.h"
 #include "unity.h"
 
@@ -86,19 +88,6 @@ build_mixed_gravity_flip_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
      * pause reaches, stone included (it was never moving, but the pass
      * still has to notice that). */
     run_steps(real, 300, 0, SCENE_GRAVITY);
-}
-
-/* FNV-1a over the grid, so a host build of the same scene can be compared
- * byte-for-byte against the device at the same steps. Portable for the same
- * reason build_mixed_gravity_flip_scene() is. */
-static uint32_t
-grid_hash(const uint8_t* grid, size_t n) {
-    uint32_t h = 2166136261U;
-    for (size_t i = 0; i < n; i++) {
-        h ^= grid[i];
-        h *= 16777619U;
-    }
-    return h;
 }
 
 /* Cells a soak-only pass would visit for THIS board right now: summed
@@ -203,12 +192,12 @@ test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
 
     sand_reactions_force_full_walk(true);
     run_steps(real, 20, 0, -SCENE_GRAVITY);
-    const uint32_t full_hash = grid_hash(big, (size_t)REAL_W * (size_t)REAL_H);
+    const uint32_t full_hash = name_hash_n(big, (size_t)REAL_W * (size_t)REAL_H);
 
     build_mixed_gravity_flip_scene(real, big, blocks);
     sand_reactions_force_full_walk(false);
     run_steps(real, 20, 0, -SCENE_GRAVITY);
-    const uint32_t fast_hash = grid_hash(big, (size_t)REAL_W * (size_t)REAL_H);
+    const uint32_t fast_hash = name_hash_n(big, (size_t)REAL_W * (size_t)REAL_H);
 
     sand_reactions_force_full_walk(false);
     sand_set_two_core_step(two_core_before);
@@ -1243,7 +1232,7 @@ sweep_floor_settle(sweep_board_t* b, size_t cells) {
 
     while (steps < SWEEP_FLOOR_CAP && quiet < SWEEP_FLOOR_QUIET) {
         sand_step(&b->s, 0, SCENE_GRAVITY, 0);
-        const uint32_t now = grid_hash(b->cells, cells);
+        const uint32_t now = name_hash_n(b->cells, cells);
         quiet = (now == last) ? quiet + 1 : 0;
         last = now;
         steps++;
@@ -1907,11 +1896,11 @@ log_mixed_scene_hashes(void) {
     sand_t* const real = malloc(sizeof *real);
     TEST_ASSERT_NOT_NULL(real);
     build_mixed_gravity_flip_scene(real, big, blocks);
-    ESP_LOGI("xtperf", "scene=mixed_flip hash settled=%08" PRIx32, grid_hash(big, REAL_W * REAL_H));
+    ESP_LOGI("xtperf", "scene=mixed_flip hash settled=%08" PRIx32, name_hash_n(big, REAL_W * REAL_H));
     for (int i = 0; i < 20; i++) {
         sand_step(real, 0, -SCENE_GRAVITY, 0);
         if (i == 0 || i == 9 || i == 19) {
-            ESP_LOGI("xtperf", "scene=mixed_flip hash flip%d=%08" PRIx32, i + 1, grid_hash(big, REAL_W * REAL_H));
+            ESP_LOGI("xtperf", "scene=mixed_flip hash flip%d=%08" PRIx32, i + 1, name_hash_n(big, REAL_W * REAL_H));
         }
     }
     free(real);

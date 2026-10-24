@@ -22,6 +22,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "hash/name_hash64.h"
+
 #include "suites.h"
 #include "unity.h"
 
@@ -53,22 +55,6 @@
 #define DUNE_SETTLE_BATCH_STEPS 20
 #define DUNE_SETTLE_MAX_BATCHES 300
 
-/* A 64-bit FNV-1a fold of the whole grid, folded before and after a batch
- * of steps to answer "did anything change" without a second copy of the
- * grid to memcmp against. That copy would be another 41,216 bytes beside
- * `big`'s own, against the roughly 66,632 this device has free once the
- * display framebuffer is carved out of the heap. A collision is possible
- * in principle, and accepted. */
-static uint64_t
-grid_checksum(const uint8_t* cells, size_t len) {
-    uint64_t h = 0xcbf29ce484222325ULL; /* FNV-1a 64-bit offset basis */
-    for (size_t i = 0; i < len; i++) {
-        h ^= cells[i];
-        h *= 0x100000001b3ULL; /* FNV-1a 64-bit prime */
-    }
-    return h;
-}
-
 /* A fixed step count could only guess how long a pile this size takes to
  * stop moving, and a guess that undershoots confuses the blast's own
  * throw with gravity still finishing its job. The caller must assert on
@@ -77,9 +63,9 @@ grid_checksum(const uint8_t* cells, size_t len) {
 static bool
 settle_fully(sand_t* s, size_t cells_len) {
     for (int batch = 0; batch < DUNE_SETTLE_MAX_BATCHES; batch++) {
-        const uint64_t before = grid_checksum(s->cells, cells_len);
+        const uint64_t before = name_hash64_n(NAME_HASH64_OFFSET_BASIS, s->cells, cells_len);
         run_steps(s, DUNE_SETTLE_BATCH_STEPS, 0, 1000);
-        if (grid_checksum(s->cells, cells_len) == before) {
+        if (name_hash64_n(NAME_HASH64_OFFSET_BASIS, s->cells, cells_len) == before) {
             return true;
         }
     }
