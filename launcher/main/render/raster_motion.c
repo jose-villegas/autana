@@ -1,6 +1,5 @@
 #include "render/raster_motion.h"
 
-#include <assert.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -76,7 +75,12 @@ remember(raster_motion_t* m, const raster_t* raster, const render_view_t* view) 
 static void
 begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
     raster_motion_t* m = self->state;
-    assert(raster->instance_count <= RASTER_MOTION_INSTANCES_MAX);
+    if (raster->instance_count > RASTER_MOTION_INSTANCES_MAX) {
+        raster_motion_forget(m);
+        m->known = false;
+        m->first_moved = -1;
+        return;
+    }
     r3d_lens_t now;
     lens_map(view, raster, NULL, &now);
     m->project = now.project;
