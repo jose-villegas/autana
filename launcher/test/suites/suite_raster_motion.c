@@ -432,8 +432,51 @@ test_forgetting_makes_the_next_picture_first(void) {
     TEST_ASSERT_EQUAL_INT8(RASTER_MOTION_UNKNOWN, motion_of(r)[(H / 2 * W) + (W / 2)].dx);
 }
 
+static void
+test_excess_instances_forget_motion_and_preserve_the_picture(void) {
+    raster_rig_t* r = rig_open(false, true);
+    const pose_t pose = {camera_at((vec3f_t){0.0F, 0.0F, -300.0F}, 0.0F), NULL};
+    const int count = RASTER_MOTION_INSTANCES_MAX + 1;
+    r3d_instance_t* instances = calloc((size_t)count, sizeof(*instances));
+    uint16_t* plain = malloc(sizeof(*plain) * 2 * W * H);
+    TEST_ASSERT_NOT_NULL(instances);
+    TEST_ASSERT_NOT_NULL(plain);
+    for (int i = 0; i < count; i++) {
+        instances[i] = r->instance[0];
+    }
+    r->raster.instances = instances;
+    r->raster.instance_count = count;
+    draw(r, &pose, W, H);
+    memcpy(plain, raster_color(&r->raster), sizeof(*plain) * W * H);
+    memcpy(plain + (W * H), raster_depth(&r->raster), sizeof(*plain) * W * H);
+    raster_rig_attach(r, own_of(r)->attached, 1);
+    r->raster.instance_count = 1;
+    draw(r, &pose, W, H);
+    TEST_ASSERT_TRUE(own_of(r)->motion.has_previous);
+    r->raster.instance_count = count;
+    for (int frame = 0; frame < 2; frame++) {
+        draw(r, &pose, W, H);
+        TEST_ASSERT_FALSE(own_of(r)->motion.has_previous);
+        TEST_ASSERT_EQUAL_INT(0, own_of(r)->motion.seen_count);
+        for (int i = 0; i < W * H; i++) {
+            TEST_ASSERT_EQUAL_INT8(RASTER_MOTION_UNKNOWN, motion_of(r)[i].dx);
+            TEST_ASSERT_EQUAL_INT8(RASTER_MOTION_UNKNOWN, motion_of(r)[i].dy);
+        }
+        TEST_ASSERT_EQUAL_HEX16_ARRAY(plain, raster_color(&r->raster), W * H);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY(plain + (W * H), raster_depth(&r->raster), W * H);
+    }
+    r->raster.instance_count = 1;
+    draw(r, &pose, W, H);
+    TEST_ASSERT_EQUAL_INT8(RASTER_MOTION_UNKNOWN, motion_of(r)[(H / 2 * W) + (W / 2)].dx);
+    draw(r, &pose, W, H);
+    TEST_ASSERT_EQUAL_INT8(0, motion_of(r)[(H / 2 * W) + (W / 2)].dx);
+    free(plain);
+    free(instances);
+}
+
 void
 run_raster_motion_suite(void) {
+    RUN_TEST(test_excess_instances_forget_motion_and_preserve_the_picture);
     RUN_TEST(test_the_first_picture_knows_no_motion);
     RUN_TEST(test_a_still_camera_and_scene_have_no_motion);
     RUN_TEST(test_camera_motion_is_the_reprojection_through_the_previous_pose);

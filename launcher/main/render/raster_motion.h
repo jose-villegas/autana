@@ -24,7 +24,7 @@ typedef struct {
 } raster_motion_px_t;
 
 #define RASTER_MOTION_UNKNOWN       INT8_MIN
-/* The most instances a raster with motion attached may draw. */
+/* The most instances whose motion history is retained. */
 #define RASTER_MOTION_INSTANCES_MAX 16
 
 /* What a previous picture left, and this picture's maps; the caller owns
