@@ -1,3 +1,5 @@
+set(testkit_test_only TRUE)
+
 if(ESP_PLATFORM)
     idf_component_register(SRCS "harness/cleanup.c" "harness/registry.c" INCLUDE_DIRS "include" REQUIRES unity)
     return()
