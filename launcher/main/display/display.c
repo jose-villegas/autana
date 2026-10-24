@@ -55,20 +55,7 @@ elapsed(int64_t now_us, int64_t event_us, int duration_ms) {
 }
 
 static void
-track_tilt(display_t* d, float sine, float cosine, int64_t now_us) {
-    const bool was_flat = d->flat;
-    if (fabsf(sine) >= DISPLAY_FLAT_SIN) {
-        if (d->flat_since_us == DISPLAY_TIME_NONE) {
-            d->flat_since_us = now_us;
-        }
-        d->flat = elapsed(now_us, d->flat_since_us, DISPLAY_FLAT_MS);
-    } else {
-        d->flat_since_us = DISPLAY_TIME_NONE;
-        d->flat = false;
-    }
-    if (d->flat || was_flat) {
-        d->flat_ended_us = now_us;
-    }
+track_swing(display_t* d, float sine, float cosine, int64_t now_us) {
     for (int i = 0; i < d->tilt_count; i++) {
         if (now_us - d->tilts[i].time_us > (int64_t)DISPLAY_SWING_MS * MATH_US_PER_MS) {
             continue;
@@ -87,6 +74,24 @@ track_tilt(display_t* d, float sine, float cosine, int64_t now_us) {
     if (d->tilt_count < DISPLAY_TILT_HISTORY_COUNT) {
         d->tilt_count++;
     }
+}
+
+static void
+track_tilt(display_t* d, float sine, float cosine, int64_t now_us) {
+    const bool was_flat = d->flat;
+    if (fabsf(sine) >= DISPLAY_FLAT_SIN) {
+        if (d->flat_since_us == DISPLAY_TIME_NONE) {
+            d->flat_since_us = now_us;
+        }
+        d->flat = elapsed(now_us, d->flat_since_us, DISPLAY_FLAT_MS);
+    } else {
+        d->flat_since_us = DISPLAY_TIME_NONE;
+        d->flat = false;
+    }
+    if (d->flat || was_flat) {
+        d->flat_ended_us = now_us;
+    }
+    track_swing(d, sine, cosine, now_us);
     if (sine <= DISPLAY_OVERHEAD_ENTER_SIN) {
         d->overhead = true;
     } else if (sine >= DISPLAY_OVERHEAD_EXIT_SIN) {

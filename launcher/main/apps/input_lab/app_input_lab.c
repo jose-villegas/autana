@@ -740,24 +740,29 @@ update_shake_round(uint32_t dt_ms, const input_t* input) {
     }
 }
 
+static bool
+start_orientation_round(void) {
+    imu_record_failed = motion_batch == NULL || shake_capture.slice == NULL
+                        || !imu_record_start(&imu_record, IMU_RECORD_ORIENTATION_CAPACITY);
+    if (!imu_record_failed) {
+        orientation_capture.running = true;
+        orientation_capture.step = ORIENTATION_PROBE_READ_0;
+        shake_capture.start_us = timing_now_us();
+        guided_step_begin(&orientation_capture.guide, orientation_capture.step, shake_capture.start_us);
+        LOG_IMU_LINE("round orientation");
+        LOG_IMU_LINE("orientation_step %d 0 %d", (int)orientation_capture.step,
+                     orientation_probe_target(orientation_capture.step));
+        LOG_IMU_LINE("orientation_gate %d 0 begin", (int)orientation_capture.step);
+    }
+    return !imu_record_failed;
+}
+
 static void
 update_orientation_round(uint32_t dt_ms, const input_t* input) {
     imu_flash_ms = dt_ms < imu_flash_ms ? imu_flash_ms - dt_ms : 0;
     bool started = false;
     if (input->pressed && !orientation_capture.running) {
-        imu_record_failed = motion_batch == NULL || shake_capture.slice == NULL
-                            || !imu_record_start(&imu_record, IMU_RECORD_ORIENTATION_CAPACITY);
-        if (!imu_record_failed) {
-            orientation_capture.running = true;
-            started = true;
-            orientation_capture.step = ORIENTATION_PROBE_READ_0;
-            shake_capture.start_us = timing_now_us();
-            guided_step_begin(&orientation_capture.guide, orientation_capture.step, shake_capture.start_us);
-            LOG_IMU_LINE("round orientation");
-            LOG_IMU_LINE("orientation_step %d 0 %d", (int)orientation_capture.step,
-                         orientation_probe_target(orientation_capture.step));
-            LOG_IMU_LINE("orientation_gate %d 0 begin", (int)orientation_capture.step);
-        }
+        started = start_orientation_round();
     }
     read_motion(dt_ms);
     if (orientation_capture.running && !started) {
@@ -782,6 +787,24 @@ update_orientation_round(uint32_t dt_ms, const input_t* input) {
 }
 
 static void
+draw_orientation_guide(void) {
+    const int target = orientation_probe_target(orientation_capture.step);
+    const motion_probe_t reading = motion_probe_measure(raw_acceleration);
+    const int bearing = ((target + 1) * (int)DISPLAY_QUARTER_DEG) % MOTION_PROBE_FULL_TURN_DEG;
+    static const char* const actions[] = {"PICK UP, KEEP", "WALK, KEEP", "SHAKE, KEEP", "OVERHEAD, KEEP"};
+    const char* action = orientation_capture.step == ORIENTATION_PROBE_READ_0   ? "HOLD"
+                         : orientation_capture.step <= ORIENTATION_PROBE_READ_4 ? "TURN TO"
+                         : orientation_capture.step == ORIENTATION_PROBE_FLAT
+                             ? "PUT DOWN FLAT"
+                             : actions[orientation_capture.step - ORIENTATION_PROBE_PICKUP];
+    guided_step_draw(&orientation_capture.guide, action,
+                     target == DISPLAY_QUARTER_NONE ? NULL : display_quarter_name(target), reading.bearing_deg,
+                     ((display_quarter_now() + 1) * (int)DISPLAY_QUARTER_DEG) % MOTION_PROBE_FULL_TURN_DEG, bearing,
+                     (int)lroundf(reading.tilt_deg),
+                     target == DISPLAY_QUARTER_NONE ? 0 : ORIENTATION_PROBE_READING_TILT_DEG, screen_w, screen_h);
+}
+
+static void
 draw_orientation(void) {
     char line[MOTION_HUD_TEXT_SIZE];
     hud_line(0, "ORIENTATION / BOOT TO CHANGE PAGE");
@@ -799,20 +822,7 @@ draw_orientation(void) {
         if (imu_record.truncated) {
             hud_line(4, "TRANSCRIPT FULL - RESTART");
         }
-        const int target = orientation_probe_target(orientation_capture.step);
-        const motion_probe_t reading = motion_probe_measure(raw_acceleration);
-        const int bearing = ((target + 1) * (int)DISPLAY_QUARTER_DEG) % MOTION_PROBE_FULL_TURN_DEG;
-        static const char* const actions[] = {"PICK UP, KEEP", "WALK, KEEP", "SHAKE, KEEP", "OVERHEAD, KEEP"};
-        const char* action = orientation_capture.step == ORIENTATION_PROBE_READ_0   ? "HOLD"
-                             : orientation_capture.step <= ORIENTATION_PROBE_READ_4 ? "TURN TO"
-                             : orientation_capture.step == ORIENTATION_PROBE_FLAT
-                                 ? "PUT DOWN FLAT"
-                                 : actions[orientation_capture.step - ORIENTATION_PROBE_PICKUP];
-        guided_step_draw(&orientation_capture.guide, action,
-                         target == DISPLAY_QUARTER_NONE ? NULL : display_quarter_name(target), reading.bearing_deg,
-                         ((display_quarter_now() + 1) * (int)DISPLAY_QUARTER_DEG) % MOTION_PROBE_FULL_TURN_DEG, bearing,
-                         (int)lroundf(reading.tilt_deg),
-                         target == DISPLAY_QUARTER_NONE ? 0 : ORIENTATION_PROBE_READING_TILT_DEG, screen_w, screen_h);
+        draw_orientation_guide();
     }
     (void)snprintf(line, sizeof line, "COMMITTED %s", display_quarter_name(display_quarter_now()));
     hud_line(3, line);
