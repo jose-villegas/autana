@@ -1823,13 +1823,13 @@ test_cull_off_keeps_every_cluster(void) {
     raster_t raster = census_raster(&instance, 1);
     const fixture_camera_t camera = camera_down_plus_z(10000.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
-    const tune_entry_t* entry = tune_find(tune_shared(), "render.cull");
+    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
     TEST_ASSERT_NOT_NULL(entry);
     saved_cull = *entry->value;
     cull_changed = true;
-    (void)tune_reset(tune_shared(), "render.cull");
+    (void)tune_reset(tune_shared(), TUNE_NAME(render, cull));
     const raster_stats_t on = raster_draw(&raster, &view);
-    (void)tune_set(tune_shared(), "render.cull", 0);
+    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
     const raster_stats_t off = raster_draw(&raster, &view);
     TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
     TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
@@ -2332,7 +2332,7 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 static void
 release_fixture(void) {
     if (cull_changed) {
-        (void)tune_set(tune_shared(), "render.cull", saved_cull);
+        (void)tune_set(tune_shared(), TUNE_NAME(render, cull), saved_cull);
         cull_changed = false;
     }
     free(work);

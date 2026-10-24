@@ -15,9 +15,12 @@
 
 static void
 fixture(void) {
-    static const char* const tuned[] = {
-        "render_lab.scale",           "render_lab.present",          "render_lab.small_fill_ceiling",
-        "render_lab.small_fill_gate", "render_lab.small_fill_style", "render_lab.budget"};
+    static const char* const tuned[] = {TUNE_NAME(render_lab, scale),
+                                        TUNE_NAME(render_lab, present),
+                                        TUNE_NAME(render_lab, small_fill_ceiling),
+                                        TUNE_NAME(render_lab, small_fill_gate),
+                                        TUNE_NAME(render_lab, small_fill_style),
+                                        TUNE_NAME(render_lab, budget)};
     for (size_t i = 0; i < sizeof tuned / sizeof tuned[0]; i++) {
         TEST_ASSERT_TRUE(tune_reset(tune_shared(), tuned[i]));
     }
@@ -30,14 +33,14 @@ test_render_size_and_percent_follow_and_clamp(void) {
     TEST_ASSERT_EQUAL_INT(184, size.width);
     TEST_ASSERT_EQUAL_INT(224, size.height);
     TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_NEAREST, render_lab_present());
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), "render_lab.present", 1));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, present), 1));
     size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     TEST_ASSERT_EQUAL_INT(184, size.width);
     TEST_ASSERT_EQUAL_INT(112, size.height);
     TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_SCANLINE, render_lab_present());
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), "render_lab.present", 2));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, present), 2));
     TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_DOUBLE, render_lab_present());
-    TEST_ASSERT_FALSE(tune_set(tune_shared(), "render_lab.present", 3));
+    TEST_ASSERT_FALSE(tune_set(tune_shared(), TUNE_NAME(render_lab, present), 3));
     fixture();
 }
 
@@ -45,7 +48,7 @@ static void
 test_small_fill_ceiling_range(void) {
     fixture();
     tune_registry_t* registry = tune_shared();
-    const char* name = "render_lab.small_fill_ceiling";
+    const char* name = TUNE_NAME(render_lab, small_fill_ceiling);
     TEST_ASSERT_TRUE(tune_set(registry, name, SMALL_FILL_CEILING_MAX));
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, render_lab_small_fill().ceiling);
     TEST_ASSERT_FALSE(tune_set(registry, name, SMALL_FILL_CEILING_MAX + 1));
@@ -74,7 +77,7 @@ test_small_fill_menu_choice_moves_the_tunables(void) {
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_FAST, render_lab_small_fill().ceiling);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_FAST, render_lab_small_fill().gate);
 
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), "render_lab.small_fill_gate", 3));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, small_fill_gate), 3));
     TEST_ASSERT_EQUAL_INT(3, render_lab_small_fill().gate);
     TEST_ASSERT_FALSE(render_lab_small_fill_select(count));
     TEST_ASSERT_EQUAL_INT(1, render_lab_small_fill_selected());
@@ -119,7 +122,7 @@ test_dynamic_resolution_toggle_moves_the_budget_into_the_context(void) {
     render_lab_dynres_apply();
     TEST_ASSERT_EQUAL_INT(RENDER_PREDICTED, context->policy);
 
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), "render_lab.budget", 75));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, budget), 75));
     TEST_ASSERT_TRUE(render_lab_dynres_on());
     render_lab_dynres_apply();
     TEST_ASSERT_EQUAL_INT(75 * MATH_US_PER_MS, context->ladder.budget_us);
