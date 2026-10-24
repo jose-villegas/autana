@@ -5,7 +5,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define JOB_CTX_MAX 128
+#define JOB_CTX_MAX        128
+
+/* Gfx presents at priority 5; rendering must preempt engine work. */
+#define JOB_CORE1_PRIORITY 3
+#define JOB_CORE1          1
 
 typedef void (*job_fn_t)(void* ctx);
 
