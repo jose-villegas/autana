@@ -136,7 +136,7 @@ The pack indexes entries by id, and the runtime compares one `uint32_t`.
 Hashing a name is separate: it only finds an asset by name in tools, debug
 views and the console.
 
-```c
+```c fragment
 /* content is named by a stable asset id, never a path or a pointer [M];
  * assigned once at import and stored in the asset's import file [M] */
 typedef uint32_t asset_id_t;
@@ -219,7 +219,7 @@ system icons), not code; it keeps its place under L1.
 Present owns the framebuffer, band target and clip. Draw reads them through
 `gfx/present/gfx_present.h`:
 
-```c
+```c fragment
 gfx_target_t gfx_present_target(void);
 bool gfx_present_in_band(void);
 recti_t gfx_clip_save(void);

@@ -16,7 +16,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "scripts/autana"), str(ROOT / "launcher/tools/render")]
 import autana  # noqa: E402
-from generated_blocks import blocks, replace_block  # noqa: E402
+from generated_blocks import blocks, check_commands, replace_block  # noqa: E402
 
 CHECK = "python scripts/autana/cli_reference.py --check"
 FLAGS_BLOCK = "cli-flags"
@@ -79,8 +79,8 @@ def run(check):
             stale.append(f"{page}#{block}")
     for path in sorted((ROOT / "docs/cli").glob("*.md")):
         page = path.relative_to(ROOT).as_posix()
-        for block in blocks(path.read_text(encoding="utf-8")):
-            if block.startswith("cli-") and block not in wanted.get(page, ()):
+        for block, command in check_commands(path.read_text(encoding="utf-8")).items():
+            if command == CHECK and block.startswith("cli-") and block not in wanted.get(page, ()):
                 raise ValueError(f"{page}: block {block} belongs to no command group")
     return stale
 

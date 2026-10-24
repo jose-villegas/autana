@@ -23,18 +23,23 @@ one binary, one address space, no isolation.
 `launcher/main/apps/<name>/app_<name>.c`: nothing else is edited, not
 the shell, not `CMakeLists.txt`:
 
+<!-- generated: app-hello-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Hello: the shell calls enter, frame and exit. */
 #include "app/app.h"
 #include "draw/draw.h"
 
-static void yours_enter(void) { /* reset state */ }
+static void
+yours_enter(void) { /* reset state */ }
 
-static void yours_frame(uint32_t dt_ms, const input_t* input) {
+static void
+yours_frame(uint32_t dt_ms, const input_t* input) {
     draw_clear(gfx_rgb(0x101010));
     draw_text(20, 20, "hello", gfx_rgb(0xFFFFFF));
 }
 
-static void yours_exit(void) { /* release what enter() took */ }
+static void
+yours_exit(void) { /* release what enter() took */ }
 
 app_t app_yours = {
     .name = "Your App",
@@ -47,6 +52,7 @@ app_t app_yours = {
 
 APP_REGISTER(app_yours);
 ```
+<!-- /generated: app-hello-example -->
 
 Name the `app_t` after the folder: `apps/yours/` registers `app_yours`. The
 release symbol check finds a development-only app by that name.
@@ -247,14 +253,27 @@ and lends it to the running app. Nothing taken from it survives the visit.
 | `app_arena_mark()` / `app_arena_rewind(mark)` | the app | scope a shorter lifetime inside one visit; rewinding past what is in use asserts |
 | `app_arena_rewind(0)` | the shell only | right after the leaving app's `exit()` |
 
+<!-- generated: app-arena-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-static void yours_enter(void) {
+/* Arena: the shell reclaims app memory after exit. */
+#include "app/app_arena.h"
+#include "gfx/target/gfx_color.h"
+
+#define BUF_BYTES (1024 * sizeof(gfx_color_t))
+
+static gfx_color_t* buf;
+
+static void
+arena_enter(void) {
     buf = app_arena_take(BUF_BYTES, _Alignof(gfx_color_t)); /* NULL: run without it */
 }
-static void yours_exit(void) {
+
+static void
+arena_exit(void) {
     buf = NULL; /* nothing to free */
 }
 ```
+<!-- /generated: app-arena-example -->
 
 The scenes an app loads live in it too
 ([Scene-Manager.md](../render/Scene-Manager.md#ownership)): mark before
