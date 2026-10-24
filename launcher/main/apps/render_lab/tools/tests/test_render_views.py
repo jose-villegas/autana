@@ -174,7 +174,7 @@ class RenderViews(unittest.TestCase):
                 self.assertFalse(target.exists() and target.stat().st_size > 0)
 
     def test_invalid_tune_options_fail_without_an_image(self):
-        tune_header = COLOR_HEADER.parents[2] / "services/tune.h"
+        tune_header = COLOR_HEADER.parents[2] / "core/tune.h"
         name_max = int(re.search(r"^#define TUNE_NAME_MAX\s+(\d+)", tune_header.read_text(), re.M)[1])
         cases = [(), ("render_lab.present",), ("render_lab.present 200",), ("=1",), ("x" * (name_max + 1) + "=1",),
                  ("render_lab.present=",), ("render_lab.present=no",), ("render_lab.present=200junk",),
@@ -188,7 +188,7 @@ class RenderViews(unittest.TestCase):
                 self.assertNotEqual(0, run.returncode)
                 self.assertFalse(target.exists())
 
-    def test_view_tunable_uses_the_console_parser(self):
+    def test_the_view_tunable_renders_what_the_view_option_does(self):
         default, path = self.render("--scene", "sponza", "--view", "depth")
         self.assertEqual(0, default.returncode, default.stderr)
         expected = path.read_bytes()

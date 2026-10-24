@@ -211,7 +211,7 @@ run "$B/boot_anim_render" 0 "$@" --frames "$(((boot_ms + 15) / 16 + 1))" --dt 16
     -o "$B/boot.bmp" --video "$B/boot.avi" 2> "$WORK/boot_anim_video.log"
 gif_from_avi "$B/boot.avi" "$OUT/overview/boot-anim.gif" "transpose=2,fps=15" "stats_mode=full"
 
-# The face examples: each one's renders, and each control's states table.
+# UI render tables; source embedding: docs/tools/Generated-Files.md#usage-examples.
 U=$WORK/ui_examples
 run sh launcher/tools/render/scenes/ui_examples_render_host.sh -o "$U" > "$WORK/ui_examples.log"
 run "$PYTHON" "$TOOLS_DIR/ui_examples_doc.py" --renders "$U" --out "$OUT"
@@ -231,16 +231,27 @@ run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEM
 cc=$(find_cc) || exit 2
 run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input/shake-level.png" \
     > "$WORK/shake_figures.log"
+run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
+    > "$WORK/gravity_figures.log"
+# --orphans scans this runner: gravity-trust.png, gravity-bias.gif
+run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \n    > "$WORK/motion_axes_figures.log"
+# --orphans scans this runner: motion-axes.png, motion-rotation.gif
 run mkdir -p "$OUT/math"
 run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
 # --orphans scans this runner: trs-scale.gif, trs-rotate.gif, trs-translate.gif
+run "$PYTHON" launcher/tools/math/math_bench_figures.py --out "$OUT/math" > "$WORK/math_bench_figures.log"
+# --orphans scans this runner: benchmark-families.png
+run "$PYTHON" launcher/tools/math/fast_path_figures.py --out "$OUT/math" > "$WORK/fast_path_figures.log"
+# --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
 # --orphans scans this runner: rect-queries.png, circle-rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
 run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/motion_figures.log"
 # --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png, spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
+run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/stats_figures.log"
+# --orphans scans this runner: stats-percentile-ranks.png
 
 fi
 
@@ -281,6 +292,12 @@ run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PL
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/bake_figures.py --out "$OUT/render" > "$WORK/bake_figures.log" 2>&1
 # --orphans scans this runner: bake-ao-rays.png, bake-ao-falloff.png, bake-directions.png, bake-bounce-rays.png, bake-bounce-sweep.png, bake-scores.png
+
+# The baked mesh's figures: the demo scene's lite mesh, its clusters and tree, and the clusterizer's build.
+tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite.mesh") || exit 2
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --out "$OUT/render" \
+    > "$WORK/mesh_figures.log" 2>&1
+# --orphans scans this runner: baked-mesh-tree.gif, baked-mesh-ranges.png, meshlet-build.gif
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.

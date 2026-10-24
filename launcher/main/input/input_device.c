@@ -13,6 +13,7 @@
 #include "input/motion/imu.h"
 #include "input/motion/imu_calib.h"
 #include "input/touch/touch.h"
+#include "math/linear/vec_convert.h"
 #include "services/settings.h"
 
 static const char TAG[] = "input";
@@ -48,6 +49,7 @@ input_start(void) {
     if (!imu_init()) {
         ESP_LOGW(TAG, "No IMU - motion reads report nothing");
     }
+    imu_start();
 }
 
 vec3i_t
@@ -104,8 +106,7 @@ bool
 input_read_motion_batch(input_motion_batch_t* out) {
     out->count = 0;
     out->gap = false;
-    out->lost = 0;
-    const int count = imu_read_fifo((imu_sample_t*)out->samples, &out->lost, &out->gap);
+    const int count = imu_take_fifo((imu_sample_t*)out->samples, out->lost_before, &out->gap);
     if (count < 0) {
         return false;
     }
@@ -120,11 +121,11 @@ input_read_motion_batch(input_motion_batch_t* out) {
 }
 
 bool
-input_read_gravity(vec2i_t* gravity) {
+input_read_acceleration(vec3f_t* acceleration) {
     input_motion_t motion;
     if (!input_read_motion(&motion)) {
         return false;
     }
-    *gravity = vec3i_xy(motion.acceleration);
+    *acceleration = vec3f_scale(vec3f_from_vec3i(motion.acceleration), 1.0F / INPUT_ACCEL_ONE_G);
     return true;
 }

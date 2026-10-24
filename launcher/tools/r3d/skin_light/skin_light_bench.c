@@ -9,7 +9,9 @@
 #include <time.h>
 
 #include "gfx/target/gfx_color.h"
+#include "hash/crc32.h"
 #include "math/linear/vec3f.h"
+#include "math/stats/statsf.h"
 #include "render/r3d_skin_format.h"
 #include "skin_light_baseline.h"
 
@@ -311,18 +313,6 @@ run_frame(const data_t* d, const variant_t* v, unsigned frame, const lights_t* l
     sink = acc;
 }
 
-static int
-compare_double(const void* a, const void* b) {
-    const double x = *(const double*)a, y = *(const double*)b;
-    return (x > y) - (x < y);
-}
-
-static double
-median(double* v, unsigned n) {
-    qsort(v, n, sizeof(v[0]), compare_double);
-    return v[n / 2];
-}
-
 typedef struct {
     uint32_t light_crc, table_crc;
     double vertex_ns;             /* per vertex, table build excluded */
@@ -344,7 +334,7 @@ measure(const data_t* d, const variant_t* v, unsigned lights, uint8_t (*out)[3])
     if (is_lut(v->kind)) {
         lut_init(&lut, v->lut);
     }
-    double vertex[RUNS], build[RUNS];
+    float vertex[RUNS], build[RUNS];
     for (unsigned run = 0; run < RUNS; run++) {
         const double t0 = now_ns();
         for (unsigned f = 0; is_lut(v->kind) && f < d->frames; f++) {
@@ -354,17 +344,17 @@ measure(const data_t* d, const variant_t* v, unsigned lights, uint8_t (*out)[3])
         for (unsigned f = 0; f < d->frames; f++) {
             run_frame(d, v, f, &lf, &l8, &lut, &out[(size_t)f * d->vertices]);
         }
-        vertex[run] = (now_ns() - t1) / ((double)d->frames * d->vertices);
-        build[run] = (t1 - t0) / d->frames;
+        vertex[run] = (float)((now_ns() - t1) / ((double)d->frames * d->vertices));
+        build[run] = (float)((t1 - t0) / d->frames);
     }
     result_t r = {0};
-    r.vertex_ns = median(vertex, RUNS);
-    r.build_ns = is_lut(v->kind) ? median(build, RUNS) : 0.0;
+    r.vertex_ns = (double)statsf_median(vertex, RUNS);
+    r.build_ns = is_lut(v->kind) ? (double)statsf_median(build, RUNS) : 0.0;
     if (v->kind != K_SKIN) {
-        r.light_crc = asset_crc32(&out[(size_t)d->sheet_frame * d->vertices], (size_t)d->vertices * sizeof *out);
+        r.light_crc = crc32_update(0, &out[(size_t)d->sheet_frame * d->vertices], (size_t)d->vertices * sizeof *out);
     }
     if (is_lut(v->kind)) {
-        r.table_crc = asset_crc32(lut.rgb, (size_t)lut.size * lut.size * sizeof *lut.rgb);
+        r.table_crc = crc32_update(0, lut.rgb, (size_t)lut.size * lut.size * sizeof *lut.rgb);
     }
     return r;
 }

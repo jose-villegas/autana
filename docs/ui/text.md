@@ -7,7 +7,7 @@ line clipped to `r`, centred vertically, in the theme's `text` ink.
 
 ## Example
 
-<!-- generated: ui-text-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-text-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Text in a row: a caption at the left, a value at the right, rebuilt each frame. */
 #include <stdio.h>

@@ -19,7 +19,7 @@ from perf_compare import observations
 from capture import capture_board, require_same_board
 from device_report import find_manifest_entry, read_capture_text
 from doc_tables import markdown
-from generated_blocks import replace_block
+from generated_blocks import replace_blocks
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audio_doc_blocks import caption, number
 
@@ -144,10 +144,7 @@ def render(path):
 
 
 def update(data, document, check=False):
-    changed = False
-    for name, body in render(data).items():
-        changed |= replace_block(document, name, body, check=check)
-    return changed
+    return replace_blocks(document, render(data), check=check)
 
 
 def main():

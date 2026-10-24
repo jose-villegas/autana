@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
 from audio.sound_onset_capture import EVENTS as ONSET_EVENTS
 from audio import sound_asset
-from generated_blocks import replace_block, blocks
+from generated_blocks import replace_block, replace_blocks, blocks
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from frame_cost import frame_cost_window, US_PER_MS
 
@@ -380,10 +380,8 @@ def update_drc(capture, document, check=False):
 
 
 def update(capture, document, check=False, mix_captures=None, mix_document=None, drc_capture=None):
-    changed = False
     internal_required = "audio-loopback" in blocks(document.read_text(encoding="utf-8"))
-    for name, body in render(capture, internal_required=internal_required).items():
-        changed |= replace_block(document, name, body, check=check)
+    changed = replace_blocks(document, render(capture, internal_required=internal_required), check=check)
     if drc_capture is not None:
         changed |= update_drc(drc_capture, document, check)
     if mix_captures is not None:
