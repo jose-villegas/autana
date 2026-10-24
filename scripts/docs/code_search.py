@@ -6,16 +6,20 @@ indexed afresh on every run. docs/tools/Code-Search.md has the matching and orde
     python scripts/docs/code_search.py <words...>            best names, then purposes
     python scripts/docs/code_search.py --shared <words...>   only files used from 2+ directories
     python scripts/docs/code_search.py --check               every indexed file states a purpose
+    python scripts/docs/code_search.py --eval                recall over code_search_eval.tsv
 
+Every search is logged locally through query_log.py.
 Exits 1 when nothing matches.
 """
 import argparse
 import ast
+import difflib
 import math
 import pathlib
 import posixpath
 import re
 import sys
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/gates"))
@@ -26,7 +30,8 @@ from c_comments import excluded, blank_comments, file_header
 from c_constants import file_scope
 from c_includes import resolve_include
 from check_doc_constants import sentences
-from docs_search import CAMEL, STOPWORDS, WORD, stem, tokens
+import query_log
+from docs_search import CAMEL, STOPWORDS, WORD, eval_history, stem, tokens
 from idf_vocabulary import c_declarations
 from tracked import tracked_files
 
@@ -43,6 +48,8 @@ NAMES_PER_FILE = 3
 NAME_WEIGHT = 2
 # Results printed before the count of the rest.
 SHOWN = 20
+# Nearest names printed when nothing matches.
+NEAREST = 5
 # Longest declaration printed, in characters.
 DECLARATION_MAX = 160
 
@@ -272,15 +279,57 @@ def unexplained(owners):
     return [owner.path for owner in owners if not owner.purpose]
 
 
+def nearest(owners, words):
+    """The rows of the public names spelled closest to the query's words, for a search that matched nothing."""
+    rows = {name.lower(): (owner.path, line, name, text, owner.purpose)
+            for owner in owners for name, line, text in owner.names}
+    close = difflib.get_close_matches("_".join(words).lower(), list(rows), NEAREST)
+    return [rows[name] for name in close]
+
+
+EVAL_ROWS = pathlib.Path(__file__).with_name("code_search_eval.tsv")
+
+
+def evaluate(owners, rows=EVAL_ROWS, depth=SHOWN):
+    """(words, owner, rank or None) for each row of `rows`: words a person would type before
+    writing a helper again, and the file that already owned it."""
+    ranks = []
+    for line in pathlib.Path(rows).read_text(encoding="utf-8").splitlines():
+        words, owner = line.split("\t")[:2]
+        paths = [row[0] for row in search(owners, words.split())]
+        rank = paths.index(owner) + 1 if owner in paths else None
+        ranks.append((words, owner, rank if rank and rank <= depth else None))
+    return ranks
+
+
+def run_eval(owners):
+    ranks = evaluate(owners)
+    for words, owner, rank in ranks:
+        print(f"{rank or '-':>2}  {words}  ({owner})")
+    found = [rank for _, _, rank in ranks if rank]
+    result = {"time": query_log.iso(), "suite": "code", "rows": len(ranks),
+              "recall": round(len(found) / len(ranks), 3), "top5": round(sum(r <= 5 for r in found) / len(ranks), 3),
+              "mrr": round(sum(1 / r for r in found) / len(ranks), 3)}
+    print(f"recall@{SHOWN} {result['recall']:.0%}, recall@5 {result['top5']:.0%}, MRR {result['mrr']:.3f}"
+          f" of {result['rows']} rows")
+    query_log.append(eval_history(), result)
+    return result
+
+
 def main(argv=None, root=ROOT):
+    started = time.perf_counter()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("words", nargs="*")
     parser.add_argument("--shared", action="store_true", help="only files used from two or more directories")
     parser.add_argument("--check", action="store_true", help="fail when an indexed file states no purpose")
+    parser.add_argument("--eval", action="store_true", help="recall over code_search_eval.tsv")
     args = parser.parse_args(argv)
-    if not args.check and not args.words:
-        parser.error("give words to search for, or --check")
+    if not (args.check or args.eval or args.words):
+        parser.error("give words to search for, --check or --eval")
     owners = index(root)
+    if args.eval:
+        run_eval(owners)
+        return 0
     if args.check:
         missing = unexplained(owners)
         for path in missing:
@@ -288,7 +337,9 @@ def main(argv=None, root=ROOT):
         print(f"code search: {len(owners)} files indexed; {len(missing)} without a purpose")
         return int(bool(missing))
     rows = search(owners, args.words, args.shared)
-    print(report(rows) if rows else "no match")
+    query_log.record("code", "search", " ".join(args.words), started=started, weak=not rows, shared=args.shared,
+                     hits=[(f"{path}:{line} {name}", None) for path, line, name, _, _ in rows])
+    print(report(rows) if rows else "no match; nearest names:\n" + report(nearest(owners, args.words)))
     return 0 if rows else 1
 
 

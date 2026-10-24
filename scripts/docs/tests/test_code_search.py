@@ -11,17 +11,22 @@ from unittest import mock
 REPO = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/docs"))
 sys.path.insert(0, str(REPO / "scripts/gates/tests"))
-from code_search import SHOWN, index, main, report, search
+from code_search import SHOWN, evaluate, index, main, report, search
 from c_comments import excluded
 from check_generated_files import generated_files
 from gate_tree import commit, write
+import query_log
 
 
 class CodeSearch(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = pathlib.Path(self.temp.name)
+        self.root = pathlib.Path(self.temp.name) / "tree"
+        self.log = pathlib.Path(self.temp.name) / "usage"
+        patch = mock.patch.object(query_log, "log_dir", return_value=self.log)
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def include(self, owner, directories=("one", "two")):
         for directory in directories:
@@ -163,10 +168,39 @@ class CodeSearch(unittest.TestCase):
         self.assertEqual("2 more; add a word to narrow.", lines[-1])
         self.assertEqual(SHOWN * 3 + 1, len(lines))
 
-    def test_no_match_exits_one(self):
+    def test_a_query_split_between_name_and_purpose_counts_both(self):
+        # Each word scores where it matched: twice its rarity on the name, once in the file's prose.
+        write(self.root, "a/text.h", "/* Pieces of text. */\nint text_put(void);\n")
+        write(self.root, "b/text_other.h", "/* Other things. */\nint text_clear(void);\n")
+        write(self.root, "c/pieces.h", "/* Pieces of glass. */\nint glass_count(void);\n")
+        rows = search(index(self.root), ["text", "pieces"])
+        self.assertEqual(["text_put", "text_clear", "pieces.h"], [row[2] for row in rows])
+
+    def test_no_match_prints_the_nearest_names_and_exits_one(self):
+        write(self.root, "a/value.h", "/* Values. */\nint value_get(void);\nint other(void);\n")
+        self.assertEqual((0, "a/value.h:2  value_get\n    int value_get(void)\n    Values.\n"), self.run_main("value"))
+        code, out = self.run_main("vaule", "gte")
+        self.assertEqual(1, code)
+        self.assertEqual("no match; nearest names:\na/value.h:2  value_get", out.splitlines()[0] + "\n" + out.splitlines()[1])
+        self.assertNotIn("other", out)
+
+    def test_every_search_is_logged_with_its_hits(self):
         write(self.root, "a/value.h", "/* Values. */\nint value(void);\n")
-        self.assertEqual((0, "a/value.h:2  value\n    int value(void)\n    Values.\n"), self.run_main("value"))
-        self.assertEqual((1, "no match\n"), self.run_main("absent"))
+        self.run_main("value")
+        self.run_main("--shared", "absent")
+        rows = query_log.read(self.log)
+        self.assertEqual([("code", "value", [["a/value.h:2 value", None]], False, False),
+                          ("code", "absent", [], True, True)],
+                         [(r["tool"], r["query"], r["hits"], r["weak"], r["shared"]) for r in rows])
+
+    def test_eval_ranks_each_row_owner_within_the_shown_results(self):
+        write(self.root, "a/ring.h", "/* Fixed queues of bytes. */\nint ring_push(int);\n")
+        write(self.root, "b/fifo.h", "/* A ring of bytes for one reader. */\nint fifo_put(int);\n")
+        rows = pathlib.Path(self.temp.name) / "rows.tsv"
+        rows.write_text("ring push\ta/ring.h\tcase\nring reader\tb/fifo.h\tcase\nbitset\ta/ring.h\tcase\n",
+                        encoding="utf-8")
+        self.assertEqual([("ring push", "a/ring.h", 1), ("ring reader", "b/fifo.h", 1), ("bitset", "a/ring.h", None)],
+                         evaluate(index(self.root), rows))
 
     def test_check_fails_and_names_a_file_without_a_purpose(self):
         write(self.root, "a/value.h", "/* Values. */\nint value(void);\n")
