@@ -96,13 +96,16 @@ expect_valid(void) {
 /* A sheet's clusters share most vertices: two a triangle is room enough. */
 static const r3d_dynamic_capacity_t ROOMY = {2 * 2 * QUADS, 2 * QUADS, CORNERS};
 
-/* Each output vertex is the source vertex it copies: in ticks, same colour. */
+/* Each output vertex is the source vertex it copies: in ticks, same colour,
+ * at the corner the raster's winding puts it. */
 static void
 expect_copies(void) {
+    /* The build turns each triangle over: output corner k is source corner TURNED[k]. */
+    static const int TURNED[3] = {0, 2, 1};
     for (int t = 0; t < mesh.mesh.triangle_count; t++) {
         for (int k = 0; k < 3; k++) {
             const int out = mesh.mesh.triangles[t][k];
-            const int in = triangles[t][k];
+            const int in = triangles[t][TURNED[k]];
             TEST_ASSERT_EQUAL_INT16((int16_t)(positions[in].x * POSITION_SCALE), mesh.mesh.positions[out][0]);
             TEST_ASSERT_EQUAL_INT16((int16_t)(positions[in].y * POSITION_SCALE), mesh.mesh.positions[out][1]);
             TEST_ASSERT_EQUAL_INT16((int16_t)(positions[in].z * POSITION_SCALE), mesh.mesh.positions[out][2]);

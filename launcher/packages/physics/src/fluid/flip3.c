@@ -1,14 +1,17 @@
-#include "math/motion/flip3.h"
+#include "physics/fluid/flip3.h"
 
 #include <math.h>
+
 #include <string.h>
+#include "math/scalar/mathf.h"
+#include "math/scalar/mathi.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
 enum { KIND_SOLID, KIND_AIR, KIND_FLUID };
 
-/* Bisection steps that find the fill's level; far past float precision. */
-#define FILL_LEVEL_STEPS 48
+/* Bisection steps that find the fill's level: a float's 24 bits. */
+#define FILL_LEVEL_STEPS 24
 
 /* Each array of a block starts at this alignment. */
 #define BLOCK_ALIGN      _Alignof(max_align_t)
@@ -18,22 +21,7 @@ enum { KIND_SOLID, KIND_AIR, KIND_FLUID };
 
 static size_t
 align_up(size_t n) {
-    return (n + BLOCK_ALIGN - 1) / BLOCK_ALIGN * BLOCK_ALIGN;
-}
-
-static int
-mini(int a, int b) {
-    return a < b ? a : b;
-}
-
-static int
-maxi(int a, int b) {
-    return a > b ? a : b;
-}
-
-static float
-clampf(float x, float lo, float hi) {
-    return x < lo ? lo : (x > hi ? hi : x);
+    return mathi_size_ceil(n, BLOCK_ALIGN);
 }
 
 static float
@@ -55,7 +43,7 @@ set_axis(vec3f_t* v, int axis, float value) {
 /* Whole cells inside the box along one axis. */
 static int
 inner_cells(float size, float cell) {
-    return maxi(1, (int)lroundf(size / cell));
+    return mathi_max(1, (int)lroundf(size / cell));
 }
 
 static bool
@@ -111,7 +99,7 @@ flip3_init(flip3_t* f, const flip3_config_t* c, void* grid, void* particles) {
         const float size = axis_of(c->size, a);
         *cells[a] = grid_along(c, a);
         const float h = size / (float)(*cells[a] - 2);
-        const int seeds = maxi(1, (int)lroundf(size / spacing));
+        const int seeds = mathi_max(1, (int)lroundf(size / spacing));
         const float step = size / (float)seeds;
         set_axis(&f->h, a, h);
         set_axis(&f->inv_h, a, 1.0F / h);
@@ -182,8 +170,8 @@ count_below(const lattice_t* l, vec3f_t down, float level) {
 int
 flip3_fill(flip3_t* f, float fraction, vec3f_t down) {
     const lattice_t l = fill_lattice(f);
-    const int wanted = (int)lroundf(clampf(fraction, 0.0F, 1.0F) * (float)f->seed_count);
-    const int target = mini(wanted, f->config.max_particles);
+    const int wanted = (int)lroundf(mathf_clamp(fraction, 0.0F, 1.0F) * (float)f->seed_count);
+    const int target = mathi_min(wanted, f->config.max_particles);
 
     /* The level with `target` points below it, between the keys of the
      * lattice's top and bottom corners. */
@@ -261,8 +249,8 @@ typedef struct {
  * short, which his tank hides by keeping its floor at index 0. */
 static void
 stencil_axis(float p, float o, float h, float inv_h, int n, int* i0, int* i1, float* t) {
-    const float q = clampf(p, h, (float)(n - 1) * h) - o;
-    *i0 = mini((int)floorf(q * inv_h), n - 2);
+    const float q = mathf_clamp(p, h, (float)(n - 1) * h) - o;
+    *i0 = mathi_min((int)floorf(q * inv_h), n - 2);
     *t = (q - ((float)*i0 * h)) * inv_h;
     *i1 = *i0 + 1;
 }
@@ -272,9 +260,9 @@ stencil_axis(float p, float o, float h, float inv_h, int n, int* i0, int* i1, fl
 static void
 centre_axis(float p, float h, float inv_h, int n, int* i0, int* i1, float* t) {
     const float q = p - (0.5F * h);
-    *i0 = mini(maxi((int)floorf(q * inv_h), 1), n - 2);
-    *t = clampf((q - ((float)*i0 * h)) * inv_h, 0.0F, 1.0F);
-    *i1 = mini(*i0 + 1, n - 2);
+    *i0 = mathi_min(mathi_max((int)floorf(q * inv_h), 1), n - 2);
+    *t = mathf_clamp((q - ((float)*i0 * h)) * inv_h, 0.0F, 1.0F);
+    *i1 = mathi_min(*i0 + 1, n - 2);
 }
 
 static stencil_t
@@ -312,7 +300,7 @@ centre_stencil(const flip3_t* f, vec3f_t p) {
 
 static int
 cell_of(float p, float inv_h, int n) {
-    return mini(maxi((int)floorf(p * inv_h), 0), n - 1);
+    return mathi_min(mathi_max((int)floorf(p * inv_h), 0), n - 1);
 }
 
 static void
@@ -392,9 +380,6 @@ update_density(flip3_t* f) {
     }
 }
 
-/* Gauss-Seidel on the divergence over cells of any aspect, with Muller's
- * drift push: a cell packed past rest density gets that share of its excess
- * as outflow per second over dt. */
 /* The particles' velocities, kept for FLIP's change, then the acceleration
  * on every face that is not a wall's. */
 static void
@@ -414,6 +399,9 @@ accelerate(flip3_t* f, float dt, vec3f_t accel) {
     }
 }
 
+/* Gauss-Seidel on the divergence over cells of any aspect, with the drift
+ * push: a cell off rest density gets the tuned share of the difference as
+ * flow per step. */
 static void
 solve_pressure(flip3_t* f, float dt) {
     const int sx = f->ny * f->nz;
@@ -508,33 +496,70 @@ flip3_step(flip3_t* f, float dt_s, vec3f_t accel) {
     collide(f);
 }
 
-bool
-flip3_density_field(const flip3_t* f, int samples, float* field, int sx, int sy, int sz) {
-    if (samples < 1 || sx != (flip3_cells_x(f) * samples) + 2 || sy != (flip3_cells_y(f) * samples) + 2
-        || sz != (flip3_cells_z(f) * samples) + 2) {
-        return false;
+static void
+field_dims(const flip3_t* f, int samples, int dims[3]) {
+    dims[0] = ((f->nx - 2) * samples) + 2;
+    dims[1] = ((f->ny - 2) * samples) + 2;
+    dims[2] = ((f->nz - 2) * samples) + 2;
+}
+
+size_t
+flip3_field_count(const flip3_t* f, int samples) {
+    int d[3];
+    field_dims(f, samples, d);
+    return (size_t)d[0] * (size_t)d[1] * (size_t)d[2];
+}
+
+/* One [1 2 1] / 4 pass along one axis, inside the empty border, the walls
+ * mirrored; in place, carrying the sample before. */
+static void
+smooth_axis(float* field, int stride, int count, int step_a, int count_a, int step_b, int count_b) {
+    for (int a = 1; a < count_a - 1; a++) {
+        for (int b = 1; b < count_b - 1; b++) {
+            float* line = &field[(a * step_a) + (b * step_b)];
+            float before = line[stride];
+            for (int i = 1; i < count - 1; i++) {
+                const float here = line[i * stride];
+                const float after = i + 1 < count - 1 ? line[(i + 1) * stride] : here;
+                line[i * stride] = 0.25F * (before + (2.0F * here) + after);
+                before = here;
+            }
+        }
     }
+}
+
+iso_field_t
+flip3_field(const flip3_t* f, int samples, float* out) {
+    int d[3];
+    field_dims(f, samples, d);
+    const int sx = d[0];
+    const int sy = d[1];
+    const int sz = d[2];
     const vec3f_t step = vec3f_scale(f->h, 1.0F / (float)samples);
     const float inv_rest = 1.0F / f->rest_density;
     for (int x = 0; x < sx; x++) {
         for (int y = 0; y < sy; y++) {
             for (int z = 0; z < sz; z++) {
-                float* out = &field[(((x * sy) + y) * sz) + z];
+                float* at = &out[(((x * sy) + y) * sz) + z];
                 if (x == 0 || y == 0 || z == 0 || x == sx - 1 || y == sy - 1 || z == sz - 1) {
-                    *out = 0.0F;
+                    *at = 0.0F;
                     continue;
                 }
                 /* Grid coordinates: the box starts one cell in. */
                 const vec3f_t p = {f->h.x + (((float)x - 0.5F) * step.x), f->h.y + (((float)y - 0.5F) * step.y),
                                    f->h.z + (((float)z - 0.5F) * step.z)};
                 const stencil_t s = centre_stencil(f, p);
-                float d = 0.0F;
+                float density = 0.0F;
                 for (int k = 0; k < 8; k++) {
-                    d += s.weight[k] * f->density[s.at[k]];
+                    density += s.weight[k] * f->density[s.at[k]];
                 }
-                *out = d * inv_rest;
+                *at = density * inv_rest;
             }
         }
     }
-    return true;
+    smooth_axis(out, sy * sz, sx, sz, sy, 1, sz);
+    smooth_axis(out, sz, sy, sy * sz, sx, 1, sz);
+    smooth_axis(out, 1, sz, sy * sz, sx, sz, sy);
+    /* Sample (1, 1, 1) sits half a sample in from the box's origin. */
+    return (iso_field_t){out, sx, sy, sz, vec3f_scale(step, -0.5F), step};
 }

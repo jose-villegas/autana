@@ -46,6 +46,18 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | `water.gravity_mm_s2` | the gravity the water runs under; below Earth's, so a 35 mm tank sloshes at a pace a frame can follow |
 | `water.grid_internal` | 1 places the simulation grid in internal RAM, for measuring against PSRAM; read when the scene enters |
 
+Each frame, while the last one goes out to the panel:
+
+| Step | Owner |
+|---|---|
+| Gravity and shake, in g, box axes | `input/motion/gravity.h` |
+| Up to four 8 ms substeps | `physics/fluid/flip3.h` `flip3_step()` |
+| The smoothed surface field | `flip3_field()` |
+| Its surface, as triangles | `math/geometry/iso_surface.h` `iso_surface_nets()` |
+| Shading per vertex, encoded through a table | the scene; `r3d_skin_light_encode()` |
+| Clusters and a tree the raster walks | `render/dynamic/r3d_dynamic_mesh.h` |
+| Drawn as the water entity | `scene_renderer_set_mesh()` |
+
 ![The water scene's scripted tour](../../../../../docs/images/overview/render-lab-water.gif)
 
 ### Small fill

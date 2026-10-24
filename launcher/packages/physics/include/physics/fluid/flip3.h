@@ -25,6 +25,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "math/geometry/iso_surface.h"
 #include "math/linear/vec3f.h"
 
 /* How close a particle may come to a wall, and the seed lattice's spacing,
@@ -113,26 +114,12 @@ flip3_particle(const flip3_t* f, int i) {
     return vec3f_sub(f->pos[i], f->h);
 }
 
-/* The grid's cell count per axis inside the box, for sizing a field. */
-static inline int
-flip3_cells_x(const flip3_t* f) {
-    return f->nx - 2;
-}
+/* The floats flip3_field() writes at `samples` per cell along each axis. */
+size_t flip3_field_count(const flip3_t* f, int samples);
 
-static inline int
-flip3_cells_y(const flip3_t* f) {
-    return f->ny - 2;
-}
-
-static inline int
-flip3_cells_z(const flip3_t* f) {
-    return f->nz - 2;
-}
-
-/* Writes the water's density over the box into `field`, sampled `samples`
- * per cell along each axis at cell-fraction centres, with one empty sample
- * all round: dims (cells * samples + 2) per axis, indexed x * sy * sz +
- * y * sz + z, 1 where the water is at rest density. Sample (1, 1, 1) sits
- * half a sample in from the box's origin. Returns false when the sizes do
- * not match. Trilinear from the grid's density. */
-bool flip3_density_field(const flip3_t* f, int samples, float* field, int sx, int sy, int sz);
+/* The surface field: the water's density over the box, 1 at rest, with one
+ * empty sample all round so a mesh of it closes. One [1 2 1] / 4 pass per
+ * axis rounds it and sinks a film a sample thin; the walls mirror, so water
+ * against glass keeps its density. Returns its sizes, origin and spacing in
+ * box coordinates, for iso_surface_nets(). */
+iso_field_t flip3_field(const flip3_t* f, int samples, float* out);

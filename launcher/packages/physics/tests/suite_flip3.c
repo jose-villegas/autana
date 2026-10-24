@@ -12,7 +12,7 @@
 #include "test_cleanup.h"
 #include "unity.h"
 
-#include "math/motion/flip3.h"
+#include "physics/fluid/flip3.h"
 
 /* This suite's own tank, 6 x 8 x 3 cells: small enough that its buffers
  * fit the board's internal RAM and a few simulated seconds stay quick.
@@ -36,6 +36,10 @@ static int fx, fy, fz;
 
 static const flip3_config_t CONFIG = {{BOX_X, BOX_Y, BOX_Z}, CELL, MAX_PARTICLES};
 
+/* A box as the device's is: no axis a whole number of cells, so each axis
+ * rounds its own spacing (6.85, 8.65 and 3.05 cells here). */
+static const flip3_config_t ODD = {{137.0F, 173.0F, 61.0F}, CELL, MAX_PARTICLES};
+
 static void
 fixture_end(void) {
     free(grid);
@@ -47,16 +51,27 @@ fixture_end(void) {
 
 /* Freed after the test even when an assertion fails. */
 static void
-fixture_begin(void) {
+fixture_with(const flip3_config_t* config) {
     suite_add_test_cleanup(fixture_end);
-    grid = malloc(flip3_grid_bytes(&CONFIG));
-    particles = malloc(flip3_particle_bytes(&CONFIG));
-    TEST_ASSERT_TRUE(flip3_init(&water, &CONFIG, grid, particles));
-    fx = (flip3_cells_x(&water) * SAMPLES) + 2;
-    fy = (flip3_cells_y(&water) * SAMPLES) + 2;
-    fz = (flip3_cells_z(&water) * SAMPLES) + 2;
-    field = malloc(sizeof(float) * (size_t)(fx * fy * fz));
+    grid = malloc(flip3_grid_bytes(config));
+    particles = malloc(flip3_particle_bytes(config));
+    TEST_ASSERT_TRUE(flip3_init(&water, config, grid, particles));
+    field = malloc(sizeof(float) * flip3_field_count(&water, SAMPLES));
     TEST_ASSERT_NOT_NULL(field);
+}
+
+static void
+fixture_begin(void) {
+    fixture_with(&CONFIG);
+}
+
+/* The surface field, its sizes kept for sample(). */
+static void
+take_field(void) {
+    const iso_field_t f = flip3_field(&water, SAMPLES, field);
+    fx = f.nx;
+    fy = f.ny;
+    fz = f.nz;
 }
 
 static void
@@ -74,7 +89,7 @@ sample(int x, int y, int z) {
 /* The share of the box the density field calls water. */
 static float
 wet_share(void) {
-    TEST_ASSERT_TRUE(flip3_density_field(&water, SAMPLES, field, fx, fy, fz));
+    take_field();
     int wet = 0;
     for (int x = 1; x < fx - 1; x++) {
         for (int y = 1; y < fy - 1; y++) {
@@ -114,12 +129,18 @@ test_a_bad_configuration_is_refused(void) {
 static void
 test_whole_cells_fill_the_box_on_every_axis(void) {
     fixture_begin();
-    TEST_ASSERT_EQUAL_INT(6, flip3_cells_x(&water));
-    TEST_ASSERT_EQUAL_INT(8, flip3_cells_y(&water));
-    TEST_ASSERT_EQUAL_INT(3, flip3_cells_z(&water));
-    TEST_ASSERT_EQUAL_FLOAT(BOX_X, water.h.x * (float)flip3_cells_x(&water));
-    TEST_ASSERT_EQUAL_FLOAT(BOX_Y, water.h.y * (float)flip3_cells_y(&water));
-    TEST_ASSERT_EQUAL_FLOAT(BOX_Z, water.h.z * (float)flip3_cells_z(&water));
+    TEST_ASSERT_EQUAL_INT(6 + 2, water.nx);
+    TEST_ASSERT_EQUAL_INT(8 + 2, water.ny);
+    TEST_ASSERT_EQUAL_INT(3 + 2, water.nz);
+    fixture_end();
+    fixture_with(&ODD);
+    TEST_ASSERT_EQUAL_FLOAT(ODD.size.x, water.h.x * (float)(water.nx - 2));
+    TEST_ASSERT_EQUAL_FLOAT(ODD.size.y, water.h.y * (float)(water.ny - 2));
+    TEST_ASSERT_EQUAL_FLOAT(ODD.size.z, water.h.z * (float)(water.nz - 2));
+    /* The field spans the box: its first and last samples sit half a sample in. */
+    const iso_field_t f = flip3_field(&water, SAMPLES, field);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3F, 0.5F * f.step.x, f.origin.x + f.step.x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3F, ODD.size.y - (0.5F * f.step.y), f.origin.y + ((float)(f.ny - 2) * f.step.y));
 }
 
 static void
@@ -168,7 +189,7 @@ test_upright_water_settles_level(void) {
     flip3_fill(&water, 0.5F, (vec3f_t){0.0F, 1.0F, 0.0F});
     run(SETTLE_STEPS, (vec3f_t){0.0F, GRAVITY, 0.0F});
     TEST_ASSERT_LESS_THAN_FLOAT(CELL, rms_speed()); /* under a cell a second: at rest */
-    (void)wet_share();
+    take_field();
     float lowest_top = 0.0F;
     float highest_top = BOX_Y;
     for (int x = 1; x < fx - 1; x++) {
@@ -192,7 +213,7 @@ test_flat_water_lies_as_a_layer_on_the_glass_below(void) {
     fixture_begin();
     flip3_fill(&water, 0.5F, (vec3f_t){0.0F, 1.0F, 0.0F});
     run(SETTLE_STEPS, (vec3f_t){0.0F, 0.0F, -GRAVITY});
-    (void)wet_share();
+    take_field();
     for (int x = 1; x < fx - 1; x++) {
         for (int y = 1; y < fy - 1; y++) {
             TEST_ASSERT_TRUE(sample(x, y, 1) > 0.5F);
@@ -259,11 +280,18 @@ test_the_same_inputs_give_the_same_water(void) {
     TEST_ASSERT_TRUE(same);
 }
 
+/* The device's box rounds each axis its own way; the water must still
+ * settle level and keep its volume there. */
 static void
-test_a_field_of_the_wrong_size_is_refused(void) {
-    fixture_begin();
-    TEST_ASSERT_FALSE(flip3_density_field(&water, SAMPLES, field, fx - 1, fy, fz));
-    TEST_ASSERT_FALSE(flip3_density_field(&water, 0, field, fx, fy, fz));
+test_a_box_of_no_whole_cells_settles_level_and_keeps_its_volume(void) {
+    fixture_with(&ODD);
+    flip3_fill(&water, 0.5F, (vec3f_t){0.0F, 1.0F, 0.0F});
+    run(SETTLE_STEPS, (vec3f_t){0.0F, GRAVITY, 0.0F});
+    TEST_ASSERT_LESS_THAN_FLOAT(CELL, rms_speed());
+    const float settled = wet_share();
+    TEST_ASSERT_FLOAT_WITHIN(0.03F, 0.5F, settled);
+    run(LONG_STEPS, (vec3f_t){0.0F, GRAVITY, 0.0F});
+    TEST_ASSERT_FLOAT_WITHIN(0.02F, settled, wet_share());
 }
 
 void
@@ -279,7 +307,7 @@ suite_flip3(void) {
     RUN_TEST(test_a_shaken_tank_keeps_every_particle_inside);
     RUN_TEST(test_a_resting_pool_keeps_its_volume);
     RUN_TEST(test_the_same_inputs_give_the_same_water);
-    RUN_TEST(test_a_field_of_the_wrong_size_is_refused);
+    RUN_TEST(test_a_box_of_no_whole_cells_settles_level_and_keeps_its_volume);
 }
 
 SUITE_REGISTER(suite_flip3);
