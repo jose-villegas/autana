@@ -79,6 +79,7 @@ mathf_div(float a, float b) {
 /* Nonzero inputs away from float range limits; CONFIG_MATH_FPU_RECIP enables the seed. */
 /* For nonzero input a, reciprocal seed y with two Newton corrections. | y = y + y(1 - ay) | signed magnitudes and power-of-two edges */
 
+/* exact: y = 1/a */
 /* MATH_FAST_PATH(mathf_recip_f, div_recip_f, MATHF_RECIP_ULP_LIMIT) */
 
 static inline float
@@ -107,6 +108,7 @@ mathf_recip(float a) {
 /* One correction serves callers that accept the relative error limit for positive normal inputs. */
 /* For positive input v, reciprocal-root seed y with one Newton correction. | y = y(3/2 - (v/2)y^2) | all mantissas in [1,4), normal exponent strides and edges */
 
+/* exact: y = 1/\sqrt{v} */
 /* MATH_FAST_PATH(mathf_rsqrt_approx_f, div_rsqrt_f, MATHF_RSQRT_APPROX_RELATIVE_LIMIT) */
 
 static inline __attribute__((always_inline)) float
@@ -123,6 +125,7 @@ mathf_rsqrt_approx(float value) {
 /* Subnormal squared lengths retain the 1 / sqrtf path. On the board +inf gives NaN, outside normalize's domain. */
 /* For positive input v, reciprocal-root seed y with two Newton corrections. | y = y + (y/2)(1 - vy^2) | all mantissas in [1,4), normal exponent strides and edges */
 
+/* exact: y = 1/\sqrt{v} */
 /* MATH_FAST_PATH(mathf_rsqrt_f, div_rsqrt_f, MATHF_RSQRT_ULP_LIMIT) */
 
 static inline __attribute__((always_inline)) float
@@ -199,6 +202,7 @@ _Static_assert((MATHF_RECIP_ULP_LIMIT + 0.5F) * MATHF_REPEAT_FAST_QUOTIENT * FLT
 
 /* For input v and positive period len, reciprocal quotient and fused remainder r, with range fallback. | r = fma(-floor(v/len), len, v) | signed float bit patterns, quotient guard and endpoint edges */
 
+/* exact: r = v - \lfloor v/len \rfloor len */
 /* MATH_FAST_PATH(wrap_f, wrap_fmodf_f, MATHF_WRAP_ULP_LIMIT=0 ulp) */
 
 static inline float

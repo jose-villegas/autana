@@ -37,6 +37,7 @@ class Annotation:
     limit: float
     description: str
     formula: str
+    original: str
     coverage: str
 
 
@@ -74,6 +75,9 @@ def annotations(root=ROOT):
             if not comments:
                 raise ValueError(f"missing description, formula or coverage: {key}")
             description, formula, coverage = map(str.strip, comments[-1].split("|"))
+            exact = re.search(r"/\* exact: (.*?) \*/\s*$", before)
+            if not exact:
+                raise ValueError(f"missing exact formula: {key}")
             body = function_bodies(text)[key]
             guard = re.search(r"^#(?:if|elif).*defined\(__XTENSA__\).*CONFIG_MATH_.*$", body, re.M)
             target = "portable"
@@ -82,7 +86,7 @@ def annotations(root=ROOT):
             unit, method = contracts[key]
             result.append(Annotation(key, kind, fast, plain, limit_name, unit, method, target,
                                      header.relative_to(root), before.count("\n") + 1,
-                                     limit, description, formula, coverage))
+                                     limit, description, formula, exact[1], coverage))
     if not result:
         raise ValueError("no fast-path annotations")
     return result
@@ -358,12 +362,14 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
     for key, group in groups.items():
         item = group[0]
         lines += ["", f'<a id="{key.replace("_", "-")}"></a>', "", f"## `{key}`", "",
-                  "```math", item.formula, "```", "", f"Symbols: {_inline_expressions(_description_fields(item)[1])}.", "",
+                  "| Original | Fast path |", "|---|---|",
+                  f"| $`{item.original}`$ | $`{item.formula}`$ |", "", f"Symbols: {_inline_expressions(_description_fields(item)[1])}.", "",
                   f"{item.method.capitalize()}: {_inline_expressions(item.coverage)}.", ""]
         identity = key, item.kind
-        if item.limit == 0 and identity in (input_counts or {}):
-            reference = ", ".join(f"`{name}`" for name in dict.fromkeys(CALL.findall(plain_expression(item, root))))
-            lines += [f"Bit-identical to {reference} over {input_counts[identity]} inputs."]
+        if identity in errors and float(errors[identity].split()[0]) == 0:
+            count = (input_counts or {}).get(identity)
+            sweep = f"{count} inputs of the sweep" if count is not None else "the sweep"
+            lines += [f"Exact: no error over {sweep}."]
             continue
         lines += [f"![Error across the input range](../images/math/fast-path-{key}.png)" if (key, item.kind) in bins
                   else "Error curve: - (capture pending)."]
