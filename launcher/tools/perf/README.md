@@ -315,7 +315,7 @@ Cursors retain the furthest first-parent position, including explicit ranges.
 
 The orphan `perf-data` branch stores
 `scoped/<board>/<YYYY-MM-DD>-<HHMM>/night.json` and `<NN>-<sha12>.json` reports.
-The directory uses the plan's local start time; the manifest's `night` is its date.
+The directory uses the plan's local start time; `night` is the window start's date.
 
 The manifest records step outcomes, cursors, image hashes, durations, and
 self-test results. LNT v2 reports use the full USB serial as machine name,
@@ -327,12 +327,12 @@ to the lane; `--max-steps` limits new candidates and retains the anchor.
 
 ```sh
 python launcher/tools/perf/nightly/scoped_chain.py plan \
-  --boards BOARD_A BOARD_B --data DATA --out plan.json \
+  --boards BOARD_A BOARD_B --data DATA --out plan.json --until 07:00 \
   --from SHA --max-steps 2
 autana --board BOARD_A --wait 3600 lock run -- \
   python launcher/tools/perf/nightly/scoped_chain.py run \
   --plan plan.json --data DATA --board BOARD_A --lane 0/2 \
-  --until 07:00 --out captures --suite SUITE - -
+  --out captures --suite SUITE - -
 ```
 
 `--suite NAME TESTS TABLE` is perf_compare's triplet: suite name,
@@ -346,6 +346,10 @@ estimated duration in seconds.
 `QUEUE_AT` and `WINDOW_END` set local times. Dispatch inputs `queue_at` and
 `window_end` override them; an empty dispatch `queue_at` starts immediately.
 A dispatch holds boards until its window end or `max_steps`.
+
+Scheduled plans start immediately inside the overnight window. Morning
+arrivals after `WINDOW_END` skip; arrivals after noon wait until `QUEUE_AT`.
+A dispatch with `queue_at` follows the scheduled window rule, skipping 07:00–12:00.
 
 A step starts only if it fits before `WINDOW_END`, and a lane stops after
 `CAPTURE_FAILURE_LIMIT` consecutive capture failures (`scoped_chain.py`).
