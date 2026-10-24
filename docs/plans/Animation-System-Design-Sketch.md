@@ -115,7 +115,7 @@ SCNE animator rows create animators; a camera path loads as one. Public
 playback controls are declared in `scene/scene.h`; apps hold entity handles
 and clip indices. The playback query API includes:
 
-```c
+```c fragment
 bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);
 int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
 const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
