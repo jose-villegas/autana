@@ -4,10 +4,21 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from sound_mix_capture import mix_stage_names
+from sound_mix_capture import mix_stage_names, sound_formats
 
 
 class MixerNamesTests(unittest.TestCase):
+    def test_qualified_sound_format_uses_the_pack_owner(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = Path(directory)
+            folder = tree / "launcher/main/music"
+            folder.mkdir(parents=True)
+            (folder / "album.pack.toml").write_text("")
+            (folder / "theme.sound.toml").write_text('source="theme.flac"\nformat="adpcm"')
+            self.assertEqual(sound_formats(tree, ["album/theme"]), {"album/theme": "adpcm"})
+            with self.assertRaisesRegex(ValueError, "unknown sound"):
+                sound_formats(tree, ["engine/theme"])
+
     def test_define_is_owner_and_missing_define_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             tree = Path(directory)
