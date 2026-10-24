@@ -16,4 +16,4 @@ def probe_data(script, motion_source, description):
     args = parser.parse_args()
     probe = Path(script).with_name(Path(script).stem + "_probe.c")
     sources = (probe, ROOT / "launcher/main/input/motion" / motion_source)
-    return run_probe(args.cc, sources), args.out
+    return run_probe(args.cc, sources), args.out, args.cc
