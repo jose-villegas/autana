@@ -44,7 +44,7 @@ extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* 
 #define FLOOR_COUNT_PREFIX "FLOOR_COUNTS"
 
 #include "gfx/present/gfx_test.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 
 static bool floor_counting;
 static unsigned floor_edges;

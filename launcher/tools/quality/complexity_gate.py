@@ -199,12 +199,12 @@ def run_tests_print(flag):
 def is_vendored(path_str):
     """launcher/components/ (microui, the board support package),
     managed_components/ (registry drivers), and the vendored Unity framework
-    under test/framework/, third-party code, out of scope for a ratchet on
+    under packages/testkit/unity/, third-party code, out of scope for a ratchet on
     THIS project's own functions."""
     parts = Path(path_str).parts
     if any(p in VENDORED_DIR_NAMES for p in parts):
         return True
-    if "framework" in parts and Path(path_str).name == "unity.c":
+    if "testkit" in parts and "unity" in parts:
         return True
     return False
 
@@ -561,7 +561,10 @@ def build_compile_db():
             "compiler (see run_tests.sh's own message for how)."
         )
 
-    host_sources = [s for s in run_tests_print("--print-sources")
+    # Package runners have their own main(), so the firmware host binary
+    # cannot link them; analysis uses the same host includes and defines.
+    host_sources = [s for s in [*run_tests_print("--print-sources"),
+                               *map(str, (LAUNCHER_DIR / "packages").glob("*/runner/**/*.c"))]
                      if not is_vendored(s)]
     host_flags = run_tests_print("--print-flags") + [
         f"--target={host_target}", f"--gcc-toolchain={host_root}",
@@ -614,7 +617,9 @@ def check_main_coverage(measured_files):
     EXCLUDED_MAIN_FILES, with a reason, is a coverage regression and fails
     the gate by name rather than shrinking quietly."""
     measured = {str(Path(f).resolve()) for f in measured_files}
-    on_disk = sorted([*(LAUNCHER_DIR / "main").rglob("*.c"), *(LAUNCHER_DIR / "packages").rglob("*.c")])
+    on_disk = sorted(path for root in ("main", "packages")
+                     for path in (LAUNCHER_DIR / root).rglob("*.c")
+                     if not is_vendored(str(path)))
     missing = []
     for path in on_disk:
         resolved = str(path.resolve())
