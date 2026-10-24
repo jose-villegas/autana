@@ -245,6 +245,43 @@ class BuilderTests(unittest.TestCase):
             self.assertNotEqual(image.stat().st_mtime_ns, before[2][0])
 
 
+class DevelopmentPackTests(unittest.TestCase):
+    def test_images_select_development_packs_and_host_builds_keep_them(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for name, setting in (("console", "true"), ("common", "false")):
+                folder = root / name
+                import_file(folder, f"{name}.import.toml", name)
+                (folder / f"{name}.mesh").write_bytes(mesh_entry((7, 3, -7)))
+                write(folder / f"{name}.pack.toml", f"development = {setting}")
+            out, image = root / "packs", root / "assets.bin"
+            for flags, expected in ((["--development"], {"common", "console"}), ([], {"common"})):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(build_pack.main([str(root), "-o", str(out), "--image", str(image), *flags]), 0)
+                self.assertEqual(set(parse_directory(image.read_bytes())), expected)
+                self.assertEqual({p.stem for p in out.glob("*.apak")}, expected)
+            self.assertEqual(set(build_pack.pack_files([root])), {"common", "console"})
+            self.assertEqual(set(build_pack.pack_bytes([root])), {"common", "console"})
+
+    def test_invalid_pack_settings_name_the_file(self):
+        for setting, message in (("development = 1", "boolean"), ('development = "true"', "boolean"),
+                                 ("development = []", "boolean"), ("unknown = true", "unknown keys")):
+            with self.subTest(setting=setting), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                import_file(root, "one.import.toml", "one")
+                manifest = write(root / "group.pack.toml", setting)
+                with self.assertRaisesRegex(SettingsError, message) as caught:
+                    build_pack.pack_files([root])
+                self.assertIn(str(manifest), str(caught.exception))
+
+    def test_console_sound_is_outside_engine_and_only_in_development_images(self):
+        packs = build_pack.pack_files([build_pack.DEFAULT_SEARCH])
+        self.assertIn("carreno_waltz", packs["console"])
+        self.assertNotIn("carreno_waltz", packs["engine"])
+        release, _ = build_pack.pack_jobs([build_pack.DEFAULT_SEARCH], development=False)
+        self.assertNotIn("console", release)
+
+
 class DemoAssetTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
