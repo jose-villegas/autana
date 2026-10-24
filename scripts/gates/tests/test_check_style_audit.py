@@ -431,6 +431,20 @@ class StyleAuditTest(unittest.TestCase):
             ("launcher/packages/physics/CMakeLists.txt", 2, "physics requires nowhere"),
         ])
 
+    def test_package_requires_refuses_a_declaration_it_cannot_read(self):
+        for text in ('set(physics_requires "math")\n', "set(physics_requires math-lite)\n",
+                     "set(physics_requires ${X})\n", "set(physics_requires\n    math)\n",
+                     "if(ESP_PLATFORM)\n    set(physics_requires math)\nendif()\n",
+                     "set(physics_requires math) # trailing\n"):
+            with self.subTest(text=text):
+                findings = self.audit("PACKAGE-REQUIRES", {
+                    "launcher/packages/physics/CMakeLists.txt": text,
+                    "launcher/packages/physics/include/physics/body.h": "#pragma once\n",
+                    f"{self.PACKAGE}/include/math/scalar/mathf.h": "#pragma once\n",
+                })
+                self.assertEqual(len(findings), 1, findings)
+                self.assertIn("one unindented line of bare package names", findings[0].message)
+
     def test_package_requires_passes_a_one_way_graph_and_ignores_nested_lists(self):
         findings = self.audit("PACKAGE-REQUIRES", {
             "launcher/packages/physics/CMakeLists.txt": "set(physics_requires math kinematics)\n",

@@ -130,6 +130,9 @@ idf_component_register(SRCS ${physics_srcs} INCLUDE_DIRS "include" REQUIRES ${ph
 target_link_libraries(physics PUBLIC ${physics_requires})   # the plain CMake build
 ```
 
+A header-only package is an `INTERFACE` library, so it links with `INTERFACE` in place of `PUBLIC`.
+The declaration is one unindented line of bare names; PACKAGE-REQUIRES refuses any other spelling.
+
 | Rule | Checks |
 |---|---|
 | PACKAGE-INCLUDE | a package reaching into the firmware or into a package it does not declare (directly or through a declared one); `launcher/test/check_packages_alone.sh` compiles each package file with only those include roots |
