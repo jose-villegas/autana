@@ -24,7 +24,14 @@ class SoundTests(unittest.TestCase):
         self.assertLess(entering.index('sound_begin_app();'), entering.index('(*current)->enter();'))
 
     def test_sound_is_drive_command(self):
-        self.assertIn('autana sound play <name> [loop] [gain]', autana.help_text(['drive']))
+        self.assertIn('autana sound play <pack>/<name> [loop] [gain]', autana.help_text(['drive']))
+
+    def test_flat_play_dispatch(self):
+        self.assertIn('autana play <pack>/<name> [loop] [gain]', autana.help_text(['drive']))
+        with patch.object(autana, 'send', return_value=(0, ['SOUND_END voice=1'])) as send:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, autana.COMMANDS['play'](['music/theme', 'loop', '50']))
+            self.assertEqual(send.call_args.args[0], 'SOUND play music/theme loop 50')
 
     def test_sound_forwards_commands(self):
         for args in (['play', 'tap'], ['play', 'tap', 'loop', '50'],
