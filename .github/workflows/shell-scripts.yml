@@ -71,6 +71,7 @@ jobs:
           python3 -m unittest discover -s launcher/tools/tune/tests
           python3 -m unittest discover -s scripts/ci/tests
           python3 -m unittest discover -s launcher/tools/perf/tests -p test_nightly_chain.py
+          python3 -m unittest discover -s launcher/tools/perf/tests -p test_perf_rows.py
 
       - name: Every script with a shebang is stored executable
         run: sh scripts/gates/check-exec-bits.sh
