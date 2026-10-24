@@ -1,3 +1,4 @@
+"""The code layout check finds pinned functions and the baseline each source folder owns."""
 import sys
 import tempfile
 import unittest
