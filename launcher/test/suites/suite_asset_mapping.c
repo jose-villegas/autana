@@ -8,6 +8,7 @@
 
 #include "asset/asset_directory.h"
 #include "asset/asset_store_backend.h"
+#include "hash/crc32.h"
 
 static const asset_directory_t*
 fixture(void) {
@@ -33,11 +34,11 @@ check_mapping_pair(const char* name_a, const char* name_b) {
         asset_store_backend_unmount(mapping_a);
         return status;
     }
-    const uint32_t crc = asset_crc32(pack_b.base, pack_b.size);
+    const uint32_t crc = crc32_update(0, pack_b.base, pack_b.size);
     asset_store_backend_unmount(mapping_a);
     asset_pack_t checked;
     status = asset_pack_open(&checked, pack_b.base, pack_b.size);
-    if (status == ASSET_OK && asset_crc32(pack_b.base, pack_b.size) != crc) {
+    if (status == ASSET_OK && crc32_update(0, pack_b.base, pack_b.size) != crc) {
         status = ASSET_ERR_CRC;
     }
     asset_store_backend_unmount(mapping_b);
