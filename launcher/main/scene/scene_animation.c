@@ -265,6 +265,10 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     if (renderer < 0) {
         return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_NOT_FOUND, id));
     }
+    /* Its normals are lit in its own frame, so a skinned renderer is a root. */
+    if (scene_entity_parent(scene, entity) != SCENE_ENTITY_NONE) {
+        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id));
+    }
     scene_skinned_renderer_t next = {0};
     const asset_status_t status = open_renderer_skin(scene, entity, renderer, id, &next);
     if (status != ASSET_OK) {

@@ -160,6 +160,8 @@ def decode(entry):
         raise SceneError(f"version {struct.unpack_from('<H', entry)[0]}, this reads {VERSION}")
     if len(entry) < HEADER.size:
         raise SceneError("shorter than a header")
+    if any(entry[2 * (1 + len(PARTS)):HEADER.size - 4 * len(PARTS)]):
+        raise SceneError("the header's padding is not zero")
     _, *header = HEADER.unpack_from(entry)
     counts, offsets = header[:len(PARTS)], header[len(PARTS):]
     settings, parents = PARTS.index("settings"), PARTS.index("parents")
@@ -167,6 +169,9 @@ def decode(entry):
         raise SceneError("transforms and parents must match names and settings must have exactly one row")
     rows = {part: section(entry, at, count, row, HEADER.size, part)
             for part, at, count, row in zip(PARTS, offsets, counts, ROWS)}
+    parents_end = offsets[parents] + counts[parents] * PARENT.size
+    if any(entry[parents_end:parents_end + (-parents_end % ALIGN)]):
+        raise SceneError("the padding after the parents is not zero")
     out = {part: [] for part in PARTS if part not in ("names", "transforms")}
     out["entities"] = [{"name": text_at(raw, "entity name"),
                         "matrix": [list(values[i:i + 3]) for i in range(0, 9, 3)], "position": list(values[9:]),

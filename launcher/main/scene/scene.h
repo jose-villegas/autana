@@ -1,8 +1,8 @@
 /*
  * scene: the engine's scene manager. Packed component arrays indexed by a
- * small entity id hold a transform and a parent per entity, and a renderer, camera,
- * animator or skinned renderer only for entities that have one; animator
- * and skin buffers are allocated when attached.
+ * small entity id hold a transform and a parent per entity, and a
+ * renderer, camera, animator or skinned renderer only for entities that
+ * have one; animator and skin buffers are allocated when attached.
  */
 #pragma once
 

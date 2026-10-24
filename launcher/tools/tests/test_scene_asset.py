@@ -335,6 +335,10 @@ class SceneEntryRefusalTests(unittest.TestCase):
             struct.pack_into("<H", entry, parents + row * scene_asset.PARENT.size, parent)
             with self.subTest(row=row, parent=parent), self.assertRaisesRegex(SceneError, message):
                 scene_asset.decode(entry)
+        entry = bytearray(original)
+        entry[2 * (1 + len(scene_asset.PARTS))] = 1
+        with self.assertRaisesRegex(SceneError, "header's padding"):
+            scene_asset.decode(entry)
         skin = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("skinned_renderers")]
         for field, name in enumerate(("mesh", "skin", "skeleton")):
             for raw in (b"x" * NAME_BYTES, bytes(NAME_BYTES)):
@@ -358,8 +362,16 @@ class SceneParentTests(unittest.TestCase):
         entry = scene_asset.encode(SimpleNamespace(objects=objects, renderers=[]))
         self.assertEqual([e["parent"] for e in scene_asset.decode(entry)["entities"]], [None, 0])
 
+    def test_the_padding_after_an_odd_count_of_parents_is_zero(self):
+        entry = bytearray(scene_asset.encode(SimpleNamespace(objects=self.objects(("one", "empty", None)), renderers=[])))
+        self.assertEqual(len(entry) % scene_asset.ALIGN, 0)
+        entry[-1] = 1
+        with self.assertRaisesRegex(SceneError, "padding after the parents"):
+            scene_asset.decode(entry)
+
     def test_a_parent_after_its_child_or_on_a_camera_is_refused(self):
         for rows, message in (((("copy", "empty", "variant"), ("variant", "empty", None)), "listed before it"),
+                              ((("variant", "empty", None), ("sun", "light", "variant")), "a light has no parent"),
                               ((("copy", "empty", "copy"),), "listed before it"),
                               ((("copy", "empty", "gone"),), "listed before it"),
                               ((("variant", "empty", None), ("eye", "camera", "variant")), "a camera has no parent")):

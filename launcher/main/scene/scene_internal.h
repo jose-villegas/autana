@@ -180,9 +180,9 @@ struct scene {
     scene_skinned_renderer_t* skinned_renderers;
     r3d_instance_t* instances; /* one per renderer: what the raster draws this frame */
     uint16_t* world_slots;     /* one per entity: its index in `worlds`, or SCENE_WORLD_SLOT_NONE when childless */
-    int parent_count;
-    mat4f_t* worlds;         /* one per entity with children, in entity order */
-    scene_entity_t* slotted; /* the entity each of `worlds` belongs to */
+    int world_count;
+    mat4f_t* worlds;                /* one per entity with children, in entity order */
+    scene_entity_t* world_entities; /* the entity each of `worlds` belongs to */
 };
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
