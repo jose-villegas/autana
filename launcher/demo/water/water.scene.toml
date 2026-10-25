@@ -1,12 +1,14 @@
 # Water in a tank the size of the screen and as deep as the device: the
 # scene scales the tank, places the camera and draws the water it simulates.
+# The scene places the camera where the front glass fills the picture: with
+# this lens, about 96 mm away, close enough that the tank's depth shows.
 [[objects]]
 name = "camera"
-position = [0.0, 0.0, 300.0]
+position = [0.0, 0.0, 96.0]
 
 [objects.camera]
-half_fov_short_tan = 0.05
-near_z = 100.0
+half_fov_short_tan = 0.15
+near_z = 20.0
 background = 0x0B0D12
 
 [[objects]]

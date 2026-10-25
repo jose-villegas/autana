@@ -7,7 +7,7 @@
  * the scene as the water entity's mesh (r3d_dynamic_mesh.h). The tank is a
  * unit box the scene scales to the device; the camera looks through the
  * front glass like a window, held to the panel whichever way the picture
- * is turned, its depth sliding with the tilt.
+ * is turned, its depth sliding while the board turns.
  *
  * Box axes are gravity's: x right, y down, z out of the screen, in mm from
  * the tank's back top-left corner. The scene's model axes put the front
@@ -99,12 +99,14 @@ TUNE(water, grid_internal, 0, 0, 1);
  * turns the picture. */
 #define WATER_QUARTER_TURN  (0.5F * MATH_PI)
 
-/* The window: how far the eye moves across the glass's plane at a full
- * tilt, in mm, at the viewing distance the lens gives (about 290 mm). Rolling
- * the board moves it sideways, leaning it back or forward moves it up or
- * down; gravity cannot see a turn about the vertical, so that is all the
- * head there is. Ours, by eye. */
-TUNE(water, window_mm, 100, 0, 300);
+/* Parallax: the eye stays on the screen's normal at rest, in any pose, and
+ * moves only while the board turns: it follows the turn since a reference
+ * down that catches up over settle_ms (as phone wallpaper parallax does), so
+ * the depth slides, then eases back to centre. parallax_mm is the eye's
+ * offset per radian of turn about the panel's x and y; a roll within the
+ * screen's plane moves nothing, as with a real box. Ours, by eye. */
+TUNE(water, parallax_mm, 100, 0, 400);
+TUNE(water, settle_ms, 1000, 50, 5000);
 
 /* Shading, in linear light. Deep and shallow water colours, absorbed over
  * WATER_ABSORB_MM of water (Beer-Lambert); Schlick's Fresnel toward the
@@ -154,6 +156,7 @@ static iso_field_t surface_field;
 static float* through; /* light left after crossing each field column's water */
 static r3d_skin_light_transfer_t* transfer;
 static bool truncated;
+static vec3f_t reference_down; /* down as the eye last settled, box axes */
 static vec3f_t* positions;
 static vec3f_t* normals;
 static uint8_t (*colors)[3];
@@ -258,19 +261,18 @@ place_tank(void) {
     return true;
 }
 
-/* A window onto the tank: the eye moves with the tilt and the lens shifts
- * back by as much, so the front glass always fills the picture exactly,
- * from where it fills the short side as the screen's width does, while the
- * back wall and the water behind it slide (an off-axis frustum). The camera
- * rolls against the shell's quarter turn, so the tank stays fixed to the
- * panel, as the water's gravity is, whichever way the picture is held. */
+/* A window onto the tank: the eye sits at `eye` across the glass's plane
+ * and the lens shifts back by as much, so the front glass always fills the
+ * picture exactly, from where it fills the short side as the screen's width
+ * does, while the back wall and the water behind it slide (an off-axis
+ * frustum). The camera rolls against the shell's quarter turn, so the tank
+ * stays fixed to the panel, as the water's gravity is, whichever way the
+ * picture is held. */
 static void
-place_camera(int quarter, vec3f_t down) {
+place_camera(int quarter, vec3f_t eye) {
     const camera_t* lens = scene_camera_lens(tank_scene, WATER_CAMERA);
     const float distance = 0.5F * box.x / lens->half_fov_short_tan;
     const quatf_t roll = quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, -(float)quarter * WATER_QUARTER_TURN);
-    /* Model axes: x right, y up the screen; leaning back is down.z < 0. */
-    const vec3f_t eye = vec3f_scale((vec3f_t){-down.x, -down.z, 0.0F}, (float)window_mm);
     transformf_t t = *scene_entity_transform(tank_scene, camera_entity);
     transformf_set_rotation(&t, roll);
     transformf_set_position(&t, (vec3f_t){eye.x, eye.y, -distance});
@@ -282,6 +284,21 @@ place_camera(int quarter, vec3f_t down) {
     const vec3f_t up = quatf_rotate(roll, (vec3f_t){0.0F, 1.0F, 0.0F});
     const vec3f_t follow = vec3f_scale(eye, 1.0F / box.x);
     (void)scene_camera_set_shift(tank_scene, camera_entity, (vec2f_t){vec3f_dot(follow, right), vec3f_dot(follow, up)});
+}
+
+/* The eye, in model axes (x right, y up), from the turn since the reference
+ * down: reference x down is that turn as a rotation vector in box axes, for
+ * small angles. Lifting the right edge toward the viewer moves the eye left;
+ * leaning the top away moves it down. */
+static vec3f_t
+parallax_eye(vec3f_t down, uint32_t dt_ms) {
+    if (vec3f_dot(reference_down, reference_down) == 0.0F) {
+        reference_down = down; /* the first reading: start centred, whatever the pose */
+    }
+    const float catch_up = 1.0F - expf(-(float)dt_ms / (float)settle_ms);
+    reference_down = vec3f_normalize(vec3f_lerp(reference_down, down, catch_up));
+    const vec3f_t turn = vec3f_cross(reference_down, down);
+    return vec3f_scale((vec3f_t){-turn.y, turn.x, 0.0F}, (float)parallax_mm);
 }
 
 /* Down, eased between the tour's keys; a shake past its last key. */
@@ -458,7 +475,8 @@ scene_water_enter(const render_lab_scene_t* self) {
     tour_ms = 0;
     refill((vec3f_t){0.0F, 1.0F, 0.0F});
     rebuild_surface();
-    place_camera(display_quarter_now(), (vec3f_t){0.0F, 1.0F, 0.0F});
+    reference_down = (vec3f_t){0}; /* set by the first reading */
+    place_camera(display_quarter_now(), (vec3f_t){0});
     (void)scene_activate(tank_scene, WATER_CAMERA);
     render_lab_apply_raster_settings();
     (void)render_lab_apply_camera_settings(tank_scene, camera_entity);
@@ -497,7 +515,7 @@ scene_water_update(uint32_t dt_ms) {
     }
     rebuild_surface();
     step_us = (uint32_t)(timing_now_us() - started);
-    place_camera(display_quarter_now(), down);
+    place_camera(display_quarter_now(), parallax_eye(down, dt_ms));
 }
 
 static void
