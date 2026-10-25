@@ -76,9 +76,6 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/mat4_template.h](include/math/linear/mat4_template.h) | mat4_template: a 4x4 matrix indexed m[row][col], acting on column vectors, for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/mat4f.h](include/math/linear/mat4f.h) | mat4f: a 4x4 matrix of a float. |
 | [include/math/linear/mat4x.h](include/math/linear/mat4x.h) | mat4x: a 4x4 matrix of a Q16.16. |
-| [include/math/linear/project_template.h](include/math/linear/project_template.h) | project_template: shared near-plane endpoint selection for pinhole clipping. |
-| [include/math/linear/projectf.h](include/math/linear/projectf.h) | projectf: pinhole projection in pixels with camera +y up and picture y down. |
-| [include/math/linear/projectx.h](include/math/linear/projectx.h) | projectx: Q16.16 pinhole lens and near clipping in any fixed camera-space scale. |
 | [include/math/linear/quat_template.h](include/math/linear/quat_template.h) | quat_template: a rotation as x, y, z, w, unit length, Hamilton product, acting on a vector as q * v * q^-1, for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/quatf.h](include/math/linear/quatf.h) | quatf: a float rotation with host-exact, halved-arc polynomial slerp. |
 | [include/math/linear/quatx.h](include/math/linear/quatx.h) | quatx: a Q16.16 rotation; angles are turns (mathx.h). |
@@ -99,6 +96,9 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/vec_ops_template.h](include/math/linear/vec_ops_template.h) | vec_ops_template: component-wise arithmetic and lerp for vectors of every dimension and number type. |
 | [include/math/linear/vec_swizzle_template.h](include/math/linear/vec_swizzle_template.h) | vec_swizzle_template: swizzles, a new vector made of named components of another (vec3f_zyx, vec2f_yx), for every number type. |
 | [include/math/motion/orbit_motion.h](include/math/motion/orbit_motion.h) | orbit_motion: moves a transform around a target, turntable style: it turns about the world's up axis (yaw) and tilts above or below the target (pitch), always facing it. |
+| [include/math/projection/project_template.h](include/math/projection/project_template.h) | project_template: shared near-plane endpoint selection for pinhole clipping. |
+| [include/math/projection/projectf.h](include/math/projection/projectf.h) | projectf: pinhole projection in pixels with camera +y up and picture y down. |
+| [include/math/projection/projectx.h](include/math/projection/projectx.h) | projectx: Q16.16 pinhole lens and near clipping in any fixed camera-space scale. |
 | [include/math/scalar/ease.h](include/math/scalar/ease.h) | ease: timeline ramps and easing curves. |
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
 | [include/math/scalar/math_const.h](include/math/scalar/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
