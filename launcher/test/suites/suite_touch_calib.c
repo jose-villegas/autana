@@ -12,19 +12,19 @@
 static const touch_calib_fit_t STRETCH = {.xx = 1.12f, .xy = 0.0f, .x0 = -23.0f, .yx = 0.0f, .yy = 1.18f, .y0 = -29.0f};
 
 static void
-reported(touch_calib_fit_t fit, int x, int y, int* rx, int* ry) {
-    *rx = (int)(fit.xx * x + fit.xy * y + fit.x0 + 0.5f);
-    *ry = (int)(fit.yx * x + fit.yy * y + fit.y0 + 0.5f);
+reported(touch_calib_fit_t fit, int x, int y, vec2i_t* point) {
+    point->x = (int)(fit.xx * x + fit.xy * y + fit.x0 + 0.5f);
+    point->y = (int)(fit.yx * x + fit.yy * y + fit.y0 + 0.5f);
 }
 
 static void
 assert_recovers(touch_calib_fit_t fit, int x, int y) {
     const touch_calib_t calib = touch_calib_from_fit(fit);
-    int cx, cy;
-    reported(fit, x, y, &cx, &cy);
-    touch_calib_apply(&calib, 368, 448, &cx, &cy);
-    TEST_ASSERT_INT_WITHIN(1, x, cx);
-    TEST_ASSERT_INT_WITHIN(1, y, cy);
+    vec2i_t point;
+    reported(fit, x, y, &point);
+    touch_calib_apply(&calib, 368, 448, &point);
+    TEST_ASSERT_INT_WITHIN(1, x, point.x);
+    TEST_ASSERT_INT_WITHIN(1, y, point.y);
 }
 
 static void
@@ -46,10 +46,10 @@ static void
 test_an_honest_panel_changes_nothing(void) {
     const touch_calib_fit_t identity = {.xx = 1.0f, .yy = 1.0f};
     const touch_calib_t calib = touch_calib_from_fit(identity);
-    int x = 123, y = 321;
-    touch_calib_apply(&calib, 368, 448, &x, &y);
-    TEST_ASSERT_EQUAL_INT(123, x);
-    TEST_ASSERT_EQUAL_INT(321, y);
+    vec2i_t point = {123, 321};
+    touch_calib_apply(&calib, 368, 448, &point);
+    TEST_ASSERT_EQUAL_INT(123, point.x);
+    TEST_ASSERT_EQUAL_INT(321, point.y);
 }
 
 /* A report pinned at the panel's edge corrects to a point inside it, never
@@ -58,24 +58,23 @@ static void
 test_a_correction_stays_on_the_panel(void) {
     const touch_calib_fit_t shrink = {.xx = 0.9f, .yy = 0.9f};
     const touch_calib_t calib = touch_calib_from_fit(shrink);
-    int x = 367, y = 447;
-    touch_calib_apply(&calib, 368, 448, &x, &y);
-    TEST_ASSERT_EQUAL_INT(367, x);
-    TEST_ASSERT_EQUAL_INT(447, y);
-    x = 0;
-    y = 0;
+    vec2i_t point = {367, 447};
+    touch_calib_apply(&calib, 368, 448, &point);
+    TEST_ASSERT_EQUAL_INT(367, point.x);
+    TEST_ASSERT_EQUAL_INT(447, point.y);
+    point = (vec2i_t){0};
     const touch_calib_t shift =
         touch_calib_from_fit((touch_calib_fit_t){.xx = 1.0f, .x0 = 20.0f, .yy = 1.0f, .y0 = 20.0f});
-    touch_calib_apply(&shift, 368, 448, &x, &y);
-    TEST_ASSERT_EQUAL_INT(0, x);
-    TEST_ASSERT_EQUAL_INT(0, y);
+    touch_calib_apply(&shift, 368, 448, &point);
+    TEST_ASSERT_EQUAL_INT(0, point.x);
+    TEST_ASSERT_EQUAL_INT(0, point.y);
 }
 
 static void
 test_a_controller_point_is_corrected_once_before_the_fsm(void) {
     const touch_calib_t calib = touch_calib_from_fit(STRETCH);
     vec2i_t point;
-    reported(STRETCH, 100, 300, &point.x, &point.y);
+    reported(STRETCH, 100, 300, &point);
 
     touch_fsm_t fsm;
     input_t in;
@@ -91,7 +90,7 @@ static void
 test_a_controller_point_is_unchanged_when_calibration_is_off(void) {
     const touch_calib_t calib = touch_calib_from_fit(STRETCH);
     vec2i_t point;
-    reported(STRETCH, 100, 300, &point.x, &point.y);
+    reported(STRETCH, 100, 300, &point);
     const int reported_x = point.x, reported_y = point.y;
 
     touch_fsm_t fsm;
@@ -150,7 +149,7 @@ test_controller_press_and_move_are_corrected_once_each_before_release(void) {
     vec2i_t point;
     touch_fsm_init(&fsm);
 
-    reported(STRETCH, 100, 300, &point.x, &point.y);
+    reported(STRETCH, 100, 300, &point);
     touch_calib_prepare_point(false, true, &point, true, &calib, 368, 448);
     touch_fsm_update(&fsm, true, point, 0);
     touch_fsm_take(&fsm, &in);
@@ -158,7 +157,7 @@ test_controller_press_and_move_are_corrected_once_each_before_release(void) {
     TEST_ASSERT_INT_WITHIN(1, 100, in.press_x);
     TEST_ASSERT_INT_WITHIN(1, 300, in.press_y);
 
-    reported(STRETCH, 250, 60, &point.x, &point.y);
+    reported(STRETCH, 250, 60, &point);
     touch_calib_prepare_point(false, true, &point, true, &calib, 368, 448);
     touch_fsm_update(&fsm, true, point, 1000);
     touch_fsm_take(&fsm, &in);

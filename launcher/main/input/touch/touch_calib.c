@@ -35,17 +35,17 @@ round_fixed(int64_t v) {
 }
 
 void
-touch_calib_apply(const touch_calib_t* calib, int w, int h, int* x, int* y) {
-    const int64_t rx = *x;
-    const int64_t ry = *y;
-    *x = mathi_clamp(round_fixed((calib->xx * rx) + (calib->xy * ry) + calib->x0), 0, w - 1);
-    *y = mathi_clamp(round_fixed((calib->yx * rx) + (calib->yy * ry) + calib->y0), 0, h - 1);
+touch_calib_apply(const touch_calib_t* calib, int w, int h, vec2i_t* point) {
+    const int64_t rx = point->x;
+    const int64_t ry = point->y;
+    point->x = mathi_clamp(round_fixed((calib->xx * rx) + (calib->xy * ry) + calib->x0), 0, w - 1);
+    point->y = mathi_clamp(round_fixed((calib->yx * rx) + (calib->yy * ry) + calib->y0), 0, h - 1);
 }
 
 void
 touch_calib_prepare_point(bool injected, bool have_point, vec2i_t* point, bool calibrate, const touch_calib_t* calib,
                           int w, int h) {
     if (have_point && !injected && calibrate) {
-        touch_calib_apply(calib, w, h, &point->x, &point->y);
+        touch_calib_apply(calib, w, h, point);
     }
 }
