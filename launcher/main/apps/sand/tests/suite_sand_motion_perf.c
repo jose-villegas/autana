@@ -120,7 +120,7 @@ release(void) {
 static void
 fixture(bool rotating) {
     motion = memory_alloc(MOTION_FRAME_COUNT * sizeof *motion, MEMORY_INTERNAL);
-    trials = memory_alloc((PERF_CYCLE_WARM_REPS + 1) * sizeof *trials, MEMORY_INTERNAL);
+    trials = memory_alloc((BENCH_CYCLE_WARM_REPS + 1) * sizeof *trials, MEMORY_INTERNAL);
     suite_set_test_cleanup(release);
     TEST_ASSERT_NOT_NULL(motion);
     TEST_ASSERT_NOT_NULL(trials);
@@ -142,11 +142,11 @@ run_trial(void* ctx) {
 
 static float
 measure_step(step_t step, const frame_t* before, bool cold) {
-    for (size_t i = 0; i < PERF_CYCLE_WARM_REPS + 1; i++) {
+    for (size_t i = 0; i < BENCH_CYCLE_WARM_REPS + 1; i++) {
         trials[i] = *before;
     }
     trial_t ctx = {.step = step, .trial = trials};
-    return perf_cycle_median(run_trial, &ctx, cold);
+    return bench_cycle_median(run_trial, &ctx, cold);
 }
 
 static void

@@ -278,8 +278,8 @@ static const phase_row_t PHASE_ROWS[] = {
 /* One phase's stats live only while its own line prints. */
 static __attribute__((noinline)) void
 log_phase(const phase_row_t* row, int64_t total_avg) {
-    const perf_stats_t s =
-        perf_stats_compute(sample_values(row->field, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
+    const bench_stats_t s =
+        bench_stats_compute(sample_values(row->field, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
     const double share = (double)s.avg / total_avg * 100;
     if (row->spread) {
         ESP_LOGI(TAG, "%s min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f%%)", row->label,
@@ -291,8 +291,8 @@ log_phase(const phase_row_t* row, int64_t total_avg) {
 
 static __attribute__((noinline)) void
 report_checkpoint(const checkpoint_t* cp, const char* mode) {
-    const perf_stats_t total =
-        perf_stats_compute(sample_values(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
+    const bench_stats_t total =
+        bench_stats_compute(sample_values(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
 
     ESP_LOGI(TAG, "=== BOOT_ANIM PERF %s (now_ms=%u, %d samples, mode=%s) ===", cp->label, (unsigned)cp->now_ms,
              SAMPLES_PER_CHECKPOINT, mode);

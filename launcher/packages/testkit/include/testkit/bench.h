@@ -1,0 +1,96 @@
+/* bench: portable timing, allocation and measurement identity for benchmark suites. */
+#pragma once
+
+#include <inttypes.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "math/stats/statsi.h"
+
+#define BENCH_CYCLE_WARM_REPS              31
+#define BENCH_CYCLE_COLD_REPS              9
+
+#define BENCH_ICOUNT_PREFIX                "ICOUNT"
+#define BENCH_ICOUNT_INFO_PREFIX           "ICOUNT_INFO"
+#define BENCH_ICOUNT_TOLERANCE_DENOMINATOR 200
+
+/* A row needs at least MARGIN times the tolerance denominator us per timed
+ * batch, keeping sub-us clock rounding below one MARGIN-th of the tolerance. */
+#define BENCH_ICOUNT_ROUNDING_MARGIN       10
+
+static inline bool
+bench_icount_long_enough(int64_t us, int batches) {
+    return us >= batches * BENCH_ICOUNT_ROUNDING_MARGIN * BENCH_ICOUNT_TOLERANCE_DENOMINATOR;
+}
+
+void bench_icount_report_row(const char* prefix, const char* name, int64_t us, int reps, int batches);
+void bench_icount_report(const char* name, int64_t us, int reps, int batches);
+
+typedef struct {
+    int64_t min, max, avg, med, p95;
+} bench_stats_t;
+
+static inline bench_stats_t
+bench_stats_compute(int32_t* values, int n) {
+    bench_stats_t s = {.min = INT64_MAX, .max = 0, .avg = 0, .med = 0, .p95 = 0};
+    int64_t sum = 0;
+    for (int i = 0; i < n; i++) {
+        if (values[i] < s.min) {
+            s.min = values[i];
+        }
+        if (values[i] > s.max) {
+            s.max = values[i];
+        }
+        sum += values[i];
+    }
+    s.avg = sum / n;
+    s.med = statsi_median(values, (size_t)n);
+    s.p95 = statsi_percentile(values, (size_t)n, 95);
+    return s;
+}
+
+#ifdef ESP_PLATFORM
+#include "esp_cpu.h"
+
+static inline uint32_t
+bench_cycles(void) {
+    return esp_cpu_get_cycle_count();
+}
+#else
+uint32_t bench_cycles(void);
+#endif
+const char* bench_unit(void);
+bool bench_cache_cold(void);
+bool bench_is_qemu(void);
+void bench_cache_code_cold(void);
+bool bench_insn_begin(void);
+bool bench_insn_end(uint32_t* insn);
+void* bench_alloc_internal(size_t size, const char* what);
+void bench_free(void* ptr);
+void bench_yield(void);
+int64_t bench_now_us(void);
+const char* bench_build_id(void);
+bool bench_counters_idle(void);
+void bench_target_report(const char* prefix);
+
+static inline float
+bench_cycle_median(void (*run)(void* ctx), void* ctx, bool cold) {
+#ifndef ESP_PLATFORM
+    cold = false;
+#endif
+    _Static_assert(BENCH_CYCLE_COLD_REPS <= BENCH_CYCLE_WARM_REPS, "cold samples must fit warm sample storage");
+    int32_t samples[BENCH_CYCLE_WARM_REPS];
+    const int reps = cold ? BENCH_CYCLE_COLD_REPS : BENCH_CYCLE_WARM_REPS;
+    run(ctx);
+    for (int rep = 0; rep < reps; rep++) {
+        if (cold) {
+            bench_cache_cold();
+        }
+        const uint32_t start = bench_cycles();
+        run(ctx);
+        samples[rep] = (int32_t)(bench_cycles() - start);
+    }
+    return (float)bench_stats_compute(samples, reps).med;
+}

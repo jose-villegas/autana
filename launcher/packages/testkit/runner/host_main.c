@@ -7,7 +7,8 @@
 #include "testkit/suite.h"
 #include "unity.h"
 
-#define TESTKIT_LIST_OPTION "--list"
+#define TESTKIT_LIST_OPTION       "--list"
+#define TESTKIT_ON_REQUEST_OPTION "--on-request"
 
 void
 setUp(void) {
@@ -27,10 +28,10 @@ list_suites(void) {
 }
 
 static void
-run_default(void) {
+run_selected(bool on_request) {
     for (size_t i = 0; i < suites_count(); i++) {
         const suite_entry_t* suite = suites_at(i);
-        if (!suite->on_request) {
+        if (suite->on_request == on_request) {
             suite->fn();
         }
     }
@@ -66,9 +67,13 @@ main(int argc, char** argv) {
     }
     UNITY_BEGIN();
     if (argc == 1) {
-        run_default();
+        run_selected(false);
     }
-    errors += run_named(argc, argv);
+    if (argc == 2 && strcmp(argv[1], TESTKIT_ON_REQUEST_OPTION) == 0) {
+        run_selected(true);
+    } else {
+        errors += run_named(argc, argv);
+    }
     int failures = UNITY_END();
     return failures != 0 || errors != 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }

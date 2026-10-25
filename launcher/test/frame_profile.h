@@ -32,7 +32,7 @@ typedef struct {
 typedef struct {
     int frames;
     int64_t total_us;
-    perf_stats_t frame_us;
+    bench_stats_t frame_us;
 } frame_profile_t;
 
 /* Returns zero frames on an invalid duration, an allocation failure, a non-positive frame time,

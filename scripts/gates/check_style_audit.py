@@ -551,9 +551,9 @@ def rule_ui_backend(root, path, text):
 # launcher/test/check_packages_alone.sh compiles each package file with only
 # those include roots, which catches what no resolver here can see.
 # PACKAGE-REQUIRES keeps the declarations a one-way graph of real packages.
-# PACKAGE-CONFIG keeps build settings local too: CONFIG_<PACKAGE>_ in C/H,
-# CMakeLists.txt and Kconfig, and <PACKAGE>_ for Kconfig declarations.
-# Comments do not consume settings and are ignored in all these files.
+# PACKAGE-CONFIG keeps first-party settings with their declaring package.
+# Symbols absent from first-party Kconfig belong to ESP-IDF and are allowed.
+# Package Kconfig declarations require the package prefix; comments are ignored.
 
 
 
@@ -605,6 +605,21 @@ PACKAGE_KCONFIG_ENTRY = re.compile(r"^\s*(?:menuconfig|config)\s+([A-Za-z0-9_]+)
 PACKAGE_BUILD_TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|#?\[(=*)\[.*?\]\1\]|#[^\n]*', re.DOTALL)
 
 
+@functools.lru_cache(maxsize=None)
+def first_party_config_owners(root):
+    owners = {}
+    for rel in tracked_files(root, ["launcher/**/Kconfig*"]):
+        path = pathlib.Path(root) / rel
+        if not path.is_file():
+            continue
+        package = package_of(root, path)
+        for line in path.read_text(encoding="utf-8").splitlines():
+            entry = PACKAGE_KCONFIG_ENTRY.match(line)
+            if entry:
+                owners["CONFIG_" + entry.group(1)] = package
+    return owners
+
+
 @text_rule("PACKAGE-CONFIG")
 def rule_package_config(root, path, text):
     package = package_of(root, path)
@@ -619,9 +634,10 @@ def rule_package_config(root, path, text):
     else:
         return
     prefix = package.name.upper() + "_"
+    owners = first_party_config_owners(root)
     for number, line in enumerate(code.splitlines(), 1):
         for symbol in PACKAGE_CONFIG_SYMBOL.findall(line):
-            if not symbol.startswith("CONFIG_" + prefix):
+            if symbol in owners and owners[symbol] != package:
                 yield number, f"{symbol} is outside the {package.name} package - use CONFIG_{prefix} settings"
         entry = PACKAGE_KCONFIG_ENTRY.match(line) if path.name == "Kconfig" else None
         if entry and not entry.group(1).startswith(prefix):
