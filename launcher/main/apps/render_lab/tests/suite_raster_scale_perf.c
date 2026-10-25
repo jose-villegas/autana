@@ -404,12 +404,14 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     scene_t* flown = scene_load(SPONZA_SCENE, NULL);
     TEST_ASSERT_NOT_NULL(flown);
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SCENE_BAKED_FULL);
+        scene_entity_set_enabled(flown, scene_find(flown, name_hash(sponza_bakes[i])), i == (int)SCENE_BAKED_FULL);
     }
-    TEST_ASSERT_TRUE(scene_activate(flown, camera));
-    TEST_ASSERT_TRUE(render_lab_apply_camera_settings(flown, scene_find(flown, camera)));
-    TEST_ASSERT_NOT_NULL(scene_camera_lens(flown, camera));
-    const uint32_t period = scene_animator_clip_duration_ms(flown, scene_find(flown, camera), 0);
+    const name_hash_t camera_name = name_hash(camera);
+    const scene_entity_t flown_camera = scene_find(flown, camera_name);
+    TEST_ASSERT_TRUE(scene_activate(flown, camera_name));
+    TEST_ASSERT_TRUE(render_lab_apply_camera_settings(flown, flown_camera));
+    TEST_ASSERT_NOT_NULL(scene_camera_lens(flown, camera_name));
+    const uint32_t period = scene_animator_clip_duration_ms(flown, flown_camera, 0);
     const int frames = (int)((period + FRAME_DT_MS - 1) / FRAME_DT_MS);
     TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
     render_lab_apply_raster_settings();
@@ -543,10 +545,10 @@ run_raster_scale_perf_suite(void) {
     scene = loaded.scene;
     pack = loaded.pack;
     lens = loaded.lens;
-    camera_entity = scene == NULL ? SCENE_ENTITY_NONE : scene_find(scene, sponza_cameras[0]);
+    camera_entity = scene == NULL ? SCENE_ENTITY_NONE : scene_find(scene, name_hash(sponza_cameras[0]));
     (void)render_lab_apply_camera_settings(scene, camera_entity);
     if (scene != NULL) {
-        const scene_entity_t full = scene_find(scene, sponza_bakes[SCENE_BAKED_FULL]);
+        const scene_entity_t full = scene_find(scene, name_hash(sponza_bakes[SCENE_BAKED_FULL]));
         const char* id = full == SCENE_ENTITY_NONE ? NULL : scene_entity_mesh_id(scene, full);
         if (id == NULL || r3d_lit_mesh_open(pack, id, &mesh) != ASSET_OK) {
             ESP_LOGE(TAG, "the scene's full bake did not open");

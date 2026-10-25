@@ -1686,6 +1686,10 @@ def listen(args, store, board):
 
 
 COREDUMP_PARTITION = "coredump"
+# parttool runs esptool twice, the partition table and then the partition.
+# A reset after the first takes the port away from the second while the new
+# boot re-enumerates, so neither resets and one reset follows both.
+PARTTOOL_NO_RESET = "after=no-reset"
 # The dump's ESP_CORE_DUMP_INFO note (espcoredump's core_dump_elf.c): a
 # 4-byte version, then the crashed app's ELF SHA-256 as NUL-padded hex in a
 # 64-byte field. ELF pads a note's name to 4 bytes.
@@ -1716,20 +1720,20 @@ def coredump(args, store, board):
     """The last panic's core dump, read raw from the board's coredump
     partition under the lock into the records, then decoded with the board
     free; --erase clears the partition, so the next crash's dump is told
-    from this one. Either way esptool resets the board."""
+    from this one. Either way the board is reset once at the end."""
     with HeldLock(store, board, args.owner, "coredump", args.wait):
         parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
-        command = [idf_python(), str(parttool), "--port", locked_port()]
+        command = [idf_python(), str(parttool), "--esptool-args", PARTTOOL_NO_RESET, "--port", locked_port()]
         if args.erase:
             command += ["erase_partition", "--partition-name=" + COREDUMP_PARTITION]
-            run_resetting(lambda: subprocess.run(command, check=True)).close()
+            run_then_reset(command)
             print("coredump partition erased")
             return 0
         core, _ = resolve_capture_path(None, "coredump", args.owner, now())
         core = core.with_suffix(".bin")
         command += ["read_partition", "--partition-name=" + COREDUMP_PARTITION, "--output", str(core)]
         try:
-            run_resetting(lambda: subprocess.run(command, check=True)).close()
+            run_then_reset(command)
         except subprocess.CalledProcessError as failure:
             return failure.returncode
     if core.read_bytes()[:COREDUMP_ERASED_HEADER_BYTES] == ERASED_FLASH * COREDUMP_ERASED_HEADER_BYTES:
@@ -1737,6 +1741,15 @@ def coredump(args, store, board):
         print("no core dump in flash")
         return 0
     return decode_coredump(core, args.elf)
+
+
+def run_then_reset(command):
+    """Runs a parttool `command` that leaves the chip in esptool's stub, then
+    restarts it whether or not the command succeeded."""
+    try:
+        subprocess.run(command, check=True)
+    finally:
+        reset().close()
 
 
 def decode_coredump(core, elf=None):
