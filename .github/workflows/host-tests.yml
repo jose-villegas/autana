@@ -67,6 +67,17 @@ jobs:
       - run: sh launcher/main/apps/sand/tools/report_fingerprint.sh --check
       - run: sh launcher/tools/render/render_all_scenes.sh
 
+      - name: Standalone package tests
+        if: ${{ !cancelled() }}
+        run: |
+          for package in launcher/packages/*/; do
+            [ -d "${package}tests" ] || continue
+            name=$(basename "$package")
+            cmake -S "$package" -B "build/packages/$name" -DCMAKE_C_COMPILER=gcc
+            cmake --build "build/packages/$name" --parallel
+            ctest --test-dir "build/packages/$name" --output-on-failure --no-tests=error
+          done
+
       # EDITOR_BUILD_GUI=OFF leaves out only the SDL2 + Dear ImGui window,
       # which nothing here can exercise, so the runner needs no display
       # packages.

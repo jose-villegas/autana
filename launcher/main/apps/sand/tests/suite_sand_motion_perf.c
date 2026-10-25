@@ -15,7 +15,7 @@
 #include "perf_stats.h"
 #include "profile/frame_cost.h"
 #include "services/build_id.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #endif
 
 #define MOTION_ROTATION_X_DPS 30

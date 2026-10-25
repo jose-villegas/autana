@@ -4,7 +4,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_test.h"
 #include "math/linear/affine2x.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "ui_probe.h"
 #include "unity.h"
 
