@@ -430,6 +430,17 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_c
     }
 }
 
+/* Each writer's value for this cluster and triangle, by its step. */
+static void
+retag(r3d_span_writer_t* writers, const r3d_span_writer_t* given, int count, uint32_t cluster, uint32_t triangle) {
+    for (int k = 0; k < count; k++) {
+        const uint32_t step = writers[k].step == R3D_SPAN_STEP_CLUSTER    ? cluster
+                              : writers[k].step == R3D_SPAN_STEP_TRIANGLE ? triangle
+                                                                          : 0U;
+        writers[k].value = given[k].value + step;
+    }
+}
+
 /* The draw for a target with writers, kept out of the hot one's code. */
 static __attribute__((noinline, cold)) void
 draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
@@ -451,12 +462,7 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
         r3d_lit_cluster_t one = *c;
         one.triangle_count = 1;
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
-            for (int k = 0; k < target->writer_count; k++) {
-                const uint32_t step = writers[k].step == R3D_SPAN_STEP_CLUSTER    ? clusters[i]
-                                      : writers[k].step == R3D_SPAN_STEP_TRIANGLE ? (uint32_t)t
-                                                                                  : 0U;
-                writers[k].value = target->writers[k].value + step;
-            }
+            retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
             one.triangle_first = (uint16_t)t;
             draw_cluster(mesh, lens, &one, cs, &writing, true, work);
         }

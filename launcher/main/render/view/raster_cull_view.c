@@ -168,10 +168,9 @@ covered(const raster_cull_t* s, int triangle) {
     return (s->covered[triangle / BITS] >> (triangle % BITS) & 1U) != 0;
 }
 
-/* Marks the triangles the camera's picture shows; a set-up cluster owning
- * one of them is drawn. */
+/* Marks the triangles the camera's picture shows. */
 static void
-tally(raster_cull_t* s, const raster_t* raster) {
+mark_covered(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
     const int index = attachment_index(raster, s);
     for (int y = 0; y < raster->height; y++) {
@@ -183,6 +182,12 @@ tally(raster_cull_t* s, const raster_t* raster) {
             }
         }
     }
+}
+
+/* A cluster owning a covered triangle is drawn; then the fates are counted. */
+static void
+tally(raster_cull_t* s, const raster_t* raster) {
+    mark_covered(s, raster);
     int clusters = 0;
     int triangles = 0;
     for (int i = 0; i < raster->instance_count; i++) {
@@ -343,6 +348,19 @@ tagged_cluster(const raster_cull_t* s, const raster_t* raster, uint32_t tag) {
     return s->spectating ? (int)(tag - 1U) : cluster_of_triangle(raster, tag - 1U);
 }
 
+/* One shaded pixel of cluster `c` (-1 for none), on its border or inside. */
+static gfx_color_t
+shaded_pixel(const raster_cull_t* s, gfx_color_t clear, gfx_color_t drawn, int c, bool border) {
+    if (c < 0) {
+        return clear;
+    }
+    const raster_cluster_fate_t fate = (raster_cluster_fate_t)s->fate[c];
+    if (border) {
+        return GFX_RGB(FATE_RGB[fate]);
+    }
+    return fate == RASTER_FATE_CULLED ? gfx_color_mix(drawn, clear, GHOST_MIX) : drawn;
+}
+
 /* Shaded: the baked colours as drawn, culled clusters faded toward the
  * clear colour, and every pixel where the cluster changes, right or below,
  * in its fate's colour: the clusters' borders. */
@@ -356,17 +374,8 @@ show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t*
         for (int x = 0; x < picture->width; x++) {
             const int c = right;
             right = x + 1 < picture->width ? tagged_cluster(s, raster, tag[x + 1]) : c;
-            if (c < 0) {
-                color[x] = raster->clear;
-                continue;
-            }
-            const raster_cluster_fate_t fate = (raster_cluster_fate_t)s->fate[c];
             const int under = below != NULL ? tagged_cluster(s, raster, below[x]) : c;
-            if (right != c || under != c) {
-                color[x] = GFX_RGB(FATE_RGB[fate]);
-            } else if (fate == RASTER_FATE_CULLED) {
-                color[x] = gfx_color_mix(color[x], raster->clear, GHOST_MIX);
-            }
+            color[x] = shaded_pixel(s, raster->clear, color[x], c, c != right || c != under);
         }
     }
 }

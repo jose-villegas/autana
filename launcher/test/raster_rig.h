@@ -11,6 +11,7 @@
 
 #include "r3d_quad_mesh.h"
 #include "render/raster_internal.h"
+#include "render_view_fixture.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -19,6 +20,11 @@
 /* A wall 800 square on z = 0, facing +z: behind everything a test camera
  * on +z looks at, and filling its picture. */
 static const int16_t raster_rig_wall[4][3] = {{-400, -400, 0}, {400, -400, 0}, {400, 400, 0}, {-400, 400, 0}};
+/* A card 80 square in front of the wall, also facing +z; the two as rig quads. */
+static const int16_t raster_rig_card[4][3] = {{-40, -40, -100}, {40, -40, -100}, {40, 40, -100}, {-40, 40, -100}};
+static const int16_t (*const raster_rig_wall_and_card[RASTER_RIG_QUADS])[3] = {raster_rig_wall, raster_rig_card};
+/* A camera on the z axis looking at both. */
+static const fixture_camera_t raster_rig_camera = {{0.0F, 0.0F, -300.0F}, {0.0F, 0.0F, 1.0F}, 0.5F, 1.0F};
 
 typedef struct {
     r3d_quad_t quad[RASTER_RIG_QUADS];

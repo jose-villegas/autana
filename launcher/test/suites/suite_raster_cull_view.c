@@ -337,11 +337,8 @@ test_triangle_sort_adds_to_the_counts_it_is_given(void) {
     TEST_ASSERT_EQUAL_INT(2 * once.triangles_set_up, twice.triangles_set_up);
 }
 
-/* Camera, then rig quads: the wall at z = 0 and a card nearer, both double
- * sided, the card's two triangles side by side over the wall's. */
-static const int16_t card[][3] = {{-40, -40, -100}, {40, -40, -100}, {40, 40, -100}, {-40, 40, -100}};
-static const int16_t (*const wall_and_card[])[3] = {raster_rig_wall, card};
-static const fixture_camera_t rig_camera = {{0.0F, 0.0F, -300.0F}, {0.0F, 0.0F, 1.0F}, 0.5F, 1.0F};
+/* The rig's wall and card, both double sided, the card's two triangles side
+ * by side over the wall's. */
 
 /* Each instance writes this times its position (1 for the wall, 2 for the
  * card), plus the drawn triangle's index when it asks. */
@@ -399,9 +396,9 @@ test_per_triangle_writer_tags_the_triangle_that_won_each_pixel(void) {
     const raster_attachment_t constant = {
         .bytes_per_pixel = sizeof(uint32_t), .clear = tags_clear, .writer = instance_writer, .state = NULL};
     const raster_attachment_t* const both[] = {&tagged, &constant};
-    raster_rig_t* r = raster_rig_open(wall_and_card, 2, 0, W, H, 0);
+    raster_rig_t* r = raster_rig_open(raster_rig_wall_and_card, 2, 0, W, H, 0);
     raster_rig_attach(r, both, 2);
-    r->view = render_view_fixture(&rig_camera, &r->raster, 0);
+    r->view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
     raster_draw(&r->raster, &r->view);
 
     const uint32_t* tags = raster_rig_attachment(r, 0);
