@@ -157,7 +157,7 @@ hall_example_start(void) {
 <!-- /generated: scene-hall-example -->
 
 Nothing else: the shell unloads what the app loaded when it exits. To move
-something, `scene_entity_set_local(hall, statue, &where)`; to hide
+something, `scene_entity_set_local(hall, statue, where)`; to hide
 it, `scene_entity_set_enabled()`. Several scenes may be loaded at once, and
 `scene_activate()` on another's camera changes what is drawn. How a frame is
 ordered against the panel send and the storage behind it are in

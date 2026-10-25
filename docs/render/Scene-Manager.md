@@ -52,11 +52,11 @@ on the camera's entity whose tracks bind to that entity through
 | `scene_camera_lens(scene, camera)` | a camera's lens (NULL: the first); its pose is its entity's transform |
 | `scene_camera_set_present(scene, camera, present)` | sets the camera's presentation; false for a non-camera entity or invalid mode |
 | `scene_camera_set_small_fill(scene, camera, fill)` | sets its `small_fill_t` ceiling, colour gate and style; defaults are `SMALL_FILL_SMOOTH`; pass `SMALL_FILL_FAST` to opt into tuned filling; false for a non-camera entity or invalid ceiling or style ([Small fill](Mesh-Rendering.md#small-fill)) |
-| `scene_entity_local()` / `scene_entity_set_local()` | the stored TRS, in the parent's frame (a root's is its world); refused, false, for an uneven scale on an entity with children |
+| `scene_entity_local()` / `scene_entity_set_local()` | the transform component's stored `transformf_t`, in the parent's frame; a root's is its world |
 | `scene_entity_set_enabled()` | hide or show the entity with its descendants |
 | `scene_entity_parent()` / `scene_entity_is_within()` | its parent, or `SCENE_ENTITY_NONE` for a root; whether it is an entity or one of its descendants |
 | `scene_entity_active()` | enabled with every ancestor: drawn and animated |
-| `scene_entity_world()` / `scene_entity_set_world()` | the derived TRS in the world, exact; setting it stores the local that puts it there |
+| `scene_entity_world()` / `scene_entity_set_world()` | the derived `transformf_t` in the world; setting it stores the local that puts it there |
 | `scene_entity_world_matrix()` | the same world as the `mat4f_t` the renderer draws with, for applying to many points |
 | `scene_animator_set_clips()` / `scene_renderer_set_skin()` | attach clips and a skeleton, or a skin, by asset id |
 | `scene_animator_play()` / `_set_speed()` / `_set_paused()` / `_seek()` | control playback slots on an entity |
@@ -128,9 +128,9 @@ for the next rewind.
 
 Every entity has at most one parent, listed before it in the entry, so one
 forward pass meets every parent before its children. A local transform is in
-the parent's frame; a world is the parent's world times the local. An entity
-with children scales evenly, the same on every axis, so no world below it
-shears and every world is an exact TRS.
+the parent's frame; a world is the parent's world times the local, an exact
+`transformf_t` (content keeps parents' scale even:
+[Scene-Files.md](Scene-Files.md#scne-v4)).
 
 | Step | When | Does |
 |---|---|---|

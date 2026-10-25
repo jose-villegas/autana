@@ -20,9 +20,6 @@ typedef struct scene scene_t;
 typedef uint16_t scene_entity_t;
 #define SCENE_ENTITY_NONE ((scene_entity_t)0xFFFFU)
 
-/* Where an entity stands: position, quaternion rotation and scale. */
-typedef transformf_t scene_transform_t;
-
 typedef enum {
     SCENE_OK = 0,
     SCENE_ERR_UNKNOWN, /* the pack holds no scene of that id */
@@ -79,12 +76,11 @@ bool scene_light_set_intensity(scene_t* scene, scene_entity_t entity, float inte
 vec3f_t scene_light_color(const scene_t* scene, scene_entity_t entity);
 float scene_light_intensity(const scene_t* scene, scene_entity_t entity);
 
-/* An entity's own transform, stored, in its parent's frame; a root's is its
- * world. An entity with children keeps an even scale (the same on every
- * axis), so every world below it is exact: setting an uneven one is refused,
- * false, and changes nothing. A leaf may scale unevenly. */
-const scene_transform_t* scene_entity_local(const scene_t* scene, scene_entity_t entity);
-bool scene_entity_set_local(scene_t* scene, scene_entity_t entity, const scene_transform_t* local);
+/* The transform component: every entity has one. Its local transform
+ * (position, rotation, scale) is stored, in its parent's frame; its world is
+ * derived from its parents', and for a root the two are the same. */
+transformf_t scene_entity_local(const scene_t* scene, scene_entity_t entity);
+void scene_entity_set_local(scene_t* scene, scene_entity_t entity, transformf_t local);
 bool scene_entity_enabled(const scene_t* scene, scene_entity_t entity);
 
 /* A disabled entity's renderer is not drawn, nor its descendants'; every entity starts enabled. */
@@ -100,11 +96,10 @@ scene_entity_t scene_entity_parent(const scene_t* scene, scene_entity_t entity);
 /* True when `entity` is `ancestor` or one of its descendants. */
 bool scene_entity_is_within(const scene_t* scene, scene_entity_t entity, scene_entity_t ancestor);
 
-/* Where the entity stands in the world, derived: its local placed in its
- * parents'. Setting it stores the local that puts it there; refused, like
- * scene_entity_set_local(), for an uneven scale on an entity with children. */
+/* Where the entity stands in the world: its local placed in its parents'.
+ * Setting it stores the local that puts it there. */
 transformf_t scene_entity_world(const scene_t* scene, scene_entity_t entity);
-bool scene_entity_set_world(scene_t* scene, scene_entity_t entity, const transformf_t* world);
+void scene_entity_set_world(scene_t* scene, scene_entity_t entity, transformf_t world);
 
 /* The same world as a matrix, for applying it to many points: the form the
  * renderer draws with. */
