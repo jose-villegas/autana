@@ -44,8 +44,8 @@
 #include "scene/scene_shell.h"
 #include "test_alloc.h"
 #include "test_anim_tracks.h"
-#include "test_cleanup.h"
 #include "test_pack.h"
+#include "testkit/cleanup.h"
 
 #ifndef DEVICE_BUILD
 #include <stdio.h>

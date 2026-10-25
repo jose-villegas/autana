@@ -10,7 +10,7 @@
 #include "hash/name_hash64.h"
 #include "perf_stats.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "apps/sand/sand_mode_swatches.h"

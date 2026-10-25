@@ -1,5 +1,5 @@
 /* Deferred cleanups registered by test fixtures. */
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 
 #include <setjmp.h>
 #include <stdbool.h>
