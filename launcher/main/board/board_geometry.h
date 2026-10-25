@@ -3,8 +3,9 @@
  * host checks. No driver includes, so it links on a host.
  *
  * Device axes: x right, y up the screen, z out of the glass toward the viewer; origin
- * at the centre of the glass. Lengths in millimetres. Shapes come from the ESP32-S3-Touch-
- * AMOLED-1.8's Waveshare 3D model; chip axes from the QMI8658C datasheet.
+ * at the centre of the glass. Lengths in millimetres. The case and screen come from
+ * the ESP32-S3-Touch-AMOLED-1.8's dimension drawing, the module and PCB from its
+ * Waveshare 3D model; chip axes from the QMI8658C datasheet.
  */
 #pragma once
 
@@ -16,6 +17,18 @@
 /* Glass front to the PCB's back face: 6.2 mm module and stack, 1.2 mm PCB (3D model);
  * a placeholder until measured on a board. */
 #define BOARD_DEVICE_DEPTH_MM         7.4F
+
+/* The cased device's outline (dimension drawing). */
+#define BOARD_CASE_WIDTH_MM           37.60F
+#define BOARD_CASE_HEIGHT_MM          45.20F
+#define BOARD_CASE_DEPTH_MM           15.00F
+/* The case's back face, square, with a screw in each corner (dimension drawing). */
+#define BOARD_CASE_BACK_SIDE_MM       27.60F
+#define BOARD_CASE_SCREW_RADIUS_MM    1.80F
+/* The screen's visible area through the case (dimension drawing): 368 x 448
+ * square pixels of 0.078 mm. */
+#define BOARD_SCREEN_WIDTH_MM         28.70F
+#define BOARD_SCREEN_HEIGHT_MM        34.94F
 
 /* QMI8658C package, 2.5 x 3.0 x 0.86 mm LGA (datasheet, page 1); the 3.0 mm side runs along chip X. */
 #define BOARD_IMU_SIZE_X_MM           3.0F

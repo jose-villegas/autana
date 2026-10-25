@@ -85,13 +85,13 @@ active_camera(void) {
     return &active.scene->cameras[active.camera];
 }
 
-/* The enabled renderers, as the raster draws them. */
+/* The enabled renderers with something to draw, as the raster draws them. */
 static int
 fill_instances(scene_t* scene) {
     int count = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
-        if ((scene->flags[r->entity] & SCENE_FLAG_ACTIVE) != 0) {
+        if ((scene->flags[r->entity] & SCENE_FLAG_ACTIVE) != 0 && r->mesh.node_count > 0) {
             scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL};
         }
     }
