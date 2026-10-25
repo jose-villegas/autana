@@ -538,6 +538,10 @@ python launcher/tools/audio/mic/mic_metrics.py take.wav --reference reference.wa
 python launcher/tools/audio/mic/host_play.py reference.wav --gain -6
 ```
 
+Use `host_play.py --list` to list outputs and `--device <name|index>` to select one.
+With no output, it reports "no output device; connect or enable an audio output device and retry"
+and exits non-zero. On Linux, install `libportaudio2` for PortAudio.
+
 Metrics align the reference by correlation without gain normalization. Levels
 are dBFS; speech-band SNR uses reference activity. Active level uses a P.56-style
 envelope estimate, not a P.56 conformance measurement. STOI requires matched rates.
