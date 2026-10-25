@@ -62,6 +62,12 @@ input_read_motion(input_motion_t* out) {
 }
 
 bool
+input_read_motion_sequence(input_motion_t* out, uint32_t* sequence) {
+    *sequence = (uint32_t)clock_frame;
+    return input_read_motion(out);
+}
+
+bool
 input_read_motion_batch(input_motion_batch_t* out) {
     const int64_t now_us = (int64_t)clock_frame * FRAME_MS * MATH_US_PER_MS;
     static int64_t last_us;
@@ -138,7 +144,6 @@ static const render_input_step_t touch[] = {
 static void
 draw(const render_frame_t* frame) {
     clock_frame = frame->index;
-    motion_reader_frame((int64_t)frame->elapsed_ms * MATH_US_PER_MS);
     input_t in = tapped || results ? frame->input : (input_t){0};
     if (orientation) {
         in = (input_t){0};

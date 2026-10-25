@@ -12,6 +12,7 @@
 
 #ifndef DEVICE_BUILD
 
+#include "clock_fake.h"
 #include "hash/name_hash64.h"
 #include "input/motion/motion_reader.h"
 #include "input/motion/shake.h"
@@ -84,6 +85,7 @@ release(void) {
     memory_free(as_boot_left_it);
     memory_free(settled);
     input_fake_motion(NULL);
+    clock_fake_reset();
     memory_free(steady_frames);
     steady_frames = NULL;
     reference = NULL;
@@ -253,12 +255,13 @@ test_boot_flat_without_initial_sample_keeps_landscape(void) {
         gfx_reset_for_test();
         fixture(NULL, 0);
         ui_ridge_set_ambient(false);
+        suite_add_test_cleanup(clock_fake_reset);
         motion_reader_reset();
         input_motion_t flat = {.acceleration = {0, (int)(FLAT_IN_PLANE_G * INPUT_ACCEL_ONE_G), -INPUT_ACCEL_ONE_G}};
         for (int i = 0; i < FRAMES_TO_REST; i++) {
             input_fake_motion(run && i < NO_SAMPLE_FRAMES ? NULL : &flat);
             input_fake_motion_present(true);
-            motion_reader_frame((int64_t)i * FRAME_MS * MATH_US_PER_MS);
+            clock_fake_set((int64_t)i * FRAME_MS * MATH_US_PER_MS);
             ui_ridge_set_gravity(input_gravity(), input_shake());
             frame(false, false);
             const name_hash64_t hash =
@@ -271,6 +274,7 @@ test_boot_flat_without_initial_sample_keeps_landscape(void) {
         }
     }
     input_fake_motion(NULL);
+    clock_fake_reset();
     memory_free(steady_frames);
     steady_frames = NULL;
 }
@@ -285,10 +289,11 @@ compare_shake_runs(float acceleration_g, bool ambient, bool expect_difference) {
         gfx_reset_for_test();
         fixture(NULL, 0);
         ui_ridge_set_ambient(ambient);
+        suite_add_test_cleanup(clock_fake_reset);
         motion_reader_reset();
         input_motion_t motion = {.acceleration = {-INPUT_ACCEL_ONE_G, 0, 0}};
         input_fake_motion(&motion);
-        motion_reader_frame(0);
+        clock_fake_set(0);
         ui_ridge_set_gravity(input_gravity(), input_shake());
         const spring_line_t* line = ui_ridge_spring_for_test();
         TEST_ASSERT_NOT_NULL(line);
@@ -296,7 +301,8 @@ compare_shake_runs(float acceleration_g, bool ambient, bool expect_difference) {
         for (int i = 1; i <= VIBRATION_FRAMES; i++) {
             motion.acceleration.x =
                 -INPUT_ACCEL_ONE_G + (run == 0 ? 0 : (int)((i % 2 ? -1 : 1) * acceleration_g * INPUT_ACCEL_ONE_G));
-            motion_reader_frame((int64_t)i * FRAME_MS * MATH_US_PER_MS);
+            input_fake_motion(&motion);
+            clock_fake_set((int64_t)i * FRAME_MS * MATH_US_PER_MS);
             ui_ridge_set_gravity(input_gravity(), input_shake());
             frame(false, false);
             name_hash64_t hash =
@@ -322,6 +328,7 @@ compare_shake_runs(float acceleration_g, bool ambient, bool expect_difference) {
     memory_free(steady_frames);
     steady_frames = NULL;
     input_fake_motion(NULL);
+    clock_fake_reset();
 }
 
 static void

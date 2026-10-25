@@ -67,8 +67,8 @@ bool input_read_motion(input_motion_t* out);
 
 /* Frame thread only. Screen-axis g (x right, y down, z out): unit while held,
  * zero in free fall. No sensor gives (0,1,0); present before its first reading
- * gives zero. Later missed reads hold both estimates. The first gravity or
- * shake read per frame updates both; later reads are cached. */
+ * gives zero. Unchanged or missed samples hold both estimates. A new sample
+ * steps both filters with elapsed clock time, capped at GRAVITY_MAX_DT_US. */
 vec3f_t input_gravity(void);
 /* Frame thread only. Deliberate shake, 0..1: zero below 500 mg,
  * full at 1500 mg. Zero without a sensor or before its first reading;

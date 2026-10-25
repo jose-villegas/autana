@@ -1,22 +1,27 @@
-/* Shared motion readers: defaults, lazy frames and bounded time. */
+/* Shared motion readers: defaults, sample caching and bounded time. */
 #include "suites.h"
 #ifndef DEVICE_BUILD
 #include <math.h>
 #include "../input_examples/gravity_shared.c"
+#include "clock_fake.h"
 #include "input/motion/gravity.h"
 #include "input/motion/motion_reader.h"
 #include "input/motion/shake.h"
 #include "input_fake.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
+#define TEST_APP_STEPS   8
+#define TEST_TURN_DPS    90
 #define TEST_EPSILON     0.00001F
 #define TEST_STEP_US     (16U * MATH_US_PER_MS)
 #define TEST_LONG_GAP_US (GRAVITY_MAX_DT_US * 20U)
 
 static void
 fixture(void) {
+    suite_add_test_cleanup(clock_fake_reset);
     motion_reader_reset();
     input_fake_motion(NULL);
-    motion_reader_frame(0);
+    clock_fake_set(0);
 }
 
 static void
@@ -34,7 +39,7 @@ test_present_without_sample_is_zero(void) {
     fixture();
     input_fake_motion_present(true);
     for (int i = 0; i < 3; i++) {
-        motion_reader_frame(i * TEST_STEP_US);
+        clock_fake_set(i * TEST_STEP_US);
         const vec3f_t g = input_gravity();
         TEST_ASSERT_EQUAL_FLOAT(0, g.x);
         TEST_ASSERT_EQUAL_FLOAT(0, g.y);
@@ -57,8 +62,9 @@ test_missed_read_holds_estimate_and_elapsed_time(void) {
         gravity_update(&expected, &motion, 0);
         (void)input_gravity();
         motion.acceleration.x = INPUT_ACCEL_ONE_G * 4;
-        motion.rotation.z = INPUT_ROTATION_ONE_DPS * 90;
-        motion_reader_frame(GRAVITY_MAX_DT_US);
+        motion.rotation.z = INPUT_ROTATION_ONE_DPS * TEST_TURN_DPS;
+        input_fake_motion(&motion);
+        clock_fake_set(GRAVITY_MAX_DT_US);
         gravity_update(&expected, &motion, GRAVITY_MAX_DT_US);
         shake_update(&expected_shake, gravity_linear(&expected), GRAVITY_MAX_DT_US);
         const vec3f_t previous = input_gravity();
@@ -66,12 +72,12 @@ test_missed_read_holds_estimate_and_elapsed_time(void) {
         TEST_ASSERT_GREATER_THAN_FLOAT(0, previous_shake);
         input_fake_motion(NULL);
         input_fake_motion_present(true);
-        motion_reader_frame(GRAVITY_MAX_DT_US + gaps[i] / 2);
+        clock_fake_set(GRAVITY_MAX_DT_US + gaps[i] / 2);
         const vec3f_t held = input_gravity();
         TEST_ASSERT_EQUAL_MEMORY(&previous, &held, sizeof held);
         TEST_ASSERT_EQUAL_FLOAT(previous_shake, input_shake());
         input_fake_motion(&motion);
-        motion_reader_frame(GRAVITY_MAX_DT_US + gaps[i]);
+        clock_fake_set(GRAVITY_MAX_DT_US + gaps[i]);
         const uint32_t dt = gaps[i] > GRAVITY_MAX_DT_US ? GRAVITY_MAX_DT_US : gaps[i];
         gravity_update(&expected, &motion, dt);
         shake_update(&expected_shake, gravity_linear(&expected), dt);
@@ -93,6 +99,7 @@ test_cached_read(void) {
     const vec3f_t first = input_gravity();
     const float shake = input_shake();
     motion.acceleration = (vec3i_t){0};
+    clock_fake_set(TEST_LONG_GAP_US);
     const vec3f_t cached = input_gravity();
     TEST_ASSERT_EQUAL_MEMORY(&first, &cached, sizeof first);
     TEST_ASSERT_EQUAL_FLOAT(shake, input_shake());
@@ -109,7 +116,8 @@ test_reader_order_independence(void) {
         input_fake_motion(&motion);
         (void)input_gravity();
         motion.acceleration.x = (int)(SHAKE_FULL_G * 4 * INPUT_ACCEL_ONE_G);
-        motion_reader_frame(TEST_STEP_US);
+        input_fake_motion(&motion);
+        clock_fake_set(TEST_STEP_US);
         if (order) {
             shake[order] = input_shake();
             down[order] = input_gravity();
@@ -125,14 +133,28 @@ test_reader_order_independence(void) {
 }
 
 static void
-test_next_frame_refresh(void) {
+test_new_sample_without_input_poll(void) {
     fixture();
-    input_motion_t motion = {.acceleration = {INPUT_ACCEL_ONE_G, 0, 0}};
-    input_fake_motion(&motion);
-    TEST_ASSERT_EQUAL_FLOAT(1, input_gravity().x);
-    motion.acceleration = (vec3i_t){0};
-    motion_reader_frame(TEST_STEP_US);
-    TEST_ASSERT_EQUAL_FLOAT(0, input_gravity().x);
+    input_motion_t motion = {.acceleration = {0, INPUT_ACCEL_ONE_G, 0},
+                             .rotation = {0, 0, INPUT_ROTATION_ONE_DPS * TEST_TURN_DPS}};
+    gravity_t expected;
+    gravity_reset(&expected);
+    shake_t expected_shake = {0};
+    gravity_shared_example_t app = {0};
+    for (unsigned step = 0; step < TEST_APP_STEPS; step++) {
+        clock_fake_set((int64_t)step * TEST_STEP_US);
+        input_fake_motion(&motion);
+        const uint32_t dt = step ? TEST_STEP_US : 0;
+        gravity_update(&expected, &motion, dt);
+        shake_update(&expected_shake, gravity_linear(&expected), dt);
+        gravity_shared_example(&app, TEST_STEP_US / MATH_US_PER_MS);
+        const vec3f_t reference = gravity_down(&expected);
+        const vec3f_t actual = input_gravity();
+        TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, reference.x, actual.x);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, reference.y, actual.y);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, shake_level(&expected_shake), app.shake);
+    }
+    TEST_ASSERT_GREATER_THAN_FLOAT(0, app.ball_x);
     input_fake_motion(NULL);
 }
 
@@ -145,7 +167,8 @@ test_free_fall_and_held_recovery(void) {
     vec3f_t down = input_gravity();
     TEST_ASSERT_EQUAL_MEMORY(&zero, &down, sizeof zero);
     motion.acceleration.y = INPUT_ACCEL_ONE_G;
-    motion_reader_frame(TEST_STEP_US);
+    input_fake_motion(&motion);
+    clock_fake_set(TEST_STEP_US);
     down = input_gravity();
     TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, 1, sqrtf(vec3f_dot(down, down)));
     input_fake_motion(NULL);
@@ -158,17 +181,18 @@ test_sensor_loss_clears_shake(void) {
     input_fake_motion(&motion);
     (void)input_gravity();
     motion.acceleration.x = INPUT_ACCEL_ONE_G * 4;
-    motion_reader_frame(GRAVITY_MAX_DT_US);
+    input_fake_motion(&motion);
+    clock_fake_set(GRAVITY_MAX_DT_US);
     TEST_ASSERT_EQUAL_FLOAT(1, input_shake());
     input_fake_motion(NULL);
-    motion_reader_frame(GRAVITY_MAX_DT_US + TEST_STEP_US);
+    clock_fake_set(GRAVITY_MAX_DT_US + TEST_STEP_US);
     TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
     const vec3f_t fallback = {0, 1, 0};
     vec3f_t down = input_gravity();
     TEST_ASSERT_EQUAL_MEMORY(&fallback, &down, sizeof fallback);
     motion.acceleration.x = 0;
     input_fake_motion(&motion);
-    motion_reader_frame(GRAVITY_MAX_DT_US + TEST_STEP_US * 2);
+    clock_fake_set(GRAVITY_MAX_DT_US + TEST_STEP_US * 2);
     TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
     input_fake_motion(NULL);
 }
@@ -185,11 +209,12 @@ test_first_and_nonmonotonic_times_have_zero_dt(void) {
                              TEST_LONG_GAP_US};
     for (size_t i = 0; i < sizeof times / sizeof times[0]; i++) {
         motion.acceleration.x = (int)(SHAKE_FULL_G * (float)(i + 2) * INPUT_ACCEL_ONE_G);
-        motion.rotation.z = INPUT_ROTATION_ONE_DPS * 90;
+        motion.rotation.z = INPUT_ROTATION_ONE_DPS * TEST_TURN_DPS;
         const uint32_t dt = i == 1 ? TEST_STEP_US : 0;
         gravity_update(&expected, &motion, dt);
         shake_update(&expected_shake, gravity_linear(&expected), dt);
-        motion_reader_frame(times[i]);
+        input_fake_motion(&motion);
+        clock_fake_set(times[i]);
         const vec3f_t down = input_gravity();
         const vec3f_t reference = gravity_down(&expected);
         TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, reference.x, down.x);
@@ -214,7 +239,8 @@ test_dt_clamp_and_strength(void) {
     gravity_update(&expected, &motion, GRAVITY_MAX_DT_US);
     shake_t shake = {0};
     shake_update(&shake, gravity_linear(&expected), GRAVITY_MAX_DT_US);
-    motion_reader_frame(TEST_LONG_GAP_US);
+    input_fake_motion(&motion);
+    clock_fake_set(TEST_LONG_GAP_US);
     const vec3f_t g = input_gravity();
     const vec3f_t down = gravity_down(&expected);
     TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, down.x, g.x);
@@ -231,7 +257,7 @@ run_input_motion_suite(void) {
     RUN_TEST(test_missed_read_holds_estimate_and_elapsed_time);
     RUN_TEST(test_cached_read);
     RUN_TEST(test_reader_order_independence);
-    RUN_TEST(test_next_frame_refresh);
+    RUN_TEST(test_new_sample_without_input_poll);
     RUN_TEST(test_free_fall_and_held_recovery);
     RUN_TEST(test_sensor_loss_clears_shake);
     RUN_TEST(test_first_and_nonmonotonic_times_have_zero_dt);
