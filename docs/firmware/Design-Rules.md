@@ -70,6 +70,6 @@ sequenceDiagram
 |---|---|
 | a handle is a slot plus a generation; a stale one reads as finished and is otherwise ignored | a reused slot never answers for an old request |
 | finished is not released | the owner may still read what the request was given until it is released |
-| no request reports back through a callback | app code runs only inside its own frame |
+| a completion callback runs only from the frame loop on core 0, never inside the request, and never after a cancel returns | app code runs on its own core, and what a callback reads can be freed at cancel |
 
-This is what keeps rule 3's shared address space workable: no other core ever runs app code.
+This keeps rule 3's shared address space workable: no other core ever runs app code.
