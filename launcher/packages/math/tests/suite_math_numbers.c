@@ -1732,6 +1732,14 @@ assert_fixed_rsqrt_reference(uint32_t m) {
     const double exact = ldexp(1.0, MATHX_RSQRT_SHIFT + MATHX_RSQRT_WORD_BITS / 2) / sqrt((double)m);
     const double relative = fabs(mathx_rsqrt_q30(m) / exact - 1.0);
     TEST_ASSERT_TRUE(relative <= MATHX_RSQRT_Q30_RELATIVE_LIMIT);
+    const uint32_t expected = mathx_rsqrt_q30_table(m);
+    const uint32_t seeds[] = {
+        (uint32_t)floor(exact * (1.0 - MATHX_RSQRT_FPU_SEED_RELATIVE_LIMIT)),
+        (uint32_t)ceil(exact * (1.0 + MATHX_RSQRT_FPU_SEED_RELATIVE_LIMIT)),
+    };
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        TEST_ASSERT_EQUAL_UINT32(expected, mathx_rsqrt_bracket(m, mathx_rsqrt_newton(m, seeds[i])));
+    }
     return relative;
 }
 
