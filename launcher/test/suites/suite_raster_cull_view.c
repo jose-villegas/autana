@@ -438,6 +438,8 @@ static const fixture_camera_t scene_camera = {{0.0F, 0.0F, -300.0F}, {0.0F, 0.0F
 static const char* const CULL_VIEW = "cull";
 /* The cull view's colour for a culled cluster, as raster_cull_view.c paints it. */
 static const uint32_t CULLED_RGB = 0x505050;
+/* What scene_draw() clears to. */
+static const uint32_t CLEAR_RGB = 0x000000;
 static const int TRIANGLES_PER_QUAD = 2;
 
 typedef struct {
@@ -449,6 +451,7 @@ typedef struct {
 static scene_t* scene_now;
 static int32_t saved_from;
 static bool from_changed;
+static int32_t saved_paint;
 
 static void
 scene_release(void) {
@@ -457,6 +460,7 @@ scene_release(void) {
         from_changed = false;
     }
     if (scene_now != NULL) {
+        (void)tune_set(tune_shared(), TUNE_NAME(cullview, paint), saved_paint);
         render_context_release(&scene_now->context);
         free(scene_now);
         scene_now = NULL;
@@ -488,6 +492,11 @@ scene_open(void) {
     TEST_ASSERT_NOT_NULL(s);
     scene_now = s;
     suite_set_test_cleanup(scene_release);
+    /* Flat fates, so a culled cluster's pixels carry its colour to count. */
+    const tune_entry_t* paint = tune_find(tune_shared(), TUNE_NAME(cullview, paint));
+    TEST_ASSERT_NOT_NULL(paint);
+    saved_paint = *paint->value;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(cullview, paint), RASTER_CULL_PAINT_FATES));
     for (int i = 0; i < SCENE_QUADS; i++) {
         r3d_quad_init(&s->quad[i], scene_corners[i]);
         s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL};
@@ -600,6 +609,19 @@ test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts(v
     TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, state->fate[SCENE_SIDE]);
 }
 
+/* Shaded, the default paint: culled clusters are a sparse screen door with no
+ * border, so the culled grey shows nowhere, while kept clusters keep theirs. */
+static void
+test_shaded_cull_view_gives_culled_clusters_no_border(void) {
+    scene_t* s = scene_open();
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(cullview, paint), RASTER_CULL_PAINT_SHADED));
+    set_cull_from(RASTER_CULL_FROM_TOP);
+    scene_draw(s);
+    TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, scene_state(s)->fate[SCENE_SIDE]);
+    TEST_ASSERT_EQUAL_INT(0, pixels_of(s, CULLED_RGB));
+    TEST_ASSERT_TRUE(pixels_of(s, CLEAR_RGB) < W * H); /* the screen door still shows */
+}
+
 void
 run_raster_cull_view_suite(void) {
     RUN_TEST(test_counted_cull_returns_the_list_cull_returns);
@@ -615,6 +637,7 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_cull_view_frame_counts_the_walk_and_the_sort_of_every_instance);
     RUN_TEST(test_cull_view_triangles_covering_counts_only_triangles_owning_pixels);
     RUN_TEST(test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts);
+    RUN_TEST(test_shaded_cull_view_gives_culled_clusters_no_border);
 }
 
 SUITE_REGISTER(run_raster_cull_view_suite);
