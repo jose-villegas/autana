@@ -40,6 +40,9 @@ def autana_run(command, *words):
             time.sleep(AUTANA_RUN_RETRY_SECONDS)
 
 
+OUTPUT_FLAGS = ("-o", "--out")
+
+
 def record_line(output, key, payload):
     output.write(f"{key}\t{payload}\n")
     output.flush()
@@ -48,9 +51,16 @@ def record_line(output, key, payload):
 def record_reply(output, runner, command, *words):
     reply = runner(command, *words).strip()
     payload = json.loads(reply) if words[0] in ("tone", "buildid") else reply
-    record_line(output, " ".join(map(str, words)).removesuffix(" --json"),
+    record_line(output, " ".join(record_key(words)).removesuffix(" --json"),
                 json.dumps(payload, allow_nan=False))
     return payload
+
+
+def record_key(words):
+    """The words a capture records: an output path keeps only its file name, so no machine path lands in docs."""
+    words = [str(word) for word in words]
+    return [Path(word.replace("\\", "/")).name if i and words[i - 1] in OUTPUT_FLAGS else word
+            for i, word in enumerate(words)]
 
 
 def reset_tunables(record, owner, names):
