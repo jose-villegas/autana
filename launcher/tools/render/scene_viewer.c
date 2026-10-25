@@ -94,7 +94,7 @@ options(int argc, char** argv) {
 static bool
 select_objects(scene_t* scene) {
     for (int i = 0; i < object_count; i++) {
-        const scene_entity_t entity = scene_find(scene, object_names[i]);
+        const scene_entity_t entity = scene_find(scene, name_hash(object_names[i]));
         if (entity != SCENE_ENTITY_NONE && scene_entity_mesh_id(scene, entity) != NULL) {
             continue;
         }
@@ -141,7 +141,7 @@ setup(int quarter) {
     }
     const bool selected = select_objects(scene);
     object_names = NULL;
-    if (!selected || !scene_activate(scene, camera_name)) {
+    if (!selected || !scene_activate(scene, camera_name == NULL ? SCENE_CAMERA_FIRST : name_hash(camera_name))) {
         if (selected) {
             fprintf(stderr, "scene_viewer: scene '%s' has no camera '%s'\n", scene_id,
                     camera_name == NULL ? "default" : camera_name);
@@ -168,7 +168,7 @@ setup(int quarter) {
     if (camera_name != NULL) {
         /* What a caller sampling the path along its length reads. */
         fprintf(stderr, "scene_viewer: camera path %u ms\n",
-                (unsigned)scene_animator_clip_duration_ms(scene, scene_find(scene, camera_name), 0));
+                (unsigned)scene_animator_clip_duration_ms(scene, scene_find(scene, name_hash(camera_name)), 0));
     }
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
