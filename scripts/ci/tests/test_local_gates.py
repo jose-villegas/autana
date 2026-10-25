@@ -84,8 +84,10 @@ jobs:
           command: ../tools/autana build diag --project .. && cd .. && python3 gate.py
 ''')
         rows = list(local_gates.rows(root))
-        self.assertEqual([row['kind'] for row in rows], ['skip', 'setup', 'gate', 'gate', 'gate'])
+        self.assertEqual([row['kind'] for row in rows], ['gate', 'gate', 'gate'])
         self.assertEqual(rows[0]['tier'], 'host')
+        self.assertEqual(rows[0]['dropped'], ['pip install package'])
+        self.assertIn(':\n', rows[0]['command'])
         self.assertEqual(rows[-1]['dir'], '.')
         self.assertEqual(rows[-1]['tier'], 'diag')
         self.assertIn('--diag', rows[-2]['command'])
@@ -160,9 +162,9 @@ jobs:
           curl https://example.invalid/$version | tar -x -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/$version" >> "$GITHUB_PATH"
 ''')
-        self.assertEqual([row['kind'] for row in local_gates.rows(root)], ['skip'])
+        self.assertEqual([row['kind'] for row in local_gates.rows(root)], ['gate'])
 
-    def test_inline_install_preserves_gate(self):
+    def test_inline_host_change_drops_whole_line(self):
         root = self.fixture('''on: [pull_request]
 jobs:
   check:
@@ -171,8 +173,9 @@ jobs:
       - run: pip install missing && python3 check.py
 ''')
         rows = list(local_gates.rows(root))
-        self.assertEqual([row['kind'] for row in rows], ['skip', 'gate'])
-        self.assertEqual(rows[-1]['command'], 'python3 check.py')
+        self.assertEqual([row['kind'] for row in rows], ['skip'])
+        self.assertEqual(rows[0]['command'], ':')
+        self.assertEqual(rows[0]['dropped'], ['pip install missing && python3 check.py'])
 
     def test_failed_gate_prints_install_hint(self):
         root = self.fixture('''on: [pull_request]
@@ -188,8 +191,56 @@ jobs:
         with mock.patch.object(local_gates, 'affected_jobs', return_value={}), \
                 contextlib.redirect_stdout(capture):
             self.assertEqual(local_gates.run(root, root / 'logs', base='main'), 1)
-        self.assertIn('Install skipped (Python requirements): pip install -r requirements.txt',
+        self.assertIn('Host-wide change skipped (Python requirements: pip install -r requirements.txt)',
                       capture.getvalue())
+        self.assertEqual(len(capture.getvalue().splitlines()), 4)
+
+    def test_script_keeps_shell_state(self):
+        root = self.fixture('''on: [pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Stateful script
+        run: |
+          set -eu
+          value=kept
+          pip install missing
+          mkdir child
+          cd child
+          test "$value" = kept
+          test "$PWD" = "$(cd "$GITHUB_WORKSPACE" && pwd)/child"
+          echo state-kept
+          false
+          echo lost-errexit
+''')
+        capture = io.StringIO()
+        with mock.patch.object(local_gates, 'affected_jobs', return_value={}), \
+                contextlib.redirect_stdout(capture), mock.patch('builtins.print', wraps=print) as printed:
+            self.assertEqual(local_gates.run(root, root / 'logs', base='main'), 1)
+        self.assertTrue(all(call.kwargs.get('flush') for call in printed.call_args_list))
+        logs = list((root / 'logs').glob('*.log'))
+        self.assertEqual(len(logs), 1)
+        self.assertIn('state-kept', logs[0].read_text(encoding='utf-8'))
+        self.assertNotIn('lost-errexit', logs[0].read_text(encoding='utf-8'))
+        self.assertIn('dropped: pip install missing', capture.getvalue())
+        self.assertIn('0 ok, 1 failed, 0 skipped, 0 not run', capture.getvalue())
+
+    def test_checkout_setup_and_host_change(self):
+        root = self.fixture('''on: [pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          git config --global example.key value
+          npm ci --prefix scripts/gates
+          git submodule update --init
+      - run: sudo apt-get update
+''')
+        rows = list(local_gates.rows(root))
+        self.assertEqual([row['kind'] for row in rows], ['setup', 'skip'])
+        self.assertEqual(rows[-1]['reason'], 'host-wide change')
 
     def test_name_status_matches_api(self):
         fixtures = [('M\0code/a.c\0', {'filename': 'code/a.c', 'status': 'modified'}),
@@ -218,7 +269,7 @@ jobs:
       - id: first
         run: |
           test -d "$RUNNER_TEMP"
-          test "$GITHUB_WORKSPACE" = "$PWD"
+          test "$(cd "$GITHUB_WORKSPACE" && pwd)" = "$PWD"
           echo result=ok >> "$GITHUB_OUTPUT"
       - env:
           VALUE: '${{ steps.first.outputs.result }}'

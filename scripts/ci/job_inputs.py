@@ -175,8 +175,9 @@ def changes_from_name_status(text):
     return changes
 
 
-def affected_changes(workflow, jobs, changes, base_ref, base_files, *, capped=False, request=call):
+def affected_changes(workflow, jobs, changes, base_ref, base_files, *, capped=False, request=call, reporter=None):
     """Use the same recorded inputs for API and local git changes."""
+    emit = reporter or report
     decisions = {}
     for job in jobs:
         name = f'{ARTIFACT_PREFIX}{workflow}-{job}'
@@ -186,7 +187,8 @@ def affected_changes(workflow, jobs, changes, base_ref, base_files, *, capped=Fa
             decision, reason = 'true', f'PR files API reached its {PR_FILES_LIMIT}-file cap'
         elif artifact is None:
             decision, reason = 'true', 'no unexpired manifest for the base branch'
-            print(f'::notice::{job}: {reason}; running')
+            if reporter is None:
+                print(f'::notice::{job}: {reason}; running')
         else:
             data = request('GET', f"/actions/artifacts/{artifact['id']}/zip", raw=True)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -195,7 +197,7 @@ def affected_changes(workflow, jobs, changes, base_ref, base_files, *, capped=Fa
             decision = str(bool(matches)).lower()
             reason = 'matches: ' + json.dumps(matches, ensure_ascii=False) if matches else 'no changed input'
         decisions[job] = decision
-        report(job, decision, reason)
+        emit(job, decision, reason)
     return decisions
 
 
