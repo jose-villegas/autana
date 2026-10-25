@@ -825,7 +825,7 @@ What the slot probe shows is not a layout:
 
 So at this clock setup (22,050 Hz, MCLK 256·fs), neither EQ runs the filter it is loaded with. The HPF code map above is independent of the EQ and holds.
 
-The same slot probe was repeated with the codec DSP clocked at 512·LRCK. That needed MCLK 512·fs and a pre-divider of 1, which puts the pre-divider output at 11.29 MHz, above the user guide's 10 MHz limit at 3.3 V; it was a one-off probe build, not a supported setting. Measured tone frequencies stayed exact, so the clock tree was right. Enabled, each EQ again gave one fixed response for every load, unity and all-zero included ([raw replies](data/mic_eq_slots_capture_512.txt)). The coefficients have no measurable effect at either clock, so this board's firmware does not use the ES8311 EQ.
+The same slot probe was repeated with the codec DSP clocked at 512·LRCK. That needed MCLK 512·fs and a pre-divider of 1, which puts the pre-divider output at 11.29 MHz, above the user guide's 10 MHz limit at 3.3 V; it was a one-off probe build, not a supported setting. Measured tone frequencies stayed exact, so the clock tree was right. Enabled, each EQ again gave one fixed response for every load, unity and all-zero included ([raw replies](data/mic_eq_slots_capture_512.txt)). Coefficients written while the codec runs have no measurable effect at either clock. The codec takes some DSP state only when its state machine starts (the user guide says the HPF mode must be set before that), so loading the EQ before a state-machine restart is the one sequence still to try.
 
 ## Recording the microphone
 
