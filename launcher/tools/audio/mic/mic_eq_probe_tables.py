@@ -1,21 +1,26 @@
 """Baseline-subtracted EQ responses and HPF cutoff estimates."""
 import math
-from statistics import median
+import re
+from statistics import median, linear_regression
 
 import numpy as np
 from scipy.signal import freqz
-from audio.mic.eq_probe_sweep import designs
+from audio.mic.eq_probe_sweep import designs, ADC_REGS, DAC_REGS
+from audio.mic.eq_design import (
+    eq_classify_slots, SLOT_HZ, SLOT_VALUES, SCALE_VALUES, AMPLITUDE_DB, SLOT_TOLERANCE_DB,
+    FEEDBACK_SILENCE_DB, EQ_SCALE, SCALE_HZ, eq_decide_layout, eq_order_response, ORDER_HZ,
+    NUMERATOR_COEFFICIENTS,
+)
 from audio.sound_asset import SAMPLE_RATE_HZ
 from audio.mic.mic_metrics import DB_AMPLITUDE
 from audio_doc_blocks import number
 
 CUTOFF_DB = -3.0
 CURVE_POINTS = 256
-NUMERATOR_COEFFICIENTS = {'adc': 3, 'dac': 2}
 
 
 def response(owner, case, frequencies):
-    coefficients = designs()[owner][case]
+    coefficients = designs()[owner][case.removeprefix('rerun-')]
     if coefficients is None:
         return np.zeros(len(frequencies))
     split = NUMERATOR_COEFFICIENTS[owner]
@@ -39,7 +44,7 @@ def probe_data(records, *, relative=True):
             if len(command) != 3 or command[1] not in ('adc', 'dac', 'hpf'):
                 raise ValueError('unknown probe case')
             owner, case = command[1:]
-            if owner != 'hpf' and case not in designs()[owner]:
+            if owner != 'hpf' and case not in designs()[owner] and case not in ('zero', 'unity') and not slot_case(case) and not order_case(case) and case.removeprefix('rerun-') not in designs()[owner]:
                 raise ValueError('unknown EQ design')
             if owner == 'hpf' and case != 'bypass' and not case.isdecimal():
                 raise ValueError('invalid HPF code')
@@ -66,7 +71,7 @@ def probe_data(records, *, relative=True):
     for (owner, case, path), points in medians.items():
         reference = str(hpf_reference(medians)) if owner == 'hpf' else 'bypass'
         baseline = medians.get((owner, reference, path))
-        if baseline is None or points.keys() != baseline.keys():
+        if baseline is None or not points.keys() <= baseline.keys():
             raise ValueError('missing matching probe baseline frequencies')
         result[owner, case, path] = {hz: value - baseline[hz] for hz, value in points.items()}
     return result
@@ -112,3 +117,118 @@ def render(path, records, caption, picture, details, markdown, regenerate):
             for (owner, case, path_name), points in data.items() if owner == 'hpf' and case != 'bypass']
     return body + details(markdown(['HPF s1 = s2 code', f'Cutoff relative to code {reference} (Hz)',
                                    *[f'{hz} Hz raw (dBFS)' for hz in frequencies]], rows))
+
+
+ORDER_CASE = re.compile(r'(delay|feedback)-([0-9a-f]{2})')
+
+
+def order_case(case):
+    return ORDER_CASE.fullmatch(case)
+
+
+SLOT_CASE = re.compile(r'(slot|scale)-([0-9a-f]{2})-(0\.125|0\.25|0\.5|1)')
+
+
+def slot_case(case):
+    return SLOT_CASE.fullmatch(case)
+
+
+def slot_results(data, owner):
+    registers = sorted(ADC_REGS if owner == 'adc' else DAC_REGS)
+    points = {reg: {} for reg in registers}
+    for (kind, case, path), tones in data.items():
+        match = slot_case(case)
+        if kind == owner and match and match[1] == 'slot':
+            if path != 'acoustic' or int(match[2], 16) not in points:
+                raise ValueError('invalid slot register or path')
+            points[int(match[2], 16)][float(match[3])] = tones
+    return points, eq_classify_slots(points)
+
+
+def render_slots(path, records, caption, picture, details, markdown, regenerate):
+    data = probe_data(records)
+    body = caption(path, regenerate, 'replies')
+    decisions = {}
+    for owner in ('adc', 'dac'):
+        points, roles = slot_results(data, owner)
+        decisions[owner] = ', '.join(f'0x{reg:02X}: {role}' for reg, role in roles.items())
+    body += 'Run 2. Isolated-slot decisions: ' + '; '.join(
+        owner.upper() + ' (' + decision + ')' for owner, decision in decisions.items()) + '.\n\n'
+    body += (f'Numerators match 20 log10(v) within {SLOT_TOLERANCE_DB:g} dB at every probe tone and value; '
+             f'feedback slots are at or below {FEEDBACK_SILENCE_DB:g} dB relative to bypass.\n\n')
+    for owner in ('adc', 'dac'):
+        points, roles = slot_results(data, owner)
+        body += picture('audio/mic-eq-slots-' + owner, owner.upper() + ' isolated-slot responses and scale')
+        rows = [(f'0x{reg:02X}', value, hz, number(levels.get(hz)),
+                 number(AMPLITUDE_DB * math.log10(value)), roles[reg])
+                for reg, values in points.items() for value in SLOT_VALUES
+                for levels in (values.get(value, {}),) for hz in SLOT_HZ]
+        body += details(markdown(['Register', 'Value', 'Hz', 'Relative (dB)', 'Numerator (dB)', 'Decision'], rows)) + '\n'
+        body += picture('audio/mic-eq-scale-' + owner, owner.upper() + ' coefficient scale')
+        checks = []
+        for (kind, case, path_name), tones in data.items():
+            if kind != owner or case == 'bypass' or case.startswith('slot-') or order_case(case):
+                continue
+            for hz, measured in sorted(tones.items()):
+                match = slot_case(case)
+                expected = (AMPLITUDE_DB * math.log10(float(match[3])) if match else
+                            0.0 if case == 'unity' else 'silence' if case == 'zero' else
+                            float(response(owner, case, [hz])[0]))
+                checks.append((case, hz, number(measured), expected if isinstance(expected, str) else number(expected)))
+        body += details(markdown(['Check', 'Hz', 'Relative (dB)', 'Expected (dB)'], checks)) + '\n'
+        layout = decided_layout(data, owner)
+        if any(kind == owner and order_case(case) for kind, case, path in data):
+            body += picture('audio/mic-eq-order-' + owner, owner.upper() + ' delay and feedback sign probes')
+        if any(kind == owner and case.startswith('rerun-') for kind, case, path in data):
+            body += picture('audio/mic-eq-designs-' + owner, owner.upper() + ' designs using the measured layout')
+        if layout is None:
+            body += owner.upper() + ' delay order/sign unresolved; design rerun skipped.\n\n'
+        else:
+            body += owner.upper() + ' decided layout: ' + ', '.join(
+                f'0x{reg:02X} = {role} z^-{delay}' + (f' (sign {sign:+d})' if role == 'feedback' else '')
+                for reg, (role, delay, sign) in sorted(layout.items())) + '.\n\n'
+            body += 'The lowest numerator register is the b0 delay reference.\n\n'
+            body += details(markdown(['Register', 'Role', 'Delay', 'Feedback sign'],
+                                     [(f'0x{reg:02X}', role, delay, sign if role == 'feedback' else 'n/a')
+                                      for reg, (role, delay, sign) in sorted(layout.items())])) + '\n'
+        order_rows = []
+        for (kind, case, path_name), tones in data.items():
+            match = order_case(case)
+            if kind != owner or not match:
+                continue
+            reg = int(match[2], 16)
+            reference = tones[ORDER_HZ[0]] if match[1] == 'delay' else 0
+            expected = eq_order_response(*layout[reg]) if layout else {}
+            for hz, measured in sorted(tones.items()):
+                order_rows.append((case, hz, number(measured - reference), number(expected.get(hz))))
+        body += details(markdown(['Order/sign probe', 'Hz', 'Relative (dB)', 'Decided model (dB)'], order_rows)) + '\n'
+        scale = scale_result(data, owner)
+        if scale is not None:
+            body += details(markdown(['Scale slot', 'Slope (dB/octave)', 'Unity offset (dB)', 'Effective fractional bits'],
+                                     [(f'0x{scale[0]:02X}', *map(number, scale[1:]))])) + '\n'
+    return body
+
+
+def scale_result(data, owner):
+    points = {}
+    for (kind, case, path), tones in data.items():
+        match = slot_case(case)
+        if kind == owner and match and match[1] == 'scale':
+            if path != 'acoustic' or set(tones) != {SCALE_HZ}:
+                raise ValueError('invalid scale tone path or frequency')
+            points.setdefault(int(match[2], 16), {})[float(match[3])] = tones[SCALE_HZ]
+    if not points:
+        return None
+    if len(points) != 1 or set(next(iter(points.values()))) != set(SCALE_VALUES):
+        raise ValueError('scale probe needs every value on one register')
+    reg, values = next(iter(points.items()))
+    slope, offset = linear_regression([math.log2(value) for value in values], list(values.values()))
+    fractional_bits = math.log2(EQ_SCALE) - offset / (AMPLITUDE_DB * math.log10(2))
+    return reg, slope, offset, fractional_bits
+
+
+def decided_layout(data, owner):
+    points, roles = slot_results(data, owner)
+    order_points = {int(match[2], 16): tones for (kind, case, path), tones in data.items()
+                    if kind == owner and (match := order_case(case))}
+    return eq_decide_layout(points, order_points, NUMERATOR_COEFFICIENTS[owner])

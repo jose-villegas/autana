@@ -1,5 +1,7 @@
 """Synthetic EQ probe measurements and failure cleanup."""
 import json
+import math
+import cmath
 from pathlib import Path
 import sys
 import tempfile
@@ -14,6 +16,128 @@ from audio.mic import mic_eq_probe_tables as tables
 
 
 class EqProbeTest(unittest.TestCase):
+    def test_ram_clear_after_load(self):
+        for owner, control, ram_reg, mask in (
+                ('adc', sweep.ADC_CONTROL, 0x16, 0x08),
+                ('dac', sweep.DAC_CONTROL, 0x31, 0x08)):
+            calls = []
+            def record(*words):
+                calls.append(words)
+                if words[0] == 'codec':
+                    reg = int(words[1], 0)
+                    value = int(words[2], 0) if len(words) == 3 else 0xA0
+                    return f'CODEC reg=0x{reg:02X} value=0x{value:02X}'
+                return 'ok'
+            record.note = lambda *words: None
+            sweep.program(record, {control: 0}, owner, sweep.designs()[owner]['half'])
+            pulse = [('codec', hex(ram_reg), hex(0xA0 | mask)),
+                     ('codec', hex(ram_reg), hex(0xA0))]
+            self.assertEqual(calls[-2:], pulse)
+            self.assertLess(calls.index(('codec', hex(control), '0x0')), calls.index(pulse[0]))
+
+    def test_slot_classification_requires_every_value_and_tone(self):
+        from audio.mic.eq_design import eq_classify_slots
+        points = {reg: {value: {hz: 20 * math.log10(value)
+                               for hz in (100, 1000, 4000)} for value in (.25, .5)}
+                  for reg in (0x1D, 0x21)}
+        for value in (.25, .5):
+            points[0x21][value] = dict.fromkeys((100, 1000, 4000), -80)
+        self.assertEqual(eq_classify_slots(points), {0x1D: 'numerator', 0x21: 'feedback'})
+        points[0x1D][.5][4000] += 2
+        self.assertEqual(eq_classify_slots(points)[0x1D], 'unresolved')
+        del points[0x21][.25][100]
+        self.assertEqual(eq_classify_slots(points)[0x21], 'unresolved')
+
+    def test_slots_capture_tables_and_figures(self):
+        from audio_doc_tables import read_capture
+        from audio.mic.mic_eq_probe_figures import render
+        import audio_doc_tables as audio
+        from audio.mic.eq_design import EQ_SCALE, SLOT_HZ, SCALE_VALUES
+        layout = {'adc': {0x1D: ('feedback', 2, -1), 0x21: ('numerator', 0, 1),
+                          0x25: ('feedback', 1, 1), 0x29: ('numerator', 2, 1), 0x2D: ('numerator', 1, 1)},
+                  'dac': {0x38: ('feedback', 1, -1), 0x3C: ('numerator', 0, 1), 0x40: ('numerator', 1, 1)}}
+        numerator = {owner: {reg for reg, (role, delay, sign) in slots.items() if role == 'numerator'}
+                     for owner, slots in layout.items()}
+        registers = dict.fromkeys(sweep.REGISTERS, 0)
+        calls = []
+        def runner(command, *words):
+            words = words[2:]
+            calls.append(words)
+            if words[0] == 'buildid':
+                return '{"build_id":"synthetic-slots"}'
+            if words[0] == 'codec':
+                reg = int(words[1], 0)
+                if len(words) == 3:
+                    registers[reg] = int(words[2], 0)
+                return f'CODEC reg=0x{reg:02X} value=0x{registers[reg]:02X}'
+            if words[0] == 'tone':
+                level = -20.0
+                for owner, control, mask in (('adc', sweep.ADC_CONTROL, sweep.ADC_BYPASS),
+                                              ('dac', sweep.DAC_CONTROL, sweep.DAC_BYPASS)):
+                    if not registers[control] & mask:
+                        from audio.mic.eq_design import EQ_MASK, SAMPLE_RATE_HZ
+                        sums = {'numerator': 0j, 'feedback': 1 + 0j}
+                        for reg, (role, delay, sign) in layout[owner].items():
+                            encoded = int.from_bytes(bytes(registers[reg + i] for i in range(sweep.COEFF_BYTES)), 'big')
+                            period = EQ_MASK + 1
+                            value = (encoded - period if encoded >= period // 2 else encoded) / EQ_SCALE
+                            phase = cmath.exp(-2j * math.pi * int(words[1]) * delay / SAMPLE_RATE_HZ)
+                            sums[role] += value * sign * phase
+                        gain = abs(sums['numerator'] / sums['feedback'])
+                        level += 20 * math.log10(gain) if gain > 0 else -100
+                return json.dumps(dict(hz=int(words[1]), tone_db=level))
+            return 'ok'
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            args = sweep.parser().parse_args(['--board', 'TEST', '--mode', 'slots',
+                                             '--out', str(output / 'slots.txt')])
+            with mock.patch.object(sweep, 'autana_run', side_effect=runner):
+                sweep.capture(args)
+            _, records, _ = read_capture(args.out)
+            data = tables.probe_data(records)
+            for owner in numerator:
+                points, roles = tables.slot_results(data, owner)
+                self.assertEqual(tables.decided_layout(data, owner), layout[owner])
+                self.assertIn((owner, 'rerun-highpass', 'acoustic'), data)
+                self.assertEqual({r for r, role in roles.items() if role == 'numerator'}, numerator[owner])
+                self.assertEqual(set(points), set(sweep.ADC_REGS if owner == 'adc' else sweep.DAC_REGS))
+                scale = [(case, tones) for (kind, case, path), tones in data.items()
+                         if kind == owner and case.startswith('scale-')]
+                self.assertEqual(len(scale), len(SCALE_VALUES))
+                scale_fit = tables.scale_result(data, owner)
+                self.assertAlmostEqual(scale_fit[1], 20 * math.log10(2))
+                self.assertAlmostEqual(scale_fit[3], math.log2(EQ_SCALE))
+                self.assertTrue(all(set(tones) == {sweep.SCALE_HZ} for case, tones in scale))
+            self.assertTrue(any(command[:2] == ['probe', 'adc'] and command[2].startswith('delay-')
+                                for command, reply in records))
+            self.assertFalse(any('--internal' in command for command, reply in records))
+            self.assertIn(('tune', 'audio.drc', 0), calls)
+            self.assertIn(('tune', 'reset', 'audio.drc'), calls)
+            self.assertEqual(registers, dict.fromkeys(sweep.REGISTERS, 0))
+            document = output / 'probe.md'
+            document.write_text('<!-- generated: mic-eq-probe -->\n<!-- /generated: mic-eq-probe -->\n')
+            audio.update_eq_probe(output / 'absent.txt', document, slots_capture=args.out)
+            self.assertIn('0x21: numerator', document.read_text())
+            self.assertIn('0x1D: feedback', document.read_text())
+            render(args.out, output)
+            self.assertTrue((output / 'mic-eq-slots-adc.png').exists())
+            self.assertTrue((output / 'mic-eq-slots-dac-dark.png').exists())
+
+    def test_order_and_sign_decisions(self):
+        from audio.mic.eq_design import (eq_decide_layout, eq_order_response,
+                                         eq_layout_coefficients, SLOT_VALUES, SLOT_HZ)
+        roles = {0x1D: ('feedback', 2, -1), 0x21: ('numerator', 0, 1),
+                 0x25: ('feedback', 1, 1), 0x29: ('numerator', 2, 1), 0x2D: ('numerator', 1, 1)}
+        points = {reg: {value: dict.fromkeys(SLOT_HZ, 20 * math.log10(value) if role == 'numerator' else -80)
+                        for value in SLOT_VALUES} for reg, (role, delay, sign) in roles.items()}
+        order = {reg: eq_order_response(role, delay, sign)
+                 for reg, (role, delay, sign) in roles.items() if delay}
+        layout = eq_decide_layout(points, order, 3)
+        self.assertEqual(layout, roles)
+        self.assertEqual(eq_layout_coefficients(sorted(roles), (1, 2, 3, 4, 5), layout, 3), [-5, 1, 4, 3, 2])
+        order[0x29][SLOT_HZ[0]] += 10
+        self.assertIsNone(eq_decide_layout(points, order, 3))
+
     def test_synthetic_response_and_cutoff(self):
         from audio_doc_tables import read_capture
         _, records, _ = read_capture(ROOT / 'launcher/test/fixtures/mic_eq_probe_capture.txt')

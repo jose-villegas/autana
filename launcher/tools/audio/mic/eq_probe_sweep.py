@@ -3,6 +3,7 @@
 autana --wait 3600 lock run -- python launcher/tools/audio/mic/eq_probe_sweep.py --board <id>
 """
 import math
+from statistics import median
 from pathlib import Path
 import re
 import sys
@@ -13,7 +14,11 @@ from autana_runner import autana_run, capture_parser, capture_records, reset_tun
 from audio_mic_dsp_sweep import DEFAULTS, LIMITS
 from audio_drc_sweep import numbers, MAX_MS, NYQUIST_HZ, VOLUME_MAX
 from build.c_header import read_define
-from audio.mic.eq_design import eq_design_biquad, eq_design_first_order_highpass, eq_encode
+from audio.mic.eq_design import (
+    eq_design_biquad, eq_design_first_order_highpass, eq_encode, eq_classify_slots, eq_flat_slot,
+    SLOT_HZ, SLOT_VALUES, SCALE_VALUES, SCALE_HZ, ORDER_HZ, PROBE_GAIN, eq_decide_layout,
+    eq_layout_coefficients, NUMERATOR_COEFFICIENTS,
+)
 
 HEADER = ROOT / 'launcher/main/audio/audio_codec_eq.h'
 ADC_REGS = tuple(read_define(HEADER, 'AUDIO_CODEC_EQ_ADC_' + name + '_REG')
@@ -23,11 +28,16 @@ ADC_CONTROL = read_define(HEADER, 'AUDIO_CODEC_EQ_ADC_CONTROL_REG')
 DAC_CONTROL = read_define(HEADER, 'AUDIO_CODEC_EQ_DAC_CONTROL_REG')
 ADC_BYPASS = read_define(HEADER, 'AUDIO_CODEC_EQ_ADC_BYPASS')
 DAC_BYPASS = read_define(HEADER, 'AUDIO_CODEC_EQ_DAC_BYPASS')
+RAM_FIELDS = {owner: (read_define(HEADER, 'AUDIO_CODEC_EQ_' + owner.upper() + '_RAM_REG'),
+                       read_define(HEADER, 'AUDIO_CODEC_EQ_' + owner.upper() + '_RAMCLR'))
+              for owner in ('adc', 'dac')}
 COEFF_BYTES = read_define(HEADER, 'AUDIO_CODEC_EQ_BYTES')
 REGISTERS = tuple(sorted({read_define(HEADER, 'AUDIO_CODEC_EQ_ADC_HPF_REG'), ADC_CONTROL, DAC_CONTROL,
+                          *(reg for reg, mask in RAM_FIELDS.values()),
                           *(reg + offset for reg in (*ADC_REGS, *DAC_REGS) for offset in range(COEFF_BYTES))}))
 TUNABLES = tuple(DEFAULTS)
 CAPTURE = ROOT / 'docs/audio/data/mic_eq_probe_capture.txt'
+SLOTS_CAPTURE = CAPTURE.with_name('mic_eq_slots_capture.txt')
 TAKE_NAME = 'mic_eq_probe_take.wav'
 DEFAULT_HZ = (50, 100, 150, 200, 400, 1000, 2000, 4000)
 DEFAULT_HPF_HZ = (50, 100, 200, 500, 1000)
@@ -58,6 +68,7 @@ def parser():
     for name, default in (('volume', DEFAULT_VOLUME), ('runs', DEFAULT_RUNS),
                           ('internal-runs', DEFAULT_INTERNAL_RUNS), ('ms', DEFAULT_MS), ('take-ms', DEFAULT_TAKE_MS)):
         result.add_argument('--' + name, type=int, default=default)
+    result.add_argument('--mode', choices=('designs', 'slots'), default='designs')
     result.add_argument('--take', type=Path, help='default: beside --out')
     return result
 
@@ -87,18 +98,30 @@ def program(record, saved, owner, coefficients):
         codec(record, control, saved[control] & ~bypass)
         if owner == 'adc':
             record('tune', 'mic.eq', 1)
+        ram_reg, ram_mask = RAM_FIELDS[owner]
+        ram = codec(record, ram_reg) & ~ram_mask
+        codec(record, ram_reg, ram | ram_mask)
+        codec(record, ram_reg, ram)
+        record.note('ram-clear ' + owner, {'register': ram_reg, 'mask': ram_mask})
 
 
 def tones(record, args, frequencies, internal=False):
+    levels = {}
     for hz in frequencies:
         for _ in range(args.internal_runs if internal else args.runs):
-            record('tone', hz, args.ms, args.volume, *(('--internal',) if internal else ()), '--json')
+            reply = record('tone', hz, args.ms, args.volume, *(('--internal',) if internal else ()), '--json')
+            levels.setdefault(hz, []).append(reply['tone_db'])
+    return {hz: median(values) for hz, values in levels.items()}
 
 
 def restore(record, saved):
     failures = []
     try:
         reset_tunables(record, 'mic', TUNABLES)
+    except Exception as error:
+        failures.append(error)
+    try:
+        reset_tunables(record, 'audio', ('drc',))
     except Exception as error:
         failures.append(error)
     for reg in (ADC_CONTROL, DAC_CONTROL):
@@ -115,6 +138,77 @@ def restore(record, saved):
                 failures.append(error)
     if failures:
         raise RuntimeError('EQ probe restore failed') from failures[0]
+
+
+def slot_capture(record, saved, args):
+    for owner, registers in (('adc', sorted(ADC_REGS)), ('dac', sorted(DAC_REGS))):
+        program(record, saved, 'adc' if owner == 'dac' else 'dac', None)
+        if owner == 'dac':
+            record('tune', 'audio.drc', 0)
+        record.note('probe ' + owner + ' bypass', {})
+        program(record, saved, owner, None)
+        baseline = tones(record, args, sorted(set((*SLOT_HZ, *ORDER_HZ, *args.hz))))
+        cases = [('zero', [0.0] * len(registers), SLOT_HZ)]
+        unity = [0.0] * len(registers)
+        unity[0] = 1.0
+        cases.append(('unity', unity, SLOT_HZ))
+        for case, coefficients, frequencies in cases:
+            record.note('probe ' + owner + ' ' + case, {})
+            program(record, saved, owner, coefficients)
+            tones(record, args, frequencies)
+        points = {}
+        for index, reg in enumerate(registers):
+            points[reg] = {}
+            for value in SLOT_VALUES:
+                coefficients = [0.0] * len(registers)
+                coefficients[index] = value
+                record.note(f'probe {owner} slot-{reg:02x}-{value:g}', {})
+                ordered = dict(zip(registers, coefficients))
+                program(record, saved, owner, [ordered[r] for r in (ADC_REGS if owner == 'adc' else DAC_REGS)])
+                levels = tones(record, args, SLOT_HZ)
+                points[reg][value] = {hz: level - baseline[hz] for hz, level in levels.items()}
+        roles = eq_classify_slots(points)
+        record.note('layout ' + owner, {hex(reg): role for reg, role in roles.items()})
+        flat = eq_flat_slot(points)
+        if flat is None:
+            record.note('unresolved ' + owner, {'reason': 'no non-silent flat slot'})
+            continue
+        for value in SCALE_VALUES:
+            coefficients = [value if reg == flat else 0.0 for reg in (ADC_REGS if owner == 'adc' else DAC_REGS)]
+            record.note(f'probe {owner} scale-{flat:02x}-{value:g}', {})
+            program(record, saved, owner, coefficients)
+            tones(record, args, (SCALE_HZ,))
+        order_capture(record, saved, args, owner, points, baseline)
+
+
+def order_capture(record, saved, args, owner, points, baseline):
+    roles = eq_classify_slots(points)
+    reference = next((reg for reg, role in sorted(roles.items()) if role == 'numerator'), None)
+    if reference is None or 'unresolved' in roles.values():
+        record.note('unresolved ' + owner, {'reason': 'slot membership unresolved; rerun skipped'})
+        return
+    registers = ADC_REGS if owner == 'adc' else DAC_REGS
+    numerator_count = NUMERATOR_COEFFICIENTS[owner]
+    record.note('reference ' + owner, {'b0_register': reference, 'convention': 'lowest numerator register'})
+    order_points = {}
+    for reg, role in sorted(roles.items()):
+        if reg == reference:
+            continue
+        case = ('delay' if role == 'numerator' else 'feedback') + f'-{reg:02x}'
+        record.note(f'probe {owner} {case}', {})
+        program(record, saved, owner, [PROBE_GAIN if r in (reference, reg) else 0.0 for r in registers])
+        levels = tones(record, args, ORDER_HZ)
+        order_points[reg] = {hz: level - baseline[hz] for hz, level in levels.items()}
+    layout = eq_decide_layout(points, order_points, numerator_count)
+    record.note('decided-layout ' + owner, {hex(reg): role for reg, role in layout.items()} if layout else {})
+    if layout is None:
+        record.note('unresolved ' + owner, {'reason': 'order/sign ambiguous; rerun skipped'})
+        return
+    for case in ('highpass', 'lowpass') if owner == 'adc' else ('highpass',):
+        coefficients = eq_layout_coefficients(registers, designs()[owner][case], layout, numerator_count)
+        record.note(f'probe {owner} rerun-{case}', {})
+        program(record, saved, owner, coefficients)
+        tones(record, args, args.hz)
 
 
 def capture(args):
@@ -134,6 +228,9 @@ def capture(args):
             for name, value in dict(DEFAULTS, eq=0).items():
                 record('tune', 'mic.' + name, value)
             program(record, saved, 'dac', None)
+            if args.mode == 'slots':
+                slot_capture(record, saved, args)
+                return
             for name, coefficients in designs()['adc'].items():
                 record.note('probe adc ' + name, {})
                 program(record, saved, 'adc', coefficients)
@@ -146,6 +243,7 @@ def capture(args):
                 tones(record, args, args.hpf_hz)
             for name in ('hpf_s1', 'hpf_s2'):
                 record('tune', 'mic.' + name, DEFAULTS[name])
+            record('tune', 'audio.drc', 0)
             for name, coefficients in designs()['dac'].items():
                 record.note('probe dac ' + name, {})
                 program(record, saved, 'dac', coefficients)
@@ -162,6 +260,8 @@ def capture(args):
 
 def main():
     args = parser().parse_args()
+    if args.mode == 'slots' and args.out == CAPTURE:
+        args.out = SLOTS_CAPTURE
     capture(args)
     print(f'EQ probe capture: {args.out}')
 
