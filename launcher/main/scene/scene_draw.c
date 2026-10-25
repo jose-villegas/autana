@@ -37,7 +37,7 @@ scene_set_paused(bool pause) {
 }
 
 bool
-scene_activate(scene_t* scene, const char* camera) {
+scene_activate(scene_t* scene, name_hash_t camera) {
     const int index = scene_camera_index(scene, camera);
     if (index < 0) {
         return false;
