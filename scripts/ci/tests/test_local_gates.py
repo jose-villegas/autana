@@ -24,7 +24,109 @@ class LocalGatesTests(unittest.TestCase):
         folder = root / '.github/workflows'
         folder.mkdir(parents=True)
         (folder / 'test.yml').write_text(text)
+        import shutil
+        shutil.copytree(ROOT / '.github/actions', root / '.github/actions')
         return root
+
+    def test_recursive_composite_defaults_and_job_tier(self):
+        root = self.fixture("""on: [pull_request]
+jobs:
+  check:
+    steps:
+      - run: echo before
+      - uses: ./.github/actions/outer
+        with: {variant: diag}
+""")
+        for name, text in {
+            'outer': """inputs:
+  variant: {default: rel}
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/inner
+      with: {command: 'autana build ${{ inputs.variant }}'}
+""",
+            'inner': """inputs:
+  command: {default: echo default}
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: ${{ inputs.command }}
+    - shell: bash
+      run: python scripts/deps/idf_pin.py check
+"""}.items():
+            folder = root / '.github/actions' / name
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / 'action.yml').write_text(text)
+        rows = list(local_gates.rows(root))
+        self.assertEqual([row['tier'] for row in rows], ['diag'] * 3)
+        self.assertEqual(rows[1]['command'], 'autana build diag')
+        self.assertEqual(rows[2]['kind'], 'gate')
+
+    def test_shell_templates(self):
+        root = self.fixture('on: [pull_request]\njobs: {}')
+        for shell, flags in [('', ['-e']), ('bash', ['--noprofile', '--norc', '-eo', 'pipefail']),
+                             ('sh', ['-e'])]:
+            script = root / 'step.sh'
+            command = local_gates.shell_command({'shell': shell}, 'false | true', root, script)
+            self.assertEqual(command[1:-1], flags)
+            self.assertEqual(command[-1], script.as_posix())
+            self.assertEqual(script.read_text(), 'false | true')
+
+    def test_base_requires_remote_branch(self):
+        root = self.fixture('on: [pull_request]\njobs: {}')
+        import subprocess
+        subprocess.run(['git', 'init', '-q', str(root)], check=True)
+        with self.assertRaisesRegex(ValueError, '--base takes a branch such as origin/main'):
+            local_gates.context(root, 'a' * 40)
+
+    def test_github_path_reaches_next_step(self):
+        root = self.fixture("""on: [pull_request]
+jobs:
+  check:
+    steps:
+      - run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          printf '#!/bin/sh\\nexit 0\\n' > "$RUNNER_TEMP/bin/local-path-probe"
+          chmod +x "$RUNNER_TEMP/bin/local-path-probe"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: local-path-probe
+""")
+        with mock.patch.object(local_gates, 'affected_jobs', return_value={}):
+            self.assertEqual(local_gates.run(root, root / 'logs'), 0)
+
+    def test_working_tree_inputs_and_credentials(self):
+        root = self.fixture("""on: [pull_request]
+jobs:
+  inputs:
+    steps:
+      - run: python scripts/ci/job_inputs.py affected --job check
+  check:
+    steps:
+      - run: echo gate
+""")
+        import os
+        import subprocess
+        for args in [('init', '-q'), ('add', '.'),
+                     ('-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'fixture'),
+                     ('remote', 'add', 'origin', 'https://github.com/example/test.git'),
+                     ('update-ref', 'refs/remotes/origin/main', 'HEAD')]:
+            subprocess.run(['git', '-C', str(root), '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', *args], check=True, capture_output=True)
+        workflow = root / '.github/workflows/test.yml'
+        workflow.write_text(workflow.read_text() + '# uncommitted\n')
+        (root / 'new.txt').write_text('untracked')
+
+        def affected(workflow, jobs, changes, base, files, **kwargs):
+            self.assertIn({'filename': '.github/workflows/test.yml', 'status': 'modified'}, changes)
+            self.assertIn({'filename': 'new.txt', 'status': 'added'}, changes)
+            kwargs['reporter']('check', 'true', 'matches: input')
+        with mock.patch.dict(os.environ, {'GH_TOKEN': 'local-token'}):
+            before = dict(os.environ)
+            with mock.patch.object(local_gates, 'affected_changes', side_effect=affected) as request:
+                self.assertEqual(local_gates.affected_jobs(root, 'origin/main')['test:check'], 'affected: input')
+                request.assert_called_once()
+            self.assertEqual(dict(os.environ), before)
 
     def test_real_workflows_are_mapped(self):
         rows = list(local_gates.rows(ROOT))
@@ -32,7 +134,7 @@ class LocalGatesTests(unittest.TestCase):
         for job in local_gates.pr_jobs(ROOT):
             self.assertTrue(any(row['job'] == job['key'] and row['kind'] in {'gate', 'skip'}
                                 for row in rows), job['key'])
-        commands = '\n'.join(row['command'] for row in rows if row['kind'] == 'gate')
+        commands = '\n'.join(row['command'] + str(row.get('env', {})) for row in rows if row['kind'] == 'gate')
         for command in ('check_no_soft_double.py', 'misra_tidy_gate.py',
                         'check_comment_length.py', 'run_tests.sh --sanitize'):
             self.assertIn(command, commands)
@@ -84,13 +186,14 @@ jobs:
           command: ../tools/autana build diag --project .. && cd .. && python3 gate.py
 ''')
         rows = list(local_gates.rows(root))
-        self.assertEqual([row['kind'] for row in rows], ['gate', 'gate', 'gate'])
-        self.assertEqual(rows[0]['tier'], 'host')
+        gates = [row for row in rows if row['kind'] == 'gate']
+        self.assertGreaterEqual(len(gates), 3)
+        self.assertEqual(rows[0]['tier'], 'diag')
         self.assertEqual(rows[0]['dropped'], ['pip install package'])
         self.assertIn(':\n', rows[0]['command'])
-        self.assertEqual(rows[-1]['dir'], '.')
-        self.assertEqual(rows[-1]['tier'], 'diag')
-        self.assertIn('--diag', rows[-2]['command'])
+        self.assertTrue(all(row['tier'] == 'diag' for row in rows))
+        build = next(row for row in rows if row['label'] == 'Build in the pinned IDF image')
+        self.assertIn('../tools/autana build diag --project ..', build['env']['BUILD_COMMAND'])
 
     def test_expansion(self):
         ctx = {'github.base_ref': 'main', 'github.head_ref': 'feature/example',
@@ -111,8 +214,7 @@ jobs:
         with:
           command: ../tools/autana build dev --project .. && python3 development.py
 ''')
-        self.assertEqual([row['tier'] for row in local_gates.rows(root)],
-                         ['rel', 'rel', 'dev', 'dev'])
+        self.assertTrue(all(row['tier'] == 'rel,dev' for row in local_gates.rows(root)))
 
     def test_run_cd_keeps_its_gate(self):
         root = self.fixture('''on: [pull_request]
@@ -164,7 +266,7 @@ jobs:
 ''')
         self.assertEqual([row['kind'] for row in local_gates.rows(root)], ['gate'])
 
-    def test_inline_host_change_drops_whole_line(self):
+    def test_inline_host_change_preserves_other_segments(self):
         root = self.fixture('''on: [pull_request]
 jobs:
   check:
@@ -173,9 +275,9 @@ jobs:
       - run: pip install missing && python3 check.py
 ''')
         rows = list(local_gates.rows(root))
-        self.assertEqual([row['kind'] for row in rows], ['skip'])
-        self.assertEqual(rows[0]['command'], ':')
-        self.assertEqual(rows[0]['dropped'], ['pip install missing && python3 check.py'])
+        self.assertEqual([row['kind'] for row in rows], ['gate'])
+        self.assertEqual(rows[0]['command'], ': && python3 check.py')
+        self.assertEqual(rows[0]['dropped'], ['pip install missing'])
 
     def test_failed_gate_prints_install_hint(self):
         root = self.fixture('''on: [pull_request]

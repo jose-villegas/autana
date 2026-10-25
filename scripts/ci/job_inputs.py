@@ -31,7 +31,8 @@ LOCAL_ACTION = re.compile(r'uses:\s*[\'\"]?(\./\.github/actions/[\w/-]+)')
 
 def git(root, *args):
     return subprocess.run(['git', '-c', f'safe.directory={root.resolve()}', *args],
-                          cwd=root, check=True, stdout=subprocess.PIPE).stdout
+                          cwd=root, check=True, stdin=subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout
 
 
 def tracked_paths(root):
