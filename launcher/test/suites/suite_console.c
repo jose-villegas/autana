@@ -325,6 +325,7 @@ typedef struct {
     text_request_t request;       /* a post's; the racing writer's */
     char answer[CONSOLE_LINE_MAX];
     int answer_count;
+    bool posted_while_answering;
     atomic_bool writing;
 } frame_fixture_t;
 
@@ -336,11 +337,13 @@ free_frame(void) {
     frame = NULL;
 }
 
+/* Also posts to its own slot, which a held slot refuses while answering. */
 static void
 record_answer(const void* payload) {
     const text_request_t* request = payload;
     console_copy_text(frame->answer, sizeof frame->answer, request->text);
     frame->answer_count++;
+    frame->posted_while_answering = console_frame_post(&frame->slots, &frame->answered, request);
 }
 
 static console_frame_slot_t
@@ -436,11 +439,26 @@ test_pending_answers_run_once_and_free_a_held_slot(void) {
     console_frame_answer_pending(&f->slots);
     TEST_ASSERT_EQUAL_INT(1, f->answer_count);
     TEST_ASSERT_EQUAL_STRING("play", f->answer);
+    TEST_ASSERT_FALSE(f->posted_while_answering);
     console_frame_answer_pending(&f->slots);
     TEST_ASSERT_EQUAL_INT(1, f->answer_count);
 
     TEST_ASSERT_TRUE(post(f, &f->answered, "again"));
     TEST_ASSERT_TRUE(console_frame_take(&f->slots, &f->latest));
+}
+
+/* FRAMEWATCH and SCREENSHOT: no payload, the post itself is the request. */
+static void
+test_a_signal_is_taken_once_per_post(void) {
+    frame_fixture_t* f = frame_fixture();
+    console_frame_slot_t signal = {.name = "signal"};
+    TEST_ASSERT_TRUE(console_frame_add(&f->slots, &signal));
+
+    TEST_ASSERT_FALSE(console_frame_take(&f->slots, &signal));
+    TEST_ASSERT_TRUE(console_frame_post(&f->slots, &signal, NULL));
+    TEST_ASSERT_TRUE(console_frame_post(&f->slots, &signal, NULL));
+    TEST_ASSERT_TRUE(console_frame_take(&f->slots, &signal));
+    TEST_ASSERT_FALSE(console_frame_take(&f->slots, &signal));
 }
 
 static void
@@ -1092,6 +1110,7 @@ suite_console(void) {
     RUN_TEST(test_a_later_request_replaces_its_own_slot_and_leaves_the_others);
     RUN_TEST(test_a_held_request_refuses_another_until_it_is_done);
     RUN_TEST(test_pending_answers_run_once_and_free_a_held_slot);
+    RUN_TEST(test_a_signal_is_taken_once_per_post);
     RUN_TEST(test_a_slot_name_is_taken_once);
     RUN_TEST(test_a_take_never_sees_a_post_half_written);
     RUN_TEST(test_word_match_carries_what_follows_the_name);

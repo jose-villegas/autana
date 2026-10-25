@@ -59,7 +59,8 @@ bool console_frame_take(console_frame_slots_t* slots, console_frame_slot_t* slot
 void console_frame_done(console_frame_slots_t* slots, console_frame_slot_t* slot);
 
 /* The frame loop, once per pass: takes and answers every slot with an
- * answer, then marks a held one done. */
+ * answer, then marks a held one done. Answers run in no promised order, so
+ * none may depend on another. */
 void console_frame_answer_pending(console_frame_slots_t* slots);
 
 /* A slot of `type` (or none: CONSOLE_FRAME_SIGNAL) in the shared set,
