@@ -3,7 +3,7 @@
 A scene file holds transformed objects, renderer, light and camera components,
 optional animators, and ambient and tone-map settings. The offline importer bakes the lit meshes
 the scene places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
-[scene entry](#scne-v3) it reads at run time.
+[scene entry](#scne-v4) it reads at run time.
 
 ```toml
 tonemap_white = 0.35             # larger is darker
@@ -618,7 +618,7 @@ lights, `tonemap_white`, a region or `[indirect]` that no placed mesh reads.
 Directional lights, `[ambient]` and `tonemap_white` are also read by skinned
 renderers, which require none of them; `[sky]` is read only by a bake.
 
-## SCNE v3
+## SCNE v4
 
 `build_pack.py` bakes each scene file into a `SCNE` entry of its own pack,
 named after the file: `NAME.scene.toml` is entry and pack `NAME`, beside every
@@ -629,7 +629,13 @@ mesh, skin, skeleton and clip it names, and fails naming whichever is missing or
 and its clip cannot share a stem ([assets/README.md](../assets/Building-Packs.md#packs)).
 
 Objects are entities in file order, found by name. Transforms store a 3x3
-rotation-times-scale matrix and position. Names hold letters, digits and
+rotation-times-scale matrix and position, in the parent's frame; the scale
+is positive, and `scene_load()` refuses a shear or a reflection (determinant
+−1) and names its entity. Each entity has one parent listed before it, or
+none; a parent's transform and enabled state carry to its descendants
+([Scene-Manager.md](Scene-Manager.md#hierarchy)). A scene file names no
+parents, so its objects are roots; `scene_asset.encode()` writes the parent of
+an object that carries one. Names hold letters, digits and
 `_`, start with a letter or `_`, and fit 31 bytes.
 
 Directional lights rotate `SCENE_LIGHT_AXIS` (+Y) by their entity's rotation.
@@ -638,7 +644,7 @@ renderers. Sky and camera regions are bake inputs.
 
 | Format | Version | Writer (Python) | Reader (C) |
 |---|---|---|---|
-| SCNE | 3 | `r3d/scene_asset.py` | `scene/scene_asset.c` |
+| SCNE | 4 | `r3d/scene_asset.py` | `scene/scene_asset.c` |
 
 Settings are applied before lights attach. Absent ambient has zero intensity;
 `tonemap_white=0` is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map. A camera
@@ -654,8 +660,8 @@ config:
     bitWidth: 44
 ---
 packet-beta
-title Header, 56 bytes at 0, one cell a byte
-0-1: "version = 3"
+title Header, 64 bytes at 0, one cell a byte
+0-1: "version = 4"
 2-3: "names n"
 4-5: "transf. n"
 6-7: "render. n"
@@ -665,15 +671,18 @@ title Header, 56 bytes at 0, one cell a byte
 14-15: "animat. n"
 16-17: "clips n"
 18-19: "settings n"
-20-23: "names off"
-24-27: "transf. off"
-28-31: "render. off"
-32-35: "cameras off"
-36-39: "lights off"
-40-43: "skinned off"
-44-47: "animat. off"
-48-51: "clips off"
-52-55: "settings off"
+20-21: "parents n"
+22-23: "0"
+24-27: "names off"
+28-31: "transf. off"
+32-35: "render. off"
+36-39: "cameras off"
+40-43: "lights off"
+44-47: "skinned off"
+48-51: "animat. off"
+52-55: "clips off"
+56-59: "settings off"
+60-63: "parents off"
 ```
 
 ```mermaid
@@ -794,9 +803,21 @@ title Content: settings, 20 bytes at settings off, exactly one
 16-19: "f32 tonemap_white"
 ```
 
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 4
+    bitWidth: 44
+---
+packet-beta
+title Content: entity_parents, 2 bytes an entity from parents off
+0-1: "parent"
+```
+
 | Part | At | Size |
 |---|---|---|
-| Header | 0 | 56 bytes |
+| Header | 0 | 64 bytes |
 | Name registry | `names off` | 32 bytes an entity |
 | Content: transforms | `transf. off` | 48 bytes an entity; the count equals the names' |
 | Content: renderers | `render. off` | 36 bytes each |
@@ -806,12 +827,14 @@ title Content: settings, 20 bytes at settings off, exactly one
 | Content: animators | `animat. off` | 12 bytes each; `wrap` is an `ANIM_CLAMP` or `ANIM_LOOP` code from `anim_track.h` |
 | Clip registry | `clips off` | 32 bytes a clip id, indexed by `first_clip` and `clip_count` |
 | Content: settings | `settings off` | 20 bytes, one row |
+| Content: entity_parents | `parents off` | 2 bytes an entity; the count equals the names'; written for every scene, all roots included |
 
 | Rule | Detail |
 |---|---|
-| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (56), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
-| Layout | little-endian; every part offset is a multiple of 4, at least 56, and the part ends inside the entry; the writer lays parts out in header order |
-| Counts | each at most 65535; names equals transforms; settings is exactly 1 |
+| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (64), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_ASSET_PARENT_ROOT` (0xFFFF), `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
+| Layout | little-endian; every part offset is a multiple of 4, at least 64, and the part ends inside the entry; the writer lays parts out in header order, each padded to 4 bytes |
+| Counts | each at most 65535, entities at most 65534; names equals transforms and entity_parents; settings is exactly 1 |
+| Parents | `parent` is `SCENE_ASSET_PARENT_ROOT` or below its own entity, so one forward pass meets every parent before its children; a camera, light or skinned renderer is a root; an entity with children has a uniform scale, the same on every axis, and `scene_load()` refuses one that does not, naming it; `scene_asset.encode()` folds a parent's uneven scale into its children, refusing a parent that draws or a turned child the fold would shear |
 | Colour sets | [Selection and ownership](Baked-Mesh.md#lcol-v1): own colours require no LCOL, checked at pack time. Authored scenes write own colours |
 | Entities | every `entity` is below the names' count; at most one light, one skinned renderer and one animator an entity |
 | Text | `name`, `mesh_id`, `skin_id`, `skeleton_id` and clip ids are nonempty, NUL terminated, zero after the NUL; the bake limits names as stated above |

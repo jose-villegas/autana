@@ -54,10 +54,10 @@ open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin
 #include "core/timing.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
-#include "perf_stats.h"
 #include "profile/frame_cost.h"
 #include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light_internal.h"
+#include "testkit/bench.h"
 
 #define CLIP_ID           "gallop"
 #define POSE_SECONDS      0.2F
@@ -305,8 +305,8 @@ measure(kernel_t kind, int lights, const char* label) {
         f->micros[i] = (int32_t)(timing_now_us() - start_us);
         timing_yield();
     }
-    const perf_stats_t stats = perf_stats_compute(f->samples, SAMPLES);
-    const perf_stats_t micros = perf_stats_compute(f->micros, SAMPLES);
+    const bench_stats_t stats = bench_stats_compute(f->samples, SAMPLES);
+    const bench_stats_t micros = bench_stats_compute(f->micros, SAMPLES);
     ESP_LOGI(TAG, "%s one core: mean %lldus", label + sizeof TEST_PREFIX - 1, (long long)micros.avg);
     ESP_LOGI(TAG, "%s min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus", label, (long long)micros.min,
              (long long)micros.max, (long long)micros.avg, (long long)micros.med, (long long)micros.p95);

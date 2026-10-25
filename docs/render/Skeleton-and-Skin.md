@@ -354,7 +354,7 @@ ranges. Job contexts are checked against `JOB_CTX_MAX` at compile time.
 | Skin and node refit | the pose changed, or for a lit skin `SCENE_FLAG_SKIN_DIRTY` is set on it or a light | no posed clusters, or an unchanged pose |
 | Placement | the active scene, for renderers with dirty entities | inactive scenes |
 
-Light setters, `scene_set_transform()`, `scene_entity_set_enabled()` and
+Light setters, `scene_entity_set_local()`, `scene_entity_set_enabled()` and
 `scene_renderer_set_skin()` set `SCENE_FLAG_SKIN_DIRTY`. The skin stage
 consumes it apart from the draw's `SCENE_FLAG_DIRTY`, inactive scenes
 included. What skinning costs on the board is in [Skinned
