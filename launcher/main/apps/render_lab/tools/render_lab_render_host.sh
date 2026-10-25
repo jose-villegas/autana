@@ -27,6 +27,7 @@ main/app/app_registry.c
 main/core/job.c
 main/input/touch/gesture.c
 main/input/mapping/orbit_motion_touch.c
+main/input/motion/gravity.c
 main/apps/render_lab/tools/render_lab_render_host.c
 $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
     find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \
@@ -67,6 +68,7 @@ menu-sponza-small-fill|--quarter 0 --menu --scene sponza --tap 184,272 --frames 
 menu-sponza-small-fill-landscape|--quarter 1 --menu --scene sponza --tap 96,224 --frames 6|448x368
 menu-sponza-scene|--quarter 0 --menu --scene sponza --tap 184,72 --frames 6|368x448
 menu-sponza-mesh|--quarter 0 --menu --scene sponza --tap 184,172 --frames 6|368x448
+water-tour|--quarter 0 --no-hud --scene water --console 0:water tour --frames 880|368x448|nopin
 "
 
 # The scenes read their meshes from asset packs of the baked meshes in the tree.
