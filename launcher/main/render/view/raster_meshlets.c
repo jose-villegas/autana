@@ -52,10 +52,5 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_t
 
 raster_attachment_t
 raster_meshlets_view(void* state) {
-    return (raster_attachment_t){.bytes_per_pixel = sizeof(uint16_t),
-                                 .clear = clear,
-                                 .begin = begin,
-                                 .writer = writer,
-                                 .show = show,
-                                 .state = state};
+    return (raster_attachment_t){sizeof(uint16_t), clear, begin, writer, NULL, show, state};
 }

@@ -219,13 +219,7 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_t
 
 raster_attachment_t
 raster_motion_view(void* state) {
-    return (raster_attachment_t){.bytes_per_pixel = sizeof(raster_motion_px_t),
-                                 .clear = clear,
-                                 .begin = begin,
-                                 .writer = writer,
-                                 .resolve = resolve,
-                                 .show = show,
-                                 .state = state};
+    return (raster_attachment_t){sizeof(raster_motion_px_t), clear, begin, writer, resolve, show, state};
 }
 
 void
