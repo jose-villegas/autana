@@ -1442,15 +1442,20 @@ typedef struct {
     int y, x0, x1;
 } mover_row_t;
 
-/* What holds for a whole pass: the fall, the two slides, where load is read
- * from, the shake, and driven_by_gravity()'s table. The gas walk fills it with
- * the reversed vectors. `driven` is indexed by the caller's own key -
- * step_one_grain() (sand.c) by row (grain >> 3) over MATERIAL_ROWS, sand_gas.c
- * by material id over MATERIAL_MAX - so try_slide() takes that key, not the
- * grain's id. */
+/* What holds for a whole pass: the grid width, the fall, the two slides, where
+ * load is read from, the shake, and driven_by_gravity()'s table. The gas walk
+ * fills it with the reversed vectors. `driven` is indexed by the caller's own
+ * key - step_one_grain() (sand.c) by row (grain >> 3) over MATERIAL_ROWS,
+ * sand_gas.c by material id over MATERIAL_MAX - so try_slide() takes that key,
+ * not the grain's id. */
 typedef struct {
+    /* Not read from `s`: `s` reaches every out-of-line call, so each move
+     * reloaded it - about 1% of the falling step's instructions. */
+    int w;
     int dx, dy;
-    int slide_a[2], slide_b[2];
+    /* Into ring_dir()'s table, not copied in, so handing one to
+     * move_liquid_grain() never exposes the sweep's own context to a call. */
+    const int *slide_a, *slide_b;
     int load_dx, load_dy, jostle;
     bool (*driven)[2];
 } mover_pass_t;
@@ -1516,7 +1521,7 @@ slide_chance(const material_t* m, int load, int jostle) {
 
 static inline bool
 try_scatter(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_t grain, uint8_t density, int scatter) {
-    if (scatter == 0 || !cell_open(r->prow, x + p->dx, s->w, density, CELL_MATERIAL(grain))) {
+    if (scatter == 0 || !cell_open(r->prow, x + p->dx, p->w, density, CELL_MATERIAL(grain))) {
         return false;
     }
 
@@ -1529,7 +1534,7 @@ try_scatter(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_
         const bool pick_a = (rnd & 0x200) != 0;
         const int* const d = pick_a ? p->slide_a : p->slide_b;
 
-        if (move_to(r->row, pick_a ? r->arow : r->brow, x, x + d[0], s->w, grain, density)) {
+        if (move_to(r->row, pick_a ? r->arow : r->brow, x, x + d[0], p->w, grain, density)) {
             mark_slide(s, x, r->y, x + d[0], r->y + d[1]);
         }
     }
@@ -1543,7 +1548,7 @@ try_fall_or_scatter(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int 
         return true;
     }
 
-    if (move_to(r->row, r->prow, x, x + p->dx, s->w, grain, density)) {
+    if (move_to(r->row, r->prow, x, x + p->dx, p->w, grain, density)) {
         mark_slide(s, x, r->y, x + p->dx, r->y + p->dy);
         return true;
     }
@@ -1567,11 +1572,11 @@ try_slide_pair(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, ce
     const int* const first = a_first ? p->slide_a : p->slide_b;
     const int* const second = a_first ? p->slide_b : p->slide_a;
 
-    if (driven[!a_first] && move_to(r->row, a_first ? r->arow : r->brow, x, x + first[0], s->w, grain, density)) {
+    if (driven[!a_first] && move_to(r->row, a_first ? r->arow : r->brow, x, x + first[0], p->w, grain, density)) {
         mark_slide(s, x, r->y, x + first[0], r->y + first[1]);
         return true;
     }
-    if (driven[a_first] && move_to(r->row, a_first ? r->brow : r->arow, x, x + second[0], s->w, grain, density)) {
+    if (driven[a_first] && move_to(r->row, a_first ? r->brow : r->arow, x, x + second[0], p->w, grain, density)) {
         mark_slide(s, x, r->y, x + second[0], r->y + second[1]);
         return true;
     }
@@ -1589,7 +1594,7 @@ try_slide(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_t 
      * sand_choose_sweep_order() (sand.c) states where it holds. */
     const bool shaken = jostle > 0 && (int)((rnd >> 8) & 0xFF) < jostle;
 
-    if (!shaken && jostle > 0 && move_to(r->row, r->prow, x, x + p->dx, s->w, grain, density)) {
+    if (!shaken && jostle > 0 && move_to(r->row, r->prow, x, x + p->dx, p->w, grain, density)) {
         mark_slide(s, x, r->y, x + p->dx, r->y + p->dy);
         return true;
     }
@@ -1598,7 +1603,7 @@ try_slide(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_t 
         return true;
     }
 
-    if (shaken && move_to(r->row, r->prow, x, x + p->dx, s->w, grain, density)) {
+    if (shaken && move_to(r->row, r->prow, x, x + p->dx, p->w, grain, density)) {
         mark_slide(s, x, r->y, x + p->dx, r->y + p->dy);
         return true;
     }
