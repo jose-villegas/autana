@@ -35,7 +35,7 @@ leaves_for(int clusters) {
 }
 
 /* Nodes per level of the tree, leaves first, root last, each inner node
- * over at most R3D_LIT_INNER_CHILDREN_MAX of the level below. A single leaf
+ * over at most R3D_LIT_NODE_CHILDREN_MAX of the level below. A single leaf
  * is its own root. Returns the levels. */
 static int
 levels_for(int clusters, int counts[TREE_LEVELS_MAX]) {
@@ -44,7 +44,7 @@ levels_for(int clusters, int counts[TREE_LEVELS_MAX]) {
     counts[levels++] = n;
     while (n > 1) {
         assert(levels < TREE_LEVELS_MAX);
-        n = (n + R3D_LIT_INNER_CHILDREN_MAX - 1) / R3D_LIT_INNER_CHILDREN_MAX;
+        n = (n + R3D_LIT_NODE_CHILDREN_MAX - 1) / R3D_LIT_NODE_CHILDREN_MAX;
         counts[levels++] = n;
     }
     return levels;
@@ -210,7 +210,7 @@ build_tree(r3d_dynamic_mesh_t* m) {
         at += counts[l];
     }
     for (int l = 0; l < levels; l++) {
-        const int fan = l == 0 ? R3D_DYNAMIC_LEAF_CLUSTERS : R3D_LIT_INNER_CHILDREN_MAX;
+        const int fan = l == 0 ? R3D_DYNAMIC_LEAF_CLUSTERS : R3D_LIT_NODE_CHILDREN_MAX;
         const int below = l == 0 ? clusters : counts[l - 1];
         for (int i = 0; i < counts[l]; i++) {
             const int first = i * fan;

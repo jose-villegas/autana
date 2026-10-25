@@ -48,7 +48,7 @@ r3d_lit_mesh_expect_subtree(const r3d_lit_mesh_t* mesh, int node, uint8_t* reach
         return;
     }
     TEST_ASSERT_TRUE(n->first + n->count <= mesh->node_count);
-    TEST_ASSERT_TRUE_MESSAGE(n->count <= R3D_LIT_INNER_CHILDREN_MAX,
+    TEST_ASSERT_TRUE_MESSAGE(n->count <= R3D_LIT_NODE_CHILDREN_MAX,
                              "an inner node has more children than the walk orders");
     for (int child = n->first; child < n->first + n->count; child++) {
         TEST_ASSERT_TRUE_MESSAGE(child > node, "a child must follow its parent");

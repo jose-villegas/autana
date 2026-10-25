@@ -5,6 +5,7 @@
 
 #include "gfx/gfx.h"
 #include "render/context/render_context.h"
+#include "render/view/raster_cull_view.h"
 #include "render_host.h"
 #include "scene/scene.h"
 
@@ -17,6 +18,8 @@ static int size_width, size_height;
 static camera_present_t present;
 static small_fill_t small_fill = SMALL_FILL_SMOOTH;
 static int view = RENDER_DEBUG_VIEW_SHADED;
+static const char* counts_path;
+static FILE* counts;
 
 static bool
 options(int argc, char** argv) {
@@ -62,6 +65,8 @@ options(int argc, char** argv) {
                 fprintf(stderr, "scene_viewer: --present is nearest, scanline or double\n");
                 return false;
             }
+        } else if (strcmp(flag, "--counts") == 0) {
+            counts_path = value;
         } else if (strcmp(flag, "--view") == 0) {
             view = render_context_debug_view_named(value);
             if (view == RENDER_DEBUG_VIEW_UNKNOWN) {
@@ -77,6 +82,10 @@ options(int argc, char** argv) {
     }
     if (scene_id == NULL) {
         fprintf(stderr, "scene_viewer: needs --scene ID\n");
+        return false;
+    }
+    if (counts_path != NULL && view != render_context_debug_view_named("cull")) {
+        fprintf(stderr, "scene_viewer: --counts needs --view cull\n");
         return false;
     }
     return true;
@@ -156,8 +165,24 @@ setup(int quarter) {
         (void)scene_camera_set_present(scene, (scene_entity_t)i, present);
         (void)scene_camera_set_small_fill(scene, (scene_entity_t)i, small_fill);
     }
+    if (camera_name != NULL) {
+        /* What a caller sampling the path along its length reads. */
+        fprintf(stderr, "scene_viewer: camera path %u ms\n",
+                (unsigned)scene_animator_clip_duration_ms(scene, scene_find(scene, camera_name), 0));
+    }
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
+    if (counts_path != NULL) {
+        counts = fopen(counts_path, "w");
+        if (counts == NULL) {
+            fprintf(stderr, "scene_viewer: cannot write %s\n", counts_path);
+            scene_unload(scene);
+            return false;
+        }
+        fprintf(counts, "frame,ms,nodes_visited,nodes_cut,clusters_tested,clusters_kept,clusters_not_set_up,"
+                        "clusters_hidden,clusters_drawn,triangles_submitted,triangles_behind,triangles_clipped,"
+                        "triangles_missed,triangles_facing_away,triangles_set_up,triangles_covering\n");
+    }
     if (size_width > 0) {
         const resolution_step_t size = {size_width, size_height};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
@@ -166,9 +191,23 @@ setup(int quarter) {
     return true;
 }
 
+/* One row per frame of what the cull view counted from the camera. */
 static void
 draw(const render_frame_t* frame) {
-    (void)frame;
+    if (counts == NULL) {
+        return;
+    }
+    const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
+    const r3d_pipeline_counts_t* n = &f.counts;
+    fprintf(counts, "%d,%u,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", frame->index, (unsigned)frame->elapsed_ms,
+            n->nodes_visited, n->nodes_cut, n->clusters_tested, n->clusters_kept, f.clusters[RASTER_FATE_NOT_SET_UP],
+            f.clusters[RASTER_FATE_HIDDEN], f.clusters[RASTER_FATE_DRAWN], n->triangles_submitted, n->triangles_behind,
+            n->triangles_clipped, n->triangles_missed, n->triangles_facing_away, n->triangles_set_up,
+            f.triangles_covering);
+    if (frame->index + 1 == frame->count) {
+        fclose(counts);
+        counts = NULL;
+    }
 }
 
 const render_scene_t render_scene = {
