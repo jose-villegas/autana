@@ -25,6 +25,8 @@ TONEMAP_NONE = read_define(INTERNAL, "SCENE_TONEMAP_WHITE_NONE")
 COLOUR_SET_OWN = read_define(OWNER, "SCENE_ASSET_COLOUR_SET_OWN")
 DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
 PARENT_ROOT = read_define(OWNER, "SCENE_ASSET_PARENT_ROOT")
+SCALE_TOLERANCE = read_define(OWNER.parents[2] / "packages/math/include/math/linear/transformf.h",
+                              "TRANSFORMF_MATRIX_TOLERANCE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings",
          "parents")
@@ -72,8 +74,10 @@ def encode(scene, cache=None, offline=False):
     index = {obj.name: i for i, obj in enumerate(objects)}
     rows = {part: [] for part in PARTS}
     rows["names"] = [(field(obj.name, "entity"),) for obj in objects]
-    rows["transforms"] = [(*[x for row in obj.matrix for x in row], *obj.position) for obj in objects]
     rows["parents"] = [(parent_index(obj, index),) for obj in objects]
+    drawn = {item.object.name for item in scene.renderers}
+    placements = fold_parent_scales(objects, [parent for (parent,) in rows["parents"]], drawn)
+    rows["transforms"] = [(*[x for row in matrix for x in row], *position) for matrix, position in placements]
     for item in scene.renderers:
         obj, mesh = item.object, item.asset_name
         entity = index[obj.name]
@@ -131,6 +135,46 @@ def parent_index(obj, index):
     return index[parent]
 
 
+def column_scales(matrix):
+    return [math.sqrt(sum(matrix[r][c] ** 2 for r in range(3))) for c in range(3)]
+
+
+def scale_is_even(scales):
+    return max(scales) - min(scales) <= SCALE_TOLERANCE * max(scales)
+
+
+def fold_parent_scales(objects, parents, drawn):
+    """Each object's (matrix, position), with a parent's uneven scale moved down into its children.
+
+    A parent keeps an even scale so every world below it is exact; the device refuses one that does not.
+    Folding scale S out of a parent and into each child (S x matrix, S x position) draws the same, while
+    each child stays rotation times scale. A parent that draws, or a child the fold would shear, is refused.
+    """
+    placements = [([list(row) for row in obj.matrix], list(obj.position)) for obj in objects]
+    has_children = {parent for parent in parents if parent != PARENT_ROOT}
+    for entity, obj in enumerate(objects):
+        matrix, _ = placements[entity]
+        scales = column_scales(matrix)
+        if entity not in has_children or scale_is_even(scales):
+            continue
+        if obj.name in drawn:
+            raise SceneError(f"{obj.name}: a parent that draws needs an even scale, the same on every axis")
+        placements[entity] = ([[matrix[r][c] / scales[c] for c in range(3)] for r in range(3)], placements[entity][1])
+        for child, parent in enumerate(parents):
+            if parent != entity:
+                continue
+            child_matrix, child_position = placements[child]
+            child_matrix = [[scales[r] * child_matrix[r][c] for c in range(3)] for r in range(3)]
+            columns = [[child_matrix[r][c] for r in range(3)] for c in range(3)]
+            lengths = column_scales(child_matrix)
+            for a, b in ((0, 1), (0, 2), (1, 2)):
+                if abs(sum(x * y for x, y in zip(columns[a], columns[b]))) > SCALE_TOLERANCE * lengths[a] * lengths[b]:
+                    raise SceneError(f"{obj.name}: its uneven scale would shear its turned child "
+                                     f"{objects[child].name}; scale the child's mesh instead")
+            placements[child] = (child_matrix, [scales[r] * child_position[r] for r in range(3)])
+    return placements
+
+
 def bake(path, cache=None, offline=False):
     try:
         return encode(load_scene(path), cache, offline)
@@ -180,6 +224,8 @@ def decode(entry):
     for entity, row in enumerate(out["entities"]):
         if row["parent"] is not None and row["parent"] >= entity:
             raise SceneError(f"entity {entity}: parent {row['parent']} is not listed before it")
+        if row["parent"] is not None and not scale_is_even(column_scales(out["entities"][row["parent"]]["matrix"])):
+            raise SceneError(f"entity {row['parent']}: a parent's scale is not even")
     for part in ("renderers", "skinned_renderers", "cameras", "lights", "animators"):
         seen = set()
         for row in rows[part]:

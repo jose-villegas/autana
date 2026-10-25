@@ -24,6 +24,11 @@
         return (P##_t){OPS##_mul(axis.x, s), OPS##_mul(axis.y, s), OPS##_mul(axis.z, s), OPS##_half_cos(angle)};       \
     }                                                                                                                  \
                                                                                                                        \
+    /* (-x, -y, -z, w): the inverse of a unit rotation. */                                                             \
+    static inline P##_t P##_conjugate(P##_t q) {                                                                       \
+        return (P##_t){OPS##_neg(q.x), OPS##_neg(q.y), OPS##_neg(q.z), q.w};                                           \
+    }                                                                                                                  \
+                                                                                                                       \
     /* a * b, b applied first: */                                                                                      \
     /*   x = aw*bx + ax*bw + ay*bz - az*by */                                                                          \
     /*   y = aw*by - ax*bz + ay*bw + az*bx */                                                                          \

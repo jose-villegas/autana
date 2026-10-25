@@ -103,7 +103,7 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     for (uint32_t t = 0; t < period; t += 2500) {
         const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
-        const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity), viewport);
+        const render_view_t view = camera_view(flythrough, scene_entity_local(sponza, camera_entity), viewport);
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, mesh->position_scale);
 
@@ -225,7 +225,7 @@ check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     for (uint32_t t = 0; t < period; t += 100) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
-        const vec3f_t eye = scene_entity_transform(sponza, camera_entity)->position;
+        const vec3f_t eye = scene_entity_local(sponza, camera_entity)->position;
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
             char message[96];
@@ -311,7 +311,7 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
         const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
         const vec3f_t forward_axis = {0.0F, 0.0F, 1.0F};
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, 0);
-        const scene_transform_t* pose = scene_entity_transform(sponza, camera_entity);
+        const scene_transform_t* pose = scene_entity_local(sponza, camera_entity);
         vec3f_t previous = pose->position;
         for (uint32_t t = 10; t <= period + 100; t += 10) {
             (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
@@ -330,7 +330,7 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
 static float
 share_covered_at(const raster_t* raster, uint32_t t_ms) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
+    const render_view_t view = camera_view(flythrough, scene_entity_local(sponza, camera_entity),
                                            (viewport_t){raster->width, raster->height, 0});
     raster_draw(raster, &view);
     const int pixels = raster->width * raster->height;
