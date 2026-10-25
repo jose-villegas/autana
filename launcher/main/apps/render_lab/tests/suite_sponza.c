@@ -103,8 +103,7 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     for (uint32_t t = 0; t < period; t += 2500) {
         const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
-        const transformf_t camera_pose = scene_entity_world(sponza, camera_entity);
-        const render_view_t view = camera_view(flythrough, &camera_pose, viewport);
+        const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity, viewport);
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, mesh->position_scale);
 
@@ -331,8 +330,8 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
 static float
 share_covered_at(const raster_t* raster, uint32_t t_ms) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    const transformf_t camera_pose = scene_entity_world(sponza, camera_entity);
-    const render_view_t view = camera_view(flythrough, &camera_pose, (viewport_t){raster->width, raster->height, 0});
+    const render_view_t view =
+        sponza_suite_view(flythrough, sponza, camera_entity, (viewport_t){raster->width, raster->height, 0});
     raster_draw(raster, &view);
     const int pixels = raster->width * raster->height;
     const uint16_t* depth = raster_depth(raster);
