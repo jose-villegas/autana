@@ -64,6 +64,10 @@ SKIN_CLIP=gallop
 PLAYBACK_CLIPS="walk gallop idle"
 # The tree depth whose node boxes the cull figures draw.
 CULL_LEVEL=2
+# The cull chase GIFs play one path sample per frame at this rate.
+CULL_GIF_FPS=8
+# Colours in their palette: the camera moves every frame, so fewer keep them small.
+CULL_GIF_COLORS=64
 
 AUDIO_ONLY=0
 if [ "${1:-}" = --audio ]; then
@@ -324,7 +328,8 @@ for cull in "launcher/demo/bistro/bistro.scene.toml street_fitted_full cull-bist
     run "$PYTHON" launcher/tools/render/cull_figures.py --scene "$1" --object "$2" --camera camera --stem "$3" \
         --label "$4" --level "$CULL_LEVEL" --out "$OUT/render" --tables "$OUT/tables" --work "$WORK/cull" \
         > "$WORK/$3.log"
-    gif_from_avi "$WORK/cull/$3-chase.avi" "$OUT/render/$3-chase.gif" "fps=10"
+    gif_from_avi "$WORK/cull/$3-chase.avi" "$OUT/render/$3-chase.gif" "setpts=N/$CULL_GIF_FPS/TB,fps=$CULL_GIF_FPS" \
+        "stats_mode=diff:max_colors=$CULL_GIF_COLORS"
 done
 # --orphans scans this runner: cull-bistro-sheet.png, cull-bistro-counts.png, cull-bistro-chase.gif,
 # cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif

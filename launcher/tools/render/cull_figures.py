@@ -7,7 +7,7 @@ launcher/tools/render/render_doc_images.sh runs it once per scene.
         --stem STEM --label TEXT --level N --out DIR --tables DIR --work DIR
 
 It writes, into --out:
-  STEM-sheet.png   a row per pose: the camera's picture, the fates from above
+  STEM-sheet.png   a row per pose, at the panel's size: the camera's picture, the fates from above
                    and from behind, and the tree's level-N node boxes from above
   STEM-counts.png  the counts along the path, clusters and triangles
 and leaves --work/STEM-chase.avi (the fates from behind, the whole path) for a
@@ -35,6 +35,7 @@ VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
 CULL_VIEW = ROOT / "launcher/main/render/view/raster_cull_view.c"
 CULL_HEADER = ROOT / "launcher/main/render/view/raster_cull_view.h"
 COMPARE = ROOT / "launcher/tools/render/render_compare.py"
+GFX_HEADER = ROOT / "launcher/main/gfx/gfx.h"
 FRAMES = 120  # frames along the whole path, for the counts and the videos
 POSES = 3  # sheet rows, evenly inside the path
 FIGURE_SIZE = (10, 5.2)
@@ -82,9 +83,17 @@ def cull(*settings):
     return flags
 
 
+def panel_size(source=GFX_HEADER):
+    """The panel's size, WxH as gfx.h defines it: the figures render at it,
+    above the half size the board draws, so their borders are not blocky."""
+    text = pathlib.Path(source).read_text(encoding="utf-8")
+    width, height = (re.search(rf"#define GFX_{axis}\s+(\d+)", text)[1] for axis in ("WIDTH", "HEIGHT"))
+    return f"{width}x{height}"
+
+
 def video(args, name, view_flags, dt):
     avi = args.work / f"{args.stem}-{name}.avi"
-    viewer(args, *view_flags, "--frames", str(FRAMES), "--dt", str(dt), "-o", str(args.work / f"{name}.bmp"),
+    viewer(args, *view_flags, "--size", panel_size(), "--frames", str(FRAMES), "--dt", str(dt), "-o", str(args.work / f"{name}.bmp"),
            "--video", str(avi), log=args.work / f"{args.stem}-{name}.log")
     return avi
 
