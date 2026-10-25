@@ -6,7 +6,7 @@
  * its density field (iso_surface.h), shades the surface and hands it to
  * the scene as the water entity's mesh (r3d_dynamic_mesh.h). The tank is a
  * unit box the scene scales to the device; the camera looks through the
- * front glass and swings a little with the tilt, so the depth reads.
+ * front glass, held to the panel whichever way the picture is turned.
  *
  * Box axes are gravity's: x right, y down, z out of the screen, in mm from
  * the tank's back top-left corner. The scene's model axes put the front
@@ -24,6 +24,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
+#include "display/display.h"
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
@@ -93,10 +94,9 @@ TUNE(water, grid_internal, 0, 0, 1);
 /* Position ticks per mm: the tank's largest side, 36 mm, stays inside int16. */
 #define WATER_TICKS_PER_MM       512
 
-/* The camera looks through the front glass from arm's length, and turns
- * this share of the tilt about the glass's centre. */
-#define WATER_VIEW_MM            300.0F
-#define WATER_PARALLAX           0.35F
+/* A quarter turn, for holding the tank to the panel whatever way the shell
+ * turns the picture. */
+#define WATER_QUARTER_TURN       (0.5F * MATH_PI)
 
 /* Shading, in linear light. Deep and shallow water colours, absorbed over
  * WATER_ABSORB_MM of water (Beer-Lambert); Schlick's Fresnel toward the
@@ -250,17 +250,18 @@ place_tank(void) {
     return true;
 }
 
-/* The camera turns about the glass's centre by a share of the tilt, so the
- * walls show on the side the device leans away from. */
+/* The camera looks straight through the front glass, from where the glass
+ * exactly fills the picture's short side, as the screen's width does, and
+ * rolls against the shell's quarter turn: the tank stays fixed to the
+ * panel, as the water's gravity is, whichever way the picture is held. */
 static void
-place_camera(vec3f_t down) {
-    const float yaw = -WATER_PARALLAX * down.x;
-    const float pitch = WATER_PARALLAX * (down.z < 0.0F ? down.z : 0.0F);
-    const quatf_t turn = quatf_from_euler((vec3f_t){pitch, yaw, 0.0F});
-    const vec3f_t forward = quatf_rotate(turn, (vec3f_t){0.0F, 0.0F, 1.0F});
+place_camera(int quarter) {
+    const camera_t* lens = scene_camera_lens(tank_scene, WATER_CAMERA);
+    const float distance = 0.5F * box.x / lens->half_fov_short_tan;
     transformf_t t = *scene_entity_transform(tank_scene, camera_entity);
-    transformf_set_rotation(&t, turn);
-    transformf_set_position(&t, vec3f_scale(forward, -WATER_VIEW_MM));
+    transformf_set_rotation(&t,
+                            quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, -(float)quarter * WATER_QUARTER_TURN));
+    transformf_set_position(&t, (vec3f_t){0.0F, 0.0F, -distance});
     scene_set_transform(tank_scene, camera_entity, &t);
 }
 
@@ -438,7 +439,7 @@ scene_water_enter(const render_lab_scene_t* self) {
     tour_ms = 0;
     refill((vec3f_t){0.0F, 1.0F, 0.0F});
     rebuild_surface();
-    place_camera((vec3f_t){0.0F, 1.0F, 0.0F});
+    place_camera(display_quarter_now());
     (void)scene_activate(tank_scene, WATER_CAMERA);
     render_lab_apply_raster_settings();
     (void)render_lab_apply_camera_settings(tank_scene, camera_entity);
@@ -477,7 +478,7 @@ scene_water_update(uint32_t dt_ms) {
     }
     rebuild_surface();
     step_us = (uint32_t)(timing_now_us() - started);
-    place_camera(down);
+    place_camera(display_quarter_now());
 }
 
 static void
