@@ -44,8 +44,11 @@ def write_pages(root, page):
         sections.setdefault(path, []).append(check_package_docs.section(body, family))
     for path, bodies in sections.items():
         (root / path).write_text("\n".join(bodies))
+    pages = [p.name for p in sections] + ["Scalar.md", "Motion.md"]
+    for name in pages[-2:]:
+        (root / check_package_docs.PAGE.parent / name).write_text("")
     (root / check_package_docs.PAGE).write_text(
-        "\n".join("[page](%s)" % p.name for p in sections) + "\n" + marker + extra)
+        "\n".join("[page](%s)" % name for name in pages) + "\n" + marker + extra)
 
 
 def problems_for(**kwargs):
@@ -310,11 +313,20 @@ class CheckMathDocs(unittest.TestCase):
 
     def test_a_hand_written_function_the_page_names_passes(self):
         extra = "static inline int\nvec2f_wobble(int a) {\n    return a;\n}\n"
-        self.assertEqual([], problems_for(header_extra=extra, page_extra="`vec2f_wobble(a)`\n"))
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root, header_extra=extra, page_extra="`vec2f_wobble(a)`\n")
+            with (root / "docs/math/Linear.md").open("a") as page:
+                page.write("`vec2f_wobble(a)`\n")
+            self.assertEqual([], check_package_docs.check(root))
 
     def test_a_page_entry_defined_in_a_scalar_header_passes(self):
         definition = "static inline int\nmathi_wrap(int a) {\n    return a;\n}\n"
-        self.assertEqual([], problems_for(scalar_extra=definition, page_extra="`mathi_wrap(a)`\n"))
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root, scalar_extra=definition, page_extra="`mathi_wrap(a)`\n")
+            (root / "docs/math/Scalar.md").write_text("`mathi_wrap(a)`\n")
+            self.assertEqual([], check_package_docs.check(root))
 
     def test_a_page_entry_removed_from_a_scalar_header_fails(self):
         problems = problems_for(page_extra="`mathi_wrap(a)`\n")

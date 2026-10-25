@@ -7,9 +7,9 @@
 
 #include <stdbool.h>
 
-#include "math/linear/project_template.h"
-#include "math/linear/projectf.h"
 #include "math/linear/vec3x.h"
+#include "math/projection/project_template.h"
+#include "math/projection/projectf.h"
 #include "math/scalar/mathx.h"
 
 /* Q16.16 pinhole values, camera +y up and picture y down. */
