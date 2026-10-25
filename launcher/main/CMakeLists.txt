@@ -33,6 +33,7 @@ set(app_srcs
     "input/buttons/buttons.c"
     "input/touch/gesture.c"
     "input/motion/imu.c"
+    "input/motion/imu_queue.c"
     "power/power_decode.c"
     "power/power_cache.c"
     "power/power_log.c"
@@ -76,7 +77,7 @@ set(app_srcs
     "services/build_id.c"
     "services/settings_device.c"
     "services/settings_policy.c"
-    "services/tune.c"
+    "core/tune.c"
 )
 
 function(launcher_glob output)
@@ -135,6 +136,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_frame_watch.c"
         "console/verbs/console_navigation.c"
         "console/verbs/console_perf.c"
+        "console/console_tune.c"
         "console/verbs/console_tune.c"
         "console/verbs/console_screenshot.c"
         "console/capture/device_state.c"
@@ -231,12 +233,12 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs esp_codec_dev esp_driver_i2s math name_hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs esp_codec_dev esp_driver_i2s math hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
-             # perfmon, unity and esp_mm (a perf suite's cache control) are
+             # perfmon, unity, testkit and esp_mm (a perf suite's cache control) are
              # listed unconditionally, NOT inside the block below: ESP-IDF
              # expands REQUIRES in an early pass
              # where CONFIG_* is not yet defined, so a Kconfig-gated REQUIRES
@@ -248,11 +250,12 @@ set(app_reqs esp_codec_dev esp_driver_i2s math name_hash collections microui esp
              # graph either way; REQUIRES only decides whether main can see
              # their headers. With nothing built that references them,
              # --gc-sections drops them from the image.
-             perfmon unity esp_mm)
+             perfmon unity testkit esp_mm)
 
 if(CONFIG_LAUNCHER_SELFTEST)
     launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c"
-        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c")
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/bench/suite_*.c")
     # SCOPE: full is the default and stays globbed, so nothing can lose
     # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
@@ -285,7 +288,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "selftest/selftest.c"
         "../test/suites.c"
         "../test/timing.c"
-        "../test/test_cleanup.c"
+        "../test/bench_env.c"
         "../test/frame_profile.c"
         "../test/ui_probe.c"
         ${suite_srcs}

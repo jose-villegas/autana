@@ -1,3 +1,4 @@
+"""autana --board (-b) selection and the console's `use` pin, for commands and forwarded lines."""
 import contextlib
 import io
 import os

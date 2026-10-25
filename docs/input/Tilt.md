@@ -3,8 +3,8 @@
 `input/motion/tilt.c` filters the gravity direction with elapsed-time
 smoothing. Time constants and magnitude thresholds live in
 `input/motion/tilt.h`. The direction estimator that also uses the gyro is
-[Gravity.md](Gravity.md); the shell reads tilt today and gravity is not in
-`input_t`.
+[Gravity.md](Gravity.md). The shell's [orientation judge](Orientation.md)
+filters acceleration independently.
 
 | Rule | Why |
 |---|---|

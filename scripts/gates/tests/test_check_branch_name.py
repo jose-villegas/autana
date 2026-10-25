@@ -1,3 +1,4 @@
+"""check_branch_name accepts and rejects branch names."""
 import pathlib
 import subprocess
 import unittest

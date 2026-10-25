@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "apps/input_lab/imu_probe.h"
+#include "apps/input_lab/orientation_probe.h"
 #include "apps/input_lab/shake_probe.h"
 
 #define IMU_RECORD_CHUNK_SIZE  1024
@@ -26,6 +27,14 @@
     ((SHAKE_PROBE_RECORD_LINES * IMU_RECORD_SHAKE_LINE_SIZE) + sizeof IMU_RECORD_TRUNCATED)
 
 _Static_assert(IMU_RECORD_SHAKE_LINE_SIZE <= IMU_RECORD_LINE_SIZE, "shake payload must fit the shared formatter");
+
+#define IMU_RECORD_ORIENTATION_LINE_SIZE                                                                               \
+    (ORIENTATION_PROBE_SAMPLE_SIZE + sizeof(IMU_RECORD_PREFIX " ") + IMU_RECORD_LINE_MARGIN)
+_Static_assert(IMU_RECORD_ORIENTATION_LINE_SIZE <= IMU_RECORD_LINE_SIZE,
+               "orientation payload must fit the shared formatter");
+
+#define IMU_RECORD_ORIENTATION_CAPACITY                                                                                \
+    ((ORIENTATION_PROBE_RECORD_LINES * IMU_RECORD_ORIENTATION_LINE_SIZE) + sizeof IMU_RECORD_TRUNCATED)
 
 typedef struct {
     char* text;

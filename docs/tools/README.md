@@ -13,12 +13,15 @@ The rest of this index lists the repository's checks and tools.
 | [Framework-Versions.md](Framework-Versions.md) | Where each framework's exact version lives, how a bump pull request arrives and what it regenerates, and how to match your own machine. |
 | [Complexity-Gate.md](Complexity-Gate.md) | The cognitive-complexity ratchet: what it measures, the committed baseline, and when a score fails or only warns. |
 | [Doc-Drift.md](Doc-Drift.md) | Ranking documents for review by age and changed cited sources, and recording a review in the ledger. |
+| [Why.md](Why.md) | Why a file, a line range or a name is the way it is: the pull requests that own its lines now, their descriptions and tickets. |
 | [Layout-Noise.md](Layout-Noise.md) | Why a neutral edit moves a timing, the seeded padding build (`--layout-seed`), and the pilot that measures how much a row moves with layout alone. |
 | [Frame-Cost.md](Frame-Cost.md) | Measuring named stages of the frame loop and reading their console report. |
 | [Console-Framing.md](Console-Framing.md) | How the device frames a block of data between begin and end lines on the console, and how a host script decodes it. |
 | [Process-Trees.md](Process-Trees.md) | Starting and stopping a command as one process tree on Windows and POSIX, so no child outlives its parent. |
 | [Render-Harness.md](Render-Harness.md) | Rendering real firmware screens on a host: declaring a scene, what its pixels are pinned to, video output, the QEMU backend, and diffing against a device capture. |
+| [Pull-Requests.md](Pull-Requests.md) | The pull request description layout, the scaffold that fills its table from the branch, and its check. |
 | [Mermaid-Diagrams.md](Mermaid-Diagrams.md) | Validating ```` ```mermaid ```` diagrams with mermaid-cli: the command, the pre-commit step, and CI. |
 | [Math-Formulas.md](Math-Formulas.md) | Writing maths GitHub renders, and validating every formula with GitHub's MathJax configuration: the command, the pre-commit step, and CI. |
+| [Code-Search.md](Code-Search.md) | Finding an existing helper by name and purpose, and the gate that every header and module states its purpose. |
 | [Generated-Files.md](Generated-Files.md) | Checked-in generated headers: the banner that names their command, and the gate that reruns it and compares bytes. |
 | [Icon-Baker.md](Icon-Baker.md) | Icons as pack content: the `.icons.toml` source, what the baker rejects, the one-bit image entry, drawing without the pack, and how the shipped icons are tested. |

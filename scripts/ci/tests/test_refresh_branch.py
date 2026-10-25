@@ -1,3 +1,4 @@
+"""refresh_branch builds main plus a run's images and pushes only a change."""
 import pathlib
 import subprocess
 import sys

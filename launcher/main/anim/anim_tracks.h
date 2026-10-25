@@ -9,7 +9,7 @@
 #include "anim/anim_track.h"
 #include "anim/anim_tracks_format.h"
 #include "asset/asset_pack.h"
-#include "name_hash/name_hash.h"
+#include "hash/name_hash.h"
 
 typedef struct {
     const uint8_t* base;

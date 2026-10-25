@@ -6,7 +6,10 @@
 
 #include "asset/asset_table.h"
 #include "asset/asset_table_format.h"
+#include "test_alloc.h"
 #include "test_pack.h"
+
+#include "../asset_examples/table.c"
 
 enum {
     COLUMNS = 3,
@@ -111,8 +114,29 @@ test_empty_dimensions_reserved_byte_and_unterminated_names_are_rejected(void) {
     TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, status);
 }
 
+static void
+test_the_table_example_reads_a_row_from_a_pack_as_a_real_number(void) {
+    uint8_t* entry = fixture();
+    void* raw;
+    uint8_t* bytes = test_alloc_aligned(256, 16, &raw);
+    TEST_ASSERT_NOT_NULL(bytes);
+    test_pack_t built = test_pack_begin(bytes, 256, 1);
+    memcpy(test_pack_add(&built, "tbl", ASSET_TABLE_ASSET, TABLE_BYTES), entry, TABLE_BYTES);
+    const uint32_t size = test_pack_finish(&built);
+    free(entry);
+    asset_pack_t pack;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, bytes, size));
+    float value = 0;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, table_example(&pack, "tbl", "first", &value));
+    TEST_ASSERT_EQUAL_FLOAT((float)INT16_MIN / (float)(1 << FRAC_BITS), value);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, table_example(&pack, "tbl", "absent", &value));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, table_example(&pack, "absent", "first", &value));
+    test_free_aligned(raw);
+}
+
 void
 suite_asset_table(void) {
+    RUN_TEST(test_the_table_example_reads_a_row_from_a_pack_as_a_real_number);
     RUN_TEST(test_rows_point_into_the_entry_and_lookup_checks_columns_and_names);
     RUN_TEST(test_short_misaligned_wrong_version_and_wrong_size_entries_are_rejected);
     RUN_TEST(test_empty_dimensions_reserved_byte_and_unterminated_names_are_rejected);

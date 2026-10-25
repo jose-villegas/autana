@@ -115,7 +115,8 @@ int x = 1 << {shift};
             with self.subTest(path=path):
                 self.assertTrue(gate.protocol_source(path, "int x;"))
         for path in ("launcher/test/suites/suite_a.c", "launcher/components/microui/a.c",
-                     "launcher/packages/math/README.md", "editor/src/a.c"):
+                     "launcher/packages/math/README.md", "editor/src/a.c",
+                     "launcher/packages/math/tests/suite_a.c", "launcher/packages/other/bench/rows.c"):
             with self.subTest(path=path):
                 self.assertFalse(gate.protocol_source(path, "int x;"))
 

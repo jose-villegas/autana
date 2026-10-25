@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "core/memory.h"

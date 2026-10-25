@@ -25,8 +25,8 @@ and with `--runs` the A/B summary covers those rows alone
 ([`autana suite`](../cli/Tests.md)). Any other sand suite works the same way:
 `run_sand_materials_suite`, `run_sand_combustion_suite`, and so on;
 the sand suites are the ones registered in files under
-`launcher/main/apps/sand/` (`autana suite list` prints each suite's
-file). This is the loop while working on a material or a perf change:
+`launcher/main/apps/sand/` (`autana suite list sand` lists them on a
+diagnostics image). This is the loop while working on a material or a perf change:
 `autana suite` the suite for the area touched, and reserve a full capture for a merge decision.
 
 For a scoped A/B with several steps, put both flashes and captures inside

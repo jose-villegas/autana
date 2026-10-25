@@ -1,3 +1,4 @@
+"""device.py: interpreter choice, serial open and port guards, waits, records and captures."""
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import port_guard
 import ast
@@ -853,6 +854,36 @@ class DeviceTests(unittest.TestCase):
                                           "--note", "check cable"]), 0)
         store.reserve_human.assert_called_once_with(
             BOARD, f"sam@devbox:{os.getpid()}", "check cable", wait=600, on_wait=mock.ANY)
+
+
+class TakeOwnerTests(unittest.TestCase):
+    def test_take_status_names_bound_child_and_timed_hold_keeps_owner(self):
+        with tempfile.TemporaryDirectory() as root, subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL) as child:
+            try:
+                with mock.patch.dict(os.environ, {"_AUTANA_DEVICE_LOCK_ROOT": root}), \
+                        mock.patch.object(device, "plugged_boards", return_value=[]):
+                    store = device_lock.LockStore(root)
+                    owner = device_lock.default_owner()
+                    for flags, expected in ((["--until-released", "--pid", str(child.pid)],
+                                             owner.rsplit(":", 1)[0] + f":{child.pid}"),
+                                            ([], owner)):
+                        with self.subTest(flags=flags), contextlib.redirect_stdout(io.StringIO()) as output:
+                            self.assertEqual(device.main(["--board", BOARD, "--owner", owner,
+                                                          "take", *flags, "bench"]), 0)
+                        token = output.getvalue().strip()
+                        try:
+                            self.assertEqual(store.status(BOARD)["lock"]["owner"], expected)
+                            with contextlib.redirect_stdout(io.StringIO()) as status:
+                                self.assertEqual(device.main(["--board", BOARD, "status"]), 0)
+                            self.assertIn(expected, status.getvalue())
+                        finally:
+                            store.release(BOARD, token)
+            finally:
+                child.kill()
+                child.wait()
 
 
 class RemovedParameterTests(unittest.TestCase):
@@ -3240,11 +3271,8 @@ class TouchPointTests(unittest.TestCase):
     def coordinate_png(width, height):
         """Each pixel's red and green are its own x and y."""
         import screenshot as screenshot_tool
-        raw = b"".join(b"\0" + b"".join(bytes((x, y, 0)) for x in range(width)) for y in range(height))
-        return (b"\x89PNG\r\n\x1a\n"
-                + screenshot_tool._png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-                + screenshot_tool._png_chunk(b"IDAT", zlib.compress(raw))
-                + screenshot_tool._png_chunk(b"IEND", b""))
+        return screenshot_tool.encode_png(width, height, (b"".join(bytes((x, y, 0)) for x in range(width))
+                                                          for y in range(height)))
 
     @staticmethod
     def pixels(png):
