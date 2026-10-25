@@ -389,9 +389,8 @@ Capture open saves the exact register read-backs before changing DSP fields.
 Close restores them before closing the device. A failed restore retains the
 saved values and retries on the next close or open.
 
-EQ is excluded: its coefficient format is unpublished and it needs
-MCLK/LRCK >= 256. The EQ bypass bit stays set. The gate cannot wake the chip:
-the codec has no interrupt output, so I2S must keep running.
+`mic.eq` enables the ADC biquad with coefficients stored in the codec.
+The gate cannot wake the chip: the codec has no interrupt output, so I2S must keep running.
 
 A software alternative is estimated at about 15 FPU operations: a one-pole
 DC blocker (2 multiplies, 2 adds), envelope follower and gate (abs, one
@@ -500,6 +499,22 @@ Noise floor is broadband RMS after settling; SNR is the median paired 1 kHz tone
 
 </details>
 <!-- /generated: audio-mic-dsp -->
+
+## EQ format and HPF code probe
+
+The probe checks coefficient scale and feedback sign against designed ADC responses.
+The HPF code map estimates cutoffs relative to its highest code; acoustic and internal DAC responses locate the feedback tap against DAC EQ.
+A microphone recording checks capture with the ADC high-pass enabled.
+
+```sh
+autana --wait 3600 lock run -- python launcher/tools/audio/mic/eq_probe_sweep.py --board <id>
+python launcher/tools/audio/audio_doc_tables.py --write
+python launcher/tools/audio/mic/mic_eq_probe_figures.py
+```
+
+<!-- generated: mic-eq-probe sha256=a93006c90ebb47c04a5a941a4f16d5cd1d65ec2d7326a2c3e4506015b15e8a1c -->
+No capture yet.
+<!-- /generated: mic-eq-probe -->
 
 ## Recording the microphone
 
