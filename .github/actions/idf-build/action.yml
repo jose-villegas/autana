@@ -32,15 +32,13 @@ runs:
 
     - uses: ./.github/actions/host-tools
 
-    # safe.directory: the container's root does not own the checkout, not
-    # that autana needs git for this: each command's own `--project ..`
-    # names the repository root from launcher/, where this runs.
-    #
-    # The packs' meshes come from the bake cache (bake/bake.py). They are fetched here, where the workflow's
-    # GH_TOKEN can read a run that made them before main publishes them, into a cache the container mounts.
     - name: Fetch the bakes launcher/bakes.lock names
       shell: bash
       run: python3 launcher/tools/bake/bake.py fetch --cache "${{ runner.temp }}/bakes"
+
+    - name: The image is the ESP-IDF launcher/idf-pin.json records
+      shell: bash
+      run: sh scripts/ci/in_idf_image.sh launcher 'python3 ../scripts/deps/idf_pin.py check'
 
     # MAXSIZE is about four times one variant's fresh cache: each save carries
     # forward all it restored, and every variant and commit shares the repository's
@@ -49,15 +47,8 @@ runs:
       shell: bash
       env:
         BUILD_COMMAND: ${{ inputs.command }}
-      run: |
-        image=$(sh scripts/ci/idf_image.sh)
-        docker run --rm -t -e IDF_TARGET=esp32s3 \
-          -v "$GITHUB_WORKSPACE:/app" -w /app/launcher \
-          -v "${{ runner.temp }}/bakes:/bakes" -e AUTANA_BAKE_CACHE=/bakes \
-          -v "${{ runner.temp }}/ccache:/ccache" -e CCACHE_DIR=/ccache \
-          -e CCACHE_MAXSIZE=150M \
-          -e BUILD_COMMAND "$image" /bin/bash -c \
-          'git config --global --add safe.directory "*" && python3 ../scripts/deps/idf_pin.py check && ccache -z > /dev/null && eval "$BUILD_COMMAND" && ccache -s'
+        CCACHE_MAXSIZE: 150M
+      run: sh scripts/ci/in_idf_image.sh launcher "$BUILD_COMMAND"
 
     # launcher/dependencies.lock is the owner of every component version a
     # build uses; the component manager rewrites it rather than fail when the
