@@ -67,7 +67,7 @@ start_gesture(const char* args, bool (*parse)(const char* args, console_touch_ge
               touch_inject_completion_t kind, const char* usage) {
     console_touch_gesture_t gesture;
     if (parse(args, &gesture)) {
-        touch_inject_start(gesture.x0, gesture.y0, gesture.x1, gesture.y1, gesture.ms, kind);
+        touch_inject_start((vec2i_t){gesture.x0, gesture.y0}, (vec2i_t){gesture.x1, gesture.y1}, gesture.ms, kind);
     } else {
         ESP_LOGW(TAG, "%s: '%s'", usage, args);
     }

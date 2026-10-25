@@ -21,8 +21,7 @@ distance(int a, int b) {
 
 void
 ui_pointer_aim(ui_pointer_t* p, vec2i_t point) {
-    p->aim_x = point.x;
-    p->aim_y = point.y;
+    p->aim = point;
     p->aimed = true;
 }
 
@@ -66,16 +65,16 @@ step_deferred(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     if (!input->released && moved_vertically_past_threshold(p, input)) {
         return begin_drag(p, input, out, 0);
     }
-    int n = emit(out, 0, UI_POINTER_MOVE, p->aim_x, p->aim_y);
+    int n = emit(out, 0, UI_POINTER_MOVE, p->aim.x, p->aim.y);
     if (input->released) {
-        n = emit(out, n, UI_POINTER_DOWN, p->aim_x, p->aim_y);
+        n = emit(out, n, UI_POINTER_DOWN, p->aim.x, p->aim.y);
         n = emit(out, n, UI_POINTER_UP, input->x, input->y);
         p->press_deferred = false;
         p->aimed = false;
         return n;
     }
     if (distance(input->x, p->press_x) > UI_POINTER_DRAG_THRESHOLD) {
-        n = emit(out, n, UI_POINTER_DOWN, p->aim_x, p->aim_y);
+        n = emit(out, n, UI_POINTER_DOWN, p->aim.x, p->aim.y);
         p->press_deferred = false;
         p->down = true;
         p->aimed = false;
@@ -94,15 +93,14 @@ step_pressed(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     p->press_x = input->x;
     p->press_y = input->y;
     if (!p->aimed) {
-        p->aim_x = p->press_x;
-        p->aim_y = p->press_y;
+        p->aim = (vec2i_t){p->press_x, p->press_y};
     }
-    int n = emit(out, 0, UI_POINTER_MOVE, p->aim_x, p->aim_y);
+    int n = emit(out, 0, UI_POINTER_MOVE, p->aim.x, p->aim.y);
 
     if (!input->released) {
         return n;
     }
-    n = emit(out, n, UI_POINTER_DOWN, p->aim_x, p->aim_y);
+    n = emit(out, n, UI_POINTER_DOWN, p->aim.x, p->aim.y);
     n = emit(out, n, UI_POINTER_UP, input->x, input->y);
     p->press_stage = 0;
     p->down = false;
@@ -115,14 +113,14 @@ step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     if (p->over_scrollable && !input->released && moved_vertically_past_threshold(p, input)) {
         return begin_drag(p, input, out, 0);
     }
-    int n = emit(out, 0, UI_POINTER_MOVE, p->aim_x, p->aim_y);
+    int n = emit(out, 0, UI_POINTER_MOVE, p->aim.x, p->aim.y);
 
     const bool last_hover_frame = !p->hover_unsettled;
     if (last_hover_frame && p->over_scrollable && !input->released) {
         p->press_stage = 0;
         p->press_deferred = true;
     } else if (last_hover_frame) {
-        n = emit(out, n, UI_POINTER_DOWN, p->aim_x, p->aim_y);
+        n = emit(out, n, UI_POINTER_DOWN, p->aim.x, p->aim.y);
         p->press_stage = 0;
         p->down = true;
         p->aimed = false;
@@ -134,7 +132,7 @@ step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     /* Lifted mid-sequence. A press that never got its DOWN still owes one,
      * or the tap vanishes entirely. */
     if (!p->down) {
-        n = emit(out, n, UI_POINTER_DOWN, p->aim_x, p->aim_y);
+        n = emit(out, n, UI_POINTER_DOWN, p->aim.x, p->aim.y);
     }
     n = emit(out, n, UI_POINTER_UP, input->x, input->y);
     p->press_stage = 0;

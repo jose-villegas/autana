@@ -43,7 +43,7 @@ typedef struct {
      * once, so on an unsettled root it is lost. */
     uint8_t press_stage;
     int press_x, press_y;
-    int aim_x, aim_y;
+    vec2i_t aim;
     bool aimed;
     bool down; /* a DOWN went out with no matching UP yet */
 
