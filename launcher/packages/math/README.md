@@ -15,6 +15,8 @@ carry functions nothing calls yet.
 | `include/math/stats/` | Order statistics of sample arrays: percentile and median; [stats reference](../../../docs/math/Stats.md) |
 | `include/math/signal/` | Signal processing on sample blocks: Goertzel single-bin detection; [signal reference](../../../docs/math/Signal.md) |
 | `src/` | The few functions that are not inline |
+| `bench/` | Shared host smoke, ESP-IDF hardware timing and QEMU instruction workloads |
+| `test_apps/` | [Minimal ESP-IDF test and benchmark app](test_apps/README.md) |
 | `tests/` | Unity suites for the standalone package runner and the engine host/device runners |
 
 Library headers use `#include "math/<part>/<name>.h"`. Library code includes
@@ -24,9 +26,9 @@ only itself, the C library and the build config; PACKAGE-INCLUDE in
 `launcher/test/check_packages_alone.sh` compiles each header and source in
 isolation. Test and benchmark sources also receive testkit and Unity headers.
 
-The PACKAGE-CONFIG rule requires `CONFIG_MATH_` settings in C/H sources,
-`CMakeLists.txt` and `Kconfig`, and `MATH_` names for Kconfig entries; it
-ignores comments. `CONFIG_MATH_FPU_RECIP` enables the ESP32-S3 reciprocal and
+The PACKAGE-CONFIG rule keeps first-party settings with their declaring
+package and requires `MATH_` names for Kconfig entries. ESP-IDF platform
+settings are allowed; comments are ignored. `CONFIG_MATH_FPU_RECIP` enables the ESP32-S3 reciprocal and
 reciprocal-square-root seeds by default; the QEMU defaults disable it.
 
 ## Using it
