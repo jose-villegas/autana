@@ -121,10 +121,10 @@ on a byte fraction, 0 to 255, that only ever scales a value.
 
 | Function | Purpose | Formula |
 |---|---|---|
-| `ease_ramp_u8(now, start, dur)` | 0 until `start`, 255 from `start + dur`, linear between; `dur` of 0 jumps at `start` | $`\lfloor 255\,(now-start)/durfloor`$ |
+| `ease_ramp_u8(now, start, dur)` | 0 until `start`, 255 from `start + dur`, linear between; `dur` of 0 jumps at `start` | $`\lfloor 255\,(now-start)/dur\rfloor`$ |
 | `ease_out_u8(x)` | fast off the mark, settling; endpoints exact | $`255-(255-x)^2/255`$ |
 | `ease_in_u8(x)` | mirror of `ease_out_u8`: slow off the mark | $`x^2/255`$ |
-| `ease_smooth_q8(elapsed, over)` | smoothstep out of 256, slow at both ends; 256 from `over` on and for `over` of 0 | $`t=\lfloor 256\,elapsed/overfloor`$<br>$`t^2(768-2t)/2^{16}`$ |
+| `ease_smooth_q8(elapsed, over)` | smoothstep out of 256, slow at both ends; 256 from `over` on and for `over` of 0 | $`t=\lfloor 256\,elapsed/over\rfloor`$<br>$`t^2(768-2t)/2^{16}`$ |
 
 ## fixed.h
 
