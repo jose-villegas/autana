@@ -1693,8 +1693,9 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static void
 sand_diagnostic_json(char* out, size_t len) {
-    snprintf(out, len, "{\"tilt_x\":%d,\"tilt_y\":%d}", (int)lroundf(input_gravity().x * INPUT_ACCEL_ONE_G),
-             (int)lroundf(input_gravity().y * INPUT_ACCEL_ONE_G));
+    const vec3f_t gravity = input_gravity();
+    snprintf(out, len, "{\"tilt_x\":%d,\"tilt_y\":%d}", (int)lroundf(gravity.x * INPUT_ACCEL_ONE_G),
+             (int)lroundf(gravity.y * INPUT_ACCEL_ONE_G));
 }
 #endif /* CONFIG_LAUNCHER_DEVELOPMENT */
 

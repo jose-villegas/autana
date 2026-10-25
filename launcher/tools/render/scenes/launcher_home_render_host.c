@@ -86,7 +86,7 @@ sweep_gravity(uint32_t elapsed_ms) {
     const int dx = DOWN[scene_quarter & 3][0], dy = DOWN[scene_quarter & 3][1];
     const int gx = (int)lround(RENDER_GRAVITY_SCALE * (dx * cos(turn) - dy * sin(turn)));
     const int gy = (int)lround(RENDER_GRAVITY_SCALE * (dx * sin(turn) + dy * cos(turn)));
-    ui_ridge_set_gravity((vec3f_t){(gx) / RENDER_GRAVITY_SCALE, (gy) / RENDER_GRAVITY_SCALE, 0}, 0);
+    ui_ridge_set_gravity((vec3f_t){gx / RENDER_GRAVITY_SCALE, gy / RENDER_GRAVITY_SCALE, 0}, 0);
 }
 
 static void
