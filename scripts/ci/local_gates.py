@@ -2,7 +2,7 @@
 
 List the commands before running them, choose firmware or QEMU tiers when
 needed, and read each step's capture under --out. Workflow files own the
-commands; OUT_OF_SCOPE owns the exclusions. Host-wide installs are reported
+commands; OUT_OF_SCOPE owns the exclusions. Host-wide changes are reported
 with their exact commands so the developer can prepare the machine.
 """
 import argparse
@@ -19,10 +19,13 @@ import yaml
 
 from job_inputs import affected_changes, changes_from_name_status, git
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'device'))
+from device import git_bash
+
 BUILD = re.compile(r'^\.\./tools/autana build (rel|dev|diag) --project \.\.$')
 EXPRESSION = re.compile(r'\$\{\{\s*(.*?)\s*\}\}')
 HOSTED = re.compile(r'^(ubuntu|windows|macos)-(latest|[\d.]+)(-.*)?$')
-HOST_INSTALL = re.compile(
+HOST_CHANGE = re.compile(
     r'(^|[;&|\n]\s*)(?:sudo\b|(?:python[\d.]* -m )?pip[\d.]* install\b|apt-get\b)'
     r'|curl\b.*\|\s*tar\b|idf_tools\.py.*\binstall\b|git config --global')
 CHECKOUT_INSTALL = re.compile(r'\bnpm ci\b.*--prefix|\bgit submodule update\b|\bgit lfs pull\b|\bbake.py fetch\b')
@@ -157,7 +160,7 @@ def expand(text, ctx):
 
 
 def kind(command):
-    if HOST_INSTALL.search(command):
+    if HOST_CHANGE.search(command):
         return 'skip'
     if CHECKOUT_INSTALL.search(command):
         return 'setup'
@@ -165,29 +168,21 @@ def kind(command):
 
 
 def split_run(command):
-    """Split simple install lines without breaking shell control structures."""
-    quoted = r'''(?:'[^']*'|"(?:\\.|[^"\\])*")'''
-    parts = re.split('(' + quoted + r'|&&|\n)', command.strip())
+    """Keep workflow shell state while omitting top-level host-wide changes."""
+    dropped = []
     lines = []
-    current = ''
-    for part in parts:
-        if part in ('&&', '\n'):
-            if current.strip():
-                lines.append(current.strip())
-            current = ''
+    for line in command.splitlines(keepends=True):
+        if line == line.lstrip() and HOST_CHANGE.search(line):
+            dropped.append(line.strip())
+            lines.append(':' + ('\n' if line.endswith('\n') else ''))
         else:
-            current += part
-    if current.strip():
-        lines.append(current.strip())
-    if any(re.match(r'\s*(if |for |while |case |.*\\$)', line) for line in lines):
-        return [command]
-    if any(kind(line) == 'skip' for line in lines) and all(
-            kind(line) == 'skip' or re.match(r'^[\w]+=|^set -|^echo .*GITHUB_PATH', line)
-            for line in lines):
-        return [command]
-    if any(kind(line) != 'gate' for line in lines):
-        return [line for line in lines if line.strip()]
-    return [command]
+            lines.append(line)
+    script = ''.join(lines)
+    remaining = [line.strip() for line in script.splitlines()
+                 if line.strip() not in ('', ':')]
+    classification = ('skip' if not remaining else 'setup' if all(
+        CHECKOUT_INSTALL.search(part) for part in remaining) else 'gate')
+    return script, dropped, classification
 
 
 def submodules(root, recursive):
@@ -230,7 +225,7 @@ def steps(job, root=None):
             env={**job.get('env', {}), **step.get('env', {})},
             condition=step.get('if', ''), job_condition=job.get('if', ''),
             id=step.get('id', ''), index=index,
-            shell=step.get('shell', default.get('shell', 'bash')),
+            shell=step.get('shell', default.get('shell', 'bash')), dropped=[],
             idf='container' in job, build=False)
         excluded = next((reason for reason, predicate in OUT_OF_SCOPE if predicate(step)), None)
         if excluded:
@@ -240,7 +235,10 @@ def steps(job, root=None):
         commands = []
         if 'run' in step:
             row['tier'] = 'host'
-            commands = split_run(step['run'])
+            script, dropped, classification = split_run(step['run'])
+            yield dict(row, command=script, dropped=dropped, kind=classification,
+                       reason='host-wide change' if classification == 'skip' else '')
+            continue
         elif action == 'actions/checkout':
             checkout = step.get('with', {})
             if checkout.get('submodules'):
@@ -275,7 +273,7 @@ def steps(job, root=None):
                 continue
             classification = kind(command)
             yield dict(row, kind=classification, command=command,
-                       reason='host-wide install' if classification == 'skip' else '')
+                       reason='host-wide change' if classification == 'skip' else '')
 
 
 def context(root, base):
@@ -344,8 +342,8 @@ def affected_jobs(root, base):
         except (OSError, subprocess.SubprocessError):
             token = ''
     if not token:
-        print('No GitHub token; running jobs without input manifests')
-        return {}
+        return {job['key']: 'running: no GitHub token for input manifests'
+                for job in pr_jobs(root)}
     os.environ['GH_TOKEN'] = token
     try:
         origin = os.fsdecode(git(root, 'remote', 'get-url', 'origin')).strip()
@@ -363,14 +361,18 @@ def affected_jobs(root, base):
                     if 'job_inputs.py affected' in step.get('run', ''):
                         jobs.update(re.findall(r'--job\s+([\w-]+)', step['run']))
             if jobs:
-                result = affected_changes(workflow['stem'], sorted(jobs), changes,
-                                          base.removeprefix('origin/'), base_files)
-                decisions.update({f'{workflow["stem"]}:{name}': value == 'true'
-                                  for name, value in result.items()})
+                def decision(job, value, reason):
+                    decisions[f'{workflow["stem"]}:{job}'] = (
+                        'not affected' if value == 'false' else
+                        'affected: ' + reason.removeprefix('matches: ') if reason.startswith('matches: ')
+                        else 'running: ' + reason)
+
+                affected_changes(workflow['stem'], sorted(jobs), changes,
+                                 base.removeprefix('origin/'), base_files, reporter=decision)
         return decisions
     except Exception as error:
-        print(f'Input manifests unavailable ({error}); running jobs')
-        return {}
+        return {job['key']: f'running: input manifests unavailable ({error})'
+                for job in pr_jobs(root)}
 
 
 def shell_command(row, command, root, script=None):
@@ -384,47 +386,64 @@ def shell_command(row, command, root, script=None):
                    'if [ -n "${MSYSTEM:-}" ]; then IDF_PYTHON=$(cygpath -u "$IDF_PYTHON"); fi\n'
                    'export IDF_PYTHON\n'
                    f'idf_in "$PWD" bash -eo pipefail -c {shlex.quote(inner)}')
+    default_bash = shell == ['bash']
+    if shell[0] == 'bash':
+        shell[0] = git_bash()
     if '{0}' in row.get('shell', ''):
         script.write_text(command, encoding='utf-8')
         return [part.replace('{0}', script.as_posix()) for part in shell]
-    return shell + ['-eo', 'pipefail', '-c', command] if shell == ['bash'] else shell + ['-c', command]
+    return shell + ['-eo', 'pipefail', '-c', command] if default_bash else shell + ['-c', command]
 
 
 def run(root, out, base='origin/main', tiers=('host',), reuse_build=False):
     out.mkdir(parents=True, exist_ok=True)
     decisions = affected_jobs(root, base)
     ctx = context(root, base)
-    failed = False
+    counts = dict(ok=0, failed=0, skipped=0, not_run=0)
+
+    def verdict(status, detail):
+        counts[status] += 1
+        if status == 'failed' and not detail.startswith(f'FAIL {log}:'):
+            log.write_text(detail, encoding='utf-8')
+            detail = f'FAIL {log}: ' + detail.removeprefix('FAIL ')
+        print(detail.replace('\r', r'\r').replace('\n', r'\n'), flush=True)
+
     selected = set(tiers) | {'host'}
     job_state = {}
     outcomes = {}
     broken_steps = set()
     skipped_installs = {}
+    announced = set()
     for number, row in enumerate(rows(root, ctx)):
         key, tier, label = row['job'], row['tier'], row['label']
         prefix = f'{key}: {label}'
+        log = out / f'{number:03d}-{key.replace(":", "-")}.log'
+        decision = decisions.get(key, 'running: job has no recorded-input selector')
+        if key not in announced:
+            print(f'{key}: {decision}', flush=True)
+            announced.add(key)
+        dropped = row.get('dropped', [])
+        suffix = ' - dropped: ' + '; '.join(dropped) if dropped else ''
+        for install in dropped:
+            skipped_installs.setdefault(key, []).append((label, install))
         workflow, name = key.split(':', 1)
         dependency = f'{workflow}:needs.{name}.result'
         if row['kind'] == 'warn':
-            print(f'FAIL {prefix}: {row["reason"]}')
-            failed = True
+            verdict('failed', f'FAIL {prefix}: {row["reason"]}' + suffix)
             continue
         if tier not in selected:
-            print(f'NOT RUN {tier}: {prefix}')
+            verdict('not_run', f'NOT RUN {tier}: {prefix}' + suffix)
             outcomes[dependency] = 'skipped'
             continue
-        if decisions.get(key) is False:
-            print(f'not affected: {prefix}')
+        if decision == 'not affected':
+            verdict('skipped', f'not affected: {prefix}' + suffix)
             outcomes[dependency] = 'skipped'
             continue
         if row['kind'] == 'skip':
-            print(f'skip {row["reason"]}: {prefix}' +
-                  (f' — {row["command"]}' if row['command'] else ''))
-            if row['command']:
-                skipped_installs.setdefault(key, []).append((label, row['command']))
+            verdict('skipped', f'skip {row["reason"]}: {prefix}' + suffix)
             continue
         if reuse_build and row['build']:
-            print(f'skip existing build: {prefix}')
+            verdict('skipped', f'skip existing build: {prefix}' + suffix)
             continue
         if key not in job_state:
             temporary = Path(tempfile.mkdtemp(prefix=key.replace(':', '-') + '-', dir=out))
@@ -444,23 +463,20 @@ def run(root, out, base='origin/main', tiers=('host',), reuse_build=False):
                        and (state['success'] or any(marker in expression for marker in
                             ('always()', 'cancelled()', 'failure()'))))
         except (ValueError, KeyError, IndexError) as error:
-            print(f'FAIL {prefix}: {error}')
-            failed = True
+            verdict('failed', f'FAIL {prefix}: {error}' + suffix)
             continue
         if not allowed:
-            print(f'skip condition: {prefix}')
+            verdict('skipped', f'skip condition: {prefix}' + suffix)
             if row['id']:
                 state[f'steps.{row["id"]}.outcome'] = 'skipped'
             continue
         command = expand(row['command'], state)
         step_env = dict(env, **{name: expand(value, state) for name, value in row['env'].items()})
         if EXPRESSION.search(command + str(step_env)):
-            print(f'FAIL {prefix}: unresolved expression')
-            failed = True
+            verdict('failed', f'FAIL {prefix}: unresolved expression' + suffix)
             continue
         output = Path(env['RUNNER_TEMP']) / f'output-{number}'
         step_env['GITHUB_OUTPUT'] = output.as_posix()
-        log = out / f'{number:03d}-{key.replace(":", "-")}.log'
         try:
             with log.open('w', encoding='utf-8') as capture:
                 result = subprocess.run(shell_command(row, command, root,
@@ -468,28 +484,35 @@ def run(root, out, base='origin/main', tiers=('host',), reuse_build=False):
                                         env=step_env, stdout=capture, stderr=subprocess.STDOUT)
             passed = result.returncode == 0
         except OSError as error:
-            log.write_text(str(error))
+            log.write_text(str(error), encoding='utf-8')
             passed = False
-        print(f'{"ok" if passed else "FAIL"}: {prefix} — {log}')
+        if not passed and re.search(r'No module named|command not found|not recognized',
+                                    log.read_text(encoding='utf-8', errors='replace')):
+            hints = [f'{install_label}: {install}'
+                     for install_label, install in skipped_installs.get(key, [])]
+            if hints:
+                suffix += ' - Host-wide change skipped (' + '; '.join(hints) + ')'
+        verdict('ok' if passed else 'failed',
+                f'{"ok" if passed else "FAIL"} {log}: {prefix}' + suffix)
         if row['id']:
             state[f'steps.{row["id"]}.outcome'] = 'success' if passed else 'failure'
             if output.exists():
-                for line in output.read_text().splitlines():
+                for line in output.read_text(encoding='utf-8', errors='replace').splitlines():
                     if '=' in line:
                         name, value = line.split('=', 1)
                         state[f'steps.{row["id"]}.outputs.{name}'] = value
         outcomes[dependency] = 'success' if passed and state['success'] else 'failure'
         if not passed:
-            failed = True
             state['success'] = False
             broken_steps.add((key, row['index']))
-            if re.search(r'No module named|command not found|not recognized', log.read_text()):
-                for install_label, install in skipped_installs.get(key, []):
-                    print(f'Install skipped ({install_label}): {install}')
-    return int(failed)
+    print(f'{counts["ok"]} ok, {counts["failed"]} failed, '
+          f'{counts["skipped"]} skipped, {counts["not_run"]} not run', flush=True)
+    return int(counts['failed'] != 0)
 
 
 def main(argv=None):
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('list', 'run'))
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
@@ -503,7 +526,9 @@ def main(argv=None):
     if args.action == 'list':
         for row in rows(root, context(root, args.base)):
             print(' | '.join((row['kind'], row['tier'], row['job'], row['label'],
-                              row['dir'], row['reason'] or row['command'].replace('\n', r'\n'))))
+                              row['dir'], row['reason'] or row['command'].replace('\n', r'\n'))) +
+                  (' | dropped: ' + '; '.join(row['dropped']) if row.get('dropped') else ''),
+                  flush=True)
         return 0
     if args.out is None:
         parser.error('run requires --out DIR')
