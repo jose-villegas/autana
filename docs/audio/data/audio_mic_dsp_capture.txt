@@ -1,0 +1,402 @@
+# autana --json replies on A308, 2026-10-25, microphone DSP sweep
+buildid	{"build_id": "cf8071950dd1-dev"}
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -107.6, "noise_dbfs": -71.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -66.1, "peak_dbfs": -35.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -116.9, "noise_dbfs": -72.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -67.8, "peak_dbfs": -35.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -120.0, "noise_dbfs": -77.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.1, "peak_dbfs": -27.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -113.0, "noise_dbfs": -73.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.6, "peak_dbfs": -27.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -110.2, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.8, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -120.0, "noise_dbfs": -68.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.9, "peak_dbfs": -21.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -116.8, "noise_dbfs": -73.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -117.9, "noise_dbfs": -76.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -120.0, "noise_dbfs": -67.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -116.3, "noise_dbfs": -68.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 0	"mic.hpf=0"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -119.7, "noise_dbfs": -74.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -66.5, "peak_dbfs": -35.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -109.2, "noise_dbfs": -67.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -69.7, "peak_dbfs": -35.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -110.7, "noise_dbfs": -69.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.1, "peak_dbfs": -27.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -114.7, "noise_dbfs": -66.4, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -61.7, "peak_dbfs": -27.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -110.4, "noise_dbfs": -69.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.7, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -120.0, "noise_dbfs": -67.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.8, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -106.5, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -116.7, "noise_dbfs": -61.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -113.6, "noise_dbfs": -59.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -120.0, "noise_dbfs": -62.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 4	"mic.hpf_s1=4"
+tune mic.hpf_s2 4	"mic.hpf_s2=4"
+tone 50 500 30	{"hz": 50, "tone_db": -84.3, "silence_db": -120.0, "noise_dbfs": -75.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -11.2, "peak_dbfs": -57.6, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -84.3, "silence_db": -112.6, "noise_dbfs": -73.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -18.1, "peak_dbfs": -58.7, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -64.1, "silence_db": -111.1, "noise_dbfs": -75.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -27.9, "peak_dbfs": -54.3, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -64.1, "silence_db": -114.1, "noise_dbfs": -73.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -25.7, "peak_dbfs": -55.2, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -46.3, "silence_db": -120.0, "noise_dbfs": -75.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -30.6, "peak_dbfs": -44.7, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -46.3, "silence_db": -107.0, "noise_dbfs": -72.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -44.9, "measured_hz": null, "hz_error": null}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.0, "silence_db": -110.5, "noise_dbfs": -73.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.1, "peak_dbfs": -14.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.0, "silence_db": -110.6, "noise_dbfs": -76.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.1, "peak_dbfs": -14.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 50 500 30	{"hz": 50, "tone_db": -65.6, "silence_db": -102.7, "noise_dbfs": -73.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -27.9, "peak_dbfs": -54.6, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -65.5, "silence_db": -107.1, "noise_dbfs": -71.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -26.5, "peak_dbfs": -54.2, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.0, "silence_db": -83.5, "noise_dbfs": -69.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -35.4, "peak_dbfs": -48.2, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -94.2, "noise_dbfs": -74.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -33.8, "peak_dbfs": -47.8, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -38.7, "silence_db": -105.7, "noise_dbfs": -70.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -36.5, "peak_dbfs": -37.7, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -38.7, "silence_db": -107.4, "noise_dbfs": -62.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -35.7, "peak_dbfs": -37.5, "measured_hz": null, "hz_error": null}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -119.7, "noise_dbfs": -71.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -112.2, "noise_dbfs": -71.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 20	"mic.hpf_s1=20"
+tune mic.hpf_s2 20	"mic.hpf_s2=20"
+tone 50 500 30	{"hz": 50, "tone_db": -80.1, "silence_db": -80.1, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.0, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -80.1, "silence_db": -80.1, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.0, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -94.7, "silence_db": -94.7, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -8.5, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -94.7, "silence_db": -94.7, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -8.5, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": 14.1, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": 14.1, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 1000 500 30	{"hz": 1000, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -10.3, "peak_dbfs": 0.0, "measured_hz": 1033.59, "hz_error": 33.58999999999992}
+tone 1000 500 30	{"hz": 1000, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -10.3, "peak_dbfs": 0.0, "measured_hz": 1033.59, "hz_error": 33.58999999999992}
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 31	"mic.hpf_s1=31"
+tune mic.hpf_s2 31	"mic.hpf_s2=31"
+tone 50 500 30	{"hz": 50, "tone_db": -80.1, "silence_db": -80.1, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.0, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -80.1, "silence_db": -80.1, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.0, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -94.7, "silence_db": -54.9, "noise_dbfs": -0.6, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -8.5, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -94.7, "silence_db": -94.7, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -8.5, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -120.0, "silence_db": -64.8, "noise_dbfs": -0.2, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": 14.1, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": 14.1, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 1000 500 30	{"hz": 1000, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -10.3, "peak_dbfs": 0.0, "measured_hz": 1033.59, "hz_error": 33.58999999999992}
+tone 1000 500 30	{"hz": 1000, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -10.3, "peak_dbfs": 0.0, "measured_hz": 1033.59, "hz_error": 33.58999999999992}
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 1	"mic.gate=1"
+tune mic.gate_ng 2	"mic.gate_ng=2"
+tune mic.gate_win 4	"mic.gate_win=4"
+tune mic.gate_depth 7	"mic.gate_depth=7"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -91.0, "noise_dbfs": -43.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -68.2, "peak_dbfs": -35.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -119.5, "noise_dbfs": -74.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -69.3, "peak_dbfs": -35.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -115.7, "noise_dbfs": -74.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.3, "peak_dbfs": -27.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -119.7, "noise_dbfs": -75.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.3, "peak_dbfs": -27.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -118.6, "noise_dbfs": -75.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.8, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -120.0, "noise_dbfs": -70.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.7, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -105.3, "noise_dbfs": -72.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -107.5, "noise_dbfs": -72.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -96.2, "noise_dbfs": -73.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -102.2, "noise_dbfs": -71.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 1	"mic.gate=1"
+tune mic.gate_ng 6	"mic.gate_ng=6"
+tune mic.gate_win 4	"mic.gate_win=4"
+tune mic.gate_depth 7	"mic.gate_depth=7"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -103.0, "noise_dbfs": -72.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -68.0, "peak_dbfs": -35.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -120.0, "noise_dbfs": -70.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -69.0, "peak_dbfs": -35.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -119.6, "noise_dbfs": -70.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.8, "peak_dbfs": -27.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -102.3, "noise_dbfs": -69.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.9, "peak_dbfs": -27.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -110.5, "noise_dbfs": -70.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.7, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -120.0, "noise_dbfs": -69.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.6, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -113.6, "noise_dbfs": -70.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -114.8, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -116.1, "noise_dbfs": -72.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -115.0, "noise_dbfs": -69.4, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -15.7, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 1	"mic.gate=1"
+tune mic.gate_ng 10	"mic.gate_ng=10"
+tune mic.gate_win 4	"mic.gate_win=4"
+tune mic.gate_depth 7	"mic.gate_depth=7"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -36.9, "silence_db": -120.0, "noise_dbfs": -70.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -65.1, "peak_dbfs": -35.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -36.9, "silence_db": -119.6, "noise_dbfs": -67.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -70.8, "peak_dbfs": -35.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -28.9, "silence_db": -119.4, "noise_dbfs": -72.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -59.2, "peak_dbfs": -27.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -28.9, "silence_db": -109.9, "noise_dbfs": -72.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -59.7, "peak_dbfs": -27.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -22.9, "silence_db": -112.3, "noise_dbfs": -79.4, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.2, "peak_dbfs": -21.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -23.0, "silence_db": -118.9, "noise_dbfs": -78.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -55.2, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.8, "silence_db": -120.0, "noise_dbfs": -70.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.9, "silence_db": -112.1, "noise_dbfs": -70.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -16.0, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.6, "silence_db": -118.3, "noise_dbfs": -68.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -15.6, "silence_db": -109.3, "noise_dbfs": -69.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 1	"mic.alc=1"
+tune mic.alc_max 4	"mic.alc_max=4"
+tune mic.alc_min 2	"mic.alc_min=2"
+tune mic.alc_win 2	"mic.alc_win=2"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.8, "silence_db": -108.7, "noise_dbfs": -69.4, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -67.7, "peak_dbfs": -35.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.8, "silence_db": -120.0, "noise_dbfs": -73.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -69.3, "peak_dbfs": -34.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -108.4, "noise_dbfs": -68.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.1, "peak_dbfs": -27.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -120.0, "noise_dbfs": -65.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.0, "peak_dbfs": -27.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -109.7, "noise_dbfs": -70.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.7, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -108.6, "noise_dbfs": -68.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.9, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -16.2, "silence_db": -119.3, "noise_dbfs": -70.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -17.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -16.7, "silence_db": -109.2, "noise_dbfs": -68.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -17.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.8, "silence_db": -116.8, "noise_dbfs": -74.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -18.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -17.5, "silence_db": -110.2, "noise_dbfs": -69.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -18.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 1	"mic.alc=1"
+tune mic.alc_max 4	"mic.alc_max=4"
+tune mic.alc_min 2	"mic.alc_min=2"
+tune mic.alc_win 2	"mic.alc_win=2"
+tune mic.alc_gain 215	"mic.alc_gain=215"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -23.7, "silence_db": -103.6, "noise_dbfs": -57.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -66.6, "peak_dbfs": -23.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -23.7, "silence_db": -91.8, "noise_dbfs": -53.4, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -70.0, "peak_dbfs": -23.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -17.7, "silence_db": -102.1, "noise_dbfs": -56.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.0, "peak_dbfs": -17.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -17.5, "silence_db": -92.1, "noise_dbfs": -56.4, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.5, "peak_dbfs": -17.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -19.3, "silence_db": -109.1, "noise_dbfs": -56.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.8, "peak_dbfs": -15.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -19.2, "silence_db": -89.3, "noise_dbfs": -55.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.5, "peak_dbfs": -15.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -17.2, "silence_db": -111.5, "noise_dbfs": -58.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -13.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -17.9, "silence_db": -103.0, "noise_dbfs": -58.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -13.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -16.7, "silence_db": -106.1, "noise_dbfs": -56.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -13.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -16.6, "silence_db": -108.6, "noise_dbfs": -53.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -13.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 1	"mic.alc=1"
+tune mic.alc_max 4	"mic.alc_max=4"
+tune mic.alc_min 2	"mic.alc_min=2"
+tune mic.alc_win 2	"mic.alc_win=2"
+tune mic.alc_gain 239	"mic.alc_gain=239"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -18.2, "silence_db": -88.7, "noise_dbfs": -42.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -64.4, "peak_dbfs": -15.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -18.4, "silence_db": -93.8, "noise_dbfs": -41.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.7, "peak_dbfs": -11.8, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -18.2, "silence_db": -86.0, "noise_dbfs": -43.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -64.1, "peak_dbfs": -13.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -18.7, "silence_db": -88.5, "noise_dbfs": -43.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -64.2, "peak_dbfs": -13.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -16.8, "silence_db": -77.6, "noise_dbfs": -41.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -58.3, "peak_dbfs": -7.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -17.0, "silence_db": -80.9, "noise_dbfs": -44.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -59.9, "peak_dbfs": -7.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.1, "silence_db": -95.9, "noise_dbfs": -46.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -2.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -13.9, "silence_db": -95.0, "noise_dbfs": -43.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -1.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.1, "silence_db": -96.7, "noise_dbfs": -47.4, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -1.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.1, "silence_db": -80.3, "noise_dbfs": -40.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -1.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 1	"mic.alc=1"
+tune mic.alc_max 8	"mic.alc_max=8"
+tune mic.alc_min 6	"mic.alc_min=6"
+tune mic.alc_win 2	"mic.alc_win=2"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.8, "silence_db": -120.0, "noise_dbfs": -71.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -66.8, "peak_dbfs": -35.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -118.3, "noise_dbfs": -68.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -66.9, "peak_dbfs": -34.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -120.0, "noise_dbfs": -70.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.2, "peak_dbfs": -27.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.8, "silence_db": -112.5, "noise_dbfs": -70.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.6, "peak_dbfs": -27.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -120.0, "noise_dbfs": -70.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.8, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.8, "silence_db": -109.7, "noise_dbfs": -65.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.9, "peak_dbfs": -21.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -106.3, "noise_dbfs": -69.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -108.2, "noise_dbfs": -67.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -117.9, "noise_dbfs": -64.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -118.4, "noise_dbfs": -65.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -15.7, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tune mic.alc 1	"mic.alc=1"
+tune mic.alc_max 8	"mic.alc_max=8"
+tune mic.alc_min 6	"mic.alc_min=6"
+tune mic.alc_win 2	"mic.alc_win=2"
+tune mic.alc_gain 215	"mic.alc_gain=215"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -23.7, "silence_db": -103.6, "noise_dbfs": -59.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -67.6, "peak_dbfs": -23.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -23.7, "silence_db": -106.6, "noise_dbfs": -55.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -69.3, "peak_dbfs": -23.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -15.8, "silence_db": -87.0, "noise_dbfs": -52.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.3, "peak_dbfs": -15.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -15.8, "silence_db": -100.7, "noise_dbfs": -62.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.2, "peak_dbfs": -15.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -11.5, "silence_db": -98.7, "noise_dbfs": -57.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.5, "peak_dbfs": -11.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -12.0, "silence_db": -104.0, "noise_dbfs": -55.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.7, "peak_dbfs": -11.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -10.5, "silence_db": -96.4, "noise_dbfs": -55.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -9.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -10.6, "silence_db": -99.0, "noise_dbfs": -58.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.9, "peak_dbfs": -9.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -10.5, "silence_db": -100.7, "noise_dbfs": -57.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -9.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -10.3, "silence_db": -88.2, "noise_dbfs": -53.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.7, "peak_dbfs": -9.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 1	"mic.alc=1"
+tune mic.alc_max 8	"mic.alc_max=8"
+tune mic.alc_min 6	"mic.alc_min=6"
+tune mic.alc_win 2	"mic.alc_win=2"
+tune mic.alc_gain 239	"mic.alc_gain=239"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -12.1, "silence_db": -97.9, "noise_dbfs": -54.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -67.9, "peak_dbfs": -11.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -12.1, "silence_db": -99.3, "noise_dbfs": -53.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -66.0, "peak_dbfs": -11.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -11.7, "silence_db": -99.0, "noise_dbfs": -52.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -61.8, "peak_dbfs": -9.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -11.5, "silence_db": -93.1, "noise_dbfs": -54.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -61.8, "peak_dbfs": -9.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -12.4, "silence_db": -93.9, "noise_dbfs": -53.8, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -57.8, "peak_dbfs": -6.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -12.6, "silence_db": -104.0, "noise_dbfs": -54.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -58.1, "peak_dbfs": -7.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -10.5, "silence_db": -96.3, "noise_dbfs": -54.4, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.8, "peak_dbfs": -1.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -10.4, "silence_db": -93.5, "noise_dbfs": -54.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.8, "peak_dbfs": -1.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -10.1, "silence_db": -100.8, "noise_dbfs": -54.3, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -0.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -10.4, "silence_db": -91.5, "noise_dbfs": -54.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -1.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 1	"mic.alc=1"
+tune mic.alc_max 12	"mic.alc_max=12"
+tune mic.alc_min 10	"mic.alc_min=10"
+tune mic.alc_win 2	"mic.alc_win=2"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -112.7, "noise_dbfs": -77.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -69.3, "peak_dbfs": -35.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -35.7, "silence_db": -118.3, "noise_dbfs": -78.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -66.2, "peak_dbfs": -35.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.7, "silence_db": -117.0, "noise_dbfs": -78.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.2, "peak_dbfs": -27.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -27.7, "silence_db": -120.0, "noise_dbfs": -78.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -63.3, "peak_dbfs": -27.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.7, "silence_db": -119.5, "noise_dbfs": -78.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.6, "peak_dbfs": -21.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -21.7, "silence_db": -120.0, "noise_dbfs": -78.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.7, "peak_dbfs": -21.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -120.0, "noise_dbfs": -78.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.8, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -120.0, "noise_dbfs": -77.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.8, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -112.9, "noise_dbfs": -78.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -15.7, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 100	{"hz": 1000, "tone_db": -14.5, "silence_db": -115.7, "noise_dbfs": -78.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.alc 1	"mic.alc=1"
+tune mic.alc_max 12	"mic.alc_max=12"
+tune mic.alc_min 10	"mic.alc_min=10"
+tune mic.alc_win 2	"mic.alc_win=2"
+tune mic.alc_gain 215	"mic.alc_gain=215"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -23.7, "silence_db": -106.7, "noise_dbfs": -66.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -69.4, "peak_dbfs": -23.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -23.7, "silence_db": -111.7, "noise_dbfs": -66.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -66.7, "peak_dbfs": -23.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -15.7, "silence_db": -102.2, "noise_dbfs": -66.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.4, "peak_dbfs": -15.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -15.7, "silence_db": -110.7, "noise_dbfs": -66.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.3, "peak_dbfs": -15.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -9.7, "silence_db": -103.8, "noise_dbfs": -66.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.6, "peak_dbfs": -9.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -9.7, "silence_db": -108.8, "noise_dbfs": -66.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.7, "peak_dbfs": -9.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -7.6, "silence_db": -114.1, "noise_dbfs": -66.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.8, "peak_dbfs": -7.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -7.4, "silence_db": -105.1, "noise_dbfs": -66.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.8, "peak_dbfs": -7.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -7.0, "silence_db": -112.3, "noise_dbfs": -65.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -7.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -7.2, "silence_db": -103.2, "noise_dbfs": -66.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -7.0, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tune mic.alc 1	"mic.alc=1"
+tune mic.alc_max 12	"mic.alc_max=12"
+tune mic.alc_min 10	"mic.alc_min=10"
+tune mic.alc_win 2	"mic.alc_win=2"
+tune mic.alc_gain 239	"mic.alc_gain=239"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tone 1000 500 2	{"hz": 1000, "tone_db": -11.6, "silence_db": -93.4, "noise_dbfs": -54.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -68.6, "peak_dbfs": -11.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 2	{"hz": 1000, "tone_db": -11.6, "silence_db": -93.4, "noise_dbfs": -54.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -69.5, "peak_dbfs": -11.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -8.3, "silence_db": -100.6, "noise_dbfs": -54.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -62.9, "peak_dbfs": -6.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 5	{"hz": 1000, "tone_db": -8.3, "silence_db": -87.0, "noise_dbfs": -54.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -61.2, "peak_dbfs": -6.9, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -9.2, "silence_db": -102.9, "noise_dbfs": -54.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.6, "peak_dbfs": -5.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -9.2, "silence_db": -99.2, "noise_dbfs": -54.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -56.7, "peak_dbfs": -5.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -7.6, "silence_db": -109.1, "noise_dbfs": -54.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.8, "peak_dbfs": -0.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -7.6, "silence_db": -94.0, "noise_dbfs": -54.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -15.8, "peak_dbfs": -1.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -7.3, "silence_db": -94.6, "noise_dbfs": -54.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -1.3, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -7.3, "silence_db": -99.9, "noise_dbfs": -54.6, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -13.6, "peak_dbfs": -1.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tune reset mic.alc	"mic.alc=0"
+tune reset mic.alc_max	"mic.alc_max=0"
+tune reset mic.alc_min	"mic.alc_min=0"
+tune reset mic.alc_win	"mic.alc_win=0"
+tune reset mic.alc_gain	"mic.alc_gain=191"
+tune reset mic.gate	"mic.gate=0"
+tune reset mic.gate_ng	"mic.gate_ng=0"
+tune reset mic.gate_win	"mic.gate_win=0"
+tune reset mic.gate_depth	"mic.gate_depth=0"
+tune reset mic.hpf	"mic.hpf=1"
+tune reset mic.hpf_s1	"mic.hpf_s1=10"
+tune reset mic.hpf_s2	"mic.hpf_s2=10"
