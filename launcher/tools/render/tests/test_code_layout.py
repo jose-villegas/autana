@@ -360,91 +360,73 @@ class ConfigurationCheckTests(unittest.TestCase):
 
 
 class SameCodeTests(unittest.TestCase):
+    # objdump -d lines: address, encoding, mnemonic, operands, tab-separated.
     BASE = """\
 40370000 <walk_rows>:
-40370000:\t004136        \tentry\ta1, 32
-40370003:\tfffd21        \tl32r\ta2, 4036fff8 <_iram_text_start+0x10>
-40370006:\tfcc416        \tbeqz\ta4, 40370000 <walk_rows>
-40370009:\t000090        \tretw
+40370000:\t004136\tentry\ta1, 32
+40370003:\tfffd81\tl32r\ta8, 4036fff8 <_iram_text_start+0x10> (42002d50 <draw_x>)
+40370006:\tfcc416\tbeqz\ta4, 40370000 <walk_rows>
+40370009:\t0008e0\tcallx8\ta8
 
 40370010 <tick>:
-40370010:\t004136        \tentry\ta1, 32
-40370013:\t000090        \tretw
+40370010:\t004136\tentry\ta1, 32
+40370013:\t000090\tretw
 """
+    WALK_ROWS_CHANGED = ["walk_rows: changed (4 -> 4 instructions)"]
 
-    def code(self, text):
-        return code_layout.function_code(text)
+    def differences(self, head, base=BASE):
+        return code_layout.code_differences(code_layout.function_code(base), code_layout.function_code(head))
 
     def test_code_that_moved_compares_equal(self):
-        moved = self.BASE.replace("4037000", "4038000").replace("4037001", "4038001").replace("4036fff8", "4037fff4")
-        self.assertEqual(code_layout.code_differences(self.code(self.BASE), self.code(moved)), [])
+        moved = self.BASE.replace("403700", "403800").replace("4036fff8", "4037fff4")
+        self.assertEqual(self.differences(moved), [])
 
-    def test_a_changed_operand_names_its_function(self):
-        changed = self.BASE.replace("beqz\ta4", "beqz\ta5")
-        self.assertEqual(code_layout.code_differences(self.code(self.BASE), self.code(changed)),
-                         ["walk_rows: changed (4 -> 4 instructions)"])
+    def test_a_literal_load_whose_pool_moved_compares_equal(self):
+        self.assertEqual(self.differences(self.BASE.replace("<_iram_text_start+0x10>", "<_iram_text_start>")), [])
 
-    def test_a_literal_load_keeps_its_register(self):
-        other = self.BASE.replace("l32r\ta2", "l32r\ta3")
-        self.assertEqual(code_layout.code_differences(self.code(self.BASE), self.code(other)),
-                         ["walk_rows: changed (4 -> 4 instructions)"])
+    def test_what_changes_an_instruction_names_its_function(self):
+        for old, new in (("beqz\ta4", "beqz\ta5"), ("l32r\ta8", "l32r\ta9"), ("<draw_x>", "<draw_y>")):
+            with self.subTest(new):
+                self.assertEqual(self.differences(self.BASE.replace(old, new)), self.WALK_ROWS_CHANGED)
 
     def test_a_function_only_one_side_has_is_named(self):
-        head = self.BASE.replace("<tick>", "<tock>")
-        self.assertEqual(code_layout.code_differences(self.code(self.BASE), self.code(head)),
-                         ["tick: removed", "tock: added"])
+        self.assertEqual(self.differences(self.BASE.replace("<tick>", "<tock>")), ["tick: removed", "tock: added"])
 
     def test_two_static_functions_sharing_a_name_are_both_kept(self):
-        twice = self.BASE.replace("<tick>:", "<walk_rows>:")
-        self.assertEqual(sorted(self.code(twice)), ["walk_rows", "walk_rows#2"])
-
-    def test_a_loop_past_alignment_bytes_is_decoded_from_its_entry(self):
-        # As objdump sweeps asset_pack_find: a jump, one alignment byte, then
-        # a loop entered only from inside the span the jump skips; the sweep
-        # reads the byte and the loop's first bytes as one instruction.
-        swept = [
-            (0x100d, 3, "bnez", "a9, 1016 <f+0x6>"),
-            (0x1010, 3, "j", "1040 <f+0x30>"),
-            (0x1013, 3, "mul16u", "a1, a0, a0"),
-            (0x1016, 2, "mov.n", "a11, a3"),
-            (0x1018, 3, "bne", "a5, a8, 1014 <f+0x4>"),
-            (0x1040, 2, "retw.n", ""),
-        ]
-        entry = [(0x1014, 2, "addi.n", "a5, a5, 1"), (0x1016, 2, "mov.n", "a11, a3")]
-        self.assertEqual([ins[2] for ins in code_layout.skip_pools(swept, lambda start: entry)],
-                         ["bnez", "j", "addi.n", "mov.n", "bne", "retw.n"])
-
-    LONG_CALL = """40370000 <walk_rows>:
-40370000:	004136        	entry	a1, 32
-40370003:	fffd81        	l32r	a8, 4036fff8 <_iram_text_start+0x10> (42002d50 <draw_x>)
-40370006:	0008e0        	callx8	a8
-40370009:	000090        	retw
-"""
-
-    def test_a_long_call_to_another_callee_differs(self):
-        other = self.LONG_CALL.replace("<draw_x>", "<draw_y>")
-        self.assertEqual(code_layout.code_differences(self.code(self.LONG_CALL), self.code(other)),
-                         ["walk_rows: changed (4 -> 4 instructions)"])
-
-    def test_a_long_call_whose_pool_moved_compares_equal(self):
-        moved = self.LONG_CALL.replace("4036fff8 <_iram_text_start+0x10>", "4036ffe0 <_iram_text_start>")
-        self.assertEqual(code_layout.code_differences(self.code(self.LONG_CALL), self.code(moved)), [])
-
-    SWITCH = """40370000 <pick>:
-40370000:	004136        	entry	a1, 32
-40370003:	0008a0        	jx	a8
-40370006:	000306        	j	40370014 <pick+0x14>
-40370009:	1b0c22        	addi	a2, a2, 1
-4037000c:	000106        	j	40370014 <pick+0x14>
-4037000f:	1b0c22        	addi	a2, a2, 2
-40370012:	f01d          	retw.n
-40370014:	f01d          	retw.n
-"""
+        self.assertEqual(sorted(code_layout.function_code(self.BASE.replace("<tick>:", "<walk_rows>:"))),
+                         ["walk_rows", "walk_rows#2"])
 
     def test_a_case_a_jump_table_enters_is_compared(self):
-        other = self.SWITCH.replace("a2, a2, 1", "a2, a2, 3")
-        self.assertEqual(code_layout.code_differences(self.code(self.SWITCH), self.code(other)),
-                         ["pick: changed (8 -> 8 instructions)"])
+        switch = """\
+40370000 <pick>:
+40370000:\t0008a0\tjx\ta8
+40370003:\t000306\tj\t40370010 <pick+0x10>
+40370006:\t1b0c22\taddi\ta2, a2, 1
+40370009:\tf01d\tretw.n
+40370010:\tf01d\tretw.n
+"""
+        self.assertEqual(self.differences(switch.replace("a2, 1", "a2, 3"), switch), ["pick: changed (5 -> 5 instructions)"])
+
+
+class ResyncTests(unittest.TestCase):
+    def test_a_loop_past_alignment_bytes_is_decoded_from_its_entry(self):
+        # As objdump sweeps asset_pack_find: one alignment byte after a jump,
+        # then a loop entered only from inside the span the jump skips; the
+        # sweep reads the byte and the loop's first bytes as one instruction.
+        swept = [(0x1010, 3, "bnez", "a9, 1016 <f+0x6>"), (0x1013, 3, "mul16u", "a1, a0, a0"),
+                 (0x1016, 3, "bne", "a5, a8, 1014 <f+0x4>")]
+        entry = [(0x1014, 2, "addi.n", "a5, a5, 1"), (0x1016, 3, "bne", "a5, a8, 1014 <f+0x4>")]
+        self.assertEqual([ins[2] for ins in code_layout._resync(swept, lambda start: entry)], ["bnez", "addi.n", "bne"])
+
+    def test_targets_inside_each_other_are_tried_once(self):
+        # Decoding from either target swallows the other's start; untried
+        # once each, they would undo each other forever.
+        found = [(0x2010, 3, "beqz", "a2, 2013 <g+0x3>"), (0x2016, 3, "bnez", "a3, 2014 <g+0x4>")]
+
+        def again(start):
+            return [(start, 3, "nop", ""), (0x2016, 3, "bnez", "a3, 2014 <g+0x4>")]
+
+        self.assertEqual([ins[2] for ins in code_layout._resync(found, again)], ["beqz", "nop"])
 
 if __name__ == "__main__":
     unittest.main()
