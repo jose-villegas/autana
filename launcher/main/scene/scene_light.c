@@ -167,7 +167,7 @@ scene_skin_light_prepare(scene_t* scene, scene_entity_t entity) {
         skin->palette, skin->skin.joint_count, transformf_compute_matrix(&scene->locals[entity]), skin->normal_palette);
     if (!skin->lighting_valid) {
         memset(skin->colors, 0, (size_t)skin->bind.vertex_count * R3D_SKIN_LIGHT_CHANNELS);
-        (void)fprintf(stderr, "scene: %s: %s\n", SCENE_LIGHT_FAILURE_NORMAL, scene->asset.names[entity]);
+        (void)fprintf(stderr, "scene: %s: %s\n", SCENE_LIGHT_FAILURE_NORMAL, scene->asset.names[entity].name);
     }
 }
 
