@@ -272,36 +272,45 @@ centre_axis(float p, float h, float inv_h, int n, int* i0, int* i1, float* t) {
 }
 
 static stencil_t
-corners(const flip3_t* f, int x0, int x1, int y0, int y1, int z0, int z1, float tx, float ty, float tz) {
+corners(const flip3_t* f, const int lo[3], const int hi[3], const float t[3]) {
     stencil_t s;
     for (int corner = 0; corner < 8; corner++) {
         const bool bx = (corner & 1) != 0;
         const bool by = (corner & 2) != 0;
         const bool bz = (corner & 4) != 0;
-        s.at[corner] = cell_index(f, bx ? x1 : x0, by ? y1 : y0, bz ? z1 : z0);
-        s.weight[corner] = (bx ? tx : 1.0F - tx) * (by ? ty : 1.0F - ty) * (bz ? tz : 1.0F - tz);
+        s.at[corner] = cell_index(f, bx ? hi[0] : lo[0], by ? hi[1] : lo[1], bz ? hi[2] : lo[2]);
+        s.weight[corner] = (bx ? t[0] : 1.0F - t[0]) * (by ? t[1] : 1.0F - t[1]) * (bz ? t[2] : 1.0F - t[2]);
     }
     return s;
 }
 
+/* Grid cells per axis, walls included. */
+static int
+cells_on(const flip3_t* f, int axis) {
+    return axis == 0 ? f->nx : (axis == 1 ? f->ny : f->nz);
+}
+
 static stencil_t
 stencil(const flip3_t* f, vec3f_t p, vec3f_t o) {
-    int x0, x1, y0, y1, z0, z1;
-    float tx, ty, tz;
-    stencil_axis(p.x, o.x, f->h.x, f->inv_h.x, f->nx, &x0, &x1, &tx);
-    stencil_axis(p.y, o.y, f->h.y, f->inv_h.y, f->ny, &y0, &y1, &ty);
-    stencil_axis(p.z, o.z, f->h.z, f->inv_h.z, f->nz, &z0, &z1, &tz);
-    return corners(f, x0, x1, y0, y1, z0, z1, tx, ty, tz);
+    int lo[3];
+    int hi[3];
+    float t[3];
+    for (int a = 0; a < 3; a++) {
+        stencil_axis(axis_of(p, a), axis_of(o, a), axis_of(f->h, a), axis_of(f->inv_h, a), cells_on(f, a), &lo[a],
+                     &hi[a], &t[a]);
+    }
+    return corners(f, lo, hi, t);
 }
 
 static stencil_t
 centre_stencil(const flip3_t* f, vec3f_t p) {
-    int x0, x1, y0, y1, z0, z1;
-    float tx, ty, tz;
-    centre_axis(p.x, f->h.x, f->inv_h.x, f->nx, &x0, &x1, &tx);
-    centre_axis(p.y, f->h.y, f->inv_h.y, f->ny, &y0, &y1, &ty);
-    centre_axis(p.z, f->h.z, f->inv_h.z, f->nz, &z0, &z1, &tz);
-    return corners(f, x0, x1, y0, y1, z0, z1, tx, ty, tz);
+    int lo[3];
+    int hi[3];
+    float t[3];
+    for (int a = 0; a < 3; a++) {
+        centre_axis(axis_of(p, a), axis_of(f->h, a), axis_of(f->inv_h, a), cells_on(f, a), &lo[a], &hi[a], &t[a]);
+    }
+    return corners(f, lo, hi, t);
 }
 
 static int
@@ -416,10 +425,11 @@ accelerate(flip3_t* f, float dt, vec3f_t accel) {
 }
 
 /* What every cell's relaxation shares: neighbour strides, inverse spacing
- * and its square, and the drift push's gain per unit of density error. */
+ * and its square per axis, and the drift push's gain per unit of density
+ * error. */
 typedef struct {
-    int sx, sy;
-    vec3f_t ih, ih2;
+    int stride[3];
+    float ih[3], ih2[3];
     float drift;
 } relax_t;
 
@@ -432,8 +442,12 @@ open_toward(const flip3_t* f, int cell) {
 /* Water or wall on all six sides. */
 static bool
 enclosed(const flip3_t* f, int c, const relax_t* r) {
-    return f->kind[c - r->sx] != KIND_AIR && f->kind[c + r->sx] != KIND_AIR && f->kind[c - r->sy] != KIND_AIR
-           && f->kind[c + r->sy] != KIND_AIR && f->kind[c - 1] != KIND_AIR && f->kind[c + 1] != KIND_AIR;
+    for (int a = 0; a < 3; a++) {
+        if (f->kind[c - r->stride[a]] == KIND_AIR || f->kind[c + r->stride[a]] == KIND_AIR) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /* One Gauss-Seidel update of a water cell's six faces. Muller pushes only
@@ -442,29 +456,29 @@ enclosed(const flip3_t* f, int c, const relax_t* r) {
  * surface that pull would act as a false surface tension. */
 static void
 relax_cell(flip3_t* f, int c, const relax_t* r) {
-    const float s0x = open_toward(f, c - r->sx);
-    const float s1x = open_toward(f, c + r->sx);
-    const float s0y = open_toward(f, c - r->sy);
-    const float s1y = open_toward(f, c + r->sy);
-    const float s0z = open_toward(f, c - 1);
-    const float s1z = open_toward(f, c + 1);
-    const float s = ((s0x + s1x) * r->ih2.x) + ((s0y + s1y) * r->ih2.y) + ((s0z + s1z) * r->ih2.z);
+    float* const faces[3] = {f->u, f->v, f->w};
+    float open_below[3];
+    float open_above[3];
+    float s = 0.0F;
+    float div = 0.0F;
+    for (int a = 0; a < 3; a++) {
+        open_below[a] = open_toward(f, c - r->stride[a]);
+        open_above[a] = open_toward(f, c + r->stride[a]);
+        s += (open_below[a] + open_above[a]) * r->ih2[a];
+        div += (faces[a][c + r->stride[a]] - faces[a][c]) * r->ih[a];
+    }
     if (s == 0.0F) {
         return;
     }
-    float div = ((f->u[c + r->sx] - f->u[c]) * r->ih.x) + ((f->v[c + r->sy] - f->v[c]) * r->ih.y)
-                + ((f->w[c + 1] - f->w[c]) * r->ih.z);
     const float compression = f->density[c] - f->rest_density;
     if (compression > 0.0F || enclosed(f, c, r)) {
         div -= r->drift * compression;
     }
     const float p = -div / s * f->tuning.over_relaxation;
-    f->u[c] -= s0x * p * r->ih.x;
-    f->u[c + r->sx] += s1x * p * r->ih.x;
-    f->v[c] -= s0y * p * r->ih.y;
-    f->v[c + r->sy] += s1y * p * r->ih.y;
-    f->w[c] -= s0z * p * r->ih.z;
-    f->w[c + 1] += s1z * p * r->ih.z;
+    for (int a = 0; a < 3; a++) {
+        faces[a][c] -= open_below[a] * p * r->ih[a];
+        faces[a][c + r->stride[a]] += open_above[a] * p * r->ih[a];
+    }
 }
 
 /* Gauss-Seidel on the divergence over cells of any aspect, with the drift
@@ -474,8 +488,10 @@ relax_cell(flip3_t* f, int c, const relax_t* r) {
 static void
 solve_pressure(flip3_t* f, float dt) {
     const vec3f_t ih = f->inv_h;
-    const relax_t r = {
-        f->ny * f->nz, f->nz, ih, {ih.x * ih.x, ih.y * ih.y, ih.z * ih.z}, f->tuning.drift_gain / dt / f->rest_density};
+    const relax_t r = {{f->ny * f->nz, f->nz, 1},
+                       {ih.x, ih.y, ih.z},
+                       {ih.x * ih.x, ih.y * ih.y, ih.z * ih.z},
+                       f->tuning.drift_gain / dt / f->rest_density};
     const int n = f->nx * f->ny * f->nz;
     for (int iter = 0; iter < f->tuning.pressure_iters; iter++) {
         for (int c = 0; c < n; c++) {
