@@ -1,5 +1,4 @@
 """Plot measured EQ responses over designs and the HPF code map in both themes."""
-import argparse
 from pathlib import Path
 import sys
 
@@ -7,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / 'launcher/tools/audio'))
 import numpy as np
 from audio_doc_tables import read_capture
+from audio_doc_blocks import render_capture_figures
 from audio.mic.eq_probe_sweep import CAPTURE
 from audio.mic.mic_eq_probe_tables import probe_data, response, hpf_reference, CURVE_POINTS
 from docs.plot_style import FIGURE_SIZE, SLOTS, subplots, save_themed_plot
@@ -32,11 +32,7 @@ def render(capture, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capture', type=Path, default=CAPTURE)
-    parser.add_argument('--out', type=Path, default=ROOT / 'docs/images/audio')
-    args = parser.parse_args()
-    render(args.capture, args.out)
+    render_capture_figures(__doc__, render, CAPTURE, ROOT / "docs/images/audio")
 
 
 if __name__ == '__main__':
