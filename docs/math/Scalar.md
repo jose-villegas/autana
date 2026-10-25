@@ -67,7 +67,8 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 `mathx_rsqrt_q30(m)` accepts $`2^{30} \le m < 2^{32}`$ and returns
 $`2^{30}/\sqrt{m/2^{32}}`$ rounded to nearest.
 `MATHX_RSQRT_Q30_RELATIVE_LIMIT` bounds relative error by $`2^{-31}`$.
-On Xtensa with `CONFIG_MATH_FPU_RECIP`, an FPU seed and one integer Newton correction replace the seed table and three corrections.
+On Xtensa with `CONFIG_MATH_FPU_RECIP`, an FPU seed (`mathf_rsqrt_normal`) and one integer Newton correction replace the seed table and three corrections.
+`mathx_rsqrt_q30_table(m)` is the table path; both use `mathx_rsqrt_newton(m, y)` for a correction and `mathx_rsqrt_bracket(m, y)` for the final rounding.
 The midpoint bracket makes both paths return the same bits. The FPU path pins its task to a core and is not ISR-safe.
 
 The exhaustive checker runs in host CI, separately from unit tests. It also proves that one correction from any seed within `MATHX_RSQRT_FPU_SEED_RELATIVE_LIMIT` gives the table result:
@@ -99,6 +100,7 @@ Nonpositive input gives `INT32_MAX`; positive input uses `mathx_rsqrt_q30`.
 |---|---|---|
 | `mathf_rsqrt(x)` | `rsqrt0.s` seed, two Newton steps | `MATHF_RSQRT_ULP_LIMIT` in `mathf.h` |
 | `mathf_rsqrt_approx(x)` | `rsqrt0.s` seed, one Newton step | `MATHF_RSQRT_APPROX_RELATIVE_LIMIT` in `mathf.h` |
+| `mathf_rsqrt_normal(x)` | `mathf_rsqrt` without the subnormal fallback, for positive normal `x` (Xtensa FPU builds only) | `MATHF_RSQRT_ULP_LIMIT` in `mathf.h` |
 
 Newton-Raphson reciprocal square root uses
 $`y_{n+1}=y_n+\tfrac12 y_n\,(1-(xy_n)y_n)`$.<sup>[[85]](../Citations.md#85)</sup>
