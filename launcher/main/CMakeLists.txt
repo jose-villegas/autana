@@ -255,7 +255,8 @@ set(app_reqs esp_codec_dev esp_driver_i2s math hash collections microui esp32_s3
 
 if(CONFIG_LAUNCHER_SELFTEST)
     launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c"
-        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c")
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/bench/suite_*.c")
     # SCOPE: full is the default and stays globbed, so nothing can lose
     # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
@@ -288,6 +289,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "selftest/selftest.c"
         "../test/suites.c"
         "../test/timing.c"
+        "../test/bench_env.c"
         "../test/frame_profile.c"
         "../test/ui_probe.c"
         ${suite_srcs}

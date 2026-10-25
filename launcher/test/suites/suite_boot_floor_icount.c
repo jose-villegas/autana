@@ -18,8 +18,8 @@
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_segment_clip.h"
-#include "perf_stats.h"
 #include "suites.h"
+#include "testkit/bench.h"
 #include "unity.h"
 
 #define FLOOR_CROSSFADE_MS 3550
@@ -173,7 +173,7 @@ report_total(const boot_anim_motion_t* motion, uint32_t now_ms, bool zero_ink) {
     char name[64];
     (void)snprintf(name, sizeof name, FLOOR_ROW_PREFIX "%" PRIu32 "_%s", now_ms,
                    zero_ink ? FLOOR_REJECT_ROW : FLOOR_TOTAL_ROW);
-    perf_icount_report(name, elapsed, FLOOR_TIMING_REPS, 1);
+    bench_icount_report(name, elapsed, FLOOR_TIMING_REPS, 1);
 }
 
 /* The curve over the same frames, after the frame's clear has marked
@@ -190,7 +190,7 @@ report_curve(const boot_anim_motion_t* motion, uint32_t now_ms) {
     const int64_t elapsed = timing_now_us() - start;
     char name[64];
     (void)snprintf(name, sizeof name, CURVE_ROW_PREFIX "%" PRIu32, now_ms);
-    perf_icount_report(name, elapsed, FLOOR_TIMING_REPS, 1);
+    bench_icount_report(name, elapsed, FLOOR_TIMING_REPS, 1);
 }
 
 static void
@@ -201,8 +201,8 @@ report_line_cost(int length) {
         draw_line_ex(FLOOR_LINE_X, FLOOR_LINE_Y, FLOOR_LINE_X + length - 1, FLOOR_LINE_Y, FLOOR_LINE_COLOR, 0);
     }
     const int64_t elapsed = timing_now_us() - start;
-    perf_icount_report(length == 1 ? FLOOR_ROW_PREFIX FLOOR_POINT_ROW : FLOOR_ROW_PREFIX FLOOR_LONG_ROW, elapsed,
-                       FLOOR_LINE_REPS, 1);
+    bench_icount_report(length == 1 ? FLOOR_ROW_PREFIX FLOOR_POINT_ROW : FLOOR_ROW_PREFIX FLOOR_LONG_ROW, elapsed,
+                        FLOOR_LINE_REPS, 1);
 }
 
 static void
