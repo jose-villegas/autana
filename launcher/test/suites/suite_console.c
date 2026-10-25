@@ -15,7 +15,7 @@
 #include <string.h>
 
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "console/console_frame_request.h"
@@ -95,19 +95,54 @@ fixture(void) {
     reply_count = 0;
     last_verb[0] = '\0';
     last_args[0] = '\0';
-    alpha_verb = (console_verb_t){"ALPHA", handle_alpha, NULL};
-    beta_verb = (console_verb_t){"BETA", handle_beta, NULL};
-    set_verb = (console_verb_t){"SET", handle_set, NULL};
-    settle_verb = (console_verb_t){"SETTLE", handle_settle, NULL};
-    tune_verb = (console_verb_t){"TUNE", handle_tune, NULL};
-    tunes_verb = (console_verb_t){"TUNES", handle_tunes, NULL};
-    lower_set_verb = (console_verb_t){"set", handle_alpha, NULL};
+    alpha_verb = (console_verb_t){"ALPHA", handle_alpha, NULL, CONSOLE_LINE_MAX};
+    beta_verb = (console_verb_t){"BETA", handle_beta, NULL, CONSOLE_LINE_MAX};
+    set_verb = (console_verb_t){"SET", handle_set, NULL, CONSOLE_LINE_MAX};
+    settle_verb = (console_verb_t){"SETTLE", handle_settle, NULL, CONSOLE_LINE_MAX};
+    tune_verb = (console_verb_t){"TUNE", handle_tune, NULL, CONSOLE_LINE_MAX};
+    tunes_verb = (console_verb_t){"TUNES", handle_tunes, NULL, CONSOLE_LINE_MAX};
+    lower_set_verb = (console_verb_t){"set", handle_alpha, NULL, CONSOLE_LINE_MAX};
+}
+
+static void
+test_overlong_short_verb_is_dropped(void) {
+    fixture();
+    TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
+    char line[CONSOLE_LINE_MAX + 1];
+    memset(line, 'x', sizeof line - 1);
+    memcpy(line, "ALPHA ", strlen("ALPHA "));
+    line[sizeof line - 1] = '\0';
+    TEST_ASSERT_FALSE(console_registry_dispatch(&registry, line, collect) == CONSOLE_LINE_HANDLED);
+    TEST_ASSERT_EQUAL_STRING("", last_verb);
+}
+
+static void
+test_registered_long_verbs_own_their_bounds(void) {
+    fixture();
+    const char* names[] = {"sound", "runsuite", "OTHER"};
+    TEST_ASSERT_EQUAL_INT(CONSOLE_LINE_MAX, console_registry_line_max(&registry));
+    char line[CONSOLE_SOUND_LINE_MAX + 1];
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+        console_registry_t verbs = {0};
+        console_verb_t verb = {names[i], handle_alpha, NULL, CONSOLE_SOUND_LINE_MAX};
+        TEST_ASSERT_TRUE(console_register(&verbs, &verb));
+        TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_LINE_MAX, console_registry_line_max(&verbs));
+        memset(line, 'x', CONSOLE_SOUND_LINE_MAX);
+        memcpy(line, names[i], strlen(names[i]));
+        line[strlen(names[i])] = ' ';
+        line[CONSOLE_SOUND_LINE_MAX - 1] = '\0';
+        TEST_ASSERT_TRUE(console_registry_dispatch(&verbs, line, collect) == CONSOLE_LINE_HANDLED);
+        line[CONSOLE_SOUND_LINE_MAX - 1] = 'x';
+        line[CONSOLE_SOUND_LINE_MAX] = '\0';
+        TEST_ASSERT_FALSE(console_registry_dispatch(&verbs, line, collect) == CONSOLE_LINE_HANDLED);
+        TEST_ASSERT_EQUAL_INT(CONSOLE_LINE_REJECTED, console_registry_dispatch(&registry, line, collect));
+    }
 }
 
 static bool
 say(const char* line) {
     reply_count = 0;
-    return console_registry_handle_line(&registry, line, collect);
+    return console_registry_dispatch(&registry, line, collect) == CONSOLE_LINE_HANDLED;
 }
 
 static int
@@ -138,7 +173,7 @@ test_name_plus_space_carries_args_without_the_verb_or_the_space(void) {
 }
 
 /* SET must not answer to SETTLE, and TUNE must not answer to TUNES: the
- * same pair suite_tune.c already pins one level up (services/tune.c). Proven
+ * same pair suite_tune.c already pins one level up (console/console_tune.c). Proven
  * here too since this level is where the "name, or name-plus-space" rule
  * actually lives now. */
 static void
@@ -251,7 +286,7 @@ static void
 test_a_name_declared_twice_stays_with_the_first(void) {
     fixture();
     static console_verb_t usurper;
-    usurper = (console_verb_t){"ALPHA", handle_beta, NULL};
+    usurper = (console_verb_t){"ALPHA", handle_beta, NULL, CONSOLE_LINE_MAX};
     TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
     TEST_ASSERT_FALSE(console_register(&registry, &usurper));
     TEST_ASSERT_EQUAL_INT(1, registry_count(&registry));
@@ -429,7 +464,7 @@ test_a_take_never_sees_a_post_half_written(void) {
     TEST_ASSERT_EQUAL_INT(0, torn);
 }
 
-/* console_word_match() is console_registry_handle_line()'s own matcher,
+/* console_word_match() is console_registry_dispatch() == CONSOLE_LINE_HANDLED's own matcher,
  * exported so the shell can match an app's console prefix the same way. */
 static void
 test_word_match_carries_what_follows_the_name(void) {
@@ -872,7 +907,8 @@ test_quarter_injection_matches_forward_mapping(void) {
         TEST_ASSERT_EQUAL_INT(axes.x_down * IMU_COUNTS_PER_G, gravity.x);
         TEST_ASSERT_EQUAL_INT(axes.y_down * IMU_COUNTS_PER_G, gravity.y);
         display.quarter = quarter;
-        TEST_ASSERT_FALSE(display_update(&display, gravity));
+        TEST_ASSERT_FALSE(display_update(
+            &display, (vec3f_t){(float)gravity.x / IMU_COUNTS_PER_G, (float)gravity.y / IMU_COUNTS_PER_G, 0.0F}, 0));
         TEST_ASSERT_EQUAL_INT(quarter, display_quarter(&display));
     }
     imu_sample_t sample = {.ax = IMU_COUNTS_PER_G};
@@ -890,6 +926,9 @@ test_quarter_injection_matches_forward_mapping(void) {
 static void
 test_sound_arguments(void) {
     console_sound_args_t args;
+    TEST_ASSERT_TRUE(console_sound_parse("play engine/tap loop 25", &args));
+    TEST_ASSERT_EQUAL_STRING("tap", args.name);
+    TEST_ASSERT_EQUAL_STRING(ASSET_ENGINE_PACK, args.pack);
     TEST_ASSERT_TRUE(console_sound_parse("play tap loop 25", &args));
     TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_PLAY, args.action);
     TEST_ASSERT_EQUAL_STRING("tap", args.name);
@@ -898,6 +937,9 @@ test_sound_arguments(void) {
     TEST_ASSERT_TRUE(console_sound_parse("play tap", &args));
     TEST_ASSERT_EQUAL_INT(AUDIO_OUT_VOLUME_MAX_PCT, args.gain_pct);
     TEST_ASSERT_FALSE(args.loop);
+    TEST_ASSERT_TRUE(console_sound_parse("play music/theme loop 50", &args));
+    TEST_ASSERT_EQUAL_STRING("music", args.pack);
+    TEST_ASSERT_EQUAL_STRING("theme", args.name);
     TEST_ASSERT_TRUE(console_sound_parse("play tap 0", &args));
     TEST_ASSERT_EQUAL_INT(0, args.gain_pct);
     TEST_ASSERT_TRUE(console_sound_parse("stop", &args));
@@ -924,6 +966,9 @@ test_sound_arguments(void) {
                                           "onset steal 500 33 extra",
                                           "onset amp-on -1",
                                           "onset start 500 -1",
+                                          "play /tap",
+                                          "play engine/",
+                                          "play a/b/c",
                                           "play",
                                           "play tap loop loop",
                                           "play tap 101",
@@ -946,7 +991,7 @@ test_sound_arguments(void) {
 static void
 test_sound_parse_boundaries_and_whitespace(void) {
     console_sound_args_t args;
-    char line[CONSOLE_LINE_MAX];
+    char line[CONSOLE_SOUND_LINE_MAX];
     char name[ASSET_NAME_MAX + 1];
     memset(name, 'x', ASSET_NAME_MAX);
     name[ASSET_NAME_MAX - 1] = '\0';
@@ -958,14 +1003,39 @@ test_sound_parse_boundaries_and_whitespace(void) {
     TEST_ASSERT_FALSE(console_sound_parse(line, &args));
     TEST_ASSERT_TRUE(console_sound_parse(" \tplay\ttap \vloop\r100\n", &args));
     TEST_ASSERT_FALSE(console_sound_parse("play tap loop 100 extra", &args));
+    name[ASSET_NAME_MAX - 1] = '\0';
+    (void)snprintf(line, sizeof line, "play %s/%s loop 100", name, name);
+    TEST_ASSERT_TRUE(console_sound_parse(line, &args));
+    TEST_ASSERT_EQUAL_STRING(name, args.pack);
+    TEST_ASSERT_EQUAL_STRING(name, args.name);
+    name[ASSET_NAME_MAX - 1] = 'x';
+    (void)snprintf(line, sizeof line, "play %s/tap", name);
+    TEST_ASSERT_FALSE(console_sound_parse(line, &args));
     TEST_ASSERT_TRUE(console_sound_parse("stop 4294967295", &args));
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, args.voice);
 }
 
+static void
+test_imu_reply_exposes_judge_timing_and_checks_capacity(void) {
+    char reply[CONSOLE_IMU_REPLY_SIZE];
+    TEST_ASSERT_TRUE(console_imu_reply(reply, sizeof reply, DISPLAY_DEFAULT_QUARTER));
+    int quarter, count, sample_ms, commit_ms;
+    TEST_ASSERT_EQUAL_INT(CONSOLE_IMU_REPLY_INTEGER_COUNT,
+                          sscanf(reply, CONSOLE_IMU_REPLY_FORMAT, &quarter, &count, &sample_ms, &commit_ms));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_DEFAULT_QUARTER, quarter);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_COUNT, count);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_SAMPLE_MS, sample_ms);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_COMMIT_MS, commit_ms);
+    TEST_ASSERT_FALSE(console_imu_reply(reply, strlen(reply), DISPLAY_DEFAULT_QUARTER));
+}
+
 void
 suite_console(void) {
+    RUN_TEST(test_imu_reply_exposes_judge_timing_and_checks_capacity);
     RUN_TEST(test_sound_parse_boundaries_and_whitespace);
     RUN_TEST(test_sound_arguments);
+    RUN_TEST(test_overlong_short_verb_is_dropped);
+    RUN_TEST(test_registered_long_verbs_own_their_bounds);
     RUN_TEST(test_exact_name_matches);
     RUN_TEST(test_name_plus_space_carries_args_without_the_verb_or_the_space);
     RUN_TEST(test_a_verb_does_not_swallow_a_longer_word_that_starts_with_its_name);

@@ -6,19 +6,19 @@ root test_the_flythrough_sees_mostly_building test
 root test_dynamic_resolution_policies_along_the_path test
 root render_lab_frame frame
 
-indirect render_lab_frame : scene_sponza_frame
-indirect render_lab_frame : scene_sponza_enter scene_sponza_lite_enter scene_sponza_flat_enter scene_sponza_fitted_enter scene_sponza_fitted_full_enter scene_sponza_flat_fitted_enter scene_capybara_enter scene_sponza_exit scene_capybara_exit
-indirect render_lab_enter : scene_sponza_enter scene_sponza_lite_enter scene_sponza_flat_enter scene_sponza_fitted_enter scene_sponza_fitted_full_enter scene_sponza_flat_fitted_enter scene_capybara_enter
-indirect render_lab_exit : scene_sponza_exit scene_capybara_exit
-indirect render_lab_frame : sponza_status
+indirect render_lab_frame : scene_baked_frame
+indirect render_lab_frame : scene_baked_enter scene_capybara_enter scene_baked_exit scene_capybara_exit
+indirect render_lab_enter : scene_baked_enter scene_capybara_enter
+indirect render_lab_exit : scene_baked_exit scene_capybara_exit
+indirect render_lab_frame : scene_baked_status
 indirect render_lab_frame : scene_capybara_frame capybara_status
 indirect render_lab_update : scene_capybara_steer
 indirect render_lab_console : scene_capybara_console
 indirect render_lab_menu_screen_draw : scene_capybara_controls
+indirect ui_toggle_id : measure_text_height
 indirect render_lab_test_enter : render_lab_enter
 indirect render_lab_test_frame_dt : render_lab_update render_lab_frame
 indirect check_camera_paths : check_the_flythrough_keeps_clear_of_every_triangle check_the_flythrough_sees_mostly_building
-indirect tune_registry_handle_line : suite_sponza_perf.c:cull_reply
 
 root test_console_scene_requests_survive_expanded_frames test
 indirect test_console_scene_requests_survive_expanded_frames : render_lab_enter render_lab_console render_lab_exit
@@ -31,3 +31,5 @@ indirect render_lab_clips_reply : console_reply_stdio suite_render_lab_clips.c:c
 indirect render_lab_clips.c:reply_line : console_reply_stdio suite_render_lab_clips.c:capture_reply
 
 root test_boot_menu_draws_controls_only_for_animated_scene test
+indirect render_context_draw : app_arena_take
+indirect scene_allocate_kept : app_arena_take

@@ -51,7 +51,7 @@ Runs on the host and covers every
 *portable* suite: anything with no hardware dependency. This is the loop for
 red-green-refactor; reach for it first for anything that is a question about
 logic rather than about the actual board. See
-[`../Testing-Guide.md`](../Testing-Guide.md).
+[`testing/README.md`](../testing/README.md).
 
 ## Does it still hold on the real chip? On-device suite
 
@@ -64,7 +64,7 @@ Builds the diagnostics variant, flashes it, and runs *every* registered
 suite, portable ones included, actually compiled by the Xtensa toolchain
 and executed on the chip, which a host run cannot vouch for. Needs a
 `CONFIG_LAUNCHER_SELFTEST` build; see
-[`../Build-Variants.md`](../Build-Variants.md) for what that flag carries
+[`tools/Build-Variants.md`](../tools/Build-Variants.md) for what that flag carries
 versus `--dev`.
 
 ## What does the screen look like right now? `autana screenshot`
@@ -89,7 +89,7 @@ mechanism and the full field list.
 - **Development-only** (`--dev` or `--diag` build): a release build carries
   none of it.
 - **Serial transfer**: a full frame is streamed as base64<sup>[[27]](../Citations.md#27)</sup> over the console.
-  [Flash-and-Captures.md](../tools/Flash-and-Captures.md#screenshots) records
+  [Flash-and-Captures.md](../cli/Flash-and-Captures.md#screenshots) records
   the baud and capture workflow. `autana screenshot`
   prints progress every few seconds so this does not read as a hang.
 - **Does not reset the board**: opens the port with DTR/RTS held low so a
@@ -121,7 +121,7 @@ directory whose own `build_id.txt` matches the capture's `BUILD_ID`, or
 `--elf path/to/other.elf` to pin a specific one. Passing the right `.elf`
 matters for more than bookkeeping; it carries the debug symbols that turn
 a crash address into a file and line number. See
-[`../tools/Autana-CLI.md`](../tools/Autana-CLI.md).
+[`../cli/README.md`](../cli/README.md).
 
 ## After a crash: the reset reason and the core dump
 
@@ -137,11 +137,8 @@ which the host misses while USB re-enumerates):
 The `COREDUMP=` lines and the dump itself are in development and diagnostics
 builds only; a release build keeps the partition but writes no dump.
 
-On the board every warm reset becomes a PMIC power cycle
-(`bootloader_components/pmic_cold_boot/`), so after a crash the reason reads
-`POWERON` and USB drops before the panic text reaches the host. The panic
-handler writes the dump to flash before that reset, so it survives. Under
-QEMU the reason is the real one (`PANIC`).
+After a crash the reason names it, on the board as under QEMU (`PANIC`,
+`TASK_WDT`). The panic handler writes the dump to flash before it resets.
 
 A dump stays in flash across every later flash until it is erased, so the
 board's running build says nothing about it; `build=` says which build
@@ -180,9 +177,9 @@ sends, and lets go.
 
 ## Rendering looks wrong: gfx debug overlays
 
-`--dev`/`--diag` builds carry runtime overlays, switched by
+`--dev`/`--diag` builds carry runtime overlays, set by
 `gfx_set_debug_overlay()` / `gfx_set_leaf_overlay()` (`main/gfx/present/gfx_debug.h`),
-which a development-only app's toggle page calls:
+switched from the settings list's developer rows in a development build:
 
 - **Dirty-region overlay**: draws a border around whatever rectangle
   `gfx_present()` is about to send, so a stale patch of screen (something
@@ -260,11 +257,11 @@ Two ways to see raw sensor readings without adding any code:
 
 ## Related
 
-- [`../Build-Variants.md`](../Build-Variants.md): what
+- [`tools/Build-Variants.md`](../tools/Build-Variants.md): what
   `CONFIG_LAUNCHER_DEVELOPMENT` and `CONFIG_LAUNCHER_SELFTEST` actually
   gate, the three build variants (release/dev/diag), how an app is left out
   of release, and why a self-test runner is narrowed further, to SELFTEST.
-- [`../Testing-Guide.md`](../Testing-Guide.md): the host and device test
+- [`testing/README.md`](../testing/README.md): the host and device test
   runners, and runsuite.
 - [`Flashing-and-Toolchain.md`](Flashing-and-Toolchain.md): board recovery,
   and the toolchain details `autana monitor`'s crash decoding depends on.

@@ -4,8 +4,13 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
-#define JOB_CTX_MAX 128
+#define JOB_CTX_MAX        128
+
+/* Gfx presents at priority 5; rendering must preempt engine work. */
+#define JOB_CORE1_PRIORITY 3
+#define JOB_CORE1          1
 
 typedef void (*job_fn_t)(void* ctx);
 
@@ -28,6 +33,11 @@ bool job_try_core1(job_fn_t fn, const void* ctx, size_t ctx_size);
  * later jobs run inline in the meantime. */
 bool job_wait(unsigned timeout_ms);
 
+/* Microseconds from the last dispatch until its worker finished it, so time
+ * spent queued behind a higher-priority task on core 1 counts. Valid after a
+ * job_wait() that returned true, until the next dispatch. 0 on a host. */
+int64_t job_core1_elapsed_us(void);
+
 #define JOB_SPLIT_WAIT_MS 1000U
 
 /* The second context is copied on dispatch. Both ranges finish before the next stage reads.
@@ -44,3 +54,33 @@ job_run_split(job_fn_t fn, void* first_half, const void* second_half, size_t ctx
     (void)done;
     return dispatched;
 }
+
+/* A split's share of work for core 1, in permille. Caller-owned shares are
+ * offsets from even, so zeroed state splits evenly. */
+#define JOB_SHARE_PERMILLE 1000
+#define JOB_SHARE_EVEN     (JOB_SHARE_PERMILLE / 2)
+/* Keeps either core from being starved by one noisy frame. */
+#define JOB_SHARE_MIN      150
+#define JOB_SHARE_MAX      (JOB_SHARE_PERMILLE - JOB_SHARE_MIN)
+
+/* Half-damped core-1 share that balances these halves' times.
+ * Nonpositive times leave the share unchanged. */
+int job_share_update(int core1_permille, int64_t core1_us, int64_t caller_us);
+
+/* Core 1's share in permille; a NULL offset is even. */
+static inline int
+job_share_permille(const int16_t* core1_offset) {
+    return JOB_SHARE_EVEN + (core1_offset == NULL ? 0 : *core1_offset);
+}
+
+/* How many of `total` items core 1 takes at this share offset, rounded down. */
+static inline int
+job_share_core1_count(const int16_t* core1_offset, int total) {
+    return total * job_share_permille(core1_offset) / JOB_SHARE_PERMILLE;
+}
+
+/* job_run_split() that steers *core1_offset toward equal times for both
+ * halves; NULL splits evenly and steers nothing. The panel present shares
+ * core 1 with the worker; a fixed split waits on it, a steered one gives
+ * that core less. An empty half still runs, so its time can win work back. */
+bool job_run_steered(int16_t* core1_offset, job_fn_t fn, void* first_half, const void* second_half, size_t ctx_size);

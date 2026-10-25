@@ -14,8 +14,8 @@
 #include "audio/audio_in.h"
 #include "audio/audio_out_device.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "profile/frame_cost.h"
-#include "services/tune.h"
 
 TUNE_OWNER(sound);
 TUNE_HOT(sound, declick_us, SOUND_DECLICK_US, 0, MATH_US_PER_S);
@@ -417,35 +417,50 @@ capture_request(uint32_t sequence) {
 }
 
 static bool
-capture_change(bool open) {
-    portENTER_CRITICAL(&control_lock);
-    const uint32_t sequence = control.ready ? sound_capture_begin(&capture) : 0;
-    portEXIT_CRITICAL(&control_lock);
-    if (!sequence) {
-        return false;
-    }
-    bool ok = capture_request(sequence);
-    if (ok) {
-        if (open) {
-            ok = audio_in_open();
-        } else {
-            audio_in_close();
+capture_hold(bool (*during)(void)) {
+    const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
+    uint32_t sequence = 0;
+    sound_capture_acquire_result_t acquired;
+    do {
+        portENTER_CRITICAL(&control_lock);
+        if (!control.ready) {
+            portEXIT_CRITICAL(&control_lock);
+            return during == NULL;
         }
+        acquired = sound_capture_acquire(&capture, timing_now_us(), deadline, &sequence);
+        portEXIT_CRITICAL(&control_lock);
+        if (acquired == SOUND_CAPTURE_WAIT) {
+            timing_sleep_ms(SOUND_CONTROL_POLL_MS);
+        }
+    } while (acquired == SOUND_CAPTURE_WAIT);
+    const bool ok = acquired == SOUND_CAPTURE_ACQUIRED && capture_request(sequence) && (!during || during());
+    if (sequence) {
+        portENTER_CRITICAL(&control_lock);
+        sound_capture_resume(&capture, sequence);
+        portEXIT_CRITICAL(&control_lock);
     }
-    portENTER_CRITICAL(&control_lock);
-    sound_capture_resume(&capture, sequence);
-    portEXIT_CRITICAL(&control_lock);
     return ok;
 }
 
 bool
+sound_fence(void) {
+    return capture_hold(NULL);
+}
+
+static bool
+capture_close(void) {
+    audio_in_close();
+    return true;
+}
+
+bool
 sound_capture_open(void) {
-    return capture_change(true);
+    return capture_hold(audio_in_open);
 }
 
 bool
 sound_capture_close(void) {
-    return capture_change(false);
+    return capture_hold(capture_close);
 }
 
 #endif

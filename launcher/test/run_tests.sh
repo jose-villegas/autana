@@ -111,9 +111,12 @@ HEAP_ARENA_DEFINES="-DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES=$HOST_HEAP_ARENA_B
 
 SOURCES="
 $TEST_DIR/host_main.c
+$TEST_DIR/input_fake.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
-$TEST_DIR/test_cleanup.c
+$LAUNCHER_DIR/packages/testkit/harness/bench.c
+$LAUNCHER_DIR/packages/testkit/harness/cleanup.c
+$LAUNCHER_DIR/packages/testkit/harness/registry.c
 $TEST_DIR/frame_profile.c
 $TEST_DIR/ui_probe.c
 $TEST_DIR/heap_arena.c
@@ -140,7 +143,9 @@ $MAIN_DIR/input/touch/touch_calib.c
 $MAIN_DIR/input/touch/touch_inject_fsm.c
 $MAIN_DIR/input/touch/gesture.c
 $MAIN_DIR/input/motion/tilt.c
+$MAIN_DIR/input/motion/imu_queue.c
 $MAIN_DIR/input/motion/gravity.c
+$MAIN_DIR/input/motion/shake.c
 $MAIN_DIR/input/buttons/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim.c
@@ -150,49 +155,22 @@ $MAIN_DIR/selftest/post_layout.c
 $MAIN_DIR/core/job.c
 $MAIN_DIR/core/memory.c
 $MAIN_DIR/services/settings_policy.c
-$MAIN_DIR/anim/anim_track.c
-$MAIN_DIR/anim/anim_tracks.c
-$MAIN_DIR/anim/anim_skeleton.c
-$MAIN_DIR/anim/pose/anim_pose.c
-$MAIN_DIR/anim/playback/anim_playhead.c
-$MAIN_DIR/anim/playback/anim_layer.c
 $MAIN_DIR/sound/sound.c
 $MAIN_DIR/audio/audio_adpcm.c
-$MAIN_DIR/render/r3d_skin.c
-$MAIN_DIR/render/skin/r3d_skinning.c
-$MAIN_DIR/render/skin/r3d_skin_light.c
-$MAIN_DIR/anim/anim_binding.c
 $MAIN_DIR/asset/asset_pack.c
 $MAIN_DIR/asset/asset_table.c
 $MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_directory.c
 $MAIN_DIR/asset/asset_store.c
 $MAIN_DIR/asset/asset_store_file.c
-$MAIN_DIR/render/r3d_lit_mesh.c
-$MAIN_DIR/render/render_view.c
-$MAIN_DIR/render/raster.c
-$MAIN_DIR/render/raster_split.c
-$MAIN_DIR/render/raster_show.c
-$MAIN_DIR/render/raster_motion.c
-$MAIN_DIR/render/raster_meshlets.c
-$MAIN_DIR/render/r3d_pipeline.c
-$MAIN_DIR/render/upscale.c
-$MAIN_DIR/render/resolution/resolution.c
-$MAIN_DIR/render/context/render_context.c
-$MAIN_DIR/render/r3d_span.c
-$MAIN_DIR/scene/camera/camera.c
-$MAIN_DIR/scene/scene.c
-$MAIN_DIR/scene/scene_animation.c
-$MAIN_DIR/scene/scene_light.c
-$MAIN_DIR/scene/scene_asset.c
-$MAIN_DIR/scene/scene_draw.c
-$MAIN_DIR/scene/scene_shell.c
 $MAIN_DIR/input/mapping/orbit_motion_touch.c
-$MAIN_DIR/services/tune.c
+$MAIN_DIR/core/tune.c
+$MAIN_DIR/console/console_tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/console/verbs/console_tone.c
 $MAIN_DIR/console/verbs/console_melody.c
 $MAIN_DIR/console/console_frame_request.c
+$MAIN_DIR/console/verbs/console_sound_views.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/shell/ui/ui_launcher.c
 $MAIN_DIR/shell/ui/ui_launcher_draw.c
@@ -201,11 +179,13 @@ $MAIN_DIR/../tools/gen/draw_palette_gen.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
 "
 
+# shellcheck source=../tools/build/renderer.sh
+. "$LAUNCHER_DIR/tools/build/renderer.sh"
 # shellcheck source=../tools/build/ui_sources.sh
 . "$LAUNCHER_DIR/tools/build/ui_sources.sh"
-for ui_source in $UI_SOURCES; do
+for shared_source in $(renderer_sources "$LAUNCHER_DIR") $UI_SOURCES; do
     SOURCES="$SOURCES
-$LAUNCHER_DIR/$ui_source"
+$LAUNCHER_DIR/$shared_source"
 done
 
 # Every package's sources and suites, found the same way (tools/build/packages.sh).
@@ -273,7 +253,7 @@ case "${1:-}" in
     --print-flags)
         printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
             -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") \
-            -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
+            -I "$TEST_DIR" $(testkit_includes "$TEST_DIR/..") -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../tools/gen" -I "$TEST_DIR/../tools/r3d" $HEAP_ARENA_DEFINES \
             -include "$TEST_DIR/timing.h"
@@ -326,11 +306,6 @@ if [ "$BUILD_ONLY" != 1 ]; then
     "$TEST_DIR/check_packages_alone.sh"
     "$TEST_DIR/check_tool_probes.sh"
     "$TEST_DIR/check_inline_owners.sh"
-
-    # The bootloader hook lives outside SOURCES too: a separate header world
-    # entirely, so it gets its own standalone binary rather than joining the
-    # suites above.
-    "$TEST_DIR/check_pmic_cold_boot.sh" --build-dir "$BUILD_DIR"
 fi
 
 # --- incremental build ------------------------------------------------------
@@ -402,9 +377,9 @@ PACKAGE_INC=""
 for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
     PACKAGE_INC="$PACKAGE_INC -I $(native "$include_dir")"
 done
-COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
+COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
-LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -Wl,--wrap=draw_line_ex -pthread -lm"
+LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -Wl,--wrap=job_run_steered -Wl,--wrap=draw_line_ex -pthread -lm"
 
 case "$(uname -s)" in
     MINGW* | MSYS* | CYGWIN*) LDFLAGS="$LDFLAGS -Wl,--wrap=_timespec64_get" ;;
@@ -420,7 +395,7 @@ SU_LIST="$BUILD_DIR/su_sources.txt"
 SU_SOURCES=""
 for f in $SOURCES; do
     case "$f" in
-        "$TEST_DIR"/* | */suite_*.c) SU_SOURCES="$SU_SOURCES $f" ;;
+        "$TEST_DIR"/* | "$LAUNCHER_DIR/packages/testkit/harness"/* | */suite_*.c) SU_SOURCES="$SU_SOURCES $f" ;;
     esac
 done
 printf '%s\n' $SU_SOURCES | sed '/^$/d' | to_native | squash >"$SU_LIST"
@@ -431,6 +406,7 @@ printf '%s\n' $SU_SOURCES | sed '/^$/d' | to_native | squash >"$SU_LIST"
 pairs() { # source-list-file
     sed -e "s|^$LAUNCHER_N/||" -e 's|/|__|g' -e 's|\.c$||' "$1" | paste -d' ' - "$1"
 }
+UNITY_OBJECT=$(printf '%s/packages/testkit/unity/unity.c\n' "$LAUNCHER_N" | pairs /dev/stdin | cut -d' ' -f1)
 OBJ_PAIRS=$(pairs "$SRC_LIST")
 SU_PAIRS=$(pairs "$SU_LIST")
 
@@ -443,6 +419,7 @@ EXPECT_SU="$BUILD_DIR/expected_su.txt"
     printf 'BASE_CFLAGS := %s\n' "$BASE_CFLAGS"
     printf 'TEST_FLAGS := %s %s -include %s/timing.h\n' "$HEAP_ARENA_DEFINES" "$TEST_INC" "$TEST_N"
     printf 'OBJ := %s\nSU := su\n' "$OBJ_DIR"
+    printf 'UNITY_OBJ := $(OBJ)/%s.o\n' "$UNITY_OBJECT"
     printf 'OBJS :='
     printf '%s\n' "$OBJ_PAIRS" | awk '{ printf " $(OBJ)/%s.o", $1 }'
     printf '\nSUOBJS :='
@@ -453,12 +430,12 @@ EXPECT_SU="$BUILD_DIR/expected_su.txt"
         printf "\t@echo \"  CC $(notdir $@)\"\n"
         printf "\t@$(CC) $(CFLAGS) $(TEST_FLAGS) -MMD -MP -c $< -o $@\n"
     }'
-    printf '$(OBJ)/unity.o: %s/framework/unity.c $(OBJ)/flags.stamp\n' "$TEST_N"
+    printf '$(UNITY_OBJ): %s/packages/testkit/unity/unity.c $(OBJ)/flags.stamp\n' "$LAUNCHER_N"
     printf '\t@echo "  CC unity.o"\n'
     printf '\t@$(CC) $(CFLAGS) %s -MMD -MP -c $< -o $@\n' "$COMMON_INC"
-    printf '%s: $(OBJS) $(OBJ)/unity.o $(OBJ)/flags.stamp\n' "$OUT_N"
+    printf '%s: $(OBJS) $(UNITY_OBJ) $(OBJ)/flags.stamp\n' "$OUT_N"
     printf '\t@echo "  LD host_tests"\n'
-    printf '\t@$(CC) $(CFLAGS) $(OBJS) $(OBJ)/unity.o -o $@ %s\n' "$LDFLAGS"
+    printf '\t@$(CC) $(CFLAGS) $(OBJS) $(UNITY_OBJ) -o $@ %s\n' "$LDFLAGS"
     printf '%s\n' "$SU_PAIRS" | awk '{
         printf "$(SU)/%s.o: %s $(SU)/flags.stamp\n", $1, $2
         printf "\t@echo \"  SU $(notdir $@)\"\n"
@@ -489,7 +466,7 @@ prune() { # dir, expected-name-list-file
 }
 {
     printf '%s\n' "$OBJ_PAIRS" | awk '{ print $1 ".o"; print $1 ".d" }'
-    printf '%s\n' unity.o unity.d flags.stamp
+    printf '%s\n' "$UNITY_OBJECT.o" "$UNITY_OBJECT.d" flags.stamp
 } | LC_ALL=C sort >"$EXPECT_OBJ"
 {
     printf '%s\n' "$SU_PAIRS" | awk '{ print $1 ".o"; print $1 ".d"; print $1 ".su" }'

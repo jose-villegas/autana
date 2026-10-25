@@ -52,4 +52,4 @@ without the control losing its press.
 
 - [Scrolling](scrolling.md): when a moving finger is a drag
 - [Scopes](scopes.md): disabling controls
-- [UI Toolkit](../UI-Toolkit.md)
+- [UI Toolkit](README.md)

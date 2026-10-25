@@ -6,7 +6,7 @@ and the title centred in its `accent`.
 
 ## Example
 
-<!-- generated: ui-header-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-header-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A title bar across the top of the canvas, over the screen's rows. */
 #include "ui/ui.h"
@@ -36,7 +36,7 @@ header_example(header_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-header-states sha256=ed1bfa61da1d1459c59c086cca94754bd001c535b0ee7986352ff32d4035e460 -->
@@ -59,4 +59,4 @@ return true.
 
 - [Panel](panel.md)
 - [Text](text.md)
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

@@ -11,7 +11,7 @@
  * never sees its name or the space after it; `args` is only what follows.
  *
  * CONSOLE_VERB() is how a device-only file joins the shared registry before
- * app_main() runs, the same self-registering shape as TUNE() (services/tune.h)
+ * app_main() runs, the same self-registering shape as TUNE() (core/tune.h)
  * and APP_REGISTER() (app.h). Its _Static_assert is the point: a verb whose
  * name plus its longest possible args cannot fit CONSOLE_LINE_MAX would
  * silently truncate on the device and nowhere else, so that mistake is
@@ -24,7 +24,7 @@
 #include <string.h>
 
 #include "app/app_console.h"
-#include "services/tune.h"
+#include "core/tune.h"
 
 /* The longest line any registered verb needs today: "SET " (4) + a
  * TUNE_NAME_MAX-long tunable name + " " (1) + an int32_t's longest text
@@ -95,6 +95,7 @@ typedef struct console_verb {
     const char* name; /* "SCREENSHOT", "SET" */
     console_verb_fn handle;
     struct console_verb* next;
+    int line_max;
 } console_verb_t;
 
 typedef struct {
@@ -105,9 +106,13 @@ typedef struct {
  * A different verb with the same name returns false; re-registering the same object returns true. */
 bool console_register(console_registry_t* registry, console_verb_t* verb);
 
-/* True if `line` matched a registered verb, whatever its handler then did.
- * False, with no handler called, if nothing matched. */
-bool console_registry_handle_line(console_registry_t* registry, const char* line, console_reply_fn reply);
+/* The reader capacity follows the registered verbs, with CONSOLE_LINE_MAX as its floor. */
+int console_registry_line_max(const console_registry_t* registry);
+
+typedef enum { CONSOLE_LINE_UNCLAIMED, CONSOLE_LINE_HANDLED, CONSOLE_LINE_REJECTED } console_line_result_t;
+
+/* Classifies and dispatches a line with one length check. */
+console_line_result_t console_registry_dispatch(console_registry_t* registry, const char* line, console_reply_fn reply);
 
 typedef enum {
     CONSOLE_CLASH_NONE = 0,
@@ -137,17 +142,12 @@ console_registry_t* console_shared(void);
  * sized to `line_max` (console.c), and the verb owns its own copy of the
  * args. Every other verb still sees only lines of CONSOLE_LINE_MAX. */
 #define CONSOLE_VERB_LONG(VERB, longest_args, line_max, function)                                                      \
+    _Static_assert((line_max) >= CONSOLE_LINE_MAX, "verb line limit below console minimum");                           \
     _Static_assert(sizeof(#VERB) + 1 + (longest_args) <= (line_max),                                                   \
                    #VERB " plus its longest args cannot fit " #line_max);                                              \
-    static console_verb_t VERB##_console_verb = {#VERB, (function), NULL};                                             \
+    static console_verb_t VERB##_console_verb = {#VERB, (function), NULL, (line_max)};                                 \
     __attribute__((constructor)) static void VERB##_console_verb_register(void) {                                      \
         console_register(console_shared(), &VERB##_console_verb);                                                      \
     }
 
-#define CONSOLE_VERB(VERB, longest_args, function)                                                                     \
-    _Static_assert(sizeof(#VERB) + 1 + (longest_args) <= CONSOLE_LINE_MAX,                                             \
-                   #VERB " plus its longest args cannot fit CONSOLE_LINE_MAX");                                        \
-    static console_verb_t VERB##_console_verb = {#VERB, (function), NULL};                                             \
-    __attribute__((constructor)) static void VERB##_console_verb_register(void) {                                      \
-        console_register(console_shared(), &VERB##_console_verb);                                                      \
-    }
+#define CONSOLE_VERB(VERB, longest_args, function) CONSOLE_VERB_LONG(VERB, longest_args, CONSOLE_LINE_MAX, function)

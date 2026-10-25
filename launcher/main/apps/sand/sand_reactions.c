@@ -23,6 +23,7 @@
 
 #include <assert.h>
 
+#include "collections/sort.h"
 #include "reaction_doc.h"
 #include "sand_limits.h"
 #include "sand_priv.h"
@@ -87,7 +88,7 @@ static uint8_t pair_bits[MATERIAL_MAX][MATERIAL_MAX];
 
 /* Eligibility depends only on the encoded byte and the const reaction
  * tables, including the lit-fuse and cullet exclusions. */
-static uint32_t percolate_accept_mask[8];
+static uint32_t percolate_accept_mask[BITS32_WORDS(256)];
 
 /* Reads theirs-only bits. Used by try_heat_transform(), step_one_cold_cell(),
  * conduct_heat(). MAT_EMPTY stores theirs-only bits. */
@@ -725,7 +726,7 @@ cell_accepts_percolation(cell_t below) {
 
 static inline bool
 percolate_accepts(cell_t below) {
-    return (percolate_accept_mask[below >> 5] & (UINT32_C(1) << (below & 31U))) != 0;
+    return bits32_get(percolate_accept_mask, below);
 }
 
 /* Fills `open` with the percolation slots that can take water; returns how
@@ -2817,7 +2818,7 @@ build_reaction_tables(void) {
     fill_pair_bits();
     for (unsigned byte = 0; byte < 256U; byte++) {
         if (cell_accepts_percolation((cell_t)byte)) {
-            percolate_accept_mask[byte >> 5] |= UINT32_C(1) << (byte & 31U);
+            bits32_set(percolate_accept_mask, byte);
         }
     }
 
@@ -2987,18 +2988,11 @@ react_entry_key(const uint8_t* entry) {
     return ((unsigned)entry[1] << 8) | entry[0];
 }
 
-static void
-react_sort_row_major(uint8_t* entries, size_t count, size_t size) {
-    uint8_t moving[sizeof(react_cooloff_defer_t)];
-    for (size_t i = 1; i < count; i++) {
-        memcpy(moving, entries + (i * size), size);
-        size_t j = i;
-        while (j > 0 && react_entry_key(entries + ((j - 1) * size)) > react_entry_key(moving)) {
-            memcpy(entries + (j * size), entries + ((j - 1) * size), size);
-            j--;
-        }
-        memcpy(entries + (j * size), moving, size);
-    }
+static int
+react_row_major(const void* a, const void* b) {
+    const unsigned key_a = react_entry_key(a);
+    const unsigned key_b = react_entry_key(b);
+    return (key_a > key_b) - (key_a < key_b);
 }
 
 typedef struct {
@@ -3018,7 +3012,7 @@ react_drain_begin(uint8_t* a, uint8_t* a_count, uint8_t* b, uint8_t* b_count, si
     react_drain_t drain = {{a, b}, {a_count, b_count}, {0, 0}, size};
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
         const unsigned held = *drain.counts[i];
-        react_sort_row_major(drain.entries[i], held, size);
+        sort_insertion(drain.entries[i], held, size, react_row_major);
         sand_reactions_defer_queued[i] += held;
         const unsigned fill_q8 = held * 256U / cap;
         if (fill_q8 > sand_reactions_defer_peak_q8) {

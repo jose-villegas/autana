@@ -9,7 +9,13 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "services/tune.h"
+#include "console/console_tune.h"
+
+#ifndef DEVICE_BUILD
+#include "../cli_examples/tune.c"
+
+#define TEST_THEME_RGB 0x1199C8
+#endif
 
 #define REPLIES_MAX 8
 
@@ -50,7 +56,7 @@ fixture(void) {
 static bool
 say(const char* line) {
     reply_count = 0;
-    return tune_registry_handle_line(&registry, line, collect);
+    return console_tune_line(&registry, line, collect);
 }
 
 static void
@@ -210,15 +216,36 @@ test_a_declared_tunable_is_in_the_shared_registry_before_anything_runs(void) {
     TEST_ASSERT_EQUAL_INT32(5, entry->initial);
 
     const uint32_t before = TUNE_GENERATION(tune_suite);
-    TEST_ASSERT_TRUE(tune_handle_line("SET tune_suite.knob 8", collect));
+    TEST_ASSERT_TRUE(console_tune_line(tune_shared(), "SET tune_suite.knob 8", collect));
     TEST_ASSERT_EQUAL_INT32(8, knob);
     TEST_ASSERT_EQUAL_UINT32(before + 1, TUNE_GENERATION(tune_suite));
-    tune_handle_line("RESET tune_suite.knob", collect);
+    (void)console_tune_line(tune_shared(), "RESET tune_suite.knob", collect);
     TEST_ASSERT_EQUAL_INT32(5, knob);
 }
 
+#ifndef DEVICE_BUILD
+static void
+test_documented_colour_registers_under_its_owner(void) {
+    fixture();
+    const tune_entry_t* entry = tune_find(tune_shared(), "glow.theme_rgb");
+    TEST_ASSERT_NOT_NULL(entry);
+    TEST_ASSERT_EQUAL_INT32(TEST_THEME_RGB, entry->initial);
+    TEST_ASSERT_EQUAL_INT32(TEST_THEME_RGB, theme_rgb);
+    TEST_ASSERT_TRUE(console_tune_line(tune_shared(), "SET glow.theme_rgb 0x1000000", collect));
+    TEST_ASSERT_EQUAL_INT32(TEST_THEME_RGB, theme_rgb);
+    TEST_ASSERT_EQUAL_STRING("TUNE_ERR range glow.theme_rgb takes 0..16777215", replies[0]);
+    TEST_ASSERT_TRUE(console_tune_line(tune_shared(), "SET glow.theme_rgb 0", collect));
+    TEST_ASSERT_EQUAL_INT32(0, theme_rgb);
+    TEST_ASSERT_TRUE(console_tune_line(tune_shared(), "RESET glow.theme_rgb", collect));
+    TEST_ASSERT_EQUAL_INT32(TEST_THEME_RGB, theme_rgb);
+}
+#endif
+
 void
 suite_tune(void) {
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_documented_colour_registers_under_its_owner);
+#endif
     RUN_TEST(test_set_changes_the_variable_and_says_so);
     RUN_TEST(test_get_reads_without_changing_anything);
     RUN_TEST(test_a_generation_counts_its_own_owners_changes_and_no_others);

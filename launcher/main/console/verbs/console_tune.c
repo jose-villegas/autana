@@ -1,13 +1,11 @@
 /*
  * console_tune (SET, GET, RESET, TUNE): verbs that do nothing themselves.
- * Each reassembles its line and hands it to services/tune, which stays the one
- * place owning that protocol's registry and replies. Development builds
- * only; see console.h.
+ * Each reassembles its line and hands it to console/console_tune, against
+ * the shared registry. Development builds only; see console.h.
  */
+#include "console/console_tune.h"
 #include "console/console.h"
 #include "console/console_verbs.h"
-
-#include "services/tune.h"
 
 #include <stdio.h>
 
@@ -22,7 +20,7 @@ forward_to_tune(const char* verb, const char* args, console_reply_fn reply) {
         console_reply_stdio("TUNE_ERR line-too-long");
         return;
     }
-    tune_handle_line(line, console_reply_stdio);
+    (void)console_tune_line(tune_shared(), line, console_reply_stdio);
 }
 
 static void

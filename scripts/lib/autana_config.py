@@ -22,14 +22,17 @@ BOARD_ENV = "_AUTANA_BOARD"
 TOKEN_ENV = "_AUTANA_DEVICE_LOCK_TOKEN"
 # The autana command a running process is for; device.py names its lock by it.
 COMMAND_ENV = "_AUTANA_COMMAND"
-BUILD_SERIAL_ENV = "_AUTANA_BUILD_SERIAL"
-BUILD_SERIAL_DIRECTORY = "build-serial"
+HEAVY_TOKEN_ENV = "_AUTANA_HEAVY_LOCK_TOKEN"
+WAIT_ENV = "_AUTANA_WAIT_S"
+OWNER_ENV = "_AUTANA_OWNER"
+DEFAULT_LOCK_WAIT_SECONDS = 600
+HEAVY_WAIT_PREFIX = "heavy wait_seconds="
 BUILD_PRIORITY_ENV = "_AUTANA_BUILD_PRIORITY"
 BUILD_PRIORITY_BELOW_NORMAL = "below_normal"
 BUILD_LATEST_START_ENV = "_AUTANA_BUILD_LATEST_START"
 
 # Exit statuses beyond 0, 1 and 2: 75 (EX_TEMPFAIL) is a board that was busy
-# or not handed back, 130 is Ctrl+C. Documented in docs/tools/Device-Lock.md.
+# or not handed back, 130 is Ctrl+C. Documented in docs/cli/Device-Lock.md.
 EXIT_BUSY = 75
 EXIT_INTERRUPTED = 130
 
@@ -42,6 +45,8 @@ KEYS = {
                      "in the checkout"),
     "lock_hook": (str, "shell command run on every device lock event; fires only for "
                        "commands run from a checkout whose file sets it"),
+    "session_vars": (list, "environment variables, after AUTANA_SESSION, whose value "
+                           "labels the session a lookup is logged under; first set wins"),
 }
 
 

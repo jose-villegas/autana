@@ -13,7 +13,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import log
-from .geometry import closest_point_on_triangles, triangle_areas
+from .geometry import closest_point_on_triangles, distinct_corners, triangle_areas
 from .import_settings import LIGHT_FIELDS
 
 
@@ -32,7 +32,8 @@ def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
         keep[sel] = alpha / len(bary) >= keep_alpha
     keep &= triangle_areas(p, tri_v) > 1e-6
     log(f"masked/degenerate triangles dropped: {np.count_nonzero(~keep)}")
-    return tri_v[keep], tri_t[keep], tri_m[keep]
+    result = (tri_v[keep], tri_t[keep], tri_m[keep])
+    return (*result, keep)
 
 
 def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
@@ -414,12 +415,13 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
     return out
 
 
-def merge_matching_colours(pos, rgb, tris, weld_grid, step=6):
+def merge_matching_colours(pos, rgb, tris, weld_grid, step=6, *, labels):
     """A crease splits a vertex so each side can be lit on its own normal;
     where both sides came out the same colour, one vertex is enough. Positions
     are one where they round alike on a grid of `weld_grid` per unit."""
     key = np.concatenate([np.round(pos * weld_grid), rgb // step], axis=1).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     tris = inverse.reshape(-1)[tris]
-    tris = tris[(tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2])]
-    return pos[first], rgb[first], tris
+    keep = distinct_corners(tris)
+    result = (pos[first], rgb[first], tris[keep])
+    return (*result, np.asarray(labels)[keep])

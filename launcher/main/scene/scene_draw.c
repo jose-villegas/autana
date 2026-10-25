@@ -5,6 +5,8 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include "esp_log.h"
+
 #include "render/context/render_context.h"
 #include "scene/scene_internal.h"
 
@@ -20,6 +22,7 @@ static bool paused;
 static bool expanded;
 static bool stepped;  /* scene_render() ran, and scene_compose() has not yet */
 static bool rendered; /* it drew, and scene_compose() has not upscaled it */
+static bool refused;  /* the context had no scratch for the active camera, logged once */
 
 bool
 scene_has_active_camera(void) {
@@ -41,6 +44,7 @@ scene_activate(scene_t* scene, const char* camera) {
     }
     active = (active_t){scene, index};
     render_context_forget(render_context_main());
+    refused = false;
     rendered = false;
     stepped = false;
     expanded = false;
@@ -81,28 +85,13 @@ active_camera(void) {
     return &active.scene->cameras[active.camera];
 }
 
-/* Rebuilds the model of each renderer whose entity moved. */
-static void
-update_placements(scene_t* scene) {
-    for (int i = 0; i < scene->renderer_count; i++) {
-        scene_renderer_t* r = &scene->renderers[i];
-        if ((scene->flags[r->entity] & SCENE_FLAG_DIRTY) != 0) {
-            r->model = transformf_compute_matrix(&scene->locals[r->entity]);
-            r->placed = !scene_transform_is_identity(&r->model);
-        }
-    }
-    for (int i = 0; i < scene->asset.entity_count; i++) {
-        scene->flags[i] &= (uint8_t)~SCENE_FLAG_DIRTY;
-    }
-}
-
 /* The enabled renderers, as the raster draws them. */
 static int
 fill_instances(scene_t* scene) {
     int count = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
-        if ((scene->flags[r->entity] & SCENE_FLAG_ENABLED) != 0) {
+        if ((scene->flags[r->entity] & SCENE_FLAG_ACTIVE) != 0) {
             scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL};
         }
     }
@@ -113,7 +102,7 @@ static void
 draw_active(int quarter, int width, int height) {
     scene_t* scene = active.scene;
     const scene_camera_t* camera = active_camera();
-    update_placements(scene);
+    scene_resolve(scene);
     const int count = fill_instances(scene);
     if (count == 0) {
         return;
@@ -121,6 +110,10 @@ draw_active(int quarter, int width, int height) {
     const render_view_t view =
         camera_view(&camera->lens, &scene->locals[camera->entity], (viewport_t){width, height, quarter});
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
+    if (!rendered && !refused) {
+        ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->id);
+        refused = true;
+    }
 }
 
 void

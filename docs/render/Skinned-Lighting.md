@@ -59,7 +59,7 @@ light setter or a light entity's `SCENE_FLAG_SKIN_DIRTY` rebuilds the table.
 
 Each joint's normal palette entry is the inverse-transpose of
 `entity_world * joint_palette`: its cofactor matrix over its determinant. So
-non-uniform scale and reflections set by `scene_set_transform()` light
+non-uniform scale and reflections set by `scene_entity_set_local()` light
 correctly. A vertex blends its joints' entries by weight, like its position.
 
 Blending two rotations shortens the normal where joints mix (second tile), and
@@ -91,36 +91,29 @@ The import's [`[skin].lighting`](Mesh-Import.md#skin-lighting) picks the mode.
 | renormalised | the same after `mathf_rsqrt_approx()` | about 40 cycles above direct | normal length must not change brightness |
 | table | one bilinear lookup in a shared irradiance table | flat, about 860 cycles, plus a rebuild per light change | many lights: it costs more than direct up to the current `R3D_SKIN_LIGHT_MAX`, with the crossover estimated near 10 lights; scenes with many or dynamic lights are not yet measured |
 
-Skinning alone is the first bar; an exact float evaluation costs about
-5,700 cycles per vertex ([every kernel](#board-measurement)):
+![Mean byte error against cycles per vertex for each lighting mode, the one, two and four light points joined](images/skin-light-board.png)
 
-<!-- generated: skin-light-chart check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
-```mermaid
-xychart-beta horizontal
-    title "Cycles per vertex: mode and light count"
-    x-axis ["skin only", "direct, 1 light", "direct, 2 lights", "direct, 4 lights", "renormalised, 1 light", "renormalised, 2 lights", "renormalised, 4 lights", "table, 1 light", "table, 2 lights", "table, 4 lights"]
-    y-axis "cycles" 0 --> 900
-    bar [353, 640, 664, 709, 680, 703, 748, 865, 861, 861]
-```
-<!-- /generated: skin-light-chart -->
+An exact float evaluation costs about 5,700 cycles per vertex ([every kernel](#board-measurement)).
 
-Byte errors are 0-255 steps of a light channel against float lighting of the
-packed normals. Board measurements, from the [capture](#board-measurement):
+Errors are 0-255 steps of a light channel against float lighting of the
+packed normals; the plot shows the mean. Board measurements, from the [capture](#board-measurement):
 
 <!-- generated: skin-light-modes check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
-Build `8d0d33ecbdb9-diag`.
+Skinning alone costs 353 cycles per vertex.
 
-| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| direct | 1 | 640.495 | 8 | 0.246612 | — | 5104.000 | 3744 | 1024 | 124 |
-| direct | 2 | 663.714 | 9 | 0.264905 | — | 5104.000 | 3744 | 1024 | 124 |
-| direct | 4 | 708.679 | 13 | 0.353997 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 1 | 680.045 | 1 | 0.184282 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 2 | 702.716 | 1 | 0.185637 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 4 | 748.143 | 2 | 0.180217 | — | 5104.000 | 3744 | 1024 | 124 |
-| table | 1 | 865.099 | 7 | 0.455623 | 32224.000 | 5104.000 | 3744 | 2048 | 124 |
-| table | 2 | 861.271 | 4 | 0.360095 | 44202.000 | 5104.000 | 3744 | 2048 | 124 |
-| table | 4 | 861.167 | 4 | 0.380420 | 67278.000 | 5104.000 | 3744 | 2048 | 124 |
+In every row the normal palette costs 5104 cycles to build per frame, the renderer holds 3744 bytes of internal memory and the scene holds 124 bytes of PSRAM.
+
+| Mode | Lights | Worst byte error | Table build cycles / light change | Scene internal bytes |
+|---|---:|---:|---:|---:|
+| direct | 1 | 8 | — | 1024 |
+| direct | 2 | 9 | — | 1024 |
+| direct | 4 | 13 | — | 1024 |
+| renormalised | 1 | 1 | — | 1024 |
+| renormalised | 2 | 1 | — | 1024 |
+| renormalised | 4 | 2 | — | 1024 |
+| table | 1 | 7 | 32224 | 2048 |
+| table | 2 | 4 | 44202 | 2048 |
+| table | 4 | 4 | 67278 | 2048 |
 <!-- /generated: skin-light-modes -->
 
 ### The table

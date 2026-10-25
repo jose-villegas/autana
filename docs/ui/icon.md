@@ -6,7 +6,7 @@ draws a one-bit icon filling `r` in the text ink, or `fallback` centred when
 
 ## Example
 
-<!-- generated: ui-icon-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-icon-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Icons in the text colour: a pack icon with a short fallback, and the system check. */
 #include "ui/controls/ui_icons.h"
@@ -42,7 +42,7 @@ icon_example(icon_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-icon-states sha256=68d87458f70b64f1d1ea3202c11334a071418376b44aa4085d2cb479979f526d -->
@@ -67,4 +67,4 @@ return true.
 
 - [Button with an icon](button_icon.md)
 - [Tile with an icon](tile_icon.md)
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

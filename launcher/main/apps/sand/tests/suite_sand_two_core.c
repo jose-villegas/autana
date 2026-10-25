@@ -7,9 +7,12 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
+#include "hash/name_hash.h"
+
 #include "suites.h"
 #include "unity.h"
 
+#include "collections/strbuf.h"
 #include "core/job.h"
 #include "core/timing.h"
 
@@ -60,16 +63,6 @@ static void
 tc_collect_core1(void) {
     for (int tries = 0; tries < 20 && !job_wait(100); tries++) {}
     TEST_ASSERT_TRUE_MESSAGE(job_wait(0), "a core-1 lane never came back");
-}
-
-static uint32_t
-tc_hash(const uint8_t* bytes, size_t n) {
-    uint32_t h = 2166136261U;
-    for (size_t i = 0; i < n; i++) {
-        h ^= bytes[i];
-        h *= 16777619U;
-    }
-    return h;
 }
 
 static void
@@ -173,8 +166,8 @@ tc_run_scene_and_hash(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed,
     tc_collect_core1(); /* restore the shipped default */
     tc_assert_split_arm_swept_split(swept_before, two_core);
 
-    uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
-    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1U;
+    uint32_t h = name_hash_n(cells, (size_t)TC_W * (size_t)TC_H);
+    h ^= name_hash_n(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1U;
 
     free(scratch);
     free(cells);
@@ -227,8 +220,8 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
     (void)sand_chunk_share_for_test(share);
     tc_collect_core1();
 
-    uint32_t result = tc_hash(cells, (size_t)w * (size_t)h);
-    result ^= tc_hash(blocks, (size_t)block_cols * (size_t)block_rows) * 0x9E3779B1U;
+    uint32_t result = name_hash_n(cells, (size_t)w * (size_t)h);
+    result ^= name_hash_n(blocks, (size_t)block_cols * (size_t)block_rows) * 0x9E3779B1U;
     free(scratch);
     free(cells);
     free(blocks);
@@ -439,7 +432,7 @@ tc_run_gas_and_hash(uint32_t seed, int gx, int gy, int dx, int dy) {
     }
     sand_set_two_core_step(false);
 
-    const uint32_t hash = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
+    const uint32_t hash = name_hash_n(cells, (size_t)TC_W * (size_t)TC_H);
     free(scratch);
     free(cells);
     return hash;
@@ -996,8 +989,8 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
             sand_step(&two_core_s, gxs[g], gys[g], 0);
             sand_set_two_core_step(false);
 
-            const uint32_t serial_hash = tc_hash(serial_cells, (size_t)TC_W * (size_t)TC_H);
-            const uint32_t two_core_hash = tc_hash(two_core_cells, (size_t)TC_W * (size_t)TC_H);
+            const uint32_t serial_hash = name_hash_n(serial_cells, (size_t)TC_W * (size_t)TC_H);
+            const uint32_t two_core_hash = name_hash_n(two_core_cells, (size_t)TC_W * (size_t)TC_H);
 
             free(scratch);
             free(serial_cells);
@@ -1027,8 +1020,8 @@ tc_assert_quality_fall_matches_serial(int w, int h, int phase, int x, int y, int
     tc_board_step(serial, gx, gy, false);
     tc_board_step(split, gx, gy, true);
 
-    const uint32_t serial_hash = tc_hash(serial->cells, (size_t)w * (size_t)h);
-    const uint32_t split_hash = tc_hash(split->cells, (size_t)w * (size_t)h);
+    const uint32_t serial_hash = name_hash_n(serial->cells, (size_t)w * (size_t)h);
+    const uint32_t split_hash = name_hash_n(split->cells, (size_t)w * (size_t)h);
     tc_board_close(serial);
     tc_board_close(split);
 
@@ -1166,13 +1159,13 @@ tc_body_breaks_at(cell_t fill, material_id_t material, int tx, int ty, bool two_
  * upstream chunk of a border first for the other half. */
 static void
 tc_assert_no_direction_breaks_a_body(cell_t fill, material_id_t material, bool two_core, const char* what) {
-    char broke[128] = "";
-    size_t used = 0;
+    char broke[128];
+    strbuf_t text = strbuf_make(broke, sizeof broke);
 
     for (size_t g = 0; g < sizeof tc_ring / sizeof tc_ring[0]; g++) {
         const int at = tc_body_breaks_at(fill, material, tc_ring[g][0], tc_ring[g][1], two_core);
-        if (at >= 0 && used < sizeof broke - 1) {
-            used += (size_t)snprintf(broke + used, sizeof broke - used, " %d,%d@%d", tc_ring[g][0], tc_ring[g][1], at);
+        if (at >= 0) {
+            strbuf_appendf(&text, " %d,%d@%d", tc_ring[g][0], tc_ring[g][1], at);
         }
     }
 
@@ -1293,8 +1286,8 @@ static void
 test_a_split_rising_body_of_gas_opens_no_gap(void) {
     static const int pulls[][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
     const int side = tc_force_square_side(TC_W, TC_H);
-    char parted[128] = "";
-    size_t used = 0;
+    char parted[128];
+    strbuf_t text = strbuf_make(parted, sizeof parted);
 
     /* The run has to cross a border, and its shaft has to clear the walls. */
     TEST_ASSERT_TRUE(2 * side < TC_W);
@@ -1302,9 +1295,8 @@ test_a_split_rising_body_of_gas_opens_no_gap(void) {
 
     for (size_t i = 0; i < sizeof pulls / sizeof pulls[0]; i++) {
         for (int phase = 0; phase < TC_SHAFT_PHASES; phase++) {
-            if (!tc_gas_shaft_matches_serial(side, pulls[i][0], pulls[i][1], phase) && used < sizeof parted - 1) {
-                used +=
-                    (size_t)snprintf(parted + used, sizeof parted - used, " %d,%d@%d", pulls[i][0], pulls[i][1], phase);
+            if (!tc_gas_shaft_matches_serial(side, pulls[i][0], pulls[i][1], phase)) {
+                strbuf_appendf(&text, " %d,%d@%d", pulls[i][0], pulls[i][1], phase);
             }
         }
     }
@@ -1493,8 +1485,8 @@ tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int 
     sand_set_two_core_step(false);
     tc_collect_core1();
 
-    uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
-    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1U;
+    uint32_t h = name_hash_n(cells, (size_t)TC_W * (size_t)TC_H);
+    h ^= name_hash_n(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1U;
 
     if (out_n != NULL) {
         int n = 0;
@@ -1812,7 +1804,7 @@ rc_run_fire_chain_and_hash(int w, int h, uint32_t seed, int steps, bool two_core
     sand_set_two_core_step(false);
     tc_collect_core1();
 
-    const uint32_t hash = tc_hash(cells, (size_t)w * (size_t)h);
+    const uint32_t hash = name_hash_n(cells, (size_t)w * (size_t)h);
     free(scratch);
     free(cells);
     return hash;
@@ -1899,9 +1891,9 @@ rc_run_reaction_heavy_and_hash(int w, int h, uint32_t seed, int steps, bool two_
     sand_set_two_core_step(false);
     tc_collect_core1();
 
-    uint32_t hash = tc_hash(cells, (size_t)w * (size_t)h);
-    hash ^= tc_hash(block_state, blocks) * 0x9E3779B1U;
-    hash ^= tc_hash(rows, (size_t)h) * 0x85EBCA6BU;
+    uint32_t hash = name_hash_n(cells, (size_t)w * (size_t)h);
+    hash ^= name_hash_n(block_state, blocks) * 0x9E3779B1U;
+    hash ^= name_hash_n(rows, (size_t)h) * 0x85EBCA6BU;
     free(scratch);
     free(rows);
     free(block_state);
@@ -1957,7 +1949,7 @@ rc_run_deferred_storm_and_hash(sand_chunk_pass_driver_t driver) {
     sand_set_two_core_step(false);
     tc_collect_core1();
 
-    const uint32_t hash = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
+    const uint32_t hash = name_hash_n(cells, (size_t)TC_W * (size_t)TC_H);
     free(scratch);
     free(cells);
     return hash;
@@ -2145,8 +2137,8 @@ tc_run_fluids_and_hash(bool two_core, bool with_scratch) {
     }
     sand_set_two_core_step(false);
 
-    uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
-    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1U;
+    uint32_t h = name_hash_n(cells, (size_t)TC_W * (size_t)TC_H);
+    h ^= name_hash_n(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1U;
 
     free(scratch);
     free(stamps);
@@ -2613,7 +2605,7 @@ tc_run_crossflow_and_hash(void) {
         sand_step_liquids(&s, &flow, 0, 1);
     }
 
-    const uint32_t hash = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
+    const uint32_t hash = name_hash_n(cells, (size_t)TC_W * (size_t)TC_H);
     free(cells);
     free(blocks);
     return hash;

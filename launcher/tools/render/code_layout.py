@@ -16,6 +16,7 @@ import subprocess
 import sys
 from collections import Counter, namedtuple
 from pathlib import Path
+from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parents[3]
 LAUNCHER = REPO / "launcher"
@@ -90,12 +91,25 @@ def cache_line_size(build):
     return int(match.group(1))
 
 
-def symbols(nm, elf, functions=None):
-    found = {}
+class Symbol(NamedTuple):
+    address: int
+    name: str
+    size: int | None
+    section: str
+
+
+def symbols(nm, elf, functions=None, *, records=False):
+    found = [] if records else {}
     for line in run(nm, "-n", "-S", str(elf)).splitlines():
         fields = line.split()
         if len(fields) == 4 and (functions is None or fields[3] in functions):
-            found[int(fields[0], 16)] = (fields[3], int(fields[1], 16))
+            record = Symbol(int(fields[0], 16), fields[3], int(fields[1], 16), fields[2])
+            if records:
+                found.append(record)
+            else:
+                found[record.address] = (record.name, record.size)
+        elif records and len(fields) == 3 and (functions is None or fields[2] in functions):
+            found.append(Symbol(int(fields[0], 16), fields[2], None, fields[1]))
     return found
 
 
@@ -125,23 +139,41 @@ def target_of(operands):
     return int(match[1], 16) if match else None
 
 
-# The compiler places a literal pool among the code and jumps over it with a
-# short forward j. objdump decodes the pool's bytes as instructions, and a
-# "branch" among them moves with the addresses the pool holds, not with the
-# code, so it differs from build to build.
-POOL_JUMP_MAX = 32
+XTENSA_LITERAL_BYTES = 4
 
 
 def skip_pools(found, decode_from=None):
-    """The instructions outside any span a short forward j jumps over that
-    nothing outside it branches into: code skipped that way, an else block,
-    is always entered by a branch, and a pool never is. A span entered past
-    its start holds a pool and then code the sweep read out of step, so the
-    pool is dropped and the code decoded again from where it is entered."""
+    """Drop literal targets and skipped pools, decoding code again after each pool."""
+    if not found:
+        return found
+    start = found[0][0]
+    end = found[-1][0] + found[-1][1]
+    pools = set()
+    while True:
+        literals = {target_of(operands) for _, _, mnemonic, operands in found if mnemonic == "l32r"}
+        pending = sorted(address for address in literals
+                         if address is not None and start <= address <= end - XTENSA_LITERAL_BYTES and address not in pools)
+        if not pending:
+            repaired = _skip_jump_pools(found, decode_from)
+            if repaired == found:
+                return found
+            found = repaired
+            continue
+        for address in pending:
+            pools.add(address)
+            resume = address + XTENSA_LITERAL_BYTES
+            prefix = [ins for ins in found if ins[0] + ins[1] <= address]
+            suffix = decode_from(resume) if decode_from else [ins for ins in found if ins[0] >= resume]
+            found = prefix + [ins for ins in suffix if ins[0] < end]
+
+
+def _skip_jump_pools(found, decode_from):
+    """A skipped span with no incoming branch is a pool. An entry past its
+    start marks code decoded out of step after a pool or alignment bytes."""
     spans = []
     for address, size, mnemonic, operands in found:
         target = target_of(operands)
-        if mnemonic == "j" and target is not None and 0 < target - (address + size) <= POOL_JUMP_MAX:
+        if mnemonic == "j" and target is not None and target > address + size:
             spans.append((address + size, target))
 
     def inside(address, span):

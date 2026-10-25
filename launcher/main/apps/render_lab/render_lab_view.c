@@ -1,6 +1,8 @@
 #include "apps/render_lab/render_lab_view.h"
 
-#include "services/tune.h"
+#include <string.h>
+
+#include "core/tune.h"
 
 TUNE_OWNER(render_lab);
 TUNE(render_lab, view, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_COUNT);
@@ -9,7 +11,7 @@ TUNE(render_lab, present, CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_NEAREST, CAMERA
 TUNE(render_lab, small_fill_ceiling, SMALL_FILL_CEILING_SMOOTH, 0, SMALL_FILL_CEILING_MAX);
 TUNE(render_lab, small_fill_gate, SMALL_FILL_GATE_SMOOTH, 0, UINT8_MAX);
 TUNE(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMALL_FILL_STYLE_COUNT - 1);
-TUNE(render_lab, budget, 0, 0, 200);
+TUNE(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
 TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
 TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
 
@@ -39,17 +41,34 @@ render_lab_small_fill(void) {
 }
 
 #if TUNE_ENABLED
-#define SMALL_FILL_PRESET_ROW(name)  SMALL_FILL_##name,
-#define SMALL_FILL_PRESET_NAME(name) #name,
+#define SMALL_FILL_PRESET_ROW(name)   SMALL_FILL_##name,
+#define SMALL_FILL_PRESET_NAME(name)  #name,
+/* A menu label is the preset name with each '_' shown as the separator; its buffer fits a name of only '_'. */
+#define SMALL_FILL_LABEL_SEPARATOR    " - "
+#define SMALL_FILL_PRESET_LABEL(name) char name[sizeof #name * (sizeof SMALL_FILL_LABEL_SEPARATOR - 1)];
 static const small_fill_t small_fill_presets[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_ROW)};
-static const char* const small_fill_names[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_NAME)};
+static const char* const small_fill_preset_names[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_NAME)};
 #define SMALL_FILL_PRESET_COUNT ((int)(sizeof small_fill_presets / sizeof small_fill_presets[0]))
+static char small_fill_labels[SMALL_FILL_PRESET_COUNT][sizeof(union {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_LABEL)})];
+static const char* small_fill_names[SMALL_FILL_PRESET_COUNT];
 static int small_fill_picked;
 
 const char* const*
 render_lab_small_fill_names(int* count) {
+    for (int i = 0; i < SMALL_FILL_PRESET_COUNT && small_fill_names[i] == NULL; i++) {
+        char* label = small_fill_labels[i];
+        for (const char* c = small_fill_preset_names[i]; *c != '\0'; c++) {
+            if (*c == '_') {
+                memcpy(label, SMALL_FILL_LABEL_SEPARATOR, sizeof SMALL_FILL_LABEL_SEPARATOR - 1);
+                label += sizeof SMALL_FILL_LABEL_SEPARATOR - 1;
+            } else {
+                *label++ = *c;
+            }
+        }
+        small_fill_names[i] = small_fill_labels[i];
+    }
     *count = SMALL_FILL_PRESET_COUNT;
-    return small_fill_names;
+    return (const char* const*)small_fill_names;
 }
 
 int
@@ -94,6 +113,13 @@ int
 render_lab_budget_ms(void) {
     return budget;
 }
+
+#if TUNE_ENABLED
+bool
+render_lab_budget_set_ms(int budget_ms) {
+    return tune_set(tune_shared(), budget_tunable.name, budget_ms);
+}
+#endif
 
 int
 render_lab_orbit_ms(void) {

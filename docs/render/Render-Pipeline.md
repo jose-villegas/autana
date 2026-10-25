@@ -164,7 +164,7 @@ no seam opens.
 
 | Reads | Writes | Settings |
 |---|---|---|
-| lit triangles | the variant's mesh | `geometry.simplify`: `dense_edge`, `props`, `props_share`, `seal_seams`, `colour_deviation`; each variant's `triangles` |
+| lit triangles | the variant's mesh | `geometry.simplify`: `dense_edge`, `props`, `props_share`, `seal_seams`, `colour_deviation`; `[objects] overrides`; each variant's `triangles` |
 
 Cost: `simplify` in the bake-steps rows.
 
@@ -247,14 +247,14 @@ clip) into one pack; `launcher/demo/` content ships only where an app's
 
 Cost: not timed in the bake-steps rows.
 
-Reference: [the asset packs](../assets/README.md#packs).
+Reference: [the asset packs](../assets/Building-Packs.md#packs).
 
 ## Every frame, on the board
 
 Solid bars are the shipped frame; hatched bars are what each debug view adds.
 The table under the charts has every stage in ms.
 
-<!-- generated: pipeline-frame-stages sha256=a85a933fcbc6eaf52993bd4e7965cf3df806c953a25272f8df8654e12531ec66 -->
+<!-- generated: pipeline-frame-stages sha256=db43f7ca3a424c91eee2b61f12c3a434fb93e3b5e739c8d97806d9fc9f5d725f -->
 ![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
 
 ![Frame stages with the depth view](../images/render/pipeline-frame-stages.depth.png)
@@ -280,6 +280,7 @@ The table under the charts has every stage in ms.
 | total | 51.23 | 100% | +7.47 | +5.04 | +25.70 | +34.40 |
 
 Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped.
+
 </details>
 <!-- /generated: pipeline-frame-stages -->
 
@@ -334,7 +335,8 @@ list, and the draw reuses it.
 Cost: `r3d.cull` in the frame-stages chart; a predicted size is charged to
 `r3d.census` instead.
 
-Picture: none yet.
+Picture: [the cull view](Mesh-Rendering.md#the-cull-seen), each cluster's
+fate along a camera path.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#one-frame).
 
@@ -399,7 +401,7 @@ Reference: [Mesh-Rendering.md](Mesh-Rendering.md#attachments).
 
 #### View modes
 
-Development builds select depth, tiles, motion or meshlets from the declared
+Development builds select depth, tiles, motion, meshlets or cull from the declared
 view table in `render/context/render_context.c`. Before upscale, the selected
 attachment paints colour from the renderer's maps.
 

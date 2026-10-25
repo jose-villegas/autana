@@ -2,7 +2,7 @@
 
 **Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning, the scene
 animator and skinned-renderer components, and per-renderer lighting (direct
-by default), mode selection from the SKIN entry, SCNE v2 and the clip
+by default), mode selection from the SKIN entry, SCNE v3 and the clip
 picker are implemented; [Skinned Meshes](../render/Skinned-Meshes.md) is
 the user guide. `[A]` marks a proposal of this sketch.
 
@@ -83,12 +83,12 @@ than adding work to the mesh bake. `max_influences` is its parameter until
 the import setting lands with the next rebake of the meshes. The skin is
 planned to move into the mesh bake at that rebake.
 
-TRCK v2 is defined by [Animation tracks](../Animation-Tracks.md#the-pack-entry).
+TRCK v2 is defined by [Animation tracks](../render/Animation-Tracks.md#the-pack-entry).
 Skeleton clips use joint paths from each root joint. SKIN normals hold the
 bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 
-SCNE v2 carries authored skinned-renderer, animator and light rows, plus ambient
-and tone-map settings. [Scene-Files.md](../render/Scene-Files.md#scne-v2)
+SCNE v3 carries authored skinned-renderer, animator and light rows, plus ambient
+and tone-map settings. [Scene-Files.md](../render/Scene-Files.md#scne-v4)
 owns the layout and syntax. SKIN v2 supplies the renderer's lighting mode;
 [lighting modes](../render/Skinned-Lighting.md#lighting-modes) holds costs and
 quality. Runtime lights shade skinned albedo; static renderers keep baked
@@ -102,7 +102,7 @@ The implemented internal types and signatures live in
 [`anim/playback/anim_playhead.h`](../../launcher/main/anim/playback/anim_playhead.h),
 and [`render/skin/r3d_skinning.h`](../../launcher/main/render/skin/r3d_skinning.h).
 Pose sampling preserves unkeyed rest channels.
-Pose blending is in [Animation tracks](../Animation-Tracks.md#scene-playback).
+Pose blending is in [Animation tracks](../render/Animation-Tracks.md#scene-playback).
 CPU skinning uses linear blend skinning<sup>[[57]](../Citations.md#57)</sup>,
 separate influence-count kernels and cluster ranges.
 
@@ -115,14 +115,14 @@ SCNE animator rows create animators; a camera path loads as one. Public
 playback controls are declared in `scene/scene.h`; apps hold entity handles
 and clip indices. The playback query API includes:
 
-```c
+```c fragment
 bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);
 int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
 const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
 ```
 
 An animated scene's picker: a dropdown of clip names (`ui_mu_dropdown`) and a
-blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets,
+blend-time slider (`ui_slider_int`, 0 to 2000 ms), both existing widgets,
 and a console command making the same `scene_animator_play()` call.
 
 ## 5. Where the later pieces plug in

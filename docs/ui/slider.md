@@ -7,7 +7,7 @@ identity and is not drawn.
 
 ## Example
 
-<!-- generated: ui-slider-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-slider-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A slider over a whole-number range: true on a frame it changed the value. */
 #include "ui/ui.h"
@@ -35,7 +35,7 @@ slider_example(slider_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-slider-states sha256=fbf442137102ca1cdc47bf7e801035cda6f6411bd71b51204b78f26e811e67f0 -->
@@ -62,4 +62,4 @@ return true.
 ## See also
 
 - [Panel](panel.md): a captioned slider
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

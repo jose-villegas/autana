@@ -41,6 +41,8 @@ On a development build the BOOT menu has a SMALL FILL dropdown with every
 
 ![The Sponza menu closed, then the SCENE, VARIANT and SMALL FILL lists open](images/scene-menu/scene-menu.png)
 
+![The SMALL FILL list open in landscape](images/scene-menu/small-fill-landscape.png)
+
 The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
 come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
 The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)
@@ -156,7 +158,7 @@ its scene by name rather than through the menu:
 | `autana render scenes` | every scene's key and name, and which one is showing |
 | `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
-| `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
+| `autana tune render_lab.budget <ms>` | dynamic resolution on the scene showing; 0 turns it off, as does the menu's DYNAMIC RES |
 | `autana tune render_lab.orbit_ms <ms>` | turns the Capybara scene's camera once about the capybara every that many milliseconds; 0 stops it |
 
 The Capybara scene's BOOT menu holds the same clip picker: the CLIP
@@ -178,7 +180,7 @@ be checked to have measured the same thing.
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render-lab-sponza-flat.gif` | the flythrough with the fitted flat-shaded bake |
-| `render-lab-capybara.gif` | the capybara's idle, walk, walk_fast and gallop clips in turn, each blended into the next, as the camera turns once around it |
+| `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and, more slowly, back to the first, as the camera turns once around it |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 

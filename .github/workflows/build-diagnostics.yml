@@ -17,11 +17,34 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      build-development: ${{ steps.affected.outputs.build-development }}
+      build-diagnostics: ${{ steps.affected.outputs.build-diagnostics }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job build-development --job build-diagnostics
+
   build-development:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.build-development == 'true') }}
     name: Build (development)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
 
       - uses: ./.github/actions/idf-build
         with:
@@ -30,6 +53,10 @@ jobs:
             ../tools/autana build dev --project ..
             && cd ..
             && python3 launcher/tools/build/memory_map.py --check --require-pin launcher/build.dev
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
 
   # An instrument rather than a gate (see sdkconfig.defaults.diag_perf), so
   # a pull request does not wait on it: main and a manual run build it.
@@ -47,6 +74,8 @@ jobs:
             ../tools/autana build diag --perf-scope --project ..
 
   build-diagnostics:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.build-diagnostics == 'true') }}
     name: Build (diagnostics and complexity gate)
     runs-on: ubuntu-24.04
     steps:
@@ -54,11 +83,15 @@ jobs:
         with:
           submodules: true
 
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/idf-build
         with:
           cache-name: diag
           command: >-
             ../tools/autana build diag --project ..
+            && idf.py -C packages/math/test_apps -D IDF_TARGET=esp32s3 build
             && python "$IDF_PATH/tools/idf_tools.py" install esp-clang
             && cd ..
             && python3 launcher/tools/quality/complexity_gate.py
@@ -67,3 +100,7 @@ jobs:
             && python3 launcher/tools/quality/misra_tidy_gate.py
             && python3 launcher/tools/build/check_no_soft_double.py launcher/build.diag
             && python3 launcher/tools/build/memory_map.py --check --require-pin launcher/build.diag
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}

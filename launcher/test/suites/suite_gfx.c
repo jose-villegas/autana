@@ -19,6 +19,7 @@
 
 #include "perf_budget.h"
 #include "suites.h"
+#include "testkit/bench.h"
 
 #ifdef DEVICE_BUILD
 
@@ -28,7 +29,6 @@
 
 #include "unity.h"
 
-#include "esp_cache.h"
 #include "esp_log.h"
 
 #include "board/board.h"
@@ -887,18 +887,6 @@ static const char* const narrow_present_events[] = {"i_stall_busy", "bubbles_cti
 
 typedef enum { NARROW_AFTER_BAND, NARROW_REPEATED, NARROW_COLD } narrow_setting_t;
 
-extern char _instruction_reserved_start[];
-extern char _instruction_reserved_end[];
-
-static void
-drop_flash_code_from_cache(void) {
-    const uintptr_t line = CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE;
-    const uintptr_t start = (uintptr_t)_instruction_reserved_start & ~(line - 1);
-    const uintptr_t end = ((uintptr_t)_instruction_reserved_end + line - 1) & ~(line - 1);
-    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)start, end - start,
-                                              ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_TYPE_INST));
-}
-
 static void
 count_narrow_presents(const char* scene, narrow_setting_t setting) {
     const int events = (int)(sizeof narrow_present_events / sizeof narrow_present_events[0]);
@@ -915,7 +903,7 @@ count_narrow_presents(const char* scene, narrow_setting_t setting) {
             }
             write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
             if (setting == NARROW_COLD) {
-                drop_flash_code_from_cache();
+                bench_cache_code_cold();
             }
             TEST_ASSERT_TRUE(frame_cost_count_begin(event));
             total_us += time_present();

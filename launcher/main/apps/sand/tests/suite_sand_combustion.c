@@ -22,6 +22,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "hash/name_hash.h"
+
 #include "suites.h"
 #include "unity.h"
 
@@ -706,11 +708,7 @@ burst_board_from_frame(uint8_t fill) {
         sand_step_reactions(&s);
     }
 
-    uint32_t hash = 2166136261U;
-    for (int i = 0; i < BW * BH; i++) {
-        hash ^= cells[i];
-        hash *= 16777619U;
-    }
+    const name_hash_t hash = name_hash_n(cells, BW * BH);
     free(impulses);
     free(cells);
     return hash;

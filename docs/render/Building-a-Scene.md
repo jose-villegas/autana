@@ -100,7 +100,7 @@ intensity = 3.0
 
 The camera object has the lens and, if it flies a glTF animation, the clip:
 its `NAME.anim.toml`, relative to the scene file, and the node that is the
-camera ([Animation-Tracks.md](../Animation-Tracks.md)). A `region` (the box
+camera ([Animation-Tracks.md](Animation-Tracks.md)). A `region` (the box
 region `visibility` culls against) belongs here only when a placed mesh has
 that step:
 
@@ -123,10 +123,10 @@ python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
 This writes `<scene>.<variant>.mesh` for each baked renderer. A mesh without
 `bake = true` can also be imported on its own. Baked `.mesh` entries are
 committed as written and never reformatted. The firmware build writes the
-scene's [pack](../assets/README.md#packs), named after the scene: its
-[scene entry](Scene-Files.md#scne-v2), baked from the scene file, its
+scene's [pack](../assets/Building-Packs.md#packs), named after the scene: its
+[scene entry](Scene-Files.md#scne-v4), baked from the scene file, its
 every mesh, skin, skeleton and clip it names. It flashes the pack with the app
-([assets/README.md](../assets/README.md#flashing)).
+([assets/README.md](../assets/Building-Packs.md#flashing)).
 
 ## 6. Draw it
 
@@ -136,14 +136,16 @@ never calls draw; `frame()` runs after the scene is in the framebuffer and
 draws over it. Entities are found by name once the scene has loaded, so a
 misspelt one is found missing then:
 
+<!-- generated: scene-hall-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Scene: load by name, find an entity and activate the first camera. */
 #include "scene/scene.h"
 
 static scene_t* hall;
 static scene_entity_t statue;
 
 static void
-enter(void) {
+hall_example_start(void) {
     scene_failure_t why;
     hall = scene_load("hall", &why); /* NULL when an entry is missing: `why` names it */
     if (hall != NULL) {
@@ -151,15 +153,11 @@ enter(void) {
         scene_activate(hall, NULL);          /* its first camera */
     }
 }
-
-static void
-frame(uint32_t dt_ms, const input_t* input) {
-    draw_hud();
-}
 ```
+<!-- /generated: scene-hall-example -->
 
 Nothing else: the shell unloads what the app loaded when it exits. To move
-something, `scene_set_transform(hall, statue, &where)`; to hide
+something, `scene_entity_set_local(hall, statue, where)`; to hide
 it, `scene_entity_set_enabled()`. Several scenes may be loaded at once, and
 `scene_activate()` on another's camera changes what is drawn. How a frame is
 ordered against the panel send and the storage behind it are in

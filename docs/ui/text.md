@@ -7,7 +7,7 @@ line clipped to `r`, centred vertically, in the theme's `text` ink.
 
 ## Example
 
-<!-- generated: ui-text-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-text-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Text in a row: a caption at the left, a value at the right, rebuilt each frame. */
 #include <stdio.h>
@@ -42,7 +42,7 @@ text_example(text_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-text-states sha256=278801ef384716567db81384875b98980f0813392e42318471a319b1224ef2ea -->
@@ -66,6 +66,6 @@ return true.
 
 ## See also
 
-- [Text and Fonts](../Text-and-Fonts.md): fonts, scales, text styles
+- [Text and Fonts](../gfx/Text-and-Fonts.md): fonts, scales, text styles
 - [Header](header.md)
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

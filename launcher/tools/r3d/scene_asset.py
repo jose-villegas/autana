@@ -1,4 +1,4 @@
-"""SCNE v2 settings, lights, renderers and animators, validated against the mapped C reader."""
+"""SCNE v4 entities, parents, settings, lights, renderers and animators, validated against the mapped C reader."""
 
 import math
 import pathlib
@@ -22,10 +22,16 @@ LIGHT_KINDS = {"directional": DIRECTIONAL}
 DEFAULT_COLOR = read_define(INTERNAL, "SCENE_LIGHT_COLOR_DEFAULT")
 AMBIENT_NONE = read_define(INTERNAL, "SCENE_AMBIENT_INTENSITY_NONE")
 TONEMAP_NONE = read_define(INTERNAL, "SCENE_TONEMAP_WHITE_NONE")
+COLOUR_SET_OWN = read_define(OWNER, "SCENE_ASSET_COLOUR_SET_OWN")
 DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
+PARENT_ROOT = read_define(OWNER, "SCENE_ASSET_PARENT_ROOT")
+SCALE_TOLERANCE = read_define(OWNER.parents[2] / "packages/math/include/math/linear/transformf.h",
+                              "TRANSFORMF_MATRIX_TOLERANCE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
-PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings")
-HEADER = struct.Struct(f"<{1 + len(PARTS)}H{len(PARTS)}I")
+PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings",
+         "parents")
+ALIGN = 4
+HEADER = struct.Struct(f"<{1 + len(PARTS)}H{-2 * (1 + len(PARTS)) % ALIGN}x{len(PARTS)}I")
 U16_MAX = (1 << 16) - 1
 NAME = struct.Struct(f"<{NAME_BYTES}s")
 TRANSFORM = struct.Struct("<12f")
@@ -35,7 +41,8 @@ LIGHT = struct.Struct("<HBB4f")
 SKINNED_RENDERER = struct.Struct(f"<HH{NAME_BYTES}s{NAME_BYTES}s{NAME_BYTES}s")
 ANIMATOR = struct.Struct("<HHIHBB")
 SETTINGS = struct.Struct("<5f")
-ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, NAME, SETTINGS)
+PARENT = struct.Struct("<H")
+ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, NAME, SETTINGS, PARENT)
 
 
 class SceneError(ValueError):
@@ -67,7 +74,10 @@ def encode(scene, cache=None, offline=False):
     index = {obj.name: i for i, obj in enumerate(objects)}
     rows = {part: [] for part in PARTS}
     rows["names"] = [(field(obj.name, "entity"),) for obj in objects]
-    rows["transforms"] = [(*[x for row in obj.matrix for x in row], *obj.position) for obj in objects]
+    rows["parents"] = [(parent_index(obj, index),) for obj in objects]
+    drawn = {item.object.name for item in scene.renderers}
+    placements = fold_parent_scales(objects, [parent for (parent,) in rows["parents"]], drawn)
+    rows["transforms"] = [(*[x for row in matrix for x in row], *position) for matrix, position in placements]
     for item in scene.renderers:
         obj, mesh = item.object, item.asset_name
         entity = index[obj.name]
@@ -76,7 +86,7 @@ def encode(scene, cache=None, offline=False):
             rows["skinned_renderers"].append((entity, 0, field(mesh, "mesh id"),
                 field(skin, "skin id"), field(skeleton, "skeleton id")))
         else:
-            rows["renderers"].append((entity, 0, field(mesh, "mesh id")))
+            rows["renderers"].append((entity, COLOUR_SET_OWN, field(mesh, "mesh id")))
     for obj in objects:
         entity = index[obj.name]
         animator = getattr(obj, "animator", None)
@@ -100,9 +110,10 @@ def encode(scene, cache=None, offline=False):
                          ambient["intensity"] if ambient else AMBIENT_NONE,
                          TONEMAP_NONE if getattr(scene, "tonemap_white", None) is None else scene.tonemap_white)]
     counts = [len(rows[part]) for part in PARTS]
-    if any(count > U16_MAX for count in counts):
-        raise SceneError("a scene holds at most 65535 rows per part")
+    if any(count > U16_MAX for count in counts) or len(objects) >= PARENT_ROOT:
+        raise SceneError(f"a scene holds at most {U16_MAX} rows per part and {PARENT_ROOT - 1} entities")
     parts = [b"".join(row.pack(*values) for values in rows[part]) for part, row in zip(PARTS, ROWS)]
+    parts = [part + bytes(-len(part) % ALIGN) for part in parts]
     offsets, at = [], HEADER.size
     for part in parts:
         offsets.append(at)
@@ -110,6 +121,58 @@ def encode(scene, cache=None, offline=False):
     entry = HEADER.pack(VERSION, *counts, *offsets) + b"".join(parts)
     decode(entry)
     return entry
+
+
+def parent_index(obj, index):
+    """The parent's entity index, PARENT_ROOT for none; a parent comes before its child."""
+    parent = getattr(obj, "parent", None)
+    if parent is None:
+        return PARENT_ROOT
+    if parent not in index or index[parent] >= index[obj.name]:
+        raise SceneError(f"{obj.name}: parent {parent!r} must be an entity listed before it")
+    if obj.kind in ("camera", "light", "skinned_renderer"):
+        raise SceneError(f"{obj.name}: a {obj.kind} has no parent yet")
+    return index[parent]
+
+
+def column_scales(matrix):
+    return [math.sqrt(sum(matrix[r][c] ** 2 for r in range(3))) for c in range(3)]
+
+
+def scale_is_even(scales):
+    return max(scales) - min(scales) <= SCALE_TOLERANCE * max(scales)
+
+
+def fold_parent_scales(objects, parents, drawn):
+    """Each object's (matrix, position), with a parent's uneven scale moved down into its children.
+
+    A parent keeps an even scale so every world below it is exact; the device refuses one that does not.
+    Folding scale S out of a parent and into each child (S x matrix, S x position) draws the same, while
+    each child stays rotation times scale. A parent that draws, or a child the fold would shear, is refused.
+    """
+    placements = [([list(row) for row in obj.matrix], list(obj.position)) for obj in objects]
+    has_children = {parent for parent in parents if parent != PARENT_ROOT}
+    for entity, obj in enumerate(objects):
+        matrix, _ = placements[entity]
+        scales = column_scales(matrix)
+        if entity not in has_children or scale_is_even(scales):
+            continue
+        if obj.name in drawn:
+            raise SceneError(f"{obj.name}: a parent that draws needs an even scale, the same on every axis")
+        placements[entity] = ([[matrix[r][c] / scales[c] for c in range(3)] for r in range(3)], placements[entity][1])
+        for child, parent in enumerate(parents):
+            if parent != entity:
+                continue
+            child_matrix, child_position = placements[child]
+            child_matrix = [[scales[r] * child_matrix[r][c] for c in range(3)] for r in range(3)]
+            columns = [[child_matrix[r][c] for r in range(3)] for c in range(3)]
+            lengths = column_scales(child_matrix)
+            for a, b in ((0, 1), (0, 2), (1, 2)):
+                if abs(sum(x * y for x, y in zip(columns[a], columns[b]))) > SCALE_TOLERANCE * lengths[a] * lengths[b]:
+                    raise SceneError(f"{obj.name}: its uneven scale would shear its turned child "
+                                     f"{objects[child].name}; scale the child's mesh instead")
+            placements[child] = (child_matrix, [scales[r] * child_position[r] for r in range(3)])
+    return placements
 
 
 def bake(path, cache=None, offline=False):
@@ -141,22 +204,36 @@ def decode(entry):
         raise SceneError(f"version {struct.unpack_from('<H', entry)[0]}, this reads {VERSION}")
     if len(entry) < HEADER.size:
         raise SceneError("shorter than a header")
+    if any(entry[2 * (1 + len(PARTS)):HEADER.size - 4 * len(PARTS)]):
+        raise SceneError("the header's padding is not zero")
     _, *header = HEADER.unpack_from(entry)
     counts, offsets = header[:len(PARTS)], header[len(PARTS):]
-    if counts[0] != counts[1] or counts[-1] != 1:
-        raise SceneError("transforms must match names and settings must have exactly one row")
+    settings, parents = PARTS.index("settings"), PARTS.index("parents")
+    if counts[0] != counts[1] or counts[0] != counts[parents] or counts[settings] != 1 or counts[0] >= PARENT_ROOT:
+        raise SceneError("transforms and parents must match names and settings must have exactly one row")
     rows = {part: section(entry, at, count, row, HEADER.size, part)
             for part, at, count, row in zip(PARTS, offsets, counts, ROWS)}
+    parents_end = offsets[parents] + counts[parents] * PARENT.size
+    if any(entry[parents_end:parents_end + (-parents_end % ALIGN)]):
+        raise SceneError("the padding after the parents is not zero")
     out = {part: [] for part in PARTS if part not in ("names", "transforms")}
     out["entities"] = [{"name": text_at(raw, "entity name"),
-                        "matrix": [list(values[i:i + 3]) for i in range(0, 9, 3)], "position": list(values[9:])}
-                       for (raw,), values in zip(rows["names"], rows["transforms"])]
+                        "matrix": [list(values[i:i + 3]) for i in range(0, 9, 3)], "position": list(values[9:]),
+                        "parent": None if parent == PARENT_ROOT else parent}
+                       for (raw,), values, (parent,) in zip(rows["names"], rows["transforms"], rows["parents"])]
+    for entity, row in enumerate(out["entities"]):
+        if row["parent"] is not None and row["parent"] >= entity:
+            raise SceneError(f"entity {entity}: parent {row['parent']} is not listed before it")
+        if row["parent"] is not None and not scale_is_even(column_scales(out["entities"][row["parent"]]["matrix"])):
+            raise SceneError(f"entity {row['parent']}: a parent's scale is not even")
     for part in ("renderers", "skinned_renderers", "cameras", "lights", "animators"):
         seen = set()
         for row in rows[part]:
             entity = row[0]
             if entity >= counts[0] or (entity in seen and part in ("lights", "animators", "skinned_renderers")):
                 raise SceneError(f"{part}: entity out of range or duplicate")
+            if part in ("cameras", "lights", "skinned_renderers") and out["entities"][entity]["parent"] is not None:
+                raise SceneError(f"{part}: entity {entity} has a parent, which this part does not allow yet")
             seen.add(entity)
             if part == "animators":
                 _, count, first, default, wrap, pad = row
@@ -171,7 +248,7 @@ def decode(entry):
                     raise SceneError("light: invalid kind, colour, intensity or padding")
                 out[part].append(dict(entity=entity, kind=kind, color=values[:3], intensity=values[3]))
                 continue
-            if row[1]:
+            if part != "renderers" and row[1]:
                 raise SceneError(f"{part}: padding out of range")
             if part == "cameras":
                 _, _, tan, near, clear = row
@@ -181,6 +258,8 @@ def decode(entry):
             else:
                 names = ("mesh",) if part == "renderers" else ("mesh", "skin", "skeleton")
                 out[part].append(dict(entity=entity, **{key: text_at(raw, key + " id") for key, raw in zip(names, row[2:])}))
+                if part == "renderers":
+                    out[part][-1]["colour_set"] = row[1]
     out["clips"] = [text_at(raw, "clip id") for (raw,) in rows["clips"]]
     color, intensity, white = rows["settings"][0][:3], *rows["settings"][0][3:]
     if not color_fits(color) or not nonnegative(intensity) or not nonnegative(white):

@@ -1,6 +1,6 @@
 name: Comment Rules
 
-# The comment rules docs/C-Style-Guide.md states, measured rather than
+# The comment rules docs/c-style/README.md states, measured rather than
 # argued: nothing beside code over 500 characters, no file header over 50
 # lines, no comment citing a name, file or heading that is not there,
 # none below apps/ naming an app, nor any engine document, and none
@@ -37,20 +37,45 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      comment-rules: ${{ steps.affected.outputs.comment-rules }}
+      generated-files: ${{ steps.affected.outputs.generated-files }}
+      idf-image: ${{ steps.affected.outputs.idf-image == 'true' || steps.affected.outputs.citations == 'true' }}
+      citations: ${{ steps.affected.outputs.citations }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job comment-rules --job generated-files --job idf-image --job citations
+
   comment-rules:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.comment-rules == 'true') }}
     name: Comment rules and tool tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/host-tools
 
       # Every install comes before the first gate: Tool tests runs after a
       # failed gate too, and a skipped install would fail it for nothing.
       # pyserial among them: the exclusive-open tests drive the real serial library on a pty.
       - name: Workflow gate dependencies
-        run: pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt
+        run: pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
       # meshoptimizer's library from its submodule with the runner's compiler;
@@ -95,6 +120,12 @@ jobs:
         env:
           STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_generated.py
+
+      - name: Every indexed header and module states its purpose
+        run: python3 scripts/docs/code_search.py --check
+
+      - name: Example embedder tests
+        run: python3 -m unittest discover -s scripts/gates/tests -p test_examples_doc.py
 
       - name: Audio tables match the committed capture
         run: python3 launcher/tools/audio/audio_doc_tables.py --check
@@ -164,13 +195,21 @@ jobs:
         if: ${{ !cancelled() }}
         run: sh scripts/run-tool-tests.sh
 
-  # Its own job, beside the others: the sand palette's sweep takes a minute
-  # or two, and every pull request runs it, since the banners are the list.
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
+
+  # The generated-file sweep gets its own runner; banners define its inputs.
   generated-files:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.generated-files == 'true') }}
     name: Every generated file is what its banner's command makes
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/host-tools
 
       - name: Generator dependencies
@@ -181,23 +220,40 @@ jobs:
       - name: Every generated file is what its banner's command makes
         run: python3 scripts/gates/check_generated_files.py
 
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
+
   idf-image:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.idf-image == 'true') }}
     name: Read the IDF pin
     runs-on: ubuntu-24.04
     outputs:
       image: ${{ steps.pin.outputs.image }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - id: pin
         run: echo "image=$(sh scripts/ci/idf_image.sh)" >> "$GITHUB_OUTPUT"
 
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
+
   citations:
+    needs: [inputs, idf-image]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.citations == 'true') }}
     name: Every citation resolves, in this tree or in ESP-IDF
     runs-on: ubuntu-24.04
-    needs: idf-image
     container: ${{ needs.idf-image.outputs.image }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
 
       # The container runs as another user than the checkout's owner.
       - name: Trust the checkout
@@ -213,3 +269,7 @@ jobs:
 
       - name: Every documentation citation resolves
         run: python3 scripts/gates/check_doc_citations.py --require-idf
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}

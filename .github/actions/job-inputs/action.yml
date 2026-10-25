@@ -1,0 +1,26 @@
+name: Job inputs
+description: Arm access times or record the repository inputs a job read.
+inputs:
+  step:
+    description: arm or record
+    required: true
+  job:
+    description: Job id used in the artifact name.
+    default: ${{ github.job }}
+runs:
+  using: composite
+  steps:
+    - id: inputs
+      if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+      shell: bash
+      env:
+        INPUT_STEP: ${{ inputs.step }}
+        INPUT_JOB: ${{ inputs.job }}
+      run: python3 scripts/ci/job_inputs.py "$INPUT_STEP" --job "$INPUT_JOB"
+    - if: ${{ !cancelled() && steps.inputs.outcome == 'success' && inputs.step == 'record' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: ${{ steps.inputs.outputs.name }}
+        path: ${{ steps.inputs.outputs.path }}
+        retention-days: 90
+        if-no-files-found: error

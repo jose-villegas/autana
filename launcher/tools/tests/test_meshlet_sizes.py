@@ -141,8 +141,8 @@ class MeshletReportTests(unittest.TestCase):
     def test_assertion_after_cull_switch_restores_the_prior_setting(self):
         source = (TOOLS.parents[1] / "launcher/main/apps/render_lab/tests/suite_sponza_perf.c").read_text()
         body = source[source.index("static int32_t saved_cull;"):source.index("/* The full bake with motion")]
-        content = (TOOLS.parents[1] / "launcher/main/apps/render_lab/sponza_content.h").read_text()
-        bakes = content[content.index("typedef enum {"):content.index("} sponza_bake_t;") + len("} sponza_bake_t;")]
+        content = (TOOLS.parents[1] / "launcher/main/apps/render_lab/scene_baked_variant.h").read_text()
+        bakes = content.replace("#pragma once", "")
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             probe = work / "probe.c"
@@ -151,20 +151,21 @@ class MeshletReportTests(unittest.TestCase):
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
-#include "services/tune.h"
+#include "core/tune.h"
 TUNE_OWNER(render);
 TUNE(render, cull, 0, 0, 1);
 static jmp_buf aborted;
 static void (*cleanup)(void);
 static void suite_set_test_cleanup(void (*fn)(void)) { cleanup = fn; }
 #define TEST_ASSERT_NOT_NULL(p) do { if ((p) == 0) longjmp(aborted, 1); } while (0)
+#define TEST_ASSERT_TRUE(c) TEST_ASSERT_NOT_NULL(c)
 #define TEST_PASS() ((void)0)
 #define ESP_LOGI(...) ((void)0)
 ''' + bakes + '''
 enum { R3D_PERF_QUARTER_COUNT = 2 };
 typedef struct { int mean_goal_us, p95_ceiling_us; } perf_budget_t;
-static const int meshes[SPONZA_BAKE_COUNT];
-static const char* const sponza_bakes[SPONZA_BAKE_COUNT] = {[0 ... SPONZA_BAKE_COUNT - 1] = "renderer"};
+static const int meshes[SCENE_BAKED_VARIANT_COUNT];
+static const char* const sponza_bakes[SCENE_BAKED_VARIANT_COUNT] = {[0 ... SCENE_BAKED_VARIANT_COUNT - 1] = "renderer"};
 typedef struct { const int* mesh; void* model; } r3d_instance_t;
 static void open_the_meshes(void) {}
 static int showcase_bake(void) { return 0; }
@@ -175,7 +176,7 @@ static void report_frame_cost(const char* label, const char* object_name, const 
 ''' + body + '''
 int main(void) {
     for (int initial = 0; initial <= 1; initial++) {
-        tune_handle_line(initial ? "SET render.cull 1" : "SET render.cull 0", cull_reply);
+        assert(tune_set(tune_shared(), TUNE_NAME(render, cull), initial));
         cleanup = 0;
         if (setjmp(aborted) == 0) {
             test_sponza_frame_cost_along_the_flythrough();
@@ -192,7 +193,7 @@ int main(void) {
             binary = work / "probe.exe"
             main = TOOLS.parents[1] / "launcher/main"
             built = subprocess.run(["gcc", "-std=gnu11", "-I", str(main), "-I", str(TOOLS.parents[1] / "launcher/test/stubs"),
-                                    str(probe), str(main / "services/tune.c"), "-o", str(binary)], capture_output=True, text=True)
+                                    str(probe), str(main / "core/tune.c"), "-o", str(binary)], capture_output=True, text=True)
             self.assertEqual(built.returncode, 0, built.stderr)
             ran = subprocess.run([str(binary)], capture_output=True, text=True)
             self.assertEqual(ran.returncode, 0, ran.stderr)

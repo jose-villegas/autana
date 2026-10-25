@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <float.h>
 #include <math.h>
+#include <stdint.h>
 
 #ifdef __XTENSA__
 #include "sdkconfig.h"
@@ -75,11 +76,13 @@ mathf_div(float a, float b) {
     return a / b;
 }
 
-/* 1 / a for a nonzero a away from float's range limits. The S3's `/` is a
- * libgcc routine of about 56 cycles; its FPU's reciprocal seed and two Newton
- * steps take about 18 and land within one ulp of the quotient, on it 99.9% of
- * the time. CONFIG_MATH_FPU_RECIP enables the seed; without it, division
- * is exact, as on other targets. */
+/* Nonzero inputs away from float range limits; CONFIG_MATH_FPU_RECIP enables the seed. */
+/* For nonzero input a, reciprocal seed y with two Newton corrections. | y = y + y(1 - ay) | signed magnitudes and power-of-two edges */
+
+/* source: Muller et al. 2018 */
+/* exact: y = 1/a */
+/* MATH_FAST_PATH(mathf_recip_f, div_recip_f, MATHF_RECIP_ULP_LIMIT) */
+
 static inline float
 mathf_recip(float a) {
 #if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
@@ -104,6 +107,12 @@ mathf_recip(float a) {
 #define MATHF_NLERP_ULP_LIMIT             2
 
 /* One correction serves callers that accept the relative error limit for positive normal inputs. */
+/* For positive input v, reciprocal-root seed y with one Newton correction. | y = y(3/2 - (v/2)y^2) | all mantissas in [1,4), normal exponent strides and edges */
+
+/* source: Muller et al. 2018 */
+/* exact: y = 1/\sqrt{v} */
+/* MATH_FAST_PATH(mathf_rsqrt_approx_f, div_rsqrt_f, MATHF_RSQRT_APPROX_RELATIVE_LIMIT) */
+
 static inline __attribute__((always_inline)) float
 mathf_rsqrt_approx(float value) {
 #if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
@@ -116,6 +125,12 @@ mathf_rsqrt_approx(float value) {
 }
 
 /* Subnormal squared lengths retain the 1 / sqrtf path. On the board +inf gives NaN, outside normalize's domain. */
+/* For positive input v, reciprocal-root seed y with two Newton corrections. | y = y + (y/2)(1 - vy^2) | all mantissas in [1,4), normal exponent strides and edges */
+
+/* source: Muller et al. 2018 */
+/* exact: y = 1/\sqrt{v} */
+/* MATH_FAST_PATH(mathf_rsqrt_f, div_rsqrt_f, MATHF_RSQRT_ULP_LIMIT) */
+
 static inline __attribute__((always_inline)) float
 mathf_rsqrt(float value) {
 #if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
@@ -183,9 +198,52 @@ mathf_max(float a, float b) {
     return a < b ? b : a;
 }
 
+/* Reciprocal and product rounding must leave the floor within one integer. */
+#define MATHF_REPEAT_FAST_QUOTIENT 0x1p22F
+_Static_assert((MATHF_RECIP_ULP_LIMIT + 0.5F) * MATHF_REPEAT_FAST_QUOTIENT * FLT_EPSILON < 1.0F,
+               "repeat quotient guard exceeds the reciprocal error bound");
+
+/* For input v and positive period len, reciprocal quotient and fused remainder r, with range fallback. | r = fma(-floor(v/len), len, v) | signed float bit patterns, quotient guard and endpoint edges */
+
+/* Exactness for the floor quotient follows from 0 <= r < len. */
+/* source: Muller et al. 2018 */
+/* exact: r = v - \lfloor v/len \rfloor len */
+/* MATH_FAST_PATH(wrap_f, wrap_fmodf_f, MATHF_WRAP_ULP_LIMIT=0 ulp) */
+
 static inline float
 mathf_repeat(float v, float len) {
     assert(len > 0.0F);
+    if (v >= 0.0F && v < len) {
+        return v;
+    }
+    /* QEMU's msub.s rounds the product, so the fused remainder is not exact there. */
+#if !defined(__XTENSA__) || CONFIG_MATH_FPU_FUSED_MADD
+    const float reciprocal = mathf_recip(len);
+    const float quotient = v * reciprocal;
+    if (fabsf(quotient) < MATHF_REPEAT_FAST_QUOTIENT && len <= FLT_MAX) {
+        float q = (float)(int32_t)quotient;
+        if (q > quotient) {
+            q -= 1.0F;
+        }
+        /* For the correct floor, fmaf rounds v - q*len once: the exact fmodf
+         * remainder for v >= 0, or the same rounding as len - |fmodf| for v < 0. */
+        float rem = fmaf(-q, len, v);
+        if (rem < 0.0F) {
+            rem = fmaf(-(q - 1.0F), len, v);
+        } else if (rem >= len) {
+            rem = fmaf(-(q + 1.0F), len, v);
+            /* A negative correction means the remainder rounded onto the excluded endpoint. */
+            if (rem < 0.0F) {
+                return 0.0F;
+            }
+        }
+        /* fmodf preserves the dividend's sign on exact multiples. */
+        if (rem == 0.0F) {
+            return copysignf(0.0F, v);
+        }
+        return rem < len ? rem : 0.0F;
+    }
+#endif
     float r = fmodf(v, len);
     if (r < 0.0F) {
         r += len;

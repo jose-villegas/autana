@@ -42,7 +42,7 @@
 #include "gfx/present/gfx_test.h"
 #include "test_anim_tracks.h"
 #include "test_asset_dir.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #endif
 
 /* The panel these numbers are laid out for, spelled out so a wrong
@@ -710,12 +710,12 @@ test_the_far_swell_ends_where_the_flat_lines_begin(void) {
         }
         TEST_ASSERT_TRUE(line->count >= 2);
         const boot_anim_far_sample_t* run = &boot_anim_far_samples[line->first];
-        TEST_ASSERT_EQUAL_INT32(boot_anim_far_chord(mathi_max(edge, line->c), line->c), run[0].s);
+        TEST_ASSERT_EQUAL_INT32(mathi_half_chord(mathi_max(edge, line->c), line->c), run[0].s);
         for (int k = 1; k < line->count; k++) {
             TEST_ASSERT_TRUE(run[k].s > run[k - 1].s);
             TEST_ASSERT_TRUE(run[k].swell_gain <= run[k - 1].swell_gain);
         }
-        TEST_ASSERT_EQUAL_INT32(boot_anim_far_chord(BOOT_ANIM_FAR_SWELL_FADE_Q12, line->c), run[line->count - 1].s);
+        TEST_ASSERT_EQUAL_INT32(mathi_half_chord(BOOT_ANIM_FAR_SWELL_FADE_Q12, line->c), run[line->count - 1].s);
         TEST_ASSERT_EQUAL_UINT16(0, run[line->count - 1].swell_gain);
     }
     for (int n = 0; n < BOOT_ANIM_AXIS_FAR_SAMPLES; n++) {
@@ -733,7 +733,7 @@ test_the_far_chord_is_the_floor_of_the_true_half_chord(void) {
         for (int n = 0; n < BOOT_ANIM_FAR_LINES; n++) {
             const int32_t c = boot_anim_far_lines[n].c;
             const int64_t h = ((int64_t)r * r) - ((int64_t)c * c);
-            const int64_t half = boot_anim_far_chord(r, c);
+            const int64_t half = mathi_half_chord(r, c);
             if (h <= 0) {
                 TEST_ASSERT_EQUAL_INT64(0, half);
                 continue;

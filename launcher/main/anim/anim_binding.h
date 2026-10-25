@@ -30,7 +30,7 @@ typedef struct {
 } anim_component_ref_t;
 
 typedef struct {
-    const char* name;
+    name_hash_t name;
     const anim_component_ref_t* components;
     uint8_t component_count;
     uint8_t* dirty;

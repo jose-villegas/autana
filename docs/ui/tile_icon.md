@@ -7,7 +7,7 @@ picture of the choice. A `NULL` icon is `ui_tile()`.
 
 ## Example
 
-<!-- generated: ui-tile-icon-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-tile-icon-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A tile with an icon above its label, standing for one setting: tapping it
  * flips whether it is selected. */
@@ -41,7 +41,7 @@ tile_icon_example(tile_icon_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-tile-icon-states sha256=f9ab109fc1d3d6787ace48ff642d7f003d1a77442c6803829444e893f850fd8e -->
@@ -72,4 +72,4 @@ return true.
 
 - [Tile](tile.md)
 - [Icon](icon.md)
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

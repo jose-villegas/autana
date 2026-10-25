@@ -1,7 +1,7 @@
 # Writing a Test
 
 How to make code testable, what to test, the conventions every suite follows,
-and the steps to add one. Back to the [Testing Guide](../Testing-Guide.md).
+and the steps to add one. Back to the [Testing Guide](README.md).
 
 The framework is Unity (ThrowTheSwitch's C library). The host runner uses a vendored copy, the device the one ESP-IDF
 bundles. Same API, so suites do not care which they build against.
@@ -64,10 +64,11 @@ it.
 
 ### Pass time in, never read a clock
 
+<!-- generated: declaration-touch-fsm-update check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-void touch_fsm_update(touch_fsm_t *fsm, bool have_point,
-                      int x, int y, int64_t now_us);
+void touch_fsm_update(touch_fsm_t* fsm, bool have_point, vec2i_t point, int64_t now_us);
 ```
+<!-- /generated: declaration-touch-fsm-update -->
 
 Taking `now_us` instead of calling `timing_now_us()` lets a test assert a 60 ms
 debounce instantly, and build sequences (a dropout mid-touch) that are awkward
@@ -76,10 +77,11 @@ a parameter.
 
 ### Pass the environment in
 
+<!-- generated: declaration-gesture-is-home-swipe check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-bool gesture_is_home_swipe(const input_t *input, gesture_edge_t edge,
-                           int screen_w, int screen_h);
+bool gesture_is_home_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h);
 ```
+<!-- /generated: declaration-gesture-is-home-swipe -->
 
 It takes the edge and both screen sizes instead of including `gfx.h`, so it
 links against nothing and tests at any resolution, even one no real panel has.
@@ -101,42 +103,60 @@ around every test (`display_restore_system_state()` in its `setUp`/`tearDown`);
 a test that times a present pins its clock with `panel_clock_pin()`. The host
 runner has no panel and does neither.
 
-Put the *why* in the assertion message, not a comment. It is what a reader
-sees at the moment of failure:
-
-```c
-TEST_ASSERT_FALSE_MESSAGE(second.pressed,
-    "an edge must be consumed by the frame that reads it");
-```
+Put the *why* in the assertion message, as the edge-consumption assertion
+in the suite below does: the message is what a reader sees at failure.
 
 ## A minimal suite
 
-A trimmed real one, `launcher/test/suites/suite_button_fsm.c`:
+This real suite, [`launcher/test/testing_examples/minimal_suite.c`](../../launcher/test/testing_examples/minimal_suite.c), runs
+through [`launcher/test/suites/suite_testing_examples.c`](../../launcher/test/suites/suite_testing_examples.c):
 
+<!-- generated: testing-minimal-suite-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* A real button suite feeds samples with an explicit clock. */
 #include "suites.h"
 #include "unity.h"
+
 #include "input/buttons/button_fsm.h"
 
 static button_fsm_t b;
 static int64_t now;
 
-static void fixture(void) { button_fsm_reset(&b); now = 1000000; }
-
-static void test_a_held_press_is_reported_once(void) {
-    fixture();
-    /* ...feed samples with advancing `now`... */
-    TEST_ASSERT_TRUE_MESSAGE(button_fsm_take_pressed(&b), "a level held past the debounce window must produce a press");
+static void
+fixture(void) {
+    button_fsm_reset(&b);
+    now = BUTTON_DEBOUNCE_US;
 }
 
-void run_button_fsm_suite(void) { RUN_TEST(test_a_held_press_is_reported_once); }
-SUITE_REGISTER(run_button_fsm_suite);
+static void
+test_a_held_press_is_reported_once(void) {
+    fixture();
+    button_fsm_update(&b, false, now);
+    button_fsm_update(&b, true, ++now);
+    now += BUTTON_DEBOUNCE_US;
+    button_fsm_update(&b, true, now);
+    TEST_ASSERT_TRUE_MESSAGE(button_fsm_take_pressed(&b), "a level held past the debounce window must produce a press");
+    button_fsm_update(&b, true, ++now);
+    TEST_ASSERT_FALSE_MESSAGE(button_fsm_take_pressed(&b), "an edge must be consumed by the frame that reads it");
+}
+
+void
+run_minimal_example_suite(void) {
+    RUN_TEST(test_a_held_press_is_reported_once);
+}
+
+SUITE_REGISTER(run_minimal_example_suite);
 ```
+<!-- /generated: testing-minimal-suite-example -->
 
 The module under test (`input/buttons/button_fsm.c`) is ordinary firmware source next
 to its neighbours; only the suite is auto-discovered. Run it with
-`launcher/test/run_tests.sh` (host) or `autana suite run_button_fsm_suite`
-(board). See [Building-an-App.md](../Building-an-App.md) for app layout.
+`launcher/test/run_tests.sh` (host) or `autana suite run_minimal_example_suite`
+(board). See [Building-an-App.md](../firmware/Building-an-App.md) for app layout.
+
+Package suites include `testkit/suite.h` for registration and `testkit/cleanup.h`
+for deferred fixture cleanup. Engine-only runner features live in `suites.h`.
+Use `ESP_PLATFORM` for hardware guards inside packages.
 
 ## Adding a suite
 
@@ -154,9 +174,9 @@ to its neighbours; only the suite is auto-discovered. Run it with
 3. **Register it from inside itself:** `SUITE_REGISTER(run_<name>_suite);`.
    - Nothing else lists it: no `suites.h` entry, no call in `host_main.c` or `selftest.c`.
    - Both runners discover `suite_*.c`, so it joins the full scope and runs alone with `autana suite run_<name>_suite`.
-   - If a perf capture needs it, declare it in `launcher/test/scope_perf.cmake` (engine suite) or the app's `scope_perf.cmake`, with every other source the run links. See [scoped builds](../Build-Variants.md#a-diagnostics-build-can-be-scoped).
+   - If a perf capture needs it, declare it in `launcher/test/scope_perf.cmake` (engine suite) or the app's `scope_perf.cmake`, with every other source the run links. See [scoped builds](../tools/Build-Variants.md#a-diagnostics-build-can-be-scoped).
 4. **Name any pack it reads.** A suite that reads a pack from the tree (`asset_store_pack()`, directly or via `scene_load()`) adds `SUITE_READS(run_<name>_suite, SPONZA_SCENE);` beside its registration. The host run fails when a suite reads a pack it did not name.
-5. **Guard hardware with `#ifdef DEVICE_BUILD`,** the `RUN_TEST` line included. A portable suite can have a device-only section: `suite_job.c` runs every test on both and fences the one assertion that holds only on a host, where a job runs inline instead of on a second core.
+5. **Guard hardware with `#ifdef ESP_PLATFORM` in packages or `#ifdef DEVICE_BUILD` in engine suites,** the `RUN_TEST` line included. A portable suite can have a device-only section: `suite_job.c` runs every test on both and fences the one assertion that holds only on a host, where a job runs inline instead of on a second core.
 6. **Keep big fixtures off `.bss`** (below).
 7. **Stick to ISO C.** The host runner compiles with `-std=c11`, which on glibc hides POSIX-only functions (`strnlen`, `strdup`) that a Windows toolchain declares unconditionally. Suites must build on both.
 8. **On the device, avoid the [two traps](Device-Tests.md#two-device-only-traps)** (64-bit asserts, logging after the assert).
@@ -219,5 +239,5 @@ Portable suites reach the rest by including the headers directly:
 
 ## Related
 
-- [`Building-an-App.md`](../Building-an-App.md): the app folder layout app suites live in.
+- [`Building-an-App.md`](../firmware/Building-an-App.md): the app folder layout app suites live in.
 - [`notes/README.md`](../notes/README.md): the hardware constraints behind device-only tests.

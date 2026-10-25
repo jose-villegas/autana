@@ -1,3 +1,4 @@
+"""device.py: interpreter choice, serial open and port guards, waits, records and captures."""
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import port_guard
 import ast
@@ -36,11 +37,13 @@ import autana_config
 
 # A board is named by its USB serial number; COM5 is where it enumerates.
 BOARD = "90:70:69:FE:A3:08"
+EXAMPLE_PREFIX = "EXAMPLE"
 
 
 def mock_store(token="token"):
     store = mock.Mock()
     store.root = Path(os.environ["_AUTANA_DEVICE_LOCK_ROOT"])
+    store.key_root.side_effect = lambda board: device_lock.heavy_root() if board == device_lock.HEAVY else store.root
     store.acquire.return_value = device_lock.Held({"token": token, "acquired_at": 1000.0})
     return store
 
@@ -695,6 +698,93 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(status, 0)
         printed.assert_called_once_with("EXAMPLE status=ok\nEXAMPLE_END")
 
+    def test_exchange_long_reply_uses_idle_time_and_parses_each_line_once(self):
+        payload = f"{EXAMPLE_PREFIX} sample ".encode() + b"x" * 100 + b"\n"
+        transcript = f"{EXAMPLE_PREFIX}_BEGIN\n".encode() + payload * 12000 + f"{EXAMPLE_PREFIX}_END\n".encode()
+        chunks = [transcript[i:i + 4096] for i in range(0, len(transcript), 4096)]
+        connection = FakeConnection(chunks)
+        clock = [0.0]
+        original_read = connection.read
+
+        def read(size):
+            clock[0] += 0.1
+            return original_read(size)
+
+        with mock.patch.object(connection, "read", side_effect=read), \
+             mock.patch.object(device.time, "monotonic", side_effect=lambda: clock[0]), \
+             mock.patch.object(device, "replies_to", wraps=device.replies_to) as parsed:
+            found, complete, _ = device.exchange(connection, EXAMPLE_PREFIX.lower(), EXAMPLE_PREFIX,
+                                               [f"{EXAMPLE_PREFIX}_END", f"{EXAMPLE_PREFIX}_ERR"], 3.0)
+        self.assertTrue(complete)
+        self.assertEqual(found, transcript.decode().splitlines())
+        self.assertGreater(clock[0], 3.0)
+        self.assertEqual(sum(len(call.args[0]) for call in parsed.call_args_list), len(transcript))
+
+    def test_exchange_caps_active_replies_and_does_not_extend_for_unrelated_logs(self):
+        for payload, expected_seconds in ((f"{EXAMPLE_PREFIX} sample\n".encode(), 5.0), (b"I (1) shell: frame\n", 3.0)):
+            with self.subTest(payload=payload):
+                connection = FakeConnection([payload] * 20)
+                clock = [0.0]
+                original_read = connection.read
+
+                def read(size):
+                    clock[0] += 1.0
+                    return original_read(size)
+
+                with mock.patch.object(connection, "read", side_effect=read), \
+                     mock.patch.object(device.time, "monotonic", side_effect=lambda: clock[0]), \
+                     mock.patch.object(device, "EXCHANGE_MAX_SECONDS", 5.0):
+                    _, complete, _ = device.exchange(connection, EXAMPLE_PREFIX.lower(), EXAMPLE_PREFIX,
+                                                   [f"{EXAMPLE_PREFIX}_END", f"{EXAMPLE_PREFIX}_ERR"], 3.0)
+                self.assertFalse(complete)
+                self.assertEqual(clock[0], expected_seconds)
+
+    def test_exchange_partial_reply_returns_cutoff(self):
+        with mock.patch.object(device, "open_when_free", return_value=FakeConnection()):
+            found, complete, cut_off = device.exchange(FakeConnection([b"EXAMPLE partial"]),
+                "example", "EXAMPLE", ["EXAMPLE_END", "EXAMPLE_ERR"], 0.001)
+        self.assertEqual([], found)
+        self.assertFalse(complete)
+        self.assertTrue(cut_off)
+
+    def test_send_partial_reply_contracts(self):
+        for optional in (False, True):
+            for framed in (False, True):
+                with self.subTest(optional=optional, framed=framed):
+                    args = self.send_args("example", reply="EXAMPLE", seconds=0.001, optional=optional,
+                        until=["EXAMPLE_END", "EXAMPLE_ERR"] if framed else ["EXAMPLE"])
+                    if optional and not framed:
+                        self.assertEqual(0, self.send_response([b"EXAMPLE partial"], args)[0])
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "reply cut off"):
+                            self.send_response([b"EXAMPLE partial"], args)
+        args = self.send_args("example", reply="EXAMPLE", until=["EXAMPLE_END"], seconds=0.001, optional=True)
+        self.assertEqual(0, self.send_response([b"unrelated partial"], args)[0])
+
+    def test_exchange_renews_only_for_complete_reply_lines(self):
+        for payload in (b"EXAMPLE partial", b"I (1) shell: mentions EXAMPLE inside a log\n",
+                        b"NOTEXAMPLE value\n"):
+            with self.subTest(payload=payload):
+                clock = [0.0]
+                connection = FakeConnection([payload] * 20)
+                original_read = connection.read
+
+                def read(size):
+                    clock[0] += 1.0
+                    return original_read(size)
+
+                with mock.patch.object(connection, "read", side_effect=read), \
+                     mock.patch.object(device.time, "monotonic", side_effect=lambda: clock[0]):
+                    device.exchange(connection, "example", "EXAMPLE", ["EXAMPLE_END"], 3.0)
+                self.assertEqual(3.0, clock[0])
+
+    def test_send_optional_rejects_a_reply_without_its_end(self):
+        with self.assertRaisesRegex(RuntimeError, "reply cut off"):
+            self.send_response([b"EXAMPLE_BEGIN\n", b"EXAMPLE partial"],
+                               self.send_args("example", reply="EXAMPLE",
+                                              until=["EXAMPLE_END", "EXAMPLE_ERR"],
+                                              seconds=0.01, optional=True))
+
     def test_send_forwards_an_app_command_and_fails_on_its_own_err_line(self):
         status, connection, printed = self.send_response([b"EXAMPLE_ERR not running\n"],
                                                           self.send_args("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], optional=True))
@@ -759,11 +849,41 @@ class DeviceTests(unittest.TestCase):
         store.reserve_human.return_value = ("id", False)
         with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
                 mock.patch.object(device_lock.getpass, "getuser", return_value="sam"), \
-                mock.patch.object(device_lock.socket, "gethostname", return_value="devbox"):
+                mock.patch.object(device_lock, "host_identity", return_value="devbox"):
             self.assertEqual(device.main(["--board", BOARD, "hand-to-human",
                                           "--note", "check cable"]), 0)
         store.reserve_human.assert_called_once_with(
             BOARD, f"sam@devbox:{os.getpid()}", "check cable", wait=600, on_wait=mock.ANY)
+
+
+class TakeOwnerTests(unittest.TestCase):
+    def test_take_status_names_bound_child_and_timed_hold_keeps_owner(self):
+        with tempfile.TemporaryDirectory() as root, subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL) as child:
+            try:
+                with mock.patch.dict(os.environ, {"_AUTANA_DEVICE_LOCK_ROOT": root}), \
+                        mock.patch.object(device, "plugged_boards", return_value=[]):
+                    store = device_lock.LockStore(root)
+                    owner = device_lock.default_owner()
+                    for flags, expected in ((["--until-released", "--pid", str(child.pid)],
+                                             owner.rsplit(":", 1)[0] + f":{child.pid}"),
+                                            ([], owner)):
+                        with self.subTest(flags=flags), contextlib.redirect_stdout(io.StringIO()) as output:
+                            self.assertEqual(device.main(["--board", BOARD, "--owner", owner,
+                                                          "take", *flags, "bench"]), 0)
+                        token = output.getvalue().strip()
+                        try:
+                            self.assertEqual(store.status(BOARD)["lock"]["owner"], expected)
+                            with contextlib.redirect_stdout(io.StringIO()) as status:
+                                self.assertEqual(device.main(["--board", BOARD, "status"]), 0)
+                            self.assertIn(expected, status.getvalue())
+                        finally:
+                            store.release(BOARD, token)
+            finally:
+                child.kill()
+                child.wait()
 
 
 class RemovedParameterTests(unittest.TestCase):
@@ -1194,7 +1314,7 @@ class PreparedSnapshotTests(unittest.TestCase):
 
 class BuildWorktreeTests(unittest.TestCase):
     """build_worktree(), behind `autana build`: the build half of a flash,
-    touching no board and no lock."""
+    touching no board and holding heavy only."""
 
     def main(self, variant, flags=(), run=None, build_paths=False):
         with tempfile.TemporaryDirectory() as directory:
@@ -1205,14 +1325,11 @@ class BuildWorktreeTests(unittest.TestCase):
             with mock.patch.object(device, "run_to_end",
                                    side_effect=run or (lambda command, lost=None, **options:
                                                        calls.append((command, lost, options)))), \
-                 mock.patch.object(device, "board_for_lock", side_effect=AssertionError("board")), \
-                 mock.patch.object(device.device_lock, "LockStore",
-                                   side_effect=AssertionError("lock")), \
-                 mock.patch.object(device, "HeldLock", side_effect=AssertionError("held")):
+                 mock.patch.object(device, "board_for_lock", side_effect=AssertionError("board")):
                 code = device.build_worktree(worktree, variant, flags)
         return code, calls
 
-    def test_builds_the_variant_with_no_board_and_no_lock(self):
+    def test_builds_the_variant_with_no_board_and_heavy_lock(self):
         code, calls = self.main("diag", ["--perf-scope"], build_paths=True)
         self.assertEqual(code, 0)
         (command, lost, options), = calls
@@ -1220,7 +1337,8 @@ class BuildWorktreeTests(unittest.TestCase):
                          ["build.sh", "--diag", "--perf-scope"])
         self.assertEqual(command[-2], "--prepared-build")
         self.assertEqual(Path(command[-1]).name, device.BUILD_DIRS["diag"])
-        self.assertIsNone(lost)
+        self.assertIsNotNone(lost)
+        self.assertIn(autana_config.HEAVY_TOKEN_ENV, options["env"])
         self.assertNotIn(autana_config.TOKEN_ENV, options["env"])
 
     def test_an_old_project_gets_no_prepared_build_option(self):
@@ -1350,6 +1468,19 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
             self.assertIn("PASS: 1  FAIL: 1", text)
             self.assertIn("test_two", text)
 
+    def test_the_run_ends_with_the_report_path_and_its_errors(self):
+        connection = FakeConnection([
+            b":1:test_one:PASS\nE (7) sand: bad grain\nRUNSUITE_COMPLETE name=sand found=1\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "records"
+            with recorded_serial(connection, root),                  mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+                device.run_suite(suite_args(), mock_store(), BOARD)
+        lines = out.getvalue().splitlines()
+        report = [i for i, line in enumerate(lines) if line.startswith("report: ")]
+        self.assertEqual(len(report), 1)
+        self.assertIn("E (7) sand: bad grain", lines[report[0] + 1])
+        self.assertGreater(report[0], max(i for i, line in enumerate(lines) if "capture ended" in line) - 1)
+
     def test_a_broken_reporter_step_does_not_fail_the_suite_command(self):
         connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()
@@ -1470,7 +1601,7 @@ class ConsoleSetupTests(unittest.TestCase):
 
     def test_partial_reply_is_never_retried(self):
         connection = FakeConnection()
-        with mock.patch.object(device, "exchange", return_value=(["SOUND pending"], False)) as exchange:
+        with mock.patch.object(device, "exchange", return_value=(["SOUND pending"], False, True)) as exchange:
             with self.assertRaises(device.ConsoleRefused):
                 device.apply_console_lines(connection, ["sound stop all", "sound play tap loop"])
         self.assertEqual(exchange.call_count, 1)
@@ -1478,9 +1609,9 @@ class ConsoleSetupTests(unittest.TestCase):
     def test_silence_restarts_the_sequence(self):
         connection = FakeConnection()
         with mock.patch.object(device, "exchange", side_effect=[
-                ([device.reply_prefix("sound stop all")[1][0]], True), ([], False),
-                ([device.reply_prefix("sound stop all")[1][0]], True),
-                ([device.reply_prefix("sound play tap loop")[1][0]], True)]) as exchange, mock.patch("builtins.print"):
+                ([device.reply_prefix("sound stop all")[1][0]], True, False), ([], False, False),
+                ([device.reply_prefix("sound stop all")[1][0]], True, False),
+                ([device.reply_prefix("sound play tap loop")[1][0]], True, False)]) as exchange, mock.patch("builtins.print"):
             device.apply_console_lines(connection, ["sound stop all", "sound play tap loop"])
         self.assertEqual([call.args[1] for call in exchange.call_args_list],
                          ["sound stop all", "sound play tap loop"] * 2)
@@ -3035,7 +3166,9 @@ class SelftestTests(unittest.TestCase):
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"), \
                  mock.patch.object(device, "reset_and_capture", wraps=device.reset_and_capture) as captured:
-                if capture is not None:
+                if isinstance(capture, Exception):
+                    captured.side_effect = capture
+                elif capture is not None:
                     captured.side_effect = lambda path, *unused: (Path(path).write_bytes(capture[0]), capture)[1]
                 try:
                     code = device.selftest(args, store, BOARD)
@@ -3045,6 +3178,15 @@ class SelftestTests(unittest.TestCase):
                                              for path in root.rglob("*.md"))
                 entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
         return code, calls, entry
+
+    def test_capture_error_without_log_skips_report(self):
+        with contextlib.redirect_stderr(io.StringIO()) as errors:
+            code, calls, entry = self.run_selftest(capture=RuntimeError("USB disconnected"))
+        self.assertIsInstance(code, RuntimeError)
+        self.assertIn("report skipped: capture log was not created", errors.getvalue())
+        self.assertNotIn("No such file", errors.getvalue())
+        self.assertEqual(calls["reports"], "")
+        self.assertEqual(entry["error"], "USB disconnected")
 
     def test_incomplete_selftest_fails_and_keeps_the_report(self):
         for reason in ("idle", "timeout"):
@@ -3129,11 +3271,8 @@ class TouchPointTests(unittest.TestCase):
     def coordinate_png(width, height):
         """Each pixel's red and green are its own x and y."""
         import screenshot as screenshot_tool
-        raw = b"".join(b"\0" + b"".join(bytes((x, y, 0)) for x in range(width)) for y in range(height))
-        return (b"\x89PNG\r\n\x1a\n"
-                + screenshot_tool._png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-                + screenshot_tool._png_chunk(b"IDAT", zlib.compress(raw))
-                + screenshot_tool._png_chunk(b"IEND", b""))
+        return screenshot_tool.encode_png(width, height, (b"".join(bytes((x, y, 0)) for x in range(width))
+                                                          for y in range(height)))
 
     @staticmethod
     def pixels(png):

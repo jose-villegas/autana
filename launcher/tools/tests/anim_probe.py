@@ -36,7 +36,7 @@ from anim import track_host, tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
 
-NODES = ("lamp", "arm", "hand")
+NODES = ("camera", "arm", "hand")
 REFERENCE = b"TREF"
 REFERENCE_HEADER = struct.Struct("<II")
 REFERENCE_ROW = struct.Struct("<HBxf4f")
@@ -65,11 +65,11 @@ def channel(node, path, times, values, interpolation="LINEAR", pointer=None):
 
 def probe_channels(index):
     """The clip's channels, with each node at index[name] in the file."""
-    lamp, arm, hand = (index[n] for n in NODES)
+    camera, arm, hand = (index[n] for n in NODES)
     return [
-        channel(lamp, "translation", [0.0, 1.0, 2.5], [(0, 0, 0), (4, -2, 1), (1, 1, 1)]),
+        channel(camera, "translation", [0.0, 1.0, 2.5], [(0, 0, 0), (4, -2, 1), (1, 1, 1)]),
         # The second pair of keys is in the opposite hemisphere: slerp must take the short way.
-        channel(lamp, "rotation", [0.0, 1.0, 2.5],
+        channel(camera, "rotation", [0.0, 1.0, 2.5],
                 [turn((0, 1, 0), 10), turn((0, 1, 0), 170), tuple(-x for x in turn((0, 1, 0), 200))]),
         channel(arm, "scale", [0.0, 1.0, 2.0], [(1, 1, 1), (2, 3, 4), (0.5, 0.5, 0.5)], "STEP"),
         # These start late and end last: the clip is 3 s, and these run 0.5 to 3.
@@ -93,7 +93,7 @@ def probe_glb(reordered=False):
         order.reverse()
     index = {name: order.index(name) for name in NODES}
     cameras = [{"name": "lens", "type": "perspective", "perspective": {"yfov": 0.6, "znear": 0.1}}]
-    return gltf_write.build_glb([dict(name=n, **({"camera": 0} if n == "lamp" else {})) for n in order],
+    return gltf_write.build_glb([dict(name=n, **({"camera": 0} if n == "camera" else {})) for n in order],
                                 [{"name": "clip", "channels": probe_channels(index)}], cameras=cameras)
 
 
