@@ -353,7 +353,7 @@ tags_clear(const raster_attachment_t* self, const raster_t* raster, void* pixels
 
 static bool
 instance_writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
-    out->span = raster_attachment_tag32;
+    out->span = raster_attachment_tag;
     out->value = INSTANCE_BASE * (uint32_t)(instance + 1);
     out->step = self->state != NULL ? R3D_SPAN_STEP_TRIANGLE : R3D_SPAN_STEP_NONE;
     return true;

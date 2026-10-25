@@ -93,21 +93,22 @@ raster_picture(const raster_t* raster) {
     return picture;
 }
 
-/* A tag writer for an attachment of `type`: one body, a name per width. */
-#define RASTER_ATTACHMENT_TAG(name, type)                                                                              \
-    void name(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,        \
-              int32_t z, int32_t dz) {                                                                                 \
-        const uint16_t* depth = gfx_render_target_depth(rows, y);                                                      \
-        type* tag = gfx_render_target_row(rows, writer->attachment, y);                                                \
-        for (int x = x_first; x <= x_last; x++, z += dz) {                                                             \
-            if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {                                                        \
-                tag[x] = (type)writer->value;                                                                          \
-            }                                                                                                          \
-        }                                                                                                              \
+void
+raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
+                      int32_t z, int32_t dz) {
+    const uint16_t* depth = gfx_render_target_depth(rows, y);
+    void* tag = gfx_render_target_row(rows, writer->attachment, y);
+    const bool wide = rows->attachment[writer->attachment].bytes_per_pixel == (int)sizeof(uint32_t);
+    for (int x = x_first; x <= x_last; x++, z += dz) {
+        if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
+            if (wide) {
+                ((uint32_t*)tag)[x] = writer->value;
+            } else {
+                ((uint16_t*)tag)[x] = (uint16_t)writer->value;
+            }
+        }
     }
-
-RASTER_ATTACHMENT_TAG(raster_attachment_tag, uint16_t)
-RASTER_ATTACHMENT_TAG(raster_attachment_tag32, uint32_t)
+}
 
 gfx_color_t*
 raster_color(const raster_t* raster) {

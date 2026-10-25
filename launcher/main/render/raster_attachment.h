@@ -39,10 +39,7 @@ struct raster_attachment {
     void* state; /* the attachment's own */
 };
 
-/* A span writer for a 16-bit attachment: the pixels this triangle won,
- * those whose depth is the one it filled with, take `writer->value`. */
+/* A span writer for a 16- or 32-bit attachment: the pixels this triangle
+ * won, those whose depth is the one it filled with, take `writer->value`. */
 void raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first,
                            int x_last, int32_t z, int32_t dz);
-/* The same for a 32-bit attachment. */
-void raster_attachment_tag32(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first,
-                             int x_last, int32_t z, int32_t dz);
