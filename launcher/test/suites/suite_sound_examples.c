@@ -135,12 +135,45 @@ render(void) {
     rig->now_ms += BLOCK;
 }
 
+/* Renders blocks until one has a nonzero sample; the amplifier may warm up first. */
+static bool
+heard(void) {
+    for (int block = 0; block < 4; block++) {
+        render();
+        for (int i = 0; i < BLOCK; i++) {
+            if (rig->out[i] != 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static void
+test_a_stop_queued_with_the_play_is_never_heard(void) {
+    begin();
+    sound_t tap;
+    TEST_ASSERT_EQUAL(ASSET_OK, sound_open(&rig->pack, "tap", &tap));
+    fake_stop(fake_play(&tap, NULL));
+    TEST_ASSERT_FALSE(heard());
+}
+
+static void
+test_the_same_play_without_the_stop_is_heard(void) {
+    begin();
+    sound_t tap;
+    TEST_ASSERT_EQUAL(ASSET_OK, sound_open(&rig->pack, "tap", &tap));
+    (void)fake_play(&tap, NULL);
+    TEST_ASSERT_TRUE(heard());
+}
+
 static void
 test_music_loops_and_the_bus_gain_scales_it(void) {
     begin();
     music_example_t s = {0};
     music_example_start(&s, &rig->pack);
     TEST_ASSERT_NOT_EQUAL(0, s.voice.id);
+    TEST_ASSERT_TRUE(heard());
     TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_MUSIC.id, rig->control.voices[0].opts.bus.id);
     for (int i = 0; i < 3; i++) {
         render(); /* a one-shot of 8 frames would have ended in the first block */
@@ -163,6 +196,7 @@ test_own_sound_uses_the_system_bus_and_a_missing_one_is_silent(void) {
     own_example_open(&s, "myapp");
     TEST_ASSERT_TRUE(s.have_click);
     own_example_confirm(&s);
+    TEST_ASSERT_TRUE(heard());
     TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_SYSTEM.id, rig->control.voices[0].opts.bus.id);
     own_example_t missing = {0};
     rig->pack_missing = true;
@@ -173,6 +207,8 @@ test_own_sound_uses_the_system_bus_and_a_missing_one_is_silent(void) {
 
 void
 suite_sound_examples(void) {
+    RUN_TEST(test_a_stop_queued_with_the_play_is_never_heard);
+    RUN_TEST(test_the_same_play_without_the_stop_is_heard);
     RUN_TEST(test_music_loops_and_the_bus_gain_scales_it);
     RUN_TEST(test_own_sound_uses_the_system_bus_and_a_missing_one_is_silent);
 }
