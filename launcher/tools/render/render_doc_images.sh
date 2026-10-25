@@ -240,7 +240,8 @@ run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input
 run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/gravity_figures.log"
 # --orphans scans this runner: gravity-trust.png, gravity-bias.gif
-run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \n    > "$WORK/motion_axes_figures.log"
+run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
+    > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
 run mkdir -p "$OUT/math"
 run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
