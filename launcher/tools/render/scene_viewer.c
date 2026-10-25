@@ -115,9 +115,11 @@ select_objects(scene_t* scene) {
         if (scene_entity_mesh_id(scene, entity) == NULL) {
             continue;
         }
+        /* Enabled is parent AND own, so a named renderer needs its ancestors on and takes its descendants along. */
         bool enabled = false;
         for (int j = 0; j < object_count; j++) {
-            enabled |= strcmp(scene_entity_name(scene, entity), object_names[j]) == 0;
+            const scene_entity_t named = scene_find(scene, object_names[j]);
+            enabled |= scene_entity_is_within(scene, entity, named) || scene_entity_is_within(scene, named, entity);
         }
         scene_entity_set_enabled(scene, entity, enabled);
     }
