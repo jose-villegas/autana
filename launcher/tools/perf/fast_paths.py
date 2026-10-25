@@ -236,7 +236,7 @@ def function_bodies(text):
 @lru_cache(maxsize=4)
 def package_functions(root, with_owners=False):
     sys.path.insert(0, str(ROOT / "scripts/gates"))
-    from check_math_docs import HEADER_CALL, TEMPLATE_MACRO, MACRO_CALL, split_args
+    from check_package_docs import HEADER_CALL, TEMPLATE_MACRO, MACRO_CALL, split_args
     macros, headers, functions, owners = {}, [], {}, {}
     for path in sorted((root / HEADERS).rglob("*.h")):
         text = path.read_text(encoding="utf-8")
