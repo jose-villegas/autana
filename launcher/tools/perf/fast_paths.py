@@ -42,6 +42,21 @@ class Annotation:
     coverage: str
     citations: tuple = ()
 
+    @property
+    def anchor(self):
+        return self.key.replace("_", "-")
+
+
+def benchmark_links(items, rows):
+    links = {}
+    for item in items:
+        keys = {item.fast, item.plain}
+        keys.update(key for key, label, kind, _, _ in rows if (label, kind) == (item.key, item.kind))
+        for key in keys:
+            # A shared plain row belongs to the first section in page order.
+            links.setdefault(key, f"Fast-Paths.md#{item.anchor}")
+    return links
+
 
 def annotations(root=ROOT):
     sys.path.insert(0, str(ROOT / "scripts/gates"))
@@ -140,7 +155,7 @@ def validate_hardware(root, items, fpu):
 def reference_pages(item, root=ROOT):
     pages = {item.header.parent.name.capitalize()}
     functions, owners = package_functions(root, with_owners=True)
-    source = (root / "launcher/test/suites/suite_math_perf.c").read_text(encoding="utf-8")
+    source = (root / "launcher/packages/math/bench/suite_math_perf.c").read_text(encoding="utf-8")
     row_name = item.fast.rsplit("_", 1)[0]
     for line in source.splitlines():
         if re.search(r"\bX\(" + row_name + r",", line):
@@ -153,7 +168,7 @@ def validate_links(root, items):
     for item in items:
         for page in reference_pages(item, root):
             path = root / "docs/math" / (page + ".md")
-            if not path.exists() or f"Fast-Paths.md#{item.key.replace('_', '-')}" not in path.read_text(encoding="utf-8"):
+            if not path.exists() or f"Fast-Paths.md#{item.anchor}" not in path.read_text(encoding="utf-8"):
                 raise ValueError(f"{page}.md lacks link to section {item.key}")
 
 
@@ -161,6 +176,11 @@ def validate(items, rows, capture):
     manifest = {row[0]: row for row in rows}
     errors, bins = bench.parse_errors(capture), bench.parse_bins(capture)
     axes = bench.parse_bin_axes(capture)
+    identities = {(label, kind) for _, label, kind, _, _ in rows}
+    identities.update((item.key, item.kind) for item in items)
+    unmatched = errors.keys() - identities
+    if unmatched:
+        raise ValueError(f"error measurements match no row: {sorted(unmatched)}")
     for item in items:
         for key in (item.fast, item.plain):
             if key not in manifest:
@@ -321,7 +341,7 @@ def _inline_expressions(text):
 
 
 def plain_expression(item, root):
-    text = (root / "launcher/test/suites/suite_math_perf.c").read_text(encoding="utf-8")
+    text = (root / "launcher/packages/math/bench/suite_math_perf.c").read_text(encoding="utf-8")
     match = re.search(r"/\* MATH_PLAIN\(" + item.plain + r"\): (.*?) \*/", text)
     if not match:
         raise ValueError(f"plain row has no C description: {item.plain}")
@@ -359,7 +379,7 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
     replacements, costs, builds = [], [], []
     entry_details = {}
     for item in items:
-        link = f"[`{item.key}`](#{item.key.replace('_', '-')})"
+        link = f"[`{item.key}`](#{item.anchor})"
         if len(groups[item.key]) > 1:
             link += f" ({item.fast.split('_', 1)[0]})"
         features = set(fpu[item.fast].partition(";")[0].split()) & set(bench.FPU_OPS)
@@ -398,7 +418,7 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
         item = group[0]
         citations = "".join(f" <sup>[[{number}]](../Citations.md#{number})</sup>" for number in dict.fromkeys(
             number for row in group for number in row.citations))
-        lines += ["", f'<a id="{key.replace("_", "-")}"></a>', "", f"## `{key}`{citations}", "",
+        lines += ["", f'<a id="{item.anchor}"></a>', "", f"## `{key}`{citations}", "",
                   "| Original | Fast path |", "|---|---|",
                   f"| $`{item.original}`$ | $`{item.formula}`$ |", "", f"Symbols: {_inline_expressions(_description_fields(item)[1])}.", "",
                   f"{item.method.capitalize()}: {_inline_expressions(item.coverage)}.", ""]
@@ -472,23 +492,11 @@ def elf_sizes(rows, fpu, located, sections=(), root=ROOT):
     return "\n".join(lines) + "\n"
 
 
-def rekey_errors(items, rows, errors):
-    labels = {key: (label, kind) for key, label, kind, _, family in rows}
-    result = dict(errors)
-    for item in items:
-        identity = item.key, item.kind
-        if identity in errors:
-            result[labels[item.fast]] = errors[identity]
-            if identity not in labels.values():
-                result.pop(identity, None)
-    return result
-
-
 def update_links(root, items, check=False):
     groups = {"Scalar": [], "Linear": []}
     for item in items:
         for page in reference_pages(item, root):
-            link = f"[{item.key}](Fast-Paths.md#{item.key.replace('_', '-')})"
+            link = f"[{item.key}](Fast-Paths.md#{item.anchor})"
             if link not in groups.setdefault(page, []):
                 groups[page].append(link)
     groups["README"] = ["[Fast-path evidence](Fast-Paths.md)"]
@@ -526,18 +534,7 @@ def main(argv=None):
         displayed_errors = {
             key: re.sub(r"(\S+) ulp", lambda m: m[1] + (" step" if float(m[1]) == 1 else " steps"), value) + (" (host)" if sources[key] == "host" else "")
             for key, value in errors.items()}
-        build, measured = bench.parse_capture(capture, rows, allow_missing=True)
-        benchmark_body = bench.render_table(rows, measured, bench.load_baseline(root / "launcher/tools/quality/icount_baseline.txt"),
-                                            fpu, build, rekey_errors(items, rows, displayed_errors))
-        benchmark_changed = replace_block(root / "docs/math/Benchmark.md", "math-benchmark", benchmark_body,
-                                          check=args.check, command=COMMAND)
-        if args.check and benchmark_changed:
-            raise ValueError("benchmark generated table is stale")
-        validate_hardware(root, items, fpu)
-        update_links(root, items, check=args.check)
         _, measured = bench.parse_capture(capture, rows, allow_missing=not bins)
-        size_path = root / "docs/math/data/math_bench_sizes.txt"
-        sizes = parse_sizes(size_path.read_text(encoding="utf-8")) if size_path.exists() else {}
         page = root / DOCUMENT
         page_text = page.read_text(encoding="utf-8")
         section_order = re.findall(r"^## `?(\w+)`?(?: <sup>.*?</sup>)*\s*$", page_text, re.M)
@@ -547,6 +544,20 @@ def main(argv=None):
             items.sort(key=lambda item: section_order.index(item.key) if item.key in section_order else len(section_order))
         elif args.check:
             validate_sections(page_text, items)
+        links = benchmark_links(items, rows)
+        # Fast-Paths renders the error of every linked row except the plain references.
+        plain = {item.plain for item in items}
+        error_links = {key: link for key, link in links.items() if key not in plain}
+        benchmark_body = bench.render_table(rows, measured, bench.load_baseline(root / "launcher/tools/quality/icount_baseline.txt"),
+                                            fpu, links=links, errors=displayed_errors, error_links=error_links)
+        benchmark_changed = replace_block(root / "docs/math/Benchmark.md", "math-benchmark", benchmark_body,
+                                          check=args.check, command=COMMAND)
+        if args.check and benchmark_changed:
+            raise ValueError("benchmark generated table is stale")
+        validate_hardware(root, items, fpu)
+        update_links(root, items, check=args.check)
+        size_path = root / "docs/math/data/math_bench_sizes.txt"
+        sizes = parse_sizes(size_path.read_text(encoding="utf-8")) if size_path.exists() else {}
         target = bench.parse_target(capture)
         if bins and not target:
             raise ValueError("error bins require a hardware MATHTARGET capture record")

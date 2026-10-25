@@ -1,7 +1,7 @@
 #include <math.h>
 #include <string.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "math/geometry/planef.h"
@@ -63,7 +63,7 @@ test_fixed_normalize_zero_and_tilted_normals(void) {
         TEST_ASSERT_EQUAL_INT32(mathx_div(distances[i], 0), out.d);
     }
     /* The double-precision reference runs on the host only: the device's FPU is single precision. */
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     static const planex_t cases[] = {{{-3, 4, 12}, -7},
                                      {{-3 * MATHX_ONE, 4 * MATHX_ONE, 12 * MATHX_ONE}, 7 * MATHX_ONE},
                                      {{-3 * (INT32_MAX / 12), 4 * (INT32_MAX / 12), 12 * (INT32_MAX / 12)}, INT32_MIN}};

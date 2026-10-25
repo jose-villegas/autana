@@ -8,7 +8,7 @@
 #include <string.h>
 
 #include "asset/asset_store.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 static char* saved;

@@ -2,7 +2,7 @@
  * command-list budget, which owner a tap reaches, and that every fixed
  * string fits its row at both canvas orientations. */
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "ui_probe.h"
 #include "unity.h"
 
