@@ -67,6 +67,16 @@ def run_probe(cc, sources, *arguments):
         return probe_json(build_probe(cc, sources, work), *arguments)
 
 
+def probe_into_folder(description, sources, *arguments):
+    """A figure tool's --cc CC --out DIR: makes DIR and runs the probe; returns (its JSON, DIR)."""
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--cc", required=True)
+    parser.add_argument("--out", type=pathlib.Path, required=True)
+    args = parser.parse_args()
+    args.out.mkdir(parents=True, exist_ok=True)
+    return run_probe(args.cc, sources, *arguments), args.out
+
+
 def trs_figure(trs, output):
     stages = (("scaled", "scale", "1. scale {sx:g} x {sy:g} x {sz:g}"),
               ("rotated", "rotate", "2. rotate {angle:g} deg about ({ax:.2f}, {ay:.2f}, {az:.2f})"),

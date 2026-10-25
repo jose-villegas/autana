@@ -4,7 +4,6 @@
 #include <stdlib.h>
 
 #include "math/motion/orbit_motion.h"
-#include "math/motion/spring_line.h"
 
 static const float frame_s = 0.1F;
 static const int fling_half_lives = 4;
@@ -24,13 +23,6 @@ static const float diagram_half_angle_deg = 30.0F;
 static const int fit_min_deg = 10;
 static const int fit_max_deg = 80;
 static const int fit_step_deg = 2;
-static const int line_columns = 41;
-static const int line_ticks = 252;
-static const int bump_half_width = 4;
-static const int bump_pixels = 20;
-static const int tension = 180;
-static const int stiffness = 2;
-static const int damping = 12;
 static const orbit_motion_state_t home = {0};
 static const orbit_motion_limits_t limits = {-ORBIT_MOTION_PITCH_LIMIT, ORBIT_MOTION_PITCH_LIMIT, 0, 0};
 static const vec3f_t target = {0};
@@ -131,39 +123,11 @@ fit_samples(void) {
     printf("]}");
 }
 
-static void
-line_samples(void) {
-    int32_t* offset = calloc((size_t)line_columns, sizeof *offset);
-    int32_t* velocity = calloc((size_t)line_columns, sizeof *velocity);
-    if (!offset || !velocity) {
-        free(offset);
-        free(velocity);
-        exit(EXIT_FAILURE);
-    }
-    spring_line_t line;
-    spring_line_init(&line, offset, velocity, line_columns, tension, stiffness, damping);
-    spring_line_nudge(&line, line_columns / 2, bump_half_width, bump_pixels * MATHX_ONE);
-    printf(",\"line\":{\"tick_ms\":%d,\"samples\":[", SPRING_LINE_TICK_MS);
-    for (int tick = 0; tick <= line_ticks; tick++) {
-        printf("%s{\"tick\":%d,\"lo\":%d,\"hi\":%d,\"rest\":%s,\"offset\":[", tick ? "," : "", tick, line.active_lo,
-               line.active_hi, spring_line_at_rest(&line) ? "true" : "false");
-        for (int x = 0; x < line_columns; x++) {
-            printf("%s%.9g", x ? "," : "", (double)offset[x] / MATHX_ONE);
-        }
-        printf("]}");
-        spring_line_advance(&line, SPRING_LINE_TICK_MS);
-    }
-    printf("]}");
-    free(offset);
-    free(velocity);
-}
-
 int
 main(void) {
     printf("{");
     orbit_samples();
     fit_samples();
-    line_samples();
     puts("}");
     return 0;
 }
