@@ -67,7 +67,8 @@ transformf_scale_is_even(const transformf_t* t) {
  * stands at `world`. `parent`'s scale must be even and nonzero. */
 static inline transformf_t
 transformf_relative(const transformf_t* parent, const transformf_t* world) {
-    const quatf_t back = quatf_conjugate(parent->rotation);
+    const quatf_t turn = parent->rotation;
+    const quatf_t back = {-turn.x, -turn.y, -turn.z, turn.w}; /* the inverse of a unit rotation */
     const float inverse_scale = 1.0F / parent->scale.x;
     return (transformf_t){
         .position = vec3f_scale(quatf_rotate(back, vec3f_sub(world->position, parent->position)), inverse_scale),
