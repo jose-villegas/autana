@@ -319,11 +319,7 @@ def context(root, base):
             return os.fsdecode(git(root, *args)).strip()
         except subprocess.CalledProcessError:
             return ''
-    if (root / '.git').exists():
-        reference = revision('rev-parse', '--symbolic-full-name', base)
-        if not reference.startswith('refs/remotes/'):
-            raise ValueError('--base takes a branch such as origin/main')
-        base = reference.removeprefix('refs/remotes/').split('/', 1)[1]
+    base = base.removeprefix('refs/remotes/').split('/', 1)[-1]
     return {'github.base_ref': base.removeprefix('origin/'),
             'github.head_ref': revision('branch', '--show-current'),
             'github.sha': revision('rev-parse', 'HEAD'), 'github.event_name': 'pull_request',
@@ -435,8 +431,14 @@ def shell_command(row, command, root, script=None):
 
 
 def run(root, out, base='origin/main', tiers=('host',)):
+    try:
+        reference = os.fsdecode(git(root, 'rev-parse', '--symbolic-full-name', '--verify', base)).strip()
+    except subprocess.CalledProcessError:
+        reference = ''
+    if not reference.startswith('refs/remotes/'):
+        raise ValueError('--base takes a branch such as origin/main')
     out.mkdir(parents=True, exist_ok=True)
-    ctx = context(root, base)
+    ctx = context(root, reference)
     decisions = affected_jobs(root, base)
     counts = dict(ok=0, failed=0, skipped=0, not_run=0)
 
@@ -563,10 +565,7 @@ def main(argv=None):
     parser.epilog = 'list columns: kind | tier | workflow:job | label | directory | command or reason'
     args = parser.parse_args(argv)
     root = args.root.resolve()
-    try:
-        ctx = context(root, args.base)
-    except ValueError as error:
-        parser.error(str(error))
+    ctx = context(root, args.base)
     if args.action == 'list':
         for row in rows(root, ctx):
             print(' | '.join((row['kind'], row['tier'], row['job'], row['label'],
@@ -581,7 +580,10 @@ def main(argv=None):
     tiers = args.tier.split(',')
     if set(tiers) - set(TIERS):
         parser.error('unknown tier')
-    return run(root, args.out.resolve(), args.base, tiers)
+    try:
+        return run(root, args.out.resolve(), args.base, tiers)
+    except ValueError as error:
+        parser.error(str(error))
 
 
 if __name__ == '__main__':
