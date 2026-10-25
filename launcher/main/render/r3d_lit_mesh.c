@@ -222,14 +222,3 @@ r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
     }
     return (spheref_t){mid, sqrtf(furthest)};
 }
-
-void
-r3d_lit_mesh_refit_nodes(r3d_lit_node_t* nodes, int node_count, const r3d_lit_cluster_t* clusters) {
-    for (int n = node_count - 1; n >= 0; n--) {
-        r3d_lit_node_t* node = &nodes[n];
-        node->bounds = box3s_empty();
-        for (int i = node->first; i < node->first + node->count; i++) {
-            node->bounds = box3s_union(node->bounds, node->leaf ? clusters[i].bounds : nodes[i].bounds);
-        }
-    }
-}
