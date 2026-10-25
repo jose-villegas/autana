@@ -519,6 +519,14 @@ sweep = load_tool("audio_drc_sweep")
 import autana_runner as runner
 
 
+class RecordKeyTest(unittest.TestCase):
+    def test_output_paths_record_only_their_file_name(self):
+        for path in (r"C:\jobs\out\0\take.wav", "out/0/take.wav", "take.wav"):
+            self.assertEqual(runner.record_key(["mic", "record", 2000, "-o", path, "--json"]),
+                             ["mic", "record", "2000", "-o", "take.wav", "--json"])
+        self.assertEqual(runner.record_key(["tone", 1000, 500]), ["tone", "1000", "500"])
+
+
 class DrcSweepTest(unittest.TestCase):
     def test_failed_command_retries_and_records_once(self):
         with tempfile.TemporaryDirectory() as directory:
