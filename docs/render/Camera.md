@@ -22,7 +22,7 @@ flowchart LR
 `camera_view(camera, pose, viewport)`
 ([`camera.c:5`](../../launcher/main/scene/camera/camera.c#L5)) builds the frame's `render_view_t`
 from the pose, field of view and near distance, then copies the lens's `present` and
-`small_fill` onto it. `scene_camera_lens()` reads a camera by name; `NULL` selects the first.
+`small_fill` onto it. `scene_camera_lens()` reads a camera by its name's `name_hash()`; `SCENE_CAMERA_FIRST` selects the first.
 
 The field of view is stored as the tangent of half the *shorter* picture side
 (`half_fov_short_tan`). `render_view_refit()` reprojects a retained pose through a new
