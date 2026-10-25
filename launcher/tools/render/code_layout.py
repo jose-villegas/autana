@@ -224,12 +224,12 @@ def _resync(found, decode_from):
     alignment bytes before a loop entered only from inside a skipped span."""
     tried = set()
     while True:
-        starts = {ins[0] for ins in found}
+        skip = {ins[0] for ins in found} | tried
         end = found[-1][0] + found[-1][1]
         # Each target is tried once: two that land inside each other's
         # instructions would otherwise undo each other forever.
         missed = sorted(target for target in (target_of(operands) for _, _, mnemonic, operands in found if mnemonic != "l32r")
-                        if target is not None and found[0][0] <= target < end and target not in starts | tried)
+                        if target is not None and found[0][0] <= target < end and target not in skip)
         if not missed:
             return found
         tried.add(missed[0])
