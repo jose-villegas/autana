@@ -29,7 +29,7 @@ flowchart TB
 
 | Page | Holds |
 |---|---|
-| [Loading-Packs.md](Loading-Packs.md) | the store, the device and the host: mounting a pack, opening an entry, `scene_load` |
+| [Loading-Packs.md](Loading-Packs.md) | async loading, the store, the device and the host: mounting a pack, opening an entry, `scene_load` |
 | [Pack-Format.md](Pack-Format.md) | the `APAK` pack, the `ABDR` directory and the checks every open makes |
 | [Image-Entries.md](Image-Entries.md) | the `IMAG` picture and its reader |
 | [Table-Entries.md](Table-Entries.md) | the `TABL` rows of int16 and `asset_table` |

@@ -58,7 +58,7 @@ is kept. Ids are unique within a pack.
 | Lifetime | [A] Mounted on first use and counted; a scene's pack is released when its last scene unloads, so mappings do not pile up. |
 
 ```c fragment
-/* asset_store.h: replaces asset_store_load() */
+/* asset_store.h */
 const asset_pack_t* asset_store_load(const char* name);  /* mounts and checks that pack alone; NULL, logged, when missing or bad */
 void asset_store_release(const char* name);                /* drops a use; unmapped at zero */
 

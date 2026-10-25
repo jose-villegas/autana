@@ -1,5 +1,5 @@
 /* asset_store: counted pack mounts from the assets partition or a host folder
- * (AUTANA_ASSET_DIR, else ASSET_DIR_DEFAULT_PATH), validated incrementally on core 0. */
+ * (AUTANA_ASSET_DIR, else ASSET_DIR_DEFAULT_PATH), validated incrementally. Core 0 only. */
 #pragma once
 
 #include "asset/asset_pack.h"
@@ -19,21 +19,16 @@
 const asset_pack_t* asset_store_load(const char* name);
 
 #define ASSET_STORE_REQUESTS_MAX 16U
-/* Bounds CRC work per pass to a small flash-cache read; entry checks share this budget. */
+/* CRC bytes per pass, shared by every pending mount; placeholder until measured on the board. */
 #define ASSET_STORE_STEP_BYTES   4096U
 
 /* Completion runs from the frame loop on core 0, never inside this call.
- * State     | Lifetime
- * WAIT      | Until complete or cancelled
- * READY     | Until release(name), invalidating the oldest READY request of that name
- * FAILED    | Until pool pressure reclaims it, oldest first
- * CANCELLED | Immediately reusable
- * NONE      | Zero, stale or released handle
- * HANDLE_NONE owns the current visit. */
+ * Lifetimes: docs/assets/Loading-Packs.md#async-loading.
+ * HANDLE_NONE owns requests the loop cancels when the app exits. */
 handle_t asset_store_load_async(const char* name, pending_fn done, handle_t owner);
 pending_t asset_store_state(handle_t load);
 const asset_pack_t* asset_store_loaded(handle_t load);
-/* Before READY: frees partial work and suppresses completion immediately. */
+/* Suppresses completion; before READY also frees partial work. READY keeps its pack use. */
 void asset_store_cancel(handle_t load);
 
 /* How many packs are mounted now: a pack kept for the whole run, such as the
