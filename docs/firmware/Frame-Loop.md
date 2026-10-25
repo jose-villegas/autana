@@ -53,10 +53,12 @@ sequenceDiagram
     participant Shell as shell pass
     Console->>Slot: post, latest per slot
     Note over Console,Slot: a held slot (RUNSUITE, SOUND)<br/>refuses a second post
+    Shell->>Slot: take SCREENSHOT, then OPEN, HOME or APPS
+    Note over Slot,Shell: what a capture depends on is<br/>taken after it, so applied first
     Shell->>Slot: answer every slot with an answer
     Note over Slot,Shell: FREEZE, RESUME or STEP<br/>FRAMEWATCH, SOUND
     Shell->>Slot: take RUNSUITE, run it, report it done
-    Shell->>Slot: take OPEN, HOME or APPS
+    Note over Slot,Shell: apply OPEN, HOME or APPS
     alt frozen, no STEP credit
         Note over Slot,Shell: SCREENSHOT of the held frame
     else running

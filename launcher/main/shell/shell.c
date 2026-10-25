@@ -279,8 +279,8 @@ console_find_app(const char* prefix, bool* ambiguous) {
 /* Returns true when the request changed which app is running, so this frame
  * belongs to the switch and not to an app's frame(). */
 static bool
-run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms) {
-    if (!console_frame_take(console_frame_slots(), &console_navigation_slot)) {
+run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms, bool navigate) {
+    if (!navigate) {
         return false;
     }
     const console_navigation_request_t* request = console_navigation_slot.taken;
@@ -347,9 +347,9 @@ run_dev_frame_extras(input_t* input, const app_t* current, bool screenshot) {
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static __attribute__((noinline)) bool
-run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms, bool screenshot) {
+run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms, bool navigate, bool screenshot) {
     report_gesture_completion();
-    if (run_console_navigation(current, input, dt_ms)) {
+    if (run_console_navigation(current, input, dt_ms, navigate)) {
         run_dev_frame_extras(input, *current, screenshot);
         shell_present_unless_deferred(*current);
         return true;
@@ -406,8 +406,11 @@ shell_run(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         /* Before the freeze gate and every early return below: what those
          * would skip is applied here, so a held frame still answers. */
-        console_frame_answer_pending(console_frame_slots());
+        /* A capture first, then what it may depend on: anything posted
+         * before a SCREENSHOT this pass takes is applied before it runs. */
         const bool screenshot = console_frame_take(console_frame_slots(), &console_screenshot_slot);
+        const bool navigate = console_frame_take(console_frame_slots(), &console_navigation_slot);
+        console_frame_answer_pending(console_frame_slots());
 #endif
 #if CONFIG_LAUNCHER_SELFTEST
         run_pending_selftest_suite();
@@ -420,7 +423,7 @@ shell_run(void) {
         apply_display_orientation(now_us);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        if (run_development_pre_frame(&current, &input, dt_ms, screenshot)) {
+        if (run_development_pre_frame(&current, &input, dt_ms, navigate, screenshot)) {
             FRAME_COST_END(rest_began, "frame.rest");
             timing_yield();
             continue;
