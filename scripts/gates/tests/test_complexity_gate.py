@@ -119,14 +119,18 @@ class SourceCoverageTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.launcher = Path(self.tmp.name)
+        subprocess.run(["git", "init", "--quiet", str(self.launcher)], check=True)
         patch = mock.patch.object(complexity_gate, "LAUNCHER_DIR", self.launcher)
         patch.start()
         self.addCleanup(patch.stop)
 
-    def source(self, relative):
+    def source(self, relative, tracked=True):
         path = self.launcher / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
+        if tracked:
+            subprocess.run(["git", "add", "--", relative],
+                           cwd=self.launcher, check=True)
         return str(path.resolve())
 
     def test_coverage_uses_vendored_rule_without_hiding_first_party_gaps(self):
@@ -136,6 +140,14 @@ class SourceCoverageTest(unittest.TestCase):
         total, missing = complexity_gate.check_main_coverage([measured])
         self.assertEqual(total, 2)
         self.assertEqual(missing, ["packages/testkit/runner/host_main.c"])
+
+    def test_coverage_ignores_untracked_generated_build_sources(self):
+        measured = self.source("main/measured.c")
+        self.source("packages/math/test_apps/build/CMakeFiles/CompilerIdC/generated.c",
+                    tracked=False)
+        total, missing = complexity_gate.check_main_coverage([measured])
+        self.assertEqual(total, 1)
+        self.assertEqual(missing, [])
 
     def test_package_runners_get_host_commands_without_duplicate_sources(self):
         runner = self.source("packages/testkit/runner/host_main.c")
