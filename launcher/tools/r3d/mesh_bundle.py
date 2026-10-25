@@ -47,7 +47,7 @@ def encode_manifest(copies):
                 offsets[value] = len(strings)
                 strings.extend(value.encode("utf-8") + b"\0")
             metadata.append(offsets[value])
-        records.append(scene_rows.NAME.pack(scene_rows.field(row["name"], "copy")) +
+        records.append(scene_rows.NAME.pack(name_hash(row["name"]), scene_rows.field(row["name"], "copy")) +
                        scene_rows.TRANSFORM.pack(*[v for axis in row["matrix"] for v in axis], *row["position"]) +
                        scene_rows.RENDERER.pack(index, row["colour_set"], scene_rows.field(row["mesh"], "mesh")) +
                        METADATA.pack(*metadata))
@@ -70,7 +70,10 @@ def decode_manifest(data):
     copies, names = [], set()
     for index in range(count):
         offset = HEADER.size + index * stride
-        name = scene_rows.text_at(scene_rows.NAME.unpack_from(data, offset)[0], "copy")
+        hashed, raw = scene_rows.NAME.unpack_from(data, offset)
+        name = scene_rows.text_at(raw, "copy")
+        if hashed != name_hash(name):
+            raise PackError("mesh bundle copy row name hash does not match its name")
         offset += scene_rows.NAME.size
         transform = scene_rows.TRANSFORM.unpack_from(data, offset)
         offset += scene_rows.TRANSFORM.size

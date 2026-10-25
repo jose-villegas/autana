@@ -9,8 +9,8 @@ static scene_entity_t subject;
 static void
 start(void) {
     scene = scene_load("meadow", NULL);
-    subject = scene_find(scene, "subject");
-    scene_activate(scene, NULL);
+    subject = scene_find(scene, name_hash("subject"));
+    scene_activate(scene, SCENE_CAMERA_FIRST);
 }
 
 static bool

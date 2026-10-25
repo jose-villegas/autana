@@ -15,6 +15,10 @@ enum {
     AT_HEADER_PAD = SCENE_ASSET_AT_COUNTS + (SCENE_ASSET_PART_COUNT * sizeof(uint16_t)) /* zero up to the offsets */
 };
 
+_Static_assert(sizeof(scene_asset_name_t) == SCENE_ASSET_NAME_SIZE
+                   && offsetof(scene_asset_name_t, hash) == SCENE_ASSET_NAME_AT_HASH
+                   && offsetof(scene_asset_name_t, name) == SCENE_ASSET_NAME_AT_TEXT,
+               "SCNE names row layout");
 _Static_assert(sizeof(scene_asset_transform_t) == 48 && sizeof(scene_asset_renderer_t) == 36
                    && sizeof(scene_asset_camera_t) == 16 && sizeof(scene_asset_light_t) == 20
                    && sizeof(scene_asset_skinned_renderer_t) == 100 && sizeof(scene_asset_animator_t) == 12
@@ -55,6 +59,13 @@ text_fits(const void* row) {
         }
     }
     return true;
+}
+
+/* The stored hash is the name's, so finds compare it alone. */
+static bool
+name_fits(const void* row) {
+    const scene_asset_name_t* name = row;
+    return text_fits(name->name) && name->hash != NAME_HASH_NONE && name->hash == name_hash(name->name);
 }
 
 static bool
@@ -148,7 +159,7 @@ static const part_layout_t LAYOUT[SCENE_ASSET_PART_COUNT] = {
 static bool
 row_fits(const scene_asset_t* scene, int part, const void* row) {
     switch (part) {
-        case SCENE_ASSET_NAMES:
+        case SCENE_ASSET_NAMES: return name_fits(row);
         case SCENE_ASSET_CLIPS: return text_fits(row);
         case SCENE_ASSET_TRANSFORMS: return true;
         case SCENE_ASSET_RENDERERS: return renderer_fits(scene, row);

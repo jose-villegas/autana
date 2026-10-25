@@ -223,7 +223,7 @@ main(int argc, char** argv) {
     if (scene == NULL) {
         return fail("the scene does not load");
     }
-    const int status = play(in, scene, scene_find(scene, argv[3]), argv[4]);
+    const int status = play(in, scene, scene_find(scene, name_hash(argv[3])), argv[4]);
     fclose(in);
     scene_unload(scene);
     asset_file_release(buffer);

@@ -1,4 +1,4 @@
-"""SCNE v4 entities, parents, settings, lights, renderers and animators, validated against the mapped C reader."""
+"""SCNE v5 entities, parents, settings, lights, renderers and animators, validated against the mapped C reader."""
 
 import math
 import pathlib
@@ -9,9 +9,10 @@ from types import SimpleNamespace
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset.asset_pack import NAME_BYTES
 from build.c_header import read_define
+from build.name_hash import NONE as HASH_NONE, name_hash
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
-from r3d.scene_rows import (COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
+from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
                             SceneError, decode_transform, field, text_at)
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_format.h"
@@ -39,7 +40,7 @@ SKINNED_RENDERER = struct.Struct(f"<HH{NAME_BYTES}s{NAME_BYTES}s{NAME_BYTES}s")
 ANIMATOR = struct.Struct("<HHIHBB")
 SETTINGS = struct.Struct("<5f")
 PARENT = struct.Struct("<H")
-ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, NAME, SETTINGS, PARENT)
+ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, CLIP, SETTINGS, PARENT)
 
 
 def check_header(owner_size):
@@ -59,7 +60,7 @@ def encode(scene, cache=None, offline=False):
     objects = scene.objects
     index = {obj.name: i for i, obj in enumerate(objects)}
     rows = {part: [] for part in PARTS}
-    rows["names"] = [(field(obj.name, "entity"),) for obj in objects]
+    rows["names"] = name_rows(objects)
     rows["parents"] = [(parent_index(obj, index),) for obj in objects]
     drawn = {item.object.name for item in scene.renderers}
     placements = fold_parent_scales(objects, [parent for (parent,) in rows["parents"]], drawn)
@@ -107,6 +108,19 @@ def encode(scene, cache=None, offline=False):
     entry = HEADER.pack(VERSION, *counts, *offsets) + b"".join(parts)
     decode(entry)
     return entry
+
+
+def name_rows(objects):
+    """Each entity's (name_hash, name); two names that share a hash, or one that hashes to NONE, are refused."""
+    rows, seen = [], {}
+    for obj in objects:
+        hashed = name_hash(obj.name)
+        if hashed == HASH_NONE:
+            raise SceneError(f"entity {obj.name!r} hashes to NONE; rename it")
+        if seen.setdefault(hashed, obj.name) != obj.name:
+            raise SceneError(f"entities {seen[hashed]!r} and {obj.name!r} share a name hash; rename one")
+        rows.append((hashed, field(obj.name, "entity")))
+    return rows
 
 
 def parent_index(obj, index):
@@ -196,10 +210,12 @@ def decode(entry):
     if any(entry[parents_end:parents_end + (-parents_end % ALIGN)]):
         raise SceneError("the padding after the parents is not zero")
     out = {part: [] for part in PARTS if part not in ("names", "transforms")}
-    out["entities"] = [{"name": text_at(raw, "entity name"), **decode_transform(values),
+    out["entities"] = [{"name": text_at(raw, "entity name"), "name_hash": hashed, **decode_transform(values),
                         "parent": None if parent == PARENT_ROOT else parent}
-                       for (raw,), values, (parent,) in zip(rows["names"], rows["transforms"], rows["parents"])]
+                       for (hashed, raw), values, (parent,) in zip(rows["names"], rows["transforms"], rows["parents"])]
     for entity, row in enumerate(out["entities"]):
+        if row["name_hash"] == HASH_NONE or row["name_hash"] != name_hash(row["name"]):
+            raise SceneError(f"entity {entity}: the stored name hash is NONE or not the name's")
         if row["parent"] is not None and row["parent"] >= entity:
             raise SceneError(f"entity {entity}: parent {row['parent']} is not listed before it")
         if row["parent"] is not None and not scale_is_even(column_scales(out["entities"][row["parent"]]["matrix"])):
