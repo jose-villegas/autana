@@ -1,7 +1,7 @@
 # math
 
-The engine's maths library: scalar operations, linear algebra, shapes, motion
-and signal processing. It depends on nothing but the C library and libm, so every
+The engine's maths library: scalar operations, linear algebra, shapes and
+signal processing. It depends on nothing but the C library and libm, so every
 layer of the firmware, the host tests, the tools and the editor build it. The API
 covers what its types imply rather than only what today's callers use, so it may
 carry functions nothing calls yet.
@@ -11,7 +11,6 @@ carry functions nothing calls yet.
 | `include/math/scalar/` | Scalar operations per number type (`f` float, `i` int, `s` int16, `x` Q16.16), shift-based fixed point, trig tables, a random generator |
 | `include/math/linear/` | Vectors, quaternions, 4x4 matrices and transforms, each one template instantiated per number type; [linear reference](../../../docs/math/Linear.md) describes the families |
 | `include/math/geometry/` | Shapes and their queries: half-open rectangles (`rectf`, `recti`, `rects`, `rectx`) and oriented planes (`planef`, `planex`), instantiated from geometry templates |
-| `include/math/motion/` | Orbiting a target |
 | `include/math/stats/` | Order statistics of sample arrays: percentile and median; [stats reference](../../../docs/math/Stats.md) |
 | `include/math/signal/` | Signal processing on sample blocks: Goertzel single-bin detection; [signal reference](../../../docs/math/Signal.md) |
 | `src/` | The few functions that are not inline |
@@ -95,10 +94,10 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/vec_convert.h](include/math/linear/vec_convert.h) | vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. |
 | [include/math/linear/vec_ops_template.h](include/math/linear/vec_ops_template.h) | vec_ops_template: component-wise arithmetic and lerp for vectors of every dimension and number type. |
 | [include/math/linear/vec_swizzle_template.h](include/math/linear/vec_swizzle_template.h) | vec_swizzle_template: swizzles, a new vector made of named components of another (vec3f_zyx, vec2f_yx), for every number type. |
-| [include/math/motion/orbit_motion.h](include/math/motion/orbit_motion.h) | orbit_motion: moves a transform around a target, turntable style: it turns about the world's up axis (yaw) and tilts above or below the target (pitch), always facing it. |
 | [include/math/projection/project_template.h](include/math/projection/project_template.h) | project_template: shared near-plane endpoint selection for pinhole clipping. |
 | [include/math/projection/projectf.h](include/math/projection/projectf.h) | projectf: pinhole projection in pixels with camera +y up and picture y down. |
 | [include/math/projection/projectx.h](include/math/projection/projectx.h) | projectx: Q16.16 pinhole lens and near clipping in any fixed camera-space scale. |
+| [include/math/scalar/ease.h](include/math/scalar/ease.h) | ease: timeline ramps and easing curves. |
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
 | [include/math/scalar/math_const.h](include/math/scalar/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
 | [include/math/scalar/math_db.h](include/math/scalar/math_db.h) | Floored decibel conversions for nonnegative ratios. |
