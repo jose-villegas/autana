@@ -75,7 +75,7 @@ sound_open(const asset_pack_t* pack, const char* name, sound_t* out) {
     return asset_entry_read(pack, name, &FORMAT, parse, out, sizeof *out);
 }
 
-static void
+static void AUDIO_IRAM_ATTR
 open_block(sound_cursor_t* c) {
     const sound_t* sound = c->sound;
     const uint8_t* block =
@@ -85,7 +85,7 @@ open_block(sound_cursor_t* c) {
                                .step_index = (int8_t)block[AUDIO_ADPCM_AT_STEP_INDEX]};
 }
 
-asset_status_t
+asset_status_t AUDIO_IRAM_ATTR
 sound_seek(sound_cursor_t* c, const sound_t* sound, uint32_t frame) {
     *c = (sound_cursor_t){0};
     if (frame > sound->frames
@@ -97,7 +97,7 @@ sound_seek(sound_cursor_t* c, const sound_t* sound, uint32_t frame) {
     return ASSET_OK;
 }
 
-static void
+static void AUDIO_IRAM_ATTR
 read_run(sound_cursor_t* c, int16_t* out, uint32_t frames) {
     const sound_t* sound = c->sound;
     if (sound->format == SOUND_PCM16) {
@@ -131,7 +131,7 @@ read_run(sound_cursor_t* c, int16_t* out, uint32_t frames) {
     }
 }
 
-uint32_t
+uint32_t AUDIO_IRAM_ATTR
 sound_read(sound_cursor_t* c, int16_t* out, uint32_t frames) {
     if (c->sound == NULL) {
         return 0;

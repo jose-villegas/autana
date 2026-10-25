@@ -1,10 +1,11 @@
 #include "audio/audio_adpcm.h"
+#include "audio/audio_out.h"
 
 #include <limits.h>
 #include "math/scalar/mathi.h"
 #include "math/scalar/maths.h"
 
-static const uint16_t DIFF[AUDIO_ADPCM_STEP_INDEX_MAX + 1][AUDIO_ADPCM_SIGN_BIT] = {
+static const AUDIO_DRAM_ATTR uint16_t DIFF[AUDIO_ADPCM_STEP_INDEX_MAX + 1][AUDIO_ADPCM_SIGN_BIT] = {
     {0, 1, 3, 4, 7, 8, 10, 11},
     {1, 3, 5, 7, 9, 11, 13, 15},
     {1, 3, 5, 7, 10, 12, 14, 16},
@@ -95,7 +96,7 @@ static const uint16_t DIFF[AUDIO_ADPCM_STEP_INDEX_MAX + 1][AUDIO_ADPCM_SIGN_BIT]
     {3724, 11172, 18621, 26069, 33518, 40966, 48415, 55863},
     {4095, 12286, 20478, 28669, 36862, 45053, 53245, 61436},
 };
-static const int8_t INDEX[] = AUDIO_ADPCM_INDEX_TABLE;
+static const AUDIO_DRAM_ATTR int8_t INDEX[] = AUDIO_ADPCM_INDEX_TABLE;
 
 enum { PENDING_CODE = 1U << AUDIO_ADPCM_CODE_BITS };
 
@@ -107,7 +108,7 @@ step(int* predictor, int* step_index, unsigned code) {
     return *predictor;
 }
 
-void
+void AUDIO_IRAM_ATTR
 audio_adpcm_read(audio_adpcm_t* state, int16_t* out, uint32_t frames) {
     const uint8_t* codes = state->codes;
     int predictor = state->predictor;

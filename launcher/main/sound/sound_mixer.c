@@ -404,7 +404,7 @@ sound_mixer_sync(sound_mixer_t* mixer, const sound_control_t* control) {
     }
 }
 
-static inline size_t
+static inline size_t AUDIO_IRAM_ATTR
 read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
     if (voice->tone_source) {
         audio_tone_fill(&voice->source.tone, out, frames, AUDIO_OUT_VOLUME_MAX_PCT);
@@ -428,7 +428,7 @@ read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
     return total;
 }
 
-static bool
+static bool AUDIO_IRAM_ATTR
 amp_ready(sound_mixer_t* mixer, uint64_t now_ms, uint32_t startup_ms) {
     bool active = false;
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
@@ -450,7 +450,7 @@ amp_ready(sound_mixer_t* mixer, uint64_t now_ms, uint32_t startup_ms) {
     return (active || (mixer->declick_frames && mixer->residual)) && mixer->amp == SOUND_AMP_ON;
 }
 
-static void
+static void AUDIO_IRAM_ATTR
 add_tail(sound_mixer_t* mixer, int32_t* accumulator, size_t begin, size_t frames, int32_t residual) {
     if (!residual) {
         return;
@@ -471,7 +471,7 @@ voice_at_cut(const sound_mix_voice_t* voice) {
     return !voice->tone_source && !voice->playing;
 }
 
-static void
+static void AUDIO_IRAM_ATTR
 mix_voice(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulator, int16_t* scratch, size_t frames,
           int32_t factor) {
     const size_t count = read_voice(voice, scratch, frames);
@@ -498,7 +498,7 @@ mix_voice(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulator, 
     }
 }
 
-static sound_mix_voice_t*
+static sound_mix_voice_t* AUDIO_IRAM_ATTR
 direct_voice(sound_mixer_t* mixer, size_t frames) {
     if (!frames || mixer->residual || mixer->master_gain != SOUND_GAIN_MAX_PCT) {
         return NULL;
@@ -522,7 +522,7 @@ direct_voice(sound_mixer_t* mixer, size_t frames) {
     return single;
 }
 
-void
+void AUDIO_IRAM_ATTR
 sound_mixer_render(sound_mixer_t* mixer, int16_t* out, int32_t* accumulator, int16_t* scratch, size_t frames,
                    uint64_t now_ms, uint32_t startup_ms) {
     if (!amp_ready(mixer, now_ms, startup_ms)) {
