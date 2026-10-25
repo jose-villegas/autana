@@ -271,6 +271,8 @@ fixture(void) {
 #define MATH_BENCH_ALLOC(name, type, count) f->name = bench_alloc_internal(sizeof *f->name * (count), #name);
 #define MATH_BENCH_PAIR_ALLOC(name, type)   MATH_BENCH_ALLOC(name, pair_##name##_t, MATH_BENCH_BATCH)
     MATH_BENCH_ARRAYS(MATH_BENCH_PAIR_ALLOC, MATH_BENCH_ALLOC)
+    static const int32_t saturate_inputs[] = {INT32_MIN, INT16_MIN - 1, INT16_MIN, 0,
+                                              INT16_MAX, INT16_MAX + 1, INT32_MAX};
     for (int j = 0; j < MATH_BENCH_BATCH; j++) {
         const float v = (float)((j % MATH_BENCH_INPUT_PERIOD) + 1) * MATH_BENCH_INPUT_SCALE;
         const float turn = (float)j / MATH_BENCH_BATCH;
@@ -283,8 +285,6 @@ fixture(void) {
         f->vx[j].a = vec3x_from_vec3f(f->vf[j].a);
         f->vx[j].b = vec3x_from_vec3f(f->vf[j].b);
         f->angle[j] = (turn - 0.5F) * MATH_TAU;
-        static const int32_t saturate_inputs[] = {INT32_MIN, INT16_MIN - 1, INT16_MIN, 0,
-                                                  INT16_MAX, INT16_MAX + 1, INT32_MAX};
         f->saturate[j] = saturate_inputs[j % (sizeof saturate_inputs / sizeof saturate_inputs[0])];
         f->phase[j] = (uint16_t)(j * TRIG_TURN / MATH_BENCH_BATCH);
         f->qf[j].a = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, f->angle[j]);

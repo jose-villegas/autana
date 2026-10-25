@@ -408,12 +408,6 @@ test_maths_saturate_exhaustive(void) {
 
 static void
 test_int16_arithmetic_and_conversion_saturate_at_the_int16_range(void) {
-    TEST_ASSERT_EQUAL_INT16(INT16_MIN, maths_saturate(INT32_MIN));
-    TEST_ASSERT_EQUAL_INT16(INT16_MIN, maths_saturate(INT16_MIN - 1));
-    TEST_ASSERT_EQUAL_INT16(INT16_MIN, maths_saturate(INT16_MIN));
-    TEST_ASSERT_EQUAL_INT16(INT16_MAX, maths_saturate(INT16_MAX));
-    TEST_ASSERT_EQUAL_INT16(INT16_MAX, maths_saturate(INT16_MAX + 1));
-    TEST_ASSERT_EQUAL_INT16(INT16_MAX, maths_saturate(INT32_MAX));
 
     TEST_ASSERT_EQUAL_INT16(INT16_MAX, vec3s_add((vec3s_t){INT16_MAX, 0, 0}, (vec3s_t){1, 0, 0}).x);
     TEST_ASSERT_EQUAL_INT16(INT16_MIN, vec3s_sub((vec3s_t){INT16_MIN, 0, 0}, (vec3s_t){1, 0, 0}).x);
