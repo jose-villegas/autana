@@ -9,7 +9,10 @@ from build.c_header import read_define
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_format.h"
 COLOUR_SET_OWN = read_define(OWNER, "SCENE_ASSET_COLOUR_SET_OWN")
 U16_MAX = (1 << 16) - 1
-NAME = struct.Struct(f"<{NAME_BYTES}s")
+NAME = struct.Struct(f"<I{NAME_BYTES}s")  # name hash, then the NUL-padded text
+CLIP = struct.Struct(f"<{NAME_BYTES}s")
+assert (NAME.size == read_define(OWNER, "SCENE_ASSET_NAME_SIZE") and read_define(OWNER, "SCENE_ASSET_NAME_AT_HASH") == 0
+        and read_define(OWNER, "SCENE_ASSET_NAME_AT_TEXT") == struct.calcsize("<I"))
 TRANSFORM_AXES = 3
 TRANSFORM = struct.Struct(f"<{TRANSFORM_AXES * (TRANSFORM_AXES + 1)}f")
 RENDERER = struct.Struct(f"<HH{NAME_BYTES}s")

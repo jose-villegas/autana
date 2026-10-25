@@ -48,6 +48,11 @@ typedef struct {
 /* The rows of the SCNE entry (scene_format.h) are read in place, so they are
  * the entry's bytes, little-endian as the device is. */
 typedef struct {
+    name_hash_t hash; /* name_hash(name), never NAME_HASH_NONE */
+    char name[ASSET_NAME_MAX];
+} scene_asset_name_t;
+
+typedef struct {
     uint16_t entity, colour_set;
     char mesh[ASSET_NAME_MAX];
 } scene_asset_renderer_t;
@@ -86,7 +91,7 @@ typedef struct {
 typedef struct {
     uint16_t entity_count, renderer_count, camera_count;
     uint16_t light_count, skinned_renderer_count, animator_count, clip_count;
-    const char (*names)[ASSET_NAME_MAX];
+    const scene_asset_name_t* names;
     const scene_asset_transform_t* transforms;
     const scene_asset_renderer_t* renderers;
     const scene_asset_camera_t* cameras;
@@ -206,8 +211,8 @@ scene_t* scene_loaded_at(int index);
  * such as a camera transform teleport or a clip switch, converge within a few frames. */
 void scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity);
 
-/* The index of the scene's camera `camera` (NULL: its first), or -1. */
-int scene_camera_index(const scene_t* scene, const char* camera);
+/* The index of the scene's camera named by `camera` (SCENE_CAMERA_FIRST: its first), or -1. */
+int scene_camera_index(const scene_t* scene, name_hash_t camera);
 
 /* A scene is going away: the draw drops it if its camera is active. */
 void scene_draw_forget(const scene_t* scene);

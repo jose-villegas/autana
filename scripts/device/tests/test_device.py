@@ -2935,11 +2935,12 @@ class CoredumpTests(unittest.TestCase):
                 Path(command[command.index("--output") + 1]).write_bytes(raw)
             return subprocess.CompletedProcess(command, 0)
 
-        with mock.patch.object(device, "resolve_capture_path", return_value=(core, True)),              mock.patch.object(device, "find_elf_for_build_id", return_value=found_elf) as finder,              mock.patch.object(device, "locked_port", return_value="COM9"),              mock.patch.object(device, "toolchain_tool", return_value=None),              mock.patch.object(device, "idf_path", return_value="idf"),              mock.patch.object(device.subprocess, "run", side_effect=run),              mock.patch.object(device, "reconnect_after_reset") as reconnect,              mock.patch("builtins.print"):
+        with mock.patch.object(device, "resolve_capture_path", return_value=(core, True)),              mock.patch.object(device, "find_elf_for_build_id", return_value=found_elf) as finder,              mock.patch.object(device, "locked_port", return_value="COM9"),              mock.patch.object(device, "toolchain_tool", return_value=None),              mock.patch.object(device, "idf_path", return_value="idf"),              mock.patch.object(device.subprocess, "run", side_effect=run),              mock.patch.object(device, "reset") as reset,              mock.patch("builtins.print"):
             code = device.coredump(args, store, BOARD)
         store.release.assert_called_once()
-        # esptool resets the board on its way out, read or erase.
-        self.assertEqual(reconnect.call_count, 1)
+        # One reset after parttool, read or erase, failed or not; none inside it.
+        self.assertEqual(reset.call_count, 1)
+        self.assertEqual(commands[0][commands[0].index("--esptool-args") + 1], device.PARTTOOL_NO_RESET)
         return code, finder, commands, core.with_suffix(".bin")
 
     def test_decodes_against_the_build_the_dump_names_not_the_running_one(self):

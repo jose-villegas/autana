@@ -64,7 +64,7 @@ fixture(void) {
     suite_set_test_cleanup(release_fixture);
     active->scene = render_lab_test_loaded_scene(CAPYBARA_SCENE);
     TEST_ASSERT_NOT_NULL(active->scene);
-    active->subject = scene_find(active->scene, CAPYBARA_SUBJECT);
+    active->subject = scene_find(active->scene, name_hash(CAPYBARA_SUBJECT));
     TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, active->subject);
     const r3d_lit_mesh_t* mesh = scene_entity_mesh(active->scene, active->subject);
     TEST_ASSERT_NOT_NULL(mesh);
