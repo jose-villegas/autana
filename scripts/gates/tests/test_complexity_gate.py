@@ -152,6 +152,7 @@ class SourceCoverageTest(unittest.TestCase):
     def test_package_runners_get_host_commands_without_duplicate_sources(self):
         runner = self.source("packages/testkit/runner/host_main.c")
         nested = self.source("packages/example/runner/nested/entry.c")
+        device = self.source("packages/example/runner/device_entry.c")
         host = self.source("test/host_main.c")
         database = self.launcher / "compile_commands.json"
         database.write_text("[]", encoding="utf-8")
@@ -161,10 +162,18 @@ class SourceCoverageTest(unittest.TestCase):
              mock.patch.object(complexity_gate, "build_idf_entries", return_value={}), \
              mock.patch.object(complexity_gate, "find_host_toolchain", return_value=("host", "/gcc", None)), \
              mock.patch.object(complexity_gate, "resolve_analysis_clang", return_value="clang"), \
-             mock.patch.object(complexity_gate, "run_tests_print", side_effect=[[host, nested], ["-DHOST_TEST"]]):
+             mock.patch.object(complexity_gate.subprocess, "run",
+                               side_effect=lambda command, **kwargs: subprocess.CompletedProcess(
+                                   command, int(command[-1] == Path(device).as_posix()), "", "")) as probe, \
+             mock.patch.object(complexity_gate, "run_tests_print", side_effect=[["-DHOST_TEST"], [host, nested]]):
             db_path, sources, counts = complexity_gate.build_compile_db()
         self.assertEqual(sources, sorted([host, runner, nested]))
         self.assertEqual(counts["host"], 3)
+        total, missing = complexity_gate.check_main_coverage(sources)
+        self.assertEqual(total, 3)
+        self.assertEqual(missing, ["packages/example/runner/device_entry.c"])
+        self.assertEqual(probe.call_count, 2)
+        self.assertTrue(all("-fsyntax-only" in call.args[0] for call in probe.call_args_list))
         entries = {entry["file"]: entry for entry in json.loads(db_path.read_text(encoding="utf-8"))}
         self.assertEqual(entries[runner]["arguments"],
                          ["clang", "-DHOST_TEST", "--target=host", "--gcc-toolchain=/gcc",
@@ -211,6 +220,23 @@ class DeviceCommandTest(unittest.TestCase):
         }]), encoding="utf-8")
         argv = complexity_gate.build_idf_entries("/tool chain")[str(self.source.resolve())]
         return argv
+
+    def test_package_idf_database_merges_real_commands_with_diag_priority(self):
+        self.entries("")
+        package_build = self.launcher / "packages/example/test_apps/build"
+        package_build.mkdir(parents=True)
+        device = self.launcher / "packages/example/runner/device_entry.c"
+        generated = package_build / "generated.c"
+        vendored = self.launcher / "packages/testkit/unity/unity.c"
+        database = [{"file": str(path), "directory": str(package_build),
+                     "arguments": ["gcc", "-DPACKAGE_IDF", "-c", str(path)]}
+                    for path in (self.source, device, generated, vendored)]
+        (package_build / "compile_commands.json").write_text(json.dumps(database), encoding="utf-8")
+        entries = complexity_gate.build_idf_entries("/tool chain")
+        self.assertEqual(set(entries), {str(self.source.resolve()), str(device.resolve())})
+        self.assertIn("-DPACKAGE_IDF", entries[str(device.resolve())])
+        self.assertNotIn("-DPACKAGE_IDF", entries[str(self.source.resolve())])
+        self.assertIn("--sysroot=/tool chain/xtensa-esp-elf", entries[str(device.resolve())])
 
     def test_posix_quoted_compiler_path_is_unquoted(self):
         compiler = "/tool chain/bin/gcc"

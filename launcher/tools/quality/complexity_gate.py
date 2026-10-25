@@ -4,7 +4,7 @@ complexity_gate.py: a ratchet on clang-tidy's own
 readability-function-cognitive-complexity check, not a fixed threshold.
 
 Measures every first-party .c file under launcher/main/ and
-launcher/packages/ (the ESP-IDF diagnostics build's own compile database,
+launcher/packages/ (diagnostics and package test-app ESP-IDF databases,
 esp-clang targeting Xtensa) and every portable file the host test runner
 compiles, merged into one set with no double counting. A first-party .c
 file that neither source measures, and that is not on EXCLUDED_MAIN_FILES below with a
@@ -458,7 +458,12 @@ def build_idf_entries(toolchain_root, vendored=False):
     if not IDF_DB_PATH.exists():
         return {}
     clang = resolve_analysis_clang()
-    db = json.loads(IDF_DB_PATH.read_text(encoding="utf-8"))
+    databases = [IDF_DB_PATH, *sorted(
+        (LAUNCHER_DIR / "packages").glob("*/test_apps/build/compile_commands.json"))]
+    db = [entry for database in databases
+          for entry in json.loads(database.read_text(encoding="utf-8"))
+          if database == IDF_DB_PATH or
+          database.parent not in Path(entry["file"]).resolve().parents]
     sysroot = f"{toolchain_root}/xtensa-esp-elf"
     entries = {}
     for e in db:
@@ -468,6 +473,8 @@ def build_idf_entries(toolchain_root, vendored=False):
         except ValueError:
             continue
         parts = rel.parts
+        if str(path.resolve()) in entries:
+            continue
         if vendored:
             if ("launcher/" + rel.as_posix()) not in VENDORED_REFERENCES:
                 continue
@@ -532,6 +539,29 @@ def build_tools_entries(host_flags, already_covered):
     return entries
 
 
+def build_host_entries(host_flags, already_covered):
+    sources = {str(Path(src).resolve()) for src in run_tests_print("--print-sources")
+               if not is_vendored(src)}
+    runners = {str(path.resolve()) for path in
+               (LAUNCHER_DIR / "packages").glob("*/runner/**/*.c") if not is_vendored(str(path))}
+    entries = {}
+    clang = resolve_analysis_clang()
+    for source in sorted(sources | runners):
+        if source in already_covered:
+            continue
+        command = [clang] + host_flags + [Path(source).as_posix()]
+        # Separate main() functions cannot link into the firmware host runner;
+        # only a successful host compile gives these extra sources host flags.
+        if source not in sources:
+            probe = subprocess.run(command[:-1] + ["-fsyntax-only", command[-1]],
+                                   capture_output=True, text=True,
+                                   timeout=CLANG_PROBE_TIMEOUT_SECONDS)
+            if probe.returncode:
+                continue
+        entries[source] = command
+    return entries
+
+
 def build_compile_db():
     toolchain_root = find_xtensa_toolchain_root()
     if toolchain_root is None:
@@ -561,11 +591,6 @@ def build_compile_db():
             "compiler (see run_tests.sh's own message for how)."
         )
 
-    # Package runners have their own main(), so the firmware host binary
-    # cannot link them; analysis uses the same host includes and defines.
-    host_sources = [s for s in [*run_tests_print("--print-sources"),
-                               *map(str, (LAUNCHER_DIR / "packages").glob("*/runner/**/*.c"))]
-                     if not is_vendored(s)]
     host_flags = run_tests_print("--print-flags") + [
         f"--target={host_target}", f"--gcc-toolchain={host_root}",
         "-Wno-unknown-warning-option",
@@ -581,12 +606,7 @@ def build_compile_db():
     host_flags = [flag for flag in host_flags
                   if not flag.startswith(("-f", "-m")) or
                   clang_accepts_flag(clang, flag, host_target)]
-    host_entries = {}
-    for src in host_sources:
-        resolved = str(Path(src).resolve())
-        if resolved in idf_entries:
-            continue
-        host_entries[resolved] = ["clang"] + host_flags + [Path(resolved).as_posix()]
+    host_entries = build_host_entries(host_flags, idf_entries)
 
     tools_entries = build_tools_entries(
         host_flags, set(idf_entries) | set(host_entries))
