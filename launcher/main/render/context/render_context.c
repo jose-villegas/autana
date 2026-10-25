@@ -198,18 +198,27 @@ fit_scratch(render_context_t* c) {
 static void
 draw_second_view(render_context_t* c) {
     const render_debug_view_t* row = render_context_debug_view(c->debug_view);
-    render_view_t second;
-    if (row == NULL || row->second_view == NULL || !row->second_view(c->debug_view_state, &c->raster, &second)) {
+    if (row == NULL || row->second_view == NULL) {
         return;
     }
-    /* Every cluster, from its own view: neither may steer the frame's core split. */
+    /* Its own views and clusters: none may steer the frame's core split, and
+     * the hook reads render.cull as the frame drew. */
     const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
     const int32_t culled = *culling->value;
-    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
-    c->raster.split = NULL;
-    (void)raster_draw(&c->raster, &second);
-    c->raster.split = &c->split;
-    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
+    render_view_t second;
+    bool listed = false;
+    while (row->second_view(c->debug_view_state, &c->raster, &second, &listed)) {
+        c->raster.split = NULL;
+        if (listed) {
+            raster_draw_culled(&c->raster, &second);
+        } else {
+            (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
+            (void)raster_draw(&c->raster, &second);
+            (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
+        }
+        c->raster.split = &c->split;
+        listed = false;
+    }
 }
 #endif
 

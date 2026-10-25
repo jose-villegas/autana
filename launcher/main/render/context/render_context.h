@@ -42,9 +42,12 @@ typedef struct {
     const char* name;
     size_t state_bytes;
     raster_attachment_t (*attachment)(void* state);
-    /* Optional. After the frame's draw: true to draw the same instances
-     * again through `out`, the frame's stats kept from the first. */
-    bool (*second_view)(void* state, const raster_t* raster, render_view_t* out);
+    /* Optional. After the frame's draw, and after each draw it asks for:
+     * true to draw the same instances again through `out`, the frame's
+     * stats kept from the first. With `listed` set it has filled the
+     * raster's census list with the clusters to draw; otherwise every
+     * cluster is drawn. */
+    bool (*second_view)(void* state, const raster_t* raster, render_view_t* out, bool* listed);
     /* Optional. Over the composed picture, `width` by `height`, with draw/. */
     void (*overlay)(void* state, int width, int height);
 } render_debug_view_t;
