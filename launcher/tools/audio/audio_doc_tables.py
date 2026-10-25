@@ -27,6 +27,7 @@ from audio_drc_sweep import AUDIO, DB_AMPLITUDE_SCALE, DRC_LEVEL_DB, TUNABLES, V
 
 from audio_doc_blocks import CLIPPED_DBFS, caption, details, picture
 
+EQ_SLOTS_CAPTURE = Path("docs/audio/data/mic_eq_slots_capture.txt")
 EQ_CAPTURE = Path("docs/audio/data/mic_eq_probe_capture.txt")
 MIC_CAPTURE = Path("docs/audio/data/audio_mic_dsp_capture.txt")
 DRC_CAPTURE = Path("docs/audio/data/audio_drc_capture.txt")
@@ -370,12 +371,18 @@ def render_mic(path):
     return render(path, records, caption, picture, details, markdown, REGENERATE)
 
 
-def update_eq_probe(capture, document, check=False):
-    from audio.mic.mic_eq_probe_tables import render
+def update_eq_probe(capture, document, check=False, slots_capture=None):
+    from audio.mic.mic_eq_probe_tables import render, render_slots
+    slots_capture = slots_capture or ROOT / EQ_SLOTS_CAPTURE
     body = "No capture yet.\n"
     if capture.exists():
         _, records, _ = read_capture(capture)
         body = render(capture, records, caption, picture, details, markdown, REGENERATE)
+    if slots_capture.exists():
+        _, records, _ = read_capture(slots_capture)
+        body += "\n" + render_slots(slots_capture, records, caption, picture, details, markdown, REGENERATE)
+    else:
+        body += "\nRun 2. No slots capture yet; the coefficient layout is unresolved.\n"
     return replace_block(document, "mic-eq-probe", body, check=check)
 
 
@@ -507,13 +514,13 @@ def main():
     mode.add_argument("--check", action="store_true")
     for option, default in (("capture", CAPTURE), ("document", DOCUMENT), ("mix-captures", MIX_CAPTURES),
                             ("mix-document", MIX_DOCUMENT), ("drc-capture", DRC_CAPTURE), ("mic-capture", MIC_CAPTURE),
-                            ("eq-capture", EQ_CAPTURE)):
+                            ("eq-capture", EQ_CAPTURE), ("eq-slots-capture", EQ_SLOTS_CAPTURE)):
         parser.add_argument("--" + option, type=Path, default=ROOT / default)
     args = parser.parse_args()
     try:
         changed = update(args.capture, args.document, args.check, args.mix_captures, args.mix_document, args.drc_capture)
         changed |= update_mic(args.mic_capture, args.document, args.check)
-        changed |= update_eq_probe(args.eq_capture, args.document, args.check)
+        changed |= update_eq_probe(args.eq_capture, args.document, args.check, args.eq_slots_capture)
         changed |= update_onset(args.mix_captures, args.mix_document, args.check)
         changed |= replace_block(ROOT / "docs/audio/Sound-Assets.md", "sound-storage", render_storage(),
                                  check=args.check)
