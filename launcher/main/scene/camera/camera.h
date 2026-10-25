@@ -10,6 +10,7 @@ typedef struct {
     float half_fov_short_tan, near_z;
     camera_present_t present;
     small_fill_t small_fill;
+    vec2f_t shift; /* render_view_t.shift */
 } camera_t;
 
 #define ANIM_COMPONENT_CAMERA ASSET_TYPE('C', 'A', 'M', 'R')

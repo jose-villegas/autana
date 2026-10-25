@@ -78,6 +78,10 @@ bool scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_pres
 
 /* Returns false for a non-camera entity or an invalid style. */
 bool scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill);
+/* Sets the camera's lens shift (render_view_t.shift): an off-axis view, as a
+ * window onto a fixed rectangle needs. False for a non-camera entity or a
+ * shift that is not finite. */
+bool scene_camera_set_shift(scene_t* scene, scene_entity_t camera, vec2f_t shift);
 
 /* Setters attach a directional light, initially white with zero intensity; refusals change nothing. */
 bool scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb);

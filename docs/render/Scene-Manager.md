@@ -49,6 +49,7 @@ on the camera's entity whose tracks bind to that entity through
 | `scene_renderer_set_mesh(scene, entity, mesh)` | the entity's renderer draws a mesh made at run time in place of its loaded one; call again after each rebuild, since the scene keeps a copy of the view; a mesh with no nodes draws nothing; false for an entity with no renderer or a skinned one |
 | `scene_camera_lens(scene, camera)` | a camera's lens (NULL: the first); its pose is its entity's transform |
 | `scene_camera_set_present(scene, camera, present)` | sets the camera's presentation; false for a non-camera entity or invalid mode |
+| `scene_camera_set_shift(scene, camera, shift)` | sets its lens shift, an off-axis view along the camera's right and up in picture short sides ([Camera](Camera.md#lens-shift)); false for a non-camera entity or a shift that is not finite |
 | `scene_camera_set_small_fill(scene, camera, fill)` | sets its `small_fill_t` ceiling, colour gate and style; defaults are `SMALL_FILL_SMOOTH`; pass `SMALL_FILL_FAST` to opt into tuned filling; false for a non-camera entity or invalid ceiling or style ([Small fill](Mesh-Rendering.md#small-fill)) |
 | `scene_set_transform()` / `scene_entity_set_enabled()` | set an entity's TRS value, hide or show a renderer |
 | `scene_entity_transform(scene, entity)` | reads the entity's TRS component |
