@@ -7,32 +7,13 @@
  */
 #pragma once
 
-#include <limits.h>
 #include <stdint.h>
 
 #include "math/scalar/mathi.h"
 
-#ifdef __XTENSA__
-#include "sdkconfig.h"
-#endif
-
-#define MATHS_SATURATE_LSB_LIMIT 0
-
-/* For signed int32 input v, clamp to the int16 range. | min(max(v, INT16_MIN), INT16_MAX) | int16 range with margins and int32 extremes */
-/* exact: y = \min(\max(v, -32768), 32767) */
-/* MATH_FAST_PATH(maths_saturate_s, saturate_plain_s, MATHS_SATURATE_LSB_LIMIT) */
 static inline int16_t
 maths_saturate(int32_t v) {
-#if defined(__XTENSA__) && CONFIG_MATH_CLAMPS
-    int32_t result;
-    __asm__("clamps %0, %1, %2" : "=a"(result) : "a"(v), "i"(sizeof(int16_t) * CHAR_BIT - 1));
-    return (int16_t)result;
-#else
-    if (v > INT16_MAX) {
-        return INT16_MAX;
-    }
-    return v < INT16_MIN ? INT16_MIN : (int16_t)v;
-#endif
+    return (int16_t)mathi_min(mathi_max(v, INT16_MIN), INT16_MAX);
 }
 
 static inline int16_t

@@ -11,7 +11,7 @@ from complexity_gate import report
 
 ROOT = Path(__file__).resolve().parents[3]
 BASELINE_PATH = Path(__file__).with_name("icount_baseline.txt")
-SUPPORT_PATH = ROOT / "launcher/test/perf_stats.h"
+SUPPORT_PATH = ROOT / "launcher/packages/testkit/include/testkit/bench.h"
 QEMU_PATH = ROOT / "launcher/test/qemu_run.py"
 
 
@@ -30,10 +30,10 @@ def support_define(name):
     return ast.literal_eval(match[1])
 
 
-LINE_PREFIX = support_define("PERF_ICOUNT_PREFIX")
-INFO_PREFIX = support_define("PERF_ICOUNT_INFO_PREFIX")
+LINE_PREFIX = support_define("BENCH_ICOUNT_PREFIX")
+INFO_PREFIX = support_define("BENCH_ICOUNT_INFO_PREFIX")
 INFO_MARKER = "info"
-TOLERANCE = 1 / support_define("PERF_ICOUNT_TOLERANCE_DENOMINATOR")
+TOLERANCE = 1 / support_define("BENCH_ICOUNT_TOLERANCE_DENOMINATOR")
 NS_PER_US = 1000
 ICOUNT_SHIFT = source_constant(QEMU_PATH, "ICOUNT_SHIFT")
 ROW = re.compile(rf"({LINE_PREFIX}|{INFO_PREFIX}) (\S+) us=(\d+) reps=(\d+)")

@@ -49,4 +49,3 @@ MATHERRORBIN name=mathx_rsqrt_q30 type=x x=3.84375 max=4.41471970092e-10 unit=re
 MATHERRORBIN name=mathx_rsqrt_q30 type=x x=3.90625 max=4.56888971101e-10 unit=relative axis=period
 MATHERRORBIN name=mathx_rsqrt_q30 type=x x=3.96875 max=4.61224169968e-10 unit=relative axis=period
 MATHERROR name=mathx_rsqrt_q30 type=x max=4.61224169968e-10 unit=relative method=proof
-MATHERROR name=maths_saturate type=s max=0 unit=lsb method=sweep

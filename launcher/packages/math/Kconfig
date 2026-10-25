@@ -7,13 +7,6 @@ menu "Math"
             Use the ESP32-S3 FPU recip0.s and rsqrt0.s seeds. Disable where
             the emulator lacks these instructions (Espressif QEMU).
 
-    config MATH_CLAMPS
-        bool "Use the Xtensa clamps instruction"
-        default y
-        help
-            Use the ESP32-S3 signed clamp instruction for int16 saturation.
-            Disable where the emulator lacks this instruction.
-
     config MATH_FPU_FUSED_MADD
         bool "Use FPU fused multiply-add"
         default y

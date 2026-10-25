@@ -28,88 +28,89 @@ Warm cycles per op, generated from the committed capture.
 
 | function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |
 |---|---|---:|---:|---:|---:|---:|---|---|
-| add (vec3) | f | 15.3 | 1998.0 | 14.5 | 14.2 | 1.1 | - | - |
-| add (vec3) | i | 14.3 | 1854.0 | 14.5 | 14.2 | 1.0 | - | - |
-| add (vec3) | s | 37.4 | 4263.0 | 31.6 | 31.4 | 1.2 | - | - |
-| add (vec3) | x | 58.4 | 6159.0 | 44.6 | 44.4 | 1.3 | - | - |
-| convert | f_to_i | 95.5 | 8862.0 | 62.1 | 62.0 | 1.5 | - | - |
-| convert | f_to_s | 104.5 | 9927.0 | 75.6 | 75.5 | 1.4 | - | - |
-| convert | f_to_x | 110.6 | 10044.0 | 70.7 | 70.5 | 1.6 | - | - |
-| convert | i_to_f | 11.3 | 1725.0 | 11.5 | 11.2 | 1.0 | - | - |
-| convert | s_to_f | 14.3 | 2148.0 | 14.5 | 14.3 | 1.0 | - | - |
-| convert | x_to_f | 14.3 | 1908.0 | 14.5 | 14.3 | 1.0 | - | - |
-| dot (vec3) | f | 17.4 | 2103.0 | 12.5 | 12.2 | 1.4 | madd.s | - |
-| dot (vec3) | i | 24.3 | 2733.0 | 24.5 | 24.2 | 1.0 | - | - |
-| dot (vec3) | s | 24.3 | 2910.0 | 24.5 | 24.2 | 1.0 | - | - |
-| dot (vec3) | x | 83.8 | 9596.0 | 65.9 | 65.8 | 1.3 | - | - |
-| lerp (vec3) | f | 19.3 | 2466.0 | 17.5 | 17.3 | 1.1 | madd.s | - |
-| lerp (vec3) | i | 101.3 | 9150.0 | 93.5 | 93.4 | 1.1 | - | - |
-| lerp (vec3) | s | 33.3 | 3596.0 | 31.5 | 31.3 | 1.1 | - | - |
-| lerp (vec3) | x | 127.3 | 12644.0 | 99.5 | 99.5 | 1.3 | - | - |
-| [normalize_div](Fast-Paths.md#mathx-rsqrt-q30) | x | 1114.7 | 77202.0 | 906.2 | 907.9 | 1.2 | calls __udivdi3, mathi_isqrt64_digits | - |
-| normalize (vec3) | f | 57.4 | 5814.0 | 29.5 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 step (sweep) |
-| [normalize (vec3)](Fast-Paths.md#mathx-rsqrt-q30) | x | 348.5 | 29326.0 | 296.9 | 681.2 | 1.2 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
-| scale (vec3) | f | 13.3 | 1884.0 | 12.5 | 12.2 | 1.1 | - | - |
-| scale (vec3) | i | 12.3 | 1882.0 | 12.5 | 12.2 | 1.0 | - | - |
-| scale (vec3) | s | 36.4 | 4239.0 | 30.6 | 30.4 | 1.2 | - | - |
-| scale (vec3) | x | 66.0 | 7671.0 | 49.2 | 49.0 | 1.3 | - | - |
+| add (vec3) | f | 15.2 | 1560.0 | 14.4 | 14.2 | 1.1 | - | - |
+| add (vec3) | i | 14.2 | 1336.0 | 14.4 | 14.2 | 1.0 | - | - |
+| add (vec3) | s | 22.3 | 2202.0 | 22.5 | 31.4 | 1.0 | - | - |
+| add (vec3) | x | 58.3 | 5763.0 | 43.5 | 44.4 | 1.3 | - | - |
+| convert | f_to_i | 94.4 | 8629.0 | 61.0 | 62.0 | 1.5 | - | - |
+| convert | f_to_s | 103.4 | 8992.0 | 74.6 | 75.5 | 1.4 | - | - |
+| convert | f_to_x | 110.5 | 9634.0 | 81.3 | 70.5 | 1.4 | - | - |
+| convert | i_to_f | 11.2 | 1070.0 | 11.4 | 11.2 | 1.0 | - | - |
+| convert | s_to_f | 14.3 | 1665.0 | 14.4 | 14.3 | 1.0 | - | - |
+| convert | x_to_f | 14.3 | 1660.0 | 14.4 | 14.3 | 1.0 | - | - |
+| dot (vec3) | f | 17.2 | 1576.0 | 12.4 | 12.2 | 1.4 | madd.s | - |
+| dot (vec3) | i | 24.2 | 2204.0 | 24.4 | 24.2 | 1.0 | - | - |
+| dot (vec3) | s | 24.2 | 2363.0 | 24.4 | 24.2 | 1.0 | - | - |
+| dot (vec3) | x | 83.6 | 9200.0 | 64.8 | 65.8 | 1.3 | - | - |
+| lerp (vec3) | f | 19.3 | 2194.0 | 17.4 | 17.3 | 1.1 | madd.s | - |
+| lerp (vec3) | i | 101.2 | 8505.0 | 92.5 | 93.4 | 1.1 | - | - |
+| lerp (vec3) | s | 29.3 | 2650.0 | 29.4 | 31.3 | 1.0 | - | - |
+| lerp (vec3) | x | 125.3 | 12320.0 | 98.5 | 99.5 | 1.3 | - | - |
+| [normalize_div](Fast-Paths.md#mathx-rsqrt-q30) | x | 1113.8 | 76946.0 | 917.2 | 907.9 | 1.2 | calls __udivdi3, mathi_isqrt64_digits | - |
+| normalize (vec3) | f | 57.3 | 5275.0 | 29.5 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 step (sweep) |
+| [normalize (vec3)](Fast-Paths.md#mathx-rsqrt-q30) | x | 347.3 | 28670.0 | 295.8 | 681.2 | 1.2 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
+| scale (vec3) | f | 13.2 | 1375.0 | 12.4 | 12.2 | 1.1 | - | - |
+| scale (vec3) | i | 12.2 | 1297.0 | 12.4 | 12.2 | 1.0 | - | - |
+| scale (vec3) | s | 20.3 | 2220.0 | 20.5 | 30.4 | 1.0 | - | - |
+| scale (vec3) | x | 64.0 | 7399.0 | 48.7 | 49.0 | 1.3 | - | - |
 
 #### Scalar
 
 | function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |
 |---|---|---:|---:|---:|---:|---:|---|---|
-| [div_recip](Fast-Paths.md#mathf-recip) | f | 58.3 | 5104.0 | 40.5 | 40.3 | 1.4 | calls __divsf3 | - |
-| [div_rsqrt](Fast-Paths.md#mathf-rsqrt) | f | 114.2 | 9841.0 | 81.5 | 82.3 | 1.4 | calls __divsf3, sqrtf | - |
-| [mathf_recip](Fast-Paths.md#mathf-recip) | f | 26.3 | 3000.0 | 13.5 | device-only instruction | 1.9 | madd.s msub.s recip0.s | [fast paths](Fast-Paths.md#mathf-recip) |
-| [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx) | f | 24.3 | 3084.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt-approx) |
-| [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt) | f | 38.4 | 4517.0 | 18.6 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | [fast paths](Fast-Paths.md#mathf-rsqrt) |
-| [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30) | x | 157.4 | 13717.0 | 143.6 | 143.6 | 1.1 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
-| mul (scalar) | f | 9.3 | 1477.0 | 6.5 | 6.2 | 1.4 | - | - |
-| mul (scalar) | i | 9.3 | 1497.0 | 8.5 | 8.2 | 1.1 | - | - |
-| mul (scalar) | s | 11.3 | 2451.0 | 10.5 | 10.2 | 1.1 | - | - |
-| mul (scalar) | x | 22.3 | 3321.0 | 17.5 | 17.3 | 1.3 | - | - |
-| [trig_sin](Fast-Paths.md#trig-sin) | i | 30.8 | 4915.0 | 24.0 | 23.8 | 1.3 | - | [fast paths](Fast-Paths.md#trig-sin) |
-| [wrap](Fast-Paths.md#mathf-repeat) | f | 63.8 | 7166.0 | 30.1 | device-only instruction | 2.1 | madd.s msub.s recip0.s; calls fmodf | [fast paths](Fast-Paths.md#mathf-repeat) |
-| wrap | i | 7.3 | 1350.0 | 7.5 | 7.2 | 1.0 | - | - |
-| wrap | x | 10.3 | 1983.0 | 10.5 | 10.2 | 1.0 | - | - |
+| [div_recip](Fast-Paths.md#mathf-recip) | f | 59.2 | 4355.0 | 40.4 | 40.3 | 1.5 | calls __divsf3 | - |
+| [div_rsqrt](Fast-Paths.md#mathf-rsqrt) | f | 118.2 | 9765.0 | 83.4 | 82.3 | 1.4 | calls __divsf3, sqrtf | - |
+| [mathf_recip](Fast-Paths.md#mathf-recip) | f | 26.2 | 2441.0 | 13.4 | device-only instruction | 2.0 | madd.s msub.s recip0.s | [fast paths](Fast-Paths.md#mathf-recip) |
+| [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx) | f | 24.2 | 2314.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt-approx) |
+| [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt) | f | 38.3 | 3682.0 | 18.5 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | [fast paths](Fast-Paths.md#mathf-rsqrt) |
+| maths_saturate | s | 8.3 | 1333.0 | 8.4 | - | 1.0 | - | 0 lsb (sweep) |
+| [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30) | x | 160.2 | 13801.0 | 145.4 | 143.6 | 1.1 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
+| mul (scalar) | f | 9.2 | 968.0 | 6.4 | 6.2 | 1.4 | - | - |
+| mul (scalar) | i | 9.2 | 970.0 | 8.4 | 8.2 | 1.1 | - | - |
+| mul (scalar) | s | 11.3 | 1510.0 | 10.4 | 10.2 | 1.1 | - | - |
+| mul (scalar) | x | 22.3 | 2644.0 | 17.4 | 17.3 | 1.3 | - | - |
+| [trig_sin](Fast-Paths.md#trig-sin) | i | 30.7 | 4552.0 | 23.9 | 23.8 | 1.3 | - | [fast paths](Fast-Paths.md#trig-sin) |
+| [wrap](Fast-Paths.md#mathf-repeat) | f | 63.7 | 6539.0 | 30.0 | device-only instruction | 2.1 | madd.s msub.s recip0.s; calls fmodf | [fast paths](Fast-Paths.md#mathf-repeat) |
+| wrap | i | 7.2 | 976.0 | 7.4 | 7.2 | 1.0 | - | - |
+| wrap | x | 10.2 | 1366.0 | 10.4 | 10.2 | 1.0 | - | - |
 
 #### Quaternion
 
 | function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |
 |---|---|---:|---:|---:|---:|---:|---|---|
-| [nlerp_div](Fast-Paths.md#mathx-rsqrt-q30) | x | 738.4 | 61192.0 | 528.5 | 529.4 | 1.4 | calls __divdi3, mathi_isqrt64_digits | - |
-| nlerp | f | 94.8 | 8989.0 | 53.7 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 steps (sweep) |
-| [nlerp](Fast-Paths.md#mathx-rsqrt-q30) | x | 719.4 | 63286.0 | 558.8 | 909.9 | 1.3 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
-| quat mul | f | 30.3 | 3207.0 | 30.5 | 30.2 | 1.0 | madd.s msub.s | - |
-| quat mul | x | 419.3 | 39758.0 | 313.5 | 313.9 | 1.3 | - | - |
-| slerp | f | 452.7 | 34873.0 | 306.3 | device-only instruction | 1.5 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | - |
+| [nlerp_div](Fast-Paths.md#mathx-rsqrt-q30) | x | 723.0 | 59772.0 | 519.4 | 529.4 | 1.4 | calls __divdi3, mathi_isqrt64_digits | - |
+| nlerp | f | 94.7 | 8508.0 | 53.6 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 steps (sweep) |
+| [nlerp](Fast-Paths.md#mathx-rsqrt-q30) | x | 716.6 | 62978.0 | 557.7 | 909.9 | 1.3 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
+| quat mul | f | 30.2 | 2897.0 | 41.8 | 30.2 | 0.7 | madd.s msub.s | - |
+| quat mul | x | 417.3 | 39563.0 | 324.0 | 313.9 | 1.3 | - | - |
+| slerp | f | 451.6 | 34843.0 | 305.2 | device-only instruction | 1.5 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | - |
 
 #### Matrix
 
 | function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |
 |---|---|---:|---:|---:|---:|---:|---|---|
-| mat4 mul | f | 738.4 | 49412.0 | 642.6 | 506.4 | 1.1 | madd.s; calls memcpy | - |
-| mat4 mul | x | 2436.9 | 162409.0 | 1648.9 | 1640.4 | 1.5 | calls memcpy | - |
-| transform compute_matrix | f | 67.4 | 6781.0 | 67.6 | 67.4 | 1.0 | madd.s msub.s | - |
-| transform compute_matrix | x | 855.7 | 74653.0 | 660.2 | 661.4 | 1.3 | calls mat4x_from_trs, memcpy | - |
+| mat4 mul | f | 735.3 | 48326.0 | 504.5 | 506.4 | 1.5 | madd.s; calls memcpy | - |
+| mat4 mul | x | 2389.4 | 159233.0 | 1637.0 | 1640.4 | 1.5 | calls memcpy | - |
+| transform compute_matrix | f | 67.3 | 6326.0 | 67.5 | 67.4 | 1.0 | madd.s msub.s | - |
+| transform compute_matrix | x | 857.4 | 75804.0 | 660.1 | 661.4 | 1.3 | calls mat4x_from_trs, memcpy | - |
 
 #### Libm
 
 | function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |
 |---|---|---:|---:|---:|---:|---:|---|---|
-| atan2f | f | 336.7 | 29564.0 | 195.9 | 197.0 | 1.7 | calls atan2f | - |
-| cosf | f | 191.5 | 21315.0 | 122.8 | 111.6 | 1.6 | calls _cosf | - |
-| [sinf](Fast-Paths.md#trig-sin) | f | 223.7 | 23868.0 | 126.0 | 110.0 | 1.8 | calls _sinf | - |
-| sqrtf | f | 61.2 | 6170.0 | 45.5 | 46.3 | 1.3 | calls sqrtf | - |
-| [wrap_fmodf](Fast-Paths.md#mathf-repeat) | f | 137.0 | 14131.0 | 88.7 | 88.6 | 1.5 | calls fmodf | - |
+| atan2f | f | 338.6 | 29114.0 | 196.8 | 197.0 | 1.7 | calls atan2f | - |
+| cosf | f | 191.3 | 21070.0 | 110.6 | 111.6 | 1.7 | calls _cosf | - |
+| [sinf](Fast-Paths.md#trig-sin) | f | 223.6 | 23721.0 | 125.9 | 110.0 | 1.8 | calls _sinf | - |
+| sqrtf | f | 62.2 | 5622.0 | 45.4 | 46.3 | 1.4 | calls sqrtf | - |
+| [wrap_fmodf](Fast-Paths.md#mathf-repeat) | f | 136.9 | 13275.0 | 88.5 | 88.6 | 1.5 | calls fmodf | - |
 
 #### Calibration
 
 | function | type | cycles/op warm | cold cycles/call (I-cache refill) | board insn/op | QEMU insn/op | cycles/insn | fused/approx ops; calls | max error |
 |---|---|---:|---:|---:|---:|---:|---|---|
-| dot_f32_n256 | f | 1305.0 | 2370.0 | 1315.0 | 1299.0 | 1.0 | madd.s | - |
+| dot_f32_n256 | f | 1299.0 | 1662.0 | 1309.0 | 1299.0 | 1.0 | madd.s | - |
 
-ESP-DSP calibration: measured warm 1305.0 cycles/call; ANSI O2 reference 1311 cycles/call; measured/reference 99.5%.
+ESP-DSP calibration: measured warm 1299.0 cycles/call; ANSI O2 reference 1311 cycles/call; measured/reference 99.1%.
 <!-- /generated: math-benchmark -->
 
 </details>
@@ -118,16 +119,19 @@ ESP-DSP calibration: measured warm 1305.0 cycles/call; ANSI O2 reference 1311 cy
 
 | step | command |
 |---|---|
-| Bench capture | `autana --wait 3600 suite run_math_perf_suite --flash --perf-scope` |
-| Error capture | `autana --wait 3600 suite suite_math_numbers --flash` |
-| ELF metadata | `autana build diag --perf-scope`, then `python launcher/tools/perf/math_bench_table.py --from-elf <launcher.elf>` |
-| Linked sizes | `python launcher/tools/perf/fast_paths.py --from-elf <launcher.elf>` |
+| Bench capture | [board capture build](../../launcher/packages/math/test_apps/README.md), then `idf -C packages/math/test_apps -B packages/math/test_apps/build.board monitor > docs/math/data/math_bench_capture.txt` |
+| Error capture | Included in the package app capture |
+| ELF metadata | `idf -C packages/math/test_apps -B packages/math/test_apps/build.board build`, then `python launcher/tools/perf/math_bench_table.py --from-elf <math_test_app.elf>` |
+| Linked sizes | `python launcher/tools/perf/fast_paths.py --from-elf <math_test_app.elf>` |
 | Host error sweep | `bash launcher/test/run_tests.sh --sanitize` |
 | Host records | Save `MATHERROR`/`MATHERRORBIN` in `data/math_error_host_capture.txt` with a `MATHTARGET target=host arch=<architecture> execution=host` record. |
 | Regenerate blocks | `python launcher/tools/perf/fast_paths.py`; add `--check` to verify. |
 | Figures | `bash launcher/tools/render/render_doc_images.sh`, or `python launcher/tools/math/math_bench_figures.py` and `python launcher/tools/math/fast_path_figures.py`. |
 
-Keep `BUILD_ID=`, `MATHTARGET`, `MATHBENCH`, `MATHERROR` and `MATHERRORBIN` records in `data/math_bench_capture.txt`.
+Initialize the pinned IDF as shown in the [test app commands](../../launcher/packages/math/test_apps/README.md).
+The board app ELF is `launcher/packages/math/test_apps/build.board/math_test_app.elf`.
+
+Keep `BUILD_ID=`, `MATHTARGET`, `MATHBENCH`, `MATHERROR` and `MATHERRORBIN` records in `docs/math/data/math_bench_capture.txt`.
 Separate images require one `scope=bench` and one `scope=error` build ID; a single image uses one unscoped ID.
 
 `MATHTARGET` identifies the shared target; ELF metadata and sizes must match the bench image. Host evidence is labelled separately.
