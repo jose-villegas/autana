@@ -38,11 +38,12 @@ file counted twice:
   get the host route's flags plus one additional include path for their
   sibling headers, since each compiles on a host.
 
-**Coverage is a checked rule, not a description.** Every `.c` file under
-`launcher/main/` and `launcher/packages/` is walked directly from the
-filesystem, independent of either database, and compared against what was
-actually measured. A file
-neither source reaches, and that is not excluded, fails the gate by name.
+**Coverage is a checked rule, not a description.** Git-tracked `.c` files
+under `launcher/main/` and `launcher/packages/` come from `git ls-files`,
+independent of either database. Untracked build output is outside coverage.
+
+Each tracked source is compared against what was measured. A file neither
+source reaches, and that is not excluded, fails the gate by name.
 `EXCLUDED_MAIN_FILES` in `complexity_gate.py` is that exclusion list: each
 entry carries the reason a reader can check.
 

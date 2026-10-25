@@ -508,7 +508,7 @@ def build_idf_entries(toolchain_root, vendored=False):
 
 # apps/*/tools/**/*.c and shell/apps/*/tools/**/*.c, at any depth, are
 # excluded from the firmware and the host build (main/CMakeLists.txt,
-# run_tests.sh), but check_main_coverage()'s rglob("*.c") reaches them, so
+# run_tests.sh), but check_main_coverage() includes their tracked sources, so
 # they get real flags: each compiles on a host with the runner's flags plus
 # -I main/apps/sand for sibling headers (material.h, sand.h, ...).
 TOOLS_FILES_EXTRA_INCLUDE = "apps/sand"
@@ -612,22 +612,25 @@ def build_compile_db():
 
 
 def check_main_coverage(measured_files):
-    """Every .c file under launcher/main/ and launcher/packages/, found by
-    walking the filesystem: independent of any build or database. A gap that is not
-    EXCLUDED_MAIN_FILES, with a reason, is a coverage regression and fails
-    the gate by name rather than shrinking quietly."""
+    """Check tracked first-party C sources independently of build databases.
+
+    Untracked build output is never first-party coverage. Any unmeasured
+    source needs a reason in EXCLUDED_MAIN_FILES or fails the gate by name.
+    """
     measured = {str(Path(f).resolve()) for f in measured_files}
-    on_disk = sorted(path for root in ("main", "packages")
-                     for path in (LAUNCHER_DIR / root).rglob("*.c")
-                     if not is_vendored(str(path)))
+    tracked = subprocess.check_output(
+        ["git", "ls-files", "-z", "--", "main/*.c", "packages/*.c"],
+        cwd=LAUNCHER_DIR, text=True).split("\0")
+    sources = sorted(LAUNCHER_DIR / path for path in tracked
+                     if path and not is_vendored(str(LAUNCHER_DIR / path)))
     missing = []
-    for path in on_disk:
+    for path in sources:
         resolved = str(path.resolve())
         rel = path.resolve().relative_to(LAUNCHER_DIR).as_posix()
         if resolved in measured or rel in EXCLUDED_MAIN_FILES:
             continue
         missing.append(rel)
-    return len(on_disk), missing
+    return len(sources), missing
 
 
 def find_parse_errors(stdout):
@@ -764,8 +767,8 @@ def main():
           f"{counts['idf']} from the diagnostics build, {counts['host']} "
           f"host-only, {counts['tools']} apps/*/tools/**/*.c)")
 
-    total_on_disk, missing = check_main_coverage(all_sources)
-    print(f"first-party coverage: {total_on_disk} .c files on disk, "
+    total_tracked, missing = check_main_coverage(all_sources)
+    print(f"first-party coverage: {total_tracked} git-tracked .c files, "
           f"{len(missing)} unmeasured and unexcluded")
     if missing:
         sys.exit(
