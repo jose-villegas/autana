@@ -78,8 +78,8 @@ flowchart TB
             Build["build/<br/><i>which build variant this is</i>"]
         end
     end
-    subgraph R17["packages: launcher/packages/"]
-        Math["math/<br/><i>scalars to transforms, checked by PACKAGE-INCLUDE</i>"]
+    subgraph R17["packages"]
+        Packages["launcher/packages/<br/><i>first-party libraries, the graph below</i>"]
     end
 
     R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
@@ -120,6 +120,21 @@ Below every folder of `main/`, `board/` included, sit the packages: first-party
 libraries in `launcher/packages/<name>/`, each its own ESP-IDF component with an
 `include/` root, `src/` and `tests/`;
 [math](../../launcher/packages/math/README.md) and [physics](../../launcher/packages/physics/README.md) are two.
+Each arrow below is a declared dependency, written by
+[`package_requires.py`](../../launcher/tools/build/package_requires.py) from the declarations:
+
+<!-- generated: package-requires-diagram check: python launcher/tools/build/package_requires.py --check -->
+```mermaid
+flowchart BT
+    p_collections["collections/"]
+    p_hash["hash/"]
+    p_math["math/"]
+    p_physics["physics/"]
+    p_testkit["testkit/"]
+    p_physics --> p_math
+    p_testkit --> p_math
+```
+<!-- /generated: package-requires-diagram -->
 
 A package includes nothing outside itself but the C library, the build config and the
 packages it declares, so the firmware, the host tests, the tools and the editor all build it.

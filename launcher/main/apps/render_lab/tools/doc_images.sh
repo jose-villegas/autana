@@ -72,3 +72,10 @@ if grep -q "^RENDER_ERR" "$W/capybara-console.log"; then
     exit 1
 fi
 gif_from_avi "$W/capybara-motion.avi" "$OUT/render-lab-capybara.gif" "fps=25/2" "stats_mode=diff"
+
+# The water scene's scripted tour, portrait as the tank stands: upright,
+# tipped each way, laid back, flat, toward the viewer, upright, shaken.
+WATER_DT=16
+WATER_FRAMES=880
+run "$W/render_lab_render" --quarter 0 --no-hud --scene water --console "0:water tour" --dt "$WATER_DT"     --frames "$WATER_FRAMES" -o "$W/water-tour.bmp" --video "$W/water-tour.avi" 2> "$W/water.log"
+gif_from_avi "$W/water-tour.avi" "$OUT/render-lab-water.gif" "fps=15,scale=276:-1:flags=lanczos" "stats_mode=diff"

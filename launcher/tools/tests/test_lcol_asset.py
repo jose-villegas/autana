@@ -52,8 +52,8 @@ class LcolTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 owner.name_for_mesh(mesh)
 
-    def test_scene_v4_round_trip(self):
-        self.assertEqual(scene_asset.VERSION, 4)
+    def test_scene_v5_round_trip(self):
+        self.assertEqual(scene_asset.VERSION, 5)
         scene = authored_entry()
         at = scene_asset.HEADER.unpack_from(scene)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("renderers")]
         struct.pack_into("<H", scene, at + 2, 7)
