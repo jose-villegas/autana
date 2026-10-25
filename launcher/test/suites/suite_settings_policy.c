@@ -6,7 +6,7 @@
 #include <stdlib.h>
 
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "services/settings_policy.h"

@@ -4,8 +4,8 @@
 #include "math/scalar/math_const.h"
 #include "math/scalar/trig.h"
 #include "math/signal/goertzel.h"
-#include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
+#include "testkit/suite.h"
 #include "unity.h"
 #define TEST_SAMPLE_RATE_HZ        22050u
 #define TEST_SAMPLES               TEST_SAMPLE_RATE_HZ
@@ -37,7 +37,7 @@ fill_tone(int16_t* samples, int32_t divisor) {
             (int16_t)(trig_sin((uint16_t)((uint64_t)i * TEST_TARGET_HZ * TRIG_TURN / TEST_SAMPLE_RATE_HZ)) / divisor);
     }
 }
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 #define TEST_PI           3.14159265358979323846
 #define TEST_DB_TOLERANCE 0.5f
 #define TEST_MAX_RECORD_S 60u
@@ -325,7 +325,7 @@ test_goertzel_phase_negative_pi(void) {
 
 void
 run_goertzel_suite(void) {
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     RUN_TEST(test_goertzel_phase);
     RUN_TEST(test_goertzel_phase_negative_pi);
     RUN_TEST(test_goertzel_phase_long_rotation);
