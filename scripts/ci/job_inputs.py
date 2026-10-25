@@ -150,6 +150,33 @@ def affected(workflow, jobs, pull, base_ref, request=call):
                                  if change['status'] in {'added', 'renamed'})
     base_files.update(change['filename'] for change in changes if change['status'] == 'removed')
     base_files.update(change['previous_filename'] for change in changes if 'previous_filename' in change)
+    return affected_changes(workflow, jobs, changes, base_ref, base_files,
+                            capped=capped, request=request)
+
+
+def changes_from_name_status(text):
+    """Normalize git's NUL-delimited name-status output to the PR-files shape."""
+    if not text:
+        return []
+    fields = iter(text.rstrip('\0').split('\0'))
+    changes = []
+    statuses = {'M': 'modified', 'A': 'added', 'D': 'removed', 'R': 'renamed',
+                'C': 'added', 'T': 'modified'}
+    for field in fields:
+        columns = field.split('\t')
+        status = columns[0]
+        name = columns[1] if len(columns) > 1 else next(fields)
+        change = {'filename': name, 'status': statuses[status[0]]}
+        if status.startswith(('R', 'C')):
+            change['filename'] = columns[2] if len(columns) > 2 else next(fields)
+            if status.startswith('R'):
+                change['previous_filename'] = name
+        changes.append(change)
+    return changes
+
+
+def affected_changes(workflow, jobs, changes, base_ref, base_files, *, capped=False, request=call):
+    """Use the same recorded inputs for API and local git changes."""
     decisions = {}
     for job in jobs:
         name = f'{ARTIFACT_PREFIX}{workflow}-{job}'
