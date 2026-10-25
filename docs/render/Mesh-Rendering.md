@@ -233,7 +233,7 @@ A row may also carry two optional hooks:
 
 | Row hook | What it does |
 |---|---|
-| `second_view` | After the frame's draw, may name a second view; the same instances are drawn again through it, every cluster kept, and the frame's stats stay those of the first draw |
+| `second_view` | After the frame's draw and after each draw it asks for, may name another view and fill the census list with the clusters to draw through it; the frame's stats stay those of the first draw |
 | `overlay` | Draws lines over the composed picture; the shell then composes at full size, not into a half picture |
 
 - The ramp is stretched over the range this frame drew: the most detail
@@ -352,7 +352,9 @@ only drawn clusters show, so it redraws from a spectator.
 | `cullview.paint` | 0 the baked colours, culled clusters as a sparse screen door with a dashed grey border, each kept cluster's border solid in its fate's colour; 1 each cluster flat in its fate's colour; 2 each cluster in the hue of its node at `cullview.level`, darker the earlier it was dropped |
 | `cullview.level` | the tree depth whose node boxes the overlay draws; 0 none, 1 the root's children |
 
-From a spectator the overlay also draws the camera's frustum.
+From a spectator the culled and the kept clusters are drawn apart, so culled
+geometry never hides kept geometry behind it: the holes in its screen door
+show what lies behind. The overlay also draws the camera's frustum.
 
 - Where two triangles fill a pixel at the same depth, it goes to the later
   one, as with every attachment.
@@ -361,10 +363,10 @@ From a spectator the overlay also draws the camera's frustum.
 
 ```mermaid
 flowchart LR
-    Camera["draw from the camera<br/><i>each pixel tagged with its triangle</i>"] --> Drawn["drawn hook<br/><i>counts each kept cluster's triangles</i>"]
-    Drawn --> Tally["second_view hook<br/><i>tagged triangles make clusters drawn</i>"]
-    Tally --> Spectator["draw from the spectator<br/><i>every cluster, tagged with its cluster;<br/>skipped when cullview.from is the camera</i>"]
-    Spectator --> Show["show<br/><i>each pixel in its cluster's fate</i>"] --> Lines["overlay<br/><i>node boxes, frustum</i>"]
+    Camera["draw from the camera<br/><i>each pixel tagged with its triangle</i>"] --> Count["second_view hook<br/><i>counts the cull and each kept cluster's triangles;<br/>tagged triangles make clusters drawn</i>"]
+    Count --> Culled["draw the culled clusters<br/><i>from the spectator, kept painted with depth</i>"]
+    Culled --> Kept["draw the kept clusters<br/><i>from the spectator</i>"]
+    Kept --> Show["show<br/><i>the culled pixels layered where nearer</i>"] --> Lines["overlay<br/><i>node boxes, frustum</i>"]
 ```
 
 The frame's own cull and draw count nothing; `r3d_pipeline_cull_counted()` and

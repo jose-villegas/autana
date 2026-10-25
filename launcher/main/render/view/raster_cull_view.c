@@ -290,18 +290,71 @@ spectator_view(const raster_cull_t* s, const raster_t* raster) {
     return view;
 }
 
-bool
-raster_cull_second_view(void* state, const raster_t* raster, render_view_t* out) {
-    raster_cull_t* s = state;
-    count_frame(s, raster);
-    tally(s, raster);
-    find_nodes(s, raster);
-    if (s->from == RASTER_CULL_FROM_CAMERA) {
-        return false;
+/* The census list of each instance: its culled clusters, or its kept ones. */
+static void
+list_clusters(const raster_cull_t* s, const raster_t* raster, bool culled) {
+    uint16_t* list = raster_carve(raster).culled;
+    int offset = 0;
+    for (int i = 0; i < raster->instance_count; i++) {
+        const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
+        int count = 0;
+        for (int c = 0; c < mesh->cluster_count; c++) {
+            if ((s->fate[offset + c] == RASTER_FATE_CULLED) == culled) {
+                list[1 + count++] = (uint16_t)c;
+            }
+        }
+        list[0] = (uint16_t)count;
+        list += 1 + mesh->cluster_count;
+        offset += mesh->cluster_count;
     }
-    s->spectator = spectator_view(s, raster);
-    s->spectating = true;
+}
+
+static void paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index);
+
+/* The culled clusters' picture painted and kept with its depth, for the
+ * kept clusters' to be layered on. */
+static void
+keep_under(raster_cull_t* s, const raster_t* raster) {
+    const raster_buffers_t b = raster_carve(raster);
+    const int index = attachment_index(raster, s);
+    paint_picture(s, raster, &b.picture, index);
+    assert(raster->width * raster->height <= RASTER_CULL_PIXELS_MAX);
+    for (int y = 0; y < raster->height; y++) {
+        const gfx_color_t* color = gfx_render_target_color(&b.picture, y);
+        const uint16_t* depth = gfx_render_target_depth(&b.picture, y);
+        for (int x = 0; x < raster->width; x++) {
+            const int p = (y * raster->width) + x;
+            s->under_color[p] = color[x];
+            s->under_depth[p] = color[x] == raster->clear ? R3D_DEPTH_EMPTY : depth[x];
+        }
+    }
+}
+
+bool
+raster_cull_second_view(void* state, const raster_t* raster, render_view_t* out, bool* listed) {
+    raster_cull_t* s = state;
+    switch ((raster_cull_pass_t)s->pass) {
+        case RASTER_CULL_PASS_CAMERA:
+            count_frame(s, raster);
+            tally(s, raster);
+            find_nodes(s, raster);
+            if (s->from == RASTER_CULL_FROM_CAMERA) {
+                return false;
+            }
+            s->spectator = spectator_view(s, raster);
+            s->spectating = true;
+            s->pass = RASTER_CULL_PASS_CULLED;
+            list_clusters(s, raster, true);
+            break;
+        case RASTER_CULL_PASS_CULLED:
+            keep_under(s, raster);
+            s->pass = RASTER_CULL_PASS_KEPT;
+            list_clusters(s, raster, false);
+            break;
+        case RASTER_CULL_PASS_KEPT: return false;
+    }
     *out = s->spectator;
+    *listed = true;
     return true;
 }
 
@@ -386,22 +439,51 @@ show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t*
     }
 }
 
+/* The picture's colour from its cluster map, in the paint chosen. */
 static void
-show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
-    raster_cull_t* s = self->state;
+paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index) {
     if (paint == RASTER_CULL_PAINT_SHADED) {
         show_shaded(s, raster, picture, index);
-    } else {
-        for (int y = picture->row0; y < picture->row1; y++) {
-            const uint32_t* tag = gfx_render_target_row(picture, index, y);
-            gfx_color_t* color = gfx_render_target_color(picture, y);
-            for (int x = 0; x < picture->width; x++) {
-                const int c = tagged_cluster(s, raster, tag[x]);
-                color[x] = c < 0 ? raster->clear : cluster_color(s, c);
+        return;
+    }
+    for (int y = picture->row0; y < picture->row1; y++) {
+        const uint32_t* tag = gfx_render_target_row(picture, index, y);
+        gfx_color_t* color = gfx_render_target_color(picture, y);
+        for (int x = 0; x < picture->width; x++) {
+            const int c = tagged_cluster(s, raster, tag[x]);
+            color[x] = c < 0 ? raster->clear : cluster_color(s, c);
+        }
+    }
+}
+
+/* The culled clusters' kept pixels over the kept clusters' picture: over
+ * the background, and over kept geometry they are nearer than. Each takes
+ * its depth too, which the upscale reads to tell drawn from clear. */
+static void
+layer_under(const raster_cull_t* s, const gfx_render_target_t* picture, int index) {
+    for (int y = picture->row0; y < picture->row1; y++) {
+        gfx_color_t* color = gfx_render_target_color(picture, y);
+        uint16_t* depth = gfx_render_target_depth(picture, y);
+        const uint32_t* tag = gfx_render_target_row(picture, index, y);
+        for (int x = 0; x < picture->width; x++) {
+            const int p = (y * picture->width) + x;
+            if (s->under_depth[p] != R3D_DEPTH_EMPTY && (tag[x] == 0 || s->under_depth[p] > depth[x])) {
+                color[x] = s->under_color[p];
+                depth[x] = s->under_depth[p];
             }
         }
     }
+}
+
+static void
+show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+    raster_cull_t* s = self->state;
+    paint_picture(s, raster, picture, index);
+    if (s->pass == RASTER_CULL_PASS_KEPT) {
+        layer_under(s, picture, index);
+    }
     s->spectating = false;
+    s->pass = RASTER_CULL_PASS_CAMERA;
 }
 
 raster_attachment_t
