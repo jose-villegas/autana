@@ -48,7 +48,7 @@ Warm cycles per op, generated from the committed capture.
 | lerp (vec3) | x | 126.2 | 12319.0 | 98.5 | 99.5 | 1.3 | - | - |
 | [normalize_div](Fast-Paths.md#mathx-rsqrt-q30) | x | 1116.2 | 76895.0 | 917.2 | 907.9 | 1.2 | calls __udivdi3, mathi_isqrt64_digits | - |
 | normalize (vec3) | f | 57.3 | 5255.0 | 29.5 | device-only instruction | 1.9 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 1 step (sweep) |
-| [normalize (vec3)](Fast-Paths.md#mathx-rsqrt-q30) | x | 348.3 | 28551.0 | 307.5 | 681.2 | 1.1 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
+| [normalize (vec3)](Fast-Paths.md#mathx-rsqrt-q30) | x | 348.3 | 28551.0 | 307.5 | device-only instruction | 1.1 | madd.s msub.s rsqrt0.s; calls __assert_func, mathx_rsqrt_q30 | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
 | scale (vec3) | f | 13.2 | 1273.0 | 12.4 | 12.2 | 1.1 | - | - |
 | scale (vec3) | i | 12.2 | 1195.0 | 12.4 | 12.2 | 1.0 | - | - |
 | scale (vec3) | s | 36.3 | 3562.0 | 30.5 | 30.4 | 1.2 | - | - |
@@ -63,7 +63,7 @@ Warm cycles per op, generated from the committed capture.
 | [mathf_recip](Fast-Paths.md#mathf-recip) | f | 26.2 | 2335.0 | 13.4 | device-only instruction | 2.0 | madd.s msub.s recip0.s | [fast paths](Fast-Paths.md#mathf-recip) |
 | [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx) | f | 24.2 | 2425.0 | 12.5 | device-only instruction | 1.9 | msub.s rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt-approx) |
 | [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt) | f | 38.3 | 3874.0 | 18.5 | device-only instruction | 2.1 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | [fast paths](Fast-Paths.md#mathf-rsqrt) |
-| [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30) | x | 160.2 | 13793.0 | 145.4 | 143.6 | 1.1 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
+| [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30) | x | 160.2 | 13793.0 | 145.4 | device-only instruction | 1.1 | madd.s msub.s rsqrt0.s; calls mathx_rsqrt_q30 | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
 | mul (scalar) | f | 9.2 | 985.0 | 6.4 | 6.2 | 1.4 | - | - |
 | mul (scalar) | i | 9.2 | 926.0 | 8.4 | 8.2 | 1.1 | - | - |
 | mul (scalar) | s | 11.3 | 1543.0 | 10.4 | 10.2 | 1.1 | - | - |
@@ -79,7 +79,7 @@ Warm cycles per op, generated from the committed capture.
 |---|---|---:|---:|---:|---:|---:|---|---|
 | [nlerp_div](Fast-Paths.md#mathx-rsqrt-q30) | x | 723.5 | 59958.0 | 519.4 | 529.4 | 1.4 | calls __divdi3, mathi_isqrt64_digits | - |
 | nlerp | f | 94.7 | 8884.0 | 53.6 | device-only instruction | 1.8 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | 2 steps (sweep) |
-| [nlerp](Fast-Paths.md#mathx-rsqrt-q30) | x | 715.8 | 63347.0 | 557.7 | 909.9 | 1.3 | calls __assert_func | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
+| [nlerp](Fast-Paths.md#mathx-rsqrt-q30) | x | 715.8 | 63347.0 | 557.7 | device-only instruction | 1.3 | madd.s msub.s rsqrt0.s; calls mathx_rsqrt_q30 | [fast paths](Fast-Paths.md#mathx-rsqrt-q30) |
 | quat mul | f | 30.2 | 2672.0 | 30.4 | 30.2 | 1.0 | madd.s msub.s | - |
 | quat mul | x | 417.3 | 39296.0 | 324.0 | 313.9 | 1.3 | - | - |
 | slerp | f | 454.0 | 34497.0 | 305.2 | device-only instruction | 1.5 | madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf | - |
