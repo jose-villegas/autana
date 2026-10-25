@@ -78,7 +78,7 @@ fail(const char* what) {
 static void
 place_camera(void) {
     const transformf_t pose = orbit_motion_pose(&orbit);
-    scene_entity_set_local(capybara, camera_entity, &pose);
+    scene_entity_set_local(capybara, camera_entity, pose);
 }
 
 /* Home and limits from the subject's sphere and the scene camera's lens. */

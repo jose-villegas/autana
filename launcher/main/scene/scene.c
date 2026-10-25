@@ -515,21 +515,20 @@ scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t 
     return true;
 }
 
-const scene_transform_t*
+transformf_t
 scene_entity_local(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
-    return &scene->locals[entity];
+    return scene->locals[entity];
 }
 
-bool
-scene_entity_set_local(scene_t* scene, scene_entity_t entity, const scene_transform_t* local) {
+void
+scene_entity_set_local(scene_t* scene, scene_entity_t entity, transformf_t local) {
     assert(entity < scene->asset.entity_count);
-    if (scene->world_slots[entity] != SCENE_WORLD_SLOT_NONE && !transformf_scale_is_even(local)) {
-        return false;
-    }
-    scene->locals[entity] = *local;
+    /* A parent scales evenly, so every world below it is an exact TRS; the
+     * loader and the importer keep content so. */
+    assert(scene->world_slots[entity] == SCENE_WORLD_SLOT_NONE || transformf_scale_is_even(&local));
+    scene->locals[entity] = local;
     scene->flags[entity] |= SCENE_FLAG_CHANGED;
-    return true;
 }
 
 bool
