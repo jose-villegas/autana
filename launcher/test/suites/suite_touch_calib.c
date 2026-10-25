@@ -74,14 +74,14 @@ test_a_correction_stays_on_the_panel(void) {
 static void
 test_a_controller_point_is_corrected_once_before_the_fsm(void) {
     const touch_calib_t calib = touch_calib_from_fit(STRETCH);
-    int x, y;
-    reported(STRETCH, 100, 300, &x, &y);
+    vec2i_t point;
+    reported(STRETCH, 100, 300, &point.x, &point.y);
 
     touch_fsm_t fsm;
     input_t in;
     touch_fsm_init(&fsm);
-    touch_calib_prepare_point(false, true, &x, &y, true, &calib, 368, 448);
-    touch_fsm_update(&fsm, true, (vec2i_t){x, y}, 0);
+    touch_calib_prepare_point(false, true, &point, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, point, 0);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_INT_WITHIN(1, 100, in.x);
     TEST_ASSERT_INT_WITHIN(1, 300, in.y);
@@ -90,15 +90,15 @@ test_a_controller_point_is_corrected_once_before_the_fsm(void) {
 static void
 test_a_controller_point_is_unchanged_when_calibration_is_off(void) {
     const touch_calib_t calib = touch_calib_from_fit(STRETCH);
-    int x, y;
-    reported(STRETCH, 100, 300, &x, &y);
-    const int reported_x = x, reported_y = y;
+    vec2i_t point;
+    reported(STRETCH, 100, 300, &point.x, &point.y);
+    const int reported_x = point.x, reported_y = point.y;
 
     touch_fsm_t fsm;
     input_t in;
     touch_fsm_init(&fsm);
-    touch_calib_prepare_point(false, true, &x, &y, false, &calib, 368, 448);
-    touch_fsm_update(&fsm, true, (vec2i_t){x, y}, 0);
+    touch_calib_prepare_point(false, true, &point, false, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, point, 0);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_EQUAL_INT(reported_x, in.x);
     TEST_ASSERT_EQUAL_INT(reported_y, in.y);
@@ -107,13 +107,13 @@ test_a_controller_point_is_unchanged_when_calibration_is_off(void) {
 static void
 test_an_injected_point_is_not_corrected_before_the_fsm(void) {
     const touch_calib_t calib = touch_calib_from_fit(STRETCH);
-    int x = 100, y = 300;
+    vec2i_t point = {100, 300};
 
     touch_fsm_t fsm;
     input_t in;
     touch_fsm_init(&fsm);
-    touch_calib_prepare_point(true, true, &x, &y, true, &calib, 368, 448);
-    touch_fsm_update(&fsm, true, (vec2i_t){x, y}, 0);
+    touch_calib_prepare_point(true, true, &point, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, point, 0);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_EQUAL_INT(100, in.x);
     TEST_ASSERT_EQUAL_INT(300, in.y);
@@ -124,22 +124,22 @@ test_an_injected_lift_reaches_the_fsm_without_touching_the_point(void) {
     const touch_calib_t calib = touch_calib_from_fit(STRETCH);
     touch_fsm_t fsm;
     input_t in;
-    int x = 100, y = 300;
+    vec2i_t point = {100, 300};
     touch_fsm_init(&fsm);
 
-    touch_calib_prepare_point(true, true, &x, &y, true, &calib, 368, 448);
-    touch_fsm_update(&fsm, true, (vec2i_t){x, y}, 0);
+    touch_calib_prepare_point(true, true, &point, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, point, 0);
     touch_fsm_take(&fsm, &in);
-    x = 71;
-    y = 83;
-    touch_calib_prepare_point(true, false, &x, &y, true, &calib, 368, 448);
-    touch_fsm_update(&fsm, false, (vec2i_t){x, y}, TOUCH_RELEASE_QUIET_US + 1);
+    point.x = 71;
+    point.y = 83;
+    touch_calib_prepare_point(true, false, &point, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, false, point, TOUCH_RELEASE_QUIET_US + 1);
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_TRUE(in.released);
     TEST_ASSERT_FALSE(in.down);
-    TEST_ASSERT_EQUAL_INT(71, x);
-    TEST_ASSERT_EQUAL_INT(83, y);
+    TEST_ASSERT_EQUAL_INT(71, point.x);
+    TEST_ASSERT_EQUAL_INT(83, point.y);
 }
 
 static void
@@ -147,37 +147,37 @@ test_controller_press_and_move_are_corrected_once_each_before_release(void) {
     const touch_calib_t calib = touch_calib_from_fit(STRETCH);
     touch_fsm_t fsm;
     input_t in;
-    int x, y;
+    vec2i_t point;
     touch_fsm_init(&fsm);
 
-    reported(STRETCH, 100, 300, &x, &y);
-    touch_calib_prepare_point(false, true, &x, &y, true, &calib, 368, 448);
-    touch_fsm_update(&fsm, true, (vec2i_t){x, y}, 0);
+    reported(STRETCH, 100, 300, &point.x, &point.y);
+    touch_calib_prepare_point(false, true, &point, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, point, 0);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_TRUE(in.pressed);
     TEST_ASSERT_INT_WITHIN(1, 100, in.press_x);
     TEST_ASSERT_INT_WITHIN(1, 300, in.press_y);
 
-    reported(STRETCH, 250, 60, &x, &y);
-    touch_calib_prepare_point(false, true, &x, &y, true, &calib, 368, 448);
-    touch_fsm_update(&fsm, true, (vec2i_t){x, y}, 1000);
+    reported(STRETCH, 250, 60, &point.x, &point.y);
+    touch_calib_prepare_point(false, true, &point, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, point, 1000);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_FALSE(in.pressed);
     TEST_ASSERT_INT_WITHIN(1, 250, in.x);
     TEST_ASSERT_INT_WITHIN(1, 60, in.y);
 
-    x = 71;
-    y = 83;
-    touch_calib_prepare_point(false, false, &x, &y, true, &calib, 368, 448);
-    touch_fsm_update(&fsm, false, (vec2i_t){x, y}, TOUCH_RELEASE_QUIET_US + 1001);
+    point.x = 71;
+    point.y = 83;
+    touch_calib_prepare_point(false, false, &point, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, false, point, TOUCH_RELEASE_QUIET_US + 1001);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_TRUE(in.released);
     TEST_ASSERT_INT_WITHIN(1, 100, in.press_x);
     TEST_ASSERT_INT_WITHIN(1, 300, in.press_y);
     TEST_ASSERT_INT_WITHIN(1, 250, in.x);
     TEST_ASSERT_INT_WITHIN(1, 60, in.y);
-    TEST_ASSERT_EQUAL_INT(71, x);
-    TEST_ASSERT_EQUAL_INT(83, y);
+    TEST_ASSERT_EQUAL_INT(71, point.x);
+    TEST_ASSERT_EQUAL_INT(83, point.y);
 }
 
 void

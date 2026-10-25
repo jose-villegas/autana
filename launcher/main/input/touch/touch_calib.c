@@ -43,9 +43,9 @@ touch_calib_apply(const touch_calib_t* calib, int w, int h, int* x, int* y) {
 }
 
 void
-touch_calib_prepare_point(bool injected, bool have_point, int* x, int* y, bool calibrate, const touch_calib_t* calib,
+touch_calib_prepare_point(bool injected, bool have_point, vec2i_t* point, bool calibrate, const touch_calib_t* calib,
                           int w, int h) {
     if (have_point && !injected && calibrate) {
-        touch_calib_apply(calib, w, h, x, y);
+        touch_calib_apply(calib, w, h, &point->x, &point->y);
     }
 }

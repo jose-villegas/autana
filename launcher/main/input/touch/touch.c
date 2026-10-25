@@ -62,7 +62,7 @@ static TaskHandle_t touch_task_handle;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static uint32_t point_samples, moved_samples;
-static int last_x = -1, last_y = -1;
+static vec2i_t last_point = {-1, -1};
 #endif
 
 /* Need not be cache-off safe: esp_lcd_touch installs the GPIO ISR service with flags 0.
@@ -81,7 +81,7 @@ on_touch_int(esp_lcd_touch_handle_t tp) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static bool injected_down;
 static bool injected_release;
-static int injected_x, injected_y;
+static vec2i_t injected_point;
 static touch_inject_t injected_contact;
 static touch_inject_completion_t inject_completion;
 static touch_inject_completion_t completed_inject;
@@ -90,7 +90,7 @@ static touch_inject_completion_t completed_inject;
  * final no-contact sample. That lets touch_fsm see the lift before the panel
  * before the controller becomes the source again. */
 static bool
-poll_injected(int64_t now_us, bool* have_point, int* x, int* y) {
+poll_injected(int64_t now_us, bool* have_point, vec2i_t* point) {
     portENTER_CRITICAL(&lock);
     if (injected_release) {
         injected_release = false;
@@ -100,13 +100,12 @@ poll_injected(int64_t now_us, bool* have_point, int* x, int* y) {
     }
     if (injected_down) {
         *have_point = true;
-        *x = injected_x;
-        *y = injected_y;
+        *point = injected_point;
         portEXIT_CRITICAL(&lock);
         return true;
     }
     if (injected_contact.active) {
-        *have_point = touch_inject_step(&injected_contact, now_us, x, y);
+        *have_point = touch_inject_step(&injected_contact, now_us, point);
         if (!*have_point) {
             completed_inject = inject_completion;
         }
@@ -127,18 +126,17 @@ touch_inject(bool down, vec2i_t point) {
     portENTER_CRITICAL(&lock);
     injected_contact.active = false;
     injected_down = down;
-    injected_x = point.x;
-    injected_y = point.y;
+    injected_point = point;
     injected_release = !down;
     portEXIT_CRITICAL(&lock);
 }
 
 void
-touch_inject_start(int x0, int y0, int x1, int y1, uint32_t ms, touch_inject_completion_t completion) {
+touch_inject_start(vec2i_t from, vec2i_t to, uint32_t ms, touch_inject_completion_t completion) {
     portENTER_CRITICAL(&lock);
     injected_down = false;
     injected_release = false;
-    touch_inject_init(&injected_contact, x0, y0, x1, y1, ms);
+    touch_inject_init(&injected_contact, from, to, ms);
     inject_completion = completion;
     portEXIT_CRITICAL(&lock);
 }
@@ -158,7 +156,7 @@ touch_inject_take_completion(touch_inject_completion_t* completion) {
 #endif
 
 static void
-poll_controller(bool* have_point, int* x, int* y) {
+poll_controller(bool* have_point, vec2i_t* point) {
     /* Only talk to the controller when it has something: a controller NACKs
      * register reads while idle, and each failed transaction costs a bus
      * timeout; polling blindly at this rate would swamp the system. */
@@ -166,12 +164,11 @@ poll_controller(bool* have_point, int* x, int* y) {
     report_pending = false;
     if (panel != NULL && (pending || was_touching || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
         if (esp_lcd_touch_read_data(panel) == ESP_OK) {
-            esp_lcd_touch_point_data_t point = {0};
+            esp_lcd_touch_point_data_t raw = {0};
             uint8_t count = 0;
-            if (esp_lcd_touch_get_data(panel, &point, &count, 1) == ESP_OK && count > 0) {
+            if (esp_lcd_touch_get_data(panel, &raw, &count, 1) == ESP_OK && count > 0) {
                 *have_point = true;
-                *x = point.x;
-                *y = point.y;
+                *point = (vec2i_t){raw.x, raw.y};
             }
         }
     }
@@ -180,34 +177,32 @@ poll_controller(bool* have_point, int* x, int* y) {
 static void
 poll_once(void) {
     bool have_point = false;
-    int x = 0;
-    int y = 0;
+    vec2i_t point = {0};
     const int64_t now_us = timing_now_us();
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const bool injected = poll_injected(now_us, &have_point, &x, &y);
+    const bool injected = poll_injected(now_us, &have_point, &point);
     if (!injected) {
-        poll_controller(&have_point, &x, &y);
+        poll_controller(&have_point, &point);
     }
 #else
-    poll_controller(&have_point, &x, &y);
+    poll_controller(&have_point, &point);
 #endif
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    touch_calib_prepare_point(injected, have_point, &x, &y, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    touch_calib_prepare_point(injected, have_point, &point, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
 #else
-    touch_calib_prepare_point(false, have_point, &x, &y, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    touch_calib_prepare_point(false, have_point, &point, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
 #endif
 
     portENTER_CRITICAL(&lock);
-    touch_fsm_update(&fsm, have_point, (vec2i_t){x, y}, now_us);
+    touch_fsm_update(&fsm, have_point, point, now_us);
     was_touching = have_point;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (have_point) {
         point_samples++;
-        moved_samples += (x != last_x || y != last_y) ? 1U : 0U;
-        last_x = x;
-        last_y = y;
+        moved_samples += !vec2i_equal(point, last_point) ? 1U : 0U;
+        last_point = point;
     }
 #endif
     portEXIT_CRITICAL(&lock);

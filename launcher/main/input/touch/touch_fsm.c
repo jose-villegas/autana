@@ -9,19 +9,15 @@ touch_fsm_init(touch_fsm_t* fsm) {
 
 void
 touch_fsm_update(touch_fsm_t* fsm, bool have_point, vec2i_t point, int64_t now_us) {
-    const int x = point.x;
-    const int y = point.y;
     if (have_point) {
         if (!fsm->down) {
             /* First contact: latch a press and remember where it began, so a
              * gesture can measure how far the finger has travelled since. */
             fsm->down = true;
             fsm->pressed = true;
-            fsm->press_x = x;
-            fsm->press_y = y;
+            fsm->press = point;
         }
-        fsm->x = x;
-        fsm->y = y;
+        fsm->point = point;
         fsm->last_contact_us = now_us;
         return;
     }
@@ -39,10 +35,10 @@ touch_fsm_take(touch_fsm_t* fsm, input_t* out) {
     out->down = fsm->down;
     out->pressed = fsm->pressed;
     out->released = fsm->released;
-    out->x = fsm->x;
-    out->y = fsm->y;
-    out->press_x = fsm->press_x;
-    out->press_y = fsm->press_y;
+    out->x = fsm->point.x;
+    out->y = fsm->point.y;
+    out->press_x = fsm->press.x;
+    out->press_y = fsm->press.y;
 
     fsm->pressed = false;
     fsm->released = false;
