@@ -89,7 +89,7 @@ Target: Xtensa: `rsqrt0.s`, `madd.s`, `msub.s`.
 
 Builds: `CONFIG_MATH_FPU_RECIP`; QEMU plain; host plain.
 
-Callers: `anim`, `apps (not named)`, `input`, `render`, `scene`.
+Callers: `anim`, `apps (not named)`, `input`, `kinematics`, `render`, `scene`.
 
 Bench rows `mathf_rsqrt_f` vs `div_rsqrt_f`; limit `MATHF_RSQRT_ULP_LIMIT` (1 step); proof.
 
