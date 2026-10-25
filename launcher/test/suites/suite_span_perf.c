@@ -3,9 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "core/timing.h"
-#include "perf_stats.h"
 #include "render/r3d_span.h"
 #include "suites.h"
+#include "testkit/bench.h"
 #include "unity.h"
 
 #define SPAN_VERTEX_COUNT  3

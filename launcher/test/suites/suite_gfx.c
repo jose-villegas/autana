@@ -18,8 +18,8 @@
  */
 
 #include "perf_budget.h"
-#include "perf_stats.h"
 #include "suites.h"
+#include "testkit/bench.h"
 
 #ifdef DEVICE_BUILD
 

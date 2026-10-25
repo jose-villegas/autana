@@ -1,6 +1,6 @@
 /* Capture lengths bound timer rounding independently of the device clock. */
-#include "perf_stats.h"
 #include "suites.h"
+#include "testkit/bench.h"
 #include "unity.h"
 
 static void

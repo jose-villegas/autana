@@ -9,7 +9,7 @@ own Unity component.
 | `unity` | Unity assertions and test execution |
 | `testkit` | `testkit/bench.h`, `testkit/cleanup.h`, `testkit/suite.h` and harness implementations; links Unity and math |
 | `testkit_runner` | Standalone selection and host main; links testkit |
-| `runner/idf_main.c` | Generic ESP-IDF test and bench entry point for a package test app |
+| `runner/idf_main.c` and `runner/lifecycle.c` | Generic ESP-IDF test and bench entry point for a package test app |
 
 A package calls `enable_testing()` in its CMake directory, includes
 `cmake/PackageTests.cmake`, and calls `testkit_add_package_tests()` after

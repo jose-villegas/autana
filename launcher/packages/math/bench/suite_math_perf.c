@@ -37,46 +37,35 @@ typedef union {
     int64_t i;
 } result_t;
 
+#define MATH_BENCH_ARRAYS(PAIR, ARRAY)                                                                                 \
+    PAIR(vf, vec3f_t)                                                                                                  \
+    PAIR(vi, vec3i_t)                                                                                                  \
+    PAIR(vs, vec3s_t)                                                                                                  \
+    PAIR(vx, vec3x_t)                                                                                                  \
+    PAIR(qf, quatf_t)                                                                                                  \
+    PAIR(qx, quatx_t)                                                                                                  \
+    PAIR(mf, mat4f_t)                                                                                                  \
+    PAIR(mx, mat4x_t)                                                                                                  \
+    ARRAY(tf, transformf_t, MATH_BENCH_BATCH)                                                                          \
+    ARRAY(tx, transformx_t, MATH_BENCH_BATCH)                                                                          \
+    ARRAY(angle, float, MATH_BENCH_BATCH)                                                                              \
+    ARRAY(phase, uint16_t, MATH_BENCH_BATCH)                                                                           \
+    ARRAY(output, result_t, MATH_BENCH_BATCH)                                                                          \
+    ARRAY(dot_a, float, MATH_BENCH_DOT_SIZE)                                                                           \
+    ARRAY(dot_b, float, MATH_BENCH_DOT_SIZE)
+
+#define MATH_BENCH_PAIR_TYPE(name, type)                                                                               \
+    typedef struct {                                                                                                   \
+        type a, b;                                                                                                     \
+    } pair_##name##_t;
+#define MATH_BENCH_SKIP(name, type, count)
+MATH_BENCH_ARRAYS(MATH_BENCH_PAIR_TYPE, MATH_BENCH_SKIP)
+
+#define MATH_BENCH_FIELD(name, type, count) type* name;
+#define MATH_BENCH_PAIR_FIELD(name, type)   MATH_BENCH_FIELD(name, pair_##name##_t, MATH_BENCH_BATCH)
+
 typedef struct {
-    struct {
-        vec3f_t a, b;
-    }* vf;
-
-    struct {
-        vec3i_t a, b;
-    }* vi;
-
-    struct {
-        vec3s_t a, b;
-    }* vs;
-
-    struct {
-        vec3x_t a, b;
-    }* vx;
-
-    struct {
-        quatf_t a, b;
-    }* qf;
-
-    struct {
-        quatx_t a, b;
-    }* qx;
-
-    struct {
-        mat4f_t a, b;
-    }* mf;
-
-    struct {
-        mat4x_t a, b;
-    }* mx;
-
-    transformf_t* tf;
-    transformx_t* tx;
-    float* angle;
-    uint16_t* phase;
-    result_t* output;
-    float* dot_a;
-    float* dot_b;
+    MATH_BENCH_ARRAYS(MATH_BENCH_PAIR_FIELD, MATH_BENCH_FIELD)
 } fixture_t;
 
 static fixture_t* active_fixture;
@@ -86,22 +75,10 @@ release(void) {
     if (active_fixture == NULL) {
         return;
     }
-    bench_free(active_fixture->vf);
-    bench_free(active_fixture->vi);
-    bench_free(active_fixture->vs);
-    bench_free(active_fixture->vx);
-    bench_free(active_fixture->qf);
-    bench_free(active_fixture->qx);
-    bench_free(active_fixture->mf);
-    bench_free(active_fixture->mx);
-    bench_free(active_fixture->tf);
-    bench_free(active_fixture->tx);
-    bench_free(active_fixture->angle);
-    bench_free(active_fixture->phase);
-    bench_free(active_fixture->output);
-    bench_free(active_fixture->dot_a);
-    bench_free(active_fixture->dot_b);
-    bench_free(active_fixture);
+#define MATH_BENCH_FREE(name, type, count) free(active_fixture->name);
+#define MATH_BENCH_PAIR_FREE(name, type)   MATH_BENCH_FREE(name, pair_##name##_t, MATH_BENCH_BATCH)
+    MATH_BENCH_ARRAYS(MATH_BENCH_PAIR_FREE, MATH_BENCH_FREE)
+    free(active_fixture);
     active_fixture = NULL;
 }
 
@@ -201,6 +178,10 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
     X(lerp, "lerp (vec3)", type, "vector", false, vmember,                                                             \
       vec3##type##_lerp(f->v##type[j].a, f->v##type[j].b, __VA_ARGS__))
 
+#define MATH_QUATERNION_ROWS(X, type, lerp)                                                                            \
+    X(nlerp, "nlerp", type, "quaternion", false, q##type, quat##type##_nlerp(f->q##type[j].a, f->q##type[j].b, lerp))  \
+    X(quat_mul, "quat mul", type, "quaternion", false, q##type, quat##type##_mul(f->q##type[j].a, f->q##type[j].b))
+
 #define MATH_ROWS(X, DOT)                                                                                              \
     MATH_VECTOR_ROWS(X, f, vf, f, true, MATH_BENCH_LERP_F)                                                             \
     MATH_VECTOR_ROWS(X, i, vi, i, false, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR)                       \
@@ -219,10 +200,8 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
     X(convert, "convert", i_to_f, "vector", false, vf, vec3f_from_vec3i(f->vi[j].a))                                   \
     X(convert, "convert", f_to_i, "vector", false, vi, vec3i_from_vec3f(f->vf[j].a))                                   \
     X(slerp, "slerp", f, "quaternion", true, qf, quatf_slerp(f->qf[j].a, f->qf[j].b, MATH_BENCH_LERP_F))               \
-    X(nlerp, "nlerp", f, "quaternion", false, qf, quatf_nlerp(f->qf[j].a, f->qf[j].b, MATH_BENCH_LERP_F))              \
-    X(nlerp, "nlerp", x, "quaternion", false, qx, quatx_nlerp(f->qx[j].a, f->qx[j].b, MATH_BENCH_LERP_X))              \
-    X(quat_mul, "quat mul", f, "quaternion", false, qf, quatf_mul(f->qf[j].a, f->qf[j].b))                             \
-    X(quat_mul, "quat mul", x, "quaternion", false, qx, quatx_mul(f->qx[j].a, f->qx[j].b))                             \
+    MATH_QUATERNION_ROWS(X, f, MATH_BENCH_LERP_F)                                                                      \
+    MATH_QUATERNION_ROWS(X, x, MATH_BENCH_LERP_X)                                                                      \
     X(mat4_mul, "mat4 mul", f, "matrix", true, mf, mat4f_mul(f->mf[j].a, f->mf[j].b))                                  \
     X(mat4_mul, "mat4 mul", x, "matrix", false, mx, mat4x_mul(f->mx[j].a, f->mx[j].b))                                 \
     X(transform_compute_matrix, "transform compute_matrix", f, "matrix", false, mf,                                    \
@@ -250,7 +229,6 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
 #define MATH_KERNEL(name, label, type, family, ratchet, member, expression)                                            \
     static __attribute__((noinline)) void math_bench_##name##_##type(fixture_t* f) {                                   \
         for (int j = 0; j < MATH_BENCH_BATCH; j++) {                                                                   \
-                                                                                                                       \
             f->output[j].member = (expression);                                                                        \
         }                                                                                                              \
         __asm__ volatile("" : : "r"(f->output) : "memory");                                                            \
@@ -287,22 +265,9 @@ fixture(void) {
     *f = (fixture_t){0};
     active_fixture = f;
     suite_set_test_cleanup(release);
-    TEST_ASSERT_NOT_NULL(f);
-    f->vf = bench_alloc_internal(sizeof *f->vf * MATH_BENCH_BATCH, "vf");
-    f->vi = bench_alloc_internal(sizeof *f->vi * MATH_BENCH_BATCH, "vi");
-    f->vs = bench_alloc_internal(sizeof *f->vs * MATH_BENCH_BATCH, "vs");
-    f->vx = bench_alloc_internal(sizeof *f->vx * MATH_BENCH_BATCH, "vx");
-    f->qf = bench_alloc_internal(sizeof *f->qf * MATH_BENCH_BATCH, "qf");
-    f->qx = bench_alloc_internal(sizeof *f->qx * MATH_BENCH_BATCH, "qx");
-    f->mf = bench_alloc_internal(sizeof *f->mf * MATH_BENCH_BATCH, "mf");
-    f->mx = bench_alloc_internal(sizeof *f->mx * MATH_BENCH_BATCH, "mx");
-    f->tf = bench_alloc_internal(sizeof *f->tf * MATH_BENCH_BATCH, "tf");
-    f->tx = bench_alloc_internal(sizeof *f->tx * MATH_BENCH_BATCH, "tx");
-    f->angle = bench_alloc_internal(sizeof *f->angle * MATH_BENCH_BATCH, "angle");
-    f->phase = bench_alloc_internal(sizeof *f->phase * MATH_BENCH_BATCH, "phase");
-    f->output = bench_alloc_internal(sizeof *f->output * MATH_BENCH_BATCH, "output");
-    f->dot_a = bench_alloc_internal(sizeof *f->dot_a * MATH_BENCH_DOT_SIZE, "dot_a");
-    f->dot_b = bench_alloc_internal(sizeof *f->dot_b * MATH_BENCH_DOT_SIZE, "dot_b");
+#define MATH_BENCH_ALLOC(name, type, count) f->name = bench_alloc_internal(sizeof *f->name * (count), #name);
+#define MATH_BENCH_PAIR_ALLOC(name, type)   MATH_BENCH_ALLOC(name, pair_##name##_t, MATH_BENCH_BATCH)
+    MATH_BENCH_ARRAYS(MATH_BENCH_PAIR_ALLOC, MATH_BENCH_ALLOC)
     for (int j = 0; j < MATH_BENCH_BATCH; j++) {
         const float v = (float)(j % MATH_BENCH_INPUT_PERIOD + 1) * MATH_BENCH_INPUT_SCALE;
         const float turn = (float)j / MATH_BENCH_BATCH;
@@ -356,28 +321,26 @@ test_math_board_rows(void) {
         const row_t* row = &rows[j];
         cycle_context_t ctx = {.row = row, .fixture = f};
         const float warm = bench_cycle_median(run_cycles, &ctx, false) / (float)row->ops;
-#ifdef ESP_PLATFORM
-        const float cold = bench_cycle_median(run_cycles, &ctx, true);
+        const bool cold = bench_cache_cold();
+        printf("MATHBENCH name=%s type=%s ops=%d warm=%.1f", row->name, row->type, row->ops, (double)warm);
+        if (cold) {
+            printf(" cold=%.1f", (double)bench_cycle_median(run_cycles, &ctx, true));
+        }
         row->fn(f);
         const bool counting = bench_insn_begin();
         row->fn(f);
-        uint32_t value = 0;
         if (counting) {
+            uint32_t value;
             TEST_ASSERT_TRUE(bench_insn_end(&value));
+            printf(" insn=%.1f", (double)((float)value / (float)row->ops));
         }
-        printf("MATHBENCH name=%s type=%s ops=%d warm=%.1f cold=%.1f insn=%.1f\n", row->name, row->type, row->ops,
-               (double)warm, (double)cold, (double)((float)value / (float)row->ops));
-#else
-        printf("MATHBENCH name=%s type=%s ops=%d warm=%.1f unit=%s\n", row->name, row->type, row->ops, (double)warm,
-               bench_unit());
-#endif
+        printf("\n");
         bench_yield();
     }
     release();
     suite_clear_test_cleanup();
 }
 
-#ifdef ESP_PLATFORM
 static void
 test_math_instruction_rows(void) {
     fixture_t* f = fixture();
@@ -396,7 +359,7 @@ test_math_instruction_rows(void) {
                 }
                 reps += calls;
                 elapsed_us = bench_now_us() - start;
-            } while (!row->ratchet && !bench_icount_long_enough(elapsed_us, 1));
+            } while (!bench_icount_long_enough(elapsed_us, 1));
             us += elapsed_us;
             bench_yield();
         }
@@ -407,8 +370,6 @@ test_math_instruction_rows(void) {
     suite_clear_test_cleanup();
 }
 
-#endif
-
 void
 run_math_perf_suite(void) {
     __asm__ volatile("" : : "r"(math_bench_manifest));
@@ -417,9 +378,7 @@ run_math_perf_suite(void) {
 
 void
 run_math_icount_suite(void) {
-#ifdef ESP_PLATFORM
     RUN_TEST(test_math_instruction_rows);
-#endif
 }
 
 SUITE_REGISTER_ON_REQUEST(run_math_perf_suite);

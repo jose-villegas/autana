@@ -24,7 +24,7 @@
 #ifdef DEVICE_BUILD
 
 #include "perf_layout_labels.h"
-#include "perf_stats.h"
+#include "testkit/bench.h"
 
 #include <stdint.h>
 #include <stdlib.h>

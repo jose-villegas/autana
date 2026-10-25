@@ -88,6 +88,7 @@ def eligible_c(path, text):
 
 def protocol_source(path, text):
     return (path.startswith(FIRST_PARTY) and Path(path).suffix in {".c", ".h"}
+            and not re.match(r"^launcher/packages/[^/]+/(?:tests|bench)/", path)
             and eligible_c(path, text))
 
 

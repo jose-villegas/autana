@@ -1,34 +1,4 @@
-# Match the engine's cycle clock.
-CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
-# Measure kernels optimised for speed.
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
-# Retain the same short ELF identity as engine captures.
 CONFIG_APP_RETRIEVE_LEN_ELF_SHA=13
-# Match the board's quad flash transfers.
-CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
-# Match the board's flash capacity.
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-# Match the engine's flash clock.
-CONFIG_ESPTOOLPY_FLASHFREQ_120M=y
-# Permit experimental flash timing.
-CONFIG_IDF_EXPERIMENTAL_FEATURES=y
-# Supply the dummy cycles required at the flash clock.
-CONFIG_BOOTLOADER_FLASH_DC_AWARE=y
-# Enable the board flash's high-performance mode.
-CONFIG_SPI_FLASH_HPM_ENA=y
-# Match the engine's instruction cache capacity.
-CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
-# Match the engine's instruction refill granularity.
-CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_32B=y
-# Match the engine's data cache capacity.
-CONFIG_ESP32S3_DATA_CACHE_64KB=y
-# Match the engine's flash rodata refill granularity.
-CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
-# Test batches deliberately keep the main task busy.
 CONFIG_ESP_TASK_WDT_INIT=n
-# Portable suites assert 64-bit results.
 CONFIG_UNITY_ENABLE_64BIT=y
-# Measure the hardware FPU reciprocal seeds.
-CONFIG_MATH_FPU_RECIP=y
-# Measure the hardware FPU fused multiply-add path.
-CONFIG_MATH_FPU_FUSED_MADD=y

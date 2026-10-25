@@ -8,6 +8,7 @@
 #include <stdlib.h>
 
 #include "math/stats/statsi.h"
+#include "unity.h"
 
 #define BENCH_CYCLE_WARM_REPS              31
 #define BENCH_CYCLE_COLD_REPS              9
@@ -25,8 +26,16 @@ bench_icount_long_enough(int64_t us, int batches) {
     return us >= batches * BENCH_ICOUNT_ROUNDING_MARGIN * BENCH_ICOUNT_TOLERANCE_DENOMINATOR;
 }
 
-void bench_icount_report_row(const char* prefix, const char* name, int64_t us, int reps, int batches);
-void bench_icount_report(const char* name, int64_t us, int reps, int batches);
+static inline void
+bench_icount_report_row(const char* prefix, const char* name, int64_t us, int reps, int batches) {
+    printf("%s %s us=%" PRId64 " reps=%d\n", prefix, name, us, reps);
+    TEST_ASSERT_TRUE(bench_icount_long_enough(us, batches));
+}
+
+static inline void
+bench_icount_report(const char* name, int64_t us, int reps, int batches) {
+    bench_icount_report_row(BENCH_ICOUNT_PREFIX, name, us, reps, batches);
+}
 
 typedef struct {
     int64_t min, max, avg, med, p95;
@@ -61,14 +70,12 @@ bench_cycles(void) {
 #else
 uint32_t bench_cycles(void);
 #endif
-const char* bench_unit(void);
 bool bench_cache_cold(void);
 bool bench_is_qemu(void);
 void bench_cache_code_cold(void);
 bool bench_insn_begin(void);
 bool bench_insn_end(uint32_t* insn);
 void* bench_alloc_internal(size_t size, const char* what);
-void bench_free(void* ptr);
 void bench_yield(void);
 int64_t bench_now_us(void);
 const char* bench_build_id(void);
@@ -77,9 +84,6 @@ void bench_target_report(const char* prefix);
 
 static inline float
 bench_cycle_median(void (*run)(void* ctx), void* ctx, bool cold) {
-#ifndef ESP_PLATFORM
-    cold = false;
-#endif
     _Static_assert(BENCH_CYCLE_COLD_REPS <= BENCH_CYCLE_WARM_REPS, "cold samples must fit warm sample storage");
     int32_t samples[BENCH_CYCLE_WARM_REPS];
     const int reps = cold ? BENCH_CYCLE_COLD_REPS : BENCH_CYCLE_WARM_REPS;

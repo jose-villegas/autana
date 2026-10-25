@@ -255,8 +255,8 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
 #include "panel_clock_pin.h"
-#include "perf_stats.h"
 #include "profile/frame_cost.h"
+#include "testkit/bench.h"
 
 /* Each pass's time for one step, summed over a window, and the split of the
  * window's dearest step. */

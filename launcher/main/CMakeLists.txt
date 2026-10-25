@@ -288,6 +288,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "selftest/selftest.c"
         "../test/suites.c"
         "../test/timing.c"
+        "../test/bench_env.c"
         "../test/frame_profile.c"
         "../test/ui_probe.c"
         ${suite_srcs}

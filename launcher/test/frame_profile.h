@@ -2,7 +2,7 @@
  * An untimed warm-up frame at dt 0 supplies the first step and is not sampled. */
 #pragma once
 #include "math/scalar/units.h"
-#include "perf_stats.h"
+#include "testkit/bench.h"
 
 #define FRAME_PROFILE_MIN_FRAME_US MATH_US_PER_MS
 #define FRAME_PROFILE_PREFIX       "frame_profile:"

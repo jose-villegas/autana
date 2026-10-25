@@ -3,8 +3,8 @@
 #include "core/timing.h"
 #include "draw/draw_font_roles.h"
 #include "draw/draw_image_format.h"
-#include "perf_stats.h"
 #include "suites.h"
+#include "testkit/bench.h"
 #include "ui/ui_internal.h"
 #include "unity.h"
 

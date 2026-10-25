@@ -22,7 +22,7 @@ target_include_directories(unity PUBLIC unity)
 add_library(testkit STATIC harness/bench.c harness/cleanup.c harness/registry.c)
 target_include_directories(testkit PUBLIC include)
 target_link_libraries(testkit PUBLIC unity ${testkit_requires})
-add_library(testkit_runner OBJECT runner/host_main.c)
+add_library(testkit_runner OBJECT runner/host_main.c runner/lifecycle.c)
 target_link_libraries(testkit_runner PUBLIC testkit)
 
 set_target_properties(testkit testkit_runner unity PROPERTIES

@@ -18,8 +18,8 @@
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_segment_clip.h"
-#include "perf_stats.h"
 #include "suites.h"
+#include "testkit/bench.h"
 #include "unity.h"
 
 #define FLOOR_CROSSFADE_MS 3550
