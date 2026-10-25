@@ -10,11 +10,6 @@ import soundfile as sf
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from build.c_header import read_define
 from audio.sound_asset import SAMPLE_RATE_HZ, SAMPLE_MAX
-EQ_HEADER = Path(__file__).resolve().parents[3] / 'main/audio/audio_codec_eq.h'
-EQ_SCALE = read_define(EQ_HEADER, 'AUDIO_CODEC_EQ_SCALE')
-EQ_MASK = read_define(EQ_HEADER, 'AUDIO_CODEC_EQ_MASK')
-EQ_MIN = read_define(EQ_HEADER, 'AUDIO_CODEC_EQ_MIN')
-EQ_MAX = -EQ_MIN - 1 / EQ_SCALE
 DB_POWER = 10
 DB_AMPLITUDE = 20
 DB_FLOOR = -160.0
@@ -154,25 +149,6 @@ def transient_peak_db(x, at_s, window_ms=DEFAULT_TRANSIENT_MS, rate=SAMPLE_RATE_
     if not len(segment):
         raise ValueError('transient window outside recording')
     return _db(np.max(segment * segment))
-
-
-def eq_encode(value):
-    if not math.isfinite(value):
-        return 0
-    value = min(EQ_MAX, max(EQ_MIN, value)) * EQ_SCALE
-    rounded = math.floor(value + .5) if value >= 0 else math.ceil(value - .5)
-    return rounded & EQ_MASK
-
-
-def eq_design_biquad(kind, f0, q, rate=SAMPLE_RATE_HZ):
-    """RBJ [b0,b1,b2,a1,a2], denominator 1+a1*z^-1+a2*z^-2."""
-    if kind not in ('highpass', 'lowpass') or not 0 < f0 < rate / 2 or not math.isfinite(q) or q <= 0:
-        raise ValueError('highpass/lowpass, frequency below Nyquist and positive Q required')
-    omega = 2 * np.pi * f0 / rate
-    c = np.cos(omega)
-    alpha = np.sin(omega) / (2 * q)
-    b = np.array([(1 + c) / 2, -(1 + c), (1 + c) / 2]) if kind == 'highpass' else np.array([(1 - c) / 2, 1 - c, (1 - c) / 2])
-    return np.r_[b, -2 * c, 1 - alpha] / (1 + alpha)
 
 
 def main(argv=None):

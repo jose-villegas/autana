@@ -4,7 +4,8 @@ from statistics import median
 
 import numpy as np
 from scipy.signal import freqz
-from audio.mic.eq_probe_sweep import designs, SAMPLE_RATE_HZ
+from audio.mic.eq_probe_sweep import designs
+from audio.sound_asset import SAMPLE_RATE_HZ
 from audio.mic.mic_metrics import DB_AMPLITUDE
 from audio_doc_blocks import number
 

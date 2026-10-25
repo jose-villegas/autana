@@ -512,6 +512,8 @@ python launcher/tools/audio/audio_doc_tables.py --write
 python launcher/tools/audio/mic/mic_eq_probe_figures.py
 ```
 
+`launcher/tools/audio/mic/board_capture.sh <id> <capture.py> [args]` does the same under one held lock: it flashes this tree's development image and records the build id before and after. The capture side uses only the Python standard library, so a board host needs no packages.
+
 <!-- generated: mic-eq-probe sha256=a93006c90ebb47c04a5a941a4f16d5cd1d65ec2d7326a2c3e4506015b15e8a1c -->
 No capture yet.
 <!-- /generated: mic-eq-probe -->

@@ -13,8 +13,7 @@ from autana_runner import autana_run, capture_parser, capture_records, reset_tun
 from audio_mic_dsp_sweep import DEFAULTS, LIMITS
 from audio_drc_sweep import numbers, MAX_MS, NYQUIST_HZ, VOLUME_MAX
 from build.c_header import read_define
-from audio.mic.mic_metrics import eq_design_biquad, eq_encode, SAMPLE_RATE_HZ
-from scipy.signal import butter
+from audio.mic.eq_design import eq_design_biquad, eq_design_first_order_highpass, eq_encode
 
 HEADER = ROOT / 'launcher/main/audio/audio_codec_eq.h'
 ADC_REGS = tuple(read_define(HEADER, 'AUDIO_CODEC_EQ_ADC_' + name + '_REG')
@@ -43,15 +42,13 @@ LPF_HZ = 2000
 DAC_HPF_HZ = 300
 FLAT_GAIN = 0.5
 BUTTERWORTH_Q = math.sqrt(0.5)
-FIRST_ORDER = 1
 
 
 def designs():
-    b, a = butter(FIRST_ORDER, DAC_HPF_HZ, 'highpass', fs=SAMPLE_RATE_HZ)
     return {'adc': {'bypass': None, 'half': (FLAT_GAIN, 0, 0, 0, 0),
                     'highpass': eq_design_biquad('highpass', HPF_HZ, BUTTERWORTH_Q),
                     'lowpass': eq_design_biquad('lowpass', LPF_HZ, BUTTERWORTH_Q)},
-            'dac': {'bypass': None, 'half': (FLAT_GAIN, 0, 0), 'highpass': (*b, a[1])}}
+            'dac': {'bypass': None, 'half': (FLAT_GAIN, 0, 0), 'highpass': eq_design_first_order_highpass(DAC_HPF_HZ)}}
 
 
 def parser():
