@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "apps/input_lab/imu_record.h"
+#include "display/display_judge.h"
 
 #define TEST_DT_MS          20U
 #define TEST_SMALL_CAPACITY (sizeof IMU_RECORD_TRUNCATED + sizeof(IMU_RECORD_PREFIX " 1234567\n") - 1)
@@ -385,8 +386,32 @@ test_trace_missing_reading_deadline_and_period(void) {
     free(round);
 }
 
+static void
+test_orientation_capacity_covers_ready_dwell(void) {
+    TEST_ASSERT_GREATER_THAN_UINT(IMU_RECORD_SHAKE_CAPACITY, IMU_RECORD_ORIENTATION_CAPACITY);
+    imu_record_t record = {0};
+    TEST_ASSERT_TRUE(imu_record_start(&record, IMU_RECORD_ORIENTATION_LINE_SIZE + sizeof IMU_RECORD_TRUNCATED));
+    const int acc = ORIENTATION_PROBE_ACCEL_MAX_COUNTS;
+    const int gyro = ORIENTATION_PROBE_GYRO_MAX_COUNTS;
+    const long long timestamp = (long long)ORIENTATION_PROBE_ROUND_MS * MATH_US_PER_MS;
+    for (int sign = -1; sign <= 1; sign += 2) {
+        record.used = 0;
+        TEST_ASSERT_TRUE(imu_record_appendf(&record, ORIENTATION_PROBE_SAMPLE_FORMAT, (int)ORIENTATION_PROBE_DONE - 1,
+                                            timestamp - 1, sign * acc, sign * acc, sign * acc, sign * gyro, sign * gyro,
+                                            sign * gyro));
+        TEST_ASSERT_LESS_OR_EQUAL_UINT(IMU_RECORD_ORIENTATION_LINE_SIZE, record.used);
+    }
+    record.used = 0;
+    TEST_ASSERT_TRUE(imu_record_appendf(&record, "orientation_step %d %lld %d", (int)ORIENTATION_PROBE_DONE, timestamp,
+                                        DISPLAY_QUARTER_NONE));
+    TEST_ASSERT_LESS_OR_EQUAL_UINT(IMU_RECORD_ORIENTATION_LINE_SIZE, record.used);
+    TEST_ASSERT_FALSE(record.truncated);
+    imu_record_free(&record);
+}
+
 void
 run_imu_untethered_suite(void) {
+    RUN_TEST(test_orientation_capacity_covers_ready_dwell);
     RUN_TEST(test_upright_turn_restarts_settle);
     RUN_TEST(test_upright_gravity_mismatch_restarts_settle);
     RUN_TEST(test_upright_null_sample_restarts_settle);

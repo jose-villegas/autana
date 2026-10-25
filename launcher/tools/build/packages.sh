@@ -13,7 +13,7 @@
 #
 # package_include_dirs prints each package's include root, package_includes
 # the same as "-I <root>" flags, package_sources every .c under a package's
-# src/, package_suites every tests/suite_*.c. package_requires prints the
+# src/, package_suites every tests/ and bench/suite_*.c. package_requires prints the
 # packages one package's CMakeLists.txt sets in `set(<name>_requires ...)`,
 # package_reachable that package's folder and every package it reaches
 # through them (package_requires.py's requires() and reachable()).
@@ -31,12 +31,16 @@ package_includes() {
     done
 }
 
+testkit_includes() {
+    printf -- '-I %s/packages/testkit/include -I %s/packages/testkit/unity ' "$1" "$1"
+}
+
 package_sources() {
     find "$1"/packages/*/src -name '*.c' 2>/dev/null | sort
 }
 
 package_suites() {
-    find "$1"/packages/*/tests -name 'suite_*.c' 2>/dev/null | sort
+    find "$1"/packages/*/tests "$1"/packages/*/bench -name 'suite_*.c' 2>/dev/null | sort
 }
 
 package_requires() { # package-dir

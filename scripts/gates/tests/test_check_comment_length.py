@@ -20,13 +20,27 @@ class CommentLengthTest(unittest.TestCase):
             spec.loader.exec_module(module)
         with mock.patch.object(module, "generated_files", return_value=("generated.h",)) as generated:
             self.assertEqual(module.excluded(),
-                             ("launcher/components/", "launcher/test/framework/", "generated.h"))
+                             ("launcher/components/", "launcher/packages/testkit/unity/", "generated.h"))
             self.assertIs(module.excluded(), module.excluded())
             generated.assert_called_once_with()
 
     def git(self, root, *args):
         return subprocess.run(["git", *args], cwd=root, check=True,
                               capture_output=True, text=True)
+
+    def test_paths_exclude_vendored_unity_with_relative_or_absolute_names(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.git(root, "init", "-q")
+            name = "launcher/packages/testkit/unity/unity.h"
+            gate_tree.write(root, name, "/* " + "vendor " * 100 + " */\n")
+            for path in (name, str(root / name)):
+                with self.subTest(path=path):
+                    result = subprocess.run(
+                        [sys.executable, str(SCRIPT), "--limit", "500", "--paths", path],
+                        cwd=root, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("files scanned   0", result.stdout)
 
     def test_split_comment_is_not_new_but_new_over_limit_comment_is(self):
         moved = "moved comment " + "x" * 330

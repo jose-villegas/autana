@@ -1155,7 +1155,7 @@ def send(line, reply="TUNE", optional=False, seconds=None, until=None):
     result = capture_device(command, text=True)
     if result.stderr.strip():
         print(result.stderr.strip(), file=sys.stderr)
-    return result.returncode, [answer for answer in result.stdout.splitlines() if answer.startswith(reply)]
+    return result.returncode, [answer for answer in result.stdout.splitlines() if answer]
 
 
 def screenshot(args):
