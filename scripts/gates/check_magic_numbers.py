@@ -41,7 +41,7 @@ from c_includes import resolve_include
 from idf_vocabulary import FLOW, WORD
 from check_generated_files import is_generated
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
-from build.packages import FIRST_PARTY  # noqa: E402
+from build.packages import FIRST_PARTY, package_part  # noqa: E402
 from build.apps import app_part  # noqa: E402
 
 RARE_MINIMUM = 300
@@ -87,7 +87,9 @@ def eligible_c(path, text):
 
 
 def protocol_source(path, text):
+    package = package_part(path)
     return (path.startswith(FIRST_PARTY) and Path(path).suffix in {".c", ".h"}
+            and (package is None or package[1] not in {"tests", "bench"})
             and eligible_c(path, text))
 
 
