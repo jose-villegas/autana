@@ -1,8 +1,14 @@
 # Microphone test material
 
-Microphone comparisons expect a clean mono Harvard-sentence reference WAV with
-an accompanying source URL and a licence permitting redistribution. Speech
-recordings are supplied separately; no speech audio is bundled here.
+`speech/` holds six clean read-speech references for microphone comparisons
+(three female, three male speakers, 5-7 s each, 16 kHz FLAC) with their
+transcripts in `speech/transcripts.txt`.
+
+They are unmodified utterances from LibriSpeech dev-clean (OpenSLR SLR12,
+<https://www.openslr.org/12>), (c) 2014 Vassil Panayotov, licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Corpus: V. Panayotov,
+G. Chen, D. Povey and S. Khudanpur, "LibriSpeech: an ASR corpus based on public
+domain audio books", ICASSP 2015.
 
 Generate deterministic synthetic material with:
 
