@@ -9,9 +9,11 @@
 
 #include "esp_log.h"
 
+#include "core/timing.h"
 #include "input/buttons/buttons.h"
 #include "input/motion/imu.h"
 #include "input/motion/imu_calib.h"
+#include "input/motion/input_motion.h"
 #include "input/touch/touch.h"
 #include "math/linear/vec_convert.h"
 #include "services/settings.h"
@@ -36,6 +38,7 @@ _Static_assert(sizeof(input_motion_t) >= sizeof(imu_sample_t), "raw samples expa
 
 void
 input_start(void) {
+    input_motion_reset();
     int32_t saved[3] = {0};
     bool found[3];
     for (int axis = 0; axis < 3; axis++) {
@@ -80,6 +83,7 @@ input_set_accel_offset(vec3i_t offset) {
 
 void
 input_poll(input_t* out) {
+    input_motion_frame(timing_now_us());
     touch_read(out);
     buttons_read(&out->boot, &out->power);
 }

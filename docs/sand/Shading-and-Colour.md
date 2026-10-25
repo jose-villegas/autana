@@ -454,17 +454,13 @@ is future work.
   `read_gravity_input()` (`app_sand.c`); the same smoothed pair feeds
   `sand_step()`, `material_frame_set_gravity(&paint_frame.material, gx, gy)`,
   and local depth's per-frame setup. There is exactly one gravity source
-  reaching shading, and it already goes through the tilt filter.
+  reaching shading, and it comes from `input_gravity()`.
 - Magnitude: `INPUT_ACCEL_ONE_G` is 4096; host-side test fixtures use
   gravity pairs of magnitude ~1000 (e.g. `(500, 866)` for 30 degrees) as
   "the same order of magnitude," not an exact unit match.
-- The tilt filter (`tilt.h`): `TILT_TAU_STILL_MS` 260, `TILT_TAU_MOVING_MS`
-  40 (an exponential-moving-average time constant, not a hard delay),
-  `TILT_MAX_DT_MS` 100 (caps a stall from teleporting the filter), trust
-  gate 70-130% of 1g, free-fall below 30%.
-- Jostle uses the [shake reader](../input/Shake.md), fed by a separate
-  `gravity_t` once per frame. `shake_level()` scales to `SAND_JOSTLE_MAX`;
-  tilt supplies direction and flow.
+- Direction and flow use the shared [gravity reader](../input/Gravity.md).
+  Flow is its in-plane strength scaled to `SAND_FLOW_ONE`.
+- Jostle uses `input_shake()`, scaled by `sand_controls_jostle()` to `SAND_JOSTLE_MAX`.
 - **`gravity_quarter_turn()` (`app_sand.c`) is a separate, discrete (0-3)
   mechanism**: a plain snap-to-nearest-90-degrees, used only to turn the
   mode label's text to follow whichever edge is physically "up." It is not

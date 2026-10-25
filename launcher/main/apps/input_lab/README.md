@@ -9,11 +9,11 @@ It stays in default landscape with panel-axis measurements.
 Tap to start; BOOT leaves the page and discards the transcript.
 
 Linear x/y/z and SIZE show acceleration minus estimated down, in mg.
-SMOOTH is the shared `shake_t` reader's smoothed linear-acceleration size.
-OLD shows `tilt_shake()` on its 0–255 scale, updated once per frame.
+SMOOTH is the FIFO probe's smoothed linear-acceleration size.
+SHARED shows `input_shake()` on the 0–255 display scale, updated once per frame.
 
 `shake_probe.h` owns the protocol duration.
-SIZE and SMOOTH use `IMU_PROBE_MILLI` for the mg bar scale; OLD uses its full range.
+SIZE and SMOOTH use `IMU_PROBE_MILLI` for the mg bar scale; SHARED uses its full range.
 Candidates continue updating outside a capture round.
 
 ## Guided capture

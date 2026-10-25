@@ -11,6 +11,10 @@
 
 #ifndef DEVICE_BUILD
 
+#include "input/motion/input_motion.h"
+#include "input/motion/shake.h"
+#include "input_fake.h"
+#include "math/scalar/units.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
@@ -130,7 +134,7 @@ test_launcher_backdrop_motion_and_rest(void) {
 
     /* Held upright in portrait from the first frame: down is the panel's +y,
      * a quarter turn from the landscape pose boot hands over in. */
-    ui_ridge_set_gravity(0, INPUT_ACCEL_ONE_G, 256, 0);
+    ui_ridge_set_gravity((vec3f_t){(0) / INPUT_ACCEL_ONE_G, (INPUT_ACCEL_ONE_G) / INPUT_ACCEL_ONE_G, 0}, 0);
     frame(false, false);
     frame(false, false);
     as_boot_left_it = snapshot();
@@ -226,9 +230,49 @@ test_launcher_backdrop_motion_and_rest(void) {
                              "on exactly the settled screen: the motion left nothing behind");
 }
 
+#define VIBRATION_FRAMES ((int)(4 * MATH_MS_PER_S / FRAME_MS))
+#define VIBRATION_G      (SHAKE_START_G / 2)
+#define DELIBERATE_G     (SHAKE_FULL_G * 2)
+
+static void
+test_speaker_vibration_never_plucks_but_deliberate_shake_does(void) {
+    fixture(NULL, 0);
+    ui_ridge_settle();
+    input_motion_reset();
+    input_motion_t motion = {.acceleration = {-INPUT_ACCEL_ONE_G, 0, 0}};
+    input_fake_motion(&motion);
+    input_motion_frame(0);
+    (void)input_gravity();
+    frame(false, false);
+    settled = snapshot();
+    TEST_ASSERT_NOT_NULL(settled);
+    for (int i = 1; i <= VIBRATION_FRAMES; i++) {
+        motion.acceleration.x = -INPUT_ACCEL_ONE_G + (int)((i % 2 ? -1 : 1) * VIBRATION_G * INPUT_ACCEL_ONE_G);
+        input_motion_frame((int64_t)i * FRAME_MS * MATH_US_PER_MS);
+        const vec3f_t g = input_gravity();
+        ui_ridge_set_gravity(g, input_shake());
+        TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
+        TEST_ASSERT_FALSE(frame(false, false));
+        TEST_ASSERT_EQUAL_MEMORY(settled, gfx_framebuffer(), PIXELS * sizeof *settled);
+    }
+    bool plucked = false;
+    for (int i = VIBRATION_FRAMES + 1; i <= VIBRATION_FRAMES * 2; i++) {
+        motion.acceleration.x = -INPUT_ACCEL_ONE_G + (int)((i % 2 ? -1 : 1) * DELIBERATE_G * INPUT_ACCEL_ONE_G);
+        input_motion_frame((int64_t)i * FRAME_MS * MATH_US_PER_MS);
+        const vec3f_t g = input_gravity();
+        ui_ridge_set_gravity(g, input_shake());
+        plucked |= frame(false, false);
+    }
+    TEST_ASSERT_EQUAL_FLOAT(1, input_shake());
+    input_fake_motion(NULL);
+    TEST_ASSERT_TRUE(plucked);
+    TEST_ASSERT_TRUE(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) != 0);
+}
+
 void
 suite_ridge_backdrop(void) {
     RUN_TEST(test_launcher_backdrop_motion_and_rest);
+    RUN_TEST(test_speaker_vibration_never_plucks_but_deliberate_shake_does);
 }
 
 #else

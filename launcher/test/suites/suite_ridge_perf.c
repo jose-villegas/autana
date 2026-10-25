@@ -45,7 +45,7 @@ run_arm(arm_t arm) {
     prime();
     ui_ridge_set_ambient(arm == ARM_AMBIENT || arm == ARM_AMBIENT_PORTRAIT);
     if (arm == ARM_AMBIENT_PORTRAIT) {
-        ui_ridge_set_gravity(0, 256, 256, 0);
+        ui_ridge_set_gravity((vec3f_t){(0) / RIDGE_FIXTURE_GRAVITY_SCALE, (256) / RIDGE_FIXTURE_GRAVITY_SCALE, 0}, 0);
         for (int frame = 0; frame < 200; frame++) {
             ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
             gfx_present();
@@ -212,14 +212,14 @@ test_ridge_settles_after_tilting(void) {
         ui_ridge_step(&input, FRAME_DT_MS);
         gfx_present();
     }
-    ui_ridge_set_gravity(-240, 88, 256, 0);
+    ui_ridge_set_gravity((vec3f_t){(-240) / RIDGE_FIXTURE_GRAVITY_SCALE, (88) / RIDGE_FIXTURE_GRAVITY_SCALE, 0}, 0);
     for (int frame = 0; frame < 150; frame++) {
         ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
         gfx_present();
     }
     /* A turn of about a degree, less than the gradient follows in one step:
      * it catches up only once the ridge holds still. */
-    ui_ridge_set_gravity(-241, 84, 256, 0);
+    ui_ridge_set_gravity((vec3f_t){(-241) / RIDGE_FIXTURE_GRAVITY_SCALE, (84) / RIDGE_FIXTURE_GRAVITY_SCALE, 0}, 0);
     for (int frame = 0; frame < 150; frame++) {
         ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
         gfx_present();

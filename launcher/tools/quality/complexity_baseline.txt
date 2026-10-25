@@ -311,7 +311,6 @@
 10	launcher/main/draw/draw.c:494	glyph_font_dither
 10	launcher/main/draw/draw.c:79	draw_clear
 10	launcher/main/gfx/present/gfx_present.c:441	gather_and_send
-10	launcher/main/input/motion/tilt.c:102	tilt_update
 10	launcher/main/main.c:716	check_console_prefix_clashes
 10	launcher/main/main.c:880	offer_console_line
 10	launcher/main/main.c:936	run_console_navigation
@@ -910,7 +909,6 @@
 6	launcher/main/selftest/post_ui.c:96	draw_entry
 6	launcher/main/selftest/post_ui.c:135	drawn_result
 6	launcher/main/console/console_verbs.c:47	console_register
-6	launcher/main/input/motion/tilt.c:12	isqrt64
 6	launcher/main/input/touch/touch.c:215	touch_task
 6	launcher/main/main.c:83	app_boot_init
 6	launcher/main/main.c:1046	app_main_loop
@@ -1793,7 +1791,6 @@
 3	launcher/main/input/buttons/buttons.c:176	poll_once
 3	launcher/main/input/touch/gesture.c:4	gesture_is_home_swipe
 3	launcher/main/input/motion/imu.c:152	imu_read
-3	launcher/main/input/motion/tilt.c:196	tilt_shake
 3	launcher/main/input/touch/touch_calib.c:30	clamp
 3	launcher/main/main.c:908	console_list_apps
 3	launcher/main/main.c:113	draw_build_mark
@@ -2181,7 +2178,6 @@
 2	launcher/main/display/display.c:83	display_update
 2	launcher/main/display/panel_clock.c:9	panel_clock_init
 2	launcher/main/input/buttons/buttons.c:150	pmu_take_events
-2	launcher/main/input/motion/tilt.c:182	tilt_strength
 2	launcher/main/main.c:305	exit_app
 2	launcher/main/main.c:1009	present_unless_deferred
 2	launcher/main/main.c:864	reply_app_err
