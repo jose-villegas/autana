@@ -41,6 +41,19 @@ corner_offset(int k) {
     return (vec3f_t){(float)(k & 1), (float)((k >> 1) & 1), (float)((k >> 2) & 1)};
 }
 
+/* How the corners rise along the axis whose corner bit is `bit`: the four
+ * edges' differences summed, a gradient over the cell to a constant. */
+static float
+corner_rise(const float v[CORNERS], int bit) {
+    float rise = 0.0F;
+    for (int k = 0; k < CORNERS; k++) {
+        if ((k & bit) == 0) {
+            rise += v[k | bit] - v[k];
+        }
+    }
+    return rise;
+}
+
 /* The cell's vertex at the mean of its edge crossings, and the outward
  * normal from the corners' gradient; NO_VERTEX when the surface misses the
  * cell or the vertices ran out. */
@@ -74,9 +87,7 @@ cell_vertex(nets_t* n, int x, int y, int z) {
         crossings++;
     }
     const vec3f_t local = vec3f_scale(sum, 1.0F / (float)crossings);
-    const vec3f_t grad = {((v[1] - v[0]) + (v[3] - v[2]) + (v[5] - v[4]) + (v[7] - v[6])) / f->step.x,
-                          ((v[2] - v[0]) + (v[3] - v[1]) + (v[6] - v[4]) + (v[7] - v[5])) / f->step.y,
-                          ((v[4] - v[0]) + (v[5] - v[1]) + (v[6] - v[2]) + (v[7] - v[3])) / f->step.z};
+    const vec3f_t grad = {corner_rise(v, 1) / f->step.x, corner_rise(v, 2) / f->step.y, corner_rise(v, 4) / f->step.z};
     const int32_t index = out->vertex_count++;
     out->positions[index] =
         (vec3f_t){f->origin.x + (((float)x + local.x) * f->step.x), f->origin.y + (((float)y + local.y) * f->step.y),
