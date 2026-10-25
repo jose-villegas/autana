@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Plot library trajectories for docs/math/Motion.md; --cc CC --out DIR."""
+"""Plot an orbit's steering, fling, reset and framing for docs/kinematics/; --cc CC --out DIR."""
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "math"))
 from math_figures import (DISPLAY, PANEL_SIZE, PANEL_TITLE_ROOM, ROOT,
                           VIEW_AZIMUTH, VIEW_ELEVATION, read_define, probe_into_folder)
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE,
@@ -14,8 +15,8 @@ from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 from mpl_toolkits.mplot3d import proj3d
 
-PROBE = pathlib.Path(__file__).with_name("motion_figures_probe.c")
-SOURCES = (PROBE, ROOT / "launcher/packages/math/src/motion/orbit_motion.c")
+PROBE = pathlib.Path(__file__).with_name("orbit_figures_probe.c")
+SOURCES = (PROBE, ROOT / "launcher/packages/kinematics/src/orbit/orbit_motion.c")
 PANELS = 2
 SAMPLE_MARKER_INTERVAL = 5
 FIT_CONE_EXTENSION = 1.1

@@ -15,7 +15,7 @@ FUNCTION = "    static inline int P##_add(int a) { return a; } \\\n"
 
 
 def make_tree(root, page_extra="", template_extra="", header_extra="", skip_section=None, empty_template=None,
-              scalar_extra="", outside_extra=""):
+              scalar_extra=""):
     """A minimal tree that agrees with itself; each argument breaks one rule."""
     math = root / "launcher/packages/math/include/math/linear"
     math.mkdir(parents=True)
@@ -26,10 +26,9 @@ def make_tree(root, page_extra="", template_extra="", header_extra="", skip_sect
             body = "#define MATH_DEFINE_X(P)\n"
         (root / check_package_docs.FAMILY_DIRS[family]).mkdir(parents=True, exist_ok=True)
         (root / check_package_docs.FAMILY_DIRS[family] / (family + "_template.h")).write_text(("typedef struct { int x; } P##_t;\n" + body).replace("MATH_DEFINE_X", "MATH_DEFINE_" + family.upper()))
-    for directory, body in (("scalar", scalar_extra), ("motion", outside_extra)):
-        headers = math.parent / directory
-        headers.mkdir()
-        (headers / "helpers.h").write_text(body)
+    headers = math.parent / "scalar"
+    headers.mkdir()
+    (headers / "helpers.h").write_text(scalar_extra)
     (math / "vec2f.h").write_text("MATH_DEFINE_VEC2(vec2f, float)\n" + header_extra)
     page = "".join("### %s\n\n| `P_add(` |\n\n" % f for f in check_package_docs.FAMILIES if f != skip_section)
     page += "`vec2f`\n" + page_extra
@@ -44,9 +43,8 @@ def write_pages(root, page):
         sections.setdefault(path, []).append(check_package_docs.section(body, family))
     for path, bodies in sections.items():
         (root / path).write_text("\n".join(bodies))
-    pages = [p.name for p in sections] + ["Scalar.md", "Motion.md"]
-    for name in pages[-2:]:
-        (root / check_package_docs.PAGE.parent / name).write_text("")
+    pages = [p.name for p in sections] + ["Scalar.md"]
+    (root / check_package_docs.PAGE.parent / "Scalar.md").write_text("")
     (root / check_package_docs.PAGE).write_text(
         "\n".join("[page](%s)" % name for name in pages) + "\n" + marker + extra)
 
@@ -83,46 +81,11 @@ class CheckMathDocs(unittest.TestCase):
             index.write_text(index.read_text() + "\n[curves](Curves.md)\n")
             self.assertEqual([], check_package_docs.check(root))
 
-    def test_motion_public_declaration_and_type_are_required(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = pathlib.Path(d)
-            make_tree(root)
-            header = root / "launcher/packages/math/include/math/motion/helpers.h"
-            header.write_text("typedef struct { int x; } orbit_t;\nvoid orbit_step(orbit_t* o);\n")
-            problems = check_package_docs.check(root)
-            self.assertTrue(any("orbit_t" in p for p in problems))
-            self.assertTrue(any("orbit_step" in p for p in problems))
-            (root / "docs/math/Motion.md").write_text("`orbit_t` `orbit_step(o)`\n")
-            index = root / check_package_docs.PAGE
-            index.write_text(index.read_text() + "\n[motion](Motion.md)\n")
-            self.assertEqual([], check_package_docs.check(root))
-
-
-    def test_motion_declarations_with_general_return_types_are_required(self):
-        for result in ("bool", "int", "uint32_t", "const unsigned long", "const char*", "void* const"):
-            with self.subTest(result=result), tempfile.TemporaryDirectory() as d:
-                root = pathlib.Path(d)
-                make_tree(root)
-                header = root / "launcher/packages/math/include/math/motion/helpers.h"
-                header.write_text(result + " orbit_ready(void);\n")
-                self.assertTrue(any("orbit_ready" in p for p in check_package_docs.check(root)))
-                (root / "docs/math/Motion.md").write_text("`orbit_ready()`\n")
-                index = root / check_package_docs.PAGE
-                index.write_text(index.read_text() + "\n[motion](Motion.md)\n")
-                self.assertEqual([], check_package_docs.check(root))
-
     def test_real_headers_and_pages_require_declarations_and_generated_functions(self):
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d)
             for directory in (check_package_docs.MATH.parent, check_package_docs.PAGE.parent):
                 shutil.copytree(REPO / directory, root / directory)
-            header = root / "launcher/packages/math/include/math/motion/orbit_motion.h"
-            original = header.read_text()
-            for result in ("bool", "int"):
-                with self.subTest(result=result):
-                    header.write_text(original + "\n" + result + " orbit_undocumented(void);\n")
-                    self.assertTrue(any("orbit_undocumented" in p for p in check_package_docs.check(root)))
-            header.write_text(original)
             page = root / "docs/math/Projection.md"
             original = page.read_text()
             for name in ("projectf_clip_near", "projectx_clip_near"):
@@ -332,11 +295,6 @@ class CheckMathDocs(unittest.TestCase):
         problems = problems_for(page_extra="`mathi_wrap(a)`\n")
         self.assertTrue(any("mathi_wrap(" in p for p in problems), problems)
 
-    def test_a_motion_function_missing_from_motion_page_fails(self):
-        definition = "static inline int\nmathi_wrap(int a) {\n    return a;\n}\n"
-        problems = problems_for(outside_extra=definition, page_extra="`mathi_wrap(a)`\n")
-        self.assertTrue(any("mathi_wrap" in p for p in problems), problems)
-
     def test_an_identity_initializer_the_page_lacks_fails(self):
         extra = "#define TRANSFORMQ_IDENTITY {0}\n"
         self.assertTrue(any("TRANSFORMQ_IDENTITY" in p for p in problems_for(header_extra=extra)))
@@ -472,6 +430,23 @@ class PackageDocs(unittest.TestCase):
             with self.subTest(why=why):
                 problems = package_problems({**self.TREE, **change})
                 self.assertTrue(any(p.startswith(expected) for p in problems), problems)
+
+    def test_declarations_with_general_return_types_are_required(self):
+        header = "launcher/packages/physics/include/physics/spring/spring.h"
+        for result in ("bool", "int", "uint32_t", "const unsigned long", "const char*", "void* const"):
+            with self.subTest(result=result):
+                problems = package_problems({**self.TREE, header: SPRING_HEADER + result + " spring_ready(void);\n"})
+                self.assertTrue(any("spring_ready" in p for p in problems), problems)
+
+    def test_a_real_package_requires_an_undocumented_declaration(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            for directory in ("launcher/packages/kinematics", "docs/kinematics"):
+                shutil.copytree(REPO / directory, root / directory)
+            self.assertEqual([], check_package_docs.package_problems(root))
+            header = root / "launcher/packages/kinematics/include/kinematics/orbit/orbit_motion.h"
+            header.write_text(header.read_text() + "\nbool orbit_undocumented(void);\n")
+            self.assertTrue(any("orbit_undocumented" in p for p in check_package_docs.package_problems(root)))
 
     def test_a_docs_folder_without_a_package_and_a_package_without_docs_are_not_checked(self):
         self.assertEqual([], package_problems({
