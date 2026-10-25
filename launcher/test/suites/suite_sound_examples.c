@@ -121,6 +121,7 @@ fake_bus_gain(sound_bus_t bus, uint8_t pct) {
 
 #include "../sound_examples/music.c"
 #include "../sound_examples/own.c"
+#include "../sound_examples/tap.c"
 
 #undef asset_store_pack
 #undef sound_play
@@ -147,6 +148,27 @@ heard(void) {
         }
     }
     return false;
+}
+
+static void
+test_tap_plays_until_cancelled_and_never_stops_itself(void) {
+    begin();
+    tap_example_t s = {0};
+    tap_example_start(&s, &rig->pack);
+    TEST_ASSERT_NOT_EQUAL(0, s.voice.id);
+    TEST_ASSERT_TRUE(sound_control_is_playing(&rig->control, s.voice));
+    TEST_ASSERT_TRUE(heard());
+    tap_example_cancel(&s);
+    TEST_ASSERT_FALSE(sound_control_is_playing(&rig->control, s.voice));
+    tap_example_cancel(&s); /* a stale handle is ignored */
+}
+
+static void
+test_unopened_tap_plays_nothing(void) {
+    begin();
+    tap_example_t s = {0};
+    tap_example_start(&s, NULL);
+    TEST_ASSERT_EQUAL_UINT32(0, s.voice.id);
 }
 
 static void
@@ -207,6 +229,8 @@ test_own_sound_uses_the_system_bus_and_a_missing_one_is_silent(void) {
 
 void
 suite_sound_examples(void) {
+    RUN_TEST(test_tap_plays_until_cancelled_and_never_stops_itself);
+    RUN_TEST(test_unopened_tap_plays_nothing);
     RUN_TEST(test_a_stop_queued_with_the_play_is_never_heard);
     RUN_TEST(test_the_same_play_without_the_stop_is_heard);
     RUN_TEST(test_music_loops_and_the_bus_gain_scales_it);

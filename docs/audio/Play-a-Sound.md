@@ -15,38 +15,39 @@ behind it are in the [Sound mixer](Sound-Mixer.md) reference.
 ## Play a sound
 
 A pack is the read-only bundle of baked content in flash
-([Asset packs](../assets/README.md)). The engine pack ships a `tap` click any app
-may use. Open it once into app state, play it by pointer, and stop it if you need to.
+([Asset packs](../assets/README.md)). The engine pack, `asset_store_pack(ASSET_ENGINE_PACK)`,
+ships a `tap` click any app may use. Open it once into app state, play it by pointer, and stop it if you need to.
 
-<!-- generated: audio-tap-example check: python launcher/tools/gen/examples_doc.py --check -->
+<!-- generated: sound-tap-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-/* Tap: keep the sound and its voice in app state until exit. */
-#include "asset/asset_store.h" /* asset_store_pack, ASSET_ENGINE_PACK */
+/* Tap: open the engine's click once, play it on each tap, stop it in a later call. */
+#include "asset/asset_store.h"
 #include "sound/sound_play.h"
 
-static sound_t tap;             /* app state, not a stack local */
-static sound_voice_t tap_voice; /* kept so a later call can stop it */
+typedef struct {
+    sound_t tap; /* app state, not a stack local: the mixer reads it until the app exits */
+    sound_voice_t voice;
+} tap_example_t;
 
-static bool
-tap_start(void) {
-    if (sound_open(asset_store_pack(ASSET_ENGINE_PACK), "tap", &tap) != ASSET_OK) {
-        /* no click */
-        return false;
+/* pack: asset_store_pack(ASSET_ENGINE_PACK) */
+void
+tap_example_start(tap_example_t* s, const asset_pack_t* pack) {
+    if (sound_open(pack, "tap", &s->tap) != ASSET_OK) {
+        return; /* no click */
     }
-    tap_voice = sound_play(&tap, NULL); /* SFX bus, full gain, once */
-    return true;
+    s->voice = sound_play(&s->tap, NULL); /* SFX bus, full gain, once */
 }
 
 /* Stop is a separate call, made later (a second tap, a screen change). Queued straight
  * after sound_play(), both commands reach the mixer before its next block and nothing is heard. */
-static void
-tap_cancel(void) {
-    sound_stop(tap_voice); /* optional; stale handles are ignored */
+void
+tap_example_cancel(tap_example_t* s) {
+    sound_stop(s->voice); /* optional; stale handles are ignored */
 }
 ```
-<!-- /generated: audio-tap-example -->
+<!-- /generated: sound-tap-example -->
 
-Keep the handle and stop in a later call, as `tap_cancel` does. Stop right after play and both commands reach
+Keep the handle and stop in a later call, as `tap_example_cancel` does. Stop right after play and both commands reach
 the mixer before its next block, so nothing is heard.
 
 `sound_play()` returns a handle at once and the mixer starts the sound within one
