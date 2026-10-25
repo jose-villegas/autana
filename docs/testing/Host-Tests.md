@@ -151,8 +151,13 @@ reserve, the derived runner frames and the target context
 context includes window spills. Worker-task calls count separately; a
 dispatcher's synchronous fallback stays on its caller's stack.
 
-Only frames in the source files the gate recompiles are counted: the C
-library's printf family, `esp_log` and FreeRTOS are not. `timing.c`'s board
+The diagnostics build writes each object's call graph (`.ci`) and frame
+sizes (`.su`) beside it. The gate reads the engine, test, package and app
+ones, and those of the IDF files defining `main_task`, `vPortTaskWrapper`
+and `UnityDefaultTestRun`.
+
+Only frames in those files count: the C library's printf family, `esp_log` and
+FreeRTOS are not. `timing.c`'s board
 stack-watermark check covers that remainder. The maximum is conservative; a
 device's high-water mark may never meet the clipping paths.
 
