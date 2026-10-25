@@ -97,10 +97,15 @@ void
 raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
                       int32_t z, int32_t dz) {
     const uint16_t* depth = gfx_render_target_depth(rows, y);
-    uint16_t* tag = gfx_render_target_row(rows, writer->attachment, y);
+    void* tag = gfx_render_target_row(rows, writer->attachment, y);
+    const bool wide = rows->attachment[writer->attachment].bytes_per_pixel == (int)sizeof(uint32_t);
     for (int x = x_first; x <= x_last; x++, z += dz) {
         if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
-            tag[x] = (uint16_t)writer->value;
+            if (wide) {
+                ((uint32_t*)tag)[x] = writer->value;
+            } else {
+                ((uint16_t*)tag)[x] = (uint16_t)writer->value;
+            }
         }
     }
 }
