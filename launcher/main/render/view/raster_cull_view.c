@@ -94,7 +94,7 @@ static bool
 writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     raster_cull_t* s = self->state;
     const r3d_lit_mesh_t* mesh = s->raster->instances[instance].mesh;
-    *out = (r3d_span_writer_t){.span = raster_attachment_tag32};
+    *out = (r3d_span_writer_t){.span = raster_attachment_tag};
     if (s->spectating) {
         out->step = R3D_SPAN_STEP_CLUSTER;
         out->value = 1U + (uint32_t)s->next_cluster;
