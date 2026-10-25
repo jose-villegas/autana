@@ -1235,6 +1235,24 @@ def mic(args):
     return call_device(command)
 
 
+CODEC_FAILURES = ("CODEC error", "CODEC usage")
+
+
+def codec(args):
+    """codec <reg> [value]: the firmware's one-line register reply, or its error, on a development build."""
+    if not 1 <= len(args) <= 2:
+        print("usage: autana codec <reg> [value]", file=sys.stderr)
+        return 2
+    code, replies = send("codec " + " ".join(args), reply="CODEC")
+    if code or not replies:
+        return code or 1
+    if replies[-1].startswith(CODEC_FAILURES):
+        print(replies[-1], file=sys.stderr)
+        return 1
+    print(replies[-1])
+    return 0
+
+
 def freeze(args):
     reject_unknown("freeze", args)
     if args:
@@ -1786,6 +1804,8 @@ COMMAND_GROUPS = (
             ("coredump --core FILE [--elf PATH]", "decode a saved dump; no board"),
             ("coredump --erase", "clear the dump so the next crash's is told apart; resets the board"),)),
         one("mic", mic, "mic record <ms> [--settle ms] -o take.wav [--json]", "record microphone PCM and codec state"),
+        one("codec", codec, "codec <reg> [value]",
+            "development builds: read, or write then read back, one codec register (hex or decimal)"),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "PATH.png plus a PATH.json state snapshot; landscape by default"),
             ("screenshot --frames N -o PATH", "N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed"),)),

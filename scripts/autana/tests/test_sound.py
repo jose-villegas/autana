@@ -57,3 +57,22 @@ class SoundTests(unittest.TestCase):
             with self.subTest(result=result), patch.object(autana, 'send', return_value=result):
                 with contextlib.redirect_stderr(io.StringIO()):
                     self.assertNotEqual(0, autana.sound(['stats']))
+
+
+class CodecTests(unittest.TestCase):
+    def test_codec_ends_on_its_one_reply_line(self):
+        with patch.object(autana, 'send', return_value=(0, ['CODEC reg=0x1B value=0x0A'])) as send:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(0, autana.COMMANDS['codec'](['0x1b']))
+        self.assertEqual(send.call_args.args[0], 'codec 0x1b')
+        self.assertEqual(send.call_args.kwargs, {'reply': 'CODEC'})
+        self.assertEqual(out.getvalue().strip(), 'CODEC reg=0x1B value=0x0A')
+
+    def test_codec_errors_fail(self):
+        for line in ('CODEC error: codec unavailable or register access failed', 'CODEC usage: codec <reg> [value]'):
+            with patch.object(autana, 'send', return_value=(0, [line])):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(1, autana.COMMANDS['codec'](['0x1b', '0x0a']))
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(2, autana.COMMANDS['codec']([]))

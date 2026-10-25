@@ -11,6 +11,7 @@ watch` lists the same commands.
 | `autana coredump --core FILE [--elf PATH]` | decode a saved dump; no board |
 | `autana coredump --erase` | clear the dump so the next crash's is told apart; resets the board |
 | `autana mic record <ms> [--settle ms] -o take.wav [--json]` | record microphone PCM and codec state |
+| `autana codec <reg> [value]` | development builds: read, or write then read back, one codec register (hex or decimal) |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | PATH.png plus a PATH.json state snapshot; landscape by default |
 | `autana screenshot --frames N -o PATH` | N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed |
 | `autana battery [--json]` | fresh voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds |
