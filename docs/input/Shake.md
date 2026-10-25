@@ -23,7 +23,7 @@ and stays at one above FULL. Direction does not affect the result.
 
 The constants in `shake.h` come from guided board captures.
 
-Apps use `input_shake()` for the shared frame-rate reader; see [Gravity.md](Gravity.md).
+Apps use `input_shake()` for the shared motion reader; see [Gravity.md](Gravity.md).
 
 ## On recorded motion
 

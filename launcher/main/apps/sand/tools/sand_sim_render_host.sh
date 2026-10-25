@@ -9,6 +9,7 @@ main/input/motion/motion_reader.c
 main/input/motion/gravity.c
 main/input/motion/shake.c
 test/input_fake.c
+test/clock_fake.c
 main/apps/sand/sand.c
 main/apps/sand/sand_chunk_sched.c
 main/apps/sand/sand_impulse.c

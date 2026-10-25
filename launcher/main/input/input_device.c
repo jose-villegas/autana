@@ -9,7 +9,6 @@
 
 #include "esp_log.h"
 
-#include "core/timing.h"
 #include "input/buttons/buttons.h"
 #include "input/motion/imu.h"
 #include "input/motion/imu_calib.h"
@@ -83,7 +82,6 @@ input_set_accel_offset(vec3i_t offset) {
 
 void
 input_poll(input_t* out) {
-    motion_reader_frame(timing_now_us());
     touch_read(out);
     buttons_read(&out->boot, &out->power);
 }
@@ -97,13 +95,18 @@ motion_from_sample(const imu_sample_t* sample) {
 }
 
 bool
-input_read_motion(input_motion_t* out) {
+input_read_motion_sequence(input_motion_t* out, uint32_t* sequence) {
     imu_sample_t sample;
-    if (!imu_read(&sample)) {
+    if (!imu_read(&sample, sequence)) {
         return false;
     }
     *out = motion_from_sample(&sample);
     return true;
+}
+
+bool
+input_read_motion(input_motion_t* out) {
+    return input_read_motion_sequence(out, NULL);
 }
 
 bool

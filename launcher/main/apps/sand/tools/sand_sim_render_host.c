@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "clock_fake.h"
 #include "gfx/gfx.h"
 #include "input/input.h"
 #include "input/motion/motion_reader.h"
@@ -19,6 +20,13 @@
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_paint_row.h"
+
+int
+timespec_get(struct timespec* now, int base) {
+    *now = (struct timespec){0};
+    (void)clock_fake_read(now);
+    return base;
+}
 
 #define CELL_SIZE 4
 #define GRID_W    (GFX_WIDTH / CELL_SIZE)
@@ -174,7 +182,7 @@ drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
     const input_motion_t motion = {.acceleration = {-sy, sx, 0},
                                    .rotation = {0, 0, (int)lround(turn_dps * INPUT_ROTATION_ONE_DPS)}};
     input_fake_motion(&motion);
-    motion_reader_frame((int64_t)frame->elapsed_ms * MATH_US_PER_MS);
+    clock_fake_set((int64_t)frame->elapsed_ms * MATH_US_PER_MS);
     const vec3f_t g = input_gravity();
     *gx = (int)lroundf(g.x * SIM_GRAVITY_ONE);
     *gy = (int)lroundf(g.y * SIM_GRAVITY_ONE);

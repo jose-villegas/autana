@@ -12,30 +12,29 @@ It is unit length while held and zero in free fall.
 
 No sensor gives gravity `(0,1,0)` and shake zero.
 A present sensor gives both as zero until its first reading.
-Later missed reads hold both estimates without stepping the filters.
+Unchanged or missed samples hold both estimates without stepping the filters.
 
 `input_shake()` returns the [shake reader](Shake.md)'s level, 0..1.
 Call both readers only on the frame thread.
 
 ```mermaid
 sequenceDiagram
-    participant Shell
     participant App
     participant Reader as Motion reader
-    Shell->>Reader: input_poll marks a new frame
-    Shell->>App: update
     App->>Reader: input_gravity or input_shake
-    alt Sample available
+    alt New sample sequence
         Reader->>Reader: Step both filters from newest sample
-    else No sample
+    else Unchanged or missing sample
         Reader->>Reader: Hold estimates or startup defaults
     end
     Reader-->>App: Requested value
-    App->>Reader: Later reads this frame
+    App->>Reader: Read with the same sample
     Reader-->>App: Cached values
 ```
 
-The step is elapsed time since the last successful update, capped at `GRAVITY_MAX_DT_US`.
+Each new sample steps both filters on the first read, without an `input_poll()` call.
+The step uses clock time since the last update, capped at `GRAVITY_MAX_DT_US`.
+
 Apps that do not call either reader do no estimation work.
 The input module retains its filters across app switches.
 FIFO batches have one queue consumer and do not feed the shared readers.

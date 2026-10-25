@@ -53,8 +53,9 @@ void imu_start(void);
 
 bool imu_ready(void);
 
-/* Copies the newest sample read by the task. False when no sensor or no sample is available. */
-bool imu_read(imu_sample_t* out);
+/* Copies the newest sample and its sequence (when non-NULL) under one lock.
+ * False when no sensor or no sample is available. */
+bool imu_read(imu_sample_t* out, uint32_t* sequence);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Makes imu_read() report `sample` until imu_inject_release() hands back to
