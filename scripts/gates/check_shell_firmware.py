@@ -25,22 +25,21 @@ code is a missing module, so add one.
 The vendor clock, pause and heap have owners: esp_timer_* and vTaskDelay
 belong to core/timing, and heap_caps_*, MALLOC_CAP_*, multi_heap_*,
 esp_psram_* and the esp_get_*heap_size queries to core/memory.
-In the firmware, its suites and its tools, a name of any is code only in
-its owner's own files (core/timing.* and core/timing_*.*, the
+In launcher/main/, launcher/test/suites/ and launcher/tools/, these names
+are code only in their owner's files (core/timing.* and core/timing_*.*, the
 same for memory) or in a driver: anything under board/, or a *_device.c in
 launcher/main/ outside a tests/ folder, where the name means a suite that runs
 on the board. launcher/test/ outside suites/ (the host heap model, the stubs,
 the harness the board also builds) stands in for the vendor code or measures
 from beneath it, so it is not checked; nor is the shell, which the rule above
-holds to more.
+holds to more. Standalone packages under launcher/packages/ have their own
+platform shims and do not use the engine's clock and heap owners.
 """
 import pathlib
 import re
 import sys
 
 from tracked import tracked_files
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
-from build.packages import FIRST_PARTY  # noqa: E402
 
 MAIN = "launcher/main/main.c"
 SHELL = "launcher/main/shell/"
@@ -100,7 +99,7 @@ def problems(root="."):
 
 OWNED_NAME_RE = re.compile(r"\b(?:(?P<timing>esp_timer_\w*|vTaskDelay\b)"
                            r"|(?P<memory>(?:heap_caps_|MALLOC_CAP_|multi_heap_|esp_psram_)\w*|esp_get_\w*heap_size\b))")
-CHECKED = (*FIRST_PARTY, "launcher/test/suites/", "launcher/tools/")
+CHECKED = ("launcher/main/", "launcher/test/suites/", "launcher/tools/")
 CORE = "launcher/main/core/"
 
 

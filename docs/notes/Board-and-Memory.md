@@ -91,6 +91,17 @@ levels are in the [audio docs](../audio/README.md).
 `board_detect()` tells them apart; go through it rather than hardcoding a
 driver, and do not add the gap yourself.
 
+### Vendor sources
+
+Check these before writing a driver or guessing a register sequence.
+
+| Source | Holds |
+|---|---|
+| [Examples repository](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.8) | Waveshare's ESP-IDF and Arduino examples for every chip on the board: display, touch, IMU, RTC, power, codec, SD |
+| [Wiki](https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8) | Pinout, dimension drawing, datasheet links |
+| [Schematic](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8/ESP32-S3-Touch-AMOLED-1.8.pdf) | Nets, pull-ups and part numbers<sup>[[81]](../Citations.md#81)</sup> |
+| [3D model](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8/ESP32-S3-Touch-AMOLED-1.8-3D.zip) | Module outline and part placement, the source of `launcher/main/board/board_geometry.h`<sup>[[89]](../Citations.md#89)</sup> |
+
 ## Memory: the constraint that shapes everything
 
 <!-- generated: memory-tiers sha256=c36727fb70790219fa97a864527b780d40eebb06097f7c252fb77a2a45dcb9d3 -->
