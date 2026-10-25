@@ -11,7 +11,7 @@
 
 #ifndef DEVICE_BUILD
 
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "app/app.h"

@@ -13,7 +13,7 @@
 
 #include <stdint.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "math/scalar/fixed.h"

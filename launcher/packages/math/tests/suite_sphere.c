@@ -1,5 +1,5 @@
 #include "math/geometry/spheref.h"
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 static const float SPHERE_TOLERANCE = 0.00001F;

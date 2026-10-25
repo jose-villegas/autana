@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "shell/shell_system.h"

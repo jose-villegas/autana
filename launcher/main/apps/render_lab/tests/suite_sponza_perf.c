@@ -19,7 +19,7 @@
 #include "frame_profile.h"
 #include "perf_budget.h"
 #include "perf_stats.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "esp_log.h"
