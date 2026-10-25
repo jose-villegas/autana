@@ -28,8 +28,9 @@ static const uint32_t FATE_RGB[RASTER_FATE_COUNT] = {
     [RASTER_FATE_DRAWN] = 0x3CC850,
 };
 #define FRUSTUM_RGB 0xFFFFFF
-/* How far a culled cluster's shading fades toward the clear colour, of 255. */
-#define GHOST_MIX   160
+/* A culled cluster is a screen door: one pixel of each square this many on a
+ * side keeps its shading, the rest show the clear colour, and it has no border. */
+#define CULLED_DOOR 2
 /* What a node's hue keeps, out of GFX_COLOR_SCALE_UNIT, under each fate. */
 #define KEEP_STEPS  16
 static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
@@ -348,22 +349,22 @@ tagged_cluster(const raster_cull_t* s, const raster_t* raster, uint32_t tag) {
     return s->spectating ? (int)(tag - 1U) : cluster_of_triangle(raster, tag - 1U);
 }
 
-/* One shaded pixel of cluster `c` (-1 for none), on its border or inside. */
+/* One shaded pixel of cluster `c` (-1 for none) at (x, y), on its border or inside. */
 static gfx_color_t
-shaded_pixel(const raster_cull_t* s, gfx_color_t clear, gfx_color_t drawn, int c, bool border) {
+shaded_pixel(const raster_cull_t* s, gfx_color_t clear, gfx_color_t drawn, int c, bool border, int x, int y) {
     if (c < 0) {
         return clear;
     }
     const raster_cluster_fate_t fate = (raster_cluster_fate_t)s->fate[c];
-    if (border) {
-        return GFX_RGB(FATE_RGB[fate]);
+    if (fate == RASTER_FATE_CULLED) {
+        return x % CULLED_DOOR == 0 && y % CULLED_DOOR == 0 ? drawn : clear;
     }
-    return fate == RASTER_FATE_CULLED ? gfx_color_mix(drawn, clear, GHOST_MIX) : drawn;
+    return border ? GFX_RGB(FATE_RGB[fate]) : drawn;
 }
 
-/* Shaded: the baked colours as drawn, culled clusters faded toward the
- * clear colour, and every pixel where the cluster changes, right or below,
- * in its fate's colour: the clusters' borders. */
+/* Shaded: the baked colours as drawn, culled clusters as a sparse screen
+ * door, and every pixel of a kept cluster where the cluster changes, right
+ * or below, in its fate's colour: the clusters' borders. */
 static void
 show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index) {
     for (int y = picture->row0; y < picture->row1; y++) {
@@ -375,7 +376,7 @@ show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t*
             const int c = right;
             right = x + 1 < picture->width ? tagged_cluster(s, raster, tag[x + 1]) : c;
             const int under = below != NULL ? tagged_cluster(s, raster, below[x]) : c;
-            color[x] = shaded_pixel(s, raster->clear, color[x], c, c != right || c != under);
+            color[x] = shaded_pixel(s, raster->clear, color[x], c, c != right || c != under, x, y);
         }
     }
 }

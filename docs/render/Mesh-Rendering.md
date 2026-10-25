@@ -349,7 +349,7 @@ only drawn clusters show, so it redraws from a spectator.
 | Tunable | Values |
 |---|---|
 | `cullview.from` | 0 the camera, 1 above the instances' bounds looking down, 2 behind and above the camera |
-| `cullview.paint` | 0 the baked colours, culled clusters faded, each cluster's border in its fate's colour; 1 each cluster flat in its fate's colour; 2 each cluster in the hue of its node at `cullview.level`, darker the earlier it was dropped |
+| `cullview.paint` | 0 the baked colours, culled clusters as a sparse screen door with no border, each kept cluster's border in its fate's colour; 1 each cluster flat in its fate's colour; 2 each cluster in the hue of its node at `cullview.level`, darker the earlier it was dropped |
 | `cullview.level` | the tree depth whose node boxes the overlay draws; 0 none, 1 the root's children |
 
 From a spectator the overlay also draws the camera's frustum.
