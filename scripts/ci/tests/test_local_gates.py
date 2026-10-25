@@ -3,6 +3,7 @@ import contextlib
 import io
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -26,6 +27,12 @@ class LocalGatesTests(unittest.TestCase):
         (folder / 'test.yml').write_text(text)
         import shutil
         shutil.copytree(ROOT / '.github/actions', root / '.github/actions')
+        for args in [('init', '-q'),
+                     ('-c', 'user.name=Test', '-c', 'user.email=test@example.com',
+                      'commit', '--allow-empty', '-qm', 'fixture'),
+                     ('update-ref', 'refs/remotes/origin/main', 'HEAD')]:
+            subprocess.run(['git', '-C', str(root), '-c', 'commit.gpgsign=false',
+                            '-c', 'core.hooksPath=/dev/null', *args], check=True, capture_output=True)
         return root
 
     def test_recursive_composite_defaults_and_job_tier(self):
@@ -74,12 +81,31 @@ runs:
             self.assertEqual(command[-1], script.as_posix())
             self.assertEqual(script.read_text(), 'false | true')
 
-    def test_base_requires_remote_branch(self):
-        root = self.fixture('on: [pull_request]\njobs: {}')
-        import subprocess
-        subprocess.run(['git', 'init', '-q', str(root)], check=True)
-        with self.assertRaisesRegex(ValueError, '--base takes a branch such as origin/main'):
-            local_gates.context(root, 'a' * 40)
+    def test_mapping_without_base_ref_and_run_requires_remote_branch(self):
+        root = self.fixture("""on: [pull_request]
+jobs:
+  check:
+    steps:
+      - run: echo ${{ github.base_ref }}
+""")
+        local_gates.git(root, 'update-ref', '-d', 'refs/remotes/origin/main')
+        self.assertEqual(local_gates.git(root, 'remote').strip(), b'')
+        self.assertEqual([row['command'] for row in local_gates.rows(root)], ['echo main'])
+        capture = io.StringIO()
+        with contextlib.redirect_stdout(capture):
+            self.assertEqual(local_gates.main(['list', '--root', str(root)]), 0)
+        self.assertIn('echo main', capture.getvalue())
+        sha = local_gates.git(root, 'rev-parse', 'HEAD').decode().strip()
+        for base in (sha, 'origin/missing', 'refs/remotes/origin/missing', 'HEAD'):
+            with self.subTest(base=base):
+                with self.assertRaisesRegex(ValueError, '--base takes a branch such as origin/main'):
+                    local_gates.run(root, root / 'logs', base=base)
+                errors = io.StringIO()
+                with contextlib.redirect_stderr(errors), self.assertRaises(SystemExit) as stopped:
+                    local_gates.main(['run', '--root', str(root), '--out', str(root / 'logs'),
+                                      '--base', base])
+                self.assertEqual(stopped.exception.code, 2)
+                self.assertIn('--base takes a branch such as origin/main', errors.getvalue())
 
     def test_github_path_reaches_next_step(self):
         root = self.fixture("""on: [pull_request]
@@ -292,7 +318,7 @@ jobs:
         capture = io.StringIO()
         with mock.patch.object(local_gates, 'affected_jobs', return_value={}), \
                 contextlib.redirect_stdout(capture):
-            self.assertEqual(local_gates.run(root, root / 'logs', base='main'), 1)
+            self.assertEqual(local_gates.run(root, root / 'logs', base='origin/main'), 1)
         self.assertIn('Host-wide change skipped (Python requirements: pip install -r requirements.txt)',
                       capture.getvalue())
         self.assertEqual(len(capture.getvalue().splitlines()), 4)
@@ -319,7 +345,7 @@ jobs:
         capture = io.StringIO()
         with mock.patch.object(local_gates, 'affected_jobs', return_value={}), \
                 contextlib.redirect_stdout(capture), mock.patch('builtins.print', wraps=print) as printed:
-            self.assertEqual(local_gates.run(root, root / 'logs', base='main'), 1)
+            self.assertEqual(local_gates.run(root, root / 'logs', base='origin/main'), 1)
         self.assertTrue(all(call.kwargs.get('flush') for call in printed.call_args_list))
         logs = list((root / 'logs').glob('*.log'))
         self.assertEqual(len(logs), 1)
@@ -379,7 +405,7 @@ jobs:
         run: test "$VALUE" = ok && test "$TEMP_VALUE" = "$RUNNER_TEMP"
 ''')
         with mock.patch.object(local_gates, 'affected_jobs', return_value={}):
-            self.assertEqual(local_gates.run(root, root / 'logs', base='main'), 0)
+            self.assertEqual(local_gates.run(root, root / 'logs', base='origin/main'), 0)
 
 
 if __name__ == '__main__':
