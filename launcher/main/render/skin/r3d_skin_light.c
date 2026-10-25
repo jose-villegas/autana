@@ -93,3 +93,8 @@ r3d_skin_light_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights) {
     }
     return (vec3f_t){channels[0], channels[1], channels[2]};
 }
+
+uint8_t
+r3d_skin_light_encode(float radiance, const r3d_skin_light_transfer_t* transfer) {
+    return light_encode(radiance, transfer);
+}
