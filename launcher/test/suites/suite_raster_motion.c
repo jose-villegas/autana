@@ -15,7 +15,7 @@
 
 #include "math/linear/transformf.h"
 #include "render/raster.h"
-#include "render/raster_motion.h"
+#include "render/view/raster_motion.h"
 
 #define W     96
 #define H     64

@@ -104,12 +104,10 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt")
 endif()
 
-# The frame's view modes: a development tool, with nothing calling them in a
-# release build.
+# The frame's view modes, everything in render/view/: a development tool, with
+# nothing calling them in a release build.
 if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
-    foreach(view_mode raster_show raster_motion raster_meshlets)
-        list(REMOVE_ITEM app_srcs "${CMAKE_CURRENT_LIST_DIR}/render/${view_mode}.c")
-    endforeach()
+    list(FILTER app_srcs EXCLUDE REGEX "/render/view/[^/]*\.c$")
 endif()
 
 # The console listener: a release image has nobody watching the serial

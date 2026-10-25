@@ -67,6 +67,11 @@ test_box3_closed_queries_and_empty_identity(void) {
     TEST_ASSERT_TRUE(vec3f_equal((vec3f_t){b.hi.x, BOX_ORIGIN.y, BOX_ORIGIN.z}, box3f_closest_point(b, BOX_END)));
     TEST_ASSERT_TRUE(vec3f_equal(BOX_ORIGIN, box3f_centre(b)));
     TEST_ASSERT_TRUE(vec3f_equal(b.hi, box3f_half_extent(b)));
+    TEST_ASSERT_TRUE(vec3f_equal(b.lo, box3f_corner(b, 0)));
+    TEST_ASSERT_TRUE(vec3f_equal(b.hi, box3f_corner(b, 7)));
+    TEST_ASSERT_TRUE(vec3f_equal((vec3f_t){b.hi.x, b.lo.y, b.hi.z}, box3f_corner(b, 5)));
+    TEST_ASSERT_TRUE(
+        vec3s_equal((vec3s_t){BOX_TICKS.lo.x, BOX_TICKS.hi.y, BOX_TICKS.lo.z}, box3s_corner(BOX_TICKS, 2)));
 }
 
 static void
