@@ -17,7 +17,7 @@
 
 TUNE_OWNER(cullview);
 TUNE(cullview, from, RASTER_CULL_FROM_CAMERA, 0, RASTER_CULL_FROM_COUNT - 1);
-TUNE(cullview, paint, RASTER_CULL_PAINT_FATES, 0, RASTER_CULL_PAINT_COUNT - 1);
+TUNE(cullview, paint, RASTER_CULL_PAINT_SHADED, 0, RASTER_CULL_PAINT_COUNT - 1);
 TUNE(cullview, level, 0, 0, R3D_LIT_TREE_DEPTH_MAX);
 
 /* Fates as the view paints them. */
@@ -28,6 +28,8 @@ static const uint32_t FATE_RGB[RASTER_FATE_COUNT] = {
     [RASTER_FATE_DRAWN] = 0x3CC850,
 };
 #define FRUSTUM_RGB 0xFFFFFF
+/* How far a culled cluster's shading fades toward the clear colour, of 255. */
+#define GHOST_MIX   160
 /* What a node's hue keeps, out of GFX_COLOR_SCALE_UNIT, under each fate. */
 #define KEEP_STEPS  16
 static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
@@ -331,18 +333,56 @@ cluster_of_triangle(const raster_t* raster, uint32_t triangle) {
     return 0;
 }
 
+/* The cluster a tag names, or -1 for none: a spectator's tags are clusters,
+ * the camera's triangles. */
+static int
+tagged_cluster(const raster_cull_t* s, const raster_t* raster, uint32_t tag) {
+    if (tag == 0) {
+        return -1;
+    }
+    return s->spectating ? (int)(tag - 1U) : cluster_of_triangle(raster, tag - 1U);
+}
+
+/* Shaded: the baked colours as drawn, culled clusters faded toward the
+ * clear colour, and every pixel where the cluster changes, right or below,
+ * in its fate's colour: the clusters' borders. */
+static void
+show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+    for (int y = picture->row0; y < picture->row1; y++) {
+        const uint32_t* tag = gfx_render_target_row(picture, index, y);
+        const uint32_t* below = y + 1 < picture->row1 ? gfx_render_target_row(picture, index, y + 1) : NULL;
+        gfx_color_t* color = gfx_render_target_color(picture, y);
+        int right = tagged_cluster(s, raster, tag[0]);
+        for (int x = 0; x < picture->width; x++) {
+            const int c = right;
+            right = x + 1 < picture->width ? tagged_cluster(s, raster, tag[x + 1]) : c;
+            if (c < 0) {
+                color[x] = raster->clear;
+                continue;
+            }
+            const raster_cluster_fate_t fate = (raster_cluster_fate_t)s->fate[c];
+            const int under = below != NULL ? tagged_cluster(s, raster, below[x]) : c;
+            if (right != c || under != c) {
+                color[x] = GFX_RGB(FATE_RGB[fate]);
+            } else if (fate == RASTER_FATE_CULLED) {
+                color[x] = gfx_color_mix(color[x], raster->clear, GHOST_MIX);
+            }
+        }
+    }
+}
+
 static void
 show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
     raster_cull_t* s = self->state;
-    for (int y = picture->row0; y < picture->row1; y++) {
-        const uint32_t* tag = gfx_render_target_row(picture, index, y);
-        gfx_color_t* color = gfx_render_target_color(picture, y);
-        for (int x = 0; x < picture->width; x++) {
-            if (tag[x] == 0) {
-                color[x] = raster->clear;
-            } else {
-                const int c = s->spectating ? (int)(tag[x] - 1U) : cluster_of_triangle(raster, tag[x] - 1U);
-                color[x] = cluster_color(s, c);
+    if (paint == RASTER_CULL_PAINT_SHADED) {
+        show_shaded(s, raster, picture, index);
+    } else {
+        for (int y = picture->row0; y < picture->row1; y++) {
+            const uint32_t* tag = gfx_render_target_row(picture, index, y);
+            gfx_color_t* color = gfx_render_target_color(picture, y);
+            for (int x = 0; x < picture->width; x++) {
+                const int c = tagged_cluster(s, raster, tag[x]);
+                color[x] = c < 0 ? raster->clear : cluster_color(s, c);
             }
         }
     }
@@ -419,7 +459,7 @@ level_boxes(raster_cull_t* s, const r3d_lens_t* lens, const r3d_lit_mesh_t* mesh
         const r3d_lit_node_t* node = &mesh->nodes[n];
         if (depth[top] == level || node->leaf) {
             const gfx_color_t color =
-                paint == RASTER_CULL_PAINT_FATES ? GFX_RGB(FRUSTUM_RGB) : raster_meshlets_color(1U + n);
+                paint != RASTER_CULL_PAINT_NODES ? GFX_RGB(FRUSTUM_RGB) : raster_meshlets_color(1U + n);
             box_lines(lens, box3f_from_box3s(node->bounds, 1.0F), color);
             continue;
         }

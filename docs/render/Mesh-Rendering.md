@@ -349,10 +349,15 @@ only drawn clusters show, so it redraws from a spectator.
 | Tunable | Values |
 |---|---|
 | `cullview.from` | 0 the camera, 1 above the instances' bounds looking down, 2 behind and above the camera |
-| `cullview.paint` | 0 fates; 1 each cluster in the hue of its node at `cullview.level`, darker the earlier it was dropped |
+| `cullview.paint` | 0 the baked colours, culled clusters faded, each cluster's border in its fate's colour; 1 each cluster flat in its fate's colour; 2 each cluster in the hue of its node at `cullview.level`, darker the earlier it was dropped |
 | `cullview.level` | the tree depth whose node boxes the overlay draws; 0 none, 1 the root's children |
 
 From a spectator the overlay also draws the camera's frustum.
+
+- Where two triangles fill a pixel at the same depth, it goes to the later
+  one, as with every attachment.
+- A triangle the near plane cuts counts as reaching the fill even when its
+  clipped polygon then faces away or vanishes.
 
 ```mermaid
 flowchart LR
