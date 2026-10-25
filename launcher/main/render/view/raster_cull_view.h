@@ -29,7 +29,7 @@ typedef enum {
 } raster_cull_from_t;
 
 typedef enum {
-    RASTER_CULL_PAINT_SHADED, /* the baked colours, culled clusters a sparse screen door, kept clusters' borders in their fate */
+    RASTER_CULL_PAINT_SHADED, /* the baked colours, culled clusters a sparse screen door with dashed borders, kept ones' solid in their fate */
     RASTER_CULL_PAINT_FATES, /* each cluster flat in its fate's colour */
     RASTER_CULL_PAINT_NODES, /* each cluster in its node's hue at cullview.level, kept by its fate */
     RASTER_CULL_PAINT_COUNT,

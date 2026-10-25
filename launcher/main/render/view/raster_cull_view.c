@@ -29,8 +29,10 @@ static const uint32_t FATE_RGB[RASTER_FATE_COUNT] = {
 };
 #define FRUSTUM_RGB 0xFFFFFF
 /* A culled cluster is a screen door: one pixel of each square this many on a
- * side keeps its shading, the rest show the clear colour, and it has no border. */
-#define CULLED_DOOR 2
+ * side keeps its shading, the rest show the clear colour. */
+#define CULLED_DOOR 4
+/* Its border is dashed: this many pixels on, as many off, along the edge. */
+#define CULLED_DASH 2
 /* What a node's hue keeps, out of GFX_COLOR_SCALE_UNIT, under each fate. */
 #define KEEP_STEPS  16
 static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
@@ -357,14 +359,17 @@ shaded_pixel(const raster_cull_t* s, gfx_color_t clear, gfx_color_t drawn, int c
     }
     const raster_cluster_fate_t fate = (raster_cluster_fate_t)s->fate[c];
     if (fate == RASTER_FATE_CULLED) {
+        if (border) {
+            return ((x + y) / CULLED_DASH) % 2 == 0 ? GFX_RGB(FATE_RGB[fate]) : clear;
+        }
         return x % CULLED_DOOR == 0 && y % CULLED_DOOR == 0 ? drawn : clear;
     }
     return border ? GFX_RGB(FATE_RGB[fate]) : drawn;
 }
 
 /* Shaded: the baked colours as drawn, culled clusters as a sparse screen
- * door, and every pixel of a kept cluster where the cluster changes, right
- * or below, in its fate's colour: the clusters' borders. */
+ * door, and every pixel where the cluster changes, right or below, in its
+ * fate's colour: the clusters' borders, a culled one's dashed. */
 static void
 show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index) {
     for (int y = picture->row0; y < picture->row1; y++) {
