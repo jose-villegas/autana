@@ -552,7 +552,7 @@ def rule_ui_backend(root, path, text):
 # those include roots, which catches what no resolver here can see.
 # PACKAGE-REQUIRES keeps the declarations a one-way graph of real packages.
 # PACKAGE-CONFIG keeps first-party settings with their declaring package.
-# Symbols absent from first-party Kconfig belong to ESP-IDF and are allowed.
+# Symbols outside the own prefix and absent from first-party Kconfig belong to ESP-IDF.
 # Package Kconfig declarations require the package prefix; comments are ignored.
 
 
@@ -637,7 +637,9 @@ def rule_package_config(root, path, text):
     owners = first_party_config_owners(root)
     for number, line in enumerate(code.splitlines(), 1):
         for symbol in PACKAGE_CONFIG_SYMBOL.findall(line):
-            if symbol in owners and owners[symbol] != package:
+            if symbol.startswith("CONFIG_" + prefix) and owners.get(symbol) != package:
+                yield number, f"{symbol} is not declared in the {package.name} package Kconfig"
+            elif symbol in owners and owners[symbol] != package:
                 yield number, f"{symbol} is outside the {package.name} package - use CONFIG_{prefix} settings"
         entry = PACKAGE_KCONFIG_ENTRY.match(line) if path.name == "Kconfig" else None
         if entry and not entry.group(1).startswith(prefix):

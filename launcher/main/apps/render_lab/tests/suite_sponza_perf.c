@@ -18,7 +18,7 @@
 
 #include "frame_profile.h"
 #include "perf_budget.h"
-#include "perf_stats.h"
+#include "testkit/bench.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 

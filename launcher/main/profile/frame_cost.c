@@ -1,9 +1,5 @@
 #include "profile/frame_cost.h"
 
-#if CONFIG_LAUNCHER_SELFTEST
-#include "testkit/bench.h"
-#endif
-
 #if FRAME_COST_ENABLED
 
 #include "esp_cpu.h"
@@ -191,11 +187,4 @@ frame_cost_take_report(uint32_t frames, char* out, size_t out_size) {
     return (int)line.length;
 }
 
-#endif
-
-#if CONFIG_LAUNCHER_SELFTEST
-bool
-bench_counters_idle(void) {
-    return frame_cost_counters_idle();
-}
 #endif

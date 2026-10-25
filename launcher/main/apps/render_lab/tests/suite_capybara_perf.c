@@ -15,10 +15,10 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "perf_budget.h"
-#include "perf_stats.h"
 #include "render/context/render_context.h"
 #include "render/r3d_span_internal.h"
 #include "scene/scene_internal.h"
+#include "testkit/bench.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 

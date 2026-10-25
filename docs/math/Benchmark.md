@@ -118,7 +118,7 @@ ESP-DSP calibration: measured warm 1305.0 cycles/call; ANSI O2 reference 1311 cy
 
 | step | command |
 |---|---|
-| Bench capture | `idf.py -C launcher/packages/math/test_apps set-target esp32s3 flash`, then `idf.py -C launcher/packages/math/test_apps monitor > data/math_bench_capture.txt` |
+| Bench capture | [board capture build](../../launcher/packages/math/test_apps/README.md), then `idf.py -C launcher/packages/math/test_apps -B build.board monitor > docs/math/data/math_bench_capture.txt` |
 | Error capture | Included in the package app capture |
 | ELF metadata | `idf.py -C launcher/packages/math/test_apps build`, then `python launcher/tools/perf/math_bench_table.py --from-elf <math_test_app.elf>` |
 | Linked sizes | `python launcher/tools/perf/fast_paths.py --from-elf <math_test_app.elf>` |
@@ -129,7 +129,7 @@ ESP-DSP calibration: measured warm 1305.0 cycles/call; ANSI O2 reference 1311 cy
 
 The package app ELF is `launcher/packages/math/test_apps/build/math_test_app.elf`.
 
-Keep `BUILD_ID=`, `MATHTARGET`, `MATHBENCH`, `MATHERROR` and `MATHERRORBIN` records in `data/math_bench_capture.txt`.
+Keep `BUILD_ID=`, `MATHTARGET`, `MATHBENCH`, `MATHERROR` and `MATHERRORBIN` records in `docs/math/data/math_bench_capture.txt`.
 Separate images require one `scope=bench` and one `scope=error` build ID; a single image uses one unscoped ID.
 
 `MATHTARGET` identifies the shared target; ELF metadata and sizes must match the bench image. Host evidence is labelled separately.

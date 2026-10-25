@@ -12,9 +12,9 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "esp_cpu.h"
-#include "perf_stats.h"
 #include "profile/frame_cost.h"
 #include "services/build_id.h"
+#include "testkit/bench.h"
 #include "testkit/cleanup.h"
 #endif
 

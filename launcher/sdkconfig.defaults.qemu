@@ -24,7 +24,6 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 
 # No panel answers, so graphics presents to a null panel.
 CONFIG_LAUNCHER_QEMU=y
-CONFIG_TESTKIT_QEMU=y
 
 # QEMU lacks the FPU reciprocal and reciprocal-square-root seed instructions.
 CONFIG_MATH_FPU_RECIP=n

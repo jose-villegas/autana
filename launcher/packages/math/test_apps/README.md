@@ -5,8 +5,9 @@ the math and testkit components. `TESTKIT_COMPLETE failures=0` marks success.
 
 | Run | Command from the repository root |
 |---|---|
-| Build and flash ESP32-S3 | `idf.py -C launcher/packages/math/test_apps set-target esp32s3 flash` |
-| Capture tests and bench | `idf.py -C launcher/packages/math/test_apps monitor > data/math_bench_capture.txt` |
+| Generic ESP32 target | `idf.py -C launcher/packages/math/test_apps -D IDF_TARGET=esp32 build` |
+| Board capture (ESP32-S3) | `idf.py -C launcher/packages/math/test_apps -B build.board -D SDKCONFIG=sdkconfig.board -D SDKCONFIG_DEFAULTS="../../../sdkconfig.defaults;sdkconfig.defaults;sdkconfig.defaults.standalone" -D IDF_TARGET=esp32s3 build flash` |
+| Capture tests and bench | `idf.py -C launcher/packages/math/test_apps -B build.board monitor > docs/math/data/math_bench_capture.txt` |
 | Build QEMU image | `idf.py -C launcher/packages/math/test_apps -B build.qemu -D SDKCONFIG=sdkconfig.qemu -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.qemu" -D IDF_TARGET=esp32s3 build` |
 | Run QEMU | `idf.py -C launcher/packages/math/test_apps -B build.qemu qemu monitor` |
 

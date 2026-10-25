@@ -54,10 +54,10 @@ open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin
 #include "core/timing.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
-#include "perf_stats.h"
 #include "profile/frame_cost.h"
 #include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light_internal.h"
+#include "testkit/bench.h"
 
 #define CLIP_ID           "gallop"
 #define POSE_SECONDS      0.2F

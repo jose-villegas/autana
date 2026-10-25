@@ -2,10 +2,6 @@
 
 #include "build/build_variant.h"
 
-#if CONFIG_LAUNCHER_SELFTEST
-#include "testkit/bench.h"
-#endif
-
 #include "esp_app_desc.h"
 
 #include <string.h>
@@ -38,10 +34,3 @@ build_id_short(void) {
     short_id[BUILD_ID_SHORT_CHARS] = '\0';
     return short_id;
 }
-
-#if CONFIG_LAUNCHER_SELFTEST
-const char*
-bench_build_id(void) {
-    return build_id();
-}
-#endif

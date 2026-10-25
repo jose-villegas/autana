@@ -8,8 +8,8 @@
 #include <string.h>
 
 #include "hash/name_hash64.h"
-#include "perf_stats.h"
 #include "suites.h"
+#include "testkit/bench.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
