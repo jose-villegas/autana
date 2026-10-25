@@ -97,15 +97,18 @@ own. The console answers from the shared one, `tune_shared()`.
 
 ## Making something tunable
 
+<!-- generated: cli-tune-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Tune: expose a colour under its owner. */
 #include "core/tune.h"
 
-TUNE_OWNER(ridge);                    /* once per file, before its tunables */
-TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
+TUNE_OWNER(glow); /* once per file, before its tunables */
+TUNE(glow, theme_rgb, 0x1199C8, 0, 0xffffff);
 ```
+<!-- /generated: cli-tune-example -->
 
 - That one line is the whole declaration: the variable `theme_rgb`, its name
-  `ridge.theme_rgb`, the value it ships with and its range. On a development
+  `glow.theme_rgb`, the value it ships with and its range. On a development
   build it is a `static int32_t` and an entry that joins the registry by
   itself before `app_main()`, the way `APP_REGISTER` works, so there is
   nothing to call and every tunable linked into the image is listed from

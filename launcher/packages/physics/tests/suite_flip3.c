@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "physics/fluid/flip3.h"

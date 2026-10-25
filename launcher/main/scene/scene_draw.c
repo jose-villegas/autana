@@ -85,28 +85,13 @@ active_camera(void) {
     return &active.scene->cameras[active.camera];
 }
 
-/* Rebuilds the model of each renderer whose entity moved. */
-static void
-update_placements(scene_t* scene) {
-    for (int i = 0; i < scene->renderer_count; i++) {
-        scene_renderer_t* r = &scene->renderers[i];
-        if ((scene->flags[r->entity] & SCENE_FLAG_DIRTY) != 0) {
-            r->model = transformf_compute_matrix(&scene->locals[r->entity]);
-            r->placed = !scene_transform_is_identity(&r->model);
-        }
-    }
-    for (int i = 0; i < scene->asset.entity_count; i++) {
-        scene->flags[i] &= (uint8_t)~SCENE_FLAG_DIRTY;
-    }
-}
-
 /* The enabled renderers with something to draw, as the raster draws them. */
 static int
 fill_instances(scene_t* scene) {
     int count = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
-        if ((scene->flags[r->entity] & SCENE_FLAG_ENABLED) != 0 && r->mesh.node_count > 0) {
+        if ((scene->flags[r->entity] & SCENE_FLAG_ACTIVE) != 0 && r->mesh.node_count > 0) {
             scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL};
         }
     }
@@ -117,7 +102,7 @@ static void
 draw_active(int quarter, int width, int height) {
     scene_t* scene = active.scene;
     const scene_camera_t* camera = active_camera();
-    update_placements(scene);
+    scene_resolve(scene);
     const int count = fill_instances(scene);
     if (count == 0) {
         return;

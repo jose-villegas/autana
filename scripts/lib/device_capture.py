@@ -9,7 +9,7 @@ RESULT_RE = re.compile(r"^(?P<file>\S*?):(?P<line>\d+):(?P<name>\w+):(?P<status>
 BUILD_ID_REQUEST = "BUILDID"
 BUILD_ID_RE = re.compile(r"BUILD_ID=([^\s\r\n]+)")
 APPS_RE = re.compile(r"APPS name=(.+?) running=([01])(?: console=(\S+))?")
-IMU_QUARTER_RE = re.compile(r"IMU_OK quarter=(\d+) quarters=(\d+) sample_ms=(\d+)")
+IMU_QUARTER_RE = re.compile(r"IMU_OK quarter=(\d+) quarters=(\d+) sample_ms=(\d+) commit_ms=(\d+)")
 BUILD_ID_BYTES_RE = re.compile(BUILD_ID_RE.pattern.encode())
 PERF_SEGMENT = re.compile(r"perf: (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) avg (\d+) n=(\d+)")
 # The device prints this line only when the self-test loop actually reaches

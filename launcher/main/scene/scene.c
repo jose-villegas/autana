@@ -25,7 +25,7 @@ static memory_take_fn kept_take;
 
 /* The block's layout: the header, then each array on its own alignment. */
 typedef struct {
-    size_t renderers, cameras, instances, flags, locals, animators, skins, lights, total;
+    size_t renderers, cameras, instances, flags, locals, world_slots, animators, skins, lights, total;
 } layout_t;
 
 size_t
@@ -44,6 +44,7 @@ layout_for(const scene_asset_t* asset) {
     const int entities = asset->entity_count;
     SCENE_STORAGE_RESERVE(l, end, flags, uint8_t, entities);
     SCENE_STORAGE_RESERVE(l, end, locals, transformf_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, world_slots, uint16_t, entities);
     const int renderers = asset->renderer_count + asset->skinned_renderer_count;
     SCENE_STORAGE_RESERVE(l, end, instances, r3d_instance_t, renderers);
     SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, entities);
@@ -113,13 +114,14 @@ instantiate(const scene_asset_t* asset) {
     scene->instances = (r3d_instance_t*)(void*)(block + l.instances);
     scene->flags = block + l.flags;
     scene->locals = (transformf_t*)(void*)(block + l.locals);
+    scene->world_slots = (uint16_t*)(void*)(block + l.world_slots);
     scene->animators = (scene_animator_t*)(void*)(block + l.animators);
     scene->lights = (scene_light_t*)(void*)(block + l.lights);
     scene->ambient_color = asset->settings->ambient_color;
     scene->ambient_intensity = asset->settings->ambient_intensity;
     scene->tonemap_white = asset->settings->tonemap_white;
     scene->skinned_renderers = (scene_skinned_renderer_t*)(void*)(block + l.skins);
-    memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_CHANGED, asset->entity_count);
+    memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
         scene->cameras[i] = (scene_camera_t){
@@ -278,7 +280,9 @@ local_from_row(const scene_asset_transform_t* row, transformf_t* out) {
 static scene_failure_t
 open_transforms(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
-        if (!local_from_row(&scene->asset.transforms[e], &scene->locals[e])) {
+        /* A parent's even scale keeps every world below it exact. */
+        if (!local_from_row(&scene->asset.transforms[e], &scene->locals[e])
+            || (scene->world_slots[e] != SCENE_WORLD_SLOT_NONE && !transformf_scale_is_even(&scene->locals[e]))) {
             return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[e]);
         }
     }
@@ -326,7 +330,8 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     }
     scene->pack = pack;
     copy_id(scene->id, id);
-    scene_failure_t done = open_meshes(scene, pack);
+    scene_failure_t done =
+        scene_hierarchy_open(scene) ? open_meshes(scene, pack) : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id);
     if (done.status == SCENE_OK) {
         done = open_transforms(scene);
     }
@@ -345,6 +350,7 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     if (done.status != SCENE_OK) {
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
+        scene_hierarchy_release(scene);
         scene_free_kept(scene);
         return NULL;
     }
@@ -382,6 +388,7 @@ scene_unload(scene_t* scene) {
         loaded[loaded_count] = NULL;
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
+        scene_hierarchy_release(scene);
         scene_free_kept(scene);
         if (loaded_count == 0) {
             /* Nothing left to draw: drop the scratch, so whoever lent it can
@@ -528,16 +535,19 @@ scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t 
     return true;
 }
 
-const scene_transform_t*
-scene_entity_transform(const scene_t* scene, scene_entity_t entity) {
+transformf_t
+scene_entity_local(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
-    return &scene->locals[entity];
+    return scene->locals[entity];
 }
 
 void
-scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
+scene_entity_set_local(scene_t* scene, scene_entity_t entity, transformf_t local) {
     assert(entity < scene->asset.entity_count);
-    scene->locals[entity] = *transform;
+    /* A parent scales evenly, so every world below it is an exact TRS; the
+     * loader and the importer keep content so. */
+    assert(scene->world_slots[entity] == SCENE_WORLD_SLOT_NONE || transformf_scale_is_even(&local));
+    scene->locals[entity] = local;
     scene->flags[entity] |= SCENE_FLAG_CHANGED;
 }
 
@@ -553,6 +563,7 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
     scene->flags[entity] = enabled ? (uint8_t)(scene->flags[entity] | SCENE_FLAG_ENABLED)
                                    : (uint8_t)(scene->flags[entity] & ~SCENE_FLAG_ENABLED);
     scene->flags[entity] |= SCENE_FLAG_CHANGED;
+    scene_hierarchy_update_active(scene, entity);
 }
 
 bool

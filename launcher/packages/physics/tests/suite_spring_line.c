@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "physics/spring/spring_line.h"

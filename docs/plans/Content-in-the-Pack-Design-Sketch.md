@@ -57,7 +57,7 @@ is kept. Ids are unique within a pack.
 | Shared content | [A] When two roots name the same asset, it becomes a pack of its own, named after it, and the two depend on it: a pack's header lists the packs it needs, mounted first. This is the rule; the loader is built when the first shared asset appears. Until then `build_pack` fails naming it. |
 | Lifetime | [A] Mounted on first use and counted; a scene's pack is released when its last scene unloads, so mappings do not pile up. |
 
-```c
+```c fragment
 /* asset_store.h: replaces asset_store_pack() */
 const asset_pack_t* asset_store_pack(const char* name);  /* mounts and checks that pack alone; NULL, logged, when missing or bad */
 void asset_store_release(const char* name);                /* drops a use; unmapped at zero */
@@ -97,7 +97,7 @@ the stem. A baker and a loader can then never disagree on what the id is.
 Keys are copied as authored; a channel that never changes is one key (as
 today). A track name over 31 characters fails the bake, naming the track.
 
-```c
+```c fragment
 /* launcher/main/anim/anim_tracks.h  (no allocation, no ESP-IDF) */
 typedef struct { uint32_t duration_ms; } anim_clip_t;      /* was: track array + count + duration */
 typedef struct { const uint8_t* base; uint32_t size; uint16_t count; anim_clip_t clip; } anim_tracks_t;
@@ -116,9 +116,9 @@ entry (bake = `gltf_read` + the current `bake_tracks.py` checks, moved in).
 
 **As built:** SCNE v3 carries directional lights, ambient, tone map, skinned
 renderers and animators. Region and sky are bake inputs. The mapped layout
-and its writer are documented in [Scene files](../render/Scene-Files.md#scne-v3).
+and its writer are documented in [Scene files](../render/Scene-Files.md#scne-v4).
 
-```c
+```c fragment
 /* scene.h: changes only */
 scene_t*       scene_load(const char* id, scene_failure_t* why);   /* opens SCNE and every mesh, skin, skeleton and clip it names */
 scene_entity_t scene_find(const scene_t*, const char* name);       /* exists; becomes THE way to get an id (setup time) */
@@ -170,7 +170,7 @@ nothing has mounted a pack before it. Boot mounts its clip's pack with
 `asset_store_pack("boot_anim_motion")`, which maps and checks that pack alone on its
 first call.
 
-```c
+```c fragment
 /* boot_anim.h: nodes camera and space (translation, rotation, scale) resolved once */
 typedef struct { anim_clip_t clip; anim_node_tracks_t camera, space; bool from_pack; } boot_anim_motion_t;
 void boot_anim_motion_load(boot_anim_motion_t* out);      /* first thing in boot_anim_run(): anim_tracks_from_pack(asset_store_pack("boot_anim_motion"), "boot_anim_motion"), anim_tracks_find_node() twice; on any failure, log why and use the rest pose */

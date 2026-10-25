@@ -254,10 +254,10 @@ place_tank(void) {
     if (tank == SCENE_ENTITY_NONE) {
         return false;
     }
-    transformf_t t = *scene_entity_transform(tank_scene, tank);
+    transformf_t t = scene_entity_local(tank_scene, tank);
     transformf_set_position(&t, (vec3f_t){-0.5F * box.x, -0.5F * box.y, box.z});
     transformf_set_scale(&t, box);
-    scene_set_transform(tank_scene, tank, &t);
+    scene_entity_set_local(tank_scene, tank, t);
     return true;
 }
 
@@ -273,10 +273,10 @@ place_camera(int quarter, vec3f_t eye) {
     const camera_t* lens = scene_camera_lens(tank_scene, WATER_CAMERA);
     const float distance = 0.5F * box.x / lens->half_fov_short_tan;
     const quatf_t roll = quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, -(float)quarter * WATER_QUARTER_TURN);
-    transformf_t t = *scene_entity_transform(tank_scene, camera_entity);
+    transformf_t t = scene_entity_local(tank_scene, camera_entity);
     transformf_set_rotation(&t, roll);
     transformf_set_position(&t, (vec3f_t){eye.x, eye.y, -distance});
-    scene_set_transform(tank_scene, camera_entity, &t);
+    scene_entity_set_local(tank_scene, camera_entity, t);
     /* The glass's centre lands a fraction eye / width of the short side off
      * the picture's middle, against the eye; the optical centre follows the
      * eye by as much, in the camera's own axes. */
