@@ -176,6 +176,13 @@ class OwnerProblemsTest(unittest.TestCase):
             with self.subTest(rel=rel):
                 self.assertEqual(self.problems({rel: text}), [f"{rel}:1: {reason}" for reason in reasons])
 
+    def test_package_platform_shims_are_outside_the_engine_owner_rule(self):
+        for rel in ("launcher/packages/testkit/harness/bench.c",
+                    "launcher/packages/testkit/runner/idf_main.c",
+                    "launcher/packages/math/src/timing.c"):
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: CLOCK_READ + HEAP_CALL}), [])
+
     def test_each_owner_and_every_driver_may_call_what_it_owns(self):
         cases = (
             ("launcher/main/core/timing.h", CLOCK_READ),
@@ -208,7 +215,6 @@ class OwnerProblemsTest(unittest.TestCase):
             ("launcher/main/core/memorize.c", HEAP_CALL, heap),
             ("launcher/main/core/timings.c", CLOCK_READ, clock),
             ("launcher/main/gfx/timing.c", CLOCK_READ, clock),
-            ("launcher/packages/math/src/timing.c", CLOCK_READ, clock),
             ("launcher/main/core/memory/memory.c", HEAP_CALL, heap),
             ("launcher/main/services/memory.c", HEAP_CALL, heap),
             ("launcher/main/services/timing.h", CLOCK_READ, clock),
