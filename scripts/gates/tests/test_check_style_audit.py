@@ -474,9 +474,19 @@ class StyleAuditTest(unittest.TestCase):
                 with self.subTest(name=name, symbol=symbol):
                     findings = self.audit("PACKAGE-CONFIG", {
                         f"{self.PACKAGE}/{name}": f"\nif({symbol})\n",
+                        "launcher/main/Kconfig.projbuild": "config LAUNCHER_QEMU\n",
+                        "launcher/packages/other/Kconfig": "config OTHER_FPU_RECIP\n",
                     })
                     self.assertEqual([f.line for f in findings], [2])
                     self.assertIn(symbol, findings[0].message)
+
+    def test_package_config_accepts_idf_platform_symbols(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/probe.c": "#if CONFIG_IDF_TARGET_ARCH_XTENSA\n#endif\n"
+                                      "#if CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE\n#endif\n",
+            "launcher/main/Kconfig.projbuild": "config LAUNCHER_QEMU\n",
+        })
+        self.assertEqual(findings, [])
 
     def test_package_config_accepts_its_own_prefix(self):
         findings = self.audit("PACKAGE-CONFIG", {
@@ -498,6 +508,7 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_package_config_ignores_comments_but_checks_code_on_the_same_line(self):
         findings = self.audit("PACKAGE-CONFIG", {
+            "launcher/main/Kconfig.projbuild": "config LAUNCHER_QEMU\n",
             f"{self.PACKAGE}/probe.c": "/* CONFIG_UNITY_ENABLE_64BIT */\n"
                                       "// CONFIG_LAUNCHER_QEMU\n"
                                       "/* CONFIG_OTHER_FEATURE */ #if CONFIG_LAUNCHER_QEMU\n",
@@ -512,6 +523,7 @@ class StyleAuditTest(unittest.TestCase):
     def test_package_config_checks_symbols_in_build_strings(self):
         findings = self.audit("PACKAGE-CONFIG", {
             f"{self.PACKAGE}/CMakeLists.txt": 'message("# ${CONFIG_OTHER_FEATURE}")\n',
+            "launcher/packages/other/Kconfig": "config OTHER_FEATURE\n",
         })
         self.assertEqual([f.line for f in findings], [1])
 

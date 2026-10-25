@@ -133,7 +133,7 @@ measure_row(const char* name, ui_icount_emit_fn emit, bool window) {
         }
         elapsed += timing_now_us() - began;
     }
-    perf_icount_report(name, elapsed, UI_ICOUNT_REPS * UI_ICOUNT_ROUNDS, UI_ICOUNT_ROUNDS);
+    bench_icount_report(name, elapsed, UI_ICOUNT_REPS * UI_ICOUNT_ROUNDS, UI_ICOUNT_ROUNDS);
 }
 
 static void

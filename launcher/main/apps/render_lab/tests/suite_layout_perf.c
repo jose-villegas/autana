@@ -160,7 +160,7 @@ sent_frame_crc(fixture_t* f) {
 
 static void
 report_row(const char* scene, const char* layout, const char* stage, int32_t* samples, const char* quarter) {
-    const perf_stats_t stats = perf_stats_compute(samples, LAYOUT_SAMPLES);
+    const bench_stats_t stats = bench_stats_compute(samples, LAYOUT_SAMPLES);
     ESP_LOGI(TAG, "%s:%s:%s mean %lldus p95 %lldus" R3D_PERF_QUARTER_FORMAT, scene, layout, stage, (long long)stats.avg,
              (long long)stats.p95, quarter);
 }

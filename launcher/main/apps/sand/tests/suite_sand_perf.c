@@ -622,8 +622,8 @@ test_serial_step_instruction_rows(void) {
             real_board_close(&b);
             free(real);
         }
-        perf_icount_report(water ? "sand_water_step" : "sand_falling_step", elapsed, ICOUNT_STEP_REPS,
-                           ICOUNT_STEP_ROUNDS);
+        bench_icount_report(water ? "sand_water_step" : "sand_falling_step", elapsed, ICOUNT_STEP_REPS,
+                            ICOUNT_STEP_ROUNDS);
     }
 }
 

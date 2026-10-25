@@ -285,6 +285,12 @@ __attribute__((constructor)) static void drops(void) {
                 result = self.run_runner(*args)
                 self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
+    def test_on_request_runs_all_on_request_suites(self):
+        result = self.run_runner("--on-request")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn(f"{self.WRAP_COUNT} Tests {self.WRAP_COUNT} Failures", result.stdout)
+        self.assertNotIn("Unknown suite", result.stderr)
+
     def test_full_exit_status_range_of_failures_returns_failure(self):
         result = self.run_runner("failures")
         self.assertEqual(1, result.returncode, result.stdout + result.stderr)

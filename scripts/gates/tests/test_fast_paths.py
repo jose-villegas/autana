@@ -28,7 +28,7 @@ class FastPathTests(unittest.TestCase):
         source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
         source.parent.mkdir(parents=True)
         source.write_text('MATHERROR name=example type=f max=%g unit=ulp method=sweep')
-        perf = self.root / 'launcher/test/suites/suite_math_perf.c'
+        perf = self.root / 'launcher/packages/math/bench/suite_math_perf.c'
         perf.parent.mkdir(parents=True)
         perf.write_text('')
         self.annotations = paths.annotations(self.root)

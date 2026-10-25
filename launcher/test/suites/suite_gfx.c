@@ -903,7 +903,7 @@ count_narrow_presents(const char* scene, narrow_setting_t setting) {
             }
             write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
             if (setting == NARROW_COLD) {
-                perf_cache_code_cold();
+                bench_cache_code_cold();
             }
             TEST_ASSERT_TRUE(frame_cost_count_begin(event));
             total_us += time_present();

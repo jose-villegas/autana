@@ -118,14 +118,16 @@ ESP-DSP calibration: measured warm 1305.0 cycles/call; ANSI O2 reference 1311 cy
 
 | step | command |
 |---|---|
-| Bench capture | `autana --wait 3600 suite run_math_perf_suite --flash --perf-scope` |
-| Error capture | `autana --wait 3600 suite suite_math_numbers --flash` |
-| ELF metadata | `autana build diag --perf-scope`, then `python launcher/tools/perf/math_bench_table.py --from-elf <launcher.elf>` |
-| Linked sizes | `python launcher/tools/perf/fast_paths.py --from-elf <launcher.elf>` |
+| Bench capture | `idf.py -C launcher/packages/math/test_apps set-target esp32s3 flash`, then `idf.py -C launcher/packages/math/test_apps monitor > data/math_bench_capture.txt` |
+| Error capture | Included in the package app capture |
+| ELF metadata | `idf.py -C launcher/packages/math/test_apps build`, then `python launcher/tools/perf/math_bench_table.py --from-elf <math_test_app.elf>` |
+| Linked sizes | `python launcher/tools/perf/fast_paths.py --from-elf <math_test_app.elf>` |
 | Host error sweep | `bash launcher/test/run_tests.sh --sanitize` |
 | Host records | Save `MATHERROR`/`MATHERRORBIN` in `data/math_error_host_capture.txt` with a `MATHTARGET target=host arch=<architecture> execution=host` record. |
 | Regenerate blocks | `python launcher/tools/perf/fast_paths.py`; add `--check` to verify. |
 | Figures | `bash launcher/tools/render/render_doc_images.sh`, or `python launcher/tools/math/math_bench_figures.py` and `python launcher/tools/math/fast_path_figures.py`. |
+
+The package app ELF is `launcher/packages/math/test_apps/build/math_test_app.elf`.
 
 Keep `BUILD_ID=`, `MATHTARGET`, `MATHBENCH`, `MATHERROR` and `MATHERRORBIN` records in `data/math_bench_capture.txt`.
 Separate images require one `scope=bench` and one `scope=error` build ID; a single image uses one unscoped ID.

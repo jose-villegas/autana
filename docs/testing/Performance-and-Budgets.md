@@ -76,7 +76,7 @@ python launcher/tools/quality/icount_gate.py --update-baseline launcher/build.qe
 UI face/backend pairs include identical frame setup, so their difference is
 the face's instruction share. Theme and scope rows measure face state without
 a backend partner; scope rows measure begin and end together. The tolerance
-and capture-length rule live in `launcher/test/perf_stats.h`, which the gate
+and capture-length rule live in `launcher/packages/testkit/include/testkit/bench.h`, which the gate
 reads.
 
 ## The frame watch as a gate
