@@ -46,6 +46,10 @@ typedef struct {
 
 render_view_t render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_z, viewport_t viewport);
 
+/* The tangent of half the field of view across the picture's shorter side,
+ * as render_view_make() took it. */
+float render_view_half_fov_short_tan(const render_view_t* view);
+
 /* Shifts the lens (render_view_t.shift) and recentres the picture on it. */
 void render_view_set_shift(render_view_t* view, vec2f_t shift);
 

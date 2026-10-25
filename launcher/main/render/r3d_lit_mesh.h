@@ -25,10 +25,15 @@ typedef struct {
     bool double_sided;
 } r3d_lit_cluster_t;
 
-/* An inner node's children at most: the bake's octree splits in eight, and
- * the cull walk orders a node's children in an array this long. A leaf's
- * clusters are not limited by it. */
-#define R3D_LIT_INNER_CHILDREN_MAX 8
+/* The tree lit_mesh.py writes: an octree, so a node has at most eight
+ * children, at most its MAX_DEPTH levels below the root. */
+#define R3D_LIT_NODE_CHILDREN_MAX 8
+#define R3D_LIT_TREE_DEPTH_MAX    10
+/* What a depth-first walk of the tree holds pending at most: each level's
+ * unvisited siblings, with room to spare. */
+#define R3D_LIT_WALK_STACK_MAX    256
+_Static_assert((R3D_LIT_TREE_DEPTH_MAX * (R3D_LIT_NODE_CHILDREN_MAX - 1)) + 1 <= R3D_LIT_WALK_STACK_MAX,
+               "a deepest walk fits its stack");
 
 typedef struct {
     box3s_t bounds; /* bounds of everything below, position ticks */

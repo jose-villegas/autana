@@ -27,6 +27,7 @@
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
+#include "apps/render_lab/tests/one_core_draw.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "asset/asset_store.h"
 #include "collections/strbuf.h"
@@ -85,21 +86,6 @@ static const camera_t* lens;
 static scene_entity_t camera_entity;
 static r3d_lit_mesh_t mesh;
 
-/* One core's whole draw, cleared first, stopped after the stage `stop`
- * names (r3d_span_stop_after; 0 runs every stage). */
-static int64_t
-one_core_draw_us(const raster_t* raster, const raster_buffers_t* b, const r3d_lens_t* lens, int visible, int stop) {
-    const size_t pixels = (size_t)raster->width * (size_t)raster->height;
-    memset(gfx_render_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
-    r3d_span_stop_after = stop;
-    const int64_t start = timing_now_us();
-    const r3d_span_target_t target = {b->picture, NULL, 0, &r3d_span_small_fill_default};
-    r3d_pipeline_draw(raster->instances[0].mesh, lens, b->culled + 1, visible, b->cs, b->rows, &target, b->work[0]);
-    const int64_t us = timing_now_us() - start;
-    r3d_span_stop_after = 0;
-    return us;
-}
-
 typedef struct {
     int64_t setup, edges, carry, fill, clear;
     r3d_lens_t lens;
@@ -126,10 +112,10 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     const int64_t clear_from = timing_now_us();
     memset(gfx_render_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
     sum->clear += timing_now_us() - clear_from;
-    const int64_t setup = one_core_draw_us(raster, b, draw_lens, visible, 1);
-    const int64_t edges = one_core_draw_us(raster, b, draw_lens, visible, 2);
-    const int64_t carry = one_core_draw_us(raster, b, draw_lens, visible, 3);
-    const int64_t whole = one_core_draw_us(raster, b, draw_lens, visible, 0);
+    const int64_t setup = one_core_draw_us(raster, b, draw_lens, visible, R3D_SPAN_STOP_AFTER_SETUP);
+    const int64_t edges = one_core_draw_us(raster, b, draw_lens, visible, R3D_SPAN_STOP_AFTER_EDGES);
+    const int64_t carry = one_core_draw_us(raster, b, draw_lens, visible, R3D_SPAN_STOP_AFTER_CARRY);
+    const int64_t whole = one_core_draw_us(raster, b, draw_lens, visible, R3D_SPAN_STOP_NONE);
     sum->setup += setup;
     sum->edges += edges - setup;
     sum->carry += carry - edges;

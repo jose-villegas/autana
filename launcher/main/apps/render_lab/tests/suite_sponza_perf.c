@@ -26,6 +26,7 @@
 
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
+#include "apps/render_lab/tests/one_core_draw.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "asset/asset_store.h"
 #include "core/job.h"
@@ -41,7 +42,7 @@
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
-#include "render/raster_motion.h"
+#include "render/view/raster_motion.h"
 #include "scene/scene.h"
 #include "services/build_id.h"
 #include "sponza_suite.h"
@@ -195,22 +196,6 @@ open_the_meshes(void) {
     }
 }
 
-/* One core's draw of a cleared picture, stopped after the stage `stop`
- * names (r3d_span_stop_after; 0 runs every stage); the clear is not timed. */
-static int64_t
-stopped_draw_us(const raster_t* raster, const r3d_lens_t* lens, int visible, int stop) {
-    const raster_buffers_t b = raster_carve(raster);
-    memset(gfx_render_target_depth(&b.picture, 0), 0,
-           (size_t)raster->width * (size_t)raster->height * sizeof(uint16_t));
-    const r3d_span_target_t target = {b.picture, NULL, 0, &r3d_span_small_fill_default};
-    r3d_span_stop_after = stop;
-    const int64_t start = timing_now_us();
-    r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target, b.work[0]);
-    const int64_t us = timing_now_us() - start;
-    r3d_span_stop_after = 0;
-    return us;
-}
-
 /* Each bake's draw split into its stages, one core, as the mean over the
  * flythrough's poses: each stage is the difference of two stopped draws. */
 static void
@@ -229,7 +214,7 @@ report_stage_split(int bake) {
         const int visible = r3d_pipeline_cull(&meshes[bake], &lens, parts.culled + 1, parts.work[0]);
         r3d_pipeline_transform(&meshes[bake], &lens, parts.culled + 1, visible, parts.cs, parts.rows);
         for (int stop = 0; stop <= 3; stop++) {
-            stopped[stop] += stopped_draw_us(&b->raster, &lens, visible, stop);
+            stopped[stop] += one_core_draw_us(&b->raster, &parts, &lens, visible, stop);
         }
         poses++;
     }

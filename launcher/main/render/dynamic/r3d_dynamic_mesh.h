@@ -5,7 +5,7 @@
  * clusters of at most R3D_DYNAMIC_CLUSTER_TRIANGLES triangles, in source
  * order, each owning copies of the vertices it uses, and hangs them off a
  * tree of leaves over R3D_DYNAMIC_LEAF_CLUSTERS clusters and inner nodes
- * over R3D_LIT_INNER_CHILDREN_MAX. The result is an ordinary r3d_lit_mesh_t the raster
+ * over R3D_LIT_NODE_CHILDREN_MAX. The result is an ordinary r3d_lit_mesh_t the raster
  * draws, valid until the next build.
  *
  * Its vertex and cluster counts are always the capacities, so a raster
