@@ -132,7 +132,7 @@ normalize_div(vec3x_t a) {
         square += (uint64_t)(scaled[i] * scaled[i]);
     }
     uint64_t length = mathi_isqrt64(square);
-    length += square - length * length > length;
+    length += square - (length * length) > length;
     const int32_t reciprocal = mathx_saturate((int64_t)(((UINT64_C(1) << RECIPROCAL_SHIFT) + length / 2) / length));
     return (vec3x_t){(int32_t)fx_round_shift(scaled[0] * reciprocal, OUTPUT_SHIFT),
                      (int32_t)fx_round_shift(scaled[1] * reciprocal, OUTPUT_SHIFT),
@@ -269,7 +269,7 @@ fixture(void) {
 #define MATH_BENCH_PAIR_ALLOC(name, type)   MATH_BENCH_ALLOC(name, pair_##name##_t, MATH_BENCH_BATCH)
     MATH_BENCH_ARRAYS(MATH_BENCH_PAIR_ALLOC, MATH_BENCH_ALLOC)
     for (int j = 0; j < MATH_BENCH_BATCH; j++) {
-        const float v = (float)(j % MATH_BENCH_INPUT_PERIOD + 1) * MATH_BENCH_INPUT_SCALE;
+        const float v = (float)((j % MATH_BENCH_INPUT_PERIOD) + 1) * MATH_BENCH_INPUT_SCALE;
         const float turn = (float)j / MATH_BENCH_BATCH;
         f->vf[j].a = (vec3f_t){v, v + 1.0F, v - 1.0F};
         f->vf[j].b = (vec3f_t){v + MATH_BENCH_INPUT_SCALE, -v, 1.0F};
@@ -282,7 +282,7 @@ fixture(void) {
         f->angle[j] = (turn - 0.5F) * MATH_TAU;
         f->phase[j] = (uint16_t)(j * TRIG_TURN / MATH_BENCH_BATCH);
         f->qf[j].a = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, f->angle[j]);
-        f->qf[j].b = quatf_from_axis_angle((vec3f_t){1.0F, 0.0F, 0.0F}, f->angle[j] + MATH_PI / 2.0F);
+        f->qf[j].b = quatf_from_axis_angle((vec3f_t){1.0F, 0.0F, 0.0F}, f->angle[j] + (MATH_PI / 2.0F));
         f->qx[j].a = quatx_from_axis_angle((vec3x_t){0, MATHX_ONE, 0}, mathf_to_x(turn - 0.5F));
         f->qx[j].b = quatx_from_axis_angle((vec3x_t){MATHX_ONE, 0, 0}, mathf_to_x(turn - 0.25F));
         f->tf[j] = (transformf_t){.position = f->vf[j].a, .rotation = f->qf[j].a, .scale = f->vf[j].b};
@@ -293,7 +293,7 @@ fixture(void) {
         f->mx[j].b = mat4x_from_trs(f->vx[j].b, f->qx[j].b, f->vx[j].a);
     }
     for (int j = 0; j < MATH_BENCH_DOT_SIZE; j++) {
-        f->dot_a[j] = (float)(j % MATH_BENCH_INPUT_PERIOD + 1) * MATH_BENCH_INPUT_SCALE;
+        f->dot_a[j] = (float)((j % MATH_BENCH_INPUT_PERIOD) + 1) * MATH_BENCH_INPUT_SCALE;
         f->dot_b[j] = 1.0F - f->dot_a[j];
     }
     return f;
