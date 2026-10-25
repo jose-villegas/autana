@@ -15,11 +15,11 @@
 
 /* Pack `name`, mounted and checked on its first use and counted after. NULL
  * when it is missing or bad, with one log line saying why; a caller leaves
- * its content out rather than draw from nothing. */
+ * its content out rather than draw from nothing. Blocks until validated. */
 const asset_pack_t* asset_store_load(const char* name);
 
 #define ASSET_STORE_REQUESTS_MAX 16U
-/* CRC bytes per pass, shared by every pending mount; placeholder until measured on the board. */
+/* CRC and entry-table bytes per pass, shared by every pending mount; placeholder until measured on the board. */
 #define ASSET_STORE_STEP_BYTES   4096U
 
 /* Completion runs from the frame loop on core 0, never inside this call.

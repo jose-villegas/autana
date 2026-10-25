@@ -572,7 +572,9 @@ test_cancel_wait_failed_and_blocking_holder_preserve_other_uses(void) {
     asset_store_release(ASYNC_NAME);
     TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
     TEST_ASSERT_EQUAL_STRING("retained", note_of(blocking));
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(second));
     asset_store_release(ASYNC_NAME);
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(second));
     TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
     handle_t failed = asset_store_load_async("", NULL, HANDLE_NONE);
     asset_store_cancel(failed);
@@ -780,6 +782,8 @@ test_reclaim_and_release_use_age_instead_of_slot_order(void) {
     handle_t low = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
     oldest = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
     asset_store_release(ASYNC_NAME);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(low));
+    asset_store_release(ASYNC_NAME);
     TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(low));
     newest = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
     TEST_ASSERT_TRUE(handle_slot(oldest) > handle_slot(newest));
@@ -790,7 +794,6 @@ test_reclaim_and_release_use_age_instead_of_slot_order(void) {
     TEST_ASSERT_EQUAL_INT(PENDING_WAIT, asset_store_state(other));
     asset_store_release(ASYNC_NAME);
     TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(newest));
-    asset_store_release(ASYNC_NAME);
     TEST_ASSERT_EQUAL_INT(PENDING_WAIT, asset_store_state(other));
     asset_store_cancel(other);
     free(loads);
@@ -943,6 +946,35 @@ test_request_generation_wrap_retires_all_slots_without_reviving_stale_handles(vo
 }
 
 static void
+test_blocking_release_preserves_ready_until_app_exit(void) {
+    test_asset_dir_use(".");
+    write_pack(ASYNC_NAME, "retained", 0, NOTE_BYTES);
+    const int before = asset_store_mounted();
+    handle_t load = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
+    poll_complete(load);
+    TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
+    asset_store_release(ASYNC_NAME);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(load));
+    shell_systems_app_exit();
+    TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
+    remove_pack(ASYNC_NAME);
+}
+
+static void
+test_pending_system_registers_after_asset_cleanup(void) {
+    shell_system_t* real = shell_system_swap_for_test(NULL);
+    shell_system_swap_for_test(real);
+    const shell_system_t* pending = real;
+    while (pending != NULL && strcmp(pending->name, "pending") != 0) {
+        pending = pending->next;
+    }
+    TEST_ASSERT_NOT_NULL(pending);
+    TEST_ASSERT_EQUAL_INT(SHELL_ORDER_PENDING, pending->order);
+    TEST_ASSERT_TRUE(pending->order > SHELL_ORDER_ASSET);
+    TEST_ASSERT_EQUAL_PTR(pending_tokens_cancel, pending->app_exit);
+}
+
+static void
 test_asset_system_registers_poll_and_exit_cleanup(void) {
     shell_system_t* real = shell_system_swap_for_test(NULL);
     shell_system_swap_for_test(real);
@@ -952,7 +984,7 @@ test_asset_system_registers_poll_and_exit_cleanup(void) {
     }
     TEST_ASSERT_NOT_NULL(asset);
     TEST_ASSERT_EQUAL_INT(SHELL_ORDER_ASSET, asset->order);
-    TEST_ASSERT_NOT_NULL(asset->poll);
+    TEST_ASSERT_EQUAL_PTR(asset_store_step, asset->poll);
     TEST_ASSERT_EQUAL_PTR(asset_store_app_exit, asset->app_exit);
 }
 
@@ -999,6 +1031,8 @@ suite_asset_store(void) {
     RUN_TEST(test_callback_request_for_unmounted_pack_starts_next_pass);
     RUN_TEST(test_tokens_exhaust_to_a_dead_owner_and_exit_restores_slots);
     RUN_TEST(test_request_generation_wrap_retires_all_slots_without_reviving_stale_handles);
+    RUN_TEST(test_blocking_release_preserves_ready_until_app_exit);
+    RUN_TEST(test_pending_system_registers_after_asset_cleanup);
     RUN_TEST(test_asset_system_registers_poll_and_exit_cleanup);
     RUN_TEST(test_step_budget_is_shared_by_distinct_pending_mounts);
     RUN_TEST(test_async_known_size_takes_bounded_steps_and_shares_one_mount);

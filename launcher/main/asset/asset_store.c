@@ -151,7 +151,7 @@ complete_mount(asset_store_mount_t* mount) {
 }
 
 void
-asset_store_request_bind(asset_store_request_t* request) {
+asset_store_request_bind(asset_store_request_t* request, bool blocking) {
     asset_store_mount_t* mount = find(request->name);
     if (mount == NULL) {
         for (int i = 0; i < ASSET_STORE_MOUNTS_MAX; i++) {
@@ -171,7 +171,7 @@ asset_store_request_bind(asset_store_request_t* request) {
         }
         (void)strcpy(mount->name, request->name);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        mount->async = request->generation != 0;
+        mount->async = !blocking;
         const int64_t started = timing_now_us();
 #endif
         mount->status = asset_pack_open_begin(&mount->opener, mount->pack.base, mount->pack.size);
@@ -194,6 +194,7 @@ mount_step(asset_store_mount_t* mount, size_t budget) {
         return 0;
     }
     const uint32_t before = mount->opener.offset;
+    const uint32_t entry_before = mount->opener.entry;
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t started = timing_now_us();
     mount->passes++;
@@ -206,7 +207,7 @@ mount_step(asset_store_mount_t* mount, size_t budget) {
         mount->status = mount->opener.status;
         complete_mount(mount);
     }
-    return mount->opener.offset - before;
+    return (mount->opener.offset - before) + (size_t)(mount->opener.entry - entry_before) * ASSET_PACK_ENTRY_SIZE;
 }
 
 void
@@ -271,7 +272,7 @@ asset_store_load(const char* name) {
     initialize_request(request, name);
     while (request->state == PENDING_WAIT) {
         if (request->mount == NULL) {
-            asset_store_request_bind(request);
+            asset_store_request_bind(request, true);
         }
         if (request->state == PENDING_WAIT) {
             (void)mount_step(request->mount, SIZE_MAX);
@@ -298,14 +299,17 @@ asset_store_release(const char* name) {
         return;
     }
     asset_store_request_t* oldest = NULL;
+    uint32_t ready = 0;
     for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
         asset_store_request_t* request = &requests[i];
-        if (request->state == PENDING_READY && request->mount == mount
-            && (oldest == NULL || request->order < oldest->order)) {
-            oldest = request;
+        if (request->state == PENDING_READY && request->mount == mount) {
+            ready++;
+            if (oldest == NULL || request->order < oldest->order) {
+                oldest = request;
+            }
         }
     }
-    if (oldest != NULL) {
+    if (oldest != NULL && mount->uses == ready) {
         oldest->done = NULL;
         oldest->mount = NULL;
         oldest->state = PENDING_NONE;

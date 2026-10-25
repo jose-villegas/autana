@@ -5,6 +5,8 @@ found in it by name and type, and the bytes are read where they lie.
 
 ## Async loading
 
+Request a pack in `enter()` and read its state each frame.
+
 <!-- generated: asset-load-pack-async-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* load_pack_async: request on enter, read each frame, release on exit. */
@@ -37,7 +39,6 @@ load_pack_exit(load_pack_example_t* visit) {
 ```
 <!-- /generated: asset-load-pack-async-example -->
 
-Request a pack in `enter()` and read its state each frame.
 On exit, release(name) a READY request and cancel any other.
 `asset_store_loaded(load)` is NULL unless the request is READY.
 A failed request logs one reason; leave that content out.
@@ -49,14 +50,14 @@ Callbacks run once on core 0 in the
 
 - An already mounted pack is READY immediately; its callback waits for `poll`.
 - Requests made inside a callback wait for the next pass.
-- Pending mounts share `ASSET_STORE_STEP_BYTES` CRC bytes per pass. Entry-table
-  checks do not charge that budget. Requests for one pack share validation
+- Pending mounts share `ASSET_STORE_STEP_BYTES` per pass for CRC bytes and
+  entry-table checks. Requests for one pack share validation
   through [`asset_pack_open_step()`](../../launcher/main/asset/asset_pack.h).
 
 | State | Lifetime |
 |---|---|
 | WAIT | Until validation completes or the request is cancelled |
-| READY | Holds one pack use; release invalidates the oldest READY request for that name |
+| READY | Holds one pack use until released |
 | FAILED | Remains readable until pool pressure reclaims it, oldest first |
 | CANCELLED | Frees its partial mount and is immediately reusable; no callback |
 | NONE | A zero, stale, released or unknown handle |
@@ -103,6 +104,8 @@ request's callback while waiting.
 Both forms hold one pack use on success. `asset_store_release(name)` drops
 one use; at none the pack is unmapped or freed. `asset_store_mounted()` counts
 mounted packs, and `ASSET_STORE_MOUNTS_MAX` bounds the table.
+
+Release drops a blocking use first; otherwise it retires the oldest READY request for that name.
 The engine pack keeps its slot for the run.
 
 `scene_load(id)` opens the scene and its dependencies synchronously;

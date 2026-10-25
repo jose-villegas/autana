@@ -14,6 +14,8 @@
  * placed against the ones already here rather than guessed. Gaps leave room
  * to insert one between two others. */
 #define SHELL_ORDER_ASSET   90
+/* Token users must cancel requests while their owners are still checkable. */
+#define SHELL_ORDER_PENDING 95
 #define SHELL_ORDER_SCENE   100
 #define SHELL_ORDER_CONSOLE 110
 
