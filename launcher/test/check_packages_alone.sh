@@ -54,6 +54,9 @@ for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
     for reached in $(package_reachable "$package_dir"); do
         [ -d "$reached/include" ] && roots="$roots -I $reached/include"
     done
+    if grep -q "^set($(basename "$package_dir")_test_only TRUE)" "$package_dir/CMakeLists.txt"; then
+        roots="$roots $(testkit_includes "$LAUNCHER_DIR")"
+    fi
     # A header goes in through a one-line unit, spelled as its includers spell it.
     for header in $(cd "$include_dir" && find . -name '*.h' | sed 's|^\./||' | sort); do
         printf '#include "%s"\n' "$header" >"$UNIT_DIR/unit.c"

@@ -3,8 +3,8 @@
 #include "core/timing.h"
 #include "draw/draw_font_roles.h"
 #include "draw/draw_image_format.h"
-#include "perf_stats.h"
 #include "suites.h"
+#include "testkit/bench.h"
 #include "ui/ui_internal.h"
 #include "unity.h"
 
@@ -133,7 +133,7 @@ measure_row(const char* name, ui_icount_emit_fn emit, bool window) {
         }
         elapsed += timing_now_us() - began;
     }
-    perf_icount_report(name, elapsed, UI_ICOUNT_REPS * UI_ICOUNT_ROUNDS, UI_ICOUNT_ROUNDS);
+    bench_icount_report(name, elapsed, UI_ICOUNT_REPS * UI_ICOUNT_ROUNDS, UI_ICOUNT_ROUNDS);
 }
 
 static void

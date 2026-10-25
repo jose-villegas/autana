@@ -18,7 +18,7 @@
 
 #include "frame_profile.h"
 #include "perf_budget.h"
-#include "perf_stats.h"
+#include "testkit/bench.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
@@ -353,7 +353,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         frame_us[samples] = (int32_t)us;
         samples++;
     }
-    const perf_stats_t stats = perf_stats_compute(frame_us, samples);
+    const bench_stats_t stats = bench_stats_compute(frame_us, samples);
     memory_free(frame_us);
     ESP_LOGI(TAG, FRAME_PROFILE_ROW R3D_PERF_QUARTER_FORMAT, label, (long long)stats.avg,
              1e6 * samples / (double)frame_sum, (long long)stats.max, (long long)stats.med, (long long)stats.p95,

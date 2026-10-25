@@ -14,6 +14,7 @@ typedef struct {
     bool on_request;
 } suite_entry_t;
 
+int suites_run(bool on_request);
 size_t suites_count(void);
 /* Entries are sorted by name on first access. */
 const suite_entry_t* suites_at(size_t i);

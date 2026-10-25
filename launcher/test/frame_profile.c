@@ -40,7 +40,7 @@ frame_profile_play(const frame_profile_scenario_t* s, frame_profile_frame_fn fra
         p.total_us += us;
         previous_us = us;
     }
-    p.frame_us = perf_stats_compute(samples, p.frames);
+    p.frame_us = bench_stats_compute(samples, p.frames);
     memory_free(samples);
     return p;
 }
