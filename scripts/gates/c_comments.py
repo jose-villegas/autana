@@ -13,7 +13,7 @@ from tracked import tracked_files, committable
 @cache
 def excluded():
     """Vendored prefixes and generated files excluded from repository gates."""
-    return ("launcher/components/", "launcher/test/framework/", *generated_files())
+    return ("launcher/components/", "launcher/packages/testkit/unity/", *generated_files())
 
 
 # A drawn rule's run: 3+ of `=`, `_`, `#` or `-`; this tree's own

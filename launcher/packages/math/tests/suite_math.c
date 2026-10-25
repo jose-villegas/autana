@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "transform_cache.h"
 #include "unity.h"
 
@@ -517,7 +517,7 @@ test_quatf_slerp_preserves_rotation_behaviour(void) {
 }
 
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 /* Three float epsilons cover coefficient evaluation and normalization rounding;
  * the half-arc series truncation error is below one float epsilon. */
 #define SLERP_ERROR_BOUND (3.0 * (double)FLT_EPSILON)
@@ -735,7 +735,7 @@ suite_math(void) {
     RUN_TEST(test_vector_float_repeat_preserves_decimal_remainders);
     RUN_TEST(test_vector_ratio_lerp_uses_its_denominator);
     RUN_TEST(test_quatf_slerp_preserves_rotation_behaviour);
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     RUN_TEST(test_quatf_slerp_matches_double_reference_over_the_whole_arc);
 #endif
     RUN_TEST(test_vec2f_min);

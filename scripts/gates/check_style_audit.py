@@ -545,16 +545,15 @@ def rule_ui_backend(root, path, text):
 # includes only itself and the packages it declares in its own CMakeLists.txt
 # (`set(<name>_requires ...)`, launcher/tools/build/package_requires.py), theirs in
 # turn: no #include, quoted or angled, may reach a tracked header of the
-# firmware or of an undeclared package. A header that resolves
-# nowhere in the tree is the toolchain's or the build's own (<stdint.h>,
-# "sdkconfig.h"), and a suite's test harness (suites.h, unity.h) sits under
-# no firmware include root, so neither resolves and the rule passes both.
+# firmware or of an undeclared package. Tests and benchmarks may also use
+# testkit. Unresolved headers belong to the toolchain or build (<stdint.h>,
+# "sdkconfig.h"); the isolated compile check rejects unresolved engine headers.
 # launcher/test/check_packages_alone.sh compiles each package file with only
 # those include roots, which catches what no resolver here can see.
 # PACKAGE-REQUIRES keeps the declarations a one-way graph of real packages.
-# PACKAGE-CONFIG keeps build settings local too: CONFIG_<PACKAGE>_ in C/H,
-# CMakeLists.txt and Kconfig, and <PACKAGE>_ for Kconfig declarations.
-# Comments do not consume settings and are ignored in all these files.
+# PACKAGE-CONFIG keeps first-party settings with their declaring package.
+# Symbols outside the own prefix and absent from first-party Kconfig belong to ESP-IDF.
+# Package Kconfig declarations require the package prefix; comments are ignored.
 
 
 
@@ -564,6 +563,8 @@ def rule_package_include(root, path, text):
     if package is None:
         return
     reachable = package_requires.reachable(package)
+    if path.resolve().relative_to(package).parts[0] in ("tests", "bench"):
+        reachable = [*reachable, package.parent / "testkit"]
     for number, line in enumerate(text.splitlines(), 1):
         m = ANY_INCLUDE.match(line)
         if not m:
@@ -604,6 +605,21 @@ PACKAGE_KCONFIG_ENTRY = re.compile(r"^\s*(?:menuconfig|config)\s+([A-Za-z0-9_]+)
 PACKAGE_BUILD_TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|#?\[(=*)\[.*?\]\1\]|#[^\n]*', re.DOTALL)
 
 
+@functools.lru_cache(maxsize=None)
+def first_party_config_owners(root):
+    owners = {}
+    for rel in tracked_files(root, ["launcher/**/Kconfig*"]):
+        path = pathlib.Path(root) / rel
+        if not path.is_file():
+            continue
+        package = package_of(root, path)
+        for line in path.read_text(encoding="utf-8").splitlines():
+            entry = PACKAGE_KCONFIG_ENTRY.match(line)
+            if entry:
+                owners["CONFIG_" + entry.group(1)] = package
+    return owners
+
+
 @text_rule("PACKAGE-CONFIG")
 def rule_package_config(root, path, text):
     package = package_of(root, path)
@@ -618,9 +634,12 @@ def rule_package_config(root, path, text):
     else:
         return
     prefix = package.name.upper() + "_"
+    owners = first_party_config_owners(root)
     for number, line in enumerate(code.splitlines(), 1):
         for symbol in PACKAGE_CONFIG_SYMBOL.findall(line):
-            if not symbol.startswith("CONFIG_" + prefix):
+            if symbol.startswith("CONFIG_" + prefix) and owners.get(symbol) != package:
+                yield number, f"{symbol} is not declared in the {package.name} package Kconfig"
+            elif symbol in owners and owners[symbol] != package:
                 yield number, f"{symbol} is outside the {package.name} package - use CONFIG_{prefix} settings"
         entry = PACKAGE_KCONFIG_ENTRY.match(line) if path.name == "Kconfig" else None
         if entry and not entry.group(1).startswith(prefix):
