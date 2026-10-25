@@ -110,13 +110,13 @@ measure_family(const scene_baked_t* family) {
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, why.what);
     const asset_pack_t* pack = asset_store_pack(family->scene);
     const char* bake = family->bakes[SCENE_BAKED_FITTED_FULL];
-    const scene_entity_t entity = scene_find(scene, bake);
+    const scene_entity_t entity = scene_find(scene, name_hash(bake));
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, entity, bake);
     r3d_lit_mesh_t mesh;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(pack, scene_entity_mesh_id(scene, entity), &mesh));
-    const scene_entity_t camera = scene_find(scene, family->camera);
+    const scene_entity_t camera = scene_find(scene, name_hash(family->camera));
     TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, camera);
-    const camera_t* lens_of = scene_camera_lens(scene, family->camera);
+    const camera_t* lens_of = scene_camera_lens(scene, name_hash(family->camera));
     (void)render_lab_apply_camera_settings(scene, camera);
 
     /* The halved bake: the same clusters, each keeping its first half of triangles. */
