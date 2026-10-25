@@ -1216,6 +1216,25 @@ def capture_screenshot(out, view):
     return call_device(command)
 
 
+def mic(args):
+    import argparse
+    parser = argparse.ArgumentParser(prog="autana mic")
+    parser.add_argument("action", choices=("record",))
+    parser.add_argument("ms", type=int)
+    parser.add_argument("--settle", type=int)
+    parser.add_argument("-o", "--out", required=True)
+    parser.add_argument("--json", action="store_true")
+    parsed = parser.parse_args(args)
+    if refused_as_busy():
+        return EXIT_BUSY
+    command = device_command("mic-record") + [str(parsed.ms), "--out", parsed.out]
+    if parsed.settle is not None:
+        command += ["--settle", str(parsed.settle)]
+    if parsed.json:
+        command.append("--json")
+    return call_device(command)
+
+
 def freeze(args):
     reject_unknown("freeze", args)
     if args:
@@ -1766,6 +1785,7 @@ COMMAND_GROUPS = (
             ("coredump [--elf PATH]", "the last panic's core dump, saved to the records and decoded against the build that crashed; resets the board"),
             ("coredump --core FILE [--elf PATH]", "decode a saved dump; no board"),
             ("coredump --erase", "clear the dump so the next crash's is told apart; resets the board"),)),
+        one("mic", mic, "mic record <ms> [--settle ms] -o take.wav [--json]", "record microphone PCM and codec state"),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "PATH.png plus a PATH.json state snapshot; landscape by default"),
             ("screenshot --frames N -o PATH", "N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed"),)),

@@ -25,7 +25,7 @@
 #define AUDIO_CODEC_MIC_GATE_DB         {-96, -90, -84, -78, -72, -66, -60, -54, -51, -48, -45, -42, -39, -36, -33, -30}
 
 typedef struct {
-    bool alc, gate, hpf;
+    bool alc, gate, hpf, eq;
     uint8_t alc_max, alc_min, alc_win, alc_gain;
     uint8_t gate_ng, gate_win, gate_depth, hpf_s1, hpf_s2;
 } audio_codec_mic_t;
@@ -77,7 +77,7 @@ audio_codec_mic_hpf1_reg(const audio_codec_mic_t* config) {
 
 static inline unsigned
 audio_codec_mic_hpf2_reg(const audio_codec_mic_t* config) {
-    return AUDIO_CODEC_MIC_EQ_BYPASS | (config->hpf ? AUDIO_CODEC_MIC_HPF_DYNAMIC : 0u)
+    return (config->eq ? 0u : AUDIO_CODEC_MIC_EQ_BYPASS) | (config->hpf ? AUDIO_CODEC_MIC_HPF_DYNAMIC : 0u)
            | (config->hpf_s2 & AUDIO_CODEC_MIC_HPF_MAX);
 }
 

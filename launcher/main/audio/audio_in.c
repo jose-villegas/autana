@@ -12,6 +12,7 @@
 
 TUNE_OWNER(mic);
 #define MIC_TUNE_NIBBLE(name) TUNE(mic, name, AUDIO_CODEC_MIC_FIELD_DEFAULT, 0, AUDIO_CODEC_MIC_NIBBLE_MAX)
+TUNE(mic, eq, AUDIO_CODEC_MIC_OFF_DEFAULT, 0, 1);
 TUNE(mic, alc, AUDIO_CODEC_MIC_OFF_DEFAULT, 0, 1);
 MIC_TUNE_NIBBLE(alc_max);
 MIC_TUNE_NIBBLE(alc_min);
@@ -29,7 +30,8 @@ static bool close_failed;
 
 static bool
 apply(void) {
-    const audio_codec_mic_t config = {.alc = (uint8_t)alc,
+    const audio_codec_mic_t config = {.eq = (uint8_t)eq,
+                                      .alc = (uint8_t)alc,
                                       .alc_max = (uint8_t)alc_max,
                                       .alc_min = (uint8_t)alc_min,
                                       .alc_win = (uint8_t)alc_win,

@@ -500,3 +500,33 @@ Noise floor is broadband RMS after settling; SNR is the median paired 1 kHz tone
 
 </details>
 <!-- /generated: audio-mic-dsp -->
+
+## Recording the microphone
+
+`autana mic record 1000 --settle 100 -o take.wav --json` records mono PCM16
+and writes codec state to `take.json`. Duration and settling limits live in
+`console_mic_parse.h`; the omitted settling interval is `AUDIO_LOOPBACK_SETTLE_MS`.
+
+Capture applies `mic.*` tunables, including `mic.eq` (enabled means EQ active),
+and restores capture-scoped registers on close. EQ defaults to bypass.
+Coefficient registers persist and can be written with `autana codec <reg> <value>`.
+
+`MIC_BEGIN` announces rate and sample count. `MIC_DATA` carries independent
+base64 chunks of PCM16 little-endian samples. `MIC_STATE` contains the rate,
+sample count, codec registers and automute runs as `[first_block, block_count]`.
+Block size lives in `audio_codec.h`; `MIC_END` completes a successful transfer.
+
+Install `launcher/tools/audio/mic/requirements.txt`, then run:
+
+```sh
+python launcher/tools/audio/mic/mic_metrics.py take.wav --reference reference.wav --json
+python launcher/tools/audio/mic/host_play.py reference.wav --gain -6
+```
+
+Metrics align the reference by correlation without gain normalization. Levels
+are dBFS; speech-band SNR uses reference activity. Active level uses a P.56-style
+envelope estimate, not a P.56 conformance measurement. STOI requires matched rates.
+
+`eq_design_biquad()` returns RBJ `[b0,b1,b2,a1,a2]` with normalized denominator
+`1 + a1*z^-1 + a2*z^-2`. `eq_encode()` packs signed Q2.28 words.
+Synthetic material and speech-reference requirements are in [data](data/README.md).
