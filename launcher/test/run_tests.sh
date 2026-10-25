@@ -114,7 +114,9 @@ $TEST_DIR/host_main.c
 $TEST_DIR/input_fake.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
-$TEST_DIR/test_cleanup.c
+$LAUNCHER_DIR/packages/testkit/harness/bench.c
+$LAUNCHER_DIR/packages/testkit/harness/cleanup.c
+$LAUNCHER_DIR/packages/testkit/harness/registry.c
 $TEST_DIR/frame_profile.c
 $TEST_DIR/ui_probe.c
 $TEST_DIR/heap_arena.c
@@ -251,7 +253,7 @@ case "${1:-}" in
     --print-flags)
         printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
             -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") \
-            -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
+            -I "$TEST_DIR" $(testkit_includes "$TEST_DIR/..") -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../tools/gen" -I "$TEST_DIR/../tools/r3d" $HEAP_ARENA_DEFINES \
             -include "$TEST_DIR/timing.h"
@@ -375,7 +377,7 @@ PACKAGE_INC=""
 for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
     PACKAGE_INC="$PACKAGE_INC -I $(native "$include_dir")"
 done
-COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
+COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -Wl,--wrap=job_run_steered -Wl,--wrap=draw_line_ex -pthread -lm"
 
@@ -393,7 +395,7 @@ SU_LIST="$BUILD_DIR/su_sources.txt"
 SU_SOURCES=""
 for f in $SOURCES; do
     case "$f" in
-        "$TEST_DIR"/* | */suite_*.c) SU_SOURCES="$SU_SOURCES $f" ;;
+        "$TEST_DIR"/* | "$LAUNCHER_DIR/packages/testkit/harness"/* | */suite_*.c) SU_SOURCES="$SU_SOURCES $f" ;;
     esac
 done
 printf '%s\n' $SU_SOURCES | sed '/^$/d' | to_native | squash >"$SU_LIST"
@@ -404,6 +406,7 @@ printf '%s\n' $SU_SOURCES | sed '/^$/d' | to_native | squash >"$SU_LIST"
 pairs() { # source-list-file
     sed -e "s|^$LAUNCHER_N/||" -e 's|/|__|g' -e 's|\.c$||' "$1" | paste -d' ' - "$1"
 }
+UNITY_OBJECT=$(printf '%s/packages/testkit/unity/unity.c\n' "$LAUNCHER_N" | pairs /dev/stdin | cut -d' ' -f1)
 OBJ_PAIRS=$(pairs "$SRC_LIST")
 SU_PAIRS=$(pairs "$SU_LIST")
 
@@ -416,6 +419,7 @@ EXPECT_SU="$BUILD_DIR/expected_su.txt"
     printf 'BASE_CFLAGS := %s\n' "$BASE_CFLAGS"
     printf 'TEST_FLAGS := %s %s -include %s/timing.h\n' "$HEAP_ARENA_DEFINES" "$TEST_INC" "$TEST_N"
     printf 'OBJ := %s\nSU := su\n' "$OBJ_DIR"
+    printf 'UNITY_OBJ := $(OBJ)/%s.o\n' "$UNITY_OBJECT"
     printf 'OBJS :='
     printf '%s\n' "$OBJ_PAIRS" | awk '{ printf " $(OBJ)/%s.o", $1 }'
     printf '\nSUOBJS :='
@@ -426,12 +430,12 @@ EXPECT_SU="$BUILD_DIR/expected_su.txt"
         printf "\t@echo \"  CC $(notdir $@)\"\n"
         printf "\t@$(CC) $(CFLAGS) $(TEST_FLAGS) -MMD -MP -c $< -o $@\n"
     }'
-    printf '$(OBJ)/unity.o: %s/framework/unity.c $(OBJ)/flags.stamp\n' "$TEST_N"
+    printf '$(UNITY_OBJ): %s/packages/testkit/unity/unity.c $(OBJ)/flags.stamp\n' "$LAUNCHER_N"
     printf '\t@echo "  CC unity.o"\n'
     printf '\t@$(CC) $(CFLAGS) %s -MMD -MP -c $< -o $@\n' "$COMMON_INC"
-    printf '%s: $(OBJS) $(OBJ)/unity.o $(OBJ)/flags.stamp\n' "$OUT_N"
+    printf '%s: $(OBJS) $(UNITY_OBJ) $(OBJ)/flags.stamp\n' "$OUT_N"
     printf '\t@echo "  LD host_tests"\n'
-    printf '\t@$(CC) $(CFLAGS) $(OBJS) $(OBJ)/unity.o -o $@ %s\n' "$LDFLAGS"
+    printf '\t@$(CC) $(CFLAGS) $(OBJS) $(UNITY_OBJ) -o $@ %s\n' "$LDFLAGS"
     printf '%s\n' "$SU_PAIRS" | awk '{
         printf "$(SU)/%s.o: %s $(SU)/flags.stamp\n", $1, $2
         printf "\t@echo \"  SU $(notdir $@)\"\n"
@@ -462,7 +466,7 @@ prune() { # dir, expected-name-list-file
 }
 {
     printf '%s\n' "$OBJ_PAIRS" | awk '{ print $1 ".o"; print $1 ".d" }'
-    printf '%s\n' unity.o unity.d flags.stamp
+    printf '%s\n' "$UNITY_OBJECT.o" "$UNITY_OBJECT.d" flags.stamp
 } | LC_ALL=C sort >"$EXPECT_OBJ"
 {
     printf '%s\n' "$SU_PAIRS" | awk '{ print $1 ".o"; print $1 ".d"; print $1 ".su" }'

@@ -41,5 +41,9 @@ typedef struct {
 
 render_view_t render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_z, viewport_t viewport);
 
+/* The tangent of half the field of view across the picture's shorter side,
+ * as render_view_make() took it. */
+float render_view_half_fov_short_tan(const render_view_t* view);
+
 /* Reprojects a retained pose through this picture's shape and turn. */
 void render_view_refit(render_view_t* view, viewport_t viewport);

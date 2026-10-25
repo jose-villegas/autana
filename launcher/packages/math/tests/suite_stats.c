@@ -1,6 +1,6 @@
 #include "math/stats/statsf.h"
 #include "math/stats/statsi.h"
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include <stdint.h>

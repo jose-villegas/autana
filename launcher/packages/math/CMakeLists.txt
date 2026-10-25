@@ -1,3 +1,8 @@
+if(NOT ESP_PLATFORM)
+    cmake_minimum_required(VERSION 3.21...3.31)
+    project(math C)
+endif()
+
 # math: the engine's maths library (README.md). It depends on nothing but
 # libm, so it registers with no REQUIRES and everything above it may use it.
 #
@@ -28,4 +33,7 @@ else()
     if(NOT WIN32)
         target_link_libraries(math PUBLIC m)
     endif()
+    include("${CMAKE_CURRENT_LIST_DIR}/../testkit/cmake/PackageTests.cmake")
+    enable_testing()
+    testkit_add_package_tests()
 endif()

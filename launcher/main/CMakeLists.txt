@@ -104,12 +104,10 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt")
 endif()
 
-# The frame's view modes: a development tool, with nothing calling them in a
-# release build.
+# The frame's view modes, everything in render/view/: a development tool, with
+# nothing calling them in a release build.
 if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
-    foreach(view_mode raster_show raster_motion raster_meshlets)
-        list(REMOVE_ITEM app_srcs "${CMAKE_CURRENT_LIST_DIR}/render/${view_mode}.c")
-    endforeach()
+    list(FILTER app_srcs EXCLUDE REGEX "/render/view/[^/]*\.c$")
 endif()
 
 # The console listener: a release image has nobody watching the serial
@@ -238,7 +236,7 @@ set(app_reqs esp_codec_dev esp_driver_i2s math hash collections microui esp32_s3
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
-             # perfmon, unity and esp_mm (a perf suite's cache control) are
+             # perfmon, unity, testkit and esp_mm (a perf suite's cache control) are
              # listed unconditionally, NOT inside the block below: ESP-IDF
              # expands REQUIRES in an early pass
              # where CONFIG_* is not yet defined, so a Kconfig-gated REQUIRES
@@ -250,11 +248,12 @@ set(app_reqs esp_codec_dev esp_driver_i2s math hash collections microui esp32_s3
              # graph either way; REQUIRES only decides whether main can see
              # their headers. With nothing built that references them,
              # --gc-sections drops them from the image.
-             perfmon unity esp_mm)
+             perfmon unity testkit esp_mm)
 
 if(CONFIG_LAUNCHER_SELFTEST)
     launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c"
-        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c")
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/bench/suite_*.c")
     # SCOPE: full is the default and stays globbed, so nothing can lose
     # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
@@ -287,7 +286,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "selftest/selftest.c"
         "../test/suites.c"
         "../test/timing.c"
-        "../test/test_cleanup.c"
+        "../test/bench_env.c"
         "../test/frame_profile.c"
         "../test/ui_probe.c"
         ${suite_srcs}

@@ -185,7 +185,7 @@ suite_test_harness(void) {
 
 #include "asset/asset_store.h"
 #include "test_asset_dir.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 /* One more than TEST_CLEANUP_MAX, each a cleanup of its own. */
