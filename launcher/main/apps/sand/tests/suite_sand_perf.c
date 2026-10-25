@@ -255,8 +255,8 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
 #include "panel_clock_pin.h"
-#include "perf_stats.h"
 #include "profile/frame_cost.h"
+#include "testkit/bench.h"
 
 /* Each pass's time for one step, summed over a window, and the split of the
  * window's dearest step. */
@@ -622,8 +622,8 @@ test_serial_step_instruction_rows(void) {
             real_board_close(&b);
             free(real);
         }
-        perf_icount_report(water ? "sand_water_step" : "sand_falling_step", elapsed, ICOUNT_STEP_REPS,
-                           ICOUNT_STEP_ROUNDS);
+        bench_icount_report(water ? "sand_water_step" : "sand_falling_step", elapsed, ICOUNT_STEP_REPS,
+                            ICOUNT_STEP_ROUNDS);
     }
 }
 

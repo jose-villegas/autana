@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.21)
+set(COMPONENTS main vfs)
+set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_CURRENT_LIST_DIR}/../../testkit")
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(math_test_app)

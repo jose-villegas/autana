@@ -15,17 +15,20 @@ carry functions nothing calls yet.
 | `include/math/stats/` | Order statistics of sample arrays: percentile and median; [stats reference](../../../docs/math/Stats.md) |
 | `include/math/signal/` | Signal processing on sample blocks: Goertzel single-bin detection; [signal reference](../../../docs/math/Signal.md) |
 | `src/` | The few functions that are not inline |
-| `tests/` | Its suites, run by both runners like every other suite |
+| `bench/` | Shared host smoke, ESP-IDF hardware timing and QEMU instruction workloads |
+| `test_apps/` | [Minimal ESP-IDF test and benchmark app](test_apps/README.md) |
+| `tests/` | Unity suites for the standalone package runner and the engine host/device runners |
 
-Every header is spelled from `include/`, as `#include "math/<part>/<name>.h"`,
-inside the package and out. The package includes nothing outside itself but the
-C library and the build config: the style audit's PACKAGE-INCLUDE rule
-(`scripts/gates/check_style_audit.py`) fails an include that reaches the
-firmware or another package, and `launcher/test/check_packages_alone.sh`
-compiles every header and source here with only `include/` on the path.
-The PACKAGE-CONFIG rule requires `CONFIG_MATH_` settings in C/H sources,
-`CMakeLists.txt` and `Kconfig`, and `MATH_` names for Kconfig entries; it
-ignores comments. `CONFIG_MATH_FPU_RECIP` enables the ESP32-S3 reciprocal and
+Library headers use `#include "math/<part>/<name>.h"`. Library code includes
+only itself, the C library and the build config; PACKAGE-INCLUDE in
+`scripts/gates/check_style_audit.py` checks this boundary.
+
+`launcher/test/check_packages_alone.sh` compiles each header and source in
+isolation. Test and benchmark sources also receive testkit and Unity headers.
+
+The PACKAGE-CONFIG rule keeps first-party settings with their declaring
+package and requires `MATH_` names for Kconfig entries. ESP-IDF platform
+settings are allowed; comments are ignored. `CONFIG_MATH_FPU_RECIP` enables the ESP32-S3 reciprocal and
 reciprocal-square-root seeds by default; the QEMU defaults disable it.
 
 ## Using it
@@ -35,6 +38,7 @@ reciprocal-square-root seeds by default; the QEMU defaults disable it.
 | Firmware (ESP-IDF) | `launcher/packages/` is in `EXTRA_COMPONENT_DIRS`; a component says `REQUIRES math` |
 | Plain CMake (the editor) | `add_subdirectory()` of this folder, then link the `math` target |
 | Host scripts (run_tests.sh, render harness, reports) | `launcher/tools/build/packages.sh`: `package_includes`, `package_sources`, `package_suites` |
+| Standalone tests | `cmake -S launcher/packages/math -B build/math && cmake --build build/math && ctest --test-dir build/math --output-on-failure` |
 | Python tools | `launcher/tools/build/packages.py`: `include_roots()` |
 
 ## Headers
