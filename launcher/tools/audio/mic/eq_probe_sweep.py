@@ -29,7 +29,7 @@ REGISTERS = tuple(sorted({read_define(HEADER, 'AUDIO_CODEC_EQ_ADC_HPF_REG'), ADC
                           *(reg + offset for reg in (*ADC_REGS, *DAC_REGS) for offset in range(COEFF_BYTES))}))
 TUNABLES = tuple(DEFAULTS)
 CAPTURE = ROOT / 'docs/audio/data/mic_eq_probe_capture.txt'
-TAKE = ROOT / 'docs/audio/data/mic_eq_probe_take.wav'
+TAKE_NAME = 'mic_eq_probe_take.wav'
 DEFAULT_HZ = (50, 100, 150, 200, 400, 1000, 2000, 4000)
 DEFAULT_HPF_HZ = (50, 100, 200, 500, 1000)
 DEFAULT_CODES = tuple(range(4, 13))
@@ -61,7 +61,7 @@ def parser():
     for name, default in (('volume', DEFAULT_VOLUME), ('runs', DEFAULT_RUNS),
                           ('internal-runs', DEFAULT_INTERNAL_RUNS), ('ms', DEFAULT_MS), ('take-ms', DEFAULT_TAKE_MS)):
         result.add_argument('--' + name, type=int, default=default)
-    result.add_argument('--take', type=Path, default=TAKE)
+    result.add_argument('--take', type=Path, help='default: beside --out')
     return result
 
 
@@ -156,6 +156,7 @@ def capture(args):
                 tones(record, args, args.hz, internal=True)
             program(record, saved, 'dac', None)
             program(record, saved, 'adc', designs()['adc']['highpass'])
+            args.take = args.take or args.out.with_name(TAKE_NAME)
             args.take.parent.mkdir(parents=True, exist_ok=True)
             record('mic', 'record', args.take_ms, '-o', str(args.take), '--json')
         finally:
