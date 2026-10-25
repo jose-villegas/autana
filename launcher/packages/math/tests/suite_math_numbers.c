@@ -12,9 +12,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "transform_cache.h"
 #include "unity.h"
 
@@ -111,7 +112,7 @@ test_vec2_ops_agree_across_every_number_type(void) {
 }
 
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 #define NORMALIZE_ROUNDING_ERROR          0.5
 #define NORMALIZE_COMPONENT_ERROR         (NORMALIZE_ROUNDING_ERROR + 0x1p-12)
 
@@ -166,7 +167,7 @@ test_normalize_divide_zero_and_float(void) {
 }
 
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 static void
 test_fixed_normalize_saturation_edges(void) {
     static const struct {
@@ -195,7 +196,7 @@ static void
 test_fixed_normalize_extreme_magnitudes(void) {
     static const vec3x_t cases[] = {{200 * MATHX_ONE, 0, 0},           {1, 0, 0},         {1, 1, 0}, {1, 1, 1},
                                     {INT32_MIN, INT32_MIN, INT32_MIN}, {INT32_MAX, -5, 3}};
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         assert_normalize_reference(cases[i]);
     }
@@ -213,7 +214,7 @@ test_fixed_normalize_extreme_magnitudes(void) {
 }
 
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 static void
 test_fixed_normalize_every_magnitude(void) {
     uint32_t state = 1;
@@ -708,17 +709,74 @@ float_from_bits(uint32_t bits) {
     return value;
 }
 
+#define RECIP_OCTAVES           20
+#define FAST_PATH_RECIP_OCTAVES 1
+#define FAST_PATH_BINS_PER_UNIT 32
+#if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
+#define FAST_PATH_ROUNDING_ULP  0.5
+#define FAST_PATH_RSQRT_OCTAVES 2
+#define FAST_PATH_RSQRT_BINS    (((1 << FAST_PATH_RSQRT_OCTAVES) - 1) * FAST_PATH_BINS_PER_UNIT)
+#endif
+
+static float
+fast_path_period_position(float input, int octaves) {
+    int exponent;
+    const float fraction = frexpf(fabsf(input), &exponent);
+    const int octave = ((exponent - 1) % octaves + octaves) % octaves;
+    return ldexpf(fraction * 2.0F, octave);
+}
+
+static unsigned
+fast_path_period_bin(float input, int octaves) {
+    const float position = fast_path_period_position(input, octaves);
+    const unsigned bin = (unsigned)((position - 1.0F) * FAST_PATH_BINS_PER_UNIT);
+    return bin;
+}
+
+static inline __attribute__((always_inline)) double
+fast_path_fractional_ulp(float got, double exact) {
+    int exponent;
+    (void)frexp(fabs(exact), &exponent);
+    const int shift = exponent - FLT_MANT_DIG;
+    const double ulp = ldexp(1.0, shift < FLT_MIN_EXP - FLT_MANT_DIG ? FLT_MIN_EXP - FLT_MANT_DIG : shift);
+    return fabs((double)got - exact) / ulp;
+}
+
+#ifndef ESP_PLATFORM
+static void
+test_fast_path_period_bins_and_fractional_ulp(void) {
+    double bins[FAST_PATH_BINS_PER_UNIT] = {0};
+    for (int exponent = -RECIP_OCTAVES; exponent <= RECIP_OCTAVES; exponent++) {
+        const float input = ldexpf(1.5F, exponent);
+        TEST_ASSERT_EQUAL_FLOAT(1.5F, fast_path_period_position(input, FAST_PATH_RECIP_OCTAVES));
+        TEST_ASSERT_EQUAL_FLOAT(exponent % FAST_PATH_RSQRT_OCTAVES == 0 ? 1.5F : 3.0F,
+                                fast_path_period_position(-input, FAST_PATH_RSQRT_OCTAVES));
+        const unsigned bin = fast_path_period_bin(input, FAST_PATH_RECIP_OCTAVES);
+        bins[bin] = fmax(bins[bin], exponent + RECIP_OCTAVES);
+    }
+    TEST_ASSERT_TRUE(bins[FAST_PATH_BINS_PER_UNIT / 2] == 2 * RECIP_OCTAVES);
+    const double exact = 1.0 / 3.0;
+    TEST_ASSERT_TRUE(fast_path_fractional_ulp((float)exact, exact) > 0.0);
+    TEST_ASSERT_TRUE(fast_path_fractional_ulp((float)exact, exact) < FAST_PATH_ROUNDING_ULP);
+    TEST_ASSERT_TRUE(fast_path_fractional_ulp(1.0F, 1.0) == 0.0);
+    TEST_ASSERT_TRUE(fast_path_fractional_ulp(0.0F, (double)FLT_TRUE_MIN / 4) == 0.25);
+    TEST_ASSERT_EQUAL_UINT(0, fast_path_period_bin(1.0F, FAST_PATH_RECIP_OCTAVES));
+    TEST_ASSERT_EQUAL_UINT(FAST_PATH_RSQRT_BINS - 1,
+                           fast_path_period_bin(nextafterf(4.0F, 0.0F), FAST_PATH_RSQRT_OCTAVES));
+}
+
+#endif
+
 /* Within an ulp of the quotient, measured on the side the result landed:
  * both signs, a geometric sweep over 2^-20..2^20 and each octave's edges (a
  * power of two, its neighbours, the largest mantissa below it). On the
  * sweep it is the quotient nearly always; the edges round off it more. */
-#define RECIP_OCTAVES       20      /* magnitudes 2^-20..2^20 */
 #define RECIP_SWEEP_STEP    1.0137F /* about 50 samples an octave */
 #define RECIP_EXACT_PERCENT 99
 
 /* Asserts mathf_recip(x) within an ulp of 1 / x; true when it is exactly. */
-static bool
-reciprocal_is_exact(float x, uint32_t* maximum) {
+static inline __attribute__((always_inline)) bool
+reciprocal_is_exact(float x, uint32_t* maximum, double* bins) {
     const float want = 1.0F / x;
     const float got = mathf_recip(x);
     const float ulp = fabsf(nextafterf(want, got) - want);
@@ -729,6 +787,8 @@ reciprocal_is_exact(float x, uint32_t* maximum) {
     if (error > *maximum) {
         *maximum = error;
     }
+    const unsigned bin = fast_path_period_bin(x, FAST_PATH_RECIP_OCTAVES);
+    bins[bin] = fmax(bins[bin], fast_path_fractional_ulp(got, 1.0 / (double)x));
     return got == want;
 }
 
@@ -737,22 +797,32 @@ test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
     int count = 0;
     int exact = 0;
     uint32_t maximum = 0;
-    for (int sign = -1; sign <= 1; sign += 2) {
-        for (float a = ldexpf(1.0F, -RECIP_OCTAVES); a < ldexpf(1.0F, RECIP_OCTAVES); a *= RECIP_SWEEP_STEP) {
-            exact += reciprocal_is_exact((float)sign * a, &maximum);
-            count++;
+    double bins[FAST_PATH_BINS_PER_UNIT] = {0};
+    for (int exponent = -RECIP_OCTAVES; exponent <= RECIP_OCTAVES; exponent++) {
+        uint32_t bin_maximum = 0;
+        for (int sign = -1; sign <= 1; sign += 2) {
+            const float low = ldexpf(1.0F, exponent);
+            if (exponent < RECIP_OCTAVES) {
+                for (float a = low; a < 2.0F * low; a *= RECIP_SWEEP_STEP) {
+                    exact += reciprocal_is_exact((float)sign * a, &bin_maximum, bins);
+                    count++;
+                }
+            }
+            const float power = (float)sign * low;
+            (void)reciprocal_is_exact(power, &bin_maximum, bins);
+            (void)reciprocal_is_exact(nextafterf(power, 0.0F), &bin_maximum, bins);
+            (void)reciprocal_is_exact(nextafterf(power, 2.0F * power), &bin_maximum, bins);
+            (void)reciprocal_is_exact(nextafterf(2.0F * power, 0.0F), &bin_maximum, bins);
         }
+        if (bin_maximum > maximum) {
+            maximum = bin_maximum;
+        }
+    }
+    for (unsigned bin = 0; bin < FAST_PATH_BINS_PER_UNIT; bin++) {
+        printf("MATHERRORBIN name=mathf_recip type=f x=%g max=%.12g unit=ulp axis=period\n",
+               1.0 + (bin + 0.5) / FAST_PATH_BINS_PER_UNIT, bins[bin]);
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT(count * RECIP_EXACT_PERCENT / 100, exact);
-    for (int sign = -1; sign <= 1; sign += 2) {
-        for (int e = -RECIP_OCTAVES; e <= RECIP_OCTAVES; e++) {
-            const float power = (float)sign * ldexpf(1.0F, e);
-            (void)reciprocal_is_exact(power, &maximum);
-            (void)reciprocal_is_exact(nextafterf(power, 0.0F), &maximum);
-            (void)reciprocal_is_exact(nextafterf(power, 2.0F * power), &maximum);
-            (void)reciprocal_is_exact(nextafterf(2.0F * power, 0.0F), &maximum);
-        }
-    }
     printf("MATHERROR name=mathf_recip type=f max=%lu unit=ulp method=sweep\n", (unsigned long)maximum);
 }
 
@@ -1043,6 +1113,8 @@ repeat_reference(float v, float len) {
     return r < len ? r : 0.0F;
 }
 
+#define MATHF_WRAP_ULP_LIMIT 0
+
 static void
 assert_repeat_and_wrap_bits(float v, float len) {
     const float expected = repeat_reference(v, len);
@@ -1050,7 +1122,7 @@ assert_repeat_and_wrap_bits(float v, float len) {
     if (isnan(expected)) {
         TEST_ASSERT_TRUE(isnan(actual));
     } else {
-        TEST_ASSERT_EQUAL_HEX32(float_bits(expected), float_bits(actual));
+        TEST_ASSERT_UINT32_WITHIN(MATHF_WRAP_ULP_LIMIT, float_bits(expected), float_bits(actual));
     }
     const float lo = -len;
     const float hi = len;
@@ -1060,7 +1132,7 @@ assert_repeat_and_wrap_bits(float v, float len) {
     if (isnan(expected_wrap)) {
         TEST_ASSERT_TRUE(isnan(actual_wrap));
     } else {
-        TEST_ASSERT_EQUAL_HEX32(float_bits(expected_wrap), float_bits(actual_wrap));
+        TEST_ASSERT_UINT32_WITHIN(MATHF_WRAP_ULP_LIMIT, float_bits(expected_wrap), float_bits(actual_wrap));
     }
 }
 
@@ -1118,8 +1190,18 @@ test_mathf_repeat_and_wrap_near_quotient_guard(void) {
 #define REPEAT_SWEEP_SAMPLES  32768
 #define REPEAT_MAGNITUDE_MASK UINT32_C(0x7fffffff)
 
+static unsigned
+assert_repeat_sample(float v, float len) {
+    if (!(len > 0.0F) || !isfinite(len)) {
+        return 0;
+    }
+    assert_repeat_and_wrap_bits(v, len);
+    return 1;
+}
+
 static void
 test_mathf_repeat_and_wrap_reference_sweep(void) {
+    unsigned count = 0;
     static const uint32_t seeds[] = {UINT32_C(1), UINT32_C(0x12345678), UINT32_C(0xdeadbeef)};
     for (size_t seed = 0; seed < sizeof seeds / sizeof seeds[0]; seed++) {
         uint32_t state = seeds[seed];
@@ -1128,11 +1210,10 @@ test_mathf_repeat_and_wrap_reference_sweep(void) {
             const float v = float_from_bits(state);
             state = state * NUMBER_LCG_MULTIPLIER + NUMBER_LCG_INCREMENT;
             const float len = float_from_bits(state & REPEAT_MAGNITUDE_MASK);
-            if (len > 0.0F && isfinite(len)) {
-                assert_repeat_and_wrap_bits(v, len);
-            }
+            count += assert_repeat_sample(v, len);
         }
     }
+    printf("MATHERROR name=mathf_repeat type=f max=0 unit=ulp method=sweep inputs=%u\n", count);
 }
 
 static void
@@ -1267,11 +1348,11 @@ test_rsqrt_tiny_inputs_preserve_exact_bits(void) {
 #define RSQRT_SIGNIFICAND_ONE (UINT32_C(1) << RSQRT_FRACTION_BITS)
 #define RSQRT_FRACTION_MASK   (RSQRT_SIGNIFICAND_ONE - 1)
 #define RSQRT_WORD_BITS       32
-#if !defined(DEVICE_BUILD) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
+#if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
 #define RSQRT_EXPONENT_MAX    254
 #define RSQRT_MANTISSA_STRIDE 65537
 #endif
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 #define RSQRT_DENSE_STRIDE      251
 #define RSQRT_SEED_RADIUS       4
 #define RSQRT_DOUBLE_TIE_MARGIN 8
@@ -1313,20 +1394,9 @@ rsqrt_reference_bits(uint32_t input, uint32_t candidate) {
     return midpoint < 0 || (midpoint == 0 && (candidate & 1)) ? upper : candidate;
 }
 
+#ifndef ESP_PLATFORM
 static void
-test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
-    static const float inputs[] = {1.0F, 2.0F, 4.0F, FLT_MIN, FLT_MAX};
-    for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
-        const uint32_t guess = float_bits(1.0F / sqrtf(inputs[i]));
-        const uint32_t result = rsqrt_reference_bits(float_bits(inputs[i]), guess);
-#ifndef DEVICE_BUILD
-        const float exact = (float)(1.0 / sqrt((double)inputs[i]));
-        TEST_ASSERT_EQUAL_HEX32(float_bits(exact), result);
-#endif
-        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess - 1));
-        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess + 1));
-    }
-#ifndef DEVICE_BUILD
+assert_rsqrt_integer_bracket_midpoints(void) {
     /* A float midpoint has an odd significand greater than one; its square times a binary input cannot be one. */
     for (int exponent = 1; exponent <= RSQRT_EXPONENT_MAX; exponent++) {
         const uint32_t stride = exponent == RSQRT_EXPONENT_BIAS || exponent == RSQRT_EXPONENT_BIAS + 1
@@ -1347,10 +1417,28 @@ test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
             }
         }
     }
+}
+#endif
+
+static void
+test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
+    static const float inputs[] = {1.0F, 2.0F, 4.0F, FLT_MIN, FLT_MAX};
+    for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
+        const uint32_t guess = float_bits(1.0F / sqrtf(inputs[i]));
+        const uint32_t result = rsqrt_reference_bits(float_bits(inputs[i]), guess);
+#ifndef ESP_PLATFORM
+        const float exact = (float)(1.0 / sqrt((double)inputs[i]));
+        TEST_ASSERT_EQUAL_HEX32(float_bits(exact), result);
+#endif
+        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess - 1));
+        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess + 1));
+    }
+#ifndef ESP_PLATFORM
+    assert_rsqrt_integer_bracket_midpoints();
 #endif
 }
 
-#if defined(DEVICE_BUILD) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+#if defined(ESP_PLATFORM) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
 #define RSQRT_DIRECTION_RADIUS 4
 #define RSQRT_MAGNITUDE_MIN    -70
 #define RSQRT_MAGNITUDE_MAX    60
@@ -1441,8 +1529,8 @@ test_rsqrt_normalize_and_nlerp_component_sweeps(void) {
     printf("MATHERROR name=nlerp type=f max=%lu unit=ulp method=sweep\n", (unsigned long)nlerp_error);
 }
 
-static void
-rsqrt_measure(uint32_t input, uint32_t* max_ulp, float* max_relative) {
+static inline __attribute__((always_inline)) void
+rsqrt_measure(uint32_t input, uint32_t* max_ulp, float* max_relative, double* bins) {
     const float value = float_from_bits(input);
     const uint32_t got = float_bits(mathf_rsqrt(value));
     const uint32_t reference = rsqrt_reference_bits(input, got);
@@ -1458,30 +1546,50 @@ rsqrt_measure(uint32_t input, uint32_t* max_ulp, float* max_relative) {
     if (relative > *max_relative) {
         *max_relative = relative;
     }
+    const unsigned bin = fast_path_period_bin(value, FAST_PATH_RSQRT_OCTAVES);
+    const bool refine_ulp = error != 0 || bins[bin] < FAST_PATH_ROUNDING_ULP;
+    const bool refine_relative = (double)relative > bins[FAST_PATH_RSQRT_BINS + bin];
+    if (refine_ulp || refine_relative) {
+        const double exact = 1.0 / sqrt((double)value);
+        if (refine_ulp) {
+            bins[bin] = fmax(bins[bin], fast_path_fractional_ulp(float_from_bits(got), exact));
+        }
+        if (refine_relative) {
+            bins[FAST_PATH_RSQRT_BINS + bin] =
+                fmax(bins[FAST_PATH_RSQRT_BINS + bin], fabs((double)approximate - exact) / exact);
+        }
+    }
 }
 
 static void
 test_rsqrt_device_mantissas_and_normal_exponent_edges(void) {
     uint32_t max_ulp = 0;
     float max_relative = 0.0F;
+    double* bins = calloc(2 * FAST_PATH_RSQRT_BINS, sizeof(*bins));
+    TEST_ASSERT_NOT_NULL(bins);
     const uint32_t first = RSQRT_EXPONENT_BIAS << RSQRT_FRACTION_BITS;
     const uint32_t end = (RSQRT_EXPONENT_BIAS + 2) << RSQRT_FRACTION_BITS;
-    for (uint32_t input = first; input < end; input++) {
-        rsqrt_measure(input, &max_ulp, &max_relative);
-    }
     for (int exponent = 1; exponent <= RSQRT_EXPONENT_MAX; exponent++) {
         const uint32_t power = (uint32_t)exponent << RSQRT_FRACTION_BITS;
-        for (uint32_t mantissa = 0; mantissa < RSQRT_SIGNIFICAND_ONE; mantissa += RSQRT_MANTISSA_STRIDE) {
-            rsqrt_measure(power | mantissa, &max_ulp, &max_relative);
+        const uint32_t stride = power >= first && power < end ? 1 : RSQRT_MANTISSA_STRIDE;
+        for (uint32_t mantissa = 0; mantissa < RSQRT_SIGNIFICAND_ONE; mantissa += stride) {
+            rsqrt_measure(power | mantissa, &max_ulp, &max_relative, bins);
         }
-        rsqrt_measure(power | RSQRT_FRACTION_MASK, &max_ulp, &max_relative);
+        rsqrt_measure(power | RSQRT_FRACTION_MASK, &max_ulp, &max_relative, bins);
         for (int offset = -1; offset <= 1; offset++) {
             const uint32_t input = power + offset;
             if (input >= RSQRT_SIGNIFICAND_ONE) {
-                rsqrt_measure(input, &max_ulp, &max_relative);
+                rsqrt_measure(input, &max_ulp, &max_relative, bins);
             }
         }
     }
+    for (unsigned bin = 0; bin < FAST_PATH_RSQRT_BINS; bin++) {
+        const double centre = 1.0 + (bin + 0.5) / FAST_PATH_BINS_PER_UNIT;
+        printf("MATHERRORBIN name=mathf_rsqrt type=f x=%g max=%.12g unit=ulp axis=period\n", centre, bins[bin]);
+        printf("MATHERRORBIN name=mathf_rsqrt_approx type=f x=%g max=%.12g unit=relative axis=period\n", centre,
+               bins[FAST_PATH_RSQRT_BINS + bin]);
+    }
+    free(bins);
     printf("MATHERROR name=mathf_rsqrt type=f max=%lu unit=ulp method=proof\n", (unsigned long)max_ulp);
     printf("MATHERROR name=mathf_rsqrt_approx type=f max=%g unit=relative method=proof\n", (double)max_relative);
     TEST_ASSERT_LESS_OR_EQUAL_UINT32(MATHF_RSQRT_ULP_LIMIT, max_ulp);
@@ -1603,7 +1711,7 @@ test_integer_half_chords_int32(void) {
 }
 
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 #define FIXED_RSQRT_SWEEP_STRIDE    (UINT32_C(1) << 20)
 #define FIXED_NLERP_COMPONENT_ERROR 8.0
 #define FIXED_NLERP_STEPS           32
@@ -1619,10 +1727,12 @@ test_fixed_rsqrt_seed_provenance(void) {
     }
 }
 
-static void
+static double
 assert_fixed_rsqrt_reference(uint32_t m) {
     const double exact = ldexp(1.0, MATHX_RSQRT_SHIFT + MATHX_RSQRT_WORD_BITS / 2) / sqrt((double)m);
-    TEST_ASSERT_TRUE(fabs(mathx_rsqrt_q30(m) - exact) <= exact * MATHX_RSQRT_Q30_RELATIVE_LIMIT);
+    const double relative = fabs(mathx_rsqrt_q30(m) / exact - 1.0);
+    TEST_ASSERT_TRUE(relative <= MATHX_RSQRT_Q30_RELATIVE_LIMIT);
+    return relative;
 }
 
 static void
@@ -1637,9 +1747,18 @@ test_fixed_rsqrt_seed_boundaries_and_stride(void) {
             }
         }
     }
-    for (uint64_t m = MATHX_RSQRT_MIN; m < end; m += FIXED_RSQRT_SWEEP_STRIDE) {
-        assert_fixed_rsqrt_reference((uint32_t)m);
+    double maximum = 0.0;
+    for (uint64_t start = MATHX_RSQRT_MIN; start < end; start += segment) {
+        double bin_maximum = 0.0;
+        for (uint64_t m = start; m < start + segment; m += FIXED_RSQRT_SWEEP_STRIDE) {
+            const double relative = assert_fixed_rsqrt_reference((uint32_t)m);
+            bin_maximum = fmax(bin_maximum, relative);
+        }
+        maximum = fmax(maximum, bin_maximum);
+        printf("MATHERRORBIN name=mathx_rsqrt_q30 type=x x=%g max=%.12g unit=relative axis=period\n",
+               (double)(start + segment / 2) / MATHX_RSQRT_MIN, bin_maximum);
     }
+    printf("MATHERROR name=mathx_rsqrt_q30 type=x max=%.12g unit=relative method=proof\n", maximum);
 }
 
 static void
@@ -1754,11 +1873,42 @@ test_fixed_quaternion_normalize_zero_and_unit_path(void) {
     TEST_ASSERT_EQUAL_INT32(safe.w, unit.w);
 }
 
+#define TRIG_SIN_LSB_LIMIT  5
+
+#define FAST_PATH_PHASE_BIN (TRIG_TURN / (sizeof trig_sin_quarter / sizeof trig_sin_quarter[0] - 1))
+
+static void
+test_trig_sin_error_bins(void) {
+    float maximum = 0.0F;
+    for (uint32_t start = 0; start < TRIG_TURN; start += FAST_PATH_PHASE_BIN) {
+        float bin_maximum = 0.0F;
+        for (uint32_t phase = start; phase < start + FAST_PATH_PHASE_BIN; phase++) {
+            const float angle = (float)phase * (MATH_TAU / TRIG_TURN);
+            const float expected = sinf(angle) * (1 << TRIG_SIN_SHIFT);
+            const float error = fabsf((float)trig_sin((uint16_t)phase) - expected);
+            if (error > bin_maximum) {
+                bin_maximum = error;
+            }
+        }
+        if (bin_maximum > maximum) {
+            maximum = bin_maximum;
+        }
+        printf("MATHERRORBIN name=trig_sin type=i x=%g max=%g unit=lsb axis=phase\n",
+               (double)(start + FAST_PATH_PHASE_BIN / 2) / TRIG_TURN, (double)bin_maximum);
+    }
+    printf("MATHERROR name=trig_sin type=i max=%g unit=lsb method=sweep\n", (double)maximum);
+    TEST_ASSERT_TRUE(maximum <= TRIG_SIN_LSB_LIMIT);
+}
+
 void
 suite_math_numbers(void) {
+#ifndef ESP_PLATFORM
+    RUN_TEST(test_fast_path_period_bins_and_fractional_ulp);
+#endif
+    RUN_TEST(test_trig_sin_error_bins);
     RUN_TEST(test_fixed_scalar_rsqrt_nonpositive);
     RUN_TEST(test_fixed_quaternion_normalize_zero_and_unit_path);
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     RUN_TEST(test_fixed_rsqrt_seed_provenance);
     RUN_TEST(test_fixed_rsqrt_seed_boundaries_and_stride);
     RUN_TEST(test_fixed_scalar_rsqrt_bound);
@@ -1773,7 +1923,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_scalar_half_and_absolute_value);
     RUN_TEST(test_rsqrt_tiny_inputs_preserve_exact_bits);
     RUN_TEST(test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints);
-#if defined(DEVICE_BUILD) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+#if defined(ESP_PLATFORM) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
     RUN_TEST(test_rsqrt_device_mantissas_and_normal_exponent_edges);
     RUN_TEST(test_rsqrt_normalize_and_nlerp_component_sweeps);
 #endif
@@ -1820,11 +1970,11 @@ suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_normalize_divide_zero_and_float);
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     RUN_TEST(test_fixed_normalize_saturation_edges);
 #endif
     RUN_TEST(test_fixed_normalize_extreme_magnitudes);
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
     RUN_TEST(test_fixed_normalize_every_magnitude);
 #endif
     RUN_TEST(test_fixed_normalize_matches_float_within_its_precision);

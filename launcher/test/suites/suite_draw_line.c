@@ -5,7 +5,7 @@
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_test.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 
 #include <stdlib.h>
 #include <string.h>

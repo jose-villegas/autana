@@ -10,7 +10,7 @@ above a fixed line of 15.
 
 clang-tidy needs real include paths and defines to parse a file. The gate
 builds one `compile_commands.json` (under `launcher/build.tidy/`,
-gitignored, regenerated on every run) from two sources, merged with no
+gitignored, regenerated on every run) from these sources, merged with no
 file counted twice:
 
 - **The diagnostics build's own database**,
@@ -25,6 +25,10 @@ file counted twice:
   install ESP-IDF itself uses, found under the ESP-IDF tools root:
   the tools paired with the resolved ESP-IDF checkout; see
   [Which ESP-IDF](Build-Environment.md#which-esp-idf)).
+- **Package ESP-IDF test-app databases**,
+  `launcher/packages/*/test_apps/build/compile_commands.json`: first-party
+  sources use the same device flag handling, with the main build taking
+  precedence. Generated files inside the test-app build directory are excluded.
 - **`launcher/test/run_tests.sh --print-sources`/`--print-flags`**: the
   same host-portable file list and flags that script proves compile,
   used for whatever the diagnostics build's database does not contain: the
@@ -33,21 +37,26 @@ file counted twice:
   usable libc either, so these get the same `--sysroot`/`--gcc-toolchain`
   treatment against the host compiler `tools/build/find_cc.sh` resolves,
   never a second, independently-guessed compiler.
+- **Package `runner/**/*.c` files** outside the device databases get host
+  flags only if a syntax-only host compile succeeds. An IDF-only runner
+  needs a database from an ESP-IDF build that compiles it; without one,
+  coverage reports it as unmeasured.
 - **`apps/*/tools/**/*.c`** (sweep and report programs, at any depth,
   excluded from the firmware and the host build alike)
   get the host route's flags plus one additional include path for their
   sibling headers, since each compiles on a host.
 
-**Coverage is a checked rule, not a description.** Every `.c` file under
-`launcher/main/` and `launcher/packages/` is walked directly from the
-filesystem, independent of either database, and compared against what was
-actually measured. A file
-neither source reaches, and that is not excluded, fails the gate by name.
+**Coverage is a checked rule, not a description.** Git-tracked `.c` files
+under `launcher/main/` and `launcher/packages/` come from `git ls-files`,
+independent of either database. Untracked build output is outside coverage.
+
+Each tracked source is compared against what was measured. A file neither
+source reaches, and that is not excluded, fails the gate by name.
 `EXCLUDED_MAIN_FILES` in `complexity_gate.py` is that exclusion list: each
 entry carries the reason a reader can check.
 
 Unmodified vendored code (`launcher/components/`, `managed_components/`,
-`test/framework/`) is out of scope: a ratchet on this project's own
+`packages/testkit/unity/`) is out of scope: a ratchet on this project's own
 functions has nothing to say about code it did not write, and it is never
 a source of a coverage gap since it sits outside both. A
 vendored function this project changed is measured; see the end of this

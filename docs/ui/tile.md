@@ -8,7 +8,7 @@ caller's, drawn on the theme's `accent_face`. Draw the picture in
 
 ## Example
 
-<!-- generated: ui-tile-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-tile-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A row of tiles, one choice of three, each with the caller's own picture of
  * its choice in the square the tile keeps above its label. */

@@ -1,6 +1,9 @@
 #include "apps/input_lab/touch_probe.h"
 
 #include <math.h>
+#include <stdint.h>
+
+#include "math/stats/statsi.h"
 
 static int
 random_in(rng_t* rng, int lo, int hi) {
@@ -106,24 +109,10 @@ touch_probe_shuffle(rng_t* rng, int* order, int n) {
 
 #define SETTLE_MAX 64
 
-static int
-median(int* v, int n) {
-    for (int i = 1; i < n; i++) {
-        const int key = v[i];
-        int j = i - 1;
-        while (j >= 0 && v[j] > key) {
-            v[j + 1] = v[j];
-            j--;
-        }
-        v[j + 1] = key;
-    }
-    return v[n / 2];
-}
-
 void
 touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms, int* x, int* y) {
-    int xs[SETTLE_MAX];
-    int ys[SETTLE_MAX];
+    int32_t xs[SETTLE_MAX];
+    int32_t ys[SETTLE_MAX];
     int count = 0;
     int last = 0;
     for (int i = 0; i < n; i++) {
@@ -141,8 +130,8 @@ touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int
         *y = samples[last].y;
         return;
     }
-    *x = median(xs, count);
-    *y = median(ys, count);
+    *x = (int)statsi_median(xs, (size_t)count);
+    *y = (int)statsi_median(ys, (size_t)count);
 }
 
 static void

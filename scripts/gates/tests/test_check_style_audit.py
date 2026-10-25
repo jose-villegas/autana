@@ -230,8 +230,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/services/tune.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/apps/foo/app_foo.c", '#include "services/tune.h"\n')
+            gate_tree.write(root, "launcher/main/core/tune.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/apps/foo/app_foo.c", '#include "core/tune.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
@@ -240,8 +240,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/services/tune.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "services/tune.h"\n')
+            gate_tree.write(root, "launcher/main/core/tune.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "core/tune.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
@@ -256,15 +256,16 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
 
-    def test_core_may_not_include_display(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/display/display.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/core/device_state.c", '#include "display/display.h"\n')
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
-        self.assertEqual(len(findings), 1)
+    def test_core_may_not_include_display_or_services(self):
+        for target in ("display/display.h", "services/settings.h"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as temp:
+                root = pathlib.Path(temp)
+                self.layer_tree(root)
+                gate_tree.write(root, "launcher/main/" + target, "#pragma once\n")
+                gate_tree.write(root, "launcher/main/core/device_state.c", f'#include "{target}"\n')
+                gate_tree.commit(root, "launcher")
+                findings = self.rule_hits(root, "INCLUDE-DIRECTION")
+            self.assertEqual(len(findings), 1)
 
     def test_input_may_include_display_but_display_not_input_and_gfx_not_display(self):
         # Input maps gestures into the display viewport; display does not read input.
@@ -389,11 +390,81 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_a_package_may_include_itself_the_toolchain_the_build_config_and_the_test_harness(self):
         findings = self.audit("PACKAGE-INCLUDE", {
-            "launcher/test/suites.h": "#pragma once\n",
+            "launcher/packages/testkit/include/testkit/suite.h": "#pragma once\n",
             f"{self.PACKAGE}/include/math/scalar/mathf.h": '#include <math.h>\n#include "sdkconfig.h"\n',
             f"{self.PACKAGE}/include/math/linear/vec3f.h": '#include "math/scalar/mathf.h"\n',
             f"{self.PACKAGE}/src/motion/orbit.c": '#include "math/linear/vec3f.h"\n',
-            f"{self.PACKAGE}/tests/suite_vec3.c": '#include "suites.h"\n#include "unity.h"\n#include "math/linear/vec3f.h"\n',
+            f"{self.PACKAGE}/tests/suite_vec3.c": '#include "testkit/suite.h"\n#include "unity.h"\n#include "math/linear/vec3f.h"\n',
+        })
+        self.assertEqual(findings, [])
+
+    def test_only_package_tests_and_benches_may_include_testkit(self):
+        findings = self.audit("PACKAGE-INCLUDE", {
+            "launcher/packages/testkit/include/testkit/suite.h": "#pragma once\n",
+            f"{self.PACKAGE}/tests/suite_x.c": '#include "testkit/suite.h"\n',
+            f"{self.PACKAGE}/bench/measure.c": '#include "testkit/suite.h"\n',
+            f"{self.PACKAGE}/src/x.c": '#include "testkit/suite.h"\n',
+            f"{self.PACKAGE}/include/math/x.h": '#include "testkit/suite.h"\n',
+        })
+        self.assertEqual(sorted(f.path for f in findings),
+                         [f"{self.PACKAGE}/include/math/x.h", f"{self.PACKAGE}/src/x.c"])
+
+    def test_a_package_may_include_the_packages_it_declares_and_theirs_but_no_other(self):
+        findings = self.audit("PACKAGE-INCLUDE", {
+            "launcher/packages/physics/CMakeLists.txt": "set(physics_requires kinematics)\n",
+            "launcher/packages/physics/include/physics/body.h":
+                '#include "kinematics/follow.h"\n#include "math/scalar/mathf.h"\n#include "name_hash/name_hash.h"\n',
+            "launcher/packages/kinematics/CMakeLists.txt": "set(kinematics_requires math)\n",
+            "launcher/packages/kinematics/include/kinematics/follow.h": '#include "physics/body.h"\n',
+            "launcher/packages/name_hash/include/name_hash/name_hash.h": "#pragma once\n",
+            f"{self.PACKAGE}/include/math/scalar/mathf.h": "#pragma once\n",
+        })
+        self.assertEqual(sorted((f.path, f.line) for f in findings),
+                         [("launcher/packages/kinematics/include/kinematics/follow.h", 1),
+                          ("launcher/packages/physics/include/physics/body.h", 3)])
+
+    def test_package_requires_names_real_packages_one_way(self):
+        findings = self.audit("PACKAGE-REQUIRES", {
+            "launcher/packages/physics/CMakeLists.txt": "# physics\nset(physics_requires math physics nowhere)\n",
+            "launcher/packages/physics/include/physics/body.h": "#pragma once\n",
+            "launcher/packages/kinematics/CMakeLists.txt": "set(kinematics_requires math)\n",
+            "launcher/packages/kinematics/include/kinematics/follow.h": "#pragma once\n",
+            f"{self.PACKAGE}/CMakeLists.txt": "set(math_requires collections)\n",
+            f"{self.PACKAGE}/include/math/scalar/mathf.h": "#pragma once\n",
+            "launcher/packages/collections/CMakeLists.txt": "set(collections_requires kinematics)\n",
+            "launcher/packages/collections/include/collections/list.h": "#pragma once\n",
+        })
+        messages = sorted((f.path, f.line, f.message.split(",")[0]) for f in findings)
+        self.assertEqual(messages, [
+            ("launcher/packages/collections/CMakeLists.txt", 1, "collections requires kinematics"),
+            ("launcher/packages/kinematics/CMakeLists.txt", 1, "kinematics requires math"),
+            (f"{self.PACKAGE}/CMakeLists.txt", 1, "math requires collections"),
+            ("launcher/packages/physics/CMakeLists.txt", 2, "physics requires itself"),
+            ("launcher/packages/physics/CMakeLists.txt", 2, "physics requires nowhere"),
+        ])
+
+    def test_package_requires_refuses_a_declaration_it_cannot_read(self):
+        for text in ('set(physics_requires "math")\n', "set(physics_requires math-lite)\n",
+                     "set(physics_requires ${X})\n", "set(physics_requires\n    math)\n",
+                     "if(ESP_PLATFORM)\n    set(physics_requires math)\nendif()\n",
+                     "set(physics_requires math) # trailing\n"):
+            with self.subTest(text=text):
+                findings = self.audit("PACKAGE-REQUIRES", {
+                    "launcher/packages/physics/CMakeLists.txt": text,
+                    "launcher/packages/physics/include/physics/body.h": "#pragma once\n",
+                    f"{self.PACKAGE}/include/math/scalar/mathf.h": "#pragma once\n",
+                })
+                self.assertEqual(len(findings), 1, findings)
+                self.assertIn("one unindented line of bare package names", findings[0].message)
+
+    def test_package_requires_passes_a_one_way_graph_and_ignores_nested_lists(self):
+        findings = self.audit("PACKAGE-REQUIRES", {
+            "launcher/packages/physics/CMakeLists.txt": "set(physics_requires math kinematics)\n",
+            "launcher/packages/physics/include/physics/body.h": "#pragma once\n",
+            "launcher/packages/physics/tests/CMakeLists.txt": "set(physics_requires physics)\n",
+            "launcher/packages/kinematics/CMakeLists.txt": "set(kinematics_requires math)\n",
+            "launcher/packages/kinematics/include/kinematics/follow.h": "#pragma once\n",
+            f"{self.PACKAGE}/include/math/scalar/mathf.h": "#pragma once\n",
         })
         self.assertEqual(findings, [])
 
@@ -403,9 +474,29 @@ class StyleAuditTest(unittest.TestCase):
                 with self.subTest(name=name, symbol=symbol):
                     findings = self.audit("PACKAGE-CONFIG", {
                         f"{self.PACKAGE}/{name}": f"\nif({symbol})\n",
+                        "launcher/main/Kconfig.projbuild": "config LAUNCHER_QEMU\n",
+                        "launcher/packages/other/Kconfig": "config OTHER_FPU_RECIP\n",
                     })
                     self.assertEqual([f.line for f in findings], [2])
                     self.assertIn(symbol, findings[0].message)
+
+    def test_package_config_rejects_undeclared_own_symbols(self):
+        for name in ("probe.c", "include/math/probe.h", "CMakeLists.txt", "Kconfig"):
+            with self.subTest(name=name):
+                findings = self.audit("PACKAGE-CONFIG", {
+                    f"{self.PACKAGE}/{name}": "\nif(CONFIG_MATH_FPU_RECP)\n",
+                    f"{self.PACKAGE}/Kconfig.extra": "config MATH_FPU_RECIP\n",
+                })
+                self.assertEqual([f.line for f in findings], [2])
+                self.assertIn("CONFIG_MATH_FPU_RECP", findings[0].message)
+
+    def test_package_config_accepts_idf_platform_symbols(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/probe.c": "#if CONFIG_IDF_TARGET_ARCH_XTENSA\n#endif\n"
+                                      "#if CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE\n#endif\n",
+            "launcher/main/Kconfig.projbuild": "config LAUNCHER_QEMU\n",
+        })
+        self.assertEqual(findings, [])
 
     def test_package_config_accepts_its_own_prefix(self):
         findings = self.audit("PACKAGE-CONFIG", {
@@ -414,6 +505,7 @@ class StyleAuditTest(unittest.TestCase):
             f"{self.PACKAGE}/CMakeLists.txt": "if(CONFIG_MATH_FPU_RECIP)\nendif()\n",
             f"{self.PACKAGE}/Kconfig": "config MATH_FPU_RECIP\n    default y\n",
             "launcher/packages/other/probe.c": "#if CONFIG_OTHER_FEATURE\n#endif\n",
+            "launcher/packages/other/Kconfig": "config OTHER_FEATURE\n",
             "launcher/main/probe.c": "#if CONFIG_LAUNCHER_QEMU\n#endif\n",
         })
         self.assertEqual(findings, [])
@@ -427,13 +519,14 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_package_config_ignores_comments_but_checks_code_on_the_same_line(self):
         findings = self.audit("PACKAGE-CONFIG", {
+            "launcher/main/Kconfig.projbuild": "config LAUNCHER_QEMU\n",
             f"{self.PACKAGE}/probe.c": "/* CONFIG_UNITY_ENABLE_64BIT */\n"
                                       "// CONFIG_LAUNCHER_QEMU\n"
                                       "/* CONFIG_OTHER_FEATURE */ #if CONFIG_LAUNCHER_QEMU\n",
             f"{self.PACKAGE}/CMakeLists.txt": "# CONFIG_LAUNCHER_QEMU\n"
                                              "#[=[\nCONFIG_OTHER_FEATURE\n]=]\n"
                                              "if(CONFIG_MATH_FPU_RECIP) # CONFIG_OTHER_FEATURE\n",
-            f"{self.PACKAGE}/Kconfig": "# config OTHER_FEATURE CONFIG_OTHER_FEATURE\n"
+            f"{self.PACKAGE}/Kconfig": "config MATH_FPU_RECIP\n# config OTHER_FEATURE CONFIG_OTHER_FEATURE\n"
                                       "config MATH_FEATURE # CONFIG_LAUNCHER_QEMU\n",
         })
         self.assertEqual([(f.path, f.line) for f in findings], [(f"{self.PACKAGE}/probe.c", 3)])
@@ -441,6 +534,7 @@ class StyleAuditTest(unittest.TestCase):
     def test_package_config_checks_symbols_in_build_strings(self):
         findings = self.audit("PACKAGE-CONFIG", {
             f"{self.PACKAGE}/CMakeLists.txt": 'message("# ${CONFIG_OTHER_FEATURE}")\n',
+            "launcher/packages/other/Kconfig": "config OTHER_FEATURE\n",
         })
         self.assertEqual([f.line for f in findings], [1])
 

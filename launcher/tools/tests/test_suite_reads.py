@@ -20,7 +20,8 @@ from build import packages  # noqa: E402
 LAUNCHER = TOOLS.parent
 TEST = LAUNCHER / "test"
 PROBE = TOOLS / "tests" / "data" / "suite_reads_probe.c"
-SOURCES = (PROBE, PROBE.with_name("suite_reads_store.c"), TEST / "suites.c", TEST / "pack_reads.c")
+SOURCES = (PROBE, PROBE.with_name("suite_reads_store.c"), TEST / "suites.c", TEST / "pack_reads.c",
+           LAUNCHER / "packages/testkit/harness/registry.c")
 SUITES = ("run_reads_built", "run_reads_its_own_folder", "run_reads_nothing", "run_reads_waiting")
 
 

@@ -139,7 +139,7 @@ taken for a chip in download mode and restarted once through the watchdog.
 A line typed in an `autana` session that is not a command goes to the board as
 typed, and `autana tune` is built on the same call: it writes one console line
 and prints the device's replies to it, under the lock like everything else.
-The firmware's `services/tune` answers `SET <name> <value>`, `GET <name>` and
+The firmware's `console/console_tune` answers `SET <name> <value>`, `GET <name>` and
 `TUNE` on a development build.
 
 A reply is everything from `--reply` (default `TUNE`) to the end of its

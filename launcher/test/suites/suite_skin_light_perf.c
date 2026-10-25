@@ -2,11 +2,12 @@
 #include <string.h>
 #include "anim/anim_skeleton.h"
 #include "asset/asset_store.h"
+#include "hash/crc32.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_skin.h"
 #include "skin_light_reference.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #define PACK_ID "capybara"
@@ -53,10 +54,10 @@ open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin
 #include "core/timing.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
-#include "perf_stats.h"
 #include "profile/frame_cost.h"
 #include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light_internal.h"
+#include "testkit/bench.h"
 
 #define CLIP_ID           "gallop"
 #define POSE_SECONDS      0.2F
@@ -236,14 +237,14 @@ quality(fixture_t* f, kernel_t kind) {
         return;
     }
     const size_t positions = (size_t)f->bind.vertex_count * sizeof *f->posed.positions;
-    const uint32_t position_crc = asset_crc32(f->posed.positions, positions);
+    const uint32_t position_crc = crc32_update(0, f->posed.positions, positions);
     if (kind == SKIN) {
         ESP_LOGI(TAG, "CHECK positions=%08" PRIx32, position_crc);
         return;
     }
-    const uint32_t checksum = asset_crc32(f->light, (size_t)f->bind.vertex_count * sizeof *f->light);
+    const uint32_t checksum = crc32_update(0, f->light, (size_t)f->bind.vertex_count * sizeof *f->light);
     kernel(f, SKIN);
-    TEST_ASSERT_EQUAL_HEX32(position_crc, asset_crc32(f->posed.positions, positions));
+    TEST_ASSERT_EQUAL_HEX32(position_crc, crc32_update(0, f->posed.positions, positions));
     uint64_t error_sum = 0;
     int error_max = 0;
     for (int v = 0; v < f->bind.vertex_count; v++) {
@@ -304,8 +305,8 @@ measure(kernel_t kind, int lights, const char* label) {
         f->micros[i] = (int32_t)(timing_now_us() - start_us);
         timing_yield();
     }
-    const perf_stats_t stats = perf_stats_compute(f->samples, SAMPLES);
-    const perf_stats_t micros = perf_stats_compute(f->micros, SAMPLES);
+    const bench_stats_t stats = bench_stats_compute(f->samples, SAMPLES);
+    const bench_stats_t micros = bench_stats_compute(f->micros, SAMPLES);
     ESP_LOGI(TAG, "%s one core: mean %lldus", label + sizeof TEST_PREFIX - 1, (long long)micros.avg);
     ESP_LOGI(TAG, "%s min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus", label, (long long)micros.min,
              (long long)micros.max, (long long)micros.avg, (long long)micros.med, (long long)micros.p95);

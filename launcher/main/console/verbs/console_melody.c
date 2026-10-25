@@ -83,13 +83,18 @@ check_note(melody_note_t note, const console_tone_args_t* args, console_reply_fn
 
 static void
 console_verb_melody(const char* args, console_reply_fn reply) {
+    char line[MELODY_REPLY_BYTES];
+    if (strcmp(args, MELODY_INFO_QUERY) == 0) {
+        melody_info_line(line);
+        reply(line);
+        return;
+    }
     console_tone_args_t parsed;
     bool check;
     if (!parse_args(args, &parsed, &check)) {
-        reply("MELODY_ERR usage: melody [volume] | melody check [volume] [internal]");
+        reply("MELODY_ERR usage: melody [volume] | melody check [volume] [internal] | melody ?");
         return;
     }
-    char line[MELODY_REPLY_BYTES];
     const int64_t started = timing_now_us();
     unsigned cumulative_steps = 0;
     for (size_t i = 0; i < MELODY_PHRASE_NOTES; i++) {

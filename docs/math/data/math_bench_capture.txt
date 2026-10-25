@@ -1,57 +1,352 @@
-BUILD_ID=d36d792d3134-diag
-MATHBENCH name=add (vec3) type=f ops=64 warm=15.3 cold=1998.0 insn=14.5
-MATHBENCH name=scale (vec3) type=f ops=64 warm=13.3 cold=1869.0 insn=12.5
-MATHBENCH name=dot (vec3) type=f ops=64 warm=17.3 cold=2112.0 insn=12.5
-MATHBENCH name=mul (scalar) type=f ops=64 warm=9.3 cold=1396.0 insn=6.5
-MATHBENCH name=lerp (vec3) type=f ops=64 warm=19.3 cold=2393.0 insn=17.5
-MATHBENCH name=add (vec3) type=i ops=64 warm=14.3 cold=2073.0 insn=14.5
-MATHBENCH name=scale (vec3) type=i ops=64 warm=12.3 cold=1900.0 insn=12.5
-MATHBENCH name=dot (vec3) type=i ops=64 warm=24.3 cold=2633.0 insn=24.5
-MATHBENCH name=mul (scalar) type=i ops=64 warm=9.3 cold=1716.0 insn=8.5
-MATHBENCH name=lerp (vec3) type=i ops=64 warm=101.3 cold=9103.0 insn=93.5
-MATHBENCH name=add (vec3) type=s ops=64 warm=37.4 cold=4269.0 insn=31.6
-MATHBENCH name=scale (vec3) type=s ops=64 warm=36.4 cold=4233.0 insn=30.6
-MATHBENCH name=dot (vec3) type=s ops=64 warm=24.3 cold=2942.0 insn=24.5
-MATHBENCH name=mul (scalar) type=s ops=64 warm=11.3 cold=2179.0 insn=10.5
-MATHBENCH name=lerp (vec3) type=s ops=64 warm=33.3 cold=3614.0 insn=31.5
-MATHBENCH name=add (vec3) type=x ops=64 warm=58.4 cold=6075.0 insn=44.6
-MATHBENCH name=scale (vec3) type=x ops=64 warm=66.0 cold=7465.0 insn=49.2
-MATHBENCH name=dot (vec3) type=x ops=64 warm=86.8 cold=9448.0 insn=65.9
-MATHBENCH name=mul (scalar) type=x ops=64 warm=22.3 cold=3168.0 insn=17.5
-MATHBENCH name=lerp (vec3) type=x ops=64 warm=127.3 cold=12810.0 insn=99.5
-MATHBENCH name=normalize (vec3) type=f ops=64 warm=57.4 cold=5611.0 insn=29.9
-MATHBENCH name=normalize (vec3) type=x ops=64 warm=349.5 cold=29427.0 insn=296.9
-MATHBENCH name=wrap type=f ops=64 warm=63.8 cold=7132.0 insn=30.1
-MATHBENCH name=wrap type=i ops=64 warm=7.3 cold=1590.0 insn=7.5
-MATHBENCH name=wrap type=x ops=64 warm=10.3 cold=1777.0 insn=10.5
-MATHBENCH name=convert type=f_to_x ops=64 warm=110.6 cold=10081.0 insn=70.7
-MATHBENCH name=convert type=x_to_f ops=64 warm=14.3 cold=2406.0 insn=14.5
-MATHBENCH name=convert type=f_to_s ops=64 warm=104.5 cold=9907.0 insn=75.6
-MATHBENCH name=convert type=s_to_f ops=64 warm=14.3 cold=2136.0 insn=14.5
-MATHBENCH name=convert type=i_to_f ops=64 warm=11.3 cold=1716.0 insn=11.5
-MATHBENCH name=convert type=f_to_i ops=64 warm=95.5 cold=8905.0 insn=62.1
-MATHBENCH name=slerp type=f ops=64 warm=455.1 cold=34564.0 insn=306.3
-MATHBENCH name=nlerp type=f ops=64 warm=94.8 cold=8917.0 insn=53.7
-MATHBENCH name=nlerp type=x ops=64 warm=719.9 cold=63055.0 insn=558.8
-MATHBENCH name=quat mul type=f ops=64 warm=30.3 cold=3195.0 insn=30.5
-MATHBENCH name=quat mul type=x ops=64 warm=418.3 cold=38736.0 insn=313.5
-MATHBENCH name=mat4 mul type=f ops=64 warm=738.4 cold=49605.0 insn=517.6
-MATHBENCH name=mat4 mul type=x ops=64 warm=2389.4 cold=159651.0 insn=1648.9
-MATHBENCH name=transform compute_matrix type=f ops=64 warm=67.4 cold=6852.0 insn=67.6
-MATHBENCH name=transform compute_matrix type=x ops=64 warm=855.6 cold=75525.0 insn=660.2
-MATHBENCH name=mathf_recip type=f ops=64 warm=26.3 cold=2994.0 insn=13.5
-MATHBENCH name=mathf_rsqrt type=f ops=64 warm=38.4 cold=4234.0 insn=18.6
-MATHBENCH name=mathf_rsqrt_approx type=f ops=64 warm=24.3 cold=3083.0 insn=12.5
-MATHBENCH name=div_recip type=f ops=64 warm=58.3 cold=5231.0 insn=52.0
-MATHBENCH name=div_rsqrt type=f ops=64 warm=114.2 cold=9679.0 insn=81.5
-MATHBENCH name=sinf type=f ops=64 warm=191.4 cold=21639.0 insn=109.1
-MATHBENCH name=cosf type=f ops=64 warm=191.5 cold=21197.0 insn=110.7
-MATHBENCH name=atan2f type=f ops=64 warm=336.7 cold=29484.0 insn=195.9
-MATHBENCH name=sqrtf type=f ops=64 warm=61.2 cold=5868.0 insn=45.5
-MATHBENCH name=trig_sin type=i ops=64 warm=30.8 cold=4911.0 insn=24.0
-MATHBENCH name=dot_f32_n256 type=f ops=1 warm=1305.0 cold=2403.0 insn=1315.0
+MATHERRORBIN name=trig_sin type=i x=0.0078125 max=1.55737 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.0234375 max=1.44434 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.0390625 max=2.05664 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.0546875 max=2.34863 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.0703125 max=2.8916 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.0859375 max=3.16602 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.101562 max=3.36523 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.117188 max=3.42188 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.132812 max=3.97656 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.148438 max=3.69141 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.164062 max=4.1543 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.179688 max=4.25195 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.195312 max=4.40625 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.210938 max=4.45898 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.226562 max=4.39258 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.242188 max=4.64258 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.257812 max=4.64258 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.273438 max=4.39062 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.289062 max=4.45703 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.304688 max=4.40625 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.320312 max=4.24805 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.335938 max=4.15234 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.351562 max=3.69141 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.367188 max=3.97852 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.382812 max=3.42383 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.398438 max=3.35938 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.414062 max=3.16797 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.429688 max=2.89062 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.445312 max=2.34668 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.460938 max=2.0498 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.476562 max=1.44238 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.492188 max=1.55469 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.507812 max=1.5603 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.523438 max=1.44824 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.539062 max=2.05469 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.554688 max=2.35156 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.570312 max=2.89551 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.585938 max=3.17188 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.601562 max=3.36523 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.617188 max=3.42773 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.632812 max=3.97656 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.648438 max=3.69141 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.664062 max=4.1543 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.679688 max=4.25586 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.695312 max=4.4082 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.710938 max=4.45898 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.726562 max=4.39258 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.742188 max=4.64258 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.757812 max=4.64062 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.773438 max=4.39258 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.789062 max=4.45703 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.804688 max=4.4043 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.820312 max=4.24805 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.835938 max=4.15039 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.851562 max=3.68945 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.867188 max=3.97656 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.882812 max=3.41602 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.898438 max=3.36328 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.914062 max=3.1582 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.929688 max=2.88086 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.945312 max=2.34375 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.960938 max=2.05469 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.976562 max=1.43213 unit=lsb axis=phase
+MATHERRORBIN name=trig_sin type=i x=0.992188 max=1.54395 unit=lsb axis=phase
+MATHERROR name=trig_sin type=i max=4.64258 unit=lsb method=sweep
+MATHERRORBIN name=mathf_rsqrt type=f x=1.01562 max=0.99535000883 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.01562 max=2.434193658e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.04688 max=0.993452982977 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.04688 max=3.46750871471e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.07812 max=0.997193150222 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.07812 max=4.47152128057e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.10938 max=0.955857450143 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.10938 max=2.8183890341e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.14062 max=0.95590316318 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.14062 max=4.42464748706e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.17188 max=0.933444911614 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.17188 max=3.17123861254e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.20312 max=0.918791292235 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.20312 max=3.44341483776e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.23438 max=0.913821304217 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.23438 max=3.02671182938e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.26562 max=0.899236824363 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.26562 max=2.7143651856e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.29688 max=0.914724420756 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.29688 max=3.9739796723e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.32812 max=0.899175742641 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.32812 max=3.92924641402e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.35938 max=0.870496200398 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.35938 max=2.18282899275e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.39062 max=0.873769070953 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.39062 max=3.76682919224e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.42188 max=0.852847604081 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.42188 max=2.48499104653e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.45312 max=0.845003029332 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.45312 max=1.97520329826e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.48438 max=0.845580082387 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.48438 max=3.28665002952e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.51562 max=0.842062003911 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.51562 max=3.59463768413e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.54688 max=0.830761326477 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.54688 max=2.71407095694e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.57812 max=0.81906888634 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.57812 max=2.29549563129e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.60938 max=0.810934269801 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.60938 max=2.33442932063e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.64062 max=0.811196712777 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.64062 max=2.80931072034e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.67188 max=0.811942076311 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.67188 max=3.35853755724e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.70312 max=0.801949927583 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.70312 max=2.74023625018e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.73438 max=0.790090654045 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.73438 max=1.49713976e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.76562 max=0.782659433782 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.76562 max=1.76547362132e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.79688 max=0.789941392839 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.79688 max=2.99299646945e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.82812 max=0.772956090048 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.82812 max=1.84213075667e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.85938 max=0.769983049482 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.85938 max=2.33659085048e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.89062 max=0.767940025777 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.89062 max=2.90773350563e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.92188 max=0.760038917884 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.92188 max=1.93433109336e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.95312 max=0.760577438399 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.95312 max=3.02634189452e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=1.98438 max=0.749709200114 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=1.98438 max=2.43036336761e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.01562 max=0.773321151733 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.01562 max=4.75630154689e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.04688 max=0.743315672502 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.04688 max=2.62467715841e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.07812 max=0.779939098284 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.07812 max=5.60275249067e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.10938 max=0.752489646897 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.10938 max=4.05820765675e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.14062 max=0.732668513432 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.14062 max=2.17533597267e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.17188 max=0.737821474671 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.17188 max=4.17946936404e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.20312 max=0.775509705767 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.20312 max=5.91537649822e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.23438 max=0.735736245289 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.23438 max=3.79321997635e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.26562 max=0.717878729105 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.26562 max=2.29411873799e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.29688 max=0.716662487015 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.29688 max=2.28135216065e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.32812 max=0.718547802418 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.32812 max=3.28676791571e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.35938 max=0.727105652913 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.35938 max=4.27248506283e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.39062 max=0.735252909362 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.39062 max=5.16938040271e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.42188 max=0.738015633076 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.42188 max=5.92294836285e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.45312 max=0.729733547196 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.45312 max=5.26095456915e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.48438 max=0.732869632542 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.48438 max=4.88887847873e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.51562 max=0.713629676029 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.51562 max=4.72214544696e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.54688 max=0.728322010487 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.54688 max=4.75738105947e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.57812 max=0.7200260479 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.57812 max=4.98295061871e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.60938 max=0.721250813454 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.60938 max=5.41828165703e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.64062 max=0.717162314802 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.64062 max=5.2238996013e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.67188 max=0.707000054419 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.67188 max=4.36946852187e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.70312 max=0.691205143929 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.70312 max=3.43368200044e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.73438 max=0.683970170096 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.73438 max=2.47884675856e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.76562 max=0.681006008759 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.76562 max=1.57266031767e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.79688 max=0.679331623018 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.79688 max=1.62300278537e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.82812 max=0.683437943459 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.82812 max=2.71437780758e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.85938 max=0.691399423406 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.85938 max=4.24918200178e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.89062 max=0.693724434823 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.89062 max=4.63459383943e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.92188 max=0.671616725624 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.92188 max=2.71555915035e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.95312 max=0.668919350952 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.95312 max=1.2208324309e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=2.98438 max=0.672444816679 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=2.98438 max=2.2706779931e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.01562 max=0.689413534477 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.01562 max=4.41319044612e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.04688 max=0.66483681649 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.04688 max=3.58840875633e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.07812 max=0.661987712607 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.07812 max=1.47415883841e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.10938 max=0.664360115305 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.10938 max=2.10972837836e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.14062 max=0.678033314645 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.14062 max=4.75382374893e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.17188 max=0.664699859917 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.17188 max=2.73726099494e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.20312 max=0.654781065881 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.20312 max=1.1093419414e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.23438 max=0.661259312183 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.23438 max=3.51887907452e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.26562 max=0.660489529371 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.26562 max=3.42924909605e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.29688 max=0.650330368429 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.29688 max=8.97493374715e-06 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.32812 max=0.654449528083 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.32812 max=3.27784274888e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.35938 max=0.654884343967 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.35938 max=3.28808439835e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.39062 max=0.64738202095 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.39062 max=9.48321775697e-06 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.42188 max=0.66132617183 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.42188 max=3.91070097282e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.45312 max=0.64351000078 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.45312 max=2.38717895892e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.48438 max=0.641179017723 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.48438 max=1.6351972372e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.51562 max=0.65824951604 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.51562 max=4.796910135e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.54688 max=0.640210034326 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.54688 max=1.11159194193e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.57812 max=0.651496767998 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.57812 max=3.26117757673e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.60938 max=0.64166281186 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.60938 max=2.44969999671e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.64062 max=0.634551558644 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.64062 max=1.74726063539e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.67188 max=0.650854118168 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.67188 max=3.99167260177e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.70312 max=0.633984345943 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.70312 max=8.39623046292e-06 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.73438 max=0.65531184338 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.73438 max=4.8126171724e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.76562 max=0.631005341187 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.76562 max=1.06447937412e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.79688 max=0.644284389913 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.79688 max=3.66184250914e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.82812 max=0.629247635603 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.82812 max=1.59206767671e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.85938 max=0.638621674851 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.85938 max=2.92176552931e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.89062 max=0.630442233756 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.89062 max=2.01146393975e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.92188 max=0.630473127589 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.92188 max=2.48494585976e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.95312 max=0.625967036933 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.95312 max=2.24955266656e-05 unit=relative axis=period
+MATHERRORBIN name=mathf_rsqrt type=f x=3.98438 max=0.630463598296 unit=ulp axis=period
+MATHERRORBIN name=mathf_rsqrt_approx type=f x=3.98438 max=2.30053192521e-05 unit=relative axis=period
 MATHERROR name=mathf_rsqrt type=f max=1 unit=ulp method=proof
 MATHERROR name=mathf_rsqrt_approx type=f max=5.94258e-05 unit=relative method=proof
 MATHERROR name=normalize (vec3) type=f max=1 unit=ulp method=sweep
 MATHERROR name=nlerp type=f max=2 unit=ulp method=sweep
+MATHERROR name=mathf_repeat type=f max=0 unit=ulp method=sweep inputs=97845
+MATHERRORBIN name=mathf_recip type=f x=1.01562 max=0.362338848412 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.04688 max=0.436781624332 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.07812 max=0.366920037195 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.10938 max=0.190586375073 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.14062 max=0.1288380716 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.17188 max=0.366370029747 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.20312 max=0.463593604043 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.23438 max=0.479079075158 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.26562 max=0.066091440618 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.29688 max=0.212525809184 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.32812 max=0.488197503611 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.35938 max=0.35568023473 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.39062 max=0.467599723488 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.42188 max=0.140658019111 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.45312 max=0.225255519152 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.48438 max=0.389526790008 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.51562 max=0.35551819019 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.54688 max=0.0151285845786 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.57812 max=0.33700770326 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.60938 max=0.228323457763 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.64062 max=0.461125932634 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.67188 max=0.107290750369 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.70312 max=0.348807683215 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.73438 max=0.32730319351 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.76562 max=0.0166614577174 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.79688 max=0.453889079392 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.82812 max=0.451827479526 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.85938 max=0.202828224748 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.89062 max=0.109407188371 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.92188 max=0.265768479556 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.95312 max=0.484836259857 unit=ulp axis=period
+MATHERRORBIN name=mathf_recip type=f x=1.98438 max=0.500000029802 unit=ulp axis=period
 MATHERROR name=mathf_recip type=f max=1 unit=ulp method=sweep
+BUILD_ID=1ee485b574e2
+MATHTARGET target=esp32s3 arch=Xtensa core=LX7_ESP32_S3_MP execution=hardware
+MATHBENCH name=add (vec3) type=f ops=64 warm=15.2 cold=1542.0 insn=14.4
+MATHBENCH name=scale (vec3) type=f ops=64 warm=13.2 cold=1273.0 insn=12.4
+MATHBENCH name=dot (vec3) type=f ops=64 warm=17.2 cold=1669.0 insn=12.4
+MATHBENCH name=mul (scalar) type=f ops=64 warm=9.2 cold=985.0 insn=6.4
+MATHBENCH name=lerp (vec3) type=f ops=64 warm=19.3 cold=2194.0 insn=17.4
+MATHBENCH name=add (vec3) type=i ops=64 warm=14.2 cold=1420.0 insn=14.4
+MATHBENCH name=scale (vec3) type=i ops=64 warm=12.2 cold=1195.0 insn=12.4
+MATHBENCH name=dot (vec3) type=i ops=64 warm=24.2 cold=2239.0 insn=24.4
+MATHBENCH name=mul (scalar) type=i ops=64 warm=9.2 cold=926.0 insn=8.4
+MATHBENCH name=lerp (vec3) type=i ops=64 warm=101.2 cold=8673.0 insn=92.5
+MATHBENCH name=add (vec3) type=s ops=64 warm=38.3 cold=3471.0 insn=31.5
+MATHBENCH name=scale (vec3) type=s ops=64 warm=36.3 cold=3562.0 insn=30.5
+MATHBENCH name=dot (vec3) type=s ops=64 warm=24.2 cold=2221.0 insn=24.4
+MATHBENCH name=mul (scalar) type=s ops=64 warm=11.3 cold=1543.0 insn=10.4
+MATHBENCH name=lerp (vec3) type=s ops=64 warm=29.3 cold=2641.0 insn=29.4
+MATHBENCH name=add (vec3) type=x ops=64 warm=57.3 cold=5730.0 insn=43.5
+MATHBENCH name=scale (vec3) type=x ops=64 warm=64.0 cold=6938.0 insn=48.7
+MATHBENCH name=dot (vec3) type=x ops=64 warm=85.8 cold=9571.0 insn=64.8
+MATHBENCH name=mul (scalar) type=x ops=64 warm=22.3 cold=2829.0 insn=17.4
+MATHBENCH name=lerp (vec3) type=x ops=64 warm=126.2 cold=12319.0 insn=98.5
+MATHBENCH name=normalize (vec3) type=f ops=64 warm=57.3 cold=5255.0 insn=29.5
+MATHBENCH name=normalize (vec3) type=x ops=64 warm=348.3 cold=28551.0 insn=307.5
+MATHBENCH name=wrap type=f ops=64 warm=63.7 cold=6703.0 insn=30.0
+MATHBENCH name=wrap type=i ops=64 warm=7.2 cold=871.0 insn=7.4
+MATHBENCH name=wrap type=x ops=64 warm=10.2 cold=1226.0 insn=10.4
+MATHBENCH name=convert type=f_to_x ops=64 warm=109.5 cold=9565.0 insn=81.3
+MATHBENCH name=convert type=x_to_f ops=64 warm=14.3 cold=1684.0 insn=14.4
+MATHBENCH name=convert type=f_to_s ops=64 warm=103.4 cold=8825.0 insn=74.6
+MATHBENCH name=convert type=s_to_f ops=64 warm=14.3 cold=1692.0 insn=14.4
+MATHBENCH name=convert type=i_to_f ops=64 warm=11.2 cold=1249.0 insn=11.4
+MATHBENCH name=convert type=f_to_i ops=64 warm=94.4 cold=8584.0 insn=61.0
+MATHBENCH name=slerp type=f ops=64 warm=454.0 cold=34497.0 insn=305.2
+MATHBENCH name=nlerp type=f ops=64 warm=94.7 cold=8884.0 insn=53.6
+MATHBENCH name=quat mul type=f ops=64 warm=30.2 cold=2672.0 insn=30.4
+MATHBENCH name=nlerp type=x ops=64 warm=715.8 cold=63347.0 insn=557.7
+MATHBENCH name=quat mul type=x ops=64 warm=417.3 cold=39296.0 insn=324.0
+MATHBENCH name=mat4 mul type=f ops=64 warm=735.3 cold=48377.0 insn=504.5
+MATHBENCH name=mat4 mul type=x ops=64 warm=2389.4 cold=159054.0 insn=1637.0
+MATHBENCH name=transform compute_matrix type=f ops=64 warm=67.3 cold=6303.0 insn=67.5
+MATHBENCH name=transform compute_matrix type=x ops=64 warm=856.4 cold=74794.0 insn=660.1
+MATHBENCH name=mathf_recip type=f ops=64 warm=26.2 cold=2335.0 insn=13.4
+MATHBENCH name=mathf_rsqrt type=f ops=64 warm=38.3 cold=3874.0 insn=18.5
+MATHBENCH name=mathf_rsqrt_approx type=f ops=64 warm=24.2 cold=2425.0 insn=12.5
+MATHBENCH name=wrap_fmodf type=f ops=64 warm=136.9 cold=13422.0 insn=88.5
+MATHBENCH name=normalize_div type=x ops=64 warm=1116.2 cold=76895.0 insn=917.2
+MATHBENCH name=nlerp_div type=x ops=64 warm=723.5 cold=59958.0 insn=519.4
+MATHBENCH name=mathx_rsqrt_q30 type=x ops=64 warm=160.2 cold=13793.0 insn=145.4
+MATHBENCH name=div_recip type=f ops=64 warm=59.2 cold=4570.0 insn=40.4
+MATHBENCH name=div_rsqrt type=f ops=64 warm=118.2 cold=9764.0 insn=83.4
+MATHBENCH name=sinf type=f ops=64 warm=223.6 cold=23834.0 insn=125.9
+MATHBENCH name=cosf type=f ops=64 warm=191.3 cold=20993.0 insn=110.6
+MATHBENCH name=atan2f type=f ops=64 warm=338.6 cold=28995.0 insn=196.8
+MATHBENCH name=sqrtf type=f ops=64 warm=62.2 cold=5476.0 insn=45.4
+MATHBENCH name=trig_sin type=i ops=64 warm=30.7 cold=4222.0 insn=23.9
+MATHBENCH name=dot_f32_n256 type=f ops=1 warm=1299.0 cold=1826.0 insn=1309.0
