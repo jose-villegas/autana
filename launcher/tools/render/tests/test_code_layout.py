@@ -358,9 +358,6 @@ class ConfigurationCheckTests(unittest.TestCase):
             self.assertIn(str(build), message)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class SameCodeTests(unittest.TestCase):
     BASE = """\
@@ -406,6 +403,7 @@ class SameCodeTests(unittest.TestCase):
         # a loop entered only from inside the span the jump skips; the sweep
         # reads the byte and the loop's first bytes as one instruction.
         swept = [
+            (0x100d, 3, "bnez", "a9, 1016 <f+0x6>"),
             (0x1010, 3, "j", "1040 <f+0x30>"),
             (0x1013, 3, "mul16u", "a1, a0, a0"),
             (0x1016, 2, "mov.n", "a11, a3"),
@@ -413,5 +411,40 @@ class SameCodeTests(unittest.TestCase):
             (0x1040, 2, "retw.n", ""),
         ]
         entry = [(0x1014, 2, "addi.n", "a5, a5, 1"), (0x1016, 2, "mov.n", "a11, a3")]
-        self.assertEqual([ins[2] for ins in code_layout.resync(swept, lambda start: entry)],
-                         ["j", "addi.n", "mov.n", "bne", "retw.n"])
+        self.assertEqual([ins[2] for ins in code_layout.skip_pools(swept, lambda start: entry)],
+                         ["bnez", "j", "addi.n", "mov.n", "bne", "retw.n"])
+
+    LONG_CALL = """40370000 <walk_rows>:
+40370000:	004136        	entry	a1, 32
+40370003:	fffd81        	l32r	a8, 4036fff8 <_iram_text_start+0x10> (42002d50 <draw_x>)
+40370006:	0008e0        	callx8	a8
+40370009:	000090        	retw
+"""
+
+    def test_a_long_call_to_another_callee_differs(self):
+        other = self.LONG_CALL.replace("<draw_x>", "<draw_y>")
+        self.assertEqual(code_layout.code_differences(self.code(self.LONG_CALL), self.code(other)),
+                         ["walk_rows: changed (4 -> 4 instructions)"])
+
+    def test_a_long_call_whose_pool_moved_compares_equal(self):
+        moved = self.LONG_CALL.replace("4036fff8 <_iram_text_start+0x10>", "4036ffe0 <_iram_text_start>")
+        self.assertEqual(code_layout.code_differences(self.code(self.LONG_CALL), self.code(moved)), [])
+
+    SWITCH = """40370000 <pick>:
+40370000:	004136        	entry	a1, 32
+40370003:	0008a0        	jx	a8
+40370006:	000306        	j	40370014 <pick+0x14>
+40370009:	1b0c22        	addi	a2, a2, 1
+4037000c:	000106        	j	40370014 <pick+0x14>
+4037000f:	1b0c22        	addi	a2, a2, 2
+40370012:	f01d          	retw.n
+40370014:	f01d          	retw.n
+"""
+
+    def test_a_case_a_jump_table_enters_is_compared(self):
+        other = self.SWITCH.replace("a2, a2, 1", "a2, a2, 3")
+        self.assertEqual(code_layout.code_differences(self.code(self.SWITCH), self.code(other)),
+                         ["pick: changed (8 -> 8 instructions)"])
+
+if __name__ == "__main__":
+    unittest.main()

@@ -24,6 +24,9 @@ from collections import Counter, namedtuple
 from pathlib import Path
 from typing import NamedTuple
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
+from objdump_calls import FUNCTION  # noqa: E402
+
 REPO = Path(__file__).resolve().parents[3]
 LAUNCHER = REPO / "launcher"
 SOURCES = LAUNCHER / "main"
@@ -73,7 +76,6 @@ def find_tool(name):
     found = shutil.which(executable)
     if found:
         return found
-    sys.path.insert(0, str(LAUNCHER / "tools" / "build"))
     from espressif import espressif_tools_root
 
     pattern = "tools/xtensa-esp-elf/*/xtensa-esp-elf/bin/%s*" % executable
@@ -148,8 +150,9 @@ def target_of(operands):
 XTENSA_LITERAL_BYTES = 4
 
 
-def skip_pools(found, decode_from=None):
-    """Drop literal targets and skipped pools, decoding code again after each pool."""
+def skip_pools(found, decode_from=None, jump_pools=True):
+    """Drop literal targets and, unless jump_pools is false, skipped pools,
+    decoding code again after each pool."""
     if not found:
         return found
     start = found[0][0]
@@ -160,9 +163,9 @@ def skip_pools(found, decode_from=None):
         pending = sorted(address for address in literals
                          if address is not None and start <= address <= end - XTENSA_LITERAL_BYTES and address not in pools)
         if not pending:
-            repaired = _skip_jump_pools(found, decode_from)
+            repaired = _skip_jump_pools(found, decode_from) if jump_pools else found
             if repaired == found:
-                return found
+                return _resync(found, decode_from) if decode_from else found
             found = repaired
             continue
         for address in pending:
@@ -199,14 +202,34 @@ def _skip_jump_pools(found, decode_from):
         if not entered:
             kept = [ins for ins in kept if not inside(ins[0], span)]
         elif entered[0] not in starts and decode_from is not None:
-            again = []
-            for ins in decode_from(entered[0]):
-                if ins[0] in starts:
-                    break
-                again.append(ins)
-            resume = again[-1][0] + again[-1][1] if again else entered[0]
-            kept = [ins for ins in kept if ins[0] < span[0]] + again + [ins for ins in kept if ins[0] >= resume]
+            kept = _decode_again(kept, span[0], entered[0], decode_from)
     return kept
+
+
+def _decode_again(found, cut, start, decode_from):
+    """`found` up to `cut`, then decoded again from `start` until the new
+    decode meets an instruction of the old one, then the old one on."""
+    starts = {ins[0] for ins in found}
+    again = []
+    for ins in decode_from(start):
+        if ins[0] in starts:
+            break
+        again.append(ins)
+    resume = again[-1][0] + again[-1][1] if again else start
+    return [ins for ins in found if ins[0] + ins[1] <= cut] + again + [ins for ins in found if ins[0] >= resume]
+
+
+def _resync(found, decode_from):
+    """Decode again from each branch target the sweep stepped over, as
+    alignment bytes before a loop entered only from inside a skipped span."""
+    while True:
+        starts = {ins[0] for ins in found}
+        end = found[-1][0] + found[-1][1]
+        missed = sorted(target for target in (target_of(operands) for _, _, mnemonic, operands in found if mnemonic != "l32r")
+                        if target is not None and found[0][0] <= target < end and target not in starts)
+        if not missed:
+            return found
+        found = _decode_again(found, missed[0], missed[0], decode_from)
 
 
 def line_span(start, end, line_size):
@@ -349,39 +372,31 @@ def layout_differences(expected, actual):
     return differences
 
 
-FUNCTION_HEADER = re.compile(r"^([0-9a-f]+) <([^>]+)>:$")
 # An address beside the symbol it names: only the symbol is kept, so code that
 # moved but did not change compares equal.
 NAMED_ADDRESS = re.compile(r"\b[0-9a-f]{4,}\s+(<[^>]+>)")
+# A literal load's pool place, before the value objdump resolves it to.
+POOL_PLACE = re.compile(r",\s*[0-9a-f]+ <[^>]+>")
+# A change wider than this does not mean to keep code the same, and decoding
+# each function again costs an objdump run per pool: its rough list is answer
+# enough.
+PRECISE_SUSPECTS_MAX = 200
 
 
-def resync(found, decode_from):
-    """Decode again from each branch target the linear sweep stepped over, as
-    alignment bytes before a loop entered only from inside a skipped span."""
-    while found:
-        starts = {ins[0] for ins in found}
-        end = found[-1][0] + found[-1][1]
-        missed = sorted(target for target in (target_of(operands) for _, _, mnemonic, operands in found if mnemonic != "l32r")
-                        if target is not None and found[0][0] <= target < end and target not in starts)
-        if not missed:
-            break
-        again = []
-        for ins in decode_from(missed[0]):
-            if ins[0] in starts:
-                break
-            again.append(ins)
-        resume = again[-1][0] + again[-1][1] if again else missed[0]
-        found = [ins for ins in found if ins[0] + ins[1] <= missed[0]] + again + [ins for ins in found if ins[0] >= resume]
-    return found
+def instruction_text(mnemonic, operands):
+    """An instruction without addresses. A literal load keeps the value it
+    loads, a callee or a constant, without its pool's place."""
+    if mnemonic == "l32r":
+        operands = POOL_PLACE.sub(",", operands, count=1)
+    return ("%s %s" % (mnemonic, NAMED_ADDRESS.sub(r"\1", operands))).rstrip()
 
 
 def function_code(text, decode_range=None, precise=()):
-    """{function: [instruction]} from `objdump -d` text, each instruction its
-    mnemonic and operands without addresses, literal loads without their
-    pool's place. A name two static functions share gets #2 on the second.
-    Functions named in `precise` are decoded again past each pool through
-    decode_range(start, end), as layout_entries() does: pool bytes the linear
-    sweep read as code would differ with the addresses they hold."""
+    """{function: [instruction]} from `objdump -d` text, as instruction_text()
+    writes them. A name two static functions share gets #2 on the second.
+    Functions named in `precise` are decoded again through
+    decode_range(start, end): the linear sweep reads pool bytes as code, and
+    those bytes hold addresses that differ between builds."""
     found = {}
     name, body = None, []
 
@@ -392,14 +407,13 @@ def function_code(text, decode_range=None, precise=()):
                 copy += 1
                 key = "%s#%d" % (name, copy)
             again = (lambda start: decode_range(start, end)) if key in precise else None
-            found[key] = [
-                "l32r " + operands.split(",")[0] if mnemonic == "l32r"
-                else ("%s %s" % (mnemonic, NAMED_ADDRESS.sub(r"\1", operands))).rstrip()
-                for _, _, mnemonic, operands in (resync(skip_pools(body, again), again) if again else skip_pools(body))
-            ]
+            # Code a jump table enters has no branch into it, so a function
+            # with one keeps every span a jump skips.
+            code = skip_pools(body, again, jump_pools=not any(ins[2] == "jx" for ins in body))
+            found[key] = [instruction_text(mnemonic, operands) for _, _, mnemonic, operands in code]
 
     for line in text.splitlines():
-        header = FUNCTION_HEADER.match(line)
+        header = FUNCTION.match(line)
         if header:
             close(int(header[1], 16))
             name, body = header[2], []
@@ -426,6 +440,8 @@ def elf_of(path):
 
 
 def same_code(base, head, objdump):
+    """A rough linear sweep finds the functions that may differ; only those
+    are decoded again past their pools, which is slow."""
     elfs = [elf_of(path) for path in (base, head)]
     texts = [run(objdump, "-d", str(elf)) for elf in elfs]
     rough = [function_code(text) for text in texts]
@@ -434,10 +450,11 @@ def same_code(base, head, objdump):
         function_code(text, lambda start, end, elf=elf: decode(objdump, elf, "--start-address=0x%x" % start,
                                                                 "--stop-address=0x%x" % end), suspects)
         for text, elf in zip(texts, elfs)
-    ] if suspects else rough
+    ] if 0 < len(suspects) <= PRECISE_SUSPECTS_MAX else rough
     differences = code_differences(*codes)
     if differences:
-        print("code_layout.py: %d functions differ from %s:" % (len(differences), base))
+        rough_note = " (rough sweep: too many to decode again)" if len(suspects) > PRECISE_SUSPECTS_MAX else ""
+        print("code_layout.py: %d functions differ from %s%s:" % (len(differences), base, rough_note))
         print("\n".join("  " + difference for difference in differences))
     else:
         print("every function matches %s" % base)

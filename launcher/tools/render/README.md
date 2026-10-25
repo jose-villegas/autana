@@ -58,16 +58,27 @@ re-recording instruction.
 ## Same code
 
 `--same-code BASE` lists every function whose instructions differ from another
-build's, then those only one build has. Addresses and literal-pool places are
-masked, so code that only moved compares equal. A change meant to keep machine
-code the same names what it did change.
+build's, then those only one build has. BASE is a build folder or its ELF. Run
+it after a change that should leave the instructions alone; any function it
+names changed. The list is a report and never fails.
 
 ```sh
 python launcher/tools/render/code_layout.py --same-code base/launcher.elf launcher/build
 ```
 
-Release CI keeps main's ELF for 30 days. A pull request's job summary lists the
-functions that differ from its merge base.
+Addresses and literal-pool places are masked, so code that only moved compares
+equal; a literal load keeps the callee or constant it loads. Two static
+functions sharing a name, or GCC clones (`$part$0`, `$isra$0`) that renumber,
+can show as changed or as a removed and added pair.
+
+```mermaid
+flowchart LR
+    M[push to main] -->|keeps release-elf| A[(artifact)]
+    P[pull request build] --> F[fetch the ELF of the main commit it merges into]
+    A --> F
+    F --> S["code_layout.py --same-code"]
+    S --> J[job summary]
+```
 
 ## Meshlet size captures
 
