@@ -78,7 +78,9 @@ scene_lights_allocate(scene_t* scene) {
 
 static scene_light_t*
 light_attach(scene_t* scene, scene_entity_t entity) {
-    if (scene == NULL || entity >= scene->asset.entity_count) {
+    /* Its direction is its own rotation, so a light is a root. */
+    if (scene == NULL || entity >= scene->asset.entity_count
+        || scene_entity_parent(scene, entity) != SCENE_ENTITY_NONE) {
         return NULL;
     }
     scene_light_t* light = &scene->lights[entity];
@@ -178,7 +180,7 @@ scene_lights_prepare(scene_t* scene) {
                                .transfer = scene->light_transfer};
     for (int l = 0; l < scene->asset.entity_count; l++) {
         const scene_light_t* light = &scene->lights[l];
-        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ENABLED)) {
+        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ACTIVE)) {
             continue;
         }
         const int at = world.count++;

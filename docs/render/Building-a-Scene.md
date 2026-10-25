@@ -124,7 +124,7 @@ This writes `<scene>.<variant>.mesh` for each baked renderer. A mesh without
 `bake = true` can also be imported on its own. Baked `.mesh` entries are
 committed as written and never reformatted. The firmware build writes the
 scene's [pack](../assets/Building-Packs.md#packs), named after the scene: its
-[scene entry](Scene-Files.md#scne-v3), baked from the scene file, its
+[scene entry](Scene-Files.md#scne-v4), baked from the scene file, its
 every mesh, skin, skeleton and clip it names. It flashes the pack with the app
 ([assets/README.md](../assets/Building-Packs.md#flashing)).
 
@@ -157,7 +157,7 @@ hall_example_start(void) {
 <!-- /generated: scene-hall-example -->
 
 Nothing else: the shell unloads what the app loaded when it exits. To move
-something, `scene_set_transform(hall, statue, &where)`; to hide
+something, `scene_entity_set_local(hall, statue, where)`; to hide
 it, `scene_entity_set_enabled()`. Several scenes may be loaded at once, and
 `scene_activate()` on another's camera changes what is drawn. How a frame is
 ordered against the panel send and the storage behind it are in
