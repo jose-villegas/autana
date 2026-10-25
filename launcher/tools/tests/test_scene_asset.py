@@ -19,6 +19,7 @@ from anim_probe import probe_entry, probe_glb  # noqa: E402
 from asset.asset_pack import NAME_BYTES, parse_pack  # noqa: E402
 from r3d import build_pack, scene_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
+from build.name_hash import NONE as HASH_NONE, name_hash  # noqa: E402
 from test_engine_frame import mesh_entry  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
@@ -243,6 +244,24 @@ class SceneEntryTests(SceneFiles):
         with self.assertRaisesRegex(SceneError, "31-byte field"):
             scene_asset.encode(scene)
 
+    def test_each_name_row_stores_its_name_hash(self):
+        entry = self.entry(renderer("a.import.toml") + renderer("b.import.toml") + lens())
+        names_at = HEADER.unpack_from(entry)[1 + len(scene_asset.PARTS)]
+        for index, name in enumerate(("a", "b", "camera")):
+            hashed, raw = NAME.unpack_from(entry, names_at + index * NAME.size)
+            self.assertEqual((hashed, raw.rstrip(b"\0")), (name_hash(name), name.encode()))
+        self.assertEqual([(e["name"], e["name_hash"]) for e in scene_asset.decode(entry)["entities"]],
+                         [(name, name_hash(name)) for name in ("a", "b", "camera")])
+
+    def test_names_that_share_a_hash_or_hash_to_none_are_refused(self):
+        self.assertEqual(name_hash("costarring"), name_hash("liquid"))
+        objects = renderer("a.import.toml", name="costarring") + renderer("b.import.toml", name="liquid")
+        with self.assertRaisesRegex(SceneError, "'costarring' and 'liquid' share a name hash"):
+            self.entry(objects)
+        self.assertEqual(name_hash("akhnp9x"), HASH_NONE)
+        with self.assertRaisesRegex(SceneError, "'akhnp9x' hashes to NONE"):
+            self.entry(renderer("a.import.toml", name="akhnp9x"))
+
     def test_an_object_name_must_fit_the_entry(self):
         with self.assertRaisesRegex(SettingsError, "letters, digits and _"):
             load_scene(self.scene(renderer("a.import.toml", name="not a name")))
@@ -252,14 +271,14 @@ class SceneEntryTests(SceneFiles):
 
 def authored_entry():
     parts = [
-        NAME.pack(b"first") + NAME.pack(b"second"),
+        NAME.pack(name_hash("first"), b"first") + NAME.pack(name_hash("second"), b"second"),
         TRANSFORM.pack(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0) * 2,
         RENDERER.pack(0, 0, b"mesh"),
         CAMERA.pack(1, 0, 0.5, 0.1, 0),
         b"".join(scene_asset.LIGHT.pack(e, scene_asset.DIRECTIONAL, 0, 0.8, 0.7, 0.6, 1.5) for e in range(2)),
         b"".join(scene_asset.SKINNED_RENDERER.pack(e, 0, b"mesh", b"mesh.skin", b"rig") for e in range(2)),
         b"".join(scene_asset.ANIMATOR.pack(e, 1, e, 0, scene_asset.WRAPS["loop"], 0) for e in range(2)),
-        NAME.pack(b"idle") + NAME.pack(b"walk"),
+        scene_asset.CLIP.pack(b"idle") + scene_asset.CLIP.pack(b"walk"),
         scene_asset.SETTINGS.pack(0.1, 0.2, 0.3, 0.4, 0.5),
         scene_asset.PARENT.pack(scene_asset.PARENT_ROOT) * 2]
     counts = [len(part) // row.size for part, row in zip(parts, scene_asset.ROWS)]
@@ -278,6 +297,16 @@ class SceneEntryRefusalTests(unittest.TestCase):
         self.assertEqual(decoded["animators"][1], dict(entity=1, clip_count=1, first_clip=1, default_clip=0,
                                                       wrap=scene_asset.WRAPS["loop"]))
         self.assertAlmostEqual(decoded["settings"]["tonemap_white"], 0.5)
+
+    def test_a_stored_name_hash_must_be_the_names_and_not_none(self):
+        names_at = HEADER.unpack_from(authored_entry())[1 + len(scene_asset.PARTS)]
+        for what, at, value in (("another hash", names_at, struct.pack("<I", name_hash("first") ^ 1)),
+                                ("another name", names_at + struct.calcsize("<I"), b"girst"),
+                                ("none", names_at + NAME.size, NAME.pack(HASH_NONE, b"akhnp9x"))):
+            entry = authored_entry()
+            entry[at:at + len(value)] = value
+            with self.subTest(what), self.assertRaisesRegex(SceneError, "stored name hash"):
+                scene_asset.decode(entry)
 
     def test_v1_and_truncation_are_refused(self):
         entry = authored_entry()

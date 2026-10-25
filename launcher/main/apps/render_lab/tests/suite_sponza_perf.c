@@ -188,7 +188,7 @@ static void
 open_the_meshes(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(sponza, "scene sponza did not load: see the log above");
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const scene_entity_t bake = scene_find(sponza, sponza_bakes[i]);
+        const scene_entity_t bake = scene_find(sponza, name_hash(sponza_bakes[i]));
         TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, bake, sponza_bakes[i]);
         const char* mesh = scene_entity_mesh_id(sponza, bake);
         TEST_ASSERT_NOT_NULL_MESSAGE(mesh, sponza_bakes[i]);
@@ -449,7 +449,7 @@ run_sponza_perf_suite(void) {
     sponza = loaded.scene;
     pack = loaded.pack;
     flythrough = loaded.lens;
-    camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, sponza_cameras[0]);
+    camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, name_hash(sponza_cameras[0]));
     (void)render_lab_apply_camera_settings(sponza, camera_entity);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
