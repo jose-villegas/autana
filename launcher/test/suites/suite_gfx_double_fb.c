@@ -4,6 +4,7 @@
 #ifndef DEVICE_BUILD
 #include "unity.h"
 
+#include "../gfx_examples/double_fb.c"
 #include "core/memory.h"
 #include "draw/draw.h"
 #include "gfx/present/gfx_internal.h"
@@ -11,13 +12,14 @@
 #include "gfx/present/gfx_present_guard.h"
 #include "gfx/present/gfx_test.h"
 #include "heap_arena.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 
 #define FRAME_COLOUR GFX_RGB(0x204060)
 #define CLEAR_COLOUR GFX_RGB(0x102030)
 
 static void
 fixture(void) {
+    doubled = false;
     gfx_present_guard_end();
     gfx_reset_for_test();
     TEST_ASSERT_TRUE(gfx_init());
@@ -242,8 +244,29 @@ test_clear_on_send_ends_with_its_mode(void) {
     TEST_ASSERT_TRUE(back_buffer_is(FRAME_COLOUR));
 }
 
+static void
+test_doc_double_fb_clears_and_exits(void) {
+    fixture();
+    effect_enter();
+    TEST_ASSERT_TRUE(doubled);
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_DOUBLE_FB, gfx_mode_current()->layout);
+    draw_clear(FRAME_COLOUR);
+    gfx_present();
+    draw_clear(FRAME_COLOUR);
+    gfx_present();
+    TEST_ASSERT_TRUE(gfx_framebuffer_holds(gfx_rgb(0x000000)));
+    TEST_ASSERT_TRUE(back_buffer_is(gfx_rgb(0x000000)));
+    effect_exit();
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_FULL_FB, gfx_mode_current()->layout);
+    draw_pixel(0, 0, FRAME_COLOUR);
+    gfx_present();
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    gfx_readback_end();
+}
+
 void
 run_gfx_double_fb_suite(void) {
+    RUN_TEST(test_doc_double_fb_clears_and_exits);
     RUN_TEST(test_double_fb_swaps_draw_target_and_reads_front);
     RUN_TEST(test_double_fb_draw_between_presents_is_safe);
     RUN_TEST(test_full_fb_draw_between_begin_wait_trips_guard);

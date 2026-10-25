@@ -16,6 +16,8 @@ main/apps/input_lab/imu_probe.c
 main/apps/input_lab/imu_record.c
 main/apps/input_lab/touch_probe.c
 main/apps/input_lab/motion_probe.c
+main/apps/input_lab/guided_step.c
+main/apps/input_lab/orientation_probe.c
 main/apps/input_lab/app_input_lab.c
 main/apps/input_lab/tools/input_lab_render_host.c
 "
@@ -27,6 +29,9 @@ grid|--page grid --frames 6|368x448
 bezel|--page bezel --frames 6|368x448
 motion|--page motion --frames 8|368x448
 motion-results|--page motion-results --frames 1500|368x448
+orientation-ready|--page orientation-ready --frames 9|368x448
+orientation-running|--page orientation-running --frames 14|368x448
+orientation-turn-ready|--page orientation-turn-ready --frames 660|368x448
 "
 . "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"
 render_scene_run "$@"

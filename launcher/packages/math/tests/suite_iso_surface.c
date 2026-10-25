@@ -6,8 +6,8 @@
 
 #include <stdlib.h>
 
-#include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "math/geometry/iso_surface.h"

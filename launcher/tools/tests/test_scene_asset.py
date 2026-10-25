@@ -8,6 +8,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -31,7 +32,7 @@ CLIP = 'source = "probe.glb"\nanimation = "clip"\n'
 
 def lens(path=None, extra=""):
     """A camera object; `path` is the .anim.toml it flies, relative to the scene."""
-    flight = f'path = {{ animation = "{path}", node = "lamp" }}\n' if path else ""
+    flight = f'path = {{ animation = "{path}", node = "camera" }}\n' if path else ""
     return ('[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.5\n'
             + extra + flight)
 
@@ -145,7 +146,7 @@ class SceneEntryTests(SceneFiles):
         path = self.root / "clips/fly.anim.toml"
         with self.assertRaisesRegex(tracks_asset.TracksError, "has no property tracks"):
             tracks_asset.bake(path, "absent")
-        second = lens("clips/fly.anim.toml").replace('name = "camera"', 'name = "other"').replace('node = "lamp"', 'node = "other"')
+        second = lens("clips/fly.anim.toml").replace('name = "camera"', 'name = "other"').replace('node = "camera"', 'node = "other"')
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml") + second)
         with self.assertRaisesRegex(SettingsError, "selects different nodes"):
             build_pack.pack_bytes([self.root])
@@ -200,7 +201,9 @@ class SceneEntryTests(SceneFiles):
     def test_the_entry_holds_only_what_the_device_reads(self):
         objects = renderer("a.import.toml", extra="bake = true\n") + sun_object() + lens()
         entry = self.entry(objects, HEAD)
-        size = HEADER.size + 3 * (NAME.size + TRANSFORM.size) + RENDERER.size + CAMERA.size + scene_asset.LIGHT.size + scene_asset.SETTINGS.size
+        parents = -(-3 * scene_asset.PARENT.size // scene_asset.ALIGN) * scene_asset.ALIGN
+        size = (HEADER.size + 3 * (NAME.size + TRANSFORM.size) + RENDERER.size + CAMERA.size + scene_asset.LIGHT.size
+                + scene_asset.SETTINGS.size + parents)
         self.assertEqual(len(entry), size)
         self.assertIn(b"sun", entry)
 
@@ -214,14 +217,14 @@ class SceneEntryTests(SceneFiles):
             with self.subTest(path=path), self.assertRaisesRegex(SettingsError, pattern):
                 load_scene(self.scene(renderer("a.import.toml") + lens(path)))
         node = "n" * (NAME_BYTES - 1)
-        long_node = lens("clips/fly.anim.toml").replace('node = "lamp"', 'node = "' + node + '"')
+        long_node = lens("clips/fly.anim.toml").replace('node = "camera"', 'node = "' + node + '"')
         scene = load_scene(self.scene(renderer("a.import.toml") + long_node))
         self.assertEqual(scene.camera.component.path.node, node)
         with self.assertRaisesRegex(SettingsError, "at most"):
             load_scene(self.scene(renderer("a.import.toml") +
                        long_node.replace(node, "n" * NAME_BYTES)))
         with self.assertRaisesRegex(SettingsError, "letters, digits and _"):
-            load_scene(self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml").replace('"lamp"', '"no-good"')))
+            load_scene(self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml").replace('node = "camera"', 'node = "no-good"')))
 
     def test_a_clip_id_must_fit_a_pack_name(self):
         for stem, refused in (("c" * 31, False), ("c" * 32, True)):
@@ -257,7 +260,8 @@ def authored_entry():
         b"".join(scene_asset.SKINNED_RENDERER.pack(e, 0, b"mesh", b"mesh.skin", b"rig") for e in range(2)),
         b"".join(scene_asset.ANIMATOR.pack(e, 1, e, 0, scene_asset.WRAPS["loop"], 0) for e in range(2)),
         NAME.pack(b"idle") + NAME.pack(b"walk"),
-        scene_asset.SETTINGS.pack(0.1, 0.2, 0.3, 0.4, 0.5)]
+        scene_asset.SETTINGS.pack(0.1, 0.2, 0.3, 0.4, 0.5),
+        scene_asset.PARENT.pack(scene_asset.PARENT_ROOT) * 2]
     counts = [len(part) // row.size for part, row in zip(parts, scene_asset.ROWS)]
     offsets, at = [], HEADER.size
     for part in parts:
@@ -318,12 +322,23 @@ class SceneEntryRefusalTests(unittest.TestCase):
 
     def test_counts_and_skin_ids_are_strict(self):
         original = authored_entry()
-        for part, counts in (("transforms", (1, 3)), ("settings", (0, 2))):
+        for part, counts in (("transforms", (1, 3)), ("parents", (1, 3)), ("settings", (0, 2))):
             for count in counts:
                 entry = bytearray(original)
                 struct.pack_into("<H", entry, 2 + 2 * scene_asset.PARTS.index(part), count)
-                with self.subTest(part=part, count=count), self.assertRaisesRegex(SceneError, "transforms must match names"):
+                with self.subTest(part=part, count=count), self.assertRaisesRegex(SceneError, "must match names"):
                     scene_asset.decode(entry)
+        parents = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("parents")]
+        for row, parent, message in ((0, 0, "not listed before it"), (0, 1, "not listed before it"),
+                                     (1, 1, "not listed before it"), (1, 0, "skinned_renderers: entity 1 has a parent")):
+            entry = bytearray(original)
+            struct.pack_into("<H", entry, parents + row * scene_asset.PARENT.size, parent)
+            with self.subTest(row=row, parent=parent), self.assertRaisesRegex(SceneError, message):
+                scene_asset.decode(entry)
+        entry = bytearray(original)
+        entry[2 * (1 + len(scene_asset.PARTS))] = 1
+        with self.assertRaisesRegex(SceneError, "header's padding"):
+            scene_asset.decode(entry)
         skin = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("skinned_renderers")]
         for field, name in enumerate(("mesh", "skin", "skeleton")):
             for raw in (b"x" * NAME_BYTES, bytes(NAME_BYTES)):
@@ -332,6 +347,68 @@ class SceneEntryRefusalTests(unittest.TestCase):
                 entry[at:at + NAME_BYTES] = raw
                 with self.subTest(name=name, raw=raw), self.assertRaisesRegex(SceneError, name + " id is not NUL"):
                     scene_asset.decode(entry)
+
+
+class SceneParentTests(unittest.TestCase):
+    """An object's `parent` names an entity listed before it; cameras, lights and skins stay roots."""
+
+    @staticmethod
+    def objects(*rows):
+        return [SimpleNamespace(name=name, kind=kind, parent=parent, position=(0, 0, 0),
+                                matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1))) for name, kind, parent in rows]
+
+    def test_a_parent_listed_first_round_trips(self):
+        objects = self.objects(("variant", "empty", None), ("copy", "mesh_renderer", "variant"))
+        entry = scene_asset.encode(SimpleNamespace(objects=objects, renderers=[]))
+        self.assertEqual([e["parent"] for e in scene_asset.decode(entry)["entities"]], [None, 0])
+
+    @staticmethod
+    def placed(name, kind, parent, matrix, position=(0, 0, 0)):
+        return SimpleNamespace(name=name, kind=kind, parent=parent, position=position, matrix=matrix)
+
+    def test_a_parents_uneven_scale_folds_into_its_children(self):
+        objects = [self.placed("variant", "empty", None, ((2, 0, 0), (0, 1, 0), (0, 0, 1))),
+                   self.placed("copy", "mesh_renderer", "variant", ((1, 0, 0), (0, 0, -1), (0, 1, 0)), (1, 1, 0))]
+        entities = scene_asset.decode(scene_asset.encode(SimpleNamespace(objects=objects, renderers=[])))["entities"]
+        self.assertEqual(entities[0]["matrix"], [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        self.assertEqual(entities[1]["matrix"], [[2, 0, 0], [0, 0, -1], [0, 1, 0]])
+        self.assertEqual(entities[1]["position"], [2, 1, 0])
+
+    def test_an_uneven_parent_that_draws_or_would_shear_is_refused(self):
+        turned = math.sqrt(0.5)
+        stretched = ((2, 0, 0), (0, 1, 0), (0, 0, 1))
+        for parent_kind, child_matrix, message in (
+                ("mesh_renderer", ((1, 0, 0), (0, 1, 0), (0, 0, 1)), "a parent that draws"),
+                ("empty", ((turned, -turned, 0), (turned, turned, 0), (0, 0, 1)), "would shear")):
+            objects = [self.placed("variant", parent_kind, None, stretched),
+                       self.placed("copy", "empty", "variant", child_matrix)]
+            renderers = [SimpleNamespace(object=objects[0], asset_name="m")] if parent_kind == "mesh_renderer" else []
+            with self.subTest(message=message), self.assertRaisesRegex(SceneError, message):
+                scene_asset.encode(SimpleNamespace(objects=objects, renderers=renderers))
+
+    def test_the_reader_refuses_an_uneven_parent(self):
+        objects = self.objects(("variant", "empty", None), ("copy", "empty", "variant"))
+        entry = bytearray(scene_asset.encode(SimpleNamespace(objects=objects, renderers=[])))
+        transforms = HEADER.unpack_from(entry)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("transforms")]
+        struct.pack_into("<f", entry, transforms, 2.0)
+        with self.assertRaisesRegex(SceneError, "scale is not even"):
+            scene_asset.decode(entry)
+
+    def test_the_padding_after_an_odd_count_of_parents_is_zero(self):
+        entry = bytearray(scene_asset.encode(SimpleNamespace(objects=self.objects(("one", "empty", None)), renderers=[])))
+        self.assertEqual(len(entry) % scene_asset.ALIGN, 0)
+        entry[-1] = 1
+        with self.assertRaisesRegex(SceneError, "padding after the parents"):
+            scene_asset.decode(entry)
+
+    def test_a_parent_after_its_child_or_on_a_camera_is_refused(self):
+        for rows, message in (((("copy", "empty", "variant"), ("variant", "empty", None)), "listed before it"),
+                              ((("variant", "empty", None), ("sun", "light", "variant")), "a light has no parent"),
+                              ((("copy", "empty", "copy"),), "listed before it"),
+                              ((("copy", "empty", "gone"),), "listed before it"),
+                              ((("variant", "empty", None), ("eye", "camera", "variant")), "a camera has no parent")):
+            with self.subTest(rows=rows), self.assertRaisesRegex(SceneError, message):
+                scene_asset.encode(SimpleNamespace(objects=self.objects(*rows), renderers=[]))
 
 
 class ScenePackTests(SceneFiles):
@@ -345,7 +422,7 @@ class ScenePackTests(SceneFiles):
         self.assertEqual(hall["hall"], (scene_asset.TYPE, to_engine(scene_asset.TYPE, scene_asset.bake(path))))
         self.assertEqual({name: kind for name, (kind, _) in hall.items()},
                          {"hall": scene_asset.TYPE, "a": LIT_MESH, "b": LIT_MESH, "fly": tracks_asset.TYPE})
-        self.assertEqual(hall["fly"][1], to_engine(tracks_asset.TYPE, tracks_asset.bake(self.root / "clips/fly.anim.toml", "lamp")))
+        self.assertEqual(hall["fly"][1], to_engine(tracks_asset.TYPE, tracks_asset.bake(self.root / "clips/fly.anim.toml", "camera")))
 
     def test_replace_takes_only_a_mesh(self):
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))

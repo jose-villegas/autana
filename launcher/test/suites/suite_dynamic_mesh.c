@@ -10,7 +10,7 @@
 #include "r3d_lit_mesh_expect.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 /* This suite's own source: a GRID x GRID quad sheet, two triangles each:

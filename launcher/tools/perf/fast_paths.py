@@ -155,7 +155,7 @@ def validate_hardware(root, items, fpu):
 def reference_pages(item, root=ROOT):
     pages = {item.header.parent.name.capitalize()}
     functions, owners = package_functions(root, with_owners=True)
-    source = (root / "launcher/test/suites/suite_math_perf.c").read_text(encoding="utf-8")
+    source = (root / "launcher/packages/math/bench/suite_math_perf.c").read_text(encoding="utf-8")
     row_name = item.fast.rsplit("_", 1)[0]
     for line in source.splitlines():
         if re.search(r"\bX\(" + row_name + r",", line):
@@ -341,7 +341,7 @@ def _inline_expressions(text):
 
 
 def plain_expression(item, root):
-    text = (root / "launcher/test/suites/suite_math_perf.c").read_text(encoding="utf-8")
+    text = (root / "launcher/packages/math/bench/suite_math_perf.c").read_text(encoding="utf-8")
     match = re.search(r"/\* MATH_PLAIN\(" + item.plain + r"\): (.*?) \*/", text)
     if not match:
         raise ValueError(f"plain row has no C description: {item.plain}")

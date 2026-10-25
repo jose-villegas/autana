@@ -7,7 +7,7 @@
 #include "math/scalar/math_const.h"
 #include "math/scalar/rng.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 #define TEST_HZ          1000u
 #define TEST_HALF_VOLUME (AUDIO_OUT_VOLUME_MAX_PCT / 2)

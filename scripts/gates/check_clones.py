@@ -44,7 +44,7 @@ SUFFIXES = {".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".py"}
 def eligible_name(name):
     path = Path(name)
     return (path.suffix in SUFFIXES
-            and not name.startswith(("launcher/components/", "launcher/test/framework/"))
+            and not name.startswith(("launcher/components/", "launcher/packages/testkit/unity/"))
             and "fixtures" not in path.parts and "fixture" not in path.parts)
 
 
