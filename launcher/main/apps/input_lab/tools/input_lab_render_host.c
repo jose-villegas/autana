@@ -5,6 +5,7 @@
 #include "apps/input_lab/imu_probe.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
+#include "input/motion/imu.h"
 #include "input/motion/motion_reader.h"
 #include "math/scalar/units.h"
 #include "render_host.h"
@@ -33,6 +34,11 @@ timespec_get(struct timespec* now, int base) {
 int
 display_quarter_now(void) {
     return shell_quarter;
+}
+
+bool
+imu_ready(void) {
+    return true;
 }
 
 bool

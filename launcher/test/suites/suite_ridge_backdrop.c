@@ -240,6 +240,41 @@ test_launcher_backdrop_motion_and_rest(void) {
 #define VIBRATION_G      (SHAKE_START_G / 2)
 #define DELIBERATE_G     (SHAKE_FULL_G * 2)
 
+#define FLAT_IN_PLANE_G  0.12F
+#define NO_SAMPLE_FRAMES 3
+
+static void
+test_boot_flat_without_initial_sample_keeps_landscape(void) {
+    fixture(NULL, 0);
+    steady_frames = memory_alloc(FRAMES_TO_REST * sizeof *steady_frames, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(steady_frames);
+    for (int run = 0; run < 2; run++) {
+        ui_ridge_release_for_test();
+        gfx_reset_for_test();
+        fixture(NULL, 0);
+        ui_ridge_set_ambient(false);
+        motion_reader_reset();
+        input_motion_t flat = {.acceleration = {0, (int)(FLAT_IN_PLANE_G * INPUT_ACCEL_ONE_G), -INPUT_ACCEL_ONE_G}};
+        for (int i = 0; i < FRAMES_TO_REST; i++) {
+            input_fake_motion(run && i < NO_SAMPLE_FRAMES ? NULL : &flat);
+            input_fake_motion_present(true);
+            motion_reader_frame((int64_t)i * FRAME_MS * MATH_US_PER_MS);
+            ui_ridge_set_gravity(input_gravity(), input_shake());
+            frame(false, false);
+            const name_hash64_t hash =
+                name_hash64_n(NAME_HASH64_OFFSET_BASIS, gfx_framebuffer(), PIXELS * sizeof(gfx_color_t));
+            if (run == 0) {
+                steady_frames[i] = hash;
+            } else {
+                TEST_ASSERT_EQUAL_UINT64(steady_frames[i], hash);
+            }
+        }
+    }
+    input_fake_motion(NULL);
+    memory_free(steady_frames);
+    steady_frames = NULL;
+}
+
 static void
 compare_shake_runs(float acceleration_g, bool ambient, bool expect_difference) {
     steady_frames = memory_alloc(VIBRATION_FRAMES * sizeof *steady_frames, MEMORY_PSRAM);
@@ -327,6 +362,7 @@ test_speaker_vibration_never_plucks_but_deliberate_shake_does(void) {
 
 void
 suite_ridge_backdrop(void) {
+    RUN_TEST(test_boot_flat_without_initial_sample_keeps_landscape);
     RUN_TEST(test_launcher_backdrop_motion_and_rest);
     RUN_TEST(test_ambient_off_ignores_deliberate_shake);
     RUN_TEST(test_weak_shake_scales_spring_offset);

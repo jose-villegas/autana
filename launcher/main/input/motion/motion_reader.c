@@ -4,6 +4,7 @@
 #include "build/build_variant.h"
 #include "input/input.h"
 #include "input/motion/gravity.h"
+#include "input/motion/imu.h"
 #include "input/motion/shake.h"
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include <math.h>
@@ -46,8 +47,13 @@ update(void) {
     pending = false;
     input_motion_t sample;
     if (!input_read_motion(&sample)) {
-        down = (vec3f_t){0, 1, 0};
-        shake_reset(&shake);
+        if (!imu_ready()) {
+            down = (vec3f_t){0, 1, 0};
+            shake_reset(&shake);
+        } else if (updated_us == INT64_MIN) {
+            down = (vec3f_t){0};
+            shake_reset(&shake);
+        }
         return;
     }
     const int64_t elapsed = updated_us != INT64_MIN && frame_us > updated_us ? frame_us - updated_us : 0;
