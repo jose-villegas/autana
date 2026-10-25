@@ -4,8 +4,8 @@
  *
  * Device axes: x right, y up the screen, z out of the glass toward the viewer; origin
  * at the centre of the glass. Lengths in millimetres. The case and screen come from
- * Waveshare's ESP32-S3-Touch-AMOLED-1.8 dimension drawing, the module and PCB from its
- * 3D model; chip axes from the QMI8658C datasheet.
+ * the ESP32-S3-Touch-AMOLED-1.8's dimension drawing, the module and PCB from its
+ * Waveshare 3D model; chip axes from the QMI8658C datasheet.
  */
 #pragma once
 
