@@ -1,4 +1,5 @@
 #include "audio/audio_codec_eq.h"
+#include "audio/audio_out.h"
 #include "console/verbs/console_mic_parse.h"
 #include "suites.h"
 #include "unity.h"
@@ -6,7 +7,7 @@
 static void
 test_eq_words(void) {
     uint8_t bytes[4];
-    TEST_ASSERT_EQUAL_HEX32(0x10000000, audio_codec_eq_encode(1.0));
+    TEST_ASSERT_EQUAL_HEX32(AUDIO_CODEC_EQ_SCALE, audio_codec_eq_encode(1.0));
     TEST_ASSERT_EQUAL_HEX32(0x30000000, audio_codec_eq_encode(-1.0));
     audio_codec_eq_bytes(audio_codec_eq_encode(-0.5), bytes);
     const uint8_t expected[] = {0x38, 0, 0, 0};
@@ -30,9 +31,9 @@ test_eq_presets(void) {
 static void
 test_record_framing(void) {
     char line[128];
-    TEST_ASSERT_TRUE(console_mic_begin(line, sizeof line, 22050, 441));
+    TEST_ASSERT_TRUE(console_mic_begin(line, sizeof line, AUDIO_OUT_SAMPLE_RATE_HZ, 441));
     TEST_ASSERT_EQUAL_STRING("MIC_BEGIN {\"rate\":22050,\"samples\":441}", line);
-    TEST_ASSERT_FALSE(console_mic_begin(line, 1, 22050, 441));
+    TEST_ASSERT_FALSE(console_mic_begin(line, 1, AUDIO_OUT_SAMPLE_RATE_HZ, 441));
 }
 
 static void
