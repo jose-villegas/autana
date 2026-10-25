@@ -18,14 +18,15 @@
 
 #include "frame_profile.h"
 #include "perf_budget.h"
-#include "perf_stats.h"
-#include "test_cleanup.h"
+#include "testkit/bench.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "esp_log.h"
 
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
+#include "apps/render_lab/tests/one_core_draw.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "asset/asset_store.h"
 #include "core/job.h"
@@ -41,7 +42,7 @@
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
-#include "render/raster_motion.h"
+#include "render/view/raster_motion.h"
 #include "scene/scene.h"
 #include "services/build_id.h"
 #include "sponza_suite.h"
@@ -111,8 +112,8 @@ static __attribute__((noinline)) void
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms, r3d_lens_t* lens) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
-    const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
-                                           (viewport_t){size.width, size.height, perf_quarter->quarter});
+    const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity,
+                                                 (viewport_t){size.width, size.height, perf_quarter->quarter});
     r3d_lens_init(lens, &view, mesh->position_scale);
 }
 
@@ -195,22 +196,6 @@ open_the_meshes(void) {
     }
 }
 
-/* One core's draw of a cleared picture, stopped after the stage `stop`
- * names (r3d_span_stop_after; 0 runs every stage); the clear is not timed. */
-static int64_t
-stopped_draw_us(const raster_t* raster, const r3d_lens_t* lens, int visible, int stop) {
-    const raster_buffers_t b = raster_carve(raster);
-    memset(gfx_render_target_depth(&b.picture, 0), 0,
-           (size_t)raster->width * (size_t)raster->height * sizeof(uint16_t));
-    const r3d_span_target_t target = {b.picture, NULL, 0, &r3d_span_small_fill_default};
-    r3d_span_stop_after = stop;
-    const int64_t start = timing_now_us();
-    r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target, b.work[0]);
-    const int64_t us = timing_now_us() - start;
-    r3d_span_stop_after = 0;
-    return us;
-}
-
 /* Each bake's draw split into its stages, one core, as the mean over the
  * flythrough's poses: each stage is the difference of two stopped draws. */
 static void
@@ -229,7 +214,7 @@ report_stage_split(int bake) {
         const int visible = r3d_pipeline_cull(&meshes[bake], &lens, parts.culled + 1, parts.work[0]);
         r3d_pipeline_transform(&meshes[bake], &lens, parts.culled + 1, visible, parts.cs, parts.rows);
         for (int stop = 0; stop <= 3; stop++) {
-            stopped[stop] += stopped_draw_us(&b->raster, &lens, visible, stop);
+            stopped[stop] += one_core_draw_us(&b->raster, &parts, &lens, visible, stop);
         }
         poses++;
     }
@@ -332,8 +317,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_PERF_POSE_EVERY_MS) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
-                                               (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
+        const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity,
+                                                     (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
         if (moving != NULL) {
             transformf_set_position(moving,
                                     (vec3f_t){(t_ms / SPONZA_PERF_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F, 0.0F, 0.0F});
@@ -353,7 +338,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         frame_us[samples] = (int32_t)us;
         samples++;
     }
-    const perf_stats_t stats = perf_stats_compute(frame_us, samples);
+    const bench_stats_t stats = bench_stats_compute(frame_us, samples);
     memory_free(frame_us);
     ESP_LOGI(TAG, FRAME_PROFILE_ROW R3D_PERF_QUARTER_FORMAT, label, (long long)stats.avg,
              1e6 * samples / (double)frame_sum, (long long)stats.max, (long long)stats.med, (long long)stats.p95,

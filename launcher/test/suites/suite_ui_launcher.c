@@ -24,7 +24,7 @@
 #include "app/app.h"
 #include "gfx/gfx.h"
 #include "shell/ui/ui_launcher.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui_probe.h"

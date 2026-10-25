@@ -8,7 +8,7 @@
 #include "display/viewport.h"
 #include "math/scalar/math_const.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #define TEST_ANGLE_MARGIN_DEG 1.0F
