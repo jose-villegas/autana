@@ -232,36 +232,36 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "756b36714192e4d8c784e1460e0ff0ef94511985f77fa45984e13c67463d8d0b"
+key = "3edfa148e5c9e91293ae2e1d5b7fc5d686fbd33c0c9c86f225a0dc5f52641ece"
 poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
 count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "bee0e5c3cb055b335086fb0ee647269dcc2aa2c5c6204873a4c666d2717d72cc"
+key = "6e0f8f58b19853e81c8a40e1554a0e3078ab0bb231ba8a82ab5883eba12a8af9"
+poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
+count = 265
+clip = "launcher/demo/bistro/street.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "7fa7534297c84ab53de160fb5e2faf5f11f08413f9fd3dac0a776f5896ea9df5"
 poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
 count = 6605
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "cb30c77a65a1f81c4e75d3e6c0dd7f534f2f6076929c15657277395ad23e2158"
+key = "9ceffa8dc60736f90a9b0f320455ec2257a953be98217e4b2a6275a9cc102b39"
 poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
 count = 133
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "e34166999c14bebb73ca626c7b330640e88bb656c0b5ff7561c8d206dba40789"
+key = "fbf0d51d297b21d5d949b5a0cdeace55a30c803b0696e471dec52e9e60c880a8"
 poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
 count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "eb4d3352750e4c87de302f1b6e33eb507cf57f9e462cf7575d95bd1244483d3e"
-poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
-count = 265
-clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
