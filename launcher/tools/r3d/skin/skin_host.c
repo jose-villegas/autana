@@ -13,7 +13,7 @@ sample(const asset_pack_t* pack, char** argv) {
     if (scene == NULL) {
         return false;
     }
-    const scene_entity_t entity = scene_find(scene, argv[ARG_ENTITY]);
+    const scene_entity_t entity = scene_find(scene, name_hash(argv[ARG_ENTITY]));
     const char* clips[] = {argv[ARG_CLIP]};
     bool ok =
         scene_animator_set_clips(scene, entity, argv[ARG_SKELETON], clips, 1, &why)

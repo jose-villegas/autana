@@ -27,7 +27,7 @@ class ResolveTimerTests(unittest.TestCase):
 #include <stdlib.h>
 #include <string.h>
 #include "render/raster.h"
-#include "render/raster_show.h"
+#include "render/view/raster_show.h"
 #include "r3d_quad_mesh.h"
 int charges, shows;
 static void clear(const raster_attachment_t* a, const raster_t* r, void* pixels, size_t count) {

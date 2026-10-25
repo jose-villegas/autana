@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Plot the library's percentile ranks for docs/math/Stats.md; --cc CC --out DIR."""
-import argparse
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, run_probe
+from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, probe_into_folder
 from docs.plot_style import FAINT, LABEL_SIZE, SLOTS, save, subplots
 from matplotlib.patches import Patch
 
@@ -41,12 +40,8 @@ def ranks_figure(data, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cc", required=True)
-    parser.add_argument("--out", type=pathlib.Path, required=True)
-    args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
-    ranks_figure(run_probe(args.cc, (PROBE,)), args.out / "stats-percentile-ranks.png")
+    data, out = probe_into_folder(__doc__, (PROBE,))
+    ranks_figure(data, out / "stats-percentile-ranks.png")
     return 0
 
 

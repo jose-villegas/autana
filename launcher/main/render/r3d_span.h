@@ -55,12 +55,19 @@ r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int ro
  * won (depth == z >> R3D_DEPTH_SHIFT) and write its own there. A map that
  * needs more than depth and a value per draw, such as normals, rebuilds it in
  * its resolve. */
+/* What a writer adds to its value for each part it draws. */
+typedef enum {
+    R3D_SPAN_STEP_NONE,     /* one value for the whole draw */
+    R3D_SPAN_STEP_CLUSTER,  /* the drawn cluster's index */
+    R3D_SPAN_STEP_TRIANGLE, /* the drawn triangle's index */
+} r3d_span_step_t;
+
 struct r3d_span_writer {
     void (*span)(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
                  int32_t z, int32_t dz);
-    int attachment;   /* the index it writes, in `rows` */
-    bool per_cluster; /* adds the drawn cluster's index to `value` */
-    uint32_t value;   /* what this draw writes, in the attachment's own meaning */
+    int attachment;       /* the index it writes, in `rows` */
+    r3d_span_step_t step; /* what is added to `value` per draw */
+    uint32_t value;       /* what this draw writes, in the attachment's own meaning */
 };
 
 /* The depth encoding: inverse depth scaled to 16 bits, so a larger value is
