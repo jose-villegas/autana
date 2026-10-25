@@ -1,9 +1,7 @@
 """Plot microphone DSP captures in both documentation themes."""
-import argparse
-from pathlib import Path
 
 from audio_doc_tables import ROOT, read_capture
-from audio_doc_blocks import CLIPPED_DBFS
+from audio_doc_blocks import CLIPPED_DBFS, render_capture_figures
 from audio_mic_dsp_sweep import CAPTURE, DEFAULTS, HPF_VOLUME, LEVEL_DB
 from audio_mic_dsp_tables import feature, label, mic_data
 from docs.plot_style import FIGURE_SIZE, SLOTS, save_themed_plot, subplots
@@ -64,11 +62,7 @@ def render(capture, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--capture", type=Path, default=CAPTURE)
-    parser.add_argument("--out", type=Path, default=ROOT / "docs/images/audio")
-    args = parser.parse_args()
-    render(args.capture, args.out)
+    render_capture_figures(__doc__, render, CAPTURE, ROOT / "docs/images/audio")
 
 
 if __name__ == "__main__":

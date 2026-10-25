@@ -1,4 +1,7 @@
-"""Shared captions and numeric disclosures for capture-derived audio docs."""
+"""Shared figure arguments, captions and numeric disclosures for audio docs."""
+import argparse
+from pathlib import Path
+
 from docs.plot_style import picture
 
 CLIPPED_DBFS = -0.5
@@ -14,3 +17,11 @@ def details(table):
 
 def number(value, digits=2):
     return "n/a" if value is None else f"{value:.{digits}f}"
+
+
+def render_capture_figures(description, render, capture, output):
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--capture", type=Path, default=capture)
+    parser.add_argument("--out", type=Path, default=output)
+    args = parser.parse_args()
+    render(args.capture, args.out)
