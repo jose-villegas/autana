@@ -10,14 +10,14 @@
  * for every suite at once, including the ones this project is not free to
  * edit right now and the two dozen others not worth touching just for this.
  *
- * Do NOT force this onto framework/unity.c's own compilation: that trips
+ * Do NOT force this onto packages/testkit/unity/unity.c's own compilation: that trips
  * the same guard from the other side and compiles UnityDefaultTestRun's
  * body out entirely (it becomes "the replacement runner"), which breaks the
  * only function this file's .c half calls. Both build scripts keep it out.
  */
 #pragma once
 
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 
 #define RUN_TEST(func) suite_run_test_timed(func, #func, __LINE__)
 
