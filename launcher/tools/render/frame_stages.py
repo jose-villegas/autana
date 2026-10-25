@@ -51,9 +51,11 @@ UNTIMED_LABEL = "untimed"
 UNTIMED_COLOUR = "#c8c8c8"
 LAPS_LABEL = "laps"  # what the laps themselves cost, taken out of the phases they time
 LAPS_COLOUR = "#8c8c8c"
-SUB_STAGE_FIGURE_SIZE = (10, 3.4)
+SUB_STAGE_FIGURE_SIZE = (10, 4)
 SUB_STAGE_SUFFIX = "sub-stages"
-SUB_STAGE_LEGEND_ANCHOR = (1, 1)  # above the bar, right, level with its title
+TINT = 0.5  # the second round of sub-stage colours: each slot colour this far towards white
+SUB_STAGE_LEGEND_ANCHOR = (0, 1)  # above the bar, left, under its title
+SUB_STAGE_TITLE_PAD = 20  # points between a title and the bar, room for the legend
 
 
 def view_names(source=VIEW_TABLE):
@@ -246,14 +248,22 @@ def sub_stages(path):
     return found
 
 
+def sub_stage_colours():
+    """The slot colours, then each lightened by TINT: twice as many sub-stages."""
+    from matplotlib.colors import to_hex, to_rgb
+
+    return [*SLOTS, *(to_hex([channel + (1 - channel) * TINT for channel in to_rgb(colour)]) for colour in SLOTS)]
+
+
 def sub_stage_chart(stages, path):
     """One stacked bar per parent: its frame-core laps, then what they leave."""
     figure, axes = subplots(len(stages), 1, SUB_STAGE_FIGURE_SIZE)
     phases = list(dict.fromkeys(phase for total, per_core, _ in stages.values() for phase, cores in per_core.items()
                                 if phase != LAPS_LABEL and share_percent(cores[FRAME_CORE] * PERCENT_SCALE / total) > 0))
-    if len(phases) > len(SLOTS):
-        raise ValueError(f"{len(phases)} sub-stages drawn, {len(SLOTS)} colours")
-    colours = dict(zip(phases, SLOTS), **{UNTIMED_LABEL: UNTIMED_COLOUR, LAPS_LABEL: LAPS_COLOUR})
+    palette = sub_stage_colours()
+    if len(phases) > len(palette):
+        raise ValueError(f"{len(phases)} sub-stages drawn, {len(palette)} colours")
+    colours = dict(zip(phases, palette), **{UNTIMED_LABEL: UNTIMED_COLOUR, LAPS_LABEL: LAPS_COLOUR})
     for axis, (parent, (total, per_core, untimed)) in zip(axes, stages.items()):
         segments = [(phase, cores[FRAME_CORE]) for phase, cores in per_core.items()]
         segments.append((UNTIMED_LABEL, max(untimed, 0.0)))
@@ -272,12 +282,12 @@ def sub_stage_chart(stages, path):
             left += value
         axis.annotate(f"{total:.1f} ms", (total, 0), xytext=(6, 0), textcoords="offset points", va="center")
         axis.set_xlim(0, total * (1 + AXIS_HEADROOM))
-        axis.set_title(parent, loc="left")
+        axis.set_title(parent, loc="left", pad=SUB_STAGE_TITLE_PAD)
         axis.set_yticks([])
         axis.set_ylim(BAR_HEIGHT, -BAR_HEIGHT)
         for side in ("top", "right", "left"):
             axis.spines[side].set_visible(False)
-        axis.legend(handles=drawn, loc="lower right", bbox_to_anchor=SUB_STAGE_LEGEND_ANCHOR, ncol=len(drawn),
+        axis.legend(handles=drawn, loc="lower left", bbox_to_anchor=SUB_STAGE_LEGEND_ANCHOR, borderaxespad=0, ncol=len(drawn),
                     frameon=False, fontsize=8)
     axes[-1].set_xlabel(f"board ms per frame on cpu{FRAME_CORE}")
     save(figure, path)
