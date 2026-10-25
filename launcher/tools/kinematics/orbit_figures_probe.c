@@ -1,9 +1,9 @@
-/* motion_figures_probe: library trajectories for the motion reference. */
+/* orbit_figures_probe: an orbit's trajectories for the orbit and follow references. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "math/motion/orbit_motion.h"
+#include "kinematics/orbit/orbit_motion.h"
 
 static const float frame_s = 0.1F;
 static const int fling_half_lives = 4;
