@@ -31,7 +31,7 @@ typedef struct {
 touch_calib_t touch_calib_from_fit(touch_calib_fit_t fit);
 
 /* Corrects one raw point in place, kept inside a `w` x `h` panel. */
-void touch_calib_apply(const touch_calib_t* calib, int w, int h, int* x, int* y);
+void touch_calib_apply(const touch_calib_t* calib, int w, int h, vec2i_t* point);
 
 /* Corrects a sampled controller point when `calibrate` is on. An injected
  * point, already in screen space, and a lift pass through untouched. */
