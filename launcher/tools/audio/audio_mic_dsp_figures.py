@@ -3,7 +3,8 @@ import argparse
 from pathlib import Path
 
 from audio_doc_tables import ROOT, read_capture
-from audio_mic_dsp_sweep import CAPTURE, DEFAULTS, HPF_VOLUME
+from audio_doc_blocks import CLIPPED_DBFS
+from audio_mic_dsp_sweep import CAPTURE, DEFAULTS, HPF_VOLUME, LEVEL_DB
 from audio_mic_dsp_tables import feature, label, mic_data
 from docs.plot_style import FIGURE_SIZE, SLOTS, save_themed_plot, subplots
 
@@ -18,6 +19,9 @@ def render(capture, output):
     if len(frequency_volumes) > 1:
         raise ValueError("HPF frequency sweep must hold volume constant")
     frequency_volume = next(iter(frequency_volumes), HPF_VOLUME)
+    clipped = [point for point in data if point["peak"] >= CLIPPED_DBFS]
+    data = [point for point in data if point not in clipped]
+    not_shown = "; clipped, not shown: " + ", ".join(label(p["config"]) for p in clipped) if clipped else ""
     baseline = next((point for point in data if point["config"] == DEFAULTS), None)
     if baseline is None:
         raise ValueError("missing microphone baseline")
@@ -32,7 +36,8 @@ def render(capture, output):
                             if hz == primary_hz)
             if levels:
                 axis.plot(*zip(*levels), "o-", color=color, label=label(point["config"]))
-        axis.set(xlabel="Tone volume (%)", ylabel="Microphone level (dBFS)")
+        axis.set(xscale="log", xlabel="Tone volume (%)", ylabel="Microphone level (dBFS)",
+                 title=f"ALC target max/min {LEVEL_DB[target[0]]:.1f}/{LEVEL_DB[target[1]]:.1f} dB" if target else None)
         axis.legend(fontsize=8, loc="best")
         axis.grid(alpha=0.3)
     from docs.plot_style import save_themes
@@ -43,7 +48,7 @@ def render(capture, output):
     axis.set(yticks=range(len(data)), yticklabels=[feature(p["config"]) + ": " + label(p["config"]) for p in data],
              xlabel="Broadband noise floor (dBFS)")
     axis.invert_yaxis()
-    save_themed_plot(fig, axis, output / "mic-dsp-noise.png", "Silence after settling")
+    save_themed_plot(fig, axis, output / "mic-dsp-noise.png", "Silence after settling" + not_shown)
     fig, axis = subplots(1, 1, FIGURE_SIZE)
     for index, point in enumerate(data):
         config = point["config"]
@@ -55,7 +60,7 @@ def render(capture, output):
             axis.plot(*zip(*levels), "o-", color=SLOTS[index % len(SLOTS)],
                       label=f"s1/s2 {config['hpf_s1']}/{config['hpf_s2']}")
     axis.set(xscale="log", xlabel="Frequency (Hz)", ylabel="Microphone level (dBFS)")
-    save_themed_plot(fig, axis, output / "mic-dsp-hpf.png", "HPF coefficients")
+    save_themed_plot(fig, axis, output / "mic-dsp-hpf.png", "HPF coefficients" + not_shown)
 
 
 def main():
