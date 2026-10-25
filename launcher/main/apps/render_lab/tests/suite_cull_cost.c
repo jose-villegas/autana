@@ -145,8 +145,9 @@ measure_family(const scene_baked_t* family) {
     const uint32_t period = scene_animator_clip_duration_ms(scene, camera, 0);
     for (uint32_t t_ms = 0; t_ms < period; t_ms += CULL_COST_POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = camera_view(lens_of, scene_entity_transform(scene, camera),
-                                               (viewport_t){size.width, size.height, r3d_perf_quarters[0].quarter});
+        const transformf_t pose = scene_entity_world(scene, camera);
+        const render_view_t view =
+            camera_view(lens_of, &pose, (viewport_t){size.width, size.height, r3d_perf_quarters[0].quarter});
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, mesh.position_scale);
         r3d_lens_t mirrored = lens;
