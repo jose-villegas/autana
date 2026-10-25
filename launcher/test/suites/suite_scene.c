@@ -1546,6 +1546,18 @@ test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one(void) {
     free(colors);
 }
 
+/* A camera takes a lens shift; anything else, or a shift that is not a
+ * number, is refused. */
+static void
+test_a_camera_takes_a_lens_shift_and_nothing_else_does(void) {
+    fixture();
+    scene_t* scene = load("test_pair");
+    const vec2f_t shift = {0.25F, -0.1F};
+    TEST_ASSERT_TRUE(scene_camera_set_shift(scene, scene_find(scene, "camera"), shift));
+    TEST_ASSERT_FALSE(scene_camera_set_shift(scene, scene_find(scene, "red"), shift));
+    TEST_ASSERT_FALSE(scene_camera_set_shift(scene, scene_find(scene, "camera"), (vec2f_t){NAN, 0.0F}));
+}
+
 static void
 test_a_moved_entity_is_drawn_where_it_now_stands(void) {
     fixture();
@@ -3668,6 +3680,7 @@ run_scene_suite(void) {
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
     RUN_TEST(test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one);
+    RUN_TEST(test_a_camera_takes_a_lens_shift_and_nothing_else_does);
     RUN_TEST(test_a_moved_entity_is_drawn_where_it_now_stands);
     RUN_TEST(test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned);
     RUN_TEST(test_with_nothing_enabled_the_picture_is_left_alone);

@@ -36,8 +36,10 @@ r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     const float scale_x = (float)width / (float)lens->width;
     const float scale_y = (float)height / (float)lens->height;
     lens->m = mat4f_scale_rows(lens->m, (vec3f_t){scale_x, scale_y, 1.0F});
-    lens->project.cx = (float)width * 0.5F;
-    lens->project.cy = (float)height * 0.5F;
+    /* The same picture at another size: the optical centre scales with it,
+     * so a shifted lens stays shifted. */
+    lens->project.cx *= scale_x;
+    lens->project.cy *= scale_y;
     lens->snap_cx = (lens->project.cx * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->snap_cy = (lens->project.cy * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->width = width;
