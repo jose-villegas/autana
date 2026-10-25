@@ -2,16 +2,10 @@
 #include "asset/asset_store_shell.h"
 #include "shell/shell_system.h"
 
-static void
-poll(uint32_t dt_ms) {
-    (void)dt_ms;
-    asset_store_step();
-}
-
 static shell_system_t asset_system = {
     .name = "asset",
     .order = SHELL_ORDER_ASSET,
-    .poll = poll,
+    .poll = asset_store_step,
     .app_exit = asset_store_app_exit,
 };
 SHELL_SYSTEM_REGISTER(asset_system);

@@ -23,6 +23,7 @@ asset_store_cancel(handle_t load) {
     if (request != NULL) {
         if (request->state == PENDING_READY) {
             request->done = NULL;
+            request->cancelled = true;
         } else {
             asset_store_request_cancel(request);
         }
@@ -31,6 +32,9 @@ asset_store_cancel(handle_t load) {
 
 static bool
 check_owner(asset_store_request_t* request) {
+    if (request->cancelled) {
+        return false;
+    }
     if (!pending_owner_alive(request->owner)) {
         asset_store_cancel(asset_store_request_id(request));
         return false;
@@ -39,7 +43,8 @@ check_owner(asset_store_request_t* request) {
 }
 
 void
-asset_store_step(void) {
+asset_store_step(uint32_t dt_ms) {
+    (void)dt_ms;
     uint64_t cutoff = 0;
     for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
         const asset_store_request_t* request = asset_store_request_at(i);
@@ -54,7 +59,7 @@ asset_store_step(void) {
         }
         const bool alive = check_owner(request);
         if (alive && request->state == PENDING_WAIT && request->mount == NULL) {
-            asset_store_request_bind(request);
+            asset_store_request_bind(request, false);
         }
     }
     asset_store_mounts_step(ASSET_STORE_STEP_BYTES);
@@ -83,7 +88,6 @@ asset_store_step(void) {
 
 void
 asset_store_app_exit(void) {
-    pending_tokens_cancel();
     for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
         asset_store_request_t* request = asset_store_request_at(i);
         if (request->state == PENDING_WAIT || request->state == PENDING_READY || request->state == PENDING_FAILED) {
