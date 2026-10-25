@@ -71,6 +71,14 @@ class CodeSearch(unittest.TestCase):
               "#define MAKE(P) \\\n  static inline int P##_get(void) { return 1; }\n")
         self.assertEqual({"Value", "MAKE", "P##_get"}, self.names(owner))
 
+    def test_pasted_registration_callback_is_not_a_public_name(self):
+        owner = "engine/suite.h"
+        write(self.root, owner, "/* Suite registration. */\n"
+              "void suite_register(void);\n"
+              "#define SUITE_REGISTER(fn) \\\n"
+              "  __attribute__((constructor)) static void fn##_register(void) {}\n")
+        self.assertEqual({"SUITE_REGISTER", "suite_register"}, self.names(owner))
+
     def test_include_guard_is_not_a_public_name(self):
         for filename, guard in (("value.h", "VALUE_H"), ("value.hpp", "VALUE_HPP"),
                                 ("shared-value.h", "SHARED_VALUE_H"),
@@ -106,7 +114,7 @@ class CodeSearch(unittest.TestCase):
         for owner in ("apps/demo/value.h", "engine/tests/value.h", "tools/tests/test_value.py"):
             write(self.root, owner, "/* Values. */\nint value(void);\n" if owner.endswith(".h")
                   else '"""Values."""\n')
-        for owner in ("launcher/components/bsp/value.h", "launcher/test/framework/value.h"):
+        for owner in ("launcher/components/bsp/value.h", "launcher/packages/testkit/unity/value.h"):
             write(self.root, owner, "/* Values. */\nint value(void);\n")
         write(self.root, "engine/generated.h", "/* GENERATED FILE - do not edit. */\n")
         commit(self.root, ".")

@@ -1,0 +1,5 @@
+menu "Testkit"
+    config TESTKIT_QEMU
+        bool "Run under QEMU"
+        default n
+endmenu

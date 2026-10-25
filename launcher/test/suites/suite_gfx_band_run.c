@@ -11,7 +11,7 @@
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "gfx/present/modes/band/gfx_band_run.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 
 typedef struct {
     int draw_calls;

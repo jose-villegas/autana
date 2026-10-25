@@ -15,7 +15,7 @@
 #include <string.h>
 
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "console/console_frame_request.h"
@@ -907,7 +907,8 @@ test_quarter_injection_matches_forward_mapping(void) {
         TEST_ASSERT_EQUAL_INT(axes.x_down * IMU_COUNTS_PER_G, gravity.x);
         TEST_ASSERT_EQUAL_INT(axes.y_down * IMU_COUNTS_PER_G, gravity.y);
         display.quarter = quarter;
-        TEST_ASSERT_FALSE(display_update(&display, gravity));
+        TEST_ASSERT_FALSE(display_update(
+            &display, (vec3f_t){(float)gravity.x / IMU_COUNTS_PER_G, (float)gravity.y / IMU_COUNTS_PER_G, 0.0F}, 0));
         TEST_ASSERT_EQUAL_INT(quarter, display_quarter(&display));
     }
     imu_sample_t sample = {.ax = IMU_COUNTS_PER_G};
@@ -1014,8 +1015,23 @@ test_sound_parse_boundaries_and_whitespace(void) {
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, args.voice);
 }
 
+static void
+test_imu_reply_exposes_judge_timing_and_checks_capacity(void) {
+    char reply[CONSOLE_IMU_REPLY_SIZE];
+    TEST_ASSERT_TRUE(console_imu_reply(reply, sizeof reply, DISPLAY_DEFAULT_QUARTER));
+    int quarter, count, sample_ms, commit_ms;
+    TEST_ASSERT_EQUAL_INT(CONSOLE_IMU_REPLY_INTEGER_COUNT,
+                          sscanf(reply, CONSOLE_IMU_REPLY_FORMAT, &quarter, &count, &sample_ms, &commit_ms));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_DEFAULT_QUARTER, quarter);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_COUNT, count);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_SAMPLE_MS, sample_ms);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_COMMIT_MS, commit_ms);
+    TEST_ASSERT_FALSE(console_imu_reply(reply, strlen(reply), DISPLAY_DEFAULT_QUARTER));
+}
+
 void
 suite_console(void) {
+    RUN_TEST(test_imu_reply_exposes_judge_timing_and_checks_capacity);
     RUN_TEST(test_sound_parse_boundaries_and_whitespace);
     RUN_TEST(test_sound_arguments);
     RUN_TEST(test_overlong_short_verb_is_dropped);
