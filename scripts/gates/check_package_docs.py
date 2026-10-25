@@ -7,11 +7,10 @@ Every package with a docs/<package>/README.md is checked: the index links
 every page, each folder of include/<package>/ has its page (spring/ becomes
 Spring.md), each header's public types and functions are named on its
 folder's page, and no inline formula is too long. Math's pages carry the
-template families, so math's names follow the rules below instead.
+template families, whose generated names the rules below add for math.
 
 Each family's folder names its reference page (linear/ becomes Linear.md).
-The index links every page. Motion headers' public types and functions must
-be named in Motion.md. The reference pages name every family function and
+The reference pages name every family function and
 instantiated type; the headers are the truth, read here and never listed by
 hand:
 
@@ -190,12 +189,12 @@ def page_problems(pages, index):
 
 
 def package_problems(root):
-    """Every package but math with a docs/<package>/README.md: links, a page per folder, names, formulas."""
+    """Every package with a docs/<package>/README.md: links, a page per folder, names, formulas."""
     problems = []
     for docs in sorted((root / "docs").glob("*/README.md")):
         name = docs.parent.name
         include = root / "launcher/packages" / name / "include" / name
-        if name == MATH.parts[2] or not include.is_dir():
+        if not include.is_dir():
             continue
         index = docs.relative_to(root)
         pages = {p.relative_to(root): read(p) for p in sorted(docs.parent.glob("*.md"))}
@@ -228,7 +227,6 @@ def check(root):
     # Benchmarks also cite platform APIs; their formulas and index link are still checked.
     page = "\n".join(text for path, text in pages.items() if path.name != "Benchmark.md")
     family_of, functions, patterns, swizzle_names, standalone, problems = instantiations(root)
-    problems += page_problems(pages, PAGE)
 
     for family in FAMILIES:
         template = root / FAMILY_DIRS[family] / (family + "_template.h")
@@ -257,15 +255,13 @@ def check(root):
         for prefix in DEFINE_CALL.findall(text):
             if "`%s`" % prefix not in page:
                 problems.append("%s: the page does not name the type `%s`" % (PAGE.as_posix(), prefix))
-        for name in HAND_WRITTEN.findall(text) + IDENTITY.findall(text):
+        for name in IDENTITY.findall(text):
             if name not in page:
                 problems.append("%s: the page does not name %s (%s)" % (PAGE.as_posix(), name, header.name))
 
     for header in sorted((root / MATH.parent).rglob("*.h")):
         text = read(header)
         defined.update(HAND_WRITTEN.findall(text))
-        if header.parent.name == "motion":
-            problems += unnamed_on_page(text, header, family_page(header.parent), pages)
 
     for name in sorted(standalone):
         if not any(name in text for text in pages.values()):

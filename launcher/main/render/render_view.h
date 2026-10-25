@@ -5,8 +5,8 @@
 #include <stdint.h>
 
 #include "display/viewport.h"
-#include "math/linear/projectf.h"
 #include "math/linear/transformf.h"
+#include "math/projection/projectf.h"
 
 typedef enum { CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_SCANLINE, CAMERA_PRESENT_DOUBLE } camera_present_t;
 
