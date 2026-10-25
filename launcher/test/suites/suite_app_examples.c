@@ -5,7 +5,7 @@
 
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_test.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "../app_examples/arena.c"

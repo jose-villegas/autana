@@ -545,10 +545,9 @@ def rule_ui_backend(root, path, text):
 # includes only itself and the packages it declares in its own CMakeLists.txt
 # (`set(<name>_requires ...)`, launcher/tools/build/package_requires.py), theirs in
 # turn: no #include, quoted or angled, may reach a tracked header of the
-# firmware or of an undeclared package. A header that resolves
-# nowhere in the tree is the toolchain's or the build's own (<stdint.h>,
-# "sdkconfig.h"), and a suite's test harness (suites.h, unity.h) sits under
-# no firmware include root, so neither resolves and the rule passes both.
+# firmware or of an undeclared package. Tests and benchmarks may also use
+# testkit. Unresolved headers belong to the toolchain or build (<stdint.h>,
+# "sdkconfig.h"); the isolated compile check rejects unresolved engine headers.
 # launcher/test/check_packages_alone.sh compiles each package file with only
 # those include roots, which catches what no resolver here can see.
 # PACKAGE-REQUIRES keeps the declarations a one-way graph of real packages.
@@ -564,6 +563,8 @@ def rule_package_include(root, path, text):
     if package is None:
         return
     reachable = package_requires.reachable(package)
+    if path.resolve().relative_to(package).parts[0] in ("tests", "bench"):
+        reachable = [*reachable, package.parent / "testkit"]
     for number, line in enumerate(text.splitlines(), 1):
         m = ANY_INCLUDE.match(line)
         if not m:
