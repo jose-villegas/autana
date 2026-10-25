@@ -1075,11 +1075,9 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
 
     const int rdx = -dx;
     const int rdy = -dy;
-    const int rslide_a[2] = {-slide_a[0], -slide_a[1]};
-    const int rslide_b[2] = {-slide_b[0], -slide_b[1]};
-
-    const int* sweep_slide_a = rslide_a;
-    const int* sweep_slide_b = rslide_b;
+    /* Reversed slides are ring entries too (see mover_pass_t). */
+    const int* sweep_slide_a = ring_dir(ring_of(-slide_a[0], -slide_a[1]));
+    const int* sweep_slide_b = ring_dir(ring_of(-slide_b[0], -slide_b[1]));
     int y_from;
     int y_to;
     int y_step;
@@ -1105,10 +1103,11 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     gas_pass = (gas_pass_t){
         .m =
             {
+                .w = s->w,
                 .dx = rdx,
                 .dy = rdy,
-                .slide_a = {sweep_slide_a[0], sweep_slide_a[1]},
-                .slide_b = {sweep_slide_b[0], sweep_slide_b[1]},
+                .slide_a = sweep_slide_a,
+                .slide_b = sweep_slide_b,
                 .load_dx = -load_dx,
                 .load_dy = -load_dy,
                 .jostle = jostle,

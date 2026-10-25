@@ -1076,6 +1076,15 @@ step_one_liquid_grain(sand_t* s, const mover_row_t* r, const mover_pass_t* p, in
     return moved;
 }
 
+/* Out of line on purpose. Inlined into sweep_range(), the slide's registers
+ * spill across the whole per-grain loop, and the falling and water steps run
+ * 5% and 2% more instructions, though neither slides much. */
+static __attribute__((noinline)) bool
+sweep_try_slide(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_t grain, uint8_t driven_row,
+                uint8_t density, const material_t* mat) {
+    return try_slide(s, r, p, x, grain, driven_row, density, mat);
+}
+
 static bool
 step_one_grain(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, dest_state_t* dest) {
     const cell_t grain = r->row[x];
@@ -1109,7 +1118,7 @@ step_one_grain(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, de
      * to index the pass's `driven` table, not as `mat_id`. This
      * change affects only MAT_EXTENDED, distinguishing it from gunpowder, due
      * to TWIN_ROW for ORDINARY materials. */
-    return try_slide(s, r, p, x, grain, (uint8_t)mrow, density, mat);
+    return sweep_try_slide(s, r, p, x, grain, (uint8_t)mrow, density, mat);
 }
 
 /* Sleeping off when block_state missing. Wakes blocks if grid shaken or
@@ -1171,7 +1180,9 @@ typedef struct {
 
     sand_t* s;
     int x_step;
-    const mover_pass_t* p;
+    /* A copy, not a pointer to sweep_pass: the file-static would be reread
+     * after every call. */
+    mover_pass_t p;
     /* The block columns overlapping [x0, x1), walked in x_step's direction. */
     int bx_from, bx_to, bx_step;
     /* Materials are liquid as a bitmask over the nibble, similar to
@@ -1218,7 +1229,7 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
         if (sand_row_cell_stamped(ctx->r.stamp_row, x)) {
             continue;
         }
-        if (step_one_grain(ctx->s, &ctx->r, ctx->p, x, &dest)) {
+        if (step_one_grain(ctx->s, &ctx->r, &ctx->p, x, &dest)) {
             moved_here = true;
         }
     }
@@ -1427,7 +1438,7 @@ sweep_range(sand_t* s, const sweep_pass_t* c, int y0, int y1, int x0, int x1) {
         .r = {.x0 = x0, .x1 = x1},
         .s = s,
         .x_step = c->x_step,
-        .p = &c->m,
+        .p = c->m,
         .is_liquid = c->is_liquid,
         .settled_bit = c->settled_bit,
     };
@@ -1932,10 +1943,11 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     sweep_pass = (sweep_pass_t){
         .m =
             {
+                .w = s->w,
                 .dx = dx,
                 .dy = dy,
-                .slide_a = {slide_a[0], slide_a[1]},
-                .slide_b = {slide_b[0], slide_b[1]},
+                .slide_a = slide_a,
+                .slide_b = slide_b,
                 .load_dx = load_dx,
                 .load_dy = load_dy,
                 .jostle = jostle,
