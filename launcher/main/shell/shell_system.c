@@ -3,6 +3,7 @@
 #include "shell/shell_system.h"
 
 #include <assert.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "core/registry.h"
@@ -25,31 +26,32 @@ shell_system_register(shell_system_t* system) {
     (void)result;
 }
 
-void
-shell_systems_poll(uint32_t dt_ms) {
+typedef void (*phase_fn_t)(uint32_t dt_ms);
+
+/* Runs the timed phase stored at `offset` in each system, lowest order first. */
+static void
+run_phase(size_t offset, uint32_t dt_ms) {
     for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
-        if (system->poll != NULL) {
-            system->poll(dt_ms);
+        const phase_fn_t phase = *(const phase_fn_t*)((const char*)system + offset);
+        if (phase != NULL) {
+            phase(dt_ms);
         }
     }
+}
+
+void
+shell_systems_poll(uint32_t dt_ms) {
+    run_phase(offsetof(shell_system_t, poll), dt_ms);
 }
 
 void
 shell_systems_update(uint32_t dt_ms) {
-    for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
-        if (system->update != NULL) {
-            system->update(dt_ms);
-        }
-    }
+    run_phase(offsetof(shell_system_t, update), dt_ms);
 }
 
 void
 shell_systems_compose(uint32_t dt_ms) {
-    for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
-        if (system->compose != NULL) {
-            system->compose(dt_ms);
-        }
-    }
+    run_phase(offsetof(shell_system_t, compose), dt_ms);
 }
 
 void
