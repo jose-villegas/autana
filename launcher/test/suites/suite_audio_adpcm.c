@@ -79,7 +79,7 @@ test_baker_multiblock_round_trip(void) {
 
 static void
 test_engine_sound(void) {
-    const asset_pack_t* pack = asset_store_pack("engine");
+    const asset_pack_t* pack = asset_store_load("engine");
     TEST_ASSERT_NOT_NULL(pack);
     sound_t sound;
     const asset_status_t status = sound_open(pack, "tap", &sound);

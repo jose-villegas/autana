@@ -360,7 +360,7 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
 
 scene_t*
 scene_load(const char* id, scene_failure_t* why) {
-    const asset_pack_t* pack = asset_store_pack(id);
+    const asset_pack_t* pack = asset_store_load(id);
     scene_t* scene = scene_load_from(pack, id, why);
     if (scene != NULL) {
         scene->holds_pack = true;

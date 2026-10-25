@@ -18,7 +18,7 @@ flowchart TB
     Build --> Files["DIR/name.apak"]
     Build --> Image["assets.bin"]
     Image --> Flash["assets partition"]
-    Store["asset_store_pack(name)"] --> Flash
+    Store["asset_store_load(name)"] --> Flash
     Store --> Files
     Flash --> Open["asset_pack_open(base, size)"]
     Files --> Open

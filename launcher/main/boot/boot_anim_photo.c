@@ -18,7 +18,7 @@ static const char* TAG = "boot_anim";
 void
 boot_anim_photo_load(draw_image_t* out) {
     *out = (draw_image_t){0};
-    const asset_pack_t* pack = asset_store_pack(BOOT_PHOTO);
+    const asset_pack_t* pack = asset_store_load(BOOT_PHOTO);
     if (pack == NULL) {
         ESP_LOGW(TAG, "no pack %s: the animation draws without the photograph", BOOT_PHOTO);
         return;

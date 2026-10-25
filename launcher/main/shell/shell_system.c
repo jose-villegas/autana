@@ -26,6 +26,15 @@ shell_system_register(shell_system_t* system) {
 }
 
 void
+shell_systems_poll(uint32_t dt_ms) {
+    for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
+        if (system->poll != NULL) {
+            system->poll(dt_ms);
+        }
+    }
+}
+
+void
 shell_systems_update(uint32_t dt_ms) {
     for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
         if (system->update != NULL) {

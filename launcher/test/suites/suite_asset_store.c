@@ -20,6 +20,7 @@
 
 #ifndef DEVICE_BUILD
 #include "hash/crc32.h"
+#include "shell/shell_system.h"
 #include "test_asset_dir.h"
 
 #include "../asset_examples/load_pack.c"
@@ -136,7 +137,6 @@ test_two_packs_with_one_name_or_a_name_with_no_room_for_its_nul_are_refused(void
 }
 
 #ifndef DEVICE_BUILD
-#define PACK_BYTES 96
 #define NOTE_TYPE  ASSET_TYPE('N', 'O', 'T', 'E')
 #define NOTE_BYTES 16
 
@@ -149,12 +149,14 @@ pack_path(char* path, size_t size, const char* name) {
 /* Writes pack `name`: one NOTE entry holding `note`. `damage` flips a byte
  * after the header, which its CRC covers. */
 static void
-write_pack(const char* name, const char* note, int damage) {
-    uint8_t* bytes = malloc(PACK_BYTES);
+write_pack(const char* name, const char* note, int damage, uint32_t payload_bytes) {
+    const uint32_t capacity =
+        ASSET_PACK_HEADER_SIZE + ASSET_PACK_ENTRY_SIZE + (uint32_t)test_pack_aligned(payload_bytes);
+    uint8_t* bytes = malloc(capacity);
     TEST_ASSERT_NOT_NULL(bytes);
-    test_pack_t pack = test_pack_begin(bytes, PACK_BYTES, 1);
-    uint8_t* text = test_pack_add(&pack, "note", NOTE_TYPE, NOTE_BYTES);
-    (void)strncpy((char*)text, note, NOTE_BYTES - 1);
+    test_pack_t pack = test_pack_begin(bytes, capacity, 1);
+    uint8_t* text = test_pack_add(&pack, "note", NOTE_TYPE, payload_bytes);
+    (void)strncpy((char*)text, note, payload_bytes - 1U);
     const uint32_t size = test_pack_finish(&pack);
     text[0] ^= (uint8_t)damage;
     char path[64];
@@ -181,14 +183,14 @@ note_of(const asset_pack_t* pack) {
 static void
 test_two_packs_mount_alone_and_a_bad_checksum_in_one_leaves_the_other_usable(void) {
     test_asset_dir_use(".");
-    write_pack("suite_pack_a", "first", 0);
-    write_pack("suite_pack_b", "second", 1);
-    const asset_pack_t* a = asset_store_pack("suite_pack_a");
-    TEST_ASSERT_NULL(asset_store_pack("suite_pack_b"));
-    TEST_ASSERT_NULL(asset_store_pack("suite_pack_missing"));
+    write_pack("suite_pack_a", "first", 0, NOTE_BYTES);
+    write_pack("suite_pack_b", "second", 1, NOTE_BYTES);
+    const asset_pack_t* a = asset_store_load("suite_pack_a");
+    TEST_ASSERT_NULL(asset_store_load("suite_pack_b"));
+    TEST_ASSERT_NULL(asset_store_load("suite_pack_missing"));
     TEST_ASSERT_EQUAL_STRING("first", note_of(a));
-    write_pack("suite_pack_b", "second", 0);
-    const asset_pack_t* b = asset_store_pack("suite_pack_b");
+    write_pack("suite_pack_b", "second", 0, NOTE_BYTES);
+    const asset_pack_t* b = asset_store_load("suite_pack_b");
     TEST_ASSERT_EQUAL_STRING("second", note_of(b));
     TEST_ASSERT_EQUAL_STRING("first", note_of(a));
     asset_store_release("suite_pack_a");
@@ -200,7 +202,7 @@ test_two_packs_mount_alone_and_a_bad_checksum_in_one_leaves_the_other_usable(voi
 static void
 test_the_load_pack_example_reads_an_entry_and_releases_the_pack(void) {
     test_asset_dir_use(".");
-    write_pack("suite_pack_a", "first", 0);
+    write_pack("suite_pack_a", "first", 0, NOTE_BYTES);
     uint32_t size = 0;
     const int mounted = asset_store_mounted();
     TEST_ASSERT_EQUAL_INT(ASSET_OK, load_pack_example("suite_pack_a", "note", NOTE_TYPE, &size));
@@ -218,14 +220,14 @@ test_the_load_pack_example_reads_an_entry_and_releases_the_pack(void) {
 static void
 test_a_pack_is_read_on_its_first_use_and_again_only_after_its_last_release(void) {
     test_asset_dir_use(".");
-    write_pack("suite_pack_a", "first", 0);
-    const asset_pack_t* a = asset_store_pack("suite_pack_a");
-    write_pack("suite_pack_a", "first", 1);
-    TEST_ASSERT_EQUAL_PTR(a, asset_store_pack("suite_pack_a"));
+    write_pack("suite_pack_a", "first", 0, NOTE_BYTES);
+    const asset_pack_t* a = asset_store_load("suite_pack_a");
+    write_pack("suite_pack_a", "first", 1, NOTE_BYTES);
+    TEST_ASSERT_EQUAL_PTR(a, asset_store_load("suite_pack_a"));
     asset_store_release("suite_pack_a");
     TEST_ASSERT_EQUAL_STRING("first", note_of(a));
     asset_store_release("suite_pack_a");
-    TEST_ASSERT_NULL(asset_store_pack("suite_pack_a"));
+    TEST_ASSERT_NULL(asset_store_load("suite_pack_a"));
     remove_pack("suite_pack_a");
 }
 
@@ -235,18 +237,18 @@ test_a_mount_past_the_store_s_slots_is_refused_until_one_is_released(void) {
     char names[ASSET_STORE_MOUNTS_MAX + 1][24];
     for (int i = 0; i <= ASSET_STORE_MOUNTS_MAX; i++) {
         (void)snprintf(names[i], sizeof names[i], "suite_pack_%d", i);
-        write_pack(names[i], names[i], 0);
+        write_pack(names[i], names[i], 0, NOTE_BYTES);
     }
     /* Packs the run keeps mounted (the engine's artwork) hold their slots. */
     const int free_slots = ASSET_STORE_MOUNTS_MAX - asset_store_mounted();
     TEST_ASSERT_GREATER_THAN_INT(0, free_slots);
     for (int i = 0; i < free_slots; i++) {
-        TEST_ASSERT_NOT_NULL(asset_store_pack(names[i]));
+        TEST_ASSERT_NOT_NULL(asset_store_load(names[i]));
     }
     TEST_ASSERT_EQUAL_INT(ASSET_STORE_MOUNTS_MAX, asset_store_mounted());
-    TEST_ASSERT_NULL(asset_store_pack(names[free_slots]));
+    TEST_ASSERT_NULL(asset_store_load(names[free_slots]));
     asset_store_release(names[0]);
-    TEST_ASSERT_EQUAL_STRING(names[free_slots], note_of(asset_store_pack(names[free_slots])));
+    TEST_ASSERT_EQUAL_STRING(names[free_slots], note_of(asset_store_load(names[free_slots])));
     for (int i = 1; i <= free_slots; i++) {
         asset_store_release(names[i]);
     }
@@ -254,6 +256,268 @@ test_a_mount_past_the_store_s_slots_is_refused_until_one_is_released(void) {
         remove_pack(names[i]);
     }
 }
+
+static int completions;
+
+static void
+loaded_done(handle_t request, pending_t state, handle_t owner) {
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, state);
+    TEST_ASSERT_NOT_NULL(asset_store_loaded(request));
+    TEST_ASSERT_TRUE(handle_is_none(owner));
+    completions++;
+}
+
+static void
+test_async_delivery_cancel_owner_and_stale_handles(void) {
+    test_asset_dir_use(".");
+    write_pack("suite_async", "async", 0, NOTE_BYTES);
+    completions = 0;
+    handle_t load = asset_store_load_async("suite_async", loaded_done, HANDLE_NONE);
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, asset_store_state(load));
+    TEST_ASSERT_EQUAL_INT(0, completions);
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(load));
+    TEST_ASSERT_EQUAL_INT(1, completions);
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(1, completions);
+    handle_t mounted = asset_store_load_async("suite_async", loaded_done, HANDLE_NONE);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(mounted));
+    TEST_ASSERT_EQUAL_INT(1, completions);
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(2, completions);
+    asset_store_release("suite_async");
+    asset_store_release("suite_async");
+    load = asset_store_load_async("suite_async", loaded_done, HANDLE_NONE);
+    asset_store_cancel(load);
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(2, completions);
+    TEST_ASSERT_NULL(asset_store_loaded(load));
+    handle_t token = pending_token_new();
+    TEST_ASSERT_TRUE(pending_owner_alive(token));
+    load = asset_store_load_async("suite_async", loaded_done, token);
+    pending_token_cancel(token);
+    TEST_ASSERT_FALSE(pending_owner_alive(token));
+    shell_systems_poll(0);
+    TEST_ASSERT_NULL(asset_store_loaded(load));
+    load = asset_store_load_async("suite_async", loaded_done, HANDLE_NONE);
+    shell_systems_app_exit();
+    shell_systems_poll(0);
+    TEST_ASSERT_NULL(asset_store_loaded(load));
+    TEST_ASSERT_EQUAL_INT(2, completions);
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(handle_make(HANDLE_OWNER_ASSET_LOAD, HANDLE_SLOT_MAX, 1)));
+    remove_pack("suite_async");
+}
+
+#define ASYNC_PAYLOAD_BYTES (2U * ASSET_STORE_STEP_BYTES)
+#define ASYNC_NAME          "suite_async_large"
+#define ASYNC_STEPS         3U
+
+static void
+test_async_known_size_takes_bounded_steps_and_shares_one_mount(void) {
+    test_asset_dir_use(".");
+    write_pack(ASYNC_NAME, "", 0, ASYNC_PAYLOAD_BYTES);
+    const int before = asset_store_mounted();
+    completions = 0;
+    handle_t first = asset_store_load_async(ASYNC_NAME, loaded_done, HANDLE_NONE);
+    handle_t second = asset_store_load_async(ASYNC_NAME, loaded_done, HANDLE_NONE);
+    for (uint32_t step = 1; step < ASYNC_STEPS; step++) {
+        shell_systems_poll(0);
+        TEST_ASSERT_EQUAL_INT(PENDING_WAIT, asset_store_state(first));
+        TEST_ASSERT_NULL(asset_store_loaded(first));
+        TEST_ASSERT_EQUAL_INT(0, completions);
+    }
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(2, completions);
+    TEST_ASSERT_EQUAL_PTR(asset_store_loaded(first), asset_store_loaded(second));
+    TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
+    asset_store_release(ASYNC_NAME);
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(first));
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(second));
+    asset_store_release(ASYNC_NAME);
+    TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
+    remove_pack(ASYNC_NAME);
+}
+
+static void
+test_cancel_frees_partial_mount_and_reuses_a_generation(void) {
+    test_asset_dir_use(".");
+    write_pack(ASYNC_NAME, "", 0, ASYNC_PAYLOAD_BYTES);
+    const int before = asset_store_mounted();
+    completions = 0;
+    handle_t old = asset_store_load_async(ASYNC_NAME, loaded_done, HANDLE_NONE);
+    shell_systems_poll(0);
+    asset_store_cancel(old);
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, asset_store_state(old));
+    handle_t load = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
+    TEST_ASSERT_FALSE(handle_equal(old, load));
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(old));
+    shell_systems_poll(0);
+    shell_systems_app_exit();
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(0, completions);
+    TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
+    TEST_ASSERT_NULL(asset_store_loaded(load));
+    TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
+    asset_store_release(ASYNC_NAME);
+    remove_pack(ASYNC_NAME);
+}
+
+static void
+test_token_cancel_silences_partial_and_already_ready_callbacks(void) {
+    test_asset_dir_use(".");
+    write_pack(ASYNC_NAME, "", 0, ASYNC_PAYLOAD_BYTES);
+    completions = 0;
+    handle_t token = pending_token_new();
+    handle_t load = asset_store_load_async(ASYNC_NAME, loaded_done, token);
+    shell_systems_poll(0);
+    pending_token_cancel(token);
+    for (uint32_t i = 0; i < ASYNC_STEPS; i++) {
+        shell_systems_poll(0);
+    }
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, asset_store_state(load));
+    TEST_ASSERT_EQUAL_INT(0, completions);
+    TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
+    load = asset_store_load_async(ASYNC_NAME, loaded_done, HANDLE_NONE);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(load));
+    asset_store_cancel(load);
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(0, completions);
+    asset_store_release(ASYNC_NAME);
+    asset_store_release(ASYNC_NAME);
+    remove_pack(ASYNC_NAME);
+}
+
+static int failed_completions;
+
+static void
+failed_done(handle_t request, pending_t state, handle_t owner) {
+    (void)owner;
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, state);
+    TEST_ASSERT_NULL(asset_store_loaded(request));
+    failed_completions++;
+}
+
+static void
+test_failure_is_pollable_once_delivered_and_oldest_is_reclaimed(void) {
+    test_asset_dir_use(".");
+    write_pack("suite_async_bad", "bad", 1, NOTE_BYTES);
+    failed_completions = 0;
+    handle_t failed = asset_store_load_async("suite_async_bad", failed_done, HANDLE_NONE);
+    TEST_ASSERT_EQUAL_INT(0, failed_completions);
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, asset_store_state(failed));
+    TEST_ASSERT_EQUAL_INT(1, failed_completions);
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(1, failed_completions);
+    TEST_ASSERT_NULL(asset_store_load("suite_async_bad"));
+    for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
+        handle_t next = asset_store_load_async("suite_async_bad", NULL, HANDLE_NONE);
+        TEST_ASSERT_FALSE(handle_is_none(next));
+        shell_systems_poll(0);
+        TEST_ASSERT_EQUAL_INT(PENDING_FAILED, asset_store_state(next));
+    }
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(failed));
+    shell_systems_app_exit();
+    remove_pack("suite_async_bad");
+}
+
+static void
+test_async_example_releases_or_cancels_its_visit(void) {
+    test_asset_dir_use(".");
+    write_pack("suite_async", "example", 0, NOTE_BYTES);
+    const int before = asset_store_mounted();
+    load_pack_example_t visit;
+    load_pack_enter(&visit, "suite_async");
+    TEST_ASSERT_NULL(load_pack_frame(&visit));
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_STRING("example", note_of(load_pack_frame(&visit)));
+    load_pack_exit(&visit);
+    TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
+    load_pack_enter(&visit, "suite_async");
+    load_pack_exit(&visit);
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
+    remove_pack("suite_async");
+}
+
+static void
+test_token_generation_wrap_retires_the_slot(void) {
+    handle_t first = pending_token_new();
+    handle_t token = first;
+    const uint32_t slot = handle_slot(first);
+    const uint32_t start = handle_generation(first);
+    for (uint32_t generation = start; generation < HANDLE_GENERATION_MAX; generation++) {
+        pending_token_cancel(token);
+        token = pending_token_new();
+        TEST_ASSERT_EQUAL_UINT32(slot, handle_slot(token));
+    }
+    pending_token_cancel(token);
+    token = pending_token_new();
+    TEST_ASSERT_NOT_EQUAL(slot, handle_slot(token));
+    TEST_ASSERT_FALSE(pending_owner_alive(first));
+    pending_token_cancel(token);
+}
+
+static handle_t callback_child;
+
+static void
+spawn_done(handle_t request, pending_t state, handle_t owner) {
+    loaded_done(request, state, owner);
+    callback_child = asset_store_load_async("suite_async", loaded_done, HANDLE_NONE);
+}
+
+static void
+test_callback_requests_wait_a_pass_and_blocking_load_never_delivers_them(void) {
+    test_asset_dir_use(".");
+    write_pack("suite_async", "callback", 0, NOTE_BYTES);
+    completions = 0;
+    handle_t first = asset_store_load_async("suite_async", spawn_done, HANDLE_NONE);
+    TEST_ASSERT_NOT_NULL(asset_store_load("suite_async"));
+    TEST_ASSERT_EQUAL_INT(0, completions);
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(1, completions);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(first));
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(callback_child));
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(2, completions);
+    asset_store_release("suite_async");
+    asset_store_release("suite_async");
+    asset_store_release("suite_async");
+    remove_pack("suite_async");
+}
+
+static void
+test_request_pool_limits_pending_work_and_cancel_returns_a_slot(void) {
+    handle_t* loads = malloc(sizeof(*loads) * ASSET_STORE_REQUESTS_MAX);
+    TEST_ASSERT_NOT_NULL(loads);
+    for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
+        loads[i] = asset_store_load_async("suite_not_opened", NULL, HANDLE_NONE);
+        TEST_ASSERT_FALSE(handle_is_none(loads[i]));
+    }
+    TEST_ASSERT_TRUE(handle_is_none(asset_store_load_async("suite_not_opened", NULL, HANDLE_NONE)));
+    const handle_t stale = loads[0];
+    asset_store_cancel(stale);
+    loads[0] = asset_store_load_async("suite_not_opened", NULL, HANDLE_NONE);
+    TEST_ASSERT_FALSE(handle_is_none(loads[0]));
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(stale));
+    for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
+        asset_store_cancel(loads[i]);
+    }
+    free(loads);
+}
+
+static void
+test_handle_fields_and_generation_retirement(void) {
+    handle_t h = handle_make(HANDLE_OWNER_TOKEN, HANDLE_SLOT_MAX, HANDLE_GENERATION_MAX);
+    TEST_ASSERT_EQUAL_UINT32(HANDLE_OWNER_TOKEN, handle_owner(h));
+    TEST_ASSERT_EQUAL_UINT32(HANDLE_SLOT_MAX, handle_slot(h));
+    TEST_ASSERT_EQUAL_UINT32(HANDLE_GENERATION_MAX, handle_generation(h));
+    TEST_ASSERT_TRUE(handle_equal(h, h));
+    TEST_ASSERT_TRUE(handle_is_none(HANDLE_NONE));
+    TEST_ASSERT_FALSE(handle_generation_next(HANDLE_GENERATION_MAX));
+    TEST_ASSERT_TRUE(handle_generation_next(HANDLE_GENERATION_MAX - 1U));
+}
+
 #endif
 
 void
@@ -263,6 +527,16 @@ suite_asset_store(void) {
     RUN_TEST(test_a_row_out_of_range_misaligned_or_overlapping_is_refused);
     RUN_TEST(test_two_packs_with_one_name_or_a_name_with_no_room_for_its_nul_are_refused);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_async_known_size_takes_bounded_steps_and_shares_one_mount);
+    RUN_TEST(test_cancel_frees_partial_mount_and_reuses_a_generation);
+    RUN_TEST(test_token_cancel_silences_partial_and_already_ready_callbacks);
+    RUN_TEST(test_failure_is_pollable_once_delivered_and_oldest_is_reclaimed);
+    RUN_TEST(test_async_example_releases_or_cancels_its_visit);
+    RUN_TEST(test_token_generation_wrap_retires_the_slot);
+    RUN_TEST(test_callback_requests_wait_a_pass_and_blocking_load_never_delivers_them);
+    RUN_TEST(test_request_pool_limits_pending_work_and_cancel_returns_a_slot);
+    RUN_TEST(test_handle_fields_and_generation_retirement);
+    RUN_TEST(test_async_delivery_cancel_owner_and_stale_handles);
     RUN_TEST(test_the_load_pack_example_reads_an_entry_and_releases_the_pack);
     RUN_TEST(test_two_packs_mount_alone_and_a_bad_checksum_in_one_leaves_the_other_usable);
     RUN_TEST(test_a_pack_is_read_on_its_first_use_and_again_only_after_its_last_release);

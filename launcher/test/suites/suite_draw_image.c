@@ -205,7 +205,7 @@ test_one_bit_rows_one_byte_past_the_entry_are_out_of_bounds(void) {
 
 static void
 test_the_boot_picture_s_pack_opens_as_one_panel(void) {
-    const asset_pack_t* pack = asset_store_pack(BOOT_PHOTO);
+    const asset_pack_t* pack = asset_store_load(BOOT_PHOTO);
     TEST_ASSERT_NOT_NULL_MESSAGE(pack, "no boot pack: see the log above");
     draw_image_t image = {0};
     asset_view_t entry;

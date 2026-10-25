@@ -35,7 +35,7 @@ ui_icon_set_load(ui_icon_set_t* set) {
         return true;
     }
     /* A missing pack is logged by the store. */
-    const asset_pack_t* pack = asset_store_pack(set->pack);
+    const asset_pack_t* pack = asset_store_load(set->pack);
     if (pack == NULL) {
         return false;
     }
