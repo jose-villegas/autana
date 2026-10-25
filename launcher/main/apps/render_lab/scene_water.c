@@ -250,7 +250,7 @@ direction_to_model(vec3f_t d) {
 /* The tank: a unit box scaled to the device's inside, its open face on the glass. */
 static bool
 place_tank(void) {
-    const scene_entity_t tank = scene_find(tank_scene, WATER_TANK);
+    const scene_entity_t tank = scene_find(tank_scene, name_hash(WATER_TANK));
     if (tank == SCENE_ENTITY_NONE) {
         return false;
     }
@@ -270,7 +270,7 @@ place_tank(void) {
  * picture is held. */
 static void
 place_camera(int quarter, vec3f_t eye) {
-    const camera_t* lens = scene_camera_lens(tank_scene, WATER_CAMERA);
+    const camera_t* lens = scene_camera_lens(tank_scene, name_hash(WATER_CAMERA));
     const float distance = 0.5F * box.x / lens->half_fov_short_tan;
     const quatf_t roll = quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, -(float)quarter * WATER_QUARTER_TURN);
     transformf_t t = scene_entity_local(tank_scene, camera_entity);
@@ -459,8 +459,8 @@ scene_water_enter(const render_lab_scene_t* self) {
                                                                                 : "water did not load");
         return;
     }
-    camera_entity = scene_find(tank_scene, WATER_CAMERA);
-    water_entity = scene_find(tank_scene, WATER_ENTITY);
+    camera_entity = scene_find(tank_scene, name_hash(WATER_CAMERA));
+    water_entity = scene_find(tank_scene, name_hash(WATER_ENTITY));
     if (camera_entity == SCENE_ENTITY_NONE || water_entity == SCENE_ENTITY_NONE || !place_tank()) {
         fail("no tank, water or camera");
         return;
@@ -478,7 +478,7 @@ scene_water_enter(const render_lab_scene_t* self) {
     rebuild_surface();
     reference_down = (vec3f_t){0}; /* set by the first reading */
     place_camera(display_quarter_now(), (vec3f_t){0});
-    (void)scene_activate(tank_scene, WATER_CAMERA);
+    (void)scene_activate(tank_scene, name_hash(WATER_CAMERA));
     render_lab_apply_raster_settings();
     (void)render_lab_apply_camera_settings(tank_scene, camera_entity);
     apply_view();

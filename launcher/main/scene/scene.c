@@ -257,7 +257,7 @@ open_lights(scene_t* scene) {
         const scene_asset_light_t* row = &scene->asset.lights[i];
         if (!scene_light_set_color(scene, row->entity, row->color)
             || !scene_light_set_intensity(scene, row->entity, row->intensity)) {
-            return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[row->entity]);
+            return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[row->entity].name);
         }
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
@@ -283,7 +283,7 @@ open_transforms(scene_t* scene) {
         /* A parent's even scale keeps every world below it exact. */
         if (!local_from_row(&scene->asset.transforms[e], &scene->locals[e])
             || (scene->world_slots[e] != SCENE_WORLD_SLOT_NONE && !transformf_scale_is_even(&scene->locals[e]))) {
-            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[e]);
+            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[e].name);
         }
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
@@ -425,13 +425,13 @@ scene_entity_count(const scene_t* scene) {
 const char*
 scene_entity_name(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
-    return scene->asset.names[entity];
+    return scene->asset.names[entity].name;
 }
 
 scene_entity_t
-scene_find(const scene_t* scene, const char* name) {
+scene_find(const scene_t* scene, name_hash_t name) {
     for (int i = 0; i < scene->asset.entity_count; i++) {
-        if (strcmp(scene->asset.names[i], name) == 0) {
+        if (scene->asset.names[i].hash == name) {
             return (scene_entity_t)i;
         }
     }
@@ -477,9 +477,9 @@ scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mes
 }
 
 int
-scene_camera_index(const scene_t* scene, const char* camera) {
+scene_camera_index(const scene_t* scene, name_hash_t camera) {
     for (int i = 0; i < scene->asset.camera_count; i++) {
-        if (camera == NULL || strcmp(scene->asset.names[scene->cameras[i].entity], camera) == 0) {
+        if (camera == SCENE_CAMERA_FIRST || scene->asset.names[scene->cameras[i].entity].hash == camera) {
             return i;
         }
     }
@@ -487,7 +487,7 @@ scene_camera_index(const scene_t* scene, const char* camera) {
 }
 
 const camera_t*
-scene_camera_lens(const scene_t* scene, const char* camera) {
+scene_camera_lens(const scene_t* scene, name_hash_t camera) {
     const int index = scene_camera_index(scene, camera);
     return index < 0 ? NULL : &scene->cameras[index].lens;
 }
