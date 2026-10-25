@@ -143,7 +143,7 @@ static void
 start_arm(arm_t arm) {
     ui_ridge_set_ambient(arm >= ARM_AMBIENT);
     if (arm == ARM_AMBIENT_PORTRAIT) {
-        ui_ridge_set_gravity((vec3f_t){(0) / RIDGE_FIXTURE_GRAVITY_SCALE, (256) / RIDGE_FIXTURE_GRAVITY_SCALE, 0}, 0);
+        ui_ridge_set_gravity((vec3f_t){0, 1, 0}, 0);
     }
     if (arm == ARM_AMBIENT_BOOT) {
         ui_ridge_restart_boot_for_test();
@@ -238,9 +238,7 @@ test_a_strip_switch_inside_a_running_dissolve_is_sent_and_ends_on_a_full_paint(v
     rig_open(&rig);
     for (int frame = 0; frame < 144; frame++) {
         const bool upright = frame / 12 % 2 == 0;
-        ui_ridge_set_gravity((vec3f_t){(upright ? -87 : -241) / RIDGE_FIXTURE_GRAVITY_SCALE,
-                                       (upright ? 241 : 87) / RIDGE_FIXTURE_GRAVITY_SCALE, 0},
-                             0);
+        ui_ridge_set_gravity(ridge_arm_gravity(upright ? -87 : -241, upright ? 241 : 87), 0);
         rig_frame(&rig, &ridge_arm_idle_input);
     }
     for (int frame = 0; frame < 60; frame++) {
@@ -268,11 +266,11 @@ test_the_gradient_catches_up_once_the_tilt_stops(void) {
         ridge_arm_drive(ARM_TILT_WOBBLE, frame, &input);
         rig_frame(&rig, &input);
     }
-    ui_ridge_set_gravity((vec3f_t){(-240) / RIDGE_FIXTURE_GRAVITY_SCALE, (88) / RIDGE_FIXTURE_GRAVITY_SCALE, 0}, 0);
+    ui_ridge_set_gravity(ridge_arm_gravity(-240, 88), 0);
     for (int frame = 0; frame < 150; frame++) {
         rig_frame(&rig, &ridge_arm_idle_input);
     }
-    ui_ridge_set_gravity((vec3f_t){(-241) / RIDGE_FIXTURE_GRAVITY_SCALE, (84) / RIDGE_FIXTURE_GRAVITY_SCALE, 0}, 0);
+    ui_ridge_set_gravity(ridge_arm_gravity(-241, 84), 0);
     for (int frame = 0; frame < 150; frame++) {
         rig_frame(&rig, &ridge_arm_idle_input);
     }

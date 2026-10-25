@@ -5,6 +5,7 @@
  */
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "suites.h"
@@ -40,6 +41,8 @@
 static gfx_color_t* reference;
 static gfx_color_t* as_boot_left_it;
 static gfx_color_t* settled;
+static int32_t* spring_reference;
+static FILE* steady_frames;
 
 static bool
 frame(bool touching, bool pressed) {
@@ -80,6 +83,13 @@ release(void) {
     memory_free(reference);
     memory_free(as_boot_left_it);
     memory_free(settled);
+    memory_free(spring_reference);
+    spring_reference = NULL;
+    input_fake_motion(NULL);
+    if (steady_frames != NULL) {
+        fclose(steady_frames);
+        steady_frames = NULL;
+    }
     reference = NULL;
     as_boot_left_it = NULL;
     settled = NULL;
@@ -134,7 +144,7 @@ test_launcher_backdrop_motion_and_rest(void) {
 
     /* Held upright in portrait from the first frame: down is the panel's +y,
      * a quarter turn from the landscape pose boot hands over in. */
-    ui_ridge_set_gravity((vec3f_t){(0) / INPUT_ACCEL_ONE_G, (INPUT_ACCEL_ONE_G) / INPUT_ACCEL_ONE_G, 0}, 0);
+    ui_ridge_set_gravity((vec3f_t){0, 1, 0}, 0);
     frame(false, false);
     frame(false, false);
     as_boot_left_it = snapshot();
@@ -235,38 +245,82 @@ test_launcher_backdrop_motion_and_rest(void) {
 #define DELIBERATE_G     (SHAKE_FULL_G * 2)
 
 static void
-test_speaker_vibration_never_plucks_but_deliberate_shake_does(void) {
-    fixture(NULL, 0);
-    ui_ridge_settle();
-    input_motion_reset();
-    input_motion_t motion = {.acceleration = {-INPUT_ACCEL_ONE_G, 0, 0}};
-    input_fake_motion(&motion);
-    input_motion_frame(0);
-    (void)input_gravity();
-    frame(false, false);
-    settled = snapshot();
-    TEST_ASSERT_NOT_NULL(settled);
-    for (int i = 1; i <= VIBRATION_FRAMES; i++) {
-        motion.acceleration.x = -INPUT_ACCEL_ONE_G + (int)((i % 2 ? -1 : 1) * VIBRATION_G * INPUT_ACCEL_ONE_G);
-        input_motion_frame((int64_t)i * FRAME_MS * MATH_US_PER_MS);
-        const vec3f_t g = input_gravity();
-        ui_ridge_set_gravity(g, input_shake());
-        TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
-        TEST_ASSERT_FALSE(frame(false, false));
-        TEST_ASSERT_EQUAL_MEMORY(settled, gfx_framebuffer(), PIXELS * sizeof *settled);
+compare_shake_runs(float acceleration_g, bool expect_difference) {
+    steady_frames = tmpfile();
+    TEST_ASSERT_NOT_NULL(steady_frames);
+    bool pixels_differ = false;
+    bool springs_differ = false;
+    for (int run = 0; run < 2; run++) {
+        ui_ridge_release_for_test();
+        gfx_reset_for_test();
+        fixture(NULL, 0);
+        ui_ridge_set_ambient(true);
+        input_motion_reset();
+        input_motion_t motion = {.acceleration = {-INPUT_ACCEL_ONE_G, 0, 0}};
+        input_fake_motion(&motion);
+        input_motion_frame(0);
+        ui_ridge_set_gravity(input_gravity(), input_shake());
+        const spring_line_t* line = ui_ridge_spring_for_test();
+        TEST_ASSERT_NOT_NULL(line);
+        const size_t spring_bytes = (size_t)line->count * sizeof *line->offset;
+        if (run == 0) {
+            reference = memory_alloc(PIXELS * sizeof *reference, MEMORY_PSRAM);
+            spring_reference = memory_alloc(spring_bytes * 2, MEMORY_PSRAM);
+            TEST_ASSERT_NOT_NULL(reference);
+            TEST_ASSERT_NOT_NULL(spring_reference);
+        }
+        rewind(steady_frames);
+        for (int i = 1; i <= VIBRATION_FRAMES; i++) {
+            motion.acceleration.x =
+                -INPUT_ACCEL_ONE_G + (run == 0 ? 0 : (int)((i % 2 ? -1 : 1) * acceleration_g * INPUT_ACCEL_ONE_G));
+            input_motion_frame((int64_t)i * FRAME_MS * MATH_US_PER_MS);
+            ui_ridge_set_gravity(input_gravity(), input_shake());
+            if (!expect_difference) {
+                TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
+            }
+            frame(false, false);
+            gfx_color_t* pixels = reference;
+            int32_t* offsets = spring_reference;
+            int32_t* velocities = offsets + line->count;
+            if (run == 0) {
+                memcpy(pixels, gfx_framebuffer(), PIXELS * sizeof *pixels);
+                memcpy(offsets, line->offset, spring_bytes);
+                memcpy(velocities, line->velocity, spring_bytes);
+                TEST_ASSERT_EQUAL_size_t(PIXELS, fwrite(pixels, sizeof *pixels, PIXELS, steady_frames));
+                TEST_ASSERT_EQUAL_size_t(2, fwrite(offsets, spring_bytes, 2, steady_frames));
+            } else {
+                TEST_ASSERT_EQUAL_size_t(PIXELS, fread(pixels, sizeof *pixels, PIXELS, steady_frames));
+                TEST_ASSERT_EQUAL_size_t(2, fread(offsets, spring_bytes, 2, steady_frames));
+            }
+            if (run != 0 && !expect_difference) {
+                TEST_ASSERT_EQUAL_MEMORY(pixels, gfx_framebuffer(), PIXELS * sizeof *pixels);
+                TEST_ASSERT_EQUAL_MEMORY(offsets, line->offset, spring_bytes);
+                TEST_ASSERT_EQUAL_MEMORY(velocities, line->velocity, spring_bytes);
+            } else if (run != 0) {
+                pixels_differ |= memcmp(pixels, gfx_framebuffer(), PIXELS * sizeof *pixels) != 0;
+                springs_differ |= memcmp(offsets, line->offset, spring_bytes) != 0
+                                  || memcmp(velocities, line->velocity, spring_bytes) != 0;
+            }
+        }
     }
-    bool plucked = false;
-    for (int i = VIBRATION_FRAMES + 1; i <= VIBRATION_FRAMES * 2; i++) {
-        motion.acceleration.x = -INPUT_ACCEL_ONE_G + (int)((i % 2 ? -1 : 1) * DELIBERATE_G * INPUT_ACCEL_ONE_G);
-        input_motion_frame((int64_t)i * FRAME_MS * MATH_US_PER_MS);
-        const vec3f_t g = input_gravity();
-        ui_ridge_set_gravity(g, input_shake());
-        plucked |= frame(false, false);
+    if (expect_difference) {
+        TEST_ASSERT_EQUAL_FLOAT(1, input_shake());
+        TEST_ASSERT_TRUE(pixels_differ);
+        TEST_ASSERT_TRUE(springs_differ);
     }
-    TEST_ASSERT_EQUAL_FLOAT(1, input_shake());
+    fclose(steady_frames);
+    steady_frames = NULL;
+    memory_free(reference);
+    reference = NULL;
+    memory_free(spring_reference);
+    spring_reference = NULL;
     input_fake_motion(NULL);
-    TEST_ASSERT_TRUE(plucked);
-    TEST_ASSERT_TRUE(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) != 0);
+}
+
+static void
+test_speaker_vibration_never_plucks_but_deliberate_shake_does(void) {
+    compare_shake_runs(VIBRATION_G, false);
+    compare_shake_runs(DELIBERATE_G, true);
 }
 
 void

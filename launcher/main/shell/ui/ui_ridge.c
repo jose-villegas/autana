@@ -107,8 +107,6 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define LEVEL_STEADY_MS     300
 #define STRUM_STEP_PX       12
 #define RIDGE_SHAKE_FULL    255
-/* Counts per g at the integer pose boundary. */
-#define RIDGE_GRAVITY_SCALE 256
 #define SHAKE_HALF_WIDTH    16
 #define POSE_LANDSCAPE      ((ridge_vector_t){-RIDGE_POSE_ONE, 0})
 #define POSE_STEP_LANDSCAPE (POSE_STEPS * 3 / 4)
@@ -1222,10 +1220,10 @@ ui_ridge_set_gravity(vec3f_t gravity, float shake) {
     if (ridge != NULL) {
         ridge->shake = shake;
         ridge->attitude.level =
-            ridge_pose_level_from_gravity(ridge->attitude.level, (int)lroundf(gravity.x * RIDGE_GRAVITY_SCALE),
-                                          (int)lroundf(gravity.y * RIDGE_GRAVITY_SCALE),
-                                          (int)lroundf(hypotf(gravity.x, gravity.y) * RIDGE_GRAVITY_SCALE),
-                                          (int)(GRAVITY_MIN_DIRECTION_STRENGTH * RIDGE_GRAVITY_SCALE));
+            ridge_pose_level_from_gravity(ridge->attitude.level, (int)lroundf(gravity.x * INPUT_ACCEL_ONE_G),
+                                          (int)lroundf(gravity.y * INPUT_ACCEL_ONE_G),
+                                          (int)lroundf(hypotf(gravity.x, gravity.y) * GRAVITY_STRENGTH_ONE),
+                                          (int)(GRAVITY_MIN_DIRECTION_STRENGTH * GRAVITY_STRENGTH_ONE));
     }
 }
 
@@ -1299,6 +1297,11 @@ ui_ridge_restart_boot_for_test(void) {
     if (ridge != NULL) {
         ridge->alive_ms = 0;
     }
+}
+
+const spring_line_t*
+ui_ridge_spring_for_test(void) {
+    return ridge != NULL ? &ridge->line : NULL;
 }
 
 void
@@ -1457,7 +1460,9 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
                                              .redraw_step = POSE_ARRIVE_STEP};
     ridge_pose_advance(&ridge->attitude, &pose_params, dt_ms, ridge->alive_ms);
     pluck_from_touch(input);
-    pluck_from_shaking();
+    if (ridge->ambient) {
+        pluck_from_shaking();
+    }
     shape_this_frame(dt_ms);
     int lo;
     int hi;

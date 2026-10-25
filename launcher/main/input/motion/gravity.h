@@ -11,6 +11,8 @@
 #include "math/linear/vec3f.h"
 #include "math/scalar/units.h"
 
+/* Integer strength at one g for consumers with fixed-point boundaries. */
+#define GRAVITY_STRENGTH_ONE              256
 /* Minimum in-plane strength (0..1) for a meaningful direction. */
 #define GRAVITY_MIN_DIRECTION_STRENGTH    0.25F
 

@@ -9,10 +9,10 @@
 
 #include "gfx/gfx.h"
 #include "input/input.h"
+#include "input/motion/gravity.h"
 #include "shell/ui/ui_ridge.h"
 
-#define RIDGE_FIXTURE_GRAVITY_SCALE 256.0F
-#define RIDGE_FIXTURE_SHAKE_FULL    255.0F
+#define RIDGE_FIXTURE_SHAKE_FULL 255.0F
 
 typedef enum {
     ARM_IDLE,
@@ -29,6 +29,11 @@ typedef enum {
 #define RIDGE_ARM_FRAME_DT_MS 16
 
 static const input_t ridge_arm_idle_input = {0};
+
+static inline vec3f_t
+ridge_arm_gravity(int x, int y) {
+    return (vec3f_t){(float)x / GRAVITY_STRENGTH_ONE, (float)y / GRAVITY_STRENGTH_ONE, 0};
+}
 
 static inline input_t
 ridge_arm_pluck_strum_input(int frame) {
@@ -47,9 +52,7 @@ ridge_arm_set_sweep_gravity(int frame) {
         {256, 0},  {192, 128},   {128, 192},   {0, 256},  {-128, 192}, {-192, 128},
     };
     const int phase = (frame / 12) % (int)(sizeof gravity / sizeof gravity[0]);
-    ui_ridge_set_gravity((vec3f_t){(gravity[phase][0]) / RIDGE_FIXTURE_GRAVITY_SCALE,
-                                   (gravity[phase][1]) / RIDGE_FIXTURE_GRAVITY_SCALE, 0},
-                         0);
+    ui_ridge_set_gravity(ridge_arm_gravity(gravity[phase][0], gravity[phase][1]), 0);
 }
 
 /* A hand tilting the board back and forth, about 15 degrees either side of
@@ -59,9 +62,7 @@ ridge_arm_set_wobble_gravity(int frame) {
     static const int gravity[][2] = {
         {-256, 0}, {-247, 66}, {-222, 128}, {-247, 66}, {-256, 0}, {-247, -66}, {-222, -128}, {-247, -66},
     };
-    ui_ridge_set_gravity((vec3f_t){(gravity[(frame / 8) % 8][0]) / RIDGE_FIXTURE_GRAVITY_SCALE,
-                                   (gravity[(frame / 8) % 8][1]) / RIDGE_FIXTURE_GRAVITY_SCALE, 0},
-                         0);
+    ui_ridge_set_gravity(ridge_arm_gravity(gravity[(frame / 8) % 8][0], gravity[(frame / 8) % 8][1]), 0);
 }
 
 static inline void
@@ -74,7 +75,6 @@ ridge_arm_drive(arm_t arm, int frame, input_t* input) {
     } else if (arm == ARM_TILT_WOBBLE) {
         ridge_arm_set_wobble_gravity(frame);
     } else if (arm == ARM_AMBIENT_SHAKE) {
-        ui_ridge_set_gravity((vec3f_t){(-256) / RIDGE_FIXTURE_GRAVITY_SCALE, (0) / RIDGE_FIXTURE_GRAVITY_SCALE, 0},
-                             (frame % 40 < 10 ? 120 : 0) / RIDGE_FIXTURE_SHAKE_FULL);
+        ui_ridge_set_gravity((vec3f_t){-1, 0, 0}, (frame % 40 < 10 ? 120 : 0) / RIDGE_FIXTURE_SHAKE_FULL);
     }
 }
