@@ -30,10 +30,10 @@ block transactionally; attachment failure preserves the scene.
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and its world matrix |
 | `cameras[]` | camera | lens, clear color, its entity id (its pose is the entity's `locals[]` slot) |
 | `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` |
-| names | entity | the scene entry's, read in the pack, looked up only by `scene_find()` |
+| names | entity | the scene entry's, read in the pack with each name's hash; looked up only by `scene_find()` |
 
 Array lengths come from the scene's `SCNE` entry
-([Scene-Files.md](Scene-Files.md#scne-v4)). SCNE v4 carries entity parents, authored lights, lighting settings, skins, animators and renderer colour-set selections.
+([Scene-Files.md](Scene-Files.md#scne-v5)). SCNE v5 carries entity name hashes, parents, authored lights, lighting settings, skins, animators and renderer colour-set selections.
 Authored lights attach at load, and `scene_light_set_*()` attaches or changes
 them at run time; only skinned renderers are lit at run time, baked renderers
 keep their pack colors. Names and immutable mesh and track views point into
@@ -47,10 +47,12 @@ on the camera's entity whose tracks bind to that entity through
 |---|---|
 | `scene_load(id, &why)` | mounts the [asset pack](../assets/Loading-Packs.md#the-store) `id` and loads its scene entry `id`, every mesh, skin, skeleton and clip it names, beside any scene already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or no pack or an entry it could not open, or an entity whose placement does not decompose, with the entry's id and the pack's status |
 | `scene_unload(scene)` | unloads it and releases its pack; its camera, if active, is deactivated; its arena memory waits for the app's rewind ([Ownership](#ownership)) |
-| `scene_find(scene, name)` | the entity with that name: look it up once, after the load, and keep it |
+| `scene_find(scene, name_hash(name))` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
-| `scene_camera_lens(scene, camera)` | a camera's lens (NULL: the first); its pose is its entity's transform |
+| `scene_renderer_set_mesh(scene, entity, mesh)` | the entity's renderer draws a mesh made at run time in place of its loaded one; call again after each rebuild, since the scene keeps a copy of the view; a mesh with no nodes draws nothing; false for an entity with no renderer or a skinned one |
+| `scene_camera_lens(scene, name_hash(camera))` | a camera's lens (`SCENE_CAMERA_FIRST`: the first); its pose is its entity's transform |
 | `scene_camera_set_present(scene, camera, present)` | sets the camera's presentation; false for a non-camera entity or invalid mode |
+| `scene_camera_set_shift(scene, camera, shift)` | sets its lens shift, an off-axis view along the camera's right and up in picture short sides ([Camera](Camera.md#lens-shift)); false for a non-camera entity or a shift that is not finite |
 | `scene_camera_set_small_fill(scene, camera, fill)` | sets its `small_fill_t` ceiling, colour gate and style; defaults are `SMALL_FILL_SMOOTH`; pass `SMALL_FILL_FAST` to opt into tuned filling; false for a non-camera entity or invalid ceiling or style ([Small fill](Mesh-Rendering.md#small-fill)) |
 | `scene_entity_local()` / `scene_entity_set_local()` | the transform component's stored `transformf_t`, in the parent's frame; a root's is its world |
 | `scene_entity_set_enabled()` | hide or show the entity with its descendants |
@@ -63,7 +65,7 @@ on the camera's entity whose tracks bind to that entity through
 | `scene_animator_clip_count()` / `_clip_name()` / `_clip_duration_ms()` | query the attached clips |
 | `scene_light_set_color()` / `_set_intensity()` | attach or update one directional light on an entity; color must be finite linear RGB in [0,1], intensity finite and nonnegative; invalid entities, a full light array or a skin without vertex colors fail without mutation |
 | `scene_light_color()` / `_intensity()` | read a light field, or zero when none is attached |
-| `scene_activate(scene, camera)` | makes that camera (NULL: the first) the one active camera |
+| `scene_activate(scene, name_hash(camera))` | makes that camera (`SCENE_CAMERA_FIRST`: the first) the one active camera |
 | `scene_deactivate()` / `scene_set_paused()` | stop drawing, or hold the scene in place for an app that draws its own full screen |
 | `render_context_set_scale()`, `render_context_set_dynamic_resolution()`, `render_context_frame()` | not the scene's: the render size, dynamic resolution and what the last frame drew belong to the render context the scene draws through ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)) |
 
@@ -130,7 +132,7 @@ Every entity has at most one parent, listed before it in the entry, so one
 forward pass meets every parent before its children. A local transform is in
 the parent's frame; a world is the parent's world times the local, an exact
 `transformf_t` (content keeps parents' scale even:
-[Scene-Files.md](Scene-Files.md#scne-v4)).
+[Scene-Files.md](Scene-Files.md#scne-v5)).
 
 | Step | When | Does |
 |---|---|---|

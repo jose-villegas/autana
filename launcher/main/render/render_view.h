@@ -37,6 +37,11 @@ typedef struct {
     viewport_t viewport;
     camera_present_t present;
     small_fill_t small_fill;
+    /* The lens shift: the optical centre's offset from the picture's middle,
+     * along the camera's right and up, in picture short sides. Zero looks
+     * straight ahead; a window onto a fixed rectangle moves the eye and shifts
+     * the lens back so the rectangle stays framed (an off-axis frustum). */
+    vec2f_t shift;
 } render_view_t;
 
 render_view_t render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_z, viewport_t viewport);
@@ -44,6 +49,9 @@ render_view_t render_view_make(const transformf_t* pose, float half_fov_short_ta
 /* The tangent of half the field of view across the picture's shorter side,
  * as render_view_make() took it. */
 float render_view_half_fov_short_tan(const render_view_t* view);
+
+/* Shifts the lens (render_view_t.shift) and recentres the picture on it. */
+void render_view_set_shift(render_view_t* view, vec2f_t shift);
 
 /* Reprojects a retained pose through this picture's shape and turn. */
 void render_view_refit(render_view_t* view, viewport_t viewport);

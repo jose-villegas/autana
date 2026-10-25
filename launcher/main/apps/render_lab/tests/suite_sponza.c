@@ -55,7 +55,7 @@ open_the_mesh(const char* id, r3d_lit_mesh_t* mesh) {
 /* The pack id of the mesh `bake`'s entity draws. */
 static const char*
 mesh_of(scene_baked_variant_t bake) {
-    const scene_entity_t entity = scene_find(sponza, sponza_bakes[bake]);
+    const scene_entity_t entity = scene_find(sponza, name_hash(sponza_bakes[bake]));
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, entity, sponza_bakes[bake]);
     return scene_entity_mesh_id(sponza, entity);
 }
@@ -274,8 +274,8 @@ test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
 static void
 select_camera(const char* name) {
     camera_name = name;
-    flythrough = scene_camera_lens(sponza, name);
-    camera_entity = scene_find(sponza, name);
+    flythrough = scene_camera_lens(sponza, name_hash(name));
+    camera_entity = scene_find(sponza, name_hash(name));
     TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, name);
     TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, scene_animator_clip_duration_ms(sponza, camera_entity, 0), name);
 }
@@ -389,7 +389,7 @@ run_sponza_suite(void) {
     sponza = loaded.scene;
     pack = loaded.pack;
     flythrough = loaded.lens;
-    camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, sponza_cameras[0]);
+    camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, name_hash(sponza_cameras[0]));
     RUN_TEST(test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path);
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_both_bakes_are_cut_into_meshlets);
