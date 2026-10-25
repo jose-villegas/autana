@@ -159,10 +159,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "tank.mesh"
 source = "launcher/demo/water/water.scene.toml"
-key = "16479a5907f85b213bbe6159dc7d1d54c6c95e6b512fac474ec2d692cbfd91e0"
+key = "46f6b951bf2e19ccf6bc93fd3c48d5d0d9db5fb266b8dfd3e51a0b70147961d4"
 sha256 = "acffca802265ae7e8731a1d79e12d1631dcbbfc11f550263e2fffcab267b7bcf"
 size = 3592
-run = 40095786754
+run = 40219388143
 host = "Linux x86_64"
 
 [[bake]]
