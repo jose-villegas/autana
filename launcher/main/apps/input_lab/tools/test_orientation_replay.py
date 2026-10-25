@@ -2,8 +2,6 @@
 import importlib.util
 from pathlib import Path
 import unittest
-import os
-import shutil
 import sys
 import tempfile
 import subprocess
@@ -22,9 +20,9 @@ class OrientationReplayTests(unittest.TestCase):
         from math_figures import build_probe
         cls.directory = tempfile.TemporaryDirectory()
         cls.addClassCleanup(cls.directory.cleanup)
-        cc = shutil.which(os.environ.get("CC", "cc"))
-        if not cc:
-            raise RuntimeError("run replay tests with a host compiler on PATH")
+        sys.path.insert(0, str(ROOT / "launcher/tools/native"))
+        from shared_library import find_compiler
+        cls.cc = cc = find_compiler("CC", ("cc", "gcc"), "C")
         cls.binary = build_probe(cc, replay.SOURCES, cls.directory.name)
 
     def test_script_turns_end_at_default_and_keep_it_by_name(self):
@@ -248,19 +246,19 @@ class OrientationReplayTests(unittest.TestCase):
             doc.write_text("<!-- generated: orientation-results -->\n<!-- /generated: orientation-results -->\n")
             before = doc.read_bytes()
             with mock.patch.object(replay, "RESULT_DOC", doc), mock.patch.object(sys, "argv", [
-                    "orientation_replay", "--results", "--check", "--cc", os.environ.get("CC", "cc")]):
+                    "orientation_replay", "--results", "--check", "--cc", self.cc]):
                 with self.assertRaises(SystemExit) as error:
                     replay.main()
             self.assertEqual(1, error.exception.code)
             self.assertEqual(before, doc.read_bytes())
 
     def test_cli_gates_and_generated_check_are_exercised(self):
-        command = [sys.executable, str(Path(replay.__file__)), "--results", "--check", "--cc", os.environ.get("CC", "cc")]
+        command = [sys.executable, str(Path(replay.__file__)), "--results", "--check", "--cc", self.cc]
         result = subprocess.run(command, text=True, capture_output=True)
         self.assertEqual(0, result.returncode, result.stderr)
         result = subprocess.run([sys.executable, str(Path(replay.__file__)), str(replay.RESULT_CAPTURE),
                                  "--initial-quarter", str(replay.default_quarter()), "--model", "accel", "--gates",
-                                 "--cc", os.environ.get("CC", "cc")], text=True, capture_output=True, check=True)
+                                 "--cc", self.cc], text=True, capture_output=True, check=True)
         self.assertIn("last gate", result.stdout)
         self.assertIn("longest hold", result.stdout)
 
