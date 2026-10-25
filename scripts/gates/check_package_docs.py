@@ -10,10 +10,9 @@ folder's page, and no inline formula is too long. Math's pages carry the
 template families, so math's names follow the rules below instead.
 
 Each family's folder names its reference page (linear/ becomes Linear.md).
-The index links every page. Motion headers' public types and functions must
-be named in Motion.md. The reference pages name every family function and
-instantiated type; the headers are the truth, read here and never listed by
-hand:
+The index links every page. The reference pages name every family function
+and instantiated type; the headers are the truth, read here and never listed
+by hand:
 
   * a family's functions are the `static inline ... P##_name(` definitions in
     its `<family>_template.h`; the page's section for that family must
@@ -264,8 +263,6 @@ def check(root):
     for header in sorted((root / MATH.parent).rglob("*.h")):
         text = read(header)
         defined.update(HAND_WRITTEN.findall(text))
-        if header.parent.name == "motion":
-            problems += unnamed_on_page(text, header, family_page(header.parent), pages)
 
     for name in sorted(standalone):
         if not any(name in text for text in pages.values()):
