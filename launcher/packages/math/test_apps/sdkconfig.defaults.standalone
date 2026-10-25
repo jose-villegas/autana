@@ -1,3 +1,6 @@
 # The standalone app uses ESP-IDF's built-in partition table.
 CONFIG_PARTITION_TABLE_CUSTOM=n
 CONFIG_PARTITION_TABLE_SINGLE_APP=y
+
+# Bench fixtures and code use internal memory only.
+CONFIG_SPIRAM=n
