@@ -24,7 +24,7 @@
 | [render_watch.c](render_watch.c) | Fails a scene whose frames keep allocating or printing. |
 | [render_watch.h](render_watch.h) | Frame watch declarations for the host renderer. |
 | [render_masks.json](render_masks.json) | Named masks for image comparisons. |
-| [code_layout.py](code_layout.py) | Reports, writes, and checks each measured function and its machine loops within an instruction-cache line. |
+| [code_layout.py](code_layout.py) | Reports, writes, and checks each measured function and its machine loops within an instruction-cache line, and lists functions whose code differs from another build. |
 | [check_avi.py](check_avi.py) | Validates AVI structure and frame metadata. |
 | [colour_maths.py](colour_maths.py) | CIELAB and RGB565 expansion, shared by the comparison tool and the r3d fit. |
 | [scenes/](scenes/) | Engine render scenes and their pinned baselines. |
@@ -54,6 +54,20 @@ preserves these headers. `--baseline PATH` selects one owner for reporting,
 checking or writing. Missing symbols and changed sizes, loop offsets or
 cache-line spans fail the check, which prints the measurement and
 re-recording instruction.
+
+## Same code
+
+`--same-code BASE` lists every function whose instructions differ from another
+build's, then those only one build has. Addresses and literal-pool places are
+masked, so code that only moved compares equal. A change meant to keep machine
+code the same names what it did change.
+
+```sh
+python launcher/tools/render/code_layout.py --same-code base/launcher.elf launcher/build
+```
+
+Release CI keeps main's ELF for 30 days. A pull request's job summary lists the
+functions that differ from its merge base.
 
 ## Meshlet size captures
 
