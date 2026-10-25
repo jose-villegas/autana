@@ -37,7 +37,11 @@ render_view_refit(render_view_t* view, viewport_t viewport) {
                                     vec3f_scale(view->screen_y, (float)before.y_right));
     const vec3f_t down =
         vec3f_add(vec3f_scale(view->screen_x, (float)before.x_down), vec3f_scale(view->screen_y, (float)before.y_down));
+    view_frame(view, right, down, render_view_half_fov_short_tan(view), viewport);
+}
+
+float
+render_view_half_fov_short_tan(const render_view_t* view) {
     const int shorter = view->viewport.width < view->viewport.height ? view->viewport.width : view->viewport.height;
-    const float half_fov_short_tan = (float)shorter / (2.0F * view->lens.fx);
-    view_frame(view, right, down, half_fov_short_tan, viewport);
+    return (float)shorter / (2.0F * view->lens.fx);
 }

@@ -104,12 +104,10 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt")
 endif()
 
-# The frame's view modes: a development tool, with nothing calling them in a
-# release build.
+# The frame's view modes, everything in render/view/: a development tool, with
+# nothing calling them in a release build.
 if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
-    foreach(view_mode raster_show raster_motion raster_meshlets)
-        list(REMOVE_ITEM app_srcs "${CMAKE_CURRENT_LIST_DIR}/render/${view_mode}.c")
-    endforeach()
+    list(FILTER app_srcs EXCLUDE REGEX "/render/view/[^/]*\.c$")
 endif()
 
 # The console listener: a release image has nobody watching the serial
@@ -233,7 +231,7 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs esp_codec_dev esp_driver_i2s math hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs esp_codec_dev esp_driver_i2s math physics hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump

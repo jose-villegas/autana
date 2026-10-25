@@ -1543,7 +1543,7 @@ is actually there.
 
 `sand_rng_next_at(s, x, y, slot)` (`sand_priv.h`) replaces
 `rng_next(&s->rng)` at every call site a split pass reaches:
-`try_scatter()`, `try_slide_impl()`, `liquid_may_move()`, and the gas
+`try_scatter()`, `try_slide()`, `liquid_may_move()`, and the gas
 decay, mobility and walk draws, while `s->rng_hashed` is armed. That is
 true during the sweep, liquid cross-flow and gas-walk phases and guards.
 
@@ -1651,14 +1651,13 @@ flowchart TB
     GRAIN -->|"static or gas"| SKIP(("nothing to do"))
     GRAIN -->|"liquid"| LIQSTEP["step_one_liquid_grain()"]
     LIQSTEP --> LIQ["move_liquid_grain()<br/><i>sand_liquid_move.h</i>"]
-    GRAIN -->|"powder, unblocked"| FALL["try_fall_or_scatter_impl()"]
-    GRAIN -->|"blocked, or shaken"| SLIDE["try_slide_impl()"]
+    GRAIN -->|"powder, unblocked"| FALL["try_fall_or_scatter()"]
+    GRAIN -->|"blocked, or shaken"| SLIDE["try_slide()"]
 
     FALL --> SCATTER["try_scatter()<br/><i>drift sideways, or lag</i>"]
     FALL -.->|"fall itself blocked"| SLIDE
 
-    SLIDE --> ORDER["pick_slide_order()<br/><i>which side goes first</i>"]
-    SLIDE --> PAIR["try_slide_pair()<br/><i>friction, then either slide</i>"]
+    SLIDE --> PAIR["try_slide_pair()<br/><i>friction, then both slides<br/>in a drawn order</i>"]
 ```
 
 The cross-flow pass, per liquid cell, three ordered early-outs, cheapest

@@ -30,9 +30,17 @@ sponza_suite_load(void) {
                asset_status_text(why.asset), why.what);
     } else {
         s.pack = asset_store_pack(SPONZA_SCENE);
-        s.lens = scene_camera_lens(s.scene, NULL);
+        s.lens = scene_camera_lens(s.scene, SCENE_CAMERA_FIRST);
     }
     return s;
+}
+
+/* The view through `camera` now, from its world pose. Not inlined, so the
+ * pose copy stays out of the deep draw chains of the tests that call it. */
+static __attribute__((noinline, unused)) render_view_t
+sponza_suite_view(const camera_t* lens, const scene_t* scene, scene_entity_t camera, viewport_t viewport) {
+    const transformf_t pose = scene_entity_world(scene, camera);
+    return camera_view(lens, &pose, viewport);
 }
 
 static inline void
