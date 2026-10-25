@@ -1,4 +1,5 @@
-#include "math/motion/orbit_motion.h"
+#include "kinematics/orbit/orbit_motion.h"
+#include "kinematics/follow/follow.h"
 #include "math/scalar/math_const.h"
 
 #include <math.h>
@@ -8,12 +9,6 @@
 static float
 clampf(float x, float lo, float hi) {
     return x < lo ? lo : (x > hi ? hi : x);
-}
-
-/* What is left of anything halving every half_life after dt. */
-static float
-halved_over(float dt, float half_life) {
-    return exp2f(-dt / half_life);
 }
 
 /* The angle from b to a, the short way round. */
@@ -45,35 +40,16 @@ orbit_motion_init(orbit_motion_t* orbit, vec3f_t target, orbit_motion_state_t ho
 /* Held steering moves the angles itself; their velocity follows its speed,
  * for the fling when it lets go. */
 static void
-follow_steering(orbit_motion_t* orbit, const orbit_motion_input_t* input, float dt) {
+steer(orbit_motion_t* orbit, const orbit_motion_input_t* input, float dt) {
     orbit->at.yaw += input->yaw_turn;
     orbit->at.pitch += input->pitch_turn;
     orbit->at.log_dist += input->zoom_turn;
     if (dt > 0.0F) {
-        const float k = 1.0F - halved_over(dt, orbit->drag_velocity_half_life_s);
+        const float k = 1.0F - follow_halved_over(dt, orbit->drag_velocity_half_life_s);
         orbit->velocity.yaw += (input->yaw_turn / dt - orbit->velocity.yaw) * k;
         orbit->velocity.pitch += (input->pitch_turn / dt - orbit->velocity.pitch) * k;
         orbit->velocity.log_dist += (input->zoom_turn / dt - orbit->velocity.log_dist) * k;
     }
-}
-
-/* Velocity halving every half-life, and the exact distance it covers in dt. */
-static void
-fling(float* x, float* v, float dt, float half_life) {
-    const float left = halved_over(dt, half_life);
-    *x += *v * half_life / MATH_LN2 * (1.0F - left);
-    *v *= left;
-}
-
-/* A critically damped spring toward 0 from offset *e at speed *v, exactly:
- * e(t) = (e + c t) exp(-w t) and v(t) = (v - w c t) exp(-w t), c = v + w e. */
-static void
-spring(float* e, float* v, float dt, float time_constant) {
-    const float w = 1.0F / time_constant;
-    const float left = expf(-w * dt);
-    const float c = *v + (w * *e);
-    *e = (*e + (c * dt)) * left;
-    *v = (*v - (w * c * dt)) * left;
 }
 
 static bool
@@ -86,9 +62,9 @@ spring_home(orbit_motion_t* orbit, float dt) {
     float yaw = turn_between(orbit->at.yaw, orbit->home.yaw);
     float pitch = orbit->at.pitch - orbit->home.pitch;
     float log_dist = orbit->at.log_dist - orbit->home.log_dist;
-    spring(&yaw, &orbit->velocity.yaw, dt, orbit->reset_time_s);
-    spring(&pitch, &orbit->velocity.pitch, dt, orbit->reset_time_s);
-    spring(&log_dist, &orbit->velocity.log_dist, dt, orbit->reset_time_s);
+    follow_spring(&yaw, &orbit->velocity.yaw, dt, orbit->reset_time_s);
+    follow_spring(&pitch, &orbit->velocity.pitch, dt, orbit->reset_time_s);
+    follow_spring(&log_dist, &orbit->velocity.log_dist, dt, orbit->reset_time_s);
     orbit->at =
         (orbit_motion_state_t){orbit->home.yaw + yaw, orbit->home.pitch + pitch, orbit->home.log_dist + log_dist};
     if (settled(yaw, orbit->velocity.yaw) && settled(pitch, orbit->velocity.pitch)
@@ -117,15 +93,15 @@ void
 orbit_motion_update(orbit_motion_t* orbit, const orbit_motion_input_t* input, float dt_s) {
     if (input->held) {
         orbit->resetting = false;
-        follow_steering(orbit, input, dt_s);
+        steer(orbit, input, dt_s);
     } else {
         orbit->resetting = orbit->resetting || input->reset;
         if (orbit->resetting) {
             spring_home(orbit, dt_s);
         } else {
-            fling(&orbit->at.yaw, &orbit->velocity.yaw, dt_s, orbit->fling_half_life_s);
-            fling(&orbit->at.pitch, &orbit->velocity.pitch, dt_s, orbit->fling_half_life_s);
-            fling(&orbit->at.log_dist, &orbit->velocity.log_dist, dt_s, orbit->fling_half_life_s);
+            follow_coast(&orbit->at.yaw, &orbit->velocity.yaw, dt_s, orbit->fling_half_life_s);
+            follow_coast(&orbit->at.pitch, &orbit->velocity.pitch, dt_s, orbit->fling_half_life_s);
+            follow_coast(&orbit->at.log_dist, &orbit->velocity.log_dist, dt_s, orbit->fling_half_life_s);
         }
     }
     hold_to_limits(orbit);
