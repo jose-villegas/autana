@@ -112,8 +112,8 @@ static __attribute__((noinline)) void
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms, r3d_lens_t* lens) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
-    const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
-                                           (viewport_t){size.width, size.height, perf_quarter->quarter});
+    const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity,
+                                                 (viewport_t){size.width, size.height, perf_quarter->quarter});
     r3d_lens_init(lens, &view, mesh->position_scale);
 }
 
@@ -317,8 +317,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_PERF_POSE_EVERY_MS) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
-                                               (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
+        const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity,
+                                                     (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
         if (moving != NULL) {
             transformf_set_position(moving,
                                     (vec3f_t){(t_ms / SPONZA_PERF_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F, 0.0F, 0.0F});

@@ -99,8 +99,8 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
     r3d_lens_t* draw_lens = &sum->lens;
     {
-        const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
-                                               (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
+        const render_view_t view =
+            sponza_suite_view(lens, scene, camera_entity, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
         r3d_lens_init(draw_lens, &view, mesh.position_scale);
     }
     r3d_lens_fit(draw_lens, raster->width, raster->height);
@@ -133,8 +133,8 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     int64_t triangles = 0;
     for (uint32_t t_ms = 0; t_ms < period && poses < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
-                                               (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
+        const render_view_t view =
+            sponza_suite_view(lens, scene, camera_entity, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(raster, &view);
         raster->present = render_lab_present();
@@ -239,8 +239,8 @@ count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const 
     const uint32_t period = scene_animator_clip_duration_ms(scene, camera_entity, 0);
     for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
-                                               raster_viewport(raster, perf_quarter->quarter));
+        const render_view_t view =
+            sponza_suite_view(lens, scene, camera_entity, raster_viewport(raster, perf_quarter->quarter));
         (void)raster_draw(raster, &view);
         raster->present = render_lab_present();
         const resolution_step_t composed = raster_compose_size(raster);
@@ -339,8 +339,8 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
             raster->height = raster_present_size(config->steps[step], render_lab_present()).height;
             for (uint32_t t_ms = 0; t_ms < period; t_ms += POSE_EVERY_MS) {
                 (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-                *view = camera_view(lens, scene_entity_transform(scene, camera_entity),
-                                    (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
+                *view = sponza_suite_view(lens, scene, camera_entity,
+                                          (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
                 const int64_t start = timing_now_us();
                 const raster_stats_t stats = raster_draw(raster, view);
                 const int64_t drawn = timing_now_us();

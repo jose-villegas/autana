@@ -99,7 +99,7 @@ Every item in this section is approved.
 
 | System | Public face today | As the rule wants it | Gap |
 |---|---|---|---|
-| scene | `scene_load(id)`, `scene_find(name)`, `scene_set_transform()`, `scene_entity_set_enabled()`, `scene_animator_*()`, `scene_renderer_set_skin()`, `scene_activate(scene, "camera name")`; packed per scene (`locals[]`, `flags[]`, `renderers[]`, `cameras[]`, `animators[]`, `skinned_renderers[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string |
+| scene | `scene_load(id)`, `scene_find(name)`, `scene_entity_set_local()`, `scene_entity_set_enabled()`, `scene_animator_*()`, `scene_renderer_set_skin()`, `scene_activate(scene, "camera name")`; packed per scene (`locals[]`, `flags[]`, `renderers[]`, `cameras[]`, `animators[]`, `skinned_renderers[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string |
 | render | apps call `raster_draw()`, `render_view_make()`, `r3d_pipeline_*` directly | no app call: a `renderer` component draws, an active `camera` entity views; render settings (resolution) are a scene-level component `[M]` | a bench app's tests drive the raster directly: they move to render's own tests |
 | anim | the animator component and `scene_animator_*()`; sampler, binding, pose and layer stay behind `scene/scene.h`; boot calls `anim_tracks_*` and samples its tracks directly | `animator` component and `scene_animator_play()` (the animation sketch's face); sampler and binding private | boot's animation is not a scene |
 | asset | apps call `asset_store_pack()`, `asset_pack_find()` | no per-frame system: a component names content by asset id `[M]`, resolved when the scene loads or the component attaches; pack format and store private | direct store calls from apps |
@@ -148,8 +148,8 @@ typedef struct { float half_fov_short_tan, near_z; uint16_t clear; } scene_camer
 typedef struct { uint8_t clip; uint16_t blend_ms; } scene_animator_t;
 
 /* calls on entities */
-const scene_transform_t* scene_entity_transform(const scene_t* scene, scene_entity_t entity);
-void scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform);
+const scene_transform_t* scene_entity_local(const scene_t* scene, scene_entity_t entity);
+void scene_entity_set_local(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform);
 bool scene_camera_activate(scene_t* scene, scene_entity_t camera);
 bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);
 
