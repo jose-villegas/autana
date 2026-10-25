@@ -141,6 +141,18 @@ scene_entity_world(const scene_t* scene, scene_entity_t entity) {
     return world;
 }
 
+bool
+scene_entity_set_world(scene_t* scene, scene_entity_t entity, const transformf_t* world) {
+    assert(entity < scene->asset.entity_count);
+    const scene_entity_t parent = parent_of(scene, entity);
+    if (parent == SCENE_ENTITY_NONE) {
+        return scene_entity_set_local(scene, entity, world);
+    }
+    const transformf_t parent_world = scene_entity_world(scene, parent);
+    const transformf_t local = transformf_relative(&parent_world, world);
+    return scene_entity_set_local(scene, entity, &local);
+}
+
 mat4f_t
 scene_entity_world_matrix(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);

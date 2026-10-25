@@ -90,6 +90,7 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 |---|---|---|
 | `P_identity()` | the no-rotation quaternion | $`(0,\ 0,\ 0,\ 1)`$ |
 | `P_from_axis_angle(axis, angle)` | rotation of `angle` about unit `axis` | $`u = \mathit{axis}\,\sin\tfrac{\mathit{angle}}{2}`$<br> $`w = \cos\tfrac{\mathit{angle}}{2}`$<br> $`(u_x,\ u_y,\ u_z,\ w)`$ |
+| `P_conjugate(q)` | the inverse of a unit rotation | $`(-x,\ -y,\ -z,\ w)`$ |
 | `P_mul(a, b)` | composition: `b` first, then `a` | $`a\,b = (a_w \vec b + b_w \vec a + \vec a \times \vec b,\ a_w b_w - \vec a \cdot \vec b)`$<br> with $`\vec a = (a_x, a_y, a_z)`$ |
 | `P_from_euler(angles)` | Z, then X, then Y; `angles` is a vec3 of radians (`f`) or turns (`x`) | $`q_y\,q_x\,q_z`$<br> with $`q_k`$ the rotation by $`\mathit{angles}_k`$ about axis $`k`$ |
 | `P_rotate(q, v)` | rotates the vec3 `v` by unit `q` | $`v + 2 q_w\,(u \times v) + 2\,u \times (u \times v)`$<br> with $`u = (q_x, q_y, q_z)`$ |
@@ -176,6 +177,8 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_view(&t)` | the camera's view matrix | $`V = R^{\mathsf T}\,T(-\mathit{position})`$ |
 | `transformf_rotate_around(&t, point, axis, angle)` | float only: turns about the line through `point` along `axis`, in the parent's frame; the position swings round `point` and the rotation turns with it | $`q = \mathrm{from\_axis\_angle}(\hat a, \mathit{angle})`$<br> $`\mathit{position} \leftarrow \mathit{point} + q\,(\mathit{position} - \mathit{point})`$<br> $`\mathit{rotation} \leftarrow \mathrm{normalize}(q\;\mathit{rotation})`$ |
 | `transformf_compose(&parent, &child)` | float only: the child placed in the parent's frame; exact unless an unevenly scaled parent holds a turned child, where the sheared result has no TRS form and the scale is per axis | $`\mathit{position} = p_t + p_q\,(p_s \odot c_t)`$<br>$`\mathit{rotation} = \mathrm{normalize}(p_q\,c_q)`$<br>$`\mathit{scale} = p_s \odot c_s`$ |
+| `transformf_relative(&parent, &world)` | float only: the inverse of `transformf_compose`, the child that placed in `parent` stands at `world`; the parent's scale must be even and nonzero | $`q = \overline{p_q}`$<br>$`\mathit{position} = q\,(w_t - p_t) / p_s`$<br>$`\mathit{rotation} = \mathrm{normalize}(q\,w_q)`$<br>$`\mathit{scale} = w_s / p_s`$ |
+| `transformf_scale_is_even(&t)` | float only: the three scales agree within `TRANSFORMF_MATRIX_TOLERANCE` of the largest | $`\max_i s_i - \min_i s_i \le \epsilon \max_i \lvert s_i \rvert`$ |
 | `transformf_from_mat(m, &t)` | float only: affine TRS decomposition, refuses singular, nonfinite, sheared or reflected matrices; orthogonality uses `TRANSFORMF_MATRIX_TOLERANCE` | $`s_i = \lVert M_{:i}\rVert`$<br>$`R_{:i} = M_{:i}/s_i`$<br>$`t = M_{:3}`$<br>Require orthogonal columns and $`\det R > 0`$, quaternion from basis<sup>[[53]](../Citations.md#53)</sup> |
 | `P_looking(position, forward, up)` | unit-scale pose looking along `forward` from `position` | $`\mathit{look\_along}(\mathit{forward}, \mathit{up})`$ |
 | `P_look_along(&t, direction, up)` | faces a nonzero `direction`; `up` must not be parallel to it | $`f = \frac{\mathit{direction}}{\lVert \mathit{direction} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |

@@ -79,9 +79,12 @@ bool scene_light_set_intensity(scene_t* scene, scene_entity_t entity, float inte
 vec3f_t scene_light_color(const scene_t* scene, scene_entity_t entity);
 float scene_light_intensity(const scene_t* scene, scene_entity_t entity);
 
-/* An entity's own transform, in its parent's frame. */
-const scene_transform_t* scene_entity_transform(const scene_t* scene, scene_entity_t entity);
-void scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform);
+/* An entity's own transform, stored, in its parent's frame; a root's is its
+ * world. An entity with children keeps an even scale (the same on every
+ * axis), so every world below it is exact: setting an uneven one is refused,
+ * false, and changes nothing. A leaf may scale unevenly. */
+const scene_transform_t* scene_entity_local(const scene_t* scene, scene_entity_t entity);
+bool scene_entity_set_local(scene_t* scene, scene_entity_t entity, const scene_transform_t* local);
 bool scene_entity_enabled(const scene_t* scene, scene_entity_t entity);
 
 /* A disabled entity's renderer is not drawn, nor its descendants'; every entity starts enabled. */
@@ -97,14 +100,14 @@ scene_entity_t scene_entity_parent(const scene_t* scene, scene_entity_t entity);
 /* True when `entity` is `ancestor` or one of its descendants. */
 bool scene_entity_is_within(const scene_t* scene, scene_entity_t entity, scene_entity_t ancestor);
 
-/* Where the entity stands in the world: its own transform placed in its
- * parents'. The usual call: a position, rotation and scale to read or copy.
- * Exact unless an unevenly scaled parent holds a turned child: that world is
- * sheared, and its scale here is an approximation. */
+/* Where the entity stands in the world, derived: its local placed in its
+ * parents'. Setting it stores the local that puts it there; refused, like
+ * scene_entity_set_local(), for an uneven scale on an entity with children. */
 transformf_t scene_entity_world(const scene_t* scene, scene_entity_t entity);
+bool scene_entity_set_world(scene_t* scene, scene_entity_t entity, const transformf_t* world);
 
-/* The same world as a matrix, its parents' matrices times its own: exact
- * under any parent, shear included, and cheaper to apply to many points. */
+/* The same world as a matrix, for applying it to many points: the form the
+ * renderer draws with. */
 mat4f_t scene_entity_world_matrix(const scene_t* scene, scene_entity_t entity);
 
 /* Makes the scene's camera `camera` (NULL: its first) the active one. False

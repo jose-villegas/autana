@@ -76,8 +76,31 @@ test_compose_under_an_unevenly_scaled_parent_keeps_the_position(void) {
         mat4f_mul_affine(transformf_compute_matrix(&parent), transformf_compute_matrix(&child)), &refused));
 }
 
+/* relative undoes compose under an evenly scaled parent, and a rotation
+ * times its conjugate is the identity. */
+static void
+test_relative_undoes_compose_under_an_even_parent(void) {
+    transformf_t parent, child;
+    compose_pair((vec3f_t){2.0F, 2.0F, 2.0F}, &parent, &child);
+    TEST_ASSERT_TRUE(transformf_scale_is_even(&parent));
+    const transformf_t world = transformf_compose(&parent, &child);
+    const transformf_t back = transformf_relative(&parent, &world);
+    const mat4f_t want = transformf_compute_matrix(&child);
+    const mat4f_t got = transformf_compute_matrix(&back);
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 4; c++) {
+            TEST_ASSERT_FLOAT_WITHIN(1e-5F, want.m[r][c], got.m[r][c]);
+        }
+    }
+    const quatf_t none = quatf_mul(parent.rotation, quatf_conjugate(parent.rotation));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6F, 1.0F, none.w);
+    transformf_set_scale(&parent, (vec3f_t){2.0F, 2.0F, 2.001F});
+    TEST_ASSERT_FALSE(transformf_scale_is_even(&parent));
+}
+
 void
 suite_transform_decompose(void) {
+    RUN_TEST(test_relative_undoes_compose_under_an_even_parent);
     RUN_TEST(test_trs_matrix_decomposition_and_refusals);
     RUN_TEST(test_compose_under_an_evenly_scaled_parent_is_the_matrix_product);
     RUN_TEST(test_compose_under_an_unevenly_scaled_parent_keeps_the_position);
