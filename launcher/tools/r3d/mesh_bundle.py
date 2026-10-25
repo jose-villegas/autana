@@ -6,7 +6,7 @@ import struct
 
 from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
-from r3d import lcol_asset, mesh_asset, scene_rows
+from r3d import lcol_asset, mesh_asset
 from r3d.lcol_asset import NAME_SUFFIX
 
 SUFFIX = ".bundle"
@@ -14,6 +14,11 @@ MANIFEST = "copies"
 MANIFEST_TYPE = b"MCOP"
 VERSION = 1
 HEADER = struct.Struct("<HHIII")
+U16_MAX = (1 << 16) - 1
+NAME = struct.Struct(f"<{NAME_BYTES}s")
+TRANSFORM_AXES = 3
+TRANSFORM = struct.Struct(f"<{TRANSFORM_AXES * (TRANSFORM_AXES + 1)}f")
+RENDERER = struct.Struct(f"<H{NAME_BYTES}s")
 METADATA = struct.Struct("<4I")
 METADATA_FIELDS = ("owner", "first", "source", "match")
 HASH_HEX_DIGITS = 8
@@ -33,11 +38,25 @@ def copy_name(owner, mesh, index):
     return name if len(name.encode("ascii")) < NAME_BYTES else f"{mesh}.{index}"
 
 
+def field(value, what):
+    raw = value.encode("ascii")
+    if not raw or b"\0" in raw or len(raw) >= NAME_BYTES:
+        raise PackError(f"{what} {value!r} must fit a NUL-padded {NAME_BYTES}-byte field")
+    return raw
+
+
+def text_at(raw, what):
+    value, nul, rest = raw.partition(b"\0")
+    if not value or not nul or any(rest):
+        raise PackError(f"{what} is not NUL terminated and padded")
+    return value.decode("ascii")
+
+
 def encode_manifest(copies):
-    if len(copies) > scene_rows.U16_MAX:
+    if len(copies) > U16_MAX:
         raise PackError("too many copies in a mesh bundle")
     strings, offsets, records = bytearray(), {}, []
-    for index, row in enumerate(copies):
+    for row in copies:
         metadata = []
         for key in METADATA_FIELDS:
             value = json.dumps(row[key], sort_keys=True) if key == "match" else row[key]
@@ -47,9 +66,9 @@ def encode_manifest(copies):
                 offsets[value] = len(strings)
                 strings.extend(value.encode("utf-8") + b"\0")
             metadata.append(offsets[value])
-        records.append(scene_rows.NAME.pack(name_hash(row["name"]), scene_rows.field(row["name"], "copy")) +
-                       scene_rows.TRANSFORM.pack(*[v for axis in row["matrix"] for v in axis], *row["position"]) +
-                       scene_rows.RENDERER.pack(index, row["colour_set"], scene_rows.field(row["mesh"], "mesh")) +
+        records.append(NAME.pack(field(row["name"], "copy")) +
+                       TRANSFORM.pack(*[v for axis in row["matrix"] for v in axis], *row["position"]) +
+                       RENDERER.pack(row["colour_set"], field(row["mesh"], "mesh")) +
                        METADATA.pack(*metadata))
     data = b"".join(records)
     result = HEADER.pack(VERSION, 0, len(copies), HEADER.size + len(data), len(strings)) + data + strings
@@ -63,27 +82,27 @@ def decode_manifest(data):
     version, reserved, count, at, size = HEADER.unpack_from(data)
     if version != VERSION:
         raise PackError("unknown mesh bundle manifest version")
-    stride = scene_rows.NAME.size + scene_rows.TRANSFORM.size + scene_rows.RENDERER.size + METADATA.size
-    if reserved or count > scene_rows.U16_MAX or at != HEADER.size + count * stride or at + size != len(data):
+    stride = NAME.size + TRANSFORM.size + RENDERER.size + METADATA.size
+    if reserved or count > U16_MAX or at != HEADER.size + count * stride or at + size != len(data):
         raise PackError("mesh bundle manifest sections are invalid")
     strings = data[at:]
     copies, names = [], set()
     for index in range(count):
         offset = HEADER.size + index * stride
-        hashed, raw = scene_rows.NAME.unpack_from(data, offset)
-        name = scene_rows.text_at(raw, "copy")
-        if hashed != name_hash(name):
-            raise PackError("mesh bundle copy row name hash does not match its name")
-        offset += scene_rows.NAME.size
-        transform = scene_rows.TRANSFORM.unpack_from(data, offset)
-        offset += scene_rows.TRANSFORM.size
-        entity, colour_set, mesh = scene_rows.RENDERER.unpack_from(data, offset)
-        offset += scene_rows.RENDERER.size
-        if entity != index or colour_set == scene_rows.COLOUR_SET_OWN or name in names or not all(map(math.isfinite, transform)):
+        (raw,) = NAME.unpack_from(data, offset)
+        name = text_at(raw, "copy")
+        offset += NAME.size
+        transform = TRANSFORM.unpack_from(data, offset)
+        offset += TRANSFORM.size
+        colour_set, mesh = RENDERER.unpack_from(data, offset)
+        offset += RENDERER.size
+        if name in names or not all(map(math.isfinite, transform)):
             raise PackError("mesh bundle copy row is invalid")
         names.add(name)
-        row = dict(name=name, mesh=scene_rows.text_at(mesh, "mesh"), colour_set=colour_set,
-                   **scene_rows.decode_transform(transform))
+        row = dict(name=name, mesh=text_at(mesh, "mesh"), colour_set=colour_set,
+                   matrix=[list(transform[i:i + TRANSFORM_AXES])
+                           for i in range(0, TRANSFORM_AXES ** 2, TRANSFORM_AXES)],
+                   position=list(transform[TRANSFORM_AXES ** 2:]))
         for key, start in zip(METADATA_FIELDS, METADATA.unpack_from(data, offset)):
             end = strings.find(b"\0", start)
             if start >= len(strings) or end < 0 or (start and strings[start - 1]):

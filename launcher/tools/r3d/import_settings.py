@@ -17,10 +17,10 @@ from anim import clip_name
 from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
 from r3d.scene_name import scene_id
-from r3d.scene_rows import COLOUR_SET_OWN
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
 from gltf.gltf_read import ASSET_SUFFIXES
 
+U16_MAX = (1 << 16) - 1
 MESHLET_TRIANGLES = 32
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
@@ -580,8 +580,8 @@ def load_renderer(component, base, where):
         indirect = False
     if not bake and (face_samples or visibility or fit or not indirect):
         raise SettingsError(f"{where} bake = true is required for shading, visibility, fit or indirect")
-    colour_set = component.get("colour_set", COLOUR_SET_OWN)
-    if "colour_set" in component and (type(colour_set) is not int or not 0 <= colour_set <= COLOUR_SET_OWN):
+    colour_set = component.get("colour_set")
+    if "colour_set" in component and (type(colour_set) is not int or not 0 <= colour_set <= U16_MAX):
         raise SettingsError(f"{where}.colour_set must fit the renderer colour-set field")
     return SimpleNamespace(settings=settings, variant=variant, bake=bake, face_samples=face_samples, visibility=visibility,
                            fit=fit, indirect=indirect, colour_set=colour_set)
