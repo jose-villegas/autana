@@ -711,7 +711,6 @@
 7	launcher/test/suites/suite_r3d_lit.c:1421	test_colour_along_the_near_cut_is_interpolated_to_the_cut
 7	launcher/test/suites/suite_r3d_lit.c:1839	test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile
 7	launcher/test/suites/suite_ridge_curve.c:71	columns_on_an_edge
-7	launcher/test/suites/suite_tilt.c:122	test_noise_is_attenuated_when_the_board_is_still
 7	launcher/tools/gen/draw_palette_gen.c:71	draw_palette_gen_build_index_map
 7	launcher/tools/gen/draw_palette_gen.c:122	try_dither_pair
 6	launcher/main/anim/anim_track.c:59	blend
@@ -1909,8 +1908,6 @@
 3	launcher/packages/math/tests/suite_spring_line.c:144	test_it_comes_to_rest_at_every_setting_and_exactly
 3	launcher/packages/math/tests/suite_spring_line.c:102	test_the_wave_spreads_one_column_a_tick_and_evenly_both_ways
 3	launcher/test/suites/suite_test_harness.c:54	allocate_every_present_then_pass
-3	launcher/test/suites/suite_tilt.c:341	test_shaking_fades_rather_than_switching_off
-3	launcher/test/suites/suite_tilt.c:315	test_shaking_registers_as_shaking
 3	launcher/test/suites/suite_ui_pointer_microui.c:78	frame
 3	launcher/test/suites/suite_ui_slider.c:70	test_a_touch_picks_the_value_whose_knob_centres_nearest_it
 3	launcher/test/suites/suite_ui_style.c:133	test_a_sunken_button_swaps_which_edges_are_lit
@@ -2258,7 +2255,6 @@
 2	launcher/test/suites/suite_ridge_motion.c:112	test_a_slope_pushes_the_wave_and_it_coasts_after
 2	launcher/packages/math/tests/suite_rng.c:87	test_below_reaches_every_value
 2	launcher/packages/math/tests/suite_spring_line.c:44	ticks_until_rest
-2	launcher/test/suites/suite_tilt.c:80	test_smoothing_is_independent_of_framerate
 2	launcher/test/suites/suite_ui.c:36	build
 2	launcher/test/suites/suite_ui_pointer_microui.c:228	edge_frame
 2	launcher/test/suites/suite_ui_pointer_microui.c:188	stacked_frame

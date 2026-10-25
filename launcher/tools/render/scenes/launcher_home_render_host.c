@@ -62,9 +62,7 @@ options(int argc, char** argv) {
     return true;
 }
 
-#define RENDER_GRAVITY_SCALE 1000.0F
-
-#define TWO_PI               6.283185307179586
+#define TWO_PI 6.283185307179586
 
 static const int DOWN[4][2] = {{0, 1}, {-1, 0}, {0, -1}, {1, 0}};
 
@@ -84,9 +82,7 @@ static void
 sweep_gravity(uint32_t elapsed_ms) {
     const double turn = 30.0 / 360.0 * TWO_PI * sin(TWO_PI * (double)elapsed_ms / 4000.0);
     const int dx = DOWN[scene_quarter & 3][0], dy = DOWN[scene_quarter & 3][1];
-    const int gx = (int)lround(RENDER_GRAVITY_SCALE * (dx * cos(turn) - dy * sin(turn)));
-    const int gy = (int)lround(RENDER_GRAVITY_SCALE * (dx * sin(turn) + dy * cos(turn)));
-    ui_ridge_set_gravity((vec3f_t){gx / RENDER_GRAVITY_SCALE, gy / RENDER_GRAVITY_SCALE, 0}, 0);
+    ui_ridge_set_gravity((vec3f_t){dx * cos(turn) - dy * sin(turn), dx * sin(turn) + dy * cos(turn), 0}, 0);
 }
 
 static void

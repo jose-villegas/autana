@@ -5,7 +5,7 @@
 #include "apps/input_lab/imu_probe.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
-#include "input/motion/input_motion.h"
+#include "input/motion/motion_reader.h"
 #include "math/scalar/units.h"
 #include "render_host.h"
 #include "ui/layout/ui_transform.h"
@@ -132,7 +132,7 @@ static const render_input_step_t touch[] = {
 static void
 draw(const render_frame_t* frame) {
     clock_frame = frame->index;
-    input_motion_frame((int64_t)frame->elapsed_ms * MATH_US_PER_MS);
+    motion_reader_frame((int64_t)frame->elapsed_ms * MATH_US_PER_MS);
     input_t in = tapped || results ? frame->input : (input_t){0};
     if (orientation) {
         in = (input_t){0};

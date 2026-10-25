@@ -7,7 +7,7 @@ scene_ui=1
 scene_sources="
 main/app/app_registry.c
 main/display/display.c
-main/input/motion/input_motion.c
+main/input/motion/motion_reader.c
 main/input/motion/gravity.c
 main/input/motion/shake.c
 main/apps/input_lab/shake_probe.c

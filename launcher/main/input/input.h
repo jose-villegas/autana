@@ -69,6 +69,6 @@ bool input_read_motion(input_motion_t* out);
  * unit while held, zero in free fall; no sensor gives (0,1,0).
  * The first gravity or shake read each frame updates both; later reads are cached. */
 vec3f_t input_gravity(void);
-/* Frame thread only. Deliberate shake, 0..1: zero below SHAKE_START_G,
- * full at SHAKE_FULL_G; no sensor gives zero. */
+/* Frame thread only. Deliberate shake, 0..1: zero below 500 mg,
+ * full at 1500 mg; zero without a sensor. */
 float input_shake(void);

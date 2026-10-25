@@ -2,7 +2,7 @@
 #include <math.h>
 #include "input/input.h"
 
-#define BALL_SPEED 0.1F /* pixels per ms at full tilt */
+#define BALL_SPEED 0.1F /* pixels per ms at full strength */
 
 typedef struct {
     float ball_x, ball_y, strength, shake;

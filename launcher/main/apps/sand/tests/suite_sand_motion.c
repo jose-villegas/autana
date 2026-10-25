@@ -31,7 +31,7 @@
 #include "input/input.h"
 #include "input/motion/gravity.h"
 #ifndef DEVICE_BUILD
-#include "input/motion/input_motion.h"
+#include "input/motion/motion_reader.h"
 #include "input_fake.h"
 #endif
 #include "math/scalar/mathi.h"
@@ -130,16 +130,16 @@ test_no_gravity_has_no_direction(void) {
 static void
 test_flat_noise_does_not_report_direction_changes(void) {
     fixture();
-    input_motion_reset();
+    motion_reader_reset();
     input_motion_t motion = {.acceleration = {0, 0, INPUT_ACCEL_ONE_G}};
     input_fake_motion(&motion);
-    input_motion_frame(0);
+    motion_reader_frame(0);
     (void)input_gravity();
     int dx = 0, dy = 0, changes = 0;
     for (unsigned frame = 1; frame <= MOTION_FRAMES; frame++) {
         const int noise = frame % 2 ? MOTION_NOISE_COUNTS : -MOTION_NOISE_COUNTS;
         motion.acceleration = (vec3i_t){noise, -noise, INPUT_ACCEL_ONE_G};
-        input_motion_frame((int64_t)frame * MOTION_FRAME_US);
+        motion_reader_frame((int64_t)frame * MOTION_FRAME_US);
         const vec3f_t g = input_gravity();
         const float strength = hypotf(g.x, g.y);
         TEST_ASSERT_TRUE(strength < GRAVITY_MIN_DIRECTION_STRENGTH);
@@ -155,10 +155,10 @@ test_flat_noise_does_not_report_direction_changes(void) {
 static void
 test_real_tilt_reports_new_octants(void) {
     fixture();
-    input_motion_reset();
+    motion_reader_reset();
     input_motion_t motion = {.acceleration = {INPUT_ACCEL_ONE_G, 0, 0}};
     input_fake_motion(&motion);
-    input_motion_frame(0);
+    motion_reader_frame(0);
     vec3f_t g = input_gravity();
     int dx = 0, dy = 0;
     TEST_ASSERT_TRUE(sand_gravity_direction_changed((int)lroundf(g.x * INPUT_ACCEL_ONE_G),
@@ -168,7 +168,7 @@ test_real_tilt_reports_new_octants(void) {
     TEST_ASSERT_EQUAL_INT(0, dy);
     motion.acceleration = (vec3i_t){0, INPUT_ACCEL_ONE_G, 0};
     for (unsigned frame = 1; frame <= MOTION_TURN_FRAMES; frame++) {
-        input_motion_frame((int64_t)frame * MOTION_FRAME_US);
+        motion_reader_frame((int64_t)frame * MOTION_FRAME_US);
         g = input_gravity();
     }
     TEST_ASSERT_TRUE(sand_gravity_direction_changed((int)lroundf(g.x * INPUT_ACCEL_ONE_G),

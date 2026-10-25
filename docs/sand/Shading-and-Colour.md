@@ -459,8 +459,8 @@ is future work.
   gravity pairs of magnitude ~1000 (e.g. `(500, 866)` for 30 degrees) as
   "the same order of magnitude," not an exact unit match.
 - Direction and flow use the shared [gravity reader](../input/Gravity.md).
-  Flow is its in-plane strength scaled to `SAND_FLOW_ONE`, which derives
-  from `GRAVITY_STRENGTH_ONE` in `input/motion/gravity.h`.
+  Flow is its in-plane strength scaled to `SAND_FLOW_ONE`
+  in `apps/sand/sand_controls.h`.
 - Jostle uses `input_shake()`, scaled by `sand_controls_jostle()` to `SAND_JOSTLE_MAX`.
 - **`gravity_quarter_turn()` (`app_sand.c`) is a separate, discrete (0-3)
   mechanism**: a plain snap-to-nearest-90-degrees, used only to turn the

@@ -1,6 +1,6 @@
 # Gravity
 
-`gravity_t` estimates unit down, linear acceleration, gyro bias, tilt strength and free fall.
+`gravity_t` estimates unit down, linear acceleration, gyro bias, in-plane strength and free fall.
 Gyro predicts motion; trusted acceleration corrects drift.
 Acceleration cannot distinguish gravity from other forces. See [axes](Motion-Axes.md) and [calibration](Motion-Calibration.md).
 
@@ -12,8 +12,21 @@ It is unit length while held and zero in free fall.
 No sensor gives gravity `(0,1,0)` and shake zero.
 
 `input_shake()` returns the [shake reader](Shake.md)'s level, 0..1.
-Call both readers only on the frame thread. The first call after `input_poll()`
-updates both from the newest sample; later calls return the cached values.
+Call both readers only on the frame thread.
+
+```mermaid
+sequenceDiagram
+    participant Shell
+    participant App
+    participant Reader as Motion reader
+    Shell->>Reader: input_poll marks a new frame
+    Shell->>App: update
+    App->>Reader: input_gravity or input_shake
+    Reader->>Reader: Step both filters from newest sample
+    Reader-->>App: Requested value
+    App->>Reader: Later reads this frame
+    Reader-->>App: Cached values
+```
 
 The step is elapsed time since the last update, capped at `GRAVITY_MAX_DT_US`.
 Apps that do not call either reader do no estimation work.
@@ -21,8 +34,6 @@ The input module retains its filters across app switches.
 FIFO batches have one queue consumer and do not feed the shared readers.
 
 `GRAVITY_MIN_DIRECTION_STRENGTH` is the minimum in-plane strength for a meaningful direction.
-A consumer that quantizes direction needs its own treatment of quantization;
-smoothing cannot restore discarded angular resolution.
 
 In development builds, `autana tune motion.log_ms 1000` logs the reader's
 smoothed shake magnitude in mg. Zero disables the log.
@@ -35,7 +46,7 @@ smoothed shake magnitude in mg. Zero disables the log.
 #include <math.h>
 #include "input/input.h"
 
-#define BALL_SPEED 0.1F /* pixels per ms at full tilt */
+#define BALL_SPEED 0.1F /* pixels per ms at full strength */
 
 typedef struct {
     float ball_x, ball_y, strength, shake;
@@ -60,7 +71,7 @@ gravity_shared_example(gravity_shared_example_t* s, uint32_t dt_ms) {
 #include "input/motion/gravity.h"
 #include "input/input.h"
 
-#define BALL_SPEED 0.1F /* pixels per ms at full tilt */
+#define BALL_SPEED 0.1F /* pixels per ms at full strength */
 
 typedef struct {
     gravity_t gravity;

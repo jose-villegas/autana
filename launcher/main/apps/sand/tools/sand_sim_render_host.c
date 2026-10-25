@@ -10,7 +10,7 @@
 
 #include "gfx/gfx.h"
 #include "input/input.h"
-#include "input/motion/input_motion.h"
+#include "input/motion/motion_reader.h"
 #include "input_fake.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
@@ -147,7 +147,7 @@ setup(int quarter) {
     terrain();
     trees();
     sand_add_emitter(&sim, VIEW_H - 1 - 11, 27, CELL_MAKE(MAT_LAVA, 15));
-    input_motion_reset();
+    motion_reader_reset();
     const char* path = getenv("SAND_ANGLE_PATH");
     angles = path != NULL ? fopen(path, "w") : NULL;
     return path == NULL || angles != NULL;
@@ -174,7 +174,7 @@ drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
     const input_motion_t motion = {.acceleration = {-sy, sx, 0},
                                    .rotation = {0, 0, (int)lround(turn_dps * INPUT_ROTATION_ONE_DPS)}};
     input_fake_motion(&motion);
-    input_motion_frame((int64_t)frame->elapsed_ms * MATH_US_PER_MS);
+    motion_reader_frame((int64_t)frame->elapsed_ms * MATH_US_PER_MS);
     const vec3f_t g = input_gravity();
     *gx = (int)lroundf(g.x * SIM_GRAVITY_ONE);
     *gy = (int)lroundf(g.y * SIM_GRAVITY_ONE);
