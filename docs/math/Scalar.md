@@ -67,9 +67,10 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 `mathx_rsqrt_q30(m)` accepts $`2^{30} \le m < 2^{32}`$ and returns
 $`2^{30}/\sqrt{m/2^{32}}`$ rounded to nearest.
 `MATHX_RSQRT_Q30_RELATIVE_LIMIT` bounds relative error by $`2^{-31}`$.
-The seed table, Newton corrections and midpoint bracket use integer products.
+On Xtensa with `CONFIG_MATH_FPU_RECIP`, an FPU seed and one integer Newton correction replace the seed table and three corrections.
+The midpoint bracket makes both paths return the same bits. The FPU path pins its task to a core and is not ISR-safe.
 
-The exhaustive checker runs separately from unit tests:
+The exhaustive checker runs in host CI, separately from unit tests. It also proves that one correction from any seed within `MATHX_RSQRT_FPU_SEED_RELATIVE_LIMIT` gives the table result:
 
 ```sh
 cc -O3 -Ilauncher/packages/math/include launcher/test/math_rsqrt_check.c -lm -o /tmp/math_rsqrt_check
