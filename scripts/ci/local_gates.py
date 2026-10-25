@@ -6,6 +6,7 @@ commands; OUT_OF_SCOPE owns the exclusions. Host-wide changes are reported
 with their exact commands so the developer can prepare the machine.
 """
 import argparse
+from functools import partial
 import json
 import os
 from pathlib import Path
@@ -18,11 +19,11 @@ import tempfile
 import yaml
 
 from job_inputs import affected_changes, changes_from_name_status, git
+from github_api import call
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'device'))
 from device import git_bash
 
-BUILD = re.compile(r'^\.\./tools/autana build (rel|dev|diag) --project \.\.$')
 EXPRESSION = re.compile(r'\$\{\{\s*(.*?)\s*\}\}')
 HOSTED = re.compile(r'^(ubuntu|windows|macos)-(latest|[\d.]+)(-.*)?$')
 HOST_CHANGE = re.compile(
@@ -159,30 +160,52 @@ def expand(text, ctx):
     return EXPRESSION.sub(replacement, str(text))
 
 
-def kind(command):
-    if HOST_CHANGE.search(command):
-        return 'skip'
-    if CHECKOUT_INSTALL.search(command):
-        return 'setup'
-    return 'gate'
+def shell_segments(command):
+    quote = ''
+    depth = 0
+    escaped = False
+    start = 0
+    index = 0
+    while index < len(command):
+        char = command[index]
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            if char == quote:
+                quote = ''
+        elif char in "\"'":
+            quote = char
+        elif char in '({':
+            depth += 1
+        elif char in ')}':
+            depth -= 1
+        elif depth == 0 and (char == '\n' or command[index:index + 2] == '&&'):
+            separator = '\n' if char == '\n' else '&&'
+            yield command[start:index], separator
+            index += len(separator)
+            start = index
+            continue
+        index += 1
+    yield command[start:], ''
 
 
 def split_run(command):
-    """Keep workflow shell state while omitting top-level host-wide changes."""
+    """Keep shell state while omitting top-level host-wide changes."""
     dropped = []
-    lines = []
-    for line in command.splitlines(keepends=True):
-        if line == line.lstrip() and HOST_CHANGE.search(line):
-            dropped.append(line.strip())
-            lines.append(':' + ('\n' if line.endswith('\n') else ''))
-        else:
-            lines.append(line)
-    script = ''.join(lines)
-    remaining = [line.strip() for line in script.splitlines()
-                 if line.strip() not in ('', ':')]
+    parts = []
+    remaining = []
+    for part, separator in shell_segments(command):
+        if HOST_CHANGE.search(part):
+            dropped.append(part.strip())
+            part = part[:len(part) - len(part.lstrip())] + ':' + part[len(part.rstrip()):]
+        elif part.strip() not in ('', ':'):
+            remaining.append(part.strip())
+        parts.append(part + separator)
     classification = ('skip' if not remaining else 'setup' if all(
         CHECKOUT_INSTALL.search(part) for part in remaining) else 'gate')
-    return script, dropped, classification
+    return ''.join(parts), dropped, classification
 
 
 def submodules(root, recursive):
@@ -205,75 +228,87 @@ def submodules(root, recursive):
 
 
 
+def bind_condition(text, ctx):
+    text = str(text).strip().removeprefix('${{').removesuffix('}}').strip()
+    return re.sub(r"'[^']*'|\"[^\"]*\"|\binputs\.[\w-]+",
+                  lambda match: repr(str(ctx[match[0]])) if match[0] in ctx else match[0], text)
+
+
+def composite_steps(items, root, ctx=None, parents=()):
+    ctx = ctx or {}
+    for step in items:
+        step = dict(step)
+        action = step.get('uses', '')
+        if action.startswith('./.github/actions/'):
+            if action in parents:
+                raise ValueError('recursive composite action: ' + action)
+            folder = root / action
+            definition = next(folder.glob('action.y*ml'))
+            data = yaml.safe_load(definition.read_text(encoding='utf-8'))
+            inputs = {name: value.get('default', '') for name, value in data.get('inputs', {}).items()}
+            inputs.update(step.get('with', {}))
+            nested = {**ctx, **{'inputs.' + name: expand(value, ctx) for name, value in inputs.items()}}
+            children = composite_steps(data['runs']['steps'], root, nested, (*parents, action))
+            for child in children:
+                parent_condition = bind_condition(step.get('if', ''), ctx)
+                child_condition = child.get('if', '').strip().removeprefix('${{').removesuffix('}}').strip()
+                child['if'] = ' && '.join(f'({value})' for value in (parent_condition, child_condition) if value)
+                child['env'] = {**{key: expand(value, ctx) for key, value in step.get('env', {}).items()},
+                                **child.get('env', {})}
+                yield child
+        else:
+            for key in ('run', 'if', 'working-directory'):
+                if key in step:
+                    step[key] = bind_condition(step[key], ctx) if key == 'if' else expand(step[key], ctx)
+            for key in ('env', 'with'):
+                if key in step:
+                    step[key] = {name: expand(value, ctx) for name, value in step[key].items()}
+            yield step
+
+
 def steps(job, root=None):
     default = {**job['workflow'].get('defaults', {}).get('run', {}),
                **job.get('defaults', {}).get('run', {})}
-    prerequisite_tiers = set()
-    for step in job.get('steps', []):
-        action = step.get('uses', '').split('@')[0]
-        if action.endswith('/idf-build'):
-            match = BUILD.fullmatch(step.get('with', {}).get('command', '').split(' && ')[0].strip())
-            if match:
-                prerequisite_tiers.add(match[1])
-        if action.endswith('/patched-qemu'):
-            prerequisite_tiers.add('qemu')
-    tier = next(iter(prerequisite_tiers)) if len(prerequisite_tiers) == 1 else 'host'
-    for index, step in enumerate(job.get('steps', [])):
+    expanded = list(composite_steps(job.get('steps', []), root,
+                                   {'github.job': job['key'].split(':', 1)[1]}))
+    commands = '\n'.join(step.get('run', '') + str(step.get('env', {})) for step in expanded)
+    tiers = set(re.findall(r'\bautana build (rel|dev|diag)\b', commands))
+    if 'patched_qemu.py' in commands:
+        tiers = {'qemu'}
+    tier = ','.join(value for value in TIERS if value in tiers) or 'host'
+    for index, step in enumerate(expanded):
         label = step.get('name', step.get('id', step.get('uses', step.get('run', '').split('\n')[0])))
         row = dict(kind='gate', tier=tier, job=job['key'], label=label, dir=step.get(
             'working-directory', default.get('working-directory', '.')), command='', reason='',
             env={**job.get('env', {}), **step.get('env', {})},
             condition=step.get('if', ''), job_condition=job.get('if', ''),
             id=step.get('id', ''), index=index,
-            shell=step.get('shell', default.get('shell', 'bash')), dropped=[],
-            idf='container' in job, build=False)
+            shell=step.get('shell', default.get('shell', '')), dropped=[],
+            idf='container' in job)
         excluded = next((reason for reason, predicate in OUT_OF_SCOPE if predicate(step)), None)
         if excluded:
             yield dict(row, kind='skip', reason=excluded)
             continue
         action = step.get('uses', '').split('@')[0]
-        commands = []
         if 'run' in step:
-            row['tier'] = 'host'
             script, dropped, classification = split_run(step['run'])
+            for name, value in row['env'].items():
+                cleaned, installs, _ = split_run(str(value))
+                row['env'][name] = cleaned
+                dropped.extend(installs)
             yield dict(row, command=script, dropped=dropped, kind=classification,
                        reason='host-wide change' if classification == 'skip' else '')
-            continue
         elif action == 'actions/checkout':
             checkout = step.get('with', {})
+            commands = []
             if checkout.get('submodules'):
                 commands.append(submodules(root, checkout['submodules']))
             if checkout.get('lfs'):
                 commands.append('git lfs pull')
-        elif action in ('./.github/actions/idf-build', './.github/actions/patched-qemu'):
-            row['dir'] = 'launcher'
-            row['idf'] = True
-            commands = step.get('with', {}).get('command', '').split(' && ')
-            if action.endswith('/idf-build'):
-                match = BUILD.fullmatch(commands.pop(0).strip())
-                if not match:
-                    yield dict(row, kind='warn', reason='unmapped idf-build command')
-                    continue
-                row['tier'] = match[1]
-                flag = '' if match[1] == 'rel' else ' --' + match[1]
-                yield dict(row, command='bash tools/build/build.sh' + flag, idf=False, build=True)
-            else:
-                row['tier'] = 'qemu'
-                yield dict(row, kind='gate', command='python3 test/qemu/patched_qemu.py path')
-        elif action.startswith('actions/') or action in (
-                './.github/actions/host-tools', './.github/actions/job-inputs'):
-            continue
-        else:
+            for command in commands:
+                yield dict(row, kind='setup', command=command)
+        elif not action.startswith('actions/'):
             yield dict(row, kind='warn', reason='unknown uses: ' + action)
-            continue
-        for command in commands:
-            command = command.strip()
-            if command.startswith('cd ') and len(shlex.split(command)) == 2:
-                row['dir'] = os.path.normpath(str(Path(row['dir']) / shlex.split(command)[1])).replace('\\', '/')
-                continue
-            classification = kind(command)
-            yield dict(row, kind=classification, command=command,
-                       reason='host-wide change' if classification == 'skip' else '')
 
 
 def context(root, base):
@@ -284,6 +319,11 @@ def context(root, base):
             return os.fsdecode(git(root, *args)).strip()
         except subprocess.CalledProcessError:
             return ''
+    if (root / '.git').exists():
+        reference = revision('rev-parse', '--symbolic-full-name', base)
+        if not reference.startswith('refs/remotes/'):
+            raise ValueError('--base takes a branch such as origin/main')
+        base = reference.removeprefix('refs/remotes/').split('/', 1)[1]
     return {'github.base_ref': base.removeprefix('origin/'),
             'github.head_ref': revision('branch', '--show-current'),
             'github.sha': revision('rev-parse', 'HEAD'), 'github.event_name': 'pull_request',
@@ -293,7 +333,7 @@ def context(root, base):
 
 
 def rows(root, ctx=None):
-    ctx = ctx or context(root, 'main')
+    ctx = ctx or context(root, 'origin/main')
     for job in pr_jobs(root):
         excluded = next((reason for reason, predicate in OUT_OF_SCOPE if predicate(job)), None)
         if excluded:
@@ -301,7 +341,7 @@ def rows(root, ctx=None):
                        dir='.', command='', reason=excluded)
             continue
         validation = dict(ctx)
-        for step in job.get('steps', []):
+        for step in composite_steps(job.get('steps', []), root):
             if step.get('id'):
                 validation[f'steps.{step["id"]}.outcome'] = 'success'
         try:
@@ -338,20 +378,22 @@ def affected_jobs(root, base):
     if not token:
         try:
             token = subprocess.check_output(['gh', 'auth', 'token'], text=True,
-                stderr=subprocess.DEVNULL, timeout=PROCESS_TIMEOUT_SECONDS).strip()
+                stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=PROCESS_TIMEOUT_SECONDS).strip()
         except (OSError, subprocess.SubprocessError):
             token = ''
     if not token:
         return {job['key']: 'running: no GitHub token for input manifests'
                 for job in pr_jobs(root)}
-    os.environ['GH_TOKEN'] = token
     try:
         origin = os.fsdecode(git(root, 'remote', 'get-url', 'origin')).strip()
         repository = re.search(r'github.com[:/](.+?)(?:\.git)?$', origin)
         if not repository:
             raise ValueError('origin is not a GitHub repository')
-        os.environ['GITHUB_REPOSITORY'] = repository[1]
-        changes = changes_from_name_status(os.fsdecode(git(root, 'diff', '--name-status', '-z', '-M', f'{base}...HEAD')))
+        request = partial(call, token=token, repository=repository[1])
+        merge_base = os.fsdecode(git(root, 'merge-base', base, 'HEAD')).strip()
+        changes = changes_from_name_status(os.fsdecode(git(root, 'diff', '--name-status', '-z', '-M', merge_base)))
+        changes.extend({'filename': name, 'status': 'added'} for name in
+                       os.fsdecode(git(root, 'ls-files', '-o', '--exclude-standard', '-z')).split('\0') if name)
         base_files = os.fsdecode(git(root, 'ls-tree', '-r', '--name-only', '-z', base)).split('\0')
         decisions = {}
         for workflow in workflows(root):
@@ -368,7 +410,7 @@ def affected_jobs(root, base):
                         else 'running: ' + reason)
 
                 affected_changes(workflow['stem'], sorted(jobs), changes,
-                                 base.removeprefix('origin/'), base_files, reporter=decision)
+                                 context(root, base)['github.base_ref'], base_files, reporter=decision, request=request)
         return decisions
     except Exception as error:
         return {job['key']: f'running: input manifests unavailable ({error})'
@@ -376,29 +418,26 @@ def affected_jobs(root, base):
 
 
 def shell_command(row, command, root, script=None):
-    shell = shlex.split(row.get('shell', 'bash'))
-    if row.get('idf'):
-        tools = (root / 'launcher/tools/build').as_posix()
-        launcher = (root / 'launcher').as_posix()
-        inner = 'python() { "$IDF_PYTHON" "$@"; }; ' + command
-        command = (f'. {shlex.quote(tools + "/idf.sh")}\n'
-                   f'idf_init {shlex.quote(launcher)} {shlex.quote(tools)} || exit $?\n'
-                   'if [ -n "${MSYSTEM:-}" ]; then IDF_PYTHON=$(cygpath -u "$IDF_PYTHON"); fi\n'
-                   'export IDF_PYTHON\n'
-                   f'idf_in "$PWD" bash -eo pipefail -c {shlex.quote(inner)}')
-    default_bash = shell == ['bash']
+    template = row.get('shell', '') or 'bash -e {0}'
+    template = {'bash': 'bash --noprofile --norc -eo pipefail {0}',
+                'sh': 'sh -e {0}'}.get(template, template)
+    shell = shlex.split(template)
     if shell[0] == 'bash':
         shell[0] = git_bash()
-    if '{0}' in row.get('shell', ''):
-        script.write_text(command, encoding='utf-8')
-        return [part.replace('{0}', script.as_posix()) for part in shell]
-    return shell + ['-eo', 'pipefail', '-c', command] if default_bash else shell + ['-c', command]
+    if row.get('idf'):
+        entrypoint = shlex.quote((root / 'scripts/ci/in_idf_image.sh').as_posix())
+        inner = script.with_suffix('.idf.sh')
+        inner.write_text(command, encoding='utf-8', newline='\n')
+        invocation = shlex.join(part.replace('{0}', inner.as_posix()) for part in shell)
+        command = f'sh {entrypoint} {shlex.quote(row["dir"])} {shlex.quote(invocation)}'
+    script.write_text(command, encoding='utf-8', newline='\n')
+    return [part.replace('{0}', script.as_posix()) for part in shell]
 
 
-def run(root, out, base='origin/main', tiers=('host',), reuse_build=False):
+def run(root, out, base='origin/main', tiers=('host',)):
     out.mkdir(parents=True, exist_ok=True)
-    decisions = affected_jobs(root, base)
     ctx = context(root, base)
+    decisions = affected_jobs(root, base)
     counts = dict(ok=0, failed=0, skipped=0, not_run=0)
 
     def verdict(status, detail):
@@ -431,7 +470,7 @@ def run(root, out, base='origin/main', tiers=('host',), reuse_build=False):
         if row['kind'] == 'warn':
             verdict('failed', f'FAIL {prefix}: {row["reason"]}' + suffix)
             continue
-        if tier not in selected:
+        if not set(tier.split(',')) <= selected:
             verdict('not_run', f'NOT RUN {tier}: {prefix}' + suffix)
             outcomes[dependency] = 'skipped'
             continue
@@ -441,9 +480,6 @@ def run(root, out, base='origin/main', tiers=('host',), reuse_build=False):
             continue
         if row['kind'] == 'skip':
             verdict('skipped', f'skip {row["reason"]}: {prefix}' + suffix)
-            continue
-        if reuse_build and row['build']:
-            verdict('skipped', f'skip existing build: {prefix}' + suffix)
             continue
         if key not in job_state:
             temporary = Path(tempfile.mkdtemp(prefix=key.replace(':', '-') + '-', dir=out))
@@ -475,17 +511,22 @@ def run(root, out, base='origin/main', tiers=('host',), reuse_build=False):
         if EXPRESSION.search(command + str(step_env)):
             verdict('failed', f'FAIL {prefix}: unresolved expression' + suffix)
             continue
+        path_file = Path(env['RUNNER_TEMP']) / f'path-{number}'
+        step_env['GITHUB_PATH'] = path_file.as_posix()
         output = Path(env['RUNNER_TEMP']) / f'output-{number}'
         step_env['GITHUB_OUTPUT'] = output.as_posix()
         try:
             with log.open('w', encoding='utf-8') as capture:
                 result = subprocess.run(shell_command(row, command, root,
                     Path(env['RUNNER_TEMP']) / f'step-{number}.sh'), cwd=root / row['dir'],
-                                        env=step_env, stdout=capture, stderr=subprocess.STDOUT)
+                                        env=step_env, stdin=subprocess.DEVNULL, stdout=capture, stderr=subprocess.STDOUT)
             passed = result.returncode == 0
         except OSError as error:
             log.write_text(str(error), encoding='utf-8')
             passed = False
+        if path_file.exists():
+            additions = path_file.read_text(encoding='utf-8', errors='replace').splitlines()
+            env['PATH'] = os.pathsep.join([*reversed(additions), env.get('PATH', '')])
         if not passed and re.search(r'No module named|command not found|not recognized',
                                     log.read_text(encoding='utf-8', errors='replace')):
             hints = [f'{install_label}: {install}'
@@ -519,14 +560,19 @@ def main(argv=None):
     parser.add_argument('--base', default='origin/main')
     parser.add_argument('--out', type=Path)
     parser.add_argument('--tier', default='host', help='comma-separated tiers: ' + ','.join(TIERS))
-    parser.add_argument('--reuse-build', action='store_true', help='reuse existing firmware builds')
     parser.epilog = 'list columns: kind | tier | workflow:job | label | directory | command or reason'
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    try:
+        ctx = context(root, args.base)
+    except ValueError as error:
+        parser.error(str(error))
     if args.action == 'list':
-        for row in rows(root, context(root, args.base)):
+        for row in rows(root, ctx):
             print(' | '.join((row['kind'], row['tier'], row['job'], row['label'],
                               row['dir'], row['reason'] or row['command'].replace('\n', r'\n'))) +
+                  (' | env: ' + ' '.join(f'{key}={shlex.quote(str(value))}' for key, value in row.get('env', {}).items()
+                    if 'TOKEN' not in key) if row.get('env') else '') +
                   (' | dropped: ' + '; '.join(row['dropped']) if row.get('dropped') else ''),
                   flush=True)
         return 0
@@ -535,7 +581,7 @@ def main(argv=None):
     tiers = args.tier.split(',')
     if set(tiers) - set(TIERS):
         parser.error('unknown tier')
-    return run(root, args.out.resolve(), args.base, tiers, args.reuse_build)
+    return run(root, args.out.resolve(), args.base, tiers)
 
 
 if __name__ == '__main__':

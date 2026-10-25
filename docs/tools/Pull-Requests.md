@@ -40,17 +40,18 @@ python scripts/ci/local_gates.py run --out build/local-gates --tier rel,dev,diag
 | `rel`, `dev`, `diag` | Selected with `--tier`; builds the variant before its gates |
 | `qemu` | Selected with `--tier qemu`; needs the patched emulator |
 
-Use `--reuse-build` to check existing firmware builds. Unselected tiers print
-`NOT RUN`; they never count as passing. Linux and Windows Git Bash run steps
-through their workflow shell. ESP-IDF gates need the pinned local toolchain.
+Builds run incrementally. Unselected tiers print `NOT RUN` and never count as
+passing. Steps use their workflow shell. ESP-IDF gates need the pinned local
+toolchain.
 
 The exclusion reasons live in `OUT_OF_SCOPE` in
 [`local_gates.py`](../../scripts/ci/local_gates.py). Host-wide installs are
 printed and skipped; checkout-local dependency installs run.
 
-With `GH_TOKEN`, or a token from `gh auth token`, the runner compares the local
-base-to-HEAD changes with CI's recorded input manifests. Unaffected jobs skip.
-Missing credentials, network access or manifests run the jobs and print why.
+With `GH_TOKEN` or `gh auth token`, CI's input manifests select affected jobs.
+Changes include the working tree and untracked files from the merge-base.
+`--base` takes a remote branch such as `origin/main`. Missing manifests or
+credentials run the jobs and print why.
 
 A failing gate or an unmapped workflow step returns failure. If a command or
 Python module is missing, the runner prints skipped install commands from
