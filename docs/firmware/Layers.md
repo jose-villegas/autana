@@ -142,11 +142,11 @@ It declares them on one line of its own `CMakeLists.txt`, which both builds read
 
 ```cmake
 set(physics_requires math)
-idf_component_register(SRCS ${physics_srcs} INCLUDE_DIRS "include" REQUIRES ${physics_requires})
-target_link_libraries(physics PUBLIC ${physics_requires})   # the plain CMake build
+include("${CMAKE_CURRENT_LIST_DIR}/../testkit/cmake/Package.cmake")
+package_add()   # REQUIRES for ESP-IDF, target_link_libraries for plain CMake
 ```
 
-A header-only package is an `INTERFACE` library, so it links with `INTERFACE` in place of `PUBLIC`.
+A package with no `src/*.c` is header-only: an `INTERFACE` library.
 The declaration is one unindented line of bare names; PACKAGE-REQUIRES refuses any other spelling.
 
 | Rule | Checks |
