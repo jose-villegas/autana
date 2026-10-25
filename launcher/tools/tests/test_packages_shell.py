@@ -258,18 +258,20 @@ __attribute__((constructor)) static void drops(void) {
     }
 }
 ''', encoding="utf-8")
-        cls.runner = work / ("runner.exe" if os.name == "nt" else "runner")
         testkit = ROOT / "launcher/packages/testkit"
-        compiler = shutil.which("gcc") or shutil.which("cc") or shutil.which("clang")
-        result = subprocess.run([
-            compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
-            "-I", str(testkit / "include"), "-I", str(testkit / "unity"),
-            str(testkit / "runner/host_main.c"), str(testkit / "harness/registry.c"),
-            str(testkit / "harness/cleanup.c"), str(testkit / "unity/unity.c"),
-            str(fixture), "-o", str(cls.runner),
-        ], capture_output=True, text=True, timeout=120)
-        if result.returncode:
-            raise RuntimeError(result.stdout + result.stderr)
+        (work / "CMakeLists.txt").write_text(f'''cmake_minimum_required(VERSION 3.21)
+project(standalone_runner C)
+add_subdirectory("{testkit.as_posix()}" testkit)
+add_executable(runner suite.c)
+target_link_libraries(runner PRIVATE testkit_runner)
+''', encoding="utf-8")
+        build = work / "build"
+        cls.runner = build / ("runner.exe" if os.name == "nt" else "runner")
+        for command in (["cmake", "-S", str(work), "-B", str(build), "-G", "Unix Makefiles"],
+                        ["cmake", "--build", str(build), "--target", "runner"]):
+            result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+            if result.returncode:
+                raise RuntimeError(result.stdout + result.stderr)
 
     def run_runner(self, *args, drops=False):
         env = os.environ.copy()
@@ -284,6 +286,12 @@ __attribute__((constructor)) static void drops(void) {
             with self.subTest(args=args):
                 result = self.run_runner(*args)
                 self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_on_request_runs_all_on_request_suites(self):
+        result = self.run_runner("--on-request")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn(f"{self.WRAP_COUNT} Tests {self.WRAP_COUNT} Failures", result.stdout)
+        self.assertNotIn("Unknown suite", result.stderr)
 
     def test_full_exit_status_range_of_failures_returns_failure(self):
         result = self.run_runner("failures")
