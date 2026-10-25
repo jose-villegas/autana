@@ -88,7 +88,7 @@ from `math/linear/`, documented in [linear maths](../math/Linear.md) and
 
 | Owner | What it holds |
 |---|---|
-| `math/linear/projectf.h` | The pinhole lens value, continuous float projection and float near clipping |
+| `math/projection/projectf.h` | The pinhole lens value, continuous float projection and float near clipping |
 | `projectx_t` | A Q16.16 lens; fixed near clipping accepts any common camera-space scale |
 | `render_view_t.lens` | The view's square-pixel pinhole |
 | `mat4f_t` | The raster's lens and motion maps: composed with `mat4f_mul_affine()`, inverted with `mat4f_invert_affine()`, applied to each vertex with `mat4f_apply()` |
