@@ -146,7 +146,7 @@ The shell's modules for vendor code:
 
 | Need | Module |
 |---|---|
-| input | `input/input_shell.h`: `input_start`, `input_poll`, `input_read_gravity` |
+| input | `input/input_shell.h`: `input_start`, `input_poll`, `input_read_acceleration` |
 | display | `display/display_shell.h`: `display_start`, `display_sample_orientation`; `display/display.h`: the system panel clock |
 | time, memory | `core/timing.h`, `core/memory.h` |
 | settings | `services/settings.h` |

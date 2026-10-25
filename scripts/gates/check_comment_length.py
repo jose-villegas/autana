@@ -182,6 +182,7 @@ def main(argv):
         return verify_comments_only(comments_only_ref, paths)
 
     if selected is not None:
+        selected = [relative_to_root(p) for p in selected]
         paths = [p for p in selected if p.endswith((".c", ".h", ".cpp", ".hpp"))
                  and not p.startswith(excluded()) and pathlib.Path(p).is_file()]
     elif explicit:

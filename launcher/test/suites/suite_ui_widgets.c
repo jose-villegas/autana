@@ -8,9 +8,9 @@
 #include <string.h>
 
 #include "hash/name_hash64.h"
-#include "perf_stats.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/bench.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "apps/sand/sand_mode_swatches.h"
@@ -1511,7 +1511,7 @@ report_band_case(const char* name, band_samples_t* samples) {
     for (int frame = 0; frame < MENU_FRAMES; frame++) {
         total_fallbacks += samples->fallbacks[frame];
     }
-    const perf_stats_t stats = perf_stats_compute(samples->frame_us, MENU_FRAMES);
+    const bench_stats_t stats = bench_stats_compute(samples->frame_us, MENU_FRAMES);
 #ifdef DEVICE_BUILD
     ESP_LOGI("ui_band_perf", "case=%s frames=%d fallbacks=%lu frame_us=%lld max_us=%lld", name, MENU_FRAMES,
              (unsigned long)total_fallbacks, (long long)stats.avg, (long long)stats.max);

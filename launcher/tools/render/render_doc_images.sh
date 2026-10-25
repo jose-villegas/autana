@@ -240,6 +240,8 @@ run mkdir -p "$OUT/math"
 run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
 # --orphans scans this runner: trs-scale.gif, trs-rotate.gif, trs-translate.gif
+run "$PYTHON" launcher/tools/math/math_bench_figures.py --out "$OUT/math" > "$WORK/math_bench_figures.log"
+# --orphans scans this runner: benchmark-families.png
 run "$PYTHON" launcher/tools/math/fast_path_figures.py --out "$OUT/math" > "$WORK/fast_path_figures.log"
 # --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
@@ -287,6 +289,12 @@ run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PL
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/bake_figures.py --out "$OUT/render" > "$WORK/bake_figures.log" 2>&1
 # --orphans scans this runner: bake-ao-rays.png, bake-ao-falloff.png, bake-directions.png, bake-bounce-rays.png, bake-bounce-sweep.png, bake-scores.png
+
+# The baked mesh's figures: the demo scene's lite mesh, its clusters and tree, and the clusterizer's build.
+tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite.mesh") || exit 2
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --out "$OUT/render" \
+    > "$WORK/mesh_figures.log" 2>&1
+# --orphans scans this runner: baked-mesh-tree.gif, baked-mesh-ranges.png, meshlet-build.gif
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.

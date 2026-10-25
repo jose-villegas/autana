@@ -7,6 +7,10 @@
 #include "input/motion/imu_calib.h"
 #include "math/linear/vec3f.h"
 
+#define IMU_PROBE_DECIMAL_DIGITS(value)                                                                                \
+    (1 + ((value) >= 10U) + ((value) >= 100U) + ((value) >= 1000U) + ((value) >= 10000U) + ((value) >= 100000U)        \
+     + ((value) >= 1000000U) + ((value) >= 10000000U) + ((value) >= 100000000U) + ((value) >= 1000000000U))
+
 #define IMU_PROBE_LABEL_SIZE      16
 #define IMU_PROBE_MILLI           1000
 #define IMU_PROBE_SCALE_ONE       IMU_CALIB_SCALE_ONE

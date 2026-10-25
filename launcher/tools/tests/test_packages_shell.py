@@ -200,8 +200,114 @@ class PackagesAlone(FixtureLauncher):
         result = self.check()
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
+    def test_tests_and_benches_cannot_reach_engine_headers(self):
+        self.self_contained()
+        self.write("test/suites.h", "#pragma once\n")
+        self.write("packages/p/tests/suite_p.c", '#include "suites.h"\n')
+        self.write("packages/p/bench/measure.c", '#include "suites.h"\n')
+        self.fails_naming("tests/suite_p.c", "bench/measure.c")
+
+    def test_tests_get_local_headers_testkit_and_unity(self):
+        self.self_contained()
+        self.write("packages/testkit/include/testkit/suite.h", "#pragma once\n")
+        self.write("packages/testkit/unity/unity.h", "#pragma once\n")
+        self.write("packages/p/tests/local.h", "#pragma once\n")
+        self.write("packages/p/tests/suite_p.c",
+                   '#include "local.h"\n#include "testkit/suite.h"\n#include "unity.h"\n')
+        result = self.check()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
     def test_no_packages_is_a_failure_not_a_pass(self):
         self.assertNotEqual(0, self.check().returncode)
+
+
+@unittest.skipUnless(shutil.which("gcc") or shutil.which("cc") or shutil.which("clang"), "no C compiler")
+class StandaloneRunner(unittest.TestCase):
+    WRAP_COUNT = 1 << 8
+    DROP_ENV = "TESTKIT_SMOKE_DROPS"
+
+    @classmethod
+    def setUpClass(cls):
+        temp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(temp.cleanup)
+        work = Path(temp.name)
+        fixture = work / "suite.c"
+        fixture.write_text(r'''#include <stdlib.h>
+#include "testkit/suite.h"
+#include "unity.h"
+
+#define EXIT_STATUS_WRAP (1 << 8)
+#define DROP_ENV "TESTKIT_SMOKE_DROPS"
+
+static void fail(void) {
+    TEST_FAIL_MESSAGE("runner exit status regression");
+}
+
+static void failures(void) {
+    for (int i = 0; i < EXIT_STATUS_WRAP; i++) {
+        RUN_TEST(fail);
+    }
+}
+SUITE_REGISTER_ON_REQUEST(failures)
+
+__attribute__((constructor)) static void drops(void) {
+    if (getenv(DROP_ENV) != NULL) {
+        for (int i = 0; i < EXIT_STATUS_WRAP; i++) {
+            suites_record_drop();
+        }
+    }
+}
+''', encoding="utf-8")
+        testkit = ROOT / "launcher/packages/testkit"
+        (work / "CMakeLists.txt").write_text(f'''cmake_minimum_required(VERSION 3.21)
+project(standalone_runner C)
+add_subdirectory("{testkit.as_posix()}" testkit)
+add_executable(runner suite.c)
+target_link_libraries(runner PRIVATE testkit_runner)
+''', encoding="utf-8")
+        build = work / "build"
+        cls.runner = build / ("runner.exe" if os.name == "nt" else "runner")
+        for command in (["cmake", "-S", str(work), "-B", str(build), "-G", "Unix Makefiles"],
+                        ["cmake", "--build", str(build), "--target", "runner"]):
+            result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+            if result.returncode:
+                raise RuntimeError(result.stdout + result.stderr)
+
+    def run_runner(self, *args, drops=False):
+        env = os.environ.copy()
+        env.pop(self.DROP_ENV, None)
+        if drops:
+            env[self.DROP_ENV] = "1"
+        return subprocess.run([str(self.runner), *args], env=env,
+                              capture_output=True, text=True, timeout=30)
+
+    def test_success_and_listing_return_success(self):
+        for args in ((), ("--list",)):
+            with self.subTest(args=args):
+                result = self.run_runner(*args)
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_on_request_runs_all_on_request_suites(self):
+        result = self.run_runner("--on-request")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn(f"{self.WRAP_COUNT} Tests {self.WRAP_COUNT} Failures", result.stdout)
+        self.assertNotIn("Unknown suite", result.stderr)
+
+    def test_full_exit_status_range_of_failures_returns_failure(self):
+        result = self.run_runner("failures")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn(f"{self.WRAP_COUNT} Tests {self.WRAP_COUNT} Failures", result.stdout)
+
+    def test_full_exit_status_range_of_unknown_suites_returns_failure(self):
+        result = self.run_runner(*(["unknown"] * self.WRAP_COUNT))
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(self.WRAP_COUNT, result.stderr.count("Unknown suite: unknown"))
+
+    def test_full_exit_status_range_of_drops_fails_run_and_listing(self):
+        for args in ((), ("--list",)):
+            with self.subTest(args=args):
+                result = self.run_runner(*args, drops=True)
+                self.assertEqual(1, result.returncode, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
