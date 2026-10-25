@@ -552,7 +552,7 @@ def validate(cfg):
     # fixed dimensions. Only a COARSE bound: title_amplitude_px/
     # title_wave_amplitude_px are the two knobs that can carry a landed
     # letter off title_height_px, so they stand in as a margin rather than
-    # replaying tween_ease_out()'s own curve here; the exact simulation
+    # replaying ease_out_u8()'s own curve here; the exact simulation
     # is test_the_title_stays_on_the_panel_once_visible() in
     # suite_boot_anim.c, which this only backstops for a value obviously
     # wrong enough that no test run would ever be needed to see it.
@@ -589,7 +589,7 @@ def validate(cfg):
              (timing["title_x_px"], _title_view_w, _title_word_w))
     if timing["image_start_ms"] < 0 or timing["image_fade_ms"] < 0:
         fail("image_start_ms/image_fade_ms must not be negative (%r/%r "
-             "given) - boot_anim_photo_reveal() hands both to tween_ramp() "
+             "given) - boot_anim_photo_reveal() hands both to ease_ramp_u8() "
              "as a uint32_t, where a negative duration wraps to an "
              "enormous one and the crossfade would silently never finish" %
              (timing["image_start_ms"], timing["image_fade_ms"]))
@@ -607,7 +607,7 @@ def validate(cfg):
     if timing["title_wave_out_ms"] < 0 or timing["title_wave_fade_ms"] < 0:
         fail("title_wave_out_ms/title_wave_fade_ms must not be negative "
              "(%r/%r given) - boot_anim_title_wave_reach() hands both to "
-             "tween_ramp() as a uint32_t, the same wrap-to-enormous trap "
+             "ease_ramp_u8() as a uint32_t, the same wrap-to-enormous trap "
              "image_start_ms above describes" %
              (timing["title_wave_out_ms"], timing["title_wave_fade_ms"]))
 
