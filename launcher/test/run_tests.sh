@@ -114,6 +114,7 @@ $TEST_DIR/host_main.c
 $TEST_DIR/input_fake.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
+$LAUNCHER_DIR/packages/testkit/harness/bench.c
 $LAUNCHER_DIR/packages/testkit/harness/cleanup.c
 $LAUNCHER_DIR/packages/testkit/harness/registry.c
 $TEST_DIR/frame_profile.c

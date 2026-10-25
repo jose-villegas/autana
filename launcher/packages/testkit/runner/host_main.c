@@ -3,36 +3,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "testkit/cleanup.h"
 #include "testkit/suite.h"
 #include "unity.h"
 
-#define TESTKIT_LIST_OPTION "--list"
-
-void
-setUp(void) {
-    suite_clear_test_cleanup();
-}
-
-void
-tearDown(void) {
-    suite_run_test_cleanup();
-}
+#define TESTKIT_LIST_OPTION       "--list"
+#define TESTKIT_ON_REQUEST_OPTION "--on-request"
 
 static void
 list_suites(void) {
     for (size_t i = 0; i < suites_count(); i++) {
         puts(suites_at(i)->name);
-    }
-}
-
-static void
-run_default(void) {
-    for (size_t i = 0; i < suites_count(); i++) {
-        const suite_entry_t* suite = suites_at(i);
-        if (!suite->on_request) {
-            suite->fn();
-        }
     }
 }
 
@@ -59,16 +39,19 @@ run_named(int argc, char** argv) {
 
 int
 main(int argc, char** argv) {
-    int errors = suites_dropped();
+    int errors = 0;
     if (argc == 2 && strcmp(argv[1], TESTKIT_LIST_OPTION) == 0) {
         list_suites();
-        return errors != 0 ? EXIT_FAILURE : EXIT_SUCCESS;
+        return suites_dropped() != 0 || suites_count() == 0 ? EXIT_FAILURE : EXIT_SUCCESS;
     }
     UNITY_BEGIN();
     if (argc == 1) {
-        run_default();
+        errors += suites_run(false);
+    } else if (argc == 2 && strcmp(argv[1], TESTKIT_ON_REQUEST_OPTION) == 0) {
+        errors += suites_run(true);
+    } else {
+        errors += run_named(argc, argv) + suites_dropped() + (suites_count() == 0);
     }
-    errors += run_named(argc, argv);
     int failures = UNITY_END();
     return failures != 0 || errors != 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }

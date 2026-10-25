@@ -91,6 +91,7 @@ jobs:
           cache-name: diag
           command: >-
             ../tools/autana build diag --project ..
+            && idf.py -C packages/math/test_apps -D IDF_TARGET=esp32s3 build
             && python "$IDF_PATH/tools/idf_tools.py" install esp-clang
             && cd ..
             && python3 launcher/tools/quality/complexity_gate.py
