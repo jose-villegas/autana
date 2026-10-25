@@ -391,7 +391,8 @@ class FastPathTests(unittest.TestCase):
         assert_contains(self, summary, (
             "| `fmodf(v - lo, hi - lo)` |",
             "| isqrt64 normalization |",
-            "236 IRAM + 956 flash",
+            (f"{sum(size for _, size, region in sizes['normalize_x'] if region == 'IRAM')} IRAM + "
+             f"{sum(size for _, size, region in sizes['normalize_x'] if region == 'flash')} flash"),
             f"| {sum(size for _, size, region in sizes['normalize_x'] if region == 'rodata')} |",
             "ROM",
         ))
