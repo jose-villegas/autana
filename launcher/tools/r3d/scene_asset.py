@@ -73,7 +73,8 @@ def encode(scene, cache=None, offline=False):
             rows["skinned_renderers"].append((entity, 0, field(mesh, "mesh id"),
                 field(skin, "skin id"), field(skeleton, "skeleton id")))
         else:
-            rows["renderers"].append((entity, getattr(item.renderer, "colour_set", COLOUR_SET_OWN), field(mesh, "mesh id")))
+            colour_set = getattr(item.renderer, "colour_set", None)
+            rows["renderers"].append((entity, COLOUR_SET_OWN if colour_set is None else colour_set, field(mesh, "mesh id")))
     for obj in objects:
         entity = index[obj.name]
         animator = getattr(obj, "animator", None)

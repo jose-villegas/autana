@@ -3,6 +3,7 @@
 import pathlib
 import sys
 import tempfile
+import struct
 from unittest import mock
 from types import SimpleNamespace
 import unittest
@@ -11,7 +12,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import numpy as np
 from r3d import build_pack, fitted_variant, lcol_asset, mesh_bundle, mesh_import, mesh_asset, scene_asset
-from asset.asset_pack import PackError, build_pack as encode_pack, parse_pack
+from build.name_hash import name_hash
+from asset.asset_pack import NAME_BYTES, PackError, build_pack as encode_pack, parse_pack
 from test_scene_asset import SceneFiles
 from test_r3d_import import SIMPLIFY, VARIANT, renderer, write_import
 from test_r3d_objects import POINTS, TRIANGLES, obj_text
@@ -50,6 +52,17 @@ def bundle_fixture(directory, flat=False):
 
 
 class MeshBundleTests(unittest.TestCase):
+    def test_manifest_has_plain_names_without_hashes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = bundle_fixture(directory)[0]
+        _, copies = mesh_bundle.decode(data)
+        raw = parse_pack(data)[mesh_bundle.MANIFEST][1]
+        self.assertEqual(raw[mesh_bundle.HEADER.size:mesh_bundle.HEADER.size + NAME_BYTES],
+                         copies[0]['name'].encode('ascii').ljust(NAME_BYTES, b'\0'))
+        stride = NAME_BYTES * 2 + struct.calcsize('<12fH') + mesh_bundle.METADATA.size
+        self.assertEqual(mesh_bundle.HEADER.unpack_from(raw)[3], mesh_bundle.HEADER.size + len(copies) * stride)
+        self.assertEqual(mesh_bundle.decode_manifest(mesh_bundle.encode_manifest(copies)), copies)
+
     def check_products(self, flat):
         with tempfile.TemporaryDirectory() as directory:
             data, copies, geometry, job, scene = bundle_fixture(directory, flat)
@@ -165,13 +178,21 @@ class BundlePackTests(SceneFiles):
         path.write_bytes(mesh_bundle.encode(entries, copies))
         return self.scene(renderer('a.import.toml', extra='variant = "a"\n')), path
 
-    def test_pack_unpacks_products_and_does_not_ship_the_manifest_or_copies(self):
+    def test_pack_expands_copies_with_hashed_names(self):
         source, bundle = self.bundle_scene()
         entries = parse_pack(build_pack.pack_bytes([source])['hall'])
-        products, _ = mesh_bundle.decode(bundle.read_bytes())
+        products, copies = mesh_bundle.decode(bundle.read_bytes())
         self.assertEqual(set(entries), {'hall', *(name for name, _, _ in products)})
         self.assertNotIn(mesh_bundle.MANIFEST, entries)
-        self.assertEqual(len(scene_asset.decode(entries['hall'][1])['renderers']), 1)
+        scene = scene_asset.decode(entries['hall'][1])
+        self.assertEqual(len(scene['renderers']), 1 + len(copies))
+        for copy, entity, rendered in zip(copies, scene['entities'][1:], scene['renderers'][1:]):
+            self.assertEqual(entity['name'], copy['name'])
+            self.assertEqual(entity['name_hash'], name_hash(copy['name']))
+            self.assertEqual(entity['matrix'], copy['matrix'])
+            self.assertEqual(entity['position'], copy['position'])
+            self.assertEqual(rendered['mesh'], copy['mesh'])
+            self.assertEqual(rendered['colour_set'], copy['colour_set'])
 
     def test_pack_validates_copy_colour_sets_before_discarding_the_manifest(self):
         source, bundle = self.bundle_scene()

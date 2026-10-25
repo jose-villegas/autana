@@ -242,7 +242,7 @@ pixels. Levels of detail on them: [plans/Cluster-LOD.md](../plans/Cluster-LOD.md
 
 An APAK `.bundle` caches LMSH/LCOL products and a `copies` MCOP manifest.
 `r3d/mesh_bundle.py` owns its reader and writer. Pack building ships the
-products and discards the manifest; SCNE retains the authored rest only.
+products and discards the manifest; SCNE contains the authored rest and copies.
 
 Little-endian; string offsets count from the string content's first byte.
 
@@ -265,12 +265,20 @@ title MCOP header, 16 bytes at 0, one cell a byte
 | Part | At | Size |
 |---|---|---|
 | Header | 0 | `mesh_bundle.HEADER.size` |
-| Copy registry | `HEADER.size` | One SCNE `NAME`, `TRANSFORM`, `RENDERER` and `METADATA` per copy |
+| Copy registry | `HEADER.size` | One MCOP `NAME`, `TRANSFORM`, `RENDERER` and `METADATA` per copy |
 | Content: strings | `strings_off` | `strings_size` bytes, NUL-terminated UTF-8 strings |
 
-Copy rows reuse `scene_rows.py`'s SCNE `NAME`, `TRANSFORM` and `RENDERER`: name, local
-placement, copy index, colour set and mesh id. `METADATA` holds uint32 string
-offsets for owner, first source, copy source and a sorted JSON match map.
+`mesh_bundle.py` defines each copy's rows independently of SCNE:
+
+| Row | Encoding |
+|---|---|
+| `NAME` | NUL-padded copy name, `asset_pack.NAME_BYTES` bytes |
+| `TRANSFORM` | Local matrix and position, 12 float32 values |
+| `RENDERER` | Colour set, uint16; NUL-padded mesh id, `asset_pack.NAME_BYTES` bytes |
+| `METADATA` | uint32 string offsets for owner, first source, copy source and sorted JSON match map |
+
+Pack building expands copies into SCNE entities under the authored renderer.
+SCNE names carry hashes computed by `build.name_hash`; MCOP names have no hash.
 
 The reader rejects unknown versions, nonzero reserved fields, invalid section
 bounds, duplicate names, nonfinite transforms and invalid string offsets.

@@ -187,7 +187,7 @@ shape with reversed winding and a positive-determinant placement.
 
 A carved renderer's cache `.bundle` holds the coloured rest, shapes, LCOL
 entries and a versioned copy manifest. Pack building unpacks assets and
-discards the manifest; SCNE keeps the rest renderer only.
+discards the manifest; SCNE holds the rest renderer and placed copies.
 
 Shape ids use the scene name and a stable name hash; the manifest retains
 the rule, source object and copy names.
