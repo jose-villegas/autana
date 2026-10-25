@@ -726,7 +726,7 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
     for (int xi = xi_lo, ray = first_ray + ((xi_lo - xi_first) * ray_step); xi < xi_hi; xi++, ray += ray_step) {
         const int x = x0 + (xi * xstep);
         const int ux = x - dx;
-        if (((swapped[(ray - ray_base) >> 3] >> ((ray - ray_base) & 7)) & 1U) != 0U) {
+        if (bits8_get(swapped, (size_t)(ray - ray_base))) {
             continue;
         }
         const cell_t me = row[x];
@@ -747,7 +747,7 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
 
         urow[ux] = me;
         row[x] = above;
-        swapped[(ray - ray_base) >> 3] |= (uint8_t)(1U << ((ray - ray_base) & 7));
+        bits8_set(swapped, (size_t)(ray - ray_base));
         mark_slide(s, x, y, ux, uy);
         wake_block_and_neighbors(s, x, y);
         wake_block_and_neighbors(s, ux, uy);
@@ -762,7 +762,7 @@ float_lighter_liquids(sand_t* s, int dx, int dy) {
     const uint16_t is_liquid = liquid_mask();
     const int rays = liquid_sort_ray_count(s, dx, dy);
     bool moved = false;
-    uint8_t swapped[RISE_RAYS / 8];
+    uint8_t swapped[BITS8_BYTES(RISE_RAYS)];
     liquid_sort_t sort = liquid_sort_init(s, swapped, is_liquid, dx, dy);
 
     for (int ray_base = 0; ray_base < rays; ray_base += RISE_RAYS) {

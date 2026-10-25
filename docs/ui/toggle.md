@@ -5,7 +5,7 @@ label. It writes `*on` and returns true on the frame it changed it.
 
 ## Example
 
-<!-- generated: ui-toggle-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-toggle-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A toggle: writes through its pointer and returns true when it changed it. */
 #include "ui/ui.h"
@@ -33,7 +33,7 @@ toggle_example(toggle_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-toggle-states sha256=b8c057018bb87980f4bcbd94718e8585ca57ec80f4b0997338e708823a1614c4 -->
@@ -64,4 +64,4 @@ return true.
 ## See also
 
 - [Tile](tile.md): two tiles when the choice deserves pictures
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

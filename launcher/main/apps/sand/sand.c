@@ -19,6 +19,8 @@
 
 #include "sand_priv.h"
 
+#include "math/scalar/mathi.h"
+
 #if defined(SAND_FORCE_WORK) || defined(SAND_COUNT_SKIPS)
 #include <stdio.h>
 
@@ -544,7 +546,6 @@ sand_spawn_cell(sand_t* s, int cx, int cy, int radius, cell_t spec) {
 int
 sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int share_pct) {
     int filled = 0;
-    const int r2 = radius * radius;
     /* Once for the whole brushful, see random_cell().
      * material_shade_span_cell(), not the plain id-only macro, because `spec` may be gunpowder
      * (whose span is 3, read off its own reaction row) rather than a
@@ -557,10 +558,8 @@ sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int sh
     const bool thinned = share_pct < SAND_SPAWN_SHARE_FULL;
 
     for (int dy = -radius; dy <= radius; dy++) {
-        for (int dx = -radius; dx <= radius; dx++) {
-            if ((dx * dx) + (dy * dy) > r2) {
-                continue;
-            }
+        const int half = mathi_half_chord(radius, dy);
+        for (int dx = -half; dx <= half; dx++) {
             const int x = cx + dx;
             const int y = cy + dy;
             /* Through sand_rng_next_at()'s wrapper rather than the plain
@@ -580,13 +579,10 @@ sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int sh
 int
 sand_erase(sand_t* s, int cx, int cy, int radius) {
     int removed = 0;
-    const int r2 = radius * radius;
 
     for (int dy = -radius; dy <= radius; dy++) {
-        for (int dx = -radius; dx <= radius; dx++) {
-            if ((dx * dx) + (dy * dy) > r2) {
-                continue;
-            }
+        const int half = mathi_half_chord(radius, dy);
+        for (int dx = -half; dx <= half; dx++) {
             const int x = cx + dx;
             const int y = cy + dy;
             if (x < 0 || x >= s->w || y < 0 || y >= s->h) {
@@ -643,7 +639,6 @@ sand_add_emitter(sand_t* s, int x, int y, cell_t cell) {
 
 int
 sand_remove_emitters(sand_t* s, int cx, int cy, int radius) {
-    const int r2 = radius * radius;
     int removed = 0;
     int kept = 0;
 
@@ -654,7 +649,7 @@ sand_remove_emitters(sand_t* s, int cx, int cy, int radius) {
     for (int i = 0; i < s->emitter_count; i++) {
         const int dx = s->emitters[i].x - cx;
         const int dy = s->emitters[i].y - cy;
-        if ((dx * dx) + (dy * dy) <= r2) {
+        if (mathi_in_disc(dx, dy, radius)) {
             removed++;
             continue;
         }
@@ -1072,21 +1067,27 @@ dest_rows_full(const uint8_t* prow, const uint8_t* arow, const uint8_t* brow, in
  * loads: on a falling column every grain moves and the span is never read.
  * Asked once, since nothing later in the sweep can ADD room. */
 static bool
-step_one_liquid_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx,
-                      int dy, const int* slide_a, const int* slide_b, cell_t grain, dest_state_t* dest) {
-    const bool moved = move_liquid_grain(s, row, prow, x, y, dx, dy, slide_a, slide_b, grain, CELL_MATERIAL(grain),
-                                         *dest == DEST_FULL);
+step_one_liquid_grain(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_t grain, dest_state_t* dest) {
+    const bool moved = move_liquid_grain(s, r->row, r->prow, x, r->y, p->dx, p->dy, p->slide_a, p->slide_b, grain,
+                                         CELL_MATERIAL(grain), *dest == DEST_FULL);
     if (!moved && *dest == DEST_UNKNOWN) {
-        *dest = dest_rows_full(prow, arow, brow, x, w) ? DEST_FULL : DEST_HAS_ROOM;
+        *dest = dest_rows_full(r->prow, r->arow, r->brow, x, s->w) ? DEST_FULL : DEST_HAS_ROOM;
     }
     return moved;
 }
 
+/* Out of line on purpose. Inlined into sweep_range(), the slide's registers
+ * spill across the whole per-grain loop, and the falling and water steps run
+ * 5% and 2% more instructions, though neither slides much. */
+static __attribute__((noinline)) bool
+sweep_try_slide(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, cell_t grain, uint8_t driven_row,
+                uint8_t density, const material_t* mat) {
+    return try_slide(s, r, p, x, grain, driven_row, density, mat);
+}
+
 static bool
-step_one_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx,
-               int dy, const int* slide_a, const int* slide_b, int load_dx, int load_dy, int jostle,
-               bool driven[MATERIAL_ROWS][2], dest_state_t* dest) {
-    const cell_t grain = row[x];
+step_one_grain(sand_t* s, const mover_row_t* r, const mover_pass_t* p, int x, dest_state_t* dest) {
+    const cell_t grain = r->row[x];
 
     /* Two shifts answer what two flash reads used to. Gas is skipped because
      * it moves AGAINST the sweep's direction, into cells not yet visited, and
@@ -1099,51 +1100,25 @@ step_one_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
         return false;
     }
     if (((sweep_liquid_mask >> mrow) & 1U) != 0) {
-        return step_one_liquid_grain(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, grain, dest);
+        return step_one_liquid_grain(s, r, p, x, grain, dest);
     }
 
     const material_t* mat = material_of(grain);
 
     const uint8_t density = mat->density;
 
-    if (jostle == 0) {
+    if (p->jostle == 0) {
         const int scatter = (s->scatter >= 0) ? s->scatter : mat->scatter;
-        /* _impl, called directly, not the ordinary try_fall_or_scatter()
-         * below - this is the hottest call site in the whole simulation,
-         * and it needs to stay inlined. See sand_priv.h's own comment
-         * above try_fall_or_scatter_impl() for why there are two forms
-         * of this function at all. */
-        if (try_fall_or_scatter_impl(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, grain, density,
-                                     scatter)) {
+        if (try_fall_or_scatter(s, r, p, x, grain, density, scatter)) {
             return true;
         }
     }
 
-    /* The selected ROW isn't `mat_id`. `try_slide_impl()` uses `driven_row`
-     * to index `driven[]` in `pick_slide_order()`, not as `mat_id`. This
+    /* The selected ROW isn't `mat_id`. `try_slide()` uses `driven_row`
+     * to index the pass's `driven` table, not as `mat_id`. This
      * change affects only MAT_EXTENDED, distinguishing it from gunpowder, due
      * to TWIN_ROW for ORDINARY materials. */
-    const uint8_t driven_row = (uint8_t)(grain >> 3);
-    return try_slide_impl(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, load_dx, load_dy, jostle, grain,
-                          driven_row, density, mat, driven);
-}
-
-/* The non-inline forms exist alongside the inline versions (see sand_priv.h
- * comment). sand_gas.c calls the _impl versions directly, not these (see its
- * call site). */
-bool
-try_fall_or_scatter(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx,
-                    int dy, const int* slide_a, const int* slide_b, cell_t grain, uint8_t density, int scatter) {
-    return try_fall_or_scatter_impl(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, grain, density,
-                                    scatter);
-}
-
-bool
-try_slide(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx, int dy,
-          const int* slide_a, const int* slide_b, int load_dx, int load_dy, int jostle, cell_t grain,
-          uint8_t driven_row, uint8_t density, const material_t* mat, bool driven[][2]) {
-    return try_slide_impl(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, load_dx, load_dy, jostle, grain,
-                          driven_row, density, mat, driven);
+    return sweep_try_slide(s, r, p, x, grain, (uint8_t)mrow, density, mat);
 }
 
 /* Sleeping off when block_state missing. Wakes blocks if grid shaken or
@@ -1195,22 +1170,19 @@ span_x_order(int lo, int hi, int x_step, int* from, int* to, int* step) {
 }
 
 /* Two arguments, this and bx: a flat parameter list regressed on RISC-V,
- * which has eight registers to overflow. Everything past the six fields at
- * the top holds for a whole sweep_range() span and is written once there -
- * what a row spends before it reaches a cell is paid once per piece the span
- * cuts that grid row into. */
+ * which has eight registers to overflow. Past the row and its block row,
+ * everything holds for a whole sweep_range() span and is written once there.
+ * The row's x0/x1 are the caller's own columns: a block at either end of them
+ * is swept over its overlap with the range, not over the whole block. */
 typedef struct {
-    uint8_t *row, *prow, *arow, *brow;
-    const uint8_t* stamp_row;
-    int y, by;
+    mover_row_t r;
+    int by;
 
     sand_t* s;
-    int w, dx, dy, x_step;
-    const int *slide_a, *slide_b;
-    int load_dx, load_dy, jostle;
-    /* The caller's own columns. A block at either end of them is swept over
-     * its overlap with the range, not over the whole block. */
-    int x0, x1;
+    int x_step;
+    /* A copy, not a pointer to sweep_pass: the file-static would be reread
+     * after every call. */
+    mover_pass_t p;
     /* The block columns overlapping [x0, x1), walked in x_step's direction. */
     int bx_from, bx_to, bx_step;
     /* Materials are liquid as a bitmask over the nibble, similar to
@@ -1219,7 +1191,6 @@ typedef struct {
      * efficiency. */
     uint16_t is_liquid;
     uint8_t settled_bit;
-    bool (*driven)[2];
 } sweep_ctx_t;
 
 /* Marks BLOCK_ACTIVE if anything moves in a block's x-span within a row, for
@@ -1227,10 +1198,10 @@ typedef struct {
  * block_state is disabled. */
 SAND_FACT_WRITER static void
 step_one_block(const sweep_ctx_t* ctx, int bx) {
-    const int lo = mathi_max(bx * SAND_BLOCK_W, ctx->x0);
-    const int hi = mathi_min((bx * SAND_BLOCK_W) + SAND_BLOCK_W, ctx->x1);
+    const int lo = mathi_max(bx * SAND_BLOCK_W, ctx->r.x0);
+    const int hi = mathi_min((bx * SAND_BLOCK_W) + SAND_BLOCK_W, ctx->r.x1);
 
-    if (span_is_empty(ctx->row, lo, hi)) {
+    if (span_is_empty(ctx->r.row, lo, hi)) {
         return;
     }
 
@@ -1244,7 +1215,7 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
     bool moved_here = false;
     unsigned saw_liquid = 0;
     for (int x = cx_from; x != cx_to; x += cx_step) {
-        const cell_t c = ctx->row[x];
+        const cell_t c = ctx->r.row[x];
         if (CELL_IS_EMPTY(c)) {
             continue;
         }
@@ -1255,11 +1226,10 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
          * a cell that arrived here this pass is still liquid sitting in this
          * block, and cross-flow looks nowhere the sweep did not mark. */
         saw_liquid |= (unsigned)(ctx->is_liquid >> CELL_MATERIAL(c)) & 1U;
-        if (sand_row_cell_stamped(ctx->stamp_row, x)) {
+        if (sand_row_cell_stamped(ctx->r.stamp_row, x)) {
             continue;
         }
-        if (step_one_grain(ctx->s, ctx->row, ctx->prow, ctx->arow, ctx->brow, x, ctx->y, ctx->w, ctx->dx, ctx->dy,
-                           ctx->slide_a, ctx->slide_b, ctx->load_dx, ctx->load_dy, ctx->jostle, ctx->driven, &dest)) {
+        if (step_one_grain(ctx->s, &ctx->r, &ctx->p, x, &dest)) {
             moved_here = true;
         }
     }
@@ -1445,38 +1415,43 @@ blocks_settled_over(const sand_t* s, int x0, int x1, int y0, int y1, uint8_t set
     return true;
 }
 
+/* What one gravity sweep holds for every range it is cut into, written once a
+ * step by sand_step(). File-static for the reason sand_chunk_pass_run()
+ * gives. */
+typedef struct {
+    sand_lane_t* lanes;
+    mover_pass_t m;
+    int x_step, y_step;
+    uint16_t is_liquid;
+    uint8_t settled_bit;
+    unsigned swept[SAND_LANE_COUNT];
+} sweep_pass_t;
+
 /* The gravity sweep's own inner loop, over the columns [x0, x1) of the rows
- * [y0, y1) in y_step order - shared by the plain serial call below and every
- * chunk a lane takes off the schedule. A grain reaches three rows a fixed
- * distance from its own, so the stride carries them and only the grid edge
- * is asked about per row. */
+ * [y0, y1) in the pass's y_step order - shared by the plain serial call below
+ * and every chunk a lane takes off the schedule. A grain reaches three rows a
+ * fixed distance from its own, so the stride carries them and only the grid
+ * edge is asked about per row. */
 static void
-sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx, int dy, const int* slide_a,
-            const int* slide_b, int x_step, int load_dx, int load_dy, int jostle, uint8_t settled_bit,
-            uint16_t is_liquid) {
+sweep_range(sand_t* s, const sweep_pass_t* c, int y0, int y1, int x0, int x1) {
     sweep_ctx_t ctx = {
+        .r = {.x0 = x0, .x1 = x1},
         .s = s,
-        .w = w,
-        .dx = dx,
-        .dy = dy,
-        .x_step = x_step,
-        .slide_a = slide_a,
-        .slide_b = slide_b,
-        .load_dx = load_dx,
-        .load_dy = load_dy,
-        .jostle = jostle,
-        .x0 = x0,
-        .x1 = x1,
-        .is_liquid = is_liquid,
-        .settled_bit = settled_bit,
-        .driven = sweep_driven,
+        .x_step = c->x_step,
+        .p = c->m,
+        .is_liquid = c->is_liquid,
+        .settled_bit = c->settled_bit,
     };
-    span_x_order(x0 / SAND_BLOCK_W, (x1 + SAND_BLOCK_W - 1) / SAND_BLOCK_W, x_step, &ctx.bx_from, &ctx.bx_to,
+    span_x_order(x0 / SAND_BLOCK_W, (x1 + SAND_BLOCK_W - 1) / SAND_BLOCK_W, c->x_step, &ctx.bx_from, &ctx.bx_to,
                  &ctx.bx_step);
 
+    const uint8_t settled_bit = c->settled_bit;
+    const int y_step = c->y_step;
+    const int dy = c->m.dy;
+    const int w = s->w;
     const int h = s->h;
-    const int a_dy = slide_a[1];
-    const int b_dy = slide_b[1];
+    const int a_dy = c->m.slide_a[1];
+    const int b_dy = c->m.slide_b[1];
     const int p_off = dy * w;
     const int a_off = a_dy * w;
     const int b_off = b_dy * w;
@@ -1501,12 +1476,12 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
         sand_chunk_work_add(x1 - x0);
 
         uint8_t* const row = s->cells + row_at;
-        ctx.row = row;
-        ctx.prow = dest_row_stepped(row, y + dy, h, p_off);
-        ctx.arow = dest_row_stepped(row, y + a_dy, h, a_off);
-        ctx.brow = dest_row_stepped(row, y + b_dy, h, b_off);
-        ctx.stamp_row = sand_stamp_row(s, y);
-        ctx.y = y;
+        ctx.r.row = row;
+        ctx.r.prow = dest_row_stepped(row, y + dy, h, p_off);
+        ctx.r.arow = dest_row_stepped(row, y + a_dy, h, a_off);
+        ctx.r.brow = dest_row_stepped(row, y + b_dy, h, b_off);
+        ctx.r.stamp_row = sand_stamp_row(s, y);
+        ctx.r.y = y;
         ctx.by = by;
         step_one_row(&ctx);
         sand_forced_restore(s, &forced_state);
@@ -1849,16 +1824,6 @@ unsigned sand_split_dispatches[SAND_SPLIT_SLOTS];
  * both have joined. */
 unsigned sand_sweep_chunks_swept;
 
-typedef struct {
-    sand_lane_t* lanes;
-    int w, dx, dy, x_step, load_dx, load_dy, jostle;
-    int slide_a[2], slide_b[2];
-    uint16_t is_liquid;
-    uint8_t settled_bit;
-    int y_step;
-    unsigned swept[SAND_LANE_COUNT];
-} sweep_pass_t;
-
 static sweep_pass_t sweep_pass;
 
 static void
@@ -1878,8 +1843,7 @@ sweep_one_chunk(void* pass, int lane, int cx, int cy) {
 
     const int from = (c->y_step > 0) ? y0 : y1 - 1;
     const int to = (c->y_step > 0) ? y1 : y0 - 1;
-    sweep_range(view, from, to, c->y_step, x0, x1, c->w, c->dx, c->dy, c->slide_a, c->slide_b, c->x_step, c->load_dx,
-                c->load_dy, c->jostle, c->settled_bit, c->is_liquid);
+    sweep_range(view, c, from, to, x0, x1);
 }
 
 /* Travel is the dithered direction the sweep itself uses, so the chunk
@@ -1976,34 +1940,35 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     xflow_t flow;
     build_xflow(&flow, gx, gy);
 
-    const int w = s->w;
-    const uint16_t is_liquid = liquid_mask();
+    sweep_pass = (sweep_pass_t){
+        .m =
+            {
+                .w = s->w,
+                .dx = dx,
+                .dy = dy,
+                .slide_a = slide_a,
+                .slide_b = slide_b,
+                .load_dx = load_dx,
+                .load_dy = load_dy,
+                .jostle = jostle,
+                .driven = sweep_driven,
+            },
+        .x_step = x_step,
+        .y_step = y_step,
+        .is_liquid = liquid_mask(),
+        .settled_bit = settled_bit,
+    };
 
     /* Hashed draws (sand_rng_next_at(), sand_priv.h) are armed for exactly
      * this window, never longer - gas and reactions later this step must
      * still draw from the plain sequential stream. */
     SAND_PASS_BEGIN(sweep);
     if (sand_chunk_pass_ready(s, SAND_SPLIT_SWEEP, mathi_sign(dx), mathi_sign(dy))) {
-        sweep_pass = (sweep_pass_t){
-            .lanes = sand_lanes(s),
-            .w = w,
-            .dx = dx,
-            .dy = dy,
-            .x_step = x_step,
-            .load_dx = load_dx,
-            .load_dy = load_dy,
-            .jostle = jostle,
-            .slide_a = {slide_a[0], slide_a[1]},
-            .slide_b = {slide_b[0], slide_b[1]},
-            .is_liquid = is_liquid,
-            .settled_bit = settled_bit,
-            .y_step = y_step,
-        };
+        sweep_pass.lanes = sand_lanes(s);
         run_sweep_split(s, dx, dy);
     } else {
         s->rng_hashed = sand_force_hashed_rng_on;
-        sweep_range(s, y_from, y_to, y_step, 0, w, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
-                    settled_bit, is_liquid);
+        sweep_range(s, &sweep_pass, y_from, y_to, 0, s->w);
         s->rng_hashed = false;
     }
     SAND_PASS_END(s, sweep);

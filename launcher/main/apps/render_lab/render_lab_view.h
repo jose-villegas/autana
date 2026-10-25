@@ -1,9 +1,9 @@
 /* render_lab_view: context view, scale and frame-budget tunables. */
 #pragma once
 
+#include "core/tune.h"
 #include "render/context/render_context.h"
 #include "scene/scene.h"
-#include "services/tune.h"
 
 #define RENDER_LAB_SCALE_UNIT    100
 #define RENDER_LAB_SCALE_DEFAULT (2 * RENDER_LAB_SCALE_UNIT)
@@ -49,8 +49,13 @@ resolution_step_t render_lab_render_size(int width, int height);
 void render_lab_apply_raster_settings(void);
 
 /* The tunable render_lab.budget: 0 draws at render_lab.scale; otherwise
- * the milliseconds dynamic resolution holds a lit-mesh scene's draw to. */
+ * the milliseconds dynamic resolution holds the scene's draw to
+ * (render_lab_dynres.h). */
+#define RENDER_LAB_BUDGET_MAX_MS 200
 int render_lab_budget_ms(void);
+#if TUNE_ENABLED
+bool render_lab_budget_set_ms(int budget_ms);
+#endif
 
 /* The tunable render_lab.orbit_ms: 0 holds an orbiting camera where it is
  * steered; otherwise it also turns once about its subject every orbit_ms. */

@@ -2,23 +2,14 @@ name: QEMU Tests
 
 # Every suite in the real Xtensa image, under Espressif's QEMU: the proof the
 # host runner cannot give, that the chip's build behaves as the laptop's does.
-# docs/testing/QEMU.md says what a run is evidence of. Too
-# slow for every pull request, so it runs on main, by hand, and on a pull
-# request that changes the harness itself.
+# docs/testing/QEMU.md says what a run is evidence of. It runs on main, by
+# hand, and on pull requests that change a recorded job input. Other pull
+# requests skip the job and report success; a failed inputs gate runs it.
 
 on:
   push:
     branches: [main]
   pull_request:
-    paths:
-      - '.github/workflows/qemu-tests.yml'
-      - 'launcher/test/qemu_run.py'
-      - 'launcher/test/qemu/**'
-      - 'launcher/test/run_qemu_tests.sh'
-      - 'launcher/sdkconfig.defaults.qemu'
-      - '.python-version'
-      - 'launcher/idf-pin.json'
-      - '.github/actions/**'
   workflow_dispatch:
 
 concurrency:
@@ -32,12 +23,34 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      qemu-tests: ${{ steps.affected.outputs.qemu-tests }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job qemu-tests
+
   qemu-tests:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.qemu-tests == 'true') }}
     name: Every suite under QEMU
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
 
       # No --icount: it puts both emulated cores on one host thread, doubling
       # the run, and a QEMU image reports every measured time rather than
@@ -70,3 +83,7 @@ jobs:
             !launcher/build.qemu/qemu_*.bin
           retention-days: 14
           if-no-files-found: ignore
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}

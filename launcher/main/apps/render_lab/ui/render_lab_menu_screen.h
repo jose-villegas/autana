@@ -3,6 +3,9 @@
 
 #include <stdbool.h>
 
+/* The SMALL FILL row's caption, and its dropdown's identity. */
+#define RENDER_LAB_SMALL_FILL_LABEL "SMALL FILL:"
+
 /* Draws a scene's rows into the menu's flow, each `width` wide and centred:
  * ui_row_centre(width, h), then a widget at ui_next(). */
 typedef void (*render_lab_controls_fn)(int width);

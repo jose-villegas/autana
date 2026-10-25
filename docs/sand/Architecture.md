@@ -400,13 +400,13 @@ per material actually on the board, skipping the rest, ending with
 capitals. Every extended cell, gunpowder included, shares one `Extended`
 line: [`MAT_EXTENDED`](#the-grid-in-one-byte) above says what those are.
 See
-[`../tools/App-Commands.md`](../tools/App-Commands.md)
+[`../cli/App-Commands.md`](../cli/App-Commands.md)
 for how a line like this reaches the app at all, and how to send it from an
 interactive `autana` session.
 
 ## Verifying performance on real hardware
 
-[`../Testing-Guide.md`](../Testing-Guide.md) is the host/device split and
+[`testing/README.md`](../testing/README.md) is the host/device split and
 the general practice; [`Testing-Sand.md`](Testing-Sand.md) is this app's
 own half of it: the frame-budget capture, `runsuite`, how to read a
 result, and the current state of `suite_sand_perf.c`'s frame-budget tests

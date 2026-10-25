@@ -26,13 +26,17 @@
 32408	math_mat4_mul_f
 104986	math_mat4_mul_x	info
 2579	math_mathf_recip_f	info
+5208	math_mathf_rsqrt_approx_f	info
 5273	math_mathf_rsqrt_f	info
+9188	math_mathx_rsqrt_q30_x	info
 398	math_mul_f	info
 526	math_mul_i	info
 656	math_mul_s	info
 1105	math_mul_x	info
+33880	math_nlerp_div_x	info
 8487	math_nlerp_f	info
 58234	math_nlerp_x	info
+58105	math_normalize_div_x	info
 6426	math_normalize_f
 43596	math_normalize_x	info
 1936	math_quat_mul_f	info
@@ -48,9 +52,10 @@
 42327	math_transform_compute_matrix_x	info
 1520	math_trig_sin_i	info
 5730	math_wrap_f	info
+5668	math_wrap_fmodf_f	info
 462	math_wrap_i	info
 655	math_wrap_x	info
-1611098	sand_falling_step
+1595941	sand_falling_step
 2494629	sand_water_step
 43670	span_gouraud
 16007	span_solid

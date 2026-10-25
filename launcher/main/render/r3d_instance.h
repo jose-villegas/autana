@@ -1,7 +1,7 @@
 /*
- * r3d_instance: one mesh drawn through its model matrix: rotation times
- * scale, then the position in column 3. Scale is positive on every axis,
- * so no triangle turns inside out. No model draws the mesh as it is.
+ * r3d_instance: one mesh drawn through its affine model matrix, the
+ * position in column 3. Its 3x3 part has a positive determinant, so no
+ * triangle turns inside out. No model draws the mesh as it is.
  */
 #pragma once
 

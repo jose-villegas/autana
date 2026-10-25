@@ -40,6 +40,7 @@
 #include "console/verbs/console_freeze.h"
 #include "console/verbs/console_navigation_parse.h"
 #include "console/verbs/console_screenshot.h"
+#include "console/verbs/console_sound.h"
 #endif
 
 #if CONFIG_LAUNCHER_SELFTEST
@@ -191,7 +192,7 @@ run_pending_selftest_suite(const console_frame_request_t* requests) {
 
 static void
 apply_display_orientation(int64_t now_us) {
-    if (display_sample_orientation(now_us, input_read_gravity)) {
+    if (display_sample_orientation(now_us, input_read_acceleration)) {
         ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
         gfx_request_full_redraw();
     }
@@ -200,7 +201,7 @@ apply_display_orientation(int64_t now_us) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* `<PREFIX>_ERR <reason>`: the app's own prefix in capitals, like a
  * verb's own TUNE_ERR, so a caller matching `<PREFIX>_ERR`
- * (docs/tools/Autana-CLI.md) recognises either failure below the same way
+ * (docs/cli/README.md) recognises either failure below the same way
  * it recognises a completed reply. */
 static void
 reply_app_err(const char* prefix, const char* reason) {
@@ -387,8 +388,8 @@ shell_run(void) {
         app_count++;
     }
     ESP_LOGI(TAG, "Ready, %d app%s registered", app_count, app_count == 1 ? "" : "s");
-    /* Again, for a host that lost the port: after a PMIC cold restart, USB
-     * Serial/JTAG enumerates only about 0.7 s into the new boot, after
+    /* Again, for a host that lost the port: after the PSRAM tuning's unplug
+     * (board/board_usb.c), USB Serial/JTAG enumerates again only after
      * app_boot_init()'s print. */
     printf("BUILD_ID=%s\n", build_id());
     (void)fflush(stdout);
@@ -408,6 +409,10 @@ shell_run(void) {
          * would skip is applied here, so a held frame still answers. */
         console_frame_take(console_frame_mailbox(), &requests);
         console_freeze_apply(&requests);
+        if (requests.kinds & CONSOLE_FRAME_SOUND) {
+            console_sound_answer(&requests.sound);
+            console_frame_done(console_frame_mailbox(), CONSOLE_FRAME_SOUND);
+        }
         if (requests.kinds & CONSOLE_FRAME_FRAMEWATCH) {
             console_frame_watch_answer();
         }
@@ -417,6 +422,9 @@ shell_run(void) {
 #endif
 
         input_poll(&input);
+        if (input.down) {
+            display_touch_now(now_us);
+        }
         apply_display_orientation(now_us);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

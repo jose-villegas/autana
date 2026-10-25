@@ -15,6 +15,7 @@
 
 #include "app/app.h"
 #include "apps/render_lab/render_lab_clips.h"
+#include "core/tune.h"
 #include "display/display.h"
 #include "draw/draw.h"
 #include "esp_log.h"
@@ -26,10 +27,11 @@
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
+#include "render_lab_dynres.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
-#include "services/tune.h"
+#include "ui/ui.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "apps/render_lab/tests/render_lab_test.h"
 #endif
@@ -76,7 +78,7 @@ fail(const char* what) {
 static void
 place_camera(void) {
     const transformf_t pose = orbit_motion_pose(&orbit);
-    scene_set_transform(capybara, camera_entity, &pose);
+    scene_entity_set_local(capybara, camera_entity, pose);
 }
 
 /* Home and limits from the subject's sphere and the scene camera's lens. */
@@ -101,8 +103,9 @@ frame_subject(void) {
 }
 
 static void
-scene_capybara_enter(void) {
-    draw_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
+scene_capybara_enter(const render_lab_scene_t* self) {
+    (void)self;
+    draw_clear(gfx_rgb(UI_BACKGROUND));
     failure[0] = '\0';
     scene_failure_t why;
     capybara = scene_load(CAPYBARA_SCENE, &why);
@@ -120,7 +123,6 @@ scene_capybara_enter(void) {
     }
     place_camera();
     (void)scene_activate(capybara, CAPYBARA_CAMERA);
-    render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     render_lab_apply_raster_settings();
     if (capybara != NULL) {
         (void)render_lab_apply_camera_settings(capybara, scene_find(capybara, CAPYBARA_CAMERA));
@@ -169,12 +171,13 @@ scene_capybara_frame(uint32_t dt_ms) {
 
 static const char*
 capybara_status(void) {
-    static char buf[48];
+    static char buf[RENDER_LAB_STATUS_LEN];
     if (failure[0] != '\0') {
         return failure;
     }
     /* Yaw/pitch too, so a screenshot says where it was taken from. */
-    if (snprintf(buf, sizeof buf, "%d tris %d/%d deg", render_context_frame(render_context_main()).stats.triangles,
+    if (snprintf(buf, sizeof buf, "%s%d tris %d/%d deg", render_lab_dynres_size(),
+                 render_context_frame(render_context_main()).stats.triangles,
                  (int)lroundf(orbit.at.yaw * MATH_DEGREES_PER_RADIAN),
                  (int)lroundf(orbit.at.pitch * MATH_DEGREES_PER_RADIAN))
         < 0) {

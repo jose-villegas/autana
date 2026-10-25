@@ -118,15 +118,25 @@ ui_probe_bevel_index(recti_t r, uint32_t face_rgb, bool sunken) {
     return last;
 }
 
+/* `theme` as the face holds it, or the shell look for NULL, as ui_theme() does. */
+static ui_mu_theme_t
+probe_theme(const ui_theme_t* theme) {
+    if (theme == NULL) {
+        return ui_theme_from_style(ui_context()->style);
+    }
+    const ui_mu_theme_t t = UI_THEME_FROM_FACE(theme);
+    return t;
+}
+
 int
 ui_probe_button_label_width(int w, bool has_icon, const ui_theme_t* theme) {
-    const ui_mu_theme_t t = UI_THEME_FROM_FACE(theme);
+    const ui_mu_theme_t t = probe_theme(theme);
     return ui_icon_button_label_width(w, has_icon, &t);
 }
 
 int
 ui_probe_dropdown_label_width(int w, bool has_icons, const ui_theme_t* theme) {
-    const ui_mu_theme_t t = UI_THEME_FROM_FACE(theme);
+    const ui_mu_theme_t t = probe_theme(theme);
     return ui_dropdown_label_width(w, has_icons, &t);
 }
 

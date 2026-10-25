@@ -11,7 +11,9 @@
 #include "asset/asset_store.h"
 #include "asset/asset_table.h"
 #include "asset/asset_table_format.h"
+#include "collections/sort.h"
 #include "core/memory.h"
+#include "core/tune.h"
 #include "draw/draw.h"
 #include "draw/draw_dither.h"
 #include "esp_log.h"
@@ -23,7 +25,6 @@
 #include "math/scalar/mathi.h"
 #include "math/scalar/mathx.h"
 #include "profile/frame_cost.h"
-#include "services/tune.h"
 #include "shell/ui/ridge_motion.h"
 #include "shell/ui/ridge_pose.h"
 #include "shell/ui/ridge_theme.h"
@@ -438,18 +439,29 @@ fill_row(gfx_color_t* dst, int x0, int x1, gfx_color_t color) {
 
 static void
 add_row_break(int* points, int* count, int x, int lo, int hi) {
-    if (x <= lo || x >= hi) {
-        return;
+    if (x > lo && x < hi) {
+        points[(*count)++] = x;
     }
-    int at = *count;
-    while (at > 0 && points[at - 1] > x) {
-        points[at] = points[at - 1];
-        at--;
+}
+
+static inline bool
+lower(int a, int b) {
+    return a < b;
+}
+
+SORT_DEFINE_INSERTION(breaks, int, lower)
+
+/* Sorts points[1..count) and drops repeats; points[0] is lo, below every break. */
+static inline __attribute__((always_inline)) int
+order_row_breaks(int* points, int count) {
+    breaks_sort(points + 1, (size_t)(count - 1));
+    int kept = 1;
+    for (int i = 1; i < count; i++) {
+        if (points[i] != points[kept - 1]) {
+            points[kept++] = points[i];
+        }
     }
-    if (at == 0 || points[at - 1] != x) {
-        points[at] = x;
-        (*count)++;
-    }
+    return kept;
 }
 
 static inline __attribute__((always_inline)) bool
@@ -479,6 +491,7 @@ collect_row_breaks(int* points, int y, int lo, int hi) {
             add_row_break(points, &count, boundary + 1, lo, hi);
         }
     }
+    count = order_row_breaks(points, count);
     points[count++] = hi;
     return count;
 }

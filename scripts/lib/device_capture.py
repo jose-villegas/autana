@@ -9,7 +9,7 @@ RESULT_RE = re.compile(r"^(?P<file>\S*?):(?P<line>\d+):(?P<name>\w+):(?P<status>
 BUILD_ID_REQUEST = "BUILDID"
 BUILD_ID_RE = re.compile(r"BUILD_ID=([^\s\r\n]+)")
 APPS_RE = re.compile(r"APPS name=(.+?) running=([01])(?: console=(\S+))?")
-IMU_QUARTER_RE = re.compile(r"IMU_OK quarter=(\d+) quarters=(\d+) sample_ms=(\d+)")
+IMU_QUARTER_RE = re.compile(r"IMU_OK quarter=(\d+) quarters=(\d+) sample_ms=(\d+) commit_ms=(\d+)")
 BUILD_ID_BYTES_RE = re.compile(BUILD_ID_RE.pattern.encode())
 PERF_SEGMENT = re.compile(r"perf: (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) avg (\d+) n=(\d+)")
 # The device prints this line only when the self-test loop actually reaches
@@ -24,6 +24,9 @@ SUITE_OVERFLOW_RE = re.compile(r"SUITE OVERFLOW:")
 # assert(), which aborts after it. Searched, not anchored: a capture can carry
 # a log prefix or colour codes in front.
 CRASH_LINE_RE = re.compile(r"Guru Meditation|panic'ed|abort\(\) was called|assert failed:")
+# Any line worth a look in a capture: an error, panic, abort or assert, or an
+# ESP-IDF "E (tick)" log line.
+ERROR_LINE_RE = re.compile(r"(?:\berror\b|\bpanic\b|\babort\b|\bassert\b|^E \(\d+\))", re.I)
 # The ROM prints its banner and reset cause; firmware prints RESET_REASON.
 # A USB reset gap can hide any of them, so count the most frequent form.
 BOOT_BANNER = "ESP-ROM:esp32s3"

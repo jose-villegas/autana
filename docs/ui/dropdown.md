@@ -7,7 +7,7 @@ closing the list return false. `count` is at least one.
 
 ## Example
 
-<!-- generated: ui-dropdown-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-dropdown-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A dropdown: a tap opens the list, a pick writes the index and returns true. */
 #include "ui/ui.h"
@@ -37,7 +37,7 @@ dropdown_example(dropdown_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-dropdown-states sha256=54ab6979a436af56c319038c3411df2b4a15aa2bd487073e8f5d6721008f6958 -->
@@ -69,4 +69,4 @@ return true.
 
 - [Dropdown with icons](dropdown_icons.md)
 - [Tile](tile.md): when two to four choices all fit at once
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

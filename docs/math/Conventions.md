@@ -46,6 +46,7 @@ any type-specific operations.
 | `ball_template.h` | `MATH_DEFINE_BALL`, `MATH_DEFINE_BALL_REAL` | closed balls; real closest-point/segment queries | via circle and sphere templates |
 | `circle_template.h` | `MATH_DEFINE_CIRCLE`, `MATH_DEFINE_CIRCLE_REAL` | ball queries, disc bounds and rect queries | `circlef`, `circlei`; real `f` |
 | `sphere_template.h` | `MATH_DEFINE_SPHERE` | ball queries and sphere box queries | `spheref` |
+| `stats_template.h` | `MATH_DEFINE_STATS` | percentile and median by in-place selection | `statsi`, `statsf` |
 | `plane_template.h` | `MATH_DEFINE_PLANE` | planes, signed distance, frustum planes from a matrix's rows | `planef`, `planex` |
 
 The macro arguments:
@@ -71,11 +72,11 @@ The macro arguments:
 ## The float-precision build rules
 
 The S3's FPU is single precision, so a `double` is a software call; the cost
-and the rules are in [Build-Variants.md](../Build-Variants.md):
+and the rules are in [Build-Variants.md](../tools/Build-Variants.md):
 
 | Rule | Where |
 |---|---|
 | `-Werror=double-promotion`, `-Werror=float-conversion` | the whole `main` component |
-| `-ffp-contract=off` | the host builds [Build-Variants.md](../Build-Variants.md#float-maths-is-single-precision-and-the-build-holds-it-there) names; the device fuses |
+| `-ffp-contract=off` | the host builds [Build-Variants.md](../tools/Build-Variants.md#float-maths-is-single-precision-and-the-build-holds-it-there) names; the device fuses |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `lroundf`; link it |

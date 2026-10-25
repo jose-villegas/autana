@@ -1,3 +1,4 @@
+"""Memory charts order, label and size their pools, and refuse a malformed table."""
 import sys
 import unittest
 from pathlib import Path

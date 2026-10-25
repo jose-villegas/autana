@@ -303,8 +303,8 @@ static void
 draw_far_ring(const mesh_pass_t* pass, const boot_anim_plane_t* plane, bool along_im, int32_t c, int32_t r_in,
               int32_t r_out, gfx_color_t col) {
     const int32_t edge = boot_anim_axis_far[0].r;
-    const int32_t inner = boot_anim_far_chord(mathi_max(r_in, edge), c);
-    const int32_t outer = boot_anim_far_chord(r_out, c);
+    const int32_t inner = mathi_half_chord(mathi_max(r_in, edge), c);
+    const int32_t outer = mathi_half_chord(r_out, c);
     if (outer <= inner) {
         return;
     }
@@ -649,10 +649,7 @@ draw_disc(int x, int y, int diameter, gfx_color_t c) {
     const int r = diameter / 2;
 
     for (int dy = -r; dy <= r; dy++) {
-        int dx = r;
-        while (dx > 0 && (dx * dx) + (dy * dy) > r * r) {
-            dx--;
-        }
+        const int dx = mathi_half_chord(r, dy);
         draw_rect(x - dx, y + dy, (2 * dx) + 1, 1, c);
     }
 }

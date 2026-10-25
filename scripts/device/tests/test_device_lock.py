@@ -1,3 +1,4 @@
+"""The board lock writes its records safely and tells a live holder from a dead one."""
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import contextlib
 import errno
@@ -38,6 +39,40 @@ class JsonWriterTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), {"second": 2})
             self.assertEqual(list(Path(directory).glob("*.tmp")), [])
             sleep.assert_called_once()
+
+
+class BoundOwnerTests(unittest.TestCase):
+    def test_bound_owner_replaces_only_a_trailing_pid_or_appends_it(self):
+        for owner, expected in (("sam@host:123", "sam@host:456"),
+                                ("label:123", "label:456"),
+                                ("label", "label:456"),
+                                ("group:label", "group:label:456"),
+                                ("group:label:123", "group:label:456")):
+            with self.subTest(owner=owner):
+                self.assertEqual(device_lock.bound_owner(owner, 456), expected)
+
+    def test_pid_bound_hold_names_the_live_child_and_its_dead_process_reclaim(self):
+        with tempfile.TemporaryDirectory() as root, subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL) as child:
+            try:
+                store = device_lock.LockStore(root)
+                held = store.acquire("COM5", device_lock.default_owner(), "take")
+                self.assertTrue(store.hold("COM5", held["token"], "bench", pid=child.pid))
+                record = store.read_json(store.lock_path("COM5"))
+                expected = device_lock.default_owner().rsplit(":", 1)[0] + f":{child.pid}"
+                self.assertEqual(record["owner"], expected)
+                entry = device_lock.status_entry(store, "COM5", durations={})
+                self.assertIn(expected, "\n".join(device_lock.status_lines(entry, store.now())))
+                self.assertEqual(store.reclaim_reason(record, 0), "")
+            finally:
+                child.kill()
+                child.wait()
+            self.assertEqual(store.reclaim_reason(record, 0), "dead process")
+            replacement = store.acquire("COM5", "next", "flash")
+            self.assertIn(f"reclaimed lock from {expected} for bench (dead process)", replacement.log)
+            store.release("COM5", replacement["token"])
 
 
 class Clock:
@@ -514,7 +549,7 @@ class LockTests(ClockStoreTests):
     def test_dead_lock_holder_on_other_host_is_not_reclaimed_by_pid(self):
         ticket = self.lock.enqueue("COM5", "remote", "flash", pid=1)
         device_lock.write_json(self.lock.lock_path("COM5"), {
-            "acquired_at": 1000, "heartbeat_at": 1000,
+            "acquired_at": 1000, "heartbeat_at": self.lock.resource_now("COM5"),
             "expected_build_id": "", "host": "another-host",
             "owner": "remote", "pid": 99, "port": "COM5", "purpose": "flash",
             "token": "old", "protocol": device_lock.LOCK_PROTOCOL,
@@ -525,7 +560,7 @@ class LockTests(ClockStoreTests):
         device_lock.write_json(self.lock.lock_path("COM5"), {
             "acquired_at": 1000, "heartbeat_at": 1000,
             "expected_build_id": "",
-            "host": host or device_lock.socket.gethostname(),
+            "host": host or device_lock.host_identity(),
             "owner": "gone", "pid": pid, "port": "COM5", "purpose": "screenshot",
             "token": "old", "protocol": device_lock.LOCK_PROTOCOL,
         })
@@ -948,7 +983,7 @@ class ProtocolTests(ClockStoreTests):
         holder; pass pid=1 for a live one a claim must leave standing."""
         record = {
             "acquired_at": 1000, "heartbeat_at": 1000, "expected_build_id": "",
-            "host": device_lock.socket.gethostname(), "owner": "other-autana",
+            "host": device_lock.host_identity(), "owner": "other-autana",
             "pid": pid, "purpose": "flash", "token": "old",
         }
         if autana_version is not None:
@@ -1133,6 +1168,9 @@ class LockRecordShapeTests(unittest.TestCase):
             }),
         },
     }
+
+    GOLDEN_KEYS[4] = dict(GOLDEN_KEYS[3], ticket=GOLDEN_KEYS[3]["ticket"] | {"host"})
+    GOLDEN_KEYS[5] = dict(GOLDEN_KEYS[4], ticket=GOLDEN_KEYS[4]["ticket"] | {"touched_at"})
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

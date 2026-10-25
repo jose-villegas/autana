@@ -8,12 +8,15 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "collections/sort.h"
+#include "core/job.h"
 #include "display/viewport.h"
 #include "math/geometry/planef.h"
 #include "math/linear/mat3f.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "render/code_layout.h"
+#include "render/r3d_triangle_tests.h"
 
 void
 r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
@@ -51,8 +54,7 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
     lens->m = mat4f_mul_affine(lens->m, placed);
 }
 
-#define ALL_PLANES     ((1u << PLANE_FRUSTUM_COUNT) - 1u)
-#define WALK_STACK_MAX 256
+#define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
 
 typedef struct {
     uint16_t node;
@@ -69,7 +71,7 @@ struct r3d_pipeline_work {
     union {
         struct {
             planef_t planes[PLANE_FRUSTUM_COUNT];
-            walk_entry_t stack[WALK_STACK_MAX];
+            walk_entry_t stack[R3D_LIT_WALK_STACK_MAX];
         } cull;
 
         struct {
@@ -87,32 +89,36 @@ r3d_pipeline_work_bytes(void) {
     return mathi_size_ceil(sizeof(r3d_pipeline_work_t), R3D_PIPELINE_WORK_ALIGNMENT);
 }
 
+typedef struct {
+    float depth;
+    uint32_t node;
+} child_depth_t;
+
+static inline bool
+farther(child_depth_t a, child_depth_t b) {
+    return a.depth > b.depth;
+}
+
+SORT_DEFINE_INSERTION(children, child_depth_t, farther)
+
 /* Children go on the stack farthest first, so the nearest pops first and
  * the walk visits leaves roughly front to back. */
 static int
 push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
-    uint16_t order[8];
-    float depths[8];
+    child_depth_t order[R3D_LIT_NODE_CHILDREN_MAX];
     const float* f = lens->m.m[2];
     const planef_t depth = {{f[0], f[1], f[2]}, f[3]};
-    int n = 0;
-    for (int i = 0; i < node->count; i++) {
+    const int n = node->count;
+    for (int i = 0; i < n; i++) {
         const uint16_t child = (uint16_t)(node->first + i);
         /* The lens maps ticks, so the bounds scale is one. */
         const float d = planef_distance(depth, box3f_centre(box3f_from_box3s(mesh->nodes[child].bounds, 1.0F)));
-        int slot = n++;
-        while (slot > 0 && depths[slot - 1] < d) {
-            depths[slot] = depths[slot - 1];
-            order[slot] = order[slot - 1];
-            slot--;
-        }
-        depths[slot] = d;
-        order[slot] = child;
+        children_insert(order, (size_t)i, (child_depth_t){d, child});
     }
-    assert(top + n <= WALK_STACK_MAX); /* depth times seven, far below this */
+    assert(top + n <= R3D_LIT_WALK_STACK_MAX);
     for (int i = 0; i < n; i++) {
-        stack[top++] = (walk_entry_t){order[i], (uint8_t)mask};
+        stack[top++] = (walk_entry_t){(uint16_t)order[i].node, (uint8_t)mask};
     }
     return top;
 }
@@ -217,7 +223,7 @@ r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
 }
 
 int
-r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count) {
+r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count, int first_permille) {
     int total = 0;
     for (int i = 0; i < count; i++) {
         total += mesh->clusters[clusters[i]].vertex_count;
@@ -225,7 +231,7 @@ r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* cluster
     int prefix = 0;
     for (int i = 0; i < count; i++) {
         prefix += mesh->clusters[clusters[i]].vertex_count;
-        if (2 * prefix >= total) {
+        if ((int64_t)prefix * JOB_SHARE_PERMILLE >= (int64_t)total * first_permille) {
             return i + 1;
         }
     }
@@ -265,9 +271,9 @@ draw_split_row(const int* weight, int height, int top_permille) {
     int prefix = 0;
     for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
         current += weight[bucket];
-        if (current > 0 && (int64_t)(prefix + current) * RASTER_SPLIT_PERMILLE >= target) {
-            const int64_t bucket_weight = (int64_t)current * RASTER_SPLIT_PERMILLE;
-            const int64_t position = ((bucket * bucket_weight) + target) - ((int64_t)prefix * RASTER_SPLIT_PERMILLE);
+        if (current > 0 && (int64_t)(prefix + current) * JOB_SHARE_PERMILLE >= target) {
+            const int64_t bucket_weight = (int64_t)current * JOB_SHARE_PERMILLE;
+            const int64_t position = ((bucket * bucket_weight) + target) - ((int64_t)prefix * JOB_SHARE_PERMILLE);
             return mathi_clamp((int)(position * height / (bucket_weight * DRAW_SPLIT_BUCKETS)), 1, height - 1);
         }
         prefix += current;
@@ -278,7 +284,7 @@ draw_split_row(const int* weight, int height, int top_permille) {
 int
 r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
                         int count, int height, int top_permille) {
-    assert(top_permille >= 0 && top_permille <= RASTER_SPLIT_PERMILLE);
+    assert(top_permille >= 0 && top_permille <= JOB_SHARE_PERMILLE);
     int weight[DRAW_SPLIT_BUCKETS + 1] = {0};
     draw_split_histogram(weight, mesh, clusters, rows, count, height);
     return draw_split_row(weight, height, top_permille);
@@ -290,20 +296,6 @@ project(const r3d_lens_t* lens, const clip_vertex_t* v) {
     const biased_t b = biased_screen(lens, v->x, v->y, inv);
     return (r3d_span_vertex_t){
         r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->near_subpixels * inv, v->r, v->g, v->b};
-}
-
-/* Front faces wind negative on screen: counter-clockwise in a y-up world
- * turns clockwise once screen y points down. */
-static inline bool
-facing_away(int32_t area2, bool double_sided) {
-    return !double_sided && area2 >= 0;
-}
-
-/* Twice the signed area; with coordinates inside R3D_SPAN_RANGE each
- * product is under 2^30. */
-static inline int32_t
-signed_area2(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx, int32_t cy) {
-    return ((bx - ax) * (cy - ay)) - ((cx - ax) * (by - ay));
 }
 
 /* One Sutherland-Hodgman pass (Sutherland and Hodgman 1974): the polygon's part on the plane's inside. */
@@ -384,20 +376,6 @@ draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_col
     }
 }
 
-/* True when the bounding box holds no pixel centre inside the target, so
- * the rasterizer would fill nothing: most of these are triangles smaller
- * than a pixel falling between centres. */
-static inline bool
-misses_every_centre(const r3d_pipeline_vertex_t* a, const r3d_pipeline_vertex_t* b, const r3d_pipeline_vertex_t* c,
-                    const r3d_span_target_t* target) {
-    const int x_first = r3d_span_first_centre(r3d_span_min3(a->sx, b->sx, c->sx));
-    const int x_end = r3d_span_first_centre(r3d_span_max3(a->sx, b->sx, c->sx));
-    const int y_first = r3d_span_first_centre(r3d_span_min3(a->sy, b->sy, c->sy));
-    const int y_end = r3d_span_first_centre(r3d_span_max3(a->sy, b->sy, c->sy));
-    return x_first >= x_end || y_first >= y_end || x_end <= 0 || x_first >= target->rows.width
-           || y_end <= target->rows.row0 || y_first >= target->rows.row1;
-}
-
 static inline bool
 rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
     return !r->unbounded && (r->y1 < (float)target->rows.row0 || r->y0 > (float)target->rows.row1);
@@ -452,6 +430,17 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_c
     }
 }
 
+/* Each writer's value for this cluster and triangle, by its step. */
+static void
+retag(r3d_span_writer_t* writers, const r3d_span_writer_t* given, int count, uint32_t cluster, uint32_t triangle) {
+    for (int k = 0; k < count; k++) {
+        const uint32_t step = writers[k].step == R3D_SPAN_STEP_CLUSTER    ? cluster
+                              : writers[k].step == R3D_SPAN_STEP_TRIANGLE ? triangle
+                                                                          : 0U;
+        writers[k].value = given[k].value + step;
+    }
+}
+
 /* The draw for a target with writers, kept out of the hot one's code. */
 static __attribute__((noinline, cold)) void
 draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
@@ -464,13 +453,18 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
         writers[k] = target->writers[k];
     }
     for (int i = 0; i < count; i++) {
-        for (int k = 0; k < target->writer_count; k++) {
-            if (writers[k].per_cluster) {
-                writers[k].value = target->writers[k].value + clusters[i];
-            }
+        const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
+        if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
+            continue;
         }
-        if (rows == NULL || !rows_miss_target(&rows[clusters[i]], target)) {
-            draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, &writing, true, work);
+        /* One triangle at a time, so a writer stepping per triangle is
+         * retagged here and the cluster draw stays the hot one's. */
+        r3d_lit_cluster_t one = *c;
+        one.triangle_count = 1;
+        for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
+            retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
+            one.triangle_first = (uint16_t)t;
+            draw_cluster(mesh, lens, &one, cs, &writing, true, work);
         }
     }
 }

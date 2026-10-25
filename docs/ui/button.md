@@ -6,7 +6,7 @@ caller decides what that means.
 
 ## Example
 
-<!-- generated: ui-button-example check: python launcher/tools/render/ui_examples_doc.py --check -->
+<!-- generated: ui-button-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* A button: true on the frame a tap is released on it. */
 #include "ui/ui.h"
@@ -38,7 +38,7 @@ button_example(button_example_t* s) {
 ## States
 
 Each row is the example above, unchanged, in one of the
-[states](../UI-Toolkit.md#states). Fires says when a tap there made it
+[states](README.md#states). Fires says when a tap there made it
 return true.
 
 <!-- generated: ui-button-states sha256=c6790bc416e39c910f3847ed1e42511dfb6a2640f488cde85a3e03555763db62 -->
@@ -69,4 +69,4 @@ return true.
 
 - [Button with an icon](button_icon.md)
 - [Tile](tile.md): a choice rather than an action
-- [UI Toolkit](../UI-Toolkit.md): every control, the theme, the frame
+- [UI Toolkit](README.md): every control, the theme, the frame

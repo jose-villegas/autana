@@ -1,6 +1,6 @@
 /*
- * imu: QMI8658 stream FIFO drained by imu_read_fifo().
- * imu_read() returns the latest single sample. Register values follow the
+ * imu: QMI8658 stream FIFO drained by a polling task.
+ * imu_read() returns the newest sample read by the task. Register values follow the
  * QST QMI8658A datasheet Rev A (2022).
  */
 #pragma once
@@ -38,17 +38,22 @@ imu_fifo_lost(uint64_t locked_us, uint32_t* remainder_us, bool gap) {
     return (int)(total_us / IMU_SAMPLE_US);
 }
 
-/* Oldest first; lost covers the preceding drain's read mode. Overflow marks a gap.
- * Returns -1 on a bus error. */
-int imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed);
+/* One consumer copies queued samples oldest first; loss precedes each sample.
+ * Gaps (bus error, overflow, loss saturation) are reported through *gap and precede samples[0].
+ * Returns -1 only without a sensor. */
+int imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES], bool* gap);
 
 /* Configures and starts the sensor. Safe to call more than once.
  * Returns false if the chip does not answer or identifies as something else. */
 bool imu_init(void);
 
+/* Starts the polling task on the core-1 job worker's core, one priority below it.
+ * Safe when the sensor is absent. */
+void imu_start(void);
+
 bool imu_ready(void);
 
-/* Reads the latest six axes. Returns false on a bus error. */
+/* Copies the newest sample read by the task. False when no sensor or no sample is available. */
 bool imu_read(imu_sample_t* out);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

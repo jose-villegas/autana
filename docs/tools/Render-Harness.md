@@ -3,7 +3,7 @@
 Rendering a firmware screen into an image on a laptop: how a scene is
 declared, what its pixels are pinned to, the same scenes under QEMU, and
 diffing any of them against a device capture.
-[`../Testing-Guide.md`](../Testing-Guide.md) is the host/device test split
+[`testing/README.md`](../testing/README.md) is the host/device test split
 this sits inside.
 
 On Windows, run the `.sh` commands below in Git Bash. On Linux, use a
@@ -34,10 +34,14 @@ Meshes must already be baked.
 Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
 all authored renderers. An unknown renderer reports the available names.
 `--camera NAME` selects a camera; omission activates the scene's default.
+With `--camera`, stderr names that camera's path duration in ms.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
-30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets` selects the render
+30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets|cull` selects the render
 context's view, with shaded as the default. The names match the declared
 `render_debug_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
+With `--view cull`, `--counts FILE` writes one CSV row per frame of what the
+cull kept and drew ([Mesh-Rendering.md](../render/Mesh-Rendering.md#the-cull-seen));
+without it, `--counts` is refused.
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
@@ -105,7 +109,7 @@ requests".
 | `overview/launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
 | `overview/launcher-home.gif` | the same, rocking the board either way |
 | `overview/boot-anim.gif` | the boot animation in landscape orientation |
-| `ui/*.png` | each face example in its states, and the States tables of `docs/ui/` (`ui_examples_render_host.sh`, `ui_examples_doc.py`) |
+| `ui/*.png` | each face example in its states, and the States tables of `docs/ui/` (`ui_examples_render_host.sh`, `ui_examples_doc.py`); source uses the [usage example rule](Generated-Files.md#usage-examples) |
 
 Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
 the dynamic-resolution report write one Markdown table per block name into
@@ -159,9 +163,27 @@ A comment or blank-line edit in the Python leaves the fingerprint unchanged.
 The stage's work folder is named by it, and its saved `source.json` holds it
 and lists every input.
 
-The `doc-images-gpu` workflow runs on every main push, nightly and on manual
-dispatch.
+The `doc-images-gpu` workflow fingerprints inputs on every main push.
+Changed images remain pending for the night window; pushes do not render.
 
+The doc job takes its fingerprint at its 16:00Z start; inputs merged during
+the evening wait render the next night.
+
+The [night order](../../launcher/tools/perf/README.md#nightly-scoped-chain)
+owns the local wait, bake priority and board-plan handoff. The hosted job
+only fingerprints. Every Bakes GPU completion triggers a fresh check.
+
+GPU stages observe active board locks, then take heavy, holding nothing in
+between. A board can be claimed in that gap, and its builds then wait on
+heavy. Human reservations do not block the GPU stage.
+
+A stage starts only if `GPU_ESTIMATES[workflow]` fits before the local night
+end in `scripts/lib/local_schedule.py`. The cap is checked again after heavy.
+
+A scheduled stage that cannot fit skips successfully. Manual dispatch
+refuses; `override` allows daytime work while still waiting for board locks.
+`force` controls freshness independently. Override guard waits are bounded
+by `DEFAULT_LOCK_WAIT_SECONDS`.
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
 failed attempt is a record too, so a newer failed one makes them stale
 and the next run renders again.
@@ -204,7 +226,7 @@ flowchart TD
 A rendered record means rendered, not merged: closing a refresh PR leaves
 these inputs current until they change or a dispatch uses `force`.
 
-A failed record leaves inputs not current, so the next push or nightly run
+A failed record leaves inputs not current, so the next eligible nightly or dispatched run
 renders again. Retention is set in `doc-images-gpu.yml`.
 Runs open or update "docs: refresh GPU-rendered images" on
 `feature/refresh-doc-images-gpu`, and log GPU memory use.
@@ -310,7 +332,9 @@ Two files, the same declare-then-source shape a report script uses:
   checking each image, converting to PNG) is that one procedure. A scene that
   reads asset packs also declares `scene_assets`, the folders whose roots
   `build_pack.py` writes as packs beside the renderer; a folder with no asset
-  roots fails the build.
+  roots fails the build. `scene_renderer=1` links the renderer: every `.c`
+  below the folders `launcher/main/renderer_folders.txt` names, the list the
+  firmware and the host tests build too.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
@@ -566,10 +590,10 @@ and frame count. `--panel-width PX` scales each picture before adding its label
 
 ## Related
 
-- [`../Testing-Guide.md`](../Testing-Guide.md): the host and device test
+- [`testing/README.md`](../testing/README.md): the host and device test
   runners, runsuite, and the QEMU suite run this harness's second backend
   borrows its image from.
-- [`../Building-a-Screen.md`](../Building-a-Screen.md): building the screen
+- [`ui/Building-a-Screen.md`](../ui/Building-a-Screen.md): building the screen
   a scene renders.
 - [`../notes/Debugging.md`](../notes/Debugging.md#performance-seems-off):
   why a host timing is not a cost.

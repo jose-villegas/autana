@@ -1,7 +1,7 @@
 name: Bakes
 
 # The expensive bakes (launcher/tools/bake/bake.py). On a pull request the CPU
-# job bakes every mesh launcher/bakes.lock has no row for and uploads the
+# job bakes every mesh and sound launcher/bakes.lock has no row for and uploads the
 # files; the lock job then fails until the author runs
 # `bake.py lock --from-run N` with that run and commits the lock. A mesh's
 # bytes differ by CPU vendor, so on a runner of another vendor than the lock's
@@ -26,23 +26,49 @@ permissions:
   contents: read
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      cpu: ${{ steps.affected.outputs.cpu }}
+      lock: ${{ steps.affected.outputs.lock }}
+      sky-through-walls: ${{ steps.affected.outputs.sky-through-walls }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job cpu --job lock --job sky-through-walls
+
   cpu:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.cpu == 'true') }}
     name: Bake missing exports and meshes
-    if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/host-tools
 
-      - name: List the exports and meshes the lock has no row for
+      - name: List the CPU bakes the lock has no row for
         id: missing
         shell: bash
         run: |
           python launcher/tools/bake/bake.py list --missing --kind blend | tee "$RUNNER_TEMP/blend.txt"
           python launcher/tools/bake/bake.py list --missing --kind mesh | tee "$RUNNER_TEMP/mesh.txt"
+          python launcher/tools/bake/bake.py list --missing --kind sound | tee "$RUNNER_TEMP/sound.txt"
+          echo "mesh=$(wc -l < "$RUNNER_TEMP/mesh.txt")" >> "$GITHUB_OUTPUT"
+          echo "sound=$(wc -l < "$RUNNER_TEMP/sound.txt")" >> "$GITHUB_OUTPUT"
           echo "blend=$(wc -l < "$RUNNER_TEMP/blend.txt")" >> "$GITHUB_OUTPUT"
-          echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" | wc -l)" >> "$GITHUB_OUTPUT"
+          echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/sound.txt" | wc -l)" >> "$GITHUB_OUTPUT"
 
       # The exporter names the Blender it needs; the job installs that one.
       - name: Install Blender
@@ -55,27 +81,32 @@ jobs:
           curl -fsSL "https://download.blender.org/release/Blender$series/blender-$version-linux-x64.tar.xz" | tar -xJ -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/blender-$version-linux-x64" >> "$GITHUB_PATH"
 
-      - name: Fetch mesh source files
+      - name: Fetch source files
         if: steps.missing.outputs.count != '0'
         run: git lfs pull --exclude=""
 
       - name: Initialize only meshoptimizer
-        if: steps.missing.outputs.count != '0'
+        if: steps.missing.outputs.mesh != '0'
         run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
       # The bakes trace rays on Mitsuba's LLVM variant, which needs libLLVM.
       - name: Install the r3d requirements and LLVM
-        if: steps.missing.outputs.count != '0'
+        if: steps.missing.outputs.mesh != '0'
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends llvm
+
+      - name: Install the sound requirements
+        if: steps.missing.outputs.sound != '0'
+        run: pip install -r launcher/tools/audio/requirements.txt
 
       - name: Bake
         if: steps.missing.outputs.count != '0'
         run: |
           python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
+          python launcher/tools/bake/bake.py bake --kind sound --out "$RUNNER_TEMP/bakes"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.missing.outputs.count != '0'
@@ -83,26 +114,40 @@ jobs:
           name: bakes-cpu
           path: ${{ runner.temp }}/bakes
 
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
+
   lock:
     name: Lock is current
-    if: github.event_name == 'pull_request'
-    needs: cpu
+    if: ${{ !cancelled() && needs.cpu.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lock == 'true') }}
+    needs: [inputs, cpu]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
 
       - uses: ./.github/actions/host-tools
 
       - name: Every needed key has a row and every row is needed
         run: python launcher/tools/bake/bake.py check
 
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
+
   sky-through-walls:
     name: Sky through walls
-    if: github.event_name == 'pull_request'
-    needs: lock
+    if: ${{ !cancelled() && needs.lock.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.sky-through-walls == 'true') }}
+    needs: [inputs, lock]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
 
       - uses: ./.github/actions/host-tools
 
@@ -116,6 +161,10 @@ jobs:
 
       - name: Check the full camera flythrough for enclosed sky
         run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}
 
   publish:
     name: Publish locked bakes

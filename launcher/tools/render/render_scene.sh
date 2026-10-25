@@ -39,6 +39,7 @@
 #                   --deps compiles nothing: it prints `flags` and the compile
 #                   flags, then the compiler's -MM list (sources and project
 #                   headers; -MM omits system headers).
+#   scene_renderer  OPTIONAL, 1 links the renderer (tools/build/renderer.sh).
 #   scene_ui        OPTIONAL, 1 links the shared host UI sources.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
@@ -151,6 +152,10 @@ render_scene_build() {
         return 1
     fi
     _rs_tools="$_rs_launcher/tools"
+    if [ "${scene_renderer:-0}" = 1 ]; then
+        . "$_rs_tools/build/renderer.sh"
+        scene_sources="$scene_sources $(renderer_sources "$_rs_launcher")"
+    fi
     if [ "${scene_ui:-0}" = 1 ]; then
         . "$_rs_tools/build/ui_sources.sh"
         scene_sources="$scene_sources $UI_SOURCES"
@@ -216,6 +221,8 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
+    # The host takes --set and --tunables: the registry and its console lines.
+    _rs_files="$_rs_files $_rs_launcher/main/core/tune.c $_rs_launcher/main/console/console_tune.c"
     # Every scene uses drawing and presentation, excluding device-only backends.
     _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" "$_rs_launcher/main/draw" -name '*.c' ! -name '*_device.c' | sort | tr '
 ' ' ')"

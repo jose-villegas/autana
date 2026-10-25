@@ -2,9 +2,13 @@
 
 Per-type arithmetic, fixed point, random draws and units. [Math index](README.md).
 
+<!-- generated: math-fast-links-scalar check: python launcher/tools/perf/fast_paths.py --check -->
+Fast-path evidence: [mathf_recip](Fast-Paths.md#mathf-recip), [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt), [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx), [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30), [mathf_repeat](Fast-Paths.md#mathf-repeat), [trig_sin](Fast-Paths.md#trig-sin).
+<!-- /generated: math-fast-links-scalar -->
+
 `math/scalar/` holds per-type arithmetic, fixed point, random draws, trigonometry
-and time units. The tables list the range, lerp and rounding helpers; the
-[catalogue](../Shared-Helpers.md) lists the rest.
+and time units. The tables list the range, lerp and rounding helpers;
+[code search](../tools/Code-Search.md) finds the rest.
 
 ## mathi.h
 
@@ -21,7 +25,7 @@ These take and return plain integers, not structs.
 | `mathi_lerp(a, b, t, n)` | `t` of `n` steps from `a` to `b`, the step truncated toward `a`; `n > 0`, `0 <= t <= n` | $`a + \mathrm{trunc}((b-a)t/n)`$ |
 | `mathi_lerp_u8(a, b, w)` | `mathi_lerp` with `n = UINT8_MAX` | $`a + \mathrm{trunc}((b-a)w/255)`$ |
 | `mathi_isqrt64(v)` | floor square root over the full uint64 range | $`\lfloor\sqrt v\rfloor`$ |
-| `mathi_half_chord(r, d)` | floor half chord; zero when outside; $`\lvert r\rvert,\lvert d\rvert\le32767`$ | $`\lfloor\sqrt{r^2-d^2}\rfloor`$ for $`\lvert d\rvert<r`$ |
+| `mathi_half_chord(r, d)` | floor half chord; zero when outside; `r`, `d` fit int32 | $`\lfloor\sqrt{r^2-d^2}\rfloor`$ for $`\lvert d\rvert<r`$ |
 | `mathi_half_chord_round(r, d)` | nearest half chord; same range and outside rule | $`h=r^2-d^2,\ f=\lfloor\sqrt h\rfloor`$<br>$`f+1`$ when $`h-f^2>f`$, else $`f`$ |
 | `mathi_in_disc(dx, dy, r)` | closed disc predicate; squared sum must fit int64 | $`dx^2+dy^2\le r^2`$ |
 
@@ -60,6 +64,22 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 | `mathf_to_x(v)` | Q16.16, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
 | `mathx_to_f(v)` | float | $`v/2^{16}`$ |
 
+`mathx_rsqrt_q30(m)` accepts $`2^{30} \le m < 2^{32}`$ and returns
+$`2^{30}/\sqrt{m/2^{32}}`$ rounded to nearest.
+`MATHX_RSQRT_Q30_RELATIVE_LIMIT` bounds relative error by $`2^{-31}`$.
+The seed table, Newton corrections and midpoint bracket use integer products.
+
+The exhaustive checker runs separately from unit tests:
+
+```sh
+cc -O3 -Ilauncher/packages/math/include launcher/test/math_rsqrt_check.c -lm -o /tmp/math_rsqrt_check
+/tmp/math_rsqrt_check
+```
+
+`mathx_rsqrt(v)` returns Q16.16 reciprocal square root, with error at most
+0.5 LSB plus `MATHX_RSQRT_RELATIVE_LIMIT` times the exact result.
+Nonpositive input gives `INT32_MAX`; positive input uses `mathx_rsqrt_q30`.
+
 ## mathf_round.h
 
 | Function | Purpose | Formula |
@@ -88,7 +108,7 @@ The approximate path evaluates its single correction as $`y_0\,(1.5-0.5xy_0^2)`$
 `mathf_rsqrt` uses that same formula and preserves its bits.
 
 The limits in `mathf.h` define the accuracy contract; the
-[benchmark table](Benchmark.md) reports measured maxima and coverage.
+[fast-path evidence](Fast-Paths.md) reports measured maxima and coverage.
 
 The suite's integer product bracket rounds the exact reciprocal root without
 using the twice-rounded `1 / sqrtf` as a reference. The suite prints

@@ -3,9 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "sound/sound_engine.h"
 #include "sound/sound_mixer.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #define TEST_FRAMES     12
@@ -826,6 +827,38 @@ test_sound_exact_public_boundaries_and_app_generation_wrap(void) {
 }
 
 static void
+test_sound_capture_acquire_waits_for_current_owner(void) {
+    sound_capture_t capture = {0};
+    const uint32_t reader = sound_capture_begin(&capture);
+    const int64_t deadline = SOUND_CAPTURE_TIMEOUT_MS * (int64_t)MATH_US_PER_MS;
+    uint32_t sequence = 0;
+    TEST_ASSERT_EQUAL_INT(SOUND_CAPTURE_WAIT, sound_capture_acquire(&capture, 0, deadline, &sequence));
+    TEST_ASSERT_EQUAL_UINT32(0, sequence);
+    TEST_ASSERT_EQUAL_UINT32(reader, capture.requested);
+    sound_capture_resume(&capture, reader);
+    TEST_ASSERT_EQUAL_INT(SOUND_CAPTURE_ACQUIRED,
+                          sound_capture_acquire(&capture, deadline - MATH_US_PER_MS, deadline, &sequence));
+    TEST_ASSERT_NOT_EQUAL(reader, sequence);
+    TEST_ASSERT_TRUE(sound_capture_park(&capture, sequence));
+    sound_capture_resume(&capture, sequence);
+}
+
+static void
+test_sound_capture_acquire_timeout_preserves_current_owner(void) {
+    sound_capture_t capture = {0};
+    const uint32_t reader = sound_capture_begin(&capture);
+    TEST_ASSERT_TRUE(sound_capture_park(&capture, reader));
+    const int64_t deadline = SOUND_CAPTURE_TIMEOUT_MS * (int64_t)MATH_US_PER_MS;
+    uint32_t sequence = 0;
+    TEST_ASSERT_EQUAL_INT(SOUND_CAPTURE_TIMED_OUT, sound_capture_acquire(&capture, deadline, deadline, &sequence));
+    TEST_ASSERT_EQUAL_UINT32(0, sequence);
+    TEST_ASSERT_TRUE(sound_capture_is_parked(&capture, reader));
+    sound_capture_resume(&capture, reader);
+    TEST_ASSERT_EQUAL_INT(SOUND_CAPTURE_TIMED_OUT, sound_capture_acquire(&capture, deadline, deadline, &sequence));
+    TEST_ASSERT_EQUAL_UINT32(0, capture.requested);
+}
+
+static void
 test_sound_capture_sequence_wrap_and_results(void) {
     sound_capture_t capture = {0};
     TEST_ASSERT_FALSE(sound_capture_matches(sound_capture_result(0, true), 0));
@@ -1040,6 +1073,8 @@ run_sound_mixer_suite(void) {
     RUN_TEST(test_sound_declick_zero_signal_and_authored_loop_seam);
     RUN_TEST(test_sound_declick_start_stop_and_tail);
     RUN_TEST(test_sound_declick_midblock_end);
+    RUN_TEST(test_sound_capture_acquire_waits_for_current_owner);
+    RUN_TEST(test_sound_capture_acquire_timeout_preserves_current_owner);
     RUN_TEST(test_sound_capture_sequence_wrap_and_results);
     RUN_TEST(test_sound_capture_park_resume_holds_voice_position);
     RUN_TEST(test_sound_capture_timeout_before_park_rejects_late_command);

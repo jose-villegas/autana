@@ -27,11 +27,11 @@
 static const char* TAG = "ui";
 #endif
 
+#include "core/tune.h"
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "profile/frame_cost.h"
-#include "services/tune.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/controls/ui_slider.h"
 #include "ui/controls/ui_widgets.h"
@@ -280,7 +280,7 @@ ui_init(void) {
     layout_generation = 0;
 
     /* The shell look (ui_style.h). */
-    ui_ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color)UI_RGB(UI_SHELL_BACKGROUND);
+    ui_ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color)UI_RGB(UI_BACKGROUND);
     ui_ctx.style->colors[MU_COLOR_TEXT] = (mu_Color)UI_RGB(UI_SHELL_TEXT);
     ui_ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color)UI_RGB(UI_SHELL_BUTTON);
     ui_ctx.style->colors[MU_COLOR_BUTTONHOVER] = (mu_Color)UI_RGB(UI_SHELL_BUTTON_HOVER);
