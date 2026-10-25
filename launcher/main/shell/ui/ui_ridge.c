@@ -168,7 +168,7 @@ ui_ridge_load(void) {
         return;
     }
     load_tried = true;
-    const asset_pack_t* pack = asset_store_pack(ASSET_ENGINE_PACK);
+    const asset_pack_t* pack = asset_store_load(ASSET_ENGINE_PACK);
     asset_status_t status = ASSET_ERR_NO_PACK;
     if (pack != NULL) {
         asset_view_t entry;

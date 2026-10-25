@@ -132,7 +132,7 @@ fixture(int lights) {
     suite_set_test_cleanup(release);
     active = fixture_block(sizeof *active);
     fixture_t* f = active;
-    f->pack = asset_store_pack(PACK_ID);
+    f->pack = asset_store_load(PACK_ID);
     TEST_ASSERT_NOT_NULL_MESSAGE(f->pack, "skin_light_perf: capybara pack missing; flash demo assets");
     open_model(f->pack, &f->skeleton, &f->skin, &f->bind);
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, anim_tracks_from_pack(f->pack, CLIP_ID, &f->clip),
@@ -410,7 +410,7 @@ release_pack(void) {
 
 static void
 test_demo_skin_mesh_lookup(void) {
-    const asset_pack_t* pack = asset_store_pack(PACK_ID);
+    const asset_pack_t* pack = asset_store_load(PACK_ID);
     TEST_ASSERT_NOT_NULL_MESSAGE(pack, "skin_light_perf: capybara pack missing; flash demo assets");
     suite_set_test_cleanup(release_pack);
     anim_skeleton_t skeleton;

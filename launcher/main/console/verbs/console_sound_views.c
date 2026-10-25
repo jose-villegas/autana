@@ -32,7 +32,7 @@ console_sound_view(const console_sound_args_t* args, int64_t* open_us) {
             return &view->sound;
         }
     }
-    const asset_pack_t* pack = asset_store_pack(args->pack);
+    const asset_pack_t* pack = asset_store_load(args->pack);
     if (!pack) {
         return NULL;
     }

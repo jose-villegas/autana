@@ -22,7 +22,7 @@ flowchart LR
     Build --> Packs["one pack per root asset<br/>named after it, with what it relates to"]
     Packs --> Dev["device: the assets partition<br/>a pack directory"]
     Packs --> Ext["host now, microSD later<br/>one file per pack"]
-    Dev --> Mount["asset_store_pack(name)<br/>mounts and checks one pack"]
+    Dev --> Mount["asset_store_load(name)<br/>mounts and checks one pack"]
     Ext --> Mount
     Mount --> Rt["scene_load, anim_tracks_find<br/>one C sampler"]
     Ext --> Poses["track_host, built once<br/>same sampler, prints poses"]
@@ -58,8 +58,8 @@ is kept. Ids are unique within a pack.
 | Lifetime | [A] Mounted on first use and counted; a scene's pack is released when its last scene unloads, so mappings do not pile up. |
 
 ```c fragment
-/* asset_store.h: replaces asset_store_pack() */
-const asset_pack_t* asset_store_pack(const char* name);  /* mounts and checks that pack alone; NULL, logged, when missing or bad */
+/* asset_store.h: replaces asset_store_load() */
+const asset_pack_t* asset_store_load(const char* name);  /* mounts and checks that pack alone; NULL, logged, when missing or bad */
 void asset_store_release(const char* name);                /* drops a use; unmapped at zero */
 
 /* scene.h: the signature stays */
@@ -167,13 +167,13 @@ bake is deterministic), which re-stamps each fit once.
 
 `boot_anim_run()` runs in `app_main` after POST and `ui_launcher_init()`, so
 nothing has mounted a pack before it. Boot mounts its clip's pack with
-`asset_store_pack("boot_anim_motion")`, which maps and checks that pack alone on its
+`asset_store_load("boot_anim_motion")`, which maps and checks that pack alone on its
 first call.
 
 ```c fragment
 /* boot_anim.h: nodes camera and space (translation, rotation, scale) resolved once */
 typedef struct { anim_clip_t clip; anim_node_tracks_t camera, space; bool from_pack; } boot_anim_motion_t;
-void boot_anim_motion_load(boot_anim_motion_t* out);      /* first thing in boot_anim_run(): anim_tracks_from_pack(asset_store_pack("boot_anim_motion"), "boot_anim_motion"), anim_tracks_find_node() twice; on any failure, log why and use the rest pose */
+void boot_anim_motion_load(boot_anim_motion_t* out);      /* first thing in boot_anim_run(): anim_tracks_from_pack(asset_store_load("boot_anim_motion"), "boot_anim_motion"), anim_tracks_find_node() twice; on any failure, log why and use the rest pose */
 void boot_anim_motion_release(boot_anim_motion_t* motion); /* when boot is done; leaves the rest pose */
 /* the motion is passed to boot_anim_view() and boot_anim_draw_frame(): no module state */
 ```

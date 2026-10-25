@@ -77,8 +77,12 @@ phase over all of them, lowest `order` first, and skips a NULL callback.
 |---|---|
 | `update(dt_ms)` | after the app's `update()`, while the last frame is still being sent; touches no framebuffer |
 | `compose(dt_ms)` | once the send is done, before the app's `frame()` draws over it |
+| `poll(dt_ms)` | every pass on core 0, immediately before the app's `frame()`; advances pending work and delivers completions |
 | `app_exit()` | right after the app's `exit()` |
 | `overlaps_present()` | a query, not a phase: true makes the app's frame present a pass late, so `update` has a send to overlap |
+
+`poll` also runs while priming presentation and on passes without overlap.
+The asset store registers this phase at `SHELL_ORDER_ASSET`.
 
 `update` and `compose` run only on a pass that overlaps the present: the app has
 an `update()`, or a system's `overlaps_present()` says so.

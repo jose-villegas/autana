@@ -15,14 +15,14 @@ app may use:
 <!-- generated: audio-tap-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Tap: keep the sound in app state until exit. */
-#include "asset/asset_store.h" /* asset_store_pack, ASSET_ENGINE_PACK */
+#include "asset/asset_store.h" /* asset_store_load, ASSET_ENGINE_PACK */
 #include "sound/sound_play.h"
 
 static sound_t tap; /* app state, not a stack local */
 
 static bool
 tap_start(void) {
-    if (sound_open(asset_store_pack(ASSET_ENGINE_PACK), "tap", &tap) != ASSET_OK) {
+    if (sound_open(asset_store_load(ASSET_ENGINE_PACK), "tap", &tap) != ASSET_OK) {
         /* no click */
         return false;
     }
@@ -42,7 +42,7 @@ or sound is off, `sound_play()` returns the null voice and nothing plays.
 To add your own sound, put `NAME.sound.toml` and its WAV in your app's pack
 folder; the build bakes it into entry `NAME` ([Sound assets](Sound-Assets.md),
 [Packs](../assets/Building-Packs.md#packs)). Then open it from your pack with
-`asset_store_pack()` the same way.
+`asset_store_load()` the same way.
 
 | Format | Pack size per second | Example: 220 ms click |
 |---|---|---|

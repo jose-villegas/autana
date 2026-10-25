@@ -29,7 +29,7 @@ sponza_suite_load(void) {
         printf("scene %s: status %d, asset %s, about '%s'\n", SPONZA_SCENE, (int)why.status,
                asset_status_text(why.asset), why.what);
     } else {
-        s.pack = asset_store_pack(SPONZA_SCENE);
+        s.pack = asset_store_load(SPONZA_SCENE);
         s.lens = scene_camera_lens(s.scene, SCENE_CAMERA_FIRST);
     }
     return s;

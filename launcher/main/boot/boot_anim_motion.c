@@ -44,7 +44,7 @@ rest(boot_anim_motion_t* out) {
 
 void
 boot_anim_motion_load(boot_anim_motion_t* out) {
-    const asset_pack_t* pack = asset_store_pack(BOOT_CLIP);
+    const asset_pack_t* pack = asset_store_load(BOOT_CLIP);
     if (pack == NULL) {
         ESP_LOGW(TAG, "no pack %s: camera and space hold the rest pose", BOOT_CLIP);
         rest(out);

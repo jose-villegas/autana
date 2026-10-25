@@ -16,7 +16,7 @@ options(int argc, char** argv) {
         fprintf(stderr, "this scene takes one argument: <pack>\n");
         return false;
     }
-    const asset_pack_t* pack = asset_store_pack(argv[0]);
+    const asset_pack_t* pack = asset_store_load(argv[0]);
     if (pack == NULL) {
         return false;
     }
