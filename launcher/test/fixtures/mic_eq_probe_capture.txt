@@ -1,0 +1,41 @@
+# autana --json replies on SYNTHETIC, 2000-01-01, synthetic EQ responses
+buildid	{"build_id": "synthetic"}
+probe adc bypass	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -20}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -20}
+probe adc half	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -26.020599913279625}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -26.020599913279625}
+probe adc highpass	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -27.827744695006633}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -20.0021404066599}
+probe adc lowpass	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -20.00002431368795}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -20.242854268629568}
+probe dac bypass	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -20}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -20}
+tone 100 500 30 --internal	{"hz": 100, "path": "internal", "tone_db": -20}
+tone 1000 500 30 --internal	{"hz": 1000, "path": "internal", "tone_db": -20}
+probe dac half	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -26.020599913279625}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -26.020599913279625}
+tone 100 500 30 --internal	{"hz": 100, "path": "internal", "tone_db": -26.020599913279625}
+tone 1000 500 30 --internal	{"hz": 1000, "path": "internal", "tone_db": -26.020599913279625}
+probe dac highpass	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -30.00423386866302}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -20.369851127737185}
+tone 100 500 30 --internal	{"hz": 100, "path": "internal", "tone_db": -30.00423386866302}
+tone 1000 500 30 --internal	{"hz": 1000, "path": "internal", "tone_db": -20.369851127737185}
+probe hpf bypass	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -20}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -20}
+probe hpf 4	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -32}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -20}
+probe hpf 10	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -20}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -20}
+probe hpf 12	{}
+tone 100 500 30	{"hz": 100, "path": "acoustic", "tone_db": -19}
+tone 1000 500 30	{"hz": 1000, "path": "acoustic", "tone_db": -20}

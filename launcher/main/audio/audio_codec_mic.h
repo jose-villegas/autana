@@ -2,6 +2,7 @@
 #pragma once
 #include <stdint.h>
 
+#include "audio/audio_codec_eq.h"
 #include "audio/audio_codec_saved.h"
 
 #define AUDIO_CODEC_MIC_NIBBLE_MAX      15u
@@ -12,7 +13,7 @@
 #define AUDIO_CODEC_MIC_DEPTH_SHIFT     5u
 #define AUDIO_CODEC_MIC_ALC_ENABLE      (1u << 7u)
 #define AUDIO_CODEC_MIC_GATE_ENABLE     (1u << 6u)
-#define AUDIO_CODEC_MIC_EQ_BYPASS       (1u << 6u)
+#define AUDIO_CODEC_MIC_EQ_BYPASS       AUDIO_CODEC_EQ_ADC_BYPASS
 #define AUDIO_CODEC_MIC_HPF_DYNAMIC     (1u << 5u)
 #define AUDIO_CODEC_MIC_VOLUME_DEFAULT  0xBF
 #define AUDIO_CODEC_MIC_HPF_DEFAULT     10

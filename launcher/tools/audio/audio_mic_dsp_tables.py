@@ -33,7 +33,7 @@ def label(config):
 def mic_data(records):
     if not records or records[0][0] != ["buildid"]:
         raise ValueError("microphone capture must start with buildid")
-    state, groups = {}, {}
+    state, groups = {"eq": DEFAULTS["eq"]}, {}
     for command, reply in records:
         if command[:1] == ["tune"]:
             if command[1] == "reset":

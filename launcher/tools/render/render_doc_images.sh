@@ -255,6 +255,11 @@ run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" 
 
 fi
 
+if [ -f docs/audio/data/mic_eq_probe_capture.txt ]; then
+    run "$PYTHON" launcher/tools/audio/mic/mic_eq_probe_figures.py --out "$OUT/audio" > "$WORK/mic_eq_probe_figures.log"
+fi
+# --orphans scans this runner: mic-eq-probe-adc.png, mic-eq-probe-adc-dark.png,
+# mic-eq-probe-dac.png, mic-eq-probe-dac-dark.png, mic-eq-probe-hpf.png, mic-eq-probe-hpf-dark.png
 if [ -f docs/audio/data/audio_mic_dsp_capture.txt ]; then
     run "$PYTHON" launcher/tools/audio/audio_mic_dsp_figures.py --out "$OUT/audio" > "$WORK/audio_mic_dsp_figures.log"
 fi

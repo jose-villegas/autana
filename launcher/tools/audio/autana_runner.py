@@ -50,6 +50,7 @@ def record_reply(output, runner, command, *words):
     payload = json.loads(reply) if words[0] in ("tone", "buildid") else reply
     record_line(output, " ".join(map(str, words)).removesuffix(" --json"),
                 json.dumps(payload, allow_nan=False))
+    return payload
 
 
 def reset_tunables(record, owner, names):
@@ -77,5 +78,6 @@ def capture_records(args, description, runner):
     with args.out.open("w", encoding="utf-8", newline="\n") as output:
         output.write(f"# autana --json replies on {args.board}, {date.today()}, {description}\n")
         record = partial(record_reply, output, runner, args.autana)
+        record.note = lambda key, payload: record_line(output, key, json.dumps(payload, allow_nan=False))
         record("buildid", "--json")
         yield record

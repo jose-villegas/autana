@@ -20,7 +20,7 @@ CAPTURE = ROOT / "docs/audio/data/audio_mic_dsp_capture.txt"
 PRIMARY_HZ = 1000
 HPF_VOLUME = 30
 FIELDS = {
-    "alc": ("OFF", 1), "alc_max": ("FIELD", "NIBBLE"), "alc_min": ("FIELD", "NIBBLE"),
+    "eq": ("OFF", 1), "alc": ("OFF", 1), "alc_max": ("FIELD", "NIBBLE"), "alc_min": ("FIELD", "NIBBLE"),
     "alc_win": ("FIELD", "NIBBLE"), "alc_gain": ("VOLUME", "GAIN"), "gate": ("OFF", 1),
     "gate_ng": ("FIELD", "NIBBLE"), "gate_win": ("FIELD", "NIBBLE"), "gate_depth": ("FIELD", "DEPTH"),
     "hpf": ("DYNAMIC", 1), "hpf_s1": ("HPF", "HPF"), "hpf_s2": ("HPF", "HPF"),
