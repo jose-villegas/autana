@@ -30,6 +30,62 @@ test_no_sensor_defaults(void) {
 }
 
 static void
+test_present_without_sample_is_zero(void) {
+    fixture();
+    input_fake_motion_present(true);
+    for (int i = 0; i < 3; i++) {
+        motion_reader_frame(i * TEST_STEP_US);
+        const vec3f_t g = input_gravity();
+        TEST_ASSERT_EQUAL_FLOAT(0, g.x);
+        TEST_ASSERT_EQUAL_FLOAT(0, g.y);
+        TEST_ASSERT_EQUAL_FLOAT(0, g.z);
+        TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
+    }
+    input_fake_motion(NULL);
+}
+
+static void
+test_missed_read_holds_estimate_and_elapsed_time(void) {
+    const uint32_t gaps[] = {TEST_STEP_US * 2, TEST_LONG_GAP_US};
+    for (size_t i = 0; i < sizeof gaps / sizeof gaps[0]; i++) {
+        fixture();
+        input_motion_t motion = {.acceleration = {0, INPUT_ACCEL_ONE_G, 0}};
+        input_fake_motion(&motion);
+        gravity_t expected;
+        gravity_reset(&expected);
+        shake_t expected_shake = {0};
+        gravity_update(&expected, &motion, 0);
+        (void)input_gravity();
+        motion.acceleration.x = INPUT_ACCEL_ONE_G * 4;
+        motion.rotation.z = INPUT_ROTATION_ONE_DPS * 90;
+        motion_reader_frame(GRAVITY_MAX_DT_US);
+        gravity_update(&expected, &motion, GRAVITY_MAX_DT_US);
+        shake_update(&expected_shake, gravity_linear(&expected), GRAVITY_MAX_DT_US);
+        const vec3f_t previous = input_gravity();
+        const float previous_shake = input_shake();
+        TEST_ASSERT_GREATER_THAN_FLOAT(0, previous_shake);
+        input_fake_motion(NULL);
+        input_fake_motion_present(true);
+        motion_reader_frame(GRAVITY_MAX_DT_US + gaps[i] / 2);
+        const vec3f_t held = input_gravity();
+        TEST_ASSERT_EQUAL_MEMORY(&previous, &held, sizeof held);
+        TEST_ASSERT_EQUAL_FLOAT(previous_shake, input_shake());
+        input_fake_motion(&motion);
+        motion_reader_frame(GRAVITY_MAX_DT_US + gaps[i]);
+        const uint32_t dt = gaps[i] > GRAVITY_MAX_DT_US ? GRAVITY_MAX_DT_US : gaps[i];
+        gravity_update(&expected, &motion, dt);
+        shake_update(&expected_shake, gravity_linear(&expected), dt);
+        const vec3f_t g = input_gravity();
+        const vec3f_t reference = gravity_down(&expected);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, reference.x, g.x);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, reference.y, g.y);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, reference.z, g.z);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, shake_level(&expected_shake), input_shake());
+        input_fake_motion(NULL);
+    }
+}
+
+static void
 test_cached_read(void) {
     fixture();
     input_motion_t motion = {.acceleration = {INPUT_ACCEL_ONE_G, 0, 0}};
@@ -171,6 +227,8 @@ test_dt_clamp_and_strength(void) {
 void
 run_input_motion_suite(void) {
     RUN_TEST(test_no_sensor_defaults);
+    RUN_TEST(test_present_without_sample_is_zero);
+    RUN_TEST(test_missed_read_holds_estimate_and_elapsed_time);
     RUN_TEST(test_cached_read);
     RUN_TEST(test_reader_order_independence);
     RUN_TEST(test_next_frame_refresh);

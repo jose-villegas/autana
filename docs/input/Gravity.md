@@ -9,7 +9,10 @@ Acceleration cannot distinguish gravity from other forces. See [axes](Motion-Axe
 `input_gravity()` returns screen-axis g: x right, y down, z out.
 It is unit length while held and zero in free fall.
 `hypotf(g.x, g.y)` gives in-plane strength, matching `gravity_strength()`.
+
 No sensor gives gravity `(0,1,0)` and shake zero.
+A present sensor gives both as zero until its first reading.
+Later missed reads hold both estimates without stepping the filters.
 
 `input_shake()` returns the [shake reader](Shake.md)'s level, 0..1.
 Call both readers only on the frame thread.
@@ -22,13 +25,17 @@ sequenceDiagram
     Shell->>Reader: input_poll marks a new frame
     Shell->>App: update
     App->>Reader: input_gravity or input_shake
-    Reader->>Reader: Step both filters from newest sample
+    alt Sample available
+        Reader->>Reader: Step both filters from newest sample
+    else No sample
+        Reader->>Reader: Hold estimates or startup defaults
+    end
     Reader-->>App: Requested value
     App->>Reader: Later reads this frame
     Reader-->>App: Cached values
 ```
 
-The step is elapsed time since the last update, capped at `GRAVITY_MAX_DT_US`.
+The step is elapsed time since the last successful update, capped at `GRAVITY_MAX_DT_US`.
 Apps that do not call either reader do no estimation work.
 The input module retains its filters across app switches.
 FIFO batches have one queue consumer and do not feed the shared readers.

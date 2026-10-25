@@ -65,10 +65,12 @@ bool input_read_motion_batch(input_motion_batch_t* out);
  * False when there is no sensor or no reading. */
 bool input_read_motion(input_motion_t* out);
 
-/* Frame thread only. Screen axes (x right, y down, z out), in g:
- * unit while held, zero in free fall; no sensor gives (0,1,0).
- * The first gravity or shake read each frame updates both; later reads are cached. */
+/* Frame thread only. Screen-axis g (x right, y down, z out): unit while held,
+ * zero in free fall. No sensor gives (0,1,0); present before its first reading
+ * gives zero. Later missed reads hold both estimates. The first gravity or
+ * shake read per frame updates both; later reads are cached. */
 vec3f_t input_gravity(void);
 /* Frame thread only. Deliberate shake, 0..1: zero below 500 mg,
- * full at 1500 mg; zero without a sensor. */
+ * full at 1500 mg. Zero without a sensor or before its first reading;
+ * later missed reads hold the last level without stepping either filter. */
 float input_shake(void);

@@ -1,13 +1,26 @@
 #include "input_fake.h"
 
 #include <stddef.h>
+#include "input/motion/imu.h"
 
 static const input_motion_batch_t* motion_batch;
 static const input_motion_t* motion;
+static bool sensor_present;
+
+void
+input_fake_motion_present(bool present) {
+    sensor_present = present;
+}
+
+bool
+imu_ready(void) {
+    return sensor_present;
+}
 
 void
 input_fake_motion(const input_motion_t* next) {
     motion = next;
+    sensor_present = next != NULL;
 }
 
 bool
