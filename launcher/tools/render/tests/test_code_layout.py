@@ -360,3 +360,58 @@ class ConfigurationCheckTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SameCodeTests(unittest.TestCase):
+    BASE = """\
+40370000 <walk_rows>:
+40370000:\t004136        \tentry\ta1, 32
+40370003:\tfffd21        \tl32r\ta2, 4036fff8 <_iram_text_start+0x10>
+40370006:\tfcc416        \tbeqz\ta4, 40370000 <walk_rows>
+40370009:\t000090        \tretw
+
+40370010 <tick>:
+40370010:\t004136        \tentry\ta1, 32
+40370013:\t000090        \tretw
+"""
+
+    def code(self, text):
+        return code_layout.function_code(text)
+
+    def test_code_that_moved_compares_equal(self):
+        moved = self.BASE.replace("4037000", "4038000").replace("4037001", "4038001").replace("4036fff8", "4037fff4")
+        self.assertEqual(code_layout.code_differences(self.code(self.BASE), self.code(moved)), [])
+
+    def test_a_changed_operand_names_its_function(self):
+        changed = self.BASE.replace("beqz\ta4", "beqz\ta5")
+        self.assertEqual(code_layout.code_differences(self.code(self.BASE), self.code(changed)),
+                         ["walk_rows: changed (4 -> 4 instructions)"])
+
+    def test_a_literal_load_keeps_its_register(self):
+        other = self.BASE.replace("l32r\ta2", "l32r\ta3")
+        self.assertEqual(code_layout.code_differences(self.code(self.BASE), self.code(other)),
+                         ["walk_rows: changed (4 -> 4 instructions)"])
+
+    def test_a_function_only_one_side_has_is_named(self):
+        head = self.BASE.replace("<tick>", "<tock>")
+        self.assertEqual(code_layout.code_differences(self.code(self.BASE), self.code(head)),
+                         ["tick: removed", "tock: added"])
+
+    def test_two_static_functions_sharing_a_name_are_both_kept(self):
+        twice = self.BASE.replace("<tick>:", "<walk_rows>:")
+        self.assertEqual(sorted(self.code(twice)), ["walk_rows", "walk_rows#2"])
+
+    def test_a_loop_past_alignment_bytes_is_decoded_from_its_entry(self):
+        # As objdump sweeps asset_pack_find: a jump, one alignment byte, then
+        # a loop entered only from inside the span the jump skips; the sweep
+        # reads the byte and the loop's first bytes as one instruction.
+        swept = [
+            (0x1010, 3, "j", "1040 <f+0x30>"),
+            (0x1013, 3, "mul16u", "a1, a0, a0"),
+            (0x1016, 2, "mov.n", "a11, a3"),
+            (0x1018, 3, "bne", "a5, a8, 1014 <f+0x4>"),
+            (0x1040, 2, "retw.n", ""),
+        ]
+        entry = [(0x1014, 2, "addi.n", "a5, a5, 1"), (0x1016, 2, "mov.n", "a11, a3")]
+        self.assertEqual([ins[2] for ins in code_layout.resync(swept, lambda start: entry)],
+                         ["j", "addi.n", "mov.n", "bne", "retw.n"])

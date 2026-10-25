@@ -50,6 +50,16 @@ jobs:
       - uses: ./.github/actions/job-inputs
         with: {step: arm}
 
+      # A pull request lists the functions whose code differs from its merge
+      # base's (code_layout.py --same-code), from the ELF main's run kept.
+      - name: Fetch the merge base's release ELF
+        if: ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          base=$(gh api "repos/${{ github.repository }}/compare/${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" --jq .merge_base_commit.sha)
+          run=$(gh run list --workflow build-release.yml --branch main --commit "$base" --status success --json databaseId --jq '.[0].databaseId')
+          gh run download "$run" --name release-elf --dir launcher/build.base
+
       - uses: ./.github/actions/idf-build
         with:
           cache-name: release
@@ -60,6 +70,27 @@ jobs:
             && python3 launcher/tools/render/code_layout.py --check launcher/build
             && python3 launcher/tools/build/memory_map.py --check --require-pin launcher/build
             && python3 launcher/tools/build/check_psram_tuning_wrap.py launcher/build
+            && if [ -f launcher/build.base/launcher.elf ]; then
+            python3 launcher/tools/render/code_layout.py --same-code launcher/build.base launcher/build
+            > launcher/build/same_code.txt; fi
+
+      - name: Report the functions whose code changed
+        if: ${{ github.event_name == 'pull_request' && !cancelled() }}
+        run: |
+          {
+            echo '### Code changed against the merge base'
+            echo '```'
+            cat launcher/build/same_code.txt 2>/dev/null || echo "no release ELF kept for the merge base"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: ${{ github.event_name == 'push' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-elf
+          path: launcher/build/launcher.elf
+          retention-days: 30
+          if-no-files-found: error
 
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}

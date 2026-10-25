@@ -7,6 +7,12 @@ markers also select functions, so an unrecorded marker fails the check.
   python launcher/tools/render/code_layout.py launcher/build
   python launcher/tools/render/code_layout.py --write launcher/build
   python launcher/tools/render/code_layout.py --check launcher/build
+
+--same-code BASE lists every function whose instructions differ from another
+build's, BASE a build folder or its ELF: a change meant to keep code the same
+names what it did change.
+
+  python launcher/tools/render/code_layout.py --same-code base/launcher.elf launcher/build
 """
 
 import argparse
@@ -343,6 +349,100 @@ def layout_differences(expected, actual):
     return differences
 
 
+FUNCTION_HEADER = re.compile(r"^([0-9a-f]+) <([^>]+)>:$")
+# An address beside the symbol it names: only the symbol is kept, so code that
+# moved but did not change compares equal.
+NAMED_ADDRESS = re.compile(r"\b[0-9a-f]{4,}\s+(<[^>]+>)")
+
+
+def resync(found, decode_from):
+    """Decode again from each branch target the linear sweep stepped over, as
+    alignment bytes before a loop entered only from inside a skipped span."""
+    while found:
+        starts = {ins[0] for ins in found}
+        end = found[-1][0] + found[-1][1]
+        missed = sorted(target for target in (target_of(operands) for _, _, mnemonic, operands in found if mnemonic != "l32r")
+                        if target is not None and found[0][0] <= target < end and target not in starts)
+        if not missed:
+            break
+        again = []
+        for ins in decode_from(missed[0]):
+            if ins[0] in starts:
+                break
+            again.append(ins)
+        resume = again[-1][0] + again[-1][1] if again else missed[0]
+        found = [ins for ins in found if ins[0] + ins[1] <= missed[0]] + again + [ins for ins in found if ins[0] >= resume]
+    return found
+
+
+def function_code(text, decode_range=None, precise=()):
+    """{function: [instruction]} from `objdump -d` text, each instruction its
+    mnemonic and operands without addresses, literal loads without their
+    pool's place. A name two static functions share gets #2 on the second.
+    Functions named in `precise` are decoded again past each pool through
+    decode_range(start, end), as layout_entries() does: pool bytes the linear
+    sweep read as code would differ with the addresses they hold."""
+    found = {}
+    name, body = None, []
+
+    def close(end):
+        if name is not None:
+            key, copy = name, 1
+            while key in found:
+                copy += 1
+                key = "%s#%d" % (name, copy)
+            again = (lambda start: decode_range(start, end)) if key in precise else None
+            found[key] = [
+                "l32r " + operands.split(",")[0] if mnemonic == "l32r"
+                else ("%s %s" % (mnemonic, NAMED_ADDRESS.sub(r"\1", operands))).rstrip()
+                for _, _, mnemonic, operands in (resync(skip_pools(body, again), again) if again else skip_pools(body))
+            ]
+
+    for line in text.splitlines():
+        header = FUNCTION_HEADER.match(line)
+        if header:
+            close(int(header[1], 16))
+            name, body = header[2], []
+        elif name is not None:
+            body.extend(parse_objdump(line))
+    close(body[-1][0] + body[-1][1] if body else 0)
+    return found
+
+
+def code_differences(base, head):
+    """Functions whose instructions differ between two function_code() maps,
+    then those only one of them has."""
+    changed = sorted(name for name in base.keys() & head.keys() if base[name] != head[name])
+    return (["%s: changed (%d -> %d instructions)" % (name, len(base[name]), len(head[name])) for name in changed]
+            + ["%s: removed" % name for name in sorted(base.keys() - head.keys())]
+            + ["%s: added" % name for name in sorted(head.keys() - base.keys())])
+
+
+def elf_of(path):
+    elf = path / "launcher.elf" if path.is_dir() else path
+    if not elf.is_file():
+        raise LayoutError("no %s - build it first" % elf)
+    return elf
+
+
+def same_code(base, head, objdump):
+    elfs = [elf_of(path) for path in (base, head)]
+    texts = [run(objdump, "-d", str(elf)) for elf in elfs]
+    rough = [function_code(text) for text in texts]
+    suspects = {name for name in rough[0].keys() & rough[1].keys() if rough[0][name] != rough[1][name]}
+    codes = [
+        function_code(text, lambda start, end, elf=elf: decode(objdump, elf, "--start-address=0x%x" % start,
+                                                                "--stop-address=0x%x" % end), suspects)
+        for text, elf in zip(texts, elfs)
+    ] if suspects else rough
+    differences = code_differences(*codes)
+    if differences:
+        print("code_layout.py: %d functions differ from %s:" % (len(differences), base))
+        print("\n".join("  " + difference for difference in differences))
+    else:
+        print("every function matches %s" % base)
+
+
 def display_report(entries, line_size):
     print("| function | kind | address | offset | bytes | lines | source_line |")
     print("|---|---|---:|---:|---:|---:|---:|")
@@ -365,6 +465,7 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--write", action="store_true", help="replace the committed layout")
     mode.add_argument("--check", action="store_true", help="compare with the committed layout")
+    mode.add_argument("--same-code", type=Path, metavar="BASE", help="list functions whose code differs from BASE's")
     parser.add_argument("--baseline", type=Path, help="select one source folder baseline")
     parser.add_argument("--nm", help="Xtensa nm override")
     parser.add_argument("--objdump", help="Xtensa objdump override")
@@ -372,6 +473,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
+        if args.same_code:
+            same_code(args.same_code, Path(args.build), args.objdump or find_tool("objdump"))
+            return 0
         requested_build = Path(args.build)
         build = requested_build.resolve()
         elf = build / "launcher.elf"
