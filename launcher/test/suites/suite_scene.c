@@ -708,6 +708,15 @@ load(const char* name) {
     return scene;
 }
 
+static void
+assert_light(const scene_t* scene, scene_entity_t entity, vec3f_t color, float intensity) {
+    const vec3f_t got = scene_light_color(scene, entity);
+    TEST_ASSERT_EQUAL_FLOAT(color.x, got.x);
+    TEST_ASSERT_EQUAL_FLOAT(color.y, got.y);
+    TEST_ASSERT_EQUAL_FLOAT(color.z, got.z);
+    TEST_ASSERT_EQUAL_FLOAT(intensity, scene_light_intensity(scene, entity));
+}
+
 /* Loads and activates the camera at full size. */
 static scene_t*
 show(const char* name, name_hash_t camera) {
@@ -1580,15 +1589,6 @@ test_authored_rows_and_refusals(void) {
     test_pack_put16(bytes + animator + offsetof(scene_asset_animator_t, default_clip), SCENE_ASSET_DEFAULT_CLIP_NONE);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(bytes, entry.size));
     asset_file_release(buffer);
-}
-
-static void
-assert_light(const scene_t* scene, scene_entity_t entity, vec3f_t color, float intensity) {
-    const vec3f_t got = scene_light_color(scene, entity);
-    TEST_ASSERT_EQUAL_FLOAT(color.x, got.x);
-    TEST_ASSERT_EQUAL_FLOAT(color.y, got.y);
-    TEST_ASSERT_EQUAL_FLOAT(color.z, got.z);
-    TEST_ASSERT_EQUAL_FLOAT(intensity, scene_light_intensity(scene, entity));
 }
 
 static void
