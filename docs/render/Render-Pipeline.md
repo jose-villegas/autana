@@ -335,7 +335,8 @@ list, and the draw reuses it.
 Cost: `r3d.cull` in the frame-stages chart; a predicted size is charged to
 `r3d.census` instead.
 
-Picture: none yet.
+Picture: [the cull view](Mesh-Rendering.md#the-cull-seen), each cluster's
+fate along a camera path.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#one-frame).
 
@@ -400,7 +401,7 @@ Reference: [Mesh-Rendering.md](Mesh-Rendering.md#attachments).
 
 #### View modes
 
-Development builds select depth, tiles, motion or meshlets from the declared
+Development builds select depth, tiles, motion, meshlets or cull from the declared
 view table in `render/context/render_context.c`. Before upscale, the selected
 attachment paints colour from the renderer's maps.
 
