@@ -42,13 +42,8 @@ imu_gravity_screen(const imu_sample_t* s) {
     return vec3i_xy(imu_axes_screen(s->ax, s->ay, s->az));
 }
 
-/* How fast the board is TURNING, in deg/s summed over the gyroscope's three
- * axes. Named for what it measures because the obvious misreading is
- * expensive: this is NOT how hard the board is being shaken; a smooth
- * rotation reads high while nothing is shaken. Shaking means accelerating
- * the device, the accelerometer's business; see input_shake(). Deliberately
- * not a filter or gesture detector; the caller decides what counts as
- * "fast". */
+/* Smooth rotation can read high without linear acceleration.
+ * Use input_shake() for deliberate shaking, not summed gyro rate. */
 static inline int
 imu_turn_speed(const imu_sample_t* s) {
     /* Sum of absolute rates rather than a true vector magnitude: it needs no

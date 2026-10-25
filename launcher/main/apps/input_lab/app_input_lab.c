@@ -67,7 +67,9 @@ static const char* TAG = "input_lab";
 #define SHAKE_BAR_HEIGHT      8
 #define SHAKE_BAR_ROW         6
 #define SHAKE_BAR_ROW_SPACING 2
+/* Log/display scale for the shared shake level. */
 #define SHAKE_SHARED_FULL     255
+/* Log/display scale for in-plane strength. */
 #define MOTION_STRENGTH_ONE   256
 
 #define MOTION_RING_RADIUS    88
@@ -602,19 +604,18 @@ read_motion(uint32_t dt_ms) {
     motion_probe = motion_probe_measure(motion.acceleration);
     if (motion_log_ms >= MOTION_LOG_PERIOD_MS) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
+        const vec3f_t g = input_gravity();
         const vec3i_t down_mg = motion_log_vector(gravity_down(&gravity), IMU_PROBE_MILLI);
         const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), OFFSET_SCALE);
         ESP_LOGI(TAG,
                  "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
                  "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d lost %d drain_us %lld",
                  raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
-                 motion_probe.bearing_deg, (int)lroundf(input_gravity().x * INPUT_ACCEL_ONE_G),
-                 (int)lroundf(input_gravity().y * INPUT_ACCEL_ONE_G),
-                 (int)lroundf(hypotf(input_gravity().x, input_gravity().y) * MOTION_STRENGTH_ONE),
-                 (int)lroundf(input_shake() * SHAKE_SHARED_FULL), motion.turn_speed, motion.rotation.x,
-                 motion.rotation.y, motion.rotation.z, display_quarter_now(), (int)down_mg.x, (int)down_mg.y,
-                 (int)down_mg.z, (int)bias_dps10.x, (int)bias_dps10.y, (int)bias_dps10.z, motion_samples, motion_lost,
-                 (long long)motion_drain_us);
+                 motion_probe.bearing_deg, (int)lroundf(g.x * INPUT_ACCEL_ONE_G), (int)lroundf(g.y * INPUT_ACCEL_ONE_G),
+                 (int)lroundf(hypotf(g.x, g.y) * MOTION_STRENGTH_ONE), (int)lroundf(input_shake() * SHAKE_SHARED_FULL),
+                 motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now(),
+                 (int)down_mg.x, (int)down_mg.y, (int)down_mg.z, (int)bias_dps10.x, (int)bias_dps10.y,
+                 (int)bias_dps10.z, motion_samples, motion_lost, (long long)motion_drain_us);
         motion_samples = 0;
         motion_lost = 0;
         motion_drain_us = 0;
@@ -996,8 +997,8 @@ draw_motion(void) {
     enum { VALUE_X, VALUE_Y, VALUE_Z, VALUE_MAGNITUDE, VALUE_PLANE, VALUE_FILTER_X, VALUE_FILTER_Y, VALUE_COUNT };
 
     const vec3i_t raw_mg = imu_probe_mg(raw_acceleration);
-    const vec3i_t filtered_mg = imu_probe_mg((vec3i_t){(int)lroundf(input_gravity().x * INPUT_ACCEL_ONE_G),
-                                                       (int)lroundf(input_gravity().y * INPUT_ACCEL_ONE_G), 0});
+    const vec3f_t g = input_gravity();
+    const vec3i_t filtered_mg = motion_log_vector(g, IMU_PROBE_MILLI);
     const int mg[VALUE_COUNT] = {raw_mg.x,
                                  raw_mg.y,
                                  raw_mg.z,
@@ -1025,8 +1026,8 @@ draw_motion(void) {
     }
     hud_line(2, line);
     if (snprintf(line, sizeof line, "F %s,%s S%d K%d T%d", values[VALUE_FILTER_X], values[VALUE_FILTER_Y],
-                 (int)lroundf(hypotf(input_gravity().x, input_gravity().y) * MOTION_STRENGTH_ONE),
-                 (int)lroundf(input_shake() * SHAKE_SHARED_FULL), motion.turn_speed)
+                 (int)lroundf(hypotf(g.x, g.y) * MOTION_STRENGTH_ONE), (int)lroundf(input_shake() * SHAKE_SHARED_FULL),
+                 motion.turn_speed)
         < 0) {
         line[0] = '\0';
     }
@@ -1054,8 +1055,8 @@ draw_motion(void) {
         ui_fill((recti_t){cx + left - width + 1, cy + row, width, ARC_STEP}, COL_MOTION_RING);
     }
     ui_fill(motion_dot_rect(raw_acceleration.x, raw_acceleration.y, ring, MOTION_DOT_SIDE), COL_MISS);
-    ui_outline(motion_dot_rect((int)lroundf(input_gravity().x * INPUT_ACCEL_ONE_G),
-                               (int)lroundf(input_gravity().y * INPUT_ACCEL_ONE_G), ring, MOTION_FILTER_SIDE),
+    ui_outline(motion_dot_rect((int)lroundf(g.x * INPUT_ACCEL_ONE_G), (int)lroundf(g.y * INPUT_ACCEL_ONE_G), ring,
+                               MOTION_FILTER_SIDE),
                COL_MOTION_FILTER);
     hud_text((recti_t){0, bottom, screen_w / 2, HUD_LINE_H}, "RAW", COL_MISS);
     hud_text((recti_t){screen_w / 2, bottom, screen_w / 2, HUD_LINE_H}, "FILTER", COL_MOTION_FILTER);

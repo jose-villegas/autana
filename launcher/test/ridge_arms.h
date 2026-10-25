@@ -9,10 +9,7 @@
 
 #include "gfx/gfx.h"
 #include "input/input.h"
-#include "input/motion/gravity.h"
 #include "shell/ui/ui_ridge.h"
-
-#define RIDGE_FIXTURE_SHAKE_FULL 255.0F
 
 typedef enum {
     ARM_IDLE,
@@ -30,11 +27,6 @@ typedef enum {
 
 static const input_t ridge_arm_idle_input = {0};
 
-static inline vec3f_t
-ridge_arm_gravity(int x, int y) {
-    return (vec3f_t){(float)x / GRAVITY_STRENGTH_ONE, (float)y / GRAVITY_STRENGTH_ONE, 0};
-}
-
 static inline input_t
 ridge_arm_pluck_strum_input(int frame) {
     return (input_t){
@@ -47,22 +39,31 @@ ridge_arm_pluck_strum_input(int frame) {
 
 static inline void
 ridge_arm_set_sweep_gravity(int frame) {
-    static const int gravity[][2] = {
-        {-256, 0}, {-192, -128}, {-128, -192}, {0, -256}, {128, -192}, {192, -128},
-        {256, 0},  {192, 128},   {128, 192},   {0, 256},  {-128, 192}, {-192, 128},
+    static const vec3f_t gravity[] = {
+        {-1.0F, 0.0F, 0}, {-0.83205029F, -0.5547002F, 0}, {-0.5547002F, -0.83205029F, 0},
+        {0.0F, -1.0F, 0}, {0.5547002F, -0.83205029F, 0},  {0.83205029F, -0.5547002F, 0},
+        {1.0F, 0.0F, 0},  {0.83205029F, 0.5547002F, 0},   {0.5547002F, 0.83205029F, 0},
+        {0.0F, 1.0F, 0},  {-0.5547002F, 0.83205029F, 0},  {-0.83205029F, 0.5547002F, 0},
     };
     const int phase = (frame / 12) % (int)(sizeof gravity / sizeof gravity[0]);
-    ui_ridge_set_gravity(ridge_arm_gravity(gravity[phase][0], gravity[phase][1]), 0);
+    ui_ridge_set_gravity(gravity[phase], 0);
 }
 
 /* A hand tilting the board back and forth, about 15 degrees either side of
  * landscape, once a second. */
 static inline void
 ridge_arm_set_wobble_gravity(int frame) {
-    static const int gravity[][2] = {
-        {-256, 0}, {-247, 66}, {-222, 128}, {-247, 66}, {-256, 0}, {-247, -66}, {-222, -128}, {-247, -66},
+    static const vec3f_t gravity[] = {
+        {-1.0F, 0.0F, 0},
+        {-0.96610498F, 0.25814951F, 0},
+        {-0.86631549F, 0.49949722F, 0},
+        {-0.96610498F, 0.25814951F, 0},
+        {-1.0F, 0.0F, 0},
+        {-0.96610498F, -0.25814951F, 0},
+        {-0.86631549F, -0.49949722F, 0},
+        {-0.96610498F, -0.25814951F, 0},
     };
-    ui_ridge_set_gravity(ridge_arm_gravity(gravity[(frame / 8) % 8][0], gravity[(frame / 8) % 8][1]), 0);
+    ui_ridge_set_gravity(gravity[(frame / 8) % 8], 0);
 }
 
 static inline void
@@ -75,6 +76,6 @@ ridge_arm_drive(arm_t arm, int frame, input_t* input) {
     } else if (arm == ARM_TILT_WOBBLE) {
         ridge_arm_set_wobble_gravity(frame);
     } else if (arm == ARM_AMBIENT_SHAKE) {
-        ui_ridge_set_gravity((vec3f_t){-1, 0, 0}, (frame % 40 < 10 ? 120 : 0) / RIDGE_FIXTURE_SHAKE_FULL);
+        ui_ridge_set_gravity((vec3f_t){-1, 0, 0}, frame % 40 < 10 ? 0.47F : 0);
     }
 }

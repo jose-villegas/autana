@@ -12,7 +12,8 @@
 
 #ifndef DEVICE_BUILD
 
-#include "input/motion/input_motion.h"
+#include "hash/name_hash64.h"
+#include "input/motion/motion_reader.h"
 #include "input/motion/shake.h"
 #include "input_fake.h"
 #include "math/scalar/units.h"
@@ -41,8 +42,7 @@
 static gfx_color_t* reference;
 static gfx_color_t* as_boot_left_it;
 static gfx_color_t* settled;
-static int32_t* spring_reference;
-static FILE* steady_frames;
+static name_hash64_t* steady_frames;
 
 static bool
 frame(bool touching, bool pressed) {
@@ -83,13 +83,9 @@ release(void) {
     memory_free(reference);
     memory_free(as_boot_left_it);
     memory_free(settled);
-    memory_free(spring_reference);
-    spring_reference = NULL;
     input_fake_motion(NULL);
-    if (steady_frames != NULL) {
-        fclose(steady_frames);
-        steady_frames = NULL;
-    }
+    memory_free(steady_frames);
+    steady_frames = NULL;
     reference = NULL;
     as_boot_left_it = NULL;
     settled = NULL;
@@ -245,87 +241,95 @@ test_launcher_backdrop_motion_and_rest(void) {
 #define DELIBERATE_G     (SHAKE_FULL_G * 2)
 
 static void
-compare_shake_runs(float acceleration_g, bool expect_difference) {
-    steady_frames = tmpfile();
+compare_shake_runs(float acceleration_g, bool ambient, bool expect_difference) {
+    steady_frames = memory_alloc(VIBRATION_FRAMES * sizeof *steady_frames, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(steady_frames);
-    bool pixels_differ = false;
-    bool springs_differ = false;
+    bool differs = false;
     for (int run = 0; run < 2; run++) {
         ui_ridge_release_for_test();
         gfx_reset_for_test();
         fixture(NULL, 0);
-        ui_ridge_set_ambient(true);
-        input_motion_reset();
+        ui_ridge_set_ambient(ambient);
+        motion_reader_reset();
         input_motion_t motion = {.acceleration = {-INPUT_ACCEL_ONE_G, 0, 0}};
         input_fake_motion(&motion);
-        input_motion_frame(0);
+        motion_reader_frame(0);
         ui_ridge_set_gravity(input_gravity(), input_shake());
         const spring_line_t* line = ui_ridge_spring_for_test();
         TEST_ASSERT_NOT_NULL(line);
         const size_t spring_bytes = (size_t)line->count * sizeof *line->offset;
-        if (run == 0) {
-            reference = memory_alloc(PIXELS * sizeof *reference, MEMORY_PSRAM);
-            spring_reference = memory_alloc(spring_bytes * 2, MEMORY_PSRAM);
-            TEST_ASSERT_NOT_NULL(reference);
-            TEST_ASSERT_NOT_NULL(spring_reference);
-        }
-        rewind(steady_frames);
         for (int i = 1; i <= VIBRATION_FRAMES; i++) {
             motion.acceleration.x =
                 -INPUT_ACCEL_ONE_G + (run == 0 ? 0 : (int)((i % 2 ? -1 : 1) * acceleration_g * INPUT_ACCEL_ONE_G));
-            input_motion_frame((int64_t)i * FRAME_MS * MATH_US_PER_MS);
+            motion_reader_frame((int64_t)i * FRAME_MS * MATH_US_PER_MS);
             ui_ridge_set_gravity(input_gravity(), input_shake());
-            if (!expect_difference) {
-                TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
-            }
             frame(false, false);
-            gfx_color_t* pixels = reference;
-            int32_t* offsets = spring_reference;
-            int32_t* velocities = offsets + line->count;
+            name_hash64_t hash =
+                name_hash64_n(NAME_HASH64_OFFSET_BASIS, gfx_framebuffer(), PIXELS * sizeof(gfx_color_t));
+            hash = name_hash64_n(hash, line->offset, spring_bytes);
+            hash = name_hash64_n(hash, line->velocity, spring_bytes);
             if (run == 0) {
-                memcpy(pixels, gfx_framebuffer(), PIXELS * sizeof *pixels);
-                memcpy(offsets, line->offset, spring_bytes);
-                memcpy(velocities, line->velocity, spring_bytes);
-                TEST_ASSERT_EQUAL_size_t(PIXELS, fwrite(pixels, sizeof *pixels, PIXELS, steady_frames));
-                TEST_ASSERT_EQUAL_size_t(2, fwrite(offsets, spring_bytes, 2, steady_frames));
+                steady_frames[i - 1] = hash;
             } else {
-                TEST_ASSERT_EQUAL_size_t(PIXELS, fread(pixels, sizeof *pixels, PIXELS, steady_frames));
-                TEST_ASSERT_EQUAL_size_t(2, fread(offsets, spring_bytes, 2, steady_frames));
-            }
-            if (run != 0 && !expect_difference) {
-                TEST_ASSERT_EQUAL_MEMORY(pixels, gfx_framebuffer(), PIXELS * sizeof *pixels);
-                TEST_ASSERT_EQUAL_MEMORY(offsets, line->offset, spring_bytes);
-                TEST_ASSERT_EQUAL_MEMORY(velocities, line->velocity, spring_bytes);
-            } else if (run != 0) {
-                pixels_differ |= memcmp(pixels, gfx_framebuffer(), PIXELS * sizeof *pixels) != 0;
-                springs_differ |= memcmp(offsets, line->offset, spring_bytes) != 0
-                                  || memcmp(velocities, line->velocity, spring_bytes) != 0;
+                differs |= steady_frames[i - 1] != hash;
+                if (!expect_difference) {
+                    TEST_ASSERT_EQUAL_UINT64(steady_frames[i - 1], hash);
+                }
             }
         }
     }
-    if (expect_difference) {
+    TEST_ASSERT_EQUAL(expect_difference, differs);
+    if (acceleration_g == DELIBERATE_G) {
         TEST_ASSERT_EQUAL_FLOAT(1, input_shake());
-        TEST_ASSERT_TRUE(pixels_differ);
-        TEST_ASSERT_TRUE(springs_differ);
+    } else {
+        TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
     }
-    fclose(steady_frames);
+    memory_free(steady_frames);
     steady_frames = NULL;
-    memory_free(reference);
-    reference = NULL;
-    memory_free(spring_reference);
-    spring_reference = NULL;
     input_fake_motion(NULL);
 }
 
 static void
+test_ambient_off_ignores_deliberate_shake(void) {
+    compare_shake_runs(DELIBERATE_G, false, false);
+}
+
+static void
+test_weak_shake_scales_spring_offset(void) {
+    const float levels[] = {0, 0.47F, 1};
+    int32_t peaks[sizeof levels / sizeof levels[0]] = {0};
+    for (size_t run = 0; run < sizeof levels / sizeof levels[0]; run++) {
+        ui_ridge_release_for_test();
+        gfx_reset_for_test();
+        fixture(NULL, 0);
+        ui_ridge_set_ambient(true);
+        const spring_line_t* line = ui_ridge_spring_for_test();
+        for (int i = 0; i < VIBRATION_FRAMES; i++) {
+            ui_ridge_set_gravity((vec3f_t){-1, 0, 0}, levels[run]);
+            frame(false, false);
+            for (int col = 0; col < line->count; col++) {
+                const int32_t offset = abs(line->offset[col]);
+                if (offset > peaks[run]) {
+                    peaks[run] = offset;
+                }
+            }
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT32(peaks[0], peaks[1]);
+    TEST_ASSERT_GREATER_THAN_INT32(peaks[1], peaks[2]);
+}
+
+static void
 test_speaker_vibration_never_plucks_but_deliberate_shake_does(void) {
-    compare_shake_runs(VIBRATION_G, false);
-    compare_shake_runs(DELIBERATE_G, true);
+    compare_shake_runs(VIBRATION_G, true, false);
+    compare_shake_runs(DELIBERATE_G, true, true);
 }
 
 void
 suite_ridge_backdrop(void) {
     RUN_TEST(test_launcher_backdrop_motion_and_rest);
+    RUN_TEST(test_ambient_off_ignores_deliberate_shake);
+    RUN_TEST(test_weak_shake_scales_spring_offset);
     RUN_TEST(test_speaker_vibration_never_plucks_but_deliberate_shake_does);
 }
 

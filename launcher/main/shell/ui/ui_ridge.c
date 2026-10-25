@@ -19,7 +19,6 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "input/motion/gravity.h"
 #include "math/motion/spring_line.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
@@ -106,7 +105,7 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define LEVEL_STEADY_STEP   29
 #define LEVEL_STEADY_MS     300
 #define STRUM_STEP_PX       12
-#define RIDGE_SHAKE_FULL    255
+#define SHAKE_POKE_FULL     ((MATHX_ONE / 128) * 255)
 #define SHAKE_HALF_WIDTH    16
 #define POSE_LANDSCAPE      ((ridge_vector_t){-RIDGE_POSE_ONE, 0})
 #define POSE_STEP_LANDSCAPE (POSE_STEPS * 3 / 4)
@@ -1219,11 +1218,7 @@ ui_ridge_set_gravity(vec3f_t gravity, float shake) {
     allocate_once();
     if (ridge != NULL) {
         ridge->shake = shake;
-        ridge->attitude.level =
-            ridge_pose_level_from_gravity(ridge->attitude.level, (int)lroundf(gravity.x * INPUT_ACCEL_ONE_G),
-                                          (int)lroundf(gravity.y * INPUT_ACCEL_ONE_G),
-                                          (int)lroundf(hypotf(gravity.x, gravity.y) * GRAVITY_STRENGTH_ONE),
-                                          (int)(GRAVITY_MIN_DIRECTION_STRENGTH * GRAVITY_STRENGTH_ONE));
+        ridge->attitude.level = ridge_pose_level_from_gravity(ridge->attitude.level, gravity);
     }
 }
 
@@ -1396,9 +1391,9 @@ pluck_from_shaking(void) {
         return;
     }
     ridge->shake_seed = (ridge->shake_seed * 1664525U) + 1013904223U;
+    const int poke = (int)lroundf(SHAKE_POKE_FULL * ridge->shake);
     spring_line_poke(&ridge->line, (int)((ridge->shake_seed >> 8) % RIDGE_COLUMNS), SHAKE_HALF_WIDTH,
-                     (ridge->shake_seed & 0x80U ? 1 : -1)
-                         * (int)lroundf((MATHX_ONE / 128) * RIDGE_SHAKE_FULL * ridge->shake));
+                     (ridge->shake_seed & 0x80U ? 1 : -1) * poke);
 }
 
 static void

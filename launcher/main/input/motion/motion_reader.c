@@ -1,5 +1,5 @@
-/* input_motion: shared on-demand motion readers. */
-#include "input/motion/input_motion.h"
+/* motion_reader: shared on-demand motion readers. */
+#include "input/motion/motion_reader.h"
 
 #include "build/build_variant.h"
 #include "input/input.h"
@@ -19,21 +19,21 @@ static int64_t last_log_us;
 static gravity_t gravity = {.down = {0, 0, -1}};
 static shake_t shake;
 static vec3f_t down = {0, 1, 0};
-static int64_t frame_us, updated_us;
-static bool pending = true, have_update;
+static int64_t frame_us, updated_us = INT64_MIN;
+static bool pending = true;
 
 void
-input_motion_reset(void) {
+motion_reader_reset(void) {
     gravity_reset(&gravity);
     shake_reset(&shake);
     down = (vec3f_t){0, 1, 0};
-    frame_us = updated_us = 0;
+    frame_us = 0;
+    updated_us = INT64_MIN;
     pending = true;
-    have_update = false;
 }
 
 void
-input_motion_frame(int64_t now_us) {
+motion_reader_frame(int64_t now_us) {
     frame_us = now_us;
     pending = true;
 }
@@ -50,10 +50,9 @@ update(void) {
         shake_reset(&shake);
         return;
     }
-    const int64_t elapsed = have_update && frame_us > updated_us ? frame_us - updated_us : 0;
+    const int64_t elapsed = updated_us != INT64_MIN && frame_us > updated_us ? frame_us - updated_us : 0;
     const uint32_t dt_us = elapsed > GRAVITY_MAX_DT_US ? GRAVITY_MAX_DT_US : (uint32_t)elapsed;
     updated_us = frame_us;
-    have_update = true;
     gravity_update(&gravity, &sample, dt_us);
     shake_update(&shake, gravity_linear(&gravity), dt_us);
     down = gravity_in_free_fall(&gravity) ? (vec3f_t){0} : gravity_down(&gravity);

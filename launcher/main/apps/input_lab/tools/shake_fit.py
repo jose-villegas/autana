@@ -18,11 +18,12 @@ MS_PER_S = read_define(Path(__file__).resolve().parents[4] / "packages" / "math"
 STEP_ENUM = re.search(r"typedef enum\s*\{([^}]+)\}\s*shake_probe_step_t", HEADER.read_text())[1]
 STEP_NAMES = tuple(re.findall(r"SHAKE_PROBE_(\w+)", STEP_ENUM))
 STEPS = tuple(name for name in STEP_NAMES if name not in ("IDLE", "DONE"))
-CANDIDATES = ("size", "smooth", "old", "shared")
+FRAME_SCALE_CANDIDATES = ("old", "shared")
+CANDIDATES = ("size", "smooth", *FRAME_SCALE_CANDIDATES)
 SHAKING = ("GENTLE", "HARD")
 VECTOR = r"(-?\d+),(-?\d+),(-?\d+)"
 SAMPLE = re.compile(r"shake (\w+) (\d+) acc " + VECTOR + r" lin " + VECTOR
-                    + r" size (\d+) smooth (\d+)(?: jerky \d+)? (?:shared|old) (\d+)")
+                    + r" size (\d+) smooth (\d+)(?: jerky \d+)? (shared|old) (\d+)")
 PERCENT = 100
 P95 = 95
 P99 = 99
@@ -43,9 +44,12 @@ def parse(lines):
                 step = STEP_NAMES[index] if 0 <= index < len(STEP_NAMES) else ""
             if step not in STEPS:
                 continue
-            values = list(map(int, match.groups()[1:]))
+            values = list(map(int, match.groups()[1:10]))
             samples.append(dict(step=step, ms=values[0], acc=values[1:4], lin=values[4:7],
-                                **dict(zip(("size", "smooth", "shared" if " shared " in match[0] else "old"), values[7:]))))
+                                **dict(zip(("size", "smooth"), values[7:])), **{match[11]: int(match[12])}))
+    labels = {name for sample in samples for name in FRAME_SCALE_CANDIDATES if name in sample}
+    if len(labels) > 1:
+        raise ValueError("mixed old and shared frame scales")
     return samples
 
 
@@ -68,7 +72,7 @@ def generate_results(doc, images, captures, check=False):
         rows = [(step, candidate.upper(), *(f"{value:.1f}" for value in stats[step][candidate].values()))
                 for step in STEPS for candidate in candidates]
         table = markdown(("Step", "Candidate", "Median", "p95", "p99", "Max"), rows)
-        body = f"<details>\n<summary>Per-step statistics (mg; {candidates[-1].upper()} 0-255)</summary>\n\n" + table + "\n</details>"
+        body = f"<details>\n<summary>Per-step statistics (mg; {' / '.join(name.upper() for name in FRAME_SCALE_CANDIDATES if name in candidates)} 0-255)</summary>\n\n" + table + "\n</details>"
         changed |= replace_block(doc, "shake-" + name, body, check=check,
                                  command="python launcher/main/apps/input_lab/tools/shake_fit.py --results --check")
         if not check:
@@ -122,7 +126,7 @@ def plot(samples, output):
                       color=colors(index), label=step)
         style_axes(axis, candidate.upper())
         axis.set_ylim(bottom=0)
-        axis.set_ylabel(candidate.upper() + (" (0-255)" if candidate in ("old", "shared") else " (mg)"))
+        axis.set_ylabel(candidate.upper() + (" (0-255)" if candidate in FRAME_SCALE_CANDIDATES else " (mg)"))
         axis.grid(alpha=0.2)
     axes[0].legend(ncol=len(STEPS) // 2, loc="lower center", bbox_to_anchor=(0.5, 1.05))
     axes[-1].set_xlabel("Round time (s)")
@@ -156,7 +160,7 @@ def main():
         suggestions = {candidate: suggest(stats, candidate) for candidate in candidates}
     except ValueError as error:
         parser.error(str(error))
-    print(f"step candidate median p95 p99 max (mg; {candidates[-1].upper()} 0-255)")
+    print(f"step candidate median p95 p99 max (mg; {' / '.join(name.upper() for name in FRAME_SCALE_CANDIDATES if name in candidates)} 0-255)")
     for step in STEPS:
         for candidate in candidates:
             print(step, candidate, *(f"{value:.1f}" for value in stats[step][candidate].values()))
