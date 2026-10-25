@@ -79,7 +79,7 @@ flowchart TB
         end
     end
     subgraph R17["packages"]
-        Packages["launcher/packages/<br/><i>first-party libraries, see the base</i>"]
+        Packages["launcher/packages/<br/><i>first-party libraries, the graph below</i>"]
     end
 
     R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
@@ -126,13 +126,13 @@ Each arrow below is a declared dependency, written by
 <!-- generated: package-requires-diagram check: python launcher/tools/build/package_requires.py --check -->
 ```mermaid
 flowchart BT
-    collections["collections/"]
-    hash["hash/"]
-    math["math/"]
-    physics["physics/"]
-    testkit["testkit/"]
-    physics --> math
-    testkit --> math
+    p_collections["collections/"]
+    p_hash["hash/"]
+    p_math["math/"]
+    p_physics["physics/"]
+    p_testkit["testkit/"]
+    p_physics --> p_math
+    p_testkit --> p_math
 ```
 <!-- /generated: package-requires-diagram -->
 
