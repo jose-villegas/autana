@@ -289,7 +289,8 @@ place_camera(int quarter, vec3f_t eye) {
 /* The eye, in model axes (x right, y up), from the turn since the reference
  * down: reference x down is that turn as a rotation vector in box axes, for
  * small angles. Lifting the right edge toward the viewer moves the eye left;
- * leaning the top away moves it down. */
+ * leaning the top away moves it up. Both signs checked on the board, the
+ * second held landscape, where it is the left-right tilt. */
 static vec3f_t
 parallax_eye(vec3f_t down, uint32_t dt_ms) {
     if (vec3f_dot(reference_down, reference_down) == 0.0F) {
@@ -298,7 +299,7 @@ parallax_eye(vec3f_t down, uint32_t dt_ms) {
     const float catch_up = 1.0F - expf(-(float)dt_ms / (float)settle_ms);
     reference_down = vec3f_normalize(vec3f_lerp(reference_down, down, catch_up));
     const vec3f_t turn = vec3f_cross(reference_down, down);
-    return vec3f_scale((vec3f_t){-turn.y, turn.x, 0.0F}, (float)parallax_mm);
+    return vec3f_scale((vec3f_t){-turn.y, -turn.x, 0.0F}, (float)parallax_mm);
 }
 
 /* Down, eased between the tour's keys; a shake past its last key. */
