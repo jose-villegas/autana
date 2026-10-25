@@ -3,8 +3,11 @@
  * offset in every row; opening checks they strictly ascend, which also refuses two rows sharing a key. */
 #pragma once
 
+#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#include "collections/bytes.h"
 
 typedef struct {
     const uint8_t* rows;
@@ -15,21 +18,26 @@ typedef struct {
 
 typedef enum {
     FLAT_MAP_OK,
-    FLAT_MAP_UNSORTED, /* a key is below the one before it */
-    FLAT_MAP_SHARED,   /* a key equals the one before it */
+    FLAT_MAP_UNSORTED,  /* a key is below the one before it */
+    FLAT_MAP_DUPLICATE, /* a key equals the one before it */
 } flat_map_status_t;
 
 #define FLAT_MAP_MISSING SIZE_MAX
 
+static inline const uint8_t*
+flat_map_row(const flat_map_t* map, size_t index) {
+    return map->rows + (index * map->stride);
+}
+
 static inline uint32_t
 flat_map_key(const flat_map_t* map, size_t index) {
-    const uint8_t* key = map->rows + (index * map->stride) + map->key_offset;
-    return (uint32_t)key[0] | ((uint32_t)key[1] << 8) | ((uint32_t)key[2] << 16) | ((uint32_t)key[3] << 24);
+    return bytes_read_u32(flat_map_row(map, index) + map->key_offset);
 }
 
 /* Opens count rows at rows. On a refusal *map is left empty and *clash, when given, is the first row out of order. */
 static inline flat_map_status_t
 flat_map_open(flat_map_t* map, const void* rows, size_t count, size_t stride, size_t key_offset, size_t* clash) {
+    assert(key_offset + sizeof(uint32_t) <= stride);
     *map = (flat_map_t){rows, count, stride, key_offset};
     for (size_t i = 1; i < count; i++) {
         const uint32_t before = flat_map_key(map, i - 1);
@@ -39,7 +47,7 @@ flat_map_open(flat_map_t* map, const void* rows, size_t count, size_t stride, si
             if (clash != NULL) {
                 *clash = i;
             }
-            return key == before ? FLAT_MAP_SHARED : FLAT_MAP_UNSORTED;
+            return key == before ? FLAT_MAP_DUPLICATE : FLAT_MAP_UNSORTED;
         }
     }
     return FLAT_MAP_OK;
