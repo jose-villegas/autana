@@ -609,16 +609,34 @@ test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts(v
     TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, state->fate[SCENE_SIDE]);
 }
 
-/* Shaded, the default paint: culled clusters are a sparse screen door with no
- * border, so the culled grey shows nowhere, while kept clusters keep theirs. */
+/* Pixels of `rgb` in the dashes' on (or off) runs: CULLED_DASH_RUN on, as
+ * many off, along x + y. */
+#define CULLED_DASH_RUN 2
+
+static int
+dash_pixels_of(const scene_t* s, uint32_t rgb, bool on) {
+    const gfx_color_t* color = raster_color(&s->context.raster);
+    int count = 0;
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            const bool lit = ((x + y) / CULLED_DASH_RUN) % 2 == 0;
+            count += lit == on && color[(y * W) + x] == GFX_RGB(rgb);
+        }
+    }
+    return count;
+}
+
+/* Shaded, the default paint: a culled cluster is a sparse screen door whose
+ * border is dashed, so its grey lies only on the dashes. */
 static void
-test_shaded_cull_view_gives_culled_clusters_no_border(void) {
+test_shaded_cull_view_dashes_culled_borders(void) {
     scene_t* s = scene_open();
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(cullview, paint), RASTER_CULL_PAINT_SHADED));
     set_cull_from(RASTER_CULL_FROM_TOP);
     scene_draw(s);
     TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, scene_state(s)->fate[SCENE_SIDE]);
-    TEST_ASSERT_EQUAL_INT(0, pixels_of(s, CULLED_RGB));
+    TEST_ASSERT_TRUE(dash_pixels_of(s, CULLED_RGB, true) > 0);
+    TEST_ASSERT_EQUAL_INT(0, dash_pixels_of(s, CULLED_RGB, false));
     TEST_ASSERT_TRUE(pixels_of(s, CLEAR_RGB) < W * H); /* the screen door still shows */
 }
 
@@ -637,7 +655,7 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_cull_view_frame_counts_the_walk_and_the_sort_of_every_instance);
     RUN_TEST(test_cull_view_triangles_covering_counts_only_triangles_owning_pixels);
     RUN_TEST(test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts);
-    RUN_TEST(test_shaded_cull_view_gives_culled_clusters_no_border);
+    RUN_TEST(test_shaded_cull_view_dashes_culled_borders);
 }
 
 SUITE_REGISTER(run_raster_cull_view_suite);
