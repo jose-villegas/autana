@@ -6,73 +6,73 @@ mesh_cpu_vendor = "AuthenticAMD"
 [[bake]]
 output = "bistro.ground.mesh"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "30e06a7e95fdc2c007429414f47ba557a0ae332ee027cac6bca07a6d07caa9f3"
+key = "30046003caa4367e0e86bb82c185ba9ade7b2a30477444b6f0aeb0ee162aa551"
 sha256 = "13115deb99cead2b800fe6bd5397646cd28d272482172dbf4bc85aa99f4828e1"
 size = 132
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "bistro.street.mesh"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "59b5cf69d8172f3611c074322fdf76ad6993f7e56984179d7051fbba66220b4b"
+key = "1e01c70f150862f95d0e77a2c9cd8547a12a7376513ce2b4c8b9c82fba26cd30"
 sha256 = "8fa4e6c86bcc3a2ca9e4883107c5799720f044ee890141a815c2b03248203674"
 size = 381584
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "bistro.street_fitted.start.mesh"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "6d1ec1b3d8994e441eb4c5cfe7d0d8002b51800f79ae154580c8ace69f617d00"
+key = "aa79a8449a0cfac6ee61250ae16abf1d014887ea780c59e8337597eb33ac7453"
 sha256 = "19098e6689a0a873a4f025c3af69f4831fc4b1b57572e703798cae81f144584e"
 size = 298432
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "bistro.street_fitted_full.start.mesh"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "fad7a025cedd453eeda56ee7aa222a05e448aacbc7b5e9a782470a98c0ce32d9"
+key = "b187c9abce59e3278690c918c699780c6c8f9220e18b86d106437d2ab4d46e55"
 sha256 = "a30f32673443b0a8919cb571f32a92ed03bf8fa8320304d38aff8f1bf6f90ed5"
 size = 652820
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "bistro.street_flat.mesh"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "54592d4f7d108b275301294d48898348ceaa73b9e0eb0b13a35f7da5fa703fb7"
+key = "ee00c3ed48d3be8e2e838e18cb5ba98fa0fa09bebfafa95588d53750c936d169"
 sha256 = "22a9e3b33dc802a88f85d1ec93a81293346431078bf1ba4e50fb28ccbbdfaa5f"
 size = 301592
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "bistro.street_flat_fitted.start.mesh"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "55b3f8a342a60d4aa9f8f7041fb0d3f8763b5d322a5bf3919d6ceed317d20326"
+key = "669fd7262dc2f2b50399c68395ca628d86ba2d71656b8dd2eeb3da23f64101ed"
 sha256 = "84a75f9f8e18886a27896aa7211283668604a363dfc321afd0fb2e251d649e66"
 size = 514912
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "bistro.street_lite.mesh"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "876f6ec43dabda9699eebd111b762968f122023b4e540515bb7368c2ce765311"
+key = "88f67ede63b72db082f09af9b6ab50c71f26968c20c163994b585de8a4401a4d"
 sha256 = "aede4059d8bcdcbbb1ce607241cb7550843308c6521a71e071904ecdbab667d8"
 size = 193000
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "capybara.capybara.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "0d8db417b927c509909a497077c57a253740e54d60f8406f7cc13be62d2025c1"
+key = "04c4af73ba3e9055945e884b5f23a4612c707f7f8e27f6ed26dd134e703dd040"
 sha256 = "ceb2adc0e2c41e927d4f0acd241b52f13b0a964aaf1b0d6068aa33e8f041ae89"
 size = 14056
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
@@ -87,10 +87,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "capybara.meadow.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "e7e2a5781072481ee0a9fbe361f5f8742ddbb3b8fc82eac3f1bdc7e87cb4d620"
+key = "1279797ecbd27c40b3ad2b1dcd31863999e01b5f6b5cd7529f2a9b2eed3002ba"
 sha256 = "0c85de53dc72593a9f3aceedc7c6bbf26a54618c2ac4bcfeaebafac119f701a7"
 size = 132
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
@@ -105,55 +105,55 @@ host = "Linux x86_64"
 [[bake]]
 output = "sponza.atrium.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "3b3c593fd458033336e1cfee134e9f6a9fd61df73d999a1d933c511aa9a7b922"
+key = "a71c76f23f0284a7e1b9c0314fdede3d9acf731f13092223b2c6b30bdec66694"
 sha256 = "649d221759b9424a8f52260088ec7ceb25e3b6a808ff2fd15a041e396311b0ef"
 size = 264924
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "c7906a8408b52059aa900297deef23c5841b7cd448a6a67613eac94131956e00"
+key = "ebd4e60cdc9d345edcf0832c4816282918bbbf250bbb4abcd762f3e800ca9f89"
 sha256 = "e1aac41fd65ea12c10c3461c0c7ac9be42a6c5dcbdca7592a43de81e2a7c4b07"
 size = 205548
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "adc002a3e83a4b63287bace7882dd933ff08fb469e18dedb3aceac88c7c62adf"
+key = "bf74372395fdcee1c5857692841d6fc5fa6a473d03ec15139fe9573318649b4b"
 sha256 = "1cefaf248e60774aed32dcfeaec3a090e265b65f0006023af18dc4da40108fdf"
 size = 461556
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_flat.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "1d3b1eef83027ba9144e1d95d921d78a07b804e62c010c9286f852eb1a181b93"
+key = "cff90c443cdb7218b16082ee3ebbadef2bb0442cb87836b57b749a403adc40b4"
 sha256 = "029bd72c6a4c9c41ae562540fa098303e81dc1e6d28230b197cfd035cd1b10f8"
 size = 243452
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "5806cb82c7e46592555dc1e6560980a1b28b68c87943bcf82323508025e1bb8e"
+key = "1a072124f64f00be78f20142ff161010916e7dc1629193ec9557916758c54915"
 sha256 = "42ccb91f439bbe6160a5df5b50499236384041c90a91926706b8a3708d3af2f8"
 size = 422148
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_lite.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "af9e06b69aca1b33140b2e2b366593671704ff9873066edbd9e229f5a4611a8d"
+key = "d5776440f4e19bb637bf58f4cc2e593843091d7df25b10daf00514992d32a432"
 sha256 = "39b51af4e1a6e241d1b5d9518132497f63dde80f14530c7fbf8c7e825bf5b7e5"
 size = 130140
-run = 40136548011
+run = 40189163629
 host = "Linux x86_64"
 
 [[bake]]
