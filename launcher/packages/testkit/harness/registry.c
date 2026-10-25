@@ -60,3 +60,14 @@ int
 suites_dropped(void) {
     return dropped;
 }
+
+int
+suites_run(bool on_request) {
+    for (size_t i = 0; i < suites_count(); i++) {
+        const suite_entry_t* suite = suites_at(i);
+        if (suite->on_request == on_request) {
+            suite->fn();
+        }
+    }
+    return suites_dropped() + (suites_count() == 0);
+}

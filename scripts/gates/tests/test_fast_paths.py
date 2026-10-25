@@ -28,7 +28,7 @@ class FastPathTests(unittest.TestCase):
         source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
         source.parent.mkdir(parents=True)
         source.write_text('MATHERROR name=example type=f max=%g unit=ulp method=sweep')
-        perf = self.root / 'launcher/test/suites/suite_math_perf.c'
+        perf = self.root / 'launcher/packages/math/bench/suite_math_perf.c'
         perf.parent.mkdir(parents=True)
         perf.write_text('')
         self.annotations = paths.annotations(self.root)
@@ -391,7 +391,8 @@ class FastPathTests(unittest.TestCase):
         assert_contains(self, summary, (
             "| `fmodf(v - lo, hi - lo)` |",
             "| isqrt64 normalization |",
-            "236 IRAM + 956 flash",
+            (f"{sum(size for _, size, region in sizes['normalize_x'] if region == 'IRAM')} IRAM + "
+             f"{sum(size for _, size, region in sizes['normalize_x'] if region == 'flash')} flash"),
             f"| {sum(size for _, size, region in sizes['normalize_x'] if region == 'rodata')} |",
             "ROM",
         ))

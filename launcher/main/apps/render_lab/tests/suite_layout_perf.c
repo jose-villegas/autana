@@ -15,10 +15,10 @@
 #include "gfx/present/gfx_present.h"
 #include "hash/crc32.h"
 #include "perf_layout_labels.h"
-#include "perf_stats.h"
 #include "render/context/render_context.h"
 #include "render/raster_split.h"
 #include "scene/scene_shell.h"
+#include "testkit/bench.h"
 #include "testkit/cleanup.h"
 #include "ui/ui.h"
 #include "unity.h"
@@ -160,7 +160,7 @@ sent_frame_crc(fixture_t* f) {
 
 static void
 report_row(const char* scene, const char* layout, const char* stage, int32_t* samples, const char* quarter) {
-    const perf_stats_t stats = perf_stats_compute(samples, LAYOUT_SAMPLES);
+    const bench_stats_t stats = bench_stats_compute(samples, LAYOUT_SAMPLES);
     ESP_LOGI(TAG, "%s:%s:%s mean %lldus p95 %lldus" R3D_PERF_QUARTER_FORMAT, scene, layout, stage, (long long)stats.avg,
              (long long)stats.p95, quarter);
 }
