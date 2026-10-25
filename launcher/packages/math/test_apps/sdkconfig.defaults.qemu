@@ -1,0 +1,20 @@
+# Skip hardware cache and counter rows under emulation.
+CONFIG_TESTKIT_QEMU=y
+# QEMU reads ordinary dual-I/O flash correctly.
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+# QEMU models the ordinary flash clock.
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+# QEMU lacks dummy-cycle-aware boot timing.
+CONFIG_BOOTLOADER_FLASH_DC_AWARE=n
+# QEMU models ordinary flash operation.
+CONFIG_SPI_FLASH_HPM_DIS=y
+# Experimental flash timing is unnecessary under emulation.
+CONFIG_IDF_EXPERIMENTAL_FEATURES=n
+# QEMU exposes UART0.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+# QEMU has no secondary USB console PHY.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+# QEMU lacks FPU reciprocal seeds.
+CONFIG_MATH_FPU_RECIP=n
+# QEMU lacks the fused multiply-add instructions.
+CONFIG_MATH_FPU_FUSED_MADD=n
