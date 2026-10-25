@@ -15,12 +15,14 @@
 
 typedef enum { HANDLE_OWNER_TOKEN = 1, HANDLE_OWNER_ASSET_LOAD = 2 } handle_owner_t;
 
+/* Bits: owner 4 | slot 12 | generation 16. */
 typedef struct {
     uint32_t id;
 } handle_t;
 
 #define HANDLE_NONE ((handle_t){0})
 
+/* Invalid owner, slot or generation returns HANDLE_NONE. */
 static inline handle_t
 handle_make(handle_owner_t owner, uint32_t slot, uint32_t generation) {
     if ((uint32_t)owner == 0 || (uint32_t)owner > HANDLE_OWNER_MAX || slot > HANDLE_SLOT_MAX || generation == 0

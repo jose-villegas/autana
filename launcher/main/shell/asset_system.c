@@ -1,5 +1,5 @@
 /* asset_system: asset request progress and completion on each core-0 frame pass. */
-#include "asset/asset_store_pending.h"
+#include "asset/asset_store_shell.h"
 #include "shell/shell_system.h"
 
 static void

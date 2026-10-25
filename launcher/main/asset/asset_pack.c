@@ -111,7 +111,6 @@ asset_pack_open_step(asset_pack_opener_t* opener, size_t budget) {
         }
         opener->crc = crc32_update(opener->crc, pack->base + opener->offset, bytes);
         opener->offset += (uint32_t)bytes;
-        budget -= bytes;
         if (opener->offset < pack->size) {
             return false;
         }
@@ -121,10 +120,9 @@ asset_pack_open_step(asset_pack_opener_t* opener, size_t budget) {
         opener->complete = true;
         return true;
     }
-    while (opener->entry < pack->count && budget >= ASSET_PACK_ENTRY_SIZE) {
+    while (opener->entry < pack->count) {
         asset_entry_t entry;
         opener->status = asset_pack_entry(pack, opener->entry++, &entry);
-        budget -= ASSET_PACK_ENTRY_SIZE;
         if (opener->status != ASSET_OK) {
             break;
         }

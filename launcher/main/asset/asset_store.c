@@ -6,6 +6,29 @@
 #include "asset/asset_store_backend.h"
 #include "asset/asset_store_internal.h"
 
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
+#if CONFIG_LAUNCHER_DEVELOPMENT
+#include "core/timing.h"
+#include "esp_log.h"
+#endif
+
+struct asset_store_mount {
+    char name[ASSET_NAME_MAX];
+    uint32_t uses, waiting;
+    asset_pack_t pack;
+    uintptr_t mapping;
+    asset_pack_opener_t opener;
+    asset_status_t status;
+    bool opened;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    bool async;
+    uint32_t passes;
+    int64_t validation_us;
+#endif
+};
+
 static asset_store_mount_t mounts[ASSET_STORE_MOUNTS_MAX];
 static asset_store_request_t requests[ASSET_STORE_REQUESTS_MAX];
 static uint64_t next_order;
@@ -71,6 +94,20 @@ publish(asset_store_request_t* request, asset_store_mount_t* mount) {
     request->state = PENDING_READY;
 }
 
+static void
+initialize_request(asset_store_request_t* request, const char* name) {
+    if (name == NULL || name[0] == '\0' || strlen(name) >= ASSET_NAME_MAX) {
+        asset_store_backend_report(name == NULL ? "(null)" : name, ASSET_ERR_NOT_FOUND);
+        request->state = PENDING_FAILED;
+        return;
+    }
+    (void)strcpy(request->name, name);
+    asset_store_mount_t* mount = find(name);
+    if (mount != NULL && mount->opened && mount->status == ASSET_OK) {
+        publish(request, mount);
+    }
+}
+
 handle_t
 asset_store_request_new(const char* name) {
     asset_store_request_t* request = allocate_request();
@@ -80,16 +117,7 @@ asset_store_request_new(const char* name) {
     }
     const uint16_t generation = request->generation + 1U;
     *request = (asset_store_request_t){.generation = generation, .state = PENDING_WAIT, .order = ++next_order};
-    if (name == NULL || name[0] == '\0' || strlen(name) >= ASSET_NAME_MAX) {
-        asset_store_backend_report(name == NULL ? "(null)" : name, ASSET_ERR_NOT_FOUND);
-        request->state = PENDING_FAILED;
-        return asset_store_request_id(request);
-    }
-    (void)strcpy(request->name, name);
-    asset_store_mount_t* mount = find(name);
-    if (mount != NULL && mount->opened && mount->status == ASSET_OK) {
-        publish(request, mount);
-    }
+    initialize_request(request, name);
     return asset_store_request_id(request);
 }
 
@@ -98,6 +126,28 @@ fail(asset_store_request_t* request, asset_status_t status) {
     asset_store_backend_report(request->name, status);
     request->mount = NULL;
     request->state = PENDING_FAILED;
+}
+
+static void
+complete_mount(asset_store_mount_t* mount) {
+    if (mount->status == ASSET_OK) {
+        mount->pack = mount->opener.pack;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        ESP_LOGI("asset", "pack %s: %u entries, %u bytes", mount->name, (unsigned)mount->pack.count,
+                 (unsigned)mount->pack.size);
+#endif
+    } else {
+        asset_store_backend_report(mount->name, mount->status);
+    }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (mount->async) {
+        const uint32_t bytes =
+            mount->opener.offset >= ASSET_PACK_HEADER_SIZE ? mount->opener.offset - ASSET_PACK_HEADER_SIZE : 0;
+        ESP_LOGI("asset", "pack %s validation: %u bytes, %u passes, %lld us", mount->name, (unsigned)bytes,
+                 (unsigned)mount->passes, (long long)mount->validation_us);
+    }
+#endif
+    mount->opened = true;
 }
 
 void
@@ -120,22 +170,53 @@ asset_store_request_bind(asset_store_request_t* request) {
             return;
         }
         (void)strcpy(mount->name, request->name);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        mount->async = request->generation != 0;
+        const int64_t started = timing_now_us();
+#endif
         mount->status = asset_pack_open_begin(&mount->opener, mount->pack.base, mount->pack.size);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        mount->validation_us += timing_now_us() - started;
+#endif
         mount->opened = mount->status != ASSET_OK;
         mount->pack = (asset_pack_t){0};
+        if (mount->opened) {
+            complete_mount(mount);
+        }
     }
     request->mount = mount;
     mount->waiting++;
 }
 
-void
-asset_store_mount_step(asset_store_mount_t* mount) {
-    if (!mount->opened && asset_pack_open_step(&mount->opener, ASSET_STORE_STEP_BYTES)) {
+static size_t
+mount_step(asset_store_mount_t* mount, size_t budget) {
+    if (mount->opened) {
+        return 0;
+    }
+    const uint32_t before = mount->opener.offset;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const int64_t started = timing_now_us();
+    mount->passes++;
+#endif
+    const bool complete = asset_pack_open_step(&mount->opener, budget);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    mount->validation_us += timing_now_us() - started;
+#endif
+    if (complete) {
         mount->status = mount->opener.status;
-        if (mount->status == ASSET_OK) {
-            mount->pack = mount->opener.pack;
+        complete_mount(mount);
+    }
+    return mount->opener.offset - before;
+}
+
+void
+asset_store_mounts_step(size_t budget) {
+    for (uint32_t i = 0; i < ASSET_STORE_MOUNTS_MAX && budget > 0; i++) {
+        asset_store_mount_t* mount = &mounts[i];
+        if (mount->name[0] == '\0' || mount->opened) {
+            continue;
         }
-        mount->opened = true;
+        budget -= mount_step(mount, budget);
     }
 }
 
@@ -149,7 +230,8 @@ asset_store_request_finish(asset_store_request_t* request) {
     if (mount->status == ASSET_OK) {
         publish(request, mount);
     } else {
-        fail(request, mount->status);
+        request->mount = NULL;
+        request->state = PENDING_FAILED;
         unmount_unused(mount);
     }
 }
@@ -184,23 +266,19 @@ asset_store_request_cancel(asset_store_request_t* request) {
 
 const asset_pack_t*
 asset_store_load(const char* name) {
-    const handle_t load = asset_store_request_new(name);
-    asset_store_request_t* request = asset_store_request_find(load);
-    if (request == NULL) {
-        return NULL;
-    }
+    asset_store_request_t local = {.state = PENDING_WAIT};
+    asset_store_request_t* request = &local;
+    initialize_request(request, name);
     while (request->state == PENDING_WAIT) {
         if (request->mount == NULL) {
             asset_store_request_bind(request);
         }
         if (request->state == PENDING_WAIT) {
-            asset_store_mount_step(request->mount);
+            (void)mount_step(request->mount, SIZE_MAX);
             asset_store_request_finish(request);
         }
     }
-    const asset_pack_t* pack = asset_store_loaded(load);
-    request->state = PENDING_NONE;
-    return pack;
+    return request->state == PENDING_READY ? &request->mount->pack : NULL;
 }
 
 int
