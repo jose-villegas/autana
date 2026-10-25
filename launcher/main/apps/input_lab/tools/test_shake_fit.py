@@ -77,6 +77,9 @@ class ShakeFitTest(unittest.TestCase):
         row = "shake 1 0 acc 0,0,-1000 lin 10,0,0 size 10 smooth 10 jerky 999 old 0"
         self.assertEqual(shake_fit.parse([row.replace(" jerky 999", "")]), shake_fit.parse([row]))
         self.assertNotIn("jerky", shake_fit.parse([row])[0])
+        self.assertIn("old", shake_fit.parse([row])[0])
+        self.assertNotIn("shared", shake_fit.parse([row])[0])
+        self.assertIn("shared", shake_fit.parse([row.replace(" old ", " shared ")])[0])
 
     def test_generate_results(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -19,7 +19,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "input/motion/tilt.h"
+#include "input/motion/gravity.h"
 #include "math/motion/spring_line.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
@@ -106,7 +106,9 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define LEVEL_STEADY_STEP   29
 #define LEVEL_STEADY_MS     300
 #define STRUM_STEP_PX       12
-#define SHAKE_THRESHOLD     48
+#define RIDGE_SHAKE_FULL    255
+/* Counts per g at the integer pose boundary. */
+#define RIDGE_GRAVITY_SCALE 256
 #define SHAKE_HALF_WIDTH    16
 #define POSE_LANDSCAPE      ((ridge_vector_t){-RIDGE_POSE_ONE, 0})
 #define POSE_STEP_LANDSCAPE (POSE_STEPS * 3 / 4)
@@ -146,7 +148,8 @@ typedef struct {
     edge_lines_t was_lines, now_lines;
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
-    int shake, last_pluck_x, strips, down_sign;
+    float shake;
+    int last_pluck_x, strips, down_sign;
     bool by_column, axis_on_screen, ambient, painted, scanline_dither;
 } ridge_t;
 
@@ -1214,12 +1217,15 @@ allocate_once(void) {
 }
 
 void
-ui_ridge_set_gravity(int gx, int gy, int strength, int shake) {
+ui_ridge_set_gravity(vec3f_t gravity, float shake) {
     allocate_once();
     if (ridge != NULL) {
         ridge->shake = shake;
         ridge->attitude.level =
-            ridge_pose_level_from_gravity(ridge->attitude.level, gx, gy, strength, TILT_MIN_DIRECTION_STRENGTH);
+            ridge_pose_level_from_gravity(ridge->attitude.level, (int)lroundf(gravity.x * RIDGE_GRAVITY_SCALE),
+                                          (int)lroundf(gravity.y * RIDGE_GRAVITY_SCALE),
+                                          (int)lroundf(hypotf(gravity.x, gravity.y) * RIDGE_GRAVITY_SCALE),
+                                          (int)(GRAVITY_MIN_DIRECTION_STRENGTH * RIDGE_GRAVITY_SCALE));
     }
 }
 
@@ -1383,12 +1389,13 @@ shape_this_frame(uint32_t dt_ms) {
 
 static void
 pluck_from_shaking(void) {
-    if (ridge->shake < SHAKE_THRESHOLD) {
+    if (ridge->shake <= 0) {
         return;
     }
     ridge->shake_seed = (ridge->shake_seed * 1664525U) + 1013904223U;
     spring_line_poke(&ridge->line, (int)((ridge->shake_seed >> 8) % RIDGE_COLUMNS), SHAKE_HALF_WIDTH,
-                     (ridge->shake_seed & 0x80U ? 1 : -1) * (MATHX_ONE / 128) * ridge->shake);
+                     (ridge->shake_seed & 0x80U ? 1 : -1)
+                         * (int)lroundf((MATHX_ONE / 128) * RIDGE_SHAKE_FULL * ridge->shake));
 }
 
 static void
@@ -1450,9 +1457,7 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
                                              .redraw_step = POSE_ARRIVE_STEP};
     ridge_pose_advance(&ridge->attitude, &pose_params, dt_ms, ridge->alive_ms);
     pluck_from_touch(input);
-    if (ridge->ambient) {
-        pluck_from_shaking();
-    }
+    pluck_from_shaking();
     shape_this_frame(dt_ms);
     int lo;
     int hi;

@@ -9,8 +9,11 @@
 #include <stdlib.h>
 
 #include "gfx/gfx.h"
-#include "input/motion/tilt.h"
+#include "input/input.h"
+#include "input/motion/input_motion.h"
+#include "input_fake.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/units.h"
 #include "render_host.h"
 
 #include "apps/sand/material_palette.h"
@@ -24,7 +27,6 @@
 #define VIEW_H    GRID_W
 
 static sand_t sim;
-static tilt_t tilt;
 static uint8_t cells[GRID_W * GRID_H];
 static impulse_t impulses[GRID_W * GRID_H];
 static sand_paint_row_state_t paint;
@@ -145,7 +147,7 @@ setup(int quarter) {
     terrain();
     trees();
     sand_add_emitter(&sim, VIEW_H - 1 - 11, 27, CELL_MAKE(MAT_LAVA, 15));
-    tilt_reset(&tilt, 256);
+    input_motion_reset();
     const char* path = getenv("SAND_ANGLE_PATH");
     angles = path != NULL ? fopen(path, "w") : NULL;
     return path == NULL || angles != NULL;
@@ -157,17 +159,26 @@ board_angle(int frame) {
     return (7.0 * sin(t * 6.283185307179586)) + (36.0 * (0.5 - 0.5 * cos(t * 6.283185307179586)));
 }
 
-/* How fast the simulated board turns, for tilt's filter only. */
-#define SIMULATED_TURN_DPS 53
+/* Gravity vectors at the simulation boundary use Q8 unity. */
+#define SIM_GRAVITY_ONE 256
 
 static void
 drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
     const double radians = board_angle(frame->index) * MATH_RADIANS_PER_DEGREE;
-    const int sx = (int)lround(256.0 * sin(radians));
-    const int sy = (int)lround(256.0 * cos(radians));
-    tilt_update(&tilt, (vec3i_t){-sy, sx, 0}, SIMULATED_TURN_DPS, frame->dt_ms);
-    *gx = tilt_x(&tilt);
-    *gy = tilt_y(&tilt);
+    const int sx = (int)lround(INPUT_ACCEL_ONE_G * sin(radians));
+    const int sy = (int)lround(INPUT_ACCEL_ONE_G * cos(radians));
+    const double turn_dps =
+        frame->index > 0 && frame->dt_ms > 0
+            ? (board_angle(frame->index) - board_angle(frame->index - 1)) * MATH_MS_PER_S / frame->dt_ms
+            : 0;
+    const input_motion_t motion = {.acceleration = {-sy, sx, 0},
+                                   .rotation = {0, 0, (int)lround(turn_dps * INPUT_ROTATION_ONE_DPS)}};
+    input_fake_motion(&motion);
+    input_motion_frame((int64_t)frame->elapsed_ms * MATH_US_PER_MS);
+    const vec3f_t g = input_gravity();
+    *gx = (int)lroundf(g.x * SIM_GRAVITY_ONE);
+    *gy = (int)lroundf(g.y * SIM_GRAVITY_ONE);
+    input_fake_motion(NULL);
     if (angles != NULL) {
         if (fprintf(angles, "%.3f\n", board_angle(frame->index)) < 0 || fflush(angles) != 0) {
             if (!close_angles()) {

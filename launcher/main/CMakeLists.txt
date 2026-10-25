@@ -40,7 +40,7 @@ set(app_srcs
     "power/power_log_device.c"
     "power/power_device.c"
     "input/input_device.c"
-    "input/motion/tilt.c"
+    "input/motion/input_motion.c"
     "input/motion/gravity.c"
     "input/motion/shake.c"
     "ui/ui.c"

@@ -7,6 +7,7 @@
 #include "gfx/gfx.h"
 #include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
+
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
@@ -52,7 +53,7 @@ launcher_home_render_setup(int quarter) {
     static const int down[4][2] = {{0, 1}, {-1, 0}, {0, -1}, {1, 0}};
     ui_launcher_init();
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
-    ui_ridge_set_gravity(down[quarter & 3][0], down[quarter & 3][1], 256, 0);
+    ui_ridge_set_gravity((vec3f_t){down[quarter & 3][0], down[quarter & 3][1], 0}, 0);
     ui_ridge_set_ambient(false);
     ui_ridge_settle();
 }

@@ -18,11 +18,11 @@ MS_PER_S = read_define(Path(__file__).resolve().parents[4] / "packages" / "math"
 STEP_ENUM = re.search(r"typedef enum\s*\{([^}]+)\}\s*shake_probe_step_t", HEADER.read_text())[1]
 STEP_NAMES = tuple(re.findall(r"SHAKE_PROBE_(\w+)", STEP_ENUM))
 STEPS = tuple(name for name in STEP_NAMES if name not in ("IDLE", "DONE"))
-CANDIDATES = ("size", "smooth", "old")
+CANDIDATES = ("size", "smooth", "old", "shared")
 SHAKING = ("GENTLE", "HARD")
 VECTOR = r"(-?\d+),(-?\d+),(-?\d+)"
 SAMPLE = re.compile(r"shake (\w+) (\d+) acc " + VECTOR + r" lin " + VECTOR
-                    + r" size (\d+) smooth (\d+)(?: jerky \d+)? old (\d+)")
+                    + r" size (\d+) smooth (\d+)(?: jerky \d+)? (?:shared|old) (\d+)")
 PERCENT = 100
 P95 = 95
 P99 = 99
@@ -45,7 +45,7 @@ def parse(lines):
                 continue
             values = list(map(int, match.groups()[1:]))
             samples.append(dict(step=step, ms=values[0], acc=values[1:4], lin=values[4:7],
-                                **dict(zip(CANDIDATES, values[7:]))))
+                                **dict(zip(("size", "smooth", "shared" if " shared " in match[0] else "old"), values[7:]))))
     return samples
 
 
@@ -60,12 +60,15 @@ def generate_results(doc, images, captures, check=False):
     for name, path in captures.items():
         samples = read_capture(path)
         stats = summarize(samples)
-        for candidate in CANDIDATES:
+        candidates = tuple(stats.get(STEPS[0], {}))
+        if not candidates:
+            raise ValueError("missing steps: " + STEPS[0])
+        for candidate in candidates:
             suggest(stats, candidate)
         rows = [(step, candidate.upper(), *(f"{value:.1f}" for value in stats[step][candidate].values()))
-                for step in STEPS for candidate in CANDIDATES]
+                for step in STEPS for candidate in candidates]
         table = markdown(("Step", "Candidate", "Median", "p95", "p99", "Max"), rows)
-        body = "<details>\n<summary>Per-step statistics (mg; OLD 0-255)</summary>\n\n" + table + "\n</details>"
+        body = f"<details>\n<summary>Per-step statistics (mg; {candidates[-1].upper()} 0-255)</summary>\n\n" + table + "\n</details>"
         changed |= replace_block(doc, "shake-" + name, body, check=check,
                                  command="python launcher/main/apps/input_lab/tools/shake_fit.py --results --check")
         if not check:
@@ -87,7 +90,7 @@ def summarize(samples):
         if not rows:
             continue
         result[step] = {}
-        for candidate in CANDIDATES:
+        for candidate in (name for name in CANDIDATES if name in rows[0]):
             values = [sample[candidate] for sample in rows]
             cuts = (quantiles(values, n=PERCENT, method="inclusive") if len(values) > 1
                     else values * (PERCENT - 1))
@@ -109,16 +112,17 @@ def plot(samples, output):
     from docs.plot_style import subplots, save, style_axes
     import matplotlib.pyplot as plt
 
-    figure, axes = subplots(len(CANDIDATES), 1, (12, 9), sharex=True)
+    candidates = tuple(name for name in CANDIDATES if samples and name in samples[0])
+    figure, axes = subplots(len(candidates), 1, (12, 9), sharex=True)
     colors = plt.get_cmap("tab10")
-    for axis, candidate in zip(axes, CANDIDATES):
+    for axis, candidate in zip(axes, candidates):
         for index, step in enumerate(STEPS):
             rows = [s for s in samples if s["step"] == step]
             axis.plot([s["ms"] / MS_PER_S for s in rows], [s[candidate] for s in rows],
                       color=colors(index), label=step)
         style_axes(axis, candidate.upper())
         axis.set_ylim(bottom=0)
-        axis.set_ylabel(candidate.upper() + (" (0-255)" if candidate == "old" else " (mg)"))
+        axis.set_ylabel(candidate.upper() + (" (0-255)" if candidate in ("old", "shared") else " (mg)"))
         axis.grid(alpha=0.2)
     axes[0].legend(ncol=len(STEPS) // 2, loc="lower center", bbox_to_anchor=(0.5, 1.05))
     axes[-1].set_xlabel("Round time (s)")
@@ -146,12 +150,15 @@ def main():
     try:
         samples = read_capture(args.log)
         stats = summarize(samples)
-        suggestions = {candidate: suggest(stats, candidate) for candidate in CANDIDATES}
+        candidates = tuple(stats.get(STEPS[0], {}))
+        if not candidates:
+            raise ValueError("missing steps: " + STEPS[0])
+        suggestions = {candidate: suggest(stats, candidate) for candidate in candidates}
     except ValueError as error:
         parser.error(str(error))
-    print("step candidate median p95 p99 max (mg; OLD 0-255)")
+    print(f"step candidate median p95 p99 max (mg; {candidates[-1].upper()} 0-255)")
     for step in STEPS:
-        for candidate in CANDIDATES:
+        for candidate in candidates:
             print(step, candidate, *(f"{value:.1f}" for value in stats[step][candidate].values()))
     for candidate, (threshold, margin, full) in suggestions.items():
         print(f"{candidate}: threshold {threshold:.1f}; GENTLE median margin {margin:.1f}; full {full:.1f}")

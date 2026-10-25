@@ -46,7 +46,7 @@ imu_gravity_screen(const imu_sample_t* s) {
  * axes. Named for what it measures because the obvious misreading is
  * expensive: this is NOT how hard the board is being shaken; a smooth
  * rotation reads high while nothing is shaken. Shaking means accelerating
- * the device, the accelerometer's business; see tilt_shake(). Deliberately
+ * the device, the accelerometer's business; see input_shake(). Deliberately
  * not a filter or gesture detector; the caller decides what counts as
  * "fast". */
 static inline int

@@ -25,10 +25,15 @@
 #include "unity.h"
 
 #include "apps/sand/sand.h"
+#include "apps/sand/sand_controls.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "input/input.h"
-#include "input/motion/tilt.h"
+#include "input/motion/gravity.h"
+#ifndef DEVICE_BUILD
+#include "input/motion/input_motion.h"
+#include "input_fake.h"
+#endif
 #include "math/scalar/mathi.h"
 
 static void
@@ -115,59 +120,81 @@ test_no_gravity_has_no_direction(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, dy, "a zero vector has no direction");
 }
 
+#ifndef DEVICE_BUILD
+#define MOTION_FRAME_US      (16U * MATH_US_PER_MS)
+#define MOTION_FRAMES        (4 * MATH_US_PER_S / MOTION_FRAME_US)
+#define MOTION_NOISE_DIVISOR 64
+#define MOTION_NOISE_COUNTS  (INPUT_ACCEL_ONE_G / MOTION_NOISE_DIVISOR)
+#define MOTION_TURN_FRAMES   (GRAVITY_STILL_RECOVER_US / MOTION_FRAME_US * 4)
+
 static void
 test_flat_noise_does_not_report_direction_changes(void) {
     fixture();
-    const int noise = INPUT_ACCEL_ONE_G / TILT_MIN_DIRECTION_STRENGTH;
-    const int frames = TILT_TAU_STILL_MS * 4;
-    tilt_t tilt;
-    tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
-    int dx = 0;
-    int dy = 0;
-    int changes = 0;
-    for (int frame = 0; frame < frames; frame++) {
-        const int sign = frame % 2 == 0 ? 1 : -1;
-        const vec3i_t accel = {sign * noise, -sign * noise, INPUT_ACCEL_ONE_G};
-        tilt_update(&tilt, accel, 0, TILT_MAX_DT_MS);
-        TEST_ASSERT_LESS_THAN(TILT_MIN_DIRECTION_STRENGTH, tilt_strength(&tilt));
-        changes += sand_gravity_direction_changed(tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), &dx, &dy);
+    input_motion_reset();
+    input_motion_t motion = {.acceleration = {0, 0, INPUT_ACCEL_ONE_G}};
+    input_fake_motion(&motion);
+    input_motion_frame(0);
+    (void)input_gravity();
+    int dx = 0, dy = 0, changes = 0;
+    for (unsigned frame = 1; frame <= MOTION_FRAMES; frame++) {
+        const int noise = frame % 2 ? MOTION_NOISE_COUNTS : -MOTION_NOISE_COUNTS;
+        motion.acceleration = (vec3i_t){noise, -noise, INPUT_ACCEL_ONE_G};
+        input_motion_frame((int64_t)frame * MOTION_FRAME_US);
+        const vec3f_t g = input_gravity();
+        const float strength = hypotf(g.x, g.y);
+        TEST_ASSERT_TRUE(strength < GRAVITY_MIN_DIRECTION_STRENGTH);
+        changes +=
+            sand_gravity_direction_changed((int)lroundf(g.x * INPUT_ACCEL_ONE_G), (int)lroundf(g.y * INPUT_ACCEL_ONE_G),
+                                           (int)lroundf(strength * SAND_FLOW_ONE), &dx, &dy);
+        TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
     }
-    TEST_ASSERT_LESS_OR_EQUAL_INT(1, changes);
+    input_fake_motion(NULL);
+    TEST_ASSERT_EQUAL_INT(0, changes);
 }
 
 static void
 test_real_tilt_reports_new_octants(void) {
     fixture();
-    tilt_t tilt;
-    tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
-    int dx = 0;
-    int dy = 0;
-    tilt_update(&tilt, (vec3i_t){INPUT_ACCEL_ONE_G, 0, 0}, 0, TILT_MAX_DT_MS);
-    TEST_ASSERT_GREATER_OR_EQUAL(TILT_MIN_DIRECTION_STRENGTH, tilt_strength(&tilt));
-    TEST_ASSERT_TRUE(sand_gravity_direction_changed(tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), &dx, &dy));
+    input_motion_reset();
+    input_motion_t motion = {.acceleration = {INPUT_ACCEL_ONE_G, 0, 0}};
+    input_fake_motion(&motion);
+    input_motion_frame(0);
+    vec3f_t g = input_gravity();
+    int dx = 0, dy = 0;
+    TEST_ASSERT_TRUE(sand_gravity_direction_changed((int)lroundf(g.x * INPUT_ACCEL_ONE_G),
+                                                    (int)lroundf(g.y * INPUT_ACCEL_ONE_G),
+                                                    (int)lroundf(hypotf(g.x, g.y) * SAND_FLOW_ONE), &dx, &dy));
     TEST_ASSERT_EQUAL_INT(1, dx);
     TEST_ASSERT_EQUAL_INT(0, dy);
-    TEST_ASSERT_FALSE(sand_gravity_direction_changed(tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), &dx, &dy));
-
-    for (int elapsed = 0; elapsed < TILT_TAU_STILL_MS; elapsed += TILT_MAX_DT_MS) {
-        tilt_update(&tilt, (vec3i_t){0, INPUT_ACCEL_ONE_G, 0}, TILT_TURN_FULL_DPS, TILT_MAX_DT_MS);
+    motion.acceleration = (vec3i_t){0, INPUT_ACCEL_ONE_G, 0};
+    for (unsigned frame = 1; frame <= MOTION_TURN_FRAMES; frame++) {
+        input_motion_frame((int64_t)frame * MOTION_FRAME_US);
+        g = input_gravity();
     }
-    TEST_ASSERT_TRUE(sand_gravity_direction_changed(tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), &dx, &dy));
+    TEST_ASSERT_TRUE(sand_gravity_direction_changed((int)lroundf(g.x * INPUT_ACCEL_ONE_G),
+                                                    (int)lroundf(g.y * INPUT_ACCEL_ONE_G),
+                                                    (int)lroundf(hypotf(g.x, g.y) * SAND_FLOW_ONE), &dx, &dy));
     TEST_ASSERT_EQUAL_INT(0, dx);
     TEST_ASSERT_EQUAL_INT(1, dy);
+    input_fake_motion(NULL);
 }
+#endif
 
 static void
 test_direction_change_threshold_preserves_last_logged_octant(void) {
     fixture();
     int dx = 0;
     int dy = 0;
-    TEST_ASSERT_TRUE(sand_gravity_direction_changed(INPUT_ACCEL_ONE_G, 0, TILT_MIN_DIRECTION_STRENGTH, &dx, &dy));
-    TEST_ASSERT_FALSE(sand_gravity_direction_changed(0, INPUT_ACCEL_ONE_G, TILT_MIN_DIRECTION_STRENGTH - 1, &dx, &dy));
+    TEST_ASSERT_TRUE(sand_gravity_direction_changed(INPUT_ACCEL_ONE_G, 0,
+                                                    (int)(GRAVITY_MIN_DIRECTION_STRENGTH * SAND_FLOW_ONE), &dx, &dy));
+    TEST_ASSERT_FALSE(sand_gravity_direction_changed(
+        0, INPUT_ACCEL_ONE_G, (int)(GRAVITY_MIN_DIRECTION_STRENGTH * SAND_FLOW_ONE) - 1, &dx, &dy));
     TEST_ASSERT_EQUAL_INT(1, dx);
     TEST_ASSERT_EQUAL_INT(0, dy);
-    TEST_ASSERT_FALSE(sand_gravity_direction_changed(INPUT_ACCEL_ONE_G, 0, TILT_MIN_DIRECTION_STRENGTH, &dx, &dy));
-    TEST_ASSERT_TRUE(sand_gravity_direction_changed(0, INPUT_ACCEL_ONE_G, TILT_MIN_DIRECTION_STRENGTH, &dx, &dy));
+    TEST_ASSERT_FALSE(sand_gravity_direction_changed(INPUT_ACCEL_ONE_G, 0,
+                                                     (int)(GRAVITY_MIN_DIRECTION_STRENGTH * SAND_FLOW_ONE), &dx, &dy));
+    TEST_ASSERT_TRUE(sand_gravity_direction_changed(0, INPUT_ACCEL_ONE_G,
+                                                    (int)(GRAVITY_MIN_DIRECTION_STRENGTH * SAND_FLOW_ONE), &dx, &dy));
 }
 
 /* dithering the direction */
@@ -931,8 +958,10 @@ run_sand_motion_suite(void) {
     RUN_TEST(test_ring_of_matches_the_direction_ring);
     RUN_TEST(test_a_slight_tilt_still_reads_as_straight_down);
     RUN_TEST(test_no_gravity_has_no_direction);
+#ifndef DEVICE_BUILD
     RUN_TEST(test_flat_noise_does_not_report_direction_changes);
     RUN_TEST(test_real_tilt_reports_new_octants);
+#endif
     RUN_TEST(test_direction_change_threshold_preserves_last_logged_octant);
     RUN_TEST(test_an_exactly_aligned_direction_is_never_dithered);
     RUN_TEST(test_an_intermediate_angle_uses_both_neighbours);

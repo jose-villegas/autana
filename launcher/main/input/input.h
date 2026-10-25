@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #include "input/buttons/buttons.h"
+#include "math/linear/vec3f.h"
 #include "math/linear/vec3i.h"
 
 /* Touch state for the current frame.
@@ -63,3 +64,11 @@ bool input_read_motion_batch(input_motion_batch_t* out);
 /* Copies the newest sample from memory.
  * False when there is no sensor or no reading. */
 bool input_read_motion(input_motion_t* out);
+
+/* Frame thread only. Screen axes (x right, y down, z out), in g:
+ * unit while held, zero in free fall; no sensor gives (0,1,0).
+ * The first gravity or shake read each frame updates both; later reads are cached. */
+vec3f_t input_gravity(void);
+/* Frame thread only. Deliberate shake, 0..1: zero below SHAKE_START_G,
+ * full at SHAKE_FULL_G; no sensor gives zero. */
+float input_shake(void);
