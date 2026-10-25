@@ -13,10 +13,12 @@ python=$(find_python)
 autana="$root/tools/autana"
 board=$1
 script=$2
+# A board job hands paths inside the shipped tree over as absolute paths.
+case $script in /* | [A-Za-z]:*) ;; *) script=$root/$script ;; esac
 shift 2
 "$autana" --board "$board" status
 "$autana" --board "$board" flash dev
 "$autana" --board "$board" buildid
-"$python" "$root/$script" --board "$board" --autana "$autana" "$@"
+"$python" "$script" --board "$board" --autana "$autana" "$@"
 "$autana" --board "$board" buildid
 "$autana" --board "$board" status
