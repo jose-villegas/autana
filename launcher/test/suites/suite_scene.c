@@ -1583,6 +1583,15 @@ test_authored_rows_and_refusals(void) {
 }
 
 static void
+assert_light(const scene_t* scene, scene_entity_t entity, vec3f_t color, float intensity) {
+    const vec3f_t got = scene_light_color(scene, entity);
+    TEST_ASSERT_EQUAL_FLOAT(color.x, got.x);
+    TEST_ASSERT_EQUAL_FLOAT(color.y, got.y);
+    TEST_ASSERT_EQUAL_FLOAT(color.z, got.z);
+    TEST_ASSERT_EQUAL_FLOAT(intensity, scene_light_intensity(scene, entity));
+}
+
+static void
 test_encoder_authored_components_load_and_reach_runtime(void) {
     fixture();
     asset_pack_t pack;
@@ -1598,11 +1607,7 @@ test_encoder_authored_components_load_and_reach_runtime(void) {
     TEST_ASSERT_EQUAL_STRING("authored.first", scene_entity_mesh_id(loaded, entity));
     TEST_ASSERT_NOT_NULL(loaded->skinned_renderers[entity].internal_storage);
     TEST_ASSERT_NOT_NULL(loaded->light_transfer);
-    const vec3f_t color = scene_light_color(loaded, scene_find(loaded, name_hash("sun")));
-    TEST_ASSERT_EQUAL_FLOAT(0.8F, color.x);
-    TEST_ASSERT_EQUAL_FLOAT(0.7F, color.y);
-    TEST_ASSERT_EQUAL_FLOAT(0.6F, color.z);
-    TEST_ASSERT_EQUAL_FLOAT(1.5F, scene_light_intensity(loaded, scene_find(loaded, name_hash("sun"))));
+    assert_light(loaded, scene_find(loaded, name_hash("sun")), (vec3f_t){0.8F, 0.7F, 0.6F}, 1.5F);
     scene_unload(loaded);
     asset_file_release(buffer);
 }
@@ -3376,11 +3381,7 @@ test_authored_light_preserves_static_mesh_colors(void) {
     const scene_entity_t entity = scene_find(scene, name_hash("red"));
     TEST_ASSERT_EQUAL_INT(1, scene->light_count);
     TEST_ASSERT_NULL(scene->light_transfer);
-    const vec3f_t color = scene_light_color(scene, scene_find(scene, name_hash("sun")));
-    TEST_ASSERT_EQUAL_FLOAT(0.25F, color.x);
-    TEST_ASSERT_EQUAL_FLOAT(0.5F, color.y);
-    TEST_ASSERT_EQUAL_FLOAT(0.75F, color.z);
-    TEST_ASSERT_EQUAL_FLOAT(2.0F, scene_light_intensity(scene, scene_find(scene, name_hash("sun"))));
+    assert_light(scene, scene_find(scene, name_hash("sun")), (vec3f_t){0.25F, 0.5F, 0.75F}, 2.0F);
     const size_t available = memory_free_bytes(MEMORY_INTERNAL);
     scene_animation_step(scene, RIG_DURATION_MS);
     TEST_ASSERT_EQUAL_UINT(available, memory_free_bytes(MEMORY_INTERNAL));
