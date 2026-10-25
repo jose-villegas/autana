@@ -3,7 +3,7 @@ set(testkit_requires math)
 
 if(ESP_PLATFORM)
     idf_build_get_property(testkit_arch IDF_TARGET_ARCH)
-    set(testkit_idf_requires unity esp_mm esp_timer esp_app_format heap)
+    set(testkit_idf_requires unity esp_mm esp_timer esp_app_format heap esp_driver_usb_serial_jtag)
     if(testkit_arch STREQUAL "xtensa")
         list(APPEND testkit_idf_requires perfmon)
     endif()
