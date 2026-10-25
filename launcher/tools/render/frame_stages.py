@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Each frame stage of the scene as shipped, and what each debug view adds on
-top, as charts and a table for Render-Pipeline.md's `pipeline-frame-stages`
-block. launcher/tools/render/render_doc_images.sh runs it on the captures kept
-in docs/render/data/.
+"""Each frame stage of the scene as shipped, what is inside transform and
+draw, and what each debug view adds on top, as charts and tables for
+Render-Pipeline.md's `pipeline-frame-stages` block.
+launcher/tools/render/render_doc_images.sh runs it on the captures kept in
+docs/render/data/.
 
-    python launcher/tools/render/frame_stages.py --present LOG --views PATTERN --tables DIR --chart PNG
+    python launcher/tools/render/frame_stages.py --present LOG --laps LOG --views PATTERN --tables DIR --chart PNG
 
-LOG holds the frame-cost report windows of the scene as shipped. PATTERN names
-one capture per debug view, `{view}` standing for the view's name; the names
-are read from the view table in render_context.c, so a view added there shows
-up here, listed as not captured until its capture is kept.
+--present holds the frame-cost report windows of the scene as shipped.
+--laps holds a perf-scope image's windows of the same scene: its lap lines
+split each bracket in PARENTS into the laps named `<parent>.<phase>`, each
+with what the laps themselves cost taken out and shown apart. What the frame
+core's laps leave of their parent is untimed; more than UNTIMED_SHARE of it
+fails the run. PATTERN names one capture per debug view,
+`{view}` standing for the view's name; the names are read from the view table
+in render_context.c, so a view added there shows up here, listed as not
+captured until its capture is kept.
 """
 
 import argparse
@@ -38,6 +44,16 @@ AXIS_HEADROOM = 0.2
 AXIS_TICKS = 5
 ADDED_BASE_LABEL = "base cost"
 BUDGET_LABEL_SIZE = 8
+PARENTS = ("r3d.transform", "r3d.draw")  # the brackets the laps split
+FRAME_CORE = 0  # the core the frame task, and so every bracket, runs on
+UNTIMED_SHARE = 0.02  # the most of a parent its laps may leave untimed
+UNTIMED_LABEL = "untimed"
+UNTIMED_COLOUR = "#c8c8c8"
+LAPS_LABEL = "laps"  # what the laps themselves cost, taken out of the phases they time
+LAPS_COLOUR = "#8c8c8c"
+SUB_STAGE_FIGURE_SIZE = (10, 3.4)
+SUB_STAGE_SUFFIX = "sub-stages"
+SUB_STAGE_LEGEND_ANCHOR = (1, 1)  # above the bar, right, level with its title
 
 
 def view_names(source=VIEW_TABLE):
@@ -96,11 +112,13 @@ def share_text(value, signed=False):
     return format(share_percent(value), "+.0f" if signed else ".0f") + "%"
 
 
-def table(order, base, added, names, windows, chart_name):
+def table(order, base, added, names, windows, chart_name, inside=""):
+    """The shipped bar, then `inside`, what is inside its stages, then the
+    debug views' bars and every stage's milliseconds, folded away."""
     shipped = sum(base.values())
     shares = stage_shares(base, shipped)
     headers = ["Stage", "As shipped", "Share", *(f"{name} view adds" for name in added)]
-    lines = [f"![Frame stages as shipped](../images/render/{chart_name})", ""]
+    lines = []
     for name in names:
         if name in added:
             lines.extend([f"![Frame stages with the {name} view](../images/render/{chart_path(chart_name, name).name})", ""])
@@ -118,7 +136,9 @@ def table(order, base, added, names, windows, chart_name):
            "between its capture and the scene as shipped."
     if missing:
         note += " Not captured: " + ", ".join(missing) + "."
-    return "\n".join(lines) + "\n" + collapsed("Frame stages in milliseconds", "\n".join(rows) + "\n" + note + "\n").rstrip("\n")
+    head = f"![Frame stages as shipped](../images/render/{chart_name})\n\n" + (inside + "\n" if inside else "")
+    return head + collapsed("Debug views and every stage in milliseconds",
+                            "\n".join(lines) + "\n" + "\n".join(rows) + "\n" + note + "\n").rstrip("\n")
 
 
 def chart(order, base, added, path):
@@ -198,9 +218,98 @@ def chart(order, base, added, path):
         save(figure, output)
 
 
+def sub_stages(path):
+    """{parent: (parent ms, {phase: {core: ms}}, untimed ms)}: each parent of
+    the perf-scope capture, its laps on every core, LAPS_LABEL last for what
+    they cost themselves, and what the frame core's laps leave of it."""
+    brackets = dict(frame_cost.frame_cost_means(path) or [])
+    laps = frame_cost.frame_laps_means(path)
+    if FRAME_CORE not in laps:
+        raise ValueError(f"{path}: no laps on cpu{FRAME_CORE}")
+    found = {}
+    for parent in PARENTS:
+        if parent not in brackets:
+            raise ValueError(f"{path}: no {parent} bracket")
+        prefix = parent + "."
+        phases = list(dict.fromkeys(name[len(prefix):] for core in laps.values() for name in core
+                                    if name.startswith(prefix)))
+        if not phases:
+            raise ValueError(f"{path}: no laps inside {parent}")
+        per_core = {phase: {core: laps[core].get(prefix + phase, (0.0, 0.0))[0] for core in laps} for phase in phases}
+        per_core[LAPS_LABEL] = {core: sum(laps[core].get(prefix + phase, (0.0, 0.0))[1] for phase in phases)
+                                for core in laps}
+        untimed = brackets[parent] - sum(cores[FRAME_CORE] for cores in per_core.values())
+        if abs(untimed) > UNTIMED_SHARE * brackets[parent]:
+            raise ValueError(f"{path}: the laps leave {untimed:.2f} of {parent}'s {brackets[parent]:.2f} ms untimed, "
+                             f"over {UNTIMED_SHARE:.0%}")
+        found[parent] = (brackets[parent], per_core, untimed)
+    return found
+
+
+def sub_stage_chart(stages, path):
+    """One stacked bar per parent: its frame-core laps, then what they leave."""
+    figure, axes = subplots(len(stages), 1, SUB_STAGE_FIGURE_SIZE)
+    phases = list(dict.fromkeys(phase for total, per_core, _ in stages.values() for phase, cores in per_core.items()
+                                if phase != LAPS_LABEL and share_percent(cores[FRAME_CORE] * PERCENT_SCALE / total) > 0))
+    if len(phases) > len(SLOTS):
+        raise ValueError(f"{len(phases)} sub-stages drawn, {len(SLOTS)} colours")
+    colours = dict(zip(phases, SLOTS), **{UNTIMED_LABEL: UNTIMED_COLOUR, LAPS_LABEL: LAPS_COLOUR})
+    for axis, (parent, (total, per_core, untimed)) in zip(axes, stages.items()):
+        segments = [(phase, cores[FRAME_CORE]) for phase, cores in per_core.items()]
+        segments.append((UNTIMED_LABEL, max(untimed, 0.0)))
+        left = 0.0
+        drawn = []
+        for phase, value in segments:
+            share = value * PERCENT_SCALE / total
+            if share_percent(share) > 0:
+                bars = axis.barh(0, value, left=left, color=colours[phase], height=BAR_HEIGHT, edgecolor="white",
+                                 linewidth=1.5)
+                bars[0].set_label(f"{phase} {share_text(share)}")
+                drawn.append(bars[0])
+                if value >= LABEL_SHARE * total:
+                    axis.text(left + value / 2, 0, f"{value:.1f}{LABEL_SEPARATOR}{share_text(share)}", ha="center",
+                              va="center", fontsize=8, color=INK)
+            left += value
+        axis.annotate(f"{total:.1f} ms", (total, 0), xytext=(6, 0), textcoords="offset points", va="center")
+        axis.set_xlim(0, total * (1 + AXIS_HEADROOM))
+        axis.set_title(parent, loc="left")
+        axis.set_yticks([])
+        axis.set_ylim(BAR_HEIGHT, -BAR_HEIGHT)
+        for side in ("top", "right", "left"):
+            axis.spines[side].set_visible(False)
+        axis.legend(handles=drawn, loc="lower right", bbox_to_anchor=SUB_STAGE_LEGEND_ANCHOR, ncol=len(drawn),
+                    frameon=False, fontsize=8)
+    axes[-1].set_xlabel(f"board ms per frame on cpu{FRAME_CORE}")
+    save(figure, path)
+
+
+def sub_stage_table(stages, windows, chart_name):
+    cores = sorted({core for _, per_core, _ in stages.values() for values in per_core.values() for core in values})
+    blank = ["" for _ in cores[1:]]
+    headers = ["Sub-stage", *(f"cpu{core}" for core in cores), f"Share of the parent on cpu{FRAME_CORE}"]
+    rows = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
+    for parent, (total, per_core, untimed) in stages.items():
+        for phase, values in per_core.items():
+            label = f"{parent} {LAPS_LABEL}" if phase == LAPS_LABEL else f"{parent}.{phase}"
+            rows.append(f"| {label} | " + " | ".join(
+                [*(f"{values.get(core, 0.0):.2f}" for core in cores),
+                 share_text(values.get(FRAME_CORE, 0.0) * PERCENT_SCALE / total)]) + " |")
+        rows.append(f"| {parent} {UNTIMED_LABEL} | " + " | ".join(
+            [f"{untimed:.2f}", *blank, share_text(untimed * PERCENT_SCALE / total)]) + " |")
+        rows.append(f"| {parent} | " + " | ".join([f"{total:.2f}", *blank, share_text(PERCENT_SCALE)]) + " |")
+    note = (f"\nBoard ms per frame from a perf-scope image, mean of {windows} lap windows. A parent is its "
+            f"frame-cost bracket on cpu{FRAME_CORE}; its sub-stages are cycle-counter laps on each core, and "
+            f"cpu{FRAME_CORE}'s add up to the parent but for the untimed row, at most {UNTIMED_SHARE:.0%} of it. "
+            f"The {LAPS_LABEL} row is what the laps cost themselves, one lap's measured cost times its starts, "
+            "taken out of each sub-stage; the image runs them, so its parents are not the shipped bar's.")
+    return (f"![Inside transform and draw](../images/render/{chart_name})\n\n"
+            + collapsed("Sub-stages in milliseconds", "\n".join(rows) + "\n" + note + "\n"))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--present", required=True, type=pathlib.Path)
+    parser.add_argument("--laps", required=True, type=pathlib.Path, help="a perf-scope capture with lap lines")
     parser.add_argument("--views", required=True, help="capture path with {view} for the view's name")
     parser.add_argument("--tables", required=True, type=pathlib.Path)
     parser.add_argument("--chart", required=True, type=pathlib.Path)
@@ -211,7 +320,13 @@ def main():
     args.tables.mkdir(parents=True, exist_ok=True)
     windows = [len(frame_cost.frame_cost_windows(path)) for path in
                [args.present, *(args.views.format(view=name) for name in added)]]
-    body = table(order, base, added, names, windows, args.chart.name)
+    stages = sub_stages(args.laps)
+    inside_chart = chart_path(args.chart, SUB_STAGE_SUFFIX)
+    sub_stage_chart(stages, inside_chart)
+    lap_windows = sum(frame_cost.frame_laps_window(line) is not None
+                      for line in args.laps.read_text(encoding="utf-8", errors="replace").splitlines())
+    body = table(order, base, added, names, windows, args.chart.name,
+                 sub_stage_table(stages, lap_windows, inside_chart.name))
     (args.tables / f"{BLOCK}.md").write_text(body + "\n", encoding="utf-8")
 
 

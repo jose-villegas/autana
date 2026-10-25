@@ -313,8 +313,26 @@ Reference: [the asset packs](../assets/Building-Packs.md#packs).
 
 ## Every frame, on the board
 
-Solid bars are the shipped frame; hatched bars are what each debug view adds.
-The table under the charts has every stage in ms.
+The first bar is the shipped frame. Under it, `r3d.transform` and `r3d.draw`
+are split into their sub-stages, the laps named after the code they time:
+
+| Sub-stage | What runs |
+|---|---|
+| `split` | the share of clusters or rows each core takes |
+| `apply` | transform: one vertex through the lens matrix, and its near-plane test |
+| `project` | transform: the vertex's divide, snap and screen-range test |
+| `clear` | draw: clearing this core's rows of each attachment |
+| `tests` | draw: a triangle's rejection tests, no pixel centre or facing away |
+| `vertices` | draw: gathering a kept triangle's screen corners and colours |
+| `clip` | draw: rebuilding and clipping a triangle that crosses the near plane or the guard band |
+| `set_up` | draw: one triangle's set-up in `r3d_span`: its box, planes and the hidden test |
+| `fill` | draw: the triangle's span fill, small or walked |
+| `cluster` | what is left of the loops over clusters, vertices and triangles |
+| `wait` | the frame core waiting for core 1's half |
+| `laps` | what the laps themselves cost, taken out of the rows above |
+
+The dropdown has each debug view's hatched bar, what it adds, and every stage
+in ms.
 
 <!-- generated: pipeline-frame-stages sha256=db43f7ca3a424c91eee2b61f12c3a434fb93e3b5e739c8d97806d9fc9f5d725f -->
 ![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
@@ -534,6 +552,18 @@ capture starts barely moves its means:
 autana monitor 120 --out docs/render/data/pipeline-present-board.log
 autana monitor 120 --out docs/render/data/pipeline-view-motion-board.log
 ```
+
+The sub-stages come from a perf-scope image of the same scene, whose laps
+([Frame-Cost.md](../tools/Frame-Cost.md#laps-inside-a-bracket)) print a line of
+their own:
+
+```sh
+autana flash diag --perf-scope
+autana monitor 120 --out docs/render/data/pipeline-laps-board.log
+```
+
+The generator fails when the frame core's laps leave more of their parent
+untimed than `UNTIMED_SHARE` in `frame_stages.py`; the dropdown states it.
 
 The debug view is a development-build tunable (`autana tune view` lists it):
 0 (`RENDER_DEBUG_VIEW_SHADED` in `render/context/render_context.h`) is the
