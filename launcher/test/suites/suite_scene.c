@@ -1183,6 +1183,17 @@ model_of(const scene_t* scene, const char* name) {
     return scene->renderers[scene_renderer_index(scene, scene_find(scene, name))].model;
 }
 
+/* Two placements agree in their top three rows: with positive scales, the
+ * same position, rotation and scale. */
+static void
+assert_same_placement(mat4f_t want, mat4f_t got, float tolerance) {
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 4; c++) {
+            TEST_ASSERT_FLOAT_WITHIN(tolerance, want.m[r][c], got.m[r][c]);
+        }
+    }
+}
+
 static void
 test_a_world_is_the_parents_world_times_the_entitys_own(void) {
     fixture();
@@ -1191,30 +1202,9 @@ test_a_world_is_the_parents_world_times_the_entitys_own(void) {
     assert_at((vec3f_t){1, 6, 0}, model_of(scene, "hand"));
     assert_at((vec3f_t){1, 6, 0}, scene_entity_world_matrix(scene, scene_find(scene, "hand")));
     const transformf_t hand = scene_entity_world(scene, scene_find(scene, "hand")); /* the root scales evenly */
-    const mat4f_t from_trs = transformf_compute_matrix(&hand);
-    for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 4; c++) {
-            TEST_ASSERT_FLOAT_WITHIN(1e-5F, model_of(scene, "hand").m[r][c], from_trs.m[r][c]);
-        }
-    }
+    assert_same_placement(model_of(scene, "hand"), transformf_compute_matrix(&hand), 1e-5F);
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, -2.0F, model_of(scene, "hand").m[0][1]); /* turned, and scaled by 2 */
     assert_at((vec3f_t){0, 1, 5}, model_of(scene, "cup"));
-}
-
-/* Moving the root carries its grandchild through the arm; the other root's
- * child stays where it was. Moves made while disabled land on enabling. */
-static void
-assert_same_transform(const transformf_t* want, const transformf_t* got) {
-    assert_at(want->position, transformf_compute_matrix(got));
-    const quatf_t a = want->rotation, b = got->rotation;
-    const float sign = (a.x * b.x) + (a.y * b.y) + (a.z * b.z) + (a.w * b.w) < 0.0F ? -1.0F : 1.0F;
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, want->rotation.x, sign * got->rotation.x);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, want->rotation.y, sign * got->rotation.y);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, want->rotation.z, sign * got->rotation.z);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, want->rotation.w, sign * got->rotation.w);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, want->scale.x, got->scale.x);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, want->scale.y, got->scale.y);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, want->scale.z, got->scale.z);
 }
 
 /* Under an evenly scaled root and a turned arm, a world set on the hand
@@ -1231,16 +1221,10 @@ test_a_world_set_under_turned_parents_reads_back_exactly(void) {
     transformf_set_scale(&want, (vec3f_t){1, 2, 3});
     TEST_ASSERT_TRUE(scene_entity_set_world(scene, hand, &want));
     const transformf_t got = scene_entity_world(scene, hand);
-    assert_same_transform(&want, &got);
+    assert_same_placement(transformf_compute_matrix(&want), transformf_compute_matrix(&got), 1e-5F);
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, 0.5F, scene_entity_local(scene, hand)->scale.x); /* under the root's 2 */
     scene_resolve(scene);
-    const mat4f_t drawn = model_of(scene, "hand");
-    const mat4f_t from_world = transformf_compute_matrix(&got);
-    for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 4; c++) {
-            TEST_ASSERT_FLOAT_WITHIN(1e-4F, from_world.m[r][c], drawn.m[r][c]);
-        }
-    }
+    assert_same_placement(transformf_compute_matrix(&got), model_of(scene, "hand"), 1e-4F);
 }
 
 /* An entity with children keeps an even scale, so no world below it shears. */
@@ -1261,6 +1245,8 @@ test_an_uneven_scale_on_an_entity_with_children_is_refused(void) {
     TEST_ASSERT_EQUAL_STRING("stretched", why.what);
 }
 
+/* Moving the root carries its grandchild through the arm; the other root's
+ * child stays where it was. Moves made while disabled land on enabling. */
 static void
 test_a_moved_grandparent_carries_its_grandchild(void) {
     fixture();
