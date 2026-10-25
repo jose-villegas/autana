@@ -1,79 +1,25 @@
-/*
- * The suite registry, shared by both runners.
- *
- * Deliberately free of Unity and of anything platform-specific: it is a sorted
- * list of function pointers filled in before main(), so it links identically
- * into the host runner and the firmware.
- */
-
+/* suites: engine selection, filters and asset-pack requirements. */
 #include "suites.h"
 
 #include <stdio.h>
 #include <string.h>
-
-#include "collections/sort.h"
-
-typedef struct {
-    const char* name;
-    suite_fn fn;
-    bool on_request;
-} suite_entry_t;
 
 typedef struct {
     const char* name;
     const char* const* packs; /* NULL-terminated */
 } suite_reads_t;
 
-static suite_entry_t suites[SUITE_MAX];
 static suite_reads_t reads[SUITE_READS_MAX];
 static const char* waiting[SUITE_WAITING_MAX];
 
-static int registered;
-static int dropped;
 static int read_count;
 static int waiting_count;
 static const char* current;
 
-static int
-by_name(const void* a, const void* b) {
-    return strcmp(((const suite_entry_t*)a)->name, ((const suite_entry_t*)b)->name);
-}
-
-/* Link order decides constructor order, so each registration keeps the list
- * in name order: output is stable between builds, and the list never changes
- * once main() starts. */
-static void
-register_suite(const char* name, suite_fn fn, bool on_request) {
-    if (registered >= SUITE_MAX) {
-        /* Counted as well as printed. A dropped suite is a test that did not
-         * run, and a printf on its own leaves that as one line in a boot log
-         * nobody reads, directly above a summary saying everything passed.
-         * suites_dropped() is what turns the run red; see both runners. */
-        dropped++;
-        printf("SUITE OVERFLOW: '%s' was not registered (max %d)\n", name, SUITE_MAX);
-        return;
-    }
-    suites[registered].name = name;
-    suites[registered].fn = fn;
-    suites[registered].on_request = on_request;
-    registered++;
-    sort_insertion(suites, (size_t)registered, sizeof suites[0], by_name);
-}
-
-void
-suite_register(const char* name, suite_fn fn) {
-    register_suite(name, fn, false);
-}
-
-void
-suite_register_on_request(const char* name, suite_fn fn) {
-    register_suite(name, fn, true);
-}
-
 void
 suite_reads(const char* name, const char* const* packs) {
     if (read_count >= SUITE_READS_MAX) {
-        dropped++;
+        suites_record_drop();
         printf("SUITE OVERFLOW: the packs '%s' reads were not registered (max %d)\n", name, SUITE_READS_MAX);
         return;
     }
@@ -108,7 +54,7 @@ suites_current(void) {
 void
 suites_wait_on(const char* pack) {
     if (waiting_count >= SUITE_WAITING_MAX) {
-        dropped++;
+        suites_record_drop();
         printf("SUITE OVERFLOW: pack '%s' waits, past SUITE_WAITING_MAX %d\n", pack, SUITE_WAITING_MAX);
         return;
     }
@@ -136,33 +82,31 @@ suites_print_waiting(void) {
     }
     printf(" (skipped suites:");
     int skipped = 0;
-    for (int i = 0; i < registered; i++) {
-        if (!suites[i].on_request && suite_waits(suites[i].name)) {
-            printf(" %s", suites[i].name);
+    for (size_t i = 0; i < suites_count(); i++) {
+        const suite_entry_t* suite = suites_at(i);
+        if (!suite->on_request && suite_waits(suite->name)) {
+            printf(" %s", suite->name);
             skipped++;
         }
     }
     printf("%s)\n", skipped == 0 ? " none" : "");
 }
 
-int
-suites_dropped(void) {
-    return dropped;
-}
-
 void
 suites_each(suite_each_fn each, void* context) {
-    for (int i = 0; i < registered; i++) {
-        each(suites[i].name, suites[i].on_request, context);
+    for (size_t i = 0; i < suites_count(); i++) {
+        const suite_entry_t* suite = suites_at(i);
+        each(suite->name, suite->on_request, context);
     }
 }
 
 void
 suites_run_all(void) {
-    for (int i = 0; i < registered; i++) {
-        if (!suites[i].on_request && !suite_waits(suites[i].name)) {
-            current = suites[i].name;
-            suites[i].fn();
+    for (size_t i = 0; i < suites_count(); i++) {
+        const suite_entry_t* suite = suites_at(i);
+        if (!suite->on_request && !suite_waits(suite->name)) {
+            current = suite->name;
+            suite->fn();
             current = NULL;
         }
     }
@@ -237,8 +181,9 @@ suites_run_request(const char* request, suite_run_t* run) {
     filtering = false;
     selected_count = 0;
     memset(pattern_hits, 0, sizeof pattern_hits);
-    for (int i = 0; i < registered; i++) {
-        if (strcmp(suites[i].name, run->name) != 0) {
+    for (size_t i = 0; i < suites_count(); i++) {
+        const suite_entry_t* suite = suites_at(i);
+        if (strcmp(suite->name, run->name) != 0) {
             continue;
         }
         run->found = true;
@@ -248,8 +193,8 @@ suites_run_request(const char* request, suite_run_t* run) {
             run->refused = true;
             return;
         }
-        current = suites[i].name;
-        suites[i].fn();
+        current = suite->name;
+        suite->fn();
         current = NULL;
         run->selected = selected_count;
         run->unmatched = filtering ? unmatched_patterns() : 0;

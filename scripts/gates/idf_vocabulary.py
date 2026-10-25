@@ -38,6 +38,8 @@ import re
 import sys
 import tempfile
 
+from c_comments import blank_comments
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 from espressif import IDF_PIN, espressif_tools_root, idf_path  # noqa: E402  (path must be set up first)
 
@@ -47,7 +49,6 @@ SCANNED = ("components", "tools")
 CHUNK = 500
 C_SUFFIXES = {".c", ".h"}
 CITABLE_SUFFIXES = {".c", ".h", ".py", ".sh", ".cmake", ".md"}
-COMMENT_OR_LITERAL = re.compile(r"""/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'""", re.S)
 DIRECTIVE = re.compile(r"^[ \t]*#(?:[^\n]*\\\n)*[^\n]*", re.M)
 DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)(\()?", re.M)
 # A statement that opens with words and ends its last word in `(`: a
@@ -107,23 +108,34 @@ def _read(path):
 
 
 def _blank(match):
-    return "\n" * match.group().count("\n") or " "
+    return "".join(ch if ch == "\n" else " " for ch in match.group())
+
+
+def prototypes(text, include_definitions=False):
+    """Yield (name, start, end) for prototypes; optionally accept definition prefixes."""
+    code = DIRECTIVE.sub(_blank, blank_comments(text, mode="code"))
+    for match in DECLARATION.finditer(code):
+        prefix, name = match.groups()
+        if name in NOT_A_NAME or not FLOW.isdisjoint(WORD.findall(prefix)):
+            continue
+        tail = re.match(r"\([^;{}]*\)\s*([;{])", code[match.end() - 1:])
+        if include_definitions or (tail and tail[1] == ";"):
+            end = match.end() - 1 + tail.end() if tail else match.end()
+            yield name, match.start(), end
 
 
 def c_declarations(text):
     """(functions, constants, types) C source `text` declares: prototypes
     and definitions, #defines (a function-like one is a function too), enum
     values, and struct/union/enum tags and typedef names."""
-    code = COMMENT_OR_LITERAL.sub(_blank, text)
+    code = blank_comments(text, mode="code")
     functions, constants, types = set(), set(), set()
     for name, paren in DEFINE.findall(code):
         constants.add(name)
         if paren:
             functions.add(name)
     code = DIRECTIVE.sub(_blank, code)
-    for prefix, name in DECLARATION.findall(code):
-        if name not in NOT_A_NAME and FLOW.isdisjoint(WORD.findall(prefix)):
-            functions.add(name)
+    functions.update(name for name, _, _ in prototypes(text, include_definitions=True))
     for body in ENUM_BODY.findall(code):
         constants.update(ENUM_VALUE.findall(body))
     for pattern in (TAG, BODY_NAME, TYPEDEF, TYPEDEF_POINTER):

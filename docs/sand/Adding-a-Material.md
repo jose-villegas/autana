@@ -389,7 +389,7 @@ flowchart TD
    wrong for a variant that *accumulates* (heat, burn progress,
    moisture); use `place_cell()` for those and say what it starts at:
 
-   ```c
+   ```c fragment
    place_cell(s, cx, cy, at, CELL_MAKE(r->hardens_to, 0));   /* grew, not caught */
    ```
 

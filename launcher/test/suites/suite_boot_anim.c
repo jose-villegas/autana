@@ -42,7 +42,7 @@
 #include "gfx/present/gfx_test.h"
 #include "test_anim_tracks.h"
 #include "test_asset_dir.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #endif
 
 /* The panel these numbers are laid out for, spelled out so a wrong

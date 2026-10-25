@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "math/geometry/rectf.h"

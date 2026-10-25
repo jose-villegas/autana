@@ -13,6 +13,7 @@
 #include "input/motion/imu.h"
 #include "input/motion/imu_calib.h"
 #include "input/touch/touch.h"
+#include "math/linear/vec_convert.h"
 #include "services/settings.h"
 
 static const char TAG[] = "input";
@@ -120,11 +121,11 @@ input_read_motion_batch(input_motion_batch_t* out) {
 }
 
 bool
-input_read_gravity(vec2i_t* gravity) {
+input_read_acceleration(vec3f_t* acceleration) {
     input_motion_t motion;
     if (!input_read_motion(&motion)) {
         return false;
     }
-    *gravity = vec3i_xy(motion.acceleration);
+    *acceleration = vec3f_scale(vec3f_from_vec3i(motion.acceleration), 1.0F / INPUT_ACCEL_ONE_G);
     return true;
 }
