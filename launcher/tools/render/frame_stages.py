@@ -9,7 +9,7 @@ docs/render/data/.
 
 --present holds the frame-cost report windows of the scene as shipped.
 --laps holds a perf-scope image's windows of the same scene: its lap lines
-split each bracket in PARENTS into the laps named `<parent>.<phase>`, each
+split a bracket into the laps named `<bracket>.<phase>`, each
 with what the laps themselves cost taken out and shown apart. What the frame
 core's laps leave of their parent is untimed; more than UNTIMED_SHARE of it
 fails the run. PATTERN names one capture per debug view,
@@ -44,7 +44,6 @@ AXIS_HEADROOM = 0.2
 AXIS_TICKS = 5
 ADDED_BASE_LABEL = "base cost"
 BUDGET_LABEL_SIZE = 8
-PARENTS = ("r3d.transform", "r3d.draw")  # the brackets the laps split
 FRAME_CORE = 0  # the core the frame task, and so every bracket, runs on
 UNTIMED_SHARE = 0.02  # the most of a parent its laps may leave untimed
 UNTIMED_LABEL = "untimed"
@@ -221,22 +220,23 @@ def chart(order, base, added, path):
 
 
 def sub_stages(path):
-    """{parent: (parent ms, {phase: {core: ms}}, untimed ms)}: each parent of
-    the perf-scope capture, its laps on every core, LAPS_LABEL last for what
+    """{parent: (parent ms, {phase: {core: ms}}, untimed ms)}, in report
+    order: each bracket of the perf-scope capture that its laps name, the laps
+    on every core, LAPS_LABEL last for what
     they cost themselves, and what the frame core's laps leave of it."""
     brackets = dict(frame_cost.frame_cost_means(path) or [])
     laps = frame_cost.frame_laps_means(path)
     if FRAME_CORE not in laps:
         raise ValueError(f"{path}: no laps on cpu{FRAME_CORE}")
+    named = {name.rpartition(".")[0] for core in laps.values() for name in core}
+    strays = sorted(parent for parent in named if parent not in brackets)
+    if strays:
+        raise ValueError(f"{path}: laps inside no bracket of the capture: {', '.join(strays)}")
     found = {}
-    for parent in PARENTS:
-        if parent not in brackets:
-            raise ValueError(f"{path}: no {parent} bracket")
+    for parent in (bracket for bracket in brackets if bracket in named):
         prefix = parent + "."
         phases = list(dict.fromkeys(name[len(prefix):] for core in laps.values() for name in core
                                     if name.startswith(prefix)))
-        if not phases:
-            raise ValueError(f"{path}: no laps inside {parent}")
         per_core = {phase: {core: laps[core].get(prefix + phase, (0.0, 0.0))[0] for core in laps} for phase in phases}
         per_core[LAPS_LABEL] = {core: sum(laps[core].get(prefix + phase, (0.0, 0.0))[1] for phase in phases)
                                 for core in laps}
