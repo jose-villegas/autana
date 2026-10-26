@@ -19,7 +19,7 @@ each, `| <a id="key"></a>[N] | ...<br>`name` cited by: ... |`. The key is the
 entry's permanent name, lowercase words joined by hyphens that start with a
 letter (`durstenfeld-1964`, `rfc4648`); a numeric anchor fails. [N] is the
 row's position, shown only. A document cites by key and shows that number,
-as `<sup>[[N]](path/Citations.md#` + key + `)</sup>`, and every key it writes
+as `[[N]](path/Citations.md#` + key + `)` in a superscript, and every key it writes
 must name an entry. Code and its comments never cite by anchor: a link into Citations.md in a
 source file fails, and the comment names its source (author, year or section)
 in place. An entry code uses opens its "cited by" line with that name in
@@ -59,7 +59,7 @@ KEY = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
 PAPER = re.compile(r"Citations\.md#([\w-]+)")
 SHOWN = re.compile(r"\[\[(\d+)\]\]\(([^)\s#]*Citations\.md)#([\w-]+)\)")
 FIX_HINT = " (python scripts/gates/check_doc_citations.py --fix)"
-CELL_LINK =re.compile(r"\]\(([^)\s#]+)\)")
+CELL_LINK = re.compile(r"\]\(([^)\s#]+)\)")
 CITING_DOCUMENTS = ["*.md"]
 CODE_SOURCES = ["*.c", "*.h", "*.cpp", "*.cc", "*.cxx", "*.hpp", "*.py", "*.sh", "*.mjs", "*.js",
                 "*.cmake", "*CMakeLists.txt"]
@@ -266,10 +266,9 @@ def citation_rows(root):
         if start.start() not in parsed:
             problems.append(f"{CITATIONS}:{text.count(chr(10), 0, start.start()) + 1}: entry does not end in "
                             "\"cited by: ...\" or \"`name` cited by: ...\"")
-    for m in CITATION_ROW.finditer(text):
+    for position, m in enumerate(CITATION_ROW.finditer(text), 1):
         number = text.count("\n", 0, m.start()) + 1
         key, shown, name, cited_line = m.group(1), int(m.group(2)), m.group(3), m.group(4)
-        position = len(rows) + 1
         if not KEY.fullmatch(key):
             problems.append(f"{CITATIONS}:{number}: anchor \"{key}\" is not a key: lowercase words joined by "
                             "hyphens, starting with a letter (author-year, rfc4648)")
@@ -399,11 +398,12 @@ def unresolved_numbers(root, rows):
     problems = []
     for rel, text in citing_texts(root):
         for number, line in enumerate(text.splitlines(), 1):
-            shown = SHOWN.findall(line)
-            for key in PAPER.findall(line):
-                if key in rows and key not in [found[2] for found in shown]:
-                    problems.append(f"{rel}:{number}: cites [{key}] without its shown number{FIX_HINT}")
-            for digits, _, key in shown:
+            spans = [m.span() for m in SHOWN.finditer(line)]
+            for m in PAPER.finditer(line):
+                if m.group(1) in rows and not any(a <= m.start() < b for a, b in spans):
+                    problems.append(f"{rel}:{number}: cites [{m.group(1)}] without its shown number: "
+                                    f"write [[N]](path/Citations.md#{m.group(1)})")
+            for digits, _, key in (found.groups() for found in SHOWN.finditer(line)):
                 if key in rows and int(digits) != rows[key][3]:
                     problems.append(f"{rel}:{number}: shows [{digits}] for {key}, "
                                     f"which is row {rows[key][3]}{FIX_HINT}")

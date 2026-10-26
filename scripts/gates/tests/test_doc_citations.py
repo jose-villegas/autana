@@ -616,20 +616,21 @@ class PaperCitationTest(unittest.TestCase):
     def test_rows_show_their_position_and_carry_a_distinct_key(self):
         found = self.problems('| <a id="alpha"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n'
                               '| <a id="7"></a>[2] | B<br>Cited by: [Guide.md](Guide.md) |\n'
-                              '| <a id="alpha"></a>[4] | C<br>Cited by: [Guide.md](Guide.md) |\n',
-                              [("docs/Guide.md", "[[1]](Citations.md#alpha)\n")])
-        self.assertEqual(found[:3], [
+                              '| <a id="alpha"></a>[3] | C<br>Cited by: [Guide.md](Guide.md) |\n'
+                              '| <a id="gamma"></a>[4] | D<br>Cited by: [Guide.md](Guide.md) |\n',
+                              [("docs/Guide.md", "[[1]](Citations.md#alpha) [[4]](Citations.md#gamma)\n")])
+        self.assertEqual(found, [
             'docs/Citations.md:2: anchor "7" is not a key: lowercase words joined by hyphens, '
             "starting with a letter (author-year, rfc4648)",
             'docs/Citations.md:3: key "alpha" is already the entry at line 1',
-            "docs/Citations.md:3: [4] is row 3" + FIX])
+            "docs/Citations.md:2: [7] is cited nowhere"])
 
     def test_a_shown_number_is_the_row_of_its_key(self):
         rows = ('| <a id="alpha"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n'
                 '| <a id="beta"></a>[2] | B<br>Cited by: [Guide.md](Guide.md) |\n')
         self.assertEqual(self.problems(rows, [("docs/Guide.md", "[[1]](Citations.md#alpha) [[2]](Citations.md#beta)\n")]), [])
         found = self.problems(rows, [("docs/Guide.md", "[[2]](Citations.md#alpha) [beta](Citations.md#beta)\n")])
-        self.assertEqual(found, ["docs/Guide.md:1: cites [beta] without its shown number" + FIX,
+        self.assertEqual(found, ["docs/Guide.md:1: cites [beta] without its shown number: write [[N]](path/Citations.md#beta)",
                                  "docs/Guide.md:1: shows [2] for alpha, which is row 1" + FIX])
 
     def test_fix_writes_the_shown_numbers_and_the_row_numbers(self):
