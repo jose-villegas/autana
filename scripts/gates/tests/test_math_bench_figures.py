@@ -42,7 +42,7 @@ class MathBenchFigureTests(unittest.TestCase):
             self.assertEqual([[tick.get_text() for tick in axis.get_xticklabels()] for axis in fig.axes], [
                 ["add", "convert f→i", "convert f→s", "convert f→x", "convert i→f", "convert s→f",
                  "convert x→f", "dot", "lerp", "normalize", "scale"],
-                ["mathf_recip", "mathf_rsqrt_approx", "mathf_rsqrt", "mathx_rsqrt_q30", "mul", "trig_sin", "wrap"],
+                ["mathf_recip", "mathf_rsqrt_approx", "mathf_rsqrt", "maths_saturate", "mathx_rsqrt_q30", "mul", "trig_sin", "wrap"],
                 ["nlerp", "quat mul", "slerp"], ["mat4 mul", "transform compute_matrix"],
                 ["atan2f", "cosf", "sqrtf"],
             ])
