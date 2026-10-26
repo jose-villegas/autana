@@ -18,7 +18,7 @@ flowchart TB
     Build --> Files["DIR/name.apak"]
     Build --> Image["assets.bin"]
     Image --> Flash["assets partition"]
-    Store["asset_store_pack(name)"] --> Flash
+    Store["asset_store_load(name)"] --> Flash
     Store --> Files
     Flash --> Open["asset_pack_open(base, size)"]
     Files --> Open
@@ -29,7 +29,7 @@ flowchart TB
 
 | Page | Holds |
 |---|---|
-| [Loading-Packs.md](Loading-Packs.md) | the store, the device and the host: mounting a pack, opening an entry, `scene_load` |
+| [Loading-Packs.md](Loading-Packs.md) | async loading, the store, the device and the host: mounting a pack, opening an entry, `scene_load` |
 | [Pack-Format.md](Pack-Format.md) | the `APAK` pack, the `ABDR` directory and the checks every open makes |
 | [Image-Entries.md](Image-Entries.md) | the `IMAG` picture and its reader |
 | [Table-Entries.md](Table-Entries.md) | the `TABL` rows of int16 and `asset_table` |

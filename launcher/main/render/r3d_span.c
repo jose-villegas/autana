@@ -10,6 +10,7 @@
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
+#include "profile/frame_laps.h"
 #include "render/code_layout.h"
 
 /* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
@@ -833,6 +834,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
 
     const int style = select_small(a, b, c, e.centres, face != NULL, target->small_fill);
     if (style != SMALL_FILL_WALK) {
+        FRAME_LAP("r3d.draw.fill");
         if (style == SMALL_FILL_GRAIN || style == SMALL_FILL_DITHER) {
             fill_small_styled(target, a, b, c, area2 > 0, box, style);
         } else {
@@ -865,6 +867,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
                       mathi_clamp(r3d_span_first_centre(v1->y), box.y, recti_bottom(box)),
                       recti_bottom(box),
                       (area2 > 0) != odd};
+    FRAME_LAP("r3d.draw.fill");
     walk(target, &f, &w, false);
 }
 

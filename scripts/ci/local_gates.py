@@ -449,7 +449,7 @@ def run(root, out, base='origin/main', tiers=('host',)):
             detail = f'FAIL {log}: ' + detail.removeprefix('FAIL ')
         print(detail.replace('\r', r'\r').replace('\n', r'\n'), flush=True)
 
-    selected = set(tiers) | {'host'}
+    selected = set(tiers)
     job_state = {}
     outcomes = {}
     broken_steps = set()
@@ -561,7 +561,7 @@ def main(argv=None):
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument('--base', default='origin/main')
     parser.add_argument('--out', type=Path)
-    parser.add_argument('--tier', default='host', help='comma-separated tiers: ' + ','.join(TIERS))
+    parser.add_argument('--tier', default='host', help='run exactly these comma-separated tiers (default: host): ' + ','.join(TIERS))
     parser.epilog = 'list columns: kind | tier | workflow:job | label | directory | command or reason'
     args = parser.parse_args(argv)
     root = args.root.resolve()

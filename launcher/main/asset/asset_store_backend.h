@@ -13,7 +13,7 @@
 /* Only the flash backend defines this; the borrowed directory lives with the store. */
 asset_status_t asset_store_backend_directory(const asset_directory_t** opened);
 
-/* Maps or reads pack `name` and opens it into `pack`. On success `mapping`
+/* Maps or reads unchecked pack `name` into `pack`. On success `mapping`
  * is what asset_store_backend_unmount() takes back; on failure nothing is
  * held. Logs nothing. */
 asset_status_t asset_store_backend_mount(const char* name, asset_pack_t* pack, uintptr_t* mapping);
