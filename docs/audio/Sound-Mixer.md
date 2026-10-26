@@ -15,20 +15,30 @@ app may use:
 <!-- generated: audio-tap-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Tap: keep the sound in app state until exit. */
-#include "asset/asset_store.h" /* asset_store_pack, ASSET_ENGINE_PACK */
+#include "asset/asset_store.h" /* asset_store_load, ASSET_ENGINE_PACK */
 #include "sound/sound_play.h"
 
+static handle_t tap_load;
 static sound_t tap; /* app state, not a stack local */
 
 static bool
 tap_start(void) {
-    if (sound_open(asset_store_pack(ASSET_ENGINE_PACK), "tap", &tap) != ASSET_OK) {
+    tap_load = asset_store_load(ASSET_ENGINE_PACK);
+    if (sound_open(asset_store_loaded(tap_load), "tap", &tap) != ASSET_OK) {
+        asset_store_release(tap_load);
         /* no click */
         return false;
     }
     sound_voice_t voice = sound_play(&tap, NULL); /* SFX bus, full gain, once */
     sound_stop(voice);                            /* optional; stale handles are ignored */
     return true;
+}
+
+/* Called from app exit(), after the shell's mixer barrier. */
+static void
+tap_exit(void) {
+    asset_store_release(tap_load);
+    tap_load = HANDLE_NONE;
 }
 ```
 <!-- /generated: audio-tap-example -->
@@ -42,7 +52,7 @@ or sound is off, `sound_play()` returns the null voice and nothing plays.
 To add your own sound, put `NAME.sound.toml` and its WAV in your app's pack
 folder; the build bakes it into entry `NAME` ([Sound assets](Sound-Assets.md),
 [Packs](../assets/Building-Packs.md#packs)). Then open it from your pack with
-`asset_store_pack()` the same way.
+`asset_store_load()` the same way, then read it with `asset_store_loaded(load)`.
 
 | Format | Pack size per second | Example: 220 ms click |
 |---|---|---|
@@ -73,7 +83,8 @@ start within one block.
 ### Keep the sound alive until the app exits
 
 `sound_play()` stores your pointer and copies no samples, so the `sound_t` and
-its pack must stay valid until the app exits. Stopping a voice, losing it to a
+its pack must stay valid until the app exits. Keep the load handle and call
+`asset_store_release(tap_load)` after the mixer is fenced. Stopping a voice, losing it to a
 steal, or `sound_is_playing()` returning false do not free it: the mixer may
 still read it for up to one block.
 
@@ -353,11 +364,11 @@ A timeout keeps views mapped for a later transition.
 ```mermaid
 sequenceDiagram
     participant Reader as Reader task
-    participant Mailbox
+    participant Slot as Frame slot
     participant Frame as Frame task
     participant Mixer
-    Reader->>Mailbox: Post parsed play
-    Mailbox->>Frame: Take request
+    Reader->>Slot: Post parsed play
+    Slot->>Frame: Answer request
     Frame->>Frame: Mount pack and open view
     Frame->>Mixer: Play voice
     Note over Frame,Mixer: App transition

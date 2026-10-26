@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "clock_fake.h"
 #include "console/verbs/console_melody.h"
 #include "console/verbs/console_tone_parse.h"
 #include "console/verbs/console_tone_reply.h"
@@ -202,6 +203,9 @@ int TEST_CLOCK_REAL(struct timespec* ts, int base);
 
 int
 TEST_CLOCK_WRAP(struct timespec* ts, int base) {
+    if (clock_fake_read(ts)) {
+        return base;
+    }
     if (!device.melody.play) {
         return TEST_CLOCK_REAL(ts, base);
     }
@@ -643,7 +647,7 @@ test_tap_example_opens_plays_and_stops(void) {
     TEST_ASSERT_TRUE(device.playing);
     TEST_ASSERT_EQUAL_UINT(1, device.stops);
     TEST_ASSERT_TRUE(device.stop_pending);
-    asset_store_release(ASSET_ENGINE_PACK);
+    tap_exit();
 }
 
 static void

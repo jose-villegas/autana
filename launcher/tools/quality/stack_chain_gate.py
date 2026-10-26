@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-"""Guard task stack frames measured from recompiled source graphs.
+"""Guard task stack frames measured from the diagnostics build's call graphs.
 
 Discover launcher/**/stack_chain.txt: root FUNCTION test|frame|system|boot and
 indirect CALLER... : CALLEE... (private names: file.c:function).
-Compiler graphs close source pointer calls; context and budgets are derived.
+The diagnostics build writes each object's graph (.ci) and frames (.su) beside
+it; source pointer calls are closed here, context and budgets are derived.
 Uncompiled libraries are not counted: the C library's printf family,
 esp_log and FreeRTOS. timing.c's board watermark check covers the rest.
 
     stack_chain_gate.py [build-dir]
 """
 
-import glob
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER = os.path.normpath(os.path.join(HERE, "..", ".."))
@@ -218,15 +217,20 @@ def app_jobs(db_path, app_dir=None, functions=()):
         elif marker not in source:
             continue
         argv = compile_flags(entry)
-        jobs.append((argv, entry["directory"], source))
+        jobs.append((argv, entry["directory"], source, graph_file(entry)))
     return jobs
+
+
+def graph_file(entry):
+    """The call graph GCC writes beside an object: x.c.obj gives x.c.ci."""
+    return os.path.splitext(os.path.join(entry["directory"], entry["output"]))[0] + ".ci"
 
 
 def runner_edges(jobs, spec):
     roots, _declared = read_spec(spec)
     root_names = {name.rsplit(":", 1)[-1] for name, kind in roots if kind == "test"}
     edges = []
-    for _cmd, _cwd, source in jobs:
+    for _cmd, _cwd, source, _graph in jobs:
         with open(source, encoding="utf-8", errors="replace") as fh:
             text = fh.read()
         suites = re.findall(r"SUITE_REGISTER(?:_ON_REQUEST)?\(\s*(\w+)\s*\)", text)
@@ -237,11 +241,6 @@ def runner_edges(jobs, spec):
                      re.findall(r"UnityDefaultTestRun\(\s*(\w+)\s*,", text)
                      if target != "func")
     return edges
-
-
-def object_name(source, marker_root):
-    rel = os.path.relpath(source, marker_root).replace("\\", "/")
-    return "obj__" + rel.replace("/", "__").replace(":", "_")[:-2] + ".o"
 
 
 def main(argv):
@@ -262,37 +261,13 @@ def main(argv):
     if not specs:
         raise SpecError("no launcher/**/stack_chain.txt declares a chain")
 
-    shared = os.path.join(build, "stack-chain", "engine")
-    os.makedirs(shared, exist_ok=True)
-
-    def compile_jobs(jobs, out):
-        for old in os.listdir(out):
-            os.remove(os.path.join(out, old))
-
-        def compile_one(job):
-            cmd, cwd, source = job
-            obj = os.path.join(out, object_name(source, LAUNCHER))
-            cmd = cmd + ["-fstack-usage", "-fcallgraph-info=su", "-c", source,
-                         "-o", obj]
-            return source, subprocess.run(cmd, cwd=cwd, capture_output=True,
-                                          text=True)
-
-        failed = False
-        with ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 2)) as pool:
-            for source, done in pool.map(compile_one, jobs):
-                if done.returncode != 0:
-                    failed = True
-                    print("stack_chain_gate: %s did not compile:\n%s"
-                          % (source, done.stderr), file=sys.stderr)
-        return not failed
-
     shared_jobs = app_jobs(db)
     shared_jobs += app_jobs(db, os.path.join(LAUNCHER, "test"))
     shared_jobs += app_jobs(db, os.path.join(LAUNCHER, "packages"))
-    selected = {source for _cmd, _cwd, source in shared_jobs}
+    selected = {job[2] for job in shared_jobs}
     shared_jobs += [job for job in app_jobs(db, functions={"main_task", "UnityDefaultTestRun", "vPortTaskWrapper"})
                     if job[2] not in selected]
-    cmd, cwd, _source = shared_jobs[0]
+    cmd, cwd = shared_jobs[0][:2]
     probe = subprocess.run(cmd + ["-S", "-x", "c", "-", "-o", "-"], cwd=cwd,
                            input='#include "xtensa_context.h"\nchar stack_chain_context[XT_STK_FRMSZ + ((XT_CP_SIZE + 15) & ~15)];\n',
                            capture_output=True, text=True)
@@ -309,19 +284,20 @@ def main(argv):
     context = int(size.group(1)) + ((tls["_thread_local_bss_end"] -
                                    tls["_thread_local_data_start"] + 15) & ~15)
     all_jobs = list(shared_jobs)
-    groups = [(shared_jobs, shared)]
+    app_groups = []
     for spec in specs:
         app_dir = os.path.dirname(spec)
         jobs = app_jobs(db, app_dir) if "/apps/" in app_dir.replace("\\", "/") else []
         if jobs:
             all_jobs.extend(jobs)
-            groups.append((jobs, os.path.join(build, "stack-chain", os.path.basename(app_dir))))
-    ci_paths = []
-    for jobs, out in groups:
-        os.makedirs(out, exist_ok=True)
-        if not compile_jobs(jobs, out):
-            return 1
-        ci_paths.extend(sorted(glob.glob(os.path.join(out, "*.ci"))))
+            app_groups.append(jobs)
+    ci_paths = [job[3] for job in all_jobs]
+    missing = [job[2] for job in all_jobs if not os.path.isfile(job[3])]
+    if missing:
+        print("stack_chain_gate: no call graph for %d sources (first %s) - rebuild the "
+              "diagnostics image, which writes one beside each object" % (len(missing), missing[0]),
+              file=sys.stderr)
+        return 1
     declared = [edge for spec in specs for edge in read_spec(spec)[1]]
     graph = parse_graph(ci_paths)
     status = 0
@@ -337,10 +313,11 @@ def main(argv):
             print("stack_chain_gate: %s: %s" % (name, problem))
         if problems:
             status = 1
-    for _jobs, out in groups[1:]:
-        if subprocess.run([sys.executable, CHECKER, out]).returncode != 0:
+    for jobs in app_groups:
+        objects = os.path.commonpath([os.path.dirname(job[3]) for job in jobs])
+        if subprocess.run([sys.executable, CHECKER, objects]).returncode != 0:
             status = 1
-    print("stack_chain_gate: %s; counts recompiled source frames only. "
+    print("stack_chain_gate: %s; counts compiled source frames only. "
           "Uncompiled libc printf, esp_log and FreeRTOS "
           "are not counted; timing.c board watermark check covers the rest."
           % ("FAIL" if status else "PASS"))

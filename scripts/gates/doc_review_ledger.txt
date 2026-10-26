@@ -50,7 +50,6 @@ docs/math/Motion.md	2026-10-18	new; checked against orbit_motion.h and spring_li
 docs/input/Touch.md	2026-10-20	input split: reviewed against input/ sources, accurate
 docs/input/Buttons.md	2026-10-20	input split: reviewed against input/ sources, accurate
 docs/input/Motion-Axes.md	2026-10-20	input split: reviewed against input/ sources, accurate
-docs/input/Tilt.md	2026-10-20	input split: reviewed against input/ sources, accurate
 docs/render/Skeleton-and-Skin.md	2026-10-20	pictures-first rework: reviewed against skeleton_asset.py, skin_asset.py and quantize_weights, accurate
 docs/c-style/Function-Attributes.md	2026-10-20	new; checked against the cited sources
 docs/c-style/Concurrency.md	2026-10-20	new; checked against the cited sources
@@ -73,9 +72,12 @@ docs/cli/Drive.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Debug.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Settings.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Sessions.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
+docs/math/Stats.md	2026-10-24	formulas and rank figure, docs-reviewer pass
 docs/physics/README.md	2026-10-24	new index for the physics package; links checked against every docs/physics page
 docs/physics/Spring.md	2026-10-24	moved from docs/math/Motion.md with spring_line.h; checked against physics/spring/spring_line.h
 docs/math/Motion.md	2026-10-24	spring_line section moved to docs/physics/Spring.md; checked against orbit_motion.h
-docs/math/Stats.md	2026-10-24	formulas and rank figure, docs-reviewer pass
 docs/tools/Pull-Requests.md	2026-10-24	new page, docs-reviewer pass
 .github/pull_request_template.md	2026-10-24	new template, docs-reviewer pass
+docs/kinematics/README.md	2026-10-25	new index for the kinematics package; links checked against every docs/kinematics page
+docs/kinematics/Orbit.md	2026-10-25	moved from docs/math/Motion.md with orbit_motion.h; checked against kinematics/orbit/orbit_motion.h
+docs/kinematics/Follow.md	2026-10-25	new, from the fling decay and reset spring sections of docs/math/Motion.md; checked against kinematics/follow/follow.h

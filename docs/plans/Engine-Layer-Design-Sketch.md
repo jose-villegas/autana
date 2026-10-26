@@ -102,7 +102,7 @@ Every item in this section is approved.
 | scene | `scene_load(id)`, `scene_find(name)`, `scene_entity_set_local()`, `scene_entity_set_enabled()`, `scene_animator_*()`, `scene_renderer_set_skin()`, `scene_activate(scene, "camera name")`; packed per scene (`locals[]`, `flags[]`, `renderers[]`, `cameras[]`, `animators[]`, `skinned_renderers[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string |
 | render | apps call `raster_draw()`, `render_view_make()`, `r3d_pipeline_*` directly | no app call: a `renderer` component draws, an active `camera` entity views; render settings (resolution) are a scene-level component `[M]` | a bench app's tests drive the raster directly: they move to render's own tests |
 | anim | the animator component and `scene_animator_*()`; sampler, binding, pose and layer stay behind `scene/scene.h`; boot calls `anim_tracks_*` and samples its tracks directly | `animator` component and `scene_animator_play()` (the animation sketch's face); sampler and binding private | boot's animation is not a scene |
-| asset | apps call `asset_store_pack()`, `asset_pack_find()` | no per-frame system: a component names content by asset id `[M]`, resolved when the scene loads or the component attaches; pack format and store private | direct store calls from apps |
+| asset | apps call `asset_store_load()`, `asset_pack_find()` | no per-frame system: a component names content by asset id `[M]`, resolved when the scene loads or the component attaches; pack format and store private | direct store calls from apps |
 
 ### Private headers apps include today
 
@@ -212,7 +212,7 @@ system icons), not code; it keeps its place under L1.
 | dirty and full-redraw send policy | `gfx/present/send/` |
 | null panel backend | `gfx/present/panel/` |
 | viewport | `display/` |
-| projection | `math/linear/projectf.h`, `projectx.h` (lens, near clip); `render/r3d_project*.h` (snapping, line units) |
+| projection | `math/projection/projectf.h`, `projectx.h` (lens, near clip); `render/r3d_project*.h` (snapping, line units) |
 
 ### Drawing and presentation
 

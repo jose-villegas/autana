@@ -186,7 +186,8 @@ also appends one line to `<records>/index.jsonl`: the board, owner, purpose,
 command, suite, build id (from the flash log for a flash, seen in the
 capture otherwise), when the command started (`started_at`) and when it won
 the lock (`acquired_at`), the worktree and commit involved, how the capture
-ended, and any error. Nothing commits these records; whoever ran the command
+ended, and any error. A flash also records the image flags it built with
+(`image_flags`, such as `--perf-scope` or `--layout-seed N`). Nothing commits these records; whoever ran the command
 commits the evidence with the work.
 
 A suite capture also gets a parsed `<same stem>.md` beside it: suite

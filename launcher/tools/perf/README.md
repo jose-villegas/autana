@@ -250,74 +250,93 @@ rows. Single-viewport render documentation readers select portrait by default;
 
 ## Nightly scoped chain
 
-The same workflow runs docs-search retrieval evals alongside the board job:
-hybrid on the GPU runner and lexical on hosted Linux, with scores in each job summary.
+```mermaid
+sequenceDiagram
+    participant Marker as Hosted marker
+    participant Wait as Hosted wait legs
+    participant GPU as GPU stage
+    participant Heavy as Heavy lock
+    participant Plan as Board plan
+    participant Lanes as Board lanes
+    Marker->>Wait: Compute the marker in NIGHT_ZONE
+    Wait->>Wait: Sleep until marker within each leg budget
+    Wait->>GPU: Start work with a fresh token
+    GPU->>GPU: Wait for board locks to clear
+    GPU->>Heavy: Take heavy
+    GPU->>GPU: Render to completion
+    GPU->>Heavy: Release heavy
+    Wait->>Plan: Start work with a fresh token
+    Plan->>Plan: Wait for two GPU idle polls
+    Plan->>Lanes: Run lanes to completion
+    Lanes-->>Plan: Lane outcomes and timestamps
+    Plan->>Plan: Record timeline and host free time
+```
+
+`vars.NIGHT_START` accepts HH:MM in 00:00–05:59.
+An empty value uses `NIGHT_START` in `scripts/lib/local_schedule.py`.
+
+The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
+The marker is the first local start at or after the trigger; override starts now.
+
+Both workflows schedule at 20:17Z. The trigger is the latest daily UTC cron slot,
+including when GitHub starts it late. Other events use the current time.
+A passed marker starts immediately. Each date uses the configured zone's UTC offset.
+
+The hosted marker job computes the marker and exits. Serialized hosted wait
+legs sleep within `HOSTED_WAIT_SECONDS` in `scripts/lib/local_schedule.py`.
+The work jobs depend on both jobs and start after the marker passes.
+
+The GPU stage yields green when bakes are queued or running.
+Every Bakes GPU completion triggers a fresh image check.
+
+The plan waits for two polls without queued, waiting or running jobs carrying
+`gpu` in either GPU workflow. Hosted jobs waiting for a later marker do not count.
+
+This check requires a host GPU runner marker fresh within `GPU_HOST_MARKER_DAYS`.
+Otherwise it reports “GPU runner not on this host” and continues.
 
 Initial boards split first-parent commits on main by position modulo their count.
-Joiners use independent `0/1` series. Boards repeat their last measured anchor
-and resume after `last_attempted`; fresh boards start at their newest commit.
+Joiners use independent `0/1` series while any lane runs.
+Boards repeat their last measured anchor and resume after `last_attempted`;
+fresh boards start at their newest commit.
 
-```mermaid
-flowchart LR
-    Plan[Shared plan] --> Supervisor
-    Supervisor --> A[Initial board lanes]
-    Supervisor --> Scan[Rescan USB]
-    Scan --> Join[Joining board on own 0/1 series]
-    Join --> Supervisor
-    A --> Done{All lanes ended and no join?}
-    Join --> Done
-    Done -->|Yes| Release[Release runner]
-    Done -->|No| Scan
-    Release --> Publish[Publish reports and artifacts]
-```
+Builds take the heavy lock at below-normal priority. Step `wait_seconds`
+records heavy queue time separately from `build_seconds`.
+A flash is skipped when its image hash equals the board's last measured hash;
+an anchor always measures.
 
-Builds take the host-wide heavy lock shared with GPU stages and run at
-below-normal priority. Step `wait_seconds` records heavy queue time;
-`build_seconds` and the worst-step window estimate exclude it.
+| Guard | Owner |
+|---|---|
+| GPU process tree | `GPU_STAGE_HANG_SECONDS` in `scripts/lib/local_schedule.py` |
+| Lock wait | `NIGHT_STEP_HANG_SECONDS` in `scripts/lib/local_schedule.py` |
+| Lane process tree | `LANE_HANG_FACTOR` times the lane estimate in `nightly/scoped_chain.py` |
+| Build, capture and self-test | Their timeout constants in `nightly/scoped_chain.py` |
 
-A flash is skipped when the commit's image hash equals the same board's
-previous measured image hash. Hashes are compared only within one board's
-series, and an anchor is always measured.
+A lane stops after `CAPTURE_FAILURE_LIMIT` consecutive capture failures or
+when its board unplugs. A returning planned board does not restart.
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> Planned
-    Planned --> not_run_window: Cannot fit
-    Planned --> not_run_stopped: Failure limit
-    Planned --> not_run_unplugged: Board unplugged
-    Planned --> Build: Fits
-    Build --> build_failed
-    Build --> skipped_same_image: Same image
-    Build --> Capture: Changed image or anchor
-    Capture --> measured
-    Capture --> capture_failed
-    Capture --> not_run_unplugged: Board unplugged
-    state "Advance both cursors and hash" as Measured {
-        measured
-    }
-    state "Advance last_attempted" as Attempted {
-        build_failed
-        skipped_same_image
-    }
-    state "Keep both cursors" as Unchanged {
-        capture_failed
-        not_run_window
-        not_run_stopped
-        not_run_unplugged
-    }
-```
+A busy heavy lock stops the lane with `not_run_busy` and preserves its cursors.
+Build failures advance `last_attempted`; measured steps advance both cursors
+and `last_image_hash`. Capture failures keep the cursors.
 
-Cursors retain the furthest first-parent position, including explicit ranges.
-`last_measured` and `last_image_hash` identify the board's measured baseline.
+The first plugged board runs `scripts/ci/board-steps.sh` before its chain
+inside the same board hold. A night with no board at plan time fails.
+Partial manifests are saved after every step and after cleanup.
+Raw captures upload even when a lane fails.
 
-The orphan `perf-data` branch stores
-`scoped/<board>/<YYYY-MM-DD>-<HHMM>/night.json` and `<NN>-<sha12>.json` reports.
-The directory uses the plan's local start time; `night` is the window start's date.
+The orphan `perf-data` branch holds these records:
 
-The manifest records step outcomes, cursors, image hashes, durations, and
-self-test results. LNT v2 reports use the full USB serial as machine name,
-the commit as `run.llvm_project_revision`, and timing samples in seconds.
+| Path | Contents |
+|---|---|
+| `scoped/<board>/<plan-start>/night.json` | Lane start/end, outcomes, cursors, hashes, durations and self-test |
+| `scoped/<board>/<plan-start>/<NN>-<sha12>.json` | LNT v2 reports with USB serial machine names and samples in seconds |
+| `scoped/timeline/<marker>.json` | GPU and board intervals, outcomes and latest completion (`free_at`) |
+
+`night` is the marker's date. The timeline summary reports elapsed time from
+the marker until the host is free.
+
+GPU timing records live under the shared heavy root's `night-steps/<marker>/`.
+Bakes without a marker key records by the stage's start time.
 
 For a manual chain, create a data checkout and plan, then run `night`.
 `--from` includes that commit when assigned to the lane; `--max-steps`
@@ -325,77 +344,53 @@ limits new candidates and retains the anchor.
 
 ```sh
 python launcher/tools/perf/nightly/scoped_chain.py plan \
-  --boards BOARD_A BOARD_B --data DATA --out plan.json --until 07:00 \
+  --boards BOARD_A BOARD_B --data DATA --out plan.json --marker "$MARKER" \
   --from SHA --max-steps 2
 python launcher/tools/perf/nightly/scoped_chain.py night \
   --plan plan.json --data DATA --out captures --suite SUITE - -
+python launcher/tools/perf/nightly/scoped_chain.py timeline \
+  --plan plan.json --data DATA --summary summary.txt
 ```
 
 `--suite NAME TESTS TABLE` is perf_compare's triplet: suite name,
 comma-separated test patterns or `-` for all, and table command or `-` for raw
 timing lines. The workflow's `NIGHTLY_SUITES` supplies these triplets.
 
-`plan.json` records each board's lane, estimated duration, and the planned
-`--from` and `--max-steps` selection. Joining boards use the same selection.
+`plan.json` records the marker, start, board lanes, estimates and selection.
+Joining boards use the same selection. The workflow also runs docs retrieval
+evaluations: hybrid on the GPU runner and lexical on hosted Linux.
 
-```mermaid
-sequenceDiagram
-    participant Cron
-    participant GPU as GPU runner
-    participant Heavy
-    participant Plan as Board plan
-    participant Lanes as Board lanes
-    Cron->>GPU: 16:00 UTC fingerprint check
-    loop Until local NIGHT_START
-        GPU->>GPU: Poll for queued bakes
-        opt Bakes pending
-            GPU-->>Cron: Deferred, end green
-            Cron->>GPU: Check again on any bake completion
-        end
-    end
-    GPU->>GPU: Wait for active board locks
-    GPU->>Heavy: Take heavy, render before 07:00
-    GPU->>Heavy: Release heavy
-    Plan->>Plan: If GPU marker fresh, wait for two idle polls
-    Plan->>Lanes: Start board lanes until 07:00
+## Perf store
+
+`perf_index.py` keeps every board capture as one parsed line on the
+`perf-data` branch, so a row's history on each board reads from one place
+without the raw logs.
+
+```sh
+python launcher/tools/perf/perf_index.py sync --host <machine>
+python launcher/tools/perf/perf_index.py store --path DIR
 ```
 
-`vars.NIGHT_START` is HH:MM in 18:00–23:59 local; an empty value uses the
-default in `scripts/lib/local_schedule.py`, which also owns the night end.
-Dispatch inputs `queue_at` and `window_end` override the plan window.
-An empty dispatch `queue_at` starts after pending GPU work on the same host.
+| Piece | Detail |
+|---|---|
+| file | `captures/<board>/<YYYY-MM>/<date>-<host>.jsonl`, one line per capture; each machine writes its own files, so two never conflict |
+| line | board short id, `--host` name, build id, commit, suite, start time, image flags, and each row's goal and samples; never a log, path or user name |
+| row | a `PERF TARGET` line (pegged or not), a `mean Nus` line or a `frame_profile:` row |
+| capture | one recorded `run-suite` or `selftest` that completed |
+| image | the flags its flash built with (`image_flags`); `null` for captures from before flashes recorded them |
 
-The GPU runner waits at most `MAX_EVENING_WAIT` for the night start,
-yielding green to pending bakes. Earlier arrivals end green with
-“pending: renders tonight”. Every bake completion triggers another check.
+The branch is as public as the repository, so machine names and capture
+times are too. `sync` parses captures not yet in the store, commits and
+pushes; one sync per store runs at a time. `--store DIR` uses an existing
+checkout and `--write-only` leaves the commit and push to the caller.
+`store --path DIR` checks the branch out, or starts it empty (the nightly's
+first step); the nightly syncs before it publishes.
 
-The plan waits for both GPU workflows to be idle on two consecutive polls
-only when the heavy root's runner marker is fresh within `GPU_HOST_MARKER_DAYS`
-(`scripts/lib/local_schedule.py`); otherwise it reports “GPU runner not on this host”.
-
-The board night retains the shared morning deadline in `plan.json`;
-insufficient time for `FIRST_STEP_SECONDS` skips green.
-
-Morning scheduled arrivals after the night end skip; arrivals after noon
-wait for the next night start. A dispatch with `queue_at` follows this rule.
-The supervisor releases the runner when all lanes end and a scan finds no
-new board. Joins remain possible while any lane runs.
-
-A step starts only if it fits before the plan deadline, and a lane stops after
-`CAPTURE_FAILURE_LIMIT` consecutive capture failures (`scoped_chain.py`).
-Unattempted commits go to the same board's next night.
-
-The nightly starts with the boards `autana devices` lists as plugged in.
-A night with no board at plan time does not run. A planned board that
-unplugs and comes back is not restarted during that night.
-
-One board, the first one listed, also runs Board CI's steps
-(`scripts/ci/board-steps.sh`: the self-test, then the console tests) first,
-at the start of its lane inside the same board hold. Builds and performance
-captures follow.
-
-Partial manifests are written after every step. Raw captures and result
-directories are uploaded even when a lane fails.
+On a desk machine, run `sync` by hand, or from `lock_hook` with `--hook`:
+`sync --hook --host <machine>` returns at once and, on a `released` event
+only, starts the sync detached, since a hook is stopped after three seconds.
+Each capture is parsed once; parsed lines are cached in the per-user autana
+cache.
 
 ## Real-time playback
 

@@ -52,6 +52,35 @@ The shell brackets presentation as `present`; when the frame loop overlaps the s
 with the next update, the bracket is `present.wait`, the time the frame waits
 for that send to finish.
 
+## Laps inside a bracket
+
+A phase too short or too frequent for a bracket, such as one triangle's
+set-up, is timed by a lap instead. `profile/frame_laps.h` reads the core's
+cycle counter, one instruction, and keeps cycles per name on each core:
+
+```c fragment
+FRAME_LAP("r3d.draw.set_up");  /* close the running lap, run this one */
+FRAME_LAP_END();               /* close it, run none */
+FRAME_LAP_SINCE("r3d.draw.wait"); /* charge everything since the last boundary */
+```
+
+Starting a lap closes the one running on that core, so laps tile the time
+between a core's first and last lap. A lap named `<bracket>.<phase>` splits
+that bracket. Laps compile only into a perf-scope image
+(`autana flash diag --perf-scope`); elsewhere they are nothing. There the
+shell prints them under the time line: one lap's own cost, measured on the
+board once, then per core each lap's ms and starts per frame (the numbers
+below show the line's shape and are not measurements):
+
+```
+ms/frame laps: lap 90 ns | cpu0 r3d.draw.set_up 15.000/9000 r3d.draw.fill 24.700/8000 | cpu1 r3d.draw.set_up 15.500/9100
+```
+
+A lap around a vertex or a triangle is not free next to the work it times.
+Starts times one lap's cost is what the laps cost themselves; the frame-stages
+chart takes it out of each lap and shows it apart. A perf-scope image's
+brackets still run longer than a development image's by that much.
+
 ## Hardware counters
 
 One name at a time can also be read against the S3's two performance

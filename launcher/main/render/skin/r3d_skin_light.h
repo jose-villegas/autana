@@ -66,6 +66,9 @@ typedef struct {
 /* False for a singular or non-finite normal transform; the caller skips lighting. */
 bool r3d_skin_normal_palette(const mat4f_t* palette, int joints, mat4f_t world, mat3f_t* normals);
 void r3d_skin_light_transfer_build(float tonemap_white, r3d_skin_light_transfer_t* out);
+/* Linear radiance to a tone-mapped sRGB byte through `transfer`'s table, as
+ * skinned lighting writes its vertex colours: no power in the caller's loop. */
+uint8_t r3d_skin_light_encode(float radiance, const r3d_skin_light_transfer_t* transfer);
 void r3d_skin_clusters_lit(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first,
                            int count, r3d_skin_output_t* posed, const mat3f_t* normals, const r3d_skin_lights_t* lights,
                            uint8_t (*out)[3]);
