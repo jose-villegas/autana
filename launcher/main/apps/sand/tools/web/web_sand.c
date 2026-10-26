@@ -36,6 +36,7 @@
 #include "apps/sand/sand_palette256.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
+#include "image/pixel/rgb565.h"
 #include "input/motion/gravity.h"
 #include "input/motion/shake.h"
 #include "math/scalar/fixed.h"
@@ -209,7 +210,7 @@ web_brush_swatch(int index) {
     if (index < 0 || index >= SAND_BRUSH_COUNT) {
         return 0;
     }
-    return gfx_color_rgb888(material_brush_color(sand_brushes[index].cell));
+    return rgb565be_to_rgb888(material_brush_color(sand_brushes[index].cell));
 }
 
 /* `ax`/`ay`/`az` is screen-axis gravity in WEB_COUNTS_PER_G; a page with
@@ -378,7 +379,7 @@ copy_out(void) {
         for (int x = 0; x < sw; x++) {
             const int px = landscape ? GFX_WIDTH - 1 - y : x;
             const int py = landscape ? x : y;
-            const uint32_t rgb = gfx_color_rgb888(panel[((size_t)py * GFX_WIDTH) + px]);
+            const uint32_t rgb = rgb565be_to_rgb888(panel[((size_t)py * GFX_WIDTH) + px]);
             out[0] = (uint8_t)(rgb >> 16);
             out[1] = (uint8_t)(rgb >> 8);
             out[2] = (uint8_t)rgb;
