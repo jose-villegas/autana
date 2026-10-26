@@ -361,12 +361,13 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
 
 scene_t*
 scene_load(const char* id, scene_failure_t* why) {
-    const asset_pack_t* pack = asset_store_pack(id);
+    const handle_t load = asset_store_load(id);
+    const asset_pack_t* pack = asset_store_loaded(load);
     scene_t* scene = scene_load_from(pack, id, why);
     if (scene != NULL) {
-        scene->holds_pack = true;
-    } else if (pack != NULL) {
-        asset_store_release(id);
+        scene->load = load;
+    } else {
+        asset_store_release(load);
     }
     return scene;
 }
@@ -381,9 +382,7 @@ scene_unload(scene_t* scene) {
             continue;
         }
         scene_draw_forget(scene);
-        if (scene->holds_pack) {
-            asset_store_release(scene->id);
-        }
+        asset_store_release(scene->load);
         loaded_count--;
         memmove(&loaded[i], &loaded[i + 1], sizeof loaded[0] * (size_t)(loaded_count - i));
         loaded[loaded_count] = NULL;

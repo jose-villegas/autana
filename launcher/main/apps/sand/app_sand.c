@@ -60,9 +60,6 @@
 #include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 #include "input/input.h"
-#include "input/motion/gravity.h"
-#include "input/motion/shake.h"
-#include "input/motion/tilt.h"
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
 #include "palette.h"
@@ -254,9 +251,6 @@ typedef struct {
 
 static sim_buffers_t buffers;
 static sand_t sim;
-static tilt_t tilt;
-static gravity_t shake_gravity;
-static shake_t shake;
 static bool failed;
 static uint32_t label_left_ms; /* countdown for the mode label */
 
@@ -624,9 +618,6 @@ start_sim(void) {
      * allocation failure shows up at start_sim() rather than on the first
      * tap in BOOM mode. */
     sand_enable_impulses(&sim, buffers.impulse_buf, APP_IMPULSE_MAX);
-    tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
-    gravity_reset(&shake_gravity);
-    shake_reset(&shake);
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -1059,26 +1050,13 @@ static int pending_awake_blocks, pending_awake_cells;
 #endif
 
 static void
-read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int* flow, int* jostle) {
-    *gx = 0;
-    *gy = INPUT_ACCEL_ONE_G;
-    *flow = 256;
-    *jostle = 0;
-
-    if (!input_read_motion(motion)) {
-        return;
-    }
-
-    tilt_update(&tilt, motion->acceleration, motion->turn_speed, dt_ms);
-
-    *gx = tilt_x(&tilt);
-    *gy = tilt_y(&tilt);
-    *flow = tilt_strength(&tilt);
-
-    const uint32_t dt_us = dt_ms * MATH_US_PER_MS;
-    gravity_update(&shake_gravity, motion, dt_us);
-    shake_update(&shake, gravity_linear(&shake_gravity), dt_us);
-    *jostle = sand_controls_jostle(shake_level(&shake));
+read_gravity_input(input_motion_t* motion, int* gx, int* gy, int* flow, int* jostle) {
+    const vec3f_t g = input_gravity();
+    *gx = (int)lroundf(g.x * INPUT_ACCEL_ONE_G);
+    *gy = (int)lroundf(g.y * INPUT_ACCEL_ONE_G);
+    *flow = (int)lroundf(hypotf(g.x, g.y) * SAND_FLOW_ONE);
+    *jostle = sand_controls_jostle(input_shake());
+    (void)input_read_motion(motion);
 }
 
 static void
@@ -1368,7 +1346,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     int flow;
     int jostle;
     input_motion_t motion = {0};
-    read_gravity_input(dt_ms, &motion, &gx, &gy, &flow, &jostle);
+    read_gravity_input(&motion, &gx, &gy, &flow, &jostle);
 
     label_dirty_this_frame = label_left_ms > 0;
     if (label_dirty_this_frame) {
@@ -1716,7 +1694,9 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static void
 sand_diagnostic_json(char* out, size_t len) {
-    snprintf(out, len, "{\"tilt_x\":%d,\"tilt_y\":%d}", tilt_x(&tilt), tilt_y(&tilt));
+    const vec3f_t gravity = input_gravity();
+    snprintf(out, len, "{\"tilt_x\":%d,\"tilt_y\":%d}", (int)lroundf(gravity.x * INPUT_ACCEL_ONE_G),
+             (int)lroundf(gravity.y * INPUT_ACCEL_ONE_G));
 }
 #endif /* CONFIG_LAUNCHER_DEVELOPMENT */
 
