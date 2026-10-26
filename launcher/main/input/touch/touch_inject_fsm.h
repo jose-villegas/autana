@@ -2,12 +2,14 @@
  * gesture it finishes as. */
 #pragma once
 
+#include "math/linear/vec2i.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
 typedef struct {
-    int x0, y0;
-    int x1, y1;
+    vec2i_t from;
+    vec2i_t to;
     uint32_t ms;
     int64_t started_us;
     bool active;
@@ -15,9 +17,9 @@ typedef struct {
     bool endpoint_emitted;
 } touch_inject_t;
 
-void touch_inject_init(touch_inject_t* inject, int x0, int y0, int x1, int y1, uint32_t ms);
+void touch_inject_init(touch_inject_t* inject, vec2i_t from, vec2i_t to, uint32_t ms);
 
-bool touch_inject_step(touch_inject_t* inject, int64_t now_us, int* x, int* y);
+bool touch_inject_step(touch_inject_t* inject, int64_t now_us, vec2i_t* point);
 
 /* What an injected contact finishes as, reported back to the console. */
 typedef enum {

@@ -1,4 +1,4 @@
-# ELF sha256=3f91b150714dcd6342df8296d3b4321165452a36dbe27284eef3ae3c16931f09
+# ELF sha256=70eac0197d1e7648c179216eb574c08c8e22f3e72aefbfd888123909cba7bf53
 # row	symbol	bytes	region; sizes belong to the --from-elf build
 add_f	math_bench_add_f	60	flash
 add_i	math_bench_add_i	46	flash
@@ -23,7 +23,7 @@ dot_f	math_bench_dot_f	54	flash
 dot_f32_n256_f	math_bench_dot_f32_n256_f	40	flash
 dot_i	math_bench_dot_i	74	flash
 dot_s	math_bench_dot_s	81	flash
-dot_x	math_bench_dot_x	496	flash
+dot_x	math_bench_dot_x	499	flash
 lerp_f	math_bench_lerp_f	73	flash
 lerp_i	math_bench_lerp_i	269	flash
 lerp_s	math_bench_lerp_s	102	flash
@@ -38,8 +38,8 @@ mathf_rsqrt_f	__divsf3	-	ROM
 mathf_rsqrt_f	math_bench_mathf_rsqrt_f	135	flash
 mathf_rsqrt_f	sqrtf	16	flash
 maths_saturate_s	math_bench_maths_saturate_s	42	flash
-mathx_rsqrt_q30_x	__assert_func	236	IRAM
-mathx_rsqrt_q30_x	math_bench_mathx_rsqrt_q30_x	323	flash
+mathx_rsqrt_q30_x	math_bench_mathx_rsqrt_q30_x	46	flash
+mathx_rsqrt_q30_x	mathx_rsqrt_q30	1002	flash
 mul_f	math_bench_mul_f	36	flash
 mul_i	math_bench_mul_i	36	flash
 mul_s	math_bench_mul_s	49	flash
@@ -50,9 +50,8 @@ nlerp_div_x	mathi_isqrt64_digits	403	flash
 nlerp_f	__divsf3	-	ROM
 nlerp_f	math_bench_nlerp_f	303	flash
 nlerp_f	sqrtf	16	flash
-nlerp_x	__assert_func	236	IRAM
-nlerp_x	math_bench_nlerp_x	2652	flash
-nlerp_x	mathx_rsqrt_seeds	768	rodata
+nlerp_x	math_bench_nlerp_x	2196	flash
+nlerp_x	mathx_rsqrt_q30	1002	flash
 normalize_div_x	__udivdi3	582	ROM
 normalize_div_x	math_bench_normalize_div_x	736	flash
 normalize_div_x	mathi_isqrt64_digits	403	flash
@@ -60,8 +59,8 @@ normalize_f	__divsf3	-	ROM
 normalize_f	math_bench_normalize_f	186	flash
 normalize_f	sqrtf	16	flash
 normalize_x	__assert_func	236	IRAM
-normalize_x	math_bench_normalize_x	945	flash
-normalize_x	mathx_rsqrt_seeds	768	rodata
+normalize_x	math_bench_normalize_x	665	flash
+normalize_x	mathx_rsqrt_q30	1002	flash
 quat_mul_f	math_bench_quat_mul_f	108	flash
 quat_mul_x	math_bench_quat_mul_x	2467	flash
 scale_f	math_bench_scale_f	54	flash

@@ -149,7 +149,7 @@ def validate_hardware(root, items, fpu):
         _, expected = hardware_features(root, item)
         observed = set(fpu[item.fast].partition(";")[0].split())
         if not expected or not expected & observed:
-            raise ValueError(f"{item.fast}: target wrapper lacks an expected seed/fused instruction ({sorted(expected)})")
+            raise ValueError(f"{item.fast}: target wrapper and callees lack an expected seed/fused instruction ({sorted(expected)})")
 
 
 def reference_pages(item, root=ROOT):
@@ -465,10 +465,12 @@ def elf_sizes(rows, fpu, located, sections=(), root=ROOT):
     for key, *_ in rows:
         calls = fpu[key].partition("calls ")[2].split(", ")
         names = [bench.ROW_SYMBOL_PREFIX + key, *(name for name in calls if name and not name.startswith("*"))]
-        if key in owners:
-            names.extend(tables_for(owners[key], root))
-        for name in sorted(set(names)):
+        # A table reachable only through a branch this build compiled out (#if) is not linked.
+        tables = set(tables_for(owners[key], root)) if key in owners else set()
+        for name in sorted(set(names) | tables):
             matches = [record for record in located if record.name == name or record.name.startswith(name + ".")]
+            if not matches and name in tables:
+                continue
             if not matches:
                 raise ValueError(f"size symbol missing from ELF: {name}")
             letters = {record.section.upper() for record in matches}

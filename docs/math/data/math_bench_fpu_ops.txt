@@ -1,5 +1,5 @@
-# Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.
-# ELF sha256=3f91b150714dcd6342df8296d3b4321165452a36dbe27284eef3ae3c16931f09
+# Device ELF wrapper and direct-callee mnemonics; wrapper call targets.
+# ELF sha256=70eac0197d1e7648c179216eb574c08c8e22f3e72aefbfd888123909cba7bf53
 add_f	add (vec3)	f	64	vector	-
 add_i	add (vec3)	i	64	vector	-
 add_s	add (vec3)	s	64	vector	-
@@ -29,17 +29,17 @@ mathf_recip_f	mathf_recip	f	64	scalar	madd.s msub.s recip0.s
 mathf_rsqrt_approx_f	mathf_rsqrt_approx	f	64	scalar	msub.s rsqrt0.s
 mathf_rsqrt_f	mathf_rsqrt	f	64	scalar	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
 maths_saturate_s	maths_saturate	s	64	scalar	-
-mathx_rsqrt_q30_x	mathx_rsqrt_q30	x	64	scalar	calls __assert_func
+mathx_rsqrt_q30_x	mathx_rsqrt_q30	x	64	scalar	madd.s msub.s rsqrt0.s; calls mathx_rsqrt_q30
 mul_f	mul (scalar)	f	64	scalar	-
 mul_i	mul (scalar)	i	64	scalar	-
 mul_s	mul (scalar)	s	64	scalar	-
 mul_x	mul (scalar)	x	64	scalar	-
 nlerp_div_x	nlerp_div	x	64	quaternion	calls __divdi3, mathi_isqrt64_digits
 nlerp_f	nlerp	f	64	quaternion	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
-nlerp_x	nlerp	x	64	quaternion	calls __assert_func
+nlerp_x	nlerp	x	64	quaternion	madd.s msub.s rsqrt0.s; calls mathx_rsqrt_q30
 normalize_div_x	normalize_div	x	64	vector	calls __udivdi3, mathi_isqrt64_digits
 normalize_f	normalize (vec3)	f	64	vector	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
-normalize_x	normalize (vec3)	x	64	vector	calls __assert_func
+normalize_x	normalize (vec3)	x	64	vector	madd.s msub.s rsqrt0.s; calls __assert_func, mathx_rsqrt_q30
 quat_mul_f	quat mul	f	64	quaternion	madd.s msub.s
 quat_mul_x	quat mul	x	64	quaternion	-
 scale_f	scale (vec3)	f	64	vector	-

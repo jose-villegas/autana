@@ -510,7 +510,7 @@ static input_t
 touch_sample(recti_t r, bool down, bool edge) {
     const int x = r.x + r.w / 2, y = r.y + r.h / 2;
     return (input_t){
-        .pressed = down && edge, .released = !down && edge, .down = down, .x = x, .y = y, .press_x = x, .press_y = y};
+        .pressed = down && edge, .released = !down && edge, .down = down, .point = {x, y}, .press = {x, y}};
 }
 
 static unsigned
@@ -761,8 +761,8 @@ test_ui_slider_drag(void) {
     bool on = false;
     const input_t idle = {0};
     const int y = BOX.y + BOX.h / 2;
-    const input_t press = {.down = true, .pressed = true, .x = BOX.x + BOX.w / 4, .y = y};
-    const input_t drag = {.down = true, .x = BOX.x + BOX.w * 3 / 4, .y = y};
+    const input_t press = {.down = true, .pressed = true, .point = {BOX.x + BOX.w / 4, y}};
+    const input_t drag = {.down = true, .point = {BOX.x + BOX.w * 3 / 4, y}};
     (void)widget_frame(VERB_SLIDER, &idle, &value, &on, false, false);
     (void)widget_frame(VERB_SLIDER, &idle, &value, &on, false, false);
     (void)widget_frame(VERB_SLIDER, &press, &value, &on, false, false);
@@ -783,8 +783,8 @@ dropdown_pick(verb_t verb) {
     const int row_h = BOX.h;
     const mu_Rect list = ui_dropdown_list_rect(ui_mu_from_recti(BOX), CHOICE_COUNT, row_h, ui_height(), UI_MARGIN);
     const int x = list.x + list.w / 2, y = list.y + row_h + row_h / 2;
-    const input_t idle = {0}, press = {.down = true, .pressed = true, .x = x, .y = y},
-                  release = {.released = true, .x = x, .y = y};
+    const input_t idle = {0}, press = {.down = true, .pressed = true, .point = {x, y}},
+                  release = {.released = true, .point = {x, y}};
     (void)widget_frame(verb, &idle, &value, &on, false, false);
     bool hit = widget_frame(verb, &press, &value, &on, false, false);
     hit |= widget_frame(verb, &release, &value, &on, false, false);

@@ -50,10 +50,8 @@ frame(bool touching, bool pressed) {
     const input_t input = {
         .down = touching,
         .pressed = pressed,
-        .x = TOUCH_X,
-        .y = TOUCH_Y,
-        .press_x = TOUCH_X,
-        .press_y = TOUCH_Y,
+        .point = {TOUCH_X, TOUCH_Y},
+        .press = {TOUCH_X, TOUCH_Y},
     };
     ui_launcher_frame(&input, FRAME_MS);
     const bool sends = gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);

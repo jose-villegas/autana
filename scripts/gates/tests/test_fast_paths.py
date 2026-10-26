@@ -297,6 +297,20 @@ class FastPathTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'instruction'):
             paths.validate_hardware(self.root, items, {'fast_f': 'calls __divsf3'})
         paths.validate_hardware(self.root, items, {'fast_f': 'recip0.s'})
+        for instruction in ('recip0.s', 'rsqrt0.s'):
+            with self.subTest(instruction=instruction):
+                text = ("42000000 <math_bench_fast_f>:\n"
+                        "42000000: 123456 call8 42000100 <seed_kernel>\n"
+                        "42000100 <seed_kernel>:\n"
+                        f"42000100: 123456 {instruction} f0, f1\n"
+                        "42000200 <unrelated>:\n"
+                        "42000200: 123456 div0.s f0, f1\n")
+                fpu = bench.parse_disassembly(text, self.rows[:1])
+                self.assertEqual(f'{instruction}; calls seed_kernel', fpu['fast_f'])
+                paths.validate_hardware(self.root, items, fpu)
+                without_seed = text.replace(instruction, 'nop.n')
+                with self.assertRaisesRegex(ValueError, 'instruction'):
+                    paths.validate_hardware(self.root, items, bench.parse_disassembly(without_seed, self.rows[:1]))
 
     def test_transitive_template_callers_and_tables(self):
         self.header.unlink()
@@ -347,6 +361,21 @@ class FastPathTests(unittest.TestCase):
         for key in ('fast_f', 'plain_f'):
             self.assertIn(('seeds', 16, 'rodata'), sizes[key])
 
+    def test_elf_sizes_skip_a_table_the_build_did_not_link(self):
+        from code_layout import symbols
+        from unittest.mock import patch
+        sections = [('.iram0.text', 0x1000, 0x100)]
+        with patch('code_layout.run', return_value="1000 c T math_bench_fast_f\n"):
+            located = symbols('nm', 'elf', records=True)
+        with patch.object(paths, 'tables_for', return_value=['seeds']):
+            sizes = paths.parse_sizes(paths.elf_sizes(self.rows[:1], {'fast_f': '-'}, located, sections, self.root))
+        self.assertEqual(sizes['fast_f'], [('math_bench_fast_f', 12, 'IRAM')])
+        with patch('code_layout.run', return_value="2000 c T other\n"):
+            located = symbols('nm', 'elf', records=True)
+        with patch.object(paths, 'tables_for', return_value=['seeds']), \
+             self.assertRaisesRegex(ValueError, "size symbol missing from ELF: math_bench_fast_f"):
+            paths.elf_sizes(self.rows[:1], {'fast_f': '-'}, located, sections, self.root)
+
     def test_measurement_formatters(self):
         for value, expected in ((26.3, "26"), (58.3, "58"), (3000, "3000"),
                                 (5104, "5100"), (1.03, "1"), (5.94258e-5, "5.9e-5")):
@@ -393,7 +422,7 @@ class FastPathTests(unittest.TestCase):
             "| isqrt64 normalization |",
             (f"{sum(size for _, size, region in sizes['normalize_x'] if region == 'IRAM')} IRAM + "
              f"{sum(size for _, size, region in sizes['normalize_x'] if region == 'flash')} flash"),
-            f"| {sum(size for _, size, region in sizes['normalize_x'] if region == 'rodata')} |",
+            f"| {sum(size for _, size, region in sizes['normalize_x'] if region == 'rodata') or '-'} |",
             "ROM",
         ))
         self.assertIn("Builds: `CONFIG_MATH_FPU_RECIP`; QEMU plain; host plain.", details)
