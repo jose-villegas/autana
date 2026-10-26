@@ -8,7 +8,8 @@
 #include <stdint.h>
 
 typedef struct {
-    vec2i_t from, to;
+    vec2i_t from;
+    vec2i_t to;
     uint32_t ms;
     int64_t started_us;
     bool active;
