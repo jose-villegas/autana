@@ -73,6 +73,7 @@ set(app_srcs
     "core/memory.c"
     "core/timing_device.c"
     "profile/frame_cost.c"
+    "profile/frame_laps.c"
     "profile/frame_watch.c"
     "services/build_id.c"
     "services/settings_device.c"
