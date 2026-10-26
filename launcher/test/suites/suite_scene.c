@@ -56,6 +56,7 @@
 #include "../scene_examples/small_fill.c"
 #include "anim/anim_skeleton_format.h"
 #include "asset/asset_file.h"
+#include "image/pixel/rgb565.h"
 #include "render/r3d_skin_format.h"
 #include "test_asset_dir.h"
 #include "ui/ui_internal.h"
@@ -745,8 +746,8 @@ test_a_turned_non_square_scene_places_the_coloured_instance(void) {
         scene_render(0, quarter, fx.target.width, fx.target.height);
         scene_compose(0, quarter, &fx.target);
         const int offset = quarter == 1 ? GREEN_PIXEL_OFFSET : -GREEN_PIXEL_OFFSET;
-        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), fx.pixels[(((PICTURE_HEIGHT / 2) + offset) * SIZE) + CENTER]);
-        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB),
+        TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), fx.pixels[(((PICTURE_HEIGHT / 2) + offset) * SIZE) + CENTER]);
+        TEST_ASSERT_EQUAL_HEX16(RGB565BE(CLEAR_RGB),
                                 fx.pixels[((PICTURE_HEIGHT / 2) * SIZE) + CENTER + GREEN_PIXEL_OFFSET]);
     }
 }
@@ -763,15 +764,15 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
     render_context_t* c = render_context_main();
     for (int scale = 100; scale >= 50; scale -= 50) {
         render_context_set_scale(c, scale);
-        TEST_ASSERT_TRUE(render_context_draw(c, scene->instances, 2, &view, GFX_RGB(CLEAR_RGB)));
+        TEST_ASSERT_TRUE(render_context_draw(c, scene->instances, 2, &view, RGB565BE(CLEAR_RGB)));
         TEST_ASSERT_EQUAL_INT(SIZE, c->raster.destination_width);
         TEST_ASSERT_EQUAL_INT(SIZE / 2, c->raster.destination_height);
         TEST_ASSERT_EQUAL_INT(SIZE * scale / 100, c->raster.width);
         TEST_ASSERT_EQUAL_INT(SIZE * scale / 200, c->raster.height);
         render_context_compose(c, fx.pixels, NULL);
-        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00),
+        TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00),
                                 fx.pixels[((PICTURE_HEIGHT / 2) * SIZE) + CENTER + GREEN_PIXEL_OFFSET]);
-        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB),
+        TEST_ASSERT_EQUAL_HEX16(RGB565BE(CLEAR_RGB),
                                 fx.pixels[(((PICTURE_HEIGHT / 2) + GREEN_PIXEL_OFFSET) * SIZE) + CENTER]);
     }
 }
@@ -787,7 +788,7 @@ pixel(float units_from_center) {
     return pixel_at(units_from_center, 0.0F);
 }
 
-static const uint16_t CLEAR = GFX_RGB(CLEAR_RGB);
+static const uint16_t CLEAR = RGB565BE(CLEAR_RGB);
 
 static void
 test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
@@ -829,7 +830,7 @@ test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender(v
     const size_t before = memory_free_bytes(MEMORY_PSRAM);
     scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(lent_from(scene));
     TEST_ASSERT_TRUE(lent_from(render_context_main()->scratch));
     TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_PSRAM));
@@ -869,7 +870,7 @@ test_a_camera_clears_to_the_colour_its_scene_gives(void) {
     TEST_ASSERT_TRUE(scene_activate(scene, SCENE_CAMERA_FIRST));
     render_context_set_scale(render_context_main(), 100);
     frame(0);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x996633), pixel(-8.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x996633), pixel(-8.0F));
 }
 
 /* Dynamic resolution is opt-in: a camera draws at its own scale until a
@@ -1158,13 +1159,13 @@ test_a_child_is_drawn_where_its_parent_places_it(void) {
     fixture();
     scene_t* scene = show("test_family", SCENE_CAMERA_FIRST);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.0F));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(2.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-2.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(2.0F));
     transformf_t home = TRANSFORMF_IDENTITY;
     scene_entity_set_local(scene, scene_find(scene, name_hash("red")), home);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-2.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
 }
@@ -1179,7 +1180,7 @@ test_a_child_moved_alone_stays_in_its_parents_frame(void) {
     transformf_set_position(&near, (vec3f_t){2, 0, 0});
     scene_entity_set_local(scene, scene_find(scene, name_hash("green")), near);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
 }
 
@@ -1199,11 +1200,11 @@ test_a_disabled_parent_hides_its_children_and_keeps_their_own_flags(void) {
     TEST_ASSERT_TRUE(scene_entity_active(scene, red));
     TEST_ASSERT_FALSE(scene_entity_active(scene, green));
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-2.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
     scene_entity_set_enabled(scene, green, true);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(2.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(2.0F));
 }
 
 static void
@@ -1702,7 +1703,7 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     const camera_t* lens = scene_camera_lens(scene, name_hash("camera"));
     TEST_ASSERT_EQUAL_FLOAT(0.75F, lens->half_fov_short_tan);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, lens->near_z);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x336699), scene->cameras[0].clear);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x336699), scene->cameras[0].clear);
     TEST_ASSERT_EQUAL_UINT32(3000, scene_animator_clip_duration_ms(scene, scene_find(scene, name_hash("camera")),
                                                                    0)); /* the probe clip's length */
 }
@@ -1739,7 +1740,7 @@ test_doc_scene_load_find_activate(void) {
     TEST_ASSERT_EQUAL_INT(SCENE_ENTITY_NONE, scene_find(hall, name_hash("missing")));
     TEST_ASSERT_TRUE(scene_has_active_camera());
     frame(0);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), fx.pixels[CENTER * SIZE + CENTER]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), fx.pixels[CENTER * SIZE + CENTER]);
 }
 
 static void
@@ -1967,8 +1968,8 @@ make_lcol_entry(test_pack_t* pack, const lcol_case_t* spec, uint16_t encoding) {
             colors[LCOL_HEADER_SIZE + v * stride] = UINT8_MAX;
             colors[LCOL_HEADER_SIZE + (count + v) * stride + 1] = UINT8_MAX;
         } else {
-            test_pack_put16(colors + LCOL_HEADER_SIZE + v * stride, GFX_RGB(0xFF0000));
-            test_pack_put16(colors + LCOL_HEADER_SIZE + (count + v) * stride, GFX_RGB(0x00FF00));
+            test_pack_put16(colors + LCOL_HEADER_SIZE + v * stride, RGB565BE(0xFF0000));
+            test_pack_put16(colors + LCOL_HEADER_SIZE + (count + v) * stride, RGB565BE(0x00FF00));
         }
     }
 }
@@ -2009,8 +2010,8 @@ assert_lcol_scene(const lcol_case_t* spec, const char* message) {
     TEST_ASSERT_TRUE_MESSAGE(scene_activate(scene, SCENE_CAMERA_FIRST), message);
     render_context_set_scale(render_context_main(), 100);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0xFF0000), pixel(0.0F), message);
-    TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0x00FF00), pixel(4.0F), message);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(0xFF0000), pixel(0.0F), message);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(0x00FF00), pixel(4.0F), message);
     TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.positions, scene->renderers[1].mesh.positions, message);
 }
 
@@ -2051,8 +2052,8 @@ test_the_active_camera_draws_its_scenes_renderers(void) {
     fixture();
     show("test_pair", SCENE_CAMERA_FIRST);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-4.0F));
 }
 
@@ -2063,11 +2064,11 @@ test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again(void) {
     scene_entity_set_enabled(scene, scene_find(scene, name_hash("green")), false);
     TEST_ASSERT_FALSE(scene_entity_enabled(scene, scene_find(scene, name_hash("green"))));
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F));
     scene_entity_set_enabled(scene, scene_find(scene, name_hash("green")), true);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
 }
 
 /* A mesh handed in at run time is drawn in the loaded one's place, a view
@@ -2088,8 +2089,8 @@ test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one(void) {
     blue.colors = (const uint8_t (*)[3])colors;
     TEST_ASSERT_TRUE(scene_renderer_set_mesh(scene, green, &blue));
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(4.0F));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x0000FF), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     blue.node_count = 0;
     TEST_ASSERT_TRUE(scene_renderer_set_mesh(scene, green, &blue));
     frame(16);
@@ -2115,17 +2116,17 @@ test_a_moved_entity_is_drawn_where_it_now_stands(void) {
     fixture();
     scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     transformf_t away = TRANSFORMF_IDENTITY;
     transformf_set_position(&away, (vec3f_t){-4, 0, 0});
     scene_entity_set_local(scene, scene_find(scene, name_hash("red")), away);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-4.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-4.0F));
     const transformf_t home = TRANSFORMF_IDENTITY;
     scene_entity_set_local(scene, scene_find(scene, name_hash("red")), home);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
 }
 
 /* The green quad stands off the view axis, so a roll of the camera about it
@@ -2135,7 +2136,7 @@ static void
 test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned(void) {
     fixture();
     scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
-    const uint16_t green = GFX_RGB(0x00FF00);
+    const uint16_t green = RGB565BE(0x00FF00);
     const scene_entity_t camera = scene_find(scene, name_hash("camera"));
     const float beside = scene_entity_local(scene, scene_find(scene, name_hash("green"))).position.x;
     frame(16);
@@ -2171,13 +2172,13 @@ test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen(voi
     scene_t* pair = show("test_pair", SCENE_CAMERA_FIRST);
     scene_t* solo = load("test_solo");
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     render_context_main()->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     TEST_ASSERT_TRUE(scene_activate(solo, name_hash("eye")));
     TEST_ASSERT_EQUAL_INT(0, render_context_main()->split.top_offset[0]);
     render_context_set_scale(render_context_main(), 100);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x0000FF), pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F)); /* the other scene's quads are not drawn */
     scene_entity_set_enabled(pair, scene_find(pair, name_hash("red")), false);
     TEST_ASSERT_TRUE(scene_activate(pair, SCENE_CAMERA_FIRST));
@@ -2197,7 +2198,7 @@ test_unloading_the_active_scene_stops_drawing_and_leaves_the_other_alone(void) {
     TEST_ASSERT_TRUE(scene_activate(solo, SCENE_CAMERA_FIRST));
     render_context_set_scale(render_context_main(), 100);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x0000FF), pixel(0.0F));
 }
 
 static void
@@ -2216,10 +2217,10 @@ test_the_active_camera_flies_its_path_by_the_time_the_shell_gives_it(void) {
     frame(500);
     /* halfway: 2.5 units along x, so the quad is 2.5 units to the left */
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-2.5F));
     frame(250); /* 3.75 units along, the quad further left still */
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-1.0F));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-3.75F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-3.75F));
 }
 
 /* The shell draws in scene_render(), while the last frame is being sent, and
@@ -2231,10 +2232,10 @@ test_a_frame_drawn_in_two_steps_is_the_frame_drawn_in_one(void) {
     show("test_flight", SCENE_CAMERA_FIRST);
     scene_render(500, 0, SIZE, SIZE);
     scene_compose(500, 0, &fx.target);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-2.5F));
     scene_render(250, 0, SIZE, SIZE);
     scene_compose(250, 0, &fx.target);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-3.75F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-3.75F));
 }
 
 static void
@@ -2248,7 +2249,7 @@ test_a_paused_scene_neither_advances_nor_draws_until_resumed(void) {
     scene_render(500, 0, SIZE, SIZE); /* the shell's overlapped half counts no time either */
     scene_set_paused(false);
     frame(500);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* the paused 500 ms did not count */
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-2.5F)); /* the paused 500 ms did not count */
 }
 
 static void
@@ -2257,8 +2258,8 @@ test_a_scale_renders_smaller_and_the_picture_is_upscaled_to_the_target(void) {
     show("test_pair", SCENE_CAMERA_FIRST);
     render_context_set_scale(render_context_main(), 50);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-4.0F));
 }
 
@@ -2302,7 +2303,7 @@ test_scene_render_draws_into_scratch_and_leaves_the_framebuffer_alone(void) {
     TEST_ASSERT_EQUAL_INT(4, render_context_frame(render_context_main()).stats.triangles);
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
     scene_compose(16, 0, &fx.target);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
 }
 
 /* Band mode has no framebuffer: the scene still draws, and the compose that
@@ -2320,7 +2321,7 @@ test_a_compose_with_no_framebuffer_writes_nothing(void) {
     TEST_ASSERT_EQUAL_INT(4, render_context_frame(render_context_main()).stats.triangles);
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
     frame(16); /* and the next frame, with a framebuffer again, is whole */
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
 }
 
 static void
@@ -2332,7 +2333,7 @@ test_leaving_an_app_while_paused_lifts_the_pause(void) {
     show("test_pair", SCENE_CAMERA_FIRST);
     TEST_ASSERT_TRUE(scene_has_active_camera());
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
 }
 
 static void
@@ -2343,11 +2344,11 @@ test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name(void) {
     render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F)); /* the quad is 4 units left of this camera */
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-4.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-4.0F));
     TEST_ASSERT_TRUE(scene_activate(twin, name_hash("left")));
     render_context_set_scale(render_context_main(), 100);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(scene_activate(twin, SCENE_CAMERA_FIRST)); /* the first */
     TEST_ASSERT_FALSE(scene_activate(twin, name_hash("red")));
 }
@@ -2360,8 +2361,8 @@ test_a_camera_without_a_path_follows_its_entitys_transform(void) {
     transformf_set_position(&aside, (vec3f_t){4, 0, -10});
     scene_entity_set_local(pair, scene_find(pair, name_hash("camera")), aside);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(0.0F)); /* the green quad is 4 units right of the origin */
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-4.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(0.0F)); /* the green quad is 4 units right of the origin */
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-4.0F));
 }
 
 static void
@@ -2424,7 +2425,7 @@ test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
         TEST_ASSERT_EQUAL_INT(fixed.stats.clusters, drawn.stats.clusters);
         TEST_ASSERT_EQUAL_INT(fixed.stats.triangles, drawn.stats.triangles);
         TEST_ASSERT_EQUAL_INT(4, drawn.stats.triangles);
-        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+        TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
         TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * SIZE * SIZE));
     }
 }
@@ -2467,7 +2468,7 @@ test_unloading_the_first_of_two_scenes_leaves_the_second_with_its_own_time(void)
     TEST_ASSERT_EQUAL_INT(1, scene_loaded_count());
     TEST_ASSERT_TRUE(scene_loaded_at(0) == flight);
     frame(250);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* 500 ms of flight */
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-2.5F)); /* 500 ms of flight */
 }
 
 static void
@@ -2479,7 +2480,7 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
     TEST_ASSERT_TRUE(scene_activate(flight, SCENE_CAMERA_FIRST));
     render_context_set_scale(render_context_main(), 100);
     frame(0);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* it flew while another was seen */
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-2.5F)); /* it flew while another was seen */
 }
 
 #ifndef DEVICE_BUILD
@@ -2639,8 +2640,8 @@ assert_composed_scanlines(render_context_t* context, int quarter, camera_present
         for (int x = 0; x < size.width; x++) {
             const uint16_t pixel = pixels[y * size.width + x];
             if (present == CAMERA_PRESENT_SCANLINE && dark) {
-                TEST_ASSERT_TRUE(gfx_color_swap(pixel) < gfx_color_swap(bright));
-                TEST_ASSERT_EQUAL_HEX16(gfx_color_scale(bright, UPSCALE_SCANLINE_KEEP), pixel);
+                TEST_ASSERT_TRUE(rgb565_swap(pixel) < rgb565_swap(bright));
+                TEST_ASSERT_EQUAL_HEX16(rgb565be_scale(bright, UPSCALE_SCANLINE_KEEP), pixel);
             } else {
                 TEST_ASSERT_EQUAL_HEX16(bright, pixel);
             }
@@ -3046,7 +3047,7 @@ test_skinned_scene_draws_clip_output_and_reskins_from_bind(void) {
         TEST_ASSERT_EQUAL_PTR(skin->bind.colors, drawn->colors);
         frame(0);
         const uint16_t red = fx.pixels[CENTER * SIZE + CENTER];
-        TEST_ASSERT_NOT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB), red);
+        TEST_ASSERT_NOT_EQUAL_HEX16(RGB565BE(CLEAR_RGB), red);
         for (int step = 1; step <= 3; step++) {
             scene_animation_step(scene, RIG_DURATION_MS / RIG_TRAVEL);
             TEST_ASSERT_EQUAL_INT16(step - 1, drawn->positions[0][0]);
@@ -3057,7 +3058,7 @@ test_skinned_scene_draws_clip_output_and_reskins_from_bind(void) {
             const int shifted = CENTER + step * SIZE / 20;
             TEST_ASSERT_EQUAL_HEX16(red, fx.pixels[CENTER * SIZE + shifted]);
         }
-        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB), fx.pixels[CENTER * SIZE + CENTER]);
+        TEST_ASSERT_EQUAL_HEX16(RGB565BE(CLEAR_RGB), fx.pixels[CENTER * SIZE + CENTER]);
         TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, entity, skins[k], NULL));
         TEST_ASSERT_EQUAL_INT16(2, scene_entity_mesh(scene, entity)->positions[0][0]);
         release_fixture();
@@ -3155,7 +3156,7 @@ test_property_animation_moves_a_drawn_entity(void) {
     const uint16_t red = fx.pixels[CENTER * SIZE + CENTER];
     frame(RIG_DURATION_MS / 2);
     TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene_entity_local(scene, entity).position.x);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB), fx.pixels[CENTER * SIZE + CENTER]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(CLEAR_RGB), fx.pixels[CENTER * SIZE + CENTER]);
     TEST_ASSERT_EQUAL_HEX16(red, fx.pixels[CENTER * SIZE + CENTER + GREEN_PIXEL_OFFSET]);
     TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene->instances[0].model->m[0][3]);
 }

@@ -28,6 +28,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
+#include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 
 /* The brush and the setter must agree about what a cell implies:
@@ -747,7 +748,7 @@ test_a_cullet_glint_is_pure_white(void) {
     TEST_ASSERT_TRUE_MESSAGE(hash < 4096U, "no hash in 0..4095 made cullet shade 12 glint at phase 0 - is the "
                                            "glint roll broken, or CULLET_GLINT_ONE_IN retuned far past 4096?");
 
-    TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0xFFFFFF), glinting[0],
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(0xFFFFFF), glinting[0],
                                     "a glinting grain must be pure white, the panel's highest radiance");
 }
 

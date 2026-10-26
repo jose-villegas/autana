@@ -17,6 +17,7 @@
 #include "display/display.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "image/pixel/rgb565.h"
 #include "render_host.h"
 #include "sand_brushes.h"
 #include "sand_ui.h"
@@ -76,7 +77,7 @@ setup(int quarter) {
 
 static void
 draw(const render_frame_t* frame) {
-    draw_clear(gfx_rgb(0x000000));
+    draw_clear(RGB565BE(0x000000));
     ui_invalidate();
     ui_begin(&frame->input);
     if (show_palette) {

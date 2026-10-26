@@ -29,6 +29,7 @@
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
+#include "image/pixel/rgb565.h"
 #include "input/motion/gravity.h"
 #include "math/geometry/iso_surface.h"
 #include "math/scalar/math_const.h"
@@ -449,7 +450,7 @@ apply_view(void) {
 static void
 scene_water_enter(const render_lab_scene_t* self) {
     (void)self;
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     box = (vec3f_t){BOARD_SCREEN_WIDTH_MM, BOARD_SCREEN_HEIGHT_MM, WATER_TANK_DEPTH_MM};
     scene_failure_t why;

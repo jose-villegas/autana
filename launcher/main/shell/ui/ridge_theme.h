@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
 
 typedef struct {
     float l;
@@ -105,7 +106,15 @@ ridge_theme_from_rgb(uint32_t rgb) {
     const uint32_t sky_bottom = ridge_theme_role(seed, 0.64F, 0.55F);
     const uint32_t back0 = ridge_theme_role(seed, 0.49F, 0.95F);
     const uint32_t back1 = ridge_theme_role(seed, 0.42F, 0.85F);
-    return (ridge_theme_t){rgb,           background,          sky_top,          sky_bottom,          back0,
-                           back1,         GFX_RGB(background), GFX_RGB(sky_top), GFX_RGB(sky_bottom), GFX_RGB(back0),
-                           GFX_RGB(back1)};
+    return (ridge_theme_t){rgb,
+                           background,
+                           sky_top,
+                           sky_bottom,
+                           back0,
+                           back1,
+                           RGB565BE(background),
+                           RGB565BE(sky_top),
+                           RGB565BE(sky_bottom),
+                           RGB565BE(back0),
+                           RGB565BE(back1)};
 }

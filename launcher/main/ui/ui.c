@@ -45,6 +45,7 @@
 #include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_target.h"
 #include "hash/name_hash64.h"
+#include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/input/ui_bridge.h"
@@ -114,7 +115,7 @@ icon_fill_emit(void* ctx_, recti_t rect) {
  * place a command's colour crosses into gfx's. */
 static gfx_color_t
 mu_color_to_gfx(mu_Color c) {
-    return gfx_rgb(ui_rgb_value(c));
+    return RGB565BE(ui_rgb_value(c));
 }
 
 static void
@@ -363,7 +364,7 @@ clear_vanished_canvases(uint32_t background_rgb) {
     const int n = take_vanished_canvases(vanished);
     for (int i = 0; i < n; i++) {
         if (background_rgb != UI_NO_BACKGROUND) {
-            draw_rect(vanished[i].x, vanished[i].y, vanished[i].w, vanished[i].h, gfx_rgb(background_rgb));
+            draw_rect(vanished[i].x, vanished[i].y, vanished[i].w, vanished[i].h, RGB565BE(background_rgb));
         } else {
             gfx_request_full_redraw();
         }
@@ -384,7 +385,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
          * marks its own bands, so nothing else needs marking here. */
         if (background_rgb != UI_NO_BACKGROUND) {
             const mu_Rect phys = canvas_physical_rect(cnt);
-            draw_rect(phys.x, phys.y, phys.w, phys.h, gfx_rgb(background_rgb));
+            draw_rect(phys.x, phys.y, phys.w, phys.h, RGB565BE(background_rgb));
         }
 
         paint_canvas(cnt);
@@ -765,13 +766,13 @@ replay_full_band(void) {
         const mu_Container* cnt = ui_ctx.root_list.items[i];
         if (ui_band_background != UI_NO_BACKGROUND) {
             const mu_Rect r = canvas_physical_rect(cnt);
-            draw_rect(r.x, r.y, r.w, r.h, gfx_rgb(ui_band_background));
+            draw_rect(r.x, r.y, r.w, r.h, RGB565BE(ui_band_background));
         }
         paint_canvas(cnt);
     }
     for (int i = 0; i < replay_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];
-        draw_rect(r->rect.x, r->rect.y, r->rect.w, r->rect.h, gfx_rgb(r->rgb));
+        draw_rect(r->rect.x, r->rect.y, r->rect.w, r->rect.h, RGB565BE(r->rgb));
     }
 }
 
