@@ -9,15 +9,24 @@
 #include "asset/asset_entry.h"
 #include "scene/scene_internal.h"
 
-enum { AT_VERSION = 0, ENTRY_ALIGNMENT = 4 };
+enum {
+    AT_VERSION = 0,
+    ENTRY_ALIGNMENT = 4,
+    AT_HEADER_PAD = SCENE_ASSET_AT_COUNTS + (SCENE_ASSET_PART_COUNT * sizeof(uint16_t)) /* zero up to the offsets */
+};
 
+_Static_assert(sizeof(scene_asset_name_t) == SCENE_ASSET_NAME_SIZE
+                   && offsetof(scene_asset_name_t, hash) == SCENE_ASSET_NAME_AT_HASH
+                   && offsetof(scene_asset_name_t, name) == SCENE_ASSET_NAME_AT_TEXT,
+               "SCNE names row layout");
 _Static_assert(sizeof(scene_asset_transform_t) == 48 && sizeof(scene_asset_renderer_t) == 36
                    && sizeof(scene_asset_camera_t) == 16 && sizeof(scene_asset_light_t) == 20
                    && sizeof(scene_asset_skinned_renderer_t) == 100 && sizeof(scene_asset_animator_t) == 12
                    && sizeof(scene_asset_settings_t) == 20,
                "SCNE mapped row layouts");
 _Static_assert(SCENE_ASSET_AT_COUNTS == sizeof(uint16_t)
-                   && SCENE_ASSET_AT_OFFSETS == SCENE_ASSET_AT_COUNTS + (SCENE_ASSET_PART_COUNT * sizeof(uint16_t))
+                   && SCENE_ASSET_AT_OFFSETS
+                          == (AT_HEADER_PAD + ENTRY_ALIGNMENT - 1) / ENTRY_ALIGNMENT * ENTRY_ALIGNMENT
                    && SCENE_ASSET_HEADER_SIZE == SCENE_ASSET_AT_OFFSETS + (SCENE_ASSET_PART_COUNT * sizeof(uint32_t)),
                "SCNE header matches its part count");
 _Static_assert(sizeof(((scene_asset_t*)0)->names) == sizeof(void*), "mapped view pointer width");
@@ -52,9 +61,36 @@ text_fits(const void* row) {
     return true;
 }
 
+/* The stored hash is the name's, so finds compare it alone. */
+static bool
+name_fits(const void* row) {
+    const scene_asset_name_t* name = row;
+    return text_fits(name->name) && name->hash != NAME_HASH_NONE && name->hash == name_hash(name->name);
+}
+
 static bool
 nonnegative(float value) {
     return isfinite(value) && value >= 0.0F;
+}
+
+/* The writer pads the parents part, two bytes a row, to 4; the pad is zero. */
+static bool
+parents_pad_zero(asset_view_t entry, const scene_asset_t* scene) {
+    const uint32_t end = (uint32_t)((const uint8_t*)(scene->parents + scene->entity_count) - entry.data);
+    const uint32_t padded = end + ((ENTRY_ALIGNMENT - (end % ENTRY_ALIGNMENT)) % ENTRY_ALIGNMENT);
+    return asset_entry_zero(entry, end, padded < entry.size ? padded : entry.size);
+}
+
+static bool
+roots(const scene_asset_t* scene, uint16_t entity) {
+    return scene->parents[entity] == SCENE_ASSET_PARENT_ROOT;
+}
+
+/* A parent comes before its child, so one forward pass sees every parent first. */
+static bool
+parent_fits(const scene_asset_t* scene, const void* row) {
+    const uint16_t* parent = row;
+    return *parent == SCENE_ASSET_PARENT_ROOT || *parent < parent - scene->parents;
 }
 
 static bool
@@ -66,22 +102,23 @@ renderer_fits(const scene_asset_t* scene, const void* row) {
 static bool
 camera_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_camera_t* c = row;
-    return c->entity < scene->entity_count && c->pad == 0 && isfinite(c->half_fov_short_tan)
+    return c->entity < scene->entity_count && roots(scene, c->entity) && c->pad == 0 && isfinite(c->half_fov_short_tan)
            && c->half_fov_short_tan > 0.0F && isfinite(c->near_z) && c->near_z > 0.0F && c->clear_rgb <= 0xFFFFFFU;
 }
 
 static bool
 light_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_light_t* light = row;
-    return light->entity < scene->entity_count && light->pad == 0 && light->kind == SCENE_LIGHT_KIND_DIRECTIONAL
-           && scene_light_color_fits(light->color) && nonnegative(light->intensity);
+    return light->entity < scene->entity_count && roots(scene, light->entity) && light->pad == 0
+           && light->kind == SCENE_LIGHT_KIND_DIRECTIONAL && scene_light_color_fits(light->color)
+           && nonnegative(light->intensity);
 }
 
 static bool
 skin_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_skinned_renderer_t* skin = row;
-    return skin->entity < scene->entity_count && skin->pad == 0 && text_fits(skin->mesh) && text_fits(skin->skin)
-           && text_fits(skin->skeleton);
+    return skin->entity < scene->entity_count && roots(scene, skin->entity) && skin->pad == 0 && text_fits(skin->mesh)
+           && text_fits(skin->skin) && text_fits(skin->skeleton);
 }
 
 static bool
@@ -116,12 +153,13 @@ static const part_layout_t LAYOUT[SCENE_ASSET_PART_COUNT] = {
     PART_LAYOUT(skinned_renderers, skinned_renderer_count),
     PART_LAYOUT(animators, animator_count),
     PART_LAYOUT(clips, clip_count),
-    {sizeof(scene_asset_settings_t), offsetof(scene_asset_t, settings), SIZE_MAX}};
+    {sizeof(scene_asset_settings_t), offsetof(scene_asset_t, settings), SIZE_MAX},
+    PART_LAYOUT(parents, entity_count)};
 
 static bool
 row_fits(const scene_asset_t* scene, int part, const void* row) {
     switch (part) {
-        case SCENE_ASSET_NAMES:
+        case SCENE_ASSET_NAMES: return name_fits(row);
         case SCENE_ASSET_CLIPS: return text_fits(row);
         case SCENE_ASSET_TRANSFORMS: return true;
         case SCENE_ASSET_RENDERERS: return renderer_fits(scene, row);
@@ -130,6 +168,7 @@ row_fits(const scene_asset_t* scene, int part, const void* row) {
         case SCENE_ASSET_SKINS: return skin_fits(scene, row);
         case SCENE_ASSET_ANIMATORS: return animator_fits(scene, row);
         case SCENE_ASSET_SETTINGS: return settings_fit(scene, row);
+        case SCENE_ASSET_PARENTS: return parent_fits(scene, row);
         default: return false;
     }
 }
@@ -182,8 +221,10 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
     if (status != ASSET_OK) {
         return status;
     }
-    if (count(entry, SCENE_ASSET_TRANSFORMS) != count(entry, SCENE_ASSET_NAMES)
-        || count(entry, SCENE_ASSET_SETTINGS) != 1) {
+    const uint16_t entities = count(entry, SCENE_ASSET_NAMES);
+    if (count(entry, SCENE_ASSET_TRANSFORMS) != entities || count(entry, SCENE_ASSET_PARENTS) != entities
+        || entities == SCENE_ENTITY_NONE || count(entry, SCENE_ASSET_SETTINGS) != 1
+        || !asset_entry_zero(entry, AT_HEADER_PAD, SCENE_ASSET_AT_OFFSETS)) {
         return ASSET_ERR_FORMAT;
     }
     scene_asset_t scene = {0};
@@ -198,6 +239,9 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
             const uint16_t rows_count = count(entry, part);
             memcpy((uint8_t*)&scene + layout->count, &rows_count, sizeof rows_count);
         }
+    }
+    if (!parents_pad_zero(entry, &scene)) {
+        return ASSET_ERR_FORMAT;
     }
     const asset_status_t checked = check_rows(&scene);
     if (checked == ASSET_OK) {

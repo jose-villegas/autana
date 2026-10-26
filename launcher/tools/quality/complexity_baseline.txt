@@ -222,7 +222,7 @@
 11	launcher/main/selftest/post_layout.c:191	post_wrap_next
 11	launcher/main/console/console.c:167	console_task
 11	launcher/main/render/r3d_span.c:368	fill_small
-11	launcher/main/render/raster_show.c:56	tile_farthest
+11	launcher/main/render/view/raster_show.c:56	tile_farthest
 11	launcher/main/ui/ui.c:283	propagate_repaint_over_overlaps
 11	launcher/main/shell/ui/ui_ridge.c:908	repaint_swept_columns
 11	launcher/main/ui/input/ui_snap.c:18	ui_snap_point
@@ -689,7 +689,7 @@
 7	launcher/main/render/r3d_pipeline.c:475	draw_in_front
 7	launcher/main/render/r3d_span.c:202	fill_row
 7	launcher/main/render/r3d_span.c:450	set_up_fill
-7	launcher/main/render/raster_show.c:25	drawn_range
+7	launcher/main/render/view/raster_show.c:25	drawn_range
 7	launcher/main/ui/ui.c:83	draw_text_command
 7	launcher/main/ui/ui_build.c:457	ui_slider_int
 7	launcher/main/ui/input/ui_pointer.c:114	step_hover
@@ -919,7 +919,7 @@
 6	launcher/main/render/r3d_span.c:419	r3d_span_hidden
 6	launcher/main/render/r3d_span.c:400	r3d_span_plane_bound
 6	launcher/main/render/r3d_span.c:220	step_row
-6	launcher/main/render/raster_show.c:101	raster_show
+6	launcher/main/render/view/raster_show.c:101	raster_show
 6	launcher/main/scene/scene_draw.c:120	fill_instances
 6	launcher/main/ui/ui.c:152	draw_command
 6	launcher/main/ui/ui.c:548	hash_band_entries
@@ -1130,7 +1130,7 @@
 5	launcher/main/render/r3d_pipeline.c:146	push_children
 5	launcher/main/render/r3d_span.c:116	fill_span
 5	launcher/main/render/r3d_span.c:410	r3d_span_plane_in_range
-5	launcher/main/render/raster_show.c:73	fill_tile
+5	launcher/main/render/view/raster_show.c:73	fill_tile
 12	launcher/main/render/upscale.c:35	upscale_init
 5	launcher/main/scene/scene.c:126	open_meshes
 9	launcher/main/scene/scene.c:270	scene_load_from
@@ -1162,7 +1162,7 @@
 5	launcher/test/suites/suite_r3d_lit.c:1306	widen
 5	launcher/test/suites/suite_ridge_perf.c:120	note_unlike
 5	launcher/test/suites/suite_ridge_perf.c:45	run_arm
-5	launcher/packages/math/tests/suite_spring_line.c:121	test_energy_never_exceeds_its_start_and_keeps_falling
+5	launcher/packages/physics/tests/suite_spring_line.c:121	test_energy_never_exceeds_its_start_and_keeps_falling
 5	launcher/test/suites/suite_ui_anchor.c:56	test_resolve_then_turn_maps_top_centre_at_each_quarter
 5	launcher/test/suites/suite_ui_pointer_microui.c:425	list_tap
 5	launcher/test/suites/suite_ui_pointer_microui.c:116	taps_counted
@@ -1813,7 +1813,7 @@
 3	launcher/main/render/raster.c:33	clear_rows
 3	launcher/main/render/raster.c:175	raster_cluster_capacity
 3	launcher/main/render/raster.c:166	raster_vertex_capacity
-3	launcher/main/render/raster_show.c:92	show_tiles
+3	launcher/main/render/view/raster_show.c:92	show_tiles
 3	launcher/main/scene/scene.c:35	find_def
 3	launcher/main/scene/scene.c:376	scene_find
 3	launcher/main/scene/scene_draw.c:133	fit_scratch
@@ -1907,10 +1907,10 @@
 3	launcher/packages/math/tests/suite_rng.c:124	test_a_chance_lands_near_its_stated_odds
 3	launcher/packages/math/tests/suite_rng.c:30	test_different_seeds_diverge
 3	launcher/test/suites/suite_scene.c:50	make_quad_entry
-3	launcher/packages/math/tests/suite_spring_line.c:55	energy
-3	launcher/packages/math/tests/suite_spring_line.c:164	test_a_runaway_offset_is_clamped
-3	launcher/packages/math/tests/suite_spring_line.c:144	test_it_comes_to_rest_at_every_setting_and_exactly
-3	launcher/packages/math/tests/suite_spring_line.c:102	test_the_wave_spreads_one_column_a_tick_and_evenly_both_ways
+3	launcher/packages/physics/tests/suite_spring_line.c:55	energy
+3	launcher/packages/physics/tests/suite_spring_line.c:164	test_a_runaway_offset_is_clamped
+3	launcher/packages/physics/tests/suite_spring_line.c:144	test_it_comes_to_rest_at_every_setting_and_exactly
+3	launcher/packages/physics/tests/suite_spring_line.c:102	test_the_wave_spreads_one_column_a_tick_and_evenly_both_ways
 3	launcher/test/suites/suite_test_harness.c:54	allocate_every_present_then_pass
 3	launcher/test/suites/suite_tilt.c:341	test_shaking_fades_rather_than_switching_off
 3	launcher/test/suites/suite_tilt.c:315	test_shaking_registers_as_shaking
@@ -2261,7 +2261,7 @@
 2	launcher/test/suites/suite_ridge_motion.c:44	crest_travel
 2	launcher/test/suites/suite_ridge_motion.c:112	test_a_slope_pushes_the_wave_and_it_coasts_after
 2	launcher/packages/math/tests/suite_rng.c:87	test_below_reaches_every_value
-2	launcher/packages/math/tests/suite_spring_line.c:44	ticks_until_rest
+2	launcher/packages/physics/tests/suite_spring_line.c:44	ticks_until_rest
 2	launcher/test/suites/suite_tilt.c:80	test_smoothing_is_independent_of_framerate
 2	launcher/test/suites/suite_ui.c:36	build
 2	launcher/test/suites/suite_ui_pointer_microui.c:228	edge_frame

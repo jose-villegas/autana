@@ -22,3 +22,37 @@ python scripts/pr/pr_body.py check body.md && gh pr create --body-file body.md
 - **Unfilled parts** stay as HTML comments starting with `fill`, which GitHub renders as nothing; a leftover `block` comment also fails `check`.
 
 `check` fails on a marker left in, on a Ticket line that [`scripts/gates/check-pr-ticket.sh`](../../scripts/gates/check-pr-ticket.sh) rejects, and on a ```` ```mermaid ```` block that [`check-mermaid.mjs`](Mermaid-Diagrams.md) cannot render. The pull request check runs the ticket gate alone.
+
+## Run the pull request's gates locally
+
+The runner reads the gate commands from `.github/workflows`, in workflow and
+step order. List them first, then save a separate log for each step:
+
+```sh
+python scripts/ci/local_gates.py list
+python scripts/ci/local_gates.py run --out build/local-gates --base origin/main
+python scripts/ci/local_gates.py run --out build/local-gates --tier rel,dev,diag
+```
+
+| Tier | Selection |
+|---|---|
+| `host` | Always selected; includes container gates using the local ESP-IDF environment |
+| `rel`, `dev`, `diag` | Selected with `--tier`; builds the variant before its gates |
+| `qemu` | Selected with `--tier qemu`; needs the patched emulator |
+
+Builds run incrementally. Unselected tiers print `NOT RUN` and never count as
+passing. Steps use their workflow shell. ESP-IDF gates need the pinned local
+toolchain.
+
+The exclusion reasons live in `OUT_OF_SCOPE` in
+[`local_gates.py`](../../scripts/ci/local_gates.py). Host-wide installs are
+printed and skipped; checkout-local dependency installs run.
+
+With `GH_TOKEN` or `gh auth token`, CI's input manifests select affected jobs.
+Changes include the working tree and untracked files from the merge-base.
+`--base` takes a remote branch such as `origin/main`. Missing manifests or
+credentials run the jobs and print why.
+
+A failing gate or an unmapped workflow step returns failure. If a command or
+Python module is missing, the runner prints skipped install commands from
+that job beside the failing log path.

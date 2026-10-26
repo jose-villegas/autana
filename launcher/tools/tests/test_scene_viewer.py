@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from PIL import Image
 import numpy as np
@@ -16,7 +17,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "tests"))
 from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 from anim import track_host
-from r3d import build_pack
+from r3d import build_pack, import_settings
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 
 SCRIPT = TOOLS / "render/scenes/scene_viewer_render_host.sh"
@@ -160,6 +161,41 @@ path = { animation = "fly.anim.toml", node = "camera" }
         card = self.pixels("--object", "card")
         self.assertEqual(authored.tobytes(), both.tobytes())
         self.assertNotEqual(authored.tobytes(), card.tobytes())
+
+    def hierarchy_pixels(self, *args):
+        """Renders `kid` under `rig` beside an unrelated `other`; the scene TOML has no parent key yet."""
+        source = self.root / "family.scene.toml"
+        mesh = '[objects.mesh_renderer]\nmesh = "card.import.toml"\n'
+        source.write_text(
+            f'[[objects]]\nname = "rig"\n{mesh}'
+            f'[[objects]]\nname = "kid"\nparent = "rig"\nposition = [2.0, 0.0, -1.0]\n{mesh}'
+            f'[[objects]]\nname = "other"\nposition = [-2.0, 0.0, -1.0]\n{mesh}'
+            '[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
+            'background = 0x204080\npath = { animation = "fly.anim.toml", node = "camera" }\n')
+        load_object = import_settings.load_object
+
+        def with_parent(value, base, where):
+            obj = load_object({key: item for key, item in value.items() if key != "parent"}, base, where)
+            obj.parent = value.get("parent")
+            return obj
+
+        assets = self.root / "family-assets"
+        with mock.patch.object(import_settings, "load_object", with_parent):
+            build_pack.write_packs(assets, build_pack.pack_bytes([source]))
+        out = self.root / "family.bmp"
+        run = subprocess.run([str(self.binary), "--scene", "family", "--frames", "2", "--dt", "100", *args,
+                              "-o", str(out)], capture_output=True, text=True, timeout=120,
+                             env=dict(os.environ, AUTANA_ASSET_DIR=str(assets)))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        with Image.open(out) as image:
+            return image.tobytes()
+
+    def test_named_parent_brings_its_children_and_named_child_its_ancestors(self):
+        parent = self.hierarchy_pixels("--object", "rig")
+        self.assertEqual(parent, self.hierarchy_pixels("--object", "kid"))
+        self.assertEqual(parent, self.hierarchy_pixels("--object", "rig", "--object", "kid"))
+        self.assertNotEqual(parent, self.hierarchy_pixels("--object", "other"))
+        self.assertNotEqual(parent, self.hierarchy_pixels())
 
     def test_camera_time_and_resolution_change_pixels(self):
         first = self.pixels("--object", "card")

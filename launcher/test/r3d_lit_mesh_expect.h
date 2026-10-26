@@ -3,7 +3,8 @@
  * structure render/r3d_pipeline.h relies on, for a suite holding any
  * bake to call once per mesh: clusters tile both arrays in order, every
  * triangle indexes three distinct vertices of its own cluster, bounds hold
- * what they claim, and the tree reaches every cluster exactly once.
+ * what they claim, inner nodes fit the walk, and the tree reaches every
+ * cluster exactly once.
  *
  * Header-only (static inline) for the reason bbox_extend.h gives.
  */
@@ -47,6 +48,8 @@ r3d_lit_mesh_expect_subtree(const r3d_lit_mesh_t* mesh, int node, uint8_t* reach
         return;
     }
     TEST_ASSERT_TRUE(n->first + n->count <= mesh->node_count);
+    TEST_ASSERT_TRUE_MESSAGE(n->count <= R3D_LIT_NODE_CHILDREN_MAX,
+                             "an inner node has more children than the walk orders");
     for (int child = n->first; child < n->first + n->count; child++) {
         TEST_ASSERT_TRUE_MESSAGE(child > node, "a child must follow its parent");
         TEST_ASSERT_TRUE_MESSAGE(box3s_contains(n->bounds, mesh->nodes[child].bounds),

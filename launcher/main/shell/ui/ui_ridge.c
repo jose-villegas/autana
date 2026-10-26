@@ -20,10 +20,11 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "input/motion/tilt.h"
-#include "math/motion/spring_line.h"
+#include "math/scalar/ease.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/mathx.h"
+#include "physics/spring/spring_line.h"
 #include "profile/frame_cost.h"
 #include "shell/ui/ridge_motion.h"
 #include "shell/ui/ridge_pose.h"
@@ -313,7 +314,7 @@ build_layers(void) {
     /* The waves grow in and go out with the rest of the ambient motion, so
      * a ridge whose motion is switched off rests on its rigid shape. */
     const int gain = ridge->ambient && ridge->alive_ms > (uint32_t)boot_hold_ms
-                         ? ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms)
+                         ? ease_smooth_q8(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms)
                          : 0;
     uint32_t travelled[2];
     for (int layer = 0; layer < 2; layer++) {
@@ -1371,7 +1372,7 @@ shape_this_frame(uint32_t dt_ms) {
                                           .push = tilt_push,
                                           .coast_ms = tilt_coast_ms};
     ridge_motion_advance(&ridge->motion, &params, dt_ms, ridge_pose_slope(&ridge->attitude));
-    const int gain = ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
+    const int gain = ease_smooth_q8(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
     for (int x = 0; x < RIDGE_COLUMNS; x++) {
         ridge->shape[x] =
             (int16_t)(ridge->rigid[x]

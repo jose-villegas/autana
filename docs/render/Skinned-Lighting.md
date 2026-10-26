@@ -59,7 +59,7 @@ light setter or a light entity's `SCENE_FLAG_SKIN_DIRTY` rebuilds the table.
 
 Each joint's normal palette entry is the inverse-transpose of
 `entity_world * joint_palette`: its cofactor matrix over its determinant. So
-non-uniform scale and reflections set by `scene_set_transform()` light
+non-uniform scale and reflections set by `scene_entity_set_local()` light
 correctly. A vertex blends its joints' entries by weight, like its position.
 
 Blending two rotations shortens the normal where joints mix (second tile), and
