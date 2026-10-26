@@ -38,7 +38,7 @@
 typedef struct {
     bool steering;         /* the finger down now landed outside the shell's home-edge strip */
     bool zooming;          /* and it is a tap's second press: it zooms rather than turns */
-    int last_x, last_y;    /* where it was last frame, panel pixels */
+    vec2i_t last;          /* where it was last frame, panel pixels */
     uint32_t down_ms;      /* how long it has been down */
     bool strayed;          /* it has moved past ORBIT_MOTION_TOUCH_TAP_SLOP_PX */
     bool tapped;           /* a tap ended ORBIT_MOTION_TOUCH_DOUBLE_TAP_MS or less ago */

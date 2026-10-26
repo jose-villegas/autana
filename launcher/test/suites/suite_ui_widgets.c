@@ -28,6 +28,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
+#include "image/pixel/rgb565.h"
 #include "input/input.h"
 #include "ui/input/ui_bridge.h"
 #include "ui/layout/ui_transform.h"
@@ -130,9 +131,9 @@ tap(const widget_t* w) {
     const int x = BUTTON.x + BUTTON.w / 2;
     const int y = BUTTON.y + BUTTON.h / 2;
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
-    const input_t hold = {.down = true, .x = x, .y = y};
-    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
+    const input_t hold = {.down = true, .point = {x, y}};
+    const input_t release = {.released = true, .point = {x, y}};
 
     widget_frame(w, &idle);
     widget_frame(w, &idle);
@@ -173,9 +174,9 @@ static contact_t
 transformed_contact(int x, int y) {
     const affine2x_t transform = ui_effective_transform();
     const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
-    return (contact_t){.press = {.down = true, .pressed = true, .x = mapped_pixel.x, .y = mapped_pixel.y},
-                       .hold = {.down = true, .x = mapped_pixel.x, .y = mapped_pixel.y},
-                       .release = {.released = true, .x = mapped_pixel.x, .y = mapped_pixel.y}};
+    return (contact_t){.press = {.down = true, .pressed = true, .point = mapped_pixel},
+                       .hold = {.down = true, .point = mapped_pixel},
+                       .release = {.released = true, .point = mapped_pixel}};
 }
 
 static void
@@ -203,9 +204,9 @@ static void
 test_a_reachable_touch_submits_an_unwrapped_microui_button(void) {
     fixture();
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .x = BUTTON.x - 20, .y = BUTTON.y + BUTTON.h / 2};
-    const input_t hold = {.down = true, .x = press.x, .y = press.y};
-    const input_t release = {.released = true, .x = press.x, .y = press.y};
+    const input_t press = {.down = true, .pressed = true, .point = {BUTTON.x - 20, BUTTON.y + BUTTON.h / 2}};
+    const input_t hold = {.down = true, .point = {press.point.x, press.point.y}};
+    const input_t release = {.released = true, .point = {press.point.x, press.point.y}};
 
     plain_button_frame(&idle);
     plain_button_frame(&idle);
@@ -221,29 +222,30 @@ static void
 test_disabled_controls_and_labels_do_not_aim_a_touch(void) {
     fixture();
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .x = BUTTON.x - 20, .y = BUTTON.y + BUTTON.h / 2};
+    const input_t press = {.down = true, .pressed = true, .point = {BUTTON.x - 20, BUTTON.y + BUTTON.h / 2}};
     const widget_t disabled = {.enabled = false};
 
     widget_frame(&disabled, &idle);
     widget_frame(&disabled, &idle);
     widget_frame(&disabled, &press);
-    TEST_ASSERT_EQUAL_INT(press.x, ui_context()->mouse_pos.x);
+    TEST_ASSERT_EQUAL_INT(press.point.x, ui_context()->mouse_pos.x);
 
     fixture();
     label_frame(&idle);
     label_frame(&idle);
     label_frame(&press);
-    TEST_ASSERT_EQUAL_INT(press.x, ui_context()->mouse_pos.x);
+    TEST_ASSERT_EQUAL_INT(press.point.x, ui_context()->mouse_pos.x);
 }
 
 static void
 test_a_slider_drag_uses_raw_moves_after_its_aimed_press(void) {
     fixture();
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .x = BUTTON.x - 20, .y = BUTTON.y + BUTTON.h / 2};
-    const input_t hold = {.down = true, .x = press.x, .y = press.y};
+    const input_t press = {.down = true, .pressed = true, .point = {BUTTON.x - 20, BUTTON.y + BUTTON.h / 2}};
+    const input_t hold = {.down = true, .point = {press.point.x, press.point.y}};
     const input_t drag = {
-        .down = true, .x = BUTTON.x + UI_SLIDER_KNOB_W / 2 + (BUTTON.w - UI_SLIDER_KNOB_W) * 63 / 100, .y = press.y};
+        .down = true,
+        .point = {BUTTON.x + UI_SLIDER_KNOB_W / 2 + (BUTTON.w - UI_SLIDER_KNOB_W) * 63 / 100, press.point.y}};
 
     int value = 0;
     value = slider_frame(&idle, &value);
@@ -416,9 +418,9 @@ dropdown_frame(const input_t* in, int selected) {
 static int
 dropdown_tap(int x, int y, int selected) {
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
-    const input_t hold = {.down = true, .x = x, .y = y};
-    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
+    const input_t hold = {.down = true, .point = {x, y}};
+    const input_t release = {.released = true, .point = {x, y}};
     int picked = dropdown_frame(&press, selected);
     for (int i = 0; i < 4; i++) {
         const int p = dropdown_frame(&hold, selected);
@@ -572,8 +574,8 @@ test_the_chevron_lags_the_lists_own_open_flag_by_one_frame(void) {
 
     const int x = DROPDOWN.x + 20;
     const int y = DROPDOWN.y + 20;
-    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
-    const input_t hold = {.down = true, .x = x, .y = y};
+    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
+    const input_t hold = {.down = true, .point = {x, y}};
 
     dropdown_frame(&press, 0);
     bool checked = false;
@@ -667,7 +669,7 @@ test_opening_release_cannot_pick_an_overlay_row(void) {
     fixture();
     const input_t idle = {0};
     input_t touch = {
-        .down = true, .pressed = true, .x = MENU_ANCHOR.x + MENU_ANCHOR.w / 2, .y = MENU_ANCHOR.y + MENU_ANCHOR.h / 2};
+        .down = true, .pressed = true, .point = {MENU_ANCHOR.x + MENU_ANCHOR.w / 2, MENU_ANCHOR.y + MENU_ANCHOR.h / 2}};
     build_menu_frame(&idle, 0, 0, true);
     end_frame();
     build_menu_frame(&idle, 0, 0, true);
@@ -676,7 +678,7 @@ test_opening_release_cannot_pick_an_overlay_row(void) {
     end_frame();
     touch.pressed = false;
     for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
-        touch.y += frame < motion_pixels;
+        touch.point.y += frame < motion_pixels;
         build_menu_frame(&touch, 0, 0, true);
         end_frame();
         TEST_ASSERT_EQUAL_INT(-1, menu_pick);
@@ -692,7 +694,7 @@ test_opening_release_cannot_pick_an_overlay_row(void) {
         TEST_ASSERT_TRUE(dropdown_open);
     }
     const mu_Rect list = ui_dropdown_list_rect(MENU_ANCHOR, MENU_ITEM_COUNT, MENU_ROW_HEIGHT, ui_height(), UI_MARGIN);
-    touch = (input_t){.down = true, .pressed = true, .x = list.x + list.w / 2, .y = list.y + MENU_ROW_HEIGHT / 2};
+    touch = (input_t){.down = true, .pressed = true, .point = {list.x + list.w / 2, list.y + MENU_ROW_HEIGHT / 2}};
     build_menu_frame(&touch, 0, 0, true);
     end_frame();
     int picked = menu_pick;
@@ -803,7 +805,7 @@ assert_menu_list_on_top(void) {
     const gfx_color_t* fb = gfx_framebuffer();
     for (int y = list.y; y < list.y + list.h; y++) {
         for (int x = list.x; x < list.x + list.w; x++) {
-            TEST_ASSERT_NOT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), fb[y * GFX_WIDTH + x],
+            TEST_ASSERT_NOT_EQUAL_MESSAGE(RGB565BE(MENU_INK), fb[y * GFX_WIDTH + x],
                                           "menu ink must not bleed through the opaque list");
         }
     }
@@ -815,14 +817,14 @@ menu_repaint_frames(bool bands) {
     fixture();
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
     ui_canvas_painted_for_test = record_menu_canvas;
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
     const contact_t contact = transformed_contact(MENU_ANCHOR.x + 20, MENU_ANCHOR.y + 20);
     const input_t idle = {0};
     menu_frame(&idle, bands, 0);
     menu_frame(&idle, bands, 0);
     const affine2x_t transform = ui_effective_transform();
     const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){80, 230});
-    TEST_ASSERT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), gfx_framebuffer()[mapped_pixel.y * GFX_WIDTH + mapped_pixel.x],
+    TEST_ASSERT_EQUAL_MESSAGE(RGB565BE(MENU_INK), gfx_framebuffer()[mapped_pixel.y * GFX_WIDTH + mapped_pixel.x],
                               "dense menu commands must all be painted before opening the list");
     menu_frame(&contact.press, bands, 0);
     for (int frame = 0; frame < MENU_FRAMES; frame++) {
@@ -865,7 +867,7 @@ test_dense_bands_match_a_full_repaint(void) {
     TEST_ASSERT_NOT_NULL(expected);
     overflow_frame(false, 1);
     memcpy(expected, gfx_framebuffer(), bytes);
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
     overflow_frame(true, 1);
     TEST_ASSERT_GREATER_THAN_UINT32(0, ui_band_fallback_count());
     TEST_ASSERT_EQUAL_MEMORY(expected, gfx_framebuffer(), bytes);
@@ -914,7 +916,7 @@ test_ui_end_in_band_mode_is_replayed_over_each_band(void) {
     gfx_read_panel_row(BUTTON.y + (BUTTON.h / 2), row);
     gfx_readback_end();
     gfx_readback_end();
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(MENU_INK), row[BUTTON.x + (BUTTON.w / 2)]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(MENU_INK), row[BUTTON.x + (BUTTON.w / 2)]);
     TEST_ASSERT_EQUAL_HEX16(UNDER_UI, row[BUTTON.x / 2]);
     gfx_reset_for_test();
 }
@@ -924,7 +926,7 @@ test_closing_the_list_restores_the_pixels_under_it(void) {
     TEST_ASSERT_TRUE(gfx_init());
     fixture();
     paint_frames = true;
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
 
     const input_t idle = {0};
     dropdown_frame(&idle, 0);
@@ -967,9 +969,9 @@ many_frame(const input_t* in, int selected) {
 static int
 many_tap(int x, int y, int selected) {
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
-    const input_t hold = {.down = true, .x = x, .y = y};
-    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
+    const input_t hold = {.down = true, .point = {x, y}};
+    const input_t release = {.released = true, .point = {x, y}};
     int picked = many_frame(&press, selected);
     for (int i = 0; i < 4; i++) {
         const int p = many_frame(&hold, selected);
@@ -1021,7 +1023,7 @@ many_list_scroll(mu_Rect list_rect) {
  * drag threshold happens to trip on. */
 static int
 many_frame_scroll(int x, int y, int selected, int scroll_dy) {
-    const input_t held = {.down = true, .x = x, .y = y};
+    const input_t held = {.down = true, .point = {x, y}};
     ui_begin(&held);
     if (scroll_dy != 0) {
         mu_input_scroll(ui_context(), 0, scroll_dy);
@@ -1063,7 +1065,7 @@ test_a_drag_scroll_sticks_through_later_frames(void) {
     many_frame_scroll(cx, py, MANY_COUNT / 2, 0);
     TEST_ASSERT_EQUAL_INT_MESSAGE(dragged, many_list_scroll(list), "holding still must not move the scroll again");
 
-    many_frame(&(input_t){.released = true, .x = cx, .y = py}, MANY_COUNT / 2);
+    many_frame(&(input_t){.released = true, .point = {cx, py}}, MANY_COUNT / 2);
     many_frame(&idle, MANY_COUNT / 2);
     TEST_ASSERT_EQUAL_INT_MESSAGE(dragged, many_list_scroll(list),
                                   "a drag-scroll must stick, not snap back to where the list opened");
@@ -1094,8 +1096,8 @@ test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin(void) {
 
     const int x = BUTTON.x + BUTTON.w / 2;
     const int y = BUTTON.y + BUTTON.h / 2;
-    TEST_ASSERT_FALSE(plain_button_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}));
-    TEST_ASSERT_TRUE_MESSAGE(plain_button_frame(&(input_t){.down = true, .x = x, .y = y}),
+    TEST_ASSERT_FALSE(plain_button_frame(&(input_t){.down = true, .pressed = true, .point = {x, y}}));
+    TEST_ASSERT_TRUE_MESSAGE(plain_button_frame(&(input_t){.down = true, .point = {x, y}}),
                              "the second frame of contact must carry the click");
 }
 
@@ -1111,11 +1113,11 @@ test_a_tap_on_the_first_build_of_another_screen_still_submits_once(void) {
 
     const int x = BUTTON.x + BUTTON.w / 2;
     const int y = BUTTON.y + BUTTON.h / 2;
-    int submits = named_screen_frame("After", &(input_t){.down = true, .pressed = true, .x = x, .y = y});
+    int submits = named_screen_frame("After", &(input_t){.down = true, .pressed = true, .point = {x, y}});
     for (int i = 0; i < 4; i++) {
-        submits += named_screen_frame("After", &(input_t){.down = true, .x = x, .y = y});
+        submits += named_screen_frame("After", &(input_t){.down = true, .point = {x, y}});
     }
-    submits += named_screen_frame("After", &(input_t){.released = true, .x = x, .y = y});
+    submits += named_screen_frame("After", &(input_t){.released = true, .point = {x, y}});
     TEST_ASSERT_EQUAL_INT(1, submits);
 }
 
@@ -1150,11 +1152,11 @@ over_button_open(void) {
     over_button_frame(&idle, &button);
     const int x = DROPDOWN.x + 20;
     const int y = DROPDOWN.y + 20;
-    over_button_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}, &button);
+    over_button_frame(&(input_t){.down = true, .pressed = true, .point = {x, y}}, &button);
     for (int i = 0; i < 4; i++) {
-        over_button_frame(&(input_t){.down = true, .x = x, .y = y}, &button);
+        over_button_frame(&(input_t){.down = true, .point = {x, y}}, &button);
     }
-    over_button_frame(&(input_t){.released = true, .x = x, .y = y}, &button);
+    over_button_frame(&(input_t){.released = true, .point = {x, y}}, &button);
     over_button_frame(&idle, &button);
     TEST_ASSERT_TRUE(dropdown_open);
 }
@@ -1167,13 +1169,13 @@ over_button_tap(int x, int y, int idle_frames_before) {
     for (int i = 0; i < idle_frames_before; i++) {
         over_button_frame(&idle, &button);
     }
-    int p = over_button_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}, &button);
+    int p = over_button_frame(&(input_t){.down = true, .pressed = true, .point = {x, y}}, &button);
     t.picks += p >= 0;
     for (int i = 0; i < 4; i++) {
-        p = over_button_frame(&(input_t){.down = true, .x = x, .y = y}, &button);
+        p = over_button_frame(&(input_t){.down = true, .point = {x, y}}, &button);
         t.picks += p >= 0;
     }
-    p = over_button_frame(&(input_t){.released = true, .x = x, .y = y}, &button);
+    p = over_button_frame(&(input_t){.released = true, .point = {x, y}}, &button);
     t.picks += p >= 0;
     t.buttons = button ? 1 : 0;
     return t;
@@ -1205,7 +1207,7 @@ test_a_one_frame_tap_on_an_open_list_row_picks_it_and_closes_it(void) {
     bool button = false;
     const input_t idle = {0};
     const int picked = over_button_frame(
-        &(input_t){.pressed = true, .released = true, .x = list.x + 20, .y = list.y + DROPDOWN.h + 20}, &button);
+        &(input_t){.pressed = true, .released = true, .point = {list.x + 20, list.y + DROPDOWN.h + 20}}, &button);
     TEST_ASSERT_EQUAL_INT(1, picked);
     TEST_ASSERT_FALSE_MESSAGE(button, "the button beneath the list must not be clicked through it");
     for (int i = 0; i < UI_DROPDOWN_CLOSE_FRAMES + 1; i++) {
@@ -1220,7 +1222,7 @@ test_a_one_frame_tap_outside_an_open_list_closes_it_and_picks_nothing(void) {
     bool button = false;
     const input_t idle = {0};
     const int picked =
-        over_button_frame(&(input_t){.pressed = true, .released = true, .x = 5, .y = ui_height() - 5}, &button);
+        over_button_frame(&(input_t){.pressed = true, .released = true, .point = {5, ui_height() - 5}}, &button);
     TEST_ASSERT_EQUAL_INT(-1, picked);
     TEST_ASSERT_FALSE(button);
     over_button_frame(&idle, &button);
@@ -1238,13 +1240,13 @@ test_a_press_after_an_unseen_lift_still_submits(void) {
 
     /* The first press lands on empty space, so nothing is left hovered for
      * the second to fall back on. */
-    plain_button_frame(&(input_t){.down = true, .pressed = true, .x = 10, .y = ui_height() - 10});
-    plain_button_frame(&(input_t){.down = true, .x = 10, .y = ui_height() - 10});
+    plain_button_frame(&(input_t){.down = true, .pressed = true, .point = {10, ui_height() - 10}});
+    plain_button_frame(&(input_t){.down = true, .point = {10, ui_height() - 10}});
 
     const int x = BUTTON.x + BUTTON.w / 2;
     const int y = BUTTON.y + BUTTON.h / 2;
-    int submits = plain_button_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y});
-    submits += plain_button_frame(&(input_t){.down = true, .x = x, .y = y});
+    int submits = plain_button_frame(&(input_t){.down = true, .pressed = true, .point = {x, y}});
+    submits += plain_button_frame(&(input_t){.down = true, .point = {x, y}});
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, "the second press must land although the first lift was never seen");
 }
 
@@ -1262,8 +1264,8 @@ test_only_a_real_press_draws_a_button_pressed(void) {
 
     const int x = BUTTON.x + BUTTON.w / 2;
     const int y = BUTTON.y + BUTTON.h / 2;
-    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
-    const input_t hold = {.down = true, .x = x, .y = y};
+    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
+    const input_t hold = {.down = true, .point = {x, y}};
     widget_frame(&w, &press);
     TEST_ASSERT_EQUAL_MESSAGE(at_rest, canvas_hash("Widgets"), "hovered but not yet pressed must look at rest");
 
@@ -1271,7 +1273,7 @@ test_only_a_real_press_draws_a_button_pressed(void) {
     widget_frame(&w, &hold);
     const uint64_t pressed = canvas_hash("Widgets");
 
-    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t release = {.released = true, .point = {x, y}};
     widget_frame(&w, &release);
     widget_frame(&w, &idle);
     TEST_ASSERT_NOT_EQUAL_MESSAGE(at_rest, pressed, "a landed press must look pressed");
@@ -1294,10 +1296,10 @@ test_a_press_that_slides_onto_a_button_from_off_it_is_not_a_click(void) {
     const int by = BUTTON.y + BUTTON.h / 2;
     const int off_x = BUTTON.x - 60;
 
-    const input_t press_off = {.down = true, .pressed = true, .x = off_x, .y = by};
-    const input_t hold_off = {.down = true, .x = off_x, .y = by};
-    const input_t hold_on = {.down = true, .x = bx, .y = by};
-    const input_t release_on = {.released = true, .x = bx, .y = by};
+    const input_t press_off = {.down = true, .pressed = true, .point = {off_x, by}};
+    const input_t hold_off = {.down = true, .point = {off_x, by}};
+    const input_t hold_on = {.down = true, .point = {bx, by}};
+    const input_t release_on = {.released = true, .point = {bx, by}};
 
     bool hit = widget_frame(&w, &press_off);
     hit |= widget_frame(&w, &hold_off);
@@ -1456,7 +1458,7 @@ SUITE_READS(run_ui_widgets_suite, SAND_PACK);
 static void
 paint_menu_band(int row0, int row1, gfx_color_t* target) {
     (void)target;
-    draw_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(UI_BACKGROUND));
+    draw_rect(0, row0, GFX_WIDTH, row1 - row0, RGB565BE(UI_BACKGROUND));
     ui_replay_band(row0, row1);
 }
 
@@ -1608,7 +1610,7 @@ static const sand_options_t BAND_OPTIONS = {
 static void
 paint_options_band(int row0, int row1, gfx_color_t* target) {
     (void)target;
-    draw_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(UI_BACKGROUND));
+    draw_rect(0, row0, GFX_WIDTH, row1 - row0, RGB565BE(UI_BACKGROUND));
     ui_replay_band(row0, row1);
 }
 

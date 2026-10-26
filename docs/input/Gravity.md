@@ -1,10 +1,75 @@
 # Gravity
 
-`gravity_t` estimates unit down, linear acceleration, gyro bias, tilt strength and free fall.
+`gravity_t` estimates unit down, linear acceleration, gyro bias, in-plane strength and free fall.
 Gyro predicts motion; trusted acceleration corrects drift.
 Acceleration cannot distinguish gravity from other forces. See [axes](Motion-Axes.md) and [calibration](Motion-Calibration.md).
 
-## Example
+## App readers
+
+`input_gravity()` returns screen-axis g: x right, y down, z out.
+It is unit length while held and zero in free fall.
+`hypotf(g.x, g.y)` gives in-plane strength, matching `gravity_strength()`.
+
+No sensor gives gravity `(0,1,0)` and shake zero.
+A present sensor gives both as zero until its first reading.
+Unchanged or missed samples hold both estimates without stepping the filters.
+
+`input_shake()` returns the [shake reader](Shake.md)'s level, 0..1.
+Call both readers only on the frame thread.
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant Reader as Motion reader
+    App->>Reader: input_gravity or input_shake
+    alt New sample sequence
+        Reader->>Reader: Step both filters from newest sample
+    else Unchanged or missing sample
+        Reader->>Reader: Hold estimates or startup defaults
+    end
+    Reader-->>App: Requested value
+    App->>Reader: Read with the same sample
+    Reader-->>App: Cached values
+```
+
+Each new sample steps both filters on the first read, without an `input_poll()` call.
+The step uses clock time since the last update, capped at `GRAVITY_MAX_DT_US`.
+
+Apps that do not call either reader do no estimation work.
+The input module retains its filters across app switches.
+FIFO batches have one queue consumer and do not feed the shared readers.
+
+`GRAVITY_MIN_DIRECTION_STRENGTH` is the minimum in-plane strength for a meaningful direction.
+
+In development builds, `autana tune motion.log_ms 1000` logs the reader's
+smoothed shake magnitude in mg. Zero disables the log.
+
+## App example
+
+<!-- generated: input-gravity-shared-example check: python launcher/tools/gen/examples_doc.py --check -->
+```c
+/* Gravity: call from the frame thread's app update. */
+#include <math.h>
+#include "input/input.h"
+
+#define BALL_SPEED 0.1F /* pixels per ms at full strength */
+
+typedef struct {
+    float ball_x, ball_y, strength, shake;
+} gravity_shared_example_t;
+
+void
+gravity_shared_example(gravity_shared_example_t* s, uint32_t dt_ms) {
+    const vec3f_t down = input_gravity();
+    s->strength = hypotf(down.x, down.y);
+    s->shake = input_shake();
+    s->ball_x += down.x * BALL_SPEED * dt_ms;
+    s->ball_y += down.y * BALL_SPEED * dt_ms;
+}
+```
+<!-- /generated: input-gravity-shared-example -->
+
+## FIFO example
 
 <!-- generated: input-gravity-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
@@ -12,7 +77,7 @@ Acceleration cannot distinguish gravity from other forces. See [axes](Motion-Axe
 #include "input/motion/gravity.h"
 #include "input/input.h"
 
-#define BALL_SPEED 0.1F /* pixels per ms at full tilt */
+#define BALL_SPEED 0.1F /* pixels per ms at full strength */
 
 typedef struct {
     gravity_t gravity;

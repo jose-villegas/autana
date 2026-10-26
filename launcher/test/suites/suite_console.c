@@ -20,10 +20,10 @@
 
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_inject_parse.h"
-#include "console/verbs/console_navigation_parse.h"
-#include "console/verbs/console_perf_parse.h"
-#include "console/verbs/console_sound_parse.h"
+#include "input/console/console_inject_parse.h"
+#include "profile/console/console_perf_parse.h"
+#include "shell/console/console_navigation_parse.h"
+#include "sound/console/console_sound_parse.h"
 
 #define REPLIES_MAX 8
 
@@ -682,17 +682,17 @@ test_append_char_the_tail_after_an_overflow_is_not_a_line_of_its_own(void) {
 static void
 test_touch_line_carries_its_sample(void) {
     bool down = false;
-    int x = 0, y = 0;
+    vec2i_t point = {0};
 
-    TEST_ASSERT_TRUE(console_touch_parse("down 184 224", &down, &x, &y));
+    TEST_ASSERT_TRUE(console_touch_parse("down 184 224", &down, &point));
     TEST_ASSERT_TRUE(down);
-    TEST_ASSERT_EQUAL_INT(184, x);
-    TEST_ASSERT_EQUAL_INT(224, y);
+    TEST_ASSERT_EQUAL_INT(184, point.x);
+    TEST_ASSERT_EQUAL_INT(224, point.y);
 
-    TEST_ASSERT_TRUE(console_touch_parse("up 7 9", &down, &x, &y));
+    TEST_ASSERT_TRUE(console_touch_parse("up 7 9", &down, &point));
     TEST_ASSERT_FALSE(down);
-    TEST_ASSERT_EQUAL_INT(7, x);
-    TEST_ASSERT_EQUAL_INT(9, y);
+    TEST_ASSERT_EQUAL_INT(7, point.x);
+    TEST_ASSERT_EQUAL_INT(9, point.y);
 }
 
 /* A half-read sample is worse than none: the caller would move a finger
@@ -700,14 +700,14 @@ test_touch_line_carries_its_sample(void) {
 static void
 test_a_malformed_touch_line_changes_nothing(void) {
     bool down = true;
-    int x = 11, y = 22;
+    vec2i_t point = {11, 22};
 
-    TEST_ASSERT_FALSE(console_touch_parse("left 1 2", &down, &x, &y));
-    TEST_ASSERT_FALSE(console_touch_parse("down 1", &down, &x, &y));
-    TEST_ASSERT_FALSE(console_touch_parse(" ", &down, &x, &y));
+    TEST_ASSERT_FALSE(console_touch_parse("left 1 2", &down, &point));
+    TEST_ASSERT_FALSE(console_touch_parse("down 1", &down, &point));
+    TEST_ASSERT_FALSE(console_touch_parse(" ", &down, &point));
     TEST_ASSERT_TRUE(down);
-    TEST_ASSERT_EQUAL_INT(11, x);
-    TEST_ASSERT_EQUAL_INT(22, y);
+    TEST_ASSERT_EQUAL_INT(11, point.x);
+    TEST_ASSERT_EQUAL_INT(22, point.y);
 }
 
 /* The reader task assembles a line into a buffer this long, so a sample
@@ -743,17 +743,17 @@ test_a_tap_line_uses_the_short_default_duration(void) {
     console_touch_gesture_t gesture;
 
     TEST_ASSERT_TRUE(console_tap_parse("184 224", &gesture));
-    TEST_ASSERT_EQUAL_INT(184, gesture.x0);
-    TEST_ASSERT_EQUAL_INT(224, gesture.y0);
+    TEST_ASSERT_EQUAL_INT(184, gesture.from.x);
+    TEST_ASSERT_EQUAL_INT(224, gesture.from.y);
     TEST_ASSERT_EQUAL_UINT32(CONSOLE_TAP_DEFAULT_MS, gesture.ms);
 }
 
 static void
 test_a_tap_line_rejects_a_duration(void) {
-    console_touch_gesture_t gesture = {.x0 = 7, .ms = 9};
+    console_touch_gesture_t gesture = {.from = {7, 0}, .ms = 9};
 
     TEST_ASSERT_FALSE(console_tap_parse("10 20 5000", &gesture));
-    TEST_ASSERT_EQUAL_INT(7, gesture.x0);
+    TEST_ASSERT_EQUAL_INT(7, gesture.from.x);
     TEST_ASSERT_EQUAL_UINT32(9, gesture.ms);
 }
 
@@ -762,20 +762,20 @@ test_a_drag_line_carries_both_endpoints_and_duration(void) {
     console_touch_gesture_t gesture;
 
     TEST_ASSERT_TRUE(console_drag_parse("1 2 300 400 250", &gesture));
-    TEST_ASSERT_EQUAL_INT(1, gesture.x0);
-    TEST_ASSERT_EQUAL_INT(2, gesture.y0);
-    TEST_ASSERT_EQUAL_INT(300, gesture.x1);
-    TEST_ASSERT_EQUAL_INT(400, gesture.y1);
+    TEST_ASSERT_EQUAL_INT(1, gesture.from.x);
+    TEST_ASSERT_EQUAL_INT(2, gesture.from.y);
+    TEST_ASSERT_EQUAL_INT(300, gesture.to.x);
+    TEST_ASSERT_EQUAL_INT(400, gesture.to.y);
     TEST_ASSERT_EQUAL_UINT32(250, gesture.ms);
 }
 
 static void
 test_a_bad_gesture_line_changes_nothing(void) {
-    console_touch_gesture_t gesture = {.x0 = 7, .ms = 9};
+    console_touch_gesture_t gesture = {.from = {7, 0}, .ms = 9};
 
     TEST_ASSERT_FALSE(console_press_parse("1 2 0", &gesture));
     TEST_ASSERT_FALSE(console_drag_parse("1 2 3", &gesture));
-    TEST_ASSERT_EQUAL_INT(7, gesture.x0);
+    TEST_ASSERT_EQUAL_INT(7, gesture.from.x);
     TEST_ASSERT_EQUAL_UINT32(9, gesture.ms);
 }
 

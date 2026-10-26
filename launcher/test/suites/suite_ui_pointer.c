@@ -29,8 +29,8 @@ make_input(bool down, bool pressed, bool released, int x, int y) {
     in.down = down;
     in.pressed = pressed;
     in.released = released;
-    in.x = x;
-    in.y = y;
+    in.point.x = x;
+    in.point.y = y;
     return in;
 }
 
@@ -62,16 +62,16 @@ test_a_tap_hovers_before_pressing(void) {
         const int n = step(true, true, false, 10, 20);
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, n, "a hover frame carries a move and nothing else");
         TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
-        TEST_ASSERT_EQUAL_INT(10, ev[0].x);
-        TEST_ASSERT_EQUAL_INT(20, ev[0].y);
+        TEST_ASSERT_EQUAL_INT(10, ev[0].point.x);
+        TEST_ASSERT_EQUAL_INT(20, ev[0].point.y);
     }
 
     const int n = step(true, false, false, 10, 20);
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, n, "the down follows the hover frames, with its own move");
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
-    TEST_ASSERT_EQUAL_INT(10, ev[1].x);
-    TEST_ASSERT_EQUAL_INT(20, ev[1].y);
+    TEST_ASSERT_EQUAL_INT(10, ev[1].point.x);
+    TEST_ASSERT_EQUAL_INT(20, ev[1].point.y);
 }
 
 /* While the caller reports the hover root unsettled, hover has not been
@@ -133,14 +133,14 @@ test_a_drag_stays_down_across_moves_then_lifts_once(void) {
     n = step(true, false, false, 15, 25);
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, n, "a held drag must move, not press again or let go");
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
-    TEST_ASSERT_EQUAL_INT(15, ev[0].x);
-    TEST_ASSERT_EQUAL_INT(25, ev[0].y);
+    TEST_ASSERT_EQUAL_INT(15, ev[0].point.x);
+    TEST_ASSERT_EQUAL_INT(25, ev[0].point.y);
 
     n = step(true, false, false, 30, 40);
     TEST_ASSERT_EQUAL_INT(1, n);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
-    TEST_ASSERT_EQUAL_INT(30, ev[0].x);
-    TEST_ASSERT_EQUAL_INT(40, ev[0].y);
+    TEST_ASSERT_EQUAL_INT(30, ev[0].point.x);
+    TEST_ASSERT_EQUAL_INT(40, ev[0].point.y);
 
     n = step(false, false, true, 30, 40);
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, n, "the lift must carry a move and an up");
@@ -156,14 +156,14 @@ test_an_aim_stages_the_press_but_not_later_drag_moves(void) {
     press_through_hover(80, 200);
     int n = step(true, false, false, 80, 200);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
-    TEST_ASSERT_EQUAL_INT(100, ev[0].x);
+    TEST_ASSERT_EQUAL_INT(100, ev[0].point.x);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
-    TEST_ASSERT_EQUAL_INT(100, ev[1].x);
+    TEST_ASSERT_EQUAL_INT(100, ev[1].point.x);
 
     n = step(true, false, false, 140, 200);
     TEST_ASSERT_EQUAL_INT(1, n);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
-    TEST_ASSERT_EQUAL_INT(140, ev[0].x);
+    TEST_ASSERT_EQUAL_INT(140, ev[0].point.x);
 }
 
 static void
@@ -271,8 +271,8 @@ test_idle_parks_the_pointer_off_screen(void) {
     int n = step(false, false, false, 0, 0);
     TEST_ASSERT_EQUAL_INT(1, n);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
-    TEST_ASSERT_EQUAL_INT(-1, ev[0].x);
-    TEST_ASSERT_EQUAL_INT(-1, ev[0].y);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_NOWHERE.x, ev[0].point.x);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_NOWHERE.y, ev[0].point.y);
 }
 
 /*
@@ -302,7 +302,7 @@ test_a_vertical_drag_on_scrollable_content_scrolls_and_never_presses(void) {
         downs += count_kind(n, UI_POINTER_DOWN);
         for (int i = 0; i < n; i++) {
             if (ev[i].kind == UI_POINTER_SCROLL) {
-                scrolled_y += ev[i].y;
+                scrolled_y += ev[i].point.y;
             }
         }
         y -= 10;
@@ -335,7 +335,7 @@ test_a_tap_with_a_small_wobble_on_scrollable_content_presses_on_release(void) {
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_UP, ev[2].kind);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(200, ev[1].y, "the deferred press lands where the finger went down");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(200, ev[1].point.y, "the deferred press lands where the finger went down");
 }
 
 static void
@@ -354,7 +354,7 @@ test_a_sideways_drag_on_scrollable_content_presses_so_a_slider_still_moves(void)
     n = step(true, false, false, 140, 203);
     TEST_ASSERT_EQUAL_INT(1, n);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
-    TEST_ASSERT_EQUAL_INT(140, ev[0].x);
+    TEST_ASSERT_EQUAL_INT(140, ev[0].point.x);
 }
 
 void

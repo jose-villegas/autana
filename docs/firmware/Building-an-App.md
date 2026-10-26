@@ -28,14 +28,15 @@ the shell, not `CMakeLists.txt`:
 /* Hello: the shell calls enter, frame and exit. */
 #include "app/app.h"
 #include "draw/draw.h"
+#include "image/pixel/rgb565.h"
 
 static void
 yours_enter(void) { /* reset state */ }
 
 static void
 yours_frame(uint32_t dt_ms, const input_t* input) {
-    draw_clear(gfx_rgb(0x101010));
-    draw_text(20, 20, "hello", gfx_rgb(0xFFFFFF));
+    draw_clear(RGB565BE(0x101010));
+    draw_text(20, 20, "hello", RGB565BE(0xFFFFFF));
 }
 
 static void
@@ -156,6 +157,7 @@ sequenceDiagram
         S->>G: queue the home hint, home_gesture only
     end
     S->>A: invalidate() if a full redraw is pending
+    S->>S: the systems' poll phase
     S->>A: frame(dt_ms, input)
     A->>G: draw_* calls
     alt band mode: GFX_LAYOUT_BANDS
@@ -186,6 +188,7 @@ sequenceDiagram
     S->>P: gfx_present_wait()
     S->>S: the systems' compose phase
     Note over S,G: a scene drawn at exactly half marks the frame expanded, so the UI bins for the present to replay
+    S->>S: the systems' poll phase
     S->>A: frame(dt_ms, input)
     alt band mode: GFX_LAYOUT_BANDS
         S->>G: gfx_band_run(draw_band, ui_replay_band)

@@ -181,6 +181,94 @@ class PipelineFrameTableTests(unittest.TestCase):
                     self.assertEqual(handle.get_facecolor(), bar.get_facecolor())
                     self.assertEqual(handle.get_alpha(), bar.get_alpha())
 
+    # One lap costs 100 ns: 1000 starts are 0.1 ms of a lap's time, 10000 are 1 ms.
+    LAP_CAPTURE = (
+        "I (1) shell: ms/frame avg/worst: stage.first 1/1  stage.outer 5.00/5.2  stage.inner 40.00/41 | total 46\n"
+        "I (1) shell: ms/frame laps: lap 100 ns | cpu0 stage.outer.cluster 4.500/1000 stage.outer.wait 0.450/0"
+        " stage.inner.set_up 15.000/10000 stage.inner.fill 24.700/0"
+        " | cpu1 stage.outer.cluster 4.800/0 stage.inner.set_up 15.500/0\n"
+        "I (2) shell: ms/frame avg/worst: stage.first 1/1  stage.outer 5.00/5.2  stage.inner 40.00/41 | total 46\n"
+        "I (2) shell: ms/frame laps: lap 100 ns | cpu0 stage.outer.cluster 4.500/1000 stage.outer.wait 0.450/0"
+        " stage.inner.set_up 15.000/10000 stage.inner.fill 24.700/0 stage.inner.wait 0.200/0"
+        " | cpu1 stage.outer.cluster 4.800/0\n")
+
+    def write_laps(self, root, text=LAP_CAPTURE):
+        path = pathlib.Path(root) / "laps.log"
+        path.write_text(text)
+        return path
+
+    def test_a_lap_missing_from_a_window_counts_as_zero_and_cores_stay_apart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stages = frame_stages.sub_stages(self.write_laps(directory))
+        total, per_core, untimed = stages["stage.inner"]
+        self.assertEqual(total, 40)
+        self.assertEqual(list(per_core), ["set_up", "fill", "wait", frame_stages.LAPS_LABEL])
+        self.assertAlmostEqual(per_core["set_up"][0], 14.0)
+        self.assertAlmostEqual(per_core["set_up"][1], 7.75)
+        self.assertEqual(per_core[frame_stages.LAPS_LABEL], {0: 1.0, 1: 0.0})
+        self.assertAlmostEqual(per_core["wait"][0], 0.1)
+        self.assertAlmostEqual(untimed, 40 - 14 - 24.7 - 0.1 - 1.0)
+        self.assertAlmostEqual(stages["stage.outer"][2], 0.05)
+
+    def assert_capture_fails(self, text, message):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, message):
+                frame_stages.sub_stages(self.write_laps(directory, text))
+
+    def test_laps_leaving_too_much_of_a_parent_untimed_fail(self):
+        self.assert_capture_fails(self.LAP_CAPTURE.replace("stage.inner.fill 24.700/0", "stage.inner.fill 20.000/0"),
+                                  "stage.inner's 40.00 ms untimed")
+
+    def test_laps_adding_up_past_their_parent_fail_too(self):
+        self.assert_capture_fails(self.LAP_CAPTURE.replace("stage.inner.fill 24.700/0", "stage.inner.fill 26.000/0"),
+                                  "untimed")
+
+    def test_a_lap_naming_no_bracket_of_the_capture_fails(self):
+        self.assert_capture_fails(self.LAP_CAPTURE.replace("stage.inner.fill", "stage.gone.fill"),
+                                  "inside no bracket of the capture: stage.gone")
+
+    def test_a_capture_without_laps_fails(self):
+        self.assert_capture_fails("ms/frame avg/worst: stage.outer 5/5  stage.inner 40/40 | total 45\n", "no lap windows")
+
+    def test_sub_stage_bars_add_up_to_their_parent_and_keep_a_colour_per_phase(self):
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import to_rgba
+        with tempfile.TemporaryDirectory() as directory, patch("matplotlib.pyplot.close", wraps=plt.close) as close:
+            stages = frame_stages.sub_stages(self.write_laps(directory))
+            frame_stages.sub_stage_chart(stages, pathlib.Path(directory) / "inside.png")
+            axes = close.call_args_list[0].args[0].axes
+        for axis, (parent, (total, per_core, untimed)) in zip(axes, stages.items()):
+            with self.subTest(parent=parent):
+                self.assertEqual(axis.get_title(loc="left"), parent)
+                values = [cores[0] for cores in per_core.values()] + [untimed]  # laps' own cost included
+                ends = [sum(values[:i + 1]) for i in range(len(values))]
+                for bar in axis.patches:  # a segment under half a percent is left out, never shifts the rest
+                    self.assertTrue(any(abs(bar.get_x() + bar.get_width() - end) < 1e-9 for end in ends))
+                self.assertAlmostEqual(ends[-1], total)
+                self.assertIn(f"{total:.1f} ms", [text.get_text() for text in axis.texts])
+        colours = [{text.get_text().split()[0]: handle.get_facecolor()
+                    for text, handle in zip(axis.get_legend().texts, axis.get_legend().legend_handles)}
+                   for axis in axes]
+        self.assertNotEqual(colours[1]["set_up"], colours[0]["cluster"])
+        self.assertEqual(colours[0]["untimed"], colours[1]["untimed"])
+        self.assertEqual(colours[1][frame_stages.LAPS_LABEL][:3], to_rgba(frame_stages.LAPS_COLOUR)[:3])
+
+    def test_the_sub_stages_sit_inline_and_the_debug_views_fold_away(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stages = frame_stages.sub_stages(self.write_laps(directory))
+        inside = frame_stages.sub_stage_table(stages, 2, "frame.sub-stages.png")
+        self.assertIn("| stage.inner.set_up | 14.00 | 7.75 | 35% |", inside)
+        self.assertIn(f"| stage.inner {frame_stages.LAPS_LABEL} | 1.00 | 0.00 | 2% |", inside)
+        self.assertIn("| stage.inner | 40.00 |  | 100% |", inside)
+        self.assertIn("mean of 2 lap windows", inside)
+        base = {"stage.a": 40.0}
+        body = frame_stages.table(["stage.a"], base, {"depth": {"stage.a": 1.0}}, ["depth"], [1, 1], "frame.png",
+                                  inside)
+        views = body.index("<summary>Debug views")
+        self.assertLess(body.index("![Frame stages as shipped]"), body.index("![Inside transform and draw]"))
+        self.assertLess(body.index("![Inside transform and draw]"), views)
+        self.assertGreater(body.index("![Frame stages with the depth view]"), views)
+
     def test_view_names_come_from_the_view_table(self):
         names = frame_stages.view_names()
         self.assertEqual(names, ["depth", "tiles", "motion", "meshlets", "cull"])

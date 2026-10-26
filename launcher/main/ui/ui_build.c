@@ -307,11 +307,9 @@ ui_init(void) {
  * LOGICAL ones, so a touch needs the inverse transform first.
  */
 
-void
-ui_to_logical(int x, int y, int* lx, int* ly) {
-    const vec2i_t logical = affine2x_map_pixel(&inverse, (vec2i_t){x, y});
-    *lx = logical.x;
-    *ly = logical.y;
+vec2i_t
+ui_to_logical(vec2i_t point) {
+    return affine2x_map_pixel(&inverse, point);
 }
 
 /* Mapped before ui_pointer_step() rather than after, so that its "vertical
@@ -320,17 +318,18 @@ ui_to_logical(int x, int y, int* lx, int* ly) {
 static void
 feed_input(const input_t* input) {
     input_t logical = *input;
-    ui_to_logical(input->x, input->y, &logical.x, &logical.y);
+    logical.point = ui_to_logical(input->point);
     if (logical.pressed) {
-        const mu_Vec2 aim = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
+        const mu_Vec2 aim =
+            ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.point.x, logical.point.y), reach);
         ui_pointer_aim(&ui_pointer_state, (vec2i_t){aim.x, aim.y});
     }
     /* The lift snaps like the press, so a control pressed by a snap fires on
      * its release. */
     if (logical.released) {
-        const mu_Vec2 lift = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
-        logical.x = lift.x;
-        logical.y = lift.y;
+        const mu_Vec2 lift =
+            ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.point.x, logical.point.y), reach);
+        logical.point = (vec2i_t){lift.x, lift.y};
     }
     ui_bridge_feed(&ui_ctx, &ui_pointer_state, &logical);
 }

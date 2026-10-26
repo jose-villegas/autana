@@ -12,10 +12,11 @@
 #include "gfx/present/gfx_present_guard.h"
 #include "gfx/present/gfx_test.h"
 #include "heap_arena.h"
+#include "image/pixel/rgb565.h"
 #include "testkit/cleanup.h"
 
-#define FRAME_COLOUR GFX_RGB(0x204060)
-#define CLEAR_COLOUR GFX_RGB(0x102030)
+#define FRAME_COLOUR RGB565BE(0x204060)
+#define CLEAR_COLOUR RGB565BE(0x102030)
 
 static void
 fixture(void) {
@@ -254,8 +255,8 @@ test_doc_double_fb_clears_and_exits(void) {
     gfx_present();
     draw_clear(FRAME_COLOUR);
     gfx_present();
-    TEST_ASSERT_TRUE(gfx_framebuffer_holds(gfx_rgb(0x000000)));
-    TEST_ASSERT_TRUE(back_buffer_is(gfx_rgb(0x000000)));
+    TEST_ASSERT_TRUE(gfx_framebuffer_holds(RGB565BE(0x000000)));
+    TEST_ASSERT_TRUE(back_buffer_is(RGB565BE(0x000000)));
     effect_exit();
     TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_FULL_FB, gfx_mode_current()->layout);
     draw_pixel(0, 0, FRAME_COLOUR);

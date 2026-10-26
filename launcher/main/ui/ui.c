@@ -45,6 +45,7 @@
 #include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_target.h"
 #include "hash/name_hash64.h"
+#include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/input/ui_bridge.h"
@@ -114,7 +115,7 @@ icon_fill_emit(void* ctx_, recti_t rect) {
  * place a command's colour crosses into gfx's. */
 static gfx_color_t
 mu_color_to_gfx(mu_Color c) {
-    return gfx_rgb(ui_rgb_value(c));
+    return RGB565BE(ui_rgb_value(c));
 }
 
 static void
@@ -146,15 +147,13 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
      * label-drawing code solves for itself, ported rather than called
      * directly because ui/ sits below apps/, so reaching into an
      * app's source would be a backwards layering dependency. */
-    int mx;
-    int my;
-    ui_text_glyph0_origin(font, ui_recti_from_mu(box), quarter, scale, &mx, &my);
+    const vec2i_t origin = ui_text_glyph0_origin(font, ui_recti_from_mu(box), quarter, scale);
 
     /* A text colour's alpha is dithered coverage. No halo has a
      * dithered form, so a fading string is drawn as ink alone. */
     if (ink.a < 255) {
         if (ink.a > 0) {
-            draw_text_font_dither(mx, my, cmd->text.str, mu_color_to_gfx(ink), scale, quarter, font, ink.a);
+            draw_text_font_dither(origin.x, origin.y, cmd->text.str, mu_color_to_gfx(ink), scale, quarter, font, ink.a);
         }
         return;
     }
@@ -163,8 +162,8 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
         /* Ink follows the halo so the outline does not cover glyphs. */
         const gfx_color_t halo_color = mu_color_to_gfx(halo);
         const gfx_color_t ink_color = mu_color_to_gfx(ink);
-        draw_text_font_halo(mx, my, cmd->text.str, halo_color, scale, quarter, font);
-        draw_text_font(mx, my, cmd->text.str, ink_color, scale, quarter, font);
+        draw_text_font_halo(origin.x, origin.y, cmd->text.str, halo_color, scale, quarter, font);
+        draw_text_font(origin.x, origin.y, cmd->text.str, ink_color, scale, quarter, font);
         return;
     }
 
@@ -177,13 +176,13 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
         /* THE HALO OFFSET IS ADDED AFTER THE MAPPING, NOT BEFORE.
          * passes[i].dx/dy is a SCREEN-SPACE offset; see ui_style.h's
          * OUTLINED/SHADOWED passes, which sit a halo a fixed pixel
-         * count from the glyph on the panel. (mx, my) already IS a
+         * count from the glyph on the panel. origin already IS a
          * screen position. Transforming (dx, dy) itself would instead
          * rotate the halo with the glyph: a shadow meant to fall
          * down-and-right on screen would fall down-and-right in
          * LOGICAL space instead, a different physical direction once
          * turn is nonzero. */
-        draw_text_font(mx + passes[i].dx, my + passes[i].dy, cmd->text.str, color, scale, quarter, font);
+        draw_text_font(origin.x + passes[i].dx, origin.y + passes[i].dy, cmd->text.str, color, scale, quarter, font);
     }
 }
 
@@ -365,7 +364,7 @@ clear_vanished_canvases(uint32_t background_rgb) {
     const int n = take_vanished_canvases(vanished);
     for (int i = 0; i < n; i++) {
         if (background_rgb != UI_NO_BACKGROUND) {
-            draw_rect(vanished[i].x, vanished[i].y, vanished[i].w, vanished[i].h, gfx_rgb(background_rgb));
+            draw_rect(vanished[i].x, vanished[i].y, vanished[i].w, vanished[i].h, RGB565BE(background_rgb));
         } else {
             gfx_request_full_redraw();
         }
@@ -386,7 +385,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
          * marks its own bands, so nothing else needs marking here. */
         if (background_rgb != UI_NO_BACKGROUND) {
             const mu_Rect phys = canvas_physical_rect(cnt);
-            draw_rect(phys.x, phys.y, phys.w, phys.h, gfx_rgb(background_rgb));
+            draw_rect(phys.x, phys.y, phys.w, phys.h, RGB565BE(background_rgb));
         }
 
         paint_canvas(cnt);
@@ -767,13 +766,13 @@ replay_full_band(void) {
         const mu_Container* cnt = ui_ctx.root_list.items[i];
         if (ui_band_background != UI_NO_BACKGROUND) {
             const mu_Rect r = canvas_physical_rect(cnt);
-            draw_rect(r.x, r.y, r.w, r.h, gfx_rgb(ui_band_background));
+            draw_rect(r.x, r.y, r.w, r.h, RGB565BE(ui_band_background));
         }
         paint_canvas(cnt);
     }
     for (int i = 0; i < replay_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];
-        draw_rect(r->rect.x, r->rect.y, r->rect.w, r->rect.h, gfx_rgb(r->rgb));
+        draw_rect(r->rect.x, r->rect.y, r->rect.w, r->rect.h, RGB565BE(r->rgb));
     }
 }
 

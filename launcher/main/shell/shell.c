@@ -25,6 +25,7 @@
 #include "input/touch/gesture.h"
 #include "input/touch/touch.h"
 #include "profile/frame_cost.h"
+#include "profile/frame_laps.h"
 #include "profile/frame_watch.h"
 #include "services/build_id.h"
 #include "shell/shell.h"
@@ -36,14 +37,14 @@
 #include "console/console.h"
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_freeze.h"
-#include "console/verbs/console_navigation.h"
-#include "console/verbs/console_navigation_parse.h"
-#include "console/verbs/console_screenshot.h"
+#include "shell/console/console_freeze.h"
+#include "shell/console/console_navigation.h"
+#include "shell/console/console_navigation_parse.h"
+#include "shell/console/console_screenshot.h"
 #endif
 
 #if CONFIG_LAUNCHER_SELFTEST
-#include "console/verbs/console_runsuite.h"
+#include "selftest/console_runsuite.h"
 #include "suites.h"
 #include "unity.h"
 #endif
@@ -93,6 +94,12 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
         if (frame_cost_take_report(*frames, cost, sizeof cost) > 0) {
             ESP_LOGI(TAG, "ms/frame avg/worst: %s", cost);
         }
+#if FRAME_LAPS_ENABLED
+        static char laps[FRAME_LAPS_REPORT_MAX];
+        if (frame_laps_take_report(*frames, laps, sizeof laps) > 0) {
+            ESP_LOGI(TAG, "ms/frame laps: %s", laps);
+        }
+#endif
         *frames = 0;
         drawn = 0;
         *window_start = now_us;

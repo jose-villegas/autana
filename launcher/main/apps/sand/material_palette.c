@@ -16,18 +16,22 @@
  */
 #include "material_palette.h"
 
+#include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "sand_palette256.h" /* see material_palette256_index() below */
 #include "ui/ui.h"
 
 /* `sh` of the way from `lo` to `hi`, out of 15. */
-#define LERP_RGB(lo, hi, sh) GFX_LERP_RGB888(lo, hi, sh, 15)
+#define LERP_RGB(lo, hi, sh) RGB888_LERP(lo, hi, sh, 15)
 
 #define LERP(lo, hi, sh)     LERP_RGB(lo, hi, sh)
 
 /* glass MAT_GLASS case needs small tilt for finer gradient than palette steps */
-#define LERP8(lo, hi, fr)    GFX_LERP_RGB888(lo, hi, fr, 255)
+#define LERP8(lo, hi, fr)    RGB888_LERP(lo, hi, fr, 255)
+
+#define SHADE(lo, hi, t)     RGB565BE(LERP(lo, hi, t))
 
 /* One shade per variant, dry to wet; the saturated level takes the full wet
  * colour. */
@@ -35,14 +39,13 @@
 #define DIRT_WET             0x3A2A18
 
 #define SOIL_SHADES                                                                                                    \
-    GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 0)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 1)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 2)),  \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 3)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 4)),                                    \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 5)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 6)),                                    \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 7)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 8)),                                    \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 9)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 10)),                                   \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 11)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 12)),                                  \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 13)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 15)), /* variant 14: saturated */      \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 15)) /* variant 15: unused - same as 14 */
+    SHADE(DIRT_DRY, DIRT_WET, 0), SHADE(DIRT_DRY, DIRT_WET, 1), SHADE(DIRT_DRY, DIRT_WET, 2),                          \
+        SHADE(DIRT_DRY, DIRT_WET, 3), SHADE(DIRT_DRY, DIRT_WET, 4), SHADE(DIRT_DRY, DIRT_WET, 5),                      \
+        SHADE(DIRT_DRY, DIRT_WET, 6), SHADE(DIRT_DRY, DIRT_WET, 7), SHADE(DIRT_DRY, DIRT_WET, 8),                      \
+        SHADE(DIRT_DRY, DIRT_WET, 9), SHADE(DIRT_DRY, DIRT_WET, 10), SHADE(DIRT_DRY, DIRT_WET, 11),                    \
+        SHADE(DIRT_DRY, DIRT_WET, 12), SHADE(DIRT_DRY, DIRT_WET, 13),                                                  \
+        SHADE(DIRT_DRY, DIRT_WET, 15), /* variant 14: saturated */                                                     \
+        SHADE(DIRT_DRY, DIRT_WET, 15)  /* variant 15: unused - same as 14 */
 
 /* Ember ramp: dying char through glowing orange, redder and darker than
  * fire's yellow-white. See material_colours() for speckling. */
@@ -50,10 +53,10 @@
 #define WOOD_CHAR    0x2A0A00
 #define WOOD_GLOW    0xFF7A28
 
-#define WOOD_BURN(i) GFX_RGB(LERP(WOOD_CHAR, WOOD_GLOW, ((i) - 1) * 15 / 14))
+#define WOOD_BURN(i) SHADE(WOOD_CHAR, WOOD_GLOW, ((i) - 1) * 15 / 14)
 
 #define WOOD_SHADES                                                                                                    \
-    GFX_RGB(WOOD_UNLIT), WOOD_BURN(1), WOOD_BURN(2), WOOD_BURN(3), WOOD_BURN(4), WOOD_BURN(5), WOOD_BURN(6),           \
+    RGB565BE(WOOD_UNLIT), WOOD_BURN(1), WOOD_BURN(2), WOOD_BURN(3), WOOD_BURN(4), WOOD_BURN(5), WOOD_BURN(6),          \
         WOOD_BURN(7), WOOD_BURN(8), WOOD_BURN(9), WOOD_BURN(10), WOOD_BURN(11), WOOD_BURN(12), WOOD_BURN(13),          \
         WOOD_BURN(14), WOOD_BURN(15)
 
@@ -104,7 +107,7 @@ enum {
     STONE_COLOURS(12, 13, 14, 15),
 };
 
-#define STONE_AT(v) GFX_RGB(STONE_RGB_##v)
+#define STONE_AT(v) RGB565BE(STONE_RGB_##v)
 
 #define STONE_SHADES                                                                                                   \
     STONE_AT(0), STONE_AT(1), STONE_AT(2), STONE_AT(3), STONE_AT(4), STONE_AT(5), STONE_AT(6), STONE_AT(7),            \
@@ -137,7 +140,7 @@ enum {
              / (SAND_SHOCK_HEAT < MATERIAL_VARIANTS - 1 ? MATERIAL_VARIANTS - 1 - SAND_SHOCK_HEAT : 1))
 
 #define GLASS_AT(v)                                                                                                    \
-    GFX_RGB((v) <= SAND_AMBIENT_HEAT ? GLASS_COOL(v) : (v) < SAND_SHOCK_HEAT ? GLASS_WARM(v) : GLASS_HOT(v))
+    RGB565BE((v) <= SAND_AMBIENT_HEAT ? GLASS_COOL(v) : (v) < SAND_SHOCK_HEAT ? GLASS_WARM(v) : GLASS_HOT(v))
 
 #define GLASS_SHADES                                                                                                   \
     GLASS_AT(0), GLASS_AT(1), GLASS_AT(2), GLASS_AT(3), GLASS_AT(4), GLASS_AT(5), GLASS_AT(6), GLASS_AT(7),            \
@@ -150,12 +153,10 @@ _Static_assert(SAND_AMBIENT_HEAT > 0 && SAND_AMBIENT_HEAT < SAND_SHOCK_HEAT && S
 #define SAND_PALE 0xF2CE90
 
 #define SAND_DUNE_RAMP                                                                                                 \
-    GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 0)), GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 1)),                                    \
-        GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 2)), GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 4)),                                \
-        GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 5)), GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 6)),                                \
-        GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 8)), GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 9)),                                \
-        GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 10)), GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 12)),                              \
-        GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 13)), GFX_RGB(LERP(SAND_DUNE, SAND_PALE, 15))
+    SHADE(SAND_DUNE, SAND_PALE, 0), SHADE(SAND_DUNE, SAND_PALE, 1), SHADE(SAND_DUNE, SAND_PALE, 2),                    \
+        SHADE(SAND_DUNE, SAND_PALE, 4), SHADE(SAND_DUNE, SAND_PALE, 5), SHADE(SAND_DUNE, SAND_PALE, 6),                \
+        SHADE(SAND_DUNE, SAND_PALE, 8), SHADE(SAND_DUNE, SAND_PALE, 9), SHADE(SAND_DUNE, SAND_PALE, 10),               \
+        SHADE(SAND_DUNE, SAND_PALE, 12), SHADE(SAND_DUNE, SAND_PALE, 13), SHADE(SAND_DUNE, SAND_PALE, 15)
 
 /* STARTING POINTS on a 16-step colour cycle, close in hue and lightness.
  * Shared with SAND_CULLET_RAMP's phase-0 colours below, so a build that
@@ -168,13 +169,13 @@ _Static_assert(SAND_AMBIENT_HEAT > 0 && SAND_AMBIENT_HEAT < SAND_SHOCK_HEAT && S
 #define CULLET_CYCLE_D      0xE2F0D2 /* mint */
 
 /* What a glinting grain shows: full white, the panel's highest radiance. */
-#define CULLET_GLINT        GFX_RGB(0xFFFFFF)
+#define CULLET_GLINT        RGB565BE(0xFFFFFF)
 
 /* Odds one in 192. Modulo for flexibility. More glints with lower value. */
 #define CULLET_GLINT_ONE_IN 192
 
 #define SAND_CULLET_RAMP                                                                                               \
-    GFX_RGB(CULLET_CYCLE_A), GFX_RGB(CULLET_CYCLE_B), GFX_RGB(CULLET_CYCLE_C), GFX_RGB(CULLET_CYCLE_D)
+    RGB565BE(CULLET_CYCLE_A), RGB565BE(CULLET_CYCLE_B), RGB565BE(CULLET_CYCLE_C), RGB565BE(CULLET_CYCLE_D)
 
 /* Define CULLET_CYCLE_LEN in material.h for host tests. Array safety depends
  * on these properties. */
@@ -183,24 +184,21 @@ _Static_assert((CULLET_CYCLE_LEN & (CULLET_CYCLE_LEN - 1)) == 0,
 _Static_assert(CULLET_CYCLE_LEN % SAND_CULLET_SHADES == 0,
                "each cullet shade needs to land on an exact quarter-turn of the cycle");
 
-#define CULLET_PALE(lo, hi, t) GFX_RGB(LERP(lo, hi, t))
-
 static const gfx_color_t cullet_cycle[CULLET_CYCLE_LEN] = {
-    CULLET_PALE(CULLET_CYCLE_A, CULLET_CYCLE_B, 0), CULLET_PALE(CULLET_CYCLE_A, CULLET_CYCLE_B, 4),
-    CULLET_PALE(CULLET_CYCLE_A, CULLET_CYCLE_B, 8), CULLET_PALE(CULLET_CYCLE_A, CULLET_CYCLE_B, 12),
-    CULLET_PALE(CULLET_CYCLE_B, CULLET_CYCLE_C, 0), CULLET_PALE(CULLET_CYCLE_B, CULLET_CYCLE_C, 4),
-    CULLET_PALE(CULLET_CYCLE_B, CULLET_CYCLE_C, 8), CULLET_PALE(CULLET_CYCLE_B, CULLET_CYCLE_C, 12),
-    CULLET_PALE(CULLET_CYCLE_C, CULLET_CYCLE_D, 0), CULLET_PALE(CULLET_CYCLE_C, CULLET_CYCLE_D, 4),
-    CULLET_PALE(CULLET_CYCLE_C, CULLET_CYCLE_D, 8), CULLET_PALE(CULLET_CYCLE_C, CULLET_CYCLE_D, 12),
-    CULLET_PALE(CULLET_CYCLE_D, CULLET_CYCLE_A, 0), CULLET_PALE(CULLET_CYCLE_D, CULLET_CYCLE_A, 4),
-    CULLET_PALE(CULLET_CYCLE_D, CULLET_CYCLE_A, 8), CULLET_PALE(CULLET_CYCLE_D, CULLET_CYCLE_A, 12),
+    SHADE(CULLET_CYCLE_A, CULLET_CYCLE_B, 0), SHADE(CULLET_CYCLE_A, CULLET_CYCLE_B, 4),
+    SHADE(CULLET_CYCLE_A, CULLET_CYCLE_B, 8), SHADE(CULLET_CYCLE_A, CULLET_CYCLE_B, 12),
+    SHADE(CULLET_CYCLE_B, CULLET_CYCLE_C, 0), SHADE(CULLET_CYCLE_B, CULLET_CYCLE_C, 4),
+    SHADE(CULLET_CYCLE_B, CULLET_CYCLE_C, 8), SHADE(CULLET_CYCLE_B, CULLET_CYCLE_C, 12),
+    SHADE(CULLET_CYCLE_C, CULLET_CYCLE_D, 0), SHADE(CULLET_CYCLE_C, CULLET_CYCLE_D, 4),
+    SHADE(CULLET_CYCLE_C, CULLET_CYCLE_D, 8), SHADE(CULLET_CYCLE_C, CULLET_CYCLE_D, 12),
+    SHADE(CULLET_CYCLE_D, CULLET_CYCLE_A, 0), SHADE(CULLET_CYCLE_D, CULLET_CYCLE_A, 4),
+    SHADE(CULLET_CYCLE_D, CULLET_CYCLE_A, 8), SHADE(CULLET_CYCLE_D, CULLET_CYCLE_A, 12),
 };
 
 #define SHADES(lo, hi)                                                                                                 \
-    GFX_RGB(LERP(lo, hi, 0)), GFX_RGB(LERP(lo, hi, 1)), GFX_RGB(LERP(lo, hi, 2)), GFX_RGB(LERP(lo, hi, 3)),            \
-        GFX_RGB(LERP(lo, hi, 4)), GFX_RGB(LERP(lo, hi, 5)), GFX_RGB(LERP(lo, hi, 6)), GFX_RGB(LERP(lo, hi, 7)),        \
-        GFX_RGB(LERP(lo, hi, 8)), GFX_RGB(LERP(lo, hi, 9)), GFX_RGB(LERP(lo, hi, 10)), GFX_RGB(LERP(lo, hi, 11)),      \
-        GFX_RGB(LERP(lo, hi, 12)), GFX_RGB(LERP(lo, hi, 13)), GFX_RGB(LERP(lo, hi, 14)), GFX_RGB(LERP(lo, hi, 15))
+    SHADE(lo, hi, 0), SHADE(lo, hi, 1), SHADE(lo, hi, 2), SHADE(lo, hi, 3), SHADE(lo, hi, 4), SHADE(lo, hi, 5),        \
+        SHADE(lo, hi, 6), SHADE(lo, hi, 7), SHADE(lo, hi, 8), SHADE(lo, hi, 9), SHADE(lo, hi, 10), SHADE(lo, hi, 11),  \
+        SHADE(lo, hi, 12), SHADE(lo, hi, 13), SHADE(lo, hi, 14), SHADE(lo, hi, 15)
 
 /* THE source of colour. One place to change. Rows in material_id_t order. */
 static const gfx_color_t palette[256] = {
@@ -353,11 +351,11 @@ static const gfx_color_t palette[256] = {
                                                                   * COLD */
     /* Named entries, not counted. Magenta tail: statics' codes, padding.
      * Non-zero codes block BLACK. */
-    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_ICE] = GFX_RGB(0xB6E4F2),      /* ice - paler and bluer than snow's
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_ICE] = RGB565BE(0xB6E4F2),      /* ice - paler and bluer than snow's
                                     * white, and flat rather than speckled:
                                     * a block of it should read as solid
                                     * and cold, where snow reads as loose */
-    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_PLANT] = GFX_RGB(0x55672D),    /* plant
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_PLANT] = RGB565BE(0x55672D),    /* plant
                                                                              * -
                                                                              * OLIVE:
                                                                              * stem
@@ -365,38 +363,38 @@ static const gfx_color_t palette[256] = {
                                                                              * brown,
                                                                              * leaves
                                                                              * green */
-    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_LEAF] = GFX_RGB(0x69B03A),     /* only
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_LEAF] = RGB565BE(0x69B03A),     /* only
                                                                              * part
                                                                              * meant
                                                                              * to
                                                                              * catch
                                                                              * the
                                                                              * eye */
-    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_METAL] = GFX_RGB(0x7C8794),    /* Visual
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_METAL] = RGB565BE(0x7C8794),    /* Visual
                                                                              * separation.
                                                                              * See
                                                                              * docs/sand/Metal.md. */
-    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_ROOT] = GFX_RGB(0xBFA58A),     /* root
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_ROOT] = RGB565BE(0xBFA58A),     /* root
                                                                              * -
                                                                              * matches
                                                                              * trunk,
                                                                              * avoids
                                                                              * dirt's
                                                                              * range */
-    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_ROOT + 1] = GFX_RGB(0xFF00FF), /* spare static, unclaimed */
-    GFX_RGB(0xFF00FF),                                                        /* spare static, unclaimed */
-    GFX_RGB(0xFF00FF),                                                        /* spare static, unclaimed */
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_ROOT + 1] = RGB565BE(0xFF00FF), /* spare static, unclaimed */
+    RGB565BE(0xFF00FF),                                                        /* spare static, unclaimed */
+    RGB565BE(0xFF00FF),                                                        /* spare static, unclaimed */
 
-    [GUNPOWDER_CELL(0)] = GFX_RGB(0x141014), /* dry, tone 0 - near-black */
-    [GUNPOWDER_CELL(1)] = GFX_RGB(0x2B1410), /* dry, tone 1 - black-red */
-    [GUNPOWDER_CELL(2)] = GFX_RGB(0x46160F), /* dry, tone 2 - also the swatch
+    [GUNPOWDER_CELL(0)] = RGB565BE(0x141014), /* dry, tone 0 - near-black */
+    [GUNPOWDER_CELL(1)] = RGB565BE(0x2B1410), /* dry, tone 1 - black-red */
+    [GUNPOWDER_CELL(2)] = RGB565BE(0x46160F), /* dry, tone 2 - also the swatch
                                               * colour, material_brush_color()
                                               * (material_palette.h) */
-    [GUNPOWDER_CELL(3)] = GFX_RGB(0x251210), /* moisture 1 */
-    [GUNPOWDER_CELL(4)] = GFX_RGB(0x1F1011), /* moisture 2 */
-    [GUNPOWDER_CELL(5)] = GFX_RGB(0x180E11), /* moisture 3 */
-    [GUNPOWDER_CELL(6)] = GFX_RGB(0x120C12), /* moisture 4 */
-    [GUNPOWDER_CELL(7)] = GFX_RGB(0xFF8C2A), /* LIT (GUNPOWDER_LIT) - the
+    [GUNPOWDER_CELL(3)] = RGB565BE(0x251210), /* moisture 1 */
+    [GUNPOWDER_CELL(4)] = RGB565BE(0x1F1011), /* moisture 2 */
+    [GUNPOWDER_CELL(5)] = RGB565BE(0x180E11), /* moisture 3 */
+    [GUNPOWDER_CELL(6)] = RGB565BE(0x120C12), /* moisture 4 */
+    [GUNPOWDER_CELL(7)] = RGB565BE(0xFF8C2A), /* LIT (GUNPOWDER_LIT) - the
                               * fuse itself, a hot ember orange near fire's
                               * bright end, so a burning trail reads as
                               * burning */
@@ -423,7 +421,7 @@ static const gfx_color_t palette[256] = {
  * White stays, brighter. */
 #define GLASS_GRADIENT_HI(v) ((v) <= SAND_AMBIENT_HEAT ? GLASS_SHIMMER : 0xFFFFFF)
 
-#define GRAIN8(lo, hi, k)    GFX_RGB(LERP((lo), (hi), (k) * 15 / 7))
+#define GRAIN8(lo, hi, k)    SHADE((lo), (hi), (k) * 15 / 7)
 
 #define GRAIN8_ROW(lo, hi)                                                                                             \
     {GRAIN8(lo, hi, 0), GRAIN8(lo, hi, 1), GRAIN8(lo, hi, 2), GRAIN8(lo, hi, 3),                                       \
@@ -515,7 +513,7 @@ static const gfx_color_t ice_grain[8] = GRAIN8_ROW(ICE_DARK, ICE_LIGHT);
 static const gfx_color_t metal_grain[8] = GRAIN8_ROW(METAL_DARK, METAL_LIGHT);
 
 /* HATCHED's only effect - lifted off METAL_LIGHT for uniform highlight. */
-static const gfx_color_t metal_shine = GFX_RGB(LERP(METAL_LIGHT, 0xFFFFFF, 11));
+static const gfx_color_t metal_shine = SHADE(METAL_LIGHT, 0xFFFFFF, 11);
 /* One grain row per shade step, fresh first, see ROOT_OLD above. */
 static const gfx_color_t root_grain[ROOT_SHADES][8] = {
     GRAIN8_ROW(ROOT_STEP_0, ROOT_STEP_LIGHT_0),
@@ -652,7 +650,7 @@ material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]) {
 
 /* FOAM's color. No extra slot. Rim dithering works. Brighter than 0x77C4E8
  * for visibility on water. */
-static const gfx_color_t water_foam = GFX_RGB(0xE8F6FF);
+static const gfx_color_t water_foam = RGB565BE(0xE8F6FF);
 
 /* Capped below the full curvature range: an uncapped corner cell would
  * compute a higher value than a rough edge and read as more foamed instead
@@ -819,7 +817,7 @@ extended_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t
          * glass_colours()'s own note on this exact trap). */
         const unsigned frac = depth != 0 ? depth - 1U : 0U;
         const uint32_t base = LERP(LEAF_DARK, LEAF_LIGHT, (hash & 7U) * 15 / 7);
-        paint_solid(out, GFX_RGB(LERP8(base, WOOD_LEAF_TINT_HI, frac)));
+        paint_solid(out, RGB565BE(LERP8(base, WOOD_LEAF_TINT_HI, frac)));
         return MATERIAL_SPECKLED;
     }
 
@@ -844,10 +842,10 @@ glass_colours(const material_frame_t* f, uint8_t v, unsigned hash, unsigned mask
     const unsigned frac = (unsigned)(((int)(hash & 0xFFU) + f->glass_phase) & 0xFF);
 
     /* uint32_t, not gfx_color_t - `base` is 0xRRGGBB, not packed by
-     * GFX_RGB(). gfx_color_t drops red byte, causing "glass reads green
+     * RGB565BE(). gfx_color_t drops red byte, causing "glass reads green
      * under heat". */
     const uint32_t base = edge ? GLASS_EDGE_RGB(v) : GLASS_RGB(v);
-    paint_solid(out, GFX_RGB(LERP8(base, GLASS_GRADIENT_HI(v), frac)));
+    paint_solid(out, RGB565BE(LERP8(base, GLASS_GRADIENT_HI(v), frac)));
     return MATERIAL_SPECKLED;
 }
 
@@ -871,7 +869,7 @@ wood_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t out
          * material_wood_near_leaf() in material_palette.h for the gate. A
          * live LERP8, not a stored step, so the blend is smooth rather than
          * snapping between fixed shades. */
-        paint_solid(out, GFX_RGB(LERP8(WOOD_LEAF_TINT_LO, WOOD_LEAF_TINT_HI, depth - 1U)));
+        paint_solid(out, RGB565BE(LERP8(WOOD_LEAF_TINT_LO, WOOD_LEAF_TINT_HI, depth - 1U)));
         return MATERIAL_FLAT;
     }
     paint_solid(out, wood_grain[hash & 7U]);
@@ -908,8 +906,8 @@ material_palette(void) {
 /* One flash read, no search: sand_rgb565_to_index[] is generated straight
  * from build_palette()'s own per-group OKLab assignment (shading_palette.c,
  * write_sand_palette_header()), keyed by native (non-byte-swapped) RGB565,
- * the same gfx_color_swap() the generator keys it with. */
+ * the same rgb565_swap() the generator keys it with. */
 int
 material_palette256_index(gfx_color_t c) {
-    return sand_rgb565_to_index[gfx_color_swap(c)];
+    return sand_rgb565_to_index[rgb565_swap(c)];
 }
