@@ -13,6 +13,7 @@ test_rgb565_rows_and_subimage(void) {
     const image_t image = {
         .pixels = pixels, .format = IMAGE_RGB565BE, .width = WIDTH, .height = HEIGHT, .stride = STRIDE};
     TEST_ASSERT_EQUAL_INT(sizeof *pixels * 8, image_format_bits(image.format));
+    TEST_ASSERT_EQUAL_size_t(STRIDE * sizeof *pixels, image_row_bytes(&image));
     TEST_ASSERT_EQUAL_PTR(pixels, image_row(&image, 0));
     TEST_ASSERT_EQUAL_PTR(pixels + 2 * STRIDE, image_row(&image, 2));
     const recti_t rect = {1, 1, 3, 2};
@@ -32,6 +33,7 @@ test_mono_rows_and_subimage(void) {
     uint8_t pixels[HEIGHT * STRIDE / BITS_PER_BYTE] = {0};
     const image_t image = {.pixels = pixels, .format = IMAGE_MONO1, .width = WIDTH, .height = HEIGHT, .stride = STRIDE};
     TEST_ASSERT_EQUAL_INT(1, image_format_bits(image.format));
+    TEST_ASSERT_EQUAL_size_t(STRIDE / BITS_PER_BYTE, image_row_bytes(&image));
     TEST_ASSERT_EQUAL_PTR(pixels, image_row(&image, 0));
     TEST_ASSERT_EQUAL_PTR(pixels + 2 * STRIDE / BITS_PER_BYTE, image_row(&image, 2));
     const recti_t rect = {BITS_PER_BYTE, 1, 9, 2};
