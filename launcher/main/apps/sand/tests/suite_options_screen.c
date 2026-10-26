@@ -195,8 +195,8 @@ static sand_menu_t menu;
 static sand_options_t committed;
 
 static sand_options_hits_t
-options_frame(bool down, bool pressed, bool released, int x, int y) {
-    input_t in = {.down = down, .pressed = pressed, .released = released, .x = x, .y = y};
+options_frame(bool down, bool pressed, bool released, vec2i_t point) {
+    input_t in = {.down = down, .pressed = pressed, .released = released, .point = point};
     ui_begin(&in);
     const sand_options_hits_t hits = options_screen_draw(&menu, committed, &LABELS);
     ui_probe_end_frame();
@@ -213,16 +213,16 @@ tap_at(int x, int y) {
     const affine2x_t transform = ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT);
     const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
     sand_options_hits_t hit = SAND_OPTIONS_NO_HITS;
-    sand_options_hits_t f = options_frame(true, true, false, mapped_pixel.x, mapped_pixel.y);
+    sand_options_hits_t f = options_frame(true, true, false, mapped_pixel);
     hit = any_hit(f) ? f : hit;
     for (int i = 0; i < 4; i++) {
-        f = options_frame(true, false, false, mapped_pixel.x, mapped_pixel.y);
+        f = options_frame(true, false, false, mapped_pixel);
         hit = any_hit(f) ? f : hit;
     }
-    f = options_frame(false, false, true, mapped_pixel.x, mapped_pixel.y);
+    f = options_frame(false, false, true, mapped_pixel);
     hit = any_hit(f) ? f : hit;
     for (int i = 0; i < 2; i++) {
-        f = options_frame(false, false, false, mapped_pixel.x, mapped_pixel.y);
+        f = options_frame(false, false, false, mapped_pixel);
         hit = any_hit(f) ? f : hit;
     }
     return hit;
@@ -240,8 +240,8 @@ tap_fixture(sand_colour_mode_t colour, bool landscape) {
     committed = (sand_options_t){.quality = 2, .color = colour, .dither = 2};
     sand_menu_init(&menu);
     sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, committed);
-    options_frame(false, false, false, 0, 0);
-    options_frame(false, false, false, 0, 0);
+    options_frame(false, false, false, (vec2i_t){0, 0});
+    options_frame(false, false, false, (vec2i_t){0, 0});
 }
 
 static void
@@ -329,11 +329,11 @@ static void
 assert_fires_on_release_only(recti_t r, bool (*fired)(sand_options_hits_t)) {
     const affine2x_t transform = ui_transform_quarter_turn(0, GFX_WIDTH, GFX_HEIGHT);
     const vec2i_t at = affine2x_map_pixel(&transform, (vec2i_t){r.x + (r.w / 2), r.y + (r.h / 2)});
-    TEST_ASSERT_FALSE_MESSAGE(fired(options_frame(true, true, false, at.x, at.y)), "fired on the press");
+    TEST_ASSERT_FALSE_MESSAGE(fired(options_frame(true, true, false, at)), "fired on the press");
     for (int hold = 0; hold < TOUCH_HOLD_FRAMES; hold++) {
-        TEST_ASSERT_FALSE_MESSAGE(fired(options_frame(true, false, false, at.x, at.y)), "fired while held");
+        TEST_ASSERT_FALSE_MESSAGE(fired(options_frame(true, false, false, at)), "fired while held");
     }
-    TEST_ASSERT_TRUE_MESSAGE(fired(options_frame(false, false, true, at.x, at.y)), "did not fire on the release");
+    TEST_ASSERT_TRUE_MESSAGE(fired(options_frame(false, false, true, at)), "did not fire on the release");
 }
 
 static void
@@ -395,7 +395,7 @@ static void
 test_the_draft_colour_tile_is_selected_even_when_uncommitted(void) {
     tap_fixture(SAND_COLOUR_256, false);
     menu.draft.color = SAND_COLOUR_FULL;
-    options_frame(false, false, false, 0, 0);
+    options_frame(false, false, false, (vec2i_t){0, 0});
 
     const options_screen_layout_t lay = layout_for(false);
     for (int i = 0; i < OPTIONS_SCREEN_TILE_COUNT; i++) {
@@ -424,14 +424,14 @@ test_held_dither_opening_touch_with_small_motion_does_not_pick(void) {
     const recti_t dither = dither_rect(false);
     const int x = dither.x + (dither.w / 2);
     int y = dither.y + (dither.h / 2);
-    TEST_ASSERT_FALSE(any_hit(options_frame(true, true, false, x, y)));
+    TEST_ASSERT_FALSE(any_hit(options_frame(true, true, false, (vec2i_t){x, y})));
     for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
         y += frame < motion_pixels;
-        TEST_ASSERT_FALSE(any_hit(options_frame(true, false, false, x, y)));
+        TEST_ASSERT_FALSE(any_hit(options_frame(true, false, false, (vec2i_t){x, y})));
     }
-    TEST_ASSERT_FALSE(any_hit(options_frame(false, false, true, x, y)));
+    TEST_ASSERT_FALSE(any_hit(options_frame(false, false, true, (vec2i_t){x, y})));
     for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
-        TEST_ASSERT_FALSE(any_hit(options_frame(false, false, false, x, y)));
+        TEST_ASSERT_FALSE(any_hit(options_frame(false, false, false, (vec2i_t){x, y})));
     }
     const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(false));
     TEST_ASSERT_EQUAL_INT(0, tap_at(list.x + (list.w / 2), list.y + (dither.h / 2)).dither);
@@ -466,7 +466,7 @@ static void
 finger_at(bool landscape, bool pressed, bool released, int x, int y) {
     const affine2x_t transform = ui_transform_quarter_turn(landscape ? 1 : 0, GFX_WIDTH, GFX_HEIGHT);
     const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
-    options_frame(!released, pressed, released, mapped_pixel.x, mapped_pixel.y);
+    options_frame(!released, pressed, released, mapped_pixel);
 }
 
 /* Every row fits in the canvas overlay, so a drag has no offscreen rows to reveal. */

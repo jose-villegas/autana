@@ -302,7 +302,7 @@ list_row(int i) {
 
 static void
 menu_tap(recti_t rect) {
-    input_t input = {.down = true, .pressed = true, .x = rect.x + (rect.w / 2), .y = rect.y + (rect.h / 2)};
+    input_t input = {.down = true, .pressed = true, .point = {rect.x + (rect.w / 2), rect.y + (rect.h / 2)}};
     menu_frame(&input);
     input.pressed = false;
     for (int i = 0; i < UI_DROPDOWN_CLOSE_FRAMES; i++) {
@@ -319,13 +319,12 @@ static void
 slider_drag(int blend_ms) {
     input_t drag = {.down = true,
                     .pressed = true,
-                    .x = slider_rect.x + (slider_rect.w / 2),
-                    .y = slider_rect.y + (slider_rect.h / 2)};
+                    .point = {slider_rect.x + (slider_rect.w / 2), slider_rect.y + (slider_rect.h / 2)}};
     menu_frame(&drag);
     drag.pressed = false;
     menu_frame(&drag);
-    drag.x = slider_rect.x + (UI_SLIDER_KNOB_W / 2)
-             + ((slider_rect.w - UI_SLIDER_KNOB_W) * blend_ms / RENDER_LAB_BLEND_MAX_MS);
+    drag.point.x = slider_rect.x + (UI_SLIDER_KNOB_W / 2)
+                   + ((slider_rect.w - UI_SLIDER_KNOB_W) * blend_ms / RENDER_LAB_BLEND_MAX_MS);
     menu_frame(&drag);
     drag.down = false;
     drag.released = true;
