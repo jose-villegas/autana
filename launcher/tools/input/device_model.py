@@ -88,7 +88,7 @@ class DeviceModel:
         outline = rounded_outline(self.width, self.height, geometry["case_corner"])
         front = np.c_[outline, np.zeros(len(outline))]
         back = np.c_[outline, np.full(len(outline), -self.depth)]
-        screen = rounded_outline(geometry["screen_width"], geometry["screen_height"], 0)
+        screen = rounded_outline(geometry["screen_width"], geometry["screen_height"], geometry["screen_corner"])
         self.glass = np.c_[screen, np.zeros(len(screen))]
         self.case_outlines = (front, back)
         # rounded_outline keeps the same point count for every radius, pairing bezel ring vertices.
@@ -104,6 +104,19 @@ class DeviceModel:
         self.pcb = np.c_[pcb, np.full(len(pcb), -geometry["depth"])]
         self.imu = box_faces(self.imu_centre, self.chip_axes.T @ np.array(geometry["imu_size"]))
 
+        self.side_features = []
+        for feature in geometry["side_features"]:
+            x = self.width / 2 * (1 if feature["side"] == "right" else -1)
+            y, z = feature["y"], feature["z"]
+            size_y, size_z = feature["size_y"], feature["size_z"]
+            if feature["shape"] == "box":
+                proud = feature["proud"]
+                faces = box_faces((x + proud / 2, y, z), (proud, size_y, size_z))
+            else:
+                hole = rounded_outline(size_y, size_z, min(size_y, size_z) / 2) + (y, z)
+                faces = [np.c_[np.full(len(hole), x), hole]]
+            self.side_features.extend(faces)
+
     def to_device(self, screen_vector):
         """A vector in the code's screen axes as a device vector."""
         return np.asarray(screen_vector) @ self.screen_axes
@@ -118,7 +131,8 @@ class DeviceModel:
         for line in (*self.case_outlines, *self.back_details):
             axis.plot(*(line @ pose.T).T, color=MUTED, linewidth=EDGE_WIDTH)
         axis.plot(*(self.pcb @ pose.T).T, color=MUTED, linewidth=EDGE_WIDTH, alpha=PCB_ALPHA)
-        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.imu], facecolor=IMU, edgecolor=IMU))
+        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in (*self.imu, *self.side_features)],
+                                               facecolor=IMU, edgecolor=IMU))
         length = AXIS_SHARE * self.height
         sets = ((chip_axes, pose @ self.imu_centre, self.chip_axes, "XYZ", CHIP_AXES),
                 (screen_axes, np.zeros(3), self.screen_axes, "xyz", SCREEN_AXES))
