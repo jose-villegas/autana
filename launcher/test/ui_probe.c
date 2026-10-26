@@ -62,6 +62,21 @@ ui_probe_text_rgb(const char* s, uint32_t* rgb) {
     return true;
 }
 
+/* The colour of the grid's cell that fills exactly `r` once clipped to `clip`. */
+static bool
+swatch_cell_rgb(const ui_swatch_command_t* grid, recti_t clip, recti_t r, uint32_t* rgb) {
+    for (int row = 0; row < grid->rows; row++) {
+        for (int col = 0; col < grid->cols; col++) {
+            const recti_t cell = recti_intersect(ui_recti_from_mu(ui_swatch_cell_rect(grid, col, row)), clip);
+            if (memcmp(&cell, &r, sizeof r) == 0) {
+                *rgb = grid->rgb[row * grid->cols + col];
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool
 ui_probe_fill_rgb(recti_t r, uint32_t* rgb) {
     mu_Command* cmd = NULL;
@@ -72,17 +87,8 @@ ui_probe_fill_rgb(recti_t r, uint32_t* rgb) {
         } else if (cmd->type == MU_COMMAND_RECT && memcmp(&cmd->rect.rect, &r, sizeof r) == 0) {
             *rgb = ui_rgb_value(cmd->rect.color);
             return true;
-        } else if (cmd->type == UI_COMMAND_SWATCHES) {
-            const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
-            for (int row = 0; row < grid->rows; row++) {
-                for (int col = 0; col < grid->cols; col++) {
-                    const recti_t cell = recti_intersect(ui_recti_from_mu(ui_swatch_cell_rect(grid, col, row)), clip);
-                    if (memcmp(&cell, &r, sizeof r) == 0) {
-                        *rgb = grid->rgb[row * grid->cols + col];
-                        return true;
-                    }
-                }
-            }
+        } else if (cmd->type == UI_COMMAND_SWATCHES && swatch_cell_rgb((const ui_swatch_command_t*)cmd, clip, r, rgb)) {
+            return true;
         }
     }
     return false;
