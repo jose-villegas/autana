@@ -67,6 +67,23 @@ maths_parse(const char* s, const char** end, int16_t* out) {
 }
 
 static const char*
+text_exponent_end(const char* p) {
+    if (*p == 'e' || *p == 'E') {
+        ++p;
+        if (*p == '-' || *p == '+') {
+            ++p;
+        }
+        if (!text_digit(*p)) {
+            return NULL;
+        }
+        while (text_digit(*p)) {
+            ++p;
+        }
+    }
+    return p;
+}
+
+static const char*
 text_decimal_end(const char* s) {
     const char* p = s;
     if (*p == '-' || *p == '+') {
@@ -86,19 +103,20 @@ text_decimal_end(const char* s) {
     if (!digits) {
         return NULL;
     }
-    if (*p == 'e' || *p == 'E') {
-        ++p;
-        if (*p == '-' || *p == '+') {
-            ++p;
-        }
-        if (!text_digit(*p)) {
-            return NULL;
-        }
-        while (text_digit(*p)) {
-            ++p;
-        }
+    return text_exponent_end(p);
+}
+
+static float
+text_float_value(const char* s, const char* p, char** stop) {
+    float value;
+    const char* number = (*s == '+' || *s == '-') ? s + 1 : s;
+    if (number[0] == '0' && p == number + 1 && (*p == 'x' || *p == 'X')) {
+        value = *s == '-' ? -0.0F : 0.0F;
+        *stop = (char*)p;
+    } else {
+        value = strtof(s, stop);
     }
-    return p;
+    return value;
 }
 
 bool
@@ -114,14 +132,7 @@ mathf_parse(const char* s, const char** end, float* out) {
     }
     char* stop;
     errno = 0;
-    float value;
-    const char* number = (*s == '+' || *s == '-') ? s + 1 : s;
-    if (number[0] == '0' && p == number + 1 && (*p == 'x' || *p == 'X')) {
-        value = *s == '-' ? -0.0F : 0.0F;
-        stop = (char*)p;
-    } else {
-        value = strtof(s, &stop);
-    }
+    float value = text_float_value(s, p, &stop);
     if (stop != p || (!special && (isinf(value) || (errno == ERANGE && value == 0.0F)))) {
         return false;
     }
@@ -149,6 +160,39 @@ mathf_format(char* buf, size_t cap, float v) {
     return math_text_copy(buf, cap, text, length);
 }
 
+static bool
+text_fixed_whole(const char** cursor, uint64_t limit, uint64_t* out) {
+    const char* p = *cursor;
+    uint64_t whole = 0;
+    while (text_digit(*p)) {
+        whole = whole * MATH_TEXT_RADIX + (unsigned)(*p++ - '0');
+        if (whole > limit / MATHX_ONE) {
+            return false;
+        }
+    }
+    *cursor = p;
+    *out = whole;
+    return true;
+}
+
+static uint32_t
+text_fixed_fraction(const char** cursor, unsigned* remainder, bool* residual) {
+    const char* first = *cursor;
+    const char* p = first;
+    while (text_digit(*p)) {
+        ++p;
+    }
+    *cursor = p;
+    uint32_t fraction = 0;
+    while (p != first) {
+        uint32_t scaled = (unsigned)(*--p - '0') * MATHX_ONE + fraction;
+        fraction = scaled / MATH_TEXT_RADIX;
+        *remainder = scaled % MATH_TEXT_RADIX;
+        *residual |= *remainder != 0;
+    }
+    return fraction;
+}
+
 bool
 mathx_parse(const char* s, const char** end, int32_t* out) {
     const char* p = s;
@@ -157,30 +201,18 @@ mathx_parse(const char* s, const char** end, int32_t* out) {
         ++p;
     }
     bool digits = text_digit(*p);
-    uint64_t whole = 0;
+    uint64_t whole;
     const uint64_t limit = (uint64_t)INT32_MAX + (negative ? 1 : 0);
-    while (text_digit(*p)) {
-        whole = whole * MATH_TEXT_RADIX + (unsigned)(*p++ - '0');
-        if (whole > limit / MATHX_ONE) {
-            return false;
-        }
+    if (!text_fixed_whole(&p, limit, &whole)) {
+        return false;
     }
     uint32_t fraction = 0;
     unsigned remainder = 0;
     bool residual = false;
     if (*p == '.') {
-        const char* first = ++p;
+        ++p;
         digits |= text_digit(*p);
-        while (text_digit(*p)) {
-            ++p;
-        }
-        const char* last = p;
-        while (last != first) {
-            uint32_t scaled = (unsigned)(*--last - '0') * MATHX_ONE + fraction;
-            fraction = scaled / MATH_TEXT_RADIX;
-            remainder = scaled % MATH_TEXT_RADIX;
-            residual |= remainder != 0;
-        }
+        fraction = text_fixed_fraction(&p, &remainder, &residual);
     }
     if (!digits || (end == NULL && *p != '\0')) {
         return false;

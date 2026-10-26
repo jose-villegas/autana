@@ -4,6 +4,11 @@ Include `math/text/math_text.h` to format or parse a math value without allocati
 The scalar functions are linked from the math package; composite functions use
 its scalar OPS families through `text_template.h`.
 
+## text
+
+`P_format(`, `P_parse(` and `P_text(` provide the operations for each prefix below.
+`math_text_copy` copies formatted text into a bounded, NUL-terminated buffer.
+
 | Value | Format / parse | By value | Buffer capacity |
 |---|---|---|---|
 | float | `mathf_format`, `mathf_parse` | `mathf_text` | `MATHF_TEXT_MAX` |
