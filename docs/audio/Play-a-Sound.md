@@ -15,8 +15,9 @@ behind it are in the [Sound mixer](Sound-Mixer.md) reference.
 ## Play a sound
 
 A pack is the read-only bundle of baked content in flash
-([Asset packs](../assets/README.md)). The engine pack, `asset_store_pack(ASSET_ENGINE_PACK)`,
-ships a `tap` click any app may use. Open it once into app state, play it by pointer, and stop it if you need to.
+([Asset packs](../assets/README.md)). The engine pack, `asset_store_load(ASSET_ENGINE_PACK)`,
+ships a `tap` click any app may use. Load it once into app state, play it by pointer, stop it if you need to,
+and release the load at exit.
 
 <!-- generated: sound-tap-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
@@ -25,14 +26,17 @@ ships a `tap` click any app may use. Open it once into app state, play it by poi
 #include "sound/sound_play.h"
 
 typedef struct {
-    sound_t tap; /* app state, not a stack local: the mixer reads it until the app exits */
+    handle_t load; /* holds the pack mapped until exit */
+    sound_t tap;   /* app state, not a stack local: the mixer reads it until the app exits */
     sound_voice_t voice;
 } tap_example_t;
 
-/* pack: asset_store_pack(ASSET_ENGINE_PACK) */
 void
-tap_example_start(tap_example_t* s, const asset_pack_t* pack) {
-    if (sound_open(pack, "tap", &s->tap) != ASSET_OK) {
+tap_example_start(tap_example_t* s) {
+    s->load = asset_store_load(ASSET_ENGINE_PACK);
+    if (sound_open(asset_store_loaded(s->load), "tap", &s->tap) != ASSET_OK) {
+        asset_store_release(s->load);
+        s->load = HANDLE_NONE;
         return; /* no click */
     }
     s->voice = sound_play(&s->tap, NULL); /* SFX bus, full gain, once */
@@ -43,6 +47,13 @@ tap_example_start(tap_example_t* s, const asset_pack_t* pack) {
 void
 tap_example_cancel(tap_example_t* s) {
     sound_stop(s->voice); /* optional; stale handles are ignored */
+}
+
+/* Call from the app's exit(), after the shell's mixer barrier: the pack stays mapped until then. */
+void
+tap_example_exit(tap_example_t* s) {
+    asset_store_release(s->load);
+    s->load = HANDLE_NONE;
 }
 ```
 <!-- /generated: sound-tap-example -->
@@ -61,7 +72,7 @@ while the amplifier warms up ([Amplifier](Mixer-Internals.md#amplifier)).
 | 1. Source | put `click.wav` (WAV, FLAC, OGG or MP3, any channel count) in your app's pack folder, the one holding its `NAME.pack.toml` |
 | 2. Recipe | beside it, `click.sound.toml` with `source = "click.wav"` and `format = "adpcm"` or `"pcm16"` ([Sound assets](Sound-Assets.md)) |
 | 3. Bake | the build bakes it into entry `click` of that folder's pack ([Packs](../assets/Building-Packs.md#packs)) |
-| 4. Open | `sound_open(asset_store_pack(...), "click", &state)` as below |
+| 4. Open | `asset_store_load(pack)`, then `sound_open(asset_store_loaded(load), "click", &state)` as below, and release the load at exit |
 
 <!-- generated: sound-own-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
@@ -70,13 +81,15 @@ while the amplifier warms up ([Amplifier](Mixer-Internals.md#amplifier)).
 #include "sound/sound_play.h"
 
 typedef struct {
+    handle_t load; /* holds the pack mapped until exit */
     sound_t click;
     bool have_click;
 } own_example_t;
 
 void
 own_example_open(own_example_t* s, const char* app_pack) {
-    s->have_click = sound_open(asset_store_pack(app_pack), "click", &s->click) == ASSET_OK;
+    s->load = asset_store_load(app_pack);
+    s->have_click = sound_open(asset_store_loaded(s->load), "click", &s->click) == ASSET_OK;
 }
 
 void
@@ -85,6 +98,13 @@ own_example_confirm(own_example_t* s) {
         const sound_play_opts_t opts = {.bus = SOUND_BUS_SYSTEM, .gain_pct = SOUND_GAIN_MAX_PCT};
         (void)sound_play(&s->click, &opts); /* UI feedback follows the shell's UI volume */
     }
+}
+
+/* Call from the app's exit(), after the shell's mixer barrier. */
+void
+own_example_exit(own_example_t* s) {
+    asset_store_release(s->load);
+    s->load = HANDLE_NONE;
 }
 ```
 <!-- /generated: sound-own-example -->
@@ -116,13 +136,17 @@ Pass the bus in `sound_play_opts_t`. NULL options mean SFX, full gain,
 #include "sound/sound_play.h"
 
 typedef struct {
+    handle_t load; /* holds the pack mapped until exit */
     sound_t theme; /* app state: the pack and this view outlive the app's last frame */
     sound_voice_t voice;
 } music_example_t;
 
 void
-music_example_start(music_example_t* s, const asset_pack_t* pack) {
-    if (sound_open(pack, "theme", &s->theme) != ASSET_OK) {
+music_example_start(music_example_t* s, const char* pack) {
+    s->load = asset_store_load(pack);
+    if (sound_open(asset_store_loaded(s->load), "theme", &s->theme) != ASSET_OK) {
+        asset_store_release(s->load);
+        s->load = HANDLE_NONE;
         return;
     }
     const sound_play_opts_t opts = {
@@ -139,6 +163,13 @@ void
 music_example_stop(music_example_t* s) {
     sound_stop(s->voice);
 }
+
+/* Call from the app's exit(), after the shell's mixer barrier. */
+void
+music_example_exit(music_example_t* s) {
+    asset_store_release(s->load);
+    s->load = HANDLE_NONE;
+}
 ```
 <!-- /generated: sound-music-example -->
 
@@ -147,7 +178,7 @@ music_example_stop(music_example_t* s) {
 ## Keep it alive until the app exits
 
 `sound_play()` stores your pointer and copies no samples, so the `sound_t` and its
-pack must stay valid until the app exits. That is why the examples keep it in app state.
+pack must stay valid until the app exits. That is why the examples keep both the `sound_t` and the load handle in app state, and release the load in `exit()`.
 
 | Event | Frees the sound? |
 |---|---|

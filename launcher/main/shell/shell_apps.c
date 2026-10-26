@@ -293,6 +293,7 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
     if (current->home_gesture && (app_band_active(current) || gfx_frame_expanded())) {
         queue_home_hint(shell_exit_edge_for_quarter(display_quarter_now()));
     }
+    shell_systems_poll(dt_ms);
     current->frame(dt_ms, input);
     gfx_band_run(current->draw_band, ui_replay_band);
     if (overlap) {
