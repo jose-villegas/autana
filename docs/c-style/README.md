@@ -21,7 +21,6 @@ formatting or naming rules; commands are in
 | Tasks, cores, spinlocks, atomics, queues | [Concurrency](Concurrency.md) |
 | Driver, HAL and register access, wrapping a driver function | [Register access](Register-Access.md) |
 | Placing code or data with a linker fragment | [Linker fragments](../memory/Linker-Fragments.md) |
-| Helpers that already have an owner | [Code search](../tools/Code-Search.md) |
 
 ## Mechanical rules
 
@@ -88,7 +87,7 @@ scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check 
 
 | Rule | Gate |
 |---|---|
-| Search for an owner before writing a helper ([code search](../tools/Code-Search.md)); extend one that fits. | `python scripts/docs/code_search.py --shared <words>` |
+| Search for an owner before writing a helper; extend one that fits. | `autana docs "<the job>"`, `git grep -n -w <name>` |
 | Never grow a file pair's copied tokens; extract a shared owner instead. | `python scripts/gates/check_clones.py` (jscpd: `npm ci --prefix scripts/gates`) |
 | Never restate an integer a file already sees through its `#include "..."` chain, or a firmware string a Python tool repeats; use the named constant. | `python scripts/gates/check_magic_numbers.py` |
 | Mark a deliberate literal on its line with `/* magic: reason */` (`# magic: reason` in Python); the reason may not be empty. | `check_magic_numbers.py` |
@@ -125,7 +124,7 @@ extracted function to prose explaining a mechanism.
 | Never narrate the journey ("a first attempt", "was reverted"); git log owns it. | `find_narrative_comments.py` lists cases |
 | Never say where code moved; state what the code there must obey, or delete. | `find_narrative_comments.py --tombstones` (CI) |
 | Update a comment in the edit that changes its code, or delete it. | |
-| Open every firmware module with a one-sentence header, `name: ...`, in its .h or .c. Test suites need none. | `check_file_headers.py` (CI) |
+| Open every firmware module with a one-sentence header, `name: ...`, in its .h or .c, and every header and Python module with a sentence saying what it is for. Test suites need none. | `check_file_headers.py` (CI) |
 | Never write a header that declares nothing; describe a folder in its `README.md`. | `check_file_headers.py` (CI) |
 | Use a style(9) shape: one-line `/* ... */`, a three-line `VERY important` block, or filled sentences. | |
 | Never put headings or `/*====` rules in a comment; a comment needing sections belongs in `docs/`. | `check_style_audit.py` |

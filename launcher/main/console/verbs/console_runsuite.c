@@ -7,7 +7,6 @@
  * suites_run_request().
  */
 #include "console/verbs/console_runsuite.h"
-#include "console/console_frame_request.h"
 #include "console/console_verbs.h"
 
 #include <stdio.h>
@@ -22,6 +21,8 @@ static const char* TAG = "console";
 _Static_assert(TESTKIT_SUITE_MAX < 1000, "SUITE_COUNT_DIGITS holds TESTKIT_SUITE_MAX");
 /* A registered name is not held to SUITE_NAME_MAX, so a listed one gets the whole request line's room. */
 #define RUNSUITE_LIST_BYTES (sizeof "RUNSUITE_SUITE name= on_request=0" + RUNSUITE_ARGS_MAX)
+
+CONSOLE_FRAME_SLOT(console_runsuite_slot, console_runsuite_request_t, true, NULL)
 
 typedef struct {
     console_reply_fn reply;
@@ -54,9 +55,9 @@ console_verb_runsuite(const char* args, console_reply_fn reply) {
         list_suites(reply);
         return;
     }
-    console_frame_request_t request = {.kinds = CONSOLE_FRAME_RUNSUITE};
+    console_runsuite_request_t request;
     console_copy_text(request.suite, sizeof request.suite, args);
-    if (!console_frame_post(console_frame_mailbox(), &request)) {
+    if (!console_frame_post(console_frame_slots(), &console_runsuite_slot, &request)) {
         ESP_LOGW(TAG, "RUNSUITE refused: the previous one has not finished");
         return;
     }

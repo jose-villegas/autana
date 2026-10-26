@@ -187,10 +187,7 @@ jobs:
         run: python3 scripts/docs/docs_llama.py setup
 
       - name: Evaluate hybrid docs retrieval
-        run: python3 scripts/docs/docs_search.py --eval
-
-      - name: Report hybrid retrieval scores
-        run: python3 scripts/docs/eval_summary.py hybrid
+        run: python3 scripts/docs/docs_search.py --eval --expect hybrid
 
       - name: Stop docs model server
         if: always()
@@ -209,10 +206,7 @@ jobs:
           persist-credentials: false
 
       - name: Evaluate lexical docs retrieval
-        run: python3 scripts/docs/docs_search.py --eval --lexical
-
-      - name: Report lexical retrieval scores
-        run: python3 scripts/docs/eval_summary.py lexical
+        run: python3 scripts/docs/docs_search.py --eval --lexical --expect lexical
 
   alarm:
     needs: nightly
