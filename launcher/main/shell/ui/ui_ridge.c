@@ -162,6 +162,7 @@ static const int16_t* curve;
 static ridge_t* ridge;
 static bool allocation_tried;
 static bool load_tried;
+static handle_t load;
 
 void
 ui_ridge_load(void) {
@@ -169,7 +170,8 @@ ui_ridge_load(void) {
         return;
     }
     load_tried = true;
-    const asset_pack_t* pack = asset_store_pack(ASSET_ENGINE_PACK);
+    load = asset_store_load(ASSET_ENGINE_PACK);
+    const asset_pack_t* pack = asset_store_loaded(load);
     asset_status_t status = ASSET_ERR_NO_PACK;
     if (pack != NULL) {
         asset_view_t entry;
@@ -186,9 +188,7 @@ ui_ridge_load(void) {
         }
     }
     if (status != ASSET_OK) {
-        if (pack != NULL) {
-            asset_store_release(ASSET_ENGINE_PACK);
-        }
+        asset_store_release(load);
         ESP_LOGW(TAG, "no ridge curve in pack %s (%s): the ridge is level", ASSET_ENGINE_PACK,
                  asset_status_text(status));
     }

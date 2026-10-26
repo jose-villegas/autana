@@ -427,8 +427,34 @@ test_the_host_reader_holds_the_pack_outside_the_modelled_heap(void) {
 }
 #endif
 
+static void
+test_entry_validation_spans_budgeted_passes(void) {
+    enum { ENTRY_COUNT = 8, ENTRIES_PER_PASS = 2 };
+
+    void* raw = NULL;
+    uint8_t* bytes = test_alloc_aligned(BUFFER_BYTES, ASSET_PACK_BASE_ALIGN, &raw);
+    TEST_ASSERT_NOT_NULL(bytes);
+    test_pack_t built = test_pack_begin(bytes, BUFFER_BYTES, ENTRY_COUNT);
+    for (unsigned i = 0; i < ENTRY_COUNT; i++) {
+        test_pack_add(&built, "empty", OTHER_TYPE, 0);
+    }
+    const uint32_t size = test_pack_finish(&built);
+    asset_pack_opener_t opener;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open_begin(&opener, bytes, size));
+    TEST_ASSERT_FALSE(asset_pack_open_step(&opener, size - ASSET_PACK_HEADER_SIZE));
+    TEST_ASSERT_EQUAL_UINT(0, opener.entry);
+    for (unsigned i = ENTRIES_PER_PASS; i <= ENTRY_COUNT; i += ENTRIES_PER_PASS) {
+        const bool complete = asset_pack_open_step(&opener, ENTRIES_PER_PASS * ASSET_PACK_ENTRY_SIZE);
+        TEST_ASSERT_EQUAL_UINT(i, opener.entry);
+        TEST_ASSERT_EQUAL_INT(i == ENTRY_COUNT, complete);
+    }
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, opener.status);
+    test_free_aligned(raw);
+}
+
 void
 suite_asset_pack(void) {
+    RUN_TEST(test_entry_validation_spans_budgeted_passes);
     RUN_TEST(test_a_built_pack_opens_and_its_mesh_is_a_view_into_it);
     RUN_TEST(test_a_pack_larger_than_its_content_opens);
     RUN_TEST(test_one_changed_byte_fails_the_checksum);

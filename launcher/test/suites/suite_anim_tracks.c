@@ -344,10 +344,11 @@ open_every_clip(const asset_pack_t* pack) {
 
 static void
 test_every_clip_in_the_boot_clip_s_pack_opens(void) {
-    const asset_pack_t* pack = asset_store_pack(BOOT_CLIP);
+    const handle_t load = asset_store_load(BOOT_CLIP);
+    const asset_pack_t* pack = asset_store_loaded(load);
     TEST_ASSERT_NOT_NULL_MESSAGE(pack, "the boot clip's pack did not mount: see the log above");
     const int clips = open_every_clip(pack);
-    asset_store_release(BOOT_CLIP);
+    asset_store_release(load);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, clips, "the pack holds no clip");
 }
 

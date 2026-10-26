@@ -28,7 +28,7 @@ asset_store_backend_mount(const char* name, asset_pack_t* pack, uintptr_t* mappi
         return ASSET_ERR_NO_PACK;
     }
     void* buffer = NULL;
-    const asset_status_t status = asset_file_open(path, pack, &buffer);
+    const asset_status_t status = asset_file_read(path, pack, &buffer);
     *mapping = (uintptr_t)buffer;
     return status;
 }
