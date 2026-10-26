@@ -13,8 +13,9 @@
 static bool
 ink_box(const image_t* icon, recti_t* out) {
     *out = (recti_t){0};
-    for (int y = 0; y < icon->height; y++) {
-        const uint8_t* row = image_row(icon, y);
+    const size_t step = image_row_bytes(icon);
+    const uint8_t* row = icon->pixels;
+    for (int y = 0; y < icon->height; y++, row += step) {
         for (int x = 0; x < icon->width; x++) {
             if (image_mono1_ink(row, x)) {
                 *out = recti_union(*out, (recti_t){x, y, 1, 1});
@@ -51,7 +52,9 @@ icon_walk_blocks(const image_t* icon, int box_w, int box_h, icon_emit_fn emit, v
     }
     const int origin_x = ((box_w - (box.w * scale)) / 2) - (box.x * scale);
     const int origin_y = ((box_h - (box.h * scale)) / 2) - (box.y * scale);
-    for (int y = 0; y < icon->height; y++) {
-        emit_runs(image_row(icon, y), icon->width, origin_x, origin_y + (y * scale), scale, emit, ctx);
+    const size_t step = image_row_bytes(icon);
+    const uint8_t* row = icon->pixels;
+    for (int y = 0; y < icon->height; y++, row += step) {
+        emit_runs(row, icon->width, origin_x, origin_y + (y * scale), scale, emit, ctx);
     }
 }

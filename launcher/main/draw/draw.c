@@ -337,6 +337,7 @@ draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha) {
     }
 
     const int level = bayer_level(alpha);
+    const size_t step = image_row_bytes(src);
 
     for (int row = rect.y; row < recti_bottom(rect); row++) {
         const uint8_t* cells = bayer4x4[row & 3];
@@ -347,8 +348,8 @@ draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha) {
         }
 
         gfx_color_t* dst = gfx_target_row(state.target, row);
-        const gfx_color_t* s = image_row(src, row - y);
-        s += rect.x - x;
+        const gfx_color_t* s =
+            (const gfx_color_t*)((const char*)src->pixels + ((size_t)(row - y) * step)) + (rect.x - x);
 
         if (p[0] && p[1] && p[2] && p[3]) {
             memcpy(dst + rect.x, s, (size_t)rect.w * sizeof *dst);

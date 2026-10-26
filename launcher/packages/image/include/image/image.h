@@ -31,12 +31,17 @@ image_format_bits(image_format_t format) {
     return format & 0xFF;
 }
 
-/* A row address is exact only when stride × bits per pixel is a multiple of CHAR_BIT. */
+/* Bytes from one row's start to the next, exact only when stride × bits per
+ * pixel is a multiple of CHAR_BIT. A loop over rows takes it once and steps. */
+static inline size_t
+image_row_bytes(const image_t* image) {
+    const int bits = image_format_bits(image->format);
+    return bits >= CHAR_BIT ? (size_t)image->stride * (bits / CHAR_BIT) : image->stride / CHAR_BIT;
+}
+
 static inline void*
 image_row(const image_t* image, int y) {
-    const int bits = image_format_bits(image->format);
-    const size_t stride = bits >= CHAR_BIT ? (size_t)image->stride * (bits / CHAR_BIT) : image->stride / CHAR_BIT;
-    return (char*)image->pixels + (size_t)y * stride;
+    return (char*)image->pixels + ((size_t)y * image_row_bytes(image));
 }
 
 /* The rect must be inside the image; MONO1 x must be a multiple of CHAR_BIT. */
