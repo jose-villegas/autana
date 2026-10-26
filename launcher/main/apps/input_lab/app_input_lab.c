@@ -242,19 +242,17 @@ shell_transform(void) {
     return ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT);
 }
 
-static void
-to_screen(int px, int py, int* x, int* y) {
-    const vec2i_t screen = ui_transform_unmap_pixel(shell_transform(), (vec2i_t){px, py});
-    *x = screen.x;
-    *y = screen.y;
+static vec2i_t
+to_screen(vec2i_t point) {
+    return ui_transform_unmap_pixel(shell_transform(), point);
 }
 
 static void
-widen_panel_range(int x, int y) {
-    panel_min_x = x < panel_min_x ? x : panel_min_x;
-    panel_max_x = x > panel_max_x ? x : panel_max_x;
-    panel_min_y = y < panel_min_y ? y : panel_min_y;
-    panel_max_y = y > panel_max_y ? y : panel_max_y;
+widen_panel_range(vec2i_t point) {
+    panel_min_x = point.x < panel_min_x ? point.x : panel_min_x;
+    panel_max_x = point.x > panel_max_x ? point.x : panel_max_x;
+    panel_min_y = point.y < panel_min_y ? point.y : panel_min_y;
+    panel_max_y = point.y > panel_max_y ? point.y : panel_max_y;
 }
 
 /* Whether the touch driver's correction was on for a tap, so a capture says
@@ -270,23 +268,17 @@ calibration_on(void) {
 }
 
 static void
-finish_tap(int release_x, int release_y) {
+finish_tap(vec2i_t release) {
     const touch_probe_sample_t first = tap.samples[0];
     int settled_x;
     int settled_y;
     touch_probe_settled(tap.samples, tap.count, SETTLE_FROM_MS, SETTLE_TO_MS, &settled_x, &settled_y);
 
-    int fx;
-    int fy;
-    int sx;
-    int sy;
-    int rx;
-    int ry;
     int aim_panel_x;
     int aim_panel_y;
-    to_screen(first.x, first.y, &fx, &fy);
-    to_screen(settled_x, settled_y, &sx, &sy);
-    to_screen(release_x, release_y, &rx, &ry);
+    const vec2i_t first_screen = to_screen((vec2i_t){first.x, first.y});
+    const vec2i_t settled_screen = to_screen((vec2i_t){settled_x, settled_y});
+    const vec2i_t release_screen = to_screen(release);
     const int aim_x = target.x + (target.side / 2);
     const int aim_y = target.y + (target.side / 2);
     const affine2x_t transform = shell_transform();
@@ -294,24 +286,26 @@ finish_tap(int release_x, int release_y) {
     aim_panel_x = mapped_pixel.x;
     aim_panel_y = mapped_pixel.y;
 
-    last_hit = touch_probe_record(&stats, target, fx, fy);
-    last_x = fx;
-    last_y = fy;
+    last_hit = touch_probe_record(&stats, target, first_screen);
+    last_x = first_screen.x;
+    last_y = first_screen.y;
     have_last_tap = true;
 
     ESP_LOGI(TAG,
              "probe %d %s q%d aim %d,%d aim_panel %d,%d first %d,%d settled %d,%d release %d,%d panel_first %d,%d "
              "panel_settled %d,%d panel_release %d,%d held %d idle %d samples %d %s cal %d",
-             stats.taps, MODE_NAMES[mode], display_quarter_now(), aim_x, aim_y, aim_panel_x, aim_panel_y, fx, fy, sx,
-             sy, rx, ry, first.x, first.y, settled_x, settled_y, release_x, release_y, tap.held_ms,
-             tap.idle_before_press, tap.count, last_hit ? "HIT" : "miss", calibration_on());
+             stats.taps, MODE_NAMES[mode], display_quarter_now(), aim_x, aim_y, aim_panel_x, aim_panel_y,
+             (int)first_screen.x, (int)first_screen.y, (int)settled_screen.x, (int)settled_screen.y,
+             (int)release_screen.x, (int)release_screen.y, first.x, first.y, settled_x, settled_y, (int)release.x,
+             (int)release.y, tap.held_ms, tap.idle_before_press, tap.count, last_hit ? "HIT" : "miss",
+             calibration_on());
     advance_target();
 }
 
 static void
 track_touch(uint32_t dt_ms, const input_t* input) {
     if (input->pressed || input->down) {
-        widen_panel_range(input->point.x, input->point.y);
+        widen_panel_range(input->point);
     }
     if (!touch_probe_track(&tap, (int)dt_ms, input)) {
         return;
@@ -319,7 +313,7 @@ track_touch(uint32_t dt_ms, const input_t* input) {
     if (mode == MODE_BEZEL) {
         ESP_LOGI(TAG, "bezel radius %d quarter %d", bezel_radius, display_quarter_now());
     } else {
-        finish_tap(input->point.x, input->point.y);
+        finish_tap(input->point);
     }
 }
 
@@ -332,12 +326,9 @@ drag_bezel(const input_t* input) {
     if (!input->down) {
         return;
     }
-    int x;
-    int press_y;
-    int y;
-    to_screen(input->press.x, input->press.y, &x, &press_y);
-    to_screen(input->point.x, input->point.y, &x, &y);
-    const int radius = radius_at_press + ((press_y - y) / BEZEL_DRAG_PX);
+    const vec2i_t press = to_screen(input->press);
+    const vec2i_t point = to_screen(input->point);
+    const int radius = radius_at_press + ((press.y - point.y) / BEZEL_DRAG_PX);
     bezel_radius = radius < 0 ? 0 : radius > BEZEL_MAX ? BEZEL_MAX : radius;
 }
 

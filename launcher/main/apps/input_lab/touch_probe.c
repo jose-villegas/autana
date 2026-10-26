@@ -21,17 +21,18 @@ touch_probe_next(rng_t* rng, int screen_w, int screen_h, int side, int margin) {
 }
 
 void
-touch_probe_offset(touch_probe_target_t target, int x, int y, int* dx, int* dy) {
-    *dx = x - (target.x + target.side / 2);
-    *dy = y - (target.y + target.side / 2);
+touch_probe_offset(touch_probe_target_t target, vec2i_t point, int* dx, int* dy) {
+    *dx = point.x - (target.x + target.side / 2);
+    *dy = point.y - (target.y + target.side / 2);
 }
 
 bool
-touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, int x, int y) {
+touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, vec2i_t point) {
     int dx;
     int dy;
-    touch_probe_offset(target, x, y, &dx, &dy);
-    const bool hit = x >= target.x && x < target.x + target.side && y >= target.y && y < target.y + target.side;
+    touch_probe_offset(target, point, &dx, &dy);
+    const bool hit = point.x >= target.x && point.x < target.x + target.side && point.y >= target.y
+                     && point.y < target.y + target.side;
 
     stats->taps++;
     stats->hits += hit;
@@ -135,9 +136,9 @@ touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int
 }
 
 static void
-add_sample(touch_probe_tap_t* tap, int x, int y, int t_ms) {
+add_sample(touch_probe_tap_t* tap, vec2i_t point, int t_ms) {
     if (tap->count < TOUCH_PROBE_SAMPLES_MAX) {
-        tap->samples[tap->count++] = (touch_probe_sample_t){.x = x, .y = y, .t_ms = t_ms};
+        tap->samples[tap->count++] = (touch_probe_sample_t){.x = point.x, .y = point.y, .t_ms = t_ms};
     }
 }
 
@@ -148,13 +149,13 @@ touch_probe_track(touch_probe_tap_t* tap, int dt_ms, const input_t* input) {
         tap->count = 0;
         tap->held_ms = 0;
         tap->idle_before_press = tap->idle_ms;
-        add_sample(tap, input->press.x, input->press.y, 0);
+        add_sample(tap, input->press, 0);
         if (input->point.x != input->press.x || input->point.y != input->press.y) {
-            add_sample(tap, input->point.x, input->point.y, 0);
+            add_sample(tap, input->point, 0);
         }
     } else if (tap->tracking && input->down) {
         tap->held_ms += dt_ms;
-        add_sample(tap, input->point.x, input->point.y, tap->held_ms);
+        add_sample(tap, input->point, tap->held_ms);
     } else if (!tap->tracking) {
         tap->idle_ms += dt_ms;
     }

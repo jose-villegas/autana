@@ -51,7 +51,7 @@ test_a_tap_on_the_centre_has_no_offset(void) {
     const touch_probe_target_t t = {.x = 100, .y = 200, .side = 12};
     int dx;
     int dy;
-    touch_probe_offset(t, 106, 206, &dx, &dy);
+    touch_probe_offset(t, (vec2i_t){106, 206}, &dx, &dy);
     TEST_ASSERT_EQUAL_INT(0, dx);
     TEST_ASSERT_EQUAL_INT(0, dy);
 }
@@ -61,7 +61,7 @@ test_a_tap_below_and_left_reads_positive_dy_negative_dx(void) {
     const touch_probe_target_t t = {.x = 100, .y = 200, .side = 12};
     int dx;
     int dy;
-    touch_probe_offset(t, 101, 226, &dx, &dy);
+    touch_probe_offset(t, (vec2i_t){101, 226}, &dx, &dy);
     TEST_ASSERT_EQUAL_INT(-5, dx);
     TEST_ASSERT_EQUAL_INT(20, dy);
 }
@@ -70,11 +70,11 @@ static void
 test_a_hit_is_inside_the_square_and_nowhere_else(void) {
     const touch_probe_target_t t = {.x = 100, .y = 200, .side = 12};
     touch_probe_stats_t s = {0};
-    TEST_ASSERT_TRUE(touch_probe_record(&s, t, 100, 200));
-    TEST_ASSERT_TRUE(touch_probe_record(&s, t, 111, 211));
-    TEST_ASSERT_FALSE(touch_probe_record(&s, t, 112, 211));
-    TEST_ASSERT_FALSE(touch_probe_record(&s, t, 111, 212));
-    TEST_ASSERT_FALSE(touch_probe_record(&s, t, 99, 205));
+    TEST_ASSERT_TRUE(touch_probe_record(&s, t, (vec2i_t){100, 200}));
+    TEST_ASSERT_TRUE(touch_probe_record(&s, t, (vec2i_t){111, 211}));
+    TEST_ASSERT_FALSE(touch_probe_record(&s, t, (vec2i_t){112, 211}));
+    TEST_ASSERT_FALSE(touch_probe_record(&s, t, (vec2i_t){111, 212}));
+    TEST_ASSERT_FALSE(touch_probe_record(&s, t, (vec2i_t){99, 205}));
     TEST_ASSERT_EQUAL_INT(5, s.taps);
     TEST_ASSERT_EQUAL_INT(2, s.hits);
 }
@@ -84,9 +84,9 @@ static void
 test_mean_and_spread_follow_the_taps(void) {
     const touch_probe_target_t t = {.x = 100, .y = 200, .side = 12};
     touch_probe_stats_t s = {0};
-    touch_probe_record(&s, t, 106, 216);
-    touch_probe_record(&s, t, 106, 226);
-    touch_probe_record(&s, t, 106, 236);
+    touch_probe_record(&s, t, (vec2i_t){106, 216});
+    touch_probe_record(&s, t, (vec2i_t){106, 226});
+    touch_probe_record(&s, t, (vec2i_t){106, 236});
     TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, touch_probe_mean_dx(&s));
     TEST_ASSERT_FLOAT_WITHIN(0.001F, 20.0F, touch_probe_mean_dy(&s));
     TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, touch_probe_spread_dx(&s));
