@@ -17,12 +17,14 @@
  * A failure logs one reason; the caller leaves its content out. Release every handle. */
 handle_t asset_store_load(const char* name);
 
-/* Boot holds motion + photo; runtime holds system icons + ridge + an app icon set,
- * up to eight scenes and a suite's extra pack. Console views share this bounded pool;
- * 32 slots leave 20 for views and async work at that runtime peak. Tests run serially. */
-#define ASSET_STORE_REQUESTS_MAX 32U
+/* Handles beyond one per mounted pack: second holders of a pack (the engine pack's ridge and
+ * icon sets) and async requests still waiting for a mount. */
+#define ASSET_STORE_EXTRA_HANDLES 4U
+/* Live handles, blocking and async, at once. When full, a load logs and returns HANDLE_NONE;
+ * it never drops a holder. */
+#define ASSET_STORE_REQUESTS_MAX  (ASSET_STORE_MOUNTS_MAX + ASSET_STORE_EXTRA_HANDLES)
 /* CRC and entry-table bytes per pass, shared by every pending mount; placeholder until measured on the board. */
-#define ASSET_STORE_STEP_BYTES   4096U
+#define ASSET_STORE_STEP_BYTES    4096U
 
 /* Completion runs from the frame loop on core 0, never inside this call.
  * Lifetimes: docs/assets/Loading-Packs.md#async-loading.

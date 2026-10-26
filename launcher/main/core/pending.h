@@ -2,7 +2,8 @@
 #pragma once
 #include "core/handle.h"
 
-#define PENDING_TOKENS_MAX 16U
+/* Live cancellation groups at once; a full pool hands out PENDING_OWNER_DEAD and logs. */
+#define PENDING_TOKENS_MAX 4U
 #define PENDING_OWNER_DEAD (handle_make(HANDLE_OWNER_TOKEN, HANDLE_SLOT_MAX, HANDLE_GENERATION_MAX))
 
 typedef enum { PENDING_NONE, PENDING_WAIT, PENDING_READY, PENDING_FAILED, PENDING_CANCELLED } pending_t;
