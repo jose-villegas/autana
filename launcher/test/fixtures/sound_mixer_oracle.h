@@ -1,3 +1,4 @@
+/* The mixer's render before the cvt.15 fast paths, kept as the oracle its output must match bit for bit. */
 #pragma once
 
 #include <string.h>
