@@ -79,31 +79,19 @@ static const vec2f_t CIRCLE_SEGMENTS[][2] = {
 };
 
 static void
-print_vec2(vec2f_t p) {
-    char text[VEC2F_TEXT_MAX];
-    vec2f_format(text, sizeof text, p);
-    printf("[%s]", text);
-}
-
-static void
 print_circle_queries(void) {
     const vec2i_t lo = {CIRCLE_RECT.x, CIRCLE_RECT.y};
     const vec2i_t hi = {recti_right(CIRCLE_RECT) - mathi_one(), recti_bottom(CIRCLE_RECT) - mathi_one()};
-    char last[VEC2I_TEXT_MAX];
-    vec2i_format(last, sizeof last, hi);
     printf(",\"circle\":{\"rect\":[%d,%d,%d,%d],\"last\":[%s],\"circles\":[", CIRCLE_RECT.x, CIRCLE_RECT.y,
-           CIRCLE_RECT.w, CIRCLE_RECT.h, last);
+           CIRCLE_RECT.w, CIRCLE_RECT.h, vec2i_text(hi).chars);
     for (size_t i = 0; i < sizeof RECT_CIRCLES / sizeof RECT_CIRCLES[0]; i++) {
         const circlei_t circle = RECT_CIRCLES[i];
         const vec2i_t closest = vec2i_clamp(circle.centre, lo, hi);
         const vec2i_t delta = vec2i_sub(circle.centre, closest);
         const bool hit = circlei_overlaps_rect(circle, CIRCLE_RECT);
         const bool touch = vec2i_dot(delta, delta) == circle.radius * circle.radius;
-        char centre_text[VEC2I_TEXT_MAX], closest_text[VEC2I_TEXT_MAX];
-        vec2i_format(centre_text, sizeof centre_text, circle.centre);
-        vec2i_format(closest_text, sizeof closest_text, closest);
-        printf("%s[[%s],%d,[%s],%s,\"%s\",[", i ? "," : "", centre_text, circle.radius, closest_text,
-               hit ? "true" : "false", hit ? (touch ? "touch" : "overlap") : "miss");
+        printf("%s[[%s],%d,[%s],%s,\"%s\",[", i ? "," : "", vec2i_text(circle.centre).chars, circle.radius,
+               vec2i_text(closest).chars, hit ? "true" : "false", hit ? (touch ? "touch" : "overlap") : "miss");
         for (int y = lo.y; y <= hi.y; y++) {
             for (int x = lo.x; x <= hi.x; x++) {
                 const bool inside = circlei_contains_point(circle, (vec2i_t){x, y});
@@ -113,18 +101,18 @@ print_circle_queries(void) {
         printf("]]");
     }
     printf("],\"segment_circle\":[");
-    print_vec2(SEGMENT_CIRCLE.centre);
+    printf("[%s]", vec2f_text(SEGMENT_CIRCLE.centre).chars);
     printf(",%.7g],\"segments\":[", (double)SEGMENT_CIRCLE.radius);
     for (size_t i = 0; i < sizeof CIRCLE_SEGMENTS / sizeof CIRCLE_SEGMENTS[0]; i++) {
         const vec2f_t a = CIRCLE_SEGMENTS[i][0], b = CIRCLE_SEGMENTS[i][1];
         float t = 0.0F;
         const bool hit = circlef_segment_hit(SEGMENT_CIRCLE, a, b, &t);
         printf("%s[", i ? "," : "");
-        print_vec2(a);
+        printf("[%s]", vec2f_text(a).chars);
         printf(",");
-        print_vec2(b);
+        printf("[%s]", vec2f_text(b).chars);
         printf(",%s,%.7g,", hit ? "true" : "false", (double)t);
-        print_vec2(circlef_closest_point(SEGMENT_CIRCLE, vec2f_lerp(a, b, t)));
+        printf("[%s]", vec2f_text(circlef_closest_point(SEGMENT_CIRCLE, vec2f_lerp(a, b, t))).chars);
         printf("]");
     }
     printf("]}");
@@ -132,9 +120,7 @@ print_circle_queries(void) {
 
 static void
 print_vec(vec3f_t p) {
-    char text[VEC3F_TEXT_MAX];
-    vec3f_format(text, sizeof text, p);
-    printf("[%s]", text);
+    printf("[%s]", vec3f_text(p).chars);
 }
 
 static void
@@ -150,12 +136,12 @@ print_sheet(vec3f_t centre, vec3f_t tangent, vec3f_t bitangent, const mat4f_t* m
 
 static void
 print_plane(planef_t p) {
-    printf("[%.7g,%.7g,%.7g,%.7g]", (double)p.normal.x, (double)p.normal.y, (double)p.normal.z, (double)p.d);
+    printf("[%s,%s]", vec3f_text(p.normal).chars, mathf_text(p.d).chars);
 }
 
 static void
 print_rect(recti_t r) {
-    printf("[%d,%d,%d,%d]", r.x, r.y, r.w, r.h);
+    printf("[%s,%s]", vec2i_text((vec2i_t){r.x, r.y}).chars, vec2i_text((vec2i_t){r.w, r.h}).chars);
 }
 
 static void
@@ -306,9 +292,7 @@ main(int argc, char** argv) {
     }
     printf("],\"samples\":[");
     for (size_t i = 0; i < sizeof RECT_SAMPLES / sizeof RECT_SAMPLES[0]; i++) {
-        char point_text[VEC2I_TEXT_MAX];
-        vec2i_format(point_text, sizeof point_text, RECT_SAMPLES[i]);
-        printf("%s[%s,%s]", i ? "," : "", point_text,
+        printf("%s[%s,%s]", i ? "," : "", vec2i_text(RECT_SAMPLES[i]).chars,
                recti_contains(RECT_A, RECT_SAMPLES[i].x, RECT_SAMPLES[i].y) ? "true" : "false");
     }
     const planef_t raw = planef_from_normal_point(DISTANCE_NORMAL, DISTANCE_POINT);

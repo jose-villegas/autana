@@ -41,10 +41,7 @@ static void
 print_rotations(const anim_pose_t* pose) {
     printf("[");
     for (int j = 0; j < pose->joint_count; j++) {
-        const quatf_t q = pose->local[j].rotation;
-        char text[QUATF_TEXT_MAX];
-        quatf_format(text, sizeof text, q);
-        printf("%s[%s]", j ? "," : "", text);
+        printf("%s[%s]", j ? "," : "", quatf_text(pose->local[j].rotation).chars);
     }
     printf("]");
 }
@@ -55,10 +52,7 @@ print_joints(const anim_skeleton_t* skeleton, const anim_pose_t* pose, mat4f_t* 
     anim_pose_model(skeleton, pose, model);
     printf("[");
     for (int j = 0; j < pose->joint_count; j++) {
-        const vec3f_t p = mat4f_apply(&model[j], (vec3f_t){0});
-        char text[VEC3F_TEXT_MAX];
-        vec3f_format(text, sizeof text, p);
-        printf("%s[%s]", j ? "," : "", text);
+        printf("%s[%s]", j ? "," : "", vec3f_text(mat4f_apply(&model[j], (vec3f_t){0})).chars);
     }
     printf("]");
 }

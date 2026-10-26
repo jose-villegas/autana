@@ -41,28 +41,21 @@ orbit_samples(void) {
     const int reset_frame = held_frames + (int)roundf(fling_half_lives * orbit.fling_half_life_s / frame_s);
     const int maximum_frames = reset_frame + (int)(reset_duration_s / frame_s) + home_still_frames;
     int still_frames = 0;
-    char target_text[VEC3F_TEXT_MAX];
-    vec3f_format(target_text, sizeof target_text, target);
     printf("\"half_life\":%.9g,\"release\":%.9g,\"reset_start\":%.9g,\"pitch_limit\":%.9g,"
            "\"target\":[%s],\"orbit\":[",
            orbit.fling_half_life_s, held_frames * frame_s, reset_frame * frame_s, ORBIT_MOTION_PITCH_LIMIT,
-           target_text);
+           vec3f_text(target).chars);
     for (int i = 0; i < maximum_frames; i++) {
         if (i == reset_frame) {
             orbit_motion_update(&orbit, &(orbit_motion_input_t){.reset = true}, 0);
         }
         const transformf_t pose = orbit_motion_pose(&orbit);
-        char position_text[VEC3F_TEXT_MAX];
-        vec3f_format(position_text, sizeof position_text, pose.position);
         printf("%s{\"time\":%.9g,\"position\":[%s],\"speed\":[%.9g,%.9g],"
                "\"resetting\":%s,\"axes\":[",
-               i ? "," : "", i * frame_s, position_text, orbit.velocity.yaw, orbit.velocity.pitch,
+               i ? "," : "", i * frame_s, vec3f_text(pose.position).chars, orbit.velocity.yaw, orbit.velocity.pitch,
                orbit.resetting ? "true" : "false");
         for (size_t j = 0; j < sizeof frame_axes / sizeof frame_axes[0]; j++) {
-            const vec3f_t axis = quatf_rotate(pose.rotation, frame_axes[j]);
-            char text[VEC3F_TEXT_MAX];
-            vec3f_format(text, sizeof text, axis);
-            printf("%s[%s]", j ? "," : "", text);
+            printf("%s[%s]", j ? "," : "", vec3f_text(quatf_rotate(pose.rotation, frame_axes[j])).chars);
         }
         printf("]}");
         if (i >= reset_frame && !orbit.resetting && ++still_frames == home_still_frames) {

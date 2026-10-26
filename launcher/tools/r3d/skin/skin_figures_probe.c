@@ -32,9 +32,7 @@ joint_world(int joint, float hinge, float radians) {
 
 static void
 print_point(vec3f_t p) {
-    char text[VEC2F_TEXT_MAX];
-    vec2f_format(text, sizeof text, vec3f_xy(p));
-    printf("[%s]", text);
+    printf("[%s]", vec2f_text(vec3f_xy(p)).chars);
 }
 
 int

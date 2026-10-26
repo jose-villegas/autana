@@ -80,11 +80,37 @@ test_float_round_trips(void) {
     free(text);
 }
 
+/* Keep returned text temporaries out of the aggregate test's device stack frame. */
+#define DEFINE_TEXT_CHECK(P, T)                                                                                        \
+    static __attribute__((noinline)) void check_##P##_text(T value, const char* expected) {                            \
+        TEST_ASSERT_EQUAL_STRING(expected, P##_text(value).chars);                                                     \
+    }
+
+#define DEFINE_TEXT_FAMILY_CHECK(S)                                                                                    \
+    DEFINE_TEXT_CHECK(vec2##S, vec2##S##_t)                                                                            \
+    DEFINE_TEXT_CHECK(vec3##S, vec3##S##_t)                                                                            \
+    DEFINE_TEXT_CHECK(rect##S, rect##S##_t)
+
+DEFINE_TEXT_CHECK(mathf, float)
+DEFINE_TEXT_CHECK(mathi, int32_t)
+DEFINE_TEXT_CHECK(maths, int16_t)
+DEFINE_TEXT_CHECK(mathx, int32_t)
+DEFINE_TEXT_FAMILY_CHECK(f)
+DEFINE_TEXT_FAMILY_CHECK(i)
+DEFINE_TEXT_FAMILY_CHECK(s)
+DEFINE_TEXT_FAMILY_CHECK(x)
+DEFINE_TEXT_CHECK(quatf, quatf_t)
+DEFINE_TEXT_CHECK(quatx, quatx_t)
+DEFINE_TEXT_CHECK(mat3f, mat3f_t)
+DEFINE_TEXT_CHECK(mat4f, mat4f_t)
+DEFINE_TEXT_CHECK(mat4x, mat4x_t)
+
 #define CHECK_TEXT(P, MAX, T, ...)                                                                                     \
     do {                                                                                                               \
         T value = __VA_ARGS__, parsed;                                                                                 \
         int length = P##_format(text, MAX, value);                                                                     \
         TEST_ASSERT_LESS_THAN(MAX, length);                                                                            \
+        check_##P##_text(value, text);                                                                                 \
         TEST_ASSERT_TRUE(P##_parse(text, NULL, &parsed));                                                              \
         TEST_ASSERT_EQUAL_MEMORY(&value, &parsed, sizeof value);                                                       \
         for (size_t cap = 1; cap <= (size_t)length; ++cap) {                                                           \
