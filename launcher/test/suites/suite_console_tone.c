@@ -8,6 +8,7 @@
 #include "console/verbs/console_tone_reply.h"
 #include "input/motion/imu.h"
 #include "input/motion/imu_vibration.h"
+#include "input_fake.h"
 #include "math/scalar/math_db.h"
 #include "suites.h"
 #include "unity.h"
@@ -417,11 +418,6 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_resul
 }
 
 bool
-imu_ready(void) {
-    return true;
-}
-
-bool
 imu_set_odr(unsigned odr_code) {
     device.odr_code = odr_code;
     return true;
@@ -617,7 +613,9 @@ test_tone_pending_restore_blocks_both_modes(void) {
 
 static void
 test_tone_check_measures_shake_per_window(void) {
+    suite_add_test_cleanup(input_fake_reset);
     memset(&device, 0, sizeof device);
+    input_fake_motion_present(true);
     device.reg = TEST_TONE_REGISTER_OLD;
     const console_tone_args_t args = fixture();
     char line[CONSOLE_TONE_REPLY_BYTES];
@@ -631,7 +629,9 @@ test_tone_check_measures_shake_per_window(void) {
 
 static void
 test_tone_check_short_shake_window_is_unavailable(void) {
+    suite_add_test_cleanup(input_fake_reset);
     memset(&device, 0, sizeof device);
+    input_fake_motion_present(true);
     device.reg = TEST_TONE_REGISTER_OLD;
     device.shake_short = true;
     const console_tone_args_t args = fixture();
