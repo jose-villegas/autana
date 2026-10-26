@@ -104,7 +104,8 @@ class DeviceModel:
         self.pcb = np.c_[pcb, np.full(len(pcb), -geometry["depth"])]
         self.imu = box_faces(self.imu_centre, self.chip_axes.T @ np.array(geometry["imu_size"]))
 
-        self.side_features = []
+        self.buttons = []
+        self.holes = []
         for feature in geometry["side_features"]:
             x = self.width / 2 * (1 if feature["side"] == "right" else -1)
             y, z = feature["y"], feature["z"]
@@ -112,10 +113,10 @@ class DeviceModel:
             if feature["shape"] == "box":
                 proud = feature["proud"]
                 faces = box_faces((x + proud / 2, y, z), (proud, size_y, size_z))
-            else:
+                self.buttons.extend(faces)
+            elif feature["shape"] == "hole":
                 hole = rounded_outline(size_y, size_z, min(size_y, size_z) / 2) + (y, z)
-                faces = [np.c_[np.full(len(hole), x), hole]]
-            self.side_features.extend(faces)
+                self.holes.append(np.c_[np.full(len(hole), x), hole])
 
     def to_device(self, screen_vector):
         """A vector in the code's screen axes as a device vector."""
@@ -131,8 +132,12 @@ class DeviceModel:
         for line in (*self.case_outlines, *self.back_details):
             axis.plot(*(line @ pose.T).T, color=MUTED, linewidth=EDGE_WIDTH)
         axis.plot(*(self.pcb @ pose.T).T, color=MUTED, linewidth=EDGE_WIDTH, alpha=PCB_ALPHA)
-        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in (*self.imu, *self.side_features)],
+        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.imu],
                                                facecolor=IMU, edgecolor=IMU))
+        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.holes],
+                                               facecolor=MUTED, edgecolor=MUTED))
+        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.buttons],
+                                               facecolor=BODY, edgecolor=MUTED))
         length = AXIS_SHARE * self.height
         sets = ((chip_axes, pose @ self.imu_centre, self.chip_axes, "XYZ", CHIP_AXES),
                 (screen_axes, np.zeros(3), self.screen_axes, "xyz", SCREEN_AXES))
