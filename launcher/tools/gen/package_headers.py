@@ -9,12 +9,11 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/gates"))
-sys.path.insert(0, str(ROOT / "scripts/docs"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 
 from build.packages import package_part
-from code_search import describe
+from check_file_headers import file_purpose
 from generated_blocks import replace_block
 from tracked import tracked_files
 
@@ -31,7 +30,7 @@ def package_headers(root):
         if part is None or part[1] != "include" or not path.endswith(".h"):
             continue
         package = f"launcher/packages/{part[0]}/"
-        purpose = describe(path, (root / path).read_text(encoding="utf-8")).purpose
+        purpose = file_purpose(path, (root / path).read_text(encoding="utf-8"))
         apis.setdefault(package + "README.md", []).append((path.removeprefix(package), purpose))
     return {readme: sorted(rows) for readme, rows in apis.items()}
 
