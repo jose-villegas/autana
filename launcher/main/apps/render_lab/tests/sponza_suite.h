@@ -14,10 +14,9 @@
 
 typedef struct {
     scene_t* scene;
-    const asset_pack_t* pack;
+    handle_t load; /* the pack: asset_store_loaded(load) */
     const camera_t* lens;
     size_t arena_mark;
-    handle_t load;
 } sponza_suite_t;
 
 /* Loads it, printing why when it cannot; every field is then NULL. */
@@ -25,13 +24,12 @@ static inline sponza_suite_t
 sponza_suite_load(void) {
     scene_failure_t why;
     const size_t mark = app_arena_mark();
-    sponza_suite_t s = {scene_load(SPONZA_SCENE, &why), NULL, NULL, mark, HANDLE_NONE};
+    sponza_suite_t s = {scene_load(SPONZA_SCENE, &why), HANDLE_NONE, NULL, mark};
     if (s.scene == NULL) {
         printf("scene %s: status %d, asset %s, about '%s'\n", SPONZA_SCENE, (int)why.status,
                asset_status_text(why.asset), why.what);
     } else {
         s.load = asset_store_load(SPONZA_SCENE);
-        s.pack = asset_store_loaded(s.load);
         s.lens = scene_camera_lens(s.scene, SCENE_CAMERA_FIRST);
     }
     return s;
@@ -50,5 +48,5 @@ sponza_suite_release(sponza_suite_t* s) {
     asset_store_release(s->load);
     scene_unload(s->scene);
     app_arena_rewind(s->arena_mark);
-    *s = (sponza_suite_t){NULL, NULL, NULL, 0, HANDLE_NONE};
+    *s = (sponza_suite_t){NULL, HANDLE_NONE, NULL, 0};
 }
