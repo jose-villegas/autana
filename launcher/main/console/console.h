@@ -30,7 +30,7 @@
  * Call once, from app_main(), the same place and pattern as
  * touch_start()/buttons_start(): a small dedicated task the shell never
  * talks to directly; the frame-loop verbs' requests reach it through
- * console_frame_take(). */
+ * their frame slots (console_frame_request.h). */
 void console_start(void);
 
 /* Sends `prefix` then `payload` then a newline, each through the console

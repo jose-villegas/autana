@@ -3,58 +3,63 @@
 
 #include <string.h>
 
-static console_frame_mailbox_t shared = CONSOLE_FRAME_MAILBOX_INIT;
+#include "core/registry.h"
 
-console_frame_mailbox_t*
-console_frame_mailbox(void) {
+static console_frame_slots_t shared = CONSOLE_FRAME_SLOTS_INIT;
+
+console_frame_slots_t*
+console_frame_slots(void) {
     return &shared;
 }
 
-static void
-merge(console_frame_request_t* into, const console_frame_request_t* from) {
-    if (from->kinds & CONSOLE_FRAME_NAVIGATE) {
-        into->navigation = from->navigation;
-        memcpy(into->app, from->app, sizeof into->app);
-    }
-    if (from->kinds & CONSOLE_FRAME_FREEZE) {
-        into->frozen = from->frozen;
-        into->steps = from->steps;
-    }
-#ifdef CONSOLE_FRAME_HAS_RUNSUITE
-    if (from->kinds & CONSOLE_FRAME_RUNSUITE) {
-        memcpy(into->suite, from->suite, sizeof into->suite);
-    }
-#endif
-    if (from->kinds & CONSOLE_FRAME_SOUND) {
-        into->sound = from->sound;
-    }
-    into->kinds |= from->kinds;
+bool
+console_frame_add(console_frame_slots_t* slots, console_frame_slot_t* slot) {
+    static const registry_rule_t rule = REGISTRY_RULE(console_frame_slot_t, strcmp, NULL);
+    return registry_add(&slots->first, &rule, slot) != REGISTRY_CLASH;
 }
 
 bool
-console_frame_post(console_frame_mailbox_t* mailbox, const console_frame_request_t* request) {
-    portENTER_CRITICAL(&mailbox->lock);
-    const uint32_t held = (mailbox->pending.kinds | mailbox->busy) & CONSOLE_FRAME_HELD;
-    const bool accepted = (request->kinds & held) == 0;
+console_frame_post(console_frame_slots_t* slots, console_frame_slot_t* slot, const void* payload) {
+    portENTER_CRITICAL(&slots->lock);
+    const bool accepted = !(slot->held && (slot->posted || slot->busy));
     if (accepted) {
-        merge(&mailbox->pending, request);
+        if (slot->size != 0) {
+            memcpy(slot->pending, payload, slot->size);
+        }
+        slot->posted = true;
     }
-    portEXIT_CRITICAL(&mailbox->lock);
+    portEXIT_CRITICAL(&slots->lock);
     return accepted;
 }
 
-void
-console_frame_take(console_frame_mailbox_t* mailbox, console_frame_request_t* out) {
-    portENTER_CRITICAL(&mailbox->lock);
-    *out = mailbox->pending;
-    mailbox->busy |= out->kinds & CONSOLE_FRAME_HELD;
-    mailbox->pending.kinds = 0;
-    portEXIT_CRITICAL(&mailbox->lock);
+bool
+console_frame_take(console_frame_slots_t* slots, console_frame_slot_t* slot) {
+    portENTER_CRITICAL(&slots->lock);
+    const bool posted = slot->posted;
+    if (posted) {
+        if (slot->size != 0) {
+            memcpy(slot->taken, slot->pending, slot->size);
+        }
+        slot->posted = false;
+        slot->busy = slot->held;
+    }
+    portEXIT_CRITICAL(&slots->lock);
+    return posted;
 }
 
 void
-console_frame_done(console_frame_mailbox_t* mailbox, console_frame_kind_t kind) {
-    portENTER_CRITICAL(&mailbox->lock);
-    mailbox->busy &= ~(uint32_t)kind;
-    portEXIT_CRITICAL(&mailbox->lock);
+console_frame_done(console_frame_slots_t* slots, console_frame_slot_t* slot) {
+    portENTER_CRITICAL(&slots->lock);
+    slot->busy = false;
+    portEXIT_CRITICAL(&slots->lock);
+}
+
+void
+console_frame_answer_pending(console_frame_slots_t* slots) {
+    for (console_frame_slot_t* slot = slots->first; slot != NULL; slot = slot->next) {
+        if (slot->answer != NULL && console_frame_take(slots, slot)) {
+            slot->answer(slot->taken);
+            console_frame_done(slots, slot);
+        }
+    }
 }

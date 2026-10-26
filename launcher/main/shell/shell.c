@@ -37,14 +37,14 @@
 #include "console/console.h"
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_frame_watch.h"
 #include "console/verbs/console_freeze.h"
+#include "console/verbs/console_navigation.h"
 #include "console/verbs/console_navigation_parse.h"
 #include "console/verbs/console_screenshot.h"
-#include "console/verbs/console_sound.h"
 #endif
 
 #if CONFIG_LAUNCHER_SELFTEST
+#include "console/verbs/console_runsuite.h"
 #include "suites.h"
 #include "unity.h"
 #endif
@@ -173,13 +173,14 @@ shell_check_console_prefixes(void) {
 #if CONFIG_LAUNCHER_SELFTEST
 /* See console/console.c for framebuffer contention explanation. */
 static __attribute__((noinline)) void
-run_pending_selftest_suite(const console_frame_request_t* requests) {
-    if (!(requests->kinds & CONSOLE_FRAME_RUNSUITE)) {
+run_pending_selftest_suite(void) {
+    if (!console_frame_take(console_frame_slots(), &console_runsuite_slot)) {
         return;
     }
+    const console_runsuite_request_t* request = console_runsuite_slot.taken;
     static suite_run_t run;
     UNITY_BEGIN();
-    suites_run_request(requests->suite, &run);
+    suites_run_request(request->suite, &run);
     if (!run.found) {
         ESP_LOGE(TAG, "no suite named '%s' is registered", run.name);
     }
@@ -188,7 +189,7 @@ run_pending_selftest_suite(const console_frame_request_t* requests) {
     /* On its own line, so a harness knows the suite ended without having to
      * guess from how long the console has been quiet. */
     suites_print_run(&run);
-    console_frame_done(console_frame_mailbox(), CONSOLE_FRAME_RUNSUITE);
+    console_frame_done(console_frame_slots(), &console_runsuite_slot);
     (void)fflush(stdout);
     /* A suite draws, clears and presents on its own, outside the shell's
      * own dirty tracking; the next real frame must repaint in full rather
@@ -285,12 +286,13 @@ console_find_app(const char* prefix, bool* ambiguous) {
 /* Returns true when the request changed which app is running, so this frame
  * belongs to the switch and not to an app's frame(). */
 static bool
-run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms, const console_frame_request_t* requests) {
-    if (!(requests->kinds & CONSOLE_FRAME_NAVIGATE)) {
+run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms, bool navigate) {
+    if (!navigate) {
         return false;
     }
-    const console_navigation_t navigation = requests->navigation;
-    const char* name = requests->app;
+    const console_navigation_request_t* request = console_navigation_slot.taken;
+    const console_navigation_t navigation = request->navigation;
+    const char* name = request->app;
     const gesture_edge_t exit_edge = shell_exit_edge_for_quarter(display_quarter_now());
     if (navigation == CONSOLE_NAVIGATION_APPS) {
         console_list_apps(*current);
@@ -339,9 +341,9 @@ report_gesture_completion(void) {
 }
 
 static __attribute__((noinline)) void
-run_dev_frame_extras(input_t* input, const app_t* current, const console_frame_request_t* requests) {
+run_dev_frame_extras(input_t* input, const app_t* current, bool screenshot) {
     shell_frame_extras();
-    if (requests->kinds & CONSOLE_FRAME_SCREENSHOT) {
+    if (screenshot) {
         console_screenshot_dump(input, current);
         gfx_request_full_redraw();
     }
@@ -352,11 +354,10 @@ run_dev_frame_extras(input_t* input, const app_t* current, const console_frame_r
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static __attribute__((noinline)) bool
-run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms,
-                          const console_frame_request_t* requests) {
+run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms, bool navigate, bool screenshot) {
     report_gesture_completion();
-    if (run_console_navigation(current, input, dt_ms, requests)) {
-        run_dev_frame_extras(input, *current, requests);
+    if (run_console_navigation(current, input, dt_ms, navigate)) {
+        run_dev_frame_extras(input, *current, screenshot);
         shell_present_unless_deferred(*current);
         return true;
     }
@@ -366,7 +367,7 @@ run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms,
      * rotation asked for. A held frame never reaches run_dev_frame_extras(),
      * so the line is offered here: freeze, inspect, step. */
     if (!console_freeze_frame_allowed()) {
-        if (requests->kinds & CONSOLE_FRAME_SCREENSHOT) {
+        if (screenshot) {
             console_screenshot_dump(input, *current);
         }
         offer_console_line(*current);
@@ -386,8 +387,6 @@ shell_run(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     int64_t fps_window_start = previous_us;
     uint32_t frames = 0;
-    /* What the console asked of this pass; static, as input is. */
-    static console_frame_request_t requests;
 #endif
 
     int app_count = 0;
@@ -414,18 +413,14 @@ shell_run(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         /* Before the freeze gate and every early return below: what those
          * would skip is applied here, so a held frame still answers. */
-        console_frame_take(console_frame_mailbox(), &requests);
-        console_freeze_apply(&requests);
-        if (requests.kinds & CONSOLE_FRAME_SOUND) {
-            console_sound_answer(&requests.sound);
-            console_frame_done(console_frame_mailbox(), CONSOLE_FRAME_SOUND);
-        }
-        if (requests.kinds & CONSOLE_FRAME_FRAMEWATCH) {
-            console_frame_watch_answer();
-        }
+        /* A capture first, then what it may depend on: anything posted
+         * before a SCREENSHOT this pass takes is applied before it runs. */
+        const bool screenshot = console_frame_take(console_frame_slots(), &console_screenshot_slot);
+        const bool navigate = console_frame_take(console_frame_slots(), &console_navigation_slot);
+        console_frame_answer_pending(console_frame_slots());
 #endif
 #if CONFIG_LAUNCHER_SELFTEST
-        run_pending_selftest_suite(&requests);
+        run_pending_selftest_suite();
 #endif
 
         input_poll(&input);
@@ -435,7 +430,7 @@ shell_run(void) {
         apply_display_orientation(now_us);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        if (run_development_pre_frame(&current, &input, dt_ms, &requests)) {
+        if (run_development_pre_frame(&current, &input, dt_ms, navigate, screenshot)) {
             FRAME_COST_END(rest_began, "frame.rest");
             timing_yield();
             continue;
@@ -445,7 +440,7 @@ shell_run(void) {
         shell_step_app(&current, &input, dt_ms);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        run_dev_frame_extras(&input, current, &requests);
+        run_dev_frame_extras(&input, current, screenshot);
 #endif
 
         shell_present_unless_deferred(current);
