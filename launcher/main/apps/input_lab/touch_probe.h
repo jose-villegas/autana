@@ -33,11 +33,11 @@ typedef struct {
 touch_probe_target_t touch_probe_next(rng_t* rng, int screen_w, int screen_h, int side, int margin);
 
 /* Scores a tap at (x, y); true when it lands inside the target. */
-bool touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, int x, int y);
+bool touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, vec2i_t point);
 
 /* Offset from the target's centre to the tap, in screen pixels: positive
  * dx is right of it, positive dy is below it. */
-void touch_probe_offset(touch_probe_target_t target, int x, int y, int* dx, int* dy);
+void touch_probe_offset(touch_probe_target_t target, vec2i_t point, int* dx, int* dy);
 
 /* Target `index` of a `cols` x `rows` grid spanning the same area
  * touch_probe_next() draws from, corner to corner, row by row. */

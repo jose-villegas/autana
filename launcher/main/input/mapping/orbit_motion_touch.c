@@ -19,8 +19,8 @@ steer(orbit_motion_touch_t* touch, const input_t* input, viewport_t viewport, or
     int uy0;
     int ux1;
     int uy1;
-    viewport_physical_to_upright(viewport, touch->last.x, touch->last.y, &ux0, &uy0);
-    viewport_physical_to_upright(viewport, input->point.x, input->point.y, &ux1, &uy1);
+    viewport_physical_to_upright(viewport, touch->last, &ux0, &uy0);
+    viewport_physical_to_upright(viewport, input->point, &ux1, &uy1);
     const int shorter = viewport.width < viewport.height ? viewport.width : viewport.height;
     const float per_px = ORBIT_MOTION_TOUCH_TURN_PER_SHORT_SIDE / (float)shorter;
     if (touch->zooming) {

@@ -1379,7 +1379,7 @@ test_a_point_up_and_right_lands_up_and_right_in_every_quarter(void) {
         r3d_lens_init(&lens, &frame_view, 1);
         const vec2f_t screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, (vec3f_t){30.0F, 20.0F, 100.0F}));
         int ux, uy;
-        viewport_physical_to_upright(viewport, (int)floorf(screen.x), (int)floorf(screen.y), &ux, &uy);
+        viewport_physical_to_upright(viewport, (vec2i_t){(int)floorf(screen.x), (int)floorf(screen.y)}, &ux, &uy);
 
         /* The lens fits the shorter upright axis: tan = 0.5 spans half of it. */
         const int upright_width = (quarter & 1) ? H : W, upright_height = (quarter & 1) ? W : H;
