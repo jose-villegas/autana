@@ -30,8 +30,7 @@ static const input_t ridge_arm_idle_input = {0};
 static inline input_t
 ridge_arm_pluck_strum_input(int frame) {
     return (input_t){
-        .x = (frame * 19) % GFX_WIDTH,
-        .y = GFX_HEIGHT / 2,
+        .point = {(frame * 19) % GFX_WIDTH, GFX_HEIGHT / 2},
         .down = true,
         .pressed = frame == 0,
     };
