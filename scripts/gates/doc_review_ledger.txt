@@ -42,7 +42,11 @@ docs/audio/Audio-Path.md	2026-10-17	checked against audio/, console_tone.c and t
 docs/audio/Audio-Path.md	2026-10-17	call and signal diagrams, memory constraint and board settings checked against their source owners
 docs/notes/Board-and-Memory.md	2026-10-17	memory section split under subheaders; facts and generated tiers unchanged, autana heap checked against docs/cli/Watch.md
 docs/audio/Audio-Path.md	2026-10-18	path and capture lifetime checked against audio/ and sound/
-docs/audio/Sound-Mixer.md	2026-10-18	rework: app example, cost, exit order and capture checked against sound/ and shell_apps.c
+docs/audio/Sound-Mixer.md	2026-10-24	split into reference, Play a sound, internals, cost and clicks; API and handle rules checked against sound_play.h and sound_mixer.c
+docs/audio/Play-a-Sound.md	2026-10-24	moved from Sound-Mixer.md; checked against sound/ and the generators
+docs/audio/Mixer-Internals.md	2026-10-24	moved from Sound-Mixer.md; checked against sound/ and the generators
+docs/audio/Mixer-Cost.md	2026-10-24	moved from Sound-Mixer.md; checked against sound/ and the generators
+docs/audio/Clicks.md	2026-10-24	moved from Sound-Mixer.md; checked against sound/ and the generators
 docs/math/README.md	2026-10-18	split into an index; links checked against every docs/math page
 docs/math/Projection.md	2026-10-18	moved from the math README; checked against projectf.h and projectx.h
 docs/math/Geometry.md	2026-10-18	moved from the math README plus five generated figures; checked against rect and plane templates
