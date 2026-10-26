@@ -6,8 +6,7 @@
     python scripts/docs/docs_search.py --section 'PATH#heading words'
     python scripts/docs/docs_search.py --outline PATH       a document's headings
     python scripts/docs/docs_search.py --ask <question...>  a written answer, with sources
-    python scripts/docs/docs_search.py --eval               retrieval score, kept as history
-    python scripts/docs/docs_search.py --usage [--days N]   what has been asked, and missed
+    python scripts/docs/docs_search.py --eval [--expect M]  retrieval score; fails unless the mode is M
 
 Options: --top N (3), --more N (5), --budget CHARS (1800), --json, --lexical.
 
@@ -30,10 +29,11 @@ Two rankings are fused by reciprocal rank (Cormack, Clarke and Buttcher 2009): B
 the body, and embedding similarity from docs_llama.py's local model when it is
 set up. Without the model, search is the first alone and says so. The index is
 rebuilt on every run, in about a second, so it is never stale; only the
-vectors are cached. Every question is logged locally (query_log.py).
+vectors are cached.
 docs/cli/Docs-Search.md has the setup.
 """
 import argparse
+import difflib
 import json
 import math
 import os
@@ -44,7 +44,6 @@ from collections import Counter, namedtuple
 from pathlib import Path
 
 import docs_llama
-import query_log
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
@@ -53,6 +52,9 @@ Section = namedtuple("Section", "path start end title headings level body cites"
 Hit = namedtuple("Hit", "section score coverage similarity")
 
 SKIPPED_PREFIXES = ("third_party/", "launcher/components/")
+# Close spellings offered for a word no section uses, and how close they must be.
+NEAREST_SHOWN = 3
+NEAREST_CUTOFF = 0.8
 # Scripts document themselves from under these; fixed, not read off a VCS index.
 SCRIPT_ROOTS = ("scripts/", "launcher/tools/", "launcher/test/", "launcher/main/apps/")
 SCRIPT_SUFFIXES = (".py", ".sh", ".mjs")
@@ -509,7 +511,7 @@ def answer(index, question, top=3, more=5, budget=1800):
     unknown = index.unknown_terms(terms)
     words = index.spellings() if unknown else {}
     nearest = {term: [words[n] for n in near] for term in unknown
-               if (near := query_log.nearest(term, words))}
+               if (near := difflib.get_close_matches(term, words, NEAREST_SHOWN, NEAREST_CUTOFF))}
     weights = ([0.5, 0.3, 0.2] + [0.15] * max(top - 3, 0))[:max(top, 0)]
     shares = [w / sum(weights) for w in weights]
     results = []
@@ -635,25 +637,41 @@ def evaluate(index, depth=10):
     return ranks
 
 
-def run_eval(index):
+def scores(ranks):
+    """Mean reciprocal rank over (question, rank or None) rows, and the share found first and in
+    the top three."""
+    count = max(len(ranks), 1)
+    return {"rows": len(ranks),
+            "mrr": round(sum(1 / r for _, r in ranks if r) / count, 3),
+            "top1": round(sum(1 for _, r in ranks if r == 1) / count, 3),
+            "top3": round(sum(1 for _, r in ranks if r and r <= 3) / count, 3)}
+
+
+def run_eval(index, expect=None):
+    """Print each question's rank and the score; a CI step summary gets the score line too.
+    Fails when expect names a mode the index did not search in."""
     started = time.perf_counter()
     ranks = evaluate(index)
     for question, rank in ranks:
         print(f"{rank or '-':>2}  {question}")
-    return query_log.keep_score("docs", "hybrid" if index.vectors else "lexical", ranks, started,
-                                sections=len(index.sections))
+    mode = "hybrid" if index.vectors else "lexical"
+    result = scores(ranks)
+    line = (f"docs {mode}: MRR {result['mrr']:.3f}, top-1 {result['top1']:.0%}, top-3 {result['top3']:.0%} "
+            f"of {result['rows']} questions over {len(index.sections)} sections in "
+            f"{time.perf_counter() - started:.1f} s")
+    print(line)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+            summary.write(line + "\n\n")
+    if expect and mode != expect:
+        print(f"docs evaluation: expected {expect}, got {mode}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def repo_root():
     """This script's own checkout root; scripts/docs/docs_search.py is always two levels down."""
     return Path(__file__).resolve().parents[2]
-
-
-def note_reply(call, reply):
-    call.hits = [(r["location"], r["score"]) for r in reply["results"]]
-    call.weak = reply["weak"]
-    call.fields.update(similarity=reply["similarity"], semantic=reply["semantic"],
-                       unknown=reply["unknown"])
 
 
 def main(argv=None, root=None):
@@ -665,25 +683,21 @@ def main(argv=None, root=None):
     parser.add_argument("--deep", action="store_true")
     parser.add_argument("--outline")
     parser.add_argument("--eval", action="store_true")
+    parser.add_argument("--expect", choices=("hybrid", "lexical"))
     parser.add_argument("--ask", action="store_true")
     parser.add_argument("--top", type=int, default=3)
     parser.add_argument("--more", type=int, default=5)
     parser.add_argument("--budget", type=int, default=1800)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--lexical", action="store_true")
-    parser.add_argument("--usage", action="store_true")
-    parser.add_argument("--days", type=int, default=0)
     args = parser.parse_args(argv)
-    if args.usage:
-        return query_log.main(["--days", str(args.days)])
     try:
         autana_config.load(root or repo_root())
     except autana_config.ConfigError as error:
         print(f"docs_search: {error}", file=sys.stderr)
         return 1
     if args.eval:
-        run_eval(Index(root or repo_root(), semantic=not args.lexical))
-        return 0
+        return run_eval(Index(root or repo_root(), semantic=not args.lexical), args.expect)
     question = " ".join(args.question)
     kind, query = (("outline", args.outline) if args.outline else ("section", args.section) if args.section
                    else ("ask", question) if args.ask else ("search", question))
@@ -693,33 +707,27 @@ def main(argv=None, root=None):
     if kind == "ask" and (not docs_llama.installed("chat") or not docs_llama.start()):
         print("no chat model: python scripts/docs/docs_llama.py setup --chat")
         return 1
-    # The index is built inside the lookup, so its time counts as the lookup's.
-    with query_log.lookup("docs", kind, query) as call:
-        return respond(call, Index(root or repo_root(), semantic=not args.lexical), kind, query, args)
+    return respond(Index(root or repo_root(), semantic=not args.lexical), kind, query, args)
 
 
-def respond(call, index, kind, query, args):
+def respond(index, kind, query, args):
     if kind == "outline":
         text = format_outline(index, query)
-        call.weak = not text
-        call.print(text or f"no document {query}")
+        print(text or f"no document {query}")
         return 0 if text else 1
     if kind == "section":
         section = index.find_section(query)
-        call.weak = not section
-        call.print(format_section(index, section, args.deep) if section
-                   else f"no section {query}; --outline PATH lists them")
+        print(format_section(index, section, args.deep) if section
+              else f"no section {query}; --outline PATH lists them")
         return 0 if section else 1
     if kind == "ask":
-        _, reply = ask(index, query, stream=lambda piece: call.print(piece, end="", flush=True))
-        note_reply(call, reply)
-        call.print("\n\nsources:")
-        call.print("\n".join(f"  [{n}] {r['location']}  {r['heading']}"
-                             for n, r in enumerate(reply["results"], 1)))
+        _, reply = ask(index, query, stream=lambda piece: print(piece, end="", flush=True))
+        print("\n\nsources:")
+        print("\n".join(f"  [{n}] {r['location']}  {r['heading']}"
+                        for n, r in enumerate(reply["results"], 1)))
         return 0
     reply = answer(index, query, args.top, args.more, args.budget)
-    note_reply(call, reply)
-    call.print(json.dumps(reply, indent=1) if args.json else format_answer(reply))
+    print(json.dumps(reply, indent=1) if args.json else format_answer(reply))
     return 0
 
 
