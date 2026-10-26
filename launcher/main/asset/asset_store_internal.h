@@ -13,6 +13,7 @@ typedef struct {
     uint16_t generation;
     uint8_t state;
     bool cancelled;
+    bool async;
 } asset_store_request_t;
 
 asset_store_request_t* asset_store_request_at(uint32_t slot);

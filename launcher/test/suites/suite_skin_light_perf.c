@@ -73,6 +73,7 @@ static const vec3f_t COLORS[] = {
 
 typedef struct {
     const asset_pack_t* pack;
+    handle_t load;
     anim_skeleton_t skeleton;
     r3d_skin_t skin;
     r3d_lit_mesh_t bind;
@@ -105,9 +106,7 @@ release(void) {
     for (size_t i = 0; i < sizeof blocks / sizeof blocks[0]; i++) {
         memory_free(blocks[i]);
     }
-    if (active->pack != NULL) {
-        asset_store_release(PACK_ID);
-    }
+    asset_store_release(active->load);
     memory_free(active);
     active = NULL;
 }
@@ -132,7 +131,8 @@ fixture(int lights) {
     suite_set_test_cleanup(release);
     active = fixture_block(sizeof *active);
     fixture_t* f = active;
-    f->pack = asset_store_load(PACK_ID);
+    f->load = asset_store_load(PACK_ID);
+    f->pack = asset_store_loaded(f->load);
     TEST_ASSERT_NOT_NULL_MESSAGE(f->pack, "skin_light_perf: capybara pack missing; flash demo assets");
     open_model(f->pack, &f->skeleton, &f->skin, &f->bind);
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, anim_tracks_from_pack(f->pack, CLIP_ID, &f->clip),
@@ -403,14 +403,17 @@ suite_skin_light_perf(void) {
     RUN_TEST(test_exact_separate_4);
 }
 #else
+static handle_t load;
+
 static void
 release_pack(void) {
-    asset_store_release(PACK_ID);
+    asset_store_release(load);
 }
 
 static void
 test_demo_skin_mesh_lookup(void) {
-    const asset_pack_t* pack = asset_store_load(PACK_ID);
+    load = asset_store_load(PACK_ID);
+    const asset_pack_t* pack = asset_store_loaded(load);
     TEST_ASSERT_NOT_NULL_MESSAGE(pack, "skin_light_perf: capybara pack missing; flash demo assets");
     suite_set_test_cleanup(release_pack);
     anim_skeleton_t skeleton;

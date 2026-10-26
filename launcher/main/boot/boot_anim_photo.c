@@ -14,12 +14,15 @@
 #include "gfx/gfx.h"
 
 static const char* TAG = "boot_anim";
+static handle_t load;
 
 void
 boot_anim_photo_load(draw_image_t* out) {
     *out = (draw_image_t){0};
-    const asset_pack_t* pack = asset_store_load(BOOT_PHOTO);
+    load = asset_store_load(BOOT_PHOTO);
+    const asset_pack_t* pack = asset_store_loaded(load);
     if (pack == NULL) {
+        asset_store_release(load);
         ESP_LOGW(TAG, "no pack %s: the animation draws without the photograph", BOOT_PHOTO);
         return;
     }
@@ -36,7 +39,7 @@ boot_anim_photo_load(draw_image_t* out) {
     if (status != ASSET_OK) {
         ESP_LOGW(TAG, "picture %s: %s: the animation draws without the photograph", BOOT_PHOTO,
                  asset_status_text(status));
-        asset_store_release(BOOT_PHOTO);
+        asset_store_release(load);
         return;
     }
     *out = image;
@@ -45,7 +48,7 @@ boot_anim_photo_load(draw_image_t* out) {
 void
 boot_anim_photo_release(draw_image_t* photo) {
     if (photo->pixels != NULL) {
-        asset_store_release(BOOT_PHOTO);
+        asset_store_release(load);
     }
     *photo = (draw_image_t){0};
 }

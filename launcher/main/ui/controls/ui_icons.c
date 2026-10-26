@@ -27,7 +27,7 @@ static const ui_icon_name_t SYSTEM_NAMES[UI_ICON_COUNT] = {
 };
 
 static draw_image_t system_icons[UI_ICON_COUNT];
-static ui_icon_set_t system_set = {ASSET_ENGINE_PACK, SYSTEM_NAMES, UI_ICON_COUNT, system_icons, false};
+static ui_icon_set_t system_set = {ASSET_ENGINE_PACK, SYSTEM_NAMES, UI_ICON_COUNT, system_icons, false, HANDLE_NONE};
 
 bool
 ui_icon_set_load(ui_icon_set_t* set) {
@@ -35,8 +35,10 @@ ui_icon_set_load(ui_icon_set_t* set) {
         return true;
     }
     /* A missing pack is logged by the store. */
-    const asset_pack_t* pack = asset_store_load(set->pack);
+    set->load = asset_store_load(set->pack);
+    const asset_pack_t* pack = asset_store_loaded(set->load);
     if (pack == NULL) {
+        asset_store_release(set->load);
         return false;
     }
     for (int i = 0; i < set->count; i++) {
@@ -51,7 +53,7 @@ ui_icon_set_load(ui_icon_set_t* set) {
         }
         if (status != ASSET_OK) {
             ESP_LOGW(TAG, "icon %s/%s: %s: the set is drawn as text", set->pack, name, asset_status_text(status));
-            asset_store_release(set->pack);
+            asset_store_release(set->load);
             return false;
         }
     }
@@ -62,7 +64,7 @@ ui_icon_set_load(ui_icon_set_t* set) {
 void
 ui_icon_set_release(ui_icon_set_t* set) {
     if (set->loaded) {
-        asset_store_release(set->pack);
+        asset_store_release(set->load);
         set->loaded = false;
     }
 }

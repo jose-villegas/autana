@@ -1,6 +1,5 @@
 #include "asset/asset_store.h"
 
-#include <assert.h>
 #include <string.h>
 
 #include "asset/asset_store_backend.h"
@@ -265,11 +264,13 @@ asset_store_request_cancel(asset_store_request_t* request) {
     request->state = PENDING_CANCELLED;
 }
 
-const asset_pack_t*
+handle_t
 asset_store_load(const char* name) {
-    asset_store_request_t local = {.state = PENDING_WAIT};
-    asset_store_request_t* request = &local;
-    initialize_request(request, name);
+    const handle_t load = asset_store_request_new(name);
+    asset_store_request_t* request = asset_store_request_find(load);
+    if (request == NULL) {
+        return HANDLE_NONE;
+    }
     while (request->state == PENDING_WAIT) {
         if (request->mount == NULL) {
             asset_store_request_bind(request, true);
@@ -279,7 +280,7 @@ asset_store_load(const char* name) {
             asset_store_request_finish(request);
         }
     }
-    return request->state == PENDING_READY ? &request->mount->pack : NULL;
+    return load;
 }
 
 int
@@ -292,30 +293,12 @@ asset_store_mounted(void) {
 }
 
 void
-asset_store_release(const char* name) {
-    asset_store_mount_t* mount = find(name);
-    assert(mount != NULL && mount->uses > 0);
-    if (mount == NULL || mount->uses == 0) {
-        return;
+asset_store_release(handle_t load) {
+    asset_store_request_t* request = asset_store_request_find(load);
+    if (request != NULL) {
+        asset_store_request_cancel(request);
+        request->state = PENDING_NONE;
     }
-    asset_store_request_t* oldest = NULL;
-    uint32_t ready = 0;
-    for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
-        asset_store_request_t* request = &requests[i];
-        if (request->state == PENDING_READY && request->mount == mount) {
-            ready++;
-            if (oldest == NULL || request->order < oldest->order) {
-                oldest = request;
-            }
-        }
-    }
-    if (oldest != NULL && mount->uses == ready) {
-        oldest->done = NULL;
-        oldest->mount = NULL;
-        oldest->state = PENDING_NONE;
-    }
-    mount->uses--;
-    unmount_unused(mount);
 }
 
 asset_store_request_t*

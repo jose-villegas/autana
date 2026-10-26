@@ -108,7 +108,8 @@ measure_family(const scene_baked_t* family) {
     scene_failure_t why;
     scene_t* scene = scene_load(family->scene, &why);
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, why.what);
-    const asset_pack_t* pack = asset_store_load(family->scene);
+    const handle_t load = asset_store_load(family->scene);
+    const asset_pack_t* pack = asset_store_loaded(load);
     const char* bake = family->bakes[SCENE_BAKED_FITTED_FULL];
     const scene_entity_t entity = scene_find(scene, name_hash(bake));
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, entity, bake);
@@ -161,7 +162,7 @@ measure_family(const scene_baked_t* family) {
 
     memory_free(raster.scratch);
     memory_free(halved_clusters);
-    asset_store_release(family->scene);
+    asset_store_release(load);
     scene_unload(scene);
     app_arena_rewind(mark);
 }

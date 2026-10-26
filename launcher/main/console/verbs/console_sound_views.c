@@ -13,6 +13,7 @@
 #include "sound/sound_engine.h"
 
 typedef struct console_sound_view {
+    handle_t load;
     sound_t sound;
     /* At most SOUND_VOICE_COUNT handles per view can remain live. */
     sound_voice_t voices[SOUND_VOICE_COUNT];
@@ -32,8 +33,10 @@ console_sound_view(const console_sound_args_t* args, int64_t* open_us) {
             return &view->sound;
         }
     }
-    const asset_pack_t* pack = asset_store_load(args->pack);
+    const handle_t load = asset_store_load(args->pack);
+    const asset_pack_t* pack = asset_store_loaded(load);
     if (!pack) {
+        asset_store_release(load);
         return NULL;
     }
     sound_t sound;
@@ -41,15 +44,15 @@ console_sound_view(const console_sound_args_t* args, int64_t* open_us) {
     const asset_status_t status = sound_open(pack, args->name, &sound);
     *open_us = timing_now_us() - began;
     if (status != ASSET_OK) {
-        asset_store_release(args->pack);
+        asset_store_release(load);
         return NULL;
     }
     console_sound_view_t* view = memory_alloc(sizeof *view, MEMORY_PSRAM);
     if (!view) {
-        asset_store_release(args->pack);
+        asset_store_release(load);
         return NULL;
     }
-    *view = (console_sound_view_t){.sound = sound, .next = views};
+    *view = (console_sound_view_t){.load = load, .sound = sound, .next = views};
     console_copy_text(view->name, sizeof view->name, args->name);
     console_copy_text(view->pack, sizeof view->pack, args->pack);
     views = view;
@@ -86,7 +89,7 @@ console_sound_release_views(void) {
     while (*link) {
         console_sound_view_t* view = *link;
         *link = view->next;
-        asset_store_release(view->pack);
+        asset_store_release(view->load);
         memory_free(view);
     }
 }

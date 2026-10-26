@@ -24,7 +24,8 @@
 
 static void
 read_and_say(const char* suite, const char* pack) {
-    (void)asset_store_load(pack);
+    const handle_t load = asset_store_load(pack);
+    asset_store_release(load);
     printf("RAN %s\n", suite);
 }
 

@@ -205,7 +205,8 @@ test_one_bit_rows_one_byte_past_the_entry_are_out_of_bounds(void) {
 
 static void
 test_the_boot_picture_s_pack_opens_as_one_panel(void) {
-    const asset_pack_t* pack = asset_store_load(BOOT_PHOTO);
+    const handle_t load = asset_store_load(BOOT_PHOTO);
+    const asset_pack_t* pack = asset_store_loaded(load);
     TEST_ASSERT_NOT_NULL_MESSAGE(pack, "no boot pack: see the log above");
     draw_image_t image = {0};
     asset_view_t entry;
@@ -213,7 +214,7 @@ test_the_boot_picture_s_pack_opens_as_one_panel(void) {
     if (status == ASSET_OK) {
         status = draw_image_open(entry, &image);
     }
-    asset_store_release(BOOT_PHOTO);
+    asset_store_release(load);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, status);
     TEST_ASSERT_EQUAL_UINT16(GFX_WIDTH, image.width);
     TEST_ASSERT_EQUAL_UINT16(GFX_HEIGHT, image.height);

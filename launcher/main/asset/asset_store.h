@@ -13,12 +13,14 @@
 /* How many packs may be mounted at once. */
 #define ASSET_STORE_MOUNTS_MAX 8
 
-/* Pack `name`, mounted and checked on its first use and counted after. NULL
- * when it is missing or bad, with one log line saying why; a caller leaves
- * its content out rather than draw from nothing. Blocks until validated. */
-const asset_pack_t* asset_store_load(const char* name);
+/* Returns READY or FAILED after inline validation, or HANDLE_NONE when full.
+ * A failure logs one reason; the caller leaves its content out. Release every handle. */
+handle_t asset_store_load(const char* name);
 
-#define ASSET_STORE_REQUESTS_MAX 16U
+/* Boot holds motion + photo; runtime holds system icons + ridge + an app icon set,
+ * up to eight scenes and a suite's extra pack. Console views share this bounded pool;
+ * 32 slots leave 20 for views and async work at that runtime peak. Tests run serially. */
+#define ASSET_STORE_REQUESTS_MAX 32U
 /* CRC and entry-table bytes per pass, shared by every pending mount; placeholder until measured on the board. */
 #define ASSET_STORE_STEP_BYTES   4096U
 
@@ -35,6 +37,5 @@ void asset_store_cancel(handle_t load);
  * engine's artwork, holds its slot for good. */
 int asset_store_mounted(void);
 
-/* Drops one use of pack `name`; at none it is unmapped or freed, and the
- * pack asset_store_load() returned for it is gone. */
-void asset_store_release(const char* name);
+/* Retires this handle, cancelling WAIT or dropping its READY use. Stale handles are harmless. */
+void asset_store_release(handle_t load);

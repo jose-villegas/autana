@@ -11,8 +11,8 @@
 
 #define WAITING_ENV "AUTANA_PACKS_WAITING"
 
-const asset_pack_t* __real_asset_store_load(const char* name);
-const asset_pack_t* __wrap_asset_store_load(const char* name);
+handle_t __real_asset_store_load(const char* name);
+handle_t __wrap_asset_store_load(const char* name);
 
 static char* runner_dir;
 static char* waiting; /* WAITING_ENV's value, cut at its commas; suites.c keeps pointers into it */
@@ -44,7 +44,7 @@ pack_reads_undeclared(void) {
     return undeclared;
 }
 
-const asset_pack_t*
+handle_t
 __wrap_asset_store_load(const char* name) {
     const char* dir = getenv(ASSET_STORE_DIR_ENV);
     if (runner_dir != NULL && dir != NULL && strcmp(dir, runner_dir) == 0 && !suites_current_reads(name)) {

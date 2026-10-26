@@ -43,6 +43,9 @@ on the camera's entity whose tracks bind to that entity through
 
 ## What an app calls
 
+`scene_load()` keeps its blocking pack handle until `scene_unload()` releases it.
+App-exit cleanup of async requests leaves that handle held.
+
 | Call | Meaning |
 |---|---|
 | `scene_load(id, &why)` | mounts the [asset pack](../assets/Loading-Packs.md#counted-mounts) `id` and loads its scene entry `id`, every mesh, skin, skeleton and clip it names, beside any scene already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or no pack or an entry it could not open, or an entity whose placement does not decompose, with the entry's id and the pack's status |
