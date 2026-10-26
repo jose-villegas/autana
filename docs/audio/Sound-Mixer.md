@@ -352,11 +352,11 @@ A timeout keeps views mapped for a later transition.
 ```mermaid
 sequenceDiagram
     participant Reader as Reader task
-    participant Mailbox
+    participant Slot as Frame slot
     participant Frame as Frame task
     participant Mixer
-    Reader->>Mailbox: Post parsed play
-    Mailbox->>Frame: Take request
+    Reader->>Slot: Post parsed play
+    Slot->>Frame: Answer request
     Frame->>Frame: Mount pack and open view
     Frame->>Mixer: Play voice
     Note over Frame,Mixer: App transition

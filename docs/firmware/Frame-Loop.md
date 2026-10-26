@@ -42,27 +42,27 @@ render size keeps the census without a separate allocation.
 ## Console requests
 
 In development builds a console verb that needs the frame loop (OPEN, HOME, APPS,
-RUNSUITE, FRAMEWATCH, SCREENSHOT, FREEZE, RESUME, STEP) only posts a request to
-one mailbox (`console/console_frame_request.h`); the console task never draws.
-
-Each pass takes everything posted, once, and applies what an early return would
-skip before anything can return:
+RUNSUITE, FRAMEWATCH, SOUND, SCREENSHOT, FREEZE, RESUME, STEP) only posts into its
+own slot (`console/console_frame_request.h`); the console task never draws. A slot
+with an answer is answered by the pass; one without is taken where the shell acts.
 
 ```mermaid
 sequenceDiagram
     participant Console as console task
-    participant Mail as mailbox
+    participant Slot as slots
     participant Shell as shell pass
-    Console->>Mail: post, latest per kind
-    Note over Console,Mail: a second RUNSUITE is refused
-    Shell->>Mail: take everything posted
-    Note over Mail,Shell: apply FREEZE, RESUME or STEP<br/>answer FRAMEWATCH<br/>run a RUNSUITE, then report it done
-    Shell->>Mail: done, RUNSUITE accepted again
-    Note over Mail,Shell: OPEN, HOME or APPS
+    Console->>Slot: post, latest per slot
+    Note over Console,Slot: a held slot (RUNSUITE, SOUND)<br/>refuses a second post
+    Shell->>Slot: take SCREENSHOT, then OPEN, HOME or APPS
+    Note over Slot,Shell: what a capture depends on is<br/>taken after it, so applied first
+    Shell->>Slot: answer every slot with an answer
+    Note over Slot,Shell: FREEZE, RESUME or STEP<br/>FRAMEWATCH, SOUND
+    Shell->>Slot: take RUNSUITE, run it, report it done
+    Note over Slot,Shell: apply OPEN, HOME or APPS
     alt frozen, no STEP credit
-        Note over Mail,Shell: SCREENSHOT of the held frame
+        Note over Slot,Shell: SCREENSHOT of the held frame
     else running
-        Note over Mail,Shell: the app's frame,<br/>then a SCREENSHOT of it
+        Note over Slot,Shell: the app's frame,<br/>then a SCREENSHOT of it
     end
 ```
 
