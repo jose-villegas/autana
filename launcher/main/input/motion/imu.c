@@ -64,6 +64,7 @@ TUNE(imu, log_ms, 0, 0, IMU_LOG_MAX_MS);
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static imu_queue_t queue;
 static imu_sample_t newest;
+static uint32_t newest_sequence;
 static bool have_newest;
 static TaskHandle_t task_handle;
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -186,6 +187,7 @@ imu_inject(const imu_sample_t* sample) {
         injected_drain_us = timing_now_us();
     }
     injected_sample = *sample;
+    newest_sequence++;
     injected = true;
     portEXIT_CRITICAL(&lock);
 }
@@ -291,7 +293,7 @@ record_reader_age(void) {
 #endif
 
 bool
-imu_read(imu_sample_t* out) {
+imu_read(imu_sample_t* out, uint32_t* sequence) {
     portENTER_CRITICAL(&lock);
     bool available = ready && have_newest;
     if (available) {
@@ -303,6 +305,9 @@ imu_read(imu_sample_t* out) {
         available = true;
     }
 #endif
+    if (available && sequence != NULL) {
+        *sequence = newest_sequence;
+    }
     portEXIT_CRITICAL(&lock);
     return available;
 }
@@ -445,6 +450,7 @@ imu_read_or_drain(bool drain_due) {
         if (count > 0) {
             newest = samples[count - 1];
             have_newest = true;
+            newest_sequence++;
 #if CONFIG_LAUNCHER_DEVELOPMENT
             newest_us = now_us;
 #endif
@@ -464,6 +470,7 @@ imu_read_or_drain(bool drain_due) {
             portENTER_CRITICAL(&lock);
             newest = sample;
             have_newest = true;
+            newest_sequence++;
 #if CONFIG_LAUNCHER_DEVELOPMENT
             newest_us = timing_now_us();
 #endif

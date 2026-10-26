@@ -5,12 +5,19 @@
  */
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "suites.h"
 
 #ifndef DEVICE_BUILD
 
+#include "clock_fake.h"
+#include "hash/name_hash64.h"
+#include "input/motion/motion_reader.h"
+#include "input/motion/shake.h"
+#include "input_fake.h"
+#include "math/scalar/units.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
@@ -36,6 +43,7 @@
 static gfx_color_t* reference;
 static gfx_color_t* as_boot_left_it;
 static gfx_color_t* settled;
+static name_hash64_t* steady_frames;
 
 static bool
 frame(bool touching, bool pressed) {
@@ -76,6 +84,10 @@ release(void) {
     memory_free(reference);
     memory_free(as_boot_left_it);
     memory_free(settled);
+    input_fake_motion(NULL);
+    clock_fake_reset();
+    memory_free(steady_frames);
+    steady_frames = NULL;
     reference = NULL;
     as_boot_left_it = NULL;
     settled = NULL;
@@ -130,7 +142,7 @@ test_launcher_backdrop_motion_and_rest(void) {
 
     /* Held upright in portrait from the first frame: down is the panel's +y,
      * a quarter turn from the landscape pose boot hands over in. */
-    ui_ridge_set_gravity(0, INPUT_ACCEL_ONE_G, 256, 0);
+    ui_ridge_set_gravity((vec3f_t){0, 1, 0}, 0);
     frame(false, false);
     frame(false, false);
     as_boot_left_it = snapshot();
@@ -226,9 +238,142 @@ test_launcher_backdrop_motion_and_rest(void) {
                              "on exactly the settled screen: the motion left nothing behind");
 }
 
+#define VIBRATION_FRAMES ((int)(4 * MATH_MS_PER_S / FRAME_MS))
+#define VIBRATION_G      (SHAKE_START_G / 2)
+#define DELIBERATE_G     (SHAKE_FULL_G * 2)
+
+#define FLAT_IN_PLANE_G  0.12F
+#define NO_SAMPLE_FRAMES 3
+
+static void
+test_boot_flat_without_initial_sample_keeps_landscape(void) {
+    fixture(NULL, 0);
+    steady_frames = memory_alloc(FRAMES_TO_REST * sizeof *steady_frames, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(steady_frames);
+    for (int run = 0; run < 2; run++) {
+        ui_ridge_release_for_test();
+        gfx_reset_for_test();
+        fixture(NULL, 0);
+        ui_ridge_set_ambient(false);
+        suite_add_test_cleanup(clock_fake_reset);
+        motion_reader_reset();
+        input_motion_t flat = {.acceleration = {0, (int)(FLAT_IN_PLANE_G * INPUT_ACCEL_ONE_G), -INPUT_ACCEL_ONE_G}};
+        for (int i = 0; i < FRAMES_TO_REST; i++) {
+            input_fake_motion(run && i < NO_SAMPLE_FRAMES ? NULL : &flat);
+            input_fake_motion_present(true);
+            clock_fake_set((int64_t)i * FRAME_MS * MATH_US_PER_MS);
+            ui_ridge_set_gravity(input_gravity(), input_shake());
+            frame(false, false);
+            const name_hash64_t hash =
+                name_hash64_n(NAME_HASH64_OFFSET_BASIS, gfx_framebuffer(), PIXELS * sizeof(gfx_color_t));
+            if (run == 0) {
+                steady_frames[i] = hash;
+            } else {
+                TEST_ASSERT_EQUAL_UINT64(steady_frames[i], hash);
+            }
+        }
+    }
+    input_fake_motion(NULL);
+    clock_fake_reset();
+    memory_free(steady_frames);
+    steady_frames = NULL;
+}
+
+static void
+compare_shake_runs(float acceleration_g, bool ambient, bool expect_difference) {
+    steady_frames = memory_alloc(VIBRATION_FRAMES * sizeof *steady_frames, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(steady_frames);
+    bool differs = false;
+    for (int run = 0; run < 2; run++) {
+        ui_ridge_release_for_test();
+        gfx_reset_for_test();
+        fixture(NULL, 0);
+        ui_ridge_set_ambient(ambient);
+        suite_add_test_cleanup(clock_fake_reset);
+        motion_reader_reset();
+        input_motion_t motion = {.acceleration = {-INPUT_ACCEL_ONE_G, 0, 0}};
+        input_fake_motion(&motion);
+        clock_fake_set(0);
+        ui_ridge_set_gravity(input_gravity(), input_shake());
+        const spring_line_t* line = ui_ridge_spring_for_test();
+        TEST_ASSERT_NOT_NULL(line);
+        const size_t spring_bytes = (size_t)line->count * sizeof *line->offset;
+        for (int i = 1; i <= VIBRATION_FRAMES; i++) {
+            motion.acceleration.x =
+                -INPUT_ACCEL_ONE_G + (run == 0 ? 0 : (int)((i % 2 ? -1 : 1) * acceleration_g * INPUT_ACCEL_ONE_G));
+            input_fake_motion(&motion);
+            clock_fake_set((int64_t)i * FRAME_MS * MATH_US_PER_MS);
+            ui_ridge_set_gravity(input_gravity(), input_shake());
+            frame(false, false);
+            name_hash64_t hash =
+                name_hash64_n(NAME_HASH64_OFFSET_BASIS, gfx_framebuffer(), PIXELS * sizeof(gfx_color_t));
+            hash = name_hash64_n(hash, line->offset, spring_bytes);
+            hash = name_hash64_n(hash, line->velocity, spring_bytes);
+            if (run == 0) {
+                steady_frames[i - 1] = hash;
+            } else {
+                differs |= steady_frames[i - 1] != hash;
+                if (!expect_difference) {
+                    TEST_ASSERT_EQUAL_UINT64(steady_frames[i - 1], hash);
+                }
+            }
+        }
+    }
+    TEST_ASSERT_EQUAL(expect_difference, differs);
+    if (acceleration_g == DELIBERATE_G) {
+        TEST_ASSERT_EQUAL_FLOAT(1, input_shake());
+    } else {
+        TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
+    }
+    memory_free(steady_frames);
+    steady_frames = NULL;
+    input_fake_motion(NULL);
+    clock_fake_reset();
+}
+
+static void
+test_ambient_off_ignores_deliberate_shake(void) {
+    compare_shake_runs(DELIBERATE_G, false, false);
+}
+
+static void
+test_weak_shake_scales_spring_offset(void) {
+    const float levels[] = {0, 0.47F, 1};
+    int32_t peaks[sizeof levels / sizeof levels[0]] = {0};
+    for (size_t run = 0; run < sizeof levels / sizeof levels[0]; run++) {
+        ui_ridge_release_for_test();
+        gfx_reset_for_test();
+        fixture(NULL, 0);
+        ui_ridge_set_ambient(true);
+        const spring_line_t* line = ui_ridge_spring_for_test();
+        for (int i = 0; i < VIBRATION_FRAMES; i++) {
+            ui_ridge_set_gravity((vec3f_t){-1, 0, 0}, levels[run]);
+            frame(false, false);
+            for (int col = 0; col < line->count; col++) {
+                const int32_t offset = abs(line->offset[col]);
+                if (offset > peaks[run]) {
+                    peaks[run] = offset;
+                }
+            }
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT32(peaks[0], peaks[1]);
+    TEST_ASSERT_GREATER_THAN_INT32(peaks[1], peaks[2]);
+}
+
+static void
+test_speaker_vibration_never_plucks_but_deliberate_shake_does(void) {
+    compare_shake_runs(VIBRATION_G, true, false);
+    compare_shake_runs(DELIBERATE_G, true, true);
+}
+
 void
 suite_ridge_backdrop(void) {
+    RUN_TEST(test_boot_flat_without_initial_sample_keeps_landscape);
     RUN_TEST(test_launcher_backdrop_motion_and_rest);
+    RUN_TEST(test_ambient_off_ignores_deliberate_shake);
+    RUN_TEST(test_weak_shake_scales_spring_offset);
+    RUN_TEST(test_speaker_vibration_never_plucks_but_deliberate_shake_does);
 }
 
 #else

@@ -10,7 +10,7 @@
 #include <stdint.h>
 
 #include "math/linear/mat4f.h"
-#include "math/linear/projectf.h"
+#include "math/projection/projectf.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
 #include "render/render_view.h"

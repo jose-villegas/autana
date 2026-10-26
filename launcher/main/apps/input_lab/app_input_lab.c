@@ -1,6 +1,6 @@
 /* BOOT cycles touch targets, bezel edges, motion calibration, shake and orientation.
  * Motion pages stay in default landscape with panel axes. Shake compares
- * sample-rate linear acceleration candidates against frame-rate tilt shake
+ * sample-rate linear acceleration candidates against shared frame-rate shake
  * and retains a guided round in PSRAM for labdump. */
 
 #include <math.h>
@@ -26,7 +26,6 @@
 #include "gfx/gfx.h"
 #include "input/input_shell.h"
 #include "input/motion/gravity.h"
-#include "input/motion/tilt.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/mathi.h"
 #include "ui/layout/ui_transform.h"
@@ -68,7 +67,10 @@ static const char* TAG = "input_lab";
 #define SHAKE_BAR_HEIGHT      8
 #define SHAKE_BAR_ROW         6
 #define SHAKE_BAR_ROW_SPACING 2
-#define SHAKE_OLD_FULL        255
+/* Log/display scale for the shared shake level. */
+#define SHAKE_SHARED_FULL     255
+/* Log/display scale for in-plane strength. */
+#define MOTION_STRENGTH_ONE   256
 
 #define MOTION_RING_RADIUS    88
 #define MOTION_DOT_SIDE       7
@@ -116,7 +118,6 @@ typedef struct {
 static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "motion", "shake", "orientation"};
 
 static lab_mode_t mode;
-static tilt_t tilt;
 static gravity_t gravity;
 static input_motion_t motion;
 static input_motion_batch_t* motion_batch;
@@ -202,7 +203,6 @@ start_round(void) {
     panel_min_x = panel_min_y = 1 << 20;
     panel_max_x = panel_max_y = -1;
     if (motion_page()) {
-        tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
         gravity_reset(&gravity);
         have_motion = false;
         motion_log_ms = 0;
@@ -539,7 +539,8 @@ record_shake_sample(const input_motion_t* sample, int64_t elapsed_us) {
     (void)imu_record_appendf(
         &imu_record, SHAKE_PROBE_SAMPLE_FORMAT, (int)SHAKE_PROBE_STILL + (int)(ms / SHAKE_PROBE_STEP_MS), (unsigned)ms,
         (int)acc.x, (int)acc.y, (int)acc.z, (int)lin.x, (int)lin.y, (int)lin.z, (int)lroundf(shake_capture.levels.size),
-        (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI), tilt_shake(&tilt));
+        (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI),
+        (int)lroundf(input_shake() * SHAKE_SHARED_FULL));
 }
 
 /* Only this adapter depends on batch loss placement. The scratch batch lives in PSRAM. */
@@ -586,9 +587,6 @@ read_motion(uint32_t dt_ms) {
             integrate_turn_gyro(motion_batch);
         }
     }
-    if (have_motion) {
-        tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
-    }
     if (read) {
         switch (mode) {
             case MODE_SHAKE: read_round_samples(motion_batch, shake_capture.start_us, record_shake_sample); break;
@@ -606,13 +604,15 @@ read_motion(uint32_t dt_ms) {
     motion_probe = motion_probe_measure(motion.acceleration);
     if (motion_log_ms >= MOTION_LOG_PERIOD_MS) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
+        const vec3f_t g = input_gravity();
         const vec3i_t down_mg = motion_log_vector(gravity_down(&gravity), IMU_PROBE_MILLI);
         const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), OFFSET_SCALE);
         ESP_LOGI(TAG,
                  "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
                  "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d lost %d drain_us %lld",
                  raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
-                 motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
+                 motion_probe.bearing_deg, (int)lroundf(g.x * INPUT_ACCEL_ONE_G), (int)lroundf(g.y * INPUT_ACCEL_ONE_G),
+                 (int)lroundf(hypotf(g.x, g.y) * MOTION_STRENGTH_ONE), (int)lroundf(input_shake() * SHAKE_SHARED_FULL),
                  motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now(),
                  (int)down_mg.x, (int)down_mg.y, (int)down_mg.z, (int)bias_dps10.x, (int)bias_dps10.y,
                  (int)bias_dps10.z, motion_samples, motion_lost, (long long)motion_drain_us);
@@ -856,15 +856,16 @@ draw_shake(void) {
     const vec3i_t lin = motion_log_vector(gravity_linear(&gravity), IMU_PROBE_MILLI);
     (void)snprintf(line, sizeof line, "LINEAR %d %d %d MG", (int)lin.x, (int)lin.y, (int)lin.z);
     hud_line(4, line);
-    static const char* const names[] = {"SIZE", "SMOOTH", "OLD"};
+    static const char* const names[] = {"SIZE", "SMOOTH", "SHARED"};
     const int values[] = {(int)lroundf(shake_capture.levels.size),
-                          (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI), tilt_shake(&tilt)};
+                          (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI),
+                          (int)lroundf(input_shake() * SHAKE_SHARED_FULL)};
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
         const int row = SHAKE_BAR_ROW + ((int)i * SHAKE_BAR_ROW_SPACING);
-        const int full = i == (sizeof values / sizeof values[0]) - 1 ? SHAKE_OLD_FULL : IMU_PROBE_MILLI;
+        const int full = i == (sizeof values / sizeof values[0]) - 1 ? SHAKE_SHARED_FULL : IMU_PROBE_MILLI;
         const int width = screen_w - SHAKE_BAR_X - MOTION_MARGIN;
         const int value = values[i] < full ? values[i] : full;
-        (void)snprintf(line, sizeof line, "%s %d%s", names[i], values[i], full == SHAKE_OLD_FULL ? "" : " MG");
+        (void)snprintf(line, sizeof line, "%s %d%s", names[i], values[i], full == SHAKE_SHARED_FULL ? "" : " MG");
         hud_text((recti_t){MOTION_MARGIN, HUD_TOP + (row * HUD_LINE_H), SHAKE_BAR_X - MOTION_MARGIN, HUD_LINE_H}, line,
                  COL_HUD);
         const recti_t bar = {SHAKE_BAR_X, HUD_TOP + (row * HUD_LINE_H), width, SHAKE_BAR_HEIGHT};
@@ -996,7 +997,8 @@ draw_motion(void) {
     enum { VALUE_X, VALUE_Y, VALUE_Z, VALUE_MAGNITUDE, VALUE_PLANE, VALUE_FILTER_X, VALUE_FILTER_Y, VALUE_COUNT };
 
     const vec3i_t raw_mg = imu_probe_mg(raw_acceleration);
-    const vec3i_t filtered_mg = imu_probe_mg((vec3i_t){tilt_x(&tilt), tilt_y(&tilt), 0});
+    const vec3f_t g = input_gravity();
+    const vec3i_t filtered_mg = motion_log_vector(g, IMU_PROBE_MILLI);
     const int mg[VALUE_COUNT] = {raw_mg.x,
                                  raw_mg.y,
                                  raw_mg.z,
@@ -1024,7 +1026,8 @@ draw_motion(void) {
     }
     hud_line(2, line);
     if (snprintf(line, sizeof line, "F %s,%s S%d K%d T%d", values[VALUE_FILTER_X], values[VALUE_FILTER_Y],
-                 tilt_strength(&tilt), tilt_shake(&tilt), motion.turn_speed)
+                 (int)lroundf(hypotf(g.x, g.y) * MOTION_STRENGTH_ONE), (int)lroundf(input_shake() * SHAKE_SHARED_FULL),
+                 motion.turn_speed)
         < 0) {
         line[0] = '\0';
     }
@@ -1052,7 +1055,9 @@ draw_motion(void) {
         ui_fill((recti_t){cx + left - width + 1, cy + row, width, ARC_STEP}, COL_MOTION_RING);
     }
     ui_fill(motion_dot_rect(raw_acceleration.x, raw_acceleration.y, ring, MOTION_DOT_SIDE), COL_MISS);
-    ui_outline(motion_dot_rect(tilt_x(&tilt), tilt_y(&tilt), ring, MOTION_FILTER_SIDE), COL_MOTION_FILTER);
+    ui_outline(motion_dot_rect((int)lroundf(g.x * INPUT_ACCEL_ONE_G), (int)lroundf(g.y * INPUT_ACCEL_ONE_G), ring,
+                               MOTION_FILTER_SIDE),
+               COL_MOTION_FILTER);
     hud_text((recti_t){0, bottom, screen_w / 2, HUD_LINE_H}, "RAW", COL_MISS);
     hud_text((recti_t){screen_w / 2, bottom, screen_w / 2, HUD_LINE_H}, "FILTER", COL_MOTION_FILTER);
     hud_text((recti_t){0, bottom + HUD_LINE_H, screen_w, HUD_LINE_H},
