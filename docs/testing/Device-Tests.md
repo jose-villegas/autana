@@ -30,7 +30,7 @@ from any shell including Git Bash.
 ## runsuite: the everyday device loop
 
 A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) answers
-`runsuite <suite>` on the console (`console/verbs/console_runsuite.c`);
+`runsuite <suite>` on the console (`selftest/console_runsuite.c`);
 `autana suite <name>` sends it. It runs exactly that one registered suite
 with **no rebuild and no reflash**:
 
