@@ -1,6 +1,9 @@
 /* sand_controls: how input reaches the simulation - brush radii, pour and step rates, catch-up and shake. */
 #pragma once
 
+/* Flow strength uses Q8 unity at the simulation boundary. */
+#define SAND_FLOW_ONE                256
+
 /* Each mode's starting radius, in px, so a brush keeps its on-screen size
  * at every cell size. The brush screen's slider sets the value in force
  * (sand_ui_radius()). */
