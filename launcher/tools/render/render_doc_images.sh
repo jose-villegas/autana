@@ -316,9 +316,10 @@ done
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
     "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
 
-# The frame stages as shipped and what each debug view adds, from the
-# pipeline captures beside the page.
+# The frame stages as shipped, what is inside transform and draw, and what
+# each debug view adds, from the pipeline captures beside the page.
 run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/pipeline-present-board.log \
+    --laps docs/render/data/pipeline-laps-board.log \
     --views 'docs/render/data/pipeline-view-{view}-board.log' --tables "$OUT/tables" \
     --chart "$OUT/render/pipeline-frame-stages.png" > "$WORK/frame_stages.log"
 

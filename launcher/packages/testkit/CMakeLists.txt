@@ -12,10 +12,8 @@ if(ESP_PLATFORM)
     return()
 endif()
 
-if(NOT TARGET math)
-    set(MATH_BUILD_TESTS OFF)
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../math" "${CMAKE_BINARY_DIR}/packages/math")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/Package.cmake")
+package_add_requires(testkit)
 
 add_library(unity STATIC unity/unity.c)
 target_include_directories(unity PUBLIC unity)
