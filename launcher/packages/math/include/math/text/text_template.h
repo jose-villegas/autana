@@ -16,6 +16,16 @@ math_text_copy(char* buf, size_t cap, const char* text, int length) {
     return length;
 }
 
+#define MATH_DEFINE_TEXT_VALUE(P, MAX, T)                                                                              \
+    typedef struct {                                                                                                   \
+        char chars[MAX];                                                                                               \
+    } P##_text_t;                                                                                                      \
+    static inline P##_text_t P##_text(T v) {                                                                           \
+        P##_text_t text;                                                                                               \
+        P##_format(text.chars, sizeof text.chars, v);                                                                  \
+        return text;                                                                                                   \
+    }
+
 #define MATH_DEFINE_TEXT(P, MAX, T, OPS, SCALAR_MAX, N, COLS, PACK, UNPACK)                                            \
     enum { MAX = (N) * SCALAR_MAX };                                                                                   \
     static inline int P##_format(char* buf, size_t cap, P##_t v) {                                                     \
@@ -31,6 +41,7 @@ math_text_copy(char* buf, size_t cap, const char* text, int length) {
         }                                                                                                              \
         return math_text_copy(buf, cap, text, length);                                                                 \
     }                                                                                                                  \
+    MATH_DEFINE_TEXT_VALUE(P, MAX, P##_t)                                                                              \
     static inline bool P##_parse(const char* s, const char** end, P##_t* out) {                                        \
         T a[N];                                                                                                        \
         const char* cursor = s;                                                                                        \
@@ -74,22 +85,23 @@ math_text_copy(char* buf, size_t cap, const char* text, int length) {
         }                                                                                                              \
         return math_text_copy(buf, cap, text, length);                                                                 \
     }                                                                                                                  \
+    MATH_DEFINE_TEXT_VALUE(P, MAX, P##_t)                                                                              \
     static inline bool P##_parse(const char* s, const char** end, P##_t* out) {                                        \
-        P##_t v = {0};                                                                                                 \
+        T x = 0, y = 0, w, h;                                                                                          \
         const char* cursor;                                                                                            \
-        if (!OPS##_parse(s, &cursor, &v.w) || *cursor != 'x' || !OPS##_parse(cursor + 1, &cursor, &v.h)) {             \
+        if (!OPS##_parse(s, &cursor, &w) || *cursor != 'x' || !OPS##_parse(cursor + 1, &cursor, &h)) {                 \
             return false;                                                                                              \
         }                                                                                                              \
         if (*cursor == '+' || *cursor == '-') {                                                                        \
-            if (!OPS##_parse(cursor, &cursor, &v.x) || (*cursor != '+' && *cursor != '-')                              \
-                || !OPS##_parse(cursor, &cursor, &v.y)) {                                                              \
+            if (!OPS##_parse(cursor, &cursor, &x) || (*cursor != '+' && *cursor != '-')                                \
+                || !OPS##_parse(cursor, &cursor, &y)) {                                                                \
                 return false;                                                                                          \
             }                                                                                                          \
         }                                                                                                              \
         if (end == NULL && *cursor != '\0') {                                                                          \
             return false;                                                                                              \
         }                                                                                                              \
-        *out = v;                                                                                                      \
+        *out = (P##_t){x, y, w, h};                                                                                    \
         if (end != NULL) {                                                                                             \
             *end = cursor;                                                                                             \
         }                                                                                                              \
@@ -117,6 +129,7 @@ math_text_copy(char* buf, size_t cap, const char* text, int length) {
 
 #define MATH_DEFINE_TEXT_FAMILY(T, OPS, SCALAR_MAX, V2, V2_MAX, V3, V3_MAX, R, R_MAX)                                  \
     MATH_DECLARE_TEXT(OPS, T)                                                                                          \
+    MATH_DEFINE_TEXT_VALUE(OPS, SCALAR_MAX, T)                                                                         \
     MATH_DEFINE_VECTOR_TEXT(V2, V2_MAX, T, OPS, SCALAR_MAX, 2, MATH_VEC_EACH_2)                                        \
     MATH_DEFINE_VECTOR_TEXT(V3, V3_MAX, T, OPS, SCALAR_MAX, 3, MATH_VEC_EACH_3)                                        \
     MATH_DEFINE_RECT_TEXT(R, R_MAX, T, OPS, SCALAR_MAX)

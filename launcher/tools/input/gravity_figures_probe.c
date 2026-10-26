@@ -52,9 +52,7 @@ sample(float t, float dt) {
 
 static void
 print_vec(const char* name, vec3f_t v) {
-    char text[VEC3F_TEXT_MAX];
-    vec3f_format(text, sizeof text, v);
-    printf(",\"%s\":[%s]", name, text);
+    printf(",\"%s\":[%s]", name, vec3f_text(v).chars);
 }
 
 int

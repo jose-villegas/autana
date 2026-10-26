@@ -52,10 +52,7 @@ print_corners(const mat4f_t* m) {
         const vec3f_t outline = OUTLINE[i % OUTLINE_CORNERS];
         const vec3f_t corner = {outline.x - OUTLINE_CENTRE.x, outline.y - OUTLINE_CENTRE.y,
                                 (i < OUTLINE_CORNERS ? -0.5F : 0.5F) * SHAPE_DEPTH};
-        const vec3f_t p = mat4f_apply(m, corner);
-        char text[VEC3F_TEXT_MAX];
-        vec3f_format(text, sizeof text, p);
-        printf("%s[%s]", i ? ", " : "", text);
+        printf("%s[%s]", i ? ", " : "", vec3f_text(mat4f_apply(m, corner)).chars);
     }
     printf("]");
 }
@@ -123,21 +120,9 @@ main(int argc, char** argv) {
     printf("  \"viewport\": [%d, %d], \"fx\": %.6g, \"fy\": %.6g, \"cx\": %.6g, \"cy\": %.6g, \"near_z\": %.6g,\n",
            viewport.width, viewport.height, (double)view.lens.fx, (double)view.lens.fy, (double)view.lens.cx,
            (double)view.lens.cy, (double)view.lens.near_z);
-    {
-        char text[VEC3F_TEXT_MAX];
-        vec3f_format(text, sizeof text, VIEW_POINT);
-        printf("  \"camera\": [%s],\n", text);
-    }
-    {
-        char text[VEC2F_TEXT_MAX];
-        vec2f_format(text, sizeof text, offset);
-        printf("  \"offset\": [%s],\n", text);
-    }
-    {
-        char text[VEC2F_TEXT_MAX];
-        vec2f_format(text, sizeof text, screen);
-        printf("  \"screen\": [%s],\n", text);
-    }
+    printf("  \"camera\": [%s],\n", vec3f_text(VIEW_POINT).chars);
+    printf("  \"offset\": [%s],\n", vec2f_text(offset).chars);
+    printf("  \"screen\": [%s],\n", vec2f_text(screen).chars);
     printf("  \"pixel\": [%d, %d]\n }\n}\n", pixel_x, pixel_y);
     return 0;
 }

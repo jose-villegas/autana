@@ -28,6 +28,7 @@
 #include "input/motion/gravity.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/mathi.h"
+#include "math/text/math_text.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
@@ -853,8 +854,8 @@ draw_shake(void) {
         hud_line(4, "WAITING FOR IMU");
         return;
     }
-    const vec3i_t lin = motion_log_vector(gravity_linear(&gravity), IMU_PROBE_MILLI);
-    (void)snprintf(line, sizeof line, "LINEAR %d %d %d MG", (int)lin.x, (int)lin.y, (int)lin.z);
+    (void)snprintf(line, sizeof line, "LINEAR %s MG",
+                   vec3i_text(motion_log_vector(gravity_linear(&gravity), IMU_PROBE_MILLI)).chars);
     hud_line(4, line);
     static const char* const names[] = {"SIZE", "SMOOTH", "SHARED"};
     const int values[] = {(int)lroundf(shake_capture.levels.size),
@@ -1035,8 +1036,7 @@ draw_motion(void) {
 
     draw_gravity_line(MOTION_HUD_ROWS - 1);
 
-    const vec3i_t offset = input_accel_offset();
-    (void)snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);
+    (void)snprintf(line, sizeof line, "OFFSET %s Q12", vec3i_text(input_accel_offset()).chars);
     hud_line(MOTION_HUD_ROWS, line);
     const int top = HUD_TOP + ((MOTION_HUD_ROWS + 1) * HUD_LINE_H) + MOTION_MARGIN;
     const int bottom = screen_h - (2 * MOTION_MARGIN) - (2 * HUD_LINE_H);
