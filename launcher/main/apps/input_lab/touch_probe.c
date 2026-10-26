@@ -148,13 +148,13 @@ touch_probe_track(touch_probe_tap_t* tap, int dt_ms, const input_t* input) {
         tap->count = 0;
         tap->held_ms = 0;
         tap->idle_before_press = tap->idle_ms;
-        add_sample(tap, input->press_x, input->press_y, 0);
-        if (input->x != input->press_x || input->y != input->press_y) {
-            add_sample(tap, input->x, input->y, 0);
+        add_sample(tap, input->press.x, input->press.y, 0);
+        if (input->point.x != input->press.x || input->point.y != input->press.y) {
+            add_sample(tap, input->point.x, input->point.y, 0);
         }
     } else if (tap->tracking && input->down) {
         tap->held_ms += dt_ms;
-        add_sample(tap, input->x, input->y, tap->held_ms);
+        add_sample(tap, input->point.x, input->point.y, tap->held_ms);
     } else if (!tap->tracking) {
         tap->idle_ms += dt_ms;
     }

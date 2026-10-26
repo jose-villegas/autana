@@ -3589,8 +3589,8 @@ clock_row_measure(int frames, bool pouring, int* frame_index) {
         input_t in = {0};
         in.down = pouring;
         in.pressed = pouring && *frame_index == 0;
-        in.x = 150 + ((*frame_index * 7) % 60);
-        in.y = 120 + ((*frame_index * 3) % 40);
+        in.point.x = 150 + ((*frame_index * 7) % 60);
+        in.point.y = 120 + ((*frame_index * 3) % 40);
         clock_row_frame(&in, &w.present_us);
     }
     w.present_us /= frames;

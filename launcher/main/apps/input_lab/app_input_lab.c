@@ -311,7 +311,7 @@ finish_tap(int release_x, int release_y) {
 static void
 track_touch(uint32_t dt_ms, const input_t* input) {
     if (input->pressed || input->down) {
-        widen_panel_range(input->x, input->y);
+        widen_panel_range(input->point.x, input->point.y);
     }
     if (!touch_probe_track(&tap, (int)dt_ms, input)) {
         return;
@@ -319,7 +319,7 @@ track_touch(uint32_t dt_ms, const input_t* input) {
     if (mode == MODE_BEZEL) {
         ESP_LOGI(TAG, "bezel radius %d quarter %d", bezel_radius, display_quarter_now());
     } else {
-        finish_tap(input->x, input->y);
+        finish_tap(input->point.x, input->point.y);
     }
 }
 
@@ -335,8 +335,8 @@ drag_bezel(const input_t* input) {
     int x;
     int press_y;
     int y;
-    to_screen(input->press_x, input->press_y, &x, &press_y);
-    to_screen(input->x, input->y, &x, &y);
+    to_screen(input->press.x, input->press.y, &x, &press_y);
+    to_screen(input->point.x, input->point.y, &x, &y);
     const int radius = radius_at_press + ((press_y - y) / BEZEL_DRAG_PX);
     bezel_radius = radius < 0 ? 0 : radius > BEZEL_MAX ? BEZEL_MAX : radius;
 }

@@ -121,7 +121,7 @@ test_the_title_grows_where_the_canvas_is_wide_enough(void) {
 
 static sand_title_button_t
 title_frame(bool down, bool pressed, bool released, int x, int y) {
-    input_t in = {.down = down, .pressed = pressed, .released = released, .x = x, .y = y};
+    input_t in = {.down = down, .pressed = pressed, .released = released, .point = {x, y}};
     ui_begin(&in);
     const sand_title_button_t hit = title_screen_draw();
     ui_probe_end_frame();

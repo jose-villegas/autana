@@ -28,10 +28,9 @@ static void
 console_verb_touch(const char* args, console_reply_fn reply) {
     (void)reply;
     bool down = false;
-    int x = 0;
-    int y = 0;
-    if (console_touch_parse(args, &down, &x, &y)) {
-        touch_inject(down, (vec2i_t){x, y});
+    vec2i_t point = {0};
+    if (console_touch_parse(args, &down, &point)) {
+        touch_inject(down, point);
     } else {
         ESP_LOGW(TAG, "TOUCH wants <down|up> <x> <y>: '%s'", args);
     }
@@ -67,7 +66,7 @@ start_gesture(const char* args, bool (*parse)(const char* args, console_touch_ge
               touch_inject_completion_t kind, const char* usage) {
     console_touch_gesture_t gesture;
     if (parse(args, &gesture)) {
-        touch_inject_start((vec2i_t){gesture.x0, gesture.y0}, (vec2i_t){gesture.x1, gesture.y1}, gesture.ms, kind);
+        touch_inject_start(gesture.from, gesture.to, gesture.ms, kind);
     } else {
         ESP_LOGW(TAG, "%s: '%s'", usage, args);
     }

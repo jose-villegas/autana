@@ -196,7 +196,7 @@ static sand_options_t committed;
 
 static sand_options_hits_t
 options_frame(bool down, bool pressed, bool released, int x, int y) {
-    input_t in = {.down = down, .pressed = pressed, .released = released, .x = x, .y = y};
+    input_t in = {.down = down, .pressed = pressed, .released = released, .point = {x, y}};
     ui_begin(&in);
     const sand_options_hits_t hits = options_screen_draw(&menu, committed, &LABELS);
     ui_probe_end_frame();

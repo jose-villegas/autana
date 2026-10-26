@@ -198,17 +198,17 @@ fresh_tap(void) {
 
 static input_t
 press_at(int x, int y) {
-    return (input_t){.pressed = true, .down = true, .press_x = x, .press_y = y, .x = x, .y = y};
+    return (input_t){.pressed = true, .down = true, .press = {x, y}, .point = {x, y}};
 }
 
 static input_t
 held_at(int press_x, int press_y, int x, int y) {
-    return (input_t){.down = true, .press_x = press_x, .press_y = press_y, .x = x, .y = y};
+    return (input_t){.down = true, .press = {press_x, press_y}, .point = {x, y}};
 }
 
 static input_t
 released_at(int press_x, int press_y, int x, int y) {
-    return (input_t){.released = true, .press_x = press_x, .press_y = press_y, .x = x, .y = y};
+    return (input_t){.released = true, .press = {press_x, press_y}, .point = {x, y}};
 }
 
 /* A tap held over three frames, drifting: every position in order, timed
@@ -254,7 +254,7 @@ static void
 test_a_press_already_moved_keeps_where_it_began(void) {
     touch_probe_tap_t* t = fresh_tap();
     input_t press = press_at(50, 60);
-    press.x = 55;
+    press.point.x = 55;
     touch_probe_track(t, 16, &press);
     TEST_ASSERT_EQUAL_INT(2, t->count);
     TEST_ASSERT_EQUAL_INT(50, t->samples[0].x);
