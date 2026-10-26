@@ -27,8 +27,15 @@ class ReplyTests(unittest.TestCase):
             (b"EXAMPLE\n", (["EXAMPLE"], False)),
             (b"text EXAMPLE data\n", ([], False)),
             (b"NOTEXAMPLE data\n", ([], False)),
+            (b"EXAMPLEMARK data\n", ([], False)),
+            (b"EXAMPLE2 data\n", ([], False)),
+            (b"EXAMPLE=value\n", (["EXAMPLE=value"], False)),
             (b"I (20) EXAMPLE_END: EXAMPLE data\n", (["EXAMPLE data"], False)),
         )
         for data, expected in cases:
             with self.subTest(data=data):
                 self.assertEqual(replies_to(data, "EXAMPLE", ("EXAMPLE_END", "EXAMPLE_ERR")), expected)
+
+    def test_a_stem_reply_claims_every_word_it_starts(self):
+        self.assertEqual(replies_to(b"EXAMPLE_ROW a\nEXAMPLE_END\n", "EXAMPLE_", ("EXAMPLE_END",)),
+                         (["EXAMPLE_ROW a", "EXAMPLE_END"], True))

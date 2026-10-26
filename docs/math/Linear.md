@@ -54,7 +54,7 @@ transform state, affine2 inverses and normalization quotients.
 
 Float normalization uses `mathf_rsqrt` for the reciprocal length.
 The scalar limit is `MATHF_RSQRT_ULP_LIMIT`; nonzero input remains required.
-The [benchmark](Benchmark.md) reports measured component error against the `1 / sqrtf` path.
+The [benchmark table](Benchmark.md) reports measured component error against the `1 / sqrtf` path.
 
 `vec3x_normalize` and `vec3x_normalize_divide` accept any nonzero int32 vector.
 Components are within $`0.5 + 2^{-12}`$ LSB (nearest value or neighbour on a near-tie).
@@ -175,6 +175,9 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_compute_matrix(&t)` | a fresh model matrix from a const transform | $`M = T\,R\,S`$ |
 | `P_view(&t)` | the camera's view matrix | $`V = R^{\mathsf T}\,T(-\mathit{position})`$ |
 | `transformf_rotate_around(&t, point, axis, angle)` | float only: turns about the line through `point` along `axis`, in the parent's frame; the position swings round `point` and the rotation turns with it | $`q = \mathrm{from\_axis\_angle}(\hat a, \mathit{angle})`$<br> $`\mathit{position} \leftarrow \mathit{point} + q\,(\mathit{position} - \mathit{point})`$<br> $`\mathit{rotation} \leftarrow \mathrm{normalize}(q\;\mathit{rotation})`$ |
+| `transformf_compose(&parent, &child)` | float only: the child placed in the parent's frame; exact unless an unevenly scaled parent holds a turned child, where the sheared result has no TRS form and the scale is per axis | $`\mathit{position} = p_t + p_q\,(p_s \odot c_t)`$<br>$`\mathit{rotation} = \mathrm{normalize}(p_q\,c_q)`$<br>$`\mathit{scale} = p_s \odot c_s`$ |
+| `transformf_relative(&parent, &world)` | float only: the inverse of `transformf_compose`, the child that placed in `parent` stands at `world`; the parent's scale must be even and nonzero | $`q = \overline{p_q}`$<br>$`\mathit{position} = q\,(w_t - p_t) / p_s`$<br>$`\mathit{rotation} = \mathrm{normalize}(q\,w_q)`$<br>$`\mathit{scale} = w_s / p_s`$ |
+| `transformf_scale_is_even(&t)` | float only: the three scales agree within `TRANSFORMF_MATRIX_TOLERANCE` of the largest | $`\max_i s_i - \min_i s_i \le \epsilon \max_i \lvert s_i \rvert`$ |
 | `transformf_from_mat(m, &t)` | float only: affine TRS decomposition, refuses singular, nonfinite, sheared or reflected matrices; orthogonality uses `TRANSFORMF_MATRIX_TOLERANCE` | $`s_i = \lVert M_{:i}\rVert`$<br>$`R_{:i} = M_{:i}/s_i`$<br>$`t = M_{:3}`$<br>Require orthogonal columns and $`\det R > 0`$, quaternion from basis<sup>[[53]](../Citations.md#53)</sup> |
 | `P_looking(position, forward, up)` | unit-scale pose looking along `forward` from `position` | $`\mathit{look\_along}(\mathit{forward}, \mathit{up})`$ |
 | `P_look_along(&t, direction, up)` | faces a nonzero `direction`; `up` must not be parallel to it | $`f = \frac{\mathit{direction}}{\lVert \mathit{direction} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
@@ -200,20 +203,33 @@ and its zero scale sends every point to the origin. Code never edits `matrix`.
 
 ## Examples
 
+<!-- generated: math-transform-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Transform a point into a camera's view and interpolate a rotation. */
 #include "math/linear/transformf.h"
 
-transformf_t body = TRANSFORMF_IDENTITY;
-transformf_set_position(&body, (vec3f_t){1.0F, 0.0F, 4.0F});
-transformf_set_rotation(&body, quatf_from_euler((vec3f_t){0.0F, MATH_PI / 2.0F, 0.0F}));
+typedef struct {
+    vec3f_t in_camera;
+    quatf_t halfway;
+} transform_example_t;
 
-const mat4f_t model = transformf_matrix(&body);          /* built now, kept */
-const vec3f_t world = mat4f_apply(&model, (vec3f_t){0.0F, 0.0F, 1.0F});
+void
+transform_example(transform_example_t* s) {
+    transformf_t body = TRANSFORMF_IDENTITY;
+    transformf_set_position(&body, (vec3f_t){1.0F, 0.0F, 4.0F});
+    transformf_set_rotation(&body, quatf_from_euler((vec3f_t){0.0F, MATH_PI / 2.0F, 0.0F}));
 
-transformf_t camera = TRANSFORMF_IDENTITY;
-transformf_look_at(&camera, world, (vec3f_t){0.0F, 1.0F, 0.0F});
-const mat4f_t view = transformf_view(&camera);
-const vec3f_t in_camera = mat4f_apply(&view, world);     /* straight ahead: x = y = 0 */
+    const mat4f_t model = transformf_matrix(&body); /* built now, kept */
+    const vec3f_t world = mat4f_apply(&model, (vec3f_t){0.0F, 0.0F, 1.0F});
 
-const quatf_t halfway = quatf_slerp(quatf_identity(), body.rotation, 0.5F);
+    transformf_t camera = TRANSFORMF_IDENTITY;
+    transformf_look_at(&camera, world, (vec3f_t){0.0F, 1.0F, 0.0F});
+    const mat4f_t view = transformf_view(&camera);
+    const vec3f_t in_camera = mat4f_apply(&view, world); /* straight ahead: x = y = 0 */
+
+    const quatf_t halfway = quatf_slerp(quatf_identity(), body.rotation, 0.5F);
+    s->in_camera = in_camera;
+    s->halfway = halfway;
+}
 ```
+<!-- /generated: math-transform-example -->

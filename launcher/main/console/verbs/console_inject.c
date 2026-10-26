@@ -48,10 +48,8 @@ console_verb_imu(const char* args, console_reply_fn reply) {
         imu_inject_release();
     } else if (console_imu_quarter_parse(args, &sample, &quarter)) {
         imu_inject(&sample);
-        char line[CONSOLE_LINE_MAX];
-        const int written = snprintf(line, sizeof line, "IMU_OK quarter=%d quarters=%d sample_ms=%d", quarter,
-                                     DISPLAY_QUARTER_COUNT, DISPLAY_SAMPLE_MS);
-        if (written < 0 || (size_t)written >= sizeof line) {
+        char line[CONSOLE_IMU_REPLY_SIZE];
+        if (!console_imu_reply(line, sizeof line, quarter)) {
             reply("IMU_ERR reply formatting failed");
             return;
         }

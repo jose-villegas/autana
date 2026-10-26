@@ -6,7 +6,7 @@ insertion sort	launcher/packages/collections/include/collections/sort.h	autana-k
 fnv hash of a name	launcher/packages/hash/include/hash/name_hash.h	ldf7 #1102
 page background colour	launcher/main/ui/ui.h	autana-ea8w #1124
 save a matplotlib figure	launcher/tools/docs/plot_style.py	autana-mn4k #1054
-pinhole projection lens	launcher/packages/math/include/math/linear/projectf.h	#998
+pinhole projection lens	launcher/packages/math/include/math/projection/projectf.h	#998
 project a point and a segment	launcher/main/render/r3d_project.h	autana-xx47
 time a named frame stage	launcher/main/profile/frame_cost.h	#532
 read a little-endian field	launcher/main/asset/asset_bytes.h	#878

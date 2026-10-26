@@ -1,0 +1,8 @@
+newmtl tile_a
+Kd 0.16 0.18 0.22
+newmtl tile_b
+Kd 0.24 0.27 0.32
+newmtl side_a
+Kd 0.10 0.11 0.14
+newmtl side_b
+Kd 0.13 0.14 0.18

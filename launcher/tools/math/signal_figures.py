@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Plot library responses for docs/math/Signal.md; --cc CC --out DIR."""
-import argparse
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, ROOT, run_probe
+from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, ROOT, probe_into_folder
 from docs.plot_style import GIF_FRAMES, GIF_FPS, FAINT, LABEL_SIZE, SLOTS, save, save_gif, subplots
 import numpy as np
 
@@ -76,15 +75,10 @@ def pitch_figure(data, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cc", required=True)
-    parser.add_argument("--out", type=pathlib.Path, required=True)
-    args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
-    data = run_probe(args.cc, SOURCES)
-    response_figure(data["response"], data["sample_rate_hz"], args.out / "goertzel-response.png")
-    sweep_animation(data, args.out / "goertzel-sweep.gif")
-    pitch_figure(data, args.out / "pitch-curve.png")
+    data, out = probe_into_folder(__doc__, SOURCES)
+    response_figure(data["response"], data["sample_rate_hz"], out / "goertzel-response.png")
+    sweep_animation(data, out / "goertzel-sweep.gif")
+    pitch_figure(data, out / "pitch-curve.png")
     return 0
 
 

@@ -13,13 +13,34 @@ kind, and a development build asserts on an unbalanced frame.
 | `ui_scale_begin(int scale)` | text and labels draw at glyph scale `scale` |
 | `ui_alpha_begin(uint8_t alpha)` | text ink draws at `alpha`/255 coverage, dithered and without its halo |
 
+<!-- generated: ui-disabled-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-ui_disabled_begin(!s->connected);
-if (ui_button(ui_next(), "SYNC")) {
-    start_sync(s);
+/* A disabled scope prevents a disconnected action from firing. */
+#include "ui/ui.h"
+
+typedef struct {
+    bool connected;
+    bool sync_requested;
+} disabled_example_t;
+
+bool
+disabled_example(disabled_example_t* s) {
+    ui_row(UI_ROW_HEIGHT);
+    ui_disabled_begin(!s->connected);
+    if (ui_button(ui_next(), "SYNC")) {
+        s->sync_requested = true;
+    }
+    ui_disabled_end();
+    return s->sync_requested;
 }
-ui_disabled_end();
 ```
+<!-- /generated: ui-disabled-example -->
+
+<!-- generated: ui-disabled-renders sha256=039a7b0014dbb7a91875d6d44e1d6ffcc5383d2db22d13ced458d21fb01c6ba2 -->
+| Portrait | Landscape |
+|---|---|
+| ![disabled, portrait](../images/ui/disabled.png) | ![disabled, landscape](../images/ui/disabled-landscape.png) |
+<!-- /generated: ui-disabled-renders -->
 
 A scope rides inside the frame's description like everything else, so
 entering or leaving one costs nothing beyond the commands it changes. The

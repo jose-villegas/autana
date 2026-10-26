@@ -4,15 +4,40 @@
 they overflow `r`. Rows flow with `ui_row(h)` or `ui_row_centre(w, h)`, then
 `ui_next()` for each row's rect, each below the last.
 
+<!-- generated: ui-scroll-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-ui_scroll_window((recti_t){0, 0, ui_width(), ui_height()});
-for (int i = 0; i < count; i++) {
-    ui_row(UI_ROW_HEIGHT);
-    if (ui_button(ui_next(), labels[i])) {
-        chosen = i;
+/* Flowed rows scroll when their window overflows. */
+#include "ui/ui.h"
+
+typedef struct {
+    int chosen;
+} scroll_example_t;
+
+static const char* const labels[] = {"ONE",   "TWO",   "THREE", "FOUR", "FIVE",   "SIX",
+                                     "SEVEN", "EIGHT", "NINE",  "TEN",  "ELEVEN", "TWELVE"};
+#define SCROLL_COUNT (sizeof labels / sizeof labels[0])
+
+bool
+scroll_example(scroll_example_t* s) {
+    bool changed = false;
+    ui_scroll_window((recti_t){0, 0, ui_width(), ui_height()});
+    for (size_t i = 0; i < SCROLL_COUNT; i++) {
+        ui_row(UI_ROW_HEIGHT);
+        if (ui_button(ui_next(), labels[i])) {
+            s->chosen = (int)i;
+            changed = true;
+        }
     }
+    return changed;
 }
 ```
+<!-- /generated: ui-scroll-example -->
+
+<!-- generated: ui-scroll-renders sha256=bad676cb4a47cbc91147cabcebeb75f46ff3f8878667136eebdb1741c7c82cea -->
+| Portrait | Landscape |
+|---|---|
+| ![scroll, portrait](../images/ui/scroll.png) | ![scroll, landscape](../images/ui/scroll-landscape.png) |
+<!-- /generated: ui-scroll-renders -->
 
 ## A drag or a press
 

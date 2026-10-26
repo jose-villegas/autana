@@ -9,7 +9,7 @@
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
 #include "scene/scene_internal.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui_probe.h"
@@ -66,7 +66,7 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
         enter(f, "capybara");
         scene_t* scene = render_lab_test_loaded_scene("capybara");
         TEST_ASSERT_NOT_NULL(scene);
-        const scene_entity_t subject = scene_find(scene, "capybara");
+        const scene_entity_t subject = scene_find(scene, name_hash("capybara"));
         TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, subject);
         const scene_animator_t* animator = &scene->animators[subject];
         const char* playing = scene_animator_clip_name(scene, subject, animator->layer.current.clip);
@@ -150,7 +150,7 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         TEST_ASSERT_EQUAL_INT(UI_MARGIN, rows.y);
         TEST_ASSERT_TRUE(idle.x >= rows.x && idle.x < recti_right(rows));
         scene_t* scene = render_lab_test_loaded_scene("capybara");
-        const scene_entity_t subject = scene_find(scene, "capybara");
+        const scene_entity_t subject = scene_find(scene, name_hash("capybara"));
         const scene_animator_t* animator = &scene->animators[subject];
         TEST_ASSERT_EQUAL_STRING_MESSAGE("idle", scene_animator_clip_name(scene, subject, animator->layer.current.clip),
                                          "opening release must not play the overlay row under the finger");
