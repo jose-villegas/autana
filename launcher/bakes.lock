@@ -232,36 +232,36 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "3edfa148e5c9e91293ae2e1d5b7fc5d686fbd33c0c9c86f225a0dc5f52641ece"
-poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
-count = 37
-clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "6e0f8f58b19853e81c8a40e1554a0e3078ab0bb231ba8a82ab5883eba12a8af9"
-poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
-count = 265
-clip = "launcher/demo/bistro/street.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "7fa7534297c84ab53de160fb5e2faf5f11f08413f9fd3dac0a776f5896ea9df5"
-poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
-count = 6605
-clip = "launcher/demo/bistro/street.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "9ceffa8dc60736f90a9b0f320455ec2257a953be98217e4b2a6275a9cc102b39"
+key = "0ece1698d534cd0d83b0f6d05a16687c83d5844228617fe6ec36280c98846815"
 poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
 count = 133
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "fbf0d51d297b21d5d949b5a0cdeace55a30c803b0696e471dec52e9e60c880a8"
+key = "26e3191a7cc415de733e08a33c166c9535665778cf4de76e5642bc668c95fc2f"
+poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
+count = 37
+clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "47c0e64b5ab188be57565978785e344df15dd03e43ad6a729829fab02847908d"
+poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
+count = 265
+clip = "launcher/demo/bistro/street.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "9624e612723d5e5f1f8e3edb7a77b73b9226e2c0fccf4124a44d2c2253d02d24"
 poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
 count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "e18c62082ab021a9ac5e99007f39654d2235f7df555f7238bf9ba58dfbc1ff8c"
+poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
+count = 6605
+clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
