@@ -32,7 +32,6 @@ $SAND_DIR/sand_gas.c
 $SAND_DIR/sand_reactions.c
 $SAND_DIR/sand_plants.c
 $SAND_DIR/sand_controls.c
-$MAIN_DIR/input/motion/tilt.c
 $MAIN_DIR/input/motion/gravity.c
 $MAIN_DIR/input/motion/shake.c
 $MAIN_DIR/core/job.c

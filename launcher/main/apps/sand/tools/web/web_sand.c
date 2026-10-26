@@ -11,6 +11,7 @@
  * Every frame repaints the whole grid. A canvas upload costs nothing like
  * the SPI bus does, so the dirty-row bookkeeping the device needs has no
  * job here. */
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -37,7 +38,6 @@
 #include "gfx/present/gfx_mode.h"
 #include "input/motion/gravity.h"
 #include "input/motion/shake.h"
-#include "input/motion/tilt.h"
 #include "math/scalar/fixed.h"
 
 /* The scale JS sends gravity in: one g, matching the IMU's own counts. */
@@ -64,8 +64,7 @@ static gfx_color_t panel[GFX_WIDTH * GFX_HEIGHT];
 static uint8_t pixels[GFX_WIDTH * GFX_HEIGHT * 4];
 
 static sand_t sim;
-static tilt_t tilt;
-static gravity_t shake_gravity;
+static gravity_t gravity;
 static shake_t shake;
 static sand_paint_row_state_t paint_state;
 static sand_paint_frame_t paint_frame = SAND_PAINT_FRAME_INIT;
@@ -123,8 +122,7 @@ web_init(int cell_px_in, int landscape_in) {
     sand_set_mobility(&sim, SAND_MOBILITY_PER_MATERIAL);
     sand_enable_impulses(&sim, impulses, grid_w * grid_h);
     sand_paint_row_state_init(&paint_state);
-    tilt_reset(&tilt, WEB_COUNTS_PER_G);
-    gravity_reset(&shake_gravity);
+    gravity_reset(&gravity);
     shake_reset(&shake);
 
     ready = true;
@@ -224,16 +222,16 @@ web_step(uint32_t dt_ms, int ax, int ay, int az) {
         return;
     }
     const vec3i_t screen = {landscape ? -ay : ax, landscape ? ax : ay, az};
-    tilt_update(&tilt, screen, 0, dt_ms);
-    const int gx = tilt_x(&tilt);
-    const int gy = tilt_y(&tilt);
-    gravity_x = gx;
-    gravity_y = gy;
     /* No gyroscope on the page: gravity follows the accelerometer alone. */
     const input_motion_t motion = {.acceleration = screen};
     const uint32_t dt_us = dt_ms * MATH_US_PER_MS;
-    gravity_update(&shake_gravity, &motion, dt_us);
-    shake_update(&shake, gravity_linear(&shake_gravity), dt_us);
+    gravity_update(&gravity, &motion, dt_us);
+    const vec3f_t down = gravity_down(&gravity);
+    const int gx = (int)lroundf(down.x * WEB_COUNTS_PER_G);
+    const int gy = (int)lroundf(down.y * WEB_COUNTS_PER_G);
+    gravity_x = gx;
+    gravity_y = gy;
+    shake_update(&shake, gravity_linear(&gravity), dt_us);
     const int jostle = sand_controls_jostle(shake_level(&shake));
 
     material_frame_set_gravity(&paint_frame.material, gx, gy);
@@ -247,13 +245,13 @@ web_step(uint32_t dt_ms, int ax, int ay, int az) {
     (void)sand_paint_clock_glass(&paint_frame, gx, gy);
     (void)sand_paint_clock_wood_leaf(&paint_clock, &paint_frame, dt_ms);
 
-    if (tilt_in_free_fall(&tilt)) {
+    if (gravity_in_free_fall(&gravity)) {
         return;
     }
 
     /* Flow and speed are both Q8. The catch-up cap scales with speed so a
      * deliberate 4x is not clipped back to two steps as if it were lag. */
-    const uint32_t flow_q8 = ((uint32_t)tilt_strength(&tilt) * (uint32_t)sim_speed_q8) >> 8;
+    const uint32_t flow_q8 = (uint32_t)lroundf(gravity_strength(&gravity) * (float)sim_speed_q8);
     sim_accumulator_q8 += dt_ms * flow_q8;
     int steps_cap = (int)(((uint32_t)SAND_MAX_CATCHUP * (uint32_t)sim_speed_q8) / 256);
     steps_cap = steps_cap < 1 ? 1 : steps_cap;
