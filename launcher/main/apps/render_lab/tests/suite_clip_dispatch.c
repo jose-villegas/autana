@@ -133,12 +133,11 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         recti_t idle;
         TEST_ASSERT_TRUE(ui_probe_text("idle", &idle));
         const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){idle.x, idle.y});
-        touch.x = mapped_pixel.x;
-        touch.y = mapped_pixel.y;
+        touch.point = mapped_pixel;
         render_lab_test_frame(false, &touch);
         touch.pressed = false;
         for (int frame = 0; frame < HOLD_FRAMES; frame++) {
-            touch.y += frame < motion;
+            touch.point.y += frame < motion;
             render_lab_test_frame(false, &touch);
         }
         touch.down = false;
@@ -168,8 +167,7 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         const vec2i_t item_pixel =
             affine2x_map_pixel(&transform, (vec2i_t){rows.x + (rows.w / 2),
                                                      rows.y + (item * UI_ROW_HEIGHT) + (UI_ROW_HEIGHT / 2) - scroll});
-        touch.x = item_pixel.x;
-        touch.y = item_pixel.y;
+        touch.point = item_pixel;
         render_lab_test_frame(false, &touch);
         touch.pressed = false;
         for (int frame = 0; frame < HOLD_FRAMES; frame++) {

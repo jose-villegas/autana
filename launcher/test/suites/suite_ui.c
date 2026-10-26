@@ -23,6 +23,7 @@
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/rgb565.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 
@@ -110,7 +111,7 @@ test_a_canvas_is_repainted_when_something_draws_over_it(void) {
 
     /* An app drawing underneath an overlay. The UI's description has not
      * changed, but its pixels are gone. */
-    draw_rect(0, TOP_Y, GFX_WIDTH, TOP_H, gfx_rgb(0x804020));
+    draw_rect(0, TOP_Y, GFX_WIDTH, TOP_H, RGB565BE(0x804020));
 
     build("one");
     const bool drew = ui_end(UI_NO_BACKGROUND);

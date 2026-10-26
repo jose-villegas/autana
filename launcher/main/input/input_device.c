@@ -12,6 +12,7 @@
 #include "input/buttons/buttons.h"
 #include "input/motion/imu.h"
 #include "input/motion/imu_calib.h"
+#include "input/motion/motion_reader.h"
 #include "input/touch/touch.h"
 #include "math/linear/vec_convert.h"
 #include "services/settings.h"
@@ -36,6 +37,7 @@ _Static_assert(sizeof(input_motion_t) >= sizeof(imu_sample_t), "raw samples expa
 
 void
 input_start(void) {
+    motion_reader_reset();
     int32_t saved[3] = {0};
     bool found[3];
     for (int axis = 0; axis < 3; axis++) {
@@ -93,13 +95,18 @@ motion_from_sample(const imu_sample_t* sample) {
 }
 
 bool
-input_read_motion(input_motion_t* out) {
+input_read_motion_sequence(input_motion_t* out, uint32_t* sequence) {
     imu_sample_t sample;
-    if (!imu_read(&sample)) {
+    if (!imu_read(&sample, sequence)) {
         return false;
     }
     *out = motion_from_sample(&sample);
     return true;
+}
+
+bool
+input_read_motion(input_motion_t* out) {
+    return input_read_motion_sequence(out, NULL);
 }
 
 bool

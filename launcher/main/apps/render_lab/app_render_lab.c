@@ -15,6 +15,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/rgb565.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
 #include "render_lab_scene.h"
@@ -141,7 +142,7 @@ enter_layout(void) {
     };
     (void)gfx_mode_enter(&mode_request);
     if (chosen->clear_on_send) {
-        (void)gfx_set_clear_on_send(true, gfx_rgb(UI_BACKGROUND));
+        (void)gfx_set_clear_on_send(true, RGB565BE(UI_BACKGROUND));
     }
 
     gfx_invalidate();

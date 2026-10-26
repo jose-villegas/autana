@@ -207,7 +207,7 @@ void water_column(void);
  * bottom and `acid_rows` of acid above it. Returns the acid mass placed. */
 long acid_tank(int sand_rows, int acid_rows);
 
-/* Rec.601 luminance (0-255) of a panel colour (GFX_RGB, byte-swapped
+/* Rec.601 luminance (0-255) of a panel colour (RGB565BE, byte-swapped
  * RGB565) - shared because both the cullet/tone tests and the soil-tone
  * tests it was written for need the same unpacking math. */
 int panel_luminance(gfx_color_t c);

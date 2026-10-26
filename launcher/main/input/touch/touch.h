@@ -31,7 +31,7 @@ void touch_start(void);
 /* What is injected outranks the controller: a level until an up reaches the
  * polling task, a gesture until its `ms` has elapsed. */
 void touch_inject(bool down, vec2i_t point);
-void touch_inject_start(int x0, int y0, int x1, int y1, uint32_t ms, touch_inject_completion_t completion);
+void touch_inject_start(vec2i_t from, vec2i_t to, uint32_t ms, touch_inject_completion_t completion);
 bool touch_inject_take_completion(touch_inject_completion_t* completion);
 #endif
 
