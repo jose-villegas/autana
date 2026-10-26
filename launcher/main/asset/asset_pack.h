@@ -48,6 +48,17 @@ typedef struct {
     uint32_t count;
 } asset_pack_t;
 
+/* Resumable validation; only a completed opener publishes its pack. */
+typedef struct {
+    asset_pack_t pack;
+    uint32_t crc, offset, entry;
+    asset_status_t status;
+    bool complete;
+} asset_pack_opener_t;
+
+asset_status_t asset_pack_open_begin(asset_pack_opener_t* opener, const void* base, size_t size);
+bool asset_pack_open_step(asset_pack_opener_t* opener, size_t budget);
+
 /* One entry's bytes, in place. */
 typedef struct {
     const uint8_t* data;

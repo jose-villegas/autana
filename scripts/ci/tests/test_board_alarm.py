@@ -115,6 +115,54 @@ class BoardAlarmTests(unittest.TestCase):
                 request.jobs['/actions/runs/1/jobs'].append(board_job('in_progress'))
             self.assertEqual(bool(alarm.stuck_board_jobs(request, NOW)), expected)
 
+    def test_running_night_suppresses_health_and_probe_wait(self):
+        for status in ('completed', 'in_progress'):
+            request = Repository()
+            request.runs[f'/actions/workflows/{alarm.NIGHTLY_WORKFLOW}/runs'] = [dict(id=1, status='in_progress')]
+            job = board_job('in_progress')
+            job['name'] = 'nightly'
+            request.jobs['/actions/runs/1/jobs'] = [
+                {'name': 'marker', 'labels': ['ubuntu-24.04'], 'status': 'completed'},
+                {'name': 'wait (1)', 'labels': ['ubuntu-24.04'], 'status': status}, job]
+            with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
+                self.assertEqual(alarm.check(request, NOW, ['missing'], []), [])
+                with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ,
+                        GITHUB_OUTPUT=str(Path(directory) / 'output')):
+                    self.assertEqual(alarm.probe_devices('/absent', '/absent', request), 0)
+                    self.assertEqual((Path(directory) / 'output').read_text(), 'enabled=false\n')
+            self.assertIn('::notice::', output.getvalue())
+            self.assertIn('night is still running', output.getvalue())
+
+    def test_queued_night_with_offline_runner_reports_stuck_job(self):
+        request = Repository()
+        request.runs[f'/actions/workflows/{alarm.NIGHTLY_WORKFLOW}/runs'] = [dict(id=1, status='queued')]
+        request.runs['/actions/runs'] = [dict(id=1, status='queued')]
+        request.jobs['/actions/runs/1/jobs'] = [board_job('queued', alarm.SUCCESS_WINDOW)]
+        with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
+            problems = alarm.check(request, NOW, [], [])
+        self.assertTrue(any('Board job queued beyond' in problem for problem in problems))
+        self.assertNotIn('night is still running', output.getvalue())
+
+    def test_night_requires_in_progress_board_job(self):
+        for status, labels in [('queued', [alarm.BOARD_LABEL]),
+                               ('completed', [alarm.BOARD_LABEL]), ('in_progress', ['ubuntu-latest'])]:
+            with self.subTest(status=status, labels=labels):
+                request = Repository()
+                request.runs[f'/actions/workflows/{alarm.NIGHTLY_WORKFLOW}/runs'] = [dict(id=1, status='in_progress')]
+                job = board_job(status)
+                job['labels'] = labels
+                request.jobs['/actions/runs/1/jobs'] = [job]
+                self.assertFalse(alarm.night_running(request))
+
+    def test_hosted_wait_does_not_suppress_board_health(self):
+        request = Repository()
+        request.runs[f'/actions/workflows/{alarm.NIGHTLY_WORKFLOW}/runs'] = [dict(id=1, status='in_progress')]
+        request.jobs['/actions/runs/1/jobs'] = [
+            {'name': 'marker', 'labels': ['ubuntu-24.04'], 'status': 'completed'},
+            {'name': 'wait (1)', 'labels': ['ubuntu-24.04'], 'status': 'in_progress'},
+            {'name': 'nightly', 'labels': [alarm.BOARD_LABEL], 'status': 'queued'}]
+        self.assertFalse(alarm.night_running(request))
+
     def test_missing_boards(self):
         self.assertEqual(alarm.missing_boards(['2124', 'abcd'], ['abcd', 'eeee']), ['2124'])
 

@@ -387,7 +387,7 @@ static void
 run_sponza_suite(void) {
     sponza_suite_t loaded = sponza_suite_load();
     sponza = loaded.scene;
-    pack = loaded.pack;
+    pack = asset_store_loaded(loaded.load);
     flythrough = loaded.lens;
     camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, name_hash(sponza_cameras[0]));
     RUN_TEST(test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path);
@@ -397,7 +397,7 @@ run_sponza_suite(void) {
     RUN_TEST(test_the_flythrough_moves_smoothly_and_closes_its_loop);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
     RUN_TEST(test_the_flythrough_sees_mostly_building);
-    loaded = (sponza_suite_t){sponza, pack, flythrough, loaded.arena_mark};
+    loaded = (sponza_suite_t){sponza, loaded.load, flythrough, loaded.arena_mark};
     sponza_suite_release(&loaded);
     sponza = NULL;
     pack = NULL;

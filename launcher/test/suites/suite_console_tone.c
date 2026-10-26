@@ -647,7 +647,7 @@ test_tap_example_opens_plays_and_stops(void) {
     TEST_ASSERT_TRUE(device.playing);
     TEST_ASSERT_EQUAL_UINT(1, device.stops);
     TEST_ASSERT_TRUE(device.stop_pending);
-    asset_store_release(ASSET_ENGINE_PACK);
+    tap_exit();
 }
 
 static void

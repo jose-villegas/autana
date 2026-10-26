@@ -107,6 +107,33 @@ jobs:
                 self.assertEqual(stopped.exception.code, 2)
                 self.assertIn('--base takes a branch such as origin/main', errors.getvalue())
 
+    def test_diag_tier_does_not_run_host_steps(self):
+        root = self.fixture("""on: [pull_request]
+jobs:
+  host:
+    steps:
+      - name: Host gate
+        run: echo host-gate
+      - name: Another host gate
+        run: echo another-host-gate
+  diag:
+    steps:
+      - uses: ./.github/actions/idf-build
+        with:
+          command: ../tools/autana build diag --project ..
+""")
+        capture = io.StringIO()
+        with mock.patch.object(local_gates, 'affected_jobs', return_value={}), \
+                mock.patch.object(local_gates, 'shell_command',
+                                  return_value=[sys.executable, '-c', 'pass']) as commands, \
+                contextlib.redirect_stdout(capture):
+            self.assertEqual(local_gates.run(root, root / 'logs', tiers=('diag',)), 0)
+        self.assertTrue(commands.call_args_list)
+        self.assertTrue(all(call.args[0]['tier'] == 'diag'
+                            for call in commands.call_args_list))
+        for label in ('Host gate', 'Another host gate'):
+            self.assertIn(f'NOT RUN host: test:host: {label}', capture.getvalue())
+
     def test_github_path_reaches_next_step(self):
         root = self.fixture("""on: [pull_request]
 jobs:
