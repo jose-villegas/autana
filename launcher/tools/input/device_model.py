@@ -26,7 +26,7 @@ IMU = INK
 CHIP_AXES = SLOTS[0]
 SCREEN_AXES = SLOTS[2]
 EDGE_WIDTH = 0.2
-# Axis arrow length as a share of the device height.
+# Axis arrow length as a share of the case height.
 AXIS_SHARE = 0.32
 ARROW_RATIO = 0.15
 LABEL_PAST = 1.12
@@ -37,12 +37,13 @@ ANIMATION_DPI = 80
 # Palette size: the shaded device takes many entries, and every line and arrow colour must keep its own.
 ANIMATION_COLORS = 128
 ANIMATION_SIZE = (10, 5.4)
-# The scene's half extent, and the length of a vector at its scale's unit, as shares of the device height.
-EXTENT_SHARE = 0.85
+# Vector unit length and scene margin as shares of the case height.
 VECTOR_SHARE = 0.5
-# Vectors start to the camera's right and left of the device, this share of the height past its half diagonal,
-# so they stay clear of it in any pose.
-BESIDE_SHARE = 0.4
+MARGIN_SHARE = 0.05
+# The cube projection leaves room around its inscribed sphere without this zoom.
+SCENE_ZOOM = 1.6
+# A sphere clears every case pose; vectors start this share of the case height beyond it.
+BESIDE_SHARE = 0.1
 # Figure shares: the scene on the left, the signal plots stacked on the right, the legend under both.
 SCENE = (0, 0.08, 0.62, 0.84)
 PLOTS = (0.68, 0.2, 0.3, 0.64)
@@ -78,6 +79,7 @@ class DeviceModel:
         self.height = geometry["case_height"]
         self.depth = geometry["case_depth"]
         self.width = geometry["case_width"]
+        self.radius = np.linalg.norm((self.width, self.height, self.depth)) / 2
         self.imu_centre = np.array(geometry["imu_centre"])
         self.chip_axes = np.array(geometry["chip_axes"], dtype=float)
         # The code's screen axes x right, y down, z out: minus where imu_axes_screen() sends the chip axes,
@@ -89,13 +91,15 @@ class DeviceModel:
         screen = rounded_outline(geometry["screen_width"], geometry["screen_height"], 0)
         self.glass = np.c_[screen, np.zeros(len(screen))]
         self.case_outlines = (front, back)
+        # rounded_outline keeps the same point count for every radius, pairing bezel ring vertices.
         self.body = [np.array([front[i], front[i + 1], other[i + 1], other[i]])
                      for other in (back, self.glass) for i in range(len(outline) - 1)] + [back]
-        square = rounded_outline(geometry["back_side"], geometry["back_side"], 0)
+        corners = np.array([(1, 1), (-1, 1), (-1, -1), (1, -1)]) * geometry["back_side"] / 2
+        square = np.vstack((corners, corners[:1]))
         radius = geometry["screw_radius"]
         circle = rounded_outline(2 * radius, 2 * radius, radius)
         self.back_details = [np.c_[line, np.full(len(line), -self.depth)]
-                             for line in [square] + [circle + corner for corner in np.unique(square, axis=0)]]
+                             for line in [square] + [circle + corner for corner in corners]]
         pcb = rounded_outline(geometry["width"], geometry["height"], geometry["corner"])
         self.pcb = np.c_[pcb, np.full(len(pcb), -geometry["depth"])]
         self.imu = box_faces(self.imu_centre, self.chip_axes.T @ np.array(geometry["imu_size"]))
@@ -173,7 +177,8 @@ class DeviceAnimation:
         self.cursors = [plot.axvline(0, color=INK, linewidth=1) for plot in self.plots]
         self.title = self.fig.text(0.5, TITLE_Y, "", ha="center", fontsize=TITLE_SIZE, color=INK)
         self.unit = VECTOR_SHARE * model.height
-        away = np.hypot(model.width, model.height) / 2 + BESIDE_SHARE * model.height
+        away = model.radius + BESIDE_SHARE * model.height
+        self.extent = away + self.unit + MARGIN_SHARE * model.height
         right = np.radians(VIEW_AZIMUTH + 90)
         right = away * np.array([np.cos(right), np.sin(right), 0.0])
         # World down is drawn on the right, centred on the device's height; the device's own motion on the left.
@@ -186,12 +191,12 @@ class DeviceAnimation:
 
     def frame(self, pose, vectors, time, title, azimuth=VIEW_AZIMUTH, **axes):
         """Draw one frame: the device in `pose` (draw's axis-set switches in `axes`), then the vectors over it."""
-        scene, extent = self.scene, EXTENT_SHARE * self.model.height
+        scene, extent = self.scene, self.extent
         scene.cla()
         scene.set_axis_off()
         for setter in (scene.set_xlim, scene.set_ylim, scene.set_zlim):
             setter(-extent, extent)
-        scene.set_box_aspect((1, 1, 1))
+        scene.set_box_aspect((1, 1, 1), zoom=SCENE_ZOOM)
         scene.view_init(elev=VIEW_ELEVATION, azim=azimuth)
         self.model.draw(scene, pose, **axes)
         for start, vector, colour, width in vectors:

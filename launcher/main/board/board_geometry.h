@@ -18,8 +18,8 @@
  * a placeholder until measured on a board. */
 #define BOARD_DEVICE_DEPTH_MM         7.4F
 
-/* The cased device's outline (dimension drawing); glass flush with the front,
- * spanning z = 0 to -BOARD_CASE_DEPTH_MM (estimate). */
+/* Case width and height from the dimension drawing; the glass flush with the front,
+ * spanning z = 0 to -BOARD_CASE_DEPTH_MM, is an estimate. */
 #define BOARD_CASE_WIDTH_MM           37.60F
 #define BOARD_CASE_HEIGHT_MM          45.20F
 #define BOARD_CASE_DEPTH_MM           15.00F
