@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #include "input/buttons/buttons.h"
+#include "math/linear/vec2i.h"
 #include "math/linear/vec3f.h"
 #include "math/linear/vec3i.h"
 
@@ -22,8 +23,8 @@ typedef struct {
     bool down;
     bool pressed;
     bool released;
-    int x, y;             /* current position, or the last one seen */
-    int press_x, press_y; /* where the current touch began */
+    vec2i_t point; /* current position, or the last one seen */
+    vec2i_t press; /* where the current touch began */
 
     /* The two physical buttons, delivered the same way touch is so an app
      * never has to poll anything itself. See buttons.h: PWR is an event from

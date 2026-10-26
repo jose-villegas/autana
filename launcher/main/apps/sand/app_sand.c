@@ -58,6 +58,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/rgb565.h"
 #include "input/input.h"
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
@@ -922,7 +923,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
 
 static void
 draw_emitter_markers(void) {
-    const gfx_color_t marker = gfx_rgb(EMITTER_MARKER_COLOR);
+    const gfx_color_t marker = RGB565BE(EMITTER_MARKER_COLOR);
     const int count = sand_emitter_count(&sim);
 
     for (int i = 0; i < count; i++) {
@@ -984,20 +985,18 @@ draw_mode_label(int gx, int gy) {
     const recti_t upright = ui_centered_rect(upright_w, span, tall, LABEL_MARGIN);
     const affine2x_t t = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
     const recti_t box = affine2x_map_recti(&t, upright);
-    int x = 0;
-    int y = 0;
-    ui_text_glyph0_origin(draw_font_ui(), box, turn, LABEL_SCALE, &x, &y);
+    const vec2i_t origin = ui_text_glyph0_origin(draw_font_ui(), box, turn, LABEL_SCALE);
 
     gfx_color_t ink;
     if (ui.mode == SAND_MODE_DETONATE) {
-        ink = gfx_rgb(0xFF3B3B);
+        ink = RGB565BE(0xFF3B3B);
     } else if (ui.mode == SAND_MODE_ERASE) {
-        ink = gfx_rgb(0xFF8A5C);
+        ink = RGB565BE(0xFF8A5C);
     } else {
         ink = material_brush_color(sand_brushes[ui.brush].cell);
     }
 
-    draw_text_turned(x, y, text, ink, LABEL_SCALE, turn);
+    draw_text_turned(origin.x, origin.y, text, ink, LABEL_SCALE, turn);
 }
 
 /* APPLY EXACTLY ONCE PER REPAINT OF WHAT IS UNDERNEATH, never per frame.
@@ -1011,7 +1010,7 @@ draw_mode_label(int gx, int gy) {
 
 static void
 dim_backdrop(void) {
-    draw_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x000000), PANEL_SCRIM_ALPHA);
+    draw_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, RGB565BE(0x000000), PANEL_SCRIM_ALPHA);
 }
 
 static void
@@ -1064,8 +1063,8 @@ handle_detonate_input(const input_t* input) {
     if (!input->pressed) {
         return;
     }
-    const int cx = input->x / cell;
-    const int cy = input->y / cell;
+    const int cx = input->point.x / cell;
+    const int cy = input->point.y / cell;
     sand_explode(&sim, cx, cy, fx_div_round(sand_ui_radius(&ui), cell, 0));
 }
 
@@ -1074,8 +1073,8 @@ handle_spawn_emitter_input(const input_t* input) {
     if (!input->pressed) {
         return;
     }
-    const int cx = input->x / cell;
-    const int cy = input->y / cell;
+    const int cx = input->point.x / cell;
+    const int cy = input->point.y / cell;
     if (!sand_add_emitter(&sim, cx, cy, sand_brushes[ui.brush].cell)) {
         ESP_LOGW(TAG, "emitter list full (%d) - tap ignored", SAND_MAX_EMITTERS);
     }
@@ -1122,8 +1121,8 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
         pour_accumulator_ms -= (uint32_t)applications * SAND_POUR_STEP_MS;
     }
 
-    const int cx = input->x / cell;
-    const int cy = input->y / cell;
+    const int cx = input->point.x / cell;
+    const int cy = input->point.y / cell;
     for (int i = 0; i < applications; i++) {
         apply_pour_step(cx, cy);
     }
@@ -1555,8 +1554,8 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
     }
 
     if (failed) {
-        draw_clear(gfx_rgb(0x1A0C0C));
-        draw_text(20, GFX_HEIGHT / 2, "no memory for the grid", gfx_rgb(0xFF5C5C));
+        draw_clear(RGB565BE(0x1A0C0C));
+        draw_text(20, GFX_HEIGHT / 2, "no memory for the grid", RGB565BE(0xFF5C5C));
         return;
     }
 
@@ -1591,9 +1590,9 @@ static void
 sand_app_test_tap_menu_rect(recti_t r) {
     const int x = r.x + (r.w / 2);
     const int y = r.y + (r.h / 2);
-    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
-    const input_t hold = {.down = true, .x = x, .y = y};
-    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
+    const input_t hold = {.down = true, .point = {x, y}};
+    const input_t release = {.released = true, .point = {x, y}};
     const input_t idle = {0};
     draw_menu(&press);
     for (int i = 0; i < 4; i++) {
@@ -1645,9 +1644,9 @@ sand_app_test_start_button_touch(void) {
     title_screen_layout_t title;
     title_screen_layout(ui_width(), ui_height(), &title);
     const recti_t start_rect = title.buttons[SAND_TITLE_START];
-    const input_t touch = {.x = start_rect.x + (start_rect.w / 2), .y = start_rect.y + (start_rect.h / 2)};
-    ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", touch.x, touch.y, start_rect.x,
-             start_rect.y, start_rect.w, start_rect.h);
+    const input_t touch = {.point = {start_rect.x + (start_rect.w / 2), start_rect.y + (start_rect.h / 2)}};
+    ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", (int)touch.point.x,
+             (int)touch.point.y, start_rect.x, start_rect.y, start_rect.w, start_rect.h);
     return touch;
 }
 
@@ -1666,13 +1665,13 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     input_t in = {0};
     sand_frame(0, &in); /* the title on the glass before the finger lands */
 
-    in = (input_t){.pressed = true, .x = touch.x, .y = touch.y};
+    in = (input_t){.pressed = true, .point = touch.point};
     sand_frame(16, &in); /* hover granted on the frame the finger lands */
 
-    in = (input_t){.x = touch.x, .y = touch.y};
+    in = (input_t){.point = touch.point};
     sand_frame(16, &in); /* the DOWN: the press lands on START */
 
-    in = (input_t){.released = true, .x = touch.x, .y = touch.y};
+    in = (input_t){.released = true, .point = touch.point};
     sand_frame(16, &in); /* the lift: the tap, queued as pending_start */
 
     in = (input_t){0};

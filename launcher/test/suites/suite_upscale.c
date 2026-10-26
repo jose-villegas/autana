@@ -9,6 +9,7 @@
 
 #include "gfx/target/gfx_color.h"
 #include "gfx/target/gfx_target.h"
+#include "image/pixel/rgb565.h"
 #include "render/raster.h"
 #include "render/upscale.h"
 
@@ -274,8 +275,8 @@ test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
     TEST_ASSERT_NOT_NULL(held.actual);
     uint16_t* actual = held.actual;
     uint16_t columns[MAX_WIDTH], rows[MAX_HEIGHT];
-    const uint16_t color = gfx_color_rgb565(RED, GREEN, BLUE);
-    const uint16_t clear = gfx_color_rgb565(CLEAR_RED, CLEAR_GREEN, CLEAR_BLUE);
+    const uint16_t color = rgb565be_pack(RED, GREEN, BLUE);
+    const uint16_t clear = rgb565be_pack(CLEAR_RED, CLEAR_GREEN, CLEAR_BLUE);
     for (int i = 0; i < WIDTH * HEIGHT; i++) {
         source[i] = color;
         depth[i] = i % 2;
@@ -295,12 +296,11 @@ test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
         upscale_rows(&scale, &picture, clear, plain, 0, height);
         {
             const unsigned keep = UPSCALE_SCANLINE_KEEP;
-            const uint16_t dark_color =
-                gfx_color_rgb565(RED * keep / GFX_COLOR_SCALE_UNIT, GREEN * keep / GFX_COLOR_SCALE_UNIT,
-                                 BLUE * keep / GFX_COLOR_SCALE_UNIT);
+            const uint16_t dark_color = rgb565be_pack(RED * keep / RGB565_SCALE_UNIT, GREEN * keep / RGB565_SCALE_UNIT,
+                                                      BLUE * keep / RGB565_SCALE_UNIT);
             const uint16_t dark_clear =
-                gfx_color_rgb565(CLEAR_RED * keep / GFX_COLOR_SCALE_UNIT, CLEAR_GREEN * keep / GFX_COLOR_SCALE_UNIT,
-                                 CLEAR_BLUE * keep / GFX_COLOR_SCALE_UNIT);
+                rgb565be_pack(CLEAR_RED * keep / RGB565_SCALE_UNIT, CLEAR_GREEN * keep / RGB565_SCALE_UNIT,
+                              CLEAR_BLUE * keep / RGB565_SCALE_UNIT);
             const int split = height / 2;
             upscale_rows_scanlined(&scale, &picture, clear, actual, 0, split);
             upscale_rows_scanlined(&scale, &picture, clear, actual, split, height - split);
@@ -327,10 +327,10 @@ test_scanline_all_colors_match_channel_reference(void) {
                 upscale_rows_scanlined(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT);
                 for (int x = 0; x < width; x++) {
                     const uint16_t pixel = source[x * WIDTH / width];
-                    const uint16_t native = gfx_color_swap(pixel);
-                    const uint16_t expected = gfx_color_rgb565(gfx_rgb565_r5(native) * keep / GFX_COLOR_SCALE_UNIT,
-                                                               gfx_rgb565_g6(native) * keep / GFX_COLOR_SCALE_UNIT,
-                                                               gfx_rgb565_b5(native) * keep / GFX_COLOR_SCALE_UNIT);
+                    const uint16_t native = rgb565_swap(pixel);
+                    const uint16_t expected = rgb565be_pack(rgb565_r5(native) * keep / RGB565_SCALE_UNIT,
+                                                            rgb565_g6(native) * keep / RGB565_SCALE_UNIT,
+                                                            rgb565_b5(native) * keep / RGB565_SCALE_UNIT);
                     TEST_ASSERT_EQUAL_HEX16(pixel, ((uint16_t*)output)[x]);
                     TEST_ASSERT_EQUAL_HEX16(expected, ((uint16_t*)output)[width + x]);
                 }
@@ -391,7 +391,7 @@ test_shaded_paired_copy_strip_starts_on_bottom_of_pair(void) {
     }
     const gfx_target_t target = {(uint16_t*)whole, 0, OUTPUT_HEIGHT, WIDTH};
     const gfx_target_t band = {(uint16_t*)strip, FIRST, OUTPUT_HEIGHT - FIRST, WIDTH};
-    for (unsigned keep = 0; keep <= GFX_COLOR_SCALE_UNIT; keep += GFX_COLOR_SCALE_UNIT / 2) {
+    for (unsigned keep = 0; keep <= RGB565_SCALE_UNIT; keep += RGB565_SCALE_UNIT / 2) {
         gfx_target_paired_rows_shaded(target, source, NULL, 0, WIDTH, rows, 0, OUTPUT_HEIGHT, false, REPEAT, keep);
         gfx_target_paired_rows_shaded(band, source, NULL, 0, WIDTH, rows, FIRST, OUTPUT_HEIGHT - FIRST, false, REPEAT,
                                       keep);

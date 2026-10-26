@@ -151,11 +151,11 @@ test_options_screen_with_its_dither_list_open_fits_budget(void) {
     const input_t steps[] = {
         {0},
         {0},
-        {.down = true, .pressed = true, .x = x, .y = y},
-        {.down = true, .x = x, .y = y},
-        {.down = true, .x = x, .y = y},
-        {.down = true, .x = x, .y = y},
-        {.released = true, .x = x, .y = y},
+        {.down = true, .pressed = true, .point = {x, y}},
+        {.down = true, .point = {x, y}},
+        {.down = true, .point = {x, y}},
+        {.down = true, .point = {x, y}},
+        {.released = true, .point = {x, y}},
         {0},
     };
     for (size_t i = 0; i < sizeof steps / sizeof steps[0]; i++) {

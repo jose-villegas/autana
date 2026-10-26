@@ -18,6 +18,7 @@
 
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "image/pixel/rgb565.h"
 #include "profile/frame_watch.h"
 
 typedef enum { NEVER, ONCE, EVERY, TURNS } how_often_t;
@@ -157,7 +158,7 @@ draw(const render_frame_t* frame) {
     if (frame->index == frame->count - 1) {
         printf("fixture last frame\n");
     }
-    draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x203040));
+    draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, RGB565BE(0x203040));
 }
 
 const render_scene_t render_scene = {

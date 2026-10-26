@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "image/pixel/rgb565.h"
 
 static const char* TAG = "screenshot";
 
@@ -160,14 +161,14 @@ emit_begin_and_header(uint32_t total_bytes) {
 
 /* Bottom-to-top, matching the bottom-up rows screenshot_bmp_header()
  * declares (positive biHeight). BMP's own pixel order is B, G, R, so each
- * pixel goes through gfx_color_rgb888() (gfx_color.h, tested by
- * suite_gfx_color.c) rather than re-deriving the byte swap here. */
+ * pixel goes through rgb565be_to_rgb888() (rgb565.h, tested by
+ * suite_image_pixel.c) rather than re-deriving the byte swap here. */
 static void
 emit_rows(size_t row_bytes, size_t row_b64_bytes) {
     for (int32_t y = GFX_HEIGHT - 1; y >= 0; y--) {
         gfx_read_panel_row(y, pixels);
         for (int32_t x = 0; x < GFX_WIDTH; x++) {
-            const uint32_t rgb = gfx_color_rgb888(pixels[x]);
+            const uint32_t rgb = rgb565be_to_rgb888(pixels[x]);
             row[(x * 3) + 0] = (uint8_t)(rgb);
             row[(x * 3) + 1] = (uint8_t)(rgb >> 8);
             row[(x * 3) + 2] = (uint8_t)(rgb >> 16);

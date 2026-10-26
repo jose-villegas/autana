@@ -33,9 +33,9 @@ typedef enum {
  * accident. */
 #define GESTURE_HOME_SWIPE_DIST 90
 
-/* True when (x, y) lies within GESTURE_HOME_ZONE_DEPTH of `edge`: where an
+/* True when `point` lies within GESTURE_HOME_ZONE_DEPTH of `edge`: where an
  * edge gesture may begin, so a touch landing there belongs to the shell. */
-bool gesture_in_edge_zone(int x, int y, gesture_edge_t edge, int screen_w, int screen_h);
+bool gesture_in_edge_zone(vec2i_t point, gesture_edge_t edge, vec2i_t screen);
 
 /* True while a finger that started near the given edge has travelled far
  * enough toward the centre of the screen.
