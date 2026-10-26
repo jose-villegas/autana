@@ -62,7 +62,7 @@ test_real_time_frame_profiles(void) {
             scene_t* scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
             TEST_ASSERT_NOT_NULL(scene);
             const scene_entity_t entity =
-                scene_find(scene, scenario->entity == NULL ? sponza_cameras[0] : scenario->entity);
+                scene_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
             TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, entity);
             if (scenario->scene == &scene_capybara) {
                 char command[sizeof(CAPYBARA_CLIP_COMMAND)];

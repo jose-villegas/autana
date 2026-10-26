@@ -42,7 +42,7 @@ class SuiteReadsTests(unittest.TestCase):
         out = pathlib.Path(cls.folder.name) / f"{name}{track_host.EXE}"
         includes = [flag for root in (*packages.include_roots(LAUNCHER), TEST) for flag in ("-I", str(root))]
         built = subprocess.run([cls.cc, *track_host.FLAGS, *defines, *includes, *map(str, SOURCES),
-                                "-Wl,--wrap=asset_store_pack", "-o", str(out)],
+                                "-Wl,--wrap=asset_store_load", "-o", str(out)],
                                capture_output=True, text=True)
         if built.returncode != 0:
             raise AssertionError(f"building {name} failed:\n{built.stderr}")

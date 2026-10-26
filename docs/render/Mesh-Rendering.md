@@ -71,6 +71,7 @@ The importer bakes the placement from a position, a rotation and a scale
 | `resolution/resolution.h` | Dynamic resolution: the steps, the stepped controller and the predictor a render context can opt into |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
+| `dynamic/r3d_dynamic_mesh.h` | A lit mesh rebuilt from caller triangles each frame: clusters of `R3D_DYNAMIC_CLUSTER_TRIANGLES` in source order, a tree with at most `R3D_LIT_NODE_CHILDREN_MAX` children per inner node, and vertex and cluster counts held at their capacities so the raster sizes its scratch once |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |
 | `r3d_project.h` | Float pixel snapping through a `projectf_t` lens and math near clipping |
@@ -87,7 +88,7 @@ from `math/linear/`, documented in [linear maths](../math/Linear.md) and
 
 | Owner | What it holds |
 |---|---|
-| `math/linear/projectf.h` | The pinhole lens value, continuous float projection and float near clipping |
+| `math/projection/projectf.h` | The pinhole lens value, continuous float projection and float near clipping |
 | `projectx_t` | A Q16.16 lens; fixed near clipping accepts any common camera-space scale |
 | `render_view_t.lens` | The view's square-pixel pinhole |
 | `mat4f_t` | The raster's lens and motion maps: composed with `mat4f_mul_affine()`, inverted with `mat4f_invert_affine()`, applied to each vertex with `mat4f_apply()` |
@@ -205,7 +206,7 @@ present counts against it.
 ### View modes
 
 Development builds select one row from the `render_debug_view_t` table in
-`render/context/render_context.c`: depth, tiles, motion or meshlets.
+`render/context/render_context.c`: depth, tiles, motion, meshlets or cull.
 
 | Call | What it does with the row |
 |---|---|
@@ -227,6 +228,14 @@ flowchart LR
 | tiles | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth |
 | motion | mid-grey for none, red for x and green for y |
 | meshlets | a flat hue for each cluster, with disjoint IDs for each instance |
+| cull | each cluster in the colour of its fate this frame; see [The cull, seen](#the-cull-seen) |
+
+A row may also carry two optional hooks:
+
+| Row hook | What it does |
+|---|---|
+| `second_view` | After the frame's draw and after each draw it asks for, may name another view and fill the census list with the clusters to draw through it; the frame's stats stay those of the first draw |
+| `overlay` | Draws lines over the composed picture; the shell then composes at full size, not into a half picture |
 
 - The ramp is stretched over the range this frame drew: the most detail
   within a frame, not comparable between frames.
@@ -267,6 +276,7 @@ flowchart LR
 | `clear` | the first instance of a picture, on its rows | start its pixels; the only hook colour and depth have |
 | `begin` | once per `raster_draw()`, before anything is drawn | read the `const render_view_t*` and the instances, keep its own state |
 | `writer` | once per instance | return a span writer, or none. The fill calls every writer after each span's colour and depth, with the span's depth, so each writes where that triangle won. With none, the fill runs exactly as without attachments, and the writers' code sits apart from it |
+| `drawn` | once each instance is drawn | read the lens, the kept clusters and their transformed vertices |
 | `resolve` | once every instance is drawn | turn what was written into the final map |
 | `show` | `raster_show()` | paint the colour from it |
 
@@ -275,7 +285,7 @@ triangle's, so where two instances meet at exactly the same depth the pixel
 takes the later one's write.
 
 A writer sees depth and one value per instance, or its base plus the mesh
-cluster index when `r3d_span_writer_t.per_cluster` is true. A map that needs
+cluster or triangle index, as its `r3d_span_writer_t.step` says. A map that needs
 more, such as normals, rebuilds it from depth in its `resolve`.
 
 ### Motion vectors
@@ -323,6 +333,130 @@ up to 65535 clusters.
 The meshlets view along the same flythrough, one hue per cluster:
 
 ![The meshlets view along a flythrough](../images/render/sponza-meshlets.gif)
+
+## The cull, seen
+
+The cull view ([raster_cull_view.h](../../launcher/main/render/view/raster_cull_view.h))
+paints every cluster in the colour of its fate this frame. Seen from the camera
+only drawn clusters show, so it redraws from a spectator.
+
+| Fate | Colour | The cluster |
+|---|---|---|
+| culled | grey | its box, or a box above it, is outside the frustum |
+| not set up | blue | kept, but every triangle is behind the camera, misses every pixel centre or faces away |
+| hidden | red | triangles were set up and filled, but each lost its depth test |
+| drawn | green | owns at least one pixel |
+
+| Tunable | Values |
+|---|---|
+| `cullview.from` | 0 the camera, 1 above the instances' bounds looking down, 2 behind and above the camera |
+| `cullview.paint` | 0 the baked colours, culled clusters as a sparse screen door with a dashed grey border, each kept cluster's border solid in its fate's colour; 1 each cluster flat in its fate's colour; 2 each cluster in the hue of its node at `cullview.level`, darker the earlier it was dropped |
+| `cullview.level` | the tree depth whose node boxes the overlay draws; 0 none, 1 the root's children |
+
+From a spectator the culled and the kept clusters are drawn apart, so culled
+geometry never hides kept geometry behind it: the holes in its screen door
+show what lies behind. The overlay also draws the camera's frustum.
+
+- Where two triangles fill a pixel at the same depth, it goes to the later
+  one, as with every attachment.
+- A triangle the near plane cuts counts as reaching the fill even when its
+  clipped polygon then faces away or vanishes.
+
+```mermaid
+flowchart LR
+    Camera["draw from the camera<br/><i>each pixel tagged with its triangle</i>"] --> Count["second_view hook<br/><i>counts the cull and each kept cluster's triangles;<br/>tagged triangles make clusters drawn</i>"]
+    Count --> Culled["draw the culled clusters<br/><i>from the spectator, kept painted with depth</i>"]
+    Culled --> Kept["draw the kept clusters<br/><i>from the spectator</i>"]
+    Kept --> Show["show<br/><i>the culled pixels layered where nearer</i>"] --> Lines["overlay<br/><i>node boxes, frustum</i>"]
+```
+
+The frame's own cull and draw count nothing; `r3d_pipeline_cull_counted()` and
+`r3d_pipeline_count_triangles()` count beside them. `scene_viewer.sh --view cull
+--counts FILE` writes the counts per frame.
+
+Bistro along its camera path:
+
+![Bistro's cull along its path](../images/render/cull-bistro-sheet.png)
+
+![Bistro's fates from behind the camera](../images/render/cull-bistro-chase.gif)
+
+![Bistro's counts along its path](../images/render/cull-bistro-counts.png)
+
+<!-- generated: cull-bistro sha256=c8ab3c5c527ead3520e2b7fdb145fecf73a3df5be49e08e26952397ff5fe8552 -->
+| Per frame, path mean | Bistro |
+|---|---|
+| Nodes visited / cut | 145 / 32 |
+| Clusters tested / kept | 458 / 376 |
+| Kept clusters: nothing set up / hidden / drawn | 44 / 151 / 181 |
+| Triangles submitted | 7736 |
+| Submitted triangles behind the near plane | 67 (1 %) |
+| Submitted triangles clipped | 61 (1 %) |
+| Submitted triangles miss every pixel centre | 2371 (31 %) |
+| Submitted triangles facing away | 1648 (21 %) |
+| Submitted triangles set up | 3589 (46 %) |
+| Submitted triangles covering pixels | 1574 (20 %) |
+<!-- /generated: cull-bistro -->
+
+Sponza's fitted full bake along its flythrough:
+
+![Sponza's cull along its path](../images/render/cull-sponza-sheet.png)
+
+![Sponza's fates from behind the camera](../images/render/cull-sponza-chase.gif)
+
+![Sponza's counts along its path](../images/render/cull-sponza-counts.png)
+
+<!-- generated: cull-sponza sha256=464a55906b51d0a10196a6c861853fce41a28670d872dd60dba95156104b226e -->
+| Per frame, path mean | Sponza |
+|---|---|
+| Nodes visited / cut | 175 / 49 |
+| Clusters tested / kept | 371 / 300 |
+| Kept clusters: nothing set up / hidden / drawn | 11 / 43 / 246 |
+| Triangles submitted | 8369 |
+| Submitted triangles behind the near plane | 67 (1 %) |
+| Submitted triangles clipped | 77 (1 %) |
+| Submitted triangles miss every pixel centre | 2291 (27 %) |
+| Submitted triangles facing away | 704 (8 %) |
+| Submitted triangles set up | 5230 (62 %) |
+| Submitted triangles covering pixels | 2692 (32 %) |
+<!-- /generated: cull-sponza -->
+
+### What a cluster and a triangle cost
+
+The board's cull-cost suite (`run_cull_cost_suite`) times one core's cull,
+transform and draw, stopped once each triangle is set up, along both paths.
+Each pose is drawn three ways, so the counts move apart:
+
+- as baked;
+- with each cluster's triangles halved: same clusters and vertices, half the
+  triangles submitted;
+- through a mirrored lens: same clusters and triangles, the other faces set up.
+
+[cull_cost.py](../../launcher/tools/render/cull_cost.py) fits each stage by
+non-negative least squares:
+
+- cull = a + b × nodes visited + c × clusters tested
+- transform = a + b × clusters kept + c × vertices transformed
+- set-up = a + b × clusters kept + c × triangles submitted + d × triangles set up
+
+![Each stage's fit against what the board measured](../images/render/cull-cost.png)
+
+<!-- generated: cull-cost sha256=3e63a002a74d986120fc5c3578f0b9f5a2ea8fae728b4a9ac1af670c39892d47 -->
+| Stage | Term | One core |
+|---|---|---|
+| cull | per node visited | 2158 ns |
+| cull | per cluster tested | 0 ns |
+| cull | constant | 58 µs |
+| cull | worst error over the poses | 222 µs |
+| transform | per cluster kept | 223 ns |
+| transform | per vertex transformed | 582 ns |
+| transform | constant | 0 µs |
+| transform | worst error over the poses | 214 µs |
+| set-up | per cluster kept | 3476 ns |
+| set-up | per triangle submitted | 460 ns |
+| set-up | per triangle set up | 3345 ns |
+| set-up | constant | 1238 µs |
+| set-up | worst error over the poses | 3340 µs |
+<!-- /generated: cull-cost -->
 
 ## Coverage and small triangles
 

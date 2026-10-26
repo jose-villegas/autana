@@ -11,6 +11,7 @@
 #include "unity.h"
 
 #include "profile/frame_cost.h"
+#include "profile/frame_laps.h"
 
 #include "../profile_examples/frame_cost.c"
 
@@ -724,6 +725,92 @@ test_external_report_preserves_submillisecond_worst(void) {
     TEST_ASSERT_EQUAL_STRING(" || sound_mix 0.052/0.081 ms/block n=2", output);
 }
 
+/* Laps at 1 cycle per microsecond, so a figure reads as cycles / 1000. */
+#define LAPS_CYCLES_PER_US 1
+
+static const char* const lap_names[FRAME_LAPS_NAMES] = {"set_up", "fill", "wait"};
+
+/* Both cores' laps and a report line, on the heap like a frame_cost_t. */
+typedef struct {
+    frame_laps_core_t cores[FRAME_LAPS_CORES];
+    char line[FRAME_LAPS_REPORT_MAX];
+} laps_fixture_t;
+
+static laps_fixture_t*
+laps_fixture(void) {
+    laps_fixture_t* const laps = calloc(1, sizeof *laps);
+    TEST_ASSERT_NOT_NULL(laps);
+    return laps;
+}
+
+/* One lap's own cycles, reported in ns. */
+#define LAPS_LAP_CYCLES 3
+
+static int
+laps_report(laps_fixture_t* laps, uint32_t frames) {
+    return frame_laps_report(laps->cores, FRAME_LAPS_CORES, lap_names, frames, LAPS_CYCLES_PER_US, LAPS_LAP_CYCLES,
+                             laps->line, sizeof laps->line);
+}
+
+static void
+test_laps_tile_a_core_each_charged_up_to_the_next(void) {
+    laps_fixture_t* const laps = laps_fixture();
+    frame_laps_core_t* const cores = laps->cores;
+    frame_laps_switch(&cores[0], 1000, 1);
+    frame_laps_switch(&cores[0], 3000, 2);
+    frame_laps_switch(&cores[0], 7000, 1);
+    frame_laps_switch(&cores[0], 8000, 0);
+    frame_laps_switch(&cores[0], 50000, 0); /* nothing ran in between: charged to nobody */
+
+    TEST_ASSERT_GREATER_THAN_INT(0, laps_report(laps, 1));
+    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 set_up 3.000/2 fill 4.000/1", laps->line);
+    free(laps);
+}
+
+static void
+test_a_wait_is_charged_from_the_last_boundary_with_no_lap_running(void) {
+    laps_fixture_t* const laps = laps_fixture();
+    frame_laps_core_t* const cores = laps->cores;
+    frame_laps_switch(&cores[0], 0, 2);
+    frame_laps_switch(&cores[0], 4000, 0);
+    frame_laps_charge_since(&cores[0], 6500, 3);
+    TEST_ASSERT_EQUAL_UINT8(0, cores[0].running);
+
+    laps_report(laps, 1);
+    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 fill 4.000/1 wait 2.500/0", laps->line);
+    free(laps);
+}
+
+static void
+test_laps_are_per_core_and_per_frame_and_survive_a_counter_wrap(void) {
+    laps_fixture_t* const laps = laps_fixture();
+    frame_laps_core_t* const cores = laps->cores;
+    frame_laps_switch(&cores[0], UINT32_MAX - 999, 1);
+    frame_laps_switch(&cores[0], 3000, 0);
+    frame_laps_switch(&cores[1], 0, 2);
+    frame_laps_switch(&cores[1], 2000, 0);
+
+    laps_report(laps, 2);
+    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 set_up 2.000/0 | cpu1 fill 1.000/0", laps->line);
+    free(laps);
+}
+
+static void
+test_a_lap_report_forgets_the_window_but_not_the_running_lap(void) {
+    laps_fixture_t* const laps = laps_fixture();
+    frame_laps_core_t* const cores = laps->cores;
+    frame_laps_switch(&cores[0], 0, 1);
+    frame_laps_switch(&cores[0], 1000, 2);
+    laps_report(laps, 1);
+    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 set_up 1.000/1", laps->line);
+
+    frame_laps_switch(&cores[0], 1500, 0);
+    laps_report(laps, 1);
+    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 fill 0.500/1", laps->line);
+    TEST_ASSERT_EQUAL_INT(0, laps_report(laps, 1));
+    free(laps);
+}
+
 void
 suite_frame_cost(void) {
     RUN_TEST(test_documented_bracket_runs_its_work);
@@ -770,6 +857,10 @@ suite_frame_cost(void) {
     RUN_TEST(test_every_slot_with_the_longest_name_still_reports_its_total_and_drops);
     RUN_TEST(test_a_name_is_remembered_across_windows_and_found_by_its_text);
     RUN_TEST(test_more_names_than_the_memory_holds_are_counted_not_lost_silently);
+    RUN_TEST(test_laps_tile_a_core_each_charged_up_to_the_next);
+    RUN_TEST(test_a_wait_is_charged_from_the_last_boundary_with_no_lap_running);
+    RUN_TEST(test_laps_are_per_core_and_per_frame_and_survive_a_counter_wrap);
+    RUN_TEST(test_a_lap_report_forgets_the_window_but_not_the_running_lap);
 }
 
 SUITE_REGISTER(suite_frame_cost);

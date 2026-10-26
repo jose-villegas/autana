@@ -2,7 +2,7 @@ name: Nightly scoped performance
 
 on:
   schedule:
-    - cron: '0 18 * * *'
+    - cron: '17 20 * * *'
   workflow_dispatch:
     inputs:
       from:
@@ -11,12 +11,10 @@ on:
       max_steps:
         description: Maximum new candidates per board
         required: false
-      window_end:
-        description: Local window end (HH:MM; defaults to the shared night end)
-        required: false
-      queue_at:
-        description: Local queue time (HH:MM; empty starts immediately)
-        required: false
+      override:
+        description: Start now instead of at the next NIGHT_START
+        type: boolean
+        default: false
 
 concurrency: nightly-perf
 permissions:
@@ -30,6 +28,7 @@ env:
     run_render_lab_frame_profile_suite|-|-
     run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
   NIGHT_START: ${{ vars.NIGHT_START }}
+  NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
   GH_TOKEN: ${{ github.token }}
   GIT_CONFIG_COUNT: '4'
   GIT_CONFIG_KEY_0: core.hooksPath
@@ -42,12 +41,48 @@ env:
   GIT_CONFIG_VALUE_3: 'false'
 
 jobs:
+  marker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      OVERRIDE: ${{ inputs.override }}
+      SCHEDULE: ${{ github.event.schedule }}
+      NIGHT_START: ${{ vars.NIGHT_START }}
+      NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
+    outputs:
+      marker: ${{ steps.marker.outputs.marker }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          lfs: false
+          persist-credentials: false
+          set-safe-directory: false
+      - id: marker
+        run: python3 scripts/lib/local_schedule.py marker
+
+  wait:
+    needs: marker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    strategy:
+      max-parallel: 1
+      matrix:
+        leg: [1, 2, 3, 4, 5]
+    env:
+      MARKER: ${{ needs.marker.outputs.marker }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: python3 scripts/lib/local_schedule.py wait --until "$MARKER"
+
   nightly:
+    needs: [marker, wait]
+    env:
+      MARKER: ${{ needs.marker.outputs.marker }}
     outputs:
       held: ${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}
     runs-on: [self-hosted, windows, board]
-    # Wait up to 210 min (19:00 local to 22:30), run 510 min to 07:00, publish 60 min.
-    timeout-minutes: 780
+    # Hang guard under the 24 h GITHUB_TOKEN life; work gets a fresh token after the hosted wait.
+    timeout-minutes: 1380
     defaults:
       run:
         shell: 'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
@@ -63,8 +98,6 @@ jobs:
         env:
           FROM_SHA: ${{ inputs.from }}
           MAX_STEPS: ${{ inputs.max_steps }}
-          DISPATCH_QUEUE_AT: ${{ inputs.queue_at }}
-          DISPATCH_WINDOW_END: ${{ inputs.window_end }}
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           PY=$(. scripts/lib/python.sh && find_python)
@@ -73,29 +106,18 @@ jobs:
           mkdir -p "$data" "$out"
           echo "PERF_DATA=$(cygpath -w "$data")" >> "$GITHUB_ENV"
           echo "PERF_OUT=$(cygpath -w "$out")" >> "$GITHUB_ENV"
-          git init "$data"
-          git -C "$data" remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
           auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          if git -c "http.extraheader=$auth" -C "$data" ls-remote --exit-code origin refs/heads/perf-data; then
-            git -c "http.extraheader=$auth" -C "$data" fetch origin perf-data
-            git -C "$data" checkout -b perf-data FETCH_HEAD
-          else
-            status=$?
-            [ "$status" -eq 2 ] || exit "$status"
-            git -C "$data" checkout --orphan perf-data
-          fi
+          # perf_index.py owns the store branch: checked out from origin, or started empty.
+          # The token joins the job's git settings as one more entry, keeping hooks and LFS off.
+          n=$GIT_CONFIG_COUNT
+          env "GIT_CONFIG_COUNT=$((n + 1))" "GIT_CONFIG_KEY_$n=http.extraheader" "GIT_CONFIG_VALUE_$n=$auth" \
+            "$PY" launcher/tools/perf/perf_index.py store --path "$data"
           args=()
-          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
-            args+=(--queue-at "$NIGHT_START")
-          elif [ -n "$DISPATCH_QUEUE_AT" ]; then
-            args+=(--queue-at "$DISPATCH_QUEUE_AT")
-          fi
-          [ -z "$DISPATCH_WINDOW_END" ] || args+=(--until "$DISPATCH_WINDOW_END")
           [ -z "$FROM_SHA" ] || args+=(--from "$FROM_SHA")
           [ -z "$MAX_STEPS" ] || args+=(--max-steps "$MAX_STEPS")
           # One lane per board plugged in; the plan sets SCOPED_BOARDS and SELFTEST_BOARD.
           "$PY" launcher/tools/perf/nightly/scoped_chain.py plan \
-            --data "$data" --out "$out/plan.json" "${args[@]}" >> "$GITHUB_ENV"
+            --data "$data" --out "$out/plan.json" --marker "$MARKER" "${args[@]}" >> "$GITHUB_ENV"
 
       - name: Prepare the self-test's console tests
         if: env.SELFTEST_BOARD != ''
@@ -138,20 +160,36 @@ jobs:
                   test = manifest["selftest"]
                   summary.write(f"Self-test {board}: {test['outcome']}; report: {test['report']}\n\n")
           PY
+          "$PY" launcher/tools/perf/nightly/scoped_chain.py timeline \
+            --plan "$PERF_OUT/plan.json" --data "$PERF_DATA" --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Publish night manifests and LNT reports
         if: always() && env.PERF_DATA != ''
+        env:
+          # This machine's short name in the parsed capture lines; never the runner's hostname.
+          PERF_HOST: ${{ vars.PERF_HOST }}
         run: |
           data=$(cygpath -u "$PERF_DATA")
           [ -d "$data/.git" ] || exit 0
-          [ -d "$data/scoped" ] || exit 0
+          # One parsed line per capture (perf_index.py); the raw logs stay in the artifact.
+          records=()
+          for folder in .records/device "$(cygpath -u "$PERF_OUT")"/*/device; do
+            [ -f "$folder/index.jsonl" ] && records+=(--records "$folder")
+          done
+          if [ ${#records[@]} -gt 0 ]; then
+            PY=$(. scripts/lib/python.sh && find_python)
+            "$PY" launcher/tools/perf/perf_index.py sync --host "${PERF_HOST:-nightly}" --store "$data" \
+              --write-only "${records[@]}" || echo "::warning::perf_index.py sync failed; night manifests still publish"
+          fi
           git -C "$data" config user.name github-actions[bot]
           git -C "$data" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -C "$data" add scoped
+          for part in scoped captures; do
+            [ -d "$data/$part" ] && git -C "$data" add "$part"
+          done
           if ! git -C "$data" diff --cached --quiet; then
             git -C "$data" commit -m 'perf: record nightly scoped chains'
             auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-            git -c "http.extraheader=$auth" -C "$data" push origin HEAD:perf-data
+            git -c "http.extraheader=$auth" -C "$data" push origin HEAD
           fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -187,10 +225,7 @@ jobs:
         run: python3 scripts/docs/docs_llama.py setup
 
       - name: Evaluate hybrid docs retrieval
-        run: python3 scripts/docs/docs_search.py --eval
-
-      - name: Report hybrid retrieval scores
-        run: python3 scripts/docs/eval_summary.py hybrid
+        run: python3 scripts/docs/docs_search.py --eval --expect hybrid
 
       - name: Stop docs model server
         if: always()
@@ -209,10 +244,7 @@ jobs:
           persist-credentials: false
 
       - name: Evaluate lexical docs retrieval
-        run: python3 scripts/docs/docs_search.py --eval --lexical
-
-      - name: Report lexical retrieval scores
-        run: python3 scripts/docs/eval_summary.py lexical
+        run: python3 scripts/docs/docs_search.py --eval --lexical --expect lexical
 
   alarm:
     needs: nightly

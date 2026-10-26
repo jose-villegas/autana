@@ -78,7 +78,9 @@ scene_lights_allocate(scene_t* scene) {
 
 static scene_light_t*
 light_attach(scene_t* scene, scene_entity_t entity) {
-    if (scene == NULL || entity >= scene->asset.entity_count) {
+    /* Its direction is its own rotation, so a light is a root. */
+    if (scene == NULL || entity >= scene->asset.entity_count
+        || scene_entity_parent(scene, entity) != SCENE_ENTITY_NONE) {
         return NULL;
     }
     scene_light_t* light = &scene->lights[entity];
@@ -165,7 +167,7 @@ scene_skin_light_prepare(scene_t* scene, scene_entity_t entity) {
         skin->palette, skin->skin.joint_count, transformf_compute_matrix(&scene->locals[entity]), skin->normal_palette);
     if (!skin->lighting_valid) {
         memset(skin->colors, 0, (size_t)skin->bind.vertex_count * R3D_SKIN_LIGHT_CHANNELS);
-        (void)fprintf(stderr, "scene: %s: %s\n", SCENE_LIGHT_FAILURE_NORMAL, scene->asset.names[entity]);
+        (void)fprintf(stderr, "scene: %s: %s\n", SCENE_LIGHT_FAILURE_NORMAL, scene->asset.names[entity].name);
     }
 }
 
@@ -178,7 +180,7 @@ scene_lights_prepare(scene_t* scene) {
                                .transfer = scene->light_transfer};
     for (int l = 0; l < scene->asset.entity_count; l++) {
         const scene_light_t* light = &scene->lights[l];
-        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ENABLED)) {
+        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ACTIVE)) {
             continue;
         }
         const int at = world.count++;

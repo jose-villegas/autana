@@ -1,7 +1,7 @@
 /*
  * suite_reads_probe: the host runner's SUITE_READS check and skip
  * (test/suites.c, test/pack_reads.c) around fake suites, linked with
- * --wrap=asset_store_pack as test/run_tests.sh links host_tests. Each suite
+ * --wrap=asset_store_load as test/run_tests.sh links host_tests. Each suite
  * prints "RAN <suite>"; -DREAD_UNDECLARED adds one that reads a pack it does
  * not name. The store is suite_reads_store.c: --wrap reaches only calls from
  * another object. test_suite_reads.py builds and runs it.
@@ -24,7 +24,8 @@
 
 static void
 read_and_say(const char* suite, const char* pack) {
-    (void)asset_store_pack(pack);
+    const handle_t load = asset_store_load(pack);
+    asset_store_release(load);
     printf("RAN %s\n", suite);
 }
 
