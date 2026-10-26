@@ -425,8 +425,8 @@ ui_swatch_grid(mu_Context* ctx, mu_Rect r, const uint32_t* colors, int cols, int
         return;
     }
     const int count = cols * rows;
-    ui_swatch_command_t* cmd =
-        ui_push_clipped_command(ctx, UI_COMMAND_SWATCHES, sizeof *cmd + (count - 1) * sizeof *cmd->rgb, r);
+    const size_t size = sizeof(ui_swatch_command_t) + ((size_t)(count - 1) * sizeof(uint32_t));
+    ui_swatch_command_t* cmd = ui_push_clipped_command(ctx, UI_COMMAND_SWATCHES, (int)size, r);
     if (cmd != NULL) {
         cmd->rect = r;
         cmd->cols = cols;

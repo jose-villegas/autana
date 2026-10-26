@@ -42,10 +42,10 @@ typedef struct {
 static inline mu_Rect
 ui_swatch_cell_rect(const ui_swatch_command_t* grid, int col, int row) {
     const mu_Rect r = grid->rect;
-    const int x0 = r.x + col * r.w / grid->cols;
-    const int x1 = r.x + (col + 1) * r.w / grid->cols;
-    const int y0 = r.y + row * r.h / grid->rows;
-    const int y1 = r.y + (row + 1) * r.h / grid->rows;
+    const int x0 = r.x + (col * r.w / grid->cols);
+    const int x1 = r.x + ((col + 1) * r.w / grid->cols);
+    const int y0 = r.y + (row * r.h / grid->rows);
+    const int y1 = r.y + ((row + 1) * r.h / grid->rows);
     return (mu_Rect){x0, y0, x1 - x0, y1 - y0};
 }
 

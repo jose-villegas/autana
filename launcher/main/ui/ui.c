@@ -219,7 +219,7 @@ draw_command(const mu_Command* cmd) {
                 for (int col = 0; col < grid->cols; col++) {
                     const mu_Rect cell = ui_transform_mu_rect(t, ui_swatch_cell_rect(grid, col, row));
                     draw_rect(cell.x, cell.y, cell.w, cell.h,
-                              mu_color_to_gfx(ui_rgb(grid->rgb[row * grid->cols + col])));
+                              mu_color_to_gfx(ui_rgb(grid->rgb[(row * grid->cols) + col])));
                 }
             }
             break;
