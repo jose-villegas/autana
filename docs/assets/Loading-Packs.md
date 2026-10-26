@@ -13,13 +13,12 @@ Request a pack in `enter()` and read its state each frame.
 #include "asset/asset_store.h"
 
 typedef struct {
-    const char* name;
     handle_t load;
 } load_pack_example_t;
 
 void
 load_pack_enter(load_pack_example_t* visit, const char* name) {
-    *visit = (load_pack_example_t){.name = name, .load = asset_store_load_async(name, NULL, HANDLE_NONE)};
+    *visit = (load_pack_example_t){.load = asset_store_load_async(name, NULL, HANDLE_NONE)};
 }
 
 const asset_pack_t*
@@ -29,17 +28,13 @@ load_pack_frame(const load_pack_example_t* visit) {
 
 void
 load_pack_exit(load_pack_example_t* visit) {
-    if (asset_store_state(visit->load) == PENDING_READY) {
-        asset_store_release(visit->name);
-    } else {
-        asset_store_cancel(visit->load);
-    }
+    asset_store_release(visit->load);
     visit->load = HANDLE_NONE;
 }
 ```
 <!-- /generated: asset-load-pack-async-example -->
 
-On exit, release(name) a READY request and cancel any other.
+On exit, `asset_store_release(load)` retires the handle in any state.
 `asset_store_loaded(load)` is NULL unless the request is READY.
 A failed request logs one reason; leave that content out.
 
@@ -68,7 +63,7 @@ cancelled silently, at the request or on the next poll.
 
 `HANDLE_NONE` owns requests the loop cancels when the app exits.
 App exit also cancels every live token, after the app's `exit()`.
-Blocking uses remain held.
+Blocking handles have no owner and remain held until their caller releases them.
 
 ## Blocking loading
 
@@ -80,8 +75,10 @@ Blocking uses remain held.
 /* Blocking form: small packs, startup and tests. */
 asset_status_t
 load_pack_example(const char* pack_name, const char* entry, uint32_t type, uint32_t* size) {
-    const asset_pack_t* pack = asset_store_load(pack_name);
+    const handle_t load = asset_store_load(pack_name);
+    const asset_pack_t* pack = asset_store_loaded(load);
     if (pack == NULL) {
+        asset_store_release(load);
         return ASSET_ERR_NO_PACK; /* the log line says why: missing, bad CRC, store full */
     }
     asset_view_t view;
@@ -89,24 +86,25 @@ load_pack_example(const char* pack_name, const char* entry, uint32_t type, uint3
     if (status == ASSET_OK) {
         *size = view.size; /* view.data points into the pack: use it before the release */
     }
-    asset_store_release(pack_name);
+    asset_store_release(load);
     return status;
 }
 ```
 <!-- /generated: asset-load-pack-example -->
 
-`asset_store_load(name)` drives a local request inline, outside the async pool.
-Missing or bad packs give NULL plus one log line. It never delivers another
-request's callback while waiting.
+`asset_store_load(name)` takes a request slot and validates inline. It returns
+READY or FAILED, never WAIT, and never delivers another request's callback.
+Use `asset_store_loaded(load)` to read a READY pack; release the handle on every path.
 
 ## Counted mounts
 
-Both forms hold one pack use on success. `asset_store_release(name)` drops
-one use; at none the pack is unmapped or freed. `asset_store_mounted()` counts
-mounted packs, and `ASSET_STORE_MOUNTS_MAX` bounds the table.
+Both forms hold one pack use on success. `asset_store_release(load)` drops
+that handle's use and turns its slot to NONE. The last use unmaps the pack.
+Release on WAIT cancels; on FAILED or CANCELLED it frees the slot; stale handles do nothing.
 
-Release drops a blocking use first; otherwise it retires the oldest READY request for that name.
-The engine pack keeps its slot for the run.
+`ASSET_STORE_REQUESTS_MAX` bounds blocking and async holders together. A full
+pool returns HANDLE_NONE and logs one reason. `asset_store_mounted()` counts
+mounted packs; `ASSET_STORE_MOUNTS_MAX` bounds their table.
 
 `scene_load(id)` opens the scene and its dependencies synchronously;
 `scene_unload()` releases its pack. A scene that fails to load is not drawn.

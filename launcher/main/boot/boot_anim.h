@@ -31,6 +31,7 @@
 #include "anim/tween.h"
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
+#include "core/handle.h"
 #include "draw/draw_font.h"
 #include "draw/draw_image.h"
 #include "gfx/target/gfx_color.h"
@@ -59,6 +60,7 @@ typedef struct {
     anim_node_tracks_t camera;
     anim_node_tracks_t space;
     bool from_pack;
+    handle_t load;
 } boot_anim_motion_t;
 
 /* Fills `out` from the boot clip's pack, mounting it. On any failure it logs

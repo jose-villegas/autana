@@ -44,8 +44,10 @@ rest(boot_anim_motion_t* out) {
 
 void
 boot_anim_motion_load(boot_anim_motion_t* out) {
-    const asset_pack_t* pack = asset_store_load(BOOT_CLIP);
+    const handle_t load = asset_store_load(BOOT_CLIP);
+    const asset_pack_t* pack = asset_store_loaded(load);
     if (pack == NULL) {
+        asset_store_release(load);
         ESP_LOGW(TAG, "no pack %s: camera and space hold the rest pose", BOOT_CLIP);
         rest(out);
         return;
@@ -64,18 +66,19 @@ boot_anim_motion_load(boot_anim_motion_t* out) {
     if (status != ASSET_OK) {
         ESP_LOGW(TAG, "clip %s%s%s: %s: camera and space hold the rest pose", BOOT_CLIP, node == NULL ? "" : " node ",
                  node == NULL ? "" : node, asset_status_text(status));
-        asset_store_release(BOOT_CLIP);
+        asset_store_release(load);
         rest(out);
         return;
     }
     out->clip = tracks.clip;
     out->from_pack = true;
+    out->load = load;
 }
 
 void
 boot_anim_motion_release(boot_anim_motion_t* motion) {
     if (motion->from_pack) {
-        asset_store_release(BOOT_CLIP);
+        asset_store_release(motion->load);
     }
     rest(motion);
 }

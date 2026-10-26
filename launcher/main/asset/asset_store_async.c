@@ -8,6 +8,7 @@ asset_store_load_async(const char* name, pending_fn done, handle_t owner) {
     const handle_t load = asset_store_request_new(name);
     asset_store_request_t* request = asset_store_request_find(load);
     if (request != NULL) {
+        request->async = true;
         request->owner = owner;
         request->done = done;
         if (!pending_owner_alive(owner)) {
@@ -32,6 +33,9 @@ asset_store_cancel(handle_t load) {
 
 static bool
 check_owner(asset_store_request_t* request) {
+    if (!request->async) {
+        return true;
+    }
     if (request->cancelled) {
         return false;
     }
@@ -90,7 +94,9 @@ void
 asset_store_app_exit(void) {
     for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
         asset_store_request_t* request = asset_store_request_at(i);
-        if (request->state == PENDING_WAIT || request->state == PENDING_READY || request->state == PENDING_FAILED) {
+        if (request->async
+            && (request->state == PENDING_WAIT || request->state == PENDING_READY
+                || request->state == PENDING_FAILED)) {
             asset_store_request_cancel(request);
         }
     }

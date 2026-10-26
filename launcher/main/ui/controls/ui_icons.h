@@ -9,6 +9,7 @@
 
 #include <stdbool.h>
 
+#include "core/handle.h"
 #include "draw/draw_image.h"
 
 /* One icon: its entry's name in the pack, and what an icon-only control
@@ -26,6 +27,7 @@ typedef struct {
     int count;
     draw_image_t* icons; /* `count` of them */
     bool loaded;
+    handle_t load;
 } ui_icon_set_t;
 
 /* Mounts the set's pack and finds every icon, each a DRAW_IMAGE_MONO1 image

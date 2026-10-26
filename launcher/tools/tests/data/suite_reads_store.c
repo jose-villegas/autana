@@ -4,7 +4,10 @@
  */
 #include "asset/asset_store.h"
 
-const asset_pack_t*
+handle_t
 asset_store_load(const char* name) {
-    return NULL;
+    return HANDLE_NONE;
 }
+
+void
+asset_store_release(handle_t load) {}

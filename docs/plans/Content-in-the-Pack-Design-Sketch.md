@@ -59,8 +59,8 @@ is kept. Ids are unique within a pack.
 
 ```c fragment
 /* asset_store.h */
-const asset_pack_t* asset_store_load(const char* name);  /* mounts and checks that pack alone; NULL, logged, when missing or bad */
-void asset_store_release(const char* name);                /* drops a use; unmapped at zero */
+handle_t asset_store_load(const char* name); /* validates inline; inspect with asset_store_loaded() */
+void asset_store_release(handle_t load); /* retires this holder; unmapped at zero uses */
 
 /* scene.h: the signature stays */
 scene_t* scene_load(const char* id, scene_failure_t* why);  /* mounts pack `id`, opens its SCNE `id` */
@@ -173,7 +173,7 @@ first call.
 ```c fragment
 /* boot_anim.h: nodes camera and space (translation, rotation, scale) resolved once */
 typedef struct { anim_clip_t clip; anim_node_tracks_t camera, space; bool from_pack; } boot_anim_motion_t;
-void boot_anim_motion_load(boot_anim_motion_t* out);      /* first thing in boot_anim_run(): anim_tracks_from_pack(asset_store_load("boot_anim_motion"), "boot_anim_motion"), anim_tracks_find_node() twice; on any failure, log why and use the rest pose */
+void boot_anim_motion_load(boot_anim_motion_t* out);      /* first thing in boot_anim_run(): asset_store_load("boot_anim_motion"), asset_store_loaded(), anim_tracks_from_pack(), anim_tracks_find_node() twice; on any failure, log why and use the rest pose */
 void boot_anim_motion_release(boot_anim_motion_t* motion); /* when boot is done; leaves the rest pose */
 /* the motion is passed to boot_anim_view() and boot_anim_draw_frame(): no module state */
 ```

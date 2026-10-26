@@ -190,16 +190,22 @@ test_two_packs_mount_alone_and_a_bad_checksum_in_one_leaves_the_other_usable(voi
     test_asset_dir_use(".");
     write_pack("suite_pack_a", "first", 0, NOTE_BYTES);
     write_pack("suite_pack_b", "second", 1, NOTE_BYTES);
-    const asset_pack_t* a = asset_store_load("suite_pack_a");
-    TEST_ASSERT_NULL(asset_store_load("suite_pack_b"));
-    TEST_ASSERT_NULL(asset_store_load("suite_pack_missing"));
+    handle_t load_a = asset_store_load("suite_pack_a");
+    const asset_pack_t* a = asset_store_loaded(load_a);
+    handle_t load_b = asset_store_load("suite_pack_b");
+    TEST_ASSERT_NULL(asset_store_loaded(load_b));
+    handle_t load_c = asset_store_load("suite_pack_missing");
+    TEST_ASSERT_NULL(asset_store_loaded(load_c));
     TEST_ASSERT_EQUAL_STRING("first", note_of(a));
     write_pack("suite_pack_b", "second", 0, NOTE_BYTES);
-    const asset_pack_t* b = asset_store_load("suite_pack_b");
+    handle_t load_d = asset_store_load("suite_pack_b");
+    const asset_pack_t* b = asset_store_loaded(load_d);
     TEST_ASSERT_EQUAL_STRING("second", note_of(b));
     TEST_ASSERT_EQUAL_STRING("first", note_of(a));
-    asset_store_release("suite_pack_a");
-    asset_store_release("suite_pack_b");
+    asset_store_release(load_a);
+    asset_store_release(load_d);
+    asset_store_release(load_b);
+    asset_store_release(load_c);
     remove_pack("suite_pack_a");
     remove_pack("suite_pack_b");
 }
@@ -226,13 +232,17 @@ static void
 test_a_pack_is_read_on_its_first_use_and_again_only_after_its_last_release(void) {
     test_asset_dir_use(".");
     write_pack("suite_pack_a", "first", 0, NOTE_BYTES);
-    const asset_pack_t* a = asset_store_load("suite_pack_a");
+    handle_t load_a = asset_store_load("suite_pack_a");
+    const asset_pack_t* a = asset_store_loaded(load_a);
     write_pack("suite_pack_a", "first", 1, NOTE_BYTES);
-    TEST_ASSERT_EQUAL_PTR(a, asset_store_load("suite_pack_a"));
-    asset_store_release("suite_pack_a");
+    handle_t load_b = asset_store_load("suite_pack_a");
+    TEST_ASSERT_EQUAL_PTR(a, asset_store_loaded(load_b));
+    asset_store_release(load_b);
     TEST_ASSERT_EQUAL_STRING("first", note_of(a));
-    asset_store_release("suite_pack_a");
-    TEST_ASSERT_NULL(asset_store_load("suite_pack_a"));
+    asset_store_release(load_a);
+    handle_t load_c = asset_store_load("suite_pack_a");
+    TEST_ASSERT_NULL(asset_store_loaded(load_c));
+    asset_store_release(load_c);
     remove_pack("suite_pack_a");
 }
 
@@ -247,23 +257,28 @@ test_a_mount_past_the_store_s_slots_is_refused_until_one_is_released(void) {
     /* Packs the run keeps mounted (the engine's artwork) hold their slots. */
     const int free_slots = ASSET_STORE_MOUNTS_MAX - asset_store_mounted();
     TEST_ASSERT_GREATER_THAN_INT(0, free_slots);
+    handle_t loads[ASSET_STORE_MOUNTS_MAX + 1];
     for (int i = 0; i < free_slots; i++) {
-        TEST_ASSERT_NOT_NULL(asset_store_load(names[i]));
+        loads[i] = asset_store_load(names[i]);
+        TEST_ASSERT_NOT_NULL(asset_store_loaded(loads[i]));
     }
     TEST_ASSERT_EQUAL_INT(ASSET_STORE_MOUNTS_MAX, asset_store_mounted());
     failure_logs = 0;
-    TEST_ASSERT_NULL(asset_store_load(names[free_slots]));
+    handle_t blocking_load = asset_store_load(names[free_slots]);
+    TEST_ASSERT_NULL(asset_store_loaded(blocking_load));
     TEST_ASSERT_EQUAL_UINT(1, failure_logs);
+    asset_store_release(blocking_load);
     failure_logs = 0;
     handle_t overflow = asset_store_load_async(names[free_slots], NULL, HANDLE_NONE);
     shell_systems_poll(0);
     TEST_ASSERT_EQUAL_INT(PENDING_FAILED, asset_store_state(overflow));
     TEST_ASSERT_EQUAL_UINT(1, failure_logs);
     asset_store_cancel(overflow);
-    asset_store_release(names[0]);
-    TEST_ASSERT_EQUAL_STRING(names[free_slots], note_of(asset_store_load(names[free_slots])));
+    asset_store_release(loads[0]);
+    loads[free_slots] = asset_store_load(names[free_slots]);
+    TEST_ASSERT_EQUAL_STRING(names[free_slots], note_of(asset_store_loaded(loads[free_slots])));
     for (int i = 1; i <= free_slots; i++) {
-        asset_store_release(names[i]);
+        asset_store_release(loads[i]);
     }
     for (int i = 0; i <= ASSET_STORE_MOUNTS_MAX; i++) {
         remove_pack(names[i]);
@@ -300,7 +315,7 @@ test_async_delivery_is_deferred_and_once(void) {
     TEST_ASSERT_EQUAL_INT(1, completions);
     shell_systems_poll(0);
     TEST_ASSERT_EQUAL_INT(1, completions);
-    asset_store_release("suite_async");
+    asset_store_release(load);
     remove_pack("suite_async");
 }
 
@@ -326,10 +341,10 @@ test_async_known_size_takes_bounded_steps_and_shares_one_mount(void) {
     TEST_ASSERT_EQUAL_INT(2, completions);
     TEST_ASSERT_EQUAL_PTR(asset_store_loaded(first), asset_store_loaded(second));
     TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(first);
     TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(first));
     TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(second));
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(second);
     TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
     remove_pack(ASYNC_NAME);
 }
@@ -353,8 +368,9 @@ test_cancel_frees_partial_mount_and_reuses_a_generation(void) {
     TEST_ASSERT_EQUAL_INT(0, completions);
     TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
     TEST_ASSERT_NULL(asset_store_loaded(load));
-    TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
-    asset_store_release(ASYNC_NAME);
+    handle_t blocking_load = asset_store_load(ASYNC_NAME);
+    TEST_ASSERT_NOT_NULL(asset_store_loaded(blocking_load));
+    asset_store_release(blocking_load);
     remove_pack(ASYNC_NAME);
 }
 
@@ -372,14 +388,15 @@ test_token_cancel_silences_partial_and_already_ready_callbacks(void) {
     }
     TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, asset_store_state(load));
     TEST_ASSERT_EQUAL_INT(0, completions);
-    TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
+    handle_t blocking_load = asset_store_load(ASYNC_NAME);
+    TEST_ASSERT_NOT_NULL(asset_store_loaded(blocking_load));
     load = asset_store_load_async(ASYNC_NAME, loaded_done, HANDLE_NONE);
     TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(load));
     asset_store_cancel(load);
     shell_systems_poll(0);
     TEST_ASSERT_EQUAL_INT(0, completions);
-    asset_store_release(ASYNC_NAME);
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(load);
+    asset_store_release(blocking_load);
     remove_pack(ASYNC_NAME);
 }
 
@@ -395,7 +412,9 @@ test_failure_is_pollable_once_delivered_and_oldest_is_reclaimed(void) {
     TEST_ASSERT_EQUAL_INT(1, completions);
     shell_systems_poll(0);
     TEST_ASSERT_EQUAL_INT(1, completions);
-    TEST_ASSERT_NULL(asset_store_load("suite_async_bad"));
+    handle_t blocking_load = asset_store_load("suite_async_bad");
+    TEST_ASSERT_NULL(asset_store_loaded(blocking_load));
+    asset_store_release(blocking_load);
     for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
         handle_t next = asset_store_load_async("suite_async_bad", NULL, HANDLE_NONE);
         TEST_ASSERT_FALSE(handle_is_none(next));
@@ -458,7 +477,8 @@ test_callback_requests_wait_a_pass_and_blocking_load_never_delivers_them(void) {
     write_pack("suite_async", "callback", 0, NOTE_BYTES);
     completions = 0;
     handle_t first = asset_store_load_async("suite_async", spawn_done, HANDLE_NONE);
-    TEST_ASSERT_NOT_NULL(asset_store_load("suite_async"));
+    handle_t blocking_load = asset_store_load("suite_async");
+    TEST_ASSERT_NOT_NULL(asset_store_loaded(blocking_load));
     TEST_ASSERT_EQUAL_INT(0, completions);
     shell_systems_poll(0);
     TEST_ASSERT_EQUAL_INT(1, completions);
@@ -466,17 +486,30 @@ test_callback_requests_wait_a_pass_and_blocking_load_never_delivers_them(void) {
     TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(callback_child));
     shell_systems_poll(0);
     TEST_ASSERT_EQUAL_INT(2, completions);
-    asset_store_release("suite_async");
-    asset_store_release("suite_async");
-    asset_store_release("suite_async");
+    asset_store_release(blocking_load);
+    asset_store_release(first);
+    asset_store_release(callback_child);
     remove_pack("suite_async");
 }
 
+static uint32_t
+request_capacity(void) {
+    uint32_t count = ASSET_STORE_REQUESTS_MAX;
+    for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
+        const asset_store_request_t* request = asset_store_request_at(i);
+        if (request->state == PENDING_READY || request->state == PENDING_WAIT
+            || (request->state == PENDING_FAILED && request->done != NULL)) {
+            count--;
+        }
+    }
+    return count;
+}
+
 static handle_t*
-fill_request_pool(const char* name) {
+fill_request_pool(const char* name, uint32_t capacity) {
     handle_t* loads = malloc(ASSET_STORE_REQUESTS_MAX * sizeof(*loads));
     TEST_ASSERT_NOT_NULL(loads);
-    for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
+    for (uint32_t i = 0; i < capacity; i++) {
         loads[i] = asset_store_load_async(name, NULL, HANDLE_NONE);
         TEST_ASSERT_FALSE(handle_is_none(loads[i]));
     }
@@ -485,9 +518,10 @@ fill_request_pool(const char* name) {
 
 static void
 test_request_pool_limits_pending_work_and_cancel_returns_a_slot(void) {
+    const uint32_t capacity = request_capacity();
     handle_t* loads = malloc(sizeof(*loads) * ASSET_STORE_REQUESTS_MAX);
     TEST_ASSERT_NOT_NULL(loads);
-    for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
+    for (uint32_t i = 0; i < capacity; i++) {
         loads[i] = asset_store_load_async("suite_not_opened", NULL, HANDLE_NONE);
         TEST_ASSERT_FALSE(handle_is_none(loads[i]));
     }
@@ -497,7 +531,7 @@ test_request_pool_limits_pending_work_and_cancel_returns_a_slot(void) {
     loads[0] = asset_store_load_async("suite_not_opened", NULL, HANDLE_NONE);
     TEST_ASSERT_FALSE(handle_is_none(loads[0]));
     TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(stale));
-    for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
+    for (uint32_t i = 0; i < capacity; i++) {
         asset_store_cancel(loads[i]);
     }
     free(loads);
@@ -546,11 +580,11 @@ test_cancel_ready_retains_every_use_and_dead_owner_does_too(void) {
     TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
     pending_token_cancel(token);
     shell_systems_poll(0);
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(first);
     TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
     TEST_ASSERT_EQUAL_PTR(pack, asset_store_loaded(second));
     TEST_ASSERT_EQUAL_STRING("retained", note_of(pack));
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(second);
     TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
     remove_pack(ASYNC_NAME);
 }
@@ -566,40 +600,44 @@ test_cancel_wait_failed_and_blocking_holder_preserve_other_uses(void) {
     asset_store_cancel(first);
     poll_complete(second);
     TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(second));
-    const asset_pack_t* blocking = asset_store_load(ASYNC_NAME);
+    handle_t load_a = asset_store_load(ASYNC_NAME);
+    const asset_pack_t* blocking = asset_store_loaded(load_a);
     asset_store_cancel(second);
     TEST_ASSERT_EQUAL_PTR(blocking, asset_store_loaded(second));
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(second);
     TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
     TEST_ASSERT_EQUAL_STRING("retained", note_of(blocking));
-    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(second));
-    asset_store_release(ASYNC_NAME);
     TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(second));
-    TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
+    asset_store_release(load_a);
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(second));
+    handle_t load_b = asset_store_load(ASYNC_NAME);
+    TEST_ASSERT_NOT_NULL(asset_store_loaded(load_b));
     handle_t failed = asset_store_load_async("", NULL, HANDLE_NONE);
     asset_store_cancel(failed);
     TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, asset_store_state(failed));
     TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(load_b);
     TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
     remove_pack(ASYNC_NAME);
 }
 
 static void
-test_blocking_load_ignores_full_request_pool_and_preserves_generations(void) {
+test_blocking_load_refuses_full_request_pool_and_preserves_generations(void) {
     test_asset_dir_use(".");
     write_pack(ASYNC_NAME, "blocking", 0, NOTE_BYTES);
-    handle_t* loads = fill_request_pool("not_opened");
+    const uint32_t capacity = request_capacity();
+    handle_t* loads = fill_request_pool("not_opened", capacity);
     const int before = asset_store_mounted();
     failure_logs = 0;
-    TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
-    TEST_ASSERT_EQUAL_UINT(0, failure_logs);
-    TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
-    for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
+    handle_t blocking_load = asset_store_load(ASYNC_NAME);
+    TEST_ASSERT_TRUE(handle_is_none(blocking_load));
+    TEST_ASSERT_EQUAL_UINT(1, failure_logs);
+    TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
+    for (uint32_t i = 0; i < capacity; i++) {
         TEST_ASSERT_EQUAL_INT(PENDING_WAIT, asset_store_state(loads[i]));
         asset_store_cancel(loads[i]);
     }
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(blocking_load);
     free(loads);
     remove_pack(ASYNC_NAME);
 }
@@ -614,7 +652,8 @@ test_blocking_finishes_a_shared_partial_mount_without_delivering_callbacks(void)
     handle_t load = asset_store_load_async(ASYNC_NAME, loaded_done, HANDLE_NONE);
     shell_systems_poll(0);
     TEST_ASSERT_EQUAL_INT(PENDING_WAIT, asset_store_state(load));
-    const asset_pack_t* pack = asset_store_load(ASYNC_NAME);
+    handle_t blocking_load = asset_store_load(ASYNC_NAME);
+    const asset_pack_t* pack = asset_store_loaded(blocking_load);
     TEST_ASSERT_NOT_NULL(pack);
     TEST_ASSERT_EQUAL_INT(0, completions);
     shell_systems_poll(0);
@@ -622,9 +661,9 @@ test_blocking_finishes_a_shared_partial_mount_without_delivering_callbacks(void)
     TEST_ASSERT_EQUAL_INT(1, completions);
     TEST_ASSERT_EQUAL_UINT(0, failure_logs);
     TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(blocking_load);
     TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(load);
     TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
     remove_pack(ASYNC_NAME);
 }
@@ -653,7 +692,10 @@ test_failure_logs_and_blocking_async_parity(void) {
     free(bytes);
     for (uint32_t i = 0; i < sizeof names / sizeof names[0]; i++) {
         failure_logs = 0;
-        TEST_ASSERT_NULL(asset_store_load(names[i]));
+        handle_t blocking_load = asset_store_load(names[i]);
+        TEST_ASSERT_NULL(asset_store_loaded(blocking_load));
+        TEST_ASSERT_EQUAL_INT(PENDING_FAILED, asset_store_state(blocking_load));
+        asset_store_release(blocking_load);
         TEST_ASSERT_EQUAL_UINT(1, failure_logs);
         TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
         failure_logs = 0;
@@ -683,7 +725,8 @@ test_dead_tokens_silence_wait_ready_failed_and_preserve_owner_on_delivery(void) 
     test_asset_dir_use(".");
     write_pack(ASYNC_NAME, "tokens", 0, NOTE_BYTES);
     completions = 0;
-    const asset_pack_t* blocking = asset_store_load(ASYNC_NAME);
+    handle_t blocking_load = asset_store_load(ASYNC_NAME);
+    const asset_pack_t* blocking = asset_store_loaded(blocking_load);
     const char* names[] = {"not_mounted", ASYNC_NAME, ""};
     for (uint32_t i = 0; i < sizeof names / sizeof names[0]; i++) {
         handle_t token = pending_token_new();
@@ -693,7 +736,7 @@ test_dead_tokens_silence_wait_ready_failed_and_preserve_owner_on_delivery(void) 
         TEST_ASSERT_EQUAL_INT(0, completions);
         if (i == 1) {
             TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(load));
-            asset_store_release(ASYNC_NAME);
+            asset_store_release(load);
         } else {
             TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, asset_store_state(load));
         }
@@ -707,8 +750,8 @@ test_dead_tokens_silence_wait_ready_failed_and_preserve_owner_on_delivery(void) 
     TEST_ASSERT_TRUE(handle_equal(token, completed_owner));
     TEST_ASSERT_TRUE(handle_equal(load, completed_request));
     TEST_ASSERT_EQUAL_PTR(blocking, asset_store_loaded(load));
-    asset_store_release(ASYNC_NAME);
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(load);
+    asset_store_release(blocking_load);
     pending_token_cancel(token);
     remove_pack(ASYNC_NAME);
 }
@@ -718,7 +761,8 @@ test_app_exit_cleans_all_async_states_and_tokens_but_keeps_blocking_use(void) {
     test_asset_dir_use(".");
     write_pack(ASYNC_NAME, "exit", 0, NOTE_BYTES);
     const int before = asset_store_mounted();
-    const asset_pack_t* pack = asset_store_load(ASYNC_NAME);
+    handle_t blocking_load = asset_store_load(ASYNC_NAME);
+    const asset_pack_t* pack = asset_store_loaded(blocking_load);
     handle_t token = pending_token_new();
     handle_t ready = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
     handle_t grouped = asset_store_load_async(ASYNC_NAME, NULL, token);
@@ -732,7 +776,7 @@ test_app_exit_cleans_all_async_states_and_tokens_but_keeps_blocking_use(void) {
     }
     TEST_ASSERT_EQUAL_INT(before + 1, asset_store_mounted());
     TEST_ASSERT_EQUAL_STRING("exit", note_of(pack));
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(blocking_load);
     remove_pack(ASYNC_NAME);
 }
 
@@ -740,31 +784,34 @@ static void
 test_pending_callback_failed_ready_and_wait_are_not_reclaimed(void) {
     test_asset_dir_use(".");
     write_pack(ASYNC_NAME, "pool", 0, NOTE_BYTES);
-    TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
+    handle_t blocking_load = asset_store_load(ASYNC_NAME);
+    TEST_ASSERT_NOT_NULL(asset_store_loaded(blocking_load));
+    const uint32_t capacity = request_capacity();
     handle_t* loads = malloc(ASSET_STORE_REQUESTS_MAX * sizeof(*loads));
     TEST_ASSERT_NOT_NULL(loads);
     loads[0] = asset_store_load_async("", loaded_done, HANDLE_NONE);
     loads[1] = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
-    for (uint32_t i = 2; i < ASSET_STORE_REQUESTS_MAX; i++) {
+    for (uint32_t i = 2; i < capacity; i++) {
         loads[i] = asset_store_load_async("not_mounted", NULL, HANDLE_NONE);
     }
     TEST_ASSERT_TRUE(handle_is_none(asset_store_load_async("", NULL, HANDLE_NONE)));
     TEST_ASSERT_EQUAL_INT(PENDING_FAILED, asset_store_state(loads[0]));
     TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(loads[1]));
-    for (uint32_t i = 2; i < ASSET_STORE_REQUESTS_MAX; i++) {
+    for (uint32_t i = 2; i < capacity; i++) {
         TEST_ASSERT_EQUAL_INT(PENDING_WAIT, asset_store_state(loads[i]));
     }
     shell_systems_app_exit();
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(blocking_load);
     free(loads);
     remove_pack(ASYNC_NAME);
 }
 
 static void
-test_reclaim_and_release_use_age_instead_of_slot_order(void) {
+test_failed_reclaim_uses_age_instead_of_slot_order(void) {
     test_asset_dir_use(".");
     write_pack(ASYNC_NAME, "age", 0, NOTE_BYTES);
-    handle_t* loads = fill_request_pool("not_mounted");
+    const uint32_t capacity = request_capacity();
+    handle_t* loads = fill_request_pool("not_mounted", capacity);
     asset_store_cancel(loads[1]);
     handle_t oldest = asset_store_load_async("", NULL, HANDLE_NONE);
     asset_store_cancel(loads[0]);
@@ -775,27 +822,9 @@ test_reclaim_and_release_use_age_instead_of_slot_order(void) {
     TEST_ASSERT_EQUAL_INT(PENDING_FAILED, asset_store_state(newest));
     asset_store_cancel(next);
     asset_store_cancel(newest);
-    for (uint32_t i = 2; i < ASSET_STORE_REQUESTS_MAX; i++) {
+    for (uint32_t i = 2; i < capacity; i++) {
         asset_store_cancel(loads[i]);
     }
-    TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
-    handle_t low = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
-    oldest = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
-    asset_store_release(ASYNC_NAME);
-    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(low));
-    asset_store_release(ASYNC_NAME);
-    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(low));
-    newest = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
-    TEST_ASSERT_TRUE(handle_slot(oldest) > handle_slot(newest));
-    handle_t other = asset_store_load_async("another_name", NULL, HANDLE_NONE);
-    asset_store_release(ASYNC_NAME);
-    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(oldest));
-    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(newest));
-    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, asset_store_state(other));
-    asset_store_release(ASYNC_NAME);
-    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(newest));
-    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, asset_store_state(other));
-    asset_store_cancel(other);
     free(loads);
     remove_pack(ASYNC_NAME);
 }
@@ -867,7 +896,7 @@ test_callback_can_cancel_later_sibling_before_delivery(void) {
     TEST_ASSERT_EQUAL_INT(1, completions);
     TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(first));
     TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, asset_store_state(sibling_request));
-    asset_store_release(ASYNC_NAME);
+    asset_store_release(first);
     remove_pack(ASYNC_NAME);
 }
 
@@ -885,8 +914,8 @@ test_callback_request_for_unmounted_pack_starts_next_pass(void) {
     TEST_ASSERT_EQUAL_INT(1, completions);
     poll_complete(callback_child);
     TEST_ASSERT_EQUAL_INT(2, completions);
-    asset_store_release(ASYNC_NAME);
-    asset_store_release("suite_async");
+    asset_store_release(parent);
+    asset_store_release(callback_child);
     remove_pack(ASYNC_NAME);
     remove_pack("suite_async");
 }
@@ -952,8 +981,9 @@ test_blocking_release_preserves_ready_until_app_exit(void) {
     const int before = asset_store_mounted();
     handle_t load = asset_store_load_async(ASYNC_NAME, NULL, HANDLE_NONE);
     poll_complete(load);
-    TEST_ASSERT_NOT_NULL(asset_store_load(ASYNC_NAME));
-    asset_store_release(ASYNC_NAME);
+    handle_t blocking_load = asset_store_load(ASYNC_NAME);
+    TEST_ASSERT_NOT_NULL(asset_store_loaded(blocking_load));
+    asset_store_release(blocking_load);
     TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(load));
     shell_systems_app_exit();
     TEST_ASSERT_EQUAL_INT(before, asset_store_mounted());
@@ -961,14 +991,79 @@ test_blocking_release_preserves_ready_until_app_exit(void) {
 }
 
 static void
-test_pending_system_registers_after_asset_cleanup(void) {
+check_release_order(bool app_first) {
+    test_asset_dir_use(".");
+    write_pack(ASYNC_NAME, "shell", 0, NOTE_BYTES);
+    handle_t shell = asset_store_load(ASYNC_NAME);
+    handle_t blocking = asset_store_load(ASYNC_NAME);
+    const asset_pack_t* pack = asset_store_loaded(shell);
+    const int mounted = asset_store_mounted();
+    handle_t app = asset_store_load_async(ASYNC_NAME, loaded_done, HANDLE_NONE);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(blocking));
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(app));
+    asset_store_release(app_first ? app : blocking);
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(app_first ? app : blocking));
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(app_first ? blocking : app));
+    shell_systems_app_exit();
+    TEST_ASSERT_EQUAL_INT(mounted, asset_store_mounted());
+    TEST_ASSERT_EQUAL_PTR(pack, asset_store_loaded(shell));
+    TEST_ASSERT_EQUAL_STRING("shell", note_of(pack));
+    if (app_first) {
+        TEST_ASSERT_EQUAL_PTR(pack, asset_store_loaded(blocking));
+        TEST_ASSERT_EQUAL_STRING("shell", note_of(asset_store_loaded(blocking)));
+    }
+    asset_store_release(blocking);
+    asset_store_release(shell);
+    remove_pack(ASYNC_NAME);
+}
+
+static void
+test_released_app_handle_does_not_drop_blocking_use_on_exit(void) {
+    check_release_order(true);
+}
+
+static void
+test_blocking_release_and_exit_preserve_another_blocking_holder(void) {
+    check_release_order(false);
+}
+
+static void
+test_release_retires_wait_failed_cancelled_none_and_stale_handles(void) {
+    test_asset_dir_use(".");
+    completions = 0;
+    handle_t waiting = asset_store_load_async("not_mounted", loaded_done, HANDLE_NONE);
+    asset_store_release(waiting);
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(waiting));
+    handle_t failed = asset_store_load("");
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, asset_store_state(failed));
+    asset_store_release(waiting);
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, asset_store_state(failed));
+    asset_store_release(failed);
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(failed));
+    handle_t cancelled = asset_store_load_async("not_mounted", loaded_done, HANDLE_NONE);
+    asset_store_cancel(cancelled);
+    asset_store_release(cancelled);
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(cancelled));
+    asset_store_release(HANDLE_NONE);
+    shell_systems_poll(0);
+    TEST_ASSERT_EQUAL_INT(0, completions);
+}
+
+static const shell_system_t*
+registered_system(const char* name) {
     shell_system_t* real = shell_system_swap_for_test(NULL);
     shell_system_swap_for_test(real);
-    const shell_system_t* pending = real;
-    while (pending != NULL && strcmp(pending->name, "pending") != 0) {
-        pending = pending->next;
+    const shell_system_t* system = real;
+    while (system != NULL && strcmp(system->name, name) != 0) {
+        system = system->next;
     }
-    TEST_ASSERT_NOT_NULL(pending);
+    TEST_ASSERT_NOT_NULL(system);
+    return system;
+}
+
+static void
+test_pending_system_registers_after_asset_cleanup(void) {
+    const shell_system_t* pending = registered_system("pending");
     TEST_ASSERT_EQUAL_INT(SHELL_ORDER_PENDING, pending->order);
     TEST_ASSERT_TRUE(pending->order > SHELL_ORDER_ASSET);
     TEST_ASSERT_EQUAL_PTR(pending_tokens_cancel, pending->app_exit);
@@ -976,13 +1071,7 @@ test_pending_system_registers_after_asset_cleanup(void) {
 
 static void
 test_asset_system_registers_poll_and_exit_cleanup(void) {
-    shell_system_t* real = shell_system_swap_for_test(NULL);
-    shell_system_swap_for_test(real);
-    const shell_system_t* asset = real;
-    while (asset != NULL && strcmp(asset->name, "asset") != 0) {
-        asset = asset->next;
-    }
-    TEST_ASSERT_NOT_NULL(asset);
+    const shell_system_t* asset = registered_system("asset");
     TEST_ASSERT_EQUAL_INT(SHELL_ORDER_ASSET, asset->order);
     TEST_ASSERT_EQUAL_PTR(asset_store_step, asset->poll);
     TEST_ASSERT_EQUAL_PTR(asset_store_app_exit, asset->app_exit);
@@ -1002,8 +1091,8 @@ test_step_budget_is_shared_by_distinct_pending_mounts(void) {
     TEST_ASSERT_EQUAL_INT(PENDING_WAIT, asset_store_state(second));
     poll_complete(second);
     TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(second));
-    asset_store_release(ASYNC_NAME);
-    asset_store_release("suite_async_other");
+    asset_store_release(first);
+    asset_store_release(second);
     remove_pack(ASYNC_NAME);
     remove_pack("suite_async_other");
 }
@@ -1017,15 +1106,18 @@ suite_asset_store(void) {
     RUN_TEST(test_a_row_out_of_range_misaligned_or_overlapping_is_refused);
     RUN_TEST(test_two_packs_with_one_name_or_a_name_with_no_room_for_its_nul_are_refused);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_released_app_handle_does_not_drop_blocking_use_on_exit);
+    RUN_TEST(test_blocking_release_and_exit_preserve_another_blocking_holder);
+    RUN_TEST(test_release_retires_wait_failed_cancelled_none_and_stale_handles);
     RUN_TEST(test_cancel_ready_retains_every_use_and_dead_owner_does_too);
     RUN_TEST(test_cancel_wait_failed_and_blocking_holder_preserve_other_uses);
-    RUN_TEST(test_blocking_load_ignores_full_request_pool_and_preserves_generations);
+    RUN_TEST(test_blocking_load_refuses_full_request_pool_and_preserves_generations);
     RUN_TEST(test_blocking_finishes_a_shared_partial_mount_without_delivering_callbacks);
     RUN_TEST(test_failure_logs_and_blocking_async_parity);
     RUN_TEST(test_dead_tokens_silence_wait_ready_failed_and_preserve_owner_on_delivery);
     RUN_TEST(test_app_exit_cleans_all_async_states_and_tokens_but_keeps_blocking_use);
     RUN_TEST(test_pending_callback_failed_ready_and_wait_are_not_reclaimed);
-    RUN_TEST(test_reclaim_and_release_use_age_instead_of_slot_order);
+    RUN_TEST(test_failed_reclaim_uses_age_instead_of_slot_order);
     RUN_TEST(test_handle_invalid_fields_and_kinds_are_dead_and_cancel_is_noop);
     RUN_TEST(test_callback_can_cancel_later_sibling_before_delivery);
     RUN_TEST(test_callback_request_for_unmounted_pack_starts_next_pass);

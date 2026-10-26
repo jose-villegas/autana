@@ -563,7 +563,7 @@ run_raster_scale_perf_suite(void) {
         RUN_TEST(test_raster_counters);
         RUN_TEST(test_dynamic_resolution_policies_along_the_path);
     }
-    loaded = (sponza_suite_t){scene, pack, lens, loaded.arena_mark};
+    loaded = (sponza_suite_t){scene, pack, lens, loaded.arena_mark, loaded.load};
     sponza_suite_release(&loaded);
     scene = NULL;
     pack = NULL;
