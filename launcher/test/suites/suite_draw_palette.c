@@ -13,12 +13,14 @@
 #ifndef DEVICE_BUILD
 
 #include "draw_palette_gen.h"
+#include "image/palette/palette.h"
+#include "image/pixel/rgb565.h"
 
 static void
 test_cga16_has_16_entries_black_first_white_last(void) {
     TEST_ASSERT_EQUAL_INT(16, draw_palette_cga16.count);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), draw_palette_cga16.entries[0]);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFFFFF), draw_palette_cga16.entries[15]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x000000), draw_palette_cga16.entries[0]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFFFFFF), draw_palette_cga16.entries[15]);
 }
 
 static void
@@ -30,7 +32,7 @@ test_ega16_is_bit_identical_to_cga16(void) {
 }
 
 static void
-assert_ends(const draw_palette_t* palette, int count, gfx_color_t first, gfx_color_t last) {
+assert_ends(const palette_t* palette, int count, gfx_color_t first, gfx_color_t last) {
     TEST_ASSERT_EQUAL_INT(count, palette->count);
     TEST_ASSERT_EQUAL_HEX16(first, palette->entries[0]);
     TEST_ASSERT_EQUAL_HEX16(last, palette->entries[count - 1]);
@@ -38,27 +40,27 @@ assert_ends(const draw_palette_t* palette, int count, gfx_color_t first, gfx_col
 
 static void
 test_pico8_16_first_and_last_entries(void) {
-    assert_ends(&draw_palette_pico8_16, 16, GFX_RGB(0x000000), GFX_RGB(0xFFCCAA));
+    assert_ends(&draw_palette_pico8_16, 16, RGB565BE(0x000000), RGB565BE(0xFFCCAA));
 }
 
 static void
 test_db16_and_db32_sizes_and_known_entries(void) {
-    assert_ends(&draw_palette_db16, 16, GFX_RGB(0x140C1C), GFX_RGB(0xDEEED6));
-    assert_ends(&draw_palette_db32, 32, GFX_RGB(0x000000), GFX_RGB(0x8A6F30));
+    assert_ends(&draw_palette_db16, 16, RGB565BE(0x140C1C), RGB565BE(0xDEEED6));
+    assert_ends(&draw_palette_db32, 32, RGB565BE(0x000000), RGB565BE(0x8A6F30));
 }
 
 static void
 test_grayscale16_is_evenly_spaced(void) {
-    assert_ends(&draw_palette_grayscale16, 16, GFX_RGB(0x000000), GFX_RGB(0xFFFFFF));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x888888), draw_palette_grayscale16.entries[8]);
+    assert_ends(&draw_palette_grayscale16, 16, RGB565BE(0x000000), RGB565BE(0xFFFFFF));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x888888), draw_palette_grayscale16.entries[8]);
 }
 
 static void
 test_vga256_and_grayscale256_have_256_unique_entries(void) {
     TEST_ASSERT_EQUAL_INT(256, draw_palette_vga256.count);
     TEST_ASSERT_EQUAL_INT(256, draw_palette_grayscale256.count);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), draw_palette_grayscale256.entries[0]);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFFFFF), draw_palette_grayscale256.entries[255]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x000000), draw_palette_grayscale256.entries[0]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFFFFFF), draw_palette_grayscale256.entries[255]);
 
     for (int i = 0; i < draw_palette_vga256.count; i++) {
         for (int j = i + 1; j < draw_palette_vga256.count; j++) {
@@ -93,7 +95,7 @@ test_index_map_round_trips_every_entry_of_a_small_palette(void) {
     draw_palette_gen_build_index_map(&draw_palette_cga16, 0, map);
 
     for (int i = 0; i < draw_palette_cga16.count; i++) {
-        const int idx = draw_palette_index_of(draw_palette_cga16.entries[i], map);
+        const int idx = palette_index_of(draw_palette_cga16.entries[i], map);
         TEST_ASSERT_EQUAL_INT_MESSAGE(i, idx, "a palette's own entry did not map back to its own index");
     }
 }
@@ -106,8 +108,8 @@ test_index_map_sends_an_off_palette_colour_to_its_nearest_entry(void) {
     static uint8_t map[65536];
     draw_palette_gen_build_index_map(&draw_palette_cga16, 0, map);
 
-    TEST_ASSERT_EQUAL_INT(10, draw_palette_index_of(GFX_RGB(0x00FF00), map)); /* 0x55FF55 */
-    TEST_ASSERT_EQUAL_INT(9, draw_palette_index_of(GFX_RGB(0x2020FF), map));  /* 0x5555FF */
+    TEST_ASSERT_EQUAL_INT(10, palette_index_of(RGB565BE(0x00FF00), map)); /* 0x55FF55 */
+    TEST_ASSERT_EQUAL_INT(9, palette_index_of(RGB565BE(0x2020FF), map));  /* 0x5555FF */
 }
 
 /* OKLab anchors: black and white at the ends of L, a grey with no colour,
@@ -136,7 +138,7 @@ test_index_map_never_returns_a_reserved_entry(void) {
     draw_palette_gen_build_index_map(&draw_palette_vga256, DRAW_PALETTE_UI_ENTRIES, map);
 
     for (int i = 0; i < DRAW_PALETTE_UI_ENTRIES; i++) {
-        const int idx = draw_palette_index_of(draw_palette_vga256.entries[i], map);
+        const int idx = palette_index_of(draw_palette_vga256.entries[i], map);
         TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(DRAW_PALETTE_UI_ENTRIES, idx,
                                                  "a reserved UI entry's own colour mapped back into the "
                                                  "reserved block instead of past it");
@@ -148,7 +150,7 @@ test_index_map_never_returns_a_reserved_entry(void) {
  * dithering needed, the trivial case any build must get exactly right. */
 static void
 test_dither_table_reproduces_an_exact_16_colour_match_at_every_phase(void) {
-    static gfx_color_t table[DRAW_PALETTE_MAX_ENTRIES * 16];
+    static gfx_color_t table[PALETTE_MAX_ENTRIES * 16];
     draw_palette_gen_build_dither16(&draw_palette_vga256, &draw_palette_cga16, table);
 
     /* draw_palette_vga256's own first 16 entries are EGA16, bit-identical to
@@ -161,8 +163,8 @@ test_dither_table_reproduces_an_exact_16_colour_match_at_every_phase(void) {
 
 static void
 test_dither_table_is_deterministic(void) {
-    static gfx_color_t a[DRAW_PALETTE_MAX_ENTRIES * 16];
-    static gfx_color_t b[DRAW_PALETTE_MAX_ENTRIES * 16];
+    static gfx_color_t a[PALETTE_MAX_ENTRIES * 16];
+    static gfx_color_t b[PALETTE_MAX_ENTRIES * 16];
     draw_palette_gen_build_dither16(&draw_palette_db32, &draw_palette_pico8_16, a);
     draw_palette_gen_build_dither16(&draw_palette_db32, &draw_palette_pico8_16, b);
 
@@ -176,14 +178,14 @@ test_dither_table_is_deterministic(void) {
  * on it exactly, not merely close. */
 static void
 test_lut_nearest_reproduces_an_exact_match(void) {
-    static gfx_color_t lut[DRAW_PALETTE_MAX_ENTRIES];
+    static gfx_color_t lut[PALETTE_MAX_ENTRIES];
     draw_palette_gen_build_lut_nearest(&draw_palette_vga256, &draw_palette_cga16, lut);
     TEST_ASSERT_EQUAL_HEX16(draw_palette_cga16.entries[0], lut[0]);
 }
 
 static void
 test_lut_nearest_is_deterministic(void) {
-    static gfx_color_t a[DRAW_PALETTE_MAX_ENTRIES], b[DRAW_PALETTE_MAX_ENTRIES];
+    static gfx_color_t a[PALETTE_MAX_ENTRIES], b[PALETTE_MAX_ENTRIES];
     draw_palette_gen_build_lut_nearest(&draw_palette_db32, &draw_palette_pico8_16, a);
     draw_palette_gen_build_lut_nearest(&draw_palette_db32, &draw_palette_pico8_16, b);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(a, b, draw_palette_db32.count);
@@ -194,7 +196,7 @@ test_lut_nearest_is_deterministic(void) {
  * right. */
 static void
 test_dither_cell_checker_reproduces_an_exact_match_at_both_phases(void) {
-    static gfx_color_t table[DRAW_PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_CHECKER_PHASES];
+    static gfx_color_t table[PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_CHECKER_PHASES];
     draw_palette_gen_build_dither_cell(&draw_palette_vga256, &draw_palette_cga16, false, table);
     for (int phase = 0; phase < GFX_INDEXED_CELL_CHECKER_PHASES; phase++) {
         TEST_ASSERT_EQUAL_HEX16(draw_palette_cga16.entries[0], table[0 * GFX_INDEXED_CELL_CHECKER_PHASES + phase]);
@@ -204,7 +206,7 @@ test_dither_cell_checker_reproduces_an_exact_match_at_both_phases(void) {
 /* GFX_DITHER_CELL_BAYER2's own table: solid at all 4 of its phases. */
 static void
 test_dither_cell_bayer2_reproduces_an_exact_match_at_every_phase(void) {
-    static gfx_color_t table[DRAW_PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_BAYER2_PHASES];
+    static gfx_color_t table[PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_BAYER2_PHASES];
     draw_palette_gen_build_dither_cell(&draw_palette_vga256, &draw_palette_cga16, true, table);
     for (int phase = 0; phase < GFX_INDEXED_CELL_BAYER2_PHASES; phase++) {
         TEST_ASSERT_EQUAL_HEX16(draw_palette_cga16.entries[0], table[0 * GFX_INDEXED_CELL_BAYER2_PHASES + phase]);
@@ -213,8 +215,8 @@ test_dither_cell_bayer2_reproduces_an_exact_match_at_every_phase(void) {
 
 static void
 test_dither_cell_bayer2_is_deterministic(void) {
-    static gfx_color_t a[DRAW_PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_BAYER2_PHASES];
-    static gfx_color_t b[DRAW_PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_BAYER2_PHASES];
+    static gfx_color_t a[PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_BAYER2_PHASES];
+    static gfx_color_t b[PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_BAYER2_PHASES];
     draw_palette_gen_build_dither_cell(&draw_palette_db32, &draw_palette_pico8_16, true, a);
     draw_palette_gen_build_dither_cell(&draw_palette_db32, &draw_palette_pico8_16, true, b);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(a, b, draw_palette_db32.count * GFX_INDEXED_CELL_BAYER2_PHASES);
@@ -225,8 +227,7 @@ test_dither_cell_bayer2_is_deterministic(void) {
  * draw_palette_gen_build_dither16()'s own test covers for the 4x4 pattern. */
 static void
 test_dither_checker2_reproduces_an_exact_match_at_every_phase(void) {
-    static gfx_color_t
-        table[DRAW_PALETTE_MAX_ENTRIES * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
+    static gfx_color_t table[PALETTE_MAX_ENTRIES * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
     draw_palette_gen_build_dither_checker2(&draw_palette_vga256, &draw_palette_cga16, table);
     const int stride = GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX;
     for (int i = 0; i < stride; i++) {
@@ -236,8 +237,8 @@ test_dither_checker2_reproduces_an_exact_match_at_every_phase(void) {
 
 static void
 test_dither_checker2_is_deterministic(void) {
-    static gfx_color_t a[DRAW_PALETTE_MAX_ENTRIES * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
-    static gfx_color_t b[DRAW_PALETTE_MAX_ENTRIES * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
+    static gfx_color_t a[PALETTE_MAX_ENTRIES * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
+    static gfx_color_t b[PALETTE_MAX_ENTRIES * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
     draw_palette_gen_build_dither_checker2(&draw_palette_db32, &draw_palette_pico8_16, a);
     draw_palette_gen_build_dither_checker2(&draw_palette_db32, &draw_palette_pico8_16, b);
     const int n = draw_palette_db32.count * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX;

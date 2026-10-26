@@ -19,6 +19,8 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/bayer.h"
+#include "image/pixel/rgb565.h"
 #include "math/scalar/ease.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
@@ -219,8 +221,8 @@ build_sky_gradient(void) {
     ridge->sky_half = RIDGE_SKY_HALF;
     ridge->sky_edge_count = 0;
     for (int along = 0; along <= 2 * RIDGE_SKY_HALF; along++) {
-        ridge->sky[along] =
-            gfx_rgb(rgb_mix(ridge->theme.sky_top_rgb, ridge->theme.sky_bottom_rgb, along * 100 / (2 * RIDGE_SKY_HALF)));
+        ridge->sky[along] = RGB565BE(
+            rgb_mix(ridge->theme.sky_top_rgb, ridge->theme.sky_bottom_rgb, along * 100 / (2 * RIDGE_SKY_HALF)));
         if (along > 0 && ridge->sky[along] != ridge->sky[along - 1] && ridge->sky_edge_count < RIDGE_SKY_EDGES) {
             ridge->sky_edge[ridge->sky_edge_count++] = (int16_t)along;
         }
@@ -645,8 +647,6 @@ repaint_column_strip(gfx_color_t* framebuffer, int x, int lo, int hi) {
  * dissolving in through a 4x4 ordered dither, eased. A pixel not yet
  * dissolved keeps what it showed. */
 #if TUNE_ENABLED
-static const uint8_t dissolve_order[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
-
 static inline __attribute__((always_inline)) bool
 dissolving(void) {
     return ridge->dissolve_level < DISSOLVE_LEVELS;
@@ -654,7 +654,7 @@ dissolving(void) {
 
 static inline __attribute__((always_inline)) bool
 dissolved(int x, int y) {
-    return dissolve_order[y & 3][x & 3] < ridge->dissolve_level;
+    return bayer4x4[y & 3][x & 3] < ridge->dissolve_level;
 }
 #else
 static inline __attribute__((always_inline)) bool
@@ -1041,7 +1041,7 @@ paint_dissolve_row(int y, int c) {
 static void
 paint_dissolve_level(int level) {
     for (int cell = 0; cell < DISSOLVE_LEVELS; cell++) {
-        if (dissolve_order[cell / 4][cell % 4] == level) {
+        if (bayer4x4[cell / 4][cell % 4] == level) {
             for (int y = cell / 4; y < GFX_HEIGHT; y += 4) {
                 paint_dissolve_row(y, cell % 4);
             }
@@ -1166,9 +1166,9 @@ bake_what_is_tuned(void) {
     ridge->theme.back0_rgb = (uint32_t)back0_rgb;
     ridge->theme.back1_rgb = (uint32_t)back1_rgb;
 #endif
-    ridge->background_color = gfx_rgb(ridge->theme.background_rgb);
-    ridge->back0_color = gfx_rgb(ridge->theme.back0_rgb);
-    ridge->back1_color = gfx_rgb(ridge->theme.back1_rgb);
+    ridge->background_color = RGB565BE(ridge->theme.background_rgb);
+    ridge->back0_color = RGB565BE(ridge->theme.back0_rgb);
+    ridge->back1_color = RGB565BE(ridge->theme.back1_rgb);
     const int lip_start[RIDGE_LAYER_COUNT] = {back0_lip_alpha, back1_lip_alpha, front_lip_alpha};
     const int lip_end[RIDGE_LAYER_COUNT] = {back0_body_alpha, back1_body_alpha, front_body_alpha};
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
@@ -1340,7 +1340,7 @@ void
 ui_ridge_paint(void) {
     allocate_once();
     if (ridge == NULL) {
-        draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, GFX_RGB(0));
+        draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, RGB565BE(0));
         return;
     }
     FRAME_COST_BEGIN(painted_from);
