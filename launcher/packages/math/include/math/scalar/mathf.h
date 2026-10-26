@@ -124,6 +124,17 @@ mathf_rsqrt_approx(float value) {
 #endif
 }
 
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+/* Positive normal inputs need no subnormal fallback. */
+static inline __attribute__((always_inline)) float
+mathf_rsqrt_normal(float value) {
+    float seed;
+    __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
+    seed += (0.5F * seed) * (1.0F - (value * seed) * seed);
+    return seed + (0.5F * seed) * (1.0F - (value * seed) * seed);
+}
+#endif
+
 /* Subnormal squared lengths retain the 1 / sqrtf path. On the board +inf gives NaN, outside normalize's domain. */
 /* For positive input v, reciprocal-root seed y with two Newton corrections. | y = y + (y/2)(1 - vy^2) | all mantissas in [1,4), normal exponent strides and edges */
 
@@ -137,10 +148,7 @@ mathf_rsqrt(float value) {
     if (value < FLT_MIN) {
         return 1.0F / sqrtf(value);
     }
-    float seed;
-    __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
-    seed += (0.5F * seed) * (1.0F - (value * seed) * seed);
-    return seed + (0.5F * seed) * (1.0F - (value * seed) * seed);
+    return mathf_rsqrt_normal(value);
 #else
     return 1.0F / sqrtf(value);
 #endif

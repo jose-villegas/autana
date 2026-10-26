@@ -1,6 +1,6 @@
 #include "audio/audio_codec_eq.h"
 #include "audio/audio_out.h"
-#include "console/verbs/console_mic_parse.h"
+#include "sound/console/console_mic_parse.h"
 #include "suites.h"
 #include "unity.h"
 

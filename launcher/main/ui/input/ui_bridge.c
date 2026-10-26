@@ -6,10 +6,10 @@
 static void
 replay(mu_Context* ctx, const ui_pointer_event_t* e) {
     switch (e->kind) {
-        case UI_POINTER_MOVE: mu_input_mousemove(ctx, e->x, e->y); break;
-        case UI_POINTER_DOWN: mu_input_mousedown(ctx, e->x, e->y, MU_MOUSE_LEFT); break;
-        case UI_POINTER_UP: mu_input_mouseup(ctx, e->x, e->y, MU_MOUSE_LEFT); break;
-        case UI_POINTER_SCROLL: mu_input_scroll(ctx, e->x, e->y); break;
+        case UI_POINTER_MOVE: mu_input_mousemove(ctx, e->point.x, e->point.y); break;
+        case UI_POINTER_DOWN: mu_input_mousedown(ctx, e->point.x, e->point.y, MU_MOUSE_LEFT); break;
+        case UI_POINTER_UP: mu_input_mouseup(ctx, e->point.x, e->point.y, MU_MOUSE_LEFT); break;
+        case UI_POINTER_SCROLL: mu_input_scroll(ctx, e->point.x, e->point.y); break;
     }
 }
 

@@ -393,7 +393,7 @@ def append_manifest(entry, root=None):
 
 def record_capture(path, managed, *, started_at, board, owner, purpose, command, commit,
                     suite=None, build_id=None, worktree=None, reason=None, error=None, root=None,
-                    acquired_at=None, test_filter=None, console_send=None):
+                    acquired_at=None, test_filter=None, console_send=None, image_flags=None):
     """The permanent trail: written for every flash/run-suite/listen call, so
     even a capture left behind in a doomed worktree still has metadata here."""
     path = Path(path)
@@ -423,6 +423,9 @@ def record_capture(path, managed, *, started_at, board, owner, purpose, command,
         entry["test_filter"] = test_filter
     if console_send:
         entry["console_send"] = console_send
+    if image_flags is not None:
+        # What a flash built, so readers can tell a perf-scoped or layout-seeded image by its build id.
+        entry["image_flags"] = image_flags
     append_manifest(entry, root)
     return path
 
@@ -1193,8 +1196,6 @@ def try_lock_file(handle):
 def build_directory_lock(build_dir):
     """Lock one build directory through its snapshot; yield its prepared path,
     or None when the checkout has no --prepared-build support."""
-    latest = os.environ.get(autana_config.BUILD_LATEST_START_ENV)
-    expires = time.monotonic() + max(0, float(latest) - time.time()) if latest else None
     build_dir = Path(build_dir)
     prepared = None
     if (build_dir.parent / "tools/build/build_paths.py").is_file():
@@ -1205,10 +1206,7 @@ def build_directory_lock(build_dir):
         if not try_lock_file(handle):
             print("waiting for another build in " + str(build_dir), file=sys.stderr)
             while not try_lock_file(handle):
-                if expires is not None and time.monotonic() >= expires:
-                    raise TimeoutError("build lock wait exceeded its window")
-                time.sleep(min(BUILD_LOCK_POLL_SECONDS, max(0, expires - time.monotonic()))
-                           if expires is not None else BUILD_LOCK_POLL_SECONDS)
+                time.sleep(BUILD_LOCK_POLL_SECONDS)
         yield prepared
 
 
@@ -1277,15 +1275,13 @@ BUILD_WAIT_REPORT_MIN_SECONDS = 1
 @contextlib.contextmanager
 def build_policy(environment):
     """Private process-tree policy limits compilation, never board captures."""
-    latest = environment.get(autana_config.BUILD_LATEST_START_ENV)
-    latest = float(latest) if latest else None
     options = {}
     if environment.get(autana_config.BUILD_PRIORITY_ENV) == autana_config.BUILD_PRIORITY_BELOW_NORMAL:
         if os.name == "nt":
             options["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
         else:
             options["preexec_fn"] = partial(os.nice, BUILD_NICE_INCREMENT)
-    wait = max(0, latest - time.time()) if latest is not None else float(
+    wait = float(
         environment.get(autana_config.WAIT_ENV, autana_config.DEFAULT_LOCK_WAIT_SECONDS))
     started = time.monotonic()
     try:
@@ -1294,8 +1290,6 @@ def build_policy(environment):
             elapsed = time.monotonic() - started
             if elapsed >= BUILD_WAIT_REPORT_MIN_SECONDS:
                 print(autana_config.HEAVY_WAIT_PREFIX + str(elapsed), flush=True)
-            if latest is not None and time.time() > latest:
-                raise TimeoutError("build cannot start inside its window")
             yield options
     except LockBusy as error:
         elapsed = time.monotonic() - started
@@ -1371,6 +1365,7 @@ class Built:
         self.log, self.managed = resolve_capture_path(args.out, "flash-" + args.variant,
                                                       args.owner, self.started_at)
         self.image = new_image_directory()
+        self.image_flags = list(extra_flags)
         self.build_id = None
         self.build_dir = build_directory(self.worktree, args.variant)
         self.build, self.write = flash_commands(git_bash(), self.worktree, args.variant,
@@ -1398,7 +1393,8 @@ class Built:
         record_capture(self.log, self.managed, started_at=self.started_at, board=self.board,
                        owner=self.args.owner, purpose=self.args.purpose, command="flash",
                        build_id=build_id, worktree=str(self.worktree),
-                       commit=git_commit(self.worktree), error=error, acquired_at=acquired_at)
+                       commit=git_commit(self.worktree), error=error, acquired_at=acquired_at,
+                       image_flags=self.image_flags)
 
 
 def build_image(args, board, extra_flags=()):
@@ -1686,6 +1682,10 @@ def listen(args, store, board):
 
 
 COREDUMP_PARTITION = "coredump"
+# parttool runs esptool twice, the partition table and then the partition.
+# A reset after the first takes the port away from the second while the new
+# boot re-enumerates, so neither resets and one reset follows both.
+PARTTOOL_NO_RESET = "after=no-reset"
 # The dump's ESP_CORE_DUMP_INFO note (espcoredump's core_dump_elf.c): a
 # 4-byte version, then the crashed app's ELF SHA-256 as NUL-padded hex in a
 # 64-byte field. ELF pads a note's name to 4 bytes.
@@ -1716,20 +1716,20 @@ def coredump(args, store, board):
     """The last panic's core dump, read raw from the board's coredump
     partition under the lock into the records, then decoded with the board
     free; --erase clears the partition, so the next crash's dump is told
-    from this one. Either way esptool resets the board."""
+    from this one. Either way the board is reset once at the end."""
     with HeldLock(store, board, args.owner, "coredump", args.wait):
         parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
-        command = [idf_python(), str(parttool), "--port", locked_port()]
+        command = [idf_python(), str(parttool), "--esptool-args", PARTTOOL_NO_RESET, "--port", locked_port()]
         if args.erase:
             command += ["erase_partition", "--partition-name=" + COREDUMP_PARTITION]
-            run_resetting(lambda: subprocess.run(command, check=True)).close()
+            run_then_reset(command)
             print("coredump partition erased")
             return 0
         core, _ = resolve_capture_path(None, "coredump", args.owner, now())
         core = core.with_suffix(".bin")
         command += ["read_partition", "--partition-name=" + COREDUMP_PARTITION, "--output", str(core)]
         try:
-            run_resetting(lambda: subprocess.run(command, check=True)).close()
+            run_then_reset(command)
         except subprocess.CalledProcessError as failure:
             return failure.returncode
     if core.read_bytes()[:COREDUMP_ERASED_HEADER_BYTES] == ERASED_FLASH * COREDUMP_ERASED_HEADER_BYTES:
@@ -1737,6 +1737,15 @@ def coredump(args, store, board):
         print("no core dump in flash")
         return 0
     return decode_coredump(core, args.elf)
+
+
+def run_then_reset(command):
+    """Runs a parttool `command` that leaves the chip in esptool's stub, then
+    restarts it whether or not the command succeeded."""
+    try:
+        subprocess.run(command, check=True)
+    finally:
+        reset().close()
 
 
 def decode_coredump(core, elf=None):

@@ -9,11 +9,12 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include "image/pixel/rgb565.h"
 
 enum { LINE_START = 10, LINE_STEPS = 9, DASH_ON = 2, DASH_OFF = 2 };
 
-#define LINE_INK   GFX_RGB(0xFFFFFF)
-#define LINE_BASE  GFX_RGB(0x203040)
+#define LINE_INK   RGB565BE(0xFFFFFF)
+#define LINE_BASE  RGB565BE(0x203040)
 
 /* The band the band-target test draws into, away from the frame's edges. */
 #define BAND_ROW   (GFX_BAND_HEIGHT * 4)

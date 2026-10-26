@@ -72,7 +72,7 @@ DRC_DEFAULT = tuple(read_define(AUDIO / "audio_out.c", name) for name in (
     "AUDIO_OUT_DRC_MIN_LEVEL", "AUDIO_OUT_DRC_WINSIZE", "AUDIO_OUT_DRC_RAMP"))
 DRC_REFERENCE_CODEC = 50
 
-DEFAULT_VOLUME = read_define(ROOT / "launcher/main/console/verbs/console_tone_parse.h", "CONSOLE_TONE_DEFAULT_VOLUME_PCT")
+DEFAULT_VOLUME = read_define(ROOT / "launcher/main/sound/console/console_tone_parse.h", "CONSOLE_TONE_DEFAULT_VOLUME_PCT")
 
 
 def read_capture(path):
@@ -190,7 +190,8 @@ def sweep_data(tones):
 
 
 MIX_CAPTURES = Path("docs/audio/data")
-MIX_DOCUMENT = Path("docs/audio/Sound-Mixer.md")
+MIX_DOCUMENT = Path("docs/audio/Mixer-Cost.md")
+ONSET_DOCUMENT = Path("docs/audio/Clicks.md")
 PERCENT = 100
 
 
@@ -512,16 +513,17 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
-    for option, default in (("capture", CAPTURE), ("document", DOCUMENT), ("mix-captures", MIX_CAPTURES),
-                            ("mix-document", MIX_DOCUMENT), ("drc-capture", DRC_CAPTURE), ("mic-capture", MIC_CAPTURE),
-                            ("eq-capture", EQ_CAPTURE), ("eq-slots-capture", EQ_SLOTS_CAPTURE)):
-        parser.add_argument("--" + option, type=Path, default=ROOT / default)
+    for flag, default in (("--capture", CAPTURE), ("--document", DOCUMENT), ("--mix-captures", MIX_CAPTURES),
+                          ("--mix-document", MIX_DOCUMENT), ("--onset-document", ONSET_DOCUMENT),
+                          ("--drc-capture", DRC_CAPTURE), ("--mic-capture", MIC_CAPTURE),
+                          ("--eq-capture", EQ_CAPTURE), ("--eq-slots-capture", EQ_SLOTS_CAPTURE)):
+        parser.add_argument(flag, type=Path, default=ROOT / default)
     args = parser.parse_args()
     try:
         changed = update(args.capture, args.document, args.check, args.mix_captures, args.mix_document, args.drc_capture)
         changed |= update_mic(args.mic_capture, args.document, args.check)
         changed |= update_eq_probe(args.eq_capture, args.document, args.check, args.eq_slots_capture)
-        changed |= update_onset(args.mix_captures, args.mix_document, args.check)
+        changed |= update_onset(args.mix_captures, args.onset_document, args.check)
         changed |= replace_block(ROOT / "docs/audio/Sound-Assets.md", "sound-storage", render_storage(),
                                  check=args.check)
     except (ValueError, KeyError, OSError, RuntimeError) as error:

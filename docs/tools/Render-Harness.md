@@ -34,10 +34,14 @@ Meshes must already be baked.
 Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
 all authored renderers. An unknown renderer reports the available names.
 `--camera NAME` selects a camera; omission activates the scene's default.
+With `--camera`, stderr names that camera's path duration in ms.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
-30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets` selects the render
+30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets|cull` selects the render
 context's view, with shaded as the default. The names match the declared
 `render_debug_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
+With `--view cull`, `--counts FILE` writes one CSV row per frame of what the
+cull kept and drew ([Mesh-Rendering.md](../render/Mesh-Rendering.md#the-cull-seen));
+without it, `--counts` is refused.
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
@@ -160,26 +164,24 @@ The stage's work folder is named by it, and its saved `source.json` holds it
 and lists every input.
 
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
-Changed images remain pending for the night window; pushes do not render.
+Changed images remain pending for the next NIGHT_START; pushes do not render.
 
-The doc job takes its fingerprint at its 16:00Z start; inputs merged during
-the evening wait render the next night.
+The daily cron triggers at 20:17Z. A hosted marker job computes the start in
+the NIGHT_ZONE repository variable (IANA name; UTC when unset).
+Hosted wait legs sleep until it, and work gets a fresh token.
 
 The [night order](../../launcher/tools/perf/README.md#nightly-scoped-chain)
-owns the local wait, bake priority and board-plan handoff. The hosted job
+owns the marker, bake priority and board-plan handoff. The hosted job
 only fingerprints. Every Bakes GPU completion triggers a fresh check.
 
-GPU stages observe active board locks, then take heavy, holding nothing in
-between. A board can be claimed in that gap, and its builds then wait on
-heavy. Human reservations do not block the GPU stage.
+GPU stages wait for active board locks, then take heavy and run to completion.
+A board claimed between these steps waits for heavy before building.
+Human reservations do not block the GPU stage.
 
-A stage starts only if `GPU_ESTIMATES[workflow]` fits before the local night
-end in `scripts/lib/local_schedule.py`. The cap is checked again after heavy.
+`GPU_STAGE_HANG_SECONDS` in `scripts/lib/local_schedule.py` bounds each
+stage's process tree. `override` starts at once while retaining the board-lock
+wait; `force` controls freshness independently.
 
-A scheduled stage that cannot fit skips successfully. Manual dispatch
-refuses; `override` allows daytime work while still waiting for board locks.
-`force` controls freshness independently. Override guard waits are bounded
-by `DEFAULT_LOCK_WAIT_SECONDS`.
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
 failed attempt is a record too, so a newer failed one makes them stale
 and the next run renders again.

@@ -4,6 +4,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "render/context/render_context.h"
 
 void
 scene_shell_render(uint32_t dt_ms) {
@@ -16,10 +17,12 @@ scene_shell_compose(uint32_t dt_ms) {
         return;
     }
     gfx_color_t* full = gfx_mode_has_framebuffer(gfx_mode_current()) ? gfx_framebuffer() : NULL;
-    const scene_target_t target = {full, GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    const bool overlay = render_context_has_overlay(render_context_main());
+    const scene_target_t target = {full, GFX_WIDTH, GFX_HEIGHT, overlay ? NULL : gfx_half_picture()};
     if (scene_compose(dt_ms, display_quarter_now(), &target)) {
         gfx_expand_frame();
     } else if (target.pixels != NULL) {
         gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
+        render_context_overlay(render_context_main(), GFX_WIDTH, GFX_HEIGHT);
     }
 }

@@ -25,6 +25,7 @@
 #include "apps/sand/sand_brushes.h"
 #include "apps/sand/ui/palette_screen.h"
 #include "apps/sand/ui/sand_theme.h"
+#include "image/pixel/rgb565.h"
 
 #define TOUCH_HOLD_FRAMES 4
 
@@ -63,7 +64,7 @@ static void
 palette_frame(sand_ui_t* ui, bool landscape, bool down, bool pressed, bool released, vec2i_t at) {
     const affine2x_t transform = ui_transform_quarter_turn(landscape ? 1 : 0, GFX_WIDTH, GFX_HEIGHT);
     const vec2i_t pixel = affine2x_map_pixel(&transform, at);
-    const input_t in = {.down = down, .pressed = pressed, .released = released, .x = pixel.x, .y = pixel.y};
+    const input_t in = {.down = down, .pressed = pressed, .released = released, .point = pixel};
     ui_begin(&in);
     palette_screen_draw(ui);
     ui_probe_end_frame();
@@ -133,9 +134,8 @@ test_a_tap_selects_exactly_its_tile_landscape(void) {
 static void
 app_frame(sand_ui_t* ui, input_t in) {
     const affine2x_t transform = ui_transform_quarter_turn(0, GFX_WIDTH, GFX_HEIGHT);
-    const vec2i_t pixel = affine2x_map_pixel(&transform, (vec2i_t){in.x, in.y});
-    in.x = pixel.x;
-    in.y = pixel.y;
+    const vec2i_t pixel = affine2x_map_pixel(&transform, in.point);
+    in.point = pixel;
     (void)sand_ui_step(ui, &in);
     if (ui->screen == SAND_UI_PALETTE) {
         ui_begin(&in);
@@ -152,18 +152,18 @@ test_a_touch_that_opens_with_the_palette_selects_nothing_on_release(void) {
     sand_ui_t ui = fixture(false, 0);
     ui.screen = SAND_UI_RUNNING;
     const vec2i_t at = centre(cell(1));
-    app_frame(&ui, (input_t){.down = true, .pressed = true, .boot.released = true, .x = at.x, .y = at.y});
+    app_frame(&ui, (input_t){.down = true, .pressed = true, .boot.released = true, .point = {at.x, at.y}});
     TEST_ASSERT_EQUAL_INT(SAND_UI_PALETTE, ui.screen);
     for (int i = 0; i < TOUCH_HOLD_FRAMES; i++) {
-        app_frame(&ui, (input_t){.down = true, .x = at.x, .y = at.y});
+        app_frame(&ui, (input_t){.down = true, .point = {at.x, at.y}});
     }
-    app_frame(&ui, (input_t){.released = true, .x = at.x, .y = at.y});
+    app_frame(&ui, (input_t){.released = true, .point = {at.x, at.y}});
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui.brush, "the opening touch's release must be swallowed");
     app_frame(&ui, (input_t){0});
     TEST_ASSERT_FALSE(ui.swallow_release);
 
-    app_frame(&ui, (input_t){.down = true, .pressed = true, .x = at.x, .y = at.y});
-    app_frame(&ui, (input_t){.released = true, .x = at.x, .y = at.y});
+    app_frame(&ui, (input_t){.down = true, .pressed = true, .point = {at.x, at.y}});
+    app_frame(&ui, (input_t){.released = true, .point = {at.x, at.y}});
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, ui.brush, "the next real tap selects");
 }
 
@@ -233,7 +233,7 @@ tile_of(int index) {
 
 static uint32_t
 face_of(int index) {
-    return gfx_color_rgb888(material_brush_color(sand_brushes[index].cell));
+    return rgb565be_to_rgb888(material_brush_color(sand_brushes[index].cell));
 }
 
 static void

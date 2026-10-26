@@ -15,7 +15,9 @@
 #include "math/linear/mat3f.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
+#include "profile/frame_laps.h"
 #include "render/code_layout.h"
+#include "render/r3d_triangle_tests.h"
 
 void
 r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
@@ -36,8 +38,10 @@ r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     const float scale_x = (float)width / (float)lens->width;
     const float scale_y = (float)height / (float)lens->height;
     lens->m = mat4f_scale_rows(lens->m, (vec3f_t){scale_x, scale_y, 1.0F});
-    lens->project.cx = (float)width * 0.5F;
-    lens->project.cy = (float)height * 0.5F;
+    /* The same picture at another size: the optical centre scales with it,
+     * so a shifted lens stays shifted. */
+    lens->project.cx *= scale_x;
+    lens->project.cy *= scale_y;
     lens->snap_cx = (lens->project.cx * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->snap_cy = (lens->project.cy * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->width = width;
@@ -53,8 +57,7 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
     lens->m = mat4f_mul_affine(lens->m, placed);
 }
 
-#define ALL_PLANES     ((1u << PLANE_FRUSTUM_COUNT) - 1u)
-#define WALK_STACK_MAX 256
+#define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
 
 typedef struct {
     uint16_t node;
@@ -71,7 +74,7 @@ struct r3d_pipeline_work {
     union {
         struct {
             planef_t planes[PLANE_FRUSTUM_COUNT];
-            walk_entry_t stack[WALK_STACK_MAX];
+            walk_entry_t stack[R3D_LIT_WALK_STACK_MAX];
         } cull;
 
         struct {
@@ -106,17 +109,18 @@ SORT_DEFINE_INSERTION(children, child_depth_t, farther)
 static int
 push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
-    child_depth_t order[8];
+    child_depth_t order[R3D_LIT_NODE_CHILDREN_MAX];
     const float* f = lens->m.m[2];
     const planef_t depth = {{f[0], f[1], f[2]}, f[3]};
     const int n = node->count;
+    assert(n <= R3D_LIT_NODE_CHILDREN_MAX);
     for (int i = 0; i < n; i++) {
         const uint16_t child = (uint16_t)(node->first + i);
         /* The lens maps ticks, so the bounds scale is one. */
         const float d = planef_distance(depth, box3f_centre(box3f_from_box3s(mesh->nodes[child].bounds, 1.0F)));
         children_insert(order, (size_t)i, (child_depth_t){d, child});
     }
-    assert(top + n <= WALK_STACK_MAX); /* depth times seven, far below this */
+    assert(top + n <= R3D_LIT_WALK_STACK_MAX);
     for (int i = 0; i < n; i++) {
         stack[top++] = (walk_entry_t){(uint16_t)order[i].node, (uint8_t)mask};
     }
@@ -186,6 +190,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
     int y1 = INT16_MIN;
     bool unbounded = false;
     for (int v = c->vertex_first; v < end; v++) {
+        FRAME_LAP("r3d.transform.apply");
         const int16_t* p = mesh->positions[v];
         const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
         r3d_pipeline_vertex_t* out = &cs[v];
@@ -194,6 +199,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
             unbounded = true;
             continue;
         }
+        FRAME_LAP("r3d.transform.project");
         const float inv = (float)R3D_SUBPIXEL * mathf_recip(l.z);
         const biased_t b = biased_screen(lens, l.x, l.y, inv);
         if (!(b.x > FAST_LO && b.x < FAST_HI && b.y > FAST_LO && b.y < FAST_HI)) {
@@ -207,6 +213,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         y0 = out->sy < y0 ? out->sy : y0;
         y1 = out->sy > y1 ? out->sy : y1;
     }
+    FRAME_LAP("r3d.transform.cluster");
     const float to_pixels = 1.0F / (float)R3D_SUBPIXEL;
     return (r3d_pipeline_rows_t){(float)y0 * to_pixels, (float)y1 * to_pixels, unbounded};
 }
@@ -298,20 +305,6 @@ project(const r3d_lens_t* lens, const clip_vertex_t* v) {
         r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->near_subpixels * inv, v->r, v->g, v->b};
 }
 
-/* Front faces wind negative on screen: counter-clockwise in a y-up world
- * turns clockwise once screen y points down. */
-static inline bool
-facing_away(int32_t area2, bool double_sided) {
-    return !double_sided && area2 >= 0;
-}
-
-/* Twice the signed area; with coordinates inside R3D_SPAN_RANGE each
- * product is under 2^30. */
-static inline int32_t
-signed_area2(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx, int32_t cy) {
-    return ((bx - ax) * (cy - ay)) - ((cx - ax) * (by - ay));
-}
-
 /* One Sutherland-Hodgman pass (Sutherland and Hodgman 1974): the polygon's part on the plane's inside. */
 static int
 clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* out) {
@@ -356,11 +349,13 @@ clip_to_guard(r3d_pipeline_work_t* work, int n) {
 static inline __attribute__((always_inline)) void
 fill_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
               const r3d_span_vertex_t* c, const uint16_t* face_color, bool writes) {
+    FRAME_LAP("r3d.draw.set_up");
     if (face_color == NULL) {
         r3d_span_triangle(target, a, b, c);
     } else {
         r3d_span_triangle_solid(target, a, b, c, *face_color);
     }
+    FRAME_LAP("r3d.draw.cluster");
     if (writes) {
         r3d_span_triangle_write(target, a, b, c, face_color != NULL);
     }
@@ -390,20 +385,6 @@ draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_col
     }
 }
 
-/* True when the bounding box holds no pixel centre inside the target, so
- * the rasterizer would fill nothing: most of these are triangles smaller
- * than a pixel falling between centres. */
-static inline bool
-misses_every_centre(const r3d_pipeline_vertex_t* a, const r3d_pipeline_vertex_t* b, const r3d_pipeline_vertex_t* c,
-                    const r3d_span_target_t* target) {
-    const int x_first = r3d_span_first_centre(r3d_span_min3(a->sx, b->sx, c->sx));
-    const int x_end = r3d_span_first_centre(r3d_span_max3(a->sx, b->sx, c->sx));
-    const int y_first = r3d_span_first_centre(r3d_span_min3(a->sy, b->sy, c->sy));
-    const int y_end = r3d_span_first_centre(r3d_span_max3(a->sy, b->sy, c->sy));
-    return x_first >= x_end || y_first >= y_end || x_end <= 0 || x_first >= target->rows.width
-           || y_end <= target->rows.row0 || y_first >= target->rows.row1;
-}
-
 static inline bool
 rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
     return !r->unbounded && (r->y1 < (float)target->rows.row0 || r->y0 > (float)target->rows.row1);
@@ -414,6 +395,7 @@ rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) 
 static __attribute__((noinline, cold)) void
 draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
              bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+    FRAME_LAP("r3d.draw.clip");
     clip_vertex_t* in = work->clip.poly;
     for (int k = 0; k < 3; k++) {
         const int16_t* p = mesh->positions[tri[k]];
@@ -422,18 +404,23 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
     }
     draw_clipped(lens, double_sided, face_color, target, work);
+    FRAME_LAP("r3d.draw.cluster");
 }
 
 static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
               const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes,
               r3d_pipeline_work_t* work) {
+    FRAME_LAP("r3d.draw.tests");
     if (misses_every_centre(v[0], v[1], v[2], target)) {
+        FRAME_LAP("r3d.draw.cluster");
         return;
     }
     if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
+        FRAME_LAP("r3d.draw.cluster");
         return;
     }
+    FRAME_LAP("r3d.draw.vertices");
     r3d_span_vertex_t s[3];
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
@@ -458,6 +445,17 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_c
     }
 }
 
+/* Each writer's value for this cluster and triangle, by its step. */
+static void
+retag(r3d_span_writer_t* writers, const r3d_span_writer_t* given, int count, uint32_t cluster, uint32_t triangle) {
+    for (int k = 0; k < count; k++) {
+        const uint32_t step = writers[k].step == R3D_SPAN_STEP_CLUSTER    ? cluster
+                              : writers[k].step == R3D_SPAN_STEP_TRIANGLE ? triangle
+                                                                          : 0U;
+        writers[k].value = given[k].value + step;
+    }
+}
+
 /* The draw for a target with writers, kept out of the hot one's code. */
 static __attribute__((noinline, cold)) void
 draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
@@ -470,13 +468,18 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
         writers[k] = target->writers[k];
     }
     for (int i = 0; i < count; i++) {
-        for (int k = 0; k < target->writer_count; k++) {
-            if (writers[k].per_cluster) {
-                writers[k].value = target->writers[k].value + clusters[i];
-            }
+        const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
+        if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
+            continue;
         }
-        if (rows == NULL || !rows_miss_target(&rows[clusters[i]], target)) {
-            draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, &writing, true, work);
+        /* One triangle at a time, so a writer stepping per triangle is
+         * retagged here and the cluster draw stays the hot one's. */
+        r3d_lit_cluster_t one = *c;
+        one.triangle_count = 1;
+        for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
+            retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
+            one.triangle_first = (uint16_t)t;
+            draw_cluster(mesh, lens, &one, cs, &writing, true, work);
         }
     }
 }

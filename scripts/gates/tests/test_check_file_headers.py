@@ -1,4 +1,4 @@
-"""Regression tests for scripts/gates/check_file_headers.py."""
+"""Regression tests for scripts/gates/check_file_headers.py: the module rule and the purpose rule."""
 import pathlib
 import sys
 import tempfile
@@ -10,6 +10,7 @@ import check_file_headers  # noqa: E402
 
 HEADER = "/* thing: what it is. */\n"
 DECL = "int f(void);\n"
+SUITE = "static void test_x(void) {}\nvoid run(void) { RUN_TEST(test_x); }\n"
 
 
 class ProblemsTest(unittest.TestCase):
@@ -27,7 +28,9 @@ class ProblemsTest(unittest.TestCase):
     def test_a_module_needs_a_header_in_its_c_or_its_h(self):
         cases = (
             ({"launcher/main/gfx/gfx.h": HEADER + DECL, "launcher/main/gfx/gfx.c": "int x;\n"}, []),
-            ({"launcher/main/gfx/gfx.h": "#pragma once\n" + DECL, "launcher/main/gfx/gfx.c": HEADER + "int x;\n"}, []),
+            # The module has its header in the .c; the .h still owes its own purpose.
+            ({"launcher/main/gfx/gfx.h": "#pragma once\n" + DECL, "launcher/main/gfx/gfx.c": HEADER + "int x;\n"},
+             ["launcher/main/gfx/gfx.h"]),
             ({"launcher/main/gfx/gfx.h": "#pragma once\nint f(void);\n", "launcher/main/gfx/gfx.c": "int x;\n"},
              ["launcher/main/gfx/gfx.h"]),
             ({"launcher/test/suites/suites_helper.c": "int x;\n"}, ["launcher/test/suites/suites_helper.c"]),
@@ -63,13 +66,27 @@ class ProblemsTest(unittest.TestCase):
 
     def test_suites_vendored_and_out_of_scope_files_are_not_checked(self):
         self.assertEqual(self.problems({
-            "launcher/test/suites/suite_gfx.c": "int x;\n",
-            "launcher/main/apps/sand/tests/suite_sand.c": "int x;\n",
+            "launcher/test/suites/suite_gfx.c": SUITE,
+            "launcher/main/apps/sand/tests/suite_sand.c": SUITE,
             "launcher/components/microui/src/microui.c": "int x;\n",
             "launcher/main/draw/draw_palette_standard_generated.h": "int x;\n",
             "editor/src/main.cpp": "int x;\n",
-            "launcher/test/stubs/esp_log.h": "int x;\n",
+            "launcher/test/stubs/esp_log.c": "int x;\n",
         }), [])
+
+    def test_a_suite_that_runs_no_test_of_its_own_needs_a_header(self):
+        including = '#include "../examples/minimal_suite.c"\n'
+        cases = (
+            ({"launcher/test/suites/suite_examples.c": including}, ["launcher/test/suites/suite_examples.c"]),
+            ({"launcher/test/suites/suite_examples.c": HEADER + including}, []),
+            ({"launcher/test/suites/suite_examples.c": including + "// RUN_TEST(test_x) is in there\n"},
+             ["launcher/test/suites/suite_examples.c"]),
+            ({"launcher/test/suites/suite_examples.c": SUITE}, []),
+        )
+        for files, expected in cases:
+            with self.subTest(files=list(files.values())[0][:30]):
+                found = self.problems(files)
+                self.assertEqual([line.split(":")[0] for line in found], expected)
 
     def test_every_folder_under_the_firmware_is_in_scope_without_being_listed(self):
         for path in ("launcher/main/new_layer/x.c", "launcher/main/apps/sand/tools/host.c",
@@ -82,7 +99,7 @@ class ProblemsTest(unittest.TestCase):
         lonely = "launcher/packages/p/src/y.c"
         cases = (
             ({header: HEADER + DECL, source: "int x;\n"}, []),
-            ({header: "#pragma once\n" + DECL, source: HEADER + "int x;\n"}, []),
+            ({header: "#pragma once\n" + DECL, source: HEADER + "int x;\n"}, [header]),
             ({header: "#pragma once\n" + DECL, source: "int x;\n"}, [source]),
             ({header: "#pragma once\n" + DECL}, [header]),
             ({header: HEADER + DECL, lonely: "int y;\n"}, [lonely]),
@@ -91,6 +108,29 @@ class ProblemsTest(unittest.TestCase):
             with self.subTest(files=sorted(files)):
                 found = self.problems(files)
                 self.assertEqual([line.split(":")[0] for line in found], expected)
+
+    def test_every_header_and_python_module_states_a_purpose(self):
+        cases = (
+            ({"tools/x.py": "import os\n"}, ["tools/x.py"]),
+            ({"tools/x.py": '"""Lists what x does."""\nimport os\n'}, []),
+            ({"tools/__init__.py": ""}, ["tools/__init__.py"]),
+            ({"editor/src/view.hpp": "class View {};\n"}, ["editor/src/view.hpp"]),
+            ({"editor/src/view.hpp": "// view: what the editor shows.\nclass View {};\n"}, []),
+            ({"launcher/test/stubs/esp_log.h": "int x;\n"}, ["launcher/test/stubs/esp_log.h"]),
+            ({"launcher/components/microui/src/microui.h": "int x;\n"}, []),
+            ({"editor/src/main.cpp": "int x;\n"}, []),
+        )
+        for files, expected in cases:
+            with self.subTest(files=sorted(files)):
+                found = self.problems(files)
+                self.assertEqual([line.split(":")[0] for line in found], expected)
+
+    def test_the_purpose_is_the_first_sentence_on_one_line(self):
+        read = check_file_headers.file_purpose
+        self.assertEqual(read("a/x.h", "#pragma once\n/* x: a ring of bytes.\n * Second sentence. */\nint f(void);\n"),
+                         "x: a ring of bytes.")
+        self.assertEqual(read("a/x.py", '"""Count the\nlines.\n\nMore."""\n'), "Count the lines.")
+        self.assertEqual(read("a/x.h", "int f(void); /* late */\n"), "")
 
     def test_a_header_under_another_include_folder_does_not_pair_with_the_source(self):
         source = "launcher/packages/p/src/x.c"

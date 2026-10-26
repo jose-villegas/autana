@@ -36,8 +36,6 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "input/motion/tilt.h" /* TILT_TAU_*_MS - the turn below follows the real
-                       * filter shape rather than a straight line */
 #include "apps/sand/material_palette.h"
 #include "apps/sand/row_runs.h"
 #include "apps/sand/sand.h"
@@ -1504,13 +1502,13 @@ log_gas_quarter_turn(const char* fill, const sand_t* real, int64_t per_step, int
              (long long)worst, (long long)real->pass_us.gas_us);
 }
 
-/* Tilt shape uses exponential moving average with tau interpolating between
- * TILT_TAU_MOVING_MS and TILT_TAU_STILL_MS. Moving tau prioritizes demanding
- * case with largest gravity delta. Returns mean and worst single step. */
+/* Exponentially eased quarter-turn fixture; returns mean and worst step. */
+#define QUARTER_TURN_TAU_MS 40
+
 static int64_t
 time_a_quarter_turn(sand_t* real, int steps, int64_t* worst_out) {
     const int dt_ms = 24;
-    const int tau_ms = TILT_TAU_MOVING_MS;
+    const int tau_ms = QUARTER_TURN_TAU_MS;
 
     int32_t gx_q8 = 0;
     int32_t gy_q8 = SCENE_GRAVITY * 256;
@@ -1704,7 +1702,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
                                                                     .settle_steps = 30,
                                                                     .steps = 20,
                                                                     .scene = "campfire on a sand bed"});
-    perf_target("campfire on sand", per_step, 23520, 30010);
+    perf_target("campfire on sand", per_step, 22996, 30010);
 }
 
 /* A tilted board is a different path, not a rotation of the same one:
@@ -1740,7 +1738,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
                                                  "loses three cells a patch, but a packed screen that has shed an "
                                                  "eighth of itself is not the scene this row means to time");
     }
-    perf_target_by_core("packed gas turn", "packed gas turn, one core", per_step, 97720, 114950, 104870, 126990);
+    perf_target_by_core("packed gas turn", "packed gas turn, one core", per_step, 97529, 114950, 104194, 126990);
     free(real);
 }
 
@@ -1770,7 +1768,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
                                       "turning the board must move gas, not create or destroy it - decay is "
                                       "off by default, so the cell count is conserved across the turn");
     }
-    perf_target_by_core("half-screen gas turn", "half-screen gas turn, one core", per_step, 33950, 39870, 33100, 40010);
+    perf_target_by_core("half-screen gas turn", "half-screen gas turn, one core", per_step, 33950, 39870, 32837, 40010);
     free(real);
 }
 
@@ -1962,7 +1960,7 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
     run_steps(real, 120, 0, SCENE_GRAVITY);
 
     const int64_t per_step = finish_timed_row(real, &b, 20, -SCENE_GRAVITY, "gravity flip with every material at once");
-    perf_target("all-material gravity flip", per_step, 80780, 94790);
+    perf_target("all-material gravity flip", per_step, 80724, 94790);
 }
 
 static void
@@ -1998,7 +1996,7 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
 
     /* A deliberately synthetic worst case, not comparable to the
      * plain-material rows. */
-    perf_target_by_core("full-screen gas cascade", "full-screen gas cascade, one core", elapsed, 179400, 206310, 178370,
+    perf_target_by_core("full-screen gas cascade", "full-screen gas cascade, one core", elapsed, 179400, 206310, 177700,
                         206690);
     free(real);
 }
@@ -2345,7 +2343,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
 /* Perf-scoped goals for the three plant-scene rows. */
 #define PLANT_RUIN_BUDGET_US    55780
 #define FILLING_BASIN_BUDGET_US 15560
-#define SNOWFALL_BUDGET_US      32830
+#define SNOWFALL_BUDGET_US      32694
 
 /* Perf-scoped; among the dearest scenes in the suite. */
 #define PLANT_POUR_BUDGET_US    50820
@@ -2484,7 +2482,7 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
  * suite_sand_scenes.h. Perf-scoped at block 16x32. */
 #define LANDSCAPE_WATER_BUDGET_US      22380
 #define LANDSCAPE_DEEP_WATER_BUDGET_US 24250
-#define LANDSCAPE_SAND_BUDGET_US       6920
+#define LANDSCAPE_SAND_BUDGET_US       6550
 
 /* The measured steps carry on the pour the prime started. */
 static void
@@ -3591,8 +3589,8 @@ clock_row_measure(int frames, bool pouring, int* frame_index) {
         input_t in = {0};
         in.down = pouring;
         in.pressed = pouring && *frame_index == 0;
-        in.x = 150 + ((*frame_index * 7) % 60);
-        in.y = 120 + ((*frame_index * 3) % 40);
+        in.point.x = 150 + ((*frame_index * 7) % 60);
+        in.point.y = 120 + ((*frame_index * 3) % 40);
         clock_row_frame(&in, &w.present_us);
     }
     w.present_us /= frames;

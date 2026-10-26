@@ -149,7 +149,7 @@ def validate_hardware(root, items, fpu):
         _, expected = hardware_features(root, item)
         observed = set(fpu[item.fast].partition(";")[0].split())
         if not expected or not expected & observed:
-            raise ValueError(f"{item.fast}: target wrapper lacks an expected seed/fused instruction ({sorted(expected)})")
+            raise ValueError(f"{item.fast}: target wrapper and callees lack an expected seed/fused instruction ({sorted(expected)})")
 
 
 def reference_pages(item, root=ROOT):
@@ -236,7 +236,7 @@ def function_bodies(text):
 @lru_cache(maxsize=4)
 def package_functions(root, with_owners=False):
     sys.path.insert(0, str(ROOT / "scripts/gates"))
-    from check_math_docs import HEADER_CALL, TEMPLATE_MACRO, MACRO_CALL, split_args
+    from check_package_docs import HEADER_CALL, TEMPLATE_MACRO, MACRO_CALL, split_args
     macros, headers, functions, owners = {}, [], {}, {}
     for path in sorted((root / HEADERS).rglob("*.h")):
         text = path.read_text(encoding="utf-8")

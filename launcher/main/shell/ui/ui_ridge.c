@@ -19,11 +19,13 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "input/motion/tilt.h"
-#include "math/motion/spring_line.h"
+#include "image/pixel/bayer.h"
+#include "image/pixel/rgb565.h"
+#include "math/scalar/ease.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/mathx.h"
+#include "physics/spring/spring_line.h"
 #include "profile/frame_cost.h"
 #include "shell/ui/ridge_motion.h"
 #include "shell/ui/ridge_pose.h"
@@ -106,7 +108,7 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define LEVEL_STEADY_STEP   29
 #define LEVEL_STEADY_MS     300
 #define STRUM_STEP_PX       12
-#define SHAKE_THRESHOLD     48
+#define SHAKE_POKE_FULL     ((MATHX_ONE / 128) * 255)
 #define SHAKE_HALF_WIDTH    16
 #define POSE_LANDSCAPE      ((ridge_vector_t){-RIDGE_POSE_ONE, 0})
 #define POSE_STEP_LANDSCAPE (POSE_STEPS * 3 / 4)
@@ -146,7 +148,8 @@ typedef struct {
     edge_lines_t was_lines, now_lines;
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
-    int shake, last_pluck_x, strips, down_sign;
+    float shake;
+    int last_pluck_x, strips, down_sign;
     bool by_column, axis_on_screen, ambient, painted, scanline_dither;
 } ridge_t;
 
@@ -161,6 +164,7 @@ static const int16_t* curve;
 static ridge_t* ridge;
 static bool allocation_tried;
 static bool load_tried;
+static handle_t load;
 
 void
 ui_ridge_load(void) {
@@ -168,7 +172,8 @@ ui_ridge_load(void) {
         return;
     }
     load_tried = true;
-    const asset_pack_t* pack = asset_store_pack(ASSET_ENGINE_PACK);
+    load = asset_store_load(ASSET_ENGINE_PACK);
+    const asset_pack_t* pack = asset_store_loaded(load);
     asset_status_t status = ASSET_ERR_NO_PACK;
     if (pack != NULL) {
         asset_view_t entry;
@@ -185,9 +190,7 @@ ui_ridge_load(void) {
         }
     }
     if (status != ASSET_OK) {
-        if (pack != NULL) {
-            asset_store_release(ASSET_ENGINE_PACK);
-        }
+        asset_store_release(load);
         ESP_LOGW(TAG, "no ridge curve in pack %s (%s): the ridge is level", ASSET_ENGINE_PACK,
                  asset_status_text(status));
     }
@@ -218,8 +221,8 @@ build_sky_gradient(void) {
     ridge->sky_half = RIDGE_SKY_HALF;
     ridge->sky_edge_count = 0;
     for (int along = 0; along <= 2 * RIDGE_SKY_HALF; along++) {
-        ridge->sky[along] =
-            gfx_rgb(rgb_mix(ridge->theme.sky_top_rgb, ridge->theme.sky_bottom_rgb, along * 100 / (2 * RIDGE_SKY_HALF)));
+        ridge->sky[along] = RGB565BE(
+            rgb_mix(ridge->theme.sky_top_rgb, ridge->theme.sky_bottom_rgb, along * 100 / (2 * RIDGE_SKY_HALF)));
         if (along > 0 && ridge->sky[along] != ridge->sky[along - 1] && ridge->sky_edge_count < RIDGE_SKY_EDGES) {
             ridge->sky_edge[ridge->sky_edge_count++] = (int16_t)along;
         }
@@ -313,7 +316,7 @@ build_layers(void) {
     /* The waves grow in and go out with the rest of the ambient motion, so
      * a ridge whose motion is switched off rests on its rigid shape. */
     const int gain = ridge->ambient && ridge->alive_ms > (uint32_t)boot_hold_ms
-                         ? ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms)
+                         ? ease_smooth_q8(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms)
                          : 0;
     uint32_t travelled[2];
     for (int layer = 0; layer < 2; layer++) {
@@ -644,8 +647,6 @@ repaint_column_strip(gfx_color_t* framebuffer, int x, int lo, int hi) {
  * dissolving in through a 4x4 ordered dither, eased. A pixel not yet
  * dissolved keeps what it showed. */
 #if TUNE_ENABLED
-static const uint8_t dissolve_order[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
-
 static inline __attribute__((always_inline)) bool
 dissolving(void) {
     return ridge->dissolve_level < DISSOLVE_LEVELS;
@@ -653,7 +654,7 @@ dissolving(void) {
 
 static inline __attribute__((always_inline)) bool
 dissolved(int x, int y) {
-    return dissolve_order[y & 3][x & 3] < ridge->dissolve_level;
+    return bayer4x4[y & 3][x & 3] < ridge->dissolve_level;
 }
 #else
 static inline __attribute__((always_inline)) bool
@@ -1040,7 +1041,7 @@ paint_dissolve_row(int y, int c) {
 static void
 paint_dissolve_level(int level) {
     for (int cell = 0; cell < DISSOLVE_LEVELS; cell++) {
-        if (dissolve_order[cell / 4][cell % 4] == level) {
+        if (bayer4x4[cell / 4][cell % 4] == level) {
             for (int y = cell / 4; y < GFX_HEIGHT; y += 4) {
                 paint_dissolve_row(y, cell % 4);
             }
@@ -1165,9 +1166,9 @@ bake_what_is_tuned(void) {
     ridge->theme.back0_rgb = (uint32_t)back0_rgb;
     ridge->theme.back1_rgb = (uint32_t)back1_rgb;
 #endif
-    ridge->background_color = gfx_rgb(ridge->theme.background_rgb);
-    ridge->back0_color = gfx_rgb(ridge->theme.back0_rgb);
-    ridge->back1_color = gfx_rgb(ridge->theme.back1_rgb);
+    ridge->background_color = RGB565BE(ridge->theme.background_rgb);
+    ridge->back0_color = RGB565BE(ridge->theme.back0_rgb);
+    ridge->back1_color = RGB565BE(ridge->theme.back1_rgb);
     const int lip_start[RIDGE_LAYER_COUNT] = {back0_lip_alpha, back1_lip_alpha, front_lip_alpha};
     const int lip_end[RIDGE_LAYER_COUNT] = {back0_body_alpha, back1_body_alpha, front_body_alpha};
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
@@ -1214,12 +1215,11 @@ allocate_once(void) {
 }
 
 void
-ui_ridge_set_gravity(int gx, int gy, int strength, int shake) {
+ui_ridge_set_gravity(vec3f_t gravity, float shake) {
     allocate_once();
     if (ridge != NULL) {
         ridge->shake = shake;
-        ridge->attitude.level =
-            ridge_pose_level_from_gravity(ridge->attitude.level, gx, gy, strength, TILT_MIN_DIRECTION_STRENGTH);
+        ridge->attitude.level = ridge_pose_level_from_gravity(ridge->attitude.level, gravity);
     }
 }
 
@@ -1295,6 +1295,11 @@ ui_ridge_restart_boot_for_test(void) {
     }
 }
 
+const spring_line_t*
+ui_ridge_spring_for_test(void) {
+    return ridge != NULL ? &ridge->line : NULL;
+}
+
 void
 ui_ridge_paint_reference_for_test(gfx_color_t* out) {
     allocate_once();
@@ -1335,7 +1340,7 @@ void
 ui_ridge_paint(void) {
     allocate_once();
     if (ridge == NULL) {
-        draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, GFX_RGB(0));
+        draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, RGB565BE(0));
         return;
     }
     FRAME_COST_BEGIN(painted_from);
@@ -1348,8 +1353,8 @@ pluck_from_touch(const input_t* input) {
     if (!input->down) {
         return;
     }
-    const int x =
-        ridge_pose_column_under(ridge->attitude.pose, GFX_WIDTH, GFX_HEIGHT, RIDGE_COLUMNS, input->x, input->y);
+    const int x = ridge_pose_column_under(ridge->attitude.pose, GFX_WIDTH, GFX_HEIGHT, RIDGE_COLUMNS, input->point.x,
+                                          input->point.y);
     if (input->pressed || abs(x - ridge->last_pluck_x) >= STRUM_STEP_PX) {
         spring_line_poke(&ridge->line, x, pluck_width,
                          -(int32_t)((int64_t)MATHX_ONE * (input->pressed ? pluck_tap : pluck_strum) / 1000));
@@ -1371,7 +1376,7 @@ shape_this_frame(uint32_t dt_ms) {
                                           .push = tilt_push,
                                           .coast_ms = tilt_coast_ms};
     ridge_motion_advance(&ridge->motion, &params, dt_ms, ridge_pose_slope(&ridge->attitude));
-    const int gain = ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
+    const int gain = ease_smooth_q8(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
     for (int x = 0; x < RIDGE_COLUMNS; x++) {
         ridge->shape[x] =
             (int16_t)(ridge->rigid[x]
@@ -1383,12 +1388,13 @@ shape_this_frame(uint32_t dt_ms) {
 
 static void
 pluck_from_shaking(void) {
-    if (ridge->shake < SHAKE_THRESHOLD) {
+    if (ridge->shake <= 0) {
         return;
     }
     ridge->shake_seed = (ridge->shake_seed * 1664525U) + 1013904223U;
+    const int poke = (int)lroundf(SHAKE_POKE_FULL * ridge->shake);
     spring_line_poke(&ridge->line, (int)((ridge->shake_seed >> 8) % RIDGE_COLUMNS), SHAKE_HALF_WIDTH,
-                     (ridge->shake_seed & 0x80U ? 1 : -1) * (MATHX_ONE / 128) * ridge->shake);
+                     (ridge->shake_seed & 0x80U ? 1 : -1) * poke);
 }
 
 static void

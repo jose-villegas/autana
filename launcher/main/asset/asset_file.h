@@ -14,4 +14,7 @@
  * ASSET_ERR_NO_PACK. */
 asset_status_t asset_file_open(const char* path, asset_pack_t* pack, void** buffer);
 
+/* Reads aligned bytes without validation, for the store's resumable opener. */
+asset_status_t asset_file_read(const char* path, asset_pack_t* pack, void** buffer);
+
 void asset_file_release(void* buffer);

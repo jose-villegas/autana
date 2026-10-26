@@ -11,9 +11,11 @@
 #include "build/build_variant.h"
 #include "core/tune.h"
 #include "draw/draw.h"
+#include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/rgb565.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
 #include "render_lab_scene.h"
@@ -31,6 +33,7 @@ static const render_lab_scene_t* const scenes[] = {
     &scene_sponza[SCENE_BAKED_FLAT],
     &scene_sponza[SCENE_BAKED_FLAT_FITTED],
     &scene_capybara,
+    &scene_water,
     &scene_bistro[SCENE_BAKED_FITTED_FULL],
     &scene_bistro[SCENE_BAKED_FITTED],
     &scene_bistro[SCENE_BAKED_FULL],
@@ -139,7 +142,7 @@ enter_layout(void) {
     };
     (void)gfx_mode_enter(&mode_request);
     if (chosen->clear_on_send) {
-        (void)gfx_set_clear_on_send(true, gfx_rgb(UI_BACKGROUND));
+        (void)gfx_set_clear_on_send(true, RGB565BE(UI_BACKGROUND));
     }
 
     gfx_invalidate();
@@ -429,3 +432,11 @@ app_t app_render_lab = {
 };
 
 APP_REGISTER(app_render_lab);
+
+void
+render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* what) {
+    ESP_LOGE(tag, "%s; the scene stays blank", what);
+    if (snprintf(failure, size, "%s", what) < 0) {
+        failure[0] = '\0';
+    }
+}

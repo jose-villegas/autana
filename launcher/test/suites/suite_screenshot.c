@@ -1,7 +1,7 @@
 /*
  * Portable suite: screenshot_bmp_header/screenshot_bmp_row_stride, the pure
  * byte layout of the BMP console_screenshot_dump()
- * (console/verbs/console_screenshot.c, device-only) writes.
+ * (shell/console/console_screenshot.c, device-only) writes.
  *
  * Every expected byte below is spelled out by hand against the
  * BITMAPFILEHEADER/BITMAPINFOHEADER field order rather than derived from the
@@ -12,7 +12,9 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "console/capture/screenshot.h"
+#include "console/console_base64.h"
+#include "gfx/capture/screenshot.h"
+#include "image/pixel/rgb565.h"
 
 static void
 test_row_stride_already_aligned_needs_no_padding(void) {
@@ -101,27 +103,27 @@ test_header_is_exactly_54_bytes_with_no_trailing_garbage(void) {
 }
 
 /*
- * capture_base64_encoded_len / capture_base64_encode
+ * console_base64_encoded_len / console_base64_encode
  *
  * The encode tests use RFC 4648's own worked example ("Man" and its
  * prefixes) plus the standard "f"/"fo"/"foo" padding vectors, rather than
  * anything derived from this file's own arithmetic, the same reasoning
- * suite_gfx_color.c's top comment gives for checking gfx_color_mix()
- * against GFX_RGB(...) constants instead of its own round-trip.
+ * suite_image_pixel.c's top comment gives for checking rgb565be_mix()
+ * against RGB565BE(...) constants instead of its own round-trip.
  */
 
 static void
 test_encoded_len_matches_rfc4648_examples(void) {
-    TEST_ASSERT_EQUAL_INT32(0, capture_base64_encoded_len(0));
-    TEST_ASSERT_EQUAL_INT32(4, capture_base64_encoded_len(1)); /* "f"   -> "Zg==" */
-    TEST_ASSERT_EQUAL_INT32(4, capture_base64_encoded_len(2)); /* "fo"  -> "Zm8=" */
-    TEST_ASSERT_EQUAL_INT32(4, capture_base64_encoded_len(3)); /* "foo" -> "Zm9v" */
+    TEST_ASSERT_EQUAL_INT32(0, console_base64_encoded_len(0));
+    TEST_ASSERT_EQUAL_INT32(4, console_base64_encoded_len(1)); /* "f"   -> "Zg==" */
+    TEST_ASSERT_EQUAL_INT32(4, console_base64_encoded_len(2)); /* "fo"  -> "Zm8=" */
+    TEST_ASSERT_EQUAL_INT32(4, console_base64_encoded_len(3)); /* "foo" -> "Zm9v" */
 }
 
 static void
 test_encode_empty_input_produces_no_bytes(void) {
     char out[1] = {'x'};
-    capture_base64_encode((const uint8_t*)"", 0, out);
+    console_base64_encode((const uint8_t*)"", 0, out);
     /* Nothing written: out[0] must still hold whatever the caller put
      * there, i.e. this must not have touched it. */
     TEST_ASSERT_EQUAL_CHAR('x', out[0]);
@@ -130,7 +132,7 @@ test_encode_empty_input_produces_no_bytes(void) {
 static void
 test_encode_one_byte_pads_with_two_equals(void) {
     char out[5] = {0};
-    capture_base64_encode((const uint8_t*)"f", 1, out);
+    console_base64_encode((const uint8_t*)"f", 1, out);
     out[4] = '\0';
     TEST_ASSERT_EQUAL_STRING("Zg==", out);
 }
@@ -138,7 +140,7 @@ test_encode_one_byte_pads_with_two_equals(void) {
 static void
 test_encode_two_bytes_pads_with_one_equals(void) {
     char out[5] = {0};
-    capture_base64_encode((const uint8_t*)"fo", 2, out);
+    console_base64_encode((const uint8_t*)"fo", 2, out);
     out[4] = '\0';
     TEST_ASSERT_EQUAL_STRING("Zm8=", out);
 }
@@ -146,7 +148,7 @@ test_encode_two_bytes_pads_with_one_equals(void) {
 static void
 test_encode_three_bytes_needs_no_padding(void) {
     char out[5] = {0};
-    capture_base64_encode((const uint8_t*)"foo", 3, out);
+    console_base64_encode((const uint8_t*)"foo", 3, out);
     out[4] = '\0';
     TEST_ASSERT_EQUAL_STRING("Zm9v", out);
 }
@@ -155,7 +157,7 @@ static void
 test_encode_a_multi_group_string(void) {
     /* RFC 4648 section 10's own worked example. */
     char out[8] = {0};
-    capture_base64_encode((const uint8_t*)"Man", 3, out);
+    console_base64_encode((const uint8_t*)"Man", 3, out);
     out[4] = '\0';
     TEST_ASSERT_EQUAL_STRING("TWFu", out);
 }
@@ -165,15 +167,15 @@ test_encode_two_clean_groups_matches_encoding_them_together(void) {
     /* The property console_screenshot_dump() actually leans on: encoding "foobar"
      * as two independent 3-byte calls ("foo" then "bar") must produce the
      * same bytes, in order, as encoding it as one 6-byte call; see
-     * capture_base64_encode()'s own comment on why a BMP row boundary
+     * console_base64_encode()'s own comment on why a BMP row boundary
      * (always a multiple of 3 here) is safe to split calls on. */
     char whole[9] = {0};
-    capture_base64_encode((const uint8_t*)"foobar", 6, whole);
+    console_base64_encode((const uint8_t*)"foobar", 6, whole);
     whole[8] = '\0';
 
     char split[9] = {0};
-    capture_base64_encode((const uint8_t*)"foo", 3, split);
-    capture_base64_encode((const uint8_t*)"bar", 3, split + 4);
+    console_base64_encode((const uint8_t*)"foo", 3, split);
+    console_base64_encode((const uint8_t*)"bar", 3, split + 4);
     split[8] = '\0';
 
     TEST_ASSERT_EQUAL_STRING(whole, split);

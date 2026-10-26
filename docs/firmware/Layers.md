@@ -22,10 +22,9 @@ flowchart TB
         subgraph R2["the runtime"]
             Shell["shell/<br/><i>frame loop, app switching, system screens in shell/ui/</i>"]
         end
-        subgraph R3["boot, self test, console"]
+        subgraph R3["boot and self test"]
             Boot["boot/<br/><i>the startup animation</i>"]
             Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
-            Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         end
         subgraph R4["the app contract"]
             App["app/<br/><i>callbacks, the app list, the app arena</i>"]
@@ -68,6 +67,9 @@ flowchart TB
         subgraph R13["frame measurement"]
             Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
         end
+        subgraph ConsoleRow["the serial console"]
+            Console["console/<br/><i>transport, verb registry, frame slots; dev builds</i>"]:::hw
+        end
         subgraph R14["the platform core"]
             Core["core/<br/><i>two-core jobs, memory placement, time, tunables</i>"]:::hw
         end
@@ -78,16 +80,18 @@ flowchart TB
             Build["build/<br/><i>which build variant this is</i>"]
         end
     end
-    subgraph R17["packages: launcher/packages/"]
-        Math["math/<br/><i>scalars to transforms, checked by PACKAGE-INCLUDE</i>"]
+    subgraph R17["packages"]
+        Packages["launcher/packages/<br/><i>first-party libraries, the graph below</i>"]
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> ConsoleRow --> R14 --> R15 --> R16 --> R17
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - Power: [the PMU owner](../../launcher/main/power/README.md); `power/` sits below
   `input/` and `audio/`.
+- Console: [the serial console](../../launcher/main/console/README.md) sits just
+  above `core/`; a module's verbs live in a `console/` folder beside it.
 - Audio: [audio docs](../audio/README.md). The engine sound layer owns [the mixer,
   voices and buses](../audio/Sound-Mixer.md) as well as stored sounds and sample
   cursors.
@@ -119,7 +123,26 @@ Every layer above `core/` builds on it:
 Below every folder of `main/`, `board/` included, sit the packages: first-party
 libraries in `launcher/packages/<name>/`, each its own ESP-IDF component with an
 `include/` root, `src/` and `tests/`;
-[math](../../launcher/packages/math/README.md) is one.
+[math](../../launcher/packages/math/README.md), [kinematics](../../launcher/packages/kinematics/README.md)
+and [physics](../../launcher/packages/physics/README.md) are three.
+Each arrow below is a declared dependency, written by
+[`package_requires.py`](../../launcher/tools/build/package_requires.py) from the declarations:
+
+<!-- generated: package-requires-diagram check: python launcher/tools/build/package_requires.py --check -->
+```mermaid
+flowchart BT
+    p_collections["collections/"]
+    p_hash["hash/"]
+    p_image["image/"]
+    p_kinematics["kinematics/"]
+    p_math["math/"]
+    p_physics["physics/"]
+    p_testkit["testkit/"]
+    p_kinematics --> p_math
+    p_physics --> p_math
+    p_testkit --> p_math
+```
+<!-- /generated: package-requires-diagram -->
 
 A package includes nothing outside itself but the C library, the build config and the
 packages it declares, so the firmware, the host tests, the tools and the editor all build it.
@@ -127,11 +150,11 @@ It declares them on one line of its own `CMakeLists.txt`, which both builds read
 
 ```cmake
 set(physics_requires math)
-idf_component_register(SRCS ${physics_srcs} INCLUDE_DIRS "include" REQUIRES ${physics_requires})
-target_link_libraries(physics PUBLIC ${physics_requires})   # the plain CMake build
+include("${CMAKE_CURRENT_LIST_DIR}/../testkit/cmake/Package.cmake")
+package_add()   # REQUIRES for ESP-IDF, target_link_libraries for plain CMake
 ```
 
-A header-only package is an `INTERFACE` library, so it links with `INTERFACE` in place of `PUBLIC`.
+A package with no `src/*.c` is header-only: an `INTERFACE` library.
 The declaration is one unindented line of bare names; PACKAGE-REQUIRES refuses any other spelling.
 
 | Rule | Checks |

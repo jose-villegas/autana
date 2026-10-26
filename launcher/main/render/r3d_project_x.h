@@ -6,8 +6,8 @@
 #include <stdint.h>
 
 #include "math/linear/mat4x.h"
-#include "math/linear/projectx.h"
 #include "math/linear/vec_convert.h"
+#include "math/projection/projectx.h"
 #include "math/scalar/mathx.h"
 #include "render/render_view.h"
 

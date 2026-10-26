@@ -8,7 +8,7 @@ import wave
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from build.c_header import read_define
 from audio.sound_asset import PCM_BYTES, CHANNELS
-HEADER = Path(__file__).resolve().parents[2] / 'main/console/verbs/console_mic_parse.h'
+HEADER = Path(__file__).resolve().parents[2] / 'main/sound/console/console_mic_parse.h'
 BEGIN, STATE, END, DATA, ERROR = [read_define(HEADER, 'MIC_RECORD_' + key)
                                   for key in ('BEGIN', 'STATE', 'END', 'DATA', 'ERROR')]
 MILLISECONDS_PER_SECOND = read_define(Path(__file__).resolve().parents[2] / 'packages/math/include/math/scalar/units.h', 'MATH_MS_PER_S')
