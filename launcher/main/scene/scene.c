@@ -466,6 +466,16 @@ scene_entity_mesh(const scene_t* scene, scene_entity_t entity) {
     return i < 0 ? NULL : &scene->renderers[i].mesh;
 }
 
+bool
+scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mesh_t* mesh) {
+    const int i = scene_renderer_index(scene, entity);
+    if (i < 0 || i >= scene->asset.renderer_count) {
+        return false;
+    }
+    scene->renderers[i].mesh = *mesh;
+    return true;
+}
+
 int
 scene_camera_index(const scene_t* scene, name_hash_t camera) {
     for (int i = 0; i < scene->asset.camera_count; i++) {
@@ -501,6 +511,16 @@ scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t
         return false;
     }
     found->present = present;
+    return true;
+}
+
+bool
+scene_camera_set_shift(scene_t* scene, scene_entity_t camera, vec2f_t shift) {
+    camera_t* found = camera_by_entity(scene, camera);
+    if (found == NULL || !isfinite(shift.x) || !isfinite(shift.y)) {
+        return false;
+    }
+    found->shift = shift;
     return true;
 }
 

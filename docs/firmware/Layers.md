@@ -119,7 +119,8 @@ Every layer above `core/` builds on it:
 Below every folder of `main/`, `board/` included, sit the packages: first-party
 libraries in `launcher/packages/<name>/`, each its own ESP-IDF component with an
 `include/` root, `src/` and `tests/`;
-[math](../../launcher/packages/math/README.md) and [physics](../../launcher/packages/physics/README.md) are two.
+[math](../../launcher/packages/math/README.md), [kinematics](../../launcher/packages/kinematics/README.md)
+and [physics](../../launcher/packages/physics/README.md) are three.
 Each arrow below is a declared dependency, written by
 [`package_requires.py`](../../launcher/tools/build/package_requires.py) from the declarations:
 
@@ -128,9 +129,11 @@ Each arrow below is a declared dependency, written by
 flowchart BT
     p_collections["collections/"]
     p_hash["hash/"]
+    p_kinematics["kinematics/"]
     p_math["math/"]
     p_physics["physics/"]
     p_testkit["testkit/"]
+    p_kinematics --> p_math
     p_physics --> p_math
     p_testkit --> p_math
 ```
@@ -142,11 +145,11 @@ It declares them on one line of its own `CMakeLists.txt`, which both builds read
 
 ```cmake
 set(physics_requires math)
-idf_component_register(SRCS ${physics_srcs} INCLUDE_DIRS "include" REQUIRES ${physics_requires})
-target_link_libraries(physics PUBLIC ${physics_requires})   # the plain CMake build
+include("${CMAKE_CURRENT_LIST_DIR}/../testkit/cmake/Package.cmake")
+package_add()   # REQUIRES for ESP-IDF, target_link_libraries for plain CMake
 ```
 
-A header-only package is an `INTERFACE` library, so it links with `INTERFACE` in place of `PUBLIC`.
+A package with no `src/*.c` is header-only: an `INTERFACE` library.
 The declaration is one unindented line of bare names; PACKAGE-REQUIRES refuses any other spelling.
 
 | Rule | Checks |

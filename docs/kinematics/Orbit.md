@@ -1,6 +1,6 @@
-# Motion
+# Orbit
 
-Orbit steering with caller-owned state. [Math index](README.md).
+A transform orbiting a target, with caller-owned state. [Kinematics index](README.md).
 
 ## orbit_motion.h
 
@@ -30,7 +30,7 @@ A transform orbits a target, with direct steering, a decaying fling and a critic
 
 Held steering applies the frame's turn $`\Delta`$ directly. Its smoothed speed
 follows that turn over the frame time $`\Delta t`$, with half-life $`h_d`$
-(`ORBIT_MOTION_DRAG_VELOCITY_HALF_LIFE_S`):
+(`ORBIT_MOTION_DRAG_VELOCITY_HALF_LIFE_S`), its share left by `follow_halved_over`:
 
 ```math
 v \gets v + (\Delta/\Delta t-v)(1-2^{-\Delta t/h_d})
@@ -39,38 +39,20 @@ v \gets v + (\Delta/\Delta t-v)(1-2^{-\Delta t/h_d})
 The 3D orbit shows held yaw and pitch steering, a released fling, and a reset to home.
 The pose's +z faces the target; the speed strip tracks both turns.
 
-![3D orbit with pose axes, a fading trail and pitch-limit circles through held steering, fling and reset to home; signed yaw and pitch speeds below](../images/math/orbit-fling.gif)
+![3D orbit with pose axes, a fading trail and pitch-limit circles through held steering, fling and reset to home; signed yaw and pitch speeds below](../images/kinematics/orbit-fling.gif)
 
-After release, speed halves every $`h`$ seconds (`ORBIT_MOTION_FLING_HALF_LIFE_S`).
-The exact integral gives the angle covered; the same elapsed time gives the same
-result at either frame step.
-
-```math
-v(t)=v_0 2^{-t/h}, \qquad x(t)=\frac{v_0 h}{\ln 2}(1-2^{-t/h})
-```
-
-![Fling speed and covered angle at 16 and 50 millisecond frame steps, approaching the same limiting angle](../images/math/orbit-fling-decay.png)
+After release, speed halves every $`h`$ seconds (`ORBIT_MOTION_FLING_HALF_LIFE_S`),
+each angle stepped by `follow_coast` ([Follow](Follow.md#coast)).
 
 Zoom stores $`\ell=\ln d`$. A zoom turn $`z`$ adds to $`\ell`$, so
 $`d_{\mathrm{new}}/d_{\mathrm{old}}=e^z`$ at any starting distance.
 
-### Reset spring
+### Reset
 
-Reset solves the critically damped spring exactly, with time constant $`\tau`$.
-For yaw, $`e_0`$ is the shortest signed angular offset from home.
-
-```math
-e(t)=(e_0+ct)e^{-t/\tau}, \qquad c=v_0+e_0/\tau
-```
-
-Critical damping prevents oscillation; it does not guarantee no crossing for
-arbitrary initial velocity. For $`e_0>0`$, a velocity $`v_0<-e_0/\tau`$ crosses
-home.
-
-Reset snaps home once every yaw, pitch and log-distance offset and its speed is
-below `ORBIT_MOTION_RESET_SETTLED`. The dotted lines mark that moment.
-
-![Reset from rest, moving away, and moving quickly toward home; the last crosses home, with dotted settle times](../images/math/orbit-reset-spring.png)
+A reset springs each angle and the log distance home with `follow_spring`
+([Follow](Follow.md#spring)), time constant `ORBIT_MOTION_RESET_TIME_S`. For yaw,
+the offset is the shortest signed angle from home. It snaps home once every
+offset and its speed is below `ORBIT_MOTION_RESET_SETTLED`.
 
 ### Fitting a sphere
 
@@ -84,4 +66,4 @@ t=\tan\theta(1-p), \qquad d=\frac{r\sqrt{1+t^2}}{t}
 The 3D view shows the camera, padded picture and sphere touching the short-side planes.
 The plot compares fit distance with and without padding.
 
-![3D padded view pyramid with the camera at its apex and a fitted sphere binding the short axis; fit distance per radius against half field of view alongside](../images/math/orbit-fit-distance.png)
+![3D padded view pyramid with the camera at its apex and a fitted sphere binding the short axis; fit distance per radius against half field of view alongside](../images/kinematics/orbit-fit-distance.png)

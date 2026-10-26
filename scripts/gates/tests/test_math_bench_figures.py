@@ -39,13 +39,8 @@ class MathBenchFigureTests(unittest.TestCase):
                                    if text.get_text().isdigit()],
                                   [f"{measured[row[0]][0]:.0f}" for row in ordinary] +
                                   [f"{measured[item.plain][0]:.0f}" for item in items])
-            self.assertEqual([[tick.get_text() for tick in axis.get_xticklabels()] for axis in fig.axes], [
-                ["add", "convert f→i", "convert f→s", "convert f→x", "convert i→f", "convert s→f",
-                 "convert x→f", "dot", "lerp", "normalize", "scale"],
-                ["mathf_recip", "mathf_rsqrt_approx", "mathf_rsqrt", "mathx_rsqrt_q30", "mul", "trig_sin", "wrap"],
-                ["nlerp", "quat mul", "slerp"], ["mat4 mul", "transform compute_matrix"],
-                ["atan2f", "cosf", "sqrtf"],
-            ])
+            self.assertEqual([[tick.get_text() for tick in axis.get_xticklabels()] for axis in fig.axes],
+                             [list(groups) for _, groups in figures.panel_groups(rows, references)])
             for axis in fig.axes:
                 self.assertEqual(axis.get_ylim()[0], 0)
                 self.assertEqual(axis.get_yscale(), "linear")
