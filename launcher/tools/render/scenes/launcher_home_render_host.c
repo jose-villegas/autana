@@ -38,8 +38,8 @@ static int scene_quarter;
  * such as the doc sweep. Panel coordinates, as a finger reports them. Nothing
  * is pressed before frame 2, so `--frames 2` is the settled screen. */
 static const render_input_step_t touch[] = {
-    {2, true, GFX_WIDTH / 2, GFX_HEIGHT / 2},
-    {5, false, GFX_WIDTH / 2, GFX_HEIGHT / 2},
+    {2, true, {GFX_WIDTH / 2, GFX_HEIGHT / 2}},
+    {5, false, {GFX_WIDTH / 2, GFX_HEIGHT / 2}},
 };
 
 /* The screen's own init seeds the transform, so the turn is stated after

@@ -146,8 +146,8 @@ test_an_injected_touch_reaches_the_input_state(void) {
     const input_t held = input_after_polls();
     TEST_ASSERT_TRUE_MESSAGE(held.pressed, "the press edge never arrived");
     TEST_ASSERT_TRUE(held.down);
-    TEST_ASSERT_EQUAL_INT(120, held.x);
-    TEST_ASSERT_EQUAL_INT(300, held.y);
+    TEST_ASSERT_EQUAL_INT(120, held.point.x);
+    TEST_ASSERT_EQUAL_INT(300, held.point.y);
 
     touch_inject(false, (vec2i_t){120, 300});
     const input_t lifted = input_after_polls();

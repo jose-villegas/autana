@@ -147,15 +147,13 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
      * label-drawing code solves for itself, ported rather than called
      * directly because ui/ sits below apps/, so reaching into an
      * app's source would be a backwards layering dependency. */
-    int mx;
-    int my;
-    ui_text_glyph0_origin(font, ui_recti_from_mu(box), quarter, scale, &mx, &my);
+    const vec2i_t origin = ui_text_glyph0_origin(font, ui_recti_from_mu(box), quarter, scale);
 
     /* A text colour's alpha is dithered coverage. No halo has a
      * dithered form, so a fading string is drawn as ink alone. */
     if (ink.a < 255) {
         if (ink.a > 0) {
-            draw_text_font_dither(mx, my, cmd->text.str, mu_color_to_gfx(ink), scale, quarter, font, ink.a);
+            draw_text_font_dither(origin.x, origin.y, cmd->text.str, mu_color_to_gfx(ink), scale, quarter, font, ink.a);
         }
         return;
     }
@@ -164,8 +162,8 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
         /* Ink follows the halo so the outline does not cover glyphs. */
         const gfx_color_t halo_color = mu_color_to_gfx(halo);
         const gfx_color_t ink_color = mu_color_to_gfx(ink);
-        draw_text_font_halo(mx, my, cmd->text.str, halo_color, scale, quarter, font);
-        draw_text_font(mx, my, cmd->text.str, ink_color, scale, quarter, font);
+        draw_text_font_halo(origin.x, origin.y, cmd->text.str, halo_color, scale, quarter, font);
+        draw_text_font(origin.x, origin.y, cmd->text.str, ink_color, scale, quarter, font);
         return;
     }
 
@@ -178,13 +176,13 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
         /* THE HALO OFFSET IS ADDED AFTER THE MAPPING, NOT BEFORE.
          * passes[i].dx/dy is a SCREEN-SPACE offset; see ui_style.h's
          * OUTLINED/SHADOWED passes, which sit a halo a fixed pixel
-         * count from the glyph on the panel. (mx, my) already IS a
+         * count from the glyph on the panel. origin already IS a
          * screen position. Transforming (dx, dy) itself would instead
          * rotate the halo with the glyph: a shadow meant to fall
          * down-and-right on screen would fall down-and-right in
          * LOGICAL space instead, a different physical direction once
          * turn is nonzero. */
-        draw_text_font(mx + passes[i].dx, my + passes[i].dy, cmd->text.str, color, scale, quarter, font);
+        draw_text_font(origin.x + passes[i].dx, origin.y + passes[i].dy, cmd->text.str, color, scale, quarter, font);
     }
 }
 

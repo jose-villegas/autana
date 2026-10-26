@@ -98,8 +98,7 @@ dither_tap(int index) {
     input_t in = {0};
     const vec2i_t mapped_pixel =
         affine2x_map_pixel(&transform, (vec2i_t){lay.dither.x + (lay.dither.w / 2), lay.dither.y + (lay.dither.h / 2)});
-    in.x = mapped_pixel.x;
-    in.y = mapped_pixel.y;
+    in.point = mapped_pixel;
     in.down = index >= 2 && index < 7;
     in.pressed = index == 2;
     in.released = index == 7;

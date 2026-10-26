@@ -29,8 +29,8 @@
 
 typedef struct {
     bool down;
-    int x, y;
-    int press_x, press_y;
+    vec2i_t point;
+    vec2i_t press;
     bool pressed;  /* latched until taken */
     bool released; /* latched until taken */
     int64_t last_contact_us;
@@ -39,7 +39,7 @@ typedef struct {
 void touch_fsm_init(touch_fsm_t* fsm);
 
 /* Feed one sample. `have_point` is whether the controller reported a contact;
- * x and y are only meaningful when it did. */
+ * point is only meaningful when it did. */
 void touch_fsm_update(touch_fsm_t* fsm, bool have_point, vec2i_t point, int64_t now_us);
 
 /* Copy the current state out and consume the latched edges, so each press and

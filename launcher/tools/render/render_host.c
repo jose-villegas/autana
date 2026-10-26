@@ -212,16 +212,14 @@ apply_input(const render_scene_t* scene, int index, input_t* state) {
         const render_input_step_t* step = &scene->input[i];
         if (step->frame == index) {
             state->down = step->down;
-            state->x = step->x;
-            state->y = step->y;
+            state->point = step->point;
         }
     }
 
     state->pressed = state->down && !was_down;
     state->released = !state->down && was_down;
     if (state->pressed) {
-        state->press_x = state->x;
-        state->press_y = state->y;
+        state->press = state->point;
     }
 }
 

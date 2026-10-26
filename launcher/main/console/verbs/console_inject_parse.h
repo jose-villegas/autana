@@ -32,7 +32,7 @@ console_imu_reply(char* line, size_t size, int quarter) {
  * range-checked here: the panel's size is not this header's to know, and a
  * sample past the edge is a caller's question. */
 static inline bool
-console_touch_parse(const char* args, bool* down, int* x, int* y) {
+console_touch_parse(const char* args, bool* down, vec2i_t* point) {
     char state[5];
     int px, py;
 
@@ -46,8 +46,7 @@ console_touch_parse(const char* args, bool* down, int* x, int* y) {
     } else {
         return false;
     }
-    *x = px;
-    *y = py;
+    *point = (vec2i_t){px, py};
     return true;
 }
 
@@ -95,8 +94,8 @@ console_imu_quarter_parse(const char* args, imu_sample_t* sample, int* parsed_qu
 }
 
 typedef struct {
-    int x0, y0;
-    int x1, y1;
+    vec2i_t from;
+    vec2i_t to;
     uint32_t ms;
 } console_touch_gesture_t;
 
@@ -122,10 +121,7 @@ console_press_parse(const char* args, console_touch_gesture_t* out) {
     if (ms == 0 || ms > CONSOLE_GESTURE_MAX_MS) {
         return false;
     }
-    out->x0 = x;
-    out->y0 = y;
-    out->x1 = x;
-    out->y1 = y;
+    out->from = out->to = (vec2i_t){x, y};
     out->ms = ms;
     return true;
 }
@@ -137,7 +133,7 @@ console_tap_parse(const char* args, console_touch_gesture_t* out) {
     if (sscanf(args, "%d %d %c", &x, &y, &trailing) != 2) {
         return false;
     }
-    *out = (console_touch_gesture_t){.x0 = x, .y0 = y, .x1 = x, .y1 = y, .ms = CONSOLE_TAP_DEFAULT_MS};
+    *out = (console_touch_gesture_t){.from = {x, y}, .to = {x, y}, .ms = CONSOLE_TAP_DEFAULT_MS};
     return true;
 }
 
@@ -150,10 +146,8 @@ console_drag_parse(const char* args, console_touch_gesture_t* out) {
         || ms > CONSOLE_GESTURE_MAX_MS) {
         return false;
     }
-    out->x0 = x0;
-    out->y0 = y0;
-    out->x1 = x1;
-    out->y1 = y1;
+    out->from = (vec2i_t){x0, y0};
+    out->to = (vec2i_t){x1, y1};
     out->ms = ms;
     return true;
 }
