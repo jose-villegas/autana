@@ -113,8 +113,7 @@ finger(const render_frame_t* frame) {
     if (frame->index < press_frame || frame->index > release_frame) {
         return in;
     }
-    in.x = in.press_x = tap_at.x;
-    in.y = in.press_y = tap_at.y;
+    in.point = in.press = (vec2i_t){tap_at.x, tap_at.y};
     in.down = frame->index < release_frame;
     in.pressed = frame->index == press_frame;
     in.released = frame->index == release_frame;

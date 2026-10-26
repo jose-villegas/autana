@@ -34,10 +34,10 @@ finger(bool pressed, bool down, bool released, int press_x, int press_y, int x, 
     in.pressed = pressed;
     in.down = down;
     in.released = released;
-    in.press_x = press_x;
-    in.press_y = press_y;
-    in.x = x;
-    in.y = y;
+    in.press.x = press_x;
+    in.press.y = press_y;
+    in.point.x = x;
+    in.point.y = y;
     return in;
 }
 
