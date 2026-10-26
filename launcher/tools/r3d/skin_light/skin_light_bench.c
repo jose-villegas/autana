@@ -10,6 +10,7 @@
 
 #include "gfx/target/gfx_color.h"
 #include "hash/crc32.h"
+#include "image/pixel/rgb565.h"
 #include "math/linear/vec3f.h"
 #include "math/stats/statsf.h"
 #include "render/r3d_skin_format.h"
@@ -264,7 +265,7 @@ shade(const uint8_t color[3], const uint8_t l[3]) {
     const uint32_t r = (color[0] * l[0] + 127u) / 255u;
     const uint32_t g = (color[1] * l[1] + 127u) / 255u;
     const uint32_t b = (color[2] * l[2] + 127u) / 255u;
-    return (uint16_t)GFX_RGB565((r << RGB888_RED_SHIFT) | (g << RGB888_GREEN_SHIFT) | b);
+    return (uint16_t)RGB565((r << RGB888_RED_SHIFT) | (g << RGB888_GREEN_SHIFT) | b);
 }
 
 static double
@@ -374,9 +375,8 @@ score(const data_t* d, uint8_t (*got)[3], uint8_t (*ref)[3], result_t* r) {
             }
         }
         const uint16_t a = shade(vx->color, got[k]), b = shade(vx->color, ref[k]);
-        const int e[3] = {abs((int)gfx_rgb565_r5(a) - (int)gfx_rgb565_r5(b)),
-                          abs((int)gfx_rgb565_g6(a) - (int)gfx_rgb565_g6(b)),
-                          abs((int)gfx_rgb565_b5(a) - (int)gfx_rgb565_b5(b))};
+        const int e[3] = {abs((int)rgb565_r5(a) - (int)rgb565_r5(b)), abs((int)rgb565_g6(a) - (int)rgb565_g6(b)),
+                          abs((int)rgb565_b5(a) - (int)rgb565_b5(b))};
         for (int c = 0; c < 3; c++) {
             rgb_sum += e[c];
             if (e[c] > r->rgb_max) {

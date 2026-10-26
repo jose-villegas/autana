@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/bayer.h"
 
 #define GFX_INDEXED_PALETTE_SIZE 256
 
@@ -59,7 +60,7 @@ gfx_indexed_expand_row(const uint8_t* grid_row, int grid_w, const gfx_color_t lu
 /* One entry per (palette index, Bayer phase): the RGB565 colour that
  * index's dither against the shared 16-colour table resolves to at panel
  * position (x, y), keyed by `index * 16 + (y & 3) * 4 + (x & 3)`, built
- * once offline, so expansion never calls gfx_dither_covers() itself.
+ * once offline, so expansion never calls bayer_covers() itself.
  * 256 * 16 * 2 bytes = 8 KiB flat. */
 #define GFX_INDEXED_DITHER16_PHASES 16
 
@@ -67,8 +68,8 @@ gfx_indexed_expand_row(const uint8_t* grid_row, int grid_w, const gfx_color_t lu
  * precomputed (index, phase) table instead of a 256-colour LUT read.
  * `panel_row`/`panel_col0` are the OUTPUT row's absolute panel coordinates:
  * the phase is keyed off them, not a position local to this call, so two
- * dithered bands sent side by side stay in phase (see gfx_dither_covers()'s
- * own comment in gfx_color.h, whose table this one is baked from). */
+ * dithered bands sent side by side stay in phase (see bayer_covers()'s
+ * own comment in bayer.h, whose table this one is baked from). */
 static inline void
 gfx_indexed_expand_row_dither16(const uint8_t* grid_row, int grid_w,
                                 const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES],

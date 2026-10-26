@@ -14,6 +14,7 @@
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "core/job.h"
+#include "image/pixel/rgb565.h"
 
 sand_t s;
 uint8_t cells[W * H];
@@ -351,27 +352,27 @@ acid_tank(int sand_rows, int acid_rows) {
 
 /* Rec.601 luminance of a panel colour, 0-255.
  *
- * The palette stores GFX_RGB, which is RGB565 with the bytes swapped for
+ * The palette stores RGB565BE, which is RGB565 with the bytes swapped for
  * this QSPI controller - so getting a brightness back out means undoing
  * both. Written out here rather than guessed at, because a test that
  * unpacks the colour wrongly will still compare two numbers and still
  * pass or fail for reasons of its own. */
 int
 panel_luminance(gfx_color_t c) {
-    const uint16_t v = gfx_color_swap(c);
-    const unsigned r = gfx_rgb565_r5(v) * 255U / 31U;
-    const unsigned g = gfx_rgb565_g6(v) * 255U / 63U;
-    const unsigned b = gfx_rgb565_b5(v) * 255U / 31U;
+    const uint16_t v = rgb565_swap(c);
+    const unsigned r = rgb565_r5(v) * 255U / 31U;
+    const unsigned g = rgb565_g6(v) * 255U / 63U;
+    const unsigned b = rgb565_b5(v) * 255U / 31U;
     return (int)((299U * r + 587U * g + 114U * b) / 1000U);
 }
 
 int
 colour_gap(gfx_color_t x, gfx_color_t y) {
-    const uint16_t a = gfx_color_swap(x);
-    const uint16_t b = gfx_color_swap(y);
-    const int dr = (int)gfx_rgb565_r5(a) - (int)gfx_rgb565_r5(b);
-    const int dg = (int)gfx_rgb565_g6(a) - (int)gfx_rgb565_g6(b);
-    const int db = (int)gfx_rgb565_b5(a) - (int)gfx_rgb565_b5(b);
+    const uint16_t a = rgb565_swap(x);
+    const uint16_t b = rgb565_swap(y);
+    const int dr = (int)rgb565_r5(a) - (int)rgb565_r5(b);
+    const int dg = (int)rgb565_g6(a) - (int)rgb565_g6(b);
+    const int db = (int)rgb565_b5(a) - (int)rgb565_b5(b);
     return ((dr < 0 ? -dr : dr) * 2) + (dg < 0 ? -dg : dg) + ((db < 0 ? -db : db) * 2);
 }
 

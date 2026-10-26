@@ -6,6 +6,7 @@
 #include "apps/sand/material.h"
 #include "apps/sand/material_palette.h"
 #include "apps/sand/palette.h"
+#include "image/pixel/rgb565.h"
 #include "sand_theme.h"
 
 #define PALETTE_GROUT              4
@@ -51,7 +52,7 @@ draw_palette_tile(sand_ui_t* ui, int i, int cols) {
     palette_tile_rect(i, ui->brush_count, cols, ui_width(), ui_height(), &x, &y, &w, &h);
     const recti_t tile = {x + PALETTE_GROUT, y + PALETTE_GROUT, w - (2 * PALETTE_GROUT), h - (2 * PALETTE_GROUT)};
 
-    const uint32_t face = gfx_color_rgb888(material_brush_color(ui->brushes[i].cell));
+    const uint32_t face = rgb565be_to_rgb888(material_brush_color(ui->brushes[i].cell));
     ui_color_begin(UI_COLOR_FACE, face);
     if (ui_button(tile, material_name(ui->brushes[i].cell))) {
         sand_ui_tile_clicked(ui, i);
