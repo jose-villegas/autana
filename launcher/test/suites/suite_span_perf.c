@@ -3,9 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "core/timing.h"
-#include "perf_stats.h"
 #include "render/r3d_span.h"
 #include "suites.h"
+#include "testkit/bench.h"
 #include "unity.h"
 
 #define SPAN_VERTEX_COUNT  3
@@ -50,7 +50,7 @@ report_shading_mode(const r3d_span_target_t* target, uint16_t* depth,
         }
         elapsed += timing_now_us() - start;
     }
-    perf_icount_report(solid ? "span_solid" : "span_gouraud", elapsed, SPAN_REPS, SPAN_ROUNDS);
+    bench_icount_report(solid ? "span_solid" : "span_gouraud", elapsed, SPAN_REPS, SPAN_ROUNDS);
 }
 
 static void

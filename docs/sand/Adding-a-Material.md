@@ -389,7 +389,7 @@ flowchart TD
    wrong for a variant that *accumulates* (heat, burn progress,
    moisture); use `place_cell()` for those and say what it starts at:
 
-   ```c
+   ```c fragment
    place_cell(s, cx, cy, at, CELL_MAKE(r->hardens_to, 0));   /* grew, not caught */
    ```
 
@@ -442,19 +442,13 @@ cost every step that never touches fire at all; the price of the split
 is that a material that both moves and burns needs two rows instead of
 one, which is cheap at that exchange rate.
 
-**Sharing a hot function across a second call site is not free.** If a
-new pass reuses an existing kind's movement primitives
-(`try_fall_or_scatter()`/`try_slide()`, `sand_priv.h`), keep them
-`static inline` in the header so the original, hot call site stays fully
-inlined, and give the new pass an ordinary, non-inline wrapper instead:
-un-`static`ing the shared primitives loses inlining at the *original*
-site, and duplicating the inline chain into the new translation unit
-inlines a whole call graph into a place that rarely needs it as much.
-`sand_gas.c` is the exception that proves the rule: its rise sweep is
-hot enough that it calls `try_fall_or_scatter_impl()`/`try_slide_impl()`
-directly, since the wrapper's cross-translation-unit call cost more than
-the second inlined copy (see the comment at that call site in
-`sand_gas.c`);
+**Sharing a hot function across a second call site is not free.** The
+movement primitives (`try_fall_or_scatter()`/`try_slide()`, `sand_priv.h`)
+are `static inline` in the header, and both sweeps that use them inline
+them. A sweep hands them one `mover_row_t` per row and one `mover_pass_t`
+per pass, never a flat argument list. A new pass that reuses them builds
+the same two structs. Un-`static`ing the primitives would lose inlining at
+every site, and a non-inline wrapper costs each grain a call;
 `suite_sand_perf.c` records a measured 26% regression as precedent for
 sharing a hot per-call function across a translation-unit boundary the
 wrong way. Flash instructions use the instruction cache; flash constants

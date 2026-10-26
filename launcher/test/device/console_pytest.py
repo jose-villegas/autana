@@ -89,10 +89,10 @@ def console(dut):
         dut.expect(BUILD_ID_RE.pattern.encode())
     probe = shell.exchange("IMU quarter 0", IMU_QUARTER_RE.pattern)
     match = IMU_QUARTER_RE.fullmatch(probe)
-    assert match and int(match[1]) == 0 and int(match[2]) > 0 and int(match[3]) > 0, probe
+    assert match and int(match[1]) == 0 and int(match[2]) > 0 and int(match[3]) > 0 and int(match[4]) >= int(match[3]), probe
     shell.quarters = itertools.cycle(range(int(match[2])))
     next(shell.quarters)
-    shell.sample_s = int(match[3]) / MILLISECONDS_PER_SECOND
+    shell.sample_s = int(match[4]) / MILLISECONDS_PER_SECOND
     try:
         yield shell
         shell.exchange(BUILD_ID_REQUEST, BUILD_ID_RE.pattern)

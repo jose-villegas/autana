@@ -8,7 +8,7 @@
  * 256 and needs those to be exact.
  */
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "math/scalar/rng.h"

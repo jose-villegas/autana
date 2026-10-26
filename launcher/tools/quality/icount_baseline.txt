@@ -55,7 +55,7 @@
 5668	math_wrap_fmodf_f	info
 462	math_wrap_i	info
 655	math_wrap_x	info
-1611098	sand_falling_step
+1595941	sand_falling_step
 2494629	sand_water_step
 43670	span_gouraud
 16007	span_solid

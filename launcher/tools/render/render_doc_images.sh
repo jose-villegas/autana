@@ -62,6 +62,12 @@ SKIN_BAKE=capybara.glb
 SKIN_CLIP=gallop
 # Three of its clips the playback figures blend: first to second to third, then back to the first.
 PLAYBACK_CLIPS="walk gallop idle"
+# The tree depth whose node boxes the cull figures draw.
+CULL_LEVEL=2
+# The cull chase GIFs play one path sample per frame at this rate.
+CULL_GIF_FPS=8
+# Colours in their palette: the camera moves every frame, so fewer keep them small.
+CULL_GIF_COLORS=64
 
 AUDIO_ONLY=0
 if [ "${1:-}" = --audio ]; then
@@ -225,7 +231,7 @@ done
 
 run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEMO_OBJECT"
 
-# The math reference's figures, from the library's own functions.
+# The math, kinematics and physics references' figures, from the libraries' own functions.
 # shellcheck source=../build/find_cc.sh
 . launcher/tools/build/find_cc.sh
 cc=$(find_cc) || exit 2
@@ -234,22 +240,27 @@ run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input
 run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/gravity_figures.log"
 # --orphans scans this runner: gravity-trust.png, gravity-bias.gif
-run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \n    > "$WORK/motion_axes_figures.log"
+run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
+    > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
 run mkdir -p "$OUT/math"
 run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
 # --orphans scans this runner: trs-scale.gif, trs-rotate.gif, trs-translate.gif
+run "$PYTHON" launcher/tools/math/math_bench_figures.py --out "$OUT/math" > "$WORK/math_bench_figures.log"
+# --orphans scans this runner: benchmark-families.png
 run "$PYTHON" launcher/tools/math/fast_path_figures.py --out "$OUT/math" > "$WORK/fast_path_figures.log"
 # --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
 # --orphans scans this runner: rect-queries.png, circle-rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
-run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/motion_figures.log"
-# --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png, spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
 run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/stats_figures.log"
 # --orphans scans this runner: stats-percentile-ranks.png
+run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
+# --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
+run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
+# --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png
 
 fi
 
@@ -286,6 +297,12 @@ R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/bake_figures.py --out "$OUT/render" > "$WORK/bake_figures.log" 2>&1
 # --orphans scans this runner: bake-ao-rays.png, bake-ao-falloff.png, bake-directions.png, bake-bounce-rays.png, bake-bounce-sweep.png, bake-scores.png
 
+# The baked mesh's figures: the demo scene's lite mesh, its clusters and tree, and the clusterizer's build.
+tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite.mesh") || exit 2
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --out "$OUT/render" \
+    > "$WORK/mesh_figures.log" 2>&1
+# --orphans scans this runner: baked-mesh-tree.gif, baked-mesh-ranges.png, meshlet-build.gif
+
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.
 run mkdir -p "$OUT/render" "$OUT/tables"
@@ -304,6 +321,23 @@ run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resol
 run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/pipeline-present-board.log \
     --views 'docs/render/data/pipeline-view-{view}-board.log' --tables "$OUT/tables" \
     --chart "$OUT/render/pipeline-frame-stages.png" > "$WORK/frame_stages.log"
+
+# What the cull keeps along each scene's camera path, from the cull view, and
+# what a cluster and a triangle cost, from the board capture beside the page.
+for cull in "launcher/demo/bistro/bistro.scene.toml street_fitted_full cull-bistro Bistro" \
+    "$DEMO_SCENE atrium_fitted_full cull-sponza Sponza"; do
+    # shellcheck disable=SC2086 # four words: scene, object, stem, label
+    set -- $cull
+    run "$PYTHON" launcher/tools/render/cull_figures.py --scene "$1" --object "$2" --camera camera --stem "$3" \
+        --label "$4" --level "$CULL_LEVEL" --out "$OUT/render" --tables "$OUT/tables" --work "$WORK/cull" \
+        > "$WORK/$3.log"
+    gif_from_avi "$WORK/cull/$3-chase.avi" "$OUT/render/$3-chase.gif" "setpts=N/$CULL_GIF_FPS/TB,fps=$CULL_GIF_FPS" \
+        "stats_mode=diff:max_colors=$CULL_GIF_COLORS"
+done
+# --orphans scans this runner: cull-bistro-sheet.png, cull-bistro-counts.png, cull-bistro-chase.gif,
+# cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif
+run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-board.log --tables "$OUT/tables" \
+    --chart "$OUT/render/cull-cost.png" > "$WORK/cull_cost.log"
 
 # Each picture's frame cost in each framebuffer layout, from the scene and
 # boot animation captures beside the render pages.

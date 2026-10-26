@@ -1,8 +1,8 @@
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
-#include "math/linear/projectf.h"
-#include "math/linear/projectx.h"
+#include "math/projection/projectf.h"
+#include "math/projection/projectx.h"
 
 enum {
     PROJECT_FX = 12,

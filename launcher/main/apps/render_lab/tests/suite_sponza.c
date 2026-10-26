@@ -55,7 +55,7 @@ open_the_mesh(const char* id, r3d_lit_mesh_t* mesh) {
 /* The pack id of the mesh `bake`'s entity draws. */
 static const char*
 mesh_of(scene_baked_variant_t bake) {
-    const scene_entity_t entity = scene_find(sponza, sponza_bakes[bake]);
+    const scene_entity_t entity = scene_find(sponza, name_hash(sponza_bakes[bake]));
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, entity, sponza_bakes[bake]);
     return scene_entity_mesh_id(sponza, entity);
 }
@@ -73,10 +73,7 @@ static bool
 cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
     int beyond[5] = {0};
     for (int i = 0; i < 8; i++) {
-        const float x = (float)(i & 1 ? c->bounds.hi.x : c->bounds.lo.x);
-        const float y = (float)(i & 2 ? c->bounds.hi.y : c->bounds.lo.y);
-        const float z = (float)(i & 4 ? c->bounds.hi.z : c->bounds.lo.z);
-        const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){x, y, z});
+        const vec3f_t l = mat4f_apply(&lens->m, vec3f_from_vec3s(box3s_corner(c->bounds, i), 1.0F));
         beyond[0] += l.z < lens->project.near_z;
         beyond[1] += l.x < -lens->project.cx * l.z;
         beyond[2] += l.x > ((float)lens->width - lens->project.cx) * l.z;
@@ -103,7 +100,7 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     for (uint32_t t = 0; t < period; t += 2500) {
         const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
-        const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity), viewport);
+        const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity, viewport);
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, mesh->position_scale);
 
@@ -225,7 +222,7 @@ check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     for (uint32_t t = 0; t < period; t += 100) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
-        const vec3f_t eye = scene_entity_transform(sponza, camera_entity)->position;
+        const vec3f_t eye = scene_entity_local(sponza, camera_entity).position;
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
             char message[96];
@@ -277,8 +274,8 @@ test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
 static void
 select_camera(const char* name) {
     camera_name = name;
-    flythrough = scene_camera_lens(sponza, name);
-    camera_entity = scene_find(sponza, name);
+    flythrough = scene_camera_lens(sponza, name_hash(name));
+    camera_entity = scene_find(sponza, name_hash(name));
     TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, name);
     TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, scene_animator_clip_duration_ms(sponza, camera_entity, 0), name);
 }
@@ -311,12 +308,12 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
         const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
         const vec3f_t forward_axis = {0.0F, 0.0F, 1.0F};
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, 0);
-        const scene_transform_t* pose = scene_entity_transform(sponza, camera_entity);
-        vec3f_t previous = pose->position;
+        vec3f_t previous = scene_entity_local(sponza, camera_entity).position;
         for (uint32_t t = 10; t <= period + 100; t += 10) {
             (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
-            const vec3f_t eye = pose->position;
-            const vec3f_t forward = quatf_rotate(pose->rotation, forward_axis);
+            const transformf_t pose = scene_entity_local(sponza, camera_entity);
+            const vec3f_t eye = pose.position;
+            const vec3f_t forward = quatf_rotate(pose.rotation, forward_axis);
             const vec3f_t step = vec3f_sub(eye, previous);
             TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(step, step) < 2.0F * 2.0F, camera_name);
             TEST_ASSERT_FLOAT_WITHIN_MESSAGE(0.001F, 1.0F, sqrtf(vec3f_dot(forward, forward)), camera_name);
@@ -330,8 +327,8 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
 static float
 share_covered_at(const raster_t* raster, uint32_t t_ms) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
-                                           (viewport_t){raster->width, raster->height, 0});
+    const render_view_t view =
+        sponza_suite_view(flythrough, sponza, camera_entity, (viewport_t){raster->width, raster->height, 0});
     raster_draw(raster, &view);
     const int pixels = raster->width * raster->height;
     const uint16_t* depth = raster_depth(raster);
@@ -392,7 +389,7 @@ run_sponza_suite(void) {
     sponza = loaded.scene;
     pack = loaded.pack;
     flythrough = loaded.lens;
-    camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, sponza_cameras[0]);
+    camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, name_hash(sponza_cameras[0]));
     RUN_TEST(test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path);
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_both_bakes_are_cut_into_meshlets);

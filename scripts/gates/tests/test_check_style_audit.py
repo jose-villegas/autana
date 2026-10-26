@@ -390,13 +390,24 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_a_package_may_include_itself_the_toolchain_the_build_config_and_the_test_harness(self):
         findings = self.audit("PACKAGE-INCLUDE", {
-            "launcher/test/suites.h": "#pragma once\n",
+            "launcher/packages/testkit/include/testkit/suite.h": "#pragma once\n",
             f"{self.PACKAGE}/include/math/scalar/mathf.h": '#include <math.h>\n#include "sdkconfig.h"\n',
             f"{self.PACKAGE}/include/math/linear/vec3f.h": '#include "math/scalar/mathf.h"\n',
             f"{self.PACKAGE}/src/motion/orbit.c": '#include "math/linear/vec3f.h"\n',
-            f"{self.PACKAGE}/tests/suite_vec3.c": '#include "suites.h"\n#include "unity.h"\n#include "math/linear/vec3f.h"\n',
+            f"{self.PACKAGE}/tests/suite_vec3.c": '#include "testkit/suite.h"\n#include "unity.h"\n#include "math/linear/vec3f.h"\n',
         })
         self.assertEqual(findings, [])
+
+    def test_only_package_tests_and_benches_may_include_testkit(self):
+        findings = self.audit("PACKAGE-INCLUDE", {
+            "launcher/packages/testkit/include/testkit/suite.h": "#pragma once\n",
+            f"{self.PACKAGE}/tests/suite_x.c": '#include "testkit/suite.h"\n',
+            f"{self.PACKAGE}/bench/measure.c": '#include "testkit/suite.h"\n',
+            f"{self.PACKAGE}/src/x.c": '#include "testkit/suite.h"\n',
+            f"{self.PACKAGE}/include/math/x.h": '#include "testkit/suite.h"\n',
+        })
+        self.assertEqual(sorted(f.path for f in findings),
+                         [f"{self.PACKAGE}/include/math/x.h", f"{self.PACKAGE}/src/x.c"])
 
     def test_a_package_may_include_the_packages_it_declares_and_theirs_but_no_other(self):
         findings = self.audit("PACKAGE-INCLUDE", {
@@ -463,9 +474,29 @@ class StyleAuditTest(unittest.TestCase):
                 with self.subTest(name=name, symbol=symbol):
                     findings = self.audit("PACKAGE-CONFIG", {
                         f"{self.PACKAGE}/{name}": f"\nif({symbol})\n",
+                        "launcher/main/Kconfig.projbuild": "config LAUNCHER_QEMU\n",
+                        "launcher/packages/other/Kconfig": "config OTHER_FPU_RECIP\n",
                     })
                     self.assertEqual([f.line for f in findings], [2])
                     self.assertIn(symbol, findings[0].message)
+
+    def test_package_config_rejects_undeclared_own_symbols(self):
+        for name in ("probe.c", "include/math/probe.h", "CMakeLists.txt", "Kconfig"):
+            with self.subTest(name=name):
+                findings = self.audit("PACKAGE-CONFIG", {
+                    f"{self.PACKAGE}/{name}": "\nif(CONFIG_MATH_FPU_RECP)\n",
+                    f"{self.PACKAGE}/Kconfig.extra": "config MATH_FPU_RECIP\n",
+                })
+                self.assertEqual([f.line for f in findings], [2])
+                self.assertIn("CONFIG_MATH_FPU_RECP", findings[0].message)
+
+    def test_package_config_accepts_idf_platform_symbols(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/probe.c": "#if CONFIG_IDF_TARGET_ARCH_XTENSA\n#endif\n"
+                                      "#if CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE\n#endif\n",
+            "launcher/main/Kconfig.projbuild": "config LAUNCHER_QEMU\n",
+        })
+        self.assertEqual(findings, [])
 
     def test_package_config_accepts_its_own_prefix(self):
         findings = self.audit("PACKAGE-CONFIG", {
@@ -474,6 +505,7 @@ class StyleAuditTest(unittest.TestCase):
             f"{self.PACKAGE}/CMakeLists.txt": "if(CONFIG_MATH_FPU_RECIP)\nendif()\n",
             f"{self.PACKAGE}/Kconfig": "config MATH_FPU_RECIP\n    default y\n",
             "launcher/packages/other/probe.c": "#if CONFIG_OTHER_FEATURE\n#endif\n",
+            "launcher/packages/other/Kconfig": "config OTHER_FEATURE\n",
             "launcher/main/probe.c": "#if CONFIG_LAUNCHER_QEMU\n#endif\n",
         })
         self.assertEqual(findings, [])
@@ -487,13 +519,14 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_package_config_ignores_comments_but_checks_code_on_the_same_line(self):
         findings = self.audit("PACKAGE-CONFIG", {
+            "launcher/main/Kconfig.projbuild": "config LAUNCHER_QEMU\n",
             f"{self.PACKAGE}/probe.c": "/* CONFIG_UNITY_ENABLE_64BIT */\n"
                                       "// CONFIG_LAUNCHER_QEMU\n"
                                       "/* CONFIG_OTHER_FEATURE */ #if CONFIG_LAUNCHER_QEMU\n",
             f"{self.PACKAGE}/CMakeLists.txt": "# CONFIG_LAUNCHER_QEMU\n"
                                              "#[=[\nCONFIG_OTHER_FEATURE\n]=]\n"
                                              "if(CONFIG_MATH_FPU_RECIP) # CONFIG_OTHER_FEATURE\n",
-            f"{self.PACKAGE}/Kconfig": "# config OTHER_FEATURE CONFIG_OTHER_FEATURE\n"
+            f"{self.PACKAGE}/Kconfig": "config MATH_FPU_RECIP\n# config OTHER_FEATURE CONFIG_OTHER_FEATURE\n"
                                       "config MATH_FEATURE # CONFIG_LAUNCHER_QEMU\n",
         })
         self.assertEqual([(f.path, f.line) for f in findings], [(f"{self.PACKAGE}/probe.c", 3)])
@@ -501,6 +534,7 @@ class StyleAuditTest(unittest.TestCase):
     def test_package_config_checks_symbols_in_build_strings(self):
         findings = self.audit("PACKAGE-CONFIG", {
             f"{self.PACKAGE}/CMakeLists.txt": 'message("# ${CONFIG_OTHER_FEATURE}")\n',
+            "launcher/packages/other/Kconfig": "config OTHER_FEATURE\n",
         })
         self.assertEqual([f.line for f in findings], [1])
 

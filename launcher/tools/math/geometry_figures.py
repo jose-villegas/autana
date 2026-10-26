@@ -3,13 +3,12 @@
 
     python launcher/tools/math/geometry_figures.py --cc CC --out DIR
 """
-import argparse
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from math_figures import (PANEL_SIZE, PANEL_TITLE_ROOM, PIXEL_FILL, POINT, POINT_SIZE, SHAPE_ALPHA, SHAPE_FILL,
-                          run_probe, VIEW_ELEVATION, prism_faces)
+                          probe_into_folder, VIEW_ELEVATION, prism_faces)
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, SLOTS,
                              GIF_FRAMES, GIF_FPS, ORBIT_GIF_COLORS, wire_sphere,
                              figure as new_figure, save, save_gif, style_axes)
@@ -510,14 +509,9 @@ def sphere_segments_figure(data, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cc", required=True)
-    parser.add_argument("--out", type=pathlib.Path, required=True)
-    args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
-    data = run_probe(args.cc, [PROBE], GIF_FRAMES)
-    rect_figure(data["rect"], args.out / "rect-queries.png")
-    circle_figure(data["circle"], args.out / "circle-rect-queries.png")
+    data, out = probe_into_folder(__doc__, [PROBE], GIF_FRAMES)
+    rect_figure(data["rect"], out / "rect-queries.png")
+    circle_figure(data["circle"], out / "circle-rect-queries.png")
     for name, values, plot in (("plane-distance.png", data["distance"], distance_figure),
                               ("plane-from-points.png", data["triangle"], points_figure),
                               ("plane-from-rows.png", data["rows"], rows_figure),
@@ -525,7 +519,7 @@ def main():
                               ("box3-frustum.gif", data, box_frustum_figure),
                               ("box3-sphere-overlap.gif", data["queries"], sphere_overlap_figure),
                               ("box3-sphere-segments.png", data["queries"], sphere_segments_figure)):
-        plot(values, args.out / name)
+        plot(values, out / name)
     return 0
 
 

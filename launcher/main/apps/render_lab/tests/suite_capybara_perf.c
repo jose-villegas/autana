@@ -15,11 +15,11 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "perf_budget.h"
-#include "perf_stats.h"
 #include "render/context/render_context.h"
 #include "render/r3d_span_internal.h"
 #include "scene/scene_internal.h"
-#include "test_cleanup.h"
+#include "testkit/bench.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #define PERF_SAMPLES  100
@@ -64,7 +64,7 @@ fixture(void) {
     suite_set_test_cleanup(release_fixture);
     active->scene = render_lab_test_loaded_scene(CAPYBARA_SCENE);
     TEST_ASSERT_NOT_NULL(active->scene);
-    active->subject = scene_find(active->scene, CAPYBARA_SUBJECT);
+    active->subject = scene_find(active->scene, name_hash(CAPYBARA_SUBJECT));
     TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, active->subject);
     const r3d_lit_mesh_t* mesh = scene_entity_mesh(active->scene, active->subject);
     TEST_ASSERT_NOT_NULL(mesh);
@@ -155,8 +155,8 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
             f->cpu_cycles[i] = (int32_t)cycles;
         }
     }
-    const perf_stats_t us = perf_stats_compute(f->elapsed_us, PERF_SAMPLES);
-    const perf_stats_t cycles = perf_stats_compute(f->cpu_cycles, PERF_SAMPLES);
+    const bench_stats_t us = bench_stats_compute(f->elapsed_us, PERF_SAMPLES);
+    const bench_stats_t cycles = bench_stats_compute(f->cpu_cycles, PERF_SAMPLES);
     const int vertices = scene_entity_mesh(f->scene, f->subject)->vertex_count;
     const scene_skinned_renderer_t* skin = &f->scene->skinned_renderers[f->subject];
     TEST_ASSERT_GREATER_THAN_INT64(0, us.avg);
@@ -177,8 +177,8 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
              (double)us.avg / vertices, (double)cycles.avg / vertices);
 }
 
-static perf_stats_t
-frame_cost(fixture_t* f, bool paused, perf_stats_t* render_stats, const char* quarter) {
+static bench_stats_t
+frame_cost(fixture_t* f, bool paused, bench_stats_t* render_stats, const char* quarter) {
     const int joints = f->scene->animators[f->subject].skeleton.joint_count;
     (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_CURRENT, paused);
     (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_PREVIOUS, paused);
@@ -190,12 +190,12 @@ frame_cost(fixture_t* f, bool paused, perf_stats_t* render_stats, const char* qu
             f->elapsed_us[i] = (int32_t)(timing_now_us() - start);
         }
     }
-    *render_stats = perf_stats_compute(f->render_us, PERF_SAMPLES);
+    *render_stats = bench_stats_compute(f->render_us, PERF_SAMPLES);
     ESP_LOGI(TAG,
              SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER
                               " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" R3D_PERF_QUARTER_FORMAT,
              paused, PERF_SAMPLES, joints, (long long)render_stats->avg, (long long)render_stats->p95, quarter);
-    const perf_stats_t stats = perf_stats_compute(f->elapsed_us, PERF_SAMPLES);
+    const bench_stats_t stats = bench_stats_compute(f->elapsed_us, PERF_SAMPLES);
     TEST_ASSERT_GREATER_THAN_INT64(0, stats.avg);
     ESP_LOGI(TAG,
              SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_FRAME
@@ -226,7 +226,7 @@ report_stage_split(fixture_t* f, const char* quarter) {
             }
         }
         r3d_span_stop_after = 0;
-        mean[stop] = perf_stats_compute(f->render_us, PERF_SAMPLES).avg;
+        mean[stop] = bench_stats_compute(f->render_us, PERF_SAMPLES).avg;
         ESP_LOGI(TAG, "stage_split: capybara stop=%s render mean_us=%lld" R3D_PERF_QUARTER_FORMAT, names[stop],
                  (long long)mean[stop], quarter);
     }
@@ -259,10 +259,10 @@ test_animation_and_frame_cost(void) {
         ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, size.width, size.height, render_lab_present(),
                  quarter->name);
         render_lab_test_hold_quarter(quarter->quarter);
-        perf_stats_t playing_render;
-        perf_stats_t paused_render;
-        const perf_stats_t playing = frame_cost(f, false, &playing_render, quarter->name);
-        const perf_stats_t paused = frame_cost(f, true, &paused_render, quarter->name);
+        bench_stats_t playing_render;
+        bench_stats_t paused_render;
+        const bench_stats_t playing = frame_cost(f, false, &playing_render, quarter->name);
+        const bench_stats_t paused = frame_cost(f, true, &paused_render, quarter->name);
         report_stage_split(f, quarter->name);
         const int joints = f->scene->animators[f->subject].skeleton.joint_count;
         ESP_LOGI(TAG,
