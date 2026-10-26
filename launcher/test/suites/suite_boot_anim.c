@@ -960,9 +960,9 @@ static void
 test_the_curve_table_stays_inside_the_narrow_range(void) {
     for (int i = 0; i < BOOT_ANIM_CURVE_POINTS; i++) {
         const boot_anim_pt_t p = boot_anim_sample(i);
-        TEST_ASSERT_TRUE(p.re > -(1 << 17) && p.re < (1 << 17));
-        TEST_ASSERT_TRUE(p.im > -(1 << 17) && p.im < (1 << 17));
-        TEST_ASSERT_TRUE(p.t > -(1 << 15) && p.t < (1 << 15));
+        TEST_ASSERT_TRUE(p.re > -R3D_X_INPUT_XZ_LIMIT && p.re < R3D_X_INPUT_XZ_LIMIT);
+        TEST_ASSERT_TRUE(p.im > -R3D_X_INPUT_XZ_LIMIT && p.im < R3D_X_INPUT_XZ_LIMIT);
+        TEST_ASSERT_TRUE(p.t > -R3D_X_INPUT_Y_LIMIT && p.t < R3D_X_INPUT_Y_LIMIT);
     }
 }
 
