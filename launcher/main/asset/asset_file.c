@@ -7,17 +7,15 @@
 #include <malloc.h>
 #endif
 
-#define FILE_ALIGN 16U
-
 /* Not malloc(): a host test run models the board's heap by wrapping malloc,
  * and a pack the board maps from flash must not spend that budget. */
 static void*
 aligned_buffer(size_t size) {
-    const size_t rounded = (size + FILE_ALIGN - 1U) / FILE_ALIGN * FILE_ALIGN;
+    const size_t rounded = (size + ASSET_PACK_BASE_ALIGN - 1U) / ASSET_PACK_BASE_ALIGN * ASSET_PACK_BASE_ALIGN;
 #ifdef _WIN32
-    return _aligned_malloc(rounded, FILE_ALIGN);
+    return _aligned_malloc(rounded, ASSET_PACK_BASE_ALIGN);
 #else
-    return aligned_alloc(FILE_ALIGN, rounded);
+    return aligned_alloc(ASSET_PACK_BASE_ALIGN, rounded);
 #endif
 }
 
@@ -53,14 +51,30 @@ read_whole(const char* path, size_t* size) {
 }
 
 asset_status_t
-asset_file_open(const char* path, asset_pack_t* pack, void** buffer) {
+asset_file_read(const char* path, asset_pack_t* pack, void** buffer) {
     size_t size = 0;
     *buffer = read_whole(path, &size);
     if (*buffer == NULL) {
         *pack = (asset_pack_t){0};
         return ASSET_ERR_NO_PACK;
     }
-    const asset_status_t status = asset_pack_open(pack, *buffer, size);
+    *pack = (asset_pack_t){.base = *buffer, .size = (uint32_t)size};
+    if (size > UINT32_MAX) {
+        asset_file_release(*buffer);
+        *buffer = NULL;
+        *pack = (asset_pack_t){0};
+        return ASSET_ERR_SIZE;
+    }
+    return ASSET_OK;
+}
+
+asset_status_t
+asset_file_open(const char* path, asset_pack_t* pack, void** buffer) {
+    const asset_status_t read = asset_file_read(path, pack, buffer);
+    if (read != ASSET_OK) {
+        return read;
+    }
+    const asset_status_t status = asset_pack_open(pack, pack->base, pack->size);
     if (status != ASSET_OK) {
         asset_file_release(*buffer);
         *buffer = NULL;

@@ -4,7 +4,7 @@
  * gfx.h.
  *
  * Colours are given as plain 0xRRGGBB so callers never deal with the panel's
- * byte-swapped RGB565 layout; gfx_rgb() handles that conversion.
+ * byte-swapped RGB565 layout; RGB565BE() handles that conversion.
  */
 #pragma once
 
@@ -13,6 +13,7 @@
 #include "draw/draw_font.h"
 #include "draw/draw_font_roles.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
 
 /* Glyphs are 8x8 in the font data, drawn at 2x so they are legible on a
  * 368-wide panel. Text metrics elsewhere must agree with these. */
@@ -33,7 +34,7 @@ void draw_rect(int x, int y, int w, int h, gfx_color_t color);
 void draw_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha);
 
 /* Like draw_rect(), but MIXED with the destination via
- * gfx_color_mix() (gfx_color.h) at `alpha` (0 leaves the framebuffer
+ * rgb565be_mix() (rgb565.h) at `alpha` (0 leaves the framebuffer
  * untouched, 255 is pixel-identical to draw_rect(), everything
  * between is a real per-channel blend). Unlike every other fill here,
  * this one READS the destination pixel first, affordable for

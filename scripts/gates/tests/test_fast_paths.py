@@ -297,6 +297,20 @@ class FastPathTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'instruction'):
             paths.validate_hardware(self.root, items, {'fast_f': 'calls __divsf3'})
         paths.validate_hardware(self.root, items, {'fast_f': 'recip0.s'})
+        for instruction in ('recip0.s', 'rsqrt0.s'):
+            with self.subTest(instruction=instruction):
+                text = ("42000000 <math_bench_fast_f>:\n"
+                        "42000000: 123456 call8 42000100 <seed_kernel>\n"
+                        "42000100 <seed_kernel>:\n"
+                        f"42000100: 123456 {instruction} f0, f1\n"
+                        "42000200 <unrelated>:\n"
+                        "42000200: 123456 div0.s f0, f1\n")
+                fpu = bench.parse_disassembly(text, self.rows[:1])
+                self.assertEqual(f'{instruction}; calls seed_kernel', fpu['fast_f'])
+                paths.validate_hardware(self.root, items, fpu)
+                without_seed = text.replace(instruction, 'nop.n')
+                with self.assertRaisesRegex(ValueError, 'instruction'):
+                    paths.validate_hardware(self.root, items, bench.parse_disassembly(without_seed, self.rows[:1]))
 
     def test_transitive_template_callers_and_tables(self):
         self.header.unlink()

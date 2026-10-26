@@ -117,8 +117,7 @@ test_menu_with_full_clip_list_and_long_names_fits_budget(void) {
     input_t tap = {.down = true, .pressed = true};
     const affine2x_t transform = ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT);
     const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){ui_width() / 2, chosen.y + (chosen.h / 2)});
-    tap.x = mapped_pixel.x;
-    tap.y = mapped_pixel.y;
+    tap.point = mapped_pixel;
     budget_menu_frame(&tap);
     tap.pressed = false;
     budget_menu_frame(&tap);

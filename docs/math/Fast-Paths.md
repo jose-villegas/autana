@@ -20,8 +20,8 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 | [`mathf_recip`](#mathf-recip) | `1.0F / x` | reciprocal seed with two Newton corrections |
 | [`mathf_rsqrt`](#mathf-rsqrt) | `1.0F / sqrtf(x)` | reciprocal-root seed with two Newton corrections |
 | [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | `1.0F / sqrtf(x)` | reciprocal-root seed with one Newton correction |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | isqrt64 normalization | seed table, three Newton corrections and exact midpoint bracket |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | blend + isqrt64 normalization | seed table, three Newton corrections and exact midpoint bracket |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | isqrt64 normalization | an FPU seed plus one integer Newton correction (table fallback) and exact midpoint bracket |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | blend + isqrt64 normalization | an FPU seed plus one integer Newton correction (table fallback) and exact midpoint bracket |
 | [`mathf_repeat`](#mathf-repeat) | `fmodf(v - lo, hi - lo)` | reciprocal quotient and fused remainder, with range fallback |
 | [`trig_sin`](#trig-sin) | `sinf(phase * (MATH_TAU / TRIG_TURN))` | quarter-wave interpolation |
 
@@ -29,13 +29,13 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 
 | Fast path | Warm cycles: fast / plain (×) | Cold cycles: fast / plain | Max error |
 |---|---|---|---|
-| [`mathf_recip`](#mathf-recip) | 26 / 59 (2.3×) | 2300 / 4600 | 1 step |
-| [`mathf_rsqrt`](#mathf-rsqrt) | 38 / 120 (3.1×) | 3900 / 9800 | 1 step |
-| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 24 / 120 (4.9×) | 2400 / 9800 | 5.9e-5 rel |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 350 / 1100 (3.2×) | 29000 / 77000 | 4.6e-10 rel (host) |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 720 / 720 (1×) | 63000 / 60000 | 4.6e-10 rel (host) |
-| [`mathf_repeat`](#mathf-repeat) | 64 / 140 (2.1×) | 6700 / 13000 | 0 steps |
-| [`trig_sin`](#trig-sin) | 31 / 220 (7.3×) | 4200 / 24000 | 4.6 lsb |
+| [`mathf_recip`](#mathf-recip) | 26 / 59 (2.3×) | 2500 / 4500 | 1 step |
+| [`mathf_rsqrt`](#mathf-rsqrt) | 38 / 120 (3.1×) | 4100 / 9700 | 1 step |
+| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 24 / 120 (4.9×) | 2400 / 9700 | 5.9e-5 rel |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 330 / 1100 (3.4×) | 28000 / 77000 | 4.6e-10 rel (host) |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 650 / 720 (1.1×) | 58000 / 60000 | 4.6e-10 rel (host) |
+| [`mathf_repeat`](#mathf-repeat) | 64 / 140 (2.1×) | 6400 / 14000 | 0 steps |
+| [`trig_sin`](#trig-sin) | 31 / 220 (7.3×) | 4500 / 24000 | 4.6 lsb |
 
 ### Size and builds
 
@@ -44,8 +44,8 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 | [`mathf_recip`](#mathf-recip) | 57 flash | ROM + 39 flash | - |
 | [`mathf_rsqrt`](#mathf-rsqrt) | ROM + 151 flash | ROM + 66 flash | - |
 | [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 61 flash | ROM + 66 flash | - |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 236 IRAM + 945 flash | ROM + 1139 flash | 768 |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 236 IRAM + 2644 flash | ROM + 2599 flash | 768 |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 236 IRAM + 1667 flash | ROM + 1139 flash | 192 |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 3202 flash | ROM + 2599 flash | 192 |
 | [`mathf_repeat`](#mathf-repeat) | 595 flash | 443 flash | - |
 | [`trig_sin`](#trig-sin) | 192 flash | 171 flash | 390 |
 
@@ -133,9 +133,9 @@ Symbols: integer mantissa `m` in `[MATHX_RSQRT_MIN, 2^32)`; reciprocal root `y`.
 
 Proof: mantissa segment strides and exact midpoint brackets.
 
-Target: portable.
+Target: Xtensa: `rsqrt0.s`, `madd.s`, `msub.s`.
 
-Builds: none; QEMU fast; host fast.
+Builds: `CONFIG_MATH_FPU_RECIP`; QEMU plain; host plain.
 
 Callers: none.
 

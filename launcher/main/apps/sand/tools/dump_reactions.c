@@ -49,6 +49,7 @@
 #include "material_palette.h"
 /* Declarations and #defines only - no sand.c body comes with it, so this
  * does not reopen reaction_doc.h's "do not link the simulation" decision. */
+#include "image/pixel/rgb565.h"
 #include "sand.h"
 
 /* Not defined anywhere in this codebase today (checked) - every other array
@@ -878,7 +879,7 @@ material_hex(uint8_t v, char* buf, size_t cap) {
             ? base
             : CELL_MAKE(CELL_MATERIAL(base), representative_variant((material_id_t)CELL_MATERIAL(base)));
     const gfx_color_t packed = material_palette()[swatch];
-    snprintf(buf, cap, "#%06X", (unsigned)gfx_color_rgb888(packed));
+    snprintf(buf, cap, "#%06X", (unsigned)rgb565be_to_rgb888(packed));
 }
 
 /*

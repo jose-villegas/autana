@@ -13,6 +13,7 @@
 
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "image/pixel/rgb565.h"
 #include "selftest/post_layout.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
@@ -47,10 +48,8 @@ report_text(const report_pen_t* pen, int x, int y, const char* text, int scale, 
     const recti_t box =
         ui_transform_rect(pen->transform, (recti_t){x, y, text_width(text, scale), draw_font_height(font, scale)});
 
-    int gx;
-    int gy;
-    ui_text_glyph0_origin(font, box, pen->quarter, scale, &gx, &gy);
-    draw_text_font(gx, gy, text, colour, scale, pen->quarter, font);
+    const vec2i_t origin = ui_text_glyph0_origin(font, box, pen->quarter, scale);
+    draw_text_font(origin.x, origin.y, text, colour, scale, pen->quarter, font);
 }
 
 static void
@@ -100,13 +99,13 @@ draw_entry(report_pen_t* pen, const post_result_t* r, bool failed) {
     gfx_color_t mark_colour;
     if (r->ok) {
         mark = "[ok]";
-        mark_colour = gfx_rgb(OK_RGB);
+        mark_colour = RGB565BE(OK_RGB);
     } else if (r->severity == POST_OPTIONAL) {
         mark = "[--]";
-        mark_colour = gfx_rgb(ABSENT_RGB);
+        mark_colour = RGB565BE(ABSENT_RGB);
     } else {
         mark = "[!!]";
-        mark_colour = gfx_rgb(FAIL_RGB);
+        mark_colour = RGB565BE(FAIL_RGB);
     }
 
     recti_t row;
@@ -116,12 +115,12 @@ draw_entry(report_pen_t* pen, const post_result_t* r, bool failed) {
 
     report_text(pen, row.x, row.y, mark, POST_LAYOUT_REPORT_SCALE, mark_colour);
     report_text(pen, row.x + (POST_LAYOUT_MARK_CHARS * pen->layout.glyph_w), row.y, r->name, POST_LAYOUT_REPORT_SCALE,
-                gfx_rgb(HEADING_RGB));
+                RGB565BE(HEADING_RGB));
 
     if (r->detail[0] == '\0') {
         return true;
     }
-    return draw_wrapped(pen, POST_LAYOUT_MARK_CHARS, r->detail, failed ? gfx_rgb(FAIL_RGB) : gfx_rgb(DETAIL_RGB));
+    return draw_wrapped(pen, POST_LAYOUT_MARK_CHARS, r->detail, failed ? RGB565BE(FAIL_RGB) : RGB565BE(DETAIL_RGB));
 }
 
 /* An optional peripheral that is simply absent is not a failure, which is
@@ -202,10 +201,10 @@ post_ui_draw_report(const post_ui_report_t* report) {
         .quarter = quarter,
     };
 
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
 
     const int failures = post_failure_count();
-    const gfx_color_t title_colour = failures ? gfx_rgb(FAIL_RGB) : gfx_rgb(HEADING_RGB);
+    const gfx_color_t title_colour = failures ? RGB565BE(FAIL_RGB) : RGB565BE(HEADING_RGB);
     const int title_w = text_width(report->title, POST_LAYOUT_TITLE_SCALE);
     draw_centred(&pen, post_layout_title_text(&pen.layout, title_w), report->title, POST_LAYOUT_TITLE_SCALE,
                  title_colour);
@@ -214,13 +213,13 @@ post_ui_draw_report(const post_ui_report_t* report) {
     (void)snprintf(summary, sizeof(summary), "%d checks, %d failed", post_result_count(), failures);
     const int summary_w = text_width(summary, POST_LAYOUT_REPORT_SCALE);
     draw_centred(&pen, post_layout_summary_text(&pen.layout, summary_w), summary, POST_LAYOUT_REPORT_SCALE,
-                 failures ? gfx_rgb(FAIL_RGB) : gfx_rgb(OK_RGB));
+                 failures ? RGB565BE(FAIL_RGB) : RGB565BE(OK_RGB));
 
     draw_results(&pen, report->failures_only);
 
     if (report->footer != NULL) {
         const int footer_w = text_width(report->footer, POST_LAYOUT_REPORT_SCALE);
         draw_centred(&pen, post_layout_footer_text(&pen.layout, footer_w), report->footer, POST_LAYOUT_REPORT_SCALE,
-                     gfx_rgb(DETAIL_RGB));
+                     RGB565BE(DETAIL_RGB));
     }
 }

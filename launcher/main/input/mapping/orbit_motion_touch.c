@@ -1,6 +1,6 @@
 #include "input/mapping/orbit_motion_touch.h"
 
-#include <stdlib.h>
+#include "math/scalar/mathi.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
@@ -15,25 +15,20 @@ orbit_motion_touch_init(orbit_motion_touch_t* touch) {
  * brings the eye closer. */
 static void
 steer(orbit_motion_touch_t* touch, const input_t* input, viewport_t viewport, orbit_motion_input_t* out) {
-    int ux0;
-    int uy0;
-    int ux1;
-    int uy1;
-    viewport_physical_to_upright(viewport, touch->last_x, touch->last_y, &ux0, &uy0);
-    viewport_physical_to_upright(viewport, input->x, input->y, &ux1, &uy1);
+    const vec2i_t start = viewport_physical_to_upright(viewport, touch->last);
+    const vec2i_t end = viewport_physical_to_upright(viewport, input->point);
     const int shorter = viewport.width < viewport.height ? viewport.width : viewport.height;
     const float per_px = ORBIT_MOTION_TOUCH_TURN_PER_SHORT_SIDE / (float)shorter;
     if (touch->zooming) {
-        out->zoom_turn = -(float)(uy1 - uy0) * ORBIT_MOTION_TOUCH_ZOOM_PER_SHORT_SIDE / (float)shorter;
+        out->zoom_turn = -(float)(end.y - start.y) * ORBIT_MOTION_TOUCH_ZOOM_PER_SHORT_SIDE / (float)shorter;
     } else {
-        out->yaw_turn = -(float)(ux1 - ux0) * per_px;
-        out->pitch_turn = (float)(uy1 - uy0) * per_px;
+        out->yaw_turn = -(float)(end.x - start.x) * per_px;
+        out->pitch_turn = (float)(end.y - start.y) * per_px;
     }
     out->held = true;
-    touch->last_x = input->x;
-    touch->last_y = input->y;
-    touch->strayed = touch->strayed || abs(input->x - input->press_x) > ORBIT_MOTION_TOUCH_TAP_SLOP_PX
-                     || abs(input->y - input->press_y) > ORBIT_MOTION_TOUCH_TAP_SLOP_PX;
+    touch->last = input->point;
+    touch->strayed = touch->strayed || mathi_abs(input->point.x - input->press.x) > ORBIT_MOTION_TOUCH_TAP_SLOP_PX
+                     || mathi_abs(input->point.y - input->press.y) > ORBIT_MOTION_TOUCH_TAP_SLOP_PX;
 }
 
 /* A lift that was a tap arms a double tap, or completes one; any other lift
@@ -56,12 +51,9 @@ orbit_motion_touch_step(orbit_motion_touch_t* touch, const input_t* input, uint3
         touch->tapped = touch->since_tap_ms <= ORBIT_MOTION_TOUCH_DOUBLE_TAP_MS;
     }
     if (input->pressed) {
-        const int x = input->press_x;
-        const int y = input->press_y;
-        touch->steering = !gesture_in_edge_zone(x, y, home_edge, viewport.width, viewport.height);
+        touch->steering = !gesture_in_edge_zone(input->press, home_edge, (vec2i_t){viewport.width, viewport.height});
         touch->zooming = touch->steering && touch->tapped;
-        touch->last_x = input->press_x;
-        touch->last_y = input->press_y;
+        touch->last = input->press;
         touch->down_ms = 0;
         touch->strayed = false;
     }

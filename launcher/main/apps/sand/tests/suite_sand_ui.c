@@ -379,8 +379,8 @@ test_tapping_outside_every_tile_does_nothing(void) {
     outside_every_tile(&px, &py);
     input_t tap = no_input();
     tap.released = true;
-    tap.x = px;
-    tap.y = py;
+    tap.point.x = px;
+    tap.point.y = py;
 
     const unsigned actions = sand_ui_step(&ui, &tap);
 

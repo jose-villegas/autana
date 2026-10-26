@@ -79,7 +79,7 @@ heap (current and low-water mark), CPU clock, on-die temperature,
 orientation, the IMU, and that frame's touch/button state. Good for anything
 where you need to see the actual pixels, or correlate a visual glitch
 against memory/sensor conditions at that instant; see
-`main/console/verbs/console_screenshot.c` and `main/console/capture/device_state.h` for the
+`main/shell/console/console_screenshot.c` and `main/shell/console/device_state.h` for the
 mechanism and the full field list.
 
 - The device streams a 24bpp BMP over the wire, decoded to PNG in memory

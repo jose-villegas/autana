@@ -283,6 +283,7 @@ def steps(job, root=None):
             env={**job.get('env', {}), **step.get('env', {})},
             condition=step.get('if', ''), job_condition=job.get('if', ''),
             id=step.get('id', ''), index=index,
+            continue_on_error=step.get('continue-on-error') is True,
             shell=step.get('shell', default.get('shell', '')), dropped=[],
             idf='container' in job)
         excluded = next((reason for reason, predicate in OUT_OF_SCOPE if predicate(step)), None)
@@ -449,7 +450,7 @@ def run(root, out, base='origin/main', tiers=('host',)):
             detail = f'FAIL {log}: ' + detail.removeprefix('FAIL ')
         print(detail.replace('\r', r'\r').replace('\n', r'\n'), flush=True)
 
-    selected = set(tiers) | {'host'}
+    selected = set(tiers)
     job_state = {}
     outcomes = {}
     broken_steps = set()
@@ -535,8 +536,11 @@ def run(root, out, base='origin/main', tiers=('host',)):
                      for install_label, install in skipped_installs.get(key, [])]
             if hints:
                 suffix += ' - Host-wide change skipped (' + '; '.join(hints) + ')'
-        verdict('ok' if passed else 'failed',
-                f'{"ok" if passed else "FAIL"} {log}: {prefix}' + suffix)
+        accepted = passed or row['continue_on_error']
+        if not passed and accepted:
+            suffix += ' - failed; CI continues (continue-on-error)'
+        verdict('ok' if accepted else 'failed',
+                f'{"ok" if accepted else "FAIL"} {log}: {prefix}' + suffix)
         if row['id']:
             state[f'steps.{row["id"]}.outcome'] = 'success' if passed else 'failure'
             if output.exists():
@@ -544,8 +548,8 @@ def run(root, out, base='origin/main', tiers=('host',)):
                     if '=' in line:
                         name, value = line.split('=', 1)
                         state[f'steps.{row["id"]}.outputs.{name}'] = value
-        outcomes[dependency] = 'success' if passed and state['success'] else 'failure'
-        if not passed:
+        outcomes[dependency] = 'success' if accepted and state['success'] else 'failure'
+        if not accepted:
             state['success'] = False
             broken_steps.add((key, row['index']))
     print(f'{counts["ok"]} ok, {counts["failed"]} failed, '
@@ -561,7 +565,7 @@ def main(argv=None):
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument('--base', default='origin/main')
     parser.add_argument('--out', type=Path)
-    parser.add_argument('--tier', default='host', help='comma-separated tiers: ' + ','.join(TIERS))
+    parser.add_argument('--tier', default='host', help='run exactly these comma-separated tiers (default: host): ' + ','.join(TIERS))
     parser.epilog = 'list columns: kind | tier | workflow:job | label | directory | command or reason'
     args = parser.parse_args(argv)
     root = args.root.resolve()

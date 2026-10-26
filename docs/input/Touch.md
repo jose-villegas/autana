@@ -14,7 +14,7 @@ Controller quirks and the interrupt pin are in
 
 typedef struct {
     int taps;
-    int x, y;
+    vec2i_t point;
 } touch_example_t;
 
 void
@@ -23,8 +23,7 @@ touch_example(touch_example_t* s, const input_t* input) {
         s->taps++; /* an edge: once per touch, however long it is held */
     }
     if (input->down) {
-        s->x = input->x; /* the level: every frame the finger stays down */
-        s->y = input->y;
+        s->point = input->point; /* the level: every frame the finger stays down */
     }
 }
 ```

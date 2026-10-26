@@ -96,7 +96,7 @@ affine2x_t ui_effective_transform(void);
 
 /* A point on the panel as the logical canvas sees it: what a raw input_t
  * touch needs before it means anything to a screen. */
-void ui_to_logical(int x, int y, int* lx, int* ly);
+vec2i_t ui_to_logical(vec2i_t point);
 
 /* The (font, scale) pair `font` was interned as by ui_set_font_scaled(), or
  * the shell default if `font` is NULL (asked for before ui_init() has run).

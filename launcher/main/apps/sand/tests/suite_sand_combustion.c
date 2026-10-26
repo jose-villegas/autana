@@ -2095,7 +2095,7 @@ test_burnt_out_fire_can_leave_smoke(void) {
 }
 
 /* Relative luminance of a rendered cell, 0-255. The palette stores
- * panel-ready (byte-swapped) RGB565, see gfx_color.h, so this undoes
+ * panel-ready (byte-swapped) RGB565, see image/pixel/rgb565.h, so this undoes
  * both before weighting the channels the way an eye does. */
 static int
 cell_luminance(cell_t c) {

@@ -26,7 +26,7 @@
 #define FLOOR_EDGE_PEAK_MS 3724
 #define FLOOR_TIMING_REPS  64
 #define FLOOR_LINE_REPS    32768
-#define FLOOR_LINE_COLOR   GFX_RGB(0xFFFFFF)
+#define FLOOR_LINE_COLOR   RGB565BE(0xFFFFFF)
 #define FLOOR_LINE_LENGTH  64
 #define FLOOR_LINE_X       100
 #define FLOOR_ROW_PREFIX   "boot_floor_"
@@ -44,6 +44,8 @@ extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* 
 #define FLOOR_COUNT_PREFIX "FLOOR_COUNTS"
 
 #include "gfx/present/gfx_test.h"
+#include "image/pixel/bayer.h"
+#include "image/pixel/rgb565.h"
 #include "testkit/cleanup.h"
 
 static bool floor_counting;
@@ -97,7 +99,7 @@ node_projects(uint32_t now_ms, int i, int j, int stride) {
 static __attribute__((noinline)) unsigned
 projected_nodes(uint32_t now_ms, uint8_t reveal) {
     const int half = BOOT_ANIM_MESH_CELLS / 2;
-    const int stride = gfx_dither_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1;
+    const int stride = bayer_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1;
     unsigned count = 0;
     for (int j = -half; j <= half; j += stride) {
         for (int i = -half; i <= half; i += stride) {
