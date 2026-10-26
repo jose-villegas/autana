@@ -386,6 +386,29 @@ test_blit_dither_matches_per_pixel_covers_reference(void) {
     free(source.pixels);
 }
 
+void
+test_blit_dither_clipped_padded_subimage_uses_absolute_phase(void) {
+    fixture();
+    const gfx_color_t bg = RGB565BE(0x203040);
+    const image_t source = make_blit_src();
+    const recti_t window = {7, 5, 53, 29};
+    const image_t part = image_sub(&source, window);
+    const int x = -3, y = -2;
+    const uint8_t alpha = 112;
+
+    draw_clear(bg);
+    draw_blit_dither(x, y, &part, alpha);
+    for (int row = 0; row < GFX_HEIGHT; row++) {
+        for (int col = 0; col < GFX_WIDTH; col++) {
+            const bool covered = col < x + window.w && row < y + window.h && bayer_covers(col, row, alpha);
+            const int index = (window.y + row - y) * BLIT_SRC_STRIDE + window.x + col - x;
+            const gfx_color_t want = covered ? blit_src_pixel(index) : bg;
+            TEST_ASSERT_EQUAL_HEX16(want, pixel_at(col, row));
+        }
+    }
+    free(source.pixels);
+}
+
 /* Compared one ROW at a time, re-rendering both glyphs per row, rather than
  * snapshotting the whole 40x40 box into a stack array: these tests run on
  * the ESP-IDF main task's stack, under 4 KB (CONFIG_ESP_MAIN_TASK_STACK_SIZE),
@@ -1501,6 +1524,7 @@ run_gfx_suite(void) {
     RUN_TEST(test_blit_dither_at_alpha_zero_changes_nothing);
     RUN_TEST(test_blit_dither_at_alpha_255_matches_the_source_exactly);
     RUN_TEST(test_blit_dither_matches_per_pixel_covers_reference);
+    RUN_TEST(test_blit_dither_clipped_padded_subimage_uses_absolute_phase);
     RUN_TEST(test_dithered_text_at_alpha_255_matches_solid_text_exactly);
     RUN_TEST(test_dithered_text_at_low_alpha_draws_fewer_pixels_than_solid);
     RUN_TEST(test_fill_rect_is_clipped_to_the_screen);

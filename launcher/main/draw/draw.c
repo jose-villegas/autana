@@ -4,6 +4,7 @@
 #include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/mathi.h"
 
+#include <assert.h>
 #include <stddef.h>
 #include <string.h>
 #include "image/pixel/bayer.h"
@@ -318,11 +319,10 @@ blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bo
  * decision collapses to four booleans per row: a fully-covered row is a
  * plain memcpy, an untouched row costs nothing. Phase-locked to absolute
  * panel coordinates like every other dithered draw in draw.h, so
- * overlapping dithered shapes stay in register with each other. First
- * user: the boot animation's photograph crossfade (boot_anim.c's
- * draw_image()). */
+ * overlapping dithered shapes stay in register with each other. */
 void
 draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha) {
+    assert(src->format == IMAGE_RGB565BE);
     gfx_surface_t state;
     if (!gfx_draw_begin(&state)) {
         return;

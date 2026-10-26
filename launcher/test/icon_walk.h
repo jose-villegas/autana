@@ -10,7 +10,7 @@
 static inline bool
 icon_test_bit(const image_t* icon, int x, int y) {
     const uint8_t* row = image_row(icon, y);
-    return (row[x / 8] & (0x80 >> (x % 8))) != 0;
+    return image_mono1_ink(row, x);
 }
 
 static inline int

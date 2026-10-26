@@ -44,10 +44,21 @@ test_mono_rows_and_subimage(void) {
     TEST_ASSERT_EQUAL_INT(image.format, sub.format);
 }
 
+static void
+test_large_stride_row_address(void) {
+    uint8_t pixel = 0;
+    const int row = 2;
+    const uint32_t stride = (UINT32_MAX / image_format_bits(IMAGE_RGB565BE) + 1) / row;
+    const size_t offset = (size_t)stride * row * (image_format_bits(IMAGE_RGB565BE) / CHAR_BIT);
+    const image_t image = {.pixels = &pixel, .format = IMAGE_RGB565BE, .width = 1, .height = row + 1, .stride = stride};
+    TEST_ASSERT_EQUAL_size_t(offset, (uintptr_t)image_row(&image, row) - (uintptr_t)&pixel);
+}
+
 void
 run_image_view_suite(void) {
     RUN_TEST(test_rgb565_rows_and_subimage);
     RUN_TEST(test_mono_rows_and_subimage);
+    RUN_TEST(test_large_stride_row_address);
 }
 
 SUITE_REGISTER(run_image_view_suite);

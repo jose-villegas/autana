@@ -7,11 +7,6 @@
 
 #include "math/scalar/mathi.h"
 
-static bool
-ink(const uint8_t* row, int x) {
-    return (row[x / 8] & (uint8_t)(0x80U >> (x % 8))) != 0;
-}
-
 /* The ink's own bounds, not the declared size: a glyph rarely fills its grid,
  * so centring the grid would off-centre what is drawn. False when nothing is
  * inked. */
@@ -21,7 +16,7 @@ ink_box(const image_t* icon, recti_t* out) {
     for (int y = 0; y < icon->height; y++) {
         const uint8_t* row = image_row(icon, y);
         for (int x = 0; x < icon->width; x++) {
-            if (ink(row, x)) {
+            if (image_mono1_ink(row, x)) {
                 *out = recti_union(*out, (recti_t){x, y, 1, 1});
             }
         }
@@ -34,12 +29,12 @@ static void
 emit_runs(const uint8_t* row, int width, int x0, int y0, int scale, icon_emit_fn emit, void* ctx) {
     int x = 0;
     while (x < width) {
-        if (!ink(row, x)) {
+        if (!image_mono1_ink(row, x)) {
             x++;
             continue;
         }
         const int run_start = x;
-        while (x < width && ink(row, x)) {
+        while (x < width && image_mono1_ink(row, x)) {
             x++;
         }
         emit(ctx, (recti_t){x0 + (run_start * scale), y0, (x - run_start) * scale, scale});
