@@ -4,6 +4,7 @@
 
 #include "collections/sort.h"
 #include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 
 static int
 luma(uint32_t rgb) {

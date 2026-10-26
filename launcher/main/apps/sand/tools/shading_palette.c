@@ -2189,8 +2189,7 @@ write_header_banner(FILE* f) {
             "#pragma once\n\n"
             "#include \"gfx/target/gfx_color.h\"\n"
             "#include \"gfx/present/gfx_mode.h\"\n"
-            "#include \"image/palette/palette.h\"\n"
-            "#include \"image/pixel/rgb565.h\"\n\n"
+            "#include \"image/palette/palette.h\"\n\n"
             "#define SAND_PALETTE_UI_ENTRIES %d\n\n",
             UI_ENTRIES - 1, UI_ENTRIES, UI_ENTRIES);
 }

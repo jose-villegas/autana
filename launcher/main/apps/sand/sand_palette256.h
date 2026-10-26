@@ -12,7 +12,6 @@
 #include "gfx/target/gfx_color.h"
 #include "gfx/present/gfx_mode.h"
 #include "image/palette/palette.h"
-#include "image/pixel/rgb565.h"
 
 #define SAND_PALETTE_UI_ENTRIES 16
 

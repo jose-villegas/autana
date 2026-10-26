@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 #include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/view/raster_show.h"

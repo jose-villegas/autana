@@ -15,7 +15,6 @@
 #include <string.h>
 
 #include "gfx/present/gfx_mode.h"
-#include "image/pixel/rgb565.h"
 #include "material.h"
 #include "material_palette.h"
 #include "sand.h"

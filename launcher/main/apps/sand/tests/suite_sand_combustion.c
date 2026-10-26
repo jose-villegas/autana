@@ -31,7 +31,6 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 
 enum { GAS_RISE_TRIALS = 64, GAS_RISE_STEPS = 8, GAS_RISE_W = 64, GAS_RISE_H = 64 };
@@ -2096,7 +2095,7 @@ test_burnt_out_fire_can_leave_smoke(void) {
 }
 
 /* Relative luminance of a rendered cell, 0-255. The palette stores
- * panel-ready (byte-swapped) RGB565, see gfx_color.h, so this undoes
+ * panel-ready (byte-swapped) RGB565, see image/pixel/rgb565.h, so this undoes
  * both before weighting the channels the way an eye does. */
 static int
 cell_luminance(cell_t c) {

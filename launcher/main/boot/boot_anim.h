@@ -35,6 +35,7 @@
 #include "draw/draw_image.h"
 #include "gfx/target/gfx_color.h"
 #include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 #include "math/linear/transformf.h"
 #include "math/linear/vec2i.h"
 #include "math/linear/vec3f.h"

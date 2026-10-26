@@ -1,10 +1,8 @@
 /*
  * draw_font: a font DESCRIPTOR, so gfx can carry more than one font.
  *
- * Pure, like gfx_color.h: no gfx.h, no BSP, no drivers. That is what lets a
- * font's metrics be computed and tested on a host, the same way a colour
- * table can be built and tested without the panel; see gfx_color.h's own
- * top comment for why that split matters on this project.
+ * No drivers or board dependencies, so font metrics can be computed and
+ * tested on a host.
  *
  * The 8x8 bitmap in font8x8_basic.h is wrapped below as draw_font_8x8.
  * This file keeps font metrics pure and host-testable without a framebuffer.

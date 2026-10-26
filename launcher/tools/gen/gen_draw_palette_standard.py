@@ -22,7 +22,7 @@ CUBE_LEVELS = [0, 51, 102, 153, 204, 255]
 
 
 def to_rgb565(rgb888):
-    """RGB565(rgb) (gfx_color.h): truncating, not rounding; two 24-bit
+    """RGB565(rgb) (image/pixel/rgb565.h): truncating, not rounding; two 24-bit
     colours this close together can and do collapse to the same RGB565
     value, which is why every dedup below happens in THIS space, not
     24-bit RGB888."""

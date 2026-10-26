@@ -7,7 +7,6 @@
 #include "build/build_variant.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
-#include "image/pixel/rgb565.h"
 #include "input/input.h"
 
 #define RIDGE_CURVE_POINTS GFX_HEIGHT

@@ -16,7 +16,6 @@
 #include "gfx/target/gfx_color.h"
 #include "image/palette/palette.h"
 #include "image/pixel/bayer.h"
-#include "image/pixel/rgb565.h"
 
 /* OKLab (Ottosson 2020), scaled by 100 so a distance reads like a CIE
  * delta E (about 1-2 is a just noticeable difference), from linear-light
