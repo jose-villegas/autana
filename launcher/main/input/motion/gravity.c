@@ -188,3 +188,8 @@ gravity_in_free_fall(const gravity_t* g) {
     const vec3f_t a = vec3f_add(g->linear, g->down);
     return vec3f_dot(a, a) < GRAVITY_FREE_FALL_G * GRAVITY_FREE_FALL_G;
 }
+
+void
+gravity_set_gyro_bias(gravity_t* g, vec3f_t bias) {
+    g->gyro_bias = bias;
+}

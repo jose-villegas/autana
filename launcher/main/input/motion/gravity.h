@@ -91,6 +91,7 @@ vec3f_t gravity_down(const gravity_t* g);
 vec3f_t gravity_linear(const gravity_t* g);
 /* Learned gyro bias in screen axes, in deg/s. */
 vec3f_t gravity_gyro_bias(const gravity_t* g);
+void gravity_set_gyro_bias(gravity_t* g, vec3f_t bias);
 /* sin of tilt from flat, 0..1; zero during free fall. */
 float gravity_strength(const gravity_t* g);
 /* True when |linear + down| is below GRAVITY_FREE_FALL_G. */
