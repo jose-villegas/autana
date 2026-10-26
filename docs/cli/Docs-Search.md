@@ -28,7 +28,6 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 | `autana docs --section <path:line>` | one section whole, or path#heading words; --deep adds subsections |
 | `autana docs --outline <path>` | a document's headings, with lines and sizes |
 | `autana docs --ask <question...>` | a short answer from the local chat model |
-| `autana docs --usage [--days N]` | what this machine has looked up: counts, repeats, misses, documents refused whole |
 <!-- /generated: cli-docs -->
 
 ## What it reads
@@ -92,45 +91,11 @@ the set:
 | MRR | mean of 1/rank, 0 for a miss: 1.0 is every answer first |
 | top-1, top-3 | share of answers ranked first, and in the first three |
 
-Each run appends its scores to `eval/history.jsonl` in the [log
-folder](#what-it-logs) and prints the last run over the same number of
-questions, so a ranking change shows its effect. With the embeddings cached,
-a run is quick. The unit tests hold exact-word MRR and top-3 to floors on
+`--expect hybrid` or `--expect lexical` fails a run that searched the other
+way, and in CI the score line also goes to the step summary. With the
+embeddings cached, a run is quick. The unit tests hold exact-word MRR and top-3 to floors on
 the set and check that every row still names a real section, so a rename
 that orphans a question fails too.
-
-## What it logs
-
-Every question, `--ask`, `--section` and `--outline` appends one JSON line to
-`queries.jsonl` in `%LOCALAPPDATA%/autana/usage` (elsewhere
-`$XDG_CACHE_HOME/autana/usage`, by default `~/.cache/autana/usage`): the
-time, the question, the best results with their scores, how long it took,
-how many characters it printed, whether meaning was used, and whether the
-answer was weak. It stays on the machine; deleting the folder loses only the
-history.
-
-To group lookups by session, run the commands with `AUTANA_SESSION=<label>`
-in their environment (per process, nothing is stored), or list in the
-`session_vars` [setting](Settings.md) variables your terminal already sets
-per session; the first one set labels the row. `autana docs --usage` counts
-the sessions, and `python scripts/docs/query_log.py --session <label>` shows
-one.
-
-Every lookup tool logs through `query_log.py`, which documents the call a
-tool makes and keeps one evaluation history for all of them; `python
-scripts/docs/eval_summary.py --tool NAME` reports a tool's last score.
-
-`autana docs --usage` summarises every `*.jsonl` in that folder. Another
-tool that writes rows in the format `scripts/docs/query_log.py` documents is
-summarised too:
-
-| Part | Shows |
-|---|---|
-| Per tool and kind | count, share weak, share where a result was opened next (when a row records it), median time, printed output in tokens (`CHARS_PER_TOKEN` in `query_log.py`) |
-| Most asked | questions asked more than once |
-| Missed | weak or empty answers of any kind: the documents to write or retitle |
-
-`--days N` keeps the last N days.
 
 ## Requirements
 
