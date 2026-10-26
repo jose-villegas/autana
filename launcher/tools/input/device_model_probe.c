@@ -6,6 +6,11 @@ int
 main(void) {
     printf("{\"width\":%g,\"height\":%g,\"depth\":%g,\"corner\":%g,", (double)BOARD_DEVICE_WIDTH_MM,
            (double)BOARD_DEVICE_HEIGHT_MM, (double)BOARD_DEVICE_DEPTH_MM, (double)BOARD_DEVICE_CORNER_RADIUS_MM);
+    printf("\"case_width\":%g,\"case_height\":%g,\"case_depth\":%g,\"case_corner\":%g,", (double)BOARD_CASE_WIDTH_MM,
+           (double)BOARD_CASE_HEIGHT_MM, (double)BOARD_CASE_DEPTH_MM, (double)BOARD_CASE_CORNER_RADIUS_MM);
+    printf("\"screen_width\":%g,\"screen_height\":%g,\"back_side\":%g,\"screw_radius\":%g,",
+           (double)BOARD_SCREEN_WIDTH_MM, (double)BOARD_SCREEN_HEIGHT_MM, (double)BOARD_CASE_BACK_SIDE_MM,
+           (double)BOARD_CASE_SCREW_RADIUS_MM);
     printf("\"imu_centre\":[%g,%g,%g],\"imu_size\":[%g,%g,%g],\"chip_axes\":[", (double)BOARD_IMU_CENTRE_X_MM,
            (double)BOARD_IMU_CENTRE_Y_MM, (double)-(BOARD_DEVICE_DEPTH_MM + BOARD_IMU_SIZE_Z_MM / 2),
            (double)BOARD_IMU_SIZE_X_MM, (double)BOARD_IMU_SIZE_Y_MM, (double)BOARD_IMU_SIZE_Z_MM);
