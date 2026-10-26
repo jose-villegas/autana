@@ -129,8 +129,9 @@ and marks the matching panel rectangle dirty; cell (cx, cy) covers `cell_size` x
 
 All four are safe only between frames.
 
-Palettes are a gfx type (`draw/draw_palette.h`, entries 0-15 reserved by
-`DRAW_PALETTE_UI_ENTRIES`).
+The palette type lives in the [image package](../../launcher/packages/image/include/image/palette/palette.h).
+Entries 0-15 are reserved for UI by `DRAW_PALETTE_UI_ENTRIES` in
+[draw_palette_standard.h](../../launcher/main/draw/draw_palette_standard.h).
 
 - Curated palettes ship in `draw/draw_palette_standard.h`, chosen at runtime by name.
 - Building one is the app's work.

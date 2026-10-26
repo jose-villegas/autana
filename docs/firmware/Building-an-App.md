@@ -28,14 +28,15 @@ the shell, not `CMakeLists.txt`:
 /* Hello: the shell calls enter, frame and exit. */
 #include "app/app.h"
 #include "draw/draw.h"
+#include "image/pixel/rgb565.h"
 
 static void
 yours_enter(void) { /* reset state */ }
 
 static void
 yours_frame(uint32_t dt_ms, const input_t* input) {
-    draw_clear(gfx_rgb(0x101010));
-    draw_text(20, 20, "hello", gfx_rgb(0xFFFFFF));
+    draw_clear(RGB565BE(0x101010));
+    draw_text(20, 20, "hello", RGB565BE(0xFFFFFF));
 }
 
 static void

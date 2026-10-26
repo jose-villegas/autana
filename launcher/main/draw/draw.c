@@ -6,6 +6,8 @@
 
 #include <stddef.h>
 #include <string.h>
+#include "image/pixel/bayer.h"
+#include "image/pixel/rgb565.h"
 
 TUNE_OWNER(draw);
 
@@ -107,7 +109,7 @@ put(gfx_target_t target, gfx_color_t* dst, int x, int y, gfx_color_t color, bool
         }
         dst = &gfx_target_row(target, y)[x];
     }
-    *dst = add ? gfx_color_add(*dst, color) : color;
+    *dst = add ? rgb565be_add(*dst, color) : color;
 }
 
 /* Where a line's walk stands: the pixel, its Bresenham error, and (when the
@@ -247,8 +249,8 @@ fill_rect_alpha(const gfx_surface_t* state, int x, int y, int w, int h, gfx_colo
         for (int i = 0; i < rect.w; i++) {
             const int col = rect.x + i;
             if (blend) {
-                dst[col] = gfx_color_mix(dst[col], color, alpha);
-            } else if (gfx_dither_covers(col, row, alpha)) {
+                dst[col] = rgb565be_mix(dst[col], color, alpha);
+            } else if (bayer_covers(col, row, alpha)) {
                 dst[col] = color;
             }
         }
@@ -334,10 +336,10 @@ draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_str
         return;
     }
 
-    const int level = gfx_dither_level(alpha);
+    const int level = bayer_level(alpha);
 
     for (int row = rect.y; row < recti_bottom(rect); row++) {
-        const uint8_t* cells = gfx_dither4x4[row & 3];
+        const uint8_t* cells = bayer4x4[row & 3];
         const bool p[4] = {level > cells[0], level > cells[1], level > cells[2], level > cells[3]};
 
         if (!p[0] && !p[1] && !p[2] && !p[3]) {

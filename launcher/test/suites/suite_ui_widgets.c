@@ -28,6 +28,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
+#include "image/pixel/rgb565.h"
 #include "input/input.h"
 #include "ui/input/ui_bridge.h"
 #include "ui/layout/ui_transform.h"
@@ -804,7 +805,7 @@ assert_menu_list_on_top(void) {
     const gfx_color_t* fb = gfx_framebuffer();
     for (int y = list.y; y < list.y + list.h; y++) {
         for (int x = list.x; x < list.x + list.w; x++) {
-            TEST_ASSERT_NOT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), fb[y * GFX_WIDTH + x],
+            TEST_ASSERT_NOT_EQUAL_MESSAGE(RGB565BE(MENU_INK), fb[y * GFX_WIDTH + x],
                                           "menu ink must not bleed through the opaque list");
         }
     }
@@ -816,14 +817,14 @@ menu_repaint_frames(bool bands) {
     fixture();
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
     ui_canvas_painted_for_test = record_menu_canvas;
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
     const contact_t contact = transformed_contact(MENU_ANCHOR.x + 20, MENU_ANCHOR.y + 20);
     const input_t idle = {0};
     menu_frame(&idle, bands, 0);
     menu_frame(&idle, bands, 0);
     const affine2x_t transform = ui_effective_transform();
     const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){80, 230});
-    TEST_ASSERT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), gfx_framebuffer()[mapped_pixel.y * GFX_WIDTH + mapped_pixel.x],
+    TEST_ASSERT_EQUAL_MESSAGE(RGB565BE(MENU_INK), gfx_framebuffer()[mapped_pixel.y * GFX_WIDTH + mapped_pixel.x],
                               "dense menu commands must all be painted before opening the list");
     menu_frame(&contact.press, bands, 0);
     for (int frame = 0; frame < MENU_FRAMES; frame++) {
@@ -866,7 +867,7 @@ test_dense_bands_match_a_full_repaint(void) {
     TEST_ASSERT_NOT_NULL(expected);
     overflow_frame(false, 1);
     memcpy(expected, gfx_framebuffer(), bytes);
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
     overflow_frame(true, 1);
     TEST_ASSERT_GREATER_THAN_UINT32(0, ui_band_fallback_count());
     TEST_ASSERT_EQUAL_MEMORY(expected, gfx_framebuffer(), bytes);
@@ -915,7 +916,7 @@ test_ui_end_in_band_mode_is_replayed_over_each_band(void) {
     gfx_read_panel_row(BUTTON.y + (BUTTON.h / 2), row);
     gfx_readback_end();
     gfx_readback_end();
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(MENU_INK), row[BUTTON.x + (BUTTON.w / 2)]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(MENU_INK), row[BUTTON.x + (BUTTON.w / 2)]);
     TEST_ASSERT_EQUAL_HEX16(UNDER_UI, row[BUTTON.x / 2]);
     gfx_reset_for_test();
 }
@@ -925,7 +926,7 @@ test_closing_the_list_restores_the_pixels_under_it(void) {
     TEST_ASSERT_TRUE(gfx_init());
     fixture();
     paint_frames = true;
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
 
     const input_t idle = {0};
     dropdown_frame(&idle, 0);
@@ -1457,7 +1458,7 @@ SUITE_READS(run_ui_widgets_suite, SAND_PACK);
 static void
 paint_menu_band(int row0, int row1, gfx_color_t* target) {
     (void)target;
-    draw_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(UI_BACKGROUND));
+    draw_rect(0, row0, GFX_WIDTH, row1 - row0, RGB565BE(UI_BACKGROUND));
     ui_replay_band(row0, row1);
 }
 
@@ -1609,7 +1610,7 @@ static const sand_options_t BAND_OPTIONS = {
 static void
 paint_options_band(int row0, int row1, gfx_color_t* target) {
     (void)target;
-    draw_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(UI_BACKGROUND));
+    draw_rect(0, row0, GFX_WIDTH, row1 - row0, RGB565BE(UI_BACKGROUND));
     ui_replay_band(row0, row1);
 }
 

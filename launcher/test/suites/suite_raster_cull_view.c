@@ -15,6 +15,7 @@
 #include "unity.h"
 
 #include "core/tune.h"
+#include "image/pixel/rgb565.h"
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
@@ -524,7 +525,7 @@ pixels_of(const scene_t* s, uint32_t rgb) {
     const gfx_color_t* color = raster_color(&s->context.raster);
     int count = 0;
     for (int p = 0; p < W * H; p++) {
-        count += color[p] == GFX_RGB(rgb);
+        count += color[p] == RGB565BE(rgb);
     }
     return count;
 }
@@ -620,7 +621,7 @@ dash_pixels_of(const scene_t* s, uint32_t rgb, bool on) {
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
             const bool lit = ((x + y) / CULLED_DASH_RUN) % 2 == 0;
-            count += lit == on && color[(y * W) + x] == GFX_RGB(rgb);
+            count += lit == on && color[(y * W) + x] == RGB565BE(rgb);
         }
     }
     return count;

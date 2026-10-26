@@ -33,6 +33,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
+#include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 
 /* See reaction_t.roots and docs/sand/Sand-Simulation.md's tree-feeding
@@ -916,17 +917,17 @@ test_a_continuously_watered_root_system_still_saturates(void) {
  * luminance, so a hue drift cannot pass as "darker". */
 static unsigned
 r5(gfx_color_t c) {
-    return gfx_rgb565_r5(gfx_color_swap(c));
+    return rgb565_r5(rgb565_swap(c));
 }
 
 static unsigned
 g6(gfx_color_t c) {
-    return gfx_rgb565_g6(gfx_color_swap(c));
+    return rgb565_g6(rgb565_swap(c));
 }
 
 static unsigned
 b5(gfx_color_t c) {
-    return gfx_rgb565_b5(gfx_color_swap(c));
+    return rgb565_b5(rgb565_swap(c));
 }
 
 static void
@@ -1685,7 +1686,7 @@ test_ice_is_its_own_colour(void) {
     const gfx_color_t* pal = material_palette();
     const gfx_color_t ice = pal[MATX(MATX_ICE)];
 
-    TEST_ASSERT_EQUAL_MESSAGE(GFX_RGB(0xB6E4F2), ice,
+    TEST_ASSERT_EQUAL_MESSAGE(RGB565BE(0xB6E4F2), ice,
                               "ice must be the pale blue its own palette entry names - anything "
                               "else means the entry is being read from somewhere other than "
                               "where it was written");
