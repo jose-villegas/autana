@@ -429,8 +429,8 @@ ui_swatch_grid(mu_Context* ctx, mu_Rect r, const uint32_t* colors, int cols, int
     ui_swatch_command_t* cmd = ui_push_clipped_command(ctx, UI_COMMAND_SWATCHES, (int)size, r);
     if (cmd != NULL) {
         cmd->rect = r;
-        cmd->cols = cols;
-        cmd->rows = rows;
+        cmd->cols = (int16_t)cols;
+        cmd->rows = (int16_t)rows;
         memcpy(cmd->rgb, colors, (size_t)count * sizeof *colors);
     }
 }
