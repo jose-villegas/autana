@@ -17,7 +17,7 @@
 
 #include "display/viewport.h"
 #include "math/linear/mat4f.h"
-#include "math/linear/projectf.h"
+#include "math/projection/projectf.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_instance.h"
 #include "render/r3d_lit_mesh.h"

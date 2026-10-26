@@ -43,6 +43,8 @@ PERF_TARGET_RE = re.compile(
     r"PERF TARGET (?!SUMMARY:)(?P<name>.+?): measured (?P<measured>\d+) us, "
     r"goal (?P<goal>\d+) us, distance (?P<distance>[+-]?\d+(?:\.\d+)?%)")
 PERF_SUMMARY_RE = re.compile(r"PERF TARGET SUMMARY:\s*(?P<unmet>\d+)\s*unmet")
+# A target whose goal is still zero (perf_goal in launcher/test/perf_budget.h).
+PERF_UNPEGGED_RE = re.compile(r"PERF TARGET (?P<name>.+?): measured (?P<measured>\d+) us, goal not yet pegged")
 # A measurement a perf test logs before its own result line, e.g.
 # "I (32138) device_tests: sand_step on 184x224 with 10304 grains: 7159 us".
 # The first number followed by "us" is the measurement: sizes and counts
@@ -163,6 +165,11 @@ def parse_perf_targets(text):
         if m:
             targets.append(m.groupdict())
     return targets, summary_unmet
+
+
+def parse_unpegged_targets(text):
+    """Targets measured with no goal yet, as {name, measured}."""
+    return [m.groupdict() for m in PERF_UNPEGGED_RE.finditer(text)]
 
 
 def parse_timed_results(text):

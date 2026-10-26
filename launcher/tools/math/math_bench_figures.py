@@ -47,12 +47,8 @@ def number_types(rows):
     return ordered
 
 
-def render(rows, measured, items):
-    type_order = number_types(rows)
-    type_indices = {kind: index for index, kind in enumerate(type_order)}
-    metadata = {row[0]: row for row in rows}
-    pairs = {item.fast: item.plain for item in items}
-    references = set(pairs.values())
+def panel_groups(rows, references):
+    """(family, {tick label: rows}) per non-empty family, ticks in row order."""
     panels = []
     for family in bench.ROW_FAMILIES:
         if family == "calibration":
@@ -64,10 +60,20 @@ def render(rows, measured, items):
                 continue
             label = re.sub(r" \([^)]*\)$", "", label)
             if "_to_" in kind:
-                label += " " + kind.replace("_to_", "\u2192")
+                label += " " + kind.replace("_to_", "→")
             groups.setdefault(label, []).append(row)
         if groups:
             panels.append((family, groups))
+    return panels
+
+
+def render(rows, measured, items):
+    type_order = number_types(rows)
+    type_indices = {kind: index for index, kind in enumerate(type_order)}
+    metadata = {row[0]: row for row in rows}
+    pairs = {item.fast: item.plain for item in items}
+    references = set(pairs.values())
+    panels = panel_groups(rows, references)
     if not panels:
         raise ValueError("no benchmark families to plot")
     fig, axes = subplots(len(panels), 1, (FIGURE_WIDTH, PANEL_HEIGHT * len(panels)), squeeze=False)

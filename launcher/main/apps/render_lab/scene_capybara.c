@@ -22,7 +22,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "input/mapping/orbit_motion_touch.h"
-#include "math/motion/orbit_motion.h"
+#include "kinematics/orbit/orbit_motion.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
@@ -69,10 +69,7 @@ static char failure[48];
 
 static void
 fail(const char* what) {
-    ESP_LOGE(TAG, "%s; the scene stays blank", what);
-    if (snprintf(failure, sizeof failure, "%s", what) < 0) {
-        failure[0] = '\0';
-    }
+    render_lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
 static void

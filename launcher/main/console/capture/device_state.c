@@ -29,5 +29,5 @@ device_state_read(device_state_t* out) {
     out->quarter = display_quarter_now();
 
     out->imu_ready = imu_ready();
-    out->imu_read_ok = out->imu_ready && imu_read(&out->imu);
+    out->imu_read_ok = out->imu_ready && imu_read(&out->imu, NULL);
 }

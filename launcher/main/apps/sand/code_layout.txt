@@ -10,6 +10,7 @@ sand_step	j-back	18	92	4	14
 sand_step	j-back	22	40	2	40
 sand_step	blti-back	25	30	2	66
 sand_step	j-back	12	91	4	66
+sand_step	blti-back	4	42	2	66
 sand_step	j-back	8	24	1	66
 sand_step	loop	28	23	2	95
 sand_step	loop	0	5	1	80

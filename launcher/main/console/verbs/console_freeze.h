@@ -10,7 +10,7 @@
  * borders mark one frame's sends and are gone by the next.
  *
  * The verbs only post a frame request (console_frame_request.h); the
- * frame loop applies it and asks whether to run each pass. See console.c's
+ * frame loop answers it and asks whether to run each pass. See console.c's
  * top comment for why nothing here may draw on the console task.
  * Development builds only; see console.h.
  *
@@ -21,12 +21,6 @@
 #pragma once
 
 #include <stdbool.h>
-
-#include "console/console_frame_request.h"
-
-/* The frame loop, on every pass that takes requests, before any early
- * return: applies a FREEZE, RESUME or STEP among them. */
-void console_freeze_apply(const console_frame_request_t* requests);
 
 /* True to run this pass as usual, false to hold: no app step, nothing
  * sent. Once per pass: a true return spends one STEP's credit. */

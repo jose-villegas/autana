@@ -175,7 +175,7 @@ Use `ESP_PLATFORM` for hardware guards inside packages.
    - Nothing else lists it: no `suites.h` entry, no call in `host_main.c` or `selftest.c`.
    - Both runners discover `suite_*.c`, so it joins the full scope and runs alone with `autana suite run_<name>_suite`.
    - If a perf capture needs it, declare it in `launcher/test/scope_perf.cmake` (engine suite) or the app's `scope_perf.cmake`, with every other source the run links. See [scoped builds](../tools/Build-Variants.md#a-diagnostics-build-can-be-scoped).
-4. **Name any pack it reads.** A suite that reads a pack from the tree (`asset_store_pack()`, directly or via `scene_load()`) adds `SUITE_READS(run_<name>_suite, SPONZA_SCENE);` beside its registration. The host run fails when a suite reads a pack it did not name.
+4. **Name any pack it reads.** A suite that reads a pack from the tree (`asset_store_load()`, directly or via `scene_load()`) adds `SUITE_READS(run_<name>_suite, SPONZA_SCENE);` beside its registration. The host run fails when a suite reads a pack it did not name.
 5. **Guard hardware with `#ifdef ESP_PLATFORM` in packages or `#ifdef DEVICE_BUILD` in engine suites,** the `RUN_TEST` line included. A portable suite can have a device-only section: `suite_job.c` runs every test on both and fences the one assertion that holds only on a host, where a job runs inline instead of on a second core.
 6. **Keep big fixtures off `.bss`** (below).
 7. **Stick to ISO C.** The host runner compiles with `-std=c11`, which on glibc hides POSIX-only functions (`strnlen`, `strdup`) that a Windows toolchain declares unconditionally. Suites must build on both.

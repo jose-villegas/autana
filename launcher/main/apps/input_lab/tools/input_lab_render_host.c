@@ -5,6 +5,8 @@
 #include "apps/input_lab/imu_probe.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
+#include "input/motion/imu.h"
+#include "input/motion/motion_reader.h"
 #include "math/scalar/units.h"
 #include "render_host.h"
 #include "ui/layout/ui_transform.h"
@@ -35,6 +37,11 @@ display_quarter_now(void) {
 }
 
 bool
+imu_ready(void) {
+    return true;
+}
+
+bool
 input_read_motion(input_motion_t* out) {
     *out = (input_motion_t){.acceleration = {INPUT_ACCEL_ONE_G / 4, INPUT_ACCEL_ONE_G / 8, INPUT_ACCEL_ONE_G}};
     if (orientation) {
@@ -52,6 +59,12 @@ input_read_motion(input_motion_t* out) {
                                       direction.z * INPUT_ACCEL_ONE_G};
     }
     return true;
+}
+
+bool
+input_read_motion_sequence(input_motion_t* out, uint32_t* sequence) {
+    *sequence = (uint32_t)clock_frame;
+    return input_read_motion(out);
 }
 
 bool

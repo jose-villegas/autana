@@ -42,6 +42,7 @@ permissions:
 
 env:
   NIGHT_START: ${{ vars.NIGHT_START }}
+  NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
   GPU_WORKFLOW: bakes-gpu.yml
 
 jobs:
