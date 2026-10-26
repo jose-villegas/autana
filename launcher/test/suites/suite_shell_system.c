@@ -63,6 +63,7 @@ note(const char* system, const char* phase, uint32_t dt_ms) {
 }
 
 #define FAKE_SYSTEM(id)                                                                                                \
+    static void id##_poll(uint32_t dt_ms) { note(#id, "poll", dt_ms); }                                                \
     static void id##_update(uint32_t dt_ms) { note(#id, "update", dt_ms); }                                            \
     static void id##_compose(uint32_t dt_ms) { note(#id, "compose", dt_ms); }                                          \
     static void id##_app_exit(void) { note(#id, "app_exit", 0); }
@@ -76,14 +77,26 @@ static shell_system_t
 fake(const char* name, int order) {
     switch (name[0]) {
         case 'a':
-            return (shell_system_t){
-                .name = name, .order = order, .update = a_update, .compose = a_compose, .app_exit = a_app_exit};
+            return (shell_system_t){.name = name,
+                                    .order = order,
+                                    .poll = a_poll,
+                                    .update = a_update,
+                                    .compose = a_compose,
+                                    .app_exit = a_app_exit};
         case 'b':
-            return (shell_system_t){
-                .name = name, .order = order, .update = b_update, .compose = b_compose, .app_exit = b_app_exit};
+            return (shell_system_t){.name = name,
+                                    .order = order,
+                                    .poll = b_poll,
+                                    .update = b_update,
+                                    .compose = b_compose,
+                                    .app_exit = b_app_exit};
         default:
-            return (shell_system_t){
-                .name = name, .order = order, .update = c_update, .compose = c_compose, .app_exit = c_app_exit};
+            return (shell_system_t){.name = name,
+                                    .order = order,
+                                    .poll = c_poll,
+                                    .update = c_update,
+                                    .compose = c_compose,
+                                    .app_exit = c_app_exit};
     }
 }
 
@@ -109,6 +122,7 @@ run_app_exit(uint32_t dt_ms) {
 }
 
 static const phase_t phases[] = {
+    {"poll", shell_systems_poll},
     {"update", shell_systems_update},
     {"compose", shell_systems_compose},
     {"app_exit", run_app_exit},
@@ -185,7 +199,7 @@ test_each_system_is_given_the_passes_own_time(void) {
         systems[1] = fake("b", 20);
         shell_system_register(&systems[0]);
         shell_system_register(&systems[1]);
-        for (int p = 0; p < 2; p++) { /* the two phases that take time */
+        for (int p = 0; p < PHASE_COUNT - 1; p++) {
             call_count = 0;
             phases[p].run(dts[i]);
             expect_calls(phases[p].phase, both, 2, &phases[p], dts[i]);
@@ -197,12 +211,12 @@ static void
 test_a_system_whose_phase_is_null_is_skipped_by_that_phase_alone(void) {
     fixture();
     /* a draws only; b only frees. */
-    systems[0] = (shell_system_t){.name = "a", .order = 10, .update = a_update, .compose = a_compose};
+    systems[0] = (shell_system_t){.name = "a", .order = 10, .poll = a_poll, .update = a_update, .compose = a_compose};
     systems[1] = (shell_system_t){.name = "b", .order = 20, .app_exit = b_app_exit};
     shell_system_register(&systems[1]);
     shell_system_register(&systems[0]);
 
-    static const char* const runs[PHASE_COUNT] = {"a", "a", "b"};
+    static const char* const runs[PHASE_COUNT] = {"a", "a", "a", "b"};
     for (int p = 0; p < PHASE_COUNT; p++) {
         call_count = 0;
         phases[p].run(16);

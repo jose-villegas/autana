@@ -19,7 +19,7 @@ static const ui_icon_name_t NAMES[SAND_ICON_COUNT] = {
 
 static draw_image_t icons[SAND_ICON_COUNT];
 
-ui_icon_set_t sand_icon_set = {SAND_PACK, NAMES, SAND_ICON_COUNT, icons, false};
+ui_icon_set_t sand_icon_set = {SAND_PACK, NAMES, SAND_ICON_COUNT, icons, false, HANDLE_NONE};
 
 const draw_image_t*
 sand_icon(sand_icon_id_t id) {

@@ -36,13 +36,13 @@ python scripts/ci/local_gates.py run --out build/local-gates --tier rel,dev,diag
 
 | Tier | Selection |
 |---|---|
-| `host` | Always selected; includes container gates using the local ESP-IDF environment |
+| `host` | Default when `--tier` is omitted; includes container gates using the local ESP-IDF environment |
 | `rel`, `dev`, `diag` | Selected with `--tier`; builds the variant before its gates |
 | `qemu` | Selected with `--tier qemu`; needs the patched emulator |
 
-Builds run incrementally. Unselected tiers print `NOT RUN` and never count as
-passing. Steps use their workflow shell. ESP-IDF gates need the pinned local
-toolchain.
+`--tier` selects exactly the listed tiers. Builds run incrementally.
+Unselected tiers print `NOT RUN` and never count as passing. Steps use their
+workflow shell. ESP-IDF gates need the pinned local toolchain.
 
 The exclusion reasons live in `OUT_OF_SCOPE` in
 [`local_gates.py`](../../scripts/ci/local_gates.py). Host-wide installs are
