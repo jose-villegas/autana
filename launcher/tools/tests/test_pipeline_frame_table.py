@@ -210,29 +210,25 @@ class PipelineFrameTableTests(unittest.TestCase):
         self.assertAlmostEqual(untimed, 40 - 14 - 24.7 - 0.1 - 1.0)
         self.assertAlmostEqual(stages["stage.outer"][2], 0.05)
 
-    def test_laps_leaving_too_much_of_a_parent_untimed_fail(self):
+    def assert_capture_fails(self, text, message):
         with tempfile.TemporaryDirectory() as directory:
-            path = self.write_laps(directory, self.LAP_CAPTURE.replace("stage.inner.fill 24.700/0", "stage.inner.fill 20.000/0"))
-            with self.assertRaisesRegex(ValueError, "stage.inner's 40.00 ms untimed"):
-                frame_stages.sub_stages(path)
+            with self.assertRaisesRegex(ValueError, message):
+                frame_stages.sub_stages(self.write_laps(directory, text))
+
+    def test_laps_leaving_too_much_of_a_parent_untimed_fail(self):
+        self.assert_capture_fails(self.LAP_CAPTURE.replace("stage.inner.fill 24.700/0", "stage.inner.fill 20.000/0"),
+                                  "stage.inner's 40.00 ms untimed")
 
     def test_laps_adding_up_past_their_parent_fail_too(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = self.write_laps(directory, self.LAP_CAPTURE.replace("stage.inner.fill 24.700/0", "stage.inner.fill 26.000/0"))
-            with self.assertRaisesRegex(ValueError, "untimed"):
-                frame_stages.sub_stages(path)
+        self.assert_capture_fails(self.LAP_CAPTURE.replace("stage.inner.fill 24.700/0", "stage.inner.fill 26.000/0"),
+                                  "untimed")
 
     def test_a_lap_naming_no_bracket_of_the_capture_fails(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = self.write_laps(directory, self.LAP_CAPTURE.replace("stage.inner.fill", "stage.gone.fill"))
-            with self.assertRaisesRegex(ValueError, "inside no bracket of the capture: stage.gone"):
-                frame_stages.sub_stages(path)
+        self.assert_capture_fails(self.LAP_CAPTURE.replace("stage.inner.fill", "stage.gone.fill"),
+                                  "inside no bracket of the capture: stage.gone")
 
     def test_a_capture_without_laps_fails(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = self.write_laps(directory, "ms/frame avg/worst: stage.outer 5/5  stage.inner 40/40 | total 45\n")
-            with self.assertRaisesRegex(ValueError, "no lap windows"):
-                frame_stages.sub_stages(path)
+        self.assert_capture_fails("ms/frame avg/worst: stage.outer 5/5  stage.inner 40/40 | total 45\n", "no lap windows")
 
     def test_sub_stage_bars_add_up_to_their_parent_and_keep_a_colour_per_phase(self):
         import matplotlib.pyplot as plt
