@@ -206,7 +206,7 @@ mount_step(asset_store_mount_t* mount, size_t budget) {
         mount->status = mount->opener.status;
         complete_mount(mount);
     }
-    return (mount->opener.offset - before) + (size_t)(mount->opener.entry - entry_before) * ASSET_PACK_ENTRY_SIZE;
+    return (mount->opener.offset - before) + ((size_t)(mount->opener.entry - entry_before) * ASSET_PACK_ENTRY_SIZE);
 }
 
 void
