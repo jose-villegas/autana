@@ -23,6 +23,39 @@
 #include "ui/ui.h"
 #include "ui/ui_canvas_marks.h"
 
+enum { UI_COMMAND_IMAGE = MU_COMMAND_MAX, UI_COMMAND_SWATCHES };
+
+typedef struct {
+    mu_BaseCommand base;
+    mu_Rect rect;
+    mu_Color color;
+    const draw_image_t* image;
+} ui_image_command_t;
+
+typedef struct {
+    mu_BaseCommand base;
+    mu_Rect rect;
+    int16_t cols, rows;
+    uint32_t rgb[1];
+} ui_swatch_command_t;
+
+static inline mu_Rect
+ui_swatch_cell_rect(const ui_swatch_command_t* grid, int col, int row) {
+    const mu_Rect r = grid->rect;
+    const int x0 = r.x + col * r.w / grid->cols;
+    const int x1 = r.x + (col + 1) * r.w / grid->cols;
+    const int y0 = r.y + row * r.h / grid->rows;
+    const int y1 = r.y + (row + 1) * r.h / grid->rows;
+    return (mu_Rect){x0, y0, x1 - x0, y1 - y0};
+}
+
+#if UINTPTR_MAX == UINT32_MAX
+_Static_assert(sizeof(ui_image_command_t) == 32, "image command device budget");
+#endif
+
+/* Custom drawing commands share microui's icon clipping protocol. */
+void* ui_push_clipped_command(mu_Context* ctx, int type, int size, mu_Rect rect);
+
 static inline recti_t
 ui_recti_from_mu(mu_Rect r) {
     return (recti_t){r.x, r.y, r.w, r.h};
@@ -131,11 +164,8 @@ ui_rgb(uint32_t rgb) {
  * uncleared, showing a previous app's frame. */
 int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
 
-/* `icon` filling `r` in `color`, its runs streamed by icon_walk_blocks()
- * rather than collected, so an icon's run count does not bound artwork. A
- * NULL `icon` (no pack holds it) draws `text` centred in `r` instead, in the
- * current font; a control with a label beside its icon passes NULL `text`
- * and keeps the label alone. */
+/* An image is one command; its runs are streamed at paint time. A NULL
+ * image draws the centred text fallback in the current font. */
 void ui_draw_icon(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color);
 
 /* An integer-valued slider over the next layout row, shaped like
