@@ -27,7 +27,7 @@ Coordinates are pixels of the default `autana screenshot`
 ([Watch](Watch.md)), whichever way the board is held; read a button's centre
 off that image. Pixels from an `--as-shown` or `--framebuffer` capture are in
 another frame and may miss. `sound onset` is explained in the
-[sound mixer](../audio/Sound-Mixer.md#clicks-at-start-stop-and-amplifier-changes).
+[clicks](../audio/Clicks.md#measuring-an-onset).
 
 An app's own console command is sent with the same word, without a prefix:
 [App-Commands.md](App-Commands.md).
