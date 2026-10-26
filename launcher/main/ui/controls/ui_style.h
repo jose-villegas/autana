@@ -67,7 +67,7 @@ typedef struct {
 #define UI_BEZEL_SHADOW    120
 
 /* Mix a colour toward white (t > 0) or black (t < 0), |t| out of 255.
- * Plain 8-bit channels, unlike gfx_color_mix() in gfx_color.h, which
+ * Plain 8-bit channels, unlike rgb565be_mix() in rgb565.h, which
  * unpacks the panel's byte-swapped RGB565 first: a style works in
  * microui's colour space, never sees a panel pixel; the conversion
  * happens once, in ui.c's draw_command(). Same rounded

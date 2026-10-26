@@ -10,6 +10,7 @@
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "esp_log.h"
+#include "image/pixel/rgb565.h"
 
 static const char* TAG = "gfx";
 
@@ -336,7 +337,7 @@ mark_leaf_borders(int row, int y0, int height, gfx_color_t* buf) {
     for (int i = 0; i < n; i++) {
         const recti_t* r = &leaf_rect_scratch[i];
         gfx_color_t* at = buf + ((size_t)(r->y - y0) * GFX_WIDTH) + r->x;
-        mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
+        mark_rect_border(at, GFX_WIDTH, r->w, r->h, RGB565BE(0x00FF00));
     }
 }
 
@@ -348,7 +349,7 @@ mark_strip_overlay(gfx_color_t* slot, int row) {
     const int y = row * STRIP_HEIGHT;
     if (debug_overlay_on) {
         for (int col = 0; col < GRID_COLS; col++) {
-            mark_rect_border(slot + (col * COL_WIDTH), GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, gfx_rgb(0x00FFFF));
+            mark_rect_border(slot + (col * COL_WIDTH), GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, RGB565BE(0x00FFFF));
         }
     }
     if (leaf_overlay_on) {
@@ -376,13 +377,13 @@ draw_overlay_borders(int y, int leaf_n) {
     if (debug_overlay_on) {
         for (int col = 0; col < GRID_COLS; col++) {
             gfx_color_t* cell = present_fb + ((size_t)y * GFX_WIDTH) + (col * COL_WIDTH);
-            mark_rect_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, gfx_rgb(0x00FFFF));
+            mark_rect_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, RGB565BE(0x00FFFF));
         }
     }
     for (int i = 0; i < leaf_n; i++) {
         const recti_t* r = &leaf_rect_scratch[i];
         gfx_color_t* at = present_fb + ((size_t)r->y * GFX_WIDTH) + r->x;
-        mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
+        mark_rect_border(at, GFX_WIDTH, r->w, r->h, RGB565BE(0x00FF00));
     }
 }
 
@@ -451,7 +452,7 @@ send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued)
 void
 mark_band_overlay(gfx_color_t* buf, int row0, int height) {
     if (debug_overlay_on) {
-        mark_rect_border(buf, GFX_WIDTH, GFX_WIDTH, height, gfx_rgb(0x00FFFF));
+        mark_rect_border(buf, GFX_WIDTH, GFX_WIDTH, height, RGB565BE(0x00FFFF));
     }
     if (leaf_overlay_on) {
         const int row_first = row0 / STRIP_HEIGHT;

@@ -211,7 +211,7 @@ def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, *
 
 
 def panel_colour(rgb):
-    """The panel's RGB565 with its bytes swapped, what GFX_RGB(0xRRGGBB) gives."""
+    """The panel's RGB565 with its bytes swapped, what RGB565BE(0xRRGGBB) gives."""
     c = np.asarray(rgb, dtype=np.int64)
     return gfx_color.swap(gfx_color.rgb565(c[:, 0], c[:, 1], c[:, 2])).astype("<u2")
 
