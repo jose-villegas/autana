@@ -150,7 +150,8 @@ options(int argc, char** argv) {
         return false;
     }
     if (at != NULL) {
-        int x, y;
+        int x;
+        int y;
         if (sscanf(at, "%d,%d", &x, &y) != 2) {
             (void)fprintf(stderr, "render_lab_render_host: --tap is X,Y in panel pixels, not %s\n", at);
             return false;
