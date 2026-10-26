@@ -102,7 +102,7 @@ Every item in this section is approved.
 | scene | `scene_load(id)`, `scene_find(name)`, `scene_entity_set_local()`, `scene_entity_set_enabled()`, `scene_animator_*()`, `scene_renderer_set_skin()`, `scene_activate(scene, "camera name")`; packed per scene (`locals[]`, `flags[]`, `renderers[]`, `cameras[]`, `animators[]`, `skinned_renderers[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string |
 | render | apps call `raster_draw()`, `render_view_make()`, `r3d_pipeline_*` directly | no app call: a `renderer` component draws, an active `camera` entity views; render settings (resolution) are a scene-level component `[M]` | a bench app's tests drive the raster directly: they move to render's own tests |
 | anim | the animator component and `scene_animator_*()`; sampler, binding, pose and layer stay behind `scene/scene.h`; boot calls `anim_tracks_*` and samples its tracks directly | `animator` component and `scene_animator_play()` (the animation sketch's face); sampler and binding private | boot's animation is not a scene |
-| asset | apps call `asset_store_pack()`, `asset_pack_find()` | no per-frame system: a component names content by asset id `[M]`, resolved when the scene loads or the component attaches; pack format and store private | direct store calls from apps |
+| asset | apps call `asset_store_load()`, `asset_pack_find()` | no per-frame system: a component names content by asset id `[M]`, resolved when the scene loads or the component attaches; pack format and store private | direct store calls from apps |
 
 ### Private headers apps include today
 
@@ -226,7 +226,7 @@ recti_t gfx_clip_save(void);
 void gfx_clip_restore(recti_t clip);
 ```
 
-`gfx_rgb()` is inline in `gfx_color.h`. Only `gfx/present/` sources include
+`RGB565BE()` is a constant-expression macro in `image/pixel/rgb565.h`. Only `gfx/present/` sources include
 `gfx_internal.h`.
 
 ### Include tiers in `check_style_audit.py`

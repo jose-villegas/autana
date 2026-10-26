@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       override:
-        description: Render outside the local night window
+        description: Start now instead of at the next NIGHT_START
         type: boolean
         default: false
       force:
@@ -15,7 +15,7 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '0 16 * * *'
+    - cron: '17 20 * * *'
   workflow_run:
     workflows: [Bakes GPU]
     types: [completed]
@@ -33,6 +33,7 @@ permissions:
 env:
   GH_TOKEN: ${{ github.token }}
   NIGHT_START: ${{ vars.NIGHT_START }}
+  NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
   GPU_WORKFLOW: doc-images-gpu.yml
   REFRESH_BRANCH: feature/refresh-doc-images-gpu
   MPLBACKEND: Agg
@@ -64,15 +65,46 @@ jobs:
             echo "doc images current: latest main run recorded inputs $fingerprint"
           else
             echo "inputs $fingerprint: not current (latest main record differs, another run unfinished, or force)"
-            echo "GPU images pending; render in the local night window." >> "$GITHUB_STEP_SUMMARY"
+            echo "GPU images pending; renders at the next NIGHT_START." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  refresh:
+  marker:
     needs: fingerprint
     if: github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      SCHEDULE: ${{ github.event.schedule }}
+    outputs:
+      marker: ${{ steps.marker.outputs.marker }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: marker
+        run: python3 scripts/lib/local_schedule.py marker
+
+  wait:
+    needs: [fingerprint, marker]
+    if: github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    strategy:
+      max-parallel: 1
+      matrix:
+        leg: [1, 2, 3, 4, 5]
+    env:
+      MARKER: ${{ needs.marker.outputs.marker }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: python3 scripts/lib/local_schedule.py wait --until "$MARKER"
+
+  refresh:
+    needs: [fingerprint, marker, wait]
+    if: github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'
     runs-on: [self-hosted, linux, gpu]
-    # 7 h MAX_EVENING_WAIT + 13 h (18:00–07:00 cap) + 1 h setup/publish = 1260 min.
-    timeout-minutes: 1260
+    # Hang guard under the 24 h GITHUB_TOKEN life; work gets a fresh token after the hosted wait.
+    timeout-minutes: 1380
+    env:
+      MARKER: ${{ needs.marker.outputs.marker }}
     concurrency:
       group: doc-images-gpu
       cancel-in-progress: false

@@ -13,12 +13,18 @@
 /* Every system's place in a pass, all in one list, so a new system is
  * placed against the ones already here rather than guessed. Gaps leave room
  * to insert one between two others. */
+#define SHELL_ORDER_ASSET   90
+/* Token users must cancel requests while their owners are still checkable. */
+#define SHELL_ORDER_PENDING 95
 #define SHELL_ORDER_SCENE   100
 #define SHELL_ORDER_CONSOLE 110
 
 typedef struct shell_system {
     const char* name;
     int order; /* a SHELL_ORDER_* constant */
+
+    /* Every pass, before frame(); callbacks may touch app state on core 0. */
+    void (*poll)(uint32_t dt_ms);
 
     /* While the last frame is still being sent: no framebuffer may be
      * touched. Runs only on a pass that overlaps the present. */
@@ -43,6 +49,7 @@ void shell_system_register(shell_system_t* system);
 #define SHELL_SYSTEM_REGISTER(symbol)                                                                                  \
     __attribute__((constructor)) static void symbol##_register(void) { shell_system_register(&symbol); }
 
+void shell_systems_poll(uint32_t dt_ms);
 void shell_systems_update(uint32_t dt_ms);
 void shell_systems_compose(uint32_t dt_ms);
 void shell_systems_app_exit(void);
