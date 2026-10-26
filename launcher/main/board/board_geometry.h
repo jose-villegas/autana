@@ -29,7 +29,7 @@
 #define BOARD_CASE_BACK_SIDE_MM        27.60F
 #define BOARD_CASE_SCREW_RADIUS_MM     1.80F
 /* The screen's visible area through the case (dimension drawing): 368 x 448
- * square pixels of 0.078 mm. */
+ * square pixels. */
 #define BOARD_SCREEN_WIDTH_MM          28.70F
 #define BOARD_SCREEN_HEIGHT_MM         34.94F
 
@@ -50,7 +50,7 @@
 #define BOARD_USB_C_SIZE_Z_MM          3.26F
 #define BOARD_USB_C_CENTRE_Z_MM        (-(BOARD_DEVICE_DEPTH_MM + BOARD_USB_C_SIZE_Z_MM / 2))
 
-/* Left-side openings: vendor dimension drawing's side view (about 7.3 px/mm),
+/* Left-side openings: vendor dimension drawing's side view,
  * oriented against the PCB using Waveshare's open-back photo. */
 #define BOARD_SPEAKER_PORT_DIAMETER_MM 2.5F
 #define BOARD_SPEAKER_PORT_Y_MM        17.4F
