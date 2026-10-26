@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 #include "math/scalar/fixed.h"
+#include "math/scalar/mathf.h"
 #include "math/scalar/mathf_round.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/trig.h"
@@ -129,12 +130,16 @@ mathx_one(void) {
     return MATHX_ONE;
 }
 
-#define MATHX_RSQRT_SEED_BITS          6
-#define MATHX_RSQRT_WORD_BITS          32
-#define MATHX_RSQRT_SHIFT              30
-#define MATHX_RSQRT_MIN                (UINT32_C(1) << MATHX_RSQRT_SHIFT)
-#define MATHX_RSQRT_Q30_RELATIVE_LIMIT 0x1p-31
-#define MATHX_RSQRT_NEWTON_STEPS       3
+#define MATHX_RSQRT_SEED_BITS               6
+#define MATHX_RSQRT_WORD_BITS               32
+#define MATHX_RSQRT_SHIFT                   30
+#define MATHX_RSQRT_MIN                     (UINT32_C(1) << MATHX_RSQRT_SHIFT)
+#define MATHX_RSQRT_Q30_RELATIVE_LIMIT      0x1p-31
+#define MATHX_RSQRT_NEWTON_STEPS            3
+/* The float seed is within 2^-22; this wider bound also covers integer conversion. */
+#define MATHX_RSQRT_FPU_SEED_RELATIVE_LIMIT 0x1p-20
+#define MATHX_RSQRT_FPU_INPUT_SCALE         (1.0F / (float)(UINT64_C(1) << MATHX_RSQRT_WORD_BITS))
+#define MATHX_RSQRT_FPU_OUTPUT_SCALE        ((float)(UINT32_C(1) << MATHX_RSQRT_SHIFT))
 
 /* Upper 64 bits of the 96-bit product; the omitted low word cannot affect a right shift by 60. */
 static inline uint64_t
@@ -169,8 +174,40 @@ static const uint32_t mathx_rsqrt_seeds[] = {
     [45] = 1095348453u, [46] = 1086550331u, [47] = 1077960865u,
 };
 
-/* For m in [2^30, 2^32), midpoint rounding bounds relative error by 2^-31. */
-/* For integer mantissa m in [MATHX_RSQRT_MIN, 2^32), seed table, three Newton corrections and exact midpoint bracket give reciprocal root y. | y = round(2^{46}/sqrt(m)) | mantissa segment strides and exact midpoint brackets */
+static inline uint32_t
+mathx_rsqrt_newton(uint32_t m, uint32_t y) {
+    const uint64_t product = mathx_rsqrt_product(m, (uint64_t)y * y);
+    const int64_t residual =
+        (INT64_C(1) << MATHX_RSQRT_WORD_BITS) - (int64_t)(product >> (2 * MATHX_RSQRT_SHIFT - MATHX_RSQRT_WORD_BITS));
+    return (
+        uint32_t)((int64_t)y
+                  + (((int64_t)y * residual + (INT64_C(1) << MATHX_RSQRT_WORD_BITS)) >> (MATHX_RSQRT_WORD_BITS + 1)));
+}
+
+static inline uint32_t
+mathx_rsqrt_bracket(uint32_t m, uint32_t y) {
+    y += mathx_rsqrt_midpoint(m, y);
+    y -= !mathx_rsqrt_midpoint(m, y - 1);
+    return y;
+}
+
+static inline uint32_t
+mathx_rsqrt_q30_table(uint32_t m) {
+    assert(m >= MATHX_RSQRT_MIN);
+    _Static_assert(sizeof mathx_rsqrt_seeds / sizeof mathx_rsqrt_seeds[0]
+                       == (1 << MATHX_RSQRT_SEED_BITS) - (1 << (MATHX_RSQRT_SEED_BITS - 2)),
+                   "Every mantissa segment has a reciprocal seed");
+    const unsigned index = (m >> (MATHX_RSQRT_WORD_BITS - MATHX_RSQRT_SEED_BITS)) - (1 << (MATHX_RSQRT_SEED_BITS - 2));
+    uint32_t y = mathx_rsqrt_seeds[index];
+    for (int step = 0; step < MATHX_RSQRT_NEWTON_STEPS; step++) {
+        y = mathx_rsqrt_newton(m, y);
+    }
+    return mathx_rsqrt_bracket(m, y);
+}
+
+/* For m in [2^30, 2^32), midpoint rounding bounds relative error by 2^-31.
+ * Uses the FPU: FreeRTOS lazy FPU save pins the calling task to its core; not ISR-safe. */
+/* For integer mantissa m in [MATHX_RSQRT_MIN, 2^32), an FPU seed plus one integer Newton correction (table fallback) and exact midpoint bracket give reciprocal root y. | y = round(2^{46}/sqrt(m)) | mantissa segment strides and exact midpoint brackets */
 
 /* source: Muller et al. 2018; Markstein 1990 */
 /* exact: y = 2^{46}/\sqrt{m} */
@@ -182,23 +219,15 @@ static const uint32_t mathx_rsqrt_seeds[] = {
 
 static inline uint32_t
 mathx_rsqrt_q30(uint32_t m) {
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
     assert(m >= MATHX_RSQRT_MIN);
-    _Static_assert(sizeof mathx_rsqrt_seeds / sizeof mathx_rsqrt_seeds[0]
-                       == (1 << MATHX_RSQRT_SEED_BITS) - (1 << (MATHX_RSQRT_SEED_BITS - 2)),
-                   "Every mantissa segment has a reciprocal seed");
-    const unsigned index = (m >> (MATHX_RSQRT_WORD_BITS - MATHX_RSQRT_SEED_BITS)) - (1 << (MATHX_RSQRT_SEED_BITS - 2));
-    uint32_t y = mathx_rsqrt_seeds[index];
-    for (int step = 0; step < MATHX_RSQRT_NEWTON_STEPS; step++) {
-        const uint64_t product = mathx_rsqrt_product(m, (uint64_t)y * y);
-        const int64_t residual = (INT64_C(1) << MATHX_RSQRT_WORD_BITS)
-                                 - (int64_t)(product >> (2 * MATHX_RSQRT_SHIFT - MATHX_RSQRT_WORD_BITS));
-        y = (uint32_t)((int64_t)y
-                       + (((int64_t)y * residual + (INT64_C(1) << MATHX_RSQRT_WORD_BITS))
-                          >> (MATHX_RSQRT_WORD_BITS + 1)));
-    }
-    y += mathx_rsqrt_midpoint(m, y);
-    y -= !mathx_rsqrt_midpoint(m, y - 1);
-    return y;
+    const float x = (float)m * MATHX_RSQRT_FPU_INPUT_SCALE;
+    const float r = mathf_rsqrt_normal(x);
+    const uint32_t seed = (uint32_t)(r * MATHX_RSQRT_FPU_OUTPUT_SCALE);
+    return mathx_rsqrt_bracket(m, mathx_rsqrt_newton(m, seed));
+#else
+    return mathx_rsqrt_q30_table(m);
+#endif
 }
 
 #define MATHX_RSQRT_RELATIVE_LIMIT 0x1p-30

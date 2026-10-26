@@ -33,10 +33,8 @@ draw_build_mark(void) {
     const recti_t box = ui_transform_rect(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT), upright);
 
     if (gfx_region_dirty(box.x, box.y, box.w, box.h)) {
-        int x = 0;
-        int y = 0;
-        ui_text_glyph0_origin(draw_font_ui(), box, quarter, 1, &x, &y);
-        draw_text_turned(x, y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
+        const vec2i_t origin = ui_text_glyph0_origin(draw_font_ui(), box, quarter, 1);
+        draw_text_turned(origin.x, origin.y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
     }
 }
 #endif
