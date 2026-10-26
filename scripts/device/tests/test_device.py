@@ -45,6 +45,7 @@ def mock_store(token="token"):
     store.root = Path(os.environ["_AUTANA_DEVICE_LOCK_ROOT"])
     store.key_root.side_effect = lambda board: device_lock.heavy_root() if board == device_lock.HEAVY else store.root
     store.acquire.return_value = device_lock.Held({"token": token, "acquired_at": 1000.0})
+    store.tickets.return_value = []
     return store
 
 
