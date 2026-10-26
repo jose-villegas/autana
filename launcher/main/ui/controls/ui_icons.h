@@ -10,7 +10,7 @@
 #include <stdbool.h>
 
 #include "core/handle.h"
-#include "draw/draw_image.h"
+#include "image/image.h"
 
 /* One icon: its entry's name in the pack, and what an icon-only control
  * shows in its place without one. */
@@ -25,12 +25,12 @@ typedef struct {
     const char* pack;
     const ui_icon_name_t* names;
     int count;
-    draw_image_t* icons; /* `count` of them */
+    image_t* icons; /* `count` of them */
     bool loaded;
     handle_t load;
 } ui_icon_set_t;
 
-/* Mounts the set's pack and finds every icon, each a DRAW_IMAGE_MONO1 image
+/* Mounts the set's pack and finds every icon, each an IMAGE_MONO1 image
  * entry. False when the pack or any icon is missing or not one bit, with one
  * log line; nothing is held then. Loading a loaded set does nothing. */
 bool ui_icon_set_load(ui_icon_set_t* set);
@@ -39,7 +39,7 @@ bool ui_icon_set_load(ui_icon_set_t* set);
 void ui_icon_set_release(ui_icon_set_t* set);
 
 /* Icon `i`, or NULL unless the set is loaded. */
-const draw_image_t* ui_icon_set_get(const ui_icon_set_t* set, int i);
+const image_t* ui_icon_set_get(const ui_icon_set_t* set, int i);
 
 typedef enum {
     UI_ICON_CHECK,
@@ -62,4 +62,4 @@ typedef enum {
 void ui_icons_init(void);
 
 /* System icon `id`, or NULL when the engine pack does not hold it. */
-const draw_image_t* ui_icon_image(ui_icon_id_t id);
+const image_t* ui_icon_image(ui_icon_id_t id);
