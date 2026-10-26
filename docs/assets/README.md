@@ -18,7 +18,7 @@ flowchart TB
     Build --> Files["DIR/name.apak"]
     Build --> Image["assets.bin"]
     Image --> Flash["assets partition"]
-    Store["asset_store_pack(name)"] --> Flash
+    Store["asset_store_load(name)"] --> Flash
     Store --> Files
     Flash --> Open["asset_pack_open(base, size)"]
     Files --> Open
@@ -29,7 +29,7 @@ flowchart TB
 
 | Page | Holds |
 |---|---|
-| [Loading-Packs.md](Loading-Packs.md) | the store, the device and the host: mounting a pack, opening an entry, `scene_load` |
+| [Loading-Packs.md](Loading-Packs.md) | async loading, the store, the device and the host: mounting a pack, opening an entry, `scene_load` |
 | [Pack-Format.md](Pack-Format.md) | the `APAK` pack, the `ABDR` directory and the checks every open makes |
 | [Image-Entries.md](Image-Entries.md) | the `IMAG` picture and its reader |
 | [Table-Entries.md](Table-Entries.md) | the `TABL` rows of int16 and `asset_table` |
@@ -52,7 +52,7 @@ asked for.
 | `TRCK` animation tracks | 3 | `anim/tracks_asset.py` | `anim/anim_tracks.c` | [TRCK v3](../render/Animation-Tracks.md#trck-v3) |
 | `SKEL` skeleton | 1 | `anim/skeleton_asset.py` | `anim/anim_skeleton.c` | [SKEL v1](../render/Skeleton-and-Skin.md#skel-v1) |
 | `SKIN` skin | 2 | `r3d/skin_asset.py` | `render/r3d_skin.c` | [SKIN v2](../render/Skeleton-and-Skin.md#skin-v2) |
-| `SCNE` scene | 3 | `r3d/scene_asset.py` | `scene/scene_asset.c` | [SCNE v3](../render/Scene-Files.md#scne-v3) |
+| `SCNE` scene | 5 | `r3d/scene_asset.py` | `scene/scene_asset.c` | [SCNE v5](../render/Scene-Files.md#scne-v5) |
 | `SOND` sound | 1 | `audio/sound_asset.py` | `sound/sound.c` | [SOND v1](../audio/Sound-Assets.md#sond-v1) |
 | `IMAG` picture | 1 | `gfx/image_asset.py` | `draw/draw_image.c` | [IMAG v1](Image-Entries.md#imag-v1) |
 | `TABL` named int16 rows | 1 | `asset/table_asset.py` | `asset/asset_table.c` | [TABL v1](Table-Entries.md#tabl-v1) |

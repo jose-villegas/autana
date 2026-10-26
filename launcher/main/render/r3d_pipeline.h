@@ -17,7 +17,7 @@
 
 #include "display/viewport.h"
 #include "math/linear/mat4f.h"
-#include "math/linear/projectf.h"
+#include "math/projection/projectf.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_instance.h"
 #include "render/r3d_lit_mesh.h"
@@ -26,7 +26,7 @@
 #include "render/render_view.h"
 
 /* A view made ready for one viewport and one mesh's position scale. */
-typedef struct {
+typedef struct r3d_lens {
     mat4f_t m;          /* position ticks to lens space */
     projectf_t project; /* m already applies the focal lengths and turn, so lens space's pinhole is {1, -1}. */
     int width, height;
@@ -37,7 +37,7 @@ typedef struct {
 /* 8 bytes: the screen position is snapped to r3d_span's subpixels once, so
  * every test on it is exact. A triangle with a vertex that has no position
  * here is rebuilt from the mesh, as near clipping needs. */
-typedef struct {
+typedef struct r3d_pipeline_vertex {
     int16_t sx, sy; /* 1/R3D_SUBPIXEL pixels, valid while iz > 0 */
     float iz;       /* near_z / z; 0 behind the near plane, below 0 in front but too far off screen to snap */
 } r3d_pipeline_vertex_t;

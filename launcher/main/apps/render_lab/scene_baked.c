@@ -54,7 +54,8 @@ record_failure(const scene_failure_t* why) {
 /* The camera the settings follow: the one the start named, else the family's. */
 static scene_entity_t
 camera_entity(void) {
-    return scene_find(loaded, render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera);
+    return scene_find(loaded,
+                      name_hash(render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera));
 }
 
 static void
@@ -82,7 +83,7 @@ scene_baked_enter(const render_lab_scene_t* self) {
         return;
     }
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const scene_entity_t bake = scene_find(loaded, family->bakes[i]);
+        const scene_entity_t bake = scene_find(loaded, name_hash(family->bakes[i]));
         if (bake == SCENE_ENTITY_NONE) {
             ESP_LOGE(TAG, "the scene has no entity '%s'", family->bakes[i]);
             if (snprintf(failure, sizeof failure, "no bake '%s'", family->bakes[i]) < 0) {
@@ -92,7 +93,8 @@ scene_baked_enter(const render_lab_scene_t* self) {
         }
         scene_entity_set_enabled(loaded, bake, i == (int)shown->variant);
     }
-    (void)scene_activate(loaded, render_lab_start_camera);
+    (void)scene_activate(loaded,
+                         render_lab_start_camera == NULL ? SCENE_CAMERA_FIRST : name_hash(render_lab_start_camera));
     apply_settings();
 }
 

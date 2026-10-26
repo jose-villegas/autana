@@ -47,7 +47,12 @@
     static inline bool P##_overlaps(P##_t a, P##_t b) { return !P##_is_empty(P##_intersect(a, b)); }                   \
                                                                                                                        \
     /* closest_point = clamp(p, lo, hi); requires a nonempty box. */                                                   \
-    static inline V##_t P##_closest_point(P##_t b, V##_t p) { return V##_clamp(p, b.lo, b.hi); }
+    static inline V##_t P##_closest_point(P##_t b, V##_t p) { return V##_clamp(p, b.lo, b.hi); }                       \
+                                                                                                                       \
+    /* Corner k of eight: bit 0 picks hi.x over lo.x, bit 1 hi.y, bit 2 hi.z. */                                       \
+    static inline V##_t P##_corner(P##_t b, int k) {                                                                   \
+        return (V##_t){(k & 1) ? b.hi.x : b.lo.x, (k & 2) ? b.hi.y : b.lo.y, (k & 4) ? b.hi.z : b.lo.z};               \
+    }
 
 #define MATH_DEFINE_BOX3_REAL(P, V, L, T, OPS)                                                                         \
                                                                                                                        \

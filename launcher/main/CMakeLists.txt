@@ -40,7 +40,7 @@ set(app_srcs
     "power/power_log_device.c"
     "power/power_device.c"
     "input/input_device.c"
-    "input/motion/tilt.c"
+    "input/motion/motion_reader.c"
     "input/motion/gravity.c"
     "input/motion/shake.c"
     "ui/ui.c"
@@ -61,6 +61,7 @@ set(app_srcs
     "asset/asset_table.c"
     "asset/asset_directory.c"
     "asset/asset_store.c"
+    "asset/asset_store_async.c"
     "asset/asset_store_flash.c"
     "input/mapping/orbit_motion_touch.c"
     "shell/scene_system.c"
@@ -69,10 +70,14 @@ set(app_srcs
     "shell/shell_home_edge.c"
     "shell/shell_frame.c"
     "shell/shell_system.c"
+    "core/pending.c"
+    "shell/asset_system.c"
+    "shell/pending_system.c"
     "core/job.c"
     "core/memory.c"
     "core/timing_device.c"
     "profile/frame_cost.c"
+    "profile/frame_laps.c"
     "profile/frame_watch.c"
     "services/build_id.c"
     "services/settings_device.c"
@@ -104,12 +109,10 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt")
 endif()
 
-# The frame's view modes: a development tool, with nothing calling them in a
-# release build.
+# The frame's view modes, everything in render/view/: a development tool, with
+# nothing calling them in a release build.
 if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
-    foreach(view_mode raster_show raster_motion raster_meshlets)
-        list(REMOVE_ITEM app_srcs "${CMAKE_CURRENT_LIST_DIR}/render/${view_mode}.c")
-    endforeach()
+    list(FILTER app_srcs EXCLUDE REGEX "/render/view/[^/]*\.c$")
 endif()
 
 # The console listener: a release image has nobody watching the serial
@@ -233,7 +236,7 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs esp_codec_dev esp_driver_i2s math hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs esp_codec_dev esp_driver_i2s math kinematics physics hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump

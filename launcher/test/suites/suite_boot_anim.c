@@ -983,7 +983,7 @@ test_lod_stride_tiers_by_extent(void) {
 /*
  * Pacing
  *
- * tween_ramp()/tween_ease_out() themselves are tested in suite_tween.c;
+ * ease_ramp_u8()/ease_out_u8() themselves are tested in suite_tween.c;
  * what is left here is specific to how boot_anim.h USES them, not the
  * primitives themselves.
  */
@@ -1350,7 +1350,7 @@ test_letters_are_staggered_left_to_right(void) {
         if (i > 0) {
             /* Halfway between letter (i-1)'s start and letter i's: (i-1)
              * has been moving for half a stagger interval, i has not moved
-             * at all yet (tween_ramp() is exactly 0 until STRICTLY past
+             * at all yet (ease_ramp_u8() is exactly 0 until STRICTLY past
              * its own start, so checking AT i's start catches neither
              * letter moving; checking here is what actually exercises "an
              * earlier letter is further along"). */

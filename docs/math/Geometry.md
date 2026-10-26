@@ -1,6 +1,6 @@
 # Geometry
 
-Half-open rectangles, oriented planes, closed boxes, spheres and circles. [Math index](README.md).
+Half-open rectangles, oriented planes, closed boxes, spheres, circles and iso surfaces. [Math index](README.md).
 
 ## rect (`f i s x`)
 
@@ -102,6 +102,7 @@ and union; any crossed axis is empty.
 | `P_contains(outer, inner)` | inner bounds within outer | $`\forall k: outer_{lo,k} \le inner_{lo,k}`$<br>$`inner_{hi,k} \le outer_{hi,k}`$ |
 | `P_overlaps(a, b)` | shared points, including touching faces | $`\neg\mathrm{is\_empty}(\mathrm{intersect}(a,b))`$ |
 | `P_closest_point(b, p)` | closest point on a nonempty box | $`\mathrm{clamp}(p,lo,hi)`$ |
+| `P_corner(b, k)` | corner `k` of eight; bit 0 picks $`hi_x`$, bit 1 $`hi_y`$, bit 2 $`hi_z`$ | $`(k_0\,?\,hi_x:lo_x,\ k_1\,?\,hi_y:lo_y,\ k_2\,?\,hi_z:lo_z)`$ |
 | `P_centre(b)` | midpoint (`f`) | $`c = 0.5(lo+hi)`$ |
 | `P_half_extent(b)` | half size (`f`) | $`e = 0.5(hi-lo)`$ |
 | `P_segment_hit(b, a, c, &t)` | slab entry in `[0,1]` (`f`); inside starts at zero | $`v=c-a`$; intersect $`[0,1]`$ with each axis's $`[(lo_k-a_k)/v_k,(hi_k-a_k)/v_k]`$, sorted |
@@ -170,3 +171,25 @@ Integer edges end at `right-1` and `bottom-1`; real queries include the closure 
 ![Integer circles against a half-open cell rectangle and floating-point segment hits against a circle.](../images/math/circle-rect-queries.png)
 
 The integer touch reaches `right−1`; segment markers show the first hit, including an inside start.
+
+## iso_surface
+
+The surface where a sampled field crosses a level, as triangles, by naive
+surface nets<sup>[[95]](../Citations.md#95)</sup>: one vertex per cell the surface
+passes through, at the mean of its edge crossings, and a quad across every
+crossing sample edge.
+
+| Function | Purpose |
+|---|---|
+| `iso_field_t` | Samples, their counts, origin and spacing per axis |
+| `iso_mesh_t` | Caller-owned positions, normals, triangles and scratch, with capacities and counts |
+| `iso_surface_scratch_count` | Two slabs of cell indices for a field's y and z counts |
+| `iso_surface_nets` | Meshes the field at a level; false when a capacity ran out, keeping whole triangles |
+
+| Rule | Detail |
+|---|---|
+| Inside | Above the level |
+| Winding | Counter-clockwise about the outward normal, right-handed: $`(b-a)\times(c-a)`$ points out |
+| Normals | Unit, down the field's gradient over the cell's corners |
+| Closed | A field below the level all round its border gives a closed surface |
+| Memory | Scratch is two slabs along x, so it does not grow with the field's length |

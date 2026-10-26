@@ -1,28 +1,28 @@
 LABDUMP_BEGIN
 LABDUMP round shake
 LABDUMP shake_step 1 0
-LABDUMP shake 1 0 acc 0,0,-1000 lin 10,0,0 size 10 smooth 10 old 0
-LABDUMP shake 1 5 acc 0,0,-1000 lin 20,0,0 size 20 smooth 20 old 1
+LABDUMP shake 1 0 acc 0,0,-1000 lin 10,0,0 size 10 smooth 10 shared 0
+LABDUMP shake 1 5 acc 0,0,-1000 lin 20,0,0 size 20 smooth 20 shared 1
 LABDUMP shake_step 2 10000
-LABDUMP shake 2 10000 acc 0,0,-1000 lin 20,0,0 size 20 smooth 20 old 0
-LABDUMP shake 2 10005 acc 0,0,-1000 lin 30,0,0 size 30 smooth 30 old 1
+LABDUMP shake 2 10000 acc 0,0,-1000 lin 20,0,0 size 20 smooth 20 shared 0
+LABDUMP shake 2 10005 acc 0,0,-1000 lin 30,0,0 size 30 smooth 30 shared 1
 LABDUMP shake_step 3 20000
-LABDUMP shake 3 20000 acc 0,0,-1000 lin 30,0,0 size 30 smooth 30 old 0
-LABDUMP shake 3 20005 acc 0,0,-1000 lin 40,0,0 size 40 smooth 40 old 1
+LABDUMP shake 3 20000 acc 0,0,-1000 lin 30,0,0 size 30 smooth 30 shared 0
+LABDUMP shake 3 20005 acc 0,0,-1000 lin 40,0,0 size 40 smooth 40 shared 1
 LABDUMP shake_step 4 30000
-LABDUMP shake 4 30000 acc 0,0,-1000 lin 40,0,0 size 40 smooth 40 old 0
-LABDUMP shake 4 30005 acc 0,0,-1000 lin 50,0,0 size 50 smooth 50 old 1
+LABDUMP shake 4 30000 acc 0,0,-1000 lin 40,0,0 size 40 smooth 40 shared 0
+LABDUMP shake 4 30005 acc 0,0,-1000 lin 50,0,0 size 50 smooth 50 shared 1
 LABDUMP shake_step 5 40000
-LABDUMP shake 5 40000 acc 0,0,-1000 lin 50,0,0 size 50 smooth 50 old 0
-LABDUMP shake 5 40005 acc 0,0,-1000 lin 60,0,0 size 60 smooth 60 old 1
+LABDUMP shake 5 40000 acc 0,0,-1000 lin 50,0,0 size 50 smooth 50 shared 0
+LABDUMP shake 5 40005 acc 0,0,-1000 lin 60,0,0 size 60 smooth 60 shared 1
 LABDUMP shake_step 6 50000
-LABDUMP shake 6 50000 acc 0,0,-1000 lin 60,0,0 size 60 smooth 60 old 0
-LABDUMP shake 6 50005 acc 0,0,-1000 lin 70,0,0 size 70 smooth 70 old 1
+LABDUMP shake 6 50000 acc 0,0,-1000 lin 60,0,0 size 60 smooth 60 shared 0
+LABDUMP shake 6 50005 acc 0,0,-1000 lin 70,0,0 size 70 smooth 70 shared 1
 LABDUMP shake_step 7 60000
-LABDUMP shake 7 60000 acc 0,0,-1000 lin 70,0,0 size 70 smooth 70 old 0
-LABDUMP shake 7 60005 acc 0,0,-1000 lin 80,0,0 size 80 smooth 80 old 1
+LABDUMP shake 7 60000 acc 0,0,-1000 lin 70,0,0 size 70 smooth 70 shared 0
+LABDUMP shake 7 60005 acc 0,0,-1000 lin 80,0,0 size 80 smooth 80 shared 1
 LABDUMP shake_step 8 70000
-LABDUMP shake 8 70000 acc 0,0,-1000 lin 80,0,0 size 80 smooth 80 old 0
-LABDUMP shake 8 70005 acc 0,0,-1000 lin 90,0,0 size 90 smooth 90 old 1
+LABDUMP shake 8 70000 acc 0,0,-1000 lin 80,0,0 size 80 smooth 80 shared 0
+LABDUMP shake 8 70005 acc 0,0,-1000 lin 90,0,0 size 90 smooth 90 shared 1
 LABDUMP shake_step 9 80000
 LABDUMP_END
