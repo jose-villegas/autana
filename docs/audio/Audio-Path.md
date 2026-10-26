@@ -8,7 +8,7 @@ startup, microphone gain) is in the [board notes](../notes/Board-and-Memory.md#a
 `sound_init()` opens the reference-counted `audio_codec` through `audio_out`
 and keeps TX DMA for the firmware lifetime. `sound_mixer_device.c` owns the
 only writer. Playback commands, voices, buses and the amplifier state machine
-are described in [Sound-Mixer.md](Sound-Mixer.md).
+are described in [Sound-Mixer.md](Sound-Mixer.md) and [Mixer-Internals.md](Mixer-Internals.md).
 
 RX is created and initialized only for a capture. Capture open and close run
 as mixer commands: TX pauses around RX creation and teardown, then resumes.
@@ -120,7 +120,7 @@ python launcher/tools/audio/audio_doc_tables.py --write
 
 ### RAM
 
-Use the [permanent mixer budget](Sound-Mixer.md#internal-ram) for boot-owned allocations;
+Use the [permanent mixer budget](Mixer-Cost.md#internal-ram) for boot-owned allocations;
 a live tone reply's `open_dma_bytes` accounts for capture only.
 
 <!-- generated: audio-ram sha256=9d04d18b931e0160b582642a7597ddc0179789c3e4ed1ba8c3adf75dd8dc7562 -->
