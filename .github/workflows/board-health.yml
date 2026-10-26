@@ -63,7 +63,7 @@ jobs:
           lfs: false
           persist-credentials: false
 
-      - name: Wait for the USB probe and download its artifact
+      - name: Wait for the USB probe unless the night is running
         id: probe
         run: python3 scripts/ci/board_alarm.py probe --devices "$RUNNER_TEMP/devices.json" --reason-file "$RUNNER_TEMP/board-alarm-reason"
 
