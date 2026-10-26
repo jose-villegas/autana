@@ -18,10 +18,37 @@
 
 static void
 fixture(void) {
+    suite_set_test_cleanup(input_fake_reset);
     suite_add_test_cleanup(clock_fake_reset);
     motion_reader_reset();
     input_fake_motion(NULL);
     clock_fake_set(0);
+}
+
+static void
+test_fake_owns_sample_after_scope(void) {
+    fixture();
+    const input_motion_t expected = {.acceleration = {INPUT_ACCEL_ONE_G, 0, 0},
+                                     .rotation = {0, 0, INPUT_ROTATION_ONE_DPS}};
+    input_motion_t actual;
+    uint32_t sequence;
+    {
+        input_motion_t motion = expected;
+        input_fake_motion(&motion);
+        TEST_ASSERT_TRUE(input_read_motion_sequence(&actual, &sequence));
+        motion = (input_motion_t){0};
+        TEST_ASSERT_TRUE(input_read_motion(&actual));
+        TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof expected);
+    }
+    uint32_t held_sequence;
+    TEST_ASSERT_TRUE(input_read_motion_sequence(&actual, &held_sequence));
+    TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof expected);
+    TEST_ASSERT_EQUAL_UINT32(sequence, held_sequence);
+    input_fake_motion(&expected);
+    TEST_ASSERT_TRUE(input_read_motion_sequence(&actual, &held_sequence));
+    TEST_ASSERT_EQUAL_UINT32(sequence + 1, held_sequence);
+    input_fake_motion(NULL);
+    TEST_ASSERT_FALSE(input_read_motion(&actual));
 }
 
 static void
@@ -252,6 +279,7 @@ test_dt_clamp_and_strength(void) {
 
 void
 run_input_motion_suite(void) {
+    RUN_TEST(test_fake_owns_sample_after_scope);
     RUN_TEST(test_no_sensor_defaults);
     RUN_TEST(test_present_without_sample_is_zero);
     RUN_TEST(test_missed_read_holds_estimate_and_elapsed_time);

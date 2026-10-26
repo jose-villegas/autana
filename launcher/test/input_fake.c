@@ -5,7 +5,8 @@
 #include "input/motion/motion_reader.h"
 
 static const input_motion_batch_t* motion_batch;
-static const input_motion_t* motion;
+static input_motion_t motion;
+static bool has_motion;
 static bool sensor_present;
 static uint32_t motion_sequence;
 
@@ -21,17 +22,20 @@ imu_ready(void) {
 
 void
 input_fake_motion(const input_motion_t* next) {
-    motion = next;
+    has_motion = next != NULL;
+    if (has_motion) {
+        motion = *next;
+    }
     motion_sequence++;
     sensor_present = next != NULL;
 }
 
 bool
 input_read_motion(input_motion_t* out) {
-    if (motion == NULL) {
+    if (!has_motion) {
         return false;
     }
-    *out = *motion;
+    *out = motion;
     return true;
 }
 
@@ -47,6 +51,12 @@ input_read_motion_sequence(input_motion_t* out, uint32_t* sequence) {
 void
 input_fake_motion_batch(const input_motion_batch_t* next) {
     motion_batch = next;
+}
+
+void
+input_fake_reset(void) {
+    input_fake_motion(NULL);
+    input_fake_motion_batch(NULL);
 }
 
 bool
