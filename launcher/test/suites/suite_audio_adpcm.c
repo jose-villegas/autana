@@ -79,11 +79,12 @@ test_baker_multiblock_round_trip(void) {
 
 static void
 test_engine_sound(void) {
-    const asset_pack_t* pack = asset_store_pack("engine");
+    const handle_t load = asset_store_load("engine");
+    const asset_pack_t* pack = asset_store_loaded(load);
     TEST_ASSERT_NOT_NULL(pack);
     sound_t sound;
     const asset_status_t status = sound_open(pack, "tap", &sound);
-    asset_store_release("engine");
+    asset_store_release(load);
     TEST_ASSERT_EQUAL(ASSET_OK, status);
     TEST_ASSERT_EQUAL(SOUND_IMA_ADPCM, sound.format);
     TEST_ASSERT_EQUAL(SOUND_DEFAULT_BLOCK_FRAMES, sound.block_frames);

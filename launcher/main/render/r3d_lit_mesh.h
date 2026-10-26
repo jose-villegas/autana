@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
+#include "math/geometry/box3s.h"
 #include "math/geometry/spheref.h"
 
 typedef struct {
@@ -67,6 +68,20 @@ asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_l
 /* Colour ownership: docs/render/Baked-Mesh.md#lcol-v1. */
 asset_status_t r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set,
                                          r3d_lit_mesh_t* mesh);
+
+/* Recomputes every node's bounds from its children's. An inner node's
+ * children come after it, so walking from the last node back meets every
+ * child before its parent. For a mesh whose vertices move. */
+static inline void
+r3d_lit_mesh_refit_nodes(r3d_lit_node_t* nodes, int node_count, const r3d_lit_cluster_t* clusters) {
+    for (int n = node_count - 1; n >= 0; n--) {
+        r3d_lit_node_t* node = &nodes[n];
+        node->bounds = box3s_empty();
+        for (int i = node->first; i < node->first + node->count; i++) {
+            node->bounds = box3s_union(node->bounds, node->leaf ? clusters[i].bounds : nodes[i].bounds);
+        }
+    }
+}
 
 /* A sphere holding every vertex, in model units: centred on the box of them
  * (the root node's bounds), its radius the furthest vertex from that centre. */

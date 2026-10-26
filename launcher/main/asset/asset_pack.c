@@ -64,9 +64,9 @@ reserved_is_zero(const uint8_t* header) {
 }
 
 asset_status_t
-asset_pack_open(asset_pack_t* pack, const void* base, size_t size) {
+asset_pack_open_begin(asset_pack_opener_t* opener, const void* base, size_t size) {
     const uint8_t* bytes = base;
-    *pack = (asset_pack_t){0};
+    *opener = (asset_pack_opener_t){0};
     if (bytes == NULL || size == 0) {
         return ASSET_ERR_NO_PACK;
     }
@@ -93,20 +93,59 @@ asset_pack_open(asset_pack_t* pack, const void* base, size_t size) {
     if (count > (total - ASSET_PACK_HEADER_SIZE) / ASSET_PACK_ENTRY_SIZE) {
         return ASSET_ERR_BOUNDS;
     }
-    if (crc32_update(0, bytes + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE)
-        != asset_read_u32(bytes + HEADER_CRC)) {
-        return ASSET_ERR_CRC;
+    opener->pack = (asset_pack_t){.base = bytes, .size = total, .count = count};
+    opener->offset = ASSET_PACK_HEADER_SIZE;
+    return ASSET_OK;
+}
+
+bool
+asset_pack_open_step(asset_pack_opener_t* opener, size_t budget) {
+    if (opener->complete) {
+        return true;
     }
-    const asset_pack_t opened = {.base = bytes, .size = total, .count = count};
-    asset_entry_t entry;
-    for (uint32_t i = 0; i < count; i++) {
-        const asset_status_t status = asset_pack_entry(&opened, i, &entry);
-        if (status != ASSET_OK) {
-            return status;
+    const asset_pack_t* pack = &opener->pack;
+    if (opener->offset < pack->size) {
+        size_t bytes = pack->size - opener->offset;
+        if (bytes > budget) {
+            bytes = budget;
+        }
+        opener->crc = crc32_update(opener->crc, pack->base + opener->offset, bytes);
+        opener->offset += (uint32_t)bytes;
+        budget -= bytes;
+        if (opener->offset < pack->size) {
+            return false;
         }
     }
-    *pack = opened;
-    return ASSET_OK;
+    if (opener->crc != asset_read_u32(pack->base + HEADER_CRC)) {
+        opener->status = ASSET_ERR_CRC;
+        opener->complete = true;
+        return true;
+    }
+    while (opener->entry < pack->count && budget >= ASSET_PACK_ENTRY_SIZE) {
+        asset_entry_t entry;
+        opener->status = asset_pack_entry(pack, opener->entry++, &entry);
+        budget -= ASSET_PACK_ENTRY_SIZE;
+        if (opener->status != ASSET_OK) {
+            break;
+        }
+    }
+    opener->complete = opener->status != ASSET_OK || opener->entry == pack->count;
+    return opener->complete;
+}
+
+asset_status_t
+asset_pack_open(asset_pack_t* pack, const void* base, size_t size) {
+    *pack = (asset_pack_t){0};
+    asset_pack_opener_t opener;
+    asset_status_t status = asset_pack_open_begin(&opener, base, size);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    while (!asset_pack_open_step(&opener, SIZE_MAX)) {}
+    if (opener.status == ASSET_OK) {
+        *pack = opener.pack;
+    }
+    return opener.status;
 }
 
 asset_status_t

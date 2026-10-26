@@ -40,6 +40,8 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_test.h"
+#include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 #include "test_anim_tracks.h"
 #include "test_asset_dir.h"
 #include "testkit/cleanup.h"
@@ -958,9 +960,9 @@ static void
 test_the_curve_table_stays_inside_the_narrow_range(void) {
     for (int i = 0; i < BOOT_ANIM_CURVE_POINTS; i++) {
         const boot_anim_pt_t p = boot_anim_sample(i);
-        TEST_ASSERT_TRUE(p.re > -(1 << 17) && p.re < (1 << 17));
-        TEST_ASSERT_TRUE(p.im > -(1 << 17) && p.im < (1 << 17));
-        TEST_ASSERT_TRUE(p.t > -(1 << 15) && p.t < (1 << 15));
+        TEST_ASSERT_TRUE(p.re > -R3D_X_INPUT_XZ_LIMIT && p.re < R3D_X_INPUT_XZ_LIMIT);
+        TEST_ASSERT_TRUE(p.im > -R3D_X_INPUT_XZ_LIMIT && p.im < R3D_X_INPUT_XZ_LIMIT);
+        TEST_ASSERT_TRUE(p.t > -R3D_X_INPUT_Y_LIMIT && p.t < R3D_X_INPUT_Y_LIMIT);
     }
 }
 
@@ -983,7 +985,7 @@ test_lod_stride_tiers_by_extent(void) {
 /*
  * Pacing
  *
- * tween_ramp()/tween_ease_out() themselves are tested in suite_tween.c;
+ * ease_ramp_u8()/ease_out_u8() themselves are tested in suite_tween.c;
  * what is left here is specific to how boot_anim.h USES them, not the
  * primitives themselves.
  */
@@ -1106,12 +1108,12 @@ test_the_floor_fades_out_with_distance_rather_than_stopping(void) {
 static void
 test_only_positive_crests_take_the_crest_colour(void) {
     const uint32_t crest = 0x20C0FF;
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(-BOOT_ANIM_ONE, crest));
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(0, crest));
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(crest), boot_anim_floor_color(BOOT_ANIM_CREST_HEIGHT_Q12, crest));
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(crest), boot_anim_floor_color(BOOT_ANIM_ONE, crest));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(-BOOT_ANIM_ONE, crest));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(0, crest));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(crest), boot_anim_floor_color(BOOT_ANIM_CREST_HEIGHT_Q12, crest));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(crest), boot_anim_floor_color(BOOT_ANIM_ONE, crest));
     const int half = BOOT_ANIM_CREST_HEIGHT_Q12 / 2;
-    TEST_ASSERT_EQUAL_HEX16(gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), gfx_rgb(crest), UINT8_MAX / 4),
+    TEST_ASSERT_EQUAL_HEX16(rgb565be_mix(RGB565BE(BOOT_ANIM_FLOOR_GREY), RGB565BE(crest), UINT8_MAX / 4),
                             boot_anim_floor_color(half, crest));
 }
 
@@ -1164,7 +1166,7 @@ test_height_changes_the_hue(void) {
     const boot_anim_stroke_t foot = boot_anim_stroke(0, 0);
     const boot_anim_stroke_t top = boot_anim_stroke(BOOT_ANIM_ONE, 0);
 
-    TEST_ASSERT_TRUE_MESSAGE(top.hue - foot.hue > GFX_HUE_TURN / 2,
+    TEST_ASSERT_TRUE_MESSAGE(top.hue - foot.hue > RGB888_HUE_TURN / 2,
                              "the climb should turn most of the way round the wheel, so that "
                              "height reads as colour");
 }
@@ -1213,7 +1215,7 @@ test_the_pens_carry_different_colours(void) {
     }
 
     const int spread = boot_anim_trail_hue(BOOT_ANIM_TRAILS - 1) - boot_anim_trail_hue(0);
-    TEST_ASSERT_TRUE_MESSAGE(spread > GFX_HUE_TURN / 2,
+    TEST_ASSERT_TRUE_MESSAGE(spread > RGB888_HUE_TURN / 2,
                              "the pens should be spread round the wheel, not bunched on one side");
 }
 
@@ -1350,7 +1352,7 @@ test_letters_are_staggered_left_to_right(void) {
         if (i > 0) {
             /* Halfway between letter (i-1)'s start and letter i's: (i-1)
              * has been moving for half a stagger interval, i has not moved
-             * at all yet (tween_ramp() is exactly 0 until STRICTLY past
+             * at all yet (ease_ramp_u8() is exactly 0 until STRICTLY past
              * its own start, so checking AT i's start catches neither
              * letter moving; checking here is what actually exercises "an
              * earlier letter is further along"). */

@@ -3,6 +3,8 @@
 #include <stdbool.h>
 
 #include "collections/sort.h"
+#include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 
 static int
 luma(uint32_t rgb) {
@@ -32,7 +34,7 @@ build_sixteen(const gfx_color_t* none_lut, int lut_size, sand_mode_swatch_t* out
     const int want = SAND_SWATCH_16_COLS * SAND_SWATCH_ROWS;
     int n = 0;
     for (int i = 0; i < lut_size && n < want; i++) {
-        const uint32_t rgb = gfx_color_rgb888(none_lut[i]);
+        const uint32_t rgb = rgb565be_to_rgb888(none_lut[i]);
         if (!contains(out->rgb, n, rgb)) {
             out->rgb[n++] = rgb;
         }
@@ -50,7 +52,7 @@ build_256(const gfx_color_t* lut256, int lut_size, int ui_entries, sand_mode_swa
     const int want = SAND_SWATCH_256_COLS * SAND_SWATCH_ROWS;
     const int span = lut_size - ui_entries;
     for (int i = 0; i < want; i++) {
-        out->rgb[i] = gfx_color_rgb888(lut256[ui_entries + (i * span / want)]);
+        out->rgb[i] = rgb565be_to_rgb888(lut256[ui_entries + (i * span / want)]);
     }
     out->cols = SAND_SWATCH_256_COLS;
     out->rows = SAND_SWATCH_ROWS;
@@ -59,7 +61,7 @@ build_256(const gfx_color_t* lut256, int lut_size, int ui_entries, sand_mode_swa
 static void
 build_full(sand_mode_swatch_t* out) {
     for (int i = 0; i < SAND_SWATCH_FULL_BANDS; i++) {
-        out->rgb[i] = gfx_hue_rgb(i * GFX_HUE_TURN / SAND_SWATCH_FULL_BANDS);
+        out->rgb[i] = rgb888_hue(i * RGB888_HUE_TURN / SAND_SWATCH_FULL_BANDS);
     }
     out->cols = SAND_SWATCH_FULL_BANDS;
     out->rows = 1;

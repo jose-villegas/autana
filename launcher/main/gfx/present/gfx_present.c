@@ -22,6 +22,7 @@
 #include "freertos/task.h"
 #if CONFIG_LAUNCHER_QEMU
 #include "gfx/present/panel/gfx_null_panel.h"
+#include "image/pixel/rgb565.h"
 #endif
 
 _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h's panel size must be the board's");
@@ -485,7 +486,7 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
         for (int i = 0; i < n; i++) {
             const recti_t* r = &leaf_rect_scratch[i];
             gfx_color_t* at = slot + ((size_t)(r->y - y0) * w) + (r->x - x0);
-            mark_rect_border(at, w, r->w, r->h, gfx_rgb(0x00FF00));
+            mark_rect_border(at, w, r->w, r->h, RGB565BE(0x00FF00));
         }
     }
 #else
@@ -606,13 +607,13 @@ static void
 send_run(int row, int run_start, int run_end, int box_x0, int box_x1, int box_y0, int box_y1, int split_n,
          const int* split_x0, const int* split_x1, int* queued) {
     if (split_n == 0) {
-        gather_and_send(box_x0, box_y0, box_x1, box_y1, row, run_start, run_end, false, queued, gfx_rgb(0xFFFF00));
+        gather_and_send(box_x0, box_y0, box_x1, box_y1, row, run_start, run_end, false, queued, RGB565BE(0xFFFF00));
         return;
     }
 
     for (int i = 0; i < split_n; i++) {
         gather_and_send(split_x0[i], box_y0, split_x1[i], box_y1, row, run_start, run_end, true, queued,
-                        gfx_rgb(0xFFFF00));
+                        RGB565BE(0xFFFF00));
     }
 }
 

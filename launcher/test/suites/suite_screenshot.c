@@ -1,7 +1,7 @@
 /*
  * Portable suite: screenshot_bmp_header/screenshot_bmp_row_stride, the pure
  * byte layout of the BMP console_screenshot_dump()
- * (console/verbs/console_screenshot.c, device-only) writes.
+ * (shell/console/console_screenshot.c, device-only) writes.
  *
  * Every expected byte below is spelled out by hand against the
  * BITMAPFILEHEADER/BITMAPINFOHEADER field order rather than derived from the
@@ -12,7 +12,8 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "console/capture/screenshot.h"
+#include "gfx/capture/screenshot.h"
+#include "image/pixel/rgb565.h"
 
 static void
 test_row_stride_already_aligned_needs_no_padding(void) {
@@ -106,8 +107,8 @@ test_header_is_exactly_54_bytes_with_no_trailing_garbage(void) {
  * The encode tests use RFC 4648's own worked example ("Man" and its
  * prefixes) plus the standard "f"/"fo"/"foo" padding vectors, rather than
  * anything derived from this file's own arithmetic, the same reasoning
- * suite_gfx_color.c's top comment gives for checking gfx_color_mix()
- * against GFX_RGB(...) constants instead of its own round-trip.
+ * suite_image_pixel.c's top comment gives for checking rgb565be_mix()
+ * against RGB565BE(...) constants instead of its own round-trip.
  */
 
 static void

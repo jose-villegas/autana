@@ -231,7 +231,7 @@ done
 
 run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEMO_OBJECT"
 
-# The math and physics references' figures, from the libraries' own functions.
+# The math, kinematics and physics references' figures, from the libraries' own functions.
 # shellcheck source=../build/find_cc.sh
 . launcher/tools/build/find_cc.sh
 cc=$(find_cc) || exit 2
@@ -240,7 +240,8 @@ run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input
 run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/gravity_figures.log"
 # --orphans scans this runner: gravity-trust.png, gravity-bias.gif
-run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \n    > "$WORK/motion_axes_figures.log"
+run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
+    > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
 run mkdir -p "$OUT/math"
 run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
@@ -252,14 +253,14 @@ run "$PYTHON" launcher/tools/math/fast_path_figures.py --out "$OUT/math" > "$WOR
 # --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
 # --orphans scans this runner: rect-queries.png, circle-rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
-run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/motion_figures.log"
-# --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
 run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/stats_figures.log"
 # --orphans scans this runner: stats-percentile-ranks.png
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
+run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
+# --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png
 
 fi
 
@@ -315,9 +316,10 @@ done
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
     "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
 
-# The frame stages as shipped and what each debug view adds, from the
-# pipeline captures beside the page.
+# The frame stages as shipped, what is inside transform and draw, and what
+# each debug view adds, from the pipeline captures beside the page.
 run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/pipeline-present-board.log \
+    --laps docs/render/data/pipeline-laps-board.log \
     --views 'docs/render/data/pipeline-view-{view}-board.log' --tables "$OUT/tables" \
     --chart "$OUT/render/pipeline-frame-stages.png" > "$WORK/frame_stages.log"
 

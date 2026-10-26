@@ -22,7 +22,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "input/mapping/orbit_motion_touch.h"
-#include "math/motion/orbit_motion.h"
+#include "kinematics/orbit/orbit_motion.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
@@ -34,6 +34,7 @@
 #include "ui/ui.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "apps/render_lab/tests/render_lab_test.h"
+#include "image/pixel/rgb565.h"
 #endif
 
 static const char* TAG = "capybara";
@@ -69,10 +70,7 @@ static char failure[48];
 
 static void
 fail(const char* what) {
-    ESP_LOGE(TAG, "%s; the scene stays blank", what);
-    if (snprintf(failure, sizeof failure, "%s", what) < 0) {
-        failure[0] = '\0';
-    }
+    render_lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
 static void
@@ -107,7 +105,7 @@ frame_subject(void) {
 static void
 scene_capybara_enter(const render_lab_scene_t* self) {
     (void)self;
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     scene_failure_t why;
     capybara = scene_load(CAPYBARA_SCENE, &why);

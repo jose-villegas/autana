@@ -15,6 +15,7 @@
 #include "math/linear/mat3f.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
+#include "profile/frame_laps.h"
 #include "render/code_layout.h"
 #include "render/r3d_triangle_tests.h"
 
@@ -37,8 +38,10 @@ r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     const float scale_x = (float)width / (float)lens->width;
     const float scale_y = (float)height / (float)lens->height;
     lens->m = mat4f_scale_rows(lens->m, (vec3f_t){scale_x, scale_y, 1.0F});
-    lens->project.cx = (float)width * 0.5F;
-    lens->project.cy = (float)height * 0.5F;
+    /* The same picture at another size: the optical centre scales with it,
+     * so a shifted lens stays shifted. */
+    lens->project.cx *= scale_x;
+    lens->project.cy *= scale_y;
     lens->snap_cx = (lens->project.cx * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->snap_cy = (lens->project.cy * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->width = width;
@@ -110,6 +113,7 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
     const float* f = lens->m.m[2];
     const planef_t depth = {{f[0], f[1], f[2]}, f[3]};
     const int n = node->count;
+    assert(n <= R3D_LIT_NODE_CHILDREN_MAX);
     for (int i = 0; i < n; i++) {
         const uint16_t child = (uint16_t)(node->first + i);
         /* The lens maps ticks, so the bounds scale is one. */
@@ -186,6 +190,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
     int y1 = INT16_MIN;
     bool unbounded = false;
     for (int v = c->vertex_first; v < end; v++) {
+        FRAME_LAP("r3d.transform.apply");
         const int16_t* p = mesh->positions[v];
         const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
         r3d_pipeline_vertex_t* out = &cs[v];
@@ -194,6 +199,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
             unbounded = true;
             continue;
         }
+        FRAME_LAP("r3d.transform.project");
         const float inv = (float)R3D_SUBPIXEL * mathf_recip(l.z);
         const biased_t b = biased_screen(lens, l.x, l.y, inv);
         if (!(b.x > FAST_LO && b.x < FAST_HI && b.y > FAST_LO && b.y < FAST_HI)) {
@@ -207,6 +213,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         y0 = out->sy < y0 ? out->sy : y0;
         y1 = out->sy > y1 ? out->sy : y1;
     }
+    FRAME_LAP("r3d.transform.cluster");
     const float to_pixels = 1.0F / (float)R3D_SUBPIXEL;
     return (r3d_pipeline_rows_t){(float)y0 * to_pixels, (float)y1 * to_pixels, unbounded};
 }
@@ -342,11 +349,13 @@ clip_to_guard(r3d_pipeline_work_t* work, int n) {
 static inline __attribute__((always_inline)) void
 fill_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
               const r3d_span_vertex_t* c, const uint16_t* face_color, bool writes) {
+    FRAME_LAP("r3d.draw.set_up");
     if (face_color == NULL) {
         r3d_span_triangle(target, a, b, c);
     } else {
         r3d_span_triangle_solid(target, a, b, c, *face_color);
     }
+    FRAME_LAP("r3d.draw.cluster");
     if (writes) {
         r3d_span_triangle_write(target, a, b, c, face_color != NULL);
     }
@@ -386,6 +395,7 @@ rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) 
 static __attribute__((noinline, cold)) void
 draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
              bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+    FRAME_LAP("r3d.draw.clip");
     clip_vertex_t* in = work->clip.poly;
     for (int k = 0; k < 3; k++) {
         const int16_t* p = mesh->positions[tri[k]];
@@ -394,18 +404,23 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
     }
     draw_clipped(lens, double_sided, face_color, target, work);
+    FRAME_LAP("r3d.draw.cluster");
 }
 
 static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
               const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes,
               r3d_pipeline_work_t* work) {
+    FRAME_LAP("r3d.draw.tests");
     if (misses_every_centre(v[0], v[1], v[2], target)) {
+        FRAME_LAP("r3d.draw.cluster");
         return;
     }
     if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
+        FRAME_LAP("r3d.draw.cluster");
         return;
     }
+    FRAME_LAP("r3d.draw.vertices");
     r3d_span_vertex_t s[3];
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};

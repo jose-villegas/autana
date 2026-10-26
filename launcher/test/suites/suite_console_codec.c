@@ -1,5 +1,5 @@
 /* Codec parsing rejects incomplete, signed and out-of-range byte arguments. */
-#include "console/verbs/console_codec_parse.h"
+#include "audio/console/console_codec_parse.h"
 #include "suites.h"
 #include "unity.h"
 
