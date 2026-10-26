@@ -43,7 +43,7 @@ void draw_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alp
  * composite dithers instead. */
 void draw_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha);
 
-/* Composite the whole RGB565BE image at alpha's dithered coverage.
+/* Composite the whole image at alpha's dithered coverage; reads only IMAGE_RGB565BE.
  * Covered pixels become source pixels; uncovered pixels stay as-is.
  * Use image_sub() for a window into a larger image. */
 void draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha);

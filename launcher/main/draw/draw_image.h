@@ -20,5 +20,6 @@
  * ASSET_ERR_FORMAT (a format this does not read, an empty image, a stride shorter
  * than a row or, for MONO1, not whole bytes, rows over the header) or
  * ASSET_ERR_BOUNDS (rows leaving the entry, or RGB565 rows misaligned). Else
- * fills `out`; a caller that draws one format checks `format`. */
+ * fills `out`; a caller that draws one format checks `format`.
+ * out->pixels points into the entry: read-only, valid while the pack is mapped. */
 asset_status_t draw_image_open(asset_view_t entry, image_t* out);

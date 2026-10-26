@@ -5,7 +5,7 @@ This header-only package uses math for rectangles; its tests run with testkit.
 
 `image_t` borrows pixels with a format and pixel stride.
 `image_format_bits()` gives the bit depth; `image_row()` addresses a row.
-`image_sub()` shares pixels and stride. Rows and MONO1 subview x must start on whole bytes.
+`image_sub()` shares pixels and stride; `image_mono1_ink()` reads a packed ink bit.
 
 `rgb565_*` operates on native RGB565.
 `rgb565be_*` operates on high-byte-first RGB565.
