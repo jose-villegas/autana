@@ -74,7 +74,7 @@ distance-sorted billboard sprites. Begin with flat floor and ceiling
 colours plus a dithered distance gradient; add floor texturing only after
 measuring its cost.
 
-Gyro look uses `input/motion/tilt.h`; buttons move and act. Touch can supply an
+Gyro look reads rotation through `input_read_motion()`; buttons move and act. Touch can supply an
 on-screen stick if needed. Cache each column's hit distance, texture
 column and span bounds once per frame so band rendering only fills rows.
 A sector renderer with varying floor heights is a possible extension.
