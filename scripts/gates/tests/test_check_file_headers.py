@@ -10,6 +10,7 @@ import check_file_headers  # noqa: E402
 
 HEADER = "/* thing: what it is. */\n"
 DECL = "int f(void);\n"
+SUITE = "static void test_x(void) {}\nvoid run(void) { RUN_TEST(test_x); }\n"
 
 
 class ProblemsTest(unittest.TestCase):
@@ -65,13 +66,27 @@ class ProblemsTest(unittest.TestCase):
 
     def test_suites_vendored_and_out_of_scope_files_are_not_checked(self):
         self.assertEqual(self.problems({
-            "launcher/test/suites/suite_gfx.c": "int x;\n",
-            "launcher/main/apps/sand/tests/suite_sand.c": "int x;\n",
+            "launcher/test/suites/suite_gfx.c": SUITE,
+            "launcher/main/apps/sand/tests/suite_sand.c": SUITE,
             "launcher/components/microui/src/microui.c": "int x;\n",
             "launcher/main/draw/draw_palette_standard_generated.h": "int x;\n",
             "editor/src/main.cpp": "int x;\n",
             "launcher/test/stubs/esp_log.c": "int x;\n",
         }), [])
+
+    def test_a_suite_that_runs_no_test_of_its_own_needs_a_header(self):
+        including = '#include "../examples/minimal_suite.c"\n'
+        cases = (
+            ({"launcher/test/suites/suite_examples.c": including}, ["launcher/test/suites/suite_examples.c"]),
+            ({"launcher/test/suites/suite_examples.c": HEADER + including}, []),
+            ({"launcher/test/suites/suite_examples.c": including + "// RUN_TEST(test_x) is in there\n"},
+             ["launcher/test/suites/suite_examples.c"]),
+            ({"launcher/test/suites/suite_examples.c": SUITE}, []),
+        )
+        for files, expected in cases:
+            with self.subTest(files=list(files.values())[0][:30]):
+                found = self.problems(files)
+                self.assertEqual([line.split(":")[0] for line in found], expected)
 
     def test_every_folder_under_the_firmware_is_in_scope_without_being_listed(self):
         for path in ("launcher/main/new_layer/x.c", "launcher/main/apps/sand/tools/host.c",
