@@ -6,7 +6,6 @@
  */
 #include "console/verbs/console_screenshot.h"
 #include "console/console.h"
-#include "console/console_frame_request.h"
 #include "console/console_verbs.h"
 
 #include "console/capture/device_state.h"
@@ -26,14 +25,14 @@
 
 static const char* TAG = "screenshot";
 
-static const console_frame_request_t screenshot_request = {.kinds = CONSOLE_FRAME_SCREENSHOT};
+CONSOLE_FRAME_SIGNAL(console_screenshot_slot, NULL)
 
 static void
 console_verb_screenshot(const char* args, console_reply_fn reply) {
     (void)args;
     (void)reply;
     ESP_LOGI(TAG, "trigger received");
-    (void)console_frame_post(console_frame_mailbox(), &screenshot_request);
+    (void)console_frame_post(console_frame_slots(), &console_screenshot_slot, NULL);
 }
 
 CONSOLE_VERB(screenshot, 0, console_verb_screenshot)
@@ -121,7 +120,7 @@ readback_ready(void) {
         refuse("band mode, and the app drew no complete frame to copy");
         return false;
     }
-    (void)console_frame_post(console_frame_mailbox(), &screenshot_request);
+    (void)console_frame_post(console_frame_slots(), &console_screenshot_slot, NULL);
     return false;
 }
 

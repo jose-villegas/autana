@@ -1,13 +1,13 @@
-/* console_navigation: APPS, OPEN and HOME post a navigation the shell
- * applies at a frame boundary (shell.c). */
-#include "console/console_frame_request.h"
-#include "console/console_verbs.h"
+/* console_navigation: see console_navigation.h. */
+#include "console/verbs/console_navigation.h"
+
+CONSOLE_FRAME_SLOT(console_navigation_slot, console_navigation_request_t, false, NULL)
 
 static void
 post(console_navigation_t navigation, const char* app) {
-    console_frame_request_t request = {.kinds = CONSOLE_FRAME_NAVIGATE, .navigation = navigation};
+    console_navigation_request_t request = {.navigation = navigation};
     console_copy_text(request.app, sizeof request.app, app);
-    (void)console_frame_post(console_frame_mailbox(), &request);
+    (void)console_frame_post(console_frame_slots(), &console_navigation_slot, &request);
 }
 
 static void
