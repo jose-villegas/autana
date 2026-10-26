@@ -26,7 +26,7 @@ indirect expand_rows : shell_frame_overlay
 indirect job_dispatch job_on_worker_started : frame_watch_add_task
 indirect send_overlay_bordered_rows_clean : send_fb_rows send_picture_rows
 indirect ui_end_over : ui_ridge_paint
-indirect icon_walk_blocks : ui_draw_icon_emit ui_transform_icon_emit
+indirect icon_walk_blocks : ui_transform_icon_emit
 indirect ui_transform_icon_emit : ui.c:icon_fill_emit
 indirect scene_skin_range : r3d_skin_clusters_lit r3d_skin_clusters_renormalised r3d_skin_clusters_table
 
