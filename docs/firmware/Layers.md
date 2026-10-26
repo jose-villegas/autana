@@ -134,6 +134,7 @@ flowchart BT
     p_math["math/"]
     p_physics["physics/"]
     p_testkit["testkit/"]
+    p_image --> p_math
     p_kinematics --> p_math
     p_physics --> p_math
     p_testkit --> p_math

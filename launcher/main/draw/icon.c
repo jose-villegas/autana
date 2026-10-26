@@ -12,20 +12,14 @@ ink(const uint8_t* row, int x) {
     return (row[x / 8] & (uint8_t)(0x80U >> (x % 8))) != 0;
 }
 
-/* Row `y`: a MONO1 stride is whole bytes. */
-static const uint8_t*
-row_at(const draw_image_t* icon, int y) {
-    return icon->bits + ((size_t)y * (icon->stride / 8U));
-}
-
 /* The ink's own bounds, not the declared size: a glyph rarely fills its grid,
  * so centring the grid would off-centre what is drawn. False when nothing is
  * inked. */
 static bool
-ink_box(const draw_image_t* icon, recti_t* out) {
+ink_box(const image_t* icon, recti_t* out) {
     *out = (recti_t){0};
     for (int y = 0; y < icon->height; y++) {
-        const uint8_t* row = row_at(icon, y);
+        const uint8_t* row = image_row(icon, y);
         for (int x = 0; x < icon->width; x++) {
             if (ink(row, x)) {
                 *out = recti_union(*out, (recti_t){x, y, 1, 1});
@@ -53,8 +47,8 @@ emit_runs(const uint8_t* row, int width, int x0, int y0, int scale, icon_emit_fn
 }
 
 void
-icon_walk_blocks(const draw_image_t* icon, int box_w, int box_h, icon_emit_fn emit, void* ctx) {
-    assert(icon->format == DRAW_IMAGE_MONO1);
+icon_walk_blocks(const image_t* icon, int box_w, int box_h, icon_emit_fn emit, void* ctx) {
+    assert(icon->format == IMAGE_MONO1);
     const int scale = mathi_max(1, mathi_min(box_w / icon->width, box_h / icon->height));
     recti_t box;
     if (!ink_box(icon, &box)) {
@@ -63,6 +57,6 @@ icon_walk_blocks(const draw_image_t* icon, int box_w, int box_h, icon_emit_fn em
     const int origin_x = ((box_w - (box.w * scale)) / 2) - (box.x * scale);
     const int origin_y = ((box_h - (box.h * scale)) / 2) - (box.y * scale);
     for (int y = 0; y < icon->height; y++) {
-        emit_runs(row_at(icon, y), icon->width, origin_x, origin_y + (y * scale), scale, emit, ctx);
+        emit_runs(image_row(icon, y), icon->width, origin_x, origin_y + (y * scale), scale, emit, ctx);
     }
 }

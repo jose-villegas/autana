@@ -322,7 +322,7 @@ blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bo
  * user: the boot animation's photograph crossfade (boot_anim.c's
  * draw_image()). */
 void
-draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stride, uint8_t alpha) {
+draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha) {
     gfx_surface_t state;
     if (!gfx_draw_begin(&state)) {
         return;
@@ -331,7 +331,7 @@ draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_str
         return;
     }
 
-    const recti_t rect = gfx_target_clip_rect(state.target, state.clip, (recti_t){x, y, w, h});
+    const recti_t rect = gfx_target_clip_rect(state.target, state.clip, (recti_t){x, y, src->width, src->height});
     if (recti_is_empty(rect)) {
         return;
     }
@@ -347,7 +347,8 @@ draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_str
         }
 
         gfx_color_t* dst = gfx_target_row(state.target, row);
-        const gfx_color_t* s = src + ((size_t)(row - y) * (size_t)src_stride) + (rect.x - x);
+        const gfx_color_t* s = image_row(src, row - y);
+        s += rect.x - x;
 
         if (p[0] && p[1] && p[2] && p[3]) {
             memcpy(dst + rect.x, s, (size_t)rect.w * sizeof *dst);

@@ -388,7 +388,7 @@ ui_draw_icon_emit(void* ctx_, recti_t rect) {
 }
 
 void
-ui_draw_icon(mu_Context* c, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color) {
+ui_draw_icon(mu_Context* c, mu_Rect r, const image_t* icon, const char* text, mu_Color color) {
     if (icon != NULL) {
         ui_draw_icon_ctx_t dc = {.c = c, .r = r, .color = color};
         icon_walk_blocks(icon, r.w, r.h, ui_draw_icon_emit, &dc);

@@ -194,6 +194,7 @@ primitive(int kind, int y) {
     for (size_t i = 0; i < sizeof source / sizeof *source; i++) {
         source[i] = INK;
     }
+    const image_t image = {.pixels = source, .format = IMAGE_RGB565BE, .width = SIZE, .height = SIZE, .stride = SIZE};
     switch (kind) {
         case DRAW_CLEAR: draw_clear(INK); break;
         case DRAW_PIXEL: draw_pixel(DRAWN_X, y, INK); break;
@@ -201,7 +202,7 @@ primitive(int kind, int y) {
         case DRAW_FILL: draw_rect(DRAWN_X, y, SIZE, SIZE, INK); break;
         case DRAW_DITHER: draw_rect_dither(DRAWN_X, y, SIZE, SIZE, INK, ALPHA_OPAQUE); break;
         case DRAW_BLEND: draw_rect_blend(DRAWN_X, y, SIZE, SIZE, INK, ALPHA_OPAQUE); break;
-        case DRAW_BLIT: draw_blit_dither(DRAWN_X, y, SIZE, SIZE, source, SIZE, ALPHA_OPAQUE); break;
+        case DRAW_BLIT: draw_blit_dither(DRAWN_X, y, &image, ALPHA_OPAQUE); break;
         case DRAW_TEXT: draw_text_font(DRAWN_X, y, "H", INK, 1, 0, font); break;
         case DRAW_TEXT_DITHER: draw_text_font_dither(DRAWN_X, y, "H", INK, 1, 0, font, ALPHA_OPAQUE); break;
     }

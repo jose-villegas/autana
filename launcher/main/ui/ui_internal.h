@@ -136,7 +136,7 @@ int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
  * NULL `icon` (no pack holds it) draws `text` centred in `r` instead, in the
  * current font; a control with a label beside its icon passes NULL `text`
  * and keeps the label alone. */
-void ui_draw_icon(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color);
+void ui_draw_icon(mu_Context* ctx, mu_Rect r, const image_t* icon, const char* text, mu_Color color);
 
 /* An integer-valued slider over the next layout row, shaped like
  * mu_slider_ex(), but integer: that one's float/"%.2f" thumb is the wrong

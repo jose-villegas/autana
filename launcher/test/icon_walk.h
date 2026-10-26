@@ -8,13 +8,13 @@
 #include "unity.h"
 
 static inline bool
-icon_test_bit(const draw_image_t* icon, int x, int y) {
-    const unsigned bit = (unsigned)y * icon->stride + (unsigned)x;
-    return (icon->bits[bit / 8] & (0x80 >> (bit % 8))) != 0;
+icon_test_bit(const image_t* icon, int x, int y) {
+    const uint8_t* row = image_row(icon, y);
+    return (row[x / 8] & (0x80 >> (x % 8))) != 0;
 }
 
 static inline int
-icon_test_runs(const draw_image_t* icon) {
+icon_test_runs(const image_t* icon) {
     int total = 0;
     for (int y = 0; y < icon->height; y++) {
         bool in_run = false;
