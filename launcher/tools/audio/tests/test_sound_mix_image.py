@@ -1,3 +1,4 @@
+"""sound_mix_image bakes its variant on this host and appends the made row to the scratch lock."""
 import subprocess
 import sys
 import tempfile
