@@ -60,9 +60,9 @@ static void
 test_saved_requires_commit(void) {
     const bool found[] = {true, true, true};
     const int32_t saved[] = {1, -2, 3};
-    const imu_calib_t uncommitted = imu_calib_from_saved(false, found, saved);
+    const imu_calib_t uncommitted = imu_calib_from_saved(false, found, saved, IMU_CALIB_OFFSET_MAX);
     TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, uncommitted.offset));
-    const imu_calib_t committed = imu_calib_from_saved(true, found, saved);
+    const imu_calib_t committed = imu_calib_from_saved(true, found, saved, IMU_CALIB_OFFSET_MAX);
     TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){1, -2, 3}, committed.offset));
 }
 
@@ -70,7 +70,7 @@ static void
 test_saved_validation(void) {
     bool found[3] = {true, true, true};
     int32_t saved[3] = {IMU_CALIB_OFFSET_MAX, -IMU_CALIB_OFFSET_MAX, 0};
-    const imu_calib_t valid = imu_calib_from_saved(true, found, saved);
+    const imu_calib_t valid = imu_calib_from_saved(true, found, saved, IMU_CALIB_OFFSET_MAX);
     TEST_ASSERT_EQUAL_INT(saved[0], valid.offset.x);
     TEST_ASSERT_EQUAL_INT(saved[1], valid.offset.y);
     const vec3i_t corrected = imu_calib_apply(&valid, valid.offset);
@@ -78,28 +78,68 @@ test_saved_validation(void) {
     const vec3i_t zero = {0};
     for (int axis = 0; axis < 3; axis++) {
         found[axis] = false;
-        imu_calib_t result = imu_calib_from_saved(true, found, saved);
+        imu_calib_t result = imu_calib_from_saved(true, found, saved, IMU_CALIB_OFFSET_MAX);
         TEST_ASSERT_EQUAL_MEMORY(&zero, &result.offset, sizeof zero);
         found[axis] = true;
         const int32_t original = saved[axis];
         const int32_t invalid[] = {IMU_CALIB_OFFSET_MAX + 1, -IMU_CALIB_OFFSET_MAX - 1, INT32_MIN, INT32_MAX};
         for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
             saved[axis] = invalid[i];
-            result = imu_calib_from_saved(true, found, saved);
+            result = imu_calib_from_saved(true, found, saved, IMU_CALIB_OFFSET_MAX);
             TEST_ASSERT_EQUAL_MEMORY(&zero, &result.offset, sizeof zero);
         }
         saved[axis] = original;
     }
     found[0] = found[1] = found[2] = false;
-    const imu_calib_t absent = imu_calib_from_saved(true, found, saved);
+    const imu_calib_t absent = imu_calib_from_saved(true, found, saved, IMU_CALIB_OFFSET_MAX);
     TEST_ASSERT_EQUAL_MEMORY(&zero, &absent.offset, sizeof zero);
     const vec3i_t raw = fixture().offset;
     const vec3i_t unchanged = imu_calib_apply(&absent, raw);
     TEST_ASSERT_EQUAL_MEMORY(&raw, &unchanged, sizeof raw);
 }
 
+static void
+test_gyro_learning_and_save_gates(void) {
+    imu_calib_gyro_t gyro = {0};
+    TEST_ASSERT_TRUE(imu_calib_learn_gyro(&gyro, (vec3i_t){IMU_CALIB_GYRO_MAX, 0, 0}));
+    TEST_ASSERT_TRUE(gyro.valid);
+    TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_MAX, gyro.live.offset.x);
+    TEST_ASSERT_TRUE(imu_calib_gyro_save_due(&gyro, 0));
+    imu_calib_gyro_saved(&gyro, 0);
+    TEST_ASSERT_FALSE(imu_calib_learn_gyro(&gyro, (vec3i_t){0, IMU_CALIB_GYRO_RESIDUAL_MAX + 1, 0}));
+    TEST_ASSERT_FALSE(imu_calib_learn_gyro(&gyro, (vec3i_t){1, 0, 0}));
+    TEST_ASSERT_TRUE(imu_calib_learn_gyro(&gyro, (vec3i_t){-IMU_CALIB_GYRO_SAVE_DELTA, 0, 0}));
+    TEST_ASSERT_FALSE(imu_calib_gyro_save_due(&gyro, IMU_CALIB_GYRO_SAVE_INTERVAL_US));
+    TEST_ASSERT_TRUE(imu_calib_learn_gyro(&gyro, (vec3i_t){-1, 0, 0}));
+    TEST_ASSERT_FALSE(imu_calib_gyro_save_due(&gyro, IMU_CALIB_GYRO_SAVE_INTERVAL_US - 1));
+    TEST_ASSERT_TRUE(imu_calib_gyro_save_due(&gyro, IMU_CALIB_GYRO_SAVE_INTERVAL_US));
+    imu_calib_gyro_saved(&gyro, IMU_CALIB_GYRO_SAVE_INTERVAL_US);
+    TEST_ASSERT_FALSE(imu_calib_gyro_save_due(&gyro, IMU_CALIB_GYRO_SAVE_INTERVAL_US * 2));
+}
+
+static void
+test_gyro_saved_bounds(void) {
+    const bool complete[] = {true, true, true};
+    for (int axis = 0; axis < 3; axis++) {
+        bool found[] = {true, true, true};
+        int32_t values[3] = {IMU_CALIB_GYRO_MAX, -IMU_CALIB_GYRO_MAX, IMU_CALIB_GYRO_MAX};
+        imu_calib_t calib = imu_calib_from_saved(true, complete, values, IMU_CALIB_GYRO_MAX);
+        TEST_ASSERT_EQUAL_INT(values[axis], ((int32_t[]){calib.offset.x, calib.offset.y, calib.offset.z})[axis]);
+        found[axis] = false;
+        calib = imu_calib_from_saved(true, found, values, IMU_CALIB_GYRO_MAX);
+        TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, calib.offset));
+        values[axis] = IMU_CALIB_GYRO_MAX + 1;
+        calib = imu_calib_from_saved(true, complete, values, IMU_CALIB_GYRO_MAX);
+        TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, calib.offset));
+        calib = imu_calib_from_saved(false, complete, values, IMU_CALIB_GYRO_MAX);
+        TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, calib.offset));
+    }
+}
+
 void
 run_imu_calib_suite(void) {
+    RUN_TEST(test_gyro_learning_and_save_gates);
+    RUN_TEST(test_gyro_saved_bounds);
     RUN_TEST(test_fit_and_apply);
     RUN_TEST(test_measured_board_fit);
     RUN_TEST(test_saved_validation);

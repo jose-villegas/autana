@@ -186,7 +186,12 @@ Device and IMU placement come from `board/board_geometry.h`.<sup>[[89]](../Citat
 | Bias reaches per-axis limit | Clamp in deg/s |
 | Rejection, zero acceleration or recovery | No bias learning |
 
+The input layer subtracts the stored gyro offset before this learner sees
+rotation. Its bias estimate is the residual after that correction; accepting
+a new rest-window offset clears the shared estimate.
+
 Bias along gravity is unobservable: rotation about down leaves down unchanged.
+Rest-window learning measures that axis too; see [Motion-Calibration.md](Motion-Calibration.md#gyro-learning).
 At full trust, the target is 2% settling for a datasheet-sized offset.
 
 | Symbol | Meaning |

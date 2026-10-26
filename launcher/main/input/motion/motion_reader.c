@@ -4,8 +4,10 @@
 #include "build/build_variant.h"
 #include "core/timing.h"
 #include "input/input.h"
+#include "input/input_shell.h"
 #include "input/motion/gravity.h"
 #include "input/motion/imu.h"
+#include "input/motion/imu_rest.h"
 #include "input/motion/shake.h"
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include <math.h>
@@ -20,6 +22,7 @@ static int64_t last_log_us;
 
 static gravity_t gravity = {.down = {0, 0, -1}};
 static shake_t shake;
+static imu_rest_t rest;
 static vec3f_t down = {0, 1, 0};
 static int64_t updated_us = INT64_MIN;
 static uint32_t updated_sequence;
@@ -27,6 +30,7 @@ static uint32_t updated_sequence;
 void
 motion_reader_reset(void) {
     gravity_reset(&gravity);
+    imu_rest_reset(&rest);
     shake_reset(&shake);
     down = (vec3f_t){0, 1, 0};
     updated_us = INT64_MIN;
@@ -38,6 +42,7 @@ update(void) {
     input_motion_t sample;
     uint32_t sequence;
     if (!input_read_motion_sequence(&sample, &sequence)) {
+        imu_rest_reset(&rest);
         if (!imu_ready()) {
             down = (vec3f_t){0, 1, 0};
             shake_reset(&shake);
@@ -56,6 +61,11 @@ update(void) {
     updated_us = now_us;
     updated_sequence = sequence;
     gravity_update(&gravity, &sample, dt_us);
+    vec3i_t residual;
+    const uint32_t rest_dt_us = elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed;
+    if (imu_rest_update(&rest, &sample, rest_dt_us, &residual) && input_learn_gyro_offset(residual)) {
+        gravity_set_gyro_bias(&gravity, (vec3f_t){0});
+    }
     shake_update(&shake, gravity_linear(&gravity), dt_us);
     down = gravity_in_free_fall(&gravity) ? (vec3f_t){0} : gravity_down(&gravity);
 #if CONFIG_LAUNCHER_DEVELOPMENT

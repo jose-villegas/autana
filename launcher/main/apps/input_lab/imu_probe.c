@@ -135,22 +135,7 @@ gravity_aligned(const imu_probe_round_t* round, input_motion_t sample) {
 
 static bool
 still(imu_probe_round_t* round, input_motion_t sample, uint32_t dt_ms) {
-    const int a[] = {sample.acceleration.x, sample.acceleration.y, sample.acceleration.z};
-    const int r[] = {sample.rotation.x, sample.rotation.y, sample.rotation.z};
-    const float weight = (float)dt_ms / (IMU_PROBE_RECENT_MS + (float)dt_ms);
-    bool stable = round->primed;
-    for (int axis = 0; axis < 3; axis++) {
-        if (!round->primed) {
-            round->recent_accel[axis] = (float)a[axis];
-            round->recent_gyro[axis] = (float)r[axis];
-        }
-        stable = stable && fabsf((float)a[axis] - round->recent_accel[axis]) < IMU_PROBE_ACCEL_DEPARTURE
-                 && fabsf((float)r[axis] - round->recent_gyro[axis]) < IMU_PROBE_GYRO_DEPARTURE;
-        round->recent_accel[axis] += weight * ((float)a[axis] - round->recent_accel[axis]);
-        round->recent_gyro[axis] += weight * ((float)r[axis] - round->recent_gyro[axis]);
-    }
-    round->primed = true;
-    return stable && gravity_aligned(round, sample);
+    return imu_rest_still(&round->rest, &sample, dt_ms * MATH_US_PER_MS) && gravity_aligned(round, sample);
 }
 
 bool
@@ -158,8 +143,8 @@ imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_
     if (round->step != IMU_PROBE_POSES || dt_ms == 0) {
         return false;
     }
-    if (sample == NULL || dt_ms > IMU_PROBE_MAX_GAP_MS) {
-        round->primed = false;
+    if (sample == NULL || dt_ms > IMU_REST_MAX_GAP_MS) {
+        round->rest.primed = false;
     }
     if (sample == NULL || !still(round, *sample, dt_ms)) {
         round->settle_ms = 0;
@@ -167,17 +152,17 @@ imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_
         round->window = (imu_probe_average_t){0};
         return false;
     }
-    if (round->settle_ms < IMU_PROBE_SETTLE_MS) {
+    if (round->settle_ms < IMU_REST_SETTLE_MS) {
         round->settle_ms += dt_ms;
         return false;
     }
     imu_probe_average_add(&round->window, *sample);
     round->window_ms += dt_ms;
-    if (round->window_ms < IMU_PROBE_WINDOW_MS) {
+    if (round->window_ms < IMU_REST_WINDOW_MS) {
         return false;
     }
     round->poses[round->pose++] = round->window;
-    round->primed = false;
+    round->rest.primed = false;
     round->settle_ms = round->window_ms = 0;
     round->window = (imu_probe_average_t){0};
     if (round->pose == IMU_PROBE_POSE_COUNT) {
@@ -195,8 +180,8 @@ turning(input_motion_t sample) {
 
 static void
 turn_upright(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt_ms) {
-    if (sample == NULL || dt_ms > IMU_PROBE_MAX_GAP_MS || !gravity_aligned(round, *sample)) {
-        round->primed = false;
+    if (sample == NULL || dt_ms > IMU_REST_MAX_GAP_MS || !gravity_aligned(round, *sample)) {
+        round->rest.primed = false;
         round->settle_ms = 0;
         return;
     }
@@ -205,7 +190,7 @@ turn_upright(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt
         return;
     }
     round->settle_ms += dt_ms;
-    if (round->settle_ms >= IMU_PROBE_SETTLE_MS) {
+    if (round->settle_ms >= IMU_REST_SETTLE_MS) {
         round->step = IMU_PROBE_TURN;
     }
 }

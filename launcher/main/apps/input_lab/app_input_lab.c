@@ -889,11 +889,11 @@ draw_imu_round(void) {
         imu_probe_pose_label(imu_round.pose, label, sizeof label);
         (void)snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
         hud_line(0, line);
-        if (imu_round.settle_ms < IMU_PROBE_SETTLE_MS) {
+        if (imu_round.settle_ms < IMU_REST_SETTLE_MS) {
             hud_line(1, "HOLD STILL");
         } else {
             (void)snprintf(line, sizeof line, "MEASURING %u%%",
-                           (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_PROBE_WINDOW_MS));
+                           (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_REST_WINDOW_MS));
             hud_line(1, line);
         }
         hud_line(3, "BOOT TO LEAVE ROUND");
