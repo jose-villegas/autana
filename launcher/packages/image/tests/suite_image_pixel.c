@@ -1,27 +1,12 @@
-/*
- * Portable suite: rgb565be_mix, blending two panel-packed pixels.
- *
- * rgb565be_t is RGB565 with the bytes swapped (see rgb565.h's own top
- * comment on RGB565BE), so mixing it means undoing that swap, blending each
- * of R5/G6/B5 in its own width, repacking, and swapping again. Getting the
- * swap wrong still produces a plausible-looking colour rather than an
- * obviously broken one, so every expected value here is checked against
- * RGB565BE(...) built from a hand-picked 0xRRGGBB constant, never against
- * rgb565be_mix's own round-trip: a test that reused the implementation's
- * swap logic could carry the same bug and still pass.
- *
- * The 0xRRGGBB constants below are chosen so each 8-bit channel lands
- * squarely inside one 5- or 6-bit bucket (a multiple of 8 for R/B, of 4 for
- * G), which is what makes RGB565's R8>>3 / G8>>2 / B8>>3 truncation
- * land on an exact, by-hand-predictable value instead of something that
- * itself needs rounding to check.
- */
+/* Expected values use hand-picked RGB565BE constants so an incorrect
+ * byte swap cannot validate itself through the implementation under test. */
 
 #include "testkit/suite.h"
 #include "unity.h"
 
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 
 static void
 test_t_zero_returns_a_exactly(void) {
@@ -53,8 +38,7 @@ test_mixing_a_colour_with_itself_is_identity_at_any_t(void) {
 
     for (size_t i = 0; i < sizeof(ts) / sizeof(ts[0]); i++) {
         TEST_ASSERT_EQUAL_HEX16_MESSAGE(c, rgb565be_mix(c, c, (uint8_t)ts[i]),
-                                        "blending a colour toward itself must be a no-op at every t, "
-                                        "or the bezel's face colour would drift under its own highlight");
+                                        "blending a colour toward itself must be a no-op at every t");
     }
 }
 
@@ -183,12 +167,8 @@ test_round_trip_is_exact_for_a_spread_of_colours(void) {
 
 static void
 test_expanding_a_colour_twice_is_idempotent(void) {
-    /* Feeding an already-expanded colour back through RGB565BE() and
-     * rgb565be_to_rgb888() a second time must land on exactly the same
-     * 0xRRGGBB, not merely one that happens to look right once; the
-     * expansion has to be a fixed point of the round trip, since the UI
-     * layer reads a panel colour into an 8-bit mu_Color once and nothing
-     * downstream of that is allowed to keep drifting it. */
+    /* Repeated RGB565/0xRRGGBB conversion must reach a fixed point
+     * so downstream colour arithmetic cannot accumulate drift. */
     for (size_t i = 0; i < RGB888_SPREAD_N; i++) {
         const rgb565be_t c = RGB565BE(rgb888_spread[i]);
         const uint32_t once = rgb565be_to_rgb888(c);
@@ -225,7 +205,7 @@ test_rgb565_round_trips_through_rgb888(void) {
 }
 
 /* Hand-packed native values, not the helpers' own swap: RGB565BE(0xF80000)
- * is red 31 in the high byte of native, so the panel order has it low. */
+ * is red 31 in the high byte of native, so high-byte-first order has it low. */
 static void
 test_swap_and_channels_read_hand_packed_rgb565(void) {
     TEST_ASSERT_EQUAL_HEX16(0xF800u, rgb565_swap(RGB565BE(0xF80000)));
@@ -264,10 +244,7 @@ check_hue_is_fully_saturated(int hue) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, lo, "a hue had no empty channel");
 }
 
-/* Every colour on the wheel is fully saturated: one channel at the top, one
- * at the bottom, the third somewhere between. That is what makes it a hue
- * wheel rather than a set of pastels, and it is what the panel is being shown
- * off with. */
+/* Full saturation requires one channel at maximum and another at zero. */
 static void
 test_every_hue_is_fully_saturated(void) {
     for (int hue = 0; hue < RGB888_HUE_TURN; hue++) {
@@ -321,11 +298,6 @@ test_lerp_rgb888_truncates_and_keeps_channels_apart(void) {
     TEST_ASSERT_EQUAL_HEX32(0x000000u, RGB888_LERP(0x000000u, 0x000100u, 1, 2));
     TEST_ASSERT_EQUAL_HEX32(0x00FF00u, RGB888_LERP(0x00FF00u, 0x00FF00u, 7, 15));
 }
-
-/*
- * bayer_covers() directly, which suite_gfx.c's device fills only ever
- * reach through a real framebuffer.
- */
 
 /* bayer_level() is the alpha->level scaling bayer_covers()
  * compares against the table, exposed so a caller with a whole row at one
@@ -397,7 +369,7 @@ check_covers_both_at_cell(int x, int y) {
             const bool via_min = bayer_covers(x, y, lower);
             TEST_ASSERT_EQUAL_MESSAGE(via_min, both,
                                       "covers(a) && covers(b) must equal covers(min(a, "
-                                      "b)) at every cell - this is what lets draw_image() "
+                                      "b)) at every cell - this lets a caller "
                                       "test the lower alpha once instead of testing both "
                                       "and ANDing");
         }
@@ -420,11 +392,8 @@ test_covers_both_equals_covers_the_lower_alpha(void) {
     }
 }
 
-/* Why a scrim may only be applied once: draw_rect_blend() mixes into
- * the pixel it reads, so a second application over an un-repainted region
- * lands on the first one's own output. Same mix, same alpha, twice is
- * strictly darker than once, and repeating it walks the picture to black,
- * so a caller scrims once per repaint of the backdrop, never per frame. */
+/* Repeated blending toward black compounds the darkening, so a caller
+ * applies a scrim once per repaint of the backdrop. */
 static void
 test_mixing_toward_black_twice_is_darker_than_once(void) {
     const rgb565be_t black = RGB565BE(0x000000);

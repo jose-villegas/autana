@@ -13,10 +13,8 @@ typedef struct {
     int count; /* <= PALETTE_MAX_ENTRIES; 16 for a 16-colour palette */
 } palette_t;
 
-/* Nearest-entry index of `c` in whichever palette `index_map` was built
- * for (tools/gen/draw_palette_gen.h's draw_palette_gen_build_index_map()); one
- * flash read, keyed by native (non-byte-swapped) RGB565, the same swap
- * rgb565be_to_rgb888() undoes. */
+/* index_map is the 64 KiB reverse map from native RGB565 to index,
+ * built for the palette offline. */
 static inline int
 palette_index_of(rgb565be_t c, const uint8_t index_map[65536]) {
     return index_map[rgb565_swap(c)];

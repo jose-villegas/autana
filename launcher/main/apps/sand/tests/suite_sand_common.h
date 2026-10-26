@@ -18,7 +18,6 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h" /* sand_chunk_share_t - a scope below pins it */
 #include "apps/sand/tests/sand_fill.h"
-#include "image/pixel/rgb565.h"
 
 /* Big enough for every case here, small enough to write out by hand. */
 #define W 8

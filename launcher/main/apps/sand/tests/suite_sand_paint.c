@@ -14,7 +14,6 @@
 #include "apps/sand/material.h"
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand_paint.h"
-#include "image/pixel/rgb565.h"
 
 #define ROW_W 5
 

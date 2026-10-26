@@ -19,6 +19,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/ease.h"
 #include "math/scalar/fixed.h"
@@ -646,8 +647,6 @@ repaint_column_strip(gfx_color_t* framebuffer, int x, int lo, int hi) {
  * dissolving in through a 4x4 ordered dither, eased. A pixel not yet
  * dissolved keeps what it showed. */
 #if TUNE_ENABLED
-static const uint8_t dissolve_order[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
-
 static inline __attribute__((always_inline)) bool
 dissolving(void) {
     return ridge->dissolve_level < DISSOLVE_LEVELS;
@@ -655,7 +654,7 @@ dissolving(void) {
 
 static inline __attribute__((always_inline)) bool
 dissolved(int x, int y) {
-    return dissolve_order[y & 3][x & 3] < ridge->dissolve_level;
+    return bayer4x4[y & 3][x & 3] < ridge->dissolve_level;
 }
 #else
 static inline __attribute__((always_inline)) bool
@@ -1042,7 +1041,7 @@ paint_dissolve_row(int y, int c) {
 static void
 paint_dissolve_level(int level) {
     for (int cell = 0; cell < DISSOLVE_LEVELS; cell++) {
-        if (dissolve_order[cell / 4][cell % 4] == level) {
+        if (bayer4x4[cell / 4][cell % 4] == level) {
             for (int y = cell / 4; y < GFX_HEIGHT; y += 4) {
                 paint_dissolve_row(y, cell % 4);
             }

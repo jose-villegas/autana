@@ -17,6 +17,7 @@
 #include "material_palette.h"
 
 #include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "sand_palette256.h" /* see material_palette256_index() below */

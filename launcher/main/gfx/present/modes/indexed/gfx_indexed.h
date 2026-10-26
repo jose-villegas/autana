@@ -18,7 +18,6 @@
 
 #include "gfx/target/gfx_color.h"
 #include "image/pixel/bayer.h"
-#include "image/pixel/rgb565.h"
 
 #define GFX_INDEXED_PALETTE_SIZE 256
 

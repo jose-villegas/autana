@@ -41,6 +41,7 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_test.h"
 #include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 #include "test_anim_tracks.h"
 #include "test_asset_dir.h"
 #include "testkit/cleanup.h"

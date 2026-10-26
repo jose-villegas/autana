@@ -47,6 +47,7 @@
 #include "esp_log.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 
 static const char* TAG = "boot_anim";
 #endif

@@ -11,7 +11,6 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_render_target.h"
-#include "image/pixel/rgb565.h"
 #include "render/render_view.h"
 
 /* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
