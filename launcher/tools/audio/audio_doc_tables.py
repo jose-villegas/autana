@@ -70,7 +70,7 @@ DRC_DEFAULT = tuple(read_define(AUDIO / "audio_out.c", name) for name in (
     "AUDIO_OUT_DRC_MIN_LEVEL", "AUDIO_OUT_DRC_WINSIZE", "AUDIO_OUT_DRC_RAMP"))
 DRC_REFERENCE_CODEC = 50
 
-DEFAULT_VOLUME = read_define(ROOT / "launcher/main/console/verbs/console_tone_parse.h", "CONSOLE_TONE_DEFAULT_VOLUME_PCT")
+DEFAULT_VOLUME = read_define(ROOT / "launcher/main/sound/console/console_tone_parse.h", "CONSOLE_TONE_DEFAULT_VOLUME_PCT")
 
 
 def read_capture(path):

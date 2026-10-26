@@ -3,10 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include "clock_fake.h"
-#include "console/verbs/console_melody.h"
-#include "console/verbs/console_tone_parse.h"
-#include "console/verbs/console_tone_reply.h"
 #include "math/scalar/math_db.h"
+#include "sound/console/console_melody.h"
+#include "sound/console/console_tone_parse.h"
+#include "sound/console/console_tone_reply.h"
 #include "suites.h"
 #include "unity.h"
 #define TEST_TARGET_HZ   1000u
@@ -110,8 +110,8 @@ test_tone_parse_invalid(void) {
 #include "audio/audio_loopback.h"
 #include "audio/audio_out_device.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_sound_views.h"
 #include "core/timing.h"
+#include "sound/console/console_sound_views.h"
 #include "sound/sound_engine.h"
 #include "test_asset_dir.h"
 

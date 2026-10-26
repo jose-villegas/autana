@@ -20,10 +20,10 @@
 
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_inject_parse.h"
-#include "console/verbs/console_navigation_parse.h"
-#include "console/verbs/console_perf_parse.h"
-#include "console/verbs/console_sound_parse.h"
+#include "input/console/console_inject_parse.h"
+#include "profile/console/console_perf_parse.h"
+#include "shell/console/console_navigation_parse.h"
+#include "sound/console/console_sound_parse.h"
 
 #define REPLIES_MAX 8
 

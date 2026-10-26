@@ -22,7 +22,7 @@ scene_ui=1
 scene_renderer=1
 scene_sources="
 main/app/app_arena.c
-main/app/app_console.c
+main/console/console_words.c
 main/app/app_registry.c
 main/core/job.c
 main/input/touch/gesture.c

@@ -11,7 +11,7 @@
  * next read. Whatever is injected outranks the hardware while it lasts.
  */
 #include "console/console_verbs.h"
-#include "console/verbs/console_inject_parse.h"
+#include "input/console/console_inject_parse.h"
 
 #include "display/display_shell.h"
 #include "input/buttons/buttons.h"

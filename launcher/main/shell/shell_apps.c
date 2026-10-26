@@ -28,7 +28,7 @@
 #include "shell/ui/ui_ridge.h"
 #include "sound/sound_engine.h"
 #if CONFIG_LAUNCHER_DEVELOPMENT
-#include "console/verbs/console_sound.h"
+#include "sound/console/console_sound.h"
 #endif
 #include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"

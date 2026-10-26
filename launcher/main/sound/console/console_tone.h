@@ -1,6 +1,6 @@
 /* console_tone: blocking tone control and loopback checks for console workers. */
 #pragma once
-#include "console/verbs/console_tone_reply.h"
+#include "sound/console/console_tone_reply.h"
 #include "sound/sound_engine.h"
 
 bool console_tone_start(sound_voice_t* voice, uint16_t hz, uint8_t gain);
