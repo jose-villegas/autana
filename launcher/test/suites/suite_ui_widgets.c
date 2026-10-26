@@ -1420,6 +1420,37 @@ reference_icon_rect(void* context, recti_t r) {
     mu_draw_rect(context, (mu_Rect){COMMAND_BOX.x + r.x, COMMAND_BOX.y + r.y, r.w, r.h}, THEME.text);
 }
 
+/* What the builders under test draw: one command each. */
+static void
+draw_command_subject(mu_Context* ctx, bool swatches) {
+    if (swatches) {
+        uint32_t colors[COMMAND_COLS * COMMAND_ROWS];
+        memcpy(colors, COMMAND_COLORS, sizeof colors);
+        ui_swatch_grid(ctx, COMMAND_BOX, colors, COMMAND_COLS, COMMAND_ROWS);
+        memset(colors, 0, sizeof colors);
+    } else {
+        ui_draw_icon(ctx, COMMAND_BOX, &COMMAND_ICON, NULL, THEME.text);
+    }
+}
+
+/* The same picture as one rect per cell or run, as the builders drew it before. */
+static void
+draw_command_reference(mu_Context* ctx, bool swatches) {
+    if (!swatches) {
+        icon_walk_blocks(&COMMAND_ICON, COMMAND_BOX.w, COMMAND_BOX.h, reference_icon_rect, ctx);
+        return;
+    }
+    for (int row = 0; row < COMMAND_ROWS; row++) {
+        for (int col = 0; col < COMMAND_COLS; col++) {
+            const int x = COMMAND_BOX.x + col * COMMAND_BOX.w / COMMAND_COLS;
+            const int y = COMMAND_BOX.y + row * COMMAND_BOX.h / COMMAND_ROWS;
+            const int right = COMMAND_BOX.x + (col + 1) * COMMAND_BOX.w / COMMAND_COLS;
+            const int bottom = COMMAND_BOX.y + (row + 1) * COMMAND_BOX.h / COMMAND_ROWS;
+            mu_draw_rect(ctx, (mu_Rect){x, y, right - x, bottom - y}, ui_rgb(COMMAND_COLORS[row * COMMAND_COLS + col]));
+        }
+    }
+}
+
 static void
 paint_command_reference(bool reference, bool swatches, bool clipped) {
     ui_invalidate();
@@ -1429,28 +1460,10 @@ paint_command_reference(bool reference, bool swatches, bool clipped) {
         if (clipped) {
             mu_push_clip_rect(ctx, (mu_Rect){COMMAND_BOX.x + 7, COMMAND_BOX.y + 5, 17, 13});
         }
-        if (!reference) {
-            if (swatches) {
-                uint32_t colors[COMMAND_COLS * COMMAND_ROWS];
-                memcpy(colors, COMMAND_COLORS, sizeof colors);
-                ui_swatch_grid(ctx, COMMAND_BOX, colors, COMMAND_COLS, COMMAND_ROWS);
-                memset(colors, 0, sizeof colors);
-            } else {
-                ui_draw_icon(ctx, COMMAND_BOX, &COMMAND_ICON, NULL, THEME.text);
-            }
-        } else if (swatches) {
-            for (int row = 0; row < COMMAND_ROWS; row++) {
-                for (int col = 0; col < COMMAND_COLS; col++) {
-                    const int x = COMMAND_BOX.x + col * COMMAND_BOX.w / COMMAND_COLS;
-                    const int y = COMMAND_BOX.y + row * COMMAND_BOX.h / COMMAND_ROWS;
-                    const int right = COMMAND_BOX.x + (col + 1) * COMMAND_BOX.w / COMMAND_COLS;
-                    const int bottom = COMMAND_BOX.y + (row + 1) * COMMAND_BOX.h / COMMAND_ROWS;
-                    mu_draw_rect(ctx, (mu_Rect){x, y, right - x, bottom - y},
-                                 ui_rgb(COMMAND_COLORS[row * COMMAND_COLS + col]));
-                }
-            }
+        if (reference) {
+            draw_command_reference(ctx, swatches);
         } else {
-            icon_walk_blocks(&COMMAND_ICON, COMMAND_BOX.w, COMMAND_BOX.h, reference_icon_rect, ctx);
+            draw_command_subject(ctx, swatches);
         }
         if (clipped) {
             mu_pop_clip_rect(ctx);
