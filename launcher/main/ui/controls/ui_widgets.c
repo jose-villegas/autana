@@ -421,14 +421,17 @@ ui_mu_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme) {
 
 void
 ui_swatch_grid(mu_Context* ctx, mu_Rect r, const uint32_t* colors, int cols, int rows) {
-    for (int row = 0; row < rows; row++) {
-        const int y0 = r.y + (row * r.h / rows);
-        const int y1 = r.y + ((row + 1) * r.h / rows);
-        for (int col = 0; col < cols; col++) {
-            const int x0 = r.x + (col * r.w / cols);
-            const int x1 = r.x + ((col + 1) * r.w / cols);
-            mu_draw_rect(ctx, mu_rect(x0, y0, x1 - x0, y1 - y0), ui_rgb(colors[(row * cols) + col]));
-        }
+    if (cols <= 0 || rows <= 0) {
+        return;
+    }
+    const int count = cols * rows;
+    ui_swatch_command_t* cmd =
+        ui_push_clipped_command(ctx, UI_COMMAND_SWATCHES, sizeof *cmd + (count - 1) * sizeof *cmd->rgb, r);
+    if (cmd != NULL) {
+        cmd->rect = r;
+        cmd->cols = cols;
+        cmd->rows = rows;
+        memcpy(cmd->rgb, colors, (size_t)count * sizeof *colors);
     }
 }
 

@@ -1558,8 +1558,10 @@ test_the_shell_look_insets_a_button_icon(void) {
     recti_t icon = {0, 0, 0, 0};
     mu_Command* cmd = NULL;
     while (mu_next_command(ui_context(), &cmd)) {
-        if (cmd->type == MU_COMMAND_RECT && memcmp(&cmd->rect.color, &ink, sizeof ink) == 0) {
-            icon = recti_union(icon, ui_recti_from_mu(cmd->rect.rect));
+        if (cmd->type == UI_COMMAND_IMAGE) {
+            const ui_image_command_t* image = (const ui_image_command_t*)cmd;
+            TEST_ASSERT_EQUAL_MEMORY(&ink, &image->color, sizeof ink);
+            icon = recti_union(icon, ui_recti_from_mu(image->rect));
         }
     }
     const recti_t square = {BOX.x + pad, BOX.y + (BOX.h - UI_SHELL_ICON_SIDE) / 2, UI_SHELL_ICON_SIDE,

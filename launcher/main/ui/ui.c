@@ -204,6 +204,27 @@ draw_command(const mu_Command* cmd) {
             break;
         }
 
+        case UI_COMMAND_IMAGE: {
+            const ui_image_command_t* image = (const ui_image_command_t*)cmd;
+            if (image->color.a != 0) {
+                icon_fill_ctx_t fc = {.color = mu_color_to_gfx(image->color)};
+                ui_transform_icon_blocks(t, image->image, ui_recti_from_mu(image->rect), icon_fill_emit, &fc);
+            }
+            break;
+        }
+
+        case UI_COMMAND_SWATCHES: {
+            const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
+            for (int row = 0; row < grid->rows; row++) {
+                for (int col = 0; col < grid->cols; col++) {
+                    const mu_Rect cell = ui_transform_mu_rect(t, ui_swatch_cell_rect(grid, col, row));
+                    draw_rect(cell.x, cell.y, cell.w, cell.h,
+                              mu_color_to_gfx(ui_rgb(grid->rgb[row * grid->cols + col])));
+                }
+            }
+            break;
+        }
+
         case MU_COMMAND_TEXT: draw_text_command(cmd, t); break;
 
         case MU_COMMAND_ICON: {
@@ -578,6 +599,15 @@ command_row_range(const mu_Command* cmd, int* y0, int* y1) {
     switch (cmd->type) {
         case MU_COMMAND_RECT: {
             const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
+            *y0 = r.y;
+            *y1 = r.y + r.h;
+            return true;
+        }
+        case UI_COMMAND_IMAGE:
+        case UI_COMMAND_SWATCHES: {
+            const mu_Rect rect = cmd->type == UI_COMMAND_IMAGE ? ((const ui_image_command_t*)cmd)->rect
+                                                               : ((const ui_swatch_command_t*)cmd)->rect;
+            const mu_Rect r = ui_transform_mu_rect(t, rect);
             *y0 = r.y;
             *y1 = r.y + r.h;
             return true;
