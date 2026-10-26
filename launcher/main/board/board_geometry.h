@@ -9,7 +9,7 @@
  */
 #pragma once
 
-/* Display module outline, the device's widest part (3D model). */
+/* Display module outline (3D model). */
 #define BOARD_DEVICE_WIDTH_MM         33.6F
 #define BOARD_DEVICE_HEIGHT_MM        41.2F
 /* Plan-view corner radius of that outline (3D model, circle fit to the corner spline). */
@@ -18,10 +18,13 @@
  * a placeholder until measured on a board. */
 #define BOARD_DEVICE_DEPTH_MM         7.4F
 
-/* The cased device's outline (dimension drawing). */
+/* The cased device's outline (dimension drawing); glass flush with the front,
+ * spanning z = 0 to -BOARD_CASE_DEPTH_MM (estimate). */
 #define BOARD_CASE_WIDTH_MM           37.60F
 #define BOARD_CASE_HEIGHT_MM          45.20F
 #define BOARD_CASE_DEPTH_MM           15.00F
+/* The case wall follows the module outline (estimate; the drawing gives no radius). */
+#define BOARD_CASE_CORNER_RADIUS_MM   (BOARD_DEVICE_CORNER_RADIUS_MM + (BOARD_CASE_WIDTH_MM - BOARD_DEVICE_WIDTH_MM) / 2)
 /* The case's back face, square, with a screw in each corner (dimension drawing). */
 #define BOARD_CASE_BACK_SIDE_MM       27.60F
 #define BOARD_CASE_SCREW_RADIUS_MM    1.80F

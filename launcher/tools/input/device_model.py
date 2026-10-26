@@ -1,4 +1,4 @@
-"""The device as a 3D figure: rounded box, IMU and both axis sets, from board/board_geometry.h.
+"""The case as a 3D figure: translucent walls, screen, IMU and both axis sets, from board/board_geometry.h.
 
 Device axes: x right, y up the screen, z out of the glass; millimetres; origin at the glass centre.
 A pose is a 3x3 matrix whose columns are the device axes in the figure's world axes; world z is up.
@@ -17,6 +17,8 @@ from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, SLOTS, TITLE
 PROBE = Path(__file__).with_name("device_model_probe.c")
 CORNER_SEGMENTS = 8
 BODY_ALPHA = 0.22
+# The PCB is a faint reference behind the IMU, inside the translucent case.
+PCB_ALPHA = 0.4
 GLASS_ALPHA = 0.5
 GLASS = MUTED
 BODY = FAINT
@@ -36,11 +38,11 @@ ANIMATION_DPI = 80
 ANIMATION_COLORS = 128
 ANIMATION_SIZE = (10, 5.4)
 # The scene's half extent, and the length of a vector at its scale's unit, as shares of the device height.
-EXTENT_SHARE = 0.7
+EXTENT_SHARE = 0.85
 VECTOR_SHARE = 0.5
 # Vectors start to the camera's right and left of the device, this share of the height past its half diagonal,
 # so they stay clear of it in any pose.
-BESIDE_SHARE = 0.1
+BESIDE_SHARE = 0.4
 # Figure shares: the scene on the left, the signal plots stacked on the right, the legend under both.
 SCENE = (0, 0.08, 0.62, 0.84)
 PLOTS = (0.68, 0.2, 0.3, 0.64)
@@ -73,19 +75,29 @@ class DeviceModel:
 
     def __init__(self, cc):
         geometry = run_probe(cc, (PROBE,))
-        self.height = geometry["height"]
-        self.depth = geometry["depth"]
-        self.width = geometry["width"]
+        self.height = geometry["case_height"]
+        self.depth = geometry["case_depth"]
+        self.width = geometry["case_width"]
         self.imu_centre = np.array(geometry["imu_centre"])
         self.chip_axes = np.array(geometry["chip_axes"], dtype=float)
         # The code's screen axes x right, y down, z out: minus where imu_axes_screen() sends the chip axes,
         # because the chip reads specific force (up) and the code calls that vector down.
         self.screen_axes = -np.array(geometry["mapped_axes"], dtype=float)
-        outline = rounded_outline(self.width, self.height, geometry["corner"])
-        self.glass = np.c_[outline, np.zeros(len(outline))]
+        outline = rounded_outline(self.width, self.height, geometry["case_corner"])
+        front = np.c_[outline, np.zeros(len(outline))]
         back = np.c_[outline, np.full(len(outline), -self.depth)]
-        self.body = [np.array([self.glass[i], self.glass[i + 1], back[i + 1], back[i]])
-                     for i in range(len(outline) - 1)] + [back]
+        screen = rounded_outline(geometry["screen_width"], geometry["screen_height"], 0)
+        self.glass = np.c_[screen, np.zeros(len(screen))]
+        self.case_outlines = (front, back)
+        self.body = [np.array([front[i], front[i + 1], other[i + 1], other[i]])
+                     for other in (back, self.glass) for i in range(len(outline) - 1)] + [back]
+        square = rounded_outline(geometry["back_side"], geometry["back_side"], 0)
+        radius = geometry["screw_radius"]
+        circle = rounded_outline(2 * radius, 2 * radius, radius)
+        self.back_details = [np.c_[line, np.full(len(line), -self.depth)]
+                             for line in [square] + [circle + corner for corner in np.unique(square, axis=0)]]
+        pcb = rounded_outline(geometry["width"], geometry["height"], geometry["corner"])
+        self.pcb = np.c_[pcb, np.full(len(pcb), -geometry["depth"])]
         self.imu = box_faces(self.imu_centre, self.chip_axes.T @ np.array(geometry["imu_size"]))
 
     def to_device(self, screen_vector):
@@ -96,9 +108,12 @@ class DeviceModel:
         """Draw the posed device into a 3D axis made with computed_zorder=False, so arrows stay over the faces."""
         pose = np.asarray(pose)
         axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.body], facecolor=BODY,
-                                               edgecolor=MUTED, linewidth=EDGE_WIDTH, alpha=BODY_ALPHA))
+                                               edgecolor="none", alpha=BODY_ALPHA))
         axis.add_collection3d(Poly3DCollection([self.glass @ pose.T], facecolor=GLASS, edgecolor=GLASS,
                                                alpha=GLASS_ALPHA))
+        for line in (*self.case_outlines, *self.back_details):
+            axis.plot(*(line @ pose.T).T, color=MUTED, linewidth=EDGE_WIDTH)
+        axis.plot(*(self.pcb @ pose.T).T, color=MUTED, linewidth=EDGE_WIDTH, alpha=PCB_ALPHA)
         axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.imu], facecolor=IMU, edgecolor=IMU))
         length = AXIS_SHARE * self.height
         sets = ((chip_axes, pose @ self.imu_centre, self.chip_axes, "XYZ", CHIP_AXES),
