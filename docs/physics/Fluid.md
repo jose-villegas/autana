@@ -5,7 +5,7 @@ Water in a closed box, stepped by any acceleration: `physics/fluid/`, in the
 
 ## flip3.h
 
-Water in a closed box: FLIP particles on a MAC grid<sup>[[91]](../Citations.md#91)</sup><sup>[[92]](../Citations.md#92)</sup>,
+Water in a closed box: FLIP particles on a MAC grid<sup>[[91]](../Citations.md#harlow-1965)</sup><sup>[[92]](../Citations.md#brackbill-1986)</sup>,
 driven by any acceleration, in caller-owned grid and particle blocks.
 
 | Function | Purpose |
@@ -26,13 +26,13 @@ driven by any acceleration, in caller-owned grid and particle blocks.
 |---|---|
 | `FLIP3_RADIUS_CELLS` | Closest a particle comes to a wall |
 | `FLIP3_SEED_SPACING_CELLS` | Seed lattice spacing; a cell holds about 4.6 seeds |
-| `FLIP3_FLIP_RATIO`, `FLIP3_PRESSURE_ITERS`, `FLIP3_OVER_RELAXATION` | Defaults of the Ten Minute Physics tank<sup>[[94]](../Citations.md#94)</sup> |
+| `FLIP3_FLIP_RATIO`, `FLIP3_PRESSURE_ITERS`, `FLIP3_OVER_RELAXATION` | Defaults of the Ten Minute Physics tank<sup>[[94]](../Citations.md#muller-2022)</sup> |
 | `FLIP3_DRIFT_GAIN` | Share of a cell's density error turned into flow per step |
 | `FLIP3_TUNING_DEFAULT` | All four together |
 
 ### The step
 
-Each step runs in Bridson's order<sup>[[93]](../Citations.md#93)</sup>:
+Each step runs in Bridson's order<sup>[[93]](../Citations.md#bridson-2015)</sup>:
 
 | Stage | What it does |
 |---|---|

@@ -48,7 +48,7 @@ Normalization changes the ruler spacing while keeping the same zero plane.
 
 ## frustum
 
-`P_frustum` reads rows as in Gribb and Hartmann<sup>[[77]](../Citations.md#77)</sup>,
+`P_frustum` reads rows as in Gribb and Hartmann<sup>[[77]](../Citations.md#gribb-2001)</sup>,
 with picture coordinates $`c_x + f_x x/z`$, $`c_y - f_y y/z`$ and $`z`$ supplying $`w`$.
 Each output is `P_from_rows` of a lens-space plane, in this order:
 
@@ -132,7 +132,7 @@ Circles and spheres store `centre` and nonnegative `radius`, including the bound
 | `circlei` | `circlei_contains_point`, `circlei_overlaps` |
 | `spheref` | `spheref_contains_point`, `spheref_overlaps`, `spheref_closest_point`, `spheref_segment_hit` |
 
-`P_segment_hit` uses Haines, Günther and Akenine-Möller's perpendicular-distance discriminant<sup>[[84]](../Citations.md#84)</sup> to avoid cancellation in the hit decision. It writes `t` only on a hit.
+`P_segment_hit` uses Haines, Günther and Akenine-Möller's perpendicular-distance discriminant<sup>[[84]](../Citations.md#haines-2019)</sup> to avoid cancellation in the hit decision. It writes `t` only on a hit.
 
 Zero-length segments hit when the point is inside; tangency counts as a hit.
 
@@ -140,7 +140,7 @@ Zero-length segments hit when the point is inside; tangency counts as a hit.
 
 `spheref` has a vec3 centre and the shared [ball queries](#ball-shared-circle-and-sphere-queries-f-i); box bounds must be finite and nonempty.
 `spheref_overlaps_box` compares the closest box point's squared distance
-with the squared radius (Arvo 1990<sup>[[83]](../Citations.md#83)</sup>).
+with the squared radius (Arvo 1990<sup>[[83]](../Citations.md#arvo-1990)</sup>).
 
 | Function | Purpose | Formula |
 |---|---|---|
@@ -158,7 +158,7 @@ Marked segment entries include a start inside the sphere at $`t = 0`$.
 ## circle (`f`, `i`)
 
 `circlef` and `circlei` have a vec2 centre and shared [ball queries](#ball-shared-circle-and-sphere-queries-f-i). The circle has no fixed-point variant yet.
-Rectangle overlaps use Arvo 1990<sup>[[83]](../Citations.md#83)</sup> in two dimensions; rectangles must be nonempty.
+Rectangle overlaps use Arvo 1990<sup>[[83]](../Citations.md#arvo-1990)</sup> in two dimensions; rectangles must be nonempty.
 Integer edges end at `right-1` and `bottom-1`; real queries include the closure at `right` and `bottom`.
 
 | Function | Meaning | Formula |
@@ -175,7 +175,7 @@ The integer touch reaches `right−1`; segment markers show the first hit, inclu
 ## iso_surface
 
 The surface where a sampled field crosses a level, as triangles, by naive
-surface nets<sup>[[95]](../Citations.md#95)</sup>: one vertex per cell the surface
+surface nets<sup>[[95]](../Citations.md#gibson-1998)</sup>: one vertex per cell the surface
 passes through, at the mean of its edge crossings, and a quad across every
 crossing sample edge.
 
