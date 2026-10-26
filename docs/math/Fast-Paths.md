@@ -29,13 +29,13 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 
 | Fast path | Warm cycles: fast / plain (×) | Cold cycles: fast / plain | Max error |
 |---|---|---|---|
-| [`mathf_recip`](#mathf-recip) | 26 / 59 (2.3×) | 2300 / 4600 | 1 step |
-| [`mathf_rsqrt`](#mathf-rsqrt) | 38 / 120 (3.1×) | 3900 / 9800 | 1 step |
-| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 24 / 120 (4.9×) | 2400 / 9800 | 5.9e-5 rel |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 350 / 1100 (3.2×) | 29000 / 77000 | 4.6e-10 rel (host) |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 720 / 720 (1×) | 63000 / 60000 | 4.6e-10 rel (host) |
-| [`mathf_repeat`](#mathf-repeat) | 64 / 140 (2.1×) | 6700 / 13000 | 0 steps |
-| [`trig_sin`](#trig-sin) | 31 / 220 (7.3×) | 4200 / 24000 | 4.6 lsb |
+| [`mathf_recip`](#mathf-recip) | 26 / 59 (2.3×) | 2500 / 4500 | 1 step |
+| [`mathf_rsqrt`](#mathf-rsqrt) | 38 / 120 (3.1×) | 4100 / 9700 | 1 step |
+| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 24 / 120 (4.9×) | 2400 / 9700 | 5.9e-5 rel |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 330 / 1100 (3.4×) | 28000 / 77000 | 4.6e-10 rel (host) |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 650 / 720 (1.1×) | 58000 / 60000 | 4.6e-10 rel (host) |
+| [`mathf_repeat`](#mathf-repeat) | 64 / 140 (2.1×) | 6400 / 14000 | 0 steps |
+| [`trig_sin`](#trig-sin) | 31 / 220 (7.3×) | 4500 / 24000 | 4.6 lsb |
 
 ### Size and builds
 
