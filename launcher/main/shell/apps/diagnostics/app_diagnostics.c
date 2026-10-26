@@ -84,7 +84,7 @@ draw_tools_page(const input_t* input) {
 
     if (state.show_orientation && state.imu_ready) {
         imu_sample_t sample;
-        state.have_sample = imu_read(&sample);
+        state.have_sample = imu_read(&sample, NULL);
         if (state.have_sample) {
             state.accel_ax = sample.ax;
             state.accel_ay = sample.ay;

@@ -30,9 +30,12 @@
 #include "anim/playback/anim_playhead.h"
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
+#include "core/handle.h"
 #include "draw/draw_font.h"
 #include "draw/draw_image.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 #include "math/linear/transformf.h"
 #include "math/linear/vec2i.h"
 #include "math/linear/vec3f.h"
@@ -59,6 +62,7 @@ typedef struct {
     anim_node_tracks_t camera;
     anim_node_tracks_t space;
     bool from_pack;
+    handle_t load;
 } boot_anim_motion_t;
 
 /* Fills `out` from the boot clip's pack, mounting it. On any failure it logs
@@ -345,7 +349,7 @@ boot_anim_crest_amount(int32_t ripple) {
 
 static inline gfx_color_t
 boot_anim_floor_color(int32_t ripple, uint32_t crest_rgb) {
-    return gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), gfx_rgb(crest_rgb), boot_anim_crest_amount(ripple));
+    return rgb565be_mix(RGB565BE(BOOT_ANIM_FLOOR_GREY), RGB565BE(crest_rgb), boot_anim_crest_amount(ripple));
 }
 
 /* The curve sample nearest mesh node (i, j) in the floor plane among the
@@ -667,11 +671,11 @@ boot_anim_trail_pos(int32_t pen_q12, int k) {
 /* The wheel position pen `k` carries, spread evenly round it. */
 static inline int
 boot_anim_trail_hue(int k) {
-    return k * (GFX_HUE_TURN / BOOT_ANIM_TRAILS);
+    return k * (RGB888_HUE_TURN / BOOT_ANIM_TRAILS);
 }
 
 typedef struct {
-    int hue;       /* wheel position; gfx_hue_rgb() wraps it */
+    int hue;       /* wheel position; rgb888_hue() wraps it */
     uint8_t bloom; /* mix that far toward white                    */
     uint8_t glow;  /* mix that far up from the background          */
     uint8_t width; /* pixels across                                */
@@ -723,7 +727,7 @@ static inline uint32_t
 boot_anim_crest_rgb(int sample, int32_t colour_pen) {
     const int32_t phase1_span = (int32_t)(BOOT_ANIM_CURVE_PHASE1_POINTS - 1);
     const int32_t along = ((sample * BOOT_ANIM_ONE) + (phase1_span / 2)) / phase1_span;
-    return gfx_hue_rgb(boot_anim_stroke(along, colour_pen).hue);
+    return rgb888_hue(boot_anim_stroke(along, colour_pen).hue);
 }
 
 /* Axes reach their full extent over the fade interval, so the scene has one

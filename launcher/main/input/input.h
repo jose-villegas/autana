@@ -10,6 +10,8 @@
 #include <stdint.h>
 
 #include "input/buttons/buttons.h"
+#include "math/linear/vec2i.h"
+#include "math/linear/vec3f.h"
 #include "math/linear/vec3i.h"
 
 /* Touch state for the current frame.
@@ -21,8 +23,8 @@ typedef struct {
     bool down;
     bool pressed;
     bool released;
-    int x, y;             /* current position, or the last one seen */
-    int press_x, press_y; /* where the current touch began */
+    vec2i_t point; /* current position, or the last one seen */
+    vec2i_t press; /* where the current touch began */
 
     /* The two physical buttons, delivered the same way touch is so an app
      * never has to poll anything itself. See buttons.h: PWR is an event from
@@ -63,3 +65,13 @@ bool input_read_motion_batch(input_motion_batch_t* out);
 /* Copies the newest sample from memory.
  * False when there is no sensor or no reading. */
 bool input_read_motion(input_motion_t* out);
+
+/* Frame thread only. Screen-axis g (x right, y down, z out): unit while held,
+ * zero in free fall. No sensor gives (0,1,0); present before its first reading
+ * gives zero. Unchanged or missed samples hold both estimates. A new sample
+ * steps both filters with elapsed clock time, capped at GRAVITY_MAX_DT_US. */
+vec3f_t input_gravity(void);
+/* Frame thread only. Deliberate shake, 0..1: zero below 500 mg,
+ * full at 1500 mg. Zero without a sensor or before its first reading;
+ * later missed reads hold the last level without stepping either filter. */
+float input_shake(void);

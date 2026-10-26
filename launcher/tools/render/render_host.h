@@ -34,7 +34,7 @@ typedef struct {
 typedef struct {
     int frame;
     bool down;
-    int x, y;
+    vec2i_t point;
 } render_input_step_t;
 
 typedef struct {

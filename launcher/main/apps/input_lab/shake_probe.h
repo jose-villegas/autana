@@ -57,7 +57,7 @@ void shake_probe_feed(shake_probe_levels_t* levels, vec3f_t linear_g);
 #define SHAKE_PROBE_ACCEL_WIDTH      (1 + IMU_PROBE_DECIMAL_DIGITS(SHAKE_PROBE_ACCEL_MAX_MG))
 #define SHAKE_PROBE_LINEAR_WIDTH     (1 + IMU_PROBE_DECIMAL_DIGITS(SHAKE_PROBE_LINEAR_MAX_MG))
 #define SHAKE_PROBE_CANDIDATE_WIDTH  (1 + IMU_PROBE_DECIMAL_DIGITS(SHAKE_PROBE_CANDIDATE_MAX_MG))
-#define SHAKE_PROBE_SAMPLE_FORMAT    "shake %d %u acc %d,%d,%d lin %d,%d,%d size %d smooth %d old %d"
+#define SHAKE_PROBE_SAMPLE_FORMAT    "shake %d %u acc %d,%d,%d lin %d,%d,%d size %d smooth %d shared %d"
 #define SHAKE_PROBE_SAMPLE_FIELDS    (2 + (2 * 3) + 2 + 1)
 #define SHAKE_PROBE_SAMPLE_LABEL_SIZE                                                                                  \
     (sizeof(SHAKE_PROBE_SAMPLE_FORMAT) - 1 - (SHAKE_PROBE_SAMPLE_FIELDS * (sizeof("%d") - 1)))

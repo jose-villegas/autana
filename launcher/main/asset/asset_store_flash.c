@@ -96,12 +96,7 @@ asset_store_backend_mount(const char* name, asset_pack_t* pack, uintptr_t* mappi
     if (mapped == NULL) {
         return ASSET_ERR_NO_PACK;
     }
-    const asset_status_t opened = asset_pack_open(pack, mapped, slot.size);
-    if (opened != ASSET_OK) {
-        esp_partition_munmap(handle);
-        return opened;
-    }
-    ESP_LOGI(TAG, "pack %s: %u entries, %u bytes", name, (unsigned)pack->count, (unsigned)pack->size);
+    *pack = (asset_pack_t){.base = mapped, .size = slot.size};
     *mapping = (uintptr_t)handle;
     return ASSET_OK;
 }

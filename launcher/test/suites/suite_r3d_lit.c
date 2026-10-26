@@ -20,6 +20,7 @@
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
 #include "math/linear/transformf.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
@@ -190,17 +191,17 @@ test_the_nearer_triangle_wins_in_either_order(void) {
 
     r3d_span_target_t t = draw_fixture_triangle(&fa, &fb, &fc);
     r3d_span_triangle(&t, &na, &nb, &nc);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), color[5 * W + 5]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x0000FF), color[5 * W + 5]);
 
     t = draw_fixture_triangle(&na, &nb, &nc);
     r3d_span_triangle(&t, &fa, &fb, &fc);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), color[5 * W + 5]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x0000FF), color[5 * W + 5]);
 }
 
 static void
 test_a_flat_triangle_keeps_its_face_colour_and_interpolates_depth(void) {
     const r3d_span_vertex_t a = sv(4, 4, 0.2f, 0, 0, 0), b = sv(52, 4, 0.8f, 0, 0, 0), c = sv(4, 40, 0.5f, 0, 0, 0);
-    const uint16_t face = GFX_RGB(0x12AB34);
+    const uint16_t face = RGB565BE(0x12AB34);
     r3d_span_target_t t = fixture();
     r3d_span_triangle_solid(&t, &a, &b, &c, face);
     const int near = 8 * W + 8;
@@ -214,7 +215,7 @@ static void
 test_a_tiny_solid_triangle_takes_its_face_colour(void) {
     const r3d_span_vertex_t a = sv(10.0f, 10.0f, 0.5f, 0, 0, 0), b = sv(12.6f, 10.0f, 0.5f, 0, 0, 0),
                             c = sv(10.0f, 12.6f, 0.5f, 0, 0, 0);
-    const uint16_t face = GFX_RGB(0x12AB34);
+    const uint16_t face = RGB565BE(0x12AB34);
     r3d_span_target_t t = fixture();
     r3d_span_triangle_solid(&t, &a, &b, &c, face);
     TEST_ASSERT_GREATER_THAN_INT(0, covered());
@@ -292,7 +293,7 @@ test_a_tiny_triangle_takes_the_average_of_its_corners(void) {
     TEST_ASSERT_GREATER_THAN_INT(0, covered());
     for (int i = 0; i < W * H; i++) {
         if (depth[i] != 0) {
-            TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x555555), color[i]);
+            TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x555555), color[i]);
             TEST_ASSERT_UINT16_WITHIN(1, R3D_DEPTH_NEAREST / 2, depth[i]);
         }
     }
@@ -414,10 +415,10 @@ test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives(void) {
 
 static void
 channels_of(gfx_color_t c, int out[3]) {
-    const uint16_t native = gfx_color_swap(c);
-    out[0] = (int)gfx_rgb565_r5(native);
-    out[1] = (int)gfx_rgb565_g6(native);
-    out[2] = (int)gfx_rgb565_b5(native);
+    const uint16_t native = rgb565_swap(c);
+    out[0] = (int)rgb565_r5(native);
+    out[1] = (int)rgb565_g6(native);
+    out[2] = (int)rgb565_b5(native);
 }
 
 /* A small triangle with a random colour and depth at each corner, and the
@@ -447,7 +448,7 @@ random_shaded(uint32_t* state, float cx, float cy, float size) {
     return t;
 }
 
-#define SHADED_FACE GFX_RGB(0x336699)
+#define SHADED_FACE RGB565BE(0x336699)
 
 static void
 draw_shaded(const r3d_span_target_t* target, const shaded_t* t) {
@@ -1343,7 +1344,7 @@ expect_only_these_two_colours(uint16_t first, uint16_t second, int* first_count,
 
 static void
 test_a_mesh_with_face_colours_draws_each_triangle_in_its_own(void) {
-    static const uint16_t faces[2] = {GFX_RGB(0x2040E0), GFX_RGB(0xE0A020)};
+    static const uint16_t faces[2] = {RGB565BE(0x2040E0), RGB565BE(0xE0A020)};
     TEST_ASSERT_EQUAL_INT(24 * 24, draw_quad_with(quad_front, false, faces));
     int first, second;
     expect_only_these_two_colours(faces[0], faces[1], &first, &second);
@@ -1354,7 +1355,7 @@ test_a_mesh_with_face_colours_draws_each_triangle_in_its_own(void) {
 
 static void
 test_face_colours_survive_a_triangle_clipped_by_the_near_plane(void) {
-    static const uint16_t faces[2] = {GFX_RGB(0x2040E0), GFX_RGB(0xE0A020)};
+    static const uint16_t faces[2] = {RGB565BE(0x2040E0), RGB565BE(0xE0A020)};
     draw_floor(faces);
     int first, second;
     expect_only_these_two_colours(faces[0], faces[1], &first, &second);
@@ -1378,14 +1379,14 @@ test_a_point_up_and_right_lands_up_and_right_in_every_quarter(void) {
             render_view_fixture_at(&(fixture_camera_t){{0, 0, 0}, {0, 0, 1}, 0.5f, 1.0f}, viewport);
         r3d_lens_init(&lens, &frame_view, 1);
         const vec2f_t screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, (vec3f_t){30.0F, 20.0F, 100.0F}));
-        int ux, uy;
-        viewport_physical_to_upright(viewport, (int)floorf(screen.x), (int)floorf(screen.y), &ux, &uy);
+        const vec2i_t upright =
+            viewport_physical_to_upright(viewport, (vec2i_t){(int)floorf(screen.x), (int)floorf(screen.y)});
 
         /* The lens fits the shorter upright axis: tan = 0.5 spans half of it. */
         const int upright_width = (quarter & 1) ? H : W, upright_height = (quarter & 1) ? W : H;
         const float per_unit = (float)(W < H ? W : H) / (2.0f * 0.5f) / 100.0f;
-        TEST_ASSERT_INT_WITHIN(1, (int)((float)upright_width / 2.0f + 30.0f * per_unit), ux);
-        TEST_ASSERT_INT_WITHIN(1, (int)((float)upright_height / 2.0f - 20.0f * per_unit), uy);
+        TEST_ASSERT_INT_WITHIN(1, (int)((float)upright_width / 2.0f + 30.0f * per_unit), upright.x);
+        TEST_ASSERT_INT_WITHIN(1, (int)((float)upright_height / 2.0f - 20.0f * per_unit), upright.y);
     }
 }
 
@@ -1622,7 +1623,7 @@ test_a_triangle_over_any_side_of_the_screen_is_drawn(void) {
 
 /* Frame */
 
-#define SKY GFX_RGB(0x80C0F0)
+#define SKY RGB565BE(0x80C0F0)
 
 /* A wall on the left half and a stack of small rectangles on the right:
  * the rectangles hold most of the triangles, so as the eye rises the row
@@ -2081,12 +2082,12 @@ color_at(const raster_t* f, int x, int y) {
 /* A pixel's red channel, 0..31, the panel's byte swap undone. */
 static int
 level(uint16_t px) {
-    return gfx_color_swap(px) >> 11;
+    return rgb565_swap(px) >> 11;
 }
 
 static bool
 is_grey(uint16_t px) {
-    const uint16_t n = gfx_color_swap(px);
+    const uint16_t n = rgb565_swap(px);
     return (n >> 11) == (n & 31) && (n >> 11) == ((n >> 5) & 63) / 2;
 }
 

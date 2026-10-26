@@ -7,9 +7,12 @@
 #include <stdint.h>
 
 #include "core/tune.h"
+#include "image/pixel/bayer.h"
+#include "image/pixel/rgb565.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
+#include "profile/frame_laps.h"
 #include "render/code_layout.h"
 
 /* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
@@ -26,14 +29,14 @@ _Static_assert(((int64_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT) <= INT32_MAX, "16
 static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 
 #define SMALL_MAX_SIDE         R3D_SPAN_SMALL_MAX_SIDE
-#define SMALL_SPREAD_OFF       ((int)GFX_RGB565_G6_MAX + 1)
-#define SMALL_DITHER_SIDE      (sizeof gfx_dither4x4 / sizeof gfx_dither4x4[0])
+#define SMALL_SPREAD_OFF       ((int)RGB565_G6_MAX + 1)
+#define SMALL_DITHER_SIDE      (sizeof bayer4x4 / sizeof bayer4x4[0])
 #define SMALL_DITHER_MASK      (SMALL_DITHER_SIDE - 1)
 #define SMALL_DITHER_SHIFT     (1 + 2 * __builtin_ctz((unsigned)SMALL_DITHER_SIDE))
 #define SMALL_GRAIN_PAIR       2
 #define SMALL_GRAIN_GREEN_STEP 2
-#define SMALL_GRAIN_RB_MAX     ((int)GFX_RGB565_G6_MAX >> 1)
-#define SMALL_GRAIN_MIDPOINT   (((2 * SMALL_GRAIN_GREEN_STEP * SMALL_GRAIN_RB_MAX) + (int)GFX_RGB565_G6_MAX + 1) / 2)
+#define SMALL_GRAIN_RB_MAX     ((int)RGB565_G6_MAX >> 1)
+#define SMALL_GRAIN_MIDPOINT   (((2 * SMALL_GRAIN_GREEN_STEP * SMALL_GRAIN_RB_MAX) + (int)RGB565_G6_MAX + 1) / 2)
 #define SMALL_FILL_WALK        (-1)
 #define TRIANGLE_VERTICES      3
 
@@ -508,14 +511,12 @@ channel_within_spread(int32_t a, int32_t b, int32_t c, int limit) {
 
 static inline bool
 colours_within_spread(uint16_t a, uint16_t b, uint16_t c, int limit) {
-    a = gfx_color_swap(a);
-    b = gfx_color_swap(b);
-    c = gfx_color_swap(c);
-    return channel_within_spread((int32_t)gfx_rgb565_r5(a), (int32_t)gfx_rgb565_r5(b), (int32_t)gfx_rgb565_r5(c), limit)
-           && channel_within_spread((int32_t)gfx_rgb565_g6(a), (int32_t)gfx_rgb565_g6(b), (int32_t)gfx_rgb565_g6(c),
-                                    limit)
-           && channel_within_spread((int32_t)gfx_rgb565_b5(a), (int32_t)gfx_rgb565_b5(b), (int32_t)gfx_rgb565_b5(c),
-                                    limit);
+    a = rgb565_swap(a);
+    b = rgb565_swap(b);
+    c = rgb565_swap(c);
+    return channel_within_spread((int32_t)rgb565_r5(a), (int32_t)rgb565_r5(b), (int32_t)rgb565_r5(c), limit)
+           && channel_within_spread((int32_t)rgb565_g6(a), (int32_t)rgb565_g6(b), (int32_t)rgb565_g6(c), limit)
+           && channel_within_spread((int32_t)rgb565_b5(a), (int32_t)rgb565_b5(b), (int32_t)rgb565_b5(c), limit);
 }
 
 const r3d_span_small_fill_t r3d_span_small_fill_default = {
@@ -623,16 +624,16 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
 /* A shared channel step preserves hue; mixed endpoints may have no safe step. */
 static inline uint16_t
 small_grain_shade(uint16_t color) {
-    const uint16_t native = gfx_color_swap(color);
-    const int r = (int)gfx_rgb565_r5(native);
-    const int g = (int)gfx_rgb565_g6(native);
-    const int b = (int)gfx_rgb565_b5(native);
+    const uint16_t native = rgb565_swap(color);
+    const int r = (int)rgb565_r5(native);
+    const int g = (int)rgb565_g6(native);
+    const int b = (int)rgb565_b5(native);
     const bool lighter =
-        r < SMALL_GRAIN_RB_MAX && g <= (int)GFX_RGB565_G6_MAX - SMALL_GRAIN_GREEN_STEP && b < SMALL_GRAIN_RB_MAX;
+        r < SMALL_GRAIN_RB_MAX && g <= (int)RGB565_G6_MAX - SMALL_GRAIN_GREEN_STEP && b < SMALL_GRAIN_RB_MAX;
     const bool darker = r > 0 && g >= SMALL_GRAIN_GREEN_STEP && b > 0;
     const bool dark_half = ((SMALL_GRAIN_GREEN_STEP * (r + b)) + g) < SMALL_GRAIN_MIDPOINT;
     const int step = dark_half ? (lighter ? 1 : darker ? -1 : 0) : (darker ? -1 : lighter ? 1 : 0);
-    return gfx_color_rgb565((uint8_t)(r + step), (uint8_t)(g + (SMALL_GRAIN_GREEN_STEP * step)), (uint8_t)(b + step));
+    return rgb565be_pack((uint8_t)(r + step), (uint8_t)(g + (SMALL_GRAIN_GREEN_STEP * step)), (uint8_t)(b + step));
 }
 
 static inline __attribute__((always_inline)) void
@@ -703,7 +704,7 @@ fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     }
     for (int y = box.y; y < recti_bottom(box); y++) {
         const small_row_t row = small_row(target, y);
-        const uint8_t* pattern = gfx_dither4x4[y & SMALL_DITHER_MASK];
+        const uint8_t* pattern = bayer4x4[y & SMALL_DITHER_MASK];
         for (int x = box.x; x < recti_right(box); x++) {
             const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
             const int32_t s0 = small_side(&edges[0], cx, row.centre);
@@ -833,6 +834,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
 
     const int style = select_small(a, b, c, e.centres, face != NULL, target->small_fill);
     if (style != SMALL_FILL_WALK) {
+        FRAME_LAP("r3d.draw.fill");
         if (style == SMALL_FILL_GRAIN || style == SMALL_FILL_DITHER) {
             fill_small_styled(target, a, b, c, area2 > 0, box, style);
         } else {
@@ -865,6 +867,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
                       mathi_clamp(r3d_span_first_centre(v1->y), box.y, recti_bottom(box)),
                       recti_bottom(box),
                       (area2 > 0) != odd};
+    FRAME_LAP("r3d.draw.fill");
     walk(target, &f, &w, false);
 }
 
