@@ -134,6 +134,39 @@ jobs:
         for label in ('Host gate', 'Another host gate'):
             self.assertIn(f'NOT RUN host: test:host: {label}', capture.getvalue())
 
+    def test_run_continue_on_error(self):
+        for setting, expected in [('continue-on-error: true', 0), ('', 1)]:
+            with self.subTest(setting=setting):
+                root = self.fixture(f"""on: [pull_request]
+jobs:
+  check:
+    steps:
+      - id: probe
+        {setting}
+        run: exit 1
+      - if: success() && steps.probe.outcome == 'failure'
+        run: echo continued > continued.txt
+  dependent:
+    needs: check
+    if: needs.check.result == 'success'
+    steps:
+      - run: echo dependent > dependent.txt
+""")
+                capture = io.StringIO()
+                with mock.patch.object(local_gates, 'affected_jobs', return_value={}), \
+                        contextlib.redirect_stdout(capture):
+                    self.assertEqual(local_gates.run(root, root / 'logs'), expected)
+                self.assertEqual((root / 'continued.txt').exists(), expected == 0)
+                self.assertEqual((root / 'dependent.txt').exists(), expected == 0)
+                verdict = 'ok' if expected == 0 else 'FAIL'
+                self.assertIn(f'{verdict} {root / "logs/000-test-check.log"}:',
+                              capture.getvalue())
+                if expected == 0:
+                    self.assertIn('failed; CI continues', capture.getvalue())
+                    self.assertIn('3 ok, 0 failed', capture.getvalue())
+                self.assertIs(list(local_gates.rows(root))[0]['continue_on_error'],
+                              expected == 0)
+
     def test_github_path_reaches_next_step(self):
         root = self.fixture("""on: [pull_request]
 jobs:
