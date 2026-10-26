@@ -132,6 +132,7 @@ test_tone_parse_invalid(void) {
 #include "console/console_verbs.h"
 #include "core/timing.h"
 #include "sound/console/console_sound_views.h"
+#include "sound/console/console_tone.h"
 #include "sound/sound_engine.h"
 #include "test_asset_dir.h"
 
