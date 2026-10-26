@@ -5,7 +5,7 @@
  * test/suites/suite_screenshot.c).
  *
  * The console listener and the live framebuffer walk are a higher layer,
- * console/verbs/console_screenshot.c, since that reaches into gfx and an app's
+ * shell/console/console_screenshot.c, since that reaches into gfx and an app's
  * own diagnostic_json().
  */
 #pragma once

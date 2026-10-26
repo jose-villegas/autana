@@ -117,33 +117,14 @@ endif()
 
 # The console listener: a release image has nobody watching the serial
 # console to type a verb into (see console/console.h), so a release build
-# compiles none of console/*.c: no reader task, no registry, no verbs.
-# RUNSUITE and TOUCH/IMU narrow further still, to the one build variant
-# each actually answers on.
+# compiles none of it: no reader task, no registry, no verbs. A verb lives in
+# a console/ folder beside the module it drives, so adding one never touches
+# this file. RUNSUITE narrows further, to the self-test build that answers it.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs
-        "app/app_console.c"
-        "console/console_verbs.c"
-        "console/console.c"
-        "console/verbs/console_buildid.c"
-        "console/verbs/console_battery.c"
-        "console/verbs/console_heap.c"
-        "console/verbs/console_tone.c"
-        "console/verbs/console_melody.c"
-        "console/verbs/console_codec.c"
-        "console/verbs/console_sound.c"
-        "console/verbs/console_sound_views.c"
-        "shell/console_system.c"
-        "console/verbs/console_freeze.c"
-        "console/console_frame_request.c"
-        "console/verbs/console_frame_watch.c"
-        "console/verbs/console_navigation.c"
-        "console/verbs/console_perf.c"
-        "console/console_tune.c"
-        "console/verbs/console_tune.c"
-        "console/verbs/console_screenshot.c"
-        "console/capture/device_state.c"
-    )
+    launcher_glob(console_srcs
+        "${CMAKE_CURRENT_LIST_DIR}/console/*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/*/console/*.c")
+    list(APPEND app_srcs ${console_srcs} "input/touch/touch_inject_fsm.c")
     # Acoustic detection belongs to the development console.
     list(APPEND app_srcs
         "audio/audio_loopback.c"
@@ -152,13 +133,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
-    list(APPEND app_srcs "console/verbs/console_runsuite.c")
-endif()
-if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs
-        "console/verbs/console_inject.c"
-        "input/touch/touch_inject_fsm.c"
-    )
+    list(APPEND app_srcs "selftest/console_runsuite.c")
 endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
