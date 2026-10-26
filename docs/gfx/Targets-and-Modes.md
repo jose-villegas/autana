@@ -136,4 +136,4 @@ Palettes are a gfx type (`draw/draw_palette.h`, entries 0-15 reserved by
 - Building one is the app's work.
 - The two steps every palette then needs, the colour -> index map and the dither
   table, are `tools/gen/draw_palette_gen.h`: host-only, in
-  OKLab<sup>[[35]](../Citations.md#35)</sup>, never in the firmware image.
+  OKLab<sup>[[35]](../Citations.md#ottosson-2020)</sup>, never in the firmware image.
