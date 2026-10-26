@@ -22,14 +22,14 @@ def lnt_report(machine, board, commit, pr, role, night, build_id, image_hash, st
     }
 
 
-def night_manifest(board, machine, night, lane, results, stop_reason, last_measured, selftest):
+def night_manifest(board, machine, night, lane, results, stop_reason, last_measured, selftest, started, ended):
     steps = []
     for result in results:
         entry = asdict(result)
         entry.update(entry.pop("step"))
         steps.append(entry)
     return dict(board=board, machine=machine, night=night, lane=lane, steps=steps,
-                stop_reason=stop_reason, last_measured=last_measured, selftest=selftest)
+                stop_reason=stop_reason, last_measured=last_measured, selftest=selftest, started=started, ended=ended)
 
 
 def read_last_night(data_dir, board):
