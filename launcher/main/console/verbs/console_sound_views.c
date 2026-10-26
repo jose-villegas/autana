@@ -28,13 +28,17 @@ static bool release_warned;
 
 const sound_t*
 console_sound_view(const console_sound_args_t* args, int64_t* open_us) {
+    handle_t shared = HANDLE_NONE; /* one load per pack: the views of a pack are released together */
     for (const console_sound_view_t* view = views; view; view = view->next) {
-        if (strcmp(view->name, args->name) == 0 && strcmp(view->pack, args->pack) == 0) {
-            return &view->sound;
+        if (strcmp(view->pack, args->pack) == 0) {
+            if (strcmp(view->name, args->name) == 0) {
+                return &view->sound;
+            }
+            shared = handle_is_none(view->load) ? shared : view->load;
         }
     }
-    const handle_t load = asset_store_load(args->pack);
-    const asset_pack_t* pack = asset_store_loaded(load);
+    const handle_t load = handle_is_none(shared) ? asset_store_load(args->pack) : HANDLE_NONE;
+    const asset_pack_t* pack = asset_store_loaded(handle_is_none(shared) ? load : shared);
     if (!pack) {
         asset_store_release(load);
         return NULL;
