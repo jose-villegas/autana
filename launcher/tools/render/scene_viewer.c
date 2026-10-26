@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "gfx/gfx.h"
+#include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render/view/raster_cull_view.h"
 #include "render_host.h"
@@ -38,12 +39,14 @@ options(int argc, char** argv) {
         } else if (strcmp(flag, "--object") == 0) {
             object_names[object_count++] = argv[i + 1];
         } else if (strcmp(flag, "--size") == 0) {
-            char trailing;
-            if (sscanf(value, "%dx%d%c", &size_width, &size_height, &trailing) != 2 || size_width <= 0
-                || size_height <= 0 || size_width > GFX_WIDTH || size_height > GFX_HEIGHT) {
+            recti_t size;
+            if (!recti_parse(value, NULL, &size) || size.x != 0 || size.y != 0 || size.w <= 0 || size.h <= 0
+                || size.w > GFX_WIDTH || size.h > GFX_HEIGHT) {
                 fprintf(stderr, "scene_viewer: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT, value);
                 return false;
             }
+            size_width = size.w;
+            size_height = size.h;
         } else if (strcmp(flag, "--small-fill") == 0) {
             unsigned ceiling, gate, style;
             char trailing;

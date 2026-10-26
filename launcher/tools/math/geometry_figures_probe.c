@@ -10,6 +10,7 @@
 #include "math/geometry/spheref.h"
 #include "math/linear/mat4f.h"
 #include "math/linear/vec2i.h"
+#include "math/text/math_text.h"
 
 static const recti_t RECT_A = {1, 1, 5, 4};
 static const recti_t RECT_B = {3, 2, 5, 4};
@@ -79,23 +80,30 @@ static const vec2f_t CIRCLE_SEGMENTS[][2] = {
 
 static void
 print_vec2(vec2f_t p) {
-    printf("[%.7g,%.7g]", (double)p.x, (double)p.y);
+    char text[VEC2F_TEXT_MAX];
+    vec2f_format(text, sizeof text, p);
+    printf("[%s]", text);
 }
 
 static void
 print_circle_queries(void) {
     const vec2i_t lo = {CIRCLE_RECT.x, CIRCLE_RECT.y};
     const vec2i_t hi = {recti_right(CIRCLE_RECT) - mathi_one(), recti_bottom(CIRCLE_RECT) - mathi_one()};
-    printf(",\"circle\":{\"rect\":[%d,%d,%d,%d],\"last\":[%d,%d],\"circles\":[", CIRCLE_RECT.x, CIRCLE_RECT.y,
-           CIRCLE_RECT.w, CIRCLE_RECT.h, hi.x, hi.y);
+    char last[VEC2I_TEXT_MAX];
+    vec2i_format(last, sizeof last, hi);
+    printf(",\"circle\":{\"rect\":[%d,%d,%d,%d],\"last\":[%s],\"circles\":[", CIRCLE_RECT.x, CIRCLE_RECT.y,
+           CIRCLE_RECT.w, CIRCLE_RECT.h, last);
     for (size_t i = 0; i < sizeof RECT_CIRCLES / sizeof RECT_CIRCLES[0]; i++) {
         const circlei_t circle = RECT_CIRCLES[i];
         const vec2i_t closest = vec2i_clamp(circle.centre, lo, hi);
         const vec2i_t delta = vec2i_sub(circle.centre, closest);
         const bool hit = circlei_overlaps_rect(circle, CIRCLE_RECT);
         const bool touch = vec2i_dot(delta, delta) == circle.radius * circle.radius;
-        printf("%s[[%d,%d],%d,[%d,%d],%s,\"%s\",[", i ? "," : "", circle.centre.x, circle.centre.y, circle.radius,
-               closest.x, closest.y, hit ? "true" : "false", hit ? (touch ? "touch" : "overlap") : "miss");
+        char centre_text[VEC2I_TEXT_MAX], closest_text[VEC2I_TEXT_MAX];
+        vec2i_format(centre_text, sizeof centre_text, circle.centre);
+        vec2i_format(closest_text, sizeof closest_text, closest);
+        printf("%s[[%s],%d,[%s],%s,\"%s\",[", i ? "," : "", centre_text, circle.radius, closest_text,
+               hit ? "true" : "false", hit ? (touch ? "touch" : "overlap") : "miss");
         for (int y = lo.y; y <= hi.y; y++) {
             for (int x = lo.x; x <= hi.x; x++) {
                 const bool inside = circlei_contains_point(circle, (vec2i_t){x, y});
@@ -124,7 +132,9 @@ print_circle_queries(void) {
 
 static void
 print_vec(vec3f_t p) {
-    printf("[%.7g,%.7g,%.7g]", (double)p.x, (double)p.y, (double)p.z);
+    char text[VEC3F_TEXT_MAX];
+    vec3f_format(text, sizeof text, p);
+    printf("[%s]", text);
 }
 
 static void
@@ -296,7 +306,9 @@ main(int argc, char** argv) {
     }
     printf("],\"samples\":[");
     for (size_t i = 0; i < sizeof RECT_SAMPLES / sizeof RECT_SAMPLES[0]; i++) {
-        printf("%s[%d,%d,%s]", i ? "," : "", RECT_SAMPLES[i].x, RECT_SAMPLES[i].y,
+        char point_text[VEC2I_TEXT_MAX];
+        vec2i_format(point_text, sizeof point_text, RECT_SAMPLES[i]);
+        printf("%s[%s,%s]", i ? "," : "", point_text,
                recti_contains(RECT_A, RECT_SAMPLES[i].x, RECT_SAMPLES[i].y) ? "true" : "false");
     }
     const planef_t raw = planef_from_normal_point(DISTANCE_NORMAL, DISTANCE_POINT);
