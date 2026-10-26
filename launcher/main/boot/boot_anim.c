@@ -45,14 +45,17 @@
 
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
+#include "image/pixel/bayer.h"
+#include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 
 static const char* TAG = "boot_anim";
 #endif
 
 static boot_anim_backdrop_fn ending_backdrop;
 
-#define COL_BG      GFX_RGB(0x000000)
-#define COL_WHITE   GFX_RGB(0xFFFFFF)
+#define COL_BG      RGB565BE(0x000000)
+#define COL_WHITE   RGB565BE(0xFFFFFF)
 
 #define COL_AXIS    0x5A6478
 #define COL_TICK    0x8792A8
@@ -79,7 +82,7 @@ scale8(uint8_t a, uint8_t b) {
 /* `rgb` lifted `alpha` of the way off the background. */
 static gfx_color_t
 lit(uint32_t rgb, uint8_t alpha) {
-    return gfx_color_mix(COL_BG, gfx_rgb(rgb), alpha);
+    return rgb565be_mix(COL_BG, RGB565BE(rgb), alpha);
 }
 
 /* A whole number of grid units, as a Q12 value. */
@@ -177,10 +180,10 @@ mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
 static gfx_color_t
 mesh_edge_color(const mesh_pass_t* pass, int i, int j, int32_t ripple, bool on_axis) {
     if (on_axis) {
-        return gfx_rgb(COL_AXIS);
+        return RGB565BE(COL_AXIS);
     }
     if (boot_anim_crest_amount(ripple) == 0) {
-        return gfx_rgb(BOOT_ANIM_FLOOR_GREY);
+        return RGB565BE(BOOT_ANIM_FLOOR_GREY);
     }
     const int sample = boot_anim_crest_sample(i, j, pass->drawn);
     return boot_anim_floor_color(ripple, boot_anim_crest_rgb(sample, pass->colour_pen));
@@ -204,7 +207,7 @@ draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, co
         return;
     }
     const gfx_color_t c =
-        gfx_color_mix(COL_BG, mesh_edge_color(pass, ai, aj, (a->ripple + b->ripple) / 2, on_axis), alpha);
+        rgb565be_mix(COL_BG, mesh_edge_color(pass, ai, aj, (a->ripple + b->ripple) / 2, on_axis), alpha);
     const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
     if (a_front && b_front) {
         draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, flags);
@@ -511,7 +514,7 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         .floor = boot_anim_floor_state(now_ms),
         .clip = surface.clip,
         .ink = ink,
-        .stride = gfx_dither_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1,
+        .stride = bayer_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1,
         .drawn = (int)((boot_anim_pen(now_ms) * (int32_t)(BOOT_ANIM_CURVE_POINTS - 1)) >> BOOT_ANIM_Q),
         .colour_pen = boot_anim_colour_progress(now_ms),
         .view = view,
@@ -658,7 +661,7 @@ static void
 draw_head(int x, int y, uint32_t rgb, uint8_t ink) {
     draw_disc(x, y, HEAD_OUTER, lit(rgb, scale8(70, ink)));
     draw_disc(x, y, HEAD_MID, lit(rgb, scale8(215, ink)));
-    draw_disc(x, y, HEAD_CORE, gfx_color_mix(COL_BG, COL_WHITE, ink));
+    draw_disc(x, y, HEAD_CORE, rgb565be_mix(COL_BG, COL_WHITE, ink));
 }
 
 static void
@@ -682,7 +685,7 @@ draw_heads(int32_t colour_pen, uint8_t ink, const boot_anim_view_t* view) {
             continue;
         }
 
-        draw_head(x, y, gfx_hue_rgb(boot_anim_stroke(at, colour_pen).hue), ink);
+        draw_head(x, y, rgb888_hue(boot_anim_stroke(at, colour_pen).hue), ink);
     }
 }
 
@@ -766,9 +769,9 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
         const int32_t limit = (stride == 1 && i == last) ? part : BOOT_ANIM_ONE;
 
         const boot_anim_stroke_t s = boot_anim_stroke(a0 + ((a1 - a0) >> 1), colour);
-        gfx_color_t span_c = gfx_rgb(gfx_hue_rgb(s.hue));
-        span_c = gfx_color_mix(span_c, COL_WHITE, s.bloom);
-        span_c = gfx_color_mix(COL_BG, span_c, scale8(s.glow, ink));
+        gfx_color_t span_c = RGB565BE(rgb888_hue(s.hue));
+        span_c = rgb565be_mix(span_c, COL_WHITE, s.bloom);
+        span_c = rgb565be_mix(COL_BG, span_c, scale8(s.glow, ink));
 
         /* One chord a span, to where the spline ends it: the samples sit a
          * few pixels apart, so subdividing showed nothing on the panel. */
@@ -810,7 +813,7 @@ draw_title(uint32_t now_ms, uint8_t ink) {
      * darkening would leave black letters on it, so it dithers away at full
      * colour, the same way the photograph under it does. */
     const bool dissolve = ending_backdrop != NULL && ink < 255;
-    const gfx_color_t c = dissolve ? COL_WHITE : gfx_color_mix(COL_BG, COL_WHITE, ink);
+    const gfx_color_t c = dissolve ? COL_WHITE : rgb565be_mix(COL_BG, COL_WHITE, ink);
     const draw_font_t* font = draw_font_ui();
     const int glyph_w = draw_font_text_width(font, "A", -1, BOOT_ANIM_TITLE_SCALE);
     const int glyph_h = draw_font_height(font, BOOT_ANIM_TITLE_SCALE);
@@ -848,7 +851,7 @@ draw_title(uint32_t now_ms, uint8_t ink) {
  * above stores a colour without reading the framebuffer, which is fine over
  * black and wrong over a photograph: a half-faded grid line drawn that way
  * paints an opaque scratch across the mountain. So the crossfade is a choice
- * not to WRITE: gfx_dither_covers() inspects only a pixel's (x, y), and the
+ * not to WRITE: bayer_covers() inspects only a pixel's (x, y), and the
  * scene stays as drawn wherever the reveal does not yet cover it.
  */
 void
@@ -859,7 +862,7 @@ draw_image(const draw_image_t* photo, uint8_t ink, uint8_t reveal) {
 
     /* DITHERED, not blended: no framebuffer-read blend hardware, the same
      * trade this file makes for the title's shadow (draw_title()). A
-     * per-pixel gfx_color_mix() over every pixel was measurably the most
+     * per-pixel rgb565be_mix() over every pixel was measurably the most
      * expensive part of a crossfade frame; see suite_boot_anim_perf.c. */
     draw_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo->pixels, (int)photo->stride, reveal < ink ? reveal : ink);
 }

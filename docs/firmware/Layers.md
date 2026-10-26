@@ -133,6 +133,7 @@ Each arrow below is a declared dependency, written by
 flowchart BT
     p_collections["collections/"]
     p_hash["hash/"]
+    p_image["image/"]
     p_kinematics["kinematics/"]
     p_math["math/"]
     p_physics["physics/"]

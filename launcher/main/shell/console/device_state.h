@@ -79,6 +79,7 @@ device_state_format_json(const device_state_t* state, const input_t* input, char
              "\"touch\":{\"down\":%s,\"x\":%d,\"y\":%d},"
              "\"buttons\":{\"boot_down\":%s,\"power_held\":%s}}",
              (long long)state->uptime_us, (unsigned)state->heap_free_bytes, (unsigned)state->heap_min_free_bytes,
-             state->cpu_freq_mhz, temp_json, state->quarter, imu_json, input->down ? "true" : "false", input->x,
-             input->y, input->boot.down ? "true" : "false", input->power.held ? "true" : "false");
+             state->cpu_freq_mhz, temp_json, state->quarter, imu_json, input->down ? "true" : "false",
+             (int)input->point.x, (int)input->point.y, input->boot.down ? "true" : "false",
+             input->power.held ? "true" : "false");
 }

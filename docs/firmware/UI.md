@@ -59,7 +59,7 @@ so a scrim in it would walk the frozen backdrop toward black.
 - That holds while panels are opaque and still. A translucent or moving panel
   needs the general form: whoever repaints a region restores the backdrop under
   it, re-scrims that region, then draws.
-- `suite_gfx_color.c` pins the arithmetic; the app recipe is
+- [suite_image_pixel.c](../../launcher/packages/image/tests/suite_image_pixel.c) pins the arithmetic; the app recipe is
   [a panel over a paused app](../ui/Building-a-Screen.md#a-panel-over-a-paused-app).
 
 ## Why microui, not LVGL

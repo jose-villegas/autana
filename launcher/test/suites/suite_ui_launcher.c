@@ -92,8 +92,7 @@ launcher_frame(bool down, bool pressed, bool released, int x, int y) {
     in.released = released;
     const affine2x_t t = landscape();
     const vec2i_t panel = affine2x_map_pixel(&t, (vec2i_t){x, y});
-    in.x = panel.x;
-    in.y = panel.y;
+    in.point = panel;
 
     ui_begin(&in);
     const app_t* chosen = ui_launcher_draw();

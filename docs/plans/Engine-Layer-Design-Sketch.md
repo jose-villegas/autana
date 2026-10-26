@@ -226,7 +226,7 @@ recti_t gfx_clip_save(void);
 void gfx_clip_restore(recti_t clip);
 ```
 
-`gfx_rgb()` is inline in `gfx_color.h`. Only `gfx/present/` sources include
+`RGB565BE()` is a constant-expression macro in `image/pixel/rgb565.h`. Only `gfx/present/` sources include
 `gfx_internal.h`.
 
 ### Include tiers in `check_style_audit.py`

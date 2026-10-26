@@ -1,4 +1,4 @@
-"""gfx_color: the firmware's RGB565 packing (launcher/main/gfx/target/gfx_color.h) for host tools.
+"""gfx_color: the firmware's RGB565 packing (launcher/packages/image/include/image/pixel/rgb565.h) for host tools.
 
 Every function works on plain ints and on numpy integer arrays at least 16
 bits wide.
@@ -10,7 +10,7 @@ STEP = (1 << 3, 1 << 2, 1 << 3)
 
 
 def rgb565(r, g, b):
-    """GFX_RGB565 from 8-bit channels: truncating, not rounding."""
+    """RGB565 from 8-bit channels: truncating, not rounding."""
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
 
 
@@ -21,5 +21,5 @@ def swap(value):
 
 def expand(r5, g6, b5):
     """8-bit channels for 5/6/5-bit ones by bit replication, as
-    gfx_color_rgb888() does, so rgb565() of the result gives them back."""
+    rgb565be_to_rgb888() does, so rgb565() of the result gives them back."""
     return (r5 << 3) | (r5 >> 2), (g6 << 2) | (g6 >> 4), (b5 << 3) | (b5 >> 2)
