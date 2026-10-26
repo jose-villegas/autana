@@ -1353,8 +1353,8 @@ pluck_from_touch(const input_t* input) {
     if (!input->down) {
         return;
     }
-    const int x =
-        ridge_pose_column_under(ridge->attitude.pose, GFX_WIDTH, GFX_HEIGHT, RIDGE_COLUMNS, input->x, input->y);
+    const int x = ridge_pose_column_under(ridge->attitude.pose, GFX_WIDTH, GFX_HEIGHT, RIDGE_COLUMNS, input->point.x,
+                                          input->point.y);
     if (input->pressed || abs(x - ridge->last_pluck_x) >= STRUM_STEP_PX) {
         spring_line_poke(&ridge->line, x, pluck_width,
                          -(int32_t)((int64_t)MATHX_ONE * (input->pressed ? pluck_tap : pluck_strum) / 1000));

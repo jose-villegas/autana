@@ -149,7 +149,7 @@ def validate_hardware(root, items, fpu):
         _, expected = hardware_features(root, item)
         observed = set(fpu[item.fast].partition(";")[0].split())
         if not expected or not expected & observed:
-            raise ValueError(f"{item.fast}: target wrapper lacks an expected seed/fused instruction ({sorted(expected)})")
+            raise ValueError(f"{item.fast}: target wrapper and callees lack an expected seed/fused instruction ({sorted(expected)})")
 
 
 def reference_pages(item, root=ROOT):

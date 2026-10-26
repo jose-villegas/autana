@@ -10,6 +10,8 @@
  */
 #pragma once
 
+#include "math/linear/vec2i.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -28,10 +30,10 @@ typedef struct {
 
 touch_calib_t touch_calib_from_fit(touch_calib_fit_t fit);
 
-/* Corrects one raw point in place, kept inside a `w` x `h` panel. */
-void touch_calib_apply(const touch_calib_t* calib, int w, int h, int* x, int* y);
+/* Returns one corrected raw point, kept inside a `w` x `h` panel. */
+vec2i_t touch_calib_apply(const touch_calib_t* calib, int w, int h, vec2i_t raw);
 
 /* Corrects a sampled controller point when `calibrate` is on. An injected
  * point, already in screen space, and a lift pass through untouched. */
-void touch_calib_prepare_point(bool injected, bool have_point, int* x, int* y, bool calibrate,
+void touch_calib_prepare_point(bool injected, bool have_point, vec2i_t* point, bool calibrate,
                                const touch_calib_t* calib, int w, int h);
