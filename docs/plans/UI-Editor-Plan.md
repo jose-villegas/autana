@@ -91,8 +91,8 @@ for the same portable drawing code, rather than a separate renderer.
 
 ## Related
 
-- [Building a screen](../Building-a-Screen.md)
-- [Text and fonts](../Text-and-Fonts.md)
+- [Building a screen](../ui/Building-a-Screen.md)
+- [Text and fonts](../gfx/Text-and-Fonts.md)
 - [Render harness](../tools/Render-Harness.md)
 - [Generated files](../../launcher/tools/gen/README.md)
 - [Engine layer](Engine-Layer-Design-Sketch.md)

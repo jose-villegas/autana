@@ -21,6 +21,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "collections/strbuf.h"
+
 /* The board runs 30-60 frames a second, so the window is a quarter to half
  * a second: a site in half of it is steady state, while a periodic report
  * every second or two never reaches that. */
@@ -197,37 +199,32 @@ frame_watch_format_json(const frame_watch_t* w, char* out, size_t out_size) {
     if (out_size == 0) {
         return 0;
     }
-    char counts[160];
-    int length = snprintf(counts, sizeof counts,
-                          "{\"frames\":%lu,\"allocs\":%lu,\"frees\":%lu,\"console\":%lu,\"repeating\":%d,"
-                          "\"dropped\":%lu,\"sites\":[",
-                          (unsigned long)w->frames, (unsigned long)w->last[FRAME_WATCH_ALLOC],
-                          (unsigned long)w->last[FRAME_WATCH_FREE], (unsigned long)w->last[FRAME_WATCH_CONSOLE],
-                          w->repeating, (unsigned long)w->dropped);
-    const size_t closing = 2; /* "]}" */
-    if (length < 0 || (size_t)length >= sizeof counts || (size_t)length + closing >= out_size) {
+    static const char closing[] = "]}";
+    /* The closing bytes stay free, so whatever fits can still be closed. */
+    strbuf_t json = strbuf_make(out, out_size > sizeof closing ? out_size - (sizeof closing - 1) : 0);
+    if (!strbuf_appendf(&json,
+                        "{\"frames\":%lu,\"allocs\":%lu,\"frees\":%lu,\"console\":%lu,\"repeating\":%d,"
+                        "\"dropped\":%lu,\"sites\":[",
+                        (unsigned long)w->frames, (unsigned long)w->last[FRAME_WATCH_ALLOC],
+                        (unsigned long)w->last[FRAME_WATCH_FREE], (unsigned long)w->last[FRAME_WATCH_CONSOLE],
+                        w->repeating, (unsigned long)w->dropped)) {
         out[0] = '\0';
         return 0;
     }
-    memcpy(out, counts, (size_t)length);
     bool first = true;
     for (int i = 0; i < FRAME_WATCH_SITES; i++) {
         const frame_watch_site_t* s = &w->sites[i];
         if (!s->repeating) {
             continue;
         }
-        char entry[80];
-        const int wrote = snprintf(entry, sizeof entry, "%s{\"kind\":\"%s\",\"site\":\"0x%08lx\"}", first ? "" : ",",
-                                   frame_watch_kind_name((frame_watch_kind_t)s->kind), (unsigned long)s->site);
-        if (wrote < 0 || (size_t)length + (size_t)wrote + closing >= out_size) {
+        if (!strbuf_appendf(&json, "%s{\"kind\":\"%s\",\"site\":\"0x%08lx\"}", first ? "" : ",",
+                            frame_watch_kind_name((frame_watch_kind_t)s->kind), (unsigned long)s->site)) {
             break;
         }
-        memcpy(out + length, entry, (size_t)wrote);
-        length += wrote;
         first = false;
     }
-    memcpy(out + length, "]}", closing + 1);
-    return length + (int)closing;
+    memcpy(out + json.length, closing, sizeof closing);
+    return (int)(json.length + sizeof closing - 1);
 }
 
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT

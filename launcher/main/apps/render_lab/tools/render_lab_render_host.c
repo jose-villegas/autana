@@ -11,15 +11,17 @@
 #include <string.h>
 
 #include "app/app.h"
+#include "app/app_arena.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
+#include "core/tune.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
+#include "input/input.h"
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
-#include "services/tune.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
@@ -37,6 +39,25 @@ static render_input_step_t touch[] = {
     {TAP_FRAME, true, 0, 0},
     {TAP_FRAME + 1, false, 0, 0},
 };
+
+/* No IMU on a host: a scene reading motion sees none, as on a board without one. */
+bool
+input_read_motion_batch(input_motion_batch_t* out) {
+    (void)out;
+    return false;
+}
+
+/* --console FRAME:WORDS, repeatable: the board's `render WORDS` command,
+ * such as "clip walk 400", run before frame FRAME draws. */
+#define CONSOLE_STEPS_MAX 16
+
+typedef struct {
+    int frame;
+    const char* words;
+} console_step_t;
+
+static console_step_t console_steps[CONSOLE_STEPS_MAX];
+static int console_step_count;
 
 /* --size WxH: the scene drawn at that render size, either axis on its own,
  * as one dynamic-resolution step; 0 keeps the scene's own scale. */
@@ -60,16 +81,6 @@ option_value(int argc, char** argv, const char* name, const char** out) {
     return true;
 }
 
-static bool tune_succeeded;
-
-static void
-note_reply(const char* line) {
-    tune_succeeded = strncmp(line, "TUNE_OK ", sizeof "TUNE_OK " - 1) == 0;
-    if (!tune_succeeded) {
-        (void)fprintf(stderr, "render_lab_render_host: %s\n", line);
-    }
-}
-
 static bool
 view_from_name(const char* name) {
     const int view = render_context_debug_view_named(name);
@@ -88,27 +99,29 @@ tune_options(int argc, char** argv, const char* option) {
         if (strcmp(argv[i], option) != 0) {
             continue;
         }
-        if (++i == argc) {
+        if (++i == argc || !render_host_set_tunable_text(argv[i])) {
             return false;
         }
-        if (strchr(argv[i], '=') == NULL) {
+    }
+    return true;
+}
+
+static bool
+console_options(int argc, char** argv) {
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--console") != 0) {
+            continue;
+        }
+        const char* step = i + 1 < argc ? argv[++i] : "";
+        const char* words = strchr(step, ':');
+        int frame;
+        if (words == NULL || sscanf(step, "%d:", &frame) != 1 || frame < 0 || words[1] == '\0'
+            || console_step_count == CONSOLE_STEPS_MAX) {
+            (void)fprintf(stderr, "render_lab_render_host: --console is FRAME:WORDS, at most %d of them, not %s\n",
+                          CONSOLE_STEPS_MAX, step);
             return false;
         }
-        const size_t length = strlen(argv[i]);
-        char* line = malloc(sizeof "SET " + length);
-        if (line == NULL) {
-            return false;
-        }
-        memcpy(line, "SET ", sizeof "SET " - 1);
-        strcpy(line + sizeof "SET " - 1, argv[i]);
-        char* equal = strchr(line, '=');
-        *equal = ' ';
-        tune_succeeded = false;
-        (void)tune_handle_line(line, note_reply);
-        free(line);
-        if (!tune_succeeded) {
-            return false;
-        }
+        console_steps[console_step_count++] = (console_step_t){frame, words + 1};
     }
     return true;
 }
@@ -165,7 +178,7 @@ options(int argc, char** argv) {
     option_args = argv;
     apply_flags(argc, argv);
     render_lab_start_scene_key = scene;
-    return (view == NULL || view_from_name(view))
+    return console_options(argc, argv) && (view == NULL || view_from_name(view))
            && (scale == NULL || render_host_set_tunable("render_lab.scale", atoi(scale)))
            && tune_options(argc, argv, "--tune");
 }
@@ -192,6 +205,7 @@ setup(int quarter) {
     ui_init();
     gfx_set_frame_overlay(ui_replay_band);
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
+    (void)scene_set_take(app_arena_take); /* as shell/scene_system.c does on the board */
     registered->enter();
     if (render_lab_start_camera != NULL && !scene_has_active_camera()) {
         (void)fprintf(stderr, "--camera: no camera %s in this scene\n", render_lab_start_camera);
@@ -210,7 +224,15 @@ draw(const render_frame_t* frame) {
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
     in.boot.pressed = menu && frame->index == 0;
+    for (int i = 0; i < console_step_count; i++) {
+        if (console_steps[i].frame == frame->index) {
+            (void)render_lab_console(console_steps[i].words);
+        }
+    }
     app_list()->frame(frame->dt_ms, &in);
+    /* The shell's update() runs before it composes a frame; this harness has
+     * already composed, so it steers the next one. */
+    app_list()->update(frame->dt_ms, &in);
 }
 
 const render_scene_t render_scene = {

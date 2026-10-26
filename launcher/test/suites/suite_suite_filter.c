@@ -13,6 +13,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "collections/strbuf.h"
+
 #define GATE_TESTS 4
 
 static const char* const gate_names[GATE_TESTS] = {"test_fire_fits", "test_gas_fits", "test_fire_and_gas_fit",
@@ -161,9 +163,10 @@ pattern_of(char* out, int length) {
 static suite_run_t
 request_with(const char* pattern, int copies) {
     char text[SUITE_NAME_MAX + 2 + SUITE_FILTER_MAX * SUITE_FILTER_LEN + SUITE_FILTER_LEN];
-    int n = snprintf(text, sizeof text, "gate_fixture_suite ");
+    strbuf_t line = strbuf_make(text, sizeof text);
+    strbuf_appendf(&line, "gate_fixture_suite ");
     for (int i = 0; i < copies; i++) {
-        n += snprintf(text + n, sizeof text - (size_t)n, "%s%s", i > 0 ? "," : "", pattern);
+        TEST_ASSERT_TRUE(strbuf_appendf(&line, "%s%s", i > 0 ? "," : "", pattern));
     }
     return request(text);
 }
@@ -207,6 +210,31 @@ test_an_unknown_or_overlong_suite_is_not_found(void) {
     TEST_ASSERT_FALSE(request(name).found);
 }
 
+typedef struct {
+    int seen;
+    int fixtures_on_request;
+    bool in_order;
+    const char* previous;
+} listing_t;
+
+static void
+list_one(const char* name, bool on_request, void* context) {
+    listing_t* listing = context;
+    listing->seen++;
+    listing->in_order &= listing->previous == NULL || strcmp(listing->previous, name) < 0;
+    listing->previous = name;
+    listing->fixtures_on_request += on_request && strstr(name, "_fixture_suite") != NULL;
+}
+
+static void
+test_the_listing_names_every_suite_in_order_with_its_on_request_mark(void) {
+    listing_t listing = {.in_order = true};
+    suites_each(list_one, &listing);
+    TEST_ASSERT_TRUE(listing.in_order);
+    TEST_ASSERT_GREATER_THAN_INT(2, listing.seen);
+    TEST_ASSERT_EQUAL_INT(2, listing.fixtures_on_request);
+}
+
 void
 run_suite_filter_suite(void) {
     RUN_TEST(test_a_plain_request_runs_every_test);
@@ -220,6 +248,7 @@ run_suite_filter_suite(void) {
     RUN_TEST(test_the_pattern_count_at_the_limit_is_accepted_and_one_more_is_refused);
     RUN_TEST(test_an_empty_pattern_is_refused);
     RUN_TEST(test_an_unknown_or_overlong_suite_is_not_found);
+    RUN_TEST(test_the_listing_names_every_suite_in_order_with_its_on_request_mark);
 }
 
 SUITE_REGISTER(run_suite_filter_suite)

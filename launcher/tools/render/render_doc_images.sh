@@ -5,6 +5,7 @@
 #
 #   ./launcher/tools/render/render_doc_images.sh            # rewrite images and tables
 #   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed
+#   ./launcher/tools/render/render_doc_images.sh --audio [--check]
 #   ./launcher/tools/render/render_doc_images.sh --orphans  # only report images no script names
 #   ./launcher/tools/render/render_doc_images.sh --stage gpu [--smoke|--check]
 #   ./launcher/tools/render/render_doc_images.sh --stage gpu --inputs  # print its input fingerprint
@@ -56,6 +57,23 @@ done
 
 DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
 DEMO_OBJECT=atrium
+# The skinned mesh the skeleton and skin figures draw, a cached bake, and its clip.
+SKIN_BAKE=capybara.glb
+SKIN_CLIP=gallop
+# Three of its clips the playback figures blend: first to second to third, then back to the first.
+PLAYBACK_CLIPS="walk gallop idle"
+# The tree depth whose node boxes the cull figures draw.
+CULL_LEVEL=2
+# The cull chase GIFs play one path sample per frame at this rate.
+CULL_GIF_FPS=8
+# Colours in their palette: the camera moves every frame, so fewer keep them small.
+CULL_GIF_COLORS=64
+
+AUDIO_ONLY=0
+if [ "${1:-}" = --audio ]; then
+    AUDIO_ONLY=1
+    shift
+fi
 
 if [ "${1:-}" = --stage ]; then
     if [ "${2:-}" = gpu ] && [ "${3:-}" != --inputs ]; then
@@ -114,9 +132,17 @@ case "${1:-}" in
         comparing=1
         status=0
         for image in $(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort); do
-            case "$image" in render/gpu/*) continue ;; esac
+            case "$image" in render/gpu/*|render/meshlets/*) continue ;; esac
             stem=$(basename "$image")
             stem=${stem%%.*}
+            # A face example's renders are named after its file.
+            case "$image" in
+                ui/*)
+                    example=${stem%%-*}
+                    if [ -f "$TOOLS_DIR/ui_examples/$example.c" ] || [ -f "$TOOLS_DIR/ui_examples/screens/$example.c" ]; then
+                        continue
+                    fi ;;
+            esac
             if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh "$TOOLS_DIR/doc_images_demo.sh" "$TOOLS_DIR/doc_import_examples.py" \
                 $app_image_scripts; then
                 claimed=0
@@ -147,7 +173,7 @@ esac
 . "$(dirname "$0")/../../../scripts/lib/python.sh"
 PYTHON=$(find_python PIL numpy matplotlib) || exit 2
 export PYTHON
-if ! command -v ffmpeg > /dev/null 2>&1; then
+if [ "$AUDIO_ONLY" = 0 ] && ! command -v ffmpeg > /dev/null 2>&1; then
     echo "ffmpeg not found." >&2
     exit 2
 fi
@@ -155,6 +181,7 @@ fi
 run rm -rf "$WORK" "$OUT"
 run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 
+if [ "$AUDIO_ONLY" = 0 ]; then
 # The launcher lists the release build's apps, read from the tree.
 L=$WORK/launcher_home
 run sh launcher/tools/render/scenes/launcher_home_render_host.sh -o "$L" > "$WORK/launcher_home.log"
@@ -190,13 +217,10 @@ run "$B/boot_anim_render" 0 "$@" --frames "$(((boot_ms + 15) / 16 + 1))" --dt 16
     -o "$B/boot.bmp" --video "$B/boot.avi" 2> "$WORK/boot_anim_video.log"
 gif_from_avi "$B/boot.avi" "$OUT/overview/boot-anim.gif" "transpose=2,fps=15" "stats_mode=full"
 
-# The UI toolkit's gallery views.
-U=$WORK/ui_widgets
-run sh launcher/tools/render/scenes/ui_widgets_render_host.sh -o "$U" > "$WORK/ui_widgets.log"
-for bmp in "$U"/*.bmp; do
-    run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
-        "$bmp" "$OUT/ui/$(basename "$bmp" .bmp).png"
-done
+# UI render tables; source embedding: docs/tools/Generated-Files.md#usage-examples.
+U=$WORK/ui_examples
+run sh launcher/tools/render/scenes/ui_examples_render_host.sh -o "$U" > "$WORK/ui_examples.log"
+run "$PYTHON" "$TOOLS_DIR/ui_examples_doc.py" --renders "$U" --out "$OUT"
 
 # Each app that has doc images makes them.
 for script in $app_image_scripts; do
@@ -207,15 +231,77 @@ done
 
 run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEMO_OBJECT"
 
-# The math reference's figures, from the library's own functions.
+# The math, kinematics and physics references' figures, from the libraries' own functions.
 # shellcheck source=../build/find_cc.sh
 . launcher/tools/build/find_cc.sh
 cc=$(find_cc) || exit 2
+run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input/shake-level.png" \
+    > "$WORK/shake_figures.log"
+run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
+    > "$WORK/gravity_figures.log"
+# --orphans scans this runner: gravity-trust.png, gravity-bias.gif
+run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
+    > "$WORK/motion_axes_figures.log"
+# --orphans scans this runner: motion-axes.png, motion-rotation.gif
 run mkdir -p "$OUT/math"
-run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math/trs-order.png" \
+run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
+# --orphans scans this runner: trs-scale.gif, trs-rotate.gif, trs-translate.gif
+run "$PYTHON" launcher/tools/math/math_bench_figures.py --out "$OUT/math" > "$WORK/math_bench_figures.log"
+# --orphans scans this runner: benchmark-families.png
+run "$PYTHON" launcher/tools/math/fast_path_figures.py --out "$OUT/math" > "$WORK/fast_path_figures.log"
+# --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
-# --orphans scans this runner: rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png
+# --orphans scans this runner: rect-queries.png, circle-rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
+run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
+# --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
+run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/stats_figures.log"
+# --orphans scans this runner: stats-percentile-ranks.png
+run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
+# --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
+run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
+# --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png
+
+fi
+
+run "$PYTHON" launcher/tools/audio/audio_drc_figures.py --out "$OUT/audio" > "$WORK/audio_drc_figures.log"
+run "$PYTHON" launcher/tools/audio/audio_path_figures.py --out "$OUT/audio" > "$WORK/audio_path_figures.log"
+run "$PYTHON" launcher/tools/audio/sound_mix_figures.py --out "$OUT/audio" > "$WORK/sound_mix_figures.log"
+run "$PYTHON" launcher/tools/audio/sound_onset_figures.py --out "$OUT/audio" > "$WORK/sound_onset_figures.log"
+# --orphans scans this runner: drc-level.png, drc-thd.png, drc-level-dark.png, drc-thd-dark.png,
+# audio-frequency.png, audio-volume.png, audio-frequency-dark.png, audio-volume-dark.png,
+# sound-onset.png, sound-onset-dark.png,
+# sound_mix_capture_v8.png, sound_mix_capture_v32.png, sound_mix_capture_v8-dark.png, sound_mix_capture_v32-dark.png,
+# sound_mix_capture_long.png, sound_mix_capture_long-dark.png
+
+if [ "$AUDIO_ONLY" = 0 ]; then
+
+# The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
+run mkdir -p "$OUT/render" "$OUT/tables"
+skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
+run "$PYTHON" launcher/tools/r3d/skin/skin_sheet.py "$skin_asset" "$OUT/render" "$OUT/tables" \
+    --sheet "$SKIN_CLIP" > "$WORK/skin_sheet.log"
+run "$PYTHON" launcher/tools/r3d/skin/skin_figures.py --cc "$cc" --out "$OUT/render/skin-limb.png" \
+    > "$WORK/skin_figures.log"
+# --orphans scans this runner: skin-skeleton.gif, skin-weights.gif, skin-influences.png, skin-limb.png
+
+# The scene playback figures: those clips through the animation layer's playheads and blends.
+run mkdir -p "$OUT/anim"
+# shellcheck disable=SC2086 # PLAYBACK_CLIPS is three words
+run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PLAYBACK_CLIPS --cc "$cc" \
+    --out "$OUT/anim" > "$WORK/playback_figures.log"
+# --orphans scans this runner: anim-playhead.png, anim-blend.png, anim-nlerp.png, anim-blend.gif
+
+# The bake method's figures: local occlusion and bounced light on a floor beside a wall, and the scores.
+R3D_PYTHON=$(run find_r3d_python "$PWD")
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/bake_figures.py --out "$OUT/render" > "$WORK/bake_figures.log" 2>&1
+# --orphans scans this runner: bake-ao-rays.png, bake-ao-falloff.png, bake-directions.png, bake-bounce-rays.png, bake-bounce-sweep.png, bake-scores.png
+
+# The baked mesh's figures: the demo scene's lite mesh, its clusters and tree, and the clusterizer's build.
+tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite.mesh") || exit 2
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --out "$OUT/render" \
+    > "$WORK/mesh_figures.log" 2>&1
+# --orphans scans this runner: baked-mesh-tree.gif, baked-mesh-ranges.png, meshlet-build.gif
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.
@@ -236,12 +322,39 @@ run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/p
     --views 'docs/render/data/pipeline-view-{view}-board.log' --tables "$OUT/tables" \
     --chart "$OUT/render/pipeline-frame-stages.png" > "$WORK/frame_stages.log"
 
+# What the cull keeps along each scene's camera path, from the cull view, and
+# what a cluster and a triangle cost, from the board capture beside the page.
+for cull in "launcher/demo/bistro/bistro.scene.toml street_fitted_full cull-bistro Bistro" \
+    "$DEMO_SCENE atrium_fitted_full cull-sponza Sponza"; do
+    # shellcheck disable=SC2086 # four words: scene, object, stem, label
+    set -- $cull
+    run "$PYTHON" launcher/tools/render/cull_figures.py --scene "$1" --object "$2" --camera camera --stem "$3" \
+        --label "$4" --level "$CULL_LEVEL" --out "$OUT/render" --tables "$OUT/tables" --work "$WORK/cull" \
+        > "$WORK/$3.log"
+    gif_from_avi "$WORK/cull/$3-chase.avi" "$OUT/render/$3-chase.gif" "setpts=N/$CULL_GIF_FPS/TB,fps=$CULL_GIF_FPS" \
+        "stats_mode=diff:max_colors=$CULL_GIF_COLORS"
+done
+# --orphans scans this runner: cull-bistro-sheet.png, cull-bistro-counts.png, cull-bistro-chase.gif,
+# cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif
+run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-board.log --tables "$OUT/tables" \
+    --chart "$OUT/render/cull-cost.png" > "$WORK/cull_cost.log"
+
+# Each picture's frame cost in each framebuffer layout, from the scene and
+# boot animation captures beside the render pages.
+run "$PYTHON" launcher/tools/render/layout_costs.py --mesh docs/render/data/layout-mesh-board.log \
+    --boot docs/render/data/layout-boot-board.log --tables "$OUT/tables" \
+    --chart "$OUT/render/gfx-layout-costs.png" > "$WORK/layout_costs.log"
+fi
+
 table_status=0
+if [ "$AUDIO_ONLY" = 0 ]; then
 if [ "$CHECK" = 1 ]; then
     "$PYTHON" "$TOOLS_DIR/generated_blocks.py" --tables "$OUT/tables" --check || table_status=$?
     [ "$table_status" -le 1 ] || exit 2
 else
     "$PYTHON" "$TOOLS_DIR/generated_blocks.py" --tables "$OUT/tables"
+fi
+
 fi
 
 if [ "$CHECK" = 0 ]; then
@@ -272,7 +385,10 @@ for name in $made_list; do
     esac
 done
 for name in $kept_list; do
-    case "$name" in render/gpu/*) continue ;; esac
+    if [ "$AUDIO_ONLY" = 1 ]; then
+        case "$name" in audio/*) ;; *) continue ;; esac
+    fi
+    case "$name" in render/gpu/*|render/meshlets/*) continue ;; esac
     if [ ! -f "$OUT/$name" ]; then
         orphan "$name"
         status=1

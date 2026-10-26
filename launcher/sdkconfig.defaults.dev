@@ -1,7 +1,7 @@
 # Development variant: development-only logging and instrumentation (frame
-# timings, the screenshot listener - see docs/Build-Variants.md's
-# "Development-only instrumentation" section), WITHOUT the on-device test
-# suites or the Diagnostics app. See sdkconfig.defaults.diag for that
+# timings, the screenshot listener - see docs/tools/Build-Variants.md's
+# "Development-only instrumentation" section) and the development-only apps,
+# WITHOUT the on-device test suites. See sdkconfig.defaults.diag for that
 # combination - CONFIG_LAUNCHER_SELFTEST there requires this same flag on
 # (main/Kconfig.projbuild), so a diag build carries everything this one
 # does plus the test harness; this file is what gets just the first half.
@@ -14,15 +14,10 @@ CONFIG_LAUNCHER_DEVELOPMENT=y
 # through the heap's own hooks.
 CONFIG_HEAP_USE_HOOKS=y
 
-# The bootloader's own Kconfig cannot see LAUNCHER_DEVELOPMENT, so a
-# development-type build turns the reset drain on here.
-CONFIG_PMIC_COLD_BOOT_HOST_DRAIN=y
-
 # The panic handler writes an ELF core dump to the coredump partition
 # (partitions.csv, shared by every variant), and boot says whether one is
-# there (boot/boot_report.h). Every warm reset becomes a PMIC power cycle that
-# drops USB, so the dump is the crash's only record. Development-type builds
-# only: it costs about 4 KB of internal RAM, 1.8 KB of it the dump's own stack.
+# there (boot/boot_report.h). Development-type builds only: it costs about
+# 4 KB of internal RAM, 1.8 KB of it the dump's own stack.
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 # The dump turns the FreeRTOS task wrapper on by default: 32 more bytes under
 # every task, which the main task's stack-chain reserve has no room for. A

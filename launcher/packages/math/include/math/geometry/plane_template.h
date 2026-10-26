@@ -36,10 +36,11 @@ enum {
         return OPS##_add(V##_dot(plane.normal, point), plane.d);                                                       \
     }                                                                                                                  \
                                                                                                                        \
-    /* normalize = (normal, d) / |normal|. Precondition: dot(normal, normal) is nonzero and representable. */          \
+    /* normalize = (normal, d) / |normal|. Precondition: normal is nonzero. */                                         \
     static inline P##_t P##_normalize(P##_t plane) {                                                                   \
-        const T scale = OPS##_div(OPS##_one(), OPS##_sqrt(V##_dot(plane.normal, plane.normal)));                       \
-        return (P##_t){V##_scale(plane.normal, scale), OPS##_mul(plane.d, scale)};                                     \
+        T d;                                                                                                           \
+        const V##_t normal = V##_normalize_divide(plane.normal, plane.d, &d);                                          \
+        return (P##_t){normal, d};                                                                                     \
     }                                                                                                                  \
                                                                                                                        \
     /* The plane a x + b y + c z + e >= 0 of m's target, read in m's source space: */                                  \

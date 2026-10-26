@@ -30,3 +30,52 @@ for clip in sponza:sponza-fitted-full sponza-flat:sponza-flat-fitted; do
 done
 gif_from_avi "$W/sponza-motion.avi" "$OUT/render-lab-sponza.gif" "fps=8" "stats_mode=diff" 6
 gif_from_avi "$W/sponza-flat-motion.avi" "$OUT/render-lab-sponza-flat.gif" "fps=8" "stats_mode=diff" 6
+
+# The capybara's clips in the order the scene lists them, each blended into
+# the next as the BLEND slider does and shown for an equal CLIP_MS share of
+# the loop, then back to the first so the loop restarts where it began, as
+# the camera turns once around it. The first clip's share is split across
+# the loop's two ends. The return to the first clip blends over RETURN_BLEND_MS,
+# slower than the others; the loop ends once it has finished.
+CLIP_DT=40
+CLIP_MS=2500
+CLIP_BLEND_MS=500
+RETURN_BLEND_MS=1500
+clip_frame() { echo $(($1 / CLIP_DT)); }
+clips=$("$W/render_lab_render" --quarter 1 --no-hud --scene capybara --frames 1 --console 0:clips \
+    -o "$W/capybara-clips.bmp" 2> "$W/capybara-clips.log" | sed -n 's/^RENDER clip=\([^ ]*\) .*/\1/p')
+if [ -z "$clips" ]; then
+    echo "doc_images.sh: the capybara scene lists no clips; see $W/capybara-clips.log" >&2
+    exit 1
+fi
+set -- $clips
+first=$1
+shift
+later=$*
+set --
+at=$((CLIP_MS / 2))
+for clip in $later; do
+    set -- "$@" --console "$(clip_frame "$at"):clip $clip $CLIP_BLEND_MS"
+    at=$((at + CLIP_MS))
+done
+set -- "$@" --console "$(clip_frame "$at"):clip $first $RETURN_BLEND_MS"
+return_ms=$((CLIP_MS / 2))
+if [ "$RETURN_BLEND_MS" -gt "$return_ms" ]; then
+    return_ms=$RETURN_BLEND_MS
+fi
+loop_ms=$((at + return_ms))
+run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara --dt "$CLIP_DT" \
+    --frames "$(clip_frame "$loop_ms")" --set render_lab.orbit_ms="$loop_ms" "$@" \
+    -o "$W/capybara-motion.bmp" --video "$W/capybara-motion.avi" > "$W/capybara-console.log" 2> "$W/capybara.log"
+if grep -q "^RENDER_ERR" "$W/capybara-console.log"; then
+    echo "doc_images.sh: the renderer refused a clip command; see $W/capybara-console.log" >&2
+    exit 1
+fi
+gif_from_avi "$W/capybara-motion.avi" "$OUT/render-lab-capybara.gif" "fps=25/2" "stats_mode=diff"
+
+# The water scene's scripted tour, portrait as the tank stands: upright,
+# tipped each way, laid back, flat, toward the viewer, upright, shaken.
+WATER_DT=16
+WATER_FRAMES=880
+run "$W/render_lab_render" --quarter 0 --no-hud --scene water --console "0:water tour" --dt "$WATER_DT"     --frames "$WATER_FRAMES" -o "$W/water-tour.bmp" --video "$W/water-tour.avi" 2> "$W/water.log"
+gif_from_avi "$W/water-tour.avi" "$OUT/render-lab-water.gif" "fps=15,scale=276:-1:flags=lanczos" "stats_mode=diff"

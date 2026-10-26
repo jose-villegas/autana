@@ -1,10 +1,13 @@
 /* Portable synthesis checks against time, amplitude and chunking contracts. */
 #include <math.h>
 #include <stdlib.h>
+#include "audio/audio_frequency.h"
 #include "audio/audio_loopback.h"
 #include "audio/audio_tone.h"
+#include "math/scalar/math_const.h"
+#include "math/scalar/rng.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 #define TEST_HZ          1000u
 #define TEST_HALF_VOLUME (AUDIO_OUT_VOLUME_MAX_PCT / 2)
@@ -100,8 +103,112 @@ test_loopback_measured_budget(void) {
     }
 }
 
+#define TEST_ESTIMATE_PHASES             16u
+#define TEST_ESTIMATE_WRAP_MARGIN_HZ     0.1F
+#define TEST_ESTIMATE_MS                 500u
+#define TEST_ESTIMATE_AMPLITUDE          12000.0F
+#define TEST_ESTIMATE_NOISE              0.01F
+#define TEST_NOISE_RMS_MATCH_SCALE       2.449489743F
+#define TEST_ESTIMATE_TOLERANCE_HZ       0.05F
+#define TEST_ESTIMATE_NOISE_TOLERANCE_HZ 0.5F
+
+static void
+test_loopback_frequency_boundaries_and_blocks(void) {
+    const size_t count = AUDIO_FREQUENCY_MIN_SAMPLES;
+    int16_t* samples = fixture(count);
+    audio_tone_t tone;
+    audio_tone_init(&tone, TEST_HZ);
+    audio_tone_fill(&tone, samples, count, TEST_HALF_VOLUME);
+    audio_frequency_t single;
+    audio_frequency_init(&single, TEST_HZ);
+    for (size_t i = 0; i < count; i++) {
+        audio_frequency_feed(&single, samples + i, 1);
+        if (i + 1 < count) {
+            TEST_ASSERT_TRUE(isnan(audio_frequency_hz(&single)));
+        }
+    }
+    TEST_ASSERT_TRUE(isfinite(audio_frequency_hz(&single)));
+    static const size_t chunks[] = {7, AUDIO_FREQUENCY_WINDOW_SAMPLES - 1, AUDIO_FREQUENCY_WINDOW_SAMPLES + 17};
+    for (size_t c = 0; c < sizeof chunks / sizeof chunks[0]; c++) {
+        audio_frequency_t blocks;
+        audio_frequency_init(&blocks, TEST_HZ);
+        for (size_t i = 0; i < count;) {
+            const size_t n = count - i < chunks[c] ? count - i : chunks[c];
+            audio_frequency_feed(&blocks, samples + i, n);
+            i += n;
+        }
+        TEST_ASSERT_EQUAL_FLOAT(audio_frequency_hz(&single), audio_frequency_hz(&blocks));
+        TEST_ASSERT_EQUAL_UINT(single.advances, blocks.advances);
+        TEST_ASSERT_EQUAL_UINT(single.bin.samples, blocks.bin.samples);
+    }
+}
+
+static void
+assert_frequency_estimate(int16_t* samples, size_t n, uint16_t hz, float offset, unsigned seed, bool noisy) {
+    rng_t random;
+    rng_seed(&random, seed);
+    const float actual = hz + offset;
+    for (size_t i = 0; i < n; i++) {
+        const float noise = !noisy ? 0
+                                   : TEST_ESTIMATE_NOISE * TEST_NOISE_RMS_MATCH_SCALE
+                                         * ((float)rng_next(&random) / (float)UINT32_MAX - 0.5F);
+        samples[i] =
+            (int16_t)lroundf(TEST_ESTIMATE_AMPLITUDE
+                             * (sinf(MATH_TAU * actual * (float)i / AUDIO_OUT_SAMPLE_RATE_HZ + (float)seed) + noise));
+    }
+    audio_frequency_t state;
+    audio_frequency_init(&state, hz);
+    for (size_t i = 0; i < n; i++) {
+        audio_frequency_feed(&state, samples + i, 1);
+    }
+    if (hz < AUDIO_FREQUENCY_EDGE_HZ || hz > (float)AUDIO_OUT_SAMPLE_RATE_HZ / 2 - AUDIO_FREQUENCY_EDGE_HZ) {
+        TEST_ASSERT_TRUE(isnan(audio_frequency_hz(&state)));
+        return;
+    }
+    TEST_ASSERT_FLOAT_WITHIN(!noisy ? TEST_ESTIMATE_TOLERANCE_HZ : TEST_ESTIMATE_NOISE_TOLERANCE_HZ, actual,
+                             audio_frequency_hz(&state));
+}
+
+static void
+test_loopback_frequency_band(void) {
+    const uint16_t low = (uint16_t)ceilf(AUDIO_FREQUENCY_EDGE_HZ);
+    const uint16_t high = (uint16_t)floorf((float)AUDIO_OUT_SAMPLE_RATE_HZ / 2 - AUDIO_FREQUENCY_EDGE_HZ);
+    const uint16_t bins[] = {1, 10, low - 1, low, high, high + 1};
+    static const float offsets[] = {
+        0, 3.7F, -11.0F,
+        (float)AUDIO_OUT_SAMPLE_RATE_HZ / (2 * AUDIO_FREQUENCY_WINDOW_SAMPLES) - TEST_ESTIMATE_WRAP_MARGIN_HZ,
+        -(float)AUDIO_OUT_SAMPLE_RATE_HZ / (2 * AUDIO_FREQUENCY_WINDOW_SAMPLES) + TEST_ESTIMATE_WRAP_MARGIN_HZ};
+    const size_t n = audio_out_samples(TEST_ESTIMATE_MS);
+    int16_t* samples = fixture(n);
+    for (size_t b = 0; b < sizeof bins / sizeof bins[0]; b++) {
+        for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
+            for (unsigned seed = 1; seed <= TEST_ESTIMATE_PHASES; seed++) {
+                assert_frequency_estimate(samples, n, bins[b], offsets[o], seed, false);
+            }
+        }
+    }
+}
+
+static void
+test_loopback_frequency_estimate(void) {
+    static const float offsets[] = {0.0F, 3.7F, -11.0F};
+    static const uint16_t bins[] = {250, 300, 500, TEST_HZ, 2000, 3000, 4000, 8000};
+    const size_t n = audio_out_samples(TEST_ESTIMATE_MS);
+    int16_t* samples = fixture(n);
+    for (size_t b = 0; b < sizeof bins / sizeof bins[0]; b++) {
+        for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
+            for (unsigned seed = 1; seed <= 4; seed++) {
+                assert_frequency_estimate(samples, n, bins[b], offsets[o], seed, seed != 1);
+            }
+        }
+    }
+}
+
 void
 run_audio_tone_suite(void) {
+    RUN_TEST(test_loopback_frequency_boundaries_and_blocks);
+    RUN_TEST(test_loopback_frequency_band);
+    RUN_TEST(test_loopback_frequency_estimate);
     RUN_TEST(test_loopback_measured_budget);
     RUN_TEST(test_tone_frequency);
     RUN_TEST(test_tone_chunks_and_volume);

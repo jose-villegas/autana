@@ -13,7 +13,7 @@
 
 #include <stdint.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "math/scalar/fixed.h"
@@ -233,9 +233,40 @@ test_scalar_integer_bounds(void) {
     TEST_ASSERT_EQUAL_UINT64(UINT32_MAX, mathi_isqrt64(UINT64_MAX));
 }
 
+static void
+test_integer_square_root_paths_agree_at_width_boundary(void) {
+    const uint64_t boundary = (uint64_t)UINT32_MAX + 1;
+    const uint64_t boundary_root = (uint64_t)UINT16_MAX + 1;
+    const uint64_t values[] = {
+        0,
+        1,
+        UINT32_MAX - 1,
+        UINT32_MAX,
+        boundary,
+        (boundary_root - 1) * (boundary_root - 1) - 1,
+        (boundary_root - 1) * (boundary_root - 1),
+        (boundary_root - 1) * (boundary_root - 1) + 1,
+        boundary + 1,
+        (boundary_root + 1) * (boundary_root + 1) - 1,
+        (boundary_root + 1) * (boundary_root + 1),
+        (boundary_root + 1) * (boundary_root + 1) + 1,
+    };
+    for (size_t i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
+        const uint64_t value = values[i];
+        const uint64_t root = mathi_isqrt64(value);
+        TEST_ASSERT_EQUAL_UINT32(root, mathi_isqrt64_digits(value));
+        if (value <= UINT32_MAX) {
+            TEST_ASSERT_EQUAL_UINT32(root, mathi_isqrt32_digits((uint32_t)value));
+        }
+        TEST_ASSERT_TRUE(root * root <= value);
+        TEST_ASSERT_TRUE((root + 1) * (root + 1) > value);
+    }
+}
+
 void
 suite_fixed(void) {
     RUN_TEST(test_scalar_integer_bounds);
+    RUN_TEST(test_integer_square_root_paths_agree_at_width_boundary);
     RUN_TEST(test_mul_floor_matches_a_hand_written_widened_shift);
     RUN_TEST(test_floor_and_round_diverge_on_an_inexact_negative_product);
     RUN_TEST(test_mul_round_rounds_to_nearest_for_positives);

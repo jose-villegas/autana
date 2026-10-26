@@ -4,41 +4,16 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=scene_viewer
 scene_defines="-DTUNE_HOT_LIVE=1"
+scene_renderer=1
 scene_sources="
-main/services/tune.c
 main/core/job.c
-main/render/render_view.c
-main/render/raster.c
-main/render/raster_show.c
-main/render/raster_motion.c
-main/render/raster_split.c
-main/render/raster_meshlets.c
-main/render/r3d_pipeline.c
-main/render/upscale.c
-main/render/resolution/resolution.c
-main/render/context/render_context.c
-main/anim/anim_track.c
-main/anim/anim_tracks.c
-main/render/r3d_span.c
-main/scene/camera/camera.c
-main/scene/scene.c
-main/scene/scene_animation.c
-main/scene/scene_light.c
-main/anim/anim_skeleton.c
-main/anim/anim_binding.c
-main/anim/pose/anim_pose.c
-main/anim/playback/anim_layer.c
-main/anim/playback/anim_playhead.c
-main/render/r3d_skin.c
-main/render/skin/r3d_skinning.c
-main/render/skin/r3d_skin_light.c
-main/scene/scene_asset.c
-main/scene/scene_draw.c
-main/scene/scene_shell.c
-main/render/r3d_lit_mesh.c
 tools/render/scene_viewer.c
 "
 scene_assets=demo/sponza
-scene_renders="landscape|--scene sponza --object atrium --quarter 1 --frames 2|448x368|nopin"
+# The render draws the scene's showcase.
+. "$SCRIPT_DIR/../../../../scripts/lib/python.sh"
+. "$SCRIPT_DIR/../../../../scripts/lib/native_path.sh"
+showcase=$("$(find_python)" "$(to_native "$SCRIPT_DIR/../showcase.py")" "$(to_native "$SCRIPT_DIR/../../../$scene_assets/sponza.scene.toml")")
+scene_renders="landscape|--scene sponza --object $showcase --quarter 1 --frames 2|448x368|nopin"
 . "$SCRIPT_DIR/../render_scene.sh"
 render_scene_run "$@"

@@ -2,7 +2,7 @@
 #
 # Prints the first-party C and header files the formatting rules apply to,
 # the single definition of that set, so the pre-commit hook and the CI gate
-# cannot disagree about what is checked. docs/C-Style-Guide.md is the prose;
+# cannot disagree about what is checked. docs/c-style/README.md is the prose;
 # this is the file list.
 #
 # Usage:
@@ -45,12 +45,12 @@ qualifies() {
     # Vendored trees, checked in as-is. Patterns are spelled out in the case
     # itself rather than looped over a variable: an unquoted pattern in a
     # loop is subject to pathname expansion, which silently turns
-    # "launcher/test/framework/*" into the three paths it matches today and
+    # "launcher/packages/testkit/unity/*" into the three paths it matches today and
     # lets everything else through. A case pattern is never expanded.
     case "$path" in
         launcher/components/esp32_s3_touch_amoled_1_8/* | \
             launcher/components/microui/* | \
-            launcher/test/framework/*)
+            launcher/packages/testkit/unity/*)
             return 1
             ;;
     esac

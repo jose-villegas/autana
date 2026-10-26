@@ -1,7 +1,7 @@
 # Performance and Budgets
 
 How tests guard cost: instruction counts, the frame watch, and the rules a
-perf test follows. Back to the [Testing Guide](../Testing-Guide.md).
+perf test follows. Back to the [Testing Guide](README.md).
 
 ## Rules for a perf test
 
@@ -24,7 +24,7 @@ both costs. Build the landscape case of a new perf test or scene first.
 **Scoped builds are instruments, never gates.** The perf scope compiles only
 the sources declared in `scope_perf.cmake`; compare its numbers only with
 other scoped captures.
-See [`Build-Variants.md`](../Build-Variants.md#a-diagnostics-build-can-be-scoped).
+See [`Build-Variants.md`](../tools/Build-Variants.md#a-diagnostics-build-can-be-scoped).
 
 **Host wall-clock says nothing about the chip.** For timing, use the board;
 for removed work, the instruction ratchet below. QEMU time is not board time
@@ -76,12 +76,12 @@ python launcher/tools/quality/icount_gate.py --update-baseline launcher/build.qe
 UI face/backend pairs include identical frame setup, so their difference is
 the face's instruction share. Theme and scope rows measure face state without
 a backend partner; scope rows measure begin and end together. The tolerance
-and capture-length rule live in `launcher/test/perf_stats.h`, which the gate
+and capture-length rule live in `launcher/packages/testkit/include/testkit/bench.h`, which the gate
 reads.
 
 ## The frame watch as a gate
 
-The frame watch ([Firmware-Architecture.md](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state))
+The frame watch ([firmware/Frame-Watch.md](../firmware/Frame-Watch.md#no-allocating-or-logging-in-steady-state))
 warns on the board. Two places turn it into a failure, both by the rule in
 `profile/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
 `FRAME_WATCH_WINDOW` frames, after `FRAME_WATCH_WARMUP`). Either also fails

@@ -18,6 +18,7 @@ try:
     from r3d.mitsuba_reference import ALBEDO_CEILING, boosted_albedo
     from r3d.path_bake import PathLight
     from tests import soup
+    from tests.soup import SUN, corridor, path_light
 except ImportError:
     np = None
 
@@ -34,36 +35,7 @@ def have_llvm():
 
 needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")
 
-BIG = 400.0
-SUN = {"type": "directional", "direction": [0.6, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 2.0}
 SKY = {"type": "sky", "color": [1.0, 1.0, 1.0], "intensity": 1.5, "rays": 16}
-
-
-def grey(albedo):
-    """The Kd that decodes to `albedo`, as the export reads an untextured material."""
-    return (albedo ** (1 / 2.2),) * 3
-
-
-def corridor(albedo=0.5, wall_faces_floor=True, wall_kd=None):
-    """A large floor facing +y at y = 0 and a large wall at x = 0 facing +x (or -x). Material 0 is the floor and
-    material 1 the wall; `wall_kd` colours the wall."""
-    floor = [[0, 0, BIG], [BIG * 2, 0, BIG], [BIG * 2, 0, -BIG], [0, 0, -BIG]]
-    wall = [[0, 0, -BIG], [0, 0, BIG], [0, BIG, BIG], [0, BIG, -BIG]]
-    if wall_faces_floor:
-        wall = wall[::-1]
-    corners, tris, tri_m = [], [], []
-    for index, quad in enumerate((floor, wall)):
-        base = 4 * index
-        corners += quad
-        tris += [[base, base + 1, base + 2], [base, base + 2, base + 3]]
-        tri_m += [index] * 2
-    p, tri_v = np.array(corners, dtype=float), np.array(tris)
-    source = SimpleNamespace(colors=None, p=p, uv=np.zeros((8, 2)), tri_v=tri_v, tri_t=tri_v, tri_m=np.array(tri_m),
-                             names=["floor", "wall"],
-                             materials={"floor": {"Kd": grey(albedo)}, "wall": {"Kd": wall_kd or grey(albedo)}},
-                             textures=[None, None])
-    source.corner_normals = corner_normals(p, tri_v)
-    return source
 
 
 def floor_only():
@@ -74,13 +46,8 @@ def floor_only():
     return source
 
 
-def path_light(source=None, double=(), bounces=1, rays=256, boost=1.0, lights=(SUN,)):
-    return PathLight(source or corridor(), list(lights), set(double), SimpleNamespace(bounces=bounces, rays=rays), boost)
-
-
 def bounce_at(path, xs, ray_offset=0.01):
-    points = np.array([[x, 0.0, 0.0] for x in xs])
-    return path.bounce(points, np.tile([0.0, 1.0, 0.0], (len(xs), 1)), ray_offset)
+    return path.bounce(*soup.floor_points(xs), ray_offset)
 
 
 def bounce_at_the_wall_foot(**kwargs):

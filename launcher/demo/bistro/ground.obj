@@ -1,0 +1,13 @@
+# A square of ground 600 m across, just below the street, to the horizon in every view.
+mtllib ground.mtl
+v -30000 10 -30000
+v 30000 10 -30000
+v 30000 10 30000
+v -30000 10 30000
+vt 0 0
+vt 1 0
+vt 1 1
+vt 0 1
+usemtl ground
+f 1/1 4/4 3/3
+f 1/1 3/3 2/2

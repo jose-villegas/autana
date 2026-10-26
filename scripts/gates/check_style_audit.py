@@ -16,7 +16,7 @@ Two rules a script cannot judge reliably were left out rather than scripted
 badly: journey words in prose docs (find_narrative_comments.py's own
 SIGNS list is, by its own docstring, "a WORKLIST, NOT A VERDICT"; tested
 against this tree's docs it is nearly all ordinary technical prose, not
-narration) and whether a comment should exist at all (docs/C-Style-Guide.md
+narration) and whether a comment should exist at all (docs/c-style/README.md
 calls that judgement, not a length or a name). HEADING-COMMENT is WARN for
 the same reason: a worklist, not a verdict.
 """
@@ -27,15 +27,14 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
-from c_comments import EXCLUDED, blank_comments, scan  # noqa: E402
+from c_comments import excluded, blank_comments, scan  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
-from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
-from build import packages  # noqa: E402
+from build import package_requires, packages  # noqa: E402
 from build.apps import app_part  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
@@ -45,6 +44,10 @@ ERROR, WARN = "ERROR", "WARN"
 BINARY_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".otf", ".ttf",
                      ".woff", ".woff2", ".xcf", ".bin", ".elf", ".o", ".a", ".exe",
                      ".dll", ".pyc", ".gz", ".zip", ".wav", ".mp3", ".mp4", ".pdf", ".glb"}
+
+
+# Generated checks consume compressed captures; snapshot them without treating them as text.
+DATA_EXTENSIONS = {".gz"}
 
 
 class Finding:
@@ -113,12 +116,12 @@ def _doc_walk(root, files=None):
 def _c_walk(root, files=None):
     """First-party .c/.h files: vendored trees and generated files keep
     their upstream or generator-owned form, the same exemption
-    check-format.sh and check_comment_length.py's EXCLUDED give them."""
+    check-format.sh and c_comments.excluded() give them."""
     root = pathlib.Path(root)
     for rel in tracked_files(root, ["*.c", "*.h"]):
         if files is not None and rel not in files:
             continue
-        if any(rel.startswith(e) for e in EXCLUDED):
+        if any(rel.startswith(e) for e in excluded()):
             continue
         path = root / rel
         if not path.is_file():
@@ -184,7 +187,7 @@ def rule_tracker_ref_comment(root, path, text, comments):
 
 
 # RULE: a calendar date in a C comment or a doc records when something was
-# true, not what is true now. docs/doc_review_ledger.txt is a genuine dated
+# true, not what is true now. scripts/gates/doc_review_ledger.txt is a genuine dated
 # log; as a .txt it is outside this rule's .md/.c/.h scope.
 
 DATE = re.compile(r"\b(?:19|20)\d{2}-\d{2}-\d{2}\b")
@@ -219,7 +222,7 @@ def rule_living_document(root, path, raw_lines):
             yield number, '"living document" - say what the doc covers, not that it changes'
 
 
-# RULE: includes are layer-qualified (docs/C-Style-Guide.md, "Headers and
+# RULE: includes are layer-qualified (docs/c-style/README.md, "Headers and
 # module boundaries"): "gfx/gfx.h", never "../../gfx/gfx.h" or a bare
 # "gfx.h", even between two files in the same folder. launcher/main is a
 # registered include root (INCLUDE_DIRS "." in CMakeLists.txt, and -I
@@ -315,8 +318,18 @@ def _fix_include_layer(root, path, text):
     return "".join(lines) if changed else None
 
 
+@c_line_rule("PMU-OWNER")
+def pmu_owner(root, path, text):
+    rel = pathlib.PurePosixPath(relpath(root, path))
+    if rel.parts[:2] != ("launcher", "main") or len(rel.parts) < 3 or rel.parts[2] in ("power", "board"):
+        return
+    for number, line in enumerate(text.splitlines(), 1):
+        if re.search(r"\b(?:BOARD_PMU_I2C_ADDR|AXP2101_[A-Za-z0-9_]*)\b", line):
+            yield number, "PMU registers and address belong to power/"
+
+
 # RULE: a folder may include only a strictly lower tier of
-# docs/Firmware-Architecture.md's "Layers" (LAYER_ROWS below, one string per
+# docs/firmware/Layers.md (LAYER_ROWS below, one string per
 # row, top first, grouped into system, engine and platform bands; folders
 # in a row share a tier). A system header such
 # as "driver/temperature_sensor.h" never resolves to a layer, and a package
@@ -325,7 +338,7 @@ def _fix_include_layer(root, path, text):
 LAYER_BANDS = (
     ("system", ("apps", "shell", "boot selftest console", "app")),
     ("engine", ("ui scene", "render", "draw anim sound", "asset")),
-    ("platform", ("input audio", "display", "gfx", "services", "profile", "core", "board", "build")),
+    ("platform", ("input audio", "power", "display", "gfx", "services", "profile", "core", "board", "build")),
 )
 LAYER_ROWS = tuple(row for _band, rows in LAYER_BANDS for row in rows)
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
@@ -358,7 +371,7 @@ def _layer_dirs_match(root):
         raise ValueError(
             f"launcher/main has folder(s) {unknown} that LAYER_ROWS (check_style_audit.py) "
             "does not know about - add them to the tier table (and to "
-            "Firmware-Architecture.md's Layers section) before this rule can trust its own order.")
+            "docs/firmware/Layers.md) before this rule can trust its own order.")
 
 
 def _main_include_layers(root, path, text):
@@ -529,16 +542,18 @@ def rule_ui_backend(root, path, text):
 
 
 # RULE: a package (launcher/packages/<name>/) sits under every layer, so it
-# includes nothing outside itself: no #include, quoted or angled, may reach a
-# tracked header of the firmware or of another package. A header that resolves
-# nowhere in the tree is the toolchain's or the build's own (<stdint.h>,
-# "sdkconfig.h"), and a suite's test harness (suites.h, unity.h) sits under
-# no firmware include root, so neither resolves and the rule passes both.
+# includes only itself and the packages it declares in its own CMakeLists.txt
+# (`set(<name>_requires ...)`, launcher/tools/build/package_requires.py), theirs in
+# turn: no #include, quoted or angled, may reach a tracked header of the
+# firmware or of an undeclared package. Tests and benchmarks may also use
+# testkit. Unresolved headers belong to the toolchain or build (<stdint.h>,
+# "sdkconfig.h"); the isolated compile check rejects unresolved engine headers.
 # launcher/test/check_packages_alone.sh compiles each package file with only
-# its own include root, which catches what no resolver here can see.
-# PACKAGE-CONFIG keeps build settings local too: CONFIG_<PACKAGE>_ in C/H,
-# CMakeLists.txt and Kconfig, and <PACKAGE>_ for Kconfig declarations.
-# Comments do not consume settings and are ignored in all these files.
+# those include roots, which catches what no resolver here can see.
+# PACKAGE-REQUIRES keeps the declarations a one-way graph of real packages.
+# PACKAGE-CONFIG keeps first-party settings with their declaring package.
+# Symbols outside the own prefix and absent from first-party Kconfig belong to ESP-IDF.
+# Package Kconfig declarations require the package prefix; comments are ignored.
 
 
 
@@ -547,19 +562,62 @@ def rule_package_include(root, path, text):
     package = package_of(root, path)
     if package is None:
         return
+    reachable = package_requires.reachable(package)
+    if path.resolve().relative_to(package).parts[0] in ("tests", "bench"):
+        reachable = [*reachable, package.parent / "testkit"]
     for number, line in enumerate(text.splitlines(), 1):
         m = ANY_INCLUDE.match(line)
         if not m:
             continue
         resolved = resolve_include(root, path, m.group(1))
-        if resolved is not None and not resolved.is_relative_to(package):
+        if resolved is not None and not any(resolved.is_relative_to(p) for p in reachable):
             yield number, (f'"{m.group(1)}" reaches outside the {package.name} package '
-                           f"({relpath(root, resolved)}) - a package includes only itself")
+                           f"({relpath(root, resolved)}) - a package includes only itself "
+                           f"and the packages its CMakeLists.txt sets in {package.name}_requires")
+
+
+@text_rule("PACKAGE-REQUIRES")
+def rule_package_requires(root, path, text):
+    package = package_of(root, path)
+    if package is None or path.name != "CMakeLists.txt" or path.parent.resolve() != package:
+        return
+    declared = package_requires.requires_line(package.name)
+    any_declaration = re.compile(r"^\s*set\(\s*" + re.escape(package.name) + r"_requires\b")
+    number = 1
+    for n, line in enumerate(text.splitlines(), 1):
+        if any_declaration.match(line):
+            number = n
+            if not declared.match(line):
+                yield n, (f"{package.name}_requires is read only as one unindented line of bare package "
+                          f"names: set({package.name}_requires math)")
+    for name in package_requires.requires(package):
+        dep = package.parent / name
+        if name == package.name:
+            yield number, f"{package.name} requires itself"
+        elif not (dep / "include").is_dir():
+            yield number, f"{package.name} requires {name}, which is no package (no launcher/packages/{name}/include)"
+        elif package in package_requires.reachable(dep):
+            yield number, f"{package.name} requires {name}, which requires {package.name} back - dependencies run one way"
 
 
 PACKAGE_CONFIG_SYMBOL = re.compile(r"\bCONFIG_[A-Za-z0-9_]+\b")
 PACKAGE_KCONFIG_ENTRY = re.compile(r"^\s*(?:menuconfig|config)\s+([A-Za-z0-9_]+)\b")
 PACKAGE_BUILD_TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|#?\[(=*)\[.*?\]\1\]|#[^\n]*', re.DOTALL)
+
+
+@functools.lru_cache(maxsize=None)
+def first_party_config_owners(root):
+    owners = {}
+    for rel in tracked_files(root, ["launcher/**/Kconfig*"]):
+        path = pathlib.Path(root) / rel
+        if not path.is_file():
+            continue
+        package = package_of(root, path)
+        for line in path.read_text(encoding="utf-8").splitlines():
+            entry = PACKAGE_KCONFIG_ENTRY.match(line)
+            if entry:
+                owners["CONFIG_" + entry.group(1)] = package
+    return owners
 
 
 @text_rule("PACKAGE-CONFIG")
@@ -576,9 +634,12 @@ def rule_package_config(root, path, text):
     else:
         return
     prefix = package.name.upper() + "_"
+    owners = first_party_config_owners(root)
     for number, line in enumerate(code.splitlines(), 1):
         for symbol in PACKAGE_CONFIG_SYMBOL.findall(line):
-            if not symbol.startswith("CONFIG_" + prefix):
+            if symbol.startswith("CONFIG_" + prefix) and owners.get(symbol) != package:
+                yield number, f"{symbol} is not declared in the {package.name} package Kconfig"
+            elif symbol in owners and owners[symbol] != package:
                 yield number, f"{symbol} is outside the {package.name} package - use CONFIG_{prefix} settings"
         entry = PACKAGE_KCONFIG_ENTRY.match(line) if path.name == "Kconfig" else None
         if entry and not entry.group(1).startswith(prefix):
@@ -643,7 +704,7 @@ def rule_model_named_tool(root, path, text):
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 KNOWN_MARKERS = re.compile(
     re.escape(DOC_CONSTANTS_ESCAPE) + "|" +
-    re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED|" + GENERATED_BLOCK.pattern)
+    r"(?:BEGIN|END)\s+GENERATED|" + GENERATED_BLOCK.pattern)
 
 
 # RULE: a working copy written with CRLF. .gitattributes normalises it on
@@ -671,6 +732,45 @@ def _fix_line_endings(path):
     if b"\r\n" in raw:
         path.write_bytes(raw.replace(b"\r\n", b"\n"))
     return None
+
+
+# RULE: UTF-8 read as Windows-1252 and written back turns one character such
+# as a middle dot or an arrow into two or three accented ones, which breaks
+# rendered text and Mermaid labels. A run is
+# flagged only when its characters map back to bytes that decode as exactly
+# one UTF-8 character, so ordinary accented text never matches.
+
+CP1252_BYTE = {}
+for _byte in range(0x80, 0x100):
+    try:
+        CP1252_BYTE[bytes([_byte]).decode("cp1252")] = _byte
+    except UnicodeDecodeError:
+        CP1252_BYTE[chr(_byte)] = _byte
+CONTINUATION = "".join(re.escape(c) for c, b in CP1252_BYTE.items() if b < 0xC0)
+MOJIBAKE = re.compile(f"[\u00c2-\u00df][{CONTINUATION}]|[\u00e0-\u00ef][{CONTINUATION}]{{2}}"
+                      f"|[\u00f0-\u00f4][{CONTINUATION}]{{3}}")
+MOJIBAKE_ACTION = "UTF-8 decoded as Windows-1252 - run --fix, and read and write text as UTF-8"
+
+
+def _unmangle(run):
+    try:
+        return bytes(CP1252_BYTE[c] for c in run).decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _fix_mojibake(text):
+    return MOJIBAKE.sub(lambda m: _unmangle(m.group(0)) or m.group(0), text)
+
+
+@text_rule("MOJIBAKE", fixer=lambda root, path, text: _fix_mojibake(text))
+def rule_mojibake(root, path, text):
+    for number, line in enumerate(text.splitlines(), 1):
+        for m in MOJIBAKE.finditer(line):
+            fixed = _unmangle(m.group(0))
+            if fixed is not None:
+                yield number, f"{m.group(0)!r} should be {fixed!r} - {MOJIBAKE_ACTION}"
+                break
 
 
 # RULE: `$?` on the line after a compound statement is that compound's own
@@ -864,7 +964,7 @@ def rule_drawn_comment(root, path, text, comments):
 
 # RULE: a one-line block comment of up to five plain words, sitting inside a
 # function body, is a leftover section label for a block that should have
-# been an extracted, named helper, docs/C-Style-Guide.md's "needing to
+# been an extracted, named helper, docs/c-style/README.md's "needing to
 # comment parts of a function separately means the function is the
 # problem." The identical shape is also this tree's normal way to divide a
 # FILE's top-level declarations into named groups (gfx_present.c's own
@@ -872,7 +972,7 @@ def rule_drawn_comment(root, path, text, comments):
 # different, accepted use, so this only fires once brace tracking proves
 # the comment sits inside a real function body, not a top-level divider or
 # initializer. WARN, not ERROR: whether a comment should exist at all is
-# judgement (docs/C-Style-Guide.md's "Judgment rules"), and this is a
+# judgement (docs/c-style/README.md's "Judgment rules"), and this is a
 # worklist for a reader to weigh, not a verdict a script can hand down.
 
 LABEL = re.compile(r"^[A-Z][a-z]+(?:\s[A-Za-z][a-z]*){0,4}$")

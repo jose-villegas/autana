@@ -22,26 +22,10 @@
  */
 #pragma once
 
+#include "testkit/suite.h"
+
 #include <stdbool.h>
 #include <stddef.h>
-
-/* Headroom over the ~200 suites registered; a suite past it fails the run. */
-#define SUITE_MAX 256
-
-typedef void (*suite_fn)(void);
-
-/* Called by the SUITE_REGISTER macros before main(). `on_request` keeps a
- * suite out of suites_run_all() while leaving suites_run_request() able to find
- * it: a sweep measured in hours belongs to whoever asks for it by name, not
- * to every boot of every image that carries it. */
-void suite_register(const char* name, suite_fn fn);
-void suite_register_on_request(const char* name, suite_fn fn);
-
-#define SUITE_REGISTER(fn)                                                                                             \
-    __attribute__((constructor)) static void fn##_register(void) { suite_register(#fn, fn); }
-
-#define SUITE_REGISTER_ON_REQUEST(fn)                                                                                  \
-    __attribute__((constructor)) static void fn##_register(void) { suite_register_on_request(#fn, fn); }
 
 /* SUITE_READS(fn, "pack", ...) names the packs suite `fn` reads from the
  * runner's asset folder (asset/asset_store.h), so a run whose pack waits on the
@@ -68,6 +52,10 @@ const char* suites_current(void);
 #define SUITE_WAITING_MAX 16
 void suites_wait_on(const char* pack);
 void suites_print_waiting(void);
+
+/* Calls `each` for every registered suite, in name order. */
+typedef void (*suite_each_fn)(const char* name, bool on_request, void* context);
+void suites_each(suite_each_fn each, void* context);
 
 /* Runs every registered suite, in name order so the output is stable. */
 void suites_run_all(void);
@@ -98,14 +86,6 @@ void suites_print_run(const suite_run_t* run);
 
 /* Asked by suite_run_test_timed() (timing.c) for each test: true to run it. */
 bool suites_test_runs(const char* test_name);
-
-/* How many suites did NOT fit and were dropped; see suite_register().
- *
- * Both runners fail when this is nonzero. It is checked there rather than in
- * a suite of its own for the obvious reason: a guard that registers like
- * everything else could be the very suite that gets dropped, and would then
- * be the one thing not reporting the problem. */
-int suites_dropped(void);
 
 /* Prints how many tests since the last call presented past the frame
  * watch's warm-up (profile/frame_watch.h), so a run shows how much of it was

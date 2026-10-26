@@ -4,7 +4,7 @@
  * Development builds only: a release image has nobody watching the serial
  * console to type a verb into, the same reasoning an app's own
  * developer-only instrumentation is gated on (see
- * docs/Build-Variants.md's "Development-only instrumentation" section).
+ * docs/tools/Build-Variants.md's "Development-only instrumentation" section).
  *
  * USB-Serial/JTAG, not UART: this board's USB-C is the S3's own peripheral
  * and the console's primary channel, so this listener sees the bytes
@@ -30,7 +30,7 @@
  * Call once, from app_main(), the same place and pattern as
  * touch_start()/buttons_start(): a small dedicated task the shell never
  * talks to directly; the frame-loop verbs' requests reach it through
- * console_frame_take(). */
+ * their frame slots (console_frame_request.h). */
 void console_start(void);
 
 /* Sends `prefix` then `payload` then a newline, each through the console

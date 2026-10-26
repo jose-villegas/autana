@@ -6,7 +6,7 @@
  * own vertices. The clusters are the leaves of a tree rooted at nodes[0], so
  * a whole subtree is culled with one box test.
  *
- * A mesh is an asset-pack entry (docs/render/Mesh-Import.md): its arrays sit at
+ * A mesh is an asset-pack entry (docs/render/Baked-Mesh.md): its arrays sit at
  * offsets inside the entry, and r3d_lit_mesh_t is a view built once from
  * them, so the renderer reads pointers as it always did and nothing is copied.
  */
@@ -16,25 +16,36 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
-#include "math/linear/vec3f.h"
+#include "math/geometry/box3s.h"
+#include "math/geometry/spheref.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
     uint16_t triangle_first, triangle_count;
-    int16_t lo[3], hi[3]; /* bounds of its vertices, position ticks */
+    box3s_t bounds; /* bounds of its vertices, position ticks */
     bool double_sided;
 } r3d_lit_cluster_t;
 
+/* The tree lit_mesh.py writes: an octree, so a node has at most eight
+ * children, at most its MAX_DEPTH levels below the root. */
+#define R3D_LIT_NODE_CHILDREN_MAX 8
+#define R3D_LIT_TREE_DEPTH_MAX    10
+/* What a depth-first walk of the tree holds pending at most: each level's
+ * unvisited siblings, with room to spare. */
+#define R3D_LIT_WALK_STACK_MAX    256
+_Static_assert((R3D_LIT_TREE_DEPTH_MAX * (R3D_LIT_NODE_CHILDREN_MAX - 1)) + 1 <= R3D_LIT_WALK_STACK_MAX,
+               "a deepest walk fits its stack");
+
 typedef struct {
-    int16_t lo[3], hi[3]; /* bounds of everything below, position ticks */
-    uint16_t first;       /* first child node, or a leaf's first cluster */
-    uint8_t count;        /* children, or a leaf's clusters */
+    box3s_t bounds; /* bounds of everything below, position ticks */
+    uint16_t first; /* first child node, or a leaf's first cluster */
+    uint8_t count;  /* children, or a leaf's clusters */
     bool leaf;
 } r3d_lit_node_t;
 
 typedef struct {
     const int16_t (*positions)[3];  /* ticks; position_scale ticks per model unit */
-    const uint8_t (*colors)[3];     /* NULL when face_colors carries the lighting */
+    const uint8_t (*colors)[3];     /* NULL for face colours or a colourless prototype */
     const uint16_t (*triangles)[3]; /* counter-clockwise seen from the front */
     const r3d_lit_cluster_t* clusters;
     const r3d_lit_node_t* nodes; /* children of a node sit together */
@@ -54,6 +65,24 @@ asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);
 
+/* Colour ownership: docs/render/Baked-Mesh.md#lcol-v1. */
+asset_status_t r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set,
+                                         r3d_lit_mesh_t* mesh);
+
+/* Recomputes every node's bounds from its children's. An inner node's
+ * children come after it, so walking from the last node back meets every
+ * child before its parent. For a mesh whose vertices move. */
+static inline void
+r3d_lit_mesh_refit_nodes(r3d_lit_node_t* nodes, int node_count, const r3d_lit_cluster_t* clusters) {
+    for (int n = node_count - 1; n >= 0; n--) {
+        r3d_lit_node_t* node = &nodes[n];
+        node->bounds = box3s_empty();
+        for (int i = node->first; i < node->first + node->count; i++) {
+            node->bounds = box3s_union(node->bounds, node->leaf ? clusters[i].bounds : nodes[i].bounds);
+        }
+    }
+}
+
 /* A sphere holding every vertex, in model units: centred on the box of them
  * (the root node's bounds), its radius the furthest vertex from that centre. */
-void r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh, vec3f_t* centre, float* radius);
+spheref_t r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh);

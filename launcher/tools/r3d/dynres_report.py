@@ -27,6 +27,7 @@ import statistics
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "perf"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from capture import capture_board, require_same_board, QUARTERS, select_quarter
 
 
@@ -213,14 +214,11 @@ def prediction_table(runs, refit=None):
 
 
 def chart(rows, path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    from docs.plot_style import save, subplots
 
     budgets = sorted({r["budget"] for r in rows})
     cameras = sorted({r["camera"] for r in rows})
-    figure, axes = plt.subplots(2 * len(cameras), len(budgets), figsize=(6 * len(budgets), 6 * len(cameras)),
-                                layout="constrained", squeeze=False)
+    figure, axes = subplots(2 * len(cameras), len(budgets), (6 * len(budgets), 6 * len(cameras)), squeeze=False)
     for row, camera in enumerate(cameras):
         for column, budget in enumerate(budgets):
             cost_axis, size_axis = axes[2 * row][column], axes[2 * row + 1][column]
@@ -236,8 +234,7 @@ def chart(rows, path):
             size_axis.set_ylabel("pixels drawn, % of panel")
             size_axis.set_xlabel("path time, s")
             cost_axis.legend(fontsize=7, loc="upper right")
-    pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(path, dpi=110)
+    save(figure, path)
 
 
 def main():

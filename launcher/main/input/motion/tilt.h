@@ -11,7 +11,7 @@
  * declares exists to work around that: a trust gate on magnitude, a strength
  * scalar so a flat board settles rather than stops dead, and a shake level
  * read off the accelerometer rather than the gyroscope. See
- * docs/notes/Input-and-Sensors.md for the reasoning behind each.
+ * docs/input/Tilt.md for the reasoning behind each.
  */
 #pragma once
 
@@ -94,6 +94,10 @@ int tilt_y(const tilt_t* t);
  * upright it runs at full speed, laid flat it coasts to a stop instead of
  * freezing mid-frame. Zero in free fall, where nothing drives anything. */
 int tilt_strength(const tilt_t* t);
+
+/* Below this strength (0-256), the board is too flat for an in-plane
+ * direction to mean anything. */
+#define TILT_MIN_DIRECTION_STRENGTH 64
 
 /* How hard the device is being shaken, 0-255, from linear acceleration rather
  * than rotation. Turning the board smoothly reads as nothing at all. */

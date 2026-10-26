@@ -24,7 +24,7 @@ int console_name_cmp(const char* a, const char* b);
  * bare match. */
 bool console_word_match(const char* line, const char* name, const char** args);
 
-/* An app's own console command: docs/tools/App-Commands.md. The shell matches `prefix` as a whole word
+/* An app's own console command: docs/cli/App-Commands.md. The shell matches `prefix` as a whole word
  * (console_word_match()) and passes `handle` only what follows it. */
 typedef struct {
     const char* prefix;

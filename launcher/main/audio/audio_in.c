@@ -3,7 +3,7 @@
 
 #include <limits.h>
 
-#include "audio/audio_codec.h"
+#include "audio/audio_codec_device.h"
 
 /* At 24 dB, a 1 kHz tone clipped the mic above 10% volume; 6 dB keeps full volume below full scale. */
 #define AUDIO_IN_GAIN_DB 6.0F

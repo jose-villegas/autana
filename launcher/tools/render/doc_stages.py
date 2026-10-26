@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import statistics
@@ -20,6 +21,8 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capture import capture_board, require_same_board
+from frame_profile import poses
+from frame_cost import US_PER_MS
 from build import compile_db
 from generated_blocks import apply_tables, tracked_files
 from doc_tables import markdown
@@ -56,6 +59,28 @@ FITTED = (
     Fitted("_flat_fitted", "flat", "_flat",
            (("flat bake", "flat-GI-bake"), ("lite fit", "lite-GI-fit"), ("flat fit", "flat-GI-fit"))),
 )
+
+
+class LightSheet(NamedTuple):
+    """One sheet of what a light option buys, on the scene's showcase fitted under each look of physical_scene.py:
+    the look whose reference heads it, its (label, look) columns, the held-out frames it shows, how many crops it
+    enlarges (0: none) and whether each column also carries its own look's reference."""
+    name: str
+    reference: str
+    columns: tuple
+    frames: str = "0,4"
+    crops: int = 4
+    own_references: bool = False
+
+
+LIGHT_SHEETS = (
+    LightSheet("bake-indirect-compare", "smooth", (("direct light only", "direct"), ("two bounces", "smooth"))),
+    LightSheet("bake-indirect-look", "smooth", (("intensity 1", "smooth"), ("intensity 2", "intensity-2"),
+               ("intensity 3", "intensity-3"), ("albedo boost 2", "boost-2")), frames="4", crops=0, own_references=True),
+    LightSheet("bake-ao-compare", "ao-occluded", (("no occlusion", "ao-flat"), ("occlusion", "ao-occluded"))),
+)
+# The occlusion factor beside the reference, at the poses and from the reference look of the occlusion sheet.
+AO_MAP = SimpleNamespace(name="bake-ao-map", sheet=next(sheet for sheet in LIGHT_SHEETS if sheet.name == "bake-ao-compare"))
 
 
 def git_environment():
@@ -203,6 +228,7 @@ def run(command, log):
 
 
 
+BAKE_STEPS_CHART = "bake-steps.png"
 MACHINE_FIELDS = ("CPU", "Cores/threads", "RAM", "GPU", "VRAM", "Driver", "CUDA", "OS", "Python", "Mitsuba", "PyTorch")
 
 
@@ -240,15 +266,6 @@ def machine_table(probes=None):
     return markdown(["Machine", "Value"], [(key, probes[key]) for key in MACHINE_FIELDS])
 
 
-def bake_steps_table(variants):
-    def mib(value):
-        return "not available" if value is None else f"{value / 1024 ** 2:.1f}"
-    return markdown(["Variant", "Step", "Wall s", "Triangles in", "Triangles out", "Peak RAM MiB", "Peak VRAM MiB"],
-                    [(variant, row["step"], f'{row["wall_s"]:.3f}', row["triangles_in"], row["triangles_out"],
-                      mib(row["peak_ram_bytes"]), mib(row["peak_vram_bytes"]))
-                     for variant, rows in variants for row in rows])
-
-
 def capture_rows(path, commit, id, object_name):
     from capture import QUARTERS, select_quarter
     text = select_quarter(path.read_text(encoding="utf-8", errors="replace"))
@@ -277,16 +294,33 @@ def board_means(captures, commit, id, object_name):
 name: statistics.median(rows[name] for rows in runs) for name in (id, *VARIANTS)
 }
 
-def board_frames(captures, expected, id, object_name):
+def capture_pose_every_ms(paths) -> int:
+    intervals = set()
+    for path in paths:
+        values = set(map(int, re.findall(r"pose_every_ms=(\d+)", path.read_text(encoding="utf-8"))))
+        if len(values) != 1 or min(values) <= 0:
+            raise ValueError(f"{path}: needs a common positive pose interval")
+        intervals.update(values)
+    if len(intervals) != 1:
+        raise ValueError("board captures need a common positive pose interval")
+    return intervals.pop()
+
+
+def board_frames(captures, expected, id, object_name, every_ms):
     require_same_board({str(path): capture_board(path) for path in captures})
-    import re
-    pattern = rf"({re.escape(id)}|lite|{re.escape(object_name)}|{re.escape(object_name + '_lite')}) t=\s*(\d+)s .*?both cores: frame\s+(\d+)us"
     values = {}
     for capture in captures:
         from capture import select_quarter
-        found = re.findall(pattern, select_quarter(capture.read_text(encoding="utf-8", errors="replace")))
-        parsed = [({object_name: id, object_name + "_lite": "lite"}.get(name, name), int(time), int(value) / 1000)
-                  for name, time, value in found]
+        text = select_quarter(capture.read_text(encoding="utf-8", errors="replace"))
+        parsed = []
+        for row in poses(text):
+            name = {object_name: id, object_name + "_lite": "lite"}.get(row["row"], row["row"])
+            if name not in (id, "lite"):
+                continue
+            time_ms = row["time_ms"]
+            if time_ms % every_ms:
+                raise ValueError(f"{capture}: needs each full/lite pose exactly once")
+            parsed.append((name, time_ms, row["frame_us"] / US_PER_MS))
         keys = [(name, time) for name, time, _ in parsed]
         if len(keys) != len(expected) or set(keys) != set(expected):
             raise ValueError(f"{capture}: needs each full/lite pose exactly once")
@@ -323,19 +357,19 @@ def board(args, out, work):
         [(name, f"{means[name]:.3f}") for name in (id, *VARIANTS)]), encoding="utf-8")
     scene = load_scene(scene_path)
     job = placed_variant(scene, args.object + "_fitted")
-    every_ms = job.renderer.fit.held_out_every_ms
+    every_ms = capture_pose_every_ms(args.capture)
     poses = camera_path_poses(scene, job.renderer.fit, every_ms, either_way_up=False)
     for capture in args.capture:
         capture_viewport(capture, poses[:2])
-    frame_values = board_frames(args.capture, [(name, index * every_ms // 1000) for name in (id, "lite")
-                                             for index in range(len(poses[-1]))], id, args.object)
+    frame_values = board_frames(args.capture, [(name, index * every_ms) for name in (id, "lite")
+                                             for index in range(len(poses[-1]))], id, args.object, every_ms)
     (work / "board-poses.txt").write_text(poses_text(*poses))
     rows, times, records = [], [], []
     for name, asset in ((id, args.object), ("lite", args.object + "_lite")):
         mesh = next(item.asset_path for item in scene.renderers if item.object.name == asset)
         features = mesh_rows(mesh, work / "board-poses.txt")
         for index, row in enumerate(features):
-            ms = frame_values[(name, index * every_ms // 1000)]
+            ms = frame_values[(name, index * every_ms)]
             rows.append(row)
             times.append(ms)
             records.append((name, index, ms, row))
@@ -425,15 +459,18 @@ def smoke_prepare(scene_path, scene, job, inputs):
         reference_main([str(scene_path), "--object", job.object.name, "--poses", str(inputs / "train.txt"),
                         "--out", str(inputs / name), "--normals"])
 
-def prepare_variants(executor, scene_path, scene, jobs, work, on_ready):
+def prepare_variants(executor, preparations, on_ready):
+    """Submits a prepare per (scene file, scene, job, inputs folder) of `preparations`; on_ready(index, job) runs as
+    each finishes, so its fit can start. Returns a future per preparation of its (result, steps)."""
     from functools import partial
     from concurrent.futures import Future
     from r3d.fitted_variant import prepare
     from r3d.process_budget import PREPARE_BYTES
-    ready = [Future() for job in jobs]
-    prepares = [executor.submit(partial(recorded_call, prepare), scene_path, scene, job, work / f"inputs-{fitted.prefix}", estimates=PREPARE_BYTES,
+    ready = [Future() for _ in preparations]
+    prepares = [executor.submit(partial(recorded_call, prepare), scene_path, scene, job, inputs, estimates=PREPARE_BYTES,
                                 priority=True)
-                for fitted, job in zip(FITTED, jobs)]
+                for scene_path, scene, job, inputs in preparations]
+    jobs = [job for _scene_path, _scene, job, _inputs in preparations]
     for index, (job, future) in enumerate(zip(jobs, prepares)):
         def completed(future, index=index, job=job):
             try:
@@ -444,6 +481,97 @@ def prepare_variants(executor, scene_path, scene, jobs, work, on_ready):
                 ready[index].set_exception(error)
         future.add_done_callback(completed)
     return ready
+
+
+def write_look_scene(scene_path, look, directory):
+    """The scene in `look` (physical_scene.LOOKS) in `directory`, beside copies of the scene folder's imports and a
+    link to its source folder, so the copy bakes like the scene."""
+    from physical_scene import LOOKS, physical_scene
+    directory.mkdir(parents=True, exist_ok=True)
+    for settings in scene_path.parent.glob("*.import.toml"):
+        shutil.copyfile(settings, directory / settings.name)
+    source = directory / "source"
+    if (scene_path.parent / "source").is_dir() and not source.exists():
+        source.symlink_to((scene_path.parent / "source").resolve(), target_is_directory=True)
+    path = directory / scene_path.name
+    path.write_text(physical_scene(scene_path.read_text(encoding="utf-8"), scene_path.parent, LOOKS[look]),
+                    encoding="utf-8")
+    return path
+
+
+def submit_light_fits(executor, scene_path, work):
+    """[(look, scene file, scene, job, inputs folder)] for every look LIGHT_SHEETS names, and the futures that finish once
+    each is prepared and {look: future of its fit}, filled as they do: the scene's showcase, its first renderer,
+    prepared and fitted in that look."""
+    from r3d.fitted_variant import fit_point, placed_variant
+    from r3d.import_settings import load_scene
+    from r3d.process_budget import FIT_BYTES
+    from showcase import showcase
+    looks = dict.fromkeys([sheet.reference for sheet in LIGHT_SHEETS] +
+                          [look for sheet in LIGHT_SHEETS for _label, look in sheet.columns])
+    studies = []
+    for look in looks:
+        path = write_look_scene(scene_path, look, work / f"look-{look}")
+        scene = load_scene(path)
+        studies.append((look, path, scene, placed_variant(scene, showcase(scene)), path.parent / "inputs"))
+    fits = {}
+
+    def prepared(index, job):
+        look, path, scene, _job, inputs = studies[index]
+        fits[look] = executor.submit(fit_point, {}, inputs.parent / "fit", path, scene, job, inputs, False,
+                                     inputs.parent / "fitted.mesh", estimates=FIT_BYTES)
+    ready = prepare_variants(executor, [study[1:] for study in studies], prepared)
+    return studies, ready, fits
+
+
+def light_sheets(light, out, work, measure, comparisons):
+    """LIGHT_SHEETS and the AO_MAP sheet into out/render/gpu from submit_light_fits; `measure` renders a mesh at the
+    held-out poses and files its frames in `comparisons` under its label."""
+    from PIL import Image
+    from r3d.fitted_variant import poses_text
+    from r3d.poses import read_poses
+    studies, ready, fits = light
+    frames, inputs = {}, {}
+    for (look, _path, _scene, job, look_inputs), prepared in zip(studies, ready):
+        prepared.result()
+        measure(f"light-{look}", job, Path(fits[look].result()["mesh"]), look_inputs)
+        frames[look], inputs[look] = comparisons[f"light-{look}"], look_inputs
+    for sheet in LIGHT_SHEETS:
+        image = out / "render/gpu" / f"{sheet.name}.png"
+        command = [sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out", image,
+                   "--reference-bakes", inputs[sheet.reference] / "reference_held_out", "--reference-scale", "2",
+                   "--sheet-frames", sheet.frames]
+        for label, look in sheet.columns:
+            command += ["--bake", label, frames[look]]
+        if sheet.own_references:
+            for label, look in sheet.columns:
+                command += ["--bake-reference", label, inputs[look] / "reference_held_out"]
+        if sheet.crops:
+            command += ["--crops", sheet.crops]
+        run(command, work / f"{sheet.name}.log")
+        # render_compare.py writes no crops where the fits do not differ; fail rather than link a missing file.
+        if sheet.crops and not image.with_suffix(".crops.png").exists():
+            raise ValueError(f"{sheet.name}: no crops, the fits do not differ")
+    look = AO_MAP.sheet.reference
+    path, job = next((path, job) for name, path, _scene, job, _inputs in studies if name == look)
+    width, height, lens, near, poses = read_poses(inputs[look] / "held_out.txt")
+    shown = [int(frame) for frame in AO_MAP.sheet.frames.split(",")]
+    occlusion = work / AO_MAP.name
+    occlusion.mkdir(parents=True, exist_ok=True)
+    (occlusion / "poses.txt").write_text(poses_text(width, height, lens, near, [poses[frame] for frame in shown]))
+    run([sys.executable, ROOT / "launcher/tools/r3d/reference_render.py", path, "--object", job.object.name,
+         "--poses", occlusion / "poses.txt", "--occlusion", "--out", occlusion], work / f"{AO_MAP.name}.log")
+    rows = []
+    for index in range(len(shown)):
+        pair = [Image.open(occlusion / f"{index:04d}{suffix}.png").convert("RGB") for suffix in (".occlusion", "")]
+        rows.append([picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST)
+                     for picture in pair])
+    width, height = rows[0][0].size
+    sheet = Image.new("RGB", (width * 2, height * len(rows)))
+    for y, row in enumerate(rows):
+        for x, picture in enumerate(row):
+            sheet.paste(picture, (x * width, y * height))
+    sheet.save(out / "render/gpu" / f"{AO_MAP.name}.png")
 
 
 # Run in a child so the stage's own process never initialises the JIT.
@@ -465,7 +593,7 @@ def gpu(args, out, work):
     # The parent never forks or initialises CUDA; disposable workers own heavy state.
     memory_guard()
     require_ray_tracing()
-    from r3d.process_budget import TaskExecutor
+    from r3d.task_executor import TaskExecutor
     with TaskExecutor() as executor:
         return _gpu(args, out, work, executor)
 
@@ -531,7 +659,9 @@ def _gpu(args, out, work, executor):
             run_sweep_points(work, unfinished, partial(fit_point, scene_path=scene_path, scene=scene, job=job,
                              inputs=reference_inputs), executor=executor, deferred=sweep_futures)
 
-    ready = prepare_variants(executor, scene_path, scene, jobs, work, prepared)
+    ready = prepare_variants(executor, [(scene_path, scene, job, work / f"inputs-{entry.prefix}")
+                                        for entry, job in zip(FITTED, jobs)], prepared)
+    light = submit_light_fits(executor, scene_path, work)
 
     for index, job in enumerate(jobs):
         prepared_result = ready[index].result()
@@ -595,6 +725,7 @@ def _gpu(args, out, work, executor):
 
             run_sweep_points(work, points, run_point)
             sweep = sweep_rows(work, points)
+    light_sheets(light, out, work, measure, comparisons)
     write_sweep_csv(out / "sweep.csv", sweep)
     plot_pareto(out / "render/gpu/appearance-pareto.png", sweep)
     (out / f"tables/{id}-budget.md").write_text(markdown(
@@ -619,15 +750,13 @@ def _gpu(args, out, work, executor):
         if (out / "render/gpu/appearance-path-culled.crops.png").exists():
             output.write("\n![Path cull differences](../images/render/gpu/appearance-path-culled.crops.png)\n")
     machine = machine_table()
-    (out / "tables/bake-machine.md").write_text(machine)
-    (out / "tables/bake-steps.md").write_text(bake_steps_table(bake_steps))
+    from bake_steps import block as steps_block, chart as steps_chart
+    steps_chart(bake_steps, out / "render/gpu" / BAKE_STEPS_CHART)
+    (out / "tables/bake-steps.md").write_text(steps_block(bake_steps, f"../images/render/gpu/{BAKE_STEPS_CHART}"))
     (out / "measurements.json").write_text(json.dumps({"source": stamp, "rows": rows, "sweep": sweep,
                                                         "bake_steps": bake_steps, "machine": machine}, indent=2) + "\n")
     apply_tables(ROOT, out / "tables")
-    for image in (out / "render/gpu").glob("*.png"):
-        target = ROOT / "docs/images/render/gpu" / image.name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(image, target)
+    sync_images(out / "render/gpu", ROOT / "docs/images/render/gpu", check=False)
     files = {path.relative_to(out).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
              for path in out.rglob("*") if path.is_file()}
     (out / "source.json").write_text(json.dumps({"source": stamp, "inputs": made_from, "files": files}, indent=2) + "\n")
@@ -644,8 +773,19 @@ def check_gpu(args, out):
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != checksum:
             raise ValueError(f"GPU output missing or altered: {name}; run --stage gpu")
     changed = apply_tables(ROOT, out / "tables", True)
-    for image in sorted((out / "render/gpu").glob("*.png")):
-        target = ROOT / "docs/images/render/gpu" / image.name
+    return int(sync_images(out / "render/gpu", ROOT / "docs/images/render/gpu", check=True) or changed)
+
+
+def sync_images(made, kept, *, check):
+    """Copies a stage's PNGs from `made` into the docs' `kept`, or with `check` reports each one that differs
+    and each kept one the stage no longer makes; returns whether any did."""
+    changed = False
+    for image in sorted(made.glob("*.png")):
+        target = kept / image.name
+        if not check:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(image, target)
+            continue
         if not target.exists():
             print(f"changed {target}: new image")
             changed = True
@@ -656,19 +796,21 @@ def check_gpu(args, out):
             raise ValueError(result.stdout + result.stderr)
         print(f"{'changed' if result.returncode else 'same'} {target.relative_to(ROOT)}")
         changed |= bool(result.returncode)
-    extras = set((ROOT / "docs/images/render/gpu").glob("*.png"))
-    extras -= {ROOT / "docs/images/render/gpu" / image.name for image in (out / "render/gpu").glob("*.png")}
-    for image in sorted(extras):
-        print(f"orphan {image}")
-        changed = True
-    return int(changed)
+    if check:
+        for image in sorted(set(kept.glob("*.png")) - {kept / image.name for image in made.glob("*.png")}):
+            print(f"orphan {image}")
+            changed = True
+    return changed
 
 
 def meshlets(args, out, work):
     from meshlet_sizes import table
-    body = table(args.scene, args.captures, args.bakes, args.object)
+    made = out / "render/meshlets"
+    made.mkdir(parents=True)
+    body = table(args.scene, args.captures, args.bakes, made / "meshlet-sizes.png")
     (out / "tables/meshlet-sizes.md").write_text(body)
     changed = apply_tables(ROOT, out / "tables", args.check)
+    changed |= sync_images(made, ROOT / "docs/images/render/meshlets", check=args.check)
     return int(args.check and changed)
 
 

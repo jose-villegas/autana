@@ -9,7 +9,6 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/modes/band/gfx_band.h"
 #include "gfx/present/send/gfx_dirty.h"
-#include "gfx/present/send/gfx_heal.h"
 #include "gfx/target/gfx_target.h"
 
 #ifdef ESP_PLATFORM
@@ -60,9 +59,8 @@ band_is_transient(void) {
     return current_mode.layout == GFX_LAYOUT_BANDS;
 }
 
-/* Presentation state and the heal queue band mode resets. */
+/* Presentation state band mode reads. */
 extern bool interlace_on;
-extern gfx_heal_t heal;
 
 #ifdef ESP_PLATFORM
 /* The panel link, and the send buffers band mode and the overlays borrow. */
@@ -88,7 +86,6 @@ extern int dev_strips_sent_full;
 extern int dev_strips_sent_gathered;
 extern int dev_strips_sent_partial;
 extern int64_t dev_bytes_sent;
-extern int64_t dev_heal_bytes_sent;
 
 static inline bool
 overlay_any_on(void) {

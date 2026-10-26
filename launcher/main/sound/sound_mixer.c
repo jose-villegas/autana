@@ -15,6 +15,16 @@ sound_capture_begin(sound_capture_t* capture) {
     return capture->sequence;
 }
 
+sound_capture_acquire_result_t
+sound_capture_acquire(sound_capture_t* capture, int64_t now_us, int64_t deadline_us, uint32_t* sequence) {
+    *sequence = 0;
+    if (now_us >= deadline_us) {
+        return SOUND_CAPTURE_TIMED_OUT;
+    }
+    *sequence = sound_capture_begin(capture);
+    return *sequence ? SOUND_CAPTURE_ACQUIRED : SOUND_CAPTURE_WAIT;
+}
+
 bool
 sound_capture_park(sound_capture_t* capture, uint32_t sequence) {
     if (!sequence || capture->requested != sequence) {
@@ -301,6 +311,15 @@ sound_mixer_init(sound_mixer_t* mixer) {
     }
 }
 
+static void
+cut_voice(sound_mixer_t* mixer, sound_mix_voice_t* voice) {
+    if (mixer->declick_frames && voice->playing) {
+        mixer->residual += voice->last_sample;
+    }
+    voice->playing = false;
+    voice->last_sample = 0;
+}
+
 static bool
 apply_bus_command(sound_mixer_t* mixer, const sound_command_t* command) {
     const int bus = command->bus.id;
@@ -319,7 +338,7 @@ apply_bus_command(sound_mixer_t* mixer, const sound_command_t* command) {
     if (command->kind == SOUND_COMMAND_BUS_DESTROY) {
         for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
             if (mixer->voices[i].bus.id == bus) {
-                mixer->voices[i].playing = false;
+                cut_voice(mixer, &mixer->voices[i]);
             }
         }
         return true;
@@ -334,7 +353,8 @@ start_voice(sound_mix_voice_t* voice, const sound_command_t* command) {
                                  .gain_pct = command->gain_pct,
                                  .loop = command->loop,
                                  .tone_source = command->tone_source,
-                                 .playing = true};
+                                 .playing = true,
+                                 .first_render = true};
     if (voice->tone_source) {
         audio_tone_init(&voice->source.tone, command->tone_hz);
     } else if (sound_seek(&voice->source.cursor, command->sound, 0) != ASSET_OK) {
@@ -364,10 +384,11 @@ sound_mixer_apply(sound_mixer_t* mixer, const sound_command_t* command, uint32_t
     }
     sound_mix_voice_t* voice = &mixer->voices[slot];
     if (command->kind == SOUND_COMMAND_PLAY) {
+        cut_voice(mixer, voice);
         start_voice(voice, command);
     } else if (voice->handle.id == command->voice.id) {
         if (command->kind == SOUND_COMMAND_STOP) {
-            voice->playing = false;
+            cut_voice(mixer, voice);
         } else if (command->kind == SOUND_COMMAND_GAIN) {
             voice->gain_pct = command->gain_pct;
         }
@@ -378,7 +399,7 @@ void
 sound_mixer_sync(sound_mixer_t* mixer, const sound_control_t* control) {
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
         if (!control->voices[i].playing || control->voices[i].handle.id != mixer->voices[i].handle.id) {
-            mixer->voices[i].playing = false;
+            cut_voice(mixer, &mixer->voices[i]);
         }
     }
 }
@@ -390,8 +411,7 @@ read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
         return frames;
     }
     size_t total = 0;
-    const uint32_t end = voice->source.cursor.sound->loop_end ? voice->source.cursor.sound->loop_end
-                                                              : voice->source.cursor.sound->frames;
+    const uint32_t end = sound_end_frame(voice->source.cursor.sound);
     while (total < frames && voice->playing) {
         size_t count = frames - total;
         if (!voice->loop && count > end - voice->source.cursor.position) {
@@ -422,11 +442,54 @@ amp_ready(sound_mixer_t* mixer, uint64_t now_ms, uint32_t startup_ms) {
         }
     } else if (mixer->amp != SOUND_AMP_OFF && now_ms - mixer->last_active_ms >= SOUND_AMP_IDLE_MS) {
         mixer->amp = SOUND_AMP_OFF;
+        mixer->residual = 0;
     }
     if (mixer->amp == SOUND_AMP_WARMING && now_ms - mixer->amp_changed_ms >= startup_ms) {
         mixer->amp = SOUND_AMP_ON;
     }
-    return active && mixer->amp == SOUND_AMP_ON;
+    return (active || (mixer->declick_frames && mixer->residual)) && mixer->amp == SOUND_AMP_ON;
+}
+
+static void
+add_tail(sound_mixer_t* mixer, int32_t* accumulator, size_t begin, size_t frames, int32_t residual) {
+    if (!residual) {
+        return;
+    }
+    const uint32_t coefficient = mixer->declick_frames > SOUND_GAIN_ONE ? 1 : SOUND_GAIN_ONE / mixer->declick_frames;
+    for (size_t j = begin; j < frames && residual; j++) {
+        accumulator[j] += residual;
+        /* Round away from zero so a sub-LSB decay cannot leave a permanent DC tail. */
+        const int64_t magnitude = residual < 0 ? -(int64_t)residual : residual;
+        const int32_t decay = (int32_t)((magnitude * coefficient + SOUND_GAIN_ONE - 1) >> SOUND_GAIN_SHIFT);
+        residual += residual < 0 ? decay : -decay;
+    }
+    mixer->residual += residual;
+}
+
+static bool
+voice_at_cut(const sound_mix_voice_t* voice) {
+    return !voice->tone_source && !voice->playing;
+}
+
+static void
+mix_voice(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulator, int16_t* scratch, size_t frames,
+          int32_t factor) {
+    const size_t count = read_voice(voice, scratch, frames);
+    if (mixer->declick_frames && count) {
+        if (voice->first_render) {
+            add_tail(mixer, accumulator, 0, frames, -((scratch[0] * factor) >> SOUND_GAIN_SHIFT));
+            voice->first_render = false;
+        }
+        voice->last_sample = (scratch[count - 1] * factor) >> SOUND_GAIN_SHIFT;
+    }
+    for (size_t j = 0; j < count; j++) {
+        accumulator[j] += (scratch[j] * factor) >> SOUND_GAIN_SHIFT;
+    }
+    if (mixer->declick_frames && voice_at_cut(voice)) {
+        add_tail(mixer, accumulator, count, frames, voice->last_sample);
+        voice->last_sample = 0;
+        voice->first_render = true;
+    }
 }
 
 void
@@ -441,18 +504,22 @@ sound_mixer_render(sound_mixer_t* mixer, int16_t* out, int32_t* accumulator, int
         factors[i] = (uint32_t)mixer->bus_gain[i] * mixer->master_gain;
     }
     memset(accumulator, 0, frames * sizeof *accumulator);
+    if (mixer->declick_frames) {
+        const int32_t residual = mixer->residual;
+        mixer->residual = 0;
+        add_tail(mixer, accumulator, 0, frames, residual);
+    } else {
+        mixer->residual = 0;
+    }
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
         sound_mix_voice_t* voice = &mixer->voices[i];
         if (!voice->playing) {
             continue;
         }
-        const size_t count = read_voice(voice, scratch, frames);
         const uint32_t gain = (uint32_t)voice->gain_pct * factors[voice->bus.id];
         const int32_t factor =
             (int32_t)(((uint64_t)gain * SOUND_GAIN_ONE) / (SOUND_GAIN_FACTOR_SCALE * SOUND_GAIN_MAX_PCT));
-        for (size_t j = 0; j < count; j++) {
-            accumulator[j] += (scratch[j] * factor) >> SOUND_GAIN_SHIFT;
-        }
+        mix_voice(mixer, voice, accumulator, scratch, frames, factor);
     }
     for (size_t i = 0; i < frames; i++) {
         out[i] = maths_saturate(accumulator[i]);

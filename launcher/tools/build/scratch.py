@@ -1,6 +1,7 @@
 """Fresh snapshots of tracked sources for isolated builds."""
 import pathlib
 import shutil
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -16,6 +17,12 @@ def scratch_tree(work, root=ROOT, fresh=False):
         if not tree.resolve().is_relative_to(work.resolve()) or tree.is_symlink():
             raise ValueError(f"{tree} is outside the scratch directory")
         shutil.rmtree(tree)
+    # A shared clone with the source's HEAD in its index: what reads the index (the bake keys' submodule
+    # gitlinks, the tracked-file lists) sees the source, and its uncommitted edits are working changes.
+    def git(*args):
+        return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout.strip()
+    git("clone", "-q", "--shared", "--no-checkout", str(root), str(tree))
+    git("-C", str(tree), "read-tree", git("-C", str(root), "rev-parse", "HEAD"))
     for name in tracked_files(root):
         source, target = root / name, tree / name
         target.parent.mkdir(parents=True, exist_ok=True)

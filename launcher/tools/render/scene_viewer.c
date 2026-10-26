@@ -5,6 +5,7 @@
 
 #include "gfx/gfx.h"
 #include "render/context/render_context.h"
+#include "render/view/raster_cull_view.h"
 #include "render_host.h"
 #include "scene/scene.h"
 
@@ -15,7 +16,10 @@ static int object_count;
 static int shell_quarter;
 static int size_width, size_height;
 static camera_present_t present;
+static small_fill_t small_fill = SMALL_FILL_SMOOTH;
 static int view = RENDER_DEBUG_VIEW_SHADED;
+static const char* counts_path;
+static FILE* counts;
 
 static bool
 options(int argc, char** argv) {
@@ -40,6 +44,16 @@ options(int argc, char** argv) {
                 fprintf(stderr, "scene_viewer: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT, value);
                 return false;
             }
+        } else if (strcmp(flag, "--small-fill") == 0) {
+            unsigned ceiling, gate, style;
+            char trailing;
+            if (sscanf(value, "%u,%u,%u%c", &ceiling, &gate, &style, &trailing) != 3 || ceiling > SMALL_FILL_CEILING_MAX
+                || gate > UINT8_MAX || style >= SMALL_FILL_STYLE_COUNT) {
+                fprintf(stderr, "scene_viewer: --small-fill is CEILING,GATE,STYLE within 0..%u,0..%u,0..%u\n",
+                        SMALL_FILL_CEILING_MAX, UINT8_MAX, SMALL_FILL_STYLE_COUNT - 1);
+                return false;
+            }
+            small_fill = (small_fill_t){(uint8_t)ceiling, (uint8_t)gate, (small_fill_style_t)style};
         } else if (strcmp(flag, "--present") == 0) {
             if (strcmp(value, "nearest") == 0) {
                 present = CAMERA_PRESENT_NEAREST;
@@ -51,6 +65,8 @@ options(int argc, char** argv) {
                 fprintf(stderr, "scene_viewer: --present is nearest, scanline or double\n");
                 return false;
             }
+        } else if (strcmp(flag, "--counts") == 0) {
+            counts_path = value;
         } else if (strcmp(flag, "--view") == 0) {
             view = render_context_debug_view_named(value);
             if (view == RENDER_DEBUG_VIEW_UNKNOWN) {
@@ -68,13 +84,17 @@ options(int argc, char** argv) {
         fprintf(stderr, "scene_viewer: needs --scene ID\n");
         return false;
     }
+    if (counts_path != NULL && view != render_context_debug_view_named("cull")) {
+        fprintf(stderr, "scene_viewer: --counts needs --view cull\n");
+        return false;
+    }
     return true;
 }
 
 static bool
 select_objects(scene_t* scene) {
     for (int i = 0; i < object_count; i++) {
-        const scene_entity_t entity = scene_find(scene, object_names[i]);
+        const scene_entity_t entity = scene_find(scene, name_hash(object_names[i]));
         if (entity != SCENE_ENTITY_NONE && scene_entity_mesh_id(scene, entity) != NULL) {
             continue;
         }
@@ -95,9 +115,11 @@ select_objects(scene_t* scene) {
         if (scene_entity_mesh_id(scene, entity) == NULL) {
             continue;
         }
+        /* Enabled is parent AND own, so a named renderer needs its ancestors on and takes its descendants along. */
         bool enabled = false;
         for (int j = 0; j < object_count; j++) {
-            enabled |= strcmp(scene_entity_name(scene, entity), object_names[j]) == 0;
+            const scene_entity_t named = scene_find(scene, name_hash(object_names[j]));
+            enabled |= scene_entity_is_within(scene, entity, named) || scene_entity_is_within(scene, named, entity);
         }
         scene_entity_set_enabled(scene, entity, enabled);
     }
@@ -121,7 +143,7 @@ setup(int quarter) {
     }
     const bool selected = select_objects(scene);
     object_names = NULL;
-    if (!selected || !scene_activate(scene, camera_name)) {
+    if (!selected || !scene_activate(scene, camera_name == NULL ? SCENE_CAMERA_FIRST : name_hash(camera_name))) {
         if (selected) {
             fprintf(stderr, "scene_viewer: scene '%s' has no camera '%s'\n", scene_id,
                     camera_name == NULL ? "default" : camera_name);
@@ -143,9 +165,26 @@ setup(int quarter) {
     }
     for (int i = 0; i < scene_entity_count(scene); i++) {
         (void)scene_camera_set_present(scene, (scene_entity_t)i, present);
+        (void)scene_camera_set_small_fill(scene, (scene_entity_t)i, small_fill);
+    }
+    if (camera_name != NULL) {
+        /* What a caller sampling the path along its length reads. */
+        fprintf(stderr, "scene_viewer: camera path %u ms\n",
+                (unsigned)scene_animator_clip_duration_ms(scene, scene_find(scene, name_hash(camera_name)), 0));
     }
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
+    if (counts_path != NULL) {
+        counts = fopen(counts_path, "w");
+        if (counts == NULL) {
+            fprintf(stderr, "scene_viewer: cannot write %s\n", counts_path);
+            scene_unload(scene);
+            return false;
+        }
+        fprintf(counts, "frame,ms,nodes_visited,nodes_cut,clusters_tested,clusters_kept,clusters_not_set_up,"
+                        "clusters_hidden,clusters_drawn,triangles_submitted,triangles_behind,triangles_clipped,"
+                        "triangles_missed,triangles_facing_away,triangles_set_up,triangles_covering\n");
+    }
     if (size_width > 0) {
         const resolution_step_t size = {size_width, size_height};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
@@ -154,9 +193,23 @@ setup(int quarter) {
     return true;
 }
 
+/* One row per frame of what the cull view counted from the camera. */
 static void
 draw(const render_frame_t* frame) {
-    (void)frame;
+    if (counts == NULL) {
+        return;
+    }
+    const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
+    const r3d_pipeline_counts_t* n = &f.counts;
+    fprintf(counts, "%d,%u,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", frame->index, (unsigned)frame->elapsed_ms,
+            n->nodes_visited, n->nodes_cut, n->clusters_tested, n->clusters_kept, f.clusters[RASTER_FATE_NOT_SET_UP],
+            f.clusters[RASTER_FATE_HIDDEN], f.clusters[RASTER_FATE_DRAWN], n->triangles_submitted, n->triangles_behind,
+            n->triangles_clipped, n->triangles_missed, n->triangles_facing_away, n->triangles_set_up,
+            f.triangles_covering);
+    if (frame->index + 1 == frame->count) {
+        fclose(counts);
+        counts = NULL;
+    }
 }
 
 const render_scene_t render_scene = {

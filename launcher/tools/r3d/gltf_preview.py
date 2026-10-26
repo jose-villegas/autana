@@ -20,6 +20,7 @@ import sys
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from geometry.vectors import cross  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 
 LIGHT = (0.45, 0.80, 0.40)
@@ -34,10 +35,6 @@ VIEWS = {"front": (0.0, 8.0), "side": (90.0, 5.0), "top": (0.0, 88.0), "three-qu
 def normalize(v):
     length = math.sqrt(sum(x * x for x in v)) or 1.0
     return tuple(x / length for x in v)
-
-
-def cross(a, b):
-    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
 
 
 def linear_to_srgb(c):
@@ -169,11 +166,13 @@ def fill_triangle(pixels, depth, width, height, points, corners):
                     pixels[px, py] = tuple(int(round(w0 * p + w1 * q + w2 * r)) for p, q, r in zip(*corners))
 
 
-def render(asset, camera, positions, size, lit=None):
-    """Flat-shaded by LIGHT, or with `lit`, per-vertex 8-bit RGB, interpolated."""
+def render(asset, camera, positions, size, lit=None, ground=True):
+    """Flat-shaded by LIGHT, or with `lit`, per-vertex 8-bit RGB, interpolated; on the ground and its shadow
+    unless `ground` is false, as for a camera below it."""
     width, height = size
     image = Image.new("RGB", (width * SUPERSAMPLE, height * SUPERSAMPLE), BACKGROUND)
-    draw_ground(image, camera, positions, asset.triangles, 0.8)
+    if ground:
+        draw_ground(image, camera, positions, asset.triangles, 0.8)
     if lit is None:
         corners = flat_shading(positions, asset.colors or [(0.6, 0.6, 0.6)] * len(positions))
     else:
