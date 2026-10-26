@@ -11,6 +11,7 @@
 
 #include "apps/sand/sand_mode_swatches.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
 
 #define LUT_SIZE   256
 #define UI_ENTRIES 16
@@ -37,8 +38,8 @@ fixture(void) {
     suite_set_test_cleanup(release_fixture);
     for (int i = 0; i < LUT_SIZE; i++) {
         const int grey = (i % 16) * 16;
-        none_lut[i] = GFX_RGB((uint32_t)(grey << 16 | grey << 8 | grey));
-        lut256[i] = GFX_RGB((uint32_t)(i < UI_ENTRIES ? 0xFF00FF : (i << 16 | (255 - i) << 8 | 0x40)));
+        none_lut[i] = RGB565BE((uint32_t)(grey << 16 | grey << 8 | grey));
+        lut256[i] = RGB565BE((uint32_t)(i < UI_ENTRIES ? 0xFF00FF : (i << 16 | (255 - i) << 8 | 0x40)));
     }
     sand_mode_swatches(none_lut, lut256, LUT_SIZE, UI_ENTRIES, swatches);
 }
@@ -46,7 +47,7 @@ fixture(void) {
 static bool
 in_table(const gfx_color_t* table, int from, uint32_t rgb) {
     for (int i = from; i < LUT_SIZE; i++) {
-        if (gfx_color_rgb888(table[i]) == rgb) {
+        if (rgb565be_to_rgb888(table[i]) == rgb) {
             return true;
         }
     }
@@ -99,17 +100,17 @@ luma_of(uint32_t rgb) {
 static void
 test_sixteen_sorts_by_luma_not_by_a_single_channel(void) {
     fixture();
-    /* Round-tripped through GFX_RGB/gfx_color_rgb888 like every other entry,
+    /* Round-tripped through RGB565BE/rgb565be_to_rgb888 like every other entry,
      * since the LUT itself is quantised to RGB565 - comparing against the
      * raw literals would miss by a rounding bucket. */
-    const uint32_t dark = gfx_color_rgb888(GFX_RGB(0x000060));   /* near-black, strong blue, tiny luma */
-    const uint32_t bright = gfx_color_rgb888(GFX_RGB(0xC08000)); /* bright orange, no blue, large luma */
+    const uint32_t dark = rgb565be_to_rgb888(RGB565BE(0x000060));   /* near-black, strong blue, tiny luma */
+    const uint32_t bright = rgb565be_to_rgb888(RGB565BE(0xC08000)); /* bright orange, no blue, large luma */
 
     for (int i = 0; i < LUT_SIZE; i++) {
-        none_lut[i] = GFX_RGB((uint32_t)((0x101010U * (uint32_t)(i % 14)) + 0x40));
+        none_lut[i] = RGB565BE((uint32_t)((0x101010U * (uint32_t)(i % 14)) + 0x40));
     }
-    none_lut[14] = GFX_RGB(0x000060);
-    none_lut[15] = GFX_RGB(0xC08000);
+    none_lut[14] = RGB565BE(0x000060);
+    none_lut[15] = RGB565BE(0xC08000);
     sand_mode_swatches(none_lut, lut256, LUT_SIZE, UI_ENTRIES, swatches);
 
     const sand_mode_swatch_t* s = &swatches[SAND_COLOUR_16];
@@ -140,7 +141,7 @@ test_sixteen_pads_by_repeating_the_last_colour_when_the_lut_has_fewer(void) {
     const int distinct = 5;
     for (int i = 0; i < LUT_SIZE; i++) {
         const int grey = (i % distinct) * 40;
-        none_lut[i] = GFX_RGB((uint32_t)(grey << 16 | grey << 8 | grey));
+        none_lut[i] = RGB565BE((uint32_t)(grey << 16 | grey << 8 | grey));
     }
     sand_mode_swatches(none_lut, lut256, LUT_SIZE, UI_ENTRIES, swatches);
 
@@ -164,10 +165,10 @@ test_256_sample_spans_the_whole_sand_range(void) {
     int first_idx = -1;
     int last_idx = -1;
     for (int i = UI_ENTRIES; i < LUT_SIZE; i++) {
-        if (gfx_color_rgb888(lut256[i]) == s->rgb[0]) {
+        if (rgb565be_to_rgb888(lut256[i]) == s->rgb[0]) {
             first_idx = i;
         }
-        if (gfx_color_rgb888(lut256[i]) == s->rgb[n - 1]) {
+        if (rgb565be_to_rgb888(lut256[i]) == s->rgb[n - 1]) {
             last_idx = i;
         }
     }

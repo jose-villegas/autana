@@ -2,11 +2,12 @@
 
 #include "sand.h"
 
-#include "input/motion/tilt.h"
+#include "input/motion/gravity.h"
+#include "sand_controls.h"
 
 bool
 sand_gravity_direction_changed(int gx, int gy, int strength, int* dx, int* dy) {
-    if (strength < TILT_MIN_DIRECTION_STRENGTH) {
+    if (strength < (int)(GRAVITY_MIN_DIRECTION_STRENGTH * SAND_FLOW_ONE)) {
         return false;
     }
     int next_dx;

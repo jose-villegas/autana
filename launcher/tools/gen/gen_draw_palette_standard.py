@@ -22,7 +22,7 @@ CUBE_LEVELS = [0, 51, 102, 153, 204, 255]
 
 
 def to_rgb565(rgb888):
-    """GFX_RGB565(rgb) (gfx_color.h): truncating, not rounding; two 24-bit
+    """RGB565(rgb) (image/pixel/rgb565.h): truncating, not rounding; two 24-bit
     colours this close together can and do collapse to the same RGB565
     value, which is why every dedup below happens in THIS space, not
     24-bit RGB888."""
@@ -89,7 +89,7 @@ def emit_array(f, name, colours):
     f.write(f"static const gfx_color_t {name}[256] = {{\n")
     for i, rgb in enumerate(colours):
         sep = "    " if i % 8 == 0 else " "
-        f.write(f"{sep}GFX_RGB(0x{rgb:06X}),")
+        f.write(f"{sep}RGB565BE(0x{rgb:06X}),")
         if i % 8 == 7:
             f.write("\n")
     f.write("};\n\n")
@@ -114,7 +114,8 @@ def main():
         " *========================================================================"
         "===*/\n"
         "#pragma once\n\n"
-        "#include \"gfx/target/gfx_color.h\"\n\n"
+        "#include \"gfx/target/gfx_color.h\"\n"
+        "#include \"image/pixel/rgb565.h\"\n\n"
     )
     emit_array(f, "draw_palette_vga256_entries", vga256())
     emit_array(f, "draw_palette_grayscale256_entries", grayscale256())

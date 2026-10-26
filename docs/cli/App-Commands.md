@@ -1,7 +1,8 @@
 # App commands
 
 An app answers its own console commands without joining the console's verb
-list (`launcher/main/console/`, one file per verb):
+list, whose verbs each live in a `console/` folder beside the module they drive
+(`launcher/main/sound/console/` for the sound verbs):
 
 <!-- generated: app-console-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c

@@ -19,6 +19,8 @@
 #include <string.h>
 #include "asset/asset_pack.h"
 #include "hash/crc32.h"
+#include "image/pixel/bayer.h"
+#include "image/pixel/rgb565.h"
 #include "math/scalar/rng.h"
 #include "render/raster_attachment.h"
 #include "suites.h"
@@ -32,11 +34,11 @@
 #define ORACLE_MAX_SIDE            SMALL_FILL_CEILING_MAX
 #define CEILING_FOUR_FLAT_CHECKSUM 0x57208113U
 #define VERTEX_DITHER_CHECKSUM     0xDA4716C8U
-#define TEST_SOLID_COLOR           GFX_RGB(0x123456)
+#define TEST_SOLID_COLOR           RGB565BE(0x123456)
 #define TEST_CHANNELS              3
-#define TEST_RB_MAX                ((int)GFX_RGB565_G6_MAX >> 1)
+#define TEST_RB_MAX                ((int)RGB565_G6_MAX >> 1)
 #define TEST_GREEN_STEP            2
-#define TEST_GREEN_SCALE           ((UINT8_MAX + 1) / (GFX_RGB565_G6_MAX + 1))
+#define TEST_GREEN_SCALE           ((UINT8_MAX + 1) / (RGB565_G6_MAX + 1))
 
 static uint16_t* pixels;
 static r3d_span_small_fill_t* resolved;
@@ -146,7 +148,7 @@ reference_selector(const r3d_span_vertex_t v[TRIANGLE_VERTICES], int side, bool 
     if (fill.gate != 0) {
         const int intervals = fill.ceiling - R3D_SPAN_SMALL_MAX_SIDE - 1;
         const int offset = side - R3D_SPAN_SMALL_MAX_SIDE - 1;
-        const int near = (int)GFX_RGB565_G6_MAX + 1;
+        const int near = (int)RGB565_G6_MAX + 1;
         const int limit = intervals == 0 ? fill.gate : near - (near - (int)fill.gate) * offset / intervals;
         for (int channel = 0; channel < TEST_CHANNELS; channel++) {
             const int scale = TEST_GREEN_SCALE * (channel == 1 ? 1 : TEST_GREEN_STEP);
@@ -168,7 +170,7 @@ reference_selector(const r3d_span_vertex_t v[TRIANGLE_VERTICES], int side, bool 
 static void
 test_selector_random_triangles_and_gate_boundaries(void) {
     (void)fixture();
-    static const uint8_t gates[] = {0, 1, 8, SMALL_FILL_GATE_FAST, GFX_RGB565_G6_MAX, UINT8_MAX};
+    static const uint8_t gates[] = {0, 1, 8, SMALL_FILL_GATE_FAST, RGB565_G6_MAX, UINT8_MAX};
     rng_t random;
     rng_seed(&random, ORACLE_SEED);
     for (int ceiling = 0; ceiling <= ORACLE_MAX_SIDE; ceiling++) {
@@ -188,7 +190,7 @@ test_selector_random_triangles_and_gate_boundaries(void) {
                         }
                     }
                     /* Exercise both sides of every representable green-channel limit. */
-                    for (unsigned spread = 0; spread <= GFX_RGB565_G6_MAX; spread++) {
+                    for (unsigned spread = 0; spread <= RGB565_G6_MAX; spread++) {
                         r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0}};
                         v[1].g = (float)(spread * TEST_GREEN_SCALE);
                         const recti_t centres = {0, 0, side, side};
@@ -211,9 +213,9 @@ test_selector_random_triangles_and_gate_boundaries(void) {
 
 static uint16_t
 reference_shade(uint16_t color) {
-    const uint16_t native = gfx_color_swap(color);
-    const int channels[] = {(int)gfx_rgb565_r5(native), (int)gfx_rgb565_g6(native), (int)gfx_rgb565_b5(native)};
-    const int maxima[] = {TEST_RB_MAX, GFX_RGB565_G6_MAX, TEST_RB_MAX};
+    const uint16_t native = rgb565_swap(color);
+    const int channels[] = {(int)rgb565_r5(native), (int)rgb565_g6(native), (int)rgb565_b5(native)};
+    const int maxima[] = {TEST_RB_MAX, RGB565_G6_MAX, TEST_RB_MAX};
     const int steps[] = {1, TEST_GREEN_STEP, 1};
     const int brightness = TEST_GREEN_STEP * (channels[0] + channels[2]) + channels[1];
     const int full = TEST_GREEN_STEP * (maxima[0] + maxima[2]) + maxima[1];
@@ -227,7 +229,7 @@ reference_shade(uint16_t color) {
             safe = safe && moved[channel] >= 0 && moved[channel] <= maxima[channel];
         }
         if (safe) {
-            return gfx_color_rgb565((uint8_t)moved[0], (uint8_t)moved[1], (uint8_t)moved[2]);
+            return rgb565be_pack((uint8_t)moved[0], (uint8_t)moved[1], (uint8_t)moved[2]);
         }
     }
     return color;
@@ -236,21 +238,21 @@ reference_shade(uint16_t color) {
 static void
 test_grain_shade_preserves_channel_direction_without_overflow(void) {
     for (unsigned native = 0; native <= UINT16_MAX; native++) {
-        const uint16_t color = gfx_color_swap((uint16_t)native);
+        const uint16_t color = rgb565_swap((uint16_t)native);
         const uint16_t shade = small_grain_shade(color);
         TEST_ASSERT_EQUAL_HEX16(reference_shade(color), shade);
-        const uint16_t moved = gfx_color_swap(shade);
-        const int dr = (int)gfx_rgb565_r5(moved) - (int)gfx_rgb565_r5((uint16_t)native);
-        const int dg = (int)gfx_rgb565_g6(moved) - (int)gfx_rgb565_g6((uint16_t)native);
-        const int db = (int)gfx_rgb565_b5(moved) - (int)gfx_rgb565_b5((uint16_t)native);
+        const uint16_t moved = rgb565_swap(shade);
+        const int dr = (int)rgb565_r5(moved) - (int)rgb565_r5((uint16_t)native);
+        const int dg = (int)rgb565_g6(moved) - (int)rgb565_g6((uint16_t)native);
+        const int db = (int)rgb565_b5(moved) - (int)rgb565_b5((uint16_t)native);
         TEST_ASSERT_TRUE(dr >= -1 && dr <= 1);
         TEST_ASSERT_EQUAL_INT(dr, db);
         TEST_ASSERT_EQUAL_INT(TEST_GREEN_STEP * dr, dg);
     }
-    TEST_ASSERT_EQUAL_HEX16(gfx_color_rgb565(1, 2, 1), small_grain_shade(GFX_RGB(0x000000)));
-    TEST_ASSERT_EQUAL_HEX16(gfx_color_rgb565(TEST_RB_MAX - 1, GFX_RGB565_G6_MAX - TEST_GREEN_STEP, TEST_RB_MAX - 1),
-                            small_grain_shade(GFX_RGB(0xffffff)));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xff0000), small_grain_shade(GFX_RGB(0xff0000)));
+    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(1, 2, 1), small_grain_shade(RGB565BE(0x000000)));
+    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(TEST_RB_MAX - 1, RGB565_G6_MAX - TEST_GREEN_STEP, TEST_RB_MAX - 1),
+                            small_grain_shade(RGB565BE(0xffffff)));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xff0000), small_grain_shade(RGB565BE(0xff0000)));
 }
 
 static __attribute__((noinline)) void
@@ -300,8 +302,8 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[TRIAN
                 color = reference_shade(flat);
             }
             if (style == SMALL_FILL_DITHER && !(colors[0] == colors[1] && colors[1] == colors[2])) {
-                const int pattern_side = (int)(sizeof gfx_dither4x4 / sizeof gfx_dither4x4[0]);
-                const int rank = gfx_dither4x4[y % pattern_side][x % pattern_side];
+                const int pattern_side = (int)(sizeof bayer4x4 / sizeof bayer4x4[0]);
+                const int rank = bayer4x4[y % pattern_side][x % pattern_side];
                 const int32_t threshold = total * (2 * rank + 1) / (2 * pattern_side * pattern_side);
                 color = edge[0] == edge[1] && edge[1] == edge[2] ? flat
                                                                  : colors[threshold < edge[0]             ? 0
@@ -364,8 +366,8 @@ test_grain_screen_phase_with_odd_window_and_known_shades(void) {
                                                     {(ORACLE_MAX_SIDE - 1) * R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0},
                                                     {-R3D_SUBPIXEL, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 0, 0, 0}};
     draw_triangle(&actual, v, false);
-    TEST_ASSERT_EQUAL_HEX16(gfx_color_rgb565(1, TEST_GREEN_STEP, 1), pixels[TEST_SIDE]);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), pixels[TEST_SIDE + 1]);
+    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(1, TEST_GREEN_STEP, 1), pixels[TEST_SIDE]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x000000), pixels[TEST_SIDE + 1]);
     r3d_span_target_t expected = actual;
     expected.rows.attachment[GFX_ATTACHMENT_COLOR].pixels = pixels + TEST_PIXELS * 2 + TEST_SIDE;
     expected.rows.attachment[GFX_ATTACHMENT_DEPTH].pixels = pixels + TEST_PIXELS * 3 + TEST_SIDE;

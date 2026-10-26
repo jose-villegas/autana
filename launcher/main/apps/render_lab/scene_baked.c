@@ -16,6 +16,7 @@
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/rgb565.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
@@ -73,7 +74,7 @@ void
 scene_baked_enter(const render_lab_scene_t* self) {
     const scene_baked_shown_t* shown = self->data;
     const scene_baked_t* family = shown->family;
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     shown_family = family;
     scene_failure_t why;
