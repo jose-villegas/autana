@@ -24,7 +24,7 @@
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
-#include "render/raster_show.h"
+#include "render/view/raster_show.h"
 
 #define W 64
 #define H 48
@@ -1842,6 +1842,16 @@ test_cull_off_keeps_every_cluster(void) {
 
 /* The raster at size `z` of `sizes`, drawn directly and then from a census
  * taken at the next size: the same picture, depth and survivors. */
+/* The census at `size`, its view in a frame of its own: kept out of the
+ * caller's, whose raster_draw() chain is the suite's deepest stack. */
+static __attribute__((noinline)) raster_stats_t
+census_at(raster_t* raster, const fixture_camera_t* camera, const int size[2]) {
+    raster->width = size[0];
+    raster->height = size[1];
+    const render_view_t census_view = render_view_fixture(camera, raster, 0);
+    return raster_census(raster, &census_view);
+}
+
 static void
 expect_census_draw_matches(raster_t* raster, const fixture_camera_t* camera, const int sizes[][2], int z) {
     uint16_t* want = frame_held.want;
@@ -1854,10 +1864,7 @@ expect_census_draw_matches(raster_t* raster, const fixture_camera_t* camera, con
     memcpy(want, raster_color(raster), sizeof(*want) * drawn);
     memcpy(want + drawn, raster_depth(raster), sizeof(*want) * drawn);
 
-    raster->width = sizes[(z + 1) % 3][0]; /* the census at another size */
-    raster->height = sizes[(z + 1) % 3][1];
-    const render_view_t census_view = render_view_fixture(camera, raster, 0);
-    const raster_stats_t counted = raster_census(raster, &census_view);
+    const raster_stats_t counted = census_at(raster, camera, sizes[(z + 1) % 3]); /* at another size */
     raster->width = sizes[z][0];
     raster->height = sizes[z][1];
     memset(raster_color(raster), 0xEE, sizeof(uint16_t) * drawn);

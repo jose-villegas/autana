@@ -45,7 +45,7 @@ void ui_ridge_step(const input_t* input, uint32_t dt_ms);
 void ui_ridge_paint(void);
 
 #if BUILD_VARIANT_SELFTEST_OR_HOST
-#include "math/motion/spring_line.h"
+#include "physics/spring/spring_line.h"
 
 /* The spring state owned by the ridge, or NULL before allocation. */
 const spring_line_t* ui_ridge_spring_for_test(void);

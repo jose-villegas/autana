@@ -1,6 +1,7 @@
 /* render_lab_scene: a mesh scene hosted behind the shared HUD and menu. */
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "app/app_console.h"
@@ -41,7 +42,12 @@ typedef struct render_lab_scene {
     bool (*console)(const char* args, console_reply_fn reply);
 } render_lab_scene_t;
 
+/* A scene that could not load: logs `what` under `tag` and keeps it in
+ * `failure` (`size` bytes) for the status line, in place of its stats. */
+void render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* what);
+
 extern const render_lab_scene_t scene_capybara;
+extern const render_lab_scene_t scene_water;
 
 /* A scene's `.console`: the hook in a development or host build, NULL otherwise,
  * as APP_CONSOLE_PTR() does, so a release links none of the console; a host

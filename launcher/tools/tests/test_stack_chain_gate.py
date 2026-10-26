@@ -44,7 +44,7 @@ class StackChainTests(unittest.TestCase):
             db = pathlib.Path(directory) / "compile_commands.json"
             root = gate.MAIN_DIR.replace("\\", "/")
             names = [root + "/render/a.c", root + "/core/b.c", root + "/apps/sample/c.c"]
-            db.write_text(json.dumps([{"file": n, "directory": directory,
+            db.write_text(json.dumps([{"file": n, "directory": directory, "output": n + ".obj",
                                        "command": "cc -c " + n} for n in names]))
             self.assertEqual(names[:2], [j[2] for j in gate.app_jobs(str(db))])
 
@@ -54,10 +54,15 @@ class StackChainTests(unittest.TestCase):
             source.write_text("static void runner(void (*body)(void)) { body(); }")
             db = pathlib.Path(directory) / "compile_commands.json"
             db.write_text(json.dumps([{"file": str(source), "directory": directory,
-                                       "command": "cc -c arbitrary.c"}]))
+                                       "output": "arbitrary.c.obj", "command": "cc -c arbitrary.c"}]))
             self.assertEqual([], gate.app_jobs(str(db)))
             jobs = gate.app_jobs(str(db), functions={"runner"})
             self.assertEqual([str(source).replace("\\", "/")], [j[2] for j in jobs])
+
+    def test_a_graph_is_read_from_beside_its_object(self):
+        entry = {"directory": "/build", "output": "esp-idf/main/CMakeFiles/m.dir/render/a.c.obj"}
+        self.assertEqual(pathlib.Path("/build/esp-idf/main/CMakeFiles/m.dir/render/a.c.ci"),
+                         pathlib.Path(gate.graph_file(entry)))
 
     def test_a_dynamic_name_is_not_a_dynamic_frame(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -163,6 +163,7 @@ class JobInputsTests(unittest.TestCase):
             unresolved = root / 'child' / '..'
             with mock.patch.dict(os.environ, RUNNER_OS='Linux'), \
                     mock.patch.object(job_inputs.time, 'sleep'), \
+                    mock.patch.object(job_inputs.os, 'utime'), \
                     mock.patch.object(job_inputs.subprocess, 'run') as run:
                 run.return_value.stdout = b''
                 with mock.patch.object(job_inputs.subprocess, 'check_output', return_value=b'') as output:
@@ -233,6 +234,7 @@ class JobInputsTests(unittest.TestCase):
             self.assertTrue(subprocess.check_output(
                 git + ['describe', '--always', '--dirty']).strip().endswith(b'-dirty'))
 
+    @unittest.skipUnless(sys.platform == 'linux', 'atime recording requires Linux')
     def test_filesystem_round_trip(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ, RUNNER_OS='Linux'):
             root = Path(directory) / 'repo'

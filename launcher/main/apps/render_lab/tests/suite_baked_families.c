@@ -19,11 +19,11 @@ test_every_family_places_each_variant_and_its_camera(void) {
         scene_t* scene = scene_load(family->scene, &why);
         TEST_ASSERT_NOT_NULL_MESSAGE(scene, family->scene);
         for (int v = 0; v < (int)SCENE_BAKED_VARIANT_COUNT; v++) {
-            const scene_entity_t bake = scene_find(scene, family->bakes[v]);
+            const scene_entity_t bake = scene_find(scene, name_hash(family->bakes[v]));
             TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, bake, family->bakes[v]);
             TEST_ASSERT_NOT_NULL_MESSAGE(scene_entity_mesh(scene, bake), family->bakes[v]);
         }
-        TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, scene_find(scene, family->camera), family->camera);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, scene_find(scene, name_hash(family->camera)), family->camera);
         scene_unload(scene);
         app_arena_rewind(mark);
     }
