@@ -52,8 +52,8 @@ make_quad(quad_t* q, uint8_t red, uint8_t green, uint8_t blue, int16_t cx) {
     q->triangles[1][0] = 0;
     q->triangles[1][1] = 2;
     q->triangles[1][2] = 3;
-    q->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}, true};
-    q->node = (r3d_lit_node_t){{(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}, 0, 1, true};
+    q->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}}, true};
+    q->node = (r3d_lit_node_t){{{(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}}, 0, 1, true};
     q->mesh = (r3d_lit_mesh_t){q->positions, q->colors, q->triangles, &q->cluster, &q->node, 4, 2, 1, 1, 1, NULL};
 }
 
@@ -137,12 +137,9 @@ test_position_ticks_keep_a_placed_instance_in_model_units(void) {
             ticks.positions[i][axis] *= POSITION_SCALE;
         }
     }
-    for (int axis = 0; axis < 3; axis++) {
-        ticks.cluster.lo[axis] *= POSITION_SCALE;
-        ticks.cluster.hi[axis] *= POSITION_SCALE;
-        ticks.node.lo[axis] *= POSITION_SCALE;
-        ticks.node.hi[axis] *= POSITION_SCALE;
-    }
+    ticks.cluster.bounds.lo = vec3s_scale(ticks.cluster.bounds.lo, POSITION_SCALE);
+    ticks.cluster.bounds.hi = vec3s_scale(ticks.cluster.bounds.hi, POSITION_SCALE);
+    ticks.node.bounds = ticks.cluster.bounds;
     ticks.mesh.position_scale = POSITION_SCALE;
     const mat4f_t model = placed(3.0F, 0.0F, 1.0F);
     const r3d_instance_t reference = {&unit.mesh, &model}, scaled = {&ticks.mesh, &model};
@@ -235,15 +232,13 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
 static void
 test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex(void) {
     static const int16_t corners[4][3] = {{0, 0, 0}, {8, 0, 0}, {8, 4, 0}, {0, 2, 0}};
-    static const r3d_lit_cluster_t cluster = {0, 4, 0, 2, {0, 0, 0}, {8, 4, 0}, false};
-    static const r3d_lit_node_t node = {{0, 0, 0}, {8, 4, 0}, 0, 1, true};
+    static const r3d_lit_cluster_t cluster = {0, 4, 0, 2, {{0, 0, 0}, {8, 4, 0}}, false};
+    static const r3d_lit_node_t node = {{{0, 0, 0}, {8, 4, 0}}, 0, 1, true};
     r3d_lit_mesh_t mesh = r3d_quad_mesh(corners, NULL, NULL, &cluster, &node);
     mesh.position_scale = 2; /* ticks per unit: the box is 4 by 2 units */
-    vec3f_t centre;
-    float radius;
-    r3d_lit_mesh_bounding_sphere(&mesh, &centre, &radius);
-    TEST_ASSERT_TRUE(vec3f_equal((vec3f_t){2.0F, 1.0F, 0.0F}, centre));
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, sqrtf(5.0F), radius); /* corner (4, 2) or (0, 0): 2 by 1 from the centre */
+    const spheref_t sphere = r3d_lit_mesh_bounding_sphere(&mesh);
+    TEST_ASSERT_TRUE(vec3f_equal((vec3f_t){2.0F, 1.0F, 0.0F}, sphere.centre));
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, sqrtf(5.0F), sphere.radius); /* corner (4, 2) or (0, 0): 2 by 1 from the centre */
 }
 
 void

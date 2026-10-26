@@ -33,9 +33,16 @@ set(app_srcs
     "input/buttons/buttons.c"
     "input/touch/gesture.c"
     "input/motion/imu.c"
+    "input/motion/imu_queue.c"
+    "power/power_decode.c"
+    "power/power_cache.c"
+    "power/power_log.c"
+    "power/power_log_device.c"
+    "power/power_device.c"
     "input/input_device.c"
     "input/motion/tilt.c"
     "input/motion/gravity.c"
+    "input/motion/shake.c"
     "ui/ui.c"
     "ui/input/ui_bridge.c"
     "ui/ui_build.c"
@@ -48,39 +55,13 @@ set(app_srcs
     "ui/input/ui_snap.c"
     "shell/ui/ui_ridge.c"
     "ui/controls/ui_widgets.c"
-    "anim/anim_track.c"
-    "anim/anim_tracks.c"
-    "anim/anim_skeleton.c"
-    "anim/pose/anim_pose.c"
-    "anim/playback/anim_playhead.c"
-    "anim/playback/anim_layer.c"
     "sound/sound.c"
     "audio/audio_adpcm.c"
-    "render/r3d_skin.c"
-    "render/skin/r3d_skinning.c"
-    "render/skin/r3d_skin_light.c"
-    "anim/anim_binding.c"
     "asset/asset_pack.c"
     "asset/asset_table.c"
     "asset/asset_directory.c"
     "asset/asset_store.c"
     "asset/asset_store_flash.c"
-    "render/render_view.c"
-    "render/raster.c"
-    "render/raster_split.c"
-    "render/r3d_lit_mesh.c"
-    "render/r3d_pipeline.c"
-    "render/upscale.c"
-    "render/resolution/resolution.c"
-    "render/context/render_context.c"
-    "render/r3d_span.c"
-    "scene/camera/camera.c"
-    "scene/scene.c"
-    "scene/scene_animation.c"
-    "scene/scene_light.c"
-    "scene/scene_asset.c"
-    "scene/scene_draw.c"
-    "scene/scene_shell.c"
     "input/mapping/orbit_motion_touch.c"
     "shell/scene_system.c"
     "shell/shell.c"
@@ -96,7 +77,7 @@ set(app_srcs
     "services/build_id.c"
     "services/settings_device.c"
     "services/settings_policy.c"
-    "services/tune.c"
+    "core/tune.c"
 )
 
 function(launcher_glob output)
@@ -112,10 +93,21 @@ if(CONFIG_LAUNCHER_QEMU)
     list(APPEND app_srcs "gfx/present/panel/gfx_null_panel_device.c")
 endif()
 
-# The frame's view modes: a development tool, with nothing calling them in a
-# release build.
-if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs "render/raster_show.c" "render/raster_motion.c" "render/raster_meshlets.c")
+# The renderer: every .c below the folders renderer_folders.txt names, the
+# list host builds read too (tools/build/renderer.sh, renderer.py).
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt" renderer_folders REGEX "^[^#]")
+foreach(folder IN LISTS renderer_folders)
+    launcher_glob(folder_srcs "${CMAKE_CURRENT_LIST_DIR}/${folder}/*.c")
+    list(APPEND app_srcs ${folder_srcs})
+endforeach()
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt")
+endif()
+
+# The frame's view modes, everything in render/view/: a development tool, with
+# nothing calling them in a release build.
+if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
+    list(FILTER app_srcs EXCLUDE REGEX "/render/view/[^/]*\.c$")
 endif()
 
 # The console listener: a release image has nobody watching the serial
@@ -129,14 +121,20 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console_verbs.c"
         "console/console.c"
         "console/verbs/console_buildid.c"
+        "console/verbs/console_battery.c"
         "console/verbs/console_heap.c"
         "console/verbs/console_tone.c"
+        "console/verbs/console_melody.c"
+        "console/verbs/console_codec.c"
         "console/verbs/console_sound.c"
+        "console/verbs/console_sound_views.c"
+        "shell/console_system.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
         "console/verbs/console_frame_watch.c"
         "console/verbs/console_navigation.c"
         "console/verbs/console_perf.c"
+        "console/console_tune.c"
         "console/verbs/console_tune.c"
         "console/verbs/console_screenshot.c"
         "console/capture/device_state.c"
@@ -144,6 +142,8 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     # Acoustic detection belongs to the development console.
     list(APPEND app_srcs
         "audio/audio_loopback.c"
+        "audio/audio_loopback_detector.c"
+        "audio/audio_frequency.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
@@ -231,12 +231,12 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs esp_codec_dev esp_driver_i2s math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs esp_codec_dev esp_driver_i2s math kinematics physics hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
-             # perfmon, unity and esp_mm (a perf suite's cache control) are
+             # perfmon, unity, testkit and esp_mm (a perf suite's cache control) are
              # listed unconditionally, NOT inside the block below: ESP-IDF
              # expands REQUIRES in an early pass
              # where CONFIG_* is not yet defined, so a Kconfig-gated REQUIRES
@@ -248,11 +248,12 @@ set(app_reqs esp_codec_dev esp_driver_i2s math microui esp32_s3_touch_amoled_1_8
              # graph either way; REQUIRES only decides whether main can see
              # their headers. With nothing built that references them,
              # --gc-sections drops them from the image.
-             perfmon unity esp_mm)
+             perfmon unity testkit esp_mm)
 
 if(CONFIG_LAUNCHER_SELFTEST)
     launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c"
-        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c")
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/bench/suite_*.c")
     # SCOPE: full is the default and stays globbed, so nothing can lose
     # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
@@ -285,7 +286,8 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "selftest/selftest.c"
         "../test/suites.c"
         "../test/timing.c"
-        "../test/test_cleanup.c"
+        "../test/bench_env.c"
+        "../test/frame_profile.c"
         "../test/ui_probe.c"
         ${suite_srcs}
         ${app_suites}
@@ -397,9 +399,13 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     set(asset_image "${CMAKE_BINARY_DIR}/assets.bin")
     set(asset_packs "${CMAKE_BINARY_DIR}/assets")
     set(asset_tools "${CMAKE_CURRENT_LIST_DIR}/../tools")
+    set(asset_variant_args "")
+    if(CONFIG_LAUNCHER_DEVELOPMENT)
+        list(APPEND asset_variant_args --development)
+    endif()
     add_custom_target(asset_pack_image ALL
         COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_packs}" --image "${asset_image}"
-                "${CMAKE_CURRENT_LIST_DIR}"
+                ${asset_variant_args} "${CMAKE_CURRENT_LIST_DIR}"
         BYPRODUCTS "${asset_image}"
         COMMENT "Writing the asset packs"
         VERBATIM)

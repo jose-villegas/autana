@@ -59,7 +59,7 @@ test_resolution_errors_report_first_index(void) {
     fixture_t f = fixture();
     transform_t transform = {0};
     anim_component_ref_t components[] = {{&TRANSFORM, &transform}};
-    anim_target_t target = {.name = "object", .components = components, .component_count = 1};
+    anim_target_t target = {.name = name_hash("object"), .components = components, .component_count = 1};
     anim_bound_t bound[BINDINGS];
     int failed;
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
@@ -77,9 +77,9 @@ test_resolution_errors_report_first_index(void) {
     f.clip.root = ANIM_ROOT_SCENE;
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_SPACE, anim_bind(&f.clip, &target, 1, bound, BINDINGS - 1, &failed));
     TEST_ASSERT_EQUAL_INT(-1, failed);
-    target.name = "other";
+    target.name = name_hash("other");
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_PATH, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
-    target.name = "object";
+    target.name = name_hash("object");
     target.component_count = 0;
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_COMPONENT, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
     target.component_count = 1;
@@ -104,8 +104,11 @@ test_apply_split_writes_sampled_values_and_marks_dirty(void) {
     transform_t full = {0}, split = {0};
     uint8_t dirty = OTHER_DIRTY_BIT;
     anim_component_ref_t components[] = {{&TRANSFORM, &full}};
-    anim_target_t target = {
-        .name = "object", .components = components, .component_count = 1, .dirty = &dirty, .dirty_bit = DIRTY_BIT};
+    anim_target_t target = {.name = name_hash("object"),
+                            .components = components,
+                            .component_count = 1,
+                            .dirty = &dirty,
+                            .dirty_bit = DIRTY_BIT};
     anim_bound_t bound[BINDINGS];
     int failed;
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
@@ -129,6 +132,57 @@ test_apply_split_writes_sampled_values_and_marks_dirty(void) {
 }
 
 static void
+test_field_binding_distinguishes_hash_collisions(void) {
+    fixture_t f = fixture();
+    transform_t transform = {0};
+    const char* first = "costarring";
+    const char* second = "liquid";
+    TEST_ASSERT_EQUAL_UINT32(name_hash(first), name_hash(second));
+    const anim_field_t fields[] = {{first, ANIM_VALUE_VEC3, offsetof(transform_t, position)},
+                                   {second, ANIM_VALUE_VEC3, offsetof(transform_t, scale)}};
+    const anim_component_fields_t component = {ANIM_COMPONENT_TRANSFORM, fields, 2};
+    const anim_component_ref_t reference = {&component, &transform};
+    anim_binding_t binding;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_binding_at(&f.clip, 0, &binding));
+    binding.field = second;
+    binding.field_hash = name_hash(second);
+    anim_bound_t bound;
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind_field(&binding, &reference, 1, NULL, 0, &bound));
+    TEST_ASSERT_EQUAL_PTR(transform.scale, bound.target);
+    binding.field = "missing";
+    binding.field_hash = name_hash(binding.field);
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_FIELD, anim_bind_field(&binding, &reference, 1, NULL, 0, &bound));
+    free(f.entry);
+}
+
+static void
+test_self_sentinel_distinguishes_hash_collisions(void) {
+    fixture_t f = fixture();
+    transform_t self = {0}, other = {0};
+    const anim_component_ref_t components[] = {{&TRANSFORM, &self}, {&TRANSFORM, &other}};
+    const char* collision = "mfvbkp";
+    TEST_ASSERT_EQUAL_UINT32(name_hash(ANIM_TARGET_SELF), name_hash(collision));
+    const anim_target_t targets[] = {
+        {.name = name_hash("owner"), .components = &components[0], .component_count = 1},
+        {.name = name_hash(collision), .components = &components[1], .component_count = 1},
+    };
+    const char* paths[] = {ANIM_TARGET_SELF, collision};
+    for (size_t p = 0; p < sizeof paths / sizeof paths[0]; p++) {
+        for (int i = 0; i < BINDINGS; i++) {
+            test_track_row(f.entry, i,
+                           &(test_track_t){paths[p], TRANSFORM_FIELDS[i].name, ANIM_COMPONENT_TRANSFORM,
+                                           TRANSFORM_FIELDS[i].type, TIMES, VALUES + i * ANIM_WIDTH_MAX * sizeof(float),
+                                           1, ANIM_STEP});
+        }
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){f.entry, BYTES}, &f.clip));
+        anim_bound_t bound[BINDINGS];
+        TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, targets, 2, bound, BINDINGS, NULL));
+        TEST_ASSERT_EQUAL_PTR(p == 0 ? self.position : other.position, bound[0].target);
+    }
+    free(f.entry);
+}
+
+static void
 test_binding_description_has_component_order_and_snprintf_length(void) {
     const anim_binding_t b = {.path = "object", .component = ANIM_COMPONENT_TRANSFORM, .field = "position"};
     const char* want = "object:TRNS.position";
@@ -144,6 +198,8 @@ test_binding_description_has_component_order_and_snprintf_length(void) {
 
 void
 suite_anim_binding(void) {
+    RUN_TEST(test_field_binding_distinguishes_hash_collisions);
+    RUN_TEST(test_self_sentinel_distinguishes_hash_collisions);
     RUN_TEST(test_resolution_errors_report_first_index);
     RUN_TEST(test_apply_split_writes_sampled_values_and_marks_dirty);
     RUN_TEST(test_binding_description_has_component_order_and_snprintf_length);

@@ -11,18 +11,21 @@
 #include "asset/asset_store.h"
 #include "asset/asset_table.h"
 #include "asset/asset_table_format.h"
+#include "collections/sort.h"
 #include "core/memory.h"
+#include "core/tune.h"
 #include "draw/draw.h"
 #include "draw/draw_dither.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "math/motion/spring_line.h"
+#include "input/motion/tilt.h"
+#include "math/scalar/ease.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/mathx.h"
+#include "physics/spring/spring_line.h"
 #include "profile/frame_cost.h"
-#include "services/tune.h"
 #include "shell/ui/ridge_motion.h"
 #include "shell/ui/ridge_pose.h"
 #include "shell/ui/ridge_theme.h"
@@ -88,7 +91,6 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define RIDGE_COLUMNS      (RIDGE_CURVE_POINTS + (2 * RIDGE_EXTRA))
 #define RIDGE_LAYER_COUNT  3
 #define RIDGE_MAX_LIP_PX   48
-#define MIN_TILT_STRENGTH  64
 /* Once the board holds still, a pose within 1.5 degrees of its target jumps
  * the rest of the way instead of creeping a half-degree step at a time. */
 #define POSE_ARRIVE_STEP   430
@@ -312,7 +314,7 @@ build_layers(void) {
     /* The waves grow in and go out with the rest of the ambient motion, so
      * a ridge whose motion is switched off rests on its rigid shape. */
     const int gain = ridge->ambient && ridge->alive_ms > (uint32_t)boot_hold_ms
-                         ? ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms)
+                         ? ease_smooth_q8(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms)
                          : 0;
     uint32_t travelled[2];
     for (int layer = 0; layer < 2; layer++) {
@@ -438,18 +440,29 @@ fill_row(gfx_color_t* dst, int x0, int x1, gfx_color_t color) {
 
 static void
 add_row_break(int* points, int* count, int x, int lo, int hi) {
-    if (x <= lo || x >= hi) {
-        return;
+    if (x > lo && x < hi) {
+        points[(*count)++] = x;
     }
-    int at = *count;
-    while (at > 0 && points[at - 1] > x) {
-        points[at] = points[at - 1];
-        at--;
+}
+
+static inline bool
+lower(int a, int b) {
+    return a < b;
+}
+
+SORT_DEFINE_INSERTION(breaks, int, lower)
+
+/* Sorts points[1..count) and drops repeats; points[0] is lo, below every break. */
+static inline __attribute__((always_inline)) int
+order_row_breaks(int* points, int count) {
+    breaks_sort(points + 1, (size_t)(count - 1));
+    int kept = 1;
+    for (int i = 1; i < count; i++) {
+        if (points[i] != points[kept - 1]) {
+            points[kept++] = points[i];
+        }
     }
-    if (at == 0 || points[at - 1] != x) {
-        points[at] = x;
-        (*count)++;
-    }
+    return kept;
 }
 
 static inline __attribute__((always_inline)) bool
@@ -479,6 +492,7 @@ collect_row_breaks(int* points, int y, int lo, int hi) {
             add_row_break(points, &count, boundary + 1, lo, hi);
         }
     }
+    count = order_row_breaks(points, count);
     points[count++] = hi;
     return count;
 }
@@ -1206,7 +1220,7 @@ ui_ridge_set_gravity(int gx, int gy, int strength, int shake) {
     if (ridge != NULL) {
         ridge->shake = shake;
         ridge->attitude.level =
-            ridge_pose_level_from_gravity(ridge->attitude.level, gx, gy, strength, MIN_TILT_STRENGTH);
+            ridge_pose_level_from_gravity(ridge->attitude.level, gx, gy, strength, TILT_MIN_DIRECTION_STRENGTH);
     }
 }
 
@@ -1358,7 +1372,7 @@ shape_this_frame(uint32_t dt_ms) {
                                           .push = tilt_push,
                                           .coast_ms = tilt_coast_ms};
     ridge_motion_advance(&ridge->motion, &params, dt_ms, ridge_pose_slope(&ridge->attitude));
-    const int gain = ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
+    const int gain = ease_smooth_q8(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
     for (int x = 0; x < RIDGE_COLUMNS; x++) {
         ridge->shape[x] =
             (int16_t)(ridge->rigid[x]

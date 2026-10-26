@@ -40,9 +40,9 @@ bool ui_probe_icon_rgb(recti_t within, uint32_t* rgb);
 int ui_probe_bevel_index(recti_t r, uint32_t face_rgb, bool sunken);
 
 /* How wide a label may be inside a button, or a dropdown, `w` wide under
- * `theme`. */
+ * `theme`; NULL is the shell look. */
 int ui_probe_button_label_width(int w, bool has_icon, const ui_theme_t* theme);
-int ui_probe_dropdown_label_width(int w, const ui_theme_t* theme);
+int ui_probe_dropdown_label_width(int w, bool has_icons, const ui_theme_t* theme);
 
 /* Where a dropdown at `anchor` opens its list of `count` rows `row_h` tall. */
 recti_t ui_probe_dropdown_list_rect(recti_t anchor, int count, int row_h, int canvas_h);
@@ -61,6 +61,10 @@ bool ui_probe_list(recti_t* rows, int* scroll_y);
 void ui_probe_budget_assert(const char* screen_name);
 
 #ifndef ESP_PLATFORM
+/* Defined where widget rects are recorded, for a suite that cannot name the
+ * platform. */
+#define UI_PROBE_WIDGETS_RECORDED 1
+
 /* Records every face widget's latest rectangle by its identity key, until
  * ui_probe_widgets_stop(), which a suite's cleanup must call. */
 void ui_probe_widgets_start(void);

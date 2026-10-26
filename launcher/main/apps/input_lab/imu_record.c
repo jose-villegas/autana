@@ -1,10 +1,16 @@
 #include "apps/input_lab/imu_record.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_log.h"
+
+#include "collections/strbuf.h"
 #include "core/memory.h"
+
+static const char* const TAG = "imu_record";
 
 void
 imu_record_free(imu_record_t* record) {
@@ -20,6 +26,7 @@ imu_record_start(imu_record_t* record, size_t capacity) {
     }
     record->text = memory_alloc(capacity, MEMORY_PSRAM);
     if (record->text == NULL) {
+        ESP_LOGE(TAG, "no memory for round: requested %zu bytes in PSRAM", capacity);
         return false;
     }
     record->text[0] = '\0';
@@ -32,40 +39,50 @@ imu_record_appendf(imu_record_t* record, const char* format, ...) {
     if (record->text == NULL || record->truncated) {
         return false;
     }
-    char line[IMU_RECORD_LINE_SIZE] = IMU_RECORD_PREFIX " ";
-    const size_t prefix = sizeof(IMU_RECORD_PREFIX " ") - 1;
+    char line[IMU_RECORD_LINE_SIZE];
+    strbuf_t text = strbuf_make(line, sizeof line);
     va_list args;
     va_start(args, format);
-    const int payload = vsnprintf(line + prefix, sizeof line - prefix - 1, format, args);
+    const bool formed = strbuf_appendf(&text, IMU_RECORD_PREFIX " ") && strbuf_vappendf(&text, format, args)
+                        && strbuf_appendf(&text, "\n");
     va_end(args);
-    const bool fits = payload >= 0 && (size_t)payload < sizeof line - prefix - 1;
-    const size_t length = fits ? prefix + (size_t)payload + 1 : 0;
-    if (fits) {
-        line[length - 1] = '\n';
-        line[length] = '\0';
-    }
-    if (!fits || length > record->capacity - record->used - sizeof IMU_RECORD_TRUNCATED) {
+    /* The marker's bytes stay free until a line does not fit. */
+    strbuf_t kept = strbuf_at(record->text, record->capacity - (sizeof IMU_RECORD_TRUNCATED - 1), record->used);
+    if (!formed || !strbuf_appendf(&kept, "%s", line)) {
         memcpy(record->text + record->used, IMU_RECORD_TRUNCATED, sizeof IMU_RECORD_TRUNCATED);
         record->used += sizeof IMU_RECORD_TRUNCATED - 1;
         record->truncated = true;
         return false;
     }
-    memcpy(record->text + record->used, line, length + 1);
-    record->used += length;
+    record->used = kept.length;
     return true;
 }
 
+_Static_assert(IMU_RECORD_LINE_SIZE <= IMU_RECORD_CHUNK_SIZE, "each line must fit one output chunk");
+
 void
-imu_record_take(imu_record_t* record, void (*emit)(const char* text)) {
-    if (record->text != NULL) {
-        emit(record->text);
+imu_record_replay(const imu_record_t* record, void (*emit)(const char* text, size_t length)) {
+    if (record == NULL) {
+        return;
     }
-    imu_record_free(record);
+    size_t offset = 0;
+    while (offset < record->used) {
+        size_t length = record->used - offset;
+        if (length > IMU_RECORD_CHUNK_SIZE) {
+            length = IMU_RECORD_CHUNK_SIZE;
+        }
+        while (length > 0 && record->text[offset + length - 1] != '\n') {
+            length--;
+        }
+        assert(length > 0);
+        emit(record->text + offset, length);
+        offset += length;
+    }
 }
 
 const char*
-imu_record_dump_error(const imu_record_t* record, imu_probe_step_t step) {
-    if (step != IMU_PROBE_IDLE && step != IMU_PROBE_DONE) {
+imu_record_dump_error(const imu_record_t* record, bool round_running) {
+    if (round_running) {
         return IMU_RECORD_PREFIX "_ERR round active\n";
     }
     return record->text == NULL ? IMU_RECORD_PREFIX "_ERR no kept round\n" : NULL;

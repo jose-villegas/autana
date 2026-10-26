@@ -90,12 +90,12 @@ for MODE in normal forced; do
 
     # The portable half of the app only. app_sand.c and sand_ui.c are the
     # hardware-facing entry points (the apps/<name>/app_*.c convention in
-    # docs/Building-an-App.md) and do not belong in a host build;
+    # docs/firmware/Building-an-App.md) and do not belong in a host build;
     # palette.c and row_runs.c
     # are draw-path concerns the grid state does not depend on.
     # shellcheck disable=SC2086
     "$CC_BIN" $CFLAGS $FORCE_FLAG -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
-        "$SCRIPT_DIR/grid_fingerprint.c" \
+        "$SCRIPT_DIR/grid_fingerprint.c" "$LAUNCHER_DIR/packages/hash/src/name_hash64.c" \
         "$MAIN_DIR/core/job.c" \
         "$SAND_DIR/sand.c" \
         "$SAND_DIR/sand_chunk_sched.c" \

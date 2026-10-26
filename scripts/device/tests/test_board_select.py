@@ -1,3 +1,4 @@
+"""Board selection keeps a chosen board, resolves tokens and auto-picks by queued time."""
 import contextlib
 import io
 import json
@@ -145,7 +146,9 @@ with autana.applied(flags), \
             for verb in ("devices", "status"):
                 with contextlib.redirect_stdout(io.StringIO()) as output:
                     self.assertEqual(device.main([verb, "--json"]), 0)
-                self.assertEqual(json.loads(output.getvalue()), dict(boards=entries))
+                value = json.loads(output.getvalue())
+                self.assertEqual(value["boards"], entries)
+                self.assertEqual(value["heavy"]["board"], device_lock.HEAVY)
             with contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(device.main(["devices"]), 0)
             lines = output.getvalue().splitlines()

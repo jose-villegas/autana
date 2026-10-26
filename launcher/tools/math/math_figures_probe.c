@@ -1,21 +1,19 @@
 /*
- * Prints, as JSON, what the maths library does to the example inputs that
- * the figures of docs/math/Conventions.md and Projection.md draw: a shape
- * through scale, rotate and translate, and one camera point on its way to a
- * pixel. math_figures.py
- * plots the output, so every number in the figures comes from these calls.
+ * Prints JSON for the TRS animation in docs/math/Conventions.md and the
+ * camera-to-pixel panels in Projection.md. Every number in the figures comes
+ * from these library calls; math_figures.py draws their results.
  *
  *     math_figures_probe WIDTH HEIGHT
  *
- * WIDTH and HEIGHT are the viewport the example camera renders into.
+ * WIDTH and HEIGHT set the example camera viewport.
  */
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "math/linear/mat4f.h"
-#include "math/linear/projectf.h"
 #include "math/linear/quatf.h"
 #include "math/linear/transformf.h"
+#include "math/projection/projectf.h"
 #include "math/scalar/math_const.h"
 #include "render/r3d_project.h"
 #include "render/render_view.h"
@@ -31,9 +29,14 @@ static const vec3f_t OUTLINE[] = {
 static const float SHAPE_DEPTH = 0.9F;
 static const vec3f_t OUTLINE_CENTRE = {0.75F, 1.125F, 0.0F};
 
-static const vec3f_t TRS_SCALE = {1.6F, 0.6F, 1.4F};
+/* Interpolated frames per step. */
+#define STEP_FRAMES 16
+
+enum { TRS_SCALE_STEP = 1, TRS_ROTATE_STEP, TRS_TRANSLATE_STEP };
+
+static const vec3f_t TRS_SCALE = {2.0F, 0.5F, 1.5F};
 static const vec3f_t TRS_AXIS = {0.0F, 1.0F, 1.0F}; /* normalised below */
-static const float TRS_ANGLE_DEGREES = 50.0F;
+static const float TRS_ANGLE_DEGREES = 110.0F;
 static const vec3f_t TRS_POSITION = {2.0F, 1.0F, 1.0F};
 
 /* The example camera sits at the origin looking down +z, as TRANSFORMF_IDENTITY places it. */
@@ -42,8 +45,8 @@ static const float VIEW_NEAR_Z = 0.1F;
 static const vec3f_t VIEW_POINT = {0.62F, 0.41F, 2.0F};
 
 static void
-print_shape(const char* name, const mat4f_t* m, const char* tail) {
-    printf("  \"%s\": [", name);
+print_corners(const mat4f_t* m) {
+    printf("[");
     for (int i = 0; i < 2 * OUTLINE_CORNERS; i++) {
         const vec3f_t outline = OUTLINE[i % OUTLINE_CORNERS];
         const vec3f_t corner = {outline.x - OUTLINE_CENTRE.x, outline.y - OUTLINE_CENTRE.y,
@@ -51,7 +54,14 @@ print_shape(const char* name, const mat4f_t* m, const char* tail) {
         const vec3f_t p = mat4f_apply(m, corner);
         printf("%s[%.6g, %.6g, %.6g]", i ? ", " : "", (double)p.x, (double)p.y, (double)p.z);
     }
-    printf("]%s\n", tail);
+    printf("]");
+}
+
+static void
+print_shape(const char* name, const mat4f_t* m, const char* tail) {
+    printf("  \"%s\": ", name);
+    print_corners(m);
+    printf("%s\n", tail);
 }
 
 int
@@ -89,7 +99,23 @@ main(int argc, char** argv) {
     print_shape("local", &local, ",");
     print_shape("scaled", &scaled, ",");
     print_shape("rotated", &rotated, ",");
-    print_shape("placed", &placed, "");
+    print_shape("placed", &placed, ",");
+    printf("  \"frames\": [\n");
+    for (int step = TRS_SCALE_STEP; step <= TRS_TRANSLATE_STEP; step++) {
+        for (int i = 0; i < STEP_FRAMES; i++) {
+            const float t = (float)(i + 1) / STEP_FRAMES;
+            const vec3f_t scale = step == TRS_SCALE_STEP ? vec3f_lerp(unit, TRS_SCALE, t) : TRS_SCALE;
+            const quatf_t rotation = step < TRS_ROTATE_STEP    ? none
+                                     : step == TRS_ROTATE_STEP ? quatf_slerp(none, turn, t)
+                                                               : turn;
+            const vec3f_t position = step == TRS_TRANSLATE_STEP ? vec3f_lerp(origin, TRS_POSITION, t) : origin;
+            const mat4f_t matrix = mat4f_from_trs(position, rotation, scale);
+            printf("   {\"step\": %d, \"shape\": ", step);
+            print_corners(&matrix);
+            printf("}%s\n", step == TRS_TRANSLATE_STEP && i == STEP_FRAMES - 1 ? "" : ",");
+        }
+    }
+    printf("  ]\n");
     printf(" },\n \"pixel\": {\n");
     printf("  \"viewport\": [%d, %d], \"fx\": %.6g, \"fy\": %.6g, \"cx\": %.6g, \"cy\": %.6g, \"near_z\": %.6g,\n",
            viewport.width, viewport.height, (double)view.lens.fx, (double)view.lens.fy, (double)view.lens.cx,

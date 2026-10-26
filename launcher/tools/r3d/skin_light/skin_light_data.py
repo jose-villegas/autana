@@ -9,7 +9,8 @@ FPS. The asset needs normals.
 1; the first clip at 0.5 when left out. Run from launcher/. Standard library
 only. The layout, little-endian, is what skin_light_bench.c reads:
 
-    "SKLT", u32 vertices, u32 joints, u32 frames, u32 sheet frame
+    "SKLT", u32 vertices, u32 joints, u32 frames, u32 sheet frame,
+    u32 sheet clip's first frame, u32 its frame count
     per vertex: f32 normal[3], u8 joint[4], f32 weight[4], u8 sRGB colour[3], u8 0
     per frame, per joint: f32 rotation rows[3][3]
 """
@@ -59,8 +60,9 @@ def write(asset, path, sheet):
     sampled = frames(asset)
     colours = asset.colors or [(0.6, 0.6, 0.6)] * len(asset.positions)
     out = bytearray(b"SKLT")
-    out += struct.pack("<4I", len(asset.positions), len(asset.joints), len(sampled),
-                       sampled.index(sheet_frame(asset, sheet)))
+    clip, time = sheet_frame(asset, sheet)
+    out += struct.pack("<6I", len(asset.positions), len(asset.joints), len(sampled), sampled.index((clip, time)),
+                       sampled.index((clip, 0.0)), frame_count(asset, clip))
     for normal, joints, weights, colour in zip(asset.normals, asset.joint_indices, asset.weights, colours):
         srgb = [int(round(255 * linear_to_srgb(c))) for c in colour[:3]]
         out += struct.pack("<3f4B4f4B", *normal, *joints, *weights, *srgb, 0)

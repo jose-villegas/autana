@@ -72,5 +72,5 @@ done
 echo "" >&2
 echo "  git add <those files>" >&2
 echo "" >&2
-echo "See docs/C-Style-Guide.md. To commit without this check: git commit --no-verify" >&2
+echo "See docs/c-style/README.md. To commit without this check: git commit --no-verify" >&2
 exit 1

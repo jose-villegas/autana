@@ -44,6 +44,7 @@
 #include <io.h>
 #endif
 
+#include "collections/strbuf.h"
 #include "material.h"
 #include "material_palette.h"
 /* Declarations and #defines only - no sand.c body comes with it, so this
@@ -1013,22 +1014,33 @@ rate_gap(const char* word) {
     return buf;
 }
 
+/* Every row pred keeps, labelled and joined by sep; "(none)" for no row. */
 static void
-build_colored_list(bool (*pred)(const mrow_t*), const char* sep, char* out, size_t cap) {
-    out[0] = '\0';
-    bool first = true;
+join_rows(bool (*pred)(const mrow_t*), const char* (*label)(const mrow_t*), const char* sep, char* out, size_t cap) {
+    strbuf_t list = strbuf_make(out, cap);
     for (size_t i = 0; i < all_rows_count; i++) {
-        if (!pred(&all_rows[i])) {
-            continue;
+        if (pred(&all_rows[i])) {
+            strbuf_appendf(&list, "%s%s", list.length > 0 ? sep : "", label(&all_rows[i]));
         }
-        const char* span = mat_span(all_rows[i].color_id, prose_name(all_rows[i].name));
-        size_t len = strlen(out);
-        snprintf(out + len, cap - len, "%s%s", first ? "" : sep, span);
-        first = false;
     }
-    if (out[0] == '\0') {
+    if (list.length == 0) {
         snprintf(out, cap, "(none)");
     }
+}
+
+static const char*
+colored_label(const mrow_t* row) {
+    return mat_span(row->color_id, prose_name(row->name));
+}
+
+static const char*
+name_label(const mrow_t* row) {
+    return row->name;
+}
+
+static void
+build_colored_list(bool (*pred)(const mrow_t*), const char* sep, char* out, size_t cap) {
+    join_rows(pred, colored_label, sep, out, cap);
 }
 
 static void
@@ -1545,20 +1557,7 @@ is_quenching_liquid(const mrow_t* row) {
 
 static void
 join_names(bool (*pred)(const mrow_t*), const char* sep, char* out, size_t cap) {
-    out[0] = '\0';
-    bool first = true;
-    for (size_t i = 0; i < all_rows_count; i++) {
-        if (!pred(&all_rows[i])) {
-            continue;
-        }
-        size_t len = strlen(out);
-        int n = snprintf(out + len, cap - len, "%s%s", first ? "" : sep, all_rows[i].name);
-        (void)n;
-        first = false;
-    }
-    if (out[0] == '\0') {
-        snprintf(out, cap, "(none)");
-    }
+    join_rows(pred, name_label, sep, out, cap);
 }
 
 static bool

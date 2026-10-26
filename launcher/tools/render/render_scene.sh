@@ -18,21 +18,28 @@
 #                   relative to launcher/
 #   scene_renders   one render per line: <label>|<arguments>|<width>x<height>
 #                   with optional flags after it: |nopin for a render
-#                   whose pixels are not integer-exact (see scene_pin), and
+#                   whose pixels are not integer-exact (see scene_pin),
 #                   |nopacks for one run with no asset pack, which shows
-#                   what the scene draws when a pack is missing.
+#                   what the scene draws when a pack is missing, and |crop
+#                   for one cut to what the frame drew, plus the scene's
+#                   crop_margin (render_host.h).
 #                   The declared size is checked against what the binary
-#                   says it wrote, so a renderer that has quietly stopped
+#                   says it wrote (a |crop render's must fit inside it), so
+#                   a renderer that has quietly stopped
 #                   working fails the run rather than leaving a picture
 #                   nobody looks at twice. --video (a flag to this script,
 #                   not a declaration) also writes each render's frames to
 #                   <label>.avi beside its .bmp; it never touches the pinned
 #                   hash, which is taken from the .bmp alone.
+#                   What the binary wrote to stderr stays in <label>.log
+#                   beside the .bmp, for a scene that reports a
+#                   measurement with its image.
 #                   --build-only compiles the renderer, prints `built <path>`
 #                   and renders nothing; tools/render/render_compare.sh uses it.
 #                   --deps compiles nothing: it prints `flags` and the compile
 #                   flags, then the compiler's -MM list (sources and project
 #                   headers; -MM omits system headers).
+#   scene_renderer  OPTIONAL, 1 links the renderer (tools/build/renderer.sh).
 #   scene_ui        OPTIONAL, 1 links the shared host UI sources.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
@@ -145,6 +152,10 @@ render_scene_build() {
         return 1
     fi
     _rs_tools="$_rs_launcher/tools"
+    if [ "${scene_renderer:-0}" = 1 ]; then
+        . "$_rs_tools/build/renderer.sh"
+        scene_sources="$scene_sources $(renderer_sources "$_rs_launcher")"
+    fi
     if [ "${scene_ui:-0}" = 1 ]; then
         . "$_rs_tools/build/ui_sources.sh"
         scene_sources="$scene_sources $UI_SOURCES"
@@ -210,6 +221,8 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
+    # The host takes --set and --tunables: the registry and its console lines.
+    _rs_files="$_rs_files $_rs_launcher/main/core/tune.c $_rs_launcher/main/console/console_tune.c"
     # Every scene uses drawing and presentation, excluding device-only backends.
     _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" "$_rs_launcher/main/draw" -name '*.c' ! -name '*_device.c' | sort | tr '
 ' ' ')"
@@ -267,6 +280,7 @@ render_scene_render() {
             _rs_want=${_rs_tail%%|*}
             _rs_pin_this="$scene_pin"
             _rs_no_packs=""
+            _rs_crop=""
             _rs_flags=${_rs_tail#"$_rs_want"}
             while [ -n "$_rs_flags" ]; do
                 _rs_flags=${_rs_flags#|}
@@ -275,6 +289,7 @@ render_scene_render() {
                 case "$_rs_flag" in
                     nopin) _rs_pin_this=0 ;;
                     nopacks) _rs_no_packs="$scene_out_dir/no-packs" && mkdir -p "$_rs_no_packs" ;;
+                    crop) _rs_crop="--crop" ;;
                     *)
                         echo "FAIL $scene_name/$_rs_label: unknown render flag '$_rs_flag'" >&2
                         exit 1
@@ -290,13 +305,18 @@ render_scene_render() {
             # shellcheck disable=SC2086
             if ! (
                 [ -z "$_rs_no_packs" ] || export AUTANA_ASSET_DIR="$_rs_no_packs"
-                exec "$_rs_bin" $_rs_args -o "$_rs_path" $_rs_video_args
+                exec "$_rs_bin" $_rs_args $_rs_crop -o "$_rs_path" $_rs_video_args
             ) 2> "$_rs_log"; then
                 cat "$_rs_log" >&2
                 echo "FAIL $scene_name/$_rs_label: the renderer exited non-zero" >&2
                 exit 1
             fi
+            cp "$_rs_log" "$scene_out_dir/$_rs_label.log"
             _rs_said=$(sed -n 's/^RENDER [^ ]* \([0-9]*x[0-9]*\).*/\1/p' "$_rs_log")
+            if [ -n "$_rs_crop" ] && [ -n "$_rs_said" ] &&
+                [ "${_rs_said%x*}" -le "${_rs_want%x*}" ] && [ "${_rs_said#*x}" -le "${_rs_want#*x}" ]; then
+                _rs_want=$_rs_said
+            fi
             if [ "$_rs_said" != "$_rs_want" ]; then
                 echo "FAIL $scene_name/$_rs_label: wrote ${_rs_said:-nothing}, declared $_rs_want" >&2
                 exit 1

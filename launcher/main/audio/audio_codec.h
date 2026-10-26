@@ -1,8 +1,7 @@
 /* Shared codec bring-up, persistent TX and capture-only RX. Callers serialize capture changes against TX writes. */
 #pragma once
 #include <stdbool.h>
-
-#include "esp_codec_dev.h"
+#include <stdint.h>
 
 #define AUDIO_CODEC_BLOCK_SAMPLES   128u
 #define AUDIO_CODEC_DMA_BLOCKS      4u
@@ -12,5 +11,5 @@
 const char* audio_codec_failure(void);
 void audio_codec_assert_not_frame_task(void);
 bool audio_codec_check(const char* operation, int status);
-esp_codec_dev_handle_t audio_codec_device_open(esp_codec_dev_type_t type);
-void audio_codec_device_close(esp_codec_dev_handle_t device);
+/* Development console access requires an already-open codec; writes return the read-back byte. */
+bool audio_codec_register(uint8_t reg, bool write, uint8_t* value);

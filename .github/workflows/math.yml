@@ -3,41 +3,46 @@ name: Math Formulas
 # Checks every formula in tracked Markdown the way GitHub renders it, because GitHub
 # shows a broken formula as raw text or a red box and never fails a check.
 # docs/tools/Math-Formulas.md has the full picture; this job just runs the command it
-# documents. Path-filtered because only a .md file or the gate itself can change the
-# result.
+# documents. Pull requests run when a recorded input changes.
 
 on:
   push:
     branches: [main]
-    paths:
-      - '**/*.md'
-      - 'scripts/gates/check-math.mjs'
-      - 'scripts/gates/package.json'
-      - 'scripts/gates/package-lock.json'
-      - '.github/workflows/math.yml'
-      - '.node-version'
-      - '.github/actions/host-tools/**'
   pull_request:
-    paths:
-      - '**/*.md'
-      - 'scripts/gates/check-math.mjs'
-      - 'scripts/gates/package.json'
-      - 'scripts/gates/package-lock.json'
-      - '.github/workflows/math.yml'
-      - '.node-version'
-      - '.github/actions/host-tools/**'
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      check-math: ${{ steps.affected.outputs.check-math }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job check-math
+
   check-math:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.check-math == 'true') }}
     name: Math formulas
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/host-tools
 
       - name: Install the pinned mathjax-full and markdown-it
@@ -45,3 +50,7 @@ jobs:
 
       - name: Validate every formula
         run: node scripts/gates/check-math.mjs
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}

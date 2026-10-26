@@ -1,18 +1,46 @@
 """Regression tests for --changed comment scoping."""
+import importlib.util
 import pathlib
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import gate_tree
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "check_comment_length.py"
 
 
 class CommentLengthTest(unittest.TestCase):
+    def test_import_c_comments_runs_no_subprocess(self):
+        spec = importlib.util.spec_from_file_location("fresh_c_comments", SCRIPT.with_name("c_comments.py"))
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch.object(sys, "path", [str(SCRIPT.parent), *sys.path]), \
+                mock.patch("subprocess.run", side_effect=AssertionError("subprocess during import")):
+            spec.loader.exec_module(module)
+        with mock.patch.object(module, "generated_files", return_value=("generated.h",)) as generated:
+            self.assertEqual(module.excluded(),
+                             ("launcher/components/", "launcher/packages/testkit/unity/", "generated.h"))
+            self.assertIs(module.excluded(), module.excluded())
+            generated.assert_called_once_with()
+
     def git(self, root, *args):
         return subprocess.run(["git", *args], cwd=root, check=True,
                               capture_output=True, text=True)
+
+    def test_paths_exclude_vendored_unity_with_relative_or_absolute_names(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.git(root, "init", "-q")
+            name = "launcher/packages/testkit/unity/unity.h"
+            gate_tree.write(root, name, "/* " + "vendor " * 100 + " */\n")
+            for path in (name, str(root / name)):
+                with self.subTest(path=path):
+                    result = subprocess.run(
+                        [sys.executable, str(SCRIPT), "--limit", "500", "--paths", path],
+                        cwd=root, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("files scanned   0", result.stdout)
 
     def test_split_comment_is_not_new_but_new_over_limit_comment_is(self):
         moved = "moved comment " + "x" * 330

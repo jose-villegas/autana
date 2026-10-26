@@ -45,6 +45,7 @@
 #endif
 
 #include "apps/sand/tests/sand_fill.h"
+#include "hash/name_hash64.h"
 #include "material.h"
 #include "sand.h"
 #if defined(SAND_FORCE_WORK) || defined(SAND_COUNT_SKIPS)
@@ -58,19 +59,6 @@
 #define FP_W     64
 #define FP_H     64
 #define FP_STEPS 300
-
-/* FNV-1a. Chosen for being short enough to read and verify by eye in this
- * file; nothing here needs cryptographic strength, only that two different
- * grids reliably produce two different numbers. */
-static uint64_t
-fnv1a(const uint8_t* data, size_t n) {
-    uint64_t h = 1469598103934665603ULL;
-    for (size_t i = 0; i < n; i++) {
-        h ^= data[i];
-        h *= 1099511628211ULL;
-    }
-    return h;
-}
 
 /* Buckets by the cell's HIGH nibble, which is the material id - including
  * id 15, the extended-range escape hatch (material.h), which is counted as
@@ -744,7 +732,8 @@ print_row(const char* name, const uint8_t* cells, int cell_count) {
     int counts[16];
     histogram(cells, cell_count, counts);
 
-    printf("%-12s %016llx", name, (unsigned long long)fnv1a(cells, (size_t)cell_count));
+    printf("%-12s %016llx", name,
+           (unsigned long long)name_hash64_n(NAME_HASH64_OFFSET_BASIS, cells, (size_t)cell_count));
     for (int m = 0; m < 16; m++) {
         printf(" %d", counts[m]);
     }

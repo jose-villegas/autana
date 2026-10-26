@@ -1,5 +1,6 @@
 /* One codec lifetime with persistent transmit DMA and capture-owned receive DMA. */
 #include "audio/audio_codec.h"
+#include "audio/audio_codec_device.h"
 
 #include <assert.h>
 
@@ -10,8 +11,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "audio/audio_codec_drc.h"
+#include "audio/audio_codec_feedback.h"
 #include "audio/audio_out.h"
 #include "board/board.h"
+#include "build/build_variant.h"
 #include "profile/frame_watch.h"
 
 #define AUDIO_CODEC_PROBE_TIMEOUT_MS 100
@@ -30,6 +34,63 @@ static const audio_codec_if_t* codec;
 static esp_codec_dev_handle_t input_device;
 static unsigned references;
 static const char* failed_step;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static audio_codec_feedback_t feedback;
+
+static int
+feedback_get(void* context, int reg, int* value) {
+    (void)context;
+    return codec->get_reg(codec, reg, value);
+}
+
+static int
+feedback_set(void* context, int reg, int value) {
+    (void)context;
+    return codec->set_reg(codec, reg, value);
+}
+
+bool
+audio_codec_dac_feedback(bool on) {
+    if (!codec || (on && !input_device)) {
+        return false;
+    }
+    return audio_codec_check("DAC feedback", audio_codec_feedback_set(&feedback, NULL, feedback_get, feedback_set, on)
+                                                 ? ESP_CODEC_DEV_OK
+                                                 : ESP_CODEC_DEV_DRV_ERR);
+}
+
+bool
+audio_codec_register(uint8_t reg, bool write, uint8_t* value) {
+    if (!codec || !value) {
+        return false;
+    }
+    if (write && !audio_codec_check("register write", codec->set_reg(codec, reg, *value))) {
+        return false;
+    }
+    int readback;
+    if (!audio_codec_check("register read", codec->get_reg(codec, reg, &readback))) {
+        return false;
+    }
+    *value = (uint8_t)readback;
+    return true;
+}
+
+#endif
+
+bool
+audio_codec_drc_set(const audio_codec_drc_t* config) {
+    if (!codec || !config) {
+        return false;
+    }
+    int old;
+    return audio_codec_check("DRC ramp read", codec->get_reg(codec, AUDIO_CODEC_DRC_RAMP_REG, &old))
+           && audio_codec_check(
+               "DRC enable", codec->set_reg(codec, AUDIO_CODEC_DRC_ENABLE_REG, (int)audio_codec_drc_enable_reg(config)))
+           && audio_codec_check(
+               "DRC levels", codec->set_reg(codec, AUDIO_CODEC_DRC_LEVEL_REG, (int)audio_codec_drc_level_reg(config)))
+           && audio_codec_check("DRC ramp", codec->set_reg(codec, AUDIO_CODEC_DRC_RAMP_REG,
+                                                           (int)audio_codec_drc_ramp_reg((unsigned)old, config)));
+}
 
 const char*
 audio_codec_failure(void) {

@@ -10,8 +10,7 @@
 
 _Static_assert(ANIM_TRACKS_AT_PAD + ANIM_TRACKS_HEADER_PAD_SIZE == ANIM_TRACKS_HEADER_SIZE,
                "TRCK header fields fill the header");
-_Static_assert(ANIM_TRACKS_ROW_PAD + ANIM_TRACKS_ROW_PAD_SIZE == ANIM_TRACKS_ROW_SIZE,
-               "TRCK row fields and alignment fill the row");
+_Static_assert(ANIM_TRACKS_ROW_INTERP + sizeof(uint8_t) == ANIM_TRACKS_ROW_SIZE, "TRCK row fields fill the row");
 
 static const uint8_t WIDTHS[] = {1, 2, 3, 4, 3};
 
@@ -35,7 +34,6 @@ string_fits(const anim_tracks_t* tracks, uint16_t offset) {
     return offset < size && memchr(strings + offset, 0, size - offset) != NULL;
 }
 
-/* A row's strings, codes and padding, before its arrays are read. */
 static bool
 row_fields_valid(const anim_tracks_t* tracks, const uint8_t* row) {
     if (!string_fits(tracks, asset_read_u16(row + ANIM_TRACKS_ROW_PATH))
@@ -46,12 +44,12 @@ row_fields_valid(const anim_tracks_t* tracks, const uint8_t* row) {
         || row[ANIM_TRACKS_ROW_INTERP] > ANIM_CUBIC || asset_read_u32(row + ANIM_TRACKS_ROW_COMPONENT) == 0) {
         return false;
     }
-    for (int i = ANIM_TRACKS_ROW_PAD; i < ANIM_TRACKS_ROW_SIZE; i++) {
-        if (row[i] != 0) {
-            return false;
-        }
-    }
-    return true;
+    const char* strings = (const char*)tracks->base + asset_read_u32(tracks->base + ANIM_TRACKS_AT_STRINGS);
+    const name_hash_t path = asset_read_u32(row + ANIM_TRACKS_ROW_PATH_HASH);
+    const name_hash_t field = asset_read_u32(row + ANIM_TRACKS_ROW_FIELD_HASH);
+    return path != NAME_HASH_NONE && field != NAME_HASH_NONE
+           && path == name_hash(strings + asset_read_u16(row + ANIM_TRACKS_ROW_PATH))
+           && field == name_hash(strings + asset_read_u16(row + ANIM_TRACKS_ROW_FIELD));
 }
 
 /* Finite and strictly increasing. */
@@ -161,6 +159,8 @@ anim_tracks_binding_at(const anim_tracks_t* tracks, int index, anim_binding_t* o
         .path = strings + asset_read_u16(row + ANIM_TRACKS_ROW_PATH),
         .field = strings + asset_read_u16(row + ANIM_TRACKS_ROW_FIELD),
         .component = asset_read_u32(row + ANIM_TRACKS_ROW_COMPONENT),
+        .path_hash = asset_read_u32(row + ANIM_TRACKS_ROW_PATH_HASH),
+        .field_hash = asset_read_u32(row + ANIM_TRACKS_ROW_FIELD_HASH),
         .type = type,
         .curve =
             {
@@ -176,12 +176,12 @@ anim_tracks_binding_at(const anim_tracks_t* tracks, int index, anim_binding_t* o
 }
 
 asset_status_t
-anim_tracks_find(const anim_tracks_t* tracks, const char* path, uint32_t component, const char* field,
+anim_tracks_find(const anim_tracks_t* tracks, name_hash_t path, uint32_t component, name_hash_t field,
                  anim_track_t* out) {
     for (int i = 0; i < tracks->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(tracks, i, &binding);
-        if (binding.component == component && strcmp(binding.path, path) == 0 && strcmp(binding.field, field) == 0) {
+        if (binding.component == component && binding.path_hash == path && binding.field_hash == field) {
             *out = binding.curve;
             return ASSET_OK;
         }
@@ -191,7 +191,7 @@ anim_tracks_find(const anim_tracks_t* tracks, const char* path, uint32_t compone
 }
 
 static asset_status_t
-find_part(const anim_tracks_t* tracks, const char* node, const char* field, anim_value_t type, anim_track_t* out) {
+find_part(const anim_tracks_t* tracks, name_hash_t node, name_hash_t field, anim_value_t type, anim_track_t* out) {
     const asset_status_t status = anim_tracks_find(tracks, node, ANIM_COMPONENT_TRANSFORM, field, out);
     if (status == ASSET_OK && (out->width != WIDTHS[type] || (out->quaternion != 0) != (type == ANIM_VALUE_QUAT))) {
         return ASSET_ERR_FORMAT;
@@ -200,15 +200,15 @@ find_part(const anim_tracks_t* tracks, const char* node, const char* field, anim
 }
 
 asset_status_t
-anim_tracks_find_node(const anim_tracks_t* tracks, const char* node, anim_node_tracks_t* out) {
+anim_tracks_find_node(const anim_tracks_t* tracks, name_hash_t node, anim_node_tracks_t* out) {
     static const float AT_START[] = {0.0F};
     static const float UNSCALED[] = {1.0F, 1.0F, 1.0F};
-    asset_status_t status = find_part(tracks, node, "position", ANIM_VALUE_VEC3, &out->translation);
+    asset_status_t status = find_part(tracks, node, name_hash("position"), ANIM_VALUE_VEC3, &out->translation);
     if (status == ASSET_OK) {
-        status = find_part(tracks, node, "rotation", ANIM_VALUE_QUAT, &out->rotation);
+        status = find_part(tracks, node, name_hash("rotation"), ANIM_VALUE_QUAT, &out->rotation);
     }
     if (status == ASSET_OK) {
-        status = find_part(tracks, node, "scale", ANIM_VALUE_VEC3, &out->scale);
+        status = find_part(tracks, node, name_hash("scale"), ANIM_VALUE_VEC3, &out->scale);
         if (status == ASSET_ERR_NOT_FOUND) {
             out->scale = (anim_track_t){AT_START, UNSCALED, 1, 3, ANIM_STEP, 0};
             status = ASSET_OK;

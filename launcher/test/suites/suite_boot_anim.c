@@ -42,7 +42,7 @@
 #include "gfx/present/gfx_test.h"
 #include "test_anim_tracks.h"
 #include "test_asset_dir.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #endif
 
 /* The panel these numbers are laid out for, spelled out so a wrong
@@ -217,10 +217,8 @@ identity_view(void) {
     for (int i = 0; i < 4; i++) {
         v.matrix.m[i][i] = R3D_X_UNIT_ONE;
     }
-    v.near_z = mathf_round_i32(R3D_LINE_NEAR_Z * (float)R3D_X_UNIT_ONE);
-    v.center_x = PANEL_W / 2;
-    v.center_y = PANEL_H / 2;
-    v.pixels_per_unit = PANEL_W / 2;
+    v.lens = (projectx_t){PANEL_W / 2 * MATHX_ONE, PANEL_W / 2 * MATHX_ONE, PANEL_W / 2 * MATHX_ONE,
+                          PANEL_H / 2 * MATHX_ONE, mathf_to_x(R3D_LINE_NEAR_Z)};
     v.units_ok = false;
     return v;
 }
@@ -274,7 +272,7 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
     boot_anim_view_t view = identity_view();
-    view.near_z = 64; /* 0.125 m */
+    view.lens.near_z = MATHX_ONE / 8; /* 0.125 m */
     int x = -1, y = -1;
 
     const bool ok = boot_anim_project_point(0, 512, 0, &view, &x, &y);
@@ -294,7 +292,7 @@ static void
 test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
     const boot_anim_view_t view = identity_view();
     const vec3x_t p0 = {100, 200, 0};
-    const vec3x_t p1 = {-100, -200, view.near_z};
+    const vec3x_t p1 = {-100, -200, r3d_line_near_z(&view)};
     int ax, ay, bx, by;
 
     const bool ok = r3d_project_segment_cs_x(p0, p1, &view, &ax, &ay, &bx, &by);
@@ -321,10 +319,10 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
     /* Double-precision reference for the clip itself: p0 is BEHIND, so
      * IT is what gets replaced by the near-plane crossing point. */
     const int64_t span = (int64_t)p1.z - p0.z;
-    const int64_t reach = (int64_t)view.near_z - p0.z;
+    const int64_t reach = (int64_t)r3d_line_near_z(&view) - p0.z;
     int ex, ey;
     const vec3x_t exact_clip = {(int32_t)(p0.x + ((((int64_t)p1.x - p0.x) * reach) / span)),
-                                (int32_t)(p0.y + ((((int64_t)p1.y - p0.y) * reach) / span)), view.near_z};
+                                (int32_t)(p0.y + ((((int64_t)p1.y - p0.y) * reach) / span)), r3d_line_near_z(&view)};
     r3d_camera_to_screen_x(exact_clip, &view, &ex, &ey);
 
     const int tolerance = 6;
@@ -493,6 +491,42 @@ test_swell_is_zero_through_its_start(void) {
 #define FLOOR_REFERENCE_DEG_PER_TURN  360.0
 #define FLOOR_REFERENCE_MS_PER_SECOND 1000.0
 
+/* The swell at (re, im) metres, as authored. */
+static double
+floor_reference_swell(double re, double im, uint32_t ms) {
+    double height = 0;
+    if (ms > BOOT_ANIM_TITLE_START_MS) {
+        const double fade = fmin(1, (double)(ms - BOOT_ANIM_TITLE_START_MS) / BOOT_ANIM_SWELL_IN_MS);
+        for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+            const boot_anim_swell_setting_t* sine = &boot_anim_swell_settings[k];
+            const double angle = sine->direction_deg * FLOOR_REFERENCE_TAU / FLOOR_REFERENCE_DEG_PER_TURN;
+            const double along = (re * cos(angle)) + (im * sin(angle));
+            height += BOOT_ANIM_SWELL_HEIGHT_M * fade * sine->weight
+                      * sin(FLOOR_REFERENCE_TAU * ((along / sine->wavelength_m) - ((double)ms / sine->period_ms)));
+        }
+    }
+    return height;
+}
+
+/* Past the mesh the swell eases out, smoothstepped from the mesh's edge to
+ * BOOT_ANIM_FAR_SWELL_FADE_Q12. */
+static double
+far_reference_swell(double re, double im, uint32_t ms) {
+    const double edge = (double)boot_anim_axis_far[0].r / BOOT_ANIM_ONE;
+    const double fade = (double)BOOT_ANIM_FAR_SWELL_FADE_Q12 / BOOT_ANIM_ONE;
+    const double u = fmin(1, fmax(0, (fade - hypot(re, im)) / (fade - edge)));
+    return floor_reference_swell(re, im, ms) * u * u * (3 - (2 * u));
+}
+
+/* The far lines also ease out over BOOT_ANIM_FAR_SWELL_OUT_MS, smoothstepped,
+ * to none by the last time step at or before the crossfade. */
+static double
+far_line_reference_swell(double re, double im, uint32_t ms) {
+    const double end = (double)(BOOT_ANIM_IMAGE_START_MS - (BOOT_ANIM_IMAGE_START_MS % BOOT_ANIM_FLOOR_TIME_STEP_MS));
+    const double u = fmin(1, fmax(0, (end - (double)ms) / BOOT_ANIM_FAR_SWELL_OUT_MS));
+    return far_reference_swell(re, im, ms) * u * u * (3 - (2 * u));
+}
+
 static double
 floor_reference_height(int i, int j, uint32_t ms) {
     const double re = (double)(i * BOOT_ANIM_MESH_STEP_Q12) / BOOT_ANIM_ONE;
@@ -520,17 +554,7 @@ floor_reference_height(int i, int j, uint32_t ms) {
         height = -amplitude * calm * exp(-(x * x) / 2)
                  * cos(FLOOR_REFERENCE_TAU * (radius - (2 * group_radius)) / wavelength);
     }
-    if (ms > BOOT_ANIM_TITLE_START_MS) {
-        const double fade = fmin(1, (double)(ms - BOOT_ANIM_TITLE_START_MS) / BOOT_ANIM_SWELL_IN_MS);
-        for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
-            const boot_anim_swell_setting_t* sine = &boot_anim_swell_settings[k];
-            const double angle = sine->direction_deg * FLOOR_REFERENCE_TAU / FLOOR_REFERENCE_DEG_PER_TURN;
-            const double along = (re * cos(angle)) + (im * sin(angle));
-            height += BOOT_ANIM_SWELL_HEIGHT_M * fade * sine->weight
-                      * sin(FLOOR_REFERENCE_TAU * ((along / sine->wavelength_m) - ((double)ms / sine->period_ms)));
-        }
-    }
-    return height;
+    return height + floor_reference_swell(re, im, ms);
 }
 
 static void
@@ -546,6 +570,51 @@ test_baked_floor_matches_direct_float(void) {
         }
     }
     printf("FLOOR_REFERENCE max_error_m=%.6f tolerance_m=%.6f\n", maximum_error, FLOOR_REFERENCE_TOLERANCE_M);
+    TEST_ASSERT_TRUE(maximum_error < FLOOR_REFERENCE_TOLERANCE_M);
+}
+
+/* The swell on the far lines and on the axis lines past the mesh, every
+ * line, side and half, against the authored waves eased out by the fade;
+ * the far lines are flat from the crossfade on. */
+static void
+test_baked_far_swell_matches_direct_float(void) {
+    const int dirs[4][2] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+    double maximum_error = 0;
+    for (uint32_t ms = 0; ms <= BOOT_ANIM_MS; ms += FLOOR_REFERENCE_STEP_MS) {
+        const boot_anim_floor_state_t state = boot_anim_floor_state(ms);
+        if (ms >= BOOT_ANIM_IMAGE_START_MS) {
+            TEST_ASSERT_EQUAL_UINT16(0, state.far_swell);
+        }
+        for (int n = 0; n < BOOT_ANIM_FAR_LINES; n++) {
+            const boot_anim_far_line_t* line = &boot_anim_far_lines[n];
+            for (int k = 0; k < line->count; k++) {
+                for (int way = 0; way < 8; way++) {
+                    const bool along_im = (way & 1) != 0;
+                    const int side = (way & 2) != 0 ? -1 : 1;
+                    const int half = (way & 4) != 0 ? -1 : 1;
+                    const double c = (double)(side * line->c) / BOOT_ANIM_ONE;
+                    const double s = (double)(half * boot_anim_far_samples[line->first + k].s) / BOOT_ANIM_ONE;
+                    const double expect =
+                        along_im ? far_line_reference_swell(c, s, ms) : far_line_reference_swell(s, c, ms);
+                    const double baked =
+                        (double)boot_anim_far_line_swell(line, k, along_im, side, half, &state) / BOOT_ANIM_ONE;
+                    maximum_error = fmax(maximum_error, fabs(baked - expect));
+                    TEST_ASSERT_TRUE(mathi_abs(boot_anim_far_line_swell(line, k, along_im, side, half, &state))
+                                     <= boot_anim_swell_bound(&state));
+                }
+            }
+        }
+        for (int n = 0; n < BOOT_ANIM_AXIS_FAR_SAMPLES; n++) {
+            const double r = (double)boot_anim_axis_far[n].r / BOOT_ANIM_ONE;
+            for (int d = 0; d < 4; d++) {
+                const int32_t swell = boot_anim_axis_far_height(n, dirs[d][0], dirs[d][1], &state)
+                                      - boot_anim_ripple_at(&boot_anim_axis_far[n].node, &state);
+                const double expect = far_reference_swell(dirs[d][0] * r, dirs[d][1] * r, ms);
+                maximum_error = fmax(maximum_error, fabs(((double)swell / BOOT_ANIM_ONE) - expect));
+            }
+        }
+    }
+    printf("FAR_SWELL_REFERENCE max_error_m=%.6f tolerance_m=%.6f\n", maximum_error, FLOOR_REFERENCE_TOLERANCE_M);
     TEST_ASSERT_TRUE(maximum_error < FLOOR_REFERENCE_TOLERANCE_M);
 }
 #endif
@@ -617,13 +686,43 @@ test_the_far_samples_climb_from_the_mesh_edge_to_far(void) {
  * gaps between them never shrink, and the last is within far. */
 static void
 test_the_far_lines_thin_out_with_distance(void) {
-    TEST_ASSERT_TRUE(boot_anim_far_lines[0] > 0);
-    TEST_ASSERT_TRUE(boot_anim_far_lines[0] < boot_anim_axis_far[0].r);
+    TEST_ASSERT_TRUE(boot_anim_far_lines[0].c > 0);
+    TEST_ASSERT_TRUE(boot_anim_far_lines[0].c < boot_anim_axis_far[0].r);
     for (int n = 2; n < BOOT_ANIM_FAR_LINES; n++) {
-        TEST_ASSERT_TRUE(boot_anim_far_lines[n] - boot_anim_far_lines[n - 1]
-                         >= boot_anim_far_lines[n - 1] - boot_anim_far_lines[n - 2]);
+        TEST_ASSERT_TRUE(boot_anim_far_lines[n].c - boot_anim_far_lines[n - 1].c
+                         >= boot_anim_far_lines[n - 1].c - boot_anim_far_lines[n - 2].c);
     }
-    TEST_ASSERT_TRUE(boot_anim_far_lines[BOOT_ANIM_FAR_LINES - 1] <= BOOT_ANIM_FAR_Q12);
+    TEST_ASSERT_TRUE(boot_anim_far_lines[BOOT_ANIM_FAR_LINES - 1].c <= BOOT_ANIM_FAR_Q12);
+}
+
+/* Each far line's swell samples run outward from where it leaves the mesh
+ * (or from its foot, past the mesh) to where the swell is gone, ending
+ * exactly where draw_far_ring() starts the flat rest; lines past the fade
+ * take none. The axis lines are flat from the fade on too. */
+static void
+test_the_far_swell_ends_where_the_flat_lines_begin(void) {
+    const int32_t edge = boot_anim_axis_far[0].r;
+    for (int n = 0; n < BOOT_ANIM_FAR_LINES; n++) {
+        const boot_anim_far_line_t* line = &boot_anim_far_lines[n];
+        if (line->c >= BOOT_ANIM_FAR_SWELL_FADE_Q12) {
+            TEST_ASSERT_EQUAL_UINT8(0, line->count);
+            continue;
+        }
+        TEST_ASSERT_TRUE(line->count >= 2);
+        const boot_anim_far_sample_t* run = &boot_anim_far_samples[line->first];
+        TEST_ASSERT_EQUAL_INT32(mathi_half_chord(mathi_max(edge, line->c), line->c), run[0].s);
+        for (int k = 1; k < line->count; k++) {
+            TEST_ASSERT_TRUE(run[k].s > run[k - 1].s);
+            TEST_ASSERT_TRUE(run[k].swell_gain <= run[k - 1].swell_gain);
+        }
+        TEST_ASSERT_EQUAL_INT32(mathi_half_chord(BOOT_ANIM_FAR_SWELL_FADE_Q12, line->c), run[line->count - 1].s);
+        TEST_ASSERT_EQUAL_UINT16(0, run[line->count - 1].swell_gain);
+    }
+    for (int n = 0; n < BOOT_ANIM_AXIS_FAR_SAMPLES; n++) {
+        if (boot_anim_axis_far[n].r >= BOOT_ANIM_FAR_SWELL_FADE_Q12) {
+            TEST_ASSERT_EQUAL_UINT16(0, boot_anim_axis_far[n].swell_gain);
+        }
+    }
 }
 
 static void
@@ -632,9 +731,9 @@ test_the_far_chord_is_the_floor_of_the_true_half_chord(void) {
     for (size_t i = 0; i < sizeof(radii) / sizeof(radii[0]); i++) {
         const int32_t r = radii[i];
         for (int n = 0; n < BOOT_ANIM_FAR_LINES; n++) {
-            const int32_t c = boot_anim_far_lines[n];
+            const int32_t c = boot_anim_far_lines[n].c;
             const int64_t h = ((int64_t)r * r) - ((int64_t)c * c);
-            const int64_t half = boot_anim_far_chord(r, c);
+            const int64_t half = mathi_half_chord(r, c);
             if (h <= 0) {
                 TEST_ASSERT_EQUAL_INT64(0, half);
                 continue;
@@ -884,7 +983,7 @@ test_lod_stride_tiers_by_extent(void) {
 /*
  * Pacing
  *
- * tween_ramp()/tween_ease_out() themselves are tested in suite_tween.c;
+ * ease_ramp_u8()/ease_out_u8() themselves are tested in suite_tween.c;
  * what is left here is specific to how boot_anim.h USES them, not the
  * primitives themselves.
  */
@@ -1251,7 +1350,7 @@ test_letters_are_staggered_left_to_right(void) {
         if (i > 0) {
             /* Halfway between letter (i-1)'s start and letter i's: (i-1)
              * has been moving for half a stagger interval, i has not moved
-             * at all yet (tween_ramp() is exactly 0 until STRICTLY past
+             * at all yet (ease_ramp_u8() is exactly 0 until STRICTLY past
              * its own start, so checking AT i's start catches neither
              * letter moving; checking here is what actually exercises "an
              * earlier letter is further along"). */
@@ -1748,6 +1847,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_swell_is_zero_through_its_start);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_baked_floor_matches_direct_float);
+    RUN_TEST(test_baked_far_swell_matches_direct_float);
 #endif
     RUN_TEST(test_the_title_wave_is_at_full_swing_before_it_calms);
     RUN_TEST(test_the_title_wave_reaches_stillness_after_its_fade);
@@ -1757,6 +1857,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_floor_grows_from_the_mesh_edge_to_far);
     RUN_TEST(test_the_far_lines_thin_out_with_distance);
     RUN_TEST(test_the_far_chord_is_the_floor_of_the_true_half_chord);
+    RUN_TEST(test_the_far_swell_ends_where_the_flat_lines_begin);
 
     RUN_TEST(test_a_span_starts_and_ends_halfway_between_its_points);
     RUN_TEST(test_a_repeated_point_pins_the_end_of_the_curve);

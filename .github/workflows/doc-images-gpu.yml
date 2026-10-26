@@ -1,17 +1,24 @@
 name: GPU Doc Images
 
-# The GPU job renders only when the stage's input fingerprint differs from the latest record on main,
-# or when a dispatch sets force.
+# The GPU job renders unless main's newest record is a rendered record of this input
+# fingerprint, or when a dispatch sets force.
 # docs/tools/Render-Harness.md describes the fingerprint and the record.
 on:
   workflow_dispatch:
     inputs:
+      override:
+        description: Render outside the local night window
+        type: boolean
+        default: false
       force:
         description: Render even when a finished run recorded these inputs
         type: boolean
         default: false
   schedule:
-    - cron: '0 3 * * *'
+    - cron: '0 16 * * *'
+  workflow_run:
+    workflows: [Bakes GPU]
+    types: [completed]
   push:
     branches: [main]
 
@@ -25,15 +32,19 @@ permissions:
 # needs this token.
 env:
   GH_TOKEN: ${{ github.token }}
+  NIGHT_START: ${{ vars.NIGHT_START }}
+  GPU_WORKFLOW: doc-images-gpu.yml
   REFRESH_BRANCH: feature/refresh-doc-images-gpu
   MPLBACKEND: Agg
   RECORD_RETENTION_DAYS: 90
   FORCE: ${{ inputs.force }}
+  OVERRIDE: ${{ inputs.override }}
 
 jobs:
   fingerprint:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     outputs:
       fingerprint: ${{ steps.inputs.outputs.fingerprint }}
       current: ${{ steps.inputs.outputs.current }}
@@ -53,13 +64,15 @@ jobs:
             echo "doc images current: latest main run recorded inputs $fingerprint"
           else
             echo "inputs $fingerprint: not current (latest main record differs, another run unfinished, or force)"
+            echo "GPU images pending; render in the local night window." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   refresh:
     needs: fingerprint
-    if: needs.fingerprint.outputs.current != 'true'
+    if: github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'
     runs-on: [self-hosted, linux, gpu]
-    timeout-minutes: 1440
+    # 7 h MAX_EVENING_WAIT + 13 h (18:00–07:00 cap) + 1 h setup/publish = 1260 min.
+    timeout-minutes: 1260
     concurrency:
       group: doc-images-gpu
       cancel-in-progress: false
@@ -96,15 +109,16 @@ jobs:
         run: nvidia-smi --query-gpu=name,memory.total,memory.used,memory.free --format=csv
 
       - name: Run the full GPU stage
+        id: gpu
         if: steps.gate.outputs.render == 'true'
-        run: sh launcher/tools/render/render_doc_images.sh --stage gpu
+        run: sh scripts/ci/gpu_stage.sh sh launcher/tools/render/render_doc_images.sh --stage gpu
 
       - name: GPU memory after the full stage
         if: always() && steps.gate.outputs.render == 'true'
         run: nvidia-smi --query-gpu=name,memory.total,memory.used,memory.free --format=csv
 
       - name: Compare pixels and stage changed images and GPU tables
-        if: steps.gate.outputs.render == 'true'
+        if: steps.gpu.outputs.rendered == 'true'
         id: render
         run: |
           while IFS= read -r -d '' image; do
@@ -125,7 +139,7 @@ jobs:
           echo "count=$(wc -l < "$RUNNER_TEMP/changed.txt")" >> "$GITHUB_OUTPUT"
 
       - name: Nothing changed, close a stale GPU refresh PR
-        if: steps.gate.outputs.render == 'true' && steps.render.outputs.count == '0'
+        if: steps.gpu.outputs.rendered == 'true' && steps.render.outputs.count == '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -133,7 +147,7 @@ jobs:
             "Every GPU-rendered image and generated table already matches main; nothing left to refresh."
 
       - name: Commit changes and open or update the GPU refresh PR
-        if: steps.gate.outputs.render == 'true' && steps.render.outputs.count != '0'
+        if: steps.gpu.outputs.rendered == 'true' && steps.render.outputs.count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -163,7 +177,7 @@ jobs:
           "$GPU_ENV/bin/python3" scripts/ci/refresh_pr.py sync 'docs: refresh GPU-rendered images' "$RUNNER_TEMP/body.md"
 
       - name: Record the inputs these images were made from
-        if: steps.gate.outputs.render == 'true'
+        if: steps.gpu.outputs.rendered == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: doc-images-inputs-${{ needs.fingerprint.outputs.fingerprint }}
@@ -171,11 +185,11 @@ jobs:
           retention-days: ${{ env.RECORD_RETENTION_DAYS }}
 
       - name: Write the failed rendering record
-        if: failure() && steps.gate.outputs.render == 'true'
+        if: failure() && steps.gpu.outputs.rendered == 'true'
         run: echo "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" > "$RUNNER_TEMP/doc-images-failed.txt"
 
       - name: Record failed inputs
-        if: failure() && steps.gate.outputs.render == 'true'
+        if: failure() && steps.gpu.outputs.rendered == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: doc-images-failed-${{ needs.fingerprint.outputs.fingerprint }}

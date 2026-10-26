@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "core/memory.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
 #include "render/render_view.h"
@@ -41,17 +42,26 @@ typedef struct {
     const char* name;
     size_t state_bytes;
     raster_attachment_t (*attachment)(void* state);
+    /* Optional. After the frame's draw, and after each draw it asks for:
+     * true to draw the same instances again through `out`, the frame's
+     * stats kept from the first. With `listed` set it has filled the
+     * raster's census list with the clusters to draw; otherwise every
+     * cluster is drawn. */
+    bool (*second_view)(void* state, const raster_t* raster, render_view_t* out, bool* listed);
+    /* Optional. Over the composed picture, `width` by `height`, with draw/. */
+    void (*overlay)(void* state, int width, int height);
 } render_debug_view_t;
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
 #define RENDER_DEBUG_VIEW_SHADED  0
-#define RENDER_DEBUG_VIEW_COUNT   4 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_COUNT   5 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_split_t split;
     raster_t raster; /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
+    memory_take_fn take; /* where the scratch comes from; NULL is the heap */
     int scale_percent;
 
     enum { RENDER_FIXED, RENDER_STEPPED, RENDER_PREDICTED } policy;
@@ -69,8 +79,17 @@ typedef struct {
 /* The engine's own context, the one the scene manager draws through. */
 render_context_t* render_context_main(void);
 
-/* Frees the scratch block and returns every setting to its default. */
+/* Drops the scratch block and returns every setting but `take` to its default. */
 void render_context_release(render_context_t* context);
+
+/* Takes the scratch from `take` from now on; NULL is the heap. A taken block
+ * is only dropped here, never freed: its lender gets it back once
+ * render_context_drop_scratch() or render_context_release() has run. */
+void render_context_set_take(render_context_t* context, memory_take_fn take);
+
+/* Forgets the scratch block, freeing it when it came from the heap; the next
+ * draw takes one again. */
+void render_context_drop_scratch(render_context_t* context);
 
 /* Drops feedback after a camera cut. */
 void render_context_forget(render_context_t* context);
@@ -106,3 +125,14 @@ bool render_context_draw(render_context_t* context, const r3d_instance_t* instan
 bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half);
 
 render_context_frame_t render_context_frame(const render_context_t* context);
+
+/* Whether the debug view draws lines over the composed picture: a caller
+ * then composes at full size, not into a half picture. */
+bool render_context_has_overlay(const render_context_t* context);
+
+/* The debug view's overlay over a composed picture `width` by `height`;
+ * nothing when the view has none. */
+void render_context_overlay(const render_context_t* context, int width, int height);
+
+/* The debug view's own state, as its row's hooks see it; NULL when shaded. */
+const void* render_context_debug_view_state(const render_context_t* context);

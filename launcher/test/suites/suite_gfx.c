@@ -17,7 +17,9 @@
  * docs/testing/Writing-a-Test.md.
  */
 
+#include "perf_budget.h"
 #include "suites.h"
+#include "testkit/bench.h"
 
 #ifdef DEVICE_BUILD
 
@@ -27,7 +29,6 @@
 
 #include "unity.h"
 
-#include "esp_cache.h"
 #include "esp_log.h"
 
 #include "board/board.h"
@@ -47,12 +48,11 @@
 #include "panel_clock_pin.h"
 #include "profile/frame_cost.h"
 
-static const char* TAG = "device_tests";
+static const char* TAG = PERF_BUDGET_TAG;
 
 /* Regression ceilings are worst + max(spread, 2% of worst) across a 5-run
  * S3 portrait board capture (autana suite run_gfx_suite --runs 5), with
- * fixture() pinning the fast panel clock and the selftest runner resetting
- * heal to its defaults around every test. Shipping landscape costs 17-37%
+ * fixture() pinning the fast panel clock. Shipping landscape costs 17-37%
  * more; these pegs do not cover that orientation. */
 
 /* gfx owns global hardware state and is already initialised by the time this
@@ -70,20 +70,6 @@ static void
 clear_fixture(gfx_color_t background) {
     fixture();
     draw_clear(background);
-}
-
-static void
-perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
-#if CONFIG_LAUNCHER_QEMU
-    /* Whether the ceiling was pegged on the board or is another present
-     * timed in the same run, it prices the chip's balance of CPU against bus
-     * time, which an emulator does not keep, so there it is reported and not
-     * enforced. */
-    ESP_LOGI("device_tests", "%s: %lld us, limit %lld us not enforced", name, (long long)measured_us,
-             (long long)ceiling_us);
-    return;
-#endif
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)ceiling_us, (int)measured_us, name);
 }
 
 /* Counts pixels equal to `expect` across the whole framebuffer, which is how
@@ -750,6 +736,7 @@ test_an_unchanged_frame_costs_almost_nothing(void) {
 
     ESP_LOGI(TAG, "present: full %lld us, unchanged %lld us", (long long)full, (long long)unchanged);
 
+    TEST_ASSERT_GREATER_THAN_INT64(0, full / 10);
     perf_guard("a frame in which nothing changed must skip the bus entirely, not "
                "resend 322 KiB of identical pixels",
                unchanged, full / 10);
@@ -807,6 +794,7 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
 
     ESP_LOGI(TAG, "present: full %lld us, one band %lld us", (long long)full, (long long)one_band);
 
+    TEST_ASSERT_GREATER_THAN_INT64(0, full / 2);
     perf_guard("sending one band of seven must cost far less than sending all of "
                "them - this is the whole point of dirty tracking",
                one_band, full / 2);
@@ -873,6 +861,7 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
     ESP_LOGI(TAG, "present: full band %lld us, %d px wide (gathered) %lld us", (long long)full_band, w,
              (long long)narrow);
 
+    TEST_ASSERT_GREATER_THAN_INT64(0, full_band);
     perf_guard("a strip a fraction of the band's width must cost less than "
                "claiming the whole band, or the gather-copy path is not paying "
                "for itself",
@@ -898,18 +887,6 @@ static const char* const narrow_present_events[] = {"i_stall_busy", "bubbles_cti
 
 typedef enum { NARROW_AFTER_BAND, NARROW_REPEATED, NARROW_COLD } narrow_setting_t;
 
-extern char _instruction_reserved_start[];
-extern char _instruction_reserved_end[];
-
-static void
-drop_flash_code_from_cache(void) {
-    const uintptr_t line = CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE;
-    const uintptr_t start = (uintptr_t)_instruction_reserved_start & ~(line - 1);
-    const uintptr_t end = ((uintptr_t)_instruction_reserved_end + line - 1) & ~(line - 1);
-    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)start, end - start,
-                                              ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_TYPE_INST));
-}
-
 static void
 count_narrow_presents(const char* scene, narrow_setting_t setting) {
     const int events = (int)(sizeof narrow_present_events / sizeof narrow_present_events[0]);
@@ -926,7 +903,7 @@ count_narrow_presents(const char* scene, narrow_setting_t setting) {
             }
             write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
             if (setting == NARROW_COLD) {
-                drop_flash_code_from_cache();
+                bench_cache_code_cold();
             }
             TEST_ASSERT_TRUE(frame_cost_count_begin(event));
             total_us += time_present();
@@ -980,6 +957,7 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
     ESP_LOGI(TAG, "present: full band %lld us, %dx%d px (gathered) %lld us", (long long)full_band, w, h,
              (long long)wide);
 
+    TEST_ASSERT_GREATER_THAN_INT64(0, full_band);
     perf_guard("a box short enough in height must cost less than claiming the "
                "whole band, even at most of its width - orientation must not "
                "matter to whether gathering pays off",
@@ -1014,6 +992,7 @@ test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
              "band) %lld us",
              (long long)full_band, h, (long long)partial);
 
+    TEST_ASSERT_GREATER_THAN_INT64(0, full_band * 9 / 10);
     perf_guard("a full-width box shorter than a whole band must send fewer rows "
                "and cost less than claiming the whole band - see "
                "send_partial_band() in gfx_present.c",
@@ -1045,6 +1024,7 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
     ESP_LOGI(TAG, "present: full band %lld us, two %dx%d corners %lld us", (long long)full_band, size, size,
              (long long)two_corners);
 
+    TEST_ASSERT_GREATER_THAN_INT64(0, full_band);
     perf_guard("two small, far-apart clusters sent independently together must "
                "still cost less than the whole band",
                two_corners, full_band);
@@ -1139,6 +1119,7 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
     ESP_LOGI(TAG, "present: full band %lld us, two marks in one cell %lld us", (long long)full_band,
              (long long)two_marks);
 
+    TEST_ASSERT_GREATER_THAN_INT64(0, full_band);
     perf_guard("two small marks separated by a real gap inside one cell must cost "
                "less than sending the coarse box spanning both",
                two_marks, full_band);
@@ -1165,6 +1146,7 @@ test_a_corner_label_costs_less_than_its_rows_full_width(void) {
 
     ESP_LOGI(TAG, "present: full band %lld us, corner label %lld us", (long long)full_band, (long long)label);
 
+    TEST_ASSERT_GREATER_THAN_INT64(0, full_band);
     perf_guard("a label in one corner must cost less than sending its rows full width", label, full_band);
 }
 
@@ -1355,6 +1337,7 @@ test_present_overlap_against_serial(void) {
     ESP_LOGI(TAG, "present/update overlap: overlapped %lld us, serial %lld us", (long long)overlap_us,
              (long long)serial_us);
 
+    TEST_ASSERT_GREATER_THAN_INT64(0, serial_us + serial_us / 4 + 1);
     perf_guard("overlapping update() with present cost noticeably more than serial", overlap_us,
                serial_us + serial_us / 4 + 1);
 }

@@ -1,6 +1,7 @@
+#include <math.h>
 #include <string.h>
 
-#include "suites.h"
+#include "testkit/suite.h"
 #include "unity.h"
 
 #include "math/geometry/planef.h"
@@ -35,6 +36,51 @@ assert_fixed_plane(planef_t f, planex_t x, vec3f_t point) {
     TEST_ASSERT_FLOAT_WITHIN(PLANE_FIXED_TOLERANCE, f.d, mathx_to_f(x.d));
     TEST_ASSERT_FLOAT_WITHIN(PLANE_FIXED_TOLERANCE, planef_distance(f, point),
                              mathx_to_f(planex_distance(x, vec3x_from_vec3f(point))));
+}
+
+static void
+test_fixed_normalize_extreme_normals_and_distance_saturation(void) {
+    static const planex_t cases[] = {{{1, 0, 0}, 1},
+                                     {{30000 * MATHX_ONE, 0, 0}, 30000 * MATHX_ONE},
+                                     {{1, 0, 0}, MATHX_ONE},
+                                     {{1, 0, 0}, -MATHX_ONE}};
+    static const int32_t distances[] = {MATHX_ONE, MATHX_ONE, INT32_MAX, INT32_MIN};
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        const planex_t out = planex_normalize(cases[i]);
+        TEST_ASSERT_EQUAL_INT32(MATHX_ONE, out.normal.x);
+        TEST_ASSERT_EQUAL_INT32(0, out.normal.y);
+        TEST_ASSERT_EQUAL_INT32(0, out.normal.z);
+        TEST_ASSERT_EQUAL_INT32(distances[i], out.d);
+    }
+}
+
+static void
+test_fixed_normalize_zero_and_tilted_normals(void) {
+    static const int32_t distances[] = {INT32_MIN, -1, 0, 1, INT32_MAX};
+    for (size_t i = 0; i < sizeof(distances) / sizeof(distances[0]); i++) {
+        const planex_t out = planex_normalize((planex_t){{0, 0, 0}, distances[i]});
+        TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){0, 0, 0}, out.normal));
+        TEST_ASSERT_EQUAL_INT32(mathx_div(distances[i], 0), out.d);
+    }
+    /* The double-precision reference runs on the host only: the device's FPU is single precision. */
+#ifndef ESP_PLATFORM
+    static const planex_t cases[] = {{{-3, 4, 12}, -7},
+                                     {{-3 * MATHX_ONE, 4 * MATHX_ONE, 12 * MATHX_ONE}, 7 * MATHX_ONE},
+                                     {{-3 * (INT32_MAX / 12), 4 * (INT32_MAX / 12), 12 * (INT32_MAX / 12)}, INT32_MIN}};
+    const double component_error = 0.5 + 0x1p-12;
+    const double quotient_relative_error = 0x1p-28;
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        const planex_t p = cases[i];
+        const double length =
+            sqrt((double)p.normal.x * p.normal.x + (double)p.normal.y * p.normal.y + (double)p.normal.z * p.normal.z);
+        const planex_t out = planex_normalize(p);
+        TEST_ASSERT_TRUE(fabs(out.normal.x - (double)p.normal.x * MATHX_ONE / length) <= component_error);
+        TEST_ASSERT_TRUE(fabs(out.normal.y - (double)p.normal.y * MATHX_ONE / length) <= component_error);
+        TEST_ASSERT_TRUE(fabs(out.normal.z - (double)p.normal.z * MATHX_ONE / length) <= component_error);
+        const double exact = (double)p.d * MATHX_ONE / length;
+        TEST_ASSERT_TRUE(fabs(out.d - exact) <= 0.5 + fabs(exact) * quotient_relative_error);
+    }
+#endif
 }
 
 static void
@@ -114,8 +160,7 @@ frustum_fixture(frustum_fixture_t* f, const projectf_t* lens) {
     const mat4x_t fixed_map = fixed_matrix(&PLANE_MAP);
     const rectx_t screen = {mathf_to_x(PLANE_SCREEN.x), mathf_to_x(PLANE_SCREEN.y), mathf_to_x(PLANE_SCREEN.w),
                             mathf_to_x(PLANE_SCREEN.h)};
-    const projectx_t fixed_lens = {mathf_to_x(lens->fx), mathf_to_x(lens->fy), mathf_to_x(lens->cx),
-                                   mathf_to_x(lens->cy), mathf_to_x(lens->near_z)};
+    const projectx_t fixed_lens = projectx_from_projectf(lens);
     planef_frustum(&identity, lens, PLANE_SCREEN, f->planes);
     planef_frustum(&PLANE_MAP, lens, PLANE_SCREEN, f->mapped);
     planex_frustum(&fixed_identity, &fixed_lens, screen, f->fixed);
@@ -243,6 +288,8 @@ test_frustum_corner_rays_lie_on_both_side_planes(void) {
 
 void
 suite_plane(void) {
+    RUN_TEST(test_fixed_normalize_zero_and_tilted_normals);
+    RUN_TEST(test_fixed_normalize_extreme_normals_and_distance_saturation);
     RUN_TEST(test_construction_winding_distance_and_normalize);
     RUN_TEST(test_oblique_normalization_scales_normal_and_distance);
     RUN_TEST(test_from_rows_tests_the_mapped_point);

@@ -23,7 +23,7 @@ of the same app's shape, with the byte layout, the material table and the
 per-step pipeline diagram this document assumes rather than repeats.
 
 For the app-registration mechanics (how `main/apps/*` plugs into the
-shell), see `docs/Building-an-App.md`. For the hardware constraints
+shell), see `docs/firmware/Building-an-App.md`. For the hardware constraints
 underneath everything here, see `docs/notes/README.md`.
 
 ---
@@ -1101,11 +1101,10 @@ full `gfx_present()`**; the dirty-tracking path's own overhead is
 1,149 us, 6%, and the frame is **94% bus-bound** (at 40 MHz). 80 MHz
 halves it but is outside the panel's rating.
 
-Sand's partial redraws are exactly what shows it: stray red pixels or
-thin black lines through moving sand that stay until that region is
-re-sent differently. See
+At 80 MHz the panel can land a partial-width window a column off, so gfx
+sends only full-width rows there. See
 [Display-and-Rendering.md](../notes/Display-and-Rendering.md), "80 MHz
-is outside the panel's rating", for the finding and the heal sand uses.
+is outside the panel's rating".
 
 Water, not sand, is the bottleneck whenever a body of it is moving.
 
@@ -1144,7 +1143,7 @@ for cache configuration and memory placement.
 ## Two cores: chunk-parallel passes, and what stays serial
 
 The device's own `gfx_present()` overlaps with `sand_step()` on the other
-core already; see `docs/Firmware-Architecture.md`. Splitting the step
+core already; see `docs/firmware/Frame-Loop.md`. Splitting the step
 itself across cores is harder, for a reason that has nothing to do with
 sweep order: `sand_t.rng` is one `xorshift32`<sup>[[25]](../Citations.md#25)</sup> word, drawn from a
 data-dependent number of times per cell by every pass.
@@ -1544,7 +1543,7 @@ is actually there.
 
 `sand_rng_next_at(s, x, y, slot)` (`sand_priv.h`) replaces
 `rng_next(&s->rng)` at every call site a split pass reaches:
-`try_scatter()`, `try_slide_impl()`, `liquid_may_move()`, and the gas
+`try_scatter()`, `try_slide()`, `liquid_may_move()`, and the gas
 decay, mobility and walk draws, while `s->rng_hashed` is armed. That is
 true during the sweep, liquid cross-flow and gas-walk phases and guards.
 
@@ -1652,14 +1651,13 @@ flowchart TB
     GRAIN -->|"static or gas"| SKIP(("nothing to do"))
     GRAIN -->|"liquid"| LIQSTEP["step_one_liquid_grain()"]
     LIQSTEP --> LIQ["move_liquid_grain()<br/><i>sand_liquid_move.h</i>"]
-    GRAIN -->|"powder, unblocked"| FALL["try_fall_or_scatter_impl()"]
-    GRAIN -->|"blocked, or shaken"| SLIDE["try_slide_impl()"]
+    GRAIN -->|"powder, unblocked"| FALL["try_fall_or_scatter()"]
+    GRAIN -->|"blocked, or shaken"| SLIDE["try_slide()"]
 
     FALL --> SCATTER["try_scatter()<br/><i>drift sideways, or lag</i>"]
     FALL -.->|"fall itself blocked"| SLIDE
 
-    SLIDE --> ORDER["pick_slide_order()<br/><i>which side goes first</i>"]
-    SLIDE --> PAIR["try_slide_pair()<br/><i>friction, then either slide</i>"]
+    SLIDE --> PAIR["try_slide_pair()<br/><i>friction, then both slides<br/>in a drawn order</i>"]
 ```
 
 The cross-flow pass, per liquid cell, three ordered early-outs, cheapest
@@ -1688,7 +1686,7 @@ headers above.
 
 ## Related
 
-- `docs/Building-an-App.md`: how an app (this one included) plugs
+- `docs/firmware/Building-an-App.md`: how an app (this one included) plugs
   into the shell; the folder layout every app follows.
 - `docs/notes/`, the hardware constraints underneath all of this: the
   memory budget, the flash/RAM cache distinction, panel and touch gotchas.
@@ -1702,7 +1700,7 @@ headers above.
 - [`Architecture.md`](Architecture.md), a single-page, diagram-first map
   of the whole app: the pipeline, the sleeping system, the material
   table, and the exact hops to get a real number off the device.
-- `docs/Testing-Guide.md`: how the host and device test suites work, and
+- `docs/testing/README.md`: how the host and device test suites work, and
   why release builds carry none of the test code.
 - `docs/sand/Testing-Sand.md`: the frame-budget capture and the current
   state of `suite_sand_perf.c`'s numbers on this board.

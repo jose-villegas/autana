@@ -1,4 +1,0 @@
-# What the ui_dropdown scene's renders hash to, one per line.
-# Re-pinned deliberately, after looking at the images:
-#     ./launcher/tools/render/scenes/ui_dropdown_render_host.sh --update-baseline
-scrolled-and-picked 3c72aae24a111dbf27dfd9fbf55a22fd73437883aaa6c5a817631dad616bc5bc

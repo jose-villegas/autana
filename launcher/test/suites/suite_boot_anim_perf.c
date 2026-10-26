@@ -23,7 +23,8 @@
 
 #ifdef DEVICE_BUILD
 
-#include "perf_stats.h"
+#include "perf_layout_labels.h"
+#include "testkit/bench.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -277,8 +278,8 @@ static const phase_row_t PHASE_ROWS[] = {
 /* One phase's stats live only while its own line prints. */
 static __attribute__((noinline)) void
 log_phase(const phase_row_t* row, int64_t total_avg) {
-    const perf_stats_t s =
-        perf_stats_compute(sample_values(row->field, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
+    const bench_stats_t s =
+        bench_stats_compute(sample_values(row->field, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
     const double share = (double)s.avg / total_avg * 100;
     if (row->spread) {
         ESP_LOGI(TAG, "%s min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f%%)", row->label,
@@ -290,8 +291,8 @@ log_phase(const phase_row_t* row, int64_t total_avg) {
 
 static __attribute__((noinline)) void
 report_checkpoint(const checkpoint_t* cp, const char* mode) {
-    const perf_stats_t total =
-        perf_stats_compute(sample_values(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
+    const bench_stats_t total =
+        bench_stats_compute(sample_values(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
 
     ESP_LOGI(TAG, "=== BOOT_ANIM PERF %s (now_ms=%u, %d samples, mode=%s) ===", cp->label, (unsigned)cp->now_ms,
              SAMPLES_PER_CHECKPOINT, mode);
@@ -368,10 +369,10 @@ test_boot_anim_performance_by_checkpoint(void) {
         bool contend;
         bool clear_on_send; /* gfx_set_clear_on_send(): core 1 clears, the boot's clear is free */
     } passes[] = {
-        {GFX_LAYOUT_FULL_FB, "FULL_FB", false, false},
-        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB", false, false},
-        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB_CLEAR_ON_SEND", false, true},
-        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB_CONTENDED", true, false},
+        {GFX_LAYOUT_FULL_FB, PERF_LAYOUT_FULL_FB, false, false},
+        {GFX_LAYOUT_DOUBLE_FB, PERF_LAYOUT_DOUBLE_FB, false, false},
+        {GFX_LAYOUT_DOUBLE_FB, PERF_LAYOUT_DOUBLE_FB_CLEAR_ON_SEND, false, true},
+        {GFX_LAYOUT_DOUBLE_FB, PERF_LAYOUT_DOUBLE_FB_CONTENDED, true, false},
     };
 
     for (size_t pass = 0; pass < sizeof passes / sizeof passes[0]; pass++) {

@@ -5,6 +5,11 @@ import math
 import numpy as np
 
 
+def bounds_diagonal(positions):
+    """Length of the axis-aligned bounds diagonal, including degenerate objects."""
+    return float(np.linalg.norm(np.ptp(positions, axis=0)))
+
+
 def triangle_areas(p, tris):
     return 0.5 * np.linalg.norm(np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]]), axis=1)
 
@@ -14,11 +19,16 @@ def compact(p, tris):
     return p[used], inverse.reshape(-1, 3)
 
 
+def distinct_corners(tris):
+    """Which triangles retain three distinct vertex indices after welding."""
+    return (tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2])
+
+
 def weld(p, tris, tolerance=1e-3):
     key = np.round(p / tolerance).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     tris = inverse.reshape(-1)[tris]
-    good = (tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2])
+    good = distinct_corners(tris)
     return p[first], tris[good]
 
 
