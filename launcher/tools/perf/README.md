@@ -360,6 +360,38 @@ timing lines. The workflow's `NIGHTLY_SUITES` supplies these triplets.
 Joining boards use the same selection. The workflow also runs docs retrieval
 evaluations: hybrid on the GPU runner and lexical on hosted Linux.
 
+## Perf store
+
+`perf_index.py` keeps every board capture as one parsed line on the
+`perf-data` branch, so a row's history on each board reads from one place
+without the raw logs.
+
+```sh
+python launcher/tools/perf/perf_index.py sync --host <machine>
+python launcher/tools/perf/perf_index.py store --path DIR
+```
+
+| Piece | Detail |
+|---|---|
+| file | `captures/<board>/<YYYY-MM>/<date>-<host>.jsonl`, one line per capture; each machine writes its own files, so two never conflict |
+| line | board short id, `--host` name, build id, commit, suite, start time, image flags, and each row's goal and samples; never a log, path or user name |
+| row | a `PERF TARGET` line (pegged or not), a `mean Nus` line or a `frame_profile:` row |
+| capture | one recorded `run-suite` or `selftest` that completed |
+| image | the flags its flash built with (`image_flags`); `null` for captures from before flashes recorded them |
+
+The branch is as public as the repository, so machine names and capture
+times are too. `sync` parses captures not yet in the store, commits and
+pushes; one sync per store runs at a time. `--store DIR` uses an existing
+checkout and `--write-only` leaves the commit and push to the caller.
+`store --path DIR` checks the branch out, or starts it empty (the nightly's
+first step); the nightly syncs before it publishes.
+
+On a desk machine, run `sync` by hand, or from `lock_hook` with `--hook`:
+`sync --hook --host <machine>` returns at once and, on a `released` event
+only, starts the sync detached, since a hook is stopped after three seconds.
+Each capture is parsed once; parsed lines are cached in the per-user autana
+cache.
+
 ## Real-time playback
 
 `frame_profile:` rows time whole app frames while a clip plays; the render_lab
