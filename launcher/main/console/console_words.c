@@ -1,4 +1,4 @@
-#include "app/app_console.h"
+#include "console/console_words.h"
 
 #include <stdio.h>
 #include <string.h>

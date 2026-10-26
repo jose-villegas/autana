@@ -1,7 +1,7 @@
 /*
  * Portable suite: screenshot_bmp_header/screenshot_bmp_row_stride, the pure
  * byte layout of the BMP console_screenshot_dump()
- * (console/verbs/console_screenshot.c, device-only) writes.
+ * (shell/console/console_screenshot.c, device-only) writes.
  *
  * Every expected byte below is spelled out by hand against the
  * BITMAPFILEHEADER/BITMAPINFOHEADER field order rather than derived from the
@@ -12,7 +12,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "console/capture/screenshot.h"
+#include "gfx/capture/screenshot.h"
 #include "image/pixel/rgb565.h"
 
 static void
