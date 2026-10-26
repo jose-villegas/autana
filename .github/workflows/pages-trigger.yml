@@ -3,7 +3,8 @@ name: Pages
 # The Pages site is built by feature/web-pages's own workflow, which merges
 # the latest main before it builds. GitHub runs a branch's workflows only for
 # pushes to that branch, so a push to main calls it here, at that branch;
-# without this the site would keep showing an older main.
+# without this the site would keep showing an older main. A daily run calls
+# it too, so what the site builds from beside main is at most a day old.
 #
 # A pull request calls that branch's web-check.yml instead, which builds
 # without publishing. Not a required check.
@@ -13,13 +14,16 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # 06:00 Berlin in winter (07:00 in summer), hours after the nightly.
+    - cron: '0 5 * * *'
 
 permissions:
   contents: read
 
 jobs:
   pages:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       pages: write
