@@ -59,7 +59,6 @@ two-core draw split row	docs/render/Mesh-Rendering.md	On both cores
 FIFO loss accounting gravity motion sample interval	docs/input/Gravity.md	Limits
 run one host test suite filter	docs/testing/Host-Tests.md	Run them
 full frame transfer time QSPI panel	docs/notes/Display-and-Rendering.md	Transfer payload
-How do I find an existing helper before writing one?	docs/tools/Code-Search.md	Code search
 frame dt_ms clamped 250 timestamp	docs/firmware/Building-an-App.md	One pass of the frame loop
 lock protocol	docs/cli/Device-Lock.md	Device lock
 frame cost	docs/tools/Frame-Cost.md	Frame cost

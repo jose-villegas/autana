@@ -939,10 +939,11 @@ class GateRegressions(unittest.TestCase):
             source = root / "foo.c"
             source.write_text("void root(void) {}")
             db = root / "compile_commands.json"
-            db.write_text(json.dumps([{"directory": str(root), "file": str(source),
+            db.write_text(json.dumps([{"directory": str(root), "file": str(source), "output": "foo.o",
                                        "arguments": ["cc", "-DKEEP=y", "-c", "foo.c", "-o", "foo.o", "-MF", "foo.d", "-MT", "target", "-MQ", "quoted"]}]))
             jobs = stack_chain_gate.app_jobs(str(db), str(root))
-            self.assertEqual(jobs, [(["cc", "-DKEEP=y"], str(root), str(source).replace("\\", "/"))])
+            self.assertEqual(jobs, [(["cc", "-DKEEP=y"], str(root), str(source).replace("\\", "/"),
+                                     os.path.join(str(root), "foo.ci"))])
 
     def test_default_pin_reader(self):
         expected = json.loads((memory.ROOT / "launcher/idf-pin.json").read_text())

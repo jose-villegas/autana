@@ -61,7 +61,7 @@ static bool
 load_one(const char* pack, const char* name) {
     const ui_icon_name_t names[] = {{name, "m"}};
     draw_image_t icons[1];
-    ui_icon_set_t set = {pack, names, 1, icons, false};
+    ui_icon_set_t set = {pack, names, 1, icons, false, HANDLE_NONE};
     const int mounted = asset_store_mounted();
     const bool loaded = ui_icon_set_load(&set);
     TEST_ASSERT_EQUAL_INT(loaded, set.loaded);

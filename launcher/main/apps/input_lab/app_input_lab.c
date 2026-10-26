@@ -1,6 +1,6 @@
 /* BOOT cycles touch targets, bezel edges, motion calibration, shake and orientation.
  * Motion pages stay in default landscape with panel axes. Shake compares
- * sample-rate linear acceleration candidates against frame-rate tilt shake
+ * sample-rate linear acceleration candidates against shared frame-rate shake
  * and retains a guided round in PSRAM for labdump. */
 
 #include <math.h>
@@ -26,7 +26,6 @@
 #include "gfx/gfx.h"
 #include "input/input_shell.h"
 #include "input/motion/gravity.h"
-#include "input/motion/tilt.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/mathi.h"
 #include "ui/layout/ui_transform.h"
@@ -68,7 +67,10 @@ static const char* TAG = "input_lab";
 #define SHAKE_BAR_HEIGHT      8
 #define SHAKE_BAR_ROW         6
 #define SHAKE_BAR_ROW_SPACING 2
-#define SHAKE_OLD_FULL        255
+/* Log/display scale for the shared shake level. */
+#define SHAKE_SHARED_FULL     255
+/* Log/display scale for in-plane strength. */
+#define MOTION_STRENGTH_ONE   256
 
 #define MOTION_RING_RADIUS    88
 #define MOTION_DOT_SIDE       7
@@ -116,7 +118,6 @@ typedef struct {
 static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "motion", "shake", "orientation"};
 
 static lab_mode_t mode;
-static tilt_t tilt;
 static gravity_t gravity;
 static input_motion_t motion;
 static input_motion_batch_t* motion_batch;
@@ -202,7 +203,6 @@ start_round(void) {
     panel_min_x = panel_min_y = 1 << 20;
     panel_max_x = panel_max_y = -1;
     if (motion_page()) {
-        tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
         gravity_reset(&gravity);
         have_motion = false;
         motion_log_ms = 0;
@@ -242,19 +242,17 @@ shell_transform(void) {
     return ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT);
 }
 
-static void
-to_screen(int px, int py, int* x, int* y) {
-    const vec2i_t screen = ui_transform_unmap_pixel(shell_transform(), (vec2i_t){px, py});
-    *x = screen.x;
-    *y = screen.y;
+static vec2i_t
+to_screen(vec2i_t point) {
+    return ui_transform_unmap_pixel(shell_transform(), point);
 }
 
 static void
-widen_panel_range(int x, int y) {
-    panel_min_x = x < panel_min_x ? x : panel_min_x;
-    panel_max_x = x > panel_max_x ? x : panel_max_x;
-    panel_min_y = y < panel_min_y ? y : panel_min_y;
-    panel_max_y = y > panel_max_y ? y : panel_max_y;
+widen_panel_range(vec2i_t point) {
+    panel_min_x = point.x < panel_min_x ? point.x : panel_min_x;
+    panel_max_x = point.x > panel_max_x ? point.x : panel_max_x;
+    panel_min_y = point.y < panel_min_y ? point.y : panel_min_y;
+    panel_max_y = point.y > panel_max_y ? point.y : panel_max_y;
 }
 
 /* Whether the touch driver's correction was on for a tap, so a capture says
@@ -270,23 +268,15 @@ calibration_on(void) {
 }
 
 static void
-finish_tap(int release_x, int release_y) {
+finish_tap(vec2i_t release) {
     const touch_probe_sample_t first = tap.samples[0];
-    int settled_x;
-    int settled_y;
-    touch_probe_settled(tap.samples, tap.count, SETTLE_FROM_MS, SETTLE_TO_MS, &settled_x, &settled_y);
+    const vec2i_t settled = touch_probe_settled(tap.samples, tap.count, SETTLE_FROM_MS, SETTLE_TO_MS);
 
-    int fx;
-    int fy;
-    int sx;
-    int sy;
-    int rx;
-    int ry;
     int aim_panel_x;
     int aim_panel_y;
-    to_screen(first.x, first.y, &fx, &fy);
-    to_screen(settled_x, settled_y, &sx, &sy);
-    to_screen(release_x, release_y, &rx, &ry);
+    const vec2i_t first_screen = to_screen((vec2i_t){first.x, first.y});
+    const vec2i_t settled_screen = to_screen(settled);
+    const vec2i_t release_screen = to_screen(release);
     const int aim_x = target.x + (target.side / 2);
     const int aim_y = target.y + (target.side / 2);
     const affine2x_t transform = shell_transform();
@@ -294,24 +284,26 @@ finish_tap(int release_x, int release_y) {
     aim_panel_x = mapped_pixel.x;
     aim_panel_y = mapped_pixel.y;
 
-    last_hit = touch_probe_record(&stats, target, fx, fy);
-    last_x = fx;
-    last_y = fy;
+    last_hit = touch_probe_record(&stats, target, first_screen);
+    last_x = first_screen.x;
+    last_y = first_screen.y;
     have_last_tap = true;
 
     ESP_LOGI(TAG,
              "probe %d %s q%d aim %d,%d aim_panel %d,%d first %d,%d settled %d,%d release %d,%d panel_first %d,%d "
              "panel_settled %d,%d panel_release %d,%d held %d idle %d samples %d %s cal %d",
-             stats.taps, MODE_NAMES[mode], display_quarter_now(), aim_x, aim_y, aim_panel_x, aim_panel_y, fx, fy, sx,
-             sy, rx, ry, first.x, first.y, settled_x, settled_y, release_x, release_y, tap.held_ms,
-             tap.idle_before_press, tap.count, last_hit ? "HIT" : "miss", calibration_on());
+             stats.taps, MODE_NAMES[mode], display_quarter_now(), aim_x, aim_y, aim_panel_x, aim_panel_y,
+             (int)first_screen.x, (int)first_screen.y, (int)settled_screen.x, (int)settled_screen.y,
+             (int)release_screen.x, (int)release_screen.y, first.x, first.y, (int)settled.x, (int)settled.y,
+             (int)release.x, (int)release.y, tap.held_ms, tap.idle_before_press, tap.count, last_hit ? "HIT" : "miss",
+             calibration_on());
     advance_target();
 }
 
 static void
 track_touch(uint32_t dt_ms, const input_t* input) {
     if (input->pressed || input->down) {
-        widen_panel_range(input->x, input->y);
+        widen_panel_range(input->point);
     }
     if (!touch_probe_track(&tap, (int)dt_ms, input)) {
         return;
@@ -319,7 +311,7 @@ track_touch(uint32_t dt_ms, const input_t* input) {
     if (mode == MODE_BEZEL) {
         ESP_LOGI(TAG, "bezel radius %d quarter %d", bezel_radius, display_quarter_now());
     } else {
-        finish_tap(input->x, input->y);
+        finish_tap(input->point);
     }
 }
 
@@ -332,12 +324,9 @@ drag_bezel(const input_t* input) {
     if (!input->down) {
         return;
     }
-    int x;
-    int press_y;
-    int y;
-    to_screen(input->press_x, input->press_y, &x, &press_y);
-    to_screen(input->x, input->y, &x, &y);
-    const int radius = radius_at_press + ((press_y - y) / BEZEL_DRAG_PX);
+    const vec2i_t press = to_screen(input->press);
+    const vec2i_t point = to_screen(input->point);
+    const int radius = radius_at_press + ((press.y - point.y) / BEZEL_DRAG_PX);
     bezel_radius = radius < 0 ? 0 : radius > BEZEL_MAX ? BEZEL_MAX : radius;
 }
 
@@ -539,7 +528,8 @@ record_shake_sample(const input_motion_t* sample, int64_t elapsed_us) {
     (void)imu_record_appendf(
         &imu_record, SHAKE_PROBE_SAMPLE_FORMAT, (int)SHAKE_PROBE_STILL + (int)(ms / SHAKE_PROBE_STEP_MS), (unsigned)ms,
         (int)acc.x, (int)acc.y, (int)acc.z, (int)lin.x, (int)lin.y, (int)lin.z, (int)lroundf(shake_capture.levels.size),
-        (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI), tilt_shake(&tilt));
+        (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI),
+        (int)lroundf(input_shake() * SHAKE_SHARED_FULL));
 }
 
 /* Only this adapter depends on batch loss placement. The scratch batch lives in PSRAM. */
@@ -586,9 +576,6 @@ read_motion(uint32_t dt_ms) {
             integrate_turn_gyro(motion_batch);
         }
     }
-    if (have_motion) {
-        tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
-    }
     if (read) {
         switch (mode) {
             case MODE_SHAKE: read_round_samples(motion_batch, shake_capture.start_us, record_shake_sample); break;
@@ -606,13 +593,15 @@ read_motion(uint32_t dt_ms) {
     motion_probe = motion_probe_measure(motion.acceleration);
     if (motion_log_ms >= MOTION_LOG_PERIOD_MS) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
+        const vec3f_t g = input_gravity();
         const vec3i_t down_mg = motion_log_vector(gravity_down(&gravity), IMU_PROBE_MILLI);
         const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), OFFSET_SCALE);
         ESP_LOGI(TAG,
                  "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
                  "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d lost %d drain_us %lld",
                  raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
-                 motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
+                 motion_probe.bearing_deg, (int)lroundf(g.x * INPUT_ACCEL_ONE_G), (int)lroundf(g.y * INPUT_ACCEL_ONE_G),
+                 (int)lroundf(hypotf(g.x, g.y) * MOTION_STRENGTH_ONE), (int)lroundf(input_shake() * SHAKE_SHARED_FULL),
                  motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now(),
                  (int)down_mg.x, (int)down_mg.y, (int)down_mg.z, (int)bias_dps10.x, (int)bias_dps10.y,
                  (int)bias_dps10.z, motion_samples, motion_lost, (long long)motion_drain_us);
@@ -856,15 +845,16 @@ draw_shake(void) {
     const vec3i_t lin = motion_log_vector(gravity_linear(&gravity), IMU_PROBE_MILLI);
     (void)snprintf(line, sizeof line, "LINEAR %d %d %d MG", (int)lin.x, (int)lin.y, (int)lin.z);
     hud_line(4, line);
-    static const char* const names[] = {"SIZE", "SMOOTH", "OLD"};
+    static const char* const names[] = {"SIZE", "SMOOTH", "SHARED"};
     const int values[] = {(int)lroundf(shake_capture.levels.size),
-                          (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI), tilt_shake(&tilt)};
+                          (int)lroundf(shake_capture.levels.shake.smooth_g * IMU_PROBE_MILLI),
+                          (int)lroundf(input_shake() * SHAKE_SHARED_FULL)};
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
         const int row = SHAKE_BAR_ROW + ((int)i * SHAKE_BAR_ROW_SPACING);
-        const int full = i == (sizeof values / sizeof values[0]) - 1 ? SHAKE_OLD_FULL : IMU_PROBE_MILLI;
+        const int full = i == (sizeof values / sizeof values[0]) - 1 ? SHAKE_SHARED_FULL : IMU_PROBE_MILLI;
         const int width = screen_w - SHAKE_BAR_X - MOTION_MARGIN;
         const int value = values[i] < full ? values[i] : full;
-        (void)snprintf(line, sizeof line, "%s %d%s", names[i], values[i], full == SHAKE_OLD_FULL ? "" : " MG");
+        (void)snprintf(line, sizeof line, "%s %d%s", names[i], values[i], full == SHAKE_SHARED_FULL ? "" : " MG");
         hud_text((recti_t){MOTION_MARGIN, HUD_TOP + (row * HUD_LINE_H), SHAKE_BAR_X - MOTION_MARGIN, HUD_LINE_H}, line,
                  COL_HUD);
         const recti_t bar = {SHAKE_BAR_X, HUD_TOP + (row * HUD_LINE_H), width, SHAKE_BAR_HEIGHT};
@@ -996,7 +986,8 @@ draw_motion(void) {
     enum { VALUE_X, VALUE_Y, VALUE_Z, VALUE_MAGNITUDE, VALUE_PLANE, VALUE_FILTER_X, VALUE_FILTER_Y, VALUE_COUNT };
 
     const vec3i_t raw_mg = imu_probe_mg(raw_acceleration);
-    const vec3i_t filtered_mg = imu_probe_mg((vec3i_t){tilt_x(&tilt), tilt_y(&tilt), 0});
+    const vec3f_t g = input_gravity();
+    const vec3i_t filtered_mg = motion_log_vector(g, IMU_PROBE_MILLI);
     const int mg[VALUE_COUNT] = {raw_mg.x,
                                  raw_mg.y,
                                  raw_mg.z,
@@ -1024,7 +1015,8 @@ draw_motion(void) {
     }
     hud_line(2, line);
     if (snprintf(line, sizeof line, "F %s,%s S%d K%d T%d", values[VALUE_FILTER_X], values[VALUE_FILTER_Y],
-                 tilt_strength(&tilt), tilt_shake(&tilt), motion.turn_speed)
+                 (int)lroundf(hypotf(g.x, g.y) * MOTION_STRENGTH_ONE), (int)lroundf(input_shake() * SHAKE_SHARED_FULL),
+                 motion.turn_speed)
         < 0) {
         line[0] = '\0';
     }
@@ -1052,7 +1044,9 @@ draw_motion(void) {
         ui_fill((recti_t){cx + left - width + 1, cy + row, width, ARC_STEP}, COL_MOTION_RING);
     }
     ui_fill(motion_dot_rect(raw_acceleration.x, raw_acceleration.y, ring, MOTION_DOT_SIDE), COL_MISS);
-    ui_outline(motion_dot_rect(tilt_x(&tilt), tilt_y(&tilt), ring, MOTION_FILTER_SIDE), COL_MOTION_FILTER);
+    ui_outline(motion_dot_rect((int)lroundf(g.x * INPUT_ACCEL_ONE_G), (int)lroundf(g.y * INPUT_ACCEL_ONE_G), ring,
+                               MOTION_FILTER_SIDE),
+               COL_MOTION_FILTER);
     hud_text((recti_t){0, bottom, screen_w / 2, HUD_LINE_H}, "RAW", COL_MISS);
     hud_text((recti_t){screen_w / 2, bottom, screen_w / 2, HUD_LINE_H}, "FILTER", COL_MOTION_FILTER);
     hud_text((recti_t){0, bottom + HUD_LINE_H, screen_w, HUD_LINE_H},

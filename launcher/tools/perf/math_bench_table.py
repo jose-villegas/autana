@@ -88,18 +88,25 @@ def parse_disassembly(text, rows, resolve=None):
     for line in text.splitlines():
         symbol = SYMBOL.fullmatch(line.strip())
         if symbol and "+" not in symbol[1]:
-            current = symbol[1].removeprefix(ROW_SYMBOL_PREFIX) if symbol[1].startswith(ROW_SYMBOL_PREFIX) else None
-            if current in expected:
-                found[current] = []
-        elif current in expected:
+            current = symbol[1]
+            found[current] = []
+        elif current is not None:
             found[current].append(line)
-    if expected - found.keys():
-        raise ValueError(f"missing wrapper symbols: {sorted(expected - found.keys())}")
+    missing = {key for key in expected if ROW_SYMBOL_PREFIX + key not in found}
+    if missing:
+        raise ValueError(f"missing wrapper symbols: {sorted(missing)}")
+    cache = {}
+
+    def function_code(name):
+        if name not in cache:
+            body = "\n".join(found[name])
+            decoded, again = resolve(name, body) if resolve else (parse_objdump(body), None)
+            cache[name] = skip_pools(decoded, again)
+        return cache[name]
+
     result = {}
-    for key in sorted(found):
-        body = "\n".join(found[key])
-        decoded, again = resolve(ROW_SYMBOL_PREFIX + key, body) if resolve else (parse_objdump(body), None)
-        code = skip_pools(decoded, again)
+    for key in sorted(expected):
+        code = function_code(ROW_SYMBOL_PREFIX + key)
         mnemonics = {item[2] for item in code}
         registers = {}
         callees = set()
@@ -119,6 +126,10 @@ def parse_disassembly(text, rows, resolve=None):
                 registers[register] = targets[-1]
             else:
                 registers.pop(register, None)
+        for callee in callees:
+            for name in found:
+                if name == callee or name.startswith(callee + "."):
+                    mnemonics.update(item[2] for item in function_code(name))
         ops = " ".join(op for op in FPU_OPS if op in mnemonics)
         calls = "calls " + ", ".join(sorted(callees)) if callees else ""
         result[key] = "; ".join(part for part in (ops, calls) if part) or "-"
@@ -291,7 +302,7 @@ def main(argv=None):
             decoded, again = instructions(objdump, args.from_elf, symbol, bounds[symbol])
             return [ins for ins in decoded if ins[0] < bounds[symbol]], again
         fpu = parse_disassembly(run(objdump, "-d", str(args.from_elf)), rows, resolve)
-        lines = ["# Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.",
+        lines = ["# Device ELF wrapper and direct-callee mnemonics; wrapper call targets.",
                  "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest()]
         lines.extend("\t".join(map(str, (*row, fpu[row[0]]))) for row in sorted(rows))
         args.fpu.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))

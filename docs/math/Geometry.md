@@ -1,6 +1,6 @@
 # Geometry
 
-Half-open rectangles, oriented planes, closed boxes, spheres and circles. [Math index](README.md).
+Half-open rectangles, oriented planes, closed boxes, spheres, circles and iso surfaces. [Math index](README.md).
 
 ## rect (`f i s x`)
 
@@ -171,3 +171,25 @@ Integer edges end at `right-1` and `bottom-1`; real queries include the closure 
 ![Integer circles against a half-open cell rectangle and floating-point segment hits against a circle.](../images/math/circle-rect-queries.png)
 
 The integer touch reaches `right−1`; segment markers show the first hit, including an inside start.
+
+## iso_surface
+
+The surface where a sampled field crosses a level, as triangles, by naive
+surface nets<sup>[[95]](../Citations.md#95)</sup>: one vertex per cell the surface
+passes through, at the mean of its edge crossings, and a quad across every
+crossing sample edge.
+
+| Function | Purpose |
+|---|---|
+| `iso_field_t` | Samples, their counts, origin and spacing per axis |
+| `iso_mesh_t` | Caller-owned positions, normals, triangles and scratch, with capacities and counts |
+| `iso_surface_scratch_count` | Two slabs of cell indices for a field's y and z counts |
+| `iso_surface_nets` | Meshes the field at a level; false when a capacity ran out, keeping whole triangles |
+
+| Rule | Detail |
+|---|---|
+| Inside | Above the level |
+| Winding | Counter-clockwise about the outward normal, right-handed: $`(b-a)\times(c-a)`$ points out |
+| Normals | Unit, down the field's gradient over the cell's corners |
+| Closed | A field below the level all round its border gives a closed surface |
+| Memory | Scratch is two slabs along x, so it does not grow with the field's length |

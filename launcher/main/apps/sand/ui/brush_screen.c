@@ -10,6 +10,7 @@
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand_swatch.h"
 #include "apps/sand/ui/sand_icons.h"
+#include "image/pixel/rgb565.h"
 
 /* Space between the three stacked panels - and between a panel's own
  * caption row and the control below it, which reuses the same value so the
@@ -203,11 +204,11 @@ draw_brush_swatch(recti_t r, cell_t spec) {
     for (int row = 0; row < BRUSH_SWATCH_CELLS; row++) {
         for (int col = 0; col < BRUSH_SWATCH_CELLS; col++) {
             const cell_t cell = sand_swatch_cell(spec, col, row, BRUSH_SWATCH_CELLS);
-            colors[(row * BRUSH_SWATCH_CELLS) + col] = gfx_color_rgb888(palette[cell]);
+            colors[(row * BRUSH_SWATCH_CELLS) + col] = rgb565be_to_rgb888(palette[cell]);
         }
     }
     ui_swatches(r, colors, BRUSH_SWATCH_CELLS, BRUSH_SWATCH_CELLS);
-    ui_bevel(r, gfx_color_rgb888(material_brush_color(spec)), false);
+    ui_bevel(r, rgb565be_to_rgb888(material_brush_color(spec)), false);
 }
 
 /* No handler: the panel this button opens is separate, later work. Drawn

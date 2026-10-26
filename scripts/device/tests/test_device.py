@@ -45,6 +45,7 @@ def mock_store(token="token"):
     store.root = Path(os.environ["_AUTANA_DEVICE_LOCK_ROOT"])
     store.key_root.side_effect = lambda board: device_lock.heavy_root() if board == device_lock.HEAVY else store.root
     store.acquire.return_value = device_lock.Held({"token": token, "acquired_at": 1000.0})
+    store.tickets.return_value = []
     return store
 
 
@@ -1246,6 +1247,7 @@ class FlashDefaultPathTests(unittest.TestCase):
             self.assertIsNone(entry["error"])
             self.assertEqual(entry["worktree"], str(worktree.resolve()))
             self.assertEqual(entry["commit"], "deadbeef")
+            self.assertEqual(entry["image_flags"], [])
 
     def test_builds_then_passes_the_lock_token_to_flash_image_sh(self):
         # flash_image.sh refuses to flash without the token; write_image()

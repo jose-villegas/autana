@@ -1,0 +1,8 @@
+# The tank the water fills: a unit box open at the front, scaled to the device by the scene.
+[source]
+path = "tank.obj"
+credit = "A box written for this scene."
+
+[output]
+name = "tank"
+position_scale = 16384   # ticks per unit: the box reaches 1, inside int16

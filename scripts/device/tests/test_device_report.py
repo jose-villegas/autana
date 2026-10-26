@@ -128,6 +128,12 @@ class ParsePerfTargetsTests(unittest.TestCase):
         }])
         self.assertEqual(summary_unmet, 1)
 
+    def test_an_unpegged_target_parses_apart_from_pegged_ones(self):
+        text = ("I (1) device_tests: PERF TARGET new row: measured 900 us, goal not yet pegged\n"
+                + PERF_TARGET_CAPTURE)
+        self.assertEqual(device_report.parse_unpegged_targets(text), [{"name": "new row", "measured": "900"}])
+        self.assertEqual(len(device_report.parse_perf_targets(text)[0]), 1)
+
     def test_a_capture_with_no_perf_target_lines_reports_none_for_the_summary(self):
         targets, summary_unmet = device_report.parse_perf_targets(SAND_CAPTURE)
         self.assertEqual(targets, [])

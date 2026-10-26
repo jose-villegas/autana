@@ -42,7 +42,11 @@ docs/audio/Audio-Path.md	2026-10-17	checked against audio/, console_tone.c and t
 docs/audio/Audio-Path.md	2026-10-17	call and signal diagrams, memory constraint and board settings checked against their source owners
 docs/notes/Board-and-Memory.md	2026-10-17	memory section split under subheaders; facts and generated tiers unchanged, autana heap checked against docs/cli/Watch.md
 docs/audio/Audio-Path.md	2026-10-18	path and capture lifetime checked against audio/ and sound/
-docs/audio/Sound-Mixer.md	2026-10-18	rework: app example, cost, exit order and capture checked against sound/ and shell_apps.c
+docs/audio/Sound-Mixer.md	2026-10-24	split into reference, Play a sound, internals, cost and clicks; API and handle rules checked against sound_play.h and sound_mixer.c
+docs/audio/Play-a-Sound.md	2026-10-24	moved from Sound-Mixer.md; checked against sound/ and the generators
+docs/audio/Mixer-Internals.md	2026-10-24	moved from Sound-Mixer.md; checked against sound/ and the generators
+docs/audio/Mixer-Cost.md	2026-10-24	moved from Sound-Mixer.md; checked against sound/ and the generators
+docs/audio/Clicks.md	2026-10-24	moved from Sound-Mixer.md; checked against sound/ and the generators
 docs/math/README.md	2026-10-18	split into an index; links checked against every docs/math page
 docs/math/Projection.md	2026-10-18	moved from the math README; checked against projectf.h and projectx.h
 docs/math/Geometry.md	2026-10-18	moved from the math README plus five generated figures; checked against rect and plane templates
@@ -50,7 +54,6 @@ docs/math/Motion.md	2026-10-18	new; checked against orbit_motion.h and spring_li
 docs/input/Touch.md	2026-10-20	input split: reviewed against input/ sources, accurate
 docs/input/Buttons.md	2026-10-20	input split: reviewed against input/ sources, accurate
 docs/input/Motion-Axes.md	2026-10-20	input split: reviewed against input/ sources, accurate
-docs/input/Tilt.md	2026-10-20	input split: reviewed against input/ sources, accurate
 docs/render/Skeleton-and-Skin.md	2026-10-20	pictures-first rework: reviewed against skeleton_asset.py, skin_asset.py and quantize_weights, accurate
 docs/c-style/Function-Attributes.md	2026-10-20	new; checked against the cited sources
 docs/c-style/Concurrency.md	2026-10-20	new; checked against the cited sources
@@ -73,9 +76,12 @@ docs/cli/Drive.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Debug.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Settings.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
 docs/cli/Sessions.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
+docs/math/Stats.md	2026-10-24	formulas and rank figure, docs-reviewer pass
 docs/physics/README.md	2026-10-24	new index for the physics package; links checked against every docs/physics page
 docs/physics/Spring.md	2026-10-24	moved from docs/math/Motion.md with spring_line.h; checked against physics/spring/spring_line.h
 docs/math/Motion.md	2026-10-24	spring_line section moved to docs/physics/Spring.md; checked against orbit_motion.h
-docs/math/Stats.md	2026-10-24	formulas and rank figure, docs-reviewer pass
 docs/tools/Pull-Requests.md	2026-10-24	new page, docs-reviewer pass
 .github/pull_request_template.md	2026-10-24	new template, docs-reviewer pass
+docs/kinematics/README.md	2026-10-25	new index for the kinematics package; links checked against every docs/kinematics page
+docs/kinematics/Orbit.md	2026-10-25	moved from docs/math/Motion.md with orbit_motion.h; checked against kinematics/orbit/orbit_motion.h
+docs/kinematics/Follow.md	2026-10-25	new, from the fling decay and reset spring sections of docs/math/Motion.md; checked against kinematics/follow/follow.h

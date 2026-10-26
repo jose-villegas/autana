@@ -63,12 +63,25 @@ jobs:
           lfs: false
           persist-credentials: false
 
-      - name: Wait for the USB probe and download its artifact
+      - name: Wait for the USB probe unless the night is running
         id: probe
         run: python3 scripts/ci/board_alarm.py probe --devices "$RUNNER_TEMP/devices.json" --reason-file "$RUNNER_TEMP/board-alarm-reason"
 
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The nightly creates perf-data on its first run; until then there are no lanes to check.
+      - name: Look for the nightly's perf-data branch
+        id: data
         if: steps.probe.outputs.enabled == 'true'
+        run: |
+          if git ls-remote --exit-code --heads origin perf-data > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            [ "$status" -eq 2 ] || exit "$status"
+            echo "::notice::Board health: no perf-data branch yet (no nightly has run); nothing to check"
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.data.outputs.exists == 'true'
         with:
           ref: perf-data
           path: perf-data
@@ -77,7 +90,7 @@ jobs:
           persist-credentials: false
 
       - name: Check board health
-        if: steps.probe.outputs.enabled == 'true'
+        if: steps.data.outputs.exists == 'true'
         run: python3 scripts/ci/board_alarm.py check --lanes-from perf-data --devices "$RUNNER_TEMP/devices.json" --reason-file "$RUNNER_TEMP/board-alarm-reason"
 
       - name: Report health check failures

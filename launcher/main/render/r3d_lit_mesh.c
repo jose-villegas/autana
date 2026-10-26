@@ -93,8 +93,9 @@ nodes_are_inside(const r3d_lit_mesh_t* mesh) {
         if ((int)node->first + node->count > limit) {
             return false;
         }
-        /* An inner node's children come after it, so a walk down the tree always ends. */
-        if (!node->leaf && (int)node->first <= n) {
+        /* An inner node's children come after it, so a walk down the tree
+         * always ends, and they fit the walk's ordering. */
+        if (!node->leaf && ((int)node->first <= n || node->count > R3D_LIT_NODE_CHILDREN_MAX)) {
             return false;
         }
     }

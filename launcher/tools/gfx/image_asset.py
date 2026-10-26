@@ -5,7 +5,7 @@ host; main/draw/draw_image.c is the firmware's.
 A NAME.image.toml names its source, a PNG in its own folder, and how many
 quarter turns clockwise take the source to the stored pixels; the pack id is
 NAME. The layout is in docs/assets/Image-Entries.md, "IMAG v1". Pixels are
-stored as the panel takes them (gfx_color.h's byte-swapped RGB565), so drawing
+stored as the panel takes them (image/pixel/rgb565.h's byte-swapped RGB565), so drawing
 one is a copy. An icon is the same entry with one bit a pixel
 (encode_mono()), which gfx/icons_asset.py writes. Standard library only: the firmware build runs this under
 ESP-IDF's python, which has no Pillow.

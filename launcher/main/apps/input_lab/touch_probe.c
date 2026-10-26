@@ -20,27 +20,25 @@ touch_probe_next(rng_t* rng, int screen_w, int screen_h, int side, int margin) {
     return t;
 }
 
-void
-touch_probe_offset(touch_probe_target_t target, int x, int y, int* dx, int* dy) {
-    *dx = x - (target.x + target.side / 2);
-    *dy = y - (target.y + target.side / 2);
+vec2i_t
+touch_probe_offset(touch_probe_target_t target, vec2i_t point) {
+    return (vec2i_t){point.x - (target.x + target.side / 2), point.y - (target.y + target.side / 2)};
 }
 
 bool
-touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, int x, int y) {
-    int dx;
-    int dy;
-    touch_probe_offset(target, x, y, &dx, &dy);
-    const bool hit = x >= target.x && x < target.x + target.side && y >= target.y && y < target.y + target.side;
+touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, vec2i_t point) {
+    const vec2i_t offset = touch_probe_offset(target, point);
+    const bool hit = point.x >= target.x && point.x < target.x + target.side && point.y >= target.y
+                     && point.y < target.y + target.side;
 
     stats->taps++;
     stats->hits += hit;
-    stats->sum_dx += dx;
-    stats->sum_dy += dy;
-    stats->sum_dx2 += (int64_t)dx * dx;
-    stats->sum_dy2 += (int64_t)dy * dy;
-    if ((dx * dx) + (dy * dy) > stats->worst_dist2) {
-        stats->worst_dist2 = (dx * dx) + (dy * dy);
+    stats->sum_dx += offset.x;
+    stats->sum_dy += offset.y;
+    stats->sum_dx2 += (int64_t)offset.x * offset.x;
+    stats->sum_dy2 += (int64_t)offset.y * offset.y;
+    if ((offset.x * offset.x) + (offset.y * offset.y) > stats->worst_dist2) {
+        stats->worst_dist2 = (offset.x * offset.x) + (offset.y * offset.y);
     }
     return hit;
 }
@@ -109,8 +107,8 @@ touch_probe_shuffle(rng_t* rng, int* order, int n) {
 
 #define SETTLE_MAX 64
 
-void
-touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms, int* x, int* y) {
+vec2i_t
+touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms) {
     int32_t xs[SETTLE_MAX];
     int32_t ys[SETTLE_MAX];
     int count = 0;
@@ -126,18 +124,15 @@ touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int
         }
     }
     if (count == 0) {
-        *x = samples[last].x;
-        *y = samples[last].y;
-        return;
+        return (vec2i_t){samples[last].x, samples[last].y};
     }
-    *x = (int)statsi_median(xs, (size_t)count);
-    *y = (int)statsi_median(ys, (size_t)count);
+    return (vec2i_t){(int)statsi_median(xs, (size_t)count), (int)statsi_median(ys, (size_t)count)};
 }
 
 static void
-add_sample(touch_probe_tap_t* tap, int x, int y, int t_ms) {
+add_sample(touch_probe_tap_t* tap, vec2i_t point, int t_ms) {
     if (tap->count < TOUCH_PROBE_SAMPLES_MAX) {
-        tap->samples[tap->count++] = (touch_probe_sample_t){.x = x, .y = y, .t_ms = t_ms};
+        tap->samples[tap->count++] = (touch_probe_sample_t){.x = point.x, .y = point.y, .t_ms = t_ms};
     }
 }
 
@@ -148,13 +143,13 @@ touch_probe_track(touch_probe_tap_t* tap, int dt_ms, const input_t* input) {
         tap->count = 0;
         tap->held_ms = 0;
         tap->idle_before_press = tap->idle_ms;
-        add_sample(tap, input->press_x, input->press_y, 0);
-        if (input->x != input->press_x || input->y != input->press_y) {
-            add_sample(tap, input->x, input->y, 0);
+        add_sample(tap, input->press, 0);
+        if (input->point.x != input->press.x || input->point.y != input->press.y) {
+            add_sample(tap, input->point, 0);
         }
     } else if (tap->tracking && input->down) {
         tap->held_ms += dt_ms;
-        add_sample(tap, input->x, input->y, tap->held_ms);
+        add_sample(tap, input->point, tap->held_ms);
     } else if (!tap->tracking) {
         tap->idle_ms += dt_ms;
     }

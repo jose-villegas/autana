@@ -8,6 +8,7 @@
 
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
+#include "core/handle.h"
 #include "core/memory.h"
 #include "math/linear/mat3f.h"
 #include "render/skin/r3d_skin_light.h"
@@ -163,7 +164,7 @@ typedef struct {
 struct scene {
     scene_asset_t asset;
     char id[ASSET_NAME_MAX];
-    bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
+    handle_t load;
     int renderer_count;
     int animator_count, skeleton_animator_count;
     int16_t animate_share, skin_share; /* core 1's, as core/job.h steers them */

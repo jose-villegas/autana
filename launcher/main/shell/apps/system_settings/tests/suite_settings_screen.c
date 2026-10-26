@@ -86,10 +86,10 @@ frame(const input_t* in) {
 /* Which row's setter one press-and-release at (x, y) called, -1 for none;
  * fails if it called more than one, or set a value other than the flip. */
 static int
-tap(int x, int y) {
+tap(vec2i_t point) {
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .x = x, .y = y, .press_x = x, .press_y = y};
-    const input_t release = {.released = true, .x = x, .y = y, .press_x = x, .press_y = y};
+    const input_t press = {.down = true, .pressed = true, .point = point, .press = point};
+    const input_t release = {.released = true, .point = point, .press = point};
     bool before[ROW_COUNT];
     for (int i = 0; i < ROW_COUNT; i++) {
         before[i] = values[i];
@@ -131,7 +131,7 @@ test_a_tap_on_a_row_calls_only_that_rows_owner(void) {
         int last = -1;
         for (int y = 0; y < ui_height(); y += TAP_STEP_PX) {
             const vec2i_t panel = affine2x_map_pixel(&t, (vec2i_t){ui_width() / 2, y});
-            const int row = tap(panel.x, panel.y);
+            const int row = tap(panel);
             if (row >= 0) {
                 TEST_ASSERT_TRUE_MESSAGE(row >= last, "a lower tap reached a higher row");
                 last = row;
