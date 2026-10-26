@@ -1,7 +1,7 @@
 /* Battery reads block on the console task, outside the frame loop. */
 #include <ctype.h>
 #include "console/console_verbs.h"
-#include "console/verbs/console_battery_reply.h"
+#include "power/console/console_battery_reply.h"
 
 static void
 log_reply(const power_log_record_t* record, void* context) {
