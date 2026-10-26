@@ -18,6 +18,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "input/input.h"
+#include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
 #include "render_host.h"
@@ -150,10 +151,13 @@ options(int argc, char** argv) {
         return false;
     }
     if (at != NULL) {
-        if (sscanf(at, "%d,%d", &touch[0].x, &touch[0].y) != 2) {
+        vec2i_t point;
+        if (!vec2i_parse(at, NULL, &point)) {
             (void)fprintf(stderr, "render_lab_render_host: --tap is X,Y in panel pixels, not %s\n", at);
             return false;
         }
+        touch[0].x = point.x;
+        touch[0].y = point.y;
         touch[1].x = touch[0].x;
         touch[1].y = touch[0].y;
         tap = true;
@@ -163,12 +167,17 @@ options(int argc, char** argv) {
         || !option_value(argc, argv, "--scale", &scale) || !option_value(argc, argv, "--size", &size)) {
         return false;
     }
+    recti_t dimensions;
     if (size != NULL
-        && (sscanf(size, "%dx%d", &size_width, &size_height) != 2 || size_width <= 0 || size_height <= 0
-            || size_width > GFX_WIDTH || size_height > GFX_HEIGHT)) {
+        && (!recti_parse(size, NULL, &dimensions) || dimensions.x != 0 || dimensions.y != 0 || dimensions.w <= 0
+            || dimensions.h <= 0 || dimensions.w > GFX_WIDTH || dimensions.h > GFX_HEIGHT)) {
         (void)fprintf(stderr, "render_lab_render_host: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT,
                       size);
         return false;
+    }
+    if (size != NULL) {
+        size_width = dimensions.w;
+        size_height = dimensions.h;
     }
     if (scene == NULL) {
         (void)fprintf(stderr, "render_lab_render_host needs --scene <key>\n");

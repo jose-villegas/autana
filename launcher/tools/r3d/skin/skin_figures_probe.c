@@ -15,6 +15,7 @@
 #include "math/linear/mat4f.h"
 #include "math/linear/quatf.h"
 #include "math/scalar/math_const.h"
+#include "math/text/math_text.h"
 #include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skinning.h"
 
@@ -31,7 +32,9 @@ joint_world(int joint, float hinge, float radians) {
 
 static void
 print_point(vec3f_t p) {
-    printf("[%.7g,%.7g]", (double)p.x, (double)p.y);
+    char text[VEC2F_TEXT_MAX];
+    vec2f_format(text, sizeof text, vec3f_xy(p));
+    printf("[%s]", text);
 }
 
 int

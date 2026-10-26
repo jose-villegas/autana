@@ -2,6 +2,7 @@
  * rocking with a known gyro bias through gravity_update_batch, sampled as the QMI8658 would read it. */
 #include "device_motion_probe.h"
 #include "input/motion/gravity.h"
+#include "math/text/math_text.h"
 
 #define PROBE_STEPS       100
 #define PROBE_TILT_RAD    0.05F
@@ -51,7 +52,9 @@ sample(float t, float dt) {
 
 static void
 print_vec(const char* name, vec3f_t v) {
-    printf(",\"%s\":[%g,%g,%g]", name, (double)v.x, (double)v.y, (double)v.z);
+    char text[VEC3F_TEXT_MAX];
+    vec3f_format(text, sizeof text, v);
+    printf(",\"%s\":[%s]", name, text);
 }
 
 int
