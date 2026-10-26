@@ -270,14 +270,12 @@ calibration_on(void) {
 static void
 finish_tap(vec2i_t release) {
     const touch_probe_sample_t first = tap.samples[0];
-    int settled_x;
-    int settled_y;
-    touch_probe_settled(tap.samples, tap.count, SETTLE_FROM_MS, SETTLE_TO_MS, &settled_x, &settled_y);
+    const vec2i_t settled = touch_probe_settled(tap.samples, tap.count, SETTLE_FROM_MS, SETTLE_TO_MS);
 
     int aim_panel_x;
     int aim_panel_y;
     const vec2i_t first_screen = to_screen((vec2i_t){first.x, first.y});
-    const vec2i_t settled_screen = to_screen((vec2i_t){settled_x, settled_y});
+    const vec2i_t settled_screen = to_screen(settled);
     const vec2i_t release_screen = to_screen(release);
     const int aim_x = target.x + (target.side / 2);
     const int aim_y = target.y + (target.side / 2);
@@ -296,8 +294,8 @@ finish_tap(vec2i_t release) {
              "panel_settled %d,%d panel_release %d,%d held %d idle %d samples %d %s cal %d",
              stats.taps, MODE_NAMES[mode], display_quarter_now(), aim_x, aim_y, aim_panel_x, aim_panel_y,
              (int)first_screen.x, (int)first_screen.y, (int)settled_screen.x, (int)settled_screen.y,
-             (int)release_screen.x, (int)release_screen.y, first.x, first.y, settled_x, settled_y, (int)release.x,
-             (int)release.y, tap.held_ms, tap.idle_before_press, tap.count, last_hit ? "HIT" : "miss",
+             (int)release_screen.x, (int)release_screen.y, first.x, first.y, (int)settled.x, (int)settled.y,
+             (int)release.x, (int)release.y, tap.held_ms, tap.idle_before_press, tap.count, last_hit ? "HIT" : "miss",
              calibration_on());
     advance_target();
 }

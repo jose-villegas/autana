@@ -35,12 +35,12 @@ viewport_quarter_axes(int quarter) {
 /* The inverse of ui_transform_quarter_turn(): where in the upright picture
  * a physical pixel lands once the panel is read at `viewport.quarter`.
  * Spelled out here rather than included, since render/ sits below ui/. */
-static inline void
-viewport_physical_to_upright(viewport_t viewport, vec2i_t point, int* ux, int* uy) {
+static inline vec2i_t
+viewport_physical_to_upright(viewport_t viewport, vec2i_t point) {
     const viewport_quarter_axes_t a = viewport_quarter_axes(viewport.quarter);
     const bool swapped = a.x_right == 0;
     const int upright_width = swapped ? viewport.height : viewport.width;
     const int upright_height = swapped ? viewport.width : viewport.height;
-    *ux = (a.x_right + a.y_right < 0 ? upright_width - 1 : 0) + a.x_right * point.x + a.y_right * point.y;
-    *uy = (a.x_down + a.y_down < 0 ? upright_height - 1 : 0) + a.x_down * point.x + a.y_down * point.y;
+    return (vec2i_t){(a.x_right + a.y_right < 0 ? upright_width - 1 : 0) + a.x_right * point.x + a.y_right * point.y,
+                     (a.x_down + a.y_down < 0 ? upright_height - 1 : 0) + a.x_down * point.x + a.y_down * point.y};
 }
