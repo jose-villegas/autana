@@ -17,7 +17,6 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "input/input.h"
-#include "input/motion/tilt.h"
 #include "input/touch/gesture.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_watch.h"
@@ -235,25 +234,17 @@ shell_start_app(const app_t** current, const app_t* next) {
     frame_watch_restart();
 }
 
-static tilt_t launcher_tilt;
-
 /* The launcher's backdrop keeps level with the horizon, so it needs gravity
  * every frame, not at the orientation logic's own slower pace. */
 static void
-feed_launcher_gravity(uint32_t dt_ms) {
-    input_motion_t motion;
-    if (!input_read_motion(&motion)) {
-        return;
-    }
-    tilt_update(&launcher_tilt, motion.acceleration, motion.turn_speed, dt_ms);
-    ui_ridge_set_gravity(tilt_x(&launcher_tilt), tilt_y(&launcher_tilt), tilt_strength(&launcher_tilt),
-                         tilt_shake(&launcher_tilt));
+feed_launcher_gravity(void) {
+    ui_ridge_set_gravity(input_gravity(), input_shake());
 }
 
 static void
 step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
     apply_pending_full_redraw(NULL);
-    feed_launcher_gravity(dt_ms);
+    feed_launcher_gravity();
     const app_t* chosen = ui_launcher_frame(input, dt_ms);
     if (chosen == NULL) {
         draw_home_hint(exit_edge);
@@ -345,7 +336,6 @@ shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
 void
 shell_apps_init(void) {
     gfx_set_frame_overlay(shell_frame_overlay);
-    tilt_reset(&launcher_tilt, INPUT_ACCEL_ONE_G);
 }
 
 #if CONFIG_LAUNCHER_SELFTEST

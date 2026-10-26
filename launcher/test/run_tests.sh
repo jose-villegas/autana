@@ -118,6 +118,7 @@ HEAP_ARENA_DEFINES="-DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES=$HOST_HEAP_ARENA_B
 
 SOURCES="
 $TEST_DIR/host_main.c
+$TEST_DIR/clock_fake.c
 $TEST_DIR/input_fake.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
@@ -149,8 +150,8 @@ $MAIN_DIR/input/motion/imu_calib.c
 $MAIN_DIR/input/touch/touch_calib.c
 $MAIN_DIR/input/touch/touch_inject_fsm.c
 $MAIN_DIR/input/touch/gesture.c
-$MAIN_DIR/input/motion/tilt.c
 $MAIN_DIR/input/motion/imu_queue.c
+$MAIN_DIR/input/motion/motion_reader.c
 $MAIN_DIR/input/motion/gravity.c
 $MAIN_DIR/input/motion/shake.c
 $MAIN_DIR/input/buttons/button_fsm.c

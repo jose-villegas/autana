@@ -11,6 +11,9 @@
 #include "math/linear/vec3f.h"
 #include "math/scalar/units.h"
 
+/* Minimum in-plane strength (0..1) for a meaningful direction. */
+#define GRAVITY_MIN_DIRECTION_STRENGTH    0.25F
+
 /* Ours, tuned on the board. */
 #define GRAVITY_TAU_S                     0.5F
 /* Ours: full trust within this departure from one g. */

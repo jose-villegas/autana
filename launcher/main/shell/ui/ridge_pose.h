@@ -3,16 +3,17 @@
  * vector, eased and snapped level once it holds still, and where a screen
  * point lies along it.
  *
- * Pure: time, gravity and every threshold are passed in rather than read
- * from a tunable, so the maths runs the same off the device. Poses are unit
+ * Pure arithmetic with explicit time and gravity inputs. Poses are unit
  * vectors with RIDGE_POSE_SHIFT fractional bits.
  */
 #pragma once
 
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "input/motion/gravity.h"
 #include "math/scalar/mathi.h"
 
 #define RIDGE_POSE_SHIFT 14
@@ -45,21 +46,16 @@ ridge_pose_within(ridge_vector_t a, ridge_vector_t b, int step) {
     return abs(a.down_x - b.down_x) < step && abs(a.down_y - b.down_y) < step;
 }
 
-/* The level a gravity reading points to: `gx`, `gy` normalised to a unit
- * vector, or `level` unchanged if the reading is weaker than `min_strength`,
- * too flat a device for "down" to mean anything. */
+/* A nearly flat device has no meaningful in-plane direction. */
 static inline ridge_vector_t
-ridge_pose_level_from_gravity(ridge_vector_t level, int gx, int gy, int strength, int min_strength) {
-    if (strength < min_strength) {
-        return level;
-    }
-    const int64_t length = (int64_t)mathi_isqrt64((uint32_t)((gx * gx) + (gy * gy)));
-    if (length == 0) {
+ridge_pose_level_from_gravity(ridge_vector_t level, vec3f_t g) {
+    const float len = hypotf(g.x, g.y);
+    if (len < GRAVITY_MIN_DIRECTION_STRENGTH) {
         return level;
     }
     return (ridge_vector_t){
-        .down_x = (int32_t)((int64_t)gx * RIDGE_POSE_ONE / length),
-        .down_y = (int32_t)((int64_t)gy * RIDGE_POSE_ONE / length),
+        .down_x = (int32_t)(g.x / len * RIDGE_POSE_ONE),
+        .down_y = (int32_t)(g.y / len * RIDGE_POSE_ONE),
     };
 }
 
