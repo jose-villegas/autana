@@ -19,6 +19,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/rgb565.h"
 #include "input/motion/tilt.h"
 #include "math/scalar/ease.h"
 #include "math/scalar/fixed.h"
@@ -219,8 +220,8 @@ build_sky_gradient(void) {
     ridge->sky_half = RIDGE_SKY_HALF;
     ridge->sky_edge_count = 0;
     for (int along = 0; along <= 2 * RIDGE_SKY_HALF; along++) {
-        ridge->sky[along] =
-            gfx_rgb(rgb_mix(ridge->theme.sky_top_rgb, ridge->theme.sky_bottom_rgb, along * 100 / (2 * RIDGE_SKY_HALF)));
+        ridge->sky[along] = RGB565BE(
+            rgb_mix(ridge->theme.sky_top_rgb, ridge->theme.sky_bottom_rgb, along * 100 / (2 * RIDGE_SKY_HALF)));
         if (along > 0 && ridge->sky[along] != ridge->sky[along - 1] && ridge->sky_edge_count < RIDGE_SKY_EDGES) {
             ridge->sky_edge[ridge->sky_edge_count++] = (int16_t)along;
         }
@@ -1166,9 +1167,9 @@ bake_what_is_tuned(void) {
     ridge->theme.back0_rgb = (uint32_t)back0_rgb;
     ridge->theme.back1_rgb = (uint32_t)back1_rgb;
 #endif
-    ridge->background_color = gfx_rgb(ridge->theme.background_rgb);
-    ridge->back0_color = gfx_rgb(ridge->theme.back0_rgb);
-    ridge->back1_color = gfx_rgb(ridge->theme.back1_rgb);
+    ridge->background_color = RGB565BE(ridge->theme.background_rgb);
+    ridge->back0_color = RGB565BE(ridge->theme.back0_rgb);
+    ridge->back1_color = RGB565BE(ridge->theme.back1_rgb);
     const int lip_start[RIDGE_LAYER_COUNT] = {back0_lip_alpha, back1_lip_alpha, front_lip_alpha};
     const int lip_end[RIDGE_LAYER_COUNT] = {back0_body_alpha, back1_body_alpha, front_body_alpha};
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
@@ -1336,7 +1337,7 @@ void
 ui_ridge_paint(void) {
     allocate_once();
     if (ridge == NULL) {
-        draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, GFX_RGB(0));
+        draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, RGB565BE(0));
         return;
     }
     FRAME_COST_BEGIN(painted_from);

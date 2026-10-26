@@ -7,6 +7,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/rgb565.h"
 #include "services/build_id.h"
 #include "shell/shell_frame.h"
 #include "ui/layout/ui_anchor.h"
@@ -36,7 +37,7 @@ draw_build_mark(void) {
         int x = 0;
         int y = 0;
         ui_text_glyph0_origin(draw_font_ui(), box, quarter, 1, &x, &y);
-        draw_text_turned(x, y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
+        draw_text_turned(x, y, build_mark_text, RGB565BE(BUILD_MARK_RGB), 1, quarter);
     }
 }
 #endif

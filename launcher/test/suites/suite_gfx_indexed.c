@@ -8,6 +8,7 @@
 #include "unity.h"
 
 #include "gfx/present/modes/indexed/gfx_indexed.h"
+#include "image/pixel/rgb565.h"
 
 static gfx_color_t* lut;
 static gfx_color_t* scratch;

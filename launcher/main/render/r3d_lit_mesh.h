@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
+#include "image/pixel/rgb565.h"
 #include "math/geometry/box3s.h"
 #include "math/geometry/spheref.h"
 

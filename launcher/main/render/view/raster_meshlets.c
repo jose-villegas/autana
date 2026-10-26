@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include "image/pixel/rgb565.h"
 #include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/view/raster_show.h"
@@ -35,7 +36,7 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
 gfx_color_t
 raster_meshlets_color(uint32_t id) {
     const uint32_t hash = id * 2654435761U;
-    return GFX_RGB(gfx_hue_rgb((int)(((uint64_t)hash * GFX_HUE_TURN) >> 32)));
+    return RGB565BE(rgb888_hue((int)(((uint64_t)hash * RGB888_HUE_TURN) >> 32)));
 }
 
 static gfx_color_t

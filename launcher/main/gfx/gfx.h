@@ -9,6 +9,7 @@
 #include "build/build_variant.h"
 #include "gfx/target/gfx_color.h"
 #include "gfx/target/gfx_target.h"
+#include "image/pixel/rgb565.h"
 #include "math/geometry/recti.h"
 
 /* The panel's size as literals, so no caller needs the board's headers; the

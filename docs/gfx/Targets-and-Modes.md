@@ -129,7 +129,7 @@ and marks the matching panel rectangle dirty; cell (cx, cy) covers `cell_size` x
 
 All four are safe only between frames.
 
-Palettes are a gfx type (`draw/draw_palette.h`, entries 0-15 reserved by
+Palettes are a gfx type (`image/palette/palette.h`, entries 0-15 reserved by
 `DRAW_PALETTE_UI_ENTRIES`).
 
 - Curated palettes ship in `draw/draw_palette_standard.h`, chosen at runtime by name.

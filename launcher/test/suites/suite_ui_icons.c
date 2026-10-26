@@ -20,6 +20,7 @@
 
 #ifndef DEVICE_BUILD
 #include "draw/draw_image_format.h"
+#include "image/pixel/rgb565.h"
 #include "test_asset_dir.h"
 
 #define PACK        "suite_ui_icons"

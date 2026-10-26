@@ -25,6 +25,7 @@
 #include "apps/sand/sand_brushes.h"
 #include "apps/sand/ui/palette_screen.h"
 #include "apps/sand/ui/sand_theme.h"
+#include "image/pixel/rgb565.h"
 
 #define TOUCH_HOLD_FRAMES 4
 
@@ -233,7 +234,7 @@ tile_of(int index) {
 
 static uint32_t
 face_of(int index) {
-    return gfx_color_rgb888(material_brush_color(sand_brushes[index].cell));
+    return rgb565be_to_rgb888(material_brush_color(sand_brushes[index].cell));
 }
 
 static void

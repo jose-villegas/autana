@@ -11,7 +11,7 @@
  *      grown greedily by weighted k-means (Lloyd 1982) in OKLab
  *      until the table is full.
  *   3. Build a 16-entry palette, shared and per scene, whose colours are
- *      approximated by gfx_dither_covers()'s ordered dither between pairs.
+ *      approximated by bayer_covers()'s ordered dither between pairs.
  *   4. Settle six landscape scenes with the real simulation, paint them
  *      through a mirror of the app's row painter, and write original,
  *      256-colour and 16-colour panels side by side as PNG.
@@ -36,10 +36,12 @@
 #include <string.h>
 
 #include "collections/sort.h"
-#include "draw/draw_palette.h"
 #include "draw_palette_gen.h"
 #include "gfx/present/gfx_mode.h"
 #include "hash/crc32.h"
+#include "image/palette/palette.h"
+#include "image/pixel/bayer.h"
+#include "image/pixel/rgb565.h"
 #include "material.h"
 #include "material_palette.h"
 #include "math/scalar/mathi.h"
@@ -144,7 +146,7 @@ group_of(cell_t c, unsigned depth) {
 /* A native RGB565 key as 0xRRGGBB. */
 static uint32_t
 key_rgb888(uint16_t key) {
-    return gfx_color_rgb888(gfx_color_swap(key));
+    return rgb565be_to_rgb888(rgb565_swap(key));
 }
 
 /* 1. the sweep */
@@ -180,7 +182,7 @@ record(const material_frame_t* mf, cell_t c, unsigned hash, unsigned mask, unsig
     bits |= (base_state && depth == 0) ? PIN_DEPTH : 0U;
     const int n_out = pat == MATERIAL_HATCHED ? 3 : 1;
     for (int i = 0; i < n_out; i++) {
-        seen[g][gfx_color_swap(out[i])] |= bits;
+        seen[g][rgb565_swap(out[i])] |= bits;
     }
 }
 
@@ -961,7 +963,7 @@ pin_depth_steps(void) {
         for (unsigned d = 0; d <= MATERIAL_LIQUID_DEPTH_BAND; d++) {
             gfx_color_t out[3];
             material_colours(&mf, CELL_MAKE(m, MASS_MAX), 0U, 0U, d, out);
-            pinned[group_of(CELL_MAKE(m, MASS_MAX), d)][gfx_color_swap(out[0])] = true;
+            pinned[group_of(CELL_MAKE(m, MASS_MAX), d)][rgb565_swap(out[0])] = true;
         }
     }
 }
@@ -1221,7 +1223,7 @@ ramp_add(const material_frame_t* mf, cell_t c, unsigned hash, unsigned mask, uns
     gfx_color_t out[3];
     material_colours(mf, c, hash, mask, depth, out);
     ramp.g[ramp.n] = group_of(c, depth);
-    ramp.key[ramp.n] = gfx_color_swap(out[0]);
+    ramp.key[ramp.n] = rgb565_swap(out[0]);
     ramp.n++;
 }
 
@@ -1904,7 +1906,7 @@ ega_points(ega_points_t* pts, uint32_t (*counts)[KEYS]) {
 static uint32_t
 ega_pixel(const ega_palette_t* pal, const ega_choice_t* ch, int px, int py) {
     const uint8_t alpha = ch->level == 0 ? 0U : (uint8_t)(ch->level * 16U);
-    return key_rgb888(pal->key[gfx_dither_covers(px, py, alpha) ? ch->hi : ch->lo]);
+    return key_rgb888(pal->key[bayer_covers(px, py, alpha) ? ch->hi : ch->lo]);
 }
 
 static ega_palette_t ega_global;
@@ -1944,7 +1946,7 @@ scene_count_used(gfx_color_t* fb, uint8_t* grp) {
     memset(scene_used, 0, sizeof scene_used);
     uint64_t unseen = 0;
     for (int i = 0; i < PANEL_W * PANEL_H; i++) {
-        const uint16_t key = gfx_color_swap(fb[i]);
+        const uint16_t key = rgb565_swap(fb[i]);
         unseen += !(seen[grp[i]][key] & PIN_NONE);
         scene_used[grp[i]][key]++;
     }
@@ -1971,7 +1973,7 @@ static void
 scene_plot_pixel(int si, int px, int py, gfx_color_t* fb, uint8_t* grp, const ega_choice_t* choice_global,
                  const ega_choice_t* choice_local, uint8_t* rgb, uint8_t* rgb_local, int w, scene_error_stats_t* st) {
     const group_t g = (group_t)grp[(py * PANEL_W) + px];
-    const uint16_t key = gfx_color_swap(fb[(py * PANEL_W) + px]);
+    const uint16_t key = rgb565_swap(fb[(py * PANEL_W) + px]);
     const int idx = map_index[g][key];
     const double e = map_error(g, key);
     st->sum += e;
@@ -2027,7 +2029,7 @@ render_scene(const char* dir, int si, FILE* f, gfx_color_t* fb, uint8_t* grp) {
 
     static ega_points_t pts;
     ega_points(&pts, scene_used);
-    ega_build(&ega_local[si], &pts, gfx_color_swap(material_palette()[SAND_EMPTY]));
+    ega_build(&ega_local[si], &pts, rgb565_swap(material_palette()[SAND_EMPTY]));
 
     static ega_choice_t choice_global[KEYS];
     static ega_choice_t choice_local[KEYS];
@@ -2162,10 +2164,10 @@ static void
 build_output_rgb(uint16_t* entry_key, gfx_color_t* sand256_rgb, gfx_color_t* sand16_rgb) {
     for (int i = 0; i < PALETTE_SIZE; i++) {
         entry_key[i] = i < palette_used ? palette[i] : palette[UI_ENTRIES];
-        sand256_rgb[i] = gfx_color_swap(entry_key[i]);
+        sand256_rgb[i] = rgb565_swap(entry_key[i]);
     }
     for (int i = 0; i < EGA_ENTRIES; i++) {
-        sand16_rgb[i] = gfx_color_swap(ega_global.key[i]);
+        sand16_rgb[i] = rgb565_swap(ega_global.key[i]);
     }
 }
 
@@ -2187,7 +2189,8 @@ write_header_banner(FILE* f) {
             "#pragma once\n\n"
             "#include \"gfx/target/gfx_color.h\"\n"
             "#include \"gfx/present/gfx_mode.h\"\n"
-            "#include \"draw/draw_palette.h\"\n\n"
+            "#include \"image/palette/palette.h\"\n"
+            "#include \"image/pixel/rgb565.h\"\n\n"
             "#define SAND_PALETTE_UI_ENTRIES %d\n\n",
             UI_ENTRIES - 1, UI_ENTRIES, UI_ENTRIES);
 }
@@ -2221,7 +2224,7 @@ write_reverse_index(FILE* f) {
  * a finished pair of palettes; this file only owns the FINAL sand256/sand16
  * palettes those bakes read, not any one table's own logic. */
 static void
-write_dither_tables(FILE* f, const draw_palette_t* p256, const draw_palette_t* p16) {
+write_dither_tables(FILE* f, const palette_t* p256, const palette_t* p16) {
     static gfx_color_t dither_table[PALETTE_SIZE * 16];
     draw_palette_gen_build_dither16(p256, p16, dither_table);
     write_gfx_color_array(f,
@@ -2258,11 +2261,11 @@ write_dither_tables(FILE* f, const draw_palette_t* p256, const draw_palette_t* p
 }
 
 /* The 256-entry LUT is the palette sand actually registers through
- * draw_palette.h; the 16-colour dither is a derived presentation of it, not
+ * palette.h; the 16-colour dither is a derived presentation of it, not
  * a second independent palette. */
 static void
 write_final_struct(FILE* f) {
-    fprintf(f, "static const draw_palette_t sand_palette256 = {\"sand256\", sand_palette256_lut, "
+    fprintf(f, "static const palette_t sand_palette256 = {\"sand256\", sand_palette256_lut, "
                "GFX_INDEXED_PALETTE_SIZE};\n");
 }
 
@@ -2287,8 +2290,8 @@ write_sand_palette_header(const char* path) {
                           sand256_rgb, PALETTE_SIZE);
     write_reverse_index(f);
 
-    const draw_palette_t sand256_palette = {"sand256", sand256_rgb, PALETTE_SIZE};
-    const draw_palette_t sand16_palette = {"sand16", sand16_rgb, EGA_ENTRIES};
+    const palette_t sand256_palette = {"sand256", sand256_rgb, PALETTE_SIZE};
+    const palette_t sand16_palette = {"sand16", sand16_rgb, EGA_ENTRIES};
     write_dither_tables(f, &sand256_palette, &sand16_palette);
     write_final_struct(f);
 
@@ -2332,7 +2335,7 @@ common_setup(void) {
     for (int si = 0; si < SCENE_COUNT; si++) {
         paint_frame(grids[si], common_fb, common_grp, 1234U + (97U * (uint32_t)si));
         for (int i = 0; i < PANEL_W * PANEL_H; i++) {
-            used[common_grp[i]][gfx_color_swap(common_fb[i])]++;
+            used[common_grp[i]][rgb565_swap(common_fb[i])]++;
         }
     }
 
@@ -2343,7 +2346,7 @@ common_setup(void) {
     fprintf(stderr, "building the shared 16-colour palette...\n");
     static ega_points_t ega_all;
     ega_points(&ega_all, used);
-    ega_build(&ega_global, &ega_all, gfx_color_swap(material_palette()[SAND_EMPTY]));
+    ega_build(&ega_global, &ega_all, rgb565_swap(material_palette()[SAND_EMPTY]));
 }
 
 /*
@@ -2367,10 +2370,10 @@ ega_nearest(const ega_palette_t* pal, uint16_t key) {
 }
 
 typedef enum {
-    DP_BAYER4X4_PIXEL,   /* a: today's gfx_dither_covers(), per panel pixel */
+    DP_BAYER4X4_PIXEL,   /* a: today's bayer_covers(), per panel pixel */
     DP_CHECKER2X2_PIXEL, /* b: solid lo / 50-50 checker / solid hi, per pixel */
     DP_CHECKER_CELL,     /* c: solid lo or hi, alternating by (cx+cy)&1 */
-    DP_BAYER2X2_CELL,    /* d: gfx_dither_covers()'s idea, one cell = one tap */
+    DP_BAYER2X2_CELL,    /* d: bayer_covers()'s idea, one cell = one tap */
     DP_NEAREST_CELL,     /* e: no dither, nearest of the 16 per cell */
     DP_VARIANT_COUNT,
 } dp_variant_t;
@@ -2381,8 +2384,8 @@ static const char* const dp_names[DP_VARIANT_COUNT] = {
     "A BAYER 4X4 PX", "B CHECKER 2X2 PX", "C CHECKER CELL", "D BAYER 2X2 CELL", "E NEAREST CELL",
 };
 
-/* gfx_dither4x4 (gfx_color.h) at order 2: the same recursive Bayer
- * construction, its four taps spaced evenly over gfx_dither_level()'s
+/* bayer4x4 (bayer.h) at order 2: the same recursive Bayer
+ * construction, its four taps spaced evenly over bayer_level()'s
  * 0..16 domain: 5 achievable coverages per cell (0 to 4 of the
  * surrounding 2x2 block), once every cell renders solid. */
 static const int dp_bayer2x2[2][2] = {
@@ -2392,7 +2395,7 @@ static const int dp_bayer2x2[2][2] = {
 
 /* `ch` is variants a-d's shared blend choice, or e's own never-blended one.
  * `cx`/`cy` are this quality's CELL coordinates; `px`/`py` are absolute
- * panel pixels, the phase gfx_dither_covers() keys off. */
+ * panel pixels, the phase bayer_covers() keys off. */
 static uint32_t
 dp_pixel(dp_variant_t v, const ega_palette_t* pal, const ega_choice_t* ch, int px, int py, int cx, int cy) {
     switch (v) {
@@ -2447,7 +2450,7 @@ dp_coarsen_cells(gfx_color_t* fb, uint8_t* grp, int cell, int qgw, int qgh, uint
         for (int qx = 0; qx < qgw; qx++) {
             const int px = qx * cell;
             const int py = qy * cell;
-            cell_key[(qy * qgw) + qx] = gfx_color_swap(fb[(py * PANEL_W) + px]);
+            cell_key[(qy * qgw) + qx] = rgb565_swap(fb[(py * PANEL_W) + px]);
             cell_grp[(qy * qgw) + qx] = grp[(py * PANEL_W) + px];
         }
     }

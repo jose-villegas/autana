@@ -13,6 +13,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/modes/band/gfx_band_run.h"
 #include "gfx/present/modes/indexed/gfx_indexed.h"
+#include "image/pixel/rgb565.h"
 
 typedef enum {
     GFX_LAYOUT_FULL_FB,   /* one PSRAM framebuffer; core-1 present reads it */

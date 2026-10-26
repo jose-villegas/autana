@@ -15,6 +15,7 @@
 #include "asset/asset_pack.h"
 #include "draw/draw_image_format.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
 
 /* How a pixel is stored. One type holds every picture the engine draws, so a
  * new kind of picture is a new format here, not a new entry type. */
