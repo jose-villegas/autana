@@ -13,8 +13,10 @@ Two rules, one per kind of file:
   (in a package, launcher/packages/<name>/, its include/<name>/<path>.h and
   src/<path>.c), opens one of them with that comment. The scope is every
   tracked .c and .h under launcher/main/, launcher/packages/ and
-  launcher/test/suites/; a suite (suite_*.c) is exempt, its test names say
-  what it proves. A header there that declares nothing, only a comment,
+  launcher/test/suites/; a suite (suite_*.c) that runs tests of its own
+  (RUN_TEST) is exempt, its test names say what it proves, but one that only
+  includes another file's tests names nothing and needs the comment. A header
+  there that declares nothing, only a comment,
   fails too: a folder is described by its README.md, not by an empty header.
 
 Vendored and generated sources are exempt from both (check_comment_length.py
@@ -34,6 +36,7 @@ from build.packages import FIRST_PARTY, package_part  # noqa: E402
 SCOPE = (*FIRST_PARTY, "launcher/test/suites/")
 PRAGMA_ONCE = re.compile(r"^\s*#\s*pragma\s+once\b", re.M)
 HEADERS = (".h", ".hh", ".hpp", ".hxx")
+RUN_TEST = re.compile(r"\bRUN_TEST\(\s*\w+")
 
 
 def file_purpose(path, text):
@@ -47,9 +50,14 @@ def file_purpose(path, text):
     return " ".join(next(sentences(None, prose), (0, ""))[1].split())
 
 
-def in_scope(rp):
-    name = rp.rsplit("/", 1)[-1]
-    return (rp.startswith(SCOPE) and not name.startswith("suite_"))
+def in_scope(rp, root="."):
+    """A firmware source the module rule covers: a suite only when its own text runs no test."""
+    if not rp.startswith(SCOPE):
+        return False
+    if not rp.rsplit("/", 1)[-1].startswith("suite_"):
+        return True
+    text = (pathlib.Path(root) / rp).read_text(encoding="utf-8", errors="replace")
+    return RUN_TEST.search(blank_comments(text)) is None
 
 
 def module_of(rp):
@@ -70,7 +78,7 @@ def module_problems(root, files):
     modules = {}
     for path in sources(root, tracked=True):
         rp = path.relative_to(root).as_posix()
-        if in_scope(rp):
+        if in_scope(rp, root):
             modules.setdefault(module_of(rp), []).append(rp)
     found = []
     for stem, files in sorted(modules.items()):
