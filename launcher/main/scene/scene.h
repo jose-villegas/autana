@@ -65,6 +65,13 @@ const char* scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity);
 /* The mesh the entity draws, or NULL when it draws none. */
 const r3d_lit_mesh_t* scene_entity_mesh(const scene_t* scene, scene_entity_t entity);
 
+/* The entity's renderer draws `mesh` instead of the one it loaded: a mesh
+ * made at run time, which the caller keeps alive for the scene's life. The
+ * scene keeps a copy of the view, so call again after each rebuild changes
+ * its counts. A mesh with no nodes draws nothing. False when the entity
+ * has no renderer or a skinned one, whose mesh its animator writes. */
+bool scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mesh_t* mesh);
+
 /* The lens of the scene's camera named by `camera` (SCENE_CAMERA_FIRST: its first); NULL when the scene has no
  * such camera. */
 const camera_t* scene_camera_lens(const scene_t* scene, name_hash_t camera);
@@ -73,6 +80,10 @@ bool scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_pres
 
 /* Returns false for a non-camera entity or an invalid style. */
 bool scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill);
+/* Sets the camera's lens shift (render_view_t.shift): an off-axis view, as a
+ * window onto a fixed rectangle needs. False for a non-camera entity or a
+ * shift that is not finite. */
+bool scene_camera_set_shift(scene_t* scene, scene_entity_t camera, vec2f_t shift);
 
 /* Setters attach a directional light, initially white with zero intensity; refusals change nothing. */
 bool scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb);

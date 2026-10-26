@@ -212,7 +212,7 @@ system icons), not code; it keeps its place under L1.
 | dirty and full-redraw send policy | `gfx/present/send/` |
 | null panel backend | `gfx/present/panel/` |
 | viewport | `display/` |
-| projection | `math/linear/projectf.h`, `projectx.h` (lens, near clip); `render/r3d_project*.h` (snapping, line units) |
+| projection | `math/projection/projectf.h`, `projectx.h` (lens, near clip); `render/r3d_project*.h` (snapping, line units) |
 
 ### Drawing and presentation
 

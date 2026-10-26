@@ -24,11 +24,13 @@ class _ArtifactRedirectHandler(urllib.request.HTTPRedirectHandler):
         return redirected
 
 
-def call(method, path, body=None, *, raw=False):
+def call(method, path, body=None, *, raw=False, token=None, repository=None):
+    token = token if token is not None else os.environ['GH_TOKEN']
+    repository = repository if repository is not None else os.environ['GITHUB_REPOSITORY']
     request = urllib.request.Request(
-        f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}{path}", method=method,
+        f"https://api.github.com/repos/{repository}{path}", method=method,
         data=None if body is None else json.dumps(body).encode(),
-        headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"})
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
     opener = urllib.request.build_opener(_ArtifactRedirectHandler()) if raw else None
     if method == 'GET':
         data = http_get.get(request, timeout=REQUEST_TIMEOUT_SECONDS, opener=opener)

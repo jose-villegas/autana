@@ -34,7 +34,5 @@ typedef struct {
     bool loop;
 } console_sound_args_t;
 
-/* Answers a play request taken from the frame mailbox. */
-void console_sound_answer(const console_sound_args_t* args);
 /* Stops tracked voices and fences borrowed reads before releasing mapped packs. */
 void console_sound_release_views(void);

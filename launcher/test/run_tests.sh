@@ -93,6 +93,13 @@ if [ "$SANITIZE" = 1 ]; then
     SANITIZER_FLAGS=$(host_sanitizer_flags "$CC_BIN") || exit 1
     CFLAGS="$CFLAGS $SANITIZER_FLAGS -Wno-format-truncation"
 fi
+# A compiler that lists -fcallgraph-info (gcc) writes each object's call graph
+# (.ci) beside it, so a host-built function's callers come from the compiler.
+CALL_GRAPHS=0
+if "$CC_BIN" --help=common 2>/dev/null | grep -q -- '-fcallgraph-info'; then
+    CALL_GRAPHS=1
+    CFLAGS="$CFLAGS -fcallgraph-info"
+fi
 
 # --- the device's heap, on this machine ------------------------------------
 # Sourced the same way find_cc.sh is, one block above. The cap is a profile
@@ -465,8 +472,9 @@ prune() { # dir, expected-name-list-file
     done
 }
 {
-    printf '%s\n' "$OBJ_PAIRS" | awk '{ print $1 ".o"; print $1 ".d" }'
+    printf '%s\n' "$OBJ_PAIRS" | awk -v graphs="$CALL_GRAPHS" '{ print $1 ".o"; print $1 ".d"; if (graphs) print $1 ".ci" }'
     printf '%s\n' "$UNITY_OBJECT.o" "$UNITY_OBJECT.d" flags.stamp
+    if [ "$CALL_GRAPHS" = 1 ]; then printf '%s\n' "$UNITY_OBJECT.ci"; fi
 } | LC_ALL=C sort >"$EXPECT_OBJ"
 {
     printf '%s\n' "$SU_PAIRS" | awk '{ print $1 ".o"; print $1 ".d"; print $1 ".su" }'
