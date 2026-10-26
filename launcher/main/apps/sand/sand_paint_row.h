@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "gfx/present/gfx_mode.h"
+#include "image/pixel/rgb565.h"
 #include "material_palette.h"
 #include "math/scalar/mathi.h"
 #include "sand_limits.h"

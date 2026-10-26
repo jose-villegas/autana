@@ -15,6 +15,7 @@
 #include "draw/draw_image_format.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
 #include "physics/spring/spring_line.h"
 #include "shell/ui/ui_ridge.h"
 
@@ -47,10 +48,10 @@ photo_rgb(int view_x, int view_y, int rgb[3]) {
     const int panel_x = photo.width - 1 - view_y;
     const int panel_y = view_x;
     const uint16_t stored = photo.pixels[(panel_y * (int)photo.stride) + panel_x];
-    const uint16_t c = gfx_color_swap(stored);
-    rgb[0] = (int)gfx_rgb565_r5(c) * 255 / 31;
-    rgb[1] = (int)gfx_rgb565_g6(c) * 255 / 63;
-    rgb[2] = (int)gfx_rgb565_b5(c) * 255 / 31;
+    const uint16_t c = rgb565_swap(stored);
+    rgb[0] = (int)rgb565_r5(c) * 255 / 31;
+    rgb[1] = (int)rgb565_g6(c) * 255 / 63;
+    rgb[2] = (int)rgb565_b5(c) * 255 / 31;
 }
 
 static void

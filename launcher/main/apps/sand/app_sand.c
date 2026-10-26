@@ -58,6 +58,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/rgb565.h"
 #include "input/input.h"
 #include "input/motion/gravity.h"
 #include "input/motion/shake.h"
@@ -931,7 +932,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
 
 static void
 draw_emitter_markers(void) {
-    const gfx_color_t marker = gfx_rgb(EMITTER_MARKER_COLOR);
+    const gfx_color_t marker = RGB565BE(EMITTER_MARKER_COLOR);
     const int count = sand_emitter_count(&sim);
 
     for (int i = 0; i < count; i++) {
@@ -999,9 +1000,9 @@ draw_mode_label(int gx, int gy) {
 
     gfx_color_t ink;
     if (ui.mode == SAND_MODE_DETONATE) {
-        ink = gfx_rgb(0xFF3B3B);
+        ink = RGB565BE(0xFF3B3B);
     } else if (ui.mode == SAND_MODE_ERASE) {
-        ink = gfx_rgb(0xFF8A5C);
+        ink = RGB565BE(0xFF8A5C);
     } else {
         ink = material_brush_color(sand_brushes[ui.brush].cell);
     }
@@ -1020,7 +1021,7 @@ draw_mode_label(int gx, int gy) {
 
 static void
 dim_backdrop(void) {
-    draw_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x000000), PANEL_SCRIM_ALPHA);
+    draw_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, RGB565BE(0x000000), PANEL_SCRIM_ALPHA);
 }
 
 static void
@@ -1577,8 +1578,8 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
     }
 
     if (failed) {
-        draw_clear(gfx_rgb(0x1A0C0C));
-        draw_text(20, GFX_HEIGHT / 2, "no memory for the grid", gfx_rgb(0xFF5C5C));
+        draw_clear(RGB565BE(0x1A0C0C));
+        draw_text(20, GFX_HEIGHT / 2, "no memory for the grid", RGB565BE(0xFF5C5C));
         return;
     }
 

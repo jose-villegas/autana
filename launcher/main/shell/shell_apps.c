@@ -35,6 +35,7 @@
 #include "ui/ui.h"
 
 #include "esp_log.h"
+#include "image/pixel/rgb565.h"
 
 static const char* TAG = "shell";
 
@@ -114,7 +115,7 @@ draw_home_hint(gesture_edge_t edge) {
         return;
     }
 
-    draw_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
+    draw_rect(x, y, w, h, RGB565BE(HOME_HINT_RGB));
 }
 
 /* Transient and expanded pictures need the hint in their overlay command

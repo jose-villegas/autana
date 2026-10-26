@@ -8,6 +8,6 @@ CC_BIN=$(find_cc)
 GEN_TMP=$(mktemp -d)
 trap 'rm -f "$GEN_TMP/directions.exe"; rmdir "$GEN_TMP"' EXIT HUP INT TERM
 "$CC_BIN" -std=c11 -Wall -Wextra -Werror -ffp-contract=off \
-    -I "$LAUNCHER_DIR/main" -I "$LAUNCHER_DIR/packages/math/include" \
+    -I "$LAUNCHER_DIR/main" -I "$LAUNCHER_DIR/packages/math/include" -I "$LAUNCHER_DIR/packages/image/include" \
     "$GEN_DIR/gen_skin_light_directions.c" -lm -o "$GEN_TMP/directions.exe"
 "$GEN_TMP/directions.exe"

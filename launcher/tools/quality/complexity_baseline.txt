@@ -324,7 +324,7 @@
 10	launcher/test/suites/suite_boot_anim.c:1226	check_hue_is_fully_saturated
 10	launcher/test/suites/suite_gfx.c:1566	test_band_mode_readback_keeps_the_band_a_later_frame_skipped
 10	launcher/test/suites/suite_gfx.c:424	test_blit_dither_matches_per_pixel_covers_reference
-10	launcher/test/suites/suite_gfx_color.c:274	test_coverage_is_monotonic_in_alpha_at_every_cell
+10	launcher/packages/image/tests/suite_image_pixel.c:274	test_coverage_is_monotonic_in_alpha_at_every_cell
 10	launcher/test/suites/suite_gfx_target.c:128	test_the_union_of_all_bands_equals_the_full_target_render
 10	launcher/test/suites/suite_system_icons.c:147	reference_blocks
 10	launcher/test/suites/suite_post_ui.c:199	place_report
@@ -703,7 +703,7 @@
 7	launcher/test/suites/suite_boot_anim_perf.c:204	time_frames
 7	launcher/test/suites/suite_gfx.c:1493	draw_readback_band_frame_n
 7	launcher/test/suites/suite_gfx.c:1309	memtp_best_us
-7	launcher/test/suites/suite_gfx_color.c:295	check_covers_both_at_cell
+7	launcher/packages/image/tests/suite_image_pixel.c:295	check_covers_both_at_cell
 7	launcher/test/suites/suite_gfx_dirty.c:504	test_band_extent_follows_a_moving_box_across_several_frames
 7	launcher/test/suites/suite_gfx_heal.c:124	test_rolling_reaches_every_row_and_wraps
 7	launcher/test/suites/suite_icons.c:220	test_blocks_matches_the_artworks_actual_run_count
@@ -945,7 +945,7 @@
 6	launcher/test/suites/suite_gfx.c:1118	test_three_far_apart_marks_falls_back_at_the_current_cap
 6	launcher/test/suites/suite_gfx.c:1060	test_two_far_corners_cost_less_than_a_full_band
 6	launcher/test/suites/suite_gfx.c:1211	test_two_marks_in_one_cell_cost_less_than_the_coarse_box
-6	launcher/test/suites/suite_gfx_color.c:236	test_dither_level_agrees_with_covers_at_every_alpha_and_cell
+6	launcher/packages/image/tests/suite_image_pixel.c:236	test_dither_level_agrees_with_covers_at_every_alpha_and_cell
 6	launcher/test/suites/suite_draw_dither.c:55	test_dithered_alpha_selects_its_requested_share
 6	launcher/test/suites/suite_draw_dither.c:38	test_thresholds_are_fixed_to_screen_coordinates
 6	launcher/test/suites/suite_draw_font.c:270	test_row_run_rect_matches_per_bit_placement_at_every_turn
@@ -1869,9 +1869,9 @@
 3	launcher/test/suites/suite_gfx.c:923	test_a_narrow_change_costs_less_than_a_full_band
 3	launcher/test/suites/suite_gfx.c:971	test_a_short_wide_change_costs_less_than_a_full_band
 3	launcher/test/suites/suite_gfx.c:395	test_blit_dither_at_alpha_255_matches_the_source_exactly
-3	launcher/test/suites/suite_gfx_color.c:262	test_alpha_255_always_covers
-3	launcher/test/suites/suite_gfx_color.c:250	test_alpha_zero_never_covers
-3	launcher/test/suites/suite_gfx_color.c:318	test_covers_both_equals_covers_the_lower_alpha
+3	launcher/packages/image/tests/suite_image_pixel.c:262	test_alpha_255_always_covers
+3	launcher/packages/image/tests/suite_image_pixel.c:250	test_alpha_zero_never_covers
+3	launcher/packages/image/tests/suite_image_pixel.c:318	test_covers_both_equals_covers_the_lower_alpha
 3	launcher/test/suites/suite_draw_font.c:423	test_dilated_halo_matches_eight_offset_copies_at_every_turn
 3	launcher/test/suites/suite_draw_font.c:590	test_merged_boxes_match_unmerged_runs_at_every_turn
 3	launcher/test/suites/suite_gfx_indexed.c:593	test_checker2_stays_in_phase_across_a_band_boundary

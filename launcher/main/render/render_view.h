@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "display/viewport.h"
+#include "image/pixel/rgb565.h"
 #include "math/linear/transformf.h"
 #include "math/projection/projectf.h"
 

@@ -10,6 +10,7 @@
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
 #include "scene/scene_internal.h"
@@ -127,7 +128,7 @@ instantiate(const scene_asset_t* asset) {
         scene->cameras[i] = (scene_camera_t){
             .lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z, .small_fill = SMALL_FILL_SMOOTH},
             .entity = c->entity,
-            .clear = GFX_RGB(c->clear_rgb)};
+            .clear = RGB565BE(c->clear_rgb)};
     }
     for (int i = 0; i < asset->renderer_count; i++) {
         scene->renderers[i].entity = asset->renderers[i].entity;

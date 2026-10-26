@@ -72,6 +72,7 @@ Find an image entry in an open pack and read one pixel. The pixels are the entry
 ```c
 /* Read a picture from a pack: the colour of one pixel of an RGB565 image entry. */
 #include "draw/draw_image.h"
+#include "image/pixel/rgb565.h"
 
 asset_status_t
 image_example(const asset_pack_t* pack, const char* name, int x, int y, gfx_color_t* color) {
