@@ -30,9 +30,9 @@ import lock_scope
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 import board_serial
-from console_protocol import replies_to, require_development, reply_prefix
+from console_protocol import FRAMED_ENDINGS, replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
-                            crash_signs, suite_failure_signs)
+                            ERROR_LINE_RE, crash_signs, suite_failure_signs)
 
 from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
                           install_console_interrupt_handler)
@@ -64,7 +64,7 @@ ESPRESSIF_VID = 0x303A
 # only once it clears this, so the common case stays plain-text and greppable.
 COMPRESS_ABOVE_BYTES = 200_000
 SLUG_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
-BOOT_ERROR = re.compile(r"(?:\berror\b|\bpanic\b|\babort\b|\bassert\b|^E \(\d+\))", re.I)
+BOOT_ERROR = ERROR_LINE_RE
 MAX_PRINTED_FAILURES = 10
 
 
@@ -72,11 +72,11 @@ def python_with_pyserial():
     return idf_python()
 
 
-def rerun_under_idf_python(argv):
-    """This command's exit status after running it again under ESP-IDF's
-    Python, or None when this interpreter can already reach the board. pyserial
-    lives in that environment, not in whichever `python` a caller found first,
-    so no caller has to know which one to pick."""
+def rerun_under_idf_python(argv, script=__file__):
+    """The exit status of script (this file unless given) run again with argv
+    under ESP-IDF's Python, or None when this interpreter can already reach the
+    board. pyserial lives in that environment, not in whichever `python` a
+    caller found first, so no caller has to know which one to pick."""
     try:
         import serial  # noqa: F401
         return None
@@ -85,7 +85,7 @@ def rerun_under_idf_python(argv):
     python = idf_python()
     if os.path.normcase(os.path.abspath(python)) == os.path.normcase(os.path.abspath(sys.executable)):
         return None
-    return subprocess.call([python, str(Path(__file__).resolve()), *argv])
+    return subprocess.call([python, str(Path(script).resolve()), *argv])
 
 
 def git_bash():
@@ -247,8 +247,8 @@ def board_for_lock(store, named=None, remembered=False, auto_pick=False, token=N
                        + " - name one with --board / -b / use: " + ", ".join(board_label(serial) for serial in candidates))
 
 
-# A power-cycling reset takes the USB Serial/JTAG port off the bus about
-# 0.2 s after esptool returns, and lists it again about 1 s after. The
+# A reset's boot takes the USB Serial/JTAG port off the bus while it tunes
+# PSRAM, about 0.3 s after the reset, and lists it again about 0.4 s later. The
 # reappear bound covers a slow host and still fails fast; a reset that keeps
 # the port up costs only RESET_LEAVE_SECONDS.
 RESET_LEAVE_SECONDS = 2
@@ -517,8 +517,18 @@ def print_crash_signs(data, boots_allowed):
     return len(signs)
 
 
-def print_suite_output(data, record_path, command, reason, verbose, boots_allowed):
-    """Failures, crash signs and missing completion, after printing the verdict."""
+def print_report_summary(report_path):
+    """The report's path, then its errors section: what to read before the capture."""
+    if report_path is None:
+        return
+    print("report: " + str(report_path))
+    for line in device_report.errors_section(Path(report_path).read_text(encoding="utf-8")):
+        print("  " + line)
+
+
+def print_suite_output(data, record_path, command, reason, verbose, boots_allowed, report_path=None):
+    """Failures, crash signs and missing completion, after printing the verdict,
+    then the report path and its errors section last, where a run is read."""
     text = data.decode("utf-8", errors="replace")
     if verbose and text:
         print(text, end="" if text.endswith("\n") else "\n")
@@ -537,6 +547,7 @@ def print_suite_output(data, record_path, command, reason, verbose, boots_allowe
         print(sign)
     print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
+    print_report_summary(report_path)
     if reason != "complete":
         raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
     return failed + crashed + len(signs)
@@ -584,15 +595,19 @@ WAIT_NOTICE_SECONDS = 30
 
 
 def wait_notice(store, board, state, ticket):
-    now = store.now()
+    now = store.resource_now(board)
     if state.get("last_notice") is not None and now - state["last_notice"] < WAIT_NOTICE_SECONDS:
         return
     state["last_notice"] = now
     status = store.status(board)
     if status["lock"]:
         lock = status["lock"]
-        print(f"board held by {lock['owner']} "
-              f"{device_lock.holder_version_text(lock)} - waiting", file=sys.stderr)
+        if board == device_lock.HEAVY:
+            print(f"heavy held by {lock['owner']} for {lock.get('purpose', 'unknown')} "
+                  f"since {device_lock.format_estimate(lock.get('acquired_at'))} - waiting", file=sys.stderr)
+        else:
+            print(f"board held by {lock['owner']} "
+                  f"{device_lock.holder_version_text(lock)} - waiting", file=sys.stderr)
     elif status["human"]:
         human = status["human"]
         left = device_lock.human_left_text(human, now)
@@ -603,13 +618,13 @@ def wait_notice(store, board, state, ticket):
                   if item["ticket"] == ticket), None)
     if place:
         estimate = device_lock.queue_estimates(
-            status, now, device_lock.duration_history(store.root, board=board)).get(ticket)
-        print(f"waiting for board: queue place {place}; estimated start "
+            status, now, device_lock.duration_history(store.key_root(board), board=board)).get(ticket)
+        print(f"waiting for {board if board == device_lock.HEAVY else 'board'}: queue place {place}; estimated start "
               f"{device_lock.format_estimate(estimate)}", file=sys.stderr)
 
 
 class HeldLock:
-    """One board held for one command. The command's duration is recorded
+    """One key held for one command. The command's duration is recorded
     when it ends, with an error when it raised, set `error`, or lost the lock.
     A borrower uses a validated snapshot and reaps only its own descendants."""
 
@@ -620,7 +635,9 @@ class HeldLock:
         self.announce_waiters = announce_waiters
         self.board = board
         self.notice_state = {}
-        token = os.environ.get(TOKEN_ENV)
+        store.check_order(board)
+        self.token_env = autana_config.HEAVY_TOKEN_ENV if board == device_lock.HEAVY else TOKEN_ENV
+        token = os.environ.get(self.token_env)
         self.borrowed = bool(token)
         self.keep_seconds = None
         if token:
@@ -632,8 +649,8 @@ class HeldLock:
             self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
                                       purpose=command_label(kind), estimate=estimate)
         if not self.held:
-            raise LockBusy("device lock was not acquired: "
-                           + device_lock.busy_text(store.status(board), store.now()))
+            raise LockBusy(f"{'heavy' if board == device_lock.HEAVY else 'device'} lock was not acquired: "
+                           + device_lock.busy_text(store.status(board), store.resource_now(board)))
         if self.held.log:
             print(self.held.log, file=sys.stderr)
         self.stop = threading.Event()
@@ -673,10 +690,10 @@ class HeldLock:
     def __enter__(self):
         self.previous_lock = getattr(ACTIVE_LOCK, "held", None)
         ACTIVE_LOCK.held = self
-        self.previous_token = os.environ.get(TOKEN_ENV)
+        self.previous_token = os.environ.get(self.token_env)
         scope_tag = uuid.uuid4().hex if self.borrowed else self.held["token"]
         lock_scope.enter(scope_tag)
-        os.environ[TOKEN_ENV] = self.held["token"]
+        os.environ[self.token_env] = self.held["token"]
         self.members_before = set(lock_scope.members())
         self.thread.start()
         return self
@@ -690,9 +707,9 @@ class HeldLock:
             killed, survivors = lock_scope.reap(self.members_before)
             lock_scope.leave()
             if self.previous_token is None:
-                os.environ.pop(TOKEN_ENV, None)
+                os.environ.pop(self.token_env, None)
             else:
-                os.environ[TOKEN_ENV] = self.previous_token
+                os.environ[self.token_env] = self.previous_token
             if killed:
                 print("stopped process(es) still running under the device lock: "
                       + ", ".join(map(str, killed)), file=sys.stderr)
@@ -712,7 +729,7 @@ class HeldLock:
             error = (str(error_value) if error_type else
                      str(LockLost()) if lost else self.error)
             device_lock.record_duration(self.kind, time.monotonic() - self.started, error,
-                                        self.store.root, board=self.board)
+                                        self.store.key_root(self.board), board=self.board)
         if lost and error_type is None:
             raise LockLost()
 
@@ -1173,13 +1190,11 @@ def try_lock_file(handle):
 
 
 @contextlib.contextmanager
-def build_directory_lock(build_dir, timeout=None):
+def build_directory_lock(build_dir):
     """Lock one build directory through its snapshot; yield its prepared path,
     or None when the checkout has no --prepared-build support."""
     latest = os.environ.get(autana_config.BUILD_LATEST_START_ENV)
-    if timeout is None and latest:
-        timeout = max(0, float(latest) - time.time())
-    expires = time.monotonic() + timeout if timeout is not None else None
+    expires = time.monotonic() + max(0, float(latest) - time.time()) if latest else None
     build_dir = Path(build_dir)
     prepared = None
     if (build_dir.parent / "tools/build/build_paths.py").is_file():
@@ -1256,6 +1271,7 @@ def remove_image_directory(image):
 
 
 BUILD_NICE_INCREMENT = 5
+BUILD_WAIT_REPORT_MIN_SECONDS = 1
 
 
 @contextlib.contextmanager
@@ -1263,27 +1279,40 @@ def build_policy(environment):
     """Private process-tree policy limits compilation, never board captures."""
     latest = environment.get(autana_config.BUILD_LATEST_START_ENV)
     latest = float(latest) if latest else None
-    serial = environment.get(autana_config.BUILD_SERIAL_ENV)
     options = {}
     if environment.get(autana_config.BUILD_PRIORITY_ENV) == autana_config.BUILD_PRIORITY_BELOW_NORMAL:
         if os.name == "nt":
             options["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
         else:
             options["preexec_fn"] = partial(os.nice, BUILD_NICE_INCREMENT)
-    with build_directory_lock(serial, timeout=max(0, latest - time.time()) if latest else None) if serial else contextlib.nullcontext():
-        if latest is not None and time.time() > latest:
-            raise TimeoutError("build cannot start inside its window")
-        yield options
+    wait = max(0, latest - time.time()) if latest is not None else float(
+        environment.get(autana_config.WAIT_ENV, autana_config.DEFAULT_LOCK_WAIT_SECONDS))
+    started = time.monotonic()
+    try:
+        with HeldLock(device_lock.LockStore(), device_lock.HEAVY,
+                      environment.get(autana_config.OWNER_ENV) or device_lock.default_owner(), "build", wait):
+            elapsed = time.monotonic() - started
+            if elapsed >= BUILD_WAIT_REPORT_MIN_SECONDS:
+                print(autana_config.HEAVY_WAIT_PREFIX + str(elapsed), flush=True)
+            if latest is not None and time.time() > latest:
+                raise TimeoutError("build cannot start inside its window")
+            yield options
+    except LockBusy as error:
+        elapsed = time.monotonic() - started
+        if elapsed >= BUILD_WAIT_REPORT_MIN_SECONDS:
+            print(autana_config.HEAVY_WAIT_PREFIX + str(elapsed), flush=True)
+        raise TimeoutError(str(error)) from error
 
 
 def build_snapshot(build, build_dir, image_dir=None, **popen):
     """Compile under the process policy and directory lock; optionally snapshot."""
-    with build_directory_lock(build_dir) as prepared:
-        environment = script_environment(popen.pop("env", None))
-        with build_policy(environment) as priority:
-            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None,
+    environment = script_environment(popen.pop("env", None))
+    with build_policy(environment) as priority:
+        with build_directory_lock(build_dir) as prepared:
+            environment[autana_config.HEAVY_TOKEN_ENV] = os.environ[autana_config.HEAVY_TOKEN_ENV]
+            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), ACTIVE_LOCK.held.lost,
                        **dict(popen, env=environment, **priority))
-        return snapshot_image(prepared or build_dir, image_dir) if image_dir else None
+            return snapshot_image(prepared or build_dir, image_dir) if image_dir else None
 
 
 def build_worktree(worktree, variant, build_flags=()):
@@ -1481,6 +1510,18 @@ def check_test_filter(data, suite, patterns):
             + "\n  ".join(dict.fromkeys(names)))
 
 
+def report_recorded_capture(path):
+    """The report's path, or None when it could not be written."""
+    if not path.is_file():
+        print("report skipped: capture log was not created", file=sys.stderr)
+        return None
+    try:
+        return device_report.write_report_for_capture(path, records_root() / "index.jsonl")
+    except Exception as report_error:  # A report is a convenience, never fails the capture.
+        print("report generation failed (capture is unaffected): " + str(report_error), file=sys.stderr)
+        return None
+
+
 def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
     """`worktree`/`commit` name the checkout the flashed build came from. A
     standalone `run-suite` has no `--worktree` of its own, so it keeps
@@ -1515,14 +1556,9 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             acquired_at=held.held["acquired_at"] if held else None,
             test_filter=patterns or None,
             console_send=getattr(args, "console_send", None))
-        try:
-            report_path = device_report.write_report_for_capture(
-                final_path, records_root() / "index.jsonl")
-            print("report: " + str(report_path))
-        except Exception as report_error:  # a report is a convenience, never fails the capture
-            print("report generation failed (capture is unaffected): " + str(report_error),
-                  file=sys.stderr)
-    failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), BOOTS_ON_RUNNING)
+        report_path = report_recorded_capture(final_path)
+    failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), BOOTS_ON_RUNNING,
+                                report_path)
     if patterns:
         check_test_filter(data, args.suite, patterns)
     return 1 if failed else 0
@@ -1568,14 +1604,9 @@ def selftest(args, store, board):
                 build_id=latest_build_id_from_bytes(data) or build_id,
                 worktree=worktree, commit=commit, reason=reason, error=error,
                 acquired_at=held.held["acquired_at"])
-            try:
-                report_path = device_report.write_report_for_capture(
-                    final_path, records_root() / "index.jsonl")
-                print("report: " + str(report_path))
-            except Exception as report_error:  # a report is a convenience, never fails the capture
-                print("report generation failed (capture is unaffected): " + str(report_error),
-                      file=sys.stderr)
-        failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False), BOOTS_FROM_RESET)
+            report_path = report_recorded_capture(final_path)
+        failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False), BOOTS_FROM_RESET,
+                                    report_path)
         return 1 if failed else 0
 
 
@@ -1655,6 +1686,10 @@ def listen(args, store, board):
 
 
 COREDUMP_PARTITION = "coredump"
+# parttool runs esptool twice, the partition table and then the partition.
+# A reset after the first takes the port away from the second while the new
+# boot re-enumerates, so neither resets and one reset follows both.
+PARTTOOL_NO_RESET = "after=no-reset"
 # The dump's ESP_CORE_DUMP_INFO note (espcoredump's core_dump_elf.c): a
 # 4-byte version, then the crashed app's ELF SHA-256 as NUL-padded hex in a
 # 64-byte field. ELF pads a note's name to 4 bytes.
@@ -1685,20 +1720,20 @@ def coredump(args, store, board):
     """The last panic's core dump, read raw from the board's coredump
     partition under the lock into the records, then decoded with the board
     free; --erase clears the partition, so the next crash's dump is told
-    from this one. Either way esptool resets the board."""
+    from this one. Either way the board is reset once at the end."""
     with HeldLock(store, board, args.owner, "coredump", args.wait):
         parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
-        command = [idf_python(), str(parttool), "--port", locked_port()]
+        command = [idf_python(), str(parttool), "--esptool-args", PARTTOOL_NO_RESET, "--port", locked_port()]
         if args.erase:
             command += ["erase_partition", "--partition-name=" + COREDUMP_PARTITION]
-            run_resetting(lambda: subprocess.run(command, check=True)).close()
+            run_then_reset(command)
             print("coredump partition erased")
             return 0
         core, _ = resolve_capture_path(None, "coredump", args.owner, now())
         core = core.with_suffix(".bin")
         command += ["read_partition", "--partition-name=" + COREDUMP_PARTITION, "--output", str(core)]
         try:
-            run_resetting(lambda: subprocess.run(command, check=True)).close()
+            run_then_reset(command)
         except subprocess.CalledProcessError as failure:
             return failure.returncode
     if core.read_bytes()[:COREDUMP_ERASED_HEADER_BYTES] == ERASED_FLASH * COREDUMP_ERASED_HEADER_BYTES:
@@ -1706,6 +1741,15 @@ def coredump(args, store, board):
         print("no core dump in flash")
         return 0
     return decode_coredump(core, args.elf)
+
+
+def run_then_reset(command):
+    """Runs a parttool `command` that leaves the chip in esptool's stub, then
+    restarts it whether or not the command succeeded."""
+    try:
+        subprocess.run(command, check=True)
+    finally:
+        reset().close()
 
 
 def decode_coredump(core, elf=None):
@@ -1727,22 +1771,43 @@ def decode_coredump(core, elf=None):
     return subprocess.run(command + [str(elf)]).returncode
 
 
+EXCHANGE_MAX_SECONDS = 600.0
+EXCHANGE_READ_BYTES = 4096
+
+
 def exchange(connection, line, reply, until, seconds):
-    """Write one console line on a port the caller holds; (replies, whether
-    the answer completed) within `seconds`."""
-    data = bytearray()
+    """Write one console line; return (replies, completed, cut_off) within an idle limit.
+
+    Only complete matching reply lines renew the idle deadline; all exchanges have
+    an overall cap so a continuously talking device cannot hold the lock forever.
+    """
+    pending = bytearray()
     found = []
     connection.reset_input_buffer()
     connection.write(("\n" + line + "\n").encode("ascii"))
-    deadline = time.monotonic() + seconds
+    started = time.monotonic()
+    overall_deadline = started + EXCHANGE_MAX_SECONDS
+    deadline = min(started + seconds, overall_deadline)
     while time.monotonic() < deadline:
         require_unlost()
-        data.extend(connection.read(4096))
-        found, complete = replies_to(bytes(data), reply, until)
+        chunk = connection.read(EXCHANGE_READ_BYTES)
+        if not chunk:
+            continue
+        pending.extend(chunk)
+        end = pending.rfind(b"\n") + 1
+        if not end:
+            continue
+        data = bytes(pending[:end])
+        del pending[:end]
+        new, complete = replies_to(data, reply, until)
+        found.extend(new)
+        if new:
+            deadline = min(time.monotonic() + seconds, overall_deadline)
         if complete:
-            return found, True
+            return found, True, False
         require_development(data, line)
-    return found, False
+    partial, _ = replies_to(bytes(pending) + b"\n", reply, until)
+    return found, False, bool(found or partial)
 
 
 TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
@@ -1759,11 +1824,13 @@ def exchange_retrying(connection, requests):
     for _ in range(EXCHANGE_ATTEMPTS):
         replies = []
         for line, prefix, endings in requests:
-            found, complete = exchange(connection, line, prefix, endings, EXCHANGE_SECONDS)
+            found, complete, cut_off = exchange(connection, line, prefix, endings, EXCHANGE_SECONDS)
+            if cut_off:
+                return line, replies + found, False
             if not found:
                 break
             replies.extend(found)
-            if not complete or found[-1].startswith(endings[1]):
+            if found[-1].startswith(endings[1]):
                 return line, replies, False
         else:
             return line, replies, True
@@ -1810,30 +1877,23 @@ def apply_console_lines(connection, lines):
 
 
 def send(args, store, board):
-    """Write one console line and print what the device answers.
+    """Print a console reply under the device lock, without creating a capture.
 
-    Not a capture: nothing is written under records/ and index.jsonl gets no
-    line. A tuning session is dozens of these, and none of them is evidence.
-
-    `args.optional` is for a verb that only answers when something is wrong
-    (TOUCH, IMU): a timeout with nothing seen is success, not "no reply";
-    silence is that verb's normal happy path, so whatever partial match was
-    found (possibly nothing) is printed and this returns 0 rather than
-    raising. autana console forwards a line the same optional way, with
-    `args.reply` set to the line's own first word in capitals; an app's
-    own command always replies under its own prefix, so this still
-    completes as soon as `<PREFIX>_END`/`<PREFIX>_ERR` arrives rather than
-    waiting out the window.
+    Optional silence succeeds for commands that only report errors. Once a
+    framed reply starts it must reach its terminator, even when optional.
     """
     with HeldLock(store, board, args.owner, "send", args.wait) as held:
         with open_when_free() as connection:
-            found, complete = exchange(connection, args.line, args.reply, args.until, args.seconds)
+            found, complete, cut_off = exchange(connection, args.line, args.reply, args.until, args.seconds)
             if complete:
                 print("\n".join(found))
                 if found[-1].startswith(args.reply + "_ERR"):
                     held.error = found[-1]
                     return 1
                 return 0
+    if cut_off and (not args.optional or any(ending.endswith(FRAMED_ENDINGS) for ending in args.until)):
+        print("\n".join(found))
+        raise RuntimeError("reply cut off for '" + args.line + "': missing " + " or ".join(args.until))
     if args.optional:
         print("\n".join(found))
         return 0
@@ -2113,7 +2173,7 @@ def main(argv=None):
                                         "a lock record names; hand-to-human/take-back also try "
                                         "the only board this machine has ever seen)")
     parser.add_argument("--owner", default=device_lock.default_owner())
-    parser.add_argument("--wait", type=float, default=600)
+    parser.add_argument("--wait", type=float, default=autana_config.DEFAULT_LOCK_WAIT_SECONDS)
     parser.set_defaults(auto_pick=False)
     subparsers = parser.add_subparsers(dest="command", required=True)
     status_parser = subparsers.add_parser("status")
@@ -2136,6 +2196,8 @@ def main(argv=None):
     take.add_argument("note", nargs="+")
     run = subparsers.add_parser("run")
     run.set_defaults(auto_pick=True)
+    run.add_argument("--heavy", action="store_true")
+    run.add_argument("--wait", type=float, default=argparse.SUPPRESS)
     run.add_argument("--keep-on-failure", type=hold_seconds)
     run.add_argument("--estimate", type=human_wait_seconds)
     run.add_argument("child", nargs=argparse.REMAINDER)
@@ -2214,7 +2276,8 @@ def main(argv=None):
     send_parser.add_argument("--until", action="append",
                              help="a reply prefix that ends the answer; repeatable "
                                   "(default: TUNE_OK, TUNE_ERR, TUNE_END)")
-    send_parser.add_argument("--seconds", type=float, default=3.0)
+    send_parser.add_argument("--seconds", type=float, default=EXCHANGE_SECONDS,
+                             help=f"reply idle limit in seconds (overall cap: {EXCHANGE_MAX_SECONDS:g} s)")
     send_parser.add_argument("--optional", action="store_true",
                              help="a timeout with nothing seen is success, not an error - "
                                   "for a verb that only answers when something is wrong")
@@ -2264,6 +2327,7 @@ def main(argv=None):
     report_parser.add_argument("--index", help="override index.jsonl (default: records/device)")
     args = parser.parse_args(argv)
     args.purpose = command_label(args.command)
+    os.environ[autana_config.WAIT_ENV] = str(args.wait)
 
     # report and coredump --core touch no lock and no board; each only reads
     # a file already on disk, so they are handled before board discovery even
@@ -2286,18 +2350,50 @@ def main(argv=None):
         store = device_lock.LockStore()
         if args.command in ("status", "devices"):
             entries = board_statuses(store, chosen_board(args.board, store))
+            try:
+                heavy = device_lock.status_entry(store, device_lock.HEAVY)
+            except OSError as error:
+                heavy = {"board": device_lock.HEAVY, "state": "unavailable", "reason": str(error)}
             if args.json:
-                print(json.dumps({"boards": entries}))
+                print(json.dumps({"boards": entries, "heavy": heavy}))
             elif args.command == "devices":
                 print_devices(entries)
             else:
                 print_statuses(entries, store.now())
+                lines = (["unavailable: " + heavy["reason"]] if heavy["state"] == "unavailable" else
+                         device_lock.status_lines(heavy, store.resource_now(device_lock.HEAVY)))
+                print("heavy: " + "\n  ".join(lines))
             result = 0
             return result
         if args.command == "resolve-port":
             print(find_board(args.board).port)
             result = 0
             return result
+        if args.command == "run":
+            child = args.child[1:] if args.child[:1] == ["--"] else args.child
+            if not child:
+                parser.error("run needs -- <command...>")
+            if args.heavy:
+                board = device_lock.HEAVY
+                if args.keep_on_failure is not None:
+                    parser.error("--heavy does not support --keep-on-failure")
+            else:
+                board, picked_reason = board_for_lock(store, args.board, auto_pick=True)
+                if os.environ.get(TOKEN_ENV) and args.keep_on_failure is not None:
+                    parser.error("--keep-on-failure is unavailable inside another hold")
+            with HeldLock(store, board, args.owner, "run", args.wait, estimate=args.estimate) as held:
+                try:
+                    run_to_end(child, held.lost)
+                    result = 0
+                    return result
+                except subprocess.CalledProcessError as error:
+                    held.error = str(error)
+                    held.keep_seconds = args.keep_on_failure
+                    result = error.returncode
+                    return result
+                except KeyboardInterrupt:
+                    result = EXIT_INTERRUPTED
+                    return result
         board, picked_reason = board_for_lock(
             store, args.board, remembered=args.command in ("hand-to-human", "take-back"),
             auto_pick=args.auto_pick(args) if callable(args.auto_pick) else args.auto_pick,
@@ -2309,8 +2405,6 @@ def main(argv=None):
                 raise TokenRefused("already inside hold " + record["owner"])
             raise TokenRefused("lock token is not live on this board (released, lapsed or wrong); "
                                f"unset {TOKEN_ENV} in this shell or drop --lock-token")
-        if token and args.command == "run" and args.keep_on_failure is not None:
-            parser.error("--keep-on-failure is unavailable inside another hold")
         # Validate a borrowed token before any build starts.
         if token and args.command not in ("release", "check-token", "take", "hand-to-human", "take-back", "wait-free"):
             if not store.check_token(board, token):
@@ -2338,7 +2432,7 @@ def main(argv=None):
             reservation_id, renewed = store.reserve_human(board, args.owner, args.note,
                                                           wait=args.wait, on_wait=lambda ticket: wait_notice(store, board, notice_state, ticket))
             if reservation_id is None:
-                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.now()))
+                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.resource_now(board)))
             if args.until_back is None:
                 lasts = device_lock.duration_text(device_lock.HUMAN_RESERVATION_SECONDS)
                 print(f"human reservation {'renewed' if renewed else 'recorded'}; it expires "
@@ -2361,7 +2455,7 @@ def main(argv=None):
             held = store.acquire(board, args.owner, "take", wait=args.wait,
                                  on_wait=lambda ticket: wait_notice(store, board, notice_state, ticket), purpose=" ".join(args.note))
             if not held:
-                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.now()))
+                raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.resource_now(board)))
             pid = args.pid if args.until_released else None
             seconds = None if args.until_released else (args.seconds if args.seconds is not None
                                                        else device_lock.HOLD_MAX_SECONDS)
@@ -2370,23 +2464,6 @@ def main(argv=None):
             print(held["token"])
             result = 0
             return result
-        if args.command == "run":
-            child = args.child[1:] if args.child[:1] == ["--"] else args.child
-            if not child:
-                parser.error("run needs -- <command...>")
-            with HeldLock(store, board, args.owner, "run", args.wait, estimate=args.estimate) as held:
-                try:
-                    run_to_end(child, held.lost)
-                    result = 0
-                    return result
-                except subprocess.CalledProcessError as error:
-                    held.error = str(error)
-                    held.keep_seconds = args.keep_on_failure
-                    result = error.returncode
-                    return result
-                except KeyboardInterrupt:
-                    result = EXIT_INTERRUPTED
-                    return result
         if args.command == "flash":
             extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
             with build_image(args, board, extra_flags) as built, \
@@ -2409,7 +2486,7 @@ def main(argv=None):
             return result
         result = 0
         return result
-    except LockBusy as error:
+    except (LockBusy, TimeoutError) as error:
         print("device: " + str(error), file=sys.stderr)
         result = device_lock.EXIT_BUSY
         return result

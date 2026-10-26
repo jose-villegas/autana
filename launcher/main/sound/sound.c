@@ -135,7 +135,8 @@ sound_read(sound_cursor_t* c, int16_t* out, uint32_t frames) {
         if (sound->loop_end != 0 && c->position == sound->loop_end) {
             sound_seek(c, sound, sound->loop_start);
         }
-        const uint32_t end = sound->loop_end != 0 && c->position < sound->loop_end ? sound->loop_end : sound->frames;
+        const uint32_t loop_end = sound_end_frame(sound);
+        const uint32_t end = c->position < loop_end ? loop_end : sound->frames;
         const uint32_t available = end - c->position;
         const uint32_t count = remaining < available ? remaining : available;
         if (count == 0) {

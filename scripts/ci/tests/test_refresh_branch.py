@@ -1,4 +1,7 @@
+"""refresh_branch builds main plus a run's images and pushes only a change."""
 import pathlib
+import os
+from unittest import mock
 import subprocess
 import sys
 import tempfile
@@ -31,6 +34,9 @@ class RefreshBranchTests(unittest.TestCase):
     """A run that started on an older main, finishing after main moved its table elsewhere."""
 
     def setUp(self):
+        environment = mock.patch.dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+        environment.start()
+        self.addCleanup(environment.stop)
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         base = pathlib.Path(temp.name)

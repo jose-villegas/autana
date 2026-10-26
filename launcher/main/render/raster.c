@@ -5,11 +5,10 @@
 #include <string.h>
 
 #include "core/job.h"
-#include "core/timing.h"
+#include "core/tune.h"
 #include "profile/frame_cost.h"
-#include "render/r3d_pipeline.h"
+#include "render/raster_internal.h"
 #include "render/upscale.h"
-#include "services/tune.h"
 
 TUNE_OWNER(render);
 /* The generated meshlet-size table measures both culling settings. */
@@ -27,18 +26,17 @@ typedef struct {
     int writer_count;
     uint16_t* destination;
     int work_index;
-    const r3d_pipeline_buffers_t* buffers;
+    const raster_buffers_t* buffers;
     r3d_span_target_t* target;
-    int64_t* elapsed_us;
 } slice_t;
 
 typedef struct {
     r3d_lens_t lens;
     r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
     slice_t mine, other;
-    r3d_pipeline_buffers_t buffers;
+    raster_buffers_t buffers;
     r3d_span_target_t targets[2];
-    int64_t mine_us, other_us;
+    r3d_span_small_fill_t small_fill;
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -47,7 +45,7 @@ _Static_assert(_Alignof(draw_work_t) <= R3D_PIPELINE_WORK_ALIGNMENT, "draw work 
 static void
 transform_slice(void* ctx) {
     const slice_t* s = ctx;
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
+    const raster_buffers_t b = raster_carve(s->raster);
     r3d_pipeline_transform(s->mesh, s->lens, s->visible + s->first, s->count, b.cs, b.rows);
 }
 
@@ -99,35 +97,41 @@ void
 raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
                       int32_t z, int32_t dz) {
     const uint16_t* depth = gfx_render_target_depth(rows, y);
-    uint16_t* tag = gfx_render_target_row(rows, writer->attachment, y);
+    void* tag = gfx_render_target_row(rows, writer->attachment, y);
+    const bool wide = rows->attachment[writer->attachment].bytes_per_pixel == (int)sizeof(uint32_t);
     for (int x = x_first; x <= x_last; x++, z += dz) {
         if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
-            tag[x] = (uint16_t)writer->value;
+            if (wide) {
+                ((uint32_t*)tag)[x] = writer->value;
+            } else {
+                ((uint16_t*)tag)[x] = (uint16_t)writer->value;
+            }
         }
     }
 }
 
 gfx_color_t*
 raster_color(const raster_t* raster) {
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    const raster_buffers_t b = raster_carve(raster);
     return gfx_render_target_color(&b.picture, 0);
 }
 
 uint16_t*
 raster_depth(const raster_t* raster) {
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    const raster_buffers_t b = raster_carve(raster);
     return gfx_render_target_depth(&b.picture, 0);
 }
 
 static void
 draw_slice(void* ctx) {
-    const int64_t began_us = timing_now_us();
     const slice_t* s = ctx;
     const raster_t* r = s->raster;
-    const r3d_pipeline_buffers_t* b = s->buffers;
+    const raster_buffers_t* b = s->buffers;
     r3d_span_target_t* target = s->target;
-    *target = (r3d_span_target_t){gfx_render_target_window(&b->picture, s->first, s->first + s->count), s->writers,
-                                  s->writer_count};
+    gfx_render_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
+    target->writers = s->writers;
+    target->writer_count = s->writer_count;
+    target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -139,16 +143,15 @@ draw_slice(void* ctx) {
         }
     }
     r3d_pipeline_draw(s->mesh, s->lens, s->visible, s->visible_count, b->cs, b->rows, target, b->work[s->work_index]);
-    const int64_t elapsed_us = timing_now_us() - began_us;
-    *s->elapsed_us = elapsed_us;
 }
 
 static void
 resolve_slice(void* ctx) {
     const slice_t* s = ctx;
     const raster_t* r = s->raster;
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(r);
-    const gfx_render_target_t rows = gfx_render_target_window(&b.picture, s->first, s->first + s->count);
+    const raster_buffers_t b = raster_carve(r);
+    gfx_render_target_t rows;
+    gfx_render_target_window(&rows, &b.picture, s->first, s->first + s->count);
     for (int i = GFX_ATTACHMENT_FURTHER; i < rows.count; i++) {
         const raster_attachment_t* a = attachment_at(r, i);
         if (a->resolve != NULL) {
@@ -160,7 +163,7 @@ resolve_slice(void* ctx) {
 static void
 upscale_slice(void* ctx) {
     const slice_t* s = ctx;
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
+    const raster_buffers_t b = raster_carve(s->raster);
     if (s->raster->present != CAMERA_PRESENT_SCANLINE) {
         upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
     } else {
@@ -189,13 +192,7 @@ raster_cluster_capacity(const raster_t* raster) {
 size_t
 raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count > 0); /* a raster with nothing to draw would clear nothing */
-    const gfx_render_target_t picture = raster_picture(raster);
-    const size_t prefix =
-        (sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster))
-        + (sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster)) + r3d_pipeline_culled_bytes(raster)
-        + gfx_render_target_bytes(&picture)
-        + gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1);
-    return mathi_size_ceil(prefix, R3D_PIPELINE_WORK_ALIGNMENT) + (2 * r3d_pipeline_work_bytes()) + sizeof(draw_work_t);
+    return (size_t)((uintptr_t)raster_carve(raster).draw - (uintptr_t)raster->scratch) + sizeof(draw_work_t);
 }
 
 /* The view's lens fitted to the size drawn at, so a render scaled more
@@ -259,7 +256,7 @@ instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_AT
 
 static __attribute__((noinline)) draw_work_t*
 scratch_draw(const raster_t* raster) {
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    const raster_buffers_t b = raster_carve(raster);
     draw_work_t* work = b.draw;
     work->buffers = b;
     return work;
@@ -272,8 +269,13 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     const r3d_lit_mesh_t* mesh = instance->mesh;
     const bool clear = index == 0;
     const int writer_count = instance_writers(raster, index, work->writers);
+    /* Instances past the retained state split evenly and forget it. */
+    const bool retained = raster->split != NULL && index < RASTER_SPLIT_INSTANCES;
+    int16_t* transform_share = retained ? &raster->split->transform_offset[index] : NULL;
+    int16_t* draw_share = retained ? &raster->split->top_offset[index] : NULL;
     FRAME_COST_BEGIN(transformed_from);
-    const int half = r3d_pipeline_transform_split(mesh, visible, count);
+    const int half =
+        r3d_pipeline_transform_split(mesh, visible, count, JOB_SHARE_PERMILLE - job_share_permille(transform_share));
     slice_t* mine = &work->mine;
     slice_t* other = &work->other;
     *mine = (slice_t){.raster = raster,
@@ -287,16 +289,12 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     *other = *mine;
     other->first = half;
     other->count = count - half;
-    job_run_split(transform_slice, mine, other, sizeof *mine);
+    job_run_steered(transform_share, transform_slice, mine, other, sizeof *mine);
     FRAME_COST_END(transformed_from, "r3d.transform");
 
     FRAME_COST_BEGIN(drawn_from);
-    int16_t* retained =
-        raster->split != NULL && index < RASTER_SPLIT_INSTANCES ? &raster->split->top_offset[index] : NULL;
-    const int share = RASTER_SPLIT_EVEN + (retained == NULL ? 0 : *retained);
-    const int mid = r3d_pipeline_draw_split(mesh, visible, work->buffers.rows, count, raster->height, share);
-    mine->elapsed_us = &work->mine_us;
-    other->elapsed_us = &work->other_us;
+    const int mid = r3d_pipeline_draw_split(mesh, visible, work->buffers.rows, count, raster->height,
+                                            job_share_permille(draw_share));
     mine->writers = other->writers = work->writers;
     mine->writer_count = other->writer_count = writer_count;
     mine->work_index = 1;
@@ -307,10 +305,7 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     mine->count = raster->height - mid;
     other->first = 0;
     other->count = mid;
-    job_run_split(draw_slice, mine, other, sizeof *mine);
-    if (retained != NULL) {
-        *retained = (int16_t)(raster_split_update(share, work->other_us, work->mine_us) - RASTER_SPLIT_EVEN);
-    }
+    job_run_steered(draw_share, draw_slice, mine, other, sizeof *mine);
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
@@ -337,6 +332,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         resolves = resolves || a->resolve != NULL;
     }
     draw_work_t* work = scratch_draw(raster);
+    r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     uint16_t* culled = work->buffers.culled;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
@@ -352,10 +348,11 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     }
     if (resolves) {
         FRAME_COST_BEGIN(resolved_from);
-        const int mid = raster->height / 2;
+        int16_t* share = raster->split != NULL ? &raster->split->resolve_offset : NULL;
+        const int mid = job_share_core1_count(share, raster->height);
         work->mine = (slice_t){.raster = raster, .first = mid, .count = raster->height - mid};
         work->other = (slice_t){.raster = raster, .count = mid};
-        job_run_split(resolve_slice, &work->mine, &work->other, sizeof work->mine);
+        job_run_steered(share, resolve_slice, &work->mine, &work->other, sizeof work->mine);
         FRAME_COST_END(resolved_from, "r3d.resolve");
     }
 }
@@ -427,14 +424,7 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
     assert(raster->width > 0 && raster->height > 0);
     assert(width >= raster->width && height >= raster->height);
     FRAME_COST_BEGIN(upscaled_from);
-    uint16_t* columns;
-    /* The carve's lifetime ends before the slice pair uses the stack. */
-    {
-        const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-        const gfx_attachment_t* last = &b.picture.attachment[b.picture.count - 1];
-        columns = (uint16_t*)((char*)last->pixels
-                              + gfx_attachment_bytes(last->bytes_per_pixel, raster->width, raster->height));
-    }
+    uint16_t* columns = raster_carve(raster).upscale;
     uint16_t* rows = columns + width;
     if (raster->upscale.source_width != raster->width || raster->upscale.source_height != raster->height
         || raster->upscale.destination_width != width || raster->upscale.destination_height != height
@@ -443,9 +433,10 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
             upscale_init(&raster->upscale, raster->width, raster->height, width, height, columns, rows);
         assert(initialized);
     }
-    const int mid = height / 2;
+    int16_t* share = raster->split != NULL ? &raster->split->upscale_offset : NULL;
+    const int mid = job_share_core1_count(share, height);
     slice_t mine = {.raster = raster, .first = mid, .count = height - mid, .destination = destination};
     const slice_t other = {.raster = raster, .count = mid, .destination = destination};
-    job_run_split(upscale_slice, &mine, &other, sizeof mine);
+    job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

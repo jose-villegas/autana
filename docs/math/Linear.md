@@ -2,9 +2,13 @@
 
 Vectors, rotations, affine maps and cached transforms. [Math index](README.md).
 
+<!-- generated: math-fast-links-linear check: python launcher/tools/perf/fast_paths.py --check -->
+Fast-path evidence: [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30).
+<!-- /generated: math-fast-links-linear -->
+
 `P` stands for the type's prefix (`vec3f`, `vec3x`, ...). The families pass small
-structs by value, and inputs may alias outputs. Only the transform's own `t` and
-affine2 inversion's `out` are written through a pointer.
+structs by value, and inputs may alias outputs. Output pointers receive
+transform state, affine2 inverses and normalization quotients.
 
 ## vec2 (`f i s x`)
 
@@ -40,12 +44,24 @@ affine2 inversion's `out` are written through a pointer.
 | `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y + a_z b_z`$ |
 | `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y \land a_z = b_z`$ |
 | `P_cross(a, b)` | cross product; x × y = z | $`(a \times b)_x = a_y b_z - a_z b_y`$<br> $`(a \times b)_y = a_z b_x - a_x b_z`$<br> $`(a \times b)_z = a_x b_y - a_y b_x`$ |
-| `P_normalize(a)` | unit vector; `f` and `x` only; `a` must not be zero | $`\hat a = \frac{a}{\sqrt{a \cdot a}}`$ |
+| `P_normalize(a)` | unit vector; `f` and `x` only; `f` needs `a` nonzero | $`\hat a = \frac{a}{\sqrt{a \cdot a}}`$ |
+| `P_normalize_divide(a, t, &q)` | normalize and divide a scalar by the same length; `f` and `x` only | $`\mathrm{out}=a/\lVert a\rVert,\ q=t/\lVert a\rVert`$ |
 | `P_<c1><c2><c3>(v)` | swizzle, each `c` one of `x y z`: `vec3f_zyx(v)` reverses | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
 | `P_<c1><c2>(v)` | swizzle to the vec2 of the same number type, each `c` one of `x y z` | $`(v_{c_1},\ v_{c_2})`$ |
 | `P_from_xy(xy, z)` | the vec3 of a vec2 and a `z` | $`(\mathit{xy}_x,\ \mathit{xy}_y,\ z)`$ |
 | `vec3f_octahedral(n)` | the point of the square $`[-1, 1]^2`$ a direction maps to<sup>[[21]](../Citations.md#21)</sup>, the $`z < 0`$ half folded over the diagonals; any length but zero; `f` only | $`(u, v) = \frac{(n_x,\ n_y)}{\lvert n_x\rvert + \lvert n_y\rvert + \lvert n_z\rvert}`$<br> folded to $`(\mathrm{sign}(u)\,(1 - \lvert v\rvert),\ \mathrm{sign}(v)\,(1 - \lvert u\rvert))`$ when $`n_z < 0`$ |
 | `vec3f_from_octahedral(p)` | the unit direction of a point of the square, the inverse of `vec3f_octahedral`; `f` only | $`z = 1 - \lvert p_x\rvert - \lvert p_y\rvert`$<br> the point unfolded when $`z < 0`$<br> then normalized |
+
+Float normalization uses `mathf_rsqrt` for the reciprocal length.
+The scalar limit is `MATHF_RSQRT_ULP_LIMIT`; nonzero input remains required.
+The [benchmark table](Benchmark.md) reports measured component error against the `1 / sqrtf` path.
+
+`vec3x_normalize` and `vec3x_normalize_divide` accept any nonzero int32 vector.
+Components are within $`0.5 + 2^{-12}`$ LSB (nearest value or neighbour on a near-tie).
+For `x`, a zero vector gives zero and `q = mathx_div(t, 0)`.
+
+The quotient `*q` is within relative $`2^{-28}`$ plus 0.5 LSB of
+$`t/\lVert a\rVert`$ clamped to the int32 range.
 
 A swizzle copies components and does no arithmetic. One that changes dimension
 returns the other vector type of the same number type: `vec3f_xz(v)` is a `vec2f_t`.
@@ -66,6 +82,7 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `vec3x_from_vec3f(v)`, `vec2x_from_vec2f(v)` | `v * 65536`, rounded, saturated |
 | `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
 | `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
+| `vec3s_from_array(p)` | an `int16_t[3]` position row, exact |
 
 ## quat (`f x`)
 
@@ -80,6 +97,22 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead<sup>[[53]](../Citations.md#53)</sup> | $`s = 2\sqrt{1 + r_x + u_y + f_z}`$<br> $`\left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
 | `P_nlerp(a, b, t)` | unit-length shortest arc; negate `b` when the 4D dot is negative | $`\mathrm{normalize}(a(1-t)+bt)`$ |
 | `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#19)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$: nearly parallel inputs take `P_nlerp`, the rest evaluated by Eberly's series in cos - 1, halving the arc past a 120-degree rotation ($`a \cdot b < \frac{1}{2}`$) and summing until its terms fall below float precision, with no last-term correction<sup>[[71]](../Citations.md#71)</sup> |
+
+`quatf_normalize` and `quatf_nlerp` use `mathf_rsqrt` for the reciprocal length.
+A device sweep measures nlerp component error over quaternion pairs and
+interpolation weights against the `1 / sqrtf` path.
+
+`quatx_normalize` accepts every nonzero int32 quaternion; zero gives zero.
+Its component error is at most $`0.5 + 2^{-12}`$ LSB against exact normalization.
+
+`quatx_unit_normalize` is the near-unit Q16.16 path `quatx_nlerp` uses.
+
+`quatx_unit`'s public second spellings keep the shared template unchanged:
+`quatx_unit_normalize`, `quatx_unit_nlerp`, `quatx_unit_from_basis`.
+Callers use `quatx_*`, including `quatx_from_basis`.
+
+The unit-input sweep in `suite_math_numbers.c` checks an 8 LSB component
+bound against a double reference, including blend and squared-length rounding.
 
 ## affine2 (`f x`)
 
@@ -142,6 +175,9 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_compute_matrix(&t)` | a fresh model matrix from a const transform | $`M = T\,R\,S`$ |
 | `P_view(&t)` | the camera's view matrix | $`V = R^{\mathsf T}\,T(-\mathit{position})`$ |
 | `transformf_rotate_around(&t, point, axis, angle)` | float only: turns about the line through `point` along `axis`, in the parent's frame; the position swings round `point` and the rotation turns with it | $`q = \mathrm{from\_axis\_angle}(\hat a, \mathit{angle})`$<br> $`\mathit{position} \leftarrow \mathit{point} + q\,(\mathit{position} - \mathit{point})`$<br> $`\mathit{rotation} \leftarrow \mathrm{normalize}(q\;\mathit{rotation})`$ |
+| `transformf_compose(&parent, &child)` | float only: the child placed in the parent's frame; exact unless an unevenly scaled parent holds a turned child, where the sheared result has no TRS form and the scale is per axis | $`\mathit{position} = p_t + p_q\,(p_s \odot c_t)`$<br>$`\mathit{rotation} = \mathrm{normalize}(p_q\,c_q)`$<br>$`\mathit{scale} = p_s \odot c_s`$ |
+| `transformf_relative(&parent, &world)` | float only: the inverse of `transformf_compose`, the child that placed in `parent` stands at `world`; the parent's scale must be even and nonzero | $`q = \overline{p_q}`$<br>$`\mathit{position} = q\,(w_t - p_t) / p_s`$<br>$`\mathit{rotation} = \mathrm{normalize}(q\,w_q)`$<br>$`\mathit{scale} = w_s / p_s`$ |
+| `transformf_scale_is_even(&t)` | float only: the three scales agree within `TRANSFORMF_MATRIX_TOLERANCE` of the largest | $`\max_i s_i - \min_i s_i \le \epsilon \max_i \lvert s_i \rvert`$ |
 | `transformf_from_mat(m, &t)` | float only: affine TRS decomposition, refuses singular, nonfinite, sheared or reflected matrices; orthogonality uses `TRANSFORMF_MATRIX_TOLERANCE` | $`s_i = \lVert M_{:i}\rVert`$<br>$`R_{:i} = M_{:i}/s_i`$<br>$`t = M_{:3}`$<br>Require orthogonal columns and $`\det R > 0`$, quaternion from basis<sup>[[53]](../Citations.md#53)</sup> |
 | `P_looking(position, forward, up)` | unit-scale pose looking along `forward` from `position` | $`\mathit{look\_along}(\mathit{forward}, \mathit{up})`$ |
 | `P_look_along(&t, direction, up)` | faces a nonzero `direction`; `up` must not be parallel to it | $`f = \frac{\mathit{direction}}{\lVert \mathit{direction} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
@@ -167,20 +203,33 @@ and its zero scale sends every point to the origin. Code never edits `matrix`.
 
 ## Examples
 
+<!-- generated: math-transform-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
+/* Transform a point into a camera's view and interpolate a rotation. */
 #include "math/linear/transformf.h"
 
-transformf_t body = TRANSFORMF_IDENTITY;
-transformf_set_position(&body, (vec3f_t){1.0F, 0.0F, 4.0F});
-transformf_set_rotation(&body, quatf_from_euler((vec3f_t){0.0F, MATH_PI / 2.0F, 0.0F}));
+typedef struct {
+    vec3f_t in_camera;
+    quatf_t halfway;
+} transform_example_t;
 
-const mat4f_t model = transformf_matrix(&body);          /* built now, kept */
-const vec3f_t world = mat4f_apply(&model, (vec3f_t){0.0F, 0.0F, 1.0F});
+void
+transform_example(transform_example_t* s) {
+    transformf_t body = TRANSFORMF_IDENTITY;
+    transformf_set_position(&body, (vec3f_t){1.0F, 0.0F, 4.0F});
+    transformf_set_rotation(&body, quatf_from_euler((vec3f_t){0.0F, MATH_PI / 2.0F, 0.0F}));
 
-transformf_t camera = TRANSFORMF_IDENTITY;
-transformf_look_at(&camera, world, (vec3f_t){0.0F, 1.0F, 0.0F});
-const mat4f_t view = transformf_view(&camera);
-const vec3f_t in_camera = mat4f_apply(&view, world);     /* straight ahead: x = y = 0 */
+    const mat4f_t model = transformf_matrix(&body); /* built now, kept */
+    const vec3f_t world = mat4f_apply(&model, (vec3f_t){0.0F, 0.0F, 1.0F});
 
-const quatf_t halfway = quatf_slerp(quatf_identity(), body.rotation, 0.5F);
+    transformf_t camera = TRANSFORMF_IDENTITY;
+    transformf_look_at(&camera, world, (vec3f_t){0.0F, 1.0F, 0.0F});
+    const mat4f_t view = transformf_view(&camera);
+    const vec3f_t in_camera = mat4f_apply(&view, world); /* straight ahead: x = y = 0 */
+
+    const quatf_t halfway = quatf_slerp(quatf_identity(), body.rotation, 0.5F);
+    s->in_camera = in_camera;
+    s->halfway = halfway;
+}
 ```
+<!-- /generated: math-transform-example -->

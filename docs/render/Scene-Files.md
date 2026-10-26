@@ -3,7 +3,7 @@
 A scene file holds transformed objects, renderer, light and camera components,
 optional animators, and ambient and tone-map settings. The offline importer bakes the lit meshes
 the scene places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
-[scene entry](#the-scene-entry) it reads at run time.
+[scene entry](#scne-v5) it reads at run time.
 
 ```toml
 tonemap_white = 0.35             # larger is darker
@@ -125,7 +125,7 @@ spots under overhangs. The sky light is blocked by an occluder at any
 distance; this counts only hits within `D` model units. It scales the
 [ambient](#ambient) light, and with `indirect = true` the bounced
 light. The directional and sky lights are untouched. Every baked renderer gets it. How the factor is computed is in
-[Mesh-Import.md](Mesh-Import.md#local-occlusion-implementation).
+[Bake-Method.md](Bake-Method.md#local-occlusion-implementation).
 
 | Field | Meaning |
 |---|---|
@@ -139,7 +139,7 @@ Off unless given. A scene that sets it needs something to scale: an
 that a baked renderer uses. `reference_render.py`'s `bake` backend reads the same table;
 its `mitsuba` backend ignores it.
 
-![The reference beside the bake without and with occlusion, each with its error heatmap](../images/render/bake-ao-compare.png)
+![The reference beside the bake without and with occlusion, each with its error heatmap](../images/render/gpu/bake-ao-compare.png)
 
 The reach should follow the mesh: a bake stores one colour per vertex, so a
 reach much larger than the triangles darkens whole faces around a crease, where
@@ -155,7 +155,7 @@ or face colours as direct light. The reference renderer reads the same table,
 so a scene's reference carries its look; `intensity` or `albedo_boost` above 1
 trades fidelity to a physical reference for look.
 
-![The reference beside the direct-light and bounce bakes, each with its error heatmap](../images/render/bake-indirect-compare.png)
+![The reference beside the direct-light and bounce bakes, each with its error heatmap](../images/render/gpu/bake-indirect-compare.png)
 
 #### sky
 
@@ -295,7 +295,7 @@ enters between samples.
 #### shading: smooth
 
 Smooth shading bakes one colour per vertex. It is the normal baked mesh form
-described in [The baked mesh](Mesh-Import.md#the-baked-mesh).
+described in [The baked mesh](Baked-Mesh.md#clusters-and-the-tree).
 
 #### shading: flat
 
@@ -471,6 +471,14 @@ where $`w`$ is `surface_weight`, $`\epsilon`$ is `surface_margin`, and $`t`$
 is `SURFACE_TANGENTIAL_WEIGHT`. Both distances are measured in $`e_x`$.
 The plane envelope is zero inside the margin; the small pull remains active there.
 
+The fit also holds seams between parts. A start border point within
+`SEAM_MARGIN` × its capped local start edge scale of another part's triangle
+is moved onto that triangle.
+
+It then follows the triangle at fixed start barycentrics, so parts that
+overlapped in the start cannot pull apart into cracks. Nearest contacts win,
+and a held point never anchors another hold.
+
 Colour history, `loss.txt` and the printed mean ΔE76 exclude surface, normal,
 Laplacian and cost penalties. The surface loss is reported beside drift.
 Pruning counts shown pixels at the recipe's coverage spacing; this sampling is
@@ -585,7 +593,7 @@ any other camera is refused because no bake step reads it.
 `region = { min, max }` is the box the camera may occupy; region visibility
 casts from points inside it. `path = { animation, node }` names the clip the
 camera flies: `animation` is its `NAME.anim.toml`
-([Animation-Tracks.md](../Animation-Tracks.md)), relative to the scene file,
+([Animation-Tracks.md](Animation-Tracks.md)), relative to the scene file,
 and `node` the glTF node in it that is the camera. The clip's id is `NAME`, and
 it travels in the scene's pack; `<node>/translation` must fit a track name's
 31 bytes. `background` (0xRRGGBB, default black) is the colour
@@ -603,7 +611,7 @@ lights, `tonemap_white`, a region or `[indirect]` that no placed mesh reads.
 Directional lights, `[ambient]` and `tonemap_white` are also read by skinned
 renderers, which require none of them; `[sky]` is read only by a bake.
 
-## The scene entry
+## SCNE v5
 
 `build_pack.py` bakes each scene file into a `SCNE` entry of its own pack,
 named after the file: `NAME.scene.toml` is entry and pack `NAME`, beside every
@@ -611,31 +619,27 @@ mesh, skin, skeleton and clip it names
 ([assets/README.md](../assets/README.md)). `tools/r3d/scene_asset.py` writes and
 reads it; `scene_load()` opens it ([Scene-Manager.md](Scene-Manager.md)), each
 mesh, skin, skeleton and clip it names, and fails naming whichever is missing or malformed. A scene
-and its clip cannot share a stem ([assets/README.md](../assets/README.md#packs)).
+and its clip cannot share a stem ([assets/README.md](../assets/Building-Packs.md#packs)).
 
-Every object is an entity in file order, found by name at runtime. Transforms
-store a 3x3 rotation-times-scale matrix and position. Names are letters, digits
-and `_`, not starting with a digit, at most 31 bytes. Directional lights use
-their entity's rotation applied to `SCENE_LIGHT_AXIS` (+Y). Baked renderers
-keep their LMSH colours; runtime lights shade only skinned renderers. Sky and
-camera regions are bake inputs.
+Objects are entities in file order, found by the `name_hash()` of their name
+([hash package](../../launcher/packages/hash/README.md)), which each names row
+stores beside the name. Transforms store a 3x3
+rotation-times-scale matrix and position, in the parent's frame; the scale
+is positive, and `scene_load()` refuses a shear or a reflection (determinant
+−1) and names its entity. Each entity has one parent listed before it, or
+none; a parent's transform and enabled state carry to its descendants
+([Scene-Manager.md](Scene-Manager.md#hierarchy)). A scene file names no
+parents, so its objects are roots; `scene_asset.encode()` writes the parent of
+an object that carries one. Names hold letters, digits and
+`_`, start with a letter or `_`, and fit 31 bytes.
 
-SCNE v2 is little-endian; every part offset is four-byte aligned from entry
-start. The header contains only the version, counts and offsets. Parts follow
-this order:
+Directional lights rotate `SCENE_LIGHT_AXIS` (+Y) by their entity's rotation.
+Baked renderers read LMSH or LCOL colours; runtime lights shade only skinned
+renderers. Sky and camera regions are bake inputs.
 
-| Part | Layout |
-|---|---|
-| header, 56 bytes | `u16 version=2`, nine `u16` part counts, nine `u32` part offsets |
-| names | `char name[32]` per entity, NUL padded |
-| transforms | `scene_asset_transform_t`: `f32 linear[3][3]`, `f32 position[3]` per entity; count equals names |
-| renderers | `u16 entity`, `u16 zero`, `char mesh_id[32]` |
-| cameras | `u16 entity`, `u16 zero`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb` |
-| lights | `u16 entity`, `u8 kind`, `u8 zero`, `f32 colour[3]` (linear), `f32 intensity` (unscaled) |
-| skinned renderers | `u16 entity`, `u16 zero`, `char mesh_id[32]`, `char skin_id[32]`, `char skeleton_id[32]` |
-| animators | `u16 entity`, `u16 clip_count`, `u32 first_clip`, `u16 default_clip`, `u8 wrap`, `u8 zero` |
-| clip rows | `char clip_id[32]` |
-| settings, exactly one | `f32 ambient_colour[3]` (linear), `f32 ambient_intensity`, `f32 tonemap_white` |
+| Format | Version | Writer (Python) | Reader (C) |
+|---|---|---|---|
+| SCNE | 5 | `r3d/scene_asset.py` | `scene/scene_asset.c` |
 
 Settings are applied before lights attach. Absent ambient has zero intensity;
 `tonemap_white=0` is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map. A camera
@@ -643,9 +647,209 @@ path becomes an animator on its entity with one clip, default index zero and
 loop wrap. Its `node` selects tracks at bake time; the packed tracks bind to
 the animator's owner through `ANIM_TARGET_SELF`.
 
-Readers refuse v1, invalid entity indices, nonzero padding, malformed text,
-nonpositive or nonfinite lenses, invalid clear colours, duplicate light,
-animator or skinned-renderer entities, unknown kind or wrap, invalid clip
-ranges or defaults, colours outside 0..1, and negative or nonfinite lighting
-settings. `default_clip=SCENE_ASSET_DEFAULT_CLIP_NONE` means no playback. Light-kind codes belong to
-`scene_format.h`; wrap codes belong to `anim_track.h`.
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 20
+    bitWidth: 44
+---
+packet-beta
+title Header, 64 bytes at 0, one cell a byte
+0-1: "version = 5"
+2-3: "names n"
+4-5: "transf. n"
+6-7: "render. n"
+8-9: "cameras n"
+10-11: "lights n"
+12-13: "skinned n"
+14-15: "animat. n"
+16-17: "clips n"
+18-19: "settings n"
+20-21: "parents n"
+22-23: "0"
+24-27: "names off"
+28-31: "transf. off"
+32-35: "render. off"
+36-39: "cameras off"
+40-43: "lights off"
+44-47: "skinned off"
+48-51: "animat. off"
+52-55: "clips off"
+56-59: "settings off"
+60-63: "parents off"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 18
+    bitWidth: 44
+---
+packet-beta
+title Name registry, one 36-byte row an entity, from names off
+0-3: "u32 name_hash"
+4-35: "char name[32], NUL padded"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 44
+---
+packet-beta
+title Clip registry, one 32-byte row a clip id, from clips off
+0-31: "char clip_id[32], NUL padded"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 44
+---
+packet-beta
+title Content: transform, 48 bytes an entity from transforms off
+0-35: "f32 linear[3][3], rotation times scale"
+36-47: "f32 position[3]"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 18
+    bitWidth: 44
+---
+packet-beta
+title Content: renderer, 36 bytes from renderers off
+0-1: "entity"
+2-3: "colour_set"
+4-35: "char mesh_id[32]"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 44
+---
+packet-beta
+title Content: camera, 16 bytes from cameras off
+0-1: "entity"
+2-3: "0"
+4-7: "f32 half_fov_short_tan"
+8-11: "f32 near_z"
+12-15: "u32 clear_rgb"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 20
+    bitWidth: 44
+---
+packet-beta
+title Content: light, 20 bytes from lights off
+0-1: "entity"
+2: "kind"
+3: "0"
+4-15: "f32 colour[3], linear"
+16-19: "f32 intensity"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 20
+    bitWidth: 44
+---
+packet-beta
+title Content: skinned renderer, 100 bytes from skinned off
+0-1: "entity"
+2-3: "0"
+4-35: "char mesh_id[32]"
+36-67: "char skin_id[32]"
+68-99: "char skeleton_id[32]"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 12
+    bitWidth: 44
+---
+packet-beta
+title Content: animator, 12 bytes from animat. off
+0-1: "entity"
+2-3: "clip_count"
+4-7: "first_clip"
+8-9: "default_clip"
+10: "wrap"
+11: "0"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 20
+    bitWidth: 44
+---
+packet-beta
+title Content: settings, 20 bytes at settings off, exactly one
+0-11: "f32 ambient_colour[3], linear"
+12-15: "f32 ambient_intensity"
+16-19: "f32 tonemap_white"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 4
+    bitWidth: 44
+---
+packet-beta
+title Content: entity_parents, 2 bytes an entity from parents off
+0-1: "parent"
+```
+
+| Part | At | Size |
+|---|---|---|
+| Header | 0 | 64 bytes |
+| Name registry | `names off` | 36 bytes an entity |
+| Content: transforms | `transf. off` | 48 bytes an entity; the count equals the names' |
+| Content: renderers | `render. off` | 36 bytes each |
+| Content: cameras | `cameras off` | 16 bytes each |
+| Content: lights | `lights off` | 20 bytes each |
+| Content: skinned renderers | `skinned off` | 100 bytes each |
+| Content: animators | `animat. off` | 12 bytes each; `wrap` is an `ANIM_CLAMP` or `ANIM_LOOP` code from `anim_track.h` |
+| Clip registry | `clips off` | 32 bytes a clip id, indexed by `first_clip` and `clip_count` |
+| Content: settings | `settings off` | 20 bytes, one row |
+| Content: entity_parents | `parents off` | 2 bytes an entity; the count equals the names'; written for every scene, all roots included |
+
+| Rule | Detail |
+|---|---|
+| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (64), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_ASSET_PARENT_ROOT` (0xFFFF), `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1), `SCENE_ASSET_NAME_SIZE` (36), `_NAME_AT_HASH` (0), `_NAME_AT_TEXT` (4) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
+| Layout | little-endian; every part offset is a multiple of 4, at least 64, and the part ends inside the entry; the writer lays parts out in header order, each padded to 4 bytes |
+| Counts | each at most 65535, entities at most 65534; names equals transforms and entity_parents; settings is exactly 1 |
+| Parents | `parent` is `SCENE_ASSET_PARENT_ROOT` or below its own entity, so one forward pass meets every parent before its children; a camera, light or skinned renderer is a root; an entity with children has a uniform scale, the same on every axis, and `scene_load()` refuses one that does not, naming it; `scene_asset.encode()` folds a parent's uneven scale into its children, refusing a parent that draws or a turned child the fold would shear |
+| Colour sets | [Selection and ownership](Baked-Mesh.md#lcol-v1): own colours require no LCOL, checked at pack time. Authored scenes write own colours |
+| Entities | every `entity` is below the names' count; at most one light, one skinned renderer and one animator an entity |
+| Name hash | `name_hash` is `name_hash(name)` and never `NAME_HASH_NONE`; finds compare it alone. The bake refuses a name that hashes to `NAME_HASH_NONE` and two names in one scene that share a hash, naming both |
+| Text | `name`, `mesh_id`, `skin_id`, `skeleton_id` and clip ids are nonempty, NUL terminated, zero after the NUL; the bake limits names as stated above |
+| Padding | every `0` above is zero |
+| Camera | `half_fov_short_tan` and `near_z` finite and positive; `clear_rgb` at most `0xFFFFFF` |
+| Light | `kind` is `SCENE_LIGHT_KIND_DIRECTIONAL`; colour in 0..1; intensity finite and at least 0 |
+| Animator | `first_clip + clip_count` within the clip count; `default_clip` is below `clip_count` or `SCENE_ASSET_DEFAULT_CLIP_NONE` (no playback) |
+| Settings | ambient colour in 0..1; `ambient_intensity` and `tonemap_white` finite and at least 0 |
+| Errors | `ASSET_ERR_VERSION` for another version, v1 included, reported before its bounds; `ASSET_ERR_BOUNDS` for a part off its alignment or outside the entry; `ASSET_ERR_FORMAT` for the rest |

@@ -10,7 +10,7 @@ mesh. Nothing here runs on the board.
 | [geometry.py](geometry.py) | Welding, compaction, corner normals, closest point on a triangle. |
 | [tessellate.py](tessellate.py) | Conforming edge splits, used by the `seal_seams` join. |
 | [repair.py](repair.py) | The join step of the `seal_seams` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
-| [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, one colour-aware pass per part with reserved budget shares for small props, colour weighted so a colour step buys the same surface deviation in every part. `seal_seams=True` joins touching pieces first, regularizes lightly and merges near colours. |
+| [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, one colour-aware pass per part with reserved budget shares for small props, colour weighted so a colour step buys the same surface deviation in every part. `[objects] overrides` reserve fixed counts per welded group. `seal_seams=True` joins touching pieces first, regularizes lightly and merges near colours. |
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked light from a scene's typed lights (`LIGHTS`): a point sun by shadow rays, sky visibility and ambient, distance-limited local occlusion (`[bake].ao`), albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
@@ -29,14 +29,16 @@ mesh. Nothing here runs on the board.
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth or flat mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
+| [objects/](objects/objects_report.py) | Rigid instances, triangles saved, residuals and camera-path density LOD estimates: `objects_report.py SCENE.scene.toml --object NAME --out DIR`. |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/track_host.py` writes, samples a scene camera's path through it from the clip's `.anim.toml`, and casts a pose's pinhole rays. |
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
 | [light_preview.py](light_preview.py) | Tries a scene's directional light at other rotations before a bake: a path-traced still per rotation and camera-path time, the share of chosen materials in direct sun (`--share floor`), the bounced light at other `[indirect]` intensities (`--indirect 2 1`), and `--save` to write the chosen rotation into the scene file; `--live` turns the sun with the arrow keys in a window that refines while idle, Ctrl+S saving it. |
-| [path_bake.py](path_bake.py) | `PathLight`: the bake's bounced light, Mitsuba's path integrator along each point's fixed cosine-weighted rays against the full-detail source; see [Bounced-light implementation](../../../docs/render/Mesh-Import.md#bounced-light-implementation). |
+| [path_bake.py](path_bake.py) | `PathLight`: the bake's bounced light, Mitsuba's path integrator along each point's fixed cosine-weighted rays against the full-detail source; see [Bounced-light implementation](../../../docs/render/Bake-Method.md#bounced-light-implementation). |
 | [ray_query.py](ray_query.py) | First-hit, any-hit and every-hit ray queries against a triangle mesh, traced by Mitsuba; the bake, visibility culling and the reference renderer all use it. |
 | [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
+| [source/reduce_source.py](source/reduce_source.py), [source/blend_export_obj.py](source/blend_export_obj.py) | Reduces a model too large to commit or to trace to an OBJ an import reads: Blender exports its meshes and base-colour textures, then meshoptimizer removes what moves the surface less than an error cap, object by object, each written as its own group. |
 | [isa.py](isa.py) | Pins Mitsuba's CPU backend to one instruction set before Mitsuba loads: Dr.Jit's LLVM kernels for x86-64-v3 at 8 lanes, Embree capped at AVX2 through [embree_cap.c](embree_cap.c), so ray results depend on the CPU's vendor alone. |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
@@ -82,7 +84,7 @@ the price of frame time; what it does and costs is in
 
 `mesh_import.py` is the shared full-import command. Each import file, the
 scene file that places it and the `.mesh` it bakes live together.
-Reference content lives in `launcher/demo/`; an app [selects](../../../docs/assets/README.md#packs)
+Reference content lives in `launcher/demo/`; an app [selects](../../../docs/assets/Building-Packs.md#packs)
 what ships.
 
 ## Fidelity reference
@@ -92,7 +94,7 @@ It uses the source mesh after alpha masking, before simplification, and the
 same lights, albedo sampling, tone map and RGB565 quantisation as the bake.
 The .npy output retains the linear, box-filtered image; the PNG is the form a
 host render compares with `render_compare.py`. What the scores mean is in
-[Mesh-Import.md](../../../docs/render/Mesh-Import.md#fidelity-against-a-reference).
+[Bake-Method.md](../../../docs/render/Bake-Method.md#fidelity-against-a-reference).
 
 These commands run from `launcher/`; `PY` is the venv's interpreter
 (`tools/r3d/.cache/venv/Scripts/python` on Windows, `.../bin/python` elsewhere).
@@ -293,8 +295,12 @@ with their normals in portrait and landscape so the fit holds the panel either
 way up at `fit.poses.size`. `fit` fits with
 `fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian`,
 `fit.optimise.normal_weight`, `fit.optimise.surface_weight` and
-`fit.optimise.surface_margin`. `fit` prunes the
-fitted geometry to `fit.prune.budget`
+`fit.optimise.surface_margin`.
+
+The fit holds borders that start near another part on that part
+(`SEAM_MARGIN` in `appearance_simplify.py`).
+
+`fit` prunes the fitted geometry to `fit.prune.budget`
 and writes the renderer's mesh into the work folder. The fit uses deterministic
 reductions and seeded sampling; the lock pins the bytes a fit made.
 

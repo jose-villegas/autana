@@ -1,8 +1,8 @@
 /*
  * scene: the engine's scene manager. Packed component arrays indexed by a
- * small entity id hold a transform per entity, and a renderer, camera,
- * animator or skinned renderer only for entities that have one; animator
- * and skin buffers are allocated when attached.
+ * small entity id hold a transform and a parent per entity, and a
+ * renderer, camera, animator or skinned renderer only for entities that
+ * have one; animator and skin buffers are allocated when attached.
  */
 #pragma once
 
@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
+#include "hash/name_hash.h"
 #include "render/r3d_instance.h"
 #include "scene/camera/camera.h"
 
@@ -19,9 +20,6 @@ typedef struct scene scene_t;
 /* An index into one scene's component arrays. */
 typedef uint16_t scene_entity_t;
 #define SCENE_ENTITY_NONE ((scene_entity_t)0xFFFFU)
-
-/* Where an entity stands: position, quaternion rotation and scale. */
-typedef transformf_t scene_transform_t;
 
 typedef enum {
     SCENE_OK = 0,
@@ -50,9 +48,12 @@ scene_t* scene_load_from(const asset_pack_t* pack, const char* id, scene_failure
 /* Frees the scene. If its camera was the active one, nothing is drawn. */
 void scene_unload(scene_t* scene);
 
-/* The entity named `name`, or SCENE_ENTITY_NONE. The way to an entity: look
- * it up once, when the scene loads, and keep it. */
-scene_entity_t scene_find(const scene_t* scene, const char* name);
+/* Camera lookups below take this for the scene's first camera. */
+#define SCENE_CAMERA_FIRST NAME_HASH_NONE
+
+/* The entity whose name hashes to `name` (name_hash()), or SCENE_ENTITY_NONE.
+ * The way to an entity: look it up once, when the scene loads, and keep it. */
+scene_entity_t scene_find(const scene_t* scene, name_hash_t name);
 
 /* Enumeration for tools selecting components by their authored names. */
 int scene_entity_count(const scene_t* scene);
@@ -64,10 +65,25 @@ const char* scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity);
 /* The mesh the entity draws, or NULL when it draws none. */
 const r3d_lit_mesh_t* scene_entity_mesh(const scene_t* scene, scene_entity_t entity);
 
-/* The lens of the scene's camera `camera` (NULL: its first); NULL when the scene has no such camera. */
-const camera_t* scene_camera_lens(const scene_t* scene, const char* camera);
+/* The entity's renderer draws `mesh` instead of the one it loaded: a mesh
+ * made at run time, which the caller keeps alive for the scene's life. The
+ * scene keeps a copy of the view, so call again after each rebuild changes
+ * its counts. A mesh with no nodes draws nothing. False when the entity
+ * has no renderer or a skinned one, whose mesh its animator writes. */
+bool scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mesh_t* mesh);
+
+/* The lens of the scene's camera named by `camera` (SCENE_CAMERA_FIRST: its first); NULL when the scene has no
+ * such camera. */
+const camera_t* scene_camera_lens(const scene_t* scene, name_hash_t camera);
 /* Returns false for a non-camera entity or an invalid presentation. */
 bool scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t present);
+
+/* Returns false for a non-camera entity or an invalid style. */
+bool scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill);
+/* Sets the camera's lens shift (render_view_t.shift): an off-axis view, as a
+ * window onto a fixed rectangle needs. False for a non-camera entity or a
+ * shift that is not finite. */
+bool scene_camera_set_shift(scene_t* scene, scene_entity_t camera, vec2f_t shift);
 
 /* Setters attach a directional light, initially white with zero intensity; refusals change nothing. */
 bool scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb);
@@ -76,16 +92,38 @@ bool scene_light_set_intensity(scene_t* scene, scene_entity_t entity, float inte
 vec3f_t scene_light_color(const scene_t* scene, scene_entity_t entity);
 float scene_light_intensity(const scene_t* scene, scene_entity_t entity);
 
-const scene_transform_t* scene_entity_transform(const scene_t* scene, scene_entity_t entity);
-void scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform);
+/* The transform component: every entity has one. Its local transform
+ * (position, rotation, scale) is stored, in its parent's frame; its world is
+ * derived from its parents', and for a root the two are the same. */
+transformf_t scene_entity_local(const scene_t* scene, scene_entity_t entity);
+void scene_entity_set_local(scene_t* scene, scene_entity_t entity, transformf_t local);
 bool scene_entity_enabled(const scene_t* scene, scene_entity_t entity);
 
-/* A disabled entity's renderer is not drawn; every entity starts enabled. */
+/* A disabled entity's renderer is not drawn, nor its descendants'; every entity starts enabled. */
 void scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled);
 
-/* Makes the scene's camera `camera` (NULL: its first) the active one. False
- * when the scene has no such camera. */
-bool scene_activate(scene_t* scene, const char* camera);
+/* Drawn and animated: enabled, and every ancestor enabled. */
+bool scene_entity_active(const scene_t* scene, scene_entity_t entity);
+
+/* The entity's parent, or SCENE_ENTITY_NONE for a root. An entity's transform
+ * is in its parent's frame. */
+scene_entity_t scene_entity_parent(const scene_t* scene, scene_entity_t entity);
+
+/* True when `entity` is `ancestor` or one of its descendants. */
+bool scene_entity_is_within(const scene_t* scene, scene_entity_t entity, scene_entity_t ancestor);
+
+/* Where the entity stands in the world: its local placed in its parents'.
+ * Setting it stores the local that puts it there. */
+transformf_t scene_entity_world(const scene_t* scene, scene_entity_t entity);
+void scene_entity_set_world(scene_t* scene, scene_entity_t entity, transformf_t world);
+
+/* The same world as a matrix, for applying it to many points: the form the
+ * renderer draws with. */
+mat4f_t scene_entity_world_matrix(const scene_t* scene, scene_entity_t entity);
+
+/* Makes the scene's camera named by `camera` (SCENE_CAMERA_FIRST: its first)
+ * the active one. False when the scene has no such camera. */
+bool scene_activate(scene_t* scene, name_hash_t camera);
 
 /* No camera is active, so nothing is drawn, until the next scene_activate(). */
 void scene_deactivate(void);

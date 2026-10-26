@@ -93,6 +93,7 @@ BASE_PROJECT = TEMP / "project"
 write_config(BASE_PROJECT, records=str(RECORDS))
 os.environ["_AUTANA_PROJECT"] = str(BASE_PROJECT)
 os.environ["_AUTANA_DEVICE_LOCK_ROOT"] = str(TEMP / "locks")
+os.environ["_AUTANA_HEAVY_LOCK_ROOT"] = str(TEMP / "heavy")
 # In-process autana derives its project from the cwd, so tests run in the
 # isolated one.
 os.chdir(BASE_PROJECT)

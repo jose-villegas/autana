@@ -2,6 +2,7 @@
 
 KB_BYTES = 1024
 MB_BYTES = KB_BYTES * KB_BYTES
+GB_BYTES = MB_BYTES * KB_BYTES
 
 
 def size_label(nbytes):

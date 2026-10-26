@@ -1,4 +1,4 @@
-"""Generate skinning budget tables from committed board captures."""
+"""Generate performance tables from board captures."""
 import argparse
 import pathlib
 import re
@@ -12,7 +12,9 @@ from generated_blocks import replace_block
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "perf"))
 from capture import build_id, QUARTERS, capture_quarters, select_quarter
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[5] / "scripts/device"))
-from device_report import BUDGET_TABLE_HEADER
+from device_report import BUDGET_TABLE_HEADER, parse_perf_targets
+from frame_profile import profiles, summaries
+from frame_cost import US_PER_MS
 
 LOG_HEADER = pathlib.Path(__file__).resolve().parents[1] / "tests/skin_perf_log.h"
 PREFIX = read_define(LOG_HEADER, "SKIN_PERF_PREFIX")
@@ -21,7 +23,7 @@ NANOSECONDS_PER_MICROSECOND = read_define(LOG_HEADER, "SKIN_PERF_NS_PER_US")
 CORES_ONE = read_define(LOG_HEADER, "SKIN_PERF_CORES_ONE")
 CORES_TWO = read_define(LOG_HEADER, "SKIN_PERF_CORES_TWO")
 CORES_UNKNOWN = read_define(LOG_HEADER, "SKIN_PERF_CORES_UNKNOWN")
-PERCENT_SCALE = read_define(LOG_HEADER, "SKIN_PERF_PERCENT_SCALE")
+PERCENT_SCALE = read_define(LOG_HEADER.parents[4] / "test/perf_budget.h", "PERF_BUDGET_PERCENT")
 SKIN_HEADER = LOG_HEADER.parents[3] / "render/r3d_skin_format.h"
 LIGHTING_MODES = {read_define(SKIN_HEADER, "R3D_SKIN_LIGHT_" + mode.upper()): mode
                   for mode in ("direct", "renormalised", "table")}
@@ -197,7 +199,42 @@ def budget(text, repeat="autana suite run_capybara_perf_suite --flash --perf-sco
     return "\n".join(table)
 
 
+def budget_row(name, goal, measured):
+    headroom = f"{(goal - measured) * PERCENT_SCALE / goal:+.1f}%" if goal else "n/a"
+    status = "MET" if measured <= goal else "UNMET"
+    return f"| {name} | {goal:g} | {measured:g} | {headroom} | {status} |"
+
+
+def frame_report(text, rows, playback):
+    if playback:
+        lines = ["## Frame rate", "",
+                 "| Scene | Quarter | Frames | Mean fps | Low fps (1/p95) | p50 ms | p95 ms | Worst ms |",
+                 "|---|---|---:|---:|---:|---:|---:|---:|"]
+    else:
+        lines = ["## Frame cost along the flythrough", "",
+                 "| Row | Quarter | Mean fps (before present) | Mean ms | p50 ms | p95 ms | Worst ms |",
+                 "|---|---|---:|---:|---:|---:|---:|"]
+    for row in rows:
+        cells = [row["row"], row["quarter"]]
+        if playback:
+            cells.extend((str(row["frames"]), f"{row['fps_mean']:.1f}", f"{row['fps_low']:.1f}"))
+        else:
+            cells.extend((f"{row['fps_mean']:.1f}", f"{row['mean'] / US_PER_MS:.1f}"))
+        cells.extend(f"{row[name] / US_PER_MS:.1f}" for name in ("med", "p95", "worst"))
+        lines.append("| " + " | ".join(cells) + " |")
+    lines.extend(("", BUDGET_TABLE_HEADER, "|---|---:|---:|---:|---|"))
+    targets, _ = parse_perf_targets(text)
+    for target in targets:
+        measured, goal = int(target["measured"]), int(target["goal"])
+        lines.append(budget_row(target["name"], goal, measured))
+    return "\n".join(lines) + "\n"
+
+
 def performance_report(text):
+    if rows := profiles(text):
+        return frame_report(text, rows, playback=True)
+    if rows := summaries(text):
+        return frame_report(text, rows, playback=False)
     if not re.search(r"^RUN=", text, re.MULTILINE):
         text = "RUN=1\n" + text
     observed = capture_quarters(text)
@@ -207,9 +244,7 @@ def performance_report(text):
     lines = [BUDGET_TABLE_HEADER, "|---|---:|---:|---:|---|"]
     for core in (CORES_ONE, CORES_TWO):
         measured = data["stages"][(STAGE_SKIN, core)]
-        headroom = (goal - measured) * PERCENT_SCALE / goal
-        status = "MET" if measured <= goal else "UNMET"
-        lines.append(f"| Skin, {core} core(s) | {goal:g} | {measured:g} | {headroom:+.1f}% | {status} |")
+        lines.append(budget_row(f"Skin, {core} core(s)", goal, measured))
     return "\n".join(lines) + "\n\n" + budget(text) + "\n"
 
 

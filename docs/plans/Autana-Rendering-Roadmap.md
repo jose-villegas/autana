@@ -11,8 +11,8 @@ the source tree and those references define the available runtime.
 
 The shell owns the frame loop and app switching. Apps draw and return;
 gfx owns the retained framebuffer, band buffers, dirty tracking and panel
-transfer. See [Firmware Architecture](../Firmware-Architecture.md) and
-[Gfx and Presentation](../Gfx-and-Presentation.md).
+transfer. See [Firmware](../firmware/README.md) and
+[Gfx](../gfx/README.md).
 
 The mesh runtime uses baked lighting, span rasterization, clipping and
 visibility data. The mesh raster and the line path project through one
@@ -20,11 +20,11 @@ visibility data. The mesh raster and the line path project through one
 and the context views. Lines use `render/r3d_project_x.h` for the camera-space
 model matrix and fixed-point pixel projection; the float projection helpers in
 `render/r3d_project.h` provide its test reference through `projectf_t`.
-`math/linear/projectf.h` owns the pinhole lens, continuous float projection
-and float near clipping; `math/linear/projectx.h` owns fixed near clipping
+`math/projection/projectf.h` owns the pinhole lens, continuous float projection
+and float near clipping; `math/projection/projectx.h` owns fixed near clipping
 without prescribing camera units. Render owns snapping and line-unit scaling.
 
-Bulk memory comes from the [app arena](../Building-an-App.md#app-memory)
+Bulk memory comes from the [app arena](../firmware/Building-an-App.md#app-memory)
 at entry. Internal SRAM is the scarce resource for hot buffers; PSRAM can
 hold retained pictures and content. Buffer placement must be judged from
 the final device image, including the diagnostics build's suite memory.

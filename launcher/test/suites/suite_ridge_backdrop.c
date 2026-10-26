@@ -11,7 +11,7 @@
 
 #ifndef DEVICE_BUILD
 
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "app/app.h"
@@ -81,7 +81,6 @@ release(void) {
     settled = NULL;
     app_registry_reset_for_test();
     ui_ridge_release_for_test();
-    gfx_heal_restore_defaults();
     gfx_reset_for_test();
 }
 

@@ -1,10 +1,14 @@
-/* imu_record: bounded round transcript retained until replay or disposal. */
+/* imu_record: bounded round transcript retained until a new round or disposal. */
 #pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
 
 #include "apps/input_lab/imu_probe.h"
+#include "apps/input_lab/orientation_probe.h"
+#include "apps/input_lab/shake_probe.h"
+
+#define IMU_RECORD_CHUNK_SIZE  1024
 
 #define IMU_RECORD_COMMAND     "labdump"
 #define IMU_RECORD_PREFIX      "LABDUMP"
@@ -17,6 +21,20 @@
 /* Start + fit, pose + gravity per position, and the decimated turn trace. */
 #define IMU_RECORD_CAPACITY                                                                                            \
     (((2 + (2 * IMU_PROBE_POSE_COUNT) + IMU_PROBE_TURN_SAMPLES) * IMU_RECORD_LINE_SIZE) + sizeof IMU_RECORD_TRUNCATED)
+
+#define IMU_RECORD_SHAKE_LINE_SIZE (SHAKE_PROBE_SAMPLE_SIZE + sizeof(IMU_RECORD_PREFIX " ") + IMU_RECORD_LINE_MARGIN)
+#define IMU_RECORD_SHAKE_CAPACITY                                                                                      \
+    ((SHAKE_PROBE_RECORD_LINES * IMU_RECORD_SHAKE_LINE_SIZE) + sizeof IMU_RECORD_TRUNCATED)
+
+_Static_assert(IMU_RECORD_SHAKE_LINE_SIZE <= IMU_RECORD_LINE_SIZE, "shake payload must fit the shared formatter");
+
+#define IMU_RECORD_ORIENTATION_LINE_SIZE                                                                               \
+    (ORIENTATION_PROBE_SAMPLE_SIZE + sizeof(IMU_RECORD_PREFIX " ") + IMU_RECORD_LINE_MARGIN)
+_Static_assert(IMU_RECORD_ORIENTATION_LINE_SIZE <= IMU_RECORD_LINE_SIZE,
+               "orientation payload must fit the shared formatter");
+
+#define IMU_RECORD_ORIENTATION_CAPACITY                                                                                \
+    ((ORIENTATION_PROBE_RECORD_LINES * IMU_RECORD_ORIENTATION_LINE_SIZE) + sizeof IMU_RECORD_TRUNCATED)
 
 typedef struct {
     char* text;
@@ -31,8 +49,8 @@ void imu_record_free(imu_record_t* record);
 /* Frames one payload with LABDUMP and newline. Reserves marker space; on overflow writes
  * the marker once and returns false. Empty records and later appends return false without writing. */
 bool imu_record_appendf(imu_record_t* record, const char* format, ...);
-/* Emits retained text once, then frees it; later calls emit nothing. */
-void imu_record_take(imu_record_t* record, void (*emit)(const char* text));
+/* Emits whole lines in bounded chunks. Text stays available until start or free. */
+void imu_record_replay(const imu_record_t* record, void (*emit)(const char* text, size_t length));
 
 /* NULL when ready to dump; otherwise the console error for a running or absent round. */
-const char* imu_record_dump_error(const imu_record_t* record, imu_probe_step_t step);
+const char* imu_record_dump_error(const imu_record_t* record, bool round_running);

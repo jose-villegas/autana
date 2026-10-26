@@ -12,6 +12,9 @@
 #define SOUND_APP_GENERATION_NONE   0u
 #define SOUND_APP_GENERATION_ENGINE 1u
 #define SOUND_APP_GENERATION_FIRST  (SOUND_APP_GENERATION_ENGINE + 1u)
+/* Exponential decay time constant (tau = converted frames), not a fade length.
+ * The shortest decay that removed stop/steal clicks was half this; doubled for margin. */
+#define SOUND_DECLICK_US            1000
 #define SOUND_AMP_IDLE_MS           2000
 #define SOUND_VOICE_GENERATIONS     (UINT32_MAX / SOUND_VOICE_COUNT)
 #define SOUND_GAIN_SHIFT            15
@@ -43,6 +46,10 @@ typedef struct {
     uint32_t parked;
 } sound_capture_t;
 
+typedef enum { SOUND_CAPTURE_WAIT, SOUND_CAPTURE_ACQUIRED, SOUND_CAPTURE_TIMED_OUT } sound_capture_acquire_result_t;
+
+sound_capture_acquire_result_t sound_capture_acquire(sound_capture_t* capture, int64_t now_us, int64_t deadline_us,
+                                                     uint32_t* sequence);
 uint32_t sound_capture_begin(sound_capture_t* capture);
 bool sound_capture_park(sound_capture_t* capture, uint32_t sequence);
 bool sound_capture_is_parked(const sound_capture_t* capture, uint32_t sequence);
@@ -117,6 +124,8 @@ typedef struct {
     bool loop;
     bool tone_source;
     bool playing;
+    bool first_render;
+    int32_t last_sample;
 } sound_mix_voice_t;
 
 typedef enum { SOUND_AMP_OFF, SOUND_AMP_WARMING, SOUND_AMP_ON } sound_amp_state_t;
@@ -128,6 +137,8 @@ typedef struct {
     sound_amp_state_t amp;
     uint64_t amp_changed_ms;
     uint64_t last_active_ms;
+    uint32_t declick_frames;
+    int32_t residual;
 } sound_mixer_t;
 
 void sound_control_init(sound_control_t* control, bool ready);

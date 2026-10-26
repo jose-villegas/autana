@@ -98,6 +98,122 @@ def write_flat_start(directory, count=4):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
+class SeamHoldTests(unittest.TestCase):
+    def test_optimise_defaults_to_the_shared_seam_margin(self):
+        from inspect import signature
+        from r3d import appearance_simplify as appearance
+
+        self.assertEqual(signature(appearance.optimise).parameters["seam_margin"].default,
+                         appearance.SEAM_MARGIN)
+
+    def mesh(self):
+        points = np.array([[0.5, 0.5, 0.1], [4, 0, 1], [0, 4, 1],
+                           [0, 0, 0], [2, 0, 0], [0, 2, 0]], dtype=float)
+        return FitMesh(points, np.ones_like(points), np.array([[0, 1, 2], [3, 4, 5]]),
+                       np.zeros(2), 1, np.arange(len(points)))
+
+    def test_border_point_held_at_start_barycentrics(self):
+        from r3d.appearance_simplify import seam_holds
+
+        mesh = self.mesh()
+        tolerance = np.zeros(len(mesh.points))
+        tolerance[0] = 0.1
+        holds = seam_holds(mesh, tolerance)
+        np.testing.assert_array_equal(holds.points, [0])
+        np.testing.assert_array_equal(holds.corners, [[3, 4, 5]])
+        np.testing.assert_allclose(holds.barycentric, [[0.5, 0.25, 0.25]])
+
+    def test_triangle_radius_filters_distant_candidates_without_changing_holds(self):
+        from r3d import appearance_simplify as appearance
+
+        mesh = self.mesh()
+        tolerance = np.zeros(len(mesh.points))
+        tolerance[0] = 0.1
+        expected = appearance.seam_holds(mesh, tolerance)
+        distant = mesh.points[3:] + [10, 0, 0]
+        large = np.array([[-200, -200, 100], [200, -200, 100], [0, 200, 100]])
+        points = np.vstack([mesh.points, distant, large])
+        mesh = mesh._replace(points=points, tris=np.vstack([mesh.tris, [6, 7, 8], [9, 10, 11]]),
+                             vertex_point=np.arange(len(points)))
+        tolerance = np.r_[tolerance, np.zeros(len(distant) + len(large))]
+        with mock.patch.object(appearance, "closest_point_on_triangles",
+                               wraps=appearance.closest_point_on_triangles) as closest:
+            actual = appearance.seam_holds(mesh, tolerance)
+        np.testing.assert_array_equal(closest.call_args_list[0].args[1], mesh.points[[3, 9]])
+        for first, second in zip(expected, actual):
+            np.testing.assert_array_equal(first, second)
+
+    def test_outside_tolerance_and_same_part_are_not_held(self):
+        from r3d.appearance_simplify import seam_holds
+
+        mesh = self.mesh()
+        connected = mesh._replace(tris=np.vstack([mesh.tris, [1, 2, 3]]))
+        for candidate, tolerance in ((mesh, 0.05), (connected, 0.25)):
+            with self.subTest(connected=candidate is connected):
+                holds = seam_holds(candidate, np.full(len(mesh.points), tolerance))
+                self.assertEqual(holds.points.shape, (0,))
+                self.assertEqual(holds.corners.shape, (0, 3))
+                self.assertEqual(holds.barycentric.shape, (0, 3))
+
+    def test_greedy_holds_have_no_chains(self):
+        from r3d.appearance_simplify import seam_holds
+
+        mesh = self.mesh()
+        plane = np.array([[0, 0, 0], [2, 0, 0], [0, 2, 0]], dtype=float)
+        mesh = mesh._replace(points=np.vstack([plane + [0, 0, 0.1], plane]))
+        holds = seam_holds(mesh, np.full(len(mesh.points), 0.25))
+        np.testing.assert_array_equal(holds.points, [0, 1, 2])
+        self.assertFalse(set(holds.points) & set(holds.corners.ravel()))
+        repeated = seam_holds(mesh, np.full(len(mesh.points), 0.25))
+        for first, second in zip(holds, repeated):
+            np.testing.assert_array_equal(first, second)
+        tolerance = np.full(len(mesh.points), 0.25)
+        tolerance[3:] *= 2
+        reverse = seam_holds(mesh, tolerance)
+        np.testing.assert_array_equal(reverse.points, [3, 4, 5])
+
+    def test_target_with_a_held_corner_is_skipped(self):
+        from r3d.appearance_simplify import seam_holds
+
+        mesh = self.mesh()
+        plane = mesh.points[3:]
+        points = np.vstack([plane + [0, 0, 0.1], plane, plane + [0, 0, 0.25]])
+        mesh = mesh._replace(points=points, tris=np.vstack([mesh.tris, [6, 7, 8]]),
+                             vertex_point=np.arange(len(points)))
+        tolerance = np.repeat([0.5, 0, 0.25], 3)
+        holds = seam_holds(mesh, tolerance)
+        np.testing.assert_array_equal(holds.points, [0, 1, 2])
+        self.assertFalse(set(holds.points) & set(holds.corners.ravel()))
+
+    def test_welded_interior_point_is_not_a_border(self):
+        from r3d.appearance_simplify import seam_holds
+
+        mesh = self.mesh()
+        points = np.vstack([mesh.points[0], [[-1, -1, 0.1], [2, -1, 0.1],
+                                           [2, 2, 0.1], [-1, 2, 0.1]], mesh.points[3:]])
+        tris = np.array([[0, 1, 2], [8, 2, 3], [0, 3, 4], [8, 4, 1], [5, 6, 7]])
+        mesh = mesh._replace(points=points, tris=tris, vertex_point=np.r_[np.arange(len(points)), 0])
+        tolerance = np.zeros(len(points))
+        tolerance[0] = 0.25
+        holds = seam_holds(mesh, tolerance)
+        self.assertEqual(len(holds.points), 0)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_hold_seams_is_exact_out_of_place_and_differentiable(self):
+        from r3d.appearance_simplify import hold_seams, seam_holds
+
+        mesh = self.mesh()
+        holds = seam_holds(mesh, np.array([0.25, 0, 0, 0, 0, 0]))
+        points = torch.tensor(mesh.points, requires_grad=True)
+        result = hold_seams(points, holds)
+        np.testing.assert_array_equal(result.detach()[0], [0.5, 0.5, 0])
+        np.testing.assert_array_equal(points.detach(), mesh.points)
+        result[0].sum().backward()
+        np.testing.assert_array_equal(points.grad[:3], np.zeros((3, 3)))
+        np.testing.assert_array_equal(points.grad[3:], np.repeat(holds.barycentric.T, 3, axis=1))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
 class StretchTests(unittest.TestCase):
     def test_small_part_stretch_is_reported_separately(self):
         from r3d.appearance_simplify import STRETCH_RATIO, stretch_report
@@ -268,7 +384,7 @@ class AppearanceMeshTests(unittest.TestCase):
         with mock.patch.object(appearance, "Renderer", return_value=render):
             with self.assertRaisesRegex(ValueError, "finite"):
                 appearance.optimise(mesh, [(np.eye(4), target)], (1, 1), steps=2, batch=1,
-                                    lr_position=0, lr_colour=0, laplacian=0, report=0, device="cpu")
+                                    lr_position=0, lr_colour=0, laplacian=0, report=0, device="cpu", seam_margin=0)
 
     @unittest.skipIf(torch is None, "needs PyTorch")
     def test_normal_loss_without_angles_handles_empty_masks(self):
@@ -319,7 +435,7 @@ class AppearanceMeshTests(unittest.TestCase):
         views = [(np.eye(4), np.zeros((1, 1, 3), dtype=np.float32))]
         options = dict(steps=appearance.SURFACE_QUERY_EVERY + 1, batch=1, lr_position=0.01,
                        lr_colour=0, laplacian=0, report=0, device="cpu", source=source,
-                       surface_weight=10, surface_margin=0.25)
+                       surface_weight=10, surface_margin=0.25, seam_margin=0)
         render = mock.Mock(side_effect=lambda points, colours, *args: colours.mean(0).reshape(1, 1, 3))
         queries = []
 
@@ -363,7 +479,7 @@ class AppearanceMeshTests(unittest.TestCase):
                 with self.subTest(seed=seed):
                     fitted, _, history = appearance.optimise(
                         mesh, views, (len(tiny), 1), steps=60, batch=1, lr_position=0.001,
-                        lr_colour=0, laplacian=40, report=0, device="cpu", seed=seed)
+                        lr_colour=0, laplacian=40, report=0, device="cpu", seed=seed, seam_margin=0)
                     final = np.linalg.norm(fitted[edges[:, 0]] - fitted[edges[:, 1]], axis=1)
                     self.assertLess(history[-1], history[0])
                     np.testing.assert_array_less(final, max_stretch * lengths)
@@ -395,7 +511,7 @@ class AppearanceMeshTests(unittest.TestCase):
                 with mock.patch.object(appearance, "Renderer", return_value=render):
                     fitted, _, _ = appearance.optimise(
                         mesh, views, (len(points), 1), steps=1, batch=1, lr_position=lr_position,
-                        lr_colour=0, laplacian=0, report=0, device="cpu")
+                        lr_colour=0, laplacian=0, report=0, device="cpu", seam_margin=0)
                 displacement = np.linalg.norm(fitted - points, axis=1)
                 np.testing.assert_array_less(displacement, bound + tolerance)
                 np.testing.assert_array_less(displacement[:tiny_count], bound[tiny_count:])
@@ -548,6 +664,7 @@ class PruneAndCostTests(unittest.TestCase):
                         appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
                                          "--reference", "reference", "--coverage-poses", "coverage.txt",
                                          "--budget", str(len(pruned.tris)), "--out", directory])
+                    self.assertEqual(calls.optimise.call_args.kwargs["seam_margin"], appearance.SEAM_MARGIN)
                     self.assertEqual([call[0] for call in calls.mock_calls],
                                      ["optimise", "coverage", "prune", "write_mesh"])
                     covered, views, size = calls.coverage.call_args.args
@@ -569,7 +686,8 @@ class PruneAndCostTests(unittest.TestCase):
         from r3d import appearance_simplify as appearance
 
         for flags in (["--object", "card", "--surface-weight", "-1"], ["--object", "card", "--surface-weight", "nan"],
-                      ["--object", "card", "--surface-margin", "-1"], ["--surface-weight", "1"]):
+                      ["--object", "card", "--surface-margin", "-1"], ["--surface-weight", "1"],
+                      *(["--seam-margin", value] for value in ("-1", "nan", "inf"))):
             with self.subTest(flags=flags), mock.patch.object(appearance, "load_scene") as scene:
                 with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
                     appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
@@ -596,12 +714,14 @@ class PruneAndCostTests(unittest.TestCase):
                 calls["write_mesh"].return_value = len(mesh.tris)
                 appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
                                  "--reference", "reference", "--out", directory,
-                                 "--object", "card", "--surface-weight", "10", "--surface-margin", "0.25"])
+                                 "--object", "card", "--surface-weight", "10", "--surface-margin", "0.25",
+                                 "--seam-margin", "0.25"])
             calls["optimise"].assert_called_once()
             self.assertEqual(source_for.call_args.args[1], "card")
             self.assertEqual(source_for.call_args.kwargs, {"lit": False})
             options = calls["optimise"].call_args.kwargs
             self.assertIs(options["source"], source)
+            self.assertEqual(options["seam_margin"], 0.25)
             self.assertEqual((options["surface_weight"], options["surface_margin"]), (10, 0.25))
             calls["coverage"].assert_not_called()
             calls["prune"].assert_not_called()
@@ -824,11 +944,14 @@ class AppearanceFitTests(unittest.TestCase):
             for actual, expected in zip(result, results[0]):
                 self.assertTrue(torch.equal(actual, expected))
 
-    def test_optimise_with_surface_is_bitwise_repeatable(self):
-        from r3d.appearance_simplify import Renderer, optimise, SURFACE_QUERY_EVERY
+    def test_optimise_with_surface_and_seams_is_bitwise_repeatable(self):
+        from r3d.appearance_simplify import Renderer, optimise, seam_holds, vertex_scale, SEAM_MARGIN, SURFACE_QUERY_EVERY
 
-        points, rgb, tris = grid(2)
-        mesh = FitMesh(points, rgb / 255, tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        plane = np.array([[-1, -1, 0], [1, -1, 0], [0, 1, 0]], dtype=float)
+        points = np.vstack([plane * 0.5 + [0, 0, 0.1], plane])
+        tris = np.array([[0, 1, 2], [3, 4, 5]])
+        rgb = np.tile([[0.8, 0.2, 0.1], [0.1, 0.4, 0.8]], (len(plane), 1))
+        mesh = FitMesh(points, rgb, tris, np.ones(len(tris)), 64, np.arange(len(points)))
         size = (32, 24)
         render = Renderer(tris, mesh.double, mesh.vertex_point, size, "cuda")
         matrices = [projection([x, 0, 3], [0, 0, -1], *size, 0.62, 0.5) for x in (-0.2, 0.2)]
@@ -838,12 +961,21 @@ class AppearanceFitTests(unittest.TestCase):
         moved = mesh._replace(points=points * [0.8, 1, 1])
         options = dict(steps=SURFACE_QUERY_EVERY + 1, batch=2, lr_position=0.001, lr_colour=0.01, laplacian=0.1, report=0,
                        surface_weight=10, surface_margin=0.25, source=SimpleNamespace(p=points, tri_v=tris))
+        scale = vertex_scale(cuda(moved.points), torch.as_tensor(point_edges(tris, mesh.vertex_point), device="cuda"))
+        holds = seam_holds(moved, SEAM_MARGIN * scale.cpu().numpy()[:, 0])
+        self.assertGreaterEqual(len(holds.points), len(plane))
         for normal_weight in (0, 1):
-            with self.subTest(normal_weight=normal_weight):
-                first = optimise(moved, views, size, normal_weight=normal_weight, **options)
-                second = optimise(moved, views, size, normal_weight=normal_weight, **options)
-                for actual, expected in zip(first, second):
-                    self.assertEqual(np.asarray(actual).tobytes(), np.asarray(expected).tobytes())
+            for seam_margin in (0, SEAM_MARGIN):
+                with self.subTest(normal_weight=normal_weight, seam_margin=seam_margin):
+                    first = optimise(moved, views, size, normal_weight=normal_weight, seam_margin=seam_margin, **options)
+                    second = optimise(moved, views, size, normal_weight=normal_weight, seam_margin=seam_margin, **options)
+                    for actual, expected in zip(first, second):
+                        self.assertEqual(np.asarray(actual).tobytes(), np.asarray(expected).tobytes())
+                    with tempfile.TemporaryDirectory() as directory:
+                        outputs = [pathlib.Path(directory) / name for name in ("first", "second")]
+                        for output, (positions, colours, _history) in zip(outputs, (first, second)):
+                            write_mesh(output, "card", mesh._replace(points=positions, rgb=colours))
+                        self.assertEqual((outputs[0] / "card.mesh").read_bytes(), (outputs[1] / "card.mesh").read_bytes())
 
     def test_image_error_falls(self):
         from r3d.appearance_simplify import Renderer, optimise
@@ -855,7 +987,7 @@ class AppearanceFitTests(unittest.TestCase):
             truth = Renderer(mesh[2], mesh[3], mesh[5], size, "cuda")
             target = draw(truth, mesh[0] * [1.3, 0.8, 1.0], mesh[1][::-1].copy(), matrix)
             _points, _rgb, history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.01,
-                                              lr_colour=0.05, laplacian=0.0, report=0)
+                                              lr_colour=0.05, laplacian=0.0, report=0, seam_margin=0)
             self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
 
     def test_a_flat_fit_moves_the_edge_between_two_face_colours(self):
@@ -870,7 +1002,7 @@ class AppearanceFitTests(unittest.TestCase):
         shifted = mesh.points + np.where(np.abs(mesh.points[:, :1]) < 0.4, [[0.15, 0.0, 0.0]], 0.0)
         target = draw(truth, shifted, mesh.rgb, matrix)
         points, rgb, history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.005,
-                                        lr_colour=0.0, laplacian=0.0, report=0)
+                                        lr_colour=0.0, laplacian=0.0, report=0, seam_margin=0)
         self.assertEqual(rgb.shape, mesh.rgb.shape)
         self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]), "the colour edge did not move")
         self.assertGreater(points[np.abs(mesh.points[:, 0]) < 1e-9, 0].mean(), 0.05)
@@ -908,7 +1040,7 @@ class AppearanceFitTests(unittest.TestCase):
         start = np.full((count, 3), 0.5)
         mesh = FitMesh(positions, start, tris, double, 64, vertex_point, True)
         _points, rgb, _history = optimise(mesh, [(matrix, target)], size, steps=400, batch=1, lr_position=0.0, lr_colour=0.05,
-                                          laplacian=0.0, report=0)
+                                          laplacian=0.0, report=0, seam_margin=0)
         with torch.no_grad():
             ids = truth.visible_ids(cuda(positions), cuda(matrix)).cpu().numpy()
         coverage_pixels = np.bincount(ids[ids >= 0], minlength=count)
@@ -934,7 +1066,7 @@ class AppearanceFitTests(unittest.TestCase):
             self.assertEqual(target.shape[:2], (2 * height, 2 * width))
             views.append((matrix, target))
         _points, _rgb, history = optimise(mesh, views, None, steps=150, batch=2, lr_position=0.01, lr_colour=0.05,
-                                          laplacian=0.0, report=0)
+                                          laplacian=0.0, report=0, seam_margin=0)
         self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
 
     def test_the_normal_term_turns_the_surface_toward_the_reference_normals(self):
@@ -951,7 +1083,7 @@ class AppearanceFitTests(unittest.TestCase):
         view = (matrix, colour, reference, eye)
         before = normal_error(mesh, [view], size)
         points, _rgb, _history = optimise(mesh, [view], size, steps=200, batch=1, lr_position=0.02, lr_colour=0.0,
-                                          laplacian=0.0, report=0, normal_weight=1.0)
+                                          laplacian=0.0, report=0, normal_weight=1.0, seam_margin=0)
         after = normal_error(mesh._replace(points=points), [view], size)
         self.assertLess(after, 0.5 * before)
 

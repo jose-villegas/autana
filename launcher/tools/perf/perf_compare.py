@@ -264,6 +264,21 @@ def measure(args, runner=None):
     return payload
 
 
+def pr_table(payload):
+    """A comparison.json payload as the short table a pull request description shows."""
+    def number(value):
+        return "n/a" if value is None else f"{value:.4g}"
+    lines = [f"| Row | {payload['label_a']} us | {payload['label_b']} us | Change | Verdict |",
+             "|---|---:|---:|---:|---|"]
+    for name, row in sorted(payload["rows"].items()):
+        ratio = row.get("ratio")
+        change = "n/a" if not ratio else f"{100 * (ratio - 1):+.1f}%"
+        lines.append(f"| `{name}` | {number(row.get('a'))} | {number(row.get('b'))} | {change} | {row['verdict']} |")
+    if payload.get("incomplete"):
+        lines += ["", "**Incomplete comparison:** see its summary.md."]
+    return lines
+
+
 def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=False):
     """Write observed costs, seed identities, decisions, and acquisition completeness."""
     lines = ["# Performance comparison", "",
@@ -396,4 +411,7 @@ def device_inventory(records):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from device import rerun_under_idf_python
+
+    rerun = rerun_under_idf_python(sys.argv[1:], __file__)
+    sys.exit(main() if rerun is None else rerun)

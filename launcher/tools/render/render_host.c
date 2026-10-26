@@ -11,6 +11,8 @@
 #include <string.h>
 
 #include "console/capture/screenshot.h"
+#include "console/console_tune.h"
+#include "core/tune.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
@@ -18,7 +20,6 @@
 #include "gfx/target/gfx_color.h"
 #include "render_video.h"
 #include "render_watch.h"
-#include "services/tune.h"
 #include "ui/layout/ui_transform.h"
 
 #include "scene/scene_shell.h"
@@ -48,8 +49,8 @@ render_host_set_tunable(const char* name, int32_t value) {
     return true;
 }
 
-static bool
-set_tunable_option(const char* assignment) {
+bool
+render_host_set_tunable_text(const char* assignment) {
     char name[TUNE_NAME_MAX + 1];
     const char* equal = strchr(assignment, '=');
     if (equal == NULL || equal == assignment || equal - assignment > TUNE_NAME_MAX) {
@@ -104,24 +105,92 @@ convert_frame(affine2x_t t, bool panel, int out_w, int out_h, int32_t stride, ui
     }
 }
 
+/* The pixel at (x, y) of a converted frame, top-down. */
+static const uint8_t*
+frame_pixel(const uint8_t* buf, int32_t stride, int out_h, int x, int y) {
+    return buf + (size_t)(out_h - 1 - y) * stride + x * 3;
+}
+
+/* The corner colour most of the frame's border shares: the background a
+ * scene cleared to, even when something is drawn into one corner. */
+static const uint8_t*
+border_colour(const uint8_t* buf, int32_t stride, int out_w, int out_h) {
+    const uint8_t* corners[] = {frame_pixel(buf, stride, out_h, 0, 0), frame_pixel(buf, stride, out_h, out_w - 1, 0),
+                                frame_pixel(buf, stride, out_h, 0, out_h - 1),
+                                frame_pixel(buf, stride, out_h, out_w - 1, out_h - 1)};
+    const uint8_t* best = corners[0];
+    int best_count = -1;
+    for (size_t c = 0; c < sizeof corners / sizeof corners[0]; c++) {
+        int count = 0;
+        for (int x = 0; x < out_w; x++) {
+            count += memcmp(frame_pixel(buf, stride, out_h, x, 0), corners[c], 3) == 0;
+            count += memcmp(frame_pixel(buf, stride, out_h, x, out_h - 1), corners[c], 3) == 0;
+        }
+        for (int y = 0; y < out_h; y++) {
+            count += memcmp(frame_pixel(buf, stride, out_h, 0, y), corners[c], 3) == 0;
+            count += memcmp(frame_pixel(buf, stride, out_h, out_w - 1, y), corners[c], 3) == 0;
+        }
+        if (count > best_count) {
+            best = corners[c];
+            best_count = count;
+        }
+    }
+    return best;
+}
+
+/* The box round every pixel of a converted frame unlike its border's
+ * colour; empty for a blank frame. */
+static recti_t
+drawn_box(const uint8_t* buf, int32_t stride, int out_w, int out_h) {
+    const uint8_t* background = border_colour(buf, stride, out_w, out_h);
+    recti_t box = {0, 0, 0, 0};
+    for (int y = 0; y < out_h; y++) {
+        for (int x = 0; x < out_w; x++) {
+            if (memcmp(frame_pixel(buf, stride, out_h, x, y), background, 3) != 0) {
+                box = recti_union(box, (recti_t){x, y, 1, 1});
+            }
+        }
+    }
+    return box;
+}
+
 typedef struct {
     int width, height;
     long bytes;
 } render_size_t;
 
+/* The part `box` of a converted frame `out_w` x `out_h`, as a BMP. */
 static bool
-write_bmp(FILE* out, const uint8_t* frame_buf, int out_w, int out_h, render_size_t* size) {
+write_bmp(FILE* out, const uint8_t* frame_buf, int out_w, int out_h, recti_t box, render_size_t* size) {
     const int32_t stride = screenshot_bmp_row_stride(out_w);
+    const int32_t box_stride = screenshot_bmp_row_stride(box.w);
+    static const uint8_t PAD[3];
 
     uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
-    screenshot_bmp_header(header, out_w, out_h);
+    screenshot_bmp_header(header, box.w, box.h);
     fwrite(header, 1, sizeof(header), out);
-    fwrite(frame_buf, 1, (size_t)stride * out_h, out);
+    for (int y = box.y + box.h - 1; y >= box.y; y--) {
+        fwrite(frame_pixel(frame_buf, stride, out_h, box.x, y), 1, (size_t)box.w * 3, out);
+        fwrite(PAD, 1, (size_t)(box_stride - box.w * 3), out);
+    }
 
-    size->width = out_w;
-    size->height = out_h;
-    size->bytes = (long)SCREENSHOT_BMP_HEADER_SIZE + (long)stride * out_h;
+    size->width = box.w;
+    size->height = box.h;
+    size->bytes = (long)SCREENSHOT_BMP_HEADER_SIZE + (long)box_stride * box.h;
     return true;
+}
+
+/* `box` grown by `margin` on every side, kept inside the frame; the whole
+ * frame for an empty `box`. */
+static recti_t
+crop_box(recti_t box, int margin, int out_w, int out_h) {
+    const recti_t frame = {0, 0, out_w, out_h};
+    if (recti_is_empty(box)) {
+        return frame;
+    }
+    const recti_t grown =
+        recti_from_edges(box.x - margin, box.y - margin, recti_right(box) + margin, recti_bottom(box) + margin);
+    return recti_intersect(grown, frame);
 }
 
 /* The scene manager's compose where a scene did not link it: nothing to
@@ -159,7 +228,7 @@ static int
 usage(const char* argv0) {
     fprintf(stderr,
             "usage: %s [--quarter N] [--panel] [--frames N] [--dt N] [-o PATH] [--video PATH]\n"
-            "       [--set owner.name=value ...] [--tunables]\n"
+            "       [--set owner.name=value ...] [--tunables] [--crop]\n"
             "       docs/tools/Render-Harness.md lists options; the scene may take more.\n",
             argv0);
     return 2;
@@ -175,6 +244,7 @@ main(int argc, char** argv) {
     bool panel = false;
     const char* out_path = NULL;
     const char* video_path = NULL;
+    bool crop = false;
 
     char* rest[64];
     int rest_count = 0;
@@ -187,10 +257,10 @@ main(int argc, char** argv) {
         } else if (strcmp(a, "--quarter") == 0 && has_value) {
             quarter = (int)strtol(argv[++i], NULL, 10);
         } else if (strcmp(a, "--tunables") == 0) {
-            (void)tune_handle_line("TUNE", tune_reply);
+            (void)console_tune_line(tune_shared(), "TUNE", tune_reply);
             return 0;
         } else if (strcmp(a, "--set") == 0 && has_value) {
-            if (!set_tunable_option(argv[++i])) {
+            if (!render_host_set_tunable_text(argv[++i])) {
                 return usage(argv[0]);
             }
         } else if (strcmp(a, "--frames") == 0 && has_value) {
@@ -201,6 +271,8 @@ main(int argc, char** argv) {
             out_path = argv[++i];
         } else if (strcmp(a, "--video") == 0 && has_value) {
             video_path = argv[++i];
+        } else if (strcmp(a, "--crop") == 0) {
+            crop = true;
         } else if (rest_count < (int)(sizeof(rest) / sizeof(rest[0]))) {
             rest[rest_count++] = argv[i];
         } else {
@@ -293,6 +365,11 @@ main(int argc, char** argv) {
     }
 
     render_frame_t frame = {.count = frames, .quarter = quarter, .dt_ms = dt_ms};
+    /* The drawn box in output coordinates, and the map that turns a
+     * --panel output's box back into the canvas a scene lays out in. */
+    recti_t drawn = {0, 0, 0, 0};
+    affine2x_t canvas_from_panel = affine2x_identity();
+    (void)affine2x_invert(t, &canvas_from_panel);
     bool video_ok = true;
     for (int i = 0; i < frames; i++) {
         frame.index = i;
@@ -304,6 +381,10 @@ main(int argc, char** argv) {
         render_watch_frame_end();
 
         convert_frame(t, panel, out_w, out_h, stride, frame_buf);
+        if (crop) {
+            drawn = drawn_box(frame_buf, stride, out_w, out_h);
+            frame.drawn = panel ? ui_transform_rect(canvas_from_panel, drawn) : drawn;
+        }
         gfx_present();
         if (video_path != NULL && video_ok) {
             video_ok = render_video_write_frame(&video, frame_buf, stride * out_h);
@@ -348,7 +429,11 @@ main(int argc, char** argv) {
     }
 
     render_size_t size = {0};
-    const bool ok = write_bmp(out, frame_buf, out_w, out_h, &size);
+    recti_t box = {0, 0, out_w, out_h};
+    if (crop) {
+        box = crop_box(drawn, scene->crop_margin, out_w, out_h);
+    }
+    const bool ok = write_bmp(out, frame_buf, out_w, out_h, box, &size);
     free(frame_buf);
     if (out != stdout) {
         fclose(out);

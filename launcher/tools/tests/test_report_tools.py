@@ -157,12 +157,12 @@ class ReporterExitCodeTest(CaptureFixture):
         for phase in ("Wait", "Send"):
             with self.subTest(phase=phase):
                 done = self.run_reporter("boot_anim/report_boot_anim_perf.py",
-                                         self.boot_capture("DOUBLE_FB", missing=phase))
+                                         self.boot_capture("LAYOUT_B", missing=phase))
                 self.assertNotEqual(done.returncode, 0)
                 self.assertIn(f"missing {phase}", done.stderr)
 
     def test_boot_anim_duplicate_label_and_mode_is_flagged(self):
-        capture = self.boot_capture("DOUBLE_FB")
+        capture = self.boot_capture("LAYOUT_B")
         done = self.run_reporter("boot_anim/report_boot_anim_perf.py", capture + capture)
         self.assertIn("more than one BOOT_ANIM PERF header", done.stderr)
 
@@ -176,7 +176,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
     """device_report.sh as a report script sources it, with `autana` (not
     device.py, #454 removed --owner/--worktree/--purpose from it, and
     device_report.sh now goes through `autana` like every other command,
-    docs/tools/Device-Lock.md) stubbed to record the call instead of
+    docs/cli/Device-Lock.md) stubbed to record the call instead of
     reaching a board."""
 
     def setUp(self):

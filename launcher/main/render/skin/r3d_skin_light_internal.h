@@ -1,7 +1,7 @@
 /* Transfer tables avoid powers and divisions in the vertex loop. */
 #pragma once
 #include <string.h>
-#include "math/scalar/mathf_rsqrt.h"
+#include "math/scalar/mathf.h"
 #include "render/skin/r3d_skin_light.h"
 
 /* Xtensa bit transfers avoid spilling each channel through the stack. */
@@ -34,7 +34,7 @@ light_bits_float(uint32_t bits) {
 static inline __attribute__((always_inline)) vec3f_t
 light_renormalise(vec3f_t normal) {
     const float length_squared = vec3f_dot(normal, normal);
-    return length_squared > 0.0F ? vec3f_scale(normal, mathf_rsqrt(length_squared)) : (vec3f_t){0};
+    return length_squared > 0.0F ? vec3f_scale(normal, mathf_rsqrt_approx(length_squared)) : (vec3f_t){0};
 }
 
 static inline __attribute__((always_inline)) uint8_t

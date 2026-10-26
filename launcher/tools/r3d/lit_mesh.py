@@ -16,6 +16,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
 import gfx_color  # noqa: E402  (path must be set up first)
 from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: E402,F401
+from r3d.geometry import distinct_corners
 from r3d.process_budget import NULL_RECORDER
 from r3d.meshopt import build_meshlets  # noqa: E402
 from r3d.import_settings import MESHLET_TRIANGLES
@@ -171,7 +172,7 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     assert colours.min() >= 0 and colours.max() <= 255
     assert len(colours) == (len(pos) if rgb is not None else len(tris))
     assert tris.min() >= 0 and tris.max() < len(pos)
-    assert np.all((tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2]))
+    assert np.all(distinct_corners(tris))
     next_v = next_t = 0
     for vbase, vcount, tbase, tcount, lo, hi, _ in clusters:
         assert vbase == next_v and tbase == next_t, "clusters must tile both arrays in order"

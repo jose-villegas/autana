@@ -15,6 +15,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/gfx.h"
+#include "power/power_decode.h"
 #include "sound/sound_status.h"
 
 static const char* TAG = "post";
@@ -223,6 +224,25 @@ check_temperature(void) {
     report("temp sensor", valid, POST_REQUIRED, detail);
 }
 
+static void
+check_pmu(void) {
+    power_battery_t battery;
+    const bool pmu_ok = power_read_battery_now(&battery, NULL);
+    char detail[sizeof results[0].detail];
+    int length;
+    if (!pmu_ok) {
+        length = snprintf(detail, sizeof detail, "AXP2101: not responding");
+    } else if (!battery.battery_present) {
+        length = snprintf(detail, sizeof detail, "AXP2101: battery absent, %s", battery.usb_present ? "USB" : "no USB");
+    } else {
+        length = snprintf(detail, sizeof detail, "AXP2101: %u mV %u%%, %s, %s (%s)", (unsigned)battery.battery_mv,
+                          (unsigned)battery.percent, battery.usb_present ? "USB" : "no USB",
+                          power_flow_name(battery.flow), power_charge_name(battery.charge));
+    }
+    const bool formatted = length >= 0 && (size_t)length < sizeof detail;
+    report("pmu", pmu_ok && formatted, POST_REQUIRED, formatted ? detail : "battery format failed");
+}
+
 /* Every I2C peripheral shares one bus, so a single probe per address
  * establishes whether each chip is alive and addressable. This is the heart of
  * the POST; it is how "can we talk to the gyro" gets answered. */
@@ -242,7 +262,6 @@ check_i2c_devices(void) {
         post_severity_t severity;
     } devices[] = {
         {"io expander", BOARD_IO_EXPANDER_I2C_ADDR, "TCA9554 reset lines", POST_OPTIONAL},
-        {"pmu", BOARD_PMU_I2C_ADDR, "AXP2101 power", POST_REQUIRED},
         {"imu", BOARD_IMU_I2C_ADDR, "QMI8658 accel+gyro", POST_REQUIRED},
         {"rtc", BOARD_RTC_I2C_ADDR, "PCF85063 clock", POST_REQUIRED},
     };
@@ -254,6 +273,8 @@ check_i2c_devices(void) {
         (void)snprintf(detail, sizeof(detail), "0x%02x  %s", devices[i].address, devices[i].what);
         report(devices[i].name, present, devices[i].severity, detail);
     }
+
+    check_pmu();
 
     /* Touch sits at a different address per board revision, so report which
      * one answered rather than probing a single expected address. */

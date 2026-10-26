@@ -16,16 +16,15 @@
 #include "unity.h"
 
 #include "core/memory.h"
+#include "core/tune.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
 #include "math/linear/transformf.h"
 #include "render/r3d_lit_mesh.h"
-#include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
-#include "render/raster.h"
-#include "render/raster_show.h"
-#include "services/tune.h"
+#include "render/raster_internal.h"
+#include "render/view/raster_show.h"
 
 #define W 64
 #define H 48
@@ -36,11 +35,6 @@ static r3d_pipeline_work_t* work;
 
 static bool cull_changed;
 static int32_t saved_cull;
-
-static void
-cull_reply(const char* line) {
-    (void)line;
-}
 
 static void release_fixture(void);
 
@@ -299,7 +293,7 @@ test_a_tiny_triangle_takes_the_average_of_its_corners(void) {
     for (int i = 0; i < W * H; i++) {
         if (depth[i] != 0) {
             TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x555555), color[i]);
-            TEST_ASSERT_UINT16_WITHIN(1, 32767, depth[i]);
+            TEST_ASSERT_UINT16_WITHIN(1, R3D_DEPTH_NEAREST / 2, depth[i]);
         }
     }
 }
@@ -1044,8 +1038,8 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
         m->colors[v][0] = m->colors[v][1] = m->colors[v][2] = 200;
     }
     m->cluster = (r3d_lit_cluster_t){
-        0, (uint16_t)vertices, 0, (uint16_t)triangles, {-32767, -32767, -8}, {32767, 32767, 8}, true};
-    m->node = (r3d_lit_node_t){{-32767, -32767, -8}, {32767, 32767, 8}, 0, 1, true};
+        0, (uint16_t)vertices, 0, (uint16_t)triangles, {{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}}, true};
+    m->node = (r3d_lit_node_t){{{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}}, 0, 1, true};
     return (r3d_lit_mesh_t){.positions = m->positions,
                             .colors = m->colors,
                             .triangles = m->triangles,
@@ -1208,12 +1202,12 @@ static const int16_t quad_positions[][3] = {{-100, -100, 0}, {100, -100, 0}, {10
 static const uint16_t quad_front[][3] = {{0, 1, 2}, {0, 2, 3}};
 static const uint16_t quad_back[][3] = {{0, 2, 1}, {0, 3, 2}};
 
-static const r3d_lit_node_t quad_node = {{-100, -100, 0}, {100, 100, 0}, 0, 1, true};
+static const r3d_lit_node_t quad_node = {{{-100, -100, 0}, {100, 100, 0}}, 0, 1, true};
 
 /* A mesh lit by its vertices, or by `face_colors` alone when given. */
 static r3d_lit_mesh_t
 quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors, r3d_lit_cluster_t* cluster) {
-    *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {-100, -100, 0}, {100, 100, 0}, double_sided};
+    *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{-100, -100, 0}, {100, 100, 0}}, double_sided};
     return r3d_quad_mesh(quad_positions, triangles, face_colors, cluster, &quad_node);
 }
 
@@ -1304,8 +1298,8 @@ static void
 draw_floor(const uint16_t* face_colors) {
     static const int16_t floor_positions[][3] = {
         {-1000, 0, -1000}, {1000, 0, -1000}, {1000, 0, 3000}, {-1000, 0, 3000}};
-    r3d_lit_cluster_t cluster = {0, 4, 0, 2, {-1000, 0, -1000}, {1000, 0, 3000}, false};
-    static const r3d_lit_node_t floor_node = {{-1000, 0, -1000}, {1000, 0, 3000}, 0, 1, true};
+    r3d_lit_cluster_t cluster = {0, 4, 0, 2, {{-1000, 0, -1000}, {1000, 0, 3000}}, false};
+    static const r3d_lit_node_t floor_node = {{{-1000, 0, -1000}, {1000, 0, 3000}}, 0, 1, true};
     const r3d_lit_mesh_t mesh = r3d_quad_mesh(floor_positions, NULL, face_colors, &cluster, &floor_node);
 
     r3d_lens_t lens;
@@ -1434,14 +1428,6 @@ parts_begin(parts_t* p) {
                                .position_scale = 1};
 }
 
-static void
-widen(int16_t lo[3], int16_t hi[3], const int16_t p[3]) {
-    for (int k = 0; k < 3; k++) {
-        lo[k] = p[k] < lo[k] ? p[k] : lo[k];
-        hi[k] = p[k] > hi[k] ? p[k] : hi[k];
-    }
-}
-
 /* A fan of n = 3 or 4 corners in engine coordinates. */
 static void
 parts_add(parts_t* p, const int16_t corners[][3], int n, const uint8_t rgb[][3], bool double_sided) {
@@ -1449,17 +1435,12 @@ parts_add(parts_t* p, const int16_t corners[][3], int n, const uint8_t rgb[][3],
     TEST_ASSERT_TRUE(m->cluster_count < PARTS_MAX && (n == 3 || n == 4));
     const uint16_t first = (uint16_t)m->vertex_count;
     r3d_lit_cluster_t* c = &p->clusters[m->cluster_count++];
-    *c = (r3d_lit_cluster_t){first,
-                             (uint16_t)n,
-                             (uint16_t)m->triangle_count,
-                             (uint16_t)(n - 2),
-                             {INT16_MAX, INT16_MAX, INT16_MAX},
-                             {INT16_MIN, INT16_MIN, INT16_MIN},
-                             double_sided};
+    *c = (r3d_lit_cluster_t){first,         (uint16_t)n, (uint16_t)m->triangle_count, (uint16_t)(n - 2),
+                             box3s_empty(), double_sided};
     for (int i = 0; i < n; i++) {
         memcpy(p->positions[first + i], corners[i], sizeof p->positions[0]);
         memcpy(p->colors[first + i], rgb[i], sizeof p->colors[0]);
-        widen(c->lo, c->hi, p->positions[first + i]);
+        c->bounds = box3s_extend(c->bounds, vec3s_from_array(corners[i]));
     }
     for (int t = 0; t < n - 2; t++) {
         uint16_t* tri = p->triangles[m->triangle_count++];
@@ -1469,11 +1450,9 @@ parts_add(parts_t* p, const int16_t corners[][3], int n, const uint8_t rgb[][3],
     }
     m->vertex_count += n;
 
-    p->node = (r3d_lit_node_t){
-        {INT16_MAX, INT16_MAX, INT16_MAX}, {INT16_MIN, INT16_MIN, INT16_MIN}, 0, (uint8_t)m->cluster_count, true};
+    p->node = (r3d_lit_node_t){box3s_empty(), 0, (uint8_t)m->cluster_count, true};
     for (int i = 0; i < m->cluster_count; i++) {
-        widen(p->node.lo, p->node.hi, p->clusters[i].lo);
-        widen(p->node.lo, p->node.hi, p->clusters[i].hi);
+        p->node.bounds = box3s_union(p->node.bounds, p->clusters[i].bounds);
     }
 }
 
@@ -1694,7 +1673,7 @@ test_the_frame_workspace_is_aligned(void) {
                                    .destination_height = destination};
                 raster.scratch = malloc(raster_scratch_bytes(&raster));
                 TEST_ASSERT_NOT_NULL(raster.scratch);
-                const r3d_pipeline_buffers_t b = r3d_pipeline_carve(&raster);
+                const raster_buffers_t b = raster_carve(&raster);
                 TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.work[0] % _Alignof(r3d_span_target_t));
                 TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.work[1] % _Alignof(r3d_span_target_t));
                 TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.draw % _Alignof(r3d_span_target_t));
@@ -1715,11 +1694,11 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     char* scratch = malloc(bytes);
     TEST_ASSERT_NOT_NULL(scratch);
     raster.scratch = scratch;
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(&raster);
+    const raster_buffers_t b = raster_carve(&raster);
     const span_of_bytes_t parts[] = {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
-        {(const char*)b.culled, r3d_pipeline_culled_bytes(&raster)},
+        {(const char*)b.culled, raster_culled_bytes(&raster)},
         {(const char*)b.work[0], r3d_pipeline_work_bytes()},
         {(const char*)b.work[1], r3d_pipeline_work_bytes()},
         {(const char*)b.draw, bytes - (size_t)((const char*)b.draw - scratch)},
@@ -1738,6 +1717,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         total += parts[i].size;
     }
     const char* const maps = (const char*)gfx_render_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
+    TEST_ASSERT_TRUE((const char*)b.upscale == maps);
     const size_t padding = (size_t)((const char*)b.work[0] - maps);
     TEST_ASSERT_TRUE(padding < _Alignof(r3d_span_target_t));
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
@@ -1745,11 +1725,11 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_depth(&b.picture, 0) % 4);
     /* The census list holds every instance's slot and takes whole cache ways,
      * so the parts after it keep the cache sets they have without it. */
-    TEST_ASSERT_TRUE(r3d_pipeline_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.culled) % R3D_PIPELINE_CACHE_WAY));
+    TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.culled) % RASTER_CACHE_WAY));
     raster.width /= 2;
     raster.height /= 2;
-    TEST_ASSERT_TRUE(b.culled == r3d_pipeline_carve(&raster).culled);
+    TEST_ASSERT_TRUE(b.culled == raster_carve(&raster).culled);
     free(scratch);
 }
 
@@ -1843,13 +1823,13 @@ test_cull_off_keeps_every_cluster(void) {
     raster_t raster = census_raster(&instance, 1);
     const fixture_camera_t camera = camera_down_plus_z(10000.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
-    const tune_entry_t* entry = tune_find(tune_shared(), "render.cull");
+    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
     TEST_ASSERT_NOT_NULL(entry);
     saved_cull = *entry->value;
     cull_changed = true;
-    (void)tune_handle_line("RESET render.cull", cull_reply);
+    (void)tune_reset(tune_shared(), TUNE_NAME(render, cull));
     const raster_stats_t on = raster_draw(&raster, &view);
-    (void)tune_handle_line("SET render.cull 0", cull_reply);
+    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
     const raster_stats_t off = raster_draw(&raster, &view);
     TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
     TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
@@ -1862,6 +1842,16 @@ test_cull_off_keeps_every_cluster(void) {
 
 /* The raster at size `z` of `sizes`, drawn directly and then from a census
  * taken at the next size: the same picture, depth and survivors. */
+/* The census at `size`, its view in a frame of its own: kept out of the
+ * caller's, whose raster_draw() chain is the suite's deepest stack. */
+static __attribute__((noinline)) raster_stats_t
+census_at(raster_t* raster, const fixture_camera_t* camera, const int size[2]) {
+    raster->width = size[0];
+    raster->height = size[1];
+    const render_view_t census_view = render_view_fixture(camera, raster, 0);
+    return raster_census(raster, &census_view);
+}
+
 static void
 expect_census_draw_matches(raster_t* raster, const fixture_camera_t* camera, const int sizes[][2], int z) {
     uint16_t* want = frame_held.want;
@@ -1874,10 +1864,7 @@ expect_census_draw_matches(raster_t* raster, const fixture_camera_t* camera, con
     memcpy(want, raster_color(raster), sizeof(*want) * drawn);
     memcpy(want + drawn, raster_depth(raster), sizeof(*want) * drawn);
 
-    raster->width = sizes[(z + 1) % 3][0]; /* the census at another size */
-    raster->height = sizes[(z + 1) % 3][1];
-    const render_view_t census_view = render_view_fixture(camera, raster, 0);
-    const raster_stats_t counted = raster_census(raster, &census_view);
+    const raster_stats_t counted = census_at(raster, camera, sizes[(z + 1) % 3]); /* at another size */
     raster->width = sizes[z][0];
     raster->height = sizes[z][1];
     memset(raster_color(raster), 0xEE, sizeof(uint16_t) * drawn);
@@ -2352,11 +2339,7 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 static void
 release_fixture(void) {
     if (cull_changed) {
-        char command[sizeof("SET render.cull -2147483648")];
-        const int length = snprintf(command, sizeof command, "SET render.cull %ld", (long)saved_cull);
-        if (length > 0 && (size_t)length < sizeof command) {
-            (void)tune_handle_line(command, cull_reply);
-        }
+        (void)tune_set(tune_shared(), TUNE_NAME(render, cull), saved_cull);
         cull_changed = false;
     }
     free(work);
@@ -2378,14 +2361,17 @@ release_fixture(void) {
 }
 
 static void
-test_the_transform_split_is_the_shortest_prefix_holding_half_the_vertices(void) {
+test_the_transform_split_is_the_shortest_prefix_holding_its_share_of_the_vertices(void) {
     const r3d_lit_cluster_t clusters[] = {
         {.vertex_count = 1}, {.vertex_count = 1}, {.vertex_count = 10}, {.vertex_count = 10}};
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0, 1, 2, 3};
-    TEST_ASSERT_EQUAL_INT(3, r3d_pipeline_transform_split(&mesh, visible, 4));
-    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_transform_split(&mesh, &visible[2], 1));
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_transform_split(&mesh, visible, 0));
+    TEST_ASSERT_EQUAL_INT(3, r3d_pipeline_transform_split(&mesh, visible, 4, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_transform_split(&mesh, &visible[2], 1, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_transform_split(&mesh, visible, 0, JOB_SHARE_EVEN));
+    /* 2 of 22 vertices hold a twentieth; 12 of 22 fall short of nine tenths. */
+    TEST_ASSERT_EQUAL_INT(2, r3d_pipeline_transform_split(&mesh, visible, 4, JOB_SHARE_PERMILLE / 20));
+    TEST_ASSERT_EQUAL_INT(4, r3d_pipeline_transform_split(&mesh, visible, 4, JOB_SHARE_PERMILLE * 9 / 10));
 }
 
 static void
@@ -2394,8 +2380,8 @@ test_the_draw_split_of_no_work_is_the_middle_row(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t rows[] = {{0, 99, false}};
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100, RASTER_SPLIT_EVEN));
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100, JOB_SHARE_EVEN));
 }
 
 static void
@@ -2404,15 +2390,15 @@ test_the_draw_split_falls_inside_the_rows_the_work_covers(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t top[] = {{0, 9, false}};
-    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100, RASTER_SPLIT_EVEN);
+    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100, JOB_SHARE_EVEN);
     TEST_ASSERT_TRUE(split >= 1 && split <= 9);
 
     const r3d_pipeline_rows_t beyond[] = {{-50, 500, false}};
-    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100, RASTER_SPLIT_EVEN);
+    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100, JOB_SHARE_EVEN);
     TEST_ASSERT_TRUE(middle >= 48 && middle <= 52);
 
     const r3d_pipeline_rows_t unbounded[] = {{0, 0, true}};
-    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100, JOB_SHARE_EVEN));
 }
 
 static void
@@ -2422,9 +2408,9 @@ test_draw_split_accumulates_bounded_uneven_buckets(void) {
     const uint16_t visible[] = {0, 1};
     const r3d_pipeline_rows_t rows[] = {{0, 9, false}, {40, 49, false}};
     const int height = 640;
-    TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE / 4));
-    TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_EVEN));
-    TEST_ASSERT_EQUAL_INT(46, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE * 3 / 4));
+    TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(46, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_PERMILLE * 3 / 4));
 }
 
 static void
@@ -2434,13 +2420,11 @@ test_draw_split_interpolates_the_requested_share_and_clamps_rows(void) {
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t rows[] = {{0, 0, true}};
     const int height = 640;
-    TEST_ASSERT_EQUAL_INT(height / 4,
-                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE / 4));
-    TEST_ASSERT_EQUAL_INT(height / 2, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_EVEN));
-    TEST_ASSERT_EQUAL_INT(height / 3,
-                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE / 3));
+    TEST_ASSERT_EQUAL_INT(height / 4, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(height / 2, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(height / 3, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE / 3));
     TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, 0));
-    TEST_ASSERT_EQUAL_INT(height - 1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE));
+    TEST_ASSERT_EQUAL_INT(height - 1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE));
 }
 
 #undef RUN_TEST
@@ -2511,7 +2495,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey);
     RUN_TEST(test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn);
     RUN_TEST(test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone);
-    RUN_TEST(test_the_transform_split_is_the_shortest_prefix_holding_half_the_vertices);
+    RUN_TEST(test_the_transform_split_is_the_shortest_prefix_holding_its_share_of_the_vertices);
     RUN_TEST(test_the_draw_split_of_no_work_is_the_middle_row);
     RUN_TEST(test_the_draw_split_falls_inside_the_rows_the_work_covers);
 }

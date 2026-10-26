@@ -7,6 +7,7 @@
 #pragma once
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -154,24 +155,66 @@ mathi_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
+#define MATHI_DEFINE_ISQRT(name, type, bits, clz, attributes)                                                          \
+    static attributes uint32_t name(type value) {                                                                      \
+        enum { VALUE_BITS = bits, DIGIT_BITS = 2 };                                                                    \
+                                                                                                                       \
+        if (value == 0) {                                                                                              \
+            return 0;                                                                                                  \
+        }                                                                                                              \
+        type root = 0;                                                                                                 \
+        const int shift = (VALUE_BITS - 1 - clz(value)) / DIGIT_BITS * DIGIT_BITS;                                     \
+        type bit = (type)1 << shift;                                                                                   \
+        while (bit != 0) {                                                                                             \
+            if (value >= root + bit) {                                                                                 \
+                value -= root + bit;                                                                                   \
+                root = (root >> 1) + bit;                                                                              \
+            } else {                                                                                                   \
+                root >>= 1;                                                                                            \
+            }                                                                                                          \
+            bit >>= DIGIT_BITS;                                                                                        \
+        }                                                                                                              \
+        return (uint32_t)root;                                                                                         \
+    }
+
+MATHI_DEFINE_ISQRT(mathi_isqrt32_digits, uint32_t, 32, __builtin_clz, inline)
+/* Keep the wide fallback's register pressure out of callers of the inline narrow path. */
+MATHI_DEFINE_ISQRT(mathi_isqrt64_digits, uint64_t, 64, __builtin_clzll, __attribute__((noinline, unused)))
+
 /* Floor of the square root over the whole uint64_t range. */
 static inline uint32_t
 mathi_isqrt64(uint64_t value) {
-    uint64_t root = 0;
-    uint64_t bit = (uint64_t)1 << 62;
-    while (bit > value) {
-        bit >>= 2;
+    if (value <= UINT32_MAX) {
+        return mathi_isqrt32_digits((uint32_t)value);
     }
-    while (bit != 0) {
-        if (value >= root + bit) {
-            value -= root + bit;
-            root = (root >> 1) + bit;
-        } else {
-            root >>= 1;
-        }
-        bit >>= 2;
+    return mathi_isqrt64_digits(value);
+}
+
+/* half_chord = floor(sqrt(r^2-d^2)), zero for |d| >= r; |r|, |d| fit int32. */
+static inline int
+mathi_half_chord(int r, int d) {
+    if ((int64_t)d <= -(int64_t)r || d >= r) {
+        return 0;
     }
-    return (uint32_t)root;
+    const int64_t h = mathi_wmul(r, r) - mathi_wmul(d, d);
+    return (int)mathi_isqrt64((uint64_t)h);
+}
+
+/* half_chord_round = f + (h-f^2 > f), h=r^2-d^2, f=floor(sqrt(h)); zero for |d| >= r; |r|, |d| fit int32. */
+static inline int
+mathi_half_chord_round(int r, int d) {
+    if ((int64_t)d <= -(int64_t)r || d >= r) {
+        return 0;
+    }
+    const int64_t h = mathi_wmul(r, r) - mathi_wmul(d, d);
+    const int64_t f = mathi_isqrt64((uint64_t)h);
+    return (int)(f + (h - f * f > f));
+}
+
+/* in_disc = dx^2 + dy^2 <= r^2; the squared sum must fit int64. */
+static inline bool
+mathi_in_disc(int dx, int dy, int r) {
+    return mathi_wmul(dx, dx) + mathi_wmul(dy, dy) <= mathi_wmul(r, r);
 }
 
 /* Truncation keeps the fractional step toward a. The step is int64 because a full int32 span overflows,

@@ -9,7 +9,7 @@
 #endif
 #include "draw/draw_image_format.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "timing.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
@@ -1085,6 +1085,56 @@ test_tap_release_contract(void) {
     tap_release_contract(VERB_TOGGLE);
 }
 
+/* Either side of the default snap.reach (40, ui_build.c). */
+#define SNAP_NEAR 20
+#define SNAP_FAR  80
+
+/* A finger's centre a given distance left of BOX, level with its middle. */
+static recti_t
+left_of_box(int gap) {
+    return (recti_t){BOX.x - gap, BOX.y + BOX.h / 2, 0, 0};
+}
+
+static void
+snapped_tap_contract(verb_t verb) {
+    fixture();
+    int value = INITIAL_VALUE;
+    bool on = false;
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(1, tap_widget(verb, left_of_box(SNAP_NEAR), &value, &on, false, false),
+                                   "a press and release just outside a control fire it");
+    fixture();
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, tap_widget(verb, left_of_box(SNAP_FAR), &value, &on, false, false),
+                                   "a tap farther than snap.reach fires nothing");
+}
+
+static void
+test_a_tap_just_outside_fires_the_nearest_control(void) {
+    snapped_tap_contract(VERB_BUTTON);
+    snapped_tap_contract(VERB_BUTTON_ICON);
+    snapped_tap_contract(VERB_TILE);
+    snapped_tap_contract(VERB_TILE_ICON);
+    snapped_tap_contract(VERB_TOGGLE);
+}
+
+static void
+test_a_press_that_slides_off_cancels_only_beyond_the_reach(void) {
+    fixture();
+    int value = INITIAL_VALUE;
+    bool on = false;
+    const input_t idle = {0};
+    const recti_t lifts[] = {left_of_box(SNAP_NEAR), left_of_box(SNAP_FAR)};
+    for (size_t i = 0; i < 2; i++) {
+        fixture();
+        const input_t press = touch_sample(BOX, true, true);
+        const input_t release = touch_sample(lifts[i], false, true);
+        (void)widget_frame(VERB_BUTTON, &idle, &value, &on, false, false);
+        (void)widget_frame(VERB_BUTTON, &idle, &value, &on, false, false);
+        (void)widget_frame(VERB_BUTTON, &press, &value, &on, false, false);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(i == 0, widget_frame(VERB_BUTTON, &release, &value, &on, false, false),
+                                      "a lift within reach fires, one beyond it cancels");
+    }
+}
+
 static void
 test_unchanged_picks_return_false(void) {
     fixture();
@@ -1477,6 +1527,66 @@ test_ui_theme_custom_and_reset(void) {
     compare_commands();
 }
 
+/* With no ui_theme() call, captions, disabled labels and a header title all
+ * draw in ink a reader can see. */
+static void
+test_the_shell_look_draws_every_text_visibly(void) {
+    fixture();
+    begin_face();
+    ui_caption(BOX, "Caption");
+    ui_disabled_begin(true);
+    (void)ui_button(SECOND, "Muted");
+    ui_disabled_end();
+    ui_header((recti_t){0, 0, ui_width(), UI_TITLE_HEIGHT}, "Title");
+    end_face();
+    TEST_ASSERT_EQUAL_INT(UINT8_MAX, ui_probe_text_alpha("Caption"));
+    TEST_ASSERT_EQUAL_INT(UINT8_MAX, ui_probe_text_alpha("Muted"));
+    TEST_ASSERT_EQUAL_INT(UINT8_MAX, ui_probe_text_alpha("Title"));
+}
+
+/* With no ui_theme() call, an icon button's icon is the shell's icon side,
+ * inset from the button's edge by the same padding its label keeps. */
+static void
+test_the_shell_look_insets_a_button_icon(void) {
+    fixture();
+    begin_face();
+    (void)ui_button_icon(BOX, "Go", &ICON);
+    end_face();
+    const ui_theme_t any = {0};
+    const int pad = (BOX.w - ui_probe_button_label_width(BOX.w, false, &any)) / 2;
+    const mu_Color ink = ui_rgb(UI_SHELL_TEXT);
+    recti_t icon = {0, 0, 0, 0};
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        if (cmd->type == MU_COMMAND_RECT && memcmp(&cmd->rect.color, &ink, sizeof ink) == 0) {
+            icon = recti_union(icon, ui_recti_from_mu(cmd->rect.rect));
+        }
+    }
+    const recti_t square = {BOX.x + pad, BOX.y + (BOX.h - UI_SHELL_ICON_SIDE) / 2, UI_SHELL_ICON_SIDE,
+                            UI_SHELL_ICON_SIDE};
+    TEST_ASSERT_FALSE(recti_is_empty(icon));
+    TEST_ASSERT_TRUE(recti_contains(square, icon.x, icon.y));
+    TEST_ASSERT_TRUE(recti_contains(square, recti_right(icon) - 1, recti_bottom(icon) - 1));
+}
+
+/* A dropdown without icons keeps no icon's room: its label is centred in the
+ * slot between the padding and the chevron, at any theme's icon side. */
+static void
+test_a_dropdown_without_icons_centres_its_label_past_no_icon(void) {
+    static const char* const NAMES[] = {"One"};
+    int index = 0;
+    fixture();
+    begin_face();
+    (void)ui_dropdown(BOX, "pick", &index, NAMES, 1);
+    end_face();
+    const ui_theme_t shell = {.icon_side = UI_SHELL_ICON_SIDE};
+    const int pad = (BOX.w - ui_probe_button_label_width(BOX.w, false, &shell)) / 2;
+    const int slot = ui_probe_dropdown_label_width(BOX.w, false, &shell);
+    recti_t text;
+    TEST_ASSERT_TRUE(ui_probe_text("One", &text));
+    TEST_ASSERT_INT_WITHIN(1, BOX.x + pad + slot / 2, text.x + text.w / 2);
+}
+
 static void
 test_ui_screen_twice_closes_first(void) {
     fixture();
@@ -1562,6 +1672,8 @@ run_ui_face_suite(void) {
     RUN_TEST(test_nested_scope_values);
     RUN_TEST(test_disabled_every_widget);
     RUN_TEST(test_tap_release_contract);
+    RUN_TEST(test_a_tap_just_outside_fires_the_nearest_control);
+    RUN_TEST(test_a_press_that_slides_off_cancels_only_beyond_the_reach);
     RUN_TEST(test_unchanged_picks_return_false);
     RUN_TEST(test_duplicate_toggle_identity);
     RUN_TEST(test_duplicate_dropdown_identity);
@@ -1583,6 +1695,9 @@ run_ui_face_suite(void) {
 #endif
     RUN_TEST(test_toggle_theme_scopes);
     RUN_TEST(test_ui_theme_custom_and_reset);
+    RUN_TEST(test_the_shell_look_draws_every_text_visibly);
+    RUN_TEST(test_the_shell_look_insets_a_button_icon);
+    RUN_TEST(test_a_dropdown_without_icons_centres_its_label_past_no_icon);
     RUN_TEST(test_ui_screen_twice_closes_first);
 }
 

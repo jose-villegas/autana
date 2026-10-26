@@ -25,6 +25,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from geometry.vectors import cross, qmul, qrot, unit  # noqa: E402
 from gltf import gltf_read  # noqa: E402
 from gltf.gltf_write import build_glb  # noqa: E402
 
@@ -39,26 +40,6 @@ SAME = 1e-6
 
 def fail(message):
     sys.exit("plane_tilt.py: " + message)
-
-
-def qmul(a, b):
-    ax, ay, az, aw = a
-    bx, by, bz, bw = b
-    return (aw * bx + ax * bw + ay * bz - az * by, aw * by - ax * bz + ay * bw + az * bx,
-            aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz)
-
-
-def qrot(q, v):
-    return qmul(qmul(q, (v[0], v[1], v[2], 0.0)), (-q[0], -q[1], -q[2], q[3]))[:3]
-
-
-def cross(a, b):
-    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
-
-
-def unit(v):
-    length = math.sqrt(sum(c * c for c in v))
-    return tuple(c / length for c in v)
 
 
 def read_clip(path):

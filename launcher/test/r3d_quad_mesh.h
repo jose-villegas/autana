@@ -41,15 +41,11 @@ typedef struct {
 
 static inline void
 r3d_quad_init(r3d_quad_t* q, const int16_t (*positions)[3]) {
-    int16_t lo[3] = {INT16_MAX, INT16_MAX, INT16_MAX};
-    int16_t hi[3] = {INT16_MIN, INT16_MIN, INT16_MIN};
+    box3s_t bounds = box3s_empty();
     for (int i = 0; i < 4; i++) {
-        for (int k = 0; k < 3; k++) {
-            lo[k] = positions[i][k] < lo[k] ? positions[i][k] : lo[k];
-            hi[k] = positions[i][k] > hi[k] ? positions[i][k] : hi[k];
-        }
+        bounds = box3s_extend(bounds, vec3s_from_array(positions[i]));
     }
-    q->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {lo[0], lo[1], lo[2]}, {hi[0], hi[1], hi[2]}, true};
-    q->node = (r3d_lit_node_t){{lo[0], lo[1], lo[2]}, {hi[0], hi[1], hi[2]}, 0, 1, true};
+    q->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, bounds, true};
+    q->node = (r3d_lit_node_t){bounds, 0, 1, true};
     q->mesh = r3d_quad_mesh(positions, NULL, NULL, &q->cluster, &q->node);
 }

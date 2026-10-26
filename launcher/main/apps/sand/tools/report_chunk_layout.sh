@@ -51,12 +51,12 @@ OUT_BIN="$BUILD_DIR/chunk_layout"
 # a reason for this tool to link it.
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
-    -I "$LAUNCHER_DIR/test" -I "$LAUNCHER_DIR/test/framework" \
+    -I "$LAUNCHER_DIR/test" $(testkit_includes "$LAUNCHER_DIR") \
     "$SCRIPT_DIR/chunk_layout.c" \
     "$SAND_DIR/tests/suite_sand_scenes.c" \
     "$SAND_DIR/tests/suite_sand_common.c" \
-    "$LAUNCHER_DIR/test/framework/unity.c" \
-    "$LAUNCHER_DIR/test/suites.c" \
+    "$LAUNCHER_DIR/packages/testkit/unity/unity.c" \
+    "$LAUNCHER_DIR/test/suites.c" "$LAUNCHER_DIR/packages/testkit/harness/registry.c" \
     "$MAIN_DIR/core/job.c" \
     "$SAND_DIR/sand.c" \
     "$SAND_DIR/sand_chunk_sched.c" \

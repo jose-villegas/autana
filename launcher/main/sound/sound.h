@@ -30,6 +30,11 @@ typedef struct {
     sound_format_t format; /* Sample encoding at data. */
 } sound_t;
 
+static inline uint32_t
+sound_end_frame(const sound_t* sound) {
+    return sound->loop_end ? sound->loop_end : sound->frames;
+}
+
 typedef struct {
     const sound_t* sound; /* Validated view; the view and its pack must outlive this cursor. */
     uint32_t position;    /* Read-only next stored frame, for progress displays. */

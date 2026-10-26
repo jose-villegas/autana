@@ -36,6 +36,11 @@ that compute facts are marked `SAND_FACT_WRITER` and may read them freely;
 a local a fact is derived into is marked `SAND_FACT` too, so its own reads
 are checked.
 
+## Motion input timing
+
+See [Motion performance](../../../../../docs/sand/Motion-Performance.md) for the
+on-device replay suite and its timing rows.
+
 ## Generated files
 
 <!-- generated: generated-files-sand check: python scripts/gates/check_generated_files.py --check-table -->

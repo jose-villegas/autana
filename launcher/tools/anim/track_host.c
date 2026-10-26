@@ -48,7 +48,7 @@ static int
 print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at) {
     const char* node = pose_args[0];
     anim_node_tracks_t path;
-    const asset_status_t found = anim_tracks_find_node(tracks, node, &path);
+    const asset_status_t found = anim_tracks_find_node(tracks, name_hash(node), &path);
     if (found != ASSET_OK) {
         fprintf(stderr, "track_host: node %s: %s\n", node, asset_status_text(found));
         return 2;

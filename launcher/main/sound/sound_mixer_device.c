@@ -14,7 +14,11 @@
 #include "audio/audio_in.h"
 #include "audio/audio_out_device.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "profile/frame_cost.h"
+
+TUNE_OWNER(sound);
+TUNE_HOT(sound, declick_us, SOUND_DECLICK_US, 0, MATH_US_PER_S);
 
 static const char* TAG = "sound";
 /* Covers handle reservation only. A nonblocking producer flag serializes zero-wait queue sends
@@ -292,12 +296,40 @@ publish_render_snapshot(size_t stack_free) {
 #endif
 
 static void
+apply_tuning(uint32_t* generation) {
+    if (*generation == TUNE_GENERATION(sound)) {
+        return;
+    }
+    const uint32_t frames = (uint32_t)((uint64_t)declick_us * AUDIO_OUT_SAMPLE_RATE_HZ / MATH_US_PER_S);
+    mixer.declick_frames = declick_us != 0 && !frames ? 1 : frames;
+    if (!mixer.declick_frames) {
+        mixer.residual = 0;
+    }
+    *generation = TUNE_GENERATION(sound);
+}
+
+static bool
+update_amp(sound_amp_state_t* previous) {
+    if (mixer.amp == *previous) {
+        return true;
+    }
+    if ((mixer.amp == SOUND_AMP_OFF || *previous == SOUND_AMP_OFF)
+        && !audio_out_amp_enable(mixer.amp != SOUND_AMP_OFF)) {
+        return false;
+    }
+    *previous = mixer.amp;
+    return true;
+}
+
+static void
 mixer_task(void* unused) {
     int16_t out[SOUND_MIXER_BLOCK_FRAMES];
     int16_t scratch[SOUND_MIXER_BLOCK_FRAMES];
     int32_t accumulator[SOUND_MIXER_BLOCK_FRAMES];
     sound_amp_state_t previous_amp = SOUND_AMP_OFF;
+    uint32_t tuning_generation = UINT32_MAX;
     for (;;) {
+        apply_tuning(&tuning_generation);
         portENTER_CRITICAL(&control_lock);
         if (control.reset_gains) {
             const sound_command_t command = {.kind = SOUND_COMMAND_APP_EXIT};
@@ -322,13 +354,9 @@ mixer_task(void* unused) {
         _Static_assert(sizeof(SOUND_MIXER_FRAME_COST_NAME) - 1 <= FRAME_COST_NAME_MAX,
                        "mixer frame-cost name exceeds report capacity");
         FRAME_COST_EXTERNAL(SOUND_MIXER_FRAME_COST_NAME, mix_us);
-        if (mixer.amp != previous_amp) {
-            if ((mixer.amp == SOUND_AMP_OFF || previous_amp == SOUND_AMP_OFF)
-                && !audio_out_amp_enable(mixer.amp != SOUND_AMP_OFF)) {
-                fail("amplifier");
-                break;
-            }
-            previous_amp = mixer.amp;
+        if (!update_amp(&previous_amp)) {
+            fail("amplifier");
+            break;
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         const size_t stack_free = uxTaskGetStackHighWaterMark(NULL);
@@ -389,35 +417,50 @@ capture_request(uint32_t sequence) {
 }
 
 static bool
-capture_change(bool open) {
-    portENTER_CRITICAL(&control_lock);
-    const uint32_t sequence = control.ready ? sound_capture_begin(&capture) : 0;
-    portEXIT_CRITICAL(&control_lock);
-    if (!sequence) {
-        return false;
-    }
-    bool ok = capture_request(sequence);
-    if (ok) {
-        if (open) {
-            ok = audio_in_open();
-        } else {
-            audio_in_close();
+capture_hold(bool (*during)(void)) {
+    const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
+    uint32_t sequence = 0;
+    sound_capture_acquire_result_t acquired;
+    do {
+        portENTER_CRITICAL(&control_lock);
+        if (!control.ready) {
+            portEXIT_CRITICAL(&control_lock);
+            return during == NULL;
         }
+        acquired = sound_capture_acquire(&capture, timing_now_us(), deadline, &sequence);
+        portEXIT_CRITICAL(&control_lock);
+        if (acquired == SOUND_CAPTURE_WAIT) {
+            timing_sleep_ms(SOUND_CONTROL_POLL_MS);
+        }
+    } while (acquired == SOUND_CAPTURE_WAIT);
+    const bool ok = acquired == SOUND_CAPTURE_ACQUIRED && capture_request(sequence) && (!during || during());
+    if (sequence) {
+        portENTER_CRITICAL(&control_lock);
+        sound_capture_resume(&capture, sequence);
+        portEXIT_CRITICAL(&control_lock);
     }
-    portENTER_CRITICAL(&control_lock);
-    sound_capture_resume(&capture, sequence);
-    portEXIT_CRITICAL(&control_lock);
     return ok;
 }
 
 bool
+sound_fence(void) {
+    return capture_hold(NULL);
+}
+
+static bool
+capture_close(void) {
+    audio_in_close();
+    return true;
+}
+
+bool
 sound_capture_open(void) {
-    return capture_change(true);
+    return capture_hold(audio_in_open);
 }
 
 bool
 sound_capture_close(void) {
-    return capture_change(false);
+    return capture_hold(capture_close);
 }
 
 #endif

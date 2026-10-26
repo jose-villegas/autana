@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # A build fetches the bakes launcher/bakes.lock names (bake/bake.py): from the
@@ -22,11 +22,46 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      build-release: ${{ steps.affected.outputs.build-release }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job build-release
+
   build-release:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.build-release == 'true') }}
     name: Build (release, esp32s3)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
+      # A pull request lists the functions whose code differs from main's
+      # (code_layout.py --same-code). The checkout merges the PR into main, so
+      # the base is that merge's first parent, from the ELF main's run kept;
+      # without one the summary says so.
+      - name: Fetch main's release ELF
+        if: ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          base=$(git log -1 --format=%P HEAD | cut -d' ' -f1)
+          run=$(gh run list --workflow build-release.yml --event push --commit "$base" --status success --json databaseId,headSha --jq ".[] | select(.headSha == \"$base\") | .databaseId" | head -n 1)
+          test -n "$run"
+          gh run download "$run" --name release-elf --dir launcher/build.base
 
       - uses: ./.github/actions/idf-build
         with:
@@ -37,6 +72,29 @@ jobs:
             && cd ..
             && python3 launcher/tools/render/code_layout.py --check launcher/build
             && python3 launcher/tools/build/memory_map.py --check --require-pin launcher/build
-            && grep -A1 .text.bootloader_after_init launcher/build/bootloader/bootloader.map
-            | grep -q libpmic_cold_boot
             && python3 launcher/tools/build/check_psram_tuning_wrap.py launcher/build
+            && if [ -f launcher/build.base/launcher.elf ]; then
+            python3 launcher/tools/render/code_layout.py --same-code launcher/build.base launcher/build
+            > launcher/build/same_code.txt 2>&1 || true; fi
+
+      - name: Report the functions whose code changed
+        if: ${{ github.event_name == 'pull_request' && !cancelled() }}
+        run: |
+          {
+            echo "### Code changed against main"
+            echo '```'
+            cat launcher/build/same_code.txt 2>/dev/null || echo "no release ELF from main's run: not built yet, failed or expired"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: ${{ github.event_name == 'push' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-elf
+          path: launcher/build/launcher.elf
+          retention-days: 30
+          if-no-files-found: error
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}

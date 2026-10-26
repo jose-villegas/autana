@@ -11,6 +11,20 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_render_target.h"
+#include "render/render_view.h"
+
+/* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
+#define R3D_SPAN_SMALL_MAX_SIDE 4
+
+/* Resolved once per frame and shared read-only by row workers. */
+typedef struct {
+    uint8_t ceiling;
+    small_fill_style_t style;
+    uint8_t spread[SMALL_FILL_CEILING_MAX + 1];
+} r3d_span_small_fill_t;
+
+extern const r3d_span_small_fill_t r3d_span_small_fill_default;
+void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill);
 
 typedef struct r3d_span_writer r3d_span_writer_t;
 
@@ -22,14 +36,17 @@ typedef struct {
     gfx_render_target_t rows;
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
+    const r3d_span_small_fill_t* small_fill;
 } r3d_span_target_t;
 
 /* Colour and depth alone, rows [row0, row1) `width` wide, each buffer
  * starting at row0. */
 static inline r3d_span_target_t
 r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int row1) {
-    return (r3d_span_target_t){
-        {width, row0, row1, 2, {{color, sizeof(gfx_color_t)}, {depth, sizeof(uint16_t)}}}, NULL, 0};
+    return (r3d_span_target_t){{width, row0, row1, 2, {{color, sizeof(gfx_color_t)}, {depth, sizeof(uint16_t)}}},
+                               NULL,
+                               0,
+                               &r3d_span_small_fill_default};
 }
 
 /* A further attachment's part in a fill, chosen once per draw: after each
@@ -38,12 +55,19 @@ r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int ro
  * won (depth == z >> R3D_DEPTH_SHIFT) and write its own there. A map that
  * needs more than depth and a value per draw, such as normals, rebuilds it in
  * its resolve. */
+/* What a writer adds to its value for each part it draws. */
+typedef enum {
+    R3D_SPAN_STEP_NONE,     /* one value for the whole draw */
+    R3D_SPAN_STEP_CLUSTER,  /* the drawn cluster's index */
+    R3D_SPAN_STEP_TRIANGLE, /* the drawn triangle's index */
+} r3d_span_step_t;
+
 struct r3d_span_writer {
     void (*span)(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
                  int32_t z, int32_t dz);
-    int attachment;   /* the index it writes, in `rows` */
-    bool per_cluster; /* adds the drawn cluster's index to `value` */
-    uint32_t value;   /* what this draw writes, in the attachment's own meaning */
+    int attachment;       /* the index it writes, in `rows` */
+    r3d_span_step_t step; /* what is added to `value` per draw */
+    uint32_t value;       /* what this draw writes, in the attachment's own meaning */
 };
 
 /* The depth encoding: inverse depth scaled to 16 bits, so a larger value is

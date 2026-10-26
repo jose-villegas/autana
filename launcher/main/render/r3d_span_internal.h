@@ -11,7 +11,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/scalar/mathf.h"
 #include "render/r3d_span.h"
+
+#define R3D_SPAN_COLOR_SCALE 256.0F
 
 /* An upper bound on the depth a triangle writes inside `box`, as the
  * 16-bit depth, from its depth plane in 16.8: `top` at the centre of pixel
@@ -69,6 +72,13 @@ r3d_span_pack(int32_t r, int32_t g, int32_t b) {
     return (uint16_t)((native >> 8) | (native << 8));
 }
 
+static inline uint16_t
+r3d_span_pack_rgb(float r, float g, float b) {
+    return r3d_span_pack((int32_t)(mathf_clamp(r, 0.0F, UINT8_MAX) * R3D_SPAN_COLOR_SCALE),
+                         (int32_t)(mathf_clamp(g, 0.0F, UINT8_MAX) * R3D_SPAN_COLOR_SCALE),
+                         (int32_t)(mathf_clamp(b, 0.0F, UINT8_MAX) * R3D_SPAN_COLOR_SCALE));
+}
+
 static inline int32_t
 r3d_span_min3(int32_t a, int32_t b, int32_t c) {
     return a < b ? (a < c ? a : c) : (b < c ? b : c);
@@ -116,8 +126,14 @@ r3d_span_area2(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d
     return ((b->x - a->x) * (c->y - a->y)) - ((b->y - a->y) * (c->x - a->x));
 }
 
-/* Temporary measurement switch: 0 draws normally; 1 stops after triangle
- * setup, 2 after walking only the edges, 3 after the attribute carry, also
- * stopping attachment writers. A triangle tested centre by centre stops after
- * its setup under any of them. */
+/* Temporary measurement switch: where the fill stops. Stopping after the
+ * carry also stops attachment writers. A triangle tested centre by centre
+ * stops after its setup under any of them. */
+enum {
+    R3D_SPAN_STOP_NONE,        /* draws normally */
+    R3D_SPAN_STOP_AFTER_SETUP, /* after triangle setup */
+    R3D_SPAN_STOP_AFTER_EDGES, /* after walking only the edges */
+    R3D_SPAN_STOP_AFTER_CARRY, /* after the attribute carry */
+};
+
 extern int r3d_span_stop_after;

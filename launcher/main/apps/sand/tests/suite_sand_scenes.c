@@ -608,23 +608,7 @@ build_thermal_shock_scene(sand_t* s) {
  * a second full-grid buffer alongside `big`, and the device has about 68 KB
  * of heap left once the display framebuffer is carved out of it - two
  * 41,216-byte grids do not fit there, 5,152 bytes do. */
-#define EVER_CULLET_BYTES (((size_t)REAL_W * (size_t)REAL_H + 7) / 8)
-
-static inline bool
-ever_cullet_get(const uint8_t* mask, size_t idx) {
-    return (mask[idx >> 3] >> (idx & 7)) & 1U;
-}
-
-/* Sets the bit for `idx` and reports whether it was actually clear
- * beforehand, so callers can count new cullet without a second pass over
- * the mask. */
-static inline bool
-ever_cullet_set(uint8_t* mask, size_t idx) {
-    const uint8_t bit = (uint8_t)(1U << (idx & 7));
-    const bool was_clear = (mask[idx >> 3] & bit) == 0;
-    mask[idx >> 3] |= bit;
-    return was_clear;
-}
+#define EVER_CULLET_BYTES BITS8_BYTES((size_t)REAL_W*(size_t)REAL_H)
 
 typedef struct {
     bool near_chiller, near_burner;
@@ -692,8 +676,9 @@ count_new_cullet(const sand_t* s, uint8_t* ever_cullet) {
     for (int y = 0; y < REAL_H; y++) {
         for (int x = 0; x < REAL_W; x++) {
             const cell_t c = sand_at(s, x, y);
-            if (CELL_MATERIAL(c) == MAT_SAND && CELL_VARIANT(c) >= SAND_CULLET_BASE
-                && ever_cullet_set(ever_cullet, ((size_t)y * REAL_W) + (size_t)x)) {
+            const size_t at = ((size_t)y * REAL_W) + (size_t)x;
+            if (CELL_MATERIAL(c) == MAT_SAND && CELL_VARIANT(c) >= SAND_CULLET_BASE && !bits8_get(ever_cullet, at)) {
+                bits8_set(ever_cullet, at);
                 new_cullet++;
             }
         }
@@ -764,7 +749,7 @@ tile_has_cullet(const uint8_t* ever_cullet, int tr, int tc) {
             if (x >= REAL_W || y >= REAL_H) {
                 continue;
             }
-            if (ever_cullet_get(ever_cullet, ((size_t)y * REAL_W) + (size_t)x)) {
+            if (bits8_get(ever_cullet, ((size_t)y * REAL_W) + (size_t)x)) {
                 return true;
             }
         }

@@ -37,7 +37,7 @@ class IcountDiscoveryTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[3]
         suites = qemu_run.registered_suites(root)
         self.assertIn("run_boot_floor_cost_suite", suites)
-        self.assertTrue(suites["run_boot_floor_cost_suite"][1])
+        self.assertTrue(suites["run_boot_floor_cost_suite"])
         self.assertFalse(any(name.startswith("run_boot_floor_") for name in qemu_run.icount_suites(root)))
 
     def test_ignores_other_registrations_and_build_output(self):
