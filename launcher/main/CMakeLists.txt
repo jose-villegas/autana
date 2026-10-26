@@ -201,6 +201,11 @@ endif()
 
 list(APPEND app_srcs ${discovered_apps})
 
+# Every console/ folder is development-only, whichever glob above found it.
+if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
+    list(FILTER app_srcs EXCLUDE REGEX "/console/[^/]*\.c$")
+endif()
+
 # post.c reaches for chip identity, flash size, I2C probing and the on-die
 # temperature sensor, so it pulls in more of the platform than the rest.
 #
