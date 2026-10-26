@@ -46,14 +46,18 @@ test_mono_rows_and_subimage(void) {
     TEST_ASSERT_EQUAL_INT(image.format, sub.format);
 }
 
+/* Only the address is computed, never read, so the view needs no object behind it; a
+ * real one would make the compiler flag the far row as out of its bounds. */
+#define FAR_ROW_BASE ((uintptr_t)0x1000U)
+
 static void
 test_large_stride_row_address(void) {
-    uint8_t pixel = 0;
     const int row = 2;
     const uint32_t stride = (UINT32_MAX / image_format_bits(IMAGE_RGB565BE) + 1) / row;
     const size_t offset = (size_t)stride * row * (image_format_bits(IMAGE_RGB565BE) / CHAR_BIT);
-    const image_t image = {.pixels = &pixel, .format = IMAGE_RGB565BE, .width = 1, .height = row + 1, .stride = stride};
-    TEST_ASSERT_EQUAL_size_t(offset, (uintptr_t)image_row(&image, row) - (uintptr_t)&pixel);
+    const image_t image = {
+        .pixels = (void*)FAR_ROW_BASE, .format = IMAGE_RGB565BE, .width = 1, .height = row + 1, .stride = stride};
+    TEST_ASSERT_EQUAL_size_t(offset, (uintptr_t)image_row(&image, row) - FAR_ROW_BASE);
 }
 
 void
