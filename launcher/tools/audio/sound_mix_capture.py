@@ -8,17 +8,21 @@ from datetime import date
 import json
 import re
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import time
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from autana_runner import autana_run, record_line
 sys.path.insert(0, str(ROOT / "launcher/tools/build"))
 from c_header import read_define
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from frame_cost import US_PER_SECOND, MS_PER_SECOND
+
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from r3d.build_pack import pack_files
 
 REPORT_WINDOWS = 2
 STOP_ATTEMPTS = 3
@@ -46,17 +50,31 @@ def dropped_count(stats):
     return int(matches[0])
 
 
+def sound_formats(tree, names):
+    packs = pack_files([tree / "launcher/main"])
+    formats = {}
+    for name in names:
+        pack, separator, entry = name.partition("/")
+        if not separator:
+            pack, entry = read_define(tree / "launcher/main/asset/asset_store.h", "ASSET_ENGINE_PACK"), name
+        source = packs.get(pack, {}).get(entry)
+        if source is None or not source.name.endswith(".sound.toml"):
+            raise ValueError(f"unknown sound {name!r}")
+        formats[name] = tomllib.loads(source.read_text(encoding="utf-8"))["format"]
+    return formats
+
+
 def capture(args, sleep=time.sleep):
-    def run(*command):
-        return subprocess.run([shutil.which(args.autana) or args.autana, *map(str, command)], check=True,
-                              capture_output=True, text=True).stdout
+    def run(*words):
+        return autana_run(args.autana, *words)
 
     sounds = args.sounds.split(",")
     voices = sorted(set(map(int, args.voices.split(","))))
     if not sounds or not voices or min(voices) < 0 or args.seconds <= 0:
         raise ValueError("sounds, nonnegative voices and positive seconds are required")
-    formats = {name: tomllib.loads((args.tree / "launcher/main/engine/sounds" /
-                                  f"{name}.sound.toml").read_text())["format"] for name in sounds}
+    fill = getattr(args, "fill_sound", None)
+    formats = sound_formats(args.tree, sounds)
+    fill_format = sound_formats(args.tree, [fill])[fill] if fill else None
     main = args.tree / "launcher/main"
     window = read_define(main / "shell/shell.c", "SHELL_REPORT_WINDOW_US") / US_PER_SECOND
     startup = read_define(main / "audio/audio_out_device.h", "AUDIO_OUT_AMP_STARTUP_MS") / MS_PER_SECOND
@@ -76,8 +94,7 @@ def capture(args, sleep=time.sleep):
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="\n") as output:
         def record(key, payload):
-            output.write(f"{key}\t{payload}\n")
-            output.flush()
+            record_line(output, key, payload)
 
         output.write(f"# autana sound-mix capture on {args.board}, {date.today()}, "
                      "one record per line: <record>\t<payload>\n")
@@ -88,6 +105,9 @@ def capture(args, sleep=time.sleep):
         record("window_seconds", window)
         record("capacity", capacity)
         record("voices", ",".join(map(str, voices)))
+        if fill:
+            record("fill_sound", fill)
+            record("fill_format", fill_format)
         for name, fmt in formats.items():
             record(f"sound {name}", fmt)
         silent = False
@@ -105,8 +125,8 @@ def capture(args, sleep=time.sleep):
                     else:
                         raise ValueError("stop all left playing voices")
                     record(f"dropped {sound} {count}", dropped_count(stats))
-                    for _ in range(count):
-                        run("sound", "play", sound, "loop")
+                    for index in range(count):
+                        run("sound", "play", fill if fill and index else sound, "loop")
                     sleep((startup if count else idle) + REPORT_WINDOWS * window)
                     stats = run("sound", "stats")
                     active = playing_count(stats)
@@ -131,7 +151,8 @@ def main():
     parser.add_argument("--tree", type=Path, required=True)
     parser.add_argument("--board", required=True)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--sounds", required=True)
+    parser.add_argument("--sounds", required=True, help="comma-separated pack/name sounds; bare names select engine")
+    parser.add_argument("--fill-sound", help="after the first voice, play this pack/name in the remaining voices")
     parser.add_argument("--voices", default="0,1,4,8,16,32")
     parser.add_argument("--seconds", type=int, default=15)
     args = parser.parse_args()

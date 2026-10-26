@@ -706,8 +706,10 @@ void sand_set_gas_walk(sand_t* s, bool on);
 void sand_set_two_core_step(bool on);
 bool sand_two_core_step_enabled(void);
 
+#define SAND_JOSTLE_MAX 255
+
 /* Advance one frame. (gx, gy) is a gravity vector, direction matters. Zero
- * vector means free fall. `jostle` (0-255) makes grains slide sideways and
+ * vector means free fall. `jostle` (0..SAND_JOSTLE_MAX) makes grains slide sideways and
  * overrides friction. */
 void sand_step(sand_t* s, int gx, int gy, int jostle);
 
@@ -716,6 +718,10 @@ void sand_step(sand_t* s, int gx, int gy, int jostle);
  *
  * Deterministic, and not what sand_step uses - see below. */
 void sand_gravity_direction(int gx, int gy, int* dx, int* dy);
+
+/* Updates the last logged direction only when strength makes direction
+ * meaningful and the nearest octant changes. Initialize (*dx, *dy) to (0, 0). */
+bool sand_gravity_direction_changed(int gx, int gy, int strength, int* dx, int* dy);
 
 /* sand_step uses this, not the plain quantisation above: grains move to
  * neighbours, so a slow tilt that always rounds the same way reads as

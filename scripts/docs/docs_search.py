@@ -6,7 +6,7 @@
     python scripts/docs/docs_search.py --section 'PATH#heading words'
     python scripts/docs/docs_search.py --outline PATH       a document's headings
     python scripts/docs/docs_search.py --ask <question...>  a written answer, with sources
-    python scripts/docs/docs_search.py --eval               retrieval score
+    python scripts/docs/docs_search.py --eval [--expect M]  retrieval score; fails unless the mode is M
 
 Options: --top N (3), --more N (5), --budget CHARS (1800), --json, --lexical.
 
@@ -17,8 +17,8 @@ launcher/components/), plus any Markdown files or folders the project's
 `docs_extra` setting names (each relative to the checkout unless absolute,
 read in full; no ignore file is consulted), plus the header of
 every script under the tool folders, so "how do I run X" finds the script
-that documents itself. A directory named `.something`, `managed_components`
-or `results`, one that contains `CMakeCache.txt` (a real build tree,
+that documents itself. A directory named `.something`, `managed_components`,
+`node_modules` or `results`, one that contains `CMakeCache.txt` (a real build tree,
 wherever it lands), or one that contains its own `.git` (a fetched clone,
 such as a tool pulled straight from GitHub) is never walked. Each result
 prints the paragraphs that carry the question, the section's path:line
@@ -29,14 +29,17 @@ Two rankings are fused by reciprocal rank (Cormack, Clarke and Buttcher 2009): B
 the body, and embedding similarity from docs_llama.py's local model when it is
 set up. Without the model, search is the first alone and says so. The index is
 rebuilt on every run, in about a second, so it is never stale; only the
-vectors are cached. docs/tools/Docs-Search.md has the setup.
+vectors are cached.
+docs/cli/Docs-Search.md has the setup.
 """
 import argparse
+import difflib
 import json
 import math
 import os
 import re
 import sys
+import time
 from collections import Counter, namedtuple
 from pathlib import Path
 
@@ -49,9 +52,14 @@ Section = namedtuple("Section", "path start end title headings level body cites"
 Hit = namedtuple("Hit", "section score coverage similarity")
 
 SKIPPED_PREFIXES = ("third_party/", "launcher/components/")
+# Close spellings offered for a word no section uses, and how close they must be.
+NEAREST_SHOWN = 3
+NEAREST_CUTOFF = 0.8
 # Scripts document themselves from under these; fixed, not read off a VCS index.
 SCRIPT_ROOTS = ("scripts/", "launcher/tools/", "launcher/test/", "launcher/main/apps/")
 SCRIPT_SUFFIXES = (".py", ".sh", ".mjs")
+# Fetched packages and run output: neither is documentation, wherever it lands.
+PRUNED_NAMES = ("managed_components", "node_modules", "results")
 # A plan describes code that does not exist yet, and a document from outside
 # the tracked tree is someone's own notes; both answer fewer questions than
 # the documents of record.
@@ -113,15 +121,15 @@ def tokens(text):
 
 def pruned(dirpath, root):
     """Directories a walk never enters: a dotfile/dotdir by name, one of
-    SKIPPED_PREFIXES, `managed_components`/`results` by name (both can nest
-    at any depth, launcher/managed_components, an app's own tools/results),
+    SKIPPED_PREFIXES, a name in PRUNED_NAMES (each can nest at any depth:
+    launcher/managed_components, an app's own tools/results, a tool's node_modules),
     a real build tree (marked by CMakeCache.txt, at whatever depth ESP-IDF or
     the editor happened to put it), or a fetched clone with its own `.git`
     (a submodule checkout, or a tool like emsdk pulled straight from GitHub),
     detected by what the directory itself contains, not by a name that might
     collide with a real source folder (`launcher/tools/build/`, say)."""
     name = dirpath.name
-    if name.startswith(".") or name in ("managed_components", "results"):
+    if name.startswith(".") or name in PRUNED_NAMES:
         return True
     if (dirpath.relative_to(root).as_posix() + "/").startswith(SKIPPED_PREFIXES):
         return True
@@ -159,12 +167,12 @@ def label_of(root, file):
 
 
 def extra_files(root):
-    """(label, file) for the Markdown `docs_extra` names; read in full, no ignore
-    file consulted, since a caller names this folder precisely because it wants it read."""
+    """(label, file) for the Markdown `docs_extra` names; a named folder is walked
+    under the same pruning as the checkout, and no ignore file is consulted."""
     files = []
     for entry in extra_entries(root):
         if entry.is_dir():
-            files += sorted(entry.rglob("*.md"))
+            files += [entry / p for p in walk_tree(entry, ".md")]
         elif entry.suffix == ".md" and entry.is_file():
             files.append(entry)
     return [(label_of(root, f), f) for f in files]
@@ -401,6 +409,14 @@ class Index:
     def unknown_terms(self, terms):
         return [t for t in terms if not self.frequency.get(t)]
 
+    def spellings(self):
+        """{stem: a word the documents spell it with}, built only when a word matched nothing."""
+        words = {}
+        for section in self.sections:
+            for word in WORD.findall(" ".join((section.title, *section.headings, section.body))):
+                words.setdefault(stem(word.lower()), word.lower())
+        return words
+
     def find_section(self, reference):
         """PATH:LINE (the section holding that line) or PATH#heading words."""
         path, _, where = reference.partition("#") if "#" in reference else reference.rpartition(":")
@@ -493,6 +509,9 @@ def breadcrumb(section):
 def answer(index, question, top=3, more=5, budget=1800):
     hits, terms = index.search(question, limit=top + more)
     unknown = index.unknown_terms(terms)
+    words = index.spellings() if unknown else {}
+    nearest = {term: [words[n] for n in near] for term in unknown
+               if (near := difflib.get_close_matches(term, words, NEAREST_SHOWN, NEAREST_CUTOFF))}
     weights = ([0.5, 0.3, 0.2] + [0.15] * max(top - 3, 0))[:max(top, 0)]
     shares = [w / sum(weights) for w in weights]
     results = []
@@ -504,7 +523,8 @@ def answer(index, question, top=3, more=5, budget=1800):
     best = hits[0] if hits else None
     weak = not best or (best.coverage < 0.5
                         and (best.similarity is None or best.similarity < WEAK_SIMILARITY))
-    return {"question": question, "terms": terms, "unknown": unknown, "weak": weak,
+    return {"question": question, "terms": terms, "unknown": unknown, "nearest": nearest, "weak": weak,
+            "similarity": None if not best or best.similarity is None else round(best.similarity, 3),
             "semantic": bool(index.vectors), "results": results,
             "more": [{"location": location(h.section), "heading": breadcrumb(h.section)}
                      for h in hits[top:]]}
@@ -515,7 +535,9 @@ def format_answer(reply):
     if not reply["semantic"]:
         lines.append("exact words only; `python scripts/docs/docs_llama.py setup` adds meaning")
     if reply["unknown"]:
-        lines.append("no document uses: " + ", ".join(reply["unknown"]))
+        lines.append("no document uses: " + ", ".join(
+            term + (f" (nearest: {', '.join(reply['nearest'][term])})" if term in reply["nearest"] else "")
+            for term in reply["unknown"]))
     if not reply["results"]:
         lines.append("nothing matched; try other words, or --outline a likely document")
         return "\n".join(lines)
@@ -600,7 +622,7 @@ def load_eval(root=None):
     return rows
 
 
-def evaluate(index, depth=3):
+def evaluate(index, depth=10):
     """(question, rank or None) per row whose document is present; a hit is the section or one inside it."""
     present = {s.path for s in index.sections}
     ranks = []
@@ -613,6 +635,38 @@ def evaluate(index, depth=3):
                     None)
         ranks.append((question, rank))
     return ranks
+
+
+def scores(ranks):
+    """Mean reciprocal rank over (question, rank or None) rows, and the share found first and in
+    the top three."""
+    count = max(len(ranks), 1)
+    return {"rows": len(ranks),
+            "mrr": round(sum(1 / r for _, r in ranks if r) / count, 3),
+            "top1": round(sum(1 for _, r in ranks if r == 1) / count, 3),
+            "top3": round(sum(1 for _, r in ranks if r and r <= 3) / count, 3)}
+
+
+def run_eval(index, expect=None):
+    """Print each question's rank and the score; a CI step summary gets the score line too.
+    Fails when expect names a mode the index did not search in."""
+    started = time.perf_counter()
+    ranks = evaluate(index)
+    for question, rank in ranks:
+        print(f"{rank or '-':>2}  {question}")
+    mode = "hybrid" if index.vectors else "lexical"
+    result = scores(ranks)
+    line = (f"docs {mode}: MRR {result['mrr']:.3f}, top-1 {result['top1']:.0%}, top-3 {result['top3']:.0%} "
+            f"of {result['rows']} questions over {len(index.sections)} sections in "
+            f"{time.perf_counter() - started:.1f} s")
+    print(line)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+            summary.write(line + "\n\n")
+    if expect and mode != expect:
+        print(f"docs evaluation: expected {expect}, got {mode}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def repo_root():
@@ -629,6 +683,7 @@ def main(argv=None, root=None):
     parser.add_argument("--deep", action="store_true")
     parser.add_argument("--outline")
     parser.add_argument("--eval", action="store_true")
+    parser.add_argument("--expect", choices=("hybrid", "lexical"))
     parser.add_argument("--ask", action="store_true")
     parser.add_argument("--top", type=int, default=3)
     parser.add_argument("--more", type=int, default=5)
@@ -641,40 +696,37 @@ def main(argv=None, root=None):
     except autana_config.ConfigError as error:
         print(f"docs_search: {error}", file=sys.stderr)
         return 1
-    index = Index(root or repo_root(), semantic=not args.lexical)
     if args.eval:
-        ranks = evaluate(index)
-        for question, rank in ranks:
-            print(f"{rank or '-':>2}  {question}")
-        found = sum(1 for _, r in ranks if r)
-        print("hybrid" if index.vectors else "lexical", end=": ")
-        print(f"top-3 recall {found}/{len(ranks)}, top-1 {sum(1 for _, r in ranks if r == 1)}")
-        return 0
-    if args.outline:
-        text = format_outline(index, args.outline)
-        print(text or f"no document {args.outline}")
-        return 0 if text else 1
-    if args.section:
-        section = index.find_section(args.section)
-        if not section:
-            print(f"no section {args.section}; --outline PATH lists them")
-            return 1
-        print(format_section(index, section, args.deep))
-        return 0
-    if not args.question:
+        return run_eval(Index(root or repo_root(), semantic=not args.lexical), args.expect)
+    question = " ".join(args.question)
+    kind, query = (("outline", args.outline) if args.outline else ("section", args.section) if args.section
+                   else ("ask", question) if args.ask else ("search", question))
+    if not query:
         parser.print_usage()
         return 2
-    if args.ask:
-        if not docs_llama.installed("chat") or not docs_llama.start():
-            print("no chat model: python scripts/docs/docs_llama.py setup --chat")
-            return 1
-        text, reply = ask(index, " ".join(args.question),
-                          stream=lambda piece: print(piece, end="", flush=True))
+    if kind == "ask" and (not docs_llama.installed("chat") or not docs_llama.start()):
+        print("no chat model: python scripts/docs/docs_llama.py setup --chat")
+        return 1
+    return respond(Index(root or repo_root(), semantic=not args.lexical), kind, query, args)
+
+
+def respond(index, kind, query, args):
+    if kind == "outline":
+        text = format_outline(index, query)
+        print(text or f"no document {query}")
+        return 0 if text else 1
+    if kind == "section":
+        section = index.find_section(query)
+        print(format_section(index, section, args.deep) if section
+              else f"no section {query}; --outline PATH lists them")
+        return 0 if section else 1
+    if kind == "ask":
+        _, reply = ask(index, query, stream=lambda piece: print(piece, end="", flush=True))
         print("\n\nsources:")
         print("\n".join(f"  [{n}] {r['location']}  {r['heading']}"
                         for n, r in enumerate(reply["results"], 1)))
         return 0
-    reply = answer(index, " ".join(args.question), args.top, args.more, args.budget)
+    reply = answer(index, query, args.top, args.more, args.budget)
     print(json.dumps(reply, indent=1) if args.json else format_answer(reply))
     return 0
 

@@ -4,7 +4,7 @@ and its reader on the host; main/anim/anim_tracks.c is the firmware's.
 
 A NAME.anim.toml names its source, a .glb, .fbx or camera .keys.toml in its
 own folder, and the animation in it; the pack id is NAME. The keys and the
-entry's layout are in docs/Animation-Tracks.md, "The pack entry".
+entry's layout are in docs/render/Animation-Tracks.md, "TRCK v3".
 
 Each curve is stored in its target field's units (a camera's yfov
 becomes `half_fov_short_tan`), and a channel that never changes
@@ -16,6 +16,7 @@ import pathlib
 import re
 import struct
 from build.c_header import read_define
+from build.name_hash import name_hash, NONE
 import sys
 import tomllib
 
@@ -28,14 +29,14 @@ TYPE = b"TRCK"
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_tracks_format.h"
 VERSION = read_define(OWNER, "ANIM_TRACKS_VERSION")
 HEADER = struct.Struct("<HHIIIB3x")
-ROW = struct.Struct("<HHIIIHBB4x")
+ROW = struct.Struct("<HHIIIIIHBB")
 BINDING_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_binding.h"
 HEADER_SIZE, ROW_SIZE, AT_VERSION, AT_ROOT, AT_PAD, HEADER_PAD_SIZE = [
     read_define(OWNER, "ANIM_TRACKS_" + name)
     for name in ("HEADER_SIZE", "ROW_SIZE", "AT_VERSION", "AT_ROOT", "AT_PAD", "HEADER_PAD_SIZE")]
-ROW_PATH, ROW_FIELD, ROW_COMPONENT, ROW_TIMES, ROW_VALUES, ROW_KEYS, ROW_TYPE, ROW_INTERP, ROW_PAD, ROW_PAD_SIZE = [
+ROW_PATH, ROW_FIELD, ROW_COMPONENT, ROW_PATH_HASH, ROW_FIELD_HASH, ROW_TIMES, ROW_VALUES, ROW_KEYS, ROW_TYPE, ROW_INTERP = [
     read_define(OWNER, "ANIM_TRACKS_ROW_" + name)
-    for name in ("PATH", "FIELD", "COMPONENT", "TIMES", "VALUES", "KEYS", "TYPE", "INTERP", "PAD", "PAD_SIZE")]
+    for name in ("PATH", "FIELD", "COMPONENT", "PATH_HASH", "FIELD_HASH", "TIMES", "VALUES", "KEYS", "TYPE", "INTERP")]
 ALIGNMENT, CUBIC_RUNS = [read_define(OWNER, "ANIM_TRACKS_" + name) for name in ("ALIGNMENT", "CUBIC_RUNS")]
 STRING_MAX = read_define(OWNER, "ANIM_BINDING_STRING_MAX")
 STRINGS_MAX, COUNT_MAX, DURATION_MAX = 65535, 65535, 0xFFFFFFFF
@@ -46,7 +47,7 @@ TRANSFORM, CAMERA = (int.from_bytes(tag, "little") for tag in (b"TRNS", b"CAMR")
 FIELDS = {"translation": ("position", VALUE_VEC3), "rotation": ("rotation", VALUE_QUAT),
           "scale": ("scale", VALUE_VEC3)}
 assert HEADER.size == HEADER_SIZE == AT_PAD + HEADER_PAD_SIZE
-assert ROW.size == ROW_SIZE == ROW_PAD + ROW_PAD_SIZE
+assert ROW.size == ROW_SIZE == ROW_INTERP + struct.calcsize("<B")
 # glTF's interpolation names, in anim_interp_t's order.
 INTERPOLATIONS = ("STEP", "LINEAR", "CUBICSPLINE")
 SOURCE_SUFFIXES = (*gltf_read.ASSET_SUFFIXES, gltf_read.KEYS_SUFFIX)
@@ -176,18 +177,30 @@ def find_animation(document, name, where):
 def encode(tracks, duration_ms, root=ROOT_SCENE):
     """TRCK bytes for bindings from clip_tracks()."""
     strings, offsets, bindings = bytearray(), {}, set()
+    hashes = {"path": {}, "field": {}}
+    binding_hashes = []
     for track in tracks:
         binding = (track["path"], track["component"], track["field"])
         if binding in bindings:
             raise TracksError("two bindings are named %r" % track["name"])
         bindings.add(binding)
-        for name in (track["path"], track["field"]):
+        track_hashes = {}
+        for part in hashes:
+            name = track[part]
+            hashed = name_hash(name)
+            track_hashes[part] = hashed
+            if hashed == NONE:
+                raise TracksError("binding %r: %s %r hashes to NONE" % (track["name"], part, name))
+            previous = hashes[part].setdefault(hashed, name)
+            if previous != name:
+                raise TracksError("%s hash collision: %r and %r" % (part, previous, name))
             raw = name.encode("utf-8")
             if not raw or len(raw) > STRING_MAX or b"\0" in raw:
                 raise TracksError("binding %r: name %r exceeds %d bytes or contains NUL" % (track["name"], name, STRING_MAX))
             if name not in offsets:
                 offsets[name] = len(strings)
                 strings += raw + b"\0"
+        binding_hashes.append(track_hashes)
     if len(strings) > STRINGS_MAX:
         raise TracksError("string table exceeds %d bytes" % STRINGS_MAX)
     if len(tracks) > COUNT_MAX or not 0 <= duration_ms <= DURATION_MAX:
@@ -198,7 +211,7 @@ def encode(tracks, duration_ms, root=ROOT_SCENE):
     padding = bytes(-(strings_off + len(strings)) % ALIGNMENT)
     offset = strings_off + len(strings) + len(padding)
     rows, data = [], bytearray()
-    for track in tracks:
+    for track, track_hashes in zip(tracks, binding_hashes):
         check_curve(track["name"], track)
         if track["component"] not in (TRANSFORM, CAMERA) or track["type"] not in range(len(WIDTHS)):
             raise TracksError("%s: unknown component or type" % track["name"])
@@ -208,7 +221,7 @@ def encode(tracks, duration_ms, root=ROOT_SCENE):
         flat = [x for row in track["values"] for x in row]
         values = struct.pack("<%df" % len(flat), *flat)
         rows.append(ROW.pack(offsets[track["path"]], offsets[track["field"]], track["component"],
-                             offset, offset + len(times), len(track["times"]), track["type"],
+                             track_hashes["path"], track_hashes["field"], offset, offset + len(times), len(track["times"]), track["type"],
                              INTERPOLATIONS.index(track["interpolation"])))
         data += times + values
         offset += len(times) + len(values)
@@ -249,11 +262,13 @@ def decode(entry):
     tracks = []
     for index in range(count):
         row_off = HEADER.size + ROW.size * index
-        path_off, field_off, component, times_at, values_at, keys, value_type, interp = ROW.unpack_from(entry, row_off)
+        path_off, field_off, component, path_hash, field_hash, times_at, values_at, keys, value_type, interp = ROW.unpack_from(entry, row_off)
         path, field = string_at(path_off), string_at(field_off)
+        if path_hash == NONE or field_hash == NONE or path_hash != name_hash(path) or field_hash != name_hash(field):
+            raise TracksError("binding %d: stored hashes do not match names or are NONE" % index)
         if keys == 0 or value_type >= len(WIDTHS) or interp >= len(INTERPOLATIONS) \
-                or component == 0 or any(entry[row_off + ROW_PAD:row_off + ROW_SIZE]):
-            raise TracksError("binding %d: unknown field value or padding" % index)
+                or component == 0:
+            raise TracksError("binding %d: unknown field value" % index)
         width = WIDTHS[value_type]
         per_key = CUBIC_RUNS if INTERPOLATIONS[interp] == "CUBICSPLINE" else 1
         times = floats_at(entry, times_at, keys, strings_end)

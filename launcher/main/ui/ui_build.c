@@ -27,11 +27,11 @@
 static const char* TAG = "ui";
 #endif
 
+#include "core/tune.h"
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "profile/frame_cost.h"
-#include "services/tune.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/controls/ui_slider.h"
 #include "ui/controls/ui_widgets.h"
@@ -52,7 +52,6 @@ static bool paint_only;
 uint64_t ui_canvas_hash[MU_CONTAINERPOOL_SIZE];
 ui_canvas_marks_t ui_canvas_marks;
 
-static ui_button_style_t button_style;
 TUNE_OWNER(snap);
 TUNE(snap, reach, 40, 0, 120);
 
@@ -78,14 +77,6 @@ record_snap_rect(mu_Context* ctx, mu_Rect rect, int opt) {
     }
     snap_rects[snap_rect_count++] = (ui_snap_rect_t){.r = rect, .live = !(opt & MU_OPT_NOINTERACT)};
 }
-
-/* The style in force for the rest of this frame, and microui's own frame
- * painter, kept so UI_BUTTON_FLAT and every non-button frame stay exactly
- * what upstream draws. Captured from the context rather than
- * reimplemented here: microui's draw_frame() is static to microui.c, and
- * a hand-copied twin of it would be one more thing to keep in step
- * across a version bump. */
-static void (*base_draw_frame)(mu_Context*, mu_Rect, int);
 
 /* The transform every command is mapped through before it is drawn, and
  * whether it is one draw_command() may actually use; see ui_set_transform()
@@ -169,42 +160,7 @@ measure_text_height(mu_Font font) {
     return draw_font_height(fs.font, fs.scale);
 }
 
-/*
- * Why the pressed look keys off hover and not only focus: on a mouse, hover
- * means the pointer is near and focus means the button is held, but touch
- * has neither until contact, so hover IS contact. Focus covers most of a
- * tap, yet the one synthesized hover frame before DOWN lands has no focus
- * yet. See ui_style.h for what a style is and why it produces spans.
- */
-
-static bool
-is_button_frame(int colorid) {
-    return colorid == MU_COLOR_BUTTON || colorid == MU_COLOR_BUTTONHOVER || colorid == MU_COLOR_BUTTONFOCUS;
-}
-
-static void
-styled_draw_frame(mu_Context* c, mu_Rect rect, int colorid) {
-    if (button_style != UI_BUTTON_BEZEL || !is_button_frame(colorid)) {
-        base_draw_frame(c, rect, colorid);
-        return;
-    }
-
-    ui_span_t spans[UI_BEZEL_MAX_SPANS];
-    const int n =
-        ui_bezel_spans(rect, c->style->colors[colorid], colorid != MU_COLOR_BUTTON, spans, UI_BEZEL_MAX_SPANS);
-    for (int i = 0; i < n; i++) {
-        mu_draw_rect(c, spans[i].rect, spans[i].color);
-    }
-}
-
-void
-ui_set_button_style(ui_button_style_t style) {
-    button_style = style;
-}
-
-/* WHY THIS NEEDS ui_invalidate() AND ui_set_button_style() DOES NOT: a
- * bezel is real mu_draw_rect() commands, so a style change is a content
- * change ui_end()'s hash sees. Text style applies at RENDER time inside
+/* WHY THIS NEEDS ui_invalidate(): text style applies at RENDER time inside
  * draw_command(): the command list is byte-identical either way, so
  * hash_canvas() can't see it and the repaint is skipped, leaving OLD
  * pixels under the new intent. Do NOT delete this call "for consistency":
@@ -310,9 +266,6 @@ ui_init(void) {
     font_scaled_count = 0;
     ui_set_font(draw_font_ui());
 
-    base_draw_frame = ui_ctx.draw_frame;
-    ui_ctx.draw_frame = styled_draw_frame;
-    button_style = UI_BUTTON_FLAT;
     ui_text_style = UI_TEXT_PLAIN;
     use_transform(affine2x_identity());
     /* Before an app can hold store slots: the engine pack keeps one. */
@@ -326,13 +279,12 @@ ui_init(void) {
      * "no genuine transform change has happened yet this run". */
     layout_generation = 0;
 
-    /* Palette. Deliberately dark: this is an OLED, so black pixels are off
-     * pixels; it costs less power and looks better than a grey chrome. */
-    ui_ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color){0x0A, 0x0C, 0x14, 255};
-    ui_ctx.style->colors[MU_COLOR_TEXT] = (mu_Color){0xE6, 0xEA, 0xF2, 255};
-    ui_ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color){0x16, 0x1A, 0x28, 255};
-    ui_ctx.style->colors[MU_COLOR_BUTTONHOVER] = (mu_Color){0x23, 0x2A, 0x40, 255};
-    ui_ctx.style->colors[MU_COLOR_BUTTONFOCUS] = (mu_Color){0x3D, 0xDC, 0x97, 255};
+    /* The shell look (ui_style.h). */
+    ui_ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color)UI_RGB(UI_BACKGROUND);
+    ui_ctx.style->colors[MU_COLOR_TEXT] = (mu_Color)UI_RGB(UI_SHELL_TEXT);
+    ui_ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color)UI_RGB(UI_SHELL_BUTTON);
+    ui_ctx.style->colors[MU_COLOR_BUTTONHOVER] = (mu_Color)UI_RGB(UI_SHELL_BUTTON_HOVER);
+    ui_ctx.style->colors[MU_COLOR_BUTTONFOCUS] = (mu_Color)UI_RGB(UI_SHELL_ACCENT);
     ui_ctx.style->padding = UI_PADDING;
     ui_ctx.style->spacing = UI_ROW_GAP;
     ui_ctx.style->indent = 0;
@@ -373,15 +325,19 @@ feed_input(const input_t* input) {
         const mu_Vec2 aim = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
         ui_pointer_aim(&ui_pointer_state, (vec2i_t){aim.x, aim.y});
     }
+    /* The lift snaps like the press, so a control pressed by a snap fires on
+     * its release. */
+    if (logical.released) {
+        const mu_Vec2 lift = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
+        logical.x = lift.x;
+        logical.y = lift.y;
+    }
     ui_bridge_feed(&ui_ctx, &ui_pointer_state, &logical);
 }
 
 void
 ui_begin(const input_t* input) {
-    /* Reset before the caller can state its own; see ui.h on why style does
-     * not persist across frames. */
     ui_face_begin(input);
-    button_style = UI_BUTTON_FLAT;
     UI_FACE_COST_BEGIN(backend_from);
     paint_only = input == NULL;
     if (!paint_only) {

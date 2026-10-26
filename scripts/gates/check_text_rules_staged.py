@@ -14,7 +14,7 @@ import tempfile
 
 import yaml
 
-from check_style_audit import BINARY_EXTENSIONS
+from check_style_audit import BINARY_EXTENSIONS, DATA_EXTENSIONS
 
 
 def main():
@@ -37,7 +37,8 @@ def main():
     context = []
     for entry in listing.decode('utf-8').strip('\0').split('\0'):
         metadata, path = entry.split('\t', 1)
-        if metadata.startswith('160000 ') or Path(path).suffix.lower() in BINARY_EXTENSIONS:
+        suffix = Path(path).suffix.lower()
+        if metadata.startswith('160000 ') or (suffix in BINARY_EXTENSIONS - DATA_EXTENSIONS):
             continue
         context.append((metadata.split()[1], path))
     git_dir = subprocess.check_output(['git', 'rev-parse', '--absolute-git-dir'],

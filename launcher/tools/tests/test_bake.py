@@ -1348,6 +1348,15 @@ class RequirementTests(unittest.TestCase):
     def test_the_requirements_beside_a_stage_file_key_it(self):
         self.assertTrue({"numpy", "mitsuba", "pillow"} <= self.pins("mesh"))
 
+    def test_an_untracked_requirements_file_keys_nothing(self):
+        (bake.TOOLS / "results").mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=bake.TOOLS / "results") as directory:
+            copy = pathlib.Path(directory) / "requirements.txt"
+            copy.write_text("numpy==0.0.1\n")
+            pins = bake.pinned_requirements(bake.stage_files("mesh"))
+        self.assertTrue(pins)
+        self.assertNotIn(bake.relative(copy), {path for path, _ in pins})
+
     def test_a_package_that_differs_from_its_pin_refuses_to_bake(self):
         with mock.patch("importlib.metadata.version", return_value="0.0.1"), \
                 self.assertRaisesRegex(produce.EnvironmentMismatch, "numpy: .* pins 2.*has 0.0.1"):
@@ -1523,17 +1532,33 @@ class BlendTests(unittest.TestCase):
             produce.produce(export, self.root / "cache", blender="blender")
 
 
-def filled_cache(directory):
-    """Every mesh the tree's lock names, and every .blend export (the skin step reads a rigged one at pack
-    time), in the cache `directory`: copied from the user cache, fetched there first when it lacks one.
-    Returns the mesh bakes and the lock."""
+def filled_cache(directory, test):
+    """The tree's packed bakes and exports in `directory`, with an in-memory lock fixture for sound
+    rows CI has not locked yet. The tracked lock is never written."""
     every = bake.bakes([build_pack.DEFAULT_SEARCH])
     found = [item for item in every if item.packed]
     lock = bake.read_lock()
+    for item in found:
+        if item.kind == "sound" and item.key not in lock:
+            lock[item.key] = produce.made(item.key, bake.default_cache()) or produce.produce(item, bake.default_cache())
+    replacement = mock.patch.object(bake, "read_lock", return_value=lock)
+    replacement.start()
+    test.addCleanup(replacement.stop)
     for path in bake.fetch_all(found + [item for item in every if item.kind == "blend"], lock,
                                bake.default_cache()).values():
         shutil.copyfile(path, pathlib.Path(directory) / path.name)
     return found, lock
+
+
+def current_lock(path):
+    """Writes the lock the tree's own keys need to `path`, every row with a placeholder digest: what the
+    key tests read instead of the repo's lock, which a re-keying change leaves stale until it is re-locked."""
+    poses = bake.Poses({}, resample=True)
+    starts = {item.key: "0" * 64 for item in bake.bakes([build_pack.DEFAULT_SEARCH], {}, poses) if item.key}
+    found = bake.bakes([build_pack.DEFAULT_SEARCH], starts, poses)
+    made = {item.key: {"output": item.output, "source": bake.relative(item.source), "key": item.key,
+                       "sha256": "0" * 64, "size": 0, "run": 1} for item in found}
+    bake.write_lock(bake.lock_rows(found, {}, made), path, poses=poses.used.values())
 
 
 class StdlibKeysTests(unittest.TestCase):
@@ -1545,8 +1570,10 @@ class StdlibKeysTests(unittest.TestCase):
             (blocker / "__init__.py").write_text('raise ImportError("numpy blocked for key test")\n')
             missing = root / "missing.lock"
             missing.write_text("")
+            current = root / "current.lock"
+            current_lock(current)
             environment = {**os.environ, "PYTHONPATH": str(root)}
-            for lock in (bake.LOCK, missing):
+            for lock in (current, missing):
                 for command in ("list", "check"):
                     with self.subTest(lock=lock.name, command=command):
                         script = (
@@ -1566,25 +1593,32 @@ class StdlibKeysTests(unittest.TestCase):
                             self.assertEqual(result.returncode, 0, output)
                         else:
                             self.assertIn(result.returncode, (0, 1), output)
-                            if lock == bake.LOCK:
+                            if lock == current:
                                 self.assertNotIn("  poses ", output)
                             else:
                                 self.assertIn("  poses ", output)
 
     def test_list_lock_hit_imports_neither_poses_nor_track_host(self):
         script = (
-            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "import pathlib, sys; sys.path.insert(0, sys.argv[1]); "
             "sys.modules['r3d.poses'] = None; sys.modules['anim.track_host'] = None; "
-            "from bake import bake; raise SystemExit(bake.main(['list']))"
+            "from bake import bake; "
+            "bake.LOCK = pathlib.Path(sys.argv[2]); "
+            "bake.read_lock_tables.__defaults__ = (bake.LOCK,); "
+            "raise SystemExit(bake.main(['list']))"
         )
-        result = subprocess.run([sys.executable, "-c", script, str(TOOLS)], capture_output=True, text=True)
+        with tempfile.TemporaryDirectory() as directory:
+            lock = pathlib.Path(directory) / "current.lock"
+            current_lock(lock)
+            result = subprocess.run([sys.executable, "-c", script, str(TOOLS), str(lock)],
+                                    capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class TreeTests(unittest.TestCase):
     def test_packs_build_offline_from_a_filled_cache_as_they_do_online(self):
         with tempfile.TemporaryDirectory() as directory:
-            filled_cache(directory)
+            filled_cache(directory, self)
             with mock.patch("urllib.request.urlopen") as network:
                 offline = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=pathlib.Path(directory), offline=True)
             network.assert_not_called()
@@ -1592,7 +1626,7 @@ class TreeTests(unittest.TestCase):
 
     def test_a_mesh_no_bake_keys_fails_instead_of_taking_another_file(self):
         with tempfile.TemporaryDirectory() as directory:
-            found, lock = filled_cache(directory)
+            found, lock = filled_cache(directory, self)
             dropped = found[0]
             with mock.patch.object(bake, "bakes_in", return_value=[item for item in found if item is not dropped]), \
                     self.assertRaisesRegex(bake.BakeMissing, "no bake keys these meshes") as raised:
@@ -1602,7 +1636,7 @@ class TreeTests(unittest.TestCase):
     def test_a_mesh_outside_the_repository_is_its_own_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            found, lock = filled_cache(root)
+            found, lock = filled_cache(root, self)
             some_mesh = bake.cached(lock[found[0].key], bake.MESH_SUFFIX, root).read_bytes()
             (root / "tree").mkdir()
             imported = write_import(root / "tree")
@@ -1617,7 +1651,7 @@ class TreeTests(unittest.TestCase):
     def test_a_replaced_mesh_is_never_fetched(self):
         with tempfile.TemporaryDirectory() as directory:
             cache = pathlib.Path(directory)
-            found, lock = filled_cache(cache)
+            found, lock = filled_cache(cache, self)
             scratch = found[0]
             mesh = cache / "scratch.mesh"
             mesh.write_bytes(bake.cached(lock[scratch.key], bake.MESH_SUFFIX, cache).read_bytes())
@@ -1652,7 +1686,7 @@ class SkipUnlockedTests(unittest.TestCase):
         self.root = pathlib.Path(folder.name)
         self.cache, self.out, self.listed = self.root / "cache", self.root / "packs", self.root / "unlocked.txt"
         self.cache.mkdir()
-        self.found, self.lock = filled_cache(self.cache)
+        self.found, self.lock = filled_cache(self.cache, self)
         self.packs = build_pack.pack_files([build_pack.DEFAULT_SEARCH])
         self.waiting = self.found[0]
         entry = self.waiting.output.removesuffix(bake.MESH_SUFFIX)

@@ -18,3 +18,6 @@ bool settings_read_i32(const char* space, const char* key, int32_t* out);
 
 /* True when the value is stored and committed. */
 bool settings_write_i32(const char* space, const char* key, int32_t value);
+bool settings_read_i64(const char* space, const char* key, int64_t* out);
+bool settings_write_i64(const char* space, const char* key, int64_t value);
+bool settings_erase_space(const char* space);

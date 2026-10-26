@@ -7,6 +7,12 @@ markers also select functions, so an unrecorded marker fails the check.
   python launcher/tools/render/code_layout.py launcher/build
   python launcher/tools/render/code_layout.py --write launcher/build
   python launcher/tools/render/code_layout.py --check launcher/build
+
+--same-code BASE lists every function whose instructions differ from another
+build's, BASE a build folder or its ELF: a change meant to keep code the same
+names what it did change.
+
+  python launcher/tools/render/code_layout.py --same-code base/launcher.elf launcher/build
 """
 
 import argparse
@@ -16,6 +22,10 @@ import subprocess
 import sys
 from collections import Counter, namedtuple
 from pathlib import Path
+from typing import NamedTuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
+from objdump_calls import FUNCTION  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[3]
 LAUNCHER = REPO / "launcher"
@@ -66,7 +76,6 @@ def find_tool(name):
     found = shutil.which(executable)
     if found:
         return found
-    sys.path.insert(0, str(LAUNCHER / "tools" / "build"))
     from espressif import espressif_tools_root
 
     pattern = "tools/xtensa-esp-elf/*/xtensa-esp-elf/bin/%s*" % executable
@@ -90,12 +99,25 @@ def cache_line_size(build):
     return int(match.group(1))
 
 
-def symbols(nm, elf, functions=None):
-    found = {}
+class Symbol(NamedTuple):
+    address: int
+    name: str
+    size: int | None
+    section: str
+
+
+def symbols(nm, elf, functions=None, *, records=False):
+    found = [] if records else {}
     for line in run(nm, "-n", "-S", str(elf)).splitlines():
         fields = line.split()
         if len(fields) == 4 and (functions is None or fields[3] in functions):
-            found[int(fields[0], 16)] = (fields[3], int(fields[1], 16))
+            record = Symbol(int(fields[0], 16), fields[3], int(fields[1], 16), fields[2])
+            if records:
+                found.append(record)
+            else:
+                found[record.address] = (record.name, record.size)
+        elif records and len(fields) == 3 and (functions is None or fields[2] in functions):
+            found.append(Symbol(int(fields[0], 16), fields[2], None, fields[1]))
     return found
 
 
@@ -125,23 +147,42 @@ def target_of(operands):
     return int(match[1], 16) if match else None
 
 
-# The compiler places a literal pool among the code and jumps over it with a
-# short forward j. objdump decodes the pool's bytes as instructions, and a
-# "branch" among them moves with the addresses the pool holds, not with the
-# code, so it differs from build to build.
-POOL_JUMP_MAX = 32
+XTENSA_LITERAL_BYTES = 4
 
 
-def skip_pools(found, decode_from=None):
-    """The instructions outside any span a short forward j jumps over that
-    nothing outside it branches into: code skipped that way, an else block,
-    is always entered by a branch, and a pool never is. A span entered past
-    its start holds a pool and then code the sweep read out of step, so the
-    pool is dropped and the code decoded again from where it is entered."""
+def skip_pools(found, decode_from=None, jump_pools=True):
+    """Drop literal targets and, unless jump_pools is false, skipped pools,
+    decoding code again after each pool."""
+    if not found:
+        return found
+    start = found[0][0]
+    end = found[-1][0] + found[-1][1]
+    pools = set()
+    while True:
+        literals = {target_of(operands) for _, _, mnemonic, operands in found if mnemonic == "l32r"}
+        pending = sorted(address for address in literals
+                         if address is not None and start <= address <= end - XTENSA_LITERAL_BYTES and address not in pools)
+        if not pending:
+            repaired = _skip_jump_pools(found, decode_from) if jump_pools else found
+            if repaired == found:
+                return _resync(found, decode_from) if decode_from else found
+            found = repaired
+            continue
+        for address in pending:
+            pools.add(address)
+            resume = address + XTENSA_LITERAL_BYTES
+            prefix = [ins for ins in found if ins[0] + ins[1] <= address]
+            suffix = decode_from(resume) if decode_from else [ins for ins in found if ins[0] >= resume]
+            found = prefix + [ins for ins in suffix if ins[0] < end]
+
+
+def _skip_jump_pools(found, decode_from):
+    """A skipped span with no incoming branch is a pool. An entry past its
+    start marks code decoded out of step after a pool or alignment bytes."""
     spans = []
     for address, size, mnemonic, operands in found:
         target = target_of(operands)
-        if mnemonic == "j" and target is not None and 0 < target - (address + size) <= POOL_JUMP_MAX:
+        if mnemonic == "j" and target is not None and target > address + size:
             spans.append((address + size, target))
 
     def inside(address, span):
@@ -161,14 +202,38 @@ def skip_pools(found, decode_from=None):
         if not entered:
             kept = [ins for ins in kept if not inside(ins[0], span)]
         elif entered[0] not in starts and decode_from is not None:
-            again = []
-            for ins in decode_from(entered[0]):
-                if ins[0] in starts:
-                    break
-                again.append(ins)
-            resume = again[-1][0] + again[-1][1] if again else entered[0]
-            kept = [ins for ins in kept if ins[0] < span[0]] + again + [ins for ins in kept if ins[0] >= resume]
+            kept = _decode_again(kept, span[0], entered[0], decode_from)
     return kept
+
+
+def _decode_again(found, cut, start, decode_from):
+    """`found` up to `cut`, then decoded again from `start` until the new
+    decode meets an instruction of the old one, then the old one on."""
+    starts = {ins[0] for ins in found}
+    again = []
+    for ins in decode_from(start):
+        if ins[0] in starts:
+            break
+        again.append(ins)
+    resume = again[-1][0] + again[-1][1] if again else start
+    return [ins for ins in found if ins[0] + ins[1] <= cut] + again + [ins for ins in found if ins[0] >= resume]
+
+
+def _resync(found, decode_from):
+    """Decode again from each branch target the sweep stepped over, as
+    alignment bytes before a loop entered only from inside a skipped span."""
+    tried = set()
+    while True:
+        skip = {ins[0] for ins in found} | tried
+        end = found[-1][0] + found[-1][1]
+        # Each target is tried once: two that land inside each other's
+        # instructions would otherwise undo each other forever.
+        missed = sorted(target for target in (target_of(operands) for _, _, mnemonic, operands in found if mnemonic != "l32r")
+                        if target is not None and found[0][0] <= target < end and target not in skip)
+        if not missed:
+            return found
+        tried.add(missed[0])
+        found = _decode_again(found, missed[0], missed[0], decode_from)
 
 
 def line_span(start, end, line_size):
@@ -311,6 +376,94 @@ def layout_differences(expected, actual):
     return differences
 
 
+# An address beside the symbol it names: only the symbol is kept, so code that
+# moved but did not change compares equal.
+NAMED_ADDRESS = re.compile(r"\b[0-9a-f]{4,}\s+(<[^>]+>)")
+# A literal load's pool place, before the value objdump resolves it to.
+POOL_PLACE = re.compile(r",\s*[0-9a-f]+ <[^>]+>")
+# A change wider than this does not mean to keep code the same, and decoding
+# each function again costs an objdump run per pool: its rough list is answer
+# enough.
+PRECISE_SUSPECTS_MAX = 200
+
+
+def instruction_text(mnemonic, operands):
+    """An instruction without addresses. A literal load keeps the value it
+    loads, a callee or a constant, without its pool's place."""
+    if mnemonic == "l32r":
+        operands = POOL_PLACE.sub(",", operands, count=1)
+    return ("%s %s" % (mnemonic, NAMED_ADDRESS.sub(r"\1", operands))).rstrip()
+
+
+def function_code(text, decode_range=None, precise=()):
+    """{function: [instruction]} from `objdump -d` text, as instruction_text()
+    writes them. A name two static functions share gets #2 on the second.
+    Functions named in `precise` are decoded again through
+    decode_range(start, end): the linear sweep reads pool bytes as code, and
+    those bytes hold addresses that differ between builds."""
+    found = {}
+    name, body = None, []
+
+    def close(end):
+        if name is not None:
+            key, copy = name, 1
+            while key in found:
+                copy += 1
+                key = "%s#%d" % (name, copy)
+            again = (lambda start: decode_range(start, end)) if key in precise else None
+            # Code a jump table enters has no branch into it, so a function
+            # with one keeps every span a jump skips.
+            code = skip_pools(body, again, jump_pools=not any(ins[2] == "jx" for ins in body))
+            found[key] = [instruction_text(mnemonic, operands) for _, _, mnemonic, operands in code]
+
+    for line in text.splitlines():
+        header = FUNCTION.match(line)
+        if header:
+            close(int(header[1], 16))
+            name, body = header[2], []
+        elif name is not None:
+            body.extend(parse_objdump(line))
+    close(body[-1][0] + body[-1][1] if body else 0)
+    return found
+
+
+def code_differences(base, head):
+    """Functions whose instructions differ between two function_code() maps,
+    then those only one of them has."""
+    changed = sorted(name for name in base.keys() & head.keys() if base[name] != head[name])
+    return (["%s: changed (%d -> %d instructions)" % (name, len(base[name]), len(head[name])) for name in changed]
+            + ["%s: removed" % name for name in sorted(base.keys() - head.keys())]
+            + ["%s: added" % name for name in sorted(head.keys() - base.keys())])
+
+
+def elf_of(path):
+    elf = path / "launcher.elf" if path.is_dir() else path
+    if not elf.is_file():
+        raise LayoutError("no %s - build it first" % elf)
+    return elf
+
+
+def same_code(base, head, objdump):
+    """A rough linear sweep finds the functions that may differ; only those
+    are decoded again past their pools, which is slow."""
+    elfs = [elf_of(path) for path in (base, head)]
+    texts = [run(objdump, "-d", str(elf)) for elf in elfs]
+    rough = [function_code(text) for text in texts]
+    suspects = {name for name in rough[0].keys() & rough[1].keys() if rough[0][name] != rough[1][name]}
+    codes = [
+        function_code(text, lambda start, end, elf=elf: decode(objdump, elf, "--start-address=0x%x" % start,
+                                                                "--stop-address=0x%x" % end), suspects)
+        for text, elf in zip(texts, elfs)
+    ] if 0 < len(suspects) <= PRECISE_SUSPECTS_MAX else rough
+    differences = code_differences(*codes)
+    if differences:
+        rough_note = " (rough sweep: too many to decode again)" if len(suspects) > PRECISE_SUSPECTS_MAX else ""
+        print("code_layout.py: %d functions differ from %s%s:" % (len(differences), base, rough_note))
+        print("\n".join("  " + difference for difference in differences))
+    else:
+        print("every function matches %s" % base)
+
+
 def display_report(entries, line_size):
     print("| function | kind | address | offset | bytes | lines | source_line |")
     print("|---|---|---:|---:|---:|---:|---:|")
@@ -333,6 +486,7 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--write", action="store_true", help="replace the committed layout")
     mode.add_argument("--check", action="store_true", help="compare with the committed layout")
+    mode.add_argument("--same-code", type=Path, metavar="BASE", help="list functions whose code differs from BASE's")
     parser.add_argument("--baseline", type=Path, help="select one source folder baseline")
     parser.add_argument("--nm", help="Xtensa nm override")
     parser.add_argument("--objdump", help="Xtensa objdump override")
@@ -340,6 +494,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
+        if args.same_code:
+            same_code(args.same_code, Path(args.build), args.objdump or find_tool("objdump"))
+            return 0
         requested_build = Path(args.build)
         build = requested_build.resolve()
         elf = build / "launcher.elf"

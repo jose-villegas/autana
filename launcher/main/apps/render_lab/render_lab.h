@@ -3,11 +3,16 @@
 
 #include <stdbool.h>
 
-#define RENDER_LAB_BACKGROUND_RGB 0x0A0C14
-#define RENDER_LAB_STATUS_LEN     48
+#define RENDER_LAB_STATUS_LEN 48
 
 extern const char* render_lab_start_scene_key;
+
 extern bool render_lab_show_hud;
 
 /* NULL selects the scene's first camera. */
 extern const char* render_lab_start_camera;
+
+/* The app's `render` console command, given the words after `render`, such
+ * as "clip walk 400"; replies go to stdout. A host render calls it directly,
+ * since a host build has no console. */
+bool render_lab_console(const char* args);

@@ -9,6 +9,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import tempfile
 import unittest
 from unittest import mock
@@ -23,6 +24,59 @@ class JsonReadTests(unittest.TestCase):
         with contextlib.redirect_stdout(stream):
             self.assertEqual(command(args), 0)
         return json.loads(stream.getvalue())
+
+    def test_battery_reply(self):
+        reply = "BATTERY valid=1 usb=1 battery=1 mv=3987 percent=82 charge=cc flow=charging reg00=0x2a reg01=0x22"
+        expected = dict(valid=True, usb=True, battery=True, mv=3987, percent=82,
+                        charge="cc", flow="charging", reg00=42, reg01=34)
+        self.assertEqual(autana.parse_battery(reply), expected)
+        with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
+            self.assertEqual(self.output(autana.COMMANDS["battery"], ["--json"]), expected)
+            send.assert_called_once_with("BATTERY", reply="BATTERY")
+        for bad in (reply + " trailing", reply.replace("percent=82", f"percent={autana.BATTERY_PERCENT_MAX + 1}"),
+                    reply.replace("charge=cc", "charge=bogus"), "BATTERY error"):
+            with self.assertRaises(ValueError):
+                autana.parse_battery(bad)
+        for args in (["extra"], ["--json", "--json"], ["--unknown"]):
+            with self.assertRaises(SystemExit):
+                autana.battery(args)
+        for result, code in (((0, []), 1), ((7, []), 7)):
+            with mock.patch.object(autana, "send", return_value=result):
+                self.assertEqual(autana.battery([]), code)
+        with mock.patch.object(autana, "send", return_value=(0, [reply])), contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(autana.battery([]), 0)
+        self.assertEqual(out.getvalue(), reply + "\n")
+
+    def test_battery_bounds_and_last_reply(self):
+        reply = ("BATTERY valid=1 usb=1 battery=1 "
+                 f"mv={autana.BATTERY_VOLTAGE_MAX_MV} percent={autana.BATTERY_PERCENT_MAX} "
+                 "charge=cc flow=charging reg00=0xff reg01=0xff")
+        self.assertEqual(autana.parse_battery(reply)["mv"], autana.BATTERY_VOLTAGE_MAX_MV)
+        with self.assertRaises(ValueError):
+            autana.parse_battery(reply.replace(f"mv={autana.BATTERY_VOLTAGE_MAX_MV}",
+                                              f"mv={autana.BATTERY_VOLTAGE_MAX_MV + 1}"))
+        zero = reply.replace("valid=1", "valid=0").replace(f"mv={autana.BATTERY_VOLTAGE_MAX_MV}", "mv=0")
+        self.assertFalse(autana.parse_battery(zero)["valid"])
+        with mock.patch.object(autana, "send", return_value=(0, ["BATTERY malformed", zero])):
+            self.assertEqual(self.output(autana.battery, ["--json"]), autana.parse_battery(zero))
+        with mock.patch.object(autana, "send", return_value=(0, [reply, "BATTERY malformed"])), \
+                contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(autana.battery(["--json"]), 1)
+        self.assertIn("invalid BATTERY reply", errors.getvalue())
+
+    def test_battery_firmware_names(self):
+        import re
+        source = (Path(__file__).resolve().parents[3] / "launcher" / "test" / "suites" / "suite_power.c").read_text()
+        names = {}
+        for kind in ("charges", "flows"):
+            body = re.search(rf'const char\* const {kind}\[\] = \{{(.*?)\}};', source, re.S).group(1)
+            names[kind] = re.findall(r'"([^"]+)"', body)
+        for charge in names["charges"]:
+            for flow in names["flows"]:
+                reply = (f"BATTERY valid=1 usb=1 battery=1 mv=0 percent=0 charge={charge} "
+                         f"flow={flow} reg00=0xff reg01=0xff")
+                self.assertEqual(autana.parse_battery(reply)["charge"], charge)
+                self.assertEqual(autana.parse_battery(reply)["flow"], flow)
 
     def test_heap_reply_and_failure(self):
         reply = "HEAP free=123456 largest=54321 total=200000"
@@ -64,9 +118,10 @@ class JsonReadTests(unittest.TestCase):
     def test_tone_reply(self):
         for heard in (True, False):
             with self.subTest(heard=heard):
-                reply = f"TONE {'heard' if heard else 'not heard'} 440 Hz: -21.5 dB (silence -63.0 dB), open 8192 B DMA"
+                reply = f"TONE {'heard' if heard else 'not heard'} 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
                 expected = {"hz": 440, "tone_db": -21.5, "silence_db": -63.0,
-                            "heard": heard, "open_dma_bytes": 8192}
+                            "heard": heard, "open_dma_bytes": 8192, "path": "acoustic",
+                            "measured_hz": 440.02, "hz_error": 440.02 - 440, "thd_db": -40.0, "peak_dbfs": -6.0}
                 self.assertEqual(autana.parse_tone(reply), expected)
                 with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
                     self.assertEqual(self.output(autana.COMMANDS["tone"], ["440", "200", "--json"]), expected)
@@ -74,10 +129,40 @@ class JsonReadTests(unittest.TestCase):
                     "TONE 440 200", reply="TONE",
                     seconds=autana.TONE_MARGIN_SECONDS + autana.TONE_CAPTURE_COUNT * 200 / autana.TONE_MS_PER_SECOND)
 
+    def test_tone_short_capture_has_no_frequency(self):
+        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path internal, measured n/a, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
+        with mock.patch.object(autana, "send", return_value=(0, [reply])):
+            result = self.output(autana.tone, ["440", "1", "--internal", "--json"])
+        self.assertIsNone(result["measured_hz"])
+        self.assertIsNone(result["hz_error"])
+
+    def test_main_tone_reply(self):
+        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA"
+        result = autana.parse_tone(reply)
+        self.assertIsNone(result["thd_db"])
+        self.assertIsNone(result["peak_dbfs"])
+        self.assertEqual(result["hz"], 440)
+
+    def test_tone_unavailable_thd(self):
+        reply = "TONE heard 8000 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured n/a, open 8192 B DMA, thd n/a dB, peak -0.1 dBFS"
+        result = autana.parse_tone(reply)
+        self.assertIsNone(result["thd_db"])
+        self.assertEqual(result["peak_dbfs"], -0.1)
+
+    def test_tone_internal_flags(self):
+        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path internal, measured 443.70 Hz, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
+        for numbers in (["440", "200"], ["440", "200", "30"]):
+            for flags in (["--internal", "--json"], ["--json", "--internal"]):
+                with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
+                    result = self.output(autana.tone, numbers + flags)
+                self.assertEqual(send.call_args.args, ("TONE " + " ".join(numbers) + " internal",))
+                self.assertEqual(result["path"], "internal")
+                self.assertAlmostEqual(result["hz_error"], 3.7)
+
     def test_tone_malformed_and_error(self):
         for reply in ("TONE usage: tone <hz> <ms> [volume]", "TONE error: codec open failed",
                       "TONE heard", "OTHER heard 440 Hz",
-                      "TONE heard 440 Hz: nan dB (silence -63.0 dB), open 8192 B DMA",
+                      "TONE heard 440 Hz: nan dB (silence -63.0 dB), open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS",
                       "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), open 8192 B DMA trailing"):
             with self.subTest(reply=reply), self.assertRaises(ValueError):
                 autana.parse_tone(reply)
@@ -93,7 +178,7 @@ class JsonReadTests(unittest.TestCase):
                 self.assertEqual(autana.COMMANDS["tone"](["440", "200"]), expected)
 
     def test_tone_forwards_decimal_args_and_plain_output(self):
-        reply = "TONE not heard 1 Hz: -63.0 dB (silence -63.0 dB), open 8192 B DMA"
+        reply = "TONE not heard 1 Hz: -63.0 dB (silence -63.0 dB), path acoustic, measured 1.00 Hz, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
         for args in (("0", "0"), ("999999", "999999", "999999"), ("00440", "00200", "030")):
             ms = int(args[1])
             stream = io.StringIO()
@@ -107,10 +192,10 @@ class JsonReadTests(unittest.TestCase):
 
     def test_tone_rejects_invalid_args_before_send(self):
         for args in ([], ["440"], ["440", "200", "30", "extra"], ["440", ""],
-                     ["440", "200", "--json", "30"],
+                     ["440", "200", "--json", "30"], ["440", "200", "--internal", "30"],
                      ["-1", "200"], ["+440", "200"], ["440.0", "200"],
                      ["\u0664\u0664\u0660", "200"], ["440", "200", "-1"], ["440", "200", "oops"],
-                     ["440", "200", "--unknown"], ["440", "200", "--json", "--json"]):
+                     ["440", "200", "--unknown"], ["440", "200", "--json", "--json"], ["440", "200", "--internal", "--internal"]):
             with self.subTest(args=args), mock.patch.object(autana, "send") as send:
                 with self.assertRaises(SystemExit):
                     autana.COMMANDS["tone"]([*args])
@@ -155,15 +240,20 @@ class JsonReadTests(unittest.TestCase):
                                             "max": 255, "default": 226}]})
 
     def test_suite_list(self):
-        with tempfile.TemporaryDirectory() as temp:
-            source = Path(temp) / "launcher" / "test" / "suite.c"
-            source.parent.mkdir(parents=True)
-            source.write_text("SUITE_REGISTER(run_example_suite)\n")
-            with mock.patch.object(autana, "resolve_project", return_value=temp):
-                self.assertEqual(self.output(autana.suite, ["list", "--json"]),
-                                 {"suites": [{"name": "run_example_suite",
-                                              "source": "launcher/test/suite.c",
-                                              "on_request": False, "device_only": False}]})
+        replies = ["RUNSUITE_SUITE name=run_b_suite on_request=1", "RUNSUITE_SUITE name=run_a_suite on_request=0",
+                   "RUNSUITE_END count=2"]
+        with mock.patch.object(autana, "send", return_value=(0, replies)) as send:
+            self.assertEqual(self.output(autana.suite, ["list", "--json"]),
+                             {"suites": [{"name": "run_a_suite", "on_request": False},
+                                         {"name": "run_b_suite", "on_request": True}]})
+        send.assert_called_once_with("RUNSUITE ?", reply="RUNSUITE_", until=["RUNSUITE_END"])
+
+    def test_suite_list_without_a_self_test_image_says_so(self):
+        for code, replies in ((1, []), (0, ["RUNSUITE_SUITE name=a on_request=0", "RUNSUITE_END count=2"])):
+            stderr = io.StringIO()
+            with mock.patch.object(autana, "send", return_value=(code, replies)),                     contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+                self.assertEqual(autana.suite(["list"]), 1)
+            self.assertIn("autana suite list", stderr.getvalue())
 
     def test_text_output_is_the_board_reply_unchanged(self):
         replies = ["APPS name=B running=1 extra=kept", "APPS_END"]
@@ -175,7 +265,64 @@ class JsonReadTests(unittest.TestCase):
 
     def test_json_rejected_for_tune_write(self):
         with self.assertRaises(SystemExit):
-            autana.tune(["save", "--json"])
+            autana.tune(["reset", "x", "--json"])
+
+
+class BatteryLogTests(unittest.TestCase):
+    row = 'BATLOG seq=16777215 up_min=1023 mv=16383 percent=127 usb=1 battery=1 charge=cc flow=charging reason=boot'
+
+    def test_log_parse(self):
+        result = autana.parse_battery_log([self.row, 'BATLOG end count=1'])
+        self.assertEqual(result[0]['seq'], 16777215)
+        self.assertEqual(result[0]['reason'], 'boot')
+        self.assertTrue(result[0]['usb'])
+        self.assertEqual(autana.parse_battery_log(['BATLOG end count=0']), [])
+        for lines in ([self.row], ['BATLOG end count=1'], [self.row, 'BATLOG end count=0'],
+                      [self.row.replace('seq=16777215', 'seq=16777216'), 'BATLOG end count=1'],
+                      [self.row.replace('reason=boot', 'reason=bogus'), 'BATLOG end count=1'],
+                      [self.row + ' extra', 'BATLOG end count=1'], ['BATLOG error read']):
+            with self.assertRaises(ValueError):
+                autana.parse_battery_log(lines)
+
+    def test_shutdown_warning(self):
+        row = self.row.replace('reason=boot', 'reason=shutdown-warning')
+        self.assertEqual(autana.parse_battery_log([row, 'BATLOG end count=1'])[0]['reason'], 'shutdown-warning')
+
+    def test_log_command(self):
+        with mock.patch.object(autana, 'send', return_value=(0, [self.row, 'BATLOG end count=1'])) as send:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(autana.battery(['--log', '--json']), 0)
+            self.assertEqual(json.loads(output.getvalue())[0]['reason'], 'boot')
+            send.assert_called_once_with('BATTERY LOG', reply='BATLOG', until=['BATLOG end', 'BATLOG error'])
+        with mock.patch.object(autana, 'send', return_value=(0, ['BATLOG cleared'])) as send:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(autana.battery(['--log', '--clear']), 0)
+            send.assert_called_once_with('BATTERY LOG CLEAR', reply='BATLOG')
+        for args in (['--clear'], ['--log', '--log'], ['--log', '--clear', '--json']):
+            with self.assertRaises(SystemExit):
+                autana.battery(args)
+
+    def test_firmware_ranges(self):
+        root = Path(__file__).resolve().parents[3]
+        header = (root / 'launcher/main/power/power_log.h').read_text(encoding='utf-8')
+        self.assertEqual(autana.BATTERY_LOG_SLOTS, int(re.search(r'#define POWER_LOG_SLOTS\s+([0-9]+)', header).group(1)))
+        for field, name in (('seq', 'SEQ'), ('up_min', 'UPTIME'), ('mv', 'MV'), ('percent', 'PERCENT')):
+            bits = int(re.search(rf'#define POWER_LOG_{name}_BITS\s+([0-9]+)', header).group(1))
+            self.assertEqual(autana.BATTERY_LOG_LIMITS[field], (1 << bits) - 1)
+
+    def test_firmware_names(self):
+        root = Path(__file__).resolve().parents[3]
+        reasons = re.findall(r'return "([^"]+)"', (root / 'launcher/main/power/power_log.c').read_text())
+        decode = (root / 'launcher/main/power/power_decode.c').read_text()
+        charges, flows = decode.split('power_flow_name', 1)
+        for reason in reasons:
+            if reason == 'unknown':
+                continue
+            for charge in re.findall(r'return "([^"]+)"', charges):
+                for flow in re.findall(r'return "([^"]+)"', flows):
+                    row = self.row.replace('reason=boot', f'reason={reason}').replace('charge=cc', f'charge={charge}').replace('flow=charging', f'flow={flow}')
+                    self.assertEqual(autana.parse_battery_log([row, 'BATLOG end count=1'])[0]['reason'], reason)
 
 
 if __name__ == "__main__":

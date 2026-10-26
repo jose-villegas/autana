@@ -2,8 +2,8 @@
  * Portable suite: console_verbs (dispatch, registration discipline,
  * console_word_match(), console_find_clash(), the line assembler) and
  * console_frame_request (the frame-loop handoff), driven here with a
- * registry and mailboxes this suite owns, never console_shared() or
- * console_frame_mailbox(), which only a device build's verbs ever touch. Also the input-injection and
+ * registry and slots this suite owns, never console_shared() or
+ * console_frame_slots(), which only a device build's verbs ever touch. Also the input-injection and
  * app-name parsers (console_inject_parse.h, console_navigation_parse.h),
  * pure enough to run on a host.
  */
@@ -15,7 +15,7 @@
 #include <string.h>
 
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "console/console_frame_request.h"
@@ -95,19 +95,54 @@ fixture(void) {
     reply_count = 0;
     last_verb[0] = '\0';
     last_args[0] = '\0';
-    alpha_verb = (console_verb_t){"ALPHA", handle_alpha, NULL};
-    beta_verb = (console_verb_t){"BETA", handle_beta, NULL};
-    set_verb = (console_verb_t){"SET", handle_set, NULL};
-    settle_verb = (console_verb_t){"SETTLE", handle_settle, NULL};
-    tune_verb = (console_verb_t){"TUNE", handle_tune, NULL};
-    tunes_verb = (console_verb_t){"TUNES", handle_tunes, NULL};
-    lower_set_verb = (console_verb_t){"set", handle_alpha, NULL};
+    alpha_verb = (console_verb_t){"ALPHA", handle_alpha, NULL, CONSOLE_LINE_MAX};
+    beta_verb = (console_verb_t){"BETA", handle_beta, NULL, CONSOLE_LINE_MAX};
+    set_verb = (console_verb_t){"SET", handle_set, NULL, CONSOLE_LINE_MAX};
+    settle_verb = (console_verb_t){"SETTLE", handle_settle, NULL, CONSOLE_LINE_MAX};
+    tune_verb = (console_verb_t){"TUNE", handle_tune, NULL, CONSOLE_LINE_MAX};
+    tunes_verb = (console_verb_t){"TUNES", handle_tunes, NULL, CONSOLE_LINE_MAX};
+    lower_set_verb = (console_verb_t){"set", handle_alpha, NULL, CONSOLE_LINE_MAX};
+}
+
+static void
+test_overlong_short_verb_is_dropped(void) {
+    fixture();
+    TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
+    char line[CONSOLE_LINE_MAX + 1];
+    memset(line, 'x', sizeof line - 1);
+    memcpy(line, "ALPHA ", strlen("ALPHA "));
+    line[sizeof line - 1] = '\0';
+    TEST_ASSERT_FALSE(console_registry_dispatch(&registry, line, collect) == CONSOLE_LINE_HANDLED);
+    TEST_ASSERT_EQUAL_STRING("", last_verb);
+}
+
+static void
+test_registered_long_verbs_own_their_bounds(void) {
+    fixture();
+    const char* names[] = {"sound", "runsuite", "OTHER"};
+    TEST_ASSERT_EQUAL_INT(CONSOLE_LINE_MAX, console_registry_line_max(&registry));
+    char line[CONSOLE_SOUND_LINE_MAX + 1];
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+        console_registry_t verbs = {0};
+        console_verb_t verb = {names[i], handle_alpha, NULL, CONSOLE_SOUND_LINE_MAX};
+        TEST_ASSERT_TRUE(console_register(&verbs, &verb));
+        TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_LINE_MAX, console_registry_line_max(&verbs));
+        memset(line, 'x', CONSOLE_SOUND_LINE_MAX);
+        memcpy(line, names[i], strlen(names[i]));
+        line[strlen(names[i])] = ' ';
+        line[CONSOLE_SOUND_LINE_MAX - 1] = '\0';
+        TEST_ASSERT_TRUE(console_registry_dispatch(&verbs, line, collect) == CONSOLE_LINE_HANDLED);
+        line[CONSOLE_SOUND_LINE_MAX - 1] = 'x';
+        line[CONSOLE_SOUND_LINE_MAX] = '\0';
+        TEST_ASSERT_FALSE(console_registry_dispatch(&verbs, line, collect) == CONSOLE_LINE_HANDLED);
+        TEST_ASSERT_EQUAL_INT(CONSOLE_LINE_REJECTED, console_registry_dispatch(&registry, line, collect));
+    }
 }
 
 static bool
 say(const char* line) {
     reply_count = 0;
-    return console_registry_handle_line(&registry, line, collect);
+    return console_registry_dispatch(&registry, line, collect) == CONSOLE_LINE_HANDLED;
 }
 
 static int
@@ -138,7 +173,7 @@ test_name_plus_space_carries_args_without_the_verb_or_the_space(void) {
 }
 
 /* SET must not answer to SETTLE, and TUNE must not answer to TUNES: the
- * same pair suite_tune.c already pins one level up (services/tune.c). Proven
+ * same pair suite_tune.c already pins one level up (console/console_tune.c). Proven
  * here too since this level is where the "name, or name-plus-space" rule
  * actually lives now. */
 static void
@@ -251,7 +286,7 @@ static void
 test_a_name_declared_twice_stays_with_the_first(void) {
     fixture();
     static console_verb_t usurper;
-    usurper = (console_verb_t){"ALPHA", handle_beta, NULL};
+    usurper = (console_verb_t){"ALPHA", handle_beta, NULL, CONSOLE_LINE_MAX};
     TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
     TEST_ASSERT_FALSE(console_register(&registry, &usurper));
     TEST_ASSERT_EQUAL_INT(1, registry_count(&registry));
@@ -276,12 +311,21 @@ test_a_reply_is_up_to_the_verbs_own_handler(void) {
     TEST_ASSERT_EQUAL_STRING("SET_OK", replies[0]);
 }
 
-/* Per test, off the stack: a request is a few hundred bytes, and the suite
+/* A slot's payload in these tests: one line of text. */
+typedef struct {
+    char text[CONSOLE_LINE_MAX];
+} text_request_t;
+
+/* Per test, off the stack: payloads are a few hundred bytes, and the suite
  * also runs on the board's frame-loop task. */
 typedef struct {
-    console_frame_mailbox_t mailbox;
-    console_frame_request_t request; /* a post's; the racing writer's */
-    console_frame_request_t taken;
+    console_frame_slots_t slots;
+    console_frame_slot_t latest, held, answered;
+    text_request_t storage[3][2]; /* each slot's pending and taken */
+    text_request_t request;       /* a post's; the racing writer's */
+    char answer[CONSOLE_LINE_MAX];
+    int answer_count;
+    bool posted_while_answering;
     atomic_bool writing;
 } frame_fixture_t;
 
@@ -293,114 +337,164 @@ free_frame(void) {
     frame = NULL;
 }
 
+/* Also posts to its own slot, which a held slot refuses while answering. */
+static void
+record_answer(const void* payload) {
+    const text_request_t* request = payload;
+    console_copy_text(frame->answer, sizeof frame->answer, request->text);
+    frame->answer_count++;
+    frame->posted_while_answering = console_frame_post(&frame->slots, &frame->answered, request);
+}
+
+static console_frame_slot_t
+slot_over(const char* name, text_request_t storage[2], bool held, void (*answer)(const void*)) {
+    return (console_frame_slot_t){.name = name,
+                                  .pending = &storage[0],
+                                  .taken = &storage[1],
+                                  .size = sizeof(text_request_t),
+                                  .answer = answer,
+                                  .held = held};
+}
+
 static frame_fixture_t*
 frame_fixture(void) {
     frame = malloc(sizeof *frame);
     TEST_ASSERT_NOT_NULL(frame);
-    *frame = (frame_fixture_t){.mailbox = CONSOLE_FRAME_MAILBOX_INIT};
+    *frame = (frame_fixture_t){.slots = CONSOLE_FRAME_SLOTS_INIT};
+    frame->latest = slot_over("latest", frame->storage[0], false, NULL);
+    frame->held = slot_over("held", frame->storage[1], true, NULL);
+    frame->answered = slot_over("answered", frame->storage[2], true, record_answer);
+    TEST_ASSERT_TRUE(console_frame_add(&frame->slots, &frame->latest));
+    TEST_ASSERT_TRUE(console_frame_add(&frame->slots, &frame->held));
+    TEST_ASSERT_TRUE(console_frame_add(&frame->slots, &frame->answered));
     suite_set_test_cleanup(free_frame);
     return frame;
 }
 
-/* Fills only the fields of the kinds posted, so a merge that copied another
- * kind's fields would clobber what is pending with blanks. */
 static bool
-post(frame_fixture_t* f, uint32_t kinds, console_navigation_t navigation, const char* text) {
-    f->request = (console_frame_request_t){.kinds = kinds, .navigation = navigation};
-    if (kinds & CONSOLE_FRAME_NAVIGATE) {
-        console_copy_text(f->request.app, sizeof f->request.app, text);
-    }
-    if (kinds & CONSOLE_FRAME_RUNSUITE) {
-        console_copy_text(f->request.suite, sizeof f->request.suite, text);
-    }
-    return console_frame_post(&f->mailbox, &f->request);
+post(frame_fixture_t* f, console_frame_slot_t* slot, const char* text) {
+    console_copy_text(f->request.text, sizeof f->request.text, text);
+    return console_frame_post(&f->slots, slot, &f->request);
+}
+
+static const char*
+taken_text(const console_frame_slot_t* slot) {
+    return ((const text_request_t*)slot->taken)->text;
 }
 
 static void
-test_a_request_is_taken_once_with_its_fields(void) {
+test_a_request_is_taken_once_with_its_payload(void) {
     frame_fixture_t* f = frame_fixture();
 
-    console_frame_take(&f->mailbox, &f->taken);
-    TEST_ASSERT_EQUAL_UINT32(0, f->taken.kinds);
-
-    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_OPEN, "sand"));
-    console_frame_take(&f->mailbox, &f->taken);
-    TEST_ASSERT_EQUAL_UINT32(CONSOLE_FRAME_NAVIGATE, f->taken.kinds);
-    TEST_ASSERT_EQUAL_INT(CONSOLE_NAVIGATION_OPEN, f->taken.navigation);
-    TEST_ASSERT_EQUAL_STRING("sand", f->taken.app);
-
-    console_frame_take(&f->mailbox, &f->taken);
-    TEST_ASSERT_EQUAL_UINT32(0, f->taken.kinds);
+    TEST_ASSERT_FALSE(console_frame_take(&f->slots, &f->latest));
+    TEST_ASSERT_TRUE(post(f, &f->latest, "sand"));
+    TEST_ASSERT_TRUE(console_frame_take(&f->slots, &f->latest));
+    TEST_ASSERT_EQUAL_STRING("sand", taken_text(&f->latest));
+    TEST_ASSERT_FALSE(console_frame_take(&f->slots, &f->latest));
 }
 
 static void
-test_a_later_request_replaces_its_own_kind_and_leaves_the_others(void) {
+test_a_later_request_replaces_its_own_slot_and_leaves_the_others(void) {
     frame_fixture_t* f = frame_fixture();
 
-    const int steps = 3;
-    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_HOME, "first"));
-    f->request = (console_frame_request_t){.kinds = CONSOLE_FRAME_FREEZE, .frozen = true, .steps = steps};
-    TEST_ASSERT_TRUE(console_frame_post(&f->mailbox, &f->request));
-    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "console"));
-    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_OPEN, "sand"));
+    TEST_ASSERT_TRUE(post(f, &f->latest, "first"));
+    TEST_ASSERT_TRUE(post(f, &f->held, "console"));
+    TEST_ASSERT_TRUE(post(f, &f->latest, "sand"));
 
-    console_frame_take(&f->mailbox, &f->taken);
-    TEST_ASSERT_EQUAL_UINT32(CONSOLE_FRAME_NAVIGATE | CONSOLE_FRAME_RUNSUITE | CONSOLE_FRAME_FREEZE, f->taken.kinds);
-    TEST_ASSERT_EQUAL_INT(CONSOLE_NAVIGATION_OPEN, f->taken.navigation);
-    TEST_ASSERT_EQUAL_STRING("sand", f->taken.app);
-    TEST_ASSERT_EQUAL_STRING("console", f->taken.suite);
-    TEST_ASSERT_TRUE(f->taken.frozen);
-    TEST_ASSERT_EQUAL_INT(steps, f->taken.steps);
+    TEST_ASSERT_TRUE(console_frame_take(&f->slots, &f->latest));
+    TEST_ASSERT_EQUAL_STRING("sand", taken_text(&f->latest));
+    TEST_ASSERT_TRUE(console_frame_take(&f->slots, &f->held));
+    TEST_ASSERT_EQUAL_STRING("console", taken_text(&f->held));
 }
 
-/* RUNSUITE is held: one at a time, from its post until the frame loop says
- * it is done, and a second is refused rather than replacing it. */
+/* A held slot (RUNSUITE, SOUND): one at a time, from its post until the
+ * frame loop says it is done, and a second is refused rather than
+ * replacing it. */
 static void
 test_a_held_request_refuses_another_until_it_is_done(void) {
     frame_fixture_t* f = frame_fixture();
 
-    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "console"));
-    TEST_ASSERT_FALSE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "gfx"));
-    console_frame_take(&f->mailbox, &f->taken);
-    TEST_ASSERT_EQUAL_STRING("console", f->taken.suite);
-    /* Refused whole: the NAVIGATE riding with it is not merged either. */
-    TEST_ASSERT_FALSE(post(f, CONSOLE_FRAME_RUNSUITE | CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_OPEN, "gfx"));
-    console_frame_take(&f->mailbox, &f->taken);
-    TEST_ASSERT_EQUAL_UINT32(0, f->taken.kinds);
+    TEST_ASSERT_TRUE(post(f, &f->held, "console"));
+    TEST_ASSERT_FALSE(post(f, &f->held, "gfx"));
+    TEST_ASSERT_TRUE(console_frame_take(&f->slots, &f->held));
+    TEST_ASSERT_EQUAL_STRING("console", taken_text(&f->held));
+    TEST_ASSERT_FALSE(post(f, &f->held, "gfx"));
+    TEST_ASSERT_FALSE(console_frame_take(&f->slots, &f->held));
 
-    console_frame_done(&f->mailbox, CONSOLE_FRAME_RUNSUITE);
-    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "gfx"));
+    console_frame_done(&f->slots, &f->held);
+    TEST_ASSERT_TRUE(post(f, &f->held, "gfx"));
+}
+
+/* Only a slot with an answer is answered, once per post, and a held one
+ * accepts a post again once answered. */
+static void
+test_pending_answers_run_once_and_free_a_held_slot(void) {
+    frame_fixture_t* f = frame_fixture();
+
+    console_frame_answer_pending(&f->slots);
+    TEST_ASSERT_EQUAL_INT(0, f->answer_count);
+
+    TEST_ASSERT_TRUE(post(f, &f->answered, "play"));
+    TEST_ASSERT_TRUE(post(f, &f->latest, "sand"));
+    console_frame_answer_pending(&f->slots);
+    TEST_ASSERT_EQUAL_INT(1, f->answer_count);
+    TEST_ASSERT_EQUAL_STRING("play", f->answer);
+    TEST_ASSERT_FALSE(f->posted_while_answering);
+    console_frame_answer_pending(&f->slots);
+    TEST_ASSERT_EQUAL_INT(1, f->answer_count);
+
+    TEST_ASSERT_TRUE(post(f, &f->answered, "again"));
+    TEST_ASSERT_TRUE(console_frame_take(&f->slots, &f->latest));
+}
+
+/* FRAMEWATCH and SCREENSHOT: no payload, the post itself is the request. */
+static void
+test_a_signal_is_taken_once_per_post(void) {
+    frame_fixture_t* f = frame_fixture();
+    console_frame_slot_t signal = {.name = "signal"};
+    TEST_ASSERT_TRUE(console_frame_add(&f->slots, &signal));
+
+    TEST_ASSERT_FALSE(console_frame_take(&f->slots, &signal));
+    TEST_ASSERT_TRUE(console_frame_post(&f->slots, &signal, NULL));
+    TEST_ASSERT_TRUE(console_frame_post(&f->slots, &signal, NULL));
+    TEST_ASSERT_TRUE(console_frame_take(&f->slots, &signal));
+    TEST_ASSERT_FALSE(console_frame_take(&f->slots, &signal));
+}
+
+static void
+test_a_slot_name_is_taken_once(void) {
+    frame_fixture_t* f = frame_fixture();
+    console_frame_slot_t twin = slot_over("latest", f->storage[0], false, NULL);
+
+    TEST_ASSERT_FALSE(console_frame_add(&f->slots, &twin));
+    TEST_ASSERT_TRUE(console_frame_add(&f->slots, &f->latest));
 }
 
 /* How many requests the racing writer posts. */
 #define RACE_POSTS 20000
 
-/* OPEN with an app name of all 'o's, or HOME with all 'h's: a take that
- * pairs one with the other's letters, or mixes letters, saw a post half
- * written. */
+/* All one letter, alternating posts: a take that mixes letters saw a post
+ * half written. */
 static void*
 race_writer(void* context) {
     frame_fixture_t* f = context;
     for (int i = 0; i < RACE_POSTS; i++) {
-        const bool open = (i % 2) == 0;
-        f->request.kinds = CONSOLE_FRAME_NAVIGATE;
-        f->request.navigation = open ? CONSOLE_NAVIGATION_OPEN : CONSOLE_NAVIGATION_HOME;
-        memset(f->request.app, open ? 'o' : 'h', sizeof f->request.app - 1);
-        (void)console_frame_post(&f->mailbox, &f->request);
+        memset(f->request.text, (i % 2) == 0 ? 'o' : 'h', sizeof f->request.text - 1);
+        f->request.text[sizeof f->request.text - 1] = '\0';
+        (void)console_frame_post(&f->slots, &f->latest, &f->request);
     }
     atomic_store(&f->writing, false);
     return NULL;
 }
 
 static bool
-taken_whole(const console_frame_request_t* taken) {
-    const char letter = taken->navigation == CONSOLE_NAVIGATION_OPEN ? 'o' : 'h';
-    for (size_t i = 0; i < sizeof taken->app - 1; i++) {
-        if (taken->app[i] != letter) {
+taken_whole(const char* text) {
+    for (size_t i = 0; i < CONSOLE_LINE_MAX - 1; i++) {
+        if (text[i] != text[0]) {
             return false;
         }
     }
-    return taken->app[sizeof taken->app - 1] == '\0';
+    return text[CONSOLE_LINE_MAX - 1] == '\0';
 }
 
 static void
@@ -418,10 +512,9 @@ test_a_take_never_sees_a_post_half_written(void) {
     bool writing;
     do {
         writing = atomic_load(&f->writing);
-        console_frame_take(&f->mailbox, &f->taken);
-        if (f->taken.kinds & CONSOLE_FRAME_NAVIGATE) {
+        if (console_frame_take(&f->slots, &f->latest)) {
             takes++;
-            torn += taken_whole(&f->taken) ? 0 : 1;
+            torn += taken_whole(taken_text(&f->latest)) ? 0 : 1;
         }
     } while (writing);
     (void)pthread_join(writer, NULL);
@@ -429,7 +522,7 @@ test_a_take_never_sees_a_post_half_written(void) {
     TEST_ASSERT_EQUAL_INT(0, torn);
 }
 
-/* console_word_match() is console_registry_handle_line()'s own matcher,
+/* console_word_match() is console_registry_dispatch() == CONSOLE_LINE_HANDLED's own matcher,
  * exported so the shell can match an app's console prefix the same way. */
 static void
 test_word_match_carries_what_follows_the_name(void) {
@@ -872,7 +965,8 @@ test_quarter_injection_matches_forward_mapping(void) {
         TEST_ASSERT_EQUAL_INT(axes.x_down * IMU_COUNTS_PER_G, gravity.x);
         TEST_ASSERT_EQUAL_INT(axes.y_down * IMU_COUNTS_PER_G, gravity.y);
         display.quarter = quarter;
-        TEST_ASSERT_FALSE(display_update(&display, gravity));
+        TEST_ASSERT_FALSE(display_update(
+            &display, (vec3f_t){(float)gravity.x / IMU_COUNTS_PER_G, (float)gravity.y / IMU_COUNTS_PER_G, 0.0F}, 0));
         TEST_ASSERT_EQUAL_INT(quarter, display_quarter(&display));
     }
     imu_sample_t sample = {.ax = IMU_COUNTS_PER_G};
@@ -890,6 +984,9 @@ test_quarter_injection_matches_forward_mapping(void) {
 static void
 test_sound_arguments(void) {
     console_sound_args_t args;
+    TEST_ASSERT_TRUE(console_sound_parse("play engine/tap loop 25", &args));
+    TEST_ASSERT_EQUAL_STRING("tap", args.name);
+    TEST_ASSERT_EQUAL_STRING(ASSET_ENGINE_PACK, args.pack);
     TEST_ASSERT_TRUE(console_sound_parse("play tap loop 25", &args));
     TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_PLAY, args.action);
     TEST_ASSERT_EQUAL_STRING("tap", args.name);
@@ -898,6 +995,9 @@ test_sound_arguments(void) {
     TEST_ASSERT_TRUE(console_sound_parse("play tap", &args));
     TEST_ASSERT_EQUAL_INT(AUDIO_OUT_VOLUME_MAX_PCT, args.gain_pct);
     TEST_ASSERT_FALSE(args.loop);
+    TEST_ASSERT_TRUE(console_sound_parse("play music/theme loop 50", &args));
+    TEST_ASSERT_EQUAL_STRING("music", args.pack);
+    TEST_ASSERT_EQUAL_STRING("theme", args.name);
     TEST_ASSERT_TRUE(console_sound_parse("play tap 0", &args));
     TEST_ASSERT_EQUAL_INT(0, args.gain_pct);
     TEST_ASSERT_TRUE(console_sound_parse("stop", &args));
@@ -908,7 +1008,25 @@ test_sound_arguments(void) {
     TEST_ASSERT_EQUAL_UINT32(123, args.voice);
     TEST_ASSERT_TRUE(console_sound_parse("stats", &args));
     TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_STATS, args.action);
+    TEST_ASSERT_TRUE(console_sound_parse("onset start", &args));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_ONSET, args.action);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_START, args.event);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_ONSET_HZ, args.hz);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_ONSET_GAIN, args.gain_pct);
+    TEST_ASSERT_TRUE(console_sound_parse("onset amp-off 300 0", &args));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_AMP_OFF, args.event);
+    TEST_ASSERT_EQUAL_INT(0, args.gain_pct);
     static const char* const invalid[] = {"",
+                                          "onset",
+                                          "onset unknown",
+                                          "onset start 0",
+                                          "onset stop 500 101",
+                                          "onset steal 500 33 extra",
+                                          "onset amp-on -1",
+                                          "onset start 500 -1",
+                                          "play /tap",
+                                          "play engine/",
+                                          "play a/b/c",
                                           "play",
                                           "play tap loop loop",
                                           "play tap 101",
@@ -931,7 +1049,7 @@ test_sound_arguments(void) {
 static void
 test_sound_parse_boundaries_and_whitespace(void) {
     console_sound_args_t args;
-    char line[CONSOLE_LINE_MAX];
+    char line[CONSOLE_SOUND_LINE_MAX];
     char name[ASSET_NAME_MAX + 1];
     memset(name, 'x', ASSET_NAME_MAX);
     name[ASSET_NAME_MAX - 1] = '\0';
@@ -943,14 +1061,39 @@ test_sound_parse_boundaries_and_whitespace(void) {
     TEST_ASSERT_FALSE(console_sound_parse(line, &args));
     TEST_ASSERT_TRUE(console_sound_parse(" \tplay\ttap \vloop\r100\n", &args));
     TEST_ASSERT_FALSE(console_sound_parse("play tap loop 100 extra", &args));
+    name[ASSET_NAME_MAX - 1] = '\0';
+    (void)snprintf(line, sizeof line, "play %s/%s loop 100", name, name);
+    TEST_ASSERT_TRUE(console_sound_parse(line, &args));
+    TEST_ASSERT_EQUAL_STRING(name, args.pack);
+    TEST_ASSERT_EQUAL_STRING(name, args.name);
+    name[ASSET_NAME_MAX - 1] = 'x';
+    (void)snprintf(line, sizeof line, "play %s/tap", name);
+    TEST_ASSERT_FALSE(console_sound_parse(line, &args));
     TEST_ASSERT_TRUE(console_sound_parse("stop 4294967295", &args));
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, args.voice);
 }
 
+static void
+test_imu_reply_exposes_judge_timing_and_checks_capacity(void) {
+    char reply[CONSOLE_IMU_REPLY_SIZE];
+    TEST_ASSERT_TRUE(console_imu_reply(reply, sizeof reply, DISPLAY_DEFAULT_QUARTER));
+    int quarter, count, sample_ms, commit_ms;
+    TEST_ASSERT_EQUAL_INT(CONSOLE_IMU_REPLY_INTEGER_COUNT,
+                          sscanf(reply, CONSOLE_IMU_REPLY_FORMAT, &quarter, &count, &sample_ms, &commit_ms));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_DEFAULT_QUARTER, quarter);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_QUARTER_COUNT, count);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_SAMPLE_MS, sample_ms);
+    TEST_ASSERT_EQUAL_INT(DISPLAY_COMMIT_MS, commit_ms);
+    TEST_ASSERT_FALSE(console_imu_reply(reply, strlen(reply), DISPLAY_DEFAULT_QUARTER));
+}
+
 void
 suite_console(void) {
+    RUN_TEST(test_imu_reply_exposes_judge_timing_and_checks_capacity);
     RUN_TEST(test_sound_parse_boundaries_and_whitespace);
     RUN_TEST(test_sound_arguments);
+    RUN_TEST(test_overlong_short_verb_is_dropped);
+    RUN_TEST(test_registered_long_verbs_own_their_bounds);
     RUN_TEST(test_exact_name_matches);
     RUN_TEST(test_name_plus_space_carries_args_without_the_verb_or_the_space);
     RUN_TEST(test_a_verb_does_not_swallow_a_longer_word_that_starts_with_its_name);
@@ -963,9 +1106,12 @@ suite_console(void) {
     RUN_TEST(test_a_name_declared_twice_stays_with_the_first);
     RUN_TEST(test_registering_the_same_verb_object_twice_is_once);
     RUN_TEST(test_a_reply_is_up_to_the_verbs_own_handler);
-    RUN_TEST(test_a_request_is_taken_once_with_its_fields);
-    RUN_TEST(test_a_later_request_replaces_its_own_kind_and_leaves_the_others);
+    RUN_TEST(test_a_request_is_taken_once_with_its_payload);
+    RUN_TEST(test_a_later_request_replaces_its_own_slot_and_leaves_the_others);
     RUN_TEST(test_a_held_request_refuses_another_until_it_is_done);
+    RUN_TEST(test_pending_answers_run_once_and_free_a_held_slot);
+    RUN_TEST(test_a_signal_is_taken_once_per_post);
+    RUN_TEST(test_a_slot_name_is_taken_once);
     RUN_TEST(test_a_take_never_sees_a_post_half_written);
     RUN_TEST(test_word_match_carries_what_follows_the_name);
     RUN_TEST(test_word_match_folds_case);

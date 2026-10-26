@@ -12,6 +12,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "render"))
 from r3d import process_budget
+import bake_steps
 import doc_stages
 
 
@@ -136,7 +137,7 @@ class PipelineMeasuresTests(unittest.TestCase):
     def test_missing_memory_is_not_available(self):
         row = dict(step="fit", wall_s=1, triangles_in=2, triangles_out=1,
                    peak_ram_bytes=None, peak_vram_bytes=None)
-        self.assertIn("| not available | not available |", doc_stages.bake_steps_table([("fixture", [row])]))
+        self.assertIn("| not available | not available |", bake_steps.steps_table([("fixture", [row])]))
 
     def test_machine_parsing_and_field_order(self):
         probes = doc_stages.machine_probes("model name : Fixture CPU\nphysical id : 0\ncore id : 0\n",
@@ -155,6 +156,7 @@ class PipelineMeasuresTests(unittest.TestCase):
         from types import SimpleNamespace as NS
         from r3d import mesh_import, lit_mesh
         source = NS(p=np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [1., 1., 0.]]),
+                    tri_o=np.zeros(4, dtype=int), object_names=["mesh"],
                     tri_v=np.array([[0, 1, 2], [1, 3, 2], [0, 1, 2], [0, 1, 2]]), tri_t=np.zeros((4, 3), dtype=int),
                     tri_m=np.array([0, 1, 0, 0]), uv=[], textures={}, names=["surface", "foliage"])
         settings = NS(seed=5, position_scale=None, alpha_keep=.5, thin=NS(material="foliage", keep=0),
@@ -162,7 +164,7 @@ class PipelineMeasuresTests(unittest.TestCase):
         job = NS(settings=settings, renderer=NS(visibility=object(), face_samples=None), bake=None)
         recorder = process_budget.StepRecorder(probe=lambda gpu: (100, None), interval=None)
         with patch.object(mesh_import, "load_source", return_value=source), \
-                patch.object(mesh_import, "drop_masked", return_value=(source.tri_v[:3], source.tri_t[:3], source.tri_m[:3])), \
+                patch.object(mesh_import, "drop_masked", return_value=(source.tri_v[:3], source.tri_t[:3], source.tri_m[:3], np.array([True, True, True, False]))), \
                 patch.object(mesh_import, "RayQuery"), \
                 patch.object(mesh_import, "visible_triangles", return_value=np.array([True, True, False])), \
                 patch.object(mesh_import, "shade_unlit", side_effect=lambda src, mat, p, t: (p, np.zeros_like(p), t)):
@@ -222,10 +224,28 @@ class PipelineMeasuresTests(unittest.TestCase):
             self.assertIn(f"| {name} | {name} fixture |", table)
         rows = [{"step": "fit", "wall_s": 2.5, "triangles_in": 12, "triangles_out": 8,
                  "peak_ram_bytes": 1048576, "peak_vram_bytes": 2097152}]
-        table = doc_stages.bake_steps_table([("variant", rows)])
-        self.assertEqual(table.splitlines()[0],
-                         "| Variant | Step | Wall s | Triangles in | Triangles out | Peak RAM MiB | Peak VRAM MiB |")
-        self.assertIn("| variant | fit | 2.500 | 12 | 8 | 1.0 | 2.0 |", table)
+        table = bake_steps.steps_table([("variant", rows)])
+        self.assertEqual(table.splitlines()[0], "| Variant | Step | Share of variant | Triangles in | Triangles out "
+                                                "| Peak RAM MiB | Peak VRAM MiB |")
+        self.assertIn("| variant | fit | 100% | 12 | 8 | 1.0 | 2.0 |", table)
+        table = bake_steps.steps_table([("variant", rows)], seconds=True)
+        self.assertIn("| variant | fit | 2.500 | 100% | 12 | 8 | 1.0 | 2.0 |", table)
+
+    def test_bake_steps_shares_triangles_and_memory(self):
+        def row(step, wall_s, triangles_in, triangles_out, ram, vram=None):
+            return dict(step=step, wall_s=wall_s, triangles_in=triangles_in, triangles_out=triangles_out,
+                        peak_ram_bytes=ram, peak_vram_bytes=vram)
+        from render.byte_sizes import GB_BYTES as gib
+        variants = [("a-bake", [row("load", 1, 0, 100, gib), row("simplify", 3, 100, 10, 2 * gib)]),
+                    ("b-bake", [row("load", 1, 0, 100, gib), row("simplify", 1, 100, 20, gib)]),
+                    ("b-fit", [row("fit", 9, 20, 15, gib, gib // 2)])]
+        self.assertEqual(bake_steps.shares(variants[0][1]), [25.0, 75.0])
+        self.assertEqual(bake_steps.triangle_bars(variants),
+                         [("after load", 100), ("after simplify, a-bake", 10), ("after simplify, b-bake", 20),
+                          ("after fit", 15)])
+        self.assertEqual(bake_steps.memory_line(variants),
+                         "Peak memory: 2.0 GiB of RAM (in simplify) and 0.5 GiB of VRAM (in fit).")
+        self.assertEqual([variant for variant, rows in variants if not bake_steps.on_gpu(rows)], ["a-bake", "b-bake"])
 
 
 

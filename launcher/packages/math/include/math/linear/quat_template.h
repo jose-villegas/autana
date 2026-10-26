@@ -62,10 +62,9 @@
 #define MATH_DEFINE_QUAT_NORMALIZE(P, V, T, OPS)                                                                       \
     /* normalize = q * (1 / sqrt(qx*qx + qy*qy + qz*qz + qw*qw)). Precondition: `q` is not zero. */                    \
     static inline P##_t P##_normalize(P##_t q) {                                                                       \
-        const T k = OPS##_div(                                                                                         \
-            OPS##_one(),                                                                                               \
-            OPS##_sqrt(OPS##_add(OPS##_add(OPS##_add(OPS##_mul(q.x, q.x), OPS##_mul(q.y, q.y)), OPS##_mul(q.z, q.z)),  \
-                                 OPS##_mul(q.w, q.w))));                                                               \
+        const T k =                                                                                                    \
+            OPS##_rsqrt(OPS##_add(OPS##_add(OPS##_add(OPS##_mul(q.x, q.x), OPS##_mul(q.y, q.y)), OPS##_mul(q.z, q.z)), \
+                                  OPS##_mul(q.w, q.w)));                                                               \
         return (P##_t){OPS##_mul(q.x, k), OPS##_mul(q.y, k), OPS##_mul(q.z, k), OPS##_mul(q.w, k)};                    \
     }                                                                                                                  \
                                                                                                                        \

@@ -1,3 +1,4 @@
+"""refresh_pr opens, updates, labels and closes the refresh pull request."""
 import io
 import json
 import os

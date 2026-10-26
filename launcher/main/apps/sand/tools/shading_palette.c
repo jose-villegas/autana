@@ -35,9 +35,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "collections/sort.h"
 #include "draw/draw_palette.h"
 #include "draw_palette_gen.h"
 #include "gfx/present/gfx_mode.h"
+#include "hash/crc32.h"
 #include "material.h"
 #include "material_palette.h"
 #include "math/scalar/mathi.h"
@@ -375,14 +377,15 @@ scene_glass(sand_t* s) {
     steps(s, 40);
 }
 
+/* Canopy radius in grid cells. */
+#define PLANT_CANOPY_RADIUS 24
+
 static void
 plant_canopy(sand_t* s, int cx, int top, int ground) {
     rect_v(s, cx - 2, top, cx + 2, ground, CELL_MAKE(MAT_WOOD, 0));
-    for (int dy = -24; dy <= 24; dy++) {
-        for (int dx = -26; dx <= 26; dx++) {
-            if ((dx * dx) + (dy * dy) > 24 * 24) {
-                continue;
-            }
+    for (int dy = -PLANT_CANOPY_RADIUS; dy <= PLANT_CANOPY_RADIUS; dy++) {
+        const int half = mathi_half_chord(PLANT_CANOPY_RADIUS, dy);
+        for (int dx = -half; dx <= half; dx++) {
             const bool branch = ((dx + dy) & 3) == 0 && mathi_abs(dx) < 16;
             set_v(s, cx + dx, top + dy, branch ? CELL_MAKE(MAT_WOOD, 0) : MATX(MATX_LEAF));
         }
@@ -1086,18 +1089,20 @@ greedy_grow_palette(int budget) {
 }
 
 static int
+by_lightness(const void* a, const void* b) {
+    const double l_a = key_lab[*(const uint16_t*)a].l;
+    const double l_b = key_lab[*(const uint16_t*)b].l;
+    return (l_a > l_b) - (l_a < l_b);
+}
+
+static int
 group_centers_sorted_by_lightness(group_t g, uint16_t* sorted) {
     const gq_t* q = &quant[g];
     int n = 0;
     for (int j = 0; j < q->k && n < PALETTE_SIZE; j++) {
-        const uint16_t key = lab_to_key(q->c[j]);
-        int at = n++;
-        while (at > 0 && key_lab[sorted[at - 1]].l > key_lab[key].l) {
-            sorted[at] = sorted[at - 1];
-            at--;
-        }
-        sorted[at] = key;
+        sorted[n++] = lab_to_key(q->c[j]);
     }
+    sort_insertion(sorted, (size_t)n, sizeof sorted[0], by_lightness);
     return n;
 }
 
@@ -1463,27 +1468,6 @@ report_ramps(FILE* f) {
 
 /* PNG */
 
-static uint32_t crc_table[256];
-
-static void
-crc_init(void) {
-    for (uint32_t n = 0; n < 256; n++) {
-        uint32_t c = n;
-        for (int k = 0; k < 8; k++) {
-            c = (c & 1) ? 0xEDB88320U ^ (c >> 1) : c >> 1;
-        }
-        crc_table[n] = c;
-    }
-}
-
-static uint32_t
-crc_update(uint32_t crc, const uint8_t* buf, size_t len) {
-    for (size_t i = 0; i < len; i++) {
-        crc = crc_table[(crc ^ buf[i]) & 0xFF] ^ (crc >> 8);
-    }
-    return crc;
-}
-
 static void
 put_be32(FILE* f, uint32_t v) {
     const uint8_t b[4] = {(uint8_t)(v >> 24), (uint8_t)(v >> 16), (uint8_t)(v >> 8), (uint8_t)v};
@@ -1497,9 +1481,7 @@ png_chunk(FILE* f, const char* type, const uint8_t* data, size_t len) {
     if (len > 0) {
         fwrite(data, 1, len, f);
     }
-    uint32_t crc = crc_update(0xFFFFFFFFU, (const uint8_t*)type, 4);
-    crc = crc_update(crc, data, len);
-    put_be32(f, crc ^ 0xFFFFFFFFU);
+    put_be32(f, crc32_update(crc32_update(0, type, 4), data, len));
 }
 
 static bool
@@ -2325,7 +2307,6 @@ static uint8_t common_grp[PANEL_W * PANEL_H];
  * stats.txt. */
 static void
 common_setup(void) {
-    crc_init();
     for (int k = 0; k < KEYS; k++) {
         key_lin[k] = gfx_rgb_to_lin(key_rgb888((uint16_t)k));
         key_lab[k] = gfx_lin_to_lab(key_lin[k]);

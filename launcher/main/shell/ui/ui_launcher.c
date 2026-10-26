@@ -3,7 +3,7 @@
  *
  * The row layout itself lives in ui_launcher_draw.c, split out the same way
  * every app's own screen splits drawing from ui_begin()/ui_end() (see
- * docs/Building-a-Screen.md), not for reuse, but because ui_end() needs the
+ * docs/ui/Building-a-Screen.md), not for reuse, but because ui_end() needs the
  * real framebuffer and ui_launcher_draw() alone does not, which is what
  * lets a host suite drive the real row layout without linking gfx.
  */
@@ -12,15 +12,12 @@
 
 #include "app/app.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_present.h"
 #include "profile/frame_cost.h"
 #include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
 
 const app_t*
 ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
-    ui_launcher_heal_opt_in();
-
     FRAME_COST_BEGIN(built_from);
     ui_begin(input);
     const app_t* chosen = ui_launcher_draw();

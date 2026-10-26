@@ -16,18 +16,18 @@ change as little of the screen as possible per frame.
 |---|---|---|
 | Full-frame present | under the `full-frame present` ceiling in `launcher/test/suites/suite_gfx.c` (80 MHz) | device present tests |
 | Fixed cost per panel transaction | about 118 us | device tests in `launcher/test/suites/suite_gfx.c` |
-| Small moving partial regions at 80 MHz | corrupt pixels; a full-frame send heals them | `docs/notes/Display-and-Rendering.md` |
+| Small moving partial regions at 80 MHz | partial-width windows land a column off; gfx sends full-width rows there | `docs/notes/Display-and-Rendering.md` |
 | PSRAM read / PSRAM-to-PSRAM copy | 33-58 MB/s / about 22 MB/s | [Board and Memory](../notes/Board-and-Memory.md#psram-throughput) |
-| Dirty cells | a 7 x 4 grid of boxes with no preferred axis: a send covers the changed boxes, in either orientation | `docs/Gfx-and-Presentation.md` |
+| Dirty cells | a 7 x 4 grid of boxes with no preferred axis: a send covers the changed boxes, in either orientation | `docs/gfx/Dirty-Tracking.md` |
 | Launcher frame today | about 24.5 ms, presented synchronously (*est* 14 ms draw + 10 ms send) | measured with injected taps |
-| Band ring | frame time becomes the larger of render and send | [Gfx and Presentation](../Gfx-and-Presentation.md#the-band-ring) |
+| Band ring | frame time becomes the larger of render and send | [Gfx](../gfx/Band-Ring.md#the-band-ring) |
 
 What already exists:
 
-- `anim/tween.h`: progress is a byte (0-255). Over 448 px that is about
+- `math/scalar/ease.h`: progress is a byte (0-255). Over 448 px that is about
   1.75 px per step, so an eased end visibly stair-steps. Spatial motion
   needs Q16 progress.
-- `math/motion/spring_line.h`: integer springs on a fixed 4 ms tick that come to
+- `physics/spring/spring_line.h`: integer springs on a fixed 4 ms tick that come to
   rest by themselves.
 - `ui/layout/ui_transform.h`: axis-aligned translate and scale. Text turns only in
   quarter turns and scales only by whole numbers.

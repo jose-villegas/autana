@@ -42,6 +42,7 @@ bake.read_lock = lambda: ({(root / 'key').read_text(): {'sha256': (root / 'lock'
 bake.bakes = lambda paths: [NS(key=(root / 'key').read_text(), output='mesh')]
 bake.submodules = lambda: {}
 bake.tracked_modules = lambda: set()
+bake.tracked_requirements = lambda: sorted(tools.rglob(bake.REQUIREMENTS_GLOB))
 bake.packages.include_roots = lambda: []
 build_pack.pack_jobs = lambda paths: ({'scene': {'clip': root / 'clip.anim.toml',
     'mesh': root / 'mesh.mesh'}}, {root / 'mesh.mesh': None})
@@ -306,21 +307,37 @@ class RecordedInputsTests(unittest.TestCase):
         self.assertFalse(records.current([old, newest, *ignored], 'A'))
         self.assertTrue(records.current([newest, old, *ignored], 'B'))
         failure = artifact(failed, 'A', '2026-01-03T00:00:00Z')
-        self.assertTrue(records.current([old, newest, failure, *ignored], 'A'))
+        self.assertFalse(records.current([old, newest, failure, *ignored], 'A'))
         self.assertFalse(records.current([failure], 'A', force=True))
         self.assertFalse(records.current([], 'A'))
 
 
+    def test_failed_record_order_expiry_and_branch(self):
+        failed = dict(name=records.FAILED_PREFIX + 'F', created_at='2026-01-02',
+                      expired=False, workflow_run={'head_branch': 'main'})
+        rendered = dict(failed, name=records.RENDERED_PREFIX + 'F', created_at='2026-01-01')
+        newer_rendered = dict(rendered, created_at='2026-01-03')
+        cases = [([failed], False), ([rendered, failed], False), ([failed, rendered], False),
+                 ([failed, newer_rendered], True), ([newer_rendered, failed], True),
+                 ([rendered, dict(failed, expired=True)], True),
+                 ([rendered, dict(failed, workflow_run={'head_branch': 'feature/test'})], True)]
+        for artifacts, expected in cases:
+            with self.subTest(artifacts=artifacts), mock.patch.dict(os.environ, FORCE=''), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(records.current(artifacts, 'F'), expected)
+                records.main(['F'], request=mock.Mock(return_value={'artifacts': artifacts}))
+            self.assertEqual(output.getvalue(), str(expected).lower() + '\n')
+
     def test_exact_name_and_empty_fingerprint(self):
-        record = dict(name=records.RECORD_PREFIXES[0] + 'longABC', created_at='2026',
+        record = dict(name=records.RENDERED_PREFIX + 'longABC', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
         self.assertFalse(records.current([record], 'ABC'))
         self.assertFalse(records.current([record], ''))
-        record['name'] = records.RECORD_PREFIXES[0]
+        record['name'] = records.RENDERED_PREFIX
         self.assertFalse(records.current([record], ''))
 
     def test_main_force_and_paged_api(self):
-        record = dict(name=records.RECORD_PREFIXES[0] + 'ABC', created_at='2026',
+        record = dict(name=records.RENDERED_PREFIX + 'ABC', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
         for force, expected in [('true', 'false'), ('', 'true'), ('false', 'true')]:
             with self.subTest(force=force), mock.patch.dict(os.environ, FORCE=force), \
@@ -334,7 +351,7 @@ class RecordedInputsTests(unittest.TestCase):
             self.assertEqual(calls, [('GET', '/actions/artifacts?per_page=100&page=1')])
 
     def test_hosted_lookup_defers_to_gate_when_other_run_in_flight(self):
-        record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
+        record = dict(name=records.RENDERED_PREFIX + 'X', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
         for status in ('queued', 'in_progress', 'pending', 'requested', 'waiting', 'completed'):
             for run_id in (10, 11):
@@ -356,9 +373,15 @@ class RecordedInputsTests(unittest.TestCase):
         steps = workflow['jobs']['refresh']['steps']
         gate = next(index for index, step in enumerate(steps) if step.get('id') == 'gate')
         self.assertEqual(gate, 1)
+        stage = next(index for index, step in enumerate(steps) if step.get('id') == 'gpu')
         names = []
-        for step in steps[gate + 1:]:
-            self.assertIn("steps.gate.outputs.render == 'true'", step.get('if', ''))
+        for index, step in enumerate(steps[gate + 1:], gate + 1):
+            # Past the stage only what it rendered is recorded: it may skip after the lock wait.
+            guard = ("steps.gate.outputs.render == 'true'" if index <= stage
+                     else "steps.gpu.outputs.rendered == 'true'")
+            if index > stage and step.get('if', '').startswith('always()'):
+                guard = "steps.gate.outputs.render == 'true'"
+            self.assertIn(guard, step.get('if', ''))
             if step.get('uses', '').startswith('actions/upload-artifact@'):
                 names.append(step['with']['name'])
         self.assertCountEqual(names, [prefix + '${{ needs.fingerprint.outputs.fingerprint }}'
@@ -370,7 +393,8 @@ class RecordedInputsTests(unittest.TestCase):
         self.assertEqual(workflow['jobs']['fingerprint']['outputs']['current'], '${{ steps.inputs.outputs.current }}')
         refresh = workflow['jobs']['refresh']
         self.assertEqual(refresh['needs'], 'fingerprint')
-        self.assertEqual(refresh['if'], "needs.fingerprint.outputs.current != 'true'")
+        # A push only marks images pending; the render waits for the night window.
+        self.assertEqual(refresh['if'], "github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'")
         self.assertEqual(refresh['concurrency'], {'group': 'doc-images-gpu', 'cancel-in-progress': 'false', 'queue': 'max'})
         self.assertEqual(workflow['env']['FORCE'], '${{ inputs.force }}')
         self.assertNotIn('. launcher/tools/r3d/gpu_env.sh', '\n'.join(step.get('run', '') for step in steps))
@@ -389,7 +413,7 @@ class RecordedInputsTests(unittest.TestCase):
                                                   {'id': 10, 'status': 'pending'}]}
                     # A record read first sees X before the other run finishes and records B.
                     fingerprint = 'X' if matching and len(calls) == 1 else 'B'
-                    return {'artifacts': [dict(name=records.RECORD_PREFIXES[0] + fingerprint,
+                    return {'artifacts': [dict(name=records.RENDERED_PREFIX + fingerprint,
                         created_at='2026', expired=False, workflow_run={'head_branch': 'main'})]}
                 records.main(['X', '--defer-in-flight'], request=request)
             self.assertEqual(output.getvalue(), 'false\n')
@@ -414,7 +438,7 @@ class RecordedInputsTests(unittest.TestCase):
         request.assert_called_once_with('GET', '/git/ref/heads/main')
 
     def test_delayed_push_gate_skips_after_completed_revert(self):
-        record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
+        record = dict(name=records.RENDERED_PREFIX + 'X', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
         with mock.patch.dict(os.environ, FORCE='', GITHUB_SHA='X'), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
@@ -440,7 +464,7 @@ class RecordedInputsTests(unittest.TestCase):
                     tail = [{'id': 1000 + index, 'status': 'completed'} for index in range(3)]
                     if unfinished:
                         (runs if page == 1 else tail)[len(runs) // 2 if page == 1 else 1]['status'] = 'pending'
-                    record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
+                    record = dict(name=records.RENDERED_PREFIX + 'X', created_at='2026',
                                   expired=False, workflow_run={'head_branch': 'main'})
                     def request(method, path, body=None):
                         if '/artifacts?' in path:

@@ -22,7 +22,7 @@ hold an authored rest pose and the animation still draws. Boot reads the
 picture (`boot_anim_photo.c`) on the second frame, one of the cheapest, so
 checking its 330 KB pack neither delays the first frame nor stalls the
 crossfade; without it the scene
-stays where the photograph would have covered it. `boot_anim.h` samples the tracks with the engine's [animation tracks](../../../docs/Animation-Tracks.md) and converts each
+stays where the photograph would have covered it. `boot_anim.h` samples the tracks with the engine's [animation tracks](../../../docs/render/Animation-Tracks.md) and converts each
 frame's values to a `transformf_t` in `anim/anim_transform.h`. The space's
 rotation is a quaternion slerp between its keys. Frames render on a host with
 `tools/render/scenes/boot_anim_render_host.sh`; see [Watching a change](#watching-a-change).
@@ -75,12 +75,28 @@ the mesh they go on alone to `far_m`, still lifted by the ripple and the
 swell, growing over `far_grow_ms` once the mesh has arrived, eased in by
 `far_grow_power`. They end at the horizon, where the far grid converges.
 
-The plane itself goes on past the mesh as flat, straight grid lines: every
+The plane itself goes on past the mesh as straight grid lines: every
 `far_line_cells`-th mesh line inside the mesh's edge, then the gap doubling
 each time the distance grows by `far_line_growth`. They are cut to the circle of the floor's reach, so the plane
 arrives radially; its outer `far_front` share fades in over
 `far_front_steps` rings until the reach is complete. Near the horizon the
 lines merge into a band.
+
+The swell rides the far lines and the axis lines past the mesh, easing out
+to flat at `far_swell_fade_m`. The far lines are sampled where they cross
+the axis lines' sample circles, so the samples thin with distance. The
+generator rejects a fade past the point where those samples are more than
+half the shortest swell wavelength apart. The swell starts only once the
+reach is complete, so the far front stays flat. The far lines lose it
+again over `far_swell_out_ms` before `image_start_ms`, so they are flat
+and cheap under the crossfade, where the photograph covers them; the axis
+lines keep theirs.
+
+![Main (left) and the swell over the far grid (right), 2.55 to 4.2 s](far_swell/main-vs-far-swell.gif)
+
+![Before the trim (left) and the far grid flat under the crossfade (right), 3.3 to 4.9 s](far_swell/crossfade-main-vs-trim.gif)
+
+![The two frames that differ most, 4.02 and 4.04 s, under the photograph's dither](far_swell/crossfade-main-vs-trim.crops.png)
 
 The camera-plane walk retains fractional bits until projection. Views
 outside its input bounds use the full transform. The comparison below aligns

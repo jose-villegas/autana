@@ -15,15 +15,37 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      lint: ${{ steps.affected.outputs.lint }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job lint
+
   lint:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lint == 'true') }}
     name: Lint and POSIX check
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
 
       # A shell script is what its first line says, not its name: tools/autana
       # and the pre-commit hook have no .sh, and a glob by name never saw them.
@@ -37,6 +59,18 @@ jobs:
             fi
           done > "$RUNNER_TEMP/shell-scripts.txt"
           cat "$RUNNER_TEMP/shell-scripts.txt"
+
+      - uses: ./.github/actions/host-tools
+
+      - name: Host lock and night scheduling tests
+        run: |
+          python3 -m pip install pyserial -r scripts/gates/requirements.txt
+          python3 -m unittest discover -s scripts/device/tests
+          python3 scripts/gates/check_autana_source.py
+          python3 -m unittest discover -s scripts/gates/tests -p test_check_autana_source.py
+          python3 -m unittest discover -s launcher/tools/tune/tests
+          python3 -m unittest discover -s scripts/ci/tests
+          python3 -m unittest discover -s launcher/tools/perf/tests -p test_nightly_chain.py
 
       - name: Every script with a shebang is stored executable
         run: sh scripts/gates/check-exec-bits.sh
@@ -74,3 +108,7 @@ jobs:
       # gate permanently soft.
       - name: shellcheck (errors)
         run: shellcheck -S error $(cat "$RUNNER_TEMP/shell-scripts.txt")
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}

@@ -39,8 +39,8 @@ menu "Launcher"
         default n
         depends on LAUNCHER_DEVELOPMENT
         help
-            Compiles the test suites into the firmware and runs them at boot,
-            before the shell starts.
+            Compiles the test suites into the firmware. They run on demand
+            from the Diagnostics app, or at boot with LAUNCHER_SELFTEST_AUTORUN.
 
             Off by default, so a normal build carries no test code at all.
             The suites draw to the framebuffer and drive the panel, which is
@@ -78,6 +78,7 @@ menu "Launcher"
             whole run goes through it.
 
     config LAUNCHER_QEMU
+        select TESTKIT_QEMU
         bool "The image runs under Espressif's QEMU, with no board attached"
         depends on LAUNCHER_DEVELOPMENT
         default n

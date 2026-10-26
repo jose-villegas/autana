@@ -365,9 +365,14 @@ print(m.render(builds))
         source = self.root / "source"
         source.mkdir()
         (source / "file.c").write_text("first")
+        for args in (["init", "-q"], ["add", "file.c"],
+                     ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify", "-m", "first"]):
+            subprocess.run(["git", "-C", str(source), *args], check=True)
         work = self.root / "work"
         with patch.object(scratch, "tracked_files", return_value=["file.c"]):
             tree = scratch.scratch_tree(work, source)
+            listed = subprocess.run(["git", "-C", str(tree), "ls-files", "-s"], capture_output=True, text=True, check=True)
+            self.assertIn("	file.c", listed.stdout)
             (tree / "obsolete").write_text("old")
             (source / "file.c").write_text("current")
             with self.assertRaisesRegex(ValueError, "already exists"):
@@ -934,10 +939,11 @@ class GateRegressions(unittest.TestCase):
             source = root / "foo.c"
             source.write_text("void root(void) {}")
             db = root / "compile_commands.json"
-            db.write_text(json.dumps([{"directory": str(root), "file": str(source),
+            db.write_text(json.dumps([{"directory": str(root), "file": str(source), "output": "foo.o",
                                        "arguments": ["cc", "-DKEEP=y", "-c", "foo.c", "-o", "foo.o", "-MF", "foo.d", "-MT", "target", "-MQ", "quoted"]}]))
             jobs = stack_chain_gate.app_jobs(str(db), str(root))
-            self.assertEqual(jobs, [(["cc", "-DKEEP=y"], str(root), str(source).replace("\\", "/"))])
+            self.assertEqual(jobs, [(["cc", "-DKEEP=y"], str(root), str(source).replace("\\", "/"),
+                                     os.path.join(str(root), "foo.ci"))])
 
     def test_default_pin_reader(self):
         expected = json.loads((memory.ROOT / "launcher/idf-pin.json").read_text())

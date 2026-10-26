@@ -56,85 +56,78 @@ flowchart TB
 
 ## Offline, on the host
 
-Every step runs on the CPU except the fit, which needs a CUDA GPU.
-The doc-images GPU stage rebakes the demo scene's meshes on the machine in
-the table below:
+Every step runs on the CPU except the fit, which needs a CUDA GPU. The chart
+gives each step's share of a bake; seconds depend on the machine, so time your
+own with:
 
-<!-- generated: bake-machine sha256=23d185bd8bd39958b2336baa15b8d3db3c368ebd0344c0b3af20c58dbc9ec351 -->
-| Machine | Value |
-|---|---|
-| CPU | Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz |
-| Cores/threads | 5/10 |
-| RAM | 10.7 GiB |
-| GPU | NVIDIA GeForce RTX 2060 |
-| VRAM | 6144 MiB |
-| Driver | 617.14 |
-| CUDA | 12.8 |
-| OS | Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.39 |
-| Python | 3.12.14 |
-| Mitsuba | 3.9.1 |
-| PyTorch | 2.11.0+cu128 |
-<!-- /generated: bake-machine -->
+```sh
+python launcher/tools/render/bake_steps.py SCENE.scene.toml [--mesh NAME]
+```
 
-Each step of those bakes, with the triangles it took and left and the memory
-it peaked at:
+<!-- generated: bake-steps sha256=452ca4d0d8ce5aa5a5feb791d7023b0c4c4e9feaf9c2f683c1d8e3b668a836a5 -->
+![Bake steps](../images/render/gpu/bake-steps.png)
 
-<!-- generated: bake-steps sha256=debe9fa09d7a1519ec944c50b89f3668698f5fc7094a0f4e34f9bb5eebef30cc -->
-| Variant | Step | Wall s | Triangles in | Triangles out | Peak RAM MiB | Peak VRAM MiB |
+Peak memory: 3.4 GiB of RAM (in simplify) and 1.2 GiB of VRAM (in fit).
+
+<details><summary>Bake steps</summary>
+
+| Variant | Step | Share of variant | Triangles in | Triangles out | Peak RAM MiB | Peak VRAM MiB |
 |---|---|---|---|---|---|---|
-| lite-GI-bake | source load | 11.255 | 0 | 262267 | 1555.1 | not available |
-| lite-GI-bake | alpha mask | 0.313 | 262267 | 245465 | 1509.6 | not available |
-| lite-GI-bake | visibility | 15.696 | 245465 | 211859 | 1906.1 | not available |
-| lite-GI-bake | thin | 0.003 | 211859 | 202188 | 1844.0 | not available |
-| lite-GI-bake | light | 113.732 | 202188 | 681348 | 3294.2 | not available |
-| lite-GI-bake | simplify | 34.405 | 681348 | 8669 | 3435.5 | not available |
-| lite-GI-bake | meshlets | 0.061 | 8669 | 8669 | 3225.9 | not available |
-| lite-GI-bake | write | 0.002 | 8669 | 8669 | 3225.0 | not available |
-| lite-fit-start | source load | 6.324 | 0 | 262267 | 1511.6 | not available |
-| lite-fit-start | alpha mask | 0.179 | 262267 | 245465 | 1497.7 | not available |
-| lite-fit-start | visibility | 11.168 | 245465 | 211859 | 1903.0 | not available |
-| lite-fit-start | thin | 0.002 | 211859 | 202188 | 1833.8 | not available |
-| lite-fit-start | light | 46.680 | 202188 | 681348 | 3302.9 | not available |
-| lite-fit-start | simplify | 17.619 | 681348 | 13494 | 3427.5 | not available |
-| lite-fit-start | meshlets | 0.068 | 13494 | 13494 | 3319.0 | not available |
-| lite-fit-start | write | 0.002 | 13494 | 13494 | 3319.0 | not available |
-| lite-GI-fit | fit | 922.178 | 13494 | 8672 | 2721.3 | 1138.0 |
-| full-GI-bake | source load | 8.393 | 0 | 262267 | 1544.5 | not available |
-| full-GI-bake | alpha mask | 0.216 | 262267 | 245465 | 1508.9 | not available |
-| full-GI-bake | visibility | 14.750 | 245465 | 211859 | 1905.7 | not available |
-| full-GI-bake | thin | 0.005 | 211859 | 202188 | 1823.6 | not available |
-| full-GI-bake | light | 81.568 | 202188 | 681348 | 3303.4 | not available |
-| full-GI-bake | simplify | 15.045 | 681348 | 17367 | 3430.5 | not available |
-| full-GI-bake | meshlets | 0.165 | 17367 | 17367 | 3316.0 | not available |
-| full-GI-bake | write | 0.018 | 17367 | 17367 | 3316.0 | not available |
-| full-fit-start | source load | 6.658 | 0 | 262267 | 1558.2 | not available |
-| full-fit-start | alpha mask | 0.202 | 262267 | 245465 | 1512.7 | not available |
-| full-fit-start | visibility | 11.730 | 245465 | 211859 | 1921.4 | not available |
-| full-fit-start | thin | 0.003 | 211859 | 202188 | 1823.0 | not available |
-| full-fit-start | light | 77.276 | 202188 | 681348 | 3305.2 | not available |
-| full-fit-start | simplify | 34.043 | 681348 | 29995 | 3446.4 | not available |
-| full-fit-start | meshlets | 0.592 | 29995 | 29995 | 3277.5 | not available |
-| full-fit-start | write | 0.013 | 29995 | 29995 | 3277.5 | not available |
-| full-GI-fit | fit | 1051.771 | 29995 | 17381 | 2704.2 | 1164.0 |
-| flat-GI-bake | source load | 7.975 | 0 | 262267 | 1558.9 | not available |
-| flat-GI-bake | alpha mask | 0.341 | 262267 | 245465 | 1501.5 | not available |
-| flat-GI-bake | visibility | 14.769 | 245465 | 211859 | 1936.0 | not available |
-| flat-GI-bake | thin | 0.002 | 211859 | 202188 | 1828.0 | not available |
-| flat-GI-bake | light | 52.463 | 202188 | 681348 | 3293.4 | not available |
-| flat-GI-bake | simplify | 10.523 | 681348 | 17367 | 3414.9 | not available |
-| flat-GI-bake | face colours | 11.829 | 17367 | 17367 | 3215.5 | not available |
-| flat-GI-bake | meshlets | 0.210 | 17367 | 17367 | 3215.6 | not available |
-| flat-GI-bake | write | 0.002 | 17367 | 17367 | 3215.6 | not available |
-| flat-fit-start | source load | 8.514 | 0 | 262267 | 1551.6 | not available |
-| flat-fit-start | alpha mask | 0.204 | 262267 | 245465 | 1511.5 | not available |
-| flat-fit-start | visibility | 15.310 | 245465 | 211859 | 1920.2 | not available |
-| flat-fit-start | thin | 0.003 | 211859 | 202188 | 1837.8 | not available |
-| flat-fit-start | light | 69.413 | 202188 | 681348 | 3304.0 | not available |
-| flat-fit-start | simplify | 13.745 | 681348 | 29995 | 3427.3 | not available |
-| flat-fit-start | face colours | 21.977 | 29995 | 29995 | 3261.8 | not available |
-| flat-fit-start | meshlets | 0.378 | 29995 | 29995 | 3258.1 | not available |
-| flat-fit-start | write | 0.005 | 29995 | 29995 | 3258.1 | not available |
-| flat-GI-fit | fit | 779.912 | 29995 | 17381 | 2703.7 | 1200.0 |
+| lite-GI-bake | source load | 7% | 0 | 262267 | 1625.6 | not available |
+| lite-GI-bake | alpha mask | 0% | 262267 | 245465 | 1580.2 | not available |
+| lite-GI-bake | visibility | 11% | 245465 | 211859 | 1999.2 | not available |
+| lite-GI-bake | thin | 0% | 211859 | 202188 | 1925.0 | not available |
+| lite-GI-bake | light | 67% | 202188 | 681348 | 3366.4 | not available |
+| lite-GI-bake | simplify | 15% | 681348 | 8669 | 3530.0 | not available |
+| lite-GI-bake | meshlets | 0% | 8669 | 8669 | 3379.8 | not available |
+| lite-GI-bake | write | 0% | 8669 | 8669 | 3379.8 | not available |
+| lite-fit-start | source load | 8% | 0 | 262267 | 1624.6 | not available |
+| lite-fit-start | alpha mask | 0% | 262267 | 245465 | 1567.2 | not available |
+| lite-fit-start | visibility | 13% | 245465 | 211859 | 1966.4 | not available |
+| lite-fit-start | thin | 0% | 211859 | 202188 | 1897.0 | not available |
+| lite-fit-start | light | 56% | 202188 | 681348 | 3383.3 | not available |
+| lite-fit-start | simplify | 22% | 681348 | 13494 | 3507.6 | not available |
+| lite-fit-start | meshlets | 0% | 13494 | 13494 | 3390.4 | not available |
+| lite-fit-start | write | 0% | 13494 | 13494 | 3390.4 | not available |
+| lite-GI-fit | fit | 100% | 13494 | 8447 | 2760.8 | 1138.0 |
+| full-GI-bake | source load | 7% | 0 | 262267 | 1616.6 | not available |
+| full-GI-bake | alpha mask | 0% | 262267 | 245465 | 1567.4 | not available |
+| full-GI-bake | visibility | 13% | 245465 | 211859 | 2002.5 | not available |
+| full-GI-bake | thin | 0% | 211859 | 202188 | 1875.9 | not available |
+| full-GI-bake | light | 65% | 202188 | 681348 | 3374.1 | not available |
+| full-GI-bake | simplify | 15% | 681348 | 17367 | 3518.1 | not available |
+| full-GI-bake | meshlets | 0% | 17367 | 17367 | 3388.1 | not available |
+| full-GI-bake | write | 0% | 17367 | 17367 | 3388.1 | not available |
+| full-fit-start | source load | 7% | 0 | 262267 | 1599.4 | not available |
+| full-fit-start | alpha mask | 0% | 262267 | 245465 | 1568.0 | not available |
+| full-fit-start | visibility | 11% | 245465 | 211859 | 1996.2 | not available |
+| full-fit-start | thin | 0% | 211859 | 202188 | 1920.1 | not available |
+| full-fit-start | light | 68% | 202188 | 681348 | 3382.8 | not available |
+| full-fit-start | simplify | 14% | 681348 | 29995 | 3519.1 | not available |
+| full-fit-start | meshlets | 0% | 29995 | 29995 | 3384.4 | not available |
+| full-fit-start | write | 0% | 29995 | 29995 | 3383.6 | not available |
+| full-GI-fit | fit | 100% | 29995 | 17023 | 2788.1 | 1164.0 |
+| flat-GI-bake | source load | 8% | 0 | 262267 | 1626.6 | not available |
+| flat-GI-bake | alpha mask | 0% | 262267 | 245465 | 1569.1 | not available |
+| flat-GI-bake | visibility | 13% | 245465 | 211859 | 2000.6 | not available |
+| flat-GI-bake | thin | 0% | 211859 | 202188 | 1891.3 | not available |
+| flat-GI-bake | light | 56% | 202188 | 681348 | 3385.7 | not available |
+| flat-GI-bake | simplify | 12% | 681348 | 17367 | 3518.8 | not available |
+| flat-GI-bake | face colours | 11% | 17367 | 17367 | 3395.7 | not available |
+| flat-GI-bake | meshlets | 0% | 17367 | 17367 | 3395.8 | not available |
+| flat-GI-bake | write | 0% | 17367 | 17367 | 3395.8 | not available |
+| flat-fit-start | source load | 7% | 0 | 262267 | 1593.9 | not available |
+| flat-fit-start | alpha mask | 0% | 262267 | 245465 | 1580.4 | not available |
+| flat-fit-start | visibility | 11% | 245465 | 211859 | 1994.8 | not available |
+| flat-fit-start | thin | 0% | 211859 | 202188 | 1897.9 | not available |
+| flat-fit-start | light | 55% | 202188 | 681348 | 3356.9 | not available |
+| flat-fit-start | simplify | 10% | 681348 | 29995 | 3512.1 | not available |
+| flat-fit-start | face colours | 16% | 29995 | 29995 | 3370.9 | not available |
+| flat-fit-start | meshlets | 0% | 29995 | 29995 | 3368.2 | not available |
+| flat-fit-start | write | 0% | 29995 | 29995 | 3368.2 | not available |
+| flat-GI-fit | fit | 100% | 29995 | 16960 | 2787.5 | 1200.0 |
+
+</details>
 <!-- /generated: bake-steps -->
 
 ### Geometry
@@ -150,7 +143,7 @@ loads it whole.
 |---|---|---|
 | OBJ, MTL, textures | triangles with materials and UVs | `[source]` path and credit |
 
-Cost: `source load` in the bake-steps table.
+Cost: `source load` in the bake-steps rows.
 
 The source lit per pixel is the reference every bake is scored against (left,
 in the [fidelity sheet](Bake-Quality.md#fidelity-against-the-source)):
@@ -167,7 +160,7 @@ Drops alpha-tested triangles that are mostly transparent; the board does not alp
 |---|---|---|
 | triangles, textures | fewer triangles | `geometry.alpha_mask.keep_alpha` |
 
-Cost: `alpha mask` in the bake-steps table.
+Cost: `alpha mask` in the bake-steps rows.
 
 ![Triangles kept and dropped by the alpha mask](images/import-alpha-mask.png)
 
@@ -182,7 +175,7 @@ along its path, so the triangle budget goes to what is drawn.
 |---|---|---|
 | triangles, the camera's region or path | the seen triangles | the renderer's `visibility` |
 
-Cost: `visibility` in the bake-steps table.
+Cost: `visibility` in the bake-steps rows.
 
 ![Triangles the camera region sees](images/import-visibility.png)
 
@@ -197,7 +190,7 @@ to draw whole. It runs after visibility so the share is of what is seen.
 |---|---|---|
 | the seen triangles | fewer of that material's triangles | `geometry.thin.material`, `geometry.thin.keep` |
 
-Cost: `thin` in the bake-steps table.
+Cost: `thin` in the bake-steps rows.
 
 ![A thinned material](images/import-thin.png)
 
@@ -213,7 +206,7 @@ backend).
 |---|---|---|
 | dense triangles, materials, the scene's lights | a colour per vertex | `[bake]` with `ao` and `indirect`, `[indirect]`, sky, ambient, tone map |
 
-Cost: `light`, and `face colours` for flat meshes, in the bake-steps table.
+Cost: `light`, and `face colours` for flat meshes, in the bake-steps rows.
 
 ![Albedo against baked light](../images/render/import-light.png)
 
@@ -233,9 +226,9 @@ no seam opens.
 
 | Reads | Writes | Settings |
 |---|---|---|
-| lit triangles | the variant's mesh | `geometry.simplify`: `dense_edge`, `props`, `props_share`, `seal_seams`, `colour_deviation`; each variant's `triangles` |
+| lit triangles | the variant's mesh | `geometry.simplify`: `dense_edge`, `props`, `props_share`, `seal_seams`, `colour_deviation`; `[objects] overrides`; each variant's `triangles` |
 
-Cost: `simplify` in the bake-steps table.
+Cost: `simplify` in the bake-steps rows.
 
 ![A seam left open and sealed](images/import-seal-seams.png)
 
@@ -254,7 +247,7 @@ per face.
 |---|---|---|
 | a variant, reference renders | the fitted mesh | the renderer's `fit`: prune, poses, optimise, hashes |
 
-Cost: `fit` in the bake-steps table.
+Cost: `fit` in the bake-steps rows.
 
 ![A fitted mesh against the reference](../images/render/appearance-fitted-full-reference.png)
 
@@ -274,7 +267,7 @@ culls and draws.
 |---|---|---|
 | the final mesh | clusters, nodes, the `.mesh` entry | `geometry.meshlet_triangles` |
 
-Cost: `meshlets` and `write` in the bake-steps table.
+Cost: `meshlets` and `write` in the bake-steps rows.
 
 The meshlets debug view gives each cluster a flat hue, shown here for the
 full, lite and fitted meshes. Each instance owns a disjoint ID range, reset on
@@ -287,16 +280,22 @@ third off the frame. Meshlets of 16 and 32 tie; 64 loses, because its coarser
 boxes let through more triangles than its fewer culls save. Each size on the
 board, against submitting every cluster:
 
-<!-- generated: meshlet-sizes sha256=a2394a367bfaeaea5674c00debb910455e0d05d3ab6a5d512b84eae7023763b0 -->
+<!-- generated: meshlet-sizes sha256=f5bfbd3a6cede8cd64c1dc0d82ff1c92b11f904242e45c5b32c2c7b83444d93a -->
+![Frame cost by meshlet size](../images/render/meshlets/meshlet-sizes.png)
+
+<details><summary>Meshlet sizes on the board</summary>
+
 | Row | Clusters | Vertices/triangle | Mean submitted triangles | Cull ms | Transform ms | Draw ms | Frame ms |
 |---|---|---|---|---|---|---|---|
-| cull off | 583 | 0.934 | 17376.0 | 0.35 | 5.21 | 63.37 | 74.85 |
-| meshlets of 16 | 1225 | 1.061 | 8661.6 | 0.99 | 3.57 | 42.01 | 52.50 |
-| meshlets of 32 (shipped) | 583 | 0.934 | 9564.1 | 0.66 | 3.21 | 42.98 | 52.80 |
-| meshlets of 64 | 286 | 0.851 | 10858.9 | 0.48 | 3.18 | 46.27 | 55.89 |
+| cull off | 605 | 1.040 | 16929.0 | 0.34 | 5.70 | 48.46 | 57.28 |
+| meshlets of 16 | 1290 | 1.166 | 8082.3 | 0.94 | 3.62 | 32.98 | 40.36 |
+| meshlets of 32 (shipped) | 605 | 1.040 | 8652.7 | 0.60 | 3.24 | 33.89 | 40.57 |
+| meshlets of 64 | 296 | 0.959 | 9529.5 | 0.43 | 3.17 | 35.45 | 41.67 |
+
+</details>
 <!-- /generated: meshlet-sizes -->
 
-Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
+Reference: [Baked-Mesh.md](Baked-Mesh.md#meshlets).
 
 #### Asset pack
 
@@ -308,24 +307,16 @@ clip) into one pack; `launcher/demo/` content ships only where an app's
 |---|---|---|
 | the scene, its meshes and clip | one pack per root, the partition image | an app's list of demo assets |
 
-Cost: not timed in the bake-steps table.
+Cost: not timed in the bake-steps rows.
 
-Reference: [the asset packs](../assets/README.md#packs).
+Reference: [the asset packs](../assets/Building-Packs.md#packs).
 
 ## Every frame, on the board
 
-Separate charts show the shipped frame and each debug view. The shipped
-chart uses solid segments; each view chart shows hatched additions, with an
-label and elbow leader marking the base frame at the bar's start. A segment
-is drawn only when its share rounds above zero percent. Legends match the
-drawn segments; the table retains every stage in milliseconds. Each axis fits
-its own data, and view ticks show added milliseconds.
-The shipped label gives the total; view labels give the signed net addition
-and its share of the shipped total. Segment labels and legends give each
-stage's share of the shipped total, signed for view additions. Dotted lines
-mark the frame-rate budgets when they fall inside the chart.
+Solid bars are the shipped frame; hatched bars are what each debug view adds.
+The table under the charts has every stage in ms.
 
-<!-- generated: pipeline-frame-stages sha256=4ca11d90dd2b848aa4842035ac3193109d3428e9c6ec73ccb768b6904f650410 -->
+<!-- generated: pipeline-frame-stages sha256=db43f7ca3a424c91eee2b61f12c3a434fb93e3b5e739c8d97806d9fc9f5d725f -->
 ![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
 
 ![Frame stages with the depth view](../images/render/pipeline-frame-stages.depth.png)
@@ -335,6 +326,8 @@ mark the frame-rate budgets when they fall inside the chart.
 ![Frame stages with the motion view](../images/render/pipeline-frame-stages.motion.png)
 
 ![Frame stages with the meshlets view](../images/render/pipeline-frame-stages.meshlets.png)
+
+<details><summary>Frame stages in milliseconds</summary>
 
 | Stage | As shipped | Share | depth view adds | tiles view adds | motion view adds | meshlets view adds |
 |---|---|---|---|---|---|---|
@@ -349,6 +342,8 @@ mark the frame-rate budgets when they fall inside the chart.
 | total | 51.23 | 100% | +7.47 | +5.04 | +25.70 | +34.40 |
 
 Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped.
+
+</details>
 <!-- /generated: pipeline-frame-stages -->
 
 ### Scene and camera
@@ -363,7 +358,7 @@ view is built is in [Mesh-Rendering.md](Mesh-Rendering.md#what-a-scene-uses).
 
 Cost: part of `frame.rest` in the frame-stages chart.
 
-![The demo scene along its flythrough](../images/render/sponza-full.gif)
+![The demo scene along its flythrough](../images/render/sponza-fitted-full.gif)
 
 Reference: [Scene-Manager.md](Scene-Manager.md#each-frame).
 
@@ -402,7 +397,8 @@ list, and the draw reuses it.
 Cost: `r3d.cull` in the frame-stages chart; a predicted size is charged to
 `r3d.census` instead.
 
-Picture: none yet.
+Picture: [the cull view](Mesh-Rendering.md#the-cull-seen), each cluster's
+fate along a camera path.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#one-frame).
 
@@ -467,7 +463,7 @@ Reference: [Mesh-Rendering.md](Mesh-Rendering.md#attachments).
 
 #### View modes
 
-Development builds select depth, tiles, motion or meshlets from the declared
+Development builds select depth, tiles, motion, meshlets or cull from the declared
 view table in `render/context/render_context.c`. Before upscale, the selected
 attachment paints colour from the renderer's maps.
 
@@ -505,7 +501,7 @@ present mode uses this to draw half the rows
 
 Cost: `r3d.upscale` in the frame-stages chart.
 
-Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#expanded-frames).
+Reference: [gfx/Targets-and-Modes.md](../gfx/Targets-and-Modes.md#expanded-frames).
 
 #### Present
 
@@ -519,7 +515,7 @@ what the frame waits for it.
 
 Cost: `present.wait` in the frame-stages chart.
 
-Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#present-what-gets-sent).
+Reference: [gfx/Present.md](../gfx/Present.md#present-what-gets-sent).
 
 ## Refreshing
 
@@ -547,19 +543,17 @@ view without one is listed as not captured. Check `autana status` and `autana bu
 before and after each capture. A missing capture of the scene as shipped, or a
 capture without report windows, fails the run.
 
-The `meshlet-sizes` table is generated from each size's own suite capture and
+The `meshlet-sizes` chart and rows are generated from each size's own suite capture and
 regenerated bake. The [meshlet capture recipe](../../launcher/tools/render/README.md#meshlet-size-captures)
 owns preparation, capture validation and refresh commands.
 
-The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
-rebakes and fits. Refresh them on the GPU runner with:
+The GPU stage writes the `bake-steps` chart and rows from its own rebakes and
+fits. Refresh them on a machine with a CUDA GPU with:
 
 ```sh
 sh launcher/tools/render/render_doc_images.sh --stage gpu
 ```
 
-RAM peaks are sampled process RSS; GPU steps also read GPU
-resident memory and PyTorch's reserved-memory peak. CPU steps have no VRAM
-measurement. Each fitted input's rebake is labelled `fit-start`, and its fit
-has a separate row. The machine table reads the runner's hardware and
-software versions during that run.
+RAM peaks are sampled process RSS; only GPU steps read VRAM. Each fitted
+input's rebake is `fit-start`, with its fit on its own row. The machine's
+hardware and versions go in the stage's `measurements.json`.

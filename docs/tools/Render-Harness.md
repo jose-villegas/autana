@@ -3,7 +3,7 @@
 Rendering a firmware screen into an image on a laptop: how a scene is
 declared, what its pixels are pinned to, the same scenes under QEMU, and
 diffing any of them against a device capture.
-[`../Testing-Guide.md`](../Testing-Guide.md) is the host/device test split
+[`testing/README.md`](../testing/README.md) is the host/device test split
 this sits inside.
 
 On Windows, run the `.sh` commands below in Git Bash. On Linux, use a
@@ -34,10 +34,14 @@ Meshes must already be baked.
 Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
 all authored renderers. An unknown renderer reports the available names.
 `--camera NAME` selects a camera; omission activates the scene's default.
+With `--camera`, stderr names that camera's path duration in ms.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
-30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets` selects the render
+30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets|cull` selects the render
 context's view, with shaded as the default. The names match the declared
 `render_debug_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
+With `--view cull`, `--counts FILE` writes one CSV row per frame of what the
+cull kept and drew ([Mesh-Rendering.md](../render/Mesh-Rendering.md#the-cull-seen));
+without it, `--counts` is refused.
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
@@ -105,7 +109,7 @@ requests".
 | `overview/launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
 | `overview/launcher-home.gif` | the same, rocking the board either way |
 | `overview/boot-anim.gif` | the boot animation in landscape orientation |
-| `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
+| `ui/*.png` | each face example in its states, and the States tables of `docs/ui/` (`ui_examples_render_host.sh`, `ui_examples_doc.py`); source uses the [usage example rule](Generated-Files.md#usage-examples) |
 
 Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
 the dynamic-resolution report write one Markdown table per block name into
@@ -159,17 +163,42 @@ A comment or blank-line edit in the Python leaves the fingerprint unchanged.
 The stage's work folder is named by it, and its saved `source.json` holds it
 and lists every input.
 
-The `doc-images-gpu` workflow runs on every main push, nightly and on manual
-dispatch. The latest unexpired rendered or failed record on main decides
-whether these inputs are current. A dispatch with `force` bypasses both
-record checks but still skips an obsolete run. The hosted lookup defers to
-the GPU gate while another run of this workflow on main is unfinished. The
-gate holds the concurrency group, skips runs whose trigger SHA is no longer
-main's head, then checks only the latest record. Refresh jobs queue instead of replacing each other
-(`queue: max`); an obsolete one skips in seconds, so the head's job still
-runs; the nightly run is the backstop for anything a missed or failed trigger
-leaves stale. A forced dispatch that becomes obsolete must be dispatched
-again on main.
+The `doc-images-gpu` workflow fingerprints inputs on every main push.
+Changed images remain pending for the night window; pushes do not render.
+
+The doc job takes its fingerprint at its 16:00Z start; inputs merged during
+the evening wait render the next night.
+
+The [night order](../../launcher/tools/perf/README.md#nightly-scoped-chain)
+owns the local wait, bake priority and board-plan handoff. The hosted job
+only fingerprints. Every Bakes GPU completion triggers a fresh check.
+
+GPU stages observe active board locks, then take heavy, holding nothing in
+between. A board can be claimed in that gap, and its builds then wait on
+heavy. Human reservations do not block the GPU stage.
+
+A stage starts only if `GPU_ESTIMATES[workflow]` fits before the local night
+end in `scripts/lib/local_schedule.py`. The cap is checked again after heavy.
+
+A scheduled stage that cannot fit skips successfully. Manual dispatch
+refuses; `override` allows daytime work while still waiting for board locks.
+`force` controls freshness independently. Override guard waits are bounded
+by `DEFAULT_LOCK_WAIT_SECONDS`.
+The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
+failed attempt is a record too, so a newer failed one makes them stale
+and the next run renders again.
+
+A dispatch with `force` bypasses both record checks but still skips an
+obsolete run. The hosted lookup defers to the GPU gate while another run of
+this workflow on main is unfinished.
+
+The gate holds the concurrency group, skips runs whose trigger SHA is no
+longer main's head, then checks only the latest record. Refresh jobs queue
+instead of replacing each other (`queue: max`).
+
+An obsolete job skips in seconds, so the head's job still runs. The nightly
+run covers missed or failed triggers. A forced dispatch that becomes
+obsolete must be dispatched again on main.
 
 The first refresh step, `scripts/ci/gpu_refresh_gate.sh`, is the flowchart's
 GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
@@ -178,14 +207,14 @@ GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
 flowchart TD
     Fingerprint["Hosted input fingerprint"] --> Flight{"Another run in flight?"}
     Flight -->|yes| Refresh
-    Flight -->|no| Latest{"Latest main record matches?"}
+    Flight -->|no| Latest{"Latest main record rendered<br/>and matches?"}
     Latest -->|yes| Skip["Doc images current"]
     Latest -->|no or force| Refresh["gpu_refresh_gate.sh<br/>holds GPU concurrency group"]
     Refresh --> Check{"GPU runner's fingerprint matches hosted?"}
     Check -->|no| Error["Fail with both fingerprints"]
     Check -->|yes| Head{"Trigger SHA is main head?"}
     Head -->|no| Obsolete["Skip obsolete run, record nothing"]
-    Head -->|yes| Again{"Latest main record matches?"}
+    Head -->|yes| Again{"Latest main record rendered<br/>and matches?"}
     Again -->|yes| Skip
     Again -->|no or force| Render["Render"]
     Render -->|success| Publish["Sync or close refresh PR"]
@@ -195,10 +224,12 @@ flowchart TD
 ```
 
 A rendered record means rendered, not merged: closing a refresh PR leaves
-these inputs current until they change or a dispatch uses `force`. Failed
-records also skip until inputs change or force retries. Retention is set in
-`doc-images-gpu.yml`. Runs open or update "docs: refresh GPU-rendered images"
-on `feature/refresh-doc-images-gpu`, and log GPU memory use.
+these inputs current until they change or a dispatch uses `force`.
+
+A failed record leaves inputs not current, so the next eligible nightly or dispatched run
+renders again. Retention is set in `doc-images-gpu.yml`.
+Runs open or update "docs: refresh GPU-rendered images" on
+`feature/refresh-doc-images-gpu`, and log GPU memory use.
 
 Inputs outside the fingerprint include compiler identity/version and system
 headers, the GPU environment (its Python, CUDA, drivers and ffmpeg), the
@@ -212,10 +243,15 @@ floors and worker estimates. Later admission projects each active worker's
 not-yet-resident allocation onto live WSL, GPU and cgroup memory, bounded
 by CPU affinity. A task can run alone when the floors hold; additional
 workers need room for their reservations. Smaller eligible tasks can pass
-larger waiting tasks. Admission and worker peaks are logged. Failed
-memory queries pause admission and retry, with rate-limited warnings; an unbroken
-run of failures lasting `GPU_QUERY_FAILURE_SECONDS` fails the stage, and a missing
-`nvidia-smi` fails at once.
+larger waiting tasks. Admission and worker peaks are logged.
+
+[`task_executor.py`](../../launcher/tools/r3d/task_executor.py) samples NVML on a daemon thread.
+Failed or stale queries pause admission with rate-limited warnings.
+Workers keep running and are reaped; fresh samples resume admission.
+
+A missing NVML library or a gone GPU fails the stage immediately. A query
+stall fails after `GPU_QUERY_FAILURE_SECONDS` only when tasks are queued
+and no workers remain active.
 
 ```mermaid
 flowchart TD
@@ -296,7 +332,9 @@ Two files, the same declare-then-source shape a report script uses:
   checking each image, converting to PNG) is that one procedure. A scene that
   reads asset packs also declares `scene_assets`, the folders whose roots
   `build_pack.py` writes as packs beside the renderer; a folder with no asset
-  roots fails the build.
+  roots fails the build. `scene_renderer=1` links the renderer: every `.c`
+  below the folders `launcher/main/renderer_folders.txt` names, the list the
+  firmware and the host tests build too.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
@@ -314,12 +352,15 @@ shell does before an app's `frame()`. A scene whose sources include
 active camera; any other scene gets a no-op.
 
 Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`,
-optionally followed by flags: `|nopin`, and `|nopacks`, which runs that
+optionally followed by flags: `|nopin`; `|nopacks`, which runs that
 render with an empty pack folder to show what the scene draws when its packs
-are missing. The declared size is checked against
-what the binary reports it wrote. That
+are missing; and `|crop`, which keeps only what the frame drew plus the
+scene's `crop_margin` (`render_host.h`), telling the background by the colour most of
+the frame's border shares. The declared size is checked against
+what the binary reports it wrote, and a cropped render must fit inside it. That
 is what makes the sweep a check rather than a picture nobody looks at
-twice.
+twice. What a render wrote to stderr is also kept beside its image as `<label>.log`,
+for a scene that reports a measurement, as the UI examples' tap does.
 
 ## Frames, input and orientation
 
@@ -549,10 +590,10 @@ and frame count. `--panel-width PX` scales each picture before adding its label
 
 ## Related
 
-- [`../Testing-Guide.md`](../Testing-Guide.md): the host and device test
+- [`testing/README.md`](../testing/README.md): the host and device test
   runners, runsuite, and the QEMU suite run this harness's second backend
   borrows its image from.
-- [`../Building-a-Screen.md`](../Building-a-Screen.md): building the screen
+- [`ui/Building-a-Screen.md`](../ui/Building-a-Screen.md): building the screen
   a scene renders.
 - [`../notes/Debugging.md`](../notes/Debugging.md#performance-seems-off):
   why a host timing is not a cost.

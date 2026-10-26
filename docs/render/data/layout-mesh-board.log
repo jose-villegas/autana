@@ -1,0 +1,687 @@
+BUILD_ID=e0b6b47d8f90-diag
+I (6514) console: RUNSUITE run_render_lab_layout_perf_suite
+I (6518) layout_perf: TUNE_OK render_lab.layout=0
+I (6603) asset: pack sponza: 9 entries, 1312480 bytes
+I (12037) layout_perf: sponza-fitted-full:FULL_FB:frame mean 43084us p95 52997us quarter=portrait
+I (12038) layout_perf: sponza-fitted-full:FULL_FB:wait mean 4us p95 5us quarter=portrait
+I (12039) layout_perf: sponza-fitted-full:FULL_FB:send mean 9760us p95 9838us quarter=portrait
+I (12039) layout_perf: sponza-fitted-full:FULL_FB:draw mean 40507us p95 50442us quarter=portrait
+I (12040) layout_perf: sponza-fitted-full:FULL_FB:compose mean 2514us p95 2560us quarter=portrait
+I (12041) layout_perf: LAYOUT scene=sponza-fitted-full layout=FULL_FB core1_share=493 crc=4ce2e092 internal_free=90491 internal_largest=49152 psram_free=7597632 psram_largest=7340032 quarter=portrait
+I (12043) layout_perf: TUNE_OK render_lab.layout=1
+I (12129) asset: pack sponza: 9 entries, 1312480 bytes
+I (18188) layout_perf: sponza-fitted-full:DOUBLE_FB:frame mean 48053us p95 57876us quarter=portrait
+I (18189) layout_perf: sponza-fitted-full:DOUBLE_FB:wait mean 3us p95 4us quarter=portrait
+I (18190) layout_perf: sponza-fitted-full:DOUBLE_FB:send mean 10317us p95 10396us quarter=portrait
+I (18191) layout_perf: sponza-fitted-full:DOUBLE_FB:draw mean 42078us p95 51949us quarter=portrait
+I (18192) layout_perf: sponza-fitted-full:DOUBLE_FB:compose mean 5916us p95 5957us quarter=portrait
+I (18193) layout_perf: LAYOUT scene=sponza-fitted-full layout=DOUBLE_FB core1_share=489 crc=4ce2e092 internal_free=90491 internal_largest=49152 psram_free=7345728 psram_largest=7340032 quarter=portrait
+I (18195) layout_perf: TUNE_OK render_lab.layout=2
+I (18280) asset: pack sponza: 9 entries, 1312480 bytes
+I (24838) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:frame mean 52085us p95 63787us quarter=portrait
+I (24839) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=portrait
+I (24840) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:send mean 16351us p95 16780us quarter=portrait
+I (24841) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:draw mean 46103us p95 57811us quarter=portrait
+I (24842) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5923us p95 5962us quarter=portrait
+I (24843) layout_perf: LAYOUT scene=sponza-fitted-full layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=435 crc=4ce2e092 internal_free=90491 internal_largest=49152 psram_free=7345728 psram_largest=7340032 quarter=portrait
+I (24845) layout_perf: TUNE_OK render_lab.layout=0
+I (24931) asset: pack sponza: 9 entries, 1312480 bytes
+I (30065) layout_perf: sponza-fitted-full:FULL_FB:frame mean 40716us p95 48407us quarter=landscape
+I (30066) layout_perf: sponza-fitted-full:FULL_FB:wait mean 4us p95 5us quarter=landscape
+I (30067) layout_perf: sponza-fitted-full:FULL_FB:send mean 9761us p95 9827us quarter=landscape
+I (30068) layout_perf: sponza-fitted-full:FULL_FB:draw mean 38091us p95 45769us quarter=landscape
+I (30069) layout_perf: sponza-fitted-full:FULL_FB:compose mean 2559us p95 2605us quarter=landscape
+I (30070) layout_perf: LAYOUT scene=sponza-fitted-full layout=FULL_FB core1_share=438 crc=79cc3eac internal_free=90491 internal_largest=49152 psram_free=7597632 psram_largest=7340032 quarter=landscape
+I (30072) layout_perf: TUNE_OK render_lab.layout=1
+I (30157) asset: pack sponza: 9 entries, 1312480 bytes
+I (35914) layout_perf: sponza-fitted-full:DOUBLE_FB:frame mean 45661us p95 53192us quarter=landscape
+I (35915) layout_perf: sponza-fitted-full:DOUBLE_FB:wait mean 3us p95 4us quarter=landscape
+I (35916) layout_perf: sponza-fitted-full:DOUBLE_FB:send mean 10313us p95 10395us quarter=landscape
+I (35917) layout_perf: sponza-fitted-full:DOUBLE_FB:draw mean 39681us p95 47261us quarter=landscape
+I (35918) layout_perf: sponza-fitted-full:DOUBLE_FB:compose mean 5921us p95 5965us quarter=landscape
+I (35919) layout_perf: LAYOUT scene=sponza-fitted-full layout=DOUBLE_FB core1_share=436 crc=79cc3eac internal_free=90491 internal_largest=49152 psram_free=7345728 psram_largest=7340032 quarter=landscape
+I (35921) layout_perf: TUNE_OK render_lab.layout=2
+I (36006) asset: pack sponza: 9 entries, 1312480 bytes
+I (42230) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:frame mean 49434us p95 58982us quarter=landscape
+I (42231) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=landscape
+I (42232) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:send mean 16101us p95 16535us quarter=landscape
+I (42234) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:draw mean 43456us p95 53057us quarter=landscape
+I (42235) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5918us p95 5962us quarter=landscape
+I (42236) layout_perf: LAYOUT scene=sponza-fitted-full layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=392 crc=79cc3eac internal_free=90491 internal_largest=49152 psram_free=7345728 psram_largest=7340032 quarter=landscape
+I (42238) layout_perf: TUNE_OK render_lab.layout=0
+I (42323) asset: pack sponza: 9 entries, 1312480 bytes
+I (47699) layout_perf: sponza:FULL_FB:frame mean 42644us p95 51634us quarter=portrait
+I (47700) layout_perf: sponza:FULL_FB:wait mean 4us p95 5us quarter=portrait
+I (47701) layout_perf: sponza:FULL_FB:send mean 9759us p95 9827us quarter=portrait
+I (47702) layout_perf: sponza:FULL_FB:draw mean 40024us p95 49006us quarter=portrait
+I (47703) layout_perf: sponza:FULL_FB:compose mean 2555us p95 2618us quarter=portrait
+I (47704) layout_perf: LAYOUT scene=sponza layout=FULL_FB core1_share=476 crc=9c5ee223 internal_free=90491 internal_largest=49152 psram_free=7605824 psram_largest=7340032 quarter=portrait
+I (47705) layout_perf: TUNE_OK render_lab.layout=1
+I (47791) asset: pack sponza: 9 entries, 1312480 bytes
+I (53790) layout_perf: sponza:DOUBLE_FB:frame mean 47589us p95 56407us quarter=portrait
+I (53791) layout_perf: sponza:DOUBLE_FB:wait mean 3us p95 4us quarter=portrait
+I (53792) layout_perf: sponza:DOUBLE_FB:send mean 10290us p95 10368us quarter=portrait
+I (53793) layout_perf: sponza:DOUBLE_FB:draw mean 41652us p95 50490us quarter=portrait
+I (53794) layout_perf: sponza:DOUBLE_FB:compose mean 5878us p95 5914us quarter=portrait
+I (53795) layout_perf: LAYOUT scene=sponza layout=DOUBLE_FB core1_share=470 crc=9c5ee223 internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=portrait
+I (53797) layout_perf: TUNE_OK render_lab.layout=2
+I (53882) asset: pack sponza: 9 entries, 1312480 bytes
+I (60335) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:frame mean 51300us p95 60255us quarter=portrait
+I (60336) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=portrait
+I (60337) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:send mean 16413us p95 17016us quarter=portrait
+I (60338) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:draw mean 45360us p95 54315us quarter=portrait
+I (60339) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5879us p95 5913us quarter=portrait
+I (60340) layout_perf: LAYOUT scene=sponza layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=422 crc=9c5ee223 internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=portrait
+I (60342) layout_perf: TUNE_OK render_lab.layout=0
+I (60428) asset: pack sponza: 9 entries, 1312480 bytes
+I (65619) layout_perf: sponza:FULL_FB:frame mean 41211us p95 48418us quarter=landscape
+I (65620) layout_perf: sponza:FULL_FB:wait mean 4us p95 5us quarter=landscape
+I (65621) layout_perf: sponza:FULL_FB:send mean 9763us p95 9838us quarter=landscape
+I (65622) layout_perf: sponza:FULL_FB:draw mean 38556us p95 45810us quarter=landscape
+I (65623) layout_perf: sponza:FULL_FB:compose mean 2591us p95 2644us quarter=landscape
+I (65623) layout_perf: LAYOUT scene=sponza layout=FULL_FB core1_share=443 crc=d31d9bab internal_free=90491 internal_largest=49152 psram_free=7605824 psram_largest=7340032 quarter=landscape
+I (65625) layout_perf: TUNE_OK render_lab.layout=1
+I (65711) asset: pack sponza: 9 entries, 1312480 bytes
+I (71519) layout_perf: sponza:DOUBLE_FB:frame mean 46104us p95 53232us quarter=landscape
+I (71520) layout_perf: sponza:DOUBLE_FB:wait mean 3us p95 4us quarter=landscape
+I (71521) layout_perf: sponza:DOUBLE_FB:send mean 10305us p95 10375us quarter=landscape
+I (71522) layout_perf: sponza:DOUBLE_FB:draw mean 40163us p95 47324us quarter=landscape
+I (71523) layout_perf: sponza:DOUBLE_FB:compose mean 5883us p95 5916us quarter=landscape
+I (71523) layout_perf: LAYOUT scene=sponza layout=DOUBLE_FB core1_share=445 crc=d31d9bab internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=landscape
+I (71525) layout_perf: TUNE_OK render_lab.layout=2
+I (71611) asset: pack sponza: 9 entries, 1312480 bytes
+I (77867) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:frame mean 49717us p95 56750us quarter=landscape
+I (77868) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=landscape
+I (77869) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:send mean 16379us p95 16738us quarter=landscape
+I (77870) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:draw mean 43781us p95 50846us quarter=landscape
+I (77871) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5877us p95 5919us quarter=landscape
+I (77872) layout_perf: LAYOUT scene=sponza layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=391 crc=d31d9bab internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=landscape
+I (77874) layout_perf: TUNE_OK render_lab.layout=0
+I (77959) asset: pack sponza: 9 entries, 1312480 bytes
+I (82373) layout_perf: sponza-lite:FULL_FB:frame mean 35047us p95 40234us quarter=portrait
+I (82374) layout_perf: sponza-lite:FULL_FB:wait mean 4us p95 5us quarter=portrait
+I (82375) layout_perf: sponza-lite:FULL_FB:send mean 9756us p95 9819us quarter=portrait
+I (82376) layout_perf: sponza-lite:FULL_FB:draw mean 32358us p95 37547us quarter=portrait
+I (82377) layout_perf: sponza-lite:FULL_FB:compose mean 2624us p95 2694us quarter=portrait
+I (82378) layout_perf: LAYOUT scene=sponza-lite layout=FULL_FB core1_share=464 crc=ee551e27 internal_free=90491 internal_largest=49152 psram_free=7679552 psram_largest=7340032 quarter=portrait
+I (82380) layout_perf: TUNE_OK render_lab.layout=1
+I (82465) asset: pack sponza: 9 entries, 1312480 bytes
+I (87470) layout_perf: sponza-lite:DOUBLE_FB:frame mean 39728us p95 45141us quarter=portrait
+I (87471) layout_perf: sponza-lite:DOUBLE_FB:wait mean 3us p95 4us quarter=portrait
+I (87472) layout_perf: sponza-lite:DOUBLE_FB:send mean 10257us p95 10325us quarter=portrait
+I (87473) layout_perf: sponza-lite:DOUBLE_FB:draw mean 33765us p95 39173us quarter=portrait
+I (87474) layout_perf: sponza-lite:DOUBLE_FB:compose mean 5904us p95 5947us quarter=portrait
+I (87474) layout_perf: LAYOUT scene=sponza-lite layout=DOUBLE_FB core1_share=452 crc=ee551e27 internal_free=90491 internal_largest=49152 psram_free=7427648 psram_largest=7340032 quarter=portrait
+I (87476) layout_perf: TUNE_OK render_lab.layout=2
+I (87562) asset: pack sponza: 9 entries, 1312480 bytes
+I (93047) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:frame mean 43611us p95 48909us quarter=portrait
+I (93048) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=portrait
+I (93049) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:send mean 16293us p95 16523us quarter=portrait
+I (93050) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:draw mean 37640us p95 42932us quarter=portrait
+I (93051) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5910us p95 5958us quarter=portrait
+I (93052) layout_perf: LAYOUT scene=sponza-lite layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=381 crc=ee551e27 internal_free=90491 internal_largest=49152 psram_free=7427648 psram_largest=7340032 quarter=portrait
+I (93054) layout_perf: TUNE_OK render_lab.layout=0
+I (93140) asset: pack sponza: 9 entries, 1312480 bytes
+I (97447) layout_perf: sponza-lite:FULL_FB:frame mean 34209us p95 38008us quarter=landscape
+I (97448) layout_perf: sponza-lite:FULL_FB:wait mean 4us p95 5us quarter=landscape
+I (97449) layout_perf: sponza-lite:FULL_FB:send mean 9754us p95 9822us quarter=landscape
+I (97450) layout_perf: sponza-lite:FULL_FB:draw mean 31488us p95 35300us quarter=landscape
+I (97451) layout_perf: sponza-lite:FULL_FB:compose mean 2657us p95 2737us quarter=landscape
+I (97451) layout_perf: LAYOUT scene=sponza-lite layout=FULL_FB core1_share=430 crc=e307603f internal_free=90491 internal_largest=49152 psram_free=7679552 psram_largest=7340032 quarter=landscape
+I (97453) layout_perf: TUNE_OK render_lab.layout=1
+I (97539) asset: pack sponza: 9 entries, 1312480 bytes
+I (102429) layout_perf: sponza-lite:DOUBLE_FB:frame mean 38831us p95 42773us quarter=landscape
+I (102430) layout_perf: sponza-lite:DOUBLE_FB:wait mean 4us p95 5us quarter=landscape
+I (102431) layout_perf: sponza-lite:DOUBLE_FB:send mean 10259us p95 10321us quarter=landscape
+I (102432) layout_perf: sponza-lite:DOUBLE_FB:draw mean 32898us p95 36878us quarter=landscape
+I (102433) layout_perf: sponza-lite:DOUBLE_FB:compose mean 5873us p95 5952us quarter=landscape
+I (102434) layout_perf: LAYOUT scene=sponza-lite layout=DOUBLE_FB core1_share=417 crc=e307603f internal_free=90491 internal_largest=49152 psram_free=7427648 psram_largest=7340032 quarter=landscape
+I (102436) layout_perf: TUNE_OK render_lab.layout=2
+I (102522) asset: pack sponza: 9 entries, 1312480 bytes
+I (107885) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:frame mean 42635us p95 46882us quarter=landscape
+I (107886) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:wait mean 4us p95 5us quarter=landscape
+I (107887) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:send mean 16270us p95 16637us quarter=landscape
+I (107888) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:draw mean 36709us p95 40987us quarter=landscape
+I (107889) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5865us p95 5930us quarter=landscape
+I (107890) layout_perf: LAYOUT scene=sponza-lite layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=353 crc=e307603f internal_free=90491 internal_largest=49152 psram_free=7427648 psram_largest=7340032 quarter=landscape
+I (107892) layout_perf: TUNE_OK render_lab.layout=0
+I (107977) asset: pack sponza: 9 entries, 1312480 bytes
+I (112401) layout_perf: sponza-flat:FULL_FB:frame mean 35034us p95 42476us quarter=portrait
+I (112402) layout_perf: sponza-flat:FULL_FB:wait mean 3us p95 5us quarter=portrait
+I (112403) layout_perf: sponza-flat:FULL_FB:send mean 9751us p95 9823us quarter=portrait
+I (112404) layout_perf: sponza-flat:FULL_FB:draw mean 32218us p95 39658us quarter=portrait
+I (112405) layout_perf: sponza-flat:FULL_FB:compose mean 2757us p95 2798us quarter=portrait
+I (112406) layout_perf: LAYOUT scene=sponza-flat layout=FULL_FB core1_share=465 crc=d839a2e1 internal_free=90491 internal_largest=49152 psram_free=7622208 psram_largest=7340032 quarter=portrait
+I (112408) layout_perf: TUNE_OK render_lab.layout=1
+I (112493) asset: pack sponza: 9 entries, 1312480 bytes
+I (117495) layout_perf: sponza-flat:DOUBLE_FB:frame mean 39613us p95 46918us quarter=portrait
+I (117496) layout_perf: sponza-flat:DOUBLE_FB:wait mean 2us p95 3us quarter=portrait
+I (117497) layout_perf: sponza-flat:DOUBLE_FB:send mean 10276us p95 10358us quarter=portrait
+I (117498) layout_perf: sponza-flat:DOUBLE_FB:draw mean 33627us p95 40979us quarter=portrait
+I (117498) layout_perf: sponza-flat:DOUBLE_FB:compose mean 5930us p95 5964us quarter=portrait
+I (117499) layout_perf: LAYOUT scene=sponza-flat layout=DOUBLE_FB core1_share=455 crc=d839a2e1 internal_free=90491 internal_largest=49152 psram_free=7370304 psram_largest=7340032 quarter=portrait
+I (117501) layout_perf: TUNE_OK render_lab.layout=2
+I (117587) asset: pack sponza: 9 entries, 1312480 bytes
+I (123094) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:frame mean 43715us p95 51333us quarter=portrait
+I (123095) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:wait mean 2us p95 3us quarter=portrait
+I (123096) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:send mean 16671us p95 17398us quarter=portrait
+I (123097) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:draw mean 37726us p95 45392us quarter=portrait
+I (123098) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5932us p95 5971us quarter=portrait
+I (123099) layout_perf: LAYOUT scene=sponza-flat layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=380 crc=d839a2e1 internal_free=90491 internal_largest=49152 psram_free=7370304 psram_largest=7340032 quarter=portrait
+I (123101) layout_perf: TUNE_OK render_lab.layout=0
+I (123186) asset: pack sponza: 9 entries, 1312480 bytes
+I (127580) layout_perf: sponza-flat:FULL_FB:frame mean 34834us p95 40820us quarter=landscape
+I (127581) layout_perf: sponza-flat:FULL_FB:wait mean 3us p95 5us quarter=landscape
+I (127582) layout_perf: sponza-flat:FULL_FB:send mean 9753us p95 9827us quarter=landscape
+I (127583) layout_perf: sponza-flat:FULL_FB:draw mean 32016us p95 37991us quarter=landscape
+I (127584) layout_perf: sponza-flat:FULL_FB:compose mean 2758us p95 2854us quarter=landscape
+I (127584) layout_perf: LAYOUT scene=sponza-flat layout=FULL_FB core1_share=425 crc=04c2b85d internal_free=90491 internal_largest=49152 psram_free=7622208 psram_largest=7340032 quarter=landscape
+I (127586) layout_perf: TUNE_OK render_lab.layout=1
+I (127672) asset: pack sponza: 9 entries, 1312480 bytes
+I (132640) layout_perf: sponza-flat:DOUBLE_FB:frame mean 39390us p95 45419us quarter=landscape
+I (132641) layout_perf: sponza-flat:DOUBLE_FB:wait mean 2us p95 3us quarter=landscape
+I (132642) layout_perf: sponza-flat:DOUBLE_FB:send mean 10281us p95 10374us quarter=landscape
+I (132643) layout_perf: sponza-flat:DOUBLE_FB:draw mean 33445us p95 39503us quarter=landscape
+I (132644) layout_perf: sponza-flat:DOUBLE_FB:compose mean 5888us p95 5964us quarter=landscape
+I (132645) layout_perf: LAYOUT scene=sponza-flat layout=DOUBLE_FB core1_share=416 crc=04c2b85d internal_free=90491 internal_largest=49152 psram_free=7370304 psram_largest=7340032 quarter=landscape
+I (132647) layout_perf: TUNE_OK render_lab.layout=2
+I (132732) asset: pack sponza: 9 entries, 1312480 bytes
+I (138193) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:frame mean 43356us p95 49575us quarter=landscape
+I (138194) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:wait mean 2us p95 3us quarter=landscape
+I (138195) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:send mean 16674us p95 17077us quarter=landscape
+I (138196) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:draw mean 37432us p95 43664us quarter=landscape
+I (138197) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5868us p95 5914us quarter=landscape
+I (138198) layout_perf: LAYOUT scene=sponza-flat layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=359 crc=04c2b85d internal_free=90491 internal_largest=49152 psram_free=7370304 psram_largest=7340032 quarter=landscape
+I (138200) layout_perf: TUNE_OK render_lab.layout=0
+I (138285) asset: pack sponza: 9 entries, 1312480 bytes
+I (142572) layout_perf: sponza-fitted:FULL_FB:frame mean 33995us p95 39833us quarter=portrait
+I (142573) layout_perf: sponza-fitted:FULL_FB:wait mean 4us p95 5us quarter=portrait
+I (142574) layout_perf: sponza-fitted:FULL_FB:send mean 9761us p95 9865us quarter=portrait
+I (142575) layout_perf: sponza-fitted:FULL_FB:draw mean 31376us p95 37233us quarter=portrait
+I (142576) layout_perf: sponza-fitted:FULL_FB:compose mean 2555us p95 2604us quarter=portrait
+I (142577) layout_perf: LAYOUT scene=sponza-fitted layout=FULL_FB core1_share=477 crc=6a2f5e7a internal_free=90491 internal_largest=49152 psram_free=7671360 psram_largest=7340032 quarter=portrait
+I (142579) layout_perf: TUNE_OK render_lab.layout=1
+I (142664) asset: pack sponza: 9 entries, 1312480 bytes
+I (147580) layout_perf: sponza-fitted:DOUBLE_FB:frame mean 38989us p95 45028us quarter=portrait
+I (147581) layout_perf: sponza-fitted:DOUBLE_FB:wait mean 3us p95 4us quarter=portrait
+I (147581) layout_perf: sponza-fitted:DOUBLE_FB:send mean 10262us p95 10325us quarter=portrait
+I (147582) layout_perf: sponza-fitted:DOUBLE_FB:draw mean 32968us p95 39021us quarter=portrait
+I (147583) layout_perf: sponza-fitted:DOUBLE_FB:compose mean 5960us p95 5989us quarter=portrait
+I (147584) layout_perf: LAYOUT scene=sponza-fitted layout=DOUBLE_FB core1_share=465 crc=6a2f5e7a internal_free=90491 internal_largest=49152 psram_free=7419456 psram_largest=7340032 quarter=portrait
+I (147586) layout_perf: TUNE_OK render_lab.layout=2
+I (147672) asset: pack sponza: 9 entries, 1312480 bytes
+I (153054) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:frame mean 42765us p95 48723us quarter=portrait
+I (153055) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 5us quarter=portrait
+I (153056) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:send mean 16205us p95 16486us quarter=portrait
+I (153057) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:draw mean 36745us p95 42716us quarter=portrait
+I (153058) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5961us p95 5992us quarter=portrait
+I (153059) layout_perf: LAYOUT scene=sponza-fitted layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=398 crc=6a2f5e7a internal_free=90491 internal_largest=49152 psram_free=7419456 psram_largest=7340032 quarter=portrait
+I (153061) layout_perf: TUNE_OK render_lab.layout=0
+I (153146) asset: pack sponza: 9 entries, 1312480 bytes
+I (157237) layout_perf: sponza-fitted:FULL_FB:frame mean 32451us p95 36442us quarter=landscape
+I (157238) layout_perf: sponza-fitted:FULL_FB:wait mean 4us p95 5us quarter=landscape
+I (157239) layout_perf: sponza-fitted:FULL_FB:send mean 9751us p95 9815us quarter=landscape
+I (157240) layout_perf: sponza-fitted:FULL_FB:draw mean 29791us p95 33815us quarter=landscape
+I (157241) layout_perf: sponza-fitted:FULL_FB:compose mean 2594us p95 2646us quarter=landscape
+I (157241) layout_perf: LAYOUT scene=sponza-fitted layout=FULL_FB core1_share=451 crc=0d7a97c5 internal_free=90491 internal_largest=49152 psram_free=7671360 psram_largest=7340032 quarter=landscape
+I (157243) layout_perf: TUNE_OK render_lab.layout=1
+I (157329) asset: pack sponza: 9 entries, 1312480 bytes
+I (162030) layout_perf: sponza-fitted:DOUBLE_FB:frame mean 37294us p95 41522us quarter=landscape
+I (162031) layout_perf: sponza-fitted:DOUBLE_FB:wait mean 4us p95 5us quarter=landscape
+I (162032) layout_perf: sponza-fitted:DOUBLE_FB:send mean 10247us p95 10320us quarter=landscape
+I (162033) layout_perf: sponza-fitted:DOUBLE_FB:draw mean 31261us p95 35543us quarter=landscape
+I (162034) layout_perf: sponza-fitted:DOUBLE_FB:compose mean 5974us p95 6041us quarter=landscape
+I (162035) layout_perf: LAYOUT scene=sponza-fitted layout=DOUBLE_FB core1_share=438 crc=0d7a97c5 internal_free=90491 internal_largest=49152 psram_free=7419456 psram_largest=7340032 quarter=landscape
+I (162037) layout_perf: TUNE_OK render_lab.layout=2
+I (162122) asset: pack sponza: 9 entries, 1312480 bytes
+I (167300) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:frame mean 41135us p95 45405us quarter=landscape
+I (167301) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:wait mean 4us p95 5us quarter=landscape
+I (167302) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:send mean 16339us p95 16617us quarter=landscape
+I (167303) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:draw mean 35103us p95 39408us quarter=landscape
+I (167304) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5971us p95 6027us quarter=landscape
+I (167305) layout_perf: LAYOUT scene=sponza-fitted layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=377 crc=0d7a97c5 internal_free=90491 internal_largest=49152 psram_free=7419456 psram_largest=7340032 quarter=landscape
+I (167307) layout_perf: TUNE_OK render_lab.layout=0
+I (167392) asset: pack sponza: 9 entries, 1312480 bytes
+I (171738) layout_perf: sponza-flat-fitted:FULL_FB:frame mean 34365us p95 42543us quarter=portrait
+I (171739) layout_perf: sponza-flat-fitted:FULL_FB:wait mean 3us p95 5us quarter=portrait
+I (171740) layout_perf: sponza-flat-fitted:FULL_FB:send mean 9769us p95 9873us quarter=portrait
+I (171741) layout_perf: sponza-flat-fitted:FULL_FB:draw mean 31689us p95 39889us quarter=portrait
+I (171742) layout_perf: sponza-flat-fitted:FULL_FB:compose mean 2616us p95 2676us quarter=portrait
+I (171743) layout_perf: LAYOUT scene=sponza-flat-fitted layout=FULL_FB core1_share=499 crc=0a3b04d6 internal_free=90491 internal_largest=49152 psram_free=7605824 psram_largest=7340032 quarter=portrait
+I (171745) layout_perf: TUNE_OK render_lab.layout=1
+I (171830) asset: pack sponza: 9 entries, 1312480 bytes
+I (176805) layout_perf: sponza-flat-fitted:DOUBLE_FB:frame mean 39369us p95 47500us quarter=portrait
+I (176806) layout_perf: sponza-flat-fitted:DOUBLE_FB:wait mean 2us p95 3us quarter=portrait
+I (176807) layout_perf: sponza-flat-fitted:DOUBLE_FB:send mean 10327us p95 10402us quarter=portrait
+I (176808) layout_perf: sponza-flat-fitted:DOUBLE_FB:draw mean 33379us p95 41551us quarter=portrait
+I (176809) layout_perf: sponza-flat-fitted:DOUBLE_FB:compose mean 5933us p95 5975us quarter=portrait
+I (176810) layout_perf: LAYOUT scene=sponza-flat-fitted layout=DOUBLE_FB core1_share=491 crc=0a3b04d6 internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=portrait
+I (176812) layout_perf: TUNE_OK render_lab.layout=2
+I (176898) asset: pack sponza: 9 entries, 1312480 bytes
+I (182371) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:frame mean 43393us p95 51484us quarter=portrait
+I (182372) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:wait mean 2us p95 3us quarter=portrait
+I (182373) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:send mean 16723us p95 17311us quarter=portrait
+I (182375) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:draw mean 37400us p95 45535us quarter=portrait
+I (182376) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5937us p95 5974us quarter=portrait
+I (182377) layout_perf: LAYOUT scene=sponza-flat-fitted layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=424 crc=0a3b04d6 internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=portrait
+I (182379) layout_perf: TUNE_OK render_lab.layout=0
+I (182464) asset: pack sponza: 9 entries, 1312480 bytes
+I (186690) layout_perf: sponza-flat-fitted:FULL_FB:frame mean 33444us p95 40127us quarter=landscape
+I (186691) layout_perf: sponza-flat-fitted:FULL_FB:wait mean 3us p95 5us quarter=landscape
+I (186692) layout_perf: sponza-flat-fitted:FULL_FB:send mean 9762us p95 9823us quarter=landscape
+I (186693) layout_perf: sponza-flat-fitted:FULL_FB:draw mean 30828us p95 37543us quarter=landscape
+I (186694) layout_perf: sponza-flat-fitted:FULL_FB:compose mean 2556us p95 2652us quarter=landscape
+I (186695) layout_perf: LAYOUT scene=sponza-flat-fitted layout=FULL_FB core1_share=419 crc=e0e700fe internal_free=90491 internal_largest=49152 psram_free=7605824 psram_largest=7340032 quarter=landscape
+I (186697) layout_perf: TUNE_OK render_lab.layout=1
+I (186782) asset: pack sponza: 9 entries, 1312480 bytes
+I (191631) layout_perf: sponza-flat-fitted:DOUBLE_FB:frame mean 38390us p95 45043us quarter=landscape
+I (191632) layout_perf: sponza-flat-fitted:DOUBLE_FB:wait mean 3us p95 4us quarter=landscape
+I (191633) layout_perf: sponza-flat-fitted:DOUBLE_FB:send mean 10326us p95 10413us quarter=landscape
+I (191634) layout_perf: sponza-flat-fitted:DOUBLE_FB:draw mean 32412us p95 39108us quarter=landscape
+I (191635) layout_perf: sponza-flat-fitted:DOUBLE_FB:compose mean 5921us p95 5970us quarter=landscape
+I (191636) layout_perf: LAYOUT scene=sponza-flat-fitted layout=DOUBLE_FB core1_share=412 crc=e0e700fe internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=landscape
+I (191638) layout_perf: TUNE_OK render_lab.layout=2
+I (191724) asset: pack sponza: 9 entries, 1312480 bytes
+I (197051) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:frame mean 42237us p95 48997us quarter=landscape
+I (197052) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:wait mean 2us p95 3us quarter=landscape
+I (197053) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:send mean 16537us p95 16920us quarter=landscape
+I (197054) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:draw mean 36270us p95 43073us quarter=landscape
+I (197055) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5912us p95 5952us quarter=landscape
+I (197056) layout_perf: LAYOUT scene=sponza-flat-fitted layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=359 crc=e0e700fe internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=landscape
+I (197059) layout_perf: TUNE_OK render_lab.layout=0
+I (197083) asset: pack capybara: 10 entries, 309140 bytes
+I (198826) layout_perf: capybara:FULL_FB:frame mean 13672us p95 13827us quarter=portrait
+I (198827) layout_perf: capybara:FULL_FB:wait mean 5us p95 6us quarter=portrait
+I (198828) layout_perf: capybara:FULL_FB:send mean 9737us p95 9832us quarter=portrait
+I (198829) layout_perf: capybara:FULL_FB:draw mean 10837us p95 11005us quarter=portrait
+I (198830) layout_perf: capybara:FULL_FB:compose mean 2536us p95 2663us quarter=portrait
+I (198830) layout_perf: LAYOUT scene=capybara layout=FULL_FB core1_share=535 crc=2d2bedad internal_free=77551 internal_largest=36864 psram_free=7730796 psram_largest=7602176 quarter=portrait
+I (198832) layout_perf: TUNE_OK render_lab.layout=1
+I (198857) asset: pack capybara: 10 entries, 309140 bytes
+I (201202) layout_perf: capybara:DOUBLE_FB:frame mean 18442us p95 18594us quarter=portrait
+I (201203) layout_perf: capybara:DOUBLE_FB:wait mean 4us p95 4us quarter=portrait
+I (201203) layout_perf: capybara:DOUBLE_FB:send mean 10000us p95 10081us quarter=portrait
+I (201204) layout_perf: capybara:DOUBLE_FB:draw mean 12153us p95 12324us quarter=portrait
+I (201205) layout_perf: capybara:DOUBLE_FB:compose mean 5943us p95 6018us quarter=portrait
+I (201206) layout_perf: LAYOUT scene=capybara layout=DOUBLE_FB core1_share=468 crc=2d2bedad internal_free=77551 internal_largest=36864 psram_free=7478892 psram_largest=7340032 quarter=portrait
+I (201208) layout_perf: TUNE_OK render_lab.layout=2
+I (201232) asset: pack capybara: 10 entries, 309140 bytes
+I (204087) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:frame mean 22561us p95 22751us quarter=portrait
+I (204088) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=portrait
+I (204089) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:send mean 15623us p95 15735us quarter=portrait
+I (204090) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:draw mean 16202us p95 16356us quarter=portrait
+I (204091) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:compose mean 6014us p95 6099us quarter=portrait
+I (204092) layout_perf: LAYOUT scene=capybara layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=471 crc=2d2bedad internal_free=77551 internal_largest=36864 psram_free=7478892 psram_largest=7340032 quarter=portrait
+I (204094) layout_perf: TUNE_OK render_lab.layout=0
+I (204119) asset: pack capybara: 10 entries, 309140 bytes
+I (205950) layout_perf: capybara:FULL_FB:frame mean 14386us p95 14551us quarter=landscape
+I (205951) layout_perf: capybara:FULL_FB:wait mean 5us p95 6us quarter=landscape
+I (205952) layout_perf: capybara:FULL_FB:send mean 9737us p95 9812us quarter=landscape
+I (205953) layout_perf: capybara:FULL_FB:draw mean 11306us p95 11446us quarter=landscape
+I (205954) layout_perf: capybara:FULL_FB:compose mean 2785us p95 2851us quarter=landscape
+I (205954) layout_perf: LAYOUT scene=capybara layout=FULL_FB core1_share=336 crc=f552d6dd internal_free=77551 internal_largest=36864 psram_free=7730796 psram_largest=7602176 quarter=landscape
+I (205956) layout_perf: TUNE_OK render_lab.layout=1
+I (205981) asset: pack capybara: 10 entries, 309140 bytes
+I (208379) layout_perf: capybara:DOUBLE_FB:frame mean 18866us p95 18988us quarter=landscape
+I (208380) layout_perf: capybara:DOUBLE_FB:wait mean 3us p95 4us quarter=landscape
+I (208381) layout_perf: capybara:DOUBLE_FB:send mean 10044us p95 10145us quarter=landscape
+I (208382) layout_perf: capybara:DOUBLE_FB:draw mean 12432us p95 12554us quarter=landscape
+I (208382) layout_perf: capybara:DOUBLE_FB:compose mean 6080us p95 6162us quarter=landscape
+I (208383) layout_perf: LAYOUT scene=capybara layout=DOUBLE_FB core1_share=252 crc=f552d6dd internal_free=77551 internal_largest=36864 psram_free=7478892 psram_largest=7340032 quarter=landscape
+I (208385) layout_perf: TUNE_OK render_lab.layout=2
+I (208409) asset: pack capybara: 10 entries, 309140 bytes
+I (211318) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:frame mean 23004us p95 23693us quarter=landscape
+I (211319) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=landscape
+I (211320) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:send mean 15729us p95 15871us quarter=landscape
+I (211321) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:draw mean 16529us p95 17265us quarter=landscape
+I (211322) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:compose mean 6124us p95 6204us quarter=landscape
+I (211323) layout_perf: LAYOUT scene=capybara layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=248 crc=f552d6dd internal_free=77551 internal_largest=36864 psram_free=7478892 psram_largest=7340032 quarter=landscape
+I (211325) layout_perf: TUNE_OK render_lab.layout=0
+I (211428) layout_perf: TUNE_OK render_lab.layout=0
+I (211513) asset: pack sponza: 9 entries, 1312480 bytes
+I (216944) layout_perf: sponza-fitted-full:FULL_FB:frame mean 43067us p95 53004us quarter=portrait
+I (216945) layout_perf: sponza-fitted-full:FULL_FB:wait mean 4us p95 5us quarter=portrait
+I (216946) layout_perf: sponza-fitted-full:FULL_FB:send mean 9764us p95 9842us quarter=portrait
+I (216947) layout_perf: sponza-fitted-full:FULL_FB:draw mean 40489us p95 50449us quarter=portrait
+I (216948) layout_perf: sponza-fitted-full:FULL_FB:compose mean 2514us p95 2559us quarter=portrait
+I (216949) layout_perf: LAYOUT scene=sponza-fitted-full layout=FULL_FB core1_share=494 crc=4ce2e092 internal_free=90491 internal_largest=49152 psram_free=7597632 psram_largest=7340032 quarter=portrait
+I (216951) layout_perf: TUNE_OK render_lab.layout=1
+I (217036) asset: pack sponza: 9 entries, 1312480 bytes
+I (223095) layout_perf: sponza-fitted-full:DOUBLE_FB:frame mean 48052us p95 57896us quarter=portrait
+I (223096) layout_perf: sponza-fitted-full:DOUBLE_FB:wait mean 3us p95 4us quarter=portrait
+I (223097) layout_perf: sponza-fitted-full:DOUBLE_FB:send mean 10311us p95 10404us quarter=portrait
+I (223098) layout_perf: sponza-fitted-full:DOUBLE_FB:draw mean 42077us p95 51953us quarter=portrait
+I (223099) layout_perf: sponza-fitted-full:DOUBLE_FB:compose mean 5916us p95 5959us quarter=portrait
+I (223100) layout_perf: LAYOUT scene=sponza-fitted-full layout=DOUBLE_FB core1_share=489 crc=4ce2e092 internal_free=90491 internal_largest=49152 psram_free=7345728 psram_largest=7340032 quarter=portrait
+I (223102) layout_perf: TUNE_OK render_lab.layout=2
+I (223187) asset: pack sponza: 9 entries, 1312480 bytes
+I (229742) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:frame mean 52056us p95 63737us quarter=portrait
+I (229743) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=portrait
+I (229744) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:send mean 16351us p95 16843us quarter=portrait
+I (229745) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:draw mean 46075us p95 57744us quarter=portrait
+I (229746) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5923us p95 5956us quarter=portrait
+I (229747) layout_perf: LAYOUT scene=sponza-fitted-full layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=436 crc=4ce2e092 internal_free=90491 internal_largest=49152 psram_free=7345728 psram_largest=7340032 quarter=portrait
+I (229749) layout_perf: TUNE_OK render_lab.layout=0
+I (229835) asset: pack sponza: 9 entries, 1312480 bytes
+I (234969) layout_perf: sponza-fitted-full:FULL_FB:frame mean 40720us p95 48324us quarter=landscape
+I (234970) layout_perf: sponza-fitted-full:FULL_FB:wait mean 4us p95 5us quarter=landscape
+I (234971) layout_perf: sponza-fitted-full:FULL_FB:send mean 9764us p95 9834us quarter=landscape
+I (234972) layout_perf: sponza-fitted-full:FULL_FB:draw mean 38098us p95 45716us quarter=landscape
+I (234973) layout_perf: sponza-fitted-full:FULL_FB:compose mean 2555us p95 2598us quarter=landscape
+I (234974) layout_perf: LAYOUT scene=sponza-fitted-full layout=FULL_FB core1_share=439 crc=79cc3eac internal_free=90491 internal_largest=49152 psram_free=7597632 psram_largest=7340032 quarter=landscape
+I (234976) layout_perf: TUNE_OK render_lab.layout=1
+I (235061) asset: pack sponza: 9 entries, 1312480 bytes
+I (240817) layout_perf: sponza-fitted-full:DOUBLE_FB:frame mean 45655us p95 53090us quarter=landscape
+I (240818) layout_perf: sponza-fitted-full:DOUBLE_FB:wait mean 3us p95 4us quarter=landscape
+I (240819) layout_perf: sponza-fitted-full:DOUBLE_FB:send mean 10316us p95 10410us quarter=landscape
+I (240820) layout_perf: sponza-fitted-full:DOUBLE_FB:draw mean 39674us p95 47159us quarter=landscape
+I (240821) layout_perf: sponza-fitted-full:DOUBLE_FB:compose mean 5923us p95 5979us quarter=landscape
+I (240822) layout_perf: LAYOUT scene=sponza-fitted-full layout=DOUBLE_FB core1_share=435 crc=79cc3eac internal_free=90491 internal_largest=49152 psram_free=7345728 psram_largest=7340032 quarter=landscape
+I (240824) layout_perf: TUNE_OK render_lab.layout=2
+I (240910) asset: pack sponza: 9 entries, 1312480 bytes
+I (247131) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:frame mean 49416us p95 58915us quarter=landscape
+I (247133) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=landscape
+I (247134) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:send mean 16109us p95 16565us quarter=landscape
+I (247135) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:draw mean 43439us p95 52989us quarter=landscape
+I (247136) layout_perf: sponza-fitted-full:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5918us p95 5963us quarter=landscape
+I (247137) layout_perf: LAYOUT scene=sponza-fitted-full layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=391 crc=79cc3eac internal_free=90491 internal_largest=49152 psram_free=7345728 psram_largest=7340032 quarter=landscape
+I (247139) layout_perf: TUNE_OK render_lab.layout=0
+I (247225) asset: pack sponza: 9 entries, 1312480 bytes
+I (252599) layout_perf: sponza:FULL_FB:frame mean 42631us p95 51608us quarter=portrait
+I (252600) layout_perf: sponza:FULL_FB:wait mean 4us p95 5us quarter=portrait
+I (252601) layout_perf: sponza:FULL_FB:send mean 9754us p95 9821us quarter=portrait
+I (252602) layout_perf: sponza:FULL_FB:draw mean 40011us p95 48948us quarter=portrait
+I (252603) layout_perf: sponza:FULL_FB:compose mean 2557us p95 2611us quarter=portrait
+I (252604) layout_perf: LAYOUT scene=sponza layout=FULL_FB core1_share=476 crc=9c5ee223 internal_free=90491 internal_largest=49152 psram_free=7605824 psram_largest=7340032 quarter=portrait
+I (252605) layout_perf: TUNE_OK render_lab.layout=1
+I (252691) asset: pack sponza: 9 entries, 1312480 bytes
+I (258690) layout_perf: sponza:DOUBLE_FB:frame mean 47584us p95 56414us quarter=portrait
+I (258690) layout_perf: sponza:DOUBLE_FB:wait mean 3us p95 4us quarter=portrait
+I (258691) layout_perf: sponza:DOUBLE_FB:send mean 10293us p95 10379us quarter=portrait
+I (258692) layout_perf: sponza:DOUBLE_FB:draw mean 41648us p95 50501us quarter=portrait
+I (258693) layout_perf: sponza:DOUBLE_FB:compose mean 5876us p95 5916us quarter=portrait
+I (258694) layout_perf: LAYOUT scene=sponza layout=DOUBLE_FB core1_share=472 crc=9c5ee223 internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=portrait
+I (258696) layout_perf: TUNE_OK render_lab.layout=2
+I (258781) asset: pack sponza: 9 entries, 1312480 bytes
+I (265235) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:frame mean 51307us p95 60263us quarter=portrait
+I (265236) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=portrait
+I (265237) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:send mean 16413us p95 17001us quarter=portrait
+I (265238) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:draw mean 45369us p95 54319us quarter=portrait
+I (265239) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5879us p95 5915us quarter=portrait
+I (265240) layout_perf: LAYOUT scene=sponza layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=422 crc=9c5ee223 internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=portrait
+I (265242) layout_perf: TUNE_OK render_lab.layout=0
+I (265328) asset: pack sponza: 9 entries, 1312480 bytes
+I (270519) layout_perf: sponza:FULL_FB:frame mean 41211us p95 48382us quarter=landscape
+I (270520) layout_perf: sponza:FULL_FB:wait mean 4us p95 5us quarter=landscape
+I (270521) layout_perf: sponza:FULL_FB:send mean 9761us p95 9840us quarter=landscape
+I (270522) layout_perf: sponza:FULL_FB:draw mean 38559us p95 45722us quarter=landscape
+I (270523) layout_perf: sponza:FULL_FB:compose mean 2586us p95 2647us quarter=landscape
+I (270523) layout_perf: LAYOUT scene=sponza layout=FULL_FB core1_share=445 crc=d31d9bab internal_free=90491 internal_largest=49152 psram_free=7605824 psram_largest=7340032 quarter=landscape
+I (270525) layout_perf: TUNE_OK render_lab.layout=1
+I (270611) asset: pack sponza: 9 entries, 1312480 bytes
+I (276420) layout_perf: sponza:DOUBLE_FB:frame mean 46116us p95 53284us quarter=landscape
+I (276421) layout_perf: sponza:DOUBLE_FB:wait mean 3us p95 4us quarter=landscape
+I (276422) layout_perf: sponza:DOUBLE_FB:send mean 10303us p95 10389us quarter=landscape
+I (276423) layout_perf: sponza:DOUBLE_FB:draw mean 40175us p95 47363us quarter=landscape
+I (276424) layout_perf: sponza:DOUBLE_FB:compose mean 5882us p95 5915us quarter=landscape
+I (276425) layout_perf: LAYOUT scene=sponza layout=DOUBLE_FB core1_share=445 crc=d31d9bab internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=landscape
+I (276427) layout_perf: TUNE_OK render_lab.layout=2
+I (276512) asset: pack sponza: 9 entries, 1312480 bytes
+I (282768) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:frame mean 49712us p95 56814us quarter=landscape
+I (282769) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=landscape
+I (282770) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:send mean 16376us p95 16696us quarter=landscape
+I (282771) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:draw mean 43777us p95 50913us quarter=landscape
+I (282772) layout_perf: sponza:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5877us p95 5917us quarter=landscape
+I (282773) layout_perf: LAYOUT scene=sponza layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=389 crc=d31d9bab internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=landscape
+I (282775) layout_perf: TUNE_OK render_lab.layout=0
+I (282860) asset: pack sponza: 9 entries, 1312480 bytes
+I (287275) layout_perf: sponza-lite:FULL_FB:frame mean 35050us p95 40260us quarter=portrait
+I (287276) layout_perf: sponza-lite:FULL_FB:wait mean 5us p95 5us quarter=portrait
+I (287277) layout_perf: sponza-lite:FULL_FB:send mean 9758us p95 9831us quarter=portrait
+I (287277) layout_perf: sponza-lite:FULL_FB:draw mean 32364us p95 37603us quarter=portrait
+I (287278) layout_perf: sponza-lite:FULL_FB:compose mean 2622us p95 2689us quarter=portrait
+I (287279) layout_perf: LAYOUT scene=sponza-lite layout=FULL_FB core1_share=464 crc=ee551e27 internal_free=90491 internal_largest=49152 psram_free=7679552 psram_largest=7340032 quarter=portrait
+I (287281) layout_perf: TUNE_OK render_lab.layout=1
+I (287367) asset: pack sponza: 9 entries, 1312480 bytes
+I (292370) layout_perf: sponza-lite:DOUBLE_FB:frame mean 39723us p95 45190us quarter=portrait
+I (292371) layout_perf: sponza-lite:DOUBLE_FB:wait mean 3us p95 4us quarter=portrait
+I (292372) layout_perf: sponza-lite:DOUBLE_FB:send mean 10251us p95 10308us quarter=portrait
+I (292373) layout_perf: sponza-lite:DOUBLE_FB:draw mean 33757us p95 39225us quarter=portrait
+I (292374) layout_perf: sponza-lite:DOUBLE_FB:compose mean 5907us p95 5959us quarter=portrait
+I (292375) layout_perf: LAYOUT scene=sponza-lite layout=DOUBLE_FB core1_share=451 crc=ee551e27 internal_free=90491 internal_largest=49152 psram_free=7427648 psram_largest=7340032 quarter=portrait
+I (292377) layout_perf: TUNE_OK render_lab.layout=2
+I (292462) asset: pack sponza: 9 entries, 1312480 bytes
+I (297948) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:frame mean 43611us p95 48918us quarter=portrait
+I (297949) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=portrait
+I (297950) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:send mean 16298us p95 16522us quarter=portrait
+I (297951) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:draw mean 37642us p95 42935us quarter=portrait
+I (297952) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5910us p95 5947us quarter=portrait
+I (297953) layout_perf: LAYOUT scene=sponza-lite layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=383 crc=ee551e27 internal_free=90491 internal_largest=49152 psram_free=7427648 psram_largest=7340032 quarter=portrait
+I (297955) layout_perf: TUNE_OK render_lab.layout=0
+I (298040) asset: pack sponza: 9 entries, 1312480 bytes
+I (302346) layout_perf: sponza-lite:FULL_FB:frame mean 34200us p95 38156us quarter=landscape
+I (302347) layout_perf: sponza-lite:FULL_FB:wait mean 4us p95 5us quarter=landscape
+I (302348) layout_perf: sponza-lite:FULL_FB:send mean 9752us p95 9823us quarter=landscape
+I (302349) layout_perf: sponza-lite:FULL_FB:draw mean 31477us p95 35409us quarter=landscape
+I (302350) layout_perf: sponza-lite:FULL_FB:compose mean 2659us p95 2742us quarter=landscape
+I (302351) layout_perf: LAYOUT scene=sponza-lite layout=FULL_FB core1_share=430 crc=e307603f internal_free=90491 internal_largest=49152 psram_free=7679552 psram_largest=7340032 quarter=landscape
+I (302353) layout_perf: TUNE_OK render_lab.layout=1
+I (302438) asset: pack sponza: 9 entries, 1312480 bytes
+I (307328) layout_perf: sponza-lite:DOUBLE_FB:frame mean 38827us p95 42762us quarter=landscape
+I (307329) layout_perf: sponza-lite:DOUBLE_FB:wait mean 3us p95 4us quarter=landscape
+I (307330) layout_perf: sponza-lite:DOUBLE_FB:send mean 10254us p95 10319us quarter=landscape
+I (307331) layout_perf: sponza-lite:DOUBLE_FB:draw mean 32895us p95 36836us quarter=landscape
+I (307332) layout_perf: sponza-lite:DOUBLE_FB:compose mean 5873us p95 5939us quarter=landscape
+I (307333) layout_perf: LAYOUT scene=sponza-lite layout=DOUBLE_FB core1_share=415 crc=e307603f internal_free=90491 internal_largest=49152 psram_free=7427648 psram_largest=7340032 quarter=landscape
+I (307335) layout_perf: TUNE_OK render_lab.layout=2
+I (307420) asset: pack sponza: 9 entries, 1312480 bytes
+I (312785) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:frame mean 42658us p95 46806us quarter=landscape
+I (312787) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=landscape
+I (312788) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:send mean 16271us p95 16636us quarter=landscape
+I (312789) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:draw mean 36733us p95 40937us quarter=landscape
+I (312790) layout_perf: sponza-lite:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5865us p95 5930us quarter=landscape
+I (312791) layout_perf: LAYOUT scene=sponza-lite layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=355 crc=e307603f internal_free=90491 internal_largest=49152 psram_free=7427648 psram_largest=7340032 quarter=landscape
+I (312793) layout_perf: TUNE_OK render_lab.layout=0
+I (312878) asset: pack sponza: 9 entries, 1312480 bytes
+I (317301) layout_perf: sponza-flat:FULL_FB:frame mean 35026us p95 42476us quarter=portrait
+I (317302) layout_perf: sponza-flat:FULL_FB:wait mean 3us p95 5us quarter=portrait
+I (317303) layout_perf: sponza-flat:FULL_FB:send mean 9752us p95 9821us quarter=portrait
+I (317304) layout_perf: sponza-flat:FULL_FB:draw mean 32209us p95 39669us quarter=portrait
+I (317305) layout_perf: sponza-flat:FULL_FB:compose mean 2757us p95 2804us quarter=portrait
+I (317306) layout_perf: LAYOUT scene=sponza-flat layout=FULL_FB core1_share=466 crc=d839a2e1 internal_free=90491 internal_largest=49152 psram_free=7622208 psram_largest=7340032 quarter=portrait
+I (317308) layout_perf: TUNE_OK render_lab.layout=1
+I (317393) asset: pack sponza: 9 entries, 1312480 bytes
+I (322396) layout_perf: sponza-flat:DOUBLE_FB:frame mean 39623us p95 46879us quarter=portrait
+I (322397) layout_perf: sponza-flat:DOUBLE_FB:wait mean 2us p95 3us quarter=portrait
+I (322398) layout_perf: sponza-flat:DOUBLE_FB:send mean 10274us p95 10338us quarter=portrait
+I (322399) layout_perf: sponza-flat:DOUBLE_FB:draw mean 33635us p95 40933us quarter=portrait
+I (322400) layout_perf: sponza-flat:DOUBLE_FB:compose mean 5930us p95 5963us quarter=portrait
+I (322401) layout_perf: LAYOUT scene=sponza-flat layout=DOUBLE_FB core1_share=457 crc=d839a2e1 internal_free=90491 internal_largest=49152 psram_free=7370304 psram_largest=7340032 quarter=portrait
+I (322403) layout_perf: TUNE_OK render_lab.layout=2
+I (322488) asset: pack sponza: 9 entries, 1312480 bytes
+I (327995) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:frame mean 43713us p95 51275us quarter=portrait
+I (327996) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:wait mean 2us p95 3us quarter=portrait
+I (327997) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:send mean 16667us p95 17418us quarter=portrait
+I (327998) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:draw mean 37727us p95 45322us quarter=portrait
+I (327999) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5931us p95 5971us quarter=portrait
+I (328000) layout_perf: LAYOUT scene=sponza-flat layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=380 crc=d839a2e1 internal_free=90491 internal_largest=49152 psram_free=7370304 psram_largest=7340032 quarter=portrait
+I (328002) layout_perf: TUNE_OK render_lab.layout=0
+I (328087) asset: pack sponza: 9 entries, 1312480 bytes
+I (332481) layout_perf: sponza-flat:FULL_FB:frame mean 34831us p95 40832us quarter=landscape
+I (332482) layout_perf: sponza-flat:FULL_FB:wait mean 3us p95 5us quarter=landscape
+I (332482) layout_perf: sponza-flat:FULL_FB:send mean 9753us p95 9823us quarter=landscape
+I (332483) layout_perf: sponza-flat:FULL_FB:draw mean 32019us p95 38023us quarter=landscape
+I (332484) layout_perf: sponza-flat:FULL_FB:compose mean 2752us p95 2835us quarter=landscape
+I (332485) layout_perf: LAYOUT scene=sponza-flat layout=FULL_FB core1_share=426 crc=04c2b85d internal_free=90491 internal_largest=49152 psram_free=7622208 psram_largest=7340032 quarter=landscape
+I (332487) layout_perf: TUNE_OK render_lab.layout=1
+I (332572) asset: pack sponza: 9 entries, 1312480 bytes
+I (337542) layout_perf: sponza-flat:DOUBLE_FB:frame mean 39400us p95 45436us quarter=landscape
+I (337543) layout_perf: sponza-flat:DOUBLE_FB:wait mean 2us p95 3us quarter=landscape
+I (337544) layout_perf: sponza-flat:DOUBLE_FB:send mean 10278us p95 10352us quarter=landscape
+I (337545) layout_perf: sponza-flat:DOUBLE_FB:draw mean 33455us p95 39526us quarter=landscape
+I (337546) layout_perf: sponza-flat:DOUBLE_FB:compose mean 5888us p95 5972us quarter=landscape
+I (337547) layout_perf: LAYOUT scene=sponza-flat layout=DOUBLE_FB core1_share=416 crc=04c2b85d internal_free=90491 internal_largest=49152 psram_free=7370304 psram_largest=7340032 quarter=landscape
+I (337549) layout_perf: TUNE_OK render_lab.layout=2
+I (337634) asset: pack sponza: 9 entries, 1312480 bytes
+I (343091) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:frame mean 43320us p95 49419us quarter=landscape
+I (343092) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:wait mean 2us p95 3us quarter=landscape
+I (343093) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:send mean 16675us p95 17068us quarter=landscape
+I (343094) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:draw mean 37397us p95 43503us quarter=landscape
+I (343095) layout_perf: sponza-flat:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5868us p95 5916us quarter=landscape
+I (343096) layout_perf: LAYOUT scene=sponza-flat layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=357 crc=04c2b85d internal_free=90491 internal_largest=49152 psram_free=7370304 psram_largest=7340032 quarter=landscape
+I (343098) layout_perf: TUNE_OK render_lab.layout=0
+I (343184) asset: pack sponza: 9 entries, 1312480 bytes
+I (347472) layout_perf: sponza-fitted:FULL_FB:frame mean 34001us p95 39946us quarter=portrait
+I (347473) layout_perf: sponza-fitted:FULL_FB:wait mean 4us p95 5us quarter=portrait
+I (347474) layout_perf: sponza-fitted:FULL_FB:send mean 9755us p95 9833us quarter=portrait
+I (347475) layout_perf: sponza-fitted:FULL_FB:draw mean 31378us p95 37331us quarter=portrait
+I (347476) layout_perf: sponza-fitted:FULL_FB:compose mean 2558us p95 2603us quarter=portrait
+I (347476) layout_perf: LAYOUT scene=sponza-fitted layout=FULL_FB core1_share=476 crc=6a2f5e7a internal_free=90491 internal_largest=49152 psram_free=7671360 psram_largest=7340032 quarter=portrait
+I (347478) layout_perf: TUNE_OK render_lab.layout=1
+I (347564) asset: pack sponza: 9 entries, 1312480 bytes
+I (352479) layout_perf: sponza-fitted:DOUBLE_FB:frame mean 38991us p95 45051us quarter=portrait
+I (352480) layout_perf: sponza-fitted:DOUBLE_FB:wait mean 3us p95 4us quarter=portrait
+I (352481) layout_perf: sponza-fitted:DOUBLE_FB:send mean 10264us p95 10332us quarter=portrait
+I (352482) layout_perf: sponza-fitted:DOUBLE_FB:draw mean 32968us p95 39052us quarter=portrait
+I (352483) layout_perf: sponza-fitted:DOUBLE_FB:compose mean 5963us p95 5995us quarter=portrait
+I (352484) layout_perf: LAYOUT scene=sponza-fitted layout=DOUBLE_FB core1_share=464 crc=6a2f5e7a internal_free=90491 internal_largest=49152 psram_free=7419456 psram_largest=7340032 quarter=portrait
+I (352486) layout_perf: TUNE_OK render_lab.layout=2
+I (352571) asset: pack sponza: 9 entries, 1312480 bytes
+I (357955) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:frame mean 42776us p95 48608us quarter=portrait
+I (357956) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:wait mean 4us p95 4us quarter=portrait
+I (357957) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:send mean 16205us p95 16485us quarter=portrait
+I (357958) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:draw mean 36756us p95 42598us quarter=portrait
+I (357959) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5960us p95 5983us quarter=portrait
+I (357960) layout_perf: LAYOUT scene=sponza-fitted layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=398 crc=6a2f5e7a internal_free=90491 internal_largest=49152 psram_free=7419456 psram_largest=7340032 quarter=portrait
+I (357962) layout_perf: TUNE_OK render_lab.layout=0
+I (358048) asset: pack sponza: 9 entries, 1312480 bytes
+I (362137) layout_perf: sponza-fitted:FULL_FB:frame mean 32446us p95 36449us quarter=landscape
+I (362138) layout_perf: sponza-fitted:FULL_FB:wait mean 4us p95 5us quarter=landscape
+I (362139) layout_perf: sponza-fitted:FULL_FB:send mean 9752us p95 9823us quarter=landscape
+I (362140) layout_perf: sponza-fitted:FULL_FB:draw mean 29785us p95 33818us quarter=landscape
+I (362141) layout_perf: sponza-fitted:FULL_FB:compose mean 2597us p95 2652us quarter=landscape
+I (362141) layout_perf: LAYOUT scene=sponza-fitted layout=FULL_FB core1_share=449 crc=0d7a97c5 internal_free=90491 internal_largest=49152 psram_free=7671360 psram_largest=7340032 quarter=landscape
+I (362143) layout_perf: TUNE_OK render_lab.layout=1
+I (362229) asset: pack sponza: 9 entries, 1312480 bytes
+I (366929) layout_perf: sponza-fitted:DOUBLE_FB:frame mean 37290us p95 41329us quarter=landscape
+I (366930) layout_perf: sponza-fitted:DOUBLE_FB:wait mean 3us p95 5us quarter=landscape
+I (366931) layout_perf: sponza-fitted:DOUBLE_FB:send mean 10251us p95 10313us quarter=landscape
+I (366932) layout_perf: sponza-fitted:DOUBLE_FB:draw mean 31257us p95 35355us quarter=landscape
+I (366933) layout_perf: sponza-fitted:DOUBLE_FB:compose mean 5973us p95 6041us quarter=landscape
+I (366934) layout_perf: LAYOUT scene=sponza-fitted layout=DOUBLE_FB core1_share=439 crc=0d7a97c5 internal_free=90491 internal_largest=49152 psram_free=7419456 psram_largest=7340032 quarter=landscape
+I (366936) layout_perf: TUNE_OK render_lab.layout=2
+I (367022) asset: pack sponza: 9 entries, 1312480 bytes
+I (372199) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:frame mean 41129us p95 45275us quarter=landscape
+I (372200) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 5us quarter=landscape
+I (372201) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:send mean 16336us p95 16616us quarter=landscape
+I (372202) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:draw mean 35099us p95 39306us quarter=landscape
+I (372203) layout_perf: sponza-fitted:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5972us p95 6028us quarter=landscape
+I (372204) layout_perf: LAYOUT scene=sponza-fitted layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=378 crc=0d7a97c5 internal_free=90491 internal_largest=49152 psram_free=7419456 psram_largest=7340032 quarter=landscape
+I (372206) layout_perf: TUNE_OK render_lab.layout=0
+I (372291) asset: pack sponza: 9 entries, 1312480 bytes
+I (376640) layout_perf: sponza-flat-fitted:FULL_FB:frame mean 34398us p95 42530us quarter=portrait
+I (376641) layout_perf: sponza-flat-fitted:FULL_FB:wait mean 3us p95 5us quarter=portrait
+I (376642) layout_perf: sponza-flat-fitted:FULL_FB:send mean 9767us p95 9835us quarter=portrait
+I (376643) layout_perf: sponza-flat-fitted:FULL_FB:draw mean 31716us p95 39877us quarter=portrait
+I (376644) layout_perf: sponza-flat-fitted:FULL_FB:compose mean 2622us p95 2667us quarter=portrait
+I (376645) layout_perf: LAYOUT scene=sponza-flat-fitted layout=FULL_FB core1_share=499 crc=0a3b04d6 internal_free=90491 internal_largest=49152 psram_free=7605824 psram_largest=7340032 quarter=portrait
+I (376647) layout_perf: TUNE_OK render_lab.layout=1
+I (376733) asset: pack sponza: 9 entries, 1312480 bytes
+I (381707) layout_perf: sponza-flat-fitted:DOUBLE_FB:frame mean 39356us p95 47507us quarter=portrait
+I (381708) layout_perf: sponza-flat-fitted:DOUBLE_FB:wait mean 2us p95 3us quarter=portrait
+I (381708) layout_perf: sponza-flat-fitted:DOUBLE_FB:send mean 10324us p95 10411us quarter=portrait
+I (381709) layout_perf: sponza-flat-fitted:DOUBLE_FB:draw mean 33364us p95 41553us quarter=portrait
+I (381710) layout_perf: sponza-flat-fitted:DOUBLE_FB:compose mean 5935us p95 5978us quarter=portrait
+I (381711) layout_perf: LAYOUT scene=sponza-flat-fitted layout=DOUBLE_FB core1_share=491 crc=0a3b04d6 internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=portrait
+I (381713) layout_perf: TUNE_OK render_lab.layout=2
+I (381799) asset: pack sponza: 9 entries, 1312480 bytes
+I (387279) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:frame mean 43433us p95 51464us quarter=portrait
+I (387280) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:wait mean 2us p95 3us quarter=portrait
+I (387281) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:send mean 16726us p95 17325us quarter=portrait
+I (387282) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:draw mean 37439us p95 45497us quarter=portrait
+I (387283) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5937us p95 5981us quarter=portrait
+I (387284) layout_perf: LAYOUT scene=sponza-flat-fitted layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=425 crc=0a3b04d6 internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=portrait
+I (387287) layout_perf: TUNE_OK render_lab.layout=0
+I (387372) asset: pack sponza: 9 entries, 1312480 bytes
+I (391603) layout_perf: sponza-flat-fitted:FULL_FB:frame mean 33487us p95 40151us quarter=landscape
+I (391604) layout_perf: sponza-flat-fitted:FULL_FB:wait mean 4us p95 5us quarter=landscape
+I (391605) layout_perf: sponza-flat-fitted:FULL_FB:send mean 9759us p95 9834us quarter=landscape
+I (391606) layout_perf: sponza-flat-fitted:FULL_FB:draw mean 30868us p95 37585us quarter=landscape
+I (391607) layout_perf: sponza-flat-fitted:FULL_FB:compose mean 2556us p95 2641us quarter=landscape
+I (391608) layout_perf: LAYOUT scene=sponza-flat-fitted layout=FULL_FB core1_share=419 crc=e0e700fe internal_free=90491 internal_largest=49152 psram_free=7605824 psram_largest=7340032 quarter=landscape
+I (391610) layout_perf: TUNE_OK render_lab.layout=1
+I (391695) asset: pack sponza: 9 entries, 1312480 bytes
+I (396542) layout_perf: sponza-flat-fitted:DOUBLE_FB:frame mean 38381us p95 45129us quarter=landscape
+I (396543) layout_perf: sponza-flat-fitted:DOUBLE_FB:wait mean 2us p95 3us quarter=landscape
+I (396544) layout_perf: sponza-flat-fitted:DOUBLE_FB:send mean 10328us p95 10402us quarter=landscape
+I (396545) layout_perf: sponza-flat-fitted:DOUBLE_FB:draw mean 32406us p95 39209us quarter=landscape
+I (396546) layout_perf: sponza-flat-fitted:DOUBLE_FB:compose mean 5919us p95 5970us quarter=landscape
+I (396547) layout_perf: LAYOUT scene=sponza-flat-fitted layout=DOUBLE_FB core1_share=409 crc=e0e700fe internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=landscape
+I (396549) layout_perf: TUNE_OK render_lab.layout=2
+I (396635) asset: pack sponza: 9 entries, 1312480 bytes
+I (401962) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:frame mean 42244us p95 48940us quarter=landscape
+I (401963) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:wait mean 2us p95 3us quarter=landscape
+I (401964) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:send mean 16542us p95 16900us quarter=landscape
+I (401965) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:draw mean 36279us p95 43013us quarter=landscape
+I (401967) layout_perf: sponza-flat-fitted:DOUBLE_FB_CLEAR_ON_SEND:compose mean 5910us p95 5950us quarter=landscape
+I (401968) layout_perf: LAYOUT scene=sponza-flat-fitted layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=357 crc=e0e700fe internal_free=90491 internal_largest=49152 psram_free=7353920 psram_largest=7340032 quarter=landscape
+I (401970) layout_perf: TUNE_OK render_lab.layout=0
+I (401994) asset: pack capybara: 10 entries, 309140 bytes
+I (403739) layout_perf: capybara:FULL_FB:frame mean 13691us p95 13845us quarter=portrait
+I (403740) layout_perf: capybara:FULL_FB:wait mean 5us p95 6us quarter=portrait
+I (403741) layout_perf: capybara:FULL_FB:send mean 9734us p95 9839us quarter=portrait
+I (403742) layout_perf: capybara:FULL_FB:draw mean 10856us p95 11022us quarter=portrait
+I (403743) layout_perf: capybara:FULL_FB:compose mean 2536us p95 2667us quarter=portrait
+I (403744) layout_perf: LAYOUT scene=capybara layout=FULL_FB core1_share=529 crc=2d2bedad internal_free=77551 internal_largest=36864 psram_free=7730796 psram_largest=7602176 quarter=portrait
+I (403746) layout_perf: TUNE_OK render_lab.layout=1
+I (403770) asset: pack capybara: 10 entries, 309140 bytes
+I (406114) layout_perf: capybara:DOUBLE_FB:frame mean 18437us p95 18572us quarter=portrait
+I (406115) layout_perf: capybara:DOUBLE_FB:wait mean 3us p95 4us quarter=portrait
+I (406116) layout_perf: capybara:DOUBLE_FB:send mean 9991us p95 10079us quarter=portrait
+I (406117) layout_perf: capybara:DOUBLE_FB:draw mean 12146us p95 12300us quarter=portrait
+I (406118) layout_perf: capybara:DOUBLE_FB:compose mean 5944us p95 6030us quarter=portrait
+I (406119) layout_perf: LAYOUT scene=capybara layout=DOUBLE_FB core1_share=464 crc=2d2bedad internal_free=77551 internal_largest=36864 psram_free=7478892 psram_largest=7340032 quarter=portrait
+I (406121) layout_perf: TUNE_OK render_lab.layout=2
+I (406145) asset: pack capybara: 10 entries, 309140 bytes
+I (409001) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:frame mean 22573us p95 22804us quarter=portrait
+I (409002) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=portrait
+I (409003) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:send mean 15628us p95 15738us quarter=portrait
+I (409004) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:draw mean 16208us p95 16466us quarter=portrait
+I (409005) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:compose mean 6015us p95 6099us quarter=portrait
+I (409006) layout_perf: LAYOUT scene=capybara layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=464 crc=2d2bedad internal_free=77551 internal_largest=36864 psram_free=7478892 psram_largest=7340032 quarter=portrait
+I (409008) layout_perf: TUNE_OK render_lab.layout=0
+I (409032) asset: pack capybara: 10 entries, 309140 bytes
+I (410864) layout_perf: capybara:FULL_FB:frame mean 14386us p95 14534us quarter=landscape
+I (410865) layout_perf: capybara:FULL_FB:wait mean 5us p95 6us quarter=landscape
+I (410865) layout_perf: capybara:FULL_FB:send mean 9733us p95 9824us quarter=landscape
+I (410866) layout_perf: capybara:FULL_FB:draw mean 11314us p95 11446us quarter=landscape
+I (410867) layout_perf: capybara:FULL_FB:compose mean 2783us p95 2886us quarter=landscape
+I (410868) layout_perf: LAYOUT scene=capybara layout=FULL_FB core1_share=338 crc=f552d6dd internal_free=77551 internal_largest=36864 psram_free=7730796 psram_largest=7602176 quarter=landscape
+I (410870) layout_perf: TUNE_OK render_lab.layout=1
+I (410894) asset: pack capybara: 10 entries, 309140 bytes
+I (413291) layout_perf: capybara:DOUBLE_FB:frame mean 18854us p95 18965us quarter=landscape
+I (413292) layout_perf: capybara:DOUBLE_FB:wait mean 3us p95 4us quarter=landscape
+I (413293) layout_perf: capybara:DOUBLE_FB:send mean 10029us p95 10119us quarter=landscape
+I (413294) layout_perf: capybara:DOUBLE_FB:draw mean 12422us p95 12563us quarter=landscape
+I (413295) layout_perf: capybara:DOUBLE_FB:compose mean 6081us p95 6158us quarter=landscape
+I (413295) layout_perf: LAYOUT scene=capybara layout=DOUBLE_FB core1_share=247 crc=f552d6dd internal_free=77551 internal_largest=36864 psram_free=7478892 psram_largest=7340032 quarter=landscape
+I (413297) layout_perf: TUNE_OK render_lab.layout=2
+I (413321) asset: pack capybara: 10 entries, 309140 bytes
+I (416230) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:frame mean 22997us p95 23431us quarter=landscape
+I (416231) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:wait mean 3us p95 4us quarter=landscape
+I (416232) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:send mean 15728us p95 15858us quarter=landscape
+I (416233) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:draw mean 16525us p95 16969us quarter=landscape
+I (416234) layout_perf: capybara:DOUBLE_FB_CLEAR_ON_SEND:compose mean 6123us p95 6202us quarter=landscape
+I (416235) layout_perf: LAYOUT scene=capybara layout=DOUBLE_FB_CLEAR_ON_SEND core1_share=252 crc=f552d6dd internal_free=77551 internal_largest=36864 psram_free=7478892 psram_largest=7340032 quarter=landscape
+I (416237) layout_perf: TUNE_OK render_lab.layout=0
+./main/shell/shell.c:224:test_layout_frame_cost:PASS
+TEST_TIME name=test_layout_frame_cost elapsed_ms=409720 stack_free_bytes=1264
+FRAME_WATCH judged 1 of 1 tests
+
+-----------------------
+1 Tests 0 Failures 0 Ignored 
+OK
+
+RUNSUITE_COMPLETE name=run_render_lab_layout_perf_suite found=1 selected=1 unmatched=0
+I (416311) shell: 0.0 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (416312) shell: ms/frame avg/worst: ui.backend 0.70/0.1  ui.face 0.35/0.0  ui.build 0.20/0.0  ridge.layers 7.20/2.3  ridge.paint 38.74/14.4  ui.paint 9.79/3.2  present 7.51/10.7  frame.rest 2107.19/21062.8  r3d.cull 593.89/1.2  r3d.transform 4735.94/14.0  r3d.draw 28536.01/48.2  r3d.upscale 5000.40/6.3 | total 41037.96 || sound_mix 0.002/0.034 ms/block n=71580

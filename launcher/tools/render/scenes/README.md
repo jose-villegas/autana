@@ -12,9 +12,6 @@
 | [post_ui_render_host.c](post_ui_render_host.c) | Power on self test screen drawing scene. |
 | [post_ui_render_host.sh](post_ui_render_host.sh) | Power on self test scene inputs and render points. |
 | [post_ui_render_baseline.txt](post_ui_render_baseline.txt) | Pinned power on self test frame hashes. |
-| [ui_dropdown_render_host.c](ui_dropdown_render_host.c) | Dropdown control drawing scene. |
-| [ui_dropdown_render_host.sh](ui_dropdown_render_host.sh) | Dropdown scene inputs and render points. |
-| [ui_dropdown_render_baseline.txt](ui_dropdown_render_baseline.txt) | Pinned dropdown frame hashes. |
-| [ui_widgets_render_host.c](ui_widgets_render_host.c) | UI toolkit gallery drawing scene. |
-| [ui_widgets_render_host.sh](ui_widgets_render_host.sh) | UI toolkit gallery views and render points. |
-| [ui_widgets_render_baseline.txt](ui_widgets_render_baseline.txt) | Pinned UI toolkit gallery frame hashes. |
+| [ui_examples_render_host.c](ui_examples_render_host.c) | Draws one face example in one state and measures when a tap fires it. |
+| [ui_examples_render_host.sh](ui_examples_render_host.sh) | Globs [../ui_examples/](../ui_examples/) into wrappers and render points. |
+| [ui_examples_render_baseline.txt](ui_examples_render_baseline.txt) | Pinned face example hashes. |

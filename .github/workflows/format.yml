@@ -8,7 +8,7 @@ name: Format
 # commit CI or a merge makes.
 #
 # clang-format is pinned to one exact version, not a minimum: see
-# docs/C-Style-Guide.md's "One formatter version" for why the versions
+# docs/c-style/README.md's "One formatter version" for why the versions
 # disagree on real files in this tree. The version is the esp-clang release
 # the pinned ESP-IDF bundles (launcher/idf-pin.json), run inside that image,
 # so a contributor with that ESP-IDF formats with the same binary.
@@ -20,15 +20,49 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  format:
-    name: clang-format and LF line endings
+  inputs:
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      format: ${{ steps.affected.outputs.format }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: affected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/job_inputs.py affected --job format
+
+  idf-image:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.format == 'true') }}
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.pin.outputs.image }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: pin
+        run: echo "image=$(sh scripts/ci/idf_image.sh)" >> "$GITHUB_OUTPUT"
+
+  format:
+    needs: [inputs, idf-image]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.format == 'true') }}
+    name: clang-format and LF line endings
+    runs-on: ubuntu-24.04
+    container: ${{ needs.idf-image.outputs.image }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/job-inputs
+        with: {step: arm}
+
       - uses: ./.github/actions/host-tools
 
       # scripts/gates/format-file-list.sh is the same list the hook filters against,
@@ -38,14 +72,12 @@ jobs:
       # that ESP-IDF formats with.
       - name: Every first-party C and header file is formatted
         run: |
-          image=$(sh scripts/ci/idf_image.sh)
-          docker run --rm -v "$GITHUB_WORKSPACE:/app" -w /app "$image" /bin/bash -c '
-            set -eu
-            git config --global --add safe.directory "*"
-            python "$IDF_PATH/tools/idf_tools.py" install esp-clang > /dev/null
-            scripts/gates/check-format.sh --which
-            echo "Files checked: $(scripts/gates/format-file-list.sh | wc -l)"
-            scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check'
+          set -eu
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          python "$IDF_PATH/tools/idf_tools.py" install esp-clang > /dev/null
+          scripts/gates/check-format.sh --which
+          echo "Files checked: $(scripts/gates/format-file-list.sh | wc -l)"
+          scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check
 
       # Reads the index, not the checkout, so a CRLF file fails here whatever
       # .gitattributes or the runner's git config would do to it on disk.
@@ -59,3 +91,7 @@ jobs:
             echo "$crlf"
             exit 1
           fi
+
+      - uses: ./.github/actions/job-inputs
+        if: ${{ !cancelled() }}
+        with: {step: record}

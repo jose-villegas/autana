@@ -4,8 +4,8 @@
 #include "math/scalar/math_const.h"
 #include "math/scalar/trig.h"
 #include "math/signal/goertzel.h"
-#include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/cleanup.h"
+#include "testkit/suite.h"
 #include "unity.h"
 #define TEST_SAMPLE_RATE_HZ        22050u
 #define TEST_SAMPLES               TEST_SAMPLE_RATE_HZ
@@ -37,7 +37,7 @@ fill_tone(int16_t* samples, int32_t divisor) {
             (int16_t)(trig_sin((uint16_t)((uint64_t)i * TEST_TARGET_HZ * TRIG_TURN / TEST_SAMPLE_RATE_HZ)) / divisor);
     }
 }
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
 #define TEST_PI           3.14159265358979323846
 #define TEST_DB_TOLERANCE 0.5f
 #define TEST_MAX_RECORD_S 60u
@@ -60,9 +60,9 @@ test_goertzel_reference(void) {
             goertzel_init(&state, frequencies[f], TEST_SAMPLE_RATE_HZ);
             goertzel_feed_s(&state, samples, TEST_SAMPLES);
             double scale = (double)TEST_SAMPLES * TRIG_SIN_MAX / 2;
-            float reference = (float)(10 * log10((re * re + im * im) / (scale * scale)));
+            float reference = math_db_power((float)((re * re + im * im) / (scale * scale)));
             TEST_ASSERT_FLOAT_WITHIN(TEST_DB_TOLERANCE, reference, goertzel_level_db(&state, TRIG_SIN_MAX));
-            TEST_ASSERT_FLOAT_WITHIN(TEST_DB_TOLERANCE, (float)(20 * log10(amplitudes[a])),
+            TEST_ASSERT_FLOAT_WITHIN(TEST_DB_TOLERANCE, math_db_amplitude(amplitudes[a]),
                                      goertzel_level_db(&state, TRIG_SIN_MAX));
         }
     }
@@ -89,7 +89,7 @@ test_goertzel_noninteger_bins(void) {
                 goertzel_init(&state, frequencies[f], TEST_SAMPLE_RATE_HZ);
                 goertzel_feed_s(&state, samples, n);
                 const double scale = (double)n * TRIG_SIN_MAX / 2;
-                const float reference = (float)(10 * log10((re * re + im * im) / (scale * scale)));
+                const float reference = math_db_power((float)((re * re + im * im) / (scale * scale)));
                 TEST_ASSERT_FLOAT_WITHIN(TEST_DB_TOLERANCE, reference, goertzel_level_db(&state, TRIG_SIN_MAX));
             }
         }
@@ -121,7 +121,7 @@ test_goertzel_streaming_silence_rejection(void) {
     goertzel_t state;
     goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
     goertzel_feed_s(&state, samples, TEST_SAMPLES);
-    TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TRIG_SIN_MAX));
+    TEST_ASSERT_EQUAL_FLOAT(MATH_DB_FLOOR, goertzel_level_db(&state, TRIG_SIN_MAX));
     TEST_ASSERT_EQUAL_FLOAT(0, goertzel_power(&state));
     fill_tone(samples, 1);
     goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
@@ -150,7 +150,6 @@ test_goertzel_streaming_silence_rejection(void) {
 #define TEST_LEVEL_TOLERANCE     0.001F
 #define TEST_AMPLITUDE_DIVISOR   2
 #define TEST_AMPLITUDE           (TRIG_SIN_MAX / TEST_AMPLITUDE_DIVISOR)
-#define TEST_AMPLITUDE_DB_SCALE  20.0F
 #define TEST_TINY_FULL_SCALE     1.0e12F
 
 static void
@@ -211,7 +210,7 @@ test_goertzel_reset(void) {
     goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
     goertzel_init(&fresh, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
     TEST_ASSERT_EQUAL_FLOAT(0.0F, goertzel_amplitude(&state));
-    TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TRIG_SIN_MAX));
+    TEST_ASSERT_EQUAL_FLOAT(MATH_DB_FLOOR, goertzel_level_db(&state, TRIG_SIN_MAX));
     goertzel_feed_s(&state, samples, TEST_RESET_SAMPLES);
     TEST_ASSERT_NOT_EQUAL(0.0F, state.previous2);
     goertzel_reset(&state);
@@ -230,16 +229,106 @@ test_goertzel_amplitude_and_scale(void) {
     goertzel_feed_s(&state, samples, TEST_SAMPLES);
     TEST_ASSERT_FLOAT_WITHIN(TEST_AMPLITUDE_TOLERANCE, TEST_AMPLITUDE, goertzel_amplitude(&state));
     const float level = goertzel_level_db(&state, TRIG_SIN_MAX);
-    TEST_ASSERT_FLOAT_WITHIN(TEST_LEVEL_TOLERANCE, level - TEST_AMPLITUDE_DB_SCALE * log10f(TEST_FULL_SCALE_FACTOR),
+    TEST_ASSERT_FLOAT_WITHIN(TEST_LEVEL_TOLERANCE, level - math_db_amplitude(TEST_FULL_SCALE_FACTOR),
                              goertzel_level_db(&state, TRIG_SIN_MAX * TEST_FULL_SCALE_FACTOR));
     /* Non-zero power far below the floor still reads the floor. */
     TEST_ASSERT_TRUE(goertzel_power(&state) > 0.0F);
-    TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TEST_TINY_FULL_SCALE));
+    TEST_ASSERT_EQUAL_FLOAT(MATH_DB_FLOOR, goertzel_level_db(&state, TEST_TINY_FULL_SCALE));
+}
+
+#define TEST_PHASE_SAMPLES        441u
+#define TEST_PHASE_LONG_SAMPLES   65537u
+#define TEST_PHASE_LONG_TOLERANCE 0.03F
+#define TEST_ROTATION_TOLERANCE   0.00001F
+#define TEST_ROTATION_LARGE_COUNT 16777218u
+#define TEST_PHASE_TOLERANCE      0.001F
+#define TEST_SINE_PHASE_TOLERANCE 0.02F
+
+static void
+assert_phase_record(int16_t* samples, size_t count, float hz, float phase, float tolerance) {
+    goertzel_t state, split;
+    goertzel_init(&state, hz, TEST_SAMPLE_RATE_HZ);
+    goertzel_init(&split, hz, TEST_SAMPLE_RATE_HZ);
+    TEST_ASSERT_EQUAL_FLOAT(0, goertzel_phase(&state));
+    double re = 0, im = 0;
+    for (size_t i = 0; i < count; i++) {
+        const double angle = (double)MATH_TAU * TEST_TARGET_HZ * i / TEST_SAMPLE_RATE_HZ;
+        samples[i % TEST_SAMPLES] = (int16_t)lround(TRIG_SIN_MAX * cos(angle + (double)phase));
+        const double bin_angle = (double)MATH_TAU * (double)hz * i / TEST_SAMPLE_RATE_HZ;
+        re += samples[i % TEST_SAMPLES] * cos(bin_angle);
+        im -= samples[i % TEST_SAMPLES] * sin(bin_angle);
+        if ((i + 1) % TEST_SAMPLES == 0 || i + 1 == count) {
+            const size_t n = i % TEST_SAMPLES + 1;
+            goertzel_feed_s(&state, samples, n);
+            goertzel_feed_s(&split, samples, TEST_ODD_BLOCK);
+            goertzel_feed_s(&split, samples + TEST_ODD_BLOCK, n - TEST_ODD_BLOCK);
+        }
+    }
+    TEST_ASSERT_FLOAT_WITHIN(tolerance, 0, remainderf(goertzel_phase(&state) - (float)atan2(im, re), MATH_TAU));
+    TEST_ASSERT_EQUAL_FLOAT(goertzel_phase(&state), goertzel_phase(&split));
+    if (hz == TEST_TARGET_HZ) {
+        TEST_ASSERT_FLOAT_WITHIN(tolerance, 0, remainderf(goertzel_phase(&state) - phase, MATH_TAU));
+    }
+    goertzel_reset(&state);
+    for (size_t i = 0; i < count; i++) {
+        samples[i % TEST_SAMPLES] = (int16_t)lround(
+            TRIG_SIN_MAX * sin((double)MATH_TAU * (double)hz * i / TEST_SAMPLE_RATE_HZ + (double)phase));
+        if ((i + 1) % TEST_SAMPLES == 0 || i + 1 == count) {
+            goertzel_feed_s(&state, samples, i % TEST_SAMPLES + 1);
+        }
+    }
+    TEST_ASSERT_FLOAT_WITHIN(TEST_SINE_PHASE_TOLERANCE, 0,
+                             remainderf(goertzel_phase(&state) - phase + MATH_PI / 2, MATH_TAU));
+}
+
+static void
+test_goertzel_phase(void) {
+    static const float phases[] = {-2.0F, 0.0F, 1.2F, MATH_PI - TEST_PHASE_TOLERANCE * 2,
+                                   MATH_PI + TEST_PHASE_TOLERANCE * 2};
+    static const float bins[] = {TEST_TARGET_HZ, TEST_TARGET_HZ + 3.7F};
+    static const size_t counts[] = {TEST_PHASE_SAMPLES, TEST_PHASE_LONG_SAMPLES};
+    int16_t* samples = fixture();
+    for (size_t c = 0; c < sizeof counts / sizeof counts[0]; c++) {
+        const size_t count = counts[c];
+        const float tolerance = count == TEST_PHASE_SAMPLES ? TEST_PHASE_TOLERANCE : TEST_PHASE_LONG_TOLERANCE;
+        for (size_t b = 0; b < sizeof bins / sizeof bins[0]; b++) {
+            for (size_t p = 0; p < sizeof phases / sizeof phases[0]; p++) {
+                assert_phase_record(samples, count, bins[b], phases[p], tolerance);
+            }
+        }
+    }
+}
+
+static void
+test_goertzel_phase_long_rotation(void) {
+    static const size_t counts[] = {TEST_PHASE_LONG_SAMPLES, TEST_ROTATION_LARGE_COUNT, UINT32_MAX};
+    static const float frequencies[] = {TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ / 2.0F - TEST_TARGET_HZ};
+    for (size_t c = 0; c < sizeof counts / sizeof counts[0]; c++) {
+        for (size_t f = 0; f < sizeof frequencies / sizeof frequencies[0]; f++) {
+            goertzel_t state;
+            goertzel_init(&state, frequencies[f], TEST_SAMPLE_RATE_HZ);
+            state.samples = counts[c];
+            state.previous = 1.0F;
+            const float reference =
+                (float)remainder(-(double)state.omega * (double)(state.samples - 1), (double)MATH_TAU);
+            TEST_ASSERT_FLOAT_WITHIN(TEST_ROTATION_TOLERANCE, 0,
+                                     remainderf(goertzel_phase(&state) - reference, MATH_TAU));
+        }
+    }
+}
+
+static void
+test_goertzel_phase_negative_pi(void) {
+    const goertzel_t state = {.omega = MATH_PI / 2, .previous = -1, .previous2 = -0.0F, .samples = 1};
+    TEST_ASSERT_EQUAL_FLOAT(MATH_PI, goertzel_phase(&state));
 }
 
 void
 run_goertzel_suite(void) {
-#ifndef DEVICE_BUILD
+#ifndef ESP_PLATFORM
+    RUN_TEST(test_goertzel_phase);
+    RUN_TEST(test_goertzel_phase_negative_pi);
+    RUN_TEST(test_goertzel_phase_long_rotation);
     RUN_TEST(test_goertzel_reference);
     RUN_TEST(test_goertzel_noninteger_bins);
     RUN_TEST(test_goertzel_max_record);

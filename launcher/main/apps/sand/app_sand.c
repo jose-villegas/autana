@@ -31,7 +31,7 @@
  * largest of any tier: 61 * 6 = 366 and 74 * 6 = 444, a 2 px strip on the
  * right and a 4 px strip on the bottom. That is harmless only because
  * the colour of an empty cell and the menu's background are the same value,
- * 0x0A0C14, see COL_BACKGROUND, so the untouched strip is indistinguishable
+ * UI_BACKGROUND, so the untouched strip is indistinguishable
  * from the screen around it. start_sim() still clears the screen explicitly
  * before the first frame rather than leaning on that coincidence alone.
  */
@@ -59,6 +59,8 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "input/input.h"
+#include "input/motion/gravity.h"
+#include "input/motion/shake.h"
 #include "input/motion/tilt.h"
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
@@ -70,7 +72,6 @@
 #include "sand_colour_state.h"
 #include "sand_controls.h"
 #include "sand_dither_tables.h"
-#include "sand_heal.h"
 #include "sand_limits.h"
 #include "sand_menu.h"
 #include "sand_mode_swatches.h"
@@ -83,8 +84,6 @@
 #include "ui/ui.h"
 
 static const char* TAG = "sand";
-
-#define COL_BACKGROUND 0x0A0C14
 
 typedef struct {
     const char* name;
@@ -185,11 +184,6 @@ static bool mode_swatches_ready;
 
 static int cell, grid_w, grid_h, block_cols, block_rows;
 
-/* Two heal strips a present: enough to keep up with a pour's settling
- * bands without costing more than a seventh of a full frame. */
-#define SAND_HEAL_BUDGET_PIXELS (GFX_WIDTH * 64)
-static sand_heal_t heal_policy;
-
 #define APP_IMPULSE_MAX           2048
 
 #define SAND_IMPULSE_BUDGET_BYTES 12288
@@ -260,6 +254,8 @@ typedef struct {
 static sim_buffers_t buffers;
 static sand_t sim;
 static tilt_t tilt;
+static gravity_t shake_gravity;
+static shake_t shake;
 static bool failed;
 static uint32_t label_left_ms; /* countdown for the mode label */
 
@@ -565,8 +561,6 @@ start_sim(void) {
     sim_accumulator_q8 = 0;
     pour_accumulator_ms = 0;
     sand_paint_row_state_init(&paint_row_state);
-    sand_heal_init(&heal_policy, GFX_HEIGHT);
-    gfx_heal_set_budget(SAND_HEAL_BUDGET_PIXELS);
     ui.brush = 0;
     ui.mode = SAND_MODE_PAINT;
     label_left_ms = 0;
@@ -630,6 +624,8 @@ start_sim(void) {
      * tap in BOOM mode. */
     sand_enable_impulses(&sim, buffers.impulse_buf, APP_IMPULSE_MAX);
     tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
+    gravity_reset(&shake_gravity);
+    shake_reset(&shake);
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -825,8 +821,7 @@ row_paint_span(int cy, int* out_x0, int* out_x1) {
  * left untouched dithers the same as before, not merely unpainted.
  * Returns the pixels marked. */
 static int64_t
-mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t* send_x1, int send_n, bool indexed,
-               bool healing) {
+mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t* send_x1, int send_n, bool indexed) {
     int64_t pixels = 0;
     for (int i = 0; i < send_n; i++) {
         int sx0;
@@ -836,9 +831,6 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
             continue;
         }
         gfx_mark_dirty(sx0 * cell, cy * cell, (sx1 - sx0) * cell, cell);
-        if (healing) {
-            sand_heal_note_rows(&heal_policy, cy * cell, (cy + 1) * cell);
-        }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         pixels += (int64_t)(sx1 - sx0) * cell * cell;
 #endif
@@ -849,7 +841,7 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
 /* Repaints dirty row `cy` and marks what changed since its last paint;
  * returns the pixels marked. */
 static int64_t
-draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, bool indexed, bool healing) {
+draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, bool indexed) {
     buffers.dirty_rows[cy] = 0;
 
     int wx0;
@@ -870,7 +862,7 @@ draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, b
     uint16_t send_x1[2 * ROW_MAX_RUNS];
     const int send_n = row_runs_reconcile(cur_x0, cur_x1, cur_n, prev_x0, prev_x1, prev_n, send_x0, send_x1);
 
-    const int64_t pixels = mark_row_sends(cy, wx0, wx1, send_x0, send_x1, send_n, indexed, healing);
+    const int64_t pixels = mark_row_sends(cy, wx0, wx1, send_x0, send_x1, send_n, indexed);
 
     for (int i = 0; i < cur_n; i++) {
         prev_x0[i] = cur_x0[i];
@@ -892,7 +884,6 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
      * band_force_all_dirty idiom. */
     const bool force_full = indexed_force_full_repaint;
     indexed_force_full_repaint = false;
-    const bool healing = gfx_heal_active();
 
     memset(wake_hit, 0, (size_t)grid_h * sizeof(*wake_hit));
     mark_wake_hits(shine_moved, SAND_PAINT_ROW_FLAG_SHINE);
@@ -919,7 +910,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
         if (!buffers.dirty_rows[cy]) {
             continue;
         }
-        const int64_t row_pixels = draw_dirty_row(fb, index_image, cy, force_full, indexed, healing);
+        const int64_t row_pixels = draw_dirty_row(fb, index_image, cy, force_full, indexed);
 #if CONFIG_LAUNCHER_DEVELOPMENT
         redrawn++;
         pixels_repainted += row_pixels;
@@ -932,18 +923,6 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
     rows_redrawn_total += redrawn;
     pixels_repainted_total += pixels_repainted;
 #endif
-}
-
-static void
-heal_settled_rows(void) {
-    if (!gfx_heal_active()) {
-        return;
-    }
-    sand_heal_span_t spans[SAND_HEAL_MAX_SPANS];
-    const int n = sand_heal_step(&heal_policy, spans, SAND_HEAL_MAX_SPANS);
-    for (int i = 0; i < n; i++) {
-        gfx_heal_mark(0, spans[i].y0, GFX_WIDTH, spans[i].y1 - spans[i].y0);
-    }
 }
 
 #define EMITTER_MARKER_COLOR 0xFF3EC8
@@ -1095,8 +1074,10 @@ read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int
     *gy = tilt_y(&tilt);
     *flow = tilt_strength(&tilt);
 
-    const int shake = tilt_shake(&tilt);
-    *jostle = shake > SAND_SHAKE_DEADZONE ? shake : 0;
+    const uint32_t dt_us = dt_ms * MATH_US_PER_MS;
+    gravity_update(&shake_gravity, motion, dt_us);
+    shake_update(&shake, gravity_linear(&shake_gravity), dt_us);
+    *jostle = sand_controls_jostle(shake_level(&shake));
 }
 
 static void
@@ -1170,26 +1151,19 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
     }
 }
 
-/* Logs the direction whenever the NEAREST of the eight changes. Quiet when
- * the board is still, and it is what the axis mapping above was verified
- * against. The simulation itself uses the dithered direction, which changes
- * every frame by design and would be useless to log. */
+/* Dithered simulation directions change by design; only meaningful changes
+ * in the nearest octant are useful to log. */
 static void
-log_direction_change(int gx, int gy, int jostle, const input_motion_t* motion) {
-    static int last_dx = 99;
-    static int last_dy = 99;
-    int dx;
-    int dy;
-    sand_gravity_direction(gx, gy, &dx, &dy);
-    if (dx == last_dx && dy == last_dy) {
+log_direction_change(int gx, int gy, int strength, int jostle, const input_motion_t* motion) {
+    static int dx;
+    static int dy;
+    if (!sand_gravity_direction_changed(gx, gy, strength, &dx, &dy)) {
         return;
     }
     ESP_LOGI(TAG,
              "down is (%+d,%+d)  smoothed (%+6d,%+6d)  "
              "raw (%+6d,%+6d)  shake %d",
              dx, dy, gx, gy, motion->acceleration.x, motion->acceleration.y, jostle);
-    last_dx = dx;
-    last_dy = dy;
 }
 
 static void
@@ -1351,7 +1325,7 @@ draw_menu(const input_t* input) {
     } else {
         draw_title();
     }
-    ui_end(COL_BACKGROUND);
+    ui_end(UI_BACKGROUND);
 }
 
 /* Everything the play screen needs each pass that does not draw: gravity and
@@ -1405,7 +1379,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     } else if (!input->down) {
         input_ready = true;
     }
-    log_direction_change(gx, gy, jostle, &motion);
+    log_direction_change(gx, gy, flow, jostle, &motion);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t t0 = timing_now_us();
@@ -1569,7 +1543,6 @@ draw_sim_frame(const input_t* input) {
 
     draw_dirty_rows(pending_shine_moved, pending_local_depth_woke, pending_cullet_moved, pending_glass_moved,
                     pending_wood_leaf_moved);
-    heal_settled_rows();
     draw_canvas_overlays();
     FRAME_COST_END(draw_mark, "sand.draw");
 

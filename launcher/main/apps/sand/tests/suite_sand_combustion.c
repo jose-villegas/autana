@@ -22,6 +22,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "hash/name_hash.h"
+
 #include "suites.h"
 #include "unity.h"
 
@@ -592,7 +594,7 @@ test_a_confined_gas_pocket_bursts_instead_of_just_catching(void) {
      * core radius, never itself touching fire. The core fill writes fire
      * into every cell in that radius unconditionally, so only a real
      * explosion reaches it - a plain place_reacted() ignition touches only
-     * its target. NOT_EQUAL rather than fire specifically, because that
+     * its target. Not stone, rather than fire specifically, because that
      * fresh fire is itself queued for outward flight and may already have
      * moved on. */
     const uint8_t ceiling_material = CELL_MATERIAL(sand_at(&s, 4, 2));
@@ -706,11 +708,7 @@ burst_board_from_frame(uint8_t fill) {
         sand_step_reactions(&s);
     }
 
-    uint32_t hash = 2166136261U;
-    for (int i = 0; i < BW * BH; i++) {
-        hash ^= cells[i];
-        hash *= 16777619U;
-    }
+    const name_hash_t hash = name_hash_n(cells, BW * BH);
     free(impulses);
     free(cells);
     return hash;

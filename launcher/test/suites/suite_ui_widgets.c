@@ -7,9 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "perf_stats.h"
+#include "hash/name_hash64.h"
 #include "suites.h"
-#include "test_cleanup.h"
+#include "testkit/bench.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #include "apps/sand/sand_mode_swatches.h"
@@ -390,7 +391,6 @@ static const mu_Rect DROPDOWN = {40, 60, 240, 44};
 
 static bool dropdown_open;
 static bool paint_frames;
-static const uint32_t MENU_BACKGROUND = 0x0A0C14;
 
 /* One frame of a window holding only the dropdown; returns its pick. */
 static int
@@ -406,7 +406,7 @@ dropdown_frame(const input_t* in, int selected) {
         mu_end_window(ui_context());
     }
     if (paint_frames) {
-        ui_end(MENU_BACKGROUND);
+        ui_end(UI_BACKGROUND);
     } else {
         end_frame();
     }
@@ -521,11 +521,7 @@ static uint64_t
 canvas_hash(const char* name) {
     const mu_Container* cnt = mu_get_container(ui_context(), name);
     const unsigned char* p = (const unsigned char*)cnt->head + cnt->head->base.size;
-    uint64_t h = 1469598103934665603ull;
-    for (; p < (const unsigned char*)cnt->tail; p++) {
-        h = (h ^ *p) * 1099511628211ull;
-    }
-    return h;
+    return name_hash64_n(NAME_HASH64_OFFSET_BASIS, p, (size_t)((const unsigned char*)cnt->tail - p));
 }
 
 /* The dropdown shows whether its list is open, through its chevron. */
@@ -548,7 +544,7 @@ static uint64_t
 chevron_hash(void) {
     const mu_Rect box = {DROPDOWN.x + DROPDOWN.w - 40, DROPDOWN.y + 8, 32, 28};
     mu_Command* cmd = NULL;
-    uint64_t h = 1469598103934665603ull;
+    uint64_t h = NAME_HASH64_OFFSET_BASIS;
     while (mu_next_command(ui_context(), &cmd)) {
         if (cmd->type != MU_COMMAND_RECT) {
             continue;
@@ -557,10 +553,7 @@ chevron_hash(void) {
         if (r.x < box.x || r.y < box.y || r.x + r.w > box.x + box.w || r.y + r.h > box.y + box.h) {
             continue;
         }
-        const unsigned char* p = (const unsigned char*)&cmd->rect;
-        for (size_t i = 0; i < sizeof cmd->rect; i++) {
-            h = (h ^ p[i]) * 1099511628211ull;
-        }
+        h = name_hash64_n(h, &cmd->rect, sizeof cmd->rect);
     }
     return h;
 }
@@ -719,11 +712,9 @@ test_opening_release_cannot_pick_an_overlay_row(void) {
 static uint64_t
 framebuffer_rect_hash(mu_Rect r) {
     const gfx_color_t* fb = gfx_framebuffer();
-    uint64_t h = 1469598103934665603ull;
+    uint64_t h = NAME_HASH64_OFFSET_BASIS;
     for (int y = r.y; y < r.y + r.h; y++) {
-        for (int x = r.x; x < r.x + r.w; x++) {
-            h = (h ^ fb[y * GFX_WIDTH + x]) * 1099511628211ull;
-        }
+        h = name_hash64_n(h, &fb[y * GFX_WIDTH + r.x], (size_t)r.w * sizeof *fb);
     }
     return h;
 }
@@ -742,14 +733,14 @@ record_menu_canvas(const mu_Container* canvas) {
 static void
 finish_menu_frame(bool bands) {
     if (bands) {
-        ui_end_for_bands(MENU_BACKGROUND);
+        ui_end_for_bands(UI_BACKGROUND);
         for (int row = 0; row < GFX_HEIGHT; row += GFX_BAND_HEIGHT) {
             gfx_band_begin_for_test(row);
             ui_replay_band(row, row + GFX_BAND_HEIGHT);
             gfx_band_end_for_test();
         }
     } else {
-        ui_end(MENU_BACKGROUND);
+        ui_end(UI_BACKGROUND);
     }
 }
 
@@ -778,7 +769,7 @@ overflow_frame(bool bands, int revision) {
 static uint64_t
 owned_command_hash(const mu_Container* canvas) {
     mu_Context* ctx = ui_context();
-    uint64_t hash = 1469598103934665603ull;
+    uint64_t hash = NAME_HASH64_OFFSET_BASIS;
     mu_Command* cmd = NULL;
     while (mu_next_command(ctx, &cmd)) {
         const mu_Container* owner = NULL;
@@ -790,10 +781,7 @@ owned_command_hash(const mu_Container* canvas) {
             }
         }
         if (owner == canvas) {
-            const unsigned char* bytes = (const unsigned char*)cmd;
-            for (int i = 0; i < cmd->base.size; i++) {
-                hash = (hash ^ bytes[i]) * 1099511628211ull;
-            }
+            hash = name_hash64_n(hash, cmd, (size_t)cmd->base.size);
         }
     }
     return hash;
@@ -827,7 +815,7 @@ menu_repaint_frames(bool bands) {
     fixture();
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
     ui_canvas_painted_for_test = record_menu_canvas;
-    draw_clear(gfx_rgb(MENU_BACKGROUND));
+    draw_clear(gfx_rgb(UI_BACKGROUND));
     const contact_t contact = transformed_contact(MENU_ANCHOR.x + 20, MENU_ANCHOR.y + 20);
     const input_t idle = {0};
     menu_frame(&idle, bands, 0);
@@ -877,7 +865,7 @@ test_dense_bands_match_a_full_repaint(void) {
     TEST_ASSERT_NOT_NULL(expected);
     overflow_frame(false, 1);
     memcpy(expected, gfx_framebuffer(), bytes);
-    draw_clear(gfx_rgb(MENU_BACKGROUND));
+    draw_clear(gfx_rgb(UI_BACKGROUND));
     overflow_frame(true, 1);
     TEST_ASSERT_GREATER_THAN_UINT32(0, ui_band_fallback_count());
     TEST_ASSERT_EQUAL_MEMORY(expected, gfx_framebuffer(), bytes);
@@ -888,9 +876,46 @@ test_dense_bands_match_a_full_repaint(void) {
         mu_draw_rect(ui_context(), BUTTON, ui_rgb(MENU_INK));
         mu_end_window(ui_context());
     }
-    ui_end_for_bands(MENU_BACKGROUND);
+    ui_end_for_bands(UI_BACKGROUND);
     ui_replay_band(0, GFX_HEIGHT);
     TEST_ASSERT_EQUAL_UINT32(0, ui_band_fallback_count());
+    gfx_reset_for_test();
+}
+
+/* What an app drew under its UI in band mode: one colour. */
+#define UNDER_UI 0x1234
+
+static void
+draw_under_ui(int row0, int row1, gfx_color_t* target) {
+    for (size_t i = 0; i < (size_t)GFX_WIDTH * (size_t)(row1 - row0); i++) {
+        target[i] = UNDER_UI;
+    }
+}
+
+/* Band mode keeps no framebuffer to paint: plain ui_end() bins the UI, and
+ * each band replays it as gfx sends the band. */
+static void
+test_ui_end_in_band_mode_is_replayed_over_each_band(void) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    const gfx_mode_request_t bands = {.layout = GFX_LAYOUT_BANDS};
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_BANDS, gfx_mode_enter(&bands)->layout);
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_PENDING, gfx_readback_begin());
+    const input_t idle = {0};
+    ui_begin(&idle);
+    if (ui_begin_screen(ui_context(), "Banded", MU_OPT_NOTITLE | MU_OPT_NOFRAME)) {
+        mu_draw_rect(ui_context(), BUTTON, ui_rgb(MENU_INK));
+        mu_end_window(ui_context());
+    }
+    TEST_ASSERT_TRUE(ui_end(UI_NO_BACKGROUND));
+    gfx_band_run(draw_under_ui, ui_replay_band);
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    gfx_color_t row[GFX_WIDTH];
+    gfx_read_panel_row(BUTTON.y + (BUTTON.h / 2), row);
+    gfx_readback_end();
+    gfx_readback_end();
+    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(MENU_INK), row[BUTTON.x + (BUTTON.w / 2)]);
+    TEST_ASSERT_EQUAL_HEX16(UNDER_UI, row[BUTTON.x / 2]);
     gfx_reset_for_test();
 }
 
@@ -899,7 +924,7 @@ test_closing_the_list_restores_the_pixels_under_it(void) {
     TEST_ASSERT_TRUE(gfx_init());
     fixture();
     paint_frames = true;
-    draw_clear(gfx_rgb(MENU_BACKGROUND));
+    draw_clear(gfx_rgb(UI_BACKGROUND));
 
     const input_t idle = {0};
     dropdown_frame(&idle, 0);
@@ -1402,6 +1427,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_options_band_frame_cost);
     RUN_TEST(test_dense_bands_match_a_full_repaint);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
+    RUN_TEST(test_ui_end_in_band_mode_is_replayed_over_each_band);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_partial_frames);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_band_frames);
 #endif
@@ -1430,7 +1456,7 @@ SUITE_READS(run_ui_widgets_suite, SAND_PACK);
 static void
 paint_menu_band(int row0, int row1, gfx_color_t* target) {
     (void)target;
-    draw_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(MENU_BACKGROUND));
+    draw_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(UI_BACKGROUND));
     ui_replay_band(row0, row1);
 }
 
@@ -1485,7 +1511,7 @@ report_band_case(const char* name, band_samples_t* samples) {
     for (int frame = 0; frame < MENU_FRAMES; frame++) {
         total_fallbacks += samples->fallbacks[frame];
     }
-    const perf_stats_t stats = perf_stats_compute(samples->frame_us, MENU_FRAMES);
+    const bench_stats_t stats = bench_stats_compute(samples->frame_us, MENU_FRAMES);
 #ifdef DEVICE_BUILD
     ESP_LOGI("ui_band_perf", "case=%s frames=%d fallbacks=%lu frame_us=%lld max_us=%lld", name, MENU_FRAMES,
              (unsigned long)total_fallbacks, (long long)stats.avg, (long long)stats.max);
@@ -1531,7 +1557,7 @@ test_menu_band_frame_cost(void) {
             gfx_present_wait();
             ui_clear_band_overlay();
             build_menu_frame(warmup[i], 0, commands, false);
-            ui_end_for_bands(MENU_BACKGROUND);
+            ui_end_for_bands(UI_BACKGROUND);
             gfx_invalidate();
             gfx_band_run(paint_menu_band, NULL);
         }
@@ -1542,7 +1568,7 @@ test_menu_band_frame_cost(void) {
             ui_clear_band_overlay();
             const int64_t began_us = timing_now_us();
             build_menu_frame(&idle, frame / MENU_REVISION_FRAMES, commands, false);
-            ui_end_for_bands(MENU_BACKGROUND);
+            ui_end_for_bands(UI_BACKGROUND);
             gfx_invalidate();
             gfx_band_run(paint_menu_band, NULL);
             sample_band_frame(frame, began_us);
@@ -1568,7 +1594,6 @@ SUITE_REGISTER_ON_REQUEST(run_ui_band_perf_suite);
 SUITE_READS(run_ui_band_perf_suite, SAND_PACK);
 
 #define BAND_QUALITY_NORMAL 2
-#define OPTIONS_BACKGROUND  0x0A0C14
 
 static const char* const BAND_QUALITY_NAMES[] = {"ULTRA", "HIGH", "NORMAL", "LOW", "VERY LOW"};
 static const char* const BAND_DITHER_NAMES[GFX_DITHER_MODE_COUNT] = {
@@ -1583,7 +1608,7 @@ static const sand_options_t BAND_OPTIONS = {
 static void
 paint_options_band(int row0, int row1, gfx_color_t* target) {
     (void)target;
-    draw_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(OPTIONS_BACKGROUND));
+    draw_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(UI_BACKGROUND));
     ui_replay_band(row0, row1);
 }
 
@@ -1591,7 +1616,7 @@ static void
 options_band_frame(const input_t* input, const sand_menu_t* menu, const options_screen_labels_t* labels) {
     ui_begin(input);
     options_screen_draw(menu, BAND_OPTIONS, labels);
-    ui_end_for_bands(OPTIONS_BACKGROUND);
+    ui_end_for_bands(UI_BACKGROUND);
     gfx_invalidate();
     gfx_band_run(paint_options_band, NULL);
 }

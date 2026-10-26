@@ -30,6 +30,9 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "hash/name_hash.h"
+#include "perf_budget.h"
+
 #include "suites.h"
 #include "unity.h"
 
@@ -85,19 +88,6 @@ build_mixed_gravity_flip_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
      * pause reaches, stone included (it was never moving, but the pass
      * still has to notice that). */
     run_steps(real, 300, 0, SCENE_GRAVITY);
-}
-
-/* FNV-1a over the grid, so a host build of the same scene can be compared
- * byte-for-byte against the device at the same steps. Portable for the same
- * reason build_mixed_gravity_flip_scene() is. */
-static uint32_t
-grid_hash(const uint8_t* grid, size_t n) {
-    uint32_t h = 2166136261U;
-    for (size_t i = 0; i < n; i++) {
-        h ^= grid[i];
-        h *= 16777619U;
-    }
-    return h;
 }
 
 /* Cells a soak-only pass would visit for THIS board right now: summed
@@ -202,12 +192,12 @@ test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
 
     sand_reactions_force_full_walk(true);
     run_steps(real, 20, 0, -SCENE_GRAVITY);
-    const uint32_t full_hash = grid_hash(big, (size_t)REAL_W * (size_t)REAL_H);
+    const uint32_t full_hash = name_hash_n(big, (size_t)REAL_W * (size_t)REAL_H);
 
     build_mixed_gravity_flip_scene(real, big, blocks);
     sand_reactions_force_full_walk(false);
     run_steps(real, 20, 0, -SCENE_GRAVITY);
-    const uint32_t fast_hash = grid_hash(big, (size_t)REAL_W * (size_t)REAL_H);
+    const uint32_t fast_hash = name_hash_n(big, (size_t)REAL_W * (size_t)REAL_H);
 
     sand_reactions_force_full_walk(false);
     sand_set_two_core_step(two_core_before);
@@ -265,8 +255,8 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
 #include "panel_clock_pin.h"
-#include "perf_stats.h"
 #include "profile/frame_cost.h"
+#include "testkit/bench.h"
 
 /* Each pass's time for one step, summed over a window, and the split of the
  * window's dearest step. */
@@ -399,28 +389,9 @@ feed_snowfall_drift(sand_t* real, int i) {
 static int perf_unmet_targets;
 static bool gas_ab_reporting;
 
-/* The ceiling of a row is its goal x 1.15, rounded up to 10 us; the
- * present-cost ceilings follow the same rule with the panel clock pinned. */
-
-static void
-perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
-#if CONFIG_LAUNCHER_QEMU
-    /* A ceiling pegged on the board prices the board's clock, not an
-     * emulator's, so there it is reported and not enforced. */
-    ESP_LOGI("device_tests", "%s: %lld us, board ceiling %lld us not enforced", name, (long long)measured_us,
-             (long long)ceiling_us);
-    return;
-#endif
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)ceiling_us, (int)measured_us, name);
-}
-
 static void
 perf_target(const char* name, int64_t measured_us, int64_t goal_us, int64_t ceiling_us) {
-    const int64_t distance_percent = ((measured_us - goal_us) * 100) / goal_us;
-
-    ESP_LOGI("device_tests", "PERF TARGET %s: measured %lld us, goal %lld us, distance %+lld%%", name,
-             (long long)measured_us, (long long)goal_us, (long long)distance_percent);
-    if (measured_us > goal_us) {
+    if (perf_goal(name, measured_us, goal_us)) {
         perf_unmet_targets++;
     }
     if (!gas_ab_reporting) {
@@ -651,8 +622,8 @@ test_serial_step_instruction_rows(void) {
             real_board_close(&b);
             free(real);
         }
-        perf_icount_report(water ? "sand_water_step" : "sand_falling_step", elapsed, ICOUNT_STEP_REPS,
-                           ICOUNT_STEP_ROUNDS);
+        bench_icount_report(water ? "sand_water_step" : "sand_falling_step", elapsed, ICOUNT_STEP_REPS,
+                            ICOUNT_STEP_ROUNDS);
     }
 }
 
@@ -1261,7 +1232,7 @@ sweep_floor_settle(sweep_board_t* b, size_t cells) {
 
     while (steps < SWEEP_FLOOR_CAP && quiet < SWEEP_FLOOR_QUIET) {
         sand_step(&b->s, 0, SCENE_GRAVITY, 0);
-        const uint32_t now = grid_hash(b->cells, cells);
+        const uint32_t now = name_hash_n(b->cells, cells);
         quiet = (now == last) ? quiet + 1 : 0;
         last = now;
         steps++;
@@ -1733,7 +1704,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
                                                                     .settle_steps = 30,
                                                                     .steps = 20,
                                                                     .scene = "campfire on a sand bed"});
-    perf_target("campfire on sand", per_step, 23520, 30010);
+    perf_target("campfire on sand", per_step, 22996, 30010);
 }
 
 /* A tilted board is a different path, not a rotation of the same one:
@@ -1769,7 +1740,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
                                                  "loses three cells a patch, but a packed screen that has shed an "
                                                  "eighth of itself is not the scene this row means to time");
     }
-    perf_target_by_core("packed gas turn", "packed gas turn, one core", per_step, 99280, 114950, 109090, 126990);
+    perf_target_by_core("packed gas turn", "packed gas turn, one core", per_step, 97529, 114950, 104194, 126990);
     free(real);
 }
 
@@ -1799,7 +1770,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
                                       "turning the board must move gas, not create or destroy it - decay is "
                                       "off by default, so the cell count is conserved across the turn");
     }
-    perf_target_by_core("half-screen gas turn", "half-screen gas turn, one core", per_step, 34670, 39870, 34790, 40010);
+    perf_target_by_core("half-screen gas turn", "half-screen gas turn, one core", per_step, 33950, 39870, 32837, 40010);
     free(real);
 }
 
@@ -1925,11 +1896,11 @@ log_mixed_scene_hashes(void) {
     sand_t* const real = malloc(sizeof *real);
     TEST_ASSERT_NOT_NULL(real);
     build_mixed_gravity_flip_scene(real, big, blocks);
-    ESP_LOGI("xtperf", "scene=mixed_flip hash settled=%08" PRIx32, grid_hash(big, REAL_W * REAL_H));
+    ESP_LOGI("xtperf", "scene=mixed_flip hash settled=%08" PRIx32, name_hash_n(big, REAL_W * REAL_H));
     for (int i = 0; i < 20; i++) {
         sand_step(real, 0, -SCENE_GRAVITY, 0);
         if (i == 0 || i == 9 || i == 19) {
-            ESP_LOGI("xtperf", "scene=mixed_flip hash flip%d=%08" PRIx32, i + 1, grid_hash(big, REAL_W * REAL_H));
+            ESP_LOGI("xtperf", "scene=mixed_flip hash flip%d=%08" PRIx32, i + 1, name_hash_n(big, REAL_W * REAL_H));
         }
     }
     free(real);
@@ -1991,7 +1962,7 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
     run_steps(real, 120, 0, SCENE_GRAVITY);
 
     const int64_t per_step = finish_timed_row(real, &b, 20, -SCENE_GRAVITY, "gravity flip with every material at once");
-    perf_target("all-material gravity flip", per_step, 80780, 94790);
+    perf_target("all-material gravity flip", per_step, 80724, 94790);
 }
 
 static void
@@ -2027,7 +1998,7 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
 
     /* A deliberately synthetic worst case, not comparable to the
      * plain-material rows. */
-    perf_target_by_core("full-screen gas cascade", "full-screen gas cascade, one core", elapsed, 179400, 206310, 179730,
+    perf_target_by_core("full-screen gas cascade", "full-screen gas cascade, one core", elapsed, 179400, 206310, 177700,
                         206690);
     free(real);
 }
@@ -2374,7 +2345,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
 /* Perf-scoped goals for the three plant-scene rows. */
 #define PLANT_RUIN_BUDGET_US    55780
 #define FILLING_BASIN_BUDGET_US 15560
-#define SNOWFALL_BUDGET_US      32830
+#define SNOWFALL_BUDGET_US      32694
 
 /* Perf-scoped; among the dearest scenes in the suite. */
 #define PLANT_POUR_BUDGET_US    50820
@@ -2513,7 +2484,7 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
  * suite_sand_scenes.h. Perf-scoped at block 16x32. */
 #define LANDSCAPE_WATER_BUDGET_US      22380
 #define LANDSCAPE_DEEP_WATER_BUDGET_US 24250
-#define LANDSCAPE_SAND_BUDGET_US       6920
+#define LANDSCAPE_SAND_BUDGET_US       6550
 
 /* The measured steps carry on the pour the prime started. */
 static void
@@ -3569,11 +3540,10 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
 }
 
 /*
- * the panel clock and heal against a real pour
+ * the panel clock against a real pour
  *
  * Drives the real app_sand.c, touch pour and all, and times gfx_present()
- * three ways: 40 MHz, 80 MHz, and 80 MHz with sand's heal policy. The heal
- * is only worth having if the third stays clearly under the first.
+ * at 40 MHz and at 80 MHz.
  */
 
 #include "app/app.h"
@@ -3586,7 +3556,6 @@ extern void sand_app_select_brush_for_test(int brush);
 typedef enum {
     CLOCK_ROW_40,
     CLOCK_ROW_80,
-    CLOCK_ROW_80_HEAL,
     CLOCK_ROW_COUNT,
 } clock_row_t;
 
@@ -3599,7 +3568,6 @@ typedef enum {
 typedef struct {
     int64_t present_us;
     int64_t bytes;
-    int64_t heal_bytes;
 } clock_row_window_t;
 
 static void
@@ -3629,7 +3597,6 @@ clock_row_measure(int frames, bool pouring, int* frame_index) {
     }
     w.present_us /= frames;
     w.bytes = gfx_get_bytes_sent() / frames;
-    w.heal_bytes = gfx_get_heal_bytes_sent() / frames;
     return w;
 }
 
@@ -3640,9 +3607,6 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
     frame_watch_restart();
     const int previous_mode = sand_app_enter_running_for_test();
     sand_app_select_brush_for_test(brush);
-    if (row == CLOCK_ROW_80) {
-        gfx_heal_set_budget(0);
-    }
 
     int frame_index = 0;
     clock_row_measure(CLOCK_ROW_POUR_WARM_FRAMES, true, &frame_index);
@@ -3657,15 +3621,13 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
     app_sand.exit();
     frame_watch_restart();
     sand_app_restore_colour_mode_for_test(previous_mode);
-    gfx_heal_restore_defaults();
 }
 
 static void
-test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
+test_present_cost_at_40_and_80_mhz_on_a_real_pour(void) {
     static const char* const brush_names[] = {"sand", "water"};
-    static const char* const row_names[CLOCK_ROW_COUNT] = {"40", "80", "80+heal"};
+    static const char* const row_names[CLOCK_ROW_COUNT] = {"40", "80"};
     const two_core_scope_t core = two_core_scope_begin(true);
-    bool unhealed_row_sent_heal = false;
 
     for (int brush = 0; brush < 2; brush++) {
         for (int row = 0; row < CLOCK_ROW_COUNT; row++) {
@@ -3673,21 +3635,12 @@ test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
             clock_row_window_t settled;
             clock_row_run(brush, (clock_row_t)row, &pour, &settled);
             ESP_LOGI("device_tests",
-                     "CLOCK_ROW %s pour %s MHz: present %lld us, %lld bytes (heal %lld) | settled: present %lld "
-                     "us, %lld bytes (heal %lld)",
+                     "CLOCK_ROW %s pour %s MHz: present %lld us, %lld bytes | settled: present %lld us, %lld bytes",
                      brush_names[brush], row_names[row], (long long)pour.present_us, (long long)pour.bytes,
-                     (long long)pour.heal_bytes, (long long)settled.present_us, (long long)settled.bytes,
-                     (long long)settled.heal_bytes);
-            if (row != CLOCK_ROW_80_HEAL && pour.heal_bytes + settled.heal_bytes != 0) {
-                unhealed_row_sent_heal = true;
-            }
+                     (long long)settled.present_us, (long long)settled.bytes);
         }
     }
     two_core_scope_end(core);
-
-    /* Asserted only after the two-core scope ends: a failing assert longjmps
-     * out of it. */
-    TEST_ASSERT_FALSE_MESSAGE(unhealed_row_sent_heal, "only the heal row may send heal strips");
 }
 
 #endif /* DEVICE_BUILD */
@@ -3810,7 +3763,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_present_cost_against_the_thermal_shock_scene);
     RUN_TEST(test_present_cost_against_a_landscape_gas_over_sand_pile);
     RUN_TEST(test_present_cost_against_a_landscape_levelling_pool);
-    RUN_TEST(test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour);
+    RUN_TEST(test_present_cost_at_40_and_80_mhz_on_a_real_pour);
 
     const bool two_core_before = sand_two_core_step_enabled();
     sand_set_two_core_step(true);

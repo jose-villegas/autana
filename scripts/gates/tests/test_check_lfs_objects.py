@@ -1,3 +1,4 @@
+"""check_lfs_objects asks the server in batches and reports only missing objects."""
 import sys
 import unittest
 from pathlib import Path

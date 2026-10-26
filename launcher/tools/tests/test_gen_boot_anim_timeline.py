@@ -133,7 +133,9 @@ class TimelineGeneratorTests(unittest.TestCase):
                             ("far_line_cells", (0, -1, 1.5)),
                             ("far_line_growth", (0, 1, -2, float("nan"))),
                             ("far_front", (-0.1, 1, float("nan"))),
-                            ("far_front_steps", (0, -1, 2.5))):
+                            ("far_front_steps", (0, -1, 2.5)),
+                            ("far_swell_fade_m", (0, -1, 12, 25, 500, float("nan"))),
+                            ("far_swell_out_ms", (0, -1, 2.5))):
             for value in values:
                 result = self.generate(config_change=lambda c: c.update({key: value}))
                 self.assertNotEqual(result.returncode, 0)
@@ -142,6 +144,9 @@ class TimelineGeneratorTests(unittest.TestCase):
             result = self.generate(lambda t: t.update({"far_grow_ms": value}))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("far_grow_ms", result.stderr)
+        result = self.generate(lambda t: t.update({"far_grow_ms": t["title_start_ms"]}))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("title_start_ms must not come before the floor reaches far_m", result.stderr)
         for key in ("mesh_dash_on_px", "mesh_dash_off_px"):
             for value in (0, -1, 256, 0.5):
                 result = self.generate(lambda t: t.update({key: value}))

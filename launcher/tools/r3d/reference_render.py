@@ -154,8 +154,9 @@ def lit_source(job, scene, lit=True, variant=None):
     settings = job.settings
     source = load_source(settings, np.float64 if lit else np.float32)
     if settings.alpha_keep is not None:
-        source.tri_v, source.tri_t, source.tri_m = drop_masked(source.p, source.uv, source.tri_v, source.tri_t,
+        source.tri_v, source.tri_t, source.tri_m, keep = drop_masked(source.p, source.uv, source.tri_v, source.tri_t,
                                                                  source.tri_m, source.textures, settings.alpha_keep)
+        source.tri_o = source.tri_o[keep]
     source.corner_normals = corner_normals(source.p, source.tri_v)
     if not lit:
         return source

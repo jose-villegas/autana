@@ -19,9 +19,12 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+sys.path.insert(0, str(ROOT / "launcher/tools"))
 import frame_cost
 from frame_cost import MS_PER_SECOND
 from capture import capture_board, require_same_board
+from docs.plot_style import INK, MUTED, SLOTS, save, subplots
+from render.doc_tables import collapsed
 
 VIEW_TABLE = ROOT / "launcher/main/render/context/render_context.c"
 FRAME_RATES = (30, 60)  # the budgets marked on the chart, frames per second
@@ -29,15 +32,12 @@ BLOCK = "pipeline-frame-stages"
 LABEL_SHARE = 0.07  # a segment this share of the axis or wider carries its value inside
 PERCENT_SCALE = 100
 LABEL_SEPARATOR = " · "
-INK, MUTED = "#0b0b0b", "#52514e"
 FIGURE_SIZE = (10, 2.4)
 BAR_HEIGHT = 0.6
 AXIS_HEADROOM = 0.2
 AXIS_TICKS = 5
 ADDED_BASE_LABEL = "base cost"
 BUDGET_LABEL_SIZE = 8
-# One colour per bracket, in report order.
-SLOTS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
 
 
 def view_names(source=VIEW_TABLE):
@@ -104,13 +104,13 @@ def table(order, base, added, names, windows, chart_name):
     for name in names:
         if name in added:
             lines.extend([f"![Frame stages with the {name} view](../images/render/{chart_path(chart_name, name).name})", ""])
-    lines.extend(["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)])
+    rows = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
     for stage in order:
-        lines.append(f"| {stage} | " + " | ".join(
+        rows.append(f"| {stage} | " + " | ".join(
             [f"{base[stage]:.2f}" if stage in base else "not run",
              share_text(shares[stage]) if stage in base else "not run",
              *(f"{delta.get(stage, 0.0):+.2f}" for delta in added.values())]) + " |")
-    lines.append("| total | " + " | ".join(
+    rows.append("| total | " + " | ".join(
         [f"{shipped:.2f}", share_text(sum(shares.values())), *(f"{sum(delta.values()):+.2f}" for delta in added.values())]) + " |")
     missing = [name for name in names if name not in added]
     counts = f"{min(windows)}" if min(windows) == max(windows) else f"{min(windows)} to {max(windows)}"
@@ -118,13 +118,10 @@ def table(order, base, added, names, windows, chart_name):
            "between its capture and the scene as shipped."
     if missing:
         note += " Not captured: " + ", ".join(missing) + "."
-    return "\n".join(lines) + "\n" + note
+    return "\n".join(lines) + "\n" + collapsed("Frame stages in milliseconds", "\n".join(rows) + "\n" + note + "\n").rstrip("\n")
 
 
 def chart(order, base, added, path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
     from matplotlib.ticker import MaxNLocator
 
     if len(order) > len(SLOTS):
@@ -150,7 +147,7 @@ def chart(order, base, added, path):
     for name, delta in [(None, None), *added.items()]:
         shares = stage_shares(base if delta is None else delta, shipped)
         drawn = []
-        figure, axis = plt.subplots(figsize=FIGURE_SIZE, layout="constrained")
+        figure, axis = subplots(1, 1, FIGURE_SIZE)
         if delta is None:
             extent = max(shipped, slowest_budget)
             start = 0.0
@@ -198,9 +195,7 @@ def chart(order, base, added, path):
             axis.spines[side].set_visible(False)
         axis.tick_params(axis="y", length=0)
         figure.legend(handles=drawn, loc="outside lower center", ncol=max(1, len(drawn)), frameon=False, fontsize=8)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        figure.savefig(output, dpi=110)
-        plt.close(figure)
+        save(figure, output)
 
 
 def main():

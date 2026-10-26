@@ -62,23 +62,14 @@
  * 448px screen. */
 #define UI_BANNER_HEIGHT   56
 
+/* The page background: what a screen passes to ui_end(), what the shell look
+ * paints its windows with, and what an app matches when it draws beside the
+ * UI. The one spelling of this colour. */
+#define UI_BACKGROUND      0x0A0C14
+
 /* Pass as ui_end()'s background to draw without clearing first, for a UI laid
  * over an app's own output rather than replacing it. */
 #define UI_NO_BACKGROUND   0xFFFFFFFFu
-
-/* How button frames are drawn for the rest of this UI frame.
- *
- * Buttons only. Checkboxes, sliders and text boxes frame themselves from
- * the base colour and are left alone; a 3px bezel around a 64px checkbox reads
- * as a mistake, not as a style. */
-typedef enum {
-    /* A flat fill plus a one-pixel border box. */
-    UI_BUTTON_FLAT = 0,
-
-    /* Lit from the top left, and inverted while a finger is on it, so a
-     * press physically pushes the button in. */
-    UI_BUTTON_BEZEL,
-} ui_button_style_t;
 
 /* How text is drawn: one pass, or a halo behind the ink. */
 typedef enum {
@@ -89,25 +80,15 @@ typedef enum {
 
 void ui_init(void);
 
-/* Start a UI frame: touch becomes the controls' pointer events, and the
- * button style resets to UI_BUTTON_FLAT (the shell shares one UI context). A NULL
+/* Start a UI frame: touch becomes the controls' pointer events. A NULL
  * `input` opens a repaint-only boot frame: no input is fed and no pointer
  * state is reported. Use it before input starts, with no touch in progress. */
 void ui_begin(const input_t* input);
 
-/* Choose how button frames are drawn for the rest of this frame.
- *
- * Call it after ui_begin() and before the buttons it should apply to; it can
- * be changed again mid-frame, so one UI can mix styles; ui_button_style_t
- * above says what each style is and why only buttons are affected. */
-void ui_set_button_style(ui_button_style_t style);
-
-/* Choose how text is drawn for the rest of this frame. Unlike
- * ui_set_button_style(), this is not reset by ui_begin() and is not part
+/* Choose how text is drawn for the rest of this frame. This is not reset by ui_begin() and is not part
  * of the frame's description in the sense that matters for the repaint
  * hash; see the comment above ui_set_text_style()'s definition in ui.c
- * for why a text style needs its own invalidation and a button style
- * does not. */
+ * for why a text style needs its own invalidation. */
 void ui_set_text_style(ui_text_style_t style);
 
 /* Choose the font text is measured and drawn with, until
@@ -134,7 +115,7 @@ int ui_measure_text(const char* str);
 /* Choose the transform every command is mapped through before it is
  * drawn; see ui_transform.h for what a transform is and why it is
  * fixed point. Identity until called; ui_init() sets it explicitly. Like
- * ui_set_text_style(), unlike ui_set_button_style(), this must call
+ * ui_set_text_style(), this must call
  * ui_invalidate() when the transform changes: it applies at render time
  * inside draw_command(), so the command list hash_canvas() sees is
  * byte-identical regardless; see ui_set_text_style()'s ui.c comment for
@@ -160,14 +141,12 @@ uint32_t ui_layout_generation(void);
 int ui_width(void);
 int ui_height(void);
 
-/* Close the frame and paint it, but only if it would look any different
- * from what is already on screen. Returns whether it drew. It repaints
- * when any of these is true: the UI itself changed (a hover, a new
- * item, different text); something else has already dirtied the screen,
- * so the UI's pixels are gone (an app drawing underneath an overlay,
- * for instance); or ui_invalidate() was called. `background_rgb` is
- * cleared to first, or UI_NO_BACKGROUND to paint over whatever is
- * already there. */
+/* Close the frame and paint it, only if it would look different from the
+ * screen; returns whether it drew. It repaints when the UI changed,
+ * something else dirtied its pixels, or ui_invalidate() was called.
+ * `background_rgb` is cleared to first, or UI_NO_BACKGROUND paints over
+ * what is there. With no framebuffer to paint (band mode, or an expanded
+ * frame) it bins as ui_end_for_bands() does and returns true. */
 bool ui_end(uint32_t background_rgb);
 
 /* ui_end() over a backdrop that is drawn, not a colour. `paint_backdrop`
@@ -187,12 +166,10 @@ bool ui_end_over(ui_backdrop_fn paint_backdrop);
 void ui_invalidate(void);
 
 /*
- * Band mode (gfx_mode.h) has no retained framebuffer, so ui_end()'s hash-and-skip
- * does not apply. Closes the frame like ui_end() does, but bins commands by
- * row range instead of painting; ui_replay_band() draws a band's share when
- * gfx_band_run() draws that band. Call once per frame from frame(). Pass
- * UI_NO_BACKGROUND if the caller
- * already cleared the band itself.
+ * Closes the frame like ui_end() does, but bins commands by row range
+ * instead of painting, whatever the layout; ui_replay_band() draws a band's
+ * share when gfx_band_run() draws that band. ui_end() does this itself in
+ * band mode. Pass UI_NO_BACKGROUND if the caller already cleared the band.
  */
 void ui_end_for_bands(uint32_t background_rgb);
 

@@ -143,7 +143,7 @@ assert_strings_fit(bool landscape) {
     }
     assert_fits(OPTIONS_SCREEN_DITHER, lay.dither_caption.w);
     for (int i = 0; i < DITHER_COUNT; i++) {
-        assert_fits(DITHER_NAMES[i], ui_probe_dropdown_label_width(lay.dither.w, &sand_ui_theme));
+        assert_fits(DITHER_NAMES[i], ui_probe_dropdown_label_width(lay.dither.w, true, &sand_ui_theme));
         assert_fits(DITHER_NAMES[i], ui_probe_button_label_width(lay.dither.w, true, &sand_ui_theme));
     }
 

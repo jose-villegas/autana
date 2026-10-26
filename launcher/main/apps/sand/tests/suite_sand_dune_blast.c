@@ -22,6 +22,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "hash/name_hash64.h"
+
 #include "suites.h"
 #include "unity.h"
 
@@ -53,22 +55,6 @@
 #define DUNE_SETTLE_BATCH_STEPS 20
 #define DUNE_SETTLE_MAX_BATCHES 300
 
-/* A 64-bit FNV-1a fold of the whole grid, folded before and after a batch
- * of steps to answer "did anything change" without a second copy of the
- * grid to memcmp against. That copy would be another 41,216 bytes beside
- * `big`'s own, against the roughly 66,632 this device has free once the
- * display framebuffer is carved out of the heap. A collision is possible
- * in principle, and accepted. */
-static uint64_t
-grid_checksum(const uint8_t* cells, size_t len) {
-    uint64_t h = 0xcbf29ce484222325ULL; /* FNV-1a 64-bit offset basis */
-    for (size_t i = 0; i < len; i++) {
-        h ^= cells[i];
-        h *= 0x100000001b3ULL; /* FNV-1a 64-bit prime */
-    }
-    return h;
-}
-
 /* A fixed step count could only guess how long a pile this size takes to
  * stop moving, and a guess that undershoots confuses the blast's own
  * throw with gravity still finishing its job. The caller must assert on
@@ -77,9 +63,9 @@ grid_checksum(const uint8_t* cells, size_t len) {
 static bool
 settle_fully(sand_t* s, size_t cells_len) {
     for (int batch = 0; batch < DUNE_SETTLE_MAX_BATCHES; batch++) {
-        const uint64_t before = grid_checksum(s->cells, cells_len);
+        const uint64_t before = name_hash64_n(NAME_HASH64_OFFSET_BASIS, s->cells, cells_len);
         run_steps(s, DUNE_SETTLE_BATCH_STEPS, 0, 1000);
-        if (grid_checksum(s->cells, cells_len) == before) {
+        if (name_hash64_n(NAME_HASH64_OFFSET_BASIS, s->cells, cells_len) == before) {
             return true;
         }
     }
@@ -90,17 +76,7 @@ settle_fully(sand_t* s, size_t cells_len) {
  * would cost 41,216 bytes, the bitset 5,152. It stays separate from the
  * thermal shock scene's own mask, which answers an unrelated question and
  * has no reason to share storage or a lifetime with it. */
-#define DUNE_FOOTPRINT_BYTES (((size_t)REAL_W * (size_t)REAL_H + 7) / 8)
-
-static inline bool
-footprint_get(const uint8_t* mask, size_t idx) {
-    return (mask[idx >> 3] >> (idx & 7)) & 1U;
-}
-
-static inline void
-footprint_set(uint8_t* mask, size_t idx) {
-    mask[idx >> 3] |= (uint8_t)(1U << (idx & 7));
-}
+#define DUNE_FOOTPRINT_BYTES BITS8_BYTES((size_t)REAL_W*(size_t)REAL_H)
 
 /* Whether row `at` (if on-grid) touches the footprint anywhere in [i0, i1]
  * - or, with !along_x, column `at` anywhere in rows [i0, i1]. */
@@ -109,7 +85,7 @@ footprint_line_hit(const uint8_t* footprint, int w, int h, int i0, int i1, int a
     for (int i = i0; i <= i1; i++) {
         const int x = along_x ? i : at;
         const int y = along_x ? at : i;
-        if (x >= 0 && x < w && y >= 0 && y < h && footprint_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
+        if (x >= 0 && x < w && y >= 0 && y < h && bits8_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
             return true;
         }
     }
@@ -140,7 +116,7 @@ footprint_ring_hit(const uint8_t* footprint, int w, int h, int x, int y, int r) 
  * search, never affects correctness. */
 static int
 nearest_footprint_distance(const uint8_t* footprint, int w, int h, int x, int y, int cap) {
-    if (footprint_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
+    if (bits8_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
         return 0;
     }
     for (int r = 1; r <= cap; r++) {
@@ -174,7 +150,7 @@ test_the_nearest_footprint_distance_finds_a_cell_on_every_edge_of_the_ring(void)
     int found[CASES];
     for (int k = 0; k < CASES; k++) {
         memset(mask, 0, mask_bytes);
-        footprint_set(mask, ((size_t)(QY + offsets[k][1]) * RING_W) + (size_t)(QX + offsets[k][0]));
+        bits8_set(mask, ((size_t)(QY + offsets[k][1]) * RING_W) + (size_t)(QX + offsets[k][0]));
         expected[k] = R;
         found[k] = nearest_footprint_distance(mask, RING_W, RING_H, QX, QY, RING_W - 1);
     }
@@ -182,7 +158,7 @@ test_the_nearest_footprint_distance_finds_a_cell_on_every_edge_of_the_ring(void)
     /* A ring past the right edge must not wrap: (w, y) in the bit index is
      * (0, y + 1), a cell the full width away from a query at x = w - 1. */
     memset(mask, 0, mask_bytes);
-    footprint_set(mask, (size_t)(QY + 1) * RING_W);
+    bits8_set(mask, (size_t)(QY + 1) * RING_W);
     const int across = nearest_footprint_distance(mask, RING_W, RING_H, RING_W - 1, QY, RING_W - 1);
     free(mask);
 
@@ -242,7 +218,7 @@ record_footprint(const sand_t* g, uint8_t* footprint, int w, int h) {
             if (sand_at(g, x, y) == SAND_EMPTY) {
                 continue;
             }
-            footprint_set(footprint, ((size_t)y * (size_t)w) + (size_t)x);
+            bits8_set(footprint, ((size_t)y * (size_t)w) + (size_t)x);
             b.count++;
             bbox_extend_inclusive(x, y, &b.min_x, &b.max_x, &b.min_y, &b.max_y);
         }
@@ -261,7 +237,7 @@ measure_escape(const sand_t* g, const uint8_t* footprint, int w, int h, int cap)
     escape_measure_t m = {0, 0};
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-            if (footprint_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
+            if (bits8_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
                 continue; /* inside the original dune - not an escape */
             }
             if (CELL_MATERIAL(sand_at(g, x, y)) != MAT_SAND) {
@@ -843,7 +819,7 @@ static void
 mark_seen_bands_outside(const sand_t* g, const uint8_t* footprint, int w, int h, bool seen[SAND_SHADE_COUNT]) {
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-            if (footprint_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
+            if (bits8_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
                 continue;
             }
             const cell_t c = sand_at(g, x, y);

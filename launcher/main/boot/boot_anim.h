@@ -28,7 +28,6 @@
 
 #include "anim/anim_transform.h"
 #include "anim/playback/anim_playhead.h"
-#include "anim/tween.h"
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
 #include "draw/draw_font.h"
@@ -37,6 +36,7 @@
 #include "math/linear/transformf.h"
 #include "math/linear/vec2i.h"
 #include "math/linear/vec3f.h"
+#include "math/scalar/ease.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/trig.h"
 #include "render/r3d_project_x.h"
@@ -106,7 +106,7 @@ boot_anim_timeline_sample(const boot_anim_motion_t* motion, uint32_t now_ms) {
 /* The spiral: one unit of t climbs 132/512 of a meter. */
 #define BOOT_ANIM_SPIRAL_Q9    132
 
-typedef r3d_line_view_x_t boot_anim_view_t;
+typedef r3d_line_projector_t boot_anim_view_t;
 
 boot_anim_view_t boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms);
 
@@ -186,6 +186,7 @@ typedef struct {
     uint16_t inv_width;
     uint16_t ripple_phase;
     uint16_t swell;
+    uint16_t far_swell; /* how much of it the far lines keep, eased out before the crossfade */
     bool calm;
     uint16_t phase[BOOT_ANIM_SWELL_COUNT];
     int32_t far_reach; /* Q12: how far out the floor reaches */
@@ -208,6 +209,7 @@ boot_anim_floor_state(uint32_t now_ms) {
                                    + mathi_lerp(0, (int16_t)(b->ripple_phase - a->ripple_phase), fraction,
                                                 BOOT_ANIM_FLOOR_TIME_STEP_MS)),
         .swell = mathi_lerp(a->swell, b->swell, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
+        .far_swell = mathi_lerp(a->far_swell, b->far_swell, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
         .far_reach = mathi_lerp(a->far_reach, b->far_reach, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
         .calm = ms > BOOT_ANIM_RIPPLE_IMPACT_MS + BOOT_ANIM_RIPPLE_CALM_AFTER_MS,
     };
@@ -267,6 +269,16 @@ boot_anim_swell_at(const uint16_t place[BOOT_ANIM_SWELL_COUNT], const boot_anim_
     return (swell * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
 }
 
+/* The most the swell can lift or lower any place at this moment. */
+static inline int32_t
+boot_anim_swell_bound(const boot_anim_floor_state_t* state) {
+    int32_t bound = 0;
+    for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+        bound += mathi_abs(boot_anim_swell_weights[k]);
+    }
+    return (bound * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+}
+
 static inline int32_t
 boot_anim_floor_swell(int i, int j, const boot_anim_floor_state_t* state) {
     uint16_t place[BOOT_ANIM_SWELL_COUNT];
@@ -275,6 +287,17 @@ boot_anim_floor_swell(int i, int j, const boot_anim_floor_state_t* state) {
                               + boot_anim_swell_im[j + (BOOT_ANIM_MESH_CELLS / 2)][k]);
     }
     return boot_anim_swell_at(place, state);
+}
+
+/* The swell past the mesh, `gain` of it kept (BOOT_ANIM_FLOOR_GAIN_SHIFT):
+ * it eases out toward BOOT_ANIM_FAR_SWELL_FADE_Q12 so the horizon stays flat. */
+static inline int32_t
+boot_anim_far_swell_at(const uint16_t place[BOOT_ANIM_SWELL_COUNT], uint16_t gain,
+                       const boot_anim_floor_state_t* state) {
+    if (gain == 0) {
+        return 0;
+    }
+    return (boot_anim_swell_at(place, state) * gain) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
 }
 
 /* The height of axis sample `n` out along (dir_re, dir_im), one of the four
@@ -286,7 +309,25 @@ boot_anim_axis_far_height(int n, int dir_re, int dir_im, const boot_anim_floor_s
     for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
         place[k] = (uint16_t)((dir_re * sample->swell_re[k]) + (dir_im * sample->swell_im[k]));
     }
-    return boot_anim_ripple_at(&sample->node, state) + boot_anim_swell_at(place, state);
+    return boot_anim_ripple_at(&sample->node, state) + boot_anim_far_swell_at(place, sample->swell_gain, state);
+}
+
+/* The swell at sample `n` of far line `line`: the line runs along im
+ * (along_im) or re, at `side` (+1 or -1) times its distance from the axis,
+ * and the sample is on its `half` (+1 or -1) of it. The far lines keep
+ * `far_swell` of it, none from the crossfade on. */
+static inline int32_t
+boot_anim_far_line_swell(const boot_anim_far_line_t* line, int n, bool along_im, int side, int half,
+                         const boot_anim_floor_state_t* state) {
+    const boot_anim_far_sample_t* sample = &boot_anim_far_samples[line->first + n];
+    const uint16_t* across = along_im ? line->swell_re : line->swell_im;
+    const uint16_t* along = along_im ? sample->swell_im : sample->swell_re;
+    uint16_t place[BOOT_ANIM_SWELL_COUNT];
+    for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+        place[k] = (uint16_t)((side * across[k]) + (half * along[k]));
+    }
+    const uint16_t gain = (uint16_t)(((uint32_t)sample->swell_gain * state->far_swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT);
+    return boot_anim_far_swell_at(place, gain, state);
 }
 
 static inline int32_t
@@ -458,14 +499,14 @@ boot_anim_curve_stride(const boot_anim_view_t* view) {
 /* A FRACTION, not a pixel count: arms have different lengths. */
 static inline uint8_t
 boot_anim_axis_reach(uint32_t now_ms) {
-    return tween_ease_out(tween_ramp(now_ms, 0, BOOT_ANIM_AXES_MS));
+    return ease_out_u8(ease_ramp_u8(now_ms, 0, BOOT_ANIM_AXES_MS));
 }
 
 /* Band by band, outward: how far band `band` has faded in. */
 static inline uint8_t
 boot_anim_grid_arrival(uint32_t now_ms, int band) {
     const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)band * BOOT_ANIM_GRID_BAND_MS);
-    return tween_ramp(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
+    return ease_ramp_u8(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
 }
 
 static inline uint8_t
@@ -477,14 +518,6 @@ boot_anim_grid_alpha(uint32_t now_ms, int band) {
     const uint32_t left = (uint32_t)(BOOT_ANIM_GRID_FADE - band);
     const uint32_t ramp = BOOT_ANIM_GRID_FADE - BOOT_ANIM_GRID_EDGE_FADE_BAND;
     return (uint8_t)(arrived * mathi_min(left, ramp) / ramp);
-}
-
-/* Half the chord the circle of radius `r` cuts on the line `c` from its
- * centre, rounded down; 0 when the line misses it. */
-static inline int32_t
-boot_anim_far_chord(int32_t r, int32_t c) {
-    const int64_t h = ((int64_t)r * r) - ((int64_t)c * c);
-    return h > 0 ? (int32_t)mathi_isqrt64((uint64_t)h) : 0;
 }
 
 /* The title is laid out in the viewer's frame because the board is held one
@@ -513,7 +546,7 @@ boot_anim_title_wobble(int32_t d_q12) {
 
 static inline uint8_t
 boot_anim_title_wave_reach(uint32_t now_ms) {
-    return (uint8_t)(255u - tween_ramp(now_ms, BOOT_ANIM_TITLE_WAVE_OUT_MS, BOOT_ANIM_TITLE_WAVE_FADE_MS));
+    return (uint8_t)(255u - ease_ramp_u8(now_ms, BOOT_ANIM_TITLE_WAVE_OUT_MS, BOOT_ANIM_TITLE_WAVE_FADE_MS));
 }
 
 static inline int
@@ -533,7 +566,7 @@ boot_anim_title_wave(int i, uint32_t now_ms) {
 static inline vec2i_t
 boot_anim_title_letter(const draw_font_t* font, int i, uint32_t now_ms) {
     const uint32_t start = BOOT_ANIM_TITLE_START_MS + ((uint32_t)i * BOOT_ANIM_TITLE_STAGGER_MS);
-    const uint8_t u8 = tween_ease_out(tween_ramp(now_ms, start, BOOT_ANIM_TITLE_FLIGHT_MS));
+    const uint8_t u8 = ease_out_u8(ease_ramp_u8(now_ms, start, BOOT_ANIM_TITLE_FLIGHT_MS));
 
     const int prefix_w = draw_font_text_width(font, BOOT_ANIM_TITLE, i, BOOT_ANIM_TITLE_SCALE);
     const int final_x = BOOT_ANIM_TITLE_VIEW_X + prefix_w + (i * BOOT_ANIM_TITLE_GAP);
@@ -565,11 +598,11 @@ boot_anim_pen(uint32_t now_ms) {
     const uint32_t phase1_end_ms = BOOT_ANIM_PEN_START_MS + BOOT_ANIM_PEN_MS;
 
     if (now_ms <= phase1_end_ms) {
-        const uint8_t linear = tween_ramp(now_ms, BOOT_ANIM_PEN_START_MS, BOOT_ANIM_PEN_MS);
+        const uint8_t linear = ease_ramp_u8(now_ms, BOOT_ANIM_PEN_START_MS, BOOT_ANIM_PEN_MS);
         return mathi_lerp_u8(0, BOOT_ANIM_CURVE_PHASE1_FRACTION, linear);
     }
 
-    const uint8_t linear2 = tween_ramp(now_ms, phase1_end_ms, BOOT_ANIM_PEN_FINISH_MS - phase1_end_ms);
+    const uint8_t linear2 = ease_ramp_u8(now_ms, phase1_end_ms, BOOT_ANIM_PEN_FINISH_MS - phase1_end_ms);
     return mathi_lerp_u8(BOOT_ANIM_CURVE_PHASE1_FRACTION, BOOT_ANIM_ONE, linear2);
 }
 
@@ -582,18 +615,18 @@ boot_anim_colour_progress(uint32_t now_ms) {
 
 static inline uint8_t
 boot_anim_ink(uint32_t now_ms) {
-    return (uint8_t)(255u - tween_ramp(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
+    return (uint8_t)(255u - ease_ramp_u8(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
 }
 
 /* Crossfade to the photograph, 0..255, from BOOT_ANIM_IMAGE_START_MS for
- * BOOT_ANIM_IMAGE_FADE_MS. Plain tween_ramp(), not eased: ease_out(r) + ease_out(255-r)
+ * BOOT_ANIM_IMAGE_FADE_MS. Plain ease_ramp_u8(), not eased: ease_out(r) + ease_out(255-r)
  * is NOT 255 at every r, so easing either half of a cross-dissolve makes
  * the midpoint read brighter than either end; linear is what keeps the
  * two halves summing to one whole picture throughout. The scene shows
  * through what the reveal leaves, 255 - reveal. */
 static inline uint8_t
 boot_anim_photo_reveal(uint32_t now_ms) {
-    return tween_ramp(now_ms, BOOT_ANIM_IMAGE_START_MS, BOOT_ANIM_IMAGE_FADE_MS);
+    return ease_ramp_u8(now_ms, BOOT_ANIM_IMAGE_START_MS, BOOT_ANIM_IMAGE_FADE_MS);
 }
 
 /* The frame, counted from 0, that mounts the photograph's pack. Mounting
@@ -697,7 +730,7 @@ boot_anim_crest_rgb(int sample, int32_t colour_pen) {
  * ending. */
 static inline uint8_t
 boot_anim_finale_reach(uint32_t now_ms) {
-    return tween_ease_out(tween_ramp(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
+    return ease_out_u8(ease_ramp_u8(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
 }
 
 /* Axes run past the panel and rely on clipping. */

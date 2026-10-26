@@ -1,5 +1,6 @@
 """Regression tests for documentation citation tools."""
 import contextlib
+import datetime
 import io
 import json
 import os
@@ -18,7 +19,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import check_doc_citations  # noqa: E402
 import check_doc_constants  # noqa: E402
 import check_doc_index  # noqa: E402
-import check_doc_vocabulary  # noqa: E402
 import doc_citers  # noqa: E402
 import doc_drift  # noqa: E402
 import idf_vocabulary  # noqa: E402
@@ -239,10 +239,20 @@ class DocCitationTest(unittest.TestCase):
                     "GIT_AUTHOR_DATE": committed,
                     "GIT_COMMITTER_DATE": committed,
                 })
-            gate_tree.write(root, "docs/doc_review_ledger.txt", "docs/Guide.md\t2026-09-17\tchecked\n")
-            rows = doc_drift.report(root, today=__import__("datetime").date(2026, 9, 18))
+            gate_tree.write(root, "scripts/gates/doc_review_ledger.txt", "docs/Guide.md\t2026-09-17\tchecked\n")
+            rows = doc_drift.report(root, today=datetime.date(2026, 9, 18))
         guide = next(row for row in rows if row["doc"] == "docs/Guide.md")
         self.assertEqual(guide["age"], 1)
+
+    def test_drift_reviews_keep_latest_date_in_either_order(self):
+        newer = "docs/Guide.md\t2026-09-17\tchecked\n"
+        older = "docs/Guide.md\t2026-09-12\tchecked\n"
+        for ledger in (newer + older, older + newer):
+            with self.subTest(ledger=ledger), gate_tree.temporary_tree() as root:
+                gate_tree.write(root, "scripts/gates/doc_review_ledger.txt", ledger)
+                self.assertEqual(doc_drift.reviews(root), {
+                    "docs/Guide.md": datetime.date(2026, 9, 17),
+                })
 
     def test_drift_ranks_changed_cited_file(self):
         with gate_tree.temporary_tree() as root:
@@ -255,24 +265,6 @@ class DocCitationTest(unittest.TestCase):
                              identity=("Test", "test@example.com"))
             row = next(row for row in doc_drift.report(root) if row["doc"] == "docs/Guide.md")
         self.assertEqual((len(row["files"]), row["rank"] - row["age"]), (1, 30))
-
-    def test_vocabulary_gate_honours_inline_and_previous_line_escapes(self):
-        with gate_tree.temporary_tree([
-                ("scripts/gates/doc_vocabulary.txt", "C6\twrong board\n"),
-                ("docs/Guide.md", "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
-                            "<!-- doc-vocabulary: ignore -->\n"
-                            "C6 was the prior target.\n"),
-        ]) as root:
-            found = check_doc_vocabulary.check(root)
-        self.assertEqual(found, [])
-
-    def test_vocabulary_gate_reports_unescaped_retired_term(self):
-        with gate_tree.temporary_tree([
-                ("scripts/gates/doc_vocabulary.txt", "C6\twrong board\n"),
-                ("docs/Guide.md", "C6 is not the current board.\n"),
-        ]) as root:
-            found = check_doc_vocabulary.check(root)
-        self.assertEqual([(path, term) for path, _, term, _ in found], [("docs/Guide.md", "C6")])
 
     def test_a_plan_may_cite_what_is_not_built_yet(self):
         with gate_tree.temporary_tree() as root:
@@ -292,7 +284,7 @@ class DocCitationTest(unittest.TestCase):
 
     def test_another_gates_marker_or_html_comment_does_not_silence_a_citation(self):
         with gate_tree.temporary_tree([
-                ("docs/Guide.md", "`gone_a()` <!-- doc-vocabulary: ignore -->\n"
+                ("docs/Guide.md", "`gone_a()` <!-- doc-other: ignore -->\n"
                             "`gone_b()` <!-- doc-constants: ignore -->\n"
                             "`gone_c()` <!-- gone_c() -->\n"),
         ]) as root:

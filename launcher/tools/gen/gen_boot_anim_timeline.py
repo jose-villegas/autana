@@ -9,7 +9,7 @@ WHERE THIS DATA COMES FROM
 main/boot/boot_anim_timeline.json is the source of truth for everything
 that is not motion, edited by hand. The camera and the space the grid and
 curve live in move by a glTF animation instead,
-main/boot/boot_anim_motion.glb (see docs/Animation-Tracks.md), authored in
+main/boot/boot_anim_motion.glb (see docs/render/Animation-Tracks.md), authored in
 any glTF tool and baked into the boot clip's own asset pack by
 tools/r3d/build_pack.py from main/boot/boot_anim_motion.anim.toml; this
 script only reads it to check it.
@@ -124,7 +124,7 @@ def validate_floor(cfg):
                "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m",
                "ripple_calm_fraction", "crest_height_m", "crest_colour_stride", "grid_level", "floor_grey",
                "far_m", "far_grow_power", "far_line_cells", "far_line_growth", "far_front",
-               "far_front_steps",
+               "far_front_steps", "far_swell_fade_m", "far_swell_out_ms",
                "grid_edge_fade_fraction",
                "ripple_height_m", "swell_height_m", "swell"}
     for key in sorted(set(cfg) - allowed):
@@ -198,6 +198,15 @@ def validate_floor(cfg):
     if cfg["far_front"] >= 1:
         fail("far_front must be less than 1")
     floor_number(cfg.get("far_front_steps"), "far_front_steps", positive=True, integer=True)
+    floor_number(cfg.get("far_swell_fade_m"), "far_swell_fade_m", positive=True)
+    edge = mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2)
+    fade = meters_to_q12(cfg["far_swell_fade_m"])
+    if not edge < fade < meters_to_q12(cfg["far_m"]):
+        fail("far_swell_fade_m must lie between the mesh's edge and far_m")
+    if far_sample_gap(cfg, fade) * 2 > meters_to_q12(min(s["wavelength_m"] for s in cfg["swell"])):
+        fail("far_swell_fade_m must end the swell before the far samples are more than half its shortest "
+             "wavelength apart")
+    floor_number(cfg.get("far_swell_out_ms"), "far_swell_out_ms", positive=True, integer=True)
 
 
 def floor_array(w, ctype, name, rows):
@@ -253,7 +262,7 @@ def emit_floor(cfg, w):
         for start in range(0, len(values), 16):
             w("    " + ", ".join(map(str, values[start:start + 16])) + ",\n")
         w("};\n\n")
-    w("typedef struct { int16_t radius, amplitude, calm_start; uint16_t inv_width, ripple_phase, swell; uint16_t phase[BOOT_ANIM_SWELL_COUNT]; int32_t far_reach; } boot_anim_floor_time_t;\n")
+    w("typedef struct { int16_t radius, amplitude, calm_start; uint16_t inv_width, ripple_phase, swell, far_swell; uint16_t phase[BOOT_ANIM_SWELL_COUNT]; int32_t far_reach; } boot_anim_floor_time_t;\n")
     w("static const boot_anim_floor_time_t boot_anim_floor_times[] = {\n")
     for ms in range(0, timing["total_ms"] + FLOOR_TIME_STEP_MS * 2, FLOOR_TIME_STEP_MS):
         tau = max(0, ms - timing["ripple_impact_ms"]) / 1000
@@ -267,7 +276,7 @@ def emit_floor(cfg, w):
         gain = round(FLOOR_GAIN_ONE * min(1, max(0, (ms - timing["title_start_ms"]) / timing["swell_in_ms"])))
         phases = [round(-ms * FLOOR_PHASE_TURN / s["period_ms"]) % FLOOR_PHASE_TURN for s in cfg["swell"]]
         scalars = (round(radius * FLOOR_SHAPE_SCALE), meters_to_q12(amplitude), round(calm_start * FLOOR_SHAPE_SCALE),
-                   round(FLOOR_GAIN_ONE / sigma), ripple_phase, gain)
+                   round(FLOOR_GAIN_ONE / sigma), ripple_phase, gain, far_swell_time_gain(cfg, ms))
         if any(not -(1 << 15) <= v < (1 << 15) for v in scalars[:3]):
             fail("ripple frame scalars must fit signed 16-bit fields")
         w("    {%s, {%s}, %d},\n" % (", ".join(map(str, scalars)), ", ".join(map(str, phases)), far_reach(cfg, ms)))
@@ -355,34 +364,67 @@ def far_reach(cfg, ms):
     return round(edge + (meters_to_q12(cfg["far_m"]) - edge) * t ** cfg["far_grow_power"])
 
 
+def far_sample_gap(cfg, r_q12):
+    """The gap after the far sample at `r_q12`."""
+    return max(mesh_step_q12(cfg), r_q12 // FAR_SAMPLE_DIVISOR)
+
+
 def axis_far_samples(cfg):
     edge = mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2)
     far = meters_to_q12(cfg["far_m"])
-    step = mesh_step_q12(cfg)
     radii = [edge]
     while radii[-1] < far:
-        radii.append(min(far, radii[-1] + max(step, radii[-1] // FAR_SAMPLE_DIVISOR)))
+        radii.append(min(far, radii[-1] + far_sample_gap(cfg, radii[-1])))
     return radii
+
+
+def far_swell_gain(cfg, r_q12):
+    """How much of the swell the floor keeps at `r_q12`, in FLOOR_GAIN_ONE:
+    all of it at the mesh's edge, easing to none at far_swell_fade_m, so the
+    horizon stays flat and the samples never thin past the waves."""
+    edge = mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2)
+    fade = meters_to_q12(cfg["far_swell_fade_m"])
+    u = min(1.0, max(0.0, (fade - r_q12) / (fade - edge)))
+    return round(FLOOR_GAIN_ONE * u * u * (3 - 2 * u))
+
+
+def far_swell_time_gain(cfg, ms):
+    """How much of the swell the far grid keeps at `ms`, in FLOOR_GAIN_ONE:
+    all of it until far_swell_out_ms before the photograph starts crossing
+    in, easing to none by the last time step at or before it, so the
+    crossfade draws the far grid flat."""
+    end = cfg["timing"]["image_start_ms"] // FLOOR_TIME_STEP_MS * FLOOR_TIME_STEP_MS
+    u = min(1.0, max(0.0, (end - ms) / cfg["far_swell_out_ms"]))
+    return round(FLOOR_GAIN_ONE * u * u * (3 - 2 * u))
+
+
+def swell_phases(cfg, d_q12, component):
+    """The swell's spatial phases `d_q12` out along +re (cos) or +im (sin)."""
+    return [round(d_q12 / BOOT_ANIM_ONE * component(math.radians(sine["direction_deg"])) / sine["wavelength_m"]
+                  * FLOOR_PHASE_TURN) % FLOOR_PHASE_TURN for sine in cfg["swell"]]
 
 
 def emit_axis_far(cfg, w):
     """The axis lines past the mesh, one row per sample out along +re and +im:
-    its distance, its ripple node and its swell phases. The negative
-    directions negate the phases; the first sample is the mesh's edge node."""
+    its distance, its ripple node, its swell phases and how much of the swell
+    it keeps. The negative directions negate the phases; the first sample is
+    the mesh's edge node."""
     radii = axis_far_samples(cfg)
     w("\n#define BOOT_ANIM_FAR_Q12 %d\n" % meters_to_q12(cfg["far_m"]))
+    w("#define BOOT_ANIM_FAR_SWELL_FADE_Q12 %d\n" % meters_to_q12(cfg["far_swell_fade_m"]))
+    w("#define BOOT_ANIM_FAR_SWELL_OUT_MS %d\n" % cfg["far_swell_out_ms"])
     w("#define BOOT_ANIM_AXIS_FAR_SAMPLES %d\n\n" % len(radii))
     w("typedef struct { int32_t r; boot_anim_floor_node_t node; uint16_t swell_re[BOOT_ANIM_SWELL_COUNT], "
-      "swell_im[BOOT_ANIM_SWELL_COUNT]; } boot_anim_axis_far_t;\n")
+      "swell_im[BOOT_ANIM_SWELL_COUNT]; uint16_t swell_gain; } boot_anim_axis_far_t;\n")
     w("static const boot_anim_axis_far_t boot_anim_axis_far[] = {\n")
     for r_q12 in radii:
         r = r_q12 / BOOT_ANIM_ONE
         node = (min(round(r * FLOOR_SHAPE_SCALE), (1 << 16) - 1), 0,
                 round(r * FLOOR_PHASE_TURN / cfg["ripple_wavelength_m"]) % FLOOR_PHASE_TURN)
-        phases = [[round(r * component(math.radians(sine["direction_deg"])) / sine["wavelength_m"] * FLOOR_PHASE_TURN)
-                   % FLOOR_PHASE_TURN for sine in cfg["swell"]] for component in (math.cos, math.sin)]
-        w("    {%d, {%d, %d, %d}, {%s}, {%s}},\n" % ((r_q12,) + node + (", ".join(map(str, phases[0])),
-                                                     ", ".join(map(str, phases[1])))))
+        phases = [swell_phases(cfg, r_q12, component) for component in (math.cos, math.sin)]
+        w("    {%d, {%d, %d, %d}, {%s}, {%s}, %d},\n" % ((r_q12,) + node + (", ".join(map(str, phases[0])),
+                                                         ", ".join(map(str, phases[1])),
+                                                         far_swell_gain(cfg, r_q12))))
     w("};\n")
 
 
@@ -407,14 +449,49 @@ def far_lines(cfg):
         lines.append(c)
 
 
+def far_line_samples(cfg, c):
+    """Where far line `c` is sampled for the swell, as (distance along it
+    from the axis, distance from the origin): where it leaves the mesh, where
+    it crosses each axis sample's circle, and where the swell has faded out.
+    Empty for a line wholly past the fade."""
+    edge = mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2)
+    fade = meters_to_q12(cfg["far_swell_fade_m"])
+    if c >= fade:
+        return []
+    start = max(edge, c)
+    radii = [start] + [r for r in axis_far_samples(cfg) if start < r < fade] + [fade]
+    return [(math.isqrt(r * r - c * c), r) for r in radii]
+
+
 def emit_far_grid(cfg, w):
+    """The far lines, each with its swell phases across the axis and its run
+    of boot_anim_far_samples: the distance along the line, the phases there
+    and how much of the swell it keeps. A line at -c, or the half running the
+    other way, negates the phases."""
     lines = far_lines(cfg)
     w("\n#define BOOT_ANIM_FAR_FRONT_Q8 %d\n" % round(cfg["far_front"] * 256))
     w("#define BOOT_ANIM_FAR_FRONT_STEPS %d\n" % cfg["far_front_steps"])
     w("#define BOOT_ANIM_FAR_LINES %d\n\n" % len(lines))
-    w("static const int32_t boot_anim_far_lines[BOOT_ANIM_FAR_LINES] = {\n")
-    for at in range(0, len(lines), 8):
-        w("    " + ", ".join(map(str, lines[at:at + 8])) + ",\n")
+    w("typedef struct { int32_t s; uint16_t swell_re[BOOT_ANIM_SWELL_COUNT], swell_im[BOOT_ANIM_SWELL_COUNT]; "
+      "uint16_t swell_gain; } boot_anim_far_sample_t;\n")
+    w("static const boot_anim_far_sample_t boot_anim_far_samples[] = {\n")
+    runs = []
+    for c in lines:
+        samples = far_line_samples(cfg, c)
+        if len(samples) > 255:
+            fail("a far line must take at most 255 swell samples")
+        runs.append((sum(count for _, count in runs), len(samples)))
+        for s, r in samples:
+            w("    {%d, {%s}, {%s}, %d},\n" % (s, ", ".join(map(str, swell_phases(cfg, s, math.cos))),
+                                             ", ".join(map(str, swell_phases(cfg, s, math.sin))),
+                                             far_swell_gain(cfg, r)))
+    w("};\n\n")
+    w("typedef struct { int32_t c; uint16_t swell_re[BOOT_ANIM_SWELL_COUNT], swell_im[BOOT_ANIM_SWELL_COUNT]; "
+      "uint16_t first; uint8_t count; } boot_anim_far_line_t;\n")
+    w("static const boot_anim_far_line_t boot_anim_far_lines[BOOT_ANIM_FAR_LINES] = {\n")
+    for c, (first, count) in zip(lines, runs):
+        w("    {%d, {%s}, {%s}, %d, %d},\n" % (c, ", ".join(map(str, swell_phases(cfg, c, math.cos))),
+                                             ", ".join(map(str, swell_phases(cfg, c, math.sin))), first, count))
     w("};\n")
 
 
@@ -460,6 +537,10 @@ def validate(cfg):
              (timing["grid_start_ms"], timing["total_ms"]))
     if timing["far_grow_ms"] <= 0:
         fail("far_grow_ms must be positive (%r given)" % (timing["far_grow_ms"],))
+    if timing["title_start_ms"] < timing["grid_start_ms"] + timing["grid_bands"] * timing["grid_band_ms"] \
+            + timing["far_grow_ms"]:
+        fail("title_start_ms must not come before the floor reaches far_m - "
+             "draw_far_grid() lifts the far lines only on the whole floor")
     if not 0 <= timing["title_shadow_alpha"] <= 255:
         fail("title_shadow_alpha must be 0..255 (%r given) - it is written "
              "straight into a #define read as a C uint8_t; a value outside "
@@ -471,7 +552,7 @@ def validate(cfg):
     # fixed dimensions. Only a COARSE bound: title_amplitude_px/
     # title_wave_amplitude_px are the two knobs that can carry a landed
     # letter off title_height_px, so they stand in as a margin rather than
-    # replaying tween_ease_out()'s own curve here; the exact simulation
+    # replaying ease_out_u8()'s own curve here; the exact simulation
     # is test_the_title_stays_on_the_panel_once_visible() in
     # suite_boot_anim.c, which this only backstops for a value obviously
     # wrong enough that no test run would ever be needed to see it.
@@ -508,7 +589,7 @@ def validate(cfg):
              (timing["title_x_px"], _title_view_w, _title_word_w))
     if timing["image_start_ms"] < 0 or timing["image_fade_ms"] < 0:
         fail("image_start_ms/image_fade_ms must not be negative (%r/%r "
-             "given) - boot_anim_photo_reveal() hands both to tween_ramp() "
+             "given) - boot_anim_photo_reveal() hands both to ease_ramp_u8() "
              "as a uint32_t, where a negative duration wraps to an "
              "enormous one and the crossfade would silently never finish" %
              (timing["image_start_ms"], timing["image_fade_ms"]))
@@ -526,7 +607,7 @@ def validate(cfg):
     if timing["title_wave_out_ms"] < 0 or timing["title_wave_fade_ms"] < 0:
         fail("title_wave_out_ms/title_wave_fade_ms must not be negative "
              "(%r/%r given) - boot_anim_title_wave_reach() hands both to "
-             "tween_ramp() as a uint32_t, the same wrap-to-enormous trap "
+             "ease_ramp_u8() as a uint32_t, the same wrap-to-enormous trap "
              "image_start_ms above describes" %
              (timing["title_wave_out_ms"], timing["title_wave_fade_ms"]))
 

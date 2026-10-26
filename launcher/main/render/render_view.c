@@ -10,8 +10,12 @@ view_frame(render_view_t* view, vec3f_t right, vec3f_t down, float half_fov_shor
     view->screen_y = vec3f_add(vec3f_scale(right, (float)axes.y_right), vec3f_scale(down, (float)axes.y_down));
     view->lens.fx = (float)shorter / (2.0F * half_fov_short_tan);
     view->lens.fy = view->lens.fx;
-    view->lens.cx = (float)viewport.width * 0.5F;
-    view->lens.cy = (float)viewport.height * 0.5F;
+    /* The shift is in camera axes; a step right lands (x_right, y_right) in
+     * the picture, a step up the negated down step. */
+    const float right_px = view->shift.x * (float)shorter;
+    const float up_px = view->shift.y * (float)shorter;
+    view->lens.cx = ((float)viewport.width * 0.5F) + (right_px * (float)axes.x_right) - (up_px * (float)axes.x_down);
+    view->lens.cy = ((float)viewport.height * 0.5F) + (right_px * (float)axes.y_right) - (up_px * (float)axes.y_down);
     view->viewport = viewport;
 }
 
@@ -23,6 +27,7 @@ render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_
         .position = pose->position,
         .forward = quatf_rotate(pose->rotation, (vec3f_t){0.0F, 0.0F, 1.0F}),
         .lens.near_z = near_z,
+        .small_fill = SMALL_FILL_SMOOTH,
     };
     view_frame(&view, right, down, half_fov_short_tan, viewport);
     return view;
@@ -36,7 +41,17 @@ render_view_refit(render_view_t* view, viewport_t viewport) {
                                     vec3f_scale(view->screen_y, (float)before.y_right));
     const vec3f_t down =
         vec3f_add(vec3f_scale(view->screen_x, (float)before.x_down), vec3f_scale(view->screen_y, (float)before.y_down));
+    view_frame(view, right, down, render_view_half_fov_short_tan(view), viewport);
+}
+
+float
+render_view_half_fov_short_tan(const render_view_t* view) {
     const int shorter = view->viewport.width < view->viewport.height ? view->viewport.width : view->viewport.height;
-    const float half_fov_short_tan = (float)shorter / (2.0F * view->lens.fx);
-    view_frame(view, right, down, half_fov_short_tan, viewport);
+    return (float)shorter / (2.0F * view->lens.fx);
+}
+
+void
+render_view_set_shift(render_view_t* view, vec2f_t shift) {
+    view->shift = shift;
+    render_view_refit(view, view->viewport);
 }

@@ -1,7 +1,7 @@
 /*
  * asset_pack: a content pack used where it lies, in a memory-mapped flash
  * partition or in a buffer read from a file or a card. A pack is a header, a
- * table of named entries and their bytes; the layout is in docs/assets/README.md
+ * table of named entries and their bytes; the layout is in docs/assets/Pack-Format.md
  * and is written by launcher/tools/asset/asset_pack.py. An entry is a typed
  * byte range that refers to its own parts by offset from its first byte, so no
  * entry needs a fix-up pass and the pack is never copied.
@@ -63,9 +63,6 @@ typedef struct {
 
 /* The alignment a pack's base address must have. */
 #define ASSET_PACK_BASE_ALIGN 16U
-
-/* CRC-32 (zlib's), which is the checksum a pack carries over its bytes after the header. */
-uint32_t asset_crc32(const void* data, size_t size);
 
 /* The size a pack states in its header, from at least ASSET_PACK_HEADER_SIZE
  * bytes at `head`; 0 when they are not an asset pack's. How much to read or

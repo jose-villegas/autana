@@ -1,3 +1,4 @@
+"""The code layout check finds pinned functions and the baseline each source folder owns."""
 import sys
 import tempfile
 import unittest
@@ -96,16 +97,59 @@ class PoolTests(unittest.TestCase):
     def test_code_entered_past_a_pool_is_decoded_again_from_its_entry(self):
         # As objdump read r3d_span_triangle_impl: a two-byte pool after a
         # short j, then code a beqz enters at 0x1408, read out of step.
-        found = [
-            (0x1400, 3, "beqz", "a10, 1408 <h+0x8>"),
-            (0x1403, 3, "j", "140c <h+0xc>"),
-            (0x1406, 3, "src", "a0, a0, a0"),
-            (0x1409, 3, "bgez", "a13, 1300 <h-0x100>"),
-            (0x140C, 2, "retw.n", ""),
-        ]
+        found = self.misdecoded_pool(
+            0x1400, ("beqz", "a10, 1408 <h+0x8>"), "140c <h+0xc>",
+            [("src", "a0, a0, a0"), ("bgez", "a13, 1300 <h-0x100>")], 0x140C)
         again = [(0x1408, 2, "l32i.n", "a8, a1, 4"), (0x140A, 2, "addi.n", "a8, a8, 1"), (0x140C, 2, "retw.n", "")]
         kept = code_layout.skip_pools(found, lambda start: [ins for ins in again if ins[0] >= start])
         self.assertEqual([ins[2] for ins in kept], ["beqz", "j", "l32i.n", "addi.n", "retw.n"])
+
+    def test_embedded_literal_pool_resumes_at_its_end(self):
+        found = [
+            (0x42000000, 3, "l32r", "a8, 42000008 <f+0x8> (40002274 <callee>)"),
+            (0x42000003, 3, "j", "4200000c <f+0xc>"),
+            (0x42000006, 3, "bnez", "a2, 42000009 <f+0x9>"),
+            (0x42000009, 3, "call8", "4200100c <unrelated+0xc>"),
+            (0x4200000c, 3, "callx8", "a8"),
+            (0x4200000f, 2, "retw.n", ""),
+        ]
+        starts = []
+
+        def again(start):
+            starts.append(start)
+            return found[-2:]
+
+        self.assertEqual(code_layout.skip_pools(found, again), found[:2] + found[-2:])
+        self.assertIn(0x4200000c, starts)
+
+    def test_alignment_before_code_in_a_long_jump_span(self):
+        found = self.misdecoded_pool(
+            0x42000000, ("bltz", "a4, 42000008 <f+0x8>"), "42000040 <f+0x40>",
+            [("srai", "a0, a0, 16"), ("call8", "4200100c <unrelated+0xc>")], 0x42000040)
+        again = [
+            (0x42000008, 3, "l32r", "a8, 42001000 <pool> (40002274 <callee>)"),
+            (0x4200000b, 3, "callx8", "a8"), (0x4200000e, 2, "retw.n", ""),
+        ]
+        self.assertEqual(code_layout.skip_pools(found, lambda start: again), found[:2] + again + found[-1:])
+
+    def test_redecodes_code_entering_a_literal_pool(self):
+        found = [
+            (0x42000000, 3, "bnez", "a2, 42000007 <f+0x7>"),
+            (0x42000003, 3, "j", "42000010 <f+0x10>"),
+            (0x42000006, 3, "msub.s", "f0, f1, f2"),
+            (0x42000010, 3, "madd.s", "f0, f1, f2"),
+        ]
+        again = [(0x42000007, 3, "add.n", "a2, a2, a3")]
+        self.assertEqual(code_layout.skip_pools(found, lambda start: again), found[:2] + again + found[-1:])
+
+    def misdecoded_pool(self, start, branch, jump, pool, end):
+        return [
+            (start, 3, *branch),
+            (start + 3, 3, "j", jump),
+            (start + 6, 3, *pool[0]),
+            (start + 9, 3, *pool[1]),
+            (end, 2, "retw.n", ""),
+        ]
 
 
 class SmallLoopTests(unittest.TestCase):
@@ -313,6 +357,76 @@ class ConfigurationCheckTests(unittest.TestCase):
             self.assertIn("no baseline applies", message)
             self.assertIn(str(build), message)
 
+
+
+class SameCodeTests(unittest.TestCase):
+    # objdump -d lines: address, encoding, mnemonic, operands, tab-separated.
+    BASE = """\
+40370000 <walk_rows>:
+40370000:\t004136\tentry\ta1, 32
+40370003:\tfffd81\tl32r\ta8, 4036fff8 <_iram_text_start+0x10> (42002d50 <draw_x>)
+40370006:\tfcc416\tbeqz\ta4, 40370000 <walk_rows>
+40370009:\t0008e0\tcallx8\ta8
+
+40370010 <tick>:
+40370010:\t004136\tentry\ta1, 32
+40370013:\t000090\tretw
+"""
+    WALK_ROWS_CHANGED = ["walk_rows: changed (4 -> 4 instructions)"]
+
+    def differences(self, head, base=BASE):
+        return code_layout.code_differences(code_layout.function_code(base), code_layout.function_code(head))
+
+    def test_code_that_moved_compares_equal(self):
+        moved = self.BASE.replace("403700", "403800").replace("4036fff8", "4037fff4")
+        self.assertEqual(self.differences(moved), [])
+
+    def test_a_literal_load_whose_pool_moved_compares_equal(self):
+        self.assertEqual(self.differences(self.BASE.replace("<_iram_text_start+0x10>", "<_iram_text_start>")), [])
+
+    def test_what_changes_an_instruction_names_its_function(self):
+        for old, new in (("beqz\ta4", "beqz\ta5"), ("l32r\ta8", "l32r\ta9"), ("<draw_x>", "<draw_y>")):
+            with self.subTest(new):
+                self.assertEqual(self.differences(self.BASE.replace(old, new)), self.WALK_ROWS_CHANGED)
+
+    def test_a_function_only_one_side_has_is_named(self):
+        self.assertEqual(self.differences(self.BASE.replace("<tick>", "<tock>")), ["tick: removed", "tock: added"])
+
+    def test_two_static_functions_sharing_a_name_are_both_kept(self):
+        self.assertEqual(sorted(code_layout.function_code(self.BASE.replace("<tick>:", "<walk_rows>:"))),
+                         ["walk_rows", "walk_rows#2"])
+
+    def test_a_case_a_jump_table_enters_is_compared(self):
+        switch = """\
+40370000 <pick>:
+40370000:\t0008a0\tjx\ta8
+40370003:\t000306\tj\t40370010 <pick+0x10>
+40370006:\t1b0c22\taddi\ta2, a2, 1
+40370009:\tf01d\tretw.n
+40370010:\tf01d\tretw.n
+"""
+        self.assertEqual(self.differences(switch.replace("a2, 1", "a2, 3"), switch), ["pick: changed (5 -> 5 instructions)"])
+
+
+class ResyncTests(unittest.TestCase):
+    def test_a_loop_past_alignment_bytes_is_decoded_from_its_entry(self):
+        # As objdump sweeps asset_pack_find: one alignment byte after a jump,
+        # then a loop entered only from inside the span the jump skips; the
+        # sweep reads the byte and the loop's first bytes as one instruction.
+        swept = [(0x1010, 3, "bnez", "a9, 1016 <f+0x6>"), (0x1013, 3, "mul16u", "a1, a0, a0"),
+                 (0x1016, 3, "bne", "a5, a8, 1014 <f+0x4>")]
+        entry = [(0x1014, 2, "addi.n", "a5, a5, 1"), (0x1016, 3, "bne", "a5, a8, 1014 <f+0x4>")]
+        self.assertEqual([ins[2] for ins in code_layout._resync(swept, lambda start: entry)], ["bnez", "addi.n", "bne"])
+
+    def test_targets_inside_each_other_are_tried_once(self):
+        # Decoding from either target swallows the other's start; untried
+        # once each, they would undo each other forever.
+        found = [(0x2010, 3, "beqz", "a2, 2013 <g+0x3>"), (0x2016, 3, "bnez", "a3, 2014 <g+0x4>")]
+
+        def again(start):
+            return [(start, 3, "nop", ""), (0x2016, 3, "bnez", "a3, 2014 <g+0x4>")]
+
+        self.assertEqual([ins[2] for ins in code_layout._resync(found, again)], ["beqz", "nop"])
 
 if __name__ == "__main__":
     unittest.main()
