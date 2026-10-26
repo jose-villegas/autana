@@ -132,6 +132,7 @@ test_no_gravity_has_no_direction(void) {
 static void
 test_flat_noise_does_not_report_direction_changes(void) {
     fixture();
+    suite_add_test_cleanup(input_fake_reset);
     suite_add_test_cleanup(clock_fake_reset);
     motion_reader_reset();
     input_motion_t motion = {.acceleration = {0, 0, INPUT_ACCEL_ONE_G}};
@@ -160,6 +161,7 @@ test_flat_noise_does_not_report_direction_changes(void) {
 static void
 test_real_tilt_reports_new_octants(void) {
     fixture();
+    suite_add_test_cleanup(input_fake_reset);
     suite_add_test_cleanup(clock_fake_reset);
     motion_reader_reset();
     input_motion_t motion = {.acceleration = {INPUT_ACCEL_ONE_G, 0, 0}};
