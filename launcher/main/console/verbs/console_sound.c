@@ -264,10 +264,13 @@ sound_run_parsed(const console_sound_args_t* parsed, console_reply_fn reply) {
     reply(length < 0 ? format_error : line);
 }
 
-void
-console_sound_answer(const console_sound_args_t* args) {
-    sound_run_parsed(args, console_reply_stdio);
+static void
+answer(const void* payload) {
+    sound_run_parsed(payload, console_reply_stdio);
 }
+
+/* PLAY touches the mixer, so the frame task answers it. */
+CONSOLE_FRAME_SLOT(console_sound_slot, console_sound_args_t, true, answer)
 
 static void
 console_verb_sound(const char* args, console_reply_fn reply) {
@@ -281,8 +284,7 @@ console_verb_sound(const char* args, console_reply_fn reply) {
         sound_run_parsed(&parsed, reply);
         return;
     }
-    const console_frame_request_t request = {.kinds = CONSOLE_FRAME_SOUND, .sound = parsed};
-    if (!console_frame_post(console_frame_mailbox(), &request)) {
+    if (!console_frame_post(console_frame_slots(), &console_sound_slot, &parsed)) {
         reply("SOUND_ERR play pending");
     }
 }
