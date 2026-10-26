@@ -88,8 +88,8 @@ frame(const input_t* in) {
 static int
 tap(int x, int y) {
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .x = x, .y = y, .press_x = x, .press_y = y};
-    const input_t release = {.released = true, .x = x, .y = y, .press_x = x, .press_y = y};
+    const input_t press = {.down = true, .pressed = true, .point = {x, y}, .press = {x, y}};
+    const input_t release = {.released = true, .point = {x, y}, .press = {x, y}};
     bool before[ROW_COUNT];
     for (int i = 0; i < ROW_COUNT; i++) {
         before[i] = values[i];

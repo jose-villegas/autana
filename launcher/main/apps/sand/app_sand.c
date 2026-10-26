@@ -1064,8 +1064,8 @@ handle_detonate_input(const input_t* input) {
     if (!input->pressed) {
         return;
     }
-    const int cx = input->x / cell;
-    const int cy = input->y / cell;
+    const int cx = input->point.x / cell;
+    const int cy = input->point.y / cell;
     sand_explode(&sim, cx, cy, fx_div_round(sand_ui_radius(&ui), cell, 0));
 }
 
@@ -1074,8 +1074,8 @@ handle_spawn_emitter_input(const input_t* input) {
     if (!input->pressed) {
         return;
     }
-    const int cx = input->x / cell;
-    const int cy = input->y / cell;
+    const int cx = input->point.x / cell;
+    const int cy = input->point.y / cell;
     if (!sand_add_emitter(&sim, cx, cy, sand_brushes[ui.brush].cell)) {
         ESP_LOGW(TAG, "emitter list full (%d) - tap ignored", SAND_MAX_EMITTERS);
     }
@@ -1122,8 +1122,8 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
         pour_accumulator_ms -= (uint32_t)applications * SAND_POUR_STEP_MS;
     }
 
-    const int cx = input->x / cell;
-    const int cy = input->y / cell;
+    const int cx = input->point.x / cell;
+    const int cy = input->point.y / cell;
     for (int i = 0; i < applications; i++) {
         apply_pour_step(cx, cy);
     }
@@ -1591,9 +1591,9 @@ static void
 sand_app_test_tap_menu_rect(recti_t r) {
     const int x = r.x + (r.w / 2);
     const int y = r.y + (r.h / 2);
-    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
-    const input_t hold = {.down = true, .x = x, .y = y};
-    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
+    const input_t hold = {.down = true, .point = {x, y}};
+    const input_t release = {.released = true, .point = {x, y}};
     const input_t idle = {0};
     draw_menu(&press);
     for (int i = 0; i < 4; i++) {
@@ -1645,9 +1645,9 @@ sand_app_test_start_button_touch(void) {
     title_screen_layout_t title;
     title_screen_layout(ui_width(), ui_height(), &title);
     const recti_t start_rect = title.buttons[SAND_TITLE_START];
-    const input_t touch = {.x = start_rect.x + (start_rect.w / 2), .y = start_rect.y + (start_rect.h / 2)};
-    ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", touch.x, touch.y, start_rect.x,
-             start_rect.y, start_rect.w, start_rect.h);
+    const input_t touch = {.point = {start_rect.x + (start_rect.w / 2), start_rect.y + (start_rect.h / 2)}};
+    ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", (int)touch.point.x,
+             (int)touch.point.y, start_rect.x, start_rect.y, start_rect.w, start_rect.h);
     return touch;
 }
 
@@ -1666,13 +1666,13 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     input_t in = {0};
     sand_frame(0, &in); /* the title on the glass before the finger lands */
 
-    in = (input_t){.pressed = true, .x = touch.x, .y = touch.y};
+    in = (input_t){.pressed = true, .point = touch.point};
     sand_frame(16, &in); /* hover granted on the frame the finger lands */
 
-    in = (input_t){.x = touch.x, .y = touch.y};
+    in = (input_t){.point = touch.point};
     sand_frame(16, &in); /* the DOWN: the press lands on START */
 
-    in = (input_t){.released = true, .x = touch.x, .y = touch.y};
+    in = (input_t){.released = true, .point = touch.point};
     sand_frame(16, &in); /* the lift: the tap, queued as pending_start */
 
     in = (input_t){0};

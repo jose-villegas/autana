@@ -35,10 +35,8 @@ touch_fsm_take(touch_fsm_t* fsm, input_t* out) {
     out->down = fsm->down;
     out->pressed = fsm->pressed;
     out->released = fsm->released;
-    out->x = fsm->point.x;
-    out->y = fsm->point.y;
-    out->press_x = fsm->press.x;
-    out->press_y = fsm->press.y;
+    out->point = fsm->point;
+    out->press = fsm->press;
 
     fsm->pressed = false;
     fsm->released = false;

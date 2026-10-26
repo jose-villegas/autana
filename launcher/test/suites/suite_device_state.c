@@ -26,8 +26,8 @@ test_full_state_formats_exactly(void) {
 
     input_t input = {0};
     input.down = true;
-    input.x = 50;
-    input.y = 60;
+    input.point.x = 50;
+    input.point.y = 60;
     input.boot.down = true;
     input.power.held = false;
 

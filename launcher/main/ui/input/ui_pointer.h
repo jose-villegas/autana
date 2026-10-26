@@ -20,12 +20,14 @@ typedef enum {
     UI_POINTER_SCROLL,
 } ui_pointer_kind_t;
 
-/* For UI_POINTER_SCROLL, x and y are how far to scroll the content, in
- * logical pixels: the opposite of the finger's own movement. */
+/* For UI_POINTER_SCROLL, point is the content's scroll delta in logical
+ * pixels: the opposite of the finger's own movement. */
 typedef struct {
     ui_pointer_kind_t kind;
-    int x, y;
+    vec2i_t point;
 } ui_pointer_event_t;
+
+#define UI_POINTER_NOWHERE        ((vec2i_t){-1, -1})
 
 /* A frame never needs more than an owed UP, then a move, a down and an up
  * for a tap that resolves within it. */
@@ -42,7 +44,7 @@ typedef struct {
      * hover root is settled. A press and release inside one frame resolves at
      * once, so on an unsettled root it is lost. */
     uint8_t press_stage;
-    int press_x, press_y;
+    vec2i_t press;
     vec2i_t aim;
     bool aimed;
     bool down; /* a DOWN went out with no matching UP yet */
@@ -56,7 +58,7 @@ typedef struct {
     bool hover_unsettled;
     bool press_deferred;
     bool dragging;
-    int last_x, last_y;
+    vec2i_t last;
 } ui_pointer_t;
 
 /* Aim the next synthesized press at a control without moving its raw drag

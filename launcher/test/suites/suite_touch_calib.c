@@ -22,7 +22,7 @@ assert_recovers(touch_calib_fit_t fit, int x, int y) {
     const touch_calib_t calib = touch_calib_from_fit(fit);
     vec2i_t point;
     reported(fit, x, y, &point);
-    touch_calib_apply(&calib, 368, 448, &point);
+    point = touch_calib_apply(&calib, 368, 448, point);
     TEST_ASSERT_INT_WITHIN(1, x, point.x);
     TEST_ASSERT_INT_WITHIN(1, y, point.y);
 }
@@ -47,7 +47,7 @@ test_an_honest_panel_changes_nothing(void) {
     const touch_calib_fit_t identity = {.xx = 1.0f, .yy = 1.0f};
     const touch_calib_t calib = touch_calib_from_fit(identity);
     vec2i_t point = {123, 321};
-    touch_calib_apply(&calib, 368, 448, &point);
+    point = touch_calib_apply(&calib, 368, 448, point);
     TEST_ASSERT_EQUAL_INT(123, point.x);
     TEST_ASSERT_EQUAL_INT(321, point.y);
 }
@@ -59,13 +59,13 @@ test_a_correction_stays_on_the_panel(void) {
     const touch_calib_fit_t shrink = {.xx = 0.9f, .yy = 0.9f};
     const touch_calib_t calib = touch_calib_from_fit(shrink);
     vec2i_t point = {367, 447};
-    touch_calib_apply(&calib, 368, 448, &point);
+    point = touch_calib_apply(&calib, 368, 448, point);
     TEST_ASSERT_EQUAL_INT(367, point.x);
     TEST_ASSERT_EQUAL_INT(447, point.y);
     point = (vec2i_t){0};
     const touch_calib_t shift =
         touch_calib_from_fit((touch_calib_fit_t){.xx = 1.0f, .x0 = 20.0f, .yy = 1.0f, .y0 = 20.0f});
-    touch_calib_apply(&shift, 368, 448, &point);
+    point = touch_calib_apply(&shift, 368, 448, point);
     TEST_ASSERT_EQUAL_INT(0, point.x);
     TEST_ASSERT_EQUAL_INT(0, point.y);
 }
@@ -82,8 +82,8 @@ test_a_controller_point_is_corrected_once_before_the_fsm(void) {
     touch_calib_prepare_point(false, true, &point, true, &calib, 368, 448);
     touch_fsm_update(&fsm, true, point, 0);
     touch_fsm_take(&fsm, &in);
-    TEST_ASSERT_INT_WITHIN(1, 100, in.x);
-    TEST_ASSERT_INT_WITHIN(1, 300, in.y);
+    TEST_ASSERT_INT_WITHIN(1, 100, in.point.x);
+    TEST_ASSERT_INT_WITHIN(1, 300, in.point.y);
 }
 
 static void
@@ -99,8 +99,8 @@ test_a_controller_point_is_unchanged_when_calibration_is_off(void) {
     touch_calib_prepare_point(false, true, &point, false, &calib, 368, 448);
     touch_fsm_update(&fsm, true, point, 0);
     touch_fsm_take(&fsm, &in);
-    TEST_ASSERT_EQUAL_INT(reported_x, in.x);
-    TEST_ASSERT_EQUAL_INT(reported_y, in.y);
+    TEST_ASSERT_EQUAL_INT(reported_x, in.point.x);
+    TEST_ASSERT_EQUAL_INT(reported_y, in.point.y);
 }
 
 static void
@@ -114,8 +114,8 @@ test_an_injected_point_is_not_corrected_before_the_fsm(void) {
     touch_calib_prepare_point(true, true, &point, true, &calib, 368, 448);
     touch_fsm_update(&fsm, true, point, 0);
     touch_fsm_take(&fsm, &in);
-    TEST_ASSERT_EQUAL_INT(100, in.x);
-    TEST_ASSERT_EQUAL_INT(300, in.y);
+    TEST_ASSERT_EQUAL_INT(100, in.point.x);
+    TEST_ASSERT_EQUAL_INT(300, in.point.y);
 }
 
 static void
@@ -154,16 +154,16 @@ test_controller_press_and_move_are_corrected_once_each_before_release(void) {
     touch_fsm_update(&fsm, true, point, 0);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_TRUE(in.pressed);
-    TEST_ASSERT_INT_WITHIN(1, 100, in.press_x);
-    TEST_ASSERT_INT_WITHIN(1, 300, in.press_y);
+    TEST_ASSERT_INT_WITHIN(1, 100, in.press.x);
+    TEST_ASSERT_INT_WITHIN(1, 300, in.press.y);
 
     reported(STRETCH, 250, 60, &point);
     touch_calib_prepare_point(false, true, &point, true, &calib, 368, 448);
     touch_fsm_update(&fsm, true, point, 1000);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_FALSE(in.pressed);
-    TEST_ASSERT_INT_WITHIN(1, 250, in.x);
-    TEST_ASSERT_INT_WITHIN(1, 60, in.y);
+    TEST_ASSERT_INT_WITHIN(1, 250, in.point.x);
+    TEST_ASSERT_INT_WITHIN(1, 60, in.point.y);
 
     point.x = 71;
     point.y = 83;
@@ -171,10 +171,10 @@ test_controller_press_and_move_are_corrected_once_each_before_release(void) {
     touch_fsm_update(&fsm, false, point, TOUCH_RELEASE_QUIET_US + 1001);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_TRUE(in.released);
-    TEST_ASSERT_INT_WITHIN(1, 100, in.press_x);
-    TEST_ASSERT_INT_WITHIN(1, 300, in.press_y);
-    TEST_ASSERT_INT_WITHIN(1, 250, in.x);
-    TEST_ASSERT_INT_WITHIN(1, 60, in.y);
+    TEST_ASSERT_INT_WITHIN(1, 100, in.press.x);
+    TEST_ASSERT_INT_WITHIN(1, 300, in.press.y);
+    TEST_ASSERT_INT_WITHIN(1, 250, in.point.x);
+    TEST_ASSERT_INT_WITHIN(1, 60, in.point.y);
     TEST_ASSERT_EQUAL_INT(71, point.x);
     TEST_ASSERT_EQUAL_INT(83, point.y);
 }
