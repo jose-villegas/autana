@@ -19,6 +19,11 @@ name: Pages
 # pins validates the model and builds the explorer from it. Needs the
 # repository setting Pages > Source set to "GitHub Actions", and a secret
 # AUTANA_DEV_TOKEN that can read jose-villegas/autana-dev.
+#
+# The same repository's usage page goes under /.dev/, linked from nowhere:
+# daily sums of its mined usage rows, as tables and plots. Its builder writes
+# only sums and producer classes and refuses to write anything if a session
+# id, machine, model, query or path from the rows would reach the page.
 
 on:
   push:
@@ -90,6 +95,10 @@ jobs:
         run: >-
           python3 .dev/launcher/tools/architecture/site.py build/architecture-model
           -o _site/architecture --base "/${{ github.event.repository.name }}/architecture/"
+      - name: Usage page
+        run: >-
+          python3 -m pip install -q -r .dev/scripts/usage/requirements.txt
+          && python3 .dev/scripts/usage/page.py -o _site/.dev
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
