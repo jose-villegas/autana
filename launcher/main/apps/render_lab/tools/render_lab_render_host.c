@@ -17,6 +17,7 @@
 #include "core/tune.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
+#include "input/input.h"
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
 #include "render_host.h"
@@ -35,9 +36,16 @@ static bool menu;
 #define TAP_FRAME 2
 static bool tap;
 static render_input_step_t touch[] = {
-    {TAP_FRAME, true, 0, 0},
-    {TAP_FRAME + 1, false, 0, 0},
+    {TAP_FRAME, true, {0, 0}},
+    {TAP_FRAME + 1, false, {0, 0}},
 };
+
+/* No IMU on a host: a scene reading motion sees none, as on a board without one. */
+bool
+input_read_motion_batch(input_motion_batch_t* out) {
+    (void)out;
+    return false;
+}
 
 /* --console FRAME:WORDS, repeatable: the board's `render WORDS` command,
  * such as "clip walk 400", run before frame FRAME draws. */
@@ -142,12 +150,13 @@ options(int argc, char** argv) {
         return false;
     }
     if (at != NULL) {
-        if (sscanf(at, "%d,%d", &touch[0].x, &touch[0].y) != 2) {
+        int x;
+        int y;
+        if (sscanf(at, "%d,%d", &x, &y) != 2) {
             (void)fprintf(stderr, "render_lab_render_host: --tap is X,Y in panel pixels, not %s\n", at);
             return false;
         }
-        touch[1].x = touch[0].x;
-        touch[1].y = touch[0].y;
+        touch[1].point = touch[0].point = (vec2i_t){x, y};
         tap = true;
     }
     if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)

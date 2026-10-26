@@ -9,11 +9,11 @@ It stays in default landscape with panel-axis measurements.
 Tap to start; BOOT leaves the page and discards the transcript.
 
 Linear x/y/z and SIZE show acceleration minus estimated down, in mg.
-SMOOTH is the shared `shake_t` reader's smoothed linear-acceleration size.
-OLD shows `tilt_shake()` on its 0–255 scale, updated once per frame.
+SMOOTH is the FIFO probe's smoothed linear-acceleration size.
+SHARED shows `input_shake()` on the 0–255 display scale, updated once per frame.
 
 `shake_probe.h` owns the protocol duration.
-SIZE and SMOOTH use `IMU_PROBE_MILLI` for the mg bar scale; OLD uses its full range.
+SIZE and SMOOTH use `IMU_PROBE_MILLI` for the mg bar scale; SHARED uses its full range.
 Candidates continue updating outside a capture round.
 
 ## Guided capture
@@ -50,21 +50,23 @@ Step numbers follow `shake_probe_step_t`; timestamps are round-relative ms,
 estimated from drain time and the sample period. Lost samples are not synthesized.
 
 Each sample contains calibrated `acc` and gravity-subtracted `lin` vectors in mg,
-then SIZE, SMOOTH and the current frame's OLD value.
+then SIZE, SMOOTH and the current frame's SHARED value (0–255).
 Gravity consumes each sample separately; only the first slice carries gap/loss metadata.
 
 The script reports median, p95, p99 and maximum for each step and candidate.
 The proposed threshold is the largest p99 among STILL, HELD, WALK, TURN, FLIP and TAP;
 it reports the margin to GENTLE's median and HARD's p95 as a full level.
 
-The PNG plots candidates over time, coloured by step, with each y-axis starting
-at zero. A negative margin means that candidate does not separate the protocol's
-non-shake actions from gentle shaking at the proposed threshold.
+Captures must use one frame scale (OLD or SHARED); mixed rows are refused.
+Plots start each y-axis at zero and colour the samples by step.
+A negative margin means non-shake actions overlap gentle shaking.
 
 ## Results
 
 SMOOTH separates a deliberate shake; a gentle shake overlaps walking.
-The OLD rows below show saturation during shaking and a response to lifting the board.
+The retained captures below predate the shared reader: OLD is the retired per-frame
+filter, on its 0–255 scale. These values show saturation during shaking and a response
+to lifting the board.
 
 Regenerate both figures and tables from the retained gzip transcripts:
 

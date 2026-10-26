@@ -28,15 +28,18 @@
 
 #include "anim/anim_transform.h"
 #include "anim/playback/anim_playhead.h"
-#include "anim/tween.h"
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
+#include "core/handle.h"
 #include "draw/draw_font.h"
 #include "draw/draw_image.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 #include "math/linear/transformf.h"
 #include "math/linear/vec2i.h"
 #include "math/linear/vec3f.h"
+#include "math/scalar/ease.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/trig.h"
 #include "render/r3d_project_x.h"
@@ -59,6 +62,7 @@ typedef struct {
     anim_node_tracks_t camera;
     anim_node_tracks_t space;
     bool from_pack;
+    handle_t load;
 } boot_anim_motion_t;
 
 /* Fills `out` from the boot clip's pack, mounting it. On any failure it logs
@@ -345,7 +349,7 @@ boot_anim_crest_amount(int32_t ripple) {
 
 static inline gfx_color_t
 boot_anim_floor_color(int32_t ripple, uint32_t crest_rgb) {
-    return gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), gfx_rgb(crest_rgb), boot_anim_crest_amount(ripple));
+    return rgb565be_mix(RGB565BE(BOOT_ANIM_FLOOR_GREY), RGB565BE(crest_rgb), boot_anim_crest_amount(ripple));
 }
 
 /* The curve sample nearest mesh node (i, j) in the floor plane among the
@@ -499,14 +503,14 @@ boot_anim_curve_stride(const boot_anim_view_t* view) {
 /* A FRACTION, not a pixel count: arms have different lengths. */
 static inline uint8_t
 boot_anim_axis_reach(uint32_t now_ms) {
-    return tween_ease_out(tween_ramp(now_ms, 0, BOOT_ANIM_AXES_MS));
+    return ease_out_u8(ease_ramp_u8(now_ms, 0, BOOT_ANIM_AXES_MS));
 }
 
 /* Band by band, outward: how far band `band` has faded in. */
 static inline uint8_t
 boot_anim_grid_arrival(uint32_t now_ms, int band) {
     const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)band * BOOT_ANIM_GRID_BAND_MS);
-    return tween_ramp(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
+    return ease_ramp_u8(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
 }
 
 static inline uint8_t
@@ -546,7 +550,7 @@ boot_anim_title_wobble(int32_t d_q12) {
 
 static inline uint8_t
 boot_anim_title_wave_reach(uint32_t now_ms) {
-    return (uint8_t)(255u - tween_ramp(now_ms, BOOT_ANIM_TITLE_WAVE_OUT_MS, BOOT_ANIM_TITLE_WAVE_FADE_MS));
+    return (uint8_t)(255u - ease_ramp_u8(now_ms, BOOT_ANIM_TITLE_WAVE_OUT_MS, BOOT_ANIM_TITLE_WAVE_FADE_MS));
 }
 
 static inline int
@@ -566,7 +570,7 @@ boot_anim_title_wave(int i, uint32_t now_ms) {
 static inline vec2i_t
 boot_anim_title_letter(const draw_font_t* font, int i, uint32_t now_ms) {
     const uint32_t start = BOOT_ANIM_TITLE_START_MS + ((uint32_t)i * BOOT_ANIM_TITLE_STAGGER_MS);
-    const uint8_t u8 = tween_ease_out(tween_ramp(now_ms, start, BOOT_ANIM_TITLE_FLIGHT_MS));
+    const uint8_t u8 = ease_out_u8(ease_ramp_u8(now_ms, start, BOOT_ANIM_TITLE_FLIGHT_MS));
 
     const int prefix_w = draw_font_text_width(font, BOOT_ANIM_TITLE, i, BOOT_ANIM_TITLE_SCALE);
     const int final_x = BOOT_ANIM_TITLE_VIEW_X + prefix_w + (i * BOOT_ANIM_TITLE_GAP);
@@ -598,11 +602,11 @@ boot_anim_pen(uint32_t now_ms) {
     const uint32_t phase1_end_ms = BOOT_ANIM_PEN_START_MS + BOOT_ANIM_PEN_MS;
 
     if (now_ms <= phase1_end_ms) {
-        const uint8_t linear = tween_ramp(now_ms, BOOT_ANIM_PEN_START_MS, BOOT_ANIM_PEN_MS);
+        const uint8_t linear = ease_ramp_u8(now_ms, BOOT_ANIM_PEN_START_MS, BOOT_ANIM_PEN_MS);
         return mathi_lerp_u8(0, BOOT_ANIM_CURVE_PHASE1_FRACTION, linear);
     }
 
-    const uint8_t linear2 = tween_ramp(now_ms, phase1_end_ms, BOOT_ANIM_PEN_FINISH_MS - phase1_end_ms);
+    const uint8_t linear2 = ease_ramp_u8(now_ms, phase1_end_ms, BOOT_ANIM_PEN_FINISH_MS - phase1_end_ms);
     return mathi_lerp_u8(BOOT_ANIM_CURVE_PHASE1_FRACTION, BOOT_ANIM_ONE, linear2);
 }
 
@@ -615,18 +619,18 @@ boot_anim_colour_progress(uint32_t now_ms) {
 
 static inline uint8_t
 boot_anim_ink(uint32_t now_ms) {
-    return (uint8_t)(255u - tween_ramp(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
+    return (uint8_t)(255u - ease_ramp_u8(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
 }
 
 /* Crossfade to the photograph, 0..255, from BOOT_ANIM_IMAGE_START_MS for
- * BOOT_ANIM_IMAGE_FADE_MS. Plain tween_ramp(), not eased: ease_out(r) + ease_out(255-r)
+ * BOOT_ANIM_IMAGE_FADE_MS. Plain ease_ramp_u8(), not eased: ease_out(r) + ease_out(255-r)
  * is NOT 255 at every r, so easing either half of a cross-dissolve makes
  * the midpoint read brighter than either end; linear is what keeps the
  * two halves summing to one whole picture throughout. The scene shows
  * through what the reveal leaves, 255 - reveal. */
 static inline uint8_t
 boot_anim_photo_reveal(uint32_t now_ms) {
-    return tween_ramp(now_ms, BOOT_ANIM_IMAGE_START_MS, BOOT_ANIM_IMAGE_FADE_MS);
+    return ease_ramp_u8(now_ms, BOOT_ANIM_IMAGE_START_MS, BOOT_ANIM_IMAGE_FADE_MS);
 }
 
 /* The frame, counted from 0, that mounts the photograph's pack. Mounting
@@ -667,11 +671,11 @@ boot_anim_trail_pos(int32_t pen_q12, int k) {
 /* The wheel position pen `k` carries, spread evenly round it. */
 static inline int
 boot_anim_trail_hue(int k) {
-    return k * (GFX_HUE_TURN / BOOT_ANIM_TRAILS);
+    return k * (RGB888_HUE_TURN / BOOT_ANIM_TRAILS);
 }
 
 typedef struct {
-    int hue;       /* wheel position; gfx_hue_rgb() wraps it */
+    int hue;       /* wheel position; rgb888_hue() wraps it */
     uint8_t bloom; /* mix that far toward white                    */
     uint8_t glow;  /* mix that far up from the background          */
     uint8_t width; /* pixels across                                */
@@ -723,14 +727,14 @@ static inline uint32_t
 boot_anim_crest_rgb(int sample, int32_t colour_pen) {
     const int32_t phase1_span = (int32_t)(BOOT_ANIM_CURVE_PHASE1_POINTS - 1);
     const int32_t along = ((sample * BOOT_ANIM_ONE) + (phase1_span / 2)) / phase1_span;
-    return gfx_hue_rgb(boot_anim_stroke(along, colour_pen).hue);
+    return rgb888_hue(boot_anim_stroke(along, colour_pen).hue);
 }
 
 /* Axes reach their full extent over the fade interval, so the scene has one
  * ending. */
 static inline uint8_t
 boot_anim_finale_reach(uint32_t now_ms) {
-    return tween_ease_out(tween_ramp(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
+    return ease_out_u8(ease_ramp_u8(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
 }
 
 /* Axes run past the panel and rely on clipping. */

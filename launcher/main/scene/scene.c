@@ -10,6 +10,7 @@
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
 #include "scene/scene_internal.h"
@@ -25,7 +26,7 @@ static memory_take_fn kept_take;
 
 /* The block's layout: the header, then each array on its own alignment. */
 typedef struct {
-    size_t renderers, cameras, instances, flags, locals, animators, skins, lights, total;
+    size_t renderers, cameras, instances, flags, locals, world_slots, animators, skins, lights, total;
 } layout_t;
 
 size_t
@@ -44,6 +45,7 @@ layout_for(const scene_asset_t* asset) {
     const int entities = asset->entity_count;
     SCENE_STORAGE_RESERVE(l, end, flags, uint8_t, entities);
     SCENE_STORAGE_RESERVE(l, end, locals, transformf_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, world_slots, uint16_t, entities);
     const int renderers = asset->renderer_count + asset->skinned_renderer_count;
     SCENE_STORAGE_RESERVE(l, end, instances, r3d_instance_t, renderers);
     SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, entities);
@@ -113,19 +115,20 @@ instantiate(const scene_asset_t* asset) {
     scene->instances = (r3d_instance_t*)(void*)(block + l.instances);
     scene->flags = block + l.flags;
     scene->locals = (transformf_t*)(void*)(block + l.locals);
+    scene->world_slots = (uint16_t*)(void*)(block + l.world_slots);
     scene->animators = (scene_animator_t*)(void*)(block + l.animators);
     scene->lights = (scene_light_t*)(void*)(block + l.lights);
     scene->ambient_color = asset->settings->ambient_color;
     scene->ambient_intensity = asset->settings->ambient_intensity;
     scene->tonemap_white = asset->settings->tonemap_white;
     scene->skinned_renderers = (scene_skinned_renderer_t*)(void*)(block + l.skins);
-    memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_CHANGED, asset->entity_count);
+    memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
         scene->cameras[i] = (scene_camera_t){
             .lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z, .small_fill = SMALL_FILL_SMOOTH},
             .entity = c->entity,
-            .clear = GFX_RGB(c->clear_rgb)};
+            .clear = RGB565BE(c->clear_rgb)};
     }
     for (int i = 0; i < asset->renderer_count; i++) {
         scene->renderers[i].entity = asset->renderers[i].entity;
@@ -255,7 +258,7 @@ open_lights(scene_t* scene) {
         const scene_asset_light_t* row = &scene->asset.lights[i];
         if (!scene_light_set_color(scene, row->entity, row->color)
             || !scene_light_set_intensity(scene, row->entity, row->intensity)) {
-            return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[row->entity]);
+            return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[row->entity].name);
         }
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
@@ -278,8 +281,10 @@ local_from_row(const scene_asset_transform_t* row, transformf_t* out) {
 static scene_failure_t
 open_transforms(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
-        if (!local_from_row(&scene->asset.transforms[e], &scene->locals[e])) {
-            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[e]);
+        /* A parent's even scale keeps every world below it exact. */
+        if (!local_from_row(&scene->asset.transforms[e], &scene->locals[e])
+            || (scene->world_slots[e] != SCENE_WORLD_SLOT_NONE && !transformf_scale_is_even(&scene->locals[e]))) {
+            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[e].name);
         }
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
@@ -326,7 +331,8 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     }
     scene->pack = pack;
     copy_id(scene->id, id);
-    scene_failure_t done = open_meshes(scene, pack);
+    scene_failure_t done =
+        scene_hierarchy_open(scene) ? open_meshes(scene, pack) : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id);
     if (done.status == SCENE_OK) {
         done = open_transforms(scene);
     }
@@ -345,6 +351,7 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     if (done.status != SCENE_OK) {
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
+        scene_hierarchy_release(scene);
         scene_free_kept(scene);
         return NULL;
     }
@@ -354,12 +361,13 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
 
 scene_t*
 scene_load(const char* id, scene_failure_t* why) {
-    const asset_pack_t* pack = asset_store_pack(id);
+    const handle_t load = asset_store_load(id);
+    const asset_pack_t* pack = asset_store_loaded(load);
     scene_t* scene = scene_load_from(pack, id, why);
     if (scene != NULL) {
-        scene->holds_pack = true;
-    } else if (pack != NULL) {
-        asset_store_release(id);
+        scene->load = load;
+    } else {
+        asset_store_release(load);
     }
     return scene;
 }
@@ -374,14 +382,13 @@ scene_unload(scene_t* scene) {
             continue;
         }
         scene_draw_forget(scene);
-        if (scene->holds_pack) {
-            asset_store_release(scene->id);
-        }
+        asset_store_release(scene->load);
         loaded_count--;
         memmove(&loaded[i], &loaded[i + 1], sizeof loaded[0] * (size_t)(loaded_count - i));
         loaded[loaded_count] = NULL;
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
+        scene_hierarchy_release(scene);
         scene_free_kept(scene);
         if (loaded_count == 0) {
             /* Nothing left to draw: drop the scratch, so whoever lent it can
@@ -418,13 +425,13 @@ scene_entity_count(const scene_t* scene) {
 const char*
 scene_entity_name(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
-    return scene->asset.names[entity];
+    return scene->asset.names[entity].name;
 }
 
 scene_entity_t
-scene_find(const scene_t* scene, const char* name) {
+scene_find(const scene_t* scene, name_hash_t name) {
     for (int i = 0; i < scene->asset.entity_count; i++) {
-        if (strcmp(scene->asset.names[i], name) == 0) {
+        if (scene->asset.names[i].hash == name) {
             return (scene_entity_t)i;
         }
     }
@@ -459,10 +466,20 @@ scene_entity_mesh(const scene_t* scene, scene_entity_t entity) {
     return i < 0 ? NULL : &scene->renderers[i].mesh;
 }
 
+bool
+scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mesh_t* mesh) {
+    const int i = scene_renderer_index(scene, entity);
+    if (i < 0 || i >= scene->asset.renderer_count) {
+        return false;
+    }
+    scene->renderers[i].mesh = *mesh;
+    return true;
+}
+
 int
-scene_camera_index(const scene_t* scene, const char* camera) {
+scene_camera_index(const scene_t* scene, name_hash_t camera) {
     for (int i = 0; i < scene->asset.camera_count; i++) {
-        if (camera == NULL || strcmp(scene->asset.names[scene->cameras[i].entity], camera) == 0) {
+        if (camera == SCENE_CAMERA_FIRST || scene->asset.names[scene->cameras[i].entity].hash == camera) {
             return i;
         }
     }
@@ -470,7 +487,7 @@ scene_camera_index(const scene_t* scene, const char* camera) {
 }
 
 const camera_t*
-scene_camera_lens(const scene_t* scene, const char* camera) {
+scene_camera_lens(const scene_t* scene, name_hash_t camera) {
     const int index = scene_camera_index(scene, camera);
     return index < 0 ? NULL : &scene->cameras[index].lens;
 }
@@ -498,6 +515,16 @@ scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t
 }
 
 bool
+scene_camera_set_shift(scene_t* scene, scene_entity_t camera, vec2f_t shift) {
+    camera_t* found = camera_by_entity(scene, camera);
+    if (found == NULL || !isfinite(shift.x) || !isfinite(shift.y)) {
+        return false;
+    }
+    found->shift = shift;
+    return true;
+}
+
+bool
 scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill) {
     camera_t* found = camera_by_entity(scene, camera);
     if (found == NULL || fill.ceiling > SMALL_FILL_CEILING_MAX || fill.style < SMALL_FILL_FLAT
@@ -508,16 +535,19 @@ scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t 
     return true;
 }
 
-const scene_transform_t*
-scene_entity_transform(const scene_t* scene, scene_entity_t entity) {
+transformf_t
+scene_entity_local(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
-    return &scene->locals[entity];
+    return scene->locals[entity];
 }
 
 void
-scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
+scene_entity_set_local(scene_t* scene, scene_entity_t entity, transformf_t local) {
     assert(entity < scene->asset.entity_count);
-    scene->locals[entity] = *transform;
+    /* A parent scales evenly, so every world below it is an exact TRS; the
+     * loader and the importer keep content so. */
+    assert(scene->world_slots[entity] == SCENE_WORLD_SLOT_NONE || transformf_scale_is_even(&local));
+    scene->locals[entity] = local;
     scene->flags[entity] |= SCENE_FLAG_CHANGED;
 }
 
@@ -533,6 +563,7 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
     scene->flags[entity] = enabled ? (uint8_t)(scene->flags[entity] | SCENE_FLAG_ENABLED)
                                    : (uint8_t)(scene->flags[entity] & ~SCENE_FLAG_ENABLED);
     scene->flags[entity] |= SCENE_FLAG_CHANGED;
+    scene_hierarchy_update_active(scene, entity);
 }
 
 bool

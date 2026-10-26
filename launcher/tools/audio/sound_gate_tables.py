@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audio_doc_blocks import caption, number
 
 DATA = ROOT / "docs/audio/data/sound_gate.json"
-DOCUMENT = ROOT / "docs/audio/Sound-Mixer.md"
+DOCUMENT = ROOT / "docs/audio/Mixer-Cost.md"
 REGENERATE = "python launcher/tools/audio/sound_gate_tables.py --write"
 PERCENT = 100
 ROW_FIELDS = ("a", "b", "ratio", "interval", "verdict")

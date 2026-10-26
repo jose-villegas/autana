@@ -1,0 +1,453 @@
+/* Expected values use hand-picked RGB565BE constants so an incorrect
+ * byte swap cannot validate itself through the implementation under test. */
+
+#include "testkit/suite.h"
+#include "unity.h"
+
+#include "image/pixel/bayer.h"
+#include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
+
+static void
+test_t_zero_returns_a_exactly(void) {
+    const rgb565be_t a = RGB565BE(0x336699);
+    const rgb565be_t b = RGB565BE(0x8899AA);
+
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(a, rgb565be_mix(a, b, 0),
+                                    "t=0 must be all `a` - a caller ramping a transition from 0 relies "
+                                    "on the first frame matching the untouched colour exactly");
+}
+
+static void
+test_t_255_returns_b_exactly(void) {
+    const rgb565be_t a = RGB565BE(0x336699);
+    const rgb565be_t b = RGB565BE(0x8899AA);
+
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(b, rgb565be_mix(a, b, 255),
+                                    "t=255 must be all `b` - a caller ramping a transition to 255 "
+                                    "relies on the last frame matching the target colour exactly");
+}
+
+static void
+test_mixing_a_colour_with_itself_is_identity_at_any_t(void) {
+    /* Not black or white: both would pass an identity test even with a
+     * broken blend, since 0 and 0xFFFF are fixed points of most channel
+     * arithmetic. */
+    const rgb565be_t c = RGB565BE(0x5C7AAF);
+    const int ts[] = {0, 1, 64, 100, 128, 200, 254, 255};
+
+    for (size_t i = 0; i < sizeof(ts) / sizeof(ts[0]); i++) {
+        TEST_ASSERT_EQUAL_HEX16_MESSAGE(c, rgb565be_mix(c, c, (uint8_t)ts[i]),
+                                        "blending a colour toward itself must be a no-op at every t");
+    }
+}
+
+static void
+test_black_toward_white_at_half_gives_mid_grey(void) {
+    /* Hand-derived: mr = (0*127 + 31*128 + 127) / 255 = 16, mg =
+     * (0*127 + 63*128 + 127) / 255 = 32, mb = 16, i.e. R8=G8=B8=128
+     * (0x808080) once each is scaled back up by its own bucket width
+     * (16*8=128, 32*4=128, 16*8=128). All three land near, not exactly on,
+     * half of their own max (15.5, 31.5, 15.5), which is the point: a
+     * blend that used 8-bit weights for every channel would not land here. */
+    const rgb565be_t black = RGB565BE(0x000000);
+    const rgb565be_t white = RGB565BE(0xFFFFFF);
+
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(0x808080), rgb565be_mix(black, white, 128),
+                                    "black toward white at t=128 must land on a mid grey with every "
+                                    "channel near its own half, not shifted by unequal channel widths");
+}
+
+static void
+test_a_known_pair_blends_to_a_known_result(void) {
+    /* Pure red toward pure blue at t=128. Hand-derived the same way as the
+     * grey test above: mr = (31*127 + 127) / 255 = 15, mb =
+     * (31*128 + 127) / 255 = 16, scaled back up (15*8=120, 16*8=128) gives
+     * 0x780080. */
+    const rgb565be_t red = RGB565BE(0xFF0000);
+    const rgb565be_t blue = RGB565BE(0x0000FF);
+
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(0x780080), rgb565be_mix(red, blue, 128),
+                                    "a known red/blue pair at a known t must land on the hand-derived "
+                                    "packed value, byte swap included");
+}
+
+static void
+test_channels_blend_independently_green_stays_put(void) {
+    /* Same red-toward-blue pair as above, at several more t. Neither input
+     * carries any green, so if channels were blended independently the
+     * result must not either at ANY t: every expected constant below has
+     * a green byte of 0x00. Picked to also sweep R and B away from the
+     * t=128 case already covered: t=64 gives mr=(31*191+127)/255=23,
+     * mb=(31*64+127)/255=8 (0xB80040); t=192 gives mr=(31*63+127)/255=8,
+     * mb=(31*192+127)/255=23 (0x4000B8). */
+    const rgb565be_t red = RGB565BE(0xFF0000);
+    const rgb565be_t blue = RGB565BE(0x0000FF);
+
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(0xB80040), rgb565be_mix(red, blue, 64),
+                                    "green must stay at zero while red and blue move independently");
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(0x4000B8), rgb565be_mix(red, blue, 192),
+                                    "green must stay at zero while red and blue move independently");
+}
+
+/* rgb565be_add */
+
+static void
+test_adding_black_changes_nothing(void) {
+    const rgb565be_t c = RGB565BE(0x3D7FA2);
+    TEST_ASSERT_EQUAL_HEX16(c, rgb565be_add(c, RGB565BE(0x000000)));
+    TEST_ASSERT_EQUAL_HEX16(c, rgb565be_add(RGB565BE(0x000000), c));
+}
+
+static void
+test_adding_two_primaries_gives_their_combination(void) {
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(0xFFFF00), rgb565be_add(RGB565BE(0xFF0000), RGB565BE(0x00FF00)),
+                                    "red plus green is yellow - this is light, not paint");
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFFFFFF), rgb565be_add(RGB565BE(0xFFFF00), RGB565BE(0x0000FF)));
+}
+
+/* The trap this function exists to avoid: the three channels are not the same
+ * width, so each has to saturate at its own ceiling. Clamping all three at 31
+ * would halve green; clamping all three at 63 would wrap red and blue round
+ * to nearly nothing at the moment they are brightest. */
+static void
+test_each_channel_saturates_at_its_own_ceiling(void) {
+    const rgb565be_t white = RGB565BE(0xFFFFFF);
+
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(white, rgb565be_add(white, white),
+                                    "white plus white is white, not a wrapped-round mess");
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), rgb565be_add(RGB565BE(0xFF0000), RGB565BE(0xFF0000)));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), rgb565be_add(RGB565BE(0x00FF00), RGB565BE(0x00FF00)));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x0000FF), rgb565be_add(RGB565BE(0x0000FF), RGB565BE(0x0000FF)));
+}
+
+static void
+test_adding_never_makes_a_channel_darker(void) {
+    const rgb565be_t base = RGB565BE(0x402080);
+
+    for (uint32_t rgb = 0; rgb <= 0xFFFFFFu; rgb += 0x0103F7u) {
+        const rgb565be_t sum = rgb565be_add(base, RGB565BE(rgb));
+        const uint16_t nb = (uint16_t)((base >> 8) | (base << 8));
+        const uint16_t ns = (uint16_t)((sum >> 8) | (sum << 8));
+
+        TEST_ASSERT_TRUE_MESSAGE(((ns >> 11) & 0x1Fu) >= ((nb >> 11) & 0x1Fu),
+                                 "adding light made the red channel darker");
+        TEST_ASSERT_TRUE_MESSAGE(((ns >> 5) & 0x3Fu) >= ((nb >> 5) & 0x3Fu),
+                                 "adding light made the green channel darker");
+        TEST_ASSERT_TRUE_MESSAGE((ns & 0x1Fu) >= (nb & 0x1Fu), "adding light made the blue channel darker");
+    }
+}
+
+/*
+ * The property is RGB565BE(rgb565be_to_rgb888(c)) == c for every c. A spread
+ * rather than a sweep of all 65536 values: the bit-replication argument is
+ * per-channel, so colours exercising every channel at 0 and at its own
+ * maximum are as convincing and a great deal cheaper.
+ */
+
+/* Pure black, pure white, each channel alone at its own maximum
+ * (0xF80000/0x00FC00/0x0000F8, the largest values RGB565 truncates to
+ * R5=31/G6=63/B5=31), and a few colours mixing all three. */
+static const uint32_t rgb888_spread[] = {
+    0x000000, 0xFFFFFF, 0xF80000, 0x00FC00, 0x0000F8, 0x336699, 0x8899AA, 0x5C7AAF, 0x1A2B3C, 0xE0D0C0,
+};
+#define RGB888_SPREAD_N (sizeof(rgb888_spread) / sizeof(rgb888_spread[0]))
+
+static void
+test_round_trip_is_exact_for_a_spread_of_colours(void) {
+    for (size_t i = 0; i < RGB888_SPREAD_N; i++) {
+        const rgb565be_t c = RGB565BE(rgb888_spread[i]);
+        TEST_ASSERT_EQUAL_HEX16_MESSAGE(c, RGB565BE(rgb565be_to_rgb888(c)),
+                                        "RGB565BE(rgb565be_to_rgb888(c)) must reproduce c exactly - a "
+                                        "plain shift instead of bit replication would land one bucket "
+                                        "short and the colour would read darker every time it crosses "
+                                        "this layer");
+    }
+}
+
+static void
+test_expanding_a_colour_twice_is_idempotent(void) {
+    /* Repeated RGB565/0xRRGGBB conversion must reach a fixed point
+     * so downstream colour arithmetic cannot accumulate drift. */
+    for (size_t i = 0; i < RGB888_SPREAD_N; i++) {
+        const rgb565be_t c = RGB565BE(rgb888_spread[i]);
+        const uint32_t once = rgb565be_to_rgb888(c);
+        const uint32_t twice = rgb565be_to_rgb888(RGB565BE(once));
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(once, twice,
+                                        "a second pass through RGB565BE()/rgb565be_to_rgb888() must not "
+                                        "change the already-expanded colour any further");
+    }
+}
+
+/* rgb565be_pack */
+
+/* Each 0xRRGGBB below has its 8-bit channels chosen as a multiple of 8 (R/B)
+ * or 4 (G), the same convention this file's own top comment explains, so
+ * RGB565BE's own 8-bit-to-565 truncation lands on exactly r5/g6/b5. */
+static void
+test_rgb565_matches_rgb565be_for_already_quantised_channels(void) {
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x000000), rgb565be_pack(0, 0, 0));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xF8FCF8), rgb565be_pack(31, 63, 31));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x30C878), rgb565be_pack(6, 50, 15));
+}
+
+/* Bit replication is exact on the way back down too: rgb565be_to_rgb888()'s
+ * own 8-bit channel, shifted back to its original width, must reproduce the
+ * channel rgb565be_pack() was packed from. */
+static void
+test_rgb565_round_trips_through_rgb888(void) {
+    const rgb565be_t packed = rgb565be_pack(19, 40, 7);
+    const uint32_t rgb = rgb565be_to_rgb888(packed);
+
+    TEST_ASSERT_EQUAL_UINT8(19, (uint8_t)(((rgb >> 16) & 0xFFu) >> 3));
+    TEST_ASSERT_EQUAL_UINT8(40, (uint8_t)(((rgb >> 8) & 0xFFu) >> 2));
+    TEST_ASSERT_EQUAL_UINT8(7, (uint8_t)((rgb & 0xFFu) >> 3));
+}
+
+/* Hand-packed native values, not the helpers' own swap: RGB565BE(0xF80000)
+ * is red 31 in the high byte of native, so high-byte-first order has it low. */
+static void
+test_swap_and_channels_read_hand_packed_rgb565(void) {
+    TEST_ASSERT_EQUAL_HEX16(0xF800u, rgb565_swap(RGB565BE(0xF80000)));
+    TEST_ASSERT_EQUAL_HEX16(0x00F8u, rgb565_swap(0xF800u));
+
+    const uint16_t native = (uint16_t)((19u << 11) | (40u << 5) | 7u);
+    TEST_ASSERT_EQUAL_UINT(19, rgb565_r5(native));
+    TEST_ASSERT_EQUAL_UINT(40, rgb565_g6(native));
+    TEST_ASSERT_EQUAL_UINT(7, rgb565_b5(native));
+}
+
+/* Truncating per channel, and a constant expression for .rodata tables. */
+static void
+test_lerp_rgb888_steps_each_channel_and_folds_to_a_constant(void) {
+    static const uint32_t third = RGB888_LERP(0x000000u, 0xFF3010u, 1, 3);
+    TEST_ASSERT_EQUAL_HEX32(0x551005u, third);
+    TEST_ASSERT_EQUAL_HEX32(0x123456u, RGB888_LERP(0x123456u, 0xABCDEFu, 0, 255));
+    TEST_ASSERT_EQUAL_HEX32(0xABCDEFu, RGB888_LERP(0x123456u, 0xABCDEFu, 255, 255));
+}
+
+/* Colour */
+
+/* Checks that hue's RGB has one full channel (255) and one empty channel
+ * (0), what makes it a point on a fully-saturated hue wheel rather than
+ * a pastel. */
+static void
+check_hue_is_fully_saturated(int hue) {
+    const uint32_t rgb = rgb888_hue(hue);
+    const int r = (int)((rgb >> 16) & 0xFF);
+    const int g = (int)((rgb >> 8) & 0xFF);
+    const int b = (int)(rgb & 0xFF);
+    const int hi = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    const int lo = r < g ? (r < b ? r : b) : (g < b ? g : b);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(255, hi, "a hue had no full channel");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, lo, "a hue had no empty channel");
+}
+
+/* Full saturation requires one channel at maximum and another at zero. */
+static void
+test_every_hue_is_fully_saturated(void) {
+    for (int hue = 0; hue < RGB888_HUE_TURN; hue++) {
+        check_hue_is_fully_saturated(hue);
+    }
+}
+
+static void
+test_the_hue_wheel_joins_up(void) {
+    TEST_ASSERT_EQUAL_UINT32(rgb888_hue(0), rgb888_hue(RGB888_HUE_TURN));
+    TEST_ASSERT_EQUAL_UINT32(rgb888_hue(5), rgb888_hue(-RGB888_HUE_TURN + 5));
+}
+
+/* No step round the wheel may jump: a discontinuity at a sector boundary is
+ * the classic mistake in this conversion, and it shows up as a hard band
+ * across the middle of a gradient. */
+static void
+test_the_hue_wheel_has_no_seams(void) {
+    for (int hue = 0; hue < RGB888_HUE_TURN; hue++) {
+        const uint32_t a = rgb888_hue(hue);
+        const uint32_t b = rgb888_hue(hue + 1);
+
+        for (int shift = 0; shift <= 16; shift += 8) {
+            const int ca = (int)((a >> shift) & 0xFF);
+            const int cb = (int)((b >> shift) & 0xFF);
+            const int step = ca > cb ? ca - cb : cb - ca;
+            TEST_ASSERT_TRUE_MESSAGE(step <= 1, "a channel jumped between neighbouring hues - the wheel has a "
+                                                "seam at a sector boundary");
+        }
+    }
+}
+
+/* The wheel's order: the primary or secondary each sector starts on, so a
+ * reversed or rotated wheel fails even though it stays saturated and seamless. */
+static void
+test_the_hue_wheel_runs_red_yellow_green_cyan_blue_magenta(void) {
+    static const uint32_t starts[6] = {0xFF0000u, 0xFFFF00u, 0x00FF00u, 0x00FFFFu, 0x0000FFu, 0xFF00FFu};
+    static const uint32_t halfway[6] = {0xFF8000u, 0x7FFF00u, 0x00FF80u, 0x007FFFu, 0x8000FFu, 0xFF007Fu};
+    for (int sector = 0; sector < 6; sector++) {
+        TEST_ASSERT_EQUAL_HEX32(starts[sector], rgb888_hue(sector * RGB888_HUE_TURN / 6));
+        TEST_ASSERT_EQUAL_HEX32(halfway[sector], rgb888_hue(sector * RGB888_HUE_TURN / 6 + 128));
+    }
+}
+
+/* Truncates rather than rounds (5 * 2 / 3 is 3.33, 1 * 2 / 3 is 0.67), and
+ * each channel reads only its own byte: green 1 halfway is 0, and blue must
+ * not see it as 0x100. */
+static void
+test_lerp_rgb888_truncates_and_keeps_channels_apart(void) {
+    TEST_ASSERT_EQUAL_HEX32(0x030000u, RGB888_LERP(0x000000u, 0x050001u, 2, 3));
+    TEST_ASSERT_EQUAL_HEX32(0x000000u, RGB888_LERP(0x000000u, 0x000100u, 1, 2));
+    TEST_ASSERT_EQUAL_HEX32(0x00FF00u, RGB888_LERP(0x00FF00u, 0x00FF00u, 7, 15));
+}
+
+/* bayer_level() is the alpha->level scaling bayer_covers()
+ * compares against the table, exposed so a caller with a whole row at one
+ * alpha can compute it once. Pinning the two at EVERY alpha and cell is
+ * what stops a row-pattern loop and the per-pixel test drifting apart. */
+static void
+test_dither_level_agrees_with_covers_at_every_alpha_and_cell(void) {
+    for (int a = 0; a <= 255; a++) {
+        const int level = bayer_level((uint8_t)a);
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 4; x++) {
+                TEST_ASSERT_EQUAL_MESSAGE(level > bayer4x4[y][x], bayer_covers(x, y, (uint8_t)a),
+                                          "bayer_covers() must equal bayer_level() "
+                                          "compared against the same cell, at every alpha");
+            }
+        }
+    }
+}
+
+static void
+test_alpha_zero_never_covers(void) {
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            TEST_ASSERT_FALSE_MESSAGE(bayer_covers(x, y, 0), "alpha 0 must cover nothing at any cell, or a caller "
+                                                             "skipping a zero-alpha draw entirely would disagree with "
+                                                             "one that called through anyway");
+        }
+    }
+}
+
+static void
+test_alpha_255_always_covers(void) {
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            TEST_ASSERT_TRUE_MESSAGE(bayer_covers(x, y, 255), "alpha 255 must cover every cell - its own unconditional "
+                                                              "path, not the >  test, so it is never one Bayer level "
+                                                              "short of solid");
+        }
+    }
+}
+
+static void
+test_coverage_is_monotonic_in_alpha_at_every_cell(void) {
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            bool was_covered = false;
+            for (int a = 0; a <= 255; a++) {
+                const bool covered = bayer_covers(x, y, (uint8_t)a);
+                if (was_covered) {
+                    TEST_ASSERT_TRUE_MESSAGE(covered, "coverage at a fixed cell must never go from "
+                                                      "covered back to uncovered as alpha rises, or a "
+                                                      "caller ramping alpha upward could see a pixel "
+                                                      "flicker off partway through");
+                }
+                was_covered = covered;
+            }
+        }
+    }
+}
+
+/* At cell (x,y), checks covers(a) && covers(b) == covers(min(a,b)) across
+ * a 17-step sweep of both alphas. */
+static void
+check_covers_both_at_cell(int x, int y) {
+    for (int a = 0; a <= 255; a += 17) {
+        for (int b = 0; b <= 255; b += 17) {
+            const uint8_t lower = (uint8_t)(a < b ? a : b);
+            const bool both = bayer_covers(x, y, (uint8_t)a) && bayer_covers(x, y, (uint8_t)b);
+            const bool via_min = bayer_covers(x, y, lower);
+            TEST_ASSERT_EQUAL_MESSAGE(via_min, both,
+                                      "covers(a) && covers(b) must equal covers(min(a, "
+                                      "b)) at every cell - this lets a caller "
+                                      "test the lower alpha once instead of testing both "
+                                      "and ANDing");
+        }
+    }
+}
+
+/* Coverage is monotonic in alpha at a fixed cell (proved above), so testing
+ * the lower of two alphas must agree with testing each and ANDing, the
+ * property a caller folding two bayer_covers() calls into one leans
+ * on. Swept in steps of 17 (255 is not divisible by 17, so both endpoints
+ * are still hit): a monotonic step function agreeing at every 17th value
+ * cannot disagree between them without a jump this sweep catches at a
+ * neighbouring point. */
+static void
+test_covers_both_equals_covers_the_lower_alpha(void) {
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            check_covers_both_at_cell(x, y);
+        }
+    }
+}
+
+/* Repeated blending toward black compounds the darkening, so a caller
+ * applies a scrim once per repaint of the backdrop. */
+static void
+test_mixing_toward_black_twice_is_darker_than_once(void) {
+    const rgb565be_t black = RGB565BE(0x000000);
+    const rgb565be_t start = RGB565BE(0xC08040);
+    const uint8_t alpha = 110;
+
+    const rgb565be_t once = rgb565be_mix(start, black, alpha);
+    const rgb565be_t twice = rgb565be_mix(once, black, alpha);
+
+    const uint32_t rgb_once = rgb565be_to_rgb888(once);
+    const uint32_t rgb_twice = rgb565be_to_rgb888(twice);
+
+    TEST_ASSERT_TRUE_MESSAGE(rgb_twice < rgb_once, "a scrim applied twice must be visibly darker than once - this is "
+                                                   "why it is applied per repaint of the backdrop, never per frame");
+
+    /* And it keeps going: nothing converges, it just falls. */
+    rgb565be_t c = twice;
+    for (int i = 0; i < 8; i++) {
+        c = rgb565be_mix(c, black, alpha);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(rgb565be_to_rgb888(c) < rgb_twice / 2,
+                             "repeating a scrim walks the picture toward black rather than "
+                             "settling anywhere");
+}
+
+void
+run_image_pixel_suite(void) {
+    RUN_TEST(test_t_zero_returns_a_exactly);
+    RUN_TEST(test_t_255_returns_b_exactly);
+    RUN_TEST(test_mixing_a_colour_with_itself_is_identity_at_any_t);
+    RUN_TEST(test_black_toward_white_at_half_gives_mid_grey);
+    RUN_TEST(test_a_known_pair_blends_to_a_known_result);
+    RUN_TEST(test_channels_blend_independently_green_stays_put);
+    RUN_TEST(test_mixing_toward_black_twice_is_darker_than_once);
+    RUN_TEST(test_adding_black_changes_nothing);
+    RUN_TEST(test_adding_two_primaries_gives_their_combination);
+    RUN_TEST(test_each_channel_saturates_at_its_own_ceiling);
+    RUN_TEST(test_adding_never_makes_a_channel_darker);
+    RUN_TEST(test_round_trip_is_exact_for_a_spread_of_colours);
+    RUN_TEST(test_expanding_a_colour_twice_is_idempotent);
+    RUN_TEST(test_rgb565_matches_rgb565be_for_already_quantised_channels);
+    RUN_TEST(test_rgb565_round_trips_through_rgb888);
+    RUN_TEST(test_swap_and_channels_read_hand_packed_rgb565);
+    RUN_TEST(test_lerp_rgb888_steps_each_channel_and_folds_to_a_constant);
+    RUN_TEST(test_every_hue_is_fully_saturated);
+    RUN_TEST(test_the_hue_wheel_joins_up);
+    RUN_TEST(test_the_hue_wheel_has_no_seams);
+    RUN_TEST(test_the_hue_wheel_runs_red_yellow_green_cyan_blue_magenta);
+    RUN_TEST(test_lerp_rgb888_truncates_and_keeps_channels_apart);
+    RUN_TEST(test_dither_level_agrees_with_covers_at_every_alpha_and_cell);
+    RUN_TEST(test_alpha_zero_never_covers);
+    RUN_TEST(test_alpha_255_always_covers);
+    RUN_TEST(test_coverage_is_monotonic_in_alpha_at_every_cell);
+    RUN_TEST(test_covers_both_equals_covers_the_lower_alpha);
+}
+
+SUITE_REGISTER(run_image_pixel_suite);

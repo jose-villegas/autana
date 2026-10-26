@@ -22,7 +22,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "input/mapping/orbit_motion_touch.h"
-#include "math/motion/orbit_motion.h"
+#include "kinematics/orbit/orbit_motion.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
@@ -34,6 +34,7 @@
 #include "ui/ui.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "apps/render_lab/tests/render_lab_test.h"
+#include "image/pixel/rgb565.h"
 #endif
 
 static const char* TAG = "capybara";
@@ -69,24 +70,22 @@ static char failure[48];
 
 static void
 fail(const char* what) {
-    ESP_LOGE(TAG, "%s; the scene stays blank", what);
-    if (snprintf(failure, sizeof failure, "%s", what) < 0) {
-        failure[0] = '\0';
-    }
+    render_lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
 static void
 place_camera(void) {
     const transformf_t pose = orbit_motion_pose(&orbit);
-    scene_set_transform(capybara, camera_entity, &pose);
+    scene_entity_set_local(capybara, camera_entity, pose);
 }
 
 /* Home and limits from the subject's sphere and the scene camera's lens. */
 static bool
 frame_subject(void) {
-    const scene_entity_t subject = scene_find(capybara, CAPYBARA_SUBJECT);
-    camera_entity = scene_find(capybara, CAPYBARA_CAMERA);
-    const camera_t* lens = scene_camera_lens(capybara, CAPYBARA_CAMERA);
+    const name_hash_t camera = name_hash(CAPYBARA_CAMERA);
+    const scene_entity_t subject = scene_find(capybara, name_hash(CAPYBARA_SUBJECT));
+    camera_entity = scene_find(capybara, camera);
+    const camera_t* lens = scene_camera_lens(capybara, camera);
     if (subject == SCENE_ENTITY_NONE || camera_entity == SCENE_ENTITY_NONE || lens == NULL
         || scene_entity_mesh(capybara, subject) == NULL) {
         fail("no capybara or camera");
@@ -99,13 +98,14 @@ frame_subject(void) {
                       (orbit_motion_limits_t){CAPYBARA_PITCH_MIN, ORBIT_MOTION_PITCH_LIMIT, logf(closest),
                                               logf(fit * CAPYBARA_ZOOM_OUT)});
     orbit_motion_touch_init(&touch);
+    subject_entity = subject;
     return true;
 }
 
 static void
 scene_capybara_enter(const render_lab_scene_t* self) {
     (void)self;
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     scene_failure_t why;
     capybara = scene_load(CAPYBARA_SCENE, &why);
@@ -117,16 +117,13 @@ scene_capybara_enter(const render_lab_scene_t* self) {
     if (!frame_subject()) {
         return;
     }
-    subject_entity = scene_find(capybara, CAPYBARA_SUBJECT);
     if (!render_lab_clips_init(&choice, capybara, subject_entity, CAPYBARA_DEFAULT_CLIP)) {
         ESP_LOGW(TAG, "clip picker allocation failed");
     }
     place_camera();
-    (void)scene_activate(capybara, CAPYBARA_CAMERA);
+    (void)scene_activate(capybara, name_hash(CAPYBARA_CAMERA));
     render_lab_apply_raster_settings();
-    if (capybara != NULL) {
-        (void)render_lab_apply_camera_settings(capybara, scene_find(capybara, CAPYBARA_CAMERA));
-    }
+    (void)render_lab_apply_camera_settings(capybara, camera_entity);
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
@@ -162,7 +159,7 @@ scene_capybara_frame(uint32_t dt_ms) {
     (void)dt_ms;
     render_lab_apply_raster_settings();
     if (capybara != NULL) {
-        (void)render_lab_apply_camera_settings(capybara, scene_find(capybara, CAPYBARA_CAMERA));
+        (void)render_lab_apply_camera_settings(capybara, camera_entity);
     }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());

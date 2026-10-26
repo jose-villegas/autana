@@ -8,6 +8,7 @@
 
 #include "asset/asset_store.h"
 #include "draw/draw.h"
+#include "image/pixel/rgb565.h"
 #include "render_host.h"
 
 static bool
@@ -16,19 +17,21 @@ options(int argc, char** argv) {
         fprintf(stderr, "this scene takes one argument: <pack>\n");
         return false;
     }
-    const asset_pack_t* pack = asset_store_pack(argv[0]);
+    const handle_t load = asset_store_load(argv[0]);
+    const asset_pack_t* pack = asset_store_loaded(load);
     if (pack == NULL) {
+        asset_store_release(load);
         return false;
     }
     printf("pack %s: %u entries\n", argv[0], (unsigned)pack->count);
-    asset_store_release(argv[0]);
+    asset_store_release(load);
     return true;
 }
 
 static void
 draw(const render_frame_t* frame) {
     (void)frame;
-    draw_clear(GFX_RGB(0x000000));
+    draw_clear(RGB565BE(0x000000));
 }
 
 const render_scene_t render_scene = {

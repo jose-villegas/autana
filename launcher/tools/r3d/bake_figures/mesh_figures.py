@@ -30,7 +30,7 @@ from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, TITLE_SIZE, 
 from r3d.lit_mesh import read_lit_mesh  # noqa: E402
 from r3d.meshopt import build_meshlets  # noqa: E402
 
-VIEW = TOOLS.parents[0] / "main/render/raster_meshlets.c"
+VIEW = TOOLS.parents[0] / "main/render/view/raster_meshlets.c"
 # The tree figure: one panel per level after the clusters, orbiting from VIEW_ELEVATION degrees up.
 TREE_PANEL = 3.0  # inches per panel
 VIEW_ELEVATION = 55

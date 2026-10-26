@@ -66,7 +66,7 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
         enter(f, "capybara");
         scene_t* scene = render_lab_test_loaded_scene("capybara");
         TEST_ASSERT_NOT_NULL(scene);
-        const scene_entity_t subject = scene_find(scene, "capybara");
+        const scene_entity_t subject = scene_find(scene, name_hash("capybara"));
         TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, subject);
         const scene_animator_t* animator = &scene->animators[subject];
         const char* playing = scene_animator_clip_name(scene, subject, animator->layer.current.clip);
@@ -133,12 +133,11 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         recti_t idle;
         TEST_ASSERT_TRUE(ui_probe_text("idle", &idle));
         const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){idle.x, idle.y});
-        touch.x = mapped_pixel.x;
-        touch.y = mapped_pixel.y;
+        touch.point = mapped_pixel;
         render_lab_test_frame(false, &touch);
         touch.pressed = false;
         for (int frame = 0; frame < HOLD_FRAMES; frame++) {
-            touch.y += frame < motion;
+            touch.point.y += frame < motion;
             render_lab_test_frame(false, &touch);
         }
         touch.down = false;
@@ -150,7 +149,7 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         TEST_ASSERT_EQUAL_INT(UI_MARGIN, rows.y);
         TEST_ASSERT_TRUE(idle.x >= rows.x && idle.x < recti_right(rows));
         scene_t* scene = render_lab_test_loaded_scene("capybara");
-        const scene_entity_t subject = scene_find(scene, "capybara");
+        const scene_entity_t subject = scene_find(scene, name_hash("capybara"));
         const scene_animator_t* animator = &scene->animators[subject];
         TEST_ASSERT_EQUAL_STRING_MESSAGE("idle", scene_animator_clip_name(scene, subject, animator->layer.current.clip),
                                          "opening release must not play the overlay row under the finger");
@@ -168,8 +167,7 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         const vec2i_t item_pixel =
             affine2x_map_pixel(&transform, (vec2i_t){rows.x + (rows.w / 2),
                                                      rows.y + (item * UI_ROW_HEIGHT) + (UI_ROW_HEIGHT / 2) - scroll});
-        touch.x = item_pixel.x;
-        touch.y = item_pixel.y;
+        touch.point = item_pixel;
         render_lab_test_frame(false, &touch);
         touch.pressed = false;
         for (int frame = 0; frame < HOLD_FRAMES; frame++) {

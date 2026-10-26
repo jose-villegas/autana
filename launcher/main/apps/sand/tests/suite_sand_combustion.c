@@ -594,7 +594,7 @@ test_a_confined_gas_pocket_bursts_instead_of_just_catching(void) {
      * core radius, never itself touching fire. The core fill writes fire
      * into every cell in that radius unconditionally, so only a real
      * explosion reaches it - a plain place_reacted() ignition touches only
-     * its target. NOT_EQUAL rather than fire specifically, because that
+     * its target. Not stone, rather than fire specifically, because that
      * fresh fire is itself queued for outward flight and may already have
      * moved on. */
     const uint8_t ceiling_material = CELL_MATERIAL(sand_at(&s, 4, 2));
@@ -2095,7 +2095,7 @@ test_burnt_out_fire_can_leave_smoke(void) {
 }
 
 /* Relative luminance of a rendered cell, 0-255. The palette stores
- * panel-ready (byte-swapped) RGB565, see gfx_color.h, so this undoes
+ * panel-ready (byte-swapped) RGB565, see image/pixel/rgb565.h, so this undoes
  * both before weighting the channels the way an eye does. */
 static int
 cell_luminance(cell_t c) {

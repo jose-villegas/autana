@@ -336,9 +336,10 @@ def pmu_owner(root, path, text):
 # (launcher/packages/) sits under every row: PACKAGE-INCLUDE keeps it there.
 
 LAYER_BANDS = (
-    ("system", ("apps", "shell", "boot selftest console", "app")),
+    ("system", ("apps", "shell", "boot selftest", "app")),
     ("engine", ("ui scene", "render", "draw anim sound", "asset")),
-    ("platform", ("input audio", "power", "display", "gfx", "services", "profile", "core", "board", "build")),
+    ("platform", ("input audio", "power", "display", "gfx", "services", "profile", "console", "core", "board",
+                  "build")),
 )
 LAYER_ROWS = tuple(row for _band, rows in LAYER_BANDS for row in rows)
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}

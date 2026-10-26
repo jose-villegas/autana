@@ -93,6 +93,13 @@ if [ "$SANITIZE" = 1 ]; then
     SANITIZER_FLAGS=$(host_sanitizer_flags "$CC_BIN") || exit 1
     CFLAGS="$CFLAGS $SANITIZER_FLAGS -Wno-format-truncation"
 fi
+# A compiler that lists -fcallgraph-info (gcc) writes each object's call graph
+# (.ci) beside it, so a host-built function's callers come from the compiler.
+CALL_GRAPHS=0
+if "$CC_BIN" --help=common 2>/dev/null | grep -q -- '-fcallgraph-info'; then
+    CALL_GRAPHS=1
+    CFLAGS="$CFLAGS -fcallgraph-info"
+fi
 
 # --- the device's heap, on this machine ------------------------------------
 # Sourced the same way find_cc.sh is, one block above. The cap is a profile
@@ -111,6 +118,7 @@ HEAP_ARENA_DEFINES="-DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES=$HOST_HEAP_ARENA_B
 
 SOURCES="
 $TEST_DIR/host_main.c
+$TEST_DIR/clock_fake.c
 $TEST_DIR/input_fake.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
@@ -132,7 +140,7 @@ $MAIN_DIR/audio/audio_tone.c
 $MAIN_DIR/audio/audio_frequency.c
 $MAIN_DIR/audio/audio_loopback_detector.c
 $MAIN_DIR/app/app_arena.c
-$MAIN_DIR/app/app_console.c
+$MAIN_DIR/console/console_words.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
 $MAIN_DIR/shell/shell_home_edge.c
@@ -142,8 +150,8 @@ $MAIN_DIR/input/motion/imu_calib.c
 $MAIN_DIR/input/touch/touch_calib.c
 $MAIN_DIR/input/touch/touch_inject_fsm.c
 $MAIN_DIR/input/touch/gesture.c
-$MAIN_DIR/input/motion/tilt.c
 $MAIN_DIR/input/motion/imu_queue.c
+$MAIN_DIR/input/motion/motion_reader.c
 $MAIN_DIR/input/motion/gravity.c
 $MAIN_DIR/input/motion/shake.c
 $MAIN_DIR/input/buttons/button_fsm.c
@@ -152,6 +160,9 @@ $MAIN_DIR/boot/boot_anim.c
 $MAIN_DIR/boot/boot_anim_motion.c
 $MAIN_DIR/boot/boot_anim_photo.c
 $MAIN_DIR/selftest/post_layout.c
+$MAIN_DIR/core/pending.c
+$MAIN_DIR/shell/asset_system.c
+$MAIN_DIR/shell/pending_system.c
 $MAIN_DIR/core/job.c
 $MAIN_DIR/core/memory.c
 $MAIN_DIR/services/settings_policy.c
@@ -162,15 +173,16 @@ $MAIN_DIR/asset/asset_table.c
 $MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_directory.c
 $MAIN_DIR/asset/asset_store.c
+$MAIN_DIR/asset/asset_store_async.c
 $MAIN_DIR/asset/asset_store_file.c
 $MAIN_DIR/input/mapping/orbit_motion_touch.c
 $MAIN_DIR/core/tune.c
 $MAIN_DIR/console/console_tune.c
 $MAIN_DIR/console/console_verbs.c
-$MAIN_DIR/console/verbs/console_tone.c
-$MAIN_DIR/console/verbs/console_melody.c
+$MAIN_DIR/sound/console/console_tone.c
+$MAIN_DIR/sound/console/console_melody.c
 $MAIN_DIR/console/console_frame_request.c
-$MAIN_DIR/console/verbs/console_sound_views.c
+$MAIN_DIR/sound/console/console_sound_views.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/shell/ui/ui_launcher.c
 $MAIN_DIR/shell/ui/ui_launcher_draw.c
@@ -379,7 +391,7 @@ for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
 done
 COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
-LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -Wl,--wrap=job_run_steered -Wl,--wrap=draw_line_ex -pthread -lm"
+LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_load -Wl,--wrap=asset_store_backend_report -Wl,--wrap=job_try_core1 -Wl,--wrap=job_run_steered -Wl,--wrap=draw_line_ex -pthread -lm"
 
 case "$(uname -s)" in
     MINGW* | MSYS* | CYGWIN*) LDFLAGS="$LDFLAGS -Wl,--wrap=_timespec64_get" ;;
@@ -465,8 +477,9 @@ prune() { # dir, expected-name-list-file
     done
 }
 {
-    printf '%s\n' "$OBJ_PAIRS" | awk '{ print $1 ".o"; print $1 ".d" }'
+    printf '%s\n' "$OBJ_PAIRS" | awk -v graphs="$CALL_GRAPHS" '{ print $1 ".o"; print $1 ".d"; if (graphs) print $1 ".ci" }'
     printf '%s\n' "$UNITY_OBJECT.o" "$UNITY_OBJECT.d" flags.stamp
+    if [ "$CALL_GRAPHS" = 1 ]; then printf '%s\n' "$UNITY_OBJECT.ci"; fi
 } | LC_ALL=C sort >"$EXPECT_OBJ"
 {
     printf '%s\n' "$SU_PAIRS" | awk '{ print $1 ".o"; print $1 ".d"; print $1 ".su" }'

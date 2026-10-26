@@ -8,6 +8,7 @@
 
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
+#include "core/handle.h"
 #include "core/memory.h"
 #include "math/linear/mat3f.h"
 #include "render/skin/r3d_skin_light.h"
@@ -34,6 +35,9 @@ typedef struct {
 #define SCENE_FLAG_DIRTY           2U
 #define SCENE_FLAG_SKIN_DIRTY      4U
 #define SCENE_FLAG_CHANGED         (SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY)
+#define SCENE_FLAG_ACTIVE          8U  /* enabled, and every ancestor enabled */
+#define SCENE_FLAG_MOVED           16U /* its world changed in this resolve */
+#define SCENE_WORLD_SLOT_NONE      0xFFFFU
 #define SCENE_LIGHT_FAILURE_ALBEDO "skin vertex colors required"
 #define SCENE_LIGHT_FAILURE_NORMAL "skin normal transform invalid"
 
@@ -44,6 +48,11 @@ typedef struct {
 
 /* The rows of the SCNE entry (scene_format.h) are read in place, so they are
  * the entry's bytes, little-endian as the device is. */
+typedef struct {
+    name_hash_t hash; /* name_hash(name), never NAME_HASH_NONE */
+    char name[ASSET_NAME_MAX];
+} scene_asset_name_t;
+
 typedef struct {
     uint16_t entity, colour_set;
     char mesh[ASSET_NAME_MAX];
@@ -83,7 +92,7 @@ typedef struct {
 typedef struct {
     uint16_t entity_count, renderer_count, camera_count;
     uint16_t light_count, skinned_renderer_count, animator_count, clip_count;
-    const char (*names)[ASSET_NAME_MAX];
+    const scene_asset_name_t* names;
     const scene_asset_transform_t* transforms;
     const scene_asset_renderer_t* renderers;
     const scene_asset_camera_t* cameras;
@@ -92,13 +101,14 @@ typedef struct {
     const scene_asset_animator_t* animators;
     const char (*clips)[ASSET_NAME_MAX];
     const scene_asset_settings_t* settings;
+    const uint16_t* parents; /* one per entity: SCENE_ASSET_PARENT_ROOT or a lower entity */
 } scene_asset_t;
 
 /* Checks every row once and returns the first failure: ASSET_ERR_VERSION,
  * ASSET_ERR_BOUNDS or ASSET_ERR_FORMAT. Else fills `out`. */
 asset_status_t scene_asset_open(asset_view_t entry, scene_asset_t* out);
 
-/* A mesh view and the model matrix built from its entity's transform. */
+/* A mesh view and its world matrix: its parents' transforms times its entity's own. */
 typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
@@ -154,7 +164,7 @@ typedef struct {
 struct scene {
     scene_asset_t asset;
     char id[ASSET_NAME_MAX];
-    bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
+    handle_t load;
     int renderer_count;
     int animator_count, skeleton_animator_count;
     int16_t animate_share, skin_share; /* core 1's, as core/job.h steers them */
@@ -175,6 +185,10 @@ struct scene {
     scene_animator_t* animators;
     scene_skinned_renderer_t* skinned_renderers;
     r3d_instance_t* instances; /* one per renderer: what the raster draws this frame */
+    uint16_t* world_slots;     /* one per entity: its index in `worlds`, or SCENE_WORLD_SLOT_NONE when childless */
+    int world_count;
+    mat4f_t* worlds;                /* one per entity with children, in entity order */
+    scene_entity_t* world_entities; /* the entity each of `worlds` belongs to */
 };
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
@@ -198,12 +212,27 @@ scene_t* scene_loaded_at(int index);
  * such as a camera transform teleport or a clip switch, converge within a few frames. */
 void scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity);
 
-/* The index of the scene's camera `camera` (NULL: its first), or -1. */
-int scene_camera_index(const scene_t* scene, const char* camera);
+/* The index of the scene's camera named by `camera` (SCENE_CAMERA_FIRST: its first), or -1. */
+int scene_camera_index(const scene_t* scene, name_hash_t camera);
 
 /* A scene is going away: the draw drops it if its camera is active. */
 void scene_draw_forget(const scene_t* scene);
 void scene_draw_release(void);
+
+/* Rebuilds the world of every parent and renderer whose own transform or an
+ * ancestor's changed, then clears DIRTY and MOVED. */
+void scene_resolve(scene_t* scene);
+
+/* Numbers the entities with children and allocates their worlds; false when it could not. */
+bool scene_hierarchy_open(scene_t* scene);
+void scene_hierarchy_release(scene_t* scene);
+
+/* The entity's enabled flag changed: recomputes ACTIVE for it and every
+ * later entity, descendants or not; parents come before children, so one
+ * forward pass is correct. O(entities) a call, cheap at today's counts; if
+ * they grow, a later entity whose parent is before `entity` can be skipped,
+ * since it cannot be a descendant. */
+void scene_hierarchy_update_active(scene_t* scene, scene_entity_t entity);
 
 /* True when drawing the mesh as it is gives the same picture. */
 bool scene_transform_is_identity(const mat4f_t* transform);

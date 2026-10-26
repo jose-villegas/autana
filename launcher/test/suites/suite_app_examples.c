@@ -17,6 +17,7 @@
 #define HELLO_TEXT_Y         20
 
 #include "../app_examples/console.c"
+#include "image/pixel/rgb565.h"
 
 static void
 cleanup(void) {
@@ -41,11 +42,11 @@ test_hello_registers_and_draws_text_on_its_background(void) {
     app_yours.enter();
     app_yours.frame(0, NULL);
     gfx_color_t* pixels = gfx_framebuffer();
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(HELLO_BACKGROUND_RGB), pixels[0]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(HELLO_BACKGROUND_RGB), pixels[0]);
     size_t foreground = 0;
     for (int y = HELLO_TEXT_Y; y < HELLO_TEXT_Y + DRAW_CHAR_H; y++) {
         for (int x = HELLO_TEXT_X; x < HELLO_TEXT_X + DRAW_CHAR_W; x++) {
-            foreground += pixels[y * GFX_WIDTH + x] == gfx_rgb(HELLO_TEXT_RGB);
+            foreground += pixels[y * GFX_WIDTH + x] == RGB565BE(HELLO_TEXT_RGB);
         }
     }
     TEST_ASSERT_GREATER_THAN(0, foreground);

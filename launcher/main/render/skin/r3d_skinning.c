@@ -253,11 +253,5 @@ SKIN_LIGHT_KERNEL(r3d_skin_clusters_table, LIGHT_TABLE)
 
 void
 r3d_skin_refit_nodes(r3d_skin_output_t* out) {
-    for (int n = out->mesh.node_count - 1; n >= 0; n--) {
-        r3d_lit_node_t* node = &out->nodes[n];
-        node->bounds = box3s_empty();
-        for (int i = node->first; i < node->first + node->count; i++) {
-            node->bounds = box3s_union(node->bounds, node->leaf ? out->clusters[i].bounds : out->nodes[i].bounds);
-        }
-    }
+    r3d_lit_mesh_refit_nodes(out->nodes, out->mesh.node_count, out->clusters);
 }
