@@ -46,46 +46,54 @@ check_owner(asset_store_request_t* request) {
     return true;
 }
 
-void
-asset_store_step(uint32_t dt_ms) {
-    (void)dt_ms;
-    uint64_t cutoff = 0;
+static bool
+is_live(const asset_store_request_t* request) {
+    return request->state == PENDING_WAIT || request->state == PENDING_READY || request->state == PENDING_FAILED;
+}
+
+/* Requests made after this order, inside a callback, wait for the next pass. */
+static uint64_t
+newest_order(void) {
+    uint64_t newest = 0;
     for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
-        const asset_store_request_t* request = asset_store_request_at(i);
-        if (request->order > cutoff) {
-            cutoff = request->order;
-        }
+        const uint64_t order = asset_store_request_at(i)->order;
+        newest = order > newest ? order : newest;
     }
+    return newest;
+}
+
+static void
+bind_waiting(void) {
     for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
         asset_store_request_t* request = asset_store_request_at(i);
-        if (request->state != PENDING_WAIT && request->state != PENDING_READY && request->state != PENDING_FAILED) {
-            continue;
-        }
-        const bool alive = check_owner(request);
-        if (alive && request->state == PENDING_WAIT && request->mount == NULL) {
+        if (is_live(request) && check_owner(request) && request->state == PENDING_WAIT && request->mount == NULL) {
             asset_store_request_bind(request, false);
         }
     }
+}
+
+static void
+deliver(asset_store_request_t* request) {
+    if (request->state == PENDING_WAIT) {
+        asset_store_request_finish(request);
+    }
+    if ((request->state == PENDING_READY || request->state == PENDING_FAILED) && request->done != NULL) {
+        pending_fn done = request->done;
+        request->done = NULL;
+        done(asset_store_request_id(request), (pending_t)request->state, request->owner);
+    }
+}
+
+void
+asset_store_step(uint32_t dt_ms) {
+    (void)dt_ms;
+    const uint64_t cutoff = newest_order();
+    bind_waiting();
     asset_store_mounts_step(ASSET_STORE_STEP_BYTES);
     for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
         asset_store_request_t* request = asset_store_request_at(i);
-        if (request->order > cutoff) {
-            continue;
-        }
-        if (request->state != PENDING_WAIT && request->state != PENDING_READY && request->state != PENDING_FAILED) {
-            continue;
-        }
-        const bool alive = check_owner(request);
-        if (!alive) {
-            continue;
-        }
-        if (request->state == PENDING_WAIT) {
-            asset_store_request_finish(request);
-        }
-        if ((request->state == PENDING_READY || request->state == PENDING_FAILED) && request->done != NULL) {
-            pending_fn done = request->done;
-            request->done = NULL;
-            done(asset_store_request_id(request), (pending_t)request->state, request->owner);
+        if (request->order <= cutoff && is_live(request) && check_owner(request)) {
+            deliver(request);
         }
     }
 }
@@ -94,9 +102,7 @@ void
 asset_store_app_exit(void) {
     for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
         asset_store_request_t* request = asset_store_request_at(i);
-        if (request->async
-            && (request->state == PENDING_WAIT || request->state == PENDING_READY
-                || request->state == PENDING_FAILED)) {
+        if (request->async && is_live(request)) {
             asset_store_request_cancel(request);
         }
     }
