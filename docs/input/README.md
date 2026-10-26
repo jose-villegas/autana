@@ -10,7 +10,6 @@ constants and limits. Sensor, bus and chip facts are in the
 | [Buttons.md](Buttons.md) | BOOT and PWR signals, PMU registers |
 | [Motion-Axes.md](Motion-Axes.md) | IMU axes against the screen's, `input_motion_t` fields |
 | [Motion-Calibration.md](Motion-Calibration.md) | six-pose and unplugged calibration rounds, offset storage, measured captures |
-| [Tilt.md](Tilt.md) | direction filtering, magnitude gate, shake strength |
-| [Gravity.md](Gravity.md) | gyro prediction, acceleration trust and rejection, recovery and gyro bias learning |
+| [Gravity.md](Gravity.md) | shared app gravity and shake, gyro prediction, trust, recovery and bias learning |
 | [Shake.md](Shake.md) | deliberate shaking from smoothed linear acceleration |
 | [Orientation.md](Orientation.md) | shell quarter judge, holds, touch gates and FIFO replay |

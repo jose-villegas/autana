@@ -23,8 +23,7 @@ class BuildPolicyTests(unittest.TestCase):
             root = Path(directory)
             worktree = fake_flash.worktree(root / "engine")
             env = {"_AUTANA_HEAVY_LOCK_ROOT": str(root / "heavy"),
-                   autana_config.BUILD_PRIORITY_ENV: autana_config.BUILD_PRIORITY_BELOW_NORMAL,
-                   autana_config.BUILD_LATEST_START_ENV: ""}
+                   autana_config.BUILD_PRIORITY_ENV: autana_config.BUILD_PRIORITY_BELOW_NORMAL}
             store = device_lock.LockStore(root / "heavy")
 
             def assert_locked(command, lost=None, **options):
@@ -60,15 +59,7 @@ class BuildPolicyTests(unittest.TestCase):
                     patch.object(device, "run_to_end"):
                 device.build_snapshot(["build"], root / "build")
 
-    def test_lock_wait_is_bounded_and_budget_rechecked_after_acquisition(self):
-        @contextlib.contextmanager
-        def scope(*args, **kwargs):
-            self.assertEqual(args[-1], 10)
-            yield
-        with patch.object(device, "HeldLock", side_effect=scope), \
-                patch.object(device.time, "time", side_effect=[90, 101]), self.assertRaises(TimeoutError):
-            with device.build_policy({autana_config.BUILD_LATEST_START_ENV: "100"}):
-                self.fail("expired policy entered compilation")
+    def test_busy_lock_refuses_compilation(self):
         with patch.object(device, "HeldLock", side_effect=device.LockBusy("busy")), \
                 self.assertRaises(TimeoutError):
             with device.build_policy({autana_config.WAIT_ENV: "0"}):

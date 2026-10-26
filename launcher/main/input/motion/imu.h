@@ -53,8 +53,9 @@ void imu_start(void);
 
 bool imu_ready(void);
 
-/* Copies the newest sample read by the task. False when no sensor or no sample is available. */
-bool imu_read(imu_sample_t* out);
+/* Copies the newest sample and its sequence (when non-NULL) under one lock.
+ * False when no sensor or no sample is available. */
+bool imu_read(imu_sample_t* out, uint32_t* sequence);
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 /* Vibration measurements only: ODR code 3 is IMU_ODR_BASE_HZ / 8, whose

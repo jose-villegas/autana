@@ -1825,8 +1825,7 @@ COMMAND_GROUPS = (
             ("docs <question...>", "the three best sections, excerpted with their path:line, then five more to read on"),
             ("docs --section <path:line>", "one section whole, or path#heading words; --deep adds subsections"),
             ("docs --outline <path>", "a document's headings, with lines and sizes"),
-            ("docs --ask <question...>", "a short answer from the local chat model"),
-            ("docs --usage [--days N]", "what this machine has looked up: counts, repeats, misses, documents refused whole"))),
+            ("docs --ask <question...>", "a short answer from the local chat model"))),
     )),
 )
 

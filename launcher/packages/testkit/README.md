@@ -11,9 +11,9 @@ own Unity component.
 | `testkit_runner` | Standalone selection and host main; links testkit |
 | `runner/idf_main.c` and `runner/lifecycle.c` | Generic ESP-IDF test and bench entry point for a package test app |
 
-A package calls `enable_testing()` in its CMake directory, includes
-`cmake/PackageTests.cmake`, and calls `testkit_add_package_tests()` after
-defining its library target.
+A package's `CMakeLists.txt` calls `project()` outside ESP-IDF, sets
+`<name>_requires`, includes `cmake/Package.cmake` and calls `package_add()`.
+That registers the ESP-IDF component or the plain-CMake library, and adds the tests.
 `<PACKAGE>_BUILD_TESTS` defaults on for a top-level build and off when embedded.
 The helper builds `tests/*.c` and `bench/*.c`. CTest runs the default suites
 and, when `bench/` exists, a separate `<package>_bench` smoke test.

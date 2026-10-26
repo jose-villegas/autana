@@ -102,6 +102,7 @@ class LocalHookTests(ShellGateTestCase):
     def test_a_snapshot_gate_judges_the_index_as_a_whole(self):
         # Fails when any snapshot file says "stale", and when handed --paths.
         self.write('scripts/gates/stale_gate.py',
+                   '"""Fail when a catalogue file says stale."""\n'
                    'import pathlib, sys\n'
                    'assert "--paths" not in sys.argv, "a snapshot gate gets no paths"\n'
                    'root = pathlib.Path(__file__).resolve().parents[2]\n'
