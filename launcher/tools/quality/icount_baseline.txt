@@ -64,8 +64,8 @@
 2626	ui_face_caption
 2196	ui_face_color
 2107	ui_face_disabled
-28038	ui_face_dropdown
-28351	ui_face_dropdown_icons
+27833	ui_face_dropdown
+28136	ui_face_dropdown_icons
 2202	ui_face_fill
 2821	ui_face_header
 2412	ui_face_icon
@@ -89,8 +89,8 @@
 1989	ui_face_window
 3550	ui_mu_button
 2579	ui_mu_caption
-24355	ui_mu_dropdown
-24666	ui_mu_dropdown_icons
+24150	ui_mu_dropdown
+24450	ui_mu_dropdown_icons
 2175	ui_mu_fill
 2781	ui_mu_header
 2372	ui_mu_icon
