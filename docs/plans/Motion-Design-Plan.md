@@ -24,7 +24,7 @@ change as little of the screen as possible per frame.
 
 What already exists:
 
-- `anim/tween.h`: progress is a byte (0-255). Over 448 px that is about
+- `math/scalar/ease.h`: progress is a byte (0-255). Over 448 px that is about
   1.75 px per step, so an eased end visibly stair-steps. Spatial motion
   needs Q16 progress.
 - `physics/spring/spring_line.h`: integer springs on a fixed 4 ms tick that come to
