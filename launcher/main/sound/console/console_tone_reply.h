@@ -5,8 +5,8 @@
 #include <string.h>
 
 #include "audio/audio_loopback.h"
-#include "console/verbs/console_tone_parse.h"
 #include "input/motion/imu_vibration.h"
+#include "sound/console/console_tone_parse.h"
 
 #define CONSOLE_TONE_REPLY_BYTES    256u
 #define CONSOLE_TONE_MEASURED_BYTES 32u

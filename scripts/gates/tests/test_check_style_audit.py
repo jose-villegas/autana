@@ -315,15 +315,15 @@ class StyleAuditTest(unittest.TestCase):
                    "app/app.h", "ui/ui.h")
         self.assert_include_cases("SYSTEM-BAND", {"launcher/main/" + t: "#pragma once\n" for t in targets}, flagged=(
             "launcher/main/apps/x/x.c shell/shell.h",
-            "launcher/main/apps/x/x.c console/console_verbs.h",
             "launcher/main/apps/x/x.h boot/boot_anim.h",
             "launcher/main/apps/x/tests/suite_x.c selftest/post.h",
-            "launcher/main/apps/x/x.c <console/console_verbs.h>",
+            "launcher/main/apps/x/x.c <selftest/post.h>",
             "editor/src/x.cpp shell/shell.h",
             "editor/src/x.cpp <selftest/post.h>",
         ), allowed=(
             "launcher/main/apps/x/x.c app/app.h",
             "launcher/main/apps/x/x.c ui/ui.h",
+            "launcher/main/apps/x/x.c console/console_verbs.h",
             "editor/src/x.cpp ui/ui.h",
             "launcher/main/shell/apps/x/x.c selftest/post.h",
         ))

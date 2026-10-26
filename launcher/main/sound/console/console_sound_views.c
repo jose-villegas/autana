@@ -1,15 +1,15 @@
 /* Frame-owned sound views keep their mapped packs alive. */
-#include "console/verbs/console_sound_views.h"
+#include "sound/console/console_sound_views.h"
 
 #include <stdlib.h>
 #include <string.h>
 
 #include "asset/asset_store.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_tone.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "esp_log.h"
+#include "sound/console/console_tone.h"
 #include "sound/sound_engine.h"
 
 typedef struct console_sound_view {
