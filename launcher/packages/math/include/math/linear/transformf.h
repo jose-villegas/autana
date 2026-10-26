@@ -36,7 +36,46 @@ transformf_rotate_around(transformf_t* t, vec3f_t point, vec3f_t axis, float ang
     transformf_set_rotation(t, quatf_normalize(quatf_mul(turn, t->rotation)));
 }
 
+/* `child` placed in `parent`'s frame: where the child stands in the frame
+ * the parent stands in. Exact when the parent's scale is even (see
+ * transformf_scale_is_even); an unevenly scaled parent holding a turned child
+ * shears, which no TRS holds, and the scale is then per axis. */
+static inline transformf_t
+transformf_compose(const transformf_t* parent, const transformf_t* child) {
+    const vec3f_t scaled = {parent->scale.x * child->position.x, parent->scale.y * child->position.y,
+                            parent->scale.z * child->position.z};
+    return (transformf_t){
+        .position = vec3f_add(parent->position, quatf_rotate(parent->rotation, scaled)),
+        .rotation = quatf_normalize(quatf_mul(parent->rotation, child->rotation)),
+        .scale = {parent->scale.x * child->scale.x, parent->scale.y * child->scale.y, parent->scale.z * child->scale.z},
+        .cached = false};
+}
+
 #define TRANSFORMF_MATRIX_TOLERANCE 1e-4F
+
+/* True when the three scales agree within TRANSFORMF_MATRIX_TOLERANCE of the
+ * largest: a parent scaled so composes into TRS exactly. */
+static inline bool
+transformf_scale_is_even(const transformf_t* t) {
+    const float most = fmaxf(t->scale.x, fmaxf(t->scale.y, t->scale.z));
+    const float least = fminf(t->scale.x, fminf(t->scale.y, t->scale.z));
+    const float largest = fmaxf(fabsf(t->scale.x), fmaxf(fabsf(t->scale.y), fabsf(t->scale.z)));
+    return most - least <= TRANSFORMF_MATRIX_TOLERANCE * largest;
+}
+
+/* The inverse of transformf_compose: the child that, placed in `parent`,
+ * stands at `world`. `parent`'s scale must be even and nonzero. */
+static inline transformf_t
+transformf_relative(const transformf_t* parent, const transformf_t* world) {
+    const quatf_t turn = parent->rotation;
+    const quatf_t back = {-turn.x, -turn.y, -turn.z, turn.w}; /* the inverse of a unit rotation */
+    const float inverse_scale = 1.0F / parent->scale.x;
+    return (transformf_t){
+        .position = vec3f_scale(quatf_rotate(back, vec3f_sub(world->position, parent->position)), inverse_scale),
+        .rotation = quatf_normalize(quatf_mul(back, world->rotation)),
+        .scale = vec3f_scale(world->scale, inverse_scale),
+        .cached = false};
+}
 
 /* Decomposes affine TRS; refuses shear, reflection, singular or nonfinite matrices. */
 static inline bool

@@ -15,7 +15,7 @@
 #include "draw/draw_image_format.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
-#include "math/motion/spring_line.h"
+#include "physics/spring/spring_line.h"
 #include "shell/ui/ui_ridge.h"
 
 #define VIEW_W               RIDGE_CURVE_POINTS

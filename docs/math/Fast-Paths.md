@@ -29,25 +29,25 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 
 | Fast path | Warm cycles: fast / plain (×) | Cold cycles: fast / plain | Max error |
 |---|---|---|---|
-| [`mathf_recip`](#mathf-recip) | 26 / 58 (2.2×) | 3000 / 5100 | 1 step |
-| [`mathf_rsqrt`](#mathf-rsqrt) | 38 / 110 (3×) | 4500 / 9800 | 1 step |
-| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 24 / 110 (4.7×) | 3100 / 9800 | 5.9e-5 rel |
+| [`mathf_recip`](#mathf-recip) | 26 / 59 (2.3×) | 2300 / 4600 | 1 step |
+| [`mathf_rsqrt`](#mathf-rsqrt) | 38 / 120 (3.1×) | 3900 / 9800 | 1 step |
+| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 24 / 120 (4.9×) | 2400 / 9800 | 5.9e-5 rel |
 | [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 350 / 1100 (3.2×) | 29000 / 77000 | 4.6e-10 rel (host) |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 720 / 740 (1×) | 63000 / 61000 | 4.6e-10 rel (host) |
-| [`mathf_repeat`](#mathf-repeat) | 64 / 140 (2.1×) | 7200 / 14000 | 0 steps |
-| [`trig_sin`](#trig-sin) | 31 / 220 (7.3×) | 4900 / 24000 | 4.6 lsb |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 720 / 720 (1×) | 63000 / 60000 | 4.6e-10 rel (host) |
+| [`mathf_repeat`](#mathf-repeat) | 64 / 140 (2.1×) | 6700 / 13000 | 0 steps |
+| [`trig_sin`](#trig-sin) | 31 / 220 (7.3×) | 4200 / 24000 | 4.6 lsb |
 
 ### Size and builds
 
 | Fast path | Fast code bytes | Plain code bytes | Table bytes |
 |---|---|---|---|
-| [`mathf_recip`](#mathf-recip) | 62 flash | ROM + 45 flash | - |
-| [`mathf_rsqrt`](#mathf-rsqrt) | ROM + 152 flash | ROM + 65 flash | - |
-| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 66 flash | ROM + 65 flash | - |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 236 IRAM + 956 flash | ROM + 1666 flash | 192 |
-| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 236 IRAM + 2664 flash | ROM + 3139 flash | 192 |
-| [`mathf_repeat`](#mathf-repeat) | 612 flash | 460 flash | - |
-| [`trig_sin`](#trig-sin) | 202 flash | 181 flash | 520 |
+| [`mathf_recip`](#mathf-recip) | 57 flash | ROM + 39 flash | - |
+| [`mathf_rsqrt`](#mathf-rsqrt) | ROM + 151 flash | ROM + 66 flash | - |
+| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 61 flash | ROM + 66 flash | - |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 236 IRAM + 945 flash | ROM + 1139 flash | 768 |
+| [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 236 IRAM + 2644 flash | ROM + 2599 flash | 768 |
+| [`mathf_repeat`](#mathf-repeat) | 595 flash | 443 flash | - |
+| [`trig_sin`](#trig-sin) | 192 flash | 171 flash | 390 |
 
 <a id="mathf-recip"></a>
 
@@ -89,7 +89,7 @@ Target: Xtensa: `rsqrt0.s`, `madd.s`, `msub.s`.
 
 Builds: `CONFIG_MATH_FPU_RECIP`; QEMU plain; host plain.
 
-Callers: `anim`, `apps (not named)`, `input`, `scene`.
+Callers: `anim`, `apps (not named)`, `input`, `kinematics`, `render`, `scene`.
 
 Bench rows `mathf_rsqrt_f` vs `div_rsqrt_f`; limit `MATHF_RSQRT_ULP_LIMIT` (1 step); proof.
 

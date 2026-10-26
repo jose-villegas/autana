@@ -17,7 +17,7 @@
 #include "display/viewport.h"
 #include "input/input.h"
 #include "input/touch/gesture.h"
-#include "math/motion/orbit_motion.h"
+#include "kinematics/orbit/orbit_motion.h"
 #include "math/scalar/math_const.h"
 
 /* A drag across the picture's shorter side turns the orbit this far. */

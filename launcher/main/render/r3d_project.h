@@ -8,7 +8,7 @@
 
 #include <math.h>
 
-#include "math/linear/projectf.h"
+#include "math/projection/projectf.h"
 #include "math/scalar/mathf.h"
 
 /* Past this a projected offset is off any panel; clamping first keeps the
