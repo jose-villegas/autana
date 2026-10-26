@@ -140,7 +140,7 @@ $MAIN_DIR/audio/audio_tone.c
 $MAIN_DIR/audio/audio_frequency.c
 $MAIN_DIR/audio/audio_loopback_detector.c
 $MAIN_DIR/app/app_arena.c
-$MAIN_DIR/app/app_console.c
+$MAIN_DIR/console/console_words.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
 $MAIN_DIR/shell/shell_home_edge.c
@@ -179,10 +179,10 @@ $MAIN_DIR/input/mapping/orbit_motion_touch.c
 $MAIN_DIR/core/tune.c
 $MAIN_DIR/console/console_tune.c
 $MAIN_DIR/console/console_verbs.c
-$MAIN_DIR/console/verbs/console_tone.c
-$MAIN_DIR/console/verbs/console_melody.c
+$MAIN_DIR/sound/console/console_tone.c
+$MAIN_DIR/sound/console/console_melody.c
 $MAIN_DIR/console/console_frame_request.c
-$MAIN_DIR/console/verbs/console_sound_views.c
+$MAIN_DIR/sound/console/console_sound_views.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/shell/ui/ui_launcher.c
 $MAIN_DIR/shell/ui/ui_launcher_draw.c
