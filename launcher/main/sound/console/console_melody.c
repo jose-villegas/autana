@@ -1,12 +1,12 @@
-#include "console/verbs/console_melody.h"
+#include "sound/console/console_melody.h"
 
 #include <ctype.h>
 #include <inttypes.h>
 #include <string.h>
 
 #include "console/console_verbs.h"
-#include "console/verbs/console_tone.h"
 #include "core/timing.h"
+#include "sound/console/console_tone.h"
 
 #define MELODY_BAR_SSLL(first, first_octave, second, second_octave, third, third_octave, fourth, fourth_octave)        \
     MELODY_NOTE(first, first_octave, MELODY_SHORT), MELODY_NOTE(second, second_octave, MELODY_SHORT),                  \
