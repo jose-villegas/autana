@@ -313,11 +313,62 @@ Reference: [the asset packs](../assets/Building-Packs.md#packs).
 
 ## Every frame, on the board
 
-Solid bars are the shipped frame; hatched bars are what each debug view adds.
-The table under the charts has every stage in ms.
+The first bar is the shipped frame. Under it, `r3d.transform` and `r3d.draw`
+are split into their sub-stages, the laps named after the code they time:
 
-<!-- generated: pipeline-frame-stages sha256=db43f7ca3a424c91eee2b61f12c3a434fb93e3b5e739c8d97806d9fc9f5d725f -->
+| Sub-stage | What runs |
+|---|---|
+| `split` | the share of clusters or rows each core takes |
+| `apply` | transform: one vertex through the lens matrix, and its near-plane test |
+| `project` | transform: the vertex's divide, snap and screen-range test |
+| `clear` | draw: clearing this core's rows of each attachment |
+| `tests` | draw: a triangle's rejection tests, no pixel centre or facing away |
+| `vertices` | draw: gathering a kept triangle's screen corners and colours |
+| `clip` | draw: rebuilding and clipping a triangle that crosses the near plane or the guard band |
+| `set_up` | draw: one triangle's set-up in `r3d_span`: its box, planes and the hidden test |
+| `fill` | draw: the triangle's span fill, small or walked |
+| `cluster` | what is left of the loops over clusters, vertices and triangles |
+| `wait` | the frame core waiting for core 1's half |
+| `laps` | what the laps themselves cost, taken out of the rows above |
+
+The dropdown has each debug view's hatched bar, what it adds, and every stage
+in ms.
+
+<!-- generated: pipeline-frame-stages sha256=7799b841aacfe7f304c8c960c2e96778cbdb8a37ed109acb33e084c4e8fb479e -->
 ![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
+
+![Inside transform and draw](../images/render/pipeline-frame-stages.sub-stages.png)
+
+<details><summary>Sub-stages in milliseconds</summary>
+
+| Sub-stage | cpu0 | cpu1 | Share of the parent on cpu0 |
+|---|---|---|---|
+| r3d.transform.split | 0.03 | 0.00 | 0% |
+| r3d.transform.cluster | 0.17 | 0.16 | 2% |
+| r3d.transform.apply | 1.79 | 2.01 | 24% |
+| r3d.transform.project | 3.06 | 3.17 | 41% |
+| r3d.transform.wait | 0.14 | 0.00 | 2% |
+| r3d.transform laps | 2.18 | 1.01 | 29% |
+| r3d.transform untimed | 0.03 |  | 0% |
+| r3d.transform | 7.40 |  | 100% |
+| r3d.draw.split | 0.22 | 0.00 | 1% |
+| r3d.draw.clear | 0.78 | 1.12 | 2% |
+| r3d.draw.cluster | 2.04 | 2.00 | 6% |
+| r3d.draw.clip | 1.00 | 1.03 | 3% |
+| r3d.draw.set_up | 7.99 | 7.98 | 23% |
+| r3d.draw.tests | 1.63 | 1.62 | 5% |
+| r3d.draw.vertices | 1.33 | 1.35 | 4% |
+| r3d.draw.fill | 15.98 | 15.49 | 47% |
+| r3d.draw.wait | 0.16 | 0.00 | 0% |
+| r3d.draw laps | 3.17 | 3.11 | 9% |
+| r3d.draw untimed | 0.02 |  | 0% |
+| r3d.draw | 34.31 |  | 100% |
+
+Board ms per frame from a perf-scope image, mean of 79 lap windows. A parent is its frame-cost bracket on cpu0; its sub-stages are cycle-counter laps on each core, and cpu0's add up to the parent but for the untimed row, at most 2% of it. The laps row is what the laps cost themselves, one lap's measured cost times its starts, taken out of each sub-stage; the image runs them, so its parents are not the shipped bar's.
+
+</details>
+
+<details><summary>Debug views and every stage in milliseconds</summary>
 
 ![Frame stages with the depth view](../images/render/pipeline-frame-stages.depth.png)
 
@@ -326,8 +377,6 @@ The table under the charts has every stage in ms.
 ![Frame stages with the motion view](../images/render/pipeline-frame-stages.motion.png)
 
 ![Frame stages with the meshlets view](../images/render/pipeline-frame-stages.meshlets.png)
-
-<details><summary>Frame stages in milliseconds</summary>
 
 | Stage | As shipped | Share | depth view adds | tiles view adds | motion view adds | meshlets view adds |
 |---|---|---|---|---|---|---|
@@ -341,7 +390,7 @@ The table under the charts has every stage in ms.
 | frame.rest | 1.07 | 2% | +0.06 | +0.05 | +0.11 | +0.12 |
 | total | 51.23 | 100% | +7.47 | +5.04 | +25.70 | +34.40 |
 
-Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped.
+Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped. Not captured: cull.
 
 </details>
 <!-- /generated: pipeline-frame-stages -->
@@ -534,6 +583,18 @@ capture starts barely moves its means:
 autana monitor 120 --out docs/render/data/pipeline-present-board.log
 autana monitor 120 --out docs/render/data/pipeline-view-motion-board.log
 ```
+
+The sub-stages come from a perf-scope image of the same scene, whose laps
+([Frame-Cost.md](../tools/Frame-Cost.md#laps-inside-a-bracket)) print a line of
+their own:
+
+```sh
+autana flash diag --perf-scope
+autana monitor 120 --out docs/render/data/pipeline-laps-board.log
+```
+
+The generator fails when the frame core's laps leave more of their parent
+untimed than `UNTIMED_SHARE` in `frame_stages.py`; the dropdown states it.
 
 The debug view is a development-build tunable (`autana tune view` lists it):
 0 (`RENDER_DEBUG_VIEW_SHADED` in `render/context/render_context.h`) is the

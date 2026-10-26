@@ -8,9 +8,9 @@
 
 #include <stdbool.h>
 
-#include "math/linear/project_template.h"
 #include "math/linear/vec2f.h"
 #include "math/linear/vec3f.h"
+#include "math/projection/project_template.h"
 #include "math/scalar/mathf.h"
 
 typedef struct {

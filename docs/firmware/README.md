@@ -35,7 +35,7 @@ screen.
 | Read | For |
 |---|---|
 | [Layers.md](Layers.md) | which folder may include which, and the gate behind each rule |
-| [Design-Rules.md](Design-Rules.md) | one framebuffer, one frame loop, apps as callbacks |
+| [Design-Rules.md](Design-Rules.md) | one framebuffer, one frame loop, apps as callbacks, results read on the frame |
 | [Startup.md](Startup.md) | what `app_main()` runs, in order, and why |
 | [Frame-Loop.md](Frame-Loop.md) | the shell's two states, console requests, engine systems, full redraw |
 | [Frame-Watch.md](Frame-Watch.md) | the runtime check for allocating or logging every frame |
