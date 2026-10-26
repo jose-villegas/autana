@@ -31,21 +31,21 @@
 /* glass MAT_GLASS case needs small tilt for finer gradient than palette steps */
 #define LERP8(lo, hi, fr)    RGB888_LERP(lo, hi, fr, 255)
 
+#define SHADE(lo, hi, t)     RGB565BE(LERP(lo, hi, t))
+
 /* One shade per variant, dry to wet; the saturated level takes the full wet
  * colour. */
 #define DIRT_DRY             0x9A7B52
 #define DIRT_WET             0x3A2A18
 
 #define SOIL_SHADES                                                                                                    \
-    RGB565BE(LERP(DIRT_DRY, DIRT_WET, 0)), RGB565BE(LERP(DIRT_DRY, DIRT_WET, 1)),                                      \
-        RGB565BE(LERP(DIRT_DRY, DIRT_WET, 2)), RGB565BE(LERP(DIRT_DRY, DIRT_WET, 3)),                                  \
-        RGB565BE(LERP(DIRT_DRY, DIRT_WET, 4)), RGB565BE(LERP(DIRT_DRY, DIRT_WET, 5)),                                  \
-        RGB565BE(LERP(DIRT_DRY, DIRT_WET, 6)), RGB565BE(LERP(DIRT_DRY, DIRT_WET, 7)),                                  \
-        RGB565BE(LERP(DIRT_DRY, DIRT_WET, 8)), RGB565BE(LERP(DIRT_DRY, DIRT_WET, 9)),                                  \
-        RGB565BE(LERP(DIRT_DRY, DIRT_WET, 10)), RGB565BE(LERP(DIRT_DRY, DIRT_WET, 11)),                                \
-        RGB565BE(LERP(DIRT_DRY, DIRT_WET, 12)), RGB565BE(LERP(DIRT_DRY, DIRT_WET, 13)),                                \
-        RGB565BE(LERP(DIRT_DRY, DIRT_WET, 15)), /* variant 14: saturated */                                            \
-        RGB565BE(LERP(DIRT_DRY, DIRT_WET, 15))  /* variant 15: unused - same as 14 */
+    SHADE(DIRT_DRY, DIRT_WET, 0), SHADE(DIRT_DRY, DIRT_WET, 1), SHADE(DIRT_DRY, DIRT_WET, 2),                          \
+        SHADE(DIRT_DRY, DIRT_WET, 3), SHADE(DIRT_DRY, DIRT_WET, 4), SHADE(DIRT_DRY, DIRT_WET, 5),                      \
+        SHADE(DIRT_DRY, DIRT_WET, 6), SHADE(DIRT_DRY, DIRT_WET, 7), SHADE(DIRT_DRY, DIRT_WET, 8),                      \
+        SHADE(DIRT_DRY, DIRT_WET, 9), SHADE(DIRT_DRY, DIRT_WET, 10), SHADE(DIRT_DRY, DIRT_WET, 11),                    \
+        SHADE(DIRT_DRY, DIRT_WET, 12), SHADE(DIRT_DRY, DIRT_WET, 13),                                                  \
+        SHADE(DIRT_DRY, DIRT_WET, 15), /* variant 14: saturated */                                                     \
+        SHADE(DIRT_DRY, DIRT_WET, 15)  /* variant 15: unused - same as 14 */
 
 /* Ember ramp: dying char through glowing orange, redder and darker than
  * fire's yellow-white. See material_colours() for speckling. */
@@ -53,7 +53,7 @@
 #define WOOD_CHAR    0x2A0A00
 #define WOOD_GLOW    0xFF7A28
 
-#define WOOD_BURN(i) RGB565BE(LERP(WOOD_CHAR, WOOD_GLOW, ((i) - 1) * 15 / 14))
+#define WOOD_BURN(i) SHADE(WOOD_CHAR, WOOD_GLOW, ((i) - 1) * 15 / 14)
 
 #define WOOD_SHADES                                                                                                    \
     RGB565BE(WOOD_UNLIT), WOOD_BURN(1), WOOD_BURN(2), WOOD_BURN(3), WOOD_BURN(4), WOOD_BURN(5), WOOD_BURN(6),          \
@@ -153,12 +153,10 @@ _Static_assert(SAND_AMBIENT_HEAT > 0 && SAND_AMBIENT_HEAT < SAND_SHOCK_HEAT && S
 #define SAND_PALE 0xF2CE90
 
 #define SAND_DUNE_RAMP                                                                                                 \
-    RGB565BE(LERP(SAND_DUNE, SAND_PALE, 0)), RGB565BE(LERP(SAND_DUNE, SAND_PALE, 1)),                                  \
-        RGB565BE(LERP(SAND_DUNE, SAND_PALE, 2)), RGB565BE(LERP(SAND_DUNE, SAND_PALE, 4)),                              \
-        RGB565BE(LERP(SAND_DUNE, SAND_PALE, 5)), RGB565BE(LERP(SAND_DUNE, SAND_PALE, 6)),                              \
-        RGB565BE(LERP(SAND_DUNE, SAND_PALE, 8)), RGB565BE(LERP(SAND_DUNE, SAND_PALE, 9)),                              \
-        RGB565BE(LERP(SAND_DUNE, SAND_PALE, 10)), RGB565BE(LERP(SAND_DUNE, SAND_PALE, 12)),                            \
-        RGB565BE(LERP(SAND_DUNE, SAND_PALE, 13)), RGB565BE(LERP(SAND_DUNE, SAND_PALE, 15))
+    SHADE(SAND_DUNE, SAND_PALE, 0), SHADE(SAND_DUNE, SAND_PALE, 1), SHADE(SAND_DUNE, SAND_PALE, 2),                    \
+        SHADE(SAND_DUNE, SAND_PALE, 4), SHADE(SAND_DUNE, SAND_PALE, 5), SHADE(SAND_DUNE, SAND_PALE, 6),                \
+        SHADE(SAND_DUNE, SAND_PALE, 8), SHADE(SAND_DUNE, SAND_PALE, 9), SHADE(SAND_DUNE, SAND_PALE, 10),               \
+        SHADE(SAND_DUNE, SAND_PALE, 12), SHADE(SAND_DUNE, SAND_PALE, 13), SHADE(SAND_DUNE, SAND_PALE, 15)
 
 /* STARTING POINTS on a 16-step colour cycle, close in hue and lightness.
  * Shared with SAND_CULLET_RAMP's phase-0 colours below, so a build that
@@ -186,24 +184,21 @@ _Static_assert((CULLET_CYCLE_LEN & (CULLET_CYCLE_LEN - 1)) == 0,
 _Static_assert(CULLET_CYCLE_LEN % SAND_CULLET_SHADES == 0,
                "each cullet shade needs to land on an exact quarter-turn of the cycle");
 
-#define CULLET_PALE(lo, hi, t) RGB565BE(LERP(lo, hi, t))
-
 static const gfx_color_t cullet_cycle[CULLET_CYCLE_LEN] = {
-    CULLET_PALE(CULLET_CYCLE_A, CULLET_CYCLE_B, 0), CULLET_PALE(CULLET_CYCLE_A, CULLET_CYCLE_B, 4),
-    CULLET_PALE(CULLET_CYCLE_A, CULLET_CYCLE_B, 8), CULLET_PALE(CULLET_CYCLE_A, CULLET_CYCLE_B, 12),
-    CULLET_PALE(CULLET_CYCLE_B, CULLET_CYCLE_C, 0), CULLET_PALE(CULLET_CYCLE_B, CULLET_CYCLE_C, 4),
-    CULLET_PALE(CULLET_CYCLE_B, CULLET_CYCLE_C, 8), CULLET_PALE(CULLET_CYCLE_B, CULLET_CYCLE_C, 12),
-    CULLET_PALE(CULLET_CYCLE_C, CULLET_CYCLE_D, 0), CULLET_PALE(CULLET_CYCLE_C, CULLET_CYCLE_D, 4),
-    CULLET_PALE(CULLET_CYCLE_C, CULLET_CYCLE_D, 8), CULLET_PALE(CULLET_CYCLE_C, CULLET_CYCLE_D, 12),
-    CULLET_PALE(CULLET_CYCLE_D, CULLET_CYCLE_A, 0), CULLET_PALE(CULLET_CYCLE_D, CULLET_CYCLE_A, 4),
-    CULLET_PALE(CULLET_CYCLE_D, CULLET_CYCLE_A, 8), CULLET_PALE(CULLET_CYCLE_D, CULLET_CYCLE_A, 12),
+    SHADE(CULLET_CYCLE_A, CULLET_CYCLE_B, 0), SHADE(CULLET_CYCLE_A, CULLET_CYCLE_B, 4),
+    SHADE(CULLET_CYCLE_A, CULLET_CYCLE_B, 8), SHADE(CULLET_CYCLE_A, CULLET_CYCLE_B, 12),
+    SHADE(CULLET_CYCLE_B, CULLET_CYCLE_C, 0), SHADE(CULLET_CYCLE_B, CULLET_CYCLE_C, 4),
+    SHADE(CULLET_CYCLE_B, CULLET_CYCLE_C, 8), SHADE(CULLET_CYCLE_B, CULLET_CYCLE_C, 12),
+    SHADE(CULLET_CYCLE_C, CULLET_CYCLE_D, 0), SHADE(CULLET_CYCLE_C, CULLET_CYCLE_D, 4),
+    SHADE(CULLET_CYCLE_C, CULLET_CYCLE_D, 8), SHADE(CULLET_CYCLE_C, CULLET_CYCLE_D, 12),
+    SHADE(CULLET_CYCLE_D, CULLET_CYCLE_A, 0), SHADE(CULLET_CYCLE_D, CULLET_CYCLE_A, 4),
+    SHADE(CULLET_CYCLE_D, CULLET_CYCLE_A, 8), SHADE(CULLET_CYCLE_D, CULLET_CYCLE_A, 12),
 };
 
 #define SHADES(lo, hi)                                                                                                 \
-    RGB565BE(LERP(lo, hi, 0)), RGB565BE(LERP(lo, hi, 1)), RGB565BE(LERP(lo, hi, 2)), RGB565BE(LERP(lo, hi, 3)),        \
-        RGB565BE(LERP(lo, hi, 4)), RGB565BE(LERP(lo, hi, 5)), RGB565BE(LERP(lo, hi, 6)), RGB565BE(LERP(lo, hi, 7)),    \
-        RGB565BE(LERP(lo, hi, 8)), RGB565BE(LERP(lo, hi, 9)), RGB565BE(LERP(lo, hi, 10)), RGB565BE(LERP(lo, hi, 11)),  \
-        RGB565BE(LERP(lo, hi, 12)), RGB565BE(LERP(lo, hi, 13)), RGB565BE(LERP(lo, hi, 14)), RGB565BE(LERP(lo, hi, 15))
+    SHADE(lo, hi, 0), SHADE(lo, hi, 1), SHADE(lo, hi, 2), SHADE(lo, hi, 3), SHADE(lo, hi, 4), SHADE(lo, hi, 5),        \
+        SHADE(lo, hi, 6), SHADE(lo, hi, 7), SHADE(lo, hi, 8), SHADE(lo, hi, 9), SHADE(lo, hi, 10), SHADE(lo, hi, 11),  \
+        SHADE(lo, hi, 12), SHADE(lo, hi, 13), SHADE(lo, hi, 14), SHADE(lo, hi, 15)
 
 /* THE source of colour. One place to change. Rows in material_id_t order. */
 static const gfx_color_t palette[256] = {
@@ -426,7 +421,7 @@ static const gfx_color_t palette[256] = {
  * White stays, brighter. */
 #define GLASS_GRADIENT_HI(v) ((v) <= SAND_AMBIENT_HEAT ? GLASS_SHIMMER : 0xFFFFFF)
 
-#define GRAIN8(lo, hi, k)    RGB565BE(LERP((lo), (hi), (k) * 15 / 7))
+#define GRAIN8(lo, hi, k)    SHADE((lo), (hi), (k) * 15 / 7)
 
 #define GRAIN8_ROW(lo, hi)                                                                                             \
     {GRAIN8(lo, hi, 0), GRAIN8(lo, hi, 1), GRAIN8(lo, hi, 2), GRAIN8(lo, hi, 3),                                       \
@@ -518,7 +513,7 @@ static const gfx_color_t ice_grain[8] = GRAIN8_ROW(ICE_DARK, ICE_LIGHT);
 static const gfx_color_t metal_grain[8] = GRAIN8_ROW(METAL_DARK, METAL_LIGHT);
 
 /* HATCHED's only effect - lifted off METAL_LIGHT for uniform highlight. */
-static const gfx_color_t metal_shine = RGB565BE(LERP(METAL_LIGHT, 0xFFFFFF, 11));
+static const gfx_color_t metal_shine = SHADE(METAL_LIGHT, 0xFFFFFF, 11);
 /* One grain row per shade step, fresh first, see ROOT_OLD above. */
 static const gfx_color_t root_grain[ROOT_SHADES][8] = {
     GRAIN8_ROW(ROOT_STEP_0, ROOT_STEP_LIGHT_0),
