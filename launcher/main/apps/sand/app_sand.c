@@ -984,9 +984,7 @@ draw_mode_label(int gx, int gy) {
     const recti_t upright = ui_centered_rect(upright_w, span, tall, LABEL_MARGIN);
     const affine2x_t t = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
     const recti_t box = affine2x_map_recti(&t, upright);
-    int x = 0;
-    int y = 0;
-    ui_text_glyph0_origin(draw_font_ui(), box, turn, LABEL_SCALE, &x, &y);
+    const vec2i_t origin = ui_text_glyph0_origin(draw_font_ui(), box, turn, LABEL_SCALE);
 
     gfx_color_t ink;
     if (ui.mode == SAND_MODE_DETONATE) {
@@ -997,7 +995,7 @@ draw_mode_label(int gx, int gy) {
         ink = material_brush_color(sand_brushes[ui.brush].cell);
     }
 
-    draw_text_turned(x, y, text, ink, LABEL_SCALE, turn);
+    draw_text_turned(origin.x, origin.y, text, ink, LABEL_SCALE, turn);
 }
 
 /* APPLY EXACTLY ONCE PER REPAINT OF WHAT IS UNDERNEATH, never per frame.

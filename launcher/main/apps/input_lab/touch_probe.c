@@ -20,28 +20,25 @@ touch_probe_next(rng_t* rng, int screen_w, int screen_h, int side, int margin) {
     return t;
 }
 
-void
-touch_probe_offset(touch_probe_target_t target, vec2i_t point, int* dx, int* dy) {
-    *dx = point.x - (target.x + target.side / 2);
-    *dy = point.y - (target.y + target.side / 2);
+vec2i_t
+touch_probe_offset(touch_probe_target_t target, vec2i_t point) {
+    return (vec2i_t){point.x - (target.x + target.side / 2), point.y - (target.y + target.side / 2)};
 }
 
 bool
 touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, vec2i_t point) {
-    int dx;
-    int dy;
-    touch_probe_offset(target, point, &dx, &dy);
+    const vec2i_t offset = touch_probe_offset(target, point);
     const bool hit = point.x >= target.x && point.x < target.x + target.side && point.y >= target.y
                      && point.y < target.y + target.side;
 
     stats->taps++;
     stats->hits += hit;
-    stats->sum_dx += dx;
-    stats->sum_dy += dy;
-    stats->sum_dx2 += (int64_t)dx * dx;
-    stats->sum_dy2 += (int64_t)dy * dy;
-    if ((dx * dx) + (dy * dy) > stats->worst_dist2) {
-        stats->worst_dist2 = (dx * dx) + (dy * dy);
+    stats->sum_dx += offset.x;
+    stats->sum_dy += offset.y;
+    stats->sum_dx2 += (int64_t)offset.x * offset.x;
+    stats->sum_dy2 += (int64_t)offset.y * offset.y;
+    if ((offset.x * offset.x) + (offset.y * offset.y) > stats->worst_dist2) {
+        stats->worst_dist2 = (offset.x * offset.x) + (offset.y * offset.y);
     }
     return hit;
 }
@@ -110,8 +107,8 @@ touch_probe_shuffle(rng_t* rng, int* order, int n) {
 
 #define SETTLE_MAX 64
 
-void
-touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms, int* x, int* y) {
+vec2i_t
+touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms) {
     int32_t xs[SETTLE_MAX];
     int32_t ys[SETTLE_MAX];
     int count = 0;
@@ -127,12 +124,9 @@ touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int
         }
     }
     if (count == 0) {
-        *x = samples[last].x;
-        *y = samples[last].y;
-        return;
+        return (vec2i_t){samples[last].x, samples[last].y};
     }
-    *x = (int)statsi_median(xs, (size_t)count);
-    *y = (int)statsi_median(ys, (size_t)count);
+    return (vec2i_t){(int)statsi_median(xs, (size_t)count), (int)statsi_median(ys, (size_t)count)};
 }
 
 static void

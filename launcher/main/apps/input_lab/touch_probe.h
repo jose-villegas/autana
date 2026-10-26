@@ -37,7 +37,7 @@ bool touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target,
 
 /* Offset from the target's centre to the tap, in screen pixels: positive
  * dx is right of it, positive dy is below it. */
-void touch_probe_offset(touch_probe_target_t target, vec2i_t point, int* dx, int* dy);
+vec2i_t touch_probe_offset(touch_probe_target_t target, vec2i_t point);
 
 /* Target `index` of a `cols` x `rows` grid spanning the same area
  * touch_probe_next() draws from, corner to corner, row by row. */
@@ -53,7 +53,7 @@ typedef struct {
 
 /* Where a touch settled: the per-axis median of the samples from `from_ms`
  * to `to_ms`, or the last sample before `to_ms` when none fall inside. */
-void touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms, int* x, int* y);
+vec2i_t touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms);
 
 #define TOUCH_PROBE_SAMPLES_MAX 128
 
