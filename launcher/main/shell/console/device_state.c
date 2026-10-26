@@ -1,7 +1,7 @@
 /*
  * Read a board snapshot for the console screenshot state.
  */
-#include "console/capture/device_state.h"
+#include "shell/console/device_state.h"
 
 #include "sdkconfig.h"
 

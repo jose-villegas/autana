@@ -1,5 +1,5 @@
 /* Development playback and inspection use the same queue as applications. */
-#include "console/verbs/console_sound.h"
+#include "sound/console/console_sound.h"
 #include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
@@ -12,10 +12,10 @@
 #include "audio/audio_out_device.h"
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_sound_parse.h"
-#include "console/verbs/console_sound_views.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "sound/console/console_sound_parse.h"
+#include "sound/console/console_sound_views.h"
 #include "sound/sound_engine.h"
 
 #define CONSOLE_SOUND_REPLY_MAX 128
