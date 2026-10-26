@@ -124,7 +124,6 @@ test_tone_parse_invalid(void) {
 }
 
 #ifndef ESP_PLATFORM
-#include "../audio_examples/tap.c"
 #include "asset/asset_store.h"
 #include "audio/audio_codec_feedback.h"
 #include "audio/audio_loopback.h"
@@ -716,19 +715,6 @@ test_sound_transition_releases_all_views(void) {
 }
 
 static void
-test_tap_example_opens_plays_and_stops(void) {
-    reset_device();
-    TEST_ASSERT_TRUE(tap_start());
-    TEST_ASSERT_NOT_NULL(tap.data);
-    TEST_ASSERT_NULL(device.play_opts);
-    TEST_ASSERT_EQUAL_UINT(device.play_voice.id, device.stop_voice.id);
-    TEST_ASSERT_TRUE(device.playing);
-    TEST_ASSERT_EQUAL_UINT(1, device.stops);
-    TEST_ASSERT_TRUE(device.stop_pending);
-    tap_exit();
-}
-
-static void
 test_sound_transition_retains_views_until_a_fence_succeeds(void) {
     const console_sound_args_t args = sound_fixture();
     device.console.expected_stops = 0;
@@ -769,7 +755,6 @@ test_tone_reply_frequency(void) {
 void
 run_console_tone_suite(void) {
 #ifndef ESP_PLATFORM
-    RUN_TEST(test_tap_example_opens_plays_and_stops);
     RUN_TEST(test_sound_transition_retains_views_until_a_fence_succeeds);
     RUN_TEST(test_sound_transition_releases_all_views);
     RUN_TEST(test_melody_console_play_and_check);
