@@ -16,6 +16,11 @@
 #define POSITION_SCALE 8
 #define OFFSET_X       2.0F
 #define OFFSET_Y       1.0F
+/* This suite's lens shift, in picture short sides, and a size to refit to. */
+#define SHIFT_RIGHT    0.2F
+#define SHIFT_UP       -0.15F
+#define FIT_WIDTH      40
+#define FIT_HEIGHT     30
 
 static transformf_t
 fixture(void) {
@@ -90,6 +95,43 @@ test_lens_fits_the_shorter_side(void) {
     }
 }
 
+/* The point off the axis that a shifted lens frames: at depth AHEAD_Z, as far
+ * against the shift as the shift moves the optical centre. */
+static vec3f_t
+framed_point(const transformf_t* pose, const render_view_t* view) {
+    const vec3f_t right = quatf_rotate(pose->rotation, (vec3f_t){1.0F, 0.0F, 0.0F});
+    const vec3f_t up = quatf_rotate(pose->rotation, (vec3f_t){0.0F, 1.0F, 0.0F});
+    const float shorter = (float)(WIDTH < HEIGHT ? WIDTH : HEIGHT);
+    const float per_short_side = shorter * AHEAD_Z / view->lens.fx;
+    vec3f_t p = vec3f_add(view->position, vec3f_scale(view->forward, AHEAD_Z));
+    p = vec3f_sub(p, vec3f_scale(right, SHIFT_RIGHT * per_short_side));
+    return vec3f_sub(p, vec3f_scale(up, SHIFT_UP * per_short_side));
+}
+
+/* A window: a shifted lens puts a point off its axis at the picture's
+ * middle, whichever way the picture is turned, and keeps it there at
+ * another render size. */
+static void
+test_a_shifted_lens_frames_a_point_off_its_axis(void) {
+    const transformf_t pose = fixture();
+    for (int quarter = 0; quarter < 4; quarter++) {
+        render_view_t view = view_of(&pose, quarter);
+        render_view_set_shift(&view, (vec2f_t){SHIFT_RIGHT, SHIFT_UP});
+        r3d_lens_t lens;
+        r3d_lens_init(&lens, &view, 1);
+        const vec3f_t point = framed_point(&pose, &view);
+        vec2f_t screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, point));
+        TEST_ASSERT_FLOAT_WITHIN(1e-3F, 0.5F * (float)view.viewport.width, screen.x);
+        TEST_ASSERT_FLOAT_WITHIN(1e-3F, 0.5F * (float)view.viewport.height, screen.y);
+        const int fit_w = view.viewport.width == WIDTH ? FIT_WIDTH : FIT_HEIGHT;
+        const int fit_h = view.viewport.width == WIDTH ? FIT_HEIGHT : FIT_WIDTH;
+        r3d_lens_fit(&lens, fit_w, fit_h);
+        screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, point));
+        TEST_ASSERT_FLOAT_WITHIN(1e-3F, 0.5F * (float)fit_w, screen.x);
+        TEST_ASSERT_FLOAT_WITHIN(1e-3F, 0.5F * (float)fit_h, screen.y);
+    }
+}
+
 static void
 test_point_straight_ahead_projects_to_center(void) {
     const transformf_t pose = fixture();
@@ -152,6 +194,7 @@ run_render_view_suite(void) {
     RUN_TEST(test_quarter_turns_follow_viewport_axes);
     RUN_TEST(test_lens_fits_the_shorter_side);
     RUN_TEST(test_point_straight_ahead_projects_to_center);
+    RUN_TEST(test_a_shifted_lens_frames_a_point_off_its_axis);
     RUN_TEST(test_off_axis_lens_projection_and_anisotropic_fit);
     RUN_TEST(test_pose_roll_rotates_the_picture);
 }

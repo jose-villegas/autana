@@ -7,12 +7,12 @@ lives and how a frame gets its view.
 | Part | Holds | Lives in |
 |---|---|---|
 | Pose | position and rotation, roll included; scale is ignored | the camera entity's transform (`scene->locals[entity]`) |
-| Lens | `half_fov_short_tan`, `near_z`, `present`, `small_fill` | `scene->cameras[c].lens`, beside the entity index it belongs to |
+| Lens | `half_fov_short_tan`, `near_z`, `present`, `small_fill`, `shift` | `scene->cameras[c].lens`, beside the entity index it belongs to |
 
 ```mermaid
 flowchart LR
     E["camera entity<br/>transform"] -->|"pose"| V["camera_view()"]
-    L["camera_t lens"] -->|"fov, near, present, small fill"| V
+    L["camera_t lens"] -->|"fov, near, present, small fill, shift"| V
     P["viewport"] --> V
     V --> R["render_view_t"]
 ```
@@ -22,11 +22,22 @@ flowchart LR
 `camera_view(camera, pose, viewport)`
 ([`camera.c:5`](../../launcher/main/scene/camera/camera.c#L5)) builds the frame's `render_view_t`
 from the pose, field of view and near distance, then copies the lens's `present` and
-`small_fill` onto it. `scene_camera_lens()` reads a camera by name; `NULL` selects the first.
+`small_fill` onto it. `scene_camera_lens()` reads a camera by its name's `name_hash()`; `SCENE_CAMERA_FIRST` selects the first.
 
 The field of view is stored as the tangent of half the *shorter* picture side
 (`half_fov_short_tan`). `render_view_refit()` reprojects a retained pose through a new
 viewport.
+
+### Lens shift
+
+`scene_camera_set_shift()` moves the optical centre off the picture's middle: an
+off-axis frustum, the camera's *lens shift*. The shift runs along the camera's right
+and up, in picture short sides, so it holds through quarter turns and render sizes.
+
+| Use | How |
+|---|---|
+| A window onto a fixed rectangle | move the eye across the rectangle's plane and shift by the eye's offset over the rectangle's width: the rectangle stays framed while what lies behind it slides |
+| Where it applies | `render_view_set_shift()` places `lens.cx`, `lens.cy`; `r3d_lens_fit()` scales them with the picture, so a resolution step keeps the shift |
 
 ## Which lens fields animate
 
