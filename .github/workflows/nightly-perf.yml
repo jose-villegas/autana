@@ -106,17 +106,12 @@ jobs:
           mkdir -p "$data" "$out"
           echo "PERF_DATA=$(cygpath -w "$data")" >> "$GITHUB_ENV"
           echo "PERF_OUT=$(cygpath -w "$out")" >> "$GITHUB_ENV"
-          git init "$data"
-          git -C "$data" remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
           auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          if git -c "http.extraheader=$auth" -C "$data" ls-remote --exit-code origin refs/heads/perf-data; then
-            git -c "http.extraheader=$auth" -C "$data" fetch origin perf-data
-            git -C "$data" checkout -b perf-data FETCH_HEAD
-          else
-            status=$?
-            [ "$status" -eq 2 ] || exit "$status"
-            git -C "$data" checkout --orphan perf-data
-          fi
+          # perf_index.py owns the store branch: checked out from origin, or started empty.
+          # The token joins the job's git settings as one more entry, keeping hooks and LFS off.
+          n=$GIT_CONFIG_COUNT
+          env "GIT_CONFIG_COUNT=$((n + 1))" "GIT_CONFIG_KEY_$n=http.extraheader" "GIT_CONFIG_VALUE_$n=$auth" \
+            "$PY" launcher/tools/perf/perf_index.py store --path "$data"
           args=()
           [ -z "$FROM_SHA" ] || args+=(--from "$FROM_SHA")
           [ -z "$MAX_STEPS" ] || args+=(--max-steps "$MAX_STEPS")
@@ -170,17 +165,31 @@ jobs:
 
       - name: Publish night manifests and LNT reports
         if: always() && env.PERF_DATA != ''
+        env:
+          # This machine's short name in the parsed capture lines; never the runner's hostname.
+          PERF_HOST: ${{ vars.PERF_HOST }}
         run: |
           data=$(cygpath -u "$PERF_DATA")
           [ -d "$data/.git" ] || exit 0
-          [ -d "$data/scoped" ] || exit 0
+          # One parsed line per capture (perf_index.py); the raw logs stay in the artifact.
+          records=()
+          for folder in .records/device "$(cygpath -u "$PERF_OUT")"/*/device; do
+            [ -f "$folder/index.jsonl" ] && records+=(--records "$folder")
+          done
+          if [ ${#records[@]} -gt 0 ]; then
+            PY=$(. scripts/lib/python.sh && find_python)
+            "$PY" launcher/tools/perf/perf_index.py sync --host "${PERF_HOST:-nightly}" --store "$data" \
+              --write-only "${records[@]}" || echo "::warning::perf_index.py sync failed; night manifests still publish"
+          fi
           git -C "$data" config user.name github-actions[bot]
           git -C "$data" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -C "$data" add scoped
+          for part in scoped captures; do
+            [ -d "$data/$part" ] && git -C "$data" add "$part"
+          done
           if ! git -C "$data" diff --cached --quiet; then
             git -C "$data" commit -m 'perf: record nightly scoped chains'
             auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-            git -c "http.extraheader=$auth" -C "$data" push origin HEAD:perf-data
+            git -c "http.extraheader=$auth" -C "$data" push origin HEAD
           fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
