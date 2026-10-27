@@ -132,6 +132,8 @@ $TEST_DIR/pack_reads.c
 $TEST_DIR/job_calls.c
 $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
+$MAIN_DIR/haptics/haptics.c
+$MAIN_DIR/haptics/console/console_haptic.c
 $MAIN_DIR/sound/sound_mixer.c
 $MAIN_DIR/power/power_decode.c
 $MAIN_DIR/power/power_cache.c

@@ -337,7 +337,7 @@ def pmu_owner(root, path, text):
 
 LAYER_BANDS = (
     ("system", ("apps", "shell", "boot selftest", "app")),
-    ("engine", ("ui scene", "render", "draw anim sound", "asset")),
+    ("engine", ("ui scene haptics", "render", "draw anim sound", "asset")),
     ("platform", ("input audio", "power", "display", "gfx", "services", "profile", "console", "core", "board",
                   "build")),
 )

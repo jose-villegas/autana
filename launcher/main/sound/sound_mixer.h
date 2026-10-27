@@ -7,7 +7,7 @@
 #include "audio/audio_tone.h"
 #include "sound/sound_play.h"
 
-#define SOUND_BUS_BUILTIN_COUNT     3
+#define SOUND_BUS_BUILTIN_COUNT     4
 #define SOUND_BUS_NAME_MAX          24
 #define SOUND_APP_GENERATION_NONE   0u
 #define SOUND_APP_GENERATION_ENGINE 1u
@@ -22,6 +22,7 @@
 #define SOUND_GAIN_FACTOR_SCALE     (SOUND_GAIN_MAX_PCT * SOUND_GAIN_MAX_PCT)
 
 typedef enum {
+    SOUND_COMMAND_WARM_AMP,
     SOUND_COMMAND_CAPTURE_PARK,
     SOUND_COMMAND_PLAY,
     SOUND_COMMAND_STOP,
@@ -146,6 +147,7 @@ typedef struct {
     sound_amp_state_t amp;
     uint64_t amp_changed_ms;
     uint64_t last_active_ms;
+    bool warm_requested;
     uint32_t declick_frames;
     int32_t residual;
 } sound_mixer_t;

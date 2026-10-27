@@ -90,7 +90,7 @@ void
 sound_control_init(sound_control_t* control, bool ready) {
     *control = (sound_control_t){
         .ready = ready, .app_generation = SOUND_APP_GENERATION_ENGINE, .next_generation = SOUND_APP_GENERATION_FIRST};
-    static const char* const names[] = {"SYSTEM", "SFX", "MUSIC"};
+    static const char* const names[] = {"SYSTEM", "SFX", "MUSIC", "HAPTIC"};
     _Static_assert(sizeof names / sizeof names[0] == SOUND_BUS_BUILTIN_COUNT, "built-in bus names");
     for (int i = 0; i < SOUND_BUS_BUILTIN_COUNT; i++) {
         control->buses[i].used = true;
@@ -377,6 +377,10 @@ sound_mixer_apply(sound_mixer_t* mixer, const sound_command_t* command, uint32_t
         || (command->app_generation != SOUND_APP_GENERATION_ENGINE && command->app_generation != app_generation)) {
         return;
     }
+    if (command->kind == SOUND_COMMAND_WARM_AMP) {
+        mixer->warm_requested = true;
+        return;
+    }
     if (apply_bus_command(mixer, command)) {
         return;
     }
@@ -442,7 +446,8 @@ read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
 
 static bool AUDIO_IRAM_ATTR
 amp_ready(sound_mixer_t* mixer, uint64_t now_ms, uint32_t startup_ms) {
-    bool active = false;
+    bool active = mixer->warm_requested;
+    mixer->warm_requested = false;
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
         active |= mixer->voices[i].playing;
     }
