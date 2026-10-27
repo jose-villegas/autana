@@ -7,8 +7,12 @@ python=$venv/bin/python
 [ -x "$python" ] || python=$venv/Scripts/python
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 mkdir -p .records/device/pytest-logs
+# The self-test's capture cap, inside the 120-minute budget each caller gives this script
+# (board-ci.yml's timeout-minutes, scoped_chain.py's SELFTEST_ALLOWANCE_SECONDS); the rest
+# is the build, flash and console tests. autana's own default (50 minutes) is shorter than the suite.
+SELFTEST_MAX_SECONDS=$((100 * 60))
 selftest_status=0
-autana selftest | tee "${BOARD_CI_LOG:-$RUNNER_TEMP/board-ci-selftest.log}" || selftest_status=$?
+autana selftest "$SELFTEST_MAX_SECONDS" | tee "${BOARD_CI_LOG:-$RUNNER_TEMP/board-ci-selftest.log}" || selftest_status=$?
 console_status=0
 autana flash diag || console_status=$?
 if [ "$console_status" -eq 0 ]; then
