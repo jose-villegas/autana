@@ -115,14 +115,14 @@ gfx's own PSRAM that costs 82 KB while a full-framebuffer app runs.
 
 ## Indexed mode
 
-The app writes bytes into `gfx_indexed_image()`, row-major, `index_grid_w` per row,
+The app writes bytes into `gfx_indexed_image()`, an `IMAGE_INDEXED8` image `index_grid_w` wide,
 and marks the matching panel rectangle dirty; cell (cx, cy) covers `cell_size` x
 `cell_size` panel pixels. It presents with the same `gfx_present_begin()` /
 `gfx_present_wait()` as the default mode.
 
 | Call | Installs |
 |---|---|
-| `gfx_indexed_set_lut()` | the 256-entry index -> RGB565 table |
+| `gfx_indexed_set_palette()` | the 256-entry palette indices expand through |
 | `gfx_indexed_set_lut16()` | the (index, Bayer phase) table for dithered 16-colour mode |
 | `gfx_indexed_set_dither16()` | which of the two expands; both stay installed |
 | `gfx_indexed_set_dither()` | the spatial dither pattern for 16-colour mode |
