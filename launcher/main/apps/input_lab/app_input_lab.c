@@ -1034,7 +1034,7 @@ draw_motion(void) {
     const int top = HUD_TOP + ((MOTION_HUD_ROWS + 2) * HUD_LINE_H) + MOTION_MARGIN;
     const int bottom = screen_h - (2 * MOTION_MARGIN) - (2 * HUD_LINE_H);
     const int cx = screen_w / 2;
-    const int cy = screen_h / 2;
+    const int cy = (top + bottom) / 2;
     const int vertical_radius = mathi_min(cy - top, bottom - cy);
     const int radius = mathi_min(MOTION_RING_RADIUS, mathi_min(vertical_radius, cx - MOTION_MARGIN));
     const motion_ring_t ring = {cx, cy, radius,
