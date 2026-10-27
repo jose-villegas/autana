@@ -15,7 +15,24 @@
 #define MIC_RECORD_REG_COUNT         (MIC_RECORD_LAST_REG - MIC_RECORD_FIRST_REG + 1u)
 
 static bool
-record(int16_t* pcm, size_t count, uint8_t* flags, size_t settle) {
+apply_writes(console_mic_args_t* args, size_t pos, size_t block, unsigned* applied) {
+    for (unsigned i = 0; i < args->write_count; i++) {
+        console_mic_write_t* write = &args->writes[i];
+        const unsigned bit = 1u << i;
+        if (!(*applied & bit) && pos >= audio_out_samples(write->ms)) {
+            uint8_t value = write->value;
+            if (!audio_codec_register(write->reg, true, &value) || value != write->value) {
+                return false;
+            }
+            write->block = (uint32_t)block;
+            *applied |= bit;
+        }
+    }
+    return true;
+}
+
+static bool
+record(int16_t* pcm, size_t count, uint8_t* flags, size_t settle, console_mic_args_t* args) {
     int16_t discard[AUDIO_CODEC_BLOCK_SAMPLES];
     while (settle) {
         const size_t n = settle < AUDIO_CODEC_BLOCK_SAMPLES ? settle : AUDIO_CODEC_BLOCK_SAMPLES;
@@ -24,14 +41,16 @@ record(int16_t* pcm, size_t count, uint8_t* flags, size_t settle) {
         }
         settle -= n;
     }
+    unsigned applied = 0;
     for (size_t pos = 0, block = 0; pos < count; block++) {
         const size_t n = count - pos < AUDIO_CODEC_BLOCK_SAMPLES ? count - pos : AUDIO_CODEC_BLOCK_SAMPLES;
-        if (!audio_in_read(pcm + pos, n) || !audio_codec_register(MIC_RECORD_AUTOMUTE_REG, false, flags + block)) {
+        if (!apply_writes(args, pos, block, &applied) || !audio_in_read(pcm + pos, n)
+            || !audio_codec_register(MIC_RECORD_AUTOMUTE_REG, false, flags + block)) {
             return false;
         }
         pos += n;
     }
-    return true;
+    return applied == (1u << args->write_count) - 1u;
 }
 
 /* Appends the automute flag as [first_block, run_length] runs. */
@@ -55,7 +74,8 @@ append_automute_runs(char* json, size_t json_bytes, size_t used, const uint8_t* 
 }
 
 static bool
-format_state(char* json, size_t json_bytes, const uint8_t* flags, size_t blocks, size_t count) {
+format_state(char* json, size_t json_bytes, const uint8_t* flags, size_t blocks, size_t count,
+             const console_mic_args_t* args) {
     size_t used = (size_t)snprintf(json, json_bytes, "{\"rate\":%u,\"samples\":%u,\"automute\":[",
                                    AUDIO_OUT_SAMPLE_RATE_HZ, (unsigned)count);
     used = append_automute_runs(json, json_bytes, used, flags, blocks);
@@ -68,7 +88,13 @@ format_state(char* json, size_t json_bytes, const uint8_t* flags, size_t blocks,
         used += (size_t)snprintf(json + used, json_bytes - used, "%s\"0x%02X\":%u",
                                  reg == MIC_RECORD_FIRST_REG ? "" : ",", reg, value);
     }
-    (void)snprintf(json + used, json_bytes - used, "}}");
+    used += (size_t)snprintf(json + used, json_bytes - used, "},\"writes\":[");
+    for (unsigned i = 0; i < args->write_count; i++) {
+        const console_mic_write_t* write = &args->writes[i];
+        used += (size_t)snprintf(json + used, json_bytes - used, "%s[%u,%u,%u]", i ? "," : "", (unsigned)write->block,
+                                 write->reg, write->value);
+    }
+    (void)snprintf(json + used, json_bytes - used, "]}");
     return true;
 }
 
@@ -90,21 +116,21 @@ static void
 console_verb_mic(const char* args, console_reply_fn reply) {
     console_mic_args_t parsed;
     if (!console_mic_parse(args, &parsed)) {
-        reply(MIC_RECORD_ERROR "usage: mic record <ms> [settle_ms]");
+        reply(MIC_RECORD_ERROR "usage: mic record <ms> [settle_ms] [at <ms> <reg> <value>]...");
         return;
     }
     const size_t count = audio_out_samples(parsed.ms);
     const size_t blocks = (count + AUDIO_CODEC_BLOCK_SAMPLES - 1u) / AUDIO_CODEC_BLOCK_SAMPLES;
-    const size_t json_bytes =
-        MIC_RECORD_JSON_HEADER_BYTES + (blocks + MIC_RECORD_REG_COUNT) * MIC_RECORD_JSON_ENTRY_BYTES;
+    const size_t json_bytes = MIC_RECORD_JSON_HEADER_BYTES
+                              + (blocks + MIC_RECORD_REG_COUNT + MIC_RECORD_WRITES_MAX) * MIC_RECORD_JSON_ENTRY_BYTES;
     const size_t line_bytes = (size_t)console_base64_encoded_len(AUDIO_CODEC_BLOCK_SAMPLES * sizeof(int16_t)) + 1u;
     char* line = memory_alloc(line_bytes, MEMORY_PSRAM);
     int16_t* pcm = memory_alloc(count * sizeof *pcm, MEMORY_PSRAM);
     uint8_t* flags = memory_alloc(blocks, MEMORY_PSRAM);
     char* json = memory_alloc(json_bytes, MEMORY_PSRAM);
     const bool opened = pcm && flags && json && line && sound_capture_open();
-    bool ok = opened && record(pcm, count, flags, audio_out_samples(parsed.settle_ms))
-              && format_state(json, json_bytes, flags, blocks, count);
+    bool ok = opened && record(pcm, count, flags, audio_out_samples(parsed.settle_ms), &parsed)
+              && format_state(json, json_bytes, flags, blocks, count, &parsed);
     if (ok) {
         emit_capture(line, line_bytes, pcm, count, json);
     }
@@ -121,4 +147,4 @@ console_verb_mic(const char* args, console_reply_fn reply) {
     memory_free(flags);
     memory_free(pcm);
 }
-CONSOLE_VERB(mic, sizeof "record 10000 10000" - 1, console_verb_mic)
+CONSOLE_VERB_LONG(mic, MIC_RECORD_ARGS_MAX, MIC_RECORD_LINE_MAX, console_verb_mic)

@@ -2,6 +2,9 @@
 #pragma once
 #include <math.h>
 #include <stdint.h>
+#define AUDIO_CODEC_EQ_CSM_REG         0x00
+#define AUDIO_CODEC_EQ_CSM_ON          0x80u
+#define AUDIO_CODEC_EQ_CSM_RESETS      0x1Fu
 #define AUDIO_CODEC_EQ_ADC_RAM_REG     0x16
 #define AUDIO_CODEC_EQ_ADC_RAMCLR      0x08u
 #define AUDIO_CODEC_EQ_DAC_RAM_REG     0x31

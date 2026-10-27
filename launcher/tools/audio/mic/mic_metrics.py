@@ -25,6 +25,11 @@ P56_MARGIN_DB = 15.9
 P56_SMOOTH_S = 0.03
 P56_HANGOVER_S = 0.2
 P56_THRESHOLD_COUNT = 15
+SETTLE_TOLERANCE_DB = 1.0
+SETTLE_FRAME_MS = 5
+SETTLE_WINDOW_MS = 200
+ACTIVE_FRAME_THRESHOLD_DB = -50.0
+SECOND_DIFFERENCE_ORDER = 2
 
 
 def _mono(x):
@@ -75,12 +80,21 @@ def low_band_db(x, cutoff, rate=SAMPLE_RATE_HZ):
     return band_level_db(x, 0, cutoff, rate)
 
 
-def active_level_db(x, rate=SAMPLE_RATE_HZ):
-    """P.56-style two-pole envelope, hangover and threshold-margin interpolation.
+def active_level_db(x, rate=SAMPLE_RATE_HZ, band=None):
+    """Active-frame band level, or unbanded P.56-style envelope and hangover estimate.
 
     This estimate is not a conformance implementation of ITU-T P.56.
     """
     x = _mono(x)
+    if band is not None:
+        lo, hi = band
+        if not 0 < lo < hi < rate / 2:
+            raise ValueError('active band must lie inside Nyquist')
+        filtered = signal.sosfilt(signal.butter(FILTER_ORDER, band, btype='bandpass', fs=rate, output='sos'), x)
+        width = max(1, round(rate * FRAME_MS / MILLISECONDS))
+        frames = [filtered[start:start + width] for start in range(0, len(x), width)]
+        active = [frame for frame in frames if _db(np.mean(frame * frame)) >= ACTIVE_FRAME_THRESHOLD_DB]
+        return _db(np.mean(np.concatenate(active) ** 2)) if active else DB_FLOOR
     pole = math.exp(-1 / (rate * P56_SMOOTH_S))
     envelope = signal.lfilter([1 - pole], [1, -pole], np.abs(x))
     envelope = signal.lfilter([1 - pole], [1, -pole], envelope)
@@ -149,6 +163,41 @@ def transient_peak_db(x, at_s, window_ms=DEFAULT_TRANSIENT_MS, rate=SAMPLE_RATE_
     if not len(segment):
         raise ValueError('transient window outside recording')
     return _db(np.max(segment * segment))
+
+
+def click_excess_db(samples, rate, at_samples, window_ms=DEFAULT_TRANSIENT_MS):
+    """Second-difference peak around each step minus its preceding steady peak."""
+    x = _mono(samples)
+    if rate <= 0 or window_ms <= 0:
+        raise ValueError('positive rate and window required')
+    radius = max(1, round(window_ms * rate / (2 * MILLISECONDS)))
+    difference = np.abs(np.diff(x, n=SECOND_DIFFERENCE_ORDER, prepend=[x[0], x[0]]))
+    result = []
+    for at in at_samples:
+        if not 2 * radius <= at < len(x) - radius:
+            raise ValueError('step needs a preceding steady window and a full click window')
+        peak = np.max(difference[at - radius:at + radius])
+        steady = np.max(difference[at - 2 * radius:at - radius])
+        result.append(_db(peak * peak) - _db(steady * steady))
+    return result
+
+
+def settle_ms(samples, rate, at_sample, end_sample=None):
+    """First frame within one dB of the final RMS level and staying there; None if unresolved."""
+    x = _mono(samples)
+    if rate <= 0 or not 0 <= at_sample < len(x):
+        raise ValueError('invalid rate or step position')
+    end = min(len(x), len(x) if end_sample is None else end_sample)
+    width = max(1, round(SETTLE_FRAME_MS * rate / MILLISECONDS))
+    frames = [x[start:start + width] for start in range(at_sample, end - width + 1, width)]
+    if len(frames) < 2:
+        return None
+    levels = np.array([_db(np.mean(frame * frame)) for frame in frames])
+    tail_frames = max(1, round(SETTLE_WINDOW_MS / SETTLE_FRAME_MS))
+    target = float(np.median(levels[-min(tail_frames, max(1, len(levels) // 2)):]))
+    outside = np.flatnonzero(np.abs(levels - target) > SETTLE_TOLERANCE_DB)
+    first = int(outside[-1] + 1) if len(outside) else 0
+    return first * width * MILLISECONDS / rate if first < len(levels) - 1 else None
 
 
 def main(argv=None):

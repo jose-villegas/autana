@@ -984,6 +984,11 @@ test_quarter_injection_matches_forward_mapping(void) {
 static void
 test_sound_arguments(void) {
     console_sound_args_t args;
+    TEST_ASSERT_TRUE(console_sound_parse("tone 1000 100", &args));
+    TEST_ASSERT_TRUE(console_sound_parse("tone 200", &args));
+    TEST_ASSERT_FALSE(console_sound_parse("tone 0", &args));
+    TEST_ASSERT_FALSE(console_sound_parse("tone 1000 101", &args));
+    TEST_ASSERT_FALSE(console_sound_parse("tone 1000 10 extra", &args));
     TEST_ASSERT_TRUE(console_sound_parse("play engine/tap loop 25", &args));
     TEST_ASSERT_EQUAL_STRING("tap", args.name);
     TEST_ASSERT_EQUAL_STRING(ASSET_ENGINE_PACK, args.pack);

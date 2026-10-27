@@ -1,12 +1,15 @@
 """Probe ADC/DAC EQ encoding and the microphone HPF code map.
 
 autana --wait 3600 lock run -- python launcher/tools/audio/mic/eq_probe_sweep.py --board <id>
+Playback: autana --wait 3600 lock run -- python launcher/tools/audio/mic/playback_dsp_capture.py --board <id>
 """
 import math
 from statistics import median
 from pathlib import Path
 import re
 import sys
+import argparse
+import time
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / 'launcher/tools/audio'))
@@ -21,6 +24,10 @@ from audio.mic.eq_design import (
 )
 
 HEADER = ROOT / 'launcher/main/audio/audio_codec_eq.h'
+CSM_REG, CSM_ON, CSM_RESETS = (read_define(HEADER, 'AUDIO_CODEC_EQ_CSM_' + name)
+                                for name in ('REG', 'ON', 'RESETS'))
+RESTART_WAIT_S = 0.005
+RESTART_HZ = (100, 1000, 4000)
 ADC_REGS = tuple(read_define(HEADER, 'AUDIO_CODEC_EQ_ADC_' + name + '_REG')
                  for name in ('B0', 'B1', 'B2', 'A1', 'A2'))
 DAC_REGS = tuple(read_define(HEADER, 'AUDIO_CODEC_EQ_DAC_' + name + '_REG') for name in ('B0', 'B1', 'A1'))
@@ -32,12 +39,13 @@ RAM_FIELDS = {owner: (read_define(HEADER, 'AUDIO_CODEC_EQ_' + owner.upper() + '_
                        read_define(HEADER, 'AUDIO_CODEC_EQ_' + owner.upper() + '_RAMCLR'))
               for owner in ('adc', 'dac')}
 COEFF_BYTES = read_define(HEADER, 'AUDIO_CODEC_EQ_BYTES')
-REGISTERS = tuple(sorted({read_define(HEADER, 'AUDIO_CODEC_EQ_ADC_HPF_REG'), ADC_CONTROL, DAC_CONTROL,
+REGISTERS = tuple(sorted({read_define(HEADER, 'AUDIO_CODEC_EQ_ADC_HPF_REG'), ADC_CONTROL, DAC_CONTROL, CSM_REG,
                           *(reg for reg, mask in RAM_FIELDS.values()),
                           *(reg + offset for reg in (*ADC_REGS, *DAC_REGS) for offset in range(COEFF_BYTES))}))
 TUNABLES = tuple(DEFAULTS)
 CAPTURE = ROOT / 'docs/audio/data/mic_eq_probe_capture.txt'
 SLOTS_CAPTURE = CAPTURE.with_name('mic_eq_slots_capture.txt')
+RESTART_CAPTURE = CAPTURE.with_name('mic_eq_restart_capture.txt')
 TAKE_NAME = 'mic_eq_probe_take.wav'
 DEFAULT_HZ = (50, 100, 150, 200, 400, 1000, 2000, 4000)
 DEFAULT_HPF_HZ = (50, 100, 200, 500, 1000)
@@ -63,12 +71,13 @@ def designs():
 
 def parser():
     result = capture_parser(__doc__, CAPTURE)
+    result.formatter_class = argparse.RawDescriptionHelpFormatter
     for name, default in (('hz', DEFAULT_HZ), ('hpf-hz', DEFAULT_HPF_HZ), ('codes', DEFAULT_CODES)):
         result.add_argument('--' + name, type=numbers, default=default)
     for name, default in (('volume', DEFAULT_VOLUME), ('runs', DEFAULT_RUNS),
                           ('internal-runs', DEFAULT_INTERNAL_RUNS), ('ms', DEFAULT_MS), ('take-ms', DEFAULT_TAKE_MS)):
         result.add_argument('--' + name, type=int, default=default)
-    result.add_argument('--mode', choices=('designs', 'slots'), default='designs')
+    result.add_argument('--mode', choices=('designs', 'slots', 'restart'), default='designs')
     result.add_argument('--take', type=Path, help='default: beside --out')
     return result
 
@@ -83,6 +92,16 @@ def codec(record, reg, value=None):
     if value is not None and actual != value:
         raise ValueError('codec write read-back mismatch')
     return actual
+
+
+def restart(record, saved):
+    reg00 = codec(record, CSM_REG)
+    values = ((reg00 & ~CSM_ON) | CSM_RESETS,
+              reg00 & ~(CSM_ON | CSM_RESETS), saved[CSM_REG] | CSM_ON)
+    for value in values:
+        codec(record, CSM_REG, value)
+        time.sleep(RESTART_WAIT_S)
+    record.note('restart', {'values': values})
 
 
 def program(record, saved, owner, coefficients):
@@ -130,14 +149,46 @@ def restore(record, saved):
                 codec(record, reg, saved[reg] | (ADC_BYPASS if reg == ADC_CONTROL else DAC_BYPASS))
             except Exception as error:
                 failures.append(error)
-    for reg in (*[r for r in REGISTERS if r not in (ADC_CONTROL, DAC_CONTROL)], ADC_CONTROL, DAC_CONTROL):
+    for reg in (*[r for r in REGISTERS if r not in (ADC_CONTROL, DAC_CONTROL, CSM_REG)], ADC_CONTROL, DAC_CONTROL, CSM_REG):
         if reg in saved:
             try:
                 codec(record, reg, saved[reg])
             except Exception as error:
                 failures.append(error)
+    if CSM_REG in saved:
+        try:
+            restart(record, saved)
+        except Exception as error:
+            failures.append(error)
     if failures:
         raise RuntimeError('EQ probe restore failed') from failures[0]
+
+
+def restart_designs(owner):
+    count = len(ADC_REGS if owner == 'adc' else DAC_REGS)
+    return {'unity': (1.0, *([0.0] * (count - 1))), 'zero': (0.0,) * count,
+            'half': designs()[owner]['half'], 'highpass': designs()[owner]['highpass']}
+
+
+def restart_capture(record, saved, args):
+    for owner, registers in (('adc', ADC_REGS), ('dac', DAC_REGS)):
+        program(record, saved, 'dac' if owner == 'adc' else 'adc', None)
+        record('tune', 'audio.drc', 0)
+        record.note('probe ' + owner + ' bypass', {})
+        program(record, saved, owner, None)
+        tones(record, args, RESTART_HZ)
+        if owner == 'dac':
+            tones(record, args, RESTART_HZ, internal=True)
+        for case, coefficients in restart_designs(owner).items():
+            record.note('probe ' + owner + ' ' + case, {})
+            program(record, saved, owner, coefficients)
+            restart(record, saved)
+            readback = {hex(reg + offset): codec(record, reg + offset)
+                        for reg in registers for offset in range(COEFF_BYTES)}
+            record.note('coefficients ' + owner + ' ' + case, readback)
+            tones(record, args, RESTART_HZ)
+            if owner == 'dac':
+                tones(record, args, RESTART_HZ, internal=True)
 
 
 def slot_capture(record, saved, args):
@@ -228,6 +279,9 @@ def capture(args):
             for name, value in dict(DEFAULTS, eq=0).items():
                 record('tune', 'mic.' + name, value)
             program(record, saved, 'dac', None)
+            if args.mode == 'restart':
+                restart_capture(record, saved, args)
+                return
             if args.mode == 'slots':
                 slot_capture(record, saved, args)
                 return
@@ -260,8 +314,8 @@ def capture(args):
 
 def main():
     args = parser().parse_args()
-    if args.mode == 'slots' and args.out == CAPTURE:
-        args.out = SLOTS_CAPTURE
+    if args.out == CAPTURE:
+        args.out = {'slots': SLOTS_CAPTURE, 'restart': RESTART_CAPTURE}.get(args.mode, CAPTURE)
     capture(args)
     print(f'EQ probe capture: {args.out}')
 

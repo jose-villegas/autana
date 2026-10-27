@@ -232,3 +232,39 @@ def decided_layout(data, owner):
     order_points = {int(match[2], 16): tones for (kind, case, path), tones in data.items()
                     if kind == owner and (match := order_case(case))}
     return eq_decide_layout(points, order_points, NUMERATOR_COEFFICIENTS[owner])
+
+
+RESTART_TOLERANCE_DB = 3.0
+RESTART_VERDICT_HZ = (1000, 4000)
+
+
+def restart_expected(owner, case, hz):
+    if case == 'zero':
+        return FEEDBACK_SILENCE_DB
+    if case == 'unity':
+        return 0.0
+    return float(response(owner, case, [hz])[0])
+
+
+def render_restart(path, records, caption, markdown, regenerate):
+    from audio.mic.eq_probe_sweep import restart_designs, RESTART_HZ
+    data = probe_data(records)
+    rows, verdicts = [], []
+    for owner in ('adc', 'dac'):
+        follows = True
+        for case in restart_designs(owner):
+            for path_name in (('acoustic', 'internal') if owner == 'dac' else ('acoustic',)):
+                points = data.get((owner, case, path_name), {})
+                if set(points) != set(RESTART_HZ):
+                    raise ValueError('restart capture needs every case, path and frequency')
+                for hz, measured in sorted(points.items()):
+                    expected = restart_expected(owner, case, hz)
+                    error = max(0.0, measured - expected) if case == 'zero' else measured - expected
+                    if hz in RESTART_VERDICT_HZ and (error > 0 if case == 'zero' else abs(error) > RESTART_TOLERANCE_DB):
+                        follows = False
+                    rows.append((owner, case, path_name, hz, number(measured),
+                                 ('<= ' if case == 'zero' else '') + number(expected), number(error)))
+        verdicts.append(owner.upper() + ': ' + ('follows' if follows else 'does not follow') + '.')
+    return (caption(path, regenerate, 'replies')
+            + markdown(['Owner', 'Case', 'Path', 'Hz', 'Measured minus bypass (dB)', 'Designed (dB)', 'Error (dB)'], rows)
+            + '\n' + '\n\n'.join(verdicts) + '\n')

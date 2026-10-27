@@ -39,3 +39,16 @@ class FrameTests(unittest.TestCase):
         with self.assertRaises(RuntimeError): mic.MicFrame().feed(mic.ERROR + 'capture failed')
 
 if __name__ == '__main__': unittest.main()
+
+class WriteTests(unittest.TestCase):
+    def test_scheduled_write_wire_and_bounds(self):
+        from unittest.mock import Mock
+        port = Mock()
+        port.read.return_value = (mic.BEGIN + '{"rate":22050,"samples":1}\n' + mic.DATA + 'AAA=\n' +
+                                  mic.STATE + '{"rate":22050,"samples":1,"writes":[[0,50,40]]}\n' + mic.END + '\n').encode()
+        _, state = mic.read_mic(port, 1000, at=[(0, 0x32, 40), (900, 0x32, 0)])
+        port.write.assert_called_once_with(b'mic record 1000 at 0 50 40 at 900 50 0\n')
+        self.assertEqual(state['writes'], [[0, 50, 40]])
+        for writes in ([(1000, 0, 0)], [(1001, 0, 0)], [(0, 256, 0)], [(0, 0, 256)], [(0, 0, 0)] * (mic.WRITES_MAX + 1)):
+            with self.assertRaises(ValueError):
+                mic.read_mic(port, 1000, at=writes)
