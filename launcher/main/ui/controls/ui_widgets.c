@@ -132,7 +132,7 @@ ui_icon_button_label_width(int button_w, bool has_icon, const ui_mu_theme_t* the
 
 /* The icon at the left and the label centred in `label_w` after it. */
 static void
-draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* label, int label_len, int label_w,
+draw_icon_and_label(mu_Context* ctx, mu_Rect r, const image_t* icon, const char* label, int label_len, int label_w,
                     mu_Color ink, const ui_mu_theme_t* theme) {
     if (icon != NULL) {
         const int side = theme->icon_side;
@@ -294,7 +294,7 @@ ui_widgets_reset(void) {
 
 static int
 draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const char* const* names,
-                   const draw_image_t* const* icons, int count, int selected, const ui_mu_theme_t* theme) {
+                   const image_t* const* icons, int count, int selected, const ui_mu_theme_t* theme) {
     const mu_Rect list = ui_dropdown_list_rect(anchor, count, anchor.h, ui_height(), UI_MARGIN);
     mu_Container* cnt = find_list(ctx, id);
     cnt->rect = list;
@@ -368,14 +368,14 @@ close_if_abandoned(mu_Context* ctx, mu_Container* list) {
 }
 
 int
-ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const char* const* names, const draw_image_t* const* icons,
+ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const char* const* names, const image_t* const* icons,
                int count, int selected, const ui_mu_theme_t* theme) {
     return ui_dropdown_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), id, r, names, icons, count, selected, true, theme);
 }
 
 int
 ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char* const* names,
-               const draw_image_t* const* icons, int count, int selected, bool enabled, const ui_mu_theme_t* theme) {
+               const image_t* const* icons, int count, int selected, bool enabled, const ui_mu_theme_t* theme) {
     assert(count > 0);
     if (selected < 0 || selected >= count) {
         selected = 0;
