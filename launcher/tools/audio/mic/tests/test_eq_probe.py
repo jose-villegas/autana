@@ -53,7 +53,7 @@ class EqProbeTest(unittest.TestCase):
         from audio_doc_tables import read_capture
         from audio.mic.mic_eq_probe_figures import render
         import audio_doc_tables as audio
-        from audio.mic.eq_design import EQ_SCALE, SLOT_HZ, SCALE_VALUES
+        from audio.mic.eq_design import SLOT_HZ, SCALE_VALUES
         layout = {'adc': {0x1D: ('feedback', 2, -1), 0x21: ('numerator', 0, 1),
                           0x25: ('feedback', 1, 1), 0x29: ('numerator', 2, 1), 0x2D: ('numerator', 1, 1)},
                   'dac': {0x38: ('feedback', 1, -1), 0x3C: ('numerator', 0, 1), 0x40: ('numerator', 1, 1)}}
@@ -66,12 +66,11 @@ class EqProbeTest(unittest.TestCase):
             for owner, control, mask in (('adc', sweep.ADC_CONTROL, sweep.ADC_BYPASS),
                                           ('dac', sweep.DAC_CONTROL, sweep.DAC_BYPASS)):
                 if not registers[control] & mask:
-                    from audio.mic.eq_design import EQ_MASK, SAMPLE_RATE_HZ
+                    from audio.mic.eq_design import eq_decode, SAMPLE_RATE_HZ
                     sums = {'numerator': 0j, 'feedback': 1 + 0j}
                     for reg, (role, delay, sign) in layout[owner].items():
                         encoded = int.from_bytes(bytes(registers[reg + i] for i in range(sweep.COEFF_BYTES)), 'big')
-                        period = EQ_MASK + 1
-                        value = (encoded - period if encoded >= period // 2 else encoded) / EQ_SCALE
+                        value = eq_decode(encoded)
                         phase = cmath.exp(-2j * math.pi * int(words[1]) * delay / SAMPLE_RATE_HZ)
                         sums[role] += value * sign * phase
                     gain = abs(sums['numerator'] / sums['feedback'])
@@ -97,7 +96,7 @@ class EqProbeTest(unittest.TestCase):
                 self.assertEqual(len(scale), len(SCALE_VALUES))
                 scale_fit = tables.scale_result(data, owner)
                 self.assertAlmostEqual(scale_fit[1], 20 * math.log10(2))
-                self.assertAlmostEqual(scale_fit[3], math.log2(EQ_SCALE))
+                self.assertAlmostEqual(scale_fit[2], 0)
                 self.assertTrue(all(set(tones) == {sweep.SCALE_HZ} for case, tones in scale))
             self.assertTrue(any(command[:2] == ['probe', 'adc'] and command[2].startswith('delay-')
                                 for command, reply in records))
