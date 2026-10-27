@@ -160,11 +160,26 @@ class Expand565Test(unittest.TestCase):
 
 
 class ReferenceSheetTest(unittest.TestCase):
-    def test_a_sheet_is_reference_render_heatmap_and_edges_over_a_colour_scale(self):
+    def test_a_sheet_is_reference_render_and_heatmap_over_a_colour_scale(self):
         reference = image(STEP)
-        sheet = render_compare.reference_sheet([("a", image(STEP), reference)], "render", tile=1.0)
-        self.assertEqual(sheet.width, 4 * 8)
+        sheet = render_compare.reference_sheet([("a", [image(STEP)], reference)], ["render"], tile=1.0)
+        self.assertEqual(sheet.width, 3 * 8)
         self.assertEqual(sheet.height, render_compare.LABEL_BAR + 8 + 70)
+
+    def test_each_render_then_each_heatmap_on_one_scale(self):
+        reference, far = image(STEP), Image.new("RGB", (8, 8), DRAWN)
+        sheet = render_compare.reference_sheet([("a", [image(STEP), far], reference)], ["near", "far"], tile=1.0)
+        self.assertEqual(sheet.width, 5 * 8)
+        panels = np.asarray(sheet)[render_compare.LABEL_BAR:render_compare.LABEL_BAR + 8]
+        self.assertTrue(np.array_equal(panels[:, 16:24], np.asarray(far)), "the second render follows the first")
+        self.assertEqual(int(panels[:, 24:32].max()), 0, "a render that matches has a black heatmap")
+        self.assertTrue(np.array_equal(panels[:, 32:40], np.asarray(render_compare.reference_heatmap(far, reference))),
+                        "the second heatmap is on the fixed scale, not stretched to the first")
+
+    def test_a_render_without_a_label_is_refused(self):
+        reference = image(STEP)
+        with self.assertRaisesRegex(ValueError, "one label per render"):
+            render_compare.reference_sheet([("a", [reference, reference], reference)], ["near"], tile=1.0)
 
 
 class ReferenceCropTest(unittest.TestCase):
@@ -504,20 +519,38 @@ class VideoTest(unittest.TestCase):
         self.assertTrue(all(line.startswith(("frame", "frames")) and "mean DeltaE76 0.0000" in line and "luma SSIM 1.000000" in line
                             for line in lines))
 
+    NEAR, FAR = Image.new("RGB", (4, 4), DRAWN), Image.new("RGB", (4, 4), CLEAR)
+
+    def write_bakes(self, directory):
+        """Two reference frames of DRAWN at half size, and the near (matching) and far bake videos over them."""
+        for index in range(2):
+            Image.new("RGB", (2, 2), DRAWN).save(Path(directory) / ("%04d.png" % index))
+        return [("near", self.write_avi(directory, "n.avi", [self.NEAR, self.NEAR])),
+                ("far", self.write_avi(directory, "f.avi", [self.FAR, self.FAR]))]
+
     def test_bakes_are_scored_against_the_reference_and_laid_beside_it(self):
-        reference, near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (4, 4), DRAWN), Image.new("RGB", (4, 4), CLEAR)
         with tempfile.TemporaryDirectory() as tmp:
-            for index in range(2):
-                reference.save(Path(tmp) / ("%04d.png" % index))
-            bakes = [("near", self.write_avi(tmp, "n.avi", [near, near])), ("far", self.write_avi(tmp, "f.avi", [far, far]))]
             sheet = Path(tmp) / "sheet.png"
-            lines = render_compare.write_reference_bake_sheet(tmp, bakes, None, [1], str(sheet), crops=1)
+            lines = render_compare.write_reference_bake_sheet(tmp, self.write_bakes(tmp), None, [1], str(sheet), crops=1)
             with Image.open(sheet) as picture:
                 self.assertEqual(picture.width, 3 * round(4 * 0.8))
             self.assertTrue(Path(tmp, "sheet.crops.png").exists())
         self.assertEqual([line.split(":")[0] for line in lines], ["near", "far"])
         self.assertIn("mean DeltaE76 0.0000", lines[0])
         self.assertNotIn("mean DeltaE76 0.0000", lines[1])
+
+    def test_bakes_lay_their_reference_sheet_without_label_a(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sheet = Path(tmp) / "reference-sheet.png"
+            argv = ["render_compare.py", "--out", str(Path(tmp) / "bakes.png"), "--reference-bakes", tmp, "--sheet-frames", "0,1",
+                    *[arg for label, video in self.write_bakes(tmp) for arg in ("--bake", label, video)], "--reference-sheet", str(sheet)]
+            with unittest.mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
+                render_compare.main()
+            with Image.open(sheet) as picture:
+                expected = render_compare.reference_sheet(
+                    [("frame %d" % index, [self.NEAR, self.FAR], Image.new("RGB", (4, 4), DRAWN)) for index in range(2)],
+                    ["near", "far"])
+                self.assertTrue(np.array_equal(np.asarray(picture.convert("RGB")), np.asarray(expected)))
 
     def test_a_reference_video_can_start_at_a_later_frame(self):
         near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (2, 2), CLEAR)

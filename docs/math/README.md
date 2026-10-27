@@ -3,13 +3,13 @@
 The [math package](../../launcher/packages/math/README.md) holds scalar operations
 in `scalar/`, vectors and transforms in `linear/`, shapes and queries in
 `geometry/`, order statistics in `stats/`, and single-bin detection on
-sample blocks in `signal/`.
+sample blocks in `signal/`. [Text conversion](Text.md) lives in `text/`.
 
 <!-- generated: math-fast-links-readme check: python launcher/tools/perf/fast_paths.py --check -->
 [Fast-path evidence](Fast-Paths.md) pairs costs, bounds and callers.
 <!-- /generated: math-fast-links-readme -->
 
-All but `signal/` are:
+The arithmetic and geometry headers are:
 
 - header-only and static inline, with no ESP-IDF, so a host suite checks every line;
 - each family written once as a template ([Templates](Conventions.md#templates)) and instantiated per number type;
@@ -47,5 +47,6 @@ Look the plain name up on a page in the [pages table](#pages); read `*_template.
 | [Projection](Projection.md) | Near clipping and camera-to-pixel mapping |
 | [Geometry](Geometry.md) | Rectangles, planes and frustum queries |
 | [Stats](Stats.md) | Percentiles and medians of sample arrays |
+| [Text](Text.md) | Canonical format and parse pairs, round trips and buffer capacities |
 | [Signal](Signal.md) | Goertzel single-bin detection |
 | [Benchmark](Benchmark.md) | Board cycles, retired instructions and QEMU counts |

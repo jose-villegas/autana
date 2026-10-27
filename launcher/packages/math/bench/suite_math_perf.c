@@ -5,6 +5,7 @@
 #include "math/linear/vec_convert.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
+#include "math/scalar/maths.h"
 #include "math/scalar/trig.h"
 #include "testkit/bench.h"
 #include "testkit/cleanup.h"
@@ -49,6 +50,7 @@ typedef union {
     ARRAY(tf, transformf_t, MATH_BENCH_BATCH)                                                                          \
     ARRAY(tx, transformx_t, MATH_BENCH_BATCH)                                                                          \
     ARRAY(angle, float, MATH_BENCH_BATCH)                                                                              \
+    ARRAY(saturate, int32_t, MATH_BENCH_BATCH)                                                                         \
     ARRAY(phase, uint16_t, MATH_BENCH_BATCH)                                                                           \
     ARRAY(output, result_t, MATH_BENCH_BATCH)                                                                          \
     ARRAY(dot_a, float, MATH_BENCH_DOT_SIZE)                                                                           \
@@ -208,6 +210,7 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
       transformf_compute_matrix(&f->tf[j]))                                                                            \
     X(transform_compute_matrix, "transform compute_matrix", x, "matrix", false, mx,                                    \
       transformx_compute_matrix(&f->tx[j]))                                                                            \
+    X(maths_saturate, "maths_saturate", s, "scalar", false, i, maths_saturate(f->saturate[j]))                         \
     X(mathf_recip, "mathf_recip", f, "scalar", false, f, mathf_recip(f->vf[j].a.x))                                    \
     X(mathf_rsqrt, "mathf_rsqrt", f, "scalar", false, f, mathf_rsqrt(f->vf[j].a.x))                                    \
     X(mathf_rsqrt_approx, "mathf_rsqrt_approx", f, "scalar", false, f, mathf_rsqrt_approx(f->vf[j].a.x))               \
@@ -268,6 +271,8 @@ fixture(void) {
 #define MATH_BENCH_ALLOC(name, type, count) f->name = bench_alloc_internal(sizeof *f->name * (count), #name);
 #define MATH_BENCH_PAIR_ALLOC(name, type)   MATH_BENCH_ALLOC(name, pair_##name##_t, MATH_BENCH_BATCH)
     MATH_BENCH_ARRAYS(MATH_BENCH_PAIR_ALLOC, MATH_BENCH_ALLOC)
+    static const int32_t saturate_inputs[] = {INT32_MIN, INT16_MIN - 1, INT16_MIN, 0,
+                                              INT16_MAX, INT16_MAX + 1, INT32_MAX};
     for (int j = 0; j < MATH_BENCH_BATCH; j++) {
         const float v = (float)((j % MATH_BENCH_INPUT_PERIOD) + 1) * MATH_BENCH_INPUT_SCALE;
         const float turn = (float)j / MATH_BENCH_BATCH;
@@ -280,6 +285,7 @@ fixture(void) {
         f->vx[j].a = vec3x_from_vec3f(f->vf[j].a);
         f->vx[j].b = vec3x_from_vec3f(f->vf[j].b);
         f->angle[j] = (turn - 0.5F) * MATH_TAU;
+        f->saturate[j] = saturate_inputs[j % (sizeof saturate_inputs / sizeof saturate_inputs[0])];
         f->phase[j] = (uint16_t)(j * TRIG_TURN / MATH_BENCH_BATCH);
         f->qf[j].a = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, f->angle[j]);
         f->qf[j].b = quatf_from_axis_angle((vec3f_t){1.0F, 0.0F, 0.0F}, f->angle[j] + (MATH_PI / 2.0F));
