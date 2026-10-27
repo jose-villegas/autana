@@ -1,4 +1,5 @@
-/* Host tests for gfx's transient-picture loop over the live gfx build. */
+/* Host tests over the live gfx build: the transient-picture loop, and the
+ * index image the indexed layout hands an app. */
 
 #include "suites.h"
 #include "unity.h"
@@ -145,11 +146,36 @@ test_non_band_mode_returns_before_the_loop(void) {
     gfx_mode_exit();
 }
 
+static void
+test_the_index_image_is_the_granted_grid(void) {
+    fixture();
+
+    enum { GRID_W = 6, GRID_H = 3 };
+
+    const gfx_mode_request_t request = {
+        .layout = GFX_LAYOUT_INDEXED,
+        .index_grid_w = GRID_W,
+        .index_grid_h = GRID_H,
+        .cell_size = 1,
+    };
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_INDEXED, gfx_mode_enter(&request)->layout);
+
+    const image_t index = gfx_indexed_image();
+    TEST_ASSERT_NOT_NULL(index.pixels);
+    TEST_ASSERT_EQUAL_INT(IMAGE_INDEXED8, index.format);
+    TEST_ASSERT_EQUAL_INT(GRID_W, index.width);
+    TEST_ASSERT_EQUAL_INT(GRID_H, index.height);
+    TEST_ASSERT_EQUAL_size_t(GRID_W, image_row_bytes(&index));
+
+    gfx_mode_exit();
+}
+
 void
 run_gfx_band_run_suite(void) {
     RUN_TEST(test_dirty_bands_are_drawn_then_overlaid_and_submitted);
     RUN_TEST(test_full_dirty_frame_covers_every_row_once_in_order);
     RUN_TEST(test_non_band_mode_returns_before_the_loop);
+    RUN_TEST(test_the_index_image_is_the_granted_grid);
 }
 
 SUITE_REGISTER(run_gfx_band_run_suite);
