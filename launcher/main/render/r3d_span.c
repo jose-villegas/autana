@@ -142,7 +142,6 @@ typedef enum { FILL_FLAT, FILL_FACE, FILL_GOURAUD } shading_t;
 
 typedef struct {
     shading_t shading;
-    const uint16_t* face; /* the colour every pixel takes, or NULL for the vertices' */
     uint16_t flat_z;
     uint16_t flat_color;
     gradients_t* g;
@@ -296,22 +295,26 @@ fill_clipped_gouraud(const gradients_t* g, const uint32_t row[ATTRIBUTES], int c
     fill_gouraud(span->depth, span->color, span->last - span->first + 1, value, step);
 }
 
+static void write_span(const r3d_span_target_t* target, int y, int x_first, int x_last, int32_t z, int32_t dz);
+
 static inline __attribute__((always_inline)) void
-flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge_t* left, edge_t* right) {
+flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge_t* left, edge_t* right, bool writing) {
     const size_t pitch = target->rows.attachment[GFX_ATTACHMENT_COLOR].pitch;
     size_t offset = (size_t)(y0 - target->rows.first_row) * pitch;
     for (int remaining = y1 - y0; remaining > 0; remaining--) {
         row_span_t span;
         if (clip_row(target, f->last_column, offset, left, right, &span)) {
-            fill_flat(span.depth, span.color, span.last - span.first + 1, f->flat_z, f->flat_color);
+            if (writing) {
+                write_span(target, y1 - remaining, span.first, span.last, (int32_t)f->flat_z << R3D_DEPTH_SHIFT, 0);
+            } else {
+                fill_flat(span.depth, span.color, span.last - span.first + 1, f->flat_z, f->flat_color);
+            }
         }
         step_edge(left);
         step_edge(right);
         offset += pitch;
     }
 }
-
-static void write_span(const r3d_span_target_t* target, int y, int x_first, int x_last, int32_t z, int32_t dz);
 
 static inline __attribute__((always_inline)) void
 fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32_t row[ATTRIBUTES], int y, int column,
@@ -380,7 +383,7 @@ walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBU
             step_edge(&right);
         }
     } else if (f->shading == FILL_FLAT) {
-        flat_rows(target, f, y0, y1, &left, &right);
+        flat_rows(target, f, y0, y1, &left, &right, false);
     } else if (f->shading == FILL_FACE) {
         carried_rows(target, f, row, y0, y1, &left, &right, 1, false);
     } else {
@@ -403,21 +406,10 @@ write_span(const r3d_span_target_t* target, int y, int x_first, int x_last, int3
 static void
 writer_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
             edge_t* right) {
-    if (f->shading != FILL_FLAT) {
+    if (f->shading == FILL_FLAT) {
+        flat_rows(target, f, y0, y1, left, right, true);
+    } else {
         carried_rows(target, f, row, y0, y1, left, right, 1, true);
-        return;
-    }
-    const size_t pitch = target->rows.attachment[GFX_ATTACHMENT_COLOR].pitch;
-    size_t offset = (size_t)(y0 - target->rows.first_row) * pitch;
-    for (int remaining = y1 - y0; remaining > 0; remaining--) {
-        const int y = y1 - remaining;
-        row_span_t span;
-        if (clip_row(target, f->last_column, offset, left, right, &span)) {
-            write_span(target, y, span.first, span.last, (int32_t)f->flat_z << R3D_DEPTH_SHIFT, 0);
-        }
-        step_edge(left);
-        step_edge(right);
-        offset += pitch;
     }
 }
 
@@ -808,7 +800,7 @@ set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICE
  * must leave the stack before the row walk. */
 static __attribute__((noinline)) bool
 set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
-            int y_anchor, fill_t* f, gradients_t* g) {
+            int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
     plane_t p;
     g->x_origin = box.x;
     if (f->shading == FILL_FLAT) {
@@ -820,8 +812,8 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TR
     } else {
         return false;
     }
-    if (f->face != NULL) {
-        f->flat_color = *f->face;
+    if (face != NULL) {
+        f->flat_color = *face;
     }
     const int32_t bound =
         f->shading == FILL_FLAT ? f->flat_z : r3d_span_plane_bound(g->base[0], g->dx[0], g->dy[0], box);
@@ -858,14 +850,17 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
 
-    fill_t f = {e.flat ? FILL_FLAT : face != NULL ? FILL_FACE : FILL_GOURAUD, face, 0, 0, NULL,
-                target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1};
+    fill_t f = {e.flat         ? FILL_FLAT
+                : face != NULL ? FILL_FACE
+                               : FILL_GOURAUD,
+                0, 0, NULL, target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = mathi_clamp(e.centres.y, -1, gfx_target_end_row(&target->rows) + 1);
     gradients_t g = {0};
     f.g = &g;
-    if (!set_up_fill(target, (const r3d_span_vertex_t* const[TRIANGLE_VERTICES]){a, b, c}, box, y_anchor, &f, &g)) {
+    if (!set_up_fill(target, (const r3d_span_vertex_t* const[TRIANGLE_VERTICES]){a, b, c}, box, y_anchor, face, &f,
+                     &g)) {
         return;
     }
     if (r3d_span_stop_after == 1) {
@@ -904,8 +899,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
         return;
     }
     /* FILL_FACE selects a depth carry here; writers do not read face colour. */
-    fill_t f = {
-        e.flat ? FILL_FLAT : FILL_FACE, NULL, 0, 0, NULL, target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1};
+    fill_t f = {e.flat ? FILL_FLAT : FILL_FACE, 0, 0, NULL, target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1};
     if (select_small(a, b, c, e.centres, solid, target->small_fill) != SMALL_FILL_WALK) {
         set_flat(&f, a, b, c);
         for (int y = box.y; y < recti_bottom(box); y++) {
