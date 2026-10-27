@@ -3966,7 +3966,8 @@ test_light_attachment_defaults_refusals_and_capacity(void) {
     uint8_t flags[ENTITIES] = {0};
     uint16_t roots[ENTITIES];
     memset(roots, 0xFF, sizeof roots);
-    transformf_t locals[ENTITIES];
+    transformf_t* locals = malloc(sizeof(transformf_t) * ENTITIES);
+    TEST_ASSERT_NOT_NULL(locals);
     for (int e = 0; e < ENTITIES; e++) {
         locals[e] = (transformf_t)TRANSFORMF_IDENTITY;
     }
@@ -4001,6 +4002,7 @@ test_light_attachment_defaults_refusals_and_capacity(void) {
     TEST_ASSERT_TRUE(scene_light_set_intensity(&scene, 0, 1e-38F));
     TEST_ASSERT_TRUE(scene_light_set_intensity(&scene, 0, 3e38F));
     memory_free(scene.light_transfer);
+    free(locals);
 }
 
 static void
