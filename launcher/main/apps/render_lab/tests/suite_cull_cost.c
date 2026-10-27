@@ -151,6 +151,7 @@ measure_family(const scene_baked_t* family) {
             camera_view(lens_of, &pose, (viewport_t){size.width, size.height, r3d_perf_quarters[0].quarter});
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, mesh.position_scale);
+        /* The matrix mirrors but flip stays 0, so the faces that were culled set up. */
         r3d_lens_t mirrored = lens;
         for (int col = 0; col < 4; col++) {
             mirrored.m.m[0][col] = -mirrored.m.m[0][col];

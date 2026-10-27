@@ -63,6 +63,13 @@ transformf_scale_is_even(const transformf_t* t) {
     return most - least <= TRANSFORMF_MATRIX_TOLERANCE * largest;
 }
 
+/* True when the transform turns the space inside out: an odd count of
+ * negative scales, as transformf_from_mat gives a reflection. */
+static inline bool
+transformf_mirrors(const transformf_t* t) {
+    return t->scale.x * t->scale.y * t->scale.z < 0.0F;
+}
+
 /* The inverse of transformf_compose: the child that, placed in `parent`,
  * stands at `world`. `parent`'s scale must be even and nonzero. */
 static inline transformf_t

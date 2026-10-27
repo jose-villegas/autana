@@ -292,29 +292,29 @@ release_filled(void) {
     release_work();
 }
 
-/* The draw fills exactly the triangles the count says reach r3d_span: the
- * count's sort and the draw's are one, checked rather than trusted. */
+/* The draw fills exactly the triangles the count says reach r3d_span through
+ * `lens`: the count's sort and the draw's are one, checked rather than trusted. */
 static void
-test_the_draw_fills_the_triangles_the_count_sets_up(void) {
+assert_draw_fills_what_the_count_sets_up(const r3d_lens_t* lens) {
     const r3d_lit_mesh_t mesh = sort_mesh();
-    const r3d_lens_t lens = lens_for(&looking_at_origin);
     const uint16_t in_front[] = {0}; /* cluster 0: no corner behind the eye */
     r3d_pipeline_vertex_t cs[SORT_VERTICES];
-    r3d_pipeline_transform(&mesh, &lens, in_front, 1, cs, NULL);
+    r3d_pipeline_transform(&mesh, lens, in_front, 1, cs, NULL);
     r3d_pipeline_counts_t counts = {0};
-    r3d_pipeline_count_triangles(&mesh, &lens, in_front, 1, cs, &counts, NULL);
+    r3d_pipeline_count_triangles(&mesh, lens, in_front, 1, cs, &counts, NULL);
 
     uint16_t* pixels = calloc((size_t)W * H * 2, sizeof(uint16_t));
     TEST_ASSERT_NOT_NULL(pixels);
     (void)pipeline_work();
     suite_set_test_cleanup(release_filled);
+    free(filled);
     filled = calloc((size_t)mesh.triangle_count, sizeof(bool));
     TEST_ASSERT_NOT_NULL(filled);
     const r3d_span_writer_t marker = {.span = mark_filled, .step = R3D_SPAN_STEP_TRIANGLE};
     r3d_span_target_t target = r3d_span_target(pixels, pixels + (size_t)W * H, W, 0, H);
     target.writers = &marker;
     target.writer_count = 1;
-    r3d_pipeline_draw(&mesh, &lens, in_front, 1, cs, NULL, &target, work);
+    r3d_pipeline_draw(&mesh, lens, in_front, 1, cs, NULL, &target, work);
     int drawn = 0;
     for (int t = 0; t < mesh.triangle_count; t++) {
         drawn += filled[t];
@@ -323,6 +323,48 @@ test_the_draw_fills_the_triangles_the_count_sets_up(void) {
     TEST_ASSERT_EQUAL_INT(1, counts.triangles_set_up);
     TEST_ASSERT_EQUAL_INT(counts.triangles_set_up, drawn);
     TEST_ASSERT_TRUE(filled[0]);
+}
+
+/* A lens mirrored in x about the eye's axis, as a mirrored placement makes it. */
+static r3d_lens_t
+mirrored_lens_for(const fixture_camera_t* camera) {
+    r3d_lens_t lens = lens_for(camera);
+    mat4f_t mirror = mat4f_identity();
+    mirror.m[0][0] = -1.0F;
+    r3d_lens_place(&lens, &mirror, 1);
+    return lens;
+}
+
+/* Plain and mirrored: the same triangle faces the eye either way, and the
+ * count keeps in step with the draw. */
+static void
+test_the_draw_fills_the_triangles_the_count_sets_up(void) {
+    const r3d_lens_t lens = lens_for(&looking_at_origin);
+    assert_draw_fills_what_the_count_sets_up(&lens);
+    const r3d_lens_t mirrored = mirrored_lens_for(&looking_at_origin);
+    assert_draw_fills_what_the_count_sets_up(&mirrored);
+}
+
+/* A one-sided quad's two triangles wind alike, so a mirror that kept its
+ * old test would move both between facing away and set up. Counted through
+ * the mirror, the eye sees the same side. */
+static void
+test_a_mirrored_one_sided_quad_counts_the_same_side(void) {
+    static const int16_t corners[4][3] = {{-HALF, -HALF, 0}, {HALF, -HALF, 0}, {HALF, HALF, 0}, {-HALF, HALF, 0}};
+    r3d_quad_t quad;
+    r3d_quad_init(&quad, corners);
+    quad.cluster.double_sided = false;
+    const uint16_t clusters[] = {0};
+    r3d_pipeline_counts_t counts[2] = {{0}, {0}};
+    const r3d_lens_t lenses[2] = {lens_for(&looking_at_origin), mirrored_lens_for(&looking_at_origin)};
+    for (int i = 0; i < 2; i++) {
+        r3d_pipeline_vertex_t cs[4];
+        r3d_pipeline_transform(&quad.mesh, &lenses[i], clusters, 1, cs, NULL);
+        r3d_pipeline_count_triangles(&quad.mesh, &lenses[i], clusters, 1, cs, &counts[i], NULL);
+    }
+    TEST_ASSERT_EQUAL_INT(2, counts[0].triangles_set_up + counts[0].triangles_facing_away);
+    TEST_ASSERT_EQUAL_INT(counts[0].triangles_set_up, counts[1].triangles_set_up);
+    TEST_ASSERT_EQUAL_INT(counts[0].triangles_facing_away, counts[1].triangles_facing_away);
 }
 
 static void
@@ -650,6 +692,7 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_set_up_per_cluster_counts_set_up_and_clipped_triangles);
     RUN_TEST(test_triangle_sort_adds_to_the_counts_it_is_given);
     RUN_TEST(test_the_draw_fills_the_triangles_the_count_sets_up);
+    RUN_TEST(test_a_mirrored_one_sided_quad_counts_the_same_side);
     RUN_TEST(test_per_triangle_writer_tags_the_triangle_that_won_each_pixel);
     RUN_TEST(test_cull_view_gives_each_cluster_its_fate);
     RUN_TEST(test_cull_view_frame_counts_clusters_by_fate);
