@@ -28,7 +28,7 @@ bool imu_calib_valid(vec3i_t offset, int32_t max);
 /* Uncommitted, missing or excessive offsets invalidate the whole calibration. */
 bool imu_calib_from_saved(bool committed, const bool found[3], const int32_t saved[3], int32_t max, imu_calib_t* out);
 
-#define IMU_CALIB_GYRO_MAX ((int32_t)(IMU_BIAS_MAX_DPS * INPUT_ROTATION_ONE_DPS))
+#define IMU_CALIB_GYRO_MAX ((int32_t)(IMU_GYRO_BIAS_MAX_DPS * INPUT_ROTATION_ONE_DPS))
 #define IMU_CALIB_GYRO_RESIDUAL_MAX                                                                                    \
     ((int32_t)(IMU_GYRO_OFFSET_TCO_DPS_PER_C * IMU_GYRO_TEMP_SPAN_C * INPUT_ROTATION_ONE_DPS))
 /* Ours: avoid flash wear from small changes and frequent rest windows. */

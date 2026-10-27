@@ -21,7 +21,7 @@
 /* QMI8658C datasheet, Table 8: from the 25 C reference to the 85 C operating limit. */
 #define IMU_GYRO_TEMP_SPAN_C          60.0F
 /* QMI8658C datasheet, Table 8: initial offset plus temperature drift, in deg/s. */
-#define IMU_BIAS_MAX_DPS              (IMU_GYRO_OFFSET_TOL_DPS + (IMU_GYRO_OFFSET_TCO_DPS_PER_C * IMU_GYRO_TEMP_SPAN_C))
+#define IMU_GYRO_BIAS_MAX_DPS         (IMU_GYRO_OFFSET_TOL_DPS + (IMU_GYRO_OFFSET_TCO_DPS_PER_C * IMU_GYRO_TEMP_SPAN_C))
 
 /* QST QMI8658A datasheet Rev A (2022), Table 22 CTRL2/CTRL3 (6DOF);
  * Lewis He, SensorLib GyroODR. We use stream mode, 128 samples,

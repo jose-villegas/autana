@@ -87,7 +87,7 @@ correct_accepted(gravity_t* g, vec3f_t direction, float weight, float dt) {
     const vec3f_t correction = vec3f_cross(g->down, direction);
     const vec3f_t bias =
         vec3f_add(g->gyro_bias, vec3f_scale(correction, GRAVITY_BIAS_KI * weight * dt / RADIANS_PER_DEGREE));
-    const vec3f_t hi = {IMU_BIAS_MAX_DPS, IMU_BIAS_MAX_DPS, IMU_BIAS_MAX_DPS};
+    const vec3f_t hi = {IMU_GYRO_BIAS_MAX_DPS, IMU_GYRO_BIAS_MAX_DPS, IMU_GYRO_BIAS_MAX_DPS};
     g->gyro_bias = vec3f_clamp(bias, vec3f_scale(hi, -1.0F), hi);
     /* dt/(tau+dt) approximates exponential smoothing without a per-frame expf. */
     const float alpha = weight * dt / (GRAVITY_TAU_S + dt);
