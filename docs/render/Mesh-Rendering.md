@@ -206,7 +206,7 @@ present counts against it.
 ### View modes
 
 Development builds select one row from the `render_debug_view_t` table in
-`render/context/render_context.c`: depth, tiles, motion, meshlets or cull.
+`render/context/render_context.c`: depth, tiles, motion, meshlets, cull or overdraw.
 
 | Call | What it does with the row |
 |---|---|
