@@ -73,11 +73,12 @@ triangles and one colour per face both cost most at edges; fitting brings both b
 
 </details>
 
-The flat bake's error, left to right: the reference, the bake, the ΔE heatmap
-and the reference's edge pixels (magenta). The error sits at lit arch edges, shadow
-boundaries and the foreground drapery.
+What fitting buys, left to right: the reference, the flat bake, fitted full,
+then each bake's ΔE heatmap on one colour scale. Flat's error sits at lit arch
+edges, shadow boundaries and the foreground drapery; fitted full keeps a thin
+trace at edges.
 
-![Reference, flat bake, error heatmap and edge pixels](../images/render/bake-fidelity-sheet.png)
+![Reference, flat bake, fitted full, and each bake's error heatmap on one scale](../images/render/bake-fidelity-sheet.png)
 
 Flat against smooth at the same poses, the colour gradient across each face
 alone:
