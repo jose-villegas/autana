@@ -100,5 +100,36 @@ class GpuQueueTests(unittest.TestCase):
         self.assertFalse(schedule.gpu_pending(request=request))
 
 
+    def test_started_gpu_job_holds_boards_only_for_its_hold(self):
+        now = datetime(2026, 10, 28, 3, tzinfo=timezone.utc)
+        for workflow in schedule.GPU_WORKFLOWS:
+            hold = timedelta(seconds=schedule.GPU_BOARD_HOLD_SECONDS[workflow])
+            for age, held in ((hold - timedelta(minutes=1), True), (hold, False)):
+                with self.subTest(workflow=workflow, age=age):
+                    def request(method, path, workflow=workflow, age=age):
+                        if '/jobs?' in path:
+                            return {'jobs': [dict(status='in_progress', labels=['gpu'],
+                                                  started_at=(now - age).strftime('%Y-%m-%dT%H:%M:%SZ'))]}
+                        on = workflow in path
+                        return {'workflow_runs': [dict(id=1, status='in_progress')] if on else []}
+                    with patch.object(schedule, 'Clock') as clock:
+                        clock.return_value.now.return_value = now
+                        self.assertEqual(schedule.gpu_pending(request=request), held)
+
+    def test_board_night_waits_for_board_start(self):
+        root = Path(__file__).resolve().parents[3]
+        workflow = yaml.safe_load((root / '.github/workflows/nightly-perf.yml').read_text())
+        marker = workflow['jobs']['marker']
+        self.assertIn('--start BOARD_START marker', marker['steps'][-1]['run'])
+        self.assertEqual(marker['env']['BOARD_START'], '${{ vars.BOARD_START }}')
+        trigger = datetime(2026, 10, 27, 20, 17, tzinfo=timezone.utc)
+        with patch.dict(os.environ, NIGHT_ZONE='UTC'):
+            os.environ.pop('BOARD_START', None)
+            board = schedule.next_marker(trigger, start='BOARD_START')
+            gpu = schedule.next_marker(trigger, schedule.NIGHT_START)
+        self.assertEqual(board.strftime('%H:%M'), schedule.BOARD_START)
+        self.assertLess(gpu, board)
+
+
 if __name__ == '__main__':
     unittest.main()
