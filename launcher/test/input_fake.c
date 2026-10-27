@@ -61,7 +61,7 @@ void
 input_fake_reset(void) {
     input_fake_motion(NULL);
     input_fake_motion_batch(NULL);
-    gyro_calib = (imu_calib_gyro_t){.saved_us = INT64_MIN};
+    gyro_calib = (imu_calib_gyro_t){0};
 }
 
 bool
