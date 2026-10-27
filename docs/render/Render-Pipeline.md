@@ -148,7 +148,7 @@ Cost: `source load` in the bake-steps rows.
 The source lit per pixel is the reference every bake is scored against (left,
 in the [fidelity sheet](Bake-Quality.md#fidelity-against-the-source)):
 
-![The source lit per pixel beside the flat bake](../images/render/bake-fidelity-sheet.png)
+![The source lit per pixel beside the flat bake and fitted full](../images/render/bake-fidelity-sheet.png)
 
 Reference: [Mesh-Import.md](Mesh-Import.md#source).
 

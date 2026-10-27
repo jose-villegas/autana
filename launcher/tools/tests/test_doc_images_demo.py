@@ -147,6 +147,17 @@ class DocImageFailureTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "VARIANT_NOTES"):
             doc_tables.variant_note(full + "_unknown", full)
 
+    def test_the_fidelity_sheet_names_its_variants_by_label_and_refuses_a_missing_one(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        objects = tomllib.loads(DEMO_SCENE.read_text())["objects"]
+        full = min((item["name"] for item in objects if "mesh_renderer" in item), key=len)
+        sheet = doc_tables.fidelity_sheet(DEMO_SCENE, full)
+        self.assertEqual([label for _, label in sheet], list(doc_tables.FIDELITY_SHEET))
+        self.assertEqual([doc_tables.variant_label(name, full) for name, _ in sheet], list(doc_tables.FIDELITY_SHEET))
+        with mock.patch.object(doc_tables, "FIDELITY_SHEET", ("flat", "unknown")),                 self.assertRaisesRegex(ValueError, "no unknown variant"):
+            doc_tables.fidelity_sheet(DEMO_SCENE, full)
+
     def test_score_columns_are_the_sampling_tables(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import doc_tables
