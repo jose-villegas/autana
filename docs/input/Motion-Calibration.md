@@ -2,8 +2,8 @@
 
 A calibration round on the development Motion page measures the accelerometer
 offset and the gyro zero-rate on the board. Axes and fields are in
-[Motion-Axes.md](Motion-Axes.md); the gyro bias learned continuously is in
-[Gravity.md](Gravity.md).
+[Motion-Axes.md](Motion-Axes.md); the gyro offset is learned at rest and stored;
+the residual bias the filter learns is in [Gravity.md](Gravity.md).
 
 | Motion page, idle | Results page |
 |---|---|
@@ -82,7 +82,7 @@ establish precision alignment. The upright cone follows the pinned page quarter.
 |---|---|
 | `pose` | rounded Q12 g and Q6 deg/s means, sample counts, `GRAV` down (unit vector) and gyro bias (deg/s); see [Gravity.md](Gravity.md) |
 | `turn` | from the trigger at time zero: estimated unit `down` and the same sample's unit `accel` direction (zero during zero acceleration); their angular separation exposes lag |
-| `calib` | offsets in mg (the absolute sensor offset), sensitivity in ppm (unity is 1000000), gyro residuals in mdps |
+| `calib` | offsets in mg (the absolute sensor offset), sensitivity in ppm (`IMU_CALIB_SCALE_ONE` is unity), gyro residuals in mdps |
 
 Turn timestamps are elapsed milliseconds from the trigger. `imu_probe.h` owns
 the trace's duration and sampling bound; missing readings are not synthesized.
@@ -92,6 +92,10 @@ the trace's duration and sampling bound; missing readings are not synthesized.
 | Output | the kept lines between `LABDUMP_BEGIN` and `LABDUMP_END`; repeated dumps return the same text |
 | Line prefix | every kept line starts with `LABDUMP`, which tells it apart from the console's log lines; the tools accept live lines and replayed dumps |
 | Serial lines | Windows sets DTR and RTS low before opening; POSIX opens with both raised, then lowers RTS before DTR |
+
+The round averages corrected gyro samples. Its residual is meaningful only
+while the live gyro offset is unchanged; automatic learning can apply a new
+offset during a round.
 
 ## The fit
 
@@ -137,9 +141,9 @@ results HUD labels the residual; `calib` logs the absolute offset.
 
 ### Gyro learning
 
-The shared motion reader learns all gyro axes at rest. A new device needs
-about three seconds at rest: one second settling, then a two-second mean.
-Stored offsets apply from boot; gravity learns only their residual bias.
+The shared motion reader learns all gyro axes at rest, settling for
+`IMU_REST_SETTLE_MS` and averaging for `IMU_REST_WINDOW_MS`. Stored offsets
+apply from boot; gravity learns only their residual bias.
 
 ```mermaid
 flowchart TB
@@ -161,12 +165,17 @@ flowchart TB
 | Zero offset on load | missing or uncommitted marker, missing axes, or any axis beyond `IMU_CALIB_GYRO_MAX` |
 | Stillness | departure from recent acceleration and gyro means, so a constant gyro offset does not prevent learning; `imu_rest.h` owns the thresholds |
 | Acceleration gate | magnitude within `GRAVITY_TRUST_FULL_G` of one g |
-| Restart | motion or a gap beyond `IMU_REST_MAX_GAP_MS` restarts settling |
+| Whole-span drift | recent-mean acceleration stays within `IMU_REST_DRIFT` per axis of its settling-start anchor throughout settling and measurement; the limit derives from the angle swept by the save-delta rate across that span |
+| Restart | motion or an input-reader stall beyond `GRAVITY_MAX_DT_US`; the shared rest stages also reject gaps beyond `IMU_REST_MAX_GAP_MS` |
 | Acceptance | current offset plus the mean residual must stay within `IMU_CALIB_GYRO_MAX`; once valid, each residual axis must stay within the temperature-drift allowance `IMU_CALIB_GYRO_RESIDUAL_MAX` |
 | Live update | accepted offset applies to subsequent reads and clears the shared gravity learner's residual bias |
-| Save gates | some axis differs from the last saved offset by more than 0.25 deg/s, and no successful save occurred in the last five minutes; `imu_calib.h` owns both flash-wear limits |
-| Failed write | keeps the live gyro offset; the uncommitted marker prevents a partial write from loading |
+| Save gates | no valid stored offset, or some axis differs by more than `IMU_CALIB_GYRO_SAVE_DELTA`; attempts are spaced by `IMU_CALIB_GYRO_SAVE_INTERVAL_US` |
+| Failed write | keeps the live offset and invalidates storage; the next accepted window after `IMU_CALIB_GYRO_SAVE_INTERVAL_US` retries regardless of delta; failed attempts also start the interval |
+| Commit | invalidate the marker, write the axes in one batch, then commit the valid marker; interrupted writes cannot load as valid |
 | Log | `imu_calib gyro saved x y z`, in Q6 deg/s counts |
+
+Rotation about the vertical leaves acceleration unchanged, so the drift gate
+cannot distinguish that rotation from gyro bias.
 
 ## The analysis tool
 

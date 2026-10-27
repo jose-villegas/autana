@@ -31,5 +31,3 @@ bool input_set_accel_offset(vec3i_t offset);
 
 /* The Q6 deg/s screen-axis offset subtracted on every motion read. */
 vec3i_t input_gyro_offset(void);
-/* Accepts a still-window residual, applies it live, and saves when wear gates permit. */
-bool input_learn_gyro_offset(vec3i_t residual);

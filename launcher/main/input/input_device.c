@@ -23,39 +23,39 @@ static const char TAG[] = "input";
 #define IMU_SETTINGS_SPACE     "imu"
 #define IMU_SETTINGS_COMMITTED 1
 
-static const char* const ACCEL_KEYS[] = {"accel_x", "accel_y", "accel_z", "accel_valid"};
-static const char* const GYRO_KEYS[] = {"gyro_x", "gyro_y", "gyro_z", "gyro_valid"};
-#define IMU_SETTINGS_MARKER_INDEX 3
+typedef struct {
+    const char* axis[3];
+    const char* valid;
+} imu_offset_keys_t;
+
+static const imu_offset_keys_t ACCEL_KEYS = {{"accel_x", "accel_y", "accel_z"}, "accel_valid"};
+static const imu_offset_keys_t GYRO_KEYS = {{"gyro_x", "gyro_y", "gyro_z"}, "gyro_valid"};
 static imu_calib_t accel_calib;
 static imu_calib_gyro_t gyro_calib;
 
 static bool
-load_offset(const char* const keys[], int32_t max, imu_calib_t* calib) {
+load_offset(imu_offset_keys_t keys, int32_t max, imu_calib_t* calib) {
     int32_t saved[3] = {0};
     bool found[3];
     for (int axis = 0; axis < 3; axis++) {
-        found[axis] = settings_read_i32(IMU_SETTINGS_SPACE, keys[axis], &saved[axis]);
+        found[axis] = settings_read_i32(IMU_SETTINGS_SPACE, keys.axis[axis], &saved[axis]);
     }
     int32_t marker = 0;
-    const bool committed = settings_read_i32(IMU_SETTINGS_SPACE, keys[IMU_SETTINGS_MARKER_INDEX], &marker)
-                           && marker == IMU_SETTINGS_COMMITTED;
-    *calib = imu_calib_from_saved(committed, found, saved, max);
-    return committed && found[0] && found[1] && found[2]
-           && imu_calib_valid((vec3i_t){saved[0], saved[1], saved[2]}, max);
+    const bool committed =
+        settings_read_i32(IMU_SETTINGS_SPACE, keys.valid, &marker) && marker == IMU_SETTINGS_COMMITTED;
+    return imu_calib_from_saved(committed, found, saved, max, calib);
 }
 
 static bool
-save_offset(const char* const keys[], vec3i_t offset) {
+save_offset(imu_offset_keys_t keys, vec3i_t offset) {
     const int32_t saved[] = {offset.x, offset.y, offset.z};
-    if (!settings_write_i32(IMU_SETTINGS_SPACE, keys[IMU_SETTINGS_MARKER_INDEX], 0)) {
+    if (!settings_write_i32(IMU_SETTINGS_SPACE, keys.valid, 0)) {
         return false;
     }
-    for (int axis = 0; axis < 3; axis++) {
-        if (!settings_write_i32(IMU_SETTINGS_SPACE, keys[axis], saved[axis])) {
-            return false;
-        }
+    if (!settings_write_i32_batch(IMU_SETTINGS_SPACE, keys.axis, saved, 3)) {
+        return false;
     }
-    return settings_write_i32(IMU_SETTINGS_SPACE, keys[IMU_SETTINGS_MARKER_INDEX], IMU_SETTINGS_COMMITTED);
+    return settings_write_i32(IMU_SETTINGS_SPACE, keys.valid, IMU_SETTINGS_COMMITTED);
 }
 
 _Static_assert(INPUT_ACCEL_ONE_G == IMU_COUNTS_PER_G, "input_read_motion() passes sensor counts through");
@@ -72,6 +72,7 @@ input_start(void) {
     gyro_calib = (imu_calib_gyro_t){0};
     gyro_calib.valid = load_offset(GYRO_KEYS, IMU_CALIB_GYRO_MAX, &gyro_calib.live);
     gyro_calib.saved = gyro_calib.live.offset;
+    gyro_calib.storage_valid = gyro_calib.valid;
     touch_start();
     buttons_start();
     if (!imu_init()) {
@@ -101,16 +102,17 @@ input_gyro_offset(void) {
 
 bool
 input_learn_gyro_offset(vec3i_t residual) {
-    if (!imu_calib_learn_gyro(&gyro_calib, residual)) {
-        return false;
-    }
     const int64_t now_us = timing_now_us();
-    if (imu_calib_gyro_save_due(&gyro_calib, now_us) && save_offset(GYRO_KEYS, gyro_calib.live.offset)) {
-        imu_calib_gyro_saved(&gyro_calib, now_us);
-        const vec3i_t offset = gyro_calib.saved;
-        ESP_LOGI(TAG, "imu_calib gyro saved %d %d %d", (int)offset.x, (int)offset.y, (int)offset.z);
+    const imu_calib_gyro_step_t step = imu_calib_gyro_learn(&gyro_calib, residual, now_us);
+    if (step == IMU_CALIB_GYRO_SAVE_DUE) {
+        const bool ok = save_offset(GYRO_KEYS, gyro_calib.live.offset);
+        imu_calib_gyro_saved(&gyro_calib, ok, now_us);
+        if (ok) {
+            const vec3i_t offset = gyro_calib.saved;
+            ESP_LOGI(TAG, "imu_calib gyro saved %d %d %d", (int)offset.x, (int)offset.y, (int)offset.z);
+        }
     }
-    return true;
+    return step != IMU_CALIB_GYRO_REJECTED;
 }
 
 void
@@ -121,11 +123,10 @@ input_poll(input_t* out) {
 
 static input_motion_t
 motion_from_sample(const imu_sample_t* sample) {
-    const vec3i_t rotation = imu_calib_apply(&gyro_calib.live, imu_axes_screen(sample->gx, sample->gy, sample->gz));
-    return (input_motion_t){.acceleration =
-                                imu_calib_apply(&accel_calib, imu_axes_screen(sample->ax, sample->ay, sample->az)),
-                            .turn_speed = imu_rotation_turn_speed(rotation),
-                            .rotation = rotation};
+    return imu_calib_gyro_correct(
+        &gyro_calib, (input_motion_t){.acceleration = imu_calib_apply(
+                                          &accel_calib, imu_axes_screen(sample->ax, sample->ay, sample->az)),
+                                      .rotation = imu_axes_screen(sample->gx, sample->gy, sample->gz)});
 }
 
 bool

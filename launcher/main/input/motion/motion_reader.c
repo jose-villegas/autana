@@ -1,6 +1,7 @@
 /* motion_reader: shared on-demand motion readers. */
 #include "input/motion/motion_reader.h"
 
+#include <math.h>
 #include "build/build_variant.h"
 #include "core/timing.h"
 #include "input/input.h"
@@ -9,8 +10,9 @@
 #include "input/motion/imu.h"
 #include "input/motion/imu_rest.h"
 #include "input/motion/shake.h"
+#include "math/linear/vec_convert.h"
+#include "math/scalar/mathf_round.h"
 #if CONFIG_LAUNCHER_DEVELOPMENT
-#include <math.h>
 #include "core/tune.h"
 #include "esp_log.h"
 #define MOTION_LOG_MAX_MS (60 * MATH_MS_PER_S)
@@ -23,6 +25,8 @@ static int64_t last_log_us;
 static gravity_t gravity = {.down = {0, 0, -1}};
 static shake_t shake;
 static imu_rest_t rest;
+static int64_t rotation[3];
+static uint32_t samples;
 static vec3f_t down = {0, 1, 0};
 static int64_t updated_us = INT64_MIN;
 static uint32_t updated_sequence;
@@ -31,6 +35,10 @@ void
 motion_reader_reset(void) {
     gravity_reset(&gravity);
     imu_rest_reset(&rest);
+    samples = 0;
+    for (int axis = 0; axis < 3; axis++) {
+        rotation[axis] = 0;
+    }
     shake_reset(&shake);
     down = (vec3f_t){0, 1, 0};
     updated_us = INT64_MIN;
@@ -43,6 +51,10 @@ update(void) {
     uint32_t sequence;
     if (!input_read_motion_sequence(&sample, &sequence)) {
         imu_rest_reset(&rest);
+        samples = 0;
+        for (int axis = 0; axis < 3; axis++) {
+            rotation[axis] = 0;
+        }
         if (!imu_ready()) {
             down = (vec3f_t){0, 1, 0};
             shake_reset(&shake);
@@ -61,10 +73,30 @@ update(void) {
     updated_us = now_us;
     updated_sequence = sequence;
     gravity_update(&gravity, &sample, dt_us);
-    vec3i_t residual;
+    const vec3f_t a = vec3f_scale(vec3f_from_vec3i(sample.acceleration), 1.0F / INPUT_ACCEL_ONE_G);
+    const bool gate = elapsed <= GRAVITY_MAX_DT_US && fabsf(sqrtf(vec3f_dot(a, a)) - 1.0F) <= GRAVITY_TRUST_FULL_G;
     const uint32_t rest_dt_us = elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed;
-    if (imu_rest_update(&rest, &sample, rest_dt_us, &residual) && input_learn_gyro_offset(residual)) {
-        gravity_set_gyro_bias(&gravity, (vec3f_t){0});
+    const imu_rest_stage_t stage = imu_rest_step(&rest, &sample, rest_dt_us, gate);
+    if (stage == IMU_REST_MEASURING || stage == IMU_REST_DONE) {
+        const int32_t r[] = {sample.rotation.x, sample.rotation.y, sample.rotation.z};
+        for (int axis = 0; axis < 3; axis++) {
+            rotation[axis] += r[axis];
+        }
+        samples++;
+        if (stage == IMU_REST_DONE) {
+            const vec3i_t residual = {mathf_round_i32((float)rotation[0] / samples),
+                                      mathf_round_i32((float)rotation[1] / samples),
+                                      mathf_round_i32((float)rotation[2] / samples)};
+            if (input_learn_gyro_offset(residual)) {
+                gravity_clear_gyro_bias(&gravity);
+            }
+        }
+    }
+    if (rest_dt_us != 0 && stage != IMU_REST_MEASURING) {
+        for (int axis = 0; axis < 3; axis++) {
+            rotation[axis] = 0;
+        }
+        samples = 0;
     }
     shake_update(&shake, gravity_linear(&gravity), dt_us);
     down = gravity_in_free_fall(&gravity) ? (vec3f_t){0} : gravity_down(&gravity);

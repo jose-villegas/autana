@@ -133,37 +133,22 @@ gravity_aligned(const imu_probe_round_t* round, input_motion_t sample) {
     return vec3i_dot(direction, sample.acceleration) >= IMU_PROBE_GRAVITY_MIN;
 }
 
-static bool
-still(imu_probe_round_t* round, input_motion_t sample, uint32_t dt_ms) {
-    return imu_rest_still(&round->rest, &sample, dt_ms * MATH_US_PER_MS) && gravity_aligned(round, sample);
-}
-
 bool
 imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt_ms) {
     if (round->step != IMU_PROBE_POSES || dt_ms == 0) {
         return false;
     }
-    if (sample == NULL || dt_ms > IMU_REST_MAX_GAP_MS) {
-        round->rest.primed = false;
-    }
-    if (sample == NULL || !still(round, *sample, dt_ms)) {
-        round->settle_ms = 0;
-        round->window_ms = 0;
+    const imu_rest_stage_t stage =
+        imu_rest_step(&round->rest, sample, dt_ms * MATH_US_PER_MS, sample != NULL && gravity_aligned(round, *sample));
+    if (stage == IMU_REST_MOVING || stage == IMU_REST_SETTLING) {
         round->window = (imu_probe_average_t){0};
         return false;
     }
-    if (round->settle_ms < IMU_REST_SETTLE_MS) {
-        round->settle_ms += dt_ms;
-        return false;
-    }
     imu_probe_average_add(&round->window, *sample);
-    round->window_ms += dt_ms;
-    if (round->window_ms < IMU_REST_WINDOW_MS) {
+    if (stage != IMU_REST_DONE) {
         return false;
     }
     round->poses[round->pose++] = round->window;
-    round->rest.primed = false;
-    round->settle_ms = round->window_ms = 0;
     round->window = (imu_probe_average_t){0};
     if (round->pose == IMU_PROBE_POSE_COUNT) {
         round->fit = imu_probe_fit(round->poses, round->quarter);
@@ -180,17 +165,13 @@ turning(input_motion_t sample) {
 
 static void
 turn_upright(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt_ms) {
-    if (sample == NULL || dt_ms > IMU_REST_MAX_GAP_MS || !gravity_aligned(round, *sample)) {
-        round->rest.primed = false;
-        round->settle_ms = 0;
+    if (sample == NULL || dt_ms > IMU_REST_MAX_GAP_MS || !gravity_aligned(round, *sample) || turning(*sample)) {
+        round->turn_ms = 0;
         return;
     }
-    if (turning(*sample)) {
-        round->settle_ms = 0;
-        return;
-    }
-    round->settle_ms += dt_ms;
-    if (round->settle_ms >= IMU_REST_SETTLE_MS) {
+    round->turn_ms += dt_ms;
+    if (round->turn_ms >= IMU_REST_SETTLE_MS) {
+        round->turn_ms = 0;
         round->step = IMU_PROBE_TURN;
     }
 }

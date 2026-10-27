@@ -39,11 +39,7 @@ input_read_motion(input_motion_t* out) {
     if (!has_motion) {
         return false;
     }
-    *out = motion;
-    out->rotation = imu_calib_apply(&gyro_calib.live, out->rotation);
-    if (gyro_calib.valid) {
-        out->turn_speed = imu_rotation_turn_speed(out->rotation);
-    }
+    *out = imu_calib_gyro_correct(&gyro_calib, motion);
     return true;
 }
 
@@ -75,10 +71,7 @@ input_read_motion_batch(input_motion_batch_t* out) {
     }
     *out = *motion_batch;
     for (int i = 0; i < out->count; i++) {
-        out->samples[i].rotation = imu_calib_apply(&gyro_calib.live, out->samples[i].rotation);
-        if (gyro_calib.valid) {
-            out->samples[i].turn_speed = imu_rotation_turn_speed(out->samples[i].rotation);
-        }
+        out->samples[i] = imu_calib_gyro_correct(&gyro_calib, out->samples[i]);
     }
     return true;
 }
@@ -90,12 +83,20 @@ input_gyro_offset(void) {
 
 bool
 input_learn_gyro_offset(vec3i_t residual) {
-    if (!imu_calib_learn_gyro(&gyro_calib, residual)) {
-        return false;
-    }
     const int64_t now_us = timing_now_us();
-    if (imu_calib_gyro_save_due(&gyro_calib, now_us)) {
-        imu_calib_gyro_saved(&gyro_calib, now_us);
+    const imu_calib_gyro_step_t step = imu_calib_gyro_learn(&gyro_calib, residual, now_us);
+    if (step == IMU_CALIB_GYRO_SAVE_DUE) {
+        imu_calib_gyro_saved(&gyro_calib, true, now_us);
     }
-    return true;
+    return step != IMU_CALIB_GYRO_REJECTED;
+}
+
+void
+input_fake_stored_gyro(vec3i_t offset) {
+    const bool found[] = {true, true, true};
+    const int32_t values[] = {offset.x, offset.y, offset.z};
+    gyro_calib = (imu_calib_gyro_t){0};
+    gyro_calib.valid = imu_calib_from_saved(true, found, values, IMU_CALIB_GYRO_MAX, &gyro_calib.live);
+    gyro_calib.storage_valid = gyro_calib.valid;
+    gyro_calib.saved = gyro_calib.live.offset;
 }

@@ -1,17 +1,14 @@
 #include "input/motion/imu_rest.h"
 
 #include <math.h>
-#include "input/motion/gravity.h"
-#include "math/linear/vec_convert.h"
-#include "math/scalar/mathf_round.h"
 
 void
 imu_rest_reset(imu_rest_t* rest) {
     *rest = (imu_rest_t){0};
 }
 
-bool
-imu_rest_still(imu_rest_t* rest, const input_motion_t* sample, uint32_t dt_us) {
+static bool
+still(imu_rest_t* rest, const input_motion_t* sample, uint32_t dt_us) {
     if (sample == NULL || dt_us > IMU_REST_MAX_GAP_MS * MATH_US_PER_MS) {
         imu_rest_reset(rest);
         return false;
@@ -34,39 +31,34 @@ imu_rest_still(imu_rest_t* rest, const input_motion_t* sample, uint32_t dt_us) {
     return stable;
 }
 
-bool
-imu_rest_update(imu_rest_t* rest, const input_motion_t* sample, uint32_t dt_us, vec3i_t* residual) {
+imu_rest_stage_t
+imu_rest_step(imu_rest_t* rest, const input_motion_t* sample, uint32_t dt_us, bool gate) {
     if (dt_us == 0) {
-        return false;
+        return IMU_REST_MOVING;
     }
-    bool stable = imu_rest_still(rest, sample, dt_us);
-    if (sample != NULL) {
-        const vec3f_t a = vec3f_scale(vec3f_from_vec3i(sample->acceleration), 1.0F / INPUT_ACCEL_ONE_G);
-        stable = stable && fabsf(sqrtf(vec3f_dot(a, a)) - 1.0F) <= GRAVITY_TRUST_FULL_G;
+    bool stable = still(rest, sample, dt_us) && gate;
+    if (stable && rest->settle_us != 0) {
+        for (int axis = 0; axis < 3; axis++) {
+            stable = stable && fabsf(rest->recent_accel[axis] - rest->anchor[axis]) <= IMU_REST_DRIFT;
+        }
     }
     if (!stable) {
-        rest->settle_us = rest->window_us = rest->samples = 0;
+        rest->settle_us = rest->window_us = 0;
+        return IMU_REST_MOVING;
+    }
+    if (rest->settle_us == 0) {
         for (int axis = 0; axis < 3; axis++) {
-            rest->rotation[axis] = 0;
+            rest->anchor[axis] = rest->recent_accel[axis];
         }
-        return false;
     }
     if (rest->settle_us < IMU_REST_SETTLE_MS * MATH_US_PER_MS) {
         rest->settle_us += dt_us;
-        return false;
+        return IMU_REST_SETTLING;
     }
-    const int32_t r[] = {sample->rotation.x, sample->rotation.y, sample->rotation.z};
-    for (int axis = 0; axis < 3; axis++) {
-        rest->rotation[axis] += r[axis];
-    }
-    rest->samples++;
     rest->window_us += dt_us;
     if (rest->window_us < IMU_REST_WINDOW_MS * MATH_US_PER_MS) {
-        return false;
+        return IMU_REST_MEASURING;
     }
-    *residual = (vec3i_t){mathf_round_i32((float)rest->rotation[0] / rest->samples),
-                          mathf_round_i32((float)rest->rotation[1] / rest->samples),
-                          mathf_round_i32((float)rest->rotation[2] / rest->samples)};
     imu_rest_reset(rest);
-    return true;
+    return IMU_REST_DONE;
 }

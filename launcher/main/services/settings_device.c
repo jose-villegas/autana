@@ -76,3 +76,18 @@ bool
 settings_erase_space(const char* space) {
     return store_access(space, NULL, NULL, SETTINGS_ERASE);
 }
+
+bool
+settings_write_i32_batch(const char* space, const char* const keys[], const int32_t values[], size_t n) {
+    nvs_handle_t handle;
+    if (!store_ready() || nvs_open(space, NVS_READWRITE, &handle) != ESP_OK) {
+        return false;
+    }
+    bool ok = true;
+    for (size_t i = 0; i < n && ok; i++) {
+        ok = nvs_set_i32(handle, keys[i], values[i]) == ESP_OK;
+    }
+    ok = ok && nvs_commit(handle) == ESP_OK;
+    nvs_close(handle);
+    return ok;
+}
