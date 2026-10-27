@@ -1,5 +1,6 @@
 #include "frame_profile.h"
 #include <limits.h>
+#include "collections/strbuf.h"
 #include "core/memory.h"
 #include "esp_log.h"
 
@@ -92,10 +93,23 @@ frame_profile_worst(const frame_profile_trace_t* trace, int k, int* index) {
 void
 frame_profile_log_trace(const char* tag, const char* row, const frame_profile_trace_t* trace, const int* worst,
                         int count, const char* quarter) {
-    for (int i = 0; i < trace->frames; i++) {
-        ESP_LOGI(tag, FRAME_PROFILE_TRACE " " FRAME_PROFILE_QUARTER "%s", row, (int)trace->frame[i].path_ms,
-                 (int)trace->frame[i].frame_us, quarter);
+    const size_t size = FRAME_PROFILE_LINE_FRAMES * sizeof(" -2147483648:-2147483648");
+    char* frames = memory_alloc(size, MEMORY_INTERNAL);
+    if (frames == NULL) {
+        ESP_LOGE(tag, "%s: trace line allocation failed", row);
+        return;
     }
+    for (int first = 0; first < trace->frames; first += FRAME_PROFILE_LINE_FRAMES) {
+        const int n =
+            trace->frames - first < FRAME_PROFILE_LINE_FRAMES ? trace->frames - first : FRAME_PROFILE_LINE_FRAMES;
+        strbuf_t line = strbuf_make(frames, size);
+        for (int i = first; i < first + n; i++) {
+            strbuf_appendf(&line, FRAME_PROFILE_TRACE_FRAME, (int)trace->frame[i].path_ms,
+                           (int)trace->frame[i].frame_us);
+        }
+        ESP_LOGI(tag, FRAME_PROFILE_TRACE " " FRAME_PROFILE_QUARTER "%s", row, n, frames, quarter);
+    }
+    memory_free(frames);
     for (int rank = 0; rank < count; rank++) {
         const frame_profile_frame_t* f = &trace->frame[worst[rank]];
         ESP_LOGI(tag, FRAME_PROFILE_RANKED " " FRAME_PROFILE_QUARTER "%s", row, rank + 1, (int)f->path_ms,
