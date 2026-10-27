@@ -32,9 +32,8 @@ tap(settings_state_t* state, const char* key) {
     settings_frame(NULL, state);
     recti_t rect;
     TEST_ASSERT_TRUE(ui_probe_widget(key, &rect));
-    input_t input = {.x = rect.x + rect.w / 2, .y = rect.y + rect.h / 2, .down = true, .pressed = true};
-    input.press_x = input.x;
-    input.press_y = input.y;
+    input_t input = {.point = {rect.x + rect.w / 2, rect.y + rect.h / 2}, .down = true, .pressed = true};
+    input.press = input.point;
     for (int frame = 0; frame < TOUCH_HOLD_FRAMES; frame++) {
         settings_frame(&input, state);
         input.pressed = false;

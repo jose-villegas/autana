@@ -28,12 +28,13 @@
 #include "shell/ui/ui_ridge.h"
 #include "sound/sound_engine.h"
 #if CONFIG_LAUNCHER_DEVELOPMENT
-#include "console/verbs/console_sound.h"
+#include "sound/console/console_sound.h"
 #endif
 #include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
 
 #include "esp_log.h"
+#include "image/pixel/rgb565.h"
 
 static const char* TAG = "shell";
 
@@ -113,7 +114,7 @@ draw_home_hint(gesture_edge_t edge) {
         return;
     }
 
-    draw_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
+    draw_rect(x, y, w, h, RGB565BE(HOME_HINT_RGB));
 }
 
 /* Transient and expanded pictures need the hint in their overlay command

@@ -137,8 +137,8 @@ setup(int quarter) {
 }
 
 static const render_input_step_t touch[] = {
-    {TAP_FRAME, true, TAP_X, TAP_Y},
-    {TAP_FRAME + 1, false, TAP_X, TAP_Y},
+    {TAP_FRAME, true, {TAP_X, TAP_Y}},
+    {TAP_FRAME + 1, false, {TAP_X, TAP_Y}},
 };
 
 static void

@@ -34,6 +34,7 @@
 #include "ui/ui.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "apps/render_lab/tests/render_lab_test.h"
+#include "image/pixel/rgb565.h"
 #endif
 
 static const char* TAG = "capybara";
@@ -104,7 +105,7 @@ frame_subject(void) {
 static void
 scene_capybara_enter(const render_lab_scene_t* self) {
     (void)self;
-    draw_clear(gfx_rgb(UI_BACKGROUND));
+    draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     scene_failure_t why;
     capybara = scene_load(CAPYBARA_SCENE, &why);

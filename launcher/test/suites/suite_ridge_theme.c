@@ -3,6 +3,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "image/pixel/rgb565.h"
 #include "shell/ui/ridge_theme.h"
 
 static void
@@ -19,7 +20,7 @@ test_seed_keeps_its_hue_and_roles_stay_in_gamut(void) {
         TEST_ASSERT_FLOAT_WITHIN(0.02f, lightness[role], got.l);
         TEST_ASSERT_FLOAT_WITHIN(0.08f, seed.h, got.h);
         TEST_ASSERT_TRUE(ridge_theme_in_gamut(got.l, got.c, got.h));
-        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(rgb[role]), GFX_RGB(gfx_color_rgb888(GFX_RGB(rgb[role]))));
+        TEST_ASSERT_EQUAL_HEX16(RGB565BE(rgb[role]), RGB565BE(rgb565be_to_rgb888(RGB565BE(rgb[role]))));
     }
 }
 
