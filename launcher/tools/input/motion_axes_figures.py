@@ -3,7 +3,7 @@ import numpy as np
 from matplotlib.lines import Line2D
 
 from input_figures import probe_data
-from device_model import (EXTENT_SHARE, VIEW_AZIMUTH, VIEW_ELEVATION, DeviceAnimation, DeviceModel,
+from device_model import (MARGIN_SHARE, SCENE_ZOOM, VIEW_AZIMUTH, VIEW_ELEVATION, DeviceAnimation, DeviceModel,
                           legend_handles)
 from docs.plot_style import INK, LABEL_SIZE, MUTED, SLOTS, figure, save, style_axes
 
@@ -24,13 +24,13 @@ LEGEND_ROOM = 1.7
 
 def axes_figure(model, pose, output):
     fig = figure(AXES_SIZE)
-    extent = EXTENT_SHARE * model.height
+    extent = model.radius + MARGIN_SHARE * model.height
     for column, (name, azimuth) in enumerate(VIEWS, start=1):
         scene = fig.add_subplot(1, len(VIEWS), column, projection="3d", computed_zorder=False)
         scene.set_axis_off()
         for setter in (scene.set_xlim, scene.set_ylim, scene.set_zlim):
             setter(-extent, extent)
-        scene.set_box_aspect((1, 1, 1))
+        scene.set_box_aspect((1, 1, 1), zoom=SCENE_ZOOM)
         scene.view_init(elev=VIEW_ELEVATION, azim=azimuth)
         model.draw(scene, pose)
         scene.set_title(name, fontsize=LABEL_SIZE, color=MUTED)

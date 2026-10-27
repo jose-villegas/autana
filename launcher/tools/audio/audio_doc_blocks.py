@@ -1,8 +1,8 @@
-"""Shared figure arguments, captions and numeric disclosures for audio docs."""
+"""Shared captions and numeric disclosures for capture-derived audio docs."""
 import argparse
 from pathlib import Path
 
-from docs.plot_style import picture
+from docs.plot_style import FIGURE_SIZE, picture, subplots
 
 CLIPPED_DBFS = -0.5
 
@@ -19,9 +19,19 @@ def number(value, digits=2):
     return "n/a" if value is None else f"{value:.{digits}f}"
 
 
-def render_capture_figures(description, render, capture, output):
+def line_chart(series, **axes):
+    """One line chart: series are (label, [(x, y)], style, colour); `axes` go to axis.set()."""
+    fig, axis = subplots(1, 1, FIGURE_SIZE)
+    for label, points, style, color in series:
+        axis.plot([x for x, _ in points], [y for _, y in points], style, label=label, color=color)
+    axis.set(**axes)
+    return fig, axis
+
+
+def figures_main(description, capture, render):
+    """The figure scripts' command line: --capture PATH (default `capture`) --out DIR."""
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--capture", type=Path, default=capture)
-    parser.add_argument("--out", type=Path, default=output)
+    parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     render(args.capture, args.out)

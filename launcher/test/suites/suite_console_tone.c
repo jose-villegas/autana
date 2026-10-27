@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "clock_fake.h"
+#include "input/motion/imu.h"
+#include "input/motion/imu_vibration.h"
+#include "input_fake.h"
 #include "math/scalar/math_db.h"
 #include "sound/console/console_melody.h"
 #include "sound/console/console_tone_parse.h"
@@ -28,7 +31,25 @@ test_tone_reply_capacity(void) {
     char line[CONSOLE_TONE_REPLY_BYTES];
     TEST_ASSERT_TRUE(
         console_tone_reply(line, sizeof line, &args, false, MATH_DB_FLOOR, MATH_DB_FLOOR, &result, SIZE_MAX));
+    /* The farthest a sample can sit from its burst mean: full scale on all three axes. */
+    const float widest_mg = sqrtf(3.0F) * (float)(INT16_MAX - INT16_MIN) * IMU_VIBRATION_MG_PER_G / IMU_COUNTS_PER_G;
+    const imu_vibration_t widest = {.rms_mg = widest_mg, .peak_mg = widest_mg, .samples = IMU_FIFO_SAMPLES};
+    TEST_ASSERT_TRUE(console_tone_append_shake(line, sizeof line, &widest, &widest));
     TEST_ASSERT_LESS_THAN_UINT(CONSOLE_TONE_REPLY_BYTES, strlen(line) + 1);
+}
+
+static void
+test_tone_reply_shake(void) {
+    char line[CONSOLE_TONE_REPLY_BYTES] = "TONE";
+    const imu_vibration_t none = {0};
+    const imu_vibration_t silence = {.rms_mg = 0.25F, .peak_mg = 1, .samples = IMU_FIFO_SAMPLES};
+    const imu_vibration_t tone = {.rms_mg = 12.5F, .peak_mg = 30, .samples = IMU_FIFO_SAMPLES};
+    TEST_ASSERT_TRUE(console_tone_append_shake(line, sizeof line, &silence, &tone));
+    TEST_ASSERT_EQUAL_STRING("TONE, shake 12.50 mg rms 30.00 mg peak (silence 0.25 mg rms)", line);
+    strcpy(line, "TONE");
+    TEST_ASSERT_TRUE(console_tone_append_shake(line, sizeof line, &none, &tone));
+    TEST_ASSERT_EQUAL_STRING("TONE, shake n/a", line);
+    TEST_ASSERT_FALSE(console_tone_append_shake(line, strlen(line) + 1, &silence, &tone));
 }
 
 static void
@@ -111,6 +132,7 @@ test_tone_parse_invalid(void) {
 #include "console/console_verbs.h"
 #include "core/timing.h"
 #include "sound/console/console_sound_views.h"
+#include "sound/console/console_tone.h"
 #include "sound/sound_engine.h"
 #include "test_asset_dir.h"
 
@@ -125,6 +147,7 @@ test_tone_parse_invalid(void) {
 #define TEST_MELODY_MEASURES_PER_NOTE 2u
 #define TEST_MELODY_START_MS          3u
 #define TEST_MELODY_STOP_MS           2u
+#define TEST_SHAKE_COUNTS             IMU_COUNTS_PER_G
 
 typedef enum {
     TEST_TONE_OK,
@@ -172,6 +195,8 @@ static struct {
     bool internal;
     bool replied;
     bool tone_error;
+    unsigned odr_code;
+    bool shake_short;
 
     struct {
         int64_t clock_us;
@@ -393,6 +418,29 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_resul
                 || (device.measures == 2 && device.failure == TEST_TONE_MEASURE_FAIL));
 }
 
+bool
+imu_set_odr(unsigned odr_code) {
+    device.odr_code = odr_code;
+    return true;
+}
+
+/* A full queue of samples either side of zero on x, TEST_SHAKE_COUNTS wider per measured
+ * window; device.shake_short leaves it one short, as another reader taking would. */
+int
+imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                 bool* gap) {
+    TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, odr_code);
+    TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, device.odr_code);
+    *gap = true;
+    const int16_t counts = (int16_t)(device.measures * TEST_SHAKE_COUNTS);
+    const int count = device.shake_short ? IMU_FIFO_SAMPLES - 1 : IMU_FIFO_SAMPLES;
+    for (int i = 0; i < count; i++) {
+        out[i] = (imu_sample_t){.ax = i % 2 ? (int16_t)-counts : counts};
+        lost_before[i] = 0;
+    }
+    return count;
+}
+
 static void
 tone_collect(const char* reply) {
     device.replied = true;
@@ -565,6 +613,36 @@ test_tone_pending_restore_blocks_both_modes(void) {
 }
 
 static void
+test_tone_check_measures_shake_per_window(void) {
+    suite_add_test_cleanup(input_fake_reset);
+    memset(&device, 0, sizeof device);
+    input_fake_motion_present(true);
+    device.reg = TEST_TONE_REGISTER_OLD;
+    const console_tone_args_t args = fixture();
+    char line[CONSOLE_TONE_REPLY_BYTES];
+    TEST_ASSERT_NULL(console_tone_check(&args, line));
+    TEST_ASSERT_EQUAL_UINT(IMU_ODR_CODE, device.odr_code);
+    char expected[CONSOLE_TONE_REPLY_BYTES];
+    const double mg = IMU_VIBRATION_MG_PER_G;
+    snprintf(expected, sizeof expected, ", shake %.2f mg rms %.2f mg peak (silence %.2f mg rms)", 2 * mg, 2 * mg, mg);
+    TEST_ASSERT_NOT_NULL(strstr(line, expected));
+}
+
+static void
+test_tone_check_short_shake_window_is_unavailable(void) {
+    suite_add_test_cleanup(input_fake_reset);
+    memset(&device, 0, sizeof device);
+    input_fake_motion_present(true);
+    device.reg = TEST_TONE_REGISTER_OLD;
+    device.shake_short = true;
+    const console_tone_args_t args = fixture();
+    char line[CONSOLE_TONE_REPLY_BYTES];
+    TEST_ASSERT_NULL(console_tone_check(&args, line));
+    TEST_ASSERT_NOT_NULL(strstr(line, ", shake n/a"));
+    TEST_ASSERT_EQUAL_UINT(IMU_ODR_CODE, device.odr_code);
+}
+
+static void
 test_tone_acoustic_has_no_feedback(void) {
     memset(&device, 0, sizeof device);
     device.reg = TEST_TONE_REGISTER_OLD;
@@ -686,9 +764,12 @@ run_console_tone_suite(void) {
     RUN_TEST(test_tone_capture_restores_every_exit);
     RUN_TEST(test_tone_pending_restore_blocks_both_modes);
     RUN_TEST(test_tone_acoustic_has_no_feedback);
+    RUN_TEST(test_tone_check_measures_shake_per_window);
+    RUN_TEST(test_tone_check_short_shake_window_is_unavailable);
 #endif
     RUN_TEST(test_tone_reply_frequency);
     RUN_TEST(test_tone_reply_capacity);
+    RUN_TEST(test_tone_reply_shake);
     RUN_TEST(test_tone_parse_valid);
     RUN_TEST(test_tone_parse_invalid);
 }

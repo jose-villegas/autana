@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / 'launcher/tools/audio'))
 import numpy as np
 from audio_doc_tables import read_capture
-from audio_doc_blocks import render_capture_figures
+from audio_doc_blocks import figures_main
 from audio.mic.eq_probe_sweep import CAPTURE
 from audio.mic.mic_eq_probe_tables import (
     probe_data, response, hpf_reference, CURVE_POINTS, slot_case, slot_results, order_case, decided_layout,
@@ -89,7 +89,7 @@ def render_slot_checks(data, owner, output):
 
 
 def main():
-    render_capture_figures(__doc__, render, CAPTURE, ROOT / "docs/images/audio")
+    figures_main(__doc__, CAPTURE, render)
 
 
 if __name__ == '__main__':
