@@ -86,8 +86,12 @@ whole_frame(void* ctx, int64_t dt_us) {
     return timing_now_us() - start;
 }
 
+/* Every row is measured before the first one over its p95 ceiling fails the test. */
 static void
 test_real_time_frame_profiles(void) {
+    char over[R3D_PERF_ROW_NAME_SIZE] = "";
+    int64_t over_p95_us = 0;
+    int64_t over_ceiling_us = 0;
     for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
         const profile_scenario_t* scenario = &profile_scenarios[i];
         for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
@@ -117,10 +121,20 @@ test_real_time_frame_profiles(void) {
             const frame_profile_t p = frame_profile_play(&playback, whole_frame, &remainder_us);
             frame_profile_log("render_lab_profile", row, &p, r3d_perf_quarters[q].name);
             TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p.frames, "frame profile failed");
-            r3d_perf_budget(row, &r3d_perf_quarters[q], p.frame_us.avg, p.frame_us.p95, &scenario->quarters[q], true);
+            const perf_budget_t* budget = &scenario->quarters[q];
+            r3d_perf_budget(row, &r3d_perf_quarters[q], p.frame_us.avg, p.frame_us.p95, budget, false);
+            if (over[0] == '\0' && !perf_guard_passes(p.frame_us.p95, budget->p95_ceiling_us)) {
+                const int length = snprintf(over, sizeof over, "%s %s", row, r3d_perf_quarters[q].name);
+                TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof over);
+                over_p95_us = p.frame_us.p95;
+                over_ceiling_us = budget->p95_ceiling_us;
+            }
             release_fixture();
             suite_clear_test_cleanup();
         }
+    }
+    if (over[0] != '\0') {
+        perf_guard(over, over_p95_us, over_ceiling_us);
     }
 }
 #endif
