@@ -426,10 +426,9 @@ shaded_pixel(const raster_cull_t* s, gfx_color_t clear, gfx_color_t drawn, int c
  * fate's colour: the clusters' borders, a culled one's dashed. */
 static void
 show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_target_t* picture, int index) {
-    for (int y = picture->first_row; y < (picture->first_row + picture->attachment[0].height); y++) {
+    for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
         const uint32_t* tag = gfx_target_row(picture, index, y);
-        const uint32_t* below =
-            y + 1 < (picture->first_row + picture->attachment[0].height) ? gfx_target_row(picture, index, y + 1) : NULL;
+        const uint32_t* below = y + 1 < gfx_target_end_row(picture) ? gfx_target_row(picture, index, y + 1) : NULL;
         gfx_color_t* color = gfx_target_color(picture, y);
         int right = tagged_cluster(s, raster, tag[0]);
         for (int x = 0; x < picture->attachment[0].width; x++) {
@@ -448,7 +447,7 @@ paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_target_t* pict
         show_shaded(s, raster, picture, index);
         return;
     }
-    for (int y = picture->first_row; y < (picture->first_row + picture->attachment[0].height); y++) {
+    for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
         const uint32_t* tag = gfx_target_row(picture, index, y);
         gfx_color_t* color = gfx_target_color(picture, y);
         for (int x = 0; x < picture->attachment[0].width; x++) {
@@ -463,7 +462,7 @@ paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_target_t* pict
  * its depth too, which the upscale reads to tell drawn from clear. */
 static void
 layer_under(const raster_cull_t* s, const gfx_target_t* picture, int index) {
-    for (int y = picture->first_row; y < (picture->first_row + picture->attachment[0].height); y++) {
+    for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
         gfx_color_t* color = gfx_target_color(picture, y);
         uint16_t* depth = gfx_target_depth(picture, y);
         const uint32_t* tag = gfx_target_row(picture, index, y);

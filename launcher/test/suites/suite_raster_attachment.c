@@ -70,7 +70,7 @@ static void
 hooks_resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* rows, int index) {
     (void)raster;
     (void)index;
-    for (int y = rows->first_row; y < (rows->first_row + rows->attachment[0].height); y++) {
+    for (int y = rows->first_row; y < gfx_target_end_row(rows); y++) {
         ((hooks_t*)self->state)->resolved[y]++;
     }
 }
@@ -669,7 +669,7 @@ static void
 observe_split_span(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, int first, int last, int32_t z,
                    int32_t dz) {
     if (rows->first_row == 0) {
-        observed_top[writer->value] = (rows->first_row + rows->attachment[0].height);
+        observed_top[writer->value] = gfx_target_end_row(rows);
     }
 }
 

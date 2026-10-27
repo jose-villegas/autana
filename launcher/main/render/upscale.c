@@ -72,8 +72,8 @@ upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_
                    uint16_t* destination, int first_row, int row_count) {
     for (int y = first_row; y < first_row + row_count; y++) {
         const size_t source_y = y / scale->factor;
-        const uint16_t* input = (const uint16_t*)((const char*)source + source_y * pitch);
-        const uint16_t* input_depth = depth == NULL ? NULL : (const uint16_t*)((const char*)depth + source_y * pitch);
+        const uint16_t* input = (const uint16_t*)((const char*)source + (source_y * pitch));
+        const uint16_t* input_depth = depth == NULL ? NULL : (const uint16_t*)((const char*)depth + (source_y * pitch));
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->source_width; x++) {
             const uint16_t pixel = gfx_target_shown_pixel(input, input_depth, x, clear);
@@ -89,8 +89,8 @@ upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16
                     uint16_t* destination, int first_row, int row_count) {
     for (int y = first_row; y < first_row + row_count; y++) {
         const size_t source_y = scale->rows[y];
-        const uint16_t* input = (const uint16_t*)((const char*)source + source_y * pitch);
-        const uint16_t* input_depth = depth == NULL ? NULL : (const uint16_t*)((const char*)depth + source_y * pitch);
+        const uint16_t* input = (const uint16_t*)((const char*)source + (source_y * pitch));
+        const uint16_t* input_depth = depth == NULL ? NULL : (const uint16_t*)((const char*)depth + (source_y * pitch));
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->destination_width; x++) {
             output[x] = gfx_target_shown_pixel(input, input_depth, scale->columns[x], clear);
@@ -98,18 +98,25 @@ upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16
     }
 }
 
-RENDER_IRAM_ATTR void
-upscale_rows(const upscale_t* scale, const gfx_target_t* picture, uint16_t clear, uint16_t* destination, int first_row,
-             int row_count) {
+/* Shared validation stays in flash to keep assertion paths out of the draw loop's IRAM budget. */
+static __attribute__((noinline)) void
+check_rows(const upscale_t* scale, const gfx_target_t* picture, const uint16_t* destination, int first_row,
+           int row_count) {
     assert(scale != NULL);
     assert(picture != NULL);
     assert(destination != NULL);
     assert(first_row >= 0);
     assert(row_count >= 0);
     assert(first_row + row_count <= scale->destination_height);
-    GFX_TARGET_STORAGE(1) storage;
-    const gfx_target_t* target =
-        gfx_target_of_color(&storage, destination, scale->destination_width, scale->destination_height);
+}
+
+RENDER_IRAM_ATTR void
+upscale_rows(const upscale_t* scale, const gfx_target_t* picture, uint16_t clear, uint16_t* destination, int first_row,
+             int row_count) {
+    check_rows(scale, picture, destination, first_row, row_count);
+    GFX_TARGET_STORAGE(1)
+    storage = GFX_TARGET_COLOR_INIT(destination, scale->destination_width, scale->destination_height);
+    gfx_target_t* target = &storage.target;
     const uint16_t* source = picture->attachment[0].pixels;
     const uint16_t* depth =
         picture->count > GFX_ATTACHMENT_DEPTH ? picture->attachment[GFX_ATTACHMENT_DEPTH].pixels : NULL;
@@ -134,19 +141,17 @@ upscale_rows(const upscale_t* scale, const gfx_target_t* picture, uint16_t clear
 void
 upscale_rows_scanlined(const upscale_t* scale, const gfx_target_t* picture, uint16_t clear, uint16_t* destination,
                        int first_row, int row_count) {
-    assert(scale != NULL);
+    check_rows(scale, picture, destination, first_row, row_count);
     if (scale->scanline_run == 0 || (scale->path != UPSCALE_KEPT && scale->path != UPSCALE_DOUBLED)) {
         upscale_rows(scale, picture, clear, destination, first_row, row_count);
         return;
     }
-    assert(picture != NULL);
-    assert(destination != NULL);
-    assert(first_row >= 0);
-    assert(row_count >= 0);
-    assert(first_row + row_count <= scale->destination_height);
-    GFX_TARGET_STORAGE(1) storage;
-    const gfx_target_t* target =
-        gfx_target_of_color(&storage, destination, scale->destination_width, scale->destination_height);
-    gfx_target_paired_rows_shaded(target, picture, clear, scale->rows, first_row, row_count,
-                                  scale->path == UPSCALE_DOUBLED, scale->scanline_run, UPSCALE_SCANLINE_KEEP);
+    GFX_TARGET_STORAGE(1)
+    storage = GFX_TARGET_COLOR_INIT(destination, scale->destination_width, scale->destination_height);
+    gfx_target_t* target = &storage.target;
+    const uint16_t* depth =
+        picture->count > GFX_ATTACHMENT_DEPTH ? picture->attachment[GFX_ATTACHMENT_DEPTH].pixels : NULL;
+    gfx_target_paired_rows_shaded(target, &picture->attachment[GFX_ATTACHMENT_COLOR], depth, clear, scale->rows,
+                                  first_row, row_count, scale->path == UPSCALE_DOUBLED, scale->scanline_run,
+                                  UPSCALE_SCANLINE_KEEP);
 }

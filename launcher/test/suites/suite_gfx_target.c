@@ -14,9 +14,8 @@ static gfx_color_t full_buf[WIDTH * HEIGHT];
 
 static const gfx_target_t*
 full_target(void) {
-    static const GFX_TARGET_STORAGE(1)
-        storage = {0, 1, {{full_buf, GFX_PIXEL_FORMAT, WIDTH, HEIGHT, WIDTH * sizeof(gfx_color_t)}}};
-    return (const gfx_target_t*)&storage;
+    static const GFX_TARGET_STORAGE(1) storage = GFX_TARGET_COLOR_INIT(full_buf, WIDTH, HEIGHT);
+    return &storage.target;
 }
 
 static void
@@ -48,9 +47,9 @@ test_a_rect_entirely_inside_the_target_is_untouched_by_clipping(void) {
 
 static void
 test_the_targets_own_row_range_narrows_a_wider_clip(void) {
-    const GFX_TARGET_STORAGE(1)
-        band_storage = {2, 1, {{full_buf, GFX_PIXEL_FORMAT, WIDTH, 3, (WIDTH) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* band = (const gfx_target_t*)&band_storage; /* rows [2, 5) only */
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, full_buf, WIDTH, 3, 2);
+    const gfx_target_t* band = &band_storage.target; /* rows [2, 5) only */
 
     const recti_t rect = gfx_target_clip_rect(band, (recti_t){0, 0, WIDTH, HEIGHT}, (recti_t){0, 0, WIDTH, 8});
 
@@ -72,9 +71,9 @@ test_the_apps_clip_narrows_a_wider_target(void) {
 static void
 test_row_translation_lands_in_the_bands_own_local_row(void) {
     gfx_color_t band_buf[WIDTH * 3] = {0};
-    const GFX_TARGET_STORAGE(1)
-        band_storage = {4, 1, {{band_buf, GFX_PIXEL_FORMAT, WIDTH, 3, (WIDTH) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* band = (const gfx_target_t*)&band_storage; /* absolute rows [4, 7) */
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, band_buf, WIDTH, 3, 4);
+    const gfx_target_t* band = &band_storage.target; /* absolute rows [4, 7) */
 
     gfx_target_color(band, 5)[0] = (gfx_color_t)0xABCD;
 
@@ -88,12 +87,11 @@ static void
 test_a_rect_straddling_a_band_edge_splits_correctly(void) {
     gfx_color_t band_a[WIDTH * 4] = {0}; /* absolute rows [0, 4) */
     gfx_color_t band_b[WIDTH * 4] = {0}; /* absolute rows [4, 8) */
-    const GFX_TARGET_STORAGE(1)
-        a_storage = {0, 1, {{band_a, GFX_PIXEL_FORMAT, WIDTH, 4, (WIDTH) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* a = (const gfx_target_t*)&a_storage;
-    const GFX_TARGET_STORAGE(1)
-        b_storage = {4, 1, {{band_b, GFX_PIXEL_FORMAT, WIDTH, 4, (WIDTH) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* b = (const gfx_target_t*)&b_storage;
+    const GFX_TARGET_STORAGE(1) a_storage = GFX_TARGET_COLOR_INIT(band_a, WIDTH, 4);
+    const gfx_target_t* a = &a_storage.target;
+    GFX_TARGET_STORAGE(1) b_storage;
+    gfx_target_of_color(&b_storage.target, band_b, WIDTH, 4, 4);
+    const gfx_target_t* b = &b_storage.target;
 
     /* A column at x=3, rows [2, 6), straddles the row-4 band edge. */
 
@@ -138,9 +136,9 @@ test_the_union_of_all_bands_equals_the_full_target_render(void) {
 
     gfx_color_t band_buf[4][WIDTH * 2] = {0}; /* 4 bands of 2 rows each = 8 rows */
     for (int band = 0; band < 4; band++) {
-        const GFX_TARGET_STORAGE(1) target_storage = {
-            band * 2, 1, {{band_buf[band], GFX_PIXEL_FORMAT, WIDTH, 2, (WIDTH) * sizeof(gfx_color_t)}}};
-        const gfx_target_t* target = (const gfx_target_t*)&target_storage;
+        GFX_TARGET_STORAGE(1) target_storage;
+        gfx_target_of_color(&target_storage.target, band_buf[band], WIDTH, 2, band * 2);
+        const gfx_target_t* target = &target_storage.target;
         for (int i = 0; i < shape_count; i++) {
             if (!gfx_target_row_range_overlaps(target, shapes[i].y, shapes[i].y + shapes[i].h)) {
                 continue; /* the per-band skip every replay path relies on */
@@ -163,9 +161,9 @@ test_the_union_of_all_bands_equals_the_full_target_render(void) {
 
 static void
 test_row_range_overlap_rejects_a_shape_the_band_never_reaches(void) {
-    const GFX_TARGET_STORAGE(1)
-        band_storage = {6, 1, {{full_buf, GFX_PIXEL_FORMAT, WIDTH, 2, (WIDTH) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* band = (const gfx_target_t*)&band_storage; /* rows [6, 8) */
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, full_buf, WIDTH, 2, 6);
+    const gfx_target_t* band = &band_storage.target; /* rows [6, 8) */
 
     TEST_ASSERT_FALSE(gfx_target_row_range_overlaps(band, 0, 4));
     TEST_ASSERT_TRUE(gfx_target_row_range_overlaps(band, 5, 7));

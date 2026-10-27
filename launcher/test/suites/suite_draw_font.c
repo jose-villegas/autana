@@ -282,6 +282,15 @@ test_row_run_rect_matches_per_bit_placement_at_scale_one_and_at_origin(void) {
     }
 }
 
+/*
+ * draw_text_font() (draw.c) skips a whole character when its own row extent
+ * misses the current gfx_target_t entirely: one command replayed into
+ * several bands (ui_replay_band()) otherwise re-walks every character per
+ * band. Safe only if every rect draw_font_row_run_rect() can ever produce
+ * for that character stays inside the same row extent, so skipping never
+ * discards a rect that would have painted anything, proven here for every
+ * (row, col) a real glyph can pass, at every turn, without draw.c.
+ */
 static void
 test_row_run_rect_never_leaves_the_characters_own_row_extent(void) {
     const int x = 7, y = 30, scale = 3;
@@ -303,6 +312,15 @@ test_row_run_rect_never_leaves_the_characters_own_row_extent(void) {
         }
     }
 }
+
+/*
+ * draw_font_row_run_rect_dilated(): proof that one dilated-halo pass
+ * paints the same pixels as UI_TEXT_OUTLINED's 8 unit-offset copies of
+ * draw_text_font(), ink drawn last either way. Rasterizes both forms into
+ * small pixel grids via gfx_target_fill_rect() (the same body draw.c's
+ * draw_rect() calls) and compares them exactly, at every turn and
+ * with a band edge cutting through the glyph.
+ */
 
 #define SIM_DIM  40
 #define SIM_INK  ((gfx_color_t)1)
@@ -342,6 +360,8 @@ sim_walk_runs(const gfx_target_t* target, const draw_font_t* f, int x, int y, un
     }
 }
 
+/* draw_command()'s own 8-offset loop, at the row-run level: SIM_HALO at
+ * each of the 8 unit screen-space offsets, SIM_INK last, unshifted. */
 static void
 sim_draw_old(const gfx_target_t* target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
     static const int offsets[8][2] = {
@@ -354,6 +374,8 @@ sim_draw_old(const gfx_target_t* target, const draw_font_t* f, int x, int y, uns
     sim_walk_runs(target, f, x, y, ch, scale, turn, draw_font_row_run_rect, SIM_INK);
 }
 
+/* draw_text_font_halo()/draw_text_font() at the row-run level: one dilated
+ * SIM_HALO pass, SIM_INK last, unshifted, draw_command()'s fast path. */
 static void
 sim_draw_new(const gfx_target_t* target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
     sim_walk_runs(target, f, x, y, ch, scale, turn, draw_font_row_run_rect_dilated, SIM_HALO);
@@ -362,6 +384,8 @@ sim_draw_new(const gfx_target_t* target, const draw_font_t* f, int x, int y, uns
 
 typedef void (*sim_draw_fn_t)(const gfx_target_t*, const draw_font_t*, int, int, unsigned char, int, int);
 
+/* `band` gives the row range to draw into; its own buf is ignored and
+ * replaced with sim_old/sim_new so both forms land in a real buffer. */
 static void
 assert_draws_match(sim_draw_fn_t first, sim_draw_fn_t second, const gfx_target_t* band, int x, int y, unsigned char ch,
                    int scale, int turn) {
@@ -377,12 +401,14 @@ assert_draws_match(sim_draw_fn_t first, sim_draw_fn_t second, const gfx_target_t
     memset(sim_old, 0, sizeof(*sim_old) * SIM_DIM * SIM_DIM);
     memset(sim_new, 0, sizeof(*sim_new) * SIM_DIM * SIM_DIM);
 
-    GFX_TARGET_STORAGE(1) old_target_storage = {band->first_row, 1, {band->attachment[0]}};
-    GFX_TARGET_STORAGE(1) new_target_storage = {band->first_row, 1, {band->attachment[0]}};
-    old_target_storage.attachment[0].pixels = sim_old;
-    new_target_storage.attachment[0].pixels = sim_new;
-    const gfx_target_t* old_target = (const gfx_target_t*)&old_target_storage;
-    const gfx_target_t* new_target = (const gfx_target_t*)&new_target_storage;
+    GFX_TARGET_STORAGE(1) old_target_storage;
+    GFX_TARGET_STORAGE(1) new_target_storage;
+    gfx_target_of_color(&old_target_storage.target, sim_old, band->attachment[0].width, band->attachment[0].height,
+                        band->first_row);
+    gfx_target_of_color(&new_target_storage.target, sim_new, band->attachment[0].width, band->attachment[0].height,
+                        band->first_row);
+    const gfx_target_t* old_target = &old_target_storage.target;
+    const gfx_target_t* new_target = &new_target_storage.target;
 
     first(old_target, &draw_font_8x8, x, y, ch, scale, turn);
     second(new_target, &draw_font_8x8, x, y, ch, scale, turn);
@@ -393,9 +419,8 @@ assert_draws_match(sim_draw_fn_t first, sim_draw_fn_t second, const gfx_target_t
 
 static void
 test_dilated_halo_matches_eight_offset_copies_at_every_turn(void) {
-    const GFX_TARGET_STORAGE(1)
-        full_storage = {0, 1, {{NULL, GFX_PIXEL_FORMAT, SIM_DIM, SIM_DIM, (SIM_DIM) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* full = (const gfx_target_t*)&full_storage;
+    const GFX_TARGET_STORAGE(1) full_storage = GFX_TARGET_COLOR_INIT(NULL, SIM_DIM, SIM_DIM);
+    const gfx_target_t* full = &full_storage.target;
 
     for (int turn = 0; turn < 4; turn++) {
         for (unsigned char ch = 'A'; ch <= 'Z'; ch++) {
@@ -404,17 +429,30 @@ test_dilated_halo_matches_eight_offset_copies_at_every_turn(void) {
     }
 }
 
+/* A band edge cutting straight through the glyph's own rows, the case
+ * ui_replay_band() creates for real: the target's own row range narrower
+ * than SIM_DIM, clipping both forms the same way gfx_target_clip_rect()
+ * always does. */
 static void
 test_dilated_halo_matches_eight_offset_copies_at_a_band_edge(void) {
-    const GFX_TARGET_STORAGE(1)
-        band_storage = {10, 1, {{NULL, GFX_PIXEL_FORMAT, SIM_DIM, 8, (SIM_DIM) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* band = (const gfx_target_t*)&band_storage; /* rows [10, 18) only */
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, NULL, SIM_DIM, 8, 10);
+    const gfx_target_t* band = &band_storage.target; /* rows [10, 18) only */
 
     for (int turn = 0; turn < 4; turn++) {
         assert_draws_match(sim_draw_old, sim_draw_new, band, 15, 15, 'A', 2, turn);
     }
 }
 
+/*
+ * draw_font_glyph_run_boxes(): the merge itself, against synthetic glyphs
+ * whose exact box output is known by construction, plus proof that
+ * merging changes no pixel real letters draw, at every turn and a band
+ * edge.
+ */
+
+/* Rows 0-2 share one run (cols 1-2), rows 3-7 share another (cols 3-4):
+ * two boxes, not eight one-row runs. */
 static const uint8_t merge_synth_atlas[8] = {0x06, 0x06, 0x06, 0x18, 0x18, 0x18, 0x18, 0x18};
 static const draw_font_t merge_synth_font = {
     .atlas = merge_synth_atlas,
@@ -427,6 +465,8 @@ static const draw_font_t merge_synth_font = {
 
 static draw_font_run_box_t* sim_boxes;
 
+/* A box array on the stack puts these frames over the main task's
+ * headroom on the device, so it lives in the per-test fixture. */
 static draw_font_run_box_t*
 alloc_run_boxes(void) {
     if (sim_boxes == NULL) {
@@ -453,6 +493,8 @@ test_glyph_run_boxes_merges_consecutive_identical_rows(void) {
     TEST_ASSERT_EQUAL_INT(4, boxes[1].col1);
 }
 
+/* The same [1, 2] run at rows 0 and 2, but not row 1: two single-row
+ * boxes, since a gap must not bridge a merge. */
 static const uint8_t merge_gap_atlas[8] = {0x06, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00};
 static const draw_font_t merge_gap_font = {
     .atlas = merge_gap_atlas,
@@ -510,6 +552,8 @@ sim_walk_boxes(const gfx_target_t* target, const draw_font_t* f, int x, int y, u
     }
 }
 
+/* glyph_font() in halo mode: one
+ * dilated-box halo pass, one plain-box ink pass. */
 static void
 sim_draw_merged(const gfx_target_t* target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
     sim_walk_boxes(target, f, x, y, ch, scale, turn, draw_font_run_box_rect_dilated, SIM_HALO);
@@ -518,9 +562,8 @@ sim_draw_merged(const gfx_target_t* target, const draw_font_t* f, int x, int y, 
 
 static void
 test_merged_boxes_match_unmerged_runs_at_every_turn(void) {
-    const GFX_TARGET_STORAGE(1)
-        full_storage = {0, 1, {{NULL, GFX_PIXEL_FORMAT, SIM_DIM, SIM_DIM, (SIM_DIM) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* full = (const gfx_target_t*)&full_storage;
+    const GFX_TARGET_STORAGE(1) full_storage = GFX_TARGET_COLOR_INIT(NULL, SIM_DIM, SIM_DIM);
+    const gfx_target_t* full = &full_storage.target;
 
     for (int turn = 0; turn < 4; turn++) {
         for (unsigned char ch = 'A'; ch <= 'Z'; ch++) {
@@ -533,9 +576,9 @@ test_merged_boxes_match_unmerged_runs_at_every_turn(void) {
  * merged rect must still clip correctly against. */
 static void
 test_merged_boxes_match_unmerged_runs_at_a_band_edge(void) {
-    const GFX_TARGET_STORAGE(1)
-        band_storage = {10, 1, {{NULL, GFX_PIXEL_FORMAT, SIM_DIM, 8, (SIM_DIM) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* band = (const gfx_target_t*)&band_storage; /* rows [10, 18) only */
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, NULL, SIM_DIM, 8, 10);
+    const gfx_target_t* band = &band_storage.target; /* rows [10, 18) only */
 
     for (int turn = 0; turn < 4; turn++) {
         assert_draws_match(sim_draw_new, sim_draw_merged, band, 15, 15, 'A', 2, turn);

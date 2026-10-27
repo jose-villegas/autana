@@ -30,26 +30,27 @@ typedef struct r3d_span_writer r3d_span_writer_t;
 
 /* Undrawn depth is R3D_DEPTH_EMPTY; further writers run beside colour and depth. */
 typedef struct {
+    const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
+    int writer_count;
+    const r3d_span_small_fill_t* small_fill;
+
     union {
         gfx_target_t rows;
         GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) rows_storage;
     };
-
-    const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
-    int writer_count;
-    const r3d_span_small_fill_t* small_fill;
 } r3d_span_target_t;
 
 /* Colour and depth alone, rows [row0, row1) `width` wide, each buffer
  * starting at row0. */
 static inline r3d_span_target_t
 r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int row1) {
-    return (r3d_span_target_t){
-        .rows_storage = {row0,
-                         2,
-                         {{color, GFX_PIXEL_FORMAT, width, row1 - row0, width * sizeof(gfx_color_t)},
-                          {depth, IMAGE_U16, width, row1 - row0, width * sizeof(uint16_t)}}},
-        .small_fill = &r3d_span_small_fill_default};
+    r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
+    gfx_target_of_color(&target.rows, color, width, row1 - row0, row0);
+    target.rows.count = GFX_ATTACHMENT_FURTHER;
+    target.rows.attachment[GFX_ATTACHMENT_DEPTH] =
+        (image_t){depth, IMAGE_U16, width, row1 - row0, IMAGE_PITCH(IMAGE_U16, width)};
+    assert(target.rows.attachment[GFX_ATTACHMENT_DEPTH].pitch == target.rows.attachment[GFX_ATTACHMENT_COLOR].pitch);
+    return target;
 }
 
 /* A further attachment's part in a fill, chosen once per draw: after each

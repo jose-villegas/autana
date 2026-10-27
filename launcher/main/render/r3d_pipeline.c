@@ -387,9 +387,7 @@ draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_col
 
 static inline bool
 rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
-    return !r->unbounded
-           && (r->y1 < (float)target->rows.first_row
-               || r->y0 > (float)(target->rows.first_row + target->rows.attachment[0].height));
+    return !r->unbounded && (r->y1 < (float)target->rows.first_row || r->y0 > (float)gfx_target_end_row(&target->rows));
 }
 
 /* A triangle with a corner behind the near plane or too far off screen to

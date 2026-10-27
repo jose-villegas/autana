@@ -126,7 +126,8 @@ clear_and_draw(const raster_t* raster, const r3d_lens_t* lens, int visible) {
         color[i] = raster->clear;
     }
     memset(gfx_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
-    const r3d_span_target_t target = {b.picture, NULL, 0, &r3d_span_small_fill_default};
+    r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
+    gfx_target_window(&target.rows, &b.picture, b.picture.first_row, gfx_target_end_row(&b.picture));
     r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target, b.work[0]);
 }
 
@@ -204,17 +205,17 @@ report_stage_split(int bake) {
     TEST_ASSERT_NOT_NULL(b);
     const r3d_instance_t instance = {&meshes[bake], NULL};
     bench_open(b, &instance, NULL);
-    const raster_buffers_t parts = raster_carve(&b->raster);
+    const raster_buffers_t* parts = &b->buffers;
+    const r3d_lens_t* lens = &b->lens;
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     int64_t stopped[4] = {0};
     int poses = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
-        r3d_lens_t lens;
-        view_at(&meshes[bake], t_ms, &lens);
-        const int visible = r3d_pipeline_cull(&meshes[bake], &lens, parts.culled + 1, parts.work[0]);
-        r3d_pipeline_transform(&meshes[bake], &lens, parts.culled + 1, visible, parts.cs, parts.rows);
+        view_at(&meshes[bake], t_ms, &b->lens);
+        const int visible = r3d_pipeline_cull(&meshes[bake], lens, parts->culled + 1, parts->work[0]);
+        r3d_pipeline_transform(&meshes[bake], lens, parts->culled + 1, visible, parts->cs, parts->rows);
         for (int stop = 0; stop <= 3; stop++) {
-            stopped[stop] += one_core_draw_us(&b->raster, &parts, &lens, visible, stop);
+            stopped[stop] += one_core_draw_us(&b->raster, parts, lens, visible, stop);
         }
         poses++;
     }

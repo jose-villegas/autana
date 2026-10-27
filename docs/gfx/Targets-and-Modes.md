@@ -10,8 +10,8 @@ Every attachment shares width and height. Each image's `pitch` is the byte
 distance between row starts; `first_row` locates its first row in the picture.
 A framebuffer, band or replay strip uses one colour attachment.
 
-`gfx_target_t` has a flexible attachment array. Owners use `GFX_TARGET_STORAGE(n)`
-and pass its address as a target pointer, or expose the target through a union.
+`gfx_target_t` has a flexible attachment array. `GFX_TARGET_STORAGE(n)` exposes
+its `target` union member and stays last in an enclosing struct.
 Drawing surfaces borrow a `const gfx_target_t*`.
 
 | Function | What it does |
@@ -143,4 +143,4 @@ Entries 0-15 are reserved for UI by `DRAW_PALETTE_UI_ENTRIES` in
 - Building one is the app's work.
 - The two steps every palette then needs, the colour -> index map and the dither
   table, are `tools/gen/draw_palette_gen.h`: host-only, in
-  [OKLab](../Citations.md#ottosson-2020), never in the firmware image.
+  OKLab<sup>[[35]](../Citations.md#ottosson-2020)</sup>, never in the firmware image.
