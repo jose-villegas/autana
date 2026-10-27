@@ -13,7 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "
 from capture import build_id, QUARTERS, capture_quarters, select_quarter
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[5] / "scripts/device"))
 from device_report import BUDGET_TABLE_HEADER, parse_perf_targets
-from frame_profile import PATH_POSES, profiles, replays, summaries, worst
+from frame_profile import PATH_POSES, judged, profiles, replays, summaries, worst
 from frame_cost import MS_PER_SECOND, US_PER_MS
 
 LOG_HEADER = pathlib.Path(__file__).resolve().parents[1] / "tests/skin_perf_log.h"
@@ -301,6 +301,7 @@ def worst_frames(text):
 
 
 def performance_report(text):
+    text = judged(text)
     if rows := profiles(text):
         return frame_report(text, rows, playback=True) + (f"\n{section}" if (section := worst_frames(text)) else "")
     if rows := summaries(text):
