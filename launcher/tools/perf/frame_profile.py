@@ -46,6 +46,19 @@ def _records(pattern, text):
              for key, value in match.groupdict().items()} for match in pattern.finditer(text)]
 
 
+def judged(text):
+    """The capture without a test's second run: a test whose first run left the heap lower
+    plays again for the heap alone, logging its row and what follows it a second time."""
+    starts = [text.rfind("\n", 0, match.start()) + 1 for match in PROFILE_RE.finditer(text)]
+    keys = [(match["row"], match["quarter"]) for match in PROFILE_RE.finditer(text)]
+    kept, seen = [text[:starts[0]] if starts else text], set()
+    for start, end, key in zip(starts, starts[1:] + [len(text)], keys):
+        if key not in seen:
+            seen.add(key)
+            kept.append(text[start:end])
+    return "".join(kept)
+
+
 def profiles(text):
     return _records(PROFILE_RE, text)
 

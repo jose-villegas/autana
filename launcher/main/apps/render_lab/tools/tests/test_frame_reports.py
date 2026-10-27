@@ -11,6 +11,7 @@ sys.path[:0] = [str(TOOLS), str(ROOT / "launcher/tools"), str(ROOT / "launcher/t
                 str(ROOT / "scripts/device")]
 import report_performance
 from build.c_header import read_define
+from render.cull_counts import fields
 from device_report import build_budget_section, count_budget_rows
 
 
@@ -22,6 +23,33 @@ def profile(scene="probe", quarter="portrait"):
             + " ".join(f"{token(name)} {value}us" for name, value in values.items())
             + f" | {token('FPS')} {token('MEAN')} 20.69 {token('LOW')} 17.09 "
             + f"{token('WORST')} 16.71 {token('QUARTER')}{quarter}")
+
+
+FRAME_PROFILE_HEADER = ROOT / "launcher/test/frame_profile.h"
+FORMAT = lambda name: read_define(FRAME_PROFILE_HEADER, "FRAME_PROFILE_" + name) + " quarter=%s"
+FRAME = read_define(FRAME_PROFILE_HEADER, "FRAME_PROFILE_TRACE_FRAME")
+COUNTS = fields()
+PATH_POSES = read_define(FRAME_PROFILE_HEADER, "FRAME_PROFILE_PATH_POSES")
+PATH_MS = [0, 40, 80, 120]
+FRAME_US = [40000, 52000, 61000, 45000]
+RANKED = [(80, 2), (40, 1)]  # (path ms, frame index), slowest first
+COUNT, WORST_SET_UP = 100, 180
+PATH_DRAW_MS, WORST_DRAW_MS = 40.0, 47.5
+
+
+def traced(scene, quarter):
+    """A traced playback of `scene`: its profile, frames, worst frames and their replays."""
+    lines = [profile(scene, quarter)]
+    frames = "".join(FRAME % pair for pair in zip(PATH_MS, FRAME_US))
+    lines.append(FORMAT("TRACE") % (scene, len(PATH_MS), frames, quarter))
+    lines += [FORMAT("RANKED") % (scene, rank, t, FRAME_US[i], quarter) for rank, (t, i) in enumerate(RANKED, 1)]
+    def replay(t, draw, set_up):
+        counts = " ".join(f"{name}={set_up if name == 'triangles_set_up' else COUNT}" for name in COUNTS)
+        return FORMAT("REPLAY") % (scene, t, counts, f"r3d.cull 0.75/0.7  r3d.draw {draw:.2f}/{draw:.1f} | total 51.0",
+                                   quarter)
+    lines += [replay(i, PATH_DRAW_MS, COUNT) for i in range(PATH_POSES)]
+    lines += [replay(t, WORST_DRAW_MS, WORST_SET_UP) for t, _ in RANKED]
+    return "\n".join(lines)
 
 
 TARGET = "PERF TARGET probe portrait: measured 48333 us, goal 48000 us, distance +0%"
@@ -72,6 +100,42 @@ class FrameReports(unittest.TestCase):
         row = poses("probe t= 2s clusters=4 tris=5 | both cores: frame 51000us quarter=portrait")[0]
         self.assertEqual(row["time_ms"], 2000)
 
+    def test_traced_lines_parse_from_the_header_formats(self):
+        from frame_profile import trace, worst, replays
+        text = traced("probe", "landscape")
+        self.assertEqual(trace(text)[1], dict(row="probe", t_ms=PATH_MS[1], frame_us=FRAME_US[1], quarter="landscape"))
+        self.assertEqual(len(trace(text)), len(PATH_MS))
+        cut = text.replace(FRAME % (PATH_MS[-1], FRAME_US[-1]), "", 1)
+        self.assertEqual(trace(cut), [], "a line short of its count was cut in transfer")
+        self.assertEqual([row["rank"] for row in worst(text)], list(range(1, len(RANKED) + 1)))
+        pose = replays(text)[0]
+        self.assertEqual(pose["counts"], {name: COUNT for name in COUNTS})
+        self.assertEqual(pose["stages"], {"r3d.cull": 0.75, "r3d.draw": PATH_DRAW_MS})
+        self.assertEqual(pose["quarter"], "landscape")
+
+    def test_worst_frames_name_the_stage_and_count_above_the_path(self):
+        report = report_performance.performance_report(traced("probe", "portrait"))
+        self.assertIn("## Worst frames", report)
+        row = next(line for line in report.splitlines() if line.startswith("| probe | portrait | 1 |"))
+        self.assertIn(f"| {RANKED[0][0] / 1000:.2f} | {FRAME_US[RANKED[0][1]] / 1000:.1f} |", row)
+        self.assertIn(f"r3d.draw +{WORST_DRAW_MS - PATH_DRAW_MS:.1f} ms; triangles set up ×{WORST_SET_UP / COUNT:.2f}", row)
+
+    def test_a_second_run_for_the_heap_is_not_reported(self):
+        first = traced("probe", "portrait")
+        second = first.replace(str(FRAME_US[RANKED[0][1]]), "99999").replace("751", "752", 1)
+        report = report_performance.performance_report("\n".join([first, second, traced("other", "portrait")]))
+        self.assertIn("| probe | portrait | 751 |", report)
+        self.assertNotIn("752", report)
+        self.assertNotIn("100.0", report)
+        self.assertEqual(report.count("| probe | portrait | 1 |"), 1)
+        self.assertIn("| other | portrait | 1 |", report)
+
+    def test_worst_frames_fail_without_their_replays(self):
+        text = traced("probe", "portrait")
+        cut = text.rsplit("\n", 1)[0]
+        with self.assertRaisesRegex(ValueError, "probe portrait: .* replays"):
+            report_performance.performance_report(cut)
+
     def test_budget_rows(self):
         self.assertIn("| zero | 0 | 1 | n/a | UNMET |", report_performance.budget_row("zero", 0, 1))
         self.assertIn("| equal | 1 | 1 | +0.0% | MET |", report_performance.budget_row("equal", 1, 1))
@@ -82,41 +146,45 @@ class FrameReports(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             data = pathlib.Path(tmp)
             document = data / "doc.md"
+            images = ROOT / tables.DOCUMENT.rsplit("/", 1)[0] / "images" / f"test-{data.name}"
             document.write_text("<!-- generated: frame-timing-profiles -->\n<!-- /generated: frame-timing-profiles -->\n")
-            for board in ("north", "south"):
-                (data / f"frame-profile-{board}-board.log").write_text(
-                    f"BUILD_ID={board}-diag\n" + "\n".join(profile("gallery", q) for q in tables.QUARTERS))
-            pose = data / "poses-east-board.log"
-            pose.write_text("BUILD_ID=pose-diag\npose_every_ms=500\n" + "\n".join(
-                f"gallery t={t}ms clusters=4 tris=5 | both cores: frame 51000us quarter={q}"
-                for q in tables.QUARTERS for t in (0, 1000)))
-            argv = ["--data-dir", str(data), "--document", str(document),
-                    "--pose-capture", str(pose), "--pose-row", "gallery"]
+            (data / "frame-profile-north-board.log").write_text(
+                "BUILD_ID=north-diag\n" + "\n".join(profile("gallery", q) for q in tables.QUARTERS))
+            (data / "frame-profile-south-board.log").write_text(
+                "BUILD_ID=south-diag\n" + "\n".join(traced("gallery", q) for q in tables.QUARTERS))
+            argv = ["--data-dir", str(data), "--document", str(document), "--worst-board", "south",
+                    "--images", str(images)]
             command = [sys.executable, str(pathlib.Path(tables.__file__)), *argv]
-            result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            try:
+                result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+                self.assertTrue((images / "gallery.png").is_file())
+            finally:
+                for image in images.glob("*.png"):
+                    image.unlink()
+                if images.exists():
+                    images.rmdir()
             body = document.read_text()
             self.assertIn("Cells list board 1 / board 2", body)
-            self.assertIn("on one board", body)
-            self.assertIn("sampled every 0.5 s", body)
+            self.assertIn("Board 2. Each scene's played frames", body)
+            self.assertIn(f"](images/{images.name}/gallery.png)", body)
+            self.assertIn("| gallery | landscape | 1 |", body)
             prose = body.split("-->", 1)[1].split("Sources:")[0]
-            for private in ("north", "south", "east"):
+            for private in ("north", "south"):
                 self.assertNotIn(private, prose.lower())
             self.assertNotIn("-diag", body.split("-->", 1)[1])
-            self.assertNotIn("Regenerate with", body)
             marker = next(line for line in body.splitlines() if "check: " in line)
             self.assertIn(shlex.join(["python", tables.SCRIPT, *argv]), marker)
             result = subprocess.run([*command, "--check"], cwd=ROOT, capture_output=True)
             self.assertEqual(result.returncode, 0)
+            self.assertFalse(images.exists())
             document.write_text(body.replace("20.7 /", "99.9 /", 1))
             result = subprocess.run([*command, "--check"], cwd=ROOT, capture_output=True)
             self.assertEqual(result.returncode, 1)
-            selected = tables.timing_tables(data, None, "gallery", ["south"], pose)
-            self.assertIn("Cells list board 1.", selected)
-            self.assertNotIn("north-diag", selected)
-            (data / "frame-profile-south-board.log").write_text(profile("gallery"))
-            with self.assertRaisesRegex(ValueError, "frame-profile-south-board.log.*missing build id"):
-                tables.timing_tables(data, None, "gallery", ["south"], pose)
+            with self.assertRaisesRegex(ValueError, "no frame-profile-north-board.log"):
+                tables.timing_tables(data, None, ["south"], "north", images, False)
+            with self.assertRaisesRegex(ValueError, "no worst frames for gallery"):
+                tables.timing_tables(data, None, None, "north", images, False)
 
 
 if __name__ == "__main__":
