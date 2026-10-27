@@ -1,6 +1,7 @@
 #include "input/motion/imu_rest.h"
 
 #include <math.h>
+#include "math/scalar/mathf_round.h"
 
 void
 imu_rest_reset(imu_rest_t* rest) {
@@ -31,10 +32,31 @@ still(imu_rest_t* rest, const input_motion_t* sample, uint32_t dt_us) {
     return stable;
 }
 
+static void
+window_step(imu_rest_t* rest, const input_motion_t* sample, bool measuring) {
+    if (!measuring) {
+        rest->n = 0;
+        for (int axis = 0; axis < 3; axis++) {
+            rest->acceleration[axis] = rest->rotation[axis] = 0;
+        }
+        return;
+    }
+    const int32_t a[] = {sample->acceleration.x, sample->acceleration.y, sample->acceleration.z};
+    const int32_t r[] = {sample->rotation.x, sample->rotation.y, sample->rotation.z};
+    for (int axis = 0; axis < 3; axis++) {
+        rest->acceleration[axis] += a[axis];
+        rest->rotation[axis] += r[axis];
+    }
+    rest->n++;
+}
+
 imu_rest_stage_t
 imu_rest_step(imu_rest_t* rest, const input_motion_t* sample, uint32_t dt_us, bool gate) {
     if (dt_us == 0) {
         return IMU_REST_MOVING;
+    }
+    if (!rest->primed) {
+        *rest = (imu_rest_t){0};
     }
     bool stable = still(rest, sample, dt_us) && gate;
     if (stable && rest->settle_us != 0) {
@@ -42,6 +64,7 @@ imu_rest_step(imu_rest_t* rest, const input_motion_t* sample, uint32_t dt_us, bo
             stable = stable && fabsf(rest->recent_accel[axis] - rest->anchor[axis]) <= IMU_REST_DRIFT;
         }
     }
+    window_step(rest, sample, stable && rest->settle_us >= IMU_REST_SETTLE_MS * MATH_US_PER_MS);
     if (!stable) {
         rest->settle_us = rest->window_us = 0;
         return IMU_REST_MOVING;
@@ -59,6 +82,20 @@ imu_rest_step(imu_rest_t* rest, const input_motion_t* sample, uint32_t dt_us, bo
     if (rest->window_us < IMU_REST_WINDOW_MS * MATH_US_PER_MS) {
         return IMU_REST_MEASURING;
     }
-    imu_rest_reset(rest);
+    rest->primed = false;
+    rest->settle_us = rest->window_us = 0;
     return IMU_REST_DONE;
+}
+
+input_motion_t
+imu_rest_mean(const imu_rest_t* rest) {
+    if (rest->n == 0) {
+        return (input_motion_t){0};
+    }
+    int32_t a[3], r[3];
+    for (int axis = 0; axis < 3; axis++) {
+        a[axis] = mathf_round_i32((float)rest->acceleration[axis] / (float)rest->n);
+        r[axis] = mathf_round_i32((float)rest->rotation[axis] / (float)rest->n);
+    }
+    return (input_motion_t){.acceleration = {a[0], a[1], a[2]}, .rotation = {r[0], r[1], r[2]}};
 }

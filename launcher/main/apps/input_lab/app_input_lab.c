@@ -659,8 +659,8 @@ log_imu_gravity(int pose) {
 static void
 log_imu_pose(void) {
     const int pose = imu_round.pose - 1;
-    const imu_probe_average_t* average = &imu_round.poses[pose];
-    const input_motion_t mean = imu_probe_average_read(average);
+    const imu_rest_t* average = &imu_round.poses[pose];
+    const input_motion_t mean = imu_rest_mean(average);
     LOG_IMU_LINE("pose %s %d %d %d %d %d %d %d", imu_probe_pose_name(pose), mean.acceleration.x, mean.acceleration.y,
                  mean.acceleration.z, mean.rotation.x, mean.rotation.y, mean.rotation.z, average->n);
     log_imu_gravity(pose);

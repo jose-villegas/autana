@@ -55,8 +55,3 @@ imu_rotation_turn_speed(vec3i_t rotation) {
 
     return (gx + gy + gz) / IMU_COUNTS_PER_DPS;
 }
-
-static inline int
-imu_turn_speed(const imu_sample_t* s) {
-    return imu_rotation_turn_speed((vec3i_t){s->gx, s->gy, s->gz});
-}

@@ -126,7 +126,7 @@ test_gyro_saved_bounds(void) {
 
 static void
 test_gyro_first_small_save(void) {
-    imu_calib_gyro_t gyro = {0};
+    imu_calib_gyro_t gyro = {.saved_us = INT64_MIN};
     TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_SAVE_DUE, imu_calib_gyro_learn(&gyro, (vec3i_t){1, 0, 0}, 0));
 }
 
@@ -139,7 +139,7 @@ static void
 test_gyro_boundaries(void) {
     for (int axis = 0; axis < 3; axis++) {
         for (int sign = -1; sign <= 1; sign += 2) {
-            imu_calib_gyro_t gyro = {0};
+            imu_calib_gyro_t gyro = {.saved_us = INT64_MIN};
             const vec3i_t maximum = axis_value(axis, sign * IMU_CALIB_GYRO_MAX);
             TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_REJECTED,
                                   imu_calib_gyro_learn(&gyro, axis_value(axis, sign * (IMU_CALIB_GYRO_MAX + 1)), 0));
@@ -148,14 +148,14 @@ test_gyro_boundaries(void) {
             TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_SAVE_DUE, imu_calib_gyro_learn(&gyro, maximum, 0));
             TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_REJECTED, imu_calib_gyro_learn(&gyro, axis_value(axis, sign), 0));
             TEST_ASSERT_TRUE(vec3i_equal(maximum, gyro.live.offset));
-            gyro = (imu_calib_gyro_t){.valid = true, .storage_valid = true};
+            gyro = (imu_calib_gyro_t){.saved_us = INT64_MIN, .valid = true, .storage_valid = true};
             TEST_ASSERT_EQUAL_INT(
                 IMU_CALIB_GYRO_REJECTED,
                 imu_calib_gyro_learn(&gyro, axis_value(axis, sign * (IMU_CALIB_GYRO_RESIDUAL_MAX + 1)), 0));
             TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, gyro.live.offset));
             TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_SAVE_DUE,
                                   imu_calib_gyro_learn(&gyro, axis_value(axis, sign * IMU_CALIB_GYRO_RESIDUAL_MAX), 0));
-            gyro = (imu_calib_gyro_t){.valid = true, .storage_valid = true};
+            gyro = (imu_calib_gyro_t){.saved_us = INT64_MIN, .valid = true, .storage_valid = true};
             imu_calib_gyro_saved(&gyro, true, 0);
             TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_APPLIED,
                                   imu_calib_gyro_learn(&gyro, axis_value(axis, sign * (IMU_CALIB_GYRO_SAVE_DELTA + 1)),
@@ -192,8 +192,23 @@ test_gyro_failed_save_retries_and_throttles(void) {
     TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_APPLIED, imu_calib_gyro_learn(&gyro, (vec3i_t){0}, attempt * 3));
 }
 
+static void
+test_gyro_constructor(void) {
+    const int32_t saved[] = {IMU_CALIB_GYRO_MAX, -IMU_CALIB_GYRO_MAX, 0};
+    for (int state = 0; state < 3; state++) {
+        const bool found[] = {true, state != 1, true};
+        const imu_calib_gyro_t gyro = imu_calib_gyro_from_saved(state != 2, found, saved);
+        TEST_ASSERT_EQUAL(state == 0, gyro.valid);
+        TEST_ASSERT_EQUAL(gyro.valid, gyro.storage_valid);
+        TEST_ASSERT_TRUE(vec3i_equal(gyro.live.offset, gyro.saved));
+        TEST_ASSERT_TRUE(vec3i_equal(state == 0 ? (vec3i_t){saved[0], saved[1], saved[2]} : (vec3i_t){0}, gyro.saved));
+        TEST_ASSERT_EQUAL_INT64(INT64_MIN, gyro.saved_us);
+    }
+}
+
 void
 run_imu_calib_suite(void) {
+    RUN_TEST(test_gyro_constructor);
     RUN_TEST(test_gyro_boundaries);
     RUN_TEST(test_gyro_failed_save_retries_and_throttles);
     RUN_TEST(test_gyro_first_small_save);

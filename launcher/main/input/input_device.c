@@ -34,16 +34,14 @@ static imu_calib_t accel_calib;
 static imu_calib_gyro_t gyro_calib;
 
 static bool
-load_offset(imu_offset_keys_t keys, int32_t max, imu_calib_t* calib) {
-    int32_t saved[3] = {0};
-    bool found[3];
+load_offset(imu_offset_keys_t keys, bool found[3], int32_t saved[3]) {
     for (int axis = 0; axis < 3; axis++) {
         found[axis] = settings_read_i32(IMU_SETTINGS_SPACE, keys.axis[axis], &saved[axis]);
     }
     int32_t marker = 0;
     const bool committed =
         settings_read_i32(IMU_SETTINGS_SPACE, keys.valid, &marker) && marker == IMU_SETTINGS_COMMITTED;
-    return imu_calib_from_saved(committed, found, saved, max, calib);
+    return committed;
 }
 
 static bool
@@ -68,11 +66,12 @@ _Static_assert(sizeof(input_motion_t) >= sizeof(imu_sample_t), "raw samples expa
 void
 input_start(void) {
     motion_reader_reset();
-    load_offset(ACCEL_KEYS, IMU_CALIB_OFFSET_MAX, &accel_calib);
-    gyro_calib = (imu_calib_gyro_t){0};
-    gyro_calib.valid = load_offset(GYRO_KEYS, IMU_CALIB_GYRO_MAX, &gyro_calib.live);
-    gyro_calib.saved = gyro_calib.live.offset;
-    gyro_calib.storage_valid = gyro_calib.valid;
+    int32_t saved[3] = {0};
+    bool found[3];
+    bool committed = load_offset(ACCEL_KEYS, found, saved);
+    imu_calib_from_saved(committed, found, saved, IMU_CALIB_OFFSET_MAX, &accel_calib);
+    committed = load_offset(GYRO_KEYS, found, saved);
+    gyro_calib = imu_calib_gyro_from_saved(committed, found, saved);
     touch_start();
     buttons_start();
     if (!imu_init()) {

@@ -2,13 +2,13 @@
  * Acceleration cannot distinguish gravity from other forces, so magnitude
  * trust and angular acceptance gate correction. Pure logic: no sensor or clock. */
 #pragma once
-#include "input/motion/imu_rest.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "input/input.h"
 #include "input/motion/imu.h"
+#include "input/motion/imu_rest.h"
 #include "math/linear/vec3f.h"
 #include "math/scalar/units.h"
 
@@ -89,3 +89,6 @@ void gravity_clear_gyro_bias(gravity_t* g);
 float gravity_strength(const gravity_t* g);
 /* True when |linear + down| is below GRAVITY_FREE_FALL_G. */
 bool gravity_in_free_fall(const gravity_t* g);
+
+/* Full magnitude trust, with acceleration magnitude in g. */
+bool gravity_accel_trusted(float magnitude_g);

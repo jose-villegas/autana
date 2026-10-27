@@ -61,7 +61,7 @@ void
 input_fake_reset(void) {
     input_fake_motion(NULL);
     input_fake_motion_batch(NULL);
-    gyro_calib = (imu_calib_gyro_t){0};
+    gyro_calib = (imu_calib_gyro_t){.saved_us = INT64_MIN};
 }
 
 bool
@@ -95,8 +95,5 @@ void
 input_fake_stored_gyro(vec3i_t offset) {
     const bool found[] = {true, true, true};
     const int32_t values[] = {offset.x, offset.y, offset.z};
-    gyro_calib = (imu_calib_gyro_t){0};
-    gyro_calib.valid = imu_calib_from_saved(true, found, values, IMU_CALIB_GYRO_MAX, &gyro_calib.live);
-    gyro_calib.storage_valid = gyro_calib.valid;
-    gyro_calib.saved = gyro_calib.live.offset;
+    gyro_calib = imu_calib_gyro_from_saved(true, found, values);
 }
