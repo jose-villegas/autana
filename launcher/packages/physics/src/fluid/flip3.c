@@ -573,6 +573,45 @@ relax_cell(flip3_t* f, int c, unsigned sides, const relax_t* r) {
  * push: a cell off rest density gets the tuned share of the difference as
  * flow per step. Water cells are never on the walls, so a flat walk in index
  * order visits them as the nested x, y, z walk would. */
+/* One colour of the checkerboard relaxed over half the x slices. Cells of
+ * one colour share no face of the same component, so its halves may run at
+ * once. */
+typedef struct {
+    flip3_t* f;
+    const relax_t* r;
+    int colour;
+} colour_work_t;
+
+#define COLOURS 2
+
+static void
+relax_colour_half(void* ctx, int half) {
+    const colour_work_t* w = ctx;
+    flip3_t* const f = w->f;
+    const int mid = f->nx / 2;
+    const int to = half == 0 ? mid : f->nx - 1;
+    for (int x = half == 0 ? 1 : mid; x < to; x++) {
+        for (int y = 1; y < f->ny - 1; y++) {
+            for (int z = 1 + ((x + y + 1 + w->colour) % COLOURS); z < f->nz - 1; z += COLOURS) {
+                const int c = cell_index(f, x, y, z);
+                if (f->kind[c] == KIND_FLUID) {
+                    relax_cell(f, c, f->sides[c], w->r);
+                }
+            }
+        }
+    }
+}
+
+static void
+relax_colours(flip3_t* f, const relax_t* r) {
+    for (int iter = 0; iter < f->tuning.pressure_iters; iter++) {
+        for (int colour = 0; colour < COLOURS; colour++) {
+            colour_work_t w = {f, r, colour};
+            run_halves(f, relax_colour_half, &w);
+        }
+    }
+}
+
 static void
 solve_pressure(flip3_t* f, float dt) {
     const vec3f_t ih = f->inv_h;
@@ -587,6 +626,10 @@ solve_pressure(flip3_t* f, float dt) {
     const int n = f->nx * f->ny * f->nz;
     for (int c = 0; c < n; c++) {
         f->sides[c] = f->kind[c] == KIND_FLUID ? cell_sides(f, c, &r) : 0;
+    }
+    if (f->tuning.red_black) {
+        relax_colours(f, &r);
+        return;
     }
     for (int iter = 0; iter < f->tuning.pressure_iters; iter++) {
         for (int c = 0; c < n; c++) {

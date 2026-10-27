@@ -103,6 +103,9 @@ TUNE(water, rest_um_s, 0, 0, 20000);
 /* 1 hands half of the step's particle passes, the surface field and the
  * shading to core 1; 0 keeps them on the update's core. */
 TUNE(water, two_core, 1, 0, 1);
+/* 1 solves the pressure in red-black order, each colour split like the
+ * particle passes; 0 in index order on one core. */
+TUNE(water, red_black, 0, 0, 1);
 
 /* Surface buffers: the vertices and triangles iso_surface may make. The
  * tour's busiest frame makes about 2500 and 5000. */
@@ -619,6 +622,7 @@ scene_water_update(uint32_t dt_ms) {
         stats.rested++;
     } else {
         const vec3f_t accel = vec3f_scale(accel_g, (float)gravity_mm_s2);
+        water.tuning.red_black = red_black != 0;
         const uint32_t steps = dt_ms == 0 ? 0 : (uint32_t)substeps;
         const float substep_s = (float)mathi_min((int)dt_ms, WATER_MAX_STEP_MS) / (float)MATH_MS_PER_S / (float)steps;
         for (uint32_t i = 0; i < steps; i++) {

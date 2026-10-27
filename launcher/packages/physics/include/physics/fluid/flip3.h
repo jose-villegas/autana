@@ -55,10 +55,14 @@ typedef struct {
     int pressure_iters;
     float over_relaxation;
     float drift_gain;
+    /* Relax the cells in two checkerboard colours, each colour's cells in
+     * two halves that flip3_split_with() may run at once (red-black
+     * Gauss-Seidel), rather than in index order on one core. */
+    bool red_black;
 } flip3_tuning_t;
 
 #define FLIP3_TUNING_DEFAULT                                                                                           \
-    ((flip3_tuning_t){FLIP3_FLIP_RATIO, FLIP3_PRESSURE_ITERS, FLIP3_OVER_RELAXATION, FLIP3_DRIFT_GAIN})
+    ((flip3_tuning_t){FLIP3_FLIP_RATIO, FLIP3_PRESSURE_ITERS, FLIP3_OVER_RELAXATION, FLIP3_DRIFT_GAIN, false})
 
 /* The step's stages, in the order they run, with the names a timing log
  * gives them. */

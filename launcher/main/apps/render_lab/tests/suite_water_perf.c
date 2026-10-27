@@ -24,17 +24,25 @@ typedef struct {
     int32_t substeps;
     int32_t rest_um_s;
     int32_t two_core;
+    int32_t red_black;
 } water_config_t;
 
 /* The baseline, then one change each: on one core, two and one substeps
- * a frame, and skipping the step at rest below 2 mm/s. The grid in
- * internal RAM measured the same as in PSRAM, so it is not a row. */
+ * a frame, the pressure in red-black order on both cores, and skipping
+ * the step at rest below 2 mm/s. The grid in internal RAM measured the
+ * same as in PSRAM, so it is not a row. */
 static const water_config_t configs[] = {
-    {"base", 0, 4, 0, 1}, {"one_core", 0, 4, 0, 0}, {"sub2", 0, 2, 0, 1}, {"sub1", 0, 1, 0, 1}, {"rest", 0, 4, 2000, 1},
+    {.name = "base", .substeps = 4, .two_core = 1},
+    {.name = "one_core", .substeps = 4},
+    {.name = "sub2", .substeps = 2, .two_core = 1},
+    {.name = "sub1", .substeps = 1, .two_core = 1},
+    {.name = "red_black", .substeps = 4, .two_core = 1, .red_black = 1},
+    {.name = "rest", .substeps = 4, .rest_um_s = 2000, .two_core = 1},
 };
 
 static const char* const tunes[] = {TUNE_NAME(water, grid_internal), TUNE_NAME(water, substeps),
-                                    TUNE_NAME(water, rest_um_s), TUNE_NAME(water, two_core)};
+                                    TUNE_NAME(water, rest_um_s), TUNE_NAME(water, two_core),
+                                    TUNE_NAME(water, red_black)};
 
 /* A row's frames: whole frame, update and draw, in us. */
 typedef struct {
@@ -117,7 +125,8 @@ log_row(const char* config, const char* phase) {
 /* The tour once at a fixed frame time, one row per phase. */
 static void
 play(const water_config_t* config) {
-    const int32_t values[] = {config->grid_internal, config->substeps, config->rest_um_s, config->two_core};
+    const int32_t values[] = {config->grid_internal, config->substeps, config->rest_um_s, config->two_core,
+                              config->red_black};
     for (size_t i = 0; i < sizeof tunes / sizeof tunes[0]; i++) {
         TEST_ASSERT_TRUE(tune_set(tune_shared(), tunes[i], values[i]));
     }
