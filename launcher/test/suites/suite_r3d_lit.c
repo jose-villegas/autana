@@ -1703,8 +1703,8 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         {(const char*)b.work[0], r3d_pipeline_work_bytes()},
         {(const char*)b.work[1], r3d_pipeline_work_bytes()},
         {(const char*)b.draw, bytes - (size_t)((const char*)b.draw - scratch)},
-        {(const char*)gfx_render_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
-        {(const char*)gfx_render_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
+        {(const char*)gfx_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
+        {(const char*)gfx_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
     };
     size_t total = 0;
     for (size_t i = 0; i < sizeof parts / sizeof parts[0]; i++) {
@@ -1717,13 +1717,13 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         }
         total += parts[i].size;
     }
-    const char* const maps = (const char*)gfx_render_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
+    const char* const maps = (const char*)gfx_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
     TEST_ASSERT_TRUE((const char*)b.upscale == maps);
     const size_t padding = (size_t)((const char*)b.work[0] - maps);
     TEST_ASSERT_TRUE(padding < _Alignof(r3d_span_target_t));
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
-    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_color(&b.picture, 0) % 4);
-    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_depth(&b.picture, 0) % 4);
+    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_color(&b.picture, 0) % 4);
+    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_depth(&b.picture, 0) % 4);
     /* The census list holds every instance's slot and takes whole cache ways,
      * so the parts after it keep the cache sets they have without it. */
     TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));

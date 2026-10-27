@@ -72,8 +72,8 @@ clear_depth(const raster_attachment_t* self, const raster_t* raster, void* pixel
     memset(pixels, 0, count * sizeof(uint16_t));
 }
 
-static const raster_attachment_t color_attachment = {sizeof(gfx_color_t), clear_color, NULL, NULL, NULL, NULL, NULL};
-static const raster_attachment_t depth_attachment = {sizeof(uint16_t), clear_depth, NULL, NULL, NULL, NULL, NULL};
+static const raster_attachment_t color_attachment = {GFX_PIXEL_FORMAT, clear_color, NULL, NULL, NULL, NULL, NULL};
+static const raster_attachment_t depth_attachment = {IMAGE_U16, clear_depth, NULL, NULL, NULL, NULL, NULL};
 _Static_assert(R3D_DEPTH_EMPTY == 0, "depth is cleared with memset");
 
 /* Colour, depth, then the caller's, in the order raster_picture() lays them. */
@@ -85,29 +85,33 @@ attachment_at(const raster_t* raster, int index) {
     return index == GFX_ATTACHMENT_DEPTH ? &depth_attachment : raster->attachments[index - GFX_ATTACHMENT_FURTHER];
 }
 
-gfx_render_target_t
-raster_picture(const raster_t* raster) {
+void
+raster_picture(const raster_t* raster, gfx_target_t* picture) {
     assert(raster->attachment_count >= 0 && raster->attachment_count <= GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER);
-    gfx_render_target_t picture = {
-        raster->width, 0, raster->height, GFX_ATTACHMENT_FURTHER + raster->attachment_count, {{0}}};
-    for (int i = 0; i < picture.count; i++) {
-        picture.attachment[i].bytes_per_pixel = attachment_at(raster, i)->bytes_per_pixel;
+    picture->first_row = 0;
+    picture->count = GFX_ATTACHMENT_FURTHER + raster->attachment_count;
+    for (int i = 0; i < picture->count; i++) {
+        const image_format_t format = attachment_at(raster, i)->format;
+        picture->attachment[i] = (image_t){NULL, format, raster->width, raster->height,
+                                           raster->width * image_format_bits(format) / CHAR_BIT};
     }
-    return picture;
 }
 
 void
-raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
+raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, int x_first, int x_last,
                       int32_t z, int32_t dz) {
-    const uint16_t* depth = gfx_render_target_depth(rows, y);
-    void* tag = gfx_render_target_row(rows, writer->attachment, y);
-    const bool wide = rows->attachment[writer->attachment].bytes_per_pixel == (int)sizeof(uint32_t);
+    const uint16_t* depth = gfx_target_depth(rows, y);
+    const image_t* a = &rows->attachment[writer->attachment];
+    const size_t offset = (size_t)(y - rows->first_row) * a->pitch;
+    uint32_t* wide_tag = (uint32_t*)((char*)a->pixels + offset);
+    uint16_t* narrow_tag = (uint16_t*)((char*)a->pixels + offset);
+    const bool wide = a->format == IMAGE_U32;
     for (int x = x_first; x <= x_last; x++, z += dz) {
         if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
             if (wide) {
-                ((uint32_t*)tag)[x] = writer->value;
+                wide_tag[x] = writer->value;
             } else {
-                ((uint16_t*)tag)[x] = (uint16_t)writer->value;
+                narrow_tag[x] = (uint16_t)writer->value;
             }
         }
     }
@@ -116,13 +120,13 @@ raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_render_target_t
 gfx_color_t*
 raster_color(const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
-    return gfx_render_target_color(&b.picture, 0);
+    return gfx_target_color(&b.picture, 0);
 }
 
 uint16_t*
 raster_depth(const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
-    return gfx_render_target_depth(&b.picture, 0);
+    return gfx_target_depth(&b.picture, 0);
 }
 
 static void
@@ -132,7 +136,7 @@ draw_slice(void* ctx) {
     const raster_buffers_t* b = s->buffers;
     r3d_span_target_t* target = s->target;
     FRAME_LAP("r3d.draw.clear");
-    gfx_render_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
+    gfx_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
     target->writers = s->writers;
     target->writer_count = s->writer_count;
     target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
@@ -156,12 +160,13 @@ resolve_slice(void* ctx) {
     const slice_t* s = ctx;
     const raster_t* r = s->raster;
     const raster_buffers_t b = raster_carve(r);
-    gfx_render_target_t rows;
-    gfx_render_target_window(&rows, &b.picture, s->first, s->first + s->count);
-    for (int i = GFX_ATTACHMENT_FURTHER; i < rows.count; i++) {
+    GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) storage;
+    gfx_target_t* rows = (gfx_target_t*)&storage;
+    gfx_target_window(rows, &b.picture, s->first, s->first + s->count);
+    for (int i = GFX_ATTACHMENT_FURTHER; i < rows->count; i++) {
         const raster_attachment_t* a = attachment_at(r, i);
         if (a->resolve != NULL) {
-            a->resolve(a, r, &rows, i);
+            a->resolve(a, r, rows, i);
         }
     }
 }

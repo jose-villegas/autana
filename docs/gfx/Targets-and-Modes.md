@@ -2,23 +2,29 @@
 
 ## Render targets
 
-`gfx_render_target.h`: a picture drawn off the panel as a set of attachments, each
-a per-pixel map with its own size per pixel. Colour comes first, in the panel's own
-format, then depth, then any further map a renderer attaches.
+[`gfx_target.h`](../../launcher/main/gfx/target/gfx_target.h) describes a picture
+as `image_t` attachments: colour in `GFX_PIXEL_FORMAT`, depth in `IMAGE_U16`,
+then further maps in their own formats.
 
-Every attachment has the target's width and rows, so one row index finds a pixel in
-all of them.
+Every attachment shares width and height. Each image's `pitch` is the byte
+distance between row starts; `first_row` locates its first row in the picture.
+A framebuffer, band or replay strip uses one colour attachment.
+
+`gfx_target_t` has a flexible attachment array. Owners use `GFX_TARGET_STORAGE(n)`
+and pass its address as a target pointer, or expose the target through a union.
+Drawing surfaces borrow a `const gfx_target_t*`.
 
 | Function | What it does |
 |---|---|
-| `gfx_render_target_bytes()` | the bytes every attachment takes, from each one's size per pixel |
-| `gfx_render_target_carve()` | points each attachment at its part of one block |
-| `gfx_render_target_window()` | the same picture's rows `[row0, row1)` |
-| `gfx_render_target_row()`, `_color()`, `_depth()` | an attachment's first pixel of a row |
+| `gfx_target_of_color()` | initialises caller storage for one colour attachment |
+| `gfx_target_bytes()` | sizes the attachments, rounded to word boundaries |
+| `gfx_target_carve()` | assigns each attachment pixels, dimensions and byte pitch |
+| `gfx_target_window()` | copies attachment views for picture rows `[row0, row1)` |
+| `gfx_target_row()`, `gfx_target_color()`, `gfx_target_depth()` | addresses an attachment's picture row |
 
-A target can be carved from a renderer's scratch block, or point its colour at a
-band buffer and its depth at a band of its own. What an attachment means beyond its
-size is its renderer's.
+A target can be carved from a scratch block or borrow existing buffers.
+Windows copy every attachment; copying a `gfx_target_t` value loses its flexible
+array. An attachment's meaning beyond its format belongs to its renderer.
 
 ## Modes
 
@@ -137,4 +143,4 @@ Entries 0-15 are reserved for UI by `DRAW_PALETTE_UI_ENTRIES` in
 - Building one is the app's work.
 - The two steps every palette then needs, the colour -> index map and the dither
   table, are `tools/gen/draw_palette_gen.h`: host-only, in
-  OKLab<sup>[[35]](../Citations.md#ottosson-2020)</sup>, never in the firmware image.
+  [OKLab](../Citations.md#ottosson-2020), never in the firmware image.
