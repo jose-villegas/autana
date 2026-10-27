@@ -15,6 +15,7 @@
 typedef enum {
     IMAGE_RGB565BE = IMAGE_FORMAT(1, 16), /* RGB565 high byte first (rgb565be_t) */
     IMAGE_MONO1 = IMAGE_FORMAT(2, 1),     /* most significant bit leftmost, 1 = ink */
+    IMAGE_INDEXED8 = IMAGE_FORMAT(3, 8),  /* one byte per pixel: a palette index */
 } image_format_t;
 
 /* A view: its pixels belong to the caller (a pack entry, a buffer) and must outlive it;

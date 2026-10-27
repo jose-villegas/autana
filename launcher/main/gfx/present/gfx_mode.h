@@ -13,6 +13,8 @@
 #include "gfx/gfx.h"
 #include "gfx/present/modes/band/gfx_band_run.h"
 #include "gfx/present/modes/indexed/gfx_indexed.h"
+#include "image/image.h"
+#include "image/palette/palette.h"
 
 typedef enum {
     GFX_LAYOUT_FULL_FB,   /* one PSRAM framebuffer; core-1 present reads it */
@@ -104,13 +106,13 @@ gfx_band_overlay_fn gfx_frame_overlay(void);
  * same gfx_present_begin()/gfx_present_wait() path as GFX_LAYOUT_FULL_FB.
  */
 
-/* Row-major, gfx_mode_current()->index_grid_w bytes per row. Write only the
+/* An IMAGE_INDEXED8 image, index_grid_w by index_grid_h. Write only the
  * cells that changed and gfx_mark_dirty() the matching panel-pixel
  * rectangle (index cell (cx, cy) is panel pixels
  * [cx*cell_size, (cx+1)*cell_size) x [cy*cell_size, (cy+1)*cell_size));
  * gfx never marks a write dirty on the app's behalf, the same contract
  * gfx_framebuffer() already carries. */
-uint8_t* gfx_indexed_image(void);
+image_t gfx_indexed_image(void);
 
 /*
  * Readback: the frame on the panel, row by row, for a capture. A
@@ -136,10 +138,11 @@ void gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]);
 /* Ends a capture. Band mode's copy stays until gfx_mode_exit(). */
 void gfx_readback_end(void);
 
-/* Installs the 256-entry LUT GFX_LAYOUT_INDEXED expands through when 16-
- * colour dithering (below) is off. Copied, not referenced: the caller's
- * own table may be `static const` and go out of scope. */
-void gfx_indexed_set_lut(const gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE]);
+/* Installs the GFX_INDEXED_PALETTE_SIZE-entry palette GFX_LAYOUT_INDEXED
+ * expands through when 16-colour dithering (below) is off. Copied, not
+ * referenced: the caller's own table may be `static const` and go out of
+ * scope. */
+void gfx_indexed_set_palette(const palette_t* palette);
 
 /* Installs the precomputed (index, Bayer phase) -> RGB565 table 16-colour
  * mode expands through instead; see gfx_indexed.h's own comment. */
