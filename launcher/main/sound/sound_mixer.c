@@ -407,17 +407,20 @@ sound_mixer_sync(sound_mixer_t* mixer, const sound_control_t* control) {
 }
 
 static inline size_t AUDIO_IRAM_ATTR
+read_tone(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
+    if (voice->source.tone.frames_left) {
+        frames = frames > voice->source.tone.frames_left ? voice->source.tone.frames_left : frames;
+        voice->source.tone.frames_left -= (uint32_t)frames;
+        voice->playing = voice->source.tone.frames_left != 0;
+    }
+    audio_tone_fill(&voice->source.tone.oscillator, out, frames, AUDIO_OUT_VOLUME_MAX_PCT);
+    return frames;
+}
+
+static inline size_t AUDIO_IRAM_ATTR
 read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
     if (voice->tone_source) {
-        if (voice->source.tone.frames_left) {
-            if (frames > voice->source.tone.frames_left) {
-                frames = voice->source.tone.frames_left;
-            }
-            voice->source.tone.frames_left -= (uint32_t)frames;
-            voice->playing = voice->source.tone.frames_left != 0;
-        }
-        audio_tone_fill(&voice->source.tone.oscillator, out, frames, AUDIO_OUT_VOLUME_MAX_PCT);
-        return frames;
+        return read_tone(voice, out, frames);
     }
     size_t total = 0;
     const uint32_t end = sound_end_frame(voice->source.cursor.sound);
@@ -475,11 +478,6 @@ add_tail(sound_mixer_t* mixer, int32_t* accumulator, size_t begin, size_t frames
     mixer->residual += residual;
 }
 
-static bool
-voice_at_cut(const sound_mix_voice_t* voice) {
-    return !voice->playing;
-}
-
 static void AUDIO_IRAM_ATTR
 mix_voice(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulator, int16_t* scratch, size_t frames,
           int32_t factor) {
@@ -500,11 +498,20 @@ mix_voice(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulator, 
             accumulator[j] += (scratch[j] * factor) >> SOUND_GAIN_SHIFT;
         }
     }
-    if (mixer->declick_frames && voice_at_cut(voice)) {
+    if (mixer->declick_frames && !voice->playing) {
         add_tail(mixer, accumulator, count, frames, voice->last_sample);
         voice->last_sample = 0;
         voice->first_render = true;
     }
+}
+
+static bool
+voice_ends_within(const sound_mix_voice_t* voice, size_t frames) {
+    if (voice->tone_source) {
+        return voice->source.tone.frames_left && frames >= voice->source.tone.frames_left;
+    }
+    const uint32_t end = sound_end_frame(voice->source.cursor.sound);
+    return voice->source.cursor.position >= end || (!voice->loop && frames >= end - voice->source.cursor.position);
 }
 
 static sound_mix_voice_t* AUDIO_IRAM_ATTR
@@ -519,12 +526,7 @@ direct_voice(sound_mixer_t* mixer, size_t frames) {
             continue;
         }
         if (single || voice->gain_pct != SOUND_GAIN_MAX_PCT || mixer->bus_gain[voice->bus.id] != SOUND_GAIN_MAX_PCT
-            || (mixer->declick_frames && voice->first_render)
-            || (voice->tone_source ? (voice->source.tone.frames_left && frames >= voice->source.tone.frames_left)
-                                   : (voice->source.cursor.position >= sound_end_frame(voice->source.cursor.sound)
-                                      || (!voice->loop
-                                          && frames >= sound_end_frame(voice->source.cursor.sound)
-                                                           - voice->source.cursor.position)))) {
+            || (mixer->declick_frames && voice->first_render) || voice_ends_within(voice, frames)) {
             return NULL;
         }
         single = voice;
