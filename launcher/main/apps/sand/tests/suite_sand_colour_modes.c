@@ -195,7 +195,7 @@ static int
 paint_full_frame_indexed(const uint8_t* grid, gfx_indexed_repaint_kind_t kind, const uint8_t* class_table,
                          const gfx_color_t* cell_table, int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
     material_frame_t f = {0};
-    uint8_t* img = gfx_indexed_image();
+    uint8_t* img = gfx_indexed_image().pixels;
     int x0 = CM_GRID_W;
     int y0 = CM_GRID_H;
     int x1 = 0;
@@ -278,8 +278,9 @@ measure_mode_enter_indexed(colour_mode_t mode, gfx_dither_mode_t dither_mode, ui
     req.cell_size = CM_CELL;
     const gfx_mode_t* granted = gfx_mode_enter(&req);
     TEST_ASSERT_TRUE_MESSAGE(granted->layout == GFX_LAYOUT_INDEXED, "GFX_LAYOUT_INDEXED could not be granted");
-    memset(gfx_indexed_image(), 0, (size_t)CM_GRID_W * CM_GRID_H);
-    gfx_indexed_set_lut(sand_palette256_lut);
+    const image_t index = gfx_indexed_image();
+    memset(index.pixels, 0, image_row_bytes(&index) * index.height);
+    gfx_indexed_set_palette(&sand_palette256);
     gfx_indexed_set_dither16(mode == CM_MODE_16);
     if (mode != CM_MODE_16) {
         return GFX_INDEXED_REPAINT_RAW;
