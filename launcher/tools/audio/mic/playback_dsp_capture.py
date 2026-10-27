@@ -13,7 +13,7 @@ from audio.mic.eq_design import eq_design_first_order_highpass
 from autana_runner import reset_tunables
 
 BYTE_MAX = read_define(ROOT / 'launcher/main/sound/console/console_mic_parse.h', 'MIC_RECORD_BYTE_MAX')
-CAPTURE = ROOT / 'docs/audio/data/mic_playback_capture.txt'
+CAPTURE = ROOT / 'docs/audio/data/playback/mic_playback_capture.txt'
 # Development builds ship this public-domain excerpt in the console pack (docs/audio/Sound-Assets.md).
 MUSIC = 'console/carreno_waltz'
 TAKE_MS = 3000
