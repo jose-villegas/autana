@@ -30,15 +30,15 @@ typedef struct {
     r3d_pipeline_vertex_t* cs; /* mesh->vertex_count entries */
     r3d_pipeline_rows_t* rows; /* mesh->cluster_count entries */
 
-    union {
-        gfx_target_t picture;
-        GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) picture_storage;
-    }; /* raster_picture(), every row */
-
     uint16_t* upscale;            /* the upscale maps: destination columns, then rows */
     r3d_pipeline_work_t* work[2]; /* one block per row slice */
     uint16_t* culled;             /* raster_culled_length() entries */
     void* draw;                   /* raster-owned instance and slice state */
+
+    union {
+        gfx_target_t picture;
+        GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) picture_storage;
+    }; /* raster_picture(), every row */
 } raster_buffers_t;
 
 /* The census list's share of the scratch block: raster_culled_length()

@@ -56,8 +56,9 @@ tile_farthest(const gfx_target_t* f, int x0, int y0) {
     const int y1 = y0 + RASTER_SHOW_TILE < f->attachment[0].height ? y0 + RASTER_SHOW_TILE : f->attachment[0].height;
     uint16_t farthest = R3D_DEPTH_NEAREST;
     for (int y = y0; y < y1; y++) {
+        const uint16_t* depth = gfx_target_depth(f, f->first_row + y);
         for (int x = x0; x < x1; x++) {
-            const uint16_t d = gfx_target_depth(f, f->first_row + y)[x];
+            const uint16_t d = depth[x];
             if (d == R3D_DEPTH_EMPTY) {
                 return R3D_DEPTH_EMPTY;
             }
@@ -72,15 +73,16 @@ fill_tile(const gfx_target_t* f, int x0, int y0, uint16_t colour) {
     const int x1 = x0 + RASTER_SHOW_TILE < f->attachment[0].width ? x0 + RASTER_SHOW_TILE : f->attachment[0].width;
     const int y1 = y0 + RASTER_SHOW_TILE < f->attachment[0].height ? y0 + RASTER_SHOW_TILE : f->attachment[0].height;
     for (int y = y0; y < y1; y++) {
+        gfx_color_t* color = gfx_target_color(f, f->first_row + y);
         for (int x = x0; x < x1; x++) {
-            gfx_target_color(f, f->first_row + y)[x] = colour;
+            color[x] = colour;
         }
     }
 }
 
 static void
 show_depth(const gfx_target_t* f, uint16_t clear, const depth_range_t* range) {
-    for (int y = f->first_row; y < f->first_row + f->attachment[0].height; y++) {
+    for (int y = f->first_row; y < gfx_target_end_row(f); y++) {
         uint16_t* color = gfx_target_color(f, y);
         const uint16_t* depth = gfx_target_depth(f, y);
         for (int x = 0; x < f->attachment[0].width; x++) {
@@ -142,8 +144,10 @@ raster_show_map(const gfx_target_t* picture, int index, uint16_t clear,
     const image_t* map = &picture->attachment[index];
     const image_t* output = &picture->attachment[GFX_ATTACHMENT_COLOR];
     const size_t step = image_format_bits(map->format) / CHAR_BIT;
-    const int width = output->width, height = output->height;
-    const size_t map_pitch = map->pitch, color_pitch = output->pitch;
+    const int width = output->width;
+    const int height = output->height;
+    const size_t map_pitch = map->pitch;
+    const size_t color_pitch = output->pitch;
     const char* row = map->pixels;
     char* out = output->pixels;
     for (int y = 0; y < height; y++, row += map_pitch, out += color_pitch) {

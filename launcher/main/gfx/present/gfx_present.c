@@ -71,9 +71,8 @@ static gfx_color_t send_clear_colour;
 /* The sent frame, filled for its next turn as the back buffer. */
 static void
 fill_sent_frame(void) {
-    const GFX_TARGET_STORAGE(1)
-        frame = {0, 1, {{present_fb, GFX_PIXEL_FORMAT, GFX_WIDTH, GFX_HEIGHT, GFX_WIDTH * sizeof(gfx_color_t)}}};
-    gfx_target_fill((const gfx_target_t*)&frame, send_clear_colour);
+    const GFX_TARGET_STORAGE(1) frame = GFX_TARGET_COLOR_INIT(present_fb, GFX_WIDTH, GFX_HEIGHT);
+    gfx_target_fill(&frame.target, send_clear_colour);
 }
 #ifdef ESP_PLATFORM
 static bool present_pending;

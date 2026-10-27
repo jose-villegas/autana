@@ -35,9 +35,9 @@ typedef struct {
     r3d_lens_t lens;
     r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
     slice_t mine, other;
-    raster_buffers_t buffers;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
+    raster_buffers_t buffers;
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -92,8 +92,7 @@ raster_picture(const raster_t* raster, gfx_target_t* picture) {
     picture->count = GFX_ATTACHMENT_FURTHER + raster->attachment_count;
     for (int i = 0; i < picture->count; i++) {
         const image_format_t format = attachment_at(raster, i)->format;
-        picture->attachment[i] = (image_t){NULL, format, raster->width, raster->height,
-                                           raster->width * image_format_bits(format) / CHAR_BIT};
+        picture->attachment[i] = (image_t){NULL, format, raster->width, raster->height, 0};
     }
 }
 
@@ -161,7 +160,7 @@ resolve_slice(void* ctx) {
     const raster_t* r = s->raster;
     const raster_buffers_t b = raster_carve(r);
     GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) storage;
-    gfx_target_t* rows = (gfx_target_t*)&storage;
+    gfx_target_t* rows = &storage.target;
     gfx_target_window(rows, &b.picture, s->first, s->first + s->count);
     for (int i = GFX_ATTACHMENT_FURTHER; i < rows->count; i++) {
         const raster_attachment_t* a = attachment_at(r, i);

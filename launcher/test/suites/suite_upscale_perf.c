@@ -63,14 +63,14 @@ report_case(const scale_case_t* test_case) {
     }
     upscale_t scale;
     GFX_TARGET_STORAGE(2) picture_storage;
-    gfx_target_t* picture = gfx_target_of_color(&picture_storage, source, source_width, source_height);
+    gfx_target_of_color(&picture_storage.target, source, source_width, source_height, 0);
     TEST_ASSERT_TRUE(upscale_init(&scale, source_width, source_height, GFX_WIDTH, GFX_HEIGHT, columns, rows));
-    upscale_rows(&scale, picture, 0, destination, 0, GFX_HEIGHT);
+    upscale_rows(&scale, &picture_storage.target, 0, destination, 0, GFX_HEIGHT);
 
     int64_t start_us = timing_now_us();
     uint32_t start_cycles = esp_cpu_get_cycle_count();
     for (int i = 0; i < SAMPLES; i++) {
-        upscale_rows(&scale, picture, 0, destination, 0, GFX_HEIGHT);
+        upscale_rows(&scale, &picture_storage.target, 0, destination, 0, GFX_HEIGHT);
     }
     const uint32_t one_cycles = esp_cpu_get_cycle_count() - start_cycles;
     const int64_t one_us = timing_now_us() - start_us;
@@ -79,11 +79,11 @@ report_case(const scale_case_t* test_case) {
              (double)one_cycles / SAMPLES / destination_pixels);
 
     const int middle = GFX_HEIGHT / 2;
-    const upscale_job_t top = {&scale, picture, destination, 0, middle};
+    const upscale_job_t top = {&scale, &picture_storage.target, destination, 0, middle};
     start_us = timing_now_us();
     start_cycles = esp_cpu_get_cycle_count();
     for (int i = 0; i < SAMPLES; i++) {
-        upscale_job_t bottom = {&scale, picture, destination, middle, GFX_HEIGHT - middle};
+        upscale_job_t bottom = {&scale, &picture_storage.target, destination, middle, GFX_HEIGHT - middle};
         TEST_ASSERT_TRUE(job_run_core1(upscale_job, &top, sizeof top));
         upscale_job(&bottom);
         TEST_ASSERT_TRUE(job_wait(1000));

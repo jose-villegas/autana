@@ -109,7 +109,7 @@ put(char* pixels, int first, int height, size_t pitch, gfx_color_t* dst, int x, 
         if (y < first || y >= first + height) {
             return;
         }
-        dst = (gfx_color_t*)(pixels + (size_t)(y - first) * pitch) + x;
+        dst = (gfx_color_t*)(pixels + ((size_t)(y - first) * pitch)) + x;
     }
     *dst = add ? rgb565be_add(*dst, color) : color;
 }
@@ -157,8 +157,8 @@ walk_steps(const gfx_target_t* target, int x, int y, int x1, int y1, gfx_color_t
     const int height = target->attachment[0].height;
     char* pixels = target->attachment[0].pixels;
     const size_t pitch = target->attachment[0].pitch;
-    const ptrdiff_t row_step = (ptrdiff_t)sy * (pitch / sizeof(gfx_color_t));
-    line_cursor_t c = {x, y, dx + dy, rows_held ? (gfx_color_t*)(pixels + (size_t)(y - first) * pitch) + x : NULL};
+    const ptrdiff_t row_step = (ptrdiff_t)sy * (ptrdiff_t)(pitch / sizeof(gfx_color_t));
+    line_cursor_t c = {x, y, dx + dy, rows_held ? (gfx_color_t*)(pixels + ((size_t)(y - first) * pitch)) + x : NULL};
 
     /* The first pixel of an open line keeps its place in the dash. */
     if (line_dash_step(&dash) && !(flags & DRAW_LINE_OPEN)) {
@@ -254,7 +254,7 @@ fill_rect_alpha(const gfx_surface_t* state, int x, int y, int w, int h, gfx_colo
     const size_t pitch = state->target->attachment[0].pitch;
     const int first = state->target->first_row;
     for (int row = rect.y; row < recti_bottom(rect); row++) {
-        gfx_color_t* dst = (gfx_color_t*)(pixels + (size_t)(row - first) * pitch);
+        gfx_color_t* dst = (gfx_color_t*)(pixels + ((size_t)(row - first) * pitch));
         for (int i = 0; i < rect.w; i++) {
             const int col = rect.x + i;
             if (blend) {
@@ -358,7 +358,7 @@ draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha) {
             continue;
         }
 
-        gfx_color_t* dst = (gfx_color_t*)(pixels + (size_t)(row - first) * pitch);
+        gfx_color_t* dst = (gfx_color_t*)(pixels + ((size_t)(row - first) * pitch));
         const gfx_color_t* s =
             (const gfx_color_t*)((const char*)src->pixels + ((size_t)(row - y) * step)) + (rect.x - x);
 

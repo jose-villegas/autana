@@ -183,7 +183,7 @@ static void
 resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* rows, int index) {
     (void)raster;
     const raster_motion_t* m = self->state;
-    for (int y = rows->first_row; y < (rows->first_row + rows->attachment[0].height); y++) {
+    for (int y = rows->first_row; y < gfx_target_end_row(rows); y++) {
         raster_motion_px_t* out = gfx_target_row(rows, index, y);
         if (!m->known) {
             for (int x = 0; x < rows->attachment[0].width; x++) {

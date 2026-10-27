@@ -6,6 +6,24 @@
 #include "unity.h"
 
 static void
+test_tight_pitch_rounds_up_to_whole_bytes(void) {
+    static const struct {
+        image_format_t format;
+        int width;
+        uint32_t pitch;
+    } cases[] = {
+        {IMAGE_MONO1, 0, 0},        {IMAGE_MONO1, 1, 1},
+        {IMAGE_MONO1, CHAR_BIT, 1}, {IMAGE_MONO1, CHAR_BIT + 1, 2},
+        {IMAGE_INDEXED8, 3, 3},     {IMAGE_RGB565BE, 3, 6},
+        {IMAGE_U16, 3, 6},          {IMAGE_U32, UINT16_MAX, UINT16_MAX * sizeof(uint32_t)},
+    };
+
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        TEST_ASSERT_EQUAL_UINT32(cases[i].pitch, IMAGE_PITCH(cases[i].format, cases[i].width));
+    }
+}
+
+static void
 test_pitch_rows_and_subimages(void) {
     enum { HEIGHT = 4, MAX_PITCH = 28 };
 
@@ -54,6 +72,7 @@ test_large_pitch_row_address(void) {
 
 void
 run_image_view_suite(void) {
+    RUN_TEST(test_tight_pitch_rounds_up_to_whole_bytes);
     RUN_TEST(test_pitch_rows_and_subimages);
     RUN_TEST(test_large_pitch_row_address);
 }

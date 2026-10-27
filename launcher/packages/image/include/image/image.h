@@ -15,9 +15,9 @@
 typedef enum {
     IMAGE_RGB565BE = IMAGE_FORMAT(1, 16), /* RGB565 high byte first (rgb565be_t) */
     IMAGE_MONO1 = IMAGE_FORMAT(2, 1),     /* most significant bit leftmost, 1 = ink */
+    IMAGE_INDEXED8 = IMAGE_FORMAT(3, 8),  /* one byte per pixel: a palette index */
     IMAGE_U16 = IMAGE_FORMAT(4, 16),      /* raw per-pixel map */
     IMAGE_U32 = IMAGE_FORMAT(5, 32),      /* raw per-pixel map */
-    IMAGE_INDEXED8 = IMAGE_FORMAT(3, 8),  /* one byte per pixel: a palette index */
 } image_format_t;
 
 /* A view: its pixels belong to the caller (a pack entry, a buffer) and must outlive it;
@@ -35,8 +35,11 @@ _Static_assert(sizeof(image_t) == 16, "image views fit four words");
 
 static inline int
 image_format_bits(image_format_t format) {
-    return format & 0xFF;
+    return format & UINT8_MAX;
 }
+
+/* Constant expression so image views can be statically initialised. */
+#define IMAGE_PITCH(format, width) (((uint32_t)(width) * ((format) & UINT8_MAX) + CHAR_BIT - 1) / CHAR_BIT)
 
 static inline void*
 image_row(const image_t* image, int y) {

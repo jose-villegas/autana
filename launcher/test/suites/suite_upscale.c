@@ -29,8 +29,8 @@ test_two_times_matches_the_frame_doubling_reference(void) {
         source[i] = (uint16_t)(0x1200 + i);
     }
     upscale_t scale;
-    GFX_TARGET_STORAGE(2) picture_storage;
-    gfx_target_t* picture = gfx_target_of_color(&picture_storage, source, WIDTH, HEIGHT);
+    GFX_TARGET_STORAGE(2) picture_storage = GFX_TARGET_COLOR_INIT(source, WIDTH, HEIGHT);
+    gfx_target_t* picture = &picture_storage.target;
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, 2 * WIDTH, 2 * HEIGHT, columns, rows));
     upscale_rows(&scale, picture, 0, actual, 0, 2 * HEIGHT);
     for (int y = 0; y < 2 * HEIGHT; y++) {
@@ -51,8 +51,8 @@ test_integer_factors_copy_each_source_pixel_to_its_block(void) {
     enum { WIDTH = 3, HEIGHT = 2 };
 
     uint16_t source[WIDTH * HEIGHT] = {1, 2, 3, 4, 5, 6};
-    GFX_TARGET_STORAGE(2) picture_storage;
-    gfx_target_t* picture = gfx_target_of_color(&picture_storage, source, WIDTH, HEIGHT);
+    GFX_TARGET_STORAGE(2) picture_storage = GFX_TARGET_COLOR_INIT(source, WIDTH, HEIGHT);
+    gfx_target_t* picture = &picture_storage.target;
     for (size_t i = 0; i < sizeof(factors) / sizeof(factors[0]); i++) {
         const int factor = factors[i];
         const int out_width = factor * WIDTH;
@@ -112,8 +112,8 @@ test_two_row_ranges_equal_one_whole_upscale(void) {
         source[i] = (uint16_t)i;
     }
     upscale_t scale;
-    GFX_TARGET_STORAGE(2) picture_storage;
-    gfx_target_t* picture = gfx_target_of_color(&picture_storage, source, WIDTH, HEIGHT);
+    GFX_TARGET_STORAGE(2) picture_storage = GFX_TARGET_COLOR_INIT(source, WIDTH, HEIGHT);
+    gfx_target_t* picture = &picture_storage.target;
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, OUT_WIDTH, OUT_HEIGHT, columns, rows));
     upscale_rows(&scale, picture, 0, whole, 0, OUT_HEIGHT);
     upscale_rows(&scale, picture, 0, split, 0, OUT_HEIGHT / 2);
@@ -173,9 +173,9 @@ static void
 assert_a_range_writes_only_its_rows(const upscale_t* scale, uint16_t* depth, int split) {
     const size_t width = (size_t)scale->destination_width;
     const size_t height = (size_t)scale->destination_height;
-    GFX_TARGET_STORAGE(2) picture_storage;
-    gfx_target_t* picture =
-        gfx_target_of_color(&picture_storage, held.source, scale->source_width, scale->source_height);
+    GFX_TARGET_STORAGE(2)
+    picture_storage = GFX_TARGET_COLOR_INIT(held.source, scale->source_width, scale->source_height);
+    gfx_target_t* picture = &picture_storage.target;
     if (depth != NULL) {
         picture->attachment[GFX_ATTACHMENT_DEPTH] = picture->attachment[GFX_ATTACHMENT_COLOR];
         picture->attachment[GFX_ATTACHMENT_DEPTH].pixels = depth;
@@ -288,8 +288,8 @@ test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
         source[i] = color;
         depth[i] = i % 2;
     }
-    GFX_TARGET_STORAGE(2) picture_storage;
-    gfx_target_t* picture = gfx_target_of_color(&picture_storage, source, WIDTH, HEIGHT);
+    GFX_TARGET_STORAGE(2) picture_storage = GFX_TARGET_COLOR_INIT(source, WIDTH, HEIGHT);
+    gfx_target_t* picture = &picture_storage.target;
     picture->attachment[GFX_ATTACHMENT_DEPTH] = picture->attachment[GFX_ATTACHMENT_COLOR];
     picture->attachment[GFX_ATTACHMENT_DEPTH].pixels = depth;
     picture->attachment[GFX_ATTACHMENT_DEPTH].format = IMAGE_U16;
@@ -326,8 +326,8 @@ test_scanline_all_colors_match_channel_reference(void) {
     uint16_t source[WIDTH], columns[2 * WIDTH], rows[OUTPUT_HEIGHT];
     uint32_t output[WIDTH * OUTPUT_HEIGHT];
     upscale_t scale;
-    GFX_TARGET_STORAGE(2) picture_storage;
-    gfx_target_t* picture = gfx_target_of_color(&picture_storage, source, WIDTH, HEIGHT);
+    GFX_TARGET_STORAGE(2) picture_storage = GFX_TARGET_COLOR_INIT(source, WIDTH, HEIGHT);
+    gfx_target_t* picture = &picture_storage.target;
     for (int width = WIDTH; width <= 2 * WIDTH; width += WIDTH) {
         TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, width, OUTPUT_HEIGHT, columns, rows));
         {
@@ -383,8 +383,8 @@ test_odd_half_picture_repeat_keeps_pixels(void) {
     uint32_t output[WIDTH * OUTPUT_HEIGHT / 2];
     upscale_t scale;
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, WIDTH, OUTPUT_HEIGHT, columns, rows));
-    GFX_TARGET_STORAGE(2) picture_storage;
-    gfx_target_t* picture = gfx_target_of_color(&picture_storage, (uint16_t*)source, WIDTH, HEIGHT);
+    GFX_TARGET_STORAGE(2) picture_storage = GFX_TARGET_COLOR_INIT((uint16_t*)source, WIDTH, HEIGHT);
+    gfx_target_t* picture = &picture_storage.target;
     upscale_rows_scanlined(&scale, picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT);
     for (int y = 0; y < OUTPUT_HEIGHT; y++) {
         TEST_ASSERT_EQUAL_MEMORY(source, (uint16_t*)output + y * WIDTH, sizeof source);
@@ -401,22 +401,24 @@ test_shaded_paired_copy_strip_starts_on_bottom_of_pair(void) {
     for (int y = 0; y < OUTPUT_HEIGHT; y++) {
         rows[y] = y / REPEAT;
     }
-    const GFX_TARGET_STORAGE(1) target_storage = {
-        0, 1, {{(uint16_t*)whole, GFX_PIXEL_FORMAT, WIDTH, OUTPUT_HEIGHT, (WIDTH) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* target = (const gfx_target_t*)&target_storage;
-    const GFX_TARGET_STORAGE(1) band_storage = {
-        FIRST, 1, {{(uint16_t*)strip, GFX_PIXEL_FORMAT, WIDTH, OUTPUT_HEIGHT - FIRST, (WIDTH) * sizeof(gfx_color_t)}}};
-    const gfx_target_t* band = (const gfx_target_t*)&band_storage;
-    const GFX_TARGET_STORAGE(1)
-        source_storage = {0, 1, {{(void*)source, GFX_PIXEL_FORMAT, WIDTH, HEIGHT, WIDTH * sizeof(gfx_color_t)}}};
-    const gfx_target_t* picture = (const gfx_target_t*)&source_storage;
+    const GFX_TARGET_STORAGE(1) target_storage = GFX_TARGET_COLOR_INIT((uint16_t*)whole, WIDTH, OUTPUT_HEIGHT);
+    const gfx_target_t* target = &target_storage.target;
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, (uint16_t*)strip, WIDTH, OUTPUT_HEIGHT - FIRST, FIRST);
+    const gfx_target_t* band = &band_storage.target;
+    const GFX_TARGET_STORAGE(1) source_storage = GFX_TARGET_COLOR_INIT((void*)source, WIDTH, HEIGHT);
+    const gfx_target_t* picture = &source_storage.target;
     for (unsigned keep = 0; keep <= RGB565_SCALE_UNIT; keep += RGB565_SCALE_UNIT / 2) {
-        gfx_target_paired_rows_shaded(target, picture, 0, rows, 0, OUTPUT_HEIGHT, false, REPEAT, keep);
-        gfx_target_paired_rows_shaded(band, picture, 0, rows, FIRST, OUTPUT_HEIGHT - FIRST, false, REPEAT, keep);
+        gfx_target_paired_rows_shaded(target, &picture->attachment[0], NULL, 0, rows, 0, OUTPUT_HEIGHT, false, REPEAT,
+                                      keep);
+        gfx_target_paired_rows_shaded(band, &picture->attachment[0], NULL, 0, rows, FIRST, OUTPUT_HEIGHT - FIRST, false,
+                                      REPEAT, keep);
         TEST_ASSERT_EQUAL_MEMORY((uint16_t*)whole + FIRST * WIDTH, strip, sizeof strip);
     }
-    gfx_target_paired_rows(target, picture, 0, rows, 0, OUTPUT_HEIGHT, false);
-    gfx_target_paired_rows(band, picture, 0, rows, FIRST, OUTPUT_HEIGHT - FIRST, false);
+    gfx_target_paired_rows_shaded(target, &picture->attachment[0], NULL, 0, rows, 0, OUTPUT_HEIGHT, false, 0,
+                                  RGB565_SCALE_UNIT);
+    gfx_target_paired_rows_shaded(band, &picture->attachment[0], NULL, 0, rows, FIRST, OUTPUT_HEIGHT - FIRST, false, 0,
+                                  RGB565_SCALE_UNIT);
     TEST_ASSERT_EQUAL_MEMORY((uint16_t*)whole + FIRST * WIDTH, strip, sizeof strip);
     for (int y = 0; y < OUTPUT_HEIGHT; y++) {
         TEST_ASSERT_EQUAL_MEMORY(source + (y / REPEAT) * WIDTH, (uint16_t*)whole + y * WIDTH, WIDTH * sizeof *source);

@@ -19,27 +19,40 @@ typedef struct {
     image_t attachment[];
 } gfx_target_t;
 
-/* Pass the storage's address as gfx_target_t*, or use a union. */
+/* The union exposes fixed storage through the flexible target view. */
 #define GFX_TARGET_STORAGE(n)                                                                                          \
-    struct {                                                                                                           \
-        int first_row;                                                                                                 \
-        int count;                                                                                                     \
-        image_t attachment[n];                                                                                         \
+    union {                                                                                                            \
+        struct {                                                                                                       \
+            int first_row;                                                                                             \
+            int count;                                                                                                 \
+            image_t attachment[n];                                                                                     \
+        };                                                                                                             \
+        gfx_target_t target;                                                                                           \
     }
 
-static inline gfx_target_t*
-gfx_target_of_color(void* storage, gfx_color_t* color, int width, int height) {
-    gfx_target_t* target = storage;
-    target->first_row = 0;
-    target->count = 1;
-    target->attachment[0] = (image_t){color, GFX_PIXEL_FORMAT, width, height, width * sizeof(gfx_color_t)};
-    return target;
+#define GFX_TARGET_COLOR_INIT(pixels_, width_, height_)                                                                \
+    {                                                                                                                  \
+        .first_row = 0, .count = 1, .attachment = {                                                                    \
+            {pixels_, GFX_PIXEL_FORMAT, width_, height_, IMAGE_PITCH(GFX_PIXEL_FORMAT, width_)}                        \
+        }                                                                                                              \
+    }
+
+static inline void
+gfx_target_of_color(gfx_target_t* out, void* pixels, int width, int height, int first_row) {
+    out->first_row = first_row;
+    out->count = 1;
+    out->attachment[0] = (image_t){pixels, GFX_PIXEL_FORMAT, width, height, IMAGE_PITCH(GFX_PIXEL_FORMAT, width)};
+}
+
+static inline int
+gfx_target_end_row(const gfx_target_t* target) {
+    return target->first_row + target->attachment[0].height;
 }
 
 /* Rounded to a word so each carved attachment starts aligned. */
 static inline size_t
 gfx_attachment_bytes(image_format_t format, int width, int rows) {
-    const size_t pitch = ((size_t)width * image_format_bits(format) + CHAR_BIT - 1) / CHAR_BIT;
+    const size_t pitch = IMAGE_PITCH(format, width);
     return (pitch * (size_t)rows + 3U) & ~(size_t)3U;
 }
 
@@ -63,7 +76,8 @@ gfx_target_carve(gfx_target_t* target, void* block) {
         a->pixels = p;
         a->width = width;
         a->height = height;
-        a->pitch = ((size_t)width * image_format_bits(a->format) + CHAR_BIT - 1) / CHAR_BIT;
+        a->pitch = IMAGE_PITCH(a->format, width);
+        assert(i != GFX_ATTACHMENT_DEPTH || a->pitch == target->attachment[GFX_ATTACHMENT_COLOR].pitch);
         p += gfx_attachment_bytes(a->format, width, height);
     }
     return p;
@@ -71,7 +85,7 @@ gfx_target_carve(gfx_target_t* target, void* block) {
 
 static inline void
 gfx_target_window(gfx_target_t* window, const gfx_target_t* target, int row0, int row1) {
-    assert(row0 >= target->first_row && row1 >= row0 && row1 <= target->first_row + target->attachment[0].height);
+    assert(row0 >= target->first_row && row1 >= row0 && row1 <= gfx_target_end_row(target));
     window->first_row = row0;
     window->count = target->count;
     for (int i = 0; i < target->count; i++) {
@@ -90,23 +104,20 @@ gfx_target_row(const gfx_target_t* target, int index, int y) {
 
 static inline gfx_color_t*
 gfx_target_color(const gfx_target_t* target, int y) {
-    const image_t* a = &target->attachment[GFX_ATTACHMENT_COLOR];
-    return (gfx_color_t*)((char*)a->pixels + (size_t)(y - target->first_row) * a->pitch);
+    return gfx_target_row(target, GFX_ATTACHMENT_COLOR, y);
 }
 
 static inline uint16_t*
 gfx_target_depth(const gfx_target_t* target, int y) {
-    const image_t* a = &target->attachment[GFX_ATTACHMENT_DEPTH];
-    return (uint16_t*)((char*)a->pixels + (size_t)(y - target->first_row) * a->pitch);
+    return gfx_target_row(target, GFX_ATTACHMENT_DEPTH, y);
 }
 
 static inline recti_t
 gfx_target_clip_rect(const gfx_target_t* target, recti_t clip, recti_t rect) {
     const int first = target->first_row;
-    const int height = target->attachment[0].height;
     return recti_from_edges(mathi_max(rect.x, clip.x), mathi_max(mathi_max(rect.y, clip.y), first),
                             mathi_min(recti_right(rect), recti_right(clip)),
-                            mathi_min(mathi_min(recti_bottom(rect), recti_bottom(clip)), first + height));
+                            mathi_min(mathi_min(recti_bottom(rect), recti_bottom(clip)), gfx_target_end_row(target)));
 }
 
 /* Whole, word-aligned rows permit two pixels per store. */
@@ -120,24 +131,28 @@ gfx_target_fill(const gfx_target_t* target, gfx_color_t colour) {
     }
 }
 
+/* True if a shape whose own row extent is [y0, y1) has anything at all to
+ * draw into this target, the check a caller decides whether to bother
+ * drawing with, before paying for the call: a per-band triangle bin and
+ * ui.c's per-band command replay both use this to skip work outside the
+ * current band rather than discover it clips to nothing. */
 static inline bool
 gfx_target_row_range_overlaps(const gfx_target_t* target, int y0, int y1) {
-    return y0 < target->first_row + target->attachment[0].height && y1 > target->first_row;
+    return y0 < gfx_target_end_row(target) && y1 > target->first_row;
 }
 
+/* True if the target holds every row of [y0, y1), so a shape drawn there
+ * needs no per-row check. */
 static inline bool
 gfx_target_holds_rows(const gfx_target_t* target, int y0, int y1) {
-    return y0 >= target->first_row && y1 <= target->first_row + target->attachment[0].height;
+    return y0 >= target->first_row && y1 <= gfx_target_end_row(target);
 }
 
 static inline recti_t
 gfx_target_fill_rect(const gfx_target_t* target, recti_t clip, recti_t shape, gfx_color_t color) {
     const recti_t rect = gfx_target_clip_rect(target, clip, shape);
-    char* pixels = target->attachment[0].pixels;
-    const size_t pitch = target->attachment[0].pitch;
-    const int first = target->first_row;
     for (int row = rect.y; row < recti_bottom(rect); row++) {
-        gfx_color_t* dst = (gfx_color_t*)(pixels + (size_t)(row - first) * pitch) + rect.x;
+        gfx_color_t* dst = gfx_target_color(target, row) + rect.x;
         for (int i = 0; i < rect.w; i++) {
             *dst++ = color;
         }
@@ -155,13 +170,11 @@ gfx_target_shown_pixel(const uint16_t* input, const uint16_t* input_depth, int x
  * NULL rows selects exact 2x expansion; target->first_row addresses a strip.
  * A nonzero dark_run shades its latter half, with the supplied keep fraction in RGB565_SCALE_UNIT. */
 static inline __attribute__((always_inline)) void
-gfx_target_paired_rows_shaded(const gfx_target_t* target, const gfx_target_t* source, uint16_t clear,
+gfx_target_paired_rows_shaded(const gfx_target_t* target, const image_t* source, const uint16_t* depth, uint16_t clear,
                               const uint16_t* rows, int first_row, int row_count, bool doubled, int dark_run,
                               unsigned keep) {
-    const uint16_t* color = source->attachment[GFX_ATTACHMENT_COLOR].pixels;
-    const uint16_t* depth =
-        source->count > GFX_ATTACHMENT_DEPTH ? source->attachment[GFX_ATTACHMENT_DEPTH].pixels : NULL;
-    const size_t source_pitch = source->attachment[GFX_ATTACHMENT_COLOR].pitch;
+    const uint16_t* color = source->pixels;
+    const size_t source_pitch = source->pitch;
     const size_t target_pitch = target->attachment[GFX_ATTACHMENT_COLOR].pitch;
     char* output = target->attachment[GFX_ATTACHMENT_COLOR].pixels;
     const int row0 = target->first_row;
@@ -196,5 +209,8 @@ gfx_target_paired_rows_shaded(const gfx_target_t* target, const gfx_target_t* so
 static inline __attribute__((always_inline)) void
 gfx_target_paired_rows(const gfx_target_t* target, const gfx_target_t* source, uint16_t clear, const uint16_t* rows,
                        int first_row, int row_count, bool doubled) {
-    gfx_target_paired_rows_shaded(target, source, clear, rows, first_row, row_count, doubled, 0, RGB565_SCALE_UNIT);
+    const uint16_t* depth =
+        source->count > GFX_ATTACHMENT_DEPTH ? source->attachment[GFX_ATTACHMENT_DEPTH].pixels : NULL;
+    gfx_target_paired_rows_shaded(target, &source->attachment[GFX_ATTACHMENT_COLOR], depth, clear, rows, first_row,
+                                  row_count, doubled, 0, RGB565_SCALE_UNIT);
 }

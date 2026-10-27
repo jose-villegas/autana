@@ -850,7 +850,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     fill_t f = {e.flat ? FILL_FLAT : face != NULL ? FILL_FACE : FILL_GOURAUD, face, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
-    const int y_anchor = mathi_clamp(e.centres.y, -1, (target->rows.first_row + target->rows.attachment[0].height) + 1);
+    const int y_anchor = mathi_clamp(e.centres.y, -1, gfx_target_end_row(&target->rows) + 1);
     gradients_t g = {0};
     f.g = &g;
     if (!set_up_fill(target, (const r3d_span_vertex_t* const[TRIANGLE_VERTICES]){a, b, c}, box, y_anchor, &f, &g)) {
@@ -900,7 +900,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
         }
         return;
     }
-    const int y_anchor = mathi_clamp(e.centres.y, -1, (target->rows.first_row + target->rows.attachment[0].height) + 1);
+    const int y_anchor = mathi_clamp(e.centres.y, -1, gfx_target_end_row(&target->rows) + 1);
     gradients_t g = {0};
     plane_t p;
     f.g = &g;
