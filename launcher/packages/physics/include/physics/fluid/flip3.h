@@ -94,6 +94,7 @@ typedef struct {
     float *prev_u, *prev_v, *prev_w;
     float* density;
     uint8_t* kind;
+    uint8_t* sides; /* a water cell's open sides, for the pressure solve */
 
     /* The particles, in grid coordinates (the box shifted by one cell). */
     vec3f_t* pos;

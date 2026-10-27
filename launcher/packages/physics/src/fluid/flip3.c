@@ -66,7 +66,7 @@ flip3_grid_bytes(const flip3_config_t* c) {
         return 0;
     }
     const size_t n = (size_t)grid_along(c, 0) * (size_t)grid_along(c, 1) * (size_t)grid_along(c, 2);
-    return (GRID_FLOATS * align_up(n * sizeof(float))) + align_up(n);
+    return (GRID_FLOATS * align_up(n * sizeof(float))) + (2 * align_up(n));
 }
 
 size_t
@@ -119,6 +119,7 @@ flip3_init(flip3_t* f, const flip3_config_t* c, void* grid, void* particles) {
         memset(*floats[i], 0, n * sizeof(float));
     }
     f->kind = carve(&g, n);
+    f->sides = carve(&g, n);
 
     const size_t m = (size_t)c->max_particles;
     uint8_t* p = particles;
@@ -463,30 +464,37 @@ accelerate(flip3_t* f, float dt, vec3f_t accel) {
     }
 }
 
+/* A water cell's sides, worked out once per solve: bit 2a set when its face
+ * toward -a opens onto water or air rather than a wall, bit 2a + 1 the
+ * same toward +a, and SIDES_ENCLOSED when water or wall is on all six. */
+#define SIDES_OPEN_BITS 6
+#define SIDES_OPEN_SETS (1 << SIDES_OPEN_BITS)
+#define SIDES_ENCLOSED  (1u << SIDES_OPEN_BITS)
+
 /* What every cell's relaxation shares: neighbour strides, inverse spacing
- * and its square per axis, and the drift push's gain per unit of density
- * error. */
+ * per axis, the drift push's gain per unit of density error, and for each
+ * set of open sides the over-relaxed pressure per unit of divergence (0
+ * for a cell walled in on every side). */
 typedef struct {
     int stride[3];
-    float ih[3], ih2[3];
+    float ih[3];
     float drift;
+    float gain[SIDES_OPEN_SETS];
 } relax_t;
 
-/* 1 for a face that opens onto water or air, 0 for a wall's. */
-static float
-open_toward(const flip3_t* f, int cell) {
-    return f->kind[cell] != KIND_SOLID ? 1.0F : 0.0F;
-}
-
-/* Water or wall on all six sides. */
-static bool
-enclosed(const flip3_t* f, int c, const relax_t* r) {
+static uint8_t
+cell_sides(const flip3_t* f, int c, const relax_t* r) {
+    unsigned sides = SIDES_ENCLOSED;
     for (int a = 0; a < 3; a++) {
-        if (f->kind[c - r->stride[a]] == KIND_AIR || f->kind[c + r->stride[a]] == KIND_AIR) {
-            return false;
+        const uint8_t below = f->kind[c - r->stride[a]];
+        const uint8_t above = f->kind[c + r->stride[a]];
+        sides |= (below != KIND_SOLID ? 1u : 0u) << (2 * a);
+        sides |= (above != KIND_SOLID ? 1u : 0u) << ((2 * a) + 1);
+        if (below == KIND_AIR || above == KIND_AIR) {
+            sides &= ~SIDES_ENCLOSED;
         }
     }
-    return true;
+    return (uint8_t)sides;
 }
 
 /* One Gauss-Seidel update of a water cell's six faces. Muller pushes only
@@ -494,29 +502,24 @@ enclosed(const flip3_t* f, int c, const relax_t* r) {
  * so cells with water all round are also drawn back to rest; at the
  * surface that pull would act as a false surface tension. */
 static void
-relax_cell(flip3_t* f, int c, const relax_t* r) {
+relax_cell(flip3_t* f, int c, unsigned sides, const relax_t* r) {
     float* const faces[3] = {f->u, f->v, f->w};
-    float open_below[3];
-    float open_above[3];
-    float s = 0.0F;
     float div = 0.0F;
     for (int a = 0; a < 3; a++) {
-        open_below[a] = open_toward(f, c - r->stride[a]);
-        open_above[a] = open_toward(f, c + r->stride[a]);
-        s += (open_below[a] + open_above[a]) * r->ih2[a];
         div += (faces[a][c + r->stride[a]] - faces[a][c]) * r->ih[a];
     }
-    if (s == 0.0F) {
-        return;
-    }
     const float compression = f->density[c] - f->rest_density;
-    if (compression > 0.0F || enclosed(f, c, r)) {
+    if (compression > 0.0F || (sides & SIDES_ENCLOSED) != 0) {
         div -= r->drift * compression;
     }
-    const float p = -div / s * f->tuning.over_relaxation;
+    const float p = -div * r->gain[sides & (SIDES_OPEN_SETS - 1)];
     for (int a = 0; a < 3; a++) {
-        faces[a][c] -= open_below[a] * p * r->ih[a];
-        faces[a][c + r->stride[a]] += open_above[a] * p * r->ih[a];
+        if ((sides & (1u << (2 * a))) != 0) {
+            faces[a][c] -= p * r->ih[a];
+        }
+        if ((sides & (1u << ((2 * a) + 1))) != 0) {
+            faces[a][c + r->stride[a]] += p * r->ih[a];
+        }
     }
 }
 
@@ -527,15 +530,22 @@ relax_cell(flip3_t* f, int c, const relax_t* r) {
 static void
 solve_pressure(flip3_t* f, float dt) {
     const vec3f_t ih = f->inv_h;
-    const relax_t r = {{f->ny * f->nz, f->nz, 1},
-                       {ih.x, ih.y, ih.z},
-                       {ih.x * ih.x, ih.y * ih.y, ih.z * ih.z},
-                       f->tuning.drift_gain / dt / f->rest_density};
+    relax_t r = {{f->ny * f->nz, f->nz, 1}, {ih.x, ih.y, ih.z}, f->tuning.drift_gain / dt / f->rest_density, {0}};
+    for (int set = 0; set < SIDES_OPEN_SETS; set++) {
+        float s = 0.0F;
+        for (int side = 0; side < SIDES_OPEN_BITS; side++) {
+            s += (set & (1 << side)) != 0 ? r.ih[side / 2] * r.ih[side / 2] : 0.0F;
+        }
+        r.gain[set] = s > 0.0F ? f->tuning.over_relaxation / s : 0.0F;
+    }
     const int n = f->nx * f->ny * f->nz;
+    for (int c = 0; c < n; c++) {
+        f->sides[c] = f->kind[c] == KIND_FLUID ? cell_sides(f, c, &r) : 0;
+    }
     for (int iter = 0; iter < f->tuning.pressure_iters; iter++) {
         for (int c = 0; c < n; c++) {
             if (f->kind[c] == KIND_FLUID) {
-                relax_cell(f, c, &r);
+                relax_cell(f, c, f->sides[c], &r);
             }
         }
     }
@@ -643,6 +653,15 @@ smooth_axis(float* field, int stride, int count, int step_a, int count_a, int st
     }
 }
 
+/* Sample `i`'s centre stencil along `axis`, the same for every sample in its
+ * plane, so each loop of flip3_field() works out its own axis once. */
+static void
+field_axis(const flip3_t* f, int axis, int i, float step, int* lo, int* hi, float* t) {
+    const float h = axis_of(f->h, axis);
+    /* Grid coordinates: the box starts one cell in. */
+    centre_axis(h + (((float)i - 0.5F) * step), h, axis_of(f->inv_h, axis), cells_on(f, axis), lo, hi, t);
+}
+
 iso_field_t
 flip3_field(const flip3_t* f, int samples, float* out) {
     int d[3];
@@ -652,23 +671,22 @@ flip3_field(const flip3_t* f, int samples, float* out) {
     const int sz = d[2];
     const vec3f_t step = vec3f_scale(f->h, 1.0F / (float)samples);
     const float inv_rest = 1.0F / f->rest_density;
-    for (int x = 0; x < sx; x++) {
-        for (int y = 0; y < sy; y++) {
-            for (int z = 0; z < sz; z++) {
-                float* at = &out[(((x * sy) + y) * sz) + z];
-                if (x == 0 || y == 0 || z == 0 || x == sx - 1 || y == sy - 1 || z == sz - 1) {
-                    *at = 0.0F;
-                    continue;
-                }
-                /* Grid coordinates: the box starts one cell in. */
-                const vec3f_t p = {f->h.x + (((float)x - 0.5F) * step.x), f->h.y + (((float)y - 0.5F) * step.y),
-                                   f->h.z + (((float)z - 0.5F) * step.z)};
-                const stencil_t s = centre_stencil(f, p);
+    memset(out, 0, (size_t)sx * (size_t)sy * (size_t)sz * sizeof(float));
+    int lo[3];
+    int hi[3];
+    float t[3];
+    for (int x = 1; x < sx - 1; x++) {
+        field_axis(f, 0, x, step.x, &lo[0], &hi[0], &t[0]);
+        for (int y = 1; y < sy - 1; y++) {
+            field_axis(f, 1, y, step.y, &lo[1], &hi[1], &t[1]);
+            for (int z = 1; z < sz - 1; z++) {
+                field_axis(f, 2, z, step.z, &lo[2], &hi[2], &t[2]);
+                const stencil_t s = corners(f, lo, hi, t);
                 float density = 0.0F;
                 for (int k = 0; k < 8; k++) {
                     density += s.weight[k] * f->density[s.at[k]];
                 }
-                *at = density * inv_rest;
+                out[(((x * sy) + y) * sz) + z] = density * inv_rest;
             }
         }
     }
