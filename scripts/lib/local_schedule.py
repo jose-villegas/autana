@@ -31,9 +31,6 @@ BAKES_WORKFLOW = "bakes-gpu.yml"
 DOC_IMAGES_WORKFLOW = "doc-images-gpu.yml"
 GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
 GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 4 * 60 * 60}
-# How long a started GPU job holds the boards back: its longest measured run with margin
-# (doc images 8.4 h, bakes 2.8 h); past this the boards start beside it.
-GPU_BOARD_HOLD_SECONDS = {DOC_IMAGES_WORKFLOW: 10 * 60 * 60, BAKES_WORKFLOW: 4 * 60 * 60}
 NIGHT_STEP_HANG_SECONDS = 23 * 60 * 60
 GPU_PENDING_STATUSES = ("queued", "waiting", "in_progress")
 DEFERRED = "GPU doc images deferred: bakes queued or running"
@@ -93,19 +90,10 @@ def gpu_on_host(clock):
         return False
 
 
-def holding(job, workflow, now):
-    """A GPU job that is waiting to run, or started less than its board hold ago."""
-    if job.get("status") not in GPU_PENDING_STATUSES or GPU_LABEL not in job.get("labels", []):
-        return False
-    since = job.get("started_at") or job.get("created_at")
-    return not since or now - datetime.fromisoformat(since.replace("Z", "+00:00"))         < timedelta(seconds=GPU_BOARD_HOLD_SECONDS[workflow])
-
-
 def gpu_pending(workflows=GPU_WORKFLOWS, request=None):
-    now = Clock().now().astimezone(timezone.utc)
-    cutoff = (now - RECENT_RUNS_WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (Clock().now().astimezone(timezone.utc) - RECENT_RUNS_WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ")
     request = request or call
-    return any(holding(job, workflow, now)
+    return any(job.get("status") in GPU_PENDING_STATUSES and GPU_LABEL in job.get("labels", [])
                for workflow in workflows
                for run in request("GET", f"/actions/workflows/{workflow}/runs?created=>={cutoff}&per_page={PER_PAGE}")["workflow_runs"]
                if run["status"] != "completed"

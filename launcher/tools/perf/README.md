@@ -293,8 +293,6 @@ Every Bakes GPU completion triggers a fresh image check.
 
 The plan waits for two polls without queued, waiting or running jobs carrying
 `gpu` in either GPU workflow. Hosted jobs waiting for a later marker do not count.
-A started GPU job holds the boards back for at most `GPU_BOARD_HOLD_SECONDS`,
-its workflow's longest measured run with margin; past that the boards start beside it.
 
 This check requires a host GPU runner marker fresh within `GPU_HOST_MARKER_DAYS`.
 Otherwise it reports “GPU runner not on this host” and continues.

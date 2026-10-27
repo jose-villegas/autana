@@ -100,22 +100,6 @@ class GpuQueueTests(unittest.TestCase):
         self.assertFalse(schedule.gpu_pending(request=request))
 
 
-    def test_started_gpu_job_holds_boards_only_for_its_hold(self):
-        now = datetime(2026, 10, 28, 3, tzinfo=timezone.utc)
-        for workflow in schedule.GPU_WORKFLOWS:
-            hold = timedelta(seconds=schedule.GPU_BOARD_HOLD_SECONDS[workflow])
-            for age, held in ((hold - timedelta(minutes=1), True), (hold, False)):
-                with self.subTest(workflow=workflow, age=age):
-                    def request(method, path, workflow=workflow, age=age):
-                        if '/jobs?' in path:
-                            return {'jobs': [dict(status='in_progress', labels=['gpu'],
-                                                  started_at=(now - age).strftime('%Y-%m-%dT%H:%M:%SZ'))]}
-                        on = workflow in path
-                        return {'workflow_runs': [dict(id=1, status='in_progress')] if on else []}
-                    with patch.object(schedule, 'Clock') as clock:
-                        clock.return_value.now.return_value = now
-                        self.assertEqual(schedule.gpu_pending(request=request), held)
-
     def test_board_night_waits_for_board_start(self):
         root = Path(__file__).resolve().parents[3]
         workflow = yaml.safe_load((root / '.github/workflows/nightly-perf.yml').read_text())
