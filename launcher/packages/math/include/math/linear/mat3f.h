@@ -48,3 +48,11 @@ mat3f_cofactor(mat3f_t matrix) {
     }
     return out;
 }
+
+/* Negative when the matrix mirrors, zero when it is singular. */
+static inline __attribute__((always_inline)) float
+mat3f_determinant(mat3f_t matrix) {
+    const mat3f_t cofactor = mat3f_cofactor(matrix);
+    return (matrix.m[0][0] * cofactor.m[0][0]) + (matrix.m[0][1] * cofactor.m[0][1])
+           + (matrix.m[0][2] * cofactor.m[0][2]);
+}

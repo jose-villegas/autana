@@ -78,9 +78,8 @@ scene_lights_allocate(scene_t* scene) {
 
 static scene_light_t*
 light_attach(scene_t* scene, scene_entity_t entity) {
-    /* Its direction is its own rotation, so a light is a root. */
-    if (scene == NULL || entity >= scene->asset.entity_count
-        || scene_entity_parent(scene, entity) != SCENE_ENTITY_NONE) {
+    /* Its direction is its own rotation, so a light is a plain root. */
+    if (scene == NULL || entity >= scene->asset.entity_count || !scene_entity_is_plain_root(scene, entity)) {
         return NULL;
     }
     scene_light_t* light = &scene->lights[entity];

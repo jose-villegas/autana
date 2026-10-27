@@ -61,8 +61,7 @@ r3d_skin_normal_palette(const mat4f_t* palette, int joints, mat4f_t world, mat3f
     for (int joint = 0; joint < joints; joint++) {
         const mat3f_t matrix = mat3f_mul(linear, mat3f_from_mat4(palette[joint]));
         const mat3f_t cofactor = mat3f_cofactor(matrix);
-        const float det = (matrix.m[0][0] * cofactor.m[0][0]) + (matrix.m[0][1] * cofactor.m[0][1])
-                          + (matrix.m[0][2] * cofactor.m[0][2]);
+        const float det = mat3f_determinant(matrix);
         if (det == 0.0F || !isfinite(det)) {
             return false;
         }
