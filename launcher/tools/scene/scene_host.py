@@ -27,5 +27,5 @@ def one_entity_scene(mesh_id=None):
     """SCNE bytes of one entity, ENTITY_NAME at the origin, drawing mesh_id when given."""
     subject = SimpleNamespace(name=ENTITY_NAME, kind="mesh_renderer" if mesh_id else "empty", position=(0, 0, 0),
                               matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)))
-    renderers = [SimpleNamespace(object=subject, asset_name=mesh_id)] if mesh_id else []
+    renderers = [SimpleNamespace(object=subject, asset_name=mesh_id, renderer=None)] if mesh_id else []
     return scene_asset.encode(SimpleNamespace(objects=[subject], renderers=renderers))
