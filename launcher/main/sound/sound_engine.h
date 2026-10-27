@@ -54,5 +54,7 @@ void sound_stop_app_voices(void);
 bool sound_fence(void);
 void sound_get_stats(sound_stats_t* out);
 #endif
-sound_voice_t sound_play_tone(uint16_t hz, uint8_t gain_pct);
+#define SOUND_TONE_UNTIL_STOPPED 0
+
+sound_voice_t sound_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus);
 bool sound_voice_audible(sound_voice_t voice);
