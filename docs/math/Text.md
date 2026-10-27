@@ -9,29 +9,29 @@ its scalar OPS families through `text_template.h`.
 `P_format(`, `P_parse(` and `P_text(` provide the operations for each prefix below.
 `math_text_copy` copies formatted text into a bounded, NUL-terminated buffer.
 
-| Value | Format / parse | By value | Buffer capacity |
-|---|---|---|---|
-| float | `mathf_format`, `mathf_parse` | `mathf_text` | `MATHF_TEXT_MAX` |
-| int32 | `mathi_format`, `mathi_parse` | `mathi_text` | `MATHI_TEXT_MAX` |
-| int16 | `maths_format`, `maths_parse` | `maths_text` | `MATHS_TEXT_MAX` |
-| Q16.16 | `mathx_format`, `mathx_parse` | `mathx_text` | `MATHX_TEXT_MAX` |
-| vec2f | `vec2f_format`, `vec2f_parse` | `vec2f_text` | `VEC2F_TEXT_MAX` |
-| vec2i | `vec2i_format`, `vec2i_parse` | `vec2i_text` | `VEC2I_TEXT_MAX` |
-| vec2s | `vec2s_format`, `vec2s_parse` | `vec2s_text` | `VEC2S_TEXT_MAX` |
-| vec2x | `vec2x_format`, `vec2x_parse` | `vec2x_text` | `VEC2X_TEXT_MAX` |
-| vec3f | `vec3f_format`, `vec3f_parse` | `vec3f_text` | `VEC3F_TEXT_MAX` |
-| vec3i | `vec3i_format`, `vec3i_parse` | `vec3i_text` | `VEC3I_TEXT_MAX` |
-| vec3s | `vec3s_format`, `vec3s_parse` | `vec3s_text` | `VEC3S_TEXT_MAX` |
-| vec3x | `vec3x_format`, `vec3x_parse` | `vec3x_text` | `VEC3X_TEXT_MAX` |
-| quatf | `quatf_format`, `quatf_parse` | `quatf_text` | `QUATF_TEXT_MAX` |
-| quatx | `quatx_format`, `quatx_parse` | `quatx_text` | `QUATX_TEXT_MAX` |
-| mat3f | `mat3f_format`, `mat3f_parse` | `mat3f_text` | `MAT3F_TEXT_MAX` |
-| mat4f | `mat4f_format`, `mat4f_parse` | `mat4f_text` | `MAT4F_TEXT_MAX` |
-| mat4x | `mat4x_format`, `mat4x_parse` | `mat4x_text` | `MAT4X_TEXT_MAX` |
-| rectf | `rectf_format`, `rectf_parse` | `rectf_text` | `RECTF_TEXT_MAX` |
-| recti | `recti_format`, `recti_parse` | `recti_text` | `RECTI_TEXT_MAX` |
-| rects | `rects_format`, `rects_parse` | `rects_text` | `RECTS_TEXT_MAX` |
-| rectx | `rectx_format`, `rectx_parse` | `rectx_text` | `RECTX_TEXT_MAX` |
+| Value | Format / parse | By value | Buffer capacity | Chars, with NUL |
+|---|---|---|---|---|
+| float | `mathf_format`, `mathf_parse` | `mathf_text` | `MATHF_TEXT_MAX` | 16 |
+| int32 | `mathi_format`, `mathi_parse` | `mathi_text` | `MATHI_TEXT_MAX` | 12 |
+| int16 | `maths_format`, `maths_parse` | `maths_text` | `MATHS_TEXT_MAX` | 7 |
+| Q16.16 | `mathx_format`, `mathx_parse` | `mathx_text` | `MATHX_TEXT_MAX` | 13 |
+| vec2f | `vec2f_format`, `vec2f_parse` | `vec2f_text` | `VEC2F_TEXT_MAX` | 32 |
+| vec2i | `vec2i_format`, `vec2i_parse` | `vec2i_text` | `VEC2I_TEXT_MAX` | 24 |
+| vec2s | `vec2s_format`, `vec2s_parse` | `vec2s_text` | `VEC2S_TEXT_MAX` | 14 |
+| vec2x | `vec2x_format`, `vec2x_parse` | `vec2x_text` | `VEC2X_TEXT_MAX` | 26 |
+| vec3f | `vec3f_format`, `vec3f_parse` | `vec3f_text` | `VEC3F_TEXT_MAX` | 48 |
+| vec3i | `vec3i_format`, `vec3i_parse` | `vec3i_text` | `VEC3I_TEXT_MAX` | 36 |
+| vec3s | `vec3s_format`, `vec3s_parse` | `vec3s_text` | `VEC3S_TEXT_MAX` | 21 |
+| vec3x | `vec3x_format`, `vec3x_parse` | `vec3x_text` | `VEC3X_TEXT_MAX` | 39 |
+| quatf | `quatf_format`, `quatf_parse` | `quatf_text` | `QUATF_TEXT_MAX` | 64 |
+| quatx | `quatx_format`, `quatx_parse` | `quatx_text` | `QUATX_TEXT_MAX` | 52 |
+| mat3f | `mat3f_format`, `mat3f_parse` | `mat3f_text` | `MAT3F_TEXT_MAX` | 144 |
+| mat4f | `mat4f_format`, `mat4f_parse` | `mat4f_text` | `MAT4F_TEXT_MAX` | 256 |
+| mat4x | `mat4x_format`, `mat4x_parse` | `mat4x_text` | `MAT4X_TEXT_MAX` | 208 |
+| rectf | `rectf_format`, `rectf_parse` | `rectf_text` | `RECTF_TEXT_MAX` | 66 |
+| recti | `recti_format`, `recti_parse` | `recti_text` | `RECTI_TEXT_MAX` | 50 |
+| rects | `rects_format`, `rects_parse` | `rects_text` | `RECTS_TEXT_MAX` | 30 |
+| rectx | `rectx_format`, `rectx_parse` | `rectx_text` | `RECTX_TEXT_MAX` | 54 |
 
 Each prefix provides the same operations, with its own value type:
 

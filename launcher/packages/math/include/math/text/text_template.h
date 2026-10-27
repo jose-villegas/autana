@@ -27,7 +27,6 @@ math_text_copy(char* buf, size_t cap, const char* text, int length) {
     }
 
 #define MATH_DEFINE_TEXT(P, MAX, T, OPS, SCALAR_MAX, N, COLS, PACK, UNPACK)                                            \
-    enum { MAX = (N) * SCALAR_MAX };                                                                                   \
     static inline int P##_format(char* buf, size_t cap, P##_t v) {                                                     \
         T a[N];                                                                                                        \
         PACK;                                                                                                          \
@@ -66,7 +65,6 @@ math_text_copy(char* buf, size_t cap, const char* text, int length) {
     }
 
 #define MATH_DEFINE_RECT_TEXT(P, MAX, T, OPS, SCALAR_MAX)                                                              \
-    enum { MAX = 4 * SCALAR_MAX + 2 };                                                                                 \
     static inline int P##_format(char* buf, size_t cap, P##_t v) {                                                     \
         T a[] = {v.w, v.h, v.x, v.y};                                                                                  \
         char text[MAX];                                                                                                \
