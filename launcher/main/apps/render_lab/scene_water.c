@@ -107,12 +107,12 @@ TUNE(water, two_core, 1, 0, 1);
  * particle passes; 0 in index order on one core. */
 TUNE(water, red_black, 0, 0, 1);
 
-/* Method C, the fallback from the M1 sketch, as a prototype for measuring
- * against flip3: no particles, the surface a plane through the box at the
- * fill's volume, its up swinging toward the push's up as a damped
- * pendulum (the first sloshing mode's equivalent pendulum). The plane is
- * written as a density field, so it is meshed, shaded and built as the
- * flip3 surface is. 1 draws it, 0 runs flip3. */
+/* The plane, a cheap option to flip3: no particles, the surface a plane
+ * through the box at the fill's volume, its up swinging toward the push's
+ * up as a damped pendulum (the first sloshing mode's equivalent pendulum).
+ * It has no crests or splash. The plane is written as a density field, so
+ * it is meshed, shaded and built as the flip3 surface is. 1 draws it, 0
+ * (the default) runs flip3. */
 TUNE(water, plane, 0, 0, 1);
 /* The swing's natural frequency in tenths of a hertz, and its damping as a
  * percentage of critical. Ours, by eye. */
