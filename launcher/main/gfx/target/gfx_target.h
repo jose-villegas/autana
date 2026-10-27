@@ -1,4 +1,14 @@
-/* gfx_target: image attachments sharing picture coordinates, for frames, bands and render maps. */
+/*
+ * gfx_target: a picture as a set of image attachments sharing picture rows: the
+ * framebuffer, a band buffer or a replay strip (colour alone), or a renderer's
+ * colour, depth and further per-pixel maps. Every attachment has the target's
+ * width and rows, so one row index finds a pixel in all of them; a target may be
+ * a window of a taller picture, each attachment then starting at first_row.
+ * Primitives intersect present's clip with the target and translate to local
+ * rows; for full framebuffers both are no-ops. Pure arithmetic lets host suites
+ * verify it without a panel; what an attachment means beyond its format is its
+ * renderer's.
+ */
 #pragma once
 
 #include <stdbool.h>
@@ -97,11 +107,17 @@ gfx_target_window(gfx_target_t* window, const gfx_target_t* target, int row0, in
     }
 }
 
+/* The attachment's row pointer for picture row `y`, once it is known to lie
+ * inside [first_row, gfx_target_end_row()): gfx_target_clip_rect() is what a
+ * caller uses to know that. */
 static inline void*
 gfx_target_row(const gfx_target_t* target, int index, int y) {
     return image_row(&target->attachment[index], y - target->first_row);
 }
 
+/* The row pointer for picture row `y`, once it is known to lie inside
+ * [first_row, gfx_target_end_row()): gfx_target_clip_rect() is what a caller
+ * uses to know that. */
 static inline gfx_color_t*
 gfx_target_color(const gfx_target_t* target, int y) {
     return gfx_target_row(target, GFX_ATTACHMENT_COLOR, y);
@@ -120,7 +136,8 @@ gfx_target_clip_rect(const gfx_target_t* target, recti_t clip, recti_t rect) {
                             mathi_min(mathi_min(recti_bottom(rect), recti_bottom(clip)), gfx_target_end_row(target)));
 }
 
-/* Whole, word-aligned rows permit two pixels per store. */
+/* Every pixel of the target set to `colour`, two pixels a store: a target's
+ * rows are whole and its buffer word-aligned. */
 static inline void
 gfx_target_fill(const gfx_target_t* target, gfx_color_t colour) {
     const uint32_t pair = ((uint32_t)colour << 16) | colour;
@@ -148,6 +165,8 @@ gfx_target_holds_rows(const gfx_target_t* target, int y0, int y1) {
     return y0 >= target->first_row && y1 <= gfx_target_end_row(target);
 }
 
+/* Fills a screen-space shape and returns its clipped dirty rectangle.
+ * Writes land in the target's local rows. */
 static inline recti_t
 gfx_target_fill_rect(const gfx_target_t* target, recti_t clip, recti_t shape, gfx_color_t color) {
     const recti_t rect = gfx_target_clip_rect(target, clip, shape);
