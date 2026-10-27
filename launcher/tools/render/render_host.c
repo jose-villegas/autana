@@ -1,7 +1,7 @@
 /*
  * render_host: the shared host render procedure. Real scene code draws into
  * gfx-owned pictures; gfx_read_panel_row() supplies completed output.
- * BMP and AVI encoding use console/capture/screenshot.h. No device access.
+ * BMP and AVI encoding use gfx/capture/screenshot.h. No device access.
  */
 
 #include "render_host.h"
@@ -10,10 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "console/capture/screenshot.h"
 #include "console/console_tune.h"
 #include "core/tune.h"
 #include "draw/draw.h"
+#include "gfx/capture/screenshot.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
@@ -27,6 +27,7 @@
 #if defined(_WIN32)
 #include <fcntl.h>
 #include <io.h>
+#include "image/pixel/rgb565.h"
 #endif
 
 #define DEFAULT_DT_MS   16
@@ -97,7 +98,7 @@ convert_frame(affine2x_t t, bool panel, int out_w, int out_h, int32_t stride, ui
                 continue;
             }
             uint8_t* dst = buf + (size_t)(out_h - 1 - mapped.y) * stride + mapped.x * 3;
-            const uint32_t rgb = gfx_color_rgb888(pixels[px]);
+            const uint32_t rgb = rgb565be_to_rgb888(pixels[px]);
             dst[0] = (uint8_t)rgb;
             dst[1] = (uint8_t)(rgb >> 8);
             dst[2] = (uint8_t)(rgb >> 16);
@@ -211,16 +212,14 @@ apply_input(const render_scene_t* scene, int index, input_t* state) {
         const render_input_step_t* step = &scene->input[i];
         if (step->frame == index) {
             state->down = step->down;
-            state->x = step->x;
-            state->y = step->y;
+            state->point = step->point;
         }
     }
 
     state->pressed = state->down && !was_down;
     state->released = !state->down && was_down;
     if (state->pressed) {
-        state->press_x = state->x;
-        state->press_y = state->y;
+        state->press = state->point;
     }
 }
 

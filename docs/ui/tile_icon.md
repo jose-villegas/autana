@@ -1,6 +1,6 @@
 # Tile with an icon
 
-`bool ui_tile_icon(recti_t r, const char* label, const draw_image_t* icon,
+`bool ui_tile_icon(recti_t r, const char* label, const image_t* icon,
 bool selected)` is a [tile](tile.md) with `icon` above its label.
 `ui_tile_icon_rect(r)` gives the icon's square, for a caller drawing its own
 picture of the choice. A `NULL` icon is `ui_tile()`.

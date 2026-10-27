@@ -1,6 +1,6 @@
 # Button with an icon
 
-`bool ui_button_icon(recti_t r, const char* label, const draw_image_t*
+`bool ui_button_icon(recti_t r, const char* label, const image_t*
 icon)` is a [button](button.md) with `icon` at its left and the label
 centred in the rest. A `NULL` icon is `ui_button()`.
 

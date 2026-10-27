@@ -801,6 +801,7 @@ test_gyro_overrange_boundary(void) {
 static void
 test_gravity_example_holds_down_without_batches(void) {
     fixture();
+    suite_set_test_cleanup(input_fake_reset);
     gravity_example_t* state = malloc(sizeof *state);
     input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(state);

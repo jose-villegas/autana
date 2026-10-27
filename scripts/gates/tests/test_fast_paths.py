@@ -93,10 +93,10 @@ class FastPathTests(unittest.TestCase):
     def test_annotation_sources_resolve_by_name(self):
         doc = self.root / 'docs/Citations.md'
         doc.parent.mkdir(parents=True)
-        doc.write_text('| <a id="123"></a>[123] | Example source.<br>`Example author` cited by: [example](example.md) |\n')
+        doc.write_text('| <a id="example-author"></a>[1] | Example source.<br>`Example author` cited by: [example](example.md) |\n')
         text = self.header.read_text().replace('/* exact:', '/* source: Example author */\n/* exact:')
         self.header.write_text(text)
-        self.assertEqual(paths.annotations(self.root)[0].citations, (123,))
+        self.assertEqual(paths.annotations(self.root)[0].citations, ('example-author',))
         self.header.write_text(text.replace('Example author', 'Unknown author'))
         with self.assertRaisesRegex(ValueError, 'Unknown author'):
             paths.annotations(self.root)
@@ -297,6 +297,20 @@ class FastPathTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'instruction'):
             paths.validate_hardware(self.root, items, {'fast_f': 'calls __divsf3'})
         paths.validate_hardware(self.root, items, {'fast_f': 'recip0.s'})
+        for instruction in ('recip0.s', 'rsqrt0.s'):
+            with self.subTest(instruction=instruction):
+                text = ("42000000 <math_bench_fast_f>:\n"
+                        "42000000: 123456 call8 42000100 <seed_kernel>\n"
+                        "42000100 <seed_kernel>:\n"
+                        f"42000100: 123456 {instruction} f0, f1\n"
+                        "42000200 <unrelated>:\n"
+                        "42000200: 123456 div0.s f0, f1\n")
+                fpu = bench.parse_disassembly(text, self.rows[:1])
+                self.assertEqual(f'{instruction}; calls seed_kernel', fpu['fast_f'])
+                paths.validate_hardware(self.root, items, fpu)
+                without_seed = text.replace(instruction, 'nop.n')
+                with self.assertRaisesRegex(ValueError, 'instruction'):
+                    paths.validate_hardware(self.root, items, bench.parse_disassembly(without_seed, self.rows[:1]))
 
     def test_transitive_template_callers_and_tables(self):
         self.header.unlink()

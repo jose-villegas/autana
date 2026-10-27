@@ -120,9 +120,9 @@ In every row the normal palette costs 5104 cycles to build per frame, the render
 
 ![The table's cell directions, then the light each cell holds at 8x8, 16x16 and 32x32 under the benchmark's four lights](images/skin-light-table.png)
 
-A normal-indexed irradiance table<sup>[[58]](../Citations.md#58)</sup> holds
+A normal-indexed irradiance table<sup>[[58]](../Citations.md#miller-1984)</sup> holds
 the light arriving from every direction. The sphere of directions unfolds
-onto a square by its octahedral coordinate<sup>[[21]](../Citations.md#21)</sup>.
+onto a square by its octahedral coordinate<sup>[[21]](../Citations.md#cigolle-2014)</sup>.
 
 A vertex finds its normal's point on the square and blends the four nearest
 cells. The square's centre faces +Z, its edges' middles ±X and ±Y, its corners -Z.
@@ -152,7 +152,7 @@ Per channel, with intensity unscaled as in `light.py:bake_directional`:
 | Albedo decode | `(a / 255)^2.2` for albedo byte `a` |
 | Light | `ambient_color * ambient_intensity + sum(light_color * intensity * max(0, N.L))` |
 | Radiance | `albedo * light` |
-| Tone map, Reinhard<sup>[[7]](../Citations.md#7)</sup> | `radiance / (1 + radiance * tonemap_white)`; white 0 (`SCENE_TONEMAP_WHITE_NONE`) is identity |
+| Tone map, Reinhard<sup>[[7]](../Citations.md#reinhard-2002)</sup> | `radiance / (1 + radiance * tonemap_white)`; white 0 (`SCENE_TONEMAP_WHITE_NONE`) is identity |
 | Encode | clamp to [0,1], gamma 1/2.2, round to a byte |
 
 A light's direction is its entity's +Y turned by its rotation, as

@@ -2,7 +2,7 @@
 #include "input/motion/gravity.h"
 #include "input/input.h"
 
-#define BALL_SPEED 0.1F /* pixels per ms at full tilt */
+#define BALL_SPEED 0.1F /* pixels per ms at full strength */
 
 typedef struct {
     gravity_t gravity;

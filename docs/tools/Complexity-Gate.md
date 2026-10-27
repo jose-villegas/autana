@@ -1,6 +1,6 @@
 # The cognitive-complexity ratchet
 
-`launcher/tools/quality/complexity_gate.py` measures cognitive complexity<sup>[[51]](../Citations.md#51)</sup> with
+`launcher/tools/quality/complexity_gate.py` measures cognitive complexity<sup>[[51]](../Citations.md#campbell-cognitive-complexity)</sup> with
 clang-tidy's `readability-function-cognitive-complexity` check
 (`launcher/.clang-tidy` holds its configuration) and ratchets every
 first-party function's score against a committed baseline, failing only

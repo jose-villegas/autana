@@ -49,32 +49,28 @@ test_targets_reach_every_edge_of_the_allowed_area(void) {
 static void
 test_a_tap_on_the_centre_has_no_offset(void) {
     const touch_probe_target_t t = {.x = 100, .y = 200, .side = 12};
-    int dx;
-    int dy;
-    touch_probe_offset(t, 106, 206, &dx, &dy);
-    TEST_ASSERT_EQUAL_INT(0, dx);
-    TEST_ASSERT_EQUAL_INT(0, dy);
+    const vec2i_t offset = touch_probe_offset(t, (vec2i_t){106, 206});
+    TEST_ASSERT_EQUAL_INT(0, offset.x);
+    TEST_ASSERT_EQUAL_INT(0, offset.y);
 }
 
 static void
 test_a_tap_below_and_left_reads_positive_dy_negative_dx(void) {
     const touch_probe_target_t t = {.x = 100, .y = 200, .side = 12};
-    int dx;
-    int dy;
-    touch_probe_offset(t, 101, 226, &dx, &dy);
-    TEST_ASSERT_EQUAL_INT(-5, dx);
-    TEST_ASSERT_EQUAL_INT(20, dy);
+    const vec2i_t offset = touch_probe_offset(t, (vec2i_t){101, 226});
+    TEST_ASSERT_EQUAL_INT(-5, offset.x);
+    TEST_ASSERT_EQUAL_INT(20, offset.y);
 }
 
 static void
 test_a_hit_is_inside_the_square_and_nowhere_else(void) {
     const touch_probe_target_t t = {.x = 100, .y = 200, .side = 12};
     touch_probe_stats_t s = {0};
-    TEST_ASSERT_TRUE(touch_probe_record(&s, t, 100, 200));
-    TEST_ASSERT_TRUE(touch_probe_record(&s, t, 111, 211));
-    TEST_ASSERT_FALSE(touch_probe_record(&s, t, 112, 211));
-    TEST_ASSERT_FALSE(touch_probe_record(&s, t, 111, 212));
-    TEST_ASSERT_FALSE(touch_probe_record(&s, t, 99, 205));
+    TEST_ASSERT_TRUE(touch_probe_record(&s, t, (vec2i_t){100, 200}));
+    TEST_ASSERT_TRUE(touch_probe_record(&s, t, (vec2i_t){111, 211}));
+    TEST_ASSERT_FALSE(touch_probe_record(&s, t, (vec2i_t){112, 211}));
+    TEST_ASSERT_FALSE(touch_probe_record(&s, t, (vec2i_t){111, 212}));
+    TEST_ASSERT_FALSE(touch_probe_record(&s, t, (vec2i_t){99, 205}));
     TEST_ASSERT_EQUAL_INT(5, s.taps);
     TEST_ASSERT_EQUAL_INT(2, s.hits);
 }
@@ -84,9 +80,9 @@ static void
 test_mean_and_spread_follow_the_taps(void) {
     const touch_probe_target_t t = {.x = 100, .y = 200, .side = 12};
     touch_probe_stats_t s = {0};
-    touch_probe_record(&s, t, 106, 216);
-    touch_probe_record(&s, t, 106, 226);
-    touch_probe_record(&s, t, 106, 236);
+    touch_probe_record(&s, t, (vec2i_t){106, 216});
+    touch_probe_record(&s, t, (vec2i_t){106, 226});
+    touch_probe_record(&s, t, (vec2i_t){106, 236});
     TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, touch_probe_mean_dx(&s));
     TEST_ASSERT_FLOAT_WITHIN(0.001F, 20.0F, touch_probe_mean_dy(&s));
     TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, touch_probe_spread_dx(&s));
@@ -147,11 +143,9 @@ test_the_settled_point_is_the_median_inside_the_window(void) {
         {.x = 0, .y = 0, .t_ms = 0},   {.x = 10, .y = 5, .t_ms = 30},  {.x = 30, .y = 1, .t_ms = 50},
         {.x = 20, .y = 3, .t_ms = 70}, {.x = 99, .y = 99, .t_ms = 90},
     };
-    int x;
-    int y;
-    touch_probe_settled(s, 5, 30, 80, &x, &y);
-    TEST_ASSERT_EQUAL_INT(20, x);
-    TEST_ASSERT_EQUAL_INT(3, y);
+    const vec2i_t settled = touch_probe_settled(s, 5, 30, 80);
+    TEST_ASSERT_EQUAL_INT(20, settled.x);
+    TEST_ASSERT_EQUAL_INT(3, settled.y);
 }
 
 /* A tap lifted before the window opens has no settled sample of its own;
@@ -159,11 +153,9 @@ test_the_settled_point_is_the_median_inside_the_window(void) {
 static void
 test_a_tap_too_short_for_the_window_settles_on_its_last_sample(void) {
     const touch_probe_sample_t s[] = {{.x = 5, .y = 6, .t_ms = 0}, {.x = 7, .y = 8, .t_ms = 16}};
-    int x;
-    int y;
-    touch_probe_settled(s, 2, 30, 80, &x, &y);
-    TEST_ASSERT_EQUAL_INT(7, x);
-    TEST_ASSERT_EQUAL_INT(8, y);
+    const vec2i_t settled = touch_probe_settled(s, 2, 30, 80);
+    TEST_ASSERT_EQUAL_INT(7, settled.x);
+    TEST_ASSERT_EQUAL_INT(8, settled.y);
 }
 
 /* The window's own bounds count: samples at exactly 30 and 80 ms are in it. */
@@ -173,11 +165,9 @@ test_the_settle_window_includes_both_bounds(void) {
         {.x = 1, .y = 1, .t_ms = 29}, {.x = 40, .y = 40, .t_ms = 30}, {.x = 50, .y = 50, .t_ms = 80},
         {.x = 9, .y = 9, .t_ms = 81}, {.x = 45, .y = 45, .t_ms = 55},
     };
-    int x;
-    int y;
-    touch_probe_settled(s, 5, 30, 80, &x, &y);
-    TEST_ASSERT_EQUAL_INT(45, x);
-    TEST_ASSERT_EQUAL_INT(45, y);
+    const vec2i_t settled = touch_probe_settled(s, 5, 30, 80);
+    TEST_ASSERT_EQUAL_INT(45, settled.x);
+    TEST_ASSERT_EQUAL_INT(45, settled.y);
 }
 
 static const input_t IDLE = {0};
@@ -198,17 +188,17 @@ fresh_tap(void) {
 
 static input_t
 press_at(int x, int y) {
-    return (input_t){.pressed = true, .down = true, .press_x = x, .press_y = y, .x = x, .y = y};
+    return (input_t){.pressed = true, .down = true, .press = {x, y}, .point = {x, y}};
 }
 
 static input_t
 held_at(int press_x, int press_y, int x, int y) {
-    return (input_t){.down = true, .press_x = press_x, .press_y = press_y, .x = x, .y = y};
+    return (input_t){.down = true, .press = {press_x, press_y}, .point = {x, y}};
 }
 
 static input_t
 released_at(int press_x, int press_y, int x, int y) {
-    return (input_t){.released = true, .press_x = press_x, .press_y = press_y, .x = x, .y = y};
+    return (input_t){.released = true, .press = {press_x, press_y}, .point = {x, y}};
 }
 
 /* A tap held over three frames, drifting: every position in order, timed
@@ -254,7 +244,7 @@ static void
 test_a_press_already_moved_keeps_where_it_began(void) {
     touch_probe_tap_t* t = fresh_tap();
     input_t press = press_at(50, 60);
-    press.x = 55;
+    press.point.x = 55;
     touch_probe_track(t, 16, &press);
     TEST_ASSERT_EQUAL_INT(2, t->count);
     TEST_ASSERT_EQUAL_INT(50, t->samples[0].x);

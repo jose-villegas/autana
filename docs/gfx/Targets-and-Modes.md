@@ -115,25 +115,26 @@ gfx's own PSRAM that costs 82 KB while a full-framebuffer app runs.
 
 ## Indexed mode
 
-The app writes bytes into `gfx_indexed_image()`, row-major, `index_grid_w` per row,
+The app writes bytes into `gfx_indexed_image()`, an `IMAGE_INDEXED8` image `index_grid_w` wide,
 and marks the matching panel rectangle dirty; cell (cx, cy) covers `cell_size` x
 `cell_size` panel pixels. It presents with the same `gfx_present_begin()` /
 `gfx_present_wait()` as the default mode.
 
 | Call | Installs |
 |---|---|
-| `gfx_indexed_set_lut()` | the 256-entry index -> RGB565 table |
+| `gfx_indexed_set_palette()` | the 256-entry palette indices expand through |
 | `gfx_indexed_set_lut16()` | the (index, Bayer phase) table for dithered 16-colour mode |
 | `gfx_indexed_set_dither16()` | which of the two expands; both stay installed |
 | `gfx_indexed_set_dither()` | the spatial dither pattern for 16-colour mode |
 
 All four are safe only between frames.
 
-Palettes are a gfx type (`draw/draw_palette.h`, entries 0-15 reserved by
-`DRAW_PALETTE_UI_ENTRIES`).
+The palette type lives in the [image package](../../launcher/packages/image/include/image/palette/palette.h).
+Entries 0-15 are reserved for UI by `DRAW_PALETTE_UI_ENTRIES` in
+[draw_palette_standard.h](../../launcher/main/draw/draw_palette_standard.h).
 
 - Curated palettes ship in `draw/draw_palette_standard.h`, chosen at runtime by name.
 - Building one is the app's work.
 - The two steps every palette then needs, the colour -> index map and the dither
   table, are `tools/gen/draw_palette_gen.h`: host-only, in
-  OKLab<sup>[[35]](../Citations.md#35)</sup>, never in the firmware image.
+  OKLab<sup>[[35]](../Citations.md#ottosson-2020)</sup>, never in the firmware image.

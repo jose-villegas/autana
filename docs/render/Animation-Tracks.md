@@ -8,7 +8,7 @@ Its layer is in
 [firmware/README.md](../firmware/README.md); it sits above `asset/`,
 `core/` and `math/`, and allocates nothing.
 
-The format is glTF 2.0's own animation model<sup>[[17]](../Citations.md#17)</sup>, so a track authored in Blender
+The format is glTF 2.0's own animation model<sup>[[17]](../Citations.md#khronos-gltf-2-0)</sup>, so a track authored in Blender
 or any other exporter plays back as it was made.
 
 ```mermaid
@@ -33,11 +33,11 @@ built.
 | `values` | `width` floats per key; three runs of them per key for `ANIM_CUBIC` |
 | `width` | 1 to 4 components: a scalar, a translation, a quaternion |
 | `interp` | `ANIM_STEP`, `ANIM_LINEAR` or `ANIM_CUBIC` (glTF `CUBICSPLINE`) |
-| `quaternion` | The value is an xyzw rotation, sampled unit: linear keys slerp<sup>[[19]](../Citations.md#19)</sup>, copied and cubic keys are normalised |
+| `quaternion` | The value is an xyzw rotation, sampled unit: linear keys slerp<sup>[[19]](../Citations.md#shoemake-1985)</sup>, copied and cubic keys are normalised |
 
 A cubic key holds an in-tangent, the value and an out-tangent, in units per
 second, exactly as glTF stores them, and samples as the specification's cubic
-Hermite spline<sup>[[17]](../Citations.md#17)</sup>. A track has one interpolation.
+Hermite spline<sup>[[17]](../Citations.md#khronos-gltf-2-0)</sup>. A track has one interpolation.
 
 A binding names an object path, a component and a field. Re-exporting a
 file with reordered nodes preserves these names. The bake maps glTF targets
@@ -48,7 +48,7 @@ onto engine fields:
 | node `translation` | `TRNS` | `position` | `VEC3` |
 | node `rotation` | `TRNS` | `rotation` | `QUAT` |
 | node `scale` | `TRNS` | `scale` | `VEC3` |
-| `/cameras/N/perspective/yfov` pointer (`KHR_animation_pointer`<sup>[[18]](../Citations.md#18)</sup>) | `CAMR` | `half_fov_short_tan` | `FLOAT` |
+| `/cameras/N/perspective/yfov` pointer (`KHR_animation_pointer`<sup>[[18]](../Citations.md#khronos-khr-animation-pointer)</sup>) | `CAMR` | `half_fov_short_tan` | `FLOAT` |
 
 The camera pointer binds to the one node holding that camera. The bake uses
 `gltf_read.camera_half_fov_short_tan()` for values and
@@ -77,7 +77,7 @@ A `NAME.anim.toml` beside its source names one animation in it: a `.glb`, an
 memory at every bake). `build_pack.py` finds every such file by searching,
 so no list is kept. A
 clip no scene names is a [pack](../assets/Building-Packs.md#packs) of its own, named
-`NAME`, holding the one entry `NAME`; `asset_store_pack("NAME")` mounts it.
+`NAME`, holding the one entry `NAME`; `asset_store_load("NAME")` mounts it.
 A clip a scene's camera flies travels in that scene's pack instead.
 The [asset-pack boundary](Mesh-Import.md#the-offline-tools) mirrors
 translation and rotation tracks, cubic tangents included, into the engine
@@ -242,7 +242,7 @@ For a camera path without Blender, write a `NAME.keys.toml` and name it as
 the source of a `NAME.anim.toml`; `tools/anim/camera_keys.py` builds it into
 glTF when the clip is baked, so no `.glb` is kept. The keys file sets `node`,
 `animation` and `[[keys]]` with seconds `t`, `eye` and `look_at` vectors.
-Translation is a smooth Catmull-Rom curve<sup>[[20]](../Citations.md#20)</sup> and rotation interpolates
+Translation is a smooth Catmull-Rom curve<sup>[[20]](../Citations.md#catmull-1974)</sup> and rotation interpolates
 short-way quaternions with +Y up; repeat the first key at the end to close
 the loop.
 
@@ -444,7 +444,7 @@ interrupted half way by a play back to the first:
 ### Blending rotations
 
 Position and scale blend linearly. Rotation takes the sign-corrected,
-normalized quaternion sum (nlerp)<sup>[[56]](../Citations.md#56)</sup> per joint
+normalized quaternion sum (nlerp)<sup>[[56]](../Citations.md#kavan-2008)</sup> per joint
 between the two poses, without the paper's dual quaternions.
 
 It stays unit and takes the short way, but its angular speed peaks mid-blend:

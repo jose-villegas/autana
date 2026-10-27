@@ -14,6 +14,7 @@
 
 #include "asset/asset_file.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "triangle_sizes.h"
@@ -56,11 +57,11 @@ checked_malloc(size_t bytes) {
 
 static int
 channel_gap(uint16_t a, uint16_t b) {
-    const uint16_t na = gfx_color_swap(a);
-    const uint16_t nb = gfx_color_swap(b);
-    const int dr = abs((int)gfx_rgb565_r5(na) - (int)gfx_rgb565_r5(nb)) * 8;
-    const int dg = abs((int)gfx_rgb565_g6(na) - (int)gfx_rgb565_g6(nb)) * 4;
-    const int db = abs((int)gfx_rgb565_b5(na) - (int)gfx_rgb565_b5(nb)) * 8;
+    const uint16_t na = rgb565_swap(a);
+    const uint16_t nb = rgb565_swap(b);
+    const int dr = abs((int)rgb565_r5(na) - (int)rgb565_r5(nb)) * 8;
+    const int dg = abs((int)rgb565_g6(na) - (int)rgb565_g6(nb)) * 4;
+    const int db = abs((int)rgb565_b5(na) - (int)rgb565_b5(nb)) * 8;
     return dr > dg ? (dr > db ? dr : db) : (dg > db ? dg : db);
 }
 

@@ -80,7 +80,7 @@ ui_transform_icon_emit(void* ctx, recti_t rect) {
 /* Every icon run must turn with its logical box; turning only the box
  * places the icon correctly but leaves the glyph upright. */
 static inline void
-ui_transform_icon_blocks(affine2x_t t, const draw_image_t* icon, recti_t box, icon_emit_fn emit, void* ctx) {
+ui_transform_icon_blocks(affine2x_t t, const image_t* icon, recti_t box, icon_emit_fn emit, void* ctx) {
     ui_transform_icon_ctx_t ic = {.t = t, .box_x = box.x, .box_y = box.y, .emit = emit, .ctx = ctx};
     icon_walk_blocks(icon, box.w, box.h, ui_transform_icon_emit, &ic);
 }
@@ -119,10 +119,9 @@ ui_transform_quarter(affine2x_t t) {
  * Turns 0 and 1 walk FORWARD from the origin, so box's own (x, y)
  * corner already IS where glyph 0 belongs: no correction, none
  * applied. */
-static inline void
-ui_text_glyph0_origin(const draw_font_t* font, recti_t box, int quarter, int scale, int* out_x, int* out_y) {
-    *out_x = box.x;
-    *out_y = box.y;
+static inline vec2i_t
+ui_text_glyph0_origin(const draw_font_t* font, recti_t box, int quarter, int scale) {
+    vec2i_t origin = {box.x, box.y};
     /* Turns 2 and 3 walk BACKWARD, so glyph 0 starts ONE GLYPH CELL in
      * from the box's FAR edge. That step is `font->cell_w` (NOT
      * cell_h, NOT advance) in BOTH turn 2 (X) and turn 3 (Y): rotation
@@ -132,10 +131,11 @@ ui_text_glyph0_origin(const draw_font_t* font, recti_t box, int quarter, int sca
      * (symbolically, via ui_transform_rect(), pixel-for-pixel against a
      * non-square font); see suite_ui_transform.c. */
     if (quarter == 2) {
-        *out_x = box.x + box.w - font->cell_w * scale;
+        origin.x = box.x + box.w - font->cell_w * scale;
     } else if (quarter == 3) {
-        *out_y = box.y + box.h - font->cell_w * scale;
+        origin.y = box.y + box.h - font->cell_w * scale;
     }
+    return origin;
 }
 
 /* Whether `t` maps axis-aligned rects to axis-aligned rects: the

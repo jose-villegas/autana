@@ -150,8 +150,8 @@ static const uint8_t icon_l_rows[4] = {
     0x80, /* 1000: col 0 */
     0xE0, /* 1110: cols 0,1,2 */
 };
-static const draw_image_t icon_l = {
-    .bits = icon_l_rows, .format = DRAW_IMAGE_MONO1, .width = 4, .height = 4, .stride = 8};
+static const image_t icon_l = {
+    .pixels = (void*)icon_l_rows, .format = IMAGE_MONO1, .width = 4, .height = 4, .stride = 8};
 
 /* box = (10, 20, 4, 4), fixed across every quarter below. Expected physical
  * rects were mapped BY HAND, corner to corner, from
@@ -287,13 +287,12 @@ assert_glyph0_matches_ground_truth(int logical_x, int logical_y, const char* tex
     const int th = draw_font_height(&glyph0_font, 1);
     const recti_t box = ui_transform_rect(t, (recti_t){logical_x, logical_y, tw, th});
 
-    int mx, my;
-    ui_text_glyph0_origin(&glyph0_font, box, quarter, 1, &mx, &my);
+    const vec2i_t origin = ui_text_glyph0_origin(&glyph0_font, box, quarter, 1);
 
     const recti_t truth = ui_transform_rect(t, (recti_t){logical_x, logical_y, glyph0_font.cell_w, glyph0_font.cell_h});
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(truth.x, mx, msg);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(truth.y, my, msg);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(truth.x, origin.x, msg);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(truth.y, origin.y, msg);
 }
 
 static void
@@ -324,15 +323,13 @@ test_glyph0_origin_matches_ground_truth_at_every_quarter(void) {
 static void
 test_glyph0_origin_needs_no_correction_at_turn_0_or_1(void) {
     const recti_t box = {50, 60, 30, 12};
-    int mx, my;
+    vec2i_t origin = ui_text_glyph0_origin(&glyph0_font, box, 0, 1);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(box.x, origin.x, "turn 0: origin is box.x");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(box.y, origin.y, "turn 0: origin is box.y");
 
-    ui_text_glyph0_origin(&glyph0_font, box, 0, 1, &mx, &my);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(box.x, mx, "turn 0: origin is box.x");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(box.y, my, "turn 0: origin is box.y");
-
-    ui_text_glyph0_origin(&glyph0_font, box, 1, 1, &mx, &my);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(box.x, mx, "turn 1: origin is box.x");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(box.y, my, "turn 1: origin is box.y");
+    origin = ui_text_glyph0_origin(&glyph0_font, box, 1, 1);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(box.x, origin.x, "turn 1: origin is box.x");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(box.y, origin.y, "turn 1: origin is box.y");
 }
 
 /* Swapping cell_w for cell_h at quarter 3 LOOKS plausible, since quarter 3
@@ -347,11 +344,10 @@ test_glyph0_origin_at_turn_3_is_not_the_cell_h_mistake(void) {
     const int th = draw_font_height(&glyph0_font, 1);
     const recti_t box = ui_transform_rect(t, (recti_t){20, 30, tw, th});
 
-    int mx, my;
-    ui_text_glyph0_origin(&glyph0_font, box, quarter, 1, &mx, &my);
+    const vec2i_t origin = ui_text_glyph0_origin(&glyph0_font, box, quarter, 1);
 
     const int wrong_my_using_cell_h = box.y + box.h - glyph0_font.cell_h;
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(wrong_my_using_cell_h, my,
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(wrong_my_using_cell_h, origin.y,
                                   "cell_w (6) != cell_h (10) in this font - a function that read "
                                   "cell_h here instead of cell_w would land on `wrong_my_using_"
                                   "cell_h`, not on the real answer");

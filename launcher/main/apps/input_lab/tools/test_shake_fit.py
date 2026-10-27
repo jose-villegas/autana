@@ -1,4 +1,6 @@
 """Shake transcript statistics and plot contract."""
+import contextlib
+import io
 import gzip
 import sys
 from unittest import mock
@@ -77,6 +79,9 @@ class ShakeFitTest(unittest.TestCase):
         row = "shake 1 0 acc 0,0,-1000 lin 10,0,0 size 10 smooth 10 jerky 999 old 0"
         self.assertEqual(shake_fit.parse([row.replace(" jerky 999", "")]), shake_fit.parse([row]))
         self.assertNotIn("jerky", shake_fit.parse([row])[0])
+        self.assertIn("old", shake_fit.parse([row])[0])
+        self.assertNotIn("shared", shake_fit.parse([row])[0])
+        self.assertIn("shared", shake_fit.parse([row.replace(" old ", " shared ")])[0])
 
     def test_generate_results(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -91,6 +96,38 @@ class ShakeFitTest(unittest.TestCase):
             self.assertTrue(content.endswith(b"after\r\n"))
             self.assertEqual(b"\x89PNG\r\n\x1a\n", (root / "images/shake-fixture.png").read_bytes()[:8])
             self.assertFalse(shake_fit.generate_results(doc, root / "images", captures, check=True))
+
+    def test_frame_scale_labels(self):
+        for label in ("shared", "old"):
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                capture = root / "capture.log"
+                capture.write_text(FIXTURE.read_text().replace(" shared ", f" {label} "))
+                doc = root / "README.md"
+                doc.write_text("<!-- generated: shake-fixture -->\n<!-- /generated: shake-fixture -->\n")
+                shake_fit.generate_results(doc, root, {"fixture": capture})
+                self.assertIn(label.upper() + " 0-255", doc.read_text())
+                output = io.StringIO()
+                with mock.patch.object(sys, "argv", ["shake_fit", str(capture)]), contextlib.redirect_stdout(output):
+                    shake_fit.main()
+                self.assertIn(label.upper() + " 0-255", output.getvalue().splitlines()[0])
+                with mock.patch("docs.plot_style.save") as save:
+                    shake_fit.plot(shake_fit.read_capture(capture), root / "plot.png")
+                figure = save.call_args.args[0]
+                self.assertEqual(label.upper() + " (0-255)", figure.axes[-1].get_ylabel())
+
+    def test_mixed_frame_scales_refused(self):
+        lines = FIXTURE.read_text().splitlines()
+        lines.append(next(line for line in lines if " shared " in line).replace(" shared ", " old "))
+        with self.assertRaisesRegex(ValueError, "mixed.*old.*shared"):
+            shake_fit.parse(lines)
+
+    def test_input_lab_sample_format_round_trip(self):
+        sample_format = shake_fit.read_define(shake_fit.HEADER, "SHAKE_PROBE_SAMPLE_FORMAT")
+        fields = (shake_fit.STEP_NAMES.index("STILL"), 123, -12, 34, -1000, 56, -78, 90, 132, 111, 47)
+        row = sample_format.replace("%u", "%d") % fields
+        self.assertEqual([dict(step="STILL", ms=123, acc=[-12, 34, -1000], lin=[56, -78, 90],
+                               size=132, smooth=111, shared=47)], shake_fit.parse([row]))
 
     def test_plot(self):
         samples = shake_fit.parse(FIXTURE.read_text().splitlines())

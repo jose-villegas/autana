@@ -26,9 +26,9 @@
 static const recti_t box = {40, 100, 240, 60};
 static const char* const names[] = {"One", "Two", "Three"};
 static const uint8_t icon_bits[] = {0x80};
-static const draw_image_t icon = {
-    .bits = icon_bits, .format = DRAW_IMAGE_MONO1, .width = 1, .height = 1, .stride = DRAW_IMAGE_MONO1_STRIDE_STEP};
-static const draw_image_t* const icons[] = {&icon, NULL, &icon};
+static const image_t icon = {
+    .pixels = (void*)icon_bits, .format = IMAGE_MONO1, .width = 1, .height = 1, .stride = DRAW_IMAGE_MONO1_STRIDE_STEP};
+static const image_t* const icons[] = {&icon, NULL, &icon};
 static const char* const items[] = {"One", "Two", "Three"};
 static const uint32_t swatches[] = {UI_ICOUNT_RGB, UI_ICOUNT_RGB};
 static const ui_theme_t theme = {.panel_face = UI_ICOUNT_RGB,

@@ -24,10 +24,10 @@
 #include "draw/icon.h"
 
 /* Icon `id`, which the app pack the suites run with must hold. */
-static const draw_image_t*
+static const image_t*
 app_icon(sand_icon_id_t id) {
     (void)ui_icon_set_load(&sand_icon_set);
-    const draw_image_t* icon = sand_icon(id);
+    const image_t* icon = sand_icon(id);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no icon: the suites run with the packs build_pack.py writes");
     return icon;
 }
@@ -47,7 +47,7 @@ static const named_icon_t ICONS[] = {
 static void
 test_every_icon_is_non_empty(void) {
     for (size_t i = 0; i < ICON_COUNT; i++) {
-        const draw_image_t* icon = app_icon(ICONS[i].id);
+        const image_t* icon = app_icon(ICONS[i].id);
         bool set = false;
         for (int y = 0; y < icon->height && !set; y++) {
             for (int x = 0; x < icon->width; x++) {
@@ -71,7 +71,7 @@ test_every_icon_is_non_empty(void) {
 static void
 test_every_icon_content_bbox_is_inside_16x16(void) {
     for (size_t i = 0; i < ICON_COUNT; i++) {
-        const draw_image_t* icon = app_icon(ICONS[i].id);
+        const image_t* icon = app_icon(ICONS[i].id);
         recti_t blocks[SAND_ICON_TEST_MAX_BLOCKS];
         icon_test_collect_t cc = {.blocks = blocks, .count = 0, .cap = SAND_ICON_TEST_MAX_BLOCKS};
         icon_walk_blocks(icon, icon->width, icon->height, icon_test_collect, &cc);
@@ -131,7 +131,7 @@ static const expected_icon_t EXPECTED[] = {
 static void
 test_every_icon_matches_the_artwork_it_replaced(void) {
     for (size_t i = 0; i < sizeof(EXPECTED) / sizeof(EXPECTED[0]); i++) {
-        const draw_image_t* icon = app_icon(EXPECTED[i].id);
+        const image_t* icon = app_icon(EXPECTED[i].id);
         TEST_ASSERT_EQUAL_INT(16, icon->width);
         TEST_ASSERT_EQUAL_INT(16, icon->height);
         for (int y = 0; y < 16; y++) {
@@ -152,7 +152,7 @@ test_every_icon_matches_the_artwork_it_replaced(void) {
  * (w - 1 - i) agree for every i. True for an icon symmetric left-right,
  * independent of any other row. */
 static bool
-icon_is_left_right_symmetric(const draw_image_t* icon) {
+icon_is_left_right_symmetric(const image_t* icon) {
     for (int y = 0; y < icon->height; y++) {
         for (int x = 0; x < icon->width / 2; x++) {
             if (icon_test_bit(icon, x, y) != icon_test_bit(icon, icon->width - 1 - x, y)) {
@@ -164,7 +164,7 @@ icon_is_left_right_symmetric(const draw_image_t* icon) {
 }
 
 static bool
-icon_is_top_bottom_symmetric(const draw_image_t* icon) {
+icon_is_top_bottom_symmetric(const image_t* icon) {
     for (int y = 0; y < icon->height / 2; y++) {
         for (int x = 0; x < icon->width; x++) {
             if (icon_test_bit(icon, x, y) != icon_test_bit(icon, x, icon->height - 1 - y)) {
@@ -180,14 +180,14 @@ icon_is_top_bottom_symmetric(const draw_image_t* icon) {
  * still look plausible by eye but fail here. */
 static void
 test_erase_is_symmetric_both_axes(void) {
-    const draw_image_t* icon = app_icon(SAND_ICON_ERASE);
+    const image_t* icon = app_icon(SAND_ICON_ERASE);
     TEST_ASSERT_TRUE(icon_is_left_right_symmetric(icon));
     TEST_ASSERT_TRUE(icon_is_top_bottom_symmetric(icon));
 }
 
 static void
 test_boom_is_symmetric_both_axes(void) {
-    const draw_image_t* icon = app_icon(SAND_ICON_BOOM);
+    const image_t* icon = app_icon(SAND_ICON_BOOM);
     TEST_ASSERT_TRUE(icon_is_left_right_symmetric(icon));
     TEST_ASSERT_TRUE(icon_is_top_bottom_symmetric(icon));
 }
@@ -197,7 +197,7 @@ test_boom_is_symmetric_both_axes(void) {
  * reading as a letter. */
 static void
 test_info_is_left_right_symmetric_but_not_top_bottom(void) {
-    const draw_image_t* icon = app_icon(SAND_ICON_INFO);
+    const image_t* icon = app_icon(SAND_ICON_INFO);
     TEST_ASSERT_TRUE(icon_is_left_right_symmetric(icon));
     TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(icon));
 }
@@ -207,7 +207,7 @@ test_info_is_left_right_symmetric_but_not_top_bottom(void) {
  * is what reads as motion rather than a static tail. */
 static void
 test_pour_is_not_symmetric(void) {
-    const draw_image_t* icon = app_icon(SAND_ICON_POUR);
+    const image_t* icon = app_icon(SAND_ICON_POUR);
     TEST_ASSERT_FALSE(icon_is_left_right_symmetric(icon));
     TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(icon));
 }

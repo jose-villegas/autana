@@ -64,7 +64,7 @@ def annotations(root=ROOT):
     rows, problems = citation_rows(root)
     if problems:
         raise ValueError("; ".join(problems))
-    citation_names = {name: number for number, (_, name, _) in rows.items() if name}
+    citation_names = {row[1]: key for key, row in rows.items() if row[1]}
     result = []
     source = (root / "launcher/packages/math/tests/suite_math_numbers.c").read_text(encoding="utf-8")
     contracts = {name: (unit, method) for name, unit, method in re.findall(
@@ -149,7 +149,7 @@ def validate_hardware(root, items, fpu):
         _, expected = hardware_features(root, item)
         observed = set(fpu[item.fast].partition(";")[0].split())
         if not expected or not expected & observed:
-            raise ValueError(f"{item.fast}: target wrapper lacks an expected seed/fused instruction ({sorted(expected)})")
+            raise ValueError(f"{item.fast}: target wrapper and callees lack an expected seed/fused instruction ({sorted(expected)})")
 
 
 def reference_pages(item, root=ROOT):
@@ -372,6 +372,8 @@ def format_error(evidence, source):
 
 
 def render(root, items, rows, measured, errors, bins, sizes, fpu, target, sources=None, input_counts=None):
+    sys.path.insert(0, str(ROOT / "scripts/gates"))
+    from check_doc_citations import shown_link
     groups = {}
     for item in items:
         groups.setdefault(item.key, []).append(item)
@@ -416,8 +418,8 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
     lines.pop()
     for key, group in groups.items():
         item = group[0]
-        citations = "".join(f" <sup>[[{number}]](../Citations.md#{number})</sup>" for number in dict.fromkeys(
-            number for row in group for number in row.citations))
+        citations = "".join(" " + shown_link(root, key) for key in dict.fromkeys(
+            key for row in group for key in row.citations))
         lines += ["", f'<a id="{item.anchor}"></a>', "", f"## `{key}`{citations}", "",
                   "| Original | Fast path |", "|---|---|",
                   f"| $`{item.original}`$ | $`{item.formula}`$ |", "", f"Symbols: {_inline_expressions(_description_fields(item)[1])}.", "",

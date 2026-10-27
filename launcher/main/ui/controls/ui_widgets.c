@@ -132,7 +132,7 @@ ui_icon_button_label_width(int button_w, bool has_icon, const ui_mu_theme_t* the
 
 /* The icon at the left and the label centred in `label_w` after it. */
 static void
-draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* label, int label_len, int label_w,
+draw_icon_and_label(mu_Context* ctx, mu_Rect r, const image_t* icon, const char* label, int label_len, int label_w,
                     mu_Color ink, const ui_mu_theme_t* theme) {
     if (icon != NULL) {
         const int side = theme->icon_side;
@@ -294,7 +294,7 @@ ui_widgets_reset(void) {
 
 static int
 draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const char* const* names,
-                   const draw_image_t* const* icons, int count, int selected, const ui_mu_theme_t* theme) {
+                   const image_t* const* icons, int count, int selected, const ui_mu_theme_t* theme) {
     const mu_Rect list = ui_dropdown_list_rect(anchor, count, anchor.h, ui_height(), UI_MARGIN);
     mu_Container* cnt = find_list(ctx, id);
     cnt->rect = list;
@@ -368,14 +368,14 @@ close_if_abandoned(mu_Context* ctx, mu_Container* list) {
 }
 
 int
-ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const char* const* names, const draw_image_t* const* icons,
+ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const char* const* names, const image_t* const* icons,
                int count, int selected, const ui_mu_theme_t* theme) {
     return ui_dropdown_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), id, r, names, icons, count, selected, true, theme);
 }
 
 int
 ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char* const* names,
-               const draw_image_t* const* icons, int count, int selected, bool enabled, const ui_mu_theme_t* theme) {
+               const image_t* const* icons, int count, int selected, bool enabled, const ui_mu_theme_t* theme) {
     assert(count > 0);
     if (selected < 0 || selected >= count) {
         selected = 0;
@@ -421,14 +421,17 @@ ui_mu_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme) {
 
 void
 ui_swatch_grid(mu_Context* ctx, mu_Rect r, const uint32_t* colors, int cols, int rows) {
-    for (int row = 0; row < rows; row++) {
-        const int y0 = r.y + (row * r.h / rows);
-        const int y1 = r.y + ((row + 1) * r.h / rows);
-        for (int col = 0; col < cols; col++) {
-            const int x0 = r.x + (col * r.w / cols);
-            const int x1 = r.x + ((col + 1) * r.w / cols);
-            mu_draw_rect(ctx, mu_rect(x0, y0, x1 - x0, y1 - y0), ui_rgb(colors[(row * cols) + col]));
-        }
+    if (cols <= 0 || rows <= 0) {
+        return;
+    }
+    const int count = cols * rows;
+    const size_t size = sizeof(ui_swatch_command_t) + ((size_t)(count - 1) * sizeof(uint32_t));
+    ui_swatch_command_t* cmd = ui_push_clipped_command(ctx, UI_COMMAND_SWATCHES, (int)size, r);
+    if (cmd != NULL) {
+        cmd->rect = r;
+        cmd->cols = (int16_t)cols;
+        cmd->rows = (int16_t)rows;
+        memcpy(cmd->rgb, colors, (size_t)count * sizeof *colors);
     }
 }
 
