@@ -1745,8 +1745,11 @@ expect_no_photograph(const char* dir) {
     /* One black row repeated down the panel: a stride of 0. */
     gfx_color_t* black = calloc(GFX_WIDTH, sizeof(gfx_color_t));
     TEST_ASSERT_NOT_NULL(black);
-    const image_t covered = {
-        .pixels = black, .format = IMAGE_RGB565BE, .width = GFX_WIDTH, .height = GFX_HEIGHT, .stride = 0};
+    const image_t covered = {.pixels = black,
+                             .format = IMAGE_RGB565BE,
+                             .width = GFX_WIDTH,
+                             .height = GFX_HEIGHT,
+                             .pitch = 0 * sizeof(gfx_color_t)};
     const int title_only = lit_over(&covered, now_ms);
     free(black);
 

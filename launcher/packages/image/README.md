@@ -3,9 +3,10 @@
 Strided image views, RGB565 pixel arithmetic, ordered dithering and palette lookup.
 This header-only package uses math for rectangles; its tests run with testkit.
 
-`image_t` borrows pixels with a format and pixel stride.
+`image_t` borrows pixels with a format and byte pitch.
 `image_format_bits()` gives the bit depth; `image_row()` addresses a row.
-`image_sub()` shares pixels and stride; `image_mono1_ink()` reads a packed ink bit.
+`image_sub()` shares pixels and pitch; `image_mono1_ink()` reads a packed ink bit.
+`IMAGE_U16` and `IMAGE_U32` describe raw maps whose meaning belongs to their caller.
 
 `rgb565_*` operates on native RGB565.
 `rgb565be_*` operates on high-byte-first RGB565.

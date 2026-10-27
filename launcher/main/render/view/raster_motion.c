@@ -180,18 +180,18 @@ resolve_row(const raster_motion_t* m, const uint16_t* depth, raster_motion_px_t*
 }
 
 static void
-resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* rows, int index) {
+resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* rows, int index) {
     (void)raster;
     const raster_motion_t* m = self->state;
-    for (int y = rows->row0; y < rows->row1; y++) {
-        raster_motion_px_t* out = gfx_render_target_row(rows, index, y);
+    for (int y = rows->first_row; y < (rows->first_row + rows->attachment[0].height); y++) {
+        raster_motion_px_t* out = gfx_target_row(rows, index, y);
         if (!m->known) {
-            for (int x = 0; x < rows->width; x++) {
+            for (int x = 0; x < rows->attachment[0].width; x++) {
                 out[x] = unknown;
             }
             continue;
         }
-        resolve_row(m, gfx_render_target_depth(rows, y), out, rows->width, (float)y + 0.5F - m->project.cy);
+        resolve_row(m, gfx_target_depth(rows, y), out, rows->attachment[0].width, (float)y + 0.5F - m->project.cy);
     }
 }
 
@@ -212,14 +212,14 @@ pixel_color(const void* pixel, uint16_t clear_color) {
 }
 
 static void
-show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index) {
     (void)self;
     raster_show_map(picture, index, raster->clear, pixel_color);
 }
 
 raster_attachment_t
 raster_motion_view(void* state) {
-    return (raster_attachment_t){sizeof(raster_motion_px_t), clear, begin, writer, resolve, show, state};
+    return (raster_attachment_t){IMAGE_U16, clear, begin, writer, resolve, show, state};
 }
 
 void

@@ -81,7 +81,7 @@ count_triangle(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const
 void
 r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                              const r3d_pipeline_vertex_t* cs, r3d_pipeline_counts_t* counts, uint16_t* set_up) {
-    const r3d_span_target_t screen = {.rows = {.width = lens->width, .row0 = 0, .row1 = lens->height}};
+    const r3d_span_target_t screen = r3d_span_target(NULL, NULL, lens->width, 0, lens->height);
     for (int i = 0; i < count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         int reached = 0;

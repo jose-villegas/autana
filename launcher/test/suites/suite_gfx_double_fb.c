@@ -36,13 +36,13 @@ enter_double(void) {
 static void
 test_double_fb_swaps_draw_target_and_reads_front(void) {
     fixture();
-    gfx_color_t* original = gfx_present_target().buf;
+    gfx_color_t* original = gfx_target_color(gfx_present_target(), 0);
     enter_double();
-    gfx_color_t* drawn = gfx_present_target().buf;
+    gfx_color_t* drawn = gfx_target_color(gfx_present_target(), 0);
     TEST_ASSERT_NOT_EQUAL(original, drawn);
     drawn[0] = FRAME_COLOUR;
     gfx_present();
-    TEST_ASSERT_EQUAL_PTR(original, gfx_present_target().buf);
+    TEST_ASSERT_EQUAL_PTR(original, gfx_target_color(gfx_present_target(), 0));
     original[0] = 0;
     TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
     gfx_color_t* row = memory_alloc(GFX_WIDTH * sizeof(*row), MEMORY_PSRAM);
@@ -53,7 +53,7 @@ test_double_fb_swaps_draw_target_and_reads_front(void) {
     gfx_readback_end();
     TEST_ASSERT_EQUAL_HEX16(FRAME_COLOUR, shown);
     gfx_present();
-    TEST_ASSERT_EQUAL_PTR(drawn, gfx_present_target().buf);
+    TEST_ASSERT_EQUAL_PTR(drawn, gfx_target_color(gfx_present_target(), 0));
 }
 
 static void
@@ -171,9 +171,9 @@ test_double_fb_keeps_tracker_all_dirty_until_exit(void) {
 /* Every pixel of the buffer the next frame draws into. */
 static bool
 back_buffer_is(gfx_color_t colour) {
-    const gfx_target_t back = gfx_present_target();
+    const gfx_target_t* back = gfx_present_target();
     for (int i = 0; i < GFX_WIDTH * GFX_HEIGHT; i++) {
-        if (back.buf[i] != colour) {
+        if (gfx_target_color(back, 0)[i] != colour) {
             return false;
         }
     }

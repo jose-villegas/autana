@@ -35,27 +35,28 @@ static gfx_color_t* half_image;
 static bool frame_expanded;
 static gfx_band_overlay_fn frame_overlay;
 
-/* GFX_LAYOUT_FULL_FB until gfx_init() sets real geometry, or an app's
- * gfx_mode_enter() grants something else.
- * gfx_present_begin()/gfx_present_wait() read this to know whether there is
- * a framebuffer to send at all. */
+/* Mode requests do not nest; boot starts in GFX_LAYOUT_FULL_FB. */
 gfx_mode_t current_mode;
 
 /* The band ring's own buffers. */
 static gfx_color_t* band_buf[GFX_BAND_SLOTS];
 static gfx_band_ring_t band_ring;
 static int band_current_slot;
-/* True only during a band or expanded overlay replay; outside it band mode
- * has no valid target, matching gfx_fb_guard.h. */
+/* Band mode has no valid drawing target outside replay. */
 static bool band_render_active;
-static gfx_target_t strip_target;
+static GFX_TARGET_STORAGE(1) strip_target;
+static GFX_TARGET_STORAGE(1) frame_target = {
+    0, 1, {{NULL, GFX_PIXEL_FORMAT, GFX_WIDTH, GFX_HEIGHT, GFX_WIDTH * sizeof(gfx_color_t)}}};
+static GFX_TARGET_STORAGE(1) half_target = {
+    0, 1, {{NULL, GFX_PIXEL_FORMAT, GFX_WIDTH / 2, GFX_HEIGHT / 2, (GFX_WIDTH / 2) * sizeof(gfx_color_t)}}};
 static recti_t clip;
 
 #ifndef ESP_PLATFORM
 void
 gfx_band_begin_for_test(int row) {
     band_render_active = true;
-    strip_target = (gfx_target_t){fb + row * GFX_WIDTH, row, GFX_BAND_HEIGHT, GFX_WIDTH};
+    gfx_target_of_color((gfx_target_t*)&strip_target, fb + row * GFX_WIDTH, GFX_WIDTH, GFX_BAND_HEIGHT);
+    strip_target.first_row = row;
 }
 
 void
@@ -64,9 +65,17 @@ gfx_band_end_for_test(void) {
 }
 #endif
 
-gfx_target_t
+void
+gfx_swap_framebuffers(void) {
+    gfx_color_t* drawn = fb;
+    fb = present_fb;
+    frame_target.attachment[0].pixels = fb;
+    present_fb = drawn;
+}
+
+const gfx_target_t*
 gfx_present_target(void) {
-    return band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+    return band_render_active ? (const gfx_target_t*)&strip_target : (const gfx_target_t*)&frame_target;
 }
 
 bool
@@ -84,8 +93,7 @@ gfx_clip_restore(recti_t saved) {
     clip = saved;
 }
 
-/* Here beside the state it reads, so a draw call costs one call to begin:
- * draw issues thousands of tiny primitives a frame. */
+/* Keep drawing state beside gfx_draw_begin(): primitives call it once apiece. */
 bool
 gfx_draw_begin(gfx_surface_t* out) {
     GFX_PRESENT_GUARD();
@@ -95,7 +103,7 @@ gfx_draw_begin(gfx_surface_t* out) {
     if (fb_filled) {
         fb_filled = false;
     }
-    out->target = band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+    out->target = band_render_active ? (const gfx_target_t*)&strip_target : (const gfx_target_t*)&frame_target;
     out->clip = clip;
     out->marks = !band_render_active;
     return true;
@@ -110,10 +118,7 @@ gfx_set_clip(recti_t box) {
 static int band_render_row0;
 static int band_render_height;
 
-/* GFX_LAYOUT_INDEXED's own state: the app writes indices,
- * run_present_strips() (gfx_present.c) expands them through whichever LUT is
- * installed. Not a gfx_target.h render target: no drawing primitive writes
- * through it. */
+/* Indexed mode expands its own grid through a palette; primitives draw into colour targets. */
 static uint8_t* indexed_image;
 static int indexed_grid_w, indexed_grid_h, indexed_cell_size;
 static gfx_color_t indexed_lut256[GFX_INDEXED_PALETTE_SIZE];
@@ -161,14 +166,10 @@ indexed_frame(void) {
     };
 }
 
-/* This frame's own capture of gfx_full_redraw.h's force flag, taken once by
- * gfx_band_frame_begin() so a later gfx_invalidate() call mid-frame
- * affects the NEXT frame, not this one. */
+/* Mid-frame invalidation forces the next frame, not the current band replay. */
 static bool band_frame_force_all;
 
-/* A readback's copy of one whole band-mode frame: gfx_band_submit() fills
- * it during a frame gfx_readback_begin() forced, since the band ring keeps
- * nothing once a band is sent. PSRAM, and only while a readback is open. */
+/* Band readback keeps a PSRAM snapshot only while readback is open. */
 static gfx_color_t* band_snapshot;
 static int band_snapshot_bands;
 static bool band_snapshot_filling;
@@ -178,6 +179,7 @@ bool
 alloc_full_framebuffer(void) {
     const size_t bytes = GFX_FRAMEBUFFER_BYTES;
     fb = memory_alloc(bytes, MEMORY_PSRAM);
+    frame_target.attachment[0].pixels = fb;
     present_fb = fb;
 #ifdef ESP_PLATFORM
     if (fb == NULL) {
@@ -192,6 +194,7 @@ static void
 free_full_framebuffer(void) {
     memory_free(fb);
     fb = NULL;
+    frame_target.attachment[0].pixels = fb;
     present_fb = NULL;
 }
 
@@ -359,6 +362,7 @@ gfx_half_picture(void) {
     }
     if (half_image == NULL) {
         half_image = memory_alloc(sizeof(*half_image) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
+        half_target.attachment[0].pixels = half_image;
     }
     return half_image;
 }
@@ -395,16 +399,19 @@ clear_expanded_frame(bool free_picture) {
     if (free_picture) {
         memory_free(half_image);
         half_image = NULL;
+        half_target.attachment[0].pixels = half_image;
     }
 }
 
 void
 expand_rows(int y0, int y1, gfx_color_t* destination) {
-    const gfx_target_t target = {destination, y0, y1 - y0, GFX_WIDTH};
-    gfx_target_paired_rows(target, half_image, NULL, 0, GFX_WIDTH / 2, NULL, y0, y1 - y0, true);
+    const GFX_TARGET_STORAGE(1) target_storage = {
+        y0, 1, {{destination, GFX_PIXEL_FORMAT, GFX_WIDTH, y1 - y0, (GFX_WIDTH) * sizeof(gfx_color_t)}}};
+    const gfx_target_t* target = (const gfx_target_t*)&target_storage;
+    gfx_target_paired_rows(target, (const gfx_target_t*)&half_target, 0, NULL, y0, y1 - y0, true);
     if (frame_overlay != NULL) {
         const recti_t saved_clip = gfx_clip_save();
-        strip_target = target;
+        gfx_target_window((gfx_target_t*)&strip_target, target, y0, y1);
         band_render_active = true;
         gfx_fb_guard_set_available(true);
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
@@ -437,7 +444,7 @@ gfx_reset_for_test(void) {
     clear_expanded_frame(true);
     frame_overlay = NULL;
     band_render_active = false;
-    strip_target = (gfx_target_t){0};
+    memset(&strip_target, 0, sizeof strip_target);
     if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         free_indexed_image();
     } else if (current_mode.layout == GFX_LAYOUT_BANDS) {
@@ -478,6 +485,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
             return &current_mode;
         }
         fb = back;
+        frame_target.attachment[0].pixels = fb;
         fb_filled = false;
         dirty_mark_all();
     } else if (granted.layout == GFX_LAYOUT_INDEXED) {
@@ -519,6 +527,7 @@ gfx_mode_exit(void) {
         (void)gfx_set_clear_on_send(false, 0);
         memory_free(fb);
         fb = present_fb;
+        frame_target.attachment[0].pixels = fb;
         /* A frame cleared on send stays cleared: readback has nothing to read
          * until the next send, and the next draw_clear() of it is free. */
         fb_filled = gfx_present_sent_frame_filled();
@@ -666,7 +675,8 @@ gfx_band_next(void) {
     band_current_slot = gfx_band_ring_slot(&band_ring);
     band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
     band_render_height = current_mode.band_height;
-    strip_target = (gfx_target_t){band_buf[band_current_slot], band_render_row0, band_render_height, GFX_WIDTH};
+    gfx_target_of_color((gfx_target_t*)&strip_target, band_buf[band_current_slot], GFX_WIDTH, band_render_height);
+    strip_target.first_row = band_render_row0;
     band_render_active = true;
     gfx_fb_guard_set_available(true);
     return true;
@@ -776,7 +786,7 @@ gfx_indexed_image(void) {
                      .format = IMAGE_INDEXED8,
                      .width = (uint16_t)indexed_grid_w,
                      .height = (uint16_t)indexed_grid_h,
-                     .stride = (uint32_t)indexed_grid_w};
+                     .pitch = (uint32_t)indexed_grid_w};
 }
 
 gfx_readback_t

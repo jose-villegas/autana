@@ -36,7 +36,7 @@ assert_line(int dx, int dy, unsigned pattern, unsigned expected) {
     gfx_surface_t surface;
     TEST_ASSERT_TRUE(gfx_draw_begin(&surface));
     for (int step = 0; step < LINE_STEPS; step++) {
-        const gfx_color_t pixel = gfx_target_row(surface.target, LINE_START + (dy * step))[LINE_START + (dx * step)];
+        const gfx_color_t pixel = gfx_target_color(surface.target, LINE_START + (dy * step))[LINE_START + (dx * step)];
         TEST_ASSERT_EQUAL_HEX16((expected & (1u << step)) ? LINE_INK : 0, pixel);
     }
 }

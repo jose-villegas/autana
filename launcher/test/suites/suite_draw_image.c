@@ -101,7 +101,7 @@ test_an_entry_opens_and_its_pixels_point_into_it(void) {
     TEST_ASSERT_TRUE_MESSAGE(in_place, "the pixels were not the entry's own bytes");
     TEST_ASSERT_EQUAL_UINT16(WIDTH, image.width);
     TEST_ASSERT_EQUAL_UINT16(HEIGHT, image.height);
-    TEST_ASSERT_EQUAL_UINT32(STRIDE, image.stride);
+    TEST_ASSERT_EQUAL_UINT32(STRIDE * sizeof(rgb565be_t), image.pitch);
     TEST_ASSERT_EQUAL_HEX16(0x100 + STRIDE, second_row);
 }
 
@@ -186,7 +186,7 @@ test_a_one_bit_image_opens_unaligned_with_its_bits_in_place(void) {
     TEST_ASSERT_EQUAL_INT(IMAGE_MONO1, image.format);
     TEST_ASSERT_TRUE_MESSAGE(in_place, "the bits were not the entry's own bytes");
     TEST_ASSERT_EQUAL_UINT16(MONO_WIDTH, image.width);
-    TEST_ASSERT_EQUAL_UINT32(MONO_STRIDE, image.stride);
+    TEST_ASSERT_EQUAL_UINT32(MONO_STRIDE / CHAR_BIT, image.pitch);
 }
 
 static void
@@ -218,7 +218,7 @@ test_the_boot_picture_s_pack_opens_as_one_panel(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_OK, status);
     TEST_ASSERT_EQUAL_UINT16(GFX_WIDTH, image.width);
     TEST_ASSERT_EQUAL_UINT16(GFX_HEIGHT, image.height);
-    TEST_ASSERT_EQUAL_UINT32(GFX_WIDTH, image.stride);
+    TEST_ASSERT_EQUAL_UINT32(GFX_WIDTH * sizeof(rgb565be_t), image.pitch);
 }
 
 static void

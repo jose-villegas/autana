@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/target/gfx_render_target.h"
+#include "gfx/target/gfx_target.h"
 #include "render/render_view.h"
 
 /* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
@@ -28,12 +28,13 @@ void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t f
 
 typedef struct r3d_span_writer r3d_span_writer_t;
 
-/* Where a triangle is filled: a render target whose colour is the panel's
- * own format, RGB565 with its two bytes swapped, so a framebuffer can be its
- * colour as it is, and whose depth is R3D_DEPTH_EMPTY where nothing was
- * drawn; and what a further attachment writes beside them. */
+/* Undrawn depth is R3D_DEPTH_EMPTY; further writers run beside colour and depth. */
 typedef struct {
-    gfx_render_target_t rows;
+    union {
+        gfx_target_t rows;
+        GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) rows_storage;
+    };
+
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
     const r3d_span_small_fill_t* small_fill;
@@ -43,10 +44,12 @@ typedef struct {
  * starting at row0. */
 static inline r3d_span_target_t
 r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int row1) {
-    return (r3d_span_target_t){{width, row0, row1, 2, {{color, sizeof(gfx_color_t)}, {depth, sizeof(uint16_t)}}},
-                               NULL,
-                               0,
-                               &r3d_span_small_fill_default};
+    return (r3d_span_target_t){
+        .rows_storage = {row0,
+                         2,
+                         {{color, GFX_PIXEL_FORMAT, width, row1 - row0, width * sizeof(gfx_color_t)},
+                          {depth, IMAGE_U16, width, row1 - row0, width * sizeof(uint16_t)}}},
+        .small_fill = &r3d_span_small_fill_default};
 }
 
 /* A further attachment's part in a fill, chosen once per draw: after each
@@ -63,8 +66,8 @@ typedef enum {
 } r3d_span_step_t;
 
 struct r3d_span_writer {
-    void (*span)(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
-                 int32_t z, int32_t dz);
+    void (*span)(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, int x_first, int x_last, int32_t z,
+                 int32_t dz);
     int attachment;       /* the index it writes, in `rows` */
     r3d_span_step_t step; /* what is added to `value` per draw */
     uint32_t value;       /* what this draw writes, in the attachment's own meaning */

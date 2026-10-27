@@ -1380,7 +1380,8 @@ static void
 test_icon_is_one_command_and_obeys_clip(void) {
     fixture();
     static const uint8_t bits[] = {0xA0, 0x40};
-    const image_t image = {.pixels = (void*)bits, .format = IMAGE_MONO1, .width = 3, .height = 2, .stride = 8};
+    const image_t image = {
+        .pixels = (void*)bits, .format = IMAGE_MONO1, .width = 3, .height = 2, .pitch = 8 / CHAR_BIT};
     mu_Context* ctx = ui_context();
     const mu_Rect box = {10, 20, 30, 20};
     ctx->clip_stack.items[ctx->clip_stack.idx++] = box;
@@ -1408,7 +1409,7 @@ test_icon_is_one_command_and_obeys_clip(void) {
 
 static const uint8_t COMMAND_ICON_BITS[] = {0xA0, 0x40};
 static const image_t COMMAND_ICON = {
-    .pixels = (void*)COMMAND_ICON_BITS, .format = IMAGE_MONO1, .width = 3, .height = 2, .stride = 8};
+    .pixels = (void*)COMMAND_ICON_BITS, .format = IMAGE_MONO1, .width = 3, .height = 2, .pitch = 8 / CHAR_BIT};
 static const mu_Rect COMMAND_BOX = {10, 20, 31, 23};
 #define COMMAND_COLS 3
 #define COMMAND_ROWS 2

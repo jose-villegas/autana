@@ -14,7 +14,7 @@
 static inline int64_t
 one_core_draw_us(const raster_t* raster, const raster_buffers_t* b, const r3d_lens_t* lens, int visible, int stop) {
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
-    memset(gfx_render_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
+    memset(gfx_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
     const r3d_span_target_t target = {b->picture, NULL, 0, &r3d_span_small_fill_default};
     r3d_span_stop_after = stop;
     const int64_t start = timing_now_us();
