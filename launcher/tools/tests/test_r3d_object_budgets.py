@@ -1,4 +1,4 @@
-"""Source ownership and fixed simplifier reservations."""
+"""Source ownership and welded simplifier groups."""
 
 import pathlib
 import sys
@@ -10,7 +10,7 @@ from scipy.spatial import ConvexHull
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import simplify as owner
-from r3d.import_settings import SettingsError, pass_overrides
+from soup import edge_counts
 
 
 def props():
@@ -25,12 +25,6 @@ def props():
 
 
 class ObjectBudgetTests(unittest.TestCase):
-    def allocate(self, budget=400, **kwargs):
-        p, t, o = props()
-        return owner.simplify(p, np.full_like(p, 100), t, o, budget,
-                              allocation=owner.Allocation(tri_o=o, object_names=['near', 'far'], material_names=['plain', 'leaf'], **kwargs),
-                              colour_deviation=1.0)
-
     def test_shared_edge_and_free_object(self):
         p = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
                       [5, 0, 0], [6, 0, 0], [5, 1, 0]], dtype=float)
@@ -55,7 +49,7 @@ class ObjectBudgetTests(unittest.TestCase):
         settings = NS(seed=5, position_scale=None, alpha_keep=0.5, double_sided=[],
                       thin=NS(material='leaf', keep=0.7),
                       simplify=NS(dense_edge=0.5, seal_seams=True, colour_deviation=1, props=set(), props_share=0),
-                      overrides=[{'object': 'far', 'triangles': 100}])
+                      meshes=[{'match': {'object': 'far'}, 'triangles': 100}])
         job = NS(settings=settings, renderer=NS(visibility=NS(source='camera_region'),
                                                 variant=NS(triangles=500)), bake=None)
         stages = []
@@ -111,28 +105,6 @@ class ObjectBudgetTests(unittest.TestCase):
             prop = max(1, int(budget * share))
             self.assertEqual(calls, [prop, max(1, budget - prop)])
 
-    def test_override_schema(self):
-        from r3d.import_settings import load_object_overrides
-        for rule in ({'object': '*', 'material': '*', 'triangles': 1},
-                     {'object': '*', 'importance': 1}, {'object': '*', 'triangles': 0},
-                     {'object': '*', 'triangles': 1, 'typo': True}):
-            with self.subTest(rule=rule), self.assertRaises(SettingsError):
-                load_object_overrides({'overrides': [rule]})
-        with self.assertRaises(SettingsError):
-            load_object_overrides({'props_share': 0.3})
-        self.assertEqual(load_object_overrides({'overrides': [{'object': '*', 'triangles': 10}]}),
-                         [{'object': '*', 'triangles': 10}])
-
-    def test_fixed_reservation_can_fill_budget(self):
-        from unittest.mock import patch
-        with patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
-            self.allocate(budget=100, overrides=[{'object': 'near', 'triangles': 100}])
-        self.assertEqual([call.args[3] for call in run.call_args_list], [100])
-
-    def test_fixed_count(self):
-        *_, labels = self.allocate(overrides=[{'object': 'near', 'triangles': 100}])
-        self.assertEqual(np.count_nonzero(labels == 0), 100)
-
 
     def test_no_new_cracks(self):
         p, t, o = props()
@@ -151,51 +123,10 @@ class ObjectBudgetTests(unittest.TestCase):
         self.assertTrue(np.any(independent_count == 1))
         result = owner.simplify(p, np.full_like(p, 100), t, o, 160, allocation=owner.Allocation(tri_o=o), colour_deviation=1)
         sp, _, st, _ = result
-        edges = np.sort(np.concatenate([st[:, [0, 1]], st[:, [1, 2]], st[:, [2, 0]]]), axis=1)
-        _, count = np.unique(edges, axis=0, return_counts=True)
+        count = edge_counts(st)
         np.testing.assert_array_equal(count, np.full(len(count), 2))
         self.assertLess(len(st), len(t))
         self.assertEqual(len(np.unique(sp, axis=0)), len(sp))
-
-    def test_fixed_overrides_cannot_exceed_budget(self):
-        with self.assertRaisesRegex(ValueError, 'exceed triangle budget'):
-            self.allocate(overrides=[{'object': '*', 'triangles': 300}])
-
-
-    def test_material_fixed_and_clamp(self):
-        from unittest.mock import patch
-        *_, labels = self.allocate(overrides=[{'material': 'leaf', 'triangles': 100}])
-        self.assertEqual(np.count_nonzero(labels == 1), 100)
-        original = owner.simplify_with_update
-        def bounded(p, c, t, target, *args, **kwargs):
-            self.assertLessEqual(target, len(t))
-            return original(p, c, t, target, *args, **kwargs)
-        with patch.object(owner, 'log') as logged, patch.object(owner, 'simplify_with_update', side_effect=bounded):
-            *_, labels = self.allocate(budget=1000, overrides=[{'object': 'near', 'triangles': 999}])
-        self.assertEqual(np.count_nonzero(labels == 0), np.count_nonzero(props()[2] == 0))
-        self.assertTrue(any('clamped' in str(call) for call in logged.call_args_list))
-
-
-    def test_override_no_match(self):
-        with self.assertRaisesRegex(SettingsError, 'missing'):
-            self.allocate(overrides=[{'object': 'missing', 'triangles': 10}])
-
-    def test_material_fixed_ambiguous(self):
-        with self.assertRaisesRegex(SettingsError, 'several passes'):
-            self.allocate(overrides=[{'material': '*', 'triangles': 10}])
-
-    def test_welded_fixed_rejects_other_objects(self):
-        with self.assertRaisesRegex(SettingsError, 'other'):
-            pass_overrides(['chosen', 'other'], {'chosen': ['plain'], 'other': ['plain']}, [{'object': 'chosen', 'triangles': 10}])
-
-    def test_material_fixed_rejects_welded_other_objects(self):
-        p = np.array([[0., 0, 0], [1., 0, 0], [0., 1, 0], [1., 1, 0]])
-        t = np.array([[0, 1, 2], [1, 3, 2]])
-        o = np.arange(2)
-        with self.assertRaisesRegex(SettingsError, 'other'):
-            owner.simplify(p, np.full_like(p, 100), t, o, 2, colour_deviation=1,
-                           allocation=owner.Allocation(tri_o=o, object_names=['chosen', 'other'], material_names=['plain', 'leaf'],
-                                                       overrides=[{'material': 'plain', 'triangles': 1}]))
 
 
 if __name__ == '__main__':

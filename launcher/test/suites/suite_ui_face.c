@@ -158,9 +158,9 @@ legacy_theme(ui_theme_t t) {
 }
 
 static const uint8_t ICON_BITS[] = {0x80};
-static const draw_image_t ICON = {
-    .bits = ICON_BITS, .format = DRAW_IMAGE_MONO1, .width = 1, .height = 1, .stride = DRAW_IMAGE_MONO1_STRIDE_STEP};
-static const draw_image_t* const ICONS[] = {&ICON, NULL, &ICON};
+static const image_t ICON = {
+    .pixels = (void*)ICON_BITS, .format = IMAGE_MONO1, .width = 1, .height = 1, .stride = DRAW_IMAGE_MONO1_STRIDE_STEP};
+static const image_t* const ICONS[] = {&ICON, NULL, &ICON};
 
 typedef enum {
     VERB_BUTTON,

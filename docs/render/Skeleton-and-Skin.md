@@ -46,7 +46,7 @@ flowchart LR
 | Local TRS | `anim_pose_rest()`, `anim_sample_pose()`, `anim_pose_blend()` | blending in [Animation tracks](Animation-Tracks.md#scene-playback) |
 | Model matrices | `anim_pose_model()` | each root independent |
 | Palette | the scene | the position scale makes bind ticks map to posed ticks |
-| Blend | `render/skin/r3d_skinning.h` | linear blend skinning (LBS)<sup>[[57]](../Citations.md#57)</sup>; two- and four-influence kernels, picked once per entry, outside the vertex loop |
+| Blend | `render/skin/r3d_skinning.h` | linear blend skinning (LBS)<sup>[[57]](../Citations.md#lewis-2000)</sup>; two- and four-influence kernels, picked once per entry, outside the vertex loop |
 | Output | `r3d_lit_mesh_t` view | ties round away from zero; the raster reads it |
 
 A two-joint limb through `r3d_skin_palette()` and `r3d_skin_clusters()`:

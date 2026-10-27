@@ -26,7 +26,7 @@ cosine-weighted, so it is even on the disc seen from above, for any $R$.
 ## Local-occlusion implementation
 
 The [`ao` setting](Scene-Files.md#bake-ao) darkens a point that has geometry
-close around it: a distance-limited obscurance<sup>[[14]](../Citations.md#14)</sup>.
+close around it: a distance-limited obscurance<sup>[[14]](../Citations.md#zhukov-1998)</sup>.
 The point casts $R$ rays. A ray that hits a surface at distance $`t_i`$ within
 the reach $D$ counts $`w_i = 1 - t_i/D`$; any other ray counts nothing.
 
@@ -53,9 +53,9 @@ the same vertex or face colours as direct light. The renderer reads one colour,
 so frame cost and mesh size do not change; only the bake takes longer.
 
 The bake exports the full-detail source mesh, its textures at full resolution,
-and the scene's sun and sky to Mitsuba<sup>[[15]](../Citations.md#15)</sup> once.
+and the scene's sun and sky to Mitsuba<sup>[[15]](../Citations.md#mitsuba3)</sup> once.
 
-Each ray from a point is a path<sup>[[16]](../Citations.md#16)</sup>: Mitsuba
+Each ray from a point is a path<sup>[[16]](../Citations.md#kajiya-1986)</sup>: Mitsuba
 follows it for up to $K$ bounces, with a shadow ray toward the lights at every
 hit. What comes back holds the hit's own shadow, albedo and further bounces.
 
@@ -128,19 +128,19 @@ triangle, which no face sampling brings back.
 ### The scores, exactly
 
 ΔE76 is the straight-line distance between a render pixel and the reference
-pixel in CIELAB<sup>[[4]](../Citations.md#4)</sup>. The steps from an 8-bit pixel,
+pixel in CIELAB<sup>[[4]](../Citations.md#iso-11664-4)</sup>. The steps from an 8-bit pixel,
 with their constants in `colour_maths.py`, which both the scoring and the fit's
 loss read:
 
 | Step | This tree | Standard |
 |---|---|---|
-| Decode | $(c/255)^{2.2}$ | The piecewise sRGB curve<sup>[[10]](../Citations.md#10)</sup> |
-| To XYZ | Linear sRGB primaries<sup>[[10]](../Citations.md#10)</sup> | Same |
+| Decode | $(c/255)^{2.2}$ | The piecewise sRGB curve<sup>[[10]](../Citations.md#iec-61966-2-1)</sup> |
+| To XYZ | Linear sRGB primaries<sup>[[10]](../Citations.md#iec-61966-2-1)</sup> | Same |
 | To CIELAB | Relative to the D65 white $(0.95047, 1, 1.08883)$ | Same |
 | Distance | $`\Delta E_{76} = \lVert \mathrm{Lab}(R_p) - \mathrm{Lab}(T_p) \rVert`$ for render $R$, reference $T$ | Same |
 
 Each frame's mean and p95 of it are averaged over the frames. Luma
-SSIM<sup>[[9]](../Citations.md#9)</sup> is the paper's formula with these
+SSIM<sup>[[9]](../Citations.md#wang-2004)</sup> is the paper's formula with these
 choices:
 
 | Choice | This tree | Paper |

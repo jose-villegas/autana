@@ -5,7 +5,7 @@
 #include "math/linear/vec3f.h"
 #include "math/scalar/units.h"
 
-/* Android WindowOrientationListener AccelSensorJudge [75] in docs/Citations.md.
+/* Android WindowOrientationListener AccelSensorJudge, in docs/Citations.md.
  * This tree uses screen-axis down, board-relative tilt limits and shell sampling. */
 #define DISPLAY_SAMPLE_MS             20
 #define DISPLAY_FILTER_TAU_MS         200

@@ -137,8 +137,8 @@ share is random, so `process.seed` makes it repeatable.
 #### simplify
 
 `geometry.simplify` splits long edges and simplifies each variant to its
-budget with meshoptimizer's<sup>[[11]](../Citations.md#11)</sup> quadric error simplifier<sup>[[12]](../Citations.md#12)</sup>,
-with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#13)</sup>.
+budget with meshoptimizer's<sup>[[11]](../Citations.md#meshoptimizer)</sup> quadric error simplifier<sup>[[12]](../Citations.md#garland-1997)</sup>,
+with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#hoppe-1999)</sup>.
 
 | Key | Meaning |
 |---|---|
@@ -152,15 +152,55 @@ much as moving a surface `colour_deviation` away, for `props` and the rest
 alike, at every budget. A smaller value keeps surfaces nearer their source
 planes and less colour detail: a trade, not a limit.
 
-The optional `[objects]` table accepts fixed reservations:
+Each `[[objects.meshes]]` rule carves out matching source objects:
 
-| Key | Value |
+| Key | Meaning |
 |---|---|
-| `overrides` | Array of `{ object = "glob", triangles = N }` or `{ material = "glob", triangles = N }` tables. |
+| `match` | Exactly `{ object = "glob" }` or `{ material = "glob" }`; must match. |
+| `triangles` | Mesh budget per copy, separate from the variant's rest budget. |
+| `seam` | Optional policy; touching defaults to `lock`, otherwise `free`. |
 
-Each rule reserves a count per welded group alongside the material share.
-It must match, cover every object in a welded group, and fit the budget.
-A material rule must select one group. Counts above source size are clamped.
+The variant's `triangles` budgets the rest, retaining `props` shares and the
+global pass. Its optional `ceiling` caps emitted triangles, including copies;
+`simplify.check_ceiling` owns this check. Overlapping rules are rejected.
+
+Objects touch when a vertex lies within `repair.seal_tolerance` of the other's
+surface. `objects/contact.py` owns the graph and both sides' border vertices.
+The tolerance is the reciprocal of `output.position_scale`.
+
+| Policy | Simplification | Seam |
+|---|---|---|
+| `weld` | Join touched passes and sum budgets; shared vertices collapse together, touching unshared contacts are pinned. | Closed |
+| `lock` | Own pass; fix contact vertices on both sides. | Closed |
+| `free` | Own pass without locks. | May open |
+
+![Free and locked pillar contacts](images/import-mesh-contact.png)
+
+Free shifts the contact footprint; lock retains the base vertices.
+
+Rigid copies share local simplification and their union of locks. Each copy
+is lit against the full source.
+
+A shape writes a colourless LMSH and an LCOL with one set per copy: RGB888
+vertices for smooth shading, RGB565 faces for flat. Mirrored copies own a
+shape with reversed winding and a positive-determinant placement.
+
+A carved renderer's cache `.bundle` holds the coloured rest, shapes, LCOL
+entries and a versioned copy manifest. Pack building unpacks assets and
+discards the manifest; SCNE holds the rest renderer and placed copies.
+
+Shape ids use the scene name and a stable name hash; the manifest retains
+the rule, source object and copy names.
+
+Rules match the alpha-masked source. Carved meshes skip per-triangle visibility;
+`thin` runs once per shared shape with the import seed. The rest keeps its
+visibility and thinning steps.
+
+`objects/seams_report.py` accepts a scene renderer, scratch import settings and
+a host viewer. Its JSON reports contacts, budgets, copies and locked input
+vertices. Lock cost is emitted triangles above the pass target; locks can keep
+more than the target. Each affected contact gets a `free`/`lock` comparison
+and crops where pixels differ.
 
 #### seal_seams
 
@@ -224,7 +264,7 @@ scaled copies remain separate shapes. Reflections are recorded per instance.
 | Test | Requirement |
 |---|---|
 | Candidate bucket | Equal vertex and triangle counts, and material multiset |
-| Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#86)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
+| Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#kabsch-1976)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
 | Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangle winding and materials agree as multisets |
 
 Each colour below is one repeated shape, boxed at every copy in view. The

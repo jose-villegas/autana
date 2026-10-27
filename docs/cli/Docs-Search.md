@@ -69,7 +69,7 @@ flowchart LR
     R -.->|"--ask"| A["local chat model<br/>short answer, cited"]
 ```
 
-BM25F<sup>[[46]](../Citations.md#46)</sup> ranks the words, and reciprocal-rank fusion<sup>[[47]](../Citations.md#47)</sup> merges its list with the
+BM25F<sup>[[46]](../Citations.md#robertson-2004)</sup> ranks the words, and reciprocal-rank fusion<sup>[[47]](../Citations.md#cormack-2009)</sup> merges its list with the
 embeddings'.
 
 Plans, `docs_extra` notes and sections headed "Related" or "See also"

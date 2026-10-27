@@ -235,11 +235,11 @@ recti_t ui_next(void);
 bool ui_button(recti_t r, const char* label);
 /* The icon at the left, the label centred in the rest; a NULL icon is
  * ui_button(). */
-bool ui_button_icon(recti_t r, const char* label, const draw_image_t* icon);
+bool ui_button_icon(recti_t r, const char* label, const image_t* icon);
 bool ui_tile(recti_t r, const char* label, bool selected);
 /* The icon above the label, in ui_tile_icon_rect(r); a NULL icon is
  * ui_tile(). */
-bool ui_tile_icon(recti_t r, const char* label, const draw_image_t* icon, bool selected);
+bool ui_tile_icon(recti_t r, const char* label, const image_t* icon, bool selected);
 /* The square a tile `r` gives its icon, for a caller drawing its own
  * picture of the choice instead. */
 recti_t ui_tile_icon_rect(recti_t r);
@@ -249,8 +249,8 @@ bool ui_dropdown(recti_t r, const char* label, int* index, const char* const* na
 /* How many frames a dropdown's list stays up after its pick, once the
  * finger lifts. */
 #define UI_DROPDOWN_CLOSE_FRAMES 4
-bool ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names,
-                       const draw_image_t* const* icons, int count);
+bool ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names, const image_t* const* icons,
+                       int count);
 
 /* One line's height at the current theme's text scale. */
 int ui_text_height(void);
@@ -269,7 +269,7 @@ void ui_outline(recti_t r, uint32_t rgb);
 void ui_bevel(recti_t r, uint32_t face_rgb, bool sunken);
 /* `icon` filling `r` in the text colour; a NULL icon (no pack holds it)
  * draws `fallback` centred instead, or nothing for a NULL `fallback`. */
-void ui_icon(recti_t r, const draw_image_t* icon, const char* fallback);
+void ui_icon(recti_t r, const image_t* icon, const char* fallback);
 /* The system check mark filling `r` in the text colour: one recorded mark,
  * painted from the engine pack, however detailed the icon. */
 void ui_check(recti_t r);

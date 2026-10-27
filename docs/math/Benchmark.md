@@ -7,7 +7,7 @@ See [fast paths](Fast-Paths.md) for each fast path's plain-versus-ours cost, err
 
 | what | how | caveat |
 |---|---|---|
-| Warm | Median after an untimed call, following Embench-IoT's cache-warming method.<sup>[[69]](../Citations.md#69)</sup> | Includes call overhead. |
+| Warm | Median after an untimed call, following Embench-IoT's cache-warming method.<sup>[[69]](../Citations.md#patterson-embench)</sup> | Includes call overhead. |
 | Cold | Median per call after `esp_cache_msync()` invalidates I-cache and flash-rodata D-cache over linker-defined, cache-line-rounded ranges, without writeback. | Includes libm and other callees; caches stay enabled, PSRAM untouched. Inputs and outputs are in internal RAM; calls refill code and flash rodata. |
 | Board instructions | Count a warmed call on core zero with frame counters disarmed; a compiler barrier preserves every output component. | Interrupts can contribute. |
 | QEMU instructions | Wrapper instructions divided by the row's op count. | No cache stalls or FPU latency. `recip0.s`/`rsqrt0.s`, gated by `CONFIG_MATH_FPU_RECIP`, show as "device-only instruction". CI ratchets only float dot, normalize, mat4 mul and slerp. |
@@ -15,7 +15,7 @@ See [fast paths](Fast-Paths.md) for each fast path's plain-versus-ours cost, err
 | Op | One input element; types follow [math suffixes](README.md#number-types), conversions name source and destination. | Mat4 includes by-value struct copies; transform compute_matrix composes TRS, quat mul composes rotations. |
 | Fused/approx column | Matching wrapper mnemonics and sorted callees. | Callee bodies are excluded; unresolved indirect targets are starred registers; `-` means no match. |
 | Max error | Measured by `suite_math_numbers` on the board; host captures are labelled separately. Values count ulp steps from the rounded result. | A fast path's error is in its linked Fast-Paths section. Only rows without a section carry a value here; `-` means no measurement. |
-| Calibration | `dot_f32_n256` is a full dot-product call matching ESP-DSP's ANSI O2 workload.<sup>[[68]](../Citations.md#68)</sup> | Compares warm cycles/call; compiler flags, loads, stores and call overhead affect the ratio. |
+| Calibration | `dot_f32_n256` is a full dot-product call matching ESP-DSP's ANSI O2 workload.<sup>[[68]](../Citations.md#espressif-esp-dsp-benchmarks)</sup> | Compares warm cycles/call; compiler flags, loads, stores and call overhead affect the ratio. |
 
 ![Warm benchmark costs grouped by math family and number type](../images/math/benchmark-families.png)
 

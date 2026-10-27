@@ -13,6 +13,12 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
+from .lit_mesh import POSITION_SCALE
+
+
+def seal_tolerance(position_scale=POSITION_SCALE):
+    return 1.0 / position_scale
+
 
 def _position_ids(pos, tolerance):
     """One id per distinct position, and the position each id stands for."""

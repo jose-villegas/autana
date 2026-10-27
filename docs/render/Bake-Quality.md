@@ -137,7 +137,7 @@ runtime work.
 
 ### Appearance fit of the lite and full meshes
 
-The fit is appearance-driven simplification<sup>[[1]](../Citations.md#1)</sup>;
+The fit is appearance-driven simplification<sup>[[1]](../Citations.md#hasselgren-2021)</sup>;
 [Against the paper](Scene-Files.md#against-the-paper) lists what it changes.
 The GPU stage rebuilds the bakes and fitted meshes from the scene's recipes and
 scores them against held-out poses. These are scratch outputs; the board table

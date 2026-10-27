@@ -3,7 +3,7 @@
 Order statistics of a sample array, such as frame timings or touch positions. [Math index](README.md).
 
 `MATH_DEFINE_STATS` is instantiated as `statsi` for int32 samples and `statsf` for float samples.
-Selection is Hoare's FIND:<sup>[[87]](../Citations.md#87)</sup> it partitions the array in place around
+Selection is Hoare's FIND:<sup>[[87]](../Citations.md#hoare-1961)</sup> it partitions the array in place around
 the wanted rank, O(n) on average, and returns exactly the value a full sort would put there.
 
 | Function | Result |

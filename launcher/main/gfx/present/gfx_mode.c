@@ -769,10 +769,14 @@ gfx_band_run(gfx_band_draw_fn draw, gfx_band_overlay_fn overlay) {
     }
 }
 
-uint8_t*
+image_t
 gfx_indexed_image(void) {
     GFX_PRESENT_GUARD();
-    return indexed_image;
+    return (image_t){.pixels = indexed_image,
+                     .format = IMAGE_INDEXED8,
+                     .width = (uint16_t)indexed_grid_w,
+                     .height = (uint16_t)indexed_grid_h,
+                     .stride = (uint32_t)indexed_grid_w};
 }
 
 gfx_readback_t
@@ -823,9 +827,10 @@ gfx_readback_end(void) {
 }
 
 void
-gfx_indexed_set_lut(const gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE]) {
+gfx_indexed_set_palette(const palette_t* palette) {
     GFX_PRESENT_GUARD();
-    memcpy(indexed_lut256, lut, sizeof indexed_lut256);
+    assert(palette->count == GFX_INDEXED_PALETTE_SIZE);
+    memcpy(indexed_lut256, palette->entries, sizeof indexed_lut256);
 }
 
 void

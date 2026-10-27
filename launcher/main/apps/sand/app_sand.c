@@ -308,8 +308,9 @@ apply_gfx_enter_indexed(void) {
         return;
     }
 
-    memset(gfx_indexed_image(), 0, (size_t)grid_w * (size_t)grid_h);
-    gfx_indexed_set_lut(sand_palette256.entries);
+    const image_t index = gfx_indexed_image();
+    memset(index.pixels, 0, image_row_bytes(&index) * index.height);
+    gfx_indexed_set_palette(&sand_palette256);
     gfx_indexed_set_dither16(color_mode == SAND_COLOR_16);
     if (color_mode == SAND_COLOR_16) {
         gfx_indexed_set_dither(dither_mode, sand_dither_table_for(dither_mode));
@@ -868,7 +869,7 @@ static void
 draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool glass_moved, bool wood_leaf_moved) {
     const bool indexed = sand_colour_indexed_active(&colour_state);
     gfx_color_t* fb = indexed ? NULL : gfx_framebuffer();
-    uint8_t* index_image = indexed ? gfx_indexed_image() : NULL;
+    uint8_t* index_image = indexed ? gfx_indexed_image().pixels : NULL;
 
     /* Captured once, then cleared, so a request made mid-frame (the next
      * mark_sand_fully_dirty()) affects the NEXT pass, not this one - see

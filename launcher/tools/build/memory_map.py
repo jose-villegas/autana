@@ -28,6 +28,8 @@ MAIN_VARIANT = VARIANTS[0]
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+sys.path.insert(0, str(ROOT / "scripts/gates"))
+from check_doc_citations import shown_link
 from capture import build_id
 from code_layout import LayoutError, find_tool, run, symbols
 from doc_tables import markdown, parse_table, collapsed
@@ -54,8 +56,8 @@ CLONE_SUFFIX = re.compile(r"(?:[.$][a-z_]+[.$]\d+|[.$]cold)+$")
 BLOCK = "internal-memory-map"
 TIERS_BLOCK = "memory-tiers"
 HEADROOM_BLOCK = "internal-memory-headroom"
-# The generated memory doc links the ESP32-S3 datasheet by number, as any document does.
-CHIP_CITATION = '<sup>[[{0}]](../Citations.md#{0})</sup>'.format(66)
+# The generated memory doc links the ESP32-S3 datasheet as any document does.
+CHIP_DATASHEET = "espressif-esp32-s3-datasheet"
 TIER_POLICY = (
     ("Internal SRAM", "stacks, ordinary mutable statics, DMA gather and bounce buffers, hot working data", "budget static storage and the largest allocation together"),
     ("PSRAM", "full framebuffer (`MEMORY_PSRAM`) and app arena", "keep frequently accessed working data internal where it fits"),
@@ -706,10 +708,11 @@ def render_tiers(builds, root, runtime=None):
                       for row in csv.reader(line for line in source if line.strip() and not line.lstrip().startswith("#"))}
     app = sum(size for kind, size in partitions.values() if kind == "app")
     assets = partitions["assets"][1]
+    chip = shown_link(root, CHIP_DATASHEET)
     sizes = (
-        f"{size_label(sram)} chip total {CHIP_CITATION}; {pool} shared IRAM/DRAM pool; "
+        f"{size_label(sram)} chip total {chip}; {pool} shared IRAM/DRAM pool; "
         f"[internal heap](../memory/images/internal-pool.svg) {'; '.join(heaps)}",
-        f"{size_label(psram)} total {CHIP_CITATION}; {size_label(arena)} app arena; "
+        f"{size_label(psram)} total {chip}; {size_label(arena)} app arena; "
         f"{size_label(framebuffer)} full framebuffer; "
         f"{size_label(psram - arena - framebuffer)} at most left for other PSRAM allocations while the full framebuffer is held (IDF use reduces it)",
         f"{size_label(int(flash.removesuffix('MB')) * MB_BYTES)} total; {size_label(app)} app partition; {size_label(assets)} assets partition",

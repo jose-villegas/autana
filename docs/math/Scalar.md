@@ -133,7 +133,7 @@ test $`m(y+\tfrac12)^2 \le 2^{92}`$ for rounding to nearest.
 | `mathf_rsqrt_normal(x)` | `mathf_rsqrt` without the subnormal fallback, for positive normal `x` (Xtensa FPU builds only) | `MATHF_RSQRT_ULP_LIMIT` in `mathf.h` |
 
 Newton-Raphson reciprocal square root uses
-$`y_{n+1}=y_n+\tfrac12 y_n\,(1-(xy_n)y_n)`$.<sup>[[85]](../Citations.md#85)</sup>
+$`y_{n+1}=y_n+\tfrac12 y_n\,(1-(xy_n)y_n)`$.<sup>[[85]](../Citations.md#muller-2018)</sup>
 The approximate path evaluates its single correction as $`y_0\,(1.5-0.5xy_0^2)`$.
 
 `CONFIG_MATH_FPU_RECIP` enables the board seed. Host and QEMU use

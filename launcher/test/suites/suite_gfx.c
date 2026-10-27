@@ -301,39 +301,45 @@ blit_src_pixel(int i) {
     return (gfx_color_t)(((unsigned)i * 7u) | 1u);
 }
 
-static gfx_color_t*
+static image_t
 make_blit_src(void) {
     gfx_color_t* src = malloc(sizeof(gfx_color_t) * BLIT_SRC_STRIDE * BLIT_SRC_ROWS);
     TEST_ASSERT_NOT_NULL_MESSAGE(src, "need a heap source image for the blit tests");
     for (int i = 0; i < BLIT_SRC_STRIDE * BLIT_SRC_ROWS; i++) {
         src[i] = blit_src_pixel(i);
     }
-    return src;
+    return (image_t){.pixels = src,
+                     .format = IMAGE_RGB565BE,
+                     .width = BLIT_SRC_STRIDE,
+                     .height = BLIT_SRC_ROWS,
+                     .stride = BLIT_SRC_STRIDE};
 }
 
 void
 test_blit_dither_at_alpha_zero_changes_nothing(void) {
     fixture();
     const gfx_color_t bg = RGB565BE(0x000000);
-    gfx_color_t* src = make_blit_src();
+    const image_t source = make_blit_src();
 
     draw_clear(bg);
-    draw_blit_dither(13, 10, 61, BLIT_SRC_ROWS, src, BLIT_SRC_STRIDE, 0);
+    const image_t part = image_sub(&source, (recti_t){0, 0, 61, BLIT_SRC_ROWS});
+    draw_blit_dither(13, 10, &part, 0);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_WIDTH * GFX_HEIGHT, count_pixels(bg),
                                   "alpha 0 should write nothing at all - not even one dither cell");
-    free(src);
+    free(source.pixels);
 }
 
 void
 test_blit_dither_at_alpha_255_matches_the_source_exactly(void) {
     fixture();
     const gfx_color_t bg = RGB565BE(0x000000);
-    gfx_color_t* src = make_blit_src();
+    const image_t source = make_blit_src();
     const int x = 13, y = 10, w = 61, h = BLIT_SRC_ROWS;
 
     draw_clear(bg);
-    draw_blit_dither(x, y, w, h, src, BLIT_SRC_STRIDE, 255);
+    const image_t part = image_sub(&source, (recti_t){0, 0, w, h});
+    draw_blit_dither(x, y, &part, 255);
 
     for (int row = 0; row < h; row++) {
         for (int col = 0; col < w; col++) {
@@ -345,7 +351,7 @@ test_blit_dither_at_alpha_255_matches_the_source_exactly(void) {
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(bg, pixel_at(x - 1, y), "a blit must not touch pixels left of its own rect");
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(bg, pixel_at(x + w, y + h - 1),
                                     "a blit must not touch pixels right of its own rect");
-    free(src);
+    free(source.pixels);
 }
 
 /* draw_blit_dither() must equal bayer_covers() at every pixel, at
@@ -356,14 +362,15 @@ void
 test_blit_dither_matches_per_pixel_covers_reference(void) {
     fixture();
     const gfx_color_t bg = RGB565BE(0x203040);
-    gfx_color_t* src = make_blit_src();
+    const image_t source = make_blit_src();
     const int x = 13, y = 10, w = 61, h = BLIT_SRC_ROWS;
     const int levels = 16; /* bayer_level()'s steps between nothing and solid */
 
     for (int a = 0; a <= levels; a++) {
         const uint8_t alpha = (uint8_t)mathi_min(a * ((UINT8_MAX + 1) / levels), UINT8_MAX);
         draw_clear(bg);
-        draw_blit_dither(x, y, w, h, src, BLIT_SRC_STRIDE, alpha);
+        const image_t part = image_sub(&source, (recti_t){0, 0, w, h});
+        draw_blit_dither(x, y, &part, alpha);
 
         for (int row = 0; row < h; row++) {
             for (int col = 0; col < w; col++) {
@@ -376,7 +383,30 @@ test_blit_dither_matches_per_pixel_covers_reference(void) {
             }
         }
     }
-    free(src);
+    free(source.pixels);
+}
+
+void
+test_blit_dither_clipped_padded_subimage_uses_absolute_phase(void) {
+    fixture();
+    const gfx_color_t bg = RGB565BE(0x203040);
+    const image_t source = make_blit_src();
+    const recti_t window = {7, 5, 53, 29};
+    const image_t part = image_sub(&source, window);
+    const int x = -3, y = -2;
+    const uint8_t alpha = 112;
+
+    draw_clear(bg);
+    draw_blit_dither(x, y, &part, alpha);
+    for (int row = 0; row < GFX_HEIGHT; row++) {
+        for (int col = 0; col < GFX_WIDTH; col++) {
+            const bool covered = col < x + window.w && row < y + window.h && bayer_covers(col, row, alpha);
+            const int index = (window.y + row - y) * BLIT_SRC_STRIDE + window.x + col - x;
+            const gfx_color_t want = covered ? blit_src_pixel(index) : bg;
+            TEST_ASSERT_EQUAL_HEX16(want, pixel_at(col, row));
+        }
+    }
+    free(source.pixels);
 }
 
 /* Compared one ROW at a time, re-rendering both glyphs per row, rather than
@@ -1494,6 +1524,7 @@ run_gfx_suite(void) {
     RUN_TEST(test_blit_dither_at_alpha_zero_changes_nothing);
     RUN_TEST(test_blit_dither_at_alpha_255_matches_the_source_exactly);
     RUN_TEST(test_blit_dither_matches_per_pixel_covers_reference);
+    RUN_TEST(test_blit_dither_clipped_padded_subimage_uses_absolute_phase);
     RUN_TEST(test_dithered_text_at_alpha_255_matches_solid_text_exactly);
     RUN_TEST(test_dithered_text_at_low_alpha_draws_fewer_pixels_than_solid);
     RUN_TEST(test_fill_rect_is_clipped_to_the_screen);

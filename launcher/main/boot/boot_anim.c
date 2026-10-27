@@ -855,7 +855,7 @@ draw_title(uint32_t now_ms, uint8_t ink) {
  * scene stays as drawn wherever the reveal does not yet cover it.
  */
 void
-draw_image(const draw_image_t* photo, uint8_t ink, uint8_t reveal) {
+draw_image(const image_t* photo, uint8_t ink, uint8_t reveal) {
     if (reveal == 0) {
         return;
     }
@@ -864,7 +864,7 @@ draw_image(const draw_image_t* photo, uint8_t ink, uint8_t reveal) {
      * trade this file makes for the title's shadow (draw_title()). A
      * per-pixel rgb565be_mix() over every pixel was measurably the most
      * expensive part of a crossfade frame; see suite_boot_anim_perf.c. */
-    draw_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo->pixels, (int)photo->stride, reveal < ink ? reveal : ink);
+    draw_blit_dither(0, 0, photo, reveal < ink ? reveal : ink);
 }
 
 /* The loop */
@@ -889,7 +889,7 @@ boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
 
 /* Keep scene scratch off the stack while the ending backdrop repaints. */
 static __attribute__((noinline)) void
-draw_scene(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms, uint8_t ink) {
+draw_scene(const boot_anim_motion_t* motion, const image_t* photo, uint32_t now_ms, uint8_t ink) {
     const uint8_t reveal = photo->pixels != NULL ? boot_anim_photo_reveal(now_ms) : 0;
     const boot_anim_view_t view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
 
@@ -911,7 +911,7 @@ draw_scene(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t
 }
 
 void
-boot_anim_draw_frame(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms) {
+boot_anim_draw_frame(const boot_anim_motion_t* motion, const image_t* photo, uint32_t now_ms) {
     const uint8_t ink = boot_anim_ink(now_ms);
     if (ending_backdrop != NULL && ink < 255) {
         ending_backdrop();
@@ -948,7 +948,7 @@ boot_anim_run(void) {
     boot_anim_clear_on_send(true);
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
-    draw_image_t photo = {0};
+    image_t photo = {0};
     bool photo_tried = false;
     const int64_t started_us = timing_now_us();
     uint32_t frames = 0;

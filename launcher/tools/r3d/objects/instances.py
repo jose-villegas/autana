@@ -29,6 +29,7 @@ class Instance:
     position: np.ndarray
     mirrored: bool
     residual: float
+    triangle_order: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -95,7 +96,13 @@ def match_object(shape, obj, tolerance):
         if reflected:
             faces = faces[:, ::-1]
         if residual <= limit and triangle_materials(faces, shape.materials) == target_faces:
-            return Instance(obj.name, linear, position, reflected, residual)
+            indices = {}
+            for index in reversed(range(len(obj.triangles))):
+                key = (oriented(obj.triangles[index]), int(obj.materials[index]))
+                indices.setdefault(key, []).append(index)
+            order = tuple(indices[(oriented(face), int(material))].pop()
+                          for face, material in zip(faces, shape.materials))
+            return Instance(obj.name, linear, position, reflected, residual, order)
         return None
 
     mappings = []
@@ -140,7 +147,7 @@ def match_instances(objects, tolerance=MATCH_TOLERANCE) -> list[Shape]:
                 break
         else:
             centre = (obj.positions.min(axis=0) + obj.positions.max(axis=0)) / 2
-            first = Instance(obj.name, np.eye(3), centre, False, 0.0)
+            first = Instance(obj.name, np.eye(3), centre, False, 0.0, tuple(range(len(obj.triangles))))
             buckets.setdefault(key, []).append(len(shapes))
             shapes.append(Shape(obj.positions - centre, obj.triangles, obj.materials, (first,)))
     return shapes

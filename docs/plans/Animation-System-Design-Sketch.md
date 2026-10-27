@@ -103,7 +103,7 @@ The implemented internal types and signatures live in
 and [`render/skin/r3d_skinning.h`](../../launcher/main/render/skin/r3d_skinning.h).
 Pose sampling preserves unkeyed rest channels.
 Pose blending is in [Animation tracks](../render/Animation-Tracks.md#scene-playback).
-CPU skinning uses linear blend skinning<sup>[[57]](../Citations.md#57)</sup>,
+CPU skinning uses linear blend skinning<sup>[[57]](../Citations.md#lewis-2000)</sup>,
 separate influence-count kernels and cluster ranges.
 
 The frame order is in [Skeleton and skin](../render/Skeleton-and-Skin.md#runtime).

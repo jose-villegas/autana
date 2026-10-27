@@ -97,7 +97,7 @@ the trace's duration and sampling bound; missing readings are not synthesized.
 
 For each axis, the positive and negative gravity windows give the diagonal
 six-position model of STMicroelectronics AN4508
-<sup>[[67]](../Citations.md#67)</sup>:
+<sup>[[67]](../Citations.md#st-an4508)</sup>:
 
 ```math
 \text{offset} = \frac{up + down}{2} \qquad

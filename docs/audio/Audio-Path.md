@@ -56,7 +56,7 @@ runs the check, and closes capture. `melody check` uses the same function
 
 The console uses `audio_loopback_measure()` for a baseline, starts a SYSTEM-bus
 tone through the mixer, measures again, then stops the voice. It waits for
-amplifier warm-up before measuring. A Goertzel filter measures the requested frequency.<sup>[[72]](../Citations.md#72)</sup>
+amplifier warm-up before measuring. A Goertzel filter measures the requested frequency.<sup>[[72]](../Citations.md#goertzel-1958)</sup>
 
 `--internal` routes DAC data to both ADCDAT slots inside the ES8311. It holds
 the speaker amplifier off for the whole check. The verb restores the exact register
@@ -69,10 +69,10 @@ flowchart LR
     Dac -.-> Amp["amplifier held off"]
 ```
 
-Each window's Goertzel phase<sup>[[72]](../Citations.md#72)</sup> is referenced to its first sample.
+Each window's Goertzel phase<sup>[[72]](../Citations.md#goertzel-1958)</sup> is referenced to its first sample.
 
 The wrapped difference between consecutive windows' phase advances and the
-nominal advance gives the frequency offset, as in the phase vocoder<sup>[[82]](../Citations.md#82)</sup>,
+nominal advance gives the frequency offset, as in the phase vocoder<sup>[[82]](../Citations.md#flanagan-1966)</sup>,
 here from a single bin rather than a filter bank.
 
 The unambiguous offset range is ±sample rate / (2 × window samples). The reply

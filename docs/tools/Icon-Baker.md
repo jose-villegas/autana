@@ -63,7 +63,7 @@ within a set. The baker refuses, naming the file and the place:
 
 ## The pack entry
 
-Each icon is an `IMAG` entry of format `DRAW_IMAGE_MONO1`: one bit a pixel,
+Each icon is an `IMAG` entry of format `DRAW_IMAGE_FORMAT_MONO1`: one bit a pixel,
 the most significant bit leftmost, 1 ink, and a stride rounded up to whole
 bytes. The header and the checks `draw_image_open()` makes are the image
 entry's ([the layout](../assets/Image-Entries.md#imag-v1)); a loader that

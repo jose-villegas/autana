@@ -390,7 +390,7 @@ ui_push_clipped_command(mu_Context* ctx, int type, int size, mu_Rect rect) {
 }
 
 void
-ui_draw_icon(mu_Context* c, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color) {
+ui_draw_icon(mu_Context* c, mu_Rect r, const image_t* icon, const char* text, mu_Color color) {
     if (icon != NULL) {
         ui_image_command_t* cmd = ui_push_clipped_command(c, UI_COMMAND_IMAGE, sizeof *cmd, r);
         if (cmd != NULL) {

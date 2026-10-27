@@ -37,7 +37,7 @@
 
 static uint32_t now_ms;
 static boot_anim_motion_t motion;
-static draw_image_t photo;
+static image_t photo;
 
 static bool
 options(int argc, char** argv) {

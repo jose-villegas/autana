@@ -32,10 +32,10 @@
 #include "ui/controls/ui_icons.h"
 
 /* System icon `id`, which the engine pack the suites run with must hold. */
-static const draw_image_t*
+static const image_t*
 system_icon(ui_icon_id_t id) {
     ui_icons_init();
-    const draw_image_t* icon = ui_icon_image(id);
+    const image_t* icon = ui_icon_image(id);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no system icon: the suites run with the packs build_pack.py writes");
     return icon;
 }
@@ -46,7 +46,7 @@ system_icon(ui_icon_id_t id) {
 
 static int
 blocks_at(int w, int h, recti_t* out) {
-    const draw_image_t* icon = system_icon(UI_ICON_CHECK);
+    const image_t* icon = system_icon(UI_ICON_CHECK);
     icon_test_collect_t cc = {.blocks = out, .count = 0, .cap = CHECK_TEST_MAX_BLOCKS};
     icon_walk_blocks(icon, w, h, icon_test_collect, &cc);
     return cc.count;
@@ -145,7 +145,7 @@ static const char* const check_expected_rows[16] = {
 
 static void
 test_check_matches_the_artwork_it_replaced(void) {
-    const draw_image_t* icon = system_icon(UI_ICON_CHECK);
+    const image_t* icon = system_icon(UI_ICON_CHECK);
     TEST_ASSERT_EQUAL_INT(16, icon->width);
     TEST_ASSERT_EQUAL_INT(16, icon->height);
     for (int y = 0; y < 16; y++) {
@@ -244,11 +244,11 @@ static const uint8_t placed_icon_bits[PLACED_ICON_H * PLACED_ICON_STRIDE / 8] = 
 /* Placed by the half-open ink box: the box's own size, not its last pixel. */
 static void
 assert_placed_exactly(int scale) {
-    const draw_image_t icon = {.bits = placed_icon_bits,
-                               .format = DRAW_IMAGE_MONO1,
-                               .width = PLACED_ICON_W,
-                               .height = PLACED_ICON_H,
-                               .stride = PLACED_ICON_STRIDE};
+    const image_t icon = {.pixels = (void*)placed_icon_bits,
+                          .format = IMAGE_MONO1,
+                          .width = PLACED_ICON_W,
+                          .height = PLACED_ICON_H,
+                          .stride = PLACED_ICON_STRIDE};
     const int box_w = PLACED_ICON_W * scale + 4;
     const int box_h = PLACED_ICON_H * scale + 4;
     const int origin_x = ((box_w - ((PLACED_INK_X1 - PLACED_INK_X0) * scale)) / 2) - (PLACED_INK_X0 * scale);
