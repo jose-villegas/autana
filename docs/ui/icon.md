@@ -1,6 +1,6 @@
 # Icon
 
-`void ui_icon(recti_t r, const draw_image_t* icon, const char* fallback)`
+`void ui_icon(recti_t r, const image_t* icon, const char* fallback)`
 draws a one-bit icon filling `r` in the text ink, or `fallback` centred when
 `icon` is `NULL`. `void ui_check(recti_t r)` draws the system check mark.
 

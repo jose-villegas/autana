@@ -29,7 +29,7 @@ typedef struct {
     mu_BaseCommand base;
     mu_Rect rect;
     mu_Color color;
-    const draw_image_t* image;
+    const image_t* image;
 } ui_image_command_t;
 
 typedef struct {
@@ -166,7 +166,7 @@ int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
 
 /* An image is one command; its runs are streamed at paint time. A NULL
  * image draws the centred text fallback in the current font. */
-void ui_draw_icon(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color);
+void ui_draw_icon(mu_Context* ctx, mu_Rect r, const image_t* icon, const char* text, mu_Color color);
 
 /* An integer-valued slider over the next layout row, shaped like
  * mu_slider_ex(), but integer: that one's float/"%.2f" thumb is the wrong

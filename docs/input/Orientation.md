@@ -27,7 +27,7 @@ flowchart LR
     Sample --> Predict --> Commit
 ```
 
-The shell runs Android's WindowOrientationListener judge.<sup>[75](../Citations.md#75)</sup>
+The shell runs Android's WindowOrientationListener judge.<sup>[[75]](../Citations.md#aosp-window-orientation-listener)</sup>
 This tree uses screen-axis down, board-relative tilt limits and shell sampling.
 `display_quarter_now()` returns the committed quarter.
 
