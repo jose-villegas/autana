@@ -120,6 +120,14 @@ flip3_init(flip3_t* f, const flip3_config_t* c, void* grid, void* particles) {
     }
     f->kind = carve(&g, n);
     f->sides = carve(&g, n);
+    for (int x = 0; x < f->nx; x++) {
+        for (int y = 0; y < f->ny; y++) {
+            for (int z = 0; z < f->nz; z++) {
+                const bool wall = x == 0 || y == 0 || z == 0 || x == f->nx - 1 || y == f->ny - 1 || z == f->nz - 1;
+                f->kind[(((x * f->ny) + y) * f->nz) + z] = wall ? KIND_SOLID : KIND_AIR;
+            }
+        }
+    }
 
     const size_t m = (size_t)c->max_particles;
     uint8_t* p = particles;
@@ -356,19 +364,19 @@ face_stencil(const flip3_t* f, const place_t* place, int axis) {
     return corners(f, lo, hi, t);
 }
 
+/* Truncation differs from floor only below 0, which the clamp hides. */
 static int
 cell_of(float p, float inv_h, int n) {
-    return mathi_min(mathi_max((int)floorf(p * inv_h), 0), n - 1);
+    return mathi_min(mathi_max((int)(p * inv_h), 0), n - 1);
 }
 
+/* The walls never move: flip3_init() marks them, each step empties the rest. */
 static void
 mark_kinds(flip3_t* f) {
-    for (int x = 0; x < f->nx; x++) {
-        for (int y = 0; y < f->ny; y++) {
-            for (int z = 0; z < f->nz; z++) {
-                const bool wall = x == 0 || y == 0 || z == 0 || x == f->nx - 1 || y == f->ny - 1 || z == f->nz - 1;
-                f->kind[cell_index(f, x, y, z)] = wall ? KIND_SOLID : KIND_AIR;
-            }
+    const int n = f->nx * f->ny * f->nz;
+    for (int c = 0; c < n; c++) {
+        if (f->kind[c] != KIND_SOLID) {
+            f->kind[c] = KIND_AIR;
         }
     }
     for (int i = 0; i < f->count; i++) {
@@ -587,7 +595,8 @@ to_particles(flip3_t* f) {
             }
             if (total > 0.0F) {
                 const float old = axis_of(f->vel[i], a);
-                set_axis(&f->vel[i], a, ((1.0F - flip) * (pic / total)) + (flip * (old + (change / total))));
+                const float per = 1.0F / total;
+                set_axis(&f->vel[i], a, ((1.0F - flip) * (pic * per)) + (flip * (old + (change * per))));
             }
         }
     }
