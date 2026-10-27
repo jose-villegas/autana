@@ -286,14 +286,13 @@ How a panel over a paused app and a drawn backdrop use these is in
 
 ## What a screen costs
 
-The frame's command list is 8 KiB on the device (`MU_COMMANDLIST_SIZE`,
-set in the vendored backend's header), and everything drawn spends it. An
-open dropdown list adds its rows on top of the screen beneath it, and a busy
-screen with its list open exceeds 8 KiB on a 64-bit host, whose larger
-commands need a 9 KiB limit in host tests and the render harness. The screen
-budget suites reserve space for additional controls; their device/QEMU run
-checks the device limit. A development build logs the high-water mark from
-`ui_end()`; check it before adding a texture or another icon.
+The frame's command list is 8 KiB on the device (`MU_COMMANDLIST_SIZE`).
+Each image icon uses one command; its runs are drawn during painting.
+Each swatch grid uses one command containing a copy of its colours.
+
+Open dropdowns add their rows to the screen beneath them. The budget suites
+reserve headroom for more controls and check the device limit on device/QEMU.
+Development builds log the high-water mark from `ui_end()`.
 
 ## Adding to the toolkit
 

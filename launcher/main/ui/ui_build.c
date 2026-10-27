@@ -370,28 +370,34 @@ ui_measure_text(const char* str) {
     return draw_font_text_width(fs.font, str, -1, fs.scale);
 }
 
-/* icon_walk_blocks()'s callback context: everything one emitted run needs to
- * become a mu_draw_rect() call, and nothing else, kept off the stack as an
- * array only, never grown into a buffer. */
-typedef struct {
-    mu_Context* c;
-    mu_Rect r;
-    mu_Color color;
-} ui_draw_icon_ctx_t;
-
-static void
-ui_draw_icon_emit(void* ctx_, recti_t rect) {
-    const ui_draw_icon_ctx_t* dc = ctx_;
-    rect.x += dc->r.x;
-    rect.y += dc->r.y;
-    mu_draw_rect(dc->c, ui_mu_from_recti(rect), dc->color);
+void*
+ui_push_clipped_command(mu_Context* ctx, int type, int size, mu_Rect rect) {
+    const int clipped = mu_check_clip(ctx, rect);
+    if (clipped == MU_CLIP_ALL) {
+        return NULL;
+    }
+    if (clipped == MU_CLIP_PART) {
+        mu_set_clip(ctx, mu_get_clip_rect(ctx));
+    }
+    mu_Command* cmd = mu_push_command(ctx, type, size);
+    memset((char*)cmd + sizeof cmd->base, 0, (size_t)cmd->base.size - sizeof cmd->base);
+    if (clipped == MU_CLIP_PART) {
+        /* Matches microui's reset after text and icon commands. */
+        static const mu_Rect unclipped = {0, 0, 0x1000000, 0x1000000};
+        mu_set_clip(ctx, unclipped);
+    }
+    return cmd;
 }
 
 void
 ui_draw_icon(mu_Context* c, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color) {
     if (icon != NULL) {
-        ui_draw_icon_ctx_t dc = {.c = c, .r = r, .color = color};
-        icon_walk_blocks(icon, r.w, r.h, ui_draw_icon_emit, &dc);
+        ui_image_command_t* cmd = ui_push_clipped_command(c, UI_COMMAND_IMAGE, sizeof *cmd, r);
+        if (cmd != NULL) {
+            cmd->rect = r;
+            cmd->color = color;
+            cmd->image = icon;
+        }
     } else if (text != NULL) {
         const mu_Font font = c->style->font;
         const int x = r.x + ((r.w - c->text_width(font, text, -1)) / 2);
