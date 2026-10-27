@@ -80,7 +80,7 @@ imu_calib_gyro_learn(imu_calib_gyro_t* gyro, vec3i_t residual, int64_t now_us) {
 input_motion_t
 imu_calib_gyro_correct(const imu_calib_gyro_t* gyro, input_motion_t sample) {
     sample.rotation = imu_calib_apply(&gyro->live, sample.rotation);
-    sample.turn_speed = imu_rotation_turn_speed(sample.rotation);
+    sample.turn_speed = imu_turn_speed(sample.rotation);
     return sample;
 }
 

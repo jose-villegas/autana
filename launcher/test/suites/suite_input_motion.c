@@ -33,7 +33,7 @@ static void
 test_fake_owns_sample_after_scope(void) {
     fixture();
     input_motion_t expected = {.acceleration = {INPUT_ACCEL_ONE_G, 0, 0}, .rotation = {0, 0, INPUT_ROTATION_ONE_DPS}};
-    expected.turn_speed = imu_rotation_turn_speed(expected.rotation);
+    expected.turn_speed = imu_turn_speed(expected.rotation);
     input_motion_t actual;
     uint32_t sequence;
     {
