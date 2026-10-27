@@ -178,8 +178,7 @@ done 3< "$W/pairs.txt"
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$R3D_PYTHON" launcher/tools/r3d/objects/instances_figure.py "$SCENE" \
     --object "$SHOWCASE" --host "$HOST" --out "$RENDER/${ID}-instances.png"
-# The fidelity sheet: two poses of the committed flat bake against the source
-# model lit per pixel. The reference skips the initial pose.
+# The fidelity poses: the source model lit per pixel, skipping the initial pose.
 # The source model lives in the demo folder and uses Git LFS.
 FIDELITY_FRAMES=5
 FIDELITY_DT=5000
@@ -190,11 +189,6 @@ MESH=$(run "$PYTHON" -c 'import sys; from pathlib import Path; sys.path.insert(0
 # their inputs, so only a change to the scene, tracer or poses traces again.
 REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames \
     --reference "$DEMO/$ID.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/fidelity-reference.log")
-run "$HOST" --quarter 0 --scene "$ID" --object "${FULL}_flat" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
-    -o "$W/fidelity-flat.bmp" --video "$W/fidelity-flat.avi" 2> "$W/fidelity-flat.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
-    --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
-    --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 --label-a "flat bake" > "$W/fidelity-compare.log"
 
 # The committed smooth bake at the fidelity poses, scored against the committed
 # reference, for the fidelity table and the import-light image.
@@ -210,6 +204,17 @@ for object in $(run "$PYTHON" launcher/tools/render/doc_tables.py --variants "$S
     run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/variant-$object-unused.png" \
         --reference-video "$W/variant-$object.avi" "$REFERENCE" --reference-scale 2 > "$W/variant-$object-compare.log"
 done
+# The fidelity sheet: two poses of the variants doc_tables.FIDELITY_SHEET names,
+# each beside the reference with its heatmap on the one colour scale.
+set --
+while read -r object label; do
+    set -- "$@" --bake "$label" "$W/variant-$object.avi"
+done <<EOF
+$(run "$PYTHON" launcher/tools/render/doc_tables.py --fidelity-sheet "$SCENE" "$FULL")
+EOF
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
+    --reference-bakes "$REFERENCE" --reference-scale 2 --sheet-frames 2,4 "$@" \
+    --reference-sheet "$RENDER/bake-fidelity-sheet.png" > "$W/fidelity-compare.log"
 # bake_and_render DIR MESH OBJECT: bake the scene file in DIR, which keeps its
 # import beside a link to the mesh source, pack MESH in place of the committed
 # one and render the fidelity poses to DIR.avi.

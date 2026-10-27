@@ -100,9 +100,10 @@ How close is a bake to the ground truth, and where is it off? The reference
 renderer lights the full source mesh per pixel, with the scene's own lights,
 shadows and tone map, at the device render size and supersampled, for the
 poses of the scene's camera path. A host render of any variant, smooth, lite
-or flat, is scored against it.
+or flat, is scored against it. The flat bake and fitted full at two poses,
+each with its ΔE heatmap on one colour scale:
 
-![Reference, flat bake, error heatmap and edge pixels](../images/render/bake-fidelity-sheet.png)
+![Reference, flat bake, fitted full, and each bake's error heatmap on one scale](../images/render/bake-fidelity-sheet.png)
 
 Each number catches a different kind of error. A test picture under three
 changes, scored by the same code:
