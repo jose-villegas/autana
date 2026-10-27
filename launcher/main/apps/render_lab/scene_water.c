@@ -22,6 +22,7 @@
 
 #include "app/app_arena.h"
 #include "board/board_geometry.h"
+#include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
@@ -94,9 +95,12 @@ TUNE(water, substep_ms, 8, 8, 40);
  * faster than this, in um/s, for WATER_REST_UPDATES updates, the step and
  * the surface are skipped and the last mesh stays. 0 never rests. */
 TUNE(water, rest_um_s, 0, 0, 20000);
-#define WATER_REST_G        0.01F
-#define WATER_REST_UPDATES  4U
-#define WATER_UM_PER_MM     1000.0F
+#define WATER_REST_G       0.01F
+#define WATER_REST_UPDATES 4U
+#define WATER_UM_PER_MM    1000.0F
+/* 1 hands half of the step's particle passes, the surface field and the
+ * shading to core 1; 0 keeps them on the update's core. */
+TUNE(water, two_core, 1, 0, 1);
 
 /* Surface buffers: the vertices and triangles iso_surface may make. The
  * tour's busiest frame makes about 2500 and 5000. */
@@ -435,14 +439,39 @@ specular_power(float x) {
     return p;
 }
 
-/* Absorbed body colour, a diffuse light, Fresnel sky and a highlight. The
- * eye looks along -z in box axes, through the front glass. */
+/* A half of flip3's work, or of the shading, as job_run_split() runs it. */
+typedef struct {
+    flip3_half_fn fn;
+    void* ctx;
+    int half;
+} water_half_t;
+
 static void
-shade(int count) {
+water_half_worker(void* ctx) {
+    const water_half_t* job = ctx;
+    job->fn(job->ctx, job->half);
+}
+
+/* Half 1 on core 1 while this core does half 0. */
+static void
+water_split(flip3_half_fn fn, void* ctx) {
+    water_half_t first = {fn, ctx, 0};
+    const water_half_t second = {fn, ctx, 1};
+    (void)job_run_split(water_half_worker, &first, &second, sizeof second);
+}
+
+/* Absorbed body colour, a diffuse light, Fresnel sky and a highlight, for
+ * half the vertices. The eye looks along -z in box axes, through the front
+ * glass. */
+static void
+shade_half(void* ctx, int which) {
+    const int count = *(const int*)ctx;
     const vec3f_t light = vec3f_normalize(WATER_LIGHT);
     const vec3f_t eye = {0.0F, 0.0F, 1.0F};
     const vec3f_t half = vec3f_normalize(vec3f_add(light, eye));
-    for (int i = 0; i < count; i++) {
+    const int mid = count / 2;
+    const int to = which == 0 ? mid : count;
+    for (int i = which == 0 ? 0 : mid; i < to; i++) {
         const vec3f_t n = normals[i];
         vec3f_t c = vec3f_lerp(WATER_DEEP, WATER_SHALLOW, through_at(positions[i]));
         c = vec3f_scale(c, 1.0F - WATER_DIFFUSE + (WATER_DIFFUSE * fmaxf(vec3f_dot(n, light), 0.0F)));
@@ -469,7 +498,12 @@ rebuild_surface(void) {
     iso_mesh_t m = {positions, normals, WATER_MAX_VERTICES, triangles, WATER_MAX_TRIANGLES, scratch, 0, 0};
     bool fitted = iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, &m);
     at = lap(SCENE_WATER_STAGE_NETS, at);
-    shade(m.vertex_count);
+    if (two_core != 0) {
+        water_split(shade_half, &m.vertex_count);
+    } else {
+        shade_half(&m.vertex_count, 0);
+        shade_half(&m.vertex_count, 1);
+    }
     at = lap(SCENE_WATER_STAGE_SHADE, at);
     for (int i = 0; i < m.vertex_count; i++) {
         positions[i] = to_model(positions[i]);
@@ -547,6 +581,7 @@ scene_water_enter(const render_lab_scene_t* self) {
     carried_ms = 0;
     tour_ms = 0;
     flip3_time_stages(&water, timing_now_us, stats.flip3_us);
+    flip3_split_with(&water, two_core != 0 ? water_split : NULL);
     last_accel_g = (vec3f_t){0};
     refill((vec3f_t){0.0F, 1.0F, 0.0F});
     rebuild_surface();

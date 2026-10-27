@@ -46,6 +46,7 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | `water.gravity_mm_s2` | the gravity the water runs under; below Earth's, so a 35 mm tank sloshes at a pace a frame can follow |
 | `water.grid_internal` | 1 places the simulation grid in internal RAM, for measuring against PSRAM; read when the scene enters |
 | `water.substep_ms` | simulated time per substep; longer ones run fewer per frame |
+| `water.two_core` | 1 (default) runs half of the particle passes, the surface field and the shading on core 1 (`job_run_split()`); 0 keeps them on one core |
 | `water.rest_um_s` | above 0, the step and the surface are skipped while the push holds and no particle moves faster than this, in um/s |
 
 Each frame, while the last one goes out to the panel:
