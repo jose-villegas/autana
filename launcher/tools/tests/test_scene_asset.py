@@ -179,6 +179,15 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(scene["cameras"], [{"entity": 2, "half_fov_short_tan": single(0.6), "near_z": 1.5,
                                              "clear_rgb": 0x336699}])
 
+    def test_authored_colour_set_is_encoded_and_checks_its_range(self):
+        scene = scene_asset.decode(self.entry(renderer("a.import.toml", extra="colour_set = 7\n")))
+        self.assertEqual(scene["renderers"][0]["colour_set"], 7)
+        own = scene_asset.decode(self.entry(renderer("a.import.toml", extra=f"colour_set = {scene_asset.COLOUR_SET_OWN}\n")))
+        self.assertEqual(own["renderers"][0]["colour_set"], scene_asset.COLOUR_SET_OWN)
+        for value in ("-1", str(scene_asset.COLOUR_SET_OWN + 1), "true", "1.5", '\"own\"'):
+            with self.subTest(value=value), self.assertRaises(SettingsError):
+                load_scene(self.scene(renderer("a.import.toml", extra=f"colour_set = {value}\n")))
+
     def test_a_camera_without_a_path_has_no_clip_and_clears_to_black(self):
         scene = scene_asset.decode(self.entry(renderer("a.import.toml") + lens()))
         self.assertEqual(scene["animators"], [])

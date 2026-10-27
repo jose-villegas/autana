@@ -72,6 +72,7 @@ class ObjectsTests(unittest.TestCase):
                              MATERIALS[::-1])
         self.assertEqual(len(shapes), 1)
         self.assertFalse(shapes[0].instances[1].mirrored)
+        self.assertEqual(shapes[0].instances[1].triangle_order, tuple(reversed(range(len(TRIANGLES)))))
 
     def test_obj_mirrored_reordered_instance(self):
         permutation = np.array([2, 0, 3, 1])

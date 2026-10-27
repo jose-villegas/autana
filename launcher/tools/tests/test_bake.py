@@ -645,6 +645,23 @@ class FittedBakeCase(unittest.TestCase):
         return {self.start.key: row_of(self.start, sha256, **fields)}
 
 
+class CarvedBakeTests(FittedBakeCase):
+    names = ("fit", "other")
+
+    def test_each_carved_renderer_has_its_own_bundle_start_and_byte_keyed_fit(self):
+        path = self.root / "mesh.import.toml"
+        path.write_text(path.read_text() + '\n[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\n')
+        found = self.bakes(AnyStart())
+        starts = [item for item in found if not item.packed]
+        fits = [item for item in found if item.kind == "fit"]
+        self.assertEqual(len(starts), len(self.names))
+        self.assertEqual(len({item.key for item in starts}), len(self.names))
+        self.assertTrue(all(item.output.endswith('.start.bundle') for item in starts))
+        self.assertTrue(all(item.output.endswith('.bundle') for item in fits))
+        changed = [item for item in self.bakes(AnyStart(MADE_SHA256)) if item.kind == "fit"]
+        self.assertTrue(set(item.key for item in fits).isdisjoint(item.key for item in changed))
+
+
 class FittedBakeTests(FittedBakeCase):
     """The bake, lock and list commands over a tree with one fitted renderer, and the keys it gives."""
 

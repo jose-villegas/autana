@@ -7,6 +7,7 @@ pinned environment (tools/r3d/requirements.txt) is not installed."""
 
 import collections
 import pathlib
+import struct
 import sys
 import tempfile
 import unittest
@@ -373,6 +374,35 @@ class ClusterTreeTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LitMeshTests(unittest.TestCase):
+    def test_a_colourless_mesh_writes_and_reads_without_colour_arrays(self):
+        p, tris = grid(1)
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = write_lit_mesh(directory, "shape", p, None, tris, np.zeros(len(tris), dtype=int))
+            read = read_lit_mesh(pathlib.Path(directory) / "shape.mesh")
+        self.assertIsNone(read.rgb)
+        self.assertIsNone(read.face_colors)
+        np.testing.assert_array_equal(read.pos, mesh.pos)
+        np.testing.assert_array_equal(read.tris, mesh.tris)
+        validate(read.pos, read.rgb, read.tris, read.clusters, read.nodes, read.face_colors)
+
+    def test_a_colourless_triangle_matches_the_hand_built_entry(self):
+        from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE
+        scale = POSITION_SCALE
+        p = np.array([[0., 0, 0], [1, 0, 0], [0, 1, 0]])
+        positions = p.astype(int) * scale
+        arrays = [struct.pack('<9h', *positions.ravel()), struct.pack('<3H', 0, 1, 2),
+                  CLUSTER.pack(0, 3, 0, 1, 0, 0, 0, scale, scale, 0, 0),
+                  NODE.pack(0, 0, 0, scale, scale, 0, 0, 1, 1)]
+        offsets, at = [], BLOB_HEADER.size
+        for array in arrays:
+            offsets.append(at)
+            at += len(array) + (-len(array) % struct.calcsize('<I'))
+        expected = BLOB_HEADER.pack(3, 1, 1, 1, scale, offsets[0], 0, *offsets[1:], 0)
+        expected += b''.join(array + bytes(-len(array) % struct.calcsize('<I')) for array in arrays)
+        with tempfile.TemporaryDirectory() as directory:
+            write_lit_mesh(directory, 'triangle', p, None, np.array([[0, 1, 2]]), np.zeros(1, dtype=int))
+            self.assertEqual((pathlib.Path(directory) / 'triangle.mesh').read_bytes(), expected)
+
     def test_a_flat_bake_keeps_one_centre_colour_per_triangle_and_welds_positions(self):
         p = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 0), (1, 1, 0)])
         rgb = np.array([(1, 2, 3), (4, 5, 6), (7, 8, 9), (200, 201, 202), (10, 11, 12)])

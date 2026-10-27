@@ -46,6 +46,7 @@ products, never committed.
 import argparse
 import functools
 import pathlib
+from types import SimpleNamespace
 import sys
 import tomllib
 
@@ -58,7 +59,7 @@ from asset.engine_frame import to_engine  # noqa: E402
 from gfx import icons_asset, image_asset, curve_asset  # noqa: E402
 from asset.asset_pack import PackError, build_pack, parse_pack  # noqa: E402
 from asset.asset_directory import build_directory, parse_directory  # noqa: E402
-from r3d import scene_asset, scene_name, skin_asset, skin_pack, lcol_asset  # noqa: E402
+from r3d import mesh_bundle, mesh_asset, scene_asset, scene_name, skin_asset, skin_pack, lcol_asset  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
@@ -71,7 +72,7 @@ SOUND = sound_asset.SUFFIX
 CURVE = curve_asset.SUFFIX
 ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE, SOUND)
 BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE)  # entries baked from their file here; meshes and sounds come from the cache
-FETCHED = (bake.MESH_SUFFIX, SOUND)
+FETCHED = (bake.MESH_SUFFIX, mesh_bundle.SUFFIX, SOUND)
 FOLDER_PACK = ".pack.toml"
 PACK_DEVELOPMENT = "development"
 PACK_SUFFIX = ".apak"
@@ -176,8 +177,9 @@ def pack_jobs(paths, development=True):
     for path in files:
         if path.name.endswith(IMPORT) and path.resolve() not in placed:
             settings = load_import_settings(path)
-            roots[path] = {v.name: settings.mesh_dir / f"{v.name}.mesh" for v in settings.variants}
-            jobs.update((item.asset_path.resolve(), (item, None, path)) for item in albedo_jobs(settings))
+            imports = albedo_jobs(settings)
+            roots[path] = {item.asset_name: item.asset_path for item in imports}
+            jobs.update((item.asset_path.resolve(), (item, None, path)) for item in imports)
     for path in files:
         if path.name.endswith(CLIP) and path.resolve() not in placed:
             roots[path] = {tracks_asset.clip_id(path): path}
@@ -227,7 +229,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
     for item in replace:
         mesh, _, file = item.partition("=")
         holder = next((entries for entries in packs.values() if mesh in entries), None)
-        if holder is None or not holder[mesh].name.endswith(bake.MESH_SUFFIX):
+        if holder is None or not holder[mesh].name.endswith((bake.MESH_SUFFIX, mesh_bundle.SUFFIX)):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
@@ -278,10 +280,17 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
                         previous = camera_nodes.setdefault(path.animation, path.node)
                         if previous != path.node:
                             raise SettingsError(f"{source}: camera clip {path.clip!r} selects different nodes")
+        bundle_rows, bundle_copies = [], {}
+        for key, source in sources.items():
+            if source.suffix == mesh_bundle.SUFFIX:
+                rows, bundle_copies[key] = mesh_bundle.decode(source.read_bytes())
+                bundle_rows.extend(rows)
         entry_rows = [pack_entry(key, source, engine_frame=False, camera_node=camera_nodes.get(source.resolve()),
-                                 cache=cache, offline=offline) for key, source in sorted(sources.items())]
+                                 cache=cache, offline=offline, copies=bundle_copies) for key, source in sorted(sources.items())
+                      if source.suffix != mesh_bundle.SUFFIX]
+        entry_rows.extend(bundle_rows)
         mesh_rows = [(key, original_packs[name][key], data) for key, kind, data in entry_rows
-                     if kind == LIT_MESH and original_packs[name][key].resolve() in jobs]
+                     if kind == LIT_MESH and key in original_packs[name] and original_packs[name][key].resolve() in jobs]
         additions = skin_pack.entries(mesh_rows, jobs, cache or bake.default_cache(), offline, max_influences)
         skin_pack.append(entry_rows, additions, dict(original_packs[name]))
         mirrored = []
@@ -309,7 +318,7 @@ def validate_colour_sets(rows):
             if mesh_kind != LIT_MESH:
                 raise SettingsError(f"{name}: renderer mesh has the wrong type")
             if "colour_set" not in row:
-                header = lcol_asset.read_mesh_header(mesh)
+                header = mesh_asset.read_mesh_header(mesh)
                 if not (header.colors_at or header.face_at):
                     raise SettingsError(f"{name}: skinned renderer requires a coloured mesh")
                 continue
@@ -320,7 +329,7 @@ def validate_colour_sets(rows):
                     raise
                 colors = None
             if row["colour_set"] == scene_asset.COLOUR_SET_OWN:
-                header = lcol_asset.read_mesh_header(mesh)
+                header = mesh_asset.read_mesh_header(mesh)
                 if colors is not None or not (header.colors_at or header.face_at):
                     raise SettingsError(f"{name}: own colours require a coloured mesh without LCOL")
             else:
@@ -329,7 +338,19 @@ def validate_colour_sets(rows):
                 lcol_asset.validate_mesh(colors[1], mesh, row["colour_set"])
 
 
-def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, offline=False):
+def expand_copies(scene, copies):
+    objects, renderers = list(scene.objects), list(scene.renderers)
+    for item in scene.renderers:
+        for row in copies.get(item.asset_name, ()):
+            obj = SimpleNamespace(name=row["name"], matrix=row["matrix"], position=row["position"],
+                                  parent=item.object.name, kind="mesh_renderer", animator=None)
+            objects.append(obj)
+            renderers.append(SimpleNamespace(object=obj, asset_name=row["mesh"],
+                                             renderer=SimpleNamespace(colour_set=row["colour_set"])))
+    return SimpleNamespace(**(vars(scene) | dict(objects=objects, renderers=renderers)))
+
+
+def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, offline=False, copies=None):
     """The pack entry `key`: a scene, clip, picture, icon, sound or curve
     baked from its recipe, or cached mesh or sound bytes. A scene, clip or mesh is in the
     engine frame unless `engine_frame` is false (the skin step matches the
@@ -346,7 +367,8 @@ def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, off
         if source.name.endswith(ICONS):
             return key, image_asset.TYPE, icons_asset.bake(source, key)
         if source.name.endswith(SCENE):
-            kind, data = scene_asset.TYPE, scene_asset.bake(source, cache, offline)
+            scene = expand_copies(load_scene(source), copies or {})
+            kind, data = scene_asset.TYPE, scene_asset.encode(scene, cache, offline)
         elif source.name.endswith(CLIP):
             kind, data = tracks_asset.TYPE, tracks_asset.bake(source, camera_node)
         else:
