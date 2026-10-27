@@ -93,10 +93,10 @@ class FastPathTests(unittest.TestCase):
     def test_annotation_sources_resolve_by_name(self):
         doc = self.root / 'docs/Citations.md'
         doc.parent.mkdir(parents=True)
-        doc.write_text('| <a id="123"></a>[123] | Example source.<br>`Example author` cited by: [example](example.md) |\n')
+        doc.write_text('| <a id="example-author"></a>[1] | Example source.<br>`Example author` cited by: [example](example.md) |\n')
         text = self.header.read_text().replace('/* exact:', '/* source: Example author */\n/* exact:')
         self.header.write_text(text)
-        self.assertEqual(paths.annotations(self.root)[0].citations, (123,))
+        self.assertEqual(paths.annotations(self.root)[0].citations, ('example-author',))
         self.header.write_text(text.replace('Example author', 'Unknown author'))
         with self.assertRaisesRegex(ValueError, 'Unknown author'):
             paths.annotations(self.root)

@@ -100,7 +100,8 @@ RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEA
 API_URL = "https://api.github.com/repos/jose-villegas/autana"
 MESH_SUFFIX = ".mesh"
 # A fit's start, the mesh its fit begins from.
-START_SUFFIX = ".start" + MESH_SUFFIX
+START_MARKER = ".start"
+START_SUFFIX = START_MARKER + MESH_SUFFIX
 DOWNLOAD_TIMEOUT_S = 60
 # A rename into the cache another process holds open is retried this often, waiting a growing step.
 PLACE_ATTEMPTS = 8
@@ -563,6 +564,8 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     settings, sources = import_recipe(job.settings, tools)
     renderer = {name: canonical(value) for name, value in vars(job.renderer).items() if name not in ("settings", "fit")}
     recipe = {"settings": settings, "renderer": renderer, "sources": sources}
+    if job.settings.meshes:
+        recipe["renderer_id"] = job.asset_name
     if job.bake is not None:
         recipe["scene"] = {"lights": canonical(scene.lights), "tonemap_white": scene.tonemap_white,
                            "bake": canonical(job.bake), "indirect": canonical(scene.indirect) if job.bake.indirect else None}
@@ -684,13 +687,15 @@ def bakes_in(packs, jobs, starts=None, poses=None):
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name
             start = None
+            suffix = source.suffix
+            start_suffix = START_MARKER + suffix
             if kind == "fit":
                 start = fit_starts.setdefault(keys["start"], Bake(
-                    output=f"{entry}{START_SUFFIX}", source=asker, holder=holder, kind="mesh", key=keys["start"],
-                    suffix=MESH_SUFFIX, tree=source.with_name(f"{entry}{START_SUFFIX}"), job=job, scene=scene,
+                    output=f"{entry}{start_suffix}", source=asker, holder=holder, kind="mesh", key=keys["start"],
+                    suffix=suffix, tree=source.with_name(f"{entry}{start_suffix}"), job=job, scene=scene,
                     stages={"mesh": keys["start"], **({"reason": keys["reason"]} if "reason" in keys else {})}, packed=False))
-            found.append(Bake(output=f"{entry}{MESH_SUFFIX}", source=asker, holder=holder, kind=kind, key=keys[kind],
-                              suffix=MESH_SUFFIX, tree=source, job=job, scene=scene, stages=keys, start=start))
+            found.append(Bake(output=f"{entry}{suffix}", source=asker, holder=holder, kind=kind, key=keys[kind],
+                              suffix=suffix, tree=source, job=job, scene=scene, stages=keys, start=start))
     return list(exports.values()) + list(fit_starts.values()) + found
 
 

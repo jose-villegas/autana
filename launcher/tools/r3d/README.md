@@ -119,7 +119,7 @@ $PY tools/render/render_compare.py --out unused.png --reference-video host.avi r
 ```
 
 The line for each frame, and for the frames' mean, has mean and 95th-percentile
-CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#4)</sup> over its pixels, luma SSIM<sup>[[9]](../../../docs/Citations.md#9)</sup>, and the mean ΔE on edge and on interior
+CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#iso-11664-4)</sup> over its pixels, luma SSIM<sup>[[9]](../../../docs/Citations.md#wang-2004)</sup>, and the mean ΔE on edge and on interior
 pixels; the frames-mean line averages each frame's value, p95 included. The
 sheet is, left to right, the reference, the render, the ΔE heatmap and the
 reference's edge pixels in magenta, over the heatmap's colour scale: ΔE 0 is
@@ -139,7 +139,7 @@ the tests are small enough for the scalar one.
 |---|---|
 | `--spp N`, `--seed N` | Paths per pixel and sampler seed; `--samples` stays the bake backend's subpixel grid |
 | `--max-depth N` | Path depth cap; 2 is direct light only |
-| `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky<sup>[[8]](../../../docs/Citations.md#8)</sup> (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
+| `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky<sup>[[8]](../../../docs/Citations.md#hosek-2012)</sup> (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
 
 A `sky` light becomes a constant environment of the same radiance. The
 backends differ in these recorded ways, besides transport:
@@ -185,7 +185,7 @@ It prints a table sorted by mean ΔE.
 `appearance_simplify.py` takes a smooth mesh the simplifier baked at a
 triangle budget and moves its vertices and changes their colours until its
 renders match the reference along a camera path: appearance-driven
-simplification<sup>[[1]](../../../docs/Citations.md#1)</sup>. The
+simplification<sup>[[1]](../../../docs/Citations.md#hasselgren-2021)</sup>. The
 triangles stay as the simplifier left them, so the budget holds.
 [Scene-Files.md](../../../docs/render/Scene-Files.md#against-the-paper) lists
 what the fit changes from the paper.
@@ -194,9 +194,9 @@ what the fit changes from the paper.
 |---|---|
 | Start | a smooth or flat `NAME.mesh`, welded so the vertices of a colour seam share one position |
 | Fitted | every welded position, and every vertex's sRGB colour, or every triangle's when the start is flat |
-| Forward model | nvdiffrast rasterizes visibility<sup>[[2]](../../../docs/Citations.md#2)</sup>; torch carries gradients through homogeneous barycentrics<sup>[[70]](../../../docs/Citations.md#70)</sup>, Gouraud or per-triangle shading, and analytic antialiasing (Laine et al. 2020)<sup>[[2]](../../../docs/Citations.md#2)</sup>. Single-sided faces are culled, the `--scene` camera supplies the background, and rendering uses `--scale` times the reference size |
-| Loss | the mean CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#4)</sup> of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates<sup>[[5]](../../../docs/Citations.md#5)</sup> from the start's |
-| Schedule | Adam<sup>[[3]](../../../docs/Citations.md#3)</sup>; both learning rates decay tenfold over `--steps` |
+| Forward model | nvdiffrast rasterizes visibility<sup>[[2]](../../../docs/Citations.md#laine-2020)</sup>; torch carries gradients through homogeneous barycentrics<sup>[[70]](../../../docs/Citations.md#olano-1997)</sup>, Gouraud or per-triangle shading, and analytic antialiasing (Laine et al. 2020)<sup>[[2]](../../../docs/Citations.md#laine-2020)</sup>. Single-sided faces are culled, the `--scene` camera supplies the background, and rendering uses `--scale` times the reference size |
+| Loss | the mean CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#iso-11664-4)</sup> of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates<sup>[[5]](../../../docs/Citations.md#sorkine-2005)</sup> from the start's |
+| Schedule | Adam<sup>[[3]](../../../docs/Citations.md#kingma-2015)</sup>; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
 
 Beside `loss.txt`, `stretch.json` reports edge stretch, area growth and corner
@@ -331,7 +331,7 @@ DRJIT_LIBOPTIX_PATH=~/gpu/optix/libnvoptix.so.1 LD_LIBRARY_PATH=~/gpu/optix \
 ```
 
 The probe renders one Cornell box on `cuda_ad_rgb` or prints why it cannot. Sources: Mitsuba
-3<sup>[[15]](../../../docs/Citations.md#15)</sup> and Dr.Jit<sup>[[55]](../../../docs/Citations.md#55)</sup>, whose CUDA
+3<sup>[[15]](../../../docs/Citations.md#mitsuba3)</sup> and Dr.Jit<sup>[[55]](../../../docs/Citations.md#jakob-2022)</sup>, whose CUDA
 and LLVM backends the two variants run on, both used as published. The file list is Mitsuba's WSL 2 page (`docs/src/optix_setup.rst` in its
 repository); what changed is where the files go: that page copies them into Windows' own WSL driver folder, a system
 change, while here they stay in a user folder that `DRJIT_LIBOPTIX_PATH` (read by Dr.Jit's core library, drjit-core)
@@ -382,7 +382,7 @@ as well as colour, and weigh appearance against frame time.
 | Warm start | `--refine-to N` splits the longest edge of the start's worst triangles, by dE summed over the pixels they show, both sides of an edge at once, until N; a fitted coarse mesh then starts a finer fit | `appearance_simplify.refine`, `tessellate.split_marked_edges` |
 
 The cost model's weights come from board frame times of meshes with
-different triangle counts and overdraw, fitted by non-negative least squares<sup>[[6]](../../../docs/Citations.md#6)</sup>,
+different triangle counts and overdraw, fitted by non-negative least squares<sup>[[6]](../../../docs/Citations.md#lawson-1974)</sup>,
 and live with those frames in
 [board_cost_weights.txt](board_cost_weights.txt): a `feature` row naming the
 columns, the `weight` row, and one `frame LABEL POSE MS feature...` row per
