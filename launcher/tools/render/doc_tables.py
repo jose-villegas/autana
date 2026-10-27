@@ -222,6 +222,23 @@ VARIANT_NOTES = {
 }
 
 
+# Each fidelity sheet's image name and its variants by label: a bake beside its fit with the same shading,
+# so the sheet shows what the fit alone buys.
+FIDELITY_SHEETS = {
+    "bake-fidelity-sheet": ("flat", "flat fitted"),
+    "bake-fidelity-full-sheet": ("full", "fitted full"),
+}
+
+
+def fidelity_sheet(scene_path, object_name, image):
+    """(object, label) of each variant of FIDELITY_SHEETS[image] the scene places, in its order."""
+    by_label = {variant_label(name, object_name): name for name, _ in variants(scene_path, object_name)}
+    missing = [label for label in FIDELITY_SHEETS[image] if label not in by_label]
+    if missing:
+        raise ValueError(f"{scene_path}: no {', '.join(missing)} variant of {object_name} for {image}")
+    return [(by_label[label], label) for label in FIDELITY_SHEETS[image]]
+
+
 def variant_note(name, object_name):
     label = variant_label(name, object_name)
     if label not in VARIANT_NOTES:
@@ -280,7 +297,7 @@ def write_tables(work, out, scene_id, object_name, found):
     _, frames = read_video(work / "committed-smooth.avi")
     for index, frame in enumerate(frames):
         Image.fromarray(frame).save(smooth_frames / f"{index:04d}.png")
-    _, pair = reference_video(work / "fidelity-flat.avi", smooth_frames, scale=1)
+    _, pair = reference_video(work / f"variant-{object_name}_flat.avi", smooth_frames, scale=1)
     (out / f"{scene_id}-flat-smooth.md").write_text(table([
         ("Flat against smooth, fidelity poses", (pair.mean_delta_e, pair.p95_delta_e, pair.ssim_luma,
                                                 pair.edge_delta_e, pair.interior_delta_e))]) + "\n", encoding="utf-8")
@@ -305,9 +322,19 @@ def write_tables(work, out, scene_id, object_name, found):
 
 
 if __name__ == "__main__":
+    # The shell reads these lines; a Windows Python would end them in CR LF.
+    sys.stdout.reconfigure(newline="\n")
     if sys.argv[1:2] == ["--variants"]:
         # doc_images_demo.sh renders and scores each of these before the tables.
         print(" ".join(name for name, _ in variants(pathlib.Path(sys.argv[2]), sys.argv[3])))
+        sys.exit(0)
+    if sys.argv[1:2] == ["--fidelity-sheets"]:
+        print(" ".join(FIDELITY_SHEETS))
+        sys.exit(0)
+    if sys.argv[1:2] == ["--fidelity-sheet"]:
+        # One "object label" line per bake of that sheet.
+        for name, label in fidelity_sheet(pathlib.Path(sys.argv[2]), sys.argv[3], sys.argv[4]):
+            print(name, label)
         sys.exit(0)
     if sys.argv[1:2] == ["--pairs"]:
         # One "base variant base-slug variant-slug" line per pair sheet doc_images_demo.sh draws.
