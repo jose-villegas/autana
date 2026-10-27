@@ -13,6 +13,8 @@ BEGIN, STATE, END, DATA, ERROR = [read_define(HEADER, 'MIC_RECORD_' + key)
                                   for key in ('BEGIN', 'STATE', 'END', 'DATA', 'ERROR')]
 MILLISECONDS_PER_SECOND = read_define(Path(__file__).resolve().parents[2] / 'packages/math/include/math/scalar/units.h', 'MATH_MS_PER_S')
 MAX_MS = read_define(HEADER, 'MIC_RECORD_MAX_MS')
+WRITES_MAX = read_define(HEADER, 'MIC_RECORD_WRITES_MAX')
+BYTE_MAX = read_define(HEADER, 'MIC_RECORD_BYTE_MAX')
 TRANSFER_TIMEOUT_S = 120
 SERIAL_READ_BYTES = 4096
 
@@ -48,10 +50,14 @@ class MicFrame:
                 return bytes(self.pcm), self.state
         return None
 
-def read_mic(port, ms, settle=None, timeout=TRANSFER_TIMEOUT_S):
+def read_mic(port, ms, settle=None, timeout=TRANSFER_TIMEOUT_S, at=()):
     if not 0 < ms <= MAX_MS or (settle is not None and not 0 <= settle <= MAX_MS):
         raise ValueError('record and settle duration out of range')
     command = f'mic record {ms}' + (f' {settle}' if settle is not None else '')
+    if len(at) > WRITES_MAX or any(not 0 <= when < ms or not 0 <= reg <= BYTE_MAX
+                                   or not 0 <= value <= BYTE_MAX for when, reg, value in at):
+        raise ValueError('scheduled codec write out of range')
+    command += ''.join(f' at {when} {reg} {value}' for when, reg, value in at)
     port.reset_input_buffer()
     port.write((command + '\n').encode('ascii'))
     frame = MicFrame()

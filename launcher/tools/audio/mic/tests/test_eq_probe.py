@@ -59,6 +59,7 @@ class EqProbeTest(unittest.TestCase):
         numerator = {owner: {reg for reg, (role, delay, sign) in slots.items() if role == 'numerator'}
                      for owner, slots in layout.items()}
         registers = dict.fromkeys(sweep.REGISTERS, 0)
+        registers[sweep.CSM_REG] = sweep.CSM_ON
         calls = []
         def runner(command, *words):
             words = words[2:]
@@ -113,7 +114,7 @@ class EqProbeTest(unittest.TestCase):
             self.assertFalse(any('--internal' in command for command, reply in records))
             self.assertIn(('tune', 'audio.drc', 0), calls)
             self.assertIn(('tune', 'reset', 'audio.drc'), calls)
-            self.assertEqual(registers, dict.fromkeys(sweep.REGISTERS, 0))
+            self.assertEqual(registers, dict.fromkeys(sweep.REGISTERS, 0) | {sweep.CSM_REG: sweep.CSM_ON})
             document = output / 'probe.md'
             document.write_text('<!-- generated: mic-eq-probe -->\n<!-- /generated: mic-eq-probe -->\n')
             audio.update_eq_probe(output / 'absent.txt', document, slots_capture=args.out)
@@ -207,9 +208,12 @@ class EqProbeTest(unittest.TestCase):
                             sweep.capture(args)
                     else:
                         sweep.capture(args)
-                restored = [(int(w[1], 0), int(w[2], 0)) for w in calls[-len(sweep.REGISTERS):]]
-                self.assertEqual(dict(restored), {reg: reg for reg in sweep.REGISTERS})
-                self.assertEqual([reg for reg, value in restored[-2:]], [sweep.ADC_CONTROL, sweep.DAC_CONTROL])
+                writes = [(int(w[1], 0), int(w[2], 0)) for w in calls if w[0] == 'codec' and len(w) == 3]
+                restored = dict(writes)
+                expected = {reg: reg for reg in sweep.REGISTERS}
+                expected[sweep.CSM_REG] |= sweep.CSM_ON
+                self.assertEqual(restored, expected)
+                self.assertEqual(writes[-1], (sweep.CSM_REG, expected[sweep.CSM_REG]))
                 self.assertTrue(all(('tune', 'reset', 'mic.' + name) in calls for name in sweep.TUNABLES))
                 text = args.out.read_text()
                 self.assertIn('buildid\t', text)

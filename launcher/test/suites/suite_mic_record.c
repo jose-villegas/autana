@@ -39,6 +39,19 @@ test_record_framing(void) {
 static void
 test_record_arguments(void) {
     console_mic_args_t args;
+    TEST_ASSERT_TRUE(console_mic_parse("record 1000 at 0 0x32 40 at 900 0x32 0", &args));
+    TEST_ASSERT_FALSE(console_mic_parse("record 1000 at 1000 0x32 0", &args));
+    TEST_ASSERT_EQUAL_UINT32(2, args.write_count);
+    TEST_ASSERT_EQUAL_UINT32(900, args.writes[1].ms);
+    TEST_ASSERT_EQUAL_HEX8(0x32, args.writes[0].reg);
+    TEST_ASSERT_EQUAL_HEX8(40, args.writes[0].value);
+    TEST_ASSERT_FALSE(console_mic_parse("record 1000 at 1001 0x32 0", &args));
+    TEST_ASSERT_FALSE(console_mic_parse("record 1000 at 1 256 0", &args));
+    TEST_ASSERT_FALSE(console_mic_parse("record 1000 at 1 0 256", &args));
+    TEST_ASSERT_FALSE(console_mic_parse("record 1000 at 1 0 0 at 2 0 0 at 3 0 0 at 4 0 0 at 5 0 0", &args));
+    TEST_ASSERT_TRUE(console_mic_parse("record 1000 at 0 050 040", &args));
+    TEST_ASSERT_EQUAL_UINT8(50, args.writes[0].reg);
+    TEST_ASSERT_EQUAL_UINT8(40, args.writes[0].value);
     TEST_ASSERT_TRUE(console_mic_parse("record 1000", &args));
     TEST_ASSERT_EQUAL_UINT32(AUDIO_LOOPBACK_SETTLE_MS, args.settle_ms);
     TEST_ASSERT_TRUE(console_mic_parse("record 10000 0", &args));

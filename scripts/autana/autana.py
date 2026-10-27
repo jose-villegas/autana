@@ -1226,6 +1226,7 @@ def mic(args):
     parser.add_argument("action", choices=("record",))
     parser.add_argument("ms", type=int)
     parser.add_argument("--settle", type=int)
+    parser.add_argument("--at", nargs=3, action="append", type=lambda word: int(word, 0), default=[])
     parser.add_argument("-o", "--out", required=True)
     parser.add_argument("--json", action="store_true")
     parsed = parser.parse_args(args)
@@ -1234,6 +1235,8 @@ def mic(args):
     command = device_command("mic-record") + [str(parsed.ms), "--out", parsed.out]
     if parsed.settle is not None:
         command += ["--settle", str(parsed.settle)]
+    for write in parsed.at:
+        command += ["--at", *map(str, write)]
     if parsed.json:
         command.append("--json")
     return call_device(command)

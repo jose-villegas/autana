@@ -1950,7 +1950,7 @@ def mic_record(args, store, board):
     import mic as mic_tool
     with HeldLock(store, board, args.owner, "mic record", args.wait):
         with open_when_free() as connection:
-            pcm, state = mic_tool.read_mic(connection, args.ms, args.settle)
+            pcm, state = mic_tool.read_mic(connection, args.ms, args.settle, at=args.at)
     path = mic_tool.write_take(args.out, pcm, state)
     print(json.dumps(state) if args.json else f"wrote {path} and {path.with_suffix('.json')}")
     return 0
@@ -2299,6 +2299,7 @@ def main(argv=None):
     mic_parser = subparsers.add_parser("mic-record", help="record microphone PCM and state")
     mic_parser.add_argument("ms", type=int)
     mic_parser.add_argument("--settle", type=int)
+    mic_parser.add_argument("--at", nargs=3, action="append", type=lambda word: int(word, 0), default=[])
     mic_parser.add_argument("--out", required=True)
     mic_parser.add_argument("--json", action="store_true")
     batch_parser = subparsers.add_parser(

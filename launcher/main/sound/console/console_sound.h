@@ -18,6 +18,7 @@ typedef enum {
 
 typedef enum {
     CONSOLE_SOUND_PLAY,
+    CONSOLE_SOUND_TONE,
     CONSOLE_SOUND_STOP,
     CONSOLE_SOUND_STATS,
     CONSOLE_SOUND_ONSET
