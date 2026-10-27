@@ -92,7 +92,8 @@ imu_rest_mean(const imu_rest_t* rest) {
     if (rest->n == 0) {
         return (input_motion_t){0};
     }
-    int32_t a[3], r[3];
+    int32_t a[3];
+    int32_t r[3];
     for (int axis = 0; axis < 3; axis++) {
         a[axis] = mathf_round_i32((float)rest->acceleration[axis] / (float)rest->n);
         r[axis] = mathf_round_i32((float)rest->rotation[axis] / (float)rest->n);
