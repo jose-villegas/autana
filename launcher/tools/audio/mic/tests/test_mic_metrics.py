@@ -66,6 +66,9 @@ class MetricsTests(unittest.TestCase):
                                m.band_level_db(x, 1000, 2000, self.rate), delta=1)
 
     def test_eq_presets(self):
+        # https://github.com/hicaoc/NRL-ESP32/blob/main/src/lib/wifi_config_portal_audio.html
+        nrl = [0.8464592509, -1.6692031398, 0.7166338712, -1.6929185092, 0.8464592509]
+        self.assertEqual([e.eq_encode(v) for v in nrl], [227219675, 625668518, 192369940, 619302472, 227219675])
         expected = [0x0F860E31, 0x20F3E39F, 0x0F860E31, 0x20F7853B, 0x0F0FBDFE]
         coeff = e.eq_design_biquad('highpass', 150, 2 ** -.5, 22050)
         self.assertEqual([e.eq_encode(v) for v in coeff], expected)
@@ -76,6 +79,7 @@ class MetricsTests(unittest.TestCase):
     def test_eq(self):
         self.assertEqual(e.eq_encode(1), 0x10000000)
         self.assertEqual(e.eq_encode(-1), 0x30000000)
+        self.assertEqual(e.eq_encode(-.5).to_bytes(4, 'big'), bytes([0x38, 0, 0, 0]))
         coeff = e.eq_design_biquad('highpass', 150, .70710678, self.rate)
         self.assertEqual(len(coeff), 5)
         self.assertAlmostEqual(sum(coeff[:3]), 0, places=10)
