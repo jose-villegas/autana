@@ -239,8 +239,8 @@ WORST_COUNTS = (("Clusters tested / kept / hidden / drawn",
 
 
 def path_poses(text):
-    """{(row, quarter): (the evenly spaced replays, the worst frames' replays)} in capture order;
-    fails unless every traced row has PATH_POSES path replays and one replay per worst frame."""
+    """{(row, quarter): (the evenly spaced replays read, the worst frames' replays)} in capture order;
+    fails unless each worst frame has its replay. A path replay lost in transfer leaves its curve a point short."""
     found = {}
     for pose in replays(text):
         found.setdefault((pose["row"], pose["quarter"]), []).append(pose)
@@ -250,12 +250,10 @@ def path_poses(text):
     poses = {}
     for key, frames in ranked.items():
         replayed = found.get(key, [])
-        if len(replayed) != PATH_POSES + len(frames):
-            raise ValueError(f"{' '.join(key)}: {len(replayed)} replays, expected {PATH_POSES} + {len(frames)}")
-        for frame, pose in zip(frames, replayed[PATH_POSES:]):
-            if pose["t_ms"] != frame["t_ms"]:
-                raise ValueError(f"{' '.join(key)}: rank {frame['rank']} replayed at {pose['t_ms']} ms")
-        poses[key] = (replayed[:PATH_POSES], list(zip(frames, replayed[PATH_POSES:])))
+        path, tail = replayed[:len(replayed) - len(frames)], replayed[len(replayed) - len(frames):]
+        if not path or len(path) > PATH_POSES or [p["t_ms"] for p in tail] != [f["t_ms"] for f in frames]:
+            raise ValueError(f"{' '.join(key)}: {len(replayed)} replays do not end with its {len(frames)} worst frames")
+        poses[key] = (path, list(zip(frames, tail)))
     return poses
 
 
@@ -270,8 +268,11 @@ def why(pose, path):
             median = statistics.median(p["counts"][name] for p in path)
             if median > 0:
                 ratios[name] = pose["counts"][name] / median
+    reason = f"{stage} {stages[stage]:+.1f} ms"
+    if not ratios:
+        return reason
     count = max(ratios, key=ratios.get)
-    return f"{stage} {stages[stage]:+.1f} ms; {count.replace('_', ' ')} ×{ratios[count]:.2f} median"
+    return f"{reason}; {count.replace('_', ' ')} ×{ratios[count]:.2f} median"
 
 
 def worst_frames(text):
@@ -283,7 +284,8 @@ def worst_frames(text):
     stages = list(dict.fromkeys(name for path, _ in poses.values() for pose in path for name in pose["stages"]))
     lines = ["## Worst frames", "",
              "Played frames ranked by wall time. Stage ms and counts come from replaying each pose paused;",
-             f"Why compares them with the median of {PATH_POSES} poses spaced evenly along the path.", "",
+             f"Why compares them with the median of the {PATH_POSES} poses spaced evenly along the path"
+             f" ({sum(len(path) for path, _ in poses.values())} of {PATH_POSES * len(poses)} read).", "",
              "| Scene | Quarter | Rank | Path s | Frame ms | " + " | ".join(f"{name} ms" for name in stages)
              + " | " + " | ".join(column for column, _ in WORST_COUNTS) + " | Why |",
              "|---|---|---:|---:|---:|" + "---:|" * len(stages) + "---|" * len(WORST_COUNTS) + "---|"]
