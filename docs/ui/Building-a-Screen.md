@@ -215,7 +215,7 @@ moving finger is a drag.
 
 ### Artwork
 
-`ui_icon(r, icon, fallback)` draws a one-bit `draw_image_t` filling `r` in
+`ui_icon(r, icon, fallback)` draws a one-bit `image_t` filling `r` in
 the text colour. Application artwork lives in the app's own folder so
 deleting the app deletes it. Structural facts only in tests: non-empty,
 bbox in range, run count under the cap, declared symmetries; never assert

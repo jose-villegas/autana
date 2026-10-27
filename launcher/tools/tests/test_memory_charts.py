@@ -284,6 +284,9 @@ class MemoryTierTests(unittest.TestCase):
             profile.write_text('DP_SRAM_BYTES=524288\nDP_PSRAM_BYTES=8388608\n')
             partitions = root / 'launcher/fixture.csv'
             partitions.write_text('# Name, Type, SubType, Offset, Size\nfactory,app,factory,,0x200000,\nassets,data,0x40,,0x300000,\n')
+            citations = root / 'docs/Citations.md'
+            citations.parent.mkdir(parents=True)
+            citations.write_text(f'| <a id="{memory.CHIP_DATASHEET}"></a>[1] | Datasheet<br>Cited by: none |\n')
             config = {'CONFIG_ESPTOOLPY_FLASHSIZE': '"16MB"',
                       'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME': '"fixture.csv"'}
             builds = [dict(variant=variant, regions={'dram0_0_seg': (0x3fc88000, 1024)},

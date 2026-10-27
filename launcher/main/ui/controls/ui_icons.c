@@ -2,6 +2,8 @@
 
 #include <stddef.h>
 
+#include "draw/draw_image.h"
+
 #include "asset/asset_store.h"
 #include "draw/draw_image_format.h"
 #include "esp_log.h"
@@ -26,7 +28,7 @@ static const ui_icon_name_t SYSTEM_NAMES[UI_ICON_COUNT] = {
     [UI_ICON_MONITOR] = {"monitor", "M"},
 };
 
-static draw_image_t system_icons[UI_ICON_COUNT];
+static image_t system_icons[UI_ICON_COUNT];
 static ui_icon_set_t system_set = {ASSET_ENGINE_PACK, SYSTEM_NAMES, UI_ICON_COUNT, system_icons, false, HANDLE_NONE};
 
 bool
@@ -48,7 +50,7 @@ ui_icon_set_load(ui_icon_set_t* set) {
         if (status == ASSET_OK) {
             status = draw_image_open(entry, &set->icons[i]);
         }
-        if (status == ASSET_OK && set->icons[i].format != DRAW_IMAGE_MONO1) {
+        if (status == ASSET_OK && set->icons[i].format != IMAGE_MONO1) {
             status = ASSET_ERR_FORMAT;
         }
         if (status != ASSET_OK) {
@@ -69,7 +71,7 @@ ui_icon_set_release(ui_icon_set_t* set) {
     }
 }
 
-const draw_image_t*
+const image_t*
 ui_icon_set_get(const ui_icon_set_t* set, int i) {
     return set->loaded ? &set->icons[i] : NULL;
 }
@@ -79,7 +81,7 @@ ui_icons_init(void) {
     (void)ui_icon_set_load(&system_set);
 }
 
-const draw_image_t*
+const image_t*
 ui_icon_image(ui_icon_id_t id) {
     return ui_icon_set_get(&system_set, (int)id);
 }
