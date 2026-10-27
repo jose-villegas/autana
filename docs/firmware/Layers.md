@@ -3,6 +3,8 @@
 Each row may include any lower row, never a higher row or another folder in its
 own row.
 
+`haptics/` shares the `ui/` and `scene/` engine row, above `sound/`.
+
 - Project apps under `apps/` and system apps under `shell/apps/` share the apps
   tier; other folders use their first path component.
 - `main.c` starts the board and calls `shell_run()`; the shell reaches apps through

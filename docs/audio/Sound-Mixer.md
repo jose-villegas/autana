@@ -25,6 +25,9 @@ playing, start with [Play a sound](Play-a-Sound.md).
 | `sound_bus_create(name)` / `sound_bus_destroy(bus)` | custom buses |
 | `sound_set_bus_gain(bus, pct)` | scale a bus |
 
+The engine API also provides `sound_warm_amp()`: a queued, silent amplifier
+warm-up request that retains the normal idle tail.
+
 The engine API in `sound_engine.h` provides
 `sound_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus)`.
 
@@ -60,6 +63,7 @@ slot is reused, so an old handle can never reach a newer sound in its slot.
 | `SOUND_BUS_SYSTEM` | UI sounds; one volume for the shell and every app |
 | `SOUND_BUS_SFX` | game sound effects; the default |
 | `SOUND_BUS_MUSIC` | music |
+| `SOUND_BUS_HAPTIC` | speaker-driven [haptic pulses](../haptics/README.md), independent of UI volume |
 | custom | `sound_bus_create(name)`, up to `SOUND_BUS_COUNT_MAX` buses in all; invalid handle when full |
 | `SOUND_BUS_MASTER` | gain only: scales every bus |
 

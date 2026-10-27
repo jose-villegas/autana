@@ -102,6 +102,16 @@ sound_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus) {
     return play_source(NULL, &opts, hz, ms);
 }
 
+void
+sound_warm_amp(void) {
+    uint32_t generation;
+    if (!begin_command(true, &generation)) {
+        return;
+    }
+    const sound_command_t command = {.kind = SOUND_COMMAND_WARM_AMP, .app_generation = generation};
+    finish_command(&command);
+}
+
 static void
 control_command(sound_voice_t voice, sound_bus_t bus, sound_command_kind_t kind, uint8_t gain) {
     uint32_t generation;

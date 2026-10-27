@@ -65,12 +65,14 @@ When the queue is full the command is dropped:
 
 ## Amplifier
 
-The amplifier is powered only while sound plays, with a warm-up before the first sample.
+The amplifier warms before the first sample. `sound_warm_amp()` queues silent
+activity without a voice, starts that warm-up and refreshes `last_active_ms`.
+The normal idle tail applies to playback and warm-up requests alike.
 
 ```mermaid
 stateDiagram-v2
     direction LR
-    Off --> Warming: a voice starts
+    Off --> Warming: voice or warm request
     Warming --> On: startup elapsed
     On --> Off: idle deadline
     Warming --> Off: idle deadline
@@ -80,7 +82,7 @@ stateDiagram-v2
 |---|---|
 | Off | silence, and the first voice turns the amplifier on without sleeping |
 | Warming | silence for `AUDIO_OUT_AMP_STARTUP_MS` (about 250 ms), with every voice's position held |
-| On | the mix, and off again after `SOUND_AMP_IDLE_MS` (2 s) with no voice |
+| On | the mix, then off after `SOUND_AMP_IDLE_MS` (2 s) without a voice or warm request |
 
 During silence the task keeps writing blocks, so the DMA never runs dry. The TX
 channel's auto-clear setting zeroes stale data if it ever does. The transients
@@ -111,7 +113,7 @@ sequenceDiagram
 |---|---|
 | Calls during `exit()` | change nothing, and `sound_play()` returns the null voice |
 | Engine-owned sounds | the ones the shell plays survive every exit, so their storage must too |
-| Gains | the SYSTEM bus keeps the shell's UI volume, and SFX, MUSIC and master reset |
+| Gains | the SYSTEM bus keeps the shell's UI volume, and SFX, MUSIC, HAPTIC and master reset |
 | Stuck mixer | past `SOUND_EXIT_READ_TIMEOUT_MS` the board aborts rather than free memory it might read |
 | Console sound views | live in PSRAM and are released at the next app transition, after the mixer fence ([below](#console-play)); a timeout keeps them mapped for a later one |
 

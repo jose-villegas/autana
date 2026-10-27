@@ -714,7 +714,7 @@ static void
 test_sound_exit_resets_app_gains_and_preserves_system_gain(void) {
     fixture_t* f = fixture();
     sound_command_t command;
-    const sound_bus_t buses[] = {SOUND_BUS_SYSTEM, SOUND_BUS_SFX, SOUND_BUS_MUSIC, SOUND_BUS_MASTER};
+    const sound_bus_t buses[] = {SOUND_BUS_SYSTEM, SOUND_BUS_SFX, SOUND_BUS_MUSIC, SOUND_BUS_HAPTIC, SOUND_BUS_MASTER};
     for (size_t i = 0; i < sizeof buses / sizeof buses[0]; i++) {
         TEST_ASSERT_TRUE(
             sound_control_bus_command(&f->control, buses[i], SOUND_COMMAND_BUS_GAIN, TEST_HALF_GAIN, &command));
@@ -727,6 +727,7 @@ test_sound_exit_resets_app_gains_and_preserves_system_gain(void) {
     TEST_ASSERT_EQUAL_UINT8(TEST_HALF_GAIN, f->mixer.bus_gain[SOUND_BUS_SYSTEM.id]);
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_SFX.id]);
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_MUSIC.id]);
+    TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_HAPTIC.id]);
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.master_gain);
     f->control.reset_gains = false;
     TEST_ASSERT_FALSE(sound_control_bus_command(&f->control, SOUND_BUS_SFX, SOUND_COMMAND_BUS_GAIN, 0, &command));

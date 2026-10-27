@@ -424,6 +424,10 @@ shell_run(void) {
 #endif
 
         input_poll(&input);
+        /* Warm on touch-down so a pulse on commit lands on time. */
+        if (input.pressed) {
+            sound_warm_amp();
+        }
         if (input.down) {
             display_touch_now(now_us);
         }
