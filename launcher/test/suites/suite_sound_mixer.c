@@ -279,16 +279,22 @@ test_sound_failed_init_is_noop(void) {
     TEST_ASSERT_EQUAL_UINT32(generation, f->control.app_generation);
 }
 
-static void
-test_sound_tone_source_holds_phase_until_warm(void) {
-    fixture_t* f = fixture();
+static sound_voice_t
+play_tone(fixture_t* f, uint16_t ms, sound_bus_t bus) {
     sound_command_t command;
-    const sound_play_opts_t opts = {.bus = SOUND_BUS_SYSTEM, .gain_pct = SOUND_GAIN_MAX_PCT};
-    const sound_voice_t voice = sound_control_play(&f->control, NULL, &opts, TEST_TONE_HZ, SOUND_TONE_UNTIL_STOPPED,
-                                                   &command, f->control.app_generation);
+    const sound_play_opts_t opts = {.bus = bus, .gain_pct = SOUND_GAIN_MAX_PCT};
+    const sound_voice_t voice =
+        sound_control_play(&f->control, NULL, &opts, TEST_TONE_HZ, ms, &command, f->control.app_generation);
     TEST_ASSERT_NOT_EQUAL(0, voice.id);
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
     render(f, 0, TEST_FRAMES);
+    return voice;
+}
+
+static void
+test_sound_tone_source_holds_phase_until_warm(void) {
+    fixture_t* f = fixture();
+    const sound_voice_t voice = play_tone(f, SOUND_TONE_UNTIL_STOPPED, SOUND_BUS_SYSTEM);
     render(f, TEST_STARTUP_MS - 1, TEST_FRAMES);
     TEST_ASSERT_EQUAL_UINT32(0, f->mixer.voices[0].source.tone.oscillator.phase);
     TEST_ASSERT_FALSE(sound_control_is_audible(&f->control, voice));
@@ -302,18 +308,6 @@ test_sound_tone_source_holds_phase_until_warm(void) {
 
 #define TEST_TONE_MS     7u
 #define TEST_TONE_FRAMES audio_out_samples(TEST_TONE_MS)
-
-static sound_voice_t
-play_tone(fixture_t* f, uint16_t ms, sound_bus_t bus) {
-    sound_command_t command;
-    const sound_play_opts_t opts = {.bus = bus, .gain_pct = SOUND_GAIN_MAX_PCT};
-    const sound_voice_t voice =
-        sound_control_play(&f->control, NULL, &opts, TEST_TONE_HZ, ms, &command, f->control.app_generation);
-    TEST_ASSERT_NOT_EQUAL(0, voice.id);
-    sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
-    render(f, 0, TEST_FRAMES);
-    return voice;
-}
 
 static void
 test_sound_timed_tone_ends_on_time(void) {
