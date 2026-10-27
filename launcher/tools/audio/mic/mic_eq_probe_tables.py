@@ -5,26 +5,26 @@ from statistics import median, linear_regression
 
 import numpy as np
 from scipy.signal import freqz
-from audio.mic.eq_probe_sweep import designs, ADC_REGS, DAC_REGS
+from audio.mic.eq_probe_sweep import designs, csd_designs, ADC_REGS, DAC_REGS, CSD_PASSBAND_HZ, CSD_TOLERANCE_DB, DEFAULT_HZ
 from audio.mic.eq_design import (
     eq_classify_slots, SLOT_HZ, SLOT_VALUES, SCALE_VALUES, AMPLITUDE_DB, SLOT_TOLERANCE_DB,
-    FEEDBACK_SILENCE_DB, EQ_SCALE, SCALE_HZ, eq_decide_layout, eq_order_response, ORDER_HZ,
+    FEEDBACK_SILENCE_DB, SCALE_HZ, eq_decide_layout, eq_order_response, ORDER_HZ,
     NUMERATOR_COEFFICIENTS,
 )
 from audio.sound_asset import SAMPLE_RATE_HZ
 from audio.mic.mic_metrics import DB_AMPLITUDE
-from audio_doc_blocks import number
+from audio_doc_blocks import number, details
 
 CUTOFF_DB = -3.0
 CURVE_POINTS = 256
 
 
 def response(owner, case, frequencies):
-    coefficients = designs()[owner][case.removeprefix('rerun-')]
+    coefficients = (csd_designs() if case.startswith('csd-') else designs())[owner][case.removeprefix('rerun-')]
     if coefficients is None:
         return np.zeros(len(frequencies))
     split = NUMERATOR_COEFFICIENTS[owner]
-    b, a = coefficients[:split], (1, *coefficients[split:])
+    b, a = coefficients[:split], (1, *(-v for v in coefficients[split:]))
     _, values = freqz(b, a, worN=frequencies, fs=SAMPLE_RATE_HZ)
     return DB_AMPLITUDE * np.log10(np.abs(values))
 
@@ -44,7 +44,7 @@ def probe_data(records, *, relative=True):
             if len(command) != 3 or command[1] not in ('adc', 'dac', 'hpf'):
                 raise ValueError('unknown probe case')
             owner, case = command[1:]
-            if owner != 'hpf' and case not in designs()[owner] and case not in ('zero', 'unity') and not slot_case(case) and not order_case(case) and case.removeprefix('rerun-') not in designs()[owner]:
+            if owner != 'hpf' and case not in designs()[owner] and case not in csd_designs()[owner] and case not in ('zero', 'unity') and not slot_case(case) and not order_case(case) and case.removeprefix('rerun-') not in designs()[owner]:
                 raise ValueError('unknown EQ design')
             if owner == 'hpf' and case != 'bypass' and not case.isdecimal():
                 raise ValueError('invalid HPF code')
@@ -204,7 +204,7 @@ def render_slots(path, records, caption, picture, details, markdown, regenerate)
         body += details(markdown(['Order/sign probe', 'Hz', 'Relative (dB)', 'Decided model (dB)'], order_rows)) + '\n'
         scale = scale_result(data, owner)
         if scale is not None:
-            body += details(markdown(['Scale slot', 'Slope (dB/octave)', 'Unity offset (dB)', 'Effective fractional bits'],
+            body += details(markdown(['Scale slot', 'Slope (dB/octave)', 'Unity offset (dB)'],
                                      [(f'0x{scale[0]:02X}', *map(number, scale[1:]))])) + '\n'
     return body
 
@@ -223,8 +223,7 @@ def scale_result(data, owner):
         raise ValueError('scale probe needs every value on one register')
     reg, values = next(iter(points.items()))
     slope, offset = linear_regression([math.log2(value) for value in values], list(values.values()))
-    fractional_bits = math.log2(EQ_SCALE) - offset / (AMPLITUDE_DB * math.log10(2))
-    return reg, slope, offset, fractional_bits
+    return reg, slope, offset
 
 
 def decided_layout(data, owner):
@@ -264,10 +263,32 @@ def render_restart(path, records, caption, markdown, regenerate):
                         follows = False
                     rows.append((owner, case, path_name, hz, number(measured),
                                  ('<= ' if case == 'zero' else '') + number(expected), number(error)))
-        verdicts.append(owner.upper() + ': ' + ('follows' if follows else 'does not follow') + '.')
+        verdicts.append(owner.upper() + ': ' + ('within Q2.28 design tolerance' if follows else 'Q2.28 words mis-encoded') + '.')
     return ('### EQ after a state-machine restart\n\n'
-            + 'Each case loads the coefficients, then restarts the codec state machine (REG00: resets with CSM off, '
+            + 'These words were Q2.28 (mis-encoded). Each case loads the coefficients, then restarts the codec state machine (REG00: resets with CSM off, '
             + 'resets cleared, CSM on) before measuring.\n\n'
             + caption(path, regenerate, 'replies')
             + markdown(['Owner', 'Case', 'Path', 'Hz', 'Measured minus bypass (dB)', 'Designed (dB)', 'Error (dB)'], rows)
             + '\n' + '\n\n'.join(verdicts) + '\n')
+
+
+def render_csd(path, records, caption, markdown, regenerate):
+    data = probe_data(records)
+    body = '### Signed power-of-two (CSD) EQ validation\n\n' + caption(path, regenerate, 'replies')
+    body += f'Passband tolerance is {CSD_TOLERANCE_DB:g} dB at the named frequencies; every path must pass.\n\n'
+    for owner, cases in CSD_PASSBAND_HZ.items():
+        for case, passband in cases.items():
+            rows = []
+            follows = True
+            for path_name in (('acoustic', 'internal') if owner == 'dac' else ('acoustic',)):
+                points = data.get((owner, case, path_name), {})
+                if set(points) != set(DEFAULT_HZ):
+                    raise ValueError('CSD capture needs every case, path and frequency')
+                for hz, expected in zip(sorted(points), response(owner, case, sorted(points))):
+                    error = points[hz] - expected
+                    if hz in passband and abs(error) > CSD_TOLERANCE_DB:
+                        follows = False
+                    rows.append((path_name, hz, number(points[hz]), number(expected), number(error)))
+            body += f"{owner} {case}: {'PASS' if follows else 'FAIL'} (passband: {', '.join(map(str, passband))} Hz).\n\n"
+            body += details(markdown(['Path', 'Hz', 'Measured minus bypass (dB)', 'Designed (dB)', 'Error (dB)'], rows)) + '\n'
+    return body

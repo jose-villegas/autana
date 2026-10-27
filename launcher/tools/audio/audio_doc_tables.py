@@ -27,6 +27,7 @@ from audio_drc_sweep import AUDIO, DB_AMPLITUDE_SCALE, DRC_LEVEL_DB, TUNABLES, V
 
 from audio_doc_blocks import CLIPPED_DBFS, caption, details, picture
 
+EQ_CSD_CAPTURE = Path("docs/audio/data/mic_eq_csd_capture.txt")
 EQ_RESTART_CAPTURE = Path("docs/audio/data/mic_eq_restart_capture.txt")
 PLAYBACK_CAPTURE = Path("docs/audio/data/mic_playback_capture.txt")
 EQ_SLOTS_CAPTURE = Path("docs/audio/data/mic_eq_slots_capture.txt")
@@ -374,8 +375,8 @@ def render_mic(path):
     return render(path, records, caption, picture, details, markdown, REGENERATE)
 
 
-def update_eq_probe(capture, document, check=False, slots_capture=None, restart_capture=None):
-    from audio.mic.mic_eq_probe_tables import render, render_slots, render_restart
+def update_eq_probe(capture, document, check=False, slots_capture=None, restart_capture=None, csd_capture=None):
+    from audio.mic.mic_eq_probe_tables import render, render_slots, render_restart, render_csd
     slots_capture = slots_capture or ROOT / EQ_SLOTS_CAPTURE
     body = "No capture yet.\n"
     if capture.exists():
@@ -390,6 +391,10 @@ def update_eq_probe(capture, document, check=False, slots_capture=None, restart_
     if restart_capture.exists():
         _, records, _ = read_capture(restart_capture)
         body = body.rstrip("\n") + "\n\n" + render_restart(restart_capture, records, caption, markdown, REGENERATE)
+    csd_capture = csd_capture or ROOT / EQ_CSD_CAPTURE
+    if csd_capture.exists():
+        _, records, _ = read_capture(csd_capture)
+        body = body.rstrip("\n") + "\n\n" + render_csd(csd_capture, records, caption, markdown, REGENERATE)
     return replace_block(document, "mic-eq-probe", body, check=check)
 
 
@@ -532,13 +537,13 @@ def main():
                           ("--mix-document", MIX_DOCUMENT), ("--onset-document", ONSET_DOCUMENT),
                           ("--drc-capture", DRC_CAPTURE), ("--mic-capture", MIC_CAPTURE),
                           ("--playback-capture", PLAYBACK_CAPTURE), ("--eq-restart-capture", EQ_RESTART_CAPTURE),
-                          ("--eq-capture", EQ_CAPTURE), ("--eq-slots-capture", EQ_SLOTS_CAPTURE)):
+                          ("--eq-csd-capture", EQ_CSD_CAPTURE), ("--eq-capture", EQ_CAPTURE), ("--eq-slots-capture", EQ_SLOTS_CAPTURE)):
         parser.add_argument(flag, type=Path, default=ROOT / default)
     args = parser.parse_args()
     try:
         changed = update(args.capture, args.document, args.check, args.mix_captures, args.mix_document, args.drc_capture)
         changed |= update_mic(args.mic_capture, args.document, args.check)
-        changed |= update_eq_probe(args.eq_capture, args.document, args.check, args.eq_slots_capture, args.eq_restart_capture)
+        changed |= update_eq_probe(args.eq_capture, args.document, args.check, args.eq_slots_capture, args.eq_restart_capture, args.eq_csd_capture)
         changed |= update_playback(args.playback_capture, args.document, args.check)
         changed |= update_onset(args.mix_captures, args.onset_document, args.check)
         changed |= replace_block(ROOT / "docs/audio/Sound-Assets.md", "sound-storage", render_storage(),

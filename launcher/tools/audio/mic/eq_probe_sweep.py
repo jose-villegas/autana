@@ -15,10 +15,11 @@ ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / 'launcher/tools/audio'))
 from autana_runner import autana_run, capture_parser, capture_records, reset_tunables
 from audio_mic_dsp_sweep import DEFAULTS, LIMITS
+from audio.sound_asset import SAMPLE_RATE_HZ
 from audio_drc_sweep import numbers, MAX_MS, NYQUIST_HZ, VOLUME_MAX
 from build.c_header import read_define
 from audio.mic.eq_design import (
-    eq_design_biquad, eq_design_first_order_highpass, eq_encode, eq_classify_slots, eq_flat_slot,
+    eq_design_biquad, eq_design_first_order_highpass, eq_design_first_order_shelf, eq_encode, eq_classify_slots, eq_flat_slot,
     SLOT_HZ, SLOT_VALUES, SCALE_VALUES, SCALE_HZ, ORDER_HZ, PROBE_GAIN, eq_decide_layout,
     eq_layout_coefficients, NUMERATOR_COEFFICIENTS,
 )
@@ -46,6 +47,7 @@ TUNABLES = tuple(DEFAULTS)
 CAPTURE = ROOT / 'docs/audio/data/mic_eq_probe_capture.txt'
 SLOTS_CAPTURE = CAPTURE.with_name('mic_eq_slots_capture.txt')
 RESTART_CAPTURE = CAPTURE.with_name('mic_eq_restart_capture.txt')
+CSD_CAPTURE = CAPTURE.with_name('mic_eq_csd_capture.txt')
 TAKE_NAME = 'mic_eq_probe_take.wav'
 DEFAULT_HZ = (50, 100, 150, 200, 400, 1000, 2000, 4000)
 DEFAULT_HPF_HZ = (50, 100, 200, 500, 1000)
@@ -60,6 +62,14 @@ LPF_HZ = 2000
 DAC_HPF_HZ = 300
 FLAT_GAIN = 0.5
 BUTTERWORTH_Q = math.sqrt(0.5)
+VOICE_LOW_HZ, VOICE_HIGH_HZ = 300, 3400
+CSD_DAC_HPF_HZ = 200
+SHELF_HZ, SHELF_GAIN_DB = 250, -20
+CSD_PASSBAND_HZ = {'adc': {'csd-highpass': (400, 1000, 2000, 4000),
+                           'csd-voice': (400, 1000, 2000)},
+                   'dac': {'csd-lowcut': (400, 1000, 2000, 4000),
+                           'csd-shelf': (1000, 2000, 4000)}}
+CSD_TOLERANCE_DB = 3.0
 
 
 def designs():
@@ -67,6 +77,30 @@ def designs():
                     'highpass': eq_design_biquad('highpass', HPF_HZ, BUTTERWORTH_Q),
                     'lowpass': eq_design_biquad('lowpass', LPF_HZ, BUTTERWORTH_Q)},
             'dac': {'bypass': None, 'half': (FLAT_GAIN, 0, 0), 'highpass': eq_design_first_order_highpass(DAC_HPF_HZ)}}
+
+
+def csd_designs():
+    low, high = (math.tan(math.pi * hz / SAMPLE_RATE_HZ) for hz in (VOICE_LOW_HZ, VOICE_HIGH_HZ))
+    center = math.sqrt(low * high)
+    return {'adc': {'bypass': None,
+                    'csd-highpass': eq_design_biquad('highpass', HPF_HZ, BUTTERWORTH_Q),
+                    'csd-voice': eq_design_biquad('bandpass', SAMPLE_RATE_HZ * math.atan(center) / math.pi,
+                                                center / (high - low))},
+            'dac': {'bypass': None, 'csd-lowcut': eq_design_first_order_highpass(CSD_DAC_HPF_HZ),
+                    'csd-shelf': eq_design_first_order_shelf(SHELF_HZ, SHELF_GAIN_DB)}}
+
+
+def csd_capture(record, saved, args):
+    record('tune', 'audio.drc', 0)
+    for owner, cases in csd_designs().items():
+        program(record, saved, 'dac' if owner == 'adc' else 'adc', None)
+        for case, coefficients in cases.items():
+            record.note('probe ' + owner + ' ' + case, {})
+            program(record, saved, owner, coefficients)
+            restart(record, saved)
+            tones(record, args, DEFAULT_HZ)
+            if owner == 'dac':
+                tones(record, args, DEFAULT_HZ, internal=True)
 
 
 def parser():
@@ -77,7 +111,7 @@ def parser():
     for name, default in (('volume', DEFAULT_VOLUME), ('runs', DEFAULT_RUNS),
                           ('internal-runs', DEFAULT_INTERNAL_RUNS), ('ms', DEFAULT_MS), ('take-ms', DEFAULT_TAKE_MS)):
         result.add_argument('--' + name, type=int, default=default)
-    result.add_argument('--mode', choices=('designs', 'slots', 'restart'), default='designs')
+    result.add_argument('--mode', choices=('designs', 'slots', 'restart', 'csd'), default='designs')
     result.add_argument('--take', type=Path, help='default: beside --out')
     return result
 
@@ -279,6 +313,9 @@ def capture(args):
             for name, value in dict(DEFAULTS, eq=0).items():
                 record('tune', 'mic.' + name, value)
             program(record, saved, 'dac', None)
+            if args.mode == 'csd':
+                csd_capture(record, saved, args)
+                return
             if args.mode == 'restart':
                 restart_capture(record, saved, args)
                 return
@@ -315,7 +352,7 @@ def capture(args):
 def main():
     args = parser().parse_args()
     if args.out == CAPTURE:
-        args.out = {'slots': SLOTS_CAPTURE, 'restart': RESTART_CAPTURE}.get(args.mode, CAPTURE)
+        args.out = {'slots': SLOTS_CAPTURE, 'restart': RESTART_CAPTURE, 'csd': CSD_CAPTURE}.get(args.mode, CAPTURE)
     capture(args)
     print(f'EQ probe capture: {args.out}')
 
