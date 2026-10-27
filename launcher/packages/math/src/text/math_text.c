@@ -165,7 +165,7 @@ text_fixed_whole(const char** cursor, uint64_t limit, uint64_t* out) {
     const char* p = *cursor;
     uint64_t whole = 0;
     while (text_digit(*p)) {
-        whole = whole * MATH_TEXT_RADIX + (unsigned)(*p++ - '0');
+        whole = (whole * MATH_TEXT_RADIX) + (unsigned)(*p++ - '0');
         if (whole > limit / MATHX_ONE) {
             return false;
         }
@@ -185,7 +185,7 @@ text_fixed_fraction(const char** cursor, unsigned* remainder, bool* residual) {
     *cursor = p;
     uint32_t fraction = 0;
     while (p != first) {
-        uint32_t scaled = (unsigned)(*--p - '0') * MATHX_ONE + fraction;
+        uint32_t scaled = ((unsigned)(*--p - '0') * MATHX_ONE) + fraction;
         fraction = scaled / MATH_TEXT_RADIX;
         *remainder = scaled % MATH_TEXT_RADIX;
         *residual |= *remainder != 0;
@@ -217,7 +217,7 @@ mathx_parse(const char* s, const char** end, int32_t* out) {
     if (!digits || (end == NULL && *p != '\0')) {
         return false;
     }
-    uint64_t raw = whole * MATHX_ONE + fraction;
+    uint64_t raw = (whole * MATHX_ONE) + fraction;
     if (raw > limit || (raw == limit && residual)) {
         return false;
     }
@@ -239,7 +239,7 @@ mathx_format(char* buf, size_t cap, int32_t v) {
     char text[MATHX_TEXT_MAX];
     int length = 0;
     for (int digits = 0; digits <= MATHX_TEXT_FRACTION; ++digits) {
-        uint64_t decimal = (magnitude * scale + MATHX_ONE / 2) / MATHX_ONE;
+        uint64_t decimal = ((magnitude * scale) + (MATHX_ONE / 2)) / MATHX_ONE;
         if (digits == 0) {
             length = snprintf(text, sizeof text, "%s%" PRIu64, v < 0 ? "-" : "", decimal);
         } else {
