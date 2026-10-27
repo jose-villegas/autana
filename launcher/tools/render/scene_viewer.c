@@ -181,9 +181,8 @@ setup(int quarter) {
             scene_unload(scene);
             return false;
         }
-        fprintf(counts, "frame,ms,nodes_visited,nodes_cut,clusters_tested,clusters_kept,clusters_not_set_up,"
-                        "clusters_hidden,clusters_drawn,triangles_submitted,triangles_behind,triangles_clipped,"
-                        "triangles_missed,triangles_facing_away,triangles_set_up,triangles_covering\n");
+#define COUNT_NAME(name, member) "," #name
+        fprintf(counts, "frame,ms" RASTER_CULL_FRAME_FIELDS(COUNT_NAME) "\n");
     }
     if (size_width > 0) {
         const resolution_step_t size = {size_width, size_height};
@@ -200,12 +199,10 @@ draw(const render_frame_t* frame) {
         return;
     }
     const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
-    const r3d_pipeline_counts_t* n = &f.counts;
-    fprintf(counts, "%d,%u,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", frame->index, (unsigned)frame->elapsed_ms,
-            n->nodes_visited, n->nodes_cut, n->clusters_tested, n->clusters_kept, f.clusters[RASTER_FATE_NOT_SET_UP],
-            f.clusters[RASTER_FATE_HIDDEN], f.clusters[RASTER_FATE_DRAWN], n->triangles_submitted, n->triangles_behind,
-            n->triangles_clipped, n->triangles_missed, n->triangles_facing_away, n->triangles_set_up,
-            f.triangles_covering);
+    fprintf(counts, "%d,%u", frame->index, (unsigned)frame->elapsed_ms);
+#define COUNT_VALUE(name, member) fprintf(counts, ",%d", f.member);
+    RASTER_CULL_FRAME_FIELDS(COUNT_VALUE)
+    fputc('\n', counts);
     if (frame->index + 1 == frame->count) {
         fclose(counts);
         counts = NULL;
