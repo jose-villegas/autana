@@ -28,7 +28,7 @@ from audio_drc_sweep import AUDIO, DB_AMPLITUDE_SCALE, DRC_LEVEL_DB, TUNABLES, V
 from audio_doc_blocks import CLIPPED_DBFS, caption, details, picture
 
 EQ_RESTART_CAPTURE = Path("docs/audio/data/mic_eq_restart_capture.txt")
-PLAYBACK_CAPTURE = Path("docs/audio/data/mic_playback_capture.txt")
+PLAYBACK_CAPTURE = Path("docs/audio/data/playback/mic_playback_capture.txt")
 EQ_SLOTS_CAPTURE = Path("docs/audio/data/mic_eq_slots_capture.txt")
 EQ_CAPTURE = Path("docs/audio/data/mic_eq_probe_capture.txt")
 MIC_CAPTURE = Path("docs/audio/data/audio_mic_dsp_capture.txt")
