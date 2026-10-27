@@ -12,7 +12,6 @@ from tracked import tracked_files
 DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)\b((?:[^\n]*\\\r?\n)*[^\n]*)", re.M)
 ENUM = re.compile(r"\benum\s*(?:[A-Za-z_]\w*\s*)?\{([^{}]*)\}", re.S)
 MEMBER = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*$", re.S)
-LITERAL = re.compile(r"(?:0[xX][0-9a-fA-F]+|0|[1-9]\d*)[uUlL]*$")
 INTEGER = re.compile(r"(?<![\w.])(?:0[xX][0-9a-fA-F]+|0|[1-9]\d*)[uUlL]*(?![\w.])")
 FUNCTION_BODY = re.compile(
     r"\)(?:\s*(?!(?:enum|typedef|struct|class|union|namespace)\b)[A-Za-z_]\w*\b)*\s*$"
@@ -145,15 +144,14 @@ class ConstantIndex:
         return resolved
 
 
-def constants(root, *, literal_only=False):
+def constants(root, *, decimal_only=False):
     texts = {path.relative_to(root).as_posix(): path.read_text(encoding="utf-8", errors="replace")
              for path in source_files(root)}
-    # Documentation claims match decimal #define and enum values; hex and const scalars are left out.
-    index = ConstantIndex(texts, kinds={"define", "enum"} if literal_only else None)
+    # Documentation claims match decimal #define and enum values, folded; hex and const scalars are left out.
+    index = ConstantIndex(texts, kinds={"define", "enum"} if decimal_only else None)
     counts = {}
     for records in index.by_file.values():
         for record in records:
             counts[record.name] = counts.get(record.name, 0) + 1
     return {record.name: value for record, value in index.visible(texts)
-            if counts[record.name] == 1 and (not literal_only or
-               LITERAL.fullmatch(record.expression) and not record.expression.lower().startswith("0x"))}
+            if counts[record.name] == 1 and (not decimal_only or "0x" not in record.expression.lower())}

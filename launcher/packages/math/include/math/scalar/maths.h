@@ -13,10 +13,7 @@
 
 static inline int16_t
 maths_saturate(int32_t v) {
-    if (v > INT16_MAX) {
-        return INT16_MAX;
-    }
-    return v < INT16_MIN ? INT16_MIN : (int16_t)v;
+    return (int16_t)mathi_min(mathi_max(v, INT16_MIN), INT16_MAX);
 }
 
 static inline int16_t

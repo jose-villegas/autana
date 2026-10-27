@@ -27,7 +27,8 @@ test_previous_frame_drives_duration_and_statistics(void) {
     const int64_t steps[] = {0, 7 * MATH_US_PER_MS, MATH_US_PER_MS, 2 * MATH_US_PER_MS};
     fixture_t f = {times, steps, sizeof times / sizeof times[0], 0};
     const frame_profile_scenario_t scenario = {"script", 10 * MATH_US_PER_MS};
-    const frame_profile_t p = frame_profile_play(&scenario, scripted_frame, &f, NULL);
+    frame_profile_trace_t trace;
+    const frame_profile_t p = frame_profile_play(&scenario, scripted_frame, &f, &trace);
     TEST_ASSERT_EQUAL_INT(f.count, f.calls);
     TEST_ASSERT_EQUAL_INT(3, p.frames);
     TEST_ASSERT_EQUAL_INT64(6 * MATH_US_PER_MS, p.total_us);
@@ -36,6 +37,16 @@ test_previous_frame_drives_duration_and_statistics(void) {
     TEST_ASSERT_EQUAL_INT64(2 * MATH_US_PER_MS, p.frame_us.avg);
     TEST_ASSERT_EQUAL_INT64(2 * MATH_US_PER_MS, p.frame_us.med);
     TEST_ASSERT_EQUAL_INT64(3 * MATH_US_PER_MS, p.frame_us.p95);
+    /* The trace keeps each frame where the previous frames' times have carried the path. */
+    TEST_ASSERT_EQUAL_INT(p.frames, trace.frames);
+    const int32_t path_ms[] = {7, 8, 10};
+    for (int i = 0; i < trace.frames; i++) {
+        TEST_ASSERT_EQUAL_INT32(path_ms[i], trace.frame[i].path_ms);
+        TEST_ASSERT_EQUAL_INT32((int32_t)times[i + 1], trace.frame[i].frame_us);
+    }
+    frame_profile_trace_free(&trace);
+    TEST_ASSERT_NULL(trace.frame);
+    TEST_ASSERT_EQUAL_INT(0, trace.frames);
 }
 
 enum { SCRIPT_CAPACITY = 8, SAMPLE_US = FRAME_PROFILE_MIN_FRAME_US, CLIP_US = 3 * SAMPLE_US };
@@ -134,26 +145,6 @@ test_allocation_failure(void) {
 #endif
 
 static void
-test_trace_keeps_each_frame_at_its_path_time(void) {
-    const int64_t times[] = {7 * MATH_US_PER_MS, MATH_US_PER_MS, 3 * MATH_US_PER_MS, 3 * MATH_US_PER_MS};
-    const int64_t steps[] = {0, 7 * MATH_US_PER_MS, MATH_US_PER_MS, 3 * MATH_US_PER_MS};
-    fixture_t f = {times, steps, sizeof times / sizeof times[0], 0};
-    const frame_profile_scenario_t scenario = {"script", 10 * MATH_US_PER_MS};
-    frame_profile_trace_t trace;
-    const frame_profile_t p = frame_profile_play(&scenario, scripted_frame, &f, &trace);
-    TEST_ASSERT_EQUAL_INT(p.frames, trace.frames);
-    /* Each frame draws the path where the previous frames' times have carried it. */
-    const int32_t path_ms[] = {7, 8, 11};
-    for (int i = 0; i < trace.frames; i++) {
-        TEST_ASSERT_EQUAL_INT32(path_ms[i], trace.frame[i].path_ms);
-        TEST_ASSERT_EQUAL_INT32((int32_t)times[i + 1], trace.frame[i].frame_us);
-    }
-    frame_profile_trace_free(&trace);
-    TEST_ASSERT_NULL(trace.frame);
-    TEST_ASSERT_EQUAL_INT(0, trace.frames);
-}
-
-static void
 test_trace_is_empty_when_the_profile_fails(void) {
     const int64_t times[] = {SAMPLE_US, SAMPLE_US, 0};
     const int64_t steps[] = {0, SAMPLE_US, SAMPLE_US};
@@ -211,7 +202,6 @@ suite_frame_profile(void) {
     RUN_TEST(test_invalid_frame_times);
     RUN_TEST(test_invalid_duration);
     RUN_TEST(test_sample_capacity_fails_without_overrun);
-    RUN_TEST(test_trace_keeps_each_frame_at_its_path_time);
     RUN_TEST(test_trace_is_empty_when_the_profile_fails);
     RUN_TEST(test_worst_frames_slowest_first);
 #ifdef HOST_HEAP_ARENA

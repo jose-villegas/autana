@@ -4,18 +4,44 @@ Create it with git worktree add --detach SCRATCH HEAD, then run:
 python launcher/tools/audio/sound_mix_image.py SCRATCH --sound tap --format pcm16 --voices 32
 Hold one autana lock across autana --project SCRATCH flash dev and capture.
 Run sound_mix_capture.py from SCRATCH with --tree SCRATCH in that hold.
-Only the scratch image contains the format variant and optional capacity override.
+Only the scratch image contains the format variant, its locally baked lock row and the optional
+capacity override.
 """
 import argparse
+import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from bake import produce
+from bake.bake import default_cache, ROW_FIELDS
+
+LOCK = Path("launcher/bakes.lock")
 SOUNDS = Path("launcher/main/engine/sounds")
 HEADER = Path("launcher/main/sound/sound_play.h")
 VOICE_DEFINE = re.compile(rb"^#define[ \t]+SOUND_VOICE_COUNT\b[^\r\n]*", re.MULTILINE)
+MADE = re.compile(r"^made (\S+)  key ([0-9a-f]{64})", re.MULTILINE)
+
+
+def lock_variant(tree, output, cache=None):
+    """Bakes the variant on this host and appends its row to the scratch lock.
+
+    A new sound key has no CI row, and `bake.py lock --seed` would lock the recipe text, not a sound.
+    """
+    made = subprocess.run([sys.executable, str(tree / "launcher/tools/bake/bake.py"), "bake", str(tree / "launcher/main"),
+                           "--kind", "sound", "--only", output], cwd=tree, check=True, capture_output=True,
+                          text=True).stdout
+    match = next((found for found in MADE.finditer(made) if found[1] == output), None)
+    row = match and produce.made(match[2], cache or default_cache())
+    if not row:
+        raise ValueError(f"bake.py made no {output}")
+    fields = "".join(f"{name} = {json.dumps(row[name])}\n" for name in ROW_FIELDS if name in row)
+    with (tree / LOCK).open("a", encoding="utf-8", newline="\n") as lock:
+        lock.write(f"\n[[bake]]\n{fields}")
 
 
 def prepare(tree, sound, fmt, voices=None):
@@ -35,7 +61,7 @@ def prepare(tree, sound, fmt, voices=None):
     asset = SOUNDS / f"{sound}_{fmt}.sound.toml"
     status = subprocess.run(["git", "-C", str(tree), "status", "--porcelain", "--untracked-files=all"],
                             check=True, capture_output=True, text=True).stdout
-    allowed = {asset.as_posix()}
+    allowed = {asset.as_posix(), LOCK.as_posix()}
     if voices is not None:
         allowed.add(HEADER.as_posix())
     if any(line[3:] not in allowed for line in status.splitlines()):
@@ -51,6 +77,7 @@ def prepare(tree, sound, fmt, voices=None):
             raise ValueError("expected exactly one SOUND_VOICE_COUNT define")
         header.write_bytes(VOICE_DEFINE.sub(f"#define SOUND_VOICE_COUNT {voices}".encode(), raw))
     (tree / asset).write_bytes(replaced)
+    lock_variant(tree, f"{sound}_{fmt}.sond")
 
 
 def main():

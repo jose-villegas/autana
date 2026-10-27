@@ -18,6 +18,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "input/input.h"
+#include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
 #include "render_host.h"
@@ -61,7 +62,7 @@ static int console_step_count;
 
 /* --size WxH: the scene drawn at that render size, either axis on its own,
  * as one dynamic-resolution step; 0 keeps the scene's own scale. */
-static int size_width, size_height;
+static recti_t size_rect;
 
 /* The value after `name` in `out`, NULL when the option is absent; false,
  * with a message, when it is the last argument and has none. */
@@ -150,13 +151,11 @@ options(int argc, char** argv) {
         return false;
     }
     if (at != NULL) {
-        int x;
-        int y;
-        if (sscanf(at, "%d,%d", &x, &y) != 2) {
+        if (!vec2i_parse(at, NULL, &touch[0].point)) {
             (void)fprintf(stderr, "render_lab_render_host: --tap is X,Y in panel pixels, not %s\n", at);
             return false;
         }
-        touch[1].point = touch[0].point = (vec2i_t){x, y};
+        touch[1].point = touch[0].point;
         tap = true;
     }
     if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)
@@ -165,8 +164,8 @@ options(int argc, char** argv) {
         return false;
     }
     if (size != NULL
-        && (sscanf(size, "%dx%d", &size_width, &size_height) != 2 || size_width <= 0 || size_height <= 0
-            || size_width > GFX_WIDTH || size_height > GFX_HEIGHT)) {
+        && (!recti_parse(size, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
+            || size_rect.h <= 0 || size_rect.w > GFX_WIDTH || size_rect.h > GFX_HEIGHT)) {
         (void)fprintf(stderr, "render_lab_render_host: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT,
                       size);
         return false;
@@ -212,8 +211,8 @@ setup(int quarter) {
         (void)fprintf(stderr, "--camera: no camera %s in this scene\n", render_lab_start_camera);
         return false;
     }
-    if (size_width > 0) {
-        const resolution_step_t size = {size_width, size_height};
+    if (size_rect.w > 0) {
+        const resolution_step_t size = {size_rect.w, size_rect.h};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     }
