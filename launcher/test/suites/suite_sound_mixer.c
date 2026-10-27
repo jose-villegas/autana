@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "audio/audio_adpcm.h"
+#include "fixtures/sound_mixer_oracle.h"
+#include "math/scalar/rng.h"
 #include "sound/sound_engine.h"
 #include "sound/sound_mixer.h"
 #include "suites.h"
@@ -1066,8 +1069,172 @@ test_sound_declick_amp_off_discards_tail(void) {
     TEST_ASSERT_EQUAL_INT32(0, f->mixer.residual);
 }
 
+enum {
+    BLOCK_FRAMES = 128,
+    SOURCE_FRAMES = 259,
+    BLOCKS = 9,
+    SEEDS = 3,
+    STOP_BLOCK = 3,
+    STEAL_BLOCK = 1,
+    RESTART_BLOCK = 5,
+    STEAL_HANDLE = SOUND_VOICE_COUNT + 1,
+    RESTART_HANDLE = STEAL_HANDLE + SOUND_VOICE_COUNT,
+    DECLICK_MODE = 1U << 0,
+    MASTER_MODE = 1U << 1,
+    BUS_MODE = 1U << 2,
+    MODE_COUNT = BUS_MODE << 1,
+    ADPCM_BYTES = AUDIO_ADPCM_BLOCK_HEADER_BYTES + (SOURCE_FRAMES - 1) / AUDIO_ADPCM_CODES_PER_BYTE
+};
+
+typedef struct {
+    sound_mixer_t actual, expected;
+    uint8_t pcm[SOURCE_FRAMES * SOUND_PCM_BYTES];
+    uint8_t adpcm[ADPCM_BYTES];
+    int16_t out[BLOCK_FRAMES], reference[BLOCK_FRAMES], scratch[BLOCK_FRAMES];
+    int32_t accumulator[BLOCK_FRAMES];
+} comparison_t;
+
+static void
+seed_comparison(comparison_t* f, unsigned seed) {
+    rng_t random;
+    rng_seed(&random, seed);
+    for (unsigned i = 0; i < sizeof f->pcm; i++) {
+        f->pcm[i] = (uint8_t)rng_next(&random);
+    }
+    for (unsigned i = 0; i < sizeof f->adpcm; i++) {
+        f->adpcm[i] = (uint8_t)rng_next(&random);
+    }
+    f->adpcm[AUDIO_ADPCM_AT_STEP_INDEX] = AUDIO_ADPCM_STEP_INDEX_MAX;
+    f->adpcm[AUDIO_ADPCM_AT_RESERVED] = 0;
+    if (seed == 1) {
+        for (unsigned i = 0; i < SOURCE_FRAMES; i++) {
+            const int16_t sample = i < BLOCK_FRAMES ? INT16_MAX : INT16_MIN;
+            f->pcm[i * SOUND_PCM_BYTES] = (uint8_t)sample;
+            f->pcm[i * SOUND_PCM_BYTES + 1] = (uint8_t)((uint16_t)sample >> CHAR_BIT);
+        }
+    }
+}
+
+static void
+start_comparison(comparison_t* f, unsigned seed, unsigned voices, uint8_t gain, unsigned mode, const sound_t* pcm,
+                 const sound_t* adpcm) {
+    sound_mixer_init(&f->actual);
+    f->actual.declick_frames = mode & DECLICK_MODE ? BLOCK_FRAMES : 0;
+    f->actual.master_gain = mode & MASTER_MODE ? SOUND_GAIN_MAX_PCT / 2 : SOUND_GAIN_MAX_PCT;
+    f->actual.bus_gain[SOUND_BUS_SFX.id] = mode & BUS_MODE ? SOUND_GAIN_MAX_PCT / 2 : SOUND_GAIN_MAX_PCT;
+    for (unsigned v = 0; v < voices; v++) {
+        sound_command_t command = {.kind = SOUND_COMMAND_PLAY,
+                                   .app_generation = SOUND_APP_GENERATION_ENGINE,
+                                   .voice = {.id = v + 1},
+                                   .bus = SOUND_BUS_SFX,
+                                   .gain_pct = gain,
+                                   .loop = seed != SEEDS,
+                                   .sound = seed != 1 && ((v + seed) & 1U) == 0 ? adpcm : pcm};
+        sound_mixer_apply(&f->actual, &command, SOUND_APP_GENERATION_ENGINE);
+    }
+}
+
+static void
+command_comparison(comparison_t* f, unsigned voices, uint8_t gain, unsigned block, const sound_t* adpcm) {
+    if (voices && (block == STOP_BLOCK || block == STEAL_BLOCK || block == RESTART_BLOCK)) {
+        sound_command_t command = {.kind = block == STOP_BLOCK ? SOUND_COMMAND_STOP : SOUND_COMMAND_PLAY,
+                                   .app_generation = SOUND_APP_GENERATION_ENGINE,
+                                   .voice = {.id = block == RESTART_BLOCK ? RESTART_HANDLE : STEAL_HANDLE},
+                                   .bus = SOUND_BUS_SFX,
+                                   .gain_pct = gain,
+                                   .loop = false,
+                                   .sound = adpcm};
+        sound_mixer_apply(&f->actual, &command, SOUND_APP_GENERATION_ENGINE);
+        sound_mixer_apply(&f->expected, &command, SOUND_APP_GENERATION_ENGINE);
+    }
+}
+
+static void
+compare_render_block(comparison_t* f, unsigned block) {
+    sound_mixer_render(&f->actual, f->out, f->accumulator, f->scratch, BLOCK_FRAMES, block, 0);
+    oracle_sound_mixer_render(&f->expected, f->reference, f->accumulator, f->scratch, BLOCK_FRAMES, block, 0);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(f->reference, f->out, BLOCK_FRAMES);
+    TEST_ASSERT_EQUAL_INT(f->expected.amp, f->actual.amp);
+    TEST_ASSERT_EQUAL_INT32(f->expected.residual, f->actual.residual);
+    for (unsigned v = 0; v < SOUND_VOICE_COUNT; v++) {
+        const sound_mix_voice_t* expected = &f->expected.voices[v];
+        const sound_mix_voice_t* actual = &f->actual.voices[v];
+        TEST_ASSERT_EQUAL(expected->playing, actual->playing);
+        TEST_ASSERT_EQUAL(expected->first_render, actual->first_render);
+        TEST_ASSERT_EQUAL_INT32(expected->last_sample, actual->last_sample);
+        TEST_ASSERT_EQUAL_UINT32(expected->source.cursor.position, actual->source.cursor.position);
+    }
+}
+
+static void
+check_render_oracle(unsigned voices) {
+    comparison_t* f = malloc(sizeof *f);
+    TEST_ASSERT_NOT_NULL(f);
+    static const uint8_t gains[] = {0, 1, SOUND_GAIN_MAX_PCT / 2, SOUND_GAIN_MAX_PCT};
+    const sound_t pcm = {
+        .data = f->pcm, .frames = SOURCE_FRAMES, .loop_start = 1, .loop_end = SOURCE_FRAMES - 1, .format = SOUND_PCM16};
+    const sound_t adpcm = {
+        .data = f->adpcm, .frames = SOURCE_FRAMES, .block_frames = SOURCE_FRAMES, .format = SOUND_IMA_ADPCM};
+    for (unsigned seed = 1; seed <= SEEDS; seed++) {
+        seed_comparison(f, seed);
+        for (unsigned g = 0; g < sizeof gains / sizeof gains[0]; g++) {
+            for (unsigned mode = 0; mode < MODE_COUNT; mode++) {
+                start_comparison(f, seed, voices, gains[g], mode, &pcm, &adpcm);
+                f->expected = f->actual;
+                for (unsigned block = 0; block < BLOCKS; block++) {
+                    command_comparison(f, voices, gains[g], block, &adpcm);
+                    compare_render_block(f, block);
+                }
+            }
+        }
+    }
+    free(f);
+}
+
+static void
+test_render_no_voices_matches_oracle(void) {
+    check_render_oracle(0);
+}
+
+static void
+test_render_one_voice_matches_oracle(void) {
+    check_render_oracle(1);
+}
+
+static void
+test_render_two_voices_matches_oracle(void) {
+    check_render_oracle(2);
+}
+
+static void
+test_render_all_voices_matches_oracle(void) {
+    check_render_oracle(SOUND_VOICE_COUNT);
+}
+
+static void
+test_empty_loop_matches_oracle(void) {
+    fixture_t* f = fixture();
+    const sound_play_opts_t opts = {.bus = SOUND_BUS_SFX, .gain_pct = SOUND_GAIN_MAX_PCT, .loop = true};
+    (void)play(f, &opts);
+    f->sound.frames = 0;
+    sound_mixer_t* expected = malloc(sizeof *expected);
+    TEST_ASSERT_NOT_NULL(expected);
+    *expected = f->mixer;
+    memset(f->out, 1, sizeof f->out);
+    oracle_sound_mixer_render(expected, f->expected, f->accumulator, f->scratch, TEST_FRAMES, 0, 0);
+    sound_mixer_render(&f->mixer, f->out, f->accumulator, f->scratch, TEST_FRAMES, 0, 0);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(f->expected, f->out, TEST_FRAMES);
+    TEST_ASSERT_FALSE(f->mixer.voices[0].playing);
+    free(expected);
+}
+
 void
 run_sound_mixer_suite(void) {
+    RUN_TEST(test_empty_loop_matches_oracle);
+    RUN_TEST(test_render_no_voices_matches_oracle);
+    RUN_TEST(test_render_one_voice_matches_oracle);
+    RUN_TEST(test_render_two_voices_matches_oracle);
+    RUN_TEST(test_render_all_voices_matches_oracle);
     RUN_TEST(test_sound_declick_amp_off_discards_tail);
     RUN_TEST(test_sound_declick_cuts_preserve_continuity);
     RUN_TEST(test_sound_declick_zero_signal_and_authored_loop_seam);

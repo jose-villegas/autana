@@ -1,14 +1,14 @@
-# ELF sha256=ed233b28beddde16b66a2a3c170c77475e53500d6d9f87c9824c93263701b7c7
+# ELF sha256=70eac0197d1e7648c179216eb574c08c8e22f3e72aefbfd888123909cba7bf53
 # row	symbol	bytes	region; sizes belong to the --from-elf build
 add_f	math_bench_add_f	60	flash
 add_i	math_bench_add_i	46	flash
-add_s	math_bench_add_s	118	flash
-add_x	math_bench_add_x	235	flash
+add_s	math_bench_add_s	87	flash
+add_x	math_bench_add_x	233	flash
 atan2f_f	atan2f	397	flash
 atan2f_f	math_bench_atan2f_f	43	flash
 convert_f_to_i	math_bench_convert_f_to_i	246	flash
 convert_f_to_s	math_bench_convert_f_to_s	269	flash
-convert_f_to_x	math_bench_convert_f_to_x	258	flash
+convert_f_to_x	math_bench_convert_f_to_x	254	flash
 convert_i_to_f	math_bench_convert_i_to_f	46	flash
 convert_s_to_f	math_bench_convert_s_to_f	63	flash
 convert_x_to_f	math_bench_convert_x_to_f	61	flash
@@ -27,7 +27,7 @@ dot_x	math_bench_dot_x	499	flash
 lerp_f	math_bench_lerp_f	73	flash
 lerp_i	math_bench_lerp_i	269	flash
 lerp_s	math_bench_lerp_s	102	flash
-lerp_x	math_bench_lerp_x	557	flash
+lerp_x	math_bench_lerp_x	561	flash
 mat4_mul_f	math_bench_mat4_mul_f	170	flash
 mat4_mul_f	memcpy	245	ROM
 mat4_mul_x	math_bench_mat4_mul_x	823	flash
@@ -37,6 +37,7 @@ mathf_rsqrt_approx_f	math_bench_mathf_rsqrt_approx_f	61	flash
 mathf_rsqrt_f	__divsf3	-	ROM
 mathf_rsqrt_f	math_bench_mathf_rsqrt_f	135	flash
 mathf_rsqrt_f	sqrtf	16	flash
+maths_saturate_s	math_bench_maths_saturate_s	42	flash
 mathx_rsqrt_q30_x	math_bench_mathx_rsqrt_q30_x	46	flash
 mathx_rsqrt_q30_x	mathx_rsqrt_q30	1002	flash
 mul_f	math_bench_mul_f	36	flash
@@ -49,9 +50,8 @@ nlerp_div_x	mathi_isqrt64_digits	403	flash
 nlerp_f	__divsf3	-	ROM
 nlerp_f	math_bench_nlerp_f	303	flash
 nlerp_f	sqrtf	16	flash
-nlerp_x	math_bench_nlerp_x	2200	flash
+nlerp_x	math_bench_nlerp_x	2196	flash
 nlerp_x	mathx_rsqrt_q30	1002	flash
-nlerp_x	mathx_rsqrt_seeds	192	rodata
 normalize_div_x	__udivdi3	582	ROM
 normalize_div_x	math_bench_normalize_div_x	736	flash
 normalize_div_x	mathi_isqrt64_digits	403	flash
@@ -61,22 +61,21 @@ normalize_f	sqrtf	16	flash
 normalize_x	__assert_func	236	IRAM
 normalize_x	math_bench_normalize_x	665	flash
 normalize_x	mathx_rsqrt_q30	1002	flash
-normalize_x	mathx_rsqrt_seeds	192	rodata
 quat_mul_f	math_bench_quat_mul_f	108	flash
 quat_mul_x	math_bench_quat_mul_x	2467	flash
 scale_f	math_bench_scale_f	54	flash
 scale_i	math_bench_scale_i	45	flash
-scale_s	math_bench_scale_s	124	flash
+scale_s	math_bench_scale_s	84	flash
 scale_x	math_bench_scale_x	356	flash
 sinf_f	_sinf	119	flash
 sinf_f	math_bench_sinf_f	52	flash
 slerp_f	__divsf3	-	ROM
-slerp_f	math_bench_slerp_f	777	flash
+slerp_f	math_bench_slerp_f	781	flash
 slerp_f	sqrtf	16	flash
 sqrtf_f	math_bench_sqrtf_f	34	flash
 sqrtf_f	sqrtf	16	flash
 transform_compute_matrix_f	math_bench_transform_compute_matrix_f	222	flash
-transform_compute_matrix_x	mat4x_from_trs	7308	flash
+transform_compute_matrix_x	mat4x_from_trs	7316	flash
 transform_compute_matrix_x	math_bench_transform_compute_matrix_x	80	flash
 transform_compute_matrix_x	memcpy	245	ROM
 trig_sin_i	math_bench_trig_sin_i	192	flash
