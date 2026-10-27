@@ -35,6 +35,7 @@
 #include "math/geometry/iso_surface.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
+#include "math/scalar/mathi.h"
 #include "math/scalar/units.h"
 #include "physics/fluid/flip3.h"
 #include "profile/frame_cost.h"
@@ -76,9 +77,9 @@ static const char* TAG = "water";
 /* The surface sits where the density is half the rest density. */
 #define WATER_SURFACE_LEVEL 0.5F
 
-/* The most substeps one frame runs: a long frame drops the rest, slowing
- * the water rather than costing a burst. */
-#define WATER_MAX_SUBSTEPS  4U
+/* The most simulated time one frame advances: a longer frame slows the
+ * water rather than costing a burst. */
+#define WATER_MAX_STEP_MS   32
 
 /* Earth's gravity, mm/s^2. The water runs under a share of it: at full
  * gravity a tank this small sloshes faster than a frame can follow, and a
@@ -89,8 +90,9 @@ TUNE(water, gravity_mm_s2, 2000, 100, WATER_EARTH_MM_S2);
 /* 1 puts the grid in internal RAM, 0 in PSRAM: for measuring which the
  * step needs. Read when the scene enters. */
 TUNE(water, grid_internal, 0, 0, 1);
-/* Simulated time per substep: longer ones run fewer a frame. */
-TUNE(water, substep_ms, 8, 8, 40);
+/* Substeps a frame, each an equal share of its simulated time: the same
+ * count every frame, so the cost does not alternate. */
+TUNE(water, substeps, 4, 1, 4);
 /* Rest: while the push holds within WATER_REST_G and no particle moves
  * faster than this, in um/s, for WATER_REST_UPDATES updates, the step and
  * the surface are skipped and the last mesh stays. 0 never rests. */
@@ -189,7 +191,6 @@ static int fill_percent = WATER_FILL_DEFAULT;
 static int filled_percent;
 static bool touring;
 static uint32_t tour_ms;
-static uint32_t carried_ms;
 static uint32_t step_us;
 static vec3f_t last_accel_g;
 static uint32_t still_updates;
@@ -578,7 +579,6 @@ scene_water_enter(const render_lab_scene_t* self) {
     gravity_reset(&gravity);
     motion_seen = false;
     truncated = false;
-    carried_ms = 0;
     tour_ms = 0;
     flip3_time_stages(&water, timing_now_us, stats.flip3_us);
     flip3_split_with(&water, two_core != 0 ? water_split : NULL);
@@ -616,20 +616,13 @@ scene_water_update(uint32_t dt_ms) {
     const int64_t started = timing_now_us();
     stats.updates++;
     if (resting(accel_g)) {
-        carried_ms = 0;
         stats.rested++;
     } else {
         const vec3f_t accel = vec3f_scale(accel_g, (float)gravity_mm_s2);
-        const uint32_t substep = (uint32_t)substep_ms;
-        carried_ms += dt_ms;
-        uint32_t steps = 0;
-        while (carried_ms >= substep && steps < WATER_MAX_SUBSTEPS) {
-            flip3_step(&water, (float)substep / (float)MATH_MS_PER_S, accel);
-            carried_ms -= substep;
-            steps++;
-        }
-        if (steps == WATER_MAX_SUBSTEPS) {
-            carried_ms = 0;
+        const uint32_t steps = dt_ms == 0 ? 0 : (uint32_t)substeps;
+        const float substep_s = (float)mathi_min((int)dt_ms, WATER_MAX_STEP_MS) / (float)MATH_MS_PER_S / (float)steps;
+        for (uint32_t i = 0; i < steps; i++) {
+            flip3_step(&water, substep_s, accel);
         }
         stats.substeps += steps;
         stats.peak_speed_mm_s = sqrtf(flip3_peak_speed_sq(&water));

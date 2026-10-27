@@ -45,7 +45,7 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | `render water tour` | plays the scripted tour the GIF below shows, for renders and repeatable timings |
 | `water.gravity_mm_s2` | the gravity the water runs under; below Earth's, so a 35 mm tank sloshes at a pace a frame can follow |
 | `water.grid_internal` | 1 places the simulation grid in internal RAM, for measuring against PSRAM; read when the scene enters |
-| `water.substep_ms` | simulated time per substep; longer ones run fewer per frame |
+| `water.substeps` | substeps per frame (1 to 4), each an equal share of the frame's simulated time, at most 32 ms |
 | `water.two_core` | 1 (default) runs half of the particle passes, the surface field and the shading on core 1 (`job_run_split()`); 0 keeps them on one core |
 | `water.rest_um_s` | above 0, the step and the surface are skipped while the push holds and no particle moves faster than this, in um/s |
 
@@ -54,7 +54,7 @@ Each frame, while the last one goes out to the panel:
 | Step | Owner |
 |---|---|
 | Gravity and shake, in g, box axes | `input/motion/gravity.h` |
-| Up to four substeps of `water.substep_ms`, none at rest | `physics/fluid/flip3.h` `flip3_step()` |
+| `water.substeps` substeps, none at rest | `physics/fluid/flip3.h` `flip3_step()` |
 | The smoothed surface field | `flip3_field()` |
 | Its surface, as triangles | `math/geometry/iso_surface.h` `iso_surface_nets()` |
 | Shading per vertex, encoded through a table | the scene; `r3d_skin_light_encode()` |

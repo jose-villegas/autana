@@ -21,24 +21,19 @@ static const char* TAG = "water_perf";
 typedef struct {
     const char* name;
     int32_t grid_internal;
-    int32_t substep_ms;
+    int32_t substeps;
     int32_t rest_um_s;
     int32_t two_core;
 } water_config_t;
 
-/* The baseline, then one change each: on one core, the grid in internal
- * RAM (a measurement: whether the step waits on PSRAM), two and one
- * substeps a frame, and skipping the step at rest below 2 mm/s. */
+/* The baseline, then one change each: on one core, two and one substeps
+ * a frame, and skipping the step at rest below 2 mm/s. The grid in
+ * internal RAM measured the same as in PSRAM, so it is not a row. */
 static const water_config_t configs[] = {
-    {"base", 0, 8, 0, 1},
-    {"one_core", 0, 8, 0, 0},
-    {"internal", 1, 8, 0, 1},
-    {"sub16", 0, 16, 0, 1},
-    {"sub33", 0, WATER_PERF_FRAME_MS, 0, 1},
-    {"rest", 0, 8, 2000, 1},
+    {"base", 0, 4, 0, 1}, {"one_core", 0, 4, 0, 0}, {"sub2", 0, 2, 0, 1}, {"sub1", 0, 1, 0, 1}, {"rest", 0, 4, 2000, 1},
 };
 
-static const char* const tunes[] = {TUNE_NAME(water, grid_internal), TUNE_NAME(water, substep_ms),
+static const char* const tunes[] = {TUNE_NAME(water, grid_internal), TUNE_NAME(water, substeps),
                                     TUNE_NAME(water, rest_um_s), TUNE_NAME(water, two_core)};
 
 /* A row's frames: whole frame, update and draw, in us. */
@@ -122,7 +117,7 @@ log_row(const char* config, const char* phase) {
 /* The tour once at a fixed frame time, one row per phase. */
 static void
 play(const water_config_t* config) {
-    const int32_t values[] = {config->grid_internal, config->substep_ms, config->rest_um_s, config->two_core};
+    const int32_t values[] = {config->grid_internal, config->substeps, config->rest_um_s, config->two_core};
     for (size_t i = 0; i < sizeof tunes / sizeof tunes[0]; i++) {
         TEST_ASSERT_TRUE(tune_set(tune_shared(), tunes[i], values[i]));
     }
