@@ -75,6 +75,11 @@ class SceneEntryTests(SceneFiles):
         for value in (str(HEADER.size), str(owner_size), str(scene_asset.OWNER)):
             self.assertIn(value, str(raised.exception))
 
+    def test_host_scene_with_a_mesh_encodes_a_renderer_row(self):
+        from scene import scene_host
+        entry = scene_host.one_entity_scene("mesh")
+        self.assertGreater(len(entry), len(scene_host.one_entity_scene()))
+
     def test_skinned_renderer_forwards_cache_and_offline(self):
         import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n')
         objects = renderer("rig.import.toml").replace("mesh_renderer", "skinned_renderer")
