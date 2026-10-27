@@ -381,7 +381,7 @@ draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_col
     for (int i = 1; i + 1 < n; i++) {
         area2 += signed_area2(s[0].x, s[0].y, s[i].x, s[i].y, s[i + 1].x, s[i + 1].y);
     }
-    if (!double_sided && (area2 ^ lens->flip) >= lens->flip) {
+    if (facing_away((int32_t)((area2 > 0) - (area2 < 0)), lens->flip, double_sided)) {
         return;
     }
     for (int i = 1; i + 1 < n; i++) {
