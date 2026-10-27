@@ -1,7 +1,7 @@
 /*
  * render_host: the shared host render procedure. Real scene code draws into
  * gfx-owned pictures; gfx_read_panel_row() supplies completed output.
- * BMP and AVI encoding use console/capture/screenshot.h. No device access.
+ * BMP and AVI encoding use gfx/capture/screenshot.h. No device access.
  */
 
 #include "render_host.h"
@@ -10,10 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "console/capture/screenshot.h"
 #include "console/console_tune.h"
 #include "core/tune.h"
 #include "draw/draw.h"
+#include "gfx/capture/screenshot.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"

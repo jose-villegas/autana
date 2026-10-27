@@ -1,7 +1,7 @@
 #include <limits.h>
 #include <string.h>
-#include "console/verbs/console_battery_reply.h"
 #include "power/axp2101_regs.h"
+#include "power/console/console_battery_reply.h"
 #include "power/power_cache.h"
 #include "power/power_decode.h"
 #include "suites.h"

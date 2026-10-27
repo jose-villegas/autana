@@ -52,7 +52,7 @@ Run `autana tone <hz> <ms> [volume] [--internal] [--json]`, or the console verb
 
 `console_tone_check()` opens capture, measures its DMA-capable heap cost,
 runs the check, and closes capture. `melody check` uses the same function
-(`launcher/main/console/verbs/console_tone.c`).
+(`launcher/main/sound/console/console_tone.c`).
 
 The console uses `audio_loopback_measure()` for a baseline, starts a SYSTEM-bus
 tone through the mixer, measures again, then stops the voice. It waits for

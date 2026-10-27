@@ -10,7 +10,7 @@
 #include "asset/asset_store.h"
 #include "audio/audio_out.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_sound.h"
+#include "sound/console/console_sound.h"
 
 #define CONSOLE_SOUND_WORD_COUNT_MAX 4
 /* 500 Hz remains audible while the second difference rejects its steady tone. */

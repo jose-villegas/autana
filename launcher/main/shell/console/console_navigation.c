@@ -1,5 +1,5 @@
 /* console_navigation: see console_navigation.h. */
-#include "console/verbs/console_navigation.h"
+#include "shell/console/console_navigation.h"
 
 CONSOLE_FRAME_SLOT(console_navigation_slot, console_navigation_request_t, false, NULL)
 

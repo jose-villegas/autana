@@ -22,10 +22,9 @@ flowchart TB
         subgraph R2["the runtime"]
             Shell["shell/<br/><i>frame loop, app switching, system screens in shell/ui/</i>"]
         end
-        subgraph R3["boot, self test, console"]
+        subgraph R3["boot and self test"]
             Boot["boot/<br/><i>the startup animation</i>"]
             Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
-            Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         end
         subgraph R4["the app contract"]
             App["app/<br/><i>callbacks, the app list, the app arena</i>"]
@@ -68,6 +67,9 @@ flowchart TB
         subgraph R13["frame measurement"]
             Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
         end
+        subgraph ConsoleRow["the serial console"]
+            Console["console/<br/><i>transport, verb registry, frame slots; dev builds</i>"]:::hw
+        end
         subgraph R14["the platform core"]
             Core["core/<br/><i>two-core jobs, memory placement, time, tunables</i>"]:::hw
         end
@@ -82,12 +84,14 @@ flowchart TB
         Packages["launcher/packages/<br/><i>first-party libraries, the graph below</i>"]
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> ConsoleRow --> R14 --> R15 --> R16 --> R17
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - Power: [the PMU owner](../../launcher/main/power/README.md); `power/` sits below
   `input/` and `audio/`.
+- Console: [the serial console](../../launcher/main/console/README.md) sits just
+  above `core/`; a module's verbs live in a `console/` folder beside it.
 - Audio: [audio docs](../audio/README.md). The engine sound layer owns [the mixer,
   voices and buses](../audio/Sound-Mixer.md) as well as stored sounds and sample
   cursors.
