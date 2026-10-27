@@ -146,6 +146,7 @@ typedef struct {
     uint16_t flat_z;
     uint16_t flat_color;
     gradients_t* g;
+    int last_column;
 } fill_t;
 
 /* An edge's first column at or right of it, row by row, exactly: ceil(n /
@@ -215,16 +216,15 @@ typedef struct {
 } row_span_t;
 
 static inline __attribute__((always_inline)) bool
-clip_row(const r3d_span_target_t* target, int y, const edge_t* left, const edge_t* right, row_span_t* span) {
-    const int last_column = target->rows.attachment[0].width - 1;
+clip_row(const r3d_span_target_t* target, int last_column, size_t offset, const edge_t* left, const edge_t* right,
+         row_span_t* span) {
     span->first = left->q < 0 ? 0 : left->q;
     span->last = right->q - 1 > last_column ? last_column : right->q - 1;
     if (span->first > span->last || r3d_span_stop_after == 3) {
         return false;
     }
-    const pixel_row_t row = pixel_row(target, y);
-    span->depth = row.depth + span->first;
-    span->color = row.color + span->first;
+    span->depth = (uint16_t*)((char*)target->rows.attachment[GFX_ATTACHMENT_DEPTH].pixels + offset) + span->first;
+    span->color = (uint16_t*)((char*)target->rows.attachment[GFX_ATTACHMENT_COLOR].pixels + offset) + span->first;
     return true;
 }
 
@@ -298,13 +298,16 @@ fill_clipped_gouraud(const gradients_t* g, const uint32_t row[ATTRIBUTES], int c
 
 static inline __attribute__((always_inline)) void
 flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge_t* left, edge_t* right) {
-    for (int y = y0; y < y1; y++) {
+    const size_t pitch = target->rows.attachment[GFX_ATTACHMENT_COLOR].pitch;
+    size_t offset = (size_t)(y0 - target->rows.first_row) * pitch;
+    for (int remaining = y1 - y0; remaining > 0; remaining--) {
         row_span_t span;
-        if (clip_row(target, y, left, right, &span)) {
+        if (clip_row(target, f->last_column, offset, left, right, &span)) {
             fill_flat(span.depth, span.color, span.last - span.first + 1, f->flat_z, f->flat_color);
         }
         step_edge(left);
         step_edge(right);
+        offset += pitch;
     }
 }
 
@@ -340,9 +343,12 @@ carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
         increment[k] = (uint32_t)g->dy[k] + ((uint32_t)g->dx[k] * (uint32_t)left->qs);
         extra_increment[k] = increment[k] + (uint32_t)g->dx[k];
     }
-    for (int y = y0; y < y1; y++) {
+    const size_t pitch = target->rows.attachment[GFX_ATTACHMENT_COLOR].pitch;
+    size_t offset = (size_t)(y0 - target->rows.first_row) * pitch;
+    for (int remaining = y1 - y0; remaining > 0; remaining--) {
+        const int y = y1 - remaining;
         row_span_t span;
-        if (clip_row(target, y, left, right, &span)) {
+        if (clip_row(target, f->last_column, offset, left, right, &span)) {
             fill_carried_span(target, f, row, y, left->q, &span, n, writing);
         }
         const uint32_t* advance = increment;
@@ -358,6 +364,7 @@ carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
             row[3] += advance[3];
         }
         step_edge(right);
+        offset += pitch;
     }
 }
 
@@ -400,13 +407,17 @@ writer_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRI
         carried_rows(target, f, row, y0, y1, left, right, 1, true);
         return;
     }
-    for (int y = y0; y < y1; y++) {
+    const size_t pitch = target->rows.attachment[GFX_ATTACHMENT_COLOR].pitch;
+    size_t offset = (size_t)(y0 - target->rows.first_row) * pitch;
+    for (int remaining = y1 - y0; remaining > 0; remaining--) {
+        const int y = y1 - remaining;
         row_span_t span;
-        if (clip_row(target, y, left, right, &span)) {
+        if (clip_row(target, f->last_column, offset, left, right, &span)) {
             write_span(target, y, span.first, span.last, (int32_t)f->flat_z << R3D_DEPTH_SHIFT, 0);
         }
         step_edge(left);
         step_edge(right);
+        offset += pitch;
     }
 }
 
@@ -847,7 +858,8 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
 
-    fill_t f = {e.flat ? FILL_FLAT : face != NULL ? FILL_FACE : FILL_GOURAUD, face, 0, 0, NULL};
+    fill_t f = {e.flat ? FILL_FLAT : face != NULL ? FILL_FACE : FILL_GOURAUD, face, 0, 0, NULL,
+                target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = mathi_clamp(e.centres.y, -1, gfx_target_end_row(&target->rows) + 1);
@@ -892,7 +904,8 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
         return;
     }
     /* FILL_FACE selects a depth carry here; writers do not read face colour. */
-    fill_t f = {e.flat ? FILL_FLAT : FILL_FACE, NULL, 0, 0, NULL};
+    fill_t f = {
+        e.flat ? FILL_FLAT : FILL_FACE, NULL, 0, 0, NULL, target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1};
     if (select_small(a, b, c, e.centres, solid, target->small_fill) != SMALL_FILL_WALK) {
         set_flat(&f, a, b, c);
         for (int y = box.y; y < recti_bottom(box); y++) {

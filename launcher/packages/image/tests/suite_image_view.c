@@ -24,6 +24,13 @@ test_tight_pitch_rounds_up_to_whole_bytes(void) {
 }
 
 static void
+test_pitch_keeps_byte_counts_when_bits_exceed_u32(void) {
+    const uint32_t width = (UINT32_MAX / (sizeof(rgb565be_t) * CHAR_BIT)) + 1U;
+    TEST_ASSERT_EQUAL_UINT32(width * sizeof(rgb565be_t), IMAGE_PITCH(IMAGE_RGB565BE, width));
+    TEST_ASSERT_EQUAL_UINT32((UINT32_MAX / CHAR_BIT) + 1U, IMAGE_PITCH(IMAGE_MONO1, UINT32_MAX));
+}
+
+static void
 test_pitch_rows_and_subimages(void) {
     enum { HEIGHT = 4, MAX_PITCH = 28 };
 
@@ -73,6 +80,7 @@ test_large_pitch_row_address(void) {
 void
 run_image_view_suite(void) {
     RUN_TEST(test_tight_pitch_rounds_up_to_whole_bytes);
+    RUN_TEST(test_pitch_keeps_byte_counts_when_bits_exceed_u32);
     RUN_TEST(test_pitch_rows_and_subimages);
     RUN_TEST(test_large_pitch_row_address);
 }

@@ -28,7 +28,10 @@ void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t f
 
 typedef struct r3d_span_writer r3d_span_writer_t;
 
-/* Undrawn depth is R3D_DEPTH_EMPTY; further writers run beside colour and depth. */
+/* Where a triangle is filled: a render target whose colour is the panel's
+ * own format, RGB565 with its two bytes swapped, so a framebuffer can be its
+ * colour as it is, and whose depth is R3D_DEPTH_EMPTY where nothing was
+ * drawn; and what a further attachment writes beside them. */
 typedef struct {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
