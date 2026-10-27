@@ -15,6 +15,7 @@
 #include "math/linear/transformf.h"
 #include "math/projection/projectf.h"
 #include "math/scalar/math_const.h"
+#include "math/text/math_text.h"
 #include "render/r3d_project.h"
 #include "render/render_view.h"
 
@@ -51,8 +52,7 @@ print_corners(const mat4f_t* m) {
         const vec3f_t outline = OUTLINE[i % OUTLINE_CORNERS];
         const vec3f_t corner = {outline.x - OUTLINE_CENTRE.x, outline.y - OUTLINE_CENTRE.y,
                                 (i < OUTLINE_CORNERS ? -0.5F : 0.5F) * SHAPE_DEPTH};
-        const vec3f_t p = mat4f_apply(m, corner);
-        printf("%s[%.6g, %.6g, %.6g]", i ? ", " : "", (double)p.x, (double)p.y, (double)p.z);
+        printf("%s[%s]", i ? ", " : "", vec3f_text(mat4f_apply(m, corner)).chars);
     }
     printf("]");
 }
@@ -120,9 +120,9 @@ main(int argc, char** argv) {
     printf("  \"viewport\": [%d, %d], \"fx\": %.6g, \"fy\": %.6g, \"cx\": %.6g, \"cy\": %.6g, \"near_z\": %.6g,\n",
            viewport.width, viewport.height, (double)view.lens.fx, (double)view.lens.fy, (double)view.lens.cx,
            (double)view.lens.cy, (double)view.lens.near_z);
-    printf("  \"camera\": [%.6g, %.6g, %.6g],\n", (double)VIEW_POINT.x, (double)VIEW_POINT.y, (double)VIEW_POINT.z);
-    printf("  \"offset\": [%.6g, %.6g],\n", (double)offset.x, (double)offset.y);
-    printf("  \"screen\": [%.6g, %.6g],\n", (double)screen.x, (double)screen.y);
+    printf("  \"camera\": [%s],\n", vec3f_text(VIEW_POINT).chars);
+    printf("  \"offset\": [%s],\n", vec2f_text(offset).chars);
+    printf("  \"screen\": [%s],\n", vec2f_text(screen).chars);
     printf("  \"pixel\": [%d, %d]\n }\n}\n", pixel_x, pixel_y);
     return 0;
 }

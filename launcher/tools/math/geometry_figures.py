@@ -359,7 +359,7 @@ def points_figure(data, output):
         tip = arrow(axis, data["centroid"], normal, color)
         fit_space(axis, [*points, tip])
         labels.append((axis, points, list("abc")))
-    legend(fig, [(f"normal {tuple(normal)}", color, "", "-")
+    legend(fig, [("normal (" + ", ".join(f"{component:.3g}" for component in normal) + ")", color, "", "-")
                  for normal, color in zip(data["normals"], NORMAL_COLORS)])
     orbit(fig, axes, output, labels)
 
