@@ -20,6 +20,8 @@ BODY_ALPHA = 0.22
 # The PCB is a faint reference behind the IMU, inside the translucent case.
 PCB_ALPHA = 0.4
 GLASS_ALPHA = 0.5
+# Buttons and openings: the body's grey, a little denser than the walls, so they read without going dark.
+FEATURE_ALPHA = 0.5
 GLASS = MUTED
 BODY = FAINT
 IMU = INK
@@ -134,10 +136,9 @@ class DeviceModel:
         axis.plot(*(self.pcb @ pose.T).T, color=MUTED, linewidth=EDGE_WIDTH, alpha=PCB_ALPHA)
         axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.imu],
                                                facecolor=IMU, edgecolor=IMU))
-        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.holes],
-                                               facecolor=MUTED, edgecolor=MUTED))
-        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.buttons],
-                                               facecolor=BODY, edgecolor=MUTED))
+        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in (*self.holes, *self.buttons)],
+                                               facecolor=BODY, edgecolor=MUTED, linewidth=EDGE_WIDTH,
+                                               alpha=FEATURE_ALPHA))
         length = AXIS_SHARE * self.height
         sets = ((chip_axes, pose @ self.imu_centre, self.chip_axes, "XYZ", CHIP_AXES),
                 (screen_axes, np.zeros(3), self.screen_axes, "xyz", SCREEN_AXES))
