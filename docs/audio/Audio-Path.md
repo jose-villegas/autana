@@ -403,7 +403,7 @@ This is a cost estimate, not a measurement.
 ```sh
 autana --wait 3600 lock run -- python launcher/tools/audio/audio_mic_dsp_sweep.py --board <id>
 python launcher/tools/audio/audio_doc_tables.py --write
-python launcher/tools/audio/audio_mic_dsp_figures.py
+python launcher/tools/audio/audio_mic_dsp_figures.py --out docs/images/audio
 ```
 
 Results:
@@ -514,11 +514,11 @@ DAC measurements in slot mode are acoustic, with DRC off; cleanup resets DRC.
 ```sh
 autana --wait 3600 lock run -- python launcher/tools/audio/mic/eq_probe_sweep.py --board <id>
 python launcher/tools/audio/audio_doc_tables.py --write
-python launcher/tools/audio/mic/mic_eq_probe_figures.py
+python launcher/tools/audio/mic/mic_eq_probe_figures.py --out docs/images/audio
 
 autana --wait 3600 lock run -- python launcher/tools/audio/mic/eq_probe_sweep.py --board <id> --mode slots
 python launcher/tools/audio/audio_doc_tables.py --write
-python launcher/tools/audio/mic/mic_eq_probe_figures.py --capture docs/audio/data/mic_eq_slots_capture.txt
+python launcher/tools/audio/mic/mic_eq_probe_figures.py --capture docs/audio/data/mic_eq_slots_capture.txt --out docs/images/audio
 ```
 
 `launcher/tools/audio/mic/board_capture.sh <id> <capture.py> [args]` does the same under one held lock: it flashes this tree's development image and records the build id before and after. The capture side uses only the Python standard library, so a board host needs no packages.

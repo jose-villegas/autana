@@ -1,7 +1,7 @@
 """Plot microphone DSP captures in both documentation themes."""
 
 from audio_doc_tables import ROOT, read_capture
-from audio_doc_blocks import CLIPPED_DBFS, render_capture_figures
+from audio_doc_blocks import CLIPPED_DBFS, figures_main
 from audio_mic_dsp_sweep import CAPTURE, DEFAULTS, HPF_VOLUME, LEVEL_DB
 from audio_mic_dsp_tables import feature, label, mic_data
 from docs.plot_style import FIGURE_SIZE, SLOTS, save_themed_plot, subplots
@@ -62,7 +62,7 @@ def render(capture, output):
 
 
 def main():
-    render_capture_figures(__doc__, render, CAPTURE, ROOT / "docs/images/audio")
+    figures_main(__doc__, CAPTURE, render)
 
 
 if __name__ == "__main__":
