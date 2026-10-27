@@ -123,14 +123,18 @@ def matching_paths(changes, manifest, base_files=()):
             names.append(change['previous_filename'])
         for name in names:
             path = PurePosixPath(name)
-            ancestor = next((parent for parent in path.parents if parent in base_directories),
-                            PurePosixPath('.'))
-            if name in files or (change['status'] in {'added', 'removed', 'renamed'}
-                    and str(ancestor) in directories):
+            scope = next((parent for parent in path.parents if parent in base_directories),
+                         PurePosixPath('.'))
+            new = name == change['filename'] and change['status'] in {'added', 'renamed'}
+            if name in files:
                 matches.add(name)
-            if name == change['filename'] and change['status'] in {'added', 'renamed'}:
-                # The job read files like this one in that part of the tree.
-                if any(read.suffix == path.suffix and read.is_relative_to(ancestor) for read in read_paths):
+            elif new or (change['status'] in {'removed', 'renamed'} and str(scope) in directories):
+                # A listing changes only for a job that reads files like this one
+                # (the same suffix) there; a chain of listed directories is a
+                # recursive listing, so it widens the part of the tree.
+                while scope != scope.parent and {str(scope), str(scope.parent)} <= directories:
+                    scope = scope.parent
+                if any(read.suffix == path.suffix and read.is_relative_to(scope) for read in read_paths):
                     matches.add(name)
     return sorted(matches)
 
