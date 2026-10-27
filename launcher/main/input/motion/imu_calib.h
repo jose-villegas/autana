@@ -35,11 +35,11 @@ bool imu_calib_from_saved(bool committed, const bool found[3], const int32_t sav
 #define IMU_CALIB_GYRO_SAVE_DELTA       IMU_REST_RATE_RESOLUTION
 #define IMU_CALIB_GYRO_SAVE_INTERVAL_US (INT64_C(5) * MATH_MS_PER_MIN * MATH_US_PER_MS)
 
-/* Live correction, committed storage validity, and last write-attempt time. */
+/* Live correction, committed storage validity, and the earliest next write (0: now). */
 typedef struct {
     imu_calib_t live;
     vec3i_t saved;
-    int64_t saved_us;
+    int64_t next_save_us;
     bool valid, storage_valid;
 } imu_calib_gyro_t;
 
