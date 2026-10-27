@@ -256,45 +256,57 @@ typedef struct {
 } stencil_t;
 
 /* Both walls' faces must be reachable: Muller caps the upper neighbour one
- * short, which his tank hides by keeping its floor at index 0. */
-static void
+ * short, which his tank hides by keeping its floor at index 0. The offset is
+ * at most half a cell, so q is never negative and truncation is floor. */
+static inline __attribute__((always_inline)) void
 stencil_axis(float p, float o, float h, float inv_h, int n, int* i0, int* i1, float* t) {
     const float q = mathf_clamp(p, h, (float)(n - 1) * h) - o;
-    *i0 = mathi_min((int)floorf(q * inv_h), n - 2);
+    *i0 = mathi_min((int)(q * inv_h), n - 2);
     *t = (q - ((float)*i0 * h)) * inv_h;
     *i1 = *i0 + 1;
 }
 
 /* Cell centres inside the box only: weight that would land in a wall stays
- * in the cell beside it, so a full cell beside a wall reads rest density. */
-static void
+ * in the cell beside it, so a full cell beside a wall reads rest density.
+ * Truncation differs from floor only below 0, which the clamp to 1 hides. */
+static inline __attribute__((always_inline)) void
 centre_axis(float p, float h, float inv_h, int n, int* i0, int* i1, float* t) {
     const float q = p - (0.5F * h);
-    *i0 = mathi_min(mathi_max((int)floorf(q * inv_h), 1), n - 2);
+    *i0 = mathi_min(mathi_max((int)(q * inv_h), 1), n - 2);
     *t = mathf_clamp((q - ((float)*i0 * h)) * inv_h, 0.0F, 1.0F);
     *i1 = mathi_min(*i0 + 1, n - 2);
 }
 
-static stencil_t
+/* Corner k takes the upper neighbour along x when bit 0 is set, y bit 1,
+ * z bit 2; each axis's two offsets and weights are worked out once. */
+static inline __attribute__((always_inline)) stencil_t
 corners(const flip3_t* f, const int lo[3], const int hi[3], const float t[3]) {
+    const int sx = f->ny * f->nz;
+    const int sy = f->nz;
+    const int xs[2] = {lo[0] * sx, hi[0] * sx};
+    const int ys[2] = {lo[1] * sy, hi[1] * sy};
+    const int zs[2] = {lo[2], hi[2]};
+    const float wx[2] = {1.0F - t[0], t[0]};
+    const float wy[2] = {1.0F - t[1], t[1]};
+    const float wz[2] = {1.0F - t[2], t[2]};
     stencil_t s;
     for (int corner = 0; corner < 8; corner++) {
-        const bool bx = (corner & 1) != 0;
-        const bool by = (corner & 2) != 0;
-        const bool bz = (corner & 4) != 0;
-        s.at[corner] = cell_index(f, bx ? hi[0] : lo[0], by ? hi[1] : lo[1], bz ? hi[2] : lo[2]);
-        s.weight[corner] = (bx ? t[0] : 1.0F - t[0]) * (by ? t[1] : 1.0F - t[1]) * (bz ? t[2] : 1.0F - t[2]);
+        const int bx = corner & 1;
+        const int by = (corner >> 1) & 1;
+        const int bz = corner >> 2;
+        s.at[corner] = xs[bx] + ys[by] + zs[bz];
+        s.weight[corner] = wx[bx] * wy[by] * wz[bz];
     }
     return s;
 }
 
 /* Grid cells per axis, walls included. */
-static int
+static inline __attribute__((always_inline)) int
 cells_on(const flip3_t* f, int axis) {
     return axis == 0 ? f->nx : (axis == 1 ? f->ny : f->nz);
 }
 
-static stencil_t
+static inline __attribute__((always_inline)) stencil_t
 centre_stencil(const flip3_t* f, vec3f_t p) {
     int lo[3];
     int hi[3];
@@ -315,7 +327,7 @@ typedef struct {
     float t[AT_KINDS][3];
 } place_t;
 
-static place_t
+static inline __attribute__((always_inline)) place_t
 place_of(const flip3_t* f, vec3f_t p) {
     place_t out;
     for (int a = 0; a < 3; a++) {
@@ -330,7 +342,7 @@ place_of(const flip3_t* f, vec3f_t p) {
 
 /* Velocity component `axis`'s stencil: on faces along it, half a cell in
  * across it (a MAC grid's face centres). */
-static stencil_t
+static inline __attribute__((always_inline)) stencil_t
 face_stencil(const flip3_t* f, const place_t* place, int axis) {
     int lo[3];
     int hi[3];
@@ -382,7 +394,7 @@ components(flip3_t* f, component_t out[3]) {
 }
 
 /* A particle's share of the density at the cell centres. */
-static void
+static inline __attribute__((always_inline)) void
 add_density(flip3_t* f, vec3f_t p) {
     const stencil_t s = centre_stencil(f, p);
     for (int k = 0; k < 8; k++) {
