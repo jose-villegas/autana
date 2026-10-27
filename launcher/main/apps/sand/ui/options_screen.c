@@ -150,7 +150,7 @@ draw_dither(const options_screen_layout_t* lay, const sand_menu_t* menu, const o
     ui_caption_centre(lay->dither_caption, OPTIONS_SCREEN_DITHER);
 
     assert(labels->dither_count <= GFX_DITHER_MODE_COUNT);
-    const draw_image_t* icons[GFX_DITHER_MODE_COUNT];
+    const image_t* icons[GFX_DITHER_MODE_COUNT];
     const int count = labels->dither_count;
     for (int i = 0; i < count; i++) {
         icons[i] = sand_dither_icon((gfx_dither_mode_t)i);

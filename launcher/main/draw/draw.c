@@ -4,6 +4,7 @@
 #include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/mathi.h"
 
+#include <assert.h>
 #include <stddef.h>
 #include <string.h>
 #include "image/pixel/bayer.h"
@@ -318,11 +319,10 @@ blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bo
  * decision collapses to four booleans per row: a fully-covered row is a
  * plain memcpy, an untouched row costs nothing. Phase-locked to absolute
  * panel coordinates like every other dithered draw in draw.h, so
- * overlapping dithered shapes stay in register with each other. First
- * user: the boot animation's photograph crossfade (boot_anim.c's
- * draw_image()). */
+ * overlapping dithered shapes stay in register with each other. */
 void
-draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stride, uint8_t alpha) {
+draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha) {
+    assert(src->format == IMAGE_RGB565BE);
     gfx_surface_t state;
     if (!gfx_draw_begin(&state)) {
         return;
@@ -331,12 +331,13 @@ draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_str
         return;
     }
 
-    const recti_t rect = gfx_target_clip_rect(state.target, state.clip, (recti_t){x, y, w, h});
+    const recti_t rect = gfx_target_clip_rect(state.target, state.clip, (recti_t){x, y, src->width, src->height});
     if (recti_is_empty(rect)) {
         return;
     }
 
     const int level = bayer_level(alpha);
+    const size_t step = image_row_bytes(src);
 
     for (int row = rect.y; row < recti_bottom(rect); row++) {
         const uint8_t* cells = bayer4x4[row & 3];
@@ -347,7 +348,8 @@ draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_str
         }
 
         gfx_color_t* dst = gfx_target_row(state.target, row);
-        const gfx_color_t* s = src + ((size_t)(row - y) * (size_t)src_stride) + (rect.x - x);
+        const gfx_color_t* s =
+            (const gfx_color_t*)((const char*)src->pixels + ((size_t)(row - y) * step)) + (rect.x - x);
 
         if (p[0] && p[1] && p[2] && p[3]) {
             memcpy(dst + rect.x, s, (size_t)rect.w * sizeof *dst);

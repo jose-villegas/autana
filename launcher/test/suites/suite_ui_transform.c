@@ -150,8 +150,8 @@ static const uint8_t icon_l_rows[4] = {
     0x80, /* 1000: col 0 */
     0xE0, /* 1110: cols 0,1,2 */
 };
-static const draw_image_t icon_l = {
-    .bits = icon_l_rows, .format = DRAW_IMAGE_MONO1, .width = 4, .height = 4, .stride = 8};
+static const image_t icon_l = {
+    .pixels = (void*)icon_l_rows, .format = IMAGE_MONO1, .width = 4, .height = 4, .stride = 8};
 
 /* box = (10, 20, 4, 4), fixed across every quarter below. Expected physical
  * rects were mapped BY HAND, corner to corner, from
