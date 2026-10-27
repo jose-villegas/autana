@@ -519,14 +519,19 @@ class VideoTest(unittest.TestCase):
         self.assertTrue(all(line.startswith(("frame", "frames")) and "mean DeltaE76 0.0000" in line and "luma SSIM 1.000000" in line
                             for line in lines))
 
+    NEAR, FAR = Image.new("RGB", (4, 4), DRAWN), Image.new("RGB", (4, 4), CLEAR)
+
+    def write_bakes(self, directory):
+        """Two reference frames of DRAWN at half size, and the near (matching) and far bake videos over them."""
+        for index in range(2):
+            Image.new("RGB", (2, 2), DRAWN).save(Path(directory) / ("%04d.png" % index))
+        return [("near", self.write_avi(directory, "n.avi", [self.NEAR, self.NEAR])),
+                ("far", self.write_avi(directory, "f.avi", [self.FAR, self.FAR]))]
+
     def test_bakes_are_scored_against_the_reference_and_laid_beside_it(self):
-        reference, near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (4, 4), DRAWN), Image.new("RGB", (4, 4), CLEAR)
         with tempfile.TemporaryDirectory() as tmp:
-            for index in range(2):
-                reference.save(Path(tmp) / ("%04d.png" % index))
-            bakes = [("near", self.write_avi(tmp, "n.avi", [near, near])), ("far", self.write_avi(tmp, "f.avi", [far, far]))]
             sheet = Path(tmp) / "sheet.png"
-            lines = render_compare.write_reference_bake_sheet(tmp, bakes, None, [1], str(sheet), crops=1)
+            lines = render_compare.write_reference_bake_sheet(tmp, self.write_bakes(tmp), None, [1], str(sheet), crops=1)
             with Image.open(sheet) as picture:
                 self.assertEqual(picture.width, 3 * round(4 * 0.8))
             self.assertTrue(Path(tmp, "sheet.crops.png").exists())
@@ -535,20 +540,15 @@ class VideoTest(unittest.TestCase):
         self.assertNotIn("mean DeltaE76 0.0000", lines[1])
 
     def test_bakes_lay_their_reference_sheet_without_label_a(self):
-        reference, near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (4, 4), DRAWN), Image.new("RGB", (4, 4), CLEAR)
         with tempfile.TemporaryDirectory() as tmp:
-            for index in range(2):
-                reference.save(Path(tmp) / ("%04d.png" % index))
-            near_video, far_video = self.write_avi(tmp, "n.avi", [near, near]), self.write_avi(tmp, "f.avi", [far, far])
             sheet = Path(tmp) / "reference-sheet.png"
-            argv = ["render_compare.py", "--out", str(Path(tmp) / "bakes.png"), "--reference-bakes", tmp,
-                    "--sheet-frames", "0,1", "--bake", "near", near_video, "--bake", "far", far_video,
-                    "--reference-sheet", str(sheet)]
+            argv = ["render_compare.py", "--out", str(Path(tmp) / "bakes.png"), "--reference-bakes", tmp, "--sheet-frames", "0,1",
+                    *[arg for label, video in self.write_bakes(tmp) for arg in ("--bake", label, video)], "--reference-sheet", str(sheet)]
             with unittest.mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
                 render_compare.main()
             with Image.open(sheet) as picture:
                 expected = render_compare.reference_sheet(
-                    [("frame %d" % index, [near, far], reference.resize((4, 4), Image.Resampling.NEAREST)) for index in range(2)],
+                    [("frame %d" % index, [self.NEAR, self.FAR], Image.new("RGB", (4, 4), DRAWN)) for index in range(2)],
                     ["near", "far"])
                 self.assertTrue(np.array_equal(np.asarray(picture.convert("RGB")), np.asarray(expected)))
 
