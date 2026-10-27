@@ -59,6 +59,11 @@ camera_entity(void) {
                       name_hash(render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera));
 }
 
+render_lab_path_t
+scene_baked_path(void) {
+    return (render_lab_path_t){loaded, loaded == NULL ? SCENE_ENTITY_NONE : camera_entity()};
+}
+
 static void
 apply_settings(void) {
     render_lab_apply_raster_settings();
