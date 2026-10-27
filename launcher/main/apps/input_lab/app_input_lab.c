@@ -889,11 +889,12 @@ draw_imu_round(void) {
         imu_probe_pose_label(imu_round.pose, label, sizeof label);
         (void)snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
         hud_line(0, line);
-        if (imu_round.settle_ms < IMU_REST_SETTLE_MS) {
+        if ((imu_round.rest.settle_us / MATH_US_PER_MS) < IMU_REST_SETTLE_MS) {
             hud_line(1, "HOLD STILL");
         } else {
-            (void)snprintf(line, sizeof line, "MEASURING %u%%",
-                           (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_REST_WINDOW_MS));
+            (void)snprintf(
+                line, sizeof line, "MEASURING %u%%",
+                (unsigned)((imu_round.rest.window_us / MATH_US_PER_MS) * IMU_PROBE_PERCENT / IMU_REST_WINDOW_MS));
             hud_line(1, line);
         }
         hud_line(3, "BOOT TO LEAVE ROUND");
@@ -1027,7 +1028,10 @@ draw_motion(void) {
     const vec3i_t offset = input_accel_offset();
     (void)snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);
     hud_line(MOTION_HUD_ROWS, line);
-    const int top = HUD_TOP + ((MOTION_HUD_ROWS + 1) * HUD_LINE_H) + MOTION_MARGIN;
+    const vec3i_t gyro = input_gyro_offset();
+    (void)snprintf(line, sizeof line, "GYRO %d %d %d Q6", (int)gyro.x, (int)gyro.y, (int)gyro.z);
+    hud_line(MOTION_HUD_ROWS + 1, line);
+    const int top = HUD_TOP + ((MOTION_HUD_ROWS + 2) * HUD_LINE_H) + MOTION_MARGIN;
     const int bottom = screen_h - (2 * MOTION_MARGIN) - (2 * HUD_LINE_H);
     const int cx = screen_w / 2;
     const int cy = screen_h / 2;

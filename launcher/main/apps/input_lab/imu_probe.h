@@ -58,7 +58,6 @@ typedef enum {
 typedef struct {
     imu_rest_t rest;
     int pose, quarter;
-    uint32_t settle_ms, window_ms;
     imu_probe_average_t window, poses[IMU_PROBE_POSE_COUNT];
     imu_probe_fit_t fit;
     imu_probe_step_t step;

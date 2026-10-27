@@ -246,14 +246,14 @@ upright_fixture(int quarter, input_motion_t* rest) {
     for (unsigned ms = 0; ms <= IMU_REST_SETTLE_MS / 2; ms += TEST_DT_MS) {
         imu_probe_turn_update(round, rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
     }
-    TEST_ASSERT_TRUE(round->settle_ms > 0);
+    TEST_ASSERT_TRUE(round->turn_ms > 0);
     return round;
 }
 
 static void
 check_upright_restart(imu_probe_round_t* round, input_motion_t rest, const input_motion_t* disturbed, uint32_t dt_ms) {
     imu_probe_turn_update(round, disturbed, (vec3f_t){0, 0, -1}, dt_ms);
-    TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, round->turn_ms);
     TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
     for (unsigned ms = 0; ms < IMU_REST_SETTLE_MS / 2; ms += TEST_DT_MS) {
         imu_probe_turn_update(round, &rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
@@ -339,7 +339,7 @@ test_upright_hand_tremor_arms(void) {
     for (int quarter = 0; quarter < 4; quarter++) {
         input_motion_t rest;
         imu_probe_round_t* round = upright_fixture(quarter, &rest);
-        round->settle_ms = 0;
+        round->turn_ms = 0;
         for (unsigned ms = 0; ms < IMU_REST_SETTLE_MS; ms += TEST_DT_MS) {
             input_motion_t tremor = rest;
             const int sign = (ms / TEST_DT_MS) % 2 ? 1 : -1;
