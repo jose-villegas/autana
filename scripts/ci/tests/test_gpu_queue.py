@@ -100,5 +100,20 @@ class GpuQueueTests(unittest.TestCase):
         self.assertFalse(schedule.gpu_pending(request=request))
 
 
+    def test_board_night_waits_for_board_start(self):
+        root = Path(__file__).resolve().parents[3]
+        workflow = yaml.safe_load((root / '.github/workflows/nightly-perf.yml').read_text())
+        marker = workflow['jobs']['marker']
+        self.assertIn('--start BOARD_START marker', marker['steps'][-1]['run'])
+        self.assertEqual(marker['env']['BOARD_START'], '${{ vars.BOARD_START }}')
+        trigger = datetime(2026, 10, 27, 20, 17, tzinfo=timezone.utc)
+        with patch.dict(os.environ, NIGHT_ZONE='UTC'):
+            os.environ.pop('BOARD_START', None)
+            board = schedule.next_marker(trigger, start='BOARD_START')
+            gpu = schedule.next_marker(trigger, schedule.NIGHT_START)
+        self.assertEqual(board.strftime('%H:%M'), schedule.BOARD_START)
+        self.assertLess(gpu, board)
+
+
 if __name__ == '__main__':
     unittest.main()
