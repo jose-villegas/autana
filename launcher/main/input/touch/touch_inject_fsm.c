@@ -3,19 +3,17 @@
 #include <stddef.h>
 
 void
-touch_inject_init(touch_inject_t* inject, int x0, int y0, int x1, int y1, uint32_t ms) {
+touch_inject_init(touch_inject_t* inject, vec2i_t from, vec2i_t to, uint32_t ms) {
     *inject = (touch_inject_t){
-        .x0 = x0,
-        .y0 = y0,
-        .x1 = x1,
-        .y1 = y1,
+        .from = from,
+        .to = to,
         .ms = ms,
         .active = true,
     };
 }
 
 bool
-touch_inject_step(touch_inject_t* inject, int64_t now_us, int* x, int* y) {
+touch_inject_step(touch_inject_t* inject, int64_t now_us, vec2i_t* point) {
     if (!inject->active) {
         return false;
     }
@@ -33,9 +31,9 @@ touch_inject_step(touch_inject_t* inject, int64_t now_us, int* x, int* y) {
         elapsed_us = duration_us;
         inject->endpoint_emitted = true;
     }
-    *x = inject->x0 + (int)(((int64_t)(inject->x1 - inject->x0) * elapsed_us) / duration_us);
-    *y = inject->y0 + (int)(((int64_t)(inject->y1 - inject->y0) * elapsed_us) / duration_us);
-    if (*x == inject->x1 && *y == inject->y1) {
+    point->x = inject->from.x + (int)(((int64_t)(inject->to.x - inject->from.x) * elapsed_us) / duration_us);
+    point->y = inject->from.y + (int)(((int64_t)(inject->to.y - inject->from.y) * elapsed_us) / duration_us);
+    if (vec2i_equal(*point, inject->to)) {
         inject->endpoint_emitted = true;
     }
     return true;

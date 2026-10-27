@@ -117,33 +117,14 @@ endif()
 
 # The console listener: a release image has nobody watching the serial
 # console to type a verb into (see console/console.h), so a release build
-# compiles none of console/*.c: no reader task, no registry, no verbs.
-# RUNSUITE and TOUCH/IMU narrow further still, to the one build variant
-# each actually answers on.
+# compiles none of it: no reader task, no registry, no verbs. A verb lives in
+# a console/ folder beside the module it drives, so adding one never touches
+# this file. RUNSUITE narrows further, to the self-test build that answers it.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs
-        "app/app_console.c"
-        "console/console_verbs.c"
-        "console/console.c"
-        "console/verbs/console_buildid.c"
-        "console/verbs/console_battery.c"
-        "console/verbs/console_heap.c"
-        "console/verbs/console_tone.c"
-        "console/verbs/console_melody.c"
-        "console/verbs/console_codec.c"
-        "console/verbs/console_sound.c"
-        "console/verbs/console_sound_views.c"
-        "shell/console_system.c"
-        "console/verbs/console_freeze.c"
-        "console/console_frame_request.c"
-        "console/verbs/console_frame_watch.c"
-        "console/verbs/console_navigation.c"
-        "console/verbs/console_perf.c"
-        "console/console_tune.c"
-        "console/verbs/console_tune.c"
-        "console/verbs/console_screenshot.c"
-        "console/capture/device_state.c"
-    )
+    launcher_glob(console_srcs
+        "${CMAKE_CURRENT_LIST_DIR}/console/*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/*/console/*.c")
+    list(APPEND app_srcs ${console_srcs} "input/touch/touch_inject_fsm.c")
     # Acoustic detection belongs to the development console.
     list(APPEND app_srcs
         "audio/audio_loopback.c"
@@ -152,13 +133,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
-    list(APPEND app_srcs "console/verbs/console_runsuite.c")
-endif()
-if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs
-        "console/verbs/console_inject.c"
-        "input/touch/touch_inject_fsm.c"
-    )
+    list(APPEND app_srcs "selftest/console_runsuite.c")
 endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
@@ -226,6 +201,11 @@ endif()
 
 list(APPEND app_srcs ${discovered_apps})
 
+# Every console/ folder is development-only, whichever glob above found it.
+if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
+    list(FILTER app_srcs EXCLUDE REGEX "/console/[^/]*\.c$")
+endif()
+
 # post.c reaches for chip identity, flash size, I2C probing and the on-die
 # temperature sensor, so it pulls in more of the platform than the rest.
 #
@@ -236,7 +216,7 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs esp_codec_dev esp_driver_i2s math kinematics physics hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs esp_codec_dev esp_driver_i2s math kinematics physics image hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump
