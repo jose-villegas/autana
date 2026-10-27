@@ -137,4 +137,4 @@ Entries 0-15 are reserved for UI by `DRAW_PALETTE_UI_ENTRIES` in
 - Building one is the app's work.
 - The two steps every palette then needs, the colour -> index map and the dither
   table, are `tools/gen/draw_palette_gen.h`: host-only, in
-  OKLab<sup>[[35]](../Citations.md#35)</sup>, never in the firmware image.
+  OKLab<sup>[[35]](../Citations.md#ottosson-2020)</sup>, never in the firmware image.

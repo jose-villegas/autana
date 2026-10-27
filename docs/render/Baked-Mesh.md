@@ -219,7 +219,7 @@ The Python LMSH writer always writes colours; colourless prototypes have no writ
 
 ## Meshlets
 
-Clusters are meshoptimizer's **meshlets**<sup>[[11]](../Citations.md#11)</sup>:
+Clusters are meshoptimizer's **meshlets**<sup>[[11]](../Citations.md#meshoptimizer)</sup>:
 at most `geometry.meshlet_triangles` (4 to 256, default 32) of one sidedness.
 The octree is built over their centres.
 

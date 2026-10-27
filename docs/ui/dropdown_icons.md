@@ -1,7 +1,7 @@
 # Dropdown with icons
 
 `bool ui_dropdown_icons(recti_t r, const char* label, int* index, const
-char* const* names, const draw_image_t* const* icons, int count)` is a
+char* const* names, const image_t* const* icons, int count)` is a
 [dropdown](dropdown.md) with a parallel `icons` array, one beside each name.
 
 ## Example
@@ -20,8 +20,8 @@ static const char* const PAGES[] = {"HOME", "WIFI", "DISPLAY", "GAMES"};
 
 bool
 dropdown_icons_example(dropdown_icons_example_t* s) {
-    const draw_image_t* const icons[] = {ui_icon_image(UI_ICON_HOME), ui_icon_image(UI_ICON_WIFI),
-                                         ui_icon_image(UI_ICON_MONITOR), ui_icon_image(UI_ICON_GAMEPAD)};
+    const image_t* const icons[] = {ui_icon_image(UI_ICON_HOME), ui_icon_image(UI_ICON_WIFI),
+                                    ui_icon_image(UI_ICON_MONITOR), ui_icon_image(UI_ICON_GAMEPAD)};
     ui_row(UI_ROW_HEIGHT);
     return ui_dropdown_icons(ui_next(), "page", &s->page, PAGES, icons, 4);
 }
