@@ -26,7 +26,11 @@
 #define FRAME_PROFILE_WORST_K      5  /* worst frames named per row and quarter */
 #define FRAME_PROFILE_PATH_POSES   64 /* poses replayed evenly along the path, for the counter curves */
 #define FRAME_PROFILE_REPLAY_DRAWS 3  /* frames drawn at a replayed pose for its frame-cost report */
-#define FRAME_PROFILE_TRACE        "frame_trace: %s t=%dms frame=%dus"
+/* A trace line carries up to FRAME_PROFILE_LINE_FRAMES frames, its count first, so a burst of lines between
+ * two presents stays within what the frame watch queues, and a line cut in transfer shows. */
+#define FRAME_PROFILE_LINE_FRAMES  32
+#define FRAME_PROFILE_TRACE        "frame_trace: %s n=%d%s"
+#define FRAME_PROFILE_TRACE_FRAME  " %d:%d" /* path ms, frame us */
 #define FRAME_PROFILE_RANKED       "frame_worst: %s rank=%d t=%dms frame=%dus"
 #define FRAME_PROFILE_REPLAY       "frame_replay: %s t=%dms %s | %s"
 

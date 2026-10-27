@@ -31,7 +31,8 @@ POSE_RE = re.compile(_log_pattern("FRAME_PROFILE_POSE", (
     ("row", r"\S+"), *((name, r"\d+") for name in ("time_ms", "clusters", "triangles", "frame_us")),
     ("quarter", r"\w+"))).replace(")ms", ")(?P<time_unit>ms|s)", 1))
 TRACE_RE = re.compile(_log_pattern("FRAME_PROFILE_TRACE", (
-    ("row", r"\S+"), ("t_ms", r"\d+"), ("frame_us", r"\d+"), ("quarter", r"\w+"))))
+    ("row", r"\S+"), ("n", r"\d+"), ("frames", r"[ \d:]*?"), ("quarter", r"\w+"))))
+TRACE_FRAME = re.compile(r"(\d+):(\d+)")
 RANKED_RE = re.compile(_log_pattern("FRAME_PROFILE_RANKED", (
     ("row", r"\S+"), ("rank", r"\d+"), ("t_ms", r"\d+"), ("frame_us", r"\d+"), ("quarter", r"\w+"))))
 REPLAY_RE = re.compile(_log_pattern("FRAME_PROFILE_REPLAY", (
@@ -63,8 +64,15 @@ def poses(text):
 
 
 def trace(text):
-    """Every played frame: row, quarter, its path time and its wall time."""
-    return _records(TRACE_RE, text)
+    """Every played frame: row, quarter, its path time and its wall time. A line whose frames
+    do not number its count was cut in transfer and gives none."""
+    frames = []
+    for match in TRACE_RE.finditer(text):
+        pairs = TRACE_FRAME.findall(match["frames"])
+        if len(pairs) == int(match["n"]):
+            frames.extend({"row": match["row"], "quarter": match["quarter"], "t_ms": int(t), "frame_us": int(us)}
+                          for t, us in pairs)
+    return frames
 
 
 def worst(text):
