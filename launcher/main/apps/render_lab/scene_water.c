@@ -36,6 +36,7 @@
 #include "math/scalar/mathf.h"
 #include "math/scalar/units.h"
 #include "physics/fluid/flip3.h"
+#include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/skin/r3d_skin_light.h"
@@ -43,6 +44,7 @@
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
+#include "scene_water.h"
 #include "ui/ui.h"
 
 static const char* TAG = "water";
@@ -73,9 +75,8 @@ static const char* TAG = "water";
 /* The surface sits where the density is half the rest density. */
 #define WATER_SURFACE_LEVEL 0.5F
 
-/* Simulated time per substep, and the most substeps one frame runs: a long
- * frame drops the rest, slowing the water rather than costing a burst. */
-#define WATER_SUBSTEP_MS    8U
+/* The most substeps one frame runs: a long frame drops the rest, slowing
+ * the water rather than costing a burst. */
 #define WATER_MAX_SUBSTEPS  4U
 
 /* Earth's gravity, mm/s^2. The water runs under a share of it: at full
@@ -87,6 +88,15 @@ TUNE(water, gravity_mm_s2, 2000, 100, WATER_EARTH_MM_S2);
 /* 1 puts the grid in internal RAM, 0 in PSRAM: for measuring which the
  * step needs. Read when the scene enters. */
 TUNE(water, grid_internal, 0, 0, 1);
+/* Simulated time per substep: longer ones run fewer a frame. */
+TUNE(water, substep_ms, 8, 8, 40);
+/* Rest: while the push holds within WATER_REST_G and no particle moves
+ * faster than this, in um/s, for WATER_REST_UPDATES updates, the step and
+ * the surface are skipped and the last mesh stays. 0 never rests. */
+TUNE(water, rest_um_s, 0, 0, 20000);
+#define WATER_REST_G        0.01F
+#define WATER_REST_UPDATES  4U
+#define WATER_UM_PER_MM     1000.0F
 
 /* Surface buffers: the vertices and triangles iso_surface may make. The
  * tour's busiest frame makes about 2500 and 5000. */
@@ -126,22 +136,25 @@ TUNE(water, settle_ms, 1000, 50, 5000);
 #define WATER_TONEMAP_NONE       0.0F
 
 /* A scripted tour of the tank, for host renders and repeatable timings:
- * down vectors in box axes, eased between keys, with a shake at the end. */
+ * down vectors in box axes, eased between keys, with a shake at the end.
+ * Each key names the phase that runs from it to the next, which the perf
+ * suite times as one row. */
 typedef struct {
     uint32_t at_ms;
     vec3f_t down;
+    const char* phase;
 } water_key_t;
 
 static const water_key_t TOUR[] = {
-    {0, {0.0F, 1.0F, 0.0F}},     /* upright */
-    {1500, {0.0F, 1.0F, 0.0F}},  /* */
-    {3000, {0.7F, 0.7F, 0.0F}},  /* tipped right */
-    {4500, {-0.7F, 0.7F, 0.0F}}, /* tipped left */
-    {6000, {0.0F, 0.6F, -0.8F}}, /* leaned back */
-    {7500, {0.0F, 0.0F, -1.0F}}, /* flat on its back */
-    {9000, {0.0F, 0.6F, 0.8F}},  /* toward the viewer */
-    {10500, {0.0F, 1.0F, 0.0F}}, /* upright */
-    {12000, {0.0F, 1.0F, 0.0F}}, /* then shaken */
+    {0, {0.0F, 1.0F, 0.0F}, "rest"},       /* upright */
+    {1500, {0.0F, 1.0F, 0.0F}, "tilt"},    /* */
+    {3000, {0.7F, 0.7F, 0.0F}, "tilt"},    /* tipped right */
+    {4500, {-0.7F, 0.7F, 0.0F}, "tilt"},   /* tipped left */
+    {6000, {0.0F, 0.6F, -0.8F}, "flat"},   /* leaned back */
+    {7500, {0.0F, 0.0F, -1.0F}, "flat"},   /* flat on its back */
+    {9000, {0.0F, 0.6F, 0.8F}, "return"},  /* toward the viewer */
+    {10500, {0.0F, 1.0F, 0.0F}, "settle"}, /* upright */
+    {12000, {0.0F, 1.0F, 0.0F}, "shake"},  /* then shaken */
 };
 #define TOUR_KEYS     ((int)(sizeof TOUR / sizeof TOUR[0]))
 #define TOUR_SHAKE_MS 2000U
@@ -174,6 +187,27 @@ static bool touring;
 static uint32_t tour_ms;
 static uint32_t carried_ms;
 static uint32_t step_us;
+static vec3f_t last_accel_g;
+static uint32_t still_updates;
+static scene_water_stats_t stats;
+
+#define SCENE_WATER_STAGE_NAME(id, name) name,
+const char* const scene_water_stage_names[SCENE_WATER_STAGE_COUNT] = {SCENE_WATER_STAGES(SCENE_WATER_STAGE_NAME)};
+
+scene_water_stats_t
+scene_water_take_stats(void) {
+    const scene_water_stats_t taken = stats;
+    stats = (scene_water_stats_t){.particles = water.count, .peak_speed_mm_s = taken.peak_speed_mm_s};
+    return taken;
+}
+
+/* Charges the time since `since` to `stage` and returns now. */
+static int64_t
+lap(scene_water_stage_t stage, int64_t since) {
+    const int64_t now = timing_now_us();
+    stats.stage_us[stage] += now - since;
+    return now;
+}
 
 static char failure[RENDER_LAB_STATUS_LEN];
 
@@ -303,6 +337,20 @@ parallax_eye(vec3f_t down, uint32_t dt_ms) {
     return vec3f_scale((vec3f_t){-turn.y, -turn.x, 0.0F}, (float)parallax_mm);
 }
 
+uint32_t
+scene_water_tour_length_ms(void) {
+    return TOUR[TOUR_KEYS - 1].at_ms + TOUR_SHAKE_MS;
+}
+
+const char*
+scene_water_tour_phase(void) {
+    int k = 0;
+    while (k + 1 < TOUR_KEYS && tour_ms >= TOUR[k + 1].at_ms) {
+        k++;
+    }
+    return TOUR[k].phase;
+}
+
 /* Down, eased between the tour's keys; a shake past its last key. */
 static vec3f_t
 tour_accel(uint32_t at_ms, vec3f_t* down) {
@@ -330,7 +378,7 @@ tour_accel(uint32_t at_ms, vec3f_t* down) {
 static vec3f_t
 read_accel(uint32_t dt_ms, vec3f_t* down) {
     if (touring) {
-        tour_ms = (tour_ms + dt_ms) % (TOUR[TOUR_KEYS - 1].at_ms + TOUR_SHAKE_MS);
+        tour_ms = (tour_ms + dt_ms) % scene_water_tour_length_ms();
         return tour_accel(tour_ms, down);
     }
     if (input_read_motion_batch(&batch)) {
@@ -413,11 +461,16 @@ shade(int count) {
  * scene. A surface too big for the buffers is cut, said once and shown. */
 static void
 rebuild_surface(void) {
+    int64_t at = timing_now_us();
     surface_field = flip3_field(&water, WATER_SAMPLES, field);
+    at = lap(SCENE_WATER_STAGE_FIELD, at);
     measure_through();
+    at = lap(SCENE_WATER_STAGE_THROUGH, at);
     iso_mesh_t m = {positions, normals, WATER_MAX_VERTICES, triangles, WATER_MAX_TRIANGLES, scratch, 0, 0};
     bool fitted = iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, &m);
+    at = lap(SCENE_WATER_STAGE_NETS, at);
     shade(m.vertex_count);
+    at = lap(SCENE_WATER_STAGE_SHADE, at);
     for (int i = 0; i < m.vertex_count; i++) {
         positions[i] = to_model(positions[i]);
         normals[i] = direction_to_model(normals[i]);
@@ -431,12 +484,30 @@ rebuild_surface(void) {
     }
     truncated = !fitted;
     (void)scene_renderer_set_mesh(tank_scene, water_entity, &surface.mesh);
+    (void)lap(SCENE_WATER_STAGE_BUILD, at);
 }
 
 static void
 refill(vec3f_t down) {
     (void)flip3_fill(&water, (float)fill_percent / (float)WATER_PERCENT, down);
     filled_percent = fill_percent;
+    still_updates = 0;
+}
+
+/* True once the water has held still under the same push for
+ * WATER_REST_UPDATES updates; any change wakes it on this update. */
+static bool
+resting(vec3f_t accel_g) {
+    const vec3f_t change = vec3f_sub(accel_g, last_accel_g);
+    last_accel_g = accel_g;
+    const float rest_mm_s = (float)rest_um_s / WATER_UM_PER_MM;
+    if (rest_um_s == 0 || vec3f_dot(change, change) > WATER_REST_G * WATER_REST_G
+        || stats.peak_speed_mm_s > rest_mm_s) {
+        still_updates = 0;
+        return false;
+    }
+    still_updates++;
+    return still_updates > WATER_REST_UPDATES;
 }
 
 /* render_lab's debug view (`render_lab.view`), as every scene applies it. */
@@ -475,8 +546,11 @@ scene_water_enter(const render_lab_scene_t* self) {
     truncated = false;
     carried_ms = 0;
     tour_ms = 0;
+    flip3_time_stages(&water, timing_now_us, stats.flip3_us);
+    last_accel_g = (vec3f_t){0};
     refill((vec3f_t){0.0F, 1.0F, 0.0F});
     rebuild_surface();
+    (void)scene_water_take_stats();
     reference_down = (vec3f_t){0}; /* set by the first reading */
     place_camera(display_quarter_now(), (vec3f_t){0});
     (void)scene_activate(tank_scene, name_hash(WATER_CAMERA));
@@ -503,20 +577,35 @@ scene_water_update(uint32_t dt_ms) {
     if (filled_percent != fill_percent) {
         refill(down);
     }
-    const vec3f_t accel = vec3f_scale(accel_g, (float)gravity_mm_s2);
-    carried_ms += dt_ms;
-    uint32_t steps = 0;
+    FRAME_COST_BEGIN(updated_from);
     const int64_t started = timing_now_us();
-    while (carried_ms >= WATER_SUBSTEP_MS && steps < WATER_MAX_SUBSTEPS) {
-        flip3_step(&water, (float)WATER_SUBSTEP_MS / (float)MATH_MS_PER_S, accel);
-        carried_ms -= WATER_SUBSTEP_MS;
-        steps++;
-    }
-    if (steps == WATER_MAX_SUBSTEPS) {
+    stats.updates++;
+    if (resting(accel_g)) {
         carried_ms = 0;
+        stats.rested++;
+    } else {
+        const vec3f_t accel = vec3f_scale(accel_g, (float)gravity_mm_s2);
+        const uint32_t substep = (uint32_t)substep_ms;
+        carried_ms += dt_ms;
+        uint32_t steps = 0;
+        while (carried_ms >= substep && steps < WATER_MAX_SUBSTEPS) {
+            flip3_step(&water, (float)substep / (float)MATH_MS_PER_S, accel);
+            carried_ms -= substep;
+            steps++;
+        }
+        if (steps == WATER_MAX_SUBSTEPS) {
+            carried_ms = 0;
+        }
+        stats.substeps += steps;
+        stats.peak_speed_mm_s = sqrtf(flip3_peak_speed_sq(&water));
+        (void)lap(SCENE_WATER_STAGE_STEP, started);
+        rebuild_surface();
     }
-    rebuild_surface();
+    stats.triangles += surface.mesh.triangle_count;
+    stats.particles = water.count;
+    stats.update_us += timing_now_us() - started;
     step_us = (uint32_t)(timing_now_us() - started);
+    FRAME_COST_END(updated_from, "water.update");
     place_camera(display_quarter_now(), parallax_eye(down, dt_ms));
 }
 

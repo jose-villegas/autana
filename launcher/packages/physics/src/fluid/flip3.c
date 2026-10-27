@@ -11,13 +11,16 @@
 enum { KIND_SOLID, KIND_AIR, KIND_FLUID };
 
 /* Bisection steps that find the fill's level: a float's 24 bits. */
-#define FILL_LEVEL_STEPS 24
+#define FILL_LEVEL_STEPS           24
 
 /* Each array of a block starts at this alignment. */
-#define BLOCK_ALIGN      _Alignof(max_align_t)
+#define BLOCK_ALIGN                _Alignof(max_align_t)
 
 /* Eight float arrays and the kinds. */
-#define GRID_FLOATS      8
+#define GRID_FLOATS                8
+
+#define FLIP3_STAGE_NAME(id, name) name,
+const char* const flip3_stage_names[FLIP3_STAGE_COUNT] = {FLIP3_STAGES(FLIP3_STAGE_NAME)};
 
 static size_t
 align_up(size_t n) {
@@ -531,18 +534,46 @@ to_particles(flip3_t* f) {
     }
 }
 
+/* Charges the time since `since` to `stage` and returns now; 0 untimed. */
+static int64_t
+lap(const flip3_t* f, flip3_stage_t stage, int64_t since) {
+    if (f->clock == NULL) {
+        return 0;
+    }
+    const int64_t now = f->clock();
+    f->stage_us[stage] += now - since;
+    return now;
+}
+
 void
 flip3_step(flip3_t* f, float dt_s, vec3f_t accel) {
     if (dt_s <= 0.0F || f->count == 0) {
         return;
     }
+    int64_t at = f->clock != NULL ? f->clock() : 0;
     to_grid(f);
+    at = lap(f, FLIP3_STAGE_P2G, at);
     update_density(f);
+    at = lap(f, FLIP3_STAGE_DENSITY, at);
     accelerate(f, dt_s, accel);
+    at = lap(f, FLIP3_STAGE_ACCEL, at);
     solve_pressure(f, dt_s);
+    at = lap(f, FLIP3_STAGE_PRESSURE, at);
     to_particles(f);
+    at = lap(f, FLIP3_STAGE_G2P, at);
     advect(f, dt_s);
+    at = lap(f, FLIP3_STAGE_ADVECT, at);
     collide(f);
+    (void)lap(f, FLIP3_STAGE_COLLIDE, at);
+}
+
+float
+flip3_peak_speed_sq(const flip3_t* f) {
+    float peak = 0.0F;
+    for (int i = 0; i < f->count; i++) {
+        peak = fmaxf(peak, vec3f_dot(f->vel[i], f->vel[i]));
+    }
+    return peak;
 }
 
 static void
