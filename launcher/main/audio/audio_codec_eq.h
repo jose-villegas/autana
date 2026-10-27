@@ -1,4 +1,4 @@
-/* audio_codec_eq: ES8311 EQ and state-machine registers; coefficients are signed Q2.28, most significant byte first. */
+/* audio_codec_eq: ES8311 EQ and state-machine registers; coefficients are signed power-of-two terms, high byte first. */
 #pragma once
 #define AUDIO_CODEC_EQ_CSM_REG         0x00
 #define AUDIO_CODEC_EQ_CSM_ON          0x80u
@@ -20,7 +20,8 @@
 #define AUDIO_CODEC_EQ_DAC_B0_REG      0x38
 #define AUDIO_CODEC_EQ_DAC_B1_REG      0x3C
 #define AUDIO_CODEC_EQ_DAC_A1_REG      0x40
-#define AUDIO_CODEC_EQ_SCALE           268435456u
-#define AUDIO_CODEC_EQ_MASK            0x3FFFFFFFu
-#define AUDIO_CODEC_EQ_MIN             (-2.0)
+#define AUDIO_CODEC_EQ_TERMS           6u
+#define AUDIO_CODEC_EQ_FIELD_BITS      5u
+#define AUDIO_CODEC_EQ_SIGN_BIT        0x10u
+#define AUDIO_CODEC_EQ_SHIFT_MAX       15u
 #define AUDIO_CODEC_EQ_BYTES           4u
