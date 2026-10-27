@@ -120,52 +120,57 @@ report_path(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, const f
     memory_free(report);
 }
 
+/* The scenario and quarter the next test plays: one test each, so a row over its
+ * ceiling does not stop the rows after it. */
+static const profile_scenario_t* scenario;
+static size_t quarter_index;
+
 static void
-test_real_time_frame_profiles(void) {
-    for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
-        const profile_scenario_t* scenario = &profile_scenarios[i];
-        for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
-            render_lab_test_enter(&saved, scenario->scene->key);
-            suite_set_test_cleanup(release_fixture);
-            render_lab_test_hold_quarter(r3d_perf_quarters[q].quarter);
-            scene_t* scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
-            TEST_ASSERT_NOT_NULL(scene);
-            const scene_entity_t entity =
-                scene_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
-            TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, entity);
-            if (scenario->scene == &scene_capybara) {
-                char command[sizeof(CAPYBARA_CLIP_COMMAND)];
-                const int length = snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_CUT_MS);
-                TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);
-                TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
-            }
-            TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
-            const int clip = scene->animators[entity].layer.current.clip;
-            const uint32_t duration_ms = scene_animator_clip_duration_ms(scene, entity, clip);
-            TEST_ASSERT_GREATER_THAN_UINT32(0, duration_ms);
-            const frame_profile_scenario_t playback = {
-                scenario->scene->key,
-                (int64_t)duration_ms * MATH_US_PER_MS,
-            };
-            int64_t remainder_us = 0;
-            const frame_profile_t p = frame_profile_play(&playback, whole_frame, &remainder_us, &played);
-            frame_profile_log(TAG, scenario->scene->key, &p, r3d_perf_quarters[q].name);
-            TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p.frames, "frame profile failed");
-            /* The worst frames first: a row over its budget is the one they explain. */
-            report_path(scene, entity, duration_ms, &played, scenario->scene->key, r3d_perf_quarters[q].name);
-            r3d_perf_budget(scenario->scene->key, &r3d_perf_quarters[q], p.frame_us.avg, p.frame_us.p95,
-                            &scenario->quarters[q], true);
-            release_fixture();
-            suite_clear_test_cleanup();
-        }
+test_real_time_frame_profile(void) {
+    render_lab_test_enter(&saved, scenario->scene->key);
+    suite_set_test_cleanup(release_fixture);
+    render_lab_test_hold_quarter(r3d_perf_quarters[quarter_index].quarter);
+    scene_t* scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
+    TEST_ASSERT_NOT_NULL(scene);
+    const scene_entity_t entity =
+        scene_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
+    TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, entity);
+    if (scenario->scene == &scene_capybara) {
+        char command[sizeof(CAPYBARA_CLIP_COMMAND)];
+        const int length = snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_CUT_MS);
+        TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);
+        TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
     }
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
+    const int clip = scene->animators[entity].layer.current.clip;
+    const uint32_t duration_ms = scene_animator_clip_duration_ms(scene, entity, clip);
+    TEST_ASSERT_GREATER_THAN_UINT32(0, duration_ms);
+    const frame_profile_scenario_t playback = {
+        scenario->scene->key,
+        (int64_t)duration_ms * MATH_US_PER_MS,
+    };
+    int64_t remainder_us = 0;
+    const frame_profile_t p = frame_profile_play(&playback, whole_frame, &remainder_us, &played);
+    frame_profile_log(TAG, scenario->scene->key, &p, r3d_perf_quarters[quarter_index].name);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p.frames, "frame profile failed");
+    /* The worst frames first: a row over its budget is the one they explain. */
+    report_path(scene, entity, duration_ms, &played, scenario->scene->key, r3d_perf_quarters[quarter_index].name);
+    r3d_perf_budget(scenario->scene->key, &r3d_perf_quarters[quarter_index], p.frame_us.avg, p.frame_us.p95,
+                    &scenario->quarters[quarter_index], true);
+    release_fixture();
+    suite_clear_test_cleanup();
 }
 #endif
 
 void
 run_render_lab_frame_profile_suite(void) {
 #ifdef DEVICE_BUILD
-    RUN_TEST(test_real_time_frame_profiles);
+    for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
+        for (quarter_index = 0; quarter_index < R3D_PERF_QUARTER_COUNT; quarter_index++) {
+            scenario = &profile_scenarios[i];
+            RUN_TEST(test_real_time_frame_profile);
+        }
+    }
 #endif
 }
 
