@@ -31,11 +31,6 @@ typedef enum {
 } imu_probe_pose_t;
 
 typedef struct {
-    int64_t acceleration[3], rotation[3];
-    int n;
-} imu_probe_average_t;
-
-typedef struct {
     vec3i_t scale_ppm, gyro_mdps;
     imu_calib_t calib;
 } imu_probe_fit_t;
@@ -58,7 +53,7 @@ typedef enum {
 typedef struct {
     imu_rest_t rest;
     int pose, quarter;
-    imu_probe_average_t window, poses[IMU_PROBE_POSE_COUNT];
+    imu_rest_t poses[IMU_PROBE_POSE_COUNT];
     imu_probe_fit_t fit;
     imu_probe_step_t step;
     uint32_t turn_ms, trace_ms;
@@ -69,9 +64,7 @@ typedef struct {
 const char* imu_probe_pose_name(int pose);
 void imu_probe_pose_label(int pose, char* out, size_t size);
 vec3i_t imu_probe_pose_direction(int pose, int quarter);
-void imu_probe_average_add(imu_probe_average_t* average, input_motion_t sample);
-input_motion_t imu_probe_average_read(const imu_probe_average_t* average);
-imu_probe_fit_t imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter);
+imu_probe_fit_t imu_probe_fit(const imu_rest_t poses[IMU_PROBE_POSE_COUNT], int quarter);
 vec3i_t imu_probe_saved_offset(vec3i_t stored, const imu_probe_fit_t* fit);
 /* Q12 g counts to mg, rounded. */
 vec3i_t imu_probe_mg(vec3i_t q12);

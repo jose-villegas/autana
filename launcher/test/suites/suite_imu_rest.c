@@ -11,37 +11,16 @@
 #define REST_TEST_BIAS        (4 * INPUT_ROTATION_ONE_DPS)
 #define REST_TEST_DURATION_US ((IMU_REST_SETTLE_MS + IMU_REST_WINDOW_MS) * MATH_US_PER_MS)
 
-typedef struct {
-    imu_rest_t rest;
-    int64_t sum[3];
-    uint32_t n;
-} rest_test_t;
-
 static bool
-rest_test_update(rest_test_t* test, const input_motion_t* sample, uint32_t dt, vec3i_t* mean) {
-    const vec3f_t a =
-        sample != NULL ? vec3f_scale(vec3f_from_vec3i(sample->acceleration), 1.0F / INPUT_ACCEL_ONE_G) : (vec3f_t){0};
-    const bool gate = sample != NULL && fabsf(sqrtf(vec3f_dot(a, a)) - 1.0F) <= GRAVITY_TRUST_FULL_G;
-    const imu_rest_stage_t stage = imu_rest_step(&test->rest, sample, dt, gate);
-    if (dt == 0) {
-        return false;
-    }
-    if (stage == IMU_REST_MEASURING || stage == IMU_REST_DONE) {
-        test->sum[0] += sample->rotation.x;
-        test->sum[1] += sample->rotation.y;
-        test->sum[2] += sample->rotation.z;
-        test->n++;
-    }
+rest_test_update(imu_rest_t* rest, const input_motion_t* sample, uint32_t dt, vec3i_t* mean) {
+    const imu_rest_stage_t stage =
+        imu_rest_step(rest, sample, dt,
+                      sample != NULL
+                          && gravity_accel_trusted(sqrtf(vec3f_dot(vec3f_from_vec3i(sample->acceleration),
+                                                                   vec3f_from_vec3i(sample->acceleration)))
+                                                   / INPUT_ACCEL_ONE_G));
     if (stage == IMU_REST_DONE) {
-        *mean =
-            (vec3i_t){(int32_t)lroundf((float)test->sum[0] / test->n), (int32_t)lroundf((float)test->sum[1] / test->n),
-                      (int32_t)lroundf((float)test->sum[2] / test->n)};
-    }
-    if (stage != IMU_REST_MEASURING) {
-        test->n = 0;
-        for (int i = 0; i < 3; i++) {
-            test->sum[i] = 0;
-        }
+        *mean = imu_rest_mean(rest).rotation;
     }
     return stage == IMU_REST_DONE;
 }
@@ -52,7 +31,7 @@ fixture(void) {
 }
 
 static bool
-run_window(rest_test_t* rest, input_motion_t sample, uint32_t duration, vec3i_t* mean) {
+run_window(imu_rest_t* rest, input_motion_t sample, uint32_t duration, vec3i_t* mean) {
     bool complete = false;
     for (uint32_t t = 0; t < duration; t += REST_TEST_DT_US) {
         complete |= rest_test_update(rest, &sample, REST_TEST_DT_US, mean);
@@ -63,7 +42,7 @@ run_window(rest_test_t* rest, input_motion_t sample, uint32_t duration, vec3i_t*
 static void
 test_rest_bias_and_noise(void) {
     for (int phase = 0; phase < 7; phase++) {
-        rest_test_t rest = {0};
+        imu_rest_t rest = {0};
         input_motion_t sample = fixture();
         vec3i_t mean = {0};
         bool complete = false;
@@ -86,7 +65,7 @@ test_rest_bias_and_noise(void) {
 static void
 test_rest_restarts_and_magnitude(void) {
     for (int interruption = 0; interruption < 3; interruption++) {
-        rest_test_t rest = {0};
+        imu_rest_t rest = {0};
         input_motion_t sample = fixture();
         vec3i_t mean;
         TEST_ASSERT_FALSE(
@@ -105,7 +84,7 @@ test_rest_restarts_and_magnitude(void) {
         TEST_ASSERT_FALSE(run_window(&rest, fixture(), IMU_REST_WINDOW_MS * MATH_US_PER_MS, &mean));
         TEST_ASSERT_TRUE(run_window(&rest, fixture(), REST_TEST_DURATION_US, &mean));
     }
-    rest_test_t rest = {0};
+    imu_rest_t rest = {0};
     input_motion_t sample = fixture();
     sample.acceleration.z *= 2;
     vec3i_t mean;
@@ -115,7 +94,7 @@ test_rest_restarts_and_magnitude(void) {
 static void
 test_rest_smooth_tilt(void) {
     for (int rate = 1; rate <= 5; rate += 4) {
-        rest_test_t rest = {0};
+        imu_rest_t rest = {0};
         input_motion_t sample = fixture();
         vec3i_t mean;
         bool complete = false;
@@ -156,23 +135,39 @@ test_rest_stage_boundaries(void) {
 
 static void
 test_rest_settle_excluded_and_negative_rounding(void) {
-    rest_test_t test = {0};
+    imu_rest_t test = {0};
     input_motion_t sample = fixture();
     vec3i_t mean;
     sample.rotation = (vec3i_t){-REST_TEST_BIAS, 0, 0};
+    sample.acceleration.x = REST_TEST_ACCEL_NOISE;
     rest_test_update(&test, &sample, REST_TEST_DT_US, &mean);
     run_window(&test, sample, IMU_REST_SETTLE_MS * MATH_US_PER_MS, &mean);
     sample.rotation.x--;
     for (uint32_t t = 0; t < IMU_REST_WINDOW_MS * MATH_US_PER_MS; t += REST_TEST_DT_US) {
         sample.rotation.x = -REST_TEST_BIAS - ((t / REST_TEST_DT_US) % 2);
+        sample.acceleration.x = -(int32_t)((t / REST_TEST_DT_US) % 2);
         const bool done = rest_test_update(&test, &sample, REST_TEST_DT_US, &mean);
         TEST_ASSERT_EQUAL(t + REST_TEST_DT_US == IMU_REST_WINDOW_MS * MATH_US_PER_MS, done);
     }
     TEST_ASSERT_EQUAL_INT(-REST_TEST_BIAS - 1, mean.x);
+    TEST_ASSERT_EQUAL_INT(-1, imu_rest_mean(&test).acceleration.x);
+    imu_rest_step(&test, NULL, 0, false);
+    TEST_ASSERT_EQUAL_INT(-REST_TEST_BIAS - 1, imu_rest_mean(&test).rotation.x);
+    TEST_ASSERT_EQUAL_INT(IMU_REST_MOVING, imu_rest_step(&test, &sample, REST_TEST_DT_US, true));
+    TEST_ASSERT_EQUAL_INT(0, test.n);
+}
+
+static void
+test_rest_drift_formula(void) {
+    const float drift = INPUT_ACCEL_ONE_G
+                        * sinf((float)IMU_REST_RATE_RESOLUTION / INPUT_ROTATION_ONE_DPS
+                               * (IMU_REST_SETTLE_MS + IMU_REST_WINDOW_MS) / MATH_MS_PER_S * MATH_RADIANS_PER_DEGREE);
+    TEST_ASSERT_TRUE(drift == IMU_REST_DRIFT);
 }
 
 void
 run_imu_rest_suite(void) {
+    RUN_TEST(test_rest_drift_formula);
     RUN_TEST(test_rest_stage_boundaries);
     RUN_TEST(test_rest_settle_excluded_and_negative_rounding);
     RUN_TEST(test_rest_smooth_tilt);

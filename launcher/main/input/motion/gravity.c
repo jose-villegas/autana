@@ -38,6 +38,11 @@ check_overrange(gravity_t* g, vec3f_t raw) {
     }
 }
 
+bool
+gravity_accel_trusted(float magnitude_g) {
+    return fabsf(magnitude_g - 1.0F) <= GRAVITY_TRUST_FULL_G;
+}
+
 static float
 trust_weight(float error) {
     return mathf_clamp((GRAVITY_TRUST_NONE_G - error) / (GRAVITY_TRUST_NONE_G - GRAVITY_TRUST_FULL_G), 0.0F, 1.0F);
@@ -93,7 +98,8 @@ static void
 correct_acceleration(gravity_t* g, vec3f_t a, vec3f_t rate, uint32_t dt_us, float dt) {
     const float magnitude = sqrtf(vec3f_dot(a, a));
     const float error = fabsf(magnitude - 1.0F);
-    const bool still = vec3f_dot(rate, rate) < GRAVITY_STILL_DPS * GRAVITY_STILL_DPS && error <= GRAVITY_TRUST_FULL_G;
+    const bool still =
+        vec3f_dot(rate, rate) < GRAVITY_STILL_DPS * GRAVITY_STILL_DPS && gravity_accel_trusted(magnitude);
     if (!still) {
         g->still_us = 0;
     }

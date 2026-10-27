@@ -33,19 +33,22 @@ typedef enum {
 } settings_operation_t;
 
 static bool
-store_access(const char* space, const char* key, void* value, settings_operation_t operation) {
+store_access(const char* space, const char* const keys[], void* value, size_t n, settings_operation_t operation) {
     const bool reading = operation == SETTINGS_READ_I32 || operation == SETTINGS_READ_I64;
     nvs_handle_t handle;
     if (!store_ready() || nvs_open(space, reading ? NVS_READONLY : NVS_READWRITE, &handle) != ESP_OK) {
         return false;
     }
-    esp_err_t result;
-    switch (operation) {
-        case SETTINGS_READ_I32: result = nvs_get_i32(handle, key, value); break;
-        case SETTINGS_WRITE_I32: result = nvs_set_i32(handle, key, *(int32_t*)value); break;
-        case SETTINGS_READ_I64: result = nvs_get_i64(handle, key, value); break;
-        case SETTINGS_WRITE_I64: result = nvs_set_i64(handle, key, *(int64_t*)value); break;
-        default: result = nvs_erase_all(handle); break;
+    esp_err_t result = ESP_OK;
+    for (size_t i = 0; i < n && result == ESP_OK; i++) {
+        const char* key = keys[i];
+        switch (operation) {
+            case SETTINGS_READ_I32: result = nvs_get_i32(handle, key, value); break;
+            case SETTINGS_WRITE_I32: result = nvs_set_i32(handle, key, ((int32_t*)value)[i]); break;
+            case SETTINGS_READ_I64: result = nvs_get_i64(handle, key, value); break;
+            case SETTINGS_WRITE_I64: result = nvs_set_i64(handle, key, *(int64_t*)value); break;
+            default: result = nvs_erase_all(handle); break;
+        }
     }
     const bool ok = result == ESP_OK && (reading || nvs_commit(handle) == ESP_OK);
     nvs_close(handle);
@@ -54,40 +57,30 @@ store_access(const char* space, const char* key, void* value, settings_operation
 
 bool
 settings_read_i32(const char* space, const char* key, int32_t* out) {
-    return store_access(space, key, out, SETTINGS_READ_I32);
+    return store_access(space, &key, out, 1, SETTINGS_READ_I32);
 }
 
 bool
 settings_write_i32(const char* space, const char* key, int32_t value) {
-    return store_access(space, key, &value, SETTINGS_WRITE_I32);
+    return settings_write_i32_batch(space, &key, &value, 1);
 }
 
 bool
 settings_read_i64(const char* space, const char* key, int64_t* out) {
-    return store_access(space, key, out, SETTINGS_READ_I64);
+    return store_access(space, &key, out, 1, SETTINGS_READ_I64);
 }
 
 bool
 settings_write_i64(const char* space, const char* key, int64_t value) {
-    return store_access(space, key, &value, SETTINGS_WRITE_I64);
+    return store_access(space, &key, &value, 1, SETTINGS_WRITE_I64);
 }
 
 bool
 settings_erase_space(const char* space) {
-    return store_access(space, NULL, NULL, SETTINGS_ERASE);
+    return store_access(space, &(const char*){NULL}, NULL, 1, SETTINGS_ERASE);
 }
 
 bool
 settings_write_i32_batch(const char* space, const char* const keys[], const int32_t values[], size_t n) {
-    nvs_handle_t handle;
-    if (!store_ready() || nvs_open(space, NVS_READWRITE, &handle) != ESP_OK) {
-        return false;
-    }
-    bool ok = true;
-    for (size_t i = 0; i < n && ok; i++) {
-        ok = nvs_set_i32(handle, keys[i], values[i]) == ESP_OK;
-    }
-    ok = ok && nvs_commit(handle) == ESP_OK;
-    nvs_close(handle);
-    return ok;
+    return store_access(space, keys, (void*)values, n, SETTINGS_WRITE_I32);
 }

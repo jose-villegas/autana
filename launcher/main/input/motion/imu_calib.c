@@ -52,6 +52,15 @@ imu_calib_valid(vec3i_t offset, int32_t max) {
     return true;
 }
 
+imu_calib_gyro_t
+imu_calib_gyro_from_saved(bool committed, const bool found[3], const int32_t saved[3]) {
+    imu_calib_gyro_t gyro = {.saved_us = INT64_MIN};
+    gyro.valid = imu_calib_from_saved(committed, found, saved, IMU_CALIB_GYRO_MAX, &gyro.live);
+    gyro.storage_valid = gyro.valid;
+    gyro.saved = gyro.live.offset;
+    return gyro;
+}
+
 imu_calib_gyro_step_t
 imu_calib_gyro_learn(imu_calib_gyro_t* gyro, vec3i_t residual, int64_t now_us) {
     if (!imu_calib_valid(residual, gyro->valid ? IMU_CALIB_GYRO_RESIDUAL_MAX : IMU_CALIB_GYRO_MAX)) {
@@ -63,7 +72,7 @@ imu_calib_gyro_learn(imu_calib_gyro_t* gyro, vec3i_t residual, int64_t now_us) {
     }
     gyro->live.offset = offset;
     gyro->valid = true;
-    const bool interval = !gyro->has_saved || now_us - gyro->saved_us >= IMU_CALIB_GYRO_SAVE_INTERVAL_US;
+    const bool interval = gyro->saved_us == INT64_MIN || now_us - gyro->saved_us >= IMU_CALIB_GYRO_SAVE_INTERVAL_US;
     const bool changed = !imu_calib_valid(vec3i_sub(gyro->live.offset, gyro->saved), IMU_CALIB_GYRO_SAVE_DELTA);
     return interval && (!gyro->storage_valid || changed) ? IMU_CALIB_GYRO_SAVE_DUE : IMU_CALIB_GYRO_APPLIED;
 }
@@ -82,5 +91,4 @@ imu_calib_gyro_saved(imu_calib_gyro_t* gyro, bool ok, int64_t now_us) {
     }
     gyro->storage_valid = ok;
     gyro->saved_us = now_us;
-    gyro->has_saved = true;
 }

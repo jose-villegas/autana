@@ -377,7 +377,7 @@ test_learning_window_interruptions(void) {
             motion_reader_reset();
         }
         if (interruption == 2) {
-            now += GRAVITY_MAX_DT_US + 1;
+            now += IMU_REST_MAX_GAP_MS * MATH_US_PER_MS + 1;
         }
         for (unsigned step = 0; step < TEST_LEARN_STEPS / 2; step++) {
             clock_fake_set(now);

@@ -165,8 +165,8 @@ flowchart TB
 | Zero offset on load | missing or uncommitted marker, missing axes, or any axis beyond `IMU_CALIB_GYRO_MAX` |
 | Stillness | departure from recent acceleration and gyro means, so a constant gyro offset does not prevent learning; `imu_rest.h` owns the thresholds |
 | Acceleration gate | magnitude within `GRAVITY_TRUST_FULL_G` of one g |
-| Whole-span drift | recent-mean acceleration stays within `IMU_REST_DRIFT` per axis of its settling-start anchor throughout settling and measurement; the limit derives from the angle swept by the save-delta rate across that span |
-| Restart | motion or an input-reader stall beyond `GRAVITY_MAX_DT_US`; the shared rest stages also reject gaps beyond `IMU_REST_MAX_GAP_MS` |
+| Whole-span drift | recent-mean acceleration stays within `IMU_REST_DRIFT` per axis of its settling-start anchor throughout settling and measurement; the limit derives from the angle swept by `IMU_REST_RATE_RESOLUTION` across that span |
+| Restart | motion or a gap beyond `IMU_REST_MAX_GAP_MS` |
 | Acceptance | current offset plus the mean residual must stay within `IMU_CALIB_GYRO_MAX`; once valid, each residual axis must stay within the temperature-drift allowance `IMU_CALIB_GYRO_RESIDUAL_MAX` |
 | Live update | accepted offset applies to subsequent reads and clears the shared gravity learner's residual bias |
 | Save gates | no valid stored offset, or some axis differs by more than `IMU_CALIB_GYRO_SAVE_DELTA`; attempts are spaced by `IMU_CALIB_GYRO_SAVE_INTERVAL_US` |

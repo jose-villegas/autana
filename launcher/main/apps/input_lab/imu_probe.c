@@ -39,36 +39,11 @@ imu_probe_pose_direction(int pose, int quarter) {
     return (vec3i_t){mapped_pixel.x, mapped_pixel.y, 0};
 }
 
-void
-imu_probe_average_add(imu_probe_average_t* average, input_motion_t sample) {
-    const int a[] = {sample.acceleration.x, sample.acceleration.y, sample.acceleration.z};
-    const int r[] = {sample.rotation.x, sample.rotation.y, sample.rotation.z};
-    for (int axis = 0; axis < 3; axis++) {
-        average->acceleration[axis] += a[axis];
-        average->rotation[axis] += r[axis];
-    }
-    average->n++;
-}
-
-input_motion_t
-imu_probe_average_read(const imu_probe_average_t* average) {
-    if (average->n == 0) {
-        return (input_motion_t){0};
-    }
-    int a[3];
-    int r[3];
-    for (int axis = 0; axis < 3; axis++) {
-        a[axis] = (int)mathf_round_i32((float)average->acceleration[axis] / (float)average->n);
-        r[axis] = (int)mathf_round_i32((float)average->rotation[axis] / (float)average->n);
-    }
-    return (input_motion_t){.acceleration = {a[0], a[1], a[2]}, .rotation = {r[0], r[1], r[2]}};
-}
-
 /* Six-position offset and sensitivity: ST AN4508.
  * Accel offset is calib.offset in Q12 counts; imu_probe_mg converts it.
  * Sensitivity is ppm (unity = IMU_PROBE_SCALE_ONE), gyro offset mdps. */
 imu_probe_fit_t
-imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter) {
+imu_probe_fit(const imu_rest_t poses[IMU_PROBE_POSE_COUNT], int quarter) {
     int32_t up[3] = {0};
     int32_t down[3] = {0};
     float gyro[3] = {0};
@@ -77,15 +52,16 @@ imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter
         if (poses[pose].n == 0) {
             continue;
         }
+        const input_motion_t mean = imu_rest_mean(&poses[pose]);
+        const int32_t a[] = {mean.acceleration.x, mean.acceleration.y, mean.acceleration.z};
         const vec3i_t direction = imu_probe_pose_direction(pose, quarter);
         const int d[] = {direction.x, direction.y, direction.z};
         for (int axis = 0; axis < 3; axis++) {
-            const int32_t mean = mathf_round_i32((float)poses[pose].acceleration[axis] / (float)poses[pose].n);
             if (d[axis] > 0) {
-                up[axis] = mean;
+                up[axis] = a[axis];
             }
             if (d[axis] < 0) {
-                down[axis] = mean;
+                down[axis] = a[axis];
             }
             gyro[axis] += (float)poses[pose].rotation[axis];
         }
@@ -140,16 +116,10 @@ imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_
     }
     const imu_rest_stage_t stage =
         imu_rest_step(&round->rest, sample, dt_ms * MATH_US_PER_MS, sample != NULL && gravity_aligned(round, *sample));
-    if (stage == IMU_REST_MOVING || stage == IMU_REST_SETTLING) {
-        round->window = (imu_probe_average_t){0};
-        return false;
-    }
-    imu_probe_average_add(&round->window, *sample);
     if (stage != IMU_REST_DONE) {
         return false;
     }
-    round->poses[round->pose++] = round->window;
-    round->window = (imu_probe_average_t){0};
+    round->poses[round->pose++] = round->rest;
     if (round->pose == IMU_PROBE_POSE_COUNT) {
         round->fit = imu_probe_fit(round->poses, round->quarter);
         round->step = IMU_PROBE_UPRIGHT;
