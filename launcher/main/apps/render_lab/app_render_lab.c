@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "app/app.h"
@@ -375,7 +376,28 @@ render_lab_update(uint32_t dt_ms, const input_t* input) {
     }
 }
 
-/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
+/* The showing scene's path, with no scene when it has none or has not loaded. */
+static render_lab_path_t
+shown_path(void) {
+    return current_scene()->path == NULL ? (render_lab_path_t){NULL, SCENE_ENTITY_NONE} : current_scene()->path();
+}
+
+uint32_t
+render_lab_path_duration_ms(void) {
+    const render_lab_path_t path = shown_path();
+    return path.scene == NULL ? 0
+                              : scene_animator_clip_duration_ms(path.scene, path.entity,
+                                                                scene_animator_current_clip(path.scene, path.entity));
+}
+
+bool
+render_lab_seek_path(uint32_t t_ms) {
+    const uint32_t duration_ms = render_lab_path_duration_ms();
+    const render_lab_path_t path = shown_path();
+    return duration_ms != 0 && scene_animator_seek(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, t_ms % duration_ms);
+}
+
+/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. "render path <ms>" places the showing scene's path there (render_lab_seek_path()). Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
 bool
 render_lab_console(const char* args) {
     if (strcmp(args, "scenes") == 0) {
@@ -397,6 +419,19 @@ render_lab_console(const char* args) {
             }
         }
         (void)printf("RENDER_ERR unknown scene '%s'; `render scenes` lists them\n", args + 6);
+        (void)fflush(stdout);
+        return true;
+    }
+    if (strncmp(args, "path ", 5) == 0) {
+        char* end;
+        const unsigned long t_ms = strtoul(args + 5, &end, 10);
+        if (end == args + 5 || *end != '\0' || t_ms > UINT32_MAX) {
+            (void)printf("RENDER_ERR path takes milliseconds, not '%s'\n", args + 5);
+        } else if (!render_lab_seek_path((uint32_t)t_ms)) {
+            (void)printf("RENDER_ERR scene %s has no path\n", current_scene()->key);
+        } else {
+            (void)printf("RENDER path=%lu\nRENDER_END\n", t_ms);
+        }
         (void)fflush(stdout);
         return true;
     }
