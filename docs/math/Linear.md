@@ -145,8 +145,8 @@ the columns of `L = [a c; b d]` and its translation.
 - `mat3f_from_mat4()` takes a mat4's linear part, without translation; `mat3f_mul()` multiplies two.
 - `mat3f_cofactor()` is the determinant times the inverse-transpose, with no division.
 - It satisfies `cofactor(M) * transpose(M) = det(M) * I`, a reflection's determinant negative.
-- `mat3f_determinant()` is that det(M): below zero when the matrix mirrors, zero when it is singular.
 - Dividing it by the determinant gives the inverse-transpose.
+- `mat3f_determinant()` is that det(M): below zero when the matrix mirrors, zero when it is singular.
 
 ## mat4 (`f x`)
 
