@@ -35,7 +35,7 @@ TRACE_RE = re.compile(_log_pattern("FRAME_PROFILE_TRACE", (
 RANKED_RE = re.compile(_log_pattern("FRAME_PROFILE_RANKED", (
     ("row", r"\S+"), ("rank", r"\d+"), ("t_ms", r"\d+"), ("frame_us", r"\d+"), ("quarter", r"\w+"))))
 REPLAY_RE = re.compile(_log_pattern("FRAME_PROFILE_REPLAY", (
-    ("row", r"\S+"), ("t_ms", r"\d+"), ("counts", r"[^|]*?"), ("report", r".*?"), ("quarter", r"\w+"))))
+    ("row", r"\S+"), ("t_ms", r"\d+"), ("counts", r"[^|\n]*?"), ("report", r"[^\n]*?"), ("quarter", r"\w+"))))
 PATH_POSES = read_define(HEADER, "FRAME_PROFILE_PATH_POSES")
 COUNT = re.compile(r"(\w+)=(-?\d+)")
 

@@ -43,14 +43,19 @@ static const profile_scenario_t profile_scenarios[] = {
 static const char* TAG = "render_lab_profile";
 
 static render_lab_test_t saved;
+static frame_profile_trace_t played; /* the row playing now, freed with the fixture */
 
+/* The scene applies render_lab.view after it draws, so the view is also set here for the next draw. */
 static void
 show_view(int view) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, view), view));
+    render_context_set_debug_view(render_context_main(), view);
+    TEST_ASSERT_EQUAL_INT(view, render_context_main()->debug_view);
 }
 
 static void
 release_fixture(void) {
+    frame_profile_trace_free(&played);
     show_view(RENDER_DEBUG_VIEW_SHADED);
     render_lab_test_exit(&saved);
 }
@@ -79,6 +84,7 @@ replay_pose(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, int32_t
     const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
     TEST_ASSERT_NOT_NULL(cull);
     const raster_cull_frame_t f = raster_cull_frame(cull);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f.counts.nodes_visited, "the cull view did not draw");
 #define COUNT_BYTES(name, member) sizeof(" " #name "=-2147483648") +
     char counts[RASTER_CULL_FRAME_FIELDS(COUNT_BYTES) 1];
     strbuf_t line = strbuf_make(counts, sizeof counts);
@@ -142,14 +148,13 @@ test_real_time_frame_profiles(void) {
                 (int64_t)duration_ms * MATH_US_PER_MS,
             };
             int64_t remainder_us = 0;
-            frame_profile_trace_t trace;
-            const frame_profile_t p = frame_profile_play(&playback, whole_frame, &remainder_us, &trace);
+            const frame_profile_t p = frame_profile_play(&playback, whole_frame, &remainder_us, &played);
             frame_profile_log(TAG, scenario->scene->key, &p, r3d_perf_quarters[q].name);
             TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p.frames, "frame profile failed");
+            /* The worst frames first: a row over its budget is the one they explain. */
+            report_path(scene, entity, duration_ms, &played, scenario->scene->key, r3d_perf_quarters[q].name);
             r3d_perf_budget(scenario->scene->key, &r3d_perf_quarters[q], p.frame_us.avg, p.frame_us.p95,
                             &scenario->quarters[q], true);
-            report_path(scene, entity, duration_ms, &trace, scenario->scene->key, r3d_perf_quarters[q].name);
-            frame_profile_trace_free(&trace);
             release_fixture();
             suite_clear_test_cleanup();
         }
