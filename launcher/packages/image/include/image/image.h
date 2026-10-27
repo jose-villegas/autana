@@ -39,7 +39,7 @@ image_format_bits(image_format_t format) {
 }
 
 /* Constant expression so image views can be statically initialised. */
-#define IMAGE_PITCH(format, width) (((uint32_t)(width) * ((format) & UINT8_MAX) + CHAR_BIT - 1) / CHAR_BIT)
+#define IMAGE_PITCH(format, width) ((uint32_t)(((uint64_t)(width) * ((format) & UINT8_MAX) + CHAR_BIT - 1) / CHAR_BIT))
 
 static inline void*
 image_row(const image_t* image, int y) {
