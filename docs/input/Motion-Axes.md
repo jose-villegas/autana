@@ -5,11 +5,14 @@ six axes in one burst. Keep the burst intact: separate reads can straddle
 sample updates. A stream FIFO holds up to `IMU_FIFO_SAMPLES` at the rate
 `IMU_ODR_HZ`; see [Gravity.md](Gravity.md#update) for the drain.
 
-![The device from the front and the back: chip axes X Y Z at the IMU, screen axes x y z at the glass centre](../images/input/motion-axes.png)
+![The cased device from the front and the back: chip axes X Y Z at the IMU behind the PCB, screen axes x y z at the glass centre](../images/input/motion-axes.png)
 
-The IMU sits on the PCB's back near the centre: chip X runs up the screen, Y right, Z out of the back
-(`board/board_geometry.h`).<sup>[[89]](../Citations.md#89)</sup> It reads specific force, which points up at rest;
-the code treats that vector as down, so each screen label is a chip axis negated:
+The IMU sits on the PCB's back (the faint outline inside the case) near the centre:
+chip X runs up the screen, Y right, Z out of the back
+(`board/board_geometry.h`).<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
+
+It reads specific force, which points up at rest; the code treats that vector as down,
+so each screen label is a chip axis negated:
 
 | Screen label | Reading | Chip axis, physically |
 |---|---|---|

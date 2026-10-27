@@ -1,5 +1,8 @@
 """Shared captions and numeric disclosures for capture-derived audio docs."""
-from docs.plot_style import picture
+import argparse
+from pathlib import Path
+
+from docs.plot_style import FIGURE_SIZE, picture, subplots
 
 
 def caption(path, command, kind="capture"):
@@ -8,3 +11,21 @@ def caption(path, command, kind="capture"):
 
 def details(table):
     return "<details>\n<summary>Numeric data</summary>\n\n" + table + "\n</details>\n"
+
+
+def line_chart(series, **axes):
+    """One line chart: series are (label, [(x, y)], style, colour); `axes` go to axis.set()."""
+    fig, axis = subplots(1, 1, FIGURE_SIZE)
+    for label, points, style, color in series:
+        axis.plot([x for x, _ in points], [y for _, y in points], style, label=label, color=color)
+    axis.set(**axes)
+    return fig, axis
+
+
+def figures_main(description, capture, render):
+    """The figure scripts' command line: --capture PATH (default `capture`) --out DIR."""
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--capture", type=Path, default=capture)
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args()
+    render(args.capture, args.out)

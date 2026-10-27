@@ -268,7 +268,7 @@ tap_hit(mu_Id id, recti_t r, bool pressed, bool enabled) {
 }
 
 static bool
-button(recti_t r, const char* label, const draw_image_t* icon, bool selected, bool tile) {
+button(recti_t r, const char* label, const image_t* icon, bool selected, bool tile) {
     const mu_Id id = widget_id(label, r);
     const ui_widget_button_t b = {.icon = icon, .label = label, .enabled = !is_disabled(), .selected = selected};
     UI_FACE_COST_BEGIN(backend_from);
@@ -288,7 +288,7 @@ ui_button(recti_t r, const char* label) {
 }
 
 bool
-ui_button_icon(recti_t r, const char* label, const draw_image_t* icon) {
+ui_button_icon(recti_t r, const char* label, const image_t* icon) {
     UI_FACE_COST_BEGIN(face_from);
     const bool result = button(r, label, icon, false, false);
     UI_FACE_COST_END(face_from, "ui.face");
@@ -304,7 +304,7 @@ ui_tile(recti_t r, const char* label, bool selected) {
 }
 
 bool
-ui_tile_icon(recti_t r, const char* label, const draw_image_t* icon, bool selected) {
+ui_tile_icon(recti_t r, const char* label, const image_t* icon, bool selected) {
     UI_FACE_COST_BEGIN(face_from);
     const bool result = button(r, label, icon, selected, true);
     UI_FACE_COST_END(face_from, "ui.face");
@@ -356,8 +356,7 @@ ui_slider(recti_t r, const char* label, int* value, int lo, int hi) {
 }
 
 static bool
-dropdown(recti_t r, const char* label, int* index, const char* const* names, const draw_image_t* const* icons,
-         int count) {
+dropdown(recti_t r, const char* label, int* index, const char* const* names, const image_t* const* icons, int count) {
     assert(count > 0);
     if (count <= 0) {
         return false;
@@ -389,7 +388,7 @@ ui_dropdown(recti_t r, const char* label, int* index, const char* const* names, 
 }
 
 bool
-ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names, const draw_image_t* const* icons,
+ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names, const image_t* const* icons,
                   int count) {
     UI_FACE_COST_BEGIN(face_from);
     const bool result = dropdown(r, label, index, names, icons, count);
@@ -481,7 +480,7 @@ ui_bevel(recti_t r, uint32_t face_rgb, bool sunken) {
 }
 
 void
-ui_icon(recti_t r, const draw_image_t* icon, const char* fallback) {
+ui_icon(recti_t r, const image_t* icon, const char* fallback) {
     UI_FACE_COST_BEGIN(face_from);
     UI_FACE_COST_BEGIN(backend_from);
     ui_draw_icon(ui_context(), ui_mu_from_recti(r), icon, fallback, theme.text);

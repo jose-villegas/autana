@@ -51,7 +51,7 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 
 <a id="mathf-recip"></a>
 
-## `mathf_recip` <sup>[[85]](../Citations.md#85)</sup>
+## `mathf_recip` <sup>[[85]](../Citations.md#muller-2018)</sup>
 
 | Original | Fast path |
 |---|---|
@@ -75,7 +75,7 @@ Plain way: `1.0F / x`.
 
 <a id="mathf-rsqrt"></a>
 
-## `mathf_rsqrt` <sup>[[85]](../Citations.md#85)</sup>
+## `mathf_rsqrt` <sup>[[85]](../Citations.md#muller-2018)</sup>
 
 | Original | Fast path |
 |---|---|
@@ -99,7 +99,7 @@ Plain way: `1.0F / sqrtf(x)`.
 
 <a id="mathf-rsqrt-approx"></a>
 
-## `mathf_rsqrt_approx` <sup>[[85]](../Citations.md#85)</sup>
+## `mathf_rsqrt_approx` <sup>[[85]](../Citations.md#muller-2018)</sup>
 
 | Original | Fast path |
 |---|---|
@@ -123,7 +123,7 @@ Plain way: `1.0F / sqrtf(x)`.
 
 <a id="mathx-rsqrt-q30"></a>
 
-## `mathx_rsqrt_q30` <sup>[[85]](../Citations.md#85)</sup> <sup>[[90]](../Citations.md#90)</sup>
+## `mathx_rsqrt_q30` <sup>[[85]](../Citations.md#muller-2018)</sup> <sup>[[90]](../Citations.md#markstein-1990)</sup>
 
 | Original | Fast path |
 |---|---|
@@ -151,7 +151,7 @@ Plain way: linear quaternion blend, isqrt64 length, then 64-bit divide normaliza
 
 <a id="mathf-repeat"></a>
 
-## `mathf_repeat` <sup>[[85]](../Citations.md#85)</sup>
+## `mathf_repeat` <sup>[[85]](../Citations.md#muller-2018)</sup>
 
 | Original | Fast path |
 |---|---|
