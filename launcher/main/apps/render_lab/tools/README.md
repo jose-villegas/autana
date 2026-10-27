@@ -333,6 +333,16 @@ The pixel-equivalence checks in that suite and the camera checks in
 and the capybara gallop for one clip period in each perf quarter. It times
 update, render, compose and present with the HUD hidden.
 
+After each playback the suite names its `FRAME_PROFILE_WORST_K` slowest
+frames by path time. It then replays poses paused: `FRAME_PROFILE_PATH_POSES`
+spread evenly along the path, then each worst frame's.
+Each replay draws one frame through the `cull` view for its counts and
+`FRAME_PROFILE_REPLAY_DRAWS` shaded frames for their frame-cost report.
+A paused frame does not skin again, so capybara's replayed split has no
+skinning in it. `report_performance.py` ranks the worst frames with those
+splits and counts. Its "why" names the stage that most exceeds the path's
+median pose and the count furthest above its median.
+
 The [perf tools](../../../../tools/perf/README.md#real-time-playback)
 define playback timing and the `frame_profile:` line format.
 

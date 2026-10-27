@@ -62,6 +62,24 @@ typedef struct {
     int clusters[RASTER_FATE_COUNT];
 } raster_cull_frame_t;
 
+/* Each count by its name, X(name, member of raster_cull_frame_t): the one
+ * order and spelling every listing of the counts uses. */
+#define RASTER_CULL_FRAME_FIELDS(X)                                                                                    \
+    X(nodes_visited, counts.nodes_visited)                                                                             \
+    X(nodes_cut, counts.nodes_cut)                                                                                     \
+    X(clusters_tested, counts.clusters_tested)                                                                         \
+    X(clusters_kept, counts.clusters_kept)                                                                             \
+    X(clusters_not_set_up, clusters[RASTER_FATE_NOT_SET_UP])                                                           \
+    X(clusters_hidden, clusters[RASTER_FATE_HIDDEN])                                                                   \
+    X(clusters_drawn, clusters[RASTER_FATE_DRAWN])                                                                     \
+    X(triangles_submitted, counts.triangles_submitted)                                                                 \
+    X(triangles_behind, counts.triangles_behind)                                                                       \
+    X(triangles_clipped, counts.triangles_clipped)                                                                     \
+    X(triangles_missed, counts.triangles_missed)                                                                       \
+    X(triangles_facing_away, counts.triangles_facing_away)                                                             \
+    X(triangles_set_up, counts.triangles_set_up)                                                                       \
+    X(triangles_covering, triangles_covering)
+
 typedef struct {
     raster_cull_from_t from;
     bool spectating; /* drawing from the spectator */
