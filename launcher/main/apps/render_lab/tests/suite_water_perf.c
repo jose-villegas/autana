@@ -25,10 +25,13 @@ typedef struct {
     int32_t rest_um_s;
 } water_config_t;
 
-/* The baseline, then one change each: the grid in internal RAM, two and one
- * substeps a frame, and skipping the step at rest below 2 mm/s. */
+/* The baseline, then one change each: two and one substeps a frame, and
+ * skipping the step at rest below 2 mm/s. The grid in internal RAM is not
+ * one: its block is larger than internal RAM's largest free one. */
 static const water_config_t configs[] = {
-    {"base", 0, 8, 0},    {"internal", 1, 8, 0}, {"sub16", 0, 16, 0}, {"sub33", 0, WATER_PERF_FRAME_MS, 0},
+    {"base", 0, 8, 0},
+    {"sub16", 0, 16, 0},
+    {"sub33", 0, WATER_PERF_FRAME_MS, 0},
     {"rest", 0, 8, 2000},
 };
 
@@ -93,6 +96,7 @@ log_row(const char* config, const char* phase) {
     const bench_stats_t update = bench_stats_compute(row.update_us, n);
     const bench_stats_t draw = bench_stats_compute(row.draw_us, n);
     const scene_water_stats_t* s = &row.sums;
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(n, s->updates, "the water scene did not update every frame");
     ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_ROW, config, phase, n, (unsigned)s->substeps, (unsigned)s->rested,
              (long long)(s->triangles / n), s->particles, (double)s->peak_speed_mm_s);
     ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_TIMES, config, phase, (long long)frame.avg, (long long)frame.p95,
