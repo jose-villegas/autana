@@ -6,6 +6,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from audio.mic import mic_metrics as metrics
+from audio.mic.tests.fake_recorder import FakeRecorder
 
 class PlaybackMetricsTests(unittest.TestCase):
     def test_band_active_level(self):
@@ -69,29 +70,52 @@ class RestartTests(unittest.TestCase):
 class PlaybackTablesTests(unittest.TestCase):
     def test_fixture_and_generated_block(self):
         import tempfile
+        import soundfile as sf
         from audio_doc_tables import read_capture, markdown, update_playback
-        from audio.mic.playback_dsp_tables import playback_data, render
+        from audio.mic.playback_dsp_tables import playback_data, render, BLOCK_SAMPLES
+        from audio.mic.playback_dsp_capture import TONE_HZ, STEP_DB
         root = Path(__file__).resolve().parents[5]
-        fixture = root / 'launcher/test/fixtures/mic_playback_capture.txt'
-        _, records, _ = read_capture(fixture)
-        groups = playback_data(fixture, records)
-        self.assertEqual(len(groups), 20)
-        self.assertAlmostEqual(groups[0]['takes'][0]['active'], -11, delta=1)
-        body = render(fixture, records, markdown)
-        self.assertIn('Down click excess (dB)', body)
-        self.assertIn('200 Hz THD (dB)', body)
-        self.assertNotIn('synthetic', body)
         with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory) / 'capture.txt'
+            fixture.write_bytes((root / 'launcher/test/fixtures/mic_playback_capture.txt').read_bytes())
+            _, records, _ = read_capture(fixture)
+            state = next(reply for command, reply in records if command[:2] == ['mic', 'record'] and reply['writes'])
+            rate = state['rate']
+            samples = .5 * np.cos(2 * np.pi * TONE_HZ * np.arange(state['samples']) / rate)
+            first, last = (write[0] * BLOCK_SAMPLES for write in state['writes'])
+            samples[first:last] *= 10 ** (-STEP_DB / metrics.DB_AMPLITUDE)
+            sf.write(Path(directory) / 'mic_playback_take.wav', samples, rate, subtype='PCM_16')
+            groups = playback_data(fixture, records)
+            self.assertEqual(len(groups), 20)
+            self.assertAlmostEqual(groups[0]['takes'][0]['active'], -11, delta=1)
+            body = render(fixture, records, markdown)
+            self.assertIn('Down click excess (dB)', body)
+            self.assertIn('200 Hz THD (dB)', body)
+            self.assertNotIn('synthetic', body)
             document = Path(directory) / 'audio.md'
             document.write_bytes(b'<!-- generated: mic-playback-dsp -->\r\n<!-- /generated: mic-playback-dsp -->\r\n')
             self.assertTrue(update_playback(fixture, document))
             self.assertFalse(update_playback(fixture, document, check=True))
             self.assertNotIn(b'\n', document.read_bytes().replace(b'\r\n', b''))
-        broken = [(command, reply) for command, reply in records if command != ['arm'] or reply['index'] != 0]
-        with self.assertRaises(ValueError):
-            playback_data(fixture, broken)
+            broken = [(command, reply) for command, reply in records if command != ['arm'] or reply['index'] != 0]
+            with self.assertRaises(ValueError):
+                playback_data(fixture, broken)
 
 class CaptureTests(unittest.TestCase):
+    def test_ramp_attenuates_both_volume_registers(self):
+        from audio.mic import playback_dsp_capture as capture
+        from unittest.mock import Mock, patch
+        initial = capture.DEFAULTS['alc_gain']
+        saved = {capture.ADC_RAMP_REG: 0}
+        for owner, register in (('adc', capture.ADC_VOLUME_REG), ('dac', capture.DAC_VOLUME_REG)):
+            with self.subTest(owner=owner):
+                with patch.object(capture, 'codec', return_value=initial), \
+                        patch.object(capture, 'music_take') as take:
+                    capture.ramp_take(Mock(), saved, None, dict(block=owner + '-ramp', ramp=0), 'take')
+                self.assertEqual(take.call_args.args[3], (
+                    (capture.STEP_AT_MS[0], register, initial - capture.REGISTER_STEP),
+                    (capture.STEP_AT_MS[1], register, initial)))
+
     def test_capture_arms_and_failure_cleanup(self):
         from audio.mic import playback_dsp_capture as capture
         from audio.mic import eq_probe_sweep as sweep
@@ -104,6 +128,8 @@ class CaptureTests(unittest.TestCase):
                 registers = {reg: 0 for reg in set((*sweep.REGISTERS, capture.ADC_RAMP_REG, capture.ADC_VOLUME_REG,
                                                    capture.DAC_VOLUME_REG))}
                 registers[sweep.CSM_REG] = sweep.CSM_ON
+                for reg in (capture.ADC_VOLUME_REG, capture.DAC_VOLUME_REG):
+                    registers[reg] = capture.DEFAULTS['alc_gain']
                 original = dict(registers)
                 calls = []
                 def runner(command, *words):
@@ -139,29 +165,16 @@ class CaptureTests(unittest.TestCase):
 
 class RestartCaptureTests(unittest.TestCase):
     def test_restart_mode_reads_all_coefficients_and_internal_baseline(self):
-        import json
         import tempfile
         from unittest.mock import patch
         from audio.mic import eq_probe_sweep as sweep
         from audio_doc_tables import read_capture
-        calls = []
         registers = dict.fromkeys(sweep.REGISTERS, 0)
         registers[sweep.CSM_REG] = sweep.CSM_ON
         original = dict(registers)
-        def runner(command, *words):
-            words = words[2:]
-            calls.append(words)
-            if words[0] == 'buildid':
-                return '{"build_id":"synthetic"}'
-            if words[0] == 'codec':
-                reg = int(words[1], 0)
-                if len(words) == 3:
-                    registers[reg] = int(words[2], 0)
-                return f'CODEC reg=0x{reg:02X} value=0x{registers[reg]:02X}'
-            if words[0] == 'tone':
-                return json.dumps(dict(hz=int(words[1]), tone_db=-20,
-                                       path='internal' if '--internal' in words else 'acoustic'))
-            return 'ok'
+        runner = FakeRecorder(registers, 'synthetic', lambda words: dict(
+            hz=int(words[1]), tone_db=-20,
+            path='internal' if '--internal' in words else 'acoustic'))
         with tempfile.TemporaryDirectory() as directory:
             args = sweep.parser().parse_args(['--board', 'TEST', '--mode', 'restart', '--runs', '1',
                                              '--out', str(Path(directory) / 'restart.txt')])
@@ -175,4 +188,4 @@ class RestartCaptureTests(unittest.TestCase):
         for command, reply in readbacks:
             registers = sweep.ADC_REGS if command[1] == 'adc' else sweep.DAC_REGS
             self.assertEqual(set(reply), {hex(reg + offset) for reg in registers for offset in range(sweep.COEFF_BYTES)})
-        self.assertEqual(sum('--internal' in words for words in calls), 15)
+        self.assertEqual(sum('--internal' in words for words in runner.calls), 15)

@@ -5,6 +5,7 @@
 #include "audio/audio_codec_eq.h"
 #include "audio/audio_codec_saved.h"
 
+#define AUDIO_CODEC_MIC_RAMP_REG        0x15
 #define AUDIO_CODEC_MIC_NIBBLE_MAX      15u
 #define AUDIO_CODEC_MIC_HPF_MAX         31u
 #define AUDIO_CODEC_MIC_DEPTH_MAX       7u

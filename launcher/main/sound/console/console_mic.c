@@ -10,15 +10,15 @@
 #include "sound/console/console_mic_parse.h"
 #include "sound/sound_engine.h"
 
-#define MIC_RECORD_JSON_ENTRY_BYTES  32u
-#define MIC_RECORD_JSON_HEADER_BYTES 128u
-#define MIC_RECORD_REG_COUNT         (MIC_RECORD_LAST_REG - MIC_RECORD_FIRST_REG + 1u)
+#define MIC_RECORD_JSON_ENTRY_BYTES  32U
+#define MIC_RECORD_JSON_HEADER_BYTES 128U
+#define MIC_RECORD_REG_COUNT         (MIC_RECORD_LAST_REG - MIC_RECORD_FIRST_REG + 1U)
 
 static bool
 apply_writes(console_mic_args_t* args, size_t pos, size_t block, unsigned* applied) {
     for (unsigned i = 0; i < args->write_count; i++) {
         console_mic_write_t* write = &args->writes[i];
-        const unsigned bit = 1u << i;
+        const unsigned bit = 1U << i;
         if (!(*applied & bit) && pos >= audio_out_samples(write->ms)) {
             uint8_t value = write->value;
             if (!audio_codec_register(write->reg, true, &value) || value != write->value) {
@@ -50,7 +50,7 @@ record(int16_t* pcm, size_t count, uint8_t* flags, size_t settle, console_mic_ar
         }
         pos += n;
     }
-    return applied == (1u << args->write_count) - 1u;
+    return applied == (1U << args->write_count) - 1U;
 }
 
 /* Appends the automute flag as [first_block, run_length] runs. */
@@ -120,10 +120,10 @@ console_verb_mic(const char* args, console_reply_fn reply) {
         return;
     }
     const size_t count = audio_out_samples(parsed.ms);
-    const size_t blocks = (count + AUDIO_CODEC_BLOCK_SAMPLES - 1u) / AUDIO_CODEC_BLOCK_SAMPLES;
+    const size_t blocks = (count + AUDIO_CODEC_BLOCK_SAMPLES - 1U) / AUDIO_CODEC_BLOCK_SAMPLES;
     const size_t json_bytes = MIC_RECORD_JSON_HEADER_BYTES
-                              + (blocks + MIC_RECORD_REG_COUNT + MIC_RECORD_WRITES_MAX) * MIC_RECORD_JSON_ENTRY_BYTES;
-    const size_t line_bytes = (size_t)console_base64_encoded_len(AUDIO_CODEC_BLOCK_SAMPLES * sizeof(int16_t)) + 1u;
+                              + ((blocks + MIC_RECORD_REG_COUNT + MIC_RECORD_WRITES_MAX) * MIC_RECORD_JSON_ENTRY_BYTES);
+    const size_t line_bytes = (size_t)console_base64_encoded_len(AUDIO_CODEC_BLOCK_SAMPLES * sizeof(int16_t)) + 1U;
     char* line = memory_alloc(line_bytes, MEMORY_PSRAM);
     int16_t* pcm = memory_alloc(count * sizeof *pcm, MEMORY_PSRAM);
     uint8_t* flags = memory_alloc(blocks, MEMORY_PSRAM);

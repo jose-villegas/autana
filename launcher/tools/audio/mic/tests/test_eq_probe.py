@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / 'launcher/tools'))
 sys.path.insert(0, str(ROOT / 'launcher/tools/audio'))
 from audio.mic import eq_probe_sweep as sweep
 from audio.mic import mic_eq_probe_tables as tables
+from audio.mic.tests.fake_recorder import FakeRecorder
 
 
 class EqProbeTest(unittest.TestCase):
@@ -60,34 +61,23 @@ class EqProbeTest(unittest.TestCase):
                      for owner, slots in layout.items()}
         registers = dict.fromkeys(sweep.REGISTERS, 0)
         registers[sweep.CSM_REG] = sweep.CSM_ON
-        calls = []
-        def runner(command, *words):
-            words = words[2:]
-            calls.append(words)
-            if words[0] == 'buildid':
-                return '{"build_id":"synthetic-slots"}'
-            if words[0] == 'codec':
-                reg = int(words[1], 0)
-                if len(words) == 3:
-                    registers[reg] = int(words[2], 0)
-                return f'CODEC reg=0x{reg:02X} value=0x{registers[reg]:02X}'
-            if words[0] == 'tone':
-                level = -20.0
-                for owner, control, mask in (('adc', sweep.ADC_CONTROL, sweep.ADC_BYPASS),
-                                              ('dac', sweep.DAC_CONTROL, sweep.DAC_BYPASS)):
-                    if not registers[control] & mask:
-                        from audio.mic.eq_design import EQ_MASK, SAMPLE_RATE_HZ
-                        sums = {'numerator': 0j, 'feedback': 1 + 0j}
-                        for reg, (role, delay, sign) in layout[owner].items():
-                            encoded = int.from_bytes(bytes(registers[reg + i] for i in range(sweep.COEFF_BYTES)), 'big')
-                            period = EQ_MASK + 1
-                            value = (encoded - period if encoded >= period // 2 else encoded) / EQ_SCALE
-                            phase = cmath.exp(-2j * math.pi * int(words[1]) * delay / SAMPLE_RATE_HZ)
-                            sums[role] += value * sign * phase
-                        gain = abs(sums['numerator'] / sums['feedback'])
-                        level += 20 * math.log10(gain) if gain > 0 else -100
-                return json.dumps(dict(hz=int(words[1]), tone_db=level))
-            return 'ok'
+        def tone(words):
+            level = -20.0
+            for owner, control, mask in (('adc', sweep.ADC_CONTROL, sweep.ADC_BYPASS),
+                                          ('dac', sweep.DAC_CONTROL, sweep.DAC_BYPASS)):
+                if not registers[control] & mask:
+                    from audio.mic.eq_design import EQ_MASK, SAMPLE_RATE_HZ
+                    sums = {'numerator': 0j, 'feedback': 1 + 0j}
+                    for reg, (role, delay, sign) in layout[owner].items():
+                        encoded = int.from_bytes(bytes(registers[reg + i] for i in range(sweep.COEFF_BYTES)), 'big')
+                        period = EQ_MASK + 1
+                        value = (encoded - period if encoded >= period // 2 else encoded) / EQ_SCALE
+                        phase = cmath.exp(-2j * math.pi * int(words[1]) * delay / SAMPLE_RATE_HZ)
+                        sums[role] += value * sign * phase
+                    gain = abs(sums['numerator'] / sums['feedback'])
+                    level += 20 * math.log10(gain) if gain > 0 else -100
+            return dict(hz=int(words[1]), tone_db=level)
+        runner = FakeRecorder(registers, 'synthetic-slots', tone)
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             args = sweep.parser().parse_args(['--board', 'TEST', '--mode', 'slots',
@@ -112,8 +102,8 @@ class EqProbeTest(unittest.TestCase):
             self.assertTrue(any(command[:2] == ['probe', 'adc'] and command[2].startswith('delay-')
                                 for command, reply in records))
             self.assertFalse(any('--internal' in command for command, reply in records))
-            self.assertIn(('tune', 'audio.drc', 0), calls)
-            self.assertIn(('tune', 'reset', 'audio.drc'), calls)
+            self.assertIn(('tune', 'audio.drc', 0), runner.calls)
+            self.assertIn(('tune', 'reset', 'audio.drc'), runner.calls)
             self.assertEqual(registers, dict.fromkeys(sweep.REGISTERS, 0) | {sweep.CSM_REG: sweep.CSM_ON})
             document = output / 'probe.md'
             document.write_text('<!-- generated: mic-eq-probe -->\n<!-- /generated: mic-eq-probe -->\n')
