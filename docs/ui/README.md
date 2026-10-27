@@ -235,8 +235,9 @@ shows its label alone, and an icon its short text: the no-pack rows.
 | `UI_MARGIN` | 16 | from the canvas edge |
 | `UI_TITLE_HEIGHT`, `UI_BANNER_HEIGHT` | 56 | a title strip; the empty status strip on the home screen |
 
-The panel is about 322 pixels per inch, so a phone's 44 px is only 3.5 mm
-here. 56 px is about 4.4 mm.
+The panel is about 326 pixels per inch, from `BOARD_SCREEN_WIDTH_MM` in
+[`board_geometry.h`](../../launcher/main/board/board_geometry.h).
+44 px is about 3.4 mm; 56 px is about 4.4 mm.
 
 - **Canvas size.** `ui_width()` and `ui_height()` are the logical canvas:
   368x448 in portrait and 448x368 in landscape. Lay out against them,
