@@ -389,7 +389,7 @@ def update_eq_probe(capture, document, check=False, slots_capture=None, restart_
     restart_capture = restart_capture or ROOT / EQ_RESTART_CAPTURE
     if restart_capture.exists():
         _, records, _ = read_capture(restart_capture)
-        body += "\n" + render_restart(restart_capture, records, caption, markdown, REGENERATE)
+        body = body.rstrip("\n") + "\n\n" + render_restart(restart_capture, records, caption, markdown, REGENERATE)
     return replace_block(document, "mic-eq-probe", body, check=check)
 
 

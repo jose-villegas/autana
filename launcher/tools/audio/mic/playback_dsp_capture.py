@@ -14,6 +14,8 @@ from autana_runner import reset_tunables
 
 BYTE_MAX = read_define(ROOT / 'launcher/main/sound/console/console_mic_parse.h', 'MIC_RECORD_BYTE_MAX')
 CAPTURE = ROOT / 'docs/audio/data/mic_playback_capture.txt'
+# Development builds ship this public-domain excerpt in the console pack (docs/audio/Sound-Assets.md).
+MUSIC = 'console/carreno_waltz'
 TAKE_MS = 3000
 SETTLE_MS = 500
 TONE_MS = 1000
@@ -62,7 +64,7 @@ def music_take(record, args, name, writes=(), tone=False):
         if tone:
             record('sound', 'tone', TONE_HZ, GAIN)
         else:
-            record('sound', 'play', 'carreno_waltz', 'loop', GAIN)
+            record('sound', 'play', MUSIC, 'loop', GAIN)
         schedule = tuple(word for write in writes for word in ('--at', *write))
         record('mic', 'record', TAKE_MS, '--settle', SETTLE_MS, *schedule, '-o', str(path), '--json')
     finally:
