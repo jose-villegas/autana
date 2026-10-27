@@ -130,7 +130,7 @@ engine page shows the [presentation GIFs](../../../../../docs/render/Dynamic-Res
 
 ### Debug views
 
-`--view shaded|depth|tiles|motion|meshlets` selects the declared context view.
+`--view shaded|depth|tiles|motion|meshlets|cull|overdraw` selects the declared context view.
 Depth and tiles show a lit-mesh scene's depth buffer, or that depth
 reduced to `RASTER_SHOW_TILE` squares. The depth is `raster_draw()`'s
 own buffer, unchanged; `raster_show()` only colours it and takes each
@@ -139,6 +139,12 @@ moment it upscales the frame. Near is bright and far dark, stretched over the
 range that frame drew, so grey compares pixels within a frame, not across
 frames; a pixel nothing reached takes the scene's clear colour, as the
 shaded frame does, and a tile with one such pixel is empty.
+
+Overdraw colours each pixel by how many triangle spans tested it, blue for
+one to red for `RASTER_OVERDRAW_RAMP_LAYERS` or more, on the same scale every
+frame. The last frame's totals go to stderr as one `overdraw:` line
+(`RASTER_OVERDRAW_LINE`): pixels tested, layers tested and written summed
+over them, and the most at one pixel.
 
 They are ordinary renders: `sponza-depth-*.bmp` and `sponza-tiles-*.bmp`
 beside `sponza-*.bmp`, each with a `.png` when Pillow is installed, turned to

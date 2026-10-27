@@ -13,6 +13,7 @@
 #include "render/view/raster_cull_view.h"
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_motion.h"
+#include "render/view/raster_overdraw.h"
 #include "render/view/raster_show.h"
 
 static const render_debug_view_t views[] = {
@@ -21,6 +22,7 @@ static const render_debug_view_t views[] = {
     {"motion", sizeof(raster_motion_t), raster_motion_view, NULL, NULL},
     {"meshlets", sizeof(raster_meshlets_t), raster_meshlets_view, NULL, NULL},
     {"cull", sizeof(raster_cull_t), raster_cull_view, raster_cull_second_view, raster_cull_overlay},
+    {"overdraw", sizeof(raster_overdraw_t), raster_overdraw_view, NULL, NULL},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
