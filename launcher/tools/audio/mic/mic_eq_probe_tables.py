@@ -265,6 +265,9 @@ def render_restart(path, records, caption, markdown, regenerate):
                     rows.append((owner, case, path_name, hz, number(measured),
                                  ('<= ' if case == 'zero' else '') + number(expected), number(error)))
         verdicts.append(owner.upper() + ': ' + ('follows' if follows else 'does not follow') + '.')
-    return (caption(path, regenerate, 'replies')
+    return ('### EQ after a state-machine restart\n\n'
+            + 'Each case loads the coefficients, then restarts the codec state machine (REG00: resets with CSM off, '
+            + 'resets cleared, CSM on) before measuring.\n\n'
+            + caption(path, regenerate, 'replies')
             + markdown(['Owner', 'Case', 'Path', 'Hz', 'Measured minus bypass (dB)', 'Designed (dB)', 'Error (dB)'], rows)
             + '\n' + '\n\n'.join(verdicts) + '\n')
