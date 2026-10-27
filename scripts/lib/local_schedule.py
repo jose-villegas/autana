@@ -16,6 +16,9 @@ from device_lock import LockStore, board_read_root, heavy_root, write_json
 from process_tree import launch_process_tree, stop_process_tree, close_process_tree
 
 NIGHT_START = "01:00"
+# Boards start after the GPU's night work: two hours of day board time when no GPU work is queued.
+BOARD_START = "03:00"
+STARTS = {"NIGHT_START": NIGHT_START, "BOARD_START": BOARD_START}
 NIGHT_ZONE = "UTC"
 HOSTED_WAIT_SECONDS = 350 * 60
 GPU_LABEL = "gpu"
@@ -28,6 +31,9 @@ BAKES_WORKFLOW = "bakes-gpu.yml"
 DOC_IMAGES_WORKFLOW = "doc-images-gpu.yml"
 GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
 GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 4 * 60 * 60}
+# How long a started GPU job holds the boards back: its longest measured run with margin
+# (doc images 8.4 h, bakes 2.8 h); past this the boards start beside it.
+GPU_BOARD_HOLD_SECONDS = {DOC_IMAGES_WORKFLOW: 10 * 60 * 60, BAKES_WORKFLOW: 4 * 60 * 60}
 NIGHT_STEP_HANG_SECONDS = 23 * 60 * 60
 GPU_PENDING_STATUSES = ("queued", "waiting", "in_progress")
 DEFERRED = "GPU doc images deferred: bakes queued or running"
@@ -44,10 +50,10 @@ class Clock:
         time.sleep(seconds)
 
 
-def next_marker(trigger, night_start=None):
-    night_start = night_start or os.environ.get("NIGHT_START") or NIGHT_START
+def next_marker(trigger, night_start=None, start="NIGHT_START"):
+    night_start = night_start or os.environ.get(start) or STARTS[start]
     if not re.fullmatch(r"0[0-5]:[0-5][0-9]", night_start):
-        raise ValueError(f"NIGHT_START must be HH:MM in 00:00–05:59: {night_start!r}")
+        raise ValueError(f"{start} must be HH:MM in 00:00–05:59: {night_start!r}")
     hour, minute = map(int, night_start.split(":"))
     night_zone = os.environ.get("NIGHT_ZONE") or NIGHT_ZONE
     try:
@@ -87,10 +93,19 @@ def gpu_on_host(clock):
         return False
 
 
+def holding(job, workflow, now):
+    """A GPU job that is waiting to run, or started less than its board hold ago."""
+    if job.get("status") not in GPU_PENDING_STATUSES or GPU_LABEL not in job.get("labels", []):
+        return False
+    since = job.get("started_at") or job.get("created_at")
+    return not since or now - datetime.fromisoformat(since.replace("Z", "+00:00"))         < timedelta(seconds=GPU_BOARD_HOLD_SECONDS[workflow])
+
+
 def gpu_pending(workflows=GPU_WORKFLOWS, request=None):
-    cutoff = (Clock().now().astimezone(timezone.utc) - RECENT_RUNS_WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = Clock().now().astimezone(timezone.utc)
+    cutoff = (now - RECENT_RUNS_WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ")
     request = request or call
-    return any(job.get("status") in GPU_PENDING_STATUSES and GPU_LABEL in job.get("labels", [])
+    return any(holding(job, workflow, now)
                for workflow in workflows
                for run in request("GET", f"/actions/workflows/{workflow}/runs?created=>={cutoff}&per_page={PER_PAGE}")["workflow_runs"]
                if run["status"] != "completed"
@@ -116,13 +131,15 @@ def gpu_ready(clock=None, board_held=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("marker", "wait", "ready", "start"))
+    parser.add_argument("--start", choices=tuple(STARTS), default="NIGHT_START",
+                        help="the local start a marker waits for")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     clock = Clock()
     if args.mode == "marker":
         now = clock.now()
         marker = now if os.environ.get("OVERRIDE") == "true" else next_marker(
-            trigger_time(os.environ.get("GITHUB_EVENT_NAME"), os.environ.get("SCHEDULE", ""), now))
+            trigger_time(os.environ.get("GITHUB_EVENT_NAME"), os.environ.get("SCHEDULE", ""), now), start=args.start)
         print(marker.isoformat(), flush=True)
         if os.environ.get("GITHUB_OUTPUT"):
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
