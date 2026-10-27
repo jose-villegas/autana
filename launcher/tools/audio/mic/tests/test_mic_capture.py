@@ -1,3 +1,4 @@
+"""Tests the stdlib mic capture client: framing, base64 decode and the WAV it writes."""
 import base64
 import json
 import sys

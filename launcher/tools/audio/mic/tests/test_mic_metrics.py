@@ -1,3 +1,4 @@
+"""Tests the host mic metrics (levels, clips, alignment, SNR, STOI, takes), noise generation and EQ designs."""
 import sys
 import unittest
 from pathlib import Path
