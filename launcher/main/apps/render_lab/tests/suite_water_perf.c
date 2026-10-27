@@ -64,7 +64,7 @@ release_fixture(void) {
 
 static void
 heap(const char* config, const char* phase) {
-    ESP_LOGI(TAG, WATER_PERF_HEAP, config, phase, (unsigned)memory_free_bytes(MEMORY_INTERNAL),
+    ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_HEAP, config, phase, (unsigned)memory_free_bytes(MEMORY_INTERNAL),
              (unsigned)memory_largest_block(MEMORY_INTERNAL));
 }
 
@@ -93,20 +93,21 @@ log_row(const char* config, const char* phase) {
     const bench_stats_t update = bench_stats_compute(row.update_us, n);
     const bench_stats_t draw = bench_stats_compute(row.draw_us, n);
     const scene_water_stats_t* s = &row.sums;
-    ESP_LOGI(TAG, WATER_PERF_ROW, config, phase, n, (unsigned)s->substeps, (unsigned)s->rested,
-             (long long)(s->triangles / n), s->particles, (double)s->peak_speed_mm_s, (long long)frame.avg,
-             (long long)frame.p95, (long long)frame.max, (long long)update.avg, (long long)update.p95,
-             (long long)update.max, (long long)draw.avg, (long long)draw.p95, (long long)draw.max);
+    ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_ROW, config, phase, n, (unsigned)s->substeps, (unsigned)s->rested,
+             (long long)(s->triangles / n), s->particles, (double)s->peak_speed_mm_s);
+    ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_TIMES, config, phase, (long long)frame.avg, (long long)frame.p95,
+             (long long)frame.max, (long long)update.avg, (long long)update.p95, (long long)update.max,
+             (long long)draw.avg, (long long)draw.p95, (long long)draw.max);
     for (int i = 0; i < SCENE_WATER_STAGE_COUNT; i++) {
-        ESP_LOGI(TAG, WATER_PERF_STAGE, config, phase, WATER_PERF_SCENE, scene_water_stage_names[i],
-                 (long long)(s->stage_us[i] / n));
+        ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_STAGE, config, phase, WATER_PERF_SCENE,
+                 scene_water_stage_names[i], (long long)(s->stage_us[i] / n));
     }
     for (int i = 0; i < FLIP3_STAGE_COUNT; i++) {
-        ESP_LOGI(TAG, WATER_PERF_STAGE, config, phase, WATER_PERF_FLIP3, flip3_stage_names[i],
+        ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_STAGE, config, phase, WATER_PERF_FLIP3, flip3_stage_names[i],
                  (long long)(s->flip3_us[i] / n));
     }
     (void)frame_cost_take_report((uint32_t)n, report, FRAME_COST_REPORT_MAX);
-    ESP_LOGI(TAG, WATER_PERF_COST, config, phase, report);
+    ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_COST, config, phase, report);
     row.frames = 0;
     row.sums = (scene_water_stats_t){0};
 }
