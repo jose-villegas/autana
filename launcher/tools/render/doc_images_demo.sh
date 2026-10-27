@@ -204,17 +204,20 @@ for object in $(run "$PYTHON" launcher/tools/render/doc_tables.py --variants "$S
     run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/variant-$object-unused.png" \
         --reference-video "$W/variant-$object.avi" "$REFERENCE" --reference-scale 2 > "$W/variant-$object-compare.log"
 done
-# The fidelity sheet: two poses of the variants doc_tables.FIDELITY_SHEET names,
-# each beside the reference with its heatmap on the one colour scale.
-set --
-while read -r object label; do
-    set -- "$@" --bake "$label" "$W/variant-$object.avi"
-done <<EOF
-$(run "$PYTHON" launcher/tools/render/doc_tables.py --fidelity-sheet "$SCENE" "$FULL")
+# The fidelity sheets: two poses of each pair of variants doc_tables.FIDELITY_SHEETS
+# names, each beside the reference with its heatmap on the one colour scale.
+# --orphans scans this runner: bake-fidelity-sheet.png, bake-fidelity-full-sheet.png
+for image in $(run "$PYTHON" launcher/tools/render/doc_tables.py --fidelity-sheets); do
+    set --
+    while read -r object label; do
+        set -- "$@" --bake "$label" "$W/variant-$object.avi"
+    done <<EOF
+$(run "$PYTHON" launcher/tools/render/doc_tables.py --fidelity-sheet "$SCENE" "$FULL" "$image")
 EOF
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
-    --reference-bakes "$REFERENCE" --reference-scale 2 --sheet-frames 2,4 "$@" \
-    --reference-sheet "$RENDER/bake-fidelity-sheet.png" > "$W/fidelity-compare.log"
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$image-unused.png" \
+        --reference-bakes "$REFERENCE" --reference-scale 2 --sheet-frames 2,4 "$@" \
+        --reference-sheet "$RENDER/$image.png" > "$W/$image.log"
+done
 # bake_and_render DIR MESH OBJECT: bake the scene file in DIR, which keeps its
 # import beside a link to the mesh source, pack MESH in place of the committed
 # one and render the fidelity poses to DIR.avi.

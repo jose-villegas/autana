@@ -222,17 +222,21 @@ VARIANT_NOTES = {
 }
 
 
-# The fidelity sheet's variants, by label: the worst bake beside what the fit makes at full's budget.
-FIDELITY_SHEET = ("flat", "fitted full")
+# Each fidelity sheet's image name and its variants by label: a bake beside its fit with the same shading,
+# so the sheet shows what the fit alone buys.
+FIDELITY_SHEETS = {
+    "bake-fidelity-sheet": ("flat", "flat fitted"),
+    "bake-fidelity-full-sheet": ("full", "fitted full"),
+}
 
 
-def fidelity_sheet(scene_path, object_name):
-    """(object, label) of each FIDELITY_SHEET variant the scene places, in its order."""
+def fidelity_sheet(scene_path, object_name, image):
+    """(object, label) of each variant of FIDELITY_SHEETS[image] the scene places, in its order."""
     by_label = {variant_label(name, object_name): name for name, _ in variants(scene_path, object_name)}
-    missing = [label for label in FIDELITY_SHEET if label not in by_label]
+    missing = [label for label in FIDELITY_SHEETS[image] if label not in by_label]
     if missing:
-        raise ValueError(f"{scene_path}: no {', '.join(missing)} variant of {object_name} for the fidelity sheet")
-    return [(by_label[label], label) for label in FIDELITY_SHEET]
+        raise ValueError(f"{scene_path}: no {', '.join(missing)} variant of {object_name} for {image}")
+    return [(by_label[label], label) for label in FIDELITY_SHEETS[image]]
 
 
 def variant_note(name, object_name):
@@ -324,9 +328,12 @@ if __name__ == "__main__":
         # doc_images_demo.sh renders and scores each of these before the tables.
         print(" ".join(name for name, _ in variants(pathlib.Path(sys.argv[2]), sys.argv[3])))
         sys.exit(0)
+    if sys.argv[1:2] == ["--fidelity-sheets"]:
+        print(" ".join(FIDELITY_SHEETS))
+        sys.exit(0)
     if sys.argv[1:2] == ["--fidelity-sheet"]:
-        # One "object label" line per bake of the fidelity sheet.
-        for name, label in fidelity_sheet(pathlib.Path(sys.argv[2]), sys.argv[3]):
+        # One "object label" line per bake of that sheet.
+        for name, label in fidelity_sheet(pathlib.Path(sys.argv[2]), sys.argv[3], sys.argv[4]):
             print(name, label)
         sys.exit(0)
     if sys.argv[1:2] == ["--pairs"]:
