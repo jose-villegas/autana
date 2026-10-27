@@ -9,7 +9,7 @@ sample updates. A stream FIFO holds up to `IMU_FIFO_SAMPLES` at the rate
 
 The IMU sits on the PCB's back (the faint outline inside the case) near the centre:
 chip X runs up the screen, Y right, Z out of the back
-(`board/board_geometry.h`).<sup>[[89]](../Citations.md#89)</sup>
+(`board/board_geometry.h`).<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
 
 It reads specific force, which points up at rest; the code treats that vector as down,
 so each screen label is a chip axis negated:

@@ -236,7 +236,7 @@ draw_command(const mu_Command* cmd) {
              * collapses a tree yet to ask for them. */
             const mu_Color c = cmd->icon.color;
             const gfx_color_t color = mu_color_to_gfx(c);
-            const draw_image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
+            const image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
             if (check != NULL) {
                 icon_fill_ctx_t fc = {.color = color};
                 ui_transform_icon_blocks(t, check, ui_recti_from_mu(cmd->icon.rect), icon_fill_emit, &fc);

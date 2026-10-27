@@ -28,8 +28,7 @@ FORMAT_OWNER = TOOLS.parent / "main/draw/draw_image_format.h"
 TYPE = b"IMAG"
 VERSION = read_define(FORMAT_OWNER, "DRAW_IMAGE_VERSION")
 SUFFIX = ".image.toml"
-# draw_image_format_t: gfx_color_t pixels, byte-swapped RGB565; and one bit a
-# pixel, the most significant leftmost, 1 ink, a row a whole number of bytes.
+# IMAG format codes are owned by draw_image_format.h.
 FORMAT_RGB565 = read_define(FORMAT_OWNER, "DRAW_IMAGE_FORMAT_RGB565")
 FORMAT_MONO1 = read_define(FORMAT_OWNER, "DRAW_IMAGE_FORMAT_MONO1")
 FORMATS = {FORMAT_RGB565: 16, FORMAT_MONO1: 1}  # bits per pixel
