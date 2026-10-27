@@ -77,6 +77,14 @@ extern const char* const flip3_stage_names[FLIP3_STAGE_COUNT];
 /* A microsecond clock, for timing the step's stages. */
 typedef int64_t (*flip3_clock_fn)(void);
 
+/* One half of a stage's work: half 0 or 1. The halves never write the same
+ * memory, so they may run at once. */
+typedef void (*flip3_half_fn)(void* ctx, int half);
+
+/* Runs fn(ctx, 0) and fn(ctx, 1), at once on two cores or in turn, and
+ * returns when both are done. */
+typedef void (*flip3_split_fn)(flip3_half_fn fn, void* ctx);
+
 typedef struct {
     flip3_config_t config;
     flip3_tuning_t tuning;
@@ -104,6 +112,9 @@ typedef struct {
     /* Set by flip3_time_stages(); NULL times nothing. */
     flip3_clock_fn clock;
     int64_t* stage_us;
+
+    /* Set by flip3_split_with(); NULL runs both halves in turn. */
+    flip3_split_fn split;
 } flip3_t;
 
 /* The two blocks `c` needs, each at malloc alignment; 0 for a configuration
@@ -130,6 +141,14 @@ static inline void
 flip3_time_stages(flip3_t* f, flip3_clock_fn clock, int64_t* stage_us) {
     f->clock = stage_us != NULL ? clock : NULL;
     f->stage_us = stage_us;
+}
+
+/* From now on the step's particle passes and flip3_field() hand their two
+ * halves to `split`; the results are the same as on one core. NULL stops,
+ * and so does flip3_init(). */
+static inline void
+flip3_split_with(flip3_t* f, flip3_split_fn split) {
+    f->split = split;
 }
 
 /* The fastest particle's speed squared: 0 for a box at rest. */

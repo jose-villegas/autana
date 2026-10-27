@@ -425,9 +425,46 @@ settle_faces(const flip3_t* f, const component_t* c, size_t n) {
     }
 }
 
-/* Every particle in one pass: its velocity splatted onto the faces of all
- * three components, their weights summed in the pre-solve copies (which
- * accelerate() then overwrites), and its density at the cell centres. */
+static void
+run_halves(const flip3_t* f, flip3_half_fn fn, void* ctx) {
+    if (f->split != NULL) {
+        f->split(fn, ctx);
+    } else {
+        fn(ctx, 0);
+        fn(ctx, 1);
+    }
+}
+
+/* The components the first half of the splat writes, u and v; the second
+ * writes w and the density, so the halves share no array. */
+#define SPLAT_FIRST_HALF_AXES 2
+
+/* Every particle's velocity splatted onto the faces of this half's
+ * components, their weights summed in the pre-solve copies (which
+ * accelerate() then overwrites); the second half adds the density too. */
+static void
+splat_half(void* ctx, int half) {
+    flip3_t* const f = ctx;
+    component_t comps[3];
+    components(f, comps);
+    const int from = half == 0 ? 0 : SPLAT_FIRST_HALF_AXES;
+    const int to = half == 0 ? SPLAT_FIRST_HALF_AXES : 3;
+    for (int i = 0; i < f->count; i++) {
+        const place_t place = place_of(f, f->pos[i]);
+        for (int a = from; a < to; a++) {
+            const stencil_t s = face_stencil(f, &place, a);
+            const float pv = axis_of(f->vel[i], a);
+            for (int k = 0; k < 8; k++) {
+                comps[a].field[s.at[k]] += pv * s.weight[k];
+                comps[a].prev[s.at[k]] += s.weight[k];
+            }
+        }
+        if (half == 1) {
+            add_density(f, f->pos[i]);
+        }
+    }
+}
+
 static void
 to_grid(flip3_t* f) {
     const size_t n = (size_t)f->nx * (size_t)f->ny * (size_t)f->nz;
@@ -439,18 +476,7 @@ to_grid(flip3_t* f) {
         memset(comps[a].prev, 0, n * sizeof(float));
     }
     memset(f->density, 0, n * sizeof(float));
-    for (int i = 0; i < f->count; i++) {
-        const place_t place = place_of(f, f->pos[i]);
-        for (int a = 0; a < 3; a++) {
-            const stencil_t s = face_stencil(f, &place, a);
-            const float pv = axis_of(f->vel[i], a);
-            for (int k = 0; k < 8; k++) {
-                comps[a].field[s.at[k]] += pv * s.weight[k];
-                comps[a].prev[s.at[k]] += s.weight[k];
-            }
-        }
-        add_density(f, f->pos[i]);
-    }
+    run_halves(f, splat_half, f);
     for (int a = 0; a < 3; a++) {
         settle_faces(f, &comps[a], n);
     }
@@ -571,12 +597,16 @@ solve_pressure(flip3_t* f, float dt) {
     }
 }
 
+/* Half the particles' velocities from the grid, PIC and FLIP blended. */
 static void
-to_particles(flip3_t* f) {
+gather_half(void* ctx, int half) {
+    flip3_t* const f = ctx;
     component_t comps[3];
     components(f, comps);
     const float flip = f->tuning.flip_ratio;
-    for (int i = 0; i < f->count; i++) {
+    const int mid = f->count / 2;
+    const int to = half == 0 ? mid : f->count;
+    for (int i = half == 0 ? 0 : mid; i < to; i++) {
         const place_t place = place_of(f, f->pos[i]);
         for (int a = 0; a < 3; a++) {
             const component_t* c = &comps[a];
@@ -600,6 +630,11 @@ to_particles(flip3_t* f) {
             }
         }
     }
+}
+
+static void
+to_particles(flip3_t* f) {
+    run_halves(f, gather_half, f);
 }
 
 /* Charges the time since `since` to `stage` and returns now; 0 untimed. */
@@ -656,11 +691,12 @@ flip3_field_count(const flip3_t* f, int samples) {
     return (size_t)d[0] * (size_t)d[1] * (size_t)d[2];
 }
 
-/* One [1 2 1] / 4 pass along one axis, inside the empty border, the walls
- * mirrored; in place, carrying the sample before. */
+/* One [1 2 1] / 4 pass along one axis over lines a_from to a_to, inside
+ * the empty border, the walls mirrored; in place, carrying the sample
+ * before. Lines are independent, so halves of them may run at once. */
 static void
-smooth_axis(float* field, int stride, int count, int step_a, int count_a, int step_b, int count_b) {
-    for (int a = 1; a < count_a - 1; a++) {
+smooth_axis(float* field, int stride, int count, int step_a, int a_from, int a_to, int step_b, int count_b) {
+    for (int a = a_from; a < a_to; a++) {
         for (int b = 1; b < count_b - 1; b++) {
             float* line = &field[(a * step_a) + (b * step_b)];
             float before = line[stride];
@@ -683,37 +719,88 @@ field_axis(const flip3_t* f, int axis, int i, float step, int* lo, int* hi, floa
     centre_axis(h + (((float)i - 0.5F) * step), h, axis_of(f->inv_h, axis), cells_on(f, axis), lo, hi, t);
 }
 
-iso_field_t
-flip3_field(const flip3_t* f, int samples, float* out) {
+/* flip3_field()'s work, shared by its halves: the samples, then three
+ * smoothing passes along x, y and z, each split by lines. */
+typedef struct {
+    const flip3_t* f;
+    float* out;
     int d[3];
-    field_dims(f, samples, d);
-    const int sx = d[0];
-    const int sy = d[1];
-    const int sz = d[2];
-    const vec3f_t step = vec3f_scale(f->h, 1.0F / (float)samples);
+    vec3f_t step;
+    int pass;
+} field_work_t;
+
+enum { FIELD_SAMPLE, FIELD_SMOOTH_X, FIELD_SMOOTH_Y, FIELD_SMOOTH_Z, FIELD_PASSES };
+
+/* Lines 1 to count - 2 in two: this half's first and past-the-end. */
+static void
+half_lines(int count, int half, int* from, int* to) {
+    const int mid = count / 2;
+    *from = half == 0 ? 1 : mid;
+    *to = half == 0 ? mid : count - 1;
+}
+
+static void
+sample_lines(const field_work_t* w, int from, int to) {
+    const flip3_t* f = w->f;
+    const int sy = w->d[1];
+    const int sz = w->d[2];
     const float inv_rest = 1.0F / f->rest_density;
-    memset(out, 0, (size_t)sx * (size_t)sy * (size_t)sz * sizeof(float));
     int lo[3];
     int hi[3];
     float t[3];
-    for (int x = 1; x < sx - 1; x++) {
-        field_axis(f, 0, x, step.x, &lo[0], &hi[0], &t[0]);
+    for (int x = from; x < to; x++) {
+        field_axis(f, 0, x, w->step.x, &lo[0], &hi[0], &t[0]);
         for (int y = 1; y < sy - 1; y++) {
-            field_axis(f, 1, y, step.y, &lo[1], &hi[1], &t[1]);
+            field_axis(f, 1, y, w->step.y, &lo[1], &hi[1], &t[1]);
             for (int z = 1; z < sz - 1; z++) {
-                field_axis(f, 2, z, step.z, &lo[2], &hi[2], &t[2]);
+                field_axis(f, 2, z, w->step.z, &lo[2], &hi[2], &t[2]);
                 const stencil_t s = corners(f, lo, hi, t);
                 float density = 0.0F;
                 for (int k = 0; k < 8; k++) {
                     density += s.weight[k] * f->density[s.at[k]];
                 }
-                out[(((x * sy) + y) * sz) + z] = density * inv_rest;
+                w->out[(((x * sy) + y) * sz) + z] = density * inv_rest;
             }
         }
     }
-    smooth_axis(out, sy * sz, sx, sz, sy, 1, sz);
-    smooth_axis(out, sz, sy, sy * sz, sx, 1, sz);
-    smooth_axis(out, 1, sz, sy * sz, sx, sz, sy);
+}
+
+static void
+field_half(void* ctx, int half) {
+    const field_work_t* w = ctx;
+    const int sx = w->d[0];
+    const int sy = w->d[1];
+    const int sz = w->d[2];
+    int from;
+    int to;
+    switch (w->pass) {
+        case FIELD_SAMPLE:
+            half_lines(sx, half, &from, &to);
+            sample_lines(w, from, to);
+            break;
+        case FIELD_SMOOTH_X:
+            half_lines(sy, half, &from, &to);
+            smooth_axis(w->out, sy * sz, sx, sz, from, to, 1, sz);
+            break;
+        case FIELD_SMOOTH_Y:
+            half_lines(sx, half, &from, &to);
+            smooth_axis(w->out, sz, sy, sy * sz, from, to, 1, sz);
+            break;
+        default:
+            half_lines(sx, half, &from, &to);
+            smooth_axis(w->out, 1, sz, sy * sz, from, to, sz, sy);
+            break;
+    }
+}
+
+iso_field_t
+flip3_field(const flip3_t* f, int samples, float* out) {
+    field_work_t w = {.f = f, .out = out, .step = vec3f_scale(f->h, 1.0F / (float)samples)};
+    field_dims(f, samples, w.d);
+    memset(out, 0, (size_t)w.d[0] * (size_t)w.d[1] * (size_t)w.d[2] * sizeof(float));
+    for (w.pass = FIELD_SAMPLE; w.pass < FIELD_PASSES; w.pass++) {
+        run_halves(f, field_half, &w);
+    }
     /* Sample (1, 1, 1) sits half a sample in from the box's origin. */
-    return (iso_field_t){out, sx, sy, sz, vec3f_scale(step, -0.5F), step};
+    return (iso_field_t){out, w.d[0], w.d[1], w.d[2], vec3f_scale(w.step, -0.5F), w.step};
 }
