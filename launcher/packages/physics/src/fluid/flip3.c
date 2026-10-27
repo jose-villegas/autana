@@ -16,8 +16,8 @@ enum { KIND_SOLID, KIND_AIR, KIND_FLUID };
 /* Each array of a block starts at this alignment. */
 #define BLOCK_ALIGN                _Alignof(max_align_t)
 
-/* Eight float arrays and the kinds. */
-#define GRID_FLOATS                8
+/* Seven float arrays and the kinds. */
+#define GRID_FLOATS                7
 
 #define FLIP3_STAGE_NAME(id, name) name,
 const char* const flip3_stage_names[FLIP3_STAGE_COUNT] = {FLIP3_STAGES(FLIP3_STAGE_NAME)};
@@ -113,7 +113,7 @@ flip3_init(flip3_t* f, const flip3_config_t* c, void* grid, void* particles) {
 
     const size_t n = (size_t)f->nx * (size_t)f->ny * (size_t)f->nz;
     uint8_t* g = grid;
-    float** floats[GRID_FLOATS] = {&f->u, &f->v, &f->w, &f->prev_u, &f->prev_v, &f->prev_w, &f->weight, &f->density};
+    float** floats[GRID_FLOATS] = {&f->u, &f->v, &f->w, &f->prev_u, &f->prev_v, &f->prev_w, &f->density};
     for (int i = 0; i < GRID_FLOATS; i++) {
         *floats[i] = carve(&g, n * sizeof(float));
         memset(*floats[i], 0, n * sizeof(float));
@@ -294,24 +294,51 @@ cells_on(const flip3_t* f, int axis) {
 }
 
 static stencil_t
-stencil(const flip3_t* f, vec3f_t p, vec3f_t o) {
-    int lo[3];
-    int hi[3];
-    float t[3];
-    for (int a = 0; a < 3; a++) {
-        stencil_axis(axis_of(p, a), axis_of(o, a), axis_of(f->h, a), axis_of(f->inv_h, a), cells_on(f, a), &lo[a],
-                     &hi[a], &t[a]);
-    }
-    return corners(f, lo, hi, t);
-}
-
-static stencil_t
 centre_stencil(const flip3_t* f, vec3f_t p) {
     int lo[3];
     int hi[3];
     float t[3];
     for (int a = 0; a < 3; a++) {
         centre_axis(axis_of(p, a), axis_of(f->h, a), axis_of(f->inv_h, a), cells_on(f, a), &lo[a], &hi[a], &t[a]);
+    }
+    return corners(f, lo, hi, t);
+}
+
+/* A particle's place per axis for the stencils that need it: at the faces
+ * (no offset along the axis) and half a cell in, each the lower cell and
+ * the fraction toward the next, worked out once per particle. */
+enum { AT_FACE, AT_HALF, AT_KINDS };
+
+typedef struct {
+    int lo[AT_KINDS][3];
+    float t[AT_KINDS][3];
+} place_t;
+
+static place_t
+place_of(const flip3_t* f, vec3f_t p) {
+    place_t out;
+    for (int a = 0; a < 3; a++) {
+        const float h = axis_of(f->h, a);
+        const float inv_h = axis_of(f->inv_h, a);
+        int hi;
+        stencil_axis(axis_of(p, a), 0.0F, h, inv_h, cells_on(f, a), &out.lo[AT_FACE][a], &hi, &out.t[AT_FACE][a]);
+        stencil_axis(axis_of(p, a), 0.5F * h, h, inv_h, cells_on(f, a), &out.lo[AT_HALF][a], &hi, &out.t[AT_HALF][a]);
+    }
+    return out;
+}
+
+/* Velocity component `axis`'s stencil: on faces along it, half a cell in
+ * across it (a MAC grid's face centres). */
+static stencil_t
+face_stencil(const flip3_t* f, const place_t* place, int axis) {
+    int lo[3];
+    int hi[3];
+    float t[3];
+    for (int a = 0; a < 3; a++) {
+        const int at = a == axis ? AT_FACE : AT_HALF;
+        lo[a] = place->lo[at][a];
+        hi[a] = lo[a] + 1;
+        t[a] = place->t[at][a];
     }
     return corners(f, lo, hi, t);
 }
@@ -343,39 +370,32 @@ mark_kinds(flip3_t* f) {
 
 typedef struct {
     float *field, *prev;
-    vec3f_t offset;
     int stride; /* to the cell on the face's other side */
 } component_t;
 
 static void
 components(flip3_t* f, component_t out[3]) {
-    const vec3f_t half = vec3f_scale(f->h, 0.5F);
-    out[0] = (component_t){f->u, f->prev_u, {0.0F, half.y, half.z}, f->ny * f->nz};
-    out[1] = (component_t){f->v, f->prev_v, {half.x, 0.0F, half.z}, f->nz};
-    out[2] = (component_t){f->w, f->prev_w, {half.x, half.y, 0.0F}, 1};
+    out[0] = (component_t){f->u, f->prev_u, f->ny * f->nz};
+    out[1] = (component_t){f->v, f->prev_v, f->nz};
+    out[2] = (component_t){f->w, f->prev_w, 1};
 }
 
-/* One velocity component splatted onto its faces, weighted by the stencil. */
+/* A particle's share of the density at the cell centres. */
 static void
-splat(flip3_t* f, const component_t* c, int axis, size_t n) {
-    memset(c->field, 0, n * sizeof(float));
-    memset(f->weight, 0, n * sizeof(float));
-    for (int i = 0; i < f->count; i++) {
-        const stencil_t s = stencil(f, f->pos[i], c->offset);
-        const float pv = axis_of(f->vel[i], axis);
-        for (int k = 0; k < 8; k++) {
-            c->field[s.at[k]] += pv * s.weight[k];
-            f->weight[s.at[k]] += s.weight[k];
-        }
+add_density(flip3_t* f, vec3f_t p) {
+    const stencil_t s = centre_stencil(f, p);
+    for (int k = 0; k < 8; k++) {
+        f->density[s.at[k]] += s.weight[k];
     }
 }
 
-/* Each face's weighted mean; static walls: a face of a solid cell carries nothing. */
+/* Each face's weighted mean, the weights summed in the pre-solve copy;
+ * static walls: a face of a solid cell carries nothing. */
 static void
 settle_faces(const flip3_t* f, const component_t* c, size_t n) {
     for (size_t i = 0; i < n; i++) {
-        if (f->weight[i] > 0.0F) {
-            c->field[i] /= f->weight[i];
+        if (c->prev[i] > 0.0F) {
+            c->field[i] /= c->prev[i];
         }
         const bool solid_side = i >= (size_t)c->stride && f->kind[i - (size_t)c->stride] == KIND_SOLID;
         if (f->kind[i] == KIND_SOLID || solid_side) {
@@ -384,6 +404,9 @@ settle_faces(const flip3_t* f, const component_t* c, size_t n) {
     }
 }
 
+/* Every particle in one pass: its velocity splatted onto the faces of all
+ * three components, their weights summed in the pre-solve copies (which
+ * accelerate() then overwrites), and its density at the cell centres. */
 static void
 to_grid(flip3_t* f) {
     const size_t n = (size_t)f->nx * (size_t)f->ny * (size_t)f->nz;
@@ -391,7 +414,23 @@ to_grid(flip3_t* f) {
     component_t comps[3];
     components(f, comps);
     for (int a = 0; a < 3; a++) {
-        splat(f, &comps[a], a, n);
+        memset(comps[a].field, 0, n * sizeof(float));
+        memset(comps[a].prev, 0, n * sizeof(float));
+    }
+    memset(f->density, 0, n * sizeof(float));
+    for (int i = 0; i < f->count; i++) {
+        const place_t place = place_of(f, f->pos[i]);
+        for (int a = 0; a < 3; a++) {
+            const stencil_t s = face_stencil(f, &place, a);
+            const float pv = axis_of(f->vel[i], a);
+            for (int k = 0; k < 8; k++) {
+                comps[a].field[s.at[k]] += pv * s.weight[k];
+                comps[a].prev[s.at[k]] += s.weight[k];
+            }
+        }
+        add_density(f, f->pos[i]);
+    }
+    for (int a = 0; a < 3; a++) {
         settle_faces(f, &comps[a], n);
     }
 }
@@ -401,10 +440,7 @@ update_density(flip3_t* f) {
     const size_t n = (size_t)f->nx * (size_t)f->ny * (size_t)f->nz;
     memset(f->density, 0, n * sizeof(float));
     for (int i = 0; i < f->count; i++) {
-        const stencil_t s = centre_stencil(f, f->pos[i]);
-        for (int k = 0; k < 8; k++) {
-            f->density[s.at[k]] += s.weight[k];
-        }
+        add_density(f, f->pos[i]);
     }
 }
 
@@ -510,10 +546,11 @@ to_particles(flip3_t* f) {
     component_t comps[3];
     components(f, comps);
     const float flip = f->tuning.flip_ratio;
-    for (int a = 0; a < 3; a++) {
-        const component_t* c = &comps[a];
-        for (int i = 0; i < f->count; i++) {
-            const stencil_t s = stencil(f, f->pos[i], c->offset);
+    for (int i = 0; i < f->count; i++) {
+        const place_t place = place_of(f, f->pos[i]);
+        for (int a = 0; a < 3; a++) {
+            const component_t* c = &comps[a];
+            const stencil_t s = face_stencil(f, &place, a);
             float total = 0.0F;
             float pic = 0.0F;
             float change = 0.0F;
@@ -553,8 +590,6 @@ flip3_step(flip3_t* f, float dt_s, vec3f_t accel) {
     int64_t at = f->clock != NULL ? f->clock() : 0;
     to_grid(f);
     at = lap(f, FLIP3_STAGE_P2G, at);
-    update_density(f);
-    at = lap(f, FLIP3_STAGE_DENSITY, at);
     accelerate(f, dt_s, accel);
     at = lap(f, FLIP3_STAGE_ACCEL, at);
     solve_pressure(f, dt_s);

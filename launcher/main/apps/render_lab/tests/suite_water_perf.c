@@ -25,13 +25,11 @@ typedef struct {
     int32_t rest_um_s;
 } water_config_t;
 
-/* The baseline, then one change each: two and one substeps a frame, and
- * skipping the step at rest below 2 mm/s. The grid in internal RAM is not
- * one: its block is larger than internal RAM's largest free one. */
+/* The baseline, then one change each: the grid in internal RAM (a
+ * measurement: whether the step waits on PSRAM), two and one substeps a
+ * frame, and skipping the step at rest below 2 mm/s. */
 static const water_config_t configs[] = {
-    {"base", 0, 8, 0},
-    {"sub16", 0, 16, 0},
-    {"sub33", 0, WATER_PERF_FRAME_MS, 0},
+    {"base", 0, 8, 0},    {"internal", 1, 8, 0}, {"sub16", 0, 16, 0}, {"sub33", 0, WATER_PERF_FRAME_MS, 0},
     {"rest", 0, 8, 2000},
 };
 

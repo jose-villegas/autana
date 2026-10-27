@@ -64,7 +64,7 @@ typedef struct {
  * gives them. */
 // clang-format off
 #define FLIP3_STAGES(X) \
-    X(P2G, "p2g") X(DENSITY, "density") X(ACCEL, "accel") X(PRESSURE, "pressure") X(G2P, "g2p") \
+    X(P2G, "p2g") X(ACCEL, "accel") X(PRESSURE, "pressure") X(G2P, "g2p") \
     X(ADVECT, "advect") X(COLLIDE, "collide")
 // clang-format on
 
@@ -87,12 +87,11 @@ typedef struct {
     int seed_count;     /* the lattice's points: a full box */
     float rest_density; /* particles a full cell's trilinear splat holds */
 
-    /* The grid: face velocities and their pre-solve copies, the splat weight
-     * one component at a time, a cell's particle density and its kind.
+    /* The grid: face velocities and their pre-solve copies (which hold the
+     * splat's weights until then), a cell's particle density and its kind.
      * Indexed x * ny * nz + y * nz + z. */
     float *u, *v, *w;
     float *prev_u, *prev_v, *prev_w;
-    float* weight;
     float* density;
     uint8_t* kind;
 
