@@ -45,13 +45,15 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | `render water tour` | plays the scripted tour the GIF below shows, for renders and repeatable timings |
 | `water.gravity_mm_s2` | the gravity the water runs under; below Earth's, so a 35 mm tank sloshes at a pace a frame can follow |
 | `water.grid_internal` | 1 places the simulation grid in internal RAM, for measuring against PSRAM; read when the scene enters |
+| `water.substep_ms` | simulated time per substep; longer ones run fewer per frame |
+| `water.rest_um_s` | above 0, the step and the surface are skipped while the push holds and no particle moves faster than this, in um/s |
 
 Each frame, while the last one goes out to the panel:
 
 | Step | Owner |
 |---|---|
 | Gravity and shake, in g, box axes | `input/motion/gravity.h` |
-| Up to four 8 ms substeps | `physics/fluid/flip3.h` `flip3_step()` |
+| Up to four substeps of `water.substep_ms`, none at rest | `physics/fluid/flip3.h` `flip3_step()` |
 | The smoothed surface field | `flip3_field()` |
 | Its surface, as triangles | `math/geometry/iso_surface.h` `iso_surface_nets()` |
 | Shading per vertex, encoded through a table | the scene; `r3d_skin_light_encode()` |
@@ -59,6 +61,11 @@ Each frame, while the last one goes out to the panel:
 | Drawn as the water entity | `scene_renderer_set_mesh()` |
 
 ![The water scene's scripted tour](../../../../../docs/images/overview/render-lab-water.gif)
+
+`run_water_perf_suite` plays the tour (`tests/suite_water_perf.c`) under each
+experiment's tunables and times every stage of the update, `flip3_step()`'s own
+stages and r3d's; `tools/water_tables.py` turns its capture into tables.
+
 
 ### Small fill
 
