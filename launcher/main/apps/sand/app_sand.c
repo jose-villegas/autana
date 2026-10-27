@@ -58,10 +58,8 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "image/pixel/rgb565.h"
 #include "input/input.h"
-#include "input/motion/gravity.h"
-#include "input/motion/shake.h"
-#include "input/motion/tilt.h"
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
 #include "palette.h"
@@ -253,9 +251,6 @@ typedef struct {
 
 static sim_buffers_t buffers;
 static sand_t sim;
-static tilt_t tilt;
-static gravity_t shake_gravity;
-static shake_t shake;
 static bool failed;
 static uint32_t label_left_ms; /* countdown for the mode label */
 
@@ -313,8 +308,9 @@ apply_gfx_enter_indexed(void) {
         return;
     }
 
-    memset(gfx_indexed_image(), 0, (size_t)grid_w * (size_t)grid_h);
-    gfx_indexed_set_lut(sand_palette256.entries);
+    const image_t index = gfx_indexed_image();
+    memset(index.pixels, 0, image_row_bytes(&index) * index.height);
+    gfx_indexed_set_palette(&sand_palette256);
     gfx_indexed_set_dither16(color_mode == SAND_COLOR_16);
     if (color_mode == SAND_COLOR_16) {
         gfx_indexed_set_dither(dither_mode, sand_dither_table_for(dither_mode));
@@ -623,9 +619,6 @@ start_sim(void) {
      * allocation failure shows up at start_sim() rather than on the first
      * tap in BOOM mode. */
     sand_enable_impulses(&sim, buffers.impulse_buf, APP_IMPULSE_MAX);
-    tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
-    gravity_reset(&shake_gravity);
-    shake_reset(&shake);
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -876,7 +869,7 @@ static void
 draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool glass_moved, bool wood_leaf_moved) {
     const bool indexed = sand_colour_indexed_active(&colour_state);
     gfx_color_t* fb = indexed ? NULL : gfx_framebuffer();
-    uint8_t* index_image = indexed ? gfx_indexed_image() : NULL;
+    uint8_t* index_image = indexed ? gfx_indexed_image().pixels : NULL;
 
     /* Captured once, then cleared, so a request made mid-frame (the next
      * mark_sand_fully_dirty()) affects the NEXT pass, not this one - see
@@ -931,7 +924,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
 
 static void
 draw_emitter_markers(void) {
-    const gfx_color_t marker = gfx_rgb(EMITTER_MARKER_COLOR);
+    const gfx_color_t marker = RGB565BE(EMITTER_MARKER_COLOR);
     const int count = sand_emitter_count(&sim);
 
     for (int i = 0; i < count; i++) {
@@ -993,20 +986,18 @@ draw_mode_label(int gx, int gy) {
     const recti_t upright = ui_centered_rect(upright_w, span, tall, LABEL_MARGIN);
     const affine2x_t t = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
     const recti_t box = affine2x_map_recti(&t, upright);
-    int x = 0;
-    int y = 0;
-    ui_text_glyph0_origin(draw_font_ui(), box, turn, LABEL_SCALE, &x, &y);
+    const vec2i_t origin = ui_text_glyph0_origin(draw_font_ui(), box, turn, LABEL_SCALE);
 
     gfx_color_t ink;
     if (ui.mode == SAND_MODE_DETONATE) {
-        ink = gfx_rgb(0xFF3B3B);
+        ink = RGB565BE(0xFF3B3B);
     } else if (ui.mode == SAND_MODE_ERASE) {
-        ink = gfx_rgb(0xFF8A5C);
+        ink = RGB565BE(0xFF8A5C);
     } else {
         ink = material_brush_color(sand_brushes[ui.brush].cell);
     }
 
-    draw_text_turned(x, y, text, ink, LABEL_SCALE, turn);
+    draw_text_turned(origin.x, origin.y, text, ink, LABEL_SCALE, turn);
 }
 
 /* APPLY EXACTLY ONCE PER REPAINT OF WHAT IS UNDERNEATH, never per frame.
@@ -1020,7 +1011,7 @@ draw_mode_label(int gx, int gy) {
 
 static void
 dim_backdrop(void) {
-    draw_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x000000), PANEL_SCRIM_ALPHA);
+    draw_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, RGB565BE(0x000000), PANEL_SCRIM_ALPHA);
 }
 
 static void
@@ -1058,26 +1049,13 @@ static int pending_awake_blocks, pending_awake_cells;
 #endif
 
 static void
-read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int* flow, int* jostle) {
-    *gx = 0;
-    *gy = INPUT_ACCEL_ONE_G;
-    *flow = 256;
-    *jostle = 0;
-
-    if (!input_read_motion(motion)) {
-        return;
-    }
-
-    tilt_update(&tilt, motion->acceleration, motion->turn_speed, dt_ms);
-
-    *gx = tilt_x(&tilt);
-    *gy = tilt_y(&tilt);
-    *flow = tilt_strength(&tilt);
-
-    const uint32_t dt_us = dt_ms * MATH_US_PER_MS;
-    gravity_update(&shake_gravity, motion, dt_us);
-    shake_update(&shake, gravity_linear(&shake_gravity), dt_us);
-    *jostle = sand_controls_jostle(shake_level(&shake));
+read_gravity_input(input_motion_t* motion, int* gx, int* gy, int* flow, int* jostle) {
+    const vec3f_t g = input_gravity();
+    *gx = (int)lroundf(g.x * INPUT_ACCEL_ONE_G);
+    *gy = (int)lroundf(g.y * INPUT_ACCEL_ONE_G);
+    *flow = (int)lroundf(hypotf(g.x, g.y) * SAND_FLOW_ONE);
+    *jostle = sand_controls_jostle(input_shake());
+    (void)input_read_motion(motion);
 }
 
 static void
@@ -1086,8 +1064,8 @@ handle_detonate_input(const input_t* input) {
     if (!input->pressed) {
         return;
     }
-    const int cx = input->x / cell;
-    const int cy = input->y / cell;
+    const int cx = input->point.x / cell;
+    const int cy = input->point.y / cell;
     sand_explode(&sim, cx, cy, fx_div_round(sand_ui_radius(&ui), cell, 0));
 }
 
@@ -1096,8 +1074,8 @@ handle_spawn_emitter_input(const input_t* input) {
     if (!input->pressed) {
         return;
     }
-    const int cx = input->x / cell;
-    const int cy = input->y / cell;
+    const int cx = input->point.x / cell;
+    const int cy = input->point.y / cell;
     if (!sand_add_emitter(&sim, cx, cy, sand_brushes[ui.brush].cell)) {
         ESP_LOGW(TAG, "emitter list full (%d) - tap ignored", SAND_MAX_EMITTERS);
     }
@@ -1144,8 +1122,8 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
         pour_accumulator_ms -= (uint32_t)applications * SAND_POUR_STEP_MS;
     }
 
-    const int cx = input->x / cell;
-    const int cy = input->y / cell;
+    const int cx = input->point.x / cell;
+    const int cy = input->point.y / cell;
     for (int i = 0; i < applications; i++) {
         apply_pour_step(cx, cy);
     }
@@ -1367,7 +1345,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     int flow;
     int jostle;
     input_motion_t motion = {0};
-    read_gravity_input(dt_ms, &motion, &gx, &gy, &flow, &jostle);
+    read_gravity_input(&motion, &gx, &gy, &flow, &jostle);
 
     label_dirty_this_frame = label_left_ms > 0;
     if (label_dirty_this_frame) {
@@ -1577,8 +1555,8 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
     }
 
     if (failed) {
-        draw_clear(gfx_rgb(0x1A0C0C));
-        draw_text(20, GFX_HEIGHT / 2, "no memory for the grid", gfx_rgb(0xFF5C5C));
+        draw_clear(RGB565BE(0x1A0C0C));
+        draw_text(20, GFX_HEIGHT / 2, "no memory for the grid", RGB565BE(0xFF5C5C));
         return;
     }
 
@@ -1613,9 +1591,9 @@ static void
 sand_app_test_tap_menu_rect(recti_t r) {
     const int x = r.x + (r.w / 2);
     const int y = r.y + (r.h / 2);
-    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
-    const input_t hold = {.down = true, .x = x, .y = y};
-    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
+    const input_t hold = {.down = true, .point = {x, y}};
+    const input_t release = {.released = true, .point = {x, y}};
     const input_t idle = {0};
     draw_menu(&press);
     for (int i = 0; i < 4; i++) {
@@ -1667,9 +1645,9 @@ sand_app_test_start_button_touch(void) {
     title_screen_layout_t title;
     title_screen_layout(ui_width(), ui_height(), &title);
     const recti_t start_rect = title.buttons[SAND_TITLE_START];
-    const input_t touch = {.x = start_rect.x + (start_rect.w / 2), .y = start_rect.y + (start_rect.h / 2)};
-    ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", touch.x, touch.y, start_rect.x,
-             start_rect.y, start_rect.w, start_rect.h);
+    const input_t touch = {.point = {start_rect.x + (start_rect.w / 2), start_rect.y + (start_rect.h / 2)}};
+    ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", (int)touch.point.x,
+             (int)touch.point.y, start_rect.x, start_rect.y, start_rect.w, start_rect.h);
     return touch;
 }
 
@@ -1688,13 +1666,13 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     input_t in = {0};
     sand_frame(0, &in); /* the title on the glass before the finger lands */
 
-    in = (input_t){.pressed = true, .x = touch.x, .y = touch.y};
+    in = (input_t){.pressed = true, .point = touch.point};
     sand_frame(16, &in); /* hover granted on the frame the finger lands */
 
-    in = (input_t){.x = touch.x, .y = touch.y};
+    in = (input_t){.point = touch.point};
     sand_frame(16, &in); /* the DOWN: the press lands on START */
 
-    in = (input_t){.released = true, .x = touch.x, .y = touch.y};
+    in = (input_t){.released = true, .point = touch.point};
     sand_frame(16, &in); /* the lift: the tap, queued as pending_start */
 
     in = (input_t){0};
@@ -1715,7 +1693,9 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static void
 sand_diagnostic_json(char* out, size_t len) {
-    snprintf(out, len, "{\"tilt_x\":%d,\"tilt_y\":%d}", tilt_x(&tilt), tilt_y(&tilt));
+    const vec3f_t gravity = input_gravity();
+    snprintf(out, len, "{\"tilt_x\":%d,\"tilt_y\":%d}", (int)lroundf(gravity.x * INPUT_ACCEL_ONE_G),
+             (int)lroundf(gravity.y * INPUT_ACCEL_ONE_G));
 }
 #endif /* CONFIG_LAUNCHER_DEVELOPMENT */
 

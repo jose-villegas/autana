@@ -15,6 +15,7 @@
 #include "draw/draw_image_format.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
+#include "image/pixel/rgb565.h"
 #include "physics/spring/spring_line.h"
 #include "shell/ui/ui_ridge.h"
 
@@ -40,17 +41,18 @@ curve_row(int x) {
 }
 
 /* The photograph, stored a quarter turn clockwise into the panel's frame. */
-static draw_image_t photo;
+static image_t photo;
 
 static void
 photo_rgb(int view_x, int view_y, int rgb[3]) {
     const int panel_x = photo.width - 1 - view_y;
     const int panel_y = view_x;
-    const uint16_t stored = photo.pixels[(panel_y * (int)photo.stride) + panel_x];
-    const uint16_t c = gfx_color_swap(stored);
-    rgb[0] = (int)gfx_rgb565_r5(c) * 255 / 31;
-    rgb[1] = (int)gfx_rgb565_g6(c) * 255 / 63;
-    rgb[2] = (int)gfx_rgb565_b5(c) * 255 / 31;
+    const uint16_t* row = image_row(&photo, panel_y);
+    const uint16_t stored = row[panel_x];
+    const uint16_t c = rgb565_swap(stored);
+    rgb[0] = (int)rgb565_r5(c) * 255 / 31;
+    rgb[1] = (int)rgb565_g6(c) * 255 / 63;
+    rgb[2] = (int)rgb565_b5(c) * 255 / 31;
 }
 
 static void
@@ -148,7 +150,8 @@ suite_ridge_curve(void) {
     curve_shift = SPRING_LINE_OUT_SHIFT;
     RUN_TEST(test_every_height_is_inside_the_frame_and_near_its_neighbour);
     RUN_TEST(test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides);
-    const asset_pack_t* pack = asset_store_pack(BOOT_PHOTO);
+    const handle_t load = asset_store_load(BOOT_PHOTO);
+    const asset_pack_t* pack = asset_store_loaded(load);
     asset_view_t entry;
     if (pack == NULL || asset_pack_find(pack, BOOT_PHOTO, DRAW_IMAGE_ASSET, &entry) != ASSET_OK
         || draw_image_open(entry, &photo) != ASSET_OK) {
@@ -158,10 +161,8 @@ suite_ridge_curve(void) {
         RUN_TEST(test_the_curve_lies_on_the_photographs_ridge);
         RUN_TEST(test_a_displaced_curve_does_not);
     }
-    if (pack != NULL) {
-        asset_store_release(BOOT_PHOTO);
-    }
-    photo = (draw_image_t){0};
+    asset_store_release(load);
+    photo = (image_t){0};
     curve = NULL;
 }
 

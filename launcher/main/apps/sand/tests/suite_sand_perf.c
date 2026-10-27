@@ -36,8 +36,6 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "input/motion/tilt.h" /* TILT_TAU_*_MS - the turn below follows the real
-                       * filter shape rather than a straight line */
 #include "apps/sand/material_palette.h"
 #include "apps/sand/row_runs.h"
 #include "apps/sand/sand.h"
@@ -1504,13 +1502,13 @@ log_gas_quarter_turn(const char* fill, const sand_t* real, int64_t per_step, int
              (long long)worst, (long long)real->pass_us.gas_us);
 }
 
-/* Tilt shape uses exponential moving average with tau interpolating between
- * TILT_TAU_MOVING_MS and TILT_TAU_STILL_MS. Moving tau prioritizes demanding
- * case with largest gravity delta. Returns mean and worst single step. */
+/* Exponentially eased quarter-turn fixture; returns mean and worst step. */
+#define QUARTER_TURN_TAU_MS 40
+
 static int64_t
 time_a_quarter_turn(sand_t* real, int steps, int64_t* worst_out) {
     const int dt_ms = 24;
-    const int tau_ms = TILT_TAU_MOVING_MS;
+    const int tau_ms = QUARTER_TURN_TAU_MS;
 
     int32_t gx_q8 = 0;
     int32_t gy_q8 = SCENE_GRAVITY * 256;
@@ -3591,8 +3589,8 @@ clock_row_measure(int frames, bool pouring, int* frame_index) {
         input_t in = {0};
         in.down = pouring;
         in.pressed = pouring && *frame_index == 0;
-        in.x = 150 + ((*frame_index * 7) % 60);
-        in.y = 120 + ((*frame_index * 3) % 40);
+        in.point.x = 150 + ((*frame_index * 7) % 60);
+        in.point.y = 120 + ((*frame_index * 3) % 40);
         clock_row_frame(&in, &w.present_us);
     }
     w.present_us /= frames;

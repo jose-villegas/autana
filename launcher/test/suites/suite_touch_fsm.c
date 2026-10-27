@@ -53,8 +53,8 @@ test_first_contact_reports_a_press(void) {
 
     TEST_ASSERT_TRUE(in.pressed);
     TEST_ASSERT_TRUE(in.down);
-    TEST_ASSERT_EQUAL_INT(100, in.x);
-    TEST_ASSERT_EQUAL_INT(200, in.y);
+    TEST_ASSERT_EQUAL_INT(100, in.point.x);
+    TEST_ASSERT_EQUAL_INT(200, in.point.y);
 }
 
 void
@@ -94,10 +94,10 @@ test_press_position_is_where_the_touch_began(void) {
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(50, in.press_x, "press_x must not follow the finger");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(400, in.press_y, "press_y must not follow the finger");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(60, in.x, "x tracks the current position");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(200, in.y, "y tracks the current position");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(50, in.press.x, "press_x must not follow the finger");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(400, in.press.y, "press_y must not follow the finger");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(60, in.point.x, "x tracks the current position");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(200, in.point.y, "y tracks the current position");
 }
 
 /* releasing, and the debounce that makes it reliable */
@@ -215,19 +215,18 @@ test_touch_example_counts_edges_and_tracks_held_position(void) {
     touch_fsm_take(&fsm, &input);
     TEST_ASSERT_TRUE(input.released);
     /* Distinct release coordinates prove the example follows only while down. */
-    input.x = start.x;
-    input.y = start.y;
+    input.point = start;
     touch_example(&state, &input);
     TEST_ASSERT_EQUAL_INT(1, state.taps);
-    TEST_ASSERT_EQUAL_INT(last.x, state.x);
-    TEST_ASSERT_EQUAL_INT(last.y, state.y);
+    TEST_ASSERT_EQUAL_INT(last.x, state.point.x);
+    TEST_ASSERT_EQUAL_INT(last.y, state.point.y);
     touch_fsm_update(&fsm, true, start, step_us * 4);
     touch_fsm_take(&fsm, &input);
     TEST_ASSERT_TRUE(input.pressed);
     touch_example(&state, &input);
     TEST_ASSERT_EQUAL_INT(2, state.taps);
-    TEST_ASSERT_EQUAL_INT(start.x, state.x);
-    TEST_ASSERT_EQUAL_INT(start.y, state.y);
+    TEST_ASSERT_EQUAL_INT(start.x, state.point.x);
+    TEST_ASSERT_EQUAL_INT(start.y, state.point.y);
 }
 
 /* suite */

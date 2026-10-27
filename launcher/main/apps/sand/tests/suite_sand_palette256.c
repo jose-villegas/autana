@@ -20,6 +20,7 @@
 #include "apps/sand/sand_dither_tables.h"
 #include "apps/sand/sand_palette256.h"
 #include "gfx/present/gfx_mode.h"
+#include "image/pixel/rgb565.h"
 
 /* An OKLab dE around 2 is "just noticeable" per the palette study
  * (docs/sand/Shading-and-Colour.md); this is a plain RGB888 squared-channel
@@ -48,8 +49,8 @@ is_real_cell(cell_t c) {
 
 static long
 channel_error_sq(gfx_color_t a, gfx_color_t b) {
-    const uint32_t ca = gfx_color_rgb888(a);
-    const uint32_t cb = gfx_color_rgb888(b);
+    const uint32_t ca = rgb565be_to_rgb888(a);
+    const uint32_t cb = rgb565be_to_rgb888(b);
     const long dr = (long)((ca >> 16) & 0xFFU) - (long)((cb >> 16) & 0xFFU);
     const long dg = (long)((ca >> 8) & 0xFFU) - (long)((cb >> 8) & 0xFFU);
     const long db = (long)(ca & 0xFFU) - (long)(cb & 0xFFU);

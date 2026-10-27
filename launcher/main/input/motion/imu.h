@@ -38,7 +38,7 @@ imu_fifo_lost(uint64_t locked_us, uint32_t* remainder_us, bool gap) {
     return (int)(total_us / IMU_SAMPLE_US);
 }
 
-/* One consumer copies queued samples oldest first; loss precedes each sample.
+/* One consumer copies queued samples oldest first, at IMU_ODR_CODE; loss precedes each sample.
  * Gaps (bus error, overflow, loss saturation) are reported through *gap and precede samples[0].
  * Returns -1 only without a sensor. */
 int imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES], bool* gap);
@@ -53,8 +53,25 @@ void imu_start(void);
 
 bool imu_ready(void);
 
-/* Copies the newest sample read by the task. False when no sensor or no sample is available. */
-bool imu_read(imu_sample_t* out);
+/* Copies the newest sample and its sequence (when non-NULL) under one lock.
+ * False when no sensor or no sample is available. */
+bool imu_read(imu_sample_t* out, uint32_t* sequence);
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Vibration measurements only: ODR code 3 is IMU_ODR_BASE_HZ / 8, whose
+ * default accelerometer bandwidth (half the ODR, Table 11) reaches the speaker's low tones. */
+#define IMU_BUZZ_ODR_CODE 3U
+/* Asks the IMU task to run the sensor at another ODR code until asked for IMU_ODR_CODE again,
+ * and waits until it has. Every switch resets the FIFO and queues a gap, so imu_take_fifo()
+ * never mixes rates; between the switches samples are not IMU_SAMPLE_US apart.
+ * False without a sensor or task, on a bus error, or when the task does not answer in time.
+ * Blocks up to two of the slowest IMU task periods: console task only, never the frame thread. */
+bool imu_set_odr(unsigned odr_code);
+/* imu_take_fifo() for samples queued at `odr_code`. A take at the wrong rate, by either
+ * reader, drops the queue behind a gap, so a reader at the other rate sees it lost them. */
+int imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                     bool* gap);
+#endif
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Makes imu_read() report `sample` until imu_inject_release() hands back to

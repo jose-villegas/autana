@@ -185,7 +185,7 @@ consistent and still wrong.
 
 Local depth is the count of liquid cells of the *same material* between
 this cell and the nearest non-liquid boundary, walked along gravity's own
-ray (Bresenham<sup>[[30]](../Citations.md#30)</sup>), not along a screen axis; an obstacle sitting inside a
+ray (Bresenham<sup>[[30]](../Citations.md#bresenham-1965)</sup>), not along a screen axis; an obstacle sitting inside a
 pool must cast a depth shadow along the true tilt, not straight down or
 sideways, and only a ray that actually follows gravity can do that. The
 walk switches between two regimes at 45 degrees, on `|gy| >= |gx|`:
@@ -410,7 +410,7 @@ framebuffer's slow writes (see `docs/notes/Board-and-Memory.md`).
 **The palette.** `main/apps/sand/tools/shading_palette.c` emits
 `sand_palette256.h`: a 256-entry LUT (16 reserved UI entries, 240 sand
 entries), a 65536-entry `sand_rgb565_to_index[]` reverse map keyed by
-native RGB565 (the same per-group OKLab<sup>[[35]](../Citations.md#35)</sup> assignment the study computed, not
+native RGB565 (the same per-group OKLab<sup>[[35]](../Citations.md#ottosson-2020)</sup> assignment the study computed, not
 a fresh distance search; a key several materials produce keeps whichever
 material's own on-scene pixel count is larger), and a 256 x 16-phase
 `sand_palette16_dither_rgb[]` table: one precomputed RGB565 value per
@@ -454,17 +454,14 @@ is future work.
   `read_gravity_input()` (`app_sand.c`); the same smoothed pair feeds
   `sand_step()`, `material_frame_set_gravity(&paint_frame.material, gx, gy)`,
   and local depth's per-frame setup. There is exactly one gravity source
-  reaching shading, and it already goes through the tilt filter.
+  reaching shading, and it comes from `input_gravity()`.
 - Magnitude: `INPUT_ACCEL_ONE_G` is 4096; host-side test fixtures use
   gravity pairs of magnitude ~1000 (e.g. `(500, 866)` for 30 degrees) as
   "the same order of magnitude," not an exact unit match.
-- The tilt filter (`tilt.h`): `TILT_TAU_STILL_MS` 260, `TILT_TAU_MOVING_MS`
-  40 (an exponential-moving-average time constant, not a hard delay),
-  `TILT_MAX_DT_MS` 100 (caps a stall from teleporting the filter), trust
-  gate 70-130% of 1g, free-fall below 30%.
-- Jostle uses the [shake reader](../input/Shake.md), fed by a separate
-  `gravity_t` once per frame. `shake_level()` scales to `SAND_JOSTLE_MAX`;
-  tilt supplies direction and flow.
+- Direction and flow use the shared [gravity reader](../input/Gravity.md).
+  Flow is its in-plane strength scaled to `SAND_FLOW_ONE`
+  in `apps/sand/sand_controls.h`.
+- Jostle uses `input_shake()`, scaled by `sand_controls_jostle()` to `SAND_JOSTLE_MAX`.
 - **`gravity_quarter_turn()` (`app_sand.c`) is a separate, discrete (0-3)
   mechanism**: a plain snap-to-nearest-90-degrees, used only to turn the
   mode label's text to follow whichever edge is physically "up." It is not
@@ -515,7 +512,7 @@ is future work.
   walks a whole column in order, hiding every sparsity bug there is. Give
   the scene a free surface and a trickle, then check the actual number of
   rows repainted on a non-wake frame before trusting a null result.
-- **`panel_luminance()`** (`suite_sand_common.c`) is the Rec.601<sup>[[52]](../Citations.md#52)</sup> luminance
+- **`panel_luminance()`** (`suite_sand_common.c`) is the Rec.601<sup>[[52]](../Citations.md#itu-r-bt-601)</sup> luminance
   helper already used throughout the suite; reuse it rather than writing a
   second one.
 - **`sand_paint_row_n()` and `sand_paint_update_local_depth_gravity()` live in

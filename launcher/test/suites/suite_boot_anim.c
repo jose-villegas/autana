@@ -40,6 +40,8 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_test.h"
+#include "image/pixel/rgb565.h"
+#include "image/pixel/rgb888.h"
 #include "test_anim_tracks.h"
 #include "test_asset_dir.h"
 #include "testkit/cleanup.h"
@@ -958,9 +960,9 @@ static void
 test_the_curve_table_stays_inside_the_narrow_range(void) {
     for (int i = 0; i < BOOT_ANIM_CURVE_POINTS; i++) {
         const boot_anim_pt_t p = boot_anim_sample(i);
-        TEST_ASSERT_TRUE(p.re > -(1 << 17) && p.re < (1 << 17));
-        TEST_ASSERT_TRUE(p.im > -(1 << 17) && p.im < (1 << 17));
-        TEST_ASSERT_TRUE(p.t > -(1 << 15) && p.t < (1 << 15));
+        TEST_ASSERT_TRUE(p.re > -R3D_X_INPUT_XZ_LIMIT && p.re < R3D_X_INPUT_XZ_LIMIT);
+        TEST_ASSERT_TRUE(p.im > -R3D_X_INPUT_XZ_LIMIT && p.im < R3D_X_INPUT_XZ_LIMIT);
+        TEST_ASSERT_TRUE(p.t > -R3D_X_INPUT_Y_LIMIT && p.t < R3D_X_INPUT_Y_LIMIT);
     }
 }
 
@@ -1106,12 +1108,12 @@ test_the_floor_fades_out_with_distance_rather_than_stopping(void) {
 static void
 test_only_positive_crests_take_the_crest_colour(void) {
     const uint32_t crest = 0x20C0FF;
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(-BOOT_ANIM_ONE, crest));
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(0, crest));
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(crest), boot_anim_floor_color(BOOT_ANIM_CREST_HEIGHT_Q12, crest));
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(crest), boot_anim_floor_color(BOOT_ANIM_ONE, crest));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(-BOOT_ANIM_ONE, crest));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(0, crest));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(crest), boot_anim_floor_color(BOOT_ANIM_CREST_HEIGHT_Q12, crest));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(crest), boot_anim_floor_color(BOOT_ANIM_ONE, crest));
     const int half = BOOT_ANIM_CREST_HEIGHT_Q12 / 2;
-    TEST_ASSERT_EQUAL_HEX16(gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), gfx_rgb(crest), UINT8_MAX / 4),
+    TEST_ASSERT_EQUAL_HEX16(rgb565be_mix(RGB565BE(BOOT_ANIM_FLOOR_GREY), RGB565BE(crest), UINT8_MAX / 4),
                             boot_anim_floor_color(half, crest));
 }
 
@@ -1164,7 +1166,7 @@ test_height_changes_the_hue(void) {
     const boot_anim_stroke_t foot = boot_anim_stroke(0, 0);
     const boot_anim_stroke_t top = boot_anim_stroke(BOOT_ANIM_ONE, 0);
 
-    TEST_ASSERT_TRUE_MESSAGE(top.hue - foot.hue > GFX_HUE_TURN / 2,
+    TEST_ASSERT_TRUE_MESSAGE(top.hue - foot.hue > RGB888_HUE_TURN / 2,
                              "the climb should turn most of the way round the wheel, so that "
                              "height reads as colour");
 }
@@ -1213,7 +1215,7 @@ test_the_pens_carry_different_colours(void) {
     }
 
     const int spread = boot_anim_trail_hue(BOOT_ANIM_TRAILS - 1) - boot_anim_trail_hue(0);
-    TEST_ASSERT_TRUE_MESSAGE(spread > GFX_HUE_TURN / 2,
+    TEST_ASSERT_TRUE_MESSAGE(spread > RGB888_HUE_TURN / 2,
                              "the pens should be spread round the wheel, not bunched on one side");
 }
 
@@ -1578,7 +1580,7 @@ expect_the_rest_pose(const char* dir) {
     const bool from_pack = motion.from_pack;
     const bool is_rest = !from_pack && motion.clip.duration_ms == rest.clip.duration_ms
                          && same_node(&motion.camera, &rest.camera) && same_node(&motion.space, &rest.space);
-    const draw_image_t no_photo = {0};
+    const image_t no_photo = {0};
     boot_anim_draw_frame(&motion, &no_photo, now_ms);
     boot_anim_motion_release(&motion);
     TEST_ASSERT_FALSE_MESSAGE(from_pack, "the motion came from the pack");
@@ -1694,7 +1696,7 @@ write_picture(int version, int width, int height) {
     test_pack_t pack = test_pack_begin(bytes, capacity, 1);
     uint8_t* entry = test_pack_add(&pack, BOOT_PHOTO, DRAW_IMAGE_ASSET, entry_size);
     test_pack_put16(entry, version);
-    test_pack_put16(entry + 2, DRAW_IMAGE_RGB565);
+    test_pack_put16(entry + 2, DRAW_IMAGE_FORMAT_RGB565);
     test_pack_put16(entry + 4, width);
     test_pack_put16(entry + 6, height);
     test_pack_put32(entry + 8, (uint32_t)width);
@@ -1706,7 +1708,7 @@ write_picture(int version, int width, int height) {
 }
 
 static void
-load_photo_from(const char* dir, draw_image_t* out) {
+load_photo_from(const char* dir, image_t* out) {
     test_asset_dir_use(dir);
     boot_anim_photo_load(out);
     test_asset_dir_restore();
@@ -1714,7 +1716,7 @@ load_photo_from(const char* dir, draw_image_t* out) {
 
 /* The lit pixels of the shipped motion's frame at `now_ms` drawn over `photo`. */
 static int
-lit_over(const draw_image_t* photo, uint32_t now_ms) {
+lit_over(const image_t* photo, uint32_t now_ms) {
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     boot_anim_draw_frame(&motion, photo, now_ms);
@@ -1734,7 +1736,7 @@ expect_no_photograph(const char* dir) {
     const uint32_t now_ms = BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS;
     TEST_ASSERT_EQUAL_UINT8(255, boot_anim_ink(now_ms));
 
-    draw_image_t photo;
+    image_t photo;
     load_photo_from(dir, &photo);
     const bool no_pixels = photo.pixels == NULL;
     const int without = lit_over(&photo, now_ms);
@@ -1743,8 +1745,8 @@ expect_no_photograph(const char* dir) {
     /* One black row repeated down the panel: a stride of 0. */
     gfx_color_t* black = calloc(GFX_WIDTH, sizeof(gfx_color_t));
     TEST_ASSERT_NOT_NULL(black);
-    const draw_image_t covered = {
-        .pixels = black, .format = DRAW_IMAGE_RGB565, .width = GFX_WIDTH, .height = GFX_HEIGHT, .stride = 0};
+    const image_t covered = {
+        .pixels = black, .format = IMAGE_RGB565BE, .width = GFX_WIDTH, .height = GFX_HEIGHT, .stride = 0};
     const int title_only = lit_over(&covered, now_ms);
     free(black);
 
@@ -1757,7 +1759,7 @@ expect_no_photograph(const char* dir) {
  * pack, not the one that failed. */
 static void
 expect_a_good_picture_loads_next(void) {
-    draw_image_t photo;
+    image_t photo;
     boot_anim_photo_load(&photo);
     const bool from_pack = photo.pixels != NULL;
     boot_anim_photo_release(&photo);
@@ -1793,7 +1795,7 @@ test_the_crossfade_ends_on_the_shipped_photograph(void) {
         TEST_ASSERT_TRUE(gfx_init());
     }
     suite_set_test_cleanup(gfx_reset_for_test);
-    draw_image_t photo;
+    image_t photo;
     boot_anim_photo_load(&photo);
     if (photo.pixels == NULL) {
         TEST_FAIL_MESSAGE("the boot picture did not load from its pack: see the log above");
@@ -1802,8 +1804,9 @@ test_the_crossfade_ends_on_the_shipped_photograph(void) {
     const gfx_color_t* fb = gfx_framebuffer();
     int same = 0;
     for (int y = 0; y < GFX_HEIGHT; y++) {
+        const gfx_color_t* row = image_row(&photo, y);
         for (int x = 0; x < GFX_WIDTH; x++) {
-            same += fb[(y * GFX_WIDTH) + x] == photo.pixels[(y * (int)photo.stride) + x];
+            same += fb[(y * GFX_WIDTH) + x] == row[x];
         }
     }
     boot_anim_photo_release(&photo);

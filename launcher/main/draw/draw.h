@@ -4,7 +4,7 @@
  * gfx.h.
  *
  * Colours are given as plain 0xRRGGBB so callers never deal with the panel's
- * byte-swapped RGB565 layout; gfx_rgb() handles that conversion.
+ * byte-swapped RGB565 layout; RGB565BE() handles that conversion.
  */
 #pragma once
 
@@ -13,6 +13,8 @@
 #include "draw/draw_font.h"
 #include "draw/draw_font_roles.h"
 #include "gfx/target/gfx_color.h"
+#include "image/image.h"
+#include "image/pixel/rgb565.h"
 
 /* Glyphs are 8x8 in the font data, drawn at 2x so they are legible on a
  * 368-wide panel. Text metrics elsewhere must agree with these. */
@@ -33,7 +35,7 @@ void draw_rect(int x, int y, int w, int h, gfx_color_t color);
 void draw_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha);
 
 /* Like draw_rect(), but MIXED with the destination via
- * gfx_color_mix() (gfx_color.h) at `alpha` (0 leaves the framebuffer
+ * rgb565be_mix() (rgb565.h) at `alpha` (0 leaves the framebuffer
  * untouched, 255 is pixel-identical to draw_rect(), everything
  * between is a real per-channel blend). Unlike every other fill here,
  * this one READS the destination pixel first, affordable for
@@ -41,15 +43,10 @@ void draw_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alp
  * composite dithers instead. */
 void draw_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha);
 
-/* Composite a source IMAGE over the framebuffer at alpha's own dithered
- * coverage, draw_rect_dither()'s sibling for a bitmap instead of a
- * flat colour: a covered pixel becomes the source pixel outright, an
- * uncovered one is left as-is, nothing is ever blended. `src_stride` is
- * pixels per source row, so a window into a larger image just offsets
- * `src` and uses the image's own width as stride. See draw.c's own
- * comment above the definition for why this is cheap even as a
- * full-frame crossfade. */
-void draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stride, uint8_t alpha);
+/* Composite the whole image at alpha's dithered coverage; reads only IMAGE_RGB565BE.
+ * Covered pixels become source pixels; uncovered pixels stay as-is.
+ * Use image_sub() for a window into a larger image. */
+void draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha);
 
 /* Both clip to the framebuffer, so callers need not bounds-check. */
 void draw_pixel(int x, int y, gfx_color_t color);

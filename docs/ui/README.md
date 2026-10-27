@@ -235,8 +235,9 @@ shows its label alone, and an icon its short text: the no-pack rows.
 | `UI_MARGIN` | 16 | from the canvas edge |
 | `UI_TITLE_HEIGHT`, `UI_BANNER_HEIGHT` | 56 | a title strip; the empty status strip on the home screen |
 
-The panel is about 322 pixels per inch, so a phone's 44 px is only 3.5 mm
-here. 56 px is about 4.4 mm.
+The panel is about 326 pixels per inch, from `BOARD_SCREEN_WIDTH_MM` in
+[`board_geometry.h`](../../launcher/main/board/board_geometry.h).
+44 px is about 3.4 mm; 56 px is about 4.4 mm.
 
 - **Canvas size.** `ui_width()` and `ui_height()` are the logical canvas:
   368x448 in portrait and 448x368 in landscape. Lay out against them,
@@ -285,14 +286,13 @@ How a panel over a paused app and a drawn backdrop use these is in
 
 ## What a screen costs
 
-The frame's command list is 8 KiB on the device (`MU_COMMANDLIST_SIZE`,
-set in the vendored backend's header), and everything drawn spends it. An
-open dropdown list adds its rows on top of the screen beneath it, and a busy
-screen with its list open exceeds 8 KiB on a 64-bit host, whose larger
-commands need a 9 KiB limit in host tests and the render harness. The screen
-budget suites reserve space for additional controls; their device/QEMU run
-checks the device limit. A development build logs the high-water mark from
-`ui_end()`; check it before adding a texture or another icon.
+The frame's command list is 8 KiB on the device (`MU_COMMANDLIST_SIZE`).
+Each image icon uses one command; its runs are drawn during painting.
+Each swatch grid uses one command containing a copy of its colours.
+
+Open dropdowns add their rows to the screen beneath them. The budget suites
+reserve headroom for more controls and check the device limit on device/QEMU.
+Development builds log the high-water mark from `ui_end()`.
 
 ## Adding to the toolkit
 

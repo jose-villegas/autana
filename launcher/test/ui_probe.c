@@ -62,13 +62,32 @@ ui_probe_text_rgb(const char* s, uint32_t* rgb) {
     return true;
 }
 
+/* The colour of the grid's cell that fills exactly `r` once clipped to `clip`. */
+static bool
+swatch_cell_rgb(const ui_swatch_command_t* grid, recti_t clip, recti_t r, uint32_t* rgb) {
+    for (int row = 0; row < grid->rows; row++) {
+        for (int col = 0; col < grid->cols; col++) {
+            const recti_t cell = recti_intersect(ui_recti_from_mu(ui_swatch_cell_rect(grid, col, row)), clip);
+            if (memcmp(&cell, &r, sizeof r) == 0) {
+                *rgb = grid->rgb[row * grid->cols + col];
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool
 ui_probe_fill_rgb(recti_t r, uint32_t* rgb) {
     mu_Command* cmd = NULL;
+    recti_t clip = {0, 0, ui_width(), ui_height()};
     while (mu_next_command(ui_context(), &cmd)) {
-        const mu_Rect c = cmd->rect.rect;
-        if (cmd->type == MU_COMMAND_RECT && c.x == r.x && c.y == r.y && c.w == r.w && c.h == r.h) {
+        if (cmd->type == MU_COMMAND_CLIP) {
+            clip = ui_recti_from_mu(cmd->clip.rect);
+        } else if (cmd->type == MU_COMMAND_RECT && memcmp(&cmd->rect.rect, &r, sizeof r) == 0) {
             *rgb = ui_rgb_value(cmd->rect.color);
+            return true;
+        } else if (cmd->type == UI_COMMAND_SWATCHES && swatch_cell_rgb((const ui_swatch_command_t*)cmd, clip, r, rgb)) {
             return true;
         }
     }
@@ -79,13 +98,14 @@ bool
 ui_probe_icon_rgb(recti_t within, uint32_t* rgb) {
     mu_Command* cmd = NULL;
     while (mu_next_command(ui_context(), &cmd)) {
-        if (cmd->type != MU_COMMAND_ICON) {
+        if (cmd->type != MU_COMMAND_ICON && cmd->type != UI_COMMAND_IMAGE) {
             continue;
         }
-        const recti_t r = ui_recti_from_mu(cmd->icon.rect);
+        const ui_image_command_t* image = (const ui_image_command_t*)cmd;
+        const recti_t r = ui_recti_from_mu(cmd->type == UI_COMMAND_IMAGE ? image->rect : cmd->icon.rect);
         if (r.x >= within.x && r.y >= within.y && recti_right(r) <= recti_right(within)
             && r.y + r.h <= within.y + within.h) {
-            *rgb = ui_rgb_value(cmd->icon.color);
+            *rgb = ui_rgb_value(cmd->type == UI_COMMAND_IMAGE ? image->color : cmd->icon.color);
             return true;
         }
     }

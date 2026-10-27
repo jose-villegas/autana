@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_render_target.h"
+#include "image/pixel/rgb565.h"
 
 /* How rows are filled, chosen once per size. All but UPSCALE_BLOCKS write
  * what the maps say, pixel for pixel; it repeats each pixel `factor` times. */
@@ -19,7 +20,7 @@ typedef enum {
 } upscale_path_t;
 
 /* The share of its brightness a repeated scanline row keeps. */
-#define UPSCALE_SCANLINE_KEEP (GFX_COLOR_SCALE_UNIT / 2)
+#define UPSCALE_SCANLINE_KEEP (RGB565_SCALE_UNIT / 2)
 
 typedef struct {
     int scanline_run;

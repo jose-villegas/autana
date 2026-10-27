@@ -7,6 +7,7 @@
 
 #include "core/tune.h"
 #include "draw/draw.h"
+#include "image/pixel/rgb565.h"
 #include "math/geometry/box3f.h"
 #include "math/linear/transformf.h"
 #include "math/projection/projectf.h"
@@ -33,13 +34,13 @@ static const uint32_t FATE_RGB[RASTER_FATE_COUNT] = {
 #define CULLED_DOOR 4
 /* Its border is dashed: this many pixels on, as many off, along the edge. */
 #define CULLED_DASH 2
-/* What a node's hue keeps, out of GFX_COLOR_SCALE_UNIT, under each fate. */
+/* What a node's hue keeps, out of RGB565_SCALE_UNIT, under each fate. */
 #define KEEP_STEPS  16
 static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
-    [RASTER_FATE_CULLED] = GFX_COLOR_SCALE_UNIT * 3 / KEEP_STEPS,
-    [RASTER_FATE_NOT_SET_UP] = GFX_COLOR_SCALE_UNIT * 7 / KEEP_STEPS,
-    [RASTER_FATE_HIDDEN] = GFX_COLOR_SCALE_UNIT * 11 / KEEP_STEPS,
-    [RASTER_FATE_DRAWN] = GFX_COLOR_SCALE_UNIT,
+    [RASTER_FATE_CULLED] = RGB565_SCALE_UNIT * 3 / KEEP_STEPS,
+    [RASTER_FATE_NOT_SET_UP] = RGB565_SCALE_UNIT * 7 / KEEP_STEPS,
+    [RASTER_FATE_HIDDEN] = RGB565_SCALE_UNIT * 11 / KEEP_STEPS,
+    [RASTER_FATE_DRAWN] = RGB565_SCALE_UNIT,
 };
 
 /* A top view frames the bounds' widest half extent with this margin. */
@@ -363,9 +364,9 @@ static gfx_color_t
 cluster_color(const raster_cull_t* s, int cluster) {
     const raster_cluster_fate_t fate = (raster_cluster_fate_t)s->fate[cluster];
     if (paint == RASTER_CULL_PAINT_FATES) {
-        return GFX_RGB(FATE_RGB[fate]);
+        return RGB565BE(FATE_RGB[fate]);
     }
-    return gfx_color_scale(raster_meshlets_color(1U + s->node[cluster]), FATE_KEEP[fate]);
+    return rgb565be_scale(raster_meshlets_color(1U + s->node[cluster]), FATE_KEEP[fate]);
 }
 
 /* The camera's own picture tags triangles: each finds its cluster, the
@@ -413,11 +414,11 @@ shaded_pixel(const raster_cull_t* s, gfx_color_t clear, gfx_color_t drawn, int c
     const raster_cluster_fate_t fate = (raster_cluster_fate_t)s->fate[c];
     if (fate == RASTER_FATE_CULLED) {
         if (border) {
-            return ((x + y) / CULLED_DASH) % 2 == 0 ? GFX_RGB(FATE_RGB[fate]) : clear;
+            return ((x + y) / CULLED_DASH) % 2 == 0 ? RGB565BE(FATE_RGB[fate]) : clear;
         }
         return x % CULLED_DOOR == 0 && y % CULLED_DOOR == 0 ? drawn : clear;
     }
-    return border ? GFX_RGB(FATE_RGB[fate]) : drawn;
+    return border ? RGB565BE(FATE_RGB[fate]) : drawn;
 }
 
 /* Shaded: the baked colours as drawn, culled clusters as a sparse screen
@@ -556,7 +557,7 @@ level_boxes(raster_cull_t* s, const r3d_lens_t* lens, const r3d_lit_mesh_t* mesh
         const r3d_lit_node_t* node = &mesh->nodes[n];
         if (depth[top] == level || node->leaf) {
             const gfx_color_t color =
-                paint != RASTER_CULL_PAINT_NODES ? GFX_RGB(FRUSTUM_RGB) : raster_meshlets_color(1U + n);
+                paint != RASTER_CULL_PAINT_NODES ? RGB565BE(FRUSTUM_RGB) : raster_meshlets_color(1U + n);
             box_lines(lens, box3f_from_box3s(node->bounds, 1.0F), color);
             continue;
         }
@@ -593,7 +594,7 @@ raster_cull_overlay(void* state, int width, int height) {
         r3d_lens_init(&lens, &seen, 1);
         const vec3f_t half = box3f_half_extent(world_bounds(raster));
         const float depth = sqrtf(vec3f_dot(half, half));
-        frustum_lines(&lens, &s->camera, depth, GFX_RGB(FRUSTUM_RGB));
+        frustum_lines(&lens, &s->camera, depth, RGB565BE(FRUSTUM_RGB));
     }
 }
 

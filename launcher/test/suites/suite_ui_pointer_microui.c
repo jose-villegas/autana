@@ -80,8 +80,8 @@ frame(bool down, bool pressed, bool released, int x, int y) {
     in.down = down;
     in.pressed = pressed;
     in.released = released;
-    in.x = x;
-    in.y = y;
+    in.point.x = x;
+    in.point.y = y;
 
     ui_bridge_feed(ctx, &pointer, &in);
 
@@ -215,10 +215,10 @@ test_a_press_over_stacked_windows_reaches_only_the_top_one(void) {
 
     const int x = BTN_X + BTN_W / 2;
     const int y = BTN_Y + BTN_H / 2;
-    int total = stacked_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y});
-    total += stacked_frame(&(input_t){.down = true, .x = x, .y = y});
-    total += stacked_frame(&(input_t){.down = true, .x = x, .y = y});
-    total += stacked_frame(&(input_t){.released = true, .x = x, .y = y});
+    int total = stacked_frame(&(input_t){.down = true, .pressed = true, .point = {x, y}});
+    total += stacked_frame(&(input_t){.down = true, .point = {x, y}});
+    total += stacked_frame(&(input_t){.down = true, .point = {x, y}});
+    total += stacked_frame(&(input_t){.released = true, .point = {x, y}});
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, total, "only the window on top may take the press, once");
 }
 
@@ -246,7 +246,7 @@ assert_seed_lands_in(int x, int y, const char* want, const char* first, mu_Rect 
     const input_t idle = {0};
     edge_frame(&idle, first, first_rect, second, second_rect);
     edge_frame(&idle, first, first_rect, second, second_rect);
-    edge_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}, first, first_rect, second, second_rect);
+    edge_frame(&(input_t){.down = true, .pressed = true, .point = {x, y}}, first, first_rect, second, second_rect);
     TEST_ASSERT_EQUAL_PTR(mu_get_container(ctx, want), ctx->hover_root);
 }
 
@@ -335,8 +335,8 @@ test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
         input_t in = {0};
         in.down = true;
         in.pressed = (f == 0);
-        in.x = x;
-        in.y = BTN_Y + BTN_H / 2;
+        in.point.x = x;
+        in.point.y = BTN_Y + BTN_H / 2;
 
         ui_bridge_feed(ctx, &pointer, &in);
 
@@ -376,8 +376,8 @@ list_frame(bool down, bool pressed, bool released, int x, int y) {
     in.down = down;
     in.pressed = pressed;
     in.released = released;
-    in.x = x;
-    in.y = y;
+    in.point.x = x;
+    in.point.y = y;
 
     ui_bridge_feed(ctx, &pointer, &in);
 

@@ -1,10 +1,75 @@
 # Gravity
 
-`gravity_t` estimates unit down, linear acceleration, gyro bias, tilt strength and free fall.
+`gravity_t` estimates unit down, linear acceleration, gyro bias, in-plane strength and free fall.
 Gyro predicts motion; trusted acceleration corrects drift.
 Acceleration cannot distinguish gravity from other forces. See [axes](Motion-Axes.md) and [calibration](Motion-Calibration.md).
 
-## Example
+## App readers
+
+`input_gravity()` returns screen-axis g: x right, y down, z out.
+It is unit length while held and zero in free fall.
+`hypotf(g.x, g.y)` gives in-plane strength, matching `gravity_strength()`.
+
+No sensor gives gravity `(0,1,0)` and shake zero.
+A present sensor gives both as zero until its first reading.
+Unchanged or missed samples hold both estimates without stepping the filters.
+
+`input_shake()` returns the [shake reader](Shake.md)'s level, 0..1.
+Call both readers only on the frame thread.
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant Reader as Motion reader
+    App->>Reader: input_gravity or input_shake
+    alt New sample sequence
+        Reader->>Reader: Step both filters from newest sample
+    else Unchanged or missing sample
+        Reader->>Reader: Hold estimates or startup defaults
+    end
+    Reader-->>App: Requested value
+    App->>Reader: Read with the same sample
+    Reader-->>App: Cached values
+```
+
+Each new sample steps both filters on the first read, without an `input_poll()` call.
+The step uses clock time since the last update, capped at `GRAVITY_MAX_DT_US`.
+
+Apps that do not call either reader do no estimation work.
+The input module retains its filters across app switches.
+FIFO batches have one queue consumer and do not feed the shared readers.
+
+`GRAVITY_MIN_DIRECTION_STRENGTH` is the minimum in-plane strength for a meaningful direction.
+
+In development builds, `autana tune motion.log_ms 1000` logs the reader's
+smoothed shake magnitude in mg. Zero disables the log.
+
+## App example
+
+<!-- generated: input-gravity-shared-example check: python launcher/tools/gen/examples_doc.py --check -->
+```c
+/* Gravity: call from the frame thread's app update. */
+#include <math.h>
+#include "input/input.h"
+
+#define BALL_SPEED 0.1F /* pixels per ms at full strength */
+
+typedef struct {
+    float ball_x, ball_y, strength, shake;
+} gravity_shared_example_t;
+
+void
+gravity_shared_example(gravity_shared_example_t* s, uint32_t dt_ms) {
+    const vec3f_t down = input_gravity();
+    s->strength = hypotf(down.x, down.y);
+    s->shake = input_shake();
+    s->ball_x += down.x * BALL_SPEED * dt_ms;
+    s->ball_y += down.y * BALL_SPEED * dt_ms;
+}
+```
+<!-- /generated: input-gravity-shared-example -->
+
+## FIFO example
 
 <!-- generated: input-gravity-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
@@ -12,7 +77,7 @@ Acceleration cannot distinguish gravity from other forces. See [axes](Motion-Axe
 #include "input/motion/gravity.h"
 #include "input/input.h"
 
-#define BALL_SPEED 0.1F /* pixels per ms at full tilt */
+#define BALL_SPEED 0.1F /* pixels per ms at full strength */
 
 typedef struct {
     gravity_t gravity;
@@ -51,7 +116,7 @@ Periods and task settings live in `input/motion/imu.c`; header-owned settings na
 | `IMU_FIFO_SAMPLES` | 128 samples | `input/motion/imu.h` |
 | `IMU_SAMPLE_US` / `INPUT_MOTION_SAMPLE_US` | `1 / ODR` | `input/motion/imu.h` / `input/input.h` |
 
-The interval follows the QMI8658A CTRL2/CTRL3 ODR codes in the datasheet<sup>[[79]](../Citations.md#79)</sup> and SensorLib.<sup>[[80]](../Citations.md#80)</sup>
+The interval follows the QMI8658A CTRL2/CTRL3 ODR codes in the datasheet<sup>[[79]](../Citations.md#qst-qmi8658a)</sup> and SensorLib.<sup>[[80]](../Citations.md#he-sensorlib)</sup>
 `input_device.c` checks the interval and batch capacity against the IMU definitions.
 
 Batches arrive up to one drain period late; a drain delayed past FIFO capacity while core 1 is busy becomes a gap.
@@ -93,8 +158,8 @@ flowchart LR
 
 | Condition | Effect |
 |---|---|
-| Magnitude deviation from 1 g | Full trust through FULL, linear ramp to zero at NONE (Android tolerance)<sup>[[75]](../Citations.md#75)</sup> |
-| Positive trust and direction inside reject cone | Pull by `weight * dt / (tau + dt)`, normalize; angular rejection follows Fusion<sup>[[74]](../Citations.md#74)</sup> |
+| Magnitude deviation from 1 g | Full trust through FULL, linear ramp to zero at NONE (Android tolerance)<sup>[[75]](../Citations.md#aosp-window-orientation-listener)</sup> |
+| Positive trust and direction inside reject cone | Pull by `weight * dt / (tau + dt)`, normalize; angular rejection follows Fusion<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
 | Zero acceleration | No correction or distrust counting |
 | First nonzero acceleration after reset | Adopt direction exactly, even at zero dt |
 
@@ -102,22 +167,22 @@ flowchart LR
 
 | Condition | Effect |
 |---|---|
-| Rejection | Add dt to debt, clamp at limit; exceeding limit enters recovery (Fusion counter)<sup>[[74]](../Citations.md#74)</sup> |
-| Acceptance | Subtract `RECOVER_ACCEPT_WEIGHT * dt` from debt, floor at zero; leave recovery<sup>[[74]](../Citations.md#74)</sup> |
-| Recovery with nonzero acceleration | Full TAU gain, bypass rejection until inside cone; preserve bias, no learning or startup ramp<sup>[[74]](../Citations.md#74)</sup> |
+| Rejection | Add dt to debt, clamp at limit; exceeding limit enters recovery (Fusion counter)<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
+| Acceptance | Subtract `RECOVER_ACCEPT_WEIGHT * dt` from debt, floor at zero; leave recovery<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
+| Recovery with nonzero acceleration | Full TAU gain, bypass rejection until inside cone; preserve bias, no learning or startup ramp<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
 | Corrected gyro below still limit, magnitude within FULL, rejection beyond still timeout | Adopt direction, clear both timers and recovery; motion or acceptance clears still timer |
-| Any raw gyro axis reaches overrange (inclusive) | Maximum debt and recovery; clipped sample still predicts, down and bias preserved. Fusion uses strict greater-than<sup>[[74]](../Citations.md#74)</sup> |
+| Any raw gyro axis reaches overrange (inclusive) | Maximum debt and recovery; clipped sample still predicts, down and bias preserved. Fusion uses strict greater-than<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
 
 ## Bias learning
 
-![The device rocks about flat while the estimate of down converges on true down and the gyro bias error decays](../images/input/gravity-bias.gif)
+![The cased device rocks about flat while the estimate of down converges on true down and the gyro bias error decays](../images/input/gravity-bias.gif)
 
 The device rocks about flat with a known gyro offset. Its readings pass through `imu_axes_screen()` into `gravity_update_batch()`.
-Device and IMU placement come from `board/board_geometry.h`.<sup>[[89]](../Citations.md#89)</sup>
+Device and IMU placement come from `board/board_geometry.h`.<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
 
 | Condition | Effect |
 |---|---|
-| Accepted acceleration | Integrate `cross(down, direction) * weight * dt` before correction; Mahony integral, sign follows minus-cross prediction<sup>[[73]](../Citations.md#73)</sup> |
+| Accepted acceleration | Integrate `cross(down, direction) * weight * dt` before correction; Mahony integral, sign follows minus-cross prediction<sup>[[73]](../Citations.md#mahony-2008)</sup> |
 | Bias reaches per-axis limit | Clamp in deg/s |
 | Rejection, zero acceleration or recovery | No bias learning |
 
@@ -166,14 +231,14 @@ b_{\mathrm{err}}(t) \propto e^{-4t/T_s}, \qquad e^{-4T_s/T_s} = e^{-4} \approx 0
 |---|---|---|
 | `GRAVITY_TAU_S` | 0.5 s | Ours |
 | `GRAVITY_TRUST_FULL_G` | 0.1 g | Ours |
-| `GRAVITY_TRUST_NONE_G` | 0.4 g | Android WindowOrientationListener acceleration tolerance, 4 m/s^2<sup>[[75]](../Citations.md#75)</sup> |
-| `GRAVITY_REJECT_DEG` | 10 deg | x-io Fusion acceleration rejection<sup>[[74]](../Citations.md#74)</sup> |
-| `GRAVITY_RECOVER_MS` | 5000 ms, converted to us | x-io Fusion rejection timeout<sup>[[74]](../Citations.md#74)</sup> |
-| `GRAVITY_RECOVER_ACCEPT_WEIGHT` | 9 | x-io Fusion accepted-sample counter drain<sup>[[74]](../Citations.md#74)</sup> |
-| `GRAVITY_GYRO_OVERRANGE_RATIO` / `GRAVITY_GYRO_OVERRANGE_DPS` | 0.98 / 0.98 × `IMU_GYRO_RANGE_DPS` | Fusion ratio × configured full scale<sup>[[74]](../Citations.md#74)</sup> |
+| `GRAVITY_TRUST_NONE_G` | 0.4 g | Android WindowOrientationListener acceleration tolerance, 4 m/s^2<sup>[[75]](../Citations.md#aosp-window-orientation-listener)</sup> |
+| `GRAVITY_REJECT_DEG` | 10 deg | x-io Fusion acceleration rejection<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
+| `GRAVITY_RECOVER_MS` | 5000 ms, converted to us | x-io Fusion rejection timeout<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
+| `GRAVITY_RECOVER_ACCEPT_WEIGHT` | 9 | x-io Fusion accepted-sample counter drain<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
+| `GRAVITY_GYRO_OVERRANGE_RATIO` / `GRAVITY_GYRO_OVERRANGE_DPS` | 0.98 / 0.98 × `IMU_GYRO_RANGE_DPS` | Fusion ratio × configured full scale<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
 | `GRAVITY_STILL_DPS` | 3 deg/s | Above rest gyro noise (about +/-2 deg/s) |
 | `GRAVITY_STILL_RECOVER_MS` | 500 ms | Ours: clears a fast-flip error promptly, outlasts a held swing reversal |
-| `GRAVITY_GYRO_OFFSET_TOL_DPS` + `GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C` × `GRAVITY_GYRO_TEMP_SPAN_C` = `GRAVITY_BIAS_MAX_DPS` | 10 + 0.05 × 60 = 13 deg/s | QMI8658C Table 8: initial offset + drift from 25 C to 85 C<sup>[[76]](../Citations.md#76)</sup> |
+| `GRAVITY_GYRO_OFFSET_TOL_DPS` + `GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C` × `GRAVITY_GYRO_TEMP_SPAN_C` = `GRAVITY_BIAS_MAX_DPS` | 10 + 0.05 × 60 = 13 deg/s | QMI8658C Table 8: initial offset + drift from 25 C to 85 C<sup>[[76]](../Citations.md#qst-qmi8658c)</sup> |
 | `GRAVITY_BIAS_SETTLE_S` | 20 s | Ours |
 | `GRAVITY_BIAS_KI` | derived from TAU and SETTLE_S | Linearised integral loop; see Bias learning |
 | `GRAVITY_FREE_FALL_G` | 0.3 g | Acceleration magnitude below which strength is zero |
@@ -181,11 +246,11 @@ b_{\mathrm{err}}(t) \propto e^{-4t/T_s}, \qquad e^{-4T_s/T_s} = e^{-4} \approx 0
 
 ## Limits
 
-FIFO read mode discards arrivals (section 8.7), so loss = duration / `IMU_SAMPLE_US`, carrying fractional microseconds across drains.<sup>[[79]](../Citations.md#79)</sup>
+FIFO read mode discards arrivals (section 8.7), so loss = duration / `IMU_SAMPLE_US`, carrying fractional microseconds across drains.<sup>[[79]](../Citations.md#qst-qmi8658a)</sup>
 
 | Condition | Effect |
 |---|---|
-| Read-mode exit | Count read before `CTRL9_REQ_FIFO`; CTRL9 polled with no minimum delay; every drain attempts to exit read mode, including errors<sup>[[79]](../Citations.md#79)</sup> |
+| Read-mode exit | Count read before `CTRL9_REQ_FIFO`; CTRL9 polled with no minimum delay; every drain attempts to exit read mode, including errors<sup>[[79]](../Citations.md#qst-qmi8658a)</sup> |
 | Read-mode timing | `esp_timer`: before `CTRL9_REQ_FIFO` through `REG_FIFO_CTRL` rewrite |
 | Empty drain | Carry loss to next sample |
 | Loss boundary | Hold previous rotation for at most `GRAVITY_MAX_DT_MS` converted to us |
@@ -194,7 +259,7 @@ FIFO read mode discards arrivals (section 8.7), so loss = duration / `IMU_SAMPLE
 
 Delivered rate = ODR × (1 - read-mode share); a 500 ms drain loses about half as much as every-frame.
 
-SCL stays at 400 kHz, the QMI8658A rating; no bus part states more, and ESP32-S3 stops at 800 kbit/s.<sup>[[79]](../Citations.md#79)</sup><sup>[[66]](../Citations.md#66)</sup>
+SCL stays at 400 kHz, the QMI8658A rating; no bus part states more, and ESP32-S3 stops at 800 kbit/s.<sup>[[79]](../Citations.md#qst-qmi8658a)</sup><sup>[[66]](../Citations.md#espressif-esp32-s3-datasheet)</sup>
 A faster SCL shortens read mode.
 
 A clean soak at 800 kHz does not show the slower bus parts read it correctly, and the QMI8658A has no CRC.

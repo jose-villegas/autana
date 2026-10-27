@@ -18,10 +18,10 @@ static input_t
 dragging(int press_x, int press_y, int x, int y) {
     input_t in = {0};
     in.down = true;
-    in.press_x = press_x;
-    in.press_y = press_y;
-    in.x = x;
-    in.y = y;
+    in.press.x = press_x;
+    in.press.y = press_y;
+    in.point.x = x;
+    in.point.y = y;
     return in;
 }
 
@@ -209,14 +209,18 @@ test_the_edge_zone_reaches_its_depth_from_each_edge_and_no_further(void) {
     const int mid_x = SCREEN_W / 2;
     const int mid_y = SCREEN_H / 2;
     const int d = GESTURE_HOME_ZONE_DEPTH;
-    TEST_ASSERT_TRUE(gesture_in_edge_zone(mid_x, SCREEN_H - d, GESTURE_EDGE_BOTTOM, SCREEN_W, SCREEN_H));
-    TEST_ASSERT_FALSE(gesture_in_edge_zone(mid_x, SCREEN_H - d - 1, GESTURE_EDGE_BOTTOM, SCREEN_W, SCREEN_H));
-    TEST_ASSERT_TRUE(gesture_in_edge_zone(mid_x, d, GESTURE_EDGE_TOP, SCREEN_W, SCREEN_H));
-    TEST_ASSERT_FALSE(gesture_in_edge_zone(mid_x, d + 1, GESTURE_EDGE_TOP, SCREEN_W, SCREEN_H));
-    TEST_ASSERT_TRUE(gesture_in_edge_zone(d, mid_y, GESTURE_EDGE_LEFT, SCREEN_W, SCREEN_H));
-    TEST_ASSERT_FALSE(gesture_in_edge_zone(d + 1, mid_y, GESTURE_EDGE_LEFT, SCREEN_W, SCREEN_H));
-    TEST_ASSERT_TRUE(gesture_in_edge_zone(SCREEN_W - d, mid_y, GESTURE_EDGE_RIGHT, SCREEN_W, SCREEN_H));
-    TEST_ASSERT_FALSE(gesture_in_edge_zone(SCREEN_W - d - 1, mid_y, GESTURE_EDGE_RIGHT, SCREEN_W, SCREEN_H));
+    TEST_ASSERT_TRUE(
+        gesture_in_edge_zone((vec2i_t){mid_x, SCREEN_H - d}, GESTURE_EDGE_BOTTOM, (vec2i_t){SCREEN_W, SCREEN_H}));
+    TEST_ASSERT_FALSE(
+        gesture_in_edge_zone((vec2i_t){mid_x, SCREEN_H - d - 1}, GESTURE_EDGE_BOTTOM, (vec2i_t){SCREEN_W, SCREEN_H}));
+    TEST_ASSERT_TRUE(gesture_in_edge_zone((vec2i_t){mid_x, d}, GESTURE_EDGE_TOP, (vec2i_t){SCREEN_W, SCREEN_H}));
+    TEST_ASSERT_FALSE(gesture_in_edge_zone((vec2i_t){mid_x, d + 1}, GESTURE_EDGE_TOP, (vec2i_t){SCREEN_W, SCREEN_H}));
+    TEST_ASSERT_TRUE(gesture_in_edge_zone((vec2i_t){d, mid_y}, GESTURE_EDGE_LEFT, (vec2i_t){SCREEN_W, SCREEN_H}));
+    TEST_ASSERT_FALSE(gesture_in_edge_zone((vec2i_t){d + 1, mid_y}, GESTURE_EDGE_LEFT, (vec2i_t){SCREEN_W, SCREEN_H}));
+    TEST_ASSERT_TRUE(
+        gesture_in_edge_zone((vec2i_t){SCREEN_W - d, mid_y}, GESTURE_EDGE_RIGHT, (vec2i_t){SCREEN_W, SCREEN_H}));
+    TEST_ASSERT_FALSE(
+        gesture_in_edge_zone((vec2i_t){SCREEN_W - d - 1, mid_y}, GESTURE_EDGE_RIGHT, (vec2i_t){SCREEN_W, SCREEN_H}));
 }
 
 void

@@ -137,8 +137,8 @@ share is random, so `process.seed` makes it repeatable.
 #### simplify
 
 `geometry.simplify` splits long edges and simplifies each variant to its
-budget with meshoptimizer's<sup>[[11]](../Citations.md#11)</sup> quadric error simplifier<sup>[[12]](../Citations.md#12)</sup>,
-with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#13)</sup>.
+budget with meshoptimizer's<sup>[[11]](../Citations.md#meshoptimizer)</sup> quadric error simplifier<sup>[[12]](../Citations.md#garland-1997)</sup>,
+with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#hoppe-1999)</sup>.
 
 | Key | Meaning |
 |---|---|
@@ -264,7 +264,7 @@ scaled copies remain separate shapes. Reflections are recorded per instance.
 | Test | Requirement |
 |---|---|
 | Candidate bucket | Equal vertex and triangle counts, and material multiset |
-| Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#86)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
+| Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#kabsch-1976)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
 | Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangle winding and materials agree as multisets |
 
 Each colour below is one repeated shape, boxed at every copy in view. The
