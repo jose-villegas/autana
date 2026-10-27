@@ -79,9 +79,9 @@ update_rest_learning(const input_motion_t* sample, int64_t elapsed) {
         }
         samples++;
         if (stage == IMU_REST_DONE) {
-            const vec3i_t residual = {mathf_round_i32((float)rotation[0] / samples),
-                                      mathf_round_i32((float)rotation[1] / samples),
-                                      mathf_round_i32((float)rotation[2] / samples)};
+            const float n = (float)samples;
+            const vec3i_t residual = {mathf_round_i32((float)rotation[0] / n), mathf_round_i32((float)rotation[1] / n),
+                                      mathf_round_i32((float)rotation[2] / n)};
             if (input_learn_gyro_offset(residual)) {
                 gravity_clear_gyro_bias(&gravity);
             }
