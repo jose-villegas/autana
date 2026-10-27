@@ -1,6 +1,7 @@
-"""ES8311 EQ coefficient design and Q2.28 encoding; standard library only, so board jobs need no packages."""
+"""ES8311 EQ coefficient design and signed power-of-two encoding; standard library only, so board jobs need no packages."""
 import math
 import cmath
+import functools
 from pathlib import Path
 import sys
 
@@ -9,38 +10,89 @@ from build.c_header import read_define
 from audio.sound_asset import SAMPLE_RATE_HZ
 
 EQ_HEADER = Path(__file__).resolve().parents[3] / 'main/audio/audio_codec_eq.h'
-EQ_SCALE = read_define(EQ_HEADER, 'AUDIO_CODEC_EQ_SCALE')
-EQ_MASK = read_define(EQ_HEADER, 'AUDIO_CODEC_EQ_MASK')
-EQ_MIN = read_define(EQ_HEADER, 'AUDIO_CODEC_EQ_MIN')
-EQ_MAX = -EQ_MIN - 1 / EQ_SCALE
+EQ_TERMS, EQ_FIELD_BITS, EQ_SIGN_BIT, EQ_SHIFT_MAX = (
+    read_define(EQ_HEADER, 'AUDIO_CODEC_EQ_' + name)
+    for name in ('TERMS', 'FIELD_BITS', 'SIGN_BIT', 'SHIFT_MAX'))
+EQ_UNIT = 1 << EQ_SHIFT_MAX
+EQ_MAX = EQ_TERMS
+
+
+@functools.lru_cache(maxsize=1)
+def eq_reachable_sums():
+    """Exact term-count reachability in units of the smallest power of two."""
+    sums = [1]
+    for _ in range(EQ_TERMS):
+        bits = 0
+        for shift in range(EQ_SHIFT_MAX + 1):
+            power = EQ_UNIT >> shift
+            bits |= sums[-1] << (EQ_UNIT + power)
+            bits |= sums[-1] << (EQ_UNIT - power)
+        sums.append(bits)
+    return tuple(sums)
 
 
 def eq_encode(value):
-    if not math.isfinite(value):
-        return 0
-    value = min(EQ_MAX, max(EQ_MIN, value)) * EQ_SCALE
-    rounded = math.floor(value + .5) if value >= 0 else math.ceil(value - .5)
-    return rounded & EQ_MASK
+    if not math.isfinite(value) or not -EQ_MAX <= value <= EQ_MAX:
+        raise ValueError('finite coefficient within the six-term range required')
+    sums = eq_reachable_sums()
+    position = value * EQ_UNIT + EQ_TERMS * EQ_UNIT
+    lower_limit = math.floor(position)
+    lower = (sums[-1] & ((1 << (lower_limit + 1)) - 1)).bit_length() - 1
+    upper_bits = sums[-1] >> math.ceil(position)
+    upper = math.ceil(position) + (upper_bits & -upper_bits).bit_length() - 1
+    target = min((lower, upper), key=lambda candidate: abs((candidate - EQ_TERMS * EQ_UNIT) / EQ_UNIT - value)) - EQ_TERMS * EQ_UNIT
+    word = 0
+    for remaining in range(EQ_TERMS - 1, -1, -1):
+        candidates = [(shift, sign, (-1 if sign else 1) * (EQ_UNIT >> shift))
+                      for shift in range(EQ_SHIFT_MAX + 1) for sign in (0, EQ_SIGN_BIT)]
+        for shift, sign, power in sorted(candidates, key=lambda item: abs(target - item[2])):
+            index = target - power + remaining * EQ_UNIT
+            if index >= 0 and (sums[remaining] >> index) & 1:
+                word = (word << EQ_FIELD_BITS) | sign | shift
+                target -= power
+                break
+    return word
+
+
+def eq_decode(word):
+    if not isinstance(word, int) or not 0 <= word < 1 << (EQ_TERMS * EQ_FIELD_BITS):
+        raise ValueError(f'{EQ_TERMS * EQ_FIELD_BITS}-bit coefficient word required')
+    result = 0.0
+    for _ in range(EQ_TERMS):
+        result += (-1 if word & EQ_SIGN_BIT else 1) * 2 ** -(word & EQ_SHIFT_MAX)
+        word >>= EQ_FIELD_BITS
+    return result
 
 
 def eq_design_biquad(kind, f0, q, rate=SAMPLE_RATE_HZ):
-    """RBJ [b0,b1,b2,a1,a2], denominator 1+a1*z^-1+a2*z^-2."""
-    if kind not in ('highpass', 'lowpass') or not 0 < f0 < rate / 2 or not math.isfinite(q) or q <= 0:
-        raise ValueError('highpass/lowpass, frequency below Nyquist and positive Q required')
+    """RBJ [b0,b1,b2,a1,a2], stored feedback added to the output recurrence."""
+    if kind not in ('highpass', 'lowpass', 'bandpass') or not 0 < f0 < rate / 2 or not math.isfinite(q) or q <= 0:
+        raise ValueError('highpass/lowpass/bandpass, frequency below Nyquist and positive Q required')
     omega = 2 * math.pi * f0 / rate
     c = math.cos(omega)
     alpha = math.sin(omega) / (2 * q)
     b = [(1 + c) / 2, -(1 + c), (1 + c) / 2] if kind == 'highpass' else [(1 - c) / 2, 1 - c, (1 - c) / 2]
-    return [value / (1 + alpha) for value in (*b, -2 * c, 1 - alpha)]
+    if kind == 'bandpass':
+        b = [alpha, 0, -alpha]
+    return [value / (1 + alpha) for value in (*b, 2 * c, alpha - 1)]
 
 
 def eq_design_first_order_highpass(f0, rate=SAMPLE_RATE_HZ):
-    """Bilinear one-pole Butterworth [b0,b1,a1], denominator 1+a1*z^-1."""
+    """Bilinear one-pole Butterworth [b0,b1,a1], stored feedback added to the output recurrence."""
     if not 0 < f0 < rate / 2:
         raise ValueError('frequency below Nyquist required')
     k = math.tan(math.pi * f0 / rate)
     b0 = 1 / (1 + k)
-    return [b0, -b0, (k - 1) / (k + 1)]
+    return [b0, -b0, (1 - k) / (k + 1)]
+
+
+def eq_design_first_order_shelf(f0, gain_db, rate=SAMPLE_RATE_HZ):
+    """First-order bass shelf with unity high-frequency gain and stored feedback."""
+    if not 0 < f0 < rate / 2 or not math.isfinite(gain_db):
+        raise ValueError('frequency below Nyquist and finite gain required')
+    gain = 10 ** (gain_db / AMPLITUDE_DB)
+    k = math.tan(math.pi * f0 / rate) / math.sqrt(gain)
+    return [(1 + gain * k) / (1 + k), (gain * k - 1) / (1 + k), (1 - k) / (1 + k)]
 
 
 NUMERATOR_COEFFICIENTS = {'adc': 3, 'dac': 2}

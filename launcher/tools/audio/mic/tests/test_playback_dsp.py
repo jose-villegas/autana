@@ -64,8 +64,8 @@ class RestartTests(unittest.TestCase):
                         words = ['tone', str(hz), '500', '30'] + (['--internal'] if path == 'internal' else [])
                         records.append((words, dict(hz=hz, path=path, tone_db=-20 + measured)))
         body = tables.render_restart(Path('synthetic.txt'), records, lambda *args: '', markdown, '')
-        self.assertIn('ADC: follows.', body)
-        self.assertIn('DAC: does not follow.', body)
+        self.assertIn('ADC: within Q2.28 design tolerance.', body)
+        self.assertIn('DAC: Q2.28 words mis-encoded.', body)
 
 class PlaybackTablesTests(unittest.TestCase):
     def test_fixture_and_generated_block(self):
