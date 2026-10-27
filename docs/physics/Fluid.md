@@ -38,7 +38,7 @@ Each step runs in Bridson's order<sup>[[93]](../Citations.md#bridson-2015)</sup>
 
 | Stage | What it does |
 |---|---|
-| Particles to grid | Trilinear splat of each velocity component onto its faces; cells holding a particle are water |
+| Particles to grid | One pass per particle: trilinear splat of all three velocity components onto their faces, and its density at the cell centres; cells holding a particle are water |
 | Acceleration | Added to every face not on a wall |
 | Pressure | Gauss-Seidel on the divergence, cells of any aspect, plus the drift push |
 | Grid to particles | PIC and FLIP blended by the FLIP share |
