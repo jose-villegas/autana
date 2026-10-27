@@ -1,5 +1,5 @@
 /* Development-only tone check on the console task. */
-#include "console/verbs/console_tone.h"
+#include "sound/console/console_tone.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -9,10 +9,10 @@
 #include "audio/audio_out.h"
 #include "audio/audio_out_device.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_tone_parse.h"
-#include "console/verbs/console_tone_reply.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "sound/console/console_tone_parse.h"
+#include "sound/console/console_tone_reply.h"
 #include "sound/sound_engine.h"
 
 bool

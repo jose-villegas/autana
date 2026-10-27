@@ -2,8 +2,8 @@
 #include <stdio.h>
 
 #include "audio/audio_codec.h"
+#include "audio/console/console_codec_parse.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_codec_parse.h"
 
 #define CONSOLE_CODEC_REPLY_BYTES sizeof "CODEC reg=0xFF value=0xFF"
 

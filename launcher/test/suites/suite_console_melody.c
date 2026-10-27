@@ -1,6 +1,6 @@
 #include <math.h>
-#include "console/verbs/console_melody.h"
-#include "console/verbs/console_tone_parse.h"
+#include "sound/console/console_melody.h"
+#include "sound/console/console_tone_parse.h"
 #include "suites.h"
 #include "unity.h"
 

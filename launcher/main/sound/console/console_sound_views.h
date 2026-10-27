@@ -1,7 +1,7 @@
 /* Frame-task access to mapped console sound views and their voice handles. */
 #pragma once
 
-#include "console/verbs/console_sound.h"
+#include "sound/console/console_sound.h"
 #include "sound/sound.h"
 #include "sound/sound_play.h"
 
