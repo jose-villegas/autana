@@ -101,6 +101,16 @@ class DocCitationTest(unittest.TestCase):
         self.assertEqual([(item.line, item.name, item.claimed, item.defined) for item in found],
                          [(2, "LIVE_LIMIT", 16, 32), (3, "LIVE_LIMIT", 16, 32)])
 
+    def test_constant_checker_folds_expressions_and_skips_quoted_formulas(self):
+        with gate_tree.temporary_tree([
+                ("launcher/main/example.h", "enum { PART = 3, WHOLE = 2 * PART + 1 };\n"),
+                ("docs/Guide.md", "`WHOLE` is 7.\n`WHOLE` is 8.\n`WHOLE` is `2 * PART + 1`.\n"),
+        ]) as root:
+            found, skipped = check_doc_constants.check(root, verbose=True)
+        self.assertEqual([(item.line, item.name, item.claimed, item.defined) for item in found],
+                         [(2, "WHOLE", 8, 7)])
+        self.assertIn(("docs/Guide.md", 3, "skipped-on-formula"), skipped)
+
     def test_constant_checker_reads_only_tracked_sources(self):
         # A build downloads third-party components into managed_components/.
         # One of them (a rapidjson header) declares `enum { value = 1 }`, which

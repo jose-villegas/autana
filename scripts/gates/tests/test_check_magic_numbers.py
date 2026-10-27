@@ -97,7 +97,7 @@ int x = 1 << {shift};
             self.assertEqual(values["FOLDED"], RARE * 2)
             self.assertEqual(values["scalar"], RARE)
             self.assertEqual(values["HEX"], RARE)
-            self.assertEqual(constants(root, literal_only=True), {"BASE": RARE})
+            self.assertEqual(constants(root, decimal_only=True), {"BASE": RARE, "FOLDED": RARE * 2})
 
     def test_protocol_strings_and_docstrings(self):
         hits, _, _ = self.scan({C_PATH: 'char *x = "FRAME_READY";',

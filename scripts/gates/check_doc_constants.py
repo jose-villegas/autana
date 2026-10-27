@@ -19,6 +19,7 @@ from c_comments import balanced_end, blank_comments
 from check_doc_citations import documentation
 
 DECIMAL = re.compile(r"(?<![\w.])(0|[1-9]\d*)(?!\w)")
+FORMULA = re.compile(r"`[^`]*\w\s*(?:[-+*/]|<<|>>)\s*\w[^`]*`")
 HEX = re.compile(r"(?<!\w)0[xX][0-9A-Fa-f]+(?!\w)")
 HISTORICAL = re.compile(r"\b(?:was|used to be|before the retune|measured)\b", re.I)
 UNIT = re.compile(r"\s*(?:-\s*)?(us|microseconds?|ms|milliseconds?|ns|nanoseconds?|s|seconds?|px|pixels?|"
@@ -289,7 +290,7 @@ def documents(root, ref=None):
 
 def check(root, verbose=False, docs_ref=None):
     root = pathlib.Path(root)
-    values = constants(root, literal_only=True)
+    values = constants(root, decimal_only=True)
     material_values = table_values(root)
     mismatches, skipped = [], []
     names = re.compile(r"\b(" + "|".join(map(re.escape, sorted(values, key=len, reverse=True))) + r")\b") if values else None
@@ -319,6 +320,9 @@ def check(root, verbose=False, docs_ref=None):
                     skipped.append((doc, line, "lacks an explicit value claim"))
                     continue
                 for number in candidates:
+                    if any(span.start() < number.start() < span.end() for span in FORMULA.finditer(sentence)):
+                        skipped.append((doc, line, "skipped-on-formula"))
+                        continue
                     if hypothetical(name, number, sentence):
                         skipped.append((doc, line, "skipped-on-hypothetical"))
                         continue
