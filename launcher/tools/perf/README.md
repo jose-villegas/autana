@@ -406,6 +406,11 @@ The warm-up runs at dt 0 and is excluded from statistics. Its wall time
 supplies the first clip advance. Each later frame advances by the previous
 frame's wall time.
 
+A traced playback (`frame_profile_play` given a trace) also keeps each
+frame's path time. `frame_trace:` lines list every frame and `frame_worst:`
+lines rank the slowest. `frame_replay:` lines hold the cull view's counts
+and a frame-cost report at one replayed pose.
+
 The capture parser compares mean microseconds for each scenario and quarter.
 The fields are defined in `launcher/test/frame_profile.h`.
 
