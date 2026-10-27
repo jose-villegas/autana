@@ -29,9 +29,9 @@ STEP_AT_MS = (1000, 2000)
 STEP_DB = 20
 REGISTER_DB_PER_STEP = 0.5
 REGISTER_STEP = round(STEP_DB / REGISTER_DB_PER_STEP)
-DAC_VOLUME_REG = 0x32
+DAC_VOLUME_REG = read_define(ROOT / 'launcher/main/audio/audio_codec_drc.h', 'AUDIO_CODEC_DAC_VOLUME_REG')
 ADC_VOLUME_REG = read_define(ROOT / 'launcher/main/audio/audio_codec_saved.h', 'AUDIO_CODEC_MIC_VOLUME_REG')
-ADC_RAMP_REG = 0x15
+ADC_RAMP_REG = read_define(ROOT / 'launcher/main/audio/audio_codec_mic.h', 'AUDIO_CODEC_MIC_RAMP_REG')
 RAMP_SHIFT = read_define(ROOT / 'launcher/main/audio/audio_codec_mic.h', 'AUDIO_CODEC_MIC_NIBBLE_SHIFT')
 RAMP_MASK = read_define(ROOT / 'launcher/main/audio/audio_codec_mic.h', 'AUDIO_CODEC_MIC_NIBBLE_MAX') << RAMP_SHIFT
 AUDIO_TUNABLES = ('codec_volume', 'drc', 'drc_ramp')
@@ -86,8 +86,7 @@ def ramp_take(record, saved, args, arm, name):
     else:
         record('tune', 'audio.drc_ramp', arm['ramp'])
         initial = codec(record, volume_reg)
-    # ADC volume grows with gain; DAC volume grows with attenuation.
-    attenuated = initial - REGISTER_STEP if adc else initial + REGISTER_STEP
+    attenuated = initial - REGISTER_STEP
     if not 0 <= attenuated <= BYTE_MAX:
         raise ValueError('volume step outside codec range')
     writes = ((STEP_AT_MS[0], volume_reg, attenuated), (STEP_AT_MS[1], volume_reg, initial))

@@ -13,7 +13,7 @@
 #define CONSOLE_TONE_REPLY_BYTES                                                                                       \
     (sizeof("TONE not heard  Hz:  dB (silence  dB), noise  dBFS, path acoustic, measured , open  B DMA, thd  dB, "     \
             "peak  dBFS, shake  mg rms  mg peak (silence  mg rms)")                                                    \
-     + 9u * CONSOLE_TONE_DB_BYTES + 2u * CONSOLE_TONE_INTEGER_BYTES + CONSOLE_TONE_MEASURED_BYTES)
+     + (9u * CONSOLE_TONE_DB_BYTES) + (2u * CONSOLE_TONE_INTEGER_BYTES) + CONSOLE_TONE_MEASURED_BYTES)
 #define CONSOLE_TONE_MEASURED_BYTES 32u
 
 static inline bool
