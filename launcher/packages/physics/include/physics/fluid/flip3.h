@@ -60,6 +60,23 @@ typedef struct {
 #define FLIP3_TUNING_DEFAULT                                                                                           \
     ((flip3_tuning_t){FLIP3_FLIP_RATIO, FLIP3_PRESSURE_ITERS, FLIP3_OVER_RELAXATION, FLIP3_DRIFT_GAIN})
 
+/* The step's stages, in the order they run, with the names a timing log
+ * gives them. */
+// clang-format off
+#define FLIP3_STAGES(X) \
+    X(P2G, "p2g") X(DENSITY, "density") X(ACCEL, "accel") X(PRESSURE, "pressure") X(G2P, "g2p") \
+    X(ADVECT, "advect") X(COLLIDE, "collide")
+// clang-format on
+
+#define FLIP3_STAGE_ENUM(id, name) FLIP3_STAGE_##id,
+
+typedef enum { FLIP3_STAGES(FLIP3_STAGE_ENUM) FLIP3_STAGE_COUNT } flip3_stage_t;
+
+extern const char* const flip3_stage_names[FLIP3_STAGE_COUNT];
+
+/* A microsecond clock, for timing the step's stages. */
+typedef int64_t (*flip3_clock_fn)(void);
+
 typedef struct {
     flip3_config_t config;
     flip3_tuning_t tuning;
@@ -83,6 +100,10 @@ typedef struct {
     vec3f_t* pos;
     vec3f_t* vel;
     int count;
+
+    /* Set by flip3_time_stages(); NULL times nothing. */
+    flip3_clock_fn clock;
+    int64_t* stage_us;
 } flip3_t;
 
 /* The two blocks `c` needs, each at malloc alignment; 0 for a configuration
@@ -101,6 +122,18 @@ int flip3_fill(flip3_t* f, float fraction, vec3f_t down);
 
 /* Advances `dt_s` seconds under `accel`, one substep. */
 void flip3_step(flip3_t* f, float dt_s, vec3f_t accel);
+
+/* From now on each step adds its stages' microseconds by `clock` to
+ * `stage_us`, FLIP3_STAGE_COUNT of them; a NULL clock stops. flip3_init()
+ * stops it too. */
+static inline void
+flip3_time_stages(flip3_t* f, flip3_clock_fn clock, int64_t* stage_us) {
+    f->clock = stage_us != NULL ? clock : NULL;
+    f->stage_us = stage_us;
+}
+
+/* The fastest particle's speed squared: 0 for a box at rest. */
+float flip3_peak_speed_sq(const flip3_t* f);
 
 /* The share of the box's volume the particles stand for. */
 static inline float

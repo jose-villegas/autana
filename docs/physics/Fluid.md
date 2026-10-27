@@ -17,6 +17,8 @@ driven by any acceleration, in caller-owned grid and particle blocks.
 | `flip3_init` | Carves the blocks; empty, at the default tuning |
 | `flip3_fill` | Refills a share of the volume at rest, lowest first along a down vector |
 | `flip3_step` | Advances one substep under an acceleration |
+| `flip3_time_stages` | Adds each step stage's microseconds, by a caller's clock, to `FLIP3_STAGE_COUNT` sums; `flip3_stage_names` names them |
+| `flip3_peak_speed_sq` | The fastest particle's speed squared, 0 at rest |
 | `flip3_fraction` | The share of the volume the particles stand for |
 | `flip3_particle` | A particle in box coordinates |
 | `flip3_field_count` | The floats a surface field at that many samples per cell needs |
