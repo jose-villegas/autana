@@ -329,8 +329,8 @@ median and p95 before presentation, with stage splits at those same poses.
 The pixel-equivalence checks in that suite and the camera checks in
 `suite_sponza.c` use `SPONZA_POSE_EVERY_MS`.
 
-`run_render_lab_frame_profile_suite` plays each Sponza scene's camera clip
-and the capybara gallop for one clip period in each perf quarter. It times
+`run_render_lab_frame_profile_suite` plays each Sponza scene's camera clip,
+Bistro fitted-full's camera clip and the capybara gallop for one clip period in each perf quarter. It times
 update, render, compose and present with the HUD hidden.
 
 After each playback the suite names its `FRAME_PROFILE_WORST_K` slowest
