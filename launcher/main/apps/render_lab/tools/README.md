@@ -48,6 +48,7 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | `water.substeps` | substeps per frame (1 to 4), each an equal share of the frame's simulated time, at most 32 ms |
 | `water.two_core` | 1 (default) runs half of the particle passes, the surface field and the shading on core 1 (`job_run_split()`); 0 keeps them on one core |
 | `water.red_black` | 1 solves the pressure in red-black order, each colour split across both cores; 0 (default) in index order on one core |
+| `water.plane` | 1 draws method C instead of flip3: a plane at the fill's volume whose tilt swings toward gravity's like a damped pendulum (`water.slosh_decihz`, `water.slosh_damping_pct`); a prototype for measuring |
 | `water.rest_um_s` | above 0, the step and the surface are skipped while the push holds and no particle moves faster than this, in um/s |
 
 Each frame, while the last one goes out to the panel:

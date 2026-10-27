@@ -107,6 +107,24 @@ TUNE(water, two_core, 1, 0, 1);
  * particle passes; 0 in index order on one core. */
 TUNE(water, red_black, 0, 0, 1);
 
+/* Method C, the fallback from the M1 sketch, as a prototype for measuring
+ * against flip3: no particles, the surface a plane through the box at the
+ * fill's volume, its up swinging toward the push's up as a damped
+ * pendulum (the first sloshing mode's equivalent pendulum). The plane is
+ * written as a density field, so it is meshed, shaded and built as the
+ * flip3 surface is. 1 draws it, 0 runs flip3. */
+TUNE(water, plane, 0, 0, 1);
+/* The swing's natural frequency in tenths of a hertz, and its damping as a
+ * percentage of critical. Ours, by eye. */
+TUNE(water, slosh_decihz, 15, 1, 100);
+TUNE(water, slosh_damping_pct, 10, 0, 100);
+#define WATER_DECIHZ_PER_HZ 10.0F
+/* The plane's level is found by Newton's method from the last frame's;
+ * this many steps a frame. */
+#define WATER_PLANE_NEWTON  3
+/* The density across the plane ramps from 0 to 1 over this many samples. */
+#define WATER_PLANE_RAMP    1.0F
+
 /* Surface buffers: the vertices and triangles iso_surface may make. The
  * tour's busiest frame makes about 2500 and 5000. */
 #define WATER_MAX_VERTICES  4000
@@ -198,6 +216,9 @@ static uint32_t step_us;
 static vec3f_t last_accel_g;
 static uint32_t still_updates;
 static scene_water_stats_t stats;
+static vec3f_t slosh_up;   /* the plane's up, box axes (y is down) */
+static vec3f_t slosh_rate; /* its rate of change, per second */
+static float plane_level;  /* the plane's height along slosh_up, mm */
 
 #define SCENE_WATER_STAGE_NAME(id, name) name,
 const char* const scene_water_stage_names[SCENE_WATER_STAGE_COUNT] = {SCENE_WATER_STAGES(SCENE_WATER_STAGE_NAME)};
@@ -490,12 +511,71 @@ shade_half(void* ctx, int which) {
     }
 }
 
+/* The swing toward the push's up, semi-implicit, kept a unit vector with
+ * its rate along the sphere. */
+static void
+slosh_step(float dt_s, vec3f_t accel_g) {
+    const vec3f_t target = vec3f_normalize(vec3f_scale(accel_g, -1.0F));
+    const float w = MATH_TAU * (float)slosh_decihz / WATER_DECIHZ_PER_HZ;
+    const float zeta = (float)slosh_damping_pct / (float)WATER_PERCENT;
+    const vec3f_t pull =
+        vec3f_sub(vec3f_scale(vec3f_sub(target, slosh_up), w * w), vec3f_scale(slosh_rate, 2.0F * zeta * w));
+    slosh_rate = vec3f_add(slosh_rate, vec3f_scale(pull, dt_s));
+    slosh_up = vec3f_normalize(vec3f_add(slosh_up, vec3f_scale(slosh_rate, dt_s)));
+    slosh_rate = vec3f_sub(slosh_rate, vec3f_scale(slosh_up, vec3f_dot(slosh_rate, slosh_up)));
+}
+
+/* The plane as a density field over flip3_field()'s samples: 1 below it,
+ * 0 above, ramping across it. Returns the water's share of the inside
+ * samples, and through `band` the samples on the ramp per mm of level. */
+static float
+plane_fill(float level, float* band) {
+    const iso_field_t* f = &surface_field;
+    const float ramp = WATER_PLANE_RAMP * fminf(f->step.x, fminf(f->step.y, f->step.z));
+    float* const out = (float*)f->values;
+    float sum = 0.0F;
+    int sloped = 0;
+    for (int x = 1; x < f->nx - 1; x++) {
+        for (int y = 1; y < f->ny - 1; y++) {
+            for (int z = 1; z < f->nz - 1; z++) {
+                const vec3f_t p =
+                    vec3f_add(f->origin, (vec3f_t){(float)x * f->step.x, (float)y * f->step.y, (float)z * f->step.z});
+                const float v = mathf_clamp(0.5F + ((level - vec3f_dot(slosh_up, p)) / ramp), 0.0F, 1.0F);
+                sloped += v > 0.0F && v < 1.0F ? 1 : 0;
+                out[(((x * f->ny) + y) * f->nz) + z] = v;
+                sum += v;
+            }
+        }
+    }
+    const float inside = (float)((f->nx - 2) * (f->ny - 2) * (f->nz - 2));
+    *band = (float)sloped / ramp / inside;
+    return sum / inside;
+}
+
+/* The plane's level for the fill's volume, Newton's method from the last
+ * frame's, the field left at the last level tried. */
+static void
+plane_field(void) {
+    const float target = (float)fill_percent / (float)WATER_PERCENT;
+    for (int i = 0; i < WATER_PLANE_NEWTON; i++) {
+        float band;
+        const float share = plane_fill(plane_level, &band);
+        if (band > 0.0F) {
+            plane_level += (target - share) / band;
+        }
+    }
+}
+
 /* The surface field meshed, shaded, moved into model axes and handed to the
  * scene. A surface too big for the buffers is cut, said once and shown. */
 static void
 rebuild_surface(void) {
     int64_t at = timing_now_us();
-    surface_field = flip3_field(&water, WATER_SAMPLES, field);
+    if (plane != 0) {
+        plane_field();
+    } else {
+        surface_field = flip3_field(&water, WATER_SAMPLES, field);
+    }
     at = lap(SCENE_WATER_STAGE_FIELD, at);
     measure_through();
     at = lap(SCENE_WATER_STAGE_THROUGH, at);
@@ -587,6 +667,9 @@ scene_water_enter(const render_lab_scene_t* self) {
     flip3_split_with(&water, two_core != 0 ? water_split : NULL);
     last_accel_g = (vec3f_t){0};
     refill((vec3f_t){0.0F, 1.0F, 0.0F});
+    slosh_up = (vec3f_t){0.0F, -1.0F, 0.0F};
+    slosh_rate = (vec3f_t){0};
+    plane_level = vec3f_dot(slosh_up, vec3f_scale(box, 0.5F));
     rebuild_surface();
     (void)scene_water_take_stats();
     reference_down = (vec3f_t){0}; /* set by the first reading */
@@ -623,13 +706,16 @@ scene_water_update(uint32_t dt_ms) {
     } else {
         const vec3f_t accel = vec3f_scale(accel_g, (float)gravity_mm_s2);
         water.tuning.red_black = red_black != 0;
-        const uint32_t steps = dt_ms == 0 ? 0 : (uint32_t)substeps;
-        const float substep_s = (float)mathi_min((int)dt_ms, WATER_MAX_STEP_MS) / (float)MATH_MS_PER_S / (float)steps;
-        for (uint32_t i = 0; i < steps; i++) {
-            flip3_step(&water, substep_s, accel);
+        const float step_s = (float)mathi_min((int)dt_ms, WATER_MAX_STEP_MS) / (float)MATH_MS_PER_S;
+        if (plane != 0) {
+            slosh_step(step_s, accel_g);
+        } else if (dt_ms > 0) {
+            for (int i = 0; i < substeps; i++) {
+                flip3_step(&water, step_s / (float)substeps, accel);
+            }
+            stats.substeps += (uint32_t)substeps;
+            stats.peak_speed_mm_s = sqrtf(flip3_peak_speed_sq(&water));
         }
-        stats.substeps += steps;
-        stats.peak_speed_mm_s = sqrtf(flip3_peak_speed_sq(&water));
         (void)lap(SCENE_WATER_STAGE_STEP, started);
         rebuild_surface();
     }
