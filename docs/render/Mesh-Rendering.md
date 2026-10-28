@@ -458,6 +458,27 @@ non-negative least squares:
 | set-up | worst error over the poses | 3340 µs |
 <!-- /generated: cull-cost -->
 
+## Overdraw, seen
+
+The overdraw view ([raster_overdraw.h](../../launcher/main/render/view/raster_overdraw.h))
+counts, per pixel, the triangle spans that reached it and those that won their
+depth test. It paints the tested count on a hue ramp, the same every frame:
+blue for one layer, through cyan, green and yellow, to red at
+`RASTER_OVERDRAW_RAMP_LAYERS` or more.
+
+- A cluster the cull drops never reaches a pixel, so it adds nothing here.
+- A hidden cluster (red in the cull view) adds tested layers but no written ones.
+- The view's frame totals (pixels, layers tested and written, the most at one
+  pixel) are kept for a caller to print; `RASTER_OVERDRAW_LINE` is their line.
+
+Bistro in landscape at the scene's own render size, at the same poses as its cull sheet:
+
+![Bistro's overdraw along its path](../images/render/overdraw-bistro-sheet.png)
+
+Most extra layers lose their depth test at once, because the cull walk visits
+clusters roughly near to far. Each costs a depth compare, not a shaded pixel,
+so a frame's time follows the triangles set up (above) more than its layers.
+
 ## Coverage and small triangles
 
 A pixel belongs to a triangle when its centre is inside by the top-left
