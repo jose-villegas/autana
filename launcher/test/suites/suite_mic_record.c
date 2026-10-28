@@ -14,14 +14,24 @@ test_record_framing(void) {
 static void
 test_record_arguments(void) {
     console_mic_args_t args;
-    TEST_ASSERT_TRUE(console_mic_parse("record 3000 500 at -500 tone 1000 3500 100", &args));
-    TEST_ASSERT_FALSE(console_mic_parse("record 3000 500 at -500 tone 1000 3501 100", &args));
-    TEST_ASSERT_FALSE(console_mic_parse("record 3000 500 at 1 tone 1000 3500 100", &args));
-    TEST_ASSERT_FALSE(console_mic_parse("record 3000 500 at -501 0x32 40", &args));
-    TEST_ASSERT_TRUE(console_mic_parse("record 3000 500 at -500 0x32 40", &args));
-    TEST_ASSERT_TRUE(console_mic_parse("record 4000 500 at 400 tone 40 80 100 at 750 tone 202 60 60", &args));
-    TEST_ASSERT_TRUE(console_mic_parse("record 1000 at 0 0x32 40 at 900 0x32 0", &args));
-    TEST_ASSERT_FALSE(console_mic_parse("record 1000 at 1000 0x32 0", &args));
+
+    static const struct {
+        const char* command;
+        bool valid;
+    } cases[] = {
+        {"record 3000 500 at -500 tone 1000 3500 100", true},
+        {"record 3000 500 at -500 tone 1000 3501 100", false},
+        {"record 3000 500 at 1 tone 1000 3500 100", false},
+        {"record 3000 500 at -501 0x32 40", false},
+        {"record 3000 500 at -500 0x32 40", true},
+        {"record 4000 500 at 400 tone 40 80 100 at 750 tone 202 60 60", true},
+        {"record 1000 at 0 0x32 40 at 900 0x32 0", true},
+        {"record 1000 at 1000 0x32 0", false},
+    };
+
+    for (unsigned i = 0; i < sizeof cases / sizeof *cases; i++) {
+        TEST_ASSERT_EQUAL(cases[i].valid, console_mic_parse(cases[i].command, &args));
+    }
     TEST_ASSERT_EQUAL_UINT32(2, args.entry_count);
     TEST_ASSERT_EQUAL_UINT32(900, args.entries[1].ms);
     TEST_ASSERT_EQUAL_HEX8(0x32, args.entries[0].write.reg);
