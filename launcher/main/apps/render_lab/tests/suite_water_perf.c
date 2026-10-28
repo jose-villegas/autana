@@ -85,9 +85,6 @@ add(scene_water_stats_t* sums, const scene_water_stats_t* s) {
     sums->substeps += s->substeps;
     sums->rested += s->rested;
     sums->update_us += s->update_us;
-    for (int i = 0; i < SCENE_WATER_STAGE_COUNT; i++) {
-        sums->stage_us[i] += s->stage_us[i];
-    }
     for (int i = 0; i < FLIP3_STAGE_COUNT; i++) {
         sums->flip3_us[i] += s->flip3_us[i];
     }
@@ -110,12 +107,8 @@ log_row(const char* config, const char* phase) {
     ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_TIMES, config, phase, (long long)frame.avg, (long long)frame.p95,
              (long long)frame.max, (long long)update.avg, (long long)update.p95, (long long)update.max,
              (long long)draw.avg, (long long)draw.p95, (long long)draw.max);
-    for (int i = 0; i < SCENE_WATER_STAGE_COUNT; i++) {
-        ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_STAGE, config, phase, WATER_PERF_SCENE,
-                 scene_water_stage_names[i], (long long)(s->stage_us[i] / n));
-    }
     for (int i = 0; i < FLIP3_STAGE_COUNT; i++) {
-        ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_STAGE, config, phase, WATER_PERF_FLIP3, flip3_stage_names[i],
+        ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_STAGE, config, phase, flip3_stage_names[i],
                  (long long)(s->flip3_us[i] / n));
     }
     (void)frame_cost_take_report((uint32_t)n, report, FRAME_COST_REPORT_MAX);

@@ -426,32 +426,31 @@ settle_faces(const flip3_t* f, const component_t* c, size_t n) {
 }
 
 static void
-run_halves(const flip3_t* f, flip3_half_fn fn, void* ctx) {
+run_split(const flip3_t* f, int site, flip3_range_fn fn, void* ctx, int count) {
     if (f->split != NULL) {
-        f->split(fn, ctx);
+        f->split(site, fn, ctx, count);
     } else {
-        fn(ctx, 0);
-        fn(ctx, 1);
+        fn(ctx, 0, count);
     }
 }
 
-/* The components the first half of the splat writes, u and v; the second
- * writes w and the density, so the halves share no array. */
-#define SPLAT_FIRST_HALF_AXES 2
+/* The splat's items: the three velocity components, then the density. Each
+ * writes its own arrays, so any cut shares none. */
+#define SPLAT_DENSITY 3
+#define SPLAT_ITEMS   4
 
-/* Every particle's velocity splatted onto the faces of this half's
- * components, their weights summed in the pre-solve copies (which
- * accelerate() then overwrites); the second half adds the density too. */
+/* Every particle's velocity splatted onto the faces of the components in
+ * [from, to), their weights summed in the pre-solve copies (which
+ * accelerate() then overwrites), and its density when that is in range. */
 static void
-splat_half(void* ctx, int half) {
+splat_range(void* ctx, int from, int to) {
     flip3_t* const f = ctx;
     component_t comps[3];
     components(f, comps);
-    const int from = half == 0 ? 0 : SPLAT_FIRST_HALF_AXES;
-    const int to = half == 0 ? SPLAT_FIRST_HALF_AXES : 3;
+    const int axes_to = to < SPLAT_DENSITY ? to : SPLAT_DENSITY;
     for (int i = 0; i < f->count; i++) {
         const place_t place = place_of(f, f->pos[i]);
-        for (int a = from; a < to; a++) {
+        for (int a = from; a < axes_to; a++) {
             const stencil_t s = face_stencil(f, &place, a);
             const float pv = axis_of(f->vel[i], a);
             for (int k = 0; k < 8; k++) {
@@ -459,7 +458,7 @@ splat_half(void* ctx, int half) {
                 comps[a].prev[s.at[k]] += s.weight[k];
             }
         }
-        if (half == 1) {
+        if (to > SPLAT_DENSITY) {
             add_density(f, f->pos[i]);
         }
     }
@@ -476,7 +475,7 @@ to_grid(flip3_t* f) {
         memset(comps[a].prev, 0, n * sizeof(float));
     }
     memset(f->density, 0, n * sizeof(float));
-    run_halves(f, splat_half, f);
+    run_split(f, FLIP3_SPLIT_SPLAT, splat_range, f, SPLAT_ITEMS);
     for (int a = 0; a < 3; a++) {
         settle_faces(f, &comps[a], n);
     }
@@ -569,13 +568,9 @@ relax_cell(flip3_t* f, int c, unsigned sides, const relax_t* r) {
     }
 }
 
-/* Gauss-Seidel on the divergence over cells of any aspect, with the drift
- * push: a cell off rest density gets the tuned share of the difference as
- * flow per step. Water cells are never on the walls, so a flat walk in index
- * order visits them as the nested x, y, z walk would. */
-/* One colour of the checkerboard relaxed over half the x slices. Cells of
- * one colour share no face of the same component, so its halves may run at
- * once. */
+/* One colour of the checkerboard relaxed over x slices [from, to) of the
+ * inside ones. Cells of one colour share no face of the same component, so
+ * any cut may run at once. */
 typedef struct {
     flip3_t* f;
     const relax_t* r;
@@ -585,12 +580,10 @@ typedef struct {
 #define COLOURS 2
 
 static void
-relax_colour_half(void* ctx, int half) {
+relax_colour_range(void* ctx, int from, int to) {
     const colour_work_t* w = ctx;
     flip3_t* const f = w->f;
-    const int mid = f->nx / 2;
-    const int to = half == 0 ? mid : f->nx - 1;
-    for (int x = half == 0 ? 1 : mid; x < to; x++) {
+    for (int x = 1 + from; x < 1 + to; x++) {
         for (int y = 1; y < f->ny - 1; y++) {
             for (int z = 1 + ((x + y + 1 + w->colour) % COLOURS); z < f->nz - 1; z += COLOURS) {
                 const int c = cell_index(f, x, y, z);
@@ -607,11 +600,15 @@ relax_colours(flip3_t* f, const relax_t* r) {
     for (int iter = 0; iter < f->tuning.pressure_iters; iter++) {
         for (int colour = 0; colour < COLOURS; colour++) {
             colour_work_t w = {f, r, colour};
-            run_halves(f, relax_colour_half, &w);
+            run_split(f, FLIP3_SPLIT_RED_BLACK, relax_colour_range, &w, f->nx - 2);
         }
     }
 }
 
+/* Gauss-Seidel on the divergence over cells of any aspect, with the drift
+ * push: a cell off rest density gets the tuned share of the difference as
+ * flow per step. Water cells are never on the walls, so a flat walk in index
+ * order visits them as the nested x, y, z walk would. */
 static void
 solve_pressure(flip3_t* f, float dt) {
     const vec3f_t ih = f->inv_h;
@@ -640,16 +637,14 @@ solve_pressure(flip3_t* f, float dt) {
     }
 }
 
-/* Half the particles' velocities from the grid, PIC and FLIP blended. */
+/* Particles [from, to)'s velocities from the grid, PIC and FLIP blended. */
 static void
-gather_half(void* ctx, int half) {
+gather_range(void* ctx, int from, int to) {
     flip3_t* const f = ctx;
     component_t comps[3];
     components(f, comps);
     const float flip = f->tuning.flip_ratio;
-    const int mid = f->count / 2;
-    const int to = half == 0 ? mid : f->count;
-    for (int i = half == 0 ? 0 : mid; i < to; i++) {
+    for (int i = from; i < to; i++) {
         const place_t place = place_of(f, f->pos[i]);
         for (int a = 0; a < 3; a++) {
             const component_t* c = &comps[a];
@@ -677,7 +672,7 @@ gather_half(void* ctx, int half) {
 
 static void
 to_particles(flip3_t* f) {
-    run_halves(f, gather_half, f);
+    run_split(f, FLIP3_SPLIT_GATHER, gather_range, f, f->count);
 }
 
 /* Charges the time since `since` to `stage` and returns now; 0 untimed. */
@@ -762,8 +757,8 @@ field_axis(const flip3_t* f, int axis, int i, float step, int* lo, int* hi, floa
     centre_axis(h + (((float)i - 0.5F) * step), h, axis_of(f->inv_h, axis), cells_on(f, axis), lo, hi, t);
 }
 
-/* flip3_field()'s work, shared by its halves: the samples, then three
- * smoothing passes along x, y and z, each split by lines. */
+/* flip3_field()'s work, split by lines: the samples, then three smoothing
+ * passes along x, y and z. */
 typedef struct {
     const flip3_t* f;
     float* out;
@@ -773,14 +768,6 @@ typedef struct {
 } field_work_t;
 
 enum { FIELD_SAMPLE, FIELD_SMOOTH_X, FIELD_SMOOTH_Y, FIELD_SMOOTH_Z, FIELD_PASSES };
-
-/* Lines 1 to count - 2 in two: this half's first and past-the-end. */
-static void
-half_lines(int count, int half, int* from, int* to) {
-    const int mid = count / 2;
-    *from = half == 0 ? 1 : mid;
-    *to = half == 0 ? mid : count - 1;
-}
 
 static void
 sample_lines(const field_work_t* w, int from, int to) {
@@ -808,31 +795,18 @@ sample_lines(const field_work_t* w, int from, int to) {
     }
 }
 
+/* The pass's inside lines [from, to), counted from line 1. */
 static void
-field_half(void* ctx, int half) {
+field_range(void* ctx, int from, int to) {
     const field_work_t* w = ctx;
     const int sx = w->d[0];
     const int sy = w->d[1];
     const int sz = w->d[2];
-    int from;
-    int to;
     switch (w->pass) {
-        case FIELD_SAMPLE:
-            half_lines(sx, half, &from, &to);
-            sample_lines(w, from, to);
-            break;
-        case FIELD_SMOOTH_X:
-            half_lines(sy, half, &from, &to);
-            smooth_axis(w->out, sy * sz, sx, sz, from, to, 1, sz);
-            break;
-        case FIELD_SMOOTH_Y:
-            half_lines(sx, half, &from, &to);
-            smooth_axis(w->out, sz, sy, sy * sz, from, to, 1, sz);
-            break;
-        default:
-            half_lines(sx, half, &from, &to);
-            smooth_axis(w->out, 1, sz, sy * sz, from, to, sz, sy);
-            break;
+        case FIELD_SAMPLE: sample_lines(w, 1 + from, 1 + to); break;
+        case FIELD_SMOOTH_X: smooth_axis(w->out, sy * sz, sx, sz, 1 + from, 1 + to, 1, sz); break;
+        case FIELD_SMOOTH_Y: smooth_axis(w->out, sz, sy, sy * sz, 1 + from, 1 + to, 1, sz); break;
+        default: smooth_axis(w->out, 1, sz, sy * sz, 1 + from, 1 + to, sz, sy); break;
     }
 }
 
@@ -842,7 +816,8 @@ flip3_field(const flip3_t* f, int samples, float* out) {
     field_dims(f, samples, w.d);
     memset(out, 0, (size_t)w.d[0] * (size_t)w.d[1] * (size_t)w.d[2] * sizeof(float));
     for (w.pass = FIELD_SAMPLE; w.pass < FIELD_PASSES; w.pass++) {
-        run_halves(f, field_half, &w);
+        const int lines = w.pass == FIELD_SMOOTH_X ? w.d[1] : w.d[0];
+        run_split(f, FLIP3_SPLIT_FIELD, field_range, &w, lines - 2);
     }
     /* Sample (1, 1, 1) sits half a sample in from the box's origin. */
     return (iso_field_t){out, w.d[0], w.d[1], w.d[2], vec3f_scale(w.step, -0.5F), w.step};

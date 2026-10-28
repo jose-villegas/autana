@@ -47,6 +47,7 @@
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "scene_water.h"
+#include "scene_water_plane.h"
 #include "ui/ui.h"
 
 static const char* TAG = "water";
@@ -102,30 +103,22 @@ TUNE(water, rest_um_s, 0, 0, 20000);
 #define WATER_REST_G       0.01F
 #define WATER_REST_UPDATES 4U
 #define WATER_UM_PER_MM    1000.0F
-/* 1 hands half of the step's particle passes, the surface field, its
- * meshing and the shading to core 1; 0 keeps them on the update's core. */
+/* 1 hands part of the step's particle passes, the surface field, its
+ * meshing and the shading to core 1, each cut where it balances the two
+ * cores' times (job_run_steered()); 0 keeps them on the update's core. */
 TUNE(water, two_core, 1, 0, 1);
 /* 1 solves the pressure in red-black order, each colour split like the
  * particle passes; 0 in index order on one core. */
 TUNE(water, red_black, 0, 0, 1);
 
-/* The plane, a cheap option to flip3: no particles, the surface a plane
- * through the box at the fill's volume, its up swinging toward the push's
- * up as a damped pendulum (the first sloshing mode's equivalent pendulum).
- * It has no crests or splash. The plane is written as a density field, so
- * it is meshed, shaded and built as the flip3 surface is. 1 draws it, 0
- * (the default) runs flip3. */
+/* 1 draws the plane (scene_water_plane.h), a cheap option to flip3 with no
+ * crests or splash; 0 (the default) runs flip3. */
 TUNE(water, plane, 0, 0, 1);
-/* The swing's natural frequency in tenths of a hertz, and its damping as a
- * percentage of critical. Ours, by eye. */
+/* The plane's swing: its natural frequency in tenths of a hertz, and its
+ * damping as a percentage of critical. Ours, by eye. */
 TUNE(water, slosh_decihz, 15, 1, 100);
 TUNE(water, slosh_damping_pct, 10, 0, 100);
 #define WATER_DECIHZ_PER_HZ 10.0F
-/* The plane's level is found by Newton's method from the last frame's;
- * this many steps a frame. */
-#define WATER_PLANE_NEWTON  3
-/* The density across the plane ramps from 0 to 1 over this many samples. */
-#define WATER_PLANE_RAMP    1.0F
 
 /* Surface buffers: the vertices and triangles iso_surface may make. The
  * tour's busiest frame makes about 2500 and 5000. */
@@ -204,10 +197,7 @@ static vec3f_t* positions;
 static vec3f_t* normals;
 static uint8_t (*colors)[3];
 static uint16_t (*triangles)[3];
-static int32_t* scratch[2]; /* one per meshing half */
-/* The cell slab where core 1's meshing half starts, moved a slab a frame
- * toward the halves making equal vertices. */
-static int nets_split;
+static int32_t* scratch[2]; /* one per meshing part */
 static r3d_dynamic_mesh_t surface;
 static vec3f_t box;
 static gravity_t gravity;
@@ -221,26 +211,19 @@ static uint32_t step_us;
 static vec3f_t last_accel_g;
 static uint32_t still_updates;
 static scene_water_stats_t stats;
-static vec3f_t slosh_up;   /* the plane's up, box axes (y is down) */
-static vec3f_t slosh_rate; /* its rate of change, per second */
-static float plane_level;  /* the plane's height along slosh_up, mm */
+static float peak_speed_mm_s; /* the fastest particle at the last step */
+static water_plane_t plane_water;
 
-#define SCENE_WATER_STAGE_NAME(id, name) name,
-const char* const scene_water_stage_names[SCENE_WATER_STAGE_COUNT] = {SCENE_WATER_STAGES(SCENE_WATER_STAGE_NAME)};
+/* The scene's own splits after flip3's, each with its core-1 share. */
+enum { WATER_SPLIT_NETS = FLIP3_SPLIT_COUNT, WATER_SPLIT_SHADE, WATER_SPLITS };
+
+static int16_t split_share[WATER_SPLITS];
 
 scene_water_stats_t
 scene_water_take_stats(void) {
     const scene_water_stats_t taken = stats;
     stats = (scene_water_stats_t){.particles = water.count, .peak_speed_mm_s = taken.peak_speed_mm_s};
     return taken;
-}
-
-/* Charges the time since `since` to `stage` and returns now. */
-static int64_t
-lap(scene_water_stage_t stage, int64_t since) {
-    const int64_t now = timing_now_us();
-    stats.stage_us[stage] += now - since;
-    return now;
 }
 
 static char failure[RENDER_LAB_STATUS_LEN];
@@ -295,7 +278,6 @@ allocate(void) {
     for (int half = 0; half < 2; half++) {
         scratch[half] = take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
     }
-    nets_split = (surface_field.nx - 1) / 2;
     transfer = take(sizeof *transfer);
     if (transfer != NULL) {
         r3d_skin_light_transfer_build(WATER_TONEMAP_NONE, transfer);
@@ -472,39 +454,51 @@ specular_power(float x) {
     return p;
 }
 
-/* A half of flip3's work, or of the shading, as job_run_split() runs it. */
+/* A range of flip3's work, or the scene's, as job_run_steered() runs it. */
 typedef struct {
-    flip3_half_fn fn;
+    flip3_range_fn fn;
     void* ctx;
-    int half;
-} water_half_t;
+    int from, to;
+} water_range_t;
 
 static void
-water_half_worker(void* ctx) {
-    const water_half_t* job = ctx;
-    job->fn(job->ctx, job->half);
+water_range_worker(void* ctx) {
+    const water_range_t* job = ctx;
+    job->fn(job->ctx, job->from, job->to);
 }
 
-/* Half 1 on core 1 while this core does half 0. */
+/* The last items on core 1, as many as `site`'s share says, while this
+ * core does the first; the share steers toward equal times. */
 static void
-water_split(flip3_half_fn fn, void* ctx) {
-    water_half_t first = {fn, ctx, 0};
-    const water_half_t second = {fn, ctx, 1};
-    (void)job_run_split(water_half_worker, &first, &second, sizeof second);
+water_split(int site, flip3_range_fn fn, void* ctx, int count) {
+    int16_t* share = &split_share[site];
+    const int cut = count - job_share_core1_count(share, count);
+    water_range_t first = {fn, ctx, 0, cut};
+    const water_range_t second = {fn, ctx, cut, count};
+    (void)job_run_steered(share, water_range_worker, &first, &second, sizeof second);
+}
+
+/* A split of the scene's own, on both cores or, with water.two_core off,
+ * on this one. */
+static void
+scene_split(int site, flip3_range_fn fn, void* ctx, int count) {
+    if (two_core != 0) {
+        water_split(site, fn, ctx, count);
+    } else {
+        fn(ctx, 0, count);
+    }
 }
 
 /* Absorbed body colour, a diffuse light, Fresnel sky and a highlight, for
- * half the vertices. The eye looks along -z in box axes, through the front
- * glass. */
+ * vertices [from, to). The eye looks along -z in box axes, through the
+ * front glass. */
 static void
-shade_half(void* ctx, int which) {
-    const int count = *(const int*)ctx;
+shade_range(void* ctx, int from, int to) {
+    (void)ctx;
     const vec3f_t light = vec3f_normalize(WATER_LIGHT);
     const vec3f_t eye = {0.0F, 0.0F, 1.0F};
     const vec3f_t half = vec3f_normalize(vec3f_add(light, eye));
-    const int mid = count / 2;
-    const int to = which == 0 ? mid : count;
-    for (int i = which == 0 ? 0 : mid; i < to; i++) {
+    for (int i = from; i < to; i++) {
         const vec3f_t n = normals[i];
         vec3f_t c = vec3f_lerp(WATER_DEEP, WATER_SHALLOW, through_at(positions[i]));
         c = vec3f_scale(c, 1.0F - WATER_DIFFUSE + (WATER_DIFFUSE * fmaxf(vec3f_dot(n, light), 0.0F)));
@@ -519,77 +513,27 @@ shade_half(void* ctx, int which) {
     }
 }
 
-/* The swing toward the push's up, semi-implicit, kept a unit vector with
- * its rate along the sphere. */
-static void
-slosh_step(float dt_s, vec3f_t accel_g) {
-    const vec3f_t target = vec3f_normalize(vec3f_scale(accel_g, -1.0F));
-    const float w = MATH_TAU * (float)slosh_decihz / WATER_DECIHZ_PER_HZ;
-    const float zeta = (float)slosh_damping_pct / (float)WATER_PERCENT;
-    const vec3f_t pull =
-        vec3f_sub(vec3f_scale(vec3f_sub(target, slosh_up), w * w), vec3f_scale(slosh_rate, 2.0F * zeta * w));
-    slosh_rate = vec3f_add(slosh_rate, vec3f_scale(pull, dt_s));
-    slosh_up = vec3f_normalize(vec3f_add(slosh_up, vec3f_scale(slosh_rate, dt_s)));
-    slosh_rate = vec3f_sub(slosh_rate, vec3f_scale(slosh_up, vec3f_dot(slosh_rate, slosh_up)));
-}
-
-/* The plane as a density field over flip3_field()'s samples: 1 below it,
- * 0 above, ramping across it. Returns the water's share of the inside
- * samples, and through `band` the samples on the ramp per mm of level. */
-static float
-plane_fill(float level, float* band) {
-    const iso_field_t* f = &surface_field;
-    const float ramp = WATER_PLANE_RAMP * fminf(f->step.x, fminf(f->step.y, f->step.z));
-    float* const out = (float*)f->values;
-    float sum = 0.0F;
-    int sloped = 0;
-    for (int x = 1; x < f->nx - 1; x++) {
-        for (int y = 1; y < f->ny - 1; y++) {
-            for (int z = 1; z < f->nz - 1; z++) {
-                const vec3f_t p =
-                    vec3f_add(f->origin, (vec3f_t){(float)x * f->step.x, (float)y * f->step.y, (float)z * f->step.z});
-                const float v = mathf_clamp(0.5F + ((level - vec3f_dot(slosh_up, p)) / ramp), 0.0F, 1.0F);
-                sloped += v > 0.0F && v < 1.0F ? 1 : 0;
-                out[(((x * f->ny) + y) * f->nz) + z] = v;
-                sum += v;
-            }
-        }
-    }
-    const float inside = (float)((f->nx - 2) * (f->ny - 2) * (f->nz - 2));
-    *band = (float)sloped / ramp / inside;
-    return sum / inside;
-}
-
-/* The plane's level for the fill's volume, Newton's method from the last
- * frame's, the field left at the last level tried. */
-static void
-plane_field(void) {
-    const float target = (float)fill_percent / (float)WATER_PERCENT;
-    for (int i = 0; i < WATER_PLANE_NEWTON; i++) {
-        float band;
-        const float share = plane_fill(plane_level, &band);
-        if (band > 0.0F) {
-            plane_level += (target - share) / band;
-        }
-    }
-}
-
-/* The surface meshed in two parts, either side of nets_split, each into
- * its half of the buffers. */
+/* The surface meshed in two parts of the cell slabs, the first into the
+ * buffers' first half and the last into their second. */
 typedef struct {
     iso_mesh_t part[2];
     bool fitted[2];
 } nets_work_t;
 
+/* A range from slab 0 is the first part, any other the last; an empty one
+ * leaves its part empty. */
 static void
-nets_half(void* ctx, int half) {
+nets_range(void* ctx, int from, int to) {
     nets_work_t* w = ctx;
-    const int from = half == 0 ? 0 : nets_split;
-    const int to = half == 0 ? nets_split : surface_field.nx - 1;
-    w->fitted[half] = iso_surface_nets_slabs(&surface_field, WATER_SURFACE_LEVEL, from, to, &w->part[half]);
+    if (from == to) {
+        return;
+    }
+    const int which = from == 0 ? 0 : 1;
+    w->fitted[which] = iso_surface_nets_slabs(&surface_field, WATER_SURFACE_LEVEL, from, to, &w->part[which]);
 }
 
-/* The surface on both cores, joined into one mesh at the buffers' start. */
+/* The surface on both cores, joined into one mesh at the buffers' start;
+ * meshed again whole on this core when a part outgrew its half. */
 static bool
 mesh_split(iso_mesh_t* m) {
     const int vertices = WATER_MAX_VERTICES / 2;
@@ -597,43 +541,40 @@ mesh_split(iso_mesh_t* m) {
     nets_work_t w = {
         .part = {{positions, normals, vertices, triangles, tris, scratch[0], 0, 0},
                  {&positions[vertices], &normals[vertices], vertices, &triangles[tris], tris, scratch[1], 0, 0}},
+        .fitted = {true, true},
     };
-    water_split(nets_half, &w);
+    water_split(WATER_SPLIT_NETS, nets_range, &w, surface_field.nx - 1);
     *m = w.part[0];
     m->vertex_capacity = WATER_MAX_VERTICES;
     m->triangle_capacity = WATER_MAX_TRIANGLES;
-    const int lean = w.part[0].vertex_count - w.part[1].vertex_count;
-    if (lean > 0 && nets_split > 1) {
-        nets_split--;
-    } else if (lean < 0 && nets_split < surface_field.nx - 2) {
-        nets_split++;
+    if (w.fitted[0] && w.fitted[1] && iso_surface_append(m, &w.part[1])) {
+        return true;
     }
-    return iso_surface_append(m, &w.part[1]) && w.fitted[0] && w.fitted[1];
+    return iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, m);
 }
 
 /* The surface field meshed, shaded, moved into model axes and handed to the
  * scene. A surface too big for the buffers is cut, said once and shown. */
 static void
 rebuild_surface(void) {
-    int64_t at = timing_now_us();
+    FRAME_COST_BEGIN(field_from);
     if (plane != 0) {
-        plane_field();
+        water_plane_field(&plane_water, &surface_field, (float)fill_percent / (float)WATER_PERCENT);
     } else {
         surface_field = flip3_field(&water, WATER_SAMPLES, field);
     }
-    at = lap(SCENE_WATER_STAGE_FIELD, at);
+    FRAME_COST_END(field_from, "water.field");
+    FRAME_COST_BEGIN(through_from);
     measure_through();
-    at = lap(SCENE_WATER_STAGE_THROUGH, at);
+    FRAME_COST_END(through_from, "water.through");
+    FRAME_COST_BEGIN(nets_from);
     iso_mesh_t m = {positions, normals, WATER_MAX_VERTICES, triangles, WATER_MAX_TRIANGLES, scratch[0], 0, 0};
     bool fitted = two_core != 0 ? mesh_split(&m) : iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, &m);
-    at = lap(SCENE_WATER_STAGE_NETS, at);
-    if (two_core != 0) {
-        water_split(shade_half, &m.vertex_count);
-    } else {
-        shade_half(&m.vertex_count, 0);
-        shade_half(&m.vertex_count, 1);
-    }
-    at = lap(SCENE_WATER_STAGE_SHADE, at);
+    FRAME_COST_END(nets_from, "water.nets");
+    FRAME_COST_BEGIN(shade_from);
+    scene_split(WATER_SPLIT_SHADE, shade_range, NULL, m.vertex_count);
+    FRAME_COST_END(shade_from, "water.shade");
+    FRAME_COST_BEGIN(build_from);
     for (int i = 0; i < m.vertex_count; i++) {
         positions[i] = to_model(positions[i]);
         normals[i] = direction_to_model(normals[i]);
@@ -647,7 +588,7 @@ rebuild_surface(void) {
     }
     truncated = !fitted;
     (void)scene_renderer_set_mesh(tank_scene, water_entity, &surface.mesh);
-    (void)lap(SCENE_WATER_STAGE_BUILD, at);
+    FRAME_COST_END(build_from, "water.build");
 }
 
 static void
@@ -664,8 +605,7 @@ resting(vec3f_t accel_g) {
     const vec3f_t change = vec3f_sub(accel_g, last_accel_g);
     last_accel_g = accel_g;
     const float rest_mm_s = (float)rest_um_s / WATER_UM_PER_MM;
-    if (rest_um_s == 0 || vec3f_dot(change, change) > WATER_REST_G * WATER_REST_G
-        || stats.peak_speed_mm_s > rest_mm_s) {
+    if (rest_um_s == 0 || vec3f_dot(change, change) > WATER_REST_G * WATER_REST_G || peak_speed_mm_s > rest_mm_s) {
         still_updates = 0;
         return false;
     }
@@ -708,13 +648,14 @@ scene_water_enter(const render_lab_scene_t* self) {
     motion_seen = false;
     truncated = false;
     tour_ms = 0;
+#if FRAME_COST_ENABLED
     flip3_time_stages(&water, timing_now_us, stats.flip3_us);
+#endif
     flip3_split_with(&water, two_core != 0 ? water_split : NULL);
+    memset(split_share, 0, sizeof split_share);
     last_accel_g = (vec3f_t){0};
     refill((vec3f_t){0.0F, 1.0F, 0.0F});
-    slosh_up = (vec3f_t){0.0F, -1.0F, 0.0F};
-    slosh_rate = (vec3f_t){0};
-    plane_level = vec3f_dot(slosh_up, vec3f_scale(box, 0.5F));
+    water_plane_reset(&plane_water, box);
     rebuild_surface();
     (void)scene_water_take_stats();
     reference_down = (vec3f_t){0}; /* set by the first reading */
@@ -749,19 +690,24 @@ scene_water_update(uint32_t dt_ms) {
     if (resting(accel_g)) {
         stats.rested++;
     } else {
+        FRAME_COST_BEGIN(step_from);
         const vec3f_t accel = vec3f_scale(accel_g, (float)gravity_mm_s2);
         water.tuning.red_black = red_black != 0;
         const float step_s = (float)mathi_min((int)dt_ms, WATER_MAX_STEP_MS) / (float)MATH_MS_PER_S;
         if (plane != 0) {
-            slosh_step(step_s, accel_g);
+            water_plane_step(&plane_water, step_s, accel_g, (float)slosh_decihz / WATER_DECIHZ_PER_HZ,
+                             (float)slosh_damping_pct / (float)WATER_PERCENT);
         } else if (dt_ms > 0) {
             for (int i = 0; i < substeps; i++) {
                 flip3_step(&water, step_s / (float)substeps, accel);
             }
             stats.substeps += (uint32_t)substeps;
-            stats.peak_speed_mm_s = sqrtf(flip3_peak_speed_sq(&water));
+            if (rest_um_s != 0 || FRAME_COST_ENABLED) {
+                peak_speed_mm_s = sqrtf(flip3_peak_speed_sq(&water));
+                stats.peak_speed_mm_s = peak_speed_mm_s;
+            }
         }
-        (void)lap(SCENE_WATER_STAGE_STEP, started);
+        FRAME_COST_END(step_from, "water.step");
         rebuild_surface();
     }
     stats.triangles += surface.mesh.triangle_count;
