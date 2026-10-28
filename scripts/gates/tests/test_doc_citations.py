@@ -658,7 +658,7 @@ class PaperCitationTest(unittest.TestCase):
         rows = '| <a id="gouraud-1971"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n'
         guide = ("docs/Guide.md", "[[1]](Citations.md#gouraud-1971)\n")
         for path, line in [("launcher/main/a.c", "/* Gouraud (docs/Citations.md#gouraud-1971). */\n"),
-                           ("editor/src/a.cpp", "// docs/Citations.md#gouraud-1971\n"),
+                           ("launcher/main/c.cpp", "// docs/Citations.md#gouraud-1971\n"),
                            ("scripts/tool.py", "# After docs/Citations.md#gouraud-1971\n"),
                            ("launcher/CMakeLists.txt", "# docs/Citations.md#gouraud-1971\n"),
                            ("launcher/tools/x.sh", 'X="docs/Citations.md#gouraud-1971"\n')]:
@@ -686,8 +686,8 @@ class PaperCitationTest(unittest.TestCase):
 
     def test_a_source_file_with_the_name_must_be_listed(self):
         found = self.named("[a.c](../launcher/main/a.c)", launcher__main__a_c=self.A_C,
-                           editor__src__b_cpp="// Gouraud 1971\n")
-        self.assertEqual(found, ["docs/Citations.md:1: [gouraud-1971] cited by, not listed: editor/src/b.cpp" + FIX])
+                           launcher__main__b_cpp="// Gouraud 1971\n")
+        self.assertEqual(found, ["docs/Citations.md:1: [gouraud-1971] cited by, not listed: launcher/main/b.cpp" + FIX])
 
     def test_a_listed_file_that_drops_the_name_is_flagged(self):
         found = self.named("[a.c](../launcher/main/a.c), [b.c](../launcher/main/b.c)",

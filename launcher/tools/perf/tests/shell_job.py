@@ -10,8 +10,28 @@ import tempfile
 import time
 
 PERF = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PERF.parents[2] / "scripts/lib"))
+sys.path.insert(0, str(PERF.parents[2] / "scripts/device"))
+from process_tree import launch_process_tree, stop_process_tree  # noqa: E402
+from device_lock import process_alive  # noqa: E402
+
 TOKEN_ENV = "_AUTANA_DEVICE_LOCK_TOKEN"
 FAKE_ACTIVITY_CHECK_SECONDS = 0.6
+# All below fixtures/job_autana.py's FAKE_DEADLINE_SECONDS together.
+READY_SECONDS = 30
+JOB_SECONDS = 90
+STOP_SECONDS = 10
+POLL_SECONDS = 0.02
+
+
+def assert_fakes_ended(case, calls):
+    """A finished job leaves no fake running, even one in its own session."""
+    deadline = time.monotonic() + STOP_SECONDS
+    alive = [call for call in calls if process_alive(call["pid"])]
+    while alive and time.monotonic() < deadline:
+        time.sleep(POLL_SECONDS)
+        alive = [call for call in alive if process_alive(call["pid"])]
+    case.assertEqual(alive, [], "fakes outlived their job")
 
 
 def replay(case, kind, mode="ok", extra=(), borrowed=False, script=None, same=False):
@@ -42,17 +62,20 @@ def replay(case, kind, mode="ok", extra=(), borrowed=False, script=None, same=Fa
         else:
             command += ["--build", "A=" + (root / "a").as_posix(), "--knob", "knob=1,2", "--runs", "1"]
         command += ["-o", (root / "out").as_posix(), "--suite", "suite", "-", "-", "--autana", override, *extra]
-        if mode in ("interrupt", "terminate", "queued"):
+        held = mode in ("interrupt", "terminate", "queued")
+        launch = command
+        if held:
             env["PERF_JOB_MODE"] = "queued" if mode == "queued" else "interrupt"
             pid_file = root / "shell.pid"
             launch = ["sh", "-c", 'echo "$$" > "$1"; shift; exec "$@"',
                       "perf-job", pid_file.as_posix(), *command]
-            process = subprocess.Popen(launch, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                       start_new_session=os.name == "posix")
-            try:
-                deadline = time.monotonic() + 30
+        # One tree (a session on POSIX, a job on Windows) holds everything the job starts.
+        process = launch_process_tree(launch, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            if held:
+                deadline = time.monotonic() + READY_SECONDS
                 while not (root / "ready").exists() and process.poll() is None and time.monotonic() < deadline:
-                    time.sleep(0.02)
+                    time.sleep(POLL_SECONDS)
                 case.assertTrue((root / "ready").exists(), "job never reached capture or queue")
                 time.sleep(FAKE_ACTIVITY_CHECK_SECONDS)
                 case.assertIsNone(process.poll(), "fake exited without a signal")
@@ -61,18 +84,23 @@ def replay(case, kind, mode="ok", extra=(), borrowed=False, script=None, same=Fa
                     os.killpg(process.pid, getattr(signal, "SIG" + signame))
                 else:
                     subprocess.run(["sh", "-c", 'kill -s "$1" "$2"', "signal", signame,
-                                    pid_file.read_text().strip()], env=env, check=True, timeout=10)
+                                    pid_file.read_text().strip()], env=env, check=True, timeout=STOP_SECONDS)
+                    # Native Windows processes see no POSIX signal; the file is theirs.
                     (root / "signal").touch()
-                stdout, stderr = process.communicate(timeout=60)
-                result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
-            finally:
-                if process.poll() is None:
-                    process.kill()
-                    process.communicate()
-        else:
-            result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=90)
-        calls_file = root / "calls.jsonl"
-        calls = [json.loads(line) for line in calls_file.read_text().splitlines()] if calls_file.exists() else []
+            stdout, stderr = process.communicate(timeout=JOB_SECONDS)
+            result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+            calls_file = root / "calls.jsonl"
+            calls = [json.loads(line) for line in calls_file.read_text().splitlines()] if calls_file.exists() else []
+            assert_fakes_ended(case, calls)
+        finally:
+            # Releases any fake still held, then ends the tree; a fake in a
+            # nested session also quits once this directory is gone.
+            (root / "signal").touch()
+            stop_process_tree(process)
+            try:
+                process.communicate(timeout=STOP_SECONDS)
+            except (subprocess.TimeoutExpired, ValueError):
+                pass
         if "--no-restore" in extra:
             case.assertNotIn("origin/main", (root / "git.log").read_text() if (root / "git.log").exists() else "")
         return result, calls
