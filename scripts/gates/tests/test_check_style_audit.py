@@ -662,7 +662,7 @@ class StyleAuditTest(unittest.TestCase):
     def test_app_runtime_code_and_generic_tools_may_name_or_skip_models(self):
         findings = self.audit("MODEL-NAMED-TOOL", {
             "launcher/main/apps/lab/assets/otter.glb": "model",
-            "launcher/main/apps/lab/scene_otter.c": "int x;\n",
+            "launcher/main/apps/lab/demo_otter.c": "int x;\n",
             "launcher/tools/gltf/blend_skin_to_glb.py": "pass\n",
             "docs/images/otter.png": "image",
         })

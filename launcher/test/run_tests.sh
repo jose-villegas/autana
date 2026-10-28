@@ -224,7 +224,7 @@ done
 #
 # The convention: inside main/apps/<name>/, the file named app_*.c is the
 # hardware-facing entry point; it talks to gfx, the IMU and the frame loop, so
-# it cannot link on a host. A scene_*.c is the same kind of file: one of
+# it cannot link on a host. A demo_*.c is the same kind of file: one of
 # several hardware-facing renderers an app hosts behind its single app_*.c.
 # Everything else in the folder is portable logic and is
 # compiled in, along with the suite_*.c in its tests/ folder.
@@ -243,7 +243,7 @@ done
 for f in $(find $(app_directories "$TEST_DIR/..") -name '*.c' ! -path '*/tools/*' | sort); do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in
-        app_*.c | scene_*.c) continue ;;
+        app_*.c | demo_*.c) continue ;;
     esac
     SOURCES="$SOURCES
 $f"

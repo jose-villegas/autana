@@ -403,8 +403,8 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     const resolution_model_t* model, uint16_t* picture, frame_record_t* records) {
     scene_t* flown = scene_load(SPONZA_SCENE, NULL);
     TEST_ASSERT_NOT_NULL(flown);
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        scene_entity_set_enabled(flown, scene_find(flown, name_hash(sponza_bakes[i])), i == (int)SCENE_BAKED_FULL);
+    for (int i = 0; i < (int)DEMO_BAKED_VARIANT_COUNT; i++) {
+        scene_entity_set_enabled(flown, scene_find(flown, name_hash(sponza_bakes[i])), i == (int)DEMO_BAKED_FULL);
     }
     const name_hash_t camera_name = name_hash(camera);
     const scene_entity_t flown_camera = scene_find(flown, camera_name);
@@ -548,7 +548,7 @@ run_raster_scale_perf_suite(void) {
     camera_entity = scene == NULL ? SCENE_ENTITY_NONE : scene_find(scene, name_hash(sponza_cameras[0]));
     (void)render_lab_apply_camera_settings(scene, camera_entity);
     if (scene != NULL) {
-        const scene_entity_t full = scene_find(scene, name_hash(sponza_bakes[SCENE_BAKED_FULL]));
+        const scene_entity_t full = scene_find(scene, name_hash(sponza_bakes[DEMO_BAKED_FULL]));
         const char* id = full == SCENE_ENTITY_NONE ? NULL : scene_entity_mesh_id(scene, full);
         if (id == NULL || r3d_lit_mesh_open(pack, id, &mesh) != ASSET_OK) {
             ESP_LOGE(TAG, "the scene's full bake did not open");

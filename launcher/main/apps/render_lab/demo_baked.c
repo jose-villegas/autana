@@ -1,11 +1,11 @@
 /*
- * scene_baked: loads a family's scene, shows one of its bakes and keeps the
- * raster and camera settings applied; see scene_baked.h. Light is baked into
+ * demo_baked: loads a family's scene, shows one of its bakes and keeps the
+ * raster and camera settings applied; see demo_baked.h. Light is baked into
  * the mesh, so a frame is only cull, transform, clip and fill on both cores.
  * The families' scenes are defined at the end.
  */
 
-#include "scene_baked.h"
+#include "demo_baked.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -24,9 +24,9 @@
 #include "scene/scene.h"
 #include "ui/ui.h"
 
-static const char* TAG = "scene_baked";
+static const char* TAG = "demo_baked";
 
-static const scene_baked_t* shown_family;
+static const demo_baked_t* shown_family;
 static scene_t* loaded;
 
 /* What the panel says in place of the triangle count when the scene could not
@@ -71,9 +71,9 @@ apply_settings(void) {
 }
 
 void
-scene_baked_enter(const render_lab_scene_t* self) {
-    const scene_baked_shown_t* shown = self->data;
-    const scene_baked_t* family = shown->family;
+demo_baked_enter(const render_lab_demo_t* self) {
+    const demo_baked_shown_t* shown = self->data;
+    const demo_baked_t* family = shown->family;
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     shown_family = family;
@@ -83,7 +83,7 @@ scene_baked_enter(const render_lab_scene_t* self) {
         record_failure(&why);
         return;
     }
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
+    for (int i = 0; i < (int)DEMO_BAKED_VARIANT_COUNT; i++) {
         const scene_entity_t bake = scene_find(loaded, name_hash(family->bakes[i]));
         if (bake == SCENE_ENTITY_NONE) {
             ESP_LOGE(TAG, "the scene has no entity '%s'", family->bakes[i]);
@@ -100,20 +100,20 @@ scene_baked_enter(const render_lab_scene_t* self) {
 }
 
 void
-scene_baked_exit(void) {
+demo_baked_exit(void) {
     scene_unload(loaded);
     loaded = NULL;
 }
 
 /* The shell has already drawn the scene into the framebuffer. */
 void
-scene_baked_frame(uint32_t dt_ms) {
+demo_baked_frame(uint32_t dt_ms) {
     (void)dt_ms;
     apply_settings();
 }
 
 const char*
-scene_baked_status(void) {
+demo_baked_status(void) {
     static char buf[RENDER_LAB_STATUS_LEN];
     if (failure[0] != '\0') {
         return failure;
@@ -126,5 +126,5 @@ scene_baked_status(void) {
     return buf;
 }
 
-SCENE_BAKED_FAMILY(scene_sponza, sponza_shown, &baked_sponza, "Sponza", "sponza");
-SCENE_BAKED_FAMILY(scene_bistro, bistro_shown, &baked_bistro, "Bistro", "bistro");
+DEMO_BAKED_FAMILY(demo_sponza, sponza_shown, &baked_sponza, "Sponza", "sponza");
+DEMO_BAKED_FAMILY(demo_bistro, bistro_shown, &baked_bistro, "Bistro", "bistro");

@@ -103,14 +103,14 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
 }
 
 static void
-measure_family(const scene_baked_t* family) {
+measure_family(const demo_baked_t* family) {
     const size_t mark = app_arena_mark();
     scene_failure_t why;
     scene_t* scene = scene_load(family->scene, &why);
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, why.what);
     const handle_t load = asset_store_load(family->scene);
     const asset_pack_t* pack = asset_store_loaded(load);
-    const char* bake = family->bakes[SCENE_BAKED_FITTED_FULL];
+    const char* bake = family->bakes[DEMO_BAKED_FITTED_FULL];
     const scene_entity_t entity = scene_find(scene, name_hash(bake));
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, entity, bake);
     r3d_lit_mesh_t mesh;

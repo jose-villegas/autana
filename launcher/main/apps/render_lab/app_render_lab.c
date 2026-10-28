@@ -10,6 +10,7 @@
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
 #include "core/tune.h"
+#include "demo_baked.h"
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
@@ -17,29 +18,28 @@
 #include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 #include "render_lab.h"
+#include "render_lab_demo.h"
 #include "render_lab_dynres.h"
-#include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
-#include "scene_baked.h"
 #include "ui/ui.h"
 
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
-static const render_lab_scene_t* const scenes[] = {
-    &scene_sponza[SCENE_BAKED_FITTED_FULL],
-    &scene_sponza[SCENE_BAKED_FITTED],
-    &scene_sponza[SCENE_BAKED_FULL],
-    &scene_sponza[SCENE_BAKED_LITE],
-    &scene_sponza[SCENE_BAKED_FLAT],
-    &scene_sponza[SCENE_BAKED_FLAT_FITTED],
-    &scene_capybara,
-    &scene_water,
-    &scene_bistro[SCENE_BAKED_FITTED_FULL],
-    &scene_bistro[SCENE_BAKED_FITTED],
-    &scene_bistro[SCENE_BAKED_FULL],
-    &scene_bistro[SCENE_BAKED_LITE],
-    &scene_bistro[SCENE_BAKED_FLAT],
-    &scene_bistro[SCENE_BAKED_FLAT_FITTED],
+static const render_lab_demo_t* const scenes[] = {
+    &demo_sponza[DEMO_BAKED_FITTED_FULL],
+    &demo_sponza[DEMO_BAKED_FITTED],
+    &demo_sponza[DEMO_BAKED_FULL],
+    &demo_sponza[DEMO_BAKED_LITE],
+    &demo_sponza[DEMO_BAKED_FLAT],
+    &demo_sponza[DEMO_BAKED_FLAT_FITTED],
+    &demo_capybara,
+    &demo_water,
+    &demo_bistro[DEMO_BAKED_FITTED_FULL],
+    &demo_bistro[DEMO_BAKED_FITTED],
+    &demo_bistro[DEMO_BAKED_FULL],
+    &demo_bistro[DEMO_BAKED_LITE],
+    &demo_bistro[DEMO_BAKED_FLAT],
+    &demo_bistro[DEMO_BAKED_FLAT_FITTED],
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
@@ -60,7 +60,7 @@ scene_index_for_key(const char* key) {
     return 0;
 }
 
-static const render_lab_scene_t*
+static const render_lab_demo_t*
 current_scene(void) {
     return scenes[current_scene_index];
 }
@@ -434,7 +434,7 @@ app_t app_render_lab = {
 APP_REGISTER(app_render_lab);
 
 void
-render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* what) {
+render_lab_demo_fail(const char* tag, char* failure, size_t size, const char* what) {
     ESP_LOGE(tag, "%s; the scene stays blank", what);
     if (snprintf(failure, size, "%s", what) < 0) {
         failure[0] = '\0';

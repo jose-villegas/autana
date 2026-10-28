@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "apps/render_lab/capybara_content.h"
-#include "apps/render_lab/render_lab_scene.h"
+#include "apps/render_lab/render_lab_demo.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
@@ -60,7 +60,7 @@ fixture(void) {
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
     heap_report(SKIN_PERF_PHASE_BEFORE_ENTER);
-    render_lab_test_enter(&active->saved, scene_capybara.key);
+    render_lab_test_enter(&active->saved, demo_capybara.key);
     suite_set_test_cleanup(release_fixture);
     active->scene = render_lab_test_loaded_scene(CAPYBARA_SCENE);
     TEST_ASSERT_NOT_NULL(active->scene);
