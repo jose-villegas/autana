@@ -715,15 +715,18 @@ flip3_peak_speed_sq(const flip3_t* f) {
     return peak;
 }
 
+/* Samples per axis over the box's cells (the walls' excluded), the empty
+ * border included. */
 static void
-field_dims(const flip3_t* f, int samples, int dims[3]) {
-    dims[0] = ((f->nx - 2) * samples) + 2;
-    dims[1] = ((f->ny - 2) * samples) + 2;
-    dims[2] = ((f->nz - 2) * samples) + 2;
+field_dims(const flip3_t* f, float samples, int dims[3]) {
+    for (int a = 0; a < 3; a++) {
+        const int inside = (int)lroundf((float)(cells_on(f, a) - 2) * samples);
+        dims[a] = (inside > 1 ? inside : 1) + 2;
+    }
 }
 
 size_t
-flip3_field_count(const flip3_t* f, int samples) {
+flip3_field_count(const flip3_t* f, float samples) {
     int d[3];
     field_dims(f, samples, d);
     return (size_t)d[0] * (size_t)d[1] * (size_t)d[2];
@@ -813,9 +816,14 @@ field_range(void* ctx, int from, int to) {
 }
 
 iso_field_t
-flip3_field(const flip3_t* f, int samples, float* out) {
-    field_work_t w = {.f = f, .out = out, .step = vec3f_scale(f->h, 1.0F / (float)samples)};
+flip3_field(const flip3_t* f, float samples, float* out) {
+    field_work_t w = {.f = f, .out = out};
     field_dims(f, samples, w.d);
+    float step[3];
+    for (int a = 0; a < 3; a++) {
+        step[a] = (float)(cells_on(f, a) - 2) * axis_of(f->h, a) / (float)(w.d[a] - 2);
+    }
+    w.step = (vec3f_t){step[0], step[1], step[2]};
     memset(out, 0, (size_t)w.d[0] * (size_t)w.d[1] * (size_t)w.d[2] * sizeof(float));
     for (w.pass = FIELD_SAMPLE; w.pass < FIELD_PASSES; w.pass++) {
         const int lines = w.pass == FIELD_SMOOTH_X ? w.d[1] : w.d[0];

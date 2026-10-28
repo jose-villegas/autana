@@ -22,7 +22,7 @@ driven by any acceleration, in caller-owned grid and particle blocks.
 | `flip3_peak_speed_sq` | The fastest particle's speed squared, 0 at rest |
 | `flip3_fraction` | The share of the volume the particles stand for |
 | `flip3_particle` | A particle in box coordinates |
-| `flip3_field_count` | The floats a surface field at that many samples per cell needs |
+| `flip3_field_count` | The floats a surface field at that many samples per cell needs; the rate may be fractional, each axis rounding its own count |
 | `flip3_field` | The surface field: density over the box, 1 at rest, smoothed once with the walls mirrored and padded with empty samples; returns the `iso_field_t` that `iso_surface_nets()` meshes ([Geometry](../math/Geometry.md#iso_surface)) |
 
 | Constant | Purpose |

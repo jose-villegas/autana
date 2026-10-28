@@ -52,40 +52,43 @@
 
 static const char* TAG = "water";
 
-#define WATER_SCENE         "water"
-#define WATER_CAMERA        "camera"
-#define WATER_TANK          "tank"
-#define WATER_ENTITY        "water"
+#define WATER_SCENE           "water"
+#define WATER_CAMERA          "camera"
+#define WATER_TANK            "tank"
+#define WATER_ENTITY          "water"
 
 /* The fill, in percent of the tank's volume: upright, of the screen. */
-#define WATER_FILL_MIN      10
-#define WATER_FILL_MAX      90
-#define WATER_FILL_STEP     10
-#define WATER_FILL_DEFAULT  50
-#define WATER_FILL_LABEL    "WATER FILL: %d%%"
-#define WATER_PERCENT       100
+#define WATER_FILL_MIN        10
+#define WATER_FILL_MAX        90
+#define WATER_FILL_STEP       10
+#define WATER_FILL_DEFAULT    50
+#define WATER_FILL_LABEL      "WATER FILL: %d%%"
+#define WATER_PERCENT         100
 
 /* The tank is the room behind the screen: the visible area, as deep as the
  * case less the display module and PCB stacked behind the glass. */
-#define WATER_TANK_DEPTH_MM (BOARD_CASE_DEPTH_MM - BOARD_DEVICE_DEPTH_MM)
+#define WATER_TANK_DEPTH_MM   (BOARD_CASE_DEPTH_MM - BOARD_DEVICE_DEPTH_MM)
 
 /* Grid cells across the depth; the cell is the depth over this. Three over
  * the tank's 7.6 mm keeps cells near 2.5 mm, the size the frame budget was
  * sketched for: 11 x 14 x 3 cells and about 2200 particles at most. */
-#define WATER_CELLS_DEEP    3
-/* Density samples per cell along each axis, for the surface. */
-#define WATER_SAMPLES       2
+#define WATER_CELLS_DEEP      3
+/* Density samples per cell along each axis, for the surface, in hundredths
+ * (WATER_PERCENT a whole sample): 1.5 keeps the crests and splash at about
+ * 0.6 times the triangles 2 make; the field is sized for the most. */
+#define WATER_SAMPLES_PCT     150
+#define WATER_SAMPLES_PCT_MAX 200
 /* The surface sits where the density is half the rest density. */
-#define WATER_SURFACE_LEVEL 0.5F
+#define WATER_SURFACE_LEVEL   0.5F
 
 /* The most simulated time one frame advances: a longer frame slows the
  * water rather than costing a burst. */
-#define WATER_MAX_STEP_MS   32
+#define WATER_MAX_STEP_MS     32
 
 /* Earth's gravity, mm/s^2. The water runs under a share of it: at full
  * gravity a tank this small sloshes faster than a frame can follow, and a
  * smaller g looks like a larger tank (Froude scaling). Ours, by eye. */
-#define WATER_EARTH_MM_S2   9810
+#define WATER_EARTH_MM_S2     9810
 TUNE_OWNER(water);
 TUNE(water, gravity_mm_s2, 2000, 100, WATER_EARTH_MM_S2);
 /* 1 puts the grid in internal RAM, 0 in PSRAM: for measuring which the
@@ -115,6 +118,10 @@ TUNE(water, red_black, 1, 0, 1);
 /* 1 draws the plane (scene_water_plane.h), a cheap option to flip3 with no
  * crests or splash; 0 (the default) runs flip3. */
 TUNE(water, plane, 0, 0, 1);
+
+/* The surface's density samples per cell, in hundredths: fewer mesh,
+ * build and draw fewer triangles and lose the smallest ripples. */
+TUNE(water, samples_pct, WATER_SAMPLES_PCT, WATER_PERCENT, WATER_SAMPLES_PCT_MAX);
 /* The plane's swing: its natural frequency in tenths of a hertz, and its
  * damping as a percentage of critical. Ours, by eye. */
 TUNE(water, slosh_decihz, 15, 1, 100);
@@ -287,11 +294,12 @@ allocate(void) {
     if (!flip3_init(&water, &config, grid, take(flip3_particle_bytes(&config)))) {
         return false;
     }
-    field = take(sizeof(float) * flip3_field_count(&water, WATER_SAMPLES));
+    const float most = (float)WATER_SAMPLES_PCT_MAX / (float)WATER_PERCENT;
+    field = take(sizeof(float) * flip3_field_count(&water, most));
     if (field == NULL) {
         return false;
     }
-    surface_field = flip3_field(&water, WATER_SAMPLES, field);
+    surface_field = flip3_field(&water, most, field);
     through = take(sizeof(float) * (size_t)(surface_field.nx * surface_field.ny));
     positions = take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
     normals = take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
@@ -612,7 +620,7 @@ rebuild_surface(void) {
     if (plane != 0) {
         water_plane_field(&plane_water, &surface_field, (float)fill_percent / (float)WATER_PERCENT);
     } else {
-        surface_field = flip3_field(&water, WATER_SAMPLES, field);
+        surface_field = flip3_field(&water, (float)samples_pct / (float)WATER_PERCENT, field);
     }
     FRAME_COST_END(field_from, "water.field");
     FRAME_COST_BEGIN(through_from);
