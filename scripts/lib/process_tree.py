@@ -1,8 +1,10 @@
 """Start and stop commands as one process tree, so children holding pipes or locks die with them."""
+import contextlib
 import os
 import signal
 import subprocess
 import sys
+import threading
 
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x800
@@ -15,6 +17,22 @@ def install_console_interrupt_handler():
     """Windows Ctrl-Break must unwind locks and ports through KeyboardInterrupt."""
     if os.name == "nt":
         signal.signal(signal.SIGBREAK, signal.default_int_handler)
+
+
+@contextlib.contextmanager
+def terminate_unwinds():
+    """Inside, SIGTERM raises KeyboardInterrupt, so finally blocks still stop
+    child trees and release locks. Main thread only, and only while nothing
+    else handles SIGTERM."""
+    handle = (threading.current_thread() is threading.main_thread()
+              and signal.getsignal(signal.SIGTERM) == signal.SIG_DFL)
+    if handle:
+        signal.signal(signal.SIGTERM, signal.default_int_handler)
+    try:
+        yield
+    finally:
+        if handle:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
 
 def windows_job_binding(kernel=None):
