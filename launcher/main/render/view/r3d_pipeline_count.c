@@ -80,15 +80,17 @@ count_triangle(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const
 
 void
 r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
-                             const r3d_pipeline_vertex_t* cs, r3d_pipeline_counts_t* counts, uint16_t* set_up) {
-    const r3d_span_target_t screen = {.rows = {.width = lens->width, .row0 = 0, .row1 = lens->height}};
+                             const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* window,
+                             r3d_pipeline_counts_t* counts, uint16_t* set_up) {
+    const r3d_span_target_t whole = {.rows = {.width = lens->width, .row0 = 0, .row1 = lens->height}};
+    const r3d_span_target_t* screen = window != NULL ? window : &whole;
     for (int i = 0; i < count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         int reached = 0;
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
             const uint16_t* tri = mesh->triangles[t];
             const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-            reached += count_triangle(v, c->double_sided, &screen, counts) ? 1 : 0;
+            reached += count_triangle(v, c->double_sided, screen, counts) ? 1 : 0;
         }
         if (set_up != NULL) {
             set_up[clusters[i]] = (uint16_t)reached;

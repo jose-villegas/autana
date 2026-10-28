@@ -68,21 +68,27 @@ def build():
     return pathlib.Path(path)
 
 
-def render(renderer, pose, view, out):
-    """Draws `pose` into `out`; the overdraw view's totals, else None."""
+def draw(renderer, pose, view, out, options=()):
+    """Draws `pose` into `out` with the renderer's further `options`; its stderr."""
     scene, quarter, _, t_ms = pose
     command = [str(renderer), "--scene", scene, "--quarter", str(QUARTER_NUMBER[quarter]), "--no-hud",
-               "--dt", "0", "--frames", str(POSE_FRAMES), "--console", f"0:path {t_ms}", "-o", str(out)]
+               "--dt", "0", "--frames", str(POSE_FRAMES), "--console", f"0:path {t_ms}", "-o", str(out), *options]
     if view is not None:
         command += ["--view", view]
     result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
     if result.returncode != 0:
         raise ValueError(f"{' '.join(command)} failed:\n{result.stderr}")
+    return result.stderr
+
+
+def render(renderer, pose, view, out):
+    """Draws `pose` into `out`; the overdraw view's totals, else None."""
+    stderr = draw(renderer, pose, view, out)
     if view != OVERDRAW_VIEW:
         return None
-    lines = OVERDRAW_RE.findall(result.stderr)
+    lines = OVERDRAW_RE.findall(stderr)
     if len(lines) != 1:
-        raise ValueError(f"{' '.join(command)}: {len(lines)} overdraw lines")
+        raise ValueError(f"{' '.join(map(str, pose))}: {len(lines)} overdraw lines")
     return dict(zip(FIELDS, map(int, lines[0])))
 
 
