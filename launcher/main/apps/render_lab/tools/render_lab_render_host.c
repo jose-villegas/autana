@@ -21,6 +21,7 @@
 #include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
+#include "render/view/raster_cull_view.h"
 #include "render/view/raster_overdraw.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
@@ -232,6 +233,24 @@ report_overdraw(const render_frame_t* frame) {
     (void)fprintf(stderr, RASTER_OVERDRAW_LINE "\n", f.pixels, f.tested, f.written, f.tested_max, f.written_max);
 }
 
+/* With --view cull and cullview.occlusion, the last frame's occlusion counts on stderr. */
+static void
+report_occlusion(const render_frame_t* frame) {
+    const render_context_t* context = render_context_main();
+    raster_occlusion_frame_t f;
+    if (frame->index + 1 != frame->count || context->debug_view != render_context_debug_view_named("cull")
+        || context->debug_view_state == NULL || !raster_cull_occlusion_frame(context->debug_view_state, &f)) {
+        return;
+    }
+    const int rect = RASTER_OCCLUSION_RECT;
+    const int corners = RASTER_OCCLUSION_CORNERS;
+    const int tiles = RASTER_OCCLUSION_TILES;
+    (void)fprintf(stderr, RASTER_OCCLUSION_LINE "\n", f.hidden, f.triangles_set_up, f.caught[rect],
+                  f.hidden_caught[rect], f.removed[rect], f.read[rect], f.unsafe[rect], f.caught[corners],
+                  f.hidden_caught[corners], f.removed[corners], f.read[corners], f.unsafe[corners], f.caught[tiles],
+                  f.hidden_caught[tiles], f.removed[tiles], f.read[tiles], f.unsafe[tiles]);
+}
+
 static void
 draw(const render_frame_t* frame) {
     ui_clear_band_overlay();
@@ -244,6 +263,7 @@ draw(const render_frame_t* frame) {
     }
     app_list()->frame(frame->dt_ms, &in);
     report_overdraw(frame);
+    report_occlusion(frame);
     /* The shell's update() runs before it composes a frame; this harness has
      * already composed, so it steers the next one. */
     app_list()->update(frame->dt_ms, &in);

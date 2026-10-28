@@ -352,6 +352,7 @@ only drawn clusters show, so it redraws from a spectator.
 | `cullview.from` | 0 the camera, 1 above the instances' bounds looking down, 2 behind and above the camera |
 | `cullview.paint` | 0 the baked colours, culled clusters as a sparse screen door with a dashed grey border, each kept cluster's border solid in its fate's colour; 1 each cluster flat in its fate's colour; 2 each cluster in the hue of its node at `cullview.level`, darker the earlier it was dropped |
 | `cullview.level` | the tree depth whose node boxes the overlay draws; 0 none, 1 the root's children |
+| `cullview.occlusion` | 1 measures which hidden clusters a depth test before the draw could skip; see [Hidden clusters a bound could skip](#hidden-clusters-a-bound-could-skip) |
 
 From a spectator the culled and the kept clusters are drawn apart, so culled
 geometry never hides kept geometry behind it: the holes in its screen door
@@ -419,6 +420,57 @@ Sponza's fitted full bake along its flythrough:
 | Submitted triangles set up | 5230 (62 %) |
 | Submitted triangles covering pixels | 2692 (32 %) |
 <!-- /generated: cull-sponza -->
+
+### Hidden clusters a bound could skip
+
+A hidden cluster is set up and filled for nothing. With `cullview.occlusion`,
+the view replays the camera's draw one cluster at a time in each core's band,
+in the order the draw takes them, nearest first. Before each cluster it asks
+whether a conservative bound proves the cluster hidden behind the depth drawn
+so far
+([raster_cull_occlusion.h](../../launcher/main/render/view/raster_cull_occlusion.h)).
+
+| Bound | Tests |
+|---|---|
+| rect | the box of the cluster's projected vertices against their nearest depth, pixel by pixel, as the fill tests a triangle |
+| corners | the same over the 8 projected corners of the cluster's bounding box |
+| tiles | the corners' box rounded out to 8×8 tiles, each by its farthest depth |
+
+- A cluster counts as caught when its bound skips it in every band it sets
+  up triangles in.
+- Triangles removed are counted per band, out of those set up there.
+- Read is the pixels the test reads per frame, or the tiles for the tiles
+  bound, before it stops.
+- The band split is an even share of the estimated weight; the board steers
+  it by the cores' times.
+
+Every replayed pose of the board's frame profile, the worst frames among
+them, drawn by the host:
+
+<!-- generated: cluster-occlusion check: python launcher/main/apps/render_lab/tools/cluster_occlusion.py --check -->
+| Scene | Quarter | Poses | Hidden clusters / frame | rect: hidden caught | rect: set up removed | rect: read / frame | corners: hidden caught | corners: set up removed | corners: read / frame | tiles: hidden caught | tiles: set up removed | tiles: read / frame |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| sponza | portrait | 69 | 73 | 22 % | 6 % | 24344 | 18 % | 5 % | 20802 | 13 % | 4 % | 795 |
+| sponza | landscape | 69 | 74 | 21 % | 6 % | 40482 | 17 % | 5 % | 45196 | 13 % | 4 % | 1101 |
+| sponza-lite | portrait | 69 | 39 | 11 % | 3 % | 5852 | 8 % | 2 % | 4894 | 6 % | 2 % | 303 |
+| sponza-lite | landscape | 69 | 39 | 12 % | 3 % | 15328 | 10 % | 2 % | 15805 | 6 % | 2 % | 443 |
+| sponza-flat | portrait | 69 | 71 | 23 % | 7 % | 20673 | 18 % | 5 % | 18982 | 13 % | 4 % | 766 |
+| sponza-flat | landscape | 69 | 73 | 22 % | 7 % | 38488 | 18 % | 5 % | 42932 | 12 % | 4 % | 1068 |
+| sponza-fitted | portrait | 69 | 23 | 17 % | 3 % | 7019 | 14 % | 2 % | 5861 | 9 % | 1 % | 352 |
+| sponza-fitted | landscape | 69 | 23 | 17 % | 3 % | 14204 | 14 % | 2 % | 19660 | 7 % | 1 % | 542 |
+| sponza-fitted-full | portrait | 69 | 44 | 31 % | 6 % | 11603 | 24 % | 4 % | 11872 | 17 % | 3 % | 637 |
+| sponza-fitted-full | landscape | 69 | 45 | 30 % | 5 % | 23329 | 23 % | 4 % | 31312 | 16 % | 3 % | 902 |
+| sponza-flat-fitted | portrait | 69 | 42 | 29 % | 5 % | 13562 | 24 % | 4 % | 13958 | 17 % | 3 % | 671 |
+| sponza-flat-fitted | landscape | 69 | 43 | 28 % | 5 % | 24886 | 22 % | 4 % | 31328 | 16 % | 3 % | 903 |
+| capybara | portrait | 69 | 9 | 46 % | 13 % | 2824 | 28 % | 9 % | 3111 | 12 % | 4 % | 128 |
+| capybara | landscape | 69 | 9 | 44 % | 12 % | 3176 | 29 % | 8 % | 3803 | 13 % | 4 % | 112 |
+| bistro-fitted-full | portrait | 69 | 150 | 73 % | 27 % | 41046 | 64 % | 23 % | 60143 | 54 % | 20 % | 1765 |
+| bistro-fitted-full | landscape | 69 | 159 | 75 % | 28 % | 59523 | 66 % | 25 % | 93257 | 57 % | 22 % | 2285 |
+<!-- /generated: cluster-occlusion -->
+
+Each pose's counts are kept in [cluster-occlusion.tsv](data/cluster-occlusion.tsv).
+The table's generator fails when any bound skipped a cluster that then wrote
+depth.
 
 ### What a cluster and a triangle cost
 

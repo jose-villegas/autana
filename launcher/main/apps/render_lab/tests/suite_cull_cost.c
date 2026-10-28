@@ -87,7 +87,7 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
     TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, b.culled + 1, walk, &n));
     memory_free(walk);
     r3d_pipeline_transform(mesh, lens, b.culled + 1, visible, b.cs, b.rows);
-    r3d_pipeline_count_triangles(mesh, lens, b.culled + 1, visible, b.cs, &n, NULL);
+    r3d_pipeline_count_triangles(mesh, lens, b.culled + 1, visible, b.cs, NULL, &n, NULL);
     int vertices = 0;
     for (int i = 0; i < visible; i++) {
         vertices += mesh->clusters[b.culled[1 + i]].vertex_count;
