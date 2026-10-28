@@ -139,7 +139,7 @@ apply_flags(int argc, char** argv) {
 }
 
 /* Which names are valid is app_render_lab.c's own knowledge (each scene's
- * .key, render_lab_scene.h) - this only hands the string through. */
+ * .key, render_lab_demo.h) - this only hands the string through. */
 static bool
 options(int argc, char** argv) {
     const char* scene;

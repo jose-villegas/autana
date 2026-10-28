@@ -26,7 +26,7 @@ entry, so the frame hook changes the next frame without reloading the scene.
 ### Menu
 
 The BOOT menu has a SCENE dropdown of scene families (`family` in
-`render_lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
+`render_lab_demo_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
 bakes, from `variant`), then the rows the showing scene declares in its
 `controls` (Capybara's CLIP and BLEND). Order in `scenes[]` is the order of every list, and
 index 0 (Sponza Fitted Full) is the scene a start with no key shows. Console

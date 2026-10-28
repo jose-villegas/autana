@@ -1,5 +1,5 @@
 /*
- * scene_water: water in a tank the size of the screen and as deep as the
+ * demo_water: water in a tank the size of the screen and as deep as the
  * device, simulated by flip3 and driven by the device's gravity.
  *
  * Each update reads gravity and shake (gravity.h), steps the water, meshes
@@ -40,7 +40,7 @@
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/skin/r3d_skin_light.h"
 #include "render_lab.h"
-#include "render_lab_scene.h"
+#include "render_lab_demo.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "ui/ui.h"
@@ -179,7 +179,7 @@ static char failure[RENDER_LAB_STATUS_LEN];
 
 static void
 fail(const char* what) {
-    render_lab_scene_fail(TAG, failure, sizeof failure, what);
+    render_lab_demo_fail(TAG, failure, sizeof failure, what);
 }
 
 /* From the app arena, which render_lab rewinds when the scene goes. */
@@ -448,7 +448,7 @@ apply_view(void) {
 }
 
 static void
-scene_water_enter(const render_lab_scene_t* self) {
+demo_water_enter(const render_lab_demo_t* self) {
     (void)self;
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
@@ -486,7 +486,7 @@ scene_water_enter(const render_lab_scene_t* self) {
 }
 
 static void
-scene_water_exit(void) {
+demo_water_exit(void) {
     scene_unload(tank_scene);
     tank_scene = NULL;
     release();
@@ -494,7 +494,7 @@ scene_water_exit(void) {
 
 /* Gravity, the fill, the steps and the surface, while the last frame goes out. */
 static void
-scene_water_update(uint32_t dt_ms) {
+demo_water_update(uint32_t dt_ms) {
     if (tank_scene == NULL || failure[0] != '\0') {
         return;
     }
@@ -521,7 +521,7 @@ scene_water_update(uint32_t dt_ms) {
 }
 
 static void
-scene_water_frame(uint32_t dt_ms) {
+demo_water_frame(uint32_t dt_ms) {
     (void)dt_ms;
     render_lab_apply_raster_settings();
     apply_view();
@@ -547,7 +547,7 @@ water_status(void) {
 
 /* `water fill <percent>` and `water tour`, which restarts the scripted tank. */
 static inline bool
-scene_water_console(const char* args, console_reply_fn reply) {
+demo_water_console(const char* args, console_reply_fn reply) {
     int percent;
     char line[RENDER_LAB_STATUS_LEN];
     if (sscanf(args, "water fill %d", &percent) == 1) {
@@ -573,7 +573,7 @@ scene_water_console(const char* args, console_reply_fn reply) {
 }
 
 static void
-scene_water_controls(int width) {
+demo_water_controls(int width) {
     char label[sizeof WATER_FILL_LABEL];
     if (snprintf(label, sizeof label, WATER_FILL_LABEL, fill_percent) < 0) {
         label[0] = '\0';
@@ -588,13 +588,13 @@ scene_water_controls(int width) {
     }
 }
 
-const render_lab_scene_t scene_water = {.name = "Water",
-                                        .key = WATER_SCENE,
-                                        .family = "Water",
-                                        .enter = scene_water_enter,
-                                        .frame = scene_water_frame,
-                                        .exit = scene_water_exit,
-                                        .status = water_status,
-                                        .update = scene_water_update,
-                                        .controls = scene_water_controls,
-                                        .console = RENDER_LAB_SCENE_CONSOLE(scene_water_console)};
+const render_lab_demo_t demo_water = {.name = "Water",
+                                      .key = WATER_SCENE,
+                                      .family = "Water",
+                                      .enter = demo_water_enter,
+                                      .frame = demo_water_frame,
+                                      .exit = demo_water_exit,
+                                      .status = water_status,
+                                      .update = demo_water_update,
+                                      .controls = demo_water_controls,
+                                      .console = RENDER_LAB_DEMO_CONSOLE(demo_water_console)};

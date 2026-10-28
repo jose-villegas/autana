@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
-#include "apps/render_lab/render_lab_scene.h"
-#include "apps/render_lab/scene_baked.h"
+#include "apps/render_lab/demo_baked.h"
+#include "apps/render_lab/render_lab_demo.h"
 #include "apps/render_lab/sponza_content.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
@@ -23,7 +23,7 @@
 #include "unity.h"
 
 typedef struct {
-    const render_lab_scene_t* scene;
+    const render_lab_demo_t* scene;
     const char* pack;
     const char* entity;
     perf_budget_t quarters[R3D_PERF_QUARTER_COUNT];
@@ -32,14 +32,14 @@ typedef struct {
 /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
  * 2124, + 1%; per quarter, portrait then landscape. */
 static const profile_scenario_t profile_scenarios[] = {
-    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{48953, 59273}, {47229, 56329}}},
-    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41957, 47931}, {40738, 46118}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT], .quarters = {{40902, 49780}, {40227, 48295}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{41341, 49565}, {39726, 46664}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{49536, 62165}, {47469, 58108}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{40285, 50300}, {39053, 48179}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, {{20941, 21286}, {21500, 21803}}},
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, {{41782, 62092}, {40404, 57696}}},
+    {.scene = &demo_sponza[DEMO_BAKED_FULL], .quarters = {{48953, 59273}, {47229, 56329}}},
+    {.scene = &demo_sponza[DEMO_BAKED_LITE], .quarters = {{41957, 47931}, {40738, 46118}}},
+    {.scene = &demo_sponza[DEMO_BAKED_FLAT], .quarters = {{40902, 49780}, {40227, 48295}}},
+    {.scene = &demo_sponza[DEMO_BAKED_FITTED], .quarters = {{41341, 49565}, {39726, 46664}}},
+    {.scene = &demo_sponza[DEMO_BAKED_FITTED_FULL], .quarters = {{49536, 62165}, {47469, 58108}}},
+    {.scene = &demo_sponza[DEMO_BAKED_FLAT_FITTED], .quarters = {{40285, 50300}, {39053, 48179}}},
+    {&demo_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, {{20941, 21286}, {21500, 21803}}},
+    {&demo_bistro[DEMO_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, {{41782, 62092}, {40404, 57696}}},
 };
 
 static const char* TAG = "render_lab_profile";
@@ -137,7 +137,7 @@ test_real_time_frame_profile(void) {
     const scene_entity_t entity =
         scene_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
     TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, entity);
-    if (scenario->scene == &scene_capybara) {
+    if (scenario->scene == &demo_capybara) {
         char command[sizeof(CAPYBARA_CLIP_COMMAND)];
         const int length = snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_CUT_MS);
         TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);

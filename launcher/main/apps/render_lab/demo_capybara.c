@@ -1,5 +1,5 @@
 /*
- * scene_capybara: the capybara on its meadow, orbited by one finger.
+ * demo_capybara: the capybara on its meadow, orbited by one finger.
  *
  * The camera circles its bounding sphere at the distance that fits it from
  * every angle (orbit_motion.h); a drag turns it, a double tap brings it home
@@ -27,8 +27,8 @@
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
+#include "render_lab_demo.h"
 #include "render_lab_dynres.h"
-#include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "ui/ui.h"
@@ -70,7 +70,7 @@ static char failure[48];
 
 static void
 fail(const char* what) {
-    render_lab_scene_fail(TAG, failure, sizeof failure, what);
+    render_lab_demo_fail(TAG, failure, sizeof failure, what);
 }
 
 static void
@@ -103,7 +103,7 @@ frame_subject(void) {
 }
 
 static void
-scene_capybara_enter(const render_lab_scene_t* self) {
+demo_capybara_enter(const render_lab_demo_t* self) {
     (void)self;
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
@@ -130,7 +130,7 @@ scene_capybara_enter(const render_lab_scene_t* self) {
 }
 
 static void
-scene_capybara_exit(void) {
+demo_capybara_exit(void) {
     render_lab_clips_destroy(&choice);
     scene_unload(capybara);
     capybara = NULL;
@@ -138,7 +138,7 @@ scene_capybara_exit(void) {
 
 /* The finger turns the camera before the shell draws this frame. */
 static void
-scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
+demo_capybara_steer(uint32_t dt_ms, const input_t* input) {
     if (capybara == NULL || failure[0] != '\0') {
         return;
     }
@@ -155,7 +155,7 @@ scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
 
 /* The shell has already drawn the scene into the framebuffer. */
 static void
-scene_capybara_frame(uint32_t dt_ms) {
+demo_capybara_frame(uint32_t dt_ms) {
     (void)dt_ms;
     render_lab_apply_raster_settings();
     if (capybara != NULL) {
@@ -184,22 +184,22 @@ capybara_status(void) {
 }
 
 static inline bool
-scene_capybara_console(const char* args, console_reply_fn reply) {
+demo_capybara_console(const char* args, console_reply_fn reply) {
     return render_lab_clips_reply(&choice, args, reply);
 }
 
 static void
-scene_capybara_controls(int width) {
+demo_capybara_controls(int width) {
     render_lab_clips_draw(width, &choice);
 }
 
-const render_lab_scene_t scene_capybara = {.name = "Capybara",
-                                           .key = CAPYBARA_SCENE,
-                                           .family = "Capybara",
-                                           .enter = scene_capybara_enter,
-                                           .frame = scene_capybara_frame,
-                                           .exit = scene_capybara_exit,
-                                           .status = capybara_status,
-                                           .steer = scene_capybara_steer,
-                                           .controls = scene_capybara_controls,
-                                           .console = RENDER_LAB_SCENE_CONSOLE(scene_capybara_console)};
+const render_lab_demo_t demo_capybara = {.name = "Capybara",
+                                         .key = CAPYBARA_SCENE,
+                                         .family = "Capybara",
+                                         .enter = demo_capybara_enter,
+                                         .frame = demo_capybara_frame,
+                                         .exit = demo_capybara_exit,
+                                         .status = capybara_status,
+                                         .steer = demo_capybara_steer,
+                                         .controls = demo_capybara_controls,
+                                         .console = RENDER_LAB_DEMO_CONSOLE(demo_capybara_console)};

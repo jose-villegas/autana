@@ -25,10 +25,10 @@
 /* The frame-cost rows' pose spacing. */
 #define SPONZA_PERF_POSE_EVERY_MS   500
 
-#include "apps/render_lab/scene_baked_variant.h"
+#include "apps/render_lab/demo_baked_variant.h"
 
 /* The name of the entity that draws each bake, found at load. */
-extern const char* const sponza_bakes[SCENE_BAKED_VARIANT_COUNT];
+extern const char* const sponza_bakes[DEMO_BAKED_VARIANT_COUNT];
 
 /* The camera a start with none named follows; the tour is the other. */
 #define SPONZA_CAMERA       "camera"
