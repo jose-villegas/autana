@@ -39,12 +39,23 @@ class LayoutCostsTests(unittest.TestCase):
         self.assertEqual(list(rows), ["room, portrait", "room, landscape", "boot animation, swell"])
         lines = layout_costs.table(rows, "chart.png").splitlines()
         self.assertEqual(lines[0], "![Frame cost by framebuffer layout](../images/render/chart.png)")
-        lines = lines[2:]
-        self.assertEqual(lines[0], "| Picture | `LAYOUT_A` | `LAYOUT_B` | `LAYOUT_C` |")
-        self.assertEqual(lines[2], "| room, portrait | 40.0 | 44.0 (+10%) | not run |")
-        self.assertEqual(lines[3], "| room, landscape | 20.0 | not run | not run |")
-        self.assertEqual(lines[4], "| boot animation, swell | 30.0 | 27.0 (-10%) | 33.0 (+10%) |")
+        self.assertEqual(lines[4], "| `LAYOUT_B` | `LAYOUT_A` | room (portrait) | +4.0 | +10% |")
+        self.assertEqual(lines[5], "| `LAYOUT_B` | `LAYOUT_A` | boot animation | -3.0 | -10% |")
+        self.assertEqual(lines[6], "| `LAYOUT_C` | `LAYOUT_A` | boot animation | +3.0 | +10% |")
+        every = lines[lines.index("<details><summary>Every picture</summary>") + 2:]
+        self.assertEqual(every[0], "| Picture | `LAYOUT_A` | `LAYOUT_B` | `LAYOUT_C` |")
+        self.assertEqual(every[2], "| room, portrait | 40.0 | 44.0 (+10%) | not run |")
+        self.assertEqual(every[3], "| room, landscape | 20.0 | not run | not run |")
+        self.assertEqual(every[4], "| boot animation, swell | 30.0 | 27.0 (-10%) | 33.0 (+10%) |")
+        self.assertEqual(every[6], "</details>")
         self.assertTrue(lines[-1].startswith("Board ms per frame"))
+
+    def test_a_group_chains_changes_within_the_gap(self):
+        gap = layout_costs.GROUP_GAP_MS
+        rows = {"a, 1": {"A": 10.0, "B": 12.0}, "b, 1": {"A": 20.0, "B": 22.0 + gap},
+                "a, 2": {"A": 30.0, "B": 32.0 + 2 * gap}, "b, 2": {"A": 40.0, "B": 42.0 + 4 * gap}}
+        self.assertEqual(layout_costs.groups(rows), [("A", "B", ["a, 1", "b, 1", "a, 2"]), ("A", "B", ["b, 2"])])
+        self.assertEqual(layout_costs.pictures(rows, ["a, 1", "b, 1", "a, 2"]), "a, b (1)")
 
     def test_captures_must_share_one_build(self):
         mesh = self.write("mesh.log", MESH)
