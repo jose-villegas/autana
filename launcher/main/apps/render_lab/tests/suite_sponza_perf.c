@@ -70,9 +70,9 @@ typedef struct {
     gfx_color_t* panel;
     raster_t raster;
     r3d_lens_t lens;
-    raster_buffers_t buffers;
     char* report;
     int32_t* frame_us;
+    raster_buffers_t buffers; /* last: it ends in a target's attachments */
 } bench_t;
 
 /* The bench a test has open. The test's cleanup closes it, so a failed
