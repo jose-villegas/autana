@@ -70,6 +70,68 @@ Each frame, while the last one goes out to the panel:
 under each experiment's tunables and times every stage of the update, `flip3_step()`'s
 own stages and r3d's; [`tools/water_tables.py`](water_tables.py) turns its capture into tables.
 
+<!-- generated: water-stages check: python launcher/main/apps/render_lab/tools/water_tables.py --check -->
+### Measured stages
+
+The scripted tour at 33 ms of water per frame, one row per phase, from a board capture (1 run: means are the runs' mean, p95 and worst their worst). Update is the simulation and the surface; draw is r3d drawing the water's dynamic mesh.
+
+| Phase | Frames | Substeps/frame | Triangles | Particles | Frame mean / p95 ms | Update mean / p95 ms | Draw mean / p95 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| rest | 45 | 2.0 | 2146 | 1093 | 90.7 / 92.7 | 62.0 / 63.8 | 15.8 / 16.3 |
+| tilt | 136 | 2.0 | 2262 | 1093 | 92.2 / 94.0 | 62.8 / 64.2 | 16.5 / 17.6 |
+| flat | 91 | 2.0 | 2646 | 1093 | 97.1 / 106.3 | 65.6 / 70.6 | 18.6 / 22.7 |
+| return | 46 | 2.0 | 2204 | 1093 | 90.9 / 92.2 | 62.4 / 63.8 | 15.6 / 16.1 |
+| settle | 45 | 2.0 | 2114 | 1093 | 90.4 / 91.0 | 61.6 / 62.2 | 15.9 / 16.3 |
+| shake | 61 | 2.0 | 2220 | 1093 | 91.5 / 94.0 | 62.3 / 63.8 | 16.2 / 17.5 |
+
+Where the `base` update and draw go, ms per frame:
+
+| Stage | rest | tilt | flat | return | settle | shake |
+|---|---:|---:|---:|---:|---:|---:|
+| water.field | 5.28 | 4.94 | 4.96 | 4.95 | 4.95 | 4.86 |
+| water.through | 0.87 | 0.83 | 0.89 | 0.82 | 0.81 | 0.81 |
+| water.nets | 8.37 | 8.22 | 9.05 | 7.95 | 7.78 | 8.28 |
+| water.shade | 2.10 | 2.09 | 2.45 | 2.03 | 1.94 | 2.00 |
+| water.build | 5.52 | 5.42 | 6.68 | 5.36 | 5.04 | 5.24 |
+| water.step | 42.11 | 41.24 | 41.46 | 41.17 | 41.07 | 39.99 |
+| step: p2g | 15.69 | 15.62 | 15.59 | 15.60 | 15.56 | 15.60 |
+| step: accel | 0.39 | 0.38 | 0.38 | 0.38 | 0.38 | 0.38 |
+| step: pressure | 12.99 | 13.08 | 13.35 | 13.06 | 12.97 | 12.53 |
+| step: g2p | 10.93 | 10.96 | 10.93 | 10.93 | 10.96 | 10.95 |
+| step: advect | 0.15 | 0.15 | 0.15 | 0.14 | 0.15 | 0.14 |
+| step: collide | 0.55 | 0.55 | 0.55 | 0.55 | 0.54 | 0.55 |
+| r3d.cull | 0.12 | 0.11 | 0.12 | 0.11 | 0.11 | 0.11 |
+| r3d.transform | 1.05 | 1.04 | 1.27 | 1.04 | 0.96 | 1.01 |
+| r3d.draw | 15.10 | 15.11 | 16.92 | 14.22 | 14.57 | 14.65 |
+| r3d.upscale | 3.03 | 2.92 | 2.91 | 2.89 | 2.89 | 2.87 |
+
+Each experiment against the base, update mean ms per frame (frames that rested in brackets):
+
+| Configuration | rest | tilt | flat | return | settle | shake |
+|---|---:|---:|---:|---:|---:|---:|
+| base | 62.0 | 62.8 | 65.6 | 62.4 | 61.6 | 62.3 |
+| one_core | 88.8 | 89.7 | 93.2 | 89.4 | 88.4 | 88.9 |
+| sub4 | 101.9 | 103.6 | 107.0 | 103.0 | 101.9 | 103.6 |
+| sub1 | 41.4 | 41.4 | 44.0 | 41.0 | 40.3 | 39.6 |
+| red_black | 58.7 | 59.9 | 62.5 | 59.5 | 58.4 | 59.7 |
+| rest | 61.9 | 62.8 | 65.6 | 62.4 | 61.6 | 62.3 |
+| plane | 21.1 | 22.4 | 25.1 | 22.1 | 21.1 | 21.5 |
+
+Internal RAM around each configuration, KB free / largest block:
+
+| Configuration | before | running | after |
+|---|---:|---:|---:|
+| base | 58 / 31 | 58 / 31 | 58 / 31 |
+| one_core | 58 / 31 | 58 / 31 | 58 / 31 |
+| sub4 | 58 / 31 | 58 / 31 | 58 / 31 |
+| sub1 | 58 / 31 | 58 / 31 | 58 / 31 |
+| red_black | 58 / 31 | 58 / 31 | 58 / 31 |
+| rest | 58 / 31 | 58 / 31 | 58 / 31 |
+| plane | 58 / 31 | 58 / 31 | 58 / 31 |
+
+Source: `water-stages-board.log`
+<!-- /generated: water-stages -->
+
 ### Small fill
 
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
