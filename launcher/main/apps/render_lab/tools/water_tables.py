@@ -68,7 +68,7 @@ def parse(lines):
             row["stages"][fields["stage"]] = int(fields["us"]) / US_PER_MS
         elif "frames" in fields:
             row.update(frames=int(fields["frames"]), substeps=int(fields["substeps"]),
-                       remeshed=int(fields.get("remeshed", fields.get("rested"))), tris=int(fields["tris"]), particles=int(fields["particles"]))
+                       remeshed=int(fields["remeshed"]), tris=int(fields["tris"]), particles=int(fields["particles"]))
         else:
             for part in ("frame", "update", "draw"):
                 row[part] = dict(zip(TRIPLE, (int(v) / US_PER_MS for v in fields[part].split("/"))))
