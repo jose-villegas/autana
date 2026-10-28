@@ -559,7 +559,7 @@ a whole camera path against the scene's source model instead of a second
 revision: `reference_render.py` draws the poses, `FILE` sampled at the renderer's
 `--dt` by `tools/anim/track_host.py --every`, once per scene, poses and
 `--samples`, and the render's frames are scored against them. It writes
-`<label>.mp4` (reference, render, error heatmap, edge pixels) at `--fps`
+`<label>.mp4` (reference, render, error heatmap) at `--fps`
 30, 40, 60 or 80, and one reference line per frame in `summary.txt`. The
 header of `render_compare.sh` has the details.
 The tool needs Pillow and numpy (`launcher/tools/render/requirements.txt`).

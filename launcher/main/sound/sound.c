@@ -1,6 +1,8 @@
 #include "sound/sound.h"
 #include "sound/sound_format.h"
 
+#include <string.h>
+
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
 #include "audio/audio_adpcm.h"
@@ -73,7 +75,7 @@ sound_open(const asset_pack_t* pack, const char* name, sound_t* out) {
     return asset_entry_read(pack, name, &FORMAT, parse, out, sizeof *out);
 }
 
-static void
+static void AUDIO_IRAM_ATTR
 open_block(sound_cursor_t* c) {
     const sound_t* sound = c->sound;
     const uint8_t* block =
@@ -83,7 +85,7 @@ open_block(sound_cursor_t* c) {
                                .step_index = (int8_t)block[AUDIO_ADPCM_AT_STEP_INDEX]};
 }
 
-asset_status_t
+asset_status_t AUDIO_IRAM_ATTR
 sound_seek(sound_cursor_t* c, const sound_t* sound, uint32_t frame) {
     *c = (sound_cursor_t){0};
     if (frame > sound->frames
@@ -95,13 +97,18 @@ sound_seek(sound_cursor_t* c, const sound_t* sound, uint32_t frame) {
     return ASSET_OK;
 }
 
-static void
+static void AUDIO_IRAM_ATTR
 read_run(sound_cursor_t* c, int16_t* out, uint32_t frames) {
     const sound_t* sound = c->sound;
     if (sound->format == SOUND_PCM16) {
+        const uint8_t* source = sound->data + (c->position * SOUND_PCM_BYTES);
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        memcpy(out, source, frames * sizeof *out);
+#else
         for (uint32_t i = 0; i < frames; i++) {
-            out[i] = sound_read_sample(sound->data + ((c->position + i) * SOUND_PCM_BYTES));
+            out[i] = sound_read_sample(source + (i * SOUND_PCM_BYTES));
         }
+#endif
         c->position += frames;
         return;
     }
@@ -124,18 +131,18 @@ read_run(sound_cursor_t* c, int16_t* out, uint32_t frames) {
     }
 }
 
-uint32_t
+uint32_t AUDIO_IRAM_ATTR
 sound_read(sound_cursor_t* c, int16_t* out, uint32_t frames) {
     if (c->sound == NULL) {
         return 0;
     }
     const sound_t* sound = c->sound;
+    const uint32_t loop_end = sound_end_frame(sound);
     uint32_t remaining = frames;
     while (remaining != 0) {
         if (sound->loop_end != 0 && c->position == sound->loop_end) {
             sound_seek(c, sound, sound->loop_start);
         }
-        const uint32_t loop_end = sound_end_frame(sound);
         const uint32_t end = c->position < loop_end ? loop_end : sound->frames;
         const uint32_t available = end - c->position;
         const uint32_t count = remaining < available ? remaining : available;

@@ -6,6 +6,7 @@
         --label-b TEXT [--csv frames.csv] [--fps N] [--clear RRGGBB]
     render_compare.py --out sheet.png --reference-bakes REFERENCE_DIR
         --bake LABEL A.avi [--bake LABEL B.avi ...] [--sheet-frames 2,4]
+        [--reference-sheet PNG]
 
     render_compare.py --out sheet.png --still-column LABEL FILE [--still-column ...]
 
@@ -26,7 +27,8 @@ frame one row of the reference then each bake, and under it each bake's CIE76 dE
 heatmap against the reference with its mean and p95; a --bake-reference adds the reference made with
 that bake's own settings and the heatmap against it. With --crops N the crops
 sheet shows the places the first and last bake differ most, the reference above
-every bake.
+every bake. --reference-sheet writes the same frames one row each: the
+reference, each bake, then each bake's heatmap, all on one colour scale.
 
 One row per render: A | B | a greyscale heatmap of the absolute per-pixel
 difference, scaled by GAIN (8) so a small colour shift shows. Every panel of a
@@ -194,16 +196,18 @@ def heat_scale(width, caption="CIE76 dE per pixel: black matches, red about 20, 
     return picture
 
 
-def reference_sheet(items, label, tile=0.6):
-    """Each (row title, render, reference) as reference | render | dE heatmap |
-    edge pixels, shrunk by `tile`, each under its label (`label` names the
-    render), with the heatmap's colour scale below."""
-    rows = [(title, reference, render) for title, render, reference in items]
-
-    def others(reference, render):
-        return [("dE76", reference_heatmap(render, reference)), ("reference edges", edge_overlay(reference))]
-
-    picture = _compose(list(zip(rows, _panel_rows(rows, None, GAIN, others))), "reference", label, tile)
+def reference_sheet(items, labels, tile=0.6):
+    """Each (row title, renders, reference) as reference | each render | each
+    render's dE heatmap, shrunk by `tile`, each under its label (`labels` name
+    the renders), over the one colour scale every heatmap shares."""
+    rows, after = [], []
+    for title, renders, reference in items:
+        if len(renders) != len(labels):
+            raise ValueError("a reference sheet needs one label per render")
+        rows.append((title, reference, renders[0]))
+        after.append(list(zip(labels[1:], renders[1:]))
+                     + [("dE76 " + label, reference_heatmap(render, reference)) for label, render in zip(labels, renders)])
+    picture = _compose(list(zip(rows, after)), "reference", labels[0], tile)
     out = Image.new("RGB", (picture.width, picture.height + 70))
     out.paste(picture, (0, 0))
     out.paste(heat_scale(picture.width), (0, picture.height))
@@ -807,10 +811,11 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
     )
 
 
-def write_reference_bake_sheet(reference_dir, bakes, scale, frame_indices, out, crops=0, own=None):
+def write_reference_bake_sheet(reference_dir, bakes, scale, frame_indices, out, crops=0, own=None, sheet=None):
     """Score each (label, AVI) bake against the reference frames, write the
     sheet of `frame_indices` beside the reference (and, with crops, the places
-    the first and last bake differ most), and return a score line per bake.
+    the first and last bake differ most; with `sheet`, reference_sheet of those
+    frames there), and return a score line per bake.
     `own` maps a bake's label to the reference directory made with that
     bake's own settings; it is scored and shown as well."""
     own = own or {}
@@ -830,6 +835,9 @@ def write_reference_bake_sheet(reference_dir, bakes, scale, frame_indices, out, 
                [(label, kept[label][index][0], kept_own[label][index][1] if label in kept_own else None) for label, _path in bakes])
               for index in frame_indices]
     reference_bake_sheet(frames).save(out, optimize=True)
+    if sheet:
+        reference_sheet([(title, [render for _label, render, _own in renders], reference) for title, reference, renders in frames],
+                        [label for label, _path in bakes]).save(sheet, optimize=True)
     if crops:
         entries = []
         for title, reference, renders in frames:
@@ -849,7 +857,7 @@ class ReferenceVideoWriter:
         ffmpeg = shutil.which("ffmpeg")
         if ffmpeg is None:
             raise RuntimeError("ffmpeg not found; --reference-mp4 needs it to pack the frames")
-        picture = reference_sheet([("frame %d" % index, render, reference)], self.label, tile=1.0)
+        picture = reference_sheet([("frame %d" % index, [render], reference)], [self.label], tile=1.0)
         if self.process is None:
             self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps or fps, self.out), stdin=subprocess.PIPE)
         self.process.stdin.write(picture.tobytes())
@@ -883,7 +891,8 @@ def main():
     parser.add_argument("--angle-column", nargs=2, action="append", metavar=("LABEL", "DIR"),
                         help="a column of the --out normal-angle sheet: appearance_simplify.py --score --angle-dir's output")
     parser.add_argument("--heatmap-dir")
-    parser.add_argument("--reference-sheet", metavar="PNG", help="with --reference-video, one sheet of --sheet-frames")
+    parser.add_argument("--reference-sheet", metavar="PNG",
+                        help="with --reference-video or --reference-bakes, one sheet of --sheet-frames")
     parser.add_argument("--sheet-frames", default="2,4", help="comma-separated video frame indices for --reference-sheet")
     parser.add_argument("--video", nargs=2, metavar=("A.avi", "B.avi"))
     parser.add_argument("--csv")
@@ -895,7 +904,7 @@ def main():
 
     if (args.row or args.video or args.reference_crops) and not (args.label_a and args.label_b):
         parser.error("--label-a and --label-b are required: every panel is labelled")
-    if (args.reference_sheet or args.reference_mp4) and not args.label_a:
+    if args.reference_video and (args.reference_sheet or args.reference_mp4) and not args.label_a:
         parser.error("--label-a, naming the render, is required with --reference-sheet or --reference-mp4")
     if args.still_column:
         if len(args.still_column) < 2:
@@ -922,7 +931,7 @@ def main():
             parser.error("--reference-bakes needs at least one --bake")
         indices = [int(index) for index in args.sheet_frames.split(",")]
         lines = write_reference_bake_sheet(args.reference_bakes, args.bake, args.reference_scale, indices, args.out, args.crops,
-                                            dict(args.bake_reference or []))
+                                            dict(args.bake_reference or []), args.reference_sheet)
         print("\n".join(lines))
         if args.summary:
             with open(args.summary, "a") as handle:
@@ -969,8 +978,8 @@ def main():
             if video is not None:
                 video.close()
         if keep is not None:
-            sheet_rows = [("frame %d" % index, *pair) for index, pair in keep.items() if pair]
-            reference_sheet(sheet_rows, args.label_a).save(args.reference_sheet, optimize=True)
+            sheet_rows = [("frame %d" % index, [pair[0]], pair[1]) for index, pair in keep.items() if pair]
+            reference_sheet(sheet_rows, [args.label_a]).save(args.reference_sheet, optimize=True)
         lines = [reference_line("frame %d" % index, stats) for index, stats in enumerate(frames)]
         lines.append(reference_line("frames mean", total))
         print("\n".join(lines))

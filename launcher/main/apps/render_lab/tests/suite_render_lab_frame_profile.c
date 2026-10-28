@@ -82,8 +82,8 @@ replay_pose(int32_t path_ms, const char* row, const char* quarter, char* report)
     TEST_ASSERT_NOT_NULL(cull);
     const raster_cull_frame_t f = raster_cull_frame(cull);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f.counts.nodes_visited, "the cull view did not draw");
-#define COUNT_BYTES(name, member) sizeof(" " #name "=-2147483648") +
-    char counts[RASTER_CULL_FRAME_FIELDS(COUNT_BYTES) 1];
+#define COUNT_BYTES(name, member) char name[sizeof(" " #name "=-2147483648")];
+    char counts[sizeof(struct { RASTER_CULL_FRAME_FIELDS(COUNT_BYTES) char end; })];
     strbuf_t line = strbuf_make(counts, sizeof counts);
 #define COUNT_PAIR(name, member) strbuf_appendf(&line, "%s" #name "=%d", line.length == 0 ? "" : " ", f.member);
     RASTER_CULL_FRAME_FIELDS(COUNT_PAIR)

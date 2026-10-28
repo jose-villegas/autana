@@ -272,8 +272,10 @@ sequenceDiagram
     Plan->>Plan: Record timeline and host free time
 ```
 
-`vars.NIGHT_START` accepts HH:MM in 00:00–05:59.
-An empty value uses `NIGHT_START` in `scripts/lib/local_schedule.py`.
+GPU work starts at `vars.NIGHT_START`; the board night starts at `vars.BOARD_START`, later.
+Both accept HH:MM in 00:00–05:59; an empty value uses the constant of the same name
+in `scripts/lib/local_schedule.py`. The board night has no end time: lanes run to
+completion under their hang guards, and day board jobs queue on the lock behind them.
 
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
 The marker is the first local start at or after the trigger; override starts now.
