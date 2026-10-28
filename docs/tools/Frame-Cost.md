@@ -66,8 +66,8 @@ FRAME_LAP_SINCE("r3d.draw.wait"); /* charge everything since the last boundary *
 
 Starting a lap closes the one running on that core, so laps tile the time
 between a core's first and last lap. A lap named `<bracket>.<phase>` splits
-that bracket. Laps compile only into a perf-scope image
-(`autana flash diag --perf-scope`); elsewhere they are nothing. There the
+that bracket. Laps compile only into a lapped perf-scope image
+(`autana flash diag --perf-scope --frame-laps`); elsewhere they are nothing. There the
 shell prints them under the time line: one lap's own cost, measured on the
 board once, then per core each lap's ms and starts per frame (the numbers
 below show the line's shape and are not measurements):
@@ -78,8 +78,9 @@ ms/frame laps: lap 90 ns | cpu0 r3d.draw.set_up 15.000/9000 r3d.draw.fill 24.700
 
 A lap around a vertex or a triangle is not free next to the work it times.
 Starts times one lap's cost is what the laps cost themselves; the frame-stages
-chart takes it out of each lap and shows it apart. A perf-scope image's
-brackets still run longer than a development image's by that much.
+chart takes it out of each lap and shows it apart. A lapped image's
+brackets still run longer by that much, which is why the laps have their own
+flag: the perf scope's budgets are measured without them.
 
 ## Hardware counters
 
