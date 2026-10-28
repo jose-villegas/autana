@@ -145,8 +145,10 @@ class LinuxLaunches(FailedBuildPause):
         terminal emulator does; stdin stays open so a pause would wait."""
         if not self.script:
             self.skipTest("util-linux script not installed")
-        return self.start([self.script, "-qec", command, "/dev/null"], stdin=subprocess.PIPE,
-                          stdout=subprocess.DEVNULL, start_new_session=True)
+        process = self.start([self.script, "-qec", command, "/dev/null"], stdin=subprocess.PIPE,
+                             stdout=subprocess.DEVNULL, start_new_session=True)
+        self.addCleanup(process.stdin.close)
+        return process
 
     def test_build_detached_from_a_terminal_does_not_pause(self):
         """setsid leaves the terminal on stdin, but it already belongs to the
