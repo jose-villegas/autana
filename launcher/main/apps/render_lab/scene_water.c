@@ -23,7 +23,6 @@
 #include "app/app_arena.h"
 #include "board/board_geometry.h"
 #include "core/job.h"
-#include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
 #include "display/display.h"
@@ -91,9 +90,6 @@ static const char* TAG = "water";
 #define WATER_EARTH_MM_S2     9810
 TUNE_OWNER(water);
 TUNE(water, gravity_mm_s2, 2000, 100, WATER_EARTH_MM_S2);
-/* 1 puts the grid in internal RAM, 0 in PSRAM: for measuring which the
- * step needs. Read when the scene enters. */
-TUNE(water, grid_internal, 0, 0, 1);
 /* Substeps a frame, each an equal share of its simulated time: the same
  * count every frame, so the cost does not alternate. Two settle nearly as
  * well as four at about two thirds of the frame; one never settles
@@ -211,7 +207,6 @@ static const uint32_t SWING_FLIPS_MS[] = {3500U, 3900U, 7500U, 7900U};
 static scene_t* tank_scene;
 static scene_entity_t camera_entity, water_entity;
 static flip3_t water;
-static void* grid_internal_block;
 static float* field;
 static iso_field_t surface_field;
 static float* through; /* light left after crossing each field column's water */
@@ -268,23 +263,10 @@ take(size_t bytes) {
     return app_arena_take(bytes, _Alignof(max_align_t));
 }
 
-/* Only an internal grid, taken for measuring, is freed by hand. */
-static void
-release(void) {
-    if (grid_internal_block != NULL) {
-        memory_free(grid_internal_block);
-        grid_internal_block = NULL;
-    }
-}
-
 static bool
 allocate(void) {
     flip3_config_t config = {box, box.z / (float)WATER_CELLS_DEEP, 1};
-    const size_t grid_bytes = flip3_grid_bytes(&config);
-    if (grid_internal != 0) {
-        grid_internal_block = memory_alloc(grid_bytes, MEMORY_INTERNAL);
-    }
-    void* grid = grid_internal != 0 ? grid_internal_block : take(grid_bytes);
+    void* grid = take(flip3_grid_bytes(&config));
     /* One particle to learn the seed lattice, then room for the most water
      * the slider allows; the grid is the same at any particle count. */
     if (grid == NULL || !flip3_init(&water, &config, grid, take(flip3_particle_bytes(&config)))) {
@@ -729,7 +711,37 @@ static void
 scene_water_exit(void) {
     scene_unload(tank_scene);
     tank_scene = NULL;
-    release();
+}
+
+/* The plane's swing, or flip3's substeps, over the frame's dt_ms. */
+static void
+step_water(vec3f_t accel_g, uint32_t dt_ms) {
+    FRAME_COST_BEGIN(step_from);
+    const vec3f_t accel = vec3f_scale(accel_g, (float)gravity_mm_s2);
+    water.tuning.red_black = red_black != 0;
+    const float step_s = (float)mathi_min((int)dt_ms, WATER_MAX_STEP_MS) / (float)MATH_MS_PER_S;
+    if (plane != 0) {
+        water_plane_step(&plane_water, step_s, accel_g, (float)slosh_decihz / WATER_DECIHZ_PER_HZ,
+                         (float)slosh_damping_pct / (float)WATER_PERCENT);
+    } else if (dt_ms > 0) {
+        for (int i = 0; i < substeps; i++) {
+            flip3_step(&water, step_s / (float)substeps, accel);
+        }
+        stats.substeps += (uint32_t)substeps;
+        if (rest_um_s != 0 || FRAME_COST_ENABLED) {
+            peak_speed_mm_s = sqrtf(flip3_peak_speed_sq(&water));
+            stats.peak_speed_mm_s = peak_speed_mm_s;
+        }
+    }
+    FRAME_COST_END(step_from, "water.step");
+}
+
+/* The swing's eye above the glass's centre, against the picture's down; the
+ * eye's x runs opposite the box's. */
+static vec3f_t
+eye_rise(void) {
+    const float rise_mm = script == SCRIPT_SWING ? SWING_EYE_RISE_MM : 0.0F;
+    return (vec3f_t){-rise_mm * sinf(held_turn()), rise_mm * cosf(held_turn()), 0.0F};
 }
 
 /* Gravity, the fill, the steps and the surface, while the last frame goes out. */
@@ -749,24 +761,7 @@ scene_water_update(uint32_t dt_ms) {
     if (resting(accel_g)) {
         stats.rested++;
     } else {
-        FRAME_COST_BEGIN(step_from);
-        const vec3f_t accel = vec3f_scale(accel_g, (float)gravity_mm_s2);
-        water.tuning.red_black = red_black != 0;
-        const float step_s = (float)mathi_min((int)dt_ms, WATER_MAX_STEP_MS) / (float)MATH_MS_PER_S;
-        if (plane != 0) {
-            water_plane_step(&plane_water, step_s, accel_g, (float)slosh_decihz / WATER_DECIHZ_PER_HZ,
-                             (float)slosh_damping_pct / (float)WATER_PERCENT);
-        } else if (dt_ms > 0) {
-            for (int i = 0; i < substeps; i++) {
-                flip3_step(&water, step_s / (float)substeps, accel);
-            }
-            stats.substeps += (uint32_t)substeps;
-            if (rest_um_s != 0 || FRAME_COST_ENABLED) {
-                peak_speed_mm_s = sqrtf(flip3_peak_speed_sq(&water));
-                stats.peak_speed_mm_s = peak_speed_mm_s;
-            }
-        }
-        FRAME_COST_END(step_from, "water.step");
+        step_water(accel_g, dt_ms);
         rebuild_surface();
     }
     stats.triangles += surface.mesh.triangle_count;
@@ -774,10 +769,7 @@ scene_water_update(uint32_t dt_ms) {
     stats.update_us += timing_now_us() - started;
     step_us = (uint32_t)(timing_now_us() - started);
     FRAME_COST_END(updated_from, "water.update");
-    const float rise_mm = script == SCRIPT_SWING ? SWING_EYE_RISE_MM : 0.0F;
-    /* Against the picture's down; the eye's x runs opposite the box's. */
-    const vec3f_t rise = {-rise_mm * sinf(held_turn()), rise_mm * cosf(held_turn()), 0.0F};
-    place_camera(display_quarter_now(), vec3f_add(parallax_eye(down, dt_ms), rise));
+    place_camera(display_quarter_now(), vec3f_add(parallax_eye(down, dt_ms), eye_rise()));
 }
 
 static void
@@ -805,6 +797,29 @@ water_status(void) {
     return buf;
 }
 
+/* False, with the range as the reply, for a fill outside it. */
+static bool
+fill_in_range(int percent, console_reply_fn reply) {
+    if (percent >= WATER_FILL_MIN && percent <= WATER_FILL_MAX) {
+        return true;
+    }
+    char line[RENDER_LAB_STATUS_LEN];
+    if (snprintf(line, sizeof line, "RENDER_ERR water fill is %d to %d", WATER_FILL_MIN, WATER_FILL_MAX) >= 0) {
+        reply(line);
+    }
+    return false;
+}
+
+/* The playing script's length, 0 for none. */
+static uint32_t
+script_ms(void) {
+    switch (script) {
+        case SCRIPT_TOUR: return scene_water_tour_length_ms();
+        case SCRIPT_SWING: return SWING_MS;
+        default: return 0;
+    }
+}
+
 /* `water fill <percent>`, and `water tour` or `water swing`, which restart
  * that scripted motion. The reply gives the script's length. */
 static inline bool
@@ -812,10 +827,7 @@ scene_water_console(const char* args, console_reply_fn reply) {
     int percent;
     char line[RENDER_LAB_STATUS_LEN];
     if (sscanf(args, "water fill %d", &percent) == 1) {
-        if (percent < WATER_FILL_MIN || percent > WATER_FILL_MAX) {
-            if (snprintf(line, sizeof line, "RENDER_ERR water fill is %d to %d", WATER_FILL_MIN, WATER_FILL_MAX) >= 0) {
-                reply(line);
-            }
+        if (!fill_in_range(percent, reply)) {
             return true;
         }
         fill_percent = percent;
@@ -826,10 +838,7 @@ scene_water_console(const char* args, console_reply_fn reply) {
     } else {
         return false;
     }
-    const uint32_t length_ms = script == SCRIPT_TOUR    ? scene_water_tour_length_ms()
-                               : script == SCRIPT_SWING ? SWING_MS
-                                                        : 0;
-    if (snprintf(line, sizeof line, "RENDER water fill=%d script_ms=%u", fill_percent, (unsigned)length_ms) >= 0) {
+    if (snprintf(line, sizeof line, "RENDER water fill=%d script_ms=%u", fill_percent, (unsigned)script_ms()) >= 0) {
         reply(line);
     }
     reply("RENDER_END");
