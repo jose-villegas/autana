@@ -19,6 +19,7 @@ import argparse
 import pathlib
 import re
 import sys
+import textwrap
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
@@ -35,7 +36,11 @@ BOOT_FRAME_PHASE = "Total"
 PERCENT_SCALE = 100
 NOT_RUN = "not run"
 CHART_WIDTH = 9
-ROW_HEIGHT = 0.28
+GROUP_HEIGHT = 0.5
+LABEL_WIDTH = 40
+RANGE_WIDTH = 6
+RANGE_ALPHA = 0.45
+MEAN_LABEL_GAP = 6  # points above a group's mean dot
 CHART_BASE_HEIGHT = 1.2
 MARKER_SIZE = 36
 # A picture joins a group when its ms change against the same first layout lies
@@ -146,22 +151,29 @@ def span(values, unit):
 
 
 def chart(rows, path):
-    """One line per picture, a dot per layout at its ms change against the row's first."""
+    """One line per group, a bar from its least to its greatest ms change
+    against the first layout and a dot at its mean, coloured by layout."""
     layouts = layouts_of(rows)
     if len(layouts) > len(SLOTS):
         raise ValueError(f"{len(layouts)} layouts, {len(SLOTS)} colours")
-    figure, axis = subplots(1, 1, (CHART_WIDTH, CHART_BASE_HEIGHT + ROW_HEIGHT * len(rows)))
-    names = list(rows)
+    found = groups(rows)
+    figure, axis = subplots(1, 1, (CHART_WIDTH, CHART_BASE_HEIGHT + GROUP_HEIGHT * len(found)))
     axis.axvline(0, color=MUTED, linewidth=1)
-    for y in range(len(names)):
+    labelled = set()
+    for y, (first, layout, run) in enumerate(found):
+        changes = [ms_change(rows[name], layout) for name in run]
+        colour = SLOTS[layouts.index(layout)]
+        label = None if layout in labelled else f"{layout} against {first}"
+        labelled.add(layout)
+        axis.hlines(y, min(changes), max(changes), color=colour, linewidth=RANGE_WIDTH, alpha=RANGE_ALPHA)
+        mean = sum(changes) / len(changes)
+        axis.scatter([mean], [y], s=MARKER_SIZE, color=colour, label=label, zorder=2)
+        axis.annotate(f"{mean:+.1f}", (mean, y), xytext=(0, MEAN_LABEL_GAP), textcoords="offset points",
+                      ha="center", fontsize=8, color=INK)
         axis.axhline(y, color=FAINT, linewidth=0.5, zorder=0)
-    for layout, colour in zip(layouts, SLOTS):
-        points = [(ms_change(rows[name], layout), y) for y, name in enumerate(names) if layout in rows[name]]
-        axis.scatter([x for x, _ in points], [y for _, y in points], s=MARKER_SIZE, color=colour, label=layout,
-                     zorder=2)
-    axis.set_yticks(range(len(names)), names)
+    axis.set_yticks(range(len(found)), [textwrap.fill(pictures(rows, run), LABEL_WIDTH, break_on_hyphens=False) for _, _, run in found])
     axis.invert_yaxis()
-    axis.set_xlabel("frame time change against the row's first layout, ms (left is faster)", color=INK)
+    axis.set_xlabel("frame time change, ms (left is faster): bar from least to greatest, dot at the mean", color=INK)
     style_axes(axis, "Frame cost by framebuffer layout")
     figure.legend(loc="outside lower center", ncol=len(layouts), frameon=False, fontsize=8)
     save(figure, path)
