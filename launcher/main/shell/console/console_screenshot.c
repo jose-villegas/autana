@@ -8,6 +8,7 @@
 #include "console/console.h"
 #include "console/console_verbs.h"
 
+#include "console/console_base64.h"
 #include "core/memory.h"
 #include "gfx/capture/screenshot.h"
 #include "profile/frame_watch.h"
@@ -154,7 +155,7 @@ emit_begin_and_header(uint32_t total_bytes) {
     uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
     screenshot_bmp_header(header, GFX_WIDTH, GFX_HEIGHT);
     char header_b64[72 + 1]; /* 54 bytes -> 72 base64 chars, exact, no '=' padding */
-    screenshot_base64_encode(header, sizeof header, header_b64);
+    console_base64_encode(header, sizeof header, header_b64);
     header_b64[sizeof(header_b64) - 1] = '\0';
     console_emit_line("SCREENSHOT_DATA:", header_b64);
 }
@@ -173,7 +174,7 @@ emit_rows(size_t row_bytes, size_t row_b64_bytes) {
             row[(x * 3) + 1] = (uint8_t)(rgb >> 8);
             row[(x * 3) + 2] = (uint8_t)(rgb >> 16);
         }
-        screenshot_base64_encode(row, (int32_t)row_bytes, row_b64);
+        console_base64_encode(row, (int32_t)row_bytes, row_b64);
         row_b64[row_b64_bytes - 1] = '\0';
         console_emit_line("SCREENSHOT_DATA:", row_b64);
     }
