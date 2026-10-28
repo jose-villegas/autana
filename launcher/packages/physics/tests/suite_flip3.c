@@ -143,6 +143,44 @@ test_whole_cells_fill_the_box_on_every_axis(void) {
     TEST_ASSERT_FLOAT_WITHIN(1e-3F, ODD.size.y - (0.5F * f.step.y), f.origin.y + ((float)(f.ny - 2) * f.step.y));
 }
 
+/* 1.5 samples a cell: each axis rounds its own count, 6, 8 and 3 cells
+ * giving 9, 12 and 5 (4.5 rounded up), and still spans the box. */
+static void
+test_a_fractional_sample_rate_rounds_each_axis_and_spans_the_box(void) {
+    fixture_begin();
+    const float rate = 1.5F;
+    const iso_field_t f = flip3_field(&water, rate, field);
+    TEST_ASSERT_EQUAL_INT(9 + 2, f.nx);
+    TEST_ASSERT_EQUAL_INT(12 + 2, f.ny);
+    TEST_ASSERT_EQUAL_INT(5 + 2, f.nz);
+    TEST_ASSERT_EQUAL_size_t((size_t)f.nx * (size_t)f.ny * (size_t)f.nz, flip3_field_count(&water, rate));
+    TEST_ASSERT_FLOAT_WITHIN(1e-3F, BOX_X, f.step.x * (float)(f.nx - 2));
+    TEST_ASSERT_FLOAT_WITHIN(1e-3F, BOX_Y, f.step.y * (float)(f.ny - 2));
+    TEST_ASSERT_FLOAT_WITHIN(1e-3F, BOX_Z, f.step.z * (float)(f.nz - 2));
+    TEST_ASSERT_FLOAT_WITHIN(1e-3F, 0.5F * f.step.z, f.origin.z + f.step.z);
+}
+
+/* Settled water stands at the same level whatever the rate, within a
+ * sample of the coarser field. */
+static void
+test_a_fractional_rate_finds_the_same_level(void) {
+    fixture_begin();
+    TEST_ASSERT_GREATER_THAN_INT(0, flip3_fill(&water, 0.5F, (vec3f_t){0.0F, 1.0F, 0.0F}));
+    run(SETTLE_STEPS, (vec3f_t){0.0F, GRAVITY, 0.0F});
+    const float fine = wet_share();
+    const iso_field_t coarse = flip3_field(&water, 1.5F, field);
+    int wet = 0;
+    for (int x = 1; x < coarse.nx - 1; x++) {
+        for (int y = 1; y < coarse.ny - 1; y++) {
+            for (int z = 1; z < coarse.nz - 1; z++) {
+                wet += field[(((x * coarse.ny) + y) * coarse.nz) + z] > 0.5F ? 1 : 0;
+            }
+        }
+    }
+    const float share = (float)wet / (float)((coarse.nx - 2) * (coarse.ny - 2) * (coarse.nz - 2));
+    TEST_ASSERT_FLOAT_WITHIN(1.0F / (float)(coarse.ny - 2), fine, share);
+}
+
 static void
 test_a_fill_places_the_volume_asked_for(void) {
     fixture_begin();
@@ -363,6 +401,8 @@ void
 suite_flip3(void) {
     RUN_TEST(test_a_bad_configuration_is_refused);
     RUN_TEST(test_whole_cells_fill_the_box_on_every_axis);
+    RUN_TEST(test_a_fractional_sample_rate_rounds_each_axis_and_spans_the_box);
+    RUN_TEST(test_a_fractional_rate_finds_the_same_level);
     RUN_TEST(test_a_fill_places_the_volume_asked_for);
     RUN_TEST(test_a_fill_starts_at_the_bottom_along_down);
     RUN_TEST(test_a_fill_is_capped_by_the_particles_there_is_room_for);

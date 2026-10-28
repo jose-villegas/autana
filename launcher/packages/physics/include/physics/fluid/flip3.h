@@ -184,12 +184,14 @@ flip3_particle(const flip3_t* f, int i) {
     return vec3f_sub(f->pos[i], f->h);
 }
 
-/* The floats flip3_field() writes at `samples` per cell along each axis. */
-size_t flip3_field_count(const flip3_t* f, int samples);
+/* The floats flip3_field() writes at `samples` per cell along each axis.
+ * `samples` may be fractional: each axis takes its cells times `samples`,
+ * rounded, at least one, spaced to fill the box. */
+size_t flip3_field_count(const flip3_t* f, float samples);
 
 /* The surface field: the water's density over the box, 1 at rest, with one
  * empty sample all round so a mesh of it closes. One [1 2 1] / 4 pass per
  * axis rounds it and sinks a film a sample thin; the walls mirror, so water
  * against glass keeps its density. Returns its sizes, origin and spacing in
  * box coordinates, for iso_surface_nets(). */
-iso_field_t flip3_field(const flip3_t* f, int samples, float* out);
+iso_field_t flip3_field(const flip3_t* f, float samples, float* out);

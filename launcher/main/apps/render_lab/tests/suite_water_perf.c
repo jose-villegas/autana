@@ -26,25 +26,29 @@ typedef struct {
     int32_t two_core;
     int32_t red_black;
     int32_t plane;
+    int32_t samples_pct;
 } water_config_t;
 
 /* The default, then one change each: on one core, other substep counts,
- * the pressure in index order on one core, and skipping the step at rest
- * below 2 mm/s; and method C, the plane, against them. The grid in
- * internal RAM measured the same as in PSRAM, so it is not a row. */
+ * the pressure in index order on one core, the surface at 2 samples a cell,
+ * and skipping the step at rest below 2 mm/s; and method C, the plane,
+ * against them. The grid in internal RAM measured the same as in PSRAM, so
+ * it is not a row. */
 static const water_config_t configs[] = {
-    {.name = "base", .substeps = 2, .two_core = 1, .red_black = 1},
-    {.name = "one_core", .substeps = 2, .red_black = 1},
-    {.name = "sub4", .substeps = 4, .two_core = 1, .red_black = 1},
-    {.name = "sub1", .substeps = 1, .two_core = 1, .red_black = 1},
-    {.name = "index_order", .substeps = 2, .two_core = 1},
-    {.name = "rest", .substeps = 2, .rest_um_s = 2000, .two_core = 1, .red_black = 1},
-    {.name = "plane", .substeps = 2, .two_core = 1, .red_black = 1, .plane = 1},
+    {.name = "base", .substeps = 2, .two_core = 1, .red_black = 1, .samples_pct = 150},
+    {.name = "one_core", .substeps = 2, .red_black = 1, .samples_pct = 150},
+    {.name = "sub4", .substeps = 4, .two_core = 1, .red_black = 1, .samples_pct = 150},
+    {.name = "sub1", .substeps = 1, .two_core = 1, .red_black = 1, .samples_pct = 150},
+    {.name = "index_order", .substeps = 2, .two_core = 1, .samples_pct = 150},
+    {.name = "samples2", .substeps = 2, .two_core = 1, .red_black = 1, .samples_pct = 200},
+    {.name = "rest", .substeps = 2, .rest_um_s = 2000, .two_core = 1, .red_black = 1, .samples_pct = 150},
+    {.name = "plane", .substeps = 2, .two_core = 1, .red_black = 1, .plane = 1, .samples_pct = 150},
 };
 
 static const char* const tunes[] = {TUNE_NAME(water, grid_internal), TUNE_NAME(water, substeps),
                                     TUNE_NAME(water, rest_um_s),     TUNE_NAME(water, two_core),
-                                    TUNE_NAME(water, red_black),     TUNE_NAME(water, plane)};
+                                    TUNE_NAME(water, red_black),     TUNE_NAME(water, plane),
+                                    TUNE_NAME(water, samples_pct)};
 
 /* A row's frames: whole frame, update and draw, in us. */
 typedef struct {
@@ -120,8 +124,8 @@ log_row(const char* config, const char* phase) {
 /* The tour once at a fixed frame time, one row per phase. */
 static void
 play(const water_config_t* config) {
-    const int32_t values[] = {config->grid_internal, config->substeps,  config->rest_um_s,
-                              config->two_core,      config->red_black, config->plane};
+    const int32_t values[] = {config->grid_internal, config->substeps, config->rest_um_s,  config->two_core,
+                              config->red_black,     config->plane,    config->samples_pct};
     _Static_assert(sizeof values / sizeof values[0] == sizeof tunes / sizeof tunes[0], "a value per tune");
     for (size_t i = 0; i < sizeof tunes / sizeof tunes[0]; i++) {
         TEST_ASSERT_TRUE(tune_set(tune_shared(), tunes[i], values[i]));
