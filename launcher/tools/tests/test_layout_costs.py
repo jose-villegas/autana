@@ -37,14 +37,29 @@ class LayoutCostsTests(unittest.TestCase):
         mesh = self.write("mesh.log", MESH)
         rows = {**layout_costs.mesh_costs(mesh), **layout_costs.boot_costs(self.write("boot.log", boot()))}
         self.assertEqual(list(rows), ["room, portrait", "room, landscape", "boot animation, swell"])
-        lines = layout_costs.table(rows, "chart.png").splitlines()
+        draws = {"room, portrait": "U", "room, landscape": "U", "boot animation, swell": "F"}
+        lines = layout_costs.table(rows, "chart.png", draws).splitlines()
         self.assertEqual(lines[0], "![Frame cost by framebuffer layout](../images/render/chart.png)")
-        lines = lines[2:]
-        self.assertEqual(lines[0], "| Picture | `LAYOUT_A` | `LAYOUT_B` | `LAYOUT_C` |")
-        self.assertEqual(lines[2], "| room, portrait | 40.0 | 44.0 (+10%) | not run |")
-        self.assertEqual(lines[3], "| room, landscape | 20.0 | not run | not run |")
-        self.assertEqual(lines[4], "| boot animation, swell | 30.0 | 27.0 (-10%) | 33.0 (+10%) |")
+        self.assertEqual(lines[2], "| Scene | Pictures | Draws | Best layout | Gain against `LAYOUT_A` | Others |")
+        self.assertEqual(lines[4], "| room | 2 | U | `LAYOUT_A` | — | `LAYOUT_B` +4.0 ms (+10%) |")
+        self.assertEqual(lines[5], "| boot animation | 1 | F | `LAYOUT_B` | -3.0 ms (-10%) | `LAYOUT_A`, `LAYOUT_C` +3.0 ms (+10%) |")
+        every = lines[lines.index("<details><summary>Every picture</summary>") + 2:]
+        self.assertEqual(every[0], "| Picture | `LAYOUT_A` | `LAYOUT_B` | `LAYOUT_C` |")
+        self.assertEqual(every[2], "| room, portrait | 40.0 | 44.0 (+10%) | not run |")
+        self.assertEqual(every[3], "| room, landscape | 20.0 | not run | not run |")
+        self.assertEqual(every[4], "| boot animation, swell | 30.0 | 27.0 (-10%) | 33.0 (+10%) |")
+        self.assertEqual(every[6], "</details>")
         self.assertTrue(lines[-1].startswith("Board ms per frame"))
+
+    def test_a_family_groups_a_scenes_variants_and_orientations(self):
+        self.assertEqual(layout_costs.family("hall-lit-full, portrait"), "hall")
+        self.assertEqual(layout_costs.family("boot animation, swell"), "boot animation")
+        rows = {"hall, portrait": {"A": 10.0, "B": 12.0}, "yard, portrait": {"A": 20.0, "B": 21.0},
+                "hall-lit, landscape": {"A": 30.0, "B": 35.0}}
+        self.assertEqual(layout_costs.groups(rows), [("hall", "A", "B", ["hall, portrait", "hall-lit, landscape"]),
+                                                     ("yard", "A", "B", ["yard, portrait"])])
+        self.assertIn("| hall | 2 | U | `A` | — | `B` +3.5 ms (+18%) |",
+                      layout_costs.table(rows, "c.png", dict.fromkeys(rows, "U")))
 
     def test_captures_must_share_one_build(self):
         mesh = self.write("mesh.log", MESH)
