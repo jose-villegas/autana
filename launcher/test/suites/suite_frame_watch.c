@@ -401,6 +401,18 @@ test_on_the_board_a_log_line_every_present_is_caught(void) {
 }
 
 static void
+test_on_the_board_more_log_lines_than_the_queue_holds_between_presents_drop_none(void) {
+    for (int i = 0; i < FRAME_WATCH_WARMUP; i++) {
+        gfx_present();
+    }
+    for (int i = 0; i <= FRAME_WATCH_PENDING_MAX; i++) {
+        ESP_LOGI("frame_watch_test", "burst %d", i);
+    }
+    gfx_present();
+    TEST_ASSERT_EQUAL_INT(0, sites_caught_so_far());
+}
+
+static void
 test_on_the_board_one_allocation_among_many_presents_is_not(void) {
     for (int i = 0; i < WATCHED_PRESENTS; i++) {
         if (i == WATCHED_PRESENTS - FRAME_WATCH_WINDOW / 2) {
@@ -465,6 +477,7 @@ suite_frame_watch(void) {
 #ifdef DEVICE_BUILD
     RUN_TEST(test_on_the_board_an_allocation_every_present_is_caught);
     RUN_TEST(test_on_the_board_a_log_line_every_present_is_caught);
+    RUN_TEST(test_on_the_board_more_log_lines_than_the_queue_holds_between_presents_drop_none);
     RUN_TEST(test_on_the_board_one_allocation_among_many_presents_is_not);
     RUN_TEST(test_on_the_board_three_allocation_sites_taking_turns_are_not_merged);
     RUN_TEST(test_on_the_board_three_log_lines_taking_turns_are_not_merged);
