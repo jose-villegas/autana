@@ -94,6 +94,24 @@ view_from_name(const char* name) {
     return false;
 }
 
+/* --small-fill NAME: the SMALL FILL menu's preset of that label. */
+static bool
+small_fill_from_name(const char* name) {
+    int count;
+    const char* const* names = render_lab_small_fill_names(&count);
+    for (int i = 0; i < count; i++) {
+        if (strcmp(names[i], name) == 0) {
+            return render_lab_small_fill_select(i);
+        }
+    }
+    (void)fprintf(stderr, "render_lab_render_host: --small-fill is one of");
+    for (int i = 0; i < count; i++) {
+        (void)fprintf(stderr, "%s \"%s\"", i == 0 ? "" : ",", names[i]);
+    }
+    (void)fprintf(stderr, ", not %s\n", name);
+    return false;
+}
+
 static bool
 tune_options(int argc, char** argv, const char* option) {
     for (int i = 0; i < argc; i++) {
@@ -146,6 +164,7 @@ options(int argc, char** argv) {
     const char* view;
     const char* scale;
     const char* size;
+    const char* small_fill;
     const char* at;
     if (!option_value(argc, argv, "--tap", &at)) {
         return false;
@@ -160,7 +179,8 @@ options(int argc, char** argv) {
     }
     if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)
         || !option_value(argc, argv, "--camera", &render_lab_start_camera)
-        || !option_value(argc, argv, "--scale", &scale) || !option_value(argc, argv, "--size", &size)) {
+        || !option_value(argc, argv, "--scale", &scale) || !option_value(argc, argv, "--size", &size)
+        || !option_value(argc, argv, "--small-fill", &small_fill)) {
         return false;
     }
     if (size != NULL
@@ -179,6 +199,7 @@ options(int argc, char** argv) {
     apply_flags(argc, argv);
     render_lab_start_scene_key = scene;
     return console_options(argc, argv) && (view == NULL || view_from_name(view))
+           && (small_fill == NULL || small_fill_from_name(small_fill))
            && (scale == NULL || render_host_set_tunable("render_lab.scale", atoi(scale)))
            && tune_options(argc, argv, "--tune");
 }

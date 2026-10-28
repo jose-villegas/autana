@@ -69,15 +69,17 @@ fi
 gif_from_avi "$W/capybara-motion.avi" "$OUT/render-lab-capybara.gif" "fps=25/2" "stats_mode=diff"
 
 # The water scene's swing (`water swing`), landscape as the other clips:
-# rocked hard and then calmer, leaned back so the surface shows. The scene's
+# rocked hard and then calmer, leaned back so the surface shows, its small
+# triangles filled with the SMALL FILL menu's dithered preset. The scene's
 # reply gives the swing's length.
 WATER_DT=16
+WATER_SMALL_FILL="FAST - DITHER"
 swing_ms=$("$W/render_lab_render" --quarter 1 --no-hud --scene water --frames 1 --console "0:water swing" \
     -o "$W/water-swing-length.bmp" 2> "$W/water-swing-length.log" | sed -n 's/^RENDER water .*script_ms=\([0-9]*\).*/\1/p')
 if [ -z "$swing_ms" ]; then
     echo "doc_images.sh: the water scene gave no swing length; see $W/water-swing-length.log" >&2
     exit 1
 fi
-run "$W/render_lab_render" --quarter 1 --no-hud --scene water --console "0:water swing" --dt "$WATER_DT" \
-    --frames "$((swing_ms / WATER_DT))" -o "$W/water-swing.bmp" --video "$W/water-swing.avi" 2> "$W/water.log"
+run "$W/render_lab_render" --quarter 1 --no-hud --scene water --small-fill "$WATER_SMALL_FILL" \
+    --console "0:water swing" --dt "$WATER_DT" --frames "$((swing_ms / WATER_DT))" -o "$W/water-swing.bmp" --video "$W/water-swing.avi" 2> "$W/water.log"
 gif_from_avi "$W/water-swing.avi" "$OUT/render-lab-water.gif" "fps=15" "stats_mode=diff"
