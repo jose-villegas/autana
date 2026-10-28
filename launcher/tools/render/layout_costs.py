@@ -35,6 +35,10 @@ FRAME_STAGE = "frame"
 BOOT_FRAME_PHASE = "Total"
 PERCENT_SCALE = 100
 NOT_RUN = "not run"
+# How each suite draws its pictures (launcher/main/apps/render_lab/tests/suite_layout_perf.c,
+# launcher/test/suites/suite_boot_anim_perf.c): the conclusion table's scene type.
+MESH_DRAWS = "`update()`, the frame before sent meanwhile"
+BOOT_DRAWS = "a full frame in `frame()`"
 CHART_WIDTH = 9
 BAR_STEP = 0.35  # rows between one family's layout bars
 FAMILY_GAP = 0.5  # rows between families
@@ -162,17 +166,40 @@ def chart(rows, path):
     save(figure, path)
 
 
-def table(rows, chart_name):
-    """A row per family and layout with its ms and percent ranges; then, in a
+def conclusions(rows, draws):
+    """One row per family: how it draws, the layout with the lowest mean ms
+    change against the first (the first itself at zero), that change, then
+    the other layouts' changes."""
+    found = groups(rows)
+    firsts = list(dict.fromkeys(first for _, first, _, _ in found))
+    against = f"`{firsts[0]}`" if len(firsts) == 1 else "its first layout"
+    lines = [f"| Scene | Pictures | Draws | Best layout | Gain against {against} | Others |", "|---|---|---|---|---|---|"]
+    for name in dict.fromkeys(name for name, _, _, _ in found):
+        held = [entry for entry in found if entry[0] == name]
+        first = held[0][1]
+        members = [row for row in rows if family(row) == name]
+        means = {first: (0.0, 0.0)}
+        for _, _, layout, run in held:
+            means[layout] = (sum(ms_change(rows[row], layout) for row in run) / len(run),
+                             sum(change(rows[row], layout) for row in run) / len(run))
+        best = min(means, key=lambda layout: means[layout][0])
+        def cell(layout):
+            return f"{means[layout][0]:+.1f} ms ({means[layout][1]:+.0f}%)"
+        gain = "—" if best == first else cell(best)
+        others = ", ".join(f"`{layout}` {cell(layout)}" if layout != first else f"`{layout}`"
+                           for layout in means if layout != best)
+        kinds = ", ".join(dict.fromkeys(draws[row] for row in members))
+        lines.append(f"| {name} | {len(members)} | {kinds} | `{best}` | {gain} | {others} |")
+    return lines
+
+
+def table(rows, chart_name, draws):
+    """The conclusions, a row per family; then, in a
     dropdown, one row per picture, one column per layout, each cell after a
     row's first layout giving its change against that first one."""
     layouts = layouts_of(rows)
     lines = [f"![Frame cost by framebuffer layout](../images/render/{chart_name})", "",
-             "| Scene | Pictures | Layout | Against | Change, ms | Change |", "|---|---|---|---|---|---|"]
-    for name, first, layout, held in groups(rows):
-        lines.append(f"| {name} | {len(held)} | `{layout}` | `{first}` "
-                     f"| {span([ms_change(rows[member], layout) for member in held], '')} "
-                     f"| {span([change(rows[member], layout) for member in held], '%')} |")
+             *conclusions(rows, draws)]
     lines += ["", "<details><summary>Every picture</summary>", "",
               "| Picture | " + " | ".join(f"`{layout}`" for layout in layouts) + " |",
              "|---|" + "---|" * len(layouts)]
@@ -189,7 +216,8 @@ def table(rows, chart_name):
         lines.append(f"| {row} | " + " | ".join(cells) + " |")
     lines += ["", "</details>"]
     note = ("\nBoard ms per frame, mean of each suite's samples. A change is against the "
-            "first layout its row reports; a scene row spans its variants and orientations.")
+            "first layout its row reports; a scene row spans its variants and orientations, "
+            "and its best layout has the lowest mean.")
     return "\n".join(lines) + "\n" + note
 
 
@@ -202,10 +230,12 @@ def main():
     args = parser.parse_args()
     require_same_board({str(path): capture_board(path) for path in (args.mesh, args.boot)})
     require_same_build([args.mesh, args.boot])
-    rows = {**mesh_costs(args.mesh), **boot_costs(args.boot)}
+    mesh, boot = mesh_costs(args.mesh), boot_costs(args.boot)
+    rows = {**mesh, **boot}
+    draws = {**dict.fromkeys(mesh, MESH_DRAWS), **dict.fromkeys(boot, BOOT_DRAWS)}
     chart(rows, args.chart)
     args.tables.mkdir(parents=True, exist_ok=True)
-    (args.tables / f"{BLOCK}.md").write_text(table(rows, args.chart.name) + "\n", encoding="utf-8")
+    (args.tables / f"{BLOCK}.md").write_text(table(rows, args.chart.name, draws) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
