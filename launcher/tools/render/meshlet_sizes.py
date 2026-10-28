@@ -8,6 +8,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
+from build.c_header import read_define
 from r3d.cost_model import FEATURES, mesh_rows
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 import frame_cost
@@ -112,11 +113,9 @@ def host_columns(paths, poses, cull=True):
 
 
 def default_size():
-    def define(path, name):
-        return int(re.search(rf"^#define {name}\s+(\d+)", path.read_text(), re.M)[1])
-    scale = define(ROOT / "launcher/main/render/context/render_context.h", "RENDER_CONTEXT_DEFAULT_SCALE_PERCENT")
+    scale = read_define(ROOT / "launcher/main/render/context/render_context.h", "RENDER_CONTEXT_DEFAULT_SCALE_PERCENT")
     header = ROOT / "launcher/main/gfx/gfx.h"
-    return tuple(define(header, name) * scale // 100 for name in ("GFX_WIDTH", "GFX_HEIGHT"))
+    return tuple(read_define(header, name) * scale // 100 for name in ("GFX_WIDTH", "GFX_HEIGHT"))
 
 
 def chart(rows, path):

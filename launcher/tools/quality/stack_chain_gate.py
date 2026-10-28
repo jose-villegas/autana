@@ -21,6 +21,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER = os.path.normpath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, os.path.join(LAUNCHER, "tools"))
+from build.c_header import read_define
 from build.compile_db import compile_flags
 
 MAIN_DIR = os.path.join(LAUNCHER, "main")
@@ -30,11 +31,10 @@ TIMING = os.path.join(LAUNCHER, "test", "timing.c")
 
 def stack_reserve():
     """The bytes a test must leave free: timing.c's own constant."""
-    with open(TIMING, "r", encoding="utf-8") as fh:
-        m = re.search(r"#define STACK_RESERVE_BYTES (\d+)U", fh.read())
-    if not m:
-        raise SpecError("STACK_RESERVE_BYTES not found in %s" % TIMING)
-    return int(m.group(1))
+    try:
+        return read_define(TIMING, "STACK_RESERVE_BYTES")
+    except RuntimeError as error:
+        raise SpecError(str(error)) from error
 
 NODE_RE = re.compile(r'node: \{ title: "([^"]*)" label: "([^"]*)"')
 EDGE_RE = re.compile(r'edge: \{ sourcename: "([^"]*)" targetname: "([^"]*)"( label:)?')
