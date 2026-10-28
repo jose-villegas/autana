@@ -35,6 +35,13 @@ static uint16_t* depth;
 static r3d_pipeline_work_t* work;
 
 static bool cull_changed;
+
+/* The panel takes pixels big-endian: the byte swap back to the native 16 bits. */
+static uint16_t
+native_of(gfx_color_t stored) {
+    return (uint16_t)((stored >> 8) | (stored << 8)); /* magic: swaps the two bytes of a 16-bit pixel */
+}
+
 static int32_t saved_cull;
 
 static void release_fixture(void);
@@ -259,7 +266,7 @@ test_colours_stay_within_the_vertex_range_even_at_the_edges(void) {
         if (depth[i] == 0) {
             continue;
         }
-        const uint16_t native = (uint16_t)((color[i] >> 8) | (color[i] << 8));
+        const uint16_t native = native_of(color[i]);
         const int r = native >> 11, g = (native >> 5) & 63, b5 = native & 31;
         /* A wrapped channel would show as a colour whose channels disagree. */
         TEST_ASSERT_INT_WITHIN(1, r, b5);
@@ -330,7 +337,7 @@ test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner(void) {
 static uint32_t
 next_random(uint32_t* state) {
     *state = (*state * 1664525u) + 1013904223u;
-    return *state >> 8;
+    return *state >> 8; /* magic: the generator's low byte is its weakest, so it is dropped */
 }
 
 /* A subpixel position in [lo, lo + span), landing on a pixel centre or a
@@ -1540,7 +1547,7 @@ test_colour_along_the_near_cut_is_interpolated_to_the_cut(void) {
     for (int x = 0; x < W; x++) {
         const int i = first_row * W + x;
         if (depth[i] != 0) {
-            const uint16_t native = (uint16_t)((color[i] >> 8) | (color[i] << 8));
+            const uint16_t native = native_of(color[i]);
             TEST_ASSERT_INT_WITHIN_MESSAGE(2, 51 >> 3, native >> 11, "the cut edge does not carry the cut's colour");
         }
     }

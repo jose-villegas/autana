@@ -493,7 +493,7 @@ test_band_extent_is_full_width_once_everything_is_marked(void) {
     TEST_ASSERT_TRUE(dirty_band_extent(0, 32, &x0, &x1));
     TEST_ASSERT_EQUAL_INT(0, x0);
     TEST_ASSERT_EQUAL_INT(GFX_WIDTH, x1);
-    TEST_ASSERT_TRUE(dirty_band_extent(416, 448, &x0, &x1));
+    TEST_ASSERT_TRUE(dirty_band_extent(GFX_HEIGHT - 32, GFX_HEIGHT, &x0, &x1));
 }
 
 /* A moving box across several frames, marked and queried the way a band-mode
