@@ -78,7 +78,6 @@ def capture(args, sleep=time.sleep):
     main = args.tree / "launcher/main"
     window = read_define(main / "shell/shell.c", "SHELL_REPORT_WINDOW_US") / US_PER_SECOND
     startup = read_define(main / "audio/audio_out_device.h", "AUDIO_OUT_AMP_STARTUP_MS") / MS_PER_SECOND
-    idle = read_define(main / "sound/sound_mixer.h", "SOUND_AMP_IDLE_MS") / MS_PER_SECOND
     engine = (main / "sound/sound_engine.h").read_text(encoding="utf-8")
     alias = re.search(r"^#define[ \t]+SOUND_MIXER_BLOCK_FRAMES[ \t]+([A-Za-z_]\w*)[ \t]*$",
                       engine, re.MULTILINE)
@@ -127,7 +126,7 @@ def capture(args, sleep=time.sleep):
                     record(f"dropped {sound} {count}", dropped_count(stats))
                     for index in range(count):
                         run("sound", "play", fill if fill and index else sound, "loop")
-                    sleep((startup if count else idle) + REPORT_WINDOWS * window)
+                    sleep(startup + REPORT_WINDOWS * window)
                     stats = run("sound", "stats")
                     active = playing_count(stats)
                     record(f"playing {sound} {count}", active)

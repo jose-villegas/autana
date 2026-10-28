@@ -1,17 +1,5 @@
 # Haptics
 
-```mermaid
-sequenceDiagram
-    participant Shell
-    participant Sound
-    participant Amp
-    Shell->>Sound: touch-down, sound_warm_amp()
-    Sound->>Amp: start warming
-    Amp-->>Sound: startup elapsed
-    Shell->>Sound: commit, haptic_pulse()
-    Sound->>Amp: pulse on time
-```
-
 The speaker shakes the case. Every pulse is also a soft sound; the
 [low-frequency measurements](../audio/Low-Frequency-Buzz.md) describe the
 resonance and usable gains.
@@ -39,14 +27,7 @@ if (ui_button(ui, "Start")) {
 The constants have one owner in `launcher/main/haptics/haptics.h`. Playback uses
 the mixer's timed tone, bus gains and one-shot de-click tail.
 
-## Touch-down and amplifier
-
-The shell calls `sound_warm_amp()` after polling a touch press. The queued
-request starts the normal amplifier warm-up without a voice or sound.
-
-A commit after `AUDIO_OUT_AMP_STARTUP_MS` can play its first block immediately.
-An earlier commit waits for the remaining warm-up. Activity retains the normal
-`SOUND_AMP_IDLE_MS` tail; see [Amplifier](../audio/Mixer-Internals.md#amplifier).
+## Development measurement
 
 On a development console, `haptic light` or `haptic firm` replies
 `HAPTIC <strength> audible_ms=<ms>`, measured from the call until
@@ -61,6 +42,4 @@ Remove these pieces together:
 |---|---|
 | Pulse module and development verb | `launcher/main/haptics/` and its CMake and host source entries |
 | Built-in bus | `SOUND_BUS_HAPTIC`, built-in count and name in `launcher/main/sound/` |
-| Warm-up request | `sound_warm_amp()`, its queue command and mixer activity flag |
-| Touch-down hook | the warm-up call immediately after `input_poll()` in `shell/shell.c` |
 | Registration and verification | haptics layer entry, host tests and documentation links |
