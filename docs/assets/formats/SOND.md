@@ -5,28 +5,30 @@ A mono 22,050 Hz sound, PCM16 or IMA-ADPCM ([Sound-Assets.md](../../audio/Sound-
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #c7aaee !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(5) rect:nth-of-type(2) { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 110
 ---
 packet-beta
 title Header, 32 bytes at 0, one cell a byte
-0-1: "🟦 version = 1"
-2: "🟪 format"
-3: "🟩 channels"
+0-1: "version = 1"
+2: "format"
+3: "channels"
 4-7: "sample_rate"
-8-11: "🟩 frames"
+8-11: "frames"
 12-15: "loop_start"
 16-19: "loop_end"
 20-21: "block_frames"
-22-23: "⬜ 0"
-24-27: "⬜ 0"
-28-31: "🟧 data_off"
+22-23: "0"
+24-27: "0"
+28-31: "data_off"
 ```
 
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 84
@@ -39,6 +41,7 @@ title Content: PCM16 sample, 2 bytes a frame from data_off
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 84
@@ -47,7 +50,7 @@ packet-beta
 title Content: ADPCM block, 4 + (block_frames - 1) / 2 bytes from data_off
 0-1: "int16 predictor"
 2: "step index"
-3: "⬜ 0"
+3: "0"
 4-7: "codes, two a byte, low nibble first"
 ```
 

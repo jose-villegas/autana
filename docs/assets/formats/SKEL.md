@@ -5,23 +5,25 @@ A skinned mesh's joint tree and rest pose ([Skeleton-and-Skin.md](../../render/S
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100
 ---
 packet-beta
 title Header, 16 bytes at 0, one cell a byte
-0-1: "🟦 version = 1"
-2: "🟩 joints"
-3: "⬜ 0"
-4-7: "🟧 strings_off"
-8-11: "🟩 strings_size"
-12-15: "🟧 rest_off"
+0-1: "version = 1"
+2: "joints"
+3: "0"
+4-7: "strings_off"
+8-11: "strings_size"
+12-15: "rest_off"
 ```
 
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 4
     bitWidth: 120
@@ -30,12 +32,13 @@ packet-beta
 title Joint registry, one 4-byte row a joint from byte 16
 0-1: "path"
 2: "parent"
-3: "⬜ 0"
+3: "0"
 ```
 
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 20
     bitWidth: 44

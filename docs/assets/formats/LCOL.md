@@ -13,16 +13,17 @@ the pack name field.
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #c7aaee !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 12
     bitWidth: 60
 ---
 packet-beta
 title Header, 12 bytes at 0, one cell a byte
-0-1: "🟦 version = 1"
-2-3: "🟪 encoding"
-4-7: "🟩 set_count"
-8-11: "🟩 count"
+0-1: "version = 1"
+2-3: "encoding"
+4-7: "set_count"
+8-11: "count"
 ```
 
 | Encoding | Stride | Unit | Cell layout |

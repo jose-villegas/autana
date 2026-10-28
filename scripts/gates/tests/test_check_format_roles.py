@@ -1,4 +1,4 @@
-"""A format field's colour marker follows from its label and its page's header."""
+"""A format diagram's box colours follow from its labels and its page's header."""
 import pathlib
 import sys
 import tempfile
@@ -17,6 +17,11 @@ HEADER = """#define THING_VERSION 1U
 PAGE = """Layout defines: [`thing.h`](../../launcher/main/thing.h).
 
 ```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+---
 packet-beta
 0-1: "version = 1"
 2: "mode"
@@ -40,7 +45,7 @@ class FormatRolesTests(unittest.TestCase):
                                  "size": "count", "joints": "count", "mode": "code", "frac": "value",
                                  "int16 x": "value"})
 
-    def test_write_marks_each_field_and_check_names_the_wrong_ones(self):
+    def test_write_fills_each_box_by_row_and_place_and_check_names_the_diagram(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = pathlib.Path(directory)
             (folder / "launcher/main").mkdir(parents=True)
@@ -49,15 +54,22 @@ class FormatRolesTests(unittest.TestCase):
             page = folder / "docs/formats/THING.md"
             page.write_text(PAGE, encoding="utf-8")
             with mock.patch.object(check_format_roles, "ROOT", folder):
-                text, wrong = check_format_roles.marked(page)
-            self.assertEqual(len(wrong), 5)
-            self.assertIn('4-7 "🟧 item_count" wants "🟩 item_count"', wrong[2])
-            for line in ('0-1: "🟦 version = 1"', '2: "🟪 mode"', '3: "frac"', '4-7: "🟩 item_count"',
-                         '8-11: "🟧 items_off"', '12-15: "int16 value"'):
-                self.assertIn(line, text)
+                text, wrong = check_format_roles.filled(page)
+            self.assertEqual(wrong, ["docs/formats/THING.md: a packet diagram"])
+            fills = check_format_roles.FILLS
+            # 4-7 ends row one; 8-11 and 12-15 share row two, each its own box.
+            for rule in (f"g:nth-of-type(2) rect:nth-of-type(1) {{ {fills['identity']} !important; }}",
+                         f"g:nth-of-type(2) rect:nth-of-type(2) {{ {fills['code']} !important; }}",
+                         f"g:nth-of-type(2) rect:nth-of-type(3) {{ {fills['value']} !important; }}",
+                         f"g:nth-of-type(2) rect:nth-of-type(4) {{ {fills['count']} !important; }}",
+                         f"g:nth-of-type(3) rect:nth-of-type(1) {{ {fills['offset']} !important; }}",
+                         f"g:nth-of-type(3) rect:nth-of-type(2) {{ {fills['value']} !important; }}"):
+                self.assertIn(rule, text)
+            self.assertNotIn(">", text.split("themeCSS")[1].splitlines()[0])
+            self.assertIn('4-7: "item_count"', text)
             page.write_text(text, encoding="utf-8")
             with mock.patch.object(check_format_roles, "ROOT", folder):
-                self.assertEqual(check_format_roles.marked(page)[1], [])
+                self.assertEqual(check_format_roles.filled(page)[1], [])
 
 
 if __name__ == "__main__":

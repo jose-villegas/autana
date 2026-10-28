@@ -5,23 +5,25 @@ A picture, read in place ([Image-Entries.md](../Image-Entries.md)). Layout defin
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #c7aaee !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 44
 ---
 packet-beta
 title Header, 16 bytes at 0, one cell a byte
-0-1: "🟦 version = 1"
-2-3: "🟪 format"
+0-1: "version = 1"
+2-3: "format"
 4-5: "width"
 6-7: "height"
 8-11: "stride"
-12-15: "🟧 pixels_off"
+12-15: "pixels_off"
 ```
 
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 4
     bitWidth: 120
@@ -34,6 +36,7 @@ title Content: one RGB565 pixel (format 1), 2 bytes from pixels_off
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 2
     bitWidth: 240
