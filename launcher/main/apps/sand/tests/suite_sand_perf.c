@@ -110,6 +110,24 @@ liquid_near_cell_bound(const sand_t* s) {
     return total;
 }
 
+/* A REAL_W x REAL_H-class board a row paints itself: the grid and the block
+ * map first, the sand_t after, which is the heap order the timed rows depend
+ * on. perf_board_free() releases all three. */
+static sand_t*
+perf_board_new(uint8_t** big, uint8_t** blocks, int w, int h) {
+    sand_test_grid_buffers_open(big, blocks, w, h);
+    sand_t* const real = malloc(sizeof *real);
+    TEST_ASSERT_NOT_NULL(real);
+    return real;
+}
+
+static void
+perf_board_free(sand_t* real, uint8_t* big, uint8_t* blocks) {
+    free(real);
+    free(big);
+    free(blocks);
+}
+
 /* THE REGRESSION: MAT_SAND soaks, so this scene - a stone
  * wall keeps its sand and water apart - still walked its full grid every
  * step. sand_step_reactions()'s soak-only skip walks only BLOCK_LIQUID_NEAR
@@ -122,11 +140,8 @@ static void
 test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     const int steps = 20;
-    sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
+    sand_t* const real = perf_board_new(&big, &blocks, REAL_W, REAL_H);
 
     build_mixed_gravity_flip_scene(real, big, blocks);
     sand_reactions_force_full_walk(true);
@@ -149,8 +164,7 @@ test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk(void) {
     const unsigned dispatched_fast = sand_reactions_cells_dispatched;
 
     sand_reactions_force_full_walk(false); /* restore the shipped default */
-    free(big);
-    free(blocks);
+    perf_board_free(real, big, blocks);
 
     TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)(REAL_W * REAL_H * steps), dispatched_full,
                                    "sanity: forcing the full walk must dispatch every cell of every step");
@@ -162,7 +176,6 @@ test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk(void) {
              near_bound, dispatched_fast, dispatched_full);
     TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)near_bound, dispatched_fast, why);
     TEST_ASSERT_LESS_THAN_MESSAGE(dispatched_full / 2, dispatched_fast, why);
-    free(real);
 }
 
 /* THE FINGERPRINT: this exact scene and step count is also
@@ -179,13 +192,11 @@ static void
 test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
+    sand_t* const real = perf_board_new(&big, &blocks, REAL_W, REAL_H);
 
     const bool two_core_before = sand_two_core_step_enabled();
     sand_set_two_core_step(false);
 
-    sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
     build_mixed_gravity_flip_scene(real, big, blocks);
 
     sand_reactions_force_full_walk(true);
@@ -199,8 +210,7 @@ test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
 
     sand_reactions_force_full_walk(false);
     sand_set_two_core_step(two_core_before);
-    free(big);
-    free(blocks);
+    perf_board_free(real, big, blocks);
 
     TEST_ASSERT_EQUAL_HEX32_MESSAGE(full_hash, fast_hash,
                                     "the soak-only skip must reproduce the full walk's grid exactly");
@@ -208,7 +218,6 @@ test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
                                     "the mixed flip scene's hash must stay pegged - a change here without "
                                     "an accompanying report_fingerprint.sh --update means behaviour moved, "
                                     "not just performance");
-    free(real);
 }
 
 /* A suite run alone (RUNSUITE, or this suite's own perf scope) inherits
@@ -689,10 +698,7 @@ test_the_gas_random_walk_against_the_exhaustive_mover(void) {
         for (int r = 0; r < FIRE_REPEATS; r++) {
             uint8_t* big;
             uint8_t* blocks;
-            sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
-            sand_t* const real = malloc(sizeof *real);
-            TEST_ASSERT_NOT_NULL(real);
+            sand_t* const real = perf_board_new(&big, &blocks, REAL_W, REAL_H);
             build_fire_scene(real, big, blocks);
             run_steps(real, FIRE_WARMUP_STEPS, 0, SCENE_GRAVITY);
 
@@ -701,9 +707,7 @@ test_the_gas_random_walk_against_the_exhaustive_mover(void) {
             sand_step(real, 0, SCENE_GRAVITY, 0);
             const int64_t took = timing_now_us() - start;
 
-            free(real);
-            free(big);
-            free(blocks);
+            perf_board_free(real, big, blocks);
             if (best[arm] < 0 || took < best[arm]) {
                 best[arm] = took;
             }
@@ -1890,9 +1894,7 @@ static void
 log_mixed_scene_hashes(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-    sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
+    sand_t* const real = perf_board_new(&big, &blocks, REAL_W, REAL_H);
     build_mixed_gravity_flip_scene(real, big, blocks);
     ESP_LOGI("xtperf", "scene=mixed_flip hash settled=%08" PRIx32, name_hash_n(big, REAL_W * REAL_H));
     for (int i = 0; i < 20; i++) {
@@ -1901,9 +1903,7 @@ log_mixed_scene_hashes(void) {
             ESP_LOGI("xtperf", "scene=mixed_flip hash flip%d=%08" PRIx32, i + 1, name_hash_n(big, REAL_W * REAL_H));
         }
     }
-    free(real);
-    free(big);
-    free(blocks);
+    perf_board_free(real, big, blocks);
 }
 
 /* An instrument, not a gate: asserts only that the counters moved at all -
@@ -3429,10 +3429,7 @@ static void
 test_water_slope_controls_log_the_pass_split(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
-    sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
+    sand_t* const real = perf_board_new(&big, &blocks, REAL_W, REAL_H);
     long masses[4] = {0};
     const char* names[4] = {"dry", "slope", "flat", "stone"};
     void (*const builds[4])(sand_t*) = {build_water_slope_scene, build_water_slope_covered_scene,
@@ -3449,14 +3446,11 @@ test_water_slope_controls_log_the_pass_split(void) {
         masses[i] = water_slope_water_mass(real);
     }
 
-    free(big);
-    free(blocks);
-
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, (int)masses[0], "the dry control must hold no water at all");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)masses[1], "the covered slope must hold water");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)masses[2], "the flat-pile control must hold water");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)masses[3], "the stone control must hold water");
-    free(real);
+    perf_board_free(real, big, blocks);
 }
 
 /* Task 1b, and the maintainer's own refinement: settle the covered slope in
