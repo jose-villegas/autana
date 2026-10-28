@@ -21,15 +21,10 @@ run mkdir -p "$W" "$OUT"
 
 run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "$W/scenes.log"
 
-# The start of the flythrough, on the fitted full mesh and its flat-shaded bake.
-for clip in sponza:sponza-fitted-full sponza-flat:sponza-flat-fitted; do
-    name=${clip%%:*}
-    scene=${clip#*:}
-    run "$W/render_lab_render" --quarter 1 --no-hud --scene "$scene" --frames 90 --dt 100 \
-        -o "$W/$name-motion.bmp" --video "$W/$name-motion.avi" 2> "$W/$name.log"
-done
+# The start of the flythrough, on the fitted full mesh.
+run "$W/render_lab_render" --quarter 1 --no-hud --scene sponza-fitted-full --frames 90 --dt 100 \
+    -o "$W/sponza-motion.bmp" --video "$W/sponza-motion.avi" 2> "$W/sponza.log"
 gif_from_avi "$W/sponza-motion.avi" "$OUT/render-lab-sponza.gif" "fps=8" "stats_mode=diff" 6
-gif_from_avi "$W/sponza-flat-motion.avi" "$OUT/render-lab-sponza-flat.gif" "fps=8" "stats_mode=diff" 6
 
 # The capybara's clips in the order the scene lists them, each blended into
 # the next as the BLEND slider does and shown for an equal CLIP_MS share of
@@ -78,4 +73,10 @@ gif_from_avi "$W/capybara-motion.avi" "$OUT/render-lab-capybara.gif" "fps=25/2" 
 WATER_DT=16
 WATER_FRAMES=880
 run "$W/render_lab_render" --quarter 0 --no-hud --scene water --console "0:water tour" --dt "$WATER_DT"     --frames "$WATER_FRAMES" -o "$W/water-tour.bmp" --video "$W/water-tour.avi" 2> "$W/water.log"
-gif_from_avi "$W/water-tour.avi" "$OUT/render-lab-water.gif" "fps=15,scale=276:-1:flags=lanczos" "stats_mode=diff"
+# Fitted to the landscape clips' frame, the sides filled with the scene's
+# own clear colour, read from the render's corner.
+size=$("$PYTHON" -c "from PIL import Image; import sys; print('%dx%d' % Image.open(sys.argv[1]).size)" "$W/sponza-motion.bmp")
+clear=$("$PYTHON" -c "from PIL import Image; import sys; print('0x%02X%02X%02X' % Image.open(sys.argv[1]).convert('RGB').getpixel((0, 0)))" "$W/water-tour.bmp")
+height=${size#*x}
+gif_from_avi "$W/water-tour.avi" "$OUT/render-lab-water.gif" \
+    "fps=15,scale=-2:$height:flags=lanczos,pad=${size%x*}:$height:(ow-iw)/2:0:color=$clear" "stats_mode=diff"
