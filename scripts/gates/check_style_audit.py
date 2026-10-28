@@ -415,8 +415,7 @@ def rule_include_direction(root, path, text):
                        "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
 
 
-# RULE: an app (a folder of the top row, launcher/main/apps/) and the
-# editor use the engine, the platform and the app contract, and never the
+# RULE: an app (a folder of the top row, launcher/main/apps/) uses the engine, the platform and the app contract, and never the
 # rest of the system band: docs/plans/Engine-Layer-Design-Sketch.md's tier
 # rule. The app contract is the system band's lowest row, so the rule names
 # no folder. A shell app (shell/apps/) shares the apps tier for
@@ -438,19 +437,18 @@ def rule_system_band(root, path, text):
     if path.suffix not in INCLUDE_RULE_SUFFIXES or not resolved_path.is_relative_to(root_path):
         return
     parts = resolved_path.relative_to(main_dir).parts if resolved_path.is_relative_to(main_dir) else ()
-    if not (parts[:1] and parts[0] in APPS_ROW) and not resolved_path.is_relative_to(root_path / "editor"):
+    if not (parts[:1] and parts[0] in APPS_ROW):
         return
     for number, inc, target_layer in _main_include_layers(root, path, text):
         if target_layer in SYSTEM_BAND_REFUSED:
-            yield number, (f'"{inc}" reaches into {target_layer}/, the system band - an app or the editor uses '
+            yield number, (f'"{inc}" reaches into {target_layer}/, the system band - an app uses '
                            "the engine, the platform and the app contract (app/)")
 
 
 # RULE: the UI backend stays behind ui/'s face. A header is the backend's
 # when it is one of the vendored backend component's own headers, or
 # includes one, directly or through another header. Outside launcher/main/ui/
-# no firmware source (apps, shell, their tests and tools) and no editor
-# source includes the backend or a header of ui/ or of the harness that is
+# no firmware source (apps, shell, their tests and tools) includes the backend or a header of ui/ or of the harness that is
 # the backend's, so swapping the backend touches ui/ only. A header inside
 # the rule's reach that leaks is reported at its own include, not again at
 # every file including it.
@@ -458,7 +456,7 @@ def rule_system_band(root, path, text):
 # the seam itself, so they are outside the rule.
 
 UI_BACKEND_COMPONENT = "launcher/components/microui"
-UI_FACE_SCOPES = ("launcher/main", "editor")
+UI_FACE_SCOPES = ("launcher/main",)
 # Where an app's suite finds the harness's own headers (run_tests.sh's -I).
 UI_HARNESS_INCLUDE = "launcher/test"
 

@@ -53,7 +53,7 @@ bool gfx_framebuffer_holds(gfx_color_t colour);
 /* A draw writes into the framebuffer, band or replay strip, with its
  * current clip and dirty-marking policy. */
 typedef struct {
-    gfx_target_t target;
+    const gfx_target_t* target;
     recti_t clip;
     bool marks;
 } gfx_surface_t;

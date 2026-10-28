@@ -20,7 +20,6 @@ why does my liquid material look wrong, shading pipeline	docs/sand/Shading-and-C
 how do I capture a frame-budget performance report for sand	docs/sand/Testing-Sand.md	Capturing a frame-budget report
 explosion and thrown chunk mechanics, impulse	docs/sand/Impulse-Mechanics.md	Impulse Mechanics: things in flight
 render_lab wireframe scene generator	launcher/tools/render/scenes/README.md	Render/Scenes
-how do I add a screen to the host editor	editor/README.md	Adding a screen
 running qemu tests without a board	docs/testing/QEMU.md	QEMU: the device image with no board
 pinning pixels for a rendered scene against a reference capture	docs/tools/Render-Harness.md	Diffing against a capture
 what suite naming pattern does SUITE_REGISTER expect	docs/testing/Writing-a-Test.md	Adding a suite

@@ -48,14 +48,16 @@ static int band_current_slot;
 /* True only during a band or expanded overlay replay; outside it band mode
  * has no valid target, matching gfx_fb_guard.h. */
 static bool band_render_active;
-static gfx_target_t strip_target;
+static GFX_TARGET_STORAGE(1) strip_target;
+static GFX_TARGET_STORAGE(1) frame_target = GFX_TARGET_COLOR_INIT(NULL, GFX_WIDTH, GFX_HEIGHT);
+static GFX_TARGET_STORAGE(1) half_target = GFX_TARGET_COLOR_INIT(NULL, GFX_WIDTH / 2, GFX_HEIGHT / 2);
 static recti_t clip;
 
 #ifndef ESP_PLATFORM
 void
 gfx_band_begin_for_test(int row) {
     band_render_active = true;
-    strip_target = (gfx_target_t){fb + row * GFX_WIDTH, row, GFX_BAND_HEIGHT, GFX_WIDTH};
+    gfx_target_of_color(&strip_target.target, fb + row * GFX_WIDTH, GFX_WIDTH, GFX_BAND_HEIGHT, row);
 }
 
 void
@@ -64,9 +66,17 @@ gfx_band_end_for_test(void) {
 }
 #endif
 
-gfx_target_t
+void
+gfx_swap_framebuffers(void) {
+    gfx_color_t* drawn = fb;
+    fb = present_fb;
+    frame_target.attachment[0].pixels = fb;
+    present_fb = drawn;
+}
+
+const gfx_target_t*
 gfx_present_target(void) {
-    return band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+    return band_render_active ? &strip_target.target : &frame_target.target;
 }
 
 bool
@@ -95,7 +105,7 @@ gfx_draw_begin(gfx_surface_t* out) {
     if (fb_filled) {
         fb_filled = false;
     }
-    out->target = band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+    out->target = band_render_active ? &strip_target.target : &frame_target.target;
     out->clip = clip;
     out->marks = !band_render_active;
     return true;
@@ -178,6 +188,7 @@ bool
 alloc_full_framebuffer(void) {
     const size_t bytes = GFX_FRAMEBUFFER_BYTES;
     fb = memory_alloc(bytes, MEMORY_PSRAM);
+    frame_target.attachment[0].pixels = fb;
     present_fb = fb;
 #ifdef ESP_PLATFORM
     if (fb == NULL) {
@@ -192,6 +203,7 @@ static void
 free_full_framebuffer(void) {
     memory_free(fb);
     fb = NULL;
+    frame_target.attachment[0].pixels = fb;
     present_fb = NULL;
 }
 
@@ -359,6 +371,7 @@ gfx_half_picture(void) {
     }
     if (half_image == NULL) {
         half_image = memory_alloc(sizeof(*half_image) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
+        half_target.attachment[0].pixels = half_image;
     }
     return half_image;
 }
@@ -395,16 +408,20 @@ clear_expanded_frame(bool free_picture) {
     if (free_picture) {
         memory_free(half_image);
         half_image = NULL;
+        half_target.attachment[0].pixels = half_image;
     }
 }
 
 void
 expand_rows(int y0, int y1, gfx_color_t* destination) {
-    const gfx_target_t target = {destination, y0, y1 - y0, GFX_WIDTH};
-    gfx_target_paired_rows(target, half_image, NULL, 0, GFX_WIDTH / 2, NULL, y0, y1 - y0, true);
+    GFX_TARGET_STORAGE(1) target_storage;
+    gfx_target_of_color(&target_storage.target, destination, GFX_WIDTH, y1 - y0, y0);
+    const gfx_target_t* target = &target_storage.target;
+    gfx_target_paired_rows_shaded(target, &half_target.attachment[0], NULL, 0, NULL, y0, y1 - y0, true, 0,
+                                  RGB565_SCALE_UNIT);
     if (frame_overlay != NULL) {
         const recti_t saved_clip = gfx_clip_save();
-        strip_target = target;
+        gfx_target_window(&strip_target.target, target, y0, y1);
         band_render_active = true;
         gfx_fb_guard_set_available(true);
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
@@ -437,7 +454,7 @@ gfx_reset_for_test(void) {
     clear_expanded_frame(true);
     frame_overlay = NULL;
     band_render_active = false;
-    strip_target = (gfx_target_t){0};
+    memset(&strip_target, 0, sizeof strip_target);
     if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         free_indexed_image();
     } else if (current_mode.layout == GFX_LAYOUT_BANDS) {
@@ -478,6 +495,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
             return &current_mode;
         }
         fb = back;
+        frame_target.attachment[0].pixels = fb;
         fb_filled = false;
         dirty_mark_all();
     } else if (granted.layout == GFX_LAYOUT_INDEXED) {
@@ -519,6 +537,7 @@ gfx_mode_exit(void) {
         (void)gfx_set_clear_on_send(false, 0);
         memory_free(fb);
         fb = present_fb;
+        frame_target.attachment[0].pixels = fb;
         /* A frame cleared on send stays cleared: readback has nothing to read
          * until the next send, and the next draw_clear() of it is free. */
         fb_filled = gfx_present_sent_frame_filled();
@@ -666,7 +685,8 @@ gfx_band_next(void) {
     band_current_slot = gfx_band_ring_slot(&band_ring);
     band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
     band_render_height = current_mode.band_height;
-    strip_target = (gfx_target_t){band_buf[band_current_slot], band_render_row0, band_render_height, GFX_WIDTH};
+    gfx_target_of_color(&strip_target.target, band_buf[band_current_slot], GFX_WIDTH, band_render_height,
+                        band_render_row0);
     band_render_active = true;
     gfx_fb_guard_set_available(true);
     return true;
@@ -776,7 +796,7 @@ gfx_indexed_image(void) {
                      .format = IMAGE_INDEXED8,
                      .width = (uint16_t)indexed_grid_w,
                      .height = (uint16_t)indexed_grid_h,
-                     .stride = (uint32_t)indexed_grid_w};
+                     .pitch = (uint32_t)indexed_grid_w};
 }
 
 gfx_readback_t

@@ -4,7 +4,6 @@ docs/firmware/Building-an-App.md	2026-09-21	PR #337 round 2: reviewed against th
 docs/tools/Doc-Drift.md	2026-09-22	whole-repo docs review: reviewed against doc_drift.py, accurate
 docs/tools/Mermaid-Diagrams.md	2026-09-22	whole-repo docs review: reviewed against check-mermaid.mjs, check-mermaid-staged.sh and mermaid.yml, accurate
 docs/cli/Live-Tuning.md	2026-09-22	whole-repo docs review: reviewed against services/tune.h, console_verbs.h and console_tune.c, accurate
-editor/README.md	2026-09-22	whole-repo docs review: reviewed against editor/CMakeLists.txt and editor/src/layout_document.cpp, accurate
 docs/gfx/Present.md	2026-10-21	autana-8sv4: reviewed against the 80 MHz full-width send rule, accurate
 docs/testing/README.md	2026-09-22	PR #340 round 4: reviewed against the span send and the strip-buffer alias, accurate
 docs/firmware/Building-an-App.md	2026-09-22	PR #345 round 3: reviewed against app_registry.c and the non-const app_t, accurate

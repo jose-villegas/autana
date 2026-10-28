@@ -82,8 +82,20 @@ test_loopback_edges(void) {
     TEST_ASSERT_EQUAL_FLOAT(MATH_DB_FLOOR, result.peak_dbfs);
 }
 
+static void
+test_loopback_broadband_rms(void) {
+    audio_loopback_detector_t detector;
+    audio_loopback_detector_init(&detector, TEST_LOOPBACK_HZ, false);
+    const int16_t samples[] = {TEST_LOOPBACK_AMPLITUDE, -TEST_LOOPBACK_AMPLITUDE};
+    audio_loopback_detector_feed(&detector, samples, sizeof samples / sizeof samples[0], false);
+    audio_loopback_result_t result;
+    audio_loopback_detector_result(&detector, &result);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_LOOPBACK_TOLERANCE_DB, TEST_LOOPBACK_EXPECTED_PEAK_DBFS, result.noise_dbfs);
+}
+
 void
 run_audio_loopback_suite(void) {
+    RUN_TEST(test_loopback_broadband_rms);
     RUN_TEST(test_loopback_harmonics);
     RUN_TEST(test_loopback_floor_and_cap);
     RUN_TEST(test_loopback_edges);

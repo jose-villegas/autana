@@ -146,21 +146,28 @@ def produce_blend(bake, cache, blender=None):
         return record(bake, out, cache)
 
 
-def references(bake, cache):
-    """The fit's reference folder in this cache, prepared there when its key has none."""
-    from r3d.fitted_variant import prepare_references, reference_inputs
-
-    folder = pathlib.Path(cache) / REFERENCES / bake.stages["reference"]
+def keyed_folder(folder, make):
+    """`folder` once its DONE marker is there; else make(partial) fills a sibling, which is marked done and renamed
+    into place, so a cut run leaves nothing a later one takes for done."""
+    folder = pathlib.Path(folder)
     if (folder / DONE).is_file():
         return folder
     partial = folder.with_name(folder.name + ".partial")
     shutil.rmtree(partial, ignore_errors=True)
     partial.mkdir(parents=True)
-    prepare_references(reference_inputs(bake.job, bake.scene), partial)
-    (partial / DONE).write_text(bake.stages["reference"] + "\n", encoding="utf-8")
+    make(partial)
+    (partial / DONE).write_text(folder.name + "\n", encoding="utf-8")
     shutil.rmtree(folder, ignore_errors=True)
     os.replace(partial, folder)
     return folder
+
+
+def reference_set(key, job, scene, cache):
+    """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none."""
+    from r3d.fitted_variant import prepare_references, reference_inputs
+
+    return keyed_folder(pathlib.Path(cache) / REFERENCES / key,
+                        lambda partial: prepare_references(reference_inputs(job, scene), partial))
 
 
 def start_file(bake, cache, lock):
@@ -177,7 +184,7 @@ def produce_fit(bake, cache, lock):
     from r3d.fitted_variant import fit
 
     start = start_file(bake, cache, lock)
-    inputs = references(bake, cache)
+    inputs = reference_set(bake.stages["reference"], bake.job, bake.scene, cache)
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
         fit(bake.scene.path, bake.scene, bake.job, pathlib.Path(work), target=target, inputs=inputs, start=start)

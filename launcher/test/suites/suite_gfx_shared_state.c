@@ -119,7 +119,7 @@ test_the_index_image_is_the_granted_grid(void) {
     TEST_ASSERT_EQUAL_INT(IMAGE_INDEXED8, index.format);
     TEST_ASSERT_EQUAL_INT(INDEX_GRID_W, index.width);
     TEST_ASSERT_EQUAL_INT(INDEX_GRID_H, index.height);
-    TEST_ASSERT_EQUAL_size_t(INDEX_GRID_W, image_row_bytes(&index));
+    TEST_ASSERT_EQUAL_size_t(INDEX_GRID_W, index.pitch);
 
     gfx_mode_exit();
 }
@@ -251,7 +251,8 @@ primitive(int kind, int y) {
     for (size_t i = 0; i < sizeof source / sizeof *source; i++) {
         source[i] = INK;
     }
-    const image_t image = {.pixels = source, .format = IMAGE_RGB565BE, .width = SIZE, .height = SIZE, .stride = SIZE};
+    const image_t image = {
+        .pixels = source, .format = IMAGE_RGB565BE, .width = SIZE, .height = SIZE, .pitch = SIZE * sizeof(gfx_color_t)};
     switch (kind) {
         case DRAW_CLEAR: draw_clear(INK); break;
         case DRAW_PIXEL: draw_pixel(DRAWN_X, y, INK); break;

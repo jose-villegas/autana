@@ -1,6 +1,7 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
 #include <stdio.h>
+#include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
 #include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/scene_baked.h"
@@ -38,6 +39,7 @@ static const profile_scenario_t profile_scenarios[] = {
     {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{49536, 62165}, {47469, 58108}}},
     {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{40285, 50300}, {39053, 48179}}},
     {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, {{20941, 21286}, {21500, 21803}}},
+    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, {{41782, 62092}, {40404, 57696}}},
 };
 
 static const char* TAG = "render_lab_profile";

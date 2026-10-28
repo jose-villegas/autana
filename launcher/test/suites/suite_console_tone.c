@@ -618,6 +618,7 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_resul
         result->measured_hz = hz;
         result->thd_db = -40.0F;
         result->peak_dbfs = -6.0F;
+        result->noise_dbfs = -70.0F;
     }
     return device.measures != device.melody.fail_measure
            && !((device.measures == 1 && device.failure == TEST_TONE_BASELINE_FAIL)
