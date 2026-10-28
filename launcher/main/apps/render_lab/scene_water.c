@@ -95,16 +95,9 @@ TUNE(water, gravity_mm_s2, 2000, 100, WATER_EARTH_MM_S2);
  * well as four at about two thirds of the frame; one never settles
  * (run_water_perf_suite's base, sub4 and sub1 rows). */
 TUNE(water, substeps, 2, 1, 4);
-/* Rest: while the push holds within WATER_REST_G and no particle moves
- * faster than this, in um/s, for WATER_REST_UPDATES updates, the step and
- * the surface are skipped and the last mesh stays. 0 never rests. */
-TUNE(water, rest_um_s, 0, 0, 20000);
-#define WATER_REST_G       0.01F
-#define WATER_REST_UPDATES 4U
-#define WATER_UM_PER_MM    1000.0F
 /* 1 hands part of the step's particle passes, the surface field, its
  * meshing and the shading to core 1, each cut where it balances the two
- * cores' times (job_run_steered()); 0 keeps them on the update's core. */
+ * cores' times (job_run_range()); 0 keeps them on the update's core. */
 TUNE(water, two_core, 1, 0, 1);
 /* 1 solves the pressure in red-black order, each colour split like the
  * particle passes, 3 ms a frame faster on the board; 0 in index order on
@@ -173,7 +166,7 @@ typedef struct {
 
 static const water_key_t TOUR[] = {
     {0, {0.0F, 1.0F, 0.0F}, "rest"},       /* upright */
-    {1500, {0.0F, 1.0F, 0.0F}, "tilt"},    /* */
+    {1500, {0.0F, 1.0F, 0.0F}, "tilt"},    /* upright, easing toward tipped */
     {3000, {0.7F, 0.7F, 0.0F}, "tilt"},    /* tipped right */
     {4500, {-0.7F, 0.7F, 0.0F}, "tilt"},   /* tipped left */
     {6000, {0.0F, 0.6F, -0.8F}, "flat"},   /* leaned back */
@@ -187,11 +180,10 @@ static const water_key_t TOUR[] = {
 #define TOUR_SHAKE_HZ     3.0F
 #define TOUR_SHAKE_G      0.8F
 
-/* The swing (`water swing`), for the overview clip: the tank rocked side to
- * side, hard at first and dying away, flipped over and straight back
- * twice on the way, while leaned back the whole time so the surface shows through the
- * front glass. It swings about the picture's down, whichever way the shell
- * holds the picture. */
+/* The swing (`water swing`) for the overview clip: rocked side to side,
+ * hard and then calmer, flipped over and back twice, leaned back so the
+ * surface shows through the front glass. It swings about the picture's
+ * down, whichever way the shell holds it. */
 #define SWING_MS          16000U
 #define SWING_START_DEG   45.0F   /* the first swing's reach either side */
 #define SWING_DECAY_MS    3500.0F /* the reach falls by e over this */
@@ -232,10 +224,7 @@ typedef enum { SCRIPT_NONE, SCRIPT_TOUR, SCRIPT_SWING } water_script_t;
 static water_script_t script;
 static uint32_t tour_ms;
 static uint32_t step_us;
-static vec3f_t last_accel_g;
-static uint32_t still_updates;
 static scene_water_stats_t stats;
-static float peak_speed_mm_s; /* the fastest particle at the last step */
 static water_plane_t plane_water;
 
 /* The scene's own splits after flip3's, each with its core-1 share. */
@@ -495,36 +484,13 @@ specular_power(float x) {
     return p;
 }
 
-/* A range of flip3's work, or the scene's, as job_run_steered() runs it. */
-typedef struct {
-    flip3_range_fn fn;
-    void* ctx;
-    int from, to;
-} water_range_t;
-
+/* flip3's splits and the scene's: the last items on core 1, as many as
+ * `site`'s share says, while this core does the first; with water.two_core
+ * off, all on this core. */
 static void
-water_range_worker(void* ctx) {
-    const water_range_t* job = ctx;
-    job->fn(job->ctx, job->from, job->to);
-}
-
-/* The last items on core 1, as many as `site`'s share says, while this
- * core does the first; the share steers toward equal times. */
-static void
-water_split(int site, flip3_range_fn fn, void* ctx, int count) {
-    int16_t* share = &split_share[site];
-    const int cut = count - job_share_core1_count(share, count);
-    water_range_t first = {fn, ctx, 0, cut};
-    const water_range_t second = {fn, ctx, cut, count};
-    (void)job_run_steered(share, water_range_worker, &first, &second, sizeof second);
-}
-
-/* A split of the scene's own, on both cores or, with water.two_core off,
- * on this one. */
-static void
-scene_split(int site, flip3_range_fn fn, void* ctx, int count) {
+water_split(int site, job_range_fn_t fn, void* ctx, int count) {
     if (two_core != 0) {
-        water_split(site, fn, ctx, count);
+        (void)job_run_range(&split_share[site], fn, ctx, count);
     } else {
         fn(ctx, 0, count);
     }
@@ -591,6 +557,7 @@ mesh_split(iso_mesh_t* m) {
     if (w.fitted[0] && w.fitted[1] && iso_surface_append(m, &w.part[1])) {
         return true;
     }
+    stats.remeshed++;
     return iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, m);
 }
 
@@ -613,7 +580,7 @@ rebuild_surface(void) {
     bool fitted = two_core != 0 ? mesh_split(&m) : iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, &m);
     FRAME_COST_END(nets_from, "water.nets");
     FRAME_COST_BEGIN(shade_from);
-    scene_split(WATER_SPLIT_SHADE, shade_range, NULL, m.vertex_count);
+    water_split(WATER_SPLIT_SHADE, shade_range, NULL, m.vertex_count);
     FRAME_COST_END(shade_from, "water.shade");
     FRAME_COST_BEGIN(build_from);
     for (int i = 0; i < m.vertex_count; i++) {
@@ -636,22 +603,6 @@ static void
 refill(vec3f_t down) {
     (void)flip3_fill(&water, (float)fill_percent / (float)WATER_PERCENT, down);
     filled_percent = fill_percent;
-    still_updates = 0;
-}
-
-/* True once the water has held still under the same push for
- * WATER_REST_UPDATES updates; any change wakes it on this update. */
-static bool
-resting(vec3f_t accel_g) {
-    const vec3f_t change = vec3f_sub(accel_g, last_accel_g);
-    last_accel_g = accel_g;
-    const float rest_mm_s = (float)rest_um_s / WATER_UM_PER_MM;
-    if (rest_um_s == 0 || vec3f_dot(change, change) > WATER_REST_G * WATER_REST_G || peak_speed_mm_s > rest_mm_s) {
-        still_updates = 0;
-        return false;
-    }
-    still_updates++;
-    return still_updates > WATER_REST_UPDATES;
 }
 
 /* render_lab's debug view (`render_lab.view`), as every scene applies it. */
@@ -692,9 +643,8 @@ scene_water_enter(const render_lab_scene_t* self) {
 #if FRAME_COST_ENABLED
     flip3_time_stages(&water, timing_now_us, stats.flip3_us);
 #endif
-    flip3_split_with(&water, two_core != 0 ? water_split : NULL);
+    flip3_split_with(&water, water_split);
     memset(split_share, 0, sizeof split_share);
-    last_accel_g = (vec3f_t){0};
     refill((vec3f_t){0.0F, 1.0F, 0.0F});
     water_plane_reset(&plane_water, box);
     rebuild_surface();
@@ -728,9 +678,8 @@ step_water(vec3f_t accel_g, uint32_t dt_ms) {
             flip3_step(&water, step_s / (float)substeps, accel);
         }
         stats.substeps += (uint32_t)substeps;
-        if (rest_um_s != 0 || FRAME_COST_ENABLED) {
-            peak_speed_mm_s = sqrtf(flip3_peak_speed_sq(&water));
-            stats.peak_speed_mm_s = peak_speed_mm_s;
+        if (FRAME_COST_ENABLED) {
+            stats.peak_speed_mm_s = sqrtf(flip3_peak_speed_sq(&water));
         }
     }
     FRAME_COST_END(step_from, "water.step");
@@ -758,12 +707,8 @@ scene_water_update(uint32_t dt_ms) {
     FRAME_COST_BEGIN(updated_from);
     const int64_t started = timing_now_us();
     stats.updates++;
-    if (resting(accel_g)) {
-        stats.rested++;
-    } else {
-        step_water(accel_g, dt_ms);
-        rebuild_surface();
-    }
+    step_water(accel_g, dt_ms);
+    rebuild_surface();
     stats.triangles += surface.mesh.triangle_count;
     stats.particles = water.count;
     stats.update_us += timing_now_us() - started;

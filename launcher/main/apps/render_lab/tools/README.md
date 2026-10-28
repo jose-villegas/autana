@@ -46,11 +46,10 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | `render water swing` | plays the swing the GIF below shows: rocked side to side, hard and then calmer, flipped over and straight back twice on the way, leaned back throughout |
 | `water.gravity_mm_s2` | the gravity the water runs under; below Earth's, so a 35 mm tank sloshes at a pace a frame can follow |
 | `water.substeps` | substeps per frame (1 to 4, default 2), each an equal share of the frame's simulated time, at most 32 ms |
-| `water.two_core` | 1 (default) runs part of the particle passes, the surface field, its meshing and the shading on core 1, each cut to balance the two cores' times (`job_run_steered()`); 0 keeps them on one core |
+| `water.two_core` | 1 (default) runs part of the particle passes, the surface field, its meshing and the shading on core 1, each cut to balance the two cores' times (`job_run_range()`); 0 keeps them on one core |
 | `water.red_black` | 1 (default) solves the pressure in red-black order, each colour split across both cores; 0 in index order on one core |
 | `water.samples_pct` | the surface field's density samples per cell, in hundredths (100 to 200, default 150): fewer mesh, build and draw fewer triangles and lose the smallest ripples |
 | `water.plane` | 1 draws a plane at the fill's volume instead of flip3, its tilt following gravity's like a damped pendulum (`water.slosh_decihz`, `water.slosh_damping_pct`); much cheaper, but no crests or splash; 0 (default) is flip3 |
-| `water.rest_um_s` | above 0, the step and the surface are skipped while the push holds and no particle moves faster than this, in um/s |
 
 Each frame, while the last one goes out to the panel:
 
@@ -73,56 +72,56 @@ own stages and r3d's; [`tools/water_tables.py`](water_tables.py) turns its captu
 <!-- generated: water-stages check: python launcher/main/apps/render_lab/tools/water_tables.py --check -->
 ### Measured stages
 
-The scripted tour at 33 ms of water per frame, one row per phase, from a board capture (1 run: means are the runs' mean, p95 and worst their worst). Update is the simulation and the surface; draw is r3d drawing the water's dynamic mesh.
+The scripted tour at 33 ms of water per frame, one row per phase, from a board capture (2 runs: means are the runs' mean, p95 and worst their worst). Update is the simulation and the surface; draw is r3d drawing the water's dynamic mesh.
 
 | Phase | Frames | Substeps/frame | Triangles | Particles | Frame mean / p95 ms | Update mean / p95 ms | Draw mean / p95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| rest | 45 | 2.0 | 1264 | 1093 | 76.7 / 78.1 | 50.2 / 51.8 | 13.5 / 13.8 |
+| rest | 45 | 2.0 | 1264 | 1093 | 76.7 / 78.8 | 50.3 / 52.3 | 13.5 / 13.8 |
 | tilt | 136 | 2.0 | 1351 | 1093 | 78.2 / 80.0 | 51.0 / 52.5 | 14.2 / 15.0 |
-| flat | 91 | 2.0 | 1565 | 1093 | 81.1 / 87.5 | 52.4 / 55.4 | 15.7 / 19.5 |
-| return | 46 | 2.0 | 1319 | 1093 | 77.2 / 78.9 | 50.8 / 52.6 | 13.5 / 13.9 |
-| settle | 45 | 2.0 | 1249 | 1093 | 76.6 / 77.9 | 50.0 / 51.5 | 13.7 / 14.0 |
-| shake | 61 | 2.0 | 1335 | 1093 | 77.7 / 78.9 | 50.7 / 52.0 | 14.0 / 14.4 |
+| flat | 91 | 2.0 | 1565 | 1093 | 81.1 / 87.7 | 52.4 / 55.4 | 15.6 / 19.5 |
+| return | 46 | 2.0 | 1319 | 1093 | 77.2 / 78.9 | 50.8 / 52.6 | 13.5 / 14.0 |
+| settle | 45 | 2.0 | 1249 | 1093 | 76.5 / 77.9 | 49.9 / 51.5 | 13.6 / 14.0 |
+| shake | 61 | 2.0 | 1335 | 1093 | 77.8 / 79.4 | 50.7 / 52.5 | 14.0 / 14.5 |
 
 Where the `base` update and draw go, ms per frame:
 
 | Stage | rest | tilt | flat | return | settle | shake |
 |---|---:|---:|---:|---:|---:|---:|
-| water.field | 2.64 | 2.47 | 2.47 | 2.47 | 2.47 | 2.43 |
+| water.field | 2.65 | 2.47 | 2.48 | 2.47 | 2.46 | 2.43 |
 | water.through | 0.51 | 0.49 | 0.52 | 0.49 | 0.47 | 0.48 |
-| water.nets | 4.92 | 4.76 | 5.32 | 4.71 | 4.56 | 4.76 |
-| water.shade | 1.28 | 1.29 | 1.48 | 1.25 | 1.19 | 1.24 |
+| water.nets | 4.90 | 4.76 | 5.32 | 4.71 | 4.56 | 4.75 |
+| water.shade | 1.29 | 1.29 | 1.48 | 1.25 | 1.19 | 1.25 |
 | water.build | 3.30 | 3.29 | 3.96 | 3.25 | 3.04 | 3.19 |
-| water.step | 39.22 | 38.65 | 38.62 | 38.46 | 38.16 | 37.71 |
-| step: p2g | 15.68 | 15.68 | 15.73 | 15.67 | 15.65 | 15.67 |
-| step: accel | 0.38 | 0.39 | 0.39 | 0.38 | 0.38 | 0.38 |
-| step: pressure | 10.08 | 10.40 | 10.34 | 10.21 | 9.91 | 10.09 |
-| step: g2p | 10.97 | 10.99 | 10.97 | 11.01 | 11.01 | 10.98 |
-| step: advect | 0.14 | 0.15 | 0.14 | 0.14 | 0.14 | 0.14 |
+| water.step | 39.22 | 38.66 | 38.61 | 38.45 | 38.16 | 37.73 |
+| step: p2g | 15.71 | 15.67 | 15.74 | 15.68 | 15.62 | 15.70 |
+| step: accel | 0.38 | 0.39 | 0.38 | 0.38 | 0.38 | 0.38 |
+| step: pressure | 10.07 | 10.40 | 10.33 | 10.20 | 9.91 | 10.10 |
+| step: g2p | 10.99 | 10.99 | 10.96 | 11.01 | 11.01 | 10.99 |
+| step: advect | 0.14 | 0.15 | 0.15 | 0.14 | 0.14 | 0.14 |
 | step: collide | 0.55 | 0.55 | 0.55 | 0.55 | 0.55 | 0.55 |
-| r3d.cull | 0.10 | 0.10 | 0.10 | 0.10 | 0.09 | 0.10 |
-| r3d.transform | 0.73 | 0.71 | 0.85 | 0.72 | 0.68 | 0.69 |
-| r3d.draw | 13.04 | 13.16 | 14.47 | 12.45 | 12.64 | 12.81 |
-| r3d.upscale | 3.07 | 2.94 | 2.92 | 2.92 | 2.94 | 2.90 |
+| r3d.cull | 0.05 | 0.10 | 0.10 | 0.10 | 0.09 | 0.10 |
+| r3d.transform | 0.36 | 0.71 | 0.84 | 0.71 | 0.68 | 0.69 |
+| r3d.draw | 6.52 | 13.16 | 14.46 | 12.44 | 12.64 | 12.80 |
+| r3d.upscale | 1.53 | 2.94 | 2.93 | 2.93 | 2.94 | 2.91 |
 
-Each experiment against the base, update mean ms per frame (frames that rested in brackets):
+Each experiment against the base, update mean ms per frame:
 
 | Configuration | rest | tilt | flat | return | settle | shake |
 |---|---:|---:|---:|---:|---:|---:|
-| base | 50.2 | 51.0 | 52.4 | 50.8 | 50.0 | 50.7 |
+| base | 50.3 | 51.0 | 52.4 | 50.8 | 49.9 | 50.7 |
 | one_core | 75.7 | 76.4 | 78.5 | 76.4 | 75.3 | 75.9 |
-| sub4 | 88.2 | 89.3 | 91.0 | 88.7 | 88.1 | 89.0 |
-| sub1 | 30.8 | 31.5 | 32.7 | 31.0 | 30.8 | 30.1 |
+| sub4 | 88.1 | 89.4 | 91.0 | 88.6 | 88.1 | 89.1 |
+| sub1 | 30.8 | 31.5 | 32.7 | 31.0 | 30.9 | 30.1 |
 | index_order | 53.6 | 53.8 | 55.5 | 53.6 | 53.1 | 53.2 |
-| samples2 | 58.7 | 59.9 | 62.4 | 59.5 | 58.6 | 59.7 |
-| rest | 50.3 | 51.0 | 52.4 | 50.8 | 50.0 | 50.7 |
+| samples2 | 58.7 | 59.9 | 62.4 | 59.5 | 58.6 | 59.8 |
+| rest | 50.3 | 51.0 | 52.4 | 50.7 | 50.0 | 50.7 |
 | plane | 21.1 | 22.3 | 25.1 | 22.1 | 21.1 | 21.5 |
 
 Internal RAM around each configuration, KB free / largest block:
 
 | Configuration | before | running | after |
 |---|---:|---:|---:|
-| base | 59 / 31 | 59 / 31 | 59 / 31 |
+| base | 62 / 31 | 59 / 31 | 59 / 31 |
 | one_core | 59 / 31 | 59 / 31 | 59 / 31 |
 | sub4 | 59 / 31 | 59 / 31 | 59 / 31 |
 | sub1 | 59 / 31 | 59 / 31 | 59 / 31 |
@@ -140,7 +139,7 @@ Source: `water-stages-board.log`
 `render_lab.small_fill_style` apply to the scene camera each frame.
 On a development build the BOOT menu has a SMALL FILL dropdown with every
 `SMALL_FILL_` preset; picking one sets the three tunables.
-The render lab's host renderer picks one by its menu label, as
+The host renderer picks one by its menu label, as
 `--small-fill "FAST - DITHER"`.
 
 ![The Sponza menu closed, then the SCENE, VARIANT and SMALL FILL lists open](images/scene-menu/scene-menu.png)

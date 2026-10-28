@@ -9,7 +9,7 @@
 typedef struct {
     uint32_t updates;
     uint32_t substeps;
-    uint32_t rested; /* updates that skipped the step and the surface */
+    uint32_t remeshed; /* updates whose two-core mesh overflowed a half and was meshed again whole */
     int64_t update_us;
     int64_t flip3_us[FLIP3_STAGE_COUNT]; /* in a development build; the stages' own times are frame_cost's */
     int64_t triangles;

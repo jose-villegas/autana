@@ -82,16 +82,17 @@ extern const char* const flip3_stage_names[FLIP3_STAGE_COUNT];
 typedef int64_t (*flip3_clock_fn)(void);
 
 /* The places the step and flip3_field() split their work, so a host can
- * keep a cut for each: flip3_field()'s sampling and its three smoothing
- * passes are FLIP3_SPLIT_FIELD onward. */
-#define FLIP3_FIELD_PASSES 4
-
+ * keep a cut for each: flip3_field()'s sampling, then its smoothing along
+ * x, y and z. */
 enum {
     FLIP3_SPLIT_SPLAT,
     FLIP3_SPLIT_GATHER,
     FLIP3_SPLIT_RED_BLACK,
-    FLIP3_SPLIT_FIELD,
-    FLIP3_SPLIT_COUNT = FLIP3_SPLIT_FIELD + FLIP3_FIELD_PASSES
+    FLIP3_SPLIT_FIELD_SAMPLE,
+    FLIP3_SPLIT_FIELD_SMOOTH_X,
+    FLIP3_SPLIT_FIELD_SMOOTH_Y,
+    FLIP3_SPLIT_FIELD_SMOOTH_Z,
+    FLIP3_SPLIT_COUNT
 };
 
 /* A stage's work over items [from, to). Two ranges never write the same
@@ -189,9 +190,8 @@ flip3_particle(const flip3_t* f, int i) {
  * rounded, at least one, spaced to fill the box. */
 size_t flip3_field_count(const flip3_t* f, float samples);
 
-/* The surface field: the water's density over the box, 1 at rest, with one
- * empty sample all round so a mesh of it closes. One [1 2 1] / 4 pass per
- * axis rounds it and sinks a film a sample thin; the walls mirror, so water
- * against glass keeps its density. Returns its sizes, origin and spacing in
- * box coordinates, for iso_surface_nets(). */
+/* The surface field: the water's density over the box, 1 at rest. One
+ * [1 2 1] / 4 pass per axis rounds it and sinks a film a sample thin; the
+ * walls mirror, so water against glass keeps its density. Returns its sizes,
+ * origin and spacing in box coordinates, for iso_surface_nets(). */
 iso_field_t flip3_field(const flip3_t* f, float samples, float* out);

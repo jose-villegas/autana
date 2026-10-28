@@ -18,7 +18,7 @@ driven by any acceleration, in caller-owned grid and particle blocks.
 | `flip3_fill` | Refills a share of the volume at rest, lowest first along a down vector |
 | `flip3_step` | Advances one substep under an acceleration |
 | `flip3_time_stages` | Adds each step stage's microseconds, by a caller's clock, to `FLIP3_STAGE_COUNT` sums; `flip3_stage_names` names them |
-| `flip3_split_with` | Hands each particle pass and `flip3_field`'s work, as a range of items and the place it comes from, to a caller's split, which may cut it anywhere and run the parts on two cores; the same results as one core |
+| `flip3_split_with` | Hands each particle pass and `flip3_field`'s work to a caller's split as a range of items; the split may cut it anywhere and run the parts on two cores, with the same results as one core |
 | `flip3_peak_speed_sq` | The fastest particle's speed squared, 0 at rest |
 | `flip3_fraction` | The share of the volume the particles stand for |
 | `flip3_particle` | A particle in box coordinates |
@@ -41,7 +41,7 @@ Each step runs in Bridson's order<sup>[[93]](../Citations.md#bridson-2015)</sup>
 |---|---|
 | Particles to grid | Trilinear splat of each velocity component onto its faces, and the density at the cell centres, each its own item of a split; cells holding a particle are water |
 | Acceleration | Added to every face not on a wall |
-| Pressure | Gauss-Seidel on the divergence, cells of any aspect, plus the drift push |
+| Pressure | Gauss-Seidel on the divergence (red-black when `red_black` is set), cells of any aspect, plus the drift push |
 | Grid to particles | PIC and FLIP blended by the FLIP share |
 | Move | Particles advect with the projected velocity, then stop a radius from each wall |
 
