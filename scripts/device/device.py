@@ -1171,6 +1171,8 @@ def layout_flags(args):
     flags = ["--layout-seed", str(seed)] if seed else []
     if getattr(args, "hot_tunables", False):
         flags.append("--hot-tunables")
+    if getattr(args, "frame_laps", False):
+        flags.append("--frame-laps")
     return flags
 
 
@@ -2212,6 +2214,8 @@ def main(argv=None):
                               help="build with live hot-path tunables")
     flash_parser.add_argument("--perf-scope", action="store_true",
                               help="with --variant diag: build the perf-scoped image")
+    flash_parser.add_argument("--frame-laps", action="store_true",
+                              help="with --perf-scope: time the phases inside the frame stages")
     flash_parser.add_argument("--layout-seed", type=int, default=0,
                               help="pad the layout by this seed (0 is the plain build)")
     suite = subparsers.add_parser("run-suite")

@@ -586,12 +586,12 @@ autana monitor 120 --out docs/render/data/pipeline-present-board.log
 autana monitor 120 --out docs/render/data/pipeline-view-motion-board.log
 ```
 
-The sub-stages come from a perf-scope image of the same scene, whose laps
+The sub-stages come from a lapped perf-scope image of the same scene, whose laps
 ([Frame-Cost.md](../tools/Frame-Cost.md#laps-inside-a-bracket)) print a line of
 their own:
 
 ```sh
-autana flash diag --perf-scope
+autana flash diag --perf-scope --frame-laps
 autana monitor 120 --out docs/render/data/pipeline-laps-board.log
 ```
 
