@@ -28,10 +28,10 @@ typedef struct {
     int32_t plane;
 } water_config_t;
 
-/* The default, then one change each: on one core, four and one substeps a
- * frame, the pressure in red-black order on both cores, and skipping the
- * step at rest below 2 mm/s; and method C, the plane, against them. The
- * grid in internal RAM measured the same as in PSRAM, so it is not a row. */
+/* The default, then one change each: on one core, other substep counts,
+ * the pressure in red-black order on both cores, and skipping the step at
+ * rest below 2 mm/s; and method C, the plane, against them. The grid in
+ * internal RAM measured the same as in PSRAM, so it is not a row. */
 static const water_config_t configs[] = {
     {.name = "base", .substeps = 2, .two_core = 1},
     {.name = "one_core", .substeps = 2},
