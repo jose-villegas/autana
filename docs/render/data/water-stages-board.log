@@ -1,0 +1,799 @@
+BUILD_ID=85c13529f250-diag
+I (15006) water_perf: water_perf: config=base phase=before internal_free=63539 internal_largest=31744
+I (15112) water_perf: water_perf: config=base phase=running internal_free=59515 internal_largest=31744
+I (19289) water_perf: water_perf: config=base row=rest frames=45 substeps=90 rested=0 tris=2146 particles=1093 peak_mm_s=26.8
+I (19290) water_perf: water_perf: config=base row=rest frame=90738/92532/92985 update=62046/64088/64271 draw=15761/16404/16574
+I (19291) water_perf: water_perf: config=base row=rest stage=p2g us=15688
+I (19292) water_perf: water_perf: config=base row=rest stage=accel us=385
+I (19292) water_perf: water_perf: config=base row=rest stage=pressure us=13009
+I (19293) water_perf: water_perf: config=base row=rest stage=g2p us=10917
+I (19294) water_perf: water_perf: config=base row=rest stage=advect us=145
+I (19294) water_perf: water_perf: config=base row=rest stage=collide us=552
+I (19295) water_perf: water_perf: config=base row=rest ms/frame avg/worst: ui.build 0.29/0.4  ridge.layers 2.65/3.1  ridge.paint 7.70/14.2  ui.paint 1.82/3.5  present 0.25/9.9  frame.rest 0.14/0.5  water.field 5.29/5.3  water.through 0.87/0.8  water.nets 8.37/8.3  water.shade 2.10/2.0  water.build 5.52/5.3  water.step 42.12/43.3 | total 77.18 +376 dropped || sound_mix 0.002/0.040 ms/block n=3122
+I (31845) water_perf: water_perf: config=base row=tilt frames=136 substeps=272 rested=0 tris=2262 particles=1093 peak_mm_s=67.6
+I (31846) water_perf: water_perf: config=base row=tilt frame=92196/94022/96101 update=62761/64035/65568 draw=16479/17636/17842
+I (31847) water_perf: water_perf: config=base row=tilt stage=p2g us=15620
+I (31848) water_perf: water_perf: config=base row=tilt stage=accel us=382
+I (31848) water_perf: water_perf: config=base row=tilt stage=pressure us=13075
+I (31849) water_perf: water_perf: config=base row=tilt stage=g2p us=10939
+I (31850) water_perf: water_perf: config=base row=tilt stage=advect us=145
+I (31850) water_perf: water_perf: config=base row=tilt stage=collide us=547
+I (31851) water_perf: water_perf: config=base row=tilt ms/frame avg/worst: water.step 41.22/43.6  water.field 4.94/5.2  water.through 0.83/0.9  water.nets 8.21/9.0  water.shade 2.09/2.3  water.build 5.42/5.8  water.update 0.04/0.1  r3d.cull 0.11/0.1  r3d.transform 1.04/1.2  r3d.draw 15.12/9.2  r3d.upscale 2.92/3.1 | total 81.99 || sound_mix 0.002/0.022 ms/block n=2163
+I (40693) water_perf: water_perf: config=base row=flat frames=91 substeps=182 rested=0 tris=2646 particles=1093 peak_mm_s=182.9
+I (40694) water_perf: water_perf: config=base row=flat frame=97114/106135/107016 update=65634/70318/71135 draw=18538/22810/23142
+I (40695) water_perf: water_perf: config=base row=flat stage=p2g us=15644
+I (40696) water_perf: water_perf: config=base row=flat stage=accel us=383
+I (40696) water_perf: water_perf: config=base row=flat stage=pressure us=13361
+I (40697) water_perf: water_perf: config=base row=flat stage=g2p us=10937
+I (40698) water_perf: water_perf: config=base row=flat stage=advect us=146
+I (40698) water_perf: water_perf: config=base row=flat stage=collide us=547
+I (40699) water_perf: water_perf: config=base row=flat ms/frame avg/worst: water.step 41.52/44.4  water.field 4.95/5.3  water.through 0.89/0.9  water.nets 9.06/11.2  water.shade 2.45/3.2  water.build 6.68/8.7  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.27/1.7  r3d.draw 16.92/13.7  r3d.upscale 2.91/3.1 | total 86.86 || sound_mix 0.002/0.007 ms/block n=1524
+I (44883) water_perf: water_perf: config=base row=return frames=46 substeps=92 rested=0 tris=2204 particles=1093 peak_mm_s=35.2
+I (44884) water_perf: water_perf: config=base row=return frame=90890/92294/93256 update=62361/63511/64541 draw=15600/16092/16524
+I (44886) water_perf: water_perf: config=base row=return stage=p2g us=15591
+I (44886) water_perf: water_perf: config=base row=return stage=accel us=384
+I (44887) water_perf: water_perf: config=base row=return stage=pressure us=13053
+I (44888) water_perf: water_perf: config=base row=return stage=g2p us=10960
+I (44888) water_perf: water_perf: config=base row=return stage=advect us=146
+I (44889) water_perf: water_perf: config=base row=return stage=collide us=545
+I (44890) water_perf: water_perf: config=base row=return ms/frame avg/worst: water.step 41.18/43.0  water.field 4.93/5.4  water.through 0.83/0.8  water.nets 7.94/8.6  water.shade 2.02/2.1  water.build 5.36/5.8  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.05/1.2  r3d.draw 14.22/7.8  r3d.upscale 2.90/3.1 | total 80.61 || sound_mix 0.002/0.007 ms/block n=722
+I (48965) water_perf: water_perf: config=base row=settle frames=45 substeps=90 rested=0 tris=2114 particles=1093 peak_mm_s=37.7
+I (48966) water_perf: water_perf: config=base row=settle frame=90461/90943/93016 update=61663/62098/64144 draw=15856/16399/16483
+I (48967) water_perf: water_perf: config=base row=settle stage=p2g us=15540
+I (48968) water_perf: water_perf: config=base row=settle stage=accel us=388
+I (48969) water_perf: water_perf: config=base row=settle stage=pressure us=12969
+I (48969) water_perf: water_perf: config=base row=settle stage=g2p us=10971
+I (48970) water_perf: water_perf: config=base row=settle stage=advect us=144
+I (48971) water_perf: water_perf: config=base row=settle stage=collide us=550
+I (48972) water_perf: water_perf: config=base row=settle ms/frame avg/worst: water.step 41.07/43.1  water.field 4.95/5.3  water.through 0.81/0.8  water.nets 7.78/8.1  water.shade 1.94/2.0  water.build 5.05/5.1  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 0.97/1.0  r3d.draw 14.54/7.9  r3d.upscale 2.90/3.0 | total 80.21 || sound_mix 0.002/0.011 ms/block n=703
+I (54463) water_perf: water_perf: config=base row=shake frames=61 substeps=122 rested=0 tris=2220 particles=1093 peak_mm_s=260.4
+I (54465) water_perf: water_perf: config=base row=shake frame=91421/94132/94641 update=62212/63866/64217 draw=16231/17391/18402
+I (54466) water_perf: water_perf: config=base row=shake stage=p2g us=15577
+I (54467) water_perf: water_perf: config=base row=shake stage=accel us=381
+I (54467) water_perf: water_perf: config=base row=shake stage=pressure us=12522
+I (54468) water_perf: water_perf: config=base row=shake stage=g2p us=10939
+I (54469) water_perf: water_perf: config=base row=shake stage=advect us=145
+I (54469) water_perf: water_perf: config=base row=shake stage=collide us=547
+I (54470) water_perf: water_perf: config=base row=shake ms/frame avg/worst: water.step 39.95/43.1  water.field 4.86/5.3  water.through 0.81/0.9  water.nets 8.27/8.9  water.shade 2.00/2.3  water.build 5.24/6.2  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.02/1.1  r3d.draw 14.63/8.9  r3d.upscale 2.88/3.1 | total 79.85 || sound_mix 0.002/0.025 ms/block n=947
+I (54474) water_perf: water_perf: config=base phase=after internal_free=60375 internal_largest=31744
+I (54475) water_perf: water_perf: config=one_core phase=before internal_free=60375 internal_largest=31744
+I (54600) water_perf: water_perf: config=one_core phase=running internal_free=59515 internal_largest=31744
+I (60010) water_perf: water_perf: config=one_core row=rest frames=45 substeps=90 rested=0 tris=2146 particles=1093 peak_mm_s=26.8
+I (60011) water_perf: water_perf: config=one_core row=rest frame=117542/118078/118475 update=88803/89116/89143 draw=15803/16382/16575
+I (60012) water_perf: water_perf: config=one_core row=rest stage=p2g us=23741
+I (60013) water_perf: water_perf: config=one_core row=rest stage=accel us=382
+I (60013) water_perf: water_perf: config=one_core row=rest stage=pressure us=12997
+I (60014) water_perf: water_perf: config=one_core row=rest stage=g2p us=19990
+I (60015) water_perf: water_perf: config=one_core row=rest stage=advect us=145
+I (60016) water_perf: water_perf: config=one_core row=rest stage=collide us=551
+I (60017) water_perf: water_perf: config=one_core row=rest ms/frame avg/worst: water.field 9.28/8.8  water.through 0.87/0.8  water.nets 13.37/12.7  water.shade 3.47/3.3  water.build 5.49/5.3  water.step 59.61/58.4  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.07/1.1  r3d.draw 15.11/8.0  r3d.upscale 3.03/3.1 | total 111.50 || sound_mix 0.002/0.008 ms/block n=956
+I (76237) water_perf: water_perf: config=one_core row=tilt frames=136 substeps=272 rested=0 tris=2262 particles=1093 peak_mm_s=67.6
+I (76239) water_perf: water_perf: config=one_core row=tilt frame=119190/121093/121277 update=89704/90754/91090 draw=16540/17589/17837
+I (76240) water_perf: water_perf: config=one_core row=tilt stage=p2g us=23739
+I (76241) water_perf: water_perf: config=one_core row=tilt stage=accel us=383
+I (76241) water_perf: water_perf: config=one_core row=tilt stage=pressure us=13078
+I (76242) water_perf: water_perf: config=one_core row=tilt stage=g2p us=20003
+I (76243) water_perf: water_perf: config=one_core row=tilt stage=advect us=145
+I (76243) water_perf: water_perf: config=one_core row=tilt stage=collide us=548
+I (76244) water_perf: water_perf: config=one_core row=tilt ms/frame avg/worst: water.step 58.41/58.9  water.field 8.69/8.7  water.through 0.83/0.9  water.nets 12.92/13.4  water.shade 3.42/3.6  water.build 5.38/5.9  water.update 0.04/0.1  r3d.cull 0.11/0.1  r3d.transform 1.07/1.2  r3d.draw 15.15/9.2  r3d.upscale 2.92/3.1 | total 108.99 || sound_mix 0.002/0.022 ms/block n=2795
+I (87603) water_perf: water_perf: config=one_core row=flat frames=91 substeps=182 rested=0 tris=2646 particles=1093 peak_mm_s=182.9
+I (87604) water_perf: water_perf: config=one_core row=flat frame=124772/134866/135602 update=93240/99253/99730 draw=18575/22605/23178
+I (87605) water_perf: water_perf: config=one_core row=flat stage=p2g us=23773
+I (87606) water_perf: water_perf: config=one_core row=flat stage=accel us=381
+I (87606) water_perf: water_perf: config=one_core row=flat stage=pressure us=13347
+I (87607) water_perf: water_perf: config=one_core row=flat stage=g2p us=20045
+I (87608) water_perf: water_perf: config=one_core row=flat stage=advect us=147
+I (87609) water_perf: water_perf: config=one_core row=flat stage=collide us=549
+I (87610) water_perf: water_perf: config=one_core row=flat ms/frame avg/worst: water.step 58.75/59.8  water.field 8.70/8.7  water.through 0.89/1.0  water.nets 14.17/16.7  water.shade 4.03/5.3  water.build 6.63/8.7  water.update 0.04/0.0  r3d.cull 0.12/0.2  r3d.transform 1.29/1.5  r3d.draw 16.92/13.5  r3d.upscale 2.92/3.1 | total 114.51 || sound_mix 0.002/0.022 ms/block n=1958
+I (93035) water_perf: water_perf: config=one_core row=return frames=46 substeps=92 rested=0 tris=2204 particles=1093 peak_mm_s=35.2
+I (93037) water_perf: water_perf: config=one_core row=return frame=117895/119064/119289 update=89365/90761/91021 draw=15609/16084/16095
+I (93038) water_perf: water_perf: config=one_core row=return stage=p2g us=23725
+I (93039) water_perf: water_perf: config=one_core row=return stage=accel us=381
+I (93039) water_perf: water_perf: config=one_core row=return stage=pressure us=13066
+I (93040) water_perf: water_perf: config=one_core row=return stage=g2p us=20001
+I (93041) water_perf: water_perf: config=one_core row=return stage=advect us=149
+I (93041) water_perf: water_perf: config=one_core row=return stage=collide us=543
+I (93042) water_perf: water_perf: config=one_core row=return ms/frame avg/worst: water.step 58.36/58.8  water.field 8.70/8.7  water.through 0.83/0.9  water.nets 12.70/13.1  water.shade 3.32/3.5  water.build 5.33/5.8  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.05/1.1  r3d.draw 14.24/7.8  r3d.upscale 2.89/3.0 | total 107.62 || sound_mix 0.002/0.013 ms/block n=936
+I (98325) water_perf: water_perf: config=one_core row=settle frames=45 substeps=90 rested=0 tris=2114 particles=1093 peak_mm_s=37.7
+I (98326) water_perf: water_perf: config=one_core row=settle frame=117281/117740/117831 update=88435/88583/88627 draw=15920/16305/16504
+I (98328) water_perf: water_perf: config=one_core row=settle stage=p2g us=23682
+I (98328) water_perf: water_perf: config=one_core row=settle stage=accel us=383
+I (98329) water_perf: water_perf: config=one_core row=settle stage=pressure us=12953
+I (98330) water_perf: water_perf: config=one_core row=settle stage=g2p us=20004
+I (98330) water_perf: water_perf: config=one_core row=settle stage=advect us=147
+I (98331) water_perf: water_perf: config=one_core row=settle stage=collide us=546
+I (98332) water_perf: water_perf: config=one_core row=settle ms/frame avg/worst: water.step 58.22/58.3  water.field 8.71/8.7  water.through 0.80/0.8  water.nets 12.42/12.5  water.shade 3.20/3.2  water.build 5.02/5.1  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 0.99/1.0  r3d.draw 14.60/8.0  r3d.upscale 2.89/3.0 | total 107.05 || sound_mix 0.002/0.018 ms/block n=911
+I (105421) water_perf: water_perf: config=one_core row=shake frames=61 substeps=122 rested=0 tris=2220 particles=1093 peak_mm_s=260.4
+I (105423) water_perf: water_perf: config=one_core row=shake frame=118059/121007/122538 update=88837/90704/91613 draw=16265/17827/18061
+I (105424) water_perf: water_perf: config=one_core row=shake stage=p2g us=23721
+I (105425) water_perf: water_perf: config=one_core row=shake stage=accel us=384
+I (105425) water_perf: water_perf: config=one_core row=shake stage=pressure us=12520
+I (105426) water_perf: water_perf: config=one_core row=shake stage=g2p us=20005
+I (105427) water_perf: water_perf: config=one_core row=shake stage=advect us=146
+I (105428) water_perf: water_perf: config=one_core row=shake stage=collide us=548
+I (105429) water_perf: water_perf: config=one_core row=shake ms/frame avg/worst: water.step 56.88/58.5  water.field 8.55/8.7  water.through 0.81/0.9  water.nets 12.57/13.7  water.shade 3.31/3.8  water.build 5.20/6.0  water.update 0.04/0.1  r3d.cull 0.11/0.1  r3d.transform 1.02/1.2  r3d.draw 14.65/8.9  r3d.upscale 2.86/3.0 | total 106.05 || sound_mix 0.002/0.014 ms/block n=1223
+I (105432) water_perf: water_perf: config=one_core phase=after internal_free=60375 internal_largest=31744
+I (105433) water_perf: water_perf: config=sub4 phase=before internal_free=60375 internal_largest=31744
+I (105539) water_perf: water_perf: config=sub4 phase=running internal_free=59515 internal_largest=31744
+I (111535) water_perf: water_perf: config=sub4 row=rest frames=45 substeps=180 rested=0 tris=2101 particles=1093 peak_mm_s=20.2
+I (111537) water_perf: water_perf: config=sub4 row=rest frame=130321/132194/132617 update=101870/103892/103968 draw=15531/15965/16251
+I (111538) water_perf: water_perf: config=sub4 row=rest stage=p2g us=30945
+I (111538) water_perf: water_perf: config=sub4 row=rest stage=accel us=759
+I (111539) water_perf: water_perf: config=sub4 row=rest stage=pressure us=25984
+I (111540) water_perf: water_perf: config=sub4 row=rest stage=g2p us=21805
+I (111540) water_perf: water_perf: config=sub4 row=rest stage=advect us=286
+I (111541) water_perf: water_perf: config=sub4 row=rest stage=collide us=1095
+I (111542) water_perf: water_perf: config=sub4 row=rest ms/frame avg/worst: water.field 5.29/5.2  water.through 0.87/0.8  water.nets 8.26/8.0  water.shade 2.07/2.1  water.build 5.33/5.3  water.step 83.18/83.4  water.update 0.04/0.0  r3d.cull 0.12/0.0  r3d.transform 1.01/1.1  r3d.draw 14.88/7.8  r3d.upscale 3.03/3.0 | total 124.11 || sound_mix 0.002/0.007 ms/block n=1053
+I (129636) water_perf: water_perf: config=sub4 row=tilt frames=136 substeps=544 rested=0 tris=2273 particles=1093 peak_mm_s=57.7
+I (129637) water_perf: water_perf: config=sub4 row=tilt frame=132949/134974/136562 update=103521/105554/106738 draw=16472/17713/18082
+I (129638) water_perf: water_perf: config=sub4 row=tilt stage=p2g us=30937
+I (129639) water_perf: water_perf: config=sub4 row=tilt stage=accel us=757
+I (129640) water_perf: water_perf: config=sub4 row=tilt stage=pressure us=26523
+I (129640) water_perf: water_perf: config=sub4 row=tilt stage=g2p us=21857
+I (129641) water_perf: water_perf: config=sub4 row=tilt stage=advect us=287
+I (129642) water_perf: water_perf: config=sub4 row=tilt stage=collide us=1089
+I (129643) water_perf: water_perf: config=sub4 row=tilt ms/frame avg/worst: water.step 81.97/84.5  water.field 4.93/5.2  water.through 0.83/0.8  water.nets 8.22/8.8  water.shade 2.09/2.3  water.build 5.43/5.9  water.update 0.04/0.0  r3d.cull 0.11/0.2  r3d.transform 1.04/1.1  r3d.draw 15.12/9.2  r3d.upscale 2.92/3.1 | total 122.75 || sound_mix 0.002/0.021 ms/block n=3118
+I (142243) water_perf: water_perf: config=sub4 row=flat frames=91 substeps=364 rested=0 tris=2637 particles=1093 peak_mm_s=151.0
+I (142244) water_perf: water_perf: config=sub4 row=flat frame=138427/147418/149359 update=107024/112310/114693 draw=18448/22382/22987
+I (142245) water_perf: water_perf: config=sub4 row=flat stage=p2g us=30970
+I (142246) water_perf: water_perf: config=sub4 row=flat stage=accel us=758
+I (142247) water_perf: water_perf: config=sub4 row=flat stage=pressure us=27670
+I (142247) water_perf: water_perf: config=sub4 row=flat stage=g2p us=21814
+I (142248) water_perf: water_perf: config=sub4 row=flat stage=advect us=286
+I (142249) water_perf: water_perf: config=sub4 row=flat stage=collide us=1090
+I (142250) water_perf: water_perf: config=sub4 row=flat ms/frame avg/worst: water.step 83.10/88.0  water.field 4.95/5.3  water.through 0.89/1.0  water.nets 8.98/10.7  water.shade 2.44/3.2  water.build 6.58/8.5  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.25/1.5  r3d.draw 16.84/13.3  r3d.upscale 2.92/3.2 | total 128.15 || sound_mix 0.002/0.022 ms/block n=2172
+I (148295) water_perf: water_perf: config=sub4 row=return frames=46 substeps=184 rested=0 tris=2216 particles=1093 peak_mm_s=32.5
+I (148297) water_perf: water_perf: config=sub4 row=return frame=131372/133072/134200 update=102925/104567/105913 draw=15514/15837/16304
+I (148298) water_perf: water_perf: config=sub4 row=return stage=p2g us=30831
+I (148299) water_perf: water_perf: config=sub4 row=return stage=accel us=756
+I (148299) water_perf: water_perf: config=sub4 row=return stage=pressure us=26333
+I (148300) water_perf: water_perf: config=sub4 row=return stage=g2p us=21835
+I (148301) water_perf: water_perf: config=sub4 row=return stage=advect us=286
+I (148301) water_perf: water_perf: config=sub4 row=return stage=collide us=1085
+I (148302) water_perf: water_perf: config=sub4 row=return ms/frame avg/worst: water.step 81.60/84.1  water.field 4.95/5.2  water.through 0.82/0.8  water.nets 7.99/8.5  water.shade 2.03/2.1  water.build 5.41/5.7  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.04/0.9  r3d.draw 14.16/7.9  r3d.upscale 2.91/3.0 | total 121.10 || sound_mix 0.002/0.005 ms/block n=1042
+I (154178) water_perf: water_perf: config=sub4 row=settle frames=45 substeps=180 rested=0 tris=2115 particles=1093 peak_mm_s=8.9
+I (154179) water_perf: water_perf: config=sub4 row=settle frame=130448/132175/132398 update=101830/103519/103734 draw=15704/16200/16361
+I (154180) water_perf: water_perf: config=sub4 row=settle stage=p2g us=30816
+I (154181) water_perf: water_perf: config=sub4 row=settle stage=accel us=762
+I (154182) water_perf: water_perf: config=sub4 row=settle stage=pressure us=25971
+I (154182) water_perf: water_perf: config=sub4 row=settle stage=g2p us=21847
+I (154183) water_perf: water_perf: config=sub4 row=settle stage=advect us=285
+I (154184) water_perf: water_perf: config=sub4 row=settle stage=collide us=1082
+I (154185) water_perf: water_perf: config=sub4 row=settle ms/frame avg/worst: water.step 81.29/83.3  water.field 4.93/5.2  water.through 0.82/0.8  water.nets 7.75/8.0  water.shade 1.94/2.0  water.build 5.05/5.1  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 0.99/1.1  r3d.draw 14.38/7.8  r3d.upscale 2.89/3.0 | total 120.23 || sound_mix 0.002/0.024 ms/block n=1014
+I (162168) water_perf: water_perf: config=sub4 row=shake frames=61 substeps=244 rested=0 tris=2299 particles=1093 peak_mm_s=230.2
+I (162169) water_perf: water_perf: config=sub4 row=shake frame=132928/135421/136767 update=103540/105405/106315 draw=16431/17272/17594
+I (162170) water_perf: water_perf: config=sub4 row=shake stage=p2g us=30912
+I (162171) water_perf: water_perf: config=sub4 row=shake stage=accel us=761
+I (162171) water_perf: water_perf: config=sub4 row=shake stage=pressure us=26143
+I (162172) water_perf: water_perf: config=sub4 row=shake stage=g2p us=21862
+I (162173) water_perf: water_perf: config=sub4 row=shake stage=advect us=288
+I (162174) water_perf: water_perf: config=sub4 row=shake stage=collide us=1091
+I (162175) water_perf: water_perf: config=sub4 row=shake ms/frame avg/worst: water.step 80.23/83.8  water.field 4.86/5.2  water.through 0.82/0.8  water.nets 8.43/9.4  water.shade 2.08/2.4  water.build 5.38/6.3  water.update 0.04/0.0  r3d.cull 0.11/0.2  r3d.transform 1.04/1.2  r3d.draw 14.81/8.5  r3d.upscale 2.86/3.0 | total 120.70 || sound_mix 0.002/0.007 ms/block n=1376
+I (162178) water_perf: water_perf: config=sub4 phase=after internal_free=60375 internal_largest=31744
+I (162179) water_perf: water_perf: config=sub1 phase=before internal_free=60375 internal_largest=31744
+I (162285) water_perf: water_perf: config=sub1 phase=running internal_free=59515 internal_largest=31744
+I (165512) water_perf: water_perf: config=sub1 row=rest frames=45 substeps=45 rested=0 tris=2109 particles=1093 peak_mm_s=89.1
+I (165513) water_perf: water_perf: config=sub1 row=rest frame=70108/71061/71735 update=41500/42248/43509 draw=15677/16151/16240
+I (165514) water_perf: water_perf: config=sub1 row=rest stage=p2g us=7991
+I (165515) water_perf: water_perf: config=sub1 row=rest stage=accel us=198
+I (165515) water_perf: water_perf: config=sub1 row=rest stage=pressure us=6319
+I (165516) water_perf: water_perf: config=sub1 row=rest stage=g2p us=5486
+I (165517) water_perf: water_perf: config=sub1 row=rest stage=advect us=74
+I (165517) water_perf: water_perf: config=sub1 row=rest stage=collide us=279
+I (165518) water_perf: water_perf: config=sub1 row=rest ms/frame avg/worst: water.field 5.29/5.2  water.through 0.85/0.8  water.nets 8.30/8.0  water.shade 2.06/2.0  water.build 5.47/5.4  water.step 21.31/23.0  water.update 0.05/0.1  r3d.cull 0.11/0.0  r3d.transform 1.05/1.1  r3d.draw 14.99/7.9  r3d.upscale 3.03/3.1 | total 62.56 || sound_mix 0.002/0.021 ms/block n=576
+I (175106) water_perf: water_perf: config=sub1 row=tilt frames=136 substeps=136 rested=0 tris=2128 particles=1093 peak_mm_s=154.9
+I (175108) water_perf: water_perf: config=sub1 row=tilt frame=70431/72747/75156 update=41398/42968/45722 draw=16087/17052/17584
+I (175109) water_perf: water_perf: config=sub1 row=tilt stage=p2g us=7943
+I (175110) water_perf: water_perf: config=sub1 row=tilt stage=accel us=195
+I (175110) water_perf: water_perf: config=sub1 row=tilt stage=pressure us=6050
+I (175111) water_perf: water_perf: config=sub1 row=tilt stage=g2p us=5498
+I (175112) water_perf: water_perf: config=sub1 row=tilt stage=advect us=74
+I (175112) water_perf: water_perf: config=sub1 row=tilt stage=collide us=277
+I (175113) water_perf: water_perf: config=sub1 row=tilt ms/frame avg/worst: water.step 20.55/23.0  water.field 4.94/5.3  water.through 0.82/0.9  water.nets 7.92/9.0  water.shade 1.97/2.2  water.build 5.14/5.7  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.01/1.2  r3d.draw 14.77/8.5  r3d.upscale 2.91/3.0 | total 60.22 || sound_mix 0.002/0.008 ms/block n=1653
+I (181955) water_perf: water_perf: config=sub1 row=flat frames=91 substeps=91 rested=0 tris=2517 particles=1093 peak_mm_s=248.2
+I (181956) water_perf: water_perf: config=sub1 row=flat frame=75145/85660/86916 update=43978/49449/50524 draw=18229/23440/23961
+I (181957) water_perf: water_perf: config=sub1 row=flat stage=p2g us=7962
+I (181958) water_perf: water_perf: config=sub1 row=flat stage=accel us=197
+I (181958) water_perf: water_perf: config=sub1 row=flat stage=pressure us=6026
+I (181959) water_perf: water_perf: config=sub1 row=flat stage=g2p us=5496
+I (181960) water_perf: water_perf: config=sub1 row=flat stage=advect us=73
+I (181960) water_perf: water_perf: config=sub1 row=flat stage=collide us=279
+I (181961) water_perf: water_perf: config=sub1 row=flat ms/frame avg/worst: water.step 20.53/22.4  water.field 4.94/5.3  water.through 0.88/1.0  water.nets 8.84/11.2  water.shade 2.34/3.2  water.build 6.37/8.9  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.24/1.6  r3d.draw 16.63/14.5  r3d.upscale 2.91/3.1 | total 64.88 || sound_mix 0.002/0.013 ms/block n=1180
+I (185138) water_perf: water_perf: config=sub1 row=return frames=46 substeps=46 rested=0 tris=2064 particles=1093 peak_mm_s=126.6
+I (185139) water_perf: water_perf: config=sub1 row=return frame=68969/69754/70901 update=41016/41784/42549 draw=15024/15792/16507
+I (185140) water_perf: water_perf: config=sub1 row=return stage=p2g us=7939
+I (185141) water_perf: water_perf: config=sub1 row=return stage=accel us=196
+I (185142) water_perf: water_perf: config=sub1 row=return stage=pressure us=6033
+I (185143) water_perf: water_perf: config=sub1 row=return stage=g2p us=5503
+I (185143) water_perf: water_perf: config=sub1 row=return stage=advect us=73
+I (185144) water_perf: water_perf: config=sub1 row=return stage=collide us=277
+I (185145) water_perf: water_perf: config=sub1 row=return ms/frame avg/worst: water.step 20.53/22.4  water.field 4.94/5.2  water.through 0.81/0.8  water.nets 7.69/8.1  water.shade 1.90/2.0  water.build 5.04/5.5  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 0.98/1.0  r3d.draw 13.73/7.8  r3d.upscale 2.89/3.0 | total 58.72 || sound_mix 0.002/0.008 ms/block n=548
+I (188235) water_perf: water_perf: config=sub1 row=settle frames=45 substeps=45 rested=0 tris=1972 particles=1093 peak_mm_s=155.0
+I (188236) water_perf: water_perf: config=sub1 row=settle frame=68553/69666/70934 update=40275/40980/42533 draw=15326/15859/16159
+I (188237) water_perf: water_perf: config=sub1 row=settle stage=p2g us=7930
+I (188238) water_perf: water_perf: config=sub1 row=settle stage=accel us=196
+I (188238) water_perf: water_perf: config=sub1 row=settle stage=pressure us=5975
+I (188239) water_perf: water_perf: config=sub1 row=settle stage=g2p us=5503
+I (188240) water_perf: water_perf: config=sub1 row=settle stage=advect us=73
+I (188240) water_perf: water_perf: config=sub1 row=settle stage=collide us=278
+I (188241) water_perf: water_perf: config=sub1 row=settle ms/frame avg/worst: water.step 20.46/22.5  water.field 4.94/5.2  water.through 0.80/0.8  water.nets 7.44/7.9  water.shade 1.84/2.1  water.build 4.74/4.9  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 0.94/1.1  r3d.draw 14.05/7.9  r3d.upscale 2.91/3.0 | total 58.32 || sound_mix 0.002/0.006 ms/block n=533
+I (192295) water_perf: water_perf: config=sub1 row=shake frames=61 substeps=61 rested=0 tris=1903 particles=1093 peak_mm_s=266.8
+I (192296) water_perf: water_perf: config=sub1 row=shake frame=67495/69660/70253 update=39555/40980/41643 draw=14943/15926/16280
+I (192297) water_perf: water_perf: config=sub1 row=shake stage=p2g us=7893
+I (192298) water_perf: water_perf: config=sub1 row=shake stage=accel us=200
+I (192298) water_perf: water_perf: config=sub1 row=shake stage=pressure us=5287
+I (192299) water_perf: water_perf: config=sub1 row=shake stage=g2p us=5497
+I (192300) water_perf: water_perf: config=sub1 row=shake stage=advect us=74
+I (192301) water_perf: water_perf: config=sub1 row=shake stage=collide us=279
+I (192301) water_perf: water_perf: config=sub1 row=shake ms/frame avg/worst: water.step 19.40/21.7  water.field 4.88/5.2  water.through 0.78/0.9  water.nets 7.49/8.3  water.shade 1.73/2.0  water.build 4.54/5.3  water.update 0.04/0.1  r3d.cull 0.10/0.0  r3d.transform 0.91/1.0  r3d.draw 13.46/7.8  r3d.upscale 2.90/3.2 | total 56.29 || sound_mix 0.002/0.009 ms/block n=700
+I (192305) water_perf: water_perf: config=sub1 phase=after internal_free=60375 internal_largest=31744
+I (192306) water_perf: water_perf: config=red_black phase=before internal_free=60375 internal_largest=31744
+I (192412) water_perf: water_perf: config=red_black phase=running internal_free=59515 internal_largest=31744
+I (196417) water_perf: water_perf: config=red_black row=rest frames=45 substeps=90 rested=0 tris=2094 particles=1093 peak_mm_s=102.7
+I (196418) water_perf: water_perf: config=red_black row=rest frame=87009/88173/90037 update=58632/59437/61415 draw=15456/15912/16444
+I (196419) water_perf: water_perf: config=red_black row=rest stage=p2g us=15598
+I (196420) water_perf: water_perf: config=red_black row=rest stage=accel us=382
+I (196421) water_perf: water_perf: config=red_black row=rest stage=pressure us=10030
+I (196422) water_perf: water_perf: config=red_black row=rest stage=g2p us=10949
+I (196422) water_perf: water_perf: config=red_black row=rest stage=advect us=145
+I (196423) water_perf: water_perf: config=red_black row=rest stage=collide us=552
+I (196424) water_perf: water_perf: config=red_black row=rest ms/frame avg/worst: water.field 5.28/5.3  water.through 0.87/0.8  water.nets 8.26/8.1  water.shade 2.06/2.2  water.build 5.34/5.3  water.step 39.01/40.1  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.03/1.0  r3d.draw 14.79/8.0  r3d.upscale 3.03/3.0 | total 79.86 || sound_mix 0.002/0.012 ms/block n=710
+I (208569) water_perf: water_perf: config=red_black row=tilt frames=136 substeps=272 rested=0 tris=2235 particles=1093 peak_mm_s=112.1
+I (208571) water_perf: water_perf: config=red_black row=tilt frame=89224/91126/92601 update=59915/61390/62774 draw=16360/17685/18494
+I (208572) water_perf: water_perf: config=red_black row=tilt stage=p2g us=15590
+I (208573) water_perf: water_perf: config=red_black row=tilt stage=accel us=382
+I (208573) water_perf: water_perf: config=red_black row=tilt stage=pressure us=10369
+I (208574) water_perf: water_perf: config=red_black row=tilt stage=g2p us=10975
+I (208575) water_perf: water_perf: config=red_black row=tilt stage=advect us=145
+I (208576) water_perf: water_perf: config=red_black row=tilt stage=collide us=548
+I (208577) water_perf: water_perf: config=red_black row=tilt ms/frame avg/worst: water.step 38.52/41.0  water.field 4.94/5.3  water.through 0.83/0.9  water.nets 8.15/8.9  water.shade 2.07/2.4  water.build 5.35/5.8  water.update 0.04/0.0  r3d.cull 0.12/0.0  r3d.transform 1.03/1.1  r3d.draw 15.02/9.3  r3d.upscale 2.91/3.0 | total 79.02 || sound_mix 0.002/0.013 ms/block n=2093
+I (217128) water_perf: water_perf: config=red_black row=flat frames=91 substeps=182 rested=0 tris=2626 particles=1093 peak_mm_s=183.8
+I (217129) water_perf: water_perf: config=red_black row=flat frame=93921/103429/104243 update=62470/67703/68243 draw=18515/22885/23578
+I (217131) water_perf: water_perf: config=red_black row=flat stage=p2g us=15681
+I (217131) water_perf: water_perf: config=red_black row=flat stage=accel us=384
+I (217132) water_perf: water_perf: config=red_black row=flat stage=pressure us=10301
+I (217133) water_perf: water_perf: config=red_black row=flat stage=g2p us=10955
+I (217133) water_perf: water_perf: config=red_black row=flat stage=advect us=145
+I (217134) water_perf: water_perf: config=red_black row=flat stage=collide us=548
+I (217135) water_perf: water_perf: config=red_black row=flat ms/frame avg/worst: water.step 38.53/40.8  water.field 4.94/5.2  water.through 0.89/1.0  water.nets 8.98/11.2  water.shade 2.43/3.1  water.build 6.63/8.7  water.update 0.04/0.0  r3d.cull 0.12/0.2  r3d.transform 1.26/1.5  r3d.draw 16.90/14.3  r3d.upscale 2.90/3.0 | total 83.67 || sound_mix 0.002/0.025 ms/block n=1475
+I (221181) water_perf: water_perf: config=red_black row=return frames=46 substeps=92 rested=0 tris=2186 particles=1093 peak_mm_s=82.5
+I (221183) water_perf: water_perf: config=red_black row=return frame=87896/89443/90370 update=59430/61134/61816 draw=15531/15971/16539
+I (221184) water_perf: water_perf: config=red_black row=return stage=p2g us=15591
+I (221184) water_perf: water_perf: config=red_black row=return stage=accel us=386
+I (221185) water_perf: water_perf: config=red_black row=return stage=pressure us=10176
+I (221186) water_perf: water_perf: config=red_black row=return stage=g2p us=10980
+I (221187) water_perf: water_perf: config=red_black row=return stage=advect us=144
+I (221188) water_perf: water_perf: config=red_black row=return stage=collide us=548
+I (221188) water_perf: water_perf: config=red_black row=return ms/frame avg/worst: water.step 38.31/40.1  water.field 4.94/5.2  water.through 0.82/0.8  water.nets 7.89/8.3  water.shade 2.02/2.2  water.build 5.32/5.9  water.update 0.04/0.1  r3d.cull 0.11/0.0  r3d.transform 1.05/1.1  r3d.draw 14.17/7.8  r3d.upscale 2.91/3.0 | total 77.62 || sound_mix 0.002/0.012 ms/block n=698
+I (225114) water_perf: water_perf: config=red_black row=settle frames=45 substeps=90 rested=0 tris=2092 particles=1093 peak_mm_s=141.0
+I (225115) water_perf: water_perf: config=red_black row=settle frame=87129/88000/88997 update=58463/59254/60329 draw=15716/16221/16559
+I (225116) water_perf: water_perf: config=red_black row=settle stage=p2g us=15563
+I (225117) water_perf: water_perf: config=red_black row=settle stage=accel us=385
+I (225118) water_perf: water_perf: config=red_black row=settle stage=pressure us=9872
+I (225118) water_perf: water_perf: config=red_black row=settle stage=g2p us=10982
+I (225119) water_perf: water_perf: config=red_black row=settle stage=advect us=145
+I (225120) water_perf: water_perf: config=red_black row=settle stage=collide us=547
+I (225121) water_perf: water_perf: config=red_black row=settle ms/frame avg/worst: water.step 38.00/40.0  water.field 4.93/5.2  water.through 0.81/0.8  water.nets 7.73/8.1  water.shade 1.92/2.0  water.build 5.02/5.2  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 0.99/1.0  r3d.draw 14.39/7.8  r3d.upscale 2.91/3.1 | total 76.89 || sound_mix 0.002/0.007 ms/block n=677
+I (230460) water_perf: water_perf: config=red_black row=shake frames=61 substeps=122 rested=0 tris=2210 particles=1093 peak_mm_s=238.5
+I (230461) water_perf: water_perf: config=red_black row=shake frame=88871/90214/91643 update=59756/61140/62517 draw=16134/16767/16918
+I (230462) water_perf: water_perf: config=red_black row=shake stage=p2g us=15611
+I (230463) water_perf: water_perf: config=red_black row=shake stage=accel us=381
+I (230464) water_perf: water_perf: config=red_black row=shake stage=pressure us=10059
+I (230464) water_perf: water_perf: config=red_black row=shake stage=g2p us=10989
+I (230465) water_perf: water_perf: config=red_black row=shake stage=advect us=145
+I (230466) water_perf: water_perf: config=red_black row=shake stage=collide us=549
+I (230467) water_perf: water_perf: config=red_black row=shake ms/frame avg/worst: water.step 37.62/40.9  water.field 4.87/5.2  water.through 0.81/0.9  water.nets 8.21/8.8  water.shade 1.99/2.1  water.build 5.21/5.7  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.01/1.1  r3d.draw 14.54/7.9  r3d.upscale 2.88/3.1 | total 77.34 || sound_mix 0.002/0.007 ms/block n=921
+I (230470) water_perf: water_perf: config=red_black phase=after internal_free=60375 internal_largest=31744
+I (230471) water_perf: water_perf: config=rest phase=before internal_free=60375 internal_largest=31744
+I (230577) water_perf: water_perf: config=rest phase=running internal_free=59515 internal_largest=31744
+I (234748) water_perf: water_perf: config=rest row=rest frames=45 substeps=90 rested=0 tris=2146 particles=1093 peak_mm_s=26.8
+I (234750) water_perf: water_perf: config=rest row=rest frame=90626/91682/92959 update=61925/62872/64220 draw=15771/16421/16652
+I (234751) water_perf: water_perf: config=rest row=rest stage=p2g us=15634
+I (234751) water_perf: water_perf: config=rest row=rest stage=accel us=381
+I (234752) water_perf: water_perf: config=rest row=rest stage=pressure us=12984
+I (234753) water_perf: water_perf: config=rest row=rest stage=g2p us=10908
+I (234753) water_perf: water_perf: config=rest row=rest stage=advect us=146
+I (234754) water_perf: water_perf: config=rest row=rest stage=collide us=550
+I (234755) water_perf: water_perf: config=rest row=rest ms/frame avg/worst: water.field 5.28/5.6  water.through 0.88/0.8  water.nets 8.36/8.3  water.shade 2.11/2.2  water.build 5.51/5.3  water.step 42.02/43.0  water.update 0.05/0.0  r3d.cull 0.12/0.0  r3d.transform 1.05/1.1  r3d.draw 15.09/7.9  r3d.upscale 3.03/3.0 | total 83.54 || sound_mix 0.002/0.014 ms/block n=739
+I (247309) water_perf: water_perf: config=rest row=tilt frames=136 substeps=272 rested=0 tris=2262 particles=1093 peak_mm_s=67.6
+I (247310) water_perf: water_perf: config=rest row=tilt frame=92227/94072/95196 update=62797/64163/65458 draw=16482/17570/18085
+I (247311) water_perf: water_perf: config=rest row=tilt stage=p2g us=15600
+I (247312) water_perf: water_perf: config=rest row=tilt stage=accel us=384
+I (247312) water_perf: water_perf: config=rest row=tilt stage=pressure us=13086
+I (247313) water_perf: water_perf: config=rest row=tilt stage=g2p us=10960
+I (247314) water_perf: water_perf: config=rest row=tilt stage=advect us=145
+I (247314) water_perf: water_perf: config=rest row=tilt stage=collide us=548
+I (247315) water_perf: water_perf: config=rest row=tilt ms/frame avg/worst: water.step 41.23/43.7  water.field 4.94/5.3  water.through 0.83/0.9  water.nets 8.23/8.9  water.shade 2.08/2.2  water.build 5.42/5.9  water.update 0.04/0.0  r3d.cull 0.11/0.2  r3d.transform 1.04/1.1  r3d.draw 15.13/9.1  r3d.upscale 2.92/3.0 | total 82.03 || sound_mix 0.002/0.007 ms/block n=2164
+I (256153) water_perf: water_perf: config=rest row=flat frames=91 substeps=182 rested=0 tris=2646 particles=1093 peak_mm_s=182.9
+I (256154) water_perf: water_perf: config=rest row=flat frame=97075/105943/108534 update=65550/70605/72373 draw=18574/22850/23166
+I (256155) water_perf: water_perf: config=rest row=flat stage=p2g us=15627
+I (256156) water_perf: water_perf: config=rest row=flat stage=accel us=385
+I (256157) water_perf: water_perf: config=rest row=flat stage=pressure us=13364
+I (256157) water_perf: water_perf: config=rest row=flat stage=g2p us=10922
+I (256158) water_perf: water_perf: config=rest row=flat stage=advect us=145
+I (256159) water_perf: water_perf: config=rest row=flat stage=collide us=547
+I (256160) water_perf: water_perf: config=rest row=flat ms/frame avg/worst: water.step 41.50/44.0  water.field 4.93/5.4  water.through 0.89/0.9  water.nets 9.03/11.3  water.shade 2.45/3.3  water.build 6.68/8.8  water.update 0.04/0.1  r3d.cull 0.12/0.2  r3d.transform 1.28/1.7  r3d.draw 16.93/13.7  r3d.upscale 2.91/3.1 | total 86.81 || sound_mix 0.002/0.022 ms/block n=1523
+I (260345) water_perf: water_perf: config=rest row=return frames=46 substeps=92 rested=0 tris=2204 particles=1093 peak_mm_s=35.2
+I (260346) water_perf: water_perf: config=rest row=return frame=90919/92003/92097 update=62426/63739/63915 draw=15566/15961/16447
+I (260348) water_perf: water_perf: config=rest row=return stage=p2g us=15599
+I (260348) water_perf: water_perf: config=rest row=return stage=accel us=381
+I (260349) water_perf: water_perf: config=rest row=return stage=pressure us=13062
+I (260350) water_perf: water_perf: config=rest row=return stage=g2p us=10978
+I (260350) water_perf: water_perf: config=rest row=return stage=advect us=146
+I (260351) water_perf: water_perf: config=rest row=return stage=collide us=546
+I (260352) water_perf: water_perf: config=rest row=return ms/frame avg/worst: water.step 41.21/42.9  water.field 4.94/5.2  water.through 0.83/0.9  water.nets 7.94/8.3  water.shade 2.02/2.2  water.build 5.36/5.8  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.04/1.1  r3d.draw 14.21/7.8  r3d.upscale 2.89/3.0 | total 80.65 || sound_mix 0.002/0.008 ms/block n=723
+I (264426) water_perf: water_perf: config=rest row=settle frames=45 substeps=90 rested=0 tris=2114 particles=1093 peak_mm_s=37.7
+I (264428) water_perf: water_perf: config=rest row=settle frame=90392/90853/93107 update=61599/62035/64154 draw=15873/16207/16536
+I (264429) water_perf: water_perf: config=rest row=settle stage=p2g us=15510
+I (264430) water_perf: water_perf: config=rest row=settle stage=accel us=381
+I (264430) water_perf: water_perf: config=rest row=settle stage=pressure us=12958
+I (264431) water_perf: water_perf: config=rest row=settle stage=g2p us=10999
+I (264432) water_perf: water_perf: config=rest row=settle stage=advect us=146
+I (264432) water_perf: water_perf: config=rest row=settle stage=collide us=544
+I (264433) water_perf: water_perf: config=rest row=settle ms/frame avg/worst: water.step 41.09/43.7  water.field 4.93/5.3  water.through 0.81/0.8  water.nets 7.77/8.1  water.shade 1.94/2.0  water.build 5.04/5.1  water.update 0.05/0.0  r3d.cull 0.11/0.1  r3d.transform 0.98/1.0  r3d.draw 14.56/7.8  r3d.upscale 2.89/3.1 | total 80.21 || sound_mix 0.002/0.007 ms/block n=703
+I (269924) water_perf: water_perf: config=rest row=shake frames=61 substeps=122 rested=0 tris=2220 particles=1093 peak_mm_s=260.4
+I (269925) water_perf: water_perf: config=rest row=shake frame=91442/94159/95021 update=62251/64138/65084 draw=16226/17507/18022
+I (269926) water_perf: water_perf: config=rest row=shake stage=p2g us=15591
+I (269927) water_perf: water_perf: config=rest row=shake stage=accel us=381
+I (269928) water_perf: water_perf: config=rest row=shake stage=pressure us=12530
+I (269928) water_perf: water_perf: config=rest row=shake stage=g2p us=10967
+I (269929) water_perf: water_perf: config=rest row=shake stage=advect us=147
+I (269930) water_perf: water_perf: config=rest row=shake stage=collide us=546
+I (269931) water_perf: water_perf: config=rest row=shake ms/frame avg/worst: water.step 39.96/42.8  water.field 4.86/5.2  water.through 0.81/0.9  water.nets 8.24/9.1  water.shade 2.01/2.3  water.build 5.24/6.2  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.01/1.1  r3d.draw 14.63/8.9  r3d.upscale 2.87/3.1 | total 79.84 || sound_mix 0.002/0.012 ms/block n=947
+I (269934) water_perf: water_perf: config=rest phase=after internal_free=60375 internal_largest=31744
+I (269935) water_perf: water_perf: config=plane phase=before internal_free=60375 internal_largest=31744
+I (270041) water_perf: water_perf: config=plane phase=running internal_free=59515 internal_largest=31744
+I (272305) water_perf: water_perf: config=plane row=rest frames=45 substeps=0 rested=0 tris=2096 particles=1093 peak_mm_s=209.9
+I (272306) water_perf: water_perf: config=plane row=rest frame=49174/49523/49826 update=21127/21473/21594 draw=15149/15575/15747
+I (272307) water_perf: water_perf: config=plane row=rest stage=p2g us=0
+I (272308) water_perf: water_perf: config=plane row=rest stage=accel us=0
+I (272309) water_perf: water_perf: config=plane row=rest stage=pressure us=0
+I (272309) water_perf: water_perf: config=plane row=rest stage=g2p us=0
+I (272310) water_perf: water_perf: config=plane row=rest stage=advect us=0
+I (272311) water_perf: water_perf: config=plane row=rest stage=collide us=0
+I (272311) water_perf: water_perf: config=plane row=rest ms/frame avg/worst: water.field 5.97/5.7  water.through 0.85/0.8  water.nets 8.26/8.2  water.shade 2.05/2.0  water.build 5.32/5.0  water.step 0.01/0.0  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.02/1.0  r3d.draw 14.50/7.7  r3d.upscale 3.03/3.0 | total 41.21 || sound_mix 0.002/0.011 ms/block n=410
+I (279341) water_perf: water_perf: config=plane row=tilt frames=136 substeps=0 rested=0 tris=2289 particles=1093 peak_mm_s=209.9
+I (279342) water_perf: water_perf: config=plane row=tilt frame=51605/53858/54179 update=22354/23317/23677 draw=16338/17786/18466
+I (279343) water_perf: water_perf: config=plane row=tilt stage=p2g us=0
+I (279344) water_perf: water_perf: config=plane row=tilt stage=accel us=0
+I (279345) water_perf: water_perf: config=plane row=tilt stage=pressure us=0
+I (279345) water_perf: water_perf: config=plane row=tilt stage=g2p us=0
+I (279346) water_perf: water_perf: config=plane row=tilt stage=advect us=0
+I (279347) water_perf: water_perf: config=plane row=tilt stage=collide us=0
+I (279348) water_perf: water_perf: config=plane row=tilt ms/frame avg/worst: water.step 0.01/0.0  water.field 5.59/5.6  water.through 0.80/0.9  water.nets 8.30/8.8  water.shade 2.10/2.2  water.build 5.50/6.2  water.update 0.04/0.1  r3d.cull 0.11/0.1  r3d.transform 1.04/1.2  r3d.draw 15.01/9.1  r3d.upscale 2.90/3.0 | total 41.44 || sound_mix 0.002/0.008 ms/block n=1212
+I (284483) water_perf: water_perf: config=plane row=flat frames=91 substeps=0 rested=0 tris=2728 particles=1093 peak_mm_s=209.9
+I (284484) water_perf: water_perf: config=plane row=flat frame=56403/62254/62907 update=25122/28109/28268 draw=18370/21365/21932
+I (284486) water_perf: water_perf: config=plane row=flat stage=p2g us=0
+I (284486) water_perf: water_perf: config=plane row=flat stage=accel us=0
+I (284487) water_perf: water_perf: config=plane row=flat stage=pressure us=0
+I (284488) water_perf: water_perf: config=plane row=flat stage=g2p us=0
+I (284488) water_perf: water_perf: config=plane row=flat stage=advect us=0
+I (284489) water_perf: water_perf: config=plane row=flat stage=collide us=0
+I (284490) water_perf: water_perf: config=plane row=flat ms/frame avg/worst: water.step 0.01/0.0  water.field 5.62/5.7  water.through 0.89/1.0  water.nets 9.18/10.5  water.shade 2.53/3.0  water.build 6.81/8.1  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.29/1.6  r3d.draw 16.74/12.7  r3d.upscale 2.90/3.1 | total 46.17 || sound_mix 0.002/0.011 ms/block n=886
+I (286823) water_perf: water_perf: config=plane row=return frames=46 substeps=0 rested=0 tris=2236 particles=1093 peak_mm_s=209.9
+I (286824) water_perf: water_perf: config=plane row=return frame=50628/53417/53709 update=22067/24049/24112 draw=15655/16508/16699
+I (286825) water_perf: water_perf: config=plane row=return stage=p2g us=0
+I (286826) water_perf: water_perf: config=plane row=return stage=accel us=0
+I (286827) water_perf: water_perf: config=plane row=return stage=pressure us=0
+I (286827) water_perf: water_perf: config=plane row=return stage=g2p us=0
+I (286828) water_perf: water_perf: config=plane row=return stage=advect us=0
+I (286829) water_perf: water_perf: config=plane row=return stage=collide us=0
+I (286830) water_perf: water_perf: config=plane row=return ms/frame avg/worst: water.step 0.01/0.0  water.field 5.58/5.6  water.through 0.81/0.9  water.nets 8.00/8.7  water.shade 2.04/2.3  water.build 5.52/6.5  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.05/1.3  r3d.draw 14.31/8.2  r3d.upscale 2.88/2.9 | total 40.40 || sound_mix 0.002/0.006 ms/block n=403
+I (289058) water_perf: water_perf: config=plane row=settle frames=45 substeps=0 rested=0 tris=2096 particles=1093 peak_mm_s=209.9
+I (289059) water_perf: water_perf: config=plane row=settle frame=49437/49812/50061 update=21096/21407/21468 draw=15424/15815/15857
+I (289061) water_perf: water_perf: config=plane row=settle stage=p2g us=0
+I (289061) water_perf: water_perf: config=plane row=settle stage=accel us=0
+I (289062) water_perf: water_perf: config=plane row=settle stage=pressure us=0
+I (289063) water_perf: water_perf: config=plane row=settle stage=g2p us=0
+I (289063) water_perf: water_perf: config=plane row=settle stage=advect us=0
+I (289064) water_perf: water_perf: config=plane row=settle stage=collide us=0
+I (289065) water_perf: water_perf: config=plane row=settle ms/frame avg/worst: water.step 0.01/0.0  water.field 5.59/5.6  water.through 0.80/0.9  water.nets 7.72/8.1  water.shade 1.92/2.0  water.build 4.99/5.0  water.update 0.04/0.0  r3d.cull 0.10/0.0  r3d.transform 0.94/0.9  r3d.draw 14.16/7.9  r3d.upscale 2.90/3.0 | total 39.21 || sound_mix 0.002/0.007 ms/block n=385
+I (292077) water_perf: water_perf: config=plane row=shake frames=61 substeps=0 rested=0 tris=2142 particles=1093 peak_mm_s=209.9
+I (292078) water_perf: water_perf: config=plane row=shake frame=50096/50991/51285 update=21473/21983/22298 draw=15686/16221/16349
+I (292079) water_perf: water_perf: config=plane row=shake stage=p2g us=0
+I (292080) water_perf: water_perf: config=plane row=shake stage=accel us=0
+I (292080) water_perf: water_perf: config=plane row=shake stage=pressure us=0
+I (292081) water_perf: water_perf: config=plane row=shake stage=g2p us=0
+I (292082) water_perf: water_perf: config=plane row=shake stage=advect us=0
+I (292082) water_perf: water_perf: config=plane row=shake stage=collide us=0
+I (292083) water_perf: water_perf: config=plane row=shake ms/frame avg/worst: water.step 0.01/0.0  water.field 5.48/5.6  water.through 0.78/0.8  water.nets 7.84/8.5  water.shade 1.92/2.1  water.build 5.02/5.2  water.update 0.04/0.1  r3d.cull 0.10/0.1  r3d.transform 0.94/0.9  r3d.draw 14.19/7.9  r3d.upscale 2.86/3.1 | total 39.24 || sound_mix 0.002/0.011 ms/block n=520
+I (292087) water_perf: water_perf: config=plane phase=after internal_free=60375 internal_largest=31744
+I (292190) water_perf: water_perf: config=base phase=before internal_free=60375 internal_largest=31744
+I (292295) water_perf: water_perf: config=base phase=running internal_free=59515 internal_largest=31744
+I (296470) water_perf: water_perf: config=base row=rest frames=45 substeps=90 rested=0 tris=2146 particles=1093 peak_mm_s=26.8
+I (296471) water_perf: water_perf: config=base row=rest frame=90702/92736/92865 update=62000/63821/64188 draw=15772/16260/16400
+I (296472) water_perf: water_perf: config=base row=rest stage=p2g us=15691
+I (296473) water_perf: water_perf: config=base row=rest stage=accel us=385
+I (296474) water_perf: water_perf: config=base row=rest stage=pressure us=12990
+I (296474) water_perf: water_perf: config=base row=rest stage=g2p us=10933
+I (296475) water_perf: water_perf: config=base row=rest stage=advect us=147
+I (296476) water_perf: water_perf: config=base row=rest stage=collide us=550
+I (296477) water_perf: water_perf: config=base row=rest ms/frame avg/worst: water.field 5.28/5.3  water.through 0.87/0.8  water.nets 8.37/8.3  water.shade 2.10/2.0  water.build 5.52/5.3  water.step 42.11/43.3  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.05/1.1  r3d.draw 15.10/8.1  r3d.upscale 3.03/3.0 | total 83.63 || sound_mix 0.002/0.022 ms/block n=757
+I (309029) water_perf: water_perf: config=base row=tilt frames=136 substeps=272 rested=0 tris=2262 particles=1093 peak_mm_s=67.6
+I (309030) water_perf: water_perf: config=base row=tilt frame=92218/94013/95672 update=62797/64186/65809 draw=16468/17561/17879
+I (309032) water_perf: water_perf: config=base row=tilt stage=p2g us=15616
+I (309032) water_perf: water_perf: config=base row=tilt stage=accel us=383
+I (309033) water_perf: water_perf: config=base row=tilt stage=pressure us=13081
+I (309034) water_perf: water_perf: config=base row=tilt stage=g2p us=10961
+I (309034) water_perf: water_perf: config=base row=tilt stage=advect us=146
+I (309035) water_perf: water_perf: config=base row=tilt stage=collide us=546
+I (309036) water_perf: water_perf: config=base row=tilt ms/frame avg/worst: water.step 41.24/43.6  water.field 4.94/5.2  water.through 0.83/0.8  water.nets 8.22/8.8  water.shade 2.09/2.3  water.build 5.42/5.9  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.04/1.1  r3d.draw 15.11/9.1  r3d.upscale 2.92/3.1 | total 82.02 || sound_mix 0.002/0.016 ms/block n=2163
+I (317873) water_perf: water_perf: config=base row=flat frames=91 substeps=182 rested=0 tris=2646 particles=1093 peak_mm_s=182.9
+I (317874) water_perf: water_perf: config=base row=flat frame=97067/106272/107401 update=65566/70598/72043 draw=18555/22705/23235
+I (317875) water_perf: water_perf: config=base row=flat stage=p2g us=15594
+I (317876) water_perf: water_perf: config=base row=flat stage=accel us=382
+I (317876) water_perf: water_perf: config=base row=flat stage=pressure us=13354
+I (317877) water_perf: water_perf: config=base row=flat stage=g2p us=10933
+I (317878) water_perf: water_perf: config=base row=flat stage=advect us=146
+I (317878) water_perf: water_perf: config=base row=flat stage=collide us=550
+I (317879) water_perf: water_perf: config=base row=flat ms/frame avg/worst: water.step 41.46/44.1  water.field 4.96/5.5  water.through 0.89/1.0  water.nets 9.05/11.2  water.shade 2.45/3.1  water.build 6.68/8.8  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.27/1.6  r3d.draw 16.92/13.8  r3d.upscale 2.91/3.1 | total 86.80 || sound_mix 0.002/0.009 ms/block n=1524
+I (322063) water_perf: water_perf: config=base row=return frames=46 substeps=92 rested=0 tris=2204 particles=1093 peak_mm_s=35.2
+I (322064) water_perf: water_perf: config=base row=return frame=90882/92224/94144 update=62385/63835/65814 draw=15578/16089/16418
+I (322066) water_perf: water_perf: config=base row=return stage=p2g us=15601
+I (322066) water_perf: water_perf: config=base row=return stage=accel us=383
+I (322067) water_perf: water_perf: config=base row=return stage=pressure us=13057
+I (322068) water_perf: water_perf: config=base row=return stage=g2p us=10934
+I (322068) water_perf: water_perf: config=base row=return stage=advect us=145
+I (322069) water_perf: water_perf: config=base row=return stage=collide us=549
+I (322070) water_perf: water_perf: config=base row=return ms/frame avg/worst: water.step 41.17/43.2  water.field 4.95/5.2  water.through 0.82/0.8  water.nets 7.95/8.6  water.shade 2.03/2.2  water.build 5.36/5.8  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.04/1.1  r3d.draw 14.22/7.9  r3d.upscale 2.89/3.0 | total 80.62 || sound_mix 0.002/0.013 ms/block n=721
+I (326145) water_perf: water_perf: config=base row=settle frames=45 substeps=90 rested=0 tris=2114 particles=1093 peak_mm_s=37.7
+I (326147) water_perf: water_perf: config=base row=settle frame=90446/91049/92217 update=61643/62217/63580 draw=15881/16307/16318
+I (326148) water_perf: water_perf: config=base row=settle stage=p2g us=15561
+I (326149) water_perf: water_perf: config=base row=settle stage=accel us=383
+I (326149) water_perf: water_perf: config=base row=settle stage=pressure us=12967
+I (326150) water_perf: water_perf: config=base row=settle stage=g2p us=10957
+I (326151) water_perf: water_perf: config=base row=settle stage=advect us=146
+I (326151) water_perf: water_perf: config=base row=settle stage=collide us=544
+I (326152) water_perf: water_perf: config=base row=settle ms/frame avg/worst: water.step 41.07/43.0  water.field 4.95/5.5  water.through 0.81/0.8  water.nets 7.78/8.2  water.shade 1.94/2.0  water.build 5.04/5.1  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 0.96/1.0  r3d.draw 14.57/8.0  r3d.upscale 2.89/3.0 | total 80.21 || sound_mix 0.002/0.005 ms/block n=704
+I (331647) water_perf: water_perf: config=base row=shake frames=61 substeps=122 rested=0 tris=2220 particles=1093 peak_mm_s=260.4
+I (331648) water_perf: water_perf: config=base row=shake frame=91480/94011/95216 update=62271/63782/65088 draw=16240/17458/18015
+I (331649) water_perf: water_perf: config=base row=shake stage=p2g us=15600
+I (331650) water_perf: water_perf: config=base row=shake stage=accel us=381
+I (331651) water_perf: water_perf: config=base row=shake stage=pressure us=12530
+I (331652) water_perf: water_perf: config=base row=shake stage=g2p us=10954
+I (331652) water_perf: water_perf: config=base row=shake stage=advect us=145
+I (331653) water_perf: water_perf: config=base row=shake stage=collide us=549
+I (331654) water_perf: water_perf: config=base row=shake ms/frame avg/worst: water.step 39.99/43.1  water.field 4.86/5.2  water.through 0.81/0.9  water.nets 8.28/8.9  water.shade 2.00/2.2  water.build 5.24/6.2  water.update 0.04/0.1  r3d.cull 0.11/0.1  r3d.transform 1.01/1.1  r3d.draw 14.65/8.9  r3d.upscale 2.87/3.0 | total 79.90 || sound_mix 0.002/0.023 ms/block n=947
+I (331657) water_perf: water_perf: config=base phase=after internal_free=60375 internal_largest=31744
+I (331658) water_perf: water_perf: config=one_core phase=before internal_free=60375 internal_largest=31744
+I (331784) water_perf: water_perf: config=one_core phase=running internal_free=59515 internal_largest=31744
+I (337194) water_perf: water_perf: config=one_core row=rest frames=45 substeps=90 rested=0 tris=2146 particles=1093 peak_mm_s=26.8
+I (337195) water_perf: water_perf: config=one_core row=rest frame=117540/118103/118429 update=88807/89117/89215 draw=15793/16377/16540
+I (337196) water_perf: water_perf: config=one_core row=rest stage=p2g us=23743
+I (337197) water_perf: water_perf: config=one_core row=rest stage=accel us=383
+I (337198) water_perf: water_perf: config=one_core row=rest stage=pressure us=12994
+I (337198) water_perf: water_perf: config=one_core row=rest stage=g2p us=19985
+I (337199) water_perf: water_perf: config=one_core row=rest stage=advect us=145
+I (337200) water_perf: water_perf: config=one_core row=rest stage=collide us=556
+I (337201) water_perf: water_perf: config=one_core row=rest ms/frame avg/worst: water.field 9.28/8.8  water.through 0.87/0.8  water.nets 13.37/12.7  water.shade 3.47/3.3  water.build 5.49/5.3  water.step 59.61/58.4  water.update 0.04/0.0  r3d.cull 0.12/0.0  r3d.transform 1.07/1.0  r3d.draw 15.11/7.8  r3d.upscale 3.03/3.1 | total 111.50 || sound_mix 0.002/0.023 ms/block n=956
+I (353424) water_perf: water_perf: config=one_core row=tilt frames=136 substeps=272 rested=0 tris=2262 particles=1093 peak_mm_s=67.6
+I (353426) water_perf: water_perf: config=one_core row=tilt frame=119211/121088/121510 update=89711/90841/91162 draw=16544/17637/18171
+I (353427) water_perf: water_perf: config=one_core row=tilt stage=p2g us=23741
+I (353428) water_perf: water_perf: config=one_core row=tilt stage=accel us=383
+I (353428) water_perf: water_perf: config=one_core row=tilt stage=pressure us=13070
+I (353429) water_perf: water_perf: config=one_core row=tilt stage=g2p us=20007
+I (353430) water_perf: water_perf: config=one_core row=tilt stage=advect us=146
+I (353430) water_perf: water_perf: config=one_core row=tilt stage=collide us=546
+I (353431) water_perf: water_perf: config=one_core row=tilt ms/frame avg/worst: water.step 58.40/58.9  water.field 8.71/8.7  water.through 0.83/0.9  water.nets 12.91/13.3  water.shade 3.42/3.6  water.build 5.39/5.9  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.07/1.2  r3d.draw 15.16/9.1  r3d.upscale 2.92/3.0 | total 109.00 || sound_mix 0.002/0.023 ms/block n=2796
+I (364790) water_perf: water_perf: config=one_core row=flat frames=91 substeps=182 rested=0 tris=2646 particles=1093 peak_mm_s=182.9
+I (364792) water_perf: water_perf: config=one_core row=flat frame=124778/134955/135903 update=93242/99297/99720 draw=18601/22878/23296
+I (364793) water_perf: water_perf: config=one_core row=flat stage=p2g us=23778
+I (364793) water_perf: water_perf: config=one_core row=flat stage=accel us=380
+I (364794) water_perf: water_perf: config=one_core row=flat stage=pressure us=13351
+I (364795) water_perf: water_perf: config=one_core row=flat stage=g2p us=20043
+I (364796) water_perf: water_perf: config=one_core row=flat stage=advect us=146
+I (364796) water_perf: water_perf: config=one_core row=flat stage=collide us=545
+I (364797) water_perf: water_perf: config=one_core row=flat ms/frame avg/worst: water.step 58.75/59.8  water.field 8.70/8.7  water.through 0.89/1.0  water.nets 14.16/16.7  water.shade 4.03/5.2  water.build 6.63/8.7  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.30/1.7  r3d.draw 16.94/13.6  r3d.upscale 2.90/3.0 | total 114.52 || sound_mix 0.002/0.011 ms/block n=1958
+I (370224) water_perf: water_perf: config=one_core row=return frames=46 substeps=92 rested=0 tris=2204 particles=1093 peak_mm_s=35.2
+I (370225) water_perf: water_perf: config=one_core row=return frame=117917/119188/119747 update=89359/90866/91103 draw=15628/16034/16539
+I (370226) water_perf: water_perf: config=one_core row=return stage=p2g us=23722
+I (370227) water_perf: water_perf: config=one_core row=return stage=accel us=383
+I (370228) water_perf: water_perf: config=one_core row=return stage=pressure us=13060
+I (370229) water_perf: water_perf: config=one_core row=return stage=g2p us=19996
+I (370229) water_perf: water_perf: config=one_core row=return stage=advect us=147
+I (370230) water_perf: water_perf: config=one_core row=return stage=collide us=550
+I (370231) water_perf: water_perf: config=one_core row=return ms/frame avg/worst: water.step 58.35/58.8  water.field 8.70/8.7  water.through 0.82/0.8  water.nets 12.70/13.1  water.shade 3.32/3.5  water.build 5.33/5.8  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.06/1.2  r3d.draw 14.23/7.8  r3d.upscale 2.90/3.0 | total 107.63 || sound_mix 0.002/0.007 ms/block n=936
+I (375513) water_perf: water_perf: config=one_core row=settle frames=45 substeps=90 rested=0 tris=2114 particles=1093 peak_mm_s=37.7
+I (375514) water_perf: water_perf: config=one_core row=settle frame=117277/117653/117853 update=88433/88615/88627 draw=15923/16384/16471
+I (375515) water_perf: water_perf: config=one_core row=settle stage=p2g us=23684
+I (375516) water_perf: water_perf: config=one_core row=settle stage=accel us=383
+I (375517) water_perf: water_perf: config=one_core row=settle stage=pressure us=12957
+I (375517) water_perf: water_perf: config=one_core row=settle stage=g2p us=19997
+I (375518) water_perf: water_perf: config=one_core row=settle stage=advect us=145
+I (375519) water_perf: water_perf: config=one_core row=settle stage=collide us=545
+I (375520) water_perf: water_perf: config=one_core row=settle ms/frame avg/worst: water.step 58.22/58.2  water.field 8.70/8.7  water.through 0.81/0.8  water.nets 12.42/12.5  water.shade 3.20/3.2  water.build 5.02/5.1  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.00/1.0  r3d.draw 14.58/7.9  r3d.upscale 2.89/3.0 | total 107.04 || sound_mix 0.002/0.007 ms/block n=911
+I (382611) water_perf: water_perf: config=one_core row=shake frames=61 substeps=122 rested=0 tris=2220 particles=1093 peak_mm_s=260.4
+I (382612) water_perf: water_perf: config=one_core row=shake frame=118086/121151/122503 update=88857/90804/91736 draw=16264/17505/18036
+I (382614) water_perf: water_perf: config=one_core row=shake stage=p2g us=23727
+I (382614) water_perf: water_perf: config=one_core row=shake stage=accel us=384
+I (382615) water_perf: water_perf: config=one_core row=shake stage=pressure us=12517
+I (382616) water_perf: water_perf: config=one_core row=shake stage=g2p us=20010
+I (382616) water_perf: water_perf: config=one_core row=shake stage=advect us=147
+I (382617) water_perf: water_perf: config=one_core row=shake stage=collide us=547
+I (382618) water_perf: water_perf: config=one_core row=shake ms/frame avg/worst: water.step 56.88/58.5  water.field 8.57/8.7  water.through 0.81/0.9  water.nets 12.55/13.7  water.shade 3.31/3.8  water.build 5.21/6.1  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.02/1.1  r3d.draw 14.65/8.9  r3d.upscale 2.87/3.1 | total 106.08 || sound_mix 0.002/0.009 ms/block n=1223
+I (382622) water_perf: water_perf: config=one_core phase=after internal_free=60375 internal_largest=31744
+I (382623) water_perf: water_perf: config=sub4 phase=before internal_free=60375 internal_largest=31744
+I (382729) water_perf: water_perf: config=sub4 phase=running internal_free=59515 internal_largest=31744
+I (388730) water_perf: water_perf: config=sub4 row=rest frames=45 substeps=180 rested=0 tris=2101 particles=1093 peak_mm_s=20.2
+I (388731) water_perf: water_perf: config=sub4 row=rest frame=130367/132395/132526 update=101892/103802/104272 draw=15545/15927/16211
+I (388732) water_perf: water_perf: config=sub4 row=rest stage=p2g us=30951
+I (388733) water_perf: water_perf: config=sub4 row=rest stage=accel us=758
+I (388734) water_perf: water_perf: config=sub4 row=rest stage=pressure us=25979
+I (388734) water_perf: water_perf: config=sub4 row=rest stage=g2p us=21811
+I (388735) water_perf: water_perf: config=sub4 row=rest stage=advect us=291
+I (388736) water_perf: water_perf: config=sub4 row=rest stage=collide us=1102
+I (388737) water_perf: water_perf: config=sub4 row=rest ms/frame avg/worst: water.field 5.28/5.2  water.through 0.87/0.8  water.nets 8.27/8.2  water.shade 2.06/2.0  water.build 5.34/5.3  water.step 83.25/83.5  water.update 0.04/0.0  r3d.cull 0.12/0.0  r3d.transform 1.02/1.0  r3d.draw 14.89/7.9  r3d.upscale 3.03/3.0 | total 124.21 || sound_mix 0.002/0.014 ms/block n=1054
+I (406835) water_perf: water_perf: config=sub4 row=tilt frames=136 substeps=544 rested=0 tris=2273 particles=1093 peak_mm_s=57.7
+I (406836) water_perf: water_perf: config=sub4 row=tilt frame=133004/135087/137398 update=103556/105488/107265 draw=16499/17775/18215
+I (406837) water_perf: water_perf: config=sub4 row=tilt stage=p2g us=30966
+I (406838) water_perf: water_perf: config=sub4 row=tilt stage=accel us=759
+I (406839) water_perf: water_perf: config=sub4 row=tilt stage=pressure us=26522
+I (406839) water_perf: water_perf: config=sub4 row=tilt stage=g2p us=21857
+I (406840) water_perf: water_perf: config=sub4 row=tilt stage=advect us=290
+I (406841) water_perf: water_perf: config=sub4 row=tilt stage=collide us=1087
+I (406842) water_perf: water_perf: config=sub4 row=tilt ms/frame avg/worst: water.step 81.98/84.9  water.field 4.93/5.3  water.through 0.83/0.9  water.nets 8.22/8.8  water.shade 2.09/2.2  water.build 5.43/5.9  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.06/1.2  r3d.draw 15.13/9.1  r3d.upscale 2.92/3.0 | total 122.79 || sound_mix 0.002/0.022 ms/block n=3119
+I (419439) water_perf: water_perf: config=sub4 row=flat frames=91 substeps=364 rested=0 tris=2637 particles=1093 peak_mm_s=151.0
+I (419440) water_perf: water_perf: config=sub4 row=flat frame=138393/147392/148351 update=107010/112468/113655 draw=18441/22310/22998
+I (419441) water_perf: water_perf: config=sub4 row=flat stage=p2g us=30982
+I (419442) water_perf: water_perf: config=sub4 row=flat stage=accel us=757
+I (419443) water_perf: water_perf: config=sub4 row=flat stage=pressure us=27672
+I (419444) water_perf: water_perf: config=sub4 row=flat stage=g2p us=21792
+I (419444) water_perf: water_perf: config=sub4 row=flat stage=advect us=290
+I (419445) water_perf: water_perf: config=sub4 row=flat stage=collide us=1091
+I (419446) water_perf: water_perf: config=sub4 row=flat ms/frame avg/worst: water.step 83.09/85.9  water.field 4.95/5.4  water.through 0.89/0.9  water.nets 8.98/10.7  water.shade 2.45/3.1  water.build 6.58/8.5  water.update 0.04/0.0  r3d.cull 0.12/0.2  r3d.transform 1.26/1.6  r3d.draw 16.82/13.4  r3d.upscale 2.91/3.0 | total 128.13 || sound_mix 0.002/0.013 ms/block n=2171
+I (425493) water_perf: water_perf: config=sub4 row=return frames=46 substeps=184 rested=0 tris=2216 particles=1093 peak_mm_s=32.5
+I (425495) water_perf: water_perf: config=sub4 row=return frame=131401/132943/134539 update=102956/104434/106206 draw=15516/15846/16214
+I (425496) water_perf: water_perf: config=sub4 row=return stage=p2g us=30846
+I (425496) water_perf: water_perf: config=sub4 row=return stage=accel us=757
+I (425497) water_perf: water_perf: config=sub4 row=return stage=pressure us=26313
+I (425498) water_perf: water_perf: config=sub4 row=return stage=g2p us=21876
+I (425498) water_perf: water_perf: config=sub4 row=return stage=advect us=286
+I (425499) water_perf: water_perf: config=sub4 row=return stage=collide us=1087
+I (425500) water_perf: water_perf: config=sub4 row=return ms/frame avg/worst: water.step 81.64/84.4  water.field 4.95/5.2  water.through 0.82/0.8  water.nets 7.97/8.4  water.shade 2.04/2.2  water.build 5.41/5.7  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.05/1.0  r3d.draw 14.16/7.8  r3d.upscale 2.90/3.0 | total 121.13 || sound_mix 0.002/0.021 ms/block n=1043
+I (431377) water_perf: water_perf: config=sub4 row=settle frames=45 substeps=180 rested=0 tris=2115 particles=1093 peak_mm_s=8.9
+I (431378) water_perf: water_perf: config=sub4 row=settle frame=130504/132198/132353 update=101860/103538/103860 draw=15714/16080/16282
+I (431379) water_perf: water_perf: config=sub4 row=settle stage=p2g us=30821
+I (431380) water_perf: water_perf: config=sub4 row=settle stage=accel us=759
+I (431381) water_perf: water_perf: config=sub4 row=settle stage=pressure us=25961
+I (431382) water_perf: water_perf: config=sub4 row=settle stage=g2p us=21842
+I (431382) water_perf: water_perf: config=sub4 row=settle stage=advect us=286
+I (431383) water_perf: water_perf: config=sub4 row=settle stage=collide us=1096
+I (431384) water_perf: water_perf: config=sub4 row=settle ms/frame avg/worst: water.step 81.27/83.4  water.field 4.95/5.2  water.through 0.81/0.8  water.nets 7.75/7.9  water.shade 1.95/2.2  water.build 5.05/5.1  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 0.99/0.9  r3d.draw 14.38/8.0  r3d.upscale 2.90/3.1 | total 120.26 || sound_mix 0.002/0.015 ms/block n=1013
+I (439368) water_perf: water_perf: config=sub4 row=shake frames=61 substeps=244 rested=0 tris=2299 particles=1093 peak_mm_s=230.2
+I (439370) water_perf: water_perf: config=sub4 row=shake frame=132937/135528/137599 update=103552/105692/107173 draw=16424/17338/17552
+I (439371) water_perf: water_perf: config=sub4 row=shake stage=p2g us=30906
+I (439372) water_perf: water_perf: config=sub4 row=shake stage=accel us=758
+I (439372) water_perf: water_perf: config=sub4 row=shake stage=pressure us=26140
+I (439373) water_perf: water_perf: config=sub4 row=shake stage=g2p us=21856
+I (439374) water_perf: water_perf: config=sub4 row=shake stage=advect us=289
+I (439374) water_perf: water_perf: config=sub4 row=shake stage=collide us=1089
+I (439375) water_perf: water_perf: config=sub4 row=shake ms/frame avg/worst: water.step 80.22/84.2  water.field 4.87/5.2  water.through 0.82/0.9  water.nets 8.44/9.4  water.shade 2.08/2.4  water.build 5.38/6.2  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.03/1.1  r3d.draw 14.81/8.3  r3d.upscale 2.86/3.0 | total 120.72 || sound_mix 0.002/0.014 ms/block n=1377
+I (439379) water_perf: water_perf: config=sub4 phase=after internal_free=60375 internal_largest=31744
+I (439380) water_perf: water_perf: config=sub1 phase=before internal_free=60375 internal_largest=31744
+I (439486) water_perf: water_perf: config=sub1 phase=running internal_free=59515 internal_largest=31744
+I (442710) water_perf: water_perf: config=sub1 row=rest frames=45 substeps=45 rested=0 tris=2109 particles=1093 peak_mm_s=89.1
+I (442712) water_perf: water_perf: config=sub1 row=rest frame=70059/71027/71660 update=41447/42319/43505 draw=15673/16113/16196
+I (442713) water_perf: water_perf: config=sub1 row=rest stage=p2g us=7935
+I (442713) water_perf: water_perf: config=sub1 row=rest stage=accel us=200
+I (442714) water_perf: water_perf: config=sub1 row=rest stage=pressure us=6313
+I (442715) water_perf: water_perf: config=sub1 row=rest stage=g2p us=5496
+I (442715) water_perf: water_perf: config=sub1 row=rest stage=advect us=75
+I (442716) water_perf: water_perf: config=sub1 row=rest stage=collide us=285
+I (442717) water_perf: water_perf: config=sub1 row=rest ms/frame avg/worst: water.field 5.27/5.4  water.through 0.86/0.9  water.nets 8.30/8.2  water.shade 2.06/2.0  water.build 5.48/5.4  water.step 21.26/22.9  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.05/1.1  r3d.draw 14.99/7.9  r3d.upscale 3.04/3.1 | total 62.51 || sound_mix 0.002/0.013 ms/block n=576
+I (452300) water_perf: water_perf: config=sub1 row=tilt frames=136 substeps=136 rested=0 tris=2128 particles=1093 peak_mm_s=154.9
+I (452301) water_perf: water_perf: config=sub1 row=tilt frame=70390/72602/73903 update=41361/43002/44329 draw=16092/17052/17785
+I (452303) water_perf: water_perf: config=sub1 row=tilt stage=p2g us=7933
+I (452303) water_perf: water_perf: config=sub1 row=tilt stage=accel us=196
+I (452304) water_perf: water_perf: config=sub1 row=tilt stage=pressure us=6047
+I (452305) water_perf: water_perf: config=sub1 row=tilt stage=g2p us=5495
+I (452305) water_perf: water_perf: config=sub1 row=tilt stage=advect us=74
+I (452306) water_perf: water_perf: config=sub1 row=tilt stage=collide us=278
+I (452307) water_perf: water_perf: config=sub1 row=tilt ms/frame avg/worst: water.step 20.53/22.8  water.field 4.94/5.2  water.through 0.82/0.8  water.nets 7.91/8.7  water.shade 1.97/2.3  water.build 5.13/5.7  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.01/1.2  r3d.draw 14.77/8.5  r3d.upscale 2.90/3.0 | total 60.18 || sound_mix 0.002/0.023 ms/block n=1652
+I (459147) water_perf: water_perf: config=sub1 row=flat frames=91 substeps=91 rested=0 tris=2517 particles=1093 peak_mm_s=248.2
+I (459149) water_perf: water_perf: config=sub1 row=flat frame=75134/85567/86851 update=43978/49563/50232 draw=18214/23310/23856
+I (459150) water_perf: water_perf: config=sub1 row=flat stage=p2g us=7958
+I (459150) water_perf: water_perf: config=sub1 row=flat stage=accel us=197
+I (459151) water_perf: water_perf: config=sub1 row=flat stage=pressure us=6024
+I (459152) water_perf: water_perf: config=sub1 row=flat stage=g2p us=5508
+I (459152) water_perf: water_perf: config=sub1 row=flat stage=advect us=74
+I (459153) water_perf: water_perf: config=sub1 row=flat stage=collide us=279
+I (459154) water_perf: water_perf: config=sub1 row=flat ms/frame avg/worst: water.step 20.54/22.6  water.field 4.95/5.3  water.through 0.88/1.0  water.nets 8.83/11.0  water.shade 2.34/3.3  water.build 6.37/8.9  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.24/1.6  r3d.draw 16.61/14.3  r3d.upscale 2.91/3.1 | total 64.87 || sound_mix 0.002/0.007 ms/block n=1179
+I (462330) water_perf: water_perf: config=sub1 row=return frames=46 substeps=46 rested=0 tris=2064 particles=1093 peak_mm_s=126.6
+I (462332) water_perf: water_perf: config=sub1 row=return frame=68965/69675/71406 update=41028/42037/43772 draw=15025/15813/16216
+I (462333) water_perf: water_perf: config=sub1 row=return stage=p2g us=7921
+I (462333) water_perf: water_perf: config=sub1 row=return stage=accel us=195
+I (462334) water_perf: water_perf: config=sub1 row=return stage=pressure us=6039
+I (462335) water_perf: water_perf: config=sub1 row=return stage=g2p us=5498
+I (462335) water_perf: water_perf: config=sub1 row=return stage=advect us=75
+I (462336) water_perf: water_perf: config=sub1 row=return stage=collide us=279
+I (462337) water_perf: water_perf: config=sub1 row=return ms/frame avg/worst: water.step 20.51/22.5  water.field 4.95/5.2  water.through 0.81/0.8  water.nets 7.71/8.2  water.shade 1.89/2.0  water.build 5.04/5.6  water.update 0.04/0.1  r3d.cull 0.11/0.0  r3d.transform 0.99/1.0  r3d.draw 13.73/7.9  r3d.upscale 2.89/3.0 | total 58.72 || sound_mix 0.002/0.005 ms/block n=549
+I (465426) water_perf: water_perf: config=sub1 row=settle frames=45 substeps=45 rested=0 tris=1972 particles=1093 peak_mm_s=155.0
+I (465427) water_perf: water_perf: config=sub1 row=settle frame=68528/69480/70420 update=40261/41176/42161 draw=15320/15731/15918
+I (465428) water_perf: water_perf: config=sub1 row=settle stage=p2g us=7928
+I (465429) water_perf: water_perf: config=sub1 row=settle stage=accel us=196
+I (465430) water_perf: water_perf: config=sub1 row=settle stage=pressure us=5966
+I (465430) water_perf: water_perf: config=sub1 row=settle stage=g2p us=5496
+I (465431) water_perf: water_perf: config=sub1 row=settle stage=advect us=73
+I (465432) water_perf: water_perf: config=sub1 row=settle stage=collide us=278
+I (465433) water_perf: water_perf: config=sub1 row=settle ms/frame avg/worst: water.step 20.45/22.2  water.field 4.95/5.3  water.through 0.80/0.8  water.nets 7.44/7.7  water.shade 1.82/2.0  water.build 4.74/4.9  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 0.95/1.0  r3d.draw 14.03/7.8  r3d.upscale 2.92/3.2 | total 58.29 || sound_mix 0.002/0.022 ms/block n=533
+I (469485) water_perf: water_perf: config=sub1 row=shake frames=61 substeps=61 rested=0 tris=1903 particles=1093 peak_mm_s=266.8
+I (469486) water_perf: water_perf: config=sub1 row=shake frame=67471/69530/71832 update=39572/41215/42749 draw=14928/15838/16307
+I (469488) water_perf: water_perf: config=sub1 row=shake stage=p2g us=7951
+I (469488) water_perf: water_perf: config=sub1 row=shake stage=accel us=194
+I (469489) water_perf: water_perf: config=sub1 row=shake stage=pressure us=5295
+I (469490) water_perf: water_perf: config=sub1 row=shake stage=g2p us=5493
+I (469491) water_perf: water_perf: config=sub1 row=shake stage=advect us=73
+I (469491) water_perf: water_perf: config=sub1 row=shake stage=collide us=280
+I (469492) water_perf: water_perf: config=sub1 row=shake ms/frame avg/worst: water.step 19.45/22.1  water.field 4.86/5.2  water.through 0.79/0.9  water.nets 7.48/8.4  water.shade 1.73/2.1  water.build 4.53/5.3  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 0.90/1.0  r3d.draw 13.46/7.8  r3d.upscale 2.88/3.0 | total 56.27 || sound_mix 0.002/0.022 ms/block n=699
+I (469496) water_perf: water_perf: config=sub1 phase=after internal_free=60375 internal_largest=31744
+I (469497) water_perf: water_perf: config=red_black phase=before internal_free=60375 internal_largest=31744
+I (469603) water_perf: water_perf: config=red_black phase=running internal_free=59515 internal_largest=31744
+I (473612) water_perf: water_perf: config=red_black row=rest frames=45 substeps=90 rested=0 tris=2094 particles=1093 peak_mm_s=102.7
+I (473614) water_perf: water_perf: config=red_black row=rest frame=87107/89520/90805 update=58746/60649/61549 draw=15440/15991/16322
+I (473615) water_perf: water_perf: config=red_black row=rest stage=p2g us=15656
+I (473616) water_perf: water_perf: config=red_black row=rest stage=accel us=383
+I (473616) water_perf: water_perf: config=red_black row=rest stage=pressure us=10063
+I (473617) water_perf: water_perf: config=red_black row=rest stage=g2p us=10975
+I (473618) water_perf: water_perf: config=red_black row=rest stage=advect us=147
+I (473619) water_perf: water_perf: config=red_black row=rest stage=collide us=550
+I (473620) water_perf: water_perf: config=red_black row=rest ms/frame avg/worst: water.field 5.28/5.3  water.through 0.87/0.8  water.nets 8.25/8.2  water.shade 2.05/2.0  water.build 5.35/5.3  water.step 39.13/40.8  water.update 0.05/0.0  r3d.cull 0.12/0.0  r3d.transform 1.01/1.1  r3d.draw 14.79/7.9  r3d.upscale 3.03/3.0 | total 79.97 || sound_mix 0.002/0.007 ms/block n=711
+I (485763) water_perf: water_perf: config=red_black row=tilt frames=136 substeps=272 rested=0 tris=2235 particles=1093 peak_mm_s=112.1
+I (485764) water_perf: water_perf: config=red_black row=tilt frame=89206/91143/92810 update=59885/61248/63093 draw=16364/17655/18865
+I (485765) water_perf: water_perf: config=red_black row=tilt stage=p2g us=15578
+I (485766) water_perf: water_perf: config=red_black row=tilt stage=accel us=385
+I (485766) water_perf: water_perf: config=red_black row=tilt stage=pressure us=10349
+I (485767) water_perf: water_perf: config=red_black row=tilt stage=g2p us=10978
+I (485768) water_perf: water_perf: config=red_black row=tilt stage=advect us=146
+I (485769) water_perf: water_perf: config=red_black row=tilt stage=collide us=546
+I (485770) water_perf: water_perf: config=red_black row=tilt ms/frame avg/worst: water.step 38.49/40.9  water.field 4.94/5.2  water.through 0.83/0.9  water.nets 8.14/8.8  water.shade 2.05/2.2  water.build 5.36/5.8  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.03/1.2  r3d.draw 15.02/9.4  r3d.upscale 2.92/3.1 | total 79.00 || sound_mix 0.002/0.023 ms/block n=2093
+I (494320) water_perf: water_perf: config=red_black row=flat frames=91 substeps=182 rested=0 tris=2626 particles=1093 peak_mm_s=183.8
+I (494322) water_perf: water_perf: config=red_black row=flat frame=93921/102944/105194 update=62492/67139/69310 draw=18501/23021/23445
+I (494323) water_perf: water_perf: config=red_black row=flat stage=p2g us=15676
+I (494324) water_perf: water_perf: config=red_black row=flat stage=accel us=383
+I (494324) water_perf: water_perf: config=red_black row=flat stage=pressure us=10289
+I (494325) water_perf: water_perf: config=red_black row=flat stage=g2p us=10979
+I (494326) water_perf: water_perf: config=red_black row=flat stage=advect us=145
+I (494327) water_perf: water_perf: config=red_black row=flat stage=collide us=550
+I (494328) water_perf: water_perf: config=red_black row=flat ms/frame avg/worst: water.step 38.53/40.9  water.field 4.95/5.3  water.through 0.89/1.0  water.nets 8.99/10.9  water.shade 2.43/3.1  water.build 6.63/8.6  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.26/1.5  r3d.draw 16.88/14.0  r3d.upscale 2.90/3.1 | total 83.67 || sound_mix 0.002/0.022 ms/block n=1475
+I (498377) water_perf: water_perf: config=red_black row=return frames=46 substeps=92 rested=0 tris=2186 particles=1093 peak_mm_s=82.5
+I (498378) water_perf: water_perf: config=red_black row=return frame=87964/89624/89648 update=59464/60702/61843 draw=15581/16161/16643
+I (498379) water_perf: water_perf: config=red_black row=return stage=p2g us=15609
+I (498380) water_perf: water_perf: config=red_black row=return stage=accel us=384
+I (498381) water_perf: water_perf: config=red_black row=return stage=pressure us=10146
+I (498382) water_perf: water_perf: config=red_black row=return stage=g2p us=10984
+I (498382) water_perf: water_perf: config=red_black row=return stage=advect us=145
+I (498383) water_perf: water_perf: config=red_black row=return stage=collide us=550
+I (498384) water_perf: water_perf: config=red_black row=return ms/frame avg/worst: water.step 38.31/40.4  water.field 4.94/5.3  water.through 0.83/0.9  water.nets 7.94/8.3  water.shade 2.00/2.1  water.build 5.32/5.9  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.03/1.0  r3d.draw 14.23/7.8  r3d.upscale 2.89/3.0 | total 77.69 || sound_mix 0.002/0.011 ms/block n=698
+I (502308) water_perf: water_perf: config=red_black row=settle frames=45 substeps=90 rested=0 tris=2092 particles=1093 peak_mm_s=141.0
+I (502309) water_perf: water_perf: config=red_black row=settle frame=87091/87983/88990 update=58444/59299/60357 draw=15703/16128/16199
+I (502311) water_perf: water_perf: config=red_black row=settle stage=p2g us=15570
+I (502311) water_perf: water_perf: config=red_black row=settle stage=accel us=383
+I (502312) water_perf: water_perf: config=red_black row=settle stage=pressure us=9863
+I (502313) water_perf: water_perf: config=red_black row=settle stage=g2p us=10978
+I (502314) water_perf: water_perf: config=red_black row=settle stage=advect us=146
+I (502314) water_perf: water_perf: config=red_black row=settle stage=collide us=549
+I (502315) water_perf: water_perf: config=red_black row=settle ms/frame avg/worst: water.step 38.00/39.8  water.field 4.93/5.2  water.through 0.80/0.8  water.nets 7.71/8.1  water.shade 1.93/2.0  water.build 5.01/5.1  water.update 0.05/0.1  r3d.cull 0.12/0.1  r3d.transform 0.97/1.0  r3d.draw 14.39/7.9  r3d.upscale 2.90/3.1 | total 76.85 || sound_mix 0.002/0.008 ms/block n=677
+I (507649) water_perf: water_perf: config=red_black row=shake frames=61 substeps=122 rested=0 tris=2210 particles=1093 peak_mm_s=238.5
+I (507650) water_perf: water_perf: config=red_black row=shake frame=88787/90446/91562 update=59707/61162/62147 draw=16105/16734/17341
+I (507652) water_perf: water_perf: config=red_black row=shake stage=p2g us=15558
+I (507652) water_perf: water_perf: config=red_black row=shake stage=accel us=386
+I (507653) water_perf: water_perf: config=red_black row=shake stage=pressure us=10065
+I (507654) water_perf: water_perf: config=red_black row=shake stage=g2p us=10976
+I (507654) water_perf: water_perf: config=red_black row=shake stage=advect us=148
+I (507655) water_perf: water_perf: config=red_black row=shake stage=collide us=550
+I (507656) water_perf: water_perf: config=red_black row=shake ms/frame avg/worst: water.step 37.57/41.1  water.field 4.86/5.2  water.through 0.81/0.9  water.nets 8.22/8.9  water.shade 1.99/2.1  water.build 5.22/5.6  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.01/1.1  r3d.draw 14.52/8.1  r3d.upscale 2.87/3.0 | total 77.27 || sound_mix 0.002/0.012 ms/block n=921
+I (507660) water_perf: water_perf: config=red_black phase=after internal_free=60375 internal_largest=31744
+I (507661) water_perf: water_perf: config=rest phase=before internal_free=60375 internal_largest=31744
+I (507767) water_perf: water_perf: config=rest phase=running internal_free=59515 internal_largest=31744
+I (511936) water_perf: water_perf: config=rest row=rest frames=45 substeps=90 rested=0 tris=2146 particles=1093 peak_mm_s=26.8
+I (511937) water_perf: water_perf: config=rest row=rest frame=90571/91541/92644 update=61874/62711/64239 draw=15772/16151/16453
+I (511938) water_perf: water_perf: config=rest row=rest stage=p2g us=15625
+I (511939) water_perf: water_perf: config=rest row=rest stage=accel us=382
+I (511939) water_perf: water_perf: config=rest row=rest stage=pressure us=12980
+I (511940) water_perf: water_perf: config=rest row=rest stage=g2p us=10933
+I (511941) water_perf: water_perf: config=rest row=rest stage=advect us=144
+I (511941) water_perf: water_perf: config=rest row=rest stage=collide us=551
+I (511942) water_perf: water_perf: config=rest row=rest ms/frame avg/worst: water.field 5.26/5.2  water.through 0.87/0.8  water.nets 8.33/8.2  water.shade 2.11/2.1  water.build 5.52/5.4  water.step 42.04/43.4  water.update 0.05/0.0  r3d.cull 0.12/0.1  r3d.transform 1.06/1.1  r3d.draw 15.09/7.9  r3d.upscale 3.02/3.1 | total 83.50 || sound_mix 0.002/0.006 ms/block n=738
+I (524498) water_perf: water_perf: config=rest row=tilt frames=136 substeps=272 rested=0 tris=2262 particles=1093 peak_mm_s=67.6
+I (524500) water_perf: water_perf: config=rest row=tilt frame=92243/94009/96007 update=62813/64094/65668 draw=16480/17498/18053
+I (524501) water_perf: water_perf: config=rest row=tilt stage=p2g us=15617
+I (524502) water_perf: water_perf: config=rest row=tilt stage=accel us=382
+I (524502) water_perf: water_perf: config=rest row=tilt stage=pressure us=13079
+I (524503) water_perf: water_perf: config=rest row=tilt stage=g2p us=10960
+I (524504) water_perf: water_perf: config=rest row=tilt stage=advect us=146
+I (524504) water_perf: water_perf: config=rest row=tilt stage=collide us=547
+I (524505) water_perf: water_perf: config=rest row=tilt ms/frame avg/worst: water.step 41.24/43.8  water.field 4.94/5.3  water.through 0.83/0.9  water.nets 8.22/8.9  water.shade 2.09/2.4  water.build 5.42/5.9  water.update 0.04/0.1  r3d.cull 0.11/0.0  r3d.transform 1.05/1.1  r3d.draw 15.12/9.1  r3d.upscale 2.91/3.1 | total 82.04 || sound_mix 0.002/0.015 ms/block n=2164
+I (533346) water_perf: water_perf: config=rest row=flat frames=91 substeps=182 rested=0 tris=2646 particles=1093 peak_mm_s=182.9
+I (533347) water_perf: water_perf: config=rest row=flat frame=97107/106119/108414 update=65583/70376/72394 draw=18572/22858/23157
+I (533348) water_perf: water_perf: config=rest row=flat stage=p2g us=15649
+I (533349) water_perf: water_perf: config=rest row=flat stage=accel us=384
+I (533349) water_perf: water_perf: config=rest row=flat stage=pressure us=13347
+I (533350) water_perf: water_perf: config=rest row=flat stage=g2p us=10950
+I (533351) water_perf: water_perf: config=rest row=flat stage=advect us=147
+I (533351) water_perf: water_perf: config=rest row=flat stage=collide us=548
+I (533352) water_perf: water_perf: config=rest row=flat ms/frame avg/worst: water.step 41.53/44.1  water.field 4.93/5.3  water.through 0.89/0.9  water.nets 9.03/11.1  water.shade 2.45/3.2  water.build 6.67/8.7  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.29/1.6  r3d.draw 16.91/13.7  r3d.upscale 2.91/3.0 | total 86.83 || sound_mix 0.002/0.012 ms/block n=1524
+I (537538) water_perf: water_perf: config=rest row=return frames=46 substeps=92 rested=0 tris=2204 particles=1093 peak_mm_s=35.2
+I (537539) water_perf: water_perf: config=rest row=return frame=90937/92335/94148 update=62449/64098/65894 draw=15594/16118/16421
+I (537541) water_perf: water_perf: config=rest row=return stage=p2g us=15650
+I (537541) water_perf: water_perf: config=rest row=return stage=accel us=381
+I (537542) water_perf: water_perf: config=rest row=return stage=pressure us=13075
+I (537543) water_perf: water_perf: config=rest row=return stage=g2p us=10962
+I (537543) water_perf: water_perf: config=rest row=return stage=advect us=145
+I (537544) water_perf: water_perf: config=rest row=return stage=collide us=548
+I (537545) water_perf: water_perf: config=rest row=return ms/frame avg/worst: water.step 41.24/43.7  water.field 4.92/5.2  water.through 0.82/0.9  water.nets 7.94/8.6  water.shade 2.02/2.1  water.build 5.36/5.8  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.03/1.0  r3d.draw 14.24/7.8  r3d.upscale 2.87/2.9 | total 80.66 || sound_mix 0.002/0.007 ms/block n=722
+I (541620) water_perf: water_perf: config=rest row=settle frames=45 substeps=90 rested=0 tris=2114 particles=1093 peak_mm_s=37.7
+I (541621) water_perf: water_perf: config=rest row=settle frame=90441/91229/92416 update=61618/62359/63716 draw=15906/16386/16604
+I (541622) water_perf: water_perf: config=rest row=settle stage=p2g us=15557
+I (541623) water_perf: water_perf: config=rest row=settle stage=accel us=383
+I (541624) water_perf: water_perf: config=rest row=settle stage=pressure us=12969
+I (541624) water_perf: water_perf: config=rest row=settle stage=g2p us=10955
+I (541625) water_perf: water_perf: config=rest row=settle stage=advect us=146
+I (541626) water_perf: water_perf: config=rest row=settle stage=collide us=546
+I (541627) water_perf: water_perf: config=rest row=settle ms/frame avg/worst: water.step 41.06/43.1  water.field 4.94/5.2  water.through 0.81/0.8  water.nets 7.76/8.1  water.shade 1.94/1.9  water.build 5.05/5.1  water.update 0.05/0.0  r3d.cull 0.12/0.1  r3d.transform 0.99/1.1  r3d.draw 14.58/7.9  r3d.upscale 2.87/2.9 | total 80.20 || sound_mix 0.002/0.007 ms/block n=704
+I (547120) water_perf: water_perf: config=rest row=shake frames=61 substeps=122 rested=0 tris=2220 particles=1093 peak_mm_s=260.4
+I (547122) water_perf: water_perf: config=rest row=shake frame=91467/94129/94818 update=62281/63833/65430 draw=16237/17414/18078
+I (547123) water_perf: water_perf: config=rest row=shake stage=p2g us=15626
+I (547124) water_perf: water_perf: config=rest row=shake stage=accel us=391
+I (547124) water_perf: water_perf: config=rest row=shake stage=pressure us=12513
+I (547125) water_perf: water_perf: config=rest row=shake stage=g2p us=10938
+I (547126) water_perf: water_perf: config=rest row=shake stage=advect us=146
+I (547126) water_perf: water_perf: config=rest row=shake stage=collide us=547
+I (547127) water_perf: water_perf: config=rest row=shake ms/frame avg/worst: water.step 40.00/43.4  water.field 4.86/5.3  water.through 0.81/0.9  water.nets 8.27/9.3  water.shade 2.01/2.3  water.build 5.24/6.1  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 1.00/1.1  r3d.draw 14.65/9.0  r3d.upscale 2.86/3.0 | total 79.90 || sound_mix 0.002/0.011 ms/block n=947
+I (547131) water_perf: water_perf: config=rest phase=after internal_free=60375 internal_largest=31744
+I (547132) water_perf: water_perf: config=plane phase=before internal_free=60375 internal_largest=31744
+I (547237) water_perf: water_perf: config=plane phase=running internal_free=59515 internal_largest=31744
+I (549499) water_perf: water_perf: config=plane row=rest frames=45 substeps=0 rested=0 tris=2096 particles=1093 peak_mm_s=209.9
+I (549500) water_perf: water_perf: config=plane row=rest frame=49117/49426/49481 update=21107/21440/21450 draw=15120/15327/15399
+I (549501) water_perf: water_perf: config=plane row=rest stage=p2g us=0
+I (549502) water_perf: water_perf: config=plane row=rest stage=accel us=0
+I (549503) water_perf: water_perf: config=plane row=rest stage=pressure us=0
+I (549503) water_perf: water_perf: config=plane row=rest stage=g2p us=0
+I (549504) water_perf: water_perf: config=plane row=rest stage=advect us=0
+I (549505) water_perf: water_perf: config=plane row=rest stage=collide us=0
+I (549505) water_perf: water_perf: config=plane row=rest ms/frame avg/worst: water.field 5.97/5.6  water.through 0.85/0.8  water.nets 8.24/8.1  water.shade 2.05/2.0  water.build 5.32/5.0  water.step 0.01/0.0  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 0.99/0.9  r3d.draw 14.49/7.8  r3d.upscale 3.01/3.1 | total 41.14 || sound_mix 0.002/0.006 ms/block n=410
+I (556538) water_perf: water_perf: config=plane row=tilt frames=136 substeps=0 rested=0 tris=2289 particles=1093 peak_mm_s=209.9
+I (556539) water_perf: water_perf: config=plane row=tilt frame=51626/53856/54332 update=22359/23314/23675 draw=16362/17756/18503
+I (556540) water_perf: water_perf: config=plane row=tilt stage=p2g us=0
+I (556541) water_perf: water_perf: config=plane row=tilt stage=accel us=0
+I (556542) water_perf: water_perf: config=plane row=tilt stage=pressure us=0
+I (556542) water_perf: water_perf: config=plane row=tilt stage=g2p us=0
+I (556543) water_perf: water_perf: config=plane row=tilt stage=advect us=0
+I (556544) water_perf: water_perf: config=plane row=tilt stage=collide us=0
+I (556545) water_perf: water_perf: config=plane row=tilt ms/frame avg/worst: water.step 0.01/0.0  water.field 5.60/5.6  water.through 0.80/0.8  water.nets 8.29/8.7  water.shade 2.12/2.5  water.build 5.49/6.2  water.update 0.04/0.1  r3d.cull 0.11/0.1  r3d.transform 1.04/1.2  r3d.draw 15.02/9.4  r3d.upscale 2.89/3.1 | total 41.45 || sound_mix 0.002/0.021 ms/block n=1212
+I (561675) water_perf: water_perf: config=plane row=flat frames=91 substeps=0 rested=0 tris=2728 particles=1093 peak_mm_s=209.9
+I (561676) water_perf: water_perf: config=plane row=flat frame=56346/62145/63043 update=25090/28179/28294 draw=18345/21339/21971
+I (561677) water_perf: water_perf: config=plane row=flat stage=p2g us=0
+I (561678) water_perf: water_perf: config=plane row=flat stage=accel us=0
+I (561679) water_perf: water_perf: config=plane row=flat stage=pressure us=0
+I (561679) water_perf: water_perf: config=plane row=flat stage=g2p us=0
+I (561680) water_perf: water_perf: config=plane row=flat stage=advect us=0
+I (561681) water_perf: water_perf: config=plane row=flat stage=collide us=0
+I (561681) water_perf: water_perf: config=plane row=flat ms/frame avg/worst: water.step 0.01/0.0  water.field 5.60/5.7  water.through 0.89/1.0  water.nets 9.19/10.5  water.shade 2.53/3.2  water.build 6.79/8.1  water.update 0.04/0.0  r3d.cull 0.12/0.1  r3d.transform 1.28/1.4  r3d.draw 16.71/12.6  r3d.upscale 2.89/3.0 | total 46.10 || sound_mix 0.002/0.011 ms/block n=885
+I (564018) water_perf: water_perf: config=plane row=return frames=46 substeps=0 rested=0 tris=2236 particles=1093 peak_mm_s=209.9
+I (564019) water_perf: water_perf: config=plane row=return frame=50694/53665/53752 update=22136/24009/24122 draw=15682/16718/16860
+I (564020) water_perf: water_perf: config=plane row=return stage=p2g us=0
+I (564021) water_perf: water_perf: config=plane row=return stage=accel us=0
+I (564021) water_perf: water_perf: config=plane row=return stage=pressure us=0
+I (564022) water_perf: water_perf: config=plane row=return stage=g2p us=0
+I (564023) water_perf: water_perf: config=plane row=return stage=advect us=0
+I (564023) water_perf: water_perf: config=plane row=return stage=collide us=0
+I (564024) water_perf: water_perf: config=plane row=return ms/frame avg/worst: water.step 0.01/0.0  water.field 5.59/5.6  water.through 0.81/0.8  water.nets 8.08/8.7  water.shade 2.05/2.3  water.build 5.50/6.5  water.update 0.04/0.0  r3d.cull 0.11/0.0  r3d.transform 1.05/1.3  r3d.draw 14.34/8.1  r3d.upscale 2.87/2.9 | total 40.49 || sound_mix 0.002/0.007 ms/block n=404
+I (566252) water_perf: water_perf: config=plane row=settle frames=45 substeps=0 rested=0 tris=2096 particles=1093 peak_mm_s=209.9
+I (566253) water_perf: water_perf: config=plane row=settle frame=49421/49803/50217 update=21122/21443/21490 draw=15407/15767/15847
+I (566255) water_perf: water_perf: config=plane row=settle stage=p2g us=0
+I (566255) water_perf: water_perf: config=plane row=settle stage=accel us=0
+I (566256) water_perf: water_perf: config=plane row=settle stage=pressure us=0
+I (566257) water_perf: water_perf: config=plane row=settle stage=g2p us=0
+I (566257) water_perf: water_perf: config=plane row=settle stage=advect us=0
+I (566258) water_perf: water_perf: config=plane row=settle stage=collide us=0
+I (566259) water_perf: water_perf: config=plane row=settle ms/frame avg/worst: water.step 0.01/0.0  water.field 5.59/5.6  water.through 0.79/0.8  water.nets 7.74/8.1  water.shade 1.92/1.9  water.build 4.99/5.0  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 0.94/0.8  r3d.draw 14.14/7.8  r3d.upscale 2.87/2.9 | total 39.19 || sound_mix 0.002/0.007 ms/block n=385
+I (569272) water_perf: water_perf: config=plane row=shake frames=61 substeps=0 rested=0 tris=2142 particles=1093 peak_mm_s=209.9
+I (569274) water_perf: water_perf: config=plane row=shake frame=50129/50986/51910 update=21521/22042/22769 draw=15717/16205/16332
+I (569275) water_perf: water_perf: config=plane row=shake stage=p2g us=0
+I (569276) water_perf: water_perf: config=plane row=shake stage=accel us=0
+I (569276) water_perf: water_perf: config=plane row=shake stage=pressure us=0
+I (569277) water_perf: water_perf: config=plane row=shake stage=g2p us=0
+I (569278) water_perf: water_perf: config=plane row=shake stage=advect us=0
+I (569278) water_perf: water_perf: config=plane row=shake stage=collide us=0
+I (569279) water_perf: water_perf: config=plane row=shake ms/frame avg/worst: water.step 0.01/0.0  water.field 5.52/5.6  water.through 0.77/0.8  water.nets 7.87/8.8  water.shade 1.93/2.1  water.build 5.00/5.3  water.update 0.04/0.0  r3d.cull 0.11/0.1  r3d.transform 0.94/0.8  r3d.draw 14.22/7.8  r3d.upscale 2.82/2.9 | total 39.27 || sound_mix 0.002/0.022 ms/block n=520
+I (569283) water_perf: water_perf: config=plane phase=after internal_free=60375 internal_largest=31744
