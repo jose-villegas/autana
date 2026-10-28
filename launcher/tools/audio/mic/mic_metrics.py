@@ -1,5 +1,7 @@
 """Mono microphone metrics in dBFS; reference metrics preserve recorded gain."""
 import argparse
+import hashlib
+import re
 import json
 import math
 from pathlib import Path
@@ -30,6 +32,9 @@ SETTLE_FRAME_MS = 5
 SETTLE_WINDOW_MS = 200
 ACTIVE_FRAME_THRESHOLD_DB = -50.0
 SECOND_DIFFERENCE_ORDER = 2
+TAKE_METRICS_NAME = 'take_metrics.json'
+LFS_POINTER_VERSION = b'version https://git-lfs.github.com/spec/v1\n'
+LFS_OID = rb'^oid sha256:([0-9a-f]{64})$'
 
 
 def _mono(x):
@@ -42,6 +47,35 @@ def _mono(x):
 def read_take(path):
     x, rate = sf.read(path, dtype='float64')
     return _mono(x), rate
+
+
+def read_take_metrics(path, analyze, check=None):
+    """Validate cached metrics against audio content or its LFS content hash.
+
+    check=None computes without refreshing; False refreshes and True verifies.
+    """
+    path = Path(path)
+    cache = path.with_name(TAKE_METRICS_NAME)
+    entries = json.loads(cache.read_text(encoding='utf-8')) if cache.exists() else {}
+    content = path.read_bytes()
+    pointer = content.startswith(LFS_POINTER_VERSION)
+    oid = re.search(LFS_OID, content, re.MULTILINE) if pointer else None
+    digest = oid[1].decode('ascii') if oid else hashlib.sha256(content).hexdigest()
+    stored = entries.get(path.name)
+    stale = f'{path}: take metrics stale; regenerate with the LFS audio present'
+    if pointer:
+        if not oid or not stored or stored.get('sha256') != digest or 'metrics' not in stored:
+            raise ValueError(stale)
+        return stored['metrics']
+    samples, rate = read_take(path)
+    result = analyze(samples, rate)
+    entry = dict(sha256=digest, metrics=result)
+    if check is True and stored != entry:
+        raise ValueError(stale)
+    if check is False and stored != entry:
+        entries[path.name] = entry
+        cache.write_text(json.dumps(entries, indent=2, sort_keys=True, allow_nan=False) + '\n', encoding='utf-8')
+    return result
 
 
 def _db(power):

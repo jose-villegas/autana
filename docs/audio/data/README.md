@@ -19,3 +19,10 @@ python launcher/tools/audio/mic/generate_noise.py babble --seconds 10 --seed 1 -
 
 Babble is speech-shaped noise with independent amplitude modulation; it contains
 no recorded voices. Store generated WAV files through Git LFS when committing them.
+
+Recorded takes have a sibling `take_metrics.json`, keyed by WAV filename. Each
+entry stores the audio SHA-256 and table metrics. Regenerate it with
+`python launcher/tools/audio/audio_doc_tables.py --write` and real WAVs present.
+
+Table checks recompute metrics from real audio. With LFS pointers they require
+a matching content hash in the metrics file, so CI needs no audio download.

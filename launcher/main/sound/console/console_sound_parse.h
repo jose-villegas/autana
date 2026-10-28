@@ -66,15 +66,6 @@ console_sound_parse(const char* args, console_sound_args_t* out) {
         parsed.event = (console_sound_event_t)event;
         parsed.hz = (uint16_t)hz;
         parsed.gain_pct = (uint8_t)gain;
-    } else if (strcmp(words[0], "tone") == 0 && (count == 2 || count == 3)) {
-        uint32_t hz, gain = AUDIO_OUT_VOLUME_MAX_PCT;
-        if (!console_sound_number(words[1], AUDIO_OUT_NYQUIST_HZ - 1, &hz) || !hz
-            || (count == 3 && !console_sound_number(words[2], AUDIO_OUT_VOLUME_MAX_PCT, &gain))) {
-            return false;
-        }
-        parsed.action = CONSOLE_SOUND_TONE;
-        parsed.hz = (uint16_t)hz;
-        parsed.gain_pct = (uint8_t)gain;
     } else if (strcmp(words[0], "stats") == 0 && count == 1) {
         parsed.action = CONSOLE_SOUND_STATS;
     } else if (strcmp(words[0], "stop") == 0 && count <= 2) {

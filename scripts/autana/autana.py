@@ -1228,7 +1228,10 @@ def mic(args):
     parser.add_argument("action", choices=("record",))
     parser.add_argument("ms", type=int)
     parser.add_argument("--settle", type=int)
-    parser.add_argument("--at", nargs="+", action="append", type=lambda word: word if word == "tone" else int(word, 0), default=[])
+    parser.add_argument("--at", nargs="+", action="append",
+                             help="offset ms from take start; negative offsets fall in settling; "
+                                  "followed by reg value or tone hz duration_ms gain",
+                             type=lambda word: word if word == "tone" else int(word, 0), default=[])
     parser.add_argument("-o", "--out", required=True)
     parser.add_argument("--json", action="store_true")
     parsed = parser.parse_args(args)
@@ -1812,8 +1815,8 @@ COMMAND_GROUPS = (
             ("coredump [--elf PATH]", "the last panic's core dump, saved to the records and decoded against the build that crashed; resets the board"),
             ("coredump --core FILE [--elf PATH]", "decode a saved dump; no board"),
             ("coredump --erase", "clear the dump so the next crash's is told apart; resets the board"),)),
-        one("mic", mic, "mic record <ms> [--settle ms] [--at ms reg value]... -o take.wav [--json]",
-            "record microphone PCM and codec state; --at writes a codec register during the take"),
+        one("mic", mic, "mic record <ms> [--settle ms] [--at offset reg value | --at offset tone hz duration_ms gain]... -o take.wav [--json]",
+            "record microphone PCM and codec state; --at offsets are ms from take start; negative offsets fall in settling"),
         one("codec", codec, "codec <reg> [value]",
             "development builds: read, or write then read back, one codec register (hex or decimal)"),
         Command("screenshot", screenshot, (
