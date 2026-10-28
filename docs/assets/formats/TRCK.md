@@ -5,24 +5,26 @@ One animation clip: keyed fields bound by object path ([Animation-Tracks.md](../
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #c7aaee !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 110
 ---
 packet-beta
 title Header, 20 bytes at 0, one cell a byte
-0-1: "🟦 version = 3"
-2-3: "🟩 binding_count"
+0-1: "version = 3"
+2-3: "binding_count"
 4-7: "duration_ms"
-8-11: "🟧 strings_off"
-12-15: "🟩 strings_size"
-16: "🟪 root"
-17-19: "⬜ 0"
+8-11: "strings_off"
+12-15: "strings_size"
+16: "root"
+17-19: "0"
 ```
 
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(3) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(5) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 56
@@ -34,9 +36,9 @@ title Binding registry, one 28-byte row a binding from byte 20
 4-7: "component"
 8-11: "path_hash"
 12-15: "field_hash"
-16-19: "🟧 times_off"
-20-23: "🟧 values_off"
-24-25: "🟩 keys"
+16-19: "times_off"
+20-23: "values_off"
+24-25: "keys"
 26: "type"
 27: "interp"
 ```

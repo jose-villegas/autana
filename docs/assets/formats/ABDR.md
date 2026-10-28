@@ -7,21 +7,23 @@ directory that says where each lies. Layout defines:
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 44
 ---
 packet-beta
 title Header, 16 bytes at 0, one cell a byte
-0-3: "🟦 magic ABDR"
-4-7: "🟦 crc32"
-8-11: "🟦 version = 2"
-12-15: "🟩 pack_count"
+0-3: "magic ABDR"
+4-7: "crc32"
+8-11: "version = 2"
+12-15: "pack_count"
 ```
 
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #93d6b0 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 44
@@ -29,8 +31,8 @@ config:
 packet-beta
 title Pack registry, one 40-byte row a pack from byte 16
 0-31: "name, NUL padded"
-32-35: "🟧 offset"
-36-39: "🟩 size"
+32-35: "offset"
+36-39: "size"
 ```
 
 | Part | At | Size |

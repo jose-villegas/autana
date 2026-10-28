@@ -6,19 +6,37 @@ table and a Rule/Detail table whose Owners row names where the layout constants 
 
 ## Field colours
 
-A coloured square in front of a field gives its role, the same on every page.
+A box's colour gives its field's role, the same on every page.
 [`check_format_roles.py`](../../../scripts/gates/check_format_roles.py) derives
-each role from the field's label and fails a field without its square; `--write`
-puts them in.
+each role from the field's label, writes each diagram's `themeCSS` with
+`--write`, and fails a diagram whose boxes do not match.
 
-| Square | Role | A field is one when |
-|---|---|---|
-| 🟦 | identity | it is the magic, the version or the checksum |
-| 🟩 | count or size | its name ends in `count` or `_size`, or is one plural word |
-| 🟧 | offset | its name ends in `_off`: where a part starts |
-| 🟪 | code | the header names two or more of its values (`SOUND_FORMAT_*`) |
-| ⬜ | padding | it is zero or reserved |
-| none | value | anything else: the data itself |
+```mermaid
+---
+config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #c7aaee !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  packet:
+    bitsPerRow: 12
+    bitWidth: 72
+---
+packet-beta
+title Field colours
+0-1: "identity"
+2-3: "count or size"
+4-5: "offset"
+6-7: "code"
+8-9: "value"
+10-11: "padding"
+```
+
+| Role | A field is one when |
+|---|---|
+| identity | it is the magic, the version or the checksum |
+| count or size | its name ends in `count` or `_size`, or is one plural word |
+| offset | its name ends in `_off`: where a part starts |
+| code | the header names two or more of its values (`SOUND_FORMAT_*`) |
+| value | anything else: the data itself |
+| padding | it is zero or reserved |
 
 ## Every entry
 

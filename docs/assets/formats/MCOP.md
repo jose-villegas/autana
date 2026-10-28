@@ -11,17 +11,18 @@ String offsets count from the string content's first byte.
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #93d6b0 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 70
 ---
 packet-beta
 title MCOP header, 16 bytes at 0, one cell a byte
-0-1: "🟦 version"
-2-3: "⬜ reserved"
-4-7: "🟩 copy_count"
-8-11: "🟧 strings_off"
-12-15: "🟩 strings_size"
+0-1: "version"
+2-3: "reserved"
+4-7: "copy_count"
+8-11: "strings_off"
+12-15: "strings_size"
 ```
 
 | Part | At | Size |

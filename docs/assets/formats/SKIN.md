@@ -5,25 +5,27 @@ Per vertex, which joints move it and by how much ([Skeleton-and-Skin.md](../../r
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #c7aaee !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 110
 ---
 packet-beta
 title Header, 20 bytes at 0, one cell a byte
-0-1: "🟦 version = 2"
-2: "🟩 joints"
-3: "🟩 influences"
-4-7: "🟩 vertex_count"
-8-11: "🟧 inverse_bind_off"
-12-15: "🟧 vertices_off"
-16: "🟪 light"
-17-19: "⬜ 0"
+0-1: "version = 2"
+2: "joints"
+3: "influences"
+4-7: "vertex_count"
+8-11: "inverse_bind_off"
+12-15: "vertices_off"
+16: "light"
+17-19: "0"
 ```
 
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 52
@@ -38,6 +40,7 @@ title Content: inverse binds, one 48-byte matrix a joint from inverse_bind_off
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(8) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 84
@@ -51,12 +54,13 @@ title Content: vertex records, two influences, 8 bytes a vertex from vertices_of
 4: "normal x"
 5: "normal y"
 6: "normal z"
-7: "⬜ 0"
+7: "0"
 ```
 
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(8) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(9) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(10) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(11) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(12) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 12
     bitWidth: 72
@@ -74,7 +78,7 @@ title Content: vertex records, four influences, 12 bytes a vertex from vertices_
 8: "normal x"
 9: "normal y"
 10: "normal z"
-11: "⬜ 0"
+11: "0"
 ```
 
 | Part | At | Size |

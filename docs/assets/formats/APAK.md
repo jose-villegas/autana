@@ -5,23 +5,25 @@ The pack: named, typed entries under one header and checksum ([Loading-Packs.md]
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 44
 ---
 packet-beta
 title Header, 32 bytes at 0, one cell a byte
-0-3: "🟦 magic APAK"
-4-7: "🟦 version = 1"
-8-11: "🟩 entry_count"
-12-15: "🟩 total_size"
-16-19: "🟦 crc32"
-20-31: "⬜ 0 (reserved)"
+0-3: "magic APAK"
+4-7: "version = 1"
+8-11: "entry_count"
+12-15: "total_size"
+16-19: "crc32"
+20-31: "0 (reserved)"
 ```
 
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(4) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 44
@@ -30,8 +32,8 @@ packet-beta
 title Entry registry, one 48-byte row an entry from byte 32
 0-31: "name, NUL padded"
 32-35: "type"
-36-39: "🟧 offset"
-40-43: "🟩 size"
+36-39: "offset"
+40-43: "size"
 44-47: "align"
 ```
 
