@@ -18,6 +18,8 @@ from seed_statistics import t_quantile
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
 sys.path.insert(0, str(REPO / "launcher/tools/render"))
+sys.path.insert(0, str(REPO / "launcher/tools"))
+from build.c_header import read_define  # noqa: E402
 from doc_tables import table_rows  # noqa: E402
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
@@ -404,12 +406,12 @@ def run_flash(args, seed, runner=None):
 
 def filter_limits(project):
     """Read the compared firmware's accepted pattern width and count."""
-    text = (Path(project) / "launcher/test/suites.h").read_text(encoding="utf-8")
+    header = Path(project) / "launcher/test/suites.h"
     def define(name):
-        match = re.search(r"^\s*#define\s+" + name + r"\s+(\d+)\b", text, re.MULTILINE)
-        if not match or int(match.group(1)) <= 0:
+        value = read_define(header, name)
+        if value <= 0:
             raise ValueError(f"invalid filter limit {name}")
-        return int(match.group(1))
+        return value
     return define("SUITE_FILTER_LEN") - 1, define("SUITE_FILTER_MAX")
 
 
