@@ -1,4 +1,4 @@
-/* The mixer's render before the cvt.15 fast paths, kept as the oracle its output must match bit for bit. */
+/* Reference PCM renderer for bit-exact mixer output checks. */
 #pragma once
 
 #include <string.h>
@@ -31,24 +31,10 @@ oracle_read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
 
 static bool
 oracle_amp_ready(sound_mixer_t* mixer, uint64_t now_ms, uint32_t startup_ms) {
-    bool active = false;
-    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-        active |= mixer->voices[i].playing;
-    }
-    if (active) {
-        mixer->last_active_ms = now_ms;
-        if (mixer->amp == SOUND_AMP_OFF) {
-            mixer->amp = SOUND_AMP_WARMING;
-            mixer->amp_changed_ms = now_ms;
-        }
-    } else if (mixer->amp != SOUND_AMP_OFF && now_ms - mixer->last_active_ms >= SOUND_AMP_IDLE_MS) {
-        mixer->amp = SOUND_AMP_OFF;
-        mixer->residual = 0;
-    }
-    if (mixer->amp == SOUND_AMP_WARMING && now_ms - mixer->amp_changed_ms >= startup_ms) {
+    if (mixer->amp == SOUND_AMP_WARMING && now_ms - mixer->amp_started_ms >= startup_ms) {
         mixer->amp = SOUND_AMP_ON;
     }
-    return (active || (mixer->declick_frames && mixer->residual)) && mixer->amp == SOUND_AMP_ON;
+    return mixer->amp == SOUND_AMP_ON;
 }
 
 static void

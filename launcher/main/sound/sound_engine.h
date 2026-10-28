@@ -58,4 +58,3 @@ void sound_get_stats(sound_stats_t* out);
 
 sound_voice_t sound_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus);
 bool sound_voice_audible(sound_voice_t voice);
-void sound_warm_amp(void);

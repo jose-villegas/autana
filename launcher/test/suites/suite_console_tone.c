@@ -282,11 +282,11 @@ haptic_collect(const char* line) {
 static void
 test_haptic_console_latency_and_errors(void) {
     haptic_fixture();
-    clock_fake_set(0);
+    haptic_render(AUDIO_OUT_AMP_STARTUP_MS);
+    clock_fake_set((int64_t)AUDIO_OUT_AMP_STARTUP_MS * MATH_US_PER_MS);
     TEST_ASSERT_EQUAL(CONSOLE_LINE_HANDLED, console_registry_dispatch(&registry, "haptic light", haptic_collect));
     char expected[CONSOLE_LINE_MAX];
-    (void)snprintf(expected, sizeof expected, "HAPTIC light audible_ms=%u",
-                   AUDIO_OUT_AMP_STARTUP_MS + SOUND_CONTROL_POLL_MS);
+    (void)snprintf(expected, sizeof expected, "HAPTIC light audible_ms=%u", SOUND_CONTROL_POLL_MS);
     TEST_ASSERT_EQUAL_STRING(expected, haptic_rig->reply);
     TEST_ASSERT_EQUAL(CONSOLE_LINE_HANDLED, console_registry_dispatch(&registry, "haptic firm", haptic_collect));
     (void)snprintf(expected, sizeof expected, "HAPTIC firm audible_ms=%u", SOUND_CONTROL_POLL_MS);
@@ -366,33 +366,6 @@ test_haptic_bus_isolation_and_music(void) {
     TEST_ASSERT_TRUE(sound_control_is_audible(&haptic_rig->control, haptic_rig->last.voice));
     TEST_ASSERT_EQUAL_INT16(HAPTIC_TEST_MUSIC_SAMPLE, haptic_rig->out[0]);
     TEST_ASSERT_NOT_EQUAL(HAPTIC_TEST_MUSIC_SAMPLE, haptic_rig->out[HAPTIC_TEST_FRAMES - 1]);
-}
-
-static void
-test_haptic_warm_amp_without_voice_and_on_time(void) {
-    haptic_fixture();
-    const sound_command_t warm = {.kind = SOUND_COMMAND_WARM_AMP, .app_generation = SOUND_APP_GENERATION_ENGINE};
-    sound_mixer_apply(&haptic_rig->mixer, &warm, haptic_rig->control.app_generation);
-    TEST_ASSERT_EQUAL(SOUND_AMP_OFF, haptic_rig->mixer.amp);
-    haptic_render(0);
-    TEST_ASSERT_EQUAL(SOUND_AMP_WARMING, haptic_rig->mixer.amp);
-    haptic_assert_silence();
-    haptic_render(AUDIO_OUT_AMP_STARTUP_MS - 1);
-    TEST_ASSERT_EQUAL(SOUND_AMP_WARMING, haptic_rig->mixer.amp);
-    haptic_render(AUDIO_OUT_AMP_STARTUP_MS);
-    TEST_ASSERT_EQUAL(SOUND_AMP_ON, haptic_rig->mixer.amp);
-    haptic_assert_silence();
-    haptic_render(SOUND_AMP_IDLE_MS - 1);
-    TEST_ASSERT_EQUAL(SOUND_AMP_ON, haptic_rig->mixer.amp);
-    haptic_render(SOUND_AMP_IDLE_MS);
-    TEST_ASSERT_EQUAL(SOUND_AMP_OFF, haptic_rig->mixer.amp);
-    sound_mixer_apply(&haptic_rig->mixer, &warm, haptic_rig->control.app_generation);
-    haptic_render(SOUND_AMP_IDLE_MS);
-    haptic_render(SOUND_AMP_IDLE_MS + AUDIO_OUT_AMP_STARTUP_MS);
-    haptic_pulse(HAPTIC_LIGHT);
-    haptic_render(SOUND_AMP_IDLE_MS + AUDIO_OUT_AMP_STARTUP_MS);
-    TEST_ASSERT_TRUE(sound_control_is_audible(&haptic_rig->control, haptic_rig->last.voice));
-    TEST_ASSERT_NOT_EQUAL(0, haptic_rig->out[HAPTIC_TEST_FRAMES - 1]);
 }
 
 #ifdef _WIN32
@@ -976,7 +949,6 @@ run_console_tone_suite(void) {
     RUN_TEST(test_haptic_console_latency_and_errors);
     RUN_TEST(test_haptic_strengths_and_restart);
     RUN_TEST(test_haptic_bus_isolation_and_music);
-    RUN_TEST(test_haptic_warm_amp_without_voice_and_on_time);
 #endif
     RUN_TEST(test_tone_reply_frequency);
     RUN_TEST(test_tone_reply_capacity);

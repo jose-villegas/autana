@@ -25,9 +25,6 @@ playing, start with [Play a sound](Play-a-Sound.md).
 | `sound_bus_create(name)` / `sound_bus_destroy(bus)` | custom buses |
 | `sound_set_bus_gain(bus, pct)` | scale a bus |
 
-The engine API also provides `sound_warm_amp()`: a queued, silent amplifier
-warm-up request that retains the normal idle tail.
-
 The engine API in `sound_engine.h` provides
 `sound_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus)`.
 
