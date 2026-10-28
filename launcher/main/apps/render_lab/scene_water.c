@@ -186,7 +186,8 @@ static const water_key_t TOUR[] = {
 /* The swing (`water swing`), for the overview clip: the tank rocked side to
  * side, hard at first and dying away, flipped over and straight back
  * twice on the way, while leaned back the whole time so the surface shows through the
- * front glass. */
+ * front glass. It swings about the picture's down, whichever way the shell
+ * holds the picture. */
 #define SWING_MS          16000U
 #define SWING_START_DEG   45.0F   /* the first swing's reach either side */
 #define SWING_DECAY_MS    3500.0F /* the reach falls by e over this */
@@ -412,13 +413,20 @@ tour_accel(uint32_t at_ms, vec3f_t* down) {
     return accel;
 }
 
+/* The shell's quarter turn of the picture as an angle about the box's z,
+ * the camera's roll: the picture's down in the box is turned by it. */
+static float
+held_turn(void) {
+    return -(float)display_quarter_now() * WATER_QUARTER_TURN;
+}
+
 /* Down while swinging: the reach about the box's z decays, each flip adds a
  * half turn about it, eased, and the lean back about its x holds. */
 static vec3f_t
 swing_accel(uint32_t at_ms, vec3f_t* down) {
     const float t_s = (float)at_ms / (float)MATH_MS_PER_S;
     const float reach = SWING_START_DEG * MATH_RADIANS_PER_DEGREE * expf(-(float)at_ms / SWING_DECAY_MS);
-    float angle = reach * sinf(MATH_TAU * SWING_HZ * t_s);
+    float angle = held_turn() + (reach * sinf(MATH_TAU * SWING_HZ * t_s));
     for (size_t i = 0; i < sizeof SWING_FLIPS_MS / sizeof SWING_FLIPS_MS[0]; i++) {
         if (at_ms > SWING_FLIPS_MS[i]) {
             const float t = fminf((float)(at_ms - SWING_FLIPS_MS[i]) / SWING_FLIP_MS, 1.0F);
@@ -757,7 +765,8 @@ scene_water_update(uint32_t dt_ms) {
     stats.update_us += timing_now_us() - started;
     step_us = (uint32_t)(timing_now_us() - started);
     FRAME_COST_END(updated_from, "water.update");
-    const vec3f_t rise = {0.0F, script == SCRIPT_SWING ? SWING_EYE_RISE_MM : 0.0F, 0.0F};
+    const float rise_mm = script == SCRIPT_SWING ? SWING_EYE_RISE_MM : 0.0F;
+    const vec3f_t rise = {rise_mm * sinf(held_turn()), rise_mm * cosf(held_turn()), 0.0F};
     place_camera(display_quarter_now(), vec3f_add(parallax_eye(down, dt_ms), rise));
 }
 
