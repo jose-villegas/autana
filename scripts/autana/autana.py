@@ -323,7 +323,9 @@ def variant_request(verb, args, flags, project):
     if git_ok("-C", project, "rev-parse", "--is-inside-work-tree"):
         current_branch = git("-C", project, "branch", "--show-current") or "detached"
         commit = git("-C", project, "rev-parse", "--short", "HEAD")
-        dirty = " (dirty)" if git("-C", project, "status", "--porcelain") else ""
+        # Tracked changes only: an untracked scan reads every directory,
+        # which CI's job inputs would record as listings.
+        dirty = " (dirty)" if git("-C", project, "status", "--porcelain", "--untracked-files=no") else ""
         where = f"{current_branch} @ {commit}{dirty}"
     print(f"autana {verb}: {variant} of {where}", flush=True)
     idf_note(project, emit=False)

@@ -31,7 +31,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import log  # noqa: E402
+from r3d import mesh_bundle, log  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene, source_digest  # noqa: E402
 
 CSV_FIELDS = ("budget", "cost_weight", "triangles", "mean_delta_e", "p95_delta_e", "predicted_ms", "board_ms")
@@ -190,6 +190,14 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     variant, recipe = renderer.variant, renderer.fit
     inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
     start = inputs / f"{variant.name}.mesh" if start is None else pathlib.Path(start)
+    bundle_entries = copies = None
+    if start.suffix == mesh_bundle.SUFFIX:
+        bundle_entries, copies = mesh_bundle.decode(start.read_bytes())
+        rest = next((data for name, kind, data in bundle_entries if name == job.asset_name), None)
+        if rest is None:
+            raise SettingsError("a fitted carved renderer needs a rest mesh")
+        start = pathlib.Path(work) / f"{job.asset_name}.mesh"
+        start.write_bytes(rest)
     out = work / "fitted"
     steps = min(recipe.steps, 8) if smoke else recipe.steps
     command = ["--scene", str(scene_path), "--start", str(start), "--poses", str(inputs / "train.txt"), "--reference",
@@ -203,7 +211,12 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     fit_main(command)
     if target is None:
         target = pathlib.Path(work) / f"{job.asset_name}.mesh"
-    shutil.copyfile(out / start.name, target)
+    if bundle_entries is None:
+        shutil.copyfile(out / start.name, target)
+    else:
+        fitted = (out / start.name).read_bytes()
+        target.write_bytes(mesh_bundle.encode([(name, kind, fitted if name == job.asset_name else data)
+                                               for name, kind, data in bundle_entries], copies))
     log(f"wrote {target}")
     return target
 

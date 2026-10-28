@@ -93,3 +93,26 @@ def floor_points(xs, height=0.0):
     xs = np.asarray(xs, dtype=float)
     points = np.stack([xs, np.broadcast_to(height, xs.shape), np.zeros_like(xs)], axis=1)
     return points, np.tile([0.0, 1.0, 0.0], (len(xs), 1))
+
+
+def sphere(seed):
+    from scipy.spatial import ConvexHull
+
+    points = np.random.default_rng(seed).normal(size=(120, 3))
+    points /= np.linalg.norm(points, axis=1)[:, None]
+    return points, ConvexHull(points).simplices
+
+
+def edge_counts(faces):
+    edges = np.sort(np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]]), axis=1)
+    return np.unique(edges, axis=0, return_counts=True)[1]
+
+
+def split_sphere(seed, budget, seam, report=None):
+    from r3d.simplify import Allocation
+
+    points, faces = sphere(seed)
+    owners = (points[faces].mean(axis=1)[:, 0] > 0).astype(int)
+    allocation = Allocation(tri_o=owners, object_names=('left', 'right'), material_names=('plain',), report=report,
+                            meshes=({'match': {'object': 'left'}, 'triangles': budget, 'seam': seam},))
+    return points, faces, owners, allocation
