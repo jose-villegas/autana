@@ -8,7 +8,7 @@
 static size_t
 oracle_read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
     if (voice->tone_source) {
-        audio_tone_fill(&voice->source.tone, out, frames, AUDIO_OUT_VOLUME_MAX_PCT);
+        audio_tone_fill(&voice->source.tone.oscillator, out, frames, AUDIO_OUT_VOLUME_MAX_PCT);
         return frames;
     }
     size_t total = 0;
