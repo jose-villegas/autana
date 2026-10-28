@@ -44,8 +44,7 @@ from c_comments import excluded, RULE_RUN, file_header, scan, sources
 
 
 def tracked_sources():
-    return [p.as_posix() for p in sources(".", tracked=True,
-            extensions=(".c", ".h", ".cpp", ".hpp"), exclude=False)]
+    return [p.as_posix() for p in sources(".", extensions=(".c", ".h", ".cpp", ".hpp"), exclude=False)]
 
 def changed_files(ref):
     """Tracked C/C++ files that differ from `ref`, staged or not."""
