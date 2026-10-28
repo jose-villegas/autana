@@ -410,7 +410,8 @@ sound_mixer_sync(sound_mixer_t* mixer, const sound_control_t* control) {
     }
 }
 
-static inline size_t AUDIO_IRAM_ATTR
+/* Tones are rare, so their render stays in flash. */
+static __attribute__((noinline)) size_t
 read_tone(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
     if (voice->source.tone.frames_left) {
         frames = frames > voice->source.tone.frames_left ? voice->source.tone.frames_left : frames;
