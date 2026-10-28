@@ -68,11 +68,24 @@ Each picture's frame cost on the board, from one build, in `FULL_FB`,
 each sent frame, so the draw skips its clear; in `_CONTENDED` a send runs
 during the whole draw, so both share PSRAM. Not run: the suite has no such pass.
 
-The r3d scenes draw in `update()`; the boot animation draws a full frame in
-`frame()`.
+A layout costs about the same ms whatever the picture, so the groups below share
+one ms range while their percentages spread. The r3d scenes draw in `update()`
+and pay for the second framebuffer; the boot animation draws a full frame in
+`frame()` and saves about as much.
 
-<!-- generated: gfx-layout-costs sha256=5f4317e1e75d4249a07f8a4e057e62dca99bcec8cb5a295406ed27ffb6d0c1be -->
+<!-- generated: gfx-layout-costs sha256=f95c91ad4cd936e45d9ebdc0dc1dee0675db8147fef44a50331fb11f212d9235 -->
 ![Frame cost by framebuffer layout](../images/render/gfx-layout-costs.png)
+
+| Layout | Against | Pictures | Change, ms | Change |
+|---|---|---|---|---|
+| `DOUBLE_FB` | `FULL_FB` | sponza-fitted-full, sponza, sponza-lite, sponza-flat, sponza-fitted, sponza-flat-fitted, capybara | +4.5 to +5.0 | +12% to +35% |
+| `DOUBLE_FB` | `FULL_FB` | boot animation | -7.7 to -7.4 | -35% to -17% |
+| `DOUBLE_FB_CLEAR_ON_SEND` | `FULL_FB` | sponza-fitted-full, sponza, sponza-lite, sponza-flat, sponza-fitted, sponza-flat-fitted, capybara | +8.4 to +9.0 | +20% to +65% |
+| `DOUBLE_FB_CLEAR_ON_SEND` | `FULL_FB` | boot animation (all but near_end) | -12.9 to -11.1 | -43% to -29% |
+| `DOUBLE_FB_CLEAR_ON_SEND` | `FULL_FB` | boot animation (near_end) | -6.9 | -31% |
+| `DOUBLE_FB_CONTENDED` | `FULL_FB` | boot animation | -7.9 to -7.8 | -35% to -18% |
+
+<details><summary>Every picture</summary>
 
 | Picture | `FULL_FB` | `DOUBLE_FB` | `DOUBLE_FB_CLEAR_ON_SEND` | `DOUBLE_FB_CONTENDED` |
 |---|---|---|---|---|
@@ -98,7 +111,9 @@ The r3d scenes draw in `update()`; the boot animation draws a full frame in
 | boot animation, crossfade_late | 44.0 | 36.4 (-17%) | 31.1 (-29%) | 36.1 (-18%) |
 | boot animation, near_end | 22.2 | 14.5 (-35%) | 15.3 (-31%) | 14.4 (-35%) |
 
-Board ms per frame, mean of each suite's samples. A change is against the first layout its row reports.
+</details>
+
+Board ms per frame, mean of each suite's samples. A change is against the first layout its row reports; a group holds the pictures whose ms change lies within 1.0 ms of the next nearer one's.
 <!-- /generated: gfx-layout-costs -->
 
 Regenerate with

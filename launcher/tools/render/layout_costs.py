@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """The frame cost of each picture in each framebuffer layout, as a chart and
-the table in docs/gfx/Targets-and-Modes.md's `gfx-layout-costs` block.
+the tables in docs/gfx/Targets-and-Modes.md's `gfx-layout-costs` block: one row per
+group of pictures whose change agrees, then every picture in a dropdown.
 launcher/tools/render/render_doc_images.sh runs it on the captures kept in
 docs/render/data/.
 
@@ -37,6 +38,9 @@ CHART_WIDTH = 9
 ROW_HEIGHT = 0.28
 CHART_BASE_HEIGHT = 1.2
 MARKER_SIZE = 36
+# A picture joins a group when its ms change against the same first layout lies
+# within this of the next nearer member's.
+GROUP_GAP_MS = 1.0
 
 MESH_ROW = re.compile(r"\blayout_perf: (?P<scene>[^:\s]+):(?P<layout>\w+):(?P<stage>\w+) mean (?P<mean>\d+)us\b")
 
@@ -86,8 +90,63 @@ def change(costs, layout):
     return (costs[layout] / costs[first] - 1) * PERCENT_SCALE
 
 
+def ms_change(costs, layout):
+    """Ms change of `layout` against the row's first layout."""
+    return costs[layout] - costs[next(iter(costs))]
+
+
+def groups(rows):
+    """(first layout, layout, rows) for each run of rows whose ms change lies
+    within GROUP_GAP_MS of a neighbour's, by layout, then by first row."""
+    order = list(rows)
+    found = []
+    for layout in layouts_of(rows):
+        by_first = {}
+        for name, costs in rows.items():
+            first = next(iter(costs))
+            if layout in costs and layout != first:
+                by_first.setdefault(first, []).append(name)
+        for first, names in by_first.items():
+            names.sort(key=lambda name: ms_change(rows[name], layout))
+            runs = [[names[0]]]
+            for before, name in zip(names, names[1:]):
+                if ms_change(rows[name], layout) - ms_change(rows[before], layout) > GROUP_GAP_MS:
+                    runs.append([])
+                runs[-1].append(name)
+            runs = [sorted(run, key=order.index) for run in runs]
+            found += [(first, layout, run) for run in sorted(runs, key=lambda run: order.index(run[0]))]
+    return found
+
+
+def pictures(rows, run):
+    """The pictures a run holds; one only partly held names the rows it holds,
+    or the rows it misses when those are fewer."""
+    def split(name):
+        return (name.split(", ", 1) + [""])[:2]
+    held, missing = {}, {}
+    for name in rows:
+        picture, part = split(name)
+        (held if name in run else missing).setdefault(picture, []).append(part)
+    cells = []
+    for picture, parts in held.items():
+        rest = missing.get(picture)
+        if not rest:
+            cells.append(picture)
+        elif len(parts) <= len(rest):
+            cells.append(f"{picture} ({', '.join(parts)})")
+        else:
+            cells.append(f"{picture} (all but {', '.join(rest)})")
+    return ", ".join(cells)
+
+
+def span(values, unit):
+    """`low to high` with signs, or the one value when they agree at that precision."""
+    low, high = (f"{value:+.1f}{unit}" if unit != "%" else f"{value:+.0f}%" for value in (min(values), max(values)))
+    return low if low == high else f"{low} to {high}"
+
+
 def chart(rows, path):
-    """One line per picture, a dot per layout at its change against the row's first."""
+    """One line per picture, a dot per layout at its ms change against the row's first."""
     layouts = layouts_of(rows)
     if len(layouts) > len(SLOTS):
         raise ValueError(f"{len(layouts)} layouts, {len(SLOTS)} colours")
@@ -97,23 +156,30 @@ def chart(rows, path):
     for y in range(len(names)):
         axis.axhline(y, color=FAINT, linewidth=0.5, zorder=0)
     for layout, colour in zip(layouts, SLOTS):
-        points = [(change(rows[name], layout), y) for y, name in enumerate(names) if layout in rows[name]]
+        points = [(ms_change(rows[name], layout), y) for y, name in enumerate(names) if layout in rows[name]]
         axis.scatter([x for x, _ in points], [y for _, y in points], s=MARKER_SIZE, color=colour, label=layout,
                      zorder=2)
     axis.set_yticks(range(len(names)), names)
     axis.invert_yaxis()
-    axis.set_xlabel("frame time change against the row's first layout, % (left is faster)", color=INK)
+    axis.set_xlabel("frame time change against the row's first layout, ms (left is faster)", color=INK)
     style_axes(axis, "Frame cost by framebuffer layout")
     figure.legend(loc="outside lower center", ncol=len(layouts), frameon=False, fontsize=8)
     save(figure, path)
 
 
 def table(rows, chart_name):
-    """One row per picture, one column per layout; each cell after a row's
-    first layout gives its change against that first one."""
+    """The groups, one row each with its ms and percent ranges; then, in a
+    dropdown, one row per picture, one column per layout, each cell after a
+    row's first layout giving its change against that first one."""
     layouts = layouts_of(rows)
     lines = [f"![Frame cost by framebuffer layout](../images/render/{chart_name})", "",
-             "| Picture | " + " | ".join(f"`{layout}`" for layout in layouts) + " |",
+             "| Layout | Against | Pictures | Change, ms | Change |", "|---|---|---|---|---|"]
+    for first, layout, run in groups(rows):
+        lines.append(f"| `{layout}` | `{first}` | {pictures(rows, run)} "
+                     f"| {span([ms_change(rows[name], layout) for name in run], '')} "
+                     f"| {span([change(rows[name], layout) for name in run], '%')} |")
+    lines += ["", "<details><summary>Every picture</summary>", "",
+              "| Picture | " + " | ".join(f"`{layout}`" for layout in layouts) + " |",
              "|---|" + "---|" * len(layouts)]
     for row, costs in rows.items():
         first = next(iter(costs))
@@ -126,8 +192,10 @@ def table(rows, chart_name):
             else:
                 cells.append(f"{costs[layout]:.1f} ({change(costs, layout):+.0f}%)")
         lines.append(f"| {row} | " + " | ".join(cells) + " |")
+    lines += ["", "</details>"]
     note = ("\nBoard ms per frame, mean of each suite's samples. A change is against the "
-            "first layout its row reports.")
+            "first layout its row reports; a group holds the pictures whose ms change lies "
+            f"within {GROUP_GAP_MS:.1f} ms of the next nearer one's.")
     return "\n".join(lines) + "\n" + note
 
 
