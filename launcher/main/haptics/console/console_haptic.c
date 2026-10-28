@@ -29,7 +29,7 @@ console_verb_haptic(const char* args, console_reply_fn reply) {
             voice = stats.control.voices[i].handle;
         }
     }
-    const int64_t deadline = began + (int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS;
+    const int64_t deadline = began + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
     while (sound_is_playing(voice) && !sound_voice_audible(voice) && timing_now_us() < deadline) {
         timing_sleep_ms(SOUND_CONTROL_POLL_MS);
     }
