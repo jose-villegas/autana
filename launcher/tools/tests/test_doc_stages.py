@@ -707,7 +707,7 @@ class KeeperTests(unittest.TestCase):
     def test_the_path_cull_bake_is_kept_apart_from_the_plain_bake(self):
         self.keeper.bake(self.scene, "atrium", False)
         self.keeper.bake(self.scene, "atrium", True)
-        self.keeper.bake(self.scene, next(item.object.name for item in self.scene.renderers if item.object.name != "atrium"), False)
+        self.keeper.bake(self.scene, "atrium" + stages.FITTED[0].baked, False)
         self.assertEqual(len({args[0] for _function, args, _options in self.submitted}), 3)
 
     def test_the_code_that_makes_a_result_is_in_its_key(self):
