@@ -184,8 +184,8 @@ static const water_key_t TOUR[] = {
 #define TOUR_SHAKE_G      0.8F
 
 /* The swing (`water swing`), for the overview clip: the tank rocked side to
- * side, hard at first and dying away, turned upside down and back on the
- * way, while leaned back the whole time so the surface shows through the
+ * side, hard at first and dying away, flipped over and straight back
+ * twice on the way, while leaned back the whole time so the surface shows through the
  * front glass. */
 #define SWING_MS          16000U
 #define SWING_START_DEG   45.0F   /* the first swing's reach either side */
@@ -193,9 +193,11 @@ static const water_key_t TOUR[] = {
 #define SWING_HZ          0.7F
 #define SWING_INCLINE_DEG 25.0F /* leaned back throughout */
 #define SWING_EYE_RISE_MM 20.0F /* the eye above the glass's centre, looking down onto the surface */
-/* Each flip turns the tank half over, the same way, so two bring it back. */
-static const uint32_t SWING_FLIPS_MS[] = {4000U, 7500U};
-#define SWING_FLIP_MS 1200.0F /* how long a half turn takes */
+/* Each flip snaps the tank half over, the same way, and the next soon
+ * after brings it upright while the water is still falling, so it breaks
+ * and splashes back down: two such pairs. */
+static const uint32_t SWING_FLIPS_MS[] = {3500U, 3900U, 7500U, 7900U};
+#define SWING_FLIP_MS 250.0F /* how long a half turn takes */
 
 static scene_t* tank_scene;
 static scene_entity_t camera_entity, water_entity;

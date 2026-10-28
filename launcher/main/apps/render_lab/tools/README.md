@@ -43,7 +43,7 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 |---|---|
 | `render water fill <percent>` | sets the fill; the water refills on the next frame |
 | `render water tour` | plays the scripted tour, for repeatable timings: upright, tipped right and left, laid back, flat, toward the viewer, upright, then shaken |
-| `render water swing` | plays the swing the GIF below shows: rocked side to side, hard and then calmer, turned upside down and back on the way, leaned back throughout |
+| `render water swing` | plays the swing the GIF below shows: rocked side to side, hard and then calmer, flipped over and straight back twice on the way, leaned back throughout |
 | `water.gravity_mm_s2` | the gravity the water runs under; below Earth's, so a 35 mm tank sloshes at a pace a frame can follow |
 | `water.grid_internal` | 1 places the simulation grid in internal RAM, for measuring against PSRAM; read when the scene enters |
 | `water.substeps` | substeps per frame (1 to 4, default 2), each an equal share of the frame's simulated time, at most 32 ms |
@@ -218,7 +218,7 @@ be checked to have measured the same thing.
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and, more slowly, back to the first, as the camera turns once around it |
-| `render-lab-water.gif` | the water scene's swing (`render water swing`): rocked side to side, hard and then calmer, turned upside down and back on the way, leaned back so the surface shows; portrait, in the other clips' frame |
+| `render-lab-water.gif` | the water scene's swing (`render water swing`): rocked side to side, hard and then calmer, flipped over and straight back twice on the way, leaned back so the surface shows; portrait, in the other clips' frame |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 
