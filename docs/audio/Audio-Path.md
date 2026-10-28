@@ -62,6 +62,13 @@ With `--pulse`, capture keeps its initial samples and drains the IMU between
 audio blocks to estimate onset-to-end shake. A pulse window must hold a full
 IMU queue and fit `CONSOLE_TONE_PULSE_WINDOW_MAX_MS`.
 
+Pulse shake needs `IMU_VIBRATION_MIN_SAMPLES` samples in the pulse span.
+Gaps and lost samples invalidate shake only when their placed interval intersects
+that span. `imu_gaps` counts queue gap reports across both capture windows.
+
+Unavailable shake carries `shake_reason`, the warning text, in the reply and JSON.
+Old replies without these fields parse with null values.
+
 `--internal` routes DAC data to both ADCDAT slots inside the ES8311. It holds
 the speaker amplifier off for the whole check. The verb restores the exact register
 read-back and releases the hold on every exit, before closing capture.

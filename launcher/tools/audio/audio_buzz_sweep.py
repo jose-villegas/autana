@@ -93,14 +93,16 @@ def sweep(args, output, frequencies, shakes):
         if pulse is not None:
             command += ("--pulse", str(pulse))
         reply = json.loads(autana_run(args.autana, *command, "--json"))
+        record_line(output, " ".join(command), json.dumps(reply))
         if reply["shake_rms_mg"] is None:
             # One late drain can cost a window; another screen reading the IMU costs every one.
             retries += 1
             time.sleep(args.rest)
             reply = json.loads(autana_run(args.autana, *command, "--json"))
+            record_line(output, " ".join(command), json.dumps(reply))
         if reply["shake_rms_mg"] is None:
-            raise RuntimeError(f"{' '.join(command)}: shake n/a twice; is another screen reading the IMU? (board log)")
-        record_line(output, " ".join(command), json.dumps(reply))
+            reason = reply.get("shake_reason") or "reason unavailable"
+            raise RuntimeError(f"{' '.join(command)}: shake n/a twice: {reason}")
         if volume == max(args.volumes):
             levels.setdefault(hz, []).append(reply["shake_rms_mg"])
         time.sleep(args.rest)

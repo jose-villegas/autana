@@ -119,7 +119,7 @@ class JsonReadTests(unittest.TestCase):
         for heard in (True, False):
             with self.subTest(heard=heard):
                 reply = f"TONE {'heard' if heard else 'not heard'} 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
-                expected = {"pulse_ms": 0, "hz": 440, "tone_db": -21.5, "silence_db": -63.0,
+                expected = {"imu_gaps": None, "shake_reason": None, "pulse_ms": 0, "hz": 440, "tone_db": -21.5, "silence_db": -63.0,
                             "heard": heard, "open_dma_bytes": 8192, "path": "acoustic",
                             "measured_hz": 440.02, "hz_error": 440.02 - 440, "thd_db": -40.0, "peak_dbfs": -6.0,
                             "shake_rms_mg": None, "shake_peak_mg": None, "silence_shake_rms_mg": None, "gx_mg": None, "gy_mg": None, "gz_mg": None}
@@ -155,6 +155,16 @@ class JsonReadTests(unittest.TestCase):
         self.assertIsNone(result["shake_rms_mg"])
         with self.assertRaises(ValueError):
             autana.parse_tone(base + ", shake 12.50 mg rms")
+
+    def test_tone_gap_reason(self):
+        base = "TONE heard 202 Hz: -40.0 dB (silence -63.0 dB), path acoustic, measured n/a, open 0 B DMA, shake n/a"
+        reply = base + ", imu_gaps 2, shake_reason gap inside pulse"
+        with mock.patch.object(autana, "send", return_value=(0, [reply])):
+            result = self.output(autana.tone, ["202", "400", "--pulse", "30", "--json"])
+        self.assertEqual(result["imu_gaps"], 2)
+        self.assertEqual(result["shake_reason"], "gap inside pulse")
+        self.assertIsNone(autana.parse_tone(base)["imu_gaps"])
+        self.assertIsNone(autana.parse_tone(base)["shake_reason"])
 
     def test_tone_pulse(self):
         reply = "TONE heard 202 Hz: -40.0 dB (silence -63.0 dB), path internal, measured n/a, open 0 B DMA, thd n/a dB, peak -6.0 dBFS, pulse_ms 60, shake 12.50 mg rms 30.00 mg peak (silence 0.25 mg rms)"

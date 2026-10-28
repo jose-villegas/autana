@@ -677,15 +677,18 @@ def parse_tone(reply):
         r"(?:, thd (-?[0-9]+\.[0-9]+|n/a) dB, peak (-?[0-9]+\.[0-9]+) dBFS)?"
         r"(?:, pulse_ms ([0-9]+))?"
         r"(?:, shake (?:n/a|([0-9]+\.[0-9]+) mg rms ([0-9]+\.[0-9]+) mg peak \(silence ([0-9]+\.[0-9]+) mg rms\)))?"
-        r"(?:, gx_mg (-?[0-9]+\.[0-9]+), gy_mg (-?[0-9]+\.[0-9]+), gz_mg (-?[0-9]+\.[0-9]+))?", reply)
+        r"(?:, gx_mg (-?[0-9]+\.[0-9]+), gy_mg (-?[0-9]+\.[0-9]+), gz_mg (-?[0-9]+\.[0-9]+))?"
+        r"(?:, imu_gaps ([0-9]+))?(?:, shake_reason ([^,\r\n]+))?", reply)
     if not match:
         raise ValueError(f"invalid TONE reply: {reply}")
     heard, hz, tone_db, silence_db, path, measured_hz, dma, thd_db, peak_dbfs, pulse_ms, *shake = match.groups()
+    *shake, imu_gaps, shake_reason = shake
     shake_rms_mg, shake_peak_mg, silence_shake_rms_mg, gx_mg, gy_mg, gz_mg = (
         None if value is None else float(value) for value in shake)
     measured_hz = None if measured_hz == "n/a" else float(measured_hz.removesuffix(" Hz"))
     # hz_error is Hz: measured minus requested.
-    return {"pulse_ms": int(pulse_ms or 0), "hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
+    return {"imu_gaps": None if imu_gaps is None else int(imu_gaps), "shake_reason": shake_reason,
+            "pulse_ms": int(pulse_ms or 0), "hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
             "heard": heard == "heard", "open_dma_bytes": int(dma), "path": path,
             "thd_db": None if thd_db in (None, "n/a") else float(thd_db), "peak_dbfs": None if peak_dbfs is None else float(peak_dbfs),
             "measured_hz": measured_hz, "hz_error": None if measured_hz is None else measured_hz - int(hz),
