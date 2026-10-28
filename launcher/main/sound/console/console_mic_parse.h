@@ -24,13 +24,13 @@
 #define MIC_RECORD_ENTRIES_MAX   (MIC_RECORD_WRITES_MAX + MIC_RECORD_TONES_MAX)
 #define MIC_RECORD_BYTE_MAX      255u
 #define MIC_RECORD_ARGS_MAX                                                                                            \
-    (sizeof("record 10000 10000") - 1u + MIC_RECORD_ENTRIES_MAX * (sizeof(" at 10000 tone 11024 60000 100") - 1u))
+    (sizeof("record 10000 10000") - 1u + MIC_RECORD_ENTRIES_MAX * (sizeof(" at -10000 tone 11024 60000 100") - 1u))
 #define MIC_RECORD_LINE_MAX (sizeof("mic ") + MIC_RECORD_ARGS_MAX)
 
 typedef enum { CONSOLE_MIC_WRITE, CONSOLE_MIC_TONE } console_mic_entry_kind_t;
 
 typedef struct {
-    uint32_t ms, block;
+    int32_t ms, block;
     console_mic_entry_kind_t kind;
 
     union {
@@ -49,6 +49,27 @@ typedef struct {
     unsigned entry_count;
     console_mic_entry_t entries[MIC_RECORD_ENTRIES_MAX];
 } console_mic_args_t;
+
+static inline bool
+console_mic_apply_entries(console_mic_args_t* args, int32_t pos, int32_t block, unsigned* applied,
+                          bool (*apply)(const console_mic_entry_t*)) {
+    for (unsigned i = 0; i < args->entry_count; i++) {
+        console_mic_entry_t* entry = &args->entries[i];
+        const unsigned bit = 1U << i;
+        int32_t at = (int32_t)audio_out_samples((uint32_t)(entry->ms < 0 ? -entry->ms : entry->ms));
+        if (entry->ms < 0) {
+            at = -at;
+        }
+        if (!(*applied & bit) && pos >= at) {
+            if (!apply(entry)) {
+                return false;
+            }
+            entry->block = block;
+            *applied |= bit;
+        }
+    }
+    return true;
+}
 
 static inline void
 console_mic_space(const char** text) {
@@ -89,13 +110,19 @@ console_mic_entry_parse(const char** text, console_mic_args_t* out) {
         return false;
     }
     *text += sizeof("at ") - 1;
-    if (!console_mic_number(text, out->ms - 1u, &entry.ms)) {
+    console_mic_space(text);
+    const bool negative = **text == '-';
+    *text += negative;
+    uint32_t offset;
+    if ((negative && (**text < '0' || **text > '9'))
+        || !console_mic_number(text, negative ? out->settle_ms : out->ms - 1u, &offset)) {
         return false;
     }
+    entry.ms = negative ? -(int32_t)offset : (int32_t)offset;
     if (strncmp(*text, "tone ", sizeof("tone ") - 1) == 0) {
         entry.kind = CONSOLE_MIC_TONE;
         *text += sizeof("tone ") - 1;
-        if (!console_mic_tone_parse(text, &entry, out->ms - entry.ms)) {
+        if (!console_mic_tone_parse(text, &entry, (uint32_t)((int32_t)out->ms - entry.ms))) {
             return false;
         }
     } else if (!console_codec_byte(text, &entry.write.reg) || !console_codec_byte(text, &entry.write.value)) {

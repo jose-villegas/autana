@@ -1099,23 +1099,31 @@ No capture yet.
 `autana mic record 1000 --settle 100 -o take.wav --json` records mono PCM16
 and writes codec state to `take.json`. Duration, settling and write limits live
 in `console_mic_parse.h`; the omitted settling interval is `AUDIO_LOOPBACK_SETTLE_MS`.
-`--at <ms> <reg> <value>` writes a codec register that far into the take.
 
-`MIC_BEGIN` announces rate and sample count. `MIC_DATA` carries independent
-base64 chunks of PCM16 little-endian samples. `MIC_STATE` contains the rate,
-sample count, codec registers, scheduled writes and automute runs as
-`[first_block, block_count]`. Block size lives in `audio_codec.h`; `MIC_END`
-completes a successful transfer.
+`--at <offset_ms> <reg> <value>` writes a codec register.
+`--at <offset_ms> tone <hz> <duration_ms> <gain>` schedules `sound_play_tone`.
+
+Offsets count from the first recorded sample. Negative offsets fall in settling,
+with `-settle_ms` at the first settle block. Entries apply at block boundaries;
+the allowed range is `[-settle_ms, take_ms)`.
+
+A tone may last through the end of the take. Playback ramp captures schedule
+`--at -500 tone 1000 3500 100` for a 3000 ms take with 500 ms settling, covering
+both windows. Zero remains the first recorded block for writes and tones.
 
 Capture applies `mic.*` tunables, including `mic.eq` (enabled means EQ active),
 and restores capture-scoped registers on close. EQ defaults to bypass.
 Coefficient registers persist and can be written with `autana codec <reg> <value>`.
 
-`MIC_BEGIN` announces rate and sample count. `MIC_DATA` carries independent
-base64 chunks of PCM16 little-endian samples. `MIC_STATE` contains the rate,
-sample count, codec registers and automute runs as `[first_block, block_count]`.
-Scheduled writes use `[block, reg, value]`; tones use `[block, hz, ms, gain]`.
-Block size lives in `audio_codec.h`; `MIC_END` completes a successful transfer.
+`MIC_BEGIN` announces rate and sample count; `MIC_DATA` carries independent
+base64 chunks of PCM16 little-endian samples. `MIC_END` completes the transfer.
+
+`MIC_STATE` contains rate, sample count, registers and automute runs as
+`[first_block, block_count]`. Writes use `[block, reg, value]`; tones use
+`[block, hz, ms, gain]`.
+
+Block size lives in `audio_codec.h`. Negative block indices identify entries
+applied during settling.
 
 Install `launcher/tools/audio/mic/requirements.txt`, then run:
 

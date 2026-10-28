@@ -1,5 +1,7 @@
 """Synthetic playback level and volume-step measurements."""
 import sys
+import hashlib
+import json
 from pathlib import Path
 import unittest
 import numpy as np
@@ -85,6 +87,14 @@ class PlaybackTablesTests(unittest.TestCase):
             first, last = (write[0] * BLOCK_SAMPLES for write in state['writes'])
             samples[first:last] *= 10 ** (-STEP_DB / metrics.DB_AMPLITUDE)
             sf.write(Path(directory) / 'mic_playback_take.wav', samples, rate, subtype='PCM_16')
+            for index, (command, reply) in enumerate(records):
+                if command[:2] == ['mic', 'record']:
+                    name = f'take-{index}.wav'
+                    (Path(directory) / name).write_bytes((Path(directory) / 'mic_playback_take.wav').read_bytes())
+                    command[command.index('-o') + 1] = name
+            fixture.write_text('# autana --json replies on TEST, 2000-01-01, fixture\n'
+                               + '\n'.join(' '.join(command) + '\t' + json.dumps(reply)
+                                           for command, reply in records) + '\n')
             groups = playback_data(fixture, records)
             self.assertEqual(len(groups), 20)
             self.assertAlmostEqual(groups[0]['takes'][0]['active'], -11, delta=1)
@@ -97,6 +107,11 @@ class PlaybackTablesTests(unittest.TestCase):
             self.assertTrue(update_playback(fixture, document))
             self.assertFalse(update_playback(fixture, document, check=True))
             self.assertNotIn(b'\n', document.read_bytes().replace(b'\r\n', b''))
+            for wav in Path(directory).glob('take-*.wav'):
+                content = wav.read_bytes()
+                wav.write_text('version https://git-lfs.github.com/spec/v1\n'
+                               + f'oid sha256:{hashlib.sha256(content).hexdigest()}\nsize {len(content)}\n')
+            self.assertFalse(update_playback(fixture, document, check=True))
             broken = [(command, reply) for command, reply in records if command != ['arm'] or reply['index'] != 0]
             with self.assertRaises(ValueError):
                 playback_data(fixture, broken)
@@ -161,6 +176,12 @@ class CaptureTests(unittest.TestCase):
                     takes = [words for words in calls if words[:2] == ('mic', 'record')]
                     self.assertEqual(len(takes), len(list(capture.arms())))
                     self.assertEqual(sum('--at' in words for words in takes), 2 * len(capture.RAMPS))
+                    self.assertFalse(any(words[:2] == ('sound', 'tone') for words in calls))
+                    ramps = [words for words in takes if '--at' in words]
+                    for take in ramps:
+                        start = take.index('--at')
+                        self.assertEqual(take[start:start + 6], ('--at', -capture.SETTLE_MS, 'tone', capture.TONE_HZ,
+                                                               capture.TAKE_MS + capture.SETTLE_MS, capture.GAIN))
                     self.assertNotIn(str(Path(directory)), args.out.read_text())
 
 class RestartCaptureTests(unittest.TestCase):

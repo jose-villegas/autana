@@ -26,36 +26,22 @@ apply_entry(const console_mic_entry_t* entry) {
 }
 
 static bool
-apply_entries(console_mic_args_t* args, size_t pos, size_t block, unsigned* applied) {
-    for (unsigned i = 0; i < args->entry_count; i++) {
-        console_mic_entry_t* entry = &args->entries[i];
-        const unsigned bit = 1U << i;
-        if (!(*applied & bit) && pos >= audio_out_samples(entry->ms)) {
-            if (!apply_entry(entry)) {
-                return false;
-            }
-            entry->block = (uint32_t)block;
-            *applied |= bit;
-        }
-    }
-    return true;
-}
-
-static bool
 record(int16_t* pcm, size_t count, uint8_t* flags, size_t settle, console_mic_args_t* args) {
     int16_t discard[AUDIO_CODEC_BLOCK_SAMPLES];
+    unsigned applied = 0;
+    int32_t settle_block = -(int32_t)((settle + AUDIO_CODEC_BLOCK_SAMPLES - 1u) / AUDIO_CODEC_BLOCK_SAMPLES);
     while (settle) {
         const size_t n = settle < AUDIO_CODEC_BLOCK_SAMPLES ? settle : AUDIO_CODEC_BLOCK_SAMPLES;
-        if (!audio_in_read(discard, n)) {
+        if (!console_mic_apply_entries(args, -(int32_t)settle, settle_block++, &applied, apply_entry)
+            || !audio_in_read(discard, n)) {
             return false;
         }
         settle -= n;
     }
-    unsigned applied = 0;
     for (size_t pos = 0, block = 0; pos < count; block++) {
         const size_t n = count - pos < AUDIO_CODEC_BLOCK_SAMPLES ? count - pos : AUDIO_CODEC_BLOCK_SAMPLES;
-        if (!apply_entries(args, pos, block, &applied) || !audio_in_read(pcm + pos, n)
-            || !audio_codec_register(MIC_RECORD_AUTOMUTE_REG, false, flags + block)) {
+        if (!console_mic_apply_entries(args, (int32_t)pos, (int32_t)block, &applied, apply_entry)
+            || !audio_in_read(pcm + pos, n) || !audio_codec_register(MIC_RECORD_AUTOMUTE_REG, false, flags + block)) {
             return false;
         }
         pos += n;
@@ -93,12 +79,12 @@ append_entries(char* json, size_t json_bytes, size_t used, const console_mic_arg
             continue;
         }
         if (kind == CONSOLE_MIC_WRITE) {
-            used += (size_t)snprintf(json + used, json_bytes - used, "%s[%u,%u,%u]", comma ? "," : "",
-                                     (unsigned)entry->block, entry->write.reg, entry->write.value);
+            used += (size_t)snprintf(json + used, json_bytes - used, "%s[%d,%u,%u]", comma ? "," : "",
+                                     (int)entry->block, entry->write.reg, entry->write.value);
         } else {
-            used += (size_t)snprintf(json + used, json_bytes - used, "%s[%u,%u,%u,%u]", comma ? "," : "",
-                                     (unsigned)entry->block, (unsigned)entry->tone.hz,
-                                     (unsigned)entry->tone.duration_ms, (unsigned)entry->tone.gain);
+            used += (size_t)snprintf(json + used, json_bytes - used, "%s[%d,%u,%u,%u]", comma ? "," : "",
+                                     (int)entry->block, (unsigned)entry->tone.hz, (unsigned)entry->tone.duration_ms,
+                                     (unsigned)entry->tone.gain);
         }
         comma = true;
     }

@@ -14,6 +14,11 @@ test_record_framing(void) {
 static void
 test_record_arguments(void) {
     console_mic_args_t args;
+    TEST_ASSERT_TRUE(console_mic_parse("record 3000 500 at -500 tone 1000 3500 100", &args));
+    TEST_ASSERT_FALSE(console_mic_parse("record 3000 500 at -500 tone 1000 3501 100", &args));
+    TEST_ASSERT_FALSE(console_mic_parse("record 3000 500 at 1 tone 1000 3500 100", &args));
+    TEST_ASSERT_FALSE(console_mic_parse("record 3000 500 at -501 0x32 40", &args));
+    TEST_ASSERT_TRUE(console_mic_parse("record 3000 500 at -500 0x32 40", &args));
     TEST_ASSERT_TRUE(console_mic_parse("record 4000 500 at 400 tone 40 80 100 at 750 tone 202 60 60", &args));
     TEST_ASSERT_TRUE(console_mic_parse("record 1000 at 0 0x32 40 at 900 0x32 0", &args));
     TEST_ASSERT_FALSE(console_mic_parse("record 1000 at 1000 0x32 0", &args));
@@ -63,9 +68,34 @@ test_record_arguments(void) {
     TEST_ASSERT_FALSE(console_mic_parse("record 100 9999999999999999999999", &args));
 }
 
+static unsigned applied_writes;
+
+static bool
+apply_write(const console_mic_entry_t* entry) {
+    applied_writes++;
+    return entry->kind == CONSOLE_MIC_WRITE;
+}
+
+static void
+test_record_settle_schedule(void) {
+    console_mic_args_t args = {
+        .entry_count = 2, .entries = {{.ms = -500, .kind = CONSOLE_MIC_WRITE}, {.ms = 0, .kind = CONSOLE_MIC_WRITE}}};
+    unsigned applied = 0;
+    applied_writes = 0;
+    TEST_ASSERT_TRUE(console_mic_apply_entries(&args, -(int32_t)audio_out_samples(500), -1, &applied, apply_write));
+    TEST_ASSERT_EQUAL_UINT32(1, applied_writes);
+    TEST_ASSERT_EQUAL_UINT32(1, applied);
+    TEST_ASSERT_EQUAL_INT32(-1, args.entries[0].block);
+    TEST_ASSERT_TRUE(console_mic_apply_entries(&args, 0, 0, &applied, apply_write));
+    TEST_ASSERT_EQUAL_UINT32(2, applied_writes);
+    TEST_ASSERT_EQUAL_UINT32(3, applied);
+    TEST_ASSERT_EQUAL_INT32(0, args.entries[1].block);
+}
+
 void
 suite_mic_record(void) {
     RUN_TEST(test_record_framing);
     RUN_TEST(test_record_arguments);
+    RUN_TEST(test_record_settle_schedule);
 }
 SUITE_REGISTER(suite_mic_record)

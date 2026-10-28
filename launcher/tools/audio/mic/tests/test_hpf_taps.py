@@ -1,5 +1,6 @@
 """Synthetic HPF bursts, threshold boundaries and capture cleanup."""
 from pathlib import Path
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -94,6 +95,13 @@ class HpfTapTests(unittest.TestCase):
             for broken in (records[:-1], [pair for pair in records if pair[0] != ['arm'] or pair[1]['index'] != 0]):
                 with self.assertRaises(ValueError):
                     tables.capture_data(root / 'capture.txt', broken)
+            expected = tables.render(root / 'capture.txt', records, markdown, check=False)
+            for wav in root.glob('*.wav'):
+                content = wav.read_bytes()
+                wav.write_text('version https://git-lfs.github.com/spec/v1\n'
+                               + f'oid sha256:{hashlib.sha256(content).hexdigest()}\nsize {len(content)}\n')
+            self.assertEqual(tables.render(root / 'capture.txt', records, markdown, check=True), expected)
+            sf.write(root / name, samples, rate, subtype='PCM_16')
             state['tones'] = []
             with self.assertRaises(ValueError):
                 tables.take_metrics(root / name, state)

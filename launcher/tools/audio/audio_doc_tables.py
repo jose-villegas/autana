@@ -403,7 +403,7 @@ def update_recorded_table(capture, document, key, renderer, check=False):
     body = "No capture yet.\n"
     if capture.exists():
         _, records, _ = read_capture(capture)
-        body = renderer(capture, records, markdown)
+        body = renderer(capture, records, markdown, check=check)
     return replace_block(document, key, body, check=check)
 
 

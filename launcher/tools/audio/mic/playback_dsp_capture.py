@@ -61,11 +61,11 @@ def arms():
 def music_take(record, args, name, writes=(), tone=False):
     path = args.out.with_name(name + '.wav')
     try:
-        if tone:
-            record('sound', 'tone', TONE_HZ, GAIN)
-        else:
+        if not tone:
             record('sound', 'play', MUSIC, 'loop', GAIN)
         schedule = tuple(word for write in writes for word in ('--at', *write))
+        if tone:
+            schedule = ('--at', -SETTLE_MS, 'tone', TONE_HZ, TAKE_MS + SETTLE_MS, GAIN, *schedule)
         record('mic', 'record', TAKE_MS, '--settle', SETTLE_MS, *schedule, '-o', str(path), '--json')
     finally:
         record('sound', 'stop', 'all')

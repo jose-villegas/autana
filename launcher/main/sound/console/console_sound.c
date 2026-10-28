@@ -246,14 +246,6 @@ sound_run_parsed(const console_sound_args_t* parsed, console_reply_fn reply) {
         reply("SOUND_END stopped");
         return;
     }
-    if (parsed->action == CONSOLE_SOUND_TONE) {
-        const sound_voice_t voice =
-            sound_play_tone(parsed->hz, SOUND_TONE_UNTIL_STOPPED, parsed->gain_pct, SOUND_BUS_SYSTEM);
-        char line[CONSOLE_SOUND_REPLY_MAX];
-        (void)snprintf(line, sizeof line, "SOUND_END voice=%" PRIu32, voice.id);
-        reply(voice.id ? line : "SOUND_ERR playback unavailable");
-        return;
-    }
     int64_t open_us = 0;
     const sound_t* sound = console_sound_view(parsed, &open_us);
     if (!sound) {
@@ -285,12 +277,12 @@ static void
 console_verb_sound(const char* args, console_reply_fn reply) {
     console_sound_args_t parsed;
     if (!console_sound_parse(args, &parsed)) {
-        reply("SOUND_ERR usage: sound play <pack>/<name> [loop] [gain] | stop [voice|all] | stats | tone <hz> [gain] | "
+        reply("SOUND_ERR usage: sound play <pack>/<name> [loop] [gain] | stop [voice|all] | stats | "
               "onset <event> [hz] "
               "[gain]");
         return;
     }
-    if (parsed.action != CONSOLE_SOUND_PLAY && parsed.action != CONSOLE_SOUND_TONE) {
+    if (parsed.action != CONSOLE_SOUND_PLAY) {
         sound_run_parsed(&parsed, reply);
         return;
     }

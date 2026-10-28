@@ -13,6 +13,7 @@ BEGIN, STATE, END, DATA, ERROR = [read_define(HEADER, 'MIC_RECORD_' + key)
                                   for key in ('BEGIN', 'STATE', 'END', 'DATA', 'ERROR')]
 MILLISECONDS_PER_SECOND = read_define(Path(__file__).resolve().parents[2] / 'packages/math/include/math/scalar/units.h', 'MATH_MS_PER_S')
 MAX_MS = read_define(HEADER, 'MIC_RECORD_MAX_MS')
+DEFAULT_SETTLE_MS = read_define(Path(__file__).resolve().parents[2] / 'main/audio/audio_loopback.h', 'AUDIO_LOOPBACK_SETTLE_MS')
 WRITES_MAX = read_define(HEADER, 'MIC_RECORD_WRITES_MAX')
 TONES_MAX = read_define(HEADER, 'MIC_RECORD_TONES_MAX')
 BYTE_MAX = read_define(HEADER, 'MIC_RECORD_BYTE_MAX')
@@ -58,9 +59,10 @@ def read_mic(port, ms, settle=None, timeout=TRANSFER_TIMEOUT_S, at=()):
     if not 0 < ms <= MAX_MS or (settle is not None and not 0 <= settle <= MAX_MS):
         raise ValueError('record and settle duration out of range')
     command = f'mic record {ms}' + (f' {settle}' if settle is not None else '')
+    settle_ms = DEFAULT_SETTLE_MS if settle is None else settle
     writes = tones = 0
     for entry in at:
-        if len(entry) not in (3, 5) or not 0 <= entry[0] < ms:
+        if len(entry) not in (3, 5) or not -settle_ms <= entry[0] < ms:
             raise ValueError('invalid scheduled entry')
         if len(entry) == 5:
             when, kind, hz, duration, gain = entry
