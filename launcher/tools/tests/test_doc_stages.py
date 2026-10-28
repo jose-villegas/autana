@@ -687,7 +687,7 @@ class KeeperTests(unittest.TestCase):
         folders["budget"] = self.fit_folder({"budget": 4000, "cost_weight": 0.0})
         folders["cost"] = self.fit_folder({"budget": 4000, "cost_weight": 0.1})
         look = load_scene(stages.write_look_scene(self.SCENE, "direct", self.root / "look"))
-        folders["look"] = self.fit_folder(job=placed_variant(look, "atrium_fitted"), scene=look)
+        folders["look"] = self.fit_folder(job=placed_variant(look, self.jobs[0].renderer.variant.name), scene=look)
         self.assertEqual(len(set(folders.values())), len(folders), folders)
         self.assertEqual(self.fit_folder({"budget": self.jobs[0].renderer.fit.budget, "cost_weight": 0.0}),
                          folders["recipe"], "the recipe's budget given as a point is the recipe's fit")
@@ -707,7 +707,7 @@ class KeeperTests(unittest.TestCase):
     def test_the_path_cull_bake_is_kept_apart_from_the_plain_bake(self):
         self.keeper.bake(self.scene, "atrium", False)
         self.keeper.bake(self.scene, "atrium", True)
-        self.keeper.bake(self.scene, "atrium_lite", False)
+        self.keeper.bake(self.scene, "other", False)
         self.assertEqual(len({args[0] for _function, args, _options in self.submitted}), 3)
 
     def test_the_code_that_makes_a_result_is_in_its_key(self):
