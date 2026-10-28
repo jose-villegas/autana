@@ -160,8 +160,8 @@ class PipelineMeasuresTests(unittest.TestCase):
                     tri_v=np.array([[0, 1, 2], [1, 3, 2], [0, 1, 2], [0, 1, 2]]), tri_t=np.zeros((4, 3), dtype=int),
                     tri_m=np.array([0, 1, 0, 0]), uv=[], textures={}, names=["surface", "foliage"])
         settings = NS(seed=5, position_scale=None, alpha_keep=.5, thin=NS(material="foliage", keep=0),
-                      simplify=None, double_sided=[], meshlet_triangles=lit_mesh.MESHLET_TRIANGLES)
-        job = NS(settings=settings, renderer=NS(visibility=object(), face_samples=None), bake=None)
+                      simplify=None, double_sided=[], meshes=(), meshlet_triangles=lit_mesh.MESHLET_TRIANGLES)
+        job = NS(settings=settings, renderer=NS(visibility=object(), face_samples=None, variant=NS(triangles=None, ceiling=None)), bake=None)
         recorder = process_budget.StepRecorder(probe=lambda gpu: (100, None), interval=None)
         with patch.object(mesh_import, "load_source", return_value=source), \
                 patch.object(mesh_import, "drop_masked", return_value=(source.tri_v[:3], source.tri_t[:3], source.tri_m[:3], np.array([True, True, True, False]))), \
