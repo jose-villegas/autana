@@ -148,16 +148,11 @@ class LinuxLaunches(FailedBuildPause):
         return self.start([self.script, "-qec", command, "/dev/null"], stdin=subprocess.PIPE,
                           stdout=subprocess.DEVNULL, start_new_session=True)
 
-    def test_detached_build_with_a_terminal_as_stdin_does_not_pause(self):
-        """setsid keeps the inherited terminal on stdin but drops it as the
-        controlling terminal: a session leader with no window."""
-        primary, secondary = os.openpty()
-        self.addCleanup(os.close, primary)
-        with open(self.log, "wb") as log:
-            process = self.start(["bash", str(BUILD)], stdin=secondary, stdout=log,
-                                 stderr=subprocess.STDOUT, start_new_session=True)
-        os.close(secondary)
-        self.assert_exits_without_pause(lambda: process.poll() is not None)
+    def test_build_detached_from_a_terminal_does_not_pause(self):
+        """setsid leaves the terminal on stdin, but it already belongs to the
+        caller's session: a session leader with no window."""
+        self.in_terminal(f'setsid -w bash "{BUILD}" > "{self.log}" 2>&1; echo {CALLER_DONE} >> "{self.log}"')
+        self.assert_exits_without_pause(self.caller_done)
 
     def test_build_run_from_a_shell_in_a_terminal_does_not_pause(self):
         self.in_terminal(f'{{ bash "{BUILD}"; echo {CALLER_DONE}; }} > "{self.log}" 2>&1')
