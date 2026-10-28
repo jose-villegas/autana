@@ -3,15 +3,18 @@ import json
 
 
 class FakeRecorder:
-    def __init__(self, registers, build_id, tone):
+    def __init__(self, registers, build_id, tone, fail_command=None):
         self.registers = registers
         self.build_id = build_id
         self.tone = tone
         self.calls = []
+        self.fail_command = fail_command
 
     def __call__(self, command, *words):
         words = words[2:]
         self.calls.append(words)
+        if self.fail_command and words[:len(self.fail_command)] == self.fail_command:
+            raise OSError("injected capture failure")
         if words[0] == 'buildid':
             return json.dumps(dict(build_id=self.build_id))
         if words[0] == 'codec':

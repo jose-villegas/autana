@@ -52,3 +52,17 @@ class WriteTests(unittest.TestCase):
         for writes in ([(1000, 0, 0)], [(1001, 0, 0)], [(0, 256, 0)], [(0, 0, 256)], [(0, 0, 0)] * (mic.WRITES_MAX + 1)):
             with self.assertRaises(ValueError):
                 mic.read_mic(port, 1000, at=writes)
+
+    def test_scheduled_tone_wire_and_bounds(self):
+        from unittest.mock import Mock
+        port = Mock()
+        port.read.return_value = (mic.BEGIN + '{"rate":22050,"samples":1}\n' + mic.DATA + 'AAA=\n' +
+                                  mic.STATE + '{"rate":22050,"samples":1}\n' + mic.END + '\n').encode()
+        mic.read_mic(port, 4000, at=[(400, 'tone', 40, 80, 100), (750, 'tone', 202, 60, 60), (900, 50, 0)])
+        port.write.assert_called_once_with(b'mic record 4000 at 400 tone 40 80 100 at 750 tone 202 60 60 at 900 50 0\n')
+        for entries in ([(0, 'tone', 0, 80, 100)], [(0, 'tone', mic.NYQUIST_HZ, 80, 100)],
+                        [(0, 'tone', 40, 0, 100)], [(999, 'tone', 40, 80, 100)],
+                        [(0, 'tone', 40, 80, 101)], [(0, 'tone', 40, 80)],
+                        [(0, 'tone', 40, 80, 100)] * (mic.TONES_MAX + 1)):
+            with self.assertRaises(ValueError):
+                mic.read_mic(port, 1000, at=entries)

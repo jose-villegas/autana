@@ -56,6 +56,13 @@ def record_reply(output, runner, command, *words):
     return payload
 
 
+def recorded_take(capture, words, reply):
+    filename = words[words.index('-o') + 1]
+    if Path(filename).name != filename or '\\' in filename:
+        raise ValueError('take must be beside capture')
+    return capture.parent / filename, json.loads(reply) if isinstance(reply, str) else reply
+
+
 def record_key(words):
     """The words a capture records: an output path keeps only its file name, so no machine path lands in docs."""
     words = [str(word) for word in words]

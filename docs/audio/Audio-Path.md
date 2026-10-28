@@ -1069,6 +1069,30 @@ Music levels use active frames in 300–3400 Hz. Cells are medians across takes;
 | 10 | -0.13 | 553.74 | -0.08 | 538.78 |
 <!-- /generated: mic-playback-dsp -->
 
+## HPF under taps
+
+Scheduled 40 Hz bursts are a spectral proxy for handling noise, not mechanical
+taps: the speaker cannot shake the board at 40 Hz. The capture compares low-band
+energy, the 202 Hz haptic pulse and speech tones against HPF code 12.
+
+Each burst window includes a 40 ms tail. Each take uses the median burst level,
+then each arm uses the median across runs, relative to the reference arm.
+
+Speech uses 300, 500, 1000, 2000 and 3400 Hz. The worst speech change is the
+signed delta with the largest magnitude.
+
+```sh
+autana --wait 3600 lock run -- bash launcher/tools/audio/mic/board_capture.sh <id> launcher/tools/audio/mic/hpf_tap_capture.py --runs 3
+```
+
+The capture writes WAVs, JSON state and its command log under
+`docs/audio/data/hpf_taps/`. `board_capture.sh --then` chains another capture
+inside the same hold. Verdict thresholds live in `hpf_tap_tables.py`.
+
+<!-- generated: mic-hpf-taps sha256=a93006c90ebb47c04a5a941a4f16d5cd1d65ec2d7326a2c3e4506015b15e8a1c -->
+No capture yet.
+<!-- /generated: mic-hpf-taps -->
+
 ## Recording the microphone
 
 `autana mic record 1000 --settle 100 -o take.wav --json` records mono PCM16
@@ -1082,6 +1106,7 @@ Coefficient registers persist and can be written with `autana codec <reg> <value
 `MIC_BEGIN` announces rate and sample count. `MIC_DATA` carries independent
 base64 chunks of PCM16 little-endian samples. `MIC_STATE` contains the rate,
 sample count, codec registers and automute runs as `[first_block, block_count]`.
+Scheduled writes use `[block, reg, value]`; tones use `[block, hz, ms, gain]`.
 Block size lives in `audio_codec.h`; `MIC_END` completes a successful transfer.
 
 Install `launcher/tools/audio/mic/requirements.txt`, then run:

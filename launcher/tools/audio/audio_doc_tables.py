@@ -29,6 +29,7 @@ from audio_doc_blocks import CLIPPED_DBFS, caption, details, picture
 
 EQ_CSD_CAPTURE = Path("docs/audio/data/mic_eq_csd_capture.txt")
 EQ_RESTART_CAPTURE = Path("docs/audio/data/mic_eq_restart_capture.txt")
+HPF_TAP_CAPTURE = Path("docs/audio/data/hpf_taps/mic_hpf_tap_capture.txt")
 PLAYBACK_CAPTURE = Path("docs/audio/data/playback/mic_playback_capture.txt")
 EQ_SLOTS_CAPTURE = Path("docs/audio/data/mic_eq_slots_capture.txt")
 EQ_CAPTURE = Path("docs/audio/data/mic_eq_probe_capture.txt")
@@ -398,13 +399,22 @@ def update_eq_probe(capture, document, check=False, slots_capture=None, restart_
     return replace_block(document, "mic-eq-probe", body, check=check)
 
 
-def update_playback(capture, document, check=False):
-    from audio.mic.playback_dsp_tables import render
+def update_recorded_table(capture, document, key, renderer, check=False):
     body = "No capture yet.\n"
     if capture.exists():
         _, records, _ = read_capture(capture)
-        body = render(capture, records, markdown)
-    return replace_block(document, "mic-playback-dsp", body, check=check)
+        body = renderer(capture, records, markdown)
+    return replace_block(document, key, body, check=check)
+
+
+def update_playback(capture, document, check=False):
+    from audio.mic.playback_dsp_tables import render
+    return update_recorded_table(capture, document, "mic-playback-dsp", render, check)
+
+
+def update_hpf_taps(capture, document, check=False):
+    from audio.mic.hpf_tap_tables import render
+    return update_recorded_table(capture, document, "mic-hpf-taps", render, check)
 
 
 def update_mic(capture, document, check=False):
@@ -536,7 +546,7 @@ def main():
     for flag, default in (("--capture", CAPTURE), ("--document", DOCUMENT), ("--mix-captures", MIX_CAPTURES),
                           ("--mix-document", MIX_DOCUMENT), ("--onset-document", ONSET_DOCUMENT),
                           ("--drc-capture", DRC_CAPTURE), ("--mic-capture", MIC_CAPTURE),
-                          ("--playback-capture", PLAYBACK_CAPTURE), ("--eq-restart-capture", EQ_RESTART_CAPTURE),
+                          ("--hpf-tap-capture", HPF_TAP_CAPTURE), ("--playback-capture", PLAYBACK_CAPTURE), ("--eq-restart-capture", EQ_RESTART_CAPTURE),
                           ("--eq-csd-capture", EQ_CSD_CAPTURE), ("--eq-capture", EQ_CAPTURE), ("--eq-slots-capture", EQ_SLOTS_CAPTURE)):
         parser.add_argument(flag, type=Path, default=ROOT / default)
     args = parser.parse_args()
@@ -544,6 +554,7 @@ def main():
         changed = update(args.capture, args.document, args.check, args.mix_captures, args.mix_document, args.drc_capture)
         changed |= update_mic(args.mic_capture, args.document, args.check)
         changed |= update_eq_probe(args.eq_capture, args.document, args.check, args.eq_slots_capture, args.eq_restart_capture, args.eq_csd_capture)
+        changed |= update_hpf_taps(args.hpf_tap_capture, args.document, args.check)
         changed |= update_playback(args.playback_capture, args.document, args.check)
         changed |= update_onset(args.mix_captures, args.onset_document, args.check)
         changed |= replace_block(ROOT / "docs/audio/Sound-Assets.md", "sound-storage", render_storage(),

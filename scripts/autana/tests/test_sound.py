@@ -83,7 +83,7 @@ class MicWriteTests(unittest.TestCase):
              patch.object(autana, 'device_command', return_value=['device', 'mic-record']), \
              patch.object(autana, 'call_device', return_value=0) as call:
             self.assertEqual(0, autana.mic(['record', '3000', '--settle', '500', '--at', '1000', '0x32', '40',
-                                         '--at', '2000', '0x32', '0', '-o', 'take.wav', '--json']))
+                                         '--at', '2000', '0x32', '0', '--at', '2500', 'tone', '202', '60', '60', '-o', 'take.wav', '--json']))
         words = call.call_args.args[0]
         self.assertEqual(words[words.index('--at'):],
-                         ['--at', '1000', '50', '40', '--at', '2000', '50', '0', '--json'])
+                         ['--at', '1000', '50', '40', '--at', '2000', '50', '0', '--at', '2500', 'tone', '202', '60', '60', '--json'])
