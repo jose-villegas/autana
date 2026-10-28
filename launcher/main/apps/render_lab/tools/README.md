@@ -483,8 +483,133 @@ Why compares them with the median of the 64 poses spaced evenly along the path (
 | bistro-fitted-full | landscape | 4 | 61.72 | 59.4 | 0.77 | 7.73 | 37.95 | 2.37 | 732 / 663 / 282 / 320 | 13588 / 6639 / 2395 / 3934 / 2878 | r3d.draw +11.8 ms; clusters hidden ×2.16 median |
 | bistro-fitted-full | landscape | 5 | 60.00 | 59.4 | 0.78 | 7.57 | 38.32 | 2.37 | 735 / 651 / 278 / 317 | 13322 / 6609 / 2422 / 3854 / 2760 | r3d.draw +12.1 ms; clusters hidden ×2.13 median |
 
+### Worst frames on the host
+
+Each worst frame's pose drawn by the host renderer, shaded above the overdraw view: blue is one layer tested, red 5 or more.
+Tested counts every span that reached a pixel, written every one that won its depth test; per pixel is over the pixels drawn.
+
+![sponza-fitted-full: the worst frames' poses, shaded and as overdraw](images/worst-frames/sponza-fitted-full-poses.png)
+![sponza-fitted: the worst frames' poses, shaded and as overdraw](images/worst-frames/sponza-fitted-poses.png)
+![sponza: the worst frames' poses, shaded and as overdraw](images/worst-frames/sponza-poses.png)
+![sponza-lite: the worst frames' poses, shaded and as overdraw](images/worst-frames/sponza-lite-poses.png)
+![sponza-flat: the worst frames' poses, shaded and as overdraw](images/worst-frames/sponza-flat-poses.png)
+![sponza-flat-fitted: the worst frames' poses, shaded and as overdraw](images/worst-frames/sponza-flat-fitted-poses.png)
+![capybara: the worst frames' poses, shaded and as overdraw](images/worst-frames/capybara-poses.png)
+![bistro-fitted-full: the worst frames' poses, shaded and as overdraw](images/worst-frames/bistro-fitted-full-poses.png)
+
+#### Overdraw at the worst frames
+
+Path percentile places a pose's tested layers per pixel among the evenly spaced poses' (100: none had more).
+
+| Scene | Quarter | Rank | Path s | Frame ms | Tested / px | Written / px | Most tested | Most written | Path percentile |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| sponza-fitted-full | portrait | 1 | 0.07 | 61.3 | 2.49 | 1.31 | 21 | 9 | 95 |
+| sponza-fitted-full | portrait | 2 | 0.13 | 61.0 | 2.48 | 1.31 | 24 | 7 | 89 |
+| sponza-fitted-full | portrait | 3 | 35.49 | 61.0 | 2.47 | 1.31 | 19 | 8 | 88 |
+| sponza-fitted-full | portrait | 4 | 0.19 | 60.9 | 2.49 | 1.31 | 21 | 8 | 95 |
+| sponza-fitted-full | portrait | 5 | 36.10 | 60.7 | 2.48 | 1.31 | 21 | 8 | 92 |
+| sponza-fitted-full | landscape | 1 | 0.06 | 58.0 | 2.63 | 1.38 | 22 | 7 | 95 |
+| sponza-fitted-full | landscape | 2 | 0.12 | 57.8 | 2.62 | 1.38 | 22 | 7 | 94 |
+| sponza-fitted-full | landscape | 3 | 0.18 | 57.8 | 2.63 | 1.38 | 21 | 8 | 95 |
+| sponza-fitted-full | landscape | 4 | 36.11 | 57.7 | 2.63 | 1.38 | 19 | 8 | 94 |
+| sponza-fitted-full | landscape | 5 | 36.17 | 57.3 | 2.63 | 1.38 | 18 | 8 | 95 |
+| sponza-fitted | portrait | 1 | 0.05 | 48.3 | 2.57 | 1.36 | 15 | 8 | 83 |
+| sponza-fitted | portrait | 2 | 2.70 | 48.2 | 2.57 | 1.33 | 13 | 8 | 83 |
+| sponza-fitted | portrait | 3 | 2.56 | 48.1 | 2.59 | 1.34 | 14 | 8 | 89 |
+| sponza-fitted | portrait | 4 | 2.51 | 48.1 | 2.59 | 1.34 | 21 | 8 | 89 |
+| sponza-fitted | portrait | 5 | 33.88 | 47.9 | 2.58 | 1.36 | 14 | 8 | 88 |
+| sponza-fitted | landscape | 1 | 0.05 | 45.0 | 2.74 | 1.45 | 15 | 7 | 89 |
+| sponza-fitted | landscape | 2 | 35.88 | 44.8 | 2.73 | 1.44 | 13 | 7 | 83 |
+| sponza-fitted | landscape | 3 | 0.09 | 44.7 | 2.74 | 1.44 | 14 | 7 | 92 |
+| sponza-fitted | landscape | 4 | 35.97 | 44.7 | 2.73 | 1.44 | 17 | 8 | 84 |
+| sponza-fitted | landscape | 5 | 0.18 | 44.7 | 2.74 | 1.45 | 15 | 7 | 92 |
+| sponza | portrait | 1 | 0.07 | 60.6 | 3.60 | 1.59 | 14 | 7 | 70 |
+| sponza | portrait | 2 | 0.19 | 60.0 | 3.60 | 1.59 | 15 | 7 | 69 |
+| sponza | portrait | 3 | 0.13 | 59.9 | 3.60 | 1.59 | 16 | 7 | 70 |
+| sponza | portrait | 4 | 36.23 | 59.7 | 3.62 | 1.59 | 15 | 6 | 72 |
+| sponza | portrait | 5 | 0.72 | 59.7 | 3.58 | 1.62 | 15 | 7 | 67 |
+| sponza | landscape | 1 | 0.06 | 57.7 | 3.75 | 1.59 | 16 | 9 | 75 |
+| sponza | landscape | 2 | 36.11 | 57.5 | 3.76 | 1.60 | 15 | 6 | 81 |
+| sponza | landscape | 3 | 36.05 | 57.5 | 3.76 | 1.60 | 15 | 7 | 80 |
+| sponza | landscape | 4 | 0.12 | 57.5 | 3.74 | 1.59 | 16 | 7 | 75 |
+| sponza | landscape | 5 | 36.28 | 57.4 | 3.76 | 1.59 | 14 | 8 | 80 |
+| sponza-lite | portrait | 1 | 2.33 | 48.5 | 3.39 | 1.75 | 12 | 6 | 44 |
+| sponza-lite | portrait | 2 | 2.43 | 48.4 | 3.38 | 1.75 | 12 | 6 | 44 |
+| sponza-lite | portrait | 3 | 2.28 | 48.2 | 3.39 | 1.75 | 11 | 6 | 47 |
+| sponza-lite | portrait | 4 | 2.09 | 48.2 | 3.41 | 1.75 | 13 | 7 | 58 |
+| sponza-lite | portrait | 5 | 0.05 | 48.2 | 3.47 | 1.69 | 13 | 7 | 67 |
+| sponza-lite | landscape | 1 | 0.05 | 46.7 | 3.59 | 1.67 | 13 | 7 | 72 |
+| sponza-lite | landscape | 2 | 36.04 | 46.5 | 3.59 | 1.67 | 13 | 7 | 72 |
+| sponza-lite | landscape | 3 | 34.35 | 46.5 | 3.48 | 1.76 | 12 | 7 | 52 |
+| sponza-lite | landscape | 4 | 34.30 | 46.5 | 3.47 | 1.76 | 12 | 8 | 50 |
+| sponza-lite | landscape | 5 | 35.90 | 46.4 | 3.58 | 1.67 | 14 | 6 | 70 |
+| sponza-flat | portrait | 1 | 0.05 | 50.4 | 3.61 | 1.58 | 15 | 7 | 70 |
+| sponza-flat | portrait | 2 | 0.55 | 50.1 | 3.58 | 1.58 | 15 | 8 | 66 |
+| sponza-flat | portrait | 3 | 0.15 | 50.1 | 3.60 | 1.57 | 15 | 7 | 70 |
+| sponza-flat | portrait | 4 | 0.65 | 50.0 | 3.57 | 1.59 | 16 | 7 | 64 |
+| sponza-flat | portrait | 5 | 0.10 | 50.0 | 3.60 | 1.58 | 16 | 7 | 70 |
+| sponza-flat | landscape | 1 | 0.05 | 48.9 | 3.75 | 1.66 | 16 | 7 | 75 |
+| sponza-flat | landscape | 2 | 0.39 | 48.8 | 3.73 | 1.71 | 15 | 8 | 73 |
+| sponza-flat | landscape | 3 | 0.73 | 48.7 | 3.69 | 1.70 | 14 | 8 | 69 |
+| sponza-flat | landscape | 4 | 0.10 | 48.7 | 3.75 | 1.66 | 16 | 7 | 75 |
+| sponza-flat | landscape | 5 | 35.98 | 48.7 | 3.75 | 1.66 | 15 | 7 | 78 |
+| sponza-flat-fitted | portrait | 1 | 0.06 | 51.4 | 2.56 | 1.31 | 18 | 8 | 91 |
+| sponza-flat-fitted | portrait | 2 | 0.51 | 50.4 | 2.54 | 1.30 | 17 | 9 | 81 |
+| sponza-flat-fitted | portrait | 3 | 0.61 | 50.3 | 2.55 | 1.30 | 22 | 7 | 88 |
+| sponza-flat-fitted | portrait | 4 | 36.22 | 50.2 | 2.55 | 1.31 | 24 | 8 | 88 |
+| sponza-flat-fitted | portrait | 5 | 2.44 | 50.2 | 2.60 | 1.32 | 18 | 8 | 98 |
+| sponza-flat-fitted | landscape | 1 | 0.05 | 48.8 | 2.66 | 1.37 | 19 | 9 | 88 |
+| sponza-flat-fitted | landscape | 2 | 36.05 | 48.8 | 2.65 | 1.37 | 22 | 7 | 84 |
+| sponza-flat-fitted | landscape | 3 | 0.10 | 48.7 | 2.66 | 1.37 | 21 | 8 | 86 |
+| sponza-flat-fitted | landscape | 4 | 36.24 | 48.5 | 2.66 | 1.37 | 20 | 7 | 84 |
+| sponza-flat-fitted | landscape | 5 | 0.25 | 48.5 | 2.65 | 1.37 | 21 | 8 | 84 |
+| capybara | portrait | 1 | 0.02 | 21.6 | 1.28 | 1.23 | 7 | 4 | 61 |
+| capybara | portrait | 2 | 0.04 | 21.2 | 1.28 | 1.23 | 7 | 3 | 55 |
+| capybara | portrait | 3 | 0.75 | 21.1 | 1.28 | 1.23 | 7 | 4 | 50 |
+| capybara | portrait | 4 | 0.15 | 21.0 | 1.27 | 1.23 | 8 | 3 | 27 |
+| capybara | portrait | 5 | 0.25 | 20.9 | 1.28 | 1.25 | 6 | 3 | 47 |
+| capybara | landscape | 1 | 0.02 | 21.9 | 1.26 | 1.22 | 7 | 4 | 56 |
+| capybara | landscape | 2 | 0.43 | 21.8 | 1.27 | 1.24 | 6 | 3 | 95 |
+| capybara | landscape | 3 | 0.54 | 21.6 | 1.26 | 1.23 | 9 | 4 | 33 |
+| capybara | landscape | 4 | 0.73 | 21.6 | 1.26 | 1.22 | 8 | 4 | 53 |
+| capybara | landscape | 5 | 0.45 | 21.5 | 1.27 | 1.24 | 8 | 4 | 86 |
+| bistro-fitted-full | portrait | 1 | 59.53 | 63.5 | 4.02 | 1.45 | 15 | 6 | 100 |
+| bistro-fitted-full | portrait | 2 | 58.21 | 63.3 | 3.98 | 1.41 | 17 | 9 | 98 |
+| bistro-fitted-full | portrait | 3 | 59.22 | 63.3 | 4.03 | 1.43 | 16 | 6 | 100 |
+| bistro-fitted-full | portrait | 4 | 58.34 | 63.2 | 4.00 | 1.42 | 17 | 8 | 98 |
+| bistro-fitted-full | portrait | 5 | 58.59 | 63.1 | 4.01 | 1.43 | 17 | 8 | 98 |
+| bistro-fitted-full | landscape | 1 | 60.59 | 59.6 | 4.08 | 1.49 | 17 | 6 | 98 |
+| bistro-fitted-full | landscape | 2 | 60.12 | 59.5 | 4.12 | 1.48 | 16 | 7 | 98 |
+| bistro-fitted-full | landscape | 3 | 61.30 | 59.4 | 4.00 | 1.50 | 16 | 7 | 98 |
+| bistro-fitted-full | landscape | 4 | 61.72 | 59.4 | 3.97 | 1.51 | 16 | 7 | 98 |
+| bistro-fitted-full | landscape | 5 | 60.00 | 59.4 | 4.12 | 1.46 | 16 | 7 | 98 |
+
+#### Is a worst frame overdraw-heavy?
+
+Over the evenly spaced poses, ρ ranks each pose's replayed ms against its tested layers and its triangles set up: whichever is higher follows the frame time more closely.
+
+| Scene | Quarter | Path tested / px, median | Worst tested / px, median | Worst path percentile, median | ρ ms ~ layers | ρ ms ~ triangles set up | Follows |
+|---|---|---:|---:|---:|---:|---:|---|
+| sponza-fitted-full | portrait | 2.33 | 2.48 | 92 | +0.80 | +1.00 | triangles set up |
+| sponza-fitted-full | landscape | 2.47 | 2.63 | 95 | +0.69 | +0.99 | triangles set up |
+| sponza-fitted | portrait | 2.51 | 2.58 | 88 | +0.48 | +0.99 | triangles set up |
+| sponza-fitted | landscape | 2.64 | 2.74 | 89 | +0.57 | +0.99 | triangles set up |
+| sponza | portrait | 3.51 | 3.60 | 70 | +0.54 | +0.98 | triangles set up |
+| sponza | landscape | 3.59 | 3.76 | 80 | +0.65 | +0.97 | triangles set up |
+| sponza-lite | portrait | 3.40 | 3.39 | 47 | +0.45 | +0.97 | triangles set up |
+| sponza-lite | landscape | 3.48 | 3.58 | 70 | +0.62 | +0.95 | triangles set up |
+| sponza-flat | portrait | 3.51 | 3.60 | 70 | +0.53 | +0.99 | triangles set up |
+| sponza-flat | landscape | 3.59 | 3.75 | 75 | +0.62 | +0.99 | triangles set up |
+| sponza-flat-fitted | portrait | 2.39 | 2.55 | 88 | +0.74 | +0.99 | triangles set up |
+| sponza-flat-fitted | landscape | 2.54 | 2.66 | 84 | +0.68 | +0.99 | triangles set up |
+| capybara | portrait | 1.28 | 1.28 | 50 | +0.23 | +0.35 | triangles set up |
+| capybara | landscape | 1.26 | 1.26 | 56 | +0.30 | +0.07 | layers |
+| bistro-fitted-full | portrait | 2.61 | 4.01 | 98 | +0.83 | +0.97 | triangles set up |
+| bistro-fitted-full | landscape | 2.69 | 4.08 | 98 | +0.81 | +0.96 | triangles set up |
+
 Sources:
 
 - `frame-profile-1-board.log`
 - `frame-profile-2-board.log`
+- `worst-frame-overdraw.tsv`
 <!-- /generated: frame-timing-profiles -->

@@ -19,9 +19,10 @@ extern const char* render_lab_start_camera;
 bool render_lab_console(const char* args);
 
 /* The showing scene's path clip, as its `path` hook names it: its length in
- * ms, 0 when the scene has none or has not loaded. */
+ * ms, 0 when the scene has none, has not loaded or lacks that clip. */
 uint32_t render_lab_path_duration_ms(void);
 
-/* Places the showing scene's path at `t_ms`, wrapped to its length; a frame
- * at dt 0 then draws that pose. False when the scene has no path. */
+/* Places the showing scene's path at `t_ms`, wrapped to its length, cutting to
+ * its clip first; a frame at dt 0 then draws that pose. False when the scene
+ * has no path. */
 bool render_lab_seek_path(uint32_t t_ms);
