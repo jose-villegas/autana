@@ -23,6 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
 from build.packages import include_roots
+from probe_standard import PROBE_STANDARD
 
 from docs.plot_style import (DPI, FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, ORBIT_GIF_COLORS, SLOTS, TITLE_SIZE,
                              style_axes, figure as new_figure, save, save_gif, subplots)
@@ -52,7 +53,7 @@ def build_probe(cc, sources, directory):
     sources = (*sources, ROOT / "launcher/packages/math/src/text/math_text.c")
     binary = pathlib.Path(directory) / "probe"
     includes = [flag for root in include_roots() for flag in ("-I", str(root))]
-    subprocess.run([cc, "-std=gnu2x", "-O1", *includes, *map(str, sources), "-lm", "-o", str(binary)], check=True)
+    subprocess.run([cc, f"-std={PROBE_STANDARD}", "-O1", *includes, *map(str, sources), "-lm", "-o", str(binary)], check=True)
     return binary
 
 
