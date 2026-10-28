@@ -108,7 +108,7 @@ def render_views(text, capture_name, scenes, data_dir, images):
         list(pool.map(lambda p: render(renderer, p, None, picture(p, None)), worst))
         lines = [provenance() + f" of the poses in {capture_name}", "\t".join(COLUMNS + FIELDS)]
         lines.extend("\t".join(map(str, pose + tuple(totals[pose][name] for name in FIELDS))) for pose in poses)
-        (data_dir / DATA_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        (data_dir / DATA_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         for scene in scenes:
             sheet(scene, [p for p in worst if p[0] == scene], totals, picture, images / f"{scene}-poses.png")
 
