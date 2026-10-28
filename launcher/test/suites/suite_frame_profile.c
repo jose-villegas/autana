@@ -27,7 +27,8 @@ test_previous_frame_drives_duration_and_statistics(void) {
     const int64_t steps[] = {0, 7 * MATH_US_PER_MS, MATH_US_PER_MS, 2 * MATH_US_PER_MS};
     fixture_t f = {times, steps, sizeof times / sizeof times[0], 0};
     const frame_profile_scenario_t scenario = {"script", 10 * MATH_US_PER_MS};
-    const frame_profile_t p = frame_profile_play(&scenario, scripted_frame, &f);
+    frame_profile_trace_t trace;
+    const frame_profile_t p = frame_profile_play(&scenario, scripted_frame, &f, &trace);
     TEST_ASSERT_EQUAL_INT(f.count, f.calls);
     TEST_ASSERT_EQUAL_INT(3, p.frames);
     TEST_ASSERT_EQUAL_INT64(6 * MATH_US_PER_MS, p.total_us);
@@ -36,6 +37,16 @@ test_previous_frame_drives_duration_and_statistics(void) {
     TEST_ASSERT_EQUAL_INT64(2 * MATH_US_PER_MS, p.frame_us.avg);
     TEST_ASSERT_EQUAL_INT64(2 * MATH_US_PER_MS, p.frame_us.med);
     TEST_ASSERT_EQUAL_INT64(3 * MATH_US_PER_MS, p.frame_us.p95);
+    /* The trace keeps each frame where the previous frames' times have carried the path. */
+    TEST_ASSERT_EQUAL_INT(p.frames, trace.frames);
+    const int32_t path_ms[] = {7, 8, 10};
+    for (int i = 0; i < trace.frames; i++) {
+        TEST_ASSERT_EQUAL_INT32(path_ms[i], trace.frame[i].path_ms);
+        TEST_ASSERT_EQUAL_INT32((int32_t)times[i + 1], trace.frame[i].frame_us);
+    }
+    frame_profile_trace_free(&trace);
+    TEST_ASSERT_NULL(trace.frame);
+    TEST_ASSERT_EQUAL_INT(0, trace.frames);
 }
 
 enum { SCRIPT_CAPACITY = 8, SAMPLE_US = FRAME_PROFILE_MIN_FRAME_US, CLIP_US = 3 * SAMPLE_US };
@@ -47,7 +58,7 @@ play(fixture_t* f, int64_t duration) {
     heap_arena_snapshot(&blocks_before, &bytes_before);
 #endif
     const frame_profile_scenario_t scenario = {"script", duration};
-    const frame_profile_t p = frame_profile_play(&scenario, scripted_frame, f);
+    const frame_profile_t p = frame_profile_play(&scenario, scripted_frame, f, NULL);
 #ifdef HOST_HEAP_ARENA
     heap_arena_snapshot(&blocks_after, &bytes_after);
     TEST_ASSERT_EQUAL_size_t(blocks_before, blocks_after);
@@ -134,6 +145,39 @@ test_allocation_failure(void) {
 #endif
 
 static void
+test_trace_is_empty_when_the_profile_fails(void) {
+    const int64_t times[] = {SAMPLE_US, SAMPLE_US, 0};
+    const int64_t steps[] = {0, SAMPLE_US, SAMPLE_US};
+    fixture_t f = {times, steps, sizeof times / sizeof times[0], 0};
+    const frame_profile_scenario_t scenario = {"script", CLIP_US};
+    frame_profile_trace_t trace = {(frame_profile_frame_t*)&f, 1};
+    const frame_profile_t p = frame_profile_play(&scenario, scripted_frame, &f, &trace);
+    TEST_ASSERT_EQUAL_INT(0, p.frames);
+    TEST_ASSERT_NULL(trace.frame);
+    TEST_ASSERT_EQUAL_INT(0, trace.frames);
+}
+
+static void
+test_worst_frames_slowest_first(void) {
+    frame_profile_frame_t frames[] = {{0, 4}, {1, 9}, {2, 1}, {3, 9}, {4, 7}, {5, 2}};
+    const frame_profile_trace_t trace = {frames, sizeof frames / sizeof frames[0]};
+
+    enum { K = 3 };
+
+    int index[K + 1] = {-1, -1, -1, -1};
+    TEST_ASSERT_EQUAL_INT(K, frame_profile_worst(&trace, K, index));
+    const int expected[] = {1, 3, 4};
+    TEST_ASSERT_EQUAL_INT_ARRAY(expected, index, K);
+    TEST_ASSERT_EQUAL_INT(-1, index[K]);
+    int all[sizeof frames / sizeof frames[0] + 1];
+    const int count = (int)(sizeof frames / sizeof frames[0]);
+    TEST_ASSERT_EQUAL_INT(count, frame_profile_worst(&trace, count + 1, all));
+    const int ranked[] = {1, 3, 4, 0, 5, 2};
+    TEST_ASSERT_EQUAL_INT_ARRAY(ranked, all, count);
+    TEST_ASSERT_EQUAL_INT(0, frame_profile_worst(&trace, 0, index));
+}
+
+static void
 test_budget_boundaries(void) {
     const int64_t ceiling = (int64_t)INT32_MAX + SAMPLE_US;
     TEST_ASSERT_FALSE(perf_goal("zero", INT64_MAX, 0));
@@ -158,6 +202,8 @@ suite_frame_profile(void) {
     RUN_TEST(test_invalid_frame_times);
     RUN_TEST(test_invalid_duration);
     RUN_TEST(test_sample_capacity_fails_without_overrun);
+    RUN_TEST(test_trace_is_empty_when_the_profile_fails);
+    RUN_TEST(test_worst_frames_slowest_first);
 #ifdef HOST_HEAP_ARENA
     RUN_TEST(test_allocation_failure);
 #endif

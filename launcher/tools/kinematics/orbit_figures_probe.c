@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "kinematics/orbit/orbit_motion.h"
+#include "math/text/math_text.h"
 
 static const float frame_s = 0.1F;
 static const int fling_half_lives = 4;
@@ -41,21 +42,20 @@ orbit_samples(void) {
     const int maximum_frames = reset_frame + (int)(reset_duration_s / frame_s) + home_still_frames;
     int still_frames = 0;
     printf("\"half_life\":%.9g,\"release\":%.9g,\"reset_start\":%.9g,\"pitch_limit\":%.9g,"
-           "\"target\":[%.9g,%.9g,%.9g],\"orbit\":[",
-           orbit.fling_half_life_s, held_frames * frame_s, reset_frame * frame_s, ORBIT_MOTION_PITCH_LIMIT, target.x,
-           target.y, target.z);
+           "\"target\":[%s],\"orbit\":[",
+           orbit.fling_half_life_s, held_frames * frame_s, reset_frame * frame_s, ORBIT_MOTION_PITCH_LIMIT,
+           vec3f_text(target).chars);
     for (int i = 0; i < maximum_frames; i++) {
         if (i == reset_frame) {
             orbit_motion_update(&orbit, &(orbit_motion_input_t){.reset = true}, 0);
         }
         const transformf_t pose = orbit_motion_pose(&orbit);
-        printf("%s{\"time\":%.9g,\"position\":[%.9g,%.9g,%.9g],\"speed\":[%.9g,%.9g],"
+        printf("%s{\"time\":%.9g,\"position\":[%s],\"speed\":[%.9g,%.9g],"
                "\"resetting\":%s,\"axes\":[",
-               i ? "," : "", i * frame_s, pose.position.x, pose.position.y, pose.position.z, orbit.velocity.yaw,
-               orbit.velocity.pitch, orbit.resetting ? "true" : "false");
+               i ? "," : "", i * frame_s, vec3f_text(pose.position).chars, orbit.velocity.yaw, orbit.velocity.pitch,
+               orbit.resetting ? "true" : "false");
         for (size_t j = 0; j < sizeof frame_axes / sizeof frame_axes[0]; j++) {
-            const vec3f_t axis = quatf_rotate(pose.rotation, frame_axes[j]);
-            printf("%s[%.9g,%.9g,%.9g]", j ? "," : "", axis.x, axis.y, axis.z);
+            printf("%s[%s]", j ? "," : "", vec3f_text(quatf_rotate(pose.rotation, frame_axes[j])).chars);
         }
         printf("]}");
         if (i >= reset_frame && !orbit.resetting && ++still_frames == home_still_frames) {

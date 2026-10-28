@@ -338,9 +338,19 @@ median and p95 before presentation, with stage splits at those same poses.
 The pixel-equivalence checks in that suite and the camera checks in
 `suite_sponza.c` use `SPONZA_POSE_EVERY_MS`.
 
-`run_render_lab_frame_profile_suite` plays each Sponza scene's camera clip
-and the capybara gallop for one clip period in each perf quarter. It times
+`run_render_lab_frame_profile_suite` plays each Sponza scene's camera clip,
+Bistro fitted-full's camera clip and the capybara gallop for one clip period in each perf quarter. It times
 update, render, compose and present with the HUD hidden.
+
+After each playback the suite names its `FRAME_PROFILE_WORST_K` slowest
+frames by path time. It then replays poses paused: `FRAME_PROFILE_PATH_POSES`
+spread evenly along the path, then each worst frame's.
+Each replay draws one frame through the `cull` view for its counts and
+`FRAME_PROFILE_REPLAY_DRAWS` shaded frames for their frame-cost report.
+A paused frame does not skin again, so capybara's replayed split has no
+skinning in it. `report_performance.py` ranks the worst frames with those
+splits and counts. Its "why" names the stage that most exceeds the path's
+median pose and the count furthest above its median.
 
 The [perf tools](../../../../tools/perf/README.md#real-time-playback)
 define playback timing and the `frame_profile:` line format.
@@ -349,7 +359,7 @@ Each suite owns a table of mean goals and p95 ceilings per row and quarter.
 Zero means unpegged: it logs without enforcing a budget. Board ceilings
 are reported without enforcement under QEMU.
 
-<!-- generated: frame-timing-profiles check: python launcher/main/apps/render_lab/tools/frame_profile_tables.py --pose-capture docs/render/data/sponza-perf-board.log --pose-row atrium_fitted_full --scenes sponza-fitted-full,sponza-fitted,sponza,sponza-lite,sponza-flat,sponza-flat-fitted,capybara --check -->
+<!-- generated: frame-timing-profiles check: python launcher/main/apps/render_lab/tools/frame_profile_tables.py --worst-board 1 --scenes sponza-fitted-full,sponza-fitted,sponza,sponza-lite,sponza-flat,sponza-flat-fitted,capybara,bistro-fitted-full --check -->
 ### Measured frame rate
 
 Cells list board 1 / board 2.
@@ -357,38 +367,127 @@ Playback includes update, render, compose and present.
 
 | Scene | Quarter | Mean fps | p50 ms | p95 ms | Worst ms |
 |---|---|---:|---:|---:|---:|
-| sponza-fitted-full | portrait | 20.9 / 20.9 | 48.4 / 48.5 | 59.8 / 59.8 | 60.6 / 60.6 |
-| sponza-fitted-full | landscape | 22.1 / 22.1 | 45.8 / 45.8 | 55.3 / 55.2 | 57.4 / 57.3 |
-| sponza-fitted | portrait | 25.2 / 25.2 | 40.2 / 40.2 | 47.0 / 47.0 | 47.9 / 47.9 |
-| sponza-fitted | landscape | 26.4 / 26.4 | 38.3 / 38.3 | 43.9 / 43.8 | 44.4 / 44.6 |
-| sponza | portrait | 20.8 / 20.8 | 48.7 / 48.8 | 58.4 / 58.3 | 59.5 / 59.5 |
-| sponza | landscape | 21.5 / 21.5 | 46.7 / 46.6 | 55.3 / 55.3 | 57.1 / 57.0 |
-| sponza-lite | portrait | 24.1 / 24.1 | 42.2 / 42.2 | 47.4 / 47.4 | 48.4 / 48.4 |
-| sponza-lite | landscape | 24.8 / 24.8 | 40.7 / 40.8 | 45.6 / 45.6 | 46.3 / 46.3 |
-| sponza-flat | portrait | 24.6 / 24.6 | 40.9 / 40.8 | 49.5 / 49.5 | 50.1 / 50.1 |
-| sponza-flat | landscape | 25.0 / 25.0 | 40.3 / 40.2 | 48.0 / 48.0 | 48.8 / 48.8 |
-| sponza-flat-fitted | portrait | 25.5 / 25.5 | 40.0 / 39.9 | 49.4 / 49.3 | 50.5 / 50.5 |
-| sponza-flat-fitted | landscape | 26.4 / 26.4 | 38.4 / 38.5 | 47.0 / 47.0 | 48.4 / 48.3 |
-| capybara | portrait | 48.1 / 48.1 | 20.8 / 20.7 | 21.0 / 21.0 | 21.7 / 21.6 |
-| capybara | landscape | 46.7 / 46.7 | 21.4 / 21.4 | 21.6 / 21.5 | 21.7 / 21.6 |
+| sponza-fitted-full | portrait | 20.8 / 20.8 | 48.7 / 48.7 | 60.1 / 60.1 | 61.3 / 61.3 |
+| sponza-fitted-full | landscape | 22.0 / 22.0 | 46.1 / 46.1 | 55.6 / 55.5 | 58.0 / 58.1 |
+| sponza-fitted | portrait | 25.0 / 25.0 | 40.5 / 40.5 | 47.3 / 47.3 | 48.3 / 48.3 |
+| sponza-fitted | landscape | 26.3 / 26.2 | 38.5 / 38.5 | 44.1 / 44.0 | 45.0 / 45.1 |
+| sponza | portrait | 20.6 / 20.5 | 49.2 / 49.3 | 58.9 / 59.0 | 60.6 / 60.7 |
+| sponza | landscape | 21.3 / 21.3 | 47.1 / 47.2 | 55.9 / 56.0 | 57.7 / 57.7 |
+| sponza-lite | portrait | 24.0 / 24.0 | 42.3 / 42.3 | 47.5 / 47.5 | 48.5 / 48.4 |
+| sponza-lite | landscape | 24.8 / 24.8 | 40.8 / 40.8 | 45.7 / 45.7 | 46.7 / 46.4 |
+| sponza-flat | portrait | 24.6 / 24.6 | 40.7 / 40.8 | 49.4 / 49.5 | 50.4 / 50.6 |
+| sponza-flat | landscape | 25.0 / 25.0 | 40.2 / 40.3 | 48.0 / 48.1 | 48.9 / 49.2 |
+| sponza-flat-fitted | portrait | 25.3 / 25.2 | 40.2 / 40.3 | 49.6 / 49.7 | 51.4 / 51.3 |
+| sponza-flat-fitted | landscape | 26.2 / 26.2 | 38.7 / 38.8 | 47.3 / 47.3 | 48.8 / 48.8 |
+| capybara | portrait | 48.2 / 48.1 | 20.8 / 20.7 | 21.2 / 21.3 | 21.6 / 21.6 |
+| capybara | landscape | 46.8 / 46.9 | 21.4 / 21.3 | 21.8 / 21.7 | 21.9 / 21.8 |
+| bistro-fitted-full | portrait | 26.3 / 26.3 | 38.0 / 38.0 | 58.3 / 58.2 | 63.5 / 63.2 |
+| bistro-fitted-full | landscape | 25.0 / 25.0 | 40.3 / 40.3 | 57.1 / 57.1 | 59.6 / 59.7 |
 
-### Frame cost along the flythrough
+### Worst frames along the path
 
-`atrium_fitted_full` on one board, before presentation, sampled every 0.5 s.
-Blue is portrait; Orange is landscape.
+Board 1. Each scene's played frames over path time, the worst ranked,
+above what the cull counted at poses replayed paused along the path.
 
-```mermaid
-%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #ea580c"}}}}%%
-xychart-beta
-    x-axis "Clip time (s)" 0 --> 36
-    y-axis "Frame ms"
-    line [52.6, 52.5, 53.1, 53.8, 51.9, 49.7, 48.6, 48.1, 46.0, 46.2, 45.3, 43.9, 43.0, 41.7, 39.9, 39.5, 39.6, 37.9, 37.3, 35.4, 33.5, 33.8, 32.2, 31.7, 30.9, 30.3, 27.3, 24.8, 25.9, 23.2, 26.5, 29.1, 32.8, 38.3, 43.9, 48.1, 46.8, 45.3, 45.7, 45.3, 44.6, 42.7, 42.0, 40.9, 40.1, 38.9, 38.2, 37.2, 36.5, 35.1, 34.8, 34.0, 33.3, 29.4, 26.1, 35.6, 40.0, 41.7, 42.2, 42.4, 43.2, 44.7, 44.8, 44.0, 45.2, 46.5, 46.9, 48.1, 50.2, 50.7, 53.0, 52.3, 51.9]
-    line [47.5, 47.4, 46.2, 45.7, 46.1, 46.8, 46.7, 45.5, 44.6, 43.3, 43.4, 42.1, 40.9, 40.3, 38.6, 37.3, 35.8, 35.8, 35.0, 34.0, 32.6, 32.0, 31.6, 31.7, 31.3, 29.7, 27.5, 25.4, 24.5, 25.9, 24.0, 24.8, 26.7, 29.7, 34.6, 42.0, 44.5, 44.2, 43.8, 42.7, 42.9, 41.9, 40.3, 40.1, 39.0, 37.5, 37.0, 35.8, 34.4, 33.8, 33.4, 30.7, 29.6, 24.9, 23.9, 30.6, 33.8, 36.7, 36.9, 37.6, 38.2, 38.5, 39.4, 40.0, 40.8, 42.1, 44.1, 44.3, 45.8, 45.2, 45.4, 46.8, 47.6]
-```
+![sponza-fitted-full: frames along the path and the cull's counts](images/worst-frames/sponza-fitted-full.png)
+![sponza-fitted: frames along the path and the cull's counts](images/worst-frames/sponza-fitted.png)
+![sponza: frames along the path and the cull's counts](images/worst-frames/sponza.png)
+![sponza-lite: frames along the path and the cull's counts](images/worst-frames/sponza-lite.png)
+![sponza-flat: frames along the path and the cull's counts](images/worst-frames/sponza-flat.png)
+![sponza-flat-fitted: frames along the path and the cull's counts](images/worst-frames/sponza-flat-fitted.png)
+![capybara: frames along the path and the cull's counts](images/worst-frames/capybara.png)
+![bistro-fitted-full: frames along the path and the cull's counts](images/worst-frames/bistro-fitted-full.png)
+
+#### Worst frames, ranked
+
+Played frames ranked by wall time. Stage ms and counts come from replaying each pose paused;
+Why compares them with the median of the 64 poses spaced evenly along the path (1024 of 1024 read).
+
+| Scene | Quarter | Rank | Path s | Frame ms | r3d.cull ms | r3d.transform ms | r3d.draw ms | r3d.upscale ms | Clusters tested / kept / hidden / drawn | Triangles submitted / set up / cover / miss / away | Why |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|
+| sponza | portrait | 1 | 0.07 | 60.6 | 0.68 | 4.78 | 40.97 | 2.73 | 537 / 467 / 105 / 318 | 13927 / 6945 / 2519 / 3856 / 2739 | r3d.draw +7.2 ms; triangles missed ×1.66 median |
+| sponza | portrait | 2 | 0.19 | 60.0 | 0.68 | 4.78 | 41.29 | 2.77 | 537 / 465 / 108 / 316 | 13863 / 6954 / 2499 / 3779 / 2743 | r3d.draw +7.5 ms; triangles missed ×1.63 median |
+| sponza | portrait | 3 | 0.13 | 59.9 | 0.67 | 4.78 | 41.07 | 2.78 | 537 / 466 / 108 / 314 | 13895 / 6961 / 2521 / 3807 / 2740 | r3d.draw +7.3 ms; triangles missed ×1.64 median |
+| sponza | portrait | 4 | 36.23 | 59.7 | 0.68 | 4.86 | 41.32 | 2.76 | 540 / 468 / 101 / 322 | 13959 / 6962 / 2507 / 3865 / 2748 | r3d.draw +7.5 ms; triangles missed ×1.67 median |
+| sponza | portrait | 5 | 0.72 | 59.7 | 0.67 | 4.77 | 41.80 | 2.82 | 532 / 455 / 101 / 320 | 13586 / 6940 / 2601 / 3518 / 2728 | r3d.draw +8.0 ms; triangles facing away ×1.60 median |
+| sponza | landscape | 1 | 0.06 | 57.7 | 0.68 | 4.75 | 39.00 | 2.72 | 530 / 465 / 113 / 319 | 13848 / 6942 / 2523 / 3764 / 2734 | r3d.draw +7.5 ms; triangles facing away ×1.72 median |
+| sponza | landscape | 2 | 36.11 | 57.5 | 0.68 | 4.80 | 39.05 | 2.73 | 530 / 465 / 113 / 318 | 13848 / 6947 / 2500 / 3748 / 2750 | r3d.draw +7.5 ms; triangles facing away ×1.73 median |
+| sponza | landscape | 3 | 36.05 | 57.5 | 0.70 | 4.84 | 39.24 | 2.72 | 530 / 465 / 111 / 319 | 13848 / 6999 / 2525 / 3701 / 2745 | r3d.draw +7.7 ms; triangles facing away ×1.73 median |
+| sponza | landscape | 4 | 0.12 | 57.5 | 0.67 | 4.75 | 38.98 | 2.80 | 530 / 465 / 114 / 316 | 13848 / 6963 / 2494 / 3739 / 2738 | r3d.draw +7.5 ms; triangles facing away ×1.72 median |
+| sponza | landscape | 5 | 36.28 | 57.4 | 0.68 | 4.80 | 39.08 | 2.82 | 530 / 465 / 114 / 318 | 13848 / 6978 / 2512 / 3723 / 2741 | r3d.draw +7.6 ms; triangles facing away ×1.73 median |
+| sponza-lite | portrait | 1 | 2.33 | 48.5 | 0.40 | 2.20 | 32.68 | 2.66 | 257 / 221 / 47 / 169 | 6858 / 3483 / 1661 / 1409 / 1379 | r3d.draw +4.2 ms; triangles facing away ×1.47 median |
+| sponza-lite | portrait | 2 | 2.43 | 48.4 | 0.41 | 2.18 | 32.99 | 2.65 | 257 / 220 / 43 / 171 | 6826 / 3443 / 1658 / 1427 / 1367 | r3d.draw +4.5 ms; triangles facing away ×1.46 median |
+| sponza-lite | portrait | 3 | 2.28 | 48.2 | 0.40 | 2.19 | 32.89 | 2.65 | 257 / 221 / 45 / 171 | 6858 / 3487 / 1686 / 1400 / 1407 | r3d.draw +4.4 ms; triangles facing away ×1.50 median |
+| sponza-lite | portrait | 4 | 2.09 | 48.2 | 0.40 | 2.25 | 32.62 | 2.71 | 258 / 225 / 46 / 169 | 6986 / 3556 / 1709 / 1475 / 1412 | r3d.draw +4.1 ms; triangles facing away ×1.51 median |
+| sponza-lite | portrait | 5 | 0.05 | 48.2 | 0.40 | 2.43 | 31.97 | 2.66 | 264 / 243 / 52 / 174 | 7508 / 3722 / 1667 / 1844 / 1496 | r3d.draw +3.5 ms; triangles facing away ×1.60 median |
+| sponza-lite | landscape | 1 | 0.05 | 46.7 | 0.39 | 2.38 | 30.56 | 2.66 | 259 / 237 / 50 / 176 | 7322 / 3751 / 1669 / 1627 / 1488 | r3d.draw +3.8 ms; triangles facing away ×1.70 median |
+| sponza-lite | landscape | 2 | 36.04 | 46.5 | 0.39 | 2.34 | 30.75 | 2.66 | 259 / 237 / 48 / 180 | 7322 / 3743 / 1667 / 1632 / 1491 | r3d.draw +3.9 ms; triangles facing away ×1.70 median |
+| sponza-lite | landscape | 3 | 34.35 | 46.5 | 0.39 | 2.20 | 31.05 | 2.67 | 254 / 221 / 42 / 167 | 6838 / 3503 / 1648 / 1481 / 1345 | r3d.draw +4.2 ms; triangles facing away ×1.54 median |
+| sponza-lite | landscape | 4 | 34.30 | 46.5 | 0.40 | 2.19 | 30.88 | 2.67 | 254 / 221 / 45 / 165 | 6838 / 3489 / 1645 / 1490 / 1338 | r3d.draw +4.1 ms; triangles facing away ×1.53 median |
+| sponza-lite | landscape | 5 | 35.90 | 46.4 | 0.39 | 2.33 | 30.73 | 2.67 | 259 / 237 / 48 / 180 | 7322 / 3761 / 1677 / 1619 / 1486 | r3d.draw +3.9 ms; triangles facing away ×1.70 median |
+| sponza-flat | portrait | 1 | 0.05 | 50.4 | 0.66 | 4.49 | 31.89 | 2.47 | 520 / 461 / 105 / 313 | 14083 / 6933 / 2545 / 4083 / 2731 | r3d.draw +6.0 ms; triangles missed ×1.81 median |
+| sponza-flat | portrait | 2 | 0.55 | 50.1 | 0.67 | 4.44 | 32.38 | 2.53 | 520 / 455 / 101 / 314 | 13891 / 6861 / 2587 / 3920 / 2753 | r3d.draw +6.5 ms; triangles missed ×1.74 median |
+| sponza-flat | portrait | 3 | 0.15 | 50.1 | 0.66 | 4.48 | 31.97 | 2.44 | 520 / 459 / 107 / 310 | 14019 / 6956 / 2556 / 3979 / 2746 | r3d.draw +6.1 ms; triangles missed ×1.77 median |
+| sponza-flat | portrait | 4 | 0.65 | 50.0 | 0.66 | 4.46 | 32.21 | 2.46 | 520 / 453 / 99 / 313 | 13827 / 6844 / 2555 / 3883 / 2733 | r3d.draw +6.3 ms; triangles missed ×1.72 median |
+| sponza-flat | portrait | 5 | 0.10 | 50.0 | 0.66 | 4.52 | 31.85 | 2.47 | 520 / 459 / 109 / 310 | 14019 / 6962 / 2548 / 3976 / 2745 | r3d.draw +5.9 ms; triangles missed ×1.76 median |
+| sponza-flat | landscape | 1 | 0.05 | 48.9 | 0.63 | 4.33 | 30.96 | 2.42 | 505 / 446 / 110 / 307 | 13586 / 6935 / 2561 / 3603 / 2722 | r3d.draw +6.2 ms; triangles facing away ×1.71 median |
+| sponza-flat | landscape | 2 | 0.39 | 48.8 | 0.63 | 4.33 | 30.87 | 2.44 | 505 / 445 / 107 / 306 | 13554 / 6892 / 2540 / 3586 / 2741 | r3d.draw +6.1 ms; triangles facing away ×1.73 median |
+| sponza-flat | landscape | 3 | 0.73 | 48.7 | 0.64 | 4.35 | 30.85 | 2.54 | 505 / 443 / 103 / 303 | 13490 / 6839 / 2518 / 3609 / 2685 | r3d.draw +6.1 ms; triangles facing away ×1.69 median |
+| sponza-flat | landscape | 4 | 0.10 | 48.7 | 0.63 | 4.34 | 30.80 | 2.42 | 505 / 446 / 108 / 309 | 13586 / 6958 / 2530 / 3569 / 2733 | r3d.draw +6.1 ms; triangles facing away ×1.72 median |
+| sponza-flat | landscape | 5 | 35.98 | 48.7 | 0.63 | 4.35 | 30.94 | 2.42 | 505 / 446 / 105 / 312 | 13586 / 6958 / 2578 / 3560 / 2748 | r3d.draw +6.2 ms; triangles facing away ×1.73 median |
+| sponza-fitted | portrait | 1 | 0.05 | 48.3 | 0.38 | 2.76 | 31.38 | 2.63 | 280 / 260 / 33 / 217 | 7259 / 4532 / 2260 / 1736 / 842 | r3d.draw +4.8 ms; triangles facing away ×2.32 median |
+| sponza-fitted | portrait | 2 | 2.70 | 48.2 | 0.40 | 2.43 | 32.40 | 2.66 | 268 / 235 / 33 / 200 | 6578 / 4172 / 2197 / 1426 / 652 | r3d.draw +5.8 ms; triangles facing away ×1.80 median |
+| sponza-fitted | portrait | 3 | 2.56 | 48.1 | 0.44 | 2.46 | 32.47 | 2.67 | 274 / 238 / 34 / 202 | 6664 / 4241 / 2211 / 1431 / 701 | r3d.draw +5.9 ms; triangles facing away ×1.93 median |
+| sponza-fitted | portrait | 4 | 2.51 | 48.1 | 0.40 | 2.52 | 32.49 | 2.66 | 274 / 238 / 33 / 202 | 6664 / 4290 / 2248 / 1400 / 691 | r3d.draw +5.9 ms; triangles facing away ×1.90 median |
+| sponza-fitted | portrait | 5 | 33.88 | 47.9 | 0.39 | 2.41 | 31.93 | 2.67 | 260 / 232 / 35 / 195 | 6498 / 4143 / 2163 / 1342 / 654 | r3d.draw +5.3 ms; triangles facing away ×1.80 median |
+| sponza-fitted | landscape | 1 | 0.05 | 45.0 | 0.37 | 2.71 | 28.58 | 2.64 | 279 / 254 / 29 / 222 | 7079 / 4530 / 2231 / 1537 / 863 | r3d.draw +4.0 ms; triangles facing away ×2.37 median |
+| sponza-fitted | landscape | 2 | 35.88 | 44.8 | 0.37 | 2.71 | 28.66 | 2.63 | 279 / 254 / 31 / 220 | 7079 / 4568 / 2262 / 1513 / 849 | r3d.draw +4.1 ms; triangles facing away ×2.34 median |
+| sponza-fitted | landscape | 3 | 0.09 | 44.7 | 0.37 | 2.68 | 28.73 | 2.63 | 279 / 254 / 31 / 220 | 7079 / 4550 / 2237 / 1518 / 862 | r3d.draw +4.2 ms; triangles facing away ×2.37 median |
+| sponza-fitted | landscape | 4 | 35.97 | 44.7 | 0.37 | 2.69 | 28.83 | 2.62 | 279 / 254 / 28 / 223 | 7079 / 4568 / 2248 / 1508 / 854 | r3d.draw +4.3 ms; triangles facing away ×2.35 median |
+| sponza-fitted | landscape | 5 | 0.18 | 44.7 | 0.37 | 2.69 | 28.75 | 2.62 | 279 / 254 / 29 / 221 | 7079 / 4576 / 2269 / 1506 / 848 | r3d.draw +4.2 ms; triangles facing away ×2.33 median |
+| sponza-fitted-full | portrait | 1 | 0.07 | 61.3 | 0.66 | 5.48 | 41.73 | 2.63 | 550 / 499 / 72 / 410 | 13854 / 8041 / 3563 / 4146 / 1507 | r3d.draw +7.8 ms; triangles facing away ×2.22 median |
+| sponza-fitted-full | portrait | 2 | 0.13 | 61.0 | 0.64 | 5.38 | 41.73 | 2.61 | 550 / 497 / 77 / 405 | 13790 / 8057 / 3536 / 4073 / 1500 | r3d.draw +7.8 ms; triangles facing away ×2.21 median |
+| sponza-fitted-full | portrait | 3 | 35.49 | 61.0 | 0.62 | 5.33 | 41.61 | 2.64 | 538 / 488 / 77 / 397 | 13584 / 7939 / 3555 / 4037 / 1467 | r3d.draw +7.6 ms; triangles facing away ×2.16 median |
+| sponza-fitted-full | portrait | 4 | 0.19 | 60.9 | 0.65 | 5.47 | 42.02 | 2.58 | 550 / 496 / 75 / 405 | 13762 / 8104 / 3599 / 3990 / 1508 | r3d.draw +8.1 ms; triangles facing away ×2.22 median |
+| sponza-fitted-full | portrait | 5 | 36.10 | 60.7 | 0.64 | 5.45 | 41.68 | 2.66 | 551 / 503 / 76 / 408 | 13962 / 8072 / 3568 / 4213 / 1516 | r3d.draw +7.7 ms; triangles facing away ×2.23 median |
+| sponza-fitted-full | landscape | 1 | 0.06 | 58.0 | 0.62 | 5.40 | 38.58 | 2.64 | 539 / 496 / 80 / 406 | 13748 / 8075 / 3553 / 3951 / 1549 | r3d.draw +7.6 ms; triangles facing away ×2.45 median |
+| sponza-fitted-full | landscape | 2 | 0.12 | 57.8 | 0.62 | 5.36 | 38.57 | 2.67 | 539 / 495 / 77 / 409 | 13716 / 8100 / 3557 / 3912 / 1531 | r3d.draw +7.6 ms; triangles facing away ×2.42 median |
+| sponza-fitted-full | landscape | 3 | 0.18 | 57.8 | 0.63 | 5.42 | 38.72 | 2.68 | 539 / 495 / 76 / 409 | 13716 / 8133 / 3591 / 3854 / 1556 | r3d.draw +7.7 ms; triangles facing away ×2.46 median |
+| sponza-fitted-full | landscape | 4 | 36.11 | 57.7 | 0.62 | 5.35 | 38.81 | 2.69 | 539 / 496 / 77 / 410 | 13748 / 8129 / 3584 / 3860 / 1587 | r3d.draw +7.8 ms; triangles facing away ×2.51 median |
+| sponza-fitted-full | landscape | 5 | 36.17 | 57.3 | 0.63 | 5.36 | 38.62 | 2.63 | 539 / 496 / 81 / 406 | 13748 / 8115 / 3550 / 3864 / 1597 | r3d.draw +7.6 ms; triangles facing away ×2.52 median |
+| sponza-flat-fitted | portrait | 1 | 0.06 | 51.4 | 0.61 | 5.11 | 31.88 | 2.55 | 542 / 488 / 72 / 393 | 14179 / 8272 / 3533 / 4251 / 1520 | r3d.draw +6.9 ms; triangles facing away ×2.20 median |
+| sponza-flat-fitted | portrait | 2 | 0.51 | 50.4 | 0.61 | 4.96 | 31.95 | 2.58 | 532 / 480 / 69 / 388 | 13989 / 8212 / 3494 / 4139 / 1491 | r3d.draw +7.0 ms; triangles facing away ×2.16 median |
+| sponza-flat-fitted | portrait | 3 | 0.61 | 50.3 | 0.60 | 4.98 | 31.99 | 2.59 | 531 / 477 / 71 / 387 | 13893 / 8217 / 3497 / 4080 / 1479 | r3d.draw +7.0 ms; triangles facing away ×2.15 median |
+| sponza-flat-fitted | portrait | 4 | 36.22 | 50.2 | 0.64 | 5.09 | 31.88 | 2.57 | 542 / 490 / 72 / 393 | 14243 / 8256 / 3542 / 4323 / 1531 | r3d.draw +6.9 ms; triangles facing away ×2.22 median |
+| sponza-flat-fitted | portrait | 5 | 2.44 | 50.2 | 0.61 | 4.57 | 32.29 | 2.60 | 498 / 447 / 62 / 376 | 12991 / 7832 / 3528 / 3590 / 1326 | r3d.draw +7.3 ms; triangles facing away ×1.92 median |
+| sponza-flat-fitted | landscape | 1 | 0.05 | 48.8 | 0.61 | 4.97 | 30.14 | 2.54 | 540 / 485 / 73 / 400 | 14011 / 8301 / 3539 / 4014 / 1551 | r3d.draw +6.5 ms; triangles facing away ×2.38 median |
+| sponza-flat-fitted | landscape | 2 | 36.05 | 48.8 | 0.61 | 4.97 | 30.07 | 2.52 | 540 / 485 / 71 / 402 | 14011 / 8249 / 3549 / 4079 / 1542 | r3d.draw +6.5 ms; triangles facing away ×2.36 median |
+| sponza-flat-fitted | landscape | 3 | 0.10 | 48.7 | 0.62 | 4.98 | 30.04 | 2.60 | 540 / 485 / 75 / 397 | 14011 / 8260 / 3520 / 4052 / 1554 | r3d.draw +6.4 ms; triangles facing away ×2.38 median |
+| sponza-flat-fitted | landscape | 4 | 36.24 | 48.5 | 0.62 | 4.99 | 30.08 | 2.51 | 540 / 487 / 71 / 402 | 14075 / 8265 / 3532 / 4114 / 1553 | r3d.draw +6.5 ms; triangles facing away ×2.38 median |
+| sponza-flat-fitted | landscape | 5 | 0.25 | 48.5 | 0.61 | 4.99 | 30.12 | 2.54 | 539 / 484 / 73 / 397 | 13979 / 8273 / 3540 / 4038 / 1523 | r3d.draw +6.5 ms; triangles facing away ×2.33 median |
+| capybara | portrait | 1 | 0.02 | 21.6 | 0.04 | 0.34 | 5.90 | 2.51 | 32 / 32 / 11 / 21 | 994 / 449 / 327 / 21 / 522 | r3d.transform +0.0 ms; triangles missed ×2.47 median |
+| capybara | portrait | 2 | 0.04 | 21.2 | 0.04 | 0.33 | 5.90 | 2.56 | 32 / 32 / 11 / 21 | 994 / 455 / 326 / 10 / 527 | r3d.transform +0.0 ms; clusters hidden ×1.38 median |
+| capybara | portrait | 3 | 0.75 | 21.1 | 0.04 | 0.29 | 5.87 | 2.67 | 32 / 32 / 10 / 22 | 994 / 459 / 329 / 18 / 515 | r3d.upscale +0.1 ms; triangles missed ×2.12 median |
+| capybara | portrait | 4 | 0.15 | 21.0 | 0.04 | 0.35 | 5.93 | 2.53 | 32 / 32 / 10 / 21 | 994 / 439 / 321 / 11 / 542 | r3d.transform +0.0 ms; triangles missed ×1.29 median |
+| capybara | portrait | 5 | 0.25 | 20.9 | 0.04 | 0.30 | 5.83 | 2.56 | 32 / 32 / 7 / 22 | 994 / 428 / 341 / 10 / 554 | r3d.cull +0.0 ms; triangles missed ×1.18 median |
+| capybara | landscape | 1 | 0.02 | 21.9 | 0.04 | 0.31 | 6.28 | 2.78 | 32 / 32 / 11 / 21 | 994 / 454 / 325 / 15 / 523 | r3d.upscale +0.1 ms; triangles missed ×1.67 median |
+| capybara | landscape | 2 | 0.43 | 21.8 | 0.04 | 0.33 | 6.36 | 2.72 | 32 / 32 / 8 / 22 | 994 / 441 / 336 / 7 / 544 | r3d.upscale +0.0 ms; triangles facing away ×1.01 median |
+| capybara | landscape | 3 | 0.54 | 21.6 | 0.04 | 0.30 | 6.47 | 2.69 | 32 / 32 / 8 / 22 | 994 / 452 / 337 / 5 / 535 | r3d.draw +0.1 ms; triangles set up ×1.01 median |
+| capybara | landscape | 4 | 0.73 | 21.6 | 0.04 | 0.30 | 6.36 | 2.66 | 32 / 32 / 11 / 21 | 994 / 460 / 328 / 17 / 515 | r3d.draw +0.0 ms; triangles missed ×1.89 median |
+| capybara | landscape | 5 | 0.45 | 21.5 | 0.04 | 0.32 | 6.49 | 2.70 | 32 / 32 / 8 / 22 | 994 / 444 / 333 / 4 / 544 | r3d.draw +0.2 ms; triangles facing away ×1.01 median |
+| bistro-fitted-full | portrait | 1 | 59.53 | 63.5 | 0.72 | 7.24 | 42.25 | 2.49 | 656 / 621 / 251 / 327 | 12728 / 6618 / 2578 / 3238 / 2804 | r3d.draw +17.5 ms; clusters hidden ×2.00 median |
+| bistro-fitted-full | portrait | 2 | 58.21 | 63.3 | 0.72 | 7.31 | 42.35 | 2.47 | 656 / 625 / 264 / 315 | 12784 / 6678 / 2542 / 3294 / 2789 | r3d.draw +17.6 ms; clusters hidden ×2.10 median |
+| bistro-fitted-full | portrait | 3 | 59.22 | 63.3 | 0.72 | 7.22 | 42.49 | 2.49 | 656 / 622 / 256 / 325 | 12749 / 6602 / 2585 / 3289 / 2798 | r3d.draw +17.8 ms; clusters hidden ×2.04 median |
+| bistro-fitted-full | portrait | 4 | 58.34 | 63.2 | 0.74 | 7.33 | 42.40 | 2.46 | 656 / 627 / 258 / 315 | 12823 / 6657 / 2540 / 3352 / 2785 | r3d.draw +17.7 ms; clusters hidden ×2.06 median |
+| bistro-fitted-full | portrait | 5 | 58.59 | 63.1 | 0.73 | 7.29 | 42.51 | 2.51 | 656 / 627 / 260 / 316 | 12823 / 6640 / 2478 / 3386 / 2761 | r3d.draw +17.8 ms; clusters hidden ×2.07 median |
+| bistro-fitted-full | landscape | 1 | 60.59 | 59.6 | 0.77 | 7.64 | 38.27 | 2.39 | 737 / 654 / 283 / 318 | 13408 / 6706 / 2433 / 3757 / 2842 | r3d.draw +12.1 ms; clusters hidden ×2.17 median |
+| bistro-fitted-full | landscape | 2 | 60.12 | 59.5 | 0.77 | 7.69 | 38.12 | 2.39 | 735 / 651 / 281 / 313 | 13322 / 6641 / 2417 / 3793 / 2785 | r3d.draw +11.9 ms; clusters hidden ×2.15 median |
+| bistro-fitted-full | landscape | 3 | 61.30 | 59.4 | 0.80 | 7.73 | 38.04 | 2.38 | 728 / 661 / 284 / 321 | 13546 / 6707 / 2412 / 3820 / 2881 | r3d.draw +11.9 ms; clusters hidden ×2.18 median |
+| bistro-fitted-full | landscape | 4 | 61.72 | 59.4 | 0.77 | 7.73 | 37.95 | 2.37 | 732 / 663 / 282 / 320 | 13588 / 6639 / 2395 / 3934 / 2878 | r3d.draw +11.8 ms; clusters hidden ×2.16 median |
+| bistro-fitted-full | landscape | 5 | 60.00 | 59.4 | 0.78 | 7.57 | 38.32 | 2.37 | 735 / 651 / 278 / 317 | 13322 / 6609 / 2422 / 3854 / 2760 | r3d.draw +12.1 ms; clusters hidden ×2.13 median |
 
 Sources:
 
 - `frame-profile-1-board.log`
 - `frame-profile-2-board.log`
-- `sponza-perf-board.log`
 <!-- /generated: frame-timing-profiles -->

@@ -272,8 +272,10 @@ sequenceDiagram
     Plan->>Plan: Record timeline and host free time
 ```
 
-`vars.NIGHT_START` accepts HH:MM in 00:00–05:59.
-An empty value uses `NIGHT_START` in `scripts/lib/local_schedule.py`.
+GPU work starts at `vars.NIGHT_START`; the board night starts at `vars.BOARD_START`, later.
+Both accept HH:MM in 00:00–05:59; an empty value uses the constant of the same name
+in `scripts/lib/local_schedule.py`. The board night has no end time: lanes run to
+completion under their hang guards, and day board jobs queue on the lock behind them.
 
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
 The marker is the first local start at or after the trigger; override starts now.
@@ -405,6 +407,11 @@ worst FPS is 1/worst frame time. `quarter=` identifies orientation.
 The warm-up runs at dt 0 and is excluded from statistics. Its wall time
 supplies the first clip advance. Each later frame advances by the previous
 frame's wall time.
+
+A traced playback (`frame_profile_play` given a trace) also keeps each
+frame's path time. `frame_trace:` lines list every frame and `frame_worst:`
+lines rank the slowest. `frame_replay:` lines hold the cull view's counts
+and a frame-cost report at one replayed pose.
 
 The capture parser compares mean microseconds for each scenario and quarter.
 The fields are defined in `launcher/test/frame_profile.h`.
