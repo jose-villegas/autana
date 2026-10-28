@@ -10,8 +10,9 @@
  * tree level's node boxes and, from a spectator, the camera's frustum.
  *
  * Tunables: cullview.from (raster_cull_from_t), cullview.paint
- * (raster_cull_paint_t) and cullview.level
- * (the tree depth whose boxes are drawn, 0 none; the root's children are 1).
+ * (raster_cull_paint_t), cullview.level (the tree depth whose boxes are
+ * drawn, 0 none; the root's children are 1) and cullview.occlusion (1
+ * measures what a cluster depth test could skip, raster_cull_occlusion.h).
  */
 #pragma once
 
@@ -21,6 +22,7 @@
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
 #include "render/view/r3d_pipeline_count.h"
+#include "render/view/raster_cull_occlusion.h"
 
 typedef enum {
     RASTER_CULL_FROM_CAMERA,
@@ -96,6 +98,8 @@ typedef struct {
     /* The tree walks' pending nodes, here rather than on the drawing task's stack. */
     uint16_t walk_node[R3D_LIT_WALK_STACK_MAX], walk_shown[R3D_LIT_WALK_STACK_MAX];
     uint8_t walk_depth[R3D_LIT_WALK_STACK_MAX];
+    raster_occlusion_t occlusion;
+    bool occlusion_measured; /* cullview.occlusion was on for the last frame */
     uint32_t covered[RASTER_CULL_TRIANGLES_MAX / 32];
     /* The culled clusters' picture, as painted, and its depth: R3D_DEPTH_EMPTY
      * where nothing of them shows. */
@@ -114,3 +118,6 @@ void raster_cull_overlay(void* state, int width, int height);
 
 /* The last frame's counts. */
 raster_cull_frame_t raster_cull_frame(const raster_cull_t* state);
+
+/* The last frame's occlusion counts; false when cullview.occlusion was off. */
+bool raster_cull_occlusion_frame(const raster_cull_t* state, raster_occlusion_frame_t* out);

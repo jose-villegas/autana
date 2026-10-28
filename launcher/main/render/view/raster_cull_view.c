@@ -20,6 +20,8 @@ TUNE_OWNER(cullview);
 TUNE(cullview, from, RASTER_CULL_FROM_CAMERA, 0, RASTER_CULL_FROM_COUNT - 1);
 TUNE(cullview, paint, RASTER_CULL_PAINT_SHADED, 0, RASTER_CULL_PAINT_COUNT - 1);
 TUNE(cullview, level, 0, 0, R3D_LIT_TREE_DEPTH_MAX);
+/* 1: measure the clusters a depth test before the draw could skip (raster_cull_occlusion.h). */
+TUNE(cullview, occlusion, 0, 0, 1);
 
 /* Fates as the view paints them. */
 static const uint32_t FATE_RGB[RASTER_FATE_COUNT] = {
@@ -118,6 +120,16 @@ culling(void) {
     return entry == NULL || *entry->value != 0;
 }
 
+/* The lens the camera's draw used for instance `index`. */
+static void
+camera_lens(const raster_cull_t* s, const raster_t* raster, int index, r3d_lens_t* lens) {
+    const r3d_instance_t* instance = &raster->instances[index];
+    raster_lens(raster, &s->camera, instance->mesh->position_scale, lens);
+    if (instance->model != NULL) {
+        r3d_lens_place(lens, instance->model, instance->mesh->position_scale);
+    }
+}
+
 /* After the camera's draw, its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
  * lens the draw used, and its kept clusters are not set up or hidden. */
@@ -127,13 +139,9 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
     const bool culls = culling();
     int offset = 0;
     for (int i = 0; i < raster->instance_count; i++) {
-        const r3d_instance_t* instance = &raster->instances[i];
-        const r3d_lit_mesh_t* mesh = instance->mesh;
+        const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
         r3d_lens_t lens;
-        raster_lens(raster, &s->camera, mesh->position_scale, &lens);
-        if (instance->model != NULL) {
-            r3d_lens_place(&lens, instance->model, mesh->position_scale);
-        }
+        camera_lens(s, raster, i, &lens);
         uint16_t* kept = b.culled;
         int count = mesh->cluster_count;
         if (culls) {
@@ -147,7 +155,7 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
             s->frame.counts.clusters_kept += count;
         }
         r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL);
-        r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, &s->set_up[offset]);
+        r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, NULL, &s->frame.counts, &s->set_up[offset]);
         for (int k = 0; k < count; k++) {
             const int c = offset + kept[k];
             s->fate[c] = s->set_up[c] != 0 ? RASTER_FATE_HIDDEN : RASTER_FATE_NOT_SET_UP;
@@ -210,6 +218,29 @@ tally(raster_cull_t* s, const raster_t* raster) {
     }
     for (int c = 0; c < s->clusters; c++) {
         s->frame.clusters[s->fate[c]]++;
+    }
+}
+
+/* With cullview.occlusion, the camera's draw replayed into the spectator's
+ * scratch picture, which its culled pass overwrites next. */
+static void
+measure_occlusion(raster_cull_t* s, const raster_t* raster) {
+    s->occlusion.frame = (raster_occlusion_frame_t){0};
+    s->occlusion_measured = occlusion != 0;
+    if (!s->occlusion_measured) {
+        return;
+    }
+    const raster_buffers_t b = raster_carve(raster);
+    assert(raster->width * raster->height <= RASTER_CULL_PIXELS_MAX);
+    raster_occlusion_begin(&s->occlusion, s->under_color, s->under_depth, raster->width, raster->height,
+                           s->camera.small_fill);
+    const bool culls = culling();
+    int offset = 0;
+    for (int i = 0; i < raster->instance_count; i++) {
+        r3d_lens_t lens;
+        camera_lens(s, raster, i, &lens);
+        raster_occlusion_instance(&s->occlusion, raster->instances[i].mesh, &lens, &b, culls, &s->fate[offset]);
+        offset += raster->instances[i].mesh->cluster_count;
     }
 }
 
@@ -338,6 +369,7 @@ raster_cull_second_view(void* state, const raster_t* raster, render_view_t* out,
         case RASTER_CULL_PASS_CAMERA:
             count_frame(s, raster);
             tally(s, raster);
+            measure_occlusion(s, raster);
             find_nodes(s, raster);
             if (s->from == RASTER_CULL_FROM_CAMERA) {
                 return false;
@@ -601,4 +633,10 @@ raster_cull_overlay(void* state, int width, int height) {
 raster_cull_frame_t
 raster_cull_frame(const raster_cull_t* state) {
     return state->frame;
+}
+
+bool
+raster_cull_occlusion_frame(const raster_cull_t* state, raster_occlusion_frame_t* out) {
+    *out = state->occlusion.frame;
+    return state->occlusion_measured;
 }

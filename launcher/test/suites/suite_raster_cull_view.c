@@ -227,7 +227,7 @@ sort_sample(r3d_pipeline_counts_t* counts, uint16_t* set_up) {
     const uint16_t clusters[] = {0, 1};
     r3d_pipeline_vertex_t cs[SORT_VERTICES];
     r3d_pipeline_transform(&mesh, &lens, clusters, 2, cs, NULL);
-    r3d_pipeline_count_triangles(&mesh, &lens, clusters, 2, cs, counts, set_up);
+    r3d_pipeline_count_triangles(&mesh, &lens, clusters, 2, cs, NULL, counts, set_up);
 }
 
 static void
@@ -260,7 +260,7 @@ test_set_up_per_cluster_counts_set_up_and_clipped_triangles(void) {
     r3d_pipeline_transform(&mesh, &lens, second, 1, cs, NULL);
     r3d_pipeline_counts_t only = {0};
     uint16_t alone[UNLISTED] = {SENTINEL, SENTINEL, SENTINEL};
-    r3d_pipeline_count_triangles(&mesh, &lens, second, 1, cs, &only, alone);
+    r3d_pipeline_count_triangles(&mesh, &lens, second, 1, cs, NULL, &only, alone);
     TEST_ASSERT_EQUAL_UINT16(SENTINEL, alone[0]);
     TEST_ASSERT_EQUAL_UINT16(1, alone[1]);
     TEST_ASSERT_EQUAL_INT(1, only.triangles_behind);
@@ -302,7 +302,7 @@ test_the_draw_fills_the_triangles_the_count_sets_up(void) {
     r3d_pipeline_vertex_t cs[SORT_VERTICES];
     r3d_pipeline_transform(&mesh, &lens, in_front, 1, cs, NULL);
     r3d_pipeline_counts_t counts = {0};
-    r3d_pipeline_count_triangles(&mesh, &lens, in_front, 1, cs, &counts, NULL);
+    r3d_pipeline_count_triangles(&mesh, &lens, in_front, 1, cs, NULL, &counts, NULL);
 
     uint16_t* pixels = calloc((size_t)W * H * 2, sizeof(uint16_t));
     TEST_ASSERT_NOT_NULL(pixels);
@@ -453,6 +453,7 @@ static scene_t* scene_now;
 static int32_t saved_from;
 static bool from_changed;
 static int32_t saved_paint;
+static int32_t saved_occlusion;
 
 static void
 scene_release(void) {
@@ -462,6 +463,7 @@ scene_release(void) {
     }
     if (scene_now != NULL) {
         (void)tune_set(tune_shared(), TUNE_NAME(cullview, paint), saved_paint);
+        (void)tune_set(tune_shared(), TUNE_NAME(cullview, occlusion), saved_occlusion);
         render_context_release(&scene_now->context);
         free(scene_now);
         scene_now = NULL;
@@ -498,6 +500,9 @@ scene_open(void) {
     TEST_ASSERT_NOT_NULL(paint);
     saved_paint = *paint->value;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(cullview, paint), RASTER_CULL_PAINT_FATES));
+    const tune_entry_t* occlusion = tune_find(tune_shared(), TUNE_NAME(cullview, occlusion));
+    TEST_ASSERT_NOT_NULL(occlusion);
+    saved_occlusion = *occlusion->value;
     for (int i = 0; i < SCENE_QUADS; i++) {
         r3d_quad_init(&s->quad[i], scene_corners[i]);
         s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL};
@@ -541,6 +546,61 @@ test_cull_view_gives_each_cluster_its_fate(void) {
     TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_HIDDEN, state->fate[SCENE_HIDDEN]);
     TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_NOT_SET_UP, state->fate[SCENE_AWAY]);
     TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, state->fate[SCENE_SIDE]);
+}
+
+static void
+set_occlusion(bool on) {
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(cullview, occlusion), on ? 1 : 0));
+}
+
+static void
+test_occlusion_is_measured_only_when_asked(void) {
+    scene_t* s = scene_open();
+    set_occlusion(false);
+    scene_draw(s);
+    raster_occlusion_frame_t frame;
+    TEST_ASSERT_FALSE(raster_cull_occlusion_frame(scene_state(s), &frame));
+    set_occlusion(true);
+    scene_draw(s);
+    TEST_ASSERT_TRUE(raster_cull_occlusion_frame(scene_state(s), &frame));
+}
+
+/* The hidden quad comes after the wall it lies behind: every bound skips it,
+ * and nothing it skips writes depth. */
+static void
+test_occlusion_bounds_catch_a_cluster_behind_drawn_depth(void) {
+    scene_t* s = scene_open();
+    set_occlusion(true);
+    scene_draw(s);
+    raster_occlusion_frame_t frame;
+    TEST_ASSERT_TRUE(raster_cull_occlusion_frame(scene_state(s), &frame));
+    TEST_ASSERT_EQUAL_INT(1, frame.hidden);
+    for (int b = 0; b < RASTER_OCCLUSION_BOUNDS; b++) {
+        TEST_ASSERT_EQUAL_INT(1, frame.caught[b]);
+        TEST_ASSERT_EQUAL_INT(1, frame.hidden_caught[b]);
+        TEST_ASSERT_EQUAL_INT(0, frame.unsafe[b]);
+        TEST_ASSERT_TRUE(frame.removed[b] >= TRIANGLES_PER_QUAD && frame.removed[b] < frame.triangles_set_up);
+        TEST_ASSERT_TRUE(frame.read[b] > 0);
+    }
+}
+
+/* Drawn before the wall, the same quad meets no depth yet: still hidden in
+ * the picture, but no bound can skip it then. */
+static void
+test_occlusion_bounds_see_only_the_depth_drawn_so_far(void) {
+    scene_t* s = scene_open();
+    set_occlusion(true);
+    const r3d_instance_t wall = s->instance[SCENE_WALL];
+    s->instance[SCENE_WALL] = s->instance[SCENE_HIDDEN];
+    s->instance[SCENE_HIDDEN] = wall;
+    scene_draw(s);
+    raster_occlusion_frame_t frame;
+    TEST_ASSERT_TRUE(raster_cull_occlusion_frame(scene_state(s), &frame));
+    TEST_ASSERT_EQUAL_INT(1, frame.hidden);
+    for (int b = 0; b < RASTER_OCCLUSION_BOUNDS; b++) {
+        TEST_ASSERT_EQUAL_INT(0, frame.caught[b]);
+        TEST_ASSERT_EQUAL_INT(0, frame.removed[b]);
+    }
 }
 
 static void
@@ -653,6 +713,9 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_per_triangle_writer_tags_the_triangle_that_won_each_pixel);
     RUN_TEST(test_cull_view_gives_each_cluster_its_fate);
     RUN_TEST(test_cull_view_frame_counts_clusters_by_fate);
+    RUN_TEST(test_occlusion_is_measured_only_when_asked);
+    RUN_TEST(test_occlusion_bounds_catch_a_cluster_behind_drawn_depth);
+    RUN_TEST(test_occlusion_bounds_see_only_the_depth_drawn_so_far);
     RUN_TEST(test_cull_view_frame_counts_the_walk_and_the_sort_of_every_instance);
     RUN_TEST(test_cull_view_triangles_covering_counts_only_triangles_owning_pixels);
     RUN_TEST(test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts);
