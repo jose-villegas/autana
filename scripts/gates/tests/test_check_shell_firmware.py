@@ -258,7 +258,7 @@ class OwnerProblemsTest(unittest.TestCase):
 
     def test_the_host_platform_beneath_the_suites_and_vendored_code_are_not_checked(self):
         for rel in ("launcher/test/heap_arena.c", "launcher/test/timing.c", "launcher/test/stubs/esp_heap_caps.h",
-                    "launcher/components/microui/src/microui.c", "editor/runtime/runtime.c",
+                    "launcher/components/microui/src/microui.c",
                     "launcher/main/core/notes.md"):
             with self.subTest(rel=rel):
                 self.assertEqual(self.problems({rel: CLOCK_READ + HEAP_CALL}), [])
