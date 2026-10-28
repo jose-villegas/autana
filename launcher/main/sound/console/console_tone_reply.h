@@ -8,7 +8,7 @@
 #include "input/motion/imu_vibration.h"
 #include "sound/console/console_tone_parse.h"
 
-#define CONSOLE_TONE_REPLY_BYTES    256u
+#define CONSOLE_TONE_REPLY_BYTES    384u
 #define CONSOLE_TONE_MEASURED_BYTES 32u
 
 static inline bool
@@ -27,11 +27,12 @@ console_tone_reply(char* line, size_t capacity, const console_tone_args_t* args,
     if (thd_length < 0 || (size_t)thd_length >= sizeof thd) {
         return false;
     }
-    const int length = snprintf(
-        line, capacity,
-        "TONE %s %u Hz: %.1f dB (silence %.1f dB), path %s, measured %s, open %zu B DMA, thd %s dB, peak %.1f dBFS",
-        heard ? "heard" : "not heard", (unsigned)args->hz, (double)tone_db, (double)silence_db,
-        args->internal ? "internal" : "acoustic", measured, dma_open, thd, (double)result->peak_dbfs);
+    const int length = snprintf(line, capacity,
+                                "TONE %s %u Hz: %.1f dB (silence %.1f dB), path %s, measured %s, open %zu B DMA, thd "
+                                "%s dB, peak %.1f dBFS, pulse_ms %u",
+                                heard ? "heard" : "not heard", (unsigned)args->hz, (double)tone_db, (double)silence_db,
+                                args->internal ? "internal" : "acoustic", measured, dma_open, thd,
+                                (double)result->peak_dbfs, (unsigned)args->pulse_ms);
     return length >= 0 && (size_t)length < capacity;
 }
 
@@ -48,5 +49,14 @@ console_tone_append_shake(char* line, size_t capacity, const imu_vibration_t* si
             ? snprintf(line + used, capacity - used, ", shake %.2f mg rms %.2f mg peak (silence %.2f mg rms)",
                        (double)tone->rms_mg, (double)tone->peak_mg, (double)silence->rms_mg)
             : snprintf(line + used, capacity - used, ", shake n/a");
-    return length >= 0 && (size_t)length < capacity - used;
+    if (length < 0 || (size_t)length >= capacity - used) {
+        return false;
+    }
+    if (!silence->samples) {
+        return true;
+    }
+    const size_t shake_end = used + (size_t)length;
+    const int gravity_length = snprintf(line + shake_end, capacity - shake_end, ", gx_mg %.2f, gy_mg %.2f, gz_mg %.2f",
+                                        (double)silence->gx_mg, (double)silence->gy_mg, (double)silence->gz_mg);
+    return gravity_length >= 0 && (size_t)gravity_length < capacity - shake_end;
 }
