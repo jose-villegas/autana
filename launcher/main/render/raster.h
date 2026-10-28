@@ -10,7 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "gfx/target/gfx_render_target.h"
+#include "gfx/target/gfx_target.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
 #include "render/raster_split.h"
@@ -59,7 +59,7 @@ int raster_cluster_capacity(const raster_t* raster);
 
 /* The picture's attachments, colour and depth then `attachments`, over
  * every row, not yet carved. */
-gfx_render_target_t raster_picture(const raster_t* raster);
+void raster_picture(const raster_t* raster, gfx_target_t* picture);
 
 /* The picture's colour and depth from its first row, as raster_draw() left
  * them: its first two attachments. */

@@ -37,7 +37,7 @@ draw_image_open(asset_view_t entry, image_t* out) {
         .format = mono ? IMAGE_MONO1 : IMAGE_RGB565BE,
         .width = width,
         .height = height,
-        .stride = stride,
+        .pitch = IMAGE_PITCH(mono ? IMAGE_MONO1 : IMAGE_RGB565BE, stride),
     };
     /* The pack must outlive the image; its pixels are read-only. */
     out->pixels = (void*)(at + pixels);
