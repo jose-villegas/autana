@@ -91,8 +91,9 @@ TUNE(water, gravity_mm_s2, 2000, 100, WATER_EARTH_MM_S2);
  * step needs. Read when the scene enters. */
 TUNE(water, grid_internal, 0, 0, 1);
 /* Substeps a frame, each an equal share of its simulated time: the same
- * count every frame, so the cost does not alternate. */
-TUNE(water, substeps, 4, 1, 4);
+ * count every frame, so the cost does not alternate. Two settle nearly as
+ * well as four at about two thirds of the frame; one never settles. */
+TUNE(water, substeps, 2, 1, 4);
 /* Rest: while the push holds within WATER_REST_G and no particle moves
  * faster than this, in um/s, for WATER_REST_UPDATES updates, the step and
  * the surface are skipped and the last mesh stays. 0 never rests. */
