@@ -5,7 +5,7 @@ import re
 
 from c_lexer import tokens
 from check_generated_files import generated_files
-from tracked import tracked_files, committable
+from tracked import committable
 
 # Vendored upstream (microui) and every file whose banner says it is
 # generated: neither is ours to rewrite, and the generators' banner comments
@@ -166,12 +166,11 @@ def file_header(path, source):
     return comments[0] if comments else None
 
 
-def sources(root, *, tracked=False, extensions=(".c", ".h"), exclude=True, files=None):
-    """C sources eligible for comment gates, with tracked-only selection optional."""
+def sources(root, *, extensions=(".c", ".h"), exclude=True, files=None):
+    """C sources eligible for comment gates: every file git would commit under root."""
     root = pathlib.Path(root)
-    paths = (root / name for name in tracked_files(root)) if tracked else committable(root)
-    for path in paths:
-        rp = path.relative_to(root).as_posix() if tracked else path.as_posix()
+    for path in committable(root):
+        rp = path.relative_to(root).as_posix()
         if files is not None and path.as_posix() not in files:
             continue
         if path.suffix in extensions and (not exclude or not rp.startswith(excluded())):
