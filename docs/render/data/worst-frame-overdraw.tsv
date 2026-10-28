@@ -1,4 +1,4 @@
-# host render at c575ace9c-dirty of the poses in frame-profile-1-board.log
+# host render at 457aa799a of the poses in frame-profile-1-board.log
 scene	quarter	pose	t_ms	pixels	tested	written	tested_max	written_max
 bistro-fitted-full	landscape	1	60595	40724	165998	60742	17	6
 bistro-fitted-full	landscape	2	60122	41096	169205	60916	16	7
