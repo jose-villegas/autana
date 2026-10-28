@@ -468,7 +468,7 @@ class NightlyTests(unittest.TestCase):
         first, second = launch.call_args_list
         command = first.args[0]
         self.assertEqual(command[command.index("--selftest") + 1:],
-                         ["C:/bash.exe", str(self.repo / "scripts/ci/board-steps.sh")])
+                         ["C:/bash.exe", str(self.repo.resolve() / "scripts/ci/board-steps.sh")])
         self.assertEqual(first.kwargs["env"]["BOARD_CI_LOG"], "/captures/ci.log")
         self.assertNotIn("BOARD_CI_LOG", second.kwargs["env"])
         self.assertNotIn("--selftest", second.args[0])
