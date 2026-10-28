@@ -14,6 +14,15 @@ import autana
 
 
 class ToneReplyTest(unittest.TestCase):
+    def test_firmware_gap_replies_parse(self):
+        lines = [line for line in host_runner.run("run_console_tone_suite pulse_gap_placement").splitlines()
+                 if line.startswith("TONE ")]
+        self.assertEqual(len(lines), 6)
+        results = [autana.parse_tone(line) for line in lines]
+        self.assertEqual([row["imu_gaps"] for row in results], [1, 1, 1, 0, 0, 0])
+        self.assertEqual([row["shake_reason"] for row in results],
+                         ["gap inside pulse", "gap inside pulse", None] * 2)
+
     def test_firmware_reply_parses(self):
         lines = [line for line in host_runner.run("run_console_tone_suite reply_frequency").splitlines()
                  if line.startswith("TONE ")]

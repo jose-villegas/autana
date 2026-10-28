@@ -38,12 +38,13 @@ console_tone_reply(char* line, size_t capacity, const console_tone_args_t* args,
 
 /* Appends the board's vibration in both windows, or "n/a" when either has no IMU reading. */
 static inline bool
-console_tone_append_shake(char* line, size_t capacity, const imu_vibration_t* silence, const imu_vibration_t* tone) {
+console_tone_append_shake(char* line, size_t capacity, const imu_vibration_t* silence, const imu_vibration_t* tone,
+                          unsigned gaps, const char* reason) {
     const char* end = memchr(line, '\0', capacity);
     if (!end) {
         return false;
     }
-    const size_t used = (size_t)(end - line);
+    size_t used = (size_t)(end - line);
     const int length =
         silence->samples && tone->samples
             ? snprintf(line + used, capacity - used, ", shake %.2f mg rms %.2f mg peak (silence %.2f mg rms)",
@@ -52,11 +53,16 @@ console_tone_append_shake(char* line, size_t capacity, const imu_vibration_t* si
     if (length < 0 || (size_t)length >= capacity - used) {
         return false;
     }
-    if (!silence->samples) {
-        return true;
+    used += (size_t)length;
+    if (silence->samples) {
+        const int gravity_length = snprintf(line + used, capacity - used, ", gx_mg %.2f, gy_mg %.2f, gz_mg %.2f",
+                                            (double)silence->gx_mg, (double)silence->gy_mg, (double)silence->gz_mg);
+        if (gravity_length < 0 || (size_t)gravity_length >= capacity - used) {
+            return false;
+        }
+        used += (size_t)gravity_length;
     }
-    const size_t shake_end = used + (size_t)length;
-    const int gravity_length = snprintf(line + shake_end, capacity - shake_end, ", gx_mg %.2f, gy_mg %.2f, gz_mg %.2f",
-                                        (double)silence->gx_mg, (double)silence->gy_mg, (double)silence->gz_mg);
-    return gravity_length >= 0 && (size_t)gravity_length < capacity - shake_end;
+    const int status_length = snprintf(line + used, capacity - used, ", imu_gaps %u%s%s", gaps,
+                                       reason ? ", shake_reason " : "", reason ? reason : "");
+    return status_length >= 0 && (size_t)status_length < capacity - used;
 }
