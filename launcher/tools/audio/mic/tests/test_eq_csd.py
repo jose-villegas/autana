@@ -5,7 +5,7 @@ import sys
 import unittest
 
 import numpy as np
-from scipy.signal import freqz
+from scipy.signal import butter, freqz
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from audio.mic import eq_design as eq
@@ -74,6 +74,10 @@ class CsdTest(unittest.TestCase):
         _, response = freqz(coeff[:3], denominator, worN=[150], fs=22050)
         self.assertAlmostEqual(20 * math.log10(abs(response[0])), -3, delta=.5)
         self.assertTrue(np.all(np.abs(np.roots(denominator)) < 1))
+
+    def test_first_order_highpass_matches_scipy(self):
+        b, a = butter(1, 300, 'highpass', fs=22050)
+        np.testing.assert_allclose(eq.eq_design_first_order_highpass(300, 22050), [*b, -a[1]], rtol=1e-12)
 
     def test_csd_capture_and_verdicts(self):
         import tempfile

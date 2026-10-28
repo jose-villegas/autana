@@ -292,6 +292,25 @@ test_the_most_cleanups_are_accepted_and_all_run(void) {
 }
 
 static void
+test_deferred_failures_collect_until_taken(void) {
+    suite_fail_after_test("first");
+    suite_fail_after_test("second");
+    suite_clear_test_cleanup();
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("first, second", suite_take_deferred_failure(), "clearing cleanups keeps them");
+    TEST_ASSERT_NULL(suite_take_deferred_failure());
+}
+
+static void
+test_a_deferred_failure_too_long_is_cut(void) {
+    char longer[TEST_DEFERRED_FAILURE_MAX * 2];
+    memset(longer, 'x', sizeof longer - 1);
+    longer[sizeof longer - 1] = '\0';
+    suite_fail_after_test(longer);
+    suite_fail_after_test("dropped");
+    TEST_ASSERT_EQUAL_size_t(TEST_DEFERRED_FAILURE_MAX - 1, strlen(suite_take_deferred_failure()));
+}
+
+static void
 expect_dir(const char* expected, const char* what) {
     const char* const dir = getenv(ASSET_STORE_DIR_ENV);
     /* Windows has no unset: an empty value stands for it. */
@@ -339,6 +358,8 @@ suite_test_harness(void) {
     RUN_TEST(test_a_cleanup_registered_by_a_test_that_bails_still_runs);
     RUN_TEST(test_an_earlier_cleanup_runs_although_a_later_one_bails);
     RUN_TEST(test_the_most_cleanups_are_accepted_and_all_run);
+    RUN_TEST(test_deferred_failures_collect_until_taken);
+    RUN_TEST(test_a_deferred_failure_too_long_is_cut);
     RUN_TEST(test_using_the_asset_dir_twice_puts_back_the_runners_value_not_the_first_dir);
 }
 

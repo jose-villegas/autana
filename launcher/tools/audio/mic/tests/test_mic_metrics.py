@@ -1,10 +1,9 @@
-"""Tests the host mic metrics (levels, clips, alignment, SNR, STOI, takes), noise generation and EQ designs."""
+"""Tests the host mic metrics (levels, clips, alignment, SNR, STOI, takes) and noise generation."""
 import sys
 import unittest
 from pathlib import Path
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import eq_design as e
 import mic_metrics as m
 
 class MetricsTests(unittest.TestCase):
@@ -17,6 +16,8 @@ class MetricsTests(unittest.TestCase):
         self.assertLess(m.low_band_db(self.ref, 200, self.rate), -100)
         self.assertEqual(m.clip_count(np.array([-1., -.5, 0., 1.])), 2)
         self.assertAlmostEqual(m.active_level_db(self.ref, self.rate), -16.9897, delta=.1)
+        self.assertAlmostEqual(m.noise_dbfs(self.ref), -16.9897, places=3)
+        self.assertEqual(m.noise_dbfs(np.zeros(4)), m.DB_FLOOR)
         self.assertAlmostEqual(m.transient_peak_db(self.ref, 1, 100, self.rate), -13.9794, places=3)
     def test_clip_rails(self):
         pcm = np.array([-32768, -32767, 0, 32766, 32767]) / 32768
@@ -64,15 +65,5 @@ class MetricsTests(unittest.TestCase):
         x = generate('pink', 4, self.rate, 9)
         self.assertAlmostEqual(m.band_level_db(x, 500, 1000, self.rate),
                                m.band_level_db(x, 1000, 2000, self.rate), delta=1)
-
-    def test_eq(self):
-        coeff = e.eq_design_biquad('highpass', 150, 2 ** -.5, self.rate)
-        self.assertEqual(len(coeff), 5)
-        self.assertAlmostEqual(sum(coeff[:3]), 0, places=10)
-
-    def test_first_order_highpass_matches_scipy(self):
-        from scipy.signal import butter
-        b, a = butter(1, 300, 'highpass', fs=22050)
-        np.testing.assert_allclose(e.eq_design_first_order_highpass(300, 22050), [*b, -a[1]], rtol=1e-12)
 
 if __name__ == '__main__': unittest.main()
