@@ -70,9 +70,9 @@ typedef struct {
     gfx_color_t* panel;
     raster_t raster;
     r3d_lens_t lens;
-    raster_buffers_t buffers;
     char* report;
     int32_t* frame_us;
+    raster_buffers_t buffers; /* last: it ends in a target's attachments */
 } bench_t;
 
 /* The bench a test has open. The test's cleanup closes it, so a failed
@@ -136,16 +136,18 @@ view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms, r3d_lens_t* lens) {
     r3d_lens_init(lens, &view, mesh->position_scale);
 }
 
-static void
+/* Out of line: its carved buffers and target stay off the caller's frame. */
+static __attribute__((noinline)) void
 clear_and_draw(const raster_t* raster, const r3d_lens_t* lens, int visible) {
     const raster_buffers_t b = raster_carve(raster);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
-    gfx_color_t* color = gfx_render_target_color(&b.picture, 0);
+    gfx_color_t* color = gfx_target_color(&b.picture, 0);
     for (size_t i = 0; i < pixels; i++) {
         color[i] = raster->clear;
     }
-    memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
-    const r3d_span_target_t target = {b.picture, NULL, 0, &r3d_span_small_fill_default};
+    memset(gfx_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
+    r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
+    gfx_target_window(&target.rows, &b.picture, b.picture.first_row, gfx_target_end_row(&b.picture));
     r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target, b.work[0]);
 }
 
@@ -164,8 +166,8 @@ draw_half(half_job_t* j) {
     const int64_t start = timing_now_us();
     const raster_buffers_t b = raster_carve(f);
     r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
-    gfx_render_target_window(&target.rows, &b.picture, j->row0, j->row1);
-    memset(gfx_render_target_depth(&target.rows, j->row0), 0,
+    gfx_target_window(&target.rows, &b.picture, j->row0, j->row1);
+    memset(gfx_target_depth(&target.rows, j->row0), 0,
            (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
     r3d_pipeline_draw(f->instances[0].mesh, j->lens, b.culled + 1, j->visible, b.cs, b.rows, &target,
                       b.work[j->row0 == 0 ? 0 : 1]);
@@ -221,17 +223,17 @@ static void
 report_stage_split(int bake) {
     const r3d_instance_t instance = {&meshes[bake], NULL};
     bench_t* b = bench_open(&instance, NULL);
-    const raster_buffers_t parts = raster_carve(&b->raster);
+    const raster_buffers_t* parts = &b->buffers;
+    const r3d_lens_t* lens = &b->lens;
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     int64_t stopped[4] = {0};
     int poses = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
-        r3d_lens_t lens;
-        view_at(&meshes[bake], t_ms, &lens);
-        const int visible = r3d_pipeline_cull(&meshes[bake], &lens, parts.culled + 1, parts.work[0]);
-        r3d_pipeline_transform(&meshes[bake], &lens, parts.culled + 1, visible, parts.cs, parts.rows);
+        view_at(&meshes[bake], t_ms, &b->lens);
+        const int visible = r3d_pipeline_cull(&meshes[bake], lens, parts->culled + 1, parts->work[0]);
+        r3d_pipeline_transform(&meshes[bake], lens, parts->culled + 1, visible, parts->cs, parts->rows);
         for (int stop = 0; stop <= 3; stop++) {
-            stopped[stop] += one_core_draw_us(&b->raster, &parts, &lens, visible, stop);
+            stopped[stop] += one_core_draw_us(&b->raster, parts, lens, visible, stop);
         }
         poses++;
     }

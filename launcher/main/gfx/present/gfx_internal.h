@@ -18,7 +18,7 @@
 #endif
 
 /* gfx_draw_begin()'s sources. What draw writes into: the framebuffer, or the band or replay strip being drawn. */
-gfx_target_t gfx_present_target(void);
+const gfx_target_t* gfx_present_target(void);
 /* True while a band or an overlay replay is drawn; draw marks nothing dirty then. */
 bool gfx_present_in_band(void);
 /* Save and restore the clip verbatim, including empty boxes. Restore does not
@@ -29,6 +29,7 @@ void gfx_clip_restore(recti_t clip);
 /* gfx_mode.c: the framebuffer and the mode it is held in. */
 extern gfx_color_t* fb;
 extern gfx_color_t* present_fb;
+void gfx_swap_framebuffers(void);
 /* Whether fb holds only fb_fill_colour, as a send that cleared it left it.
  * Core 0's fact: gfx_draw_begin() clears it only when set, so a core-1
  * overlay replay (single layout, never set) does not write it. */
