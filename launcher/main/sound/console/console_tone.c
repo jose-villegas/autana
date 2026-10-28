@@ -31,8 +31,8 @@ console_tone_stop(sound_voice_t* voice) {
 }
 
 bool
-console_tone_start(sound_voice_t* voice, uint16_t hz, uint8_t gain) {
-    *voice = sound_play_tone(hz, SOUND_TONE_UNTIL_STOPPED, gain, SOUND_BUS_SYSTEM);
+console_tone_start(sound_voice_t* voice, uint16_t hz, uint16_t ms, uint8_t gain) {
+    *voice = sound_play_tone(hz, ms, gain, SOUND_BUS_SYSTEM);
     const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
     while (sound_is_playing(*voice) && !sound_voice_audible(*voice) && timing_now_us() < deadline) {
         timing_sleep_ms(SOUND_CONTROL_POLL_MS);
@@ -82,6 +82,90 @@ tone_measure(const console_tone_args_t* args, float* db, audio_loopback_result_t
     return ok;
 }
 
+#define TONE_PULSE_SAMPLE_CAPACITY                                                                                     \
+    ((CONSOLE_TONE_PULSE_WINDOW_MAX_MS * MATH_US_PER_MS / IMU_BUZZ_SAMPLE_US) + IMU_FIFO_SAMPLES)
+
+typedef struct {
+    tone_shake_buffer_t fifo;
+    imu_sample_t* samples;
+    size_t count;
+    size_t window_count;
+    int64_t start_us;
+    uint16_t pulse_ms;
+    bool gap;
+} tone_pulse_buffer_t;
+
+/* IMU batches have no timestamps: place the newest sample at the drain time and walk backwards
+ * at the buzz ODR from audible onset. Pulse edges are uncertain by one task drain period plus
+ * the audible-voice poll. */
+static bool
+tone_pulse_drain(void* context) {
+    tone_pulse_buffer_t* pulse = context;
+    bool gap = false;
+    const int count = imu_take_fifo_at(IMU_BUZZ_ODR_CODE, pulse->fifo.samples, pulse->fifo.lost_before, &gap);
+    if (count < 0) {
+        return false;
+    }
+    pulse->gap = pulse->gap || gap;
+    const int64_t end_us = timing_now_us() - pulse->start_us;
+    for (int i = 0; i < count; i++) {
+        const int64_t sample_us = end_us - (int64_t)(count - i - 1) * IMU_BUZZ_SAMPLE_US;
+        if (sample_us < 0) {
+            continue;
+        }
+        if (pulse->window_count == TONE_PULSE_SAMPLE_CAPACITY) {
+            return false;
+        }
+        pulse->window_count++;
+        if (sample_us > (int64_t)pulse->pulse_ms * MATH_US_PER_MS) {
+            continue;
+        }
+        pulse->samples[pulse->count++] = pulse->fifo.samples[i];
+    }
+    return true;
+}
+
+static bool
+tone_pulse_measure(const console_tone_args_t* args, float* db, audio_loopback_result_t* result,
+                   tone_pulse_buffer_t* pulse, imu_vibration_t* shake) {
+    if (!pulse) {
+        return audio_loopback_measure_observed(args->hz, args->ms, db, result, NULL, NULL);
+    }
+    pulse->count = pulse->window_count = 0;
+    pulse->gap = false;
+    pulse->pulse_ms = args->pulse_ms;
+    pulse->start_us = timing_now_us();
+    (void)tone_shake_read(&pulse->fifo, NULL);
+    const bool ok = audio_loopback_measure_observed(args->hz, args->ms, db, result, tone_pulse_drain, pulse);
+    if (!ok || pulse->gap || pulse->window_count < IMU_FIFO_SAMPLES
+        || !imu_vibration_measure(pulse->samples, (int)pulse->count, shake)) {
+        *shake = (imu_vibration_t){0};
+    }
+    return ok;
+}
+
+static bool
+tone_capture_window(const console_tone_args_t* args, float* db, audio_loopback_result_t* result,
+                    tone_shake_buffer_t* fifo, tone_pulse_buffer_t* pulse, imu_vibration_t* shake) {
+    if (args->pulse_ms) {
+        return tone_pulse_measure(args, db, result, pulse, shake);
+    }
+    return tone_measure(args, db, result, fifo, shake);
+}
+
+static tone_pulse_buffer_t*
+tone_pulse_open(const console_tone_args_t* args, const tone_shake_buffer_t* fifo) {
+    if (!args->pulse_ms || !fifo) {
+        return NULL;
+    }
+    tone_pulse_buffer_t* pulse =
+        memory_alloc(sizeof *pulse + TONE_PULSE_SAMPLE_CAPACITY * sizeof(imu_sample_t), MEMORY_PSRAM);
+    if (pulse) {
+        pulse->samples = (imu_sample_t*)(pulse + 1);
+    }
+    return pulse;
+}
+
 /* The IMU at IMU_BUZZ_ODR_CODE and a buffer for its samples; NULL leaves both as they were. */
 static tone_shake_buffer_t*
 tone_shake_open(void) {
@@ -115,12 +199,15 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     tone_shake_buffer_t* fifo = tone_shake_open();
     imu_vibration_t silence_shake = {0};
     imu_vibration_t tone_shake = {0};
+    tone_pulse_buffer_t* pulse = tone_pulse_open(args, fifo);
     bool held = false;
     bool ok = opened && audio_codec_dac_feedback(false)
               && (!args->internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
-              && tone_measure(args, &silence_db, NULL, fifo, &silence_shake)
-              && console_tone_start(&voice, args->hz, args->volume_pct)
-              && tone_measure(args, &tone_db, &loopback, fifo, &tone_shake);
+              && (!args->pulse_ms || !fifo || pulse)
+              && tone_capture_window(args, &silence_db, NULL, fifo, pulse, &silence_shake)
+              && console_tone_start(&voice, args->hz, args->pulse_ms, args->volume_pct)
+              && tone_capture_window(args, &tone_db, &loopback, fifo, pulse, &tone_shake);
+    memory_free(pulse);
     ok = console_tone_stop(&voice) && ok;
     ok = tone_shake_close(fifo) && ok;
     if (held) {
@@ -144,7 +231,7 @@ static void
 console_verb_tone(const char* args, console_reply_fn reply) {
     console_tone_args_t parsed;
     if (!console_tone_parse(args, &parsed)) {
-        reply("TONE usage: tone <hz> <ms> [volume] [internal]");
+        reply("TONE usage: tone <hz> <ms> [volume] [pulse <ms>] [internal]");
         return;
     }
     char line[CONSOLE_TONE_REPLY_BYTES];

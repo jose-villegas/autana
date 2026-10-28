@@ -60,7 +60,10 @@ bool imu_read(imu_sample_t* out, uint32_t* sequence);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 /* Vibration measurements only: ODR code 3 is IMU_ODR_BASE_HZ / 8, whose
  * default accelerometer bandwidth (half the ODR, Table 11) reaches the speaker's low tones. */
-#define IMU_BUZZ_ODR_CODE 3U
+#define IMU_BUZZ_ODR_CODE  3U
+#define IMU_BUZZ_ODR_HZ    (IMU_ODR_BASE_HZ / (1U << IMU_BUZZ_ODR_CODE))
+#define IMU_BUZZ_SAMPLE_US ((uint32_t)((MATH_US_PER_S / IMU_BUZZ_ODR_HZ) + 0.5))
+#define IMU_BUZZ_WINDOW_MS ((uint16_t)((IMU_FIFO_SAMPLES * MATH_MS_PER_S / IMU_BUZZ_ODR_HZ) + 1))
 /* Asks the IMU task to run the sensor at another ODR code until asked for IMU_ODR_CODE again,
  * and waits until it has. Every switch resets the FIFO and queues a gap, so imu_take_fifo()
  * never mixes rates; between the switches samples are not IMU_SAMPLE_US apart.

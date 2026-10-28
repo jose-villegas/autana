@@ -40,7 +40,7 @@ parse_args(const char* args, console_tone_args_t* parsed, bool* check) {
         args += sizeof MELODY_CHECK_TOKEN - 1;
     }
     parsed->ms = CONSOLE_MELODY_CHECK_MS;
-    if (!console_tone_parse_options(args, parsed) || (!*check && parsed->internal)) {
+    if (!console_tone_parse_options(args, parsed) || parsed->pulse_ms || (!*check && parsed->internal)) {
         return false;
     }
     return true;
@@ -57,7 +57,7 @@ sleep_until(int64_t boundary_us) {
 static const char*
 play_note(melody_note_t note, uint8_t volume_pct, int64_t boundary_us) {
     sound_voice_t voice = SOUND_VOICE_NULL;
-    if (!console_tone_start(&voice, melody_note_hz(note), volume_pct)) {
+    if (!console_tone_start(&voice, melody_note_hz(note), SOUND_TONE_UNTIL_STOPPED, volume_pct)) {
         return "tone start failed";
     }
     sleep_until(boundary_us - ((int64_t)MELODY_GAP_MS * MATH_US_PER_MS));
