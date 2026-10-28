@@ -595,6 +595,31 @@ relax_colour_range(void* ctx, int from, int to) {
     }
 }
 
+/* The relaxation in index order, on one core. */
+static void
+relax_in_order(flip3_t* f, const relax_t* r) {
+    const int n = f->nx * f->ny * f->nz;
+    for (int iter = 0; iter < f->tuning.pressure_iters; iter++) {
+        for (int c = 0; c < n; c++) {
+            if (f->kind[c] == KIND_FLUID) {
+                relax_cell(f, c, f->sides[c], r);
+            }
+        }
+    }
+}
+
+/* Each set of open sides' over-relaxed share of a cell's divergence. */
+static void
+relax_gains(const flip3_t* f, relax_t* r) {
+    for (int set = 0; set < SIDES_OPEN_SETS; set++) {
+        float s = 0.0F;
+        for (int side = 0; side < SIDES_OPEN_BITS; side++) {
+            s += (set & (1 << side)) != 0 ? r->ih[side / 2] * r->ih[side / 2] : 0.0F;
+        }
+        r->gain[set] = s > 0.0F ? f->tuning.over_relaxation / s : 0.0F;
+    }
+}
+
 static void
 relax_colours(flip3_t* f, const relax_t* r) {
     for (int iter = 0; iter < f->tuning.pressure_iters; iter++) {
@@ -613,27 +638,15 @@ static void
 solve_pressure(flip3_t* f, float dt) {
     const vec3f_t ih = f->inv_h;
     relax_t r = {{f->ny * f->nz, f->nz, 1}, {ih.x, ih.y, ih.z}, f->tuning.drift_gain / dt / f->rest_density, {0}};
-    for (int set = 0; set < SIDES_OPEN_SETS; set++) {
-        float s = 0.0F;
-        for (int side = 0; side < SIDES_OPEN_BITS; side++) {
-            s += (set & (1 << side)) != 0 ? r.ih[side / 2] * r.ih[side / 2] : 0.0F;
-        }
-        r.gain[set] = s > 0.0F ? f->tuning.over_relaxation / s : 0.0F;
-    }
+    relax_gains(f, &r);
     const int n = f->nx * f->ny * f->nz;
     for (int c = 0; c < n; c++) {
         f->sides[c] = f->kind[c] == KIND_FLUID ? cell_sides(f, c, &r) : 0;
     }
     if (f->tuning.red_black) {
         relax_colours(f, &r);
-        return;
-    }
-    for (int iter = 0; iter < f->tuning.pressure_iters; iter++) {
-        for (int c = 0; c < n; c++) {
-            if (f->kind[c] == KIND_FLUID) {
-                relax_cell(f, c, f->sides[c], &r);
-            }
-        }
+    } else {
+        relax_in_order(f, &r);
     }
 }
 
@@ -751,24 +764,26 @@ smooth_axis(float* field, int stride, int count, int step_a, int a_from, int a_t
     }
 }
 
-/* Sample `i`'s centre stencil along `axis`, the same for every sample in its
- * plane, so each loop of flip3_field() works out its own axis once. */
-static void
-field_axis(const flip3_t* f, int axis, int i, float step, int* lo, int* hi, float* t) {
-    const float h = axis_of(f->h, axis);
-    /* Grid coordinates: the box starts one cell in. */
-    centre_axis(h + (((float)i - 0.5F) * step), h, axis_of(f->inv_h, axis), cells_on(f, axis), lo, hi, t);
-}
-
 /* flip3_field()'s work, split by lines: the samples, then three smoothing
  * passes along x, y and z. */
 typedef struct {
     const flip3_t* f;
     float* out;
     int d[3];
-    vec3f_t step;
+    float step[3];
     int pass;
 } field_work_t;
+
+/* Sample `i`'s centre stencil along `axis`, the same for every sample in its
+ * plane, so each loop of flip3_field() works out its own axis once. */
+static void
+field_axis(const field_work_t* w, int axis, int i, int lo[3], int hi[3], float t[3]) {
+    const flip3_t* f = w->f;
+    const float h = axis_of(f->h, axis);
+    /* Grid coordinates: the box starts one cell in. */
+    centre_axis(h + (((float)i - 0.5F) * w->step[axis]), h, axis_of(f->inv_h, axis), cells_on(f, axis), &lo[axis],
+                &hi[axis], &t[axis]);
+}
 
 enum { FIELD_SAMPLE, FIELD_SMOOTH_X, FIELD_SMOOTH_Y, FIELD_SMOOTH_Z, FIELD_PASSES };
 
@@ -784,11 +799,11 @@ sample_lines(const field_work_t* w, int from, int to) {
     int hi[3];
     float t[3];
     for (int x = from; x < to; x++) {
-        field_axis(f, 0, x, w->step.x, &lo[0], &hi[0], &t[0]);
+        field_axis(w, 0, x, lo, hi, t);
         for (int y = 1; y < sy - 1; y++) {
-            field_axis(f, 1, y, w->step.y, &lo[1], &hi[1], &t[1]);
+            field_axis(w, 1, y, lo, hi, t);
             for (int z = 1; z < sz - 1; z++) {
-                field_axis(f, 2, z, w->step.z, &lo[2], &hi[2], &t[2]);
+                field_axis(w, 2, z, lo, hi, t);
                 const stencil_t s = corners(f, lo, hi, t);
                 float density = 0.0F;
                 for (int k = 0; k < 8; k++) {
@@ -819,16 +834,15 @@ iso_field_t
 flip3_field(const flip3_t* f, float samples, float* out) {
     field_work_t w = {.f = f, .out = out};
     field_dims(f, samples, w.d);
-    float step[3];
     for (int a = 0; a < 3; a++) {
-        step[a] = (float)(cells_on(f, a) - 2) * axis_of(f->h, a) / (float)(w.d[a] - 2);
+        w.step[a] = (float)(cells_on(f, a) - 2) * axis_of(f->h, a) / (float)(w.d[a] - 2);
     }
-    w.step = (vec3f_t){step[0], step[1], step[2]};
     memset(out, 0, (size_t)w.d[0] * (size_t)w.d[1] * (size_t)w.d[2] * sizeof(float));
     for (w.pass = FIELD_SAMPLE; w.pass < FIELD_PASSES; w.pass++) {
         const int lines = w.pass == FIELD_SMOOTH_X ? w.d[1] : w.d[0];
         run_split(f, FLIP3_SPLIT_FIELD + w.pass, field_range, &w, lines - 2);
     }
     /* Sample (1, 1, 1) sits half a sample in from the box's origin. */
-    return (iso_field_t){out, w.d[0], w.d[1], w.d[2], vec3f_scale(w.step, -0.5F), w.step};
+    const vec3f_t step = {w.step[0], w.step[1], w.step[2]};
+    return (iso_field_t){out, w.d[0], w.d[1], w.d[2], vec3f_scale(step, -0.5F), step};
 }
