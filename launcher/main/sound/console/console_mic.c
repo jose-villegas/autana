@@ -29,7 +29,7 @@ static bool
 record(int16_t* pcm, size_t count, uint8_t* flags, size_t settle, console_mic_args_t* args) {
     int16_t discard[AUDIO_CODEC_BLOCK_SAMPLES];
     unsigned applied = 0;
-    int32_t settle_block = -(int32_t)((settle + AUDIO_CODEC_BLOCK_SAMPLES - 1u) / AUDIO_CODEC_BLOCK_SAMPLES);
+    int32_t settle_block = -(int32_t)((settle + AUDIO_CODEC_BLOCK_SAMPLES - 1U) / AUDIO_CODEC_BLOCK_SAMPLES);
     while (settle) {
         const size_t n = settle < AUDIO_CODEC_BLOCK_SAMPLES ? settle : AUDIO_CODEC_BLOCK_SAMPLES;
         if (!console_mic_apply_entries(args, -(int32_t)settle, settle_block++, &applied, apply_entry)
