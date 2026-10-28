@@ -64,7 +64,12 @@ typedef struct {
 
     union {
         const sound_t* sound;
-        uint32_t tone_hz;
+
+        struct {
+            uint16_t hz;
+            uint16_t ms;
+        } tone;
+
         void* waiter;
     };
 
@@ -116,7 +121,11 @@ typedef struct {
 
     union {
         sound_cursor_t cursor;
-        audio_tone_t tone;
+
+        struct {
+            audio_tone_t oscillator;
+            uint32_t frames_left;
+        } tone;
     } source;
 
     sound_bus_t bus;
@@ -144,7 +153,7 @@ typedef struct {
 void sound_control_init(sound_control_t* control, bool ready);
 bool sound_control_admit(const sound_control_t* control, uint32_t generation);
 sound_voice_t sound_control_play(sound_control_t* control, const sound_t* sound, const sound_play_opts_t* opts,
-                                 uint16_t tone_hz, sound_command_t* command, uint32_t generation);
+                                 uint16_t tone_hz, uint16_t tone_ms, sound_command_t* command, uint32_t generation);
 bool sound_control_voice_command(sound_control_t* control, sound_voice_t voice, sound_command_kind_t kind, uint8_t gain,
                                  sound_command_t* command);
 bool sound_control_is_playing(const sound_control_t* control, sound_voice_t voice);
