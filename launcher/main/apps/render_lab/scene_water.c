@@ -100,8 +100,8 @@ TUNE(water, rest_um_s, 0, 0, 20000);
 #define WATER_REST_G       0.01F
 #define WATER_REST_UPDATES 4U
 #define WATER_UM_PER_MM    1000.0F
-/* 1 hands half of the step's particle passes, the surface field and the
- * shading to core 1; 0 keeps them on the update's core. */
+/* 1 hands half of the step's particle passes, the surface field, its
+ * meshing and the shading to core 1; 0 keeps them on the update's core. */
 TUNE(water, two_core, 1, 0, 1);
 /* 1 solves the pressure in red-black order, each colour split like the
  * particle passes; 0 in index order on one core. */
@@ -202,7 +202,10 @@ static vec3f_t* positions;
 static vec3f_t* normals;
 static uint8_t (*colors)[3];
 static uint16_t (*triangles)[3];
-static int32_t* scratch;
+static int32_t* scratch[2]; /* one per meshing half */
+/* The cell slab where core 1's meshing half starts, moved a slab a frame
+ * toward the halves making equal vertices. */
+static int nets_split;
 static r3d_dynamic_mesh_t surface;
 static vec3f_t box;
 static gravity_t gravity;
@@ -287,7 +290,10 @@ allocate(void) {
     normals = take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
     colors = take(sizeof(uint8_t[3]) * WATER_MAX_VERTICES);
     triangles = take(sizeof(uint16_t[3]) * WATER_MAX_TRIANGLES);
-    scratch = take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
+    for (int half = 0; half < 2; half++) {
+        scratch[half] = take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
+    }
+    nets_split = (surface_field.nx - 1) / 2;
     transfer = take(sizeof *transfer);
     if (transfer != NULL) {
         r3d_skin_light_transfer_build(WATER_TONEMAP_NONE, transfer);
@@ -296,7 +302,7 @@ allocate(void) {
     const size_t mesh_bytes = r3d_dynamic_mesh_bytes(capacity);
     void* mesh_block = take(mesh_bytes);
     return through != NULL && transfer != NULL && positions != NULL && normals != NULL && colors != NULL
-           && triangles != NULL && scratch != NULL && mesh_block != NULL
+           && triangles != NULL && scratch[0] != NULL && scratch[1] != NULL && mesh_block != NULL
            && r3d_dynamic_mesh_init(&surface, mesh_block, mesh_bytes, capacity, WATER_TICKS_PER_MM);
 }
 
@@ -566,6 +572,43 @@ plane_field(void) {
     }
 }
 
+/* The surface meshed in two parts, either side of nets_split, each into
+ * its half of the buffers. */
+typedef struct {
+    iso_mesh_t part[2];
+    bool fitted[2];
+} nets_work_t;
+
+static void
+nets_half(void* ctx, int half) {
+    nets_work_t* w = ctx;
+    const int from = half == 0 ? 0 : nets_split;
+    const int to = half == 0 ? nets_split : surface_field.nx - 1;
+    w->fitted[half] = iso_surface_nets_slabs(&surface_field, WATER_SURFACE_LEVEL, from, to, &w->part[half]);
+}
+
+/* The surface on both cores, joined into one mesh at the buffers' start. */
+static bool
+mesh_split(iso_mesh_t* m) {
+    const int vertices = WATER_MAX_VERTICES / 2;
+    const int tris = WATER_MAX_TRIANGLES / 2;
+    nets_work_t w = {
+        .part = {{positions, normals, vertices, triangles, tris, scratch[0], 0, 0},
+                 {&positions[vertices], &normals[vertices], vertices, &triangles[tris], tris, scratch[1], 0, 0}},
+    };
+    water_split(nets_half, &w);
+    *m = w.part[0];
+    m->vertex_capacity = WATER_MAX_VERTICES;
+    m->triangle_capacity = WATER_MAX_TRIANGLES;
+    const int lean = w.part[0].vertex_count - w.part[1].vertex_count;
+    if (lean > 0 && nets_split > 1) {
+        nets_split--;
+    } else if (lean < 0 && nets_split < surface_field.nx - 2) {
+        nets_split++;
+    }
+    return iso_surface_append(m, &w.part[1]) && w.fitted[0] && w.fitted[1];
+}
+
 /* The surface field meshed, shaded, moved into model axes and handed to the
  * scene. A surface too big for the buffers is cut, said once and shown. */
 static void
@@ -579,8 +622,8 @@ rebuild_surface(void) {
     at = lap(SCENE_WATER_STAGE_FIELD, at);
     measure_through();
     at = lap(SCENE_WATER_STAGE_THROUGH, at);
-    iso_mesh_t m = {positions, normals, WATER_MAX_VERTICES, triangles, WATER_MAX_TRIANGLES, scratch, 0, 0};
-    bool fitted = iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, &m);
+    iso_mesh_t m = {positions, normals, WATER_MAX_VERTICES, triangles, WATER_MAX_TRIANGLES, scratch[0], 0, 0};
+    bool fitted = two_core != 0 ? mesh_split(&m) : iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, &m);
     at = lap(SCENE_WATER_STAGE_NETS, at);
     if (two_core != 0) {
         water_split(shade_half, &m.vertex_count);
