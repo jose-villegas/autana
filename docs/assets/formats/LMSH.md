@@ -16,51 +16,51 @@ config:
 ---
 packet-beta
 title Header, 44 bytes (11 words) at 0, one cell a byte
-0-3: "vertex_count"
-4-7: "triangle_count"
-8-11: "cluster_count"
-12-15: "node_count"
+0-3: "🟩 vertex_count"
+4-7: "🟩 triangle_count"
+8-11: "🟩 cluster_count"
+12-15: "🟩 node_count"
 16-19: "position_scale"
-20-23: "positions_off"
-24-27: "colours_off"
-28-31: "triangles_off"
-32-35: "clusters_off"
-36-39: "nodes_off"
-40-43: "face_colours_off"
+20-23: "🟧 positions_off"
+24-27: "🟧 colours_off"
+28-31: "🟧 triangles_off"
+32-35: "🟧 clusters_off"
+36-39: "🟧 nodes_off"
+40-43: "🟧 face_colours_off"
 ```
 
 ```mermaid
 ---
 config:
   packet:
-    bitsPerRow: 12
-    bitWidth: 60
+    bitsPerRow: 8
+    bitWidth: 100
 ---
 packet-beta
 title Cluster registry, one 22-byte row a cluster from clusters_off
 0-1: "vertex_first"
-2-3: "vertex_count"
+2-3: "🟩 vertex_count"
 4-5: "triangle_first"
-6-7: "triangle_count"
+6-7: "🟩 triangle_count"
 8-13: "int16 lo[3]"
 14-19: "int16 hi[3]"
 20: "double_sided"
-21: "0"
+21: "⬜ 0"
 ```
 
 ```mermaid
 ---
 config:
   packet:
-    bitsPerRow: 16
-    bitWidth: 60
+    bitsPerRow: 8
+    bitWidth: 104
 ---
 packet-beta
 title Node registry, one 16-byte row a node from nodes_off, root first
 0-5: "int16 lo[3]"
 6-11: "int16 hi[3]"
 12-13: "first"
-14: "count"
+14: "🟩 count"
 15: "leaf"
 ```
 

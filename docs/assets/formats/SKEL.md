@@ -6,17 +6,17 @@ A skinned mesh's joint tree and rest pose ([Skeleton-and-Skin.md](../../render/S
 ---
 config:
   packet:
-    bitsPerRow: 16
-    bitWidth: 52
+    bitsPerRow: 8
+    bitWidth: 100
 ---
 packet-beta
 title Header, 16 bytes at 0, one cell a byte
-0-1: "version = 1"
-2: "joints"
-3: "0"
-4-7: "strings_off"
-8-11: "strings_size"
-12-15: "rest_off"
+0-1: "🟦 version = 1"
+2: "🟩 joints"
+3: "⬜ 0"
+4-7: "🟧 strings_off"
+8-11: "🟩 strings_size"
+12-15: "🟧 rest_off"
 ```
 
 ```mermaid
@@ -30,7 +30,7 @@ packet-beta
 title Joint registry, one 4-byte row a joint from byte 16
 0-1: "path"
 2: "parent"
-3: "0"
+3: "⬜ 0"
 ```
 
 ```mermaid

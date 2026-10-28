@@ -11,12 +11,12 @@ config:
 ---
 packet-beta
 title Header, 32 bytes at 0, one cell a byte
-0-3: "magic APAK"
-4-7: "version = 1"
-8-11: "entry_count"
-12-15: "total_size"
-16-19: "crc32"
-20-31: "0 (reserved)"
+0-3: "🟦 magic APAK"
+4-7: "🟦 version = 1"
+8-11: "🟩 entry_count"
+12-15: "🟩 total_size"
+16-19: "🟦 crc32"
+20-31: "⬜ 0 (reserved)"
 ```
 
 ```mermaid
@@ -30,8 +30,8 @@ packet-beta
 title Entry registry, one 48-byte row an entry from byte 32
 0-31: "name, NUL padded"
 32-35: "type"
-36-39: "offset"
-40-43: "size"
+36-39: "🟧 offset"
+40-43: "🟩 size"
 44-47: "align"
 ```
 

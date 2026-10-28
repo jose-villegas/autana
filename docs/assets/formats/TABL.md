@@ -11,11 +11,11 @@ config:
 ---
 packet-beta
 title Header, 8 bytes at 0, one cell a byte
-0-1: "version = 1"
-2-3: "rows"
-4-5: "columns"
+0-1: "🟦 version = 1"
+2-3: "🟩 rows"
+4-5: "🟩 columns"
 6: "frac"
-7: "0"
+7: "⬜ 0"
 ```
 
 ```mermaid

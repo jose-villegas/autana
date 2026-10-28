@@ -4,6 +4,22 @@ Part of the [asset docs](../README.md). One page per format, as each has its
 own header. Every page shows its records as packet diagrams, then a Part/At/Size
 table and a Rule/Detail table whose Owners row names where the layout constants live.
 
+## Field colours
+
+A coloured square in front of a field gives its role, the same on every page.
+[`check_format_roles.py`](../../../scripts/gates/check_format_roles.py) derives
+each role from the field's label and fails a field without its square; `--write`
+puts them in.
+
+| Square | Role | A field is one when |
+|---|---|---|
+| 🟦 | identity | it is the magic, the version or the checksum |
+| 🟩 | count or size | its name ends in `count` or `_size`, or is one plural word |
+| 🟧 | offset | its name ends in `_off`: where a part starts |
+| 🟪 | code | the header names two or more of its values (`SOUND_FORMAT_*`) |
+| ⬜ | padding | it is zero or reserved |
+| none | value | anything else: the data itself |
+
 ## Every entry
 
 Every device entry keeps these; MCOP stays on the host.

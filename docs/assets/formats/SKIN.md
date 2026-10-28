@@ -6,19 +6,19 @@ Per vertex, which joints move it and by how much ([Skeleton-and-Skin.md](../../r
 ---
 config:
   packet:
-    bitsPerRow: 20
-    bitWidth: 44
+    bitsPerRow: 8
+    bitWidth: 110
 ---
 packet-beta
 title Header, 20 bytes at 0, one cell a byte
-0-1: "version = 2"
-2: "joints"
-3: "infl."
-4-7: "vertex_count"
-8-11: "inverse_bind_off"
-12-15: "vertices_off"
-16: "light"
-17-19: "0"
+0-1: "🟦 version = 2"
+2: "🟩 joints"
+3: "🟩 influences"
+4-7: "🟩 vertex_count"
+8-11: "🟧 inverse_bind_off"
+12-15: "🟧 vertices_off"
+16: "🟪 light"
+17-19: "⬜ 0"
 ```
 
 ```mermaid
@@ -51,7 +51,7 @@ title Content: vertex records, two influences, 8 bytes a vertex from vertices_of
 4: "normal x"
 5: "normal y"
 6: "normal z"
-7: "0"
+7: "⬜ 0"
 ```
 
 ```mermaid
@@ -59,7 +59,7 @@ title Content: vertex records, two influences, 8 bytes a vertex from vertices_of
 config:
   packet:
     bitsPerRow: 12
-    bitWidth: 60
+    bitWidth: 72
 ---
 packet-beta
 title Content: vertex records, four influences, 12 bytes a vertex from vertices_off
@@ -74,7 +74,7 @@ title Content: vertex records, four influences, 12 bytes a vertex from vertices_
 8: "normal x"
 9: "normal y"
 10: "normal z"
-11: "0"
+11: "⬜ 0"
 ```
 
 | Part | At | Size |
