@@ -35,6 +35,10 @@
 #define FRAME_WATCH_WARMUP             16
 
 #define FRAME_WATCH_SITES              32
+
+/* Events waiting for the frame's end. The hooks run on any watched task on
+ * either core; the frame task alone consumes. */
+#define FRAME_WATCH_PENDING_MAX        128
 #define FRAME_WATCH_REPORT_INTERVAL_US (10 * 1000 * 1000)
 
 _Static_assert(FRAME_WATCH_WINDOW <= 16, "a site's history is a uint16_t");
