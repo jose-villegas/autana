@@ -4,7 +4,7 @@
  * CRC-32 of the rest of it, version, count) and a row per pack: name, offset
  * from the region's start, size. Each
  * pack starts on its own MMU page, so it maps alone and can be rewritten
- * alone. The layout is in docs/assets/Pack-Format.md and is written by
+ * alone. The layout is in docs/assets/formats/ABDR.md and is written by
  * launcher/tools/asset/asset_directory.py.
  */
 #pragma once

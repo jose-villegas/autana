@@ -1,4 +1,4 @@
-/* IMA-ADPCM decoding into int16 samples; the block layout is in docs/audio/Sound-Assets.md. */
+/* IMA-ADPCM decoding into int16 samples; the block layout is in docs/assets/formats/SOND.md. */
 #pragma once
 
 #include <stdint.h>
