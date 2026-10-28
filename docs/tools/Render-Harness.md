@@ -202,7 +202,7 @@ The first refresh step, `scripts/ci/gpu_refresh_gate.sh`, is the flowchart's
 GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
 
 ```mermaid
-flowchart TD
+flowchart LR
     Fingerprint["Hosted input fingerprint"] --> Flight{"Another run in flight?"}
     Flight -->|yes| Refresh
     Flight -->|no| Latest{"Latest main record rendered<br/>and matches?"}
@@ -215,11 +215,16 @@ flowchart TD
     Head -->|yes| Again{"Latest main record rendered<br/>and matches?"}
     Again -->|yes| Skip
     Again -->|no or force| Render["Render"]
-    Render -->|success| Publish["Sync or close refresh PR"]
-    Publish -->|success| Recorded["Record rendered inputs"]
+    Render -->|success| Push["Push changed images to the refresh branch"]
+    Push -->|success or nothing changed| Recorded["Record rendered inputs"]
+    Recorded --> Publish["Sync or close refresh PR"]
     Render -->|failure| Failed["Record failed inputs and run URL"]
-    Publish -->|failure| Failed
+    Push -->|failure| Failed
 ```
+
+The record comes before the pull request calls, so a failed API call after the push
+leaves the run red but the inputs current. GitHub writes retry a request that never
+reached the server, such as a TLS handshake timeout.
 
 A rendered record means rendered, not merged: closing a refresh PR leaves
 these inputs current until they change or a dispatch uses `force`.
