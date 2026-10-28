@@ -662,17 +662,18 @@ def sound(args):
 def parse_tone(reply):
     match = re.fullmatch(
         r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
-        r"\(silence (-?[0-9]+\.[0-9]+) dB\), path (internal|acoustic), "
+        r"\(silence (-?[0-9]+\.[0-9]+) dB\), (?:noise (-?[0-9]+\.[0-9]+) dBFS, )?path (internal|acoustic), "
         r"measured (-?[0-9]+\.[0-9]+ Hz|n/a), open ([0-9]+) B DMA"
         r"(?:, thd (-?[0-9]+\.[0-9]+|n/a) dB, peak (-?[0-9]+\.[0-9]+) dBFS)?"
         r"(?:, shake (?:n/a|([0-9]+\.[0-9]+) mg rms ([0-9]+\.[0-9]+) mg peak \(silence ([0-9]+\.[0-9]+) mg rms\)))?", reply)
     if not match:
         raise ValueError(f"invalid TONE reply: {reply}")
-    heard, hz, tone_db, silence_db, path, measured_hz, dma, thd_db, peak_dbfs, *shake = match.groups()
+    heard, hz, tone_db, silence_db, noise_dbfs, path, measured_hz, dma, thd_db, peak_dbfs, *shake = match.groups()
     shake_rms_mg, shake_peak_mg, silence_shake_rms_mg = (None if value is None else float(value) for value in shake)
     measured_hz = None if measured_hz == "n/a" else float(measured_hz.removesuffix(" Hz"))
     # hz_error is Hz: measured minus requested.
     return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
+            "noise_dbfs": None if noise_dbfs is None else float(noise_dbfs),
             "heard": heard == "heard", "open_dma_bytes": int(dma), "path": path,
             "thd_db": None if thd_db in (None, "n/a") else float(thd_db), "peak_dbfs": None if peak_dbfs is None else float(peak_dbfs),
             "measured_hz": measured_hz, "hz_error": None if measured_hz is None else measured_hz - int(hz),
@@ -1218,6 +1219,28 @@ def capture_screenshot(out, view):
         command += ["--out", out]
     if view:
         command.append(view)
+    return call_device(command)
+
+
+def mic(args):
+    import argparse
+    parser = argparse.ArgumentParser(prog="autana mic")
+    parser.add_argument("action", choices=("record",))
+    parser.add_argument("ms", type=int)
+    parser.add_argument("--settle", type=int)
+    parser.add_argument("--at", nargs=3, action="append", type=lambda word: int(word, 0), default=[])
+    parser.add_argument("-o", "--out", required=True)
+    parser.add_argument("--json", action="store_true")
+    parsed = parser.parse_args(args)
+    if refused_as_busy():
+        return EXIT_BUSY
+    command = device_command("mic-record") + [str(parsed.ms), "--out", parsed.out]
+    if parsed.settle is not None:
+        command += ["--settle", str(parsed.settle)]
+    for write in parsed.at:
+        command += ["--at", *map(str, write)]
+    if parsed.json:
+        command.append("--json")
     return call_device(command)
 
 
@@ -1771,6 +1794,8 @@ COMMAND_GROUPS = (
             ("coredump [--elf PATH]", "the last panic's core dump, saved to the records and decoded against the build that crashed; resets the board"),
             ("coredump --core FILE [--elf PATH]", "decode a saved dump; no board"),
             ("coredump --erase", "clear the dump so the next crash's is told apart; resets the board"),)),
+        one("mic", mic, "mic record <ms> [--settle ms] [--at ms reg value]... -o take.wav [--json]",
+            "record microphone PCM and codec state; --at writes a codec register during the take"),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "PATH.png plus a PATH.json state snapshot; landscape by default"),
             ("screenshot --frames N -o PATH", "N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed"),)),
