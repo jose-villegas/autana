@@ -108,8 +108,9 @@ TUNE(water, rest_um_s, 0, 0, 20000);
  * cores' times (job_run_steered()); 0 keeps them on the update's core. */
 TUNE(water, two_core, 1, 0, 1);
 /* 1 solves the pressure in red-black order, each colour split like the
- * particle passes; 0 in index order on one core. */
-TUNE(water, red_black, 0, 0, 1);
+ * particle passes, 3 ms a frame faster on the board; 0 in index order on
+ * one core. */
+TUNE(water, red_black, 1, 0, 1);
 
 /* 1 draws the plane (scene_water_plane.h), a cheap option to flip3 with no
  * crests or splash; 0 (the default) runs flip3. */

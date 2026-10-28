@@ -29,17 +29,17 @@ typedef struct {
 } water_config_t;
 
 /* The default, then one change each: on one core, other substep counts,
- * the pressure in red-black order on both cores, and skipping the step at
- * rest below 2 mm/s; and method C, the plane, against them. The grid in
+ * the pressure in index order on one core, and skipping the step at rest
+ * below 2 mm/s; and method C, the plane, against them. The grid in
  * internal RAM measured the same as in PSRAM, so it is not a row. */
 static const water_config_t configs[] = {
-    {.name = "base", .substeps = 2, .two_core = 1},
-    {.name = "one_core", .substeps = 2},
-    {.name = "sub4", .substeps = 4, .two_core = 1},
-    {.name = "sub1", .substeps = 1, .two_core = 1},
-    {.name = "red_black", .substeps = 2, .two_core = 1, .red_black = 1},
-    {.name = "rest", .substeps = 2, .rest_um_s = 2000, .two_core = 1},
-    {.name = "plane", .substeps = 2, .two_core = 1, .plane = 1},
+    {.name = "base", .substeps = 2, .two_core = 1, .red_black = 1},
+    {.name = "one_core", .substeps = 2, .red_black = 1},
+    {.name = "sub4", .substeps = 4, .two_core = 1, .red_black = 1},
+    {.name = "sub1", .substeps = 1, .two_core = 1, .red_black = 1},
+    {.name = "index_order", .substeps = 2, .two_core = 1},
+    {.name = "rest", .substeps = 2, .rest_um_s = 2000, .two_core = 1, .red_black = 1},
+    {.name = "plane", .substeps = 2, .two_core = 1, .red_black = 1, .plane = 1},
 };
 
 static const char* const tunes[] = {TUNE_NAME(water, grid_internal), TUNE_NAME(water, substeps),
