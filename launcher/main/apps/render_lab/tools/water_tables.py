@@ -20,8 +20,8 @@ BLOCK = "water-stages"
 LOG_HEADER = pathlib.Path(__file__).resolve().parents[1] / "tests/water_perf_log.h"
 PREFIX = read_define(LOG_HEADER, "WATER_PERF_PREFIX")
 FRAME_MS = read_define(LOG_HEADER, "WATER_PERF_FRAME_MS")
-SCENE = read_define(LOG_HEADER, "WATER_PERF_SCENE")
-FLIP3 = read_define(LOG_HEADER, "WATER_PERF_FLIP3")
+SCENE = read_define(LOG_HEADER, "WATER_PERF_STAGES_FROM")
+UPDATE = read_define(LOG_HEADER, "WATER_PERF_UPDATE")
 BEFORE, RUNNING, AFTER = (read_define(LOG_HEADER, "WATER_PERF_" + name) for name in ("BEFORE", "RUNNING", "AFTER"))
 BASE = "base"
 RUN_MARK = "RUN="
@@ -57,11 +57,13 @@ def parse(lines):
         if "internal_free" in fields:
             heaps[fields["config"], fields["phase"]] = (int(fields["internal_free"]), int(fields["internal_largest"]))
             continue
-        row = rows.setdefault((fields["config"], fields["row"]), {"stages": {}, "r3d": {}})
+        row = rows.setdefault((fields["config"], fields["row"]), {"stages": {}, "scene": {}, "r3d": {}})
         if window is not None:
-            row["r3d"] = {name: avg for name, (avg, _) in window["brackets"].items() if name.startswith(R3D)}
-        elif "kind" in fields:
-            row["stages"][fields["kind"], fields["stage"]] = int(fields["us"]) / US_PER_MS
+            brackets = window["brackets"].items()
+            row["scene"] = {name: avg for name, (avg, _) in brackets if name.startswith(SCENE) and name != UPDATE}
+            row["r3d"] = {name: avg for name, (avg, _) in brackets if name.startswith(R3D)}
+        elif "stage" in fields:
+            row["stages"][fields["stage"]] = int(fields["us"]) / US_PER_MS
         elif "frames" in fields:
             row.update(frames=int(fields["frames"]), substeps=int(fields["substeps"]),
                        rested=int(fields["rested"]), tris=int(fields["tris"]), particles=int(fields["particles"]))
@@ -93,6 +95,7 @@ def tables(text):
         raise ValueError(f"no {BASE} configuration")
     over = lambda config, phase: [rows[config, phase] for rows, _ in parsed]
     stage_keys = list(first[BASE, phases[0]]["stages"])
+    scene_keys = list(dict.fromkeys(name for phase in phases for name in first[BASE, phase]["scene"]))
     r3d_keys = list(dict.fromkeys(name for phase in phases for name in first[BASE, phase]["r3d"]))
     count = len(parsed)
     lines = ["### Measured stages", "",
@@ -111,10 +114,12 @@ def tables(text):
         lines.append("| " + " | ".join(cells) + " |")
     lines += ["", f"Where the `{BASE}` update and draw go, ms per frame:", "",
               "| Stage | " + " | ".join(phases) + " |", "|---|" + "---:|" * len(phases)]
-    for kind, stage in stage_keys:
-        label = f"step: {stage}" if kind == FLIP3 else stage
-        lines.append(f"| {label} | " + " | ".join(
-            f"{mean(over(BASE, phase), lambda x: x['stages'][kind, stage]):.2f}" for phase in phases) + " |")
+    for name in scene_keys:
+        lines.append(f"| {name} | " + " | ".join(
+            f"{mean(over(BASE, phase), lambda x: x['scene'].get(name, 0.0)):.2f}" for phase in phases) + " |")
+    for stage in stage_keys:
+        lines.append(f"| step: {stage} | " + " | ".join(
+            f"{mean(over(BASE, phase), lambda x: x['stages'][stage]):.2f}" for phase in phases) + " |")
     for name in r3d_keys:
         lines.append(f"| {name} | " + " | ".join(
             f"{mean(over(BASE, phase), lambda x: x['r3d'].get(name, 0.0)):.2f}" for phase in phases) + " |")

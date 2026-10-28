@@ -25,9 +25,10 @@ def capture(configs, update_us, scale=1):
         for phase in PHASES:
             lines.append(line("WATER_PERF_ROW", config, phase, 45, 180, rested, 2300, 1100, 12.5))
             lines.append(line("WATER_PERF_TIMES", config, phase, 200000 * scale, 210000, 220000, update_us * scale, 190000, 195000, 9000, 9500, 9900))
-            lines.append(line("WATER_PERF_STAGE", config, phase, water_tables.FLIP3, "pressure", 60000 * scale))
-            lines.append(line("WATER_PERF_STAGE", config, phase, water_tables.SCENE, "nets", 12000))
-            lines.append(line("WATER_PERF_COST", config, phase, "r3d.draw 6.20/7.1  ui.paint 0.40/0.5 | total 6.60"))
+            lines.append(line("WATER_PERF_STAGE", config, phase, "pressure", 60000 * scale))
+            lines.append(line("WATER_PERF_COST", config, phase,
+                              "water.update 190.00/195.0  water.nets 12.00/13.0  r3d.draw 6.20/7.1  ui.paint 0.40/0.5 "
+                              "| total 208.60"))
     return lines
 
 
@@ -37,7 +38,8 @@ class WaterTables(unittest.TestCase):
         body = water_tables.tables(text)
         self.assertIn("| rest | 45 | 4.0 | 2300 | 1100 | 200.0 / 210.0 | 180.0 / 190.0 | 9.0 / 9.5 |", body)
         self.assertIn("| step: pressure | 60.00 | 60.00 |", body)
-        self.assertIn("| nets | 12.00 | 12.00 |", body)
+        self.assertIn("| water.nets | 12.00 | 12.00 |", body)
+        self.assertNotIn("| water.update |", body)
         self.assertIn("| r3d.draw | 6.20 | 6.20 |", body)
         self.assertNotIn("ui.paint", body)
         self.assertIn("| rest | 180.0 (40) | 180.0 (40) |", body)

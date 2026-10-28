@@ -280,6 +280,71 @@ test_the_same_inputs_give_the_same_water(void) {
     TEST_ASSERT_TRUE(same);
 }
 
+/* A split cut a third of the way and run later range first, as a host on
+ * two cores may. */
+#define SPLIT_CUT_DIVISOR 3
+static int splits_run;
+
+static void
+split_unevenly(int site, flip3_range_fn fn, void* ctx, int count) {
+    (void)site;
+    const int cut = count / SPLIT_CUT_DIVISOR;
+    fn(ctx, cut, count);
+    fn(ctx, 0, cut);
+    splits_run++;
+}
+
+/* Tipped water stepped and its field taken, with or without the split;
+ * the particles and the field kept in `out`. */
+static void
+tipped_water(flip3_split_fn split, bool red_black, void* out) {
+    flip3_fill(&water, 0.4F, (vec3f_t){0.0F, 1.0F, 0.0F});
+    flip3_split_with(&water, split);
+    water.tuning.red_black = red_black;
+    run(60, (vec3f_t){GRAVITY, GRAVITY, 0.0F});
+    take_field();
+    const size_t particles_bytes = sizeof(vec3f_t) * (size_t)water.count;
+    memcpy(out, water.pos, particles_bytes);
+    memcpy((char*)out + particles_bytes, water.vel, particles_bytes);
+    memcpy((char*)out + (2 * particles_bytes), field, sizeof(float) * (size_t)(fx * fy * fz));
+}
+
+/* Every split writes disjoint items, so where it cuts and which part runs
+ * first changes nothing, bit for bit, in index or red-black order. */
+static void
+test_a_split_anywhere_gives_the_same_water(void) {
+    fixture_begin();
+    const size_t bytes = (2 * sizeof(vec3f_t) * MAX_PARTICLES) + (sizeof(float) * flip3_field_count(&water, SAMPLES));
+    char* whole = malloc(bytes);
+    char* split = malloc(bytes);
+    TEST_ASSERT_TRUE(whole != NULL && split != NULL);
+    bool same = true;
+    for (int red_black = 0; red_black < 2; red_black++) {
+        memset(whole, 0, bytes);
+        memset(split, 0, bytes);
+        tipped_water(NULL, red_black != 0, whole);
+        splits_run = 0;
+        tipped_water(split_unevenly, red_black != 0, split);
+        same = same && splits_run > 0 && memcmp(whole, split, bytes) == 0;
+    }
+    flip3_split_with(&water, NULL);
+    free(whole);
+    free(split);
+    TEST_ASSERT_TRUE(same);
+}
+
+/* Red-black order relaxes the same equations in another order: the pool
+ * still settles level and keeps its volume. */
+static void
+test_red_black_water_settles_level_and_keeps_its_volume(void) {
+    fixture_begin();
+    water.tuning.red_black = true;
+    flip3_fill(&water, 0.5F, (vec3f_t){0.0F, 1.0F, 0.0F});
+    run(SETTLE_STEPS, (vec3f_t){0.0F, GRAVITY, 0.0F});
+    TEST_ASSERT_LESS_THAN_FLOAT(CELL, rms_speed());
+    TEST_ASSERT_FLOAT_WITHIN(0.03F, 0.5F, wet_share());
+}
+
 /* The device's box rounds each axis its own way; the water must still
  * settle level and keep its volume there. */
 static void
@@ -308,6 +373,8 @@ suite_flip3(void) {
     RUN_TEST(test_a_resting_pool_keeps_its_volume);
     RUN_TEST(test_the_same_inputs_give_the_same_water);
     RUN_TEST(test_a_box_of_no_whole_cells_settles_level_and_keeps_its_volume);
+    RUN_TEST(test_a_split_anywhere_gives_the_same_water);
+    RUN_TEST(test_red_black_water_settles_level_and_keeps_its_volume);
 }
 
 SUITE_REGISTER(suite_flip3);

@@ -81,13 +81,18 @@ extern const char* const flip3_stage_names[FLIP3_STAGE_COUNT];
 /* A microsecond clock, for timing the step's stages. */
 typedef int64_t (*flip3_clock_fn)(void);
 
-/* One half of a stage's work: half 0 or 1. The halves never write the same
- * memory, so they may run at once. */
-typedef void (*flip3_half_fn)(void* ctx, int half);
+/* The places the step and flip3_field() split their work, so a host can
+ * keep a cut for each. */
+enum { FLIP3_SPLIT_SPLAT, FLIP3_SPLIT_GATHER, FLIP3_SPLIT_RED_BLACK, FLIP3_SPLIT_FIELD, FLIP3_SPLIT_COUNT };
 
-/* Runs fn(ctx, 0) and fn(ctx, 1), at once on two cores or in turn, and
- * returns when both are done. */
-typedef void (*flip3_split_fn)(flip3_half_fn fn, void* ctx);
+/* A stage's work over items [from, to). Two ranges never write the same
+ * memory, so they may run at once. */
+typedef void (*flip3_range_fn)(void* ctx, int from, int to);
+
+/* Runs fn over items [0, count) as two ranges, cut anywhere, at once on two
+ * cores or in turn, and returns when both are done. `site` is one of the
+ * FLIP3_SPLIT_ places. */
+typedef void (*flip3_split_fn)(int site, flip3_range_fn fn, void* ctx, int count);
 
 typedef struct {
     flip3_config_t config;
@@ -147,9 +152,9 @@ flip3_time_stages(flip3_t* f, flip3_clock_fn clock, int64_t* stage_us) {
     f->stage_us = stage_us;
 }
 
-/* From now on the step's particle passes and flip3_field() hand their two
- * halves to `split`; the results are the same as on one core. NULL stops,
- * and so does flip3_init(). */
+/* From now on the step's particle passes and flip3_field() hand their work
+ * to `split`; the results are the same as on one core, wherever it cuts.
+ * NULL stops, and so does flip3_init(). */
 static inline void
 flip3_split_with(flip3_t* f, flip3_split_fn split) {
     f->split = split;
