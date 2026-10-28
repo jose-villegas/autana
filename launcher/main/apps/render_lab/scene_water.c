@@ -766,7 +766,8 @@ scene_water_update(uint32_t dt_ms) {
     step_us = (uint32_t)(timing_now_us() - started);
     FRAME_COST_END(updated_from, "water.update");
     const float rise_mm = script == SCRIPT_SWING ? SWING_EYE_RISE_MM : 0.0F;
-    const vec3f_t rise = {rise_mm * sinf(held_turn()), rise_mm * cosf(held_turn()), 0.0F};
+    /* Against the picture's down; the eye's x runs opposite the box's. */
+    const vec3f_t rise = {-rise_mm * sinf(held_turn()), rise_mm * cosf(held_turn()), 0.0F};
     place_camera(display_quarter_now(), vec3f_add(parallax_eye(down, dt_ms), rise));
 }
 
