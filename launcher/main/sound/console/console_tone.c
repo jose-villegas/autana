@@ -224,6 +224,17 @@ tone_shake_close(tone_shake_buffer_t* fifo) {
     return imu_set_odr(IMU_ODR_CODE);
 }
 
+static bool
+tone_capture_close(tone_shake_buffer_t* fifo, bool held) {
+    bool ok = tone_shake_close(fifo);
+    if (held) {
+        timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
+    }
+    ok = audio_codec_dac_feedback(false) && ok;
+    ok = audio_out_amp_hold(false) && ok;
+    return sound_capture_close() && ok;
+}
+
 const char*
 console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REPLY_BYTES]) {
     const size_t dma_before = memory_free_bytes(MEMORY_DMA);
@@ -248,14 +259,8 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     ok = console_tone_stop(&voice) && ok;
     const unsigned imu_gaps = fifo ? fifo->gaps : 0;
     const char* shake_reason = fifo ? fifo->reason : TONE_SHAKE_UNAVAILABLE;
-    ok = tone_shake_close(fifo) && ok;
-    if (held) {
-        timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
-    }
+    ok = tone_capture_close(fifo, held) && ok;
     const bool heard = tone_db - silence_db >= AUDIO_LOOPBACK_HEARD_MARGIN_DB;
-    ok = audio_codec_dac_feedback(false) && ok;
-    ok = audio_out_amp_hold(false) && ok;
-    ok = sound_capture_close() && ok;
     if (!ok) {
         return opened ? "loopback failed" : "codec open failed";
     }
