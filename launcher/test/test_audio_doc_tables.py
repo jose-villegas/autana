@@ -410,6 +410,11 @@ class SoundMixToolsTest(unittest.TestCase):
                                       fill_sound=fill, voices="0,1,2", seconds=1)
             block = (capture.read_define(tree / "launcher/main/audio/audio_codec.h", "AUDIO_CODEC_BLOCK_SAMPLES")
                      / capture.read_define(tree / "launcher/main/audio/audio_out.h", "AUDIO_OUT_SAMPLE_RATE_HZ"))
+            window = (capture.read_define(tree / "launcher/main/shell/shell.c", "SHELL_REPORT_WINDOW_US")
+                      / capture.US_PER_SECOND)
+            startup = (capture.read_define(tree / "launcher/main/audio/audio_out_device.h", "AUDIO_OUT_AMP_STARTUP_MS")
+                       / capture.MS_PER_SECOND)
+            settle = startup + capture.REPORT_WINDOWS * window
             waits = []
             if leftovers > capture.STOP_ATTEMPTS:
                 with self.assertRaisesRegex(ValueError, "stop all"):
@@ -430,13 +435,13 @@ class SoundMixToolsTest(unittest.TestCase):
                     expected += [["sound", "stats"], ["monitor", "1", "--stream"], ["sound", "stats"]]
             expected += [["sound", "stats"], ["sound", "stop", "all"], ["buildid", "--json"]]
             self.assertEqual(commands, expected)
-            self.assertEqual(waits, [block] * (leftovers + 1) + [5.0]
-                             + [block, 3.25] * 4)
+            self.assertEqual(waits, [block] * (leftovers + 1) + [settle]
+                             + [block, settle] * 4)
             records = dict(line.split("\t", 1) for line in args.out.read_text().splitlines()[1:])
             self.assertEqual(records["stage mix"], "sound_mix")
             self.assertEqual(records["stage present"], "present")
             self.assertAlmostEqual(float(records["period_us"]), block * capture.US_PER_SECOND)
-            self.assertEqual(float(records["window_seconds"]), 1.5)
+            self.assertEqual(float(records["window_seconds"]), window)
             header = tree / "launcher/main/sound/sound_engine.h"
             original = header.read_bytes()
             header.write_bytes(original.replace(b"AUDIO_CODEC_BLOCK_SAMPLES", b"128u"))
@@ -717,7 +722,7 @@ class AudioFiguresTest(unittest.TestCase):
             captures.append((settings, points, len(samples)))
         times, curves = figures.figure_data(captures)
         self.assertEqual(times, [0, 0.5])
-        self.assertEqual([curve[0] for curve in curves], ["start", "stop", "steal", "amp-on", "amp-off"])
+        self.assertEqual(tuple(curve[0] for curve in curves), figures.EVENT_ORDER)
         for event, medians, lows, highs in curves:
             self.assertEqual(medians, [4, 4])
             self.assertEqual(lows, [1, 1])
