@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "gfx/gfx.h"
+#include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render/view/raster_cull_view.h"
 #include "render_host.h"
@@ -14,7 +15,7 @@ static const char* camera_name;
 static char** object_names;
 static int object_count;
 static int shell_quarter;
-static int size_width, size_height;
+static recti_t size_rect;
 static camera_present_t present;
 static small_fill_t small_fill = SMALL_FILL_SMOOTH;
 static int view = RENDER_DEBUG_VIEW_SHADED;
@@ -38,9 +39,8 @@ options(int argc, char** argv) {
         } else if (strcmp(flag, "--object") == 0) {
             object_names[object_count++] = argv[i + 1];
         } else if (strcmp(flag, "--size") == 0) {
-            char trailing;
-            if (sscanf(value, "%dx%d%c", &size_width, &size_height, &trailing) != 2 || size_width <= 0
-                || size_height <= 0 || size_width > GFX_WIDTH || size_height > GFX_HEIGHT) {
+            if (!recti_parse(value, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
+                || size_rect.h <= 0 || size_rect.w > GFX_WIDTH || size_rect.h > GFX_HEIGHT) {
                 fprintf(stderr, "scene_viewer: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT, value);
                 return false;
             }
@@ -181,12 +181,11 @@ setup(int quarter) {
             scene_unload(scene);
             return false;
         }
-        fprintf(counts, "frame,ms,nodes_visited,nodes_cut,clusters_tested,clusters_kept,clusters_not_set_up,"
-                        "clusters_hidden,clusters_drawn,triangles_submitted,triangles_behind,triangles_clipped,"
-                        "triangles_missed,triangles_facing_away,triangles_set_up,triangles_covering\n");
+#define COUNT_NAME(name, member) "," #name
+        fprintf(counts, "frame,ms" RASTER_CULL_FRAME_FIELDS(COUNT_NAME) "\n");
     }
-    if (size_width > 0) {
-        const resolution_step_t size = {size_width, size_height};
+    if (size_rect.w > 0) {
+        const resolution_step_t size = {size_rect.w, size_rect.h};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(context, &one, NULL, 0);
     }
@@ -200,12 +199,10 @@ draw(const render_frame_t* frame) {
         return;
     }
     const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
-    const r3d_pipeline_counts_t* n = &f.counts;
-    fprintf(counts, "%d,%u,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", frame->index, (unsigned)frame->elapsed_ms,
-            n->nodes_visited, n->nodes_cut, n->clusters_tested, n->clusters_kept, f.clusters[RASTER_FATE_NOT_SET_UP],
-            f.clusters[RASTER_FATE_HIDDEN], f.clusters[RASTER_FATE_DRAWN], n->triangles_submitted, n->triangles_behind,
-            n->triangles_clipped, n->triangles_missed, n->triangles_facing_away, n->triangles_set_up,
-            f.triangles_covering);
+    fprintf(counts, "%d,%u", frame->index, (unsigned)frame->elapsed_ms);
+#define COUNT_VALUE(name, member) fprintf(counts, ",%d", f.member);
+    RASTER_CULL_FRAME_FIELDS(COUNT_VALUE)
+    fputc('\n', counts);
     if (frame->index + 1 == frame->count) {
         fclose(counts);
         counts = NULL;

@@ -154,13 +154,13 @@ def compare(args, engine):
                 raise ValueError(f"C kernel differs from packed-weight reference by {error}")
             stem = f"{clip}-{ms}-{influences}"
             image.save(args.out / (stem + ".png"))
-            reference_rows.append((stem, image, reference_image))
+            reference_rows.append((stem, [image], reference_image))
         label = f"{clip} {ms} ms"
         influence_rows.append((label, *[render_compare.captioned(im, label) for im in images]))
         stats.append(dict(clip=clip, ms=ms, selected_vertex_displacement={
             str(i): math.dist(variant_positions[0][matches[i]], variant_positions[1][matches[i]]) for i in args.vertices}))
         crops(crop_rows, clip, ms, camera, reference, args.vertices, images, variant_positions, matches)
-    render_compare.reference_sheet(reference_rows, "C skinning (bind colours)", tile=1).save(args.out / "reference-sheet.png")
+    render_compare.reference_sheet(reference_rows, ["C skinning (bind colours)"], tile=1).save(args.out / "reference-sheet.png")
     render_compare.sheet(influence_rows, None, "2 influences", "4 influences").save(args.out / "influence-sheet.png")
     if crop_rows:
         render_compare.sheet(crop_rows, None, "2 influences", "4 influences").save(args.out / "vertex-crops.png")

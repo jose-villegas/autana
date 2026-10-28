@@ -16,6 +16,9 @@ from device_lock import LockStore, board_read_root, heavy_root, write_json
 from process_tree import launch_process_tree, stop_process_tree, close_process_tree
 
 NIGHT_START = "01:00"
+# Boards start after the GPU's night work: two hours of day board time when no GPU work is queued.
+BOARD_START = "03:00"
+STARTS = {"NIGHT_START": NIGHT_START, "BOARD_START": BOARD_START}
 NIGHT_ZONE = "UTC"
 HOSTED_WAIT_SECONDS = 350 * 60
 GPU_LABEL = "gpu"
@@ -44,10 +47,10 @@ class Clock:
         time.sleep(seconds)
 
 
-def next_marker(trigger, night_start=None):
-    night_start = night_start or os.environ.get("NIGHT_START") or NIGHT_START
+def next_marker(trigger, night_start=None, start="NIGHT_START"):
+    night_start = night_start or os.environ.get(start) or STARTS[start]
     if not re.fullmatch(r"0[0-5]:[0-5][0-9]", night_start):
-        raise ValueError(f"NIGHT_START must be HH:MM in 00:00–05:59: {night_start!r}")
+        raise ValueError(f"{start} must be HH:MM in 00:00–05:59: {night_start!r}")
     hour, minute = map(int, night_start.split(":"))
     night_zone = os.environ.get("NIGHT_ZONE") or NIGHT_ZONE
     try:
@@ -116,13 +119,15 @@ def gpu_ready(clock=None, board_held=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("marker", "wait", "ready", "start"))
+    parser.add_argument("--start", choices=tuple(STARTS), default="NIGHT_START",
+                        help="the local start a marker waits for")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     clock = Clock()
     if args.mode == "marker":
         now = clock.now()
         marker = now if os.environ.get("OVERRIDE") == "true" else next_marker(
-            trigger_time(os.environ.get("GITHUB_EVENT_NAME"), os.environ.get("SCHEDULE", ""), now))
+            trigger_time(os.environ.get("GITHUB_EVENT_NAME"), os.environ.get("SCHEDULE", ""), now), start=args.start)
         print(marker.isoformat(), flush=True)
         if os.environ.get("GITHUB_OUTPUT"):
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:

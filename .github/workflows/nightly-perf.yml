@@ -12,7 +12,7 @@ on:
         description: Maximum new candidates per board
         required: false
       override:
-        description: Start now instead of at the next NIGHT_START
+        description: Start now instead of at the next BOARD_START
         type: boolean
         default: false
 
@@ -47,7 +47,7 @@ jobs:
     env:
       OVERRIDE: ${{ inputs.override }}
       SCHEDULE: ${{ github.event.schedule }}
-      NIGHT_START: ${{ vars.NIGHT_START }}
+      BOARD_START: ${{ vars.BOARD_START }}
       NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
     outputs:
       marker: ${{ steps.marker.outputs.marker }}
@@ -58,7 +58,7 @@ jobs:
           persist-credentials: false
           set-safe-directory: false
       - id: marker
-        run: python3 scripts/lib/local_schedule.py marker
+        run: python3 scripts/lib/local_schedule.py --start BOARD_START marker
 
   wait:
     needs: marker
