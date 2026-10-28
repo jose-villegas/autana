@@ -12,7 +12,7 @@
 /* Two per configuration and tour phase: its counts, then the frame, the
  * update (simulation and surface) and r3d drawing the surface, each
  * mean/p95/worst in us. */
-#define WATER_PERF_ROW         "config=%s row=%s frames=%d substeps=%u rested=%u tris=%lld particles=%d peak_mm_s=%.1f"
+#define WATER_PERF_ROW         "config=%s row=%s frames=%d substeps=%u remeshed=%u tris=%lld particles=%d peak_mm_s=%.1f"
 #define WATER_PERF_TIMES       "config=%s row=%s frame=%lld/%lld/%lld update=%lld/%lld/%lld draw=%lld/%lld/%lld"
 
 /* One per stage of flip3's step in a row: mean us per frame. */

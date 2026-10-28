@@ -441,24 +441,28 @@ run_split(const flip3_t* f, int site, flip3_range_fn fn, void* ctx, int count) {
 
 /* Every particle's velocity splatted onto the faces of the components in
  * [from, to), their weights summed in the pre-solve copies (which
- * accelerate() then overwrites), and its density when that is in range. */
+ * accelerate() then overwrites), and its density when that is in range. An
+ * empty range writes nothing. */
 static void
 splat_range(void* ctx, int from, int to) {
     flip3_t* const f = ctx;
     component_t comps[3];
     components(f, comps);
     const int axes_to = to < SPLAT_DENSITY ? to : SPLAT_DENSITY;
+    const bool density = from <= SPLAT_DENSITY && SPLAT_DENSITY < to;
     for (int i = 0; i < f->count; i++) {
-        const place_t place = place_of(f, f->pos[i]);
-        for (int a = from; a < axes_to; a++) {
-            const stencil_t s = face_stencil(f, &place, a);
-            const float pv = axis_of(f->vel[i], a);
-            for (int k = 0; k < 8; k++) {
-                comps[a].field[s.at[k]] += pv * s.weight[k];
-                comps[a].prev[s.at[k]] += s.weight[k];
+        if (from < axes_to) {
+            const place_t place = place_of(f, f->pos[i]);
+            for (int a = from; a < axes_to; a++) {
+                const stencil_t s = face_stencil(f, &place, a);
+                const float pv = axis_of(f->vel[i], a);
+                for (int k = 0; k < 8; k++) {
+                    comps[a].field[s.at[k]] += pv * s.weight[k];
+                    comps[a].prev[s.at[k]] += s.weight[k];
+                }
             }
         }
-        if (to > SPLAT_DENSITY) {
+        if (density) {
             add_density(f, f->pos[i]);
         }
     }
@@ -785,10 +789,6 @@ field_axis(const field_work_t* w, int axis, int i, int lo[3], int hi[3], float t
                 &hi[axis], &t[axis]);
 }
 
-enum { FIELD_SAMPLE, FIELD_SMOOTH_X, FIELD_SMOOTH_Y, FIELD_SMOOTH_Z, FIELD_PASSES };
-
-_Static_assert(FIELD_PASSES == FLIP3_FIELD_PASSES, "a split site per field pass");
-
 static void
 sample_lines(const field_work_t* w, int from, int to) {
     const flip3_t* f = w->f;
@@ -823,9 +823,9 @@ field_range(void* ctx, int from, int to) {
     const int sy = w->d[1];
     const int sz = w->d[2];
     switch (w->pass) {
-        case FIELD_SAMPLE: sample_lines(w, 1 + from, 1 + to); break;
-        case FIELD_SMOOTH_X: smooth_axis(w->out, sy * sz, sx, sz, 1 + from, 1 + to, 1, sz); break;
-        case FIELD_SMOOTH_Y: smooth_axis(w->out, sz, sy, sy * sz, 1 + from, 1 + to, 1, sz); break;
+        case FLIP3_SPLIT_FIELD_SAMPLE: sample_lines(w, 1 + from, 1 + to); break;
+        case FLIP3_SPLIT_FIELD_SMOOTH_X: smooth_axis(w->out, sy * sz, sx, sz, 1 + from, 1 + to, 1, sz); break;
+        case FLIP3_SPLIT_FIELD_SMOOTH_Y: smooth_axis(w->out, sz, sy, sy * sz, 1 + from, 1 + to, 1, sz); break;
         default: smooth_axis(w->out, 1, sz, sy * sz, 1 + from, 1 + to, sz, sy); break;
     }
 }
@@ -838,9 +838,9 @@ flip3_field(const flip3_t* f, float samples, float* out) {
         w.step[a] = (float)(cells_on(f, a) - 2) * axis_of(f->h, a) / (float)(w.d[a] - 2);
     }
     memset(out, 0, (size_t)w.d[0] * (size_t)w.d[1] * (size_t)w.d[2] * sizeof(float));
-    for (w.pass = FIELD_SAMPLE; w.pass < FIELD_PASSES; w.pass++) {
-        const int lines = w.pass == FIELD_SMOOTH_X ? w.d[1] : w.d[0];
-        run_split(f, FLIP3_SPLIT_FIELD + w.pass, field_range, &w, lines - 2);
+    for (w.pass = FLIP3_SPLIT_FIELD_SAMPLE; w.pass <= FLIP3_SPLIT_FIELD_SMOOTH_Z; w.pass++) {
+        const int lines = w.pass == FLIP3_SPLIT_FIELD_SMOOTH_X ? w.d[1] : w.d[0];
+        run_split(f, w.pass, field_range, &w, lines - 2);
     }
     /* Sample (1, 1, 1) sits half a sample in from the box's origin. */
     const vec3f_t step = {w.step[0], w.step[1], w.step[2]};

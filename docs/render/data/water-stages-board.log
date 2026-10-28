@@ -1,4 +1,5 @@
 BUILD_ID=7de49b396b01-diag
+RUN=1
 I (14999) water_perf: water_perf: config=base phase=before internal_free=64467 internal_largest=31744
 I (15084) water_perf: water_perf: config=base phase=running internal_free=60447 internal_largest=31744
 I (18619) water_perf: water_perf: config=base row=rest frames=45 substeps=90 rested=0 tris=1264 particles=1093 peak_mm_s=102.7
@@ -455,6 +456,7 @@ I (295315) water_perf: water_perf: config=plane row=shake stage=advect us=0
 I (295316) water_perf: water_perf: config=plane row=shake stage=collide us=0
 I (295317) water_perf: water_perf: config=plane row=shake ms/frame avg/worst: water.step 0.01/0.0  water.field 5.48/5.6  water.through 0.78/0.8  water.nets 7.85/8.5  water.shade 1.93/2.1  water.build 5.02/5.3  water.update 0.03/0.0  r3d.cull 0.10/0.1  r3d.transform 0.93/0.9  r3d.draw 14.22/7.8  r3d.upscale 2.83/2.9 | total 39.22 || sound_mix 0.002/0.012 ms/block n=520
 I (295321) water_perf: water_perf: config=plane phase=after internal_free=61303 internal_largest=31744
+RUN=2
 I (295424) water_perf: water_perf: config=base phase=before internal_free=61303 internal_largest=31744
 I (295509) water_perf: water_perf: config=base phase=running internal_free=60447 internal_largest=31744
 I (299041) water_perf: water_perf: config=base row=rest frames=45 substeps=90 rested=0 tris=1264 particles=1093 peak_mm_s=102.7

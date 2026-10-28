@@ -17,35 +17,28 @@
 
 static const char* TAG = "water_perf";
 
-/* One setting of the experiments' tunes; 0 rest_um_s never rests. */
+/* A row of the experiments: the scene's defaults with one tune changed,
+ * none for the base. */
 typedef struct {
     const char* name;
-    int32_t substeps;
-    int32_t rest_um_s;
-    int32_t two_core;
-    int32_t red_black;
-    int32_t plane;
-    int32_t samples_pct;
+    const char* tune;
+    int32_t value;
 } water_config_t;
 
-/* The default, then one change each: on one core, other substep counts,
- * the pressure in index order on one core, the surface at 2 samples a cell,
- * and skipping the step at rest below 2 mm/s; and method C, the plane,
- * against them. */
+/* The defaults, then one change each: on one core, other substep counts,
+ * the pressure in index order, the surface at 2 samples a cell, and method
+ * C, the plane. */
 static const water_config_t configs[] = {
-    {.name = "base", .substeps = 2, .two_core = 1, .red_black = 1, .samples_pct = 150},
-    {.name = "one_core", .substeps = 2, .red_black = 1, .samples_pct = 150},
-    {.name = "sub4", .substeps = 4, .two_core = 1, .red_black = 1, .samples_pct = 150},
-    {.name = "sub1", .substeps = 1, .two_core = 1, .red_black = 1, .samples_pct = 150},
-    {.name = "index_order", .substeps = 2, .two_core = 1, .samples_pct = 150},
-    {.name = "samples2", .substeps = 2, .two_core = 1, .red_black = 1, .samples_pct = 200},
-    {.name = "rest", .substeps = 2, .rest_um_s = 2000, .two_core = 1, .red_black = 1, .samples_pct = 150},
-    {.name = "plane", .substeps = 2, .two_core = 1, .red_black = 1, .plane = 1, .samples_pct = 150},
+    {"base", NULL, 0},
+    {"one_core", TUNE_NAME(water, two_core), 0},
+    {"sub4", TUNE_NAME(water, substeps), 4},
+    {"sub1", TUNE_NAME(water, substeps), 1},
+    {"index_order", TUNE_NAME(water, red_black), 0},
+    {"samples2", TUNE_NAME(water, samples_pct), 200},
+    {"plane", TUNE_NAME(water, plane), 1},
 };
 
-static const char* const tunes[] = {TUNE_NAME(water, substeps), TUNE_NAME(water, rest_um_s),
-                                    TUNE_NAME(water, two_core), TUNE_NAME(water, red_black),
-                                    TUNE_NAME(water, plane),    TUNE_NAME(water, samples_pct)};
+static const water_config_t* playing;
 
 /* A row's frames: whole frame, update and draw, in us. */
 typedef struct {
@@ -63,9 +56,10 @@ static char* report;
 static void
 release_fixture(void) {
     render_lab_test_exit(&saved);
-    for (size_t i = 0; i < sizeof tunes / sizeof tunes[0]; i++) {
-        (void)tune_reset(tune_shared(), tunes[i]);
+    if (playing != NULL && playing->tune != NULL) {
+        (void)tune_reset(tune_shared(), playing->tune);
     }
+    playing = NULL;
     memory_free(row.frame_us);
     memory_free(row.update_us);
     memory_free(row.draw_us);
@@ -84,7 +78,7 @@ static void
 add(scene_water_stats_t* sums, const scene_water_stats_t* s) {
     sums->updates += s->updates;
     sums->substeps += s->substeps;
-    sums->rested += s->rested;
+    sums->remeshed += s->remeshed;
     sums->update_us += s->update_us;
     for (int i = 0; i < FLIP3_STAGE_COUNT; i++) {
         sums->flip3_us[i] += s->flip3_us[i];
@@ -103,7 +97,7 @@ log_row(const char* config, const char* phase) {
     const bench_stats_t draw = bench_stats_compute(row.draw_us, n);
     const scene_water_stats_t* s = &row.sums;
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(n, s->updates, "the water scene did not update every frame");
-    ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_ROW, config, phase, n, (unsigned)s->substeps, (unsigned)s->rested,
+    ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_ROW, config, phase, n, (unsigned)s->substeps, (unsigned)s->remeshed,
              (long long)(s->triangles / n), s->particles, (double)s->peak_speed_mm_s);
     ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_TIMES, config, phase, (long long)frame.avg, (long long)frame.p95,
              (long long)frame.max, (long long)update.avg, (long long)update.p95, (long long)update.max,
@@ -121,12 +115,8 @@ log_row(const char* config, const char* phase) {
 /* The tour once at a fixed frame time, one row per phase. */
 static void
 play(const water_config_t* config) {
-    const int32_t values[] = {config->substeps,  config->rest_um_s, config->two_core,
-                              config->red_black, config->plane,     config->samples_pct};
-    _Static_assert(sizeof values / sizeof values[0] == sizeof tunes / sizeof tunes[0], "a value per tune");
-    for (size_t i = 0; i < sizeof tunes / sizeof tunes[0]; i++) {
-        TEST_ASSERT_TRUE(tune_set(tune_shared(), tunes[i], values[i]));
-    }
+    playing = config;
+    TEST_ASSERT_TRUE(config->tune == NULL || tune_set(tune_shared(), config->tune, config->value));
     heap(config->name, WATER_PERF_BEFORE);
     render_lab_test_enter(&saved, scene_water.key);
     suite_set_test_cleanup(release_fixture);
@@ -142,17 +132,19 @@ play(const water_config_t* config) {
     (void)scene_water_take_stats();
     (void)frame_cost_take_report(0, report, 0);
     heap(config->name, WATER_PERF_RUNNING);
+    /* A frame belongs to the phase it starts in, so a row closes, with its
+     * frame_cost window, before the next phase's first frame. */
     const char* phase = scene_water_tour_phase();
     for (int f = 0; f < capacity; f++) {
-        const int64_t start = timing_now_us();
-        const int64_t draw_us = render_lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
-        const int64_t frame_us = timing_now_us() - start;
-        const scene_water_stats_t s = scene_water_take_stats();
         const char* now = scene_water_tour_phase();
         if (strcmp(now, phase) != 0) {
             log_row(config->name, phase);
             phase = now;
         }
+        const int64_t start = timing_now_us();
+        const int64_t draw_us = render_lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
+        const int64_t frame_us = timing_now_us() - start;
+        const scene_water_stats_t s = scene_water_take_stats();
         row.frame_us[row.frames] = (int32_t)frame_us;
         row.update_us[row.frames] = (int32_t)s.update_us;
         row.draw_us[row.frames] = (int32_t)draw_us;

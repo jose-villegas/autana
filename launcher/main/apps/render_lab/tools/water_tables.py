@@ -58,6 +58,8 @@ def parse(lines):
             heaps[fields["config"], fields["phase"]] = (int(fields["internal_free"]), int(fields["internal_largest"]))
             continue
         row = rows.setdefault((fields["config"], fields["row"]), {"stages": {}, "scene": {}, "r3d": {}})
+        if "frames" in fields and "frames" in row:
+            raise ValueError(f"{fields['config']} {fields['row']} twice in one run: start each run with a {RUN_MARK} line")
         if window is not None:
             brackets = window["brackets"].items()
             row["scene"] = {name: avg for name, (avg, _) in brackets if name.startswith(SCENE) and name != UPDATE}
@@ -66,7 +68,7 @@ def parse(lines):
             row["stages"][fields["stage"]] = int(fields["us"]) / US_PER_MS
         elif "frames" in fields:
             row.update(frames=int(fields["frames"]), substeps=int(fields["substeps"]),
-                       rested=int(fields["rested"]), tris=int(fields["tris"]), particles=int(fields["particles"]))
+                       remeshed=int(fields.get("remeshed", fields.get("rested"))), tris=int(fields["tris"]), particles=int(fields["particles"]))
         else:
             for part in ("frame", "update", "draw"):
                 row[part] = dict(zip(TRIPLE, (int(v) / US_PER_MS for v in fields[part].split("/"))))
@@ -123,15 +125,17 @@ def tables(text):
     for name in r3d_keys:
         lines.append(f"| {name} | " + " | ".join(
             f"{mean(over(BASE, phase), lambda x: x['r3d'].get(name, 0.0)):.2f}" for phase in phases) + " |")
-    lines += ["", "Each experiment against the base, update mean ms per frame (frames that rested in brackets):", "",
+    remeshed = any(over(config, phase)[0]["remeshed"] for config in configs for phase in phases)
+    lines += ["", "Each experiment against the base, update mean ms per frame"
+              + (" (frames meshed again whole on one core in brackets):" if remeshed else ":"), "",
               "| Configuration | " + " | ".join(phases) + " |", "|---|" + "---:|" * len(phases)]
     for config in configs:
         cells = []
         for phase in phases:
             r = over(config, phase)
             cell = f"{mean(r, lambda x: x['update']['mean']):.1f}"
-            if r[0]["rested"]:
-                cell += f" ({r[0]['rested']})"
+            if r[0]["remeshed"]:
+                cell += f" ({r[0]['remeshed']})"
             cells.append(cell)
         lines.append(f"| {config} | " + " | ".join(cells) + " |")
     lines += ["", "Internal RAM around each configuration, KB free / largest block:", "",

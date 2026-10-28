@@ -319,7 +319,8 @@ test_the_same_inputs_give_the_same_water(void) {
 }
 
 /* A split cut a third of the way and run later range first, as a host on
- * two cores may. */
+ * two cores may, with an empty range at either end, as a steered cut that
+ * gives one core nothing runs. */
 #define SPLIT_CUT_DIVISOR 3
 static int splits_run;
 
@@ -327,8 +328,10 @@ static void
 split_unevenly(int site, flip3_range_fn fn, void* ctx, int count) {
     (void)site;
     const int cut = count / SPLIT_CUT_DIVISOR;
+    fn(ctx, count, count);
     fn(ctx, cut, count);
     fn(ctx, 0, cut);
+    fn(ctx, 0, 0);
     splits_run++;
 }
 

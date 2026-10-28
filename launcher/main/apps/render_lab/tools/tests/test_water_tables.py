@@ -19,11 +19,11 @@ def line(name, *values):
 
 def capture(configs, update_us, scale=1):
     lines = ["BUILD_ID=0123456789ab-diag"]
-    for config, rested in configs:
+    for config, remeshed in configs:
         for phase in (water_tables.BEFORE, water_tables.RUNNING, water_tables.AFTER):
             lines.append(line("WATER_PERF_HEAP", config, phase, 300 * 1024, 100 * 1024))
         for phase in PHASES:
-            lines.append(line("WATER_PERF_ROW", config, phase, 45, 180, rested, 2300, 1100, 12.5))
+            lines.append(line("WATER_PERF_ROW", config, phase, 45, 180, remeshed, 2300, 1100, 12.5))
             lines.append(line("WATER_PERF_TIMES", config, phase, 200000 * scale, 210000, 220000, update_us * scale, 190000, 195000, 9000, 9500, 9900))
             lines.append(line("WATER_PERF_STAGE", config, phase, "pressure", 60000 * scale))
             lines.append(line("WATER_PERF_COST", config, phase,
@@ -52,6 +52,11 @@ class WaterTables(unittest.TestCase):
         body = water_tables.tables(text)
         self.assertIn("(2 runs", body)
         self.assertIn("| step: pressure | 120.00 | 120.00 |", body)
+
+    def test_a_row_twice_without_run_lines_fails(self):
+        once = capture((("base", 0),), 100000)
+        with self.assertRaises(ValueError):
+            water_tables.tables("\n".join([*once, *once[1:]]))
 
     def test_capture_without_base_fails(self):
         with self.assertRaises(ValueError):
