@@ -140,7 +140,7 @@ class MeshletReportTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
     def test_assertion_after_cull_switch_restores_the_prior_setting(self):
         source = (TOOLS.parents[1] / "launcher/main/apps/render_lab/tests/suite_sponza_perf.c").read_text()
-        body = source[source.index("static int32_t saved_cull;"):source.index("/* The full bake with motion")]
+        body = source[source.index("static int32_t saved_cull;"):source.index("static raster_motion_t* motion;")]
         content = (TOOLS.parents[1] / "launcher/main/apps/render_lab/scene_baked_variant.h").read_text()
         bakes = content.replace("#pragma once", "")
         with tempfile.TemporaryDirectory() as directory:
@@ -156,7 +156,7 @@ TUNE_OWNER(render);
 TUNE(render, cull, 0, 0, 1);
 static jmp_buf aborted;
 static void (*cleanup)(void);
-static void suite_set_test_cleanup(void (*fn)(void)) { cleanup = fn; }
+static void suite_add_test_cleanup(void (*fn)(void)) { cleanup = fn; }
 #define TEST_ASSERT_NOT_NULL(p) do { if ((p) == 0) longjmp(aborted, 1); } while (0)
 #define TEST_ASSERT_TRUE(c) TEST_ASSERT_NOT_NULL(c)
 #define TEST_PASS() ((void)0)
