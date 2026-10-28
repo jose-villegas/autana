@@ -90,6 +90,7 @@ and both JSON frequency fields are null.
 `thd_db` reports harmonic power relative to the fundamental in dB; null means unavailable.
 
 `peak_dbfs` reports the largest absolute microphone sample in dBFS.
+`noise_dbfs` is the broadband RMS of the silence baseline, before the tone starts.
 
 The detector discards `AUDIO_LOOPBACK_SETTLE_MS` of capture before measuring.
 Heard means tone minus silence is at least `AUDIO_LOOPBACK_HEARD_MARGIN_DB`
@@ -1072,17 +1073,19 @@ Music levels use active frames in 300–3400 Hz. Cells are medians across takes;
 ## Recording the microphone
 
 `autana mic record 1000 --settle 100 -o take.wav --json` records mono PCM16
-and writes codec state to `take.json`. Duration and settling limits live in
-`console_mic_parse.h`; the omitted settling interval is `AUDIO_LOOPBACK_SETTLE_MS`.
+and writes codec state to `take.json`. Duration, settling and write limits live
+in `console_mic_parse.h`; the omitted settling interval is `AUDIO_LOOPBACK_SETTLE_MS`.
+`--at <ms> <reg> <value>` writes a codec register that far into the take.
+
+`MIC_BEGIN` announces rate and sample count. `MIC_DATA` carries independent
+base64 chunks of PCM16 little-endian samples. `MIC_STATE` contains the rate,
+sample count, codec registers, scheduled writes and automute runs as
+`[first_block, block_count]`. Block size lives in `audio_codec.h`; `MIC_END`
+completes a successful transfer.
 
 Capture applies `mic.*` tunables, including `mic.eq` (enabled means EQ active),
 and restores capture-scoped registers on close. EQ defaults to bypass.
 Coefficient registers persist and can be written with `autana codec <reg> <value>`.
-
-`MIC_BEGIN` announces rate and sample count. `MIC_DATA` carries independent
-base64 chunks of PCM16 little-endian samples. `MIC_STATE` contains the rate,
-sample count, codec registers and automute runs as `[first_block, block_count]`.
-Block size lives in `audio_codec.h`; `MIC_END` completes a successful transfer.
 
 Install `launcher/tools/audio/mic/requirements.txt`, then run:
 
@@ -1095,9 +1098,12 @@ Use `host_play.py --list` to list outputs and `--device <name|index>` to select 
 With no output, it reports "no output device; connect or enable an audio output device and retry"
 and exits non-zero. On Linux, install `libportaudio2` for PortAudio.
 
-Metrics align the reference by correlation without gain normalization. Levels
-are dBFS; speech-band SNR uses reference activity. Active level uses a P.56-style
-envelope estimate, not a P.56 conformance measurement. STOI requires matched rates.
+`noise_dbfs` is the take's broadband RMS level, the floor or hiss when nothing
+plays. Metrics align the reference by correlation without gain normalization.
+Levels are dBFS; speech-band SNR uses reference activity. Active level uses a
+P.56-style envelope estimate, not a P.56 conformance measurement. STOI requires
+matched rates. Synthetic material comes from `generate_noise.py` (`pink` or
+`babble`, `--seconds`, `--seed`).
 
 `eq_design_biquad()` returns RBJ `[b0,b1,b2,a1,a2]` with normalized denominator
 `1 - a1*z^-1 - a2*z^-2`. `eq_encode()` packs signed power-of-two terms.

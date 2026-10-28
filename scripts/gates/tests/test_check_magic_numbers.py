@@ -115,7 +115,7 @@ int x = 1 << {shift};
             with self.subTest(path=path):
                 self.assertTrue(gate.protocol_source(path, "int x;"))
         for path in ("launcher/test/suites/suite_a.c", "launcher/components/microui/a.c",
-                     "launcher/packages/math/README.md", "editor/src/a.c",
+                     "launcher/packages/math/README.md",
                      "launcher/packages/math/tests/suite_a.c", "launcher/packages/other/bench/rows.c"):
             with self.subTest(path=path):
                 self.assertFalse(gate.protocol_source(path, "int x;"))
@@ -214,21 +214,21 @@ int x = 1 << {shift};
             with self.subTest(scope=scope):
                 value = RARE + 1
                 code = f"#if defined(X)\n{scope} {{ enum {{ V = {value} }}; }};\nint x = {value};"
-                hits = self.scan({"editor/src/a.cpp": code})[0]
-                self.assertEqual([hit.line for hit in hits.get(("editor/src/a.cpp", gate.RESTATE), [])], [3])
+                hits = self.scan({"launcher/main/a.cpp": code})[0]
+                self.assertEqual([hit.line for hit in hits.get(("launcher/main/a.cpp", gate.RESTATE), [])], [3])
 
     def test_cpp_qualified_function_body_masks_local_owners(self):
         for qualifier in ("const", "noexcept", "override", "final", "const noexcept"):
             with self.subTest(qualifier=qualifier):
                 code = f"int f() {qualifier} {{ enum {{ LOCAL = {RARE} }}; }}\nint x = {RARE};"
-                self.assertFalse(self.scan({"editor/src/a.cpp": code})[0])
+                self.assertFalse(self.scan({"launcher/main/a.cpp": code})[0])
 
     def test_nested_function_bodies_mask_local_owners(self):
         for scope in ("namespace n", 'extern "C"', "class C"):
             for declaration in (f"enum {{ LOCAL = {RARE} }};", f"const int LOCAL = {RARE};"):
                 with self.subTest(scope=scope, declaration=declaration):
                     code = f"{scope} {{ void f() {{ {declaration} }} }};\nint x = {RARE};"
-                    self.assertFalse(self.scan({"editor/src/a.cpp": code})[0])
+                    self.assertFalse(self.scan({"launcher/main/a.cpp": code})[0])
 
     def test_escapes(self):
         code = f"#define VALUE {RARE}\nint x = {RARE}; /* magic: wire value */"
@@ -307,13 +307,13 @@ int x = 1 << {shift};
         self.assertFalse(logged)
         self.assertFalse(errors)
 
-    def test_report_editor_revision_and_same_line_counts(self):
-        with temporary_tree([("editor/src/a.cpp", f"#define VALUE {RARE}\nint x = {RARE}, y = {RARE};")]) as root:
+    def test_report_revision_and_same_line_counts(self):
+        with temporary_tree([("launcher/main/a.cpp", f"#define VALUE {RARE}\nint x = {RARE}, y = {RARE};")]) as root:
             commit(root, ".")
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 self.assertEqual(gate.main(["--report"], root=root), 0)
-            self.assertIn("editor: RESTATE=2", output.getvalue())
+            self.assertIn("a.cpp: RESTATE=2", output.getvalue())
             self.assertIn("(2 hits)", output.getvalue())
 
     def test_report_included_header_visibility(self):
@@ -359,7 +359,7 @@ int x = 1 << {shift};
         py = "\n".join(f'x{i} = "{value}"' for i, value in enumerate(strings))
         hits = self.scan({C_PATH: c, PY_PATH: py})[0][PY_PATH, gate.PROTOCOL]
         self.assertEqual([hit.line for hit in hits], [3, 4])
-        self.assertFalse(self.scan({"editor/src/a.cpp": c, "launcher/test/a.c": c,
+        self.assertFalse(self.scan({"launcher/main/a.cpp": c, "launcher/test/a.c": c,
                                    PY_PATH: py})[0])
         self.assertFalse(self.scan({C_PATH: c, "elsewhere/tool.py": py})[0])
         self.assertFalse(self.scan({C_PATH: '/* "FRAME_READY" */', PY_PATH: py})[0])
@@ -373,10 +373,10 @@ int x = 1 << {shift};
 
     def test_editor_and_excluded_files(self):
         code = f"#define VALUE {RARE}\nint x = {RARE};"
-        hits = self.scan({"editor/src/a.cpp": code})[0]
-        self.assertEqual(len(hits["editor/src/a.cpp", gate.RESTATE]), 1)
-        self.assertFalse(self.scan({"editor/fixtures/a.cpp": code})[0])
-        self.assertFalse(self.scan({"editor/src/a.cpp": "// GENERATED FILE - do not edit.\n" + code})[0])
+        hits = self.scan({"launcher/main/a.cpp": code})[0]
+        self.assertEqual(len(hits["launcher/main/a.cpp", gate.RESTATE]), 1)
+        self.assertFalse(self.scan({"launcher/main/fixtures/a.cpp": code})[0])
+        self.assertFalse(self.scan({"launcher/main/a.cpp": "// GENERATED FILE - do not edit.\n" + code})[0])
 
     def test_short_data_row(self):
         row = ", ".join([str(RARE)] * (gate.DATA_ROW_MINIMUM - 1))

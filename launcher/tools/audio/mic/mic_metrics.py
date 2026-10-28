@@ -76,6 +76,12 @@ def band_level_db(x, lo, hi, rate=SAMPLE_RATE_HZ):
     return _db(np.sum(power[(frequency >= lo) & (frequency < hi)]))
 
 
+def noise_dbfs(x):
+    """Broadband RMS level of a take, for a floor or hiss with nothing playing."""
+    x = _mono(x)
+    return _db(np.mean(x * x)) if len(x) else DB_FLOOR
+
+
 def low_band_db(x, cutoff, rate=SAMPLE_RATE_HZ):
     return band_level_db(x, 0, cutoff, rate)
 
@@ -207,7 +213,8 @@ def main(argv=None):
     parser.add_argument('--json', action='store_true')
     args = parser.parse_args(argv)
     x, rate = read_take(args.take)
-    result = dict(rate=rate, samples=len(x), clips=clip_count(x), active_dbfs=active_level_db(x, rate),
+    result = dict(rate=rate, samples=len(x), clips=clip_count(x), noise_dbfs=noise_dbfs(x),
+                  active_dbfs=active_level_db(x, rate),
                   low_band_dbfs=low_band_db(x, SPEECH_LOW_HZ, rate))
     if args.reference:
         ref, ref_rate = read_take(args.reference)
