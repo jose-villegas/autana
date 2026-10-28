@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The frame cost of each picture in each framebuffer layout, as a chart and
 the tables in docs/gfx/Targets-and-Modes.md's `gfx-layout-costs` block: one row per
-group of pictures whose change agrees, then every picture in a dropdown.
+scene family and layout, then every picture in a dropdown. A picture's family is
+its scene name up to the first hyphen (sponza-fitted-full, portrait: sponza).
 launcher/tools/render/render_doc_images.sh runs it on the captures kept in
 docs/render/data/.
 
@@ -19,7 +20,6 @@ import argparse
 import pathlib
 import re
 import sys
-import textwrap
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
@@ -36,16 +36,13 @@ BOOT_FRAME_PHASE = "Total"
 PERCENT_SCALE = 100
 NOT_RUN = "not run"
 CHART_WIDTH = 9
-GROUP_HEIGHT = 0.5
-LABEL_WIDTH = 40
+BAR_STEP = 0.35  # rows between one family's layout bars
+FAMILY_GAP = 0.5  # rows between families
 RANGE_WIDTH = 6
 RANGE_ALPHA = 0.45
-MEAN_LABEL_GAP = 6  # points above a group's mean dot
+MEAN_LABEL_GAP = 6  # points above a bar's mean dot
 CHART_BASE_HEIGHT = 1.2
 MARKER_SIZE = 36
-# A picture joins a group when its ms change against the same first layout lies
-# within this of the next nearer member's.
-GROUP_GAP_MS = 1.0
 
 MESH_ROW = re.compile(r"\blayout_perf: (?P<scene>[^:\s]+):(?P<layout>\w+):(?P<stage>\w+) mean (?P<mean>\d+)us\b")
 
@@ -100,48 +97,28 @@ def ms_change(costs, layout):
     return costs[layout] - costs[next(iter(costs))]
 
 
+def family(name):
+    """A picture's scene name up to its first hyphen: its variants and
+    orientations share one family."""
+    return name.split(", ")[0].split("-")[0]
+
+
 def groups(rows):
-    """(first layout, layout, rows) for each run of rows whose ms change lies
-    within GROUP_GAP_MS of a neighbour's, by layout, then by first row."""
-    order = list(rows)
-    found = []
-    for layout in layouts_of(rows):
-        by_first = {}
-        for name, costs in rows.items():
-            first = next(iter(costs))
-            if layout in costs and layout != first:
-                by_first.setdefault(first, []).append(name)
-        for first, names in by_first.items():
-            names.sort(key=lambda name: ms_change(rows[name], layout))
-            runs = [[names[0]]]
-            for before, name in zip(names, names[1:]):
-                if ms_change(rows[name], layout) - ms_change(rows[before], layout) > GROUP_GAP_MS:
-                    runs.append([])
-                runs[-1].append(name)
-            runs = [sorted(run, key=order.index) for run in runs]
-            found += [(first, layout, run) for run in sorted(runs, key=lambda run: order.index(run[0]))]
-    return found
-
-
-def pictures(rows, run):
-    """The pictures a run holds; one only partly held names the rows it holds,
-    or the rows it misses when those are fewer."""
-    def split(name):
-        return (name.split(", ", 1) + [""])[:2]
-    held, missing = {}, {}
+    """(family, first layout, layout, rows) for each family, then each layout
+    after the first its rows report, in capture order."""
+    families = {}
     for name in rows:
-        picture, part = split(name)
-        (held if name in run else missing).setdefault(picture, []).append(part)
-    cells = []
-    for picture, parts in held.items():
-        rest = missing.get(picture)
-        if not rest:
-            cells.append(picture)
-        elif len(parts) <= len(rest):
-            cells.append(f"{picture} ({', '.join(parts)})")
-        else:
-            cells.append(f"{picture} (all but {', '.join(rest)})")
-    return ", ".join(cells)
+        families.setdefault(family(name), []).append(name)
+    found = []
+    for name, members in families.items():
+        for layout in layouts_of(rows):
+            by_first = {}
+            for member in members:
+                first = next(iter(rows[member]))
+                if layout in rows[member] and layout != first:
+                    by_first.setdefault(first, []).append(member)
+            found += [(name, first, layout, held) for first, held in by_first.items()]
+    return found
 
 
 def span(values, unit):
@@ -151,17 +128,22 @@ def span(values, unit):
 
 
 def chart(rows, path):
-    """One line per group, a bar from its least to its greatest ms change
-    against the first layout and a dot at its mean, coloured by layout."""
+    """One band per family, a bar per layout from its least to its greatest
+    ms change against the first layout and a dot at its mean."""
     layouts = layouts_of(rows)
     if len(layouts) > len(SLOTS):
         raise ValueError(f"{len(layouts)} layouts, {len(SLOTS)} colours")
     found = groups(rows)
-    figure, axis = subplots(1, 1, (CHART_WIDTH, CHART_BASE_HEIGHT + GROUP_HEIGHT * len(found)))
+    names = list(dict.fromkeys(name for name, _, _, _ in found))
+    height = BAR_STEP * len(found) + FAMILY_GAP * len(names)
+    figure, axis = subplots(1, 1, (CHART_WIDTH, CHART_BASE_HEIGHT + height))
     axis.axvline(0, color=MUTED, linewidth=1)
-    labelled = set()
-    for y, (first, layout, run) in enumerate(found):
-        changes = [ms_change(rows[name], layout) for name in run]
+    labelled, ticks, y = set(), {}, 0.0
+    for index, (name, first, layout, held) in enumerate(found):
+        if index and found[index - 1][0] != name:
+            y += FAMILY_GAP
+        ticks.setdefault(name, []).append(y)
+        changes = [ms_change(rows[member], layout) for member in held]
         colour = SLOTS[layouts.index(layout)]
         label = None if layout in labelled else f"{layout} against {first}"
         labelled.add(layout)
@@ -170,8 +152,9 @@ def chart(rows, path):
         axis.scatter([mean], [y], s=MARKER_SIZE, color=colour, label=label, zorder=2)
         axis.annotate(f"{mean:+.1f}", (mean, y), xytext=(0, MEAN_LABEL_GAP), textcoords="offset points",
                       ha="center", fontsize=8, color=INK)
-        axis.axhline(y, color=FAINT, linewidth=0.5, zorder=0)
-    axis.set_yticks(range(len(found)), [textwrap.fill(pictures(rows, run), LABEL_WIDTH, break_on_hyphens=False) for _, _, run in found])
+        y += BAR_STEP
+    axis.set_yticks([sum(at) / len(at) for at in ticks.values()],
+                    [f"{name} ({sum(family(row) == name for row in rows)})" for name in ticks])
     axis.invert_yaxis()
     axis.set_xlabel("frame time change, ms (left is faster): bar from least to greatest, dot at the mean", color=INK)
     style_axes(axis, "Frame cost by framebuffer layout")
@@ -180,16 +163,16 @@ def chart(rows, path):
 
 
 def table(rows, chart_name):
-    """The groups, one row each with its ms and percent ranges; then, in a
+    """A row per family and layout with its ms and percent ranges; then, in a
     dropdown, one row per picture, one column per layout, each cell after a
     row's first layout giving its change against that first one."""
     layouts = layouts_of(rows)
     lines = [f"![Frame cost by framebuffer layout](../images/render/{chart_name})", "",
-             "| Layout | Against | Pictures | Change, ms | Change |", "|---|---|---|---|---|"]
-    for first, layout, run in groups(rows):
-        lines.append(f"| `{layout}` | `{first}` | {pictures(rows, run)} "
-                     f"| {span([ms_change(rows[name], layout) for name in run], '')} "
-                     f"| {span([change(rows[name], layout) for name in run], '%')} |")
+             "| Scene | Pictures | Layout | Against | Change, ms | Change |", "|---|---|---|---|---|---|"]
+    for name, first, layout, held in groups(rows):
+        lines.append(f"| {name} | {len(held)} | `{layout}` | `{first}` "
+                     f"| {span([ms_change(rows[member], layout) for member in held], '')} "
+                     f"| {span([change(rows[member], layout) for member in held], '%')} |")
     lines += ["", "<details><summary>Every picture</summary>", "",
               "| Picture | " + " | ".join(f"`{layout}`" for layout in layouts) + " |",
              "|---|" + "---|" * len(layouts)]
@@ -206,8 +189,7 @@ def table(rows, chart_name):
         lines.append(f"| {row} | " + " | ".join(cells) + " |")
     lines += ["", "</details>"]
     note = ("\nBoard ms per frame, mean of each suite's samples. A change is against the "
-            "first layout its row reports; a group holds the pictures whose ms change lies "
-            f"within {GROUP_GAP_MS:.1f} ms of the next nearer one's.")
+            "first layout its row reports; a scene row spans its variants and orientations.")
     return "\n".join(lines) + "\n" + note
 
 

@@ -68,22 +68,23 @@ Each picture's frame cost on the board, from one build, in `FULL_FB`,
 each sent frame, so the draw skips its clear; in `_CONTENDED` a send runs
 during the whole draw, so both share PSRAM. Not run: the suite has no such pass.
 
-A layout costs about the same ms whatever the picture, so the groups below share
-one ms range while their percentages spread. The r3d scenes draw in `update()`
+A layout costs about the same ms whatever the picture, so each scene's rows below
+share one narrow ms range while their percentages spread. The r3d scenes draw in `update()`
 and pay for the second framebuffer; the boot animation draws a full frame in
 `frame()` and saves about as much.
 
-<!-- generated: gfx-layout-costs sha256=f95c91ad4cd936e45d9ebdc0dc1dee0675db8147fef44a50331fb11f212d9235 -->
+<!-- generated: gfx-layout-costs sha256=dee6ea381d6a3222951b670c9e795a1fa0dea175616174c11118f4821884975e -->
 ![Frame cost by framebuffer layout](../images/render/gfx-layout-costs.png)
 
-| Layout | Against | Pictures | Change, ms | Change |
-|---|---|---|---|---|
-| `DOUBLE_FB` | `FULL_FB` | sponza-fitted-full, sponza, sponza-lite, sponza-flat, sponza-fitted, sponza-flat-fitted, capybara | +4.5 to +5.0 | +12% to +35% |
-| `DOUBLE_FB` | `FULL_FB` | boot animation | -7.7 to -7.4 | -35% to -17% |
-| `DOUBLE_FB_CLEAR_ON_SEND` | `FULL_FB` | sponza-fitted-full, sponza, sponza-lite, sponza-flat, sponza-fitted, sponza-flat-fitted, capybara | +8.4 to +9.0 | +20% to +65% |
-| `DOUBLE_FB_CLEAR_ON_SEND` | `FULL_FB` | boot animation (all but near_end) | -12.9 to -11.1 | -43% to -29% |
-| `DOUBLE_FB_CLEAR_ON_SEND` | `FULL_FB` | boot animation (near_end) | -6.9 | -31% |
-| `DOUBLE_FB_CONTENDED` | `FULL_FB` | boot animation | -7.9 to -7.8 | -35% to -18% |
+| Scene | Pictures | Layout | Against | Change, ms | Change |
+|---|---|---|---|---|---|
+| sponza | 12 | `DOUBLE_FB` | `FULL_FB` | +4.6 to +5.0 | +12% to +15% |
+| sponza | 12 | `DOUBLE_FB_CLEAR_ON_SEND` | `FULL_FB` | +8.4 to +9.0 | +20% to +27% |
+| capybara | 2 | `DOUBLE_FB` | `FULL_FB` | +4.5 to +4.8 | +31% to +35% |
+| capybara | 2 | `DOUBLE_FB_CLEAR_ON_SEND` | `FULL_FB` | +8.6 to +8.9 | +60% to +65% |
+| boot animation | 7 | `DOUBLE_FB` | `FULL_FB` | -7.7 to -7.4 | -35% to -17% |
+| boot animation | 7 | `DOUBLE_FB_CLEAR_ON_SEND` | `FULL_FB` | -12.9 to -6.9 | -43% to -29% |
+| boot animation | 7 | `DOUBLE_FB_CONTENDED` | `FULL_FB` | -7.9 to -7.8 | -35% to -18% |
 
 <details><summary>Every picture</summary>
 
@@ -113,7 +114,7 @@ and pay for the second framebuffer; the boot animation draws a full frame in
 
 </details>
 
-Board ms per frame, mean of each suite's samples. A change is against the first layout its row reports; a group holds the pictures whose ms change lies within 1.0 ms of the next nearer one's.
+Board ms per frame, mean of each suite's samples. A change is against the first layout its row reports; a scene row spans its variants and orientations.
 <!-- /generated: gfx-layout-costs -->
 
 Regenerate with
