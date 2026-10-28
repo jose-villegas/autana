@@ -9,8 +9,6 @@ import math
 import os
 import re
 import socket
-import signal
-import threading
 import weakref
 import statistics
 import subprocess
@@ -24,6 +22,7 @@ import device_hook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402  (path must be set up first)
+from process_tree import terminate_unwinds  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "autana"))
 from version import __version__  # noqa: E402  (path must be set up first)
 
@@ -686,37 +685,30 @@ class LockStore:
         deadline = self.resource_now(board) + wait
         label = purpose or purpose_of(kind)
         waiting = False
-        handle_term = (threading.current_thread() is threading.main_thread()
-                       and signal.getsignal(signal.SIGTERM) == signal.SIG_DFL)
-        if handle_term:
-            signal.signal(signal.SIGTERM, signal.default_int_handler)
-        try:
-            while True:
-                held = self.claim(board, ticket, stale_seconds, estimate)
-                if held:
-                    return held
-                if not self.read_json(self.queue_dir(board) / (ticket + ".json")):
-                    if waiting:
-                        device_hook.emit("gave-up", board, owner, label)
-                    return None
-                # Even a first claim that exhausted the wait reports the queue.
-                if wait > 0:
-                    if not waiting:
-                        device_hook.emit("waiting", board, owner, label)
-                        waiting = True
-                    if on_wait:
-                        on_wait(ticket)
-                if self.resource_now(board) >= deadline:
-                    if waiting:
-                        device_hook.emit("gave-up", board, owner, label)
-                    return None
-                time.sleep(min(0.1, max(0, deadline - self.resource_now(board))))
-        finally:
+        with terminate_unwinds():
             try:
-                self.cancel(board, ticket)
+                while True:
+                    held = self.claim(board, ticket, stale_seconds, estimate)
+                    if held:
+                        return held
+                    if not self.read_json(self.queue_dir(board) / (ticket + ".json")):
+                        if waiting:
+                            device_hook.emit("gave-up", board, owner, label)
+                        return None
+                    # Even a first claim that exhausted the wait reports the queue.
+                    if wait > 0:
+                        if not waiting:
+                            device_hook.emit("waiting", board, owner, label)
+                            waiting = True
+                        if on_wait:
+                            on_wait(ticket)
+                    if self.resource_now(board) >= deadline:
+                        if waiting:
+                            device_hook.emit("gave-up", board, owner, label)
+                        return None
+                    time.sleep(min(0.1, max(0, deadline - self.resource_now(board))))
             finally:
-                if handle_term:
-                    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+                self.cancel(board, ticket)
 
     def cancel(self, board, ticket):
         with self.guard(board):
