@@ -136,7 +136,8 @@ view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms, r3d_lens_t* lens) {
     r3d_lens_init(lens, &view, mesh->position_scale);
 }
 
-static void
+/* Out of line: its carved buffers and target stay off the caller's frame. */
+static __attribute__((noinline)) void
 clear_and_draw(const raster_t* raster, const r3d_lens_t* lens, int visible) {
     const raster_buffers_t b = raster_carve(raster);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
