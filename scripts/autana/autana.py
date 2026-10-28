@@ -1812,7 +1812,8 @@ COMMAND_GROUPS = (
             ("coredump [--elf PATH]", "the last panic's core dump, saved to the records and decoded against the build that crashed; resets the board"),
             ("coredump --core FILE [--elf PATH]", "decode a saved dump; no board"),
             ("coredump --erase", "clear the dump so the next crash's is told apart; resets the board"),)),
-        one("mic", mic, "mic record <ms> [--settle ms] -o take.wav [--json]", "record microphone PCM and codec state"),
+        one("mic", mic, "mic record <ms> [--settle ms] [--at ms reg value]... -o take.wav [--json]",
+            "record microphone PCM and codec state; --at writes a codec register during the take"),
         one("codec", codec, "codec <reg> [value]",
             "development builds: read, or write then read back, one codec register (hex or decimal)"),
         Command("screenshot", screenshot, (
