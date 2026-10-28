@@ -178,10 +178,20 @@ static const water_key_t TOUR[] = {
     {10500, {0.0F, 1.0F, 0.0F}, "settle"}, /* upright */
     {12000, {0.0F, 1.0F, 0.0F}, "shake"},  /* then shaken */
 };
-#define TOUR_KEYS     ((int)(sizeof TOUR / sizeof TOUR[0]))
-#define TOUR_SHAKE_MS 2000U
-#define TOUR_SHAKE_HZ 3.0F
-#define TOUR_SHAKE_G  0.8F
+#define TOUR_KEYS         ((int)(sizeof TOUR / sizeof TOUR[0]))
+#define TOUR_SHAKE_MS     2000U
+#define TOUR_SHAKE_HZ     3.0F
+#define TOUR_SHAKE_G      0.8F
+
+/* The swing (`water swing`), for the overview clip: the tank rocked side to
+ * side, hard at first and dying away, while leaned back the whole time so
+ * the surface shows through the front glass. */
+#define SWING_MS          14000U
+#define SWING_START_DEG   45.0F   /* the first swing's reach either side */
+#define SWING_DECAY_MS    3500.0F /* the reach falls by e over this */
+#define SWING_HZ          0.7F
+#define SWING_INCLINE_DEG 25.0F /* leaned back throughout */
+#define SWING_EYE_RISE_MM 20.0F /* the eye above the glass's centre, looking down onto the surface */
 
 static scene_t* tank_scene;
 static scene_entity_t camera_entity, water_entity;
@@ -205,7 +215,11 @@ static bool motion_seen;
 static input_motion_batch_t batch;
 static int fill_percent = WATER_FILL_DEFAULT;
 static int filled_percent;
-static bool touring;
+
+/* The scripted motion playing, if any, and how far into it. */
+typedef enum { SCRIPT_NONE, SCRIPT_TOUR, SCRIPT_SWING } water_script_t;
+
+static water_script_t script;
 static uint32_t tour_ms;
 static uint32_t step_us;
 static vec3f_t last_accel_g;
@@ -392,13 +406,29 @@ tour_accel(uint32_t at_ms, vec3f_t* down) {
     return accel;
 }
 
+/* Down while swinging: the reach about the box's z decays, the lean back
+ * about its x holds. */
+static vec3f_t
+swing_accel(uint32_t at_ms, vec3f_t* down) {
+    const float t_s = (float)at_ms / (float)MATH_MS_PER_S;
+    const float reach = SWING_START_DEG * MATH_RADIANS_PER_DEGREE * expf(-(float)at_ms / SWING_DECAY_MS);
+    const float angle = reach * sinf(MATH_TAU * SWING_HZ * t_s);
+    const float lean = SWING_INCLINE_DEG * MATH_RADIANS_PER_DEGREE;
+    *down = (vec3f_t){sinf(angle) * cosf(lean), cosf(angle) * cosf(lean), -sinf(lean)};
+    return *down;
+}
+
 /* Gravity plus the device's own acceleration, in g, box axes. Upright until
  * a motion sample arrives, as on a host. */
 static vec3f_t
 read_accel(uint32_t dt_ms, vec3f_t* down) {
-    if (touring) {
+    if (script == SCRIPT_TOUR) {
         tour_ms = (tour_ms + dt_ms) % scene_water_tour_length_ms();
         return tour_accel(tour_ms, down);
+    }
+    if (script == SCRIPT_SWING) {
+        tour_ms = (tour_ms + dt_ms) % SWING_MS;
+        return swing_accel(tour_ms, down);
     }
     if (input_read_motion_batch(&batch)) {
         gravity_update_batch(&gravity, &batch);
@@ -715,7 +745,8 @@ scene_water_update(uint32_t dt_ms) {
     stats.update_us += timing_now_us() - started;
     step_us = (uint32_t)(timing_now_us() - started);
     FRAME_COST_END(updated_from, "water.update");
-    place_camera(display_quarter_now(), parallax_eye(down, dt_ms));
+    const vec3f_t rise = {0.0F, script == SCRIPT_SWING ? SWING_EYE_RISE_MM : 0.0F, 0.0F};
+    place_camera(display_quarter_now(), vec3f_add(parallax_eye(down, dt_ms), rise));
 }
 
 static void
@@ -743,7 +774,8 @@ water_status(void) {
     return buf;
 }
 
-/* `water fill <percent>` and `water tour`, which restarts the scripted tank. */
+/* `water fill <percent>`, and `water tour` or `water swing`, which restart
+ * that scripted motion. The reply gives the script's length. */
 static inline bool
 scene_water_console(const char* args, console_reply_fn reply) {
     int percent;
@@ -756,14 +788,17 @@ scene_water_console(const char* args, console_reply_fn reply) {
             return true;
         }
         fill_percent = percent;
-    } else if (strcmp(args, "water tour") == 0) {
-        touring = true;
+    } else if (strcmp(args, "water tour") == 0 || strcmp(args, "water swing") == 0) {
+        script = strcmp(args, "water tour") == 0 ? SCRIPT_TOUR : SCRIPT_SWING;
         tour_ms = 0;
-        filled_percent = 0; /* refill upright as the tour starts */
+        filled_percent = 0; /* refill as the script starts */
     } else {
         return false;
     }
-    if (snprintf(line, sizeof line, "RENDER water fill=%d tour=%d", fill_percent, touring) >= 0) {
+    const uint32_t length_ms = script == SCRIPT_TOUR    ? scene_water_tour_length_ms()
+                               : script == SCRIPT_SWING ? SWING_MS
+                                                        : 0;
+    if (snprintf(line, sizeof line, "RENDER water fill=%d script_ms=%u", fill_percent, (unsigned)length_ms) >= 0) {
         reply(line);
     }
     reply("RENDER_END");

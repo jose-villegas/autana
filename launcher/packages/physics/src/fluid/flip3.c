@@ -769,6 +769,8 @@ typedef struct {
 
 enum { FIELD_SAMPLE, FIELD_SMOOTH_X, FIELD_SMOOTH_Y, FIELD_SMOOTH_Z, FIELD_PASSES };
 
+_Static_assert(FIELD_PASSES == FLIP3_FIELD_PASSES, "a split site per field pass");
+
 static void
 sample_lines(const field_work_t* w, int from, int to) {
     const flip3_t* f = w->f;
@@ -817,7 +819,7 @@ flip3_field(const flip3_t* f, int samples, float* out) {
     memset(out, 0, (size_t)w.d[0] * (size_t)w.d[1] * (size_t)w.d[2] * sizeof(float));
     for (w.pass = FIELD_SAMPLE; w.pass < FIELD_PASSES; w.pass++) {
         const int lines = w.pass == FIELD_SMOOTH_X ? w.d[1] : w.d[0];
-        run_split(f, FLIP3_SPLIT_FIELD, field_range, &w, lines - 2);
+        run_split(f, FLIP3_SPLIT_FIELD + w.pass, field_range, &w, lines - 2);
     }
     /* Sample (1, 1, 1) sits half a sample in from the box's origin. */
     return (iso_field_t){out, w.d[0], w.d[1], w.d[2], vec3f_scale(w.step, -0.5F), w.step};
