@@ -20,6 +20,7 @@
 #include "asset/asset_file.h"
 #include "math/linear/quatf.h"
 #include "math/scalar/math_const.h"
+#include "math/text/math_text.h"
 #include "scene/scene_internal.h"
 
 #define STRINGIFY(x) #x
@@ -40,8 +41,7 @@ static void
 print_rotations(const anim_pose_t* pose) {
     printf("[");
     for (int j = 0; j < pose->joint_count; j++) {
-        const quatf_t q = pose->local[j].rotation;
-        printf("%s[%.7g,%.7g,%.7g,%.7g]", j ? "," : "", (double)q.x, (double)q.y, (double)q.z, (double)q.w);
+        printf("%s[%s]", j ? "," : "", quatf_text(pose->local[j].rotation).chars);
     }
     printf("]");
 }
@@ -52,8 +52,7 @@ print_joints(const anim_skeleton_t* skeleton, const anim_pose_t* pose, mat4f_t* 
     anim_pose_model(skeleton, pose, model);
     printf("[");
     for (int j = 0; j < pose->joint_count; j++) {
-        const vec3f_t p = mat4f_apply(&model[j], (vec3f_t){0});
-        printf("%s[%.7g,%.7g,%.7g]", j ? "," : "", (double)p.x, (double)p.y, (double)p.z);
+        printf("%s[%s]", j ? "," : "", vec3f_text(mat4f_apply(&model[j], (vec3f_t){0})).chars);
     }
     printf("]");
 }

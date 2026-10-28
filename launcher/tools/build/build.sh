@@ -45,7 +45,8 @@
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
 # if .sh is associated with Git Bash, or right-click launcher/tools/build/ ->
-# "Git Bash Here" -> `./build.sh`.
+# "Git Bash Here" -> `./build.sh`. A failure in a double-clicked window waits
+# for Enter before it closes (scripts/lib/terminal.sh).
 #
 # All the logic here is POSIX sh. On Windows the ESP-IDF calls go through
 # tools/build/idf_shim.bat, which exists only to delete MSYSTEM, see tools/build/idf.sh
@@ -128,28 +129,33 @@ esac
 . "$SCRIPT_DIR/idf.sh"
 # shellcheck source=../../../scripts/quiet.sh
 . "$SCRIPT_DIR/../../../scripts/quiet.sh"
+# shellcheck source=../../../scripts/lib/terminal.sh
+. "$SCRIPT_DIR/../../../scripts/lib/terminal.sh"
+
+# Set by quiet_begin once the build directory exists; a failure before that
+# has nothing to summarize.
+QUIET_LOG=""
+quiet_finish() {
+    status=$?
+    trap - EXIT
+    set +e
+    [ -z "$QUIET_LOG" ] || quiet_end build "$status" || true
+    if [ "$status" -ne 0 ]; then
+        echo
+        echo "=== FAILED (exit $status) ==="
+        pause_if_own_window
+    fi
+    exit "$status"
+}
+trap quiet_finish EXIT
+
 idf_init "$LAUNCHER_DIR" "$SCRIPT_DIR" || exit 2
 . "$SCRIPT_DIR/idf_variant.sh"
 
 idf_variant_prepare "$LAUNCHER_DIR" "$BUILD_DIR" "$PREPARED_BUILD" || exit 2
 
 # A passing build's stream belongs in build.log under the build directory.
-QUIET_LOG="$IDF_VARIANT_BUILD/build.log"
-quiet_begin "$QUIET_LOG"
-
-quiet_finish() {
-    status=$?
-    trap - EXIT
-    set +e
-    quiet_end build "$status" || true
-    if [ "$status" -ne 0 ]; then
-        echo
-        echo "=== FAILED (exit $status) ==="
-        if [ -t 0 ]; then read -r -p "Press Enter to close..." _ || true; fi
-    fi
-    exit "$status"
-}
-trap quiet_finish EXIT
+quiet_begin "$IDF_VARIANT_BUILD/build.log"
 
 VARIANT_OPTIONS=""
 if [ "$AUTORUN" -eq 1 ]; then

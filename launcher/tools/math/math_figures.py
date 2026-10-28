@@ -49,6 +49,7 @@ PIXEL_WINDOW = 3  # whole pixels shown on each side of the chosen one
 
 def build_probe(cc, sources, directory):
     """Build a probe against the library into directory; returns the program."""
+    sources = (*sources, ROOT / "launcher/packages/math/src/text/math_text.c")
     binary = pathlib.Path(directory) / "probe"
     includes = [flag for root in include_roots() for flag in ("-I", str(root))]
     subprocess.run([cc, "-std=gnu2x", "-O1", *includes, *map(str, sources), "-lm", "-o", str(binary)], check=True)

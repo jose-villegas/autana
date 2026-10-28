@@ -393,8 +393,10 @@ class SoundMixToolsTest(unittest.TestCase):
             (tree / source).write_bytes(b'source = "chime.wav"\r\nformat = "adpcm"\r\nloop = true\r\n')
             original = b"#define OTHER 9\r\n#define SOUND_VOICE_COUNT 8\r\n"
             header.write_bytes(original)
-            with mock.patch.object(image.subprocess, "run", return_value=argparse.Namespace(stdout="")):
+            with mock.patch.object(image.subprocess, "run", return_value=argparse.Namespace(stdout="")), \
+                    mock.patch.object(image, "lock_variant") as lock:
                 image.prepare(tree, "chime", "pcm16", 32)
+                lock.assert_called_with(tree.resolve(), "chime_pcm16.sond")
                 self.assertEqual(header.read_bytes(), original.replace(b"COUNT 8", b"COUNT 32"))
                 self.assertEqual((tree / asset).read_bytes(), b'source = "chime.wav"\r\nformat = "pcm16"\r\nloop = true\r\n')
                 self.assertEqual({p.relative_to(tree) for p in tree.rglob("*") if p.is_file()},

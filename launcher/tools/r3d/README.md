@@ -121,10 +121,12 @@ $PY tools/render/render_compare.py --out unused.png --reference-video host.avi r
 The line for each frame, and for the frames' mean, has mean and 95th-percentile
 CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#iso-11664-4)</sup> over its pixels, luma SSIM<sup>[[9]](../../../docs/Citations.md#wang-2004)</sup>, and the mean ΔE on edge and on interior
 pixels; the frames-mean line averages each frame's value, p95 included. The
-sheet is, left to right, the reference, the render, the ΔE heatmap and the
-reference's edge pixels in magenta, over the heatmap's colour scale: ΔE 0 is
-black, about 20 red, 50 or more yellow. Each panel is labelled; `--label-a`
-names the render and is required with `--reference-sheet`.
+sheet is, left to right, the reference, the render and the ΔE heatmap, over
+the heatmap's colour scale: ΔE 0 is black, about 20 red, 50 or more yellow.
+Each panel is labelled; `--label-a` names the render and is required with
+`--reference-sheet`. With `--reference-bakes` and a `--bake LABEL VIDEO` per
+bake in place of `--reference-video`, the sheet shows every bake, then every
+bake's heatmap, all on that one scale.
 
 ### Path-traced reference
 
