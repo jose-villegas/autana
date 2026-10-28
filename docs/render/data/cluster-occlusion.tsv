@@ -1,4 +1,4 @@
-# host render at c445a220e-dirty of the poses in frame-profile-1-board.log
+# host render at 855ff6c1c of the poses in frame-profile-1-board.log
 scene	quarter	pose	t_ms	hidden	triangles_set_up	rect_caught	rect_hidden_caught	rect_removed	rect_read	rect_unsafe	corners_caught	corners_hidden_caught	corners_removed	corners_read	corners_unsafe	tiles_caught	tiles_hidden_caught	tiles_removed	tiles_read	tiles_unsafe
 bistro-fitted-full	landscape	1	60595	283	6871	218	218	2302	116685	0	202	202	2131	187842	0	189	189	1978	4522	0
 bistro-fitted-full	landscape	2	60122	281	6803	210	210	2176	107291	0	196	196	2016	186943	0	187	187	1904	4513	0
