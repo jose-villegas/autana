@@ -184,14 +184,18 @@ static const water_key_t TOUR[] = {
 #define TOUR_SHAKE_G      0.8F
 
 /* The swing (`water swing`), for the overview clip: the tank rocked side to
- * side, hard at first and dying away, while leaned back the whole time so
- * the surface shows through the front glass. */
-#define SWING_MS          14000U
+ * side, hard at first and dying away, turned upside down and back on the
+ * way, while leaned back the whole time so the surface shows through the
+ * front glass. */
+#define SWING_MS          16000U
 #define SWING_START_DEG   45.0F   /* the first swing's reach either side */
 #define SWING_DECAY_MS    3500.0F /* the reach falls by e over this */
 #define SWING_HZ          0.7F
 #define SWING_INCLINE_DEG 25.0F /* leaned back throughout */
 #define SWING_EYE_RISE_MM 20.0F /* the eye above the glass's centre, looking down onto the surface */
+/* Each flip turns the tank half over, the same way, so two bring it back. */
+static const uint32_t SWING_FLIPS_MS[] = {4000U, 7500U};
+#define SWING_FLIP_MS 1200.0F /* how long a half turn takes */
 
 static scene_t* tank_scene;
 static scene_entity_t camera_entity, water_entity;
@@ -406,13 +410,19 @@ tour_accel(uint32_t at_ms, vec3f_t* down) {
     return accel;
 }
 
-/* Down while swinging: the reach about the box's z decays, the lean back
- * about its x holds. */
+/* Down while swinging: the reach about the box's z decays, each flip adds a
+ * half turn about it, eased, and the lean back about its x holds. */
 static vec3f_t
 swing_accel(uint32_t at_ms, vec3f_t* down) {
     const float t_s = (float)at_ms / (float)MATH_MS_PER_S;
     const float reach = SWING_START_DEG * MATH_RADIANS_PER_DEGREE * expf(-(float)at_ms / SWING_DECAY_MS);
-    const float angle = reach * sinf(MATH_TAU * SWING_HZ * t_s);
+    float angle = reach * sinf(MATH_TAU * SWING_HZ * t_s);
+    for (size_t i = 0; i < sizeof SWING_FLIPS_MS / sizeof SWING_FLIPS_MS[0]; i++) {
+        if (at_ms > SWING_FLIPS_MS[i]) {
+            const float t = fminf((float)(at_ms - SWING_FLIPS_MS[i]) / SWING_FLIP_MS, 1.0F);
+            angle += MATH_PI * t * t * (3.0F - (2.0F * t));
+        }
+    }
     const float lean = SWING_INCLINE_DEG * MATH_RADIANS_PER_DEGREE;
     *down = (vec3f_t){sinf(angle) * cosf(lean), cosf(angle) * cosf(lean), -sinf(lean)};
     return *down;
