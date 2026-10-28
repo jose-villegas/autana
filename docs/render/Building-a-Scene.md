@@ -22,8 +22,8 @@ C compiler for the [render harness](../tools/Render-Harness.md).
 
 ## 1. Import a mesh
 
-An import file describes geometry: its source model and the output directory
-for a plain albedo import.
+An import file describes geometry: its source model and the name its mesh
+takes in the pack.
 
 ```toml
 [source]
@@ -31,7 +31,6 @@ path = "hall/hall.obj"           # relative to this file
 credit = "Hall, by A. Modeller, CC BY 4.0."
 
 [output]
-directory = ".."
 name = "hall"                    # the mesh's asset id in the pack
 ```
 
@@ -120,9 +119,8 @@ near_z = 6.0
 python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
 ```
 
-This writes `<scene>.<variant>.mesh` for each baked renderer. A mesh without
-`bake = true` can also be imported on its own. Baked `.mesh` entries are
-committed as written and never reformatted. The firmware build writes the
+This bakes each renderer's mesh into the [bake cache](../assets/Bakes.md); a
+mesh without `bake = true` can also be imported on its own. The firmware build writes the
 scene's [pack](../assets/Building-Packs.md#packs), named after the scene: its
 [scene entry](Scene-Files.md#scne-v5), baked from the scene file, its
 every mesh, skin, skeleton and clip it names. It flashes the pack with the app
