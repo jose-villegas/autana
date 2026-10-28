@@ -125,12 +125,6 @@ test_real_time_frame_profile(void) {
     render_lab_test_enter(&saved, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
     render_lab_test_hold_quarter(r3d_perf_quarters[quarter_index].quarter);
-    if (scenario->scene == &scene_capybara) {
-        char command[sizeof(CAPYBARA_CLIP_COMMAND)];
-        const int length = snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_CUT_MS);
-        TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);
-        TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
-    }
     TEST_ASSERT_TRUE(render_lab_seek_path(0));
     const uint32_t duration_ms = render_lab_path_duration_ms();
     const frame_profile_scenario_t playback = {

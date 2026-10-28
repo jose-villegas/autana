@@ -194,10 +194,10 @@ scene_capybara_controls(int width) {
     render_lab_clips_draw(width, &choice);
 }
 
-/* The subject, playing the chosen clip. */
+/* The subject, galloping. */
 static render_lab_path_t
 capybara_path(void) {
-    return (render_lab_path_t){capybara, subject_entity};
+    return (render_lab_path_t){capybara, subject_entity, CAPYBARA_GALLOP};
 }
 
 const render_lab_scene_t scene_capybara = {.name = "Capybara",

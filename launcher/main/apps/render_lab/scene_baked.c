@@ -61,7 +61,7 @@ camera_entity(void) {
 
 render_lab_path_t
 scene_baked_path(void) {
-    return (render_lab_path_t){loaded, loaded == NULL ? SCENE_ENTITY_NONE : camera_entity()};
+    return (render_lab_path_t){loaded, loaded == NULL ? SCENE_ENTITY_NONE : camera_entity(), NULL};
 }
 
 static void
