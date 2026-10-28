@@ -70,8 +70,7 @@ jobs:
           python3 -m unittest discover -s scripts/gates/tests -p test_check_autana_source.py
           python3 -m unittest discover -s launcher/tools/tune/tests
           python3 -m unittest discover -s scripts/ci/tests
-          python3 -m unittest discover -s launcher/tools/perf/tests -p test_nightly_chain.py
-          python3 -m unittest discover -s launcher/tools/perf/tests -p test_perf_index.py
+          python3 -m unittest discover -s launcher/tools/perf/tests
 
       - name: Every script with a shebang is stored executable
         run: sh scripts/gates/check-exec-bits.sh
@@ -113,3 +112,18 @@ jobs:
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}
         with: {step: record}
+
+  # The perf job replays drive the real perf_compare.sh / perf_sweep.sh
+  # through Git Bash and native Python, whose signal and process-tree paths
+  # differ from Linux; every shell_job test fails on a fake left running.
+  windows-perf:
+    name: Perf job replays (Windows)
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/host-tools
+      - shell: bash
+        run: |
+          python -m pip install pyserial -r scripts/gates/requirements.txt
+          python -m unittest discover -s launcher/tools/perf/tests
