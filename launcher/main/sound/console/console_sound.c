@@ -247,7 +247,8 @@ sound_run_parsed(const console_sound_args_t* parsed, console_reply_fn reply) {
         return;
     }
     if (parsed->action == CONSOLE_SOUND_TONE) {
-        const sound_voice_t voice = sound_play_tone(parsed->hz, parsed->gain_pct);
+        const sound_voice_t voice =
+            sound_play_tone(parsed->hz, SOUND_TONE_UNTIL_STOPPED, parsed->gain_pct, SOUND_BUS_SYSTEM);
         char line[CONSOLE_SOUND_REPLY_MAX];
         (void)snprintf(line, sizeof line, "SOUND_END voice=%" PRIu32, voice.id);
         reply(voice.id ? line : "SOUND_ERR playback unavailable");
