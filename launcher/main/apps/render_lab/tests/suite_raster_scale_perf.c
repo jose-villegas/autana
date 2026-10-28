@@ -110,7 +110,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     r3d_pipeline_transform(&mesh, draw_lens, b->culled + 1, visible, b->cs, b->rows);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     const int64_t clear_from = timing_now_us();
-    memset(gfx_render_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
+    memset(gfx_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
     sum->clear += timing_now_us() - clear_from;
     const int64_t setup = one_core_draw_us(raster, b, draw_lens, visible, R3D_SPAN_STOP_AFTER_SETUP);
     const int64_t edges = one_core_draw_us(raster, b, draw_lens, visible, R3D_SPAN_STOP_AFTER_EDGES);

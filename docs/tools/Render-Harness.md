@@ -163,6 +163,22 @@ A comment or blank-line edit in the Python leaves the fingerprint unchanged.
 The stage's work folder is named by it, and its saved `source.json` holds it
 and lists every input.
 
+The fingerprint decides whether the stage runs, not what it remakes. Each
+start, reference set, fit and bake is kept in the bake cache under a key of its
+own inputs, so a run remakes only what changed. A key the run asks for twice is
+made once: the three fitted variants read one reference set.
+
+| Result | Key | Folder in the bake cache |
+|---|---|---|
+| Reference set | `bake.py`'s reference key | `reference/<key>/`, shared with `bake.py bake` |
+| Start | `bake.py`'s start key, and the code in `doc_stages.py` that makes it | `doc/<digest>/` |
+| Fit, sweep point or look | `bake.py`'s fit key for the point's recipe and the start's bytes, the cost model when the point weights it, and the code | `doc/<digest>/` |
+| GI bake | `bake.py`'s mesh key, the path cull's sampling and poses, and the code | `doc/<digest>/` |
+
+A `doc/` folder also holds the steps recorded by the run that made it, which
+the bake-steps chart shows. Measures, sheets and the occlusion map run every
+time.
+
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
 Changed images remain pending for the next NIGHT_START; pushes do not render.
 
@@ -202,7 +218,7 @@ The first refresh step, `scripts/ci/gpu_refresh_gate.sh`, is the flowchart's
 GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
 
 ```mermaid
-flowchart TD
+flowchart LR
     Fingerprint["Hosted input fingerprint"] --> Flight{"Another run in flight?"}
     Flight -->|yes| Refresh
     Flight -->|no| Latest{"Latest main record rendered<br/>and matches?"}
@@ -215,11 +231,16 @@ flowchart TD
     Head -->|yes| Again{"Latest main record rendered<br/>and matches?"}
     Again -->|yes| Skip
     Again -->|no or force| Render["Render"]
-    Render -->|success| Publish["Sync or close refresh PR"]
-    Publish -->|success| Recorded["Record rendered inputs"]
+    Render -->|success| Push["Push changed images to the refresh branch"]
+    Push -->|success or nothing changed| Recorded["Record rendered inputs"]
+    Recorded --> Publish["Sync or close refresh PR"]
     Render -->|failure| Failed["Record failed inputs and run URL"]
-    Publish -->|failure| Failed
+    Push -->|failure| Failed
 ```
+
+The record comes before the pull request calls, so a failed API call after the push
+leaves the run red but the inputs current. GitHub writes retry a request that never
+reached the server, such as a TLS handshake timeout.
 
 A rendered record means rendered, not merged: closing a refresh PR leaves
 these inputs current until they change or a dispatch uses `force`.
@@ -252,18 +273,21 @@ stall fails after `GPU_QUERY_FAILURE_SECONDS` only when tasks are queued
 and no workers remain active.
 
 ```mermaid
-flowchart TD
-    Start[Stage-start memory guard] --> Queue[Queue both prepares]
-    Queue --> Admission{Live memory and core admission}
+flowchart LR
+    Start[Stage-start memory guard] --> Ask[Ask for every start, reference set and bake]
+    Ask --> Kept{Key done in the bake cache?}
+    Kept -->|yes| Result[Kept result]
+    Kept -->|no| Admission{Live memory and core admission}
     Admission --> Worker[Spawn worker]
     Worker --> Kind{Task kind}
-    Kind -->|Prepare| Poses[Render reference poses in the main process with bounced light, else in a pool within budget and live memory]
-    Poses --> Ready[Variant inputs ready]
-    Ready --> Fits[Queue independent fits]
-    Fits --> Admission
-    Ready --> Bake[Queue bake with priority]
-    Bake --> Admission
-    Kind -->|Fit or bake| Ordered[Consume results in recipe order]
+    Kind -->|Reference set| Poses[Render reference poses in the main process with bounced light, else in a pool within budget and live memory]
+    Kind -->|Start, fit or bake| Made[Make it and its steps into the cache]
+    Poses --> Result
+    Made --> Result
+    Result --> Ready[Variant inputs linked once its start and references are kept]
+    Ready --> Fits[Ask for independent fits]
+    Fits --> Kept
+    Result --> Ordered[Consume results in recipe order]
     Ordered --> Measure[Queue measurement with priority]
     Measure --> Admission
     Kind -->|Measurement| Outputs[Ordered tables and sheets]

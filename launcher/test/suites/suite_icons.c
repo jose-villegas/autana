@@ -248,7 +248,7 @@ assert_placed_exactly(int scale) {
                           .format = IMAGE_MONO1,
                           .width = PLACED_ICON_W,
                           .height = PLACED_ICON_H,
-                          .stride = PLACED_ICON_STRIDE};
+                          .pitch = PLACED_ICON_STRIDE / CHAR_BIT};
     const int box_w = PLACED_ICON_W * scale + 4;
     const int box_h = PLACED_ICON_H * scale + 4;
     const int origin_x = ((box_w - ((PLACED_INK_X1 - PLACED_INK_X0) * scale)) / 2) - (PLACED_INK_X0 * scale);

@@ -1,6 +1,6 @@
 /*
  * screenshot, the byte-exact pieces of a framebuffer-as-BMP capture: the
- * BMP header and the base64 encoding below, pure arithmetic with no BSP, no
+ * BMP header, pure arithmetic with no BSP, no
  * USB and no framebuffer, built and checked on a host (see
  * test/suites/suite_screenshot.c).
  *
@@ -72,60 +72,4 @@ screenshot_bmp_header(uint8_t out[SCREENSHOT_BMP_HEADER_SIZE], int32_t width, in
     out[42] = out[43] = out[44] = out[45] = 0; /* biYPelsPerMeter */
     out[46] = out[47] = out[48] = out[49] = 0; /* biClrUsed */
     out[50] = out[51] = out[52] = out[53] = 0; /* biClrImportant */
-}
-
-/*
- * The console UART carries text, so raw pixel bytes cannot go down it
- * unescaped: a stray 0x0A reads as a line break, and many byte values are
- * not valid UTF-8 on their own. Base64 costs a third more over the wire
- * where a hex dump costs two thirds, which matters at 115200 baud for a
- * 322 KiB frame.
- *
- * RFC 4648, no line breaks of its own, '=' padding for
- * a partial group.
- */
-
-/* How many bytes screenshot_base64_encode() writes for `len` input bytes,
- * NOT including a NUL terminator, which callers wanting a C string must
- * budget for separately. */
-static inline int32_t
-screenshot_base64_encoded_len(int32_t len) {
-    return ((len + 2) / 3) * 4;
-}
-
-/* Encodes `len` bytes at `in` into `out`, which must hold at least
- * screenshot_base64_encoded_len(len) bytes. Does not NUL-terminate. Pure,
- * no chunking state between calls, which lets a caller call it once per
- * BMP row: every row is a multiple of 3 bytes, so each call ends on a
- * clean group boundary and the '=' padding a partial group needs never
- * occurs for that caller. Tested for a width where it DOES occur
- * (suite_screenshot.c), since a pure function's contract shouldn't depend
- * on its caller. */
-static inline void
-screenshot_base64_encode(const uint8_t* in, int32_t len, char* out) {
-    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    int32_t i = 0, o = 0;
-    for (; i + 3 <= len; i += 3) {
-        const uint32_t v = ((uint32_t)in[i] << 16) | ((uint32_t)in[i + 1] << 8) | in[i + 2];
-        out[o++] = table[(v >> 18) & 0x3F];
-        out[o++] = table[(v >> 12) & 0x3F];
-        out[o++] = table[(v >> 6) & 0x3F];
-        out[o++] = table[v & 0x3F];
-    }
-
-    const int32_t rem = len - i;
-    if (rem == 1) {
-        const uint32_t v = (uint32_t)in[i] << 16;
-        out[o++] = table[(v >> 18) & 0x3F];
-        out[o++] = table[(v >> 12) & 0x3F];
-        out[o++] = '=';
-        out[o++] = '=';
-    } else if (rem == 2) {
-        const uint32_t v = ((uint32_t)in[i] << 16) | ((uint32_t)in[i + 1] << 8);
-        out[o++] = table[(v >> 18) & 0x3F];
-        out[o++] = table[(v >> 12) & 0x3F];
-        out[o++] = table[(v >> 6) & 0x3F];
-        out[o++] = '=';
-    }
 }

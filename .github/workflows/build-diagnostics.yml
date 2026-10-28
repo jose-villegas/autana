@@ -59,7 +59,8 @@ jobs:
         with: {step: record}
 
   # An instrument rather than a gate (see sdkconfig.defaults.diag_perf), so
-  # a pull request does not wait on it: main and a manual run build it.
+  # a pull request does not wait on it: main and a manual run build it, with
+  # and without the frame laps nothing else compiles.
   build-perf-scope:
     name: Build (diagnostics perf scope)
     if: github.event_name != 'pull_request'
@@ -72,6 +73,7 @@ jobs:
           cache-name: diag-perf
           command: >-
             ../tools/autana build diag --perf-scope --project ..
+            && ../tools/autana build diag --perf-scope --frame-laps --project ..
 
   build-diagnostics:
     needs: inputs

@@ -135,6 +135,18 @@ menu "Launcher"
 
     endchoice
 
+    config LAUNCHER_SELFTEST_SCOPE_PERF_LAPS
+        bool "Perf - laps inside the frame stages"
+        depends on LAUNCHER_SELFTEST_SCOPE_PERF
+        help
+            Times the phases inside a frame stage with frame_laps
+            (profile/frame_laps.h), down to each vertex's and each
+            triangle's. A lap costs a few cycles, which adds up to a share
+            of the frame, so this image's frame times are not the perf
+            scope's: read its lap lines, not its budgets.
+
+            Set only by sdkconfig.defaults.diag_perf_laps (--frame-laps).
+
     config LAUNCHER_GFX_QSPI_80MHZ
         bool "Drive the panel's QSPI bus at 80 MHz until a saved choice says otherwise"
         default y

@@ -26,8 +26,11 @@
 static const recti_t box = {40, 100, 240, 60};
 static const char* const names[] = {"One", "Two", "Three"};
 static const uint8_t icon_bits[] = {0x80};
-static const image_t icon = {
-    .pixels = (void*)icon_bits, .format = IMAGE_MONO1, .width = 1, .height = 1, .stride = DRAW_IMAGE_MONO1_STRIDE_STEP};
+static const image_t icon = {.pixels = (void*)icon_bits,
+                             .format = IMAGE_MONO1,
+                             .width = 1,
+                             .height = 1,
+                             .pitch = DRAW_IMAGE_MONO1_STRIDE_STEP / CHAR_BIT};
 static const image_t* const icons[] = {&icon, NULL, &icon};
 static const char* const items[] = {"One", "Two", "Three"};
 static const uint32_t swatches[] = {UI_ICOUNT_RGB, UI_ICOUNT_RGB};

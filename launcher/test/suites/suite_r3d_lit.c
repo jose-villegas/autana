@@ -1703,8 +1703,8 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         {(const char*)b.work[0], r3d_pipeline_work_bytes()},
         {(const char*)b.work[1], r3d_pipeline_work_bytes()},
         {(const char*)b.draw, bytes - (size_t)((const char*)b.draw - scratch)},
-        {(const char*)gfx_render_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
-        {(const char*)gfx_render_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
+        {(const char*)gfx_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
+        {(const char*)gfx_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
     };
     size_t total = 0;
     for (size_t i = 0; i < sizeof parts / sizeof parts[0]; i++) {
@@ -1717,13 +1717,13 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         }
         total += parts[i].size;
     }
-    const char* const maps = (const char*)gfx_render_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
+    const char* const maps = (const char*)gfx_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
     TEST_ASSERT_TRUE((const char*)b.upscale == maps);
     const size_t padding = (size_t)((const char*)b.work[0] - maps);
     TEST_ASSERT_TRUE(padding < _Alignof(r3d_span_target_t));
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
-    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_color(&b.picture, 0) % 4);
-    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_depth(&b.picture, 0) % 4);
+    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_color(&b.picture, 0) % 4);
+    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_depth(&b.picture, 0) % 4);
     /* The census list holds every instance's slot and takes whole cache ways,
      * so the parts after it keep the cache sets they have without it. */
     TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));
@@ -1743,14 +1743,13 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(raster_scratch_bytes(&(raster_t){ONE_MESH(&p->mesh), .width = W, .height = H,
-                                                            .destination_width = 2 * W, .destination_height = 2 * H}));
-    TEST_ASSERT_NOT_NULL(upscaled);
-    TEST_ASSERT_NOT_NULL(want);
-    TEST_ASSERT_NOT_NULL(scratch);
     raster_t raster = {
         ONE_MESH(&p->mesh),         .width = W, .height = H, .clear = SKY, .upscaled = true, .destination_width = 2 * W,
         .destination_height = 2 * H};
+    char* scratch = malloc(raster_scratch_bytes(&raster));
+    TEST_ASSERT_NOT_NULL(upscaled);
+    TEST_ASSERT_NOT_NULL(want);
+    TEST_ASSERT_NOT_NULL(scratch);
     raster.scratch = scratch;
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
