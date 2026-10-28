@@ -45,7 +45,7 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | `render water tour` | plays the scripted tour the GIF below shows, for renders and repeatable timings |
 | `water.gravity_mm_s2` | the gravity the water runs under; below Earth's, so a 35 mm tank sloshes at a pace a frame can follow |
 | `water.grid_internal` | 1 places the simulation grid in internal RAM, for measuring against PSRAM; read when the scene enters |
-| `water.substeps` | substeps per frame (1 to 4), each an equal share of the frame's simulated time, at most 32 ms |
+| `water.substeps` | substeps per frame (1 to 4, default 2), each an equal share of the frame's simulated time, at most 32 ms |
 | `water.two_core` | 1 (default) runs half of the particle passes, the surface field, its meshing and the shading on core 1 (`job_run_split()`); 0 keeps them on one core |
 | `water.red_black` | 1 solves the pressure in red-black order, each colour split across both cores; 0 (default) in index order on one core |
 | `water.plane` | 1 draws a plane at the fill's volume instead of flip3, its tilt swinging toward gravity's like a damped pendulum (`water.slosh_decihz`, `water.slosh_damping_pct`): a far cheaper update, but a flat surface that lags, with no crests or splash; 0 (default) is flip3 |
