@@ -514,7 +514,7 @@ accelerate(flip3_t* f, float dt, vec3f_t accel) {
  * same toward +a, and SIDES_ENCLOSED when water or wall is on all six. */
 #define SIDES_OPEN_BITS 6
 #define SIDES_OPEN_SETS (1 << SIDES_OPEN_BITS)
-#define SIDES_ENCLOSED  (1u << SIDES_OPEN_BITS)
+#define SIDES_ENCLOSED  (1U << SIDES_OPEN_BITS)
 
 /* What every cell's relaxation shares: neighbour strides, inverse spacing
  * per axis, the drift push's gain per unit of density error, and for each
@@ -533,8 +533,8 @@ cell_sides(const flip3_t* f, int c, const relax_t* r) {
     for (int a = 0; a < 3; a++) {
         const uint8_t below = f->kind[c - r->stride[a]];
         const uint8_t above = f->kind[c + r->stride[a]];
-        sides |= (below != KIND_SOLID ? 1u : 0u) << (2 * a);
-        sides |= (above != KIND_SOLID ? 1u : 0u) << ((2 * a) + 1);
+        sides |= (below != KIND_SOLID ? 1U : 0U) << (2 * a);
+        sides |= (above != KIND_SOLID ? 1U : 0U) << ((2 * a) + 1);
         if (below == KIND_AIR || above == KIND_AIR) {
             sides &= ~SIDES_ENCLOSED;
         }
@@ -559,10 +559,10 @@ relax_cell(flip3_t* f, int c, unsigned sides, const relax_t* r) {
     }
     const float p = -div * r->gain[sides & (SIDES_OPEN_SETS - 1)];
     for (int a = 0; a < 3; a++) {
-        if ((sides & (1u << (2 * a))) != 0) {
+        if ((sides & (1U << (2 * a))) != 0) {
             faces[a][c] -= p * r->ih[a];
         }
-        if ((sides & (1u << ((2 * a) + 1))) != 0) {
+        if ((sides & (1U << ((2 * a) + 1))) != 0) {
             faces[a][c + r->stride[a]] += p * r->ih[a];
         }
     }
