@@ -6,18 +6,18 @@ One animation clip: keyed fields bound by object path ([Animation-Tracks.md](../
 ---
 config:
   packet:
-    bitsPerRow: 20
-    bitWidth: 44
+    bitsPerRow: 8
+    bitWidth: 110
 ---
 packet-beta
 title Header, 20 bytes at 0, one cell a byte
-0-1: "version = 3"
-2-3: "binding_count"
+0-1: "🟦 version = 3"
+2-3: "🟩 binding_count"
 4-7: "duration_ms"
-8-11: "strings_off"
-12-15: "strings_size"
-16: "root"
-17-19: "0"
+8-11: "🟧 strings_off"
+12-15: "🟩 strings_size"
+16: "🟪 root"
+17-19: "⬜ 0"
 ```
 
 ```mermaid
@@ -25,7 +25,7 @@ title Header, 20 bytes at 0, one cell a byte
 config:
   packet:
     bitsPerRow: 16
-    bitWidth: 44
+    bitWidth: 56
 ---
 packet-beta
 title Binding registry, one 28-byte row a binding from byte 20
@@ -34,9 +34,9 @@ title Binding registry, one 28-byte row a binding from byte 20
 4-7: "component"
 8-11: "path_hash"
 12-15: "field_hash"
-16-19: "times_off"
-20-23: "values_off"
-24-25: "keys"
+16-19: "🟧 times_off"
+20-23: "🟧 values_off"
+24-25: "🟩 keys"
 26: "type"
 27: "interp"
 ```

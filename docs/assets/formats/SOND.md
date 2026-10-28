@@ -6,22 +6,22 @@ A mono 22,050 Hz sound, PCM16 or IMA-ADPCM ([Sound-Assets.md](../../audio/Sound-
 ---
 config:
   packet:
-    bitsPerRow: 16
-    bitWidth: 44
+    bitsPerRow: 8
+    bitWidth: 110
 ---
 packet-beta
 title Header, 32 bytes at 0, one cell a byte
-0-1: "version = 1"
-2: "format"
-3: "channels"
+0-1: "🟦 version = 1"
+2: "🟪 format"
+3: "🟩 channels"
 4-7: "sample_rate"
-8-11: "frames"
+8-11: "🟩 frames"
 12-15: "loop_start"
 16-19: "loop_end"
 20-21: "block_frames"
-22-23: "0"
-24-27: "0"
-28-31: "data_off"
+22-23: "⬜ 0"
+24-27: "⬜ 0"
+28-31: "🟧 data_off"
 ```
 
 ```mermaid
@@ -47,7 +47,7 @@ packet-beta
 title Content: ADPCM block, 4 + (block_frames - 1) / 2 bytes from data_off
 0-1: "int16 predictor"
 2: "step index"
-3: "0"
+3: "⬜ 0"
 4-7: "codes, two a byte, low nibble first"
 ```
 

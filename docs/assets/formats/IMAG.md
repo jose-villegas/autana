@@ -11,20 +11,20 @@ config:
 ---
 packet-beta
 title Header, 16 bytes at 0, one cell a byte
-0-1: "version = 1"
-2-3: "format"
+0-1: "🟦 version = 1"
+2-3: "🟪 format"
 4-5: "width"
 6-7: "height"
 8-11: "stride"
-12-15: "pixels_off"
+12-15: "🟧 pixels_off"
 ```
 
 ```mermaid
 ---
 config:
   packet:
-    bitsPerRow: 8
-    bitWidth: 84
+    bitsPerRow: 4
+    bitWidth: 120
 ---
 packet-beta
 title Content: one RGB565 pixel (format 1), 2 bytes from pixels_off
@@ -35,8 +35,8 @@ title Content: one RGB565 pixel (format 1), 2 bytes from pixels_off
 ---
 config:
   packet:
-    bitsPerRow: 8
-    bitWidth: 84
+    bitsPerRow: 2
+    bitWidth: 240
 ---
 packet-beta
 title Content: eight 1-bit pixels (format 2), 1 byte from pixels_off

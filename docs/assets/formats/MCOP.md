@@ -17,11 +17,11 @@ config:
 ---
 packet-beta
 title MCOP header, 16 bytes at 0, one cell a byte
-0-1: "version"
-2-3: "reserved"
-4-7: "copy_count"
-8-11: "strings_off"
-12-15: "strings_size"
+0-1: "🟦 version"
+2-3: "⬜ reserved"
+4-7: "🟩 copy_count"
+8-11: "🟧 strings_off"
+12-15: "🟩 strings_size"
 ```
 
 | Part | At | Size |

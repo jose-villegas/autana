@@ -13,10 +13,10 @@ config:
 ---
 packet-beta
 title Header, 16 bytes at 0, one cell a byte
-0-3: "magic ABDR"
-4-7: "crc32"
-8-11: "version = 2"
-12-15: "pack_count"
+0-3: "🟦 magic ABDR"
+4-7: "🟦 crc32"
+8-11: "🟦 version = 2"
+12-15: "🟩 pack_count"
 ```
 
 ```mermaid
@@ -29,8 +29,8 @@ config:
 packet-beta
 title Pack registry, one 40-byte row a pack from byte 16
 0-31: "name, NUL padded"
-32-35: "offset"
-36-39: "size"
+32-35: "🟧 offset"
+36-39: "🟩 size"
 ```
 
 | Part | At | Size |

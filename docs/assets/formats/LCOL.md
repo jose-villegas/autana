@@ -19,10 +19,10 @@ config:
 ---
 packet-beta
 title Header, 12 bytes at 0, one cell a byte
-0-1: "version = 1"
-2-3: "encoding"
-4-7: "set_count"
-8-11: "count"
+0-1: "🟦 version = 1"
+2-3: "🟪 encoding"
+4-7: "🟩 set_count"
+8-11: "🟩 count"
 ```
 
 | Encoding | Stride | Unit | Cell layout |
