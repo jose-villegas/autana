@@ -13,6 +13,7 @@ carry functions nothing calls yet.
 | `include/math/geometry/` | Shapes and their queries: half-open rectangles (`rectf`, `recti`, `rects`, `rectx`) and oriented planes (`planef`, `planex`), instantiated from geometry templates |
 | `include/math/stats/` | Order statistics of sample arrays: percentile and median; [stats reference](../../../docs/math/Stats.md) |
 | `include/math/signal/` | Signal processing on sample blocks: Goertzel single-bin detection; [signal reference](../../../docs/math/Signal.md) |
+| `include/math/text/` | Canonical format and parse pairs; [text reference](../../../docs/math/Text.md) |
 | `src/` | The few functions that are not inline |
 | `bench/` | Shared host smoke, ESP-IDF hardware timing and QEMU instruction workloads |
 | `test_apps/` | [Minimal ESP-IDF test and benchmark app](test_apps/README.md) |
@@ -114,4 +115,6 @@ header's opening comment; `--check` verifies it.
 | [include/math/stats/stats_template.h](include/math/stats/stats_template.h) | stats_template: order statistics of a sample array for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/stats/statsf.h](include/math/stats/statsf.h) | statsf: order statistics of float samples. |
 | [include/math/stats/statsi.h](include/math/stats/statsi.h) | statsi: order statistics of int32 samples, such as timings in microseconds or cycles. |
+| [include/math/text/math_text.h](include/math/text/math_text.h) | math_text: canonical, allocation-free text for math values. |
+| [include/math/text/text_template.h](include/math/text/text_template.h) | text_template: canonical component and geometry text over scalar OPS. |
 <!-- /generated: package-math-headers -->
