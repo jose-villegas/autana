@@ -191,7 +191,7 @@ jobs:
       # The images are rendered and on the branch (or match main) from here on, so the record
       # comes before the pull request calls: a failed API call cannot discard a finished render.
       - name: Record the inputs these images were made from
-        if: steps.render.outcome == 'success' && (steps.render.outputs.count == '0' || steps.push.outcome == 'success')
+        if: steps.gpu.outputs.rendered == 'true' && steps.render.outcome == 'success' && (steps.render.outputs.count == '0' || steps.push.outcome == 'success')
         id: record
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -200,14 +200,14 @@ jobs:
           retention-days: ${{ env.RECORD_RETENTION_DAYS }}
 
       - name: Nothing changed, close a stale GPU refresh PR
-        if: steps.record.outcome == 'success' && steps.push.outputs.pushed != 'true'
+        if: steps.gpu.outputs.rendered == 'true' && steps.record.outcome == 'success' && steps.push.outputs.pushed != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           "$GPU_ENV/bin/python3" scripts/ci/refresh_pr.py close             "Every GPU-rendered image and generated table already matches main; nothing left to refresh."
 
       - name: Open or update the GPU refresh PR
-        if: steps.record.outcome == 'success' && steps.push.outputs.pushed == 'true'
+        if: steps.gpu.outputs.rendered == 'true' && steps.record.outcome == 'success' && steps.push.outputs.pushed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
