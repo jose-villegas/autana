@@ -17,6 +17,8 @@ class MetricsTests(unittest.TestCase):
         self.assertLess(m.low_band_db(self.ref, 200, self.rate), -100)
         self.assertEqual(m.clip_count(np.array([-1., -.5, 0., 1.])), 2)
         self.assertAlmostEqual(m.active_level_db(self.ref, self.rate), -16.9897, delta=.1)
+        self.assertAlmostEqual(m.noise_dbfs(self.ref), -16.9897, places=3)
+        self.assertEqual(m.noise_dbfs(np.zeros(4)), m.DB_FLOOR)
         self.assertAlmostEqual(m.transient_peak_db(self.ref, 1, 100, self.rate), -13.9794, places=3)
     def test_clip_rails(self):
         pcm = np.array([-32768, -32767, 0, 32766, 32767]) / 32768
