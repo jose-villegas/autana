@@ -82,8 +82,17 @@ extern const char* const flip3_stage_names[FLIP3_STAGE_COUNT];
 typedef int64_t (*flip3_clock_fn)(void);
 
 /* The places the step and flip3_field() split their work, so a host can
- * keep a cut for each. */
-enum { FLIP3_SPLIT_SPLAT, FLIP3_SPLIT_GATHER, FLIP3_SPLIT_RED_BLACK, FLIP3_SPLIT_FIELD, FLIP3_SPLIT_COUNT };
+ * keep a cut for each: flip3_field()'s sampling and its three smoothing
+ * passes are FLIP3_SPLIT_FIELD onward. */
+#define FLIP3_FIELD_PASSES 4
+
+enum {
+    FLIP3_SPLIT_SPLAT,
+    FLIP3_SPLIT_GATHER,
+    FLIP3_SPLIT_RED_BLACK,
+    FLIP3_SPLIT_FIELD,
+    FLIP3_SPLIT_COUNT = FLIP3_SPLIT_FIELD + FLIP3_FIELD_PASSES
+};
 
 /* A stage's work over items [from, to). Two ranges never write the same
  * memory, so they may run at once. */

@@ -42,7 +42,8 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | Command or tunable | Does |
 |---|---|
 | `render water fill <percent>` | sets the fill; the water refills on the next frame |
-| `render water tour` | plays the scripted tour the GIF below shows, for renders and repeatable timings |
+| `render water tour` | plays the scripted tour, for repeatable timings: upright, tipped right and left, laid back, flat, toward the viewer, upright, then shaken |
+| `render water swing` | plays the swing the GIF below shows: rocked side to side, hard and then calmer, leaned back throughout |
 | `water.gravity_mm_s2` | the gravity the water runs under; below Earth's, so a 35 mm tank sloshes at a pace a frame can follow |
 | `water.grid_internal` | 1 places the simulation grid in internal RAM, for measuring against PSRAM; read when the scene enters |
 | `water.substeps` | substeps per frame (1 to 4, default 2), each an equal share of the frame's simulated time, at most 32 ms |
@@ -63,7 +64,7 @@ Each frame, while the last one goes out to the panel:
 | Clusters and a tree the raster walks | `render/dynamic/r3d_dynamic_mesh.h` |
 | Drawn as the water entity | `scene_renderer_set_mesh()` |
 
-![The water scene's scripted tour](../../../../../docs/images/overview/render-lab-water.gif)
+![The water scene's swing](../../../../../docs/images/overview/render-lab-water.gif)
 
 `run_water_perf_suite` plays the tour ([`tests/suite_water_perf.c`](../tests/suite_water_perf.c))
 under each experiment's tunables and times every stage of the update, `flip3_step()`'s
@@ -217,7 +218,7 @@ be checked to have measured the same thing.
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and, more slowly, back to the first, as the camera turns once around it |
-| `render-lab-water.gif` | the water scene's scripted tour (`render water tour`): upright, tipped right and left, laid back, flat, toward the viewer, upright, then shaken; portrait, in the other clips' frame |
+| `render-lab-water.gif` | the water scene's swing (`render water swing`): rocked side to side, hard and then calmer, leaned back so the surface shows; portrait, in the other clips' frame |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 
