@@ -1228,7 +1228,7 @@ def mic(args):
     parser.add_argument("action", choices=("record",))
     parser.add_argument("ms", type=int)
     parser.add_argument("--settle", type=int)
-    parser.add_argument("--at", nargs=3, action="append", type=lambda word: int(word, 0), default=[])
+    parser.add_argument("--at", nargs="+", action="append", type=lambda word: word if word == "tone" else int(word, 0), default=[])
     parser.add_argument("-o", "--out", required=True)
     parser.add_argument("--json", action="store_true")
     parsed = parser.parse_args(args)

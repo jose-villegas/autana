@@ -1,5 +1,4 @@
 """Analyze playback WAV takes and render per-arm DSP tables."""
-import json
 import math
 from statistics import median
 from pathlib import Path
@@ -7,6 +6,7 @@ from pathlib import Path
 from audio.mic import mic_metrics as metrics
 from audio.mic.playback_dsp_capture import arms, TONE_HZ, LOW_TONE_HZ, GAIN
 from audio_doc_blocks import number
+from autana_runner import recorded_take
 from build.c_header import read_define
 
 BLOCK_SAMPLES = read_define(Path(__file__).resolve().parents[3] / 'main/audio/audio_codec.h',
@@ -58,11 +58,7 @@ def playback_data(path, records):
         elif command[:2] == ['mic', 'record']:
             if current is None:
                 raise ValueError('take without arm')
-            filename = command[command.index('-o') + 1]
-            if Path(filename).name != filename or '\\' in filename:
-                raise ValueError('take must be beside capture')
-            state = json.loads(reply) if isinstance(reply, str) else reply
-            current['takes'].append(take_metrics(path.parent / filename, state,
+            current['takes'].append(take_metrics(*recorded_take(path, command, reply),
                                                  current['setting']['block'].endswith('-ramp')))
         elif command[:1] == ['tone']:
             if current is None or reply['hz'] != int(command[1]):
