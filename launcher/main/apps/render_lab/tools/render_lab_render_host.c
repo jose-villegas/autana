@@ -184,11 +184,20 @@ options(int argc, char** argv) {
         touch[1].point = touch[0].point;
         tap = true;
     }
-    if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)
-        || !option_value(argc, argv, "--camera", &render_lab_start_camera)
-        || !option_value(argc, argv, "--scale", &scale) || !option_value(argc, argv, "--size", &size)
-        || !option_value(argc, argv, "--small-fill", &small_fill) || !option_value(argc, argv, "--dump", &dump_dir)) {
-        return false;
+
+    const struct {
+        const char* name;
+        const char** out;
+    } values[] = {
+        {"--scene", &scene},   {"--view", &view}, {"--camera", &render_lab_start_camera},
+        {"--scale", &scale},   {"--size", &size}, {"--small-fill", &small_fill},
+        {"--dump", &dump_dir},
+    };
+
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
+        if (!option_value(argc, argv, values[i].name, values[i].out)) {
+            return false;
+        }
     }
     if (size != NULL
         && (!recti_parse(size, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
