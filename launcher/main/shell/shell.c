@@ -31,7 +31,6 @@
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
 #include "shell/shell_frame.h"
-#include "sound/sound_engine.h"
 #include "ui/ui.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
