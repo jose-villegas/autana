@@ -5,6 +5,7 @@ reflashing, and refits the cost model on every scenario.
 
     python launcher/tools/r3d/dynres_replay.py CAPTURE --cc CC [--json OUT]
         [--targets MS,...] [--margins PERCENT,...] [--holds MS,...] [--top STEP] [--first STEP]
+        [--tables DIR]
 
 CAPTURE is a device log holding the `dynres_steps` lines of
 run_render_lab_dynres_steps_suite: every scenario's path drawn with each
@@ -16,7 +17,10 @@ that step. dynres_replay_probe.c runs the engine's own fit and predictor.
 It prints the refit model and its miss per scenario and step (the up margin
 is set at the 90th percentile of |miss|), then for each
 target, margin and step-up delay each scenario's whole-frame mean, p95 and
-spread against the fixed scale at the top step.
+spread against the fixed scale at the top step. --tables writes the docs
+generator's blocks: dynres-steps.md, each scenario's mean whole frame and
+compose at every step, and dynres-flight.md, the first replay of each
+scenario against the fixed scale.
 """
 
 import argparse
@@ -138,6 +142,31 @@ def flight(scenario, replayed, target_ms):
             "finer_miss": percentile(finer, MARGIN_SHARE) if finer else 0.0}
 
 
+def steps_table(scenarios, ladder):
+    head = "| Scenario | " + " | ".join(f"{w}x{h}" for w, h in ladder) + " |\n|---|" + "---|" * len(ladder) + "\n"
+    rows = [f"| {name} | " + " | ".join(f"{statistics.fmean(f[0] for f in steps[s]) / US_PER_MS:.1f}"
+                                         for s in range(len(ladder))) + " |"
+            for name, steps in scenarios.items() if len(steps) == len(ladder)]
+    compose = [statistics.fmean(f[2] for steps in scenarios.values() if s in steps for f in steps[s]) / US_PER_MS
+               for s in range(len(ladder))]
+    rows.append("| compose, every scenario | " + " | ".join(f"{v:.1f}" for v in compose) + " |")
+    return head + "\n".join(rows) + "\n\nMean whole frame in milliseconds; compose is the upscale into the panel's picture.\n"
+
+
+def flight_table(results, ladder):
+    head = ("| Scenario | Fixed mean | p95 | sd | Dynamic mean | p95 | sd | max | Switches | Time at each size |\n"
+            "|---|---|---|---|---|---|---|---|---|---|\n")
+    seen, rows = set(), []
+    for r in results:
+        if r["scenario"] in seen:
+            continue
+        seen.add(r["scenario"])
+        at = ", ".join(f"{ladder[s][0]}x{ladder[s][1]} {v:.0%}" for s, v in r["share"].items())
+        rows.append(f"| {r['scenario']} | {r['fixed']['mean']:.1f} | {r['fixed']['p95']:.1f} | {r['fixed']['sd']:.1f} | "
+                    f"{r['mean']:.1f} | {r['p95']:.1f} | {r['sd']:.1f} | {r['max']:.1f} | {r['switches']} | {at} |")
+    return head + "\n".join(rows) + "\n\nWhole frame in milliseconds.\n"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("capture")
@@ -153,6 +182,7 @@ def main():
     parser.add_argument("--recovery", type=int, help="the first recovery-only step of --steps; none when omitted")
     parser.add_argument("--lead", help="the scenario reported first")
     parser.add_argument("--json", type=pathlib.Path)
+    parser.add_argument("--tables", type=pathlib.Path, help="directory for the docs generator's blocks")
     args = parser.parse_args()
     chosen = ([int(v) for v in args.steps.split(",")] if args.steps
               else list(range(read_define(DYNRES, "RENDER_LAB_LADDER_STEPS"))))
@@ -193,6 +223,10 @@ def main():
                 print(f"  target {target} margin {margin} hold {up}: mean {f['mean']:.1f} p95 {f['p95']:.1f} "
                       f"sd {f['sd']:.1f} max {f['max']:.1f} switches {r['switches']} over {f['over']:.0%} "
                       f"p{MARGIN_SHARE * PERCENT:.0f} miss drawn {f['live_miss']:.1%} finer {f['finer_miss']:.1%} | {at}")
+    if args.tables:
+        args.tables.mkdir(parents=True, exist_ok=True)
+        (args.tables / "dynres-steps.md").write_text(steps_table(scenarios, ladder), encoding="utf-8")
+        (args.tables / "dynres-flight.md").write_text(flight_table(results, ladder), encoding="utf-8")
     if args.json:
         args.json.write_text(json.dumps({"fit": fitted, "results": results}, indent=1), encoding="utf-8")
 
