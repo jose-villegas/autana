@@ -193,6 +193,43 @@ typedef struct {
     int64_t frame, present, warp1, warp1_max, warp2, warp2_max, fill, holes, pixels;
 } totals_t;
 
+/* The test's sums; static, so the deep frame draw below has the stack to itself. */
+static totals_t sum;
+
+/* The frame drawn at `t_ms` warped one display step on, timed. Not inlined: its
+ * views, lenses and map are off the stack while the frame draws. */
+static __attribute__((noinline)) void
+time_warp(scene_t* scene, scene_entity_t camera, const camera_t* lens, uint32_t t_ms) {
+    const raster_t* raster = &render_context_main()->raster;
+    const render_view_t now = view_at(scene, camera, lens, t_ms);
+    const render_view_t next = view_at(scene, camera, lens, t_ms + FRAMEGEN_AHEAD_MS);
+    r3d_lens_t before;
+    r3d_lens_t after;
+    raster_lens(raster, &now, 1, &before);
+    raster_lens(raster, &next, 1, &after);
+    const mat4f_t map = mat4f_mul_affine(after.m, mat4f_invert_affine(before.m));
+    const warp_rows_t job = {raster_color(raster),
+                             raster_depth(raster),
+                             target_colour,
+                             target_depth,
+                             raster->width,
+                             raster->height,
+                             0,
+                             raster->height,
+                             &map,
+                             before.project};
+    const int64_t one = warp(job, false);
+    const int64_t two = warp(job, true);
+    const int64_t fill_start = timing_now_us();
+    sum.holes += fill_previous(&job);
+    sum.fill += timing_now_us() - fill_start;
+    sum.warp1 += one;
+    sum.warp1_max = one > sum.warp1_max ? one : sum.warp1_max;
+    sum.warp2 += two;
+    sum.warp2_max = two > sum.warp2_max ? two : sum.warp2_max;
+    sum.pixels += (int64_t)raster->width * raster->height;
+}
+
 static void
 test_generated_frame_cost(void) {
     render_lab_test_enter(&saved, scenario->scene->key);
@@ -220,46 +257,17 @@ test_generated_frame_cost(void) {
     TEST_ASSERT_NOT_NULL(target_depth);
     (void)render_lab_test_frame_dt(0, false, NULL); /* warm-up, not sampled */
 
-    const raster_t* raster = &render_context_main()->raster;
-    totals_t sum = {0};
+    sum = (totals_t){0};
     for (int i = 0; i < FRAMEGEN_POSES; i++) {
         const uint32_t t_ms = (uint32_t)(((uint64_t)(duration_ms - FRAMEGEN_AHEAD_MS) * (uint64_t)i) / FRAMEGEN_POSES);
-        const render_view_t now = view_at(scene, camera, lens, t_ms);
+        TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, t_ms));
         const int64_t start = timing_now_us();
         (void)render_lab_test_frame_dt(0, false, NULL);
-        const int64_t frame_us = timing_now_us() - start;
-        const render_context_frame_t f = render_context_frame(render_context_main());
-        TEST_ASSERT_EQUAL_INT(size.width, raster->width);
-        TEST_ASSERT_EQUAL_INT(size.height, raster->height);
-        const render_view_t next = view_at(scene, camera, lens, t_ms + FRAMEGEN_AHEAD_MS);
-        r3d_lens_t before;
-        r3d_lens_t after;
-        raster_lens(raster, &now, 1, &before);
-        raster_lens(raster, &next, 1, &after);
-        const mat4f_t map = mat4f_mul_affine(after.m, mat4f_invert_affine(before.m));
-        const warp_rows_t job = {raster_color(raster),
-                                 raster_depth(raster),
-                                 target_colour,
-                                 target_depth,
-                                 raster->width,
-                                 raster->height,
-                                 0,
-                                 raster->height,
-                                 &map,
-                                 before.project};
-        const int64_t one = warp(job, false);
-        const int64_t two = warp(job, true);
-        const int64_t fill_start = timing_now_us();
-        const int holes = fill_previous(&job);
-        sum.fill += timing_now_us() - fill_start;
-        sum.frame += frame_us;
-        sum.present += f.upscale_us;
-        sum.warp1 += one;
-        sum.warp1_max = one > sum.warp1_max ? one : sum.warp1_max;
-        sum.warp2 += two;
-        sum.warp2_max = two > sum.warp2_max ? two : sum.warp2_max;
-        sum.holes += holes;
-        sum.pixels += (int64_t)pixels;
+        sum.frame += timing_now_us() - start;
+        sum.present += render_context_frame(render_context_main()).upscale_us;
+        TEST_ASSERT_EQUAL_INT(size.width, render_context_main()->raster.width);
+        TEST_ASSERT_EQUAL_INT(size.height, render_context_main()->raster.height);
+        time_warp(scene, camera, lens, t_ms);
     }
     const int64_t hundredths = (sum.holes * FRAMEGEN_PERCENT * FRAMEGEN_PERCENT) / sum.pixels;
     ESP_LOGI(TAG, FRAMEGEN_LINE, scenario->scene->key, size.width, size.height, FRAMEGEN_POSES,
