@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "core/memory.h"
+#include "render/framegen/framegen.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
 #include "render/render_view.h"
@@ -29,13 +30,16 @@
 
 /* The last frame: its step (-1 at the fixed scale), the size it drew at,
  * what culling kept and, under dynamic resolution only, what its draw (with
- * any census) and upscale cost: at the fixed scale nothing is timed. */
+ * any census) and upscale cost: at the fixed scale nothing is timed. A
+ * generated frame keeps the drawn one's size, step and stats; its draw_us is
+ * the warp's, always timed. */
 typedef struct {
     int step;
     int width, height;
     raster_stats_t stats;
     int32_t draw_us, upscale_us;
     int32_t predicted_us;
+    bool generated; /* warped from the last drawn frame, not drawn */
 } render_context_frame_t;
 
 typedef struct {
@@ -75,6 +79,13 @@ typedef struct {
     raster_attachment_t debug_view_attachment;
     const raster_attachment_t* debug_view_attached[1];
     render_context_frame_t frame;
+    /* Frame generation (render/framegen): one generated frame after each
+     * drawn one. The raster holds the drawn frame, through kept_view, until a
+     * generated frame is written over it. */
+    bool generating;
+    bool kept;
+    render_view_t kept_view;
+    framegen_target_t framegen;
 } render_context_t;
 
 /* The engine's own context, the one the scene manager draws through. */
@@ -98,6 +109,11 @@ void render_context_forget(render_context_t* context);
 /* The share of the destination's size each axis draws at, upscaled on the
  * way out; it holds while dynamic resolution is off. */
 void render_context_set_scale(render_context_t* context, int percent);
+
+/* Frame generation: after each drawn frame, the next one is warped from it
+ * to its own view instead of drawn. A debug view, a camera cut or a new
+ * viewport draws the next frame. */
+void render_context_set_frame_generation(render_context_t* context, bool on);
 
 /* Opts in: each frame draws at a step of `config` to hold its budget, chosen
  * by the stepped controller, or by the predictor when `model` is not NULL.
