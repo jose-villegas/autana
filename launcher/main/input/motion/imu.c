@@ -41,14 +41,22 @@ static const char* TAG = "imu";
 _Static_assert(IMU_READ_HZ % IMU_FIFO_DRAIN_HZ == 0, "FIFO drains need whole read periods");
 _Static_assert(IMU_DRAIN_MS* MATH_US_PER_MS < IMU_FIFO_SAMPLES * IMU_SAMPLE_US,
                "FIFO drain period must fit retained history");
-/* The bus lock has no priority inheritance: boost drains so they cannot wait indefinitely
- * behind the job worker. Equal priority shares the core by time slicing without preempting the render job. */
+/* Ticks start at IMU_TASK_PRIORITY and wait while the core-1 job worker runs.
+ * Bus work rises to worker priority: the IDF bus lock lacks priority inheritance;
+ * a waiting drain holds the bus and FIFO read mode, discarding arrivals.
+ * Equal priority time-slices with the worker at ticks instead of preempting it
+ * on every wake. A drain delayed past IMU_FIFO_SAMPLES * IMU_SAMPLE_US surfaces
+ * as a gap (gravity restart). */
 #define IMU_TASK_CORE         JOB_CORE1
 #define IMU_TASK_PRIORITY     (JOB_CORE1_PRIORITY - 1)
 #define IMU_TASK_BUS_PRIORITY JOB_CORE1_PRIORITY
 _Static_assert(IMU_TASK_PRIORITY > tskIDLE_PRIORITY, "IMU task must run above idle priority");
 _Static_assert(IMU_TASK_BUS_PRIORITY < configMAX_PRIORITIES, "IMU bus priority must fit task priorities");
-_Static_assert(IMU_TASK_BUS_PRIORITY <= JOB_CORE1_PRIORITY, "IMU bus boost must not preempt the core-1 job");
+_Static_assert(IMU_TASK_PRIORITY < IMU_TASK_BUS_PRIORITY && IMU_TASK_BUS_PRIORITY <= JOB_CORE1_PRIORITY,
+               "IMU bus boost must be above tick priority and never above the job worker");
+#if !configUSE_TIME_SLICING
+#error "IMU drains rely on time slicing with the job worker"
+#endif
 /* Board dev stats: at worst 1572 of 3072 stack bytes free, idle and under load,
  * with no bus error. The bus-error path (driver ESP_LOGE) was not exercised. */
 #define IMU_TASK_STACK_BYTES (3 * 1024)
@@ -567,8 +575,6 @@ imu_task(void* arg) {
         const TickType_t period = requested_period > 0 ? requested_period : 1;
         const TickType_t drain_ticks = pdMS_TO_TICKS(drain_ms) / period;
         const bool drain_due = read_ticks == 0 || read_ticks >= drain_ticks;
-        /* Without bus-lock priority inheritance, boost to share the core by time slicing:
-         * drains progress alongside the job worker without preempting the render job. */
         vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (sensor_present) {

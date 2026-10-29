@@ -10,13 +10,13 @@ engine creates are:
 
 | Task | Core | Priority | Created in |
 |---|---|---|---|
-| present (`gfx_present`) | 1 | 5 | [`gfx_present.c:299`](../../launcher/main/gfx/present/gfx_present.c#L299) |
-| job (`core1_job`) | 1 | 3 | [`job.c:84`](../../launcher/main/core/job.c#L84) |
-| IMU | 1 | `JOB_CORE1_PRIORITY - 1`, raised to `JOB_CORE1_PRIORITY` for bus work | [`imu.c:602`](../../launcher/main/input/motion/imu.c#L602) |
-| sound mixer | 1 | 6 | [`sound_mixer_device.c:443`](../../launcher/main/sound/sound_mixer_device.c#L443) |
-| touch poll | any | 6 | [`touch.c:264`](../../launcher/main/input/touch/touch.c#L264) |
+| present (`gfx_present`) | 1 | 5 | [`gfx_present.c:295`](../../launcher/main/gfx/present/gfx_present.c#L295) |
+| job (`core1_job`) | 1 | 3 | [`job.c:122`](../../launcher/main/core/job.c#L122) |
+| IMU | 1 | 2, 3 during bus work | [`imu.c:608`](../../launcher/main/input/motion/imu.c#L608) |
+| sound mixer | 1 | 6 | [`sound_mixer_device.c:485`](../../launcher/main/sound/sound_mixer_device.c#L485) |
+| touch poll | any | 6 | [`touch.c:259`](../../launcher/main/input/touch/touch.c#L259) |
 | buttons poll | any | 5 | [`buttons.c:79`](../../launcher/main/input/buttons/buttons.c#L79) |
-| console | any | 4 | [`console.c:236`](../../launcher/main/console/console.c#L236) |
+| console | any | 4 | [`console.c:225`](../../launcher/main/console/console.c#L225) |
 
 Pin a task (`...PinnedToCore`) only when it must not share a core with the frame loop. A
 task that only waits on I/O uses plain `xTaskCreate`. An app's `update` never blocks; see
@@ -61,5 +61,5 @@ updates ([`touch.c:45`](../../launcher/main/input/touch/touch.c#L45)).
 ## Starting tasks
 
 - Create static state first and the task last, and check the return.
-- A task that fails to start logs and leaves its feature off ([`touch.c:264`](../../launcher/main/input/touch/touch.c#L264), [`console.c:236`](../../launcher/main/console/console.c#L236)).
+- A task that fails to start logs and leaves its feature off ([`touch.c:259`](../../launcher/main/input/touch/touch.c#L259), [`console.c:225`](../../launcher/main/console/console.c#L225)).
 - Use `xTaskCreateStaticPinnedToCore` with a stack from `memory_alloc(..., MEMORY_INTERNAL)` when the stack must stay in internal RAM ([`job.c:76`](../../launcher/main/core/job.c#L76)).
