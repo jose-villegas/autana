@@ -59,7 +59,7 @@ bake = true
 visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit.prune]
-budget = 11952
+budget = 12393
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
@@ -85,7 +85,7 @@ bake = true
 visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit.prune]
-budget = 5946
+budget = 6347
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
@@ -112,7 +112,7 @@ shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
 visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit.prune]
-budget = 11952
+budget = 12393
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
