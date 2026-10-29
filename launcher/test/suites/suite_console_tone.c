@@ -5,6 +5,8 @@
 #include <string.h>
 #include "clock_fake.h"
 #include "input/motion/imu.h"
+#include "input/motion/imu_odr.h"
+#include "input/motion/imu_queue.h"
 #include "input/motion/imu_vibration.h"
 #include "input_fake.h"
 #include "math/scalar/math_db.h"
@@ -227,6 +229,8 @@ static struct {
     bool shake_short;
 
     struct {
+        imu_queue_t* queue;
+        bool fifo_gap;
         bool enabled;
         bool draining;
         bool oversupply;
@@ -283,6 +287,7 @@ TEST_CLOCK_WRAP(struct timespec* ts, int base) {
 
 static void
 reset_device(void) {
+    free(device.pulse.queue);
     memset(&device, 0, sizeof device);
 }
 
@@ -509,9 +514,22 @@ audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopb
     return true;
 }
 
+static bool
+tone_configure_odr(unsigned odr_code) {
+    device.odr_code = odr_code;
+    return true;
+}
+
 bool
 imu_set_odr(unsigned odr_code) {
-    device.odr_code = odr_code;
+    if (device.pulse.queue) {
+        imu_odr_t odr = {.requested = odr_code, .applied = device.odr_code};
+        if (imu_odr_apply(&odr, tone_configure_odr, &device.pulse.fifo_gap) != IMU_ODR_UNCHANGED) {
+            imu_queue_set_rate(device.pulse.queue, odr.applied);
+        }
+    } else {
+        device.odr_code = odr_code;
+    }
     return true;
 }
 
@@ -543,6 +561,13 @@ imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t 
         }
         out[i] = (imu_sample_t){.ax = i % 2 ? (int16_t)-counts : counts};
         lost_before[i] = device.pulse.draining && i == 0 && device.pulse.burst == device.pulse.lost_burst;
+    }
+    if (device.pulse.queue) {
+        if (device.pulse.draining) {
+            imu_queue_push_drain(device.pulse.queue, out, count, 0, *gap || device.pulse.fifo_gap);
+            device.pulse.fifo_gap = false;
+        }
+        return imu_queue_take_at(device.pulse.queue, odr_code, out, lost_before, gap);
     }
     return count;
 }
@@ -793,6 +818,21 @@ test_tone_pulse_selects_onset_to_end_and_accepts_ended_voice(void) {
 }
 
 static void
+test_tone_pulse_measures_after_odr_switch(void) {
+    const console_tone_args_t args = pulse_fixture(TEST_PULSE_MS);
+    suite_add_test_cleanup(reset_device);
+    device.odr_code = IMU_ODR_CODE;
+    device.pulse.queue = calloc(1, sizeof *device.pulse.queue);
+    TEST_ASSERT_NOT_NULL(device.pulse.queue);
+    char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
+    TEST_ASSERT_NOT_NULL(line);
+    TEST_ASSERT_NULL(console_tone_check(&args, line));
+    const bool measured = strstr(line, "shake n/a") == NULL && strstr(line, "imu_gaps 0") != NULL;
+    free(line);
+    TEST_ASSERT_TRUE(measured);
+}
+
+static void
 test_tone_pulse_gap_placement(void) {
     enum { last_pulse_burst = (TEST_PULSE_MS * MATH_US_PER_MS / (TEST_PULSE_DRAIN_SAMPLES * IMU_BUZZ_SAMPLE_US)) + 1 };
 
@@ -965,6 +1005,7 @@ run_console_tone_suite(void) {
     RUN_TEST(test_melody_console_play_and_check);
     RUN_TEST(test_melody_console_failure_and_usage);
     RUN_TEST(test_melody_console_later_failures);
+    RUN_TEST(test_tone_pulse_measures_after_odr_switch);
     RUN_TEST(test_tone_pulse_gap_placement);
     RUN_TEST(test_tone_pulse_too_few_samples);
     RUN_TEST(test_tone_pulse_accumulation_is_bounded);

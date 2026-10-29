@@ -493,7 +493,7 @@ apply_odr_request(void) {
     portENTER_CRITICAL(&lock);
     imu_odr_t next = odr;
     portEXIT_CRITICAL(&lock);
-    const imu_odr_outcome_t outcome = imu_odr_apply(&next, configure);
+    const imu_odr_outcome_t outcome = imu_odr_apply(&next, configure, &fifo_gap);
     if (outcome == IMU_ODR_UNCHANGED) {
         return;
     }
@@ -501,7 +501,6 @@ apply_odr_request(void) {
         ESP_LOGE(TAG, "ODR switch to %u and restore of %u both failed; the sensor may be off", odr.requested,
                  next.applied);
     }
-    fifo_gap = true;
     pending_lost = 0;
     loss_remainder_us = 0;
     portENTER_CRITICAL(&lock);
