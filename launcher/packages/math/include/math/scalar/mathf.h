@@ -206,15 +206,6 @@ mathf_max(float a, float b) {
     return a < b ? b : a;
 }
 
-/* The largest power of two at or below a positive finite a: a's exponent alone,
- * so values that differ by rounding land on one step unless they straddle it. */
-static inline float
-mathf_floor_pow2(float a) {
-    int exponent;
-    (void)frexpf(a, &exponent);
-    return ldexpf(0.5F, exponent);
-}
-
 /* Reciprocal and product rounding must leave the floor within one integer. */
 #define MATHF_REPEAT_FAST_QUOTIENT 0x1p22F
 _Static_assert((MATHF_RECIP_ULP_LIMIT + 0.5F) * MATHF_REPEAT_FAST_QUOTIENT * FLT_EPSILON < 1.0F,

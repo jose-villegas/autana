@@ -1,4 +1,4 @@
-# Projection: projectf.h, projectx.h
+# Projection: projectf.h, projectx.h, inverse_depth.h
 
 Camera-space clipping and mapping to picture pixels. [Math index](README.md).
 
@@ -41,3 +41,24 @@ The caller snaps a picture point to whole pixels, truncating each offset toward 
 
 The point is `render_view_make`'s lens on the panel's viewport, snapped by `r3d_project_screen`.
 Truncating toward the centre puts picture y 148.56 on pixel 149: the point lies above the pixel it snaps to.
+
+## Inverse depth (`inverse_depth.h`)
+
+A depth buffer can store a point at depth $`z`$ as the code
+$`q = \mathit{code\_max}\cdot s/z`$ for $`z \ge s`$. Unlike $`z`$, $`1/z`$ is
+linear across the picture, so a span steps it with one add per pixel. The
+scale $`s`$ sets where the precision goes:
+
+```math
+\left\lvert\frac{dq}{dz}\right\rvert = \mathit{code\_max}\cdot\frac{s}{z^2}
+```
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `inverse_depth_steps_per_unit(scale, code_max, z)` | codes per unit of depth at `z` | $`\mathit{code\_max}\,s/z^2`$ |
+| `inverse_depth_scale_fit(near_z, nearest_z)` | the scale for a picture whose nearest point is at `nearest_z` or beyond | $`\max(\mathit{near\_z},\ 2^{\lfloor\log_2 \mathit{nearest\_z}\rfloor})`$; `near_z` when `nearest_z` is not past it |
+
+The fit takes the power of two below the bound from its exponent alone. A
+bound that drifts by rounding from frame to frame keeps one scale, so codes
+of two near surfaces do not swap order every frame. The floor gives up at
+most one bit.

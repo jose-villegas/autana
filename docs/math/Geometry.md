@@ -107,23 +107,26 @@ and union; any crossed axis is empty.
 | `P_half_extent(b)` | half size (`f`) | $`e = 0.5(hi-lo)`$ |
 | `P_segment_hit(b, a, c, &t)` | slab entry in `[0,1]` (`f`); inside starts at zero | $`v=c-a`$; intersect $`[0,1]`$ with each axis's $`[(lo_k-a_k)/v_k,(hi_k-a_k)/v_k]`$, sorted |
 | `P_outside_planes(b, planes, count, &mask)` | reject outside; clear wholly inside bits (`f`) | See [frustum](#frustum) |
-| `P_plane_reach(e, plane)` | how far a box of half extent `e` spans along the normal (`f`) | $`r = \sum_k \lvert n_k\rvert e_k`$ |
-| `P_plane_min(b, plane)` | the least plane value of any point in `b` (`f`) | $`n \cdot c + d - r`$ |
-| `P_plane_min_inside(b, objective, constraint)` | the least `objective` over the part of `b` where `constraint` $`\ge 0`$ (`f`); exact when they meet, a lower bound when not | See [least value inside a half-space](#least-value-inside-a-half-space) |
+| `P_plane_radius(e, plane)` | private (`_P_plane_radius`): how far a box of half extent `e` spans along the normal (`f`, `box3f_plane.h`) | $`r = \sum_k \lvert n_k\rvert e_k`$ |
+| `P_plane_distance_min(b, plane)` | the least signed distance of any point of `b` (`f`, `box3f_plane.h`) | $`n \cdot c + d - r`$ |
+| `P_plane_distance_max(b, plane)` | the greatest (`f`, `box3f_plane.h`) | $`n \cdot c + d + r`$ |
+| `P_plane_distance_min_inside(b, objective, constraint)` | the least `objective` where `constraint` $`\ge 0`$ (`f`, `box3f_plane.h`) | See [a box against a plane](#a-box-against-a-plane-box3f_planeh) |
 | `box3f_from_box3s(b, scale)` | convert position ticks to float units | $`(lo\,scale,hi\,scale)`$ |
 
 Real queries use finite, nonempty bounds, except that `P_segment_hit`
 rejects empty boxes. Segment endpoints and box values must be finite.
 Plane bits index the input array; `count` must fit an unsigned mask.
 
-### Least value inside a half-space
+### A box against a plane (`box3f_plane.h`)
 
-`P_plane_min_inside` solves a small linear programme: the least of a plane
-$`o`$ over the box's points where a plane $`g`$ is not negative. Lagrangian
-duality gives it without a search. For every $`\lambda \ge 0`$,
+`box3_plane_template.h` adds the plane rows of the table above.
+
+`P_plane_distance_min_inside` solves a small linear programme: the least of
+a plane $`o`$ over the box's points where a plane $`g`$ is not negative.
+Lagrangian duality gives it without a search. For every $`\lambda \ge 0`$,
 
 ```math
-\phi(\lambda) = \min_{p \in b}\,\bigl(o(p) - \lambda\,g(p)\bigr) = \mathrm{plane\_min}(b,\ o - \lambda g)
+\phi(\lambda) = \min_{p \in b}\,\bigl(o(p) - \lambda\,g(p)\bigr)
 ```
 
 is at most the answer, since $`g(p) \ge 0`$ there. $`\phi`$ is concave and
@@ -131,7 +134,7 @@ piecewise linear, with kinks where a term $`\lvert o_k - \lambda g_k\rvert`$
 turns, at $`\lambda = o_k / g_k`$. Its peak is at $`\lambda = 0`$ or one of
 those three kinks, and by linear-programming duality that peak is the
 answer whenever the box meets the half-space. So the function takes the best
-of at most four `P_plane_min` values. A box wholly outside has no answer and
+of at most four distance minima. A box wholly outside has no answer and
 gets a lower bound.
 
 The renderer uses it with view depth as the objective and each frustum

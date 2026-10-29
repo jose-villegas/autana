@@ -1,4 +1,5 @@
 #include "math/geometry/box3f.h"
+#include "math/geometry/box3f_plane.h"
 #include "math/geometry/planex.h"
 #include "testkit/suite.h"
 #include "unity.h"
@@ -174,42 +175,73 @@ test_box3_plane_oblique_touch_and_late_rejection(void) {
     TEST_ASSERT_EQUAL_UINT(REJECT, mask);
 }
 
-/* BOX_TICKS at BOX_SCALE is the cube [-1, 1]^3: a plane's least value on it
- * is its value at the centre less the sum of its normal's magnitudes. */
+enum { BOX_CORNERS = 8 };
+
+/* The least and greatest signed distance of b's corners: the box's own, as
+ * a plane is linear and a box is the hull of its corners. */
 static void
-test_box3_plane_min_is_the_least_corner(void) {
-    const box3f_t b = box3f_from_box3s(BOX_TICKS, BOX_SCALE);
-    const planef_t plane = {{1.0F, 2.0F, -3.0F}, 0.5F};
-    float least = INFINITY;
-    for (int corner = 0; corner < 8; corner++) {
-        const vec3f_t p = {corner & 1 ? b.hi.x : b.lo.x, corner & 2 ? b.hi.y : b.lo.y, corner & 4 ? b.hi.z : b.lo.z};
-        least = mathf_min(least, planef_distance(plane, p));
+corner_extremes(box3f_t b, planef_t plane, float* least, float* most) {
+    *least = INFINITY;
+    *most = -INFINITY;
+    for (int k = 0; k < BOX_CORNERS; k++) {
+        const float d = planef_distance(plane, box3f_corner(b, k));
+        *least = mathf_min(*least, d);
+        *most = mathf_max(*most, d);
     }
-    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, least, box3f_plane_min(b, plane));
-    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, 0.5F - 6.0F, box3f_plane_min(b, plane));
 }
 
-/* The least z over the cube where a constraint holds, worked by hand: */
 static void
-test_box3_plane_min_inside_one_half_space(void) {
+test_box3_plane_distance_axis_aligned_is_exact(void) {
+    const box3f_t b = box3f_from_box3s(BOX_ASYMMETRIC_TICKS, BOX_SCALE);
+    const float offset = BOX_ASYMMETRIC_CENTRE.y;
+    /* x - offset, and its flip offset - x: the faces give the answer. */
+    const planef_t up = {{1.0F, 0.0F, 0.0F}, -offset};
+    const planef_t down = {{-1.0F, 0.0F, 0.0F}, offset};
+    TEST_ASSERT_EQUAL_FLOAT(b.lo.x - offset, box3f_plane_distance_min(b, up));
+    TEST_ASSERT_EQUAL_FLOAT(b.hi.x - offset, box3f_plane_distance_max(b, up));
+    TEST_ASSERT_EQUAL_FLOAT(offset - b.hi.x, box3f_plane_distance_min(b, down));
+    TEST_ASSERT_EQUAL_FLOAT(offset - b.lo.x, box3f_plane_distance_max(b, down));
+}
+
+static void
+test_box3_plane_distance_oblique_matches_the_corners(void) {
+    const box3f_t b = box3f_from_box3s(BOX_ASYMMETRIC_TICKS, BOX_SCALE);
+    static const planef_t planes[] = {
+        {{1.0F, 2.0F, -3.0F}, 0.5F}, {{-1.0F, -2.0F, 3.0F}, -0.5F}, {{-0.25F, 0.0F, -4.0F}, 7.0F}};
+    for (unsigned i = 0; i < sizeof planes / sizeof planes[0]; i++) {
+        float least, most;
+        corner_extremes(b, planes[i], &least, &most);
+        TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, least, box3f_plane_distance_min(b, planes[i]));
+        TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, most, box3f_plane_distance_max(b, planes[i]));
+    }
+}
+
+/* The least z on a box where a constraint holds. */
+static void
+test_box3_plane_distance_min_inside_one_half_space(void) {
     const box3f_t cube = box3f_from_box3s(BOX_TICKS, BOX_SCALE);
     const planef_t depth = {{0.0F, 0.0F, 1.0F}, 0.0F};
-    /* z >= x leaves the corner (-1, y, -1): the constraint never binds. */
+    /* z >= x holds at the corner (lo.x, y, lo.z): it never binds. */
     const planef_t loose = {{-1.0F, 0.0F, 1.0F}, 0.0F};
-    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, -1.0F, box3f_plane_min_inside(cube, depth, loose));
-    /* z >= x + 1 binds at x = -1, so z >= 0. */
-    const planef_t binding = {{-1.0F, 0.0F, 1.0F}, -1.0F};
-    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, 0.0F, box3f_plane_min_inside(cube, depth, binding));
-    /* A flat slab, ground seen from above: y in [-0.1, 0], and z >= 4 - 2 y
-     * keeps only z >= 4, at y = 0. The box alone reaches z = -10. */
-    const box3f_t slab = {{-10.0F, -0.1F, -10.0F}, {10.0F, 0.0F, 10.0F}};
-    const planef_t bottom = {{0.0F, 2.0F, 1.0F}, -4.0F};
-    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, -10.0F, box3f_plane_min(slab, depth));
-    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, 4.0F, box3f_plane_min_inside(slab, depth, bottom));
-    /* A box outside the half-space has no least value; the bound only never
-     * falls under the box's own. */
-    const planef_t beyond = {{1.0F, 0.0F, 0.0F}, -5.0F};
-    TEST_ASSERT_TRUE(box3f_plane_min_inside(cube, depth, beyond) >= box3f_plane_min(cube, depth));
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, cube.lo.z, box3f_plane_distance_min_inside(cube, depth, loose));
+    /* z >= x + (hi.z - lo.z) / 2 binds at x = lo.x. */
+    const float rise = (cube.hi.z - cube.lo.z) * 0.5F;
+    const planef_t binding = {{-1.0F, 0.0F, 1.0F}, -rise};
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, cube.lo.x + rise, box3f_plane_distance_min_inside(cube, depth, binding));
+    /* A thin slab seen from above, as a ground square: z >= reach - slope y
+     * keeps only z >= reach - slope hi.y, at the top face, while the box
+     * alone reaches lo.z. */
+    const box3f_t slab = {{cube.lo.x, cube.hi.y - BOX_SCALE, cube.lo.z}, cube.hi};
+    const float slope = 2.0F;
+    const float reach = (slope * slab.hi.y) + (cube.hi.z * 0.5F); /* binds halfway up the cube */
+    const planef_t bottom = {{0.0F, slope, 1.0F}, -reach};
+    TEST_ASSERT_EQUAL_FLOAT(slab.lo.z, box3f_plane_distance_min(slab, depth));
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, reach - (slope * slab.hi.y),
+                             box3f_plane_distance_min_inside(slab, depth, bottom));
+    /* A box outside the half-space has no least value; the bound never falls
+     * under the box's own. */
+    const planef_t beyond = {{1.0F, 0.0F, 0.0F}, -(cube.hi.x + 1.0F)};
+    TEST_ASSERT_TRUE(box3f_plane_distance_min_inside(cube, depth, beyond) >= box3f_plane_distance_min(cube, depth));
 }
 
 static void
@@ -300,8 +332,9 @@ suite_box3(void) {
     RUN_TEST(test_box3_asymmetric_scale_and_extreme_bounds);
     RUN_TEST(test_box3_segment_slabs);
     RUN_TEST(test_box3_planes_preserve_only_crossing_bits);
-    RUN_TEST(test_box3_plane_min_is_the_least_corner);
-    RUN_TEST(test_box3_plane_min_inside_one_half_space);
+    RUN_TEST(test_box3_plane_distance_axis_aligned_is_exact);
+    RUN_TEST(test_box3_plane_distance_oblique_matches_the_corners);
+    RUN_TEST(test_box3_plane_distance_min_inside_one_half_space);
 }
 
 SUITE_REGISTER(suite_box3);
