@@ -24,7 +24,8 @@ import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
-from process_tree import launch_process_tree, stop_process_tree, close_process_tree
+from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
+                          terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
                             NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root)
 from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
@@ -304,6 +305,9 @@ def run_chain(steps, args, runner=None, clock=None):
                 if step.position >= positions.get(last_attempted, 0):
                     last_attempted = step.commit
             save()
+    except KeyboardInterrupt:
+        stop_reason = "interrupted"
+        raise
     finally:
         errors = []
         try:
@@ -664,7 +668,10 @@ def main():
     if args.from_sha is not None or args.max_steps is not None:
         index, count = map(int, args.lane.split("/"))
         steps = select_steps(args.repo, planned["tip"], args.previous, index, count, args.from_sha, args.max_steps)
-    results = run_chain(steps, args)
+    # A stop (Ctrl-Break on Windows, TERM elsewhere) unwinds, so the manifest and cleanup still save.
+    install_console_interrupt_handler()
+    with terminate_unwinds():
+        results = run_chain(steps, args)
     manifest = read_last_night(args.data, short_id(args.board))
     return int(any(result.outcome in ("build_failed", "capture_failed") for result in results)
                or manifest["selftest"]["outcome"] == "failed")

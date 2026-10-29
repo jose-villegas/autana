@@ -212,6 +212,16 @@ class NightlyTests(unittest.TestCase):
                 self.assertIn(["-c", "core.longpaths=true"],
                               [command[i:i + 2] for i in range(len(command) - 1)])
 
+    def test_interrupted_lane_saves_its_manifest_and_cleans_up(self):
+        def stopped(command, log, timeout, **options):
+            raise KeyboardInterrupt
+        with patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="outer-hold"), self.assertRaises(KeyboardInterrupt):
+            chain.run_chain(self.steps(), self.args, stopped, self.clock)
+        manifest = lnt.read_last_night(self.args.data, "20E8")
+        self.assertEqual((manifest["stop_reason"], manifest["cleanup"]), ("interrupted", "passed"))
+        self.assertTrue(manifest["ended"])
+        self.assertEqual(chain.git(self.repo, "worktree", "list", "--porcelain").count("worktree "), 1)
+
     def test_captures_land_in_the_lanes_output(self):
         settings = []
         original = Replay.__call__
