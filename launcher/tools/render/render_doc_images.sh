@@ -317,6 +317,9 @@ for csv in docs/render/data/dynamic-resolution-quality-*.csv; do
 done
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
     "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
+# Every mesh scene's frame at each ladder step, and the predictor flown over it.
+run "$PYTHON" launcher/tools/r3d/dynres_replay.py docs/render/data/dynamic-resolution-steps-board.log --cc "$cc" \
+    --lead bistro-fitted-full --tables "$OUT/tables" > "$WORK/dynres_replay.log"
 
 # The frame stages as shipped, what is inside transform and draw, and what
 # each debug view adds, from the pipeline captures beside the page.
