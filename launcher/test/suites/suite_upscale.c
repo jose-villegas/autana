@@ -440,6 +440,20 @@ test_blend_keeps_ends_and_rounds_the_middle(void) {
 }
 
 static void
+test_spread_quarter_matches_blend_at_a_quarter(void) {
+    /* Every channel value against every other: stepping both colours through
+     * all 65536 values in coprime strides covers each channel pair. */
+    enum { STEP_A = 7, STEP_B = 13, COLOURS = UINT16_MAX + 1 };
+
+    for (uint32_t i = 0; i < COLOURS; i++) {
+        const rgb565be_t a = (rgb565be_t)(i * STEP_A);
+        const rgb565be_t b = (rgb565be_t)(i * STEP_B);
+        TEST_ASSERT_EQUAL_HEX16(rgb565be_blend(a, b, RGB565_SCALE_UNIT / 4),
+                                rgb565be_unspread(rgb565_spread_quarter(rgb565be_spread(a), rgb565be_spread(b))));
+    }
+}
+
+static void
 test_row_blends_sit_on_destination_row_centres(void) {
     enum { SOURCE = 2, DESTINATION = 2 * SOURCE, QUARTER = RGB565_SCALE_UNIT / 4 };
 
@@ -519,6 +533,7 @@ run_upscale_suite(void) {
     RUN_TEST(test_two_row_ranges_equal_one_whole_upscale);
     RUN_TEST(test_each_width_takes_its_path_and_matches_the_maps);
     RUN_TEST(test_blend_keeps_ends_and_rounds_the_middle);
+    RUN_TEST(test_spread_quarter_matches_blend_at_a_quarter);
     RUN_TEST(test_row_blends_sit_on_destination_row_centres);
     RUN_TEST(test_surface_rows_blend_within_a_surface_and_mark_seams);
 }

@@ -35,11 +35,11 @@ static gfx_color_t* half_image; /* its seam mask follows the pixels in the same 
 static bool frame_expanded;
 static bool frame_blended; /* expanded through the seam mask */
 
-#define HALF_WIDTH             (GFX_WIDTH / 2)
-#define HALF_HEIGHT            (GFX_HEIGHT / 2)
+#define HALF_WIDTH  (GFX_WIDTH / 2)
+#define HALF_HEIGHT (GFX_HEIGHT / 2)
 /* At 2x each panel pixel's centre sits a quarter of a half-picture pixel from
- * its own pixel's centre, towards one neighbour: bilinear gives it a quarter. */
-#define EXPAND_NEIGHBOUR_SHARE (RGB565_SCALE_UNIT / 4)
+ * its own pixel's centre, towards one neighbour: bilinear gives that neighbour
+ * a quarter (rgb565_spread_quarter). */
 static gfx_band_overlay_fn frame_overlay;
 
 /* GFX_LAYOUT_FULL_FB until gfx_init() sets real geometry, or an app's
@@ -442,7 +442,7 @@ static void
 expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
     const uint8_t* seams = (const uint8_t*)(half_image + ((size_t)HALF_WIDTH * HALF_HEIGHT));
     const size_t seam_pitch = GFX_SEAM_PITCH(HALF_WIDTH);
-    gfx_color_t column[HALF_WIDTH];
+    uint32_t column[HALF_WIDTH]; /* the row blended down, spread */
     for (int y = y0; y < y1; y++) {
         const int row = y / 2;
         const bool lower_half = y % 2 != 0;
@@ -452,19 +452,21 @@ expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
             const gfx_color_t* there = half_image + ((size_t)other * HALF_WIDTH);
             const uint8_t* between = seams + ((size_t)(lower_half ? row : other) * seam_pitch);
             for (int x = 0; x < HALF_WIDTH; x++) {
-                column[x] =
-                    gfx_seam_at(between, x) ? here[x] : rgb565be_blend(here[x], there[x], EXPAND_NEIGHBOUR_SHARE);
+                const uint32_t mine = rgb565be_spread(here[x]);
+                column[x] = gfx_seam_at(between, x) ? mine : rgb565_spread_quarter(mine, rgb565be_spread(there[x]));
             }
         } else {
-            memcpy(column, here, sizeof column);
+            for (int x = 0; x < HALF_WIDTH; x++) {
+                column[x] = rgb565be_spread(here[x]);
+            }
         }
         const uint8_t* across = seams + ((size_t)row * seam_pitch);
         gfx_color_t* out = destination + ((size_t)(y - y0) * GFX_WIDTH);
         for (int x = 0; x < HALF_WIDTH; x++) {
             const bool left = x > 0 && !gfx_seam_at(across, x - 1);
             const bool right = x + 1 < HALF_WIDTH && !gfx_seam_at(across, x);
-            out[2 * x] = left ? rgb565be_blend(column[x], column[x - 1], EXPAND_NEIGHBOUR_SHARE) : column[x];
-            out[(2 * x) + 1] = right ? rgb565be_blend(column[x], column[x + 1], EXPAND_NEIGHBOUR_SHARE) : column[x];
+            out[2 * x] = rgb565be_unspread(left ? rgb565_spread_quarter(column[x], column[x - 1]) : column[x]);
+            out[(2 * x) + 1] = rgb565be_unspread(right ? rgb565_spread_quarter(column[x], column[x + 1]) : column[x]);
         }
     }
 }
