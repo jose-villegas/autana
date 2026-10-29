@@ -13,7 +13,7 @@ const resolution_step_t render_lab_ladder[RENDER_LAB_LADDER_STEPS] = {
 };
 
 const resolution_model_t render_lab_ladder_model = {
-    3804.0F, 1.3902F, 1.7356F, 36455.0F, {10177, 9125, 8240, 7260, 2610, 2610, 2610, 1701}};
+    4427.0F, 1.3189F, 1.8201F, 35694.0F, {10181, 9137, 8246, 7261, 2611, 2269, 2035, 1759}};
 
 /* The budget and scale last handed to the context; a budget of -1 for none
  * since the last stop. */
@@ -45,8 +45,8 @@ render_lab_dynres_apply(void) {
         render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
         return;
     }
-    resolution_config_t config = resolution_config(render_lab_ladder, RENDER_LAB_LADDER_STEPS,
-                                                   RENDER_LAB_LADDER_RECOVERY, budget_ms * (int32_t)MATH_US_PER_MS);
+    resolution_config_t config = resolution_config(render_lab_ladder, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_STEPS,
+                                                   budget_ms * (int32_t)MATH_US_PER_MS);
     const int top = resolution_config_top(&config, render_lab_render_size(GFX_WIDTH, GFX_HEIGHT));
     render_context_set_dynamic_resolution(render_context_main(), &config, &render_lab_ladder_model, top);
 }

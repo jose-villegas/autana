@@ -69,7 +69,7 @@ typedef struct {
 
 static const ladder_t ladders[] = {
     {"width", width_steps, 7, 6, 4},
-    {"height", render_lab_ladder, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_RECOVERY, RENDER_LAB_LADDER_HALF},
+    {"height", render_lab_ladder, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_HALF},
 };
 #define LADDER_COUNT ((int)(sizeof ladders / sizeof ladders[0]))
 

@@ -150,13 +150,13 @@ def main():
     parser.add_argument("--top", type=int, default=read_define(DYNRES, "RENDER_LAB_LADDER_HALF"))
     parser.add_argument("--first", type=int, help="the step the flight starts at; the top when omitted")
     parser.add_argument("--steps", help="captured sizes forming the ladder, by capture index; the ladder's when omitted")
-    parser.add_argument("--recovery", type=int, help="the first recovery-only step of --steps; the ladder's when omitted")
+    parser.add_argument("--recovery", type=int, help="the first recovery-only step of --steps; none when omitted")
     parser.add_argument("--lead", help="the scenario reported first")
     parser.add_argument("--json", type=pathlib.Path)
     args = parser.parse_args()
-    recovery = args.recovery or read_define(DYNRES, "RENDER_LAB_LADDER_RECOVERY")
     chosen = ([int(v) for v in args.steps.split(",")] if args.steps
               else list(range(read_define(DYNRES, "RENDER_LAB_LADDER_STEPS"))))
+    recovery = args.recovery or len(chosen)
     scenarios, ladder = read_capture(args.capture, chosen)
     scenarios = dict(sorted(scenarios.items(), key=lambda item: item[0] != args.lead))
     if not scenarios:
