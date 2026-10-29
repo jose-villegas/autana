@@ -233,10 +233,16 @@ selects a scene camera; omitted, it draws the first camera.
 `--console FRAME:WORDS` runs the board's `render WORDS` command, such as
 `clip walk 400`, before frame FRAME draws; repeat it for a sequence.
 
-`dynres_quality.sh WORK OUT.csv CAMERA WxH [WxH ...]` scores each size
-against the reference along that camera's clip, at intervals taken from
-the script and over the clip's full period. Per-path results belong in
-`docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
+`dynres_quality.sh [--scene-file F --scene KEY] [--args "ARGS"] WORK OUT.csv CAMERA WxH [WxH ...]`
+scores each size against the reference along that camera's clip, at
+intervals taken from the script and over the clip's full period. Per-path
+results belong in `docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
+`upscale_quality.sh` runs it per scene under each upscale filter, for
+[Dynamic-Resolution.md](../../../../../docs/render/Dynamic-Resolution.md#upscaling-within-a-surface):
+
+```sh
+sh launcher/main/apps/render_lab/tools/upscale_quality.sh /tmp/upscale docs/render/data/upscale-filter-quality.csv     docs/images/render/upscale-surface camera launcher/demo/bistro/bistro.scene.toml:bistro-fitted-full     launcher/demo/sponza/sponza.scene.toml:sponza-fitted-full launcher/demo/sponza/sponza.scene.toml:sponza-fitted     launcher/demo/sponza/sponza.scene.toml:sponza-flat-fitted launcher/demo/sponza/sponza.scene.toml:sponza     launcher/demo/sponza/sponza.scene.toml:sponza-flat launcher/demo/sponza/sponza.scene.toml:sponza-lite
+```
 
 The tour is authored as camera keys in `launcher/demo/sponza/tour.keys.toml`;
 the pack build bakes it, so an edit there needs nothing else.

@@ -315,6 +315,7 @@ for csv in docs/render/data/dynamic-resolution-quality-*.csv; do
     camera=${camera%.csv}
     set -- "$@" --quality "$camera=$csv"
 done
+[ -f docs/render/data/upscale-filter-quality.csv ] && set -- "$@" --upscale docs/render/data/upscale-filter-quality.csv
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
     "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
 # Every mesh scene's frame at each ladder step, and the predictor flown over it.
