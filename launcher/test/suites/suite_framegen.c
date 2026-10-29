@@ -11,6 +11,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "render/context/render_context.h"
 #include "render/framegen/framegen.h"
 #include "render/r3d_span.h"
 
@@ -27,11 +28,24 @@
  * width along the card's two side edges, rounding either way. */
 #define MOST_MISPLACED (2 * H)
 
+/* A frame budget for the pricing test; any value works, the rule is relative. */
+#define BUDGET_US      30000
+
 static framegen_target_t target;
+/* The pricing test's own, freed by the cleanup if an assertion stops it. */
+static render_context_t* context;
+static uint16_t* destination;
 
 static void
 release_target(void) {
     framegen_target_free(&target);
+    if (context != NULL) {
+        render_context_release(context);
+    }
+    free(context);
+    free(destination);
+    context = NULL;
+    destination = NULL;
     raster_rig_release();
 }
 
@@ -106,10 +120,47 @@ test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does(void) {
     TEST_ASSERT_EQUAL_INT(holes, framegen_fill(&r->raster, &target));
 }
 
+/* A drawn frame's budget with frame generation on: the shown frames' budgets
+ * less what the generated ones cost, and never less than one frame's. */
+static void
+test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it(void) {
+    raster_rig_t* r = open_rig();
+    context = calloc(1, sizeof(*context));
+    destination = malloc(sizeof(uint16_t) * W * H);
+    render_context_t* c = context;
+    TEST_ASSERT_NOT_NULL(c);
+    TEST_ASSERT_NOT_NULL(destination);
+    c->scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT;
+    const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
+    const resolution_step_t size = {W, H};
+    const int32_t shown_us = BUDGET_US;
+    const resolution_config_t ladder = resolution_config(&size, 1, 1, shown_us);
+    render_context_set_dynamic_resolution(c, &ladder, NULL, 0);
+    render_context_set_frame_generation(c, true);
+    const int32_t generated[] = {shown_us / 4, shown_us + shown_us / 2};
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
+    (void)render_context_compose(c, destination, NULL);
+    TEST_ASSERT_FALSE(render_context_frame(c).generated);
+    for (size_t i = 0; i < sizeof generated / sizeof generated[0]; i++) {
+        TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
+        (void)render_context_compose(c, destination, NULL);
+        TEST_ASSERT_TRUE(render_context_frame(c).generated);
+        c->generated_us = generated[i];
+        TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
+        (void)render_context_compose(c, destination, NULL);
+        TEST_ASSERT_FALSE(render_context_frame(c).generated);
+        const int32_t shared_us =
+            (FRAMEGEN_SHOWN_PER_DRAWN * shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * generated[i]);
+        TEST_ASSERT_EQUAL_INT32(shared_us > shown_us ? shared_us : shown_us, c->ladder.budget_us);
+    }
+    release_target();
+}
+
 void
 run_framegen_suite(void) {
     RUN_TEST(test_a_warp_to_the_drawn_view_gives_the_frame_back);
     RUN_TEST(test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does);
+    RUN_TEST(test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it);
 }
 
 SUITE_REGISTER(run_framegen_suite);
