@@ -20,8 +20,13 @@ extern const resolution_step_t render_lab_ladder[RENDER_LAB_LADDER_STEPS];
 extern const resolution_model_t render_lab_ladder_model;
 
 /* The frame time the menu's toggle holds: the chosen size (render_lab.scale)
- * is the ladder's top, and a frame drops below it only past this target. */
-#define RENDER_LAB_TARGET_MS 33
+ * is the ladder's top, and a frame drops below it only past this floor. */
+#define RENDER_LAB_FRAME_TARGET_MS   33
+/* What a frame pays outside the draw and upscale the context times
+ * (present, scene update, skinning), measured on every mesh scene. */
+#define RENDER_LAB_FRAME_OVERHEAD_MS 10
+/* The budget handed to the context: the scaled part's share of the frame. */
+#define RENDER_LAB_TARGET_MS         (RENDER_LAB_FRAME_TARGET_MS - RENDER_LAB_FRAME_OVERHEAD_MS)
 
 /* The menu's DYNAMIC RES toggle over render_lab.budget: on is any budget,
  * set_on writes RENDER_LAB_TARGET_MS or 0. Development builds only,

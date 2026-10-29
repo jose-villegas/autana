@@ -3,7 +3,9 @@
  *
  *   probe fit < samples      the model fitted to every sample, then each sample's price
  *   probe replay budget_us margin_percent up_hold_us top first < frames
- *                            the step the predictor draws each frame at, and its switches
+ *                            the step the predictor draws each frame at, its corrected
+ *                            price there and at the next finer step (0 at the top),
+ *                            and its switches
  *
  * Both inputs start with the ladder: "steps n recovery" and n "width height".
  * samples then holds "m" and m "step triangles draw_us upscale_us". frames
@@ -104,6 +106,11 @@ replay(char** argv) {
     const int frames = read_int();
     resolution_predict_t predict;
     resolution_predict_init(&predict, &config, &model, first);
+    int32_t* priced_us = malloc(sizeof(*priced_us) * 2 * (size_t)(frames > 0 ? frames : 1));
+    if (priced_us == NULL) {
+        return 1;
+    }
+    int32_t* finer_us = priced_us + frames;
     printf("{\"steps\": [");
     int32_t elapsed_us = 0;
     for (int f = 0; f < frames; f++) {
@@ -119,11 +126,28 @@ replay(char** argv) {
         /* The census before the choice counts what culling keeps, the same
          * at every step: the step drawn last frame supplies it. */
         const int step = resolution_predict_choose(&predict, &config, triangles[predict.step], elapsed_us);
+        priced_us[f] = (int32_t)predict.chosen_us;
+        /* The price the up margin guards: the next finer step's, corrected. */
+        finer_us[f] =
+            step == config.top
+                ? 0
+                : (int32_t)((predict.scale
+                             * resolution_model_predict_us(&predict.model, &config, step - 1, triangles[step]))
+                            + predict.offset_us);
         resolution_predict_measured(&predict, &config, triangles[step], cost_us[step]);
         elapsed_us = whole_us[step];
         printf("%s%d", f == 0 ? "" : ", ", step);
     }
+    printf("], \"priced\": [");
+    for (int f = 0; f < frames; f++) {
+        printf("%s%ld", f == 0 ? "" : ", ", (long)priced_us[f]);
+    }
+    printf("], \"finer\": [");
+    for (int f = 0; f < frames; f++) {
+        printf("%s%ld", f == 0 ? "" : ", ", (long)finer_us[f]);
+    }
     printf("], \"switches\": %d}\n", predict.switches);
+    free(priced_us);
     return 0;
 }
 
