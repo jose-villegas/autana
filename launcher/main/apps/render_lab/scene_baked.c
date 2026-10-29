@@ -73,7 +73,9 @@ apply_settings(void) {
 #endif
 }
 
-void
+/* The menu rows of a baked scene: FRAME GEN, whose warp a static scene
+ * suits (development builds, where the tunable moves). */
+static inline void
 scene_baked_controls(int width) {
 #if TUNE_ENABLED
     bool generating = render_lab_framegen_on();
@@ -128,7 +130,8 @@ scene_baked_frame(uint32_t dt_ms) {
     apply_settings();
 }
 
-const char*
+/* The size drawn at and the triangle count, or why the scene did not load. */
+static inline const char*
 scene_baked_status(void) {
     static char buf[RENDER_LAB_STATUS_LEN];
     if (failure[0] != '\0') {
