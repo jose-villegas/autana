@@ -146,6 +146,12 @@ The host renderer picks one by its menu label, as
 
 ![The SMALL FILL list open in landscape](images/scene-menu/small-fill-landscape.png)
 
+Below it, UPSCALE picks how a draw half the panel's width or less fills the panel:
+SHARP repeats pixels (the default), SMOOTH blends within a surface and keeps
+depth edges sharp
+([Dynamic-Resolution.md](../../../../../docs/render/Dynamic-Resolution.md#upscaling-within-a-surface)).
+It sets `render_lab.upscale`.
+
 The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
 come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
 The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)
