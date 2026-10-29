@@ -110,7 +110,7 @@ class PlaybackTablesTests(unittest.TestCase):
             for wav in Path(directory).glob('take-*.wav'):
                 content = wav.read_bytes()
                 wav.write_text('version https://git-lfs.github.com/spec/v1\n'
-                               + f'oid sha256:{hashlib.sha256(content).hexdigest()}\nsize {len(content)}\n')
+                               + f'oid sha256:{hashlib.sha256(content).hexdigest()}\nsize {len(content)}\n', newline='\n')
             self.assertFalse(update_playback(fixture, document, check=True))
             broken = [(command, reply) for command, reply in records if command != ['arm'] or reply['index'] != 0]
             with self.assertRaises(ValueError):

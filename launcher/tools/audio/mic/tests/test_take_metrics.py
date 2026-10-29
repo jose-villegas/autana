@@ -38,7 +38,7 @@ class TakeMetricsTests(unittest.TestCase):
                              hashlib.sha256(path.read_bytes()).hexdigest())
             path.write_bytes(audio)
             metrics.read_take_metrics(path, analyze, check=False)
-            path.write_text(f'version https://git-lfs.github.com/spec/v1\noid sha256:{digest}\nsize {len(audio)}\n')
+            path.write_text(f'version https://git-lfs.github.com/spec/v1\noid sha256:{digest}\nsize {len(audio)}\n', newline='\n')
             self.assertEqual(metrics.read_take_metrics(path, None, check=True), expected)
             entry['sha256'] = '0' * len(digest)
             manifest.write_text(json.dumps({'take.wav': entry}))
