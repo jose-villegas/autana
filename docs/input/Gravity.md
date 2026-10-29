@@ -112,7 +112,7 @@ Periods and task settings live in `input/motion/imu.c`; header-owned settings na
 | FIFO drain period | 10 Hz (`IMU_FIFO_DRAIN_HZ`) | `imu.drain_ms` |
 | `IMU_TASK_CORE` | `JOB_CORE1` | Core 1 |
 | `IMU_TASK_PRIORITY` | `JOB_CORE1_PRIORITY - 1` | Below job worker |
-| `IMU_TASK_BUS_PRIORITY` | `JOB_CORE1_PRIORITY` | Bus lock has no priority inheritance; time slicing lets drains progress without preempting the render job |
+| `IMU_TASK_BUS_PRIORITY` | `JOB_CORE1_PRIORITY` | Job worker's priority: a waiting drain holds the bus and FIFO read mode (no priority inheritance); time-sliced with the worker, never above it |
 | `IMU_FIFO_SAMPLES` | 128 samples | `input/motion/imu.h` |
 | `IMU_SAMPLE_US` / `INPUT_MOTION_SAMPLE_US` | `1 / ODR` | `input/motion/imu.h` / `input/input.h` |
 
@@ -121,7 +121,6 @@ The interval follows the QMI8658A CTRL2/CTRL3 ODR codes in the datasheet<sup>[[7
 
 Batches arrive up to one drain period late; a drain delayed past FIFO capacity while core 1 is busy becomes a gap.
 On drain ticks the FIFO supplies the newest sample instead of a register read.
-The bus boost prevents indefinite waits behind the job worker; equal priority shares the core by time slicing.
 
 ```mermaid
 flowchart LR
