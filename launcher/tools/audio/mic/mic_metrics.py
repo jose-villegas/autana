@@ -33,6 +33,8 @@ SETTLE_WINDOW_MS = 200
 ACTIVE_FRAME_THRESHOLD_DB = -50.0
 SECOND_DIFFERENCE_ORDER = 2
 TAKE_METRICS_NAME = 'take_metrics.json'
+# Cached metrics keep the digits every platform's float maths agrees on.
+TAKE_METRICS_DECIMALS = 9
 LFS_POINTER_VERSION = b'version https://git-lfs.github.com/spec/v1\n'
 LFS_OID = rb'^oid sha256:([0-9a-f]{64})$'
 
@@ -47,6 +49,16 @@ def _mono(x):
 def read_take(path):
     x, rate = sf.read(path, dtype='float64')
     return _mono(x), rate
+
+
+def _rounded(value):
+    if isinstance(value, float):
+        return round(value, TAKE_METRICS_DECIMALS)
+    if isinstance(value, dict):
+        return {k: _rounded(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_rounded(v) for v in value]
+    return value
 
 
 def read_take_metrics(path, analyze, check=None):
@@ -68,13 +80,13 @@ def read_take_metrics(path, analyze, check=None):
             raise ValueError(stale)
         return stored['metrics']
     samples, rate = read_take(path)
-    result = analyze(samples, rate)
+    result = _rounded(analyze(samples, rate))
     entry = dict(sha256=digest, metrics=result)
     if check is True and stored != entry:
         raise ValueError(stale)
     if check is False and stored != entry:
         entries[path.name] = entry
-        cache.write_text(json.dumps(entries, indent=2, sort_keys=True, allow_nan=False) + '\n', encoding='utf-8')
+        cache.write_text(json.dumps(entries, indent=2, sort_keys=True, allow_nan=False) + '\n', encoding='utf-8', newline='\n')
     return result
 
 
