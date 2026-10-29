@@ -1,0 +1,46 @@
+BUILD_ID=6a98bdeb588b-diag
+I (15003) console: RUNSUITE run_framegen_perf_suite
+I (15123) asset: pack bistro: 9 entries, 1830044 bytes
+I (17122) framegen: framegen: bistro-fitted-full 184x224 poses=24 frame_us=43704 present_us=2567 warp1_us=21353/21854 warp2_us=12148/12548 fill_us=2129 holes_pct=2.89
+I (17342) asset: pack bistro: 9 entries, 1830044 bytes
+I (19339) framegen: framegen: bistro-fitted-full 184x224 poses=24 frame_us=43666 present_us=2558 warp1_us=21342/21802 warp2_us=12122/12401 fill_us=2133 holes_pct=2.89
+./main/shell/shell.c:201:test_generated_frame_cost:FAIL: Expected 400 to be greater than or equal to 512. the test left the main task's stack almost full
+TEST_TIME name=test_generated_frame_cost elapsed_ms=4336 stack_free_bytes=400
+I (19460) asset: pack bistro: 9 entries, 1830044 bytes
+I (21190) framegen: framegen: bistro-fitted-full 184x179 poses=24 frame_us=40130 present_us=2234 warp1_us=16911/17306 warp2_us=9560/9978 fill_us=1665 holes_pct=2.89
+./main/shell/shell.c:270:test_generated_frame_cost:PASS
+TEST_TIME name=test_generated_frame_cost elapsed_ms=1848 stack_free_bytes=400
+I (21310) asset: pack bistro: 9 entries, 1830044 bytes
+I (22864) framegen: framegen: bistro-fitted-full 184x149 poses=24 frame_us=37692 present_us=2015 warp1_us=14059/14330 warp2_us=7958/8181 fill_us=1387 holes_pct=2.68
+./main/shell/shell.c:270:test_generated_frame_cost:PASS
+TEST_TIME name=test_generated_frame_cost elapsed_ms=1673 stack_free_bytes=400
+I (22984) asset: pack bistro: 9 entries, 1830044 bytes
+I (24324) framegen: framegen: bistro-fitted-full 184x112 poses=24 frame_us=34749 present_us=1723 warp1_us=10582/10793 warp2_us=5920/6199 fill_us=1008 holes_pct=2.87
+./main/shell/shell.c:270:test_generated_frame_cost:PASS
+TEST_TIME name=test_generated_frame_cost elapsed_ms=1458 stack_free_bytes=400
+I (24412) asset: pack sponza: 9 entries, 1312552 bytes
+I (26576) framegen: framegen: sponza-fitted-full 184x224 poses=24 frame_us=50423 present_us=2652 warp1_us=21556/21711 warp2_us=12149/12365 fill_us=2037 holes_pct=2.09
+./main/shell/shell.c:270:test_generated_frame_cost:PASS
+TEST_TIME name=test_generated_frame_cost elapsed_ms=2252 stack_free_bytes=400
+I (26665) asset: pack sponza: 9 entries, 1312552 bytes
+I (28541) framegen: framegen: sponza-fitted-full 184x179 poses=24 frame_us=46011 present_us=2327 warp1_us=17135/17337 warp2_us=9619/9778 fill_us=1622 holes_pct=2.04
+./main/shell/shell.c:270:test_generated_frame_cost:PASS
+TEST_TIME name=test_generated_frame_cost elapsed_ms=1963 stack_free_bytes=400
+I (28629) asset: pack sponza: 9 entries, 1312552 bytes
+I (30311) framegen: framegen: sponza-fitted-full 184x149 poses=24 frame_us=42949 present_us=2093 warp1_us=14227/14442 warp2_us=7971/8313 fill_us=1325 holes_pct=2.07
+./main/shell/shell.c:270:test_generated_frame_cost:PASS
+TEST_TIME name=test_generated_frame_cost elapsed_ms=1769 stack_free_bytes=400
+I (30399) asset: pack sponza: 9 entries, 1312552 bytes
+I (31841) framegen: framegen: sponza-fitted-full 184x112 poses=24 frame_us=39039 present_us=1798 warp1_us=10681/10888 warp2_us=5959/6278 fill_us=964 holes_pct=2.05
+./main/shell/shell.c:270:test_generated_frame_cost:PASS
+TEST_TIME name=test_generated_frame_cost elapsed_ms=1529 stack_free_bytes=400
+FRAME_WATCH judged 8 of 8 tests
+
+-----------------------
+8 Tests 1 Failures 0 Ignored 
+FAIL
+
+RUNSUITE_COMPLETE name=run_framegen_perf_suite found=1 selected=8 unmatched=0
+I (31850) ui: command list high water: 920 / 8192 bytes
+I (31907) shell: 2.9 fps, 0.2 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (31908) shell: ms/frame avg/worst: ui.build 0.33/0.5  ridge.layers 3.19/3.2  ridge.paint 7.21/14.2  ui.paint 1.76/3.5  present 0.64/10.0  frame.rest 190.20/9498.8  r3d.cull 2.54/1.1  r3d.transform 19.29/13.7  r3d.draw 115.14/44.7  r3d.upscale 9.88/2.7 | total 350.21 || sound_mix 0.002/0.035 ms/block n=5301

@@ -2,10 +2,12 @@
 framegen_score.py's CSVs: per scene, render size and look-ahead, the holes
 the warp leaves and the reference scorer's numbers for the warp (each hole
 fill) against repeating the last frame; and one scene's frames along its
-path.
+path. With --board, the board's cost table from the framegen_perf suite's
+capture: what a generated frame costs and the displayed rate it buys.
 
     framegen_report.py --out-table TABLE.md --out-plot PLOT.png
-        --plot-scene KEY --plot-size WxH CSV [CSV ...]
+        --plot-scene KEY --plot-size WxH [--board LOG --out-board-table TABLE.md]
+        CSV [CSV ...]
 
 Needs matplotlib, Pillow and numpy (tools/r3d/requirements.txt).
 """
@@ -13,6 +15,7 @@ import argparse
 import collections
 import csv
 import pathlib
+import re
 import sys
 
 import numpy as np
@@ -25,6 +28,10 @@ from framegen_score import DISPLAY_STEP_MS  # noqa: E402
 
 # The worst frames are the ones a viewer sees; the mean hides them.
 WORST_PERCENTILE = 95
+US_PER_MS = 1000
+MS_PER_SECOND = 1000
+# One framegen_perf line: the scene, the size, then name=value fields (a/b is mean/worst).
+BOARD_LINE = re.compile(r"framegen: (?P<scene>\S+) (?P<size>\d+x\d+) (?P<fields>.*)$")
 
 
 def read_rows(paths):
@@ -82,17 +89,51 @@ def plot(groups, scene, size, path):
     save_themed_plot(fig, axis, path, "%s at %s: generated frame against the true one" % (scene, size))
 
 
+def read_board(path):
+    """{(scene, size): {field: mean}} from a framegen_perf capture; a repeated
+    row keeps its last line."""
+    rows = collections.OrderedDict()
+    for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
+        match = BOARD_LINE.search(line)
+        if match is None:
+            continue
+        fields = dict(pair.split("=", 1) for pair in match["fields"].split())
+        rows[(match["scene"], match["size"])] = {name: float(value.split("/")[0]) for name, value in fields.items()}
+    return rows
+
+
+def board_table(rows):
+    """Per scene and size: the rendered frame, a generated frame's parts and
+    sum, and the displayed interval with one generated frame per rendered one."""
+    lines = ["| Scene | Size | Rendered frame | Warp, both cores (one) | Fill | Present | Generated frame |"
+             " Displayed: render only | Displayed: + 1 generated |",
+             "|---|---|---|---|---|---|---|---|---|"]
+    for (scene, size), f in rows.items():
+        frame, warp_both = f["frame_us"] / US_PER_MS, f["warp2_us"] / US_PER_MS
+        fill, present = f["fill_us"] / US_PER_MS, f["present_us"] / US_PER_MS
+        generated = warp_both + fill + present
+        paired = (frame + generated) / 2
+        lines.append("| %s | %s | %.1f ms | %.1f ms (%.1f) | %.1f ms | %.1f ms | %.1f ms | %.0f fps | %.0f fps |" % (
+            scene, size, frame, warp_both, f["warp1_us"] / US_PER_MS, fill, present, generated,
+            MS_PER_SECOND / frame, MS_PER_SECOND / paired))
+    return "\n".join(lines) + "\n"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--out-table", required=True)
     parser.add_argument("--out-plot", required=True)
     parser.add_argument("--plot-scene", required=True)
     parser.add_argument("--plot-size", required=True)
+    parser.add_argument("--board")
+    parser.add_argument("--out-board-table")
     parser.add_argument("csv", nargs="+")
     args = parser.parse_args()
     groups = grouped(read_rows(args.csv))
     pathlib.Path(args.out_table).write_text(table(groups), newline="\n")
     plot(groups, args.plot_scene, args.plot_size, args.out_plot)
+    if args.board:
+        pathlib.Path(args.out_board_table).write_text(board_table(read_board(args.board)), newline="\n")
 
 
 if __name__ == "__main__":

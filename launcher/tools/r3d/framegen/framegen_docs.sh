@@ -7,7 +7,10 @@
 #
 #   ./launcher/tools/r3d/framegen/framegen_docs.sh [-j JOBS] [--out IMAGES TABLES]
 #
-# --out writes the images to IMAGES and the table to TABLES/framegen-scores.md
+# The board table comes from the framegen_perf suite's capture beside the page,
+# docs/render/data/framegen-board.log.
+#
+# --out writes the images to IMAGES and the tables to TABLES
 # instead, leaving the page alone: launcher/tools/render/render_doc_images.sh
 # runs it that way.
 #
@@ -69,5 +72,5 @@ for scene in $SCENES; do
 done
 # shellcheck disable=SC2086
 "$PYTHON" launcher/tools/r3d/framegen/framegen_report.py --out-table "${TABLES:-$WORK/tables}/framegen-scores.md" \
-    --out-plot "$IMAGES/framegen-bistro-path.png" --plot-scene "$LEAD" --plot-size "$SHOWN_SIZE" $csvs
+    --out-plot "$IMAGES/framegen-bistro-path.png" --plot-scene "$LEAD" --plot-size "$SHOWN_SIZE"     --board docs/render/data/framegen-board.log --out-board-table "${TABLES:-$WORK/tables}/framegen-board.md" $csvs
 [ -n "$TABLES" ] || "$PYTHON" launcher/tools/render/generated_blocks.py --tables "$WORK/tables"
