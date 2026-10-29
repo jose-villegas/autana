@@ -6,15 +6,15 @@ root test_the_flythrough_sees_mostly_building test
 root test_dynamic_resolution_policies_along_the_path test
 root render_lab_frame frame
 
-indirect render_lab_frame : scene_baked_frame
-indirect render_lab_frame : scene_baked_enter scene_capybara_enter scene_baked_exit scene_capybara_exit
-indirect render_lab_enter : scene_baked_enter scene_capybara_enter
-indirect render_lab_exit : scene_baked_exit scene_capybara_exit
-indirect render_lab_frame : scene_baked_status
-indirect render_lab_frame : scene_capybara_frame capybara_status
-indirect render_lab_update : scene_capybara_steer
-indirect render_lab_console : scene_capybara_console
-indirect render_lab_menu_screen_draw : scene_capybara_controls
+indirect render_lab_frame : demo_baked_frame
+indirect render_lab_frame : demo_baked_enter demo_capybara_enter demo_baked_exit demo_capybara_exit
+indirect render_lab_enter : demo_baked_enter demo_capybara_enter
+indirect render_lab_exit : demo_baked_exit demo_capybara_exit
+indirect render_lab_frame : demo_baked_status
+indirect render_lab_frame : demo_capybara_frame capybara_status
+indirect render_lab_update : demo_capybara_steer
+indirect render_lab_console : demo_capybara_console
+indirect render_lab_menu_screen_draw : demo_capybara_controls
 indirect ui_toggle_id : measure_text_height
 indirect render_lab_test_enter : render_lab_enter
 indirect render_lab_test_frame_dt : render_lab_update render_lab_frame

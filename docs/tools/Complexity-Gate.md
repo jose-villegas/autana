@@ -17,7 +17,7 @@ file counted twice:
   `launcher/build.diag/compile_commands.json`: real esp32s3 flags,
   restricted to `launcher/main/`, `launcher/packages/` and `launcher/test/`. This is what
   reaches every hardware-facing file the diagnostics build compiles: every
-  `app_*.c`/`scene_*.c`, the shell and boot sources, `board/`, `console/`,
+  `app_*.c`/`demo_*.c`, the shell and boot sources, `board/`, `console/`,
   `input/`, and every on-device test suite. esp-clang does not recognise
   three GCC-only Xtensa flags in that
   database (stripped) and has no bundled libc for the target (given

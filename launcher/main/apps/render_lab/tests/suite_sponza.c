@@ -54,7 +54,7 @@ open_the_mesh(const char* id, r3d_lit_mesh_t* mesh) {
 
 /* The pack id of the mesh `bake`'s entity draws. */
 static const char*
-mesh_of(scene_baked_variant_t bake) {
+mesh_of(demo_baked_variant_t bake) {
     const scene_entity_t entity = scene_find(sponza, name_hash(sponza_bakes[bake]));
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, entity, sponza_bakes[bake]);
     return scene_entity_mesh_id(sponza, entity);
@@ -63,9 +63,9 @@ mesh_of(scene_baked_variant_t bake) {
 static void
 open_the_meshes(void) {
     require_the_scene();
-    open_the_mesh(mesh_of(SCENE_BAKED_FULL), &mesh_full);
-    open_the_mesh(mesh_of(SCENE_BAKED_LITE), &mesh_lite);
-    open_the_mesh(mesh_of(SCENE_BAKED_FLAT), &mesh_flat);
+    open_the_mesh(mesh_of(DEMO_BAKED_FULL), &mesh_full);
+    open_the_mesh(mesh_of(DEMO_BAKED_LITE), &mesh_lite);
+    open_the_mesh(mesh_of(DEMO_BAKED_FLAT), &mesh_flat);
 }
 
 /* Hand-written planes keep this an independent check of the cull. */
@@ -374,9 +374,9 @@ test_the_flythrough_sees_mostly_building(void) {
 static void
 test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path(void) {
     require_the_scene();
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
+    for (int i = 0; i < (int)DEMO_BAKED_VARIANT_COUNT; i++) {
         r3d_lit_mesh_t mesh;
-        open_the_mesh(mesh_of((scene_baked_variant_t)i), &mesh);
+        open_the_mesh(mesh_of((demo_baked_variant_t)i), &mesh);
         TEST_ASSERT_GREATER_THAN_INT(0, mesh.triangle_count);
     }
     TEST_ASSERT_NOT_NULL(flythrough);

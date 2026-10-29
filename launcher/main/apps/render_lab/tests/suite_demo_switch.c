@@ -10,10 +10,10 @@
 #include "unity.h"
 
 #include "app/app_arena.h"
+#include "apps/render_lab/demo_baked.h"
 #include "apps/render_lab/render_lab.h"
+#include "apps/render_lab/render_lab_demo.h"
 #include "apps/render_lab/render_lab_dynres.h"
-#include "apps/render_lab/render_lab_scene.h"
-#include "apps/render_lab/scene_baked.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "render/context/render_context.h"
 #include "scene/scene_shell.h"
@@ -83,11 +83,11 @@ test_scene_switches_keep_the_arena_flat(void) {
     fixture();
     size_t first_lap = 0;
     for (int lap = 0; lap < LAPS; lap++) {
-        for (int v = 0; v < (int)SCENE_BAKED_VARIANT_COUNT; v++) {
-            show_scene(scene_sponza[v].key);
-            show_scene(scene_bistro[v].key);
+        for (int v = 0; v < (int)DEMO_BAKED_VARIANT_COUNT; v++) {
+            show_scene(demo_sponza[v].key);
+            show_scene(demo_bistro[v].key);
         }
-        show_scene(scene_capybara.key);
+        show_scene(demo_capybara.key);
         show_scene("sponza");
         const size_t lap_end = app_arena_mark();
         TEST_ASSERT_GREATER_THAN_size_t(before, lap_end); /* the showing scene lives in the arena */
@@ -134,7 +134,7 @@ test_dynamic_resolution_toggle_follows_the_showing_scene(void) {
 #endif
 
 void
-run_render_lab_scene_switch_suite(void) {
+run_render_lab_demo_switch_suite(void) {
 #ifdef DEVICE_BUILD
     RUN_TEST(test_console_scene_requests_survive_expanded_frames);
     RUN_TEST(test_scene_switches_keep_the_arena_flat);
@@ -144,4 +144,4 @@ run_render_lab_scene_switch_suite(void) {
 #endif
 }
 
-SUITE_REGISTER(run_render_lab_scene_switch_suite);
+SUITE_REGISTER(run_render_lab_demo_switch_suite);
