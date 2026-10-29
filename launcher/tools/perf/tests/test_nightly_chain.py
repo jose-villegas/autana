@@ -824,7 +824,7 @@ class NightlyTests(unittest.TestCase):
 
         def launch(command, **options):
             launched.append((command, options))
-            folder = Path(command[4])
+            folder = Path(command[5])
             # What the lane writes on the remote host, as the remote-lane command brings it back.
             chain.write_json(folder / "data/scoped/20E8/2026-10-18-2230/night.json", dict(board="20E8"))
             return SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
