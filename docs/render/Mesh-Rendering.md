@@ -121,7 +121,7 @@ A caller builds a frame view and passes its `const render_view_t*`:
 
 | Caller | Calls |
 |---|---|
-| Draws at a set size | `raster_draw()`, which culls and draws each instance in turn with one fitted lens shared by culling and drawing, then `raster_upscale()` with the destination width and height |
+| Draws at a set size | `raster_draw()`, which culls every instance, fits the [depth scale](#depth) to what it kept, then draws each in turn with the fitted lens culling used, then `raster_upscale()` with the destination width and height |
 | Picks the render size from what culling kept, as the render context does | `raster_census()`, sets the size, then `raster_draw_culled()` with the same view, then `raster_upscale()` |
 | A suite or tool that schedules the stages itself | `r3d_pipeline.h`'s stages |
 
@@ -249,6 +249,50 @@ The depth and depth-tile views along a flythrough:
 
 ![The depth view along a flythrough](../images/render/sponza-depth.gif)
 ![The depth-tile view along a flythrough](../images/render/sponza-tiles.gif)
+
+## Depth
+
+The depth buffer holds 16-bit inverse depth: a point at view depth $`z`$
+stores $`\mathrm{R3D\_DEPTH\_NEAREST}\cdot d_{near}/z`$, larger when nearer.
+Inverse depth interpolates linearly across the screen, so a span steps it
+with one add per pixel.
+
+Two surfaces a gap $`h`$ apart, seen from height $`H`$ above them at view
+depth $`z`$, are this many steps apart:
+
+```math
+N = \mathrm{R3D\_DEPTH\_NEAREST}\cdot\frac{d_{near}\,h}{H\,z}
+```
+
+Below one step they tie, and which one shows flips as the camera moves.
+
+$`d_{near}`$ is fitted each frame, apart from the clip plane:
+
+| Step | Owner | What it does |
+|---|---|---|
+| Cull every instance | `raster_draw()`, `raster_census()` | all lists first, so every instance draws with one scale |
+| Bound each kept cluster | `r3d_pipeline_nearest()` | the least view depth of its box inside each frustum plane, the best of them (`box3f_plane_min_inside()`) |
+| Fit | `raster.c` | the least bound, down to a power of two (`mathf_floor_pow2()`), never under `near_z` |
+| Draw | `r3d_lens_set_depth_near()` | each instance's lens encodes with it; the clip plane stays `near_z` |
+| Decode | `raster_depth_near()` | the scale the picture was drawn with, for readers such as motion vectors |
+
+The bound looks only at the part of a box the frustum keeps. A cluster as
+large as a ground square reaching behind the eye still bounds the nearest
+ground the picture can see.
+
+The scale is stored beside the census list, so a draw at another render
+size encodes with the census's. Snapping to a power of two keeps it still
+while the bound drifts, so ties do not flip from frame to frame.
+
+Looking down from 26 m, the nearest roof is metres away while `near_z` is
+6 cm. The fitted scale gives the street about a hundred times the steps. Below,
+the same six frames have depth scaled by `near_z` (top) and by the fit
+(bottom). On top, a ground square 2 to 7 cm under the street shows through
+as dashes that come and go.
+
+![Six consecutive frames of a street seen from above: with depth scaled by near_z the ground under it flickers through as grey dashes; with the fitted scale it does not](../images/render/depth-fit-bistro.png)
+
+`render.depth_fit = 0` encodes with `near_z` again, for comparisons.
 
 ## Attachments
 
