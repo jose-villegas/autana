@@ -416,7 +416,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
     render_lab_apply_raster_settings();
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
-    scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL};
+    scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL, NULL};
     gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(half);
     target.half_pixels = half;
