@@ -95,6 +95,26 @@ mathf_recip(float a) {
 #endif
 }
 
+/* Nonzero normal inputs of either sign with normal reciprocals, away from float range limits. */
+/* For nonzero input a, reciprocal seed y with one Newton correction. | y = y + y(1 - ay) | all mantissas in [1,2), both signs, normal exponent strides and edges */
+
+/* source: Muller et al. 2018 */
+/* exact: y = 1/a */
+/* MATH_FAST_PATH(mathf_recip_approx_f, div_recip_f, MATHF_RECIP_APPROX_RELATIVE_LIMIT) */
+
+static inline __attribute__((always_inline)) float
+mathf_recip_approx(float a) {
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+    float y;
+    __asm__("recip0.s %0, %1" : "=f"(y) : "f"(a));
+    return y + y * (1.0F - a * y);
+#else
+    return 1.0F / a;
+#endif
+}
+
+/* The board proof's maximum rounded up to a power of two bounds relative error (16 bits). */
+#define MATHF_RECIP_APPROX_RELATIVE_LIMIT 0x1p-16F
 /* One seed correction trades accuracy for throughput; the suite proves this bound. */
 #define MATHF_RSQRT_APPROX_RELATIVE_LIMIT 0.0001F
 /* Two seed corrections must stay close to the correctly rounded reciprocal root. */

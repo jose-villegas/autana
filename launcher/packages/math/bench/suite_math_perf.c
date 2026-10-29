@@ -212,6 +212,7 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
       transformx_compute_matrix(&f->tx[j]))                                                                            \
     X(maths_saturate, "maths_saturate", s, "scalar", false, i, maths_saturate(f->saturate[j]))                         \
     X(mathf_recip, "mathf_recip", f, "scalar", false, f, mathf_recip(f->vf[j].a.x))                                    \
+    X(mathf_recip_approx, "mathf_recip_approx", f, "scalar", false, f, mathf_recip_approx(f->vf[j].a.x))               \
     X(mathf_rsqrt, "mathf_rsqrt", f, "scalar", false, f, mathf_rsqrt(f->vf[j].a.x))                                    \
     X(mathf_rsqrt_approx, "mathf_rsqrt_approx", f, "scalar", false, f, mathf_rsqrt_approx(f->vf[j].a.x))               \
     X(wrap_fmodf, "wrap_fmodf", f, "libm", false, f,                                                                   \
