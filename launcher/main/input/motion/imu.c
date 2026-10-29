@@ -80,6 +80,7 @@ static unsigned reader_age_count;
 /* One imu.log_ms window of task work; the task alone writes it. */
 typedef struct {
     int64_t last_log_us;
+    int64_t last_wake_us;
     uint64_t drain_total_us;
     int64_t drain_max_us;
     uint64_t bus_us;
@@ -611,6 +612,58 @@ imu_set_odr(unsigned odr_code) {
 }
 #endif
 
+/* Sleeps until a reader stamps demand; a read since take_demand() leaves the notification pending. */
+static void
+park_until_read(void) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    stats.parks++;
+    const int64_t parked_us = timing_now_us();
+#endif
+    (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    stats.last_wake_us = timing_now_us();
+    stats.parked_us += (uint64_t)(stats.last_wake_us - parked_us);
+#endif
+}
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static void
+count_wake_gap(void) {
+    const int64_t now_us = timing_now_us();
+    const int64_t wake_gap_us = now_us - stats.last_wake_us;
+    if (wake_gap_us > stats.wake_gap_max_us) {
+        stats.wake_gap_max_us = wake_gap_us;
+    }
+    stats.last_wake_us = now_us;
+}
+#endif
+
+/* One period's bus work at `asked`: entering FIFO restarts it, then a register read or a due drain.
+ * The bus lock has no priority inheritance: a preempted drain holds the bus
+ * and keeps the FIFO in read mode, discarding arrivals. */
+static void
+serve_demand(imu_demand_level_t asked, imu_demand_level_t* level, unsigned* read_ticks, TickType_t drain_ticks) {
+    vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (sensor_present) {
+        apply_odr_request();
+    }
+#endif
+    if (asked == IMU_DEMAND_FIFO && *level != IMU_DEMAND_FIFO) {
+        restart_fifo();
+        *read_ticks = 0;
+    }
+    *level = asked;
+    if (imu_read_or_drain(asked == IMU_DEMAND_FIFO && *read_ticks >= drain_ticks)) {
+        *read_ticks = 0;
+    }
+    (*read_ticks)++;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    log_stats(timing_now_us());
+#endif
+    vTaskPrioritySet(NULL, IMU_TASK_PRIORITY);
+}
+
 static void
 imu_task(void* arg) {
     (void)arg;
@@ -618,57 +671,22 @@ imu_task(void* arg) {
     unsigned read_ticks = 0;
     imu_demand_level_t level = IMU_DEMAND_NONE;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    int64_t last_wake_us = timing_now_us();
+    stats.last_wake_us = timing_now_us();
 #endif
     while (1) {
         const imu_demand_level_t asked = take_demand();
         if (asked == IMU_DEMAND_NONE) {
-#if CONFIG_LAUNCHER_DEVELOPMENT
-            stats.parks++;
-            const int64_t parked_us = timing_now_us();
-#endif
-            /* A read between take_demand() and here leaves the notification pending. */
-            (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            park_until_read();
             level = IMU_DEMAND_NONE;
             last_wake = xTaskGetTickCount();
-#if CONFIG_LAUNCHER_DEVELOPMENT
-            last_wake_us = timing_now_us();
-            stats.parked_us += (uint64_t)(last_wake_us - parked_us);
-#endif
             continue;
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        const int64_t now_us = timing_now_us();
-        const int64_t wake_gap_us = now_us - last_wake_us;
-        if (wake_gap_us > stats.wake_gap_max_us) {
-            stats.wake_gap_max_us = wake_gap_us;
-        }
-        last_wake_us = now_us;
+        count_wake_gap();
 #endif
         const TickType_t requested_period = pdMS_TO_TICKS(read_ms);
         const TickType_t period = requested_period > 0 ? requested_period : 1;
-        const TickType_t drain_ticks = pdMS_TO_TICKS(drain_ms) / period;
-        /* The bus lock has no priority inheritance: a preempted drain holds the bus
-         * and keeps the FIFO in read mode, discarding arrivals. */
-        vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-        if (sensor_present) {
-            apply_odr_request();
-        }
-#endif
-        if (asked == IMU_DEMAND_FIFO && level != IMU_DEMAND_FIFO) {
-            restart_fifo();
-            read_ticks = 0;
-        }
-        level = asked;
-        if (imu_read_or_drain(level == IMU_DEMAND_FIFO && read_ticks >= drain_ticks)) {
-            read_ticks = 0;
-        }
-        read_ticks++;
-#if CONFIG_LAUNCHER_DEVELOPMENT
-        log_stats(timing_now_us());
-#endif
-        vTaskPrioritySet(NULL, IMU_TASK_PRIORITY);
+        serve_demand(asked, &level, &read_ticks, pdMS_TO_TICKS(drain_ms) / period);
         if (xTaskDelayUntil(&last_wake, period) == pdFALSE) {
             last_wake = xTaskGetTickCount();
         }
