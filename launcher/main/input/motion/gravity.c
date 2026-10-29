@@ -38,6 +38,11 @@ check_overrange(gravity_t* g, vec3f_t raw) {
     }
 }
 
+bool
+gravity_accel_trusted(float magnitude_g) {
+    return fabsf(magnitude_g - 1.0F) <= GRAVITY_TRUST_FULL_G;
+}
+
 static float
 trust_weight(float error) {
     return mathf_clamp((GRAVITY_TRUST_NONE_G - error) / (GRAVITY_TRUST_NONE_G - GRAVITY_TRUST_FULL_G), 0.0F, 1.0F);
@@ -82,7 +87,7 @@ correct_accepted(gravity_t* g, vec3f_t direction, float weight, float dt) {
     const vec3f_t correction = vec3f_cross(g->down, direction);
     const vec3f_t bias =
         vec3f_add(g->gyro_bias, vec3f_scale(correction, GRAVITY_BIAS_KI * weight * dt / RADIANS_PER_DEGREE));
-    const vec3f_t hi = {GRAVITY_BIAS_MAX_DPS, GRAVITY_BIAS_MAX_DPS, GRAVITY_BIAS_MAX_DPS};
+    const vec3f_t hi = {IMU_GYRO_BIAS_MAX_DPS, IMU_GYRO_BIAS_MAX_DPS, IMU_GYRO_BIAS_MAX_DPS};
     g->gyro_bias = vec3f_clamp(bias, vec3f_scale(hi, -1.0F), hi);
     /* dt/(tau+dt) approximates exponential smoothing without a per-frame expf. */
     const float alpha = weight * dt / (GRAVITY_TAU_S + dt);
@@ -93,7 +98,8 @@ static void
 correct_acceleration(gravity_t* g, vec3f_t a, vec3f_t rate, uint32_t dt_us, float dt) {
     const float magnitude = sqrtf(vec3f_dot(a, a));
     const float error = fabsf(magnitude - 1.0F);
-    const bool still = vec3f_dot(rate, rate) < GRAVITY_STILL_DPS * GRAVITY_STILL_DPS && error <= GRAVITY_TRUST_FULL_G;
+    const bool still =
+        vec3f_dot(rate, rate) < GRAVITY_STILL_DPS * GRAVITY_STILL_DPS && gravity_accel_trusted(magnitude);
     if (!still) {
         g->still_us = 0;
     }
@@ -187,4 +193,9 @@ bool
 gravity_in_free_fall(const gravity_t* g) {
     const vec3f_t a = vec3f_add(g->linear, g->down);
     return vec3f_dot(a, a) < GRAVITY_FREE_FALL_G * GRAVITY_FREE_FALL_G;
+}
+
+void
+gravity_clear_gyro_bias(gravity_t* g) {
+    g->gyro_bias = (vec3f_t){0};
 }

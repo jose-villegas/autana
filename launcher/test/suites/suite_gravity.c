@@ -28,11 +28,11 @@
 #define ANGLE_TOLERANCE_DEG  (GRAVITY_REJECT_DEG / 10.0F)
 #define TURN_TOLERANCE       (ANGLE_TOLERANCE_DEG * MATH_PI / (2.0F * QUARTER_TURN_DEG))
 #define SHAKE_G              (GRAVITY_TRUST_NONE_G + GRAVITY_TRUST_FULL_G)
-#define BIAS_DPS             GRAVITY_GYRO_OFFSET_TOL_DPS
+#define BIAS_DPS             IMU_GYRO_OFFSET_TOL_DPS
 #define BIAS_TOLERANCE       (BIAS_DPS / 50.0F)
 #define CORRECTION_ANGLE_RAD (GRAVITY_REJECT_DEG * MATH_PI / (4.0F * QUARTER_TURN_DEG))
 #define PARTIAL_TRUST_G      ((GRAVITY_TRUST_FULL_G + GRAVITY_TRUST_NONE_G) / 2.0F)
-#define CLAMP_OFFSET_DPS     (GRAVITY_BIAS_MAX_DPS + GRAVITY_GYRO_OFFSET_TOL_DPS / 4.0F)
+#define CLAMP_OFFSET_DPS     (IMU_GYRO_BIAS_MAX_DPS + IMU_GYRO_OFFSET_TOL_DPS / 4.0F)
 #define STALLED_MS           (GRAVITY_MAX_DT_MS * 20U)
 
 static gravity_t g;
@@ -471,12 +471,12 @@ test_bias_clamps_each_axis(void) {
     const struct {
         vec3f_t down, offset, expected;
     } cases[] = {
-        {{0, 0, -1}, {CLAMP_OFFSET_DPS, 0, 0}, {GRAVITY_BIAS_MAX_DPS, 0, 0}},
-        {{0, 0, -1}, {-CLAMP_OFFSET_DPS, 0, 0}, {-GRAVITY_BIAS_MAX_DPS, 0, 0}},
-        {{0, 0, -1}, {0, CLAMP_OFFSET_DPS, 0}, {0, GRAVITY_BIAS_MAX_DPS, 0}},
-        {{0, 0, -1}, {0, -CLAMP_OFFSET_DPS, 0}, {0, -GRAVITY_BIAS_MAX_DPS, 0}},
-        {{0, 1, 0}, {0, 0, CLAMP_OFFSET_DPS}, {0, 0, GRAVITY_BIAS_MAX_DPS}},
-        {{0, 1, 0}, {0, 0, -CLAMP_OFFSET_DPS}, {0, 0, -GRAVITY_BIAS_MAX_DPS}},
+        {{0, 0, -1}, {CLAMP_OFFSET_DPS, 0, 0}, {IMU_GYRO_BIAS_MAX_DPS, 0, 0}},
+        {{0, 0, -1}, {-CLAMP_OFFSET_DPS, 0, 0}, {-IMU_GYRO_BIAS_MAX_DPS, 0, 0}},
+        {{0, 0, -1}, {0, CLAMP_OFFSET_DPS, 0}, {0, IMU_GYRO_BIAS_MAX_DPS, 0}},
+        {{0, 0, -1}, {0, -CLAMP_OFFSET_DPS, 0}, {0, -IMU_GYRO_BIAS_MAX_DPS, 0}},
+        {{0, 1, 0}, {0, 0, CLAMP_OFFSET_DPS}, {0, 0, IMU_GYRO_BIAS_MAX_DPS}},
+        {{0, 1, 0}, {0, 0, -CLAMP_OFFSET_DPS}, {0, 0, -IMU_GYRO_BIAS_MAX_DPS}},
     };
 
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
@@ -485,9 +485,9 @@ test_bias_clamps_each_axis(void) {
         const input_motion_t m = sample(cases[i].down, cases[i].offset);
         for (uint32_t elapsed = 0; elapsed < BIAS_SETTLE_MS; elapsed += STEP_MS) {
             gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
-            TEST_ASSERT_TRUE(fabsf(g.gyro_bias.x) <= GRAVITY_BIAS_MAX_DPS);
-            TEST_ASSERT_TRUE(fabsf(g.gyro_bias.y) <= GRAVITY_BIAS_MAX_DPS);
-            TEST_ASSERT_TRUE(fabsf(g.gyro_bias.z) <= GRAVITY_BIAS_MAX_DPS);
+            TEST_ASSERT_TRUE(fabsf(g.gyro_bias.x) <= IMU_GYRO_BIAS_MAX_DPS);
+            TEST_ASSERT_TRUE(fabsf(g.gyro_bias.y) <= IMU_GYRO_BIAS_MAX_DPS);
+            TEST_ASSERT_TRUE(fabsf(g.gyro_bias.z) <= IMU_GYRO_BIAS_MAX_DPS);
         }
         assert_vector(cases[i].expected, g.gyro_bias, 0);
     }
