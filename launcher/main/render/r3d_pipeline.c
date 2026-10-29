@@ -429,11 +429,12 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
     fill_triangle(target, &s[0], &s[1], &s[2], face_color, writes);
 }
 
+/* Triangles first to end - 1 of one cluster. */
 static inline __attribute__((always_inline)) void
-draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
-             const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, bool writes, r3d_pipeline_work_t* work) {
-    const int end = c->triangle_first + c->triangle_count;
-    for (int t = c->triangle_first; t < end; t++) {
+draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c, int first, int end,
+               const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, bool writes,
+               r3d_pipeline_work_t* work) {
+    for (int t = first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
@@ -461,7 +462,8 @@ static __attribute__((noinline, cold)) void
 draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
              const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work) {
-    r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
+    assert(target->writer_count <= GFX_ATTACHMENTS_FURTHER_MAX);
+    r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
     r3d_span_target_t writing = *target;
     writing.writers = writers;
     bool per_triangle = false;
@@ -477,12 +479,11 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
         /* Whole clusters, or one triangle at a time when a writer steps per
          * triangle, so it is retagged here and the cluster draw stays the
          * hot one's. */
-        r3d_lit_cluster_t part = *c;
-        part.triangle_count = per_triangle ? 1 : c->triangle_count;
-        for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t += part.triangle_count) {
+        const int end = c->triangle_first + c->triangle_count;
+        const int step = per_triangle ? 1 : c->triangle_count;
+        for (int t = c->triangle_first; t < end; t += step) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
-            part.triangle_first = (uint16_t)t;
-            draw_cluster(mesh, lens, &part, cs, &writing, true, work);
+            draw_triangles(mesh, lens, c, t, t + step, cs, &writing, true, work);
         }
     }
 }
@@ -502,7 +503,9 @@ draw_reading(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
         if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
             continue;
         }
-        draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, false, work);
+        const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
+        draw_triangles(mesh, lens, c, c->triangle_first, c->triangle_first + c->triangle_count, cs, target, false,
+                       work);
     }
 }
 

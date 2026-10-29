@@ -153,9 +153,8 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
                 }
                 r3d_span_triangle(expected, front, front + 1, front + 2);
             }
-            r3d_lit_cluster_t selected = cluster;
-            selected.triangle_count = mixed ? 2 : 1;
-            draw_cluster(&mesh, &lens, &selected, transformed, actual, false, work);
+            draw_triangles(&mesh, &lens, &cluster, cluster.triangle_first, cluster.triangle_first + (mixed ? 2 : 1),
+                           transformed, actual, false, work);
             TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
             int covered = 0;
             for (int i = 0; i < TEST_PIXELS; i++) {
