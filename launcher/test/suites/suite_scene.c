@@ -1703,7 +1703,7 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     const camera_t* lens = scene_camera_lens(scene, name_hash("camera"));
     TEST_ASSERT_EQUAL_FLOAT(0.75F, lens->half_fov_short_tan);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, lens->near_z);
-    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x336699), scene->cameras[0].clear);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(CLEAR_RGB), scene->cameras[0].clear);
     TEST_ASSERT_EQUAL_UINT32(3000, scene_animator_clip_duration_ms(scene, scene_find(scene, name_hash("camera")),
                                                                    0)); /* the probe clip's length */
 }
