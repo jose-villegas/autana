@@ -35,7 +35,7 @@ class Repository:
                 return self.issues
             self.issues = [{'number': 7}]
             return self.issues[0]
-        if route == '/actions/workflows/' + alarm.NIGHTLY_WORKFLOW:
+        if route == '/actions/workflows/' + alarm.NIGHT_WORKFLOW:
             return {'state': 'active' if self.active else 'disabled_manually'}
         if route.endswith('/runs'):
             return {'workflow_runs': self.runs.get(route, [])}
@@ -241,6 +241,34 @@ class BoardAlarmTests(unittest.TestCase):
             self.assertEqual(alarm.probe_devices(destination, Path(directory) / 'reason', download), 0)
             self.assertEqual(json.loads(destination.read_text()), {'boards': []})
 
+    def test_probe_merges_every_hosts_boards(self):
+        request = Repository()
+        jobs = []
+        for host in ('HostA', 'HostB'):
+            job = board_job()
+            job['name'] = f'{alarm.PROBE_JOB} ({host})'
+            jobs.append(job)
+        request.jobs['/actions/runs/42/attempts/2/jobs'] = jobs
+        archives = {}
+        for number, board in ((1, '2124'), (2, '20E8')):
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, 'w') as output:
+                output.writestr(alarm.DEVICES_FILE, json.dumps({'boards': [{'board': board, 'port': 'COM5'}]}))
+            archives[f'/actions/artifacts/{number}/zip'] = archive.getvalue()
+        def download(method, path, body=None, **kwargs):
+            if path.startswith('/actions/runs/42/artifacts'):
+                return {'artifacts': [dict(id=1, name=f'{alarm.ARTIFACT_PREFIX}-2-HostA', expired=False),
+                                      dict(id=2, name=f'{alarm.ARTIFACT_PREFIX}-2-HostB', expired=False),
+                                      dict(id=3, name=f'{alarm.ARTIFACT_PREFIX}-1-HostA', expired=False)]}
+            if path in archives:
+                return archives[path]
+            return request(method, path, body)
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ,
+                GITHUB_RUN_ID='42', GITHUB_RUN_ATTEMPT='2'):
+            destination = Path(directory) / 'devices'
+            self.assertEqual(alarm.probe_devices(destination, Path(directory) / 'reason', download), 0)
+            self.assertEqual(sorted(alarm.read_plugged(destination)), ['20E8', '2124'])
+
     def test_probe_failed_job_and_missing_artifact_record_reason(self):
         for conclusion in ('failure', 'success'):
             request = Repository()
@@ -291,7 +319,7 @@ class BoardAlarmTests(unittest.TestCase):
             devices.write_text('{"boards": []}')
             self.assertEqual(alarm.main(['check', '--lanes-from', directory, '--devices', str(devices),
                                          '--reason-file', str(Path(directory) / 'reason')]), 1)
-        self.assertEqual(sum(path == '/actions/workflows/' + alarm.NIGHTLY_WORKFLOW
+        self.assertEqual(sum(path == '/actions/workflows/' + alarm.NIGHT_WORKFLOW
                              for _, path, _ in request.calls), 1)
         self.assertFalse(any(method != 'GET' for method, _, _ in request.calls))
 
@@ -320,13 +348,13 @@ class BoardAlarmTests(unittest.TestCase):
         reports = [step for step in commands if 'board_alarm.py raise ' in step['run']]
         self.assertEqual(len(reports), 1)
         self.assertEqual(reports[0]['if'], 'failure()')
-        for name in ('nightly-perf.yml', 'board-ci.yml'):
+        for name in ('nightly-board.yml', 'board-ci.yml'):
             job = yaml.safe_load((root / name).read_text())['jobs']['alarm']
             self.assertEqual(job['concurrency']['group'], 'board-ci-alarm')
             self.assertEqual(job['timeout-minutes'], 5)
 
     def test_nightly_held_output_uses_lane_outcome_only(self):
-        workflow = Path(__file__).resolve().parents[3] / '.github/workflows/nightly-perf.yml'
+        workflow = Path(__file__).resolve().parents[3] / '.github/workflows/nightly-board.yml'
         nightly = yaml.safe_load(workflow.read_text())['jobs']['nightly']
         self.assertEqual(nightly['outputs']['held'],
                          "${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}")

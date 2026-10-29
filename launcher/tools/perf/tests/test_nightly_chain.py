@@ -487,7 +487,7 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual([step["commit"] for step in joiner["steps"]], [self.commits[2], self.commits[5]])
         self.assertEqual(planned["lanes"]["20E8"]["lane"], "0/2")
         self.assertEqual(manifests["2124"]["machine"], OTHER_MACHINE)
-        workflow = (PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text()
+        workflow = (PERF.parents[2] / ".github/workflows/nightly-board.yml").read_text()
         script = workflow.split("          \"$PY\" - <<'PY'\n", 1)[1].split('          PY', 1)[0]
         script = "\n".join(line[10:] for line in script.splitlines())
         summary = self.root / "summary"
@@ -965,7 +965,7 @@ class NightlyTests(unittest.TestCase):
 
 class LaneSettingsTests(unittest.TestCase):
     def test_workflow_lanes_run_after_prepare_failure_and_publish_after_failure(self):
-        workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text())
+        workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-board.yml").read_text())
         steps = {step.get("name"): step for step in workflow["jobs"]["nightly"]["steps"]}
         lane_step = steps["Run each board lane and wait for all"]
         self.assertEqual(lane_step["if"], "${{ !cancelled() && env.SCOPED_BOARDS != '' }}")
@@ -973,11 +973,11 @@ class LaneSettingsTests(unittest.TestCase):
             self.assertEqual(steps[step]["if"], "always() && env.PERF_DATA != ''")
 
     def test_workflow_passes_marker_to_plan(self):
-        workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text())
+        workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-board.yml").read_text())
         step = next(step for step in workflow["jobs"]["nightly"]["steps"]
                     if step.get("name") == "Prepare the data branch and shared plan")
         self.assertIn('--marker "$MARKER"', step['run'])
-        self.assertEqual(workflow['jobs']['nightly']['needs'], ['marker', 'wait'])
+        self.assertEqual(workflow['jobs']['nightly']['env']['MARKER'], '${{ inputs.marker }}')
 
 
 if __name__ == "__main__":

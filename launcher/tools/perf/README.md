@@ -288,6 +288,13 @@ The hosted marker job computes the marker and exits. Serialized hosted wait
 legs sleep within `HOSTED_WAIT_SECONDS` in `scripts/lib/local_schedule.py`.
 The work jobs depend on both jobs and start after the marker passes.
 
+At the board start the night starts one `nightly-board.yml` run per board host
+(`scripts/ci/board_nights.py`), each on the runner label `vars.BOARD_HOSTS`
+lists beside `board`. Each run plans lanes for the boards on its own host's USB
+and publishes their folders. A run waiting on an offline host holds only that
+host, and the next night's run for it replaces it. Lanes split commits only
+among one host's boards.
+
 The GPU stage yields green when bakes are queued or running.
 Every Bakes GPU completion triggers a fresh image check.
 

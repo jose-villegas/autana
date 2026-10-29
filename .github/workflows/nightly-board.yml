@@ -1,0 +1,218 @@
+name: Nightly board lanes
+
+# One board host's night, started by nightly-perf.yml once the board start
+# passes (scripts/ci/board_nights.py). The plan runs one lane per board on this
+# host's USB. A run waiting on an offline host holds only that host, and the next
+# night's run for it replaces it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: The board host's runner label
+        required: true
+      marker:
+        description: The night's board start marker
+        required: true
+      from:
+        description: First candidate SHA (inclusive)
+        required: false
+      max_steps:
+        description: Maximum new candidates per board
+        required: false
+
+concurrency:
+  group: nightly-board-${{ inputs.host }}
+  cancel-in-progress: true
+permissions:
+  contents: write
+  actions: read
+
+env:
+  NIGHTLY_SUITES: |
+    run_sand_perf_suite|-|python3 launcher/main/apps/sand/tools/report_performance.py @CAPTURE@ @TABLE@ --source @PROJECT@/launcher/main/apps/sand/tests/suite_sand_perf.c
+    run_sponza_perf_suite|-|-
+    run_render_lab_frame_profile_suite|-|-
+    run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
+  NIGHT_START: ${{ vars.NIGHT_START }}
+  NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
+  GH_TOKEN: ${{ github.token }}
+  GIT_CONFIG_COUNT: '4'
+  GIT_CONFIG_KEY_0: core.hooksPath
+  GIT_CONFIG_VALUE_0: /dev/null
+  GIT_CONFIG_KEY_1: filter.lfs.process
+  GIT_CONFIG_VALUE_1: ''
+  GIT_CONFIG_KEY_2: filter.lfs.smudge
+  GIT_CONFIG_VALUE_2: ''
+  GIT_CONFIG_KEY_3: filter.lfs.required
+  GIT_CONFIG_VALUE_3: 'false'
+
+jobs:
+  nightly:
+    env:
+      MARKER: ${{ inputs.marker }}
+    outputs:
+      held: ${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}
+    runs-on: [self-hosted, windows, board, '${{ inputs.host }}']
+    # Hang guard under the 24 h GITHUB_TOKEN life; work gets a fresh token after the hosted wait.
+    timeout-minutes: 1380
+    defaults:
+      run:
+        shell: 'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+          set-safe-directory: false
+
+      - name: Prepare the data branch and shared plan
+        env:
+          FROM_SHA: ${{ inputs.from }}
+          MAX_STEPS: ${{ inputs.max_steps }}
+        run: |
+          export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
+          PY=$(. scripts/lib/python.sh && find_python)
+          data="$RUNNER_TEMP/perf-data-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          out="$RUNNER_TEMP/nightly-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$data" "$out"
+          echo "PERF_DATA=$(cygpath -w "$data")" >> "$GITHUB_ENV"
+          echo "PERF_OUT=$(cygpath -w "$out")" >> "$GITHUB_ENV"
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          # perf_index.py owns the store branch: checked out from origin, or started empty.
+          # The token joins the job's git settings as one more entry, keeping hooks and LFS off.
+          n=$GIT_CONFIG_COUNT
+          env "GIT_CONFIG_COUNT=$((n + 1))" "GIT_CONFIG_KEY_$n=http.extraheader" "GIT_CONFIG_VALUE_$n=$auth" \
+            "$PY" launcher/tools/perf/perf_index.py store --path "$data"
+          args=()
+          [ -z "$FROM_SHA" ] || args+=(--from "$FROM_SHA")
+          [ -z "$MAX_STEPS" ] || args+=(--max-steps "$MAX_STEPS")
+          # One lane per board plugged in; the plan sets SCOPED_BOARDS and SELFTEST_BOARD.
+          "$PY" launcher/tools/perf/nightly/scoped_chain.py plan \
+            --data "$data" --out "$out/plan.json" --marker "$MARKER" "${args[@]}" >> "$GITHUB_ENV"
+
+      - name: Prepare the self-test's console tests
+        if: env.SELFTEST_BOARD != ''
+        run: bash scripts/ci/board-prepare.sh
+
+      - name: Run each board lane and wait for all
+        id: lanes
+        if: ${{ !cancelled() && env.SCOPED_BOARDS != '' }}
+        run: |
+          export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
+          suites=()
+          while IFS="|" read -r suite tests table; do
+            [ -z "$suite" ] || suites+=(--suite "$suite" "$tests" "$table")
+          done <<< "$NIGHTLY_SUITES"
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" launcher/tools/perf/nightly/scoped_chain.py night \
+            --plan "$PERF_OUT/plan.json" --data "$PERF_DATA" --out "$PERF_OUT" "${suites[@]}"
+
+      - name: Summarize board outcomes
+        if: always() && env.PERF_DATA != ''
+        run: |
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" - <<'PY'
+          from collections import Counter
+          from datetime import datetime
+          import json
+          import os
+          from pathlib import Path
+          plan = json.loads((Path(os.environ["PERF_OUT"]) / "plan.json").read_text())
+          night = datetime.fromisoformat(plan["started"]).strftime("%Y-%m-%d-%H%M")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              for board in plan["lanes"]:
+                  path = Path(os.environ["PERF_DATA"]) / "scoped" / board / night / "night.json"
+                  if not path.is_file():
+                      summary.write(f"{board}: no night manifest\n\n")
+                      continue
+                  manifest = json.loads(path.read_text())
+                  counts = Counter(step["outcome"] for step in manifest["steps"])
+                  summary.write(f"{board}: " + ", ".join(f"{key}={value}" for key, value in sorted(counts.items())) + "\n\n")
+                  test = manifest["selftest"]
+                  summary.write(f"Self-test {board}: {test['outcome']}; report: {test['report']}\n\n")
+          PY
+          "$PY" launcher/tools/perf/nightly/scoped_chain.py timeline \
+            --plan "$PERF_OUT/plan.json" --data "$PERF_DATA" --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish night manifests and LNT reports
+        if: always() && env.PERF_DATA != ''
+        env:
+          # This host's label names its parsed capture lines; never the runner's hostname.
+          PERF_HOST: ${{ inputs.host }}
+        run: |
+          data=$(cygpath -u "$PERF_DATA")
+          [ -d "$data/.git" ] || exit 0
+          # One parsed line per capture (perf_index.py); the raw logs stay in the artifact.
+          records=()
+          for folder in .records/device "$(cygpath -u "$PERF_OUT")"/*/device; do
+            [ -f "$folder/index.jsonl" ] && records+=(--records "$folder")
+          done
+          if [ ${#records[@]} -gt 0 ]; then
+            PY=$(. scripts/lib/python.sh && find_python)
+            "$PY" launcher/tools/perf/perf_index.py sync --host "${PERF_HOST:-nightly}" --store "$data" \
+              --write-only "${records[@]}" || echo "::warning::perf_index.py sync failed; night manifests still publish"
+          fi
+          git -C "$data" config user.name github-actions[bot]
+          git -C "$data" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for part in scoped captures; do
+            [ -d "$data/$part" ] && git -C "$data" add "$part"
+          done
+          if ! git -C "$data" diff --cached --quiet; then
+            git -C "$data" commit -m 'perf: record nightly scoped chains'
+            auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+            # Other hosts publish the same night; each writes only its own boards' and captures' files.
+            for attempt in 1 2 3 4 5; do
+              git -c "http.extraheader=$auth" -C "$data" push origin HEAD && break
+              [ "$attempt" -lt 5 ] || exit 1
+              git -c "http.extraheader=$auth" -C "$data" pull --rebase origin "$(git -C "$data" rev-parse --abbrev-ref HEAD)"
+            done
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: nightly-raw-${{ inputs.host }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .records/device
+            ${{ env.PERF_OUT }}
+          include-hidden-files: true
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: nightly-data-${{ inputs.host }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.PERF_DATA }}/scoped
+          if-no-files-found: ignore
+
+  alarm:
+    needs: nightly
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: board-ci-alarm
+      cancel-in-progress: false
+    permissions:
+      issues: write
+      actions: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Raise the board-ci-down alarm
+        if: needs.nightly.result == 'failure' || needs.nightly.result == 'cancelled'
+        env:
+          BOARD_RESULT: ${{ needs.nightly.result }}
+        run: python3 scripts/ci/board_alarm.py raise --reason "nightly job on ${{ inputs.host }} $BOARD_RESULT"
+
+      - name: Clear the board-ci-down alarm
+        if: needs.nightly.result == 'success' && needs.nightly.outputs.held == 'true'
+        run: python3 scripts/ci/board_alarm.py clear

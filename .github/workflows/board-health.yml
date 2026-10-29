@@ -14,8 +14,13 @@ permissions:
   actions: read
 
 jobs:
+  # One USB probe per board host the nightly runs on (vars.BOARD_HOSTS).
   boards:
-    runs-on: [self-hosted, windows, board]
+    strategy:
+      fail-fast: false
+      matrix:
+        host: ${{ fromJSON(vars.BOARD_HOSTS) }}
+    runs-on: [self-hosted, windows, board, '${{ matrix.host }}']
     timeout-minutes: 10
     defaults:
       run:
@@ -44,7 +49,7 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: board-health-devices-${{ github.run_attempt }}
+          name: board-health-devices-${{ github.run_attempt }}-${{ matrix.host }}
           path: ${{ runner.temp }}/devices.json
           if-no-files-found: error
 

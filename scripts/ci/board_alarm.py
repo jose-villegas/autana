@@ -18,7 +18,9 @@ from device_lock import short_id
 LABEL = 'board-ci-down'
 QUEUED_LIMIT = timedelta(minutes=30)
 SUCCESS_WINDOW = timedelta(hours=24)
-NIGHTLY_WORKFLOW = 'nightly-perf.yml'
+# The scheduled night, and the per-host board runs it starts, which hold the board jobs.
+NIGHT_WORKFLOW = 'nightly-perf.yml'
+NIGHTLY_WORKFLOW = 'nightly-board.yml'
 BOARD_WORKFLOW = 'board-ci.yml'
 BOARD_LABEL = 'board'
 CLEAR_STEP = 'Clear the board-ci-down alarm'
@@ -59,7 +61,7 @@ def clear_alarm(run_url, request=call):
 
 
 def nights_enabled(request):
-    active = request('GET', f'/actions/workflows/{NIGHTLY_WORKFLOW}')['state'] == 'active'
+    active = request('GET', f'/actions/workflows/{NIGHT_WORKFLOW}')['state'] == 'active'
     if not active:
         print('::notice::Board health checks paused: nightly workflow is disabled')
     return active
@@ -159,22 +161,28 @@ def probe_devices(destination, reason_file, request=call, clock=time.monotonic, 
     attempt = os.environ.get('GITHUB_RUN_ATTEMPT', '1')
     deadline = clock() + QUEUED_LIMIT.total_seconds()
     while True:
-        jobs = pages(f'/actions/runs/{run}/attempts/{attempt}/jobs', 'jobs', request)
-        job = next((job for job in jobs if job['name'] == PROBE_JOB), None)
-        if job and job['status'] == 'completed':
-            if job['conclusion'] != 'success':
-                reason = f"Board health USB probe {job['conclusion']}"
+        # One probe per board host (a matrix leg each); every host's boards count as plugged in.
+        jobs = [job for job in pages(f'/actions/runs/{run}/attempts/{attempt}/jobs', 'jobs', request)
+                if job['name'] == PROBE_JOB or job['name'].startswith(f'{PROBE_JOB} (')]
+        if jobs and all(job['status'] == 'completed' for job in jobs):
+            failed = [job for job in jobs if job['conclusion'] != 'success']
+            if failed:
+                reason = '; '.join(f"Board health USB probe {job['name']} {job['conclusion']}" for job in failed)
                 break
-            artifacts = pages(f'/actions/runs/{run}/artifacts', 'artifacts', request)
-            artifact = next((item for item in artifacts if not item['expired'] and
-                             item['name'] == f'{ARTIFACT_PREFIX}-{attempt}'), None)
-            if artifact is None:
+            names = (f'{ARTIFACT_PREFIX}-{attempt}', f'{ARTIFACT_PREFIX}-{attempt}-')
+            artifacts = [item for item in pages(f'/actions/runs/{run}/artifacts', 'artifacts', request)
+                         if not item['expired'] and (item['name'] == names[0] or item['name'].startswith(names[1]))]
+            if len(artifacts) < len(jobs):
                 reason = 'Board health USB probe has no devices artifact'
                 break
-            payload = request('GET', f"/actions/artifacts/{artifact['id']}/zip", raw=True)
-            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-                Path(destination).write_bytes(archive.read(DEVICES_FILE))
+            boards = []
+            for artifact in artifacts:
+                payload = request('GET', f"/actions/artifacts/{artifact['id']}/zip", raw=True)
+                with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                    boards += json.loads(archive.read(DEVICES_FILE).decode('utf-8-sig'))['boards']
+            Path(destination).write_text(json.dumps({'boards': boards}), encoding='utf-8')
             return 0
+        job = next((job for job in jobs if job['status'] != 'completed'), None)
         remaining = deadline - clock()
         if remaining <= 0:
             reason = ('board runner offline or idle' if not job or job['status'] == 'queued'

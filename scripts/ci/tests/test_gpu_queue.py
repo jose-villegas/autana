@@ -61,7 +61,7 @@ class GpuQueueTests(unittest.TestCase):
 
     def test_workflows_separate_marker_wait_and_work(self):
         root = Path(__file__).resolve().parents[3]
-        for filename, job in (('doc-images-gpu.yml', 'refresh'), ('nightly-perf.yml', 'nightly')):
+        for filename, job in (('doc-images-gpu.yml', 'refresh'), ('nightly-perf.yml', 'boards')):
             workflow = yaml.safe_load((root / '.github/workflows' / filename).read_text())
             self.assertEqual(workflow[True]['schedule'], [{'cron': '17 20 * * *'}])
             self.assertEqual(workflow['jobs']['marker']['runs-on'], 'ubuntu-24.04')
@@ -75,9 +75,12 @@ class GpuQueueTests(unittest.TestCase):
             if job == 'refresh':
                 self.assertEqual(wait['if'], workflow['jobs'][job]['if'])
                 self.assertIn('fingerprint', wait['needs'])
-            self.assertEqual(workflow['jobs'][job]['timeout-minutes'], 1380)
             self.assertIn('marker', workflow['jobs'][job]['needs'])
             self.assertEqual(workflow['jobs'][job]['env']['MARKER'], '${{ needs.marker.outputs.marker }}')
+        refresh = yaml.safe_load((root / '.github/workflows/doc-images-gpu.yml').read_text())['jobs']['refresh']
+        board = yaml.safe_load((root / '.github/workflows/nightly-board.yml').read_text())['jobs']['nightly']
+        for work in (refresh, board):
+            self.assertEqual(work['timeout-minutes'], 1380)
 
     def test_pending_counts_only_gpu_jobs_ready_to_run(self):
         for status in ('queued', 'waiting', 'in_progress', 'pending', 'requested', 'completed'):
