@@ -13,7 +13,7 @@
  * step (render_lab_dynres_steps_suite), includes each step's compose and
  * prices the raster from the triangles culling kept, so it carries to any
  * mesh; the live refit learns the rest. No step is recovery-only. */
-#define RENDER_LAB_LADDER_STEPS    6
+#define RENDER_LAB_LADDER_STEPS    8
 #define RENDER_LAB_LADDER_RECOVERY RENDER_LAB_LADDER_STEPS
 #define RENDER_LAB_LADDER_HALF     4
 extern const resolution_step_t render_lab_ladder[RENDER_LAB_LADDER_STEPS];

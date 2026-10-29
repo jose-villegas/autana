@@ -2586,8 +2586,25 @@ test_failed_half_allocation_keeps_full_upscale_unexpanded(void) {
     TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, full, GFX_FRAMEBUFFER_BYTES));
 }
 
+/* The panel doubles the half picture's rows, whatever height was drawn: a
+ * height that divides the half repeats every row alike, an uneven one
+ * through the row map. */
 static void
-test_camera_present_composes_half_picture_and_uneven_fallback(void) {
+check_half_composed(render_context_t* c, int quarter, const scene_target_t* target) {
+    TEST_ASSERT_TRUE(raster_fits_half_picture(&c->raster));
+    raster_upscale(&c->raster, fx.held, GFX_WIDTH / 2, GFX_HEIGHT / 2);
+    TEST_ASSERT_TRUE(scene_compose(0, quarter, target));
+    gfx_expand_frame();
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            TEST_ASSERT_EQUAL_HEX16(fx.held[(y / 2) * (GFX_WIDTH / 2) + x / 2], fx.pixels[y * GFX_WIDTH + x]);
+        }
+    }
+}
+
+static void
+test_camera_present_composes_half_picture_at_any_height(void) {
     expanded_fixture();
     render_context_t* c = render_context_main();
     render_context_set_scale(c, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
@@ -2599,30 +2616,15 @@ test_camera_present_composes_half_picture_and_uneven_fallback(void) {
         scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
         TEST_ASSERT_EQUAL_INT(GFX_WIDTH / 2, c->raster.width);
         TEST_ASSERT_EQUAL_INT(GFX_HEIGHT / 4, c->raster.height);
-        TEST_ASSERT_TRUE(raster_fits_half_picture(&c->raster));
-        raster_upscale(&c->raster, fx.held, GFX_WIDTH / 2, GFX_HEIGHT / 2);
-        TEST_ASSERT_TRUE(scene_compose(0, quarter, &target));
-        gfx_expand_frame();
-        for (int y = 0; y < GFX_HEIGHT; y++) {
-            gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
-            for (int x = 0; x < GFX_WIDTH; x++) {
-                TEST_ASSERT_EQUAL_HEX16(fx.held[(y / 2) * (GFX_WIDTH / 2) + x / 2], fx.pixels[y * GFX_WIDTH + x]);
-            }
-        }
+        check_half_composed(c, quarter, &target);
     }
     const resolution_step_t uneven = {GFX_WIDTH / 2, 179};
     const resolution_config_t one = resolution_config(&uneven, 1, 1, INT32_MAX);
     render_context_set_dynamic_resolution(c, &one, NULL, 0);
     scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
     TEST_ASSERT_EQUAL_INT(uneven.height / 2, c->raster.height);
-    TEST_ASSERT_FALSE(raster_fits_half_picture(&c->raster));
-    c->raster.present = CAMERA_PRESENT_NEAREST;
-    raster_upscale(&c->raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
-    c->raster.present = CAMERA_PRESENT_SCANLINE;
-    target.half_pixels[0] = SENTINEL;
-    TEST_ASSERT_FALSE(scene_compose(0, 0, &target));
-    TEST_ASSERT_EQUAL_HEX16(SENTINEL, target.half_pixels[0]);
-    TEST_ASSERT_EQUAL_MEMORY(fx.held, target.pixels, GFX_FRAMEBUFFER_BYTES);
+    TEST_ASSERT_NOT_EQUAL(0, (GFX_HEIGHT / 2) % c->raster.height);
+    check_half_composed(c, 0, &target);
 }
 
 static void
@@ -4197,7 +4199,7 @@ run_scene_suite(void) {
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
     RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
-    RUN_TEST(test_camera_present_composes_half_picture_and_uneven_fallback);
+    RUN_TEST(test_camera_present_composes_half_picture_at_any_height);
     RUN_TEST(test_camera_present_scanline_and_double_compose_both_quarters);
     RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
     RUN_TEST(test_camera_small_fill_default_setter_and_view);
