@@ -13,8 +13,7 @@
 int
 r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out,
                           r3d_pipeline_count_walk_t* walk, r3d_pipeline_counts_t* counts) {
-    planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
-                   walk->planes);
+    r3d_lens_frustum(lens, walk->planes);
     int top = 0;
     walk->node[top] = 0;
     walk->mask[top++] = (uint8_t)ALL_PLANES;

@@ -1222,7 +1222,7 @@ quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* fac
 static int
 draw_quad_mesh(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_span_target_t* target) {
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work());
+    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work(), NULL);
     r3d_pipeline_vertex_t cs[4];
     r3d_pipeline_transform(mesh, lens, visible, count, cs, NULL);
     r3d_pipeline_draw(mesh, lens, visible, count, cs, NULL, target, pipeline_work());
@@ -1297,7 +1297,7 @@ test_a_cluster_behind_the_camera_is_culled(void) {
         render_view_fixture_at(&(fixture_camera_t){{0, 0, -400}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
     r3d_lens_init(&lens, &frame_view, 1);
     uint16_t visible[1];
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work()));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work(), NULL));
 }
 
 /* A floor running from behind the camera to far ahead, seen from above it
@@ -1501,7 +1501,7 @@ draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t,
     TEST_ASSERT_NOT_NULL(visible);
     TEST_ASSERT_NOT_NULL(cs);
     TEST_ASSERT_NOT_NULL(rows);
-    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work());
+    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work(), NULL);
     r3d_pipeline_transform(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL);
     r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t, pipeline_work());
     free(rows);

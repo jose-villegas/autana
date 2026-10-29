@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 #include "display/viewport.h"
+#include "math/geometry/planef.h"
 #include "math/linear/mat4f.h"
 #include "math/projection/projectf.h"
 #include "math/scalar/mathi.h"
@@ -67,18 +68,17 @@ void r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale);
 typedef struct r3d_pipeline_work r3d_pipeline_work_t;
 size_t r3d_pipeline_work_bytes(void);
 
+/* The planes of the lens's picture, in mesh ticks: near, then its four sides. */
+void r3d_lens_frustum(const r3d_lens_t* lens, planef_t out[PLANE_FRUSTUM_COUNT]);
+
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds
- * mesh->cluster_count entries. */
-int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work);
-
-/* A lower bound on the view depth of anything of `count` clusters inside the
- * lens's frustum, never above `nearest`, so calls over several meshes fold
- * into one bound: per box, the best of its least depth inside each frustum
- * plane (box3f_plane_distance_min_inside()). A box that reaches the near plane on
- * screen gives a value at or below near_z. */
-float r3d_pipeline_nearest(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
-                           float nearest);
+ * mesh->cluster_count entries. A `nearest` not NULL is lowered to a bound on
+ * the view depth of every kept cluster's box where the frustum keeps it
+ * (box3f_plane_distance_min_inside() per plane the box crosses), so calls over
+ * several meshes fold into one bound; a box reaching the near plane gives near_z. */
+int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work,
+                      float* nearest);
 
 /* The screen rows a cluster's vertices span, for a caller drawing only some
  * rows to skip it whole. A cluster with a vertex behind the near plane or

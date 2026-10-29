@@ -16,8 +16,8 @@
 TUNE_OWNER(render);
 /* The generated meshlet-size table measures both culling settings. */
 TUNE(render, cull, 1, 0, 1);
-/* 0 encodes depth with the clip plane's near_z, as before the fit: the
- * depth-precision figures render both. */
+/* 0 encodes depth with the clip plane's near_z: the depth-precision figures
+ * render both. */
 TUNE(render, depth_fit, 1, 0, 1);
 
 typedef struct {
@@ -247,11 +247,11 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const rend
 
 static int
 cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
-              r3d_pipeline_work_t* work) {
+              r3d_pipeline_work_t* work, float* nearest) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     int visible;
     if (cull) {
-        visible = r3d_pipeline_cull(mesh, lens, out, work);
+        visible = r3d_pipeline_cull(mesh, lens, out, work, nearest);
     } else {
         visible = mesh->cluster_count;
         for (int i = 0; i < visible; i++) {
@@ -277,15 +277,8 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
         const r3d_instance_t* instance = &raster->instances[i];
         r3d_lens_t lens;
         instance_lens(raster, instance, view, fitted, &lens);
-        culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, stats, work->buffers.work[0]);
-        if (depth_fit) {
-            /* Through the picture's own lens at every render size, so a
-             * census and a draw at another size fit the same scale. */
-            if (fitted) {
-                instance_lens(raster, instance, view, false, &lens);
-            }
-            nearest = r3d_pipeline_nearest(instance->mesh, &lens, culled + 1, culled[0], nearest);
-        }
+        culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, stats, work->buffers.work[0],
+                                            depth_fit ? &nearest : NULL);
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
     /* The fit's power of two keeps the scale still while the bound drifts,
@@ -399,6 +392,8 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         resolves = resolves || a->resolve != NULL;
     }
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
+    /* A list drawn with no census, or rewritten without its scale, fails here. */
+    assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];

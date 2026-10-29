@@ -110,14 +110,26 @@ farther(child_depth_t a, child_depth_t b) {
 
 SORT_DEFINE_INSERTION(children, child_depth_t, farther)
 
+/* Lens space's z is view depth: the plane z = 0, read in mesh ticks. */
+static inline planef_t
+lens_depth_plane(const r3d_lens_t* lens) {
+    const float* f = lens->m.m[2];
+    return (planef_t){{f[0], f[1], f[2]}, f[3]};
+}
+
+void
+r3d_lens_frustum(const r3d_lens_t* lens, planef_t out[PLANE_FRUSTUM_COUNT]) {
+    planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
+                   out);
+}
+
 /* Children go on the stack farthest first, so the nearest pops first and
  * the walk visits leaves roughly front to back. */
 static int
 push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
     child_depth_t order[R3D_LIT_NODE_CHILDREN_MAX];
-    const float* f = lens->m.m[2];
-    const planef_t depth = {{f[0], f[1], f[2]}, f[3]};
+    const planef_t depth = lens_depth_plane(lens);
     const int n = node->count;
     assert(n <= R3D_LIT_NODE_CHILDREN_MAX);
     for (int i = 0; i < n; i++) {
@@ -133,11 +145,26 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
     return top;
 }
 
+/* The least view depth of the part of `box` inside the planes it crosses
+ * (`crossing`, a mask of `planes`); below `nearest` only when it lowers it.
+ * A box reaching behind the eye is drawn only where the frustum keeps it. */
+static float
+nearest_inside(box3f_t box, const planef_t* planes, unsigned crossing, planef_t depth, float nearest) {
+    float least = box3f_plane_distance_min(box, depth);
+    for (int p = 0; p < PLANE_FRUSTUM_COUNT && least < nearest; p++) {
+        if (crossing & (1U << p)) {
+            least = mathf_max(least, box3f_plane_distance_min_inside(box, depth, planes[p]));
+        }
+    }
+    return mathf_min(nearest, least);
+}
+
 int
-r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work) {
+r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work,
+                  float* nearest) {
     planef_t* planes = work->cull.planes;
-    planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
-                   planes);
+    r3d_lens_frustum(lens, planes);
+    const planef_t depth = lens_depth_plane(lens);
 
     walk_entry_t* stack = work->cull.stack;
     int top = 0;
@@ -158,36 +185,16 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* 
         for (int i = 0; i < node->count; i++) {
             const int c = node->first + i;
             unsigned cluster_mask = mask;
-            if (cluster_mask == 0
-                || !box3f_outside_planes(box3f_from_box3s(mesh->clusters[c].bounds, 1.0F), planes, PLANE_FRUSTUM_COUNT,
-                                         &cluster_mask)) {
+            const box3f_t box = box3f_from_box3s(mesh->clusters[c].bounds, 1.0F);
+            if (cluster_mask == 0 || !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &cluster_mask)) {
                 out[count++] = (uint16_t)c;
+                if (nearest != NULL) {
+                    *nearest = nearest_inside(box, planes, cluster_mask, depth, *nearest);
+                }
             }
         }
     }
     return count;
-}
-
-float
-r3d_pipeline_nearest(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
-                     float nearest) {
-    /* Lens space's z is view depth, so the plane z = 0 measures it. */
-    const planef_t depth = planef_from_rows(&lens->m, 0.0F, 0.0F, 1.0F, 0.0F);
-    planef_t frustum[PLANE_FRUSTUM_COUNT];
-    planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
-                   frustum);
-    for (int i = 0; i < count; i++) {
-        const box3f_t box = box3f_from_box3s(mesh->clusters[clusters[i]].bounds, 1.0F);
-        float least = box3f_plane_distance_min(box, depth);
-        /* Only a box that could lower the bound pays for the part of it
-         * inside each frustum plane: a big one reaching behind the eye
-         * is drawn only where the frustum keeps it. */
-        for (int p = 0; p < PLANE_FRUSTUM_COUNT && least < nearest; p++) {
-            least = mathf_max(least, box3f_plane_distance_min_inside(box, depth, frustum[p]));
-        }
-        nearest = mathf_min(nearest, least);
-    }
-    return nearest;
 }
 
 /* The rebuilt path clips to GUARD_PIXELS from the origin, inside what
