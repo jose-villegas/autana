@@ -9,6 +9,7 @@
 
 #include "esp_log.h"
 
+#include "core/timing.h"
 #include "input/buttons/buttons.h"
 #include "input/motion/imu.h"
 #include "input/motion/imu_calib.h"
@@ -19,14 +20,41 @@
 
 static const char TAG[] = "input";
 
-#define IMU_SETTINGS_SPACE       "imu"
-#define IMU_SETTINGS_ACCEL_X     "accel_x"
-#define IMU_SETTINGS_ACCEL_Y     "accel_y"
-#define IMU_SETTINGS_ACCEL_Z     "accel_z"
-#define IMU_SETTINGS_ACCEL_VALID "accel_valid"
+#define IMU_SETTINGS_SPACE     "imu"
+#define IMU_SETTINGS_COMMITTED 1
 
-static const char* const ACCEL_KEYS[] = {IMU_SETTINGS_ACCEL_X, IMU_SETTINGS_ACCEL_Y, IMU_SETTINGS_ACCEL_Z};
+typedef struct {
+    const char* axis[3];
+    const char* valid;
+} imu_offset_keys_t;
+
+static const imu_offset_keys_t ACCEL_KEYS = {{"accel_x", "accel_y", "accel_z"}, "accel_valid"};
+static const imu_offset_keys_t GYRO_KEYS = {{"gyro_x", "gyro_y", "gyro_z"}, "gyro_valid"};
 static imu_calib_t accel_calib;
+static imu_calib_gyro_t gyro_calib;
+
+static bool
+load_offset(imu_offset_keys_t keys, bool found[3], int32_t saved[3]) {
+    for (int axis = 0; axis < 3; axis++) {
+        found[axis] = settings_read_i32(IMU_SETTINGS_SPACE, keys.axis[axis], &saved[axis]);
+    }
+    int32_t marker = 0;
+    const bool committed =
+        settings_read_i32(IMU_SETTINGS_SPACE, keys.valid, &marker) && marker == IMU_SETTINGS_COMMITTED;
+    return committed;
+}
+
+static bool
+save_offset(imu_offset_keys_t keys, vec3i_t offset) {
+    const int32_t saved[] = {offset.x, offset.y, offset.z};
+    if (!settings_write_i32(IMU_SETTINGS_SPACE, keys.valid, 0)) {
+        return false;
+    }
+    if (!settings_write_i32_batch(IMU_SETTINGS_SPACE, keys.axis, saved, 3)) {
+        return false;
+    }
+    return settings_write_i32(IMU_SETTINGS_SPACE, keys.valid, IMU_SETTINGS_COMMITTED);
+}
 
 _Static_assert(INPUT_ACCEL_ONE_G == IMU_COUNTS_PER_G, "input_read_motion() passes sensor counts through");
 
@@ -40,12 +68,10 @@ input_start(void) {
     motion_reader_reset();
     int32_t saved[3] = {0};
     bool found[3];
-    for (int axis = 0; axis < 3; axis++) {
-        found[axis] = settings_read_i32(IMU_SETTINGS_SPACE, ACCEL_KEYS[axis], &saved[axis]);
-    }
-    int32_t marker = 0;
-    const bool committed = settings_read_i32(IMU_SETTINGS_SPACE, IMU_SETTINGS_ACCEL_VALID, &marker) && marker == 1;
-    accel_calib = imu_calib_from_saved(committed, found, saved);
+    bool committed = load_offset(ACCEL_KEYS, found, saved);
+    imu_calib_from_saved(committed, found, saved, IMU_CALIB_OFFSET_MAX, &accel_calib);
+    committed = load_offset(GYRO_KEYS, found, saved);
+    gyro_calib = imu_calib_gyro_from_saved(committed, found, saved);
     touch_start();
     buttons_start();
     if (!imu_init()) {
@@ -61,23 +87,31 @@ input_accel_offset(void) {
 
 bool
 input_set_accel_offset(vec3i_t offset) {
-    const int32_t saved[] = {offset.x, offset.y, offset.z};
-    if (!imu_calib_valid(offset)) {
-        return false;
-    }
-    if (!settings_write_i32(IMU_SETTINGS_SPACE, IMU_SETTINGS_ACCEL_VALID, 0)) {
-        return false;
-    }
-    for (int axis = 0; axis < 3; axis++) {
-        if (!settings_write_i32(IMU_SETTINGS_SPACE, ACCEL_KEYS[axis], saved[axis])) {
-            return false;
-        }
-    }
-    if (!settings_write_i32(IMU_SETTINGS_SPACE, IMU_SETTINGS_ACCEL_VALID, 1)) {
+    if (!imu_calib_valid(offset, IMU_CALIB_OFFSET_MAX) || !save_offset(ACCEL_KEYS, offset)) {
         return false;
     }
     accel_calib = (imu_calib_t){.offset = offset};
     return true;
+}
+
+vec3i_t
+input_gyro_offset(void) {
+    return gyro_calib.live.offset;
+}
+
+bool
+input_learn_gyro_offset(vec3i_t residual) {
+    const int64_t now_us = timing_now_us();
+    const imu_calib_gyro_step_t step = imu_calib_gyro_learn(&gyro_calib, residual, now_us);
+    if (step == IMU_CALIB_GYRO_SAVE_DUE) {
+        const bool ok = save_offset(GYRO_KEYS, gyro_calib.live.offset);
+        imu_calib_gyro_saved(&gyro_calib, ok, now_us);
+        if (ok) {
+            const vec3i_t offset = gyro_calib.saved;
+            ESP_LOGI(TAG, "imu_calib gyro saved %d %d %d", (int)offset.x, (int)offset.y, (int)offset.z);
+        }
+    }
+    return step != IMU_CALIB_GYRO_REJECTED;
 }
 
 void
@@ -88,10 +122,10 @@ input_poll(input_t* out) {
 
 static input_motion_t
 motion_from_sample(const imu_sample_t* sample) {
-    return (input_motion_t){.acceleration =
-                                imu_calib_apply(&accel_calib, imu_axes_screen(sample->ax, sample->ay, sample->az)),
-                            .turn_speed = imu_turn_speed(sample),
-                            .rotation = imu_axes_screen(sample->gx, sample->gy, sample->gz)};
+    return imu_calib_gyro_correct(
+        &gyro_calib, (input_motion_t){.acceleration = imu_calib_apply(
+                                          &accel_calib, imu_axes_screen(sample->ax, sample->ay, sample->az)),
+                                      .rotation = imu_axes_screen(sample->gx, sample->gy, sample->gz)});
 }
 
 bool
