@@ -116,6 +116,7 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
         return;
     }
     c->ladder = *config;
+    c->chose_at_us = 0;
     c->policy = model == NULL ? RENDER_STEPPED : RENDER_PREDICTED;
     if (c->policy == RENDER_STEPPED) {
         resolution_control_init(&c->control, &c->ladder, first_step);
@@ -253,7 +254,9 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         if (c->policy == RENDER_PREDICTED) {
             /* Culled once: the census prices the frame and the draw reuses its list. */
             c->frame.stats = raster_census(r, view);
-            const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
+            const int32_t elapsed_us = c->chose_at_us == 0 ? 0 : (int32_t)(began_us - c->chose_at_us);
+            c->chose_at_us = began_us;
+            const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles, elapsed_us);
             c->frame.predicted_us = (int32_t)c->predict.chosen_us;
             r->width = c->ladder.steps[chosen].width;
             r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;

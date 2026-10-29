@@ -131,9 +131,9 @@ def findings_table(splits, spans):
 
     for question, a, b in (
         ("half width, more height over half", (184, 298), (184, 224)),
-        ("half over floor", (184, 224), (184, 179)),
-        ("floor over 2.5x cost reference", (184, 179), (147, 179)),
-        ("recovery over 3x cost reference", (184, 149), (122, 149)),
+        ("half over a fifth less height", (184, 224), (184, 179)),
+        ("half width over 2.5x, same height", (184, 179), (147, 179)),
+        ("half width over 3x, same height", (184, 149), (122, 149)),
         ("full height over half", (368, 448), (368, 224)),
         ("full width over half", (368, 448), (184, 448)),
     ):

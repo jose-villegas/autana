@@ -69,7 +69,7 @@ typedef struct {
 
 static const ladder_t ladders[] = {
     {"width", width_steps, 7, 6, 4},
-    {"height", render_lab_ladder, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_RECOVERY, RENDER_LAB_LADDER_HALF},
+    {"height", render_lab_ladder, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_HALF},
 };
 #define LADDER_COUNT ((int)(sizeof ladders / sizeof ladders[0]))
 
@@ -472,7 +472,7 @@ fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* confi
     log_fit(ladder, config, model);
 }
 
-static const int32_t budgets_us[] = {RENDER_LAB_BUDGET_ON_MS * MATH_US_PER_MS, 75000};
+static const int32_t budgets_us[] = {RENDER_LAB_TARGET_MS * MATH_US_PER_MS, 75000};
 
 void
 test_dynamic_resolution_policies_along_the_path(void) {

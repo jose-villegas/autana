@@ -42,7 +42,8 @@ const char* scene_baked_status(void);
                            .enter = scene_baked_enter,                                                                 \
                            .frame = scene_baked_frame,                                                                 \
                            .exit = scene_baked_exit,                                                                   \
-                           .status = scene_baked_status},
+                           .status = scene_baked_status,                                                               \
+                           .console = RENDER_LAB_SCENE_CONSOLE(scene_baked_console)},
 
 /* Defines `id`, family `family_`'s scenes indexed by variant: the menu family
  * `name_`, each titled `name_` and its variant and keyed `key_prefix_` and its

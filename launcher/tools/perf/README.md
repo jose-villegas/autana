@@ -297,6 +297,16 @@ The plan waits for two polls without queued, waiting or running jobs carrying
 This check requires a host GPU runner marker fresh within `GPU_HOST_MARKER_DAYS`.
 Otherwise it reports “GPU runner not on this host” and continues.
 
+The repository variable `REMOTE_LANE_COMMAND` names a command on the nightly's machine
+that reaches other machines' boards; `REMOTE_LANE_ENV` in `nightly/scoped_chain.py` states its contract.
+Unset, the night uses this machine's boards only.
+
+A remote board's lane builds and runs on its own host. Its folder under `--out` goes there
+and comes back with the lane's data and captures; the captures sync under that host's name.
+`scoped_chain.py boards` lists every board the night reaches, which board health checks;
+a board on a host that does not answer is reported unchecked, not missing.
+A hung or cancelled remote lane is asked to stop first, so its host frees the board.
+
 Initial boards split first-parent commits on main by position modulo their count.
 Joiners use independent `0/1` series while any lane runs.
 Boards repeat their last measured anchor and resume after `last_attempted`;
@@ -321,7 +331,7 @@ A busy heavy lock stops the lane with `not_run_busy` and preserves its cursors.
 Build failures advance `last_attempted`; measured steps advance both cursors
 and `last_image_hash`. Capture failures keep the cursors.
 
-The first plugged board runs `scripts/ci/board-steps.sh` before its chain
+The first board plugged into this machine runs `scripts/ci/board-steps.sh` before its chain
 inside the same board hold. A night with no board at plan time fails.
 Partial manifests are saved after every step and after cleanup.
 Raw captures upload even when a lane fails.
