@@ -55,9 +55,7 @@ bool render_lab_budget_set_ms(int budget_ms);
 /* The tunable render_lab.framegen: 1 follows each drawn frame with one
  * warped from it (render/framegen), 0 draws every frame. */
 bool render_lab_framegen_on(void);
-#if TUNE_ENABLED
 bool render_lab_framegen_set_on(bool on);
-#endif
 
 /* The tunable render_lab.orbit_ms: 0 holds an orbiting camera where it is
  * steered; otherwise it also turns once about its subject every orbit_ms. */

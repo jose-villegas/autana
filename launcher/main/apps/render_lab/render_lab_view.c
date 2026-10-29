@@ -14,7 +14,7 @@ TUNE_SETTING(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMA
 TUNE_SETTING(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
 TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
 TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
-TUNE(render_lab, framegen, 0, 0, 1);
+TUNE_SETTING(render_lab, framegen, 0, 0, 1);
 
 int
 render_lab_debug_view(void) {
@@ -112,12 +112,10 @@ render_lab_framegen_on(void) {
     return framegen != 0;
 }
 
-#if TUNE_ENABLED
 bool
 render_lab_framegen_set_on(bool on) {
-    return tune_set(tune_shared(), framegen_tunable.name, on ? 1 : 0);
+    return TUNE_SETTING_SET(framegen, on ? 1 : 0);
 }
-#endif
 
 int
 render_lab_budget_ms(void) {

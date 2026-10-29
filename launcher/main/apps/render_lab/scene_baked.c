@@ -73,21 +73,6 @@ apply_settings(void) {
 #endif
 }
 
-/* The menu rows of a baked scene: FRAME GEN, whose warp a static scene
- * suits (development builds, where the tunable moves). */
-static inline void
-scene_baked_controls(int width) {
-#if TUNE_ENABLED
-    bool generating = render_lab_framegen_on();
-    ui_row_centre(width, UI_ROW_HEIGHT);
-    if (ui_toggle(ui_next(), "FRAME GEN", &generating)) {
-        (void)render_lab_framegen_set_on(generating);
-    }
-#else
-    (void)width;
-#endif
-}
-
 void
 scene_baked_enter(const render_lab_scene_t* self) {
     const scene_baked_shown_t* shown = self->data;
