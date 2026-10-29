@@ -344,7 +344,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
                 const int64_t start = timing_now_us();
                 const raster_stats_t stats = raster_draw(raster, view);
                 const int64_t drawn = timing_now_us();
-                (void)render_context_compose(context, destination, half);
+                (void)render_context_compose(context, destination, half, NULL);
                 samples[count++] = (resolution_sample_t){step, stats.triangles, (int32_t)(drawn - start),
                                                          (int32_t)(timing_now_us() - drawn)};
             }

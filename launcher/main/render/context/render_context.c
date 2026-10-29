@@ -278,19 +278,30 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     return true;
 }
 
+void
+render_context_set_upscale_filter(render_context_t* c, upscale_filter_t filter) {
+    c->raster.upscale.filter = filter;
+}
+
+upscale_filter_t
+render_context_upscale_filter(const render_context_t* c) {
+    return c->raster.upscale.filter;
+}
+
 bool
-render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half) {
+render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half, uint8_t* half_seams) {
     const raster_t* r = &c->raster;
     const resolution_step_t size =
         half != NULL ? raster_compose_size(r) : (resolution_step_t){r->destination_width, r->destination_height};
     const bool expanded = half != NULL && size.width != r->destination_width;
     destination = expanded ? half : destination;
+    uint8_t* seams = expanded ? half_seams : NULL;
     if (c->policy == RENDER_FIXED) {
-        raster_upscale(&c->raster, destination, size.width, size.height);
+        raster_upscale_seamed(&c->raster, destination, seams, size.width, size.height);
         return expanded;
     }
     const int64_t began_us = timing_now_us();
-    raster_upscale(&c->raster, destination, size.width, size.height);
+    raster_upscale_seamed(&c->raster, destination, seams, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
     if (c->policy == RENDER_STEPPED) {

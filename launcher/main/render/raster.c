@@ -26,6 +26,7 @@ typedef struct {
     const r3d_span_writer_t* writers;
     int writer_count;
     uint16_t* destination;
+    uint8_t* seams; /* the upscale's, or NULL */
     int work_index;
     const raster_buffers_t* buffers;
     r3d_span_target_t* target;
@@ -179,7 +180,8 @@ upscale_slice(void* ctx) {
     const slice_t* s = ctx;
     const raster_buffers_t b = raster_carve(s->raster);
     if (s->raster->present != CAMERA_PRESENT_SCANLINE) {
-        upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
+        upscale_rows_filtered(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->seams, s->first,
+                              s->count);
     } else {
         upscale_rows_scanlined(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
     }
@@ -440,6 +442,11 @@ raster_compose_size(const raster_t* raster) {
 
 void
 raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
+    raster_upscale_seamed(raster, destination, NULL, width, height);
+}
+
+void
+raster_upscale_seamed(raster_t* raster, uint16_t* destination, uint8_t* seams, int width, int height) {
     assert(raster->upscaled && destination != NULL);
     assert(raster->width > 0 && raster->height > 0);
     assert(width >= raster->width && height >= raster->height);
@@ -452,11 +459,12 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
         const bool initialized =
             upscale_init(&raster->upscale, raster->width, raster->height, width, height, columns, rows);
         assert(initialized);
+        upscale_init_blends(&raster->upscale, rows + height);
     }
     int16_t* share = raster->split != NULL ? &raster->split->upscale_offset : NULL;
     const int mid = job_share_core1_count(share, height);
-    slice_t mine = {.raster = raster, .first = mid, .count = height - mid, .destination = destination};
-    const slice_t other = {.raster = raster, .count = mid, .destination = destination};
+    slice_t mine = {.raster = raster, .first = mid, .count = height - mid, .destination = destination, .seams = seams};
+    const slice_t other = {.raster = raster, .count = mid, .destination = destination, .seams = seams};
     job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

@@ -31,8 +31,15 @@ gfx_color_t* fb;
 gfx_color_t* present_fb;
 bool fb_filled;
 gfx_color_t fb_fill_colour;
-static gfx_color_t* half_image;
+static gfx_color_t* half_image; /* its seam mask follows the pixels in the same block */
 static bool frame_expanded;
+static bool frame_blended; /* expanded through the seam mask */
+
+#define HALF_WIDTH             (GFX_WIDTH / 2)
+#define HALF_HEIGHT            (GFX_HEIGHT / 2)
+/* At 2x each panel pixel's centre sits a quarter of a half-picture pixel from
+ * its own pixel's centre, towards one neighbour: bilinear gives it a quarter. */
+#define EXPAND_NEIGHBOUR_SHARE (RGB565_SCALE_UNIT / 4)
 static gfx_band_overlay_fn frame_overlay;
 
 /* GFX_LAYOUT_FULL_FB until gfx_init() sets real geometry, or an app's
@@ -370,19 +377,37 @@ gfx_half_picture(void) {
         return NULL;
     }
     if (half_image == NULL) {
-        half_image = memory_alloc(sizeof(*half_image) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
+        half_image = memory_alloc(
+            (sizeof(*half_image) * HALF_WIDTH * HALF_HEIGHT) + GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT), MEMORY_PSRAM);
         half_target.attachment[0].pixels = half_image;
     }
     return half_image;
 }
 
-void
-gfx_expand_frame(void) {
+uint8_t*
+gfx_half_seams(void) {
+    gfx_color_t* pixels = gfx_half_picture();
+    return pixels == NULL ? NULL : (uint8_t*)(pixels + ((size_t)HALF_WIDTH * HALF_HEIGHT));
+}
+
+static void
+expand_frame(bool blended) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_FULL_FB && half_image != NULL);
     frame_expanded = true;
+    frame_blended = blended;
     gfx_fb_guard_set_available(false);
     gfx_mark_all_dirty();
+}
+
+void
+gfx_expand_frame(void) {
+    expand_frame(false);
+}
+
+void
+gfx_expand_frame_blended(void) {
+    expand_frame(true);
 }
 
 bool
@@ -412,13 +437,49 @@ clear_expanded_frame(bool free_picture) {
     }
 }
 
+/* Bilinear at 2x, except across a seam, where each pixel keeps its own colour. */
+static void
+expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
+    const uint8_t* seams = (const uint8_t*)(half_image + ((size_t)HALF_WIDTH * HALF_HEIGHT));
+    const size_t seam_pitch = GFX_SEAM_PITCH(HALF_WIDTH);
+    gfx_color_t column[HALF_WIDTH];
+    for (int y = y0; y < y1; y++) {
+        const int row = y / 2;
+        const bool lower_half = y % 2 != 0;
+        const int other = lower_half ? row + 1 : row - 1;
+        const gfx_color_t* here = half_image + ((size_t)row * HALF_WIDTH);
+        if (other >= 0 && other < HALF_HEIGHT) {
+            const gfx_color_t* there = half_image + ((size_t)other * HALF_WIDTH);
+            const uint8_t* between = seams + ((size_t)(lower_half ? row : other) * seam_pitch);
+            for (int x = 0; x < HALF_WIDTH; x++) {
+                column[x] =
+                    gfx_seam_at(between, x) ? here[x] : rgb565be_blend(here[x], there[x], EXPAND_NEIGHBOUR_SHARE);
+            }
+        } else {
+            memcpy(column, here, sizeof column);
+        }
+        const uint8_t* across = seams + ((size_t)row * seam_pitch);
+        gfx_color_t* out = destination + ((size_t)(y - y0) * GFX_WIDTH);
+        for (int x = 0; x < HALF_WIDTH; x++) {
+            const bool left = x > 0 && !gfx_seam_at(across, x - 1);
+            const bool right = x + 1 < HALF_WIDTH && !gfx_seam_at(across, x);
+            out[2 * x] = left ? rgb565be_blend(column[x], column[x - 1], EXPAND_NEIGHBOUR_SHARE) : column[x];
+            out[(2 * x) + 1] = right ? rgb565be_blend(column[x], column[x + 1], EXPAND_NEIGHBOUR_SHARE) : column[x];
+        }
+    }
+}
+
 void
 expand_rows(int y0, int y1, gfx_color_t* destination) {
     GFX_TARGET_STORAGE(1) target_storage;
     gfx_target_of_color(&target_storage.target, destination, GFX_WIDTH, y1 - y0, y0);
     const gfx_target_t* target = &target_storage.target;
-    gfx_target_paired_rows_shaded(target, &half_target.attachment[0], NULL, 0, NULL, y0, y1 - y0, true, 0,
-                                  RGB565_SCALE_UNIT);
+    if (frame_blended) {
+        expand_blended_rows(y0, y1, destination);
+    } else {
+        gfx_target_paired_rows_shaded(target, &half_target.attachment[0], NULL, 0, NULL, y0, y1 - y0, true, 0,
+                                      RGB565_SCALE_UNIT);
+    }
     if (frame_overlay != NULL) {
         const recti_t saved_clip = gfx_clip_save();
         gfx_target_window(&strip_target.target, target, y0, y1);

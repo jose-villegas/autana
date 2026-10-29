@@ -30,7 +30,7 @@ typedef struct {
     r3d_pipeline_vertex_t* cs; /* mesh->vertex_count entries */
     r3d_pipeline_rows_t* rows; /* mesh->cluster_count entries */
 
-    uint16_t* upscale;            /* the upscale maps: destination columns, then rows */
+    uint16_t* upscale;            /* the upscale maps: destination columns, rows, then row blends */
     r3d_pipeline_work_t* work[2]; /* one block per row slice */
     uint16_t* culled;             /* raster_culled_length() entries */
     void* draw;                   /* raster-owned instance and slice state */
@@ -67,7 +67,7 @@ raster_carve(const raster_t* raster) {
     raster_picture(raster, &b.picture);
     p = (uintptr_t)gfx_target_carve(&b.picture, (void*)p);
     b.upscale = (uint16_t*)p;
-    p += gfx_attachment_bytes(IMAGE_U16, raster->destination_width + raster->destination_height, 1);
+    p += gfx_attachment_bytes(IMAGE_U16, raster->destination_width + (2 * raster->destination_height), 1);
     p = base + mathi_size_ceil((size_t)(p - base), R3D_PIPELINE_WORK_ALIGNMENT);
     b.work[0] = (r3d_pipeline_work_t*)p;
     b.work[1] = (r3d_pipeline_work_t*)(p + r3d_pipeline_work_bytes());
