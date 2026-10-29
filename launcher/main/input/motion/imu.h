@@ -74,6 +74,11 @@ bool imu_set_odr(unsigned odr_code);
  * reader, drops the queue behind a gap, so a reader at the other rate sees it lost them. */
 int imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
                      bool* gap);
+/* As imu_take_fifo_at(), with the IMU task's estimated sample times in the timing clock. */
+int imu_take_fifo_timed_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                           bool* gap, int64_t sample_us[IMU_FIFO_SAMPLES]);
+/* Keep two drains within retained history, including one delayed task wake. */
+#define IMU_BUZZ_DRAIN_MAX_MS (IMU_BUZZ_WINDOW_MS / 2u)
 #endif
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

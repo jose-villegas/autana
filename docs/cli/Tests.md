@@ -31,9 +31,9 @@ After the silence baseline, `--pulse MS` plays a timed SYSTEM-bus tone.
 Its positive length must fit a full-queue measurement window, bounded by
 `CONSOLE_TONE_PULSE_WINDOW_MAX_MS` in `console_tone_parse.h`.
 
-Pulse capture drains the IMU between audio blocks to estimate onset-to-end
-shake. Edge placement is uncertain by a task drain period plus the audible
-poll. The microphone window includes silence after playback ends.
+Pulse capture selects IMU samples by their producer times and collects
+delayed batches after the pulse span. The edges estimate audible onset.
+The microphone window includes silence after playback ends.
 
 JSON includes `pulse_ms` (zero for continuous playback), `shake_rms_mg`,
 `shake_peak_mg`, and `silence_shake_rms_mg`; unavailable shake values are null.

@@ -61,6 +61,10 @@ TUNE(imu, drain_ms, IMU_DRAIN_MS, IMU_PERIOD_MIN_MS, IMU_PERIOD_MAX_MS);
 TUNE(imu, log_ms, 0, 0, IMU_LOG_MAX_MS);
 #endif
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* imu_set_odr() asks, the task applies between drains; both under `lock`. */
+static imu_odr_t odr = {.requested = IMU_ODR_CODE, .applied = IMU_ODR_CODE};
+#endif
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static imu_queue_t queue;
 static imu_sample_t newest;
@@ -446,7 +450,12 @@ imu_read_or_drain(bool drain_due) {
         const int count = drain_fifo(samples, &lost, &gap);
         const int64_t now_us = timing_now_us();
         portENTER_CRITICAL(&lock);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        const uint32_t sample_us = odr.applied == IMU_BUZZ_ODR_CODE ? IMU_BUZZ_SAMPLE_US : IMU_SAMPLE_US;
+        imu_queue_push_drain_timed(&queue, samples, count, lost, gap, now_us, sample_us);
+#else
         imu_queue_push_drain(&queue, samples, count, lost, gap);
+#endif
         if (count > 0) {
             newest = samples[count - 1];
             have_newest = true;
@@ -481,8 +490,6 @@ imu_read_or_drain(bool drain_due) {
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* imu_set_odr() asks, the task applies between drains; both under `lock`. */
-static imu_odr_t odr = {.requested = IMU_ODR_CODE, .applied = IMU_ODR_CODE};
 /* Longest a request waits: two of the slowest task periods the tunables allow. */
 #define IMU_ODR_WAIT_MS (2 * IMU_PERIOD_MAX_MS)
 
@@ -518,6 +525,19 @@ imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t 
     }
     portENTER_CRITICAL(&lock);
     const int count = imu_queue_take_at(&queue, odr_code, out, lost_before, gap);
+    portEXIT_CRITICAL(&lock);
+    return count;
+}
+
+int
+imu_take_fifo_timed_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                       bool* gap, int64_t sample_us[IMU_FIFO_SAMPLES]) {
+    *gap = false;
+    if (!ready) {
+        return -1;
+    }
+    portENTER_CRITICAL(&lock);
+    const int count = imu_queue_take_timed_at(&queue, odr_code, out, lost_before, gap, sample_us);
     portEXIT_CRITICAL(&lock);
     return count;
 }
@@ -561,10 +581,6 @@ imu_task(void* arg) {
         }
         last_wake_us = now_us;
 #endif
-        const TickType_t requested_period = pdMS_TO_TICKS(read_ms);
-        const TickType_t period = requested_period > 0 ? requested_period : 1;
-        const TickType_t drain_ticks = pdMS_TO_TICKS(drain_ms) / period;
-        const bool drain_due = read_ticks == 0 || read_ticks >= drain_ticks;
         /* The bus lock has no priority inheritance: a preempted drain holds the bus
          * and keeps the FIFO in read mode, discarding arrivals. */
         vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
@@ -573,6 +589,16 @@ imu_task(void* arg) {
             apply_odr_request();
         }
 #endif
+        unsigned read_period_ms = read_ms;
+        unsigned drain_period_ms = drain_ms;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        read_period_ms = imu_odr_period_ms(odr.applied, read_period_ms);
+        drain_period_ms = imu_odr_period_ms(odr.applied, drain_period_ms);
+#endif
+        const TickType_t requested_period = pdMS_TO_TICKS(read_period_ms);
+        const TickType_t period = requested_period > 0 ? requested_period : 1;
+        const TickType_t drain_ticks = pdMS_TO_TICKS(drain_period_ms) / period;
+        const bool drain_due = read_ticks == 0 || read_ticks >= drain_ticks;
         if (imu_read_or_drain(drain_due)) {
             read_ticks = 0;
         }
