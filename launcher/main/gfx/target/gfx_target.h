@@ -17,11 +17,14 @@
 #include "gfx/target/gfx_color.h"
 #include "image/image.h"
 
-#define GFX_PIXEL_FORMAT       IMAGE_RGB565BE
-#define GFX_ATTACHMENT_COLOR   0
-#define GFX_ATTACHMENT_DEPTH   1
-#define GFX_ATTACHMENT_FURTHER 2
-#define GFX_ATTACHMENTS_MAX    4
+#define GFX_PIXEL_FORMAT            IMAGE_RGB565BE
+#define GFX_ATTACHMENT_COLOR        0
+#define GFX_ATTACHMENT_DEPTH        1
+#define GFX_ATTACHMENT_FURTHER      2
+#define GFX_ATTACHMENTS_MAX         4
+
+/* The attachments a draw writes beside colour and depth, at most. */
+#define GFX_ATTACHMENTS_FURTHER_MAX (GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER)
 
 typedef struct {
     int first_row; /* the picture row each attachment's row 0 stands for */
