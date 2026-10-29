@@ -54,7 +54,7 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, ui
 }
 
 /* One triangle into its counter by the draw's own sort (r3d_pipeline.c,
- * draw_cluster and draw_in_front): every corner in front, then some corner
+ * draw_triangles and draw_in_front): every corner in front, then some corner
  * in front; one wholly in front is then missed, facing away or set up. True
  * when it reaches r3d_span. The cull-view suite holds the set-up count to
  * the triangles the draw fills. */

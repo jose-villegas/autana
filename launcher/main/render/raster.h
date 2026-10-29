@@ -36,7 +36,7 @@ struct raster {
     upscale_t upscale;     /* maps retained in `scratch`, rebuilt when size changes */
     raster_split_t* split; /* optional feedback retained between continuous frames */
     void* scratch;         /* raster_scratch_bytes() of it */
-    /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER. */
+    /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
 };
