@@ -2,8 +2,9 @@
 
 An experiment: show a warped copy of the last rendered frame between
 rendered frames, to raise the displayed rate without drawing more triangles.
-This page measures its picture on the host and its cost on the board; it is not
-in the frame loop yet.
+This page measures its picture on the host and its cost on the board.
+`render_context_set_frame_generation()` puts it in the frame loop: each drawn
+frame is followed by one warped from it to that update's own camera view.
 
 The rendered frame's colour and depth are forward-warped to a later camera
 pose<sup>[[97]](../Citations.md#mark-1997)</sup>, extrapolated rather than
