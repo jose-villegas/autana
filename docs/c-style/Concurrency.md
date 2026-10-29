@@ -12,6 +12,7 @@ engine creates are:
 |---|---|---|---|
 | present (`gfx_present`) | 1 | 5 | [`gfx_present.c:299`](../../launcher/main/gfx/present/gfx_present.c#L299) |
 | job (`core1_job`) | 1 | 3 | [`job.c:84`](../../launcher/main/core/job.c#L84) |
+| IMU | 1 | `JOB_CORE1_PRIORITY - 1`, raised to `JOB_CORE1_PRIORITY` for bus work | [`imu.c:602`](../../launcher/main/input/motion/imu.c#L602) |
 | sound mixer | 1 | 6 | [`sound_mixer_device.c:443`](../../launcher/main/sound/sound_mixer_device.c#L443) |
 | touch poll | any | 6 | [`touch.c:264`](../../launcher/main/input/touch/touch.c#L264) |
 | buttons poll | any | 5 | [`buttons.c:79`](../../launcher/main/input/buttons/buttons.c#L79) |
