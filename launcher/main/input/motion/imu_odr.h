@@ -17,12 +17,14 @@ typedef enum {
 
 /* Applies a pending request through `configure`. A failed switch can stop partway with the
  * sensor off, so the old rate is configured again and the request dropped. Every outcome
- * but IMU_ODR_UNCHANGED reset the FIFO. */
+ * but IMU_ODR_UNCHANGED reset the FIFO. The caller queues that gap, so the next drain
+ * must not repeat it through `fifo_gap`. */
 static inline imu_odr_outcome_t
-imu_odr_apply(imu_odr_t* odr, bool (*configure)(unsigned odr_code)) {
+imu_odr_apply(imu_odr_t* odr, bool (*configure)(unsigned odr_code), bool* fifo_gap) {
     if (odr->requested == odr->applied) {
         return IMU_ODR_UNCHANGED;
     }
+    *fifo_gap = false;
     if (configure(odr->requested)) {
         odr->applied = odr->requested;
         return IMU_ODR_SWITCHED;
