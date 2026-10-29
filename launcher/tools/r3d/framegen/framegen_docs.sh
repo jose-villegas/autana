@@ -5,7 +5,11 @@
 # half-picture size of the dynamic-resolution ladder, and rewrites the
 # generated block and the images.
 #
-#   ./launcher/tools/r3d/framegen/framegen_docs.sh [-j JOBS]
+#   ./launcher/tools/r3d/framegen/framegen_docs.sh [-j JOBS] [--out IMAGES TABLES]
+#
+# --out writes the images to IMAGES and the table to TABLES/framegen-scores.md
+# instead, leaving the page alone: launcher/tools/render/render_doc_images.sh
+# runs it that way.
 #
 # Run from the repository root with $PYTHON set to a Python with Pillow,
 # numpy and matplotlib, and ffmpeg on PATH.
@@ -14,6 +18,9 @@ set -eu
 
 JOBS=4
 [ "${1:-}" = -j ] && { JOBS=$2; shift 2; }
+IMAGES=docs/images/render
+TABLES=
+[ "${1:-}" = --out ] && { IMAGES=$2; TABLES=$3; shift 3; }
 
 # Each scene key with the scene file and camera whose path it flies.
 SCENES="bistro-fitted-full sponza-fitted-full sponza sponza-flat sponza-lite sponza-fitted sponza-flat-fitted"
@@ -34,13 +41,13 @@ SHOWN_SIZE=184x224
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-IMAGES=docs/images/render
 SCORE=launcher/tools/r3d/framegen/framegen_score.py
 
 sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o "$WORK/build" > "$WORK/build.log"
 RENDERER="$WORK/build/render_lab_render"
 [ -x "$RENDERER" ] || RENDERER="$RENDERER.exe"
 
+mkdir -p "$IMAGES"
 for scene in $SCENES; do
     for size in $SIZES; do
         extra=""
@@ -53,7 +60,7 @@ for scene in $SCENES; do
     done
 done | xargs -P "$JOBS" -I{} sh -c '{}'
 
-mkdir -p "$WORK/tables"
+mkdir -p "${TABLES:-$WORK/tables}"
 csvs=""
 for scene in $SCENES; do
     for size in $SIZES; do
@@ -61,6 +68,6 @@ for scene in $SCENES; do
     done
 done
 # shellcheck disable=SC2086
-"$PYTHON" launcher/tools/r3d/framegen/framegen_report.py --out-table "$WORK/tables/framegen-scores.md" \
+"$PYTHON" launcher/tools/r3d/framegen/framegen_report.py --out-table "${TABLES:-$WORK/tables}/framegen-scores.md" \
     --out-plot "$IMAGES/framegen-bistro-path.png" --plot-scene "$LEAD" --plot-size "$SHOWN_SIZE" $csvs
-"$PYTHON" launcher/tools/render/generated_blocks.py --tables "$WORK/tables"
+[ -n "$TABLES" ] || "$PYTHON" launcher/tools/render/generated_blocks.py --tables "$WORK/tables"
