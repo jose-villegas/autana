@@ -49,7 +49,7 @@ _Static_assert(IMU_DRAIN_MS* MATH_US_PER_MS < IMU_FIFO_SAMPLES * IMU_SAMPLE_US,
 #define IMU_TASK_BUS_PRIORITY (JOB_CORE1_PRIORITY + 1)
 _Static_assert(IMU_TASK_PRIORITY > tskIDLE_PRIORITY, "IMU task must run above idle priority");
 _Static_assert(IMU_TASK_BUS_PRIORITY < configMAX_PRIORITIES, "IMU bus priority must fit task priorities");
-/* Board dev stats: at worst 1572 of 3072 stack bytes free, idle and under load,
+/* Board dev stats: at worst 1440 of 3072 stack bytes free, idle and under load,
  * with no bus error. The bus-error path (driver ESP_LOGE) was not exercised. */
 #define IMU_TASK_STACK_BYTES (3 * 1024)
 
