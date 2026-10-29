@@ -96,7 +96,7 @@ jobs:
             && idf.py -C packages/math/test_apps -D IDF_TARGET=esp32s3 build
             && python "$IDF_PATH/tools/idf_tools.py" install esp-clang
             && cd ..
-            && launcher/tools/build/build_diag_check.sh --gates-only
+            && launcher/tools/build/build_diag_check.sh --gates-only --ci
 
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}

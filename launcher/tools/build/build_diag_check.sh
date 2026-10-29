@@ -3,13 +3,13 @@
 # Build the DIAGNOSTICS image and run the complexity ratchet: no device,
 # nothing flashed.
 #
-#   tools/build/build_diag_check.sh [--gates-only]
+#   tools/build/build_diag_check.sh [--gates-only [--ci]]
 #
 # --gates-only runs the gates against the build.diag already on disk and
 # builds nothing; it is also what CI's Build (Diagnostics) workflow calls
-# after its own build, so the gate list below is the only one. With CI set
-# the ratchet scores the whole tree and the memory map demands the pinned
-# IDF commit.
+# after its own build, so the gate list below is the only one. --ci makes
+# the ratchet score the whole tree and the memory map demand the pinned IDF
+# commit.
 #
 # The result and the log path are printed; the log holds the full output.
 #
@@ -36,7 +36,7 @@
 #
 # COMPLEXITY_GATE_BASE overrides the ref the ratchet diffs against
 # (default origin/main, the same ref docs/tools/Complexity-Gate.md names
-# for local use; with CI set the whole tree is scored instead).
+# for local use; --ci scores the whole tree instead).
 #
 # The build is `autana build diag`, which runs build.sh; ESP-IDF is the one
 # selected by espressif.py.
@@ -44,12 +44,16 @@
 set -euo pipefail
 
 GATES_ONLY=0
-case "${1:-}" in
-    "") ;;
-    --gates-only) GATES_ONLY=1 ;;
-    -h|--help) echo "usage: tools/build/build_diag_check.sh [--gates-only]"; exit 0 ;;
-    *) echo "unknown argument: $1" >&2; exit 2 ;;
-esac
+CI_GATES=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --gates-only) GATES_ONLY=1 ;;
+        --ci) CI_GATES=1 ;;
+        -h|--help) echo "usage: tools/build/build_diag_check.sh [--gates-only [--ci]]"; exit 0 ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
 
 # shellcheck disable=SC1007
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -74,7 +78,7 @@ PYTHON=$(find_python) || exit 1
 
 complexity_gate() {
     echo "=== Complexity ratchet (--changed $GATE_BASE) ==="
-    if [ -n "${CI:-}" ]; then
+    if [ "$CI_GATES" -eq 1 ]; then
         (cd "$REPO_ROOT" && "$PYTHON" launcher/tools/quality/complexity_gate.py)
     else
         (cd "$REPO_ROOT" && "$PYTHON" launcher/tools/quality/complexity_gate.py \
@@ -117,7 +121,7 @@ misra_tidy_gate() {
 
 iram_budget_gate() {
     echo "=== IRAM placement budgets ==="
-    "$PYTHON" "$DIR/memory_map.py" --check ${CI:+--require-pin} "$DIR/../../build.diag"
+    "$PYTHON" "$DIR/memory_map.py" --check $([ "$CI_GATES" -eq 1 ] && echo --require-pin) "$DIR/../../build.diag"
 }
 
 # Every gate that reads the build.diag output, in the order they run.
