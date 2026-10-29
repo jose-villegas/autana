@@ -90,6 +90,39 @@
         return true;                                                                                                   \
     }                                                                                                                  \
                                                                                                                        \
+    /* reach = sum |n_k| * half_extent_k: how far a box with that half extent spans along the plane's normal. */       \
+    static inline T P##_plane_reach(V##_t half_extent, L##_t plane) {                                                  \
+        return OPS##_add(OPS##_add(OPS##_mul(OPS##_abs(plane.normal.x), half_extent.x),                                \
+                                   OPS##_mul(OPS##_abs(plane.normal.y), half_extent.y)),                               \
+                         OPS##_mul(OPS##_abs(plane.normal.z), half_extent.z));                                         \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* plane_min = plane(centre) - reach: the least plane distance of any point in b. */                               \
+    static inline T P##_plane_min(P##_t b, L##_t plane) {                                                              \
+        return OPS##_sub(L##_distance(plane, P##_centre(b)), P##_plane_reach(P##_half_extent(b), plane));              \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* Least objective on b where constraint >= 0, exact by LP duality: the best plane_min(b, objective */             \
+    /* - lambda constraint) at lambda = 0 and each kink a_k / n_k > 0. Only a bound if b misses it. */                 \
+    static inline T P##_plane_min_inside(P##_t b, L##_t objective, L##_t constraint) {                                 \
+        const T aim[] = {objective.normal.x, objective.normal.y, objective.normal.z};                                  \
+        const T limit[] = {constraint.normal.x, constraint.normal.y, constraint.normal.z};                             \
+        T best = P##_plane_min(b, objective);                                                                          \
+        for (unsigned k = 0; k < sizeof(aim) / sizeof(aim[0]); k++) {                                                  \
+            if (limit[k] == OPS##_zero()) {                                                                            \
+                continue;                                                                                              \
+            }                                                                                                          \
+            const T lambda = OPS##_div(aim[k], limit[k]);                                                              \
+            if (!(lambda > OPS##_zero())) {                                                                            \
+                continue;                                                                                              \
+            }                                                                                                          \
+            const L##_t mixed = {V##_sub(objective.normal, V##_scale(constraint.normal, lambda)),                      \
+                                 OPS##_sub(objective.d, OPS##_mul(lambda, constraint.d))};                             \
+            best = OPS##_max(best, P##_plane_min(b, mixed));                                                           \
+        }                                                                                                              \
+        return best;                                                                                                   \
+    }                                                                                                                  \
+                                                                                                                       \
     /* d = plane(centre), r = sum |n_k|*extent_k; d+r < 0 rejects, d-r >= 0 clears the bit.  */                        \
     static inline bool P##_outside_planes(P##_t b, const L##_t* planes, int count, unsigned* mask) {                   \
         assert(count >= 0 && (unsigned)count <= sizeof *mask * CHAR_BIT);                                              \
@@ -100,9 +133,7 @@
             }                                                                                                          \
             const L##_t* plane = &planes[p];                                                                           \
             const T d = L##_distance(*plane, c);                                                                       \
-            const T r = OPS##_add(                                                                                     \
-                OPS##_add(OPS##_mul(OPS##_abs(plane->normal.x), e.x), OPS##_mul(OPS##_abs(plane->normal.y), e.y)),     \
-                OPS##_mul(OPS##_abs(plane->normal.z), e.z));                                                           \
+            const T r = P##_plane_reach(e, *plane);                                                                    \
             if (OPS##_add(d, r) < OPS##_zero()) {                                                                      \
                 return true;                                                                                           \
             }                                                                                                          \

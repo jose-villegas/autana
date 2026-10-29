@@ -1296,6 +1296,18 @@ test_mathf_repeat_preserves_decimal_remainders(void) {
     }
 }
 
+/* Powers of two are their own floor; between two, the lower; rounding noise
+ * just under a power falls a whole step, so only a straddle tells apart. */
+static void
+test_mathf_floor_pow2(void) {
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, mathf_floor_pow2(1.0F));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, mathf_floor_pow2(1.999F));
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, mathf_floor_pow2(2.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, mathf_floor_pow2(0.3F));
+    TEST_ASSERT_EQUAL_FLOAT(2048.0F, mathf_floor_pow2(2270.0F));
+    TEST_ASSERT_EQUAL_FLOAT(2048.0F, mathf_floor_pow2(nextafterf(4096.0F, 0.0F)));
+}
+
 static void
 test_float_ranges_with_decimal_lengths(void) {
     static const float values[] = {3.3F, -3.3F, 6.6F, -6.6F};
@@ -1964,6 +1976,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_mathf_wrap);
     RUN_TEST(test_mathf_min);
     RUN_TEST(test_mathf_max);
+    RUN_TEST(test_mathf_floor_pow2);
     RUN_TEST(test_mathf_clamp);
     RUN_TEST(test_maths_min);
     RUN_TEST(test_maths_max);

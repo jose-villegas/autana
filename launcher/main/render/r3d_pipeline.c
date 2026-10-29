@@ -26,11 +26,16 @@ r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     const mat4f_t pixels = mat4f_scale_rows(camera, (vec3f_t){view->lens.fx, view->lens.fy, 1.0F});
     lens->m = mat4f_scale_columns(pixels, (vec3f_t){ticks_to_units, ticks_to_units, ticks_to_units});
     lens->project = (projectf_t){1.0F, -1.0F, view->lens.cx, view->lens.cy, view->lens.near_z};
-    lens->near_subpixels = view->lens.near_z / (float)R3D_SUBPIXEL;
+    r3d_lens_set_depth_near(lens, view->lens.near_z);
     lens->snap_cx = (lens->project.cx * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->snap_cy = (lens->project.cy * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->width = view->viewport.width;
     lens->height = view->viewport.height;
+}
+
+void
+r3d_lens_set_depth_near(r3d_lens_t* lens, float depth_near) {
+    lens->depth_subpixels = depth_near / (float)R3D_SUBPIXEL;
 }
 
 void
@@ -162,6 +167,28 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* 
     return count;
 }
 
+float
+r3d_pipeline_nearest(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+                     float nearest) {
+    /* Lens space's z is view depth, so the plane z = 0 measures it. */
+    const planef_t depth = planef_from_rows(&lens->m, 0.0F, 0.0F, 1.0F, 0.0F);
+    planef_t frustum[PLANE_FRUSTUM_COUNT];
+    planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
+                   frustum);
+    for (int i = 0; i < count; i++) {
+        const box3f_t box = box3f_from_box3s(mesh->clusters[clusters[i]].bounds, 1.0F);
+        float least = box3f_plane_min(box, depth);
+        /* Only a box that could lower the bound pays for the part of it
+         * inside each frustum plane: a big one reaching behind the eye
+         * is drawn only where the frustum keeps it. */
+        for (int p = 0; p < PLANE_FRUSTUM_COUNT && least < nearest; p++) {
+            least = mathf_max(least, box3f_plane_min_inside(box, depth, frustum[p]));
+        }
+        nearest = mathf_min(nearest, least);
+    }
+    return nearest;
+}
+
 /* The rebuilt path clips to GUARD_PIXELS from the origin, inside what
  * r3d_span takes; the fast path keeps vertices within FAST_PIXELS, inside
  * the guard, so a clip never cuts an edge that a fast triangle shares. */
@@ -209,7 +236,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         }
         out->sx = (int16_t)r3d_span_unbias(b.x);
         out->sy = (int16_t)r3d_span_unbias(b.y);
-        out->iz = lens->near_subpixels * inv;
+        out->iz = lens->depth_subpixels * inv;
         y0 = out->sy < y0 ? out->sy : y0;
         y1 = out->sy > y1 ? out->sy : y1;
     }
@@ -302,7 +329,7 @@ project(const r3d_lens_t* lens, const clip_vertex_t* v) {
     const float inv = (float)R3D_SUBPIXEL * mathf_recip(v->z);
     const biased_t b = biased_screen(lens, v->x, v->y, inv);
     return (r3d_span_vertex_t){
-        r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->near_subpixels * inv, v->r, v->g, v->b};
+        r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->depth_subpixels * inv, v->r, v->g, v->b};
 }
 
 /* One Sutherland-Hodgman pass (Sutherland and Hodgman 1974): the polygon's part on the plane's inside. */

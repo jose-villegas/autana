@@ -174,6 +174,44 @@ test_box3_plane_oblique_touch_and_late_rejection(void) {
     TEST_ASSERT_EQUAL_UINT(REJECT, mask);
 }
 
+/* BOX_TICKS at BOX_SCALE is the cube [-1, 1]^3: a plane's least value on it
+ * is its value at the centre less the sum of its normal's magnitudes. */
+static void
+test_box3_plane_min_is_the_least_corner(void) {
+    const box3f_t b = box3f_from_box3s(BOX_TICKS, BOX_SCALE);
+    const planef_t plane = {{1.0F, 2.0F, -3.0F}, 0.5F};
+    float least = INFINITY;
+    for (int corner = 0; corner < 8; corner++) {
+        const vec3f_t p = {corner & 1 ? b.hi.x : b.lo.x, corner & 2 ? b.hi.y : b.lo.y, corner & 4 ? b.hi.z : b.lo.z};
+        least = mathf_min(least, planef_distance(plane, p));
+    }
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, least, box3f_plane_min(b, plane));
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, 0.5F - 6.0F, box3f_plane_min(b, plane));
+}
+
+/* The least z over the cube where a constraint holds, worked by hand: */
+static void
+test_box3_plane_min_inside_one_half_space(void) {
+    const box3f_t cube = box3f_from_box3s(BOX_TICKS, BOX_SCALE);
+    const planef_t depth = {{0.0F, 0.0F, 1.0F}, 0.0F};
+    /* z >= x leaves the corner (-1, y, -1): the constraint never binds. */
+    const planef_t loose = {{-1.0F, 0.0F, 1.0F}, 0.0F};
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, -1.0F, box3f_plane_min_inside(cube, depth, loose));
+    /* z >= x + 1 binds at x = -1, so z >= 0. */
+    const planef_t binding = {{-1.0F, 0.0F, 1.0F}, -1.0F};
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, 0.0F, box3f_plane_min_inside(cube, depth, binding));
+    /* A flat slab, ground seen from above: y in [-0.1, 0], and z >= 4 - 2 y
+     * keeps only z >= 4, at y = 0. The box alone reaches z = -10. */
+    const box3f_t slab = {{-10.0F, -0.1F, -10.0F}, {10.0F, 0.0F, 10.0F}};
+    const planef_t bottom = {{0.0F, 2.0F, 1.0F}, -4.0F};
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, -10.0F, box3f_plane_min(slab, depth));
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, 4.0F, box3f_plane_min_inside(slab, depth, bottom));
+    /* A box outside the half-space has no least value; the bound only never
+     * falls under the box's own. */
+    const planef_t beyond = {{1.0F, 0.0F, 0.0F}, -5.0F};
+    TEST_ASSERT_TRUE(box3f_plane_min_inside(cube, depth, beyond) >= box3f_plane_min(cube, depth));
+}
+
 static void
 test_box3_set_operations_each_axis(void) {
     static const box3s_t other = {{-4, 0, -1}, {0, 4, 1}};
@@ -262,6 +300,8 @@ suite_box3(void) {
     RUN_TEST(test_box3_asymmetric_scale_and_extreme_bounds);
     RUN_TEST(test_box3_segment_slabs);
     RUN_TEST(test_box3_planes_preserve_only_crossing_bits);
+    RUN_TEST(test_box3_plane_min_is_the_least_corner);
+    RUN_TEST(test_box3_plane_min_inside_one_half_space);
 }
 
 SUITE_REGISTER(suite_box3);
