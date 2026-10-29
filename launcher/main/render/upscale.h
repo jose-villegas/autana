@@ -20,7 +20,9 @@ typedef enum {
     UPSCALE_BLOCKS,  /* both axes by one integer factor, where neither above applies */
 } upscale_path_t;
 
-/* How a kept width fills its rows. Other paths are always nearest. */
+/* How a kept width fills its rows. Other paths are always nearest. SURFACE is
+ * Kopf et al. 2007's joint bilateral upsampling with the range weight reduced
+ * to a yes or no from the low-resolution depth. */
 typedef enum {
     UPSCALE_FILTER_NEAREST, /* each row is its nearest source row */
     UPSCALE_FILTER_SURFACE, /* blends the two source rows around it unless depth steps between them */
