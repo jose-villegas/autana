@@ -231,6 +231,9 @@ def run_chain(steps, args, runner=None, clock=None):
                 try:
                     if not worktree.exists():
                         git(args.repo, "worktree", "add", "--detach", str(worktree), step.commit)
+                        # Captures land with the lane's output, on whichever machine runs it.
+                        (worktree / autana_config.CONFIG_NAME).write_text(
+                            f"records = '{(output / 'device').as_posix()}'\n", encoding="utf-8")
                     git(worktree, "checkout", "--detach", step.commit)
                     git(worktree, "submodule", "update", "--init", "--recursive")
                     code, _, _ = run_step(autana_command("--project", str(worktree), "build", VARIANT,
