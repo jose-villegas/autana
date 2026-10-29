@@ -75,24 +75,32 @@ moved_depth(uint16_t depth, float moved) {
     return word > DEPTH_SKY ? word : DEPTH_SKY + 1U;
 }
 
+/* A source pixel carried through the map: where it lands, and its inverse
+ * depth's gain, not positive when it lands behind the new view. */
+typedef struct {
+    float px, py, inv;
+} carried_t;
+
 /* Lens space is pixels at unit depth: depth word d is the point (u, v, 1)
  * near_z / iz, and through the map its new inverse depth is d / z. The sky
- * (d = 0) gains nothing from depth, so it only turns. */
-static inline void
-splat(const framegen_target_t* out, const float at[3], const float per_depth[3], uint16_t depth, uint16_t colour) {
-    const float d = (float)depth;
+ * (d = 0) gains nothing from depth, so it only turns. No branch, so two
+ * pixels' dependent chains can interleave. */
+static inline carried_t
+carry(const float at[3], const float per_depth[3], float d) {
     const float z = at[2] + (per_depth[2] * d);
-    if (!(z > 0.0F)) {
-        return;
-    }
     const float inv = mathf_recip(z);
-    const float px = (at[0] + (per_depth[0] * d)) * inv;
-    const float py = (at[1] + (per_depth[1] * d)) * inv;
-    if (!(px >= 0.0F && py >= 0.0F && px < (float)out->width && py < (float)out->height)) {
+    return (carried_t){(at[0] + (per_depth[0] * d)) * inv, (at[1] + (per_depth[1] * d)) * inv, inv};
+}
+
+/* Writes a carried pixel where it lands when it is in front, on the
+ * picture, and nearer than what is there. */
+static inline void
+land(const framegen_target_t* out, carried_t c, uint16_t depth, uint16_t colour) {
+    if (!(c.inv > 0.0F && c.px >= 0.0F && c.py >= 0.0F && c.px < (float)out->width && c.py < (float)out->height)) {
         return;
     }
-    const size_t to = ((size_t)py * (size_t)out->width) + (size_t)px;
-    const uint32_t nd = moved_depth(depth, d * inv);
+    const size_t to = ((size_t)c.py * (size_t)out->width) + (size_t)c.px;
+    const uint32_t nd = moved_depth(depth, (float)depth * c.inv);
     if (nd > out->depth[to]) {
         out->depth[to] = (uint16_t)nd;
         out->colour[to] = colour;
@@ -107,12 +115,22 @@ warp_rows(void* ctx) {
     for (int y = job->first; y < job->end; y++) {
         row_map_t r;
         row_map(job, y, to_w, &r);
-        const size_t row = (size_t)y * (size_t)width;
-        for (int x = 0; x < width; x++) {
-            splat(job->out, r.at, r.per_depth, job->depth[row + (size_t)x], job->colour[row + (size_t)x]);
-            r.at[0] += r.step[0];
-            r.at[1] += r.step[1];
-            r.at[2] += r.step[2];
+        const uint16_t* depth = job->depth + ((size_t)y * (size_t)width);
+        const uint16_t* colour = job->colour + ((size_t)y * (size_t)width);
+        int x = 0;
+        /* Two pixels a step, so one's reciprocal overlaps the other's. */
+        for (; x + 1 < width; x += 2) {
+            const float next[3] = {r.at[0] + r.step[0], r.at[1] + r.step[1], r.at[2] + r.step[2]};
+            const carried_t a = carry(r.at, r.per_depth, (float)depth[x]);
+            const carried_t b = carry(next, r.per_depth, (float)depth[x + 1]);
+            land(job->out, a, depth[x], colour[x]);
+            land(job->out, b, depth[x + 1], colour[x + 1]);
+            r.at[0] = next[0] + r.step[0];
+            r.at[1] = next[1] + r.step[1];
+            r.at[2] = next[2] + r.step[2];
+        }
+        if (x < width) {
+            land(job->out, carry(r.at, r.per_depth, (float)depth[x]), depth[x], colour[x]);
         }
     }
 }
