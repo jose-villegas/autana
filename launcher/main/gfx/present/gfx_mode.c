@@ -437,6 +437,62 @@ clear_expanded_frame(bool free_picture) {
     }
 }
 
+/* Seam bytes cover whole half rows, so each byte's eight pixels share one test. */
+_Static_assert(HALF_WIDTH % GFX_SEAM_BITS == 0, "a half row is whole seam bytes");
+#define SEAM_BYTE_ALL ((1U << GFX_SEAM_BITS) - 1)
+
+/* The half row blended a quarter toward the one beside it, spread, except
+ * across a seam, where a pixel keeps its own colour. */
+static void
+blend_column(const gfx_color_t* here, const gfx_color_t* there, const uint8_t* between, uint32_t* column) {
+    for (int byte = 0; byte < HALF_WIDTH / GFX_SEAM_BITS; byte++) {
+        const int first = byte * GFX_SEAM_BITS;
+        unsigned bits = between[byte];
+        if (bits == SEAM_BYTE_ALL) {
+            for (int x = first; x < first + GFX_SEAM_BITS; x++) {
+                column[x] = rgb565be_spread(here[x]);
+            }
+            continue;
+        }
+        for (int x = first; x < first + GFX_SEAM_BITS; x++, bits >>= 1) {
+            const uint32_t mine = rgb565be_spread(here[x]);
+            column[x] = bits & 1U ? mine : rgb565_spread_quarter(mine, rgb565be_spread(there[x]));
+        }
+    }
+}
+
+/* Each spread pixel doubled across, blending a quarter toward each
+ * neighbour it shares a surface with. */
+static void
+spread_across(const uint32_t* column, const uint8_t* across, gfx_color_t* out) {
+    unsigned before = 1; /* the seam left of the first pixel: the panel edge */
+    for (int byte = 0; byte < HALF_WIDTH / GFX_SEAM_BITS; byte++) {
+        const int first = byte * GFX_SEAM_BITS;
+        const bool last = first + GFX_SEAM_BITS == HALF_WIDTH;
+        unsigned bits = across[byte];
+        if (bits == SEAM_BYTE_ALL && before != 0) {
+            for (int x = first; x < first + GFX_SEAM_BITS; x++) {
+                out[2 * x] = out[(2 * x) + 1] = rgb565be_unspread(column[x]);
+            }
+        } else if (bits == 0 && before == 0 && !last) {
+            for (int x = first; x < first + GFX_SEAM_BITS; x++) {
+                out[2 * x] = rgb565be_unspread(rgb565_spread_quarter(column[x], column[x - 1]));
+                out[(2 * x) + 1] = rgb565be_unspread(rgb565_spread_quarter(column[x], column[x + 1]));
+            }
+        } else {
+            unsigned left = before;
+            for (int x = first; x < first + GFX_SEAM_BITS; x++, bits >>= 1) {
+                const bool right = (bits & 1U) == 0 && x + 1 < HALF_WIDTH;
+                out[2 * x] = rgb565be_unspread(left == 0 ? rgb565_spread_quarter(column[x], column[x - 1]) : column[x]);
+                out[(2 * x) + 1] =
+                    rgb565be_unspread(right ? rgb565_spread_quarter(column[x], column[x + 1]) : column[x]);
+                left = bits & 1U;
+            }
+        }
+        before = across[byte] >> (GFX_SEAM_BITS - 1);
+    }
+}
+
 /* Bilinear at 2x, except across a seam, where each pixel keeps its own colour. */
 static void
 expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
@@ -449,25 +505,14 @@ expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
         const int other = lower_half ? row + 1 : row - 1;
         const gfx_color_t* here = half_image + ((size_t)row * HALF_WIDTH);
         if (other >= 0 && other < HALF_HEIGHT) {
-            const gfx_color_t* there = half_image + ((size_t)other * HALF_WIDTH);
-            const uint8_t* between = seams + ((size_t)(lower_half ? row : other) * seam_pitch);
-            for (int x = 0; x < HALF_WIDTH; x++) {
-                const uint32_t mine = rgb565be_spread(here[x]);
-                column[x] = gfx_seam_at(between, x) ? mine : rgb565_spread_quarter(mine, rgb565be_spread(there[x]));
-            }
+            blend_column(here, half_image + ((size_t)other * HALF_WIDTH),
+                         seams + ((size_t)(lower_half ? row : other) * seam_pitch), column);
         } else {
             for (int x = 0; x < HALF_WIDTH; x++) {
                 column[x] = rgb565be_spread(here[x]);
             }
         }
-        const uint8_t* across = seams + ((size_t)row * seam_pitch);
-        gfx_color_t* out = destination + ((size_t)(y - y0) * GFX_WIDTH);
-        for (int x = 0; x < HALF_WIDTH; x++) {
-            const bool left = x > 0 && !gfx_seam_at(across, x - 1);
-            const bool right = x + 1 < HALF_WIDTH && !gfx_seam_at(across, x);
-            out[2 * x] = rgb565be_unspread(left ? rgb565_spread_quarter(column[x], column[x - 1]) : column[x]);
-            out[(2 * x) + 1] = rgb565be_unspread(right ? rgb565_spread_quarter(column[x], column[x + 1]) : column[x]);
-        }
+        spread_across(column, seams + ((size_t)row * seam_pitch), destination + ((size_t)(y - y0) * GFX_WIDTH));
     }
 }
 

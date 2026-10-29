@@ -182,15 +182,15 @@ source_row(const uint16_t* pixels, size_t pitch, int row) {
 
 static void
 mark_seams(const uint16_t* here, const uint16_t* below, int width, uint8_t* seams) {
-    for (int byte = 0; byte < GFX_SEAM_PITCH(width); byte++) {
-        unsigned bits = 0;
-        for (int bit = 0; bit < GFX_SEAM_BITS && (byte * GFX_SEAM_BITS) + bit < width; bit++) {
-            const int x = (byte * GFX_SEAM_BITS) + bit;
-            const bool right = x + 1 < width && !upscale_same_surface(here[x], here[x + 1]);
-            const bool down = below != NULL && !upscale_same_surface(here[x], below[x]);
-            bits |= (unsigned)(right || down) << bit;
+    unsigned bits = 0;
+    for (int x = 0; x < width; x++) {
+        const bool right = x + 1 < width && !upscale_same_surface(here[x], here[x + 1]);
+        const bool down = below != NULL && !upscale_same_surface(here[x], below[x]);
+        bits |= (unsigned)(right || down) << (x % GFX_SEAM_BITS);
+        if (x % GFX_SEAM_BITS == GFX_SEAM_BITS - 1 || x + 1 == width) {
+            seams[x / GFX_SEAM_BITS] = (uint8_t)bits;
+            bits = 0;
         }
-        seams[byte] = (uint8_t)bits;
     }
 }
 
@@ -209,12 +209,19 @@ surface_rows(const upscale_t* scale, const uint16_t* color, const uint16_t* dept
         const uint16_t* upper_depth = source_row(depth, pitch, upper);
         const bool upper_nearer = blend_nearest_row(blend) == upper;
         uint16_t* output = destination + ((size_t)y * width);
-        for (int x = 0; x < width; x++) {
-            const uint16_t a = gfx_target_shown_pixel(lower_color, lower_depth, x, clear);
-            const uint16_t b = gfx_target_shown_pixel(upper_color, upper_depth, x, clear);
-            output[x] = upscale_same_surface(lower_depth[x], upper_depth[x]) ? rgb565be_blend(a, b, share)
-                        : upper_nearer                                       ? b
-                                                                             : a;
+        if (share == 0) {
+            /* On a source row: nothing to blend, the row as shown. */
+            for (int x = 0; x < width; x++) {
+                output[x] = gfx_target_shown_pixel(lower_color, lower_depth, x, clear);
+            }
+        } else {
+            for (int x = 0; x < width; x++) {
+                const uint16_t a = gfx_target_shown_pixel(lower_color, lower_depth, x, clear);
+                const uint16_t b = gfx_target_shown_pixel(upper_color, upper_depth, x, clear);
+                output[x] = upscale_same_surface(lower_depth[x], upper_depth[x]) ? rgb565be_blend(a, b, share)
+                            : upper_nearer                                       ? b
+                                                                                 : a;
+            }
         }
         if (seams != NULL) {
             const uint16_t* here = source_row(depth, pitch, blend_nearest_row(blend));
