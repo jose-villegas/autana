@@ -14,6 +14,12 @@ name: Bakes GPU
 # finds OptiX only through the Linux driver's libnvoptix (Mitsuba's OptiX
 # setup page); the runner keeps a copy in ~/gpu/optix, which only the steps
 # that trace name, in their own environment.
+#
+# `runner` picks the self-hosted runner by a label of its own; the default
+# `gpu` is the runner the night queue uses. One dispatch runs on one runner, so
+# every fit it makes comes from one GPU, which each fit's lock row names (a fit
+# is byte-reproducible only on its GPU model). Runs on different runners do
+# not wait for each other; each runner takes its host's heavy lock.
 
 on:
   workflow_dispatch:
@@ -30,9 +36,13 @@ on:
         description: 'Only report whether Mitsuba CUDA traces here; bake nothing'
         type: boolean
         default: false
+      runner:
+        description: 'The self-hosted runner label to fit on'
+        required: false
+        default: gpu
 
 concurrency:
-  group: bakes-gpu
+  group: bakes-gpu-${{ inputs.runner }}
   cancel-in-progress: false
 
 # actions: read lets a fit fetch its locked start from the run that made it, before main publishes it.
@@ -49,7 +59,7 @@ jobs:
   probe:
     name: Probe Mitsuba CUDA
     if: inputs.probe
-    runs-on: [self-hosted, linux, gpu]
+    runs-on: [self-hosted, linux, '${{ inputs.runner }}']
     timeout-minutes: 15
     defaults:
       run:
@@ -71,7 +81,7 @@ jobs:
   gpu:
     name: Bake missing fits
     if: ${{ !inputs.probe }}
-    runs-on: [self-hosted, linux, gpu]
+    runs-on: [self-hosted, linux, '${{ inputs.runner }}']
     timeout-minutes: 600
     defaults:
       run:

@@ -109,10 +109,13 @@ PLACE_WAIT_S = 0.05
 RUN_ARTIFACTS = "bakes-*"
 CACHE_VARIABLE = "AUTANA_BAKE_CACHE"
 # A lock row's fields, in file order: "host" is the system and machine a run made the bytes on, since a
-# bake is reproducible only on one kind of host; a seeded row has none.
-ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "seeded")
+# bake is reproducible only on one kind of host, and "gpu" the GPU a fit was made on, since a fit is
+# reproducible only on that GPU model; a seeded row has neither.
+ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "gpu", "seeded")
 POSE_FIELDS = ("key", "poses", "count", "clip", "host")
 CPUINFO = pathlib.Path("/proc/cpuinfo")
+NVIDIA_SMI_NAME = ("nvidia-smi", "--query-gpu=name", "--format=csv,noheader")
+GPU_QUERY_TIMEOUT_S = 10
 # Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
 # submodules its files compile, and the requirements beside them.
 STAGES = {
@@ -1009,6 +1012,16 @@ def cpu_vendor():
     return None
 
 
+def gpu_name():
+    """The first GPU nvidia-smi names (NVIDIA GeForce RTX 2060), None where there is none."""
+    try:
+        names = subprocess.run(NVIDIA_SMI_NAME, capture_output=True, text=True, timeout=GPU_QUERY_TIMEOUT_S,
+                               stdin=subprocess.DEVNULL).stdout.splitlines()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return names[0].strip() if names and names[0].strip() else None
+
+
 def rerun_on(mesh_cpu_vendor):
     return (f"the lock's meshes are {mesh_cpu_vendor}'s: re-run the failed Bakes CPU job until it lands on a "
             f"{mesh_cpu_vendor} runner")
@@ -1205,6 +1218,11 @@ def main(argv=None):
             unknown = sorted(set(args.only or ()) - {bake.output for bake in found})
             if unknown:
                 parser.error(f"--only: no bake makes {', '.join(unknown)}")
+            # A named output of another kind would make a run that bakes nothing and still passes.
+            other = sorted(bake.output for bake in found
+                           if bake.output in (args.only or ()) and args.kind not in (None, bake.kind))
+            if other:
+                parser.error(f"--only: {', '.join(other)} not of --kind {args.kind}")
 
             def to_make(bake, kind):
                 return (bake.kind == kind and args.kind in (None, kind) and (args.again or bake.key not in lock)

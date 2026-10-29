@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -1065,6 +1066,45 @@ class CpuVendorTests(FittedBakeCase):
         bake.write_lock([row_of(self.start, MADE_SHA256, run=RUN)], path)
         self.assertIsNone(bake.read_lock_tables(path)["mesh_cpu_vendor"])
         self.assertNotIn("mesh_cpu_vendor", path.read_text())
+
+
+class FitGpuTests(FittedBakeCase):
+    """A fit's bytes differ between GPU models: a fit's make names its GPU, and its lock row keeps it."""
+
+    GPU = "NVIDIA GeForce RTX 5080 Laptop GPU"
+
+    def test_the_gpu_is_read_from_nvidia_smi_and_recorded_only_with_a_fit(self):
+        tree = self.root / "one.bundle"
+        tree.write_bytes(b"fit baked")
+        with mock.patch.object(bake, "NVIDIA_SMI_NAME", (sys.executable, "-c", f"print({self.GPU!r}); print('x')")):
+            self.assertEqual(bake.gpu_name(), self.GPU)
+            self.assertEqual(produce.record(bake_of("k" * 64, tree, kind="fit"), tree, self.cache)["gpu"], self.GPU)
+            self.assertNotIn("gpu", produce.record(bake_of("j" * 64, tree), tree, self.cache))
+        for absent in ((str(self.root / "no-nvidia-smi"),), (sys.executable, "-c", "pass")):
+            with self.subTest(absent=absent), mock.patch.object(bake, "NVIDIA_SMI_NAME", absent):
+                self.assertIsNone(bake.gpu_name())
+                self.assertNotIn("gpu", produce.record(bake_of("i" * 64, tree, kind="fit"), tree, self.cache))
+
+    def test_a_locked_fit_keeps_the_gpu_its_run_made_it_on(self):
+        fit = self.fit(MADE_SHA256)
+        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN, cpu_vendor="AuthenticAMD"),
+                fit.key: row_of(fit, FIT_SHA256, run=RUN, gpu=self.GPU)}
+        done = self.command(["lock", "--from-run", str(RUN)], {}, made, mesh_cpu_vendor="AuthenticAMD")
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.rows[fit.output]["gpu"], self.GPU)
+        self.assertNotIn("gpu", done.rows[self.start.output])
+        path = self.root / "bakes.lock"
+        bake.write_lock(list(done.rows.values()), path, mesh_cpu_vendor="AuthenticAMD")
+        self.assertIn(f'gpu = "{self.GPU}"', path.read_text(encoding="utf-8"))
+
+
+class OnlyTests(FittedBakeCase):
+    def test_an_output_of_another_kind_is_refused_before_making_anything(self):
+        def refuse(parser, message):
+            raise ValueError(message)
+        with mock.patch.object(bake.argparse.ArgumentParser, "error", refuse), \
+                self.assertRaisesRegex(ValueError, f"{re.escape(self.start.output)} not of --kind fit"):
+            self.command(["bake", "--kind", "fit", "--only", self.start.output], {})
 
 
 class SharedStartTests(FittedBakeCase):

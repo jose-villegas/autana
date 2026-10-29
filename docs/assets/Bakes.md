@@ -40,6 +40,10 @@ a run that made a mesh on another vendor, naming both, and the CPU job fails
 before baking when the hosted runner it got is another vendor's. Either way,
 re-run the failed job until it lands on the lock's vendor.
 
+A fit repeats byte for byte only on one GPU model, so a fit's row also names
+its `gpu`. The Bakes GPU run's `runner` input picks the self-hosted runner by
+its label (default `gpu`). One run fits on one runner, so its fits share one GPU.
+
 A renderer whose import carves shared meshes has a `.bundle` row; an uncarved
 one has a `.mesh` row. A carved fit's CPU start is `.start.bundle`. The GPU fit
 trains only the rest, copying shapes, LCOL and the
