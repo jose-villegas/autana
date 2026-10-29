@@ -6,27 +6,29 @@
 
 /* Tuned on the board: one step's cost ratio reaches 1.34, and a finer step
  * must still fit once taken, so the up threshold sits under 1 / 1.34. */
-#define DEFAULT_WINDOW               8
-#define DEFAULT_COOLDOWN             8
-#define DEFAULT_UP_PERCENT           72
-#define DEFAULT_DOWN_PERCENT         100
-#define DEFAULT_PANIC_PERCENT        150
-#define DEFAULT_PANIC_STEPS          2
-#define COOLDOWN_MAX                 128
+#define DEFAULT_WINDOW            8
+#define DEFAULT_COOLDOWN          8
+#define DEFAULT_UP_PERCENT        72
+#define DEFAULT_DOWN_PERCENT      100
+#define DEFAULT_PANIC_PERCENT     150
+#define DEFAULT_PANIC_STEPS       2
+#define COOLDOWN_MAX              128
 
 /* The predictor goes finer only with this much of the budget to spare, so
  * a prediction at the edge does not flip between two steps. */
-#define PREDICT_FINER_MARGIN_PERCENT 8
+#define DEFAULT_UP_MARGIN_PERCENT 8
+/* One frame that fits is enough: the margin alone guards the edge. */
+#define DEFAULT_UP_FRAMES         1
 /* About 50 frames of memory tracks scene changes and leans back to the fit. */
-#define RHO                          0.98F
+#define RHO                       0.98F
 /* Scene differences can change the fit's overall slope. */
-#define PRIOR_SCALE_SD               0.25F
+#define PRIOR_SCALE_SD            0.25F
 /* Fixed scene overhead can differ by a few milliseconds. */
-#define PRIOR_OFFSET_SD_US           3000.0F
+#define PRIOR_OFFSET_SD_US        3000.0F
 /* Observation noise rejects frame-time jitter. */
-#define NOISE_SHARE                  0.05F
+#define NOISE_SHARE               0.05F
 /* Cheap frames must not dominate the filter. */
-#define NOISE_FLOOR_US               100.0F
+#define NOISE_FLOOR_US            100.0F
 
 resolution_config_t
 resolution_config(const resolution_step_t* steps, int count, int recovery_from, int32_t budget_us) {
@@ -41,6 +43,8 @@ resolution_config(const resolution_step_t* steps, int count, int recovery_from, 
         .down_percent = DEFAULT_DOWN_PERCENT,
         .panic_percent = DEFAULT_PANIC_PERCENT,
         .panic_steps = DEFAULT_PANIC_STEPS,
+        .up_margin_percent = DEFAULT_UP_MARGIN_PERCENT,
+        .up_frames = DEFAULT_UP_FRAMES,
     };
     for (int i = 0; i < count; i++) {
         /* A caller sizes its buffers for the first step. */
@@ -50,10 +54,21 @@ resolution_config(const resolution_step_t* steps, int count, int recovery_from, 
     return config;
 }
 
+int
+resolution_config_top(resolution_config_t* config, resolution_step_t chosen) {
+    int top = 0;
+    while (top < config->recovery_from - 1
+           && (config->steps[top].width > chosen.width || config->steps[top].height > chosen.height)) {
+        top++;
+    }
+    config->top = top;
+    return top;
+}
+
 void
 resolution_control_init(resolution_control_t* control, const resolution_config_t* config, int first_step) {
     assert(config->window > 0 && config->window <= RESOLUTION_WINDOW_MAX);
-    assert(first_step >= 0 && first_step < config->step_count);
+    assert(first_step >= config->top && first_step < config->step_count);
     *control = (resolution_control_t){.step = first_step, .cooldown = config->cooldown};
 }
 
@@ -115,7 +130,7 @@ resolution_control_update(resolution_control_t* c, const resolution_config_t* co
         move_to(c, c->step + 1);
     } else if (c->step >= config->recovery_from && !over_share(mean, config->budget_us, config->down_percent)) {
         move_to(c, c->step - 1); /* recovery is left as soon as it is under budget */
-    } else if (c->step > 0 && !over_share(mean, config->budget_us, config->up_percent)) {
+    } else if (c->step > config->top && !over_share(mean, config->budget_us, config->up_percent)) {
         move_to(c, c->step - 1);
     } else if (c->cooldown > config->cooldown) {
         c->cooldown--; /* each settled frame earns one back */
@@ -232,7 +247,7 @@ reset_refit(resolution_predict_t* p) {
 void
 resolution_predict_init(resolution_predict_t* predict, const resolution_config_t* config,
                         const resolution_model_t* model, int first_step) {
-    assert(first_step >= 0 && first_step < config->step_count);
+    assert(first_step >= config->top && first_step < config->step_count);
     *predict = (resolution_predict_t){.model = *model, .step = first_step};
     reset_refit(predict);
 }
@@ -242,13 +257,12 @@ corrected_us(const resolution_predict_t* p, const resolution_config_t* config, i
     return (p->scale * resolution_model_predict_us(&p->model, config, step, triangles)) + p->offset_us;
 }
 
-/* The finest step whose corrected cost fits `share` of the budget, among
- * the first `count`; -1 when none does. */
+/* The finest step whose corrected cost fits `share` of the budget, from
+ * the top to before `end`; -1 when none does. */
 static int
-finest_fitting(const resolution_predict_t* p, const resolution_config_t* config, int triangles, int count,
-               int percent) {
+finest_fitting(const resolution_predict_t* p, const resolution_config_t* config, int triangles, int end, int percent) {
     const float limit = (float)config->budget_us * (float)percent / 100.0F;
-    for (int step = 0; step < count; step++) {
+    for (int step = config->top; step < end; step++) {
         if (corrected_us(p, config, step, triangles) <= limit) {
             return step;
         }
@@ -274,12 +288,16 @@ resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* co
         chosen = config->step_count - 1;
     }
     if (chosen < p->step) {
-        const int margin = config->down_percent - PREDICT_FINER_MARGIN_PERCENT;
+        const int margin = config->down_percent - config->up_margin_percent;
         const int finer = finest_fitting(p, config, triangles, p->step, margin);
-        chosen = finer < 0 ? p->step : finer;
+        p->fitted_frames = finer < 0 ? 0 : p->fitted_frames + 1;
+        chosen = finer < 0 || p->fitted_frames < config->up_frames ? p->step : finer;
+    } else {
+        p->fitted_frames = 0;
     }
     if (chosen != p->step) {
         p->step = chosen;
+        p->fitted_frames = 0;
         p->switches++;
     }
     p->chosen_us = corrected_us(p, config, p->step, triangles);

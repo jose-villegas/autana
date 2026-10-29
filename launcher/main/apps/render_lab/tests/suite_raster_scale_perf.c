@@ -472,7 +472,7 @@ fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* confi
     log_fit(ladder, config, model);
 }
 
-static const int32_t budgets_us[] = {RENDER_LAB_BUDGET_ON_MS * MATH_US_PER_MS, 75000};
+static const int32_t budgets_us[] = {RENDER_LAB_TARGET_MS * MATH_US_PER_MS, 75000};
 
 void
 test_dynamic_resolution_policies_along_the_path(void) {
