@@ -271,8 +271,8 @@ $`d_{near}`$ is fitted each frame, apart from the clip plane:
 | Step | Owner | What it does |
 |---|---|---|
 | Cull every instance | `raster_draw()`, `raster_census()` | all lists first, so every instance draws with one scale |
-| Bound each kept cluster | `r3d_pipeline_nearest()` | the least view depth of its box inside each frustum plane, the best of them (`box3f_plane_min_inside()`) |
-| Fit | `raster.c` | the least bound, down to a power of two (`mathf_floor_pow2()`), never under `near_z` |
+| Bound each kept cluster | `r3d_pipeline_nearest()` | the least view depth of its box inside each frustum plane, the best of them (`box3f_plane_distance_min_inside()`) |
+| Fit | `raster.c` | the least bound, `inverse_depth_scale_fit()`: down to a power of two, never under `near_z` |
 | Draw | `r3d_lens_set_depth_near()` | each instance's lens encodes with it; the clip plane stays `near_z` |
 | Decode | `raster_depth_near()` | the scale the picture was drawn with, for readers such as motion vectors |
 

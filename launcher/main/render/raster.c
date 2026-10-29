@@ -7,6 +7,7 @@
 
 #include "core/job.h"
 #include "core/tune.h"
+#include "math/projection/inverse_depth.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_laps.h"
 #include "render/raster_internal.h"
@@ -287,9 +288,9 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
-    /* A power of two keeps the scale still while the bound drifts, so ties
-     * do not flip from frame to frame, and the same at every render size. */
-    return nearest < INFINITY ? mathf_max(view->lens.near_z, mathf_floor_pow2(nearest)) : view->lens.near_z;
+    /* The fit's power of two keeps the scale still while the bound drifts,
+     * so ties do not flip from frame to frame, and the same at every size. */
+    return nearest < INFINITY ? inverse_depth_scale_fit(view->lens.near_z, nearest) : view->lens.near_z;
 }
 
 /* The writers of the attachments that write while instance `index` is

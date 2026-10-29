@@ -75,7 +75,7 @@ int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16
 /* A lower bound on the view depth of anything of `count` clusters inside the
  * lens's frustum, never above `nearest`, so calls over several meshes fold
  * into one bound: per box, the best of its least depth inside each frustum
- * plane (box3f_plane_min_inside()). A box that reaches the near plane on
+ * plane (box3f_plane_distance_min_inside()). A box that reaches the near plane on
  * screen gives a value at or below near_z. */
 float r3d_pipeline_nearest(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                            float nearest);

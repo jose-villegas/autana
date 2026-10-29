@@ -11,6 +11,7 @@
 #include "collections/sort.h"
 #include "core/job.h"
 #include "display/viewport.h"
+#include "math/geometry/box3f_plane.h"
 #include "math/geometry/planef.h"
 #include "math/linear/mat3f.h"
 #include "math/scalar/mathf.h"
@@ -177,12 +178,12 @@ r3d_pipeline_nearest(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const u
                    frustum);
     for (int i = 0; i < count; i++) {
         const box3f_t box = box3f_from_box3s(mesh->clusters[clusters[i]].bounds, 1.0F);
-        float least = box3f_plane_min(box, depth);
+        float least = box3f_plane_distance_min(box, depth);
         /* Only a box that could lower the bound pays for the part of it
          * inside each frustum plane: a big one reaching behind the eye
          * is drawn only where the frustum keeps it. */
         for (int p = 0; p < PLANE_FRUSTUM_COUNT && least < nearest; p++) {
-            least = mathf_max(least, box3f_plane_min_inside(box, depth, frustum[p]));
+            least = mathf_max(least, box3f_plane_distance_min_inside(box, depth, frustum[p]));
         }
         nearest = mathf_min(nearest, least);
     }
