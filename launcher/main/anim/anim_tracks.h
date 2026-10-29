@@ -1,6 +1,6 @@
 /*
  * anim_tracks: the bindings and curves of a TRCK pack entry, written by
- * launcher/tools/anim/tracks_asset.py; the layout is in docs/render/Animation-Tracks.md.
+ * launcher/tools/anim/tracks_asset.py; the layout is in docs/assets/formats/TRCK.md.
  * Views point into the entry, which must outlive them. No allocation.
  */
 #pragma once

@@ -2,7 +2,7 @@
 
 The offline half of `main/draw/`: bakes a PNG, or an icon cut from an
 atlas or an SVG, into a pack entry the firmware draws in place. The entry's layout is
-[the image entry](../../../docs/assets/Image-Entries.md#imag-v1). Nothing
+[the image entry](../../../docs/assets/formats/IMAG.md). Nothing
 here runs on the board.
 
 | File | Purpose |

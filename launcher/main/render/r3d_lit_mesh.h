@@ -6,7 +6,7 @@
  * own vertices. The clusters are the leaves of a tree rooted at nodes[0], so
  * a whole subtree is culled with one box test.
  *
- * A mesh is an asset-pack entry (docs/render/Baked-Mesh.md): its arrays sit at
+ * A mesh is an asset-pack entry (docs/assets/formats/LMSH.md): its arrays sit at
  * offsets inside the entry, and r3d_lit_mesh_t is a view built once from
  * them, so the renderer reads pointers as it always did and nothing is copied.
  */
@@ -65,7 +65,7 @@ asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);
 
-/* Colour ownership: docs/render/Baked-Mesh.md#lcol-v1. */
+/* Colour ownership: docs/assets/formats/LCOL.md. */
 asset_status_t r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set,
                                          r3d_lit_mesh_t* mesh);
 
