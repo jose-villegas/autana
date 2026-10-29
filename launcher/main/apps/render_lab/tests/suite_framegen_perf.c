@@ -84,6 +84,41 @@ row_map(const mat4f_t* a, float v, row_map_t* r) {
  * Lens space is pixels at unit depth: depth d is the point (u, v, 1) near_z / iz,
  * and through the map its new inverse depth is d / pz. The sky (d = 0) has w = 0,
  * so it only turns. */
+/* The warped depth word: the sky stays the farthest, anything drawn sits above it. */
+static inline uint32_t
+moved_depth(uint16_t depth, float moved) {
+    if (depth == R3D_DEPTH_EMPTY) {
+        return FRAMEGEN_DEPTH_SKY;
+    }
+    const float nearest = (float)R3D_DEPTH_NEAREST;
+    const float above_sky = (float)(FRAMEGEN_DEPTH_SKY + 1U);
+    return (uint32_t)(moved >= nearest ? nearest : moved < above_sky ? above_sky : moved);
+}
+
+/* One source pixel at lens-space u with depth word `depth`, splatted into the
+ * target; to_w turns a depth word into w. */
+static inline void
+splat(const warp_rows_t* job, const row_map_t* r, float to_w, float u, uint16_t depth, uint16_t colour) {
+    const float d = (float)depth;
+    const float w = d * to_w;
+    const float pz = (r->u[2] * u) + r->at[2] + (r->w[2] * w);
+    if (!(pz > 0.0F)) {
+        return;
+    }
+    const float inv = mathf_recip(pz);
+    const float px = ((((r->u[0] * u) + r->at[0] + (r->w[0] * w)) * inv) + job->project.cx);
+    const float py = ((((r->u[1] * u) + r->at[1] + (r->w[1] * w)) * inv) + job->project.cy);
+    if (!(px >= 0.0F && py >= 0.0F && px < (float)job->width && py < (float)job->height)) {
+        return;
+    }
+    const size_t at = ((size_t)py * (size_t)job->width) + (size_t)px;
+    const uint32_t nd = moved_depth(depth, d * inv);
+    if (nd > job->out_depth[at]) {
+        job->out_depth[at] = (uint16_t)nd;
+        job->out_colour[at] = colour;
+    }
+}
+
 static void
 warp_rows(void* ctx) {
     const warp_rows_t* job = ctx;
@@ -91,32 +126,10 @@ warp_rows(void* ctx) {
     for (int y = job->first; y < job->end; y++) {
         row_map_t r;
         row_map(job->map, (float)y + 0.5F - job->project.cy, &r);
-        const uint16_t* depth = job->depth + ((size_t)y * (size_t)job->width);
-        const uint16_t* colour = job->colour + ((size_t)y * (size_t)job->width);
+        const size_t row = (size_t)y * (size_t)job->width;
         float u = 0.5F - job->project.cx;
         for (int x = 0; x < job->width; x++, u += 1.0F) {
-            const float d = (float)depth[x];
-            const float w = d * to_w;
-            const float pz = (r.u[2] * u) + r.at[2] + (r.w[2] * w);
-            if (!(pz > 0.0F)) {
-                continue;
-            }
-            const float inv = mathf_recip(pz);
-            const float px = ((((r.u[0] * u) + r.at[0] + (r.w[0] * w)) * inv) + job->project.cx);
-            const float py = ((((r.u[1] * u) + r.at[1] + (r.w[1] * w)) * inv) + job->project.cy);
-            if (!(px >= 0.0F && py >= 0.0F && px < (float)job->width && py < (float)job->height)) {
-                continue;
-            }
-            const size_t at = ((size_t)py * (size_t)job->width) + (size_t)px;
-            const float moved = d * inv;
-            const uint32_t nd = depth[x] == R3D_DEPTH_EMPTY                ? FRAMEGEN_DEPTH_SKY
-                                : moved >= (float)R3D_DEPTH_NEAREST        ? R3D_DEPTH_NEAREST
-                                : moved < (float)(FRAMEGEN_DEPTH_SKY + 1U) ? FRAMEGEN_DEPTH_SKY + 1U
-                                                                           : (uint32_t)moved;
-            if (nd > job->out_depth[at]) {
-                job->out_depth[at] = (uint16_t)nd;
-                job->out_colour[at] = colour[x];
-            }
+            splat(job, &r, to_w, u, job->depth[row + (size_t)x], job->colour[row + (size_t)x]);
         }
     }
 }
