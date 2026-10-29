@@ -19,34 +19,42 @@ simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true
 # The free-standing props: one mesh per repeated shape, each copy drawing
 # `triangles` (as many as the old pooled props share gave it) times its
 # variant's objects_scale. Chains stay in the rest: the pooled share gave
-# them none.
+# them none. Seams are free: a locked contact keeps every copy's border
+# vertices, which a prop of a few dozen triangles cannot afford.
 [[objects.meshes]]
 match = { material = "vase" }
 triangles = 235
+seam = "free"
 
 [[objects.meshes]]
 match = { material = "Material__57" }
 triangles = 155
+seam = "free"
 
 [[objects.meshes]]
 match = { material = "vase_hanging" }
 triangles = 19
+seam = "free"
 
 [[objects.meshes]]
 match = { material = "flagpole" }
 triangles = 22
+seam = "free"
 
 [[objects.meshes]]
 match = { material = "leaf" }
 triangles = 14
+seam = "free"
 
 [[objects.meshes]]
 match = { material = "Material__298" }
 triangles = 484
+seam = "free"
 
 [[objects.meshes]]
 match = { material = "Material__47" }
 triangles = 45
+seam = "free"
 
 # Each variant's triangles budget the rest; the props add 5181 at
 # objects_scale 1 and 2606 at 0.5, so each ceiling is the old total.
