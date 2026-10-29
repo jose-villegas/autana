@@ -138,7 +138,7 @@ $id${b_lines:+
     else
         set -- video --out "$(to_native "${output:-$build_dir/compare/$id.mp4}")" "$@"
     fi
-    "$(find_python)" "$(to_native "$SCRIPT_DIR/scene_path.py")" "$@" --work "$(to_native "$work")"
+    "$(find_python PIL numpy)" "$(to_native "$SCRIPT_DIR/scene_path.py")" "$@" --work "$(to_native "$work")"
     exit
 fi
 
