@@ -2,7 +2,8 @@
 
 An experiment: show a warped copy of the last rendered frame between
 rendered frames, to raise the displayed rate without drawing more triangles.
-This page is its host step: picture quality and a cost estimate, no board code.
+This page measures its picture on the host and its cost on the board; it is not
+in the frame loop yet.
 
 The rendered frame's colour and depth are forward-warped to a later camera
 pose<sup>[[97]](../Citations.md#mark-1997)</sup>, extrapolated rather than
@@ -120,38 +121,36 @@ near objects (a lamp post, chair legs) is what is left.
 
 ![Bistro: the warp around the frame with the most holes](../images/render/framegen-bistro.gif)
 
-## Cost on the board, estimated
+## Cost on the board
 
-Not measured. The [motion-vector attachment](Mesh-Rendering.md#motion-vectors)'s
-resolve does the same per-pixel maths as the warp. The motion view's
-`r3d.resolve` adds 14.3 ms to the shipped 184x224 frame on both cores
-([Render-Pipeline.md](Render-Pipeline.md#every-frame-on-the-board)).
+The on-request `run_framegen_perf_suite` draws each path at every
+half-picture step and, at 24 poses along it, warps the drawn frame one display
+step on into a second cleared colour and depth target. The warp runs on one
+core and split over both; the hole fill takes the drawn frame's pixel. The
+present is the frame's own half-picture expand, and the send overlaps it.
 
-| Part | Basis | 184x224 | 184x112 |
-|---|---|---|---|
-| Warp maths | the motion resolve, measured, over 41,216 pixels | 14.3 ms | 7.1 ms |
-| Splat | guessed: a scattered depth test and a colour write into a second, cleared 165 KB colour and depth target in PSRAM | 1-2 ms | 0.5-1 ms |
-| Row fill | guessed: about 8 cycles per pixel on both cores | 0.7 ms | 0.4 ms |
-| Present | the half-picture expand, measured; the send overlaps | 2.6 ms | 1.8 ms |
-| Generated frame | | 18-20 ms | 10 ms |
+<!-- generated: framegen-board sha256=32bbb147b6f3555d6bd473918f7863cc534a364bf020fc3d0288045f90ae0cde -->
+| Scene | Size | Rendered frame | Warp, both cores (one) | Fill | Present | Generated frame | Displayed: render only | Displayed: + 1 generated |
+|---|---|---|---|---|---|---|---|---|
+| bistro-fitted-full | 184x224 | 43.7 ms | 12.1 ms (21.3) | 2.1 ms | 2.6 ms | 16.8 ms | 23 fps | 33 fps |
+| bistro-fitted-full | 184x179 | 40.1 ms | 9.6 ms (16.9) | 1.7 ms | 2.2 ms | 13.5 ms | 25 fps | 37 fps |
+| bistro-fitted-full | 184x149 | 37.7 ms | 8.0 ms (14.1) | 1.4 ms | 2.0 ms | 11.4 ms | 27 fps | 41 fps |
+| bistro-fitted-full | 184x112 | 34.7 ms | 5.9 ms (10.6) | 1.0 ms | 1.7 ms | 8.7 ms | 29 fps | 46 fps |
+| sponza-fitted-full | 184x224 | 50.4 ms | 12.1 ms (21.6) | 2.0 ms | 2.7 ms | 16.8 ms | 20 fps | 30 fps |
+| sponza-fitted-full | 184x179 | 46.0 ms | 9.6 ms (17.1) | 1.6 ms | 2.3 ms | 13.6 ms | 22 fps | 34 fps |
+| sponza-fitted-full | 184x149 | 42.9 ms | 8.0 ms (14.2) | 1.3 ms | 2.1 ms | 11.4 ms | 23 fps | 37 fps |
+| sponza-fitted-full | 184x112 | 39.0 ms | 6.0 ms (10.7) | 1.0 ms | 1.8 ms | 8.7 ms | 26 fps | 42 fps |
+<!-- /generated: framegen-board -->
 
-The resolve is about 165 cycles per pixel across both cores. A tuned warp
-at 50, a guess, would take 4.3 ms, and the generated frame about 9-10 ms at
-184x224.
-
-| Bistro | Rendered frame | Generated | Displayed rate |
-|---|---|---|---|
-| 184x224, render only | 41.3 ms | | 24 fps |
-| 184x224, one rendered and one generated, at the resolve's speed | 41.3 ms | 19 ms | 33 fps |
-| 184x224, the same at 50 cycles per pixel | 41.3 ms | 9.5 ms | 39 fps |
-
-Held at a 30 fps display, one generated frame per rendered frame leaves 48
-to 57 ms to render. Bistro's mean frame at 184x224 fits, where dynamic
-resolution now drops to 184x112 most of the time; its 95th percentile,
-60 ms, does not.
-
-A generated frame has to reach the panel halfway through the next render,
-while both cores are drawing: the board step must find that slot.
+- A generated frame costs 17 ms at 184x224 and 9 ms at 184x112, and showing
+  one between rendered frames raises the displayed rate by 40-60% at every size.
+- The warp is the per-pixel maths of the
+  [motion-vector attachment](Mesh-Rendering.md#motion-vectors)'s resolve
+  plus the splat: about 124 cycles per pixel on one core, and both cores take 57% of one core's time.
+- Moving the warp's target out of PSRAM, or a fixed-point warp, are what
+  would cut it further; the fill could split over both cores too.
+- A generated frame has to reach the panel halfway through the next render,
+  while both cores draw it: that slot is the next step's problem.
 
 ## Moving objects
 
@@ -167,10 +166,10 @@ The warp moves everything with the camera, so an object moving on its own
 
 ## Verdict
 
-Go for a board cost measurement: the warp with its splat into a cleared
-target, at 184x224 and 184x112, against the 18-20 ms the resolve implies and
-the 9-10 ms a tuned warp would need. The picture is better than repeating
-the frame everywhere; whether it pays depends on that one number.
+Frame generation pays on the board: a generated frame costs a quarter to
+two fifths of a rendered one, its picture is closer to the true frame than
+repeating the last one, and Bistro shows 33 fps at 184x224 where it renders 23.
+What is left is presenting it mid-render, and moving objects.
 
 ## Reproducing
 
