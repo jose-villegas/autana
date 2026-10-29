@@ -1,11 +1,10 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
 #include <stdio.h>
-#include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/scene_baked.h"
-#include "apps/render_lab/sponza_content.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "collections/strbuf.h"
@@ -18,14 +17,11 @@
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/view/raster_cull_view.h"
-#include "scene/scene_internal.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
 typedef struct {
     const render_lab_scene_t* scene;
-    const char* pack;
-    const char* entity;
     perf_budget_t quarters[R3D_PERF_QUARTER_COUNT];
 } profile_scenario_t;
 
@@ -38,8 +34,8 @@ static const profile_scenario_t profile_scenarios[] = {
     {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{41341, 49565}, {39726, 46664}}},
     {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{49536, 62165}, {47469, 58108}}},
     {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{40285, 50300}, {39053, 48179}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, {{20941, 21286}, {21500, 21803}}},
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, {{41782, 62092}, {40404, 57696}}},
+    {&scene_capybara, {{20941, 21286}, {21500, 21803}}},
+    {&scene_bistro[SCENE_BAKED_FITTED_FULL], {{41782, 62092}, {40404, 57696}}},
 };
 
 static const char* TAG = "render_lab_profile";
@@ -78,9 +74,8 @@ whole_frame(void* ctx, int64_t dt_us) {
  * counts, then FRAME_PROFILE_REPLAY_DRAWS shaded frames for their frame-cost
  * report. */
 static void
-replay_pose(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
-            const char* quarter, char* report) {
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
+replay_pose(int32_t path_ms, const char* row, const char* quarter, char* report) {
+    TEST_ASSERT_TRUE(render_lab_seek_path((uint32_t)path_ms));
     show_view(render_context_debug_view_named("cull"));
     (void)render_lab_test_frame_dt(0, false, NULL);
     const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
@@ -105,19 +100,17 @@ replay_pose(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, int32_t
 /* The traced playback's frames and worst frames, then each replayed pose:
  * evenly along the path for the counts' curves, then the worst frames'. */
 static void
-report_path(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, const frame_profile_trace_t* trace,
-            const char* row, const char* quarter) {
+report_path(uint32_t duration_ms, const frame_profile_trace_t* trace, const char* row, const char* quarter) {
     int worst[FRAME_PROFILE_WORST_K];
     const int count = frame_profile_worst(trace, FRAME_PROFILE_WORST_K, worst);
     frame_profile_log_trace(TAG, row, trace, worst, count, quarter);
     char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(report);
     for (int i = 0; i < FRAME_PROFILE_PATH_POSES; i++) {
-        replay_pose(scene, entity, duration_ms, (int32_t)((int64_t)duration_ms * i / FRAME_PROFILE_PATH_POSES), row,
-                    quarter, report);
+        replay_pose((int32_t)((int64_t)duration_ms * i / FRAME_PROFILE_PATH_POSES), row, quarter, report);
     }
     for (int rank = 0; rank < count; rank++) {
-        replay_pose(scene, entity, duration_ms, trace->frame[worst[rank]].path_ms, row, quarter, report);
+        replay_pose(trace->frame[worst[rank]].path_ms, row, quarter, report);
     }
     memory_free(report);
 }
@@ -132,21 +125,8 @@ test_real_time_frame_profile(void) {
     render_lab_test_enter(&saved, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
     render_lab_test_hold_quarter(r3d_perf_quarters[quarter_index].quarter);
-    scene_t* scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
-    TEST_ASSERT_NOT_NULL(scene);
-    const scene_entity_t entity =
-        scene_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
-    TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, entity);
-    if (scenario->scene == &scene_capybara) {
-        char command[sizeof(CAPYBARA_CLIP_COMMAND)];
-        const int length = snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_CUT_MS);
-        TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);
-        TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
-    }
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
-    const int clip = scene->animators[entity].layer.current.clip;
-    const uint32_t duration_ms = scene_animator_clip_duration_ms(scene, entity, clip);
-    TEST_ASSERT_GREATER_THAN_UINT32(0, duration_ms);
+    TEST_ASSERT_TRUE(render_lab_seek_path(0));
+    const uint32_t duration_ms = render_lab_path_duration_ms();
     const frame_profile_scenario_t playback = {
         scenario->scene->key,
         (int64_t)duration_ms * MATH_US_PER_MS,
@@ -156,7 +136,7 @@ test_real_time_frame_profile(void) {
     frame_profile_log(TAG, scenario->scene->key, &p, r3d_perf_quarters[quarter_index].name);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p.frames, "frame profile failed");
     /* The worst frames first: a row over its budget is the one they explain. */
-    report_path(scene, entity, duration_ms, &played, scenario->scene->key, r3d_perf_quarters[quarter_index].name);
+    report_path(duration_ms, &played, scenario->scene->key, r3d_perf_quarters[quarter_index].name);
     r3d_perf_budget(scenario->scene->key, &r3d_perf_quarters[quarter_index], p.frame_us.avg, p.frame_us.p95,
                     &scenario->quarters[quarter_index], true);
     release_fixture();

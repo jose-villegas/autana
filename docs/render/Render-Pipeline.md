@@ -514,7 +514,7 @@ Reference: [Mesh-Rendering.md](Mesh-Rendering.md#attachments).
 
 #### View modes
 
-Development builds select depth, tiles, motion, meshlets or cull from the declared
+Development builds select depth, tiles, motion, meshlets, cull or overdraw from the declared
 view table in `render/context/render_context.c`. Before upscale, the selected
 attachment paints colour from the renderer's maps.
 

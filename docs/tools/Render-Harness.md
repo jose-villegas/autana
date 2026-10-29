@@ -36,7 +36,7 @@ all authored renderers. An unknown renderer reports the available names.
 `--camera NAME` selects a camera; omission activates the scene's default.
 With `--camera`, stderr names that camera's path duration in ms.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
-30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets|cull` selects the render
+30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets|cull|overdraw` selects the render
 context's view, with shaded as the default. The names match the declared
 `render_debug_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
 With `--view cull`, `--counts FILE` writes one CSV row per frame of what the
