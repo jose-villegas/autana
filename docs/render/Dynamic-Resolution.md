@@ -5,8 +5,13 @@ budget, instead of one fixed scale. The sizes are a ladder of steps, finest
 first.
 
 `render_context_compose()` expands a draw into the half picture when its width is
-exactly half and its height divides the half height. Otherwise it upscales to the
-panel size with `render/upscale.h`, which takes any ratio in either axis.
+exactly half and its height is at most the half height; an uneven height spreads
+through the row map, its row edges on even panel rows. Otherwise it upscales to
+the panel size with `render/upscale.h`, which takes any ratio in either axis.
+
+The caller's chosen size is the top step, and neither policy draws finer:
+a frame under budget keeps its speed rather than buying pixels, and only a
+frame over budget steps down.
 
 The code is `launcher/main/render/resolution/`. Resolution selection is a
 setting of the render context rather than of a scene or a camera.
@@ -17,11 +22,11 @@ frame draws at the context's fixed scale.
 
 | Policy | Chooses | From | Guards against flapping |
 |---|---|---|---|
-| Stepped controller | one step at a time, after the cost | the mean of a window of measured frames against an up and a down threshold | a cooldown after each step that doubles when a step reverses the last one; a panic drop for one frame far over budget |
-| Predictor | any step, before the cost | a linear model of the frame, priced at every step from the triangles culling kept this frame, then scaled and offset by what recent frames cost | going finer needs a margin under the budget |
+| Stepped controller | one step at a time, after the cost, never above the top | the mean of a window of measured frames against an up and a down threshold | a cooldown after each step that doubles when a step reverses the last one; a panic drop for one frame far over budget |
+| Predictor | down any number of steps, up one, before the cost, never above the top | a linear model of the frame, priced at every step from the triangles culling kept this frame, then scaled and offset by what recent frames cost | going finer needs the next step to fit with a margin under the budget for a hold in time, which doubles when a step reverses the last one |
 
-The predictor's model is fitted on the board along one camera path. Live
-frames refit it: a two-state Kalman filter<sup>[[22]](../Citations.md#kalman-1960)</sup> learns a scale and an offset on
+The predictor's model is fitted on the board on every mesh scene at every
+step ([below](#the-ladder-on-every-mesh-scene)). Live frames refit it: a two-state Kalman filter<sup>[[22]](../Citations.md#kalman-1960)</sup> learns a scale and an offset on
 the fitted price from each frame's measured cost, leans back to the plain fit
 when frames stop disagreeing with it, and clips a single hitch frame. A scale
 and an offset can be learnt from frames at any one step, which four separate
@@ -75,24 +80,77 @@ The questions the split answers, as differences between two sizes. A size
 that keeps the panel's width or halves it upscales whole rows or pixel pairs;
 any other width pays the mapped upscale on top, so both ladders keep to those
 two widths. Halving the height saves far more than halving the width, since
-edges and attribute carry follow the height, so a ladder cuts the height first. The
-floor and the recovery step are named for what they cost, not their scale:
+edges and attribute carry follow the height, so a ladder cuts the height first.
 184x179 costs about what isotropic 2.5x (147x179) does, and 184x149 what 3x
-(122x149) does, the upscale they save paying for the pixels they keep. The one-core setup stage barely moves with size: it is the
-floor no step goes under. The split times a full upscale at every size; a
-live frame at exactly half copies into the half picture instead, and the
-policies below are priced and flown with that copy.
+(122x149) does: the upscale they save pays for the pixels they keep. The
+one-core setup stage barely moves with size; no step goes under it.
 
-<!-- generated: dynres-findings sha256=323030827c7446bfe5757d538ab4748a72001bb09d997591aa81caf7aa27d876 -->
+The split times a full upscale at every size. A live frame half as wide and
+at most half as tall composes into the half picture instead, and the
+policies below are priced and flown with that compose.
+
+<!-- generated: dynres-findings sha256=b6de6dd789bc75a2c9130251f7476144a2fa7cda1be7bffcd06b4e5a721203f0 -->
 | Question | Compared | Frame | draw | upscale | 1 core: edges | carry | fill |
 |---|---|---|---|---|---|---|---|
 | half width, more height over half | 184x298 minus 184x224 | 7.4 | 6.9 | 0.5 | 1.0 | 3.9 | 5.6 |
-| half over floor | 184x224 minus 184x179 | 4.9 | 4.7 | 0.3 | 0.7 | 2.4 | 3.6 |
-| floor over 2.5x cost reference | 184x179 minus 147x179 | 0.4 | 2.2 | -1.8 | 0.3 | 0.3 | 2.1 |
-| recovery over 3x cost reference | 184x149 minus 122x149 | 1.7 | 3.5 | -1.8 | 0.5 | 0.5 | 2.7 |
+| half over a fifth less height | 184x224 minus 184x179 | 4.9 | 4.7 | 0.3 | 0.7 | 2.4 | 3.6 |
+| half width over 2.5x, same height | 184x179 minus 147x179 | 0.4 | 2.2 | -1.8 | 0.3 | 0.3 | 2.1 |
+| half width over 3x, same height | 184x149 minus 122x149 | 1.7 | 3.5 | -1.8 | 0.5 | 0.5 | 2.7 |
 | full height over half | 368x448 minus 368x224 | 36.1 | 33.1 | 3.1 | 2.7 | 12.1 | 33.9 |
 | full width over half | 368x448 minus 184x448 | 24.9 | 22.0 | 3.0 | 0.8 | 1.0 | 27.6 |
 <!-- /generated: dynres-findings -->
+
+## The ladder on every mesh scene
+
+A height-first ladder on every mesh scene. Each scene's camera path
+is drawn once per ladder step, holding that step and stepping the clock a
+fixed amount each frame, so frame i shows the same pose at every step. The
+model is fitted on all of these frames. Every scene also pays about 10 ms per
+frame outside the draw and the compose. That is why a 33 ms frame target
+leaves a 23 ms budget for the part that scales.
+
+<!-- generated: dynres-steps sha256=909696f662928a495763d13f4ca67148a6c0b2d8cdf0f69662b24c105bf67e67 -->
+| Scenario | 368x448 | 368x358 | 368x298 | 368x224 | 184x224 | 184x179 | 184x149 | 184x112 |
+|---|---|---|---|---|---|---|---|---|
+| bistro-fitted-full | 79.0 | 68.9 | 62.2 | 54.0 | 41.3 | 38.1 | 35.9 | 33.1 |
+| sponza | 98.5 | 84.6 | 75.5 | 64.6 | 49.2 | 44.9 | 41.9 | 38.2 |
+| sponza-lite | 89.3 | 75.9 | 67.0 | 56.6 | 41.9 | 37.8 | 35.1 | 32.0 |
+| sponza-flat | 82.2 | 70.6 | 63.2 | 54.4 | 41.6 | 38.2 | 36.0 | 33.4 |
+| sponza-fitted | 83.7 | 71.4 | 63.4 | 54.0 | 40.5 | 36.6 | 34.0 | 30.9 |
+| sponza-fitted-full | 94.3 | 81.6 | 73.3 | 63.4 | 49.3 | 45.0 | 42.0 | 38.2 |
+| sponza-flat-fitted | 76.7 | 66.5 | 60.0 | 52.4 | 40.7 | 37.7 | 35.5 | 32.8 |
+| capybara | 41.6 | 36.7 | 33.7 | 29.8 | 20.9 | 19.4 | 18.6 | 17.7 |
+| compose, every scenario | 10.2 | 9.1 | 8.2 | 7.3 | 2.6 | 2.3 | 2.0 | 1.8 |
+
+Mean whole frame in milliseconds; compose is the upscale into the panel's picture.
+<!-- /generated: dynres-steps -->
+
+The heights between the half size and the floor compose into the half
+picture through the row map. That costs about what the half size's compose
+does, so they keep their draw saving. The predictor flown over the same
+frames, against the fixed half scale: it starts at the top, the half size,
+and holds the 23 ms budget.
+
+<!-- generated: dynres-flight sha256=a807b60d24b42e41426d856cb4c0a5e6574f3653a650b4eb399e7cc1781922e4 -->
+| Scenario | Fixed mean | p95 | sd | Dynamic mean | p95 | sd | max | Switches | Time at each size |
+|---|---|---|---|---|---|---|---|---|---|
+| bistro-fitted-full | 41.3 | 60.3 | 11.3 | 34.6 | 47.8 | 7.6 | 49.6 | 17 | 184x224 23%, 184x179 5%, 184x149 6%, 184x112 67% |
+| sponza | 49.2 | 58.6 | 6.5 | 38.2 | 45.8 | 5.2 | 46.7 | 3 | 184x149 0%, 184x112 100% |
+| sponza-lite | 41.9 | 47.5 | 4.0 | 32.7 | 36.4 | 2.5 | 37.6 | 9 | 184x179 5%, 184x149 15%, 184x112 80% |
+| sponza-flat | 41.6 | 49.8 | 5.4 | 34.0 | 40.1 | 3.9 | 40.8 | 9 | 184x179 7%, 184x149 14%, 184x112 80% |
+| sponza-fitted | 40.5 | 47.2 | 4.8 | 32.0 | 36.1 | 2.5 | 37.2 | 11 | 184x224 2%, 184x179 12%, 184x149 13%, 184x112 72% |
+| sponza-fitted-full | 49.3 | 60.1 | 7.6 | 38.4 | 46.4 | 5.6 | 47.7 | 5 | 184x179 1%, 184x149 5%, 184x112 94% |
+| sponza-flat-fitted | 40.7 | 50.0 | 6.1 | 33.7 | 40.4 | 3.9 | 41.3 | 11 | 184x224 5%, 184x179 10%, 184x149 8%, 184x112 76% |
+| capybara | 20.9 | 21.5 | 0.2 | 20.9 | 21.5 | 0.2 | 21.5 | 0 | 184x224 100% |
+
+Whole frame in milliseconds.
+<!-- /generated: dynres-flight -->
+
+A scene under budget at the top stays there at its fixed speed. On a scene
+over budget the predictor spends most frames at the floor. That cuts the
+mean, and even more so the p95 and the spread. Its heaviest frames still
+run over the target: those are bound by triangle count, which the render
+size cannot reduce.
 
 ## The policies on the board
 
@@ -156,9 +214,6 @@ What the table shows:
   counts. Cutting the height first keeps the full width longer and scores
   closer to the reference than cutting the width first at the same budget,
   so the height-first ladder buys more picture for the same milliseconds.
-- **Recovery.** The recovery step is reached only past the panic share;
-  neither budget here comes near it. Below the floor a step buys little, as
-  the setup floor in the stage table shows.
 
 ![Frame cost and render size along the path, per policy and budget](../images/render/dynamic-resolution-flight.png)
 
@@ -188,9 +243,10 @@ present_example(scene_t* scene, scene_entity_t cam) {
 | `CAMERA_PRESENT_SCANLINE` | Half that height | Each row twice, the second dimmed to `UPSCALE_SCANLINE_KEEP` |
 | `CAMERA_PRESENT_DOUBLE` | Half that height | Each row twice, unchanged |
 
-The halved draw expands into the half picture when its height divides the half
-height, as in `render_context_compose()` above. When the row map is uneven, such
-as a dynamic-resolution step that does not divide, the frame is drawn as NEAREST.
+The halved draw expands into the half picture, as in `render_context_compose()`
+above. When its row map is uneven, such as a dynamic-resolution step whose
+height does not divide the half height, the rows are copied without the dimmed
+line.
 
 The saving comes from the halved draw: fewer rows, spans and edge steps. SCANLINE
 adds a darkened copy of every second row; DOUBLE costs a little less. On a dense

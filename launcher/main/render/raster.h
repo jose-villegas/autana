@@ -83,7 +83,8 @@ size_t raster_culled_length(const raster_t* raster);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
-/* The half picture can hold the width and whole repeats of every drawn row. */
+/* The half picture can hold the width and every drawn row, the row map
+ * spreading an uneven height. */
 /* Presentation reduces the chosen height; composition handles uneven row maps. */
 resolution_step_t raster_present_size(resolution_step_t size, camera_present_t present);
 bool raster_fits_half_picture(const raster_t* raster);

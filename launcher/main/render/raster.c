@@ -429,7 +429,7 @@ bool
 raster_fits_half_picture(const raster_t* raster) {
     return raster->width > 0 && raster->height > 0 && raster->destination_height > 0
            && 2 * raster->width == raster->destination_width && raster->destination_height % 2 == 0
-           && (raster->destination_height / 2) % raster->height == 0;
+           && raster->height <= raster->destination_height / 2;
 }
 
 resolution_step_t

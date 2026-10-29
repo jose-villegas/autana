@@ -356,9 +356,9 @@ test_half_picture_fit_table_and_compose_size(void) {
         int width, height, destination_width, destination_height;
         bool fits;
     } cases[] = {
-        {0, 2, 8, 12, false}, {4, 0, 8, 12, false}, {3, 2, 8, 12, false}, {4, 2, 0, 12, false},
-        {4, 2, 8, 13, false}, {4, 2, 8, 12, true},  {4, 4, 8, 12, false}, {4, 12, 8, 12, false},
-        {4, 2, 8, 0, false},  {4, 1, 8, 6, true},   {4, 5, 8, 12, false}, {4, 7, 8, 24, false},
+        {0, 2, 8, 12, false}, {4, 0, 8, 12, false}, {3, 2, 8, 12, false},  {4, 2, 0, 12, false}, {4, 2, 8, 13, false},
+        {4, 2, 8, 12, true},  {4, 4, 8, 12, true},  {4, 12, 8, 12, false}, {4, 2, 8, 0, false},  {4, 1, 8, 6, true},
+        {4, 5, 8, 12, true},  {4, 7, 8, 24, true},  {4, 7, 8, 12, false},
     };
 
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
