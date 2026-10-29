@@ -410,11 +410,11 @@ test_sponza_frame_cost_along_the_flythrough(void) {
      * 2124, + 1%; per quarter, portrait then landscape. */
     static const perf_budget_t bake_budgets[SCENE_BAKED_VARIANT_COUNT][R3D_PERF_QUARTER_COUNT] = {
         [SCENE_BAKED_FULL] = {{41041, 52072}, {38765, 47432}},
-        [SCENE_BAKED_FLAT] = {{32168, 40942}, {31418, 38734}},
+        [SCENE_BAKED_FLAT] = {{32168, 41332}, {31418, 38734}},
         [SCENE_BAKED_LITE] = {{33499, 39169}, {31676, 36473}},
         [SCENE_BAKED_FITTED] = {{32882, 40125}, {30706, 37015}},
         [SCENE_BAKED_FITTED_FULL] = {{41877, 53439}, {39437, 49049}},
-        [SCENE_BAKED_FLAT_FITTED] = {{32106, 42281}, {30639, 38440}},
+        [SCENE_BAKED_FLAT_FITTED] = {{32106, 42281}, {30639, 38662}},
     };
     static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {

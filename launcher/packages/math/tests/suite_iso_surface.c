@@ -1,7 +1,8 @@
 /*
  * Portable suite: iso_surface.h, surface nets. A sphere's field must come
  * back as a closed surface on the sphere, wound and lit outward, wherever
- * the field is placed; a full buffer must leave whole triangles.
+ * the field is placed; a full buffer must leave whole triangles. Parts of
+ * the field meshed apart and appended must make the same triangles.
  */
 
 #include <stdlib.h>
@@ -22,6 +23,8 @@
 /* A surface nets vertex sits inside its cell: within one sample's diagonal
  * of the true surface. */
 #define CELL_DIAGONAL 1.7320508F
+/* Where the parts split the cell slabs: through the sphere. */
+#define SPLIT_SLAB    5
 
 static float* values;
 static vec3f_t* positions;
@@ -162,6 +165,78 @@ test_a_field_wholly_inside_or_outside_has_no_surface(void) {
     TEST_ASSERT_FALSE(iso_surface_nets(&thin, 0.0F, &m));
 }
 
+static void
+assert_same_point(vec3f_t expected, vec3f_t actual) {
+    TEST_ASSERT_EQUAL_FLOAT(expected.x, actual.x);
+    TEST_ASSERT_EQUAL_FLOAT(expected.y, actual.y);
+    TEST_ASSERT_EQUAL_FLOAT(expected.z, actual.z);
+}
+
+/* The second part meshes into the buffers' upper halves, with scratch of
+ * its own, and is appended onto the first: the same triangles, in the same
+ * order, at the same points, as the field meshed whole. */
+static void
+test_parts_appended_make_the_whole_surface(void) {
+    fixture_begin();
+    iso_mesh_t whole = mesh(MAX_VERTICES, MAX_TRIANGLES);
+    TEST_ASSERT_TRUE(iso_surface_nets(&unit, 0.0F, &whole));
+    const int triangle_count = whole.triangle_count;
+    vec3f_t(*expected)[3] = malloc(sizeof(vec3f_t[3]) * (size_t)triangle_count);
+    int32_t* second_scratch = malloc(sizeof(int32_t) * iso_surface_scratch_count(SAMPLES, SAMPLES));
+    TEST_ASSERT_NOT_NULL(expected);
+    TEST_ASSERT_NOT_NULL(second_scratch);
+    for (int t = 0; t < triangle_count; t++) {
+        for (int k = 0; k < 3; k++) {
+            expected[t][k] = positions[triangles[t][k]];
+        }
+    }
+    iso_mesh_t first = mesh(MAX_VERTICES / 2, MAX_TRIANGLES / 2);
+    iso_mesh_t second = {&positions[MAX_VERTICES / 2],
+                         &normals[MAX_VERTICES / 2],
+                         MAX_VERTICES / 2,
+                         &triangles[MAX_TRIANGLES / 2],
+                         MAX_TRIANGLES / 2,
+                         second_scratch,
+                         0,
+                         0};
+    TEST_ASSERT_TRUE(iso_surface_nets_slabs(&unit, 0.0F, 0, SPLIT_SLAB, &first));
+    TEST_ASSERT_TRUE(iso_surface_nets_slabs(&unit, 0.0F, SPLIT_SLAB, SAMPLES - 1, &second));
+    first.vertex_capacity = MAX_VERTICES;
+    first.triangle_capacity = MAX_TRIANGLES;
+    TEST_ASSERT_TRUE(iso_surface_append(&first, &second));
+    TEST_ASSERT_EQUAL_INT(triangle_count, first.triangle_count);
+    for (int t = 0; t < triangle_count; t++) {
+        for (int k = 0; k < 3; k++) {
+            assert_same_point(expected[t][k], positions[triangles[t][k]]);
+        }
+    }
+    free(expected);
+    free(second_scratch);
+}
+
+static void
+test_an_append_that_does_not_fit_moves_nothing(void) {
+    fixture_begin();
+    iso_mesh_t into = mesh(MAX_VERTICES, MAX_TRIANGLES);
+    TEST_ASSERT_TRUE(iso_surface_nets(&unit, 0.0F, &into));
+    const int vertex_count = into.vertex_count;
+    const int triangle_count = into.triangle_count;
+    into.vertex_capacity = vertex_count;
+    TEST_ASSERT_FALSE(iso_surface_append(&into, &into));
+    TEST_ASSERT_EQUAL_INT(vertex_count, into.vertex_count);
+    TEST_ASSERT_EQUAL_INT(triangle_count, into.triangle_count);
+}
+
+static void
+test_slabs_outside_the_field_mesh_nothing(void) {
+    fixture_begin();
+    iso_mesh_t m = mesh(MAX_VERTICES, MAX_TRIANGLES);
+    TEST_ASSERT_FALSE(iso_surface_nets_slabs(&unit, 0.0F, -1, SPLIT_SLAB, &m));
+    TEST_ASSERT_FALSE(iso_surface_nets_slabs(&unit, 0.0F, SPLIT_SLAB, SAMPLES, &m));
+    TEST_ASSERT_FALSE(iso_surface_nets_slabs(&unit, 0.0F, SPLIT_SLAB, SPLIT_SLAB, &m));
+    TEST_ASSERT_EQUAL_INT(0, m.vertex_count);
+}
+
 void
 suite_iso_surface(void) {
     RUN_TEST(test_a_sphere_comes_back_on_the_sphere);
@@ -169,6 +244,9 @@ suite_iso_surface(void) {
     RUN_TEST(test_origin_and_step_place_the_surface);
     RUN_TEST(test_a_full_buffer_keeps_whole_triangles);
     RUN_TEST(test_a_field_wholly_inside_or_outside_has_no_surface);
+    RUN_TEST(test_parts_appended_make_the_whole_surface);
+    RUN_TEST(test_an_append_that_does_not_fit_moves_nothing);
+    RUN_TEST(test_slabs_outside_the_field_mesh_nothing);
 }
 
 SUITE_REGISTER(suite_iso_surface);
