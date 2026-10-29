@@ -17,7 +17,8 @@ Writes every declared scene under `tools/results/render/render_lab/`:
 `|nopin`: their floating-point camera paths can reach different pixels
 across compilers. HUD renders also format a `double` fps readout.
 The fps text comes from the host fixture - time the board with a device
-capture.
+capture. A release image draws only the scene title of the HUD: the fps
+and status lines are development builds' alone.
 
 `render_lab_render --tune NAME=VALUE` applies a console tuning before the scene
 enters; repeat it for more settings. `--live-tune NAME=VALUE` applies it after
@@ -135,8 +136,9 @@ Source: `water-stages-board.log`
 
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
 `render_lab.small_fill_style` apply to the scene camera each frame.
-On a development build the BOOT menu has a SMALL FILL dropdown with every
-`SMALL_FILL_` preset; picking one sets the three tunables.
+The BOOT menu has a SMALL FILL dropdown with every `SMALL_FILL_` preset;
+picking one sets the three tunables. Every menu option is in a release
+image too.
 The host renderer picks one by its menu label, as
 `--small-fill "FAST - DITHER"`.
 
