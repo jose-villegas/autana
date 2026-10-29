@@ -285,6 +285,10 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                for obj in (edge.a, edge.b)):
             locks[edge.vertices_a] = True
             locks[edge.vertices_b] = True
+        # A free mesh frees only its own side: the rest it touches keeps its border, so the walls stay closed.
+        for obj, other, vertices in ((edge.a, edge.b, edge.vertices_b), (edge.b, edge.a, edge.vertices_a)):
+            if policies.get(obj) == 'free' and other not in selected:
+                locks[vertices] = True
     report = dict(requested_scene_total=requested, rest_budget=rest_budget, ceiling=allocation.ceiling, passes=[],
                   contacts=[dict(a=allocation.object_names[e.a], b=allocation.object_names[e.b], unshared=e.unshared,
                                  vertices_a=e.vertices_a.tolist(), vertices_b=e.vertices_b.tolist()) for e in edges],

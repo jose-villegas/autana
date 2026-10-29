@@ -43,7 +43,7 @@ seam = "free"
 
 [[objects.meshes]]
 match = { material = "leaf" }
-triangles = 14
+triangles = 45
 seam = "free"
 
 [[objects.meshes]]
@@ -56,26 +56,26 @@ match = { material = "Material__47" }
 triangles = 45
 seam = "free"
 
-# Each variant's triangles budget the rest; the props add 5181 at
-# objects_scale 1 and 2606 at 0.5, so each ceiling is the old total.
+# Each variant's triangles budget the rest; the props add 5429 at
+# objects_scale 1 and 2726 at 0.5, so each ceiling is the old total.
 [[variants]]
 name = "sponza"
-triangles = 12200
+triangles = 11952
 ceiling = 17381
 
 [[variants]]
 name = "sponza_lite"
-triangles = 6066
+triangles = 5946
 objects_scale = 0.5
 ceiling = 8672
 
 [[variants]]
 name = "sponza_fitted"
-triangles = 10894
+triangles = 10774
 objects_scale = 0.5
 ceiling = 13500
 
 [[variants]]
 name = "sponza_fitted_full"
-triangles = 24819
+triangles = 24571
 ceiling = 30000
