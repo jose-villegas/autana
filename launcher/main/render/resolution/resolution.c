@@ -17,8 +17,10 @@
 #define REVERSAL_BACKOFF_MAX      16
 
 /* The predictor goes finer only with this much of the budget to spare, so
- * a prediction at the edge does not flip between two steps. */
-#define DEFAULT_UP_MARGIN_PERCENT 8
+ * a prediction at the edge does not flip between two steps: the board's
+ * 90th-percentile miss on the next finer step's corrected price, 5.2% on
+ * the widest-swinging scene. */
+#define DEFAULT_UP_MARGIN_PERCENT 6
 /* Frames run 20 to 90 ms here and nothing hides a switch, so a finer step
  * must keep fitting for half a second before it is taken. */
 #define DEFAULT_UP_HOLD_US        500000

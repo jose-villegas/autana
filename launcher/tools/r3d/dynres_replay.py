@@ -20,6 +20,7 @@ spread against the fixed scale at the top step.
 """
 
 import argparse
+import gzip
 import itertools
 import json
 import pathlib
@@ -34,12 +35,12 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(ROOT / "launcher/tools/math"))
 from build.c_header import read_define  # noqa: E402
-from capture import select_quarter  # noqa: E402
+from capture import QUARTER_RE, QUARTERS, select_quarter  # noqa: E402
 from math_figures import build_probe  # noqa: E402
 
 DYNRES = ROOT / "launcher/main/apps/render_lab/render_lab_dynres.h"
-PROBE_SOURCES = (ROOT / "launcher/tools/r3d/dynres_replay_probe.c",
-                 ROOT / "launcher/main/render/resolution/resolution.c")
+RESOLUTION = ROOT / "launcher/main/render/resolution/resolution.c"
+PROBE_SOURCES = (ROOT / "launcher/tools/r3d/dynres_replay_probe.c", RESOLUTION)
 US_PER_MS = 1000
 PERCENT = 100
 P95 = 0.95
@@ -48,13 +49,23 @@ MARGIN_SHARE = 0.90  # the up margin covers this share of the prediction's misse
 LINE = re.compile(r"dynres_steps: (\S+) step=(\d+) (\d+)x(\d+) dt=(\d+)ms first=(\d+) n=(\d+)((?: -?\d+:-?\d+:-?\d+:-?\d+)*)")
 
 
+def whole(line):
+    """A steps line that arrived whole: every frame it counts and a known quarter."""
+    m = LINE.search(line)
+    tag = QUARTER_RE.search(line)
+    return m is not None and len(m[8].split()) == int(m[7]) and (tag is None or tag[1] in QUARTERS)
+
+
 def read_capture(path, chosen):
     """{scenario: {step: [(whole, draw, upscale, triangles), ...]}} over the
     captured sizes `chosen`, renumbered from 0, and their sizes; a scenario
     not captured at all of them is left out."""
-    text = select_quarter(pathlib.Path(path).read_text(encoding="utf-8", errors="replace"))
+    raw = pathlib.Path(path).read_bytes()
+    raw = gzip.decompress(raw) if path.endswith(".gz") else raw
+    lines = [line for line in raw.decode("utf-8", errors="replace").splitlines() if whole(line)]
     scenarios, sizes = {}, {}
-    for m in LINE.finditer(text):
+    for line in select_quarter("\n".join(lines)).splitlines():
+        m = LINE.search(line)
         step, first = int(m[2]), int(m[6])
         sizes[step] = (int(m[3]), int(m[4]))
         frames = scenarios.setdefault(m[1], {}).setdefault(step, {})
@@ -64,7 +75,7 @@ def read_capture(path, chosen):
     out = {}
     for name, steps in scenarios.items():
         if all(s in steps for s in chosen):
-            count = min(len(steps[s]) for s in chosen)
+            count = min(next(i for i in range(len(steps[s]) + 1) if i not in steps[s]) for s in chosen)
             out[name] = {i: [steps[s][f] for f in range(count)] for i, s in enumerate(chosen)}
     return out, ladder
 
@@ -110,19 +121,31 @@ def whole_stats(values):
             "sd": statistics.pstdev(values) / US_PER_MS, "max": max(values) / US_PER_MS}
 
 
-def flight(scenario, steps):
+def flight(scenario, replayed, target_ms):
+    """Whole-frame figures of a replay, the share of frames whose scaled part
+    ran over the target, and the live miss once the refit has corrected the
+    price, the miss the up margin must cover."""
+    steps = replayed["steps"]
     whole = [scenario[s][i][0] for i, s in enumerate(steps)]
+    scaled = [scenario[s][i][1] + scenario[s][i][2] for i, s in enumerate(steps)]
+    live = [abs(m - p) / p for m, p in zip(scaled, replayed["priced"]) if p > 0]
+    finer = [abs(scenario[s - 1][i][1] + scenario[s - 1][i][2] - p) / p
+             for i, (s, p) in enumerate(zip(steps, replayed["finer"])) if p > 0]
     share = {s: steps.count(s) / len(steps) for s in sorted(set(steps))}
-    return {**whole_stats(whole), "share": share}
+    over = sum(v > target_ms * US_PER_MS for v in scaled) / len(scaled)
+    return {**whole_stats(whole), "share": share, "over": over, "live_miss": percentile(live, MARGIN_SHARE),
+            "finer_miss": percentile(finer, MARGIN_SHARE) if finer else 0.0}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("capture")
     parser.add_argument("--cc", required=True)
-    parser.add_argument("--targets", default=str(read_define(DYNRES, "RENDER_LAB_TARGET_MS")))
-    parser.add_argument("--margins", default="8")
-    parser.add_argument("--holds", default="500", help="step-up holds in ms")
+    target = read_define(DYNRES, "RENDER_LAB_FRAME_TARGET_MS") - read_define(DYNRES, "RENDER_LAB_FRAME_OVERHEAD_MS")
+    parser.add_argument("--targets", default=str(target), help="budgets for the scaled part in ms")
+    parser.add_argument("--margins", default=str(read_define(RESOLUTION, "DEFAULT_UP_MARGIN_PERCENT")))
+    parser.add_argument("--holds", default=str(read_define(RESOLUTION, "DEFAULT_UP_HOLD_US") // US_PER_MS),
+                        help="step-up holds in ms")
     parser.add_argument("--top", type=int, default=read_define(DYNRES, "RENDER_LAB_LADDER_HALF"))
     parser.add_argument("--first", type=int, help="the step the flight starts at; the top when omitted")
     parser.add_argument("--steps", help="captured sizes forming the ladder, by capture index; the ladder's when omitted")
@@ -159,12 +182,13 @@ def main():
                                                           for v in (args.targets, args.margins, args.holds))):
                 r = replay(binary, steps, ladder, recovery, fitted, target, margin, up, args.top,
                            args.top if args.first is None else args.first)
-                f = flight(steps, r["steps"])
+                f = flight(steps, r, target)
                 results.append({"scenario": name, "target": target, "margin": margin, "hold_ms": up,
                                 "switches": r["switches"], "fixed": fixed, **f})
                 at = ", ".join(f"{ladder[s][0]}x{ladder[s][1]} {v:.0%}" for s, v in f["share"].items())
                 print(f"  target {target} margin {margin} hold {up}: mean {f['mean']:.1f} p95 {f['p95']:.1f} "
-                      f"sd {f['sd']:.1f} max {f['max']:.1f} switches {r['switches']} | {at}")
+                      f"sd {f['sd']:.1f} max {f['max']:.1f} switches {r['switches']} over {f['over']:.0%} "
+                      f"p{MARGIN_SHARE * PERCENT:.0f} miss drawn {f['live_miss']:.1%} finer {f['finer_miss']:.1%} | {at}")
     if args.json:
         args.json.write_text(json.dumps({"fit": fitted, "results": results}, indent=1), encoding="utf-8")
 
