@@ -95,7 +95,7 @@ test_small_fill_menu_choice_moves_the_tunables(void) {
     fixture();
 }
 
-/* The toggle is the budget: on sets RENDER_LAB_BUDGET_ON_MS, any budget a
+/* The toggle is the budget: on sets RENDER_LAB_TARGET_MS, any budget a
  * console sets reads as on, and apply hands it to the context with the
  * render_lab ladder, for whichever scene is showing. */
 static void
@@ -109,10 +109,10 @@ test_dynamic_resolution_toggle_moves_the_budget_into_the_context(void) {
 
     TEST_ASSERT_TRUE(render_lab_dynres_set_on(true));
     TEST_ASSERT_TRUE(render_lab_dynres_on());
-    TEST_ASSERT_EQUAL_INT(RENDER_LAB_BUDGET_ON_MS, render_lab_budget_ms());
+    TEST_ASSERT_EQUAL_INT(RENDER_LAB_TARGET_MS, render_lab_budget_ms());
     render_lab_dynres_apply();
     TEST_ASSERT_EQUAL_INT(RENDER_PREDICTED, context->policy);
-    TEST_ASSERT_EQUAL_INT(RENDER_LAB_BUDGET_ON_MS * MATH_US_PER_MS, context->ladder.budget_us);
+    TEST_ASSERT_EQUAL_INT(RENDER_LAB_TARGET_MS * MATH_US_PER_MS, context->ladder.budget_us);
     TEST_ASSERT_EQUAL_INT(RENDER_LAB_LADDER_STEPS, context->ladder.step_count);
     TEST_ASSERT_EQUAL_INT(RENDER_LAB_LADDER_HALF, context->predict.step);
 

@@ -19,20 +19,21 @@
 extern const resolution_step_t render_lab_ladder[RENDER_LAB_LADDER_STEPS];
 extern const resolution_model_t render_lab_ladder_model;
 
-/* The tighter budget the policies were measured at
- * (suite_raster_scale_perf.c), which the menu's toggle turns on. */
-#define RENDER_LAB_BUDGET_ON_MS 60
+/* The frame time the menu's toggle holds: the chosen size (render_lab.scale)
+ * is the ladder's top, and a frame drops below it only past this target. */
+#define RENDER_LAB_TARGET_MS 33
 
 /* The menu's DYNAMIC RES toggle over render_lab.budget: on is any budget,
- * set_on writes RENDER_LAB_BUDGET_ON_MS or 0. Development builds only,
+ * set_on writes RENDER_LAB_TARGET_MS or 0. Development builds only,
  * where the tunable can move. */
 #if TUNE_ENABLED
 bool render_lab_dynres_on(void);
 bool render_lab_dynres_set_on(bool on);
 #endif
 
-/* Hands render_lab.budget to the main context when it changed since the
- * last call: 0 returns it to the fixed scale. */
+/* Hands render_lab.budget to the main context, topped at the size
+ * render_lab.scale chooses, when either changed since the last call: a
+ * budget of 0 returns it to the fixed scale. */
 void render_lab_dynres_apply(void);
 
 /* Under a budget, the size the last frame drew at as "WxH " for a scene's
