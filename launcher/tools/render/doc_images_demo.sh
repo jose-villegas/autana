@@ -148,10 +148,31 @@ demo_gif ${ID}-flat --scene "$ID" --object "${FULL}_flat"
 demo_gif ${ID}-fitted --scene "$ID" --object "${FULL}_fitted"
 demo_gif ${ID}-fitted-full --scene "$ID" --object "${FULL}_fitted_full"
 demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
-# The scrub window over the same seconds, fitted against its source, halfway through.
-run sh launcher/tools/render/scene_viewer.sh "$SCENE" --live --object "${FULL}_fitted" --b-args "--object $FULL" \
-    --label-a fitted --label-b source --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" \
-    --shot $((DEMO_GIF_FRAMES / 2)) "$RENDER/${ID}-scrub.png" 2> "$W/scrub.log"
+# One frame of scene_viewer.sh --compare's video over the same seconds, fitted
+# against its source, halfway through: drawn as the video draws it, unencoded.
+run "$PYTHON" launcher/tools/render/scene_path.py video --out "$W/compare.mp4" --work "$W/compare" \
+    --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" \
+    --side "fitted" "$HOST" "$(dirname "$HOST")/assets" "--scene
+$ID
+--object
+${FULL}_fitted" \
+    --side "source" "$HOST" "$(dirname "$HOST")/assets" "--scene
+$ID
+--object
+$FULL" 2> "$W/compare.log"
+run "$PYTHON" - "$W/compare" "$RENDER/${ID}-compare.png" $((DEMO_GIF_FRAMES / 2)) <<'PY'
+import pathlib
+import sys
+from PIL import Image
+sys.path.insert(0, "launcher/tools/render")
+from render_compare import GAIN, compose_frame, frame_note, measure, read_video
+work, out, index = pathlib.Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+fps, a = read_video(work / "a.avi")
+_, b = read_video(work / "b.avi")
+a, b = Image.fromarray(list(a)[index]), Image.fromarray(list(b)[index])
+note = frame_note(index, 1000.0 / fps, measure(a, b, None))
+compose_frame(a, b, None, GAIN, "fitted", "source", note).save(out)
+PY
 demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
