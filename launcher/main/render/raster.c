@@ -104,14 +104,18 @@ raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_target_t* rows,
     const size_t offset = (size_t)(y - rows->first_row) * a->pitch;
     uint32_t* wide_tag = (uint32_t*)((char*)a->pixels + offset);
     uint16_t* narrow_tag = (uint16_t*)((char*)a->pixels + offset);
-    const bool wide = a->format == IMAGE_U32;
+    /* One loop per width, so a pixel tests nothing but its depth. */
+    if (a->format == IMAGE_U32) {
+        for (int x = x_first; x <= x_last; x++, z += dz) {
+            if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
+                wide_tag[x] = writer->value;
+            }
+        }
+        return;
+    }
     for (int x = x_first; x <= x_last; x++, z += dz) {
         if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
-            if (wide) {
-                wide_tag[x] = writer->value;
-            } else {
-                narrow_tag[x] = (uint16_t)writer->value;
-            }
+            narrow_tag[x] = (uint16_t)writer->value;
         }
     }
 }
