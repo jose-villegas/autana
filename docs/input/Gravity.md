@@ -122,10 +122,22 @@ The interval follows the QMI8658A CTRL2/CTRL3 ODR codes in the datasheet<sup>[[7
 Batches arrive up to one drain period late; a drain delayed past FIFO capacity while core 1 is busy becomes a gap.
 On drain ticks the FIFO supplies the newest sample instead of a register read.
 
+The task works only for recent readers (`input/motion/imu_demand.h`); each kind keeps its level for `IMU_DEMAND_IDLE_US`, the FIFO's retained history.
+
+| Readers in the idle window | Task |
+|---|---|
+| `imu_take_fifo()`, `imu_take_fifo_at()`, `imu_set_odr()` | Register reads and drains |
+| `imu_read()` only | Register reads; no drains |
+| None | Parked on a task notification; the next read wakes it |
+
+Drains resume on a reset FIFO behind a gap, so no sample from before a park is queued or counted as loss.
+
 ```mermaid
 flowchart LR
     subgraph Task["IMU task: core 1, below job worker"]
         direction TB
+        Demand{"Readers in the idle window?"} -->|none| Park["Park until the next read"]
+        Demand -->|some| Tick
         Tick["Task tick"] --> Boost["Raise to IMU_TASK_BUS_PRIORITY"] --> Read["Register read or FIFO drain when due"]
         Read --> Newest["Newest sample"] & Queue["FIFO samples + lost_before when drained"]
         Newest & Queue --> Drop["Drop to IMU_TASK_PRIORITY"]

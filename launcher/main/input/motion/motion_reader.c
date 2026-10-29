@@ -7,6 +7,7 @@
 #include "input/input.h"
 #include "input/motion/gravity.h"
 #include "input/motion/imu.h"
+#include "input/motion/imu_demand.h"
 #include "input/motion/imu_rest.h"
 #include "input/motion/shake.h"
 #include "math/linear/vec_convert.h"
@@ -19,6 +20,10 @@ TUNE_OWNER(motion);
 TUNE(motion, log_ms, 0, 0, MOTION_LOG_MAX_MS);
 static int64_t last_log_us;
 #endif
+
+/* The first sample after a park arrives at least the idle window after the last one, so a rest
+ * window restarts there instead of spanning the park. */
+_Static_assert(IMU_DEMAND_IDLE_US > (int64_t)IMU_REST_MAX_GAP_MS * MATH_US_PER_MS, "a rest must not span an IMU park");
 
 static gravity_t gravity = {.down = {0, 0, -1}};
 static shake_t shake;
