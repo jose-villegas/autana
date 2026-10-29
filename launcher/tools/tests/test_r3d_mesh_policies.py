@@ -131,7 +131,7 @@ class MeshPolicyTests(unittest.TestCase):
         *_, labels = simplify(points, np.full_like(points, 100), faces, owners, 80, colour_deviation=1, allocation=allocation)
         self.assertEqual([np.count_nonzero(labels == i) for i in range(3)], [40, 40, 80])
 
-    def test_lock_keeps_both_sides(self):
+    def test_lock_keeps_both_sides_and_free_keeps_the_rests(self):
         for seed in range(3):
             p, t = sphere(seed)
             owners = (p[t].mean(axis=1)[:, 0] > 0).astype(int)
@@ -151,7 +151,7 @@ class MeshPolicyTests(unittest.TestCase):
                     counts = edge_counts(welded)
                     np.testing.assert_array_equal(counts, np.full(len(counts), 2))
             self.assertEqual(results['lock'], [True, True])
-            self.assertNotEqual(results['free'], [True, True])
+            self.assertTrue(results['free'][1])  # the rest keeps its border; a welded vertex is the mesh's too
 
     def test_ceiling_counts_lock_excess(self):
         report = {}

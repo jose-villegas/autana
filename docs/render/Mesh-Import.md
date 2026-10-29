@@ -176,7 +176,7 @@ The tolerance is the reciprocal of `output.position_scale`.
 |---|---|---|
 | `weld` | Join touched passes and sum budgets; shared vertices collapse together, touching unshared contacts are pinned. | Closed |
 | `lock` | Own pass; fix contact vertices on both sides. | Closed |
-| `free` | Own pass without locks. | May open |
+| `free` | Own pass; only the rest's side of a contact is fixed. | May open on the mesh's side; the rest stays closed |
 
 ![Free and locked pillar contacts](images/import-mesh-contact.png)
 
