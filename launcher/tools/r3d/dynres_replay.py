@@ -41,6 +41,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools/math"))
 from build.c_header import read_define  # noqa: E402
 from capture import QUARTER_RE, QUARTERS, select_quarter  # noqa: E402
 from math_figures import build_probe  # noqa: E402
+from dynres_report import percentile  # noqa: E402
 
 DYNRES = ROOT / "launcher/main/apps/render_lab/render_lab_dynres.h"
 RESOLUTION = ROOT / "launcher/main/render/resolution/resolution.c"
@@ -92,11 +93,6 @@ def ladder_text(ladder, recovery):
 def run(binary, arguments, stdin):
     out = subprocess.run([str(binary), *map(str, arguments)], input=stdin, check=True, capture_output=True, text=True)
     return json.loads(out.stdout)
-
-
-def percentile(values, share):
-    ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, int(share * len(ordered)))]
 
 
 def refit(binary, scenarios, ladder, recovery):
