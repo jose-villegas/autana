@@ -109,12 +109,15 @@ def board_table(rows):
              " Displayed: render only | Displayed: + 1 generated |",
              "|---|---|---|---|---|---|---|---|---|"]
     for (scene, size), f in rows.items():
-        frame, warp_both = f["frame_us"] / US_PER_MS, f["warp2_us"] / US_PER_MS
+        # The first capture timed the warp on one core too (warp1_us); later ones only on both (warp_us).
+        warp_both = f.get("warp2_us", f.get("warp_us")) / US_PER_MS
+        one_core = "%.1f" % (f["warp1_us"] / US_PER_MS) if "warp1_us" in f else "-"
+        frame = f["frame_us"] / US_PER_MS
         fill, present = f["fill_us"] / US_PER_MS, f["present_us"] / US_PER_MS
         generated = warp_both + fill + present
         paired = (frame + generated) / 2
-        lines.append("| %s | %s | %.1f ms | %.1f ms (%.1f) | %.1f ms | %.1f ms | %.1f ms | %.0f fps | %.0f fps |" % (
-            scene, size, frame, warp_both, f["warp1_us"] / US_PER_MS, fill, present, generated,
+        lines.append("| %s | %s | %.1f ms | %.1f ms (%s) | %.1f ms | %.1f ms | %.1f ms | %.0f fps | %.0f fps |" % (
+            scene, size, frame, warp_both, one_core, fill, present, generated,
             MS_PER_SECOND / frame, MS_PER_SECOND / paired))
     return "\n".join(lines) + "\n"
 
