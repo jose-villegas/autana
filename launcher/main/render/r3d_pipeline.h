@@ -65,13 +65,20 @@ size_t r3d_pipeline_work_bytes(void);
  * mesh->cluster_count entries. */
 int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work);
 
-/* The screen rows a cluster's vertices span, for a caller drawing only some
- * rows to skip it whole. A cluster with a vertex behind the near plane or
+/* The screen box a cluster's vertices span and the nearest depth its fill
+ * can write, for a caller drawing only some rows, or over depth already
+ * drawn, to skip it whole. A cluster with a vertex behind the near plane or
  * too far off screen to snap is unbounded, and never skipped. */
 typedef struct {
-    float y0, y1;
+    int16_t x0, y0, x1, y1; /* 1/R3D_SUBPIXEL pixels */
+    uint16_t depth;         /* no depth its fill writes is nearer */
     bool unbounded;
 } r3d_pipeline_rows_t;
+
+/* True when every pixel of `target` under a cluster's box already holds
+ * depth nearer than any its fill writes, so drawing it would change nothing,
+ * attachments included. False for an unbounded cluster. */
+bool r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target);
 
 /* `rows`, when not NULL, holds mesh->cluster_count entries and is filled for
  * each cluster transformed. */

@@ -17,6 +17,7 @@
 #define r3d_pipeline_transform_split constant_r3d_pipeline_transform_split
 #define r3d_pipeline_draw_split      constant_r3d_pipeline_draw_split
 #define r3d_pipeline_draw            constant_r3d_pipeline_draw
+#define r3d_pipeline_cluster_hidden  constant_r3d_pipeline_cluster_hidden
 
 #include <stdlib.h>
 #include <string.h>

@@ -42,8 +42,14 @@ r3d_span_window_box(const r3d_span_target_t* target, recti_t centres) {
     return box;
 }
 
+/* How far a fill's 16-bit depth can rise above its nearest vertex's,
+ * z * R3D_DEPTH_NEAREST truncated: one for the float set-up's rounding at its
+ * first centre, and one 16.8 unit for each pixel stepped from it, as a step
+ * is truncated, across the widest box a span takes, both axes. */
+#define R3D_SPAN_DEPTH_DRIFT (1 + ((2 * 2 * R3D_SPAN_RANGE / R3D_SUBPIXEL) >> R3D_DEPTH_SHIFT))
+
 /* Added before truncating, so the sum is positive and truncating floors. */
-#define R3D_SNAP_BIAS ((float)R3D_SPAN_RANGE + 0.5F)
+#define R3D_SNAP_BIAS        ((float)R3D_SPAN_RANGE + 0.5F)
 
 /* A subpixel position plus R3D_SNAP_BIAS, as a float, to the nearest
  * subpixel. `biased` must lie in (0, 2 R3D_SPAN_RANGE). */

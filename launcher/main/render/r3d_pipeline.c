@@ -182,12 +182,23 @@ biased_screen(const r3d_lens_t* lens, float lx, float ly, float inv) {
     return (biased_t){lens->snap_cx + (lx * inv), lens->snap_cy + (ly * inv)};
 }
 
+/* The nearest depth a fill from vertices no nearer than `iz` writes, by
+ * r3d_span's drift; it saturates, as the fill does. */
+static inline uint16_t
+fill_depth_limit(float iz) {
+    const int32_t depth = (int32_t)(iz * (float)R3D_DEPTH_NEAREST) + R3D_SPAN_DEPTH_DRIFT;
+    return (uint16_t)(depth < R3D_DEPTH_NEAREST ? depth : R3D_DEPTH_NEAREST);
+}
+
 static inline r3d_pipeline_rows_t
 transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
                   r3d_pipeline_vertex_t* cs) {
     const int end = c->vertex_first + c->vertex_count;
+    int x0 = INT16_MAX;
+    int x1 = INT16_MIN;
     int y0 = INT16_MAX;
     int y1 = INT16_MIN;
+    float iz = 0.0F;
     bool unbounded = false;
     for (int v = c->vertex_first; v < end; v++) {
         FRAME_LAP("r3d.transform.apply");
@@ -210,12 +221,14 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         out->sx = (int16_t)r3d_span_unbias(b.x);
         out->sy = (int16_t)r3d_span_unbias(b.y);
         out->iz = lens->near_subpixels * inv;
+        x0 = out->sx < x0 ? out->sx : x0;
+        x1 = out->sx > x1 ? out->sx : x1;
         y0 = out->sy < y0 ? out->sy : y0;
         y1 = out->sy > y1 ? out->sy : y1;
+        iz = out->iz > iz ? out->iz : iz;
     }
     FRAME_LAP("r3d.transform.cluster");
-    const float to_pixels = 1.0F / (float)R3D_SUBPIXEL;
-    return (r3d_pipeline_rows_t){(float)y0 * to_pixels, (float)y1 * to_pixels, unbounded};
+    return (r3d_pipeline_rows_t){(int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, fill_depth_limit(iz), unbounded};
 }
 
 void
@@ -252,8 +265,8 @@ draw_split_histogram(int* weight, const r3d_lit_mesh_t* mesh, const uint16_t* cl
                      int count, int height) {
     for (int i = 0; i < count; i++) {
         const r3d_pipeline_rows_t* r = &rows[clusters[i]];
-        const int first = mathi_clamp(r->unbounded ? 0 : (int)r->y0, 0, height - 1);
-        const int last = mathi_clamp(r->unbounded ? height - 1 : (int)r->y1, 0, height - 1);
+        const int first = mathi_clamp(r->unbounded ? 0 : r->y0 / R3D_SUBPIXEL, 0, height - 1);
+        const int last = mathi_clamp(r->unbounded ? height - 1 : r->y1 / R3D_SUBPIXEL, 0, height - 1);
         const int cost = mesh->clusters[clusters[i]].triangle_count;
         const int bucket_first = first * DRAW_SPLIT_BUCKETS / height;
         const int bucket_last = last * DRAW_SPLIT_BUCKETS / height;
@@ -387,7 +400,34 @@ draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_col
 
 static inline bool
 rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
-    return !r->unbounded && (r->y1 < (float)target->rows.first_row || r->y0 > (float)gfx_target_end_row(&target->rows));
+    return !r->unbounded
+           && (r->y1 < target->rows.first_row * R3D_SUBPIXEL
+               || r->y0 > gfx_target_end_row(&target->rows) * R3D_SUBPIXEL);
+}
+
+/* Drawn nearest first, a cluster behind what is already drawn is skipped
+ * before any of its triangles is tested. Its box holds every centre its
+ * triangles cover, as r3d_span_extent() finds them. */
+static inline bool
+cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
+    if (r->unbounded) {
+        return false;
+    }
+    const int left = r3d_span_first_centre(r->x0);
+    const int top = r3d_span_first_centre(r->y0);
+    const recti_t centres = {left, top, r3d_span_first_centre(r->x1) - left, r3d_span_first_centre(r->y1) - top};
+    return r3d_span_hidden(target, (int32_t)r->depth + 1, r3d_span_window_box(target, centres));
+}
+
+bool
+r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target) {
+    return cluster_hidden(rows, target);
+}
+
+/* A cluster this target's draw can skip whole. */
+static inline bool
+cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
+    return rows_miss_target(r, target) || cluster_hidden(r, target);
 }
 
 /* A triangle with a corner behind the near plane or too far off screen to
@@ -473,7 +513,7 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     }
     for (int i = 0; i < count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
-        if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
+        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target)) {
             continue;
         }
         /* Whole clusters, or one triangle at a time when a writer steps per
@@ -500,7 +540,7 @@ draw_reading(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
              const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work) {
     for (int i = 0; i < count; i++) {
-        if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
+        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target)) {
             continue;
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];

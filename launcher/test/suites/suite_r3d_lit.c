@@ -1166,6 +1166,92 @@ test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
     }
 }
 
+/* A slanted quad, its corners at these pixels and depths in ticks, as one
+ * cluster of two triangles, transformed with its rows. */
+static const float SLANTED_QUAD[4][3] = {{8.25f, 6.5f, 2}, {56.5f, 8.75f, 3}, {54.0f, 40.25f, 4}, {6.75f, 42.0f, 2}};
+
+static r3d_lit_mesh_t
+slanted_quad(screen_mesh_t* m, r3d_pipeline_vertex_t cs[4], r3d_pipeline_rows_t* rows) {
+    static const uint16_t corners[2][3] = {{0, 2, 1}, {0, 3, 2}};
+    for (int k = 0; k < 4; k++) {
+        const float z = SLANTED_QUAD[k][2];
+        m->positions[k][0] = (int16_t)(SLANTED_QUAD[k][0] * R3D_SUBPIXEL * z);
+        m->positions[k][1] = (int16_t)(SLANTED_QUAD[k][1] * R3D_SUBPIXEL * z);
+        m->positions[k][2] = (int16_t)z;
+    }
+    memcpy(m->triangles, corners, sizeof corners);
+    const r3d_lit_mesh_t mesh = screen_mesh(m, 4, 2);
+    const r3d_lens_t lens = subpixel_view();
+    const uint16_t visible[1] = {0};
+    r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows);
+    return mesh;
+}
+
+/* Every depth a cluster's fill writes stays at or below the limit its rows carry. */
+static void
+test_a_cluster_writes_no_depth_nearer_than_its_limit(void) {
+    screen_mesh_t m;
+    r3d_pipeline_vertex_t cs[4];
+    r3d_pipeline_rows_t rows;
+    const r3d_lit_mesh_t mesh = slanted_quad(&m, cs, &rows);
+    const r3d_span_target_t target = fixture();
+    const uint16_t visible[1] = {0};
+    const r3d_lens_t lens = subpixel_view();
+    r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, &rows, &target, pipeline_work());
+    int nearest = R3D_DEPTH_EMPTY;
+    for (int i = 0; i < W * H; i++) {
+        nearest = depth[i] > nearest ? depth[i] : nearest;
+    }
+    TEST_ASSERT_GREATER_THAN_INT(R3D_DEPTH_EMPTY, nearest);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(rows.depth, nearest);
+}
+
+/* Over depth nearer than its limit at every pixel of its box, a cluster is
+ * hidden and its draw changes nothing; one pixel at the limit, where a tag
+ * writer would match its depth, keeps it. Pixels outside its box do not count. */
+static void
+test_a_cluster_behind_drawn_depth_is_hidden_and_draws_nothing(void) {
+    screen_mesh_t m;
+    r3d_pipeline_vertex_t cs[4];
+    r3d_pipeline_rows_t rows;
+    const r3d_lit_mesh_t mesh = slanted_quad(&m, cs, &rows);
+    const r3d_span_target_t target = fixture();
+    for (int i = 0; i < W * H; i++) {
+        depth[i] = (uint16_t)(rows.depth + 1);
+    }
+    depth[0] = R3D_DEPTH_EMPTY; /* outside the quad's box */
+    TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&rows, &target));
+    const uint16_t visible[1] = {0};
+    const r3d_lens_t lens = subpixel_view();
+    r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, &rows, &target, pipeline_work());
+    for (int i = 0; i < W * H; i++) {
+        TEST_ASSERT_EQUAL_MESSAGE(0, color[i], "a hidden cluster drew a pixel");
+    }
+
+    const int inside = (24 * W) + 32;
+    depth[inside] = rows.depth;
+    TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&rows, &target));
+}
+
+/* A cluster with a vertex behind the near plane has no box to test: never hidden. */
+static void
+test_an_unbounded_cluster_is_never_hidden(void) {
+    screen_mesh_t m;
+    r3d_pipeline_vertex_t cs[4];
+    r3d_pipeline_rows_t rows;
+    const r3d_lit_mesh_t mesh = slanted_quad(&m, cs, &rows);
+    m.positions[3][2] = -1; /* behind the near plane */
+    const r3d_lens_t lens = subpixel_view();
+    const uint16_t visible[1] = {0};
+    r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, &rows);
+    TEST_ASSERT_TRUE(rows.unbounded);
+    const r3d_span_target_t target = fixture();
+    for (int i = 0; i < W * H; i++) {
+        depth[i] = R3D_DEPTH_NEAREST;
+    }
+    TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&rows, &target));
+}
+
 /* A fan whose outer corners sit just inside and just past the fast path's
  * reach, so rebuilt, clipped triangles share edges across the screen with
  * fast ones: each drawn alone, together they fill every pixel once. */
@@ -2381,12 +2467,20 @@ test_the_transform_split_is_the_shortest_prefix_holding_its_share_of_the_vertice
     TEST_ASSERT_EQUAL_INT(4, r3d_pipeline_transform_split(&mesh, visible, 4, JOB_SHARE_PERMILLE * 9 / 10));
 }
 
+/* A bounded cluster spanning rows y0 to y1, in pixels. */
+static r3d_pipeline_rows_t
+pixel_rows(int y0, int y1) {
+    return (r3d_pipeline_rows_t){.y0 = (int16_t)(y0 * R3D_SUBPIXEL), .y1 = (int16_t)(y1 * R3D_SUBPIXEL)};
+}
+
+static const r3d_pipeline_rows_t UNBOUNDED_ROWS = {.unbounded = true};
+
 static void
 test_the_draw_split_of_no_work_is_the_middle_row(void) {
     const r3d_lit_cluster_t clusters[] = {{.triangle_count = 0}};
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
-    const r3d_pipeline_rows_t rows[] = {{0, 99, false}};
+    const r3d_pipeline_rows_t rows[] = {pixel_rows(0, 99)};
     TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100, JOB_SHARE_EVEN));
     TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100, JOB_SHARE_EVEN));
 }
@@ -2396,15 +2490,15 @@ test_the_draw_split_falls_inside_the_rows_the_work_covers(void) {
     const r3d_lit_cluster_t clusters[] = {{.triangle_count = 10}};
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
-    const r3d_pipeline_rows_t top[] = {{0, 9, false}};
+    const r3d_pipeline_rows_t top[] = {pixel_rows(0, 9)};
     const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100, JOB_SHARE_EVEN);
     TEST_ASSERT_TRUE(split >= 1 && split <= 9);
 
-    const r3d_pipeline_rows_t beyond[] = {{-50, 500, false}};
+    const r3d_pipeline_rows_t beyond[] = {pixel_rows(-50, 500)};
     const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100, JOB_SHARE_EVEN);
     TEST_ASSERT_TRUE(middle >= 48 && middle <= 52);
 
-    const r3d_pipeline_rows_t unbounded[] = {{0, 0, true}};
+    const r3d_pipeline_rows_t unbounded[] = {UNBOUNDED_ROWS};
     TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100, JOB_SHARE_EVEN));
 }
 
@@ -2413,7 +2507,7 @@ test_draw_split_accumulates_bounded_uneven_buckets(void) {
     const r3d_lit_cluster_t clusters[] = {{.triangle_count = 1}, {.triangle_count = 3}};
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0, 1};
-    const r3d_pipeline_rows_t rows[] = {{0, 9, false}, {40, 49, false}};
+    const r3d_pipeline_rows_t rows[] = {pixel_rows(0, 9), pixel_rows(40, 49)};
     const int height = 640;
     TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_PERMILLE / 4));
     TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_EVEN));
@@ -2425,7 +2519,7 @@ test_draw_split_interpolates_the_requested_share_and_clamps_rows(void) {
     const r3d_lit_cluster_t clusters[] = {{.triangle_count = 10}};
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
-    const r3d_pipeline_rows_t rows[] = {{0, 0, true}};
+    const r3d_pipeline_rows_t rows[] = {UNBOUNDED_ROWS};
     const int height = 640;
     TEST_ASSERT_EQUAL_INT(height / 4, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE / 4));
     TEST_ASSERT_EQUAL_INT(height / 2, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_EVEN));
@@ -2471,6 +2565,9 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_window_holding_a_few_rows_of_a_tall_sliver_draws_them_as_the_whole_does);
     RUN_TEST(test_a_triangle_with_corners_past_the_snap_range_fills_its_centres);
     RUN_TEST(test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn);
+    RUN_TEST(test_a_cluster_writes_no_depth_nearer_than_its_limit);
+    RUN_TEST(test_a_cluster_behind_drawn_depth_is_hidden_and_draws_nothing);
+    RUN_TEST(test_an_unbounded_cluster_is_never_hidden);
     RUN_TEST(test_rebuilt_and_fast_triangles_sharing_edges_fill_every_pixel_once);
 
     RUN_TEST(test_a_counter_clockwise_face_toward_the_camera_is_drawn);
