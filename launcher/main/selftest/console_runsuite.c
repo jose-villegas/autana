@@ -19,8 +19,7 @@ static const char* TAG = "console";
 #define RUNSUITE_LIST_QUERY "?"
 #define SUITE_COUNT_DIGITS  3
 _Static_assert(TESTKIT_SUITE_MAX < 1000, "SUITE_COUNT_DIGITS holds TESTKIT_SUITE_MAX");
-/* A registered name is not held to SUITE_NAME_MAX, so a listed one gets the whole request line's room. */
-#define RUNSUITE_LIST_BYTES (sizeof "RUNSUITE_SUITE name= on_request=0" + RUNSUITE_ARGS_MAX)
+#define RUNSUITE_LIST_BYTES (sizeof "RUNSUITE_SUITE name= on_request=0" + SUITE_NAME_MAX)
 
 CONSOLE_FRAME_SLOT(console_runsuite_slot, console_runsuite_request_t, true, NULL)
 
