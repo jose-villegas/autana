@@ -5,8 +5,13 @@ budget, instead of one fixed scale. The sizes are a ladder of steps, finest
 first.
 
 `render_context_compose()` expands a draw into the half picture when its width is
-exactly half and its height divides the half height. Otherwise it upscales to the
-panel size with `render/upscale.h`, which takes any ratio in either axis.
+exactly half and its height is at most the half height; an uneven height spreads
+through the row map, its row edges on even panel rows. Otherwise it upscales to
+the panel size with `render/upscale.h`, which takes any ratio in either axis.
+
+The caller's chosen size is the top step, and neither policy draws finer:
+a frame under budget keeps its speed rather than buying pixels, and only a
+frame over budget steps down.
 
 The code is `launcher/main/render/resolution/`. Resolution selection is a
 setting of the render context rather than of a scene or a camera.
@@ -17,8 +22,8 @@ frame draws at the context's fixed scale.
 
 | Policy | Chooses | From | Guards against flapping |
 |---|---|---|---|
-| Stepped controller | one step at a time, after the cost | the mean of a window of measured frames against an up and a down threshold | a cooldown after each step that doubles when a step reverses the last one; a panic drop for one frame far over budget |
-| Predictor | any step, before the cost | a linear model of the frame, priced at every step from the triangles culling kept this frame, then scaled and offset by what recent frames cost | going finer needs a margin under the budget |
+| Stepped controller | one step at a time, after the cost, never above the top | the mean of a window of measured frames against an up and a down threshold | a cooldown after each step that doubles when a step reverses the last one; a panic drop for one frame far over budget |
+| Predictor | down any number of steps, up one, before the cost, never above the top | a linear model of the frame, priced at every step from the triangles culling kept this frame, then scaled and offset by what recent frames cost | going finer needs the next step to fit with a margin under the budget for a hold in time, which doubles when a step reverses the last one |
 
 The predictor's model is fitted on the board along one camera path. Live
 frames refit it: a two-state Kalman filter<sup>[[22]](../Citations.md#kalman-1960)</sup> learns a scale and an offset on
@@ -188,9 +193,10 @@ present_example(scene_t* scene, scene_entity_t cam) {
 | `CAMERA_PRESENT_SCANLINE` | Half that height | Each row twice, the second dimmed to `UPSCALE_SCANLINE_KEEP` |
 | `CAMERA_PRESENT_DOUBLE` | Half that height | Each row twice, unchanged |
 
-The halved draw expands into the half picture when its height divides the half
-height, as in `render_context_compose()` above. When the row map is uneven, such
-as a dynamic-resolution step that does not divide, the frame is drawn as NEAREST.
+The halved draw expands into the half picture, as in `render_context_compose()`
+above. When its row map is uneven, such as a dynamic-resolution step whose
+height does not divide the half height, the rows are copied without the dimmed
+line.
 
 The saving comes from the halved draw: fewer rows, spans and edge steps. SCANLINE
 adds a darkened copy of every second row; DOUBLE costs a little less. On a dense
