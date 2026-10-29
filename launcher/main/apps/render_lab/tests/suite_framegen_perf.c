@@ -66,24 +66,17 @@ typedef struct {
     projectf_t project;
 } warp_rows_t;
 
-/* A map along one row, as raster_motion's resolve folds it. */
+/* One lens-space axis of the map along a row, the row's v folded in:
+ * the axis is du u + base + dw w. */
 typedef struct {
-    float u[3], at[3], w[3];
-} row_map_t;
+    float du, base, dw;
+} lens_axis_t;
 
-static void
-row_map(const mat4f_t* a, float v, row_map_t* r) {
-    for (int i = 0; i < 3; i++) {
-        r->u[i] = a->m[i][0];
-        r->at[i] = (a->m[i][1] * v) + a->m[i][2];
-        r->w[i] = a->m[i][3];
-    }
+static inline float
+axis_at(lens_axis_t a, float u, float w) {
+    return (a.du * u) + a.base + (a.dw * w);
 }
 
-/* Each source pixel lands at the nearest target pixel; the nearer point wins.
- * Lens space is pixels at unit depth: depth d is the point (u, v, 1) near_z / iz,
- * and through the map its new inverse depth is d / pz. The sky (d = 0) has w = 0,
- * so it only turns. */
 /* The warped depth word: the sky stays the farthest, anything drawn sits above it. */
 static inline uint32_t
 moved_depth(uint16_t depth, float moved) {
@@ -95,19 +88,21 @@ moved_depth(uint16_t depth, float moved) {
     return (uint32_t)(moved >= nearest ? nearest : moved < above_sky ? above_sky : moved);
 }
 
-/* One source pixel at lens-space u with depth word `depth`, splatted into the
- * target; to_w turns a depth word into w. */
+/* One source pixel lands at the nearest target pixel; the nearer point wins.
+ * Lens space is pixels at unit depth: depth word d is the point (u, v, 1) near_z / iz,
+ * and through the map its new inverse depth is d / z. The sky (d = 0) has w = 0,
+ * so it only turns. to_w turns a depth word into w. */
 static inline void
-splat(const warp_rows_t* job, const row_map_t* r, float to_w, float u, uint16_t depth, uint16_t colour) {
+splat(const warp_rows_t* job, const lens_axis_t axes[3], float to_w, float u, uint16_t depth, uint16_t colour) {
     const float d = (float)depth;
     const float w = d * to_w;
-    const float pz = (r->u[2] * u) + r->at[2] + (r->w[2] * w);
-    if (!(pz > 0.0F)) {
+    const float z = axis_at(axes[2], u, w);
+    if (!(z > 0.0F)) {
         return;
     }
-    const float inv = mathf_recip(pz);
-    const float px = ((((r->u[0] * u) + r->at[0] + (r->w[0] * w)) * inv) + job->project.cx);
-    const float py = ((((r->u[1] * u) + r->at[1] + (r->w[1] * w)) * inv) + job->project.cy);
+    const float inv = mathf_recip(z);
+    const float px = (axis_at(axes[0], u, w) * inv) + job->project.cx;
+    const float py = (axis_at(axes[1], u, w) * inv) + job->project.cy;
     if (!(px >= 0.0F && py >= 0.0F && px < (float)job->width && py < (float)job->height)) {
         return;
     }
@@ -123,13 +118,18 @@ static void
 warp_rows(void* ctx) {
     const warp_rows_t* job = ctx;
     const float to_w = FRAMEGEN_DEPTH_SCALE / job->project.near_z;
+    const float (*m)[4] = job->map->m;
     for (int y = job->first; y < job->end; y++) {
-        row_map_t r;
-        row_map(job->map, (float)y + 0.5F - job->project.cy, &r);
+        const float v = (float)y + 0.5F - job->project.cy;
+        const lens_axis_t axes[3] = {
+            {m[0][0], (m[0][1] * v) + m[0][2], m[0][3]},
+            {m[1][0], (m[1][1] * v) + m[1][2], m[1][3]},
+            {m[2][0], (m[2][1] * v) + m[2][2], m[2][3]},
+        };
         const size_t row = (size_t)y * (size_t)job->width;
         float u = 0.5F - job->project.cx;
         for (int x = 0; x < job->width; x++, u += 1.0F) {
-            splat(job, &r, to_w, u, job->depth[row + (size_t)x], job->colour[row + (size_t)x]);
+            splat(job, axes, to_w, u, job->depth[row + (size_t)x], job->colour[row + (size_t)x]);
         }
     }
 }
