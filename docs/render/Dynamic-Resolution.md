@@ -219,7 +219,7 @@ What the table shows:
 
 ## Upscaling within a surface
 
-An experiment, off by default: `UPSCALE_FILTER_SURFACE` in `render/upscale.h`, set with
+Off by default: `UPSCALE_FILTER_SURFACE` in `render/upscale.h`, set with
 `render_context_set_upscale_filter()`. It applies to the steps that compose into the
 half picture, and is joint bilateral upsampling<sup>[[97]](../Citations.md#kopf-2007)</sup> with a yes-or-no range weight.
 
