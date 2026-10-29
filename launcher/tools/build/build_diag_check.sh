@@ -43,6 +43,7 @@
 
 set -euo pipefail
 
+ARGUMENTS=("$@")
 GATES_ONLY=0
 CI_GATES=0
 while [ $# -gt 0 ]; do
@@ -67,7 +68,7 @@ GATE_BASE="${COMPLEXITY_GATE_BASE:-origin/main}"
 if [ -z "${QUIET_INNER:-}" ]; then
     # Beside build.diag, not in it: the build prepares (and may empty) that folder.
     quiet_begin "$DIR/../../build.diag-check.log"
-    quiet_run diagnostics-check env QUIET_INNER=1 bash "$0" "$@" || true
+    quiet_run diagnostics-check env QUIET_INNER=1 bash "$0" ${ARGUMENTS[@]+"${ARGUMENTS[@]}"} || true
     quiet_end build_diag_check || exit $?
     exit 0
 fi
