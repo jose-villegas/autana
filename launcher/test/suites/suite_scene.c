@@ -2388,17 +2388,20 @@ static const resolution_step_t LADDER[3] = {{SIZE, SIZE}, {SIZE * 3 / 4, SIZE * 
 static const resolution_model_t PIXEL_MODEL = {.per_pixel_share_us = 1000.0F};
 
 /* The frame as the predictor draws it: opting in afresh puts the predictor on
- * `first`, so the census is taken there, and the budget picks the step. */
+ * `first`, so the census is taken there, and the budget picks the step; with
+ * no hold, a step that fits finer is taken on the first frame. */
 static void
 predicted_frame(int first, int32_t budget_us) {
-    const resolution_config_t config = resolution_config(LADDER, 3, 3, budget_us);
+    resolution_config_t config = resolution_config(LADDER, 3, 3, budget_us);
+    config.up_hold_us = 0;
     render_context_set_dynamic_resolution(render_context_main(), &config, &PIXEL_MODEL, first);
     frame(0);
 }
 
 /* A draw is censused where the predictor stood and drawn where it chose, from
- * the list the census kept: finer, coarser or two steps away, the picture and
- * the stats are those of a draw at the chosen size alone. */
+ * the list the census kept: finer (one step at a time), coarser or two steps
+ * coarser, the picture and the stats are those of a draw at the chosen size
+ * alone. */
 static void
 test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
     fixture();
@@ -2408,7 +2411,7 @@ test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
         int first;
         int32_t budget_us;
         int chosen;
-    } cases[] = {{0, 700, 1}, {2, 700, 1}, {0, 300, 2}, {2, 2000, 0}, {1, 2000, 0}, {1, 300, 2}};
+    } cases[] = {{0, 700, 1}, {2, 700, 1}, {0, 300, 2}, {2, 2000, 1}, {1, 2000, 0}, {1, 300, 2}};
 
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         predicted_frame(cases[i].first, cases[i].budget_us);
