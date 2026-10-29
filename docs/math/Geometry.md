@@ -185,6 +185,8 @@ crossing sample edge.
 | `iso_mesh_t` | Caller-owned positions, normals, triangles and scratch, with capacities and counts |
 | `iso_surface_scratch_count` | Two slabs of cell indices for a field's y and z counts |
 | `iso_surface_nets` | Meshes the field at a level; false when a capacity ran out, keeping whole triangles |
+| `iso_surface_nets_slabs` | Meshes a range of cell slabs along x, so parts can run at once |
+| `iso_surface_append` | Moves a part's vertices and triangles onto the end of a mesh, indices rebased |
 
 | Rule | Detail |
 |---|---|
@@ -193,3 +195,4 @@ crossing sample edge.
 | Normals | Unit, down the field's gradient over the cell's corners |
 | Closed | A field below the level all round its border gives a closed surface |
 | Memory | Scratch is two slabs along x, so it does not grow with the field's length |
+| Parts | Parts over slabs `[0, a)`, `[a, b)`, … appended in x order make the whole surface's triangles; each needs its own scratch |
