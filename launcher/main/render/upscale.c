@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "gfx/target/gfx_target.h"
 #include "render/code_layout.h"
@@ -135,6 +136,113 @@ upscale_rows(const upscale_t* scale, const gfx_target_t* picture, uint16_t clear
             upscale_mapped_rows(scale, source, depth, pitch, clear, destination, first_row, row_count);
             break;
     }
+}
+
+void
+upscale_init_blends(upscale_t* scale, uint16_t* blends) {
+    /* Destination row y's centre falls on source row (2y + 1) * source / (2 * destination) - 1/2. */
+    const int span = 2 * scale->destination_height;
+    for (int y = 0; y < scale->destination_height; y++) {
+        const int at = ((2 * y) + 1) * scale->source_height - scale->destination_height;
+        int row = at <= 0 ? 0 : at / span;
+        int share = at <= 0 ? 0 : (((at % span) * RGB565_SCALE_UNIT) + (span / 2)) / span;
+        if (share == RGB565_SCALE_UNIT) {
+            row++;
+            share = 0;
+        }
+        if (row >= scale->source_height - 1) {
+            row = scale->source_height - 1;
+            share = 0;
+        }
+        blends[y] = UPSCALE_BLEND(row, share);
+    }
+    scale->blends = blends;
+}
+
+static int
+blend_row(uint16_t blend) {
+    return blend / RGB565_SCALE_UNIT;
+}
+
+static unsigned
+blend_share(uint16_t blend) {
+    return blend % RGB565_SCALE_UNIT;
+}
+
+/* The source row a blend leans on most: the one a depth test stands for. */
+static int
+blend_nearest_row(uint16_t blend) {
+    return blend_row(blend) + (blend_share(blend) >= RGB565_SCALE_UNIT / 2 ? 1 : 0);
+}
+
+static const uint16_t*
+source_row(const uint16_t* pixels, size_t pitch, int row) {
+    return (const uint16_t*)((const char*)pixels + ((size_t)row * pitch));
+}
+
+static void
+mark_seams(const uint16_t* here, const uint16_t* below, int width, uint8_t* seams) {
+    for (int byte = 0; byte < GFX_SEAM_PITCH(width); byte++) {
+        unsigned bits = 0;
+        for (int bit = 0; bit < GFX_SEAM_BITS && (byte * GFX_SEAM_BITS) + bit < width; bit++) {
+            const int x = (byte * GFX_SEAM_BITS) + bit;
+            const bool right = x + 1 < width && !upscale_same_surface(here[x], here[x + 1]);
+            const bool down = below != NULL && !upscale_same_surface(here[x], below[x]);
+            bits |= (unsigned)(right || down) << bit;
+        }
+        seams[byte] = (uint8_t)bits;
+    }
+}
+
+static void
+surface_rows(const upscale_t* scale, const uint16_t* color, const uint16_t* depth, size_t pitch, uint16_t clear,
+             uint16_t* destination, uint8_t* seams, int first_row, int row_count) {
+    const int width = scale->destination_width;
+    for (int y = first_row; y < first_row + row_count; y++) {
+        const uint16_t blend = scale->blends[y];
+        const unsigned share = blend_share(blend);
+        const int lower = blend_row(blend);
+        const int upper = share == 0 ? lower : lower + 1;
+        const uint16_t* lower_color = source_row(color, pitch, lower);
+        const uint16_t* upper_color = source_row(color, pitch, upper);
+        const uint16_t* lower_depth = source_row(depth, pitch, lower);
+        const uint16_t* upper_depth = source_row(depth, pitch, upper);
+        const bool upper_nearer = blend_nearest_row(blend) == upper;
+        uint16_t* output = destination + ((size_t)y * width);
+        for (int x = 0; x < width; x++) {
+            const uint16_t a = gfx_target_shown_pixel(lower_color, lower_depth, x, clear);
+            const uint16_t b = gfx_target_shown_pixel(upper_color, upper_depth, x, clear);
+            output[x] = upscale_same_surface(lower_depth[x], upper_depth[x]) ? rgb565be_blend(a, b, share)
+                        : upper_nearer                                       ? b
+                                                                             : a;
+        }
+        if (seams != NULL) {
+            const uint16_t* here = source_row(depth, pitch, blend_nearest_row(blend));
+            const uint16_t* below = y + 1 < scale->destination_height
+                                        ? source_row(depth, pitch, blend_nearest_row(scale->blends[y + 1]))
+                                        : NULL;
+            mark_seams(here, below, width, seams + ((size_t)y * GFX_SEAM_PITCH(width)));
+        }
+    }
+}
+
+void
+upscale_rows_filtered(const upscale_t* scale, const gfx_target_t* picture, uint16_t clear, uint16_t* destination,
+                      uint8_t* seams, int first_row, int row_count) {
+    check_rows(scale, picture, destination, first_row, row_count);
+    const uint16_t* depth =
+        picture->count > GFX_ATTACHMENT_DEPTH ? picture->attachment[GFX_ATTACHMENT_DEPTH].pixels : NULL;
+    if (scale->filter != UPSCALE_FILTER_SURFACE || scale->path != UPSCALE_KEPT || depth == NULL) {
+        upscale_rows(scale, picture, clear, destination, first_row, row_count);
+        if (seams != NULL) {
+            /* Nothing known about surfaces: every pixel is its own. */
+            memset(seams + ((size_t)first_row * GFX_SEAM_PITCH(scale->destination_width)), UINT8_MAX,
+                   GFX_SEAM_BYTES(scale->destination_width, row_count));
+        }
+        return;
+    }
+    surface_rows(scale, picture->attachment[0].pixels, depth, picture->attachment[0].pitch, clear, destination, seams,
+                 first_row, row_count);
 }
 
 /* Scanline dispatch stays in flash to preserve the default copy's IRAM budget. */

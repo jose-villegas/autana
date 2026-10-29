@@ -44,16 +44,38 @@ rgb565be_pack(uint8_t r5, uint8_t g6, uint8_t b5) {
 }
 
 /* Channel separation leaves five multiplier bits without cross-channel carries. */
-#define RGB565_SCALE_UNIT 32
+#define RGB565_SCALE_UNIT      32
+
+/* A native colour spread over 32 bits: green in the high half, red and blue in
+ * the low, each with room above it for a product by up to RGB565_SCALE_UNIT. */
+#define RGB565_SPREAD_CHANNELS 0x07e0f81fU
+/* The lowest bit of each spread channel. */
+#define RGB565_SPREAD_ONES     0x00200801U
+
+static inline uint32_t
+rgb565be_spread(rgb565be_t pixel) {
+    const uint32_t native = rgb565_swap(pixel);
+    return (native | (native << 16)) & RGB565_SPREAD_CHANNELS;
+}
+
+static inline rgb565be_t
+rgb565be_unspread(uint32_t spread) {
+    spread &= RGB565_SPREAD_CHANNELS;
+    return rgb565_swap((uint16_t)(spread | (spread >> 16)));
+}
 
 /* Fast truncating fade-to-black form of rgb565be_mix: keep/UNIT of each channel. */
 static inline rgb565be_t
 rgb565be_scale(rgb565be_t pixel, unsigned keep) {
-    const uint32_t channels = 0x07e0f81fU;
-    const uint32_t native = rgb565_swap(pixel);
-    const uint32_t spread = (native | (native << 16)) & channels;
-    const uint32_t scaled = (spread * keep / RGB565_SCALE_UNIT) & channels;
-    return rgb565_swap((uint16_t)(scaled | (scaled >> 16)));
+    return rgb565be_unspread(rgb565be_spread(pixel) * keep / RGB565_SCALE_UNIT);
+}
+
+/* Fast rounded form of rgb565be_mix: `share`/UNIT of b, the rest of a. */
+static inline rgb565be_t
+rgb565be_blend(rgb565be_t a, rgb565be_t b, unsigned share) {
+    const uint32_t sum = (rgb565be_spread(a) * (RGB565_SCALE_UNIT - share)) + (rgb565be_spread(b) * share)
+                         + (RGB565_SPREAD_ONES * (RGB565_SCALE_UNIT / 2));
+    return rgb565be_unspread(sum / RGB565_SCALE_UNIT);
 }
 
 /* Both halves use 32-bit multiplies on the 32-bit CPU. */
