@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/target/gfx_render_target.h"
+#include "gfx/target/gfx_target.h"
 #include "image/pixel/rgb565.h"
 
 /* How rows are filled, chosen once per size. All but UPSCALE_BLOCKS write
@@ -39,9 +39,9 @@ bool upscale_init(upscale_t* scale, int source_width, int source_height, int des
 /* Scales destination rows [first_row, first_row + row_count) from `source`.
  * A zero attached depth writes `clear`. `destination` is 4-byte aligned.
  */
-void upscale_rows(const upscale_t* scale, const gfx_render_target_t* source, uint16_t clear, uint16_t* destination,
+void upscale_rows(const upscale_t* scale, const gfx_target_t* source, uint16_t clear, uint16_t* destination,
                   int first_row, int row_count);
 
 /* Paired copies with uniform even runs only; other runs copy unchanged. */
-void upscale_rows_scanlined(const upscale_t* scale, const gfx_render_target_t* source, uint16_t clear,
-                            uint16_t* destination, int first_row, int row_count);
+void upscale_rows_scanlined(const upscale_t* scale, const gfx_target_t* source, uint16_t clear, uint16_t* destination,
+                            int first_row, int row_count);

@@ -8,7 +8,13 @@
 #include "input/motion/imu_vibration.h"
 #include "sound/console/console_tone_parse.h"
 
-#define CONSOLE_TONE_REPLY_BYTES    384u
+#define CONSOLE_TONE_DB_BYTES      16u
+#define CONSOLE_TONE_INTEGER_BYTES (sizeof(size_t) * 3u)
+#define CONSOLE_TONE_REPLY_BYTES                                                                                       \
+    (sizeof("TONE not heard  Hz:  dB (silence  dB), noise  dBFS, path acoustic, measured , open  B DMA, thd  dB, "     \
+            "peak  dBFS, pulse_ms , shake  mg rms  mg peak (silence  mg rms), gx_mg , gy_mg , gz_mg , "                \
+            "imu_gaps , shake_reason too few samples; other reader or short window")                                   \
+     + (13u * CONSOLE_TONE_DB_BYTES) + (4u * CONSOLE_TONE_INTEGER_BYTES) + CONSOLE_TONE_MEASURED_BYTES)
 #define CONSOLE_TONE_MEASURED_BYTES 32u
 
 static inline bool
@@ -27,12 +33,13 @@ console_tone_reply(char* line, size_t capacity, const console_tone_args_t* args,
     if (thd_length < 0 || (size_t)thd_length >= sizeof thd) {
         return false;
     }
-    const int length = snprintf(line, capacity,
-                                "TONE %s %u Hz: %.1f dB (silence %.1f dB), path %s, measured %s, open %zu B DMA, thd "
-                                "%s dB, peak %.1f dBFS, pulse_ms %u",
-                                heard ? "heard" : "not heard", (unsigned)args->hz, (double)tone_db, (double)silence_db,
-                                args->internal ? "internal" : "acoustic", measured, dma_open, thd,
-                                (double)result->peak_dbfs, (unsigned)args->pulse_ms);
+    const int length =
+        snprintf(line, capacity,
+                 "TONE %s %u Hz: %.1f dB (silence %.1f dB), noise %.1f dBFS, path %s, measured %s, open %zu B DMA, thd "
+                 "%s dB, peak %.1f dBFS, pulse_ms %u",
+                 heard ? "heard" : "not heard", (unsigned)args->hz, (double)tone_db, (double)silence_db,
+                 (double)result->noise_dbfs, args->internal ? "internal" : "acoustic", measured, dma_open, thd,
+                 (double)result->peak_dbfs, (unsigned)args->pulse_ms);
     return length >= 0 && (size_t)length < capacity;
 }
 

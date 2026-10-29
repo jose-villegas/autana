@@ -1462,6 +1462,27 @@ class ProduceTests(unittest.TestCase):
             self.assertIn(named, str(failed.exception))
         self.assertEqual(same[row["key"]]["run"], 41)
 
+    def test_a_keyed_folder_is_made_once_and_a_cut_make_leaves_nothing_done(self):
+        folder = self.cache / produce.REFERENCES / ("k" * 64)
+        made = []
+
+        def make(partial):
+            made.append(partial)
+            (partial / "frame.png").write_bytes(b"frame")
+
+        def cut(partial):
+            (partial / "half.png").write_bytes(b"half")
+            raise RuntimeError("cut")
+
+        with self.assertRaisesRegex(RuntimeError, "cut"):
+            produce.keyed_folder(folder, cut)
+        self.assertFalse(folder.exists(), "a cut make is never taken for done")
+        self.assertEqual(produce.keyed_folder(folder, make), folder)
+        self.assertEqual(sorted(path.name for path in folder.iterdir()), [produce.DONE, "frame.png"])
+        self.assertEqual(produce.keyed_folder(folder, make), folder)
+        self.assertEqual(len(made), 1, "a done folder is not made again")
+        self.assertFalse(made[0].exists(), "the partial folder was renamed into place")
+
     def test_publish_takes_a_rows_file_from_its_run(self):
         row = self.produce()
         out = self.root / "upload"

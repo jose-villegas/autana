@@ -43,7 +43,7 @@ re-run the failed job until it lands on the lock's vendor.
 A renderer whose import carves shared meshes has a `.bundle` row; an uncarved
 one has a `.mesh` row. A carved fit's CPU start is `.start.bundle`. The GPU fit
 trains only the rest, copying shapes, LCOL and the
-[MCOP manifest](../render/Baked-Mesh.md#mcop-v1) unchanged; its key names the
+[MCOP manifest](formats/MCOP.md) unchanged; its key names the
 locked start bundle's bytes, and its references use the full source.
 
 The lock's `[[poses]]` rows hold the digest and count of each camera-path sampling.

@@ -2,7 +2,7 @@
 
 The engine's maths library: scalar operations, linear algebra, shapes and
 signal processing. It depends on nothing but the C library and libm, so every
-layer of the firmware, the host tests, the tools and the editor build it. The API
+layer of the firmware, the host tests and the tools build it. The API
 covers what its types imply rather than only what today's callers use, so it may
 carry functions nothing calls yet.
 
@@ -36,7 +36,7 @@ reciprocal-square-root seeds by default; the QEMU defaults disable it.
 | Build | How it gets math |
 |---|---|
 | Firmware (ESP-IDF) | `launcher/packages/` is in `EXTRA_COMPONENT_DIRS`; a component says `REQUIRES math` |
-| Plain CMake (the editor) | `add_subdirectory()` of this folder, then link the `math` target |
+| Plain CMake | `add_subdirectory()` of this folder, then link the `math` target |
 | Host scripts (run_tests.sh, render harness, reports) | `launcher/tools/build/packages.sh`: `package_includes`, `package_sources`, `package_suites` |
 | Standalone tests | `cmake -S launcher/packages/math -B build/math && cmake --build build/math && ctest --test-dir build/math --output-on-failure` |
 | Python tools | `launcher/tools/build/packages.py`: `include_roots()` |

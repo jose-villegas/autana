@@ -57,3 +57,15 @@ class SoundTests(unittest.TestCase):
             with self.subTest(result=result), patch.object(autana, 'send', return_value=result):
                 with contextlib.redirect_stderr(io.StringIO()):
                     self.assertNotEqual(0, autana.sound(['stats']))
+
+
+class MicWriteTests(unittest.TestCase):
+    def test_scheduled_writes_forwarded(self):
+        with patch.object(autana, 'refused_as_busy', return_value=False), \
+             patch.object(autana, 'device_command', return_value=['device', 'mic-record']), \
+             patch.object(autana, 'call_device', return_value=0) as call:
+            self.assertEqual(0, autana.mic(['record', '3000', '--settle', '500', '--at', '1000', '0x32', '40',
+                                         '--at', '2000', '0x32', '0', '-o', 'take.wav', '--json']))
+        words = call.call_args.args[0]
+        self.assertEqual(words[words.index('--at'):],
+                         ['--at', '1000', '50', '40', '--at', '2000', '50', '0', '--json'])

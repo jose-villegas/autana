@@ -243,6 +243,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     float silence_db = 0;
     float tone_db = 0;
     audio_loopback_result_t loopback = {0};
+    audio_loopback_result_t silence = {0};
     sound_voice_t voice = SOUND_VOICE_NULL;
     tone_shake_buffer_t* fifo = tone_shake_open();
     imu_vibration_t silence_shake = {0};
@@ -252,7 +253,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     bool ok = opened && audio_codec_dac_feedback(false)
               && (!args->internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
               && (!args->pulse_ms || !fifo || pulse)
-              && tone_capture_window(args, &silence_db, NULL, fifo, pulse, &silence_shake)
+              && tone_capture_window(args, &silence_db, &silence, fifo, pulse, &silence_shake)
               && console_tone_start(&voice, args->hz, args->pulse_ms, args->volume_pct)
               && tone_capture_window(args, &tone_db, &loopback, fifo, pulse, &tone_shake);
     memory_free(pulse);
@@ -260,6 +261,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     const unsigned imu_gaps = fifo ? fifo->gaps : 0;
     const char* shake_reason = fifo ? fifo->reason : TONE_SHAKE_UNAVAILABLE;
     ok = tone_capture_close(fifo, held) && ok;
+    loopback.noise_dbfs = silence.noise_dbfs;
     const bool heard = tone_db - silence_db >= AUDIO_LOOPBACK_HEARD_MARGIN_DB;
     if (!ok) {
         return opened ? "loopback failed" : "codec open failed";

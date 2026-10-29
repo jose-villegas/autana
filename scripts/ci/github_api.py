@@ -1,5 +1,5 @@
 """Repository REST requests and complete paged listings for CI jobs, over urllib so
-no runner needs the GitHub CLI. GETs use http_get retries. Reads GH_TOKEN and GITHUB_REPOSITORY."""
+no runner needs the GitHub CLI. GETs and writes use http_get retries. Reads GH_TOKEN and GITHUB_REPOSITORY."""
 import json
 import os
 from pathlib import Path
@@ -32,11 +32,8 @@ def call(method, path, body=None, *, raw=False, token=None, repository=None):
         data=None if body is None else json.dumps(body).encode(),
         headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
     opener = urllib.request.build_opener(_ArtifactRedirectHandler()) if raw else None
-    if method == 'GET':
-        data = http_get.get(request, timeout=REQUEST_TIMEOUT_SECONDS, opener=opener)
-    else:
-        with (opener.open if opener else urllib.request.urlopen)(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            data = response.read()
+    fetch = http_get.get if method == 'GET' else http_get.send
+    data = fetch(request, timeout=REQUEST_TIMEOUT_SECONDS, opener=opener)
     return data if raw else json.loads(data)
 
 

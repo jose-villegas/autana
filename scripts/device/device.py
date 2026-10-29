@@ -1171,6 +1171,8 @@ def layout_flags(args):
     flags = ["--layout-seed", str(seed)] if seed else []
     if getattr(args, "hot_tunables", False):
         flags.append("--hot-tunables")
+    if getattr(args, "frame_laps", False):
+        flags.append("--frame-laps")
     return flags
 
 
@@ -1946,6 +1948,16 @@ def screenshot(args, store, board):
     return 0
 
 
+def mic_record(args, store, board):
+    import mic as mic_tool
+    with HeldLock(store, board, args.owner, "mic record", args.wait):
+        with open_when_free() as connection:
+            pcm, state = mic_tool.read_mic(connection, args.ms, args.settle, at=args.at)
+    path = mic_tool.write_take(args.out, pcm, state)
+    print(json.dumps(state) if args.json else f"wrote {path} and {path.with_suffix('.json')}")
+    return 0
+
+
 def touch_point(x, y):
     """The panel-frame point TAP, PRESS and DRAG take for pixel (x, y) of
     the default screenshot; ValueError outside that screenshot. The default
@@ -2212,6 +2224,8 @@ def main(argv=None):
                               help="build with live hot-path tunables")
     flash_parser.add_argument("--perf-scope", action="store_true",
                               help="with --variant diag: build the perf-scoped image")
+    flash_parser.add_argument("--frame-laps", action="store_true",
+                              help="with --perf-scope: time the phases inside the frame stages")
     flash_parser.add_argument("--layout-seed", type=int, default=0,
                               help="pad the layout by this seed (0 is the plain build)")
     suite = subparsers.add_parser("run-suite")
@@ -2286,6 +2300,12 @@ def main(argv=None):
     screenshot_view = screenshot_parser.add_mutually_exclusive_group()
     screenshot_view.add_argument("--as-shown", action="store_true")
     screenshot_view.add_argument("--framebuffer", action="store_true")
+    mic_parser = subparsers.add_parser("mic-record", help="record microphone PCM and state")
+    mic_parser.add_argument("ms", type=int)
+    mic_parser.add_argument("--settle", type=int)
+    mic_parser.add_argument("--at", nargs=3, action="append", type=lambda word: int(word, 0), default=[])
+    mic_parser.add_argument("--out", required=True)
+    mic_parser.add_argument("--json", action="store_true")
     batch_parser = subparsers.add_parser(
         "batch", help="capture suites N times under one lock, write one summary")
     batch_parser.set_defaults(auto_pick=lambda args: args.flash)
@@ -2477,7 +2497,7 @@ def main(argv=None):
         else:
             # Looked up per call, so a test's patch of one of them is the one run.
             board_commands = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
-                              "reset": reset_device, "batch": batch, "screenshot": screenshot}
+                              "reset": reset_device, "batch": batch, "screenshot": screenshot, "mic-record": mic_record}
             result = board_commands.get(args.command, listen)(args, store, board)
             return result
         result = 0
