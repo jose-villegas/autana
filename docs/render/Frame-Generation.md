@@ -7,8 +7,8 @@ next update<sup>[[97]](../Citations.md#mark-1997)</sup>. The warp
 extrapolates rather than interpolates, so it adds no frame of
 latency<sup>[[98]](../Citations.md#meta-asw-2016)</sup>.
 
-The view is the camera's exact pose at that update, so a still scene needs no
-per-pixel motion vectors. `render/framegen/` holds the warp, and the render
+The view is the camera's exact pose at that update, so a scene whose objects
+do not move on their own needs no per-pixel motion vectors. `render/framegen/` holds the warp, and the render
 context runs it: `render_context_set_frame_generation()` turns it on.
 
 ```mermaid
@@ -101,7 +101,8 @@ scored beside it.
 </details>
 
 - The warp beats repeating the frame on every scene and size: the mean dE
-  drops by a quarter to a half, and the worst frames' dE by a third to two thirds.
+  drops by a quarter to a half, and the worst frames' dE (p95) by a quarter
+  to over two thirds, most at two steps ahead.
 - One step ahead leaves 2-3% holes, most of them pinholes; two steps ahead
   doubles both.
 - Smaller render heights keep the gain; the warp's error grows a little with
@@ -152,10 +153,10 @@ the frame's own upscale into the half picture; the send overlaps it.
 | sponza-fitted-full | 184x112 | 39.0 ms | 5.1 ms | 1.9 ms | 1.8 ms | 8.8 ms |
 <!-- /generated: framegen-board -->
 
-- A generated frame costs two fifths of a drawn one at 184x224 and a quarter at
-  184x112.
-- The fill copies the generated picture back over the drawn one so compose
-  reads it, which is most of its cost.
+- A generated frame costs a third to two fifths of a drawn one at 184x224
+  and about a quarter at 184x112.
+- The fill writes the whole generated picture back over the drawn one, colour
+  and depth, so compose reads it as a drawn frame; the holes alone are a few percent of the pixels.
 
 Where the warp's time goes. The same warp is timed with every splat off screen
 (the clear, the maths and the source reads), to the drawn view itself (adding
@@ -176,8 +177,8 @@ every write, in order), and to the next view (adding their scatter):
 
 The three warps cost the same: writing and scattering the splats is free next
 to the maths. The warp is bound by its arithmetic, a reciprocal and about ten
-multiply-adds per pixel, so two pixels a step, letting their dependent chains
-overlap, cut it by a tenth.
+multiply-adds per pixel, so it takes two pixels a step and lets their
+dependent chains overlap.
 
 ## With dynamic resolution
 
@@ -196,7 +197,7 @@ per drawn one:
 
 ```mermaid
 flowchart LR
-    G["Generated frame<br/>costs g"] -->|"g"| P["Policy prices the next<br/>drawn frame against<br/>N B - (N - 1) g"]
+    G["Generated frame<br/>costs g"] -->|"g"| P["Policy prices the next<br/>drawn frame against<br/>N B - (N - 1) g, never below B"]
     P --> S["Drawn frame at the<br/>step that fits"]
     S --> G2["Generated frame"]
 ```
@@ -234,7 +235,8 @@ Each scene's path played in real time on the board, per mode:
 - A tighter budget turns the saving into rate: Bistro shows nearly 40 fps at
   the floor of the ladder.
 - The rate gains less than the cost table suggests: every update, drawn or
-  generated, also pays the frame's own work outside the render, about 10 ms.
+  generated, also pays the frame's own work outside the render, a few
+  milliseconds.
 
 ## Pacing
 
@@ -244,14 +246,34 @@ generated frame's. Each frame's view is right for when it is shown, so motion
 stays correct, but the intervals are uneven.
 
 Even intervals need the generated frame presented halfway through the next
-drawn frame, while both cores draw it. That is a slot in the frame loop, not
-in the render context, and it is not built.
+drawn frame, while both cores draw it: a slot in the frame loop, not in the
+render context, and the frame loop has no such slot.
 
 ## For an app
 
 Frame generation and the budget are per render context, set by whoever owns
 it: an app for its scenes, a player setting, or later a default the frame
 loop applies.
+
+<!-- generated: render-framegen-example check: python launcher/tools/gen/examples_doc.py --check -->
+```c
+/* Frame generation with dynamic resolution: every second frame is warped from
+ * the one drawn before it, and each drawn frame is priced for the pair. */
+#include "render/context/render_context.h"
+
+static void
+framegen_example(render_context_t* context, const resolution_config_t* ladder) {
+    render_context_set_dynamic_resolution(context, ladder, NULL, 0); /* ladder->budget_us: per shown frame */
+    render_context_set_frame_generation(context, true);
+}
+
+/* After a frame: whether it was generated rather than drawn. */
+static bool
+framegen_example_generated(const render_context_t* context) {
+    return render_context_frame(context).generated;
+}
+```
+<!-- /generated: render-framegen-example -->
 
 | Call | Use |
 |---|---|
