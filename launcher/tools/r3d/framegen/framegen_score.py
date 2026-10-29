@@ -39,7 +39,7 @@ from r3d.poses import sample_camera_rows  # noqa: E402
 # The panel the raster stretches to, portrait (the dynres ladder's shape).
 PANEL = (PANEL_WIDTH, PANEL_HEIGHT)
 # One displayed frame: the render lab's frame target.
-DISPLAY_STEP_MS = read_define(TOOLS.parent / "main" / "apps" / "render_lab" / "render_lab_dynres.h",
+DISPLAY_STEP_MS = read_define(TOOLS.parent / "main/apps/render_lab/render_lab_dynres.h",  # magic: a header path, not a name
                               "RENDER_LAB_FRAME_TARGET_MS")
 # Display steps a generated frame looks ahead of the frame it warps: one for
 # 1 rendered + 1 generated, two for the second of 1 + 2.
