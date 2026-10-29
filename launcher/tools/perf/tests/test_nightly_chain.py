@@ -821,9 +821,11 @@ class NightlyTests(unittest.TestCase):
                                from_sha=None, max_steps=None, selftest_board=None)
         listing = json.dumps({"boards": [dict(board="A308", port="COM5", host="legion", name="Legion",
                                               gated="person at the desk")], "unreachable": []})
+        real = subprocess.check_output
         with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"), \
                 patch.object(chain, "local_boards", return_value=[dict(board="2124", port="COM4")]), \
-                patch.object(chain.subprocess, "check_output", return_value=listing), \
+                patch.object(chain.subprocess, "check_output",
+                             side_effect=lambda command, **o: listing if command[1:] == ["boards"] else real(command, **o)), \
                 patch.object(chain, "gpu_on_host", return_value=True), \
                 patch.object(chain, "wait_idle"), \
                 patch("builtins.print") as said:

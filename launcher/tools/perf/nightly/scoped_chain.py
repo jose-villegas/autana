@@ -539,18 +539,20 @@ def plan(args, clock=None, request=None):
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
                 summary.write(GPU_NOT_ON_HOST + "\n")
     now = clock.now()
-    if args.boards:
-        remote = {board["board"]: board for board in remote_boards()[0]}
-    else:
+    discovered = not args.boards
+    if discovered:
         listing = board_listing()["boards"]
         args.boards = [short_id(board["board"]) for board in listing]
         remote = {board["board"]: board for board in listing if board.get("host")}
+    else:
+        remote = {board["board"]: board for board in remote_boards()[0]}
     # A host whose person is present refuses other machines' jobs; its boards sit this night out.
     for board in [board for board in remote.values() if board.get("gated")]:
         print(f"::notice::board {board['board']} on {board['name']} skipped: {board['gated']}", file=sys.stderr)
         args.boards = [name for name in args.boards if short_id(name) != board["board"]]
     if not args.boards:
         raise SystemExit("plan: no board is plugged in")
+    if discovered:
         # The self-test runs on one board of this machine, whichever is plugged in first.
         args.selftest_board = args.selftest_board or next((board for board in args.boards if board not in remote), None)
     tip = git(args.repo, "rev-parse", args.tip + "^{commit}")
