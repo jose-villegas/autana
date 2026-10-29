@@ -78,6 +78,13 @@ rgb565be_blend(rgb565be_t a, rgb565be_t b, unsigned share) {
     return rgb565be_unspread(sum / RGB565_SCALE_UNIT);
 }
 
+/* Three quarters of spread colour `mine` and one of `other`, rounded: the same
+ * as rgb565be_blend() at a quarter share, with shifts for multiplies. */
+static inline uint32_t
+rgb565_spread_quarter(uint32_t mine, uint32_t other) {
+    return ((mine + (mine << 1) + other + (RGB565_SPREAD_ONES << 1)) >> 2) & RGB565_SPREAD_CHANNELS;
+}
+
 /* Both halves use 32-bit multiplies on the 32-bit CPU. */
 static inline uint32_t
 rgb565be_pair_scale(uint32_t pair, unsigned keep) {
