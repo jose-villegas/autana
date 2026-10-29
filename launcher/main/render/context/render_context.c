@@ -106,6 +106,10 @@ render_context_forget(render_context_t* c) {
 
 void
 render_context_set_frame_generation(render_context_t* c, bool on) {
+    /* A caller may set it every frame: only a change forgets the generated cost. */
+    if (on == c->generating) {
+        return;
+    }
     c->generating = on;
     c->generated_us = 0;
     if (!on) {
