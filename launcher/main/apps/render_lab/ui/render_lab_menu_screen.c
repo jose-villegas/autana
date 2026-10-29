@@ -2,14 +2,14 @@
 
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
-#include "core/tune.h"
 #include "ui/ui.h"
 
-#define MENU_BTN_W    300
+#define MENU_BTN_W        300
 
 /* Each row's caption, and the dropdown identity under it. */
-#define SCENE_LABEL   "SCENE:"
-#define VARIANT_LABEL "VARIANT:"
+#define SCENE_LABEL       "SCENE:"
+#define VARIANT_LABEL     "VARIANT:"
+#define DYNAMIC_RES_LABEL "DYNAMIC RES"
 
 /* The hint is a footer window across the canvas bottom, outside the scrolled
  * rows, so a dropdown list opened over them leaves it showing unless the list
@@ -61,8 +61,6 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     if (state->controls != NULL) {
         state->controls(MENU_BTN_W);
     }
-#if TUNE_ENABLED
-#define DYNAMIC_RES_LABEL "DYNAMIC RES"
     int count = 0;
     const char* const* names = render_lab_small_fill_names(&count);
     int fill = render_lab_small_fill_selected();
@@ -76,7 +74,6 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     if (ui_toggle(ui_next(), DYNAMIC_RES_LABEL, &dynamic)) {
         (void)render_lab_dynres_set_on(dynamic);
     }
-#endif
 
     draw_hint();
 
