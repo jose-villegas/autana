@@ -190,20 +190,8 @@ test_real_time_frame_profile(void) {
     suite_clear_test_cleanup();
 }
 
-/* What the steps capture pins: the ladder, then sizes below its recovery
- * floor at whole upscale ratios, only for the goal scene, Bistro, so a
- * replay can show what a longer ladder would buy it. */
-static const resolution_step_t below_floor[] = {{184, 112}, {122, 149}, {92, 112}};
-#define BELOW_FLOOR_COUNT ((int)(sizeof below_floor / sizeof below_floor[0]))
-
-/* The capture size the next steps test pins: a ladder step, then below_floor. */
+/* The ladder step the next steps test pins. */
 static int ladder_step;
-
-static resolution_step_t
-pinned_size(void) {
-    return ladder_step < RENDER_LAB_LADDER_STEPS ? render_lab_ladder[ladder_step]
-                                                 : below_floor[ladder_step - RENDER_LAB_LADDER_STEPS];
-}
 
 /* One frame of a pinned step: the whole frame, the scaled part's draw and
  * upscale as the context timed them, and the triangles culling kept. */
@@ -242,7 +230,7 @@ test_dynres_steps(void) {
     step_frame_t* records = memory_alloc(sizeof(*records) * (size_t)frames, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(records);
     /* One step and no recovery: the stepped policy holds it and times it. */
-    const resolution_step_t size = pinned_size();
+    const resolution_step_t size = render_lab_ladder[ladder_step];
     const resolution_config_t pinned = resolution_config(&size, 1, 1, RENDER_LAB_BUDGET_MAX_MS * MATH_US_PER_MS);
     render_context_set_dynamic_resolution(render_context_main(), &pinned, NULL, 0);
     (void)render_lab_test_frame_dt(0, false, NULL); /* warm-up, not sampled */
@@ -275,17 +263,14 @@ run_render_lab_frame_profile_suite(void) {
 
 SUITE_REGISTER(run_render_lab_frame_profile_suite);
 
-/* On request: every scenario at every ladder step, portrait only, Bistro
- * also below the floor. */
+/* On request: every scenario at every ladder step, portrait only. */
 void
 run_render_lab_dynres_steps_suite(void) {
 #ifdef DEVICE_BUILD
     quarter_index = 0;
     for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
         scenario = &profile_scenarios[i];
-        const bool goal = scenario->scene == &scene_bistro[SCENE_BAKED_FITTED_FULL];
-        const int sizes = RENDER_LAB_LADDER_STEPS + (goal ? BELOW_FLOOR_COUNT : 0);
-        for (ladder_step = 0; ladder_step < sizes; ladder_step++) {
+        for (ladder_step = 0; ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
             RUN_TEST(test_dynres_steps);
         }
     }
