@@ -464,12 +464,19 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
     r3d_span_target_t writing = *target;
     writing.writers = writers;
+    bool per_triangle = false;
     for (int k = 0; k < target->writer_count; k++) {
         writers[k] = target->writers[k];
+        per_triangle = per_triangle || writers[k].step == R3D_SPAN_STEP_TRIANGLE;
     }
     for (int i = 0; i < count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
+            continue;
+        }
+        if (!per_triangle) {
+            retag(writers, target->writers, target->writer_count, clusters[i], 0U);
+            draw_cluster(mesh, lens, c, cs, &writing, true, work);
             continue;
         }
         /* One triangle at a time, so a writer stepping per triangle is
