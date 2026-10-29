@@ -249,8 +249,7 @@ setup(int quarter) {
 
 static void
 dump_raster(int index) {
-    const render_context_t* c = render_context_main();
-    const render_context_frame_t f = render_context_frame(c);
+    const raster_t* raster = &render_context_main()->raster;
     char path[DUMP_PATH_MAX];
     (void)snprintf(path, sizeof path, "%s/%04d.raw", dump_dir, index);
     FILE* out = fopen(path, "wb");
@@ -258,12 +257,16 @@ dump_raster(int index) {
         (void)fprintf(stderr, "render_lab_render_host: cannot write %s\n", path);
         exit(EXIT_FAILURE);
     }
-    const int32_t size[2] = {f.width, f.height};
-    const size_t pixels = (size_t)f.width * (size_t)f.height;
-    (void)fwrite(size, sizeof size[0], 2, out);
-    (void)fwrite(raster_color(&c->raster), sizeof(gfx_color_t), pixels, out);
-    (void)fwrite(raster_depth(&c->raster), sizeof(uint16_t), pixels, out);
-    (void)fclose(out);
+    /* The raster's own size: the one its colour and depth rows are laid out at. */
+    const int32_t size[2] = {raster->width, raster->height};
+    const size_t pixels = (size_t)raster->width * (size_t)raster->height;
+    const bool written = fwrite(size, sizeof size[0], 2, out) == 2
+                         && fwrite(raster_color(raster), sizeof(gfx_color_t), pixels, out) == pixels
+                         && fwrite(raster_depth(raster), sizeof(uint16_t), pixels, out) == pixels;
+    if (fclose(out) != 0 || !written) {
+        (void)fprintf(stderr, "render_lab_render_host: cannot write %s\n", path);
+        exit(EXIT_FAILURE);
+    }
 }
 
 static void

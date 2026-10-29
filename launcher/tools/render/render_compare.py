@@ -847,26 +847,42 @@ def write_reference_bake_sheet(reference_dir, bakes, scale, frame_indices, out, 
     return lines
 
 
-class ReferenceVideoWriter:
-    """Packs reference_sheet's one-frame sheets into an mp4 through ffmpeg."""
+class VideoWriter:
+    """Packs RGB pictures of one size into an H.264 mp4 through ffmpeg."""
 
-    def __init__(self, out, label, fps=None):
-        self.out, self.label, self.fps, self.process = out, label, fps, None
+    def __init__(self, out, fps):
+        self.out, self.fps, self.process = out, fps, None
 
-    def add(self, fps, index, render, reference):
-        ffmpeg = shutil.which("ffmpeg")
-        if ffmpeg is None:
-            raise RuntimeError("ffmpeg not found; --reference-mp4 needs it to pack the frames")
-        picture = reference_sheet([("frame %d" % index, [render], reference)], [self.label], tile=1.0)
+    def add(self, picture):
         if self.process is None:
-            self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps or fps, self.out), stdin=subprocess.PIPE)
-        self.process.stdin.write(picture.tobytes())
+            ffmpeg = shutil.which("ffmpeg")
+            if ffmpeg is None:
+                raise RuntimeError("ffmpeg not found; writing %s needs it to pack the frames" % self.out)
+            self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps, self.out), stdin=subprocess.PIPE)
+        self.process.stdin.write(picture.convert("RGB").tobytes())
 
     def close(self):
         if self.process is not None:
             self.process.stdin.close()
             if self.process.wait() != 0:
                 raise RuntimeError("ffmpeg failed writing %s" % self.out)
+
+
+class ReferenceVideoWriter:
+    """Packs reference_sheet's one-frame sheets into an mp4 through ffmpeg."""
+
+    def __init__(self, out, label, fps=None):
+        self.out, self.label, self.fps, self.video = out, label, fps, None
+
+    def add(self, fps, index, render, reference):
+        picture = reference_sheet([("frame %d" % index, [render], reference)], [self.label], tile=1.0)
+        if self.video is None:
+            self.video = VideoWriter(self.out, self.fps or fps)
+        self.video.add(picture)
+
+    def close(self):
+        if self.video is not None:
+            self.video.close()
 
 
 def main():
