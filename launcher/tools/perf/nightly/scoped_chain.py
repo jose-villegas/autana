@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -45,6 +46,11 @@ SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
 BUILD_TIMEOUT_SECONDS = 3600
 LANE_HANG_FACTOR = 2
+# A command that reaches the boards of other machines; unset, the night uses this machine's only.
+# `<command> boards` prints {"boards": [{"board", "port", "host"}, ...]}; `<command> run HOST BOARD
+# FOLDER -- SCRIPT ARGS...` runs this checkout's SCRIPT on HOST's BOARD under one device lock, with
+# FOLDER copied there first and back after, and paths in ARGS naming their copies there.
+REMOTE_LANE_ENV = "REMOTE_LANE_COMMAND"
 
 
 @dataclass
@@ -332,12 +338,39 @@ def plugged_boards(autana=None):
     return [short_id(board["board"]) for board in json.loads(listing)["boards"] if board["port"]]
 
 
-def plan_lane(args, selection, board, lane, lanes, selftest=False):
+def remote_command():
+    return shlex.split(os.environ.get(REMOTE_LANE_ENV, ""))
+
+
+def remote_boards():
+    """The other machines' plugged boards from the remote-lane command: short id, port and host."""
+    if not remote_command():
+        return []
+    try:
+        listing = subprocess.check_output([*remote_command(), "boards"], text=True)
+        return [dict(board=short_id(board["board"]), port=board["port"], host=board["host"])
+                for board in json.loads(listing)["boards"] if board["port"]]
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
+        # An unreachable host costs its lanes, not the night.
+        print(f"remote boards: {error}", file=sys.stderr)
+        return []
+
+
+def board_listing():
+    """Every board the night can reach: this machine's `autana devices` entries, then the remote ones."""
+    listing = json.loads(subprocess.check_output(autana_command("devices", "--json"), text=True))
+    local = [board for board in listing["boards"] if board["port"]]
+    seen = {short_id(board["board"]) for board in local}
+    return dict(boards=local + [board for board in remote_boards() if board["board"] not in seen])
+
+
+def plan_lane(args, selection, board, lane, lanes, selftest=False, host=None):
     previous = read_last_night(args.data, board)
     steps = select_steps(args.repo, selection["tip"], previous, lane, lanes,
                          selection.get("from_sha"), selection.get("max_steps"))
-    return dict(lane=f"{lane}/{lanes}", previous=previous, steps=[asdict(step) for step in steps],
-                estimate=len(steps) * FIRST_STEP_SECONDS + (SELFTEST_ALLOWANCE_SECONDS if selftest else 0))
+    planned = dict(lane=f"{lane}/{lanes}", previous=previous, steps=[asdict(step) for step in steps],
+                   estimate=len(steps) * FIRST_STEP_SECONDS + (SELFTEST_ALLOWANCE_SECONDS if selftest else 0))
+    return dict(planned, host=host) if host else planned
 
 
 def run_night(args, clock=None, launch=None):
@@ -348,6 +381,8 @@ def run_night(args, clock=None, launch=None):
     hung = set()
 
     def start(board, lane, lane_plan):
+        if lane.get("host"):
+            return start_remote(board, lane, lane_plan)
         wait = NIGHT_STEP_HANG_SECONDS
         command = autana_command("--board", board, "--wait", str(wait), "lock", "run",
                                  "--estimate", str(lane["estimate"]), "--", sys.executable,
@@ -368,6 +403,21 @@ def run_night(args, clock=None, launch=None):
                 env["BOARD_CI_LOG"] = subprocess.check_output(
                     [cygpath, "-u", env["BOARD_CI_LOG"]], text=True).strip()
             command.extend(["--selftest", shell, str(args.repo.resolve() / "scripts/ci/board-steps.sh")])
+        process = launch(command, cwd=args.repo, env=env)
+        processes.append((process, clock.now(), lane["estimate"], board))
+
+    def start_remote(board, lane, lane_plan):
+        # The lane's folder travels: its plan in, its data and captures back.
+        folder = args.out.resolve() / board
+        write_json(folder / "lane.json", dict(json.loads(lane_plan.read_text(encoding="utf-8")), lanes={board: lane}))
+        script = args.repo.resolve() / Path(__file__).resolve().relative_to(REPO)
+        command = [*remote_command(), "run", lane["host"], board, str(folder), "--", str(script), "run",
+                   "--plan", str(folder / "lane.json"), "--repo", str(args.repo.resolve()),
+                   "--data", str(folder / "data"), "--out", str(folder), "--board", board, "--lane", lane["lane"]]
+        for suite in args.suite:
+            command.extend(["--suite", *suite])
+        env = dict(os.environ)
+        env.pop("BOARD_CI_LOG", None)
         process = launch(command, cwd=args.repo, env=env)
         processes.append((process, clock.now(), lane["estimate"], board))
 
@@ -423,6 +473,10 @@ def run_night(args, clock=None, launch=None):
                     close_process_tree(pending.pop(0))
                 except KeyboardInterrupt:
                     interrupted = True
+            for board, lane in planned["lanes"].items():
+                returned = args.out.resolve() / board / "data" / "scoped"
+                if lane.get("host") and returned.is_dir():
+                    shutil.copytree(returned, args.data / "scoped", dirs_exist_ok=True)
         finally:
             signal.signal(signal.SIGTERM, previous_handler)
     if interrupted:
@@ -441,12 +495,15 @@ def plan(args, clock=None, request=None):
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
                 summary.write(GPU_NOT_ON_HOST + "\n")
     now = clock.now()
+    remote = {board["board"]: board["host"] for board in remote_boards()}
     if not args.boards:
-        args.boards = plugged_boards()
+        local = plugged_boards()
+        args.boards = local + [board for board in remote if board not in local]
         if not args.boards:
             raise SystemExit("plan: no board is plugged in")
-        # The self-test runs on one board, whichever is plugged in first.
-        args.selftest_board = args.selftest_board or args.boards[0]
+        # The self-test runs on one board of this machine, whichever is plugged in first.
+        args.selftest_board = args.selftest_board or next(iter(local), None)
+        remote = {board: host for board, host in remote.items() if board not in local}
     tip = git(args.repo, "rev-parse", args.tip + "^{commit}")
     planned = dict(tip=tip, night=marker.date().isoformat(), started=now.isoformat(),
                    marker=args.marker, lanes={}, from_sha=args.from_sha, max_steps=args.max_steps)
@@ -454,7 +511,7 @@ def plan(args, clock=None, request=None):
     for lane, board in enumerate(args.boards):
         board = short_id(board)
         lanes[board] = plan_lane(args, planned, board, lane, len(args.boards),
-                                 args.selftest_board and board == short_id(args.selftest_board))
+                                 args.selftest_board and board == short_id(args.selftest_board), remote.get(board))
     write_json(Path(args.out), planned)
     # For the workflow's later steps, which run one lane per board.
     print("SCOPED_BOARDS=" + " ".join(lanes))
@@ -503,6 +560,7 @@ def lane_of(plan, board):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("boards", help="every board the night can reach, as `autana devices --json` lists them")
     timing = commands.add_parser("timeline")
     timing.add_argument("--plan", type=Path, required=True)
     timing.add_argument("--data", type=Path, required=True)
@@ -530,6 +588,9 @@ def main():
         command.add_argument("--max-steps", type=int)
     args = parser.parse_args()
     os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
+    if args.command == "boards":
+        print(json.dumps(board_listing()))
+        return 0
     if args.command == "timeline":
         timeline(args)
         return 0

@@ -13,7 +13,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 import yaml
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 PERF = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PERF))
@@ -771,6 +771,80 @@ class NightlyTests(unittest.TestCase):
                 self.assertEqual(clock.sleeps, [])
                 self.assertEqual(summary.read_text(), schedule.GPU_NOT_ON_HOST + "\n")
                 self.assertTrue(json.loads(args.out.read_text())["lanes"])
+
+    def remote_listing(self, *boards):
+        listing = json.dumps({"boards": [dict(board=board, port="COM5", host=host) for board, host in boards]})
+        original = subprocess.check_output
+
+        def answer(command, **options):
+            if command[:2] == ["remote-lane", "boards"]:
+                return listing
+            return original(command, **options)
+        return patch.object(chain.subprocess, "check_output", side_effect=answer)
+
+    def test_plan_spans_remote_boards_and_keeps_the_selftest_local(self):
+        self.plugged_patch.stop()
+        self.addCleanup(self.plugged_patch.start)
+        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
+                               out=self.root / "plan.json", marker=self.clock.now().isoformat(),
+                               from_sha=None, max_steps=None, selftest_board=None)
+        # A host that sees this machine's board too (a loop back) does not take its lane.
+        with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"),                 patch.object(chain, "plugged_boards", return_value=["2124"]),                 self.remote_listing(("44:BD:8D:78:20:E8", "book2"), ("2124", "gpu-runner")),                 patch.object(chain, "gpu_on_host", return_value=True),                 patch.object(chain, "wait_idle"),                 patch("builtins.print") as said:
+            chain.plan(args, self.clock)
+        lanes = json.loads(args.out.read_text())["lanes"]
+        self.assertEqual({board: (lane["lane"], lane.get("host")) for board, lane in lanes.items()},
+                         {"2124": ("0/2", None), "20E8": ("1/2", "book2")})
+        self.assertIn(call("SCOPED_BOARDS=2124 20E8"), said.call_args_list)
+        self.assertIn(call("SELFTEST_BOARD=2124"), said.call_args_list)
+
+    def test_unreachable_remote_hosts_leave_this_machines_lanes(self):
+        failure = subprocess.CalledProcessError(1, ["remote-lane", "boards"])
+        with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"),                 patch.object(chain.subprocess, "check_output", side_effect=failure):
+            self.assertEqual(chain.remote_boards(), [])
+        with patch.dict(os.environ, REMOTE_LANE_COMMAND=""):
+            self.assertEqual(chain.remote_boards(), [])
+
+    def test_boards_lists_this_machines_and_remote_boards_once(self):
+        local = json.dumps({"boards": [dict(board="44:BD:8D:78:21:24", port="COM4"), dict(board="OLD1", port=None)]})
+        with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"),                 patch.object(chain, "autana_command", return_value=["autana", "devices", "--json"]),                 self.remote_listing(("20E8", "book2"), ("2124", "gpu-runner")) as listing:
+            original = listing.side_effect
+            listing.side_effect = lambda command, **o: local if command[0] == "autana" else original(command, **o)
+            boards = chain.board_listing()["boards"]
+        self.assertEqual([(board["board"], board.get("host")) for board in boards],
+                         [("44:BD:8D:78:21:24", None), ("20E8", "book2")])
+
+    def test_remote_lane_ships_its_folder_and_returns_its_data(self):
+        lane = dict(lane="1/2", previous=None, steps=[], estimate=chain.FIRST_STEP_SECONDS, host="book2")
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
+                                    marker=self.clock.now().isoformat(), lanes={"20E8": lane}))
+        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
+                               suite=[("suite", "-", "table with spaces")])
+        launched = []
+
+        def launch(command, **options):
+            launched.append((command, options))
+            folder = Path(command[4])
+            # What the lane writes on the remote host, as the remote-lane command brings it back.
+            chain.write_json(folder / "data/scoped/20E8/2026-10-18-2230/night.json", dict(board="20E8"))
+            return SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+        with patch.dict(os.environ, REMOTE_LANE_COMMAND="bash remote-lane.sh", SELFTEST_BOARD="20E8",
+                        BOARD_CI_LOG="inherited"),                 patch.object(chain, "plugged_boards", return_value=[]):
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 0)
+        (command, options), = launched
+        folder = self.args.out.resolve() / "20E8"
+        self.assertEqual(command[:7], ["bash", "remote-lane.sh", "run", "book2", "20E8", str(folder), "--"])
+        script = command[7:9]
+        self.assertEqual(script, [str(self.repo.resolve() / "launcher/tools/perf/nightly/scoped_chain.py"), "run"])
+        self.assertEqual(command[command.index("--plan") + 1], str(folder / "lane.json"))
+        self.assertEqual(command[command.index("--data") + 1], str(folder / "data"))
+        self.assertEqual(command[command.index("--out") + 1], str(folder))
+        self.assertEqual(command[command.index("--lane") + 1], "1/2")
+        self.assertEqual(command[command.index("--suite") + 1:], ["suite", "-", "table with spaces"])
+        self.assertNotIn("--selftest", command)
+        self.assertNotIn("BOARD_CI_LOG", options["env"])
+        self.assertEqual(json.loads((folder / "lane.json").read_text())["lanes"], {"20E8": lane})
+        self.assertEqual(lnt.read_last_night(self.args.data, "20E8"), dict(board="20E8"))
 
     def test_selftest_limits_timeout_and_saves_metadata(self):
         self.args.selftest = ["selftest-replay"]
