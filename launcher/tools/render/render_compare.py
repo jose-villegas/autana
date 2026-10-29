@@ -634,6 +634,11 @@ def compose_frame(a, b, clear, gain, label_a, label_b, note=""):
     return Image.fromarray(np.concatenate([_pixels(captioned(p, t)) for p, t in zip(panels, texts)], axis=1).astype(np.uint8))
 
 
+def frame_note(index, dt_ms, stats):
+    """A video frame's label: its index and time, so a frame can be named and rendered again, and how much changed."""
+    return "frame %d  %d ms  changed %.1f%%" % (index, round(index * dt_ms), 100.0 * stats.changed / stats.total)
+
+
 def frame_line(index, dt_ms, stats):
     """One CSV row: frame, time, changed share, mean abs diff, holes per side."""
     return "%d,%d,%.4f,%.4f,%d,%d" % (
@@ -726,8 +731,7 @@ def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b,
             stats = measure(a, b, clear)
             all_stats.append(stats)
             lines.append(frame_line(index, dt_ms, stats))
-            note = "t %.1f s  changed %.1f%%" % (index * dt_ms / 1000.0, 100.0 * stats.changed / stats.total)
-            picture = compose_frame(a, b, clear, gain, label_a, label_b, note)
+            picture = compose_frame(a, b, clear, gain, label_a, label_b, frame_note(index, dt_ms, stats))
             if process is None:
                 command = _ffmpeg_command(ffmpeg, picture.size, fps or fps_a, out)
                 process = subprocess.Popen(command, stdin=subprocess.PIPE)
