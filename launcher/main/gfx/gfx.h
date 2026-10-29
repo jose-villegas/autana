@@ -21,9 +21,9 @@
 _Static_assert(sizeof(gfx_color_t) == 2, "framebuffer pixels must be two bytes");
 
 /* The band ring's compile-time band height (gfx_mode.h, gfx_band.h), a
- * divisor of GFX_HEIGHT (448): 64, 32 or 16. 32 is the default absent a
- * device sweep saying otherwise (docs/plans/Autana-Rendering-Roadmap.md section
- * 8, decision 2); override with -DGFX_BAND_HEIGHT=N to try another. */
+ * divisor of GFX_HEIGHT (448): 64, 32 or 16. The default is 32; see
+ * docs/gfx/Targets-and-Modes.md. Override with -DGFX_BAND_HEIGHT=N to try
+ * another. */
 #ifndef GFX_BAND_HEIGHT
 #if defined(CONFIG_LAUNCHER_GFX_BAND_HEIGHT_16) && CONFIG_LAUNCHER_GFX_BAND_HEIGHT_16
 #define GFX_BAND_HEIGHT 16
@@ -53,7 +53,7 @@ bool gfx_framebuffer_holds(gfx_color_t colour);
 /* A draw writes into the framebuffer, band or replay strip, with its
  * current clip and dirty-marking policy. */
 typedef struct {
-    gfx_target_t target;
+    const gfx_target_t* target;
     recti_t clip;
     bool marks;
 } gfx_surface_t;

@@ -13,6 +13,7 @@
 #include "sound/console/console_tone_reply.h"
 #include "suites.h"
 #include "unity.h"
+#define TEST_NOISE_DBFS  (-70.0F)
 #define TEST_TARGET_HZ   1000u
 #define TEST_DURATION_MS 100u
 
@@ -455,6 +456,7 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_resul
         result->measured_hz = hz;
         result->thd_db = -40.0F;
         result->peak_dbfs = -6.0F;
+        result->noise_dbfs = device.measures % 2 ? TEST_NOISE_DBFS : 0;
     }
     return device.measures != device.melody.fail_measure
            && !((device.measures == 1 && device.failure == TEST_TONE_BASELINE_FAIL)
@@ -477,7 +479,7 @@ audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopb
     device.pulse.onset_us = start;
     *db = device.measures % 2 ? -100 : -12;
     if (result) {
-        *result = (audio_loopback_result_t){.measured_hz = hz};
+        *result = (audio_loopback_result_t){.measured_hz = hz, .noise_dbfs = device.measures % 2 ? TEST_NOISE_DBFS : 0};
     }
     unsigned bursts = 0;
     while (device.pulse.now_us - start < (int64_t)ms * MATH_US_PER_MS && bursts++ < TEST_PULSE_MAX_BURSTS) {
@@ -726,11 +728,12 @@ test_tone_check_measures_shake_per_window(void) {
     char line[CONSOLE_TONE_REPLY_BYTES];
     TEST_ASSERT_NULL(console_tone_check(&args, line));
     TEST_ASSERT_EQUAL_UINT(IMU_ODR_CODE, device.odr_code);
-    char expected[CONSOLE_TONE_REPLY_BYTES];
+    char expected[sizeof(", shake  mg rms  mg peak (silence  mg rms)") + (3u * CONSOLE_TONE_DB_BYTES)];
     const double mg = IMU_VIBRATION_MG_PER_G;
     snprintf(expected, sizeof expected, ", shake %.2f mg rms %.2f mg peak (silence %.2f mg rms)", 2 * mg, 2 * mg, mg);
     TEST_ASSERT_NOT_NULL(strstr(line, expected));
     TEST_ASSERT_NOT_NULL(strstr(line, "imu_gaps 2"));
+    TEST_ASSERT_NOT_NULL(strstr(line, "noise -70.0 dBFS"));
     TEST_ASSERT_NULL(strstr(line, "shake_reason"));
 }
 
@@ -773,6 +776,7 @@ test_tone_pulse_selects_onset_to_end_and_accepts_ended_voice(void) {
     const char* error = console_tone_check(&args, line);
     TEST_ASSERT_NULL(error);
     TEST_ASSERT_NOT_NULL(strstr(line, "pulse_ms 60"));
+    TEST_ASSERT_NOT_NULL(strstr(line, "noise -70.0 dBFS"));
     const int samples = TEST_PULSE_MS * MATH_US_PER_MS / IMU_BUZZ_SAMPLE_US;
     const double amplitude = 2 * IMU_VIBRATION_MG_PER_G;
     const double mean = samples % 2 ? amplitude / samples : 0;
@@ -941,7 +945,8 @@ test_tone_reply_frequency(void) {
     char expected[CONSOLE_TONE_MEASURED_BYTES];
     snprintf(expected, sizeof expected, "measured %.2f Hz", (double)TEST_TARGET_HZ);
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
-        const audio_loopback_result_t result = {.measured_hz = values[i], .thd_db = values[i], .peak_dbfs = -6};
+        const audio_loopback_result_t result = {
+            .measured_hz = values[i], .thd_db = values[i], .peak_dbfs = -6, .noise_dbfs = TEST_NOISE_DBFS};
         TEST_ASSERT_TRUE(console_tone_reply(line, sizeof line, &args, true, -12, -100, &result, 0));
         TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? "thd 1000.0 dB" : "thd n/a dB"));
         TEST_ASSERT_NOT_NULL(strstr(line, "peak -6.0 dBFS"));

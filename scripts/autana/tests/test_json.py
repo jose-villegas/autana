@@ -119,7 +119,7 @@ class JsonReadTests(unittest.TestCase):
         for heard in (True, False):
             with self.subTest(heard=heard):
                 reply = f"TONE {'heard' if heard else 'not heard'} 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
-                expected = {"imu_gaps": None, "shake_reason": None, "pulse_ms": 0, "hz": 440, "tone_db": -21.5, "silence_db": -63.0,
+                expected = {"imu_gaps": None, "shake_reason": None, "pulse_ms": 0, "noise_dbfs": None, "hz": 440, "tone_db": -21.5, "silence_db": -63.0,
                             "heard": heard, "open_dma_bytes": 8192, "path": "acoustic",
                             "measured_hz": 440.02, "hz_error": 440.02 - 440, "thd_db": -40.0, "peak_dbfs": -6.0,
                             "shake_rms_mg": None, "shake_peak_mg": None, "silence_shake_rms_mg": None, "gx_mg": None, "gy_mg": None, "gz_mg": None}
@@ -165,6 +165,20 @@ class JsonReadTests(unittest.TestCase):
         self.assertEqual(result["shake_reason"], "gap inside pulse")
         self.assertIsNone(autana.parse_tone(base)["imu_gaps"])
         self.assertIsNone(autana.parse_tone(base)["shake_reason"])
+
+    def test_tone_noise_and_pulse_fields(self):
+        reply = ("TONE heard 202 Hz: -40.0 dB (silence -63.0 dB), noise -70.0 dBFS, "
+                 "path acoustic, measured n/a, open 0 B DMA, thd n/a dB, peak -6.0 dBFS, pulse_ms 60, "
+                 "shake 12.50 mg rms 30.00 mg peak (silence 0.25 mg rms), "
+                 "gx_mg -12.50, gy_mg 25.00, gz_mg 999.00, imu_gaps 2, shake_reason gap inside pulse")
+        result = autana.parse_tone(reply)
+        self.assertEqual(result["noise_dbfs"], -70.0)
+        self.assertEqual(result["pulse_ms"], 60)
+        self.assertEqual(result["peak_dbfs"], -6.0)
+        self.assertEqual(result["shake_peak_mg"], 30.0)
+        self.assertEqual((result["gx_mg"], result["gy_mg"], result["gz_mg"]), (-12.5, 25.0, 999.0))
+        self.assertEqual(result["imu_gaps"], 2)
+        self.assertEqual(result["shake_reason"], "gap inside pulse")
 
     def test_tone_pulse(self):
         reply = "TONE heard 202 Hz: -40.0 dB (silence -63.0 dB), path internal, measured n/a, open 0 B DMA, thd n/a dB, peak -6.0 dBFS, pulse_ms 60, shake 12.50 mg rms 30.00 mg peak (silence 0.25 mg rms)"

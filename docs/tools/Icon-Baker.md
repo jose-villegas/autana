@@ -2,7 +2,7 @@
 
 Icons are pack content: a `NAME.icons.toml` describes one set, and when the
 packs are built `launcher/tools/gfx/icons_asset.py` cuts each icon out and
-bakes it into its own [image entry](../assets/Image-Entries.md#imag-v1), one
+bakes it into its own [image entry](../assets/formats/IMAG.md), one
 bit a pixel, named by the icon. Nothing about an icon is compiled into the
 app. The code that draws an icon names it, and finds it by that name once,
 when it loads its icons.
@@ -66,7 +66,7 @@ within a set. The baker refuses, naming the file and the place:
 Each icon is an `IMAG` entry of format `DRAW_IMAGE_FORMAT_MONO1`: one bit a pixel,
 the most significant bit leftmost, 1 ink, and a stride rounded up to whole
 bytes. The header and the checks `draw_image_open()` makes are the image
-entry's ([the layout](../assets/Image-Entries.md#imag-v1)); a loader that
+entry's ([the layout](../assets/formats/IMAG.md)); a loader that
 finds an entry of another format treats the icon as missing.
 
 ## Drawing, and drawing without the pack

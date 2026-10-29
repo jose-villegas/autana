@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reject growing per-file counts of restated constants and protocol strings.
 
-RESTATE: a plain integer literal in launcher/ or editor/ C/C++ equal to a
+RESTATE: a plain integer literal in launcher/ C/C++ equal to a
 constant reachable through the file's #include "..." chain, when the value
 is rare (RARE_MINIMUM or more and not a multiple of ROUND_MULTIPLE) or is a
 shift count equal to a visible *_SHIFT. Shift expressions such as 1 << 16,
@@ -53,8 +53,8 @@ PROTOCOL = "PROTOCOL"
 C_SUFFIXES = {".c", ".h", ".cpp", ".hpp"}
 
 # launcher/main/CMakeLists.txt exposes main/ and test/, each launcher/packages/<name>/ its include/
-# (package_roots); editor/CMakeLists.txt exposes include/ and src/.
-INCLUDE_ROOTS = ("launcher/main", "launcher/test", "editor/include", "editor/src")
+# (package_roots).
+INCLUDE_ROOTS = ("launcher/main", "launcher/test")
 PACKAGE_INCLUDE = re.compile(r"^(launcher/packages/[^/]+/include)/")
 INCLUDE = re.compile(r'^[ \t]*#[ \t]*include\s*"([^"\n]+)"', re.M)
 ASSERT = re.compile(r"\b(?:_Static_assert|static_assert)\s*\(")
@@ -81,7 +81,7 @@ class Hit:
 
 
 def eligible_c(path, text):
-    return (path.startswith(("launcher/", "editor/")) and Path(path).suffix in C_SUFFIXES
+    return (path.startswith("launcher/") and Path(path).suffix in C_SUFFIXES
             and not path.startswith(excluded()) and not is_generated(text)
             and not {"fixture", "fixtures"}.intersection(PurePosixPath(path).parts))
 
@@ -95,7 +95,7 @@ def protocol_source(path, text):
 
 def revision_tree(root, revision):
     names = git(root, "ls-tree", "-r", "--name-only", revision, "--",
-                "launcher", "editor", "scripts").decode().splitlines()
+                "launcher", "scripts").decode().splitlines()
     return {name: content.decode("utf-8", errors="replace")
             for name, content in revision_contents(root, revision,
                 [name for name in names if Path(name).suffix in C_SUFFIXES | {".py"}])}

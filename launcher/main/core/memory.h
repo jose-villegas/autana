@@ -4,7 +4,7 @@
  *
  * On the board and in the host tests each kind maps to heap capabilities:
  * ESP-IDF's heap on the board, test/heap_arena.c's device-sized model
- * (HOST_HEAP_ARENA) on a host. Any other host build, a render or the editor,
+ * (HOST_HEAP_ARENA) on a host. Any other host build, a render,
  * allocates from the C library's malloc(), which has no budget, so it has no
  * size queries either: memory.c is not built there.
  *

@@ -71,7 +71,8 @@ static gfx_color_t send_clear_colour;
 /* The sent frame, filled for its next turn as the back buffer. */
 static void
 fill_sent_frame(void) {
-    gfx_target_fill((gfx_target_t){present_fb, 0, GFX_HEIGHT, GFX_WIDTH}, send_clear_colour);
+    const GFX_TARGET_STORAGE(1) frame = GFX_TARGET_COLOR_INIT(present_fb, GFX_WIDTH, GFX_HEIGHT);
+    gfx_target_fill(&frame.target, send_clear_colour);
 }
 #ifdef ESP_PLATFORM
 static bool present_pending;
@@ -891,9 +892,7 @@ drain_present(void) {
 static __attribute__((noinline)) void
 begin_double_frame(void) {
     drain_present();
-    gfx_color_t* drawn = fb;
-    fb = present_fb;
-    present_fb = drawn;
+    gfx_swap_framebuffers();
     /* The buffer coming back was filled by its own send, if that one cleared. */
     fb_filled = send_clears;
     fb_fill_colour = send_clear_colour;

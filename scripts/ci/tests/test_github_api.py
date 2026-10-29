@@ -124,6 +124,16 @@ class GithubApiTests(unittest.TestCase):
                 self.assertEqual(open_url.call_count, 1)
                 sleep.assert_not_called()
 
+    def test_writes_retry_only_a_request_that_never_reached_the_server(self):
+        handshake = urllib.error.URLError(TimeoutError('_ssl.c:993: The handshake operation timed out'))
+        for method in ('POST', 'PATCH', 'DELETE'):
+            with self.subTest(method=method), mock.patch.dict(
+                    os.environ, GH_TOKEN='token', GITHUB_REPOSITORY='owner/repo'),                     mock.patch('time.sleep') as sleep,                     mock.patch.object(github_api.urllib.request, 'urlopen', side_effect=[
+                        handshake, io.BytesIO(b'{"number": 7}')]) as open_url:
+                self.assertEqual(github_api.call(method, '/pulls', {'title': 'text'}), {'number': 7})
+                self.assertEqual(open_url.call_count, 2)
+                self.assertEqual(sleep.call_args_list, [mock.call(github_api.http_get.RETRY_BASE_DELAY_SECONDS)])
+
     def test_get_exhausts_attempts_and_propagates_last_error(self):
         errors = [urllib.error.URLError(f'connect {attempt}')
                   for attempt in range(github_api.http_get.GET_ATTEMPTS)]
