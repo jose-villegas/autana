@@ -59,6 +59,8 @@ def record(bake, path, cache, run=None):
            "host": f"{platform.system()} {platform.machine()}"}
     if keys.cpu_vendor() is not None:
         row["cpu_vendor"] = keys.cpu_vendor()  # a mesh's bytes differ between CPU vendors (bake.runs_mesh_cpu_vendor)
+    if bake.kind == "fit" and (gpu := keys.gpu_name()) is not None:
+        row["gpu"] = gpu  # a fit's bytes differ between GPU models: its lock row names the one
     if run is not None:
         row["run"] = run
     keys.store(path, row, bake.suffix, cache)

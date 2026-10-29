@@ -118,7 +118,7 @@ def night_running(request):
     return running
 
 
-def check(request, now, lanes, plugged):
+def check(request, now, lanes, plugged, unreachable=()):
     if night_running(request):
         return []
     problems = []
@@ -127,7 +127,11 @@ def check(request, now, lanes, plugged):
         problems.append(f'No board success within {SUCCESS_WINDOW}')
     problems.extend(stuck_board_jobs(request, now))
     missing = missing_boards(lanes, plugged)
-    if missing:
+    if missing and unreachable:
+        # A board on a host that did not answer may still be plugged in there.
+        print('::notice::Board hosts not answering: ' + ', '.join(unreachable)
+              + '; not checked: ' + ', '.join(missing))
+    elif missing:
         problems.append('Boards missing from USB: ' + ', '.join(missing))
     return problems
 
@@ -139,8 +143,9 @@ def latest_lanes(directory):
 
 
 def read_plugged(path):
+    """The plugged boards' short ids and the board hosts that did not answer."""
     listing = json.loads(Path(path).read_text(encoding='utf-8-sig'))
-    return [short_id(board['board']) for board in listing['boards'] if board['port']]
+    return [short_id(board['board']) for board in listing['boards'] if board['port']], listing.get('unreachable', [])
 
 
 def run_url():
@@ -216,7 +221,7 @@ def main(argv=None):
     else:
         if not nights_enabled(call):
             return 0
-        problems = check(call, datetime.now(timezone.utc), latest_lanes(args.lanes_from), read_plugged(args.devices))
+        problems = check(call, datetime.now(timezone.utc), latest_lanes(args.lanes_from), *read_plugged(args.devices))
         if problems:
             reason = '\n'.join(problems)
             args.reason_file.write_text(reason, encoding='utf-8')
