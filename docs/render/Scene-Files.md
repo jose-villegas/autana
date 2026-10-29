@@ -68,6 +68,7 @@ or skinned renderer.
 
 | Key | Meaning |
 |---|---|
+| `parent` | The name of an object listed before this one, whose transform this one's is relative to. Default: none, a root. |
 | `position` | Where the object is, in model units. Default `[0, 0, 0]`. |
 | `rotation` | `[pitch, yaw, roll]` in degrees, right-handed: roll about z, then pitch about x, then yaw about y. Default `[0, 0, 0]`. |
 | `scale` | Per-axis scale, positive on every axis. Default `[1, 1, 1]`. |
@@ -635,9 +636,9 @@ rotation-times-scale matrix and position, in the parent's frame; the scale
 is positive, and `scene_load()` refuses a shear or a reflection (determinant
 −1) and names its entity. Each entity has one parent listed before it, or
 none; a parent's transform and enabled state carry to its descendants
-([Scene-Manager.md](Scene-Manager.md#hierarchy)). A scene file names no
-parents, so its objects are roots; `scene_asset.encode()` writes the parent of
-an object that carries one. Names hold letters, digits and
+([Scene-Manager.md](Scene-Manager.md#hierarchy)). An object's `parent` key
+names its parent, and a mesh bundle's copies are children of the renderer that
+carries them; `scene_asset.encode()` writes both. Names hold letters, digits and
 `_`, start with a letter or `_`, and fit 31 bytes.
 
 Directional lights rotate `SCENE_LIGHT_AXIS` (+Y) by their entity's rotation.

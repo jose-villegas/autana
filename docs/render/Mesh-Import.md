@@ -158,10 +158,14 @@ Each `[[objects.meshes]]` rule carves out matching source objects:
 |---|---|
 | `match` | Exactly `{ object = "glob" }` or `{ material = "glob" }`; must match. |
 | `triangles` | Mesh budget per copy, separate from the variant's rest budget. |
+| `variants` | Optional `{ variant = triangles }`: a variant's own per-copy budget. |
+| `min_triangles` | Optional floor on the scaled budget, at most `triangles`. Default 1. |
 | `seam` | Optional policy; touching defaults to `lock`, otherwise `free`. |
 
-The variant's `triangles` budgets the rest, retaining `props` shares and the
-global pass. Its optional `ceiling` caps emitted triangles, including copies;
+A variant draws each copy with its entry in `variants`, or else
+round(`triangles` x its `objects_scale`), never below `min_triangles`;
+`import_settings.variant_meshes()` owns this rule. The variant's `triangles`
+budgets the rest, retaining `props` shares and the global pass. Its optional `ceiling` caps emitted triangles, including copies;
 `simplify.check_ceiling` owns this check. Overlapping rules are rejected.
 
 Objects touch when a vertex lies within `repair.seal_tolerance` of the other's
@@ -240,6 +244,7 @@ off above on: a pixel-sized hole that shows the sky is sealed.
 |---|---|---|---|---|---|
 | `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
 | `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
+| `[[variants]].objects_scale` | — | Scales each `[[objects.meshes]]` copy budget. | 1. | — / set by the budgets. | [simplify](#simplify) |
 
 #### variants
 
