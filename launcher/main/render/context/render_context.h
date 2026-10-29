@@ -69,7 +69,8 @@ typedef struct {
     resolution_config_t ladder; /* the steps and thresholds both policies read */
     resolution_control_t control;
     resolution_predict_t predict;
-    int debug_view; /* zero is shaded; table rows start at one */
+    int64_t chose_at_us; /* when the predictor last chose; 0 before its first choice */
+    int debug_view;      /* zero is shaded; table rows start at one */
     void* debug_view_state;
     raster_attachment_t debug_view_attachment;
     const raster_attachment_t* debug_view_attached[1];
