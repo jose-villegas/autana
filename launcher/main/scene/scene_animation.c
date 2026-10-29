@@ -465,21 +465,18 @@ scene_skin_range(scene_t* scene, int first, int count) {
 
 typedef struct {
     scene_t* scene;
-    int first;
-    int count;
     uint32_t dt_ms;
-} range_t;
+} animate_work_t;
 
 static void
-animate_slice(void* ctx) {
-    const range_t* r = ctx;
-    scene_animate_range(r->scene, r->first, r->count, r->dt_ms);
+animate_slice(void* ctx, int from, int to) {
+    const animate_work_t* w = ctx;
+    scene_animate_range(w->scene, from, to - from, w->dt_ms);
 }
 
 static void
-skin_slice(void* ctx) {
-    const range_t* r = ctx;
-    scene_skin_range(r->scene, r->first, r->count);
+skin_slice(void* ctx, int from, int to) {
+    scene_skin_range(ctx, from, to - from);
 }
 
 static void
@@ -487,16 +484,8 @@ animate_entities(scene_t* scene, uint32_t dt_ms) {
     if (scene->skeleton_animator_count == 0) {
         return;
     }
-    const int entities = scene->asset.entity_count;
-    const int mine = entities - job_share_core1_count(&scene->animate_share, entities);
-    range_t a = {scene, 0, mine, dt_ms};
-    range_t b = {scene, mine, entities - mine, dt_ms};
-    _Static_assert(sizeof a <= JOB_CTX_MAX, "animation range fits job context");
-    if (entities < 2) {
-        animate_slice(&a);
-    } else {
-        job_run_steered(&scene->animate_share, animate_slice, &a, &b, sizeof a);
-    }
+    animate_work_t w = {scene, dt_ms};
+    (void)job_run_range(&scene->animate_share, animate_slice, &w, scene->asset.entity_count);
 }
 
 static bool
@@ -559,15 +548,7 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     if (scene->light_transfer != NULL) {
         scene_lights_prepare(scene);
     }
-    const int mine = clusters - job_share_core1_count(&scene->skin_share, clusters);
-    range_t a = {scene, 0, mine, 0};
-    range_t b = {scene, mine, clusters - mine, 0};
-    _Static_assert(sizeof a <= JOB_CTX_MAX, "skin range fits job context");
-    if (clusters < 2) {
-        skin_slice(&a);
-    } else {
-        job_run_steered(&scene->skin_share, skin_slice, &a, &b, sizeof a);
-    }
+    (void)job_run_range(&scene->skin_share, skin_slice, scene, clusters);
     for (int e = 0; e < entities; e++) {
         if (scene->skinned_renderers[e].internal_storage != NULL && scene->animators[e].posed) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);
