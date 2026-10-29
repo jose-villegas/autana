@@ -8,14 +8,22 @@
 #   ./launcher/tools/r3d/framegen/framegen_docs.sh [-j JOBS]
 #
 # Run from the repository root with $PYTHON set to a Python with Pillow,
-# numpy and matplotlib, and ffmpeg on PATH. Takes about ten minutes.
+# numpy and matplotlib, and ffmpeg on PATH.
 
 set -eu
 
 JOBS=4
 [ "${1:-}" = -j ] && { JOBS=$2; shift 2; }
 
+# Each scene key with the scene file and camera whose path it flies.
 SCENES="bistro-fitted-full sponza-fitted-full sponza sponza-flat sponza-lite sponza-fitted sponza-flat-fitted"
+CAMERA=camera
+scene_file() {
+    case $1 in
+        bistro*) echo launcher/demo/bistro/bistro.scene.toml ;;
+        *) echo launcher/demo/sponza/sponza.scene.toml ;;
+    esac
+}
 SIZES="184x224 184x149 184x112"
 # The doc's pictures, at the ladder's top half-picture step: for the target
 # scene and the reference one, the frame whose warp opens the most holes, and
@@ -41,7 +49,7 @@ for scene in $SCENES; do
         elif [ "$scene/$size" = "$SECOND/$SHOWN_SIZE" ]; then
             extra="--still $IMAGES/framegen-sponza-holes.png"
         fi
-        echo "$PYTHON $SCORE --renderer $RENDERER --scene $scene --size $size --csv $WORK/$scene-$size.csv $extra"
+        echo "$PYTHON $SCORE --renderer $RENDERER --scene $scene --scene-file $(scene_file "$scene") --camera $CAMERA --size $size --csv $WORK/$scene-$size.csv $extra"
     done
 done | xargs -P "$JOBS" -I{} sh -c '{}'
 
