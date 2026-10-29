@@ -201,9 +201,12 @@ def load_variant(value, steps, where):
         for name, home in homes.items():
             if name in value:
                 raise SettingsError(f"{where}.{name} moved to {home}")
-    check_keys(value, ("name",), where, optional=("triangles", "ceiling"))
+    check_keys(value, ("name",), where, optional=("triangles", "ceiling", "objects_scale"))
     variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None,
-                              ceiling=count(value["ceiling"], f"{where}.ceiling") if "ceiling" in value else None)
+                              ceiling=count(value["ceiling"], f"{where}.ceiling") if "ceiling" in value else None,
+                              objects_scale=number(value.get("objects_scale", 1.0), f"{where}.objects_scale"))
+    if variant.objects_scale <= 0:
+        raise SettingsError(f"{where}.objects_scale must be positive")
     if steps.simplify:
         if "triangles" not in value:
             raise SettingsError(f"{where}.triangles is required when geometry.simplify is present")
@@ -300,7 +303,7 @@ def load_object_meshes(table):
         raise SettingsError("objects.meshes must be an array of tables")
     for index, rule in enumerate(rules):
         where = f"objects.meshes[{index}]"
-        check_keys(rule, ("match", "triangles"), where, optional=("seam",))
+        check_keys(rule, ("match", "triangles"), where, optional=("seam", "variants", "min_triangles"))
         match = rule["match"]
         check_keys(match, (), f"{where}.match", optional=("material", "object"))
         if len(match) != 1:
@@ -308,9 +311,27 @@ def load_object_meshes(table):
         for selector, pattern in match.items():
             text(pattern, f"{where}.match.{selector}")
         count(rule["triangles"], f"{where}.triangles")
+        if not isinstance(rule.get("variants", {}), dict):
+            raise SettingsError(f"{where}.variants must be a table of variant budgets")
+        for name, triangles in rule.get("variants", {}).items():
+            count(triangles, f"{where}.variants.{name}")
+        if "min_triangles" in rule and count(rule["min_triangles"], f"{where}.min_triangles") > rule["triangles"]:
+            raise SettingsError(f"{where}.min_triangles cannot exceed its triangles")
         if "seam" in rule and rule["seam"] not in SEAM_POLICIES:
             raise SettingsError(f"{where}.seam must be one of {', '.join(SEAM_POLICIES)}")
     return rules
+
+
+def variant_meshes(rules, variant):
+    """The rules with `triangles` as `variant` draws each copy: its own override, else
+    round(triangles x objects_scale), never below `min_triangles`."""
+    resolved = []
+    for rule in rules:
+        triangles = rule.get("variants", {}).get(variant.name)
+        if triangles is None:
+            triangles = max(rule.get("min_triangles", 1), round(rule["triangles"] * variant.objects_scale))
+        resolved.append(rule | {"triangles": triangles})
+    return resolved
 
 
 def match_meshes(tri_o, labels, object_names, material_names, rules):
@@ -392,6 +413,10 @@ def load_import_settings(path):
     meshes = load_object_meshes(values.get("objects", {}))
     if meshes and not steps.simplify:
         raise SettingsError("objects.meshes needs geometry.simplify")
+    for index, rule in enumerate(meshes):
+        for name in rule.get("variants", {}):
+            if name not in names:
+                raise SettingsError(f"objects.meshes[{index}].variants.{name} names no variant")
     return SimpleNamespace(
         path=path, source=source, mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
@@ -610,13 +635,14 @@ COMPONENTS = ("mesh_renderer", "skinned_renderer", "light", "camera")
 
 
 def load_object(value, base, where):
-    check_keys(value, ("name",), where, optional=("position", "rotation", "scale", "animator", *COMPONENTS))
+    check_keys(value, ("name",), where, optional=("parent", "position", "rotation", "scale", "animator", *COMPONENTS))
     present = [name for name in COMPONENTS if name in value]
     if len(present) != 1:
         raise SettingsError(f"{where} must have exactly one component: {', '.join(COMPONENTS)}")
     kind = present[0]
     obj = SimpleNamespace(
         name=text(value["name"], f"{where}.name"), kind=kind,
+        parent=text(value["parent"], f"{where}.parent") if "parent" in value else None,
         position=vector(value["position"], f"{where}.position") if "position" in value else [0.0, 0.0, 0.0],
         rotation=vector(value["rotation"], f"{where}.rotation") if "rotation" in value else [0.0, 0.0, 0.0],
         scale=vector(value["scale"], f"{where}.scale") if "scale" in value else [1.0, 1.0, 1.0])

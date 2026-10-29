@@ -139,13 +139,18 @@ class ImportTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.rejects(message, body)
 
+    def test_a_copy_budget_names_a_variant(self):
+        rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
+        self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
+
     def test_a_seed_requires_the_geometry_step_that_draws_it(self):
         self.rejects("process.seed needs geometry.thin", '[process]\nseed = 3\n')
 
     def test_variant_budget_and_optional_ceiling(self):
         with tempfile.TemporaryDirectory() as directory:
             settings = load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT))
-        self.assertEqual(vars(settings.variants[0]), {"name": "mesh", "triangles": 10, "ceiling": None})
+        self.assertEqual(vars(settings.variants[0]), {"name": "mesh", "triangles": 10, "ceiling": None,
+                                                       "objects_scale": 1.0})
 
 
     def test_basic_settings_turn_no_step_on(self):
@@ -281,6 +286,14 @@ class SceneTests(unittest.TestCase):
         self.rejects("objects", self.two_imports, "", TONEMAP)
         self.rejects("mesh_renderer", self.two_imports, camera(region=False))
         self.rejects("typo", self.two_imports, renderer("a.import.toml"), "typo = 1\n")
+
+    def test_an_object_names_its_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.two_imports(directory)
+            scene = load_scene(write_scene(directory, renderer("a.import.toml")
+                                           + renderer("b.import.toml", transform='parent = "a"\n')))
+        self.assertEqual([obj.parent for obj in scene.objects], [None, "a"])
+        self.rejects("parent", self.two_imports, renderer("a.import.toml", transform="parent = 3\n"))
 
     def test_object_names_are_unique(self):
         self.rejects("names must be unique", self.two_imports, renderer("a.import.toml") + renderer("b.import.toml", name="a"))

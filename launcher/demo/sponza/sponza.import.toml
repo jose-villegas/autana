@@ -14,20 +14,60 @@ seed = 1
 [geometry]
 alpha_mask = { keep_alpha = 0.5 }
 thin = { material = "leaf", keep = 0.35 }
-simplify = { dense_edge = 45.0, props = ["vase", "vase_round", "vase_hanging", "flagpole", "chain", "leaf", "Material__57", "Material__298", "Material__25", "Material__47"], props_share = 0.3, seal_seams = true, colour_deviation = 1.0 }
+simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true, colour_deviation = 1.0 }
 
+# The free-standing props: one mesh per repeated shape, each copy drawing
+# `triangles` (as many as the old pooled props share gave it) times its
+# variant's objects_scale. Chains stay in the rest: the pooled share gave
+# them none.
+[[objects.meshes]]
+match = { material = "vase" }
+triangles = 235
+
+[[objects.meshes]]
+match = { material = "Material__57" }
+triangles = 155
+
+[[objects.meshes]]
+match = { material = "vase_hanging" }
+triangles = 19
+
+[[objects.meshes]]
+match = { material = "flagpole" }
+triangles = 22
+
+[[objects.meshes]]
+match = { material = "leaf" }
+triangles = 14
+
+[[objects.meshes]]
+match = { material = "Material__298" }
+triangles = 484
+
+[[objects.meshes]]
+match = { material = "Material__47" }
+triangles = 45
+
+# Each variant's triangles budget the rest; the props add 5181 at
+# objects_scale 1 and 2606 at 0.5, so each ceiling is the old total.
 [[variants]]
 name = "sponza"
-triangles = 17381
+triangles = 12200
+ceiling = 17381
 
 [[variants]]
 name = "sponza_lite"
-triangles = 8672
+triangles = 6066
+objects_scale = 0.5
+ceiling = 8672
 
 [[variants]]
 name = "sponza_fitted"
-triangles = 13500
+triangles = 10894
+objects_scale = 0.5
+ceiling = 13500
 
 [[variants]]
 name = "sponza_fitted_full"
-triangles = 30000
+triangles = 24819
+ceiling = 30000

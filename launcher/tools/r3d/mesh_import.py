@@ -29,7 +29,7 @@ from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
 from r3d.gltf_mesh import load_gltf_mesh  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
-    BLEND_SUFFIX, SettingsError, albedo_jobs, match_meshes, lfs_pointer_oid, load_import_settings, load_scene, source_files,
+    BLEND_SUFFIX, SettingsError, albedo_jobs, match_meshes, variant_meshes, lfs_pointer_oid, load_import_settings, load_scene, source_files,
 )
 from r3d.light import (  # noqa: E402
     drop_masked,
@@ -212,7 +212,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
-    meshes = settings.meshes
+    meshes = variant_meshes(settings.meshes, renderer.variant)
     selected = match_meshes(src.tri_o, tri_m, src.object_names, src.names, meshes) if meshes else {}
     carved_keep = thin_meshes(src, selected, settings.thin, settings.seed) if selected else None
     with recorder.step("visibility", len(tri_v)) as step:
