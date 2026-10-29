@@ -3,7 +3,13 @@
 # Build the DIAGNOSTICS image and run the complexity ratchet: no device,
 # nothing flashed.
 #
-#   tools/build/build_diag_check.sh
+#   tools/build/build_diag_check.sh [--gates-only [--ci]]
+#
+# --gates-only runs the gates against the build.diag already on disk and
+# builds nothing; it is also what CI's Build (Diagnostics) workflow calls
+# after its own build, so the gate list below is the only one. --ci makes
+# the ratchet score the whole tree and the memory map demand the pinned IDF
+# commit.
 #
 # The result and the log path are printed; the log holds the full output.
 #
@@ -15,9 +21,10 @@
 # build (which links no suites at all), building this variant surfaces it,
 # and doing so here beats finding out from CI.
 #
-# The complexity ratchet (tools/quality/complexity_gate.py) is the other half of
-# what CI's Build (Diagnostics) workflow decides, so a green build alone
-# settles nothing about a pull request; both halves are this one command.
+# The gates (the complexity ratchet, the stack chain, the MISRA clang-tidy
+# count and the rest) are the other half of what CI's Build (Diagnostics)
+# workflow decides, so a green build alone settles nothing about a pull
+# request; both halves are this one command.
 # The ratchet runs BEFORE the build: it costs seconds, the build minutes.
 #
 # The ratchet reads launcher/build.diag/compile_commands.json, which this
@@ -29,18 +36,25 @@
 #
 # COMPLEXITY_GATE_BASE overrides the ref the ratchet diffs against
 # (default origin/main, the same ref docs/tools/Complexity-Gate.md names
-# for local use; CI scores the whole tree instead).
+# for local use; --ci scores the whole tree instead).
 #
 # The build is `autana build diag`, which runs build.sh; ESP-IDF is the one
 # selected by espressif.py.
 
 set -euo pipefail
 
-case "${1:-}" in
-    "") ;;
-    -h|--help) echo "usage: tools/build/build_diag_check.sh"; exit 0 ;;
-    *) echo "unknown argument: $1" >&2; exit 2 ;;
-esac
+ARGUMENTS=("$@")
+GATES_ONLY=0
+CI_GATES=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --gates-only) GATES_ONLY=1 ;;
+        --ci) CI_GATES=1 ;;
+        -h|--help) echo "usage: tools/build/build_diag_check.sh [--gates-only [--ci]]"; exit 0 ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
 
 # shellcheck disable=SC1007
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -54,7 +68,7 @@ GATE_BASE="${COMPLEXITY_GATE_BASE:-origin/main}"
 if [ -z "${QUIET_INNER:-}" ]; then
     # Beside build.diag, not in it: the build prepares (and may empty) that folder.
     quiet_begin "$DIR/../../build.diag-check.log"
-    quiet_run diagnostics-check env QUIET_INNER=1 bash "$0" || true
+    quiet_run diagnostics-check env QUIET_INNER=1 bash "$0" ${ARGUMENTS[@]+"${ARGUMENTS[@]}"} || true
     quiet_end build_diag_check || exit $?
     exit 0
 fi
@@ -65,8 +79,12 @@ PYTHON=$(find_python) || exit 1
 
 complexity_gate() {
     echo "=== Complexity ratchet (--changed $GATE_BASE) ==="
-    (cd "$REPO_ROOT" && "$PYTHON" launcher/tools/quality/complexity_gate.py \
-        --changed "$GATE_BASE")
+    if [ "$CI_GATES" -eq 1 ]; then
+        (cd "$REPO_ROOT" && "$PYTHON" launcher/tools/quality/complexity_gate.py)
+    else
+        (cd "$REPO_ROOT" && "$PYTHON" launcher/tools/quality/complexity_gate.py \
+            --changed "$GATE_BASE")
+    fi
 }
 
 suite_static_data_gate() {
@@ -97,9 +115,24 @@ psram_tuning_wrap_gate() {
     "$PYTHON" "$DIR/check_psram_tuning_wrap.py" "$DIR/../../build.diag"
 }
 
+misra_tidy_gate() {
+    echo "=== MISRA clang-tidy count ==="
+    (cd "$REPO_ROOT" && "$PYTHON" launcher/tools/quality/misra_tidy_gate.py)
+}
+
 iram_budget_gate() {
     echo "=== IRAM placement budgets ==="
-    "$PYTHON" "$DIR/memory_map.py" --check "$DIR/../../build.diag"
+    "$PYTHON" "$DIR/memory_map.py" --check $([ "$CI_GATES" -eq 1 ] && echo --require-pin) "$DIR/../../build.diag"
+}
+
+# Every gate that reads the build.diag output, in the order they run.
+gates() {
+    stack_chain_gate
+    suite_static_data_gate
+    misra_tidy_gate
+    soft_double_gate
+    psram_tuning_wrap_gate
+    iram_budget_gate
 }
 
 # True when the database predates a file that decides what the build compiles.
@@ -114,22 +147,20 @@ compile_db_stale() {
     [ -n "$newer" ]
 }
 
+if [ "$GATES_ONLY" -eq 1 ]; then
+    complexity_gate
+    gates
+    exit 0
+fi
+
 if [ -f "$COMPILE_DB" ] && ! compile_db_stale; then
     complexity_gate
     build_diag
-    suite_static_data_gate
-    stack_chain_gate
-    soft_double_gate
-    psram_tuning_wrap_gate
-    iram_budget_gate
+    gates
     exit 0
 fi
 
 echo "=== No current build.diag compile database - ratchet runs after the build ==="
 build_diag
 complexity_gate
-suite_static_data_gate
-stack_chain_gate
-soft_double_gate
-psram_tuning_wrap_gate
-iram_budget_gate
+gates
