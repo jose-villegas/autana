@@ -62,3 +62,8 @@ The fit takes the power of two below the bound from its exponent alone. A
 bound that drifts by rounding from frame to frame keeps one scale, so codes
 of two near surfaces do not swap order every frame. The floor gives up at
 most one bit.
+
+One step against view depth, at the clip plane's scale and at the scale the
+fit gives for a nearest point at a street walk's and a high view's distance:
+
+![The depth one 16-bit inverse-depth step spans against view depth: near 90 cm at 60 m with a 6 cm scale, a few centimetres at most with fitted scales of 128 and 512 cm](../images/math/inverse-depth-step.png)
