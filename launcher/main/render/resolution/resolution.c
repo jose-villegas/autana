@@ -12,13 +12,16 @@
 #define DEFAULT_DOWN_PERCENT      100
 #define DEFAULT_PANIC_PERCENT     150
 #define DEFAULT_PANIC_STEPS       2
-#define COOLDOWN_MAX              128
+/* Either policy backs off at most this many times its own spacing after
+ * reversals. */
+#define REVERSAL_BACKOFF_MAX      16
 
 /* The predictor goes finer only with this much of the budget to spare, so
  * a prediction at the edge does not flip between two steps. */
 #define DEFAULT_UP_MARGIN_PERCENT 8
-/* One frame that fits is enough: the margin alone guards the edge. */
-#define DEFAULT_UP_FRAMES         1
+/* Frames run 20 to 90 ms here and nothing hides a switch, so a finer step
+ * must keep fitting for half a second before it is taken. */
+#define DEFAULT_UP_HOLD_US        500000
 /* About 50 frames of memory tracks scene changes and leans back to the fit. */
 #define RHO                       0.98F
 /* Scene differences can change the fit's overall slope. */
@@ -44,7 +47,7 @@ resolution_config(const resolution_step_t* steps, int count, int recovery_from, 
         .panic_percent = DEFAULT_PANIC_PERCENT,
         .panic_steps = DEFAULT_PANIC_STEPS,
         .up_margin_percent = DEFAULT_UP_MARGIN_PERCENT,
-        .up_frames = DEFAULT_UP_FRAMES,
+        .up_hold_us = DEFAULT_UP_HOLD_US,
     };
     for (int i = 0; i < count; i++) {
         /* A caller sizes its buffers for the first step. */
@@ -77,16 +80,24 @@ over_share(int32_t us, int32_t budget_us, int percent) {
     return (int64_t)us * 100 > (int64_t)budget_us * percent;
 }
 
-/* A change forgets the window, whose costs were the old step's. A change
- * back the way the last one came doubles the cooldown, so two steps that
- * straddle the budget are tried less and less often. */
-static void
-move_to(resolution_control_t* c, int step) {
-    const int direction = step > c->step ? 1 : -1;
-    if (c->last_direction != 0 && direction != c->last_direction) {
-        c->cooldown = c->cooldown * 2 > COOLDOWN_MAX ? COOLDOWN_MAX : c->cooldown * 2;
+/* The spacing after a step from `from` to `to`: doubled, up to its backoff
+ * limit, when the step goes back the way the last one came, so two steps
+ * that straddle the budget are tried less and less often. */
+static int32_t
+spacing_after(int32_t spacing, int32_t base, int* last_direction, int from, int to) {
+    const int direction = to > from ? 1 : -1;
+    const int32_t most = base * REVERSAL_BACKOFF_MAX;
+    if (*last_direction != 0 && direction != *last_direction) {
+        spacing = spacing > most / 2 ? most : spacing * 2;
     }
-    c->last_direction = direction;
+    *last_direction = direction;
+    return spacing;
+}
+
+/* A change forgets the window, whose costs were the old step's. */
+static void
+move_to(resolution_control_t* c, const resolution_config_t* config, int step) {
+    c->cooldown = spacing_after(c->cooldown, config->cooldown, &c->last_direction, c->step, step);
     c->step = step;
     c->filled = 0;
     c->cooldown_left = c->cooldown;
@@ -119,7 +130,7 @@ resolution_control_update(resolution_control_t* c, const resolution_config_t* co
     const int last = config->step_count - 1;
     if (c->step < last && over_share(frame_us, config->budget_us, config->panic_percent)) {
         const int to = c->step + config->panic_steps;
-        move_to(c, to > last ? last : to);
+        move_to(c, config, to > last ? last : to);
         return c->step;
     }
     if (!window_ready(c, config, frame_us)) {
@@ -127,11 +138,11 @@ resolution_control_update(resolution_control_t* c, const resolution_config_t* co
     }
     const int32_t mean = window_mean(c, config);
     if (c->step < config->recovery_from - 1 && over_share(mean, config->budget_us, config->down_percent)) {
-        move_to(c, c->step + 1);
+        move_to(c, config, c->step + 1);
     } else if (c->step >= config->recovery_from && !over_share(mean, config->budget_us, config->down_percent)) {
-        move_to(c, c->step - 1); /* recovery is left as soon as it is under budget */
+        move_to(c, config, c->step - 1); /* recovery is left as soon as it is under budget */
     } else if (c->step > config->top && !over_share(mean, config->budget_us, config->up_percent)) {
-        move_to(c, c->step - 1);
+        move_to(c, config, c->step - 1);
     } else if (c->cooldown > config->cooldown) {
         c->cooldown--; /* each settled frame earns one back */
     }
@@ -248,7 +259,7 @@ void
 resolution_predict_init(resolution_predict_t* predict, const resolution_config_t* config,
                         const resolution_model_t* model, int first_step) {
     assert(first_step >= config->top && first_step < config->step_count);
-    *predict = (resolution_predict_t){.model = *model, .step = first_step};
+    *predict = (resolution_predict_t){.model = *model, .step = first_step, .hold_us = config->up_hold_us};
     reset_refit(predict);
 }
 
@@ -271,7 +282,8 @@ finest_fitting(const resolution_predict_t* p, const resolution_config_t* config,
 }
 
 int
-resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* config, int triangles) {
+resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* config, int triangles,
+                          int32_t elapsed_us) {
     int chosen = finest_fitting(p, config, triangles, config->recovery_from, config->down_percent);
     if (chosen < 0) {
         /* Over budget at every ordinary step: the coarsest one is the floor,
@@ -287,18 +299,25 @@ resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* co
     if (chosen < 0) {
         chosen = config->step_count - 1;
     }
-    if (chosen < p->step) {
-        const int margin = config->down_percent - config->up_margin_percent;
-        const int finer = finest_fitting(p, config, triangles, p->step, margin);
-        p->fitted_frames = finer < 0 ? 0 : p->fitted_frames + 1;
-        chosen = finer < 0 || p->fitted_frames < config->up_frames ? p->step : finer;
+    const int finer = p->step - 1;
+    const float margin = (float)config->budget_us * (float)(config->down_percent - config->up_margin_percent) / 100.0F;
+    if (chosen > p->step) {
+        p->fitted_us = 0;
+    } else if (finer >= config->top && corrected_us(p, config, finer, triangles) <= margin) {
+        p->fitted_us += elapsed_us;
+        chosen = p->fitted_us >= p->hold_us ? finer : p->step;
     } else {
-        p->fitted_frames = 0;
+        p->fitted_us = 0;
+        chosen = p->step;
     }
     if (chosen != p->step) {
+        p->hold_us = spacing_after(p->hold_us, config->up_hold_us, &p->last_direction, p->step, chosen);
         p->step = chosen;
-        p->fitted_frames = 0;
+        p->fitted_us = 0;
         p->switches++;
+    } else if (p->hold_us > config->up_hold_us) {
+        /* each settled frame earns its time back */
+        p->hold_us = p->hold_us - elapsed_us > config->up_hold_us ? p->hold_us - elapsed_us : config->up_hold_us;
     }
     p->chosen_us = corrected_us(p, config, p->step, triangles);
     return p->step;

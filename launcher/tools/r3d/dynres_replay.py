@@ -4,7 +4,7 @@ predictor, so its target, margin and step-up delay can be tuned without
 reflashing, and refits the cost model on every scenario.
 
     python launcher/tools/r3d/dynres_replay.py CAPTURE --cc CC [--json OUT]
-        [--targets MS,...] [--margins PERCENT,...] [--up-frames N,...] [--top STEP] [--first STEP]
+        [--targets MS,...] [--margins PERCENT,...] [--holds MS,...] [--top STEP] [--first STEP]
 
 CAPTURE is a device log holding the `dynres_steps` lines of
 run_render_lab_dynres_steps_suite: every scenario's path drawn with each
@@ -90,13 +90,13 @@ def refit(binary, scenarios, ladder, recovery):
     return fitted, errors
 
 
-def replay(binary, frames_by_step, ladder, recovery, fitted, target_ms, margin, up_frames, top, first):
+def replay(binary, frames_by_step, ladder, recovery, fitted, target_ms, margin, hold_ms, top, first):
     count = len(frames_by_step[0])
     stdin = (ladder_text(ladder, recovery) + " ".join(f"{w}" for w in fitted["model"]) + " "
              + " ".join(f"{u}" for u in fitted["upscale"]) + f"\n{count}\n"
-             + "".join(" ".join(f"{frames_by_step[s][i][3]} {frames_by_step[s][i][1]} {frames_by_step[s][i][2]}"
+             + "".join(" ".join(f"{frames_by_step[s][i][0]} {frames_by_step[s][i][3]} {frames_by_step[s][i][1]} {frames_by_step[s][i][2]}"
                                 for s in range(len(ladder))) + "\n" for i in range(count)))
-    return run(binary, ["replay", target_ms * US_PER_MS, margin, up_frames, top, first], stdin)
+    return run(binary, ["replay", target_ms * US_PER_MS, margin, hold_ms * US_PER_MS, top, first], stdin)
 
 
 def whole_stats(values):
@@ -116,7 +116,7 @@ def main():
     parser.add_argument("--cc", required=True)
     parser.add_argument("--targets", default=str(read_define(DYNRES, "RENDER_LAB_TARGET_MS")))
     parser.add_argument("--margins", default="8")
-    parser.add_argument("--up-frames", default="1")
+    parser.add_argument("--holds", default="500", help="step-up holds in ms")
     parser.add_argument("--top", type=int, default=read_define(DYNRES, "RENDER_LAB_LADDER_HALF"))
     parser.add_argument("--first", type=int, help="the step the flight starts at; the top when omitted")
     parser.add_argument("--json", type=pathlib.Path)
@@ -141,14 +141,14 @@ def main():
             print(f"\n{name}: fixed at {ladder[args.top][0]}x{ladder[args.top][1]} "
                   f"mean {fixed['mean']:.1f} p95 {fixed['p95']:.1f} sd {fixed['sd']:.1f} max {fixed['max']:.1f}")
             for target, margin, up in itertools.product(*(map(int, v.split(","))
-                                                          for v in (args.targets, args.margins, args.up_frames))):
+                                                          for v in (args.targets, args.margins, args.holds))):
                 r = replay(binary, steps, ladder, recovery, fitted, target, margin, up, args.top,
                            args.top if args.first is None else args.first)
                 f = flight(steps, r["steps"])
-                results.append({"scenario": name, "target": target, "margin": margin, "up_frames": up,
+                results.append({"scenario": name, "target": target, "margin": margin, "hold_ms": up,
                                 "switches": r["switches"], "fixed": fixed, **f})
                 at = ", ".join(f"{ladder[s][0]}x{ladder[s][1]} {v:.0%}" for s, v in f["share"].items())
-                print(f"  target {target} margin {margin} up {up}: mean {f['mean']:.1f} p95 {f['p95']:.1f} "
+                print(f"  target {target} margin {margin} hold {up}: mean {f['mean']:.1f} p95 {f['p95']:.1f} "
                       f"sd {f['sd']:.1f} max {f['max']:.1f} switches {r['switches']} | {at}")
     if args.json:
         args.json.write_text(json.dumps({"fit": fitted, "results": results}, indent=1), encoding="utf-8")

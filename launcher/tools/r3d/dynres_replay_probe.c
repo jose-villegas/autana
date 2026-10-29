@@ -2,13 +2,14 @@
  * over board frames, so dynres_replay.py holds no copy of either.
  *
  *   probe fit < samples      the model fitted to every sample, then each sample's price
- *   probe replay budget_us margin_percent up_frames top first < frames
+ *   probe replay budget_us margin_percent up_hold_us top first < frames
  *                            the step the predictor draws each frame at, and its switches
  *
  * Both inputs start with the ladder: "steps n recovery" and n "width height".
  * samples then holds "m" and m "step triangles draw_us upscale_us". frames
  * holds the model's four weights and one upscale per step, then "f", then f
- * rows of n "triangles draw_us upscale_us", one per step. Output is JSON. */
+ * rows of n "whole_us triangles draw_us upscale_us", one per step. The
+ * time between two choices is the whole frame drawn between them. Output is JSON. */
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -85,7 +86,7 @@ static int
 replay(char** argv) {
     resolution_config_t config = read_ladder(atoi(argv[0]));
     config.up_margin_percent = atoi(argv[1]);
-    config.up_frames = atoi(argv[2]);
+    config.up_hold_us = atoi(argv[2]);
     config.top = atoi(argv[3]);
     const int first = atoi(argv[4]);
     float weights[4];
@@ -104,18 +105,22 @@ replay(char** argv) {
     resolution_predict_t predict;
     resolution_predict_init(&predict, &config, &model, first);
     printf("{\"steps\": [");
+    int32_t elapsed_us = 0;
     for (int f = 0; f < frames; f++) {
+        int32_t whole_us[RESOLUTION_STEPS_MAX];
         int triangles[RESOLUTION_STEPS_MAX];
         int32_t cost_us[RESOLUTION_STEPS_MAX];
         for (int s = 0; s < config.step_count; s++) {
+            whole_us[s] = read_int();
             triangles[s] = read_int();
             cost_us[s] = read_int();
             cost_us[s] += read_int();
         }
         /* The census before the choice counts what culling keeps, the same
          * at every step: the step drawn last frame supplies it. */
-        const int step = resolution_predict_choose(&predict, &config, triangles[predict.step]);
+        const int step = resolution_predict_choose(&predict, &config, triangles[predict.step], elapsed_us);
         resolution_predict_measured(&predict, &config, triangles[step], cost_us[step]);
+        elapsed_us = whole_us[step];
         printf("%s%d", f == 0 ? "" : ", ", step);
     }
     printf("], \"switches\": %d}\n", predict.switches);
@@ -130,6 +135,6 @@ main(int argc, char** argv) {
     if (argc == 7 && argv[1][0] == 'r') {
         return replay(argv + 2);
     }
-    fprintf(stderr, "usage: dynres_replay_probe fit | replay budget_us margin_percent up_frames top first\n");
+    fprintf(stderr, "usage: dynres_replay_probe fit | replay budget_us margin_percent up_hold_us top first\n");
     return 2;
 }
