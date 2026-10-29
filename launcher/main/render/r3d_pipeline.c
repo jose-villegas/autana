@@ -474,19 +474,15 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
         if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
             continue;
         }
-        if (!per_triangle) {
-            retag(writers, target->writers, target->writer_count, clusters[i], 0U);
-            draw_cluster(mesh, lens, c, cs, &writing, true, work);
-            continue;
-        }
-        /* One triangle at a time, so a writer stepping per triangle is
-         * retagged here and the cluster draw stays the hot one's. */
-        r3d_lit_cluster_t one = *c;
-        one.triangle_count = 1;
-        for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
+        /* Whole clusters, or one triangle at a time when a writer steps per
+         * triangle, so it is retagged here and the cluster draw stays the
+         * hot one's. */
+        r3d_lit_cluster_t part = *c;
+        part.triangle_count = per_triangle ? 1 : c->triangle_count;
+        for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t += part.triangle_count) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
-            one.triangle_first = (uint16_t)t;
-            draw_cluster(mesh, lens, &one, cs, &writing, true, work);
+            part.triangle_first = (uint16_t)t;
+            draw_cluster(mesh, lens, &part, cs, &writing, true, work);
         }
     }
 }
