@@ -112,47 +112,63 @@ rank_peak(const frame_profile_trace_t* trace, frame_profile_peak_t p, frame_prof
     }
 }
 
+/* The slowest frame of `trace`, the earliest of equal ones, and its lowest frame time. */
+static void
+loop_extremes(const frame_profile_trace_t* trace, int* slowest, int32_t* lowest) {
+    *slowest = 0;
+    *lowest = trace->frame[0].frame_us;
+    for (int i = 1; i < trace->frames; i++) {
+        *slowest = trace->frame[i].frame_us > trace->frame[*slowest].frame_us ? i : *slowest;
+        *lowest = trace->frame[i].frame_us < *lowest ? trace->frame[i].frame_us : *lowest;
+    }
+}
+
 /* A peak is a run of frames above the frame before it and not below the one after, standing for its
- * first frame. Its prominence is its height over the higher of its two saddles; an equal frame stops
- * only the left walk, so a plateau counts once. With no higher frame on either side, the saddle is the
- * loop's lowest frame. */
+ * first frame. */
+static bool
+is_peak(const frame_profile_trace_t* trace, int at) {
+    const int32_t height = trace->frame[at].frame_us;
+    const int32_t before = trace->frame[(at - 1 + trace->frames) % trace->frames].frame_us;
+    const int32_t after = trace->frame[(at + 1) % trace->frames].frame_us;
+    return before < height && after <= height;
+}
+
+/* The peak's height over the higher of its two saddles; an equal frame stops only the left walk, so a
+ * plateau counts once. With no higher frame on either side, the saddle is the loop's `lowest`. */
+static int32_t
+prominence(const frame_profile_trace_t* trace, int at, int32_t lowest) {
+    int32_t left = lowest;
+    int32_t right = lowest;
+    const bool has_left = saddle(trace, at, -1, true, &left);
+    const bool has_right = saddle(trace, at, 1, false, &right);
+    if (has_left != has_right) {
+        return trace->frame[at].frame_us - (has_left ? left : right);
+    }
+    return trace->frame[at].frame_us - (left > right ? left : right);
+}
+
 int
 frame_profile_peaks(const frame_profile_trace_t* trace, frame_profile_peak_t* peak, int capacity) {
     if (trace->frames == 0) {
         return 0;
     }
     int slowest = 0;
-    int32_t loop_low = trace->frame[0].frame_us;
-    for (int i = 1; i < trace->frames; i++) {
-        slowest = trace->frame[i].frame_us > trace->frame[slowest].frame_us ? i : slowest;
-        loop_low = trace->frame[i].frame_us < loop_low ? trace->frame[i].frame_us : loop_low;
-    }
+    int32_t lowest = 0;
+    loop_extremes(trace, &slowest, &lowest);
     int count = 0;
     for (int i = 0; i < trace->frames; i++) {
-        const int32_t height = trace->frame[i].frame_us;
-        const int32_t before = trace->frame[(i - 1 + trace->frames) % trace->frames].frame_us;
-        const int32_t after = trace->frame[(i + 1) % trace->frames].frame_us;
-        if (!(before < height && after <= height)) {
-            continue;
-        }
-        int32_t left = 0;
-        int32_t right = 0;
-        const bool has_left = saddle(trace, i, -1, true, &left);
-        const bool has_right = saddle(trace, i, 1, false, &right);
-        const int32_t key = has_left && has_right ? (left > right ? left : right)
-                            : has_left            ? left
-                            : has_right           ? right
-                                                  : loop_low;
-        const int32_t prominence = height - key;
-        if ((int64_t)prominence * FRAME_PROFILE_PERCENT >= (int64_t)FRAME_PROFILE_PEAK_PERCENT * height) {
+        const int32_t rise = is_peak(trace, i) ? prominence(trace, i, lowest) : 0;
+        if (rise > 0
+            && (int64_t)rise * FRAME_PROFILE_PERCENT
+                   >= (int64_t)FRAME_PROFILE_PEAK_PERCENT * trace->frame[i].frame_us) {
             if (peak != NULL) {
-                rank_peak(trace, (frame_profile_peak_t){i, prominence}, peak, count, capacity);
+                rank_peak(trace, (frame_profile_peak_t){i, rise}, peak, count, capacity);
             }
             count++;
         }
     }
     if (count == 0 && peak != NULL && capacity > 0) {
-        peak[0] = (frame_profile_peak_t){slowest, trace->frame[slowest].frame_us - loop_low};
+        peak[0] = (frame_profile_peak_t){slowest, trace->frame[slowest].frame_us - lowest};
     }
     return count == 0 ? 1 : count;
 }
