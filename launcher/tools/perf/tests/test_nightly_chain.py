@@ -815,6 +815,22 @@ class NightlyTests(unittest.TestCase):
         self.assertIn(call("SCOPED_BOARDS=2124 20E8"), said.call_args_list)
         self.assertIn(call("SELFTEST_BOARD=2124"), said.call_args_list)
 
+    def test_plan_skips_a_gated_hosts_boards(self):
+        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
+                               out=self.root / "plan.json", marker=self.clock.now().isoformat(),
+                               from_sha=None, max_steps=None, selftest_board=None)
+        listing = json.dumps({"boards": [dict(board="A308", port="COM5", host="legion", name="Legion",
+                                              gated="person at the desk")], "unreachable": []})
+        with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"), \
+                patch.object(chain, "local_boards", return_value=[dict(board="2124", port="COM4")]), \
+                patch.object(chain.subprocess, "check_output", return_value=listing), \
+                patch.object(chain, "gpu_on_host", return_value=True), \
+                patch.object(chain, "wait_idle"), \
+                patch("builtins.print") as said:
+            chain.plan(args, self.clock)
+        self.assertEqual(list(json.loads(args.out.read_text())["lanes"]), ["2124"])
+        self.assertTrue(any("A308 on Legion skipped: person at the desk" in c.args[0] for c in said.call_args_list))
+
     def test_unreachable_remote_hosts_leave_this_machines_lanes_and_warn(self):
         failure = subprocess.CalledProcessError(1, ["remote-lane", "boards"])
         with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"), \

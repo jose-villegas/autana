@@ -368,7 +368,8 @@ def remote_boards():
     try:
         listing = json.loads(subprocess.check_output([*remote_command(), "boards"], text=True))
         boards = [dict(board=short_id(board["board"]), port=board["port"], host=board["host"],
-                       name=board.get("name") or board["host"]) for board in listing["boards"] if board["port"]]
+                       name=board.get("name") or board["host"], gated=board.get("gated"))
+                  for board in listing["boards"] if board["port"]]
         unreachable = list(listing.get("unreachable", []))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         boards, unreachable = [], [REMOTE_LANE_ENV]
@@ -543,9 +544,13 @@ def plan(args, clock=None, request=None):
     else:
         listing = board_listing()["boards"]
         args.boards = [short_id(board["board"]) for board in listing]
-        if not args.boards:
-            raise SystemExit("plan: no board is plugged in")
         remote = {board["board"]: board for board in listing if board.get("host")}
+    # A host whose person is present refuses other machines' jobs; its boards sit this night out.
+    for board in [board for board in remote.values() if board.get("gated")]:
+        print(f"::notice::board {board['board']} on {board['name']} skipped: {board['gated']}", file=sys.stderr)
+        args.boards = [name for name in args.boards if short_id(name) != board["board"]]
+    if not args.boards:
+        raise SystemExit("plan: no board is plugged in")
         # The self-test runs on one board of this machine, whichever is plugged in first.
         args.selftest_board = args.selftest_board or next((board for board in args.boards if board not in remote), None)
     tip = git(args.repo, "rev-parse", args.tip + "^{commit}")
