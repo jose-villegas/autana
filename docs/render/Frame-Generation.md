@@ -1,47 +1,53 @@
 # Frame generation by depth reprojection
 
-An experiment: show a warped copy of the last rendered frame between
-rendered frames, to raise the displayed rate without drawing more triangles.
-This page measures its picture on the host and its cost on the board.
-`render_context_set_frame_generation()` puts it in the frame loop: each drawn
-frame is followed by one warped from it to that update's own camera view.
+Frame generation shows a warped copy of the last drawn frame between drawn
+frames, so more frames reach the panel without drawing more triangles. Each
+drawn frame's colour and depth are forward-warped to the camera view of the
+next update<sup>[[97]](../Citations.md#mark-1997)</sup>. The warp
+extrapolates rather than interpolates, so it adds no frame of
+latency<sup>[[98]](../Citations.md#meta-asw-2016)</sup>.
 
-The rendered frame's colour and depth are forward-warped to a later camera
-pose<sup>[[97]](../Citations.md#mark-1997)</sup>, extrapolated rather than
-interpolated so no frame of latency is added<sup>[[98]](../Citations.md#meta-asw-2016)</sup>.
-The pose comes from the camera path, so no per-pixel motion vectors are needed.
+The view is the camera's exact pose at that update, so a still scene needs no
+per-pixel motion vectors. `render/framegen/` holds the warp, and the render
+context runs it: `render_context_set_frame_generation()` turns it on.
 
 ```mermaid
 flowchart LR
-    R["Rendered frame N<br/>colour + depth"] --> W["Forward warp<br/>to pose N + 1"]
-    P["Camera path<br/>pose N + 1"] --> W
-    W --> F["Hole fill"]
-    F --> S["Shown between<br/>N and the next render"]
+    D["Drawn frame N<br/>colour + depth, its view"] --> W["Forward warp<br/>to update N + 1's view"]
+    V["Camera at update N + 1"] --> W
+    W --> F["Holes take frame N's pixel"]
+    F --> C["Compose and present<br/>as a drawn frame"]
+    C --> D2["Drawn frame N + 2"]
 ```
 
 ## Method
 
 | Step | What it does |
 |---|---|
-| Warp | Each pixel goes back to the world through its depth and the pose it was drawn at, then into the later pose; the nearest point wins a pixel. The sky has no depth and turns with the camera |
-| Holes | Pixels nothing lands on: pinholes where the warp stretches the picture, uncovered background behind a near edge, and the screen edge |
-| Row fill | A hole takes the farther of its nearest neighbours left and right, since an uncovered gap shows background<sup>[[99]](../Citations.md#didyk-2010)</sup> |
-| Previous fill | A hole keeps the rendered frame's colour at the same pixel |
-| Repeat | What the panel shows today between renders, scored as the baseline |
+| Warp | Each pixel goes back to the world through its depth and the view it was drawn through, then into the new view, and lands on the nearest pixel; the nearer point wins. The sky has no depth and only turns |
+| Holes | Pixels nothing lands on: pinholes where the warp stretches the picture, background uncovered behind a near edge, and the screen edge |
+| Fill | A hole keeps the drawn frame's pixel at the same place |
+| Compose | The generated picture goes through the same upscale and present as a drawn one |
 
 Lighting is baked, so a surface's colour does not change with the view and
 a warped pixel is the right colour. Depth-based warps for head motion work
 the same way<sup>[[100]](../Citations.md#meta-asw2-2019)</sup>.
 
+A filled hole is the frame before's pixel, not the background it uncovered.
+Filling holes from neighbouring background instead<sup>[[99]](../Citations.md#didyk-2010)</sup>
+scored worse on the host, and filling the pinholes from their neighbours first
+gained less than 0.02 dE: what error is left comes from the warp's
+nearest-pixel resampling, not from holes.
+
 ## Picture
 
-Every scene's camera path is drawn on the host at each half-picture size of
+On the host, every scene's camera path is drawn at each half-picture size of
 the [dynamic-resolution](Dynamic-Resolution.md) ladder, one frame per display
-step of a 30 fps display. A sample of frames along the path is
-warped one and two steps ahead and scored
-against the frame really drawn there with the reference scorer
-([Bake-Method.md](Bake-Method.md)): mean CIE76 dE and luma SSIM.
-The worst frames matter more than the mean, so the 95th percentile of the per-frame mean dE is listed too.
+step of a 30 fps display. A sample of frames is warped one and two steps
+ahead and scored against the frame really drawn there with the reference
+scorer ([Bake-Method.md](Bake-Method.md)): mean CIE76 dE and luma SSIM.
+Repeating the last frame, what the panel shows without frame generation, is
+scored beside it.
 
 <details><summary>Every scene and size</summary>
 
@@ -94,92 +100,189 @@ The worst frames matter more than the mean, so the 95th percentile of the per-fr
 
 </details>
 
-What the table shows:
-
 - The warp beats repeating the frame on every scene and size: the mean dE
   drops by a quarter to a half, and the worst frames' dE by a third to two thirds.
-- One step ahead leaves 2-3% holes, most of them pinholes the row fill
-  closes; two steps ahead doubles both.
-- The previous-frame fill scores slightly better than the row fill, at no cost.
-- Smaller render heights keep the gain; the warp's error grows a little with the coarser grid.
+- One step ahead leaves 2-3% holes, most of them pinholes; two steps ahead
+  doubles both.
+- Smaller render heights keep the gain; the warp's error grows a little with
+  the coarser grid.
 
 Bistro along its whole path at 184x224: where repeating the frame jumps
-(turns and fast passes, up to dE 9 and 12), the warp stays under 5.
+(turns and fast passes), the generated frame stays close to the true one.
 
 ![Bistro: mean dE of the generated frame against the true one along the path](../images/render/framegen-bistro-path.png)
 
-The frame on each path where the warp opens the most holes that are not
-pinholes: the true frame, the warp of the frame before with its holes
-filled, and the holes in red.
+The frame with the most holes that are not pinholes, and the frame the
+generated one strays from most, against the true frame, with where they
+differ most enlarged:
 
-![Bistro: true frame, warped frame and its holes](../images/render/framegen-bistro-holes.png)
+![Bistro: true and generated frames with their difference](../images/render/framegen-bistro-sheet.png)
 
-![Sponza: true frame, warped frame and its holes](../images/render/framegen-sponza-holes.png)
+![Bistro: the places the generated frame differs most, enlarged](../images/render/framegen-bistro-sheet.crops.png)
+
+The holes themselves, in red over the warp, before the fill:
+
+![Bistro: true frame, generated frame and its holes](../images/render/framegen-bistro-holes.png)
+
+![Sponza: true frame, generated frame and its holes](../images/render/framegen-sponza-holes.png)
 
 The screen edge opens most holes on a turn: a guard band, drawing a few
 pixels past each edge, would remove them. Uncovered background behind thin
 near objects (a lamp post, chair legs) is what is left.
 
-![Bistro: the warp around the frame with the most holes](../images/render/framegen-bistro.gif)
+![Bistro: the generated frames around the one with the most holes](../images/render/framegen-bistro.gif)
 
 ## Cost on the board
 
 The on-request `run_framegen_perf_suite` draws each path at every
-half-picture step and, at 24 poses along it, warps the drawn frame one display
-step on into a second cleared colour and depth target. The warp runs on one
-core and split over both; the hole fill takes the drawn frame's pixel. The
-present is the frame's own half-picture expand, and the send overlaps it.
+half-picture step. At 24 poses along it, it warps the drawn frame one display
+step on, both cores taking half the rows, and fills the holes. Compose is
+the frame's own upscale into the half picture; the send overlaps it.
 
-<!-- generated: framegen-board sha256=32bbb147b6f3555d6bd473918f7863cc534a364bf020fc3d0288045f90ae0cde -->
-| Scene | Size | Rendered frame | Warp, both cores (one) | Fill | Present | Generated frame | Displayed: render only | Displayed: + 1 generated |
-|---|---|---|---|---|---|---|---|---|
-| bistro-fitted-full | 184x224 | 43.7 ms | 12.1 ms (21.3) | 2.1 ms | 2.6 ms | 16.8 ms | 23 fps | 33 fps |
-| bistro-fitted-full | 184x179 | 40.1 ms | 9.6 ms (16.9) | 1.7 ms | 2.2 ms | 13.5 ms | 25 fps | 37 fps |
-| bistro-fitted-full | 184x149 | 37.7 ms | 8.0 ms (14.1) | 1.4 ms | 2.0 ms | 11.4 ms | 27 fps | 41 fps |
-| bistro-fitted-full | 184x112 | 34.7 ms | 5.9 ms (10.6) | 1.0 ms | 1.7 ms | 8.7 ms | 29 fps | 46 fps |
-| sponza-fitted-full | 184x224 | 50.4 ms | 12.1 ms (21.6) | 2.0 ms | 2.7 ms | 16.8 ms | 20 fps | 30 fps |
-| sponza-fitted-full | 184x179 | 46.0 ms | 9.6 ms (17.1) | 1.6 ms | 2.3 ms | 13.6 ms | 22 fps | 34 fps |
-| sponza-fitted-full | 184x149 | 42.9 ms | 8.0 ms (14.2) | 1.3 ms | 2.1 ms | 11.4 ms | 23 fps | 37 fps |
-| sponza-fitted-full | 184x112 | 39.0 ms | 6.0 ms (10.7) | 1.0 ms | 1.8 ms | 8.7 ms | 26 fps | 42 fps |
+<!-- generated: framegen-board sha256=90325600d36705beecfff66387db6d116777f532da4dd0a5b1b66e1a2a2546e1 -->
+| Scene | Size | Drawn frame | Warp | Fill | Compose | Generated frame |
+|---|---|---|---|---|---|---|
+| bistro-fitted-full | 184x224 | 43.7 ms | 10.5 ms | 3.8 ms | 2.5 ms | 16.8 ms |
+| bistro-fitted-full | 184x179 | 40.2 ms | 8.1 ms | 2.9 ms | 2.2 ms | 13.2 ms |
+| bistro-fitted-full | 184x149 | 37.7 ms | 6.8 ms | 2.5 ms | 2.0 ms | 11.3 ms |
+| bistro-fitted-full | 184x112 | 34.8 ms | 5.1 ms | 1.9 ms | 1.7 ms | 8.7 ms |
+| sponza-fitted-full | 184x224 | 50.5 ms | 10.6 ms | 3.8 ms | 2.7 ms | 17.0 ms |
+| sponza-fitted-full | 184x179 | 46.0 ms | 8.3 ms | 3.0 ms | 2.3 ms | 13.6 ms |
+| sponza-fitted-full | 184x149 | 43.0 ms | 6.9 ms | 2.5 ms | 2.1 ms | 11.5 ms |
+| sponza-fitted-full | 184x112 | 39.0 ms | 5.1 ms | 1.9 ms | 1.8 ms | 8.8 ms |
 <!-- /generated: framegen-board -->
 
-- A generated frame costs 17 ms at 184x224 and 9 ms at 184x112, and showing
-  one between rendered frames raises the displayed rate by 40-60% at every size.
-- The warp is the per-pixel maths of the
-  [motion-vector attachment](Mesh-Rendering.md#motion-vectors)'s resolve
-  plus the splat: about 124 cycles per pixel on one core, and both cores take 57% of one core's time.
-- Moving the warp's target out of PSRAM, or a fixed-point warp, are what
-  would cut it further; the fill could split over both cores too.
-- A generated frame has to reach the panel halfway through the next render,
-  while both cores draw it: that slot is the next step's problem.
+- A generated frame costs two fifths of a drawn one at 184x224 and a quarter at
+  184x112.
+- The fill copies the generated picture back over the drawn one so compose
+  reads it, which is most of its cost.
+
+Where the warp's time goes. The same warp is timed with every splat off screen
+(the clear, the maths and the source reads), to the drawn view itself (adding
+every write, in order), and to the next view (adding their scatter):
+
+<!-- generated: framegen-profile sha256=2843de71907fbba4598fa433f07415710048ff3f9cc97b0fd59874b06c7ae7fe -->
+| Scene | Size | Clear | Off screen | To the drawn view | To the next view |
+|---|---|---|---|---|---|
+| bistro-fitted-full | 184x224 | 0.8 ms | 10.8 ms | 10.5 ms | 10.5 ms |
+| bistro-fitted-full | 184x179 | 0.6 ms | 7.7 ms | 8.3 ms | 8.1 ms |
+| bistro-fitted-full | 184x149 | 0.5 ms | 6.5 ms | 6.9 ms | 6.8 ms |
+| bistro-fitted-full | 184x112 | 0.3 ms | 4.9 ms | 5.1 ms | 5.1 ms |
+| sponza-fitted-full | 184x224 | 0.8 ms | 10.9 ms | 10.5 ms | 10.6 ms |
+| sponza-fitted-full | 184x179 | 0.6 ms | 7.8 ms | 8.3 ms | 8.3 ms |
+| sponza-fitted-full | 184x149 | 0.5 ms | 6.5 ms | 6.9 ms | 6.9 ms |
+| sponza-fitted-full | 184x112 | 0.3 ms | 4.9 ms | 5.1 ms | 5.1 ms |
+<!-- /generated: framegen-profile -->
+
+The three warps cost the same: writing and scattering the splats is free next
+to the maths. The warp is bound by its arithmetic, a reciprocal and about ten
+multiply-adds per pixel, so two pixels a step, letting their dependent chains
+overlap, cut it by a tenth.
+
+## With dynamic resolution
+
+A [dynamic-resolution](Dynamic-Resolution.md) budget is the cost of a shown
+frame. With frame generation on, a drawn frame and the one generated from it
+are shown in the time of two, so the render context prices each drawn frame
+against what the pair may spend. With B the budget per shown frame, g the
+last generated frame's cost and N = `FRAMEGEN_SHOWN_PER_DRAWN` frames shown
+per drawn one:
+
+| Quantity | Value |
+|---|---|
+| A drawn frame's budget | max(N B − (N − 1) g, B) |
+| The pair's cost when the policy holds it | N B: B per shown frame |
+| A generated frame's own cost | not priced: it only sets g |
+
+```mermaid
+flowchart LR
+    G["Generated frame<br/>costs g"] -->|"g"| P["Policy prices the next<br/>drawn frame against<br/>N B - (N - 1) g"]
+    P --> S["Drawn frame at the<br/>step that fits"]
+    S --> G2["Generated frame"]
+```
+
+The floor of one frame's budget keeps a slow generated frame from starving
+the drawn one. The drawn frame's budget against the generated frame's cost,
+with this board's generated frames marked:
+
+![A drawn frame's budget against the generated frame's cost](../images/render/framegen-pricing.png)
+
+The budget sets the trade. At the same budget the saving buys resolution: the
+drawn frame gets more than one frame's time and draws a finer step. At a
+tighter budget it buys rate: the pair still fits, at more frames per second.
+Each scene's path played in real time on the board, per mode:
+
+<!-- generated: framegen-modes sha256=0c3104683b002e809c0512bc7ab9ccb051daed685bf9ea02debb3bf346814911 -->
+| Scene | Frame generation | Budget | Shown | p95 frame | Drawn | Drawn height |
+|---|---|---|---|---|---|---|
+| bistro-fitted-full | off | off | 26.4 fps | 58.0 ms | 100% | 224 |
+| bistro-fitted-full | on | off | 30.1 fps | 55.9 ms | 50% | 224 |
+| bistro-fitted-full | off | 23 ms | 30.3 fps | 47.3 ms | 100% | 152 |
+| bistro-fitted-full | on | 23 ms | 33.3 fps | 46.6 ms | 50% | 180 |
+| bistro-fitted-full | on | 17 ms | 36.8 fps | 46.2 ms | 50% | 139 |
+| bistro-fitted-full | on | 11 ms | 39.3 fps | 45.9 ms | 50% | 115 |
+| sponza-fitted-full | off | off | 20.8 fps | 60.0 ms | 100% | 224 |
+| sponza-fitted-full | on | off | 26.5 fps | 59.3 ms | 50% | 224 |
+| sponza-fitted-full | off | 23 ms | 26.5 fps | 46.5 ms | 100% | 116 |
+| sponza-fitted-full | on | 23 ms | 32.0 fps | 46.0 ms | 50% | 146 |
+| sponza-fitted-full | on | 17 ms | 34.9 fps | 45.9 ms | 50% | 115 |
+| sponza-fitted-full | on | 11 ms | 35.3 fps | 45.8 ms | 50% | 112 |
+<!-- /generated: framegen-modes -->
+
+- At the same budget, frame generation draws finer and shows more frames:
+  Bistro draws 180 rows instead of 152 and shows 10% more frames.
+- A tighter budget turns the saving into rate: Bistro shows nearly 40 fps at
+  the floor of the ladder.
+- The rate gains less than the cost table suggests: every update, drawn or
+  generated, also pays the frame's own work outside the render, about 10 ms.
+
+## Pacing
+
+A generated frame is shown as soon as it is made, right after the drawn frame
+before it. The shown frames alternate between a drawn frame's interval and a
+generated frame's. Each frame's view is right for when it is shown, so motion
+stays correct, but the intervals are uneven.
+
+Even intervals need the generated frame presented halfway through the next
+drawn frame, while both cores draw it. That is a slot in the frame loop, not
+in the render context, and it is not built.
+
+## For an app
+
+Frame generation and the budget are per render context, set by whoever owns
+it: an app for its scenes, a player setting, or later a default the frame
+loop applies.
+
+| Call | Use |
+|---|---|
+| `render_context_set_frame_generation(context, on)` | On for scenes whose objects do not move on their own; off costs nothing. A debug view, a camera cut or a new viewport draws the next frame instead |
+| `render_context_set_dynamic_resolution(context, config, model, step)` | `config->budget_us` stays the budget per shown frame; with generation on, the context prices each drawn frame for the pair |
+| `render_context_frame(context).generated` | Whether the last frame was generated rather than drawn |
 
 ## Moving objects
 
 The warp moves everything with the camera, so an object moving on its own
-(the capybara) lands where it was. What it would need, not built:
+lands where it was. What it would need, not built:
 
 - A rigid object: one map per moved instance, which the
-  [motion-vector attachment](Mesh-Rendering.md#motion-vectors) already builds from the previous transform, taking only its own pixels.
-- A skinned one: a map per bone. Each triangle writes its dominant bone to
-  a tag plane; each pixel moves by that bone's change over the step, read from the clip at the later time.
+  [motion-vector attachment](Mesh-Rendering.md#motion-vectors) already builds
+  from the previous transform, taking only its own pixels.
+- A skinned one: a map per bone. Each triangle writes its dominant bone to a
+  tag plane, and each pixel moves by that bone's change over the step.
 - Tags written only for the moving instances keep the cost to the object's
   pixels, not the whole frame's.
 
-## Verdict
-
-Frame generation pays on the board: a generated frame costs a quarter to
-two fifths of a rendered one, its picture is closer to the true frame than
-repeating the last one, and Bistro shows 33 fps at 184x224 where it renders 23.
-What is left is presenting it mid-render, and moving objects.
-
 ## Reproducing
 
-[`launcher/tools/r3d/framegen/`](../../launcher/tools/r3d/framegen/) holds the experiment, removable in one pass
-with the host scene renderer's `--dump` option:
+[`launcher/tools/r3d/framegen/`](../../launcher/tools/r3d/framegen/) holds
+the host experiment, with the host scene renderer's `--dump` option. The
+board numbers come from the on-request `run_framegen_perf_suite` and
+`run_framegen_modes_suite`, captured in
+[`docs/render/data/framegen-board.log`](data/framegen-board.log).
 
 | File | Role |
 |---|---|
-| [`warp.py`](../../launcher/tools/r3d/framegen/warp.py) | The warp and the two fills, on a raster dump |
-| [`framegen_score.py`](../../launcher/tools/r3d/framegen/framegen_score.py) | One scene and size: render, warp, score; stills, clip and video |
-| [`framegen_report.py`](../../launcher/tools/r3d/framegen/framegen_report.py) | The table and the plot from the scores |
-| [`framegen_docs.sh`](../../launcher/tools/r3d/framegen/framegen_docs.sh) | Regenerates this page's table and images |
+| [`warp.py`](../../launcher/tools/r3d/framegen/warp.py) | The warp and the fills, on a raster dump |
+| [`framegen_score.py`](../../launcher/tools/r3d/framegen/framegen_score.py) | One scene and size: render, warp, score; stills, sheet, clip and video |
+| [`framegen_report.py`](../../launcher/tools/r3d/framegen/framegen_report.py) | The tables and figures, from the scores and the board capture |
+| [`framegen_docs.sh`](../../launcher/tools/r3d/framegen/framegen_docs.sh) | Regenerates this page's tables and images |

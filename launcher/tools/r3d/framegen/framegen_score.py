@@ -7,13 +7,17 @@ frame, what the panel shows today between renders, is scored beside it.
 
     framegen_score.py --renderer EXE --scene KEY --scene-file SCENE.toml
         --camera NAME --size WxH --csv OUT.csv
-        [--video OUT.mp4] [--still OUT.png] [--clip OUT.gif] [--work DIR]
+        [--video OUT.mp4] [--still OUT.png] [--clip OUT.gif] [--sheet OUT.png] [--work DIR]
 
---video writes every frame of the path: the true frame, the warp of the one
-before it with its holes filled, and the holes in red over the warp.
+--video writes every frame of the path: the true frame, the frame generated
+from the one before it (warped, its holes filled from that frame as the
+render context does), and the holes in red over the warp.
 --still writes that picture for the sampled frame whose one-step warp opens
 the most holes that are not pinholes (disocclusions and screen edges), and
---clip CLIP_FRAMES of them around it as a GIF at the display rate.
+--clip CLIP_FRAMES of them around it as a GIF at the display rate. --sheet
+writes render_compare's sheet of that frame and the sampled frame the
+generated one strays from most (true | generated | difference), and beside it
+the crops of where they differ most.
 Needs Pillow and numpy (tools/r3d/requirements.txt).
 """
 import argparse
@@ -55,6 +59,8 @@ CLIP_ZOOM = 1
 CLIP_COLOURS = 64
 CLIP_FRAMES = 60
 MS_PER_SECOND = 1000
+# The places --sheet's crops show per frame.
+SHEET_CROPS = 2
 FILLS = ("row", "previous")
 CSV_HEADER = ("scene,width,height,frame,ahead,holes_pct,pinholes_pct,fill,mean_delta_e,p95_delta_e,ssim")
 
@@ -94,15 +100,22 @@ def score(frame_path, lens, poses, frame, ahead):
     return rows
 
 
-def video_frame(frame_path, lens, poses, frame, zoom=VIDEO_ZOOM):
-    """True | warped from the frame before, row-filled | holes in red."""
+def generated(frame_path, lens, poses, frame):
+    """(true, generated, warped with holes in red, hole share) for frame
+    `frame`, generated from the one before it."""
     colour, depth = warp.read_dump(frame_path(frame - 1))
     truth = warp.rgb_of(warp.read_dump(frame_path(frame))[0])
-    moved, moved_depth, written = warp.warp(colour, depth, lens, poses[frame - 1 + FRAME_POSE_LAG],
-                                            poses[frame + FRAME_POSE_LAG])
-    shown = warp.rgb_of(warp.fill_row(moved, moved_depth, written))
+    moved, _, written = warp.warp(colour, depth, lens, poses[frame - 1 + FRAME_POSE_LAG],
+                                  poses[frame + FRAME_POSE_LAG])
+    shown = warp.rgb_of(warp.fill_previous(moved, written, colour))
     holes = np.where(written[..., None], warp.rgb_of(moved), np.array(HOLE_RED, dtype=np.uint8))
-    panels = [("true", truth), ("warped + row fill", shown), ("holes %.1f%%" % (100.0 * (~written).mean()), holes)]
+    return truth, shown, holes, float((~written).mean())
+
+
+def video_frame(frame_path, lens, poses, frame, zoom=VIDEO_ZOOM):
+    """True | generated from the frame before | holes in red."""
+    truth, shown, holes, share = generated(frame_path, lens, poses, frame)
+    panels = [("true", truth), ("generated", shown), ("holes %.1f%%" % (100.0 * share), holes)]
     tiles = []
     for label, rgb in panels:
         big = Image.fromarray(rgb).resize((rgb.shape[1] * zoom, rgb.shape[0] * zoom), Image.NEAREST)
@@ -127,6 +140,19 @@ def write_clip(frame_path, lens, poses, frames, out):
                       optimize=True)
 
 
+def write_sheet(frame_path, lens, poses, frames, out):
+    """render_compare's sheet of `frames` (title, frame), true against
+    generated, and its crops beside it."""
+    rows, entries = [], []
+    for title, frame in frames:
+        truth, shown, _, _ = generated(frame_path, lens, poses, frame)
+        a, b = Image.fromarray(truth), Image.fromarray(shown)
+        rows.append((title, a, b))
+        entries.append((title, [a, b], render_compare.find_clusters(a, b, None, SHEET_CROPS)))
+    render_compare.sheet(rows, None, "true", "generated").save(out)
+    render_compare.write_crops(entries, render_compare.crops_path(out), ["true", "generated"])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--renderer", required=True)
@@ -138,6 +164,7 @@ def main():
     parser.add_argument("--video")
     parser.add_argument("--still")
     parser.add_argument("--clip")
+    parser.add_argument("--sheet")
     parser.add_argument("--work")
     args = parser.parse_args()
     width, height = map(int, args.size.split("x"))
@@ -153,6 +180,7 @@ def main():
             return work / ("%04d.raw" % index)
 
         gaps = {}
+        strays = {}
         with open(args.csv, "w", newline="\n") as csv:
             csv.write(CSV_HEADER + "\n")
             for frame in range(0, frames - max(AHEAD), SAMPLE_EVERY):
@@ -163,9 +191,14 @@ def main():
                             stats.p95_delta_e, stats.ssim_luma))
                         if ahead == AHEAD[0]:
                             gaps[frame] = holes[0] - holes[1]
+                        if ahead == AHEAD[0] and fill == "previous":
+                            strays[frame] = stats.mean_delta_e
         shown = max(gaps, key=gaps.get) + AHEAD[0]
         if args.still:
             Image.fromarray(video_frame(frame_path, lens, poses, shown)).save(args.still)
+        if args.sheet:
+            worst = max(strays, key=strays.get) + AHEAD[0]
+            write_sheet(frame_path, lens, poses, (("most holes", shown), ("most error", worst)), args.sheet)
         if args.clip:
             first = min(max(shown - CLIP_FRAMES // 2, 1), frames - CLIP_FRAMES)
             write_clip(frame_path, lens, poses, range(first, first + CLIP_FRAMES), args.clip)

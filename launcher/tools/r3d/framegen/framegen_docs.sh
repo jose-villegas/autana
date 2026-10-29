@@ -7,7 +7,8 @@
 #
 #   ./launcher/tools/r3d/framegen/framegen_docs.sh [-j JOBS] [--out IMAGES TABLES]
 #
-# The board table comes from the framegen_perf suite's capture beside the page,
+# The board's tables and the pricing figure come from the render lab's
+# framegen_perf and framegen_modes captures beside the page,
 # docs/render/data/framegen-board.log.
 #
 # --out writes the images to IMAGES and the tables to TABLES
@@ -55,7 +56,7 @@ for scene in $SCENES; do
     for size in $SIZES; do
         extra=""
         if [ "$scene/$size" = "$LEAD/$SHOWN_SIZE" ]; then
-            extra="--still $IMAGES/framegen-bistro-holes.png --clip $IMAGES/framegen-bistro.gif"
+            extra="--still $IMAGES/framegen-bistro-holes.png --clip $IMAGES/framegen-bistro.gif --sheet $IMAGES/framegen-bistro-sheet.png"
         elif [ "$scene/$size" = "$SECOND/$SHOWN_SIZE" ]; then
             extra="--still $IMAGES/framegen-sponza-holes.png"
         fi
@@ -71,6 +72,5 @@ for scene in $SCENES; do
     done
 done
 # shellcheck disable=SC2086
-"$PYTHON" launcher/tools/r3d/framegen/framegen_report.py --out-table "${TABLES:-$WORK/tables}/framegen-scores.md" \
-    --out-plot "$IMAGES/framegen-bistro-path.png" --plot-scene "$LEAD" --plot-size "$SHOWN_SIZE"     --board docs/render/data/framegen-board.log --out-board-table "${TABLES:-$WORK/tables}/framegen-board.md" $csvs
+"$PYTHON" launcher/tools/r3d/framegen/framegen_report.py --tables "${TABLES:-$WORK/tables}" --images "$IMAGES"     --plot-scene "$LEAD" --plot-size "$SHOWN_SIZE" --board docs/render/data/framegen-board.log $csvs
 [ -n "$TABLES" ] || "$PYTHON" launcher/tools/render/generated_blocks.py --tables "$WORK/tables"
