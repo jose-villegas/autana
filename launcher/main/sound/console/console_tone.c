@@ -107,6 +107,27 @@ typedef struct {
     int64_t last_sample_us;
 } tone_pulse_buffer_t;
 
+static bool
+tone_pulse_collect_sample(tone_pulse_buffer_t* pulse, int index) {
+    const int64_t pulse_us = (int64_t)pulse->pulse_ms * MATH_US_PER_MS;
+    const int64_t sample_us = pulse->fifo->sample_us[index] - pulse->start_us;
+    const int64_t lost_us = (int64_t)pulse->fifo->lost_before[index] * IMU_BUZZ_SAMPLE_US;
+    if (lost_us && sample_us - IMU_BUZZ_SAMPLE_US >= 0 && sample_us - lost_us <= pulse_us) {
+        pulse->gap = true;
+    }
+    if (sample_us < 0) {
+        return true;
+    }
+    if (sample_us > pulse_us) {
+        return true;
+    }
+    if (pulse->count == TONE_PULSE_SAMPLE_CAPACITY) {
+        return false;
+    }
+    pulse->samples[pulse->count++] = pulse->fifo->samples[index];
+    return true;
+}
+
 /* Delivery may trail sampling by a task period; selection uses the producer clock. */
 static bool
 tone_pulse_drain(void* context) {
@@ -130,21 +151,9 @@ tone_pulse_drain(void* context) {
         pulse->last_sample_us = end_us;
     }
     for (int i = 0; i < count; i++) {
-        const int64_t sample_us = pulse->fifo->sample_us[i] - pulse->start_us;
-        const int64_t lost_us = (int64_t)pulse->fifo->lost_before[i] * IMU_BUZZ_SAMPLE_US;
-        if (lost_us && sample_us - IMU_BUZZ_SAMPLE_US >= 0 && sample_us - lost_us <= pulse_us) {
-            pulse->gap = true;
-        }
-        if (sample_us < 0) {
-            continue;
-        }
-        if (sample_us > (int64_t)pulse->pulse_ms * MATH_US_PER_MS) {
-            continue;
-        }
-        if (pulse->count == TONE_PULSE_SAMPLE_CAPACITY) {
+        if (!tone_pulse_collect_sample(pulse, i)) {
             return false;
         }
-        pulse->samples[pulse->count++] = pulse->fifo->samples[i];
     }
     return true;
 }
