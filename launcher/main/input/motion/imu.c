@@ -423,10 +423,11 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* Closes the window when log_ms has passed, or `now` before a park so its line is not held back. */
+/* Closes the window when log_ms has passed. Runs at IMU_TASK_BUS_PRIORITY: logged below the job
+ * worker, the line landed inside console_emit_line()'s chunked screenshot rows (A308). */
 static void
-log_stats(int64_t now_us, bool now) {
-    const bool window_done = now || log_ms == 0 || now_us - stats.last_log_us >= (int64_t)log_ms * MATH_US_PER_MS;
+log_stats(int64_t now_us) {
+    const bool window_done = log_ms == 0 || now_us - stats.last_log_us >= (int64_t)log_ms * MATH_US_PER_MS;
     if (!window_done) {
         return;
     }
@@ -623,7 +624,6 @@ imu_task(void* arg) {
         const imu_demand_level_t asked = take_demand();
         if (asked == IMU_DEMAND_NONE) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
-            log_stats(timing_now_us(), true);
             stats.parks++;
             const int64_t parked_us = timing_now_us();
 #endif
@@ -665,10 +665,10 @@ imu_task(void* arg) {
             read_ticks = 0;
         }
         read_ticks++;
-        vTaskPrioritySet(NULL, IMU_TASK_PRIORITY);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        log_stats(timing_now_us(), false);
+        log_stats(timing_now_us());
 #endif
+        vTaskPrioritySet(NULL, IMU_TASK_PRIORITY);
         if (xTaskDelayUntil(&last_wake, period) == pdFALSE) {
             last_wake = xTaskGetTickCount();
         }
