@@ -185,6 +185,11 @@ Device and IMU placement come from `board/board_geometry.h`.<sup>[[89]](../Citat
 | Accepted acceleration | Integrate `cross(down, direction) * weight * dt` before correction; Mahony integral, sign follows minus-cross prediction<sup>[[73]](../Citations.md#mahony-2008)</sup> |
 | Bias reaches per-axis limit | Clamp in deg/s |
 | Rejection, zero acceleration or recovery | No bias learning |
+| Bias along gravity | Unobservable to the filter; rest-window learning measures that axis too, subject to the [vertical-rotation limit](Motion-Calibration.md#gyro-learning) |
+
+The input layer subtracts the stored gyro offset before this learner sees
+rotation. Its bias estimate is the residual after that correction; accepting
+a new rest-window offset resets the learned bias to zero.
 
 Bias along gravity is unobservable: rotation about down leaves down unchanged.
 At full trust, the target is 2% settling for a datasheet-sized offset.
@@ -236,9 +241,9 @@ b_{\mathrm{err}}(t) \propto e^{-4t/T_s}, \qquad e^{-4T_s/T_s} = e^{-4} \approx 0
 | `GRAVITY_RECOVER_MS` | 5000 ms, converted to us | x-io Fusion rejection timeout<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
 | `GRAVITY_RECOVER_ACCEPT_WEIGHT` | 9 | x-io Fusion accepted-sample counter drain<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
 | `GRAVITY_GYRO_OVERRANGE_RATIO` / `GRAVITY_GYRO_OVERRANGE_DPS` | 0.98 / 0.98 × `IMU_GYRO_RANGE_DPS` | Fusion ratio × configured full scale<sup>[[74]](../Citations.md#madgwick-fusion)</sup> |
-| `GRAVITY_STILL_DPS` | 3 deg/s | Above rest gyro noise (about +/-2 deg/s) |
+| `GRAVITY_STILL_DPS` | `IMU_REST_GYRO_DEPARTURE` in deg/s | Shared rest-noise threshold |
 | `GRAVITY_STILL_RECOVER_MS` | 500 ms | Ours: clears a fast-flip error promptly, outlasts a held swing reversal |
-| `GRAVITY_GYRO_OFFSET_TOL_DPS` + `GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C` × `GRAVITY_GYRO_TEMP_SPAN_C` = `GRAVITY_BIAS_MAX_DPS` | 10 + 0.05 × 60 = 13 deg/s | QMI8658C Table 8: initial offset + drift from 25 C to 85 C<sup>[[76]](../Citations.md#qst-qmi8658c)</sup> |
+| `IMU_GYRO_OFFSET_TOL_DPS` + `IMU_GYRO_OFFSET_TCO_DPS_PER_C` × `IMU_GYRO_TEMP_SPAN_C` = `IMU_GYRO_BIAS_MAX_DPS` | 10 + 0.05 × 60 = 13 deg/s | QMI8658C Table 8: initial offset + drift from 25 C to 85 C<sup>[[76]](../Citations.md#qst-qmi8658c)</sup> |
 | `GRAVITY_BIAS_SETTLE_S` | 20 s | Ours |
 | `GRAVITY_BIAS_KI` | derived from TAU and SETTLE_S | Linearised integral loop; see Bias learning |
 | `GRAVITY_FREE_FALL_G` | 0.3 g | Acceleration magnitude below which strength is zero |
