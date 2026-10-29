@@ -64,6 +64,13 @@ static int console_step_count;
  * as one dynamic-resolution step; 0 keeps the scene's own scale. */
 static recti_t size_rect;
 
+/* --dump DIR: each frame's raster colour then depth, before the upscale, as
+ * DIR/NNNN.raw: width and height as int32, then width x height RGB565, then
+ * width x height inverse depth (r3d_span.h), all little-endian. For the frame
+ * generation experiment (launcher/tools/r3d/framegen/); host only. */
+#define DUMP_PATH_MAX 512
+static const char* dump_dir;
+
 /* The value after `name` in `out`, NULL when the option is absent; false,
  * with a message, when it is the last argument and has none. */
 static bool
@@ -180,7 +187,7 @@ options(int argc, char** argv) {
     if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)
         || !option_value(argc, argv, "--camera", &render_lab_start_camera)
         || !option_value(argc, argv, "--scale", &scale) || !option_value(argc, argv, "--size", &size)
-        || !option_value(argc, argv, "--small-fill", &small_fill)) {
+        || !option_value(argc, argv, "--small-fill", &small_fill) || !option_value(argc, argv, "--dump", &dump_dir)) {
         return false;
     }
     if (size != NULL
@@ -241,6 +248,25 @@ setup(int quarter) {
 }
 
 static void
+dump_raster(int index) {
+    const render_context_t* c = render_context_main();
+    const render_context_frame_t f = render_context_frame(c);
+    char path[DUMP_PATH_MAX];
+    (void)snprintf(path, sizeof path, "%s/%04d.raw", dump_dir, index);
+    FILE* out = fopen(path, "wb");
+    if (out == NULL) {
+        (void)fprintf(stderr, "render_lab_render_host: cannot write %s\n", path);
+        exit(EXIT_FAILURE);
+    }
+    const int32_t size[2] = {f.width, f.height};
+    const size_t pixels = (size_t)f.width * (size_t)f.height;
+    (void)fwrite(size, sizeof size[0], 2, out);
+    (void)fwrite(raster_color(&c->raster), sizeof(gfx_color_t), pixels, out);
+    (void)fwrite(raster_depth(&c->raster), sizeof(uint16_t), pixels, out);
+    (void)fclose(out);
+}
+
+static void
 draw(const render_frame_t* frame) {
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
@@ -251,6 +277,9 @@ draw(const render_frame_t* frame) {
         }
     }
     app_list()->frame(frame->dt_ms, &in);
+    if (dump_dir != NULL) {
+        dump_raster(frame->index);
+    }
     /* The shell's update() runs before it composes a frame; this harness has
      * already composed, so it steers the next one. */
     app_list()->update(frame->dt_ms, &in);
