@@ -34,7 +34,9 @@ Meshes must already be baked.
 Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
 all authored renderers. An unknown renderer reports the available names.
 `--camera NAME` selects a camera; omission activates the scene's default.
-With `--camera`, stderr names that camera's path duration in ms.
+Stderr names the camera's path duration in ms, and `--poses FILE` writes one
+CSV row per frame of where it stands: `frame,ms`, its world position and
+rotation quaternion.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
 30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets|cull` selects the render
 context's view, with shaded as the default. The names match the declared
@@ -59,11 +61,59 @@ every frame through the shared harness's video writer. `--deps` compiles
 nothing and prints what the viewer is compiled from: a `flags` line, then the
 compiler's `-MM` list.
 
+### Scrubbing a camera path, A against B
+
+```sh
+sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --live --object FITTED --b-args "--object SOURCE"
+sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --live --object NAME --b main
+sh launcher/tools/render/scene_viewer.sh --mark MARK.json --side b -o frame.bmp
+```
+
+`--live` renders the whole camera path once per side, printing progress, and
+then opens a window over the frames. The other arguments are the renderer's,
+as above. Without `--frames` and `--dt` the path runs start to end at the
+viewer's frame time. A path too long for one video is rendered at the
+shortest frame time that fits, and stderr says which. Needs Python's
+tkinter (`python3-tk` on Debian and Ubuntu).
+
+| Side B | Flag | What differs |
+|---|---|---|
+| another renderer selection or setting | `--b-args "ARGS"` | B's renderer arguments replace A's |
+| the pack at a git revision | `--b REV` | that revision's bake, built in a temporary worktree and drawn by this checkout's viewer |
+| the pack of an existing checkout | `--b DIR` | as `--b REV`, without the worktree |
+
+`--label-a` and `--label-b` name the sides in the status line.
+
+| Key | Does |
+|---|---|
+| Left, Right | one frame back or on; ten with Shift |
+| Home, End, slider | the path's ends, any frame |
+| Space | the other side at the same frame |
+| M | writes a mark and prints its path |
+| Escape | closes the window |
+
+A mark goes to `launcher/tools/results/render/scene_viewer/marks/` (`--marks
+DIR` elsewhere) as `<scene>-f<frame>.json` with a PNG of each side. It holds
+the scene file, the frame, its time and frame time. For each side it also
+holds the label, revision, renderer arguments, the camera pose and the sha256
+of each bake that side's checkout locks for the scene in `launcher/bakes.lock`.
+
+`--mark MARK.json [--side a|b]` renders that side's frame again with the batch
+flags: the mark's scene and arguments, `--frames` up to the frame and its
+`--dt`, plus any arguments that follow. It warns when this checkout's bakes
+for the scene differ from the side's. To redraw side B of a `--b REV` mark
+with its own pack, check out its `revision` first.
+
+`--shot FRAME PNG` writes the window's picture of each side at a frame
+instead of opening it:
+
+![One frame of the demo scene: its fitted mesh beside its source mesh](../images/render/sponza-scrub.png)
+
 ## Images in these docs
 
 The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
-bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
+bake comparisons, view GIFs, scrub window shot, fidelity and import sheets and CPU tables through
 `scene_viewer.sh`, selecting one renderer with `--object NAME`.
 `doc_images_demo.sh OUT WORK SCENE OBJECT --meshlets-only` generates only the
 meshlet still; its normal run also writes that image beside the view GIFs.

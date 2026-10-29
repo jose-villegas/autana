@@ -1,4 +1,5 @@
 """The scene-file viewer through the shared harness, using temporary authored assets."""
+import json
 import os
 import pathlib
 import re
@@ -20,8 +21,10 @@ from anim import track_host
 from build.c_header import read_define
 from r3d import build_pack, import_settings
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
+from render import scene_scrub  # noqa: E402
 
 SCRIPT = TOOLS / "render/scenes/scene_viewer_render_host.sh"
+REPO = TOOLS.parents[1]
 
 
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
@@ -256,6 +259,70 @@ path = { animation = "fly.anim.toml", node = "camera" }
             self.assertEqual(image.size, (448, 368))
             self.assertGreater(dict((rgb, count) for count, rgb in image.getcolors(448 * 368)).get((255, 40, 16), 0),
                                1000)
+
+    def test_poses_follow_the_camera_one_row_per_frame(self):
+        rows = self.root / "poses.csv"
+        run, _ = self.render("--poses", str(rows), "--frames", "3")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        poses = scene_scrub.read_poses(rows)
+        self.assertEqual([line.split(",")[1] for line in rows.read_text().splitlines()[1:]], ["0", "100", "200"])
+        self.assertEqual(len(poses), 3)
+        self.assertNotEqual(poses[0].position, poses[2].position)
+        for pose in poses:
+            self.assertAlmostEqual(float(np.linalg.norm(pose.rotation)), 1.0, places=5)
+
+    def live_args(self, *extra):
+        out, marks = self.root / "live", self.root / "marks"
+        sides = ("--side", "all", str(self.root), str(self.binary), str(self.out / "assets"), "",
+                 "--side", "card", str(self.root), str(self.binary), str(self.out / "assets"), "--object\ncard")
+        return scene_scrub.parser().parse_args(["live", "--scene-file", str(self.scene), "--repo", str(REPO),
+                                                "--out", str(out), "--marks", str(marks), *extra, *sides])
+
+    def test_a_mark_replays_its_frame_on_either_side(self):
+        scrub = scene_scrub.rendered(self.live_args("--frames", "4", "--dt", "100"))
+        self.assertEqual(scrub.count, 4)
+        scrub.seek(2)
+        mark = scrub.mark(self.root / "marks")
+        record = json.loads(mark.read_text())
+        self.assertEqual((record["frame"], record["ms"], record["dt_ms"]), (2, 200, 100))
+        self.assertEqual(record["scene"], self.scene.resolve().as_posix())
+        self.assertEqual(record["sides"]["b"]["args"], ["--object", "card"])
+        self.assertEqual(record["sides"]["a"]["pose"]["position"], list(scrub.sides[0].poses[2].position))
+        pictures = {}
+        for side in scene_scrub.SIDES:
+            with Image.open(mark.parent / record["sides"][side]["png"]) as image:
+                pictures[side] = image.convert("RGB").tobytes()
+            target = self.root / f"replay-{side}.bmp"
+            run = subprocess.run([shutil.which("sh"), str(TOOLS / "render/scene_viewer.sh"), "--mark", str(mark),
+                                  "--side", side, "-o", str(target)], cwd=self.root, capture_output=True, text=True,
+                                 timeout=120)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            with Image.open(target) as image:
+                self.assertEqual(image.convert("RGB").tobytes(), pictures[side], side)
+        self.assertNotEqual(pictures["a"], pictures["b"], "the offset card should pop out on side b")
+
+    def test_a_path_too_long_for_one_video_is_refused_with_what_fits(self):
+        with self.assertRaises(SystemExit) as refusal:
+            scene_scrub.rendered(self.live_args("--frames", "100000000", "--dt", "1"))
+        self.assertRegex(str(refusal.exception), r"at most \d+ do")
+
+    def test_wrapper_live_shot_lays_both_sides_out(self):
+        shot = self.root / "shot.png"
+        run = subprocess.run([shutil.which("sh"), str(TOOLS / "render/scene_viewer.sh"), self.scene.name, "--live",
+                              "--b-args", "--object card", "--frames", "3", "--dt", "100", "--shot", "1", str(shot)],
+                             cwd=self.root, capture_output=True, text=True, timeout=300)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        with Image.open(shot) as image:
+            self.assertEqual(image.size, (2 * 448 * scene_scrub.ZOOM + scene_scrub.SHOT_GAP,
+                                          368 * scene_scrub.ZOOM + scene_scrub.STATUS_HEIGHT))
+
+    def test_wrapper_refuses_window_flags_without_live(self):
+        for args in (["--b", "main"], ["--b-args", "--object card"], ["--shot", "1", "x.png"]):
+            with self.subTest(args=args):
+                run = subprocess.run([shutil.which("sh"), str(TOOLS / "render/scene_viewer.sh"), self.scene.name,
+                                      *args], cwd=self.root, capture_output=True, text=True, timeout=120)
+                self.assertEqual(run.returncode, 2)
+                self.assertIn("need --live", run.stderr)
 
     def test_packer_replaces_a_scratch_mesh_for_one_render_only(self):
         scratch = self.root / "scratch mesh"

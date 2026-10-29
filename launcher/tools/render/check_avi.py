@@ -65,7 +65,11 @@ def read_avi(path):
     Trusts nothing beyond the structure; check_file() is the validator.
     """
     with open(path, "rb") as handle:
-        data = handle.read()
+        return parse_avi(handle.read())
+
+
+def parse_avi(data):
+    """read_avi() over bytes already in hand, such as a memory map: frames are views of `data`."""
     if data[0:4] != b"RIFF" or data[8:12] != b"AVI ":
         raise AviError("not a RIFF AVI file")
     hdrl_s, hdrl_e = find_list(data, 12, len(data), b"hdrl")
