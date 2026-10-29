@@ -419,8 +419,11 @@ supplies the first clip advance. Each later frame advances by the previous
 frame's wall time.
 
 A traced playback (`frame_profile_play` given a trace) also keeps each
-frame's path time. `frame_trace:` lines list every frame and `frame_worst:`
-lines rank the slowest. `frame_replay:` lines hold the cull view's counts
+frame's path time. `frame_trace:` lines list every frame and `frame_peak:`
+lines rank the frame peaks, each with its prominence. The capture parser fails
+a row whose traced frames differ from its `frames=` count. On the board, these
+lines go through the console's waiting writer, because a burst through stdio
+loses whole lines. `frame_replay:` lines hold the cull view's counts
 and a frame-cost report at one replayed pose.
 
 The capture parser compares mean microseconds for each scenario and quarter.
