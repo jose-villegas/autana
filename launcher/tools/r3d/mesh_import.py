@@ -368,6 +368,8 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
 
 def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
     """One local mesh per handedness, with colour sets following its baked array order."""
+    from r3d.objects.instances import place
+
     entries, rows = [], []
     for mirrored in (False, True):
         copies = [(instance, lit) for instance, lit in shape['copies'] if instance.mirrored == mirrored]
@@ -378,7 +380,7 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
         mesh_id = mesh_bundle.shape_id(name, shape['rule'], first_name)
         reflect = np.diag([-1 if mirrored else 1, 1, 1])
         p, _, t, labels = lit
-        local = ((p[t].reshape(-1, 3) - first.position) @ first.linear) @ reflect
+        local = place(p[t].reshape(-1, 3) - first.position, first.linear.T, 0.0) * np.diag(reflect)
         tris = np.arange(len(local)).reshape(-1, 3)
         double = np.isin(labels, [i for i, material in enumerate(geometry.src.names)
                                 if material in job.settings.double_sided]).astype(int)
