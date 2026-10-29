@@ -232,6 +232,9 @@ A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.
 `--console FRAME:WORDS` runs the board's `render WORDS` command, such as
 `clip walk 400`, before frame FRAME draws; repeat it for a sequence.
+`--dump DIR` writes each frame's raster colour and depth, before the
+upscale, to `DIR/NNNN.raw` for the frame generation experiment
+([Frame-Generation.md](../../../../../docs/render/Frame-Generation.md)).
 
 `dynres_quality.sh WORK OUT.csv CAMERA WxH [WxH ...]` scores each size
 against the reference along that camera's clip, at intervals taken from
