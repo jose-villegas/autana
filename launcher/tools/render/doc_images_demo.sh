@@ -148,6 +148,10 @@ demo_gif ${ID}-flat --scene "$ID" --object "${FULL}_flat"
 demo_gif ${ID}-fitted --scene "$ID" --object "${FULL}_fitted"
 demo_gif ${ID}-fitted-full --scene "$ID" --object "${FULL}_fitted_full"
 demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
+# The scrub window over the same seconds, fitted against its source, halfway through.
+run sh launcher/tools/render/scene_viewer.sh "$SCENE" --live --object "${FULL}_fitted" --b-args "--object $FULL" \
+    --label-a fitted --label-b source --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" \
+    --shot $((DEMO_GIF_FRAMES / 2)) "$RENDER/${ID}-scrub.png" 2> "$W/scrub.log"
 demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
