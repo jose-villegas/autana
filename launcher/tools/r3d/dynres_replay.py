@@ -59,7 +59,7 @@ def whole(line):
 def read_capture(path, chosen):
     """{scenario: {step: [(whole, draw, upscale, triangles), ...]}} over the
     captured sizes `chosen`, renumbered from 0, and their sizes; a scenario
-    not captured at all of them is left out."""
+    keeps the ones it was captured at."""
     raw = pathlib.Path(path).read_bytes()
     raw = gzip.decompress(raw) if path.endswith(".gz") else raw
     lines = [line for line in raw.decode("utf-8", errors="replace").splitlines() if whole(line)]
@@ -74,9 +74,10 @@ def read_capture(path, chosen):
     ladder = [sizes[s] for s in chosen if s in sizes]
     out = {}
     for name, steps in scenarios.items():
-        if all(s in steps for s in chosen):
-            count = min(next(i for i in range(len(steps[s]) + 1) if i not in steps[s]) for s in chosen)
-            out[name] = {i: [steps[s][f] for f in range(count)] for i, s in enumerate(chosen)}
+        held = [s for s in chosen if s in steps]
+        if held:
+            count = min(next(i for i in range(len(steps[s]) + 1) if i not in steps[s]) for s in held)
+            out[name] = {i: [steps[s][f] for f in range(count)] for i, s in enumerate(chosen) if s in steps}
     return out, ladder
 
 
@@ -175,6 +176,9 @@ def main():
         print(f"p{MARGIN_SHARE * PERCENT:.0f} |miss| over every frame: {percentile(every, MARGIN_SHARE) * PERCENT:.1f}%")
         results = []
         for name, steps in scenarios.items():
+            if len(steps) < len(ladder):
+                print(f"\n{name}: not captured at every step, fitted only")
+                continue
             fixed = whole_stats([f[0] for f in steps[args.top]])
             print(f"\n{name}: fixed at {ladder[args.top][0]}x{ladder[args.top][1]} "
                   f"mean {fixed['mean']:.1f} p95 {fixed['p95']:.1f} sd {fixed['sd']:.1f} max {fixed['max']:.1f}")

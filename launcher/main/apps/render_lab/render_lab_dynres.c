@@ -9,11 +9,11 @@
 #include "render_lab_view.h"
 
 const resolution_step_t render_lab_ladder[RENDER_LAB_LADDER_STEPS] = {
-    {368, 448}, {368, 358}, {368, 298}, {368, 224}, {184, 224}, {184, 179}, {184, 149},
+    {368, 448}, {368, 358}, {368, 298}, {368, 224}, {184, 224}, {184, 112},
 };
 
 const resolution_model_t render_lab_ladder_model = {
-    7852.0F, 1.4724F, 2.7419F, 52171.0F, {10376, 9365, 8252, 7304, 2752, 5575, 5428}};
+    3804.0F, 1.3902F, 1.7356F, 36455.0F, {10177, 9125, 8240, 7260, 2610, 1701}};
 
 /* The budget and scale last handed to the context; a budget of -1 for none
  * since the last stop. */
