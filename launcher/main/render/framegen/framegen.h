@@ -11,6 +11,10 @@
 #include "render/raster.h"
 #include "render/render_view.h"
 
+/* Frames shown per drawn frame with generation on: the drawn one and the one
+ * generated from it. */
+#define FRAMEGEN_SHOWN_PER_DRAWN 2
+
 /* The warp's own picture at the raster's size, in PSRAM: the warped colour,
  * and the depth its splats test, R3D_DEPTH_EMPTY where nothing landed. */
 typedef struct {

@@ -84,6 +84,8 @@ typedef struct {
      * generated frame is written over it. */
     bool generating;
     bool kept;
+    int32_t generated_us; /* the last generated frame's warp, fill and compose; 0 before one */
+    int32_t shown_us;     /* the caller's budget per shown frame; the ladder's is per drawn frame */
     render_view_t kept_view;
     framegen_target_t framegen;
 } render_context_t;
