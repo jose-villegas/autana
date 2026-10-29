@@ -12,10 +12,11 @@ PROBE = pathlib.Path(__file__).with_name("inverse_depth_figures_probe.c")
 PANELS = 2
 CM_PER_M = 100
 MM_PER_CM = 10
-LABEL_GAP = 0.06  # labels at the guide, apart by this share of the panel's height
+LABEL_GAP = 0.07  # labels at the guide, apart by this share of the panel's height
+LABEL_TOP = 0.55  # the first label's height, as a share of the panel: above the curves at the guide
 HEADROOM = 1.45  # the y range over the highest curve, so the legend clears them
 DEPTH_TICKS = (1, 2, 5, 10, 20, 50)  # metres
-LABEL_SHIFT = 0.92  # labels sit just left of the guide
+LABEL_SHIFT = 0.85  # labels end left of the guide, clear of its dashes
 
 
 def label(fit, near_z):
@@ -41,9 +42,10 @@ def panel(axis, fits, data, title):
     axis.xaxis.set_major_formatter(ScalarFormatter())
     axis.xaxis.set_minor_formatter(NullFormatter())
     for row, (colour, fit) in enumerate(sorted(fits, key=lambda f: -f[1]["at_guide"])):
-        y = max(fit["at_guide"], top * LABEL_GAP * (len(fits) - row))
-        axis.annotate(f"{at_guide(fit)} at {guide:g} m", (guide, fit["at_guide"]), xytext=(guide * LABEL_SHIFT, y),
-                      color=colour, fontsize=LABEL_SIZE, va="center", ha="right")
+        y = top * (LABEL_TOP - LABEL_GAP * row)
+        axis.plot([guide], [fit["at_guide"]], "o", color=colour)
+        axis.text(guide * LABEL_SHIFT, y, f"{at_guide(fit)} at {guide:g} m", color=colour, fontsize=LABEL_SIZE,
+                  va="center", ha="right")
     axis.legend(fontsize=LABEL_SIZE, loc="upper left")
 
 
