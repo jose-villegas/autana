@@ -78,6 +78,8 @@ jobs:
     needs: [marker, wait]
     env:
       MARKER: ${{ needs.marker.outputs.marker }}
+      # A command that reaches other machines' boards (nightly/scoped_chain.py); unset, this machine's only.
+      REMOTE_LANE_COMMAND: ${{ vars.REMOTE_LANE_COMMAND }}
     outputs:
       held: ${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}
     runs-on: [self-hosted, windows, board]
@@ -115,7 +117,7 @@ jobs:
           args=()
           [ -z "$FROM_SHA" ] || args+=(--from "$FROM_SHA")
           [ -z "$MAX_STEPS" ] || args+=(--max-steps "$MAX_STEPS")
-          # One lane per board plugged in; the plan sets SCOPED_BOARDS and SELFTEST_BOARD.
+          # One lane per board here or on a remote-lane host; the plan sets SCOPED_BOARDS and SELFTEST_BOARD.
           "$PY" launcher/tools/perf/nightly/scoped_chain.py plan \
             --data "$data" --out "$out/plan.json" --marker "$MARKER" "${args[@]}" >> "$GITHUB_ENV"
 
@@ -171,16 +173,21 @@ jobs:
         run: |
           data=$(cygpath -u "$PERF_DATA")
           [ -d "$data/.git" ] || exit 0
-          # One parsed line per capture (perf_index.py); the raw logs stay in the artifact.
+          # One parsed line per capture (perf_index.py), under the host that took it; the raw logs stay in the artifact.
+          PY=$(. scripts/lib/python.sh && find_python)
+          sync() {
+            "$PY" launcher/tools/perf/perf_index.py sync --host "$1" --store "$data" --write-only "${@:2}" \
+              || echo "::warning::perf_index.py sync failed; night manifests still publish"
+          }
           records=()
           for folder in .records/device "$(cygpath -u "$PERF_OUT")"/*/device; do
-            [ -f "$folder/index.jsonl" ] && records+=(--records "$folder")
+            [ -f "$folder/index.jsonl" ] || continue
+            board=$(basename "$(dirname "$folder")")
+            host=$("$PY" -c 'import json, sys; print(json.load(open(sys.argv[1]))["lanes"].get(sys.argv[2], {}).get("host", ""))' \
+              "$PERF_OUT/plan.json" "$board")
+            if [ -n "$host" ]; then sync "$host" --records "$folder"; else records+=(--records "$folder"); fi
           done
-          if [ ${#records[@]} -gt 0 ]; then
-            PY=$(. scripts/lib/python.sh && find_python)
-            "$PY" launcher/tools/perf/perf_index.py sync --host "${PERF_HOST:-nightly}" --store "$data" \
-              --write-only "${records[@]}" || echo "::warning::perf_index.py sync failed; night manifests still publish"
-          fi
+          [ ${#records[@]} -eq 0 ] || sync "${PERF_HOST:-nightly}" "${records[@]}"
           git -C "$data" config user.name github-actions[bot]
           git -C "$data" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           for part in scoped captures; do
