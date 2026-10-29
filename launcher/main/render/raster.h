@@ -36,7 +36,7 @@ struct raster {
     upscale_t upscale;     /* maps retained in `scratch`, rebuilt when size changes */
     raster_split_t* split; /* optional feedback retained between continuous frames */
     void* scratch;         /* raster_scratch_bytes() of it */
-    /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER. */
+    /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
 };
@@ -83,7 +83,8 @@ size_t raster_culled_length(const raster_t* raster);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
-/* The half picture can hold the width and whole repeats of every drawn row. */
+/* The half picture can hold the width and every drawn row, the row map
+ * spreading an uneven height. */
 /* Presentation reduces the chosen height; composition handles uneven row maps. */
 resolution_step_t raster_present_size(resolution_step_t size, camera_present_t present);
 bool raster_fits_half_picture(const raster_t* raster);
