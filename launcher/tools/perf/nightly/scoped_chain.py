@@ -46,11 +46,17 @@ SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
 BUILD_TIMEOUT_SECONDS = 3600
 LANE_HANG_FACTOR = 2
-# A command that reaches the boards of other machines; unset, the night uses this machine's only.
-# `<command> boards` prints {"boards": [{"board", "port", "host"}, ...]}; `<command> run HOST BOARD
-# FOLDER -- SCRIPT ARGS...` runs this checkout's SCRIPT on HOST's BOARD under one device lock, with
-# FOLDER copied there first and back after, and paths in ARGS naming their copies there.
+# A command that reaches the boards of other machines, POSIX-quoted with forward slashes; unset, the
+# night uses this machine's only.
+# - `<command> boards` prints {"boards": [{"board", "port", "host", "name"}, ...], "unreachable": [host, ...]};
+#   `name` is the host's short name for its captures.
+# - `<command> run HOST BOARD FOLDER WAIT -- SCRIPT ARGS...` runs this checkout's SCRIPT on HOST's BOARD
+#   under one device lock, queueing for it up to WAIT seconds, with FOLDER copied there first and back
+#   after, and paths in ARGS naming their copies there.
+# - `<command> stop HOST BOARD` asks that run to stop; its run command then returns with what it has.
 REMOTE_LANE_ENV = "REMOTE_LANE_COMMAND"
+# How long a stopped remote lane gets to restore its board and bring its folder back.
+REMOTE_STOP_SECONDS = 20 * 60
 
 
 @dataclass
@@ -205,7 +211,8 @@ def run_chain(steps, args, runner=None, clock=None):
         save()
 
     save()
-    directory = tempfile.mkdtemp(prefix="nightly-", dir=output)
+    # Beside the output, not in it: a tree left by a failed cleanup must not travel back with a remote lane's folder.
+    directory = tempfile.mkdtemp(prefix="nightly-", dir=output.parent)
     worktree = Path(directory) / "tree"
     try:
         run_selftest()
@@ -335,45 +342,58 @@ def run_chain(steps, args, runner=None, clock=None):
     return results
 
 
+def local_boards(autana=None):
+    """This machine's plugged boards, as `autana devices --json` lists them."""
+    listing = subprocess.check_output(autana_command("devices", "--json", override=autana), text=True)
+    return [board for board in json.loads(listing)["boards"] if board["port"]]
+
+
 def plugged_boards(autana=None):
     """Short ids of the boards on this machine's USB, in `autana devices` order."""
-    listing = subprocess.check_output(autana_command("devices", "--json", override=autana), text=True)
-    return [short_id(board["board"]) for board in json.loads(listing)["boards"] if board["port"]]
+    return [short_id(board["board"]) for board in local_boards(autana)]
 
 
 def remote_command():
-    return shlex.split(os.environ.get(REMOTE_LANE_ENV, ""))
+    command = shlex.split(os.environ.get(REMOTE_LANE_ENV, ""))
+    if command:
+        # Windows looks in System32 before PATH, where a bare `bash` is WSL's.
+        command[0] = shutil.which(command[0]) or command[0]
+    return command
 
 
 def remote_boards():
-    """The other machines' plugged boards from the remote-lane command: short id, port and host."""
+    """The other machines' plugged boards (short id, port, host, name) and the hosts that did not answer."""
     if not remote_command():
-        return []
+        return [], []
     try:
-        listing = subprocess.check_output([*remote_command(), "boards"], text=True)
-        return [dict(board=short_id(board["board"]), port=board["port"], host=board["host"])
-                for board in json.loads(listing)["boards"] if board["port"]]
+        listing = json.loads(subprocess.check_output([*remote_command(), "boards"], text=True))
+        boards = [dict(board=short_id(board["board"]), port=board["port"], host=board["host"],
+                       name=board.get("name") or board["host"]) for board in listing["boards"] if board["port"]]
+        unreachable = list(listing.get("unreachable", []))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
-        # An unreachable host costs its lanes, not the night.
+        boards, unreachable = [], [REMOTE_LANE_ENV]
         print(f"remote boards: {error}", file=sys.stderr)
-        return []
+    if unreachable:
+        # An unreachable host costs its lanes, not the night; the summary says which.
+        print("::warning::remote boards not listed from " + ", ".join(unreachable), file=sys.stderr)
+    return boards, unreachable
 
 
 def board_listing():
-    """Every board the night can reach: this machine's `autana devices` entries, then the remote ones."""
-    listing = json.loads(subprocess.check_output(autana_command("devices", "--json"), text=True))
-    local = [board for board in listing["boards"] if board["port"]]
+    """Every board the night can reach, this machine's first, and the hosts that did not answer."""
+    local = local_boards()
     seen = {short_id(board["board"]) for board in local}
-    return dict(boards=local + [board for board in remote_boards() if board["board"] not in seen])
+    remote, unreachable = remote_boards()
+    return dict(boards=local + [board for board in remote if board["board"] not in seen], unreachable=unreachable)
 
 
-def plan_lane(args, selection, board, lane, lanes, selftest=False, host=None):
+def plan_lane(args, selection, board, lane, lanes, selftest=False, remote=None):
     previous = read_last_night(args.data, board)
     steps = select_steps(args.repo, selection["tip"], previous, lane, lanes,
                          selection.get("from_sha"), selection.get("max_steps"))
     planned = dict(lane=f"{lane}/{lanes}", previous=previous, steps=[asdict(step) for step in steps],
                    estimate=len(steps) * FIRST_STEP_SECONDS + (SELFTEST_ALLOWANCE_SECONDS if selftest else 0))
-    return dict(planned, host=host) if host else planned
+    return dict(planned, host=remote["host"], host_name=remote["name"]) if remote else planned
 
 
 def run_night(args, clock=None, launch=None):
@@ -414,7 +434,8 @@ def run_night(args, clock=None, launch=None):
         folder = args.out.resolve() / board
         write_json(folder / "lane.json", dict(json.loads(lane_plan.read_text(encoding="utf-8")), lanes={board: lane}))
         script = args.repo.resolve() / Path(__file__).resolve().relative_to(REPO)
-        command = [*remote_command(), "run", lane["host"], board, str(folder), "--", str(script), "run",
+        command = [*remote_command(), "run", lane["host"], board, str(folder), str(NIGHT_STEP_HANG_SECONDS), "--",
+                   str(script), "run",
                    "--plan", str(folder / "lane.json"), "--repo", str(args.repo.resolve()),
                    "--data", str(folder / "data"), "--out", str(folder), "--board", board, "--lane", lane["lane"]]
         for suite in args.suite:
@@ -424,9 +445,27 @@ def run_night(args, clock=None, launch=None):
         process = launch(command, cwd=args.repo, env=env)
         processes.append((process, clock.now(), lane["estimate"], board))
 
+    def stop(process, board, grace):
+        # A remote lane is asked to stop first, so its host restores the board and the folder comes back.
+        lane = planned["lanes"].get(board, {})
+        if lane.get("host"):
+            try:
+                subprocess.run([*remote_command(), "stop", lane["host"], board], timeout=RESCAN_SECONDS,
+                               stdin=subprocess.DEVNULL)
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f"lane {board}: remote stop: {error}", file=sys.stderr)
+            else:
+                try:
+                    process.wait(timeout=grace)
+                    return
+                except subprocess.TimeoutExpired:
+                    pass
+        stop_process_tree(process)
+
     previous_handler = signal.signal(signal.SIGTERM, signal.default_int_handler)
     try:
-        for board in planned["lanes"]:
+        # Remote lanes ship this checkout, so they start before a local self-test can build in it.
+        for board in sorted(planned["lanes"], key=lambda board: not planned["lanes"][board].get("host")):
             try:
                 start(board, planned["lanes"][board], args.plan)
             except (OSError, ValueError, subprocess.CalledProcessError) as error:
@@ -438,7 +477,7 @@ def run_night(args, clock=None, launch=None):
             for process, started, estimate, board in processes:
                 if id(process) not in hung and process.poll() is None and (clock.now() - started).total_seconds() >= LANE_HANG_FACTOR * max(estimate, FIRST_STEP_SECONDS):
                     print(f"LANE_HANG_FACTOR expired for board {board}", file=sys.stderr)
-                    stop_process_tree(process)
+                    stop(process, board, REMOTE_STOP_SECONDS)
                     hung.add(id(process))
                     failed = True
             try:
@@ -468,9 +507,10 @@ def run_night(args, clock=None, launch=None):
             while pending:
                 try:
                     if interrupted:
-                        for process in pending:
-                            if process.poll() is None:
-                                stop_process_tree(process)
+                        for process, _, _, board in processes:
+                            if process in pending and process.poll() is None:
+                                # A cancelled job has seconds: the remote board is freed, its data may not return.
+                                stop(process, board, 0)
                     if pending[0].wait():
                         failed = True
                     close_process_tree(pending.pop(0))
@@ -498,15 +538,16 @@ def plan(args, clock=None, request=None):
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
                 summary.write(GPU_NOT_ON_HOST + "\n")
     now = clock.now()
-    remote = {board["board"]: board["host"] for board in remote_boards()}
-    if not args.boards:
-        local = plugged_boards()
-        args.boards = local + [board for board in remote if board not in local]
+    if args.boards:
+        remote = {board["board"]: board for board in remote_boards()[0]}
+    else:
+        listing = board_listing()["boards"]
+        args.boards = [short_id(board["board"]) for board in listing]
         if not args.boards:
             raise SystemExit("plan: no board is plugged in")
+        remote = {board["board"]: board for board in listing if board.get("host")}
         # The self-test runs on one board of this machine, whichever is plugged in first.
-        args.selftest_board = args.selftest_board or next(iter(local), None)
-        remote = {board: host for board, host in remote.items() if board not in local}
+        args.selftest_board = args.selftest_board or next((board for board in args.boards if board not in remote), None)
     tip = git(args.repo, "rev-parse", args.tip + "^{commit}")
     planned = dict(tip=tip, night=marker.date().isoformat(), started=now.isoformat(),
                    marker=args.marker, lanes={}, from_sha=args.from_sha, max_steps=args.max_steps)

@@ -183,7 +183,7 @@ jobs:
           for folder in .records/device "$(cygpath -u "$PERF_OUT")"/*/device; do
             [ -f "$folder/index.jsonl" ] || continue
             board=$(basename "$(dirname "$folder")")
-            host=$("$PY" -c 'import json, sys; print(json.load(open(sys.argv[1]))["lanes"].get(sys.argv[2], {}).get("host", ""))' \
+            host=$("$PY" -c 'import json, sys; print(json.load(open(sys.argv[1]))["lanes"].get(sys.argv[2], {}).get("host_name", ""))' \
               "$PERF_OUT/plan.json" "$board")
             if [ -n "$host" ]; then sync "$host" --records "$folder"; else records+=(--records "$folder"); fi
           done

@@ -303,7 +303,9 @@ Unset, the night uses this machine's boards only.
 
 A remote board's lane builds and runs on its own host. Its folder under `--out` goes there
 and comes back with the lane's data and captures; the captures sync under that host's name.
-`scoped_chain.py boards` lists every board the night reaches, which board health checks.
+`scoped_chain.py boards` lists every board the night reaches, which board health checks;
+a board on a host that does not answer is reported unchecked, not missing.
+A hung or cancelled remote lane is asked to stop first, so its host frees the board.
 
 Initial boards split first-parent commits on main by position modulo their count.
 Joiners use independent `0/1` series while any lane runs.
