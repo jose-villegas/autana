@@ -212,6 +212,20 @@ class NightlyTests(unittest.TestCase):
                 self.assertIn(["-c", "core.longpaths=true"],
                               [command[i:i + 2] for i in range(len(command) - 1)])
 
+    def test_captures_land_in_the_lanes_output(self):
+        settings = []
+        original = Replay.__call__
+
+        def build(replay, command, log, timeout, **options):
+            if "build" in command:
+                project = Path(command[command.index("--project") + 1])
+                settings.append(autana_config.load(project)["records"])
+            return original(replay, command, log, timeout, **options)
+
+        with patch.object(Replay, "__call__", build):
+            self.run_chain()
+        self.assertEqual(set(settings), {(self.args.out.resolve() / "device").as_posix()})
+
     def test_cleanup_failure_saves_manifest_and_preserves_results(self):
         original = subprocess.check_output
         commands = []
