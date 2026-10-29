@@ -105,6 +105,7 @@ gravity_example(gravity_example_t* s, uint32_t dt_ms) {
 ## Update
 
 Periods and task settings live in `input/motion/imu.c`; header-owned settings name their owners below.
+Buzz-rate checks bound both periods by `IMU_BUZZ_DRAIN_MAX_MS` without changing saved tunes.
 
 | Setting | Value | Live tunable / effect |
 |---|---|---|

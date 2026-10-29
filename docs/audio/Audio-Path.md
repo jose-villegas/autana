@@ -58,9 +58,13 @@ The console uses `audio_loopback_measure()` for a baseline, starts a SYSTEM-bus
 tone through the mixer, measures again, then stops the voice. It waits for
 amplifier warm-up before measuring. A Goertzel filter measures the requested frequency.<sup>[[72]](../Citations.md#goertzel-1958)</sup>
 
-With `--pulse`, capture keeps its initial samples and drains the IMU between
-audio blocks to estimate onset-to-end shake. A pulse window must hold a full
-IMU queue and fit `CONSOLE_TONE_PULSE_WINDOW_MAX_MS`.
+With `--pulse`, capture selects samples by the IMU task's push clock,
+not the observer's take clock. A pulse window must hold a full IMU queue
+and fit `CONSOLE_TONE_PULSE_WINDOW_MAX_MS`.
+
+Capture collects delayed batches for up to `IMU_BUZZ_WINDOW_MS` after the
+pulse span. Only samples placed inside that span contribute to shake.
+Buzz-rate polling and draining are bounded by `IMU_BUZZ_DRAIN_MAX_MS`; saved tunes stay unchanged.
 
 Pulse shake needs `IMU_VIBRATION_MIN_SAMPLES` samples in the pulse span.
 Gaps and lost samples invalidate shake only when their placed interval intersects

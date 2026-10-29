@@ -2,6 +2,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include "input/motion/imu.h"
 
 typedef struct {
     unsigned requested;
@@ -32,3 +33,11 @@ imu_odr_apply(imu_odr_t* odr, bool (*configure)(unsigned odr_code), bool* fifo_g
     odr->requested = odr->applied;
     return configure(odr->applied) ? IMU_ODR_RESTORED : IMU_ODR_LOST;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Buzz-rate retained history bounds both polling and draining, independent of the saved tunes. */
+static inline unsigned
+imu_odr_period_ms(unsigned odr_code, unsigned requested_ms) {
+    return odr_code == IMU_BUZZ_ODR_CODE && requested_ms > IMU_BUZZ_DRAIN_MAX_MS ? IMU_BUZZ_DRAIN_MAX_MS : requested_ms;
+}
+#endif

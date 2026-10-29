@@ -38,9 +38,9 @@ Each command retains its full JSON reply, including the silence-window mean
 (`gx_mg`, `gy_mg`, `gz_mg`) for orientation. Pulses obey the window,
 `MAX_MS`, and low-frequency volume limits.
 
-Pulse shake estimates onset-to-end samples from the buzz ODR and drain times.
-Edge placement is uncertain by one task drain period plus the audible poll.
-Microphone levels include silence after playback ends.
+Pulse shake uses the buzz ODR and the IMU task's push times to estimate
+onset-to-end samples. Capture collects delayed batches after the pulse span;
+only samples placed inside it contribute. Microphone levels include silence after playback ends.
 
 ## Safety
 

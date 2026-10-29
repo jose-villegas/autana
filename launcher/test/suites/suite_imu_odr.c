@@ -95,8 +95,21 @@ test_switch_gap_is_taken_before_next_drain(void) {
     }
 }
 
+static void
+test_buzz_period_fits_retained_history(void) {
+    const unsigned slowest_ms = IMU_FIFO_SAMPLES * IMU_SAMPLE_US / MATH_US_PER_MS;
+    for (unsigned requested_ms = 1; requested_ms <= slowest_ms; requested_ms++) {
+        const unsigned buzz_ms = imu_odr_period_ms(IMU_BUZZ_ODR_CODE, requested_ms);
+        TEST_ASSERT_GREATER_THAN_UINT(0, buzz_ms);
+        TEST_ASSERT_LESS_OR_EQUAL_UINT(requested_ms, buzz_ms);
+        TEST_ASSERT_LESS_OR_EQUAL_UINT(IMU_BUZZ_DRAIN_MAX_MS, buzz_ms);
+        TEST_ASSERT_EQUAL_UINT(requested_ms, imu_odr_period_ms(IMU_ODR_CODE, requested_ms));
+    }
+}
+
 void
 run_imu_odr_suite(void) {
+    RUN_TEST(test_buzz_period_fits_retained_history);
     RUN_TEST(test_switch_gap_is_taken_before_next_drain);
     RUN_TEST(test_nothing_asked_touches_nothing);
     RUN_TEST(test_switch_applies_the_request);

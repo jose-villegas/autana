@@ -54,6 +54,7 @@ static const char* TONE_SHAKE_UNAVAILABLE = "IMU unavailable";
 typedef struct {
     imu_sample_t samples[IMU_FIFO_SAMPLES];
     uint8_t lost_before[IMU_FIFO_SAMPLES];
+    int64_t sample_us[IMU_FIFO_SAMPLES];
     unsigned gaps;
     const char* reason;
 } tone_shake_buffer_t;
@@ -100,29 +101,28 @@ typedef struct {
     tone_shake_buffer_t* fifo;
     imu_sample_t* samples;
     size_t count;
-    size_t window_count;
     int64_t start_us;
     uint16_t pulse_ms;
     bool gap;
     int64_t last_sample_us;
 } tone_pulse_buffer_t;
 
-/* IMU batches have no timestamps: place the newest sample at the drain time and walk backwards
- * at the buzz ODR from audible onset. Pulse edges are uncertain by one task drain period plus
- * the audible-voice poll. */
+/* Delivery may trail sampling by a task period; selection uses the producer clock. */
 static bool
 tone_pulse_drain(void* context) {
     tone_pulse_buffer_t* pulse = context;
     bool gap = false;
-    const int count = imu_take_fifo_at(IMU_BUZZ_ODR_CODE, pulse->fifo->samples, pulse->fifo->lost_before, &gap);
+    const int count = imu_take_fifo_timed_at(IMU_BUZZ_ODR_CODE, pulse->fifo->samples, pulse->fifo->lost_before, &gap,
+                                             pulse->fifo->sample_us);
     if (count < 0) {
         pulse->fifo->reason = TONE_SHAKE_READ_FAILED;
         return false;
     }
     pulse->fifo->gaps += gap;
-    const int64_t end_us = timing_now_us() - pulse->start_us;
+    const int64_t end_us =
+        count ? pulse->fifo->sample_us[count - 1] - pulse->start_us : timing_now_us() - pulse->start_us;
     const int64_t pulse_us = (int64_t)pulse->pulse_ms * MATH_US_PER_MS;
-    const int64_t first_us = count ? end_us - ((int64_t)(count - 1) * IMU_BUZZ_SAMPLE_US) : end_us;
+    const int64_t first_us = count ? pulse->fifo->sample_us[0] - pulse->start_us : end_us;
     if (gap && first_us >= 0 && pulse->last_sample_us < pulse_us) {
         pulse->gap = true;
     }
@@ -130,7 +130,7 @@ tone_pulse_drain(void* context) {
         pulse->last_sample_us = end_us;
     }
     for (int i = 0; i < count; i++) {
-        const int64_t sample_us = end_us - ((int64_t)(count - i - 1) * IMU_BUZZ_SAMPLE_US);
+        const int64_t sample_us = pulse->fifo->sample_us[i] - pulse->start_us;
         const int64_t lost_us = (int64_t)pulse->fifo->lost_before[i] * IMU_BUZZ_SAMPLE_US;
         if (lost_us && sample_us - IMU_BUZZ_SAMPLE_US >= 0 && sample_us - lost_us <= pulse_us) {
             pulse->gap = true;
@@ -138,12 +138,11 @@ tone_pulse_drain(void* context) {
         if (sample_us < 0) {
             continue;
         }
-        if (pulse->window_count == TONE_PULSE_SAMPLE_CAPACITY) {
-            return false;
-        }
-        pulse->window_count++;
         if (sample_us > (int64_t)pulse->pulse_ms * MATH_US_PER_MS) {
             continue;
+        }
+        if (pulse->count == TONE_PULSE_SAMPLE_CAPACITY) {
+            return false;
         }
         pulse->samples[pulse->count++] = pulse->fifo->samples[i];
     }
@@ -156,13 +155,17 @@ tone_pulse_measure(const console_tone_args_t* args, float* db, audio_loopback_re
     if (!pulse) {
         return audio_loopback_measure_observed(args->hz, args->ms, db, result, NULL, NULL);
     }
-    pulse->count = pulse->window_count = 0;
+    pulse->count = 0;
     pulse->gap = false;
     pulse->last_sample_us = 0;
     pulse->pulse_ms = args->pulse_ms;
     pulse->start_us = timing_now_us();
-    (void)tone_shake_read(pulse->fifo, NULL);
-    const bool ok = audio_loopback_measure_observed(args->hz, args->ms, db, result, tone_pulse_drain, pulse);
+    bool ok = audio_loopback_measure_observed(args->hz, args->ms, db, result, tone_pulse_drain, pulse);
+    const int64_t deadline = pulse->start_us + (int64_t)(args->pulse_ms + IMU_BUZZ_WINDOW_MS) * MATH_US_PER_MS;
+    while (ok && pulse->last_sample_us < (int64_t)args->pulse_ms * MATH_US_PER_MS && timing_now_us() < deadline) {
+        timing_sleep_ms(SOUND_CONTROL_POLL_MS);
+        ok = tone_pulse_drain(pulse);
+    }
     if (pulse->gap) {
         pulse->fifo->reason = TONE_SHAKE_PULSE_GAP;
     } else if (pulse->count < IMU_VIBRATION_MIN_SAMPLES) {
@@ -210,6 +213,7 @@ tone_shake_open(void) {
     if (fifo) {
         fifo->gaps = 0;
         fifo->reason = NULL;
+        (void)tone_shake_read(fifo, NULL);
     }
     return fifo;
 }

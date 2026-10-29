@@ -66,3 +66,25 @@ imu_queue_push_drain(imu_queue_t* queue, const imu_sample_t* samples, int count,
     }
     imu_queue_push(queue, samples, count, lost, gap);
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+imu_queue_push_drain_timed(imu_queue_t* queue, const imu_sample_t* samples, int count, int lost, bool gap,
+                           int64_t newest_us, uint32_t sample_us) {
+    imu_queue_push_drain(queue, samples, count, lost, gap);
+    const int retained = count < 0 ? 0 : count > IMU_FIFO_SAMPLES ? IMU_FIFO_SAMPLES : count;
+    for (int i = 0; i < retained; i++) {
+        const int index = (queue->head + queue->count - retained + i) % IMU_FIFO_SAMPLES;
+        queue->sample_us[index] = newest_us - (int64_t)(retained - i - 1) * sample_us;
+    }
+}
+
+int
+imu_queue_take_timed_at(imu_queue_t* queue, unsigned odr_code, imu_sample_t* samples, uint8_t* lost_before, bool* gap,
+                        int64_t* sample_us) {
+    for (int i = 0; i < queue->count; i++) {
+        sample_us[i] = queue->sample_us[(queue->head + i) % IMU_FIFO_SAMPLES];
+    }
+    return imu_queue_take_at(queue, odr_code, samples, lost_before, gap);
+}
+#endif
