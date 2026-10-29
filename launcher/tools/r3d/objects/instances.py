@@ -79,8 +79,10 @@ def rigid_fit(local, target, reflected=False):
     u, _, vt = np.linalg.svd((local - mean_local).T @ (target - mean_target))
     correction = np.ones(3)
     correction[-1] = np.sign(np.linalg.det(vt.T @ u.T)) * (-1 if reflected else 1)
-    linear = vt.T @ np.diag(correction) @ u.T
-    position = mean_target - linear @ mean_local
+    # Rounded to the float32 a copy is stored in: the SVD's last bits follow the host's BLAS kernels, and a copy lit
+    # from them would differ by host.
+    linear = (vt.T @ np.diag(correction) @ u.T).astype(np.float32).astype(np.float64)
+    position = (mean_target - linear @ mean_local).astype(np.float32).astype(np.float64)
     residual = float(np.linalg.norm(local @ linear.T + position - target, axis=1).max())
     return linear, position, residual
 
