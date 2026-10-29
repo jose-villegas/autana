@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../render_examples/framegen.c"
 #include "raster_rig.h"
 #include "render_view_fixture.h"
 #include "suites.h"
@@ -135,21 +136,20 @@ test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it(void
     const resolution_step_t size = {W, H};
     const int32_t shown_us = BUDGET_US;
     const resolution_config_t ladder = resolution_config(&size, 1, 1, shown_us);
-    render_context_set_dynamic_resolution(c, &ladder, NULL, 0);
-    render_context_set_frame_generation(c, true);
+    framegen_example(c, &ladder);
     const int32_t generated[] = {shown_us / 4, shown_us + shown_us / 2};
     TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
     (void)render_context_compose(c, destination, NULL);
-    TEST_ASSERT_FALSE(render_context_frame(c).generated);
+    TEST_ASSERT_FALSE(framegen_example_generated(c));
     for (size_t i = 0; i < sizeof generated / sizeof generated[0]; i++) {
         TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
         (void)render_context_compose(c, destination, NULL);
-        TEST_ASSERT_TRUE(render_context_frame(c).generated);
+        TEST_ASSERT_TRUE(framegen_example_generated(c));
         c->generated_us = generated[i];
         render_context_set_frame_generation(c, true); /* as an app re-applying its settings each frame */
         TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
         (void)render_context_compose(c, destination, NULL);
-        TEST_ASSERT_FALSE(render_context_frame(c).generated);
+        TEST_ASSERT_FALSE(framegen_example_generated(c));
         const int32_t shared_us =
             (FRAMEGEN_SHOWN_PER_DRAWN * shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * generated[i]);
         TEST_ASSERT_EQUAL_INT32(shared_us > shown_us ? shared_us : shown_us, c->ladder.budget_us);
