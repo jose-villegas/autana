@@ -17,6 +17,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "tests"))
 from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 from anim import track_host
+from build.c_header import read_define
 from r3d import build_pack, import_settings
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 
@@ -117,8 +118,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         run, _ = self.render("--view", "invalid")
         self.assertNotEqual(run.returncode, 0)
         names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
-        header = (TOOLS.parent / "main/render/context/render_context.h").read_text()
-        count = int(re.search(r"#define RENDER_DEBUG_VIEW_COUNT\s+(\d+)", header)[1])
+        count = read_define(TOOLS.parent / "main/render/context/render_context.h", "RENDER_DEBUG_VIEW_COUNT")
         self.assertEqual(len(names), count + 1)
         self.assertEqual(names[0], "shaded")
         for name in names:
@@ -206,8 +206,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertNotEqual(first.tobytes(), small.tobytes())
 
     def test_small_fill_ceiling_range(self):
-        header = (TOOLS.parent / "main/render/render_view.h").read_text()
-        maximum = int(re.search(r"#define SMALL_FILL_CEILING_MAX\s+(\d+)", header)[1])
+        maximum = read_define(TOOLS.parent / "main/render/render_view.h", "SMALL_FILL_CEILING_MAX")
         for ceiling in (0, maximum):
             with self.subTest(ceiling=ceiling):
                 run, _ = self.render("--small-fill", f"{ceiling},16,0")
