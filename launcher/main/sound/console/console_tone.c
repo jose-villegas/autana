@@ -191,7 +191,7 @@ tone_pulse_open(const console_tone_args_t* args, tone_shake_buffer_t* fifo) {
         return NULL;
     }
     tone_pulse_buffer_t* pulse =
-        memory_alloc(sizeof *pulse + TONE_PULSE_SAMPLE_CAPACITY * sizeof(imu_sample_t), MEMORY_PSRAM);
+        memory_alloc(sizeof *pulse + (TONE_PULSE_SAMPLE_CAPACITY * sizeof(imu_sample_t)), MEMORY_PSRAM);
     if (pulse) {
         pulse->samples = (imu_sample_t*)(pulse + 1);
         pulse->fifo = fifo;
