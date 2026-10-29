@@ -258,8 +258,9 @@ run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/mat
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
 run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/stats_figures.log"
-run "$PYTHON" launcher/tools/math/inverse_depth_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/inverse_depth_figures.log"
 # --orphans scans this runner: stats-percentile-ranks.png
+run "$PYTHON" launcher/tools/math/inverse_depth_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/inverse_depth_figures.log"
+# --orphans scans this runner: inverse-depth-step.png
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
