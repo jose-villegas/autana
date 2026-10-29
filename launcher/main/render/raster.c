@@ -33,7 +33,7 @@ typedef struct {
 
 typedef struct {
     r3d_lens_t lens;
-    r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
+    r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
@@ -87,7 +87,7 @@ attachment_at(const raster_t* raster, int index) {
 
 void
 raster_picture(const raster_t* raster, gfx_target_t* picture) {
-    assert(raster->attachment_count >= 0 && raster->attachment_count <= GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER);
+    assert(raster->attachment_count >= 0 && raster->attachment_count <= GFX_ATTACHMENTS_FURTHER_MAX);
     picture->first_row = 0;
     picture->count = GFX_ATTACHMENT_FURTHER + raster->attachment_count;
     for (int i = 0; i < picture->count; i++) {
@@ -104,14 +104,18 @@ raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_target_t* rows,
     const size_t offset = (size_t)(y - rows->first_row) * a->pitch;
     uint32_t* wide_tag = (uint32_t*)((char*)a->pixels + offset);
     uint16_t* narrow_tag = (uint16_t*)((char*)a->pixels + offset);
-    const bool wide = a->format == IMAGE_U32;
+    /* One loop per width, so a pixel tests nothing but its depth. */
+    if (a->format == IMAGE_U32) {
+        for (int x = x_first; x <= x_last; x++, z += dz) {
+            if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
+                wide_tag[x] = writer->value;
+            }
+        }
+        return;
+    }
     for (int x = x_first; x <= x_last; x++, z += dz) {
         if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
-            if (wide) {
-                wide_tag[x] = writer->value;
-            } else {
-                narrow_tag[x] = (uint16_t)writer->value;
-            }
+            narrow_tag[x] = (uint16_t)writer->value;
         }
     }
 }
@@ -252,7 +256,7 @@ cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* 
 /* The writers of the attachments that write while instance `index` is
  * drawn; returns how many. */
 static int
-instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_ATTACHMENTS_MAX]) {
+instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_ATTACHMENTS_FURTHER_MAX]) {
     int count = 0;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
