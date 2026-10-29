@@ -170,10 +170,12 @@ def sources(root, *, extensions=(".c", ".h"), exclude=True, files=None):
     """C sources eligible for comment gates: every file git would commit under root."""
     root = pathlib.Path(root)
     for path in committable(root):
-        rp = path.relative_to(root).as_posix()
+        # The excluded prefixes are written from the repository root, which a
+        # root of "launcher" and a root of "." both reach through one of these.
+        rp = (path.relative_to(root).as_posix(), path.as_posix())
         if files is not None and path.as_posix() not in files:
             continue
-        if path.suffix in extensions and (not exclude or not rp.startswith(excluded())):
+        if path.suffix in extensions and (not exclude or not any(name.startswith(excluded()) for name in rp)):
             yield path
 
 
