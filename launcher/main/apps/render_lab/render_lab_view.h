@@ -23,13 +23,10 @@ small_fill_t render_lab_small_fill(void);
 
 /* The menu's small-fill choice: every SMALL_FILL_ preset. select writes its
  * three tunables, which the scene camera reads every frame, so a console SET
- * or a saved tune takes effect too; selected is the preset last picked.
- * Development builds only, where the tunables can move. */
-#if TUNE_ENABLED
+ * or a saved tune takes effect too; selected is the preset last picked. */
 const char* const* render_lab_small_fill_names(int* count);
 int render_lab_small_fill_selected(void);
 bool render_lab_small_fill_select(int index);
-#endif
 
 bool render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera);
 
@@ -53,9 +50,7 @@ void render_lab_apply_raster_settings(void);
  * (render_lab_dynres.h). */
 #define RENDER_LAB_BUDGET_MAX_MS 200
 int render_lab_budget_ms(void);
-#if TUNE_ENABLED
 bool render_lab_budget_set_ms(int budget_ms);
-#endif
 
 /* The tunable render_lab.framegen: 1 follows each drawn frame with one
  * warped from it (render/framegen), 0 draws every frame. */

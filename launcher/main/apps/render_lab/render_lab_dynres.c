@@ -20,7 +20,6 @@ const resolution_model_t render_lab_ladder_model = {
 static int applied_budget_ms = -1;
 static int applied_scale = -1;
 
-#if TUNE_ENABLED
 bool
 render_lab_dynres_on(void) {
     return render_lab_budget_ms() != 0;
@@ -30,7 +29,6 @@ bool
 render_lab_dynres_set_on(bool on) {
     return render_lab_budget_set_ms(on ? RENDER_LAB_TARGET_MS : 0);
 }
-#endif
 
 void
 render_lab_dynres_apply(void) {

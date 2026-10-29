@@ -23,11 +23,6 @@ typedef struct {
 void scene_baked_enter(const render_lab_scene_t* self);
 void scene_baked_frame(uint32_t dt_ms);
 void scene_baked_exit(void);
-/* The size drawn at and the triangle count, or why the scene did not load. */
-const char* scene_baked_status(void);
-/* The menu rows of a baked scene: FRAME GEN, whose warp a static scene
- * suits (development builds, where the tunable moves). */
-void scene_baked_controls(int width);
 
 /* One variant's rows of SCENE_BAKED_FAMILY, with its family's fields as `f_`:
  * (shown table, family, name, key prefix). */
@@ -45,9 +40,9 @@ void scene_baked_controls(int width);
                            .enter = scene_baked_enter,                                                                 \
                            .frame = scene_baked_frame,                                                                 \
                            .exit = scene_baked_exit,                                                                   \
-                           .status = scene_baked_status,                                                               \
-                           .controls = scene_baked_controls,                                                           \
-                           .console = RENDER_LAB_SCENE_CONSOLE(scene_baked_console)},
+                           .status = RENDER_LAB_SCENE_DEV(scene_baked_status),                                         \
+                           .controls = RENDER_LAB_SCENE_DEV(scene_baked_controls),                                     \
+                           .console = RENDER_LAB_SCENE_DEV(scene_baked_console)},
 
 /* Defines `id`, family `family_`'s scenes indexed by variant: the menu family
  * `name_`, each titled `name_` and its variant and keyed `key_prefix_` and its

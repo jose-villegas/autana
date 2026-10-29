@@ -4,7 +4,6 @@
 
 #include <stdbool.h>
 
-#include "core/tune.h"
 #include "render/resolution/resolution.h"
 
 /* Rows and span setup follow height, so the ladder reduces height before
@@ -28,12 +27,9 @@ extern const resolution_model_t render_lab_ladder_model;
 #define RENDER_LAB_TARGET_MS         (RENDER_LAB_FRAME_TARGET_MS - RENDER_LAB_FRAME_OVERHEAD_MS)
 
 /* The menu's DYNAMIC RES toggle over render_lab.budget: on is any budget,
- * set_on writes RENDER_LAB_TARGET_MS or 0. Development builds only,
- * where the tunable can move. */
-#if TUNE_ENABLED
+ * set_on writes RENDER_LAB_TARGET_MS or 0. */
 bool render_lab_dynres_on(void);
 bool render_lab_dynres_set_on(bool on);
-#endif
 
 /* Hands render_lab.budget to the main context, topped at the size
  * render_lab.scale chooses, when either changed since the last call: a
