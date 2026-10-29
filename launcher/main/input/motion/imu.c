@@ -22,6 +22,7 @@
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "input/motion/imu_demand.h"
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
 
@@ -67,13 +68,31 @@ static imu_sample_t newest;
 static uint32_t newest_sequence;
 static bool have_newest;
 static TaskHandle_t task_handle;
+static imu_demand_t demand = {.newest_us = IMU_DEMAND_NEVER, .fifo_us = IMU_DEMAND_NEVER};
+/* Set by the task before it waits for a notification; the next reader clears it and notifies. */
+static bool parked;
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static int64_t newest_us;
 static uint64_t reader_age_total_us;
 static int64_t reader_age_max_us;
 static unsigned reader_age_count;
-static unsigned register_reads;
-static int64_t wake_gap_max_us;
+
+/* One imu.log_ms window of task work; the task alone writes it. */
+typedef struct {
+    int64_t last_log_us;
+    uint64_t drain_total_us;
+    int64_t drain_max_us;
+    uint64_t bus_us;
+    uint64_t parked_us;
+    int64_t wake_gap_max_us;
+    unsigned register_reads;
+    unsigned drains;
+    unsigned delivered;
+    unsigned lost;
+    unsigned parks;
+} imu_stats_t;
+
+static imu_stats_t stats;
 #endif
 
 /* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
@@ -278,6 +297,22 @@ imu_ready(void) {
     return ready;
 }
 
+/* Under `lock`: stamps a read of one kind. True when the caller must wake the task after unlocking. */
+static bool
+stamp_demand(int64_t* read_us) {
+    *read_us = timing_now_us();
+    const bool wake = parked;
+    parked = false;
+    return wake;
+}
+
+static void
+wake_task(bool wake) {
+    if (wake) {
+        xTaskNotifyGive(task_handle);
+    }
+}
+
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static void
 record_reader_age(void) {
@@ -295,6 +330,7 @@ record_reader_age(void) {
 bool
 imu_read(imu_sample_t* out, uint32_t* sequence) {
     portENTER_CRITICAL(&lock);
+    const bool wake = ready && stamp_demand(&demand.newest_us);
     bool available = ready && have_newest;
     if (available) {
         *out = newest;
@@ -309,6 +345,7 @@ imu_read(imu_sample_t* out, uint32_t* sequence) {
         *sequence = newest_sequence;
     }
     portEXIT_CRITICAL(&lock);
+    wake_task(wake);
     return available;
 }
 
@@ -319,11 +356,13 @@ imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_S
         return -1;
     }
     portENTER_CRITICAL(&lock);
+    const bool wake = stamp_demand(&demand.fifo_us);
     const int count = imu_queue_take(&queue, out, lost_before, gap);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     record_reader_age();
 #endif
     portEXIT_CRITICAL(&lock);
+    wake_task(wake);
     return count;
 }
 
@@ -384,50 +423,44 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
+/* Closes the window when log_ms has passed, or `now` before a park so its line is not held back. */
 static void
-log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us) {
-    static int64_t last_log_us;
-    static uint64_t total_us;
-    static int64_t max_us;
-    static unsigned drains;
-    static unsigned delivered;
-    static unsigned lost_total;
-    drains++;
-    total_us += (uint64_t)elapsed_us;
-    if (elapsed_us > max_us) {
-        max_us = elapsed_us;
+log_stats(int64_t now_us, bool now) {
+    const bool window_done = now || log_ms == 0 || now_us - stats.last_log_us >= (int64_t)log_ms * MATH_US_PER_MS;
+    if (!window_done) {
+        return;
     }
-    delivered += count > 0 ? (unsigned)count : 0;
-    lost_total += (unsigned)lost;
-    const bool window_done = log_ms == 0 || now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS;
-    uint64_t age_mean_us = 0;
-    int64_t age_max_us = 0;
-    if (window_done) {
-        portENTER_CRITICAL(&lock);
-        age_mean_us = reader_age_count > 0 ? reader_age_total_us / reader_age_count : 0;
-        age_max_us = reader_age_max_us;
-        reader_age_total_us = 0;
-        reader_age_max_us = 0;
-        reader_age_count = 0;
-        portEXIT_CRITICAL(&lock);
-    }
-    if (log_ms > 0 && window_done) {
+    portENTER_CRITICAL(&lock);
+    const uint64_t age_mean_us = reader_age_count > 0 ? reader_age_total_us / reader_age_count : 0;
+    const int64_t age_max_us = reader_age_max_us;
+    reader_age_total_us = 0;
+    reader_age_max_us = 0;
+    reader_age_count = 0;
+    portEXIT_CRITICAL(&lock);
+    if (log_ms > 0) {
         ESP_LOGI(TAG,
                  "register_reads %u drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u "
-                 "reader_age_mean_us %llu "
-                 "reader_age_max_us %lld wake_gap_max_us %lld stack_free_bytes %u",
-                 register_reads, drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered,
-                 lost_total, (unsigned long long)age_mean_us, (long long)age_max_us, (long long)wake_gap_max_us,
-                 (unsigned)uxTaskGetStackHighWaterMark(NULL));
+                 "reader_age_mean_us %llu reader_age_max_us %lld wake_gap_max_us %lld bus_ms %llu parks %u "
+                 "parked_ms %llu stack_free_bytes %u",
+                 stats.register_reads, stats.drains,
+                 (unsigned long long)(stats.drains > 0 ? stats.drain_total_us / stats.drains : 0),
+                 (long long)stats.drain_max_us, stats.delivered, stats.lost, (unsigned long long)age_mean_us,
+                 (long long)age_max_us, (long long)stats.wake_gap_max_us,
+                 (unsigned long long)(stats.bus_us / MATH_US_PER_MS), stats.parks,
+                 (unsigned long long)(stats.parked_us / MATH_US_PER_MS), (unsigned)uxTaskGetStackHighWaterMark(NULL));
     }
-    if (window_done) {
-        last_log_us = now_us;
-        register_reads = 0;
-        drains = delivered = lost_total = 0;
-        total_us = 0;
-        max_us = 0;
-        wake_gap_max_us = 0;
+    stats = (imu_stats_t){.last_log_us = now_us};
+}
+
+static void
+count_drain(int count, int lost, int64_t elapsed_us) {
+    stats.drains++;
+    stats.drain_total_us += (uint64_t)elapsed_us;
+    if (elapsed_us > stats.drain_max_us) {
+        stats.drain_max_us = elapsed_us;
     }
+    stats.delivered += count > 0 ? (unsigned)count : 0;
+    stats.lost += (unsigned)lost;
 }
 #endif
 
@@ -457,14 +490,14 @@ imu_read_or_drain(bool drain_due) {
         }
         portEXIT_CRITICAL(&lock);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        log_drain_stats(count, lost, now_us - start_us, now_us);
+        count_drain(count, lost, now_us - start_us);
 #else
         (void)now_us;
 #endif
     } else if (sensor_present) {
         imu_sample_t sample;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        register_reads++;
+        stats.register_reads++;
 #endif
         if (read_regs(REG_AX_L, (uint8_t*)&sample, sizeof sample)) {
             portENTER_CRITICAL(&lock);
@@ -477,7 +510,35 @@ imu_read_or_drain(bool drain_due) {
             portEXIT_CRITICAL(&lock);
         }
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    stats.bus_us += (uint64_t)(timing_now_us() - start_us);
+#endif
     return drain_due;
+}
+
+/* Drains resume on a fresh FIFO: what it held is stale, and the read-mode loss
+ * since the last drain was never counted. Queued samples drop behind a gap. */
+static void
+restart_fifo(void) {
+    if (sensor_present) {
+        (void)(write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG));
+    }
+    fifo_gap = true;
+    pending_lost = 0;
+    loss_remainder_us = 0;
+    portENTER_CRITICAL(&lock);
+    imu_queue_push(&queue, NULL, 0, 0, true);
+    portEXIT_CRITICAL(&lock);
+}
+
+/* The level readers ask for; with none, marks the task parked under the same lock a reader stamps under. */
+static imu_demand_level_t
+take_demand(void) {
+    portENTER_CRITICAL(&lock);
+    const imu_demand_level_t level = imu_demand_level(&demand, timing_now_us());
+    parked = level == IMU_DEMAND_NONE;
+    portEXIT_CRITICAL(&lock);
+    return level;
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -518,8 +579,10 @@ imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t 
         return -1;
     }
     portENTER_CRITICAL(&lock);
+    const bool wake = stamp_demand(&demand.fifo_us);
     const int count = imu_queue_take_at(&queue, odr_code, out, lost_before, gap);
     portEXIT_CRITICAL(&lock);
+    wake_task(wake);
     return count;
 }
 
@@ -530,7 +593,9 @@ imu_set_odr(unsigned odr_code) {
     }
     portENTER_CRITICAL(&lock);
     odr.requested = odr_code;
+    const bool wake = stamp_demand(&demand.fifo_us);
     portEXIT_CRITICAL(&lock);
+    wake_task(wake);
     const int64_t deadline = timing_now_us() + ((int64_t)IMU_ODR_WAIT_MS * MATH_US_PER_MS);
     for (;;) {
         portENTER_CRITICAL(&lock);
@@ -550,22 +615,39 @@ imu_task(void* arg) {
     (void)arg;
     TickType_t last_wake = xTaskGetTickCount();
     unsigned read_ticks = 0;
+    imu_demand_level_t level = IMU_DEMAND_NONE;
 #if CONFIG_LAUNCHER_DEVELOPMENT
     int64_t last_wake_us = timing_now_us();
 #endif
     while (1) {
+        const imu_demand_level_t asked = take_demand();
+        if (asked == IMU_DEMAND_NONE) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+            log_stats(timing_now_us(), true);
+            stats.parks++;
+            const int64_t parked_us = timing_now_us();
+#endif
+            /* A read between take_demand() and here leaves the notification pending. */
+            (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            level = IMU_DEMAND_NONE;
+            last_wake = xTaskGetTickCount();
+#if CONFIG_LAUNCHER_DEVELOPMENT
+            last_wake_us = timing_now_us();
+            stats.parked_us += (uint64_t)(last_wake_us - parked_us);
+#endif
+            continue;
+        }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         const int64_t now_us = timing_now_us();
         const int64_t wake_gap_us = now_us - last_wake_us;
-        if (wake_gap_us > wake_gap_max_us) {
-            wake_gap_max_us = wake_gap_us;
+        if (wake_gap_us > stats.wake_gap_max_us) {
+            stats.wake_gap_max_us = wake_gap_us;
         }
         last_wake_us = now_us;
 #endif
         const TickType_t requested_period = pdMS_TO_TICKS(read_ms);
         const TickType_t period = requested_period > 0 ? requested_period : 1;
         const TickType_t drain_ticks = pdMS_TO_TICKS(drain_ms) / period;
-        const bool drain_due = read_ticks == 0 || read_ticks >= drain_ticks;
         /* The bus lock has no priority inheritance: a preempted drain holds the bus
          * and keeps the FIFO in read mode, discarding arrivals. */
         vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
@@ -574,11 +656,19 @@ imu_task(void* arg) {
             apply_odr_request();
         }
 #endif
-        if (imu_read_or_drain(drain_due)) {
+        if (asked == IMU_DEMAND_FIFO && level != IMU_DEMAND_FIFO) {
+            restart_fifo();
+            read_ticks = 0;
+        }
+        level = asked;
+        if (imu_read_or_drain(level == IMU_DEMAND_FIFO && read_ticks >= drain_ticks)) {
             read_ticks = 0;
         }
         read_ticks++;
         vTaskPrioritySet(NULL, IMU_TASK_PRIORITY);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        log_stats(timing_now_us(), false);
+#endif
         if (xTaskDelayUntil(&last_wake, period) == pdFALSE) {
             last_wake = xTaskGetTickCount();
         }
