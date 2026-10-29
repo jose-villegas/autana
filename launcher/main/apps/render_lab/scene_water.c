@@ -727,7 +727,7 @@ scene_water_frame(uint32_t dt_ms) {
     }
 }
 
-static const char*
+static inline const char*
 water_status(void) {
     static char buf[RENDER_LAB_STATUS_LEN];
     if (failure[0] != '\0') {
@@ -812,7 +812,7 @@ const render_lab_scene_t scene_water = {.name = "Water",
                                         .enter = scene_water_enter,
                                         .frame = scene_water_frame,
                                         .exit = scene_water_exit,
-                                        .status = water_status,
+                                        .status = RENDER_LAB_SCENE_DEV(water_status),
                                         .update = scene_water_update,
                                         .controls = scene_water_controls,
-                                        .console = RENDER_LAB_SCENE_CONSOLE(scene_water_console)};
+                                        .console = RENDER_LAB_SCENE_DEV(scene_water_console)};
