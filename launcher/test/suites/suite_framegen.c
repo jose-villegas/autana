@@ -146,6 +146,7 @@ test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it(void
         (void)render_context_compose(c, destination, NULL);
         TEST_ASSERT_TRUE(render_context_frame(c).generated);
         c->generated_us = generated[i];
+        render_context_set_frame_generation(c, true); /* as an app re-applying its settings each frame */
         TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
         (void)render_context_compose(c, destination, NULL);
         TEST_ASSERT_FALSE(render_context_frame(c).generated);
